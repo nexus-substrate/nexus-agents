@@ -296,8 +296,9 @@ describe('Centralized Timeout Configuration', () => {
       expect(getExpertTaskTimeout('Perform a security review of auth')).toBe(600_000);
     });
 
-    it('returns complex timeout for research tasks', () => {
-      expect(getExpertTaskTimeout('Research the vulnerability scanner landscape')).toBe(600_000);
+    it('returns standard timeout for research tasks', () => {
+      // "Research ..." matches research category (not security_review) with best-match scoring
+      expect(getExpertTaskTimeout('Research the vulnerability scanner landscape')).toBe(300_000);
     });
 
     it('returns standard timeout for code generation tasks', () => {

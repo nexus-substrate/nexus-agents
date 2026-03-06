@@ -115,6 +115,31 @@ describe('detectTaskCategory', () => {
     const match = detectTaskCategory('Audit security of the API endpoints');
     expect(match).not.toBeNull();
     expect(match?.category).toBe('security_review');
+    expect(match?.primaryCli).toBe('claude');
+  });
+
+  it('detects devops for security scanning tasks (#1421)', () => {
+    const match = detectTaskCategory('Run a security scan on the Docker images');
+    expect(match).not.toBeNull();
+    expect(match?.category).toBe('devops');
+  });
+
+  it('detects devops for vulnerability scanning (#1421)', () => {
+    const match = detectTaskCategory('Run vulnerability scan with trivy');
+    expect(match).not.toBeNull();
+    expect(match?.category).toBe('devops');
+  });
+
+  it('detects security_review for code-level security analysis (#1421)', () => {
+    const match = detectTaskCategory('Perform a security audit for XSS and CSRF injection');
+    expect(match).not.toBeNull();
+    expect(match?.category).toBe('security_review');
+  });
+
+  it('detects devops for SAST/DAST tooling (#1421)', () => {
+    const match = detectTaskCategory('Set up semgrep SAST pipeline');
+    expect(match).not.toBeNull();
+    expect(match?.category).toBe('devops');
   });
 
   it('detects testing from task description', () => {

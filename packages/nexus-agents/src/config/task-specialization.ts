@@ -70,11 +70,26 @@ export const TASK_SPECIALIZATION_MATRIX: readonly TaskSpecialization[] = [
   },
   {
     category: 'security_review',
-    primaryCli: 'codex',
-    secondaryCli: 'claude',
+    primaryCli: 'claude',
+    secondaryCli: 'codex',
     reasoning:
-      'Codex 60% (n=5), Gemini 50% (n=14), Claude 30% (n=107); reduced bonus to let adaptive routing learn',
-    keywords: ['security', 'vulnerability', 'threat model', 'cve', 'audit security'],
+      'Claude primary (n=156, improving trend); code-level security analysis, not scanning/tooling',
+    keywords: [
+      'security review',
+      'security analysis',
+      'security audit',
+      'security flaw',
+      'vulnerability assessment',
+      'threat model',
+      'cve',
+      'audit security',
+      'owasp',
+      'injection',
+      'xss',
+      'csrf',
+      'security',
+      'vulnerability',
+    ],
     bonus: 7,
   },
   {
@@ -166,24 +181,37 @@ export function getSpecialization(category: TaskCategory): TaskSpecialization {
 
 /**
  * Detect task category from free-text task description.
- * Returns the first matching category or null if none match.
+ * Uses best-match scoring: counts keyword hits weighted by keyword length
+ * (multi-word keywords like "security scan" score higher than "security").
+ * Breaks ties by matrix order.
  */
 export function detectTaskCategory(task: string): SpecializationMatch | null {
   const taskLower = task.toLowerCase();
+  let bestSpec: TaskSpecialization | undefined;
+  let bestScore = 0;
 
   for (const spec of TASK_SPECIALIZATION_MATRIX) {
-    const matched = spec.keywords.some((kw) => taskLower.includes(kw));
-    if (matched) {
-      return {
-        category: spec.category,
-        primaryCli: spec.primaryCli,
-        secondaryCli: spec.secondaryCli,
-        bonus: spec.bonus,
-      };
+    let score = 0;
+    for (const kw of spec.keywords) {
+      if (taskLower.includes(kw)) {
+        // Multi-word keywords score higher (more specific match)
+        score += kw.split(/\s+/).length;
+      }
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      bestSpec = spec;
     }
   }
 
-  return null;
+  if (bestSpec === undefined) return null;
+
+  return {
+    category: bestSpec.category,
+    primaryCli: bestSpec.primaryCli,
+    secondaryCli: bestSpec.secondaryCli,
+    bonus: bestSpec.bonus,
+  };
 }
 
 /**
