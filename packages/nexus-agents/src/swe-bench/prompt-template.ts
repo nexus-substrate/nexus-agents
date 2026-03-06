@@ -106,7 +106,7 @@ export function extractPatch(response: string): string | null {
   if (diffBlockMatch !== null) {
     const patch = diffBlockMatch[1];
     if (patch !== undefined) {
-      return patch.trim();
+      return normalizePatch(patch);
     }
   }
 
@@ -115,7 +115,7 @@ export function extractPatch(response: string): string | null {
   if (codeBlockMatch !== null) {
     const patch = codeBlockMatch[1];
     if (patch !== undefined) {
-      return patch.trim();
+      return normalizePatch(patch);
     }
   }
 
@@ -124,11 +124,24 @@ export function extractPatch(response: string): string | null {
   if (rawDiffMatch !== null) {
     const patch = rawDiffMatch[1];
     if (patch !== undefined) {
-      return patch.trim();
+      return normalizePatch(patch);
     }
   }
 
   return null;
+}
+
+/**
+ * Normalizes a patch for git apply compatibility.
+ * - Strips leading/trailing whitespace but ensures trailing newline
+ * - Removes trailing whitespace from each line (git apply is strict)
+ */
+function normalizePatch(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return trimmed;
+  // Strip trailing whitespace per line, then ensure final newline
+  const lines = trimmed.split('\n').map((line) => line.trimEnd());
+  return lines.join('\n') + '\n';
 }
 
 /**

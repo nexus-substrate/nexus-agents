@@ -124,13 +124,15 @@ export async function applyPatch(
   const fs = await import('node:fs/promises');
   const path = await import('node:path');
 
+  const patchFile = path.join(repoDir, '.agent_patch.diff');
   try {
-    const patchFile = path.join(repoDir, '.agent_patch.diff');
     await fs.writeFile(patchFile, patch);
-    await exec(`git apply ${patchFile}`, { cwd: repoDir });
+    await exec(`git apply --whitespace=fix ${patchFile}`, { cwd: repoDir });
     await fs.unlink(patchFile);
     return { ok: true, value: undefined };
   } catch (err) {
+    // Clean up patch file on failure
+    await fs.unlink(patchFile).catch(() => undefined);
     return { ok: false, error: new AgentRunnerError('Failed to apply patch', err) };
   }
 }
