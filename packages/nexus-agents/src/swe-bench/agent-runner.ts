@@ -158,6 +158,27 @@ interface ProcessIterationOptions {
   readonly contextSummary?: string;
 }
 
+/** Resolve the best patch: prefer working dir changes, fall back to text-extracted patch. */
+async function resolvePatch(
+  context: AgentContext,
+  state: IterationState,
+  textPatch: string
+): Promise<{ success: boolean; patch?: string }> {
+  // If agent already modified files via tools, prefer working dir diff (#1411).
+  const workDirResult = await tryWorkingDirDiff(context, state, '');
+  if (workDirResult.success && workDirResult.patch !== undefined) {
+    return { success: true, patch: workDirResult.patch };
+  }
+  // Apply text-extracted patch to clean working tree
+  state.lastPatch = textPatch;
+  const applyResult = await applyPatch(context.workDir, textPatch);
+  if (!applyResult.ok) {
+    state.lastError = applyResult.error.message;
+    return { success: false };
+  }
+  return { success: true, patch: textPatch };
+}
+
 async function processSingleIteration(
   opts: ProcessIterationOptions
 ): Promise<{ success: boolean; patch?: string; response?: string }> {
@@ -173,8 +194,7 @@ async function processSingleIteration(
     ...(contextSummary !== undefined ? { contextSummary } : {}),
   });
 
-  // Fallback: if no patch in response text, capture git diff from working dir.
-  // The agent may have modified files via tools without outputting a diff block (#1411).
+  // No patch in response text — try working dir diff as fallback (#1411)
   if (!iterResult.ok && iterResult.error.message === 'No patch found in response') {
     return tryWorkingDirDiff(context, state, iterResult.error.message);
   }
@@ -186,16 +206,8 @@ async function processSingleIteration(
   }
 
   state.totalTokens += iterResult.value.tokensUsed;
-  state.lastPatch = iterResult.value.patch;
-  const agentResponse = iterResult.value.response;
-
-  const applyResult = await applyPatch(context.workDir, iterResult.value.patch);
-  if (!applyResult.ok) {
-    state.lastError = applyResult.error.message;
-    return { success: false, response: agentResponse };
-  }
-
-  return { success: true, patch: iterResult.value.patch, response: agentResponse };
+  const resolved = await resolvePatch(context, state, iterResult.value.patch);
+  return { ...resolved, response: iterResult.value.response };
 }
 
 /** Fallback: capture working dir changes when agent modified files via tools (#1411). */
