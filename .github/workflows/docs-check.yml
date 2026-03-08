@@ -277,56 +277,13 @@ jobs:
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
 
-      - name: Scan for secrets in generated docs
-        run: |
-          # Define patterns that indicate potential secrets
-          SECRET_PATTERNS=(
-            'ANTHROPIC_API_KEY'
-            'OPENAI_API_KEY'
-            'GOOGLE_AI_API_KEY'
-            'API_KEY'
-            'SECRET_KEY'
-            'PASSWORD'
-            'TOKEN'
-            'sk-[a-zA-Z0-9]+'
-            'ghp_[a-zA-Z0-9]+'
-            'gho_[a-zA-Z0-9]+'
-            'xox[baprs]-[a-zA-Z0-9]+'
-          )
-
-          FOUND_SECRETS=0
-
-          # Scan docs/llms.txt and docs/llms-full.txt
-          for file in docs/llms.txt docs/llms-full.txt; do
-            if [ -f "$file" ]; then
-              for pattern in "${SECRET_PATTERNS[@]}"; do
-                # Skip pattern if it looks like a placeholder/example/documentation
-                # Exclude: examples, placeholders, environment refs, markdown tables (| pattern |)
-                if grep -E "$pattern" "$file" | grep -vE '(example|placeholder|your-|<|>|\$\{|process\.env|\| .* \|)' > /dev/null 2>&1; then
-                  echo "::error::Potential secret pattern '$pattern' found in $file"
-                  FOUND_SECRETS=1
-                fi
-              done
-            fi
-          done
-
-          # Scan any .generated/ directory if it exists
-          if [ -d ".generated" ]; then
-            for pattern in "${SECRET_PATTERNS[@]}"; do
-              if grep -rE "$pattern" .generated/ | grep -vE '(example|placeholder|your-|<|>|\$\{|process\.env)' > /dev/null 2>&1; then
-                echo "::error::Potential secret pattern '$pattern' found in .generated/"
-                FOUND_SECRETS=1
-              fi
-            done
-          fi
-
-          if [ $FOUND_SECRETS -eq 1 ]; then
-            echo "::error::Potential secrets detected in generated documentation"
-            exit 1
-          else
-            echo "✅ No secrets detected in generated documentation"
-          fi
+      - name: Run gitleaks
+        uses: gacts/gitleaks@9d471d3bda7ee95b6fa416fdfe7e87cf393554d5 # v1.3.1
+        with:
+          config-path: .gitleaks.toml
 
   # Job 6: Repository Index Check
   repo-index:
