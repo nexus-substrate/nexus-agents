@@ -9,7 +9,13 @@ import { mkdtemp, writeFile, rm, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { QueryTraceInputSchema, queryTraceFromDisk } from './query-trace-tool.js';
+import { chmod } from 'node:fs/promises';
+
+import {
+  QueryTraceInputSchema,
+  queryTraceFromDisk,
+  classifyTraceError,
+} from './query-trace-tool.js';
 
 // ============================================================================
 // Input Schema Validation
@@ -199,5 +205,69 @@ describe('queryTraceFromDisk', () => {
 
     expect(result.source).toBe('not_found');
     expect(result.events).toHaveLength(0);
+  });
+
+  it('returns not_found error category for missing trace file', async () => {
+    const result = await queryTraceFromDisk({ runId: 'nonexistent' }, tempDir);
+
+    expect(result.source).toBe('not_found');
+    expect(result.errorCategory).toBe('not_found');
+    expect(result.errorMessage).toBeDefined();
+  });
+
+  it('returns permission_error category for inaccessible trace file', async () => {
+    const runDir = join(tempDir, 'run-noperm');
+    await mkdir(runDir, { recursive: true });
+    await writeFile(join(runDir, 'trace.jsonl'), '{"eventType":"test"}\n');
+    await chmod(join(runDir, 'trace.jsonl'), 0o000);
+
+    const result = await queryTraceFromDisk({ runId: 'run-noperm' }, tempDir);
+
+    expect(result.source).toBe('not_found');
+    expect(result.errorCategory).toBe('permission_error');
+    expect(result.errorMessage).toBeDefined();
+    expect(result.events).toHaveLength(0);
+
+    // Restore permissions for cleanup
+    await chmod(join(runDir, 'trace.jsonl'), 0o644);
+  });
+});
+
+// ============================================================================
+// Error Classification
+// ============================================================================
+
+describe('classifyTraceError', () => {
+  it('classifies ENOENT as not_found', () => {
+    const err = Object.assign(new Error('no such file'), { code: 'ENOENT' });
+    expect(classifyTraceError(err)).toBe('not_found');
+  });
+
+  it('classifies EACCES as permission_error', () => {
+    const err = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+    expect(classifyTraceError(err)).toBe('permission_error');
+  });
+
+  it('classifies EPERM as permission_error', () => {
+    const err = Object.assign(new Error('operation not permitted'), { code: 'EPERM' });
+    expect(classifyTraceError(err)).toBe('permission_error');
+  });
+
+  it('classifies SyntaxError as parse_error', () => {
+    expect(classifyTraceError(new SyntaxError('Unexpected token'))).toBe('parse_error');
+  });
+
+  it('classifies error with JSON in message as parse_error', () => {
+    expect(classifyTraceError(new Error('Invalid JSON at position 5'))).toBe('parse_error');
+  });
+
+  it('classifies non-Error values as unknown', () => {
+    expect(classifyTraceError('string error')).toBe('unknown');
+    expect(classifyTraceError(42)).toBe('unknown');
+    expect(classifyTraceError(null)).toBe('unknown');
+  });
+
+  it('classifies generic Error as unknown', () => {
+    expect(classifyTraceError(new Error('something went wrong'))).toBe('unknown');
   });
 });

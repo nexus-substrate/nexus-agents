@@ -43,12 +43,17 @@ export type QueryTraceInput = z.infer<typeof QueryTraceInputSchema>;
 // Response Types
 // ============================================================================
 
+/** Error categories for trace query failures. */
+export type TraceErrorCategory = 'not_found' | 'permission_error' | 'parse_error' | 'unknown';
+
 export interface QueryTraceResponse {
   readonly runId: string;
   readonly events: readonly Record<string, unknown>[];
   readonly totalEvents: number;
   readonly truncated: boolean;
   readonly source: 'disk' | 'not_found';
+  readonly errorCategory?: TraceErrorCategory;
+  readonly errorMessage?: string;
 }
 
 // ============================================================================
@@ -63,6 +68,27 @@ export type QueryTraceDeps = BaseMcpToolDeps;
 
 /** Maximum trace file size to read (100 MB). */
 const MAX_TRACE_FILE_BYTES = 100 * 1024 * 1024;
+
+const traceLogger = createLogger({ component: 'query-trace' });
+
+/** Classify a trace query error into a category for structured responses. */
+export function classifyTraceError(err: unknown): TraceErrorCategory {
+  if (err instanceof Error) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') return 'not_found';
+    if (code === 'EACCES' || code === 'EPERM') return 'permission_error';
+    if (err.message.includes('JSON') || err instanceof SyntaxError) return 'parse_error';
+  }
+  return 'unknown';
+}
+
+/** Sanitize error message: remove file paths and stack traces. */
+function sanitizeErrorMessage(err: unknown): string {
+  if (err instanceof Error) {
+    return err.message.replace(/\/[^\s:]+/g, '<path>');
+  }
+  return 'An unexpected error occurred';
+}
 
 /** Parse JSONL content into records, skipping malformed lines. */
 function parseJsonlLines(content: string): Record<string, unknown>[] {
@@ -122,8 +148,22 @@ export async function queryTraceFromDisk(
       truncated: parsed.length > limit,
       source: 'disk',
     };
-  } catch {
-    return { runId: input.runId, ...EMPTY_RESPONSE };
+  } catch (err: unknown) {
+    const category = classifyTraceError(err);
+    const message = sanitizeErrorMessage(err);
+
+    if (category === 'not_found') {
+      traceLogger.debug('Trace file not found', { runId: input.runId });
+    } else {
+      traceLogger.warn('Trace query error', { runId: input.runId, category, message });
+    }
+
+    return {
+      runId: input.runId,
+      ...EMPTY_RESPONSE,
+      errorCategory: category,
+      errorMessage: message,
+    };
   }
 }
 
