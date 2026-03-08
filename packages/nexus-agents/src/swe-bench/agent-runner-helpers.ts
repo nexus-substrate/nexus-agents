@@ -8,7 +8,9 @@
  */
 
 import type { Result } from '../core/result.js';
-import { getTimeProvider } from '../core/index.js';
+import { createLogger, getTimeProvider } from '../core/index.js';
+
+const logger = createLogger({ component: 'swe-bench-helpers' });
 import type { SWEBenchInstance, SWEBenchPrediction, SWEBenchRunResult } from './types.js';
 
 /**
@@ -132,12 +134,19 @@ export async function applyPatch(
   const patchFile = path.join(repoDir, '.agent_patch.diff');
   try {
     await fs.writeFile(patchFile, patch);
-    await exec(`git apply --whitespace=fix ${patchFile}`, { cwd: repoDir });
+    await exec(`git apply --whitespace=fix ${patchFile}`, {
+      cwd: repoDir,
+      timeout: GIT_TIMEOUT_MS,
+    });
     await fs.unlink(patchFile);
     return { ok: true, value: undefined };
   } catch (err) {
     // Clean up patch file on failure
-    await fs.unlink(patchFile).catch(() => undefined);
+    await fs.unlink(patchFile).catch((e: unknown) => {
+      logger.debug('Failed to clean up patch file', {
+        error: e instanceof Error ? e.message : String(e),
+      });
+    });
     return { ok: false, error: new AgentRunnerError('Failed to apply patch', err) };
   }
 }
@@ -153,7 +162,11 @@ export async function captureWorkingDirDiff(repoDir: string): Promise<string | n
   const exec = promisify(childProcess.exec);
 
   try {
-    const { stdout } = await exec('git diff', { cwd: repoDir, maxBuffer: 1024 * 1024 });
+    const { stdout } = await exec('git diff', {
+      cwd: repoDir,
+      maxBuffer: 1024 * 1024,
+      timeout: GIT_TIMEOUT_MS,
+    });
     const trimmed = stdout.trim();
     return trimmed.length > 0 ? trimmed : null;
   } catch {
@@ -170,8 +183,8 @@ export async function resetRepository(repoDir: string): Promise<Result<void, Age
   const exec = promisify(childProcess.exec);
 
   try {
-    await exec(`git checkout -- .`, { cwd: repoDir });
-    await exec(`git clean -fd`, { cwd: repoDir });
+    await exec(`git checkout -- .`, { cwd: repoDir, timeout: GIT_TIMEOUT_MS });
+    await exec(`git clean -fd`, { cwd: repoDir, timeout: GIT_TIMEOUT_MS });
     return { ok: true, value: undefined };
   } catch (err) {
     return { ok: false, error: new AgentRunnerError('Failed to reset repository', err) };

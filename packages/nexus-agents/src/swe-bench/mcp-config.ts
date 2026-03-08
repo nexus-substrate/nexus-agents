@@ -11,6 +11,9 @@
 import { writeFile, mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { createLogger } from '../core/index.js';
+
+const logger = createLogger({ component: 'swe-bench-mcp-config' });
 
 /**
  * MCP server entry in Claude CLI config format.
@@ -114,8 +117,10 @@ export async function generateMcpConfig(options?: McpConfigOptions): Promise<Gen
   await writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
 
   const cleanup = async (): Promise<void> => {
-    await rm(tempDir, { recursive: true, force: true }).catch(() => {
-      // Best-effort cleanup
+    await rm(tempDir, { recursive: true, force: true }).catch((e: unknown) => {
+      logger.debug('Best-effort cleanup failed', {
+        error: e instanceof Error ? e.message : String(e),
+      });
     });
   };
 

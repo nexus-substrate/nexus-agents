@@ -71,6 +71,7 @@ export class SQLiteOutcomeStorage implements IOutcomeStorage {
   private readonly logger: ILogger;
   private db: ISQLiteDatabase | null = null;
   private initialized = false;
+  private initPromise: Promise<Result<void, OutcomeStorageError>> | undefined;
 
   constructor(config: OutcomeStorageConfig) {
     const validation = OutcomeStorageConfigSchema.safeParse(config);
@@ -98,7 +99,13 @@ export class SQLiteOutcomeStorage implements IOutcomeStorage {
   /** Initialize the storage backend. */
   async initialize(): Promise<Result<void, OutcomeStorageError>> {
     if (this.initialized) return ok(undefined);
+    this.initPromise ??= this.doInitialize().finally(() => {
+      this.initPromise = undefined;
+    });
+    return this.initPromise;
+  }
 
+  private async doInitialize(): Promise<Result<void, OutcomeStorageError>> {
     try {
       const betterSqlite3Module = await import('better-sqlite3').catch((error: unknown) => {
         this.logger.debug('Failed to import better-sqlite3', { error: String(error) });

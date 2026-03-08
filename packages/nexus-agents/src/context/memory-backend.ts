@@ -63,6 +63,7 @@ export class HybridMemoryBackend implements IMemoryBackend {
   private readonly markdown: MemoryMarkdownHelper;
   private db: ISQLiteDatabase | null = null;
   private initialized = false;
+  private initPromise: Promise<Result<void, MemoryError>> | undefined;
 
   constructor(config: HybridMemoryConfig) {
     const validation = HybridMemoryConfigSchema.safeParse(config);
@@ -91,7 +92,13 @@ export class HybridMemoryBackend implements IMemoryBackend {
 
   async initialize(): Promise<Result<void, MemoryError>> {
     if (this.initialized) return ok(undefined);
+    this.initPromise ??= this.doInitialize().finally(() => {
+      this.initPromise = undefined;
+    });
+    return this.initPromise;
+  }
 
+  private async doInitialize(): Promise<Result<void, MemoryError>> {
     try {
       const betterSqlite3Module = await import('better-sqlite3').catch((cause: unknown) => {
         this.logger.debug('better-sqlite3 import failed', { error: String(cause) });

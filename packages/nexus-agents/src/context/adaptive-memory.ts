@@ -66,6 +66,7 @@ export class AdaptiveMemoryBackend implements IAdaptiveMemory {
   private scoringConfig: ScoringConfig;
   private db: ISQLiteDatabase | null = null;
   private initialized = false;
+  private initPromise: Promise<Result<void, MemoryError>> | undefined;
 
   constructor(config: AdaptiveMemoryConfig) {
     const validation = AdaptiveMemoryConfigSchema.safeParse(config);
@@ -83,6 +84,13 @@ export class AdaptiveMemoryBackend implements IAdaptiveMemory {
 
   async initialize(): Promise<Result<void, MemoryError>> {
     if (this.initialized) return ok(undefined);
+    this.initPromise ??= this.doInitialize().finally(() => {
+      this.initPromise = undefined;
+    });
+    return this.initPromise;
+  }
+
+  private async doInitialize(): Promise<Result<void, MemoryError>> {
     const baseInit = await this.base.initialize();
     if (!baseInit.ok) return baseInit;
 
