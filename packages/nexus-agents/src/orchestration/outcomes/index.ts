@@ -22,7 +22,7 @@ export {
   OutcomeFailureCategorySchema,
   categorizeOutcomeError,
   categorizeOutcomeErrorMessage,
-  extractErrorMessage,
+  extractNonErrorMessage,
 } from './outcome-types.js';
 export {
   OutcomeStore,

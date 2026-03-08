@@ -9,7 +9,7 @@ import {
   OutcomeFailureCategorySchema,
   categorizeOutcomeError,
   categorizeOutcomeErrorMessage,
-  extractErrorMessage,
+  extractNonErrorMessage,
 } from './outcome-types.js';
 import { TaskOutcomeSchema } from './outcome-types.js';
 
@@ -323,47 +323,47 @@ describe('categorizeOutcomeErrorMessage', () => {
   });
 });
 
-describe('extractErrorMessage (#1466)', () => {
+describe('extractNonErrorMessage (#1466)', () => {
   it('returns string directly', () => {
-    expect(extractErrorMessage('some error')).toBe('some error');
+    expect(extractNonErrorMessage('some error')).toBe('some error');
   });
 
   it('returns undefined for null', () => {
-    expect(extractErrorMessage(null)).toBeUndefined();
+    expect(extractNonErrorMessage(null)).toBeUndefined();
   });
 
   it('returns undefined for undefined', () => {
-    expect(extractErrorMessage(undefined)).toBeUndefined();
+    expect(extractNonErrorMessage(undefined)).toBeUndefined();
   });
 
   it('extracts .message from objects', () => {
-    expect(extractErrorMessage({ message: 'hello' })).toBe('hello');
+    expect(extractNonErrorMessage({ message: 'hello' })).toBe('hello');
   });
 
   it('falls back to JSON.stringify for objects without .message', () => {
-    const result = extractErrorMessage({ code: 'ENOENT' });
+    const result = extractNonErrorMessage({ code: 'ENOENT' });
     expect(result).toContain('ENOENT');
   });
 
   it('returns undefined for circular references', () => {
     const obj: Record<string, unknown> = {};
     obj['self'] = obj;
-    expect(extractErrorMessage(obj)).toBeUndefined();
+    expect(extractNonErrorMessage(obj)).toBeUndefined();
   });
 
   it('truncates long strings to 500 chars', () => {
     const long = 'x'.repeat(600);
-    const result = extractErrorMessage(long);
+    const result = extractNonErrorMessage(long);
     expect(result).toHaveLength(500);
   });
 
   it('truncates long .message to 500 chars', () => {
-    const result = extractErrorMessage({ message: 'y'.repeat(600) });
+    const result = extractNonErrorMessage({ message: 'y'.repeat(600) });
     expect(result).toHaveLength(500);
   });
 
   it('returns undefined for non-object primitives', () => {
-    expect(extractErrorMessage(42)).toBeUndefined();
-    expect(extractErrorMessage(true)).toBeUndefined();
+    expect(extractNonErrorMessage(42)).toBeUndefined();
+    expect(extractNonErrorMessage(true)).toBeUndefined();
   });
 });

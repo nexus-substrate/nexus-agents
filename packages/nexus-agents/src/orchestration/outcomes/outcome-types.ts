@@ -235,7 +235,7 @@ const MAX_ERROR_MESSAGE_LENGTH = 500;
  * Extracts a classifiable message string from a non-Error value.
  * Returns undefined if the value is truly unclassifiable (#1466).
  */
-export function extractErrorMessage(error: unknown): string | undefined {
+export function extractNonErrorMessage(error: unknown): string | undefined {
   if (error === null || error === undefined) return undefined;
   if (typeof error === 'string') {
     return error.slice(0, MAX_ERROR_MESSAGE_LENGTH);
@@ -261,7 +261,7 @@ export function categorizeOutcomeError(error: unknown): OutcomeFailureCategory {
     const text = `${error.message.toLowerCase()} ${error.name.toLowerCase()}`;
     return classifyText(text);
   }
-  const extracted = extractErrorMessage(error);
+  const extracted = extractNonErrorMessage(error);
   if (extracted === undefined) return 'unknown';
   return classifyText(extracted.toLowerCase());
 }

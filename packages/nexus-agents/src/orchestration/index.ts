@@ -177,6 +177,7 @@ export {
   OutcomeFailureCategorySchema,
   categorizeOutcomeError,
   categorizeOutcomeErrorMessage,
+  extractNonErrorMessage,
   OutcomeStore,
   getOutcomeStore,
   resetOutcomeStore,
