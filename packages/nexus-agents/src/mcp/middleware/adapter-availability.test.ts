@@ -120,6 +120,7 @@ describe('adapter-availability', () => {
         invalidate: vi.fn(),
         getAll: vi.fn().mockReturnValue([]),
         getStats: vi.fn().mockReturnValue({ hits: 0, misses: 0, staleHits: 0 }),
+        getEffectiveTtl: vi.fn().mockReturnValue(300_000),
       };
       mockedGetAvailableClis.mockResolvedValue(['codex']);
 
