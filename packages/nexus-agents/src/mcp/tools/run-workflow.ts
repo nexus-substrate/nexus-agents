@@ -236,10 +236,7 @@ function createRunWorkflowHandler(
       const errorMessage = validated.error.errors
         .map((e) => `${e.path.join('.')}: ${e.message}`)
         .join(', ');
-      return {
-        isError: true,
-        content: [{ type: 'text' as const, text: `Validation error: ${errorMessage}` }],
-      };
+      return errorResponse(`Validation error: ${errorMessage}`);
     }
 
     ctx.logger.debug('Running workflow', {

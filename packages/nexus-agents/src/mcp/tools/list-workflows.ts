@@ -19,6 +19,7 @@ import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
 import { wrapToolWithTimeout, toSdkCallback } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
+import { toolError, toolSuccessStructured, type ToolResult } from './tool-result.js';
 
 /**
  * Input schema for list_workflows tool.
@@ -120,13 +121,6 @@ async function handleListWorkflows(
   };
 }
 
-/** MCP tool response type */
-type ListWorkflowsToolResponse = {
-  content: Array<{ type: 'text'; text: string }>;
-  isError?: boolean;
-  structuredContent?: Record<string, unknown>;
-};
-
 /**
  * Creates the core handler logic for list_workflows tool.
  * Rate limiting is handled by createSecureHandler wrapper.
@@ -134,16 +128,11 @@ type ListWorkflowsToolResponse = {
  * @returns Context-aware handler function
  */
 function createListWorkflowsHandler(workflowEngine: IWorkflowEngine) {
-  return async (args: unknown, ctx: HandlerContext): Promise<ListWorkflowsToolResponse> => {
+  return async (args: unknown, ctx: HandlerContext): Promise<ToolResult> => {
     // Validate input
     const validationResult = ListWorkflowsInputSchema.safeParse(args);
     if (!validationResult.success) {
-      return {
-        isError: true,
-        content: [
-          { type: 'text', text: `Validation error: ${formatZodError(validationResult.error)}` },
-        ],
-      };
+      return toolError(`Validation error: ${formatZodError(validationResult.error)}`);
     }
 
     return withToolError('Failed to list workflows', ctx.logger, async () => {
@@ -155,10 +144,7 @@ function createListWorkflowsHandler(workflowEngine: IWorkflowEngine) {
       });
 
       const data = result as unknown as Record<string, unknown>;
-      return {
-        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-        structuredContent: data,
-      };
+      return toolSuccessStructured(data);
     });
   };
 }

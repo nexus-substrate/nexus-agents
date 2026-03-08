@@ -12,6 +12,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger, AgentCapability } from '../../core/index.js';
 import { createLogger, formatZodError } from '../../core/index.js';
+import { toolError, toolSuccess, type ToolResult } from './tool-result.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
@@ -245,10 +246,7 @@ async function handleCreateExpert(
 }
 
 /** MCP tool response type for create_expert */
-type CreateExpertToolResponse = {
-  content: Array<{ type: 'text'; text: string }>;
-  isError?: boolean;
-};
+type CreateExpertToolResponse = ToolResult;
 
 /**
  * Creates the core handler logic for create_expert tool.
@@ -261,12 +259,7 @@ function createCreateExpertHandler(deps: CreateExpertDeps) {
     // Validate input
     const validationResult = CreateExpertInputSchema.safeParse(args);
     if (!validationResult.success) {
-      return {
-        isError: true,
-        content: [
-          { type: 'text', text: `Validation error: ${formatZodError(validationResult.error)}` },
-        ],
-      };
+      return toolError(`Validation error: ${formatZodError(validationResult.error)}`);
     }
 
     // Execute tool logic (now async for CLI detection - Issue #747)
@@ -277,10 +270,7 @@ function createCreateExpertHandler(deps: CreateExpertDeps) {
     if (!result.ok) {
       recordExpertError(validationResult.data.role, result.error);
       recordExpertOutcome(validationResult.data.role, false, durationMs);
-      return {
-        isError: true,
-        content: [{ type: 'text', text: `Failed to create expert: ${result.error}` }],
-      };
+      return toolError(`Failed to create expert: ${result.error}`);
     }
 
     recordExpertCreated(result.value.role, result.value.expertId);
@@ -292,9 +282,7 @@ function createCreateExpertHandler(deps: CreateExpertDeps) {
       model: validationResult.data.modelPreference ?? 'default',
     });
 
-    return {
-      content: [{ type: 'text', text: JSON.stringify(result.value, null, 2) }],
-    };
+    return toolSuccess(JSON.stringify(result.value, null, 2));
   };
 }
 

@@ -19,6 +19,7 @@ import type { IMcpNotifier } from '../mcp-notifier.js';
 import { createMcpNotifier, NOOP_NOTIFIER, withProgressHeartbeat } from '../mcp-notifier.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
+import { toolError, toolSuccess, type ToolResult } from './tool-result.js';
 import type { ConsensusAlgorithm, Vote, ConsensusResult, Proposal } from '../../consensus/types.js';
 import type { VoterRole, AgentVoteResult } from '../../cli/vote-types.js';
 import { collectRealVotes } from '../../cli/voter-agents.js';
@@ -275,23 +276,14 @@ async function handleConsensusVote(
   }
 }
 
-type ConsensusVoteToolResponse = {
-  content: Array<{ type: 'text'; text: string }>;
-  isError?: boolean;
-  structuredContent?: Record<string, unknown>;
-};
+type ConsensusVoteToolResponse = ToolResult;
 
 function createConsensusVoteHandler(deps: ConsensusVoteDeps) {
   const notifier = deps.notifier ?? NOOP_NOTIFIER;
   return async (args: unknown, ctx: HandlerContext): Promise<ConsensusVoteToolResponse> => {
     const validationResult = ConsensusVoteInputSchema.safeParse(args);
     if (!validationResult.success) {
-      return {
-        isError: true,
-        content: [
-          { type: 'text', text: `Validation error: ${formatZodError(validationResult.error)}` },
-        ],
-      };
+      return toolError(`Validation error: ${formatZodError(validationResult.error)}`);
     }
 
     const strategy = validationResult.data.strategy ?? 'simple_majority';
@@ -309,7 +301,7 @@ function createConsensusVoteHandler(deps: ConsensusVoteDeps) {
       handleConsensusVote(deps, validationResult.data)
     );
     if (!result.ok) {
-      return { isError: true, content: [{ type: 'text', text: result.error }] };
+      return toolError(result.error);
     }
 
     for (const vote of result.value.votes) {
@@ -327,7 +319,7 @@ function createConsensusVoteHandler(deps: ConsensusVoteDeps) {
     });
     const data = result.value as unknown as Record<string, unknown>;
     return {
-      content: [{ type: 'text', text: JSON.stringify(result.value, null, 2) }],
+      ...toolSuccess(JSON.stringify(result.value, null, 2)),
       structuredContent: data,
     };
   };

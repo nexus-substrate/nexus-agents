@@ -31,6 +31,7 @@ import type {
 } from '../../core/types/orchestrator.js';
 import { wrapToolWithTimeout, toSdkCallback } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
+import { toolError, toolSuccess, type ToolResult } from './tool-result.js';
 import { createMcpNotifier, NOOP_NOTIFIER, withProgressHeartbeat } from '../mcp-notifier.js';
 import type { ExecutionPlan } from '../../agents/index.js';
 import { createOrchestratorWithSica } from './orchestrate-sica.js';
@@ -608,7 +609,7 @@ function assembleOrchestrateOutput(
   orchestrationResult: Record<string, unknown>,
   agentPlan: ReturnType<typeof computeAgentPlan>,
   workerDispatchResult: Awaited<ReturnType<typeof executeWorkerDispatch>> | undefined
-): { content: Array<{ type: 'text'; text: string }> } {
+): ToolResult {
   const hasSynthesis =
     workerDispatchResult?.synthesis !== undefined && workerDispatchResult.synthesis !== '';
 
@@ -618,7 +619,7 @@ function assembleOrchestrateOutput(
     ...(workerDispatchResult !== undefined ? { workerDispatch: workerDispatchResult } : {}),
     ...(hasSynthesis ? { synthesizedResponse: workerDispatchResult.synthesis } : {}),
   };
-  return { content: [{ type: 'text' as const, text: JSON.stringify(output, null, 2) }] };
+  return toolSuccess(JSON.stringify(output, null, 2));
 }
 
 /** Record worker outcomes + fire-and-forget reflection (Issue #1323, #1392). */
@@ -640,12 +641,7 @@ function createOrchestrateHandler(deps: OrchestrateDeps) {
     const validated = OrchestrateInputSchema.safeParse(args);
     if (!validated.success) {
       ctx.logger.warn('Invalid orchestrate input', { errors: validated.error.issues });
-      return {
-        isError: true,
-        content: [
-          { type: 'text' as const, text: `Validation error: ${formatZodError(validated.error)}` },
-        ],
-      };
+      return toolError(`Validation error: ${formatZodError(validated.error)}`);
     }
     ctx.logger.debug('Starting orchestration', { taskLength: validated.data.task.length });
     notifier.info('orchestrate', {
@@ -673,10 +669,7 @@ function createOrchestrateHandler(deps: OrchestrateDeps) {
       executeOrchestration(validated.data, deps)
     );
     if (!result.ok) {
-      return {
-        isError: true,
-        content: [{ type: 'text' as const, text: `Orchestration error: ${result.error.message}` }],
-      };
+      return toolError(`Orchestration error: ${result.error.message}`);
     }
 
     notifier.info('orchestrate', {

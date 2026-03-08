@@ -17,6 +17,7 @@ import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
+import { toolError, toolSuccessStructured, type ToolResult } from './tool-result.js';
 import { BUILT_IN_EXPERTS, type BuiltInExpertType } from '../../agents/index.js';
 
 /**
@@ -141,13 +142,6 @@ function handleListExperts(args: ListExpertsInput): ListExpertsResponse {
   };
 }
 
-/** MCP tool response type */
-type ListExpertsToolResponse = {
-  content: Array<{ type: 'text'; text: string }>;
-  isError?: boolean;
-  structuredContent?: Record<string, unknown>;
-};
-
 /**
  * Core handler logic for list_experts tool.
  * Rate limiting is handled by createSecureHandler wrapper.
@@ -155,16 +149,13 @@ type ListExpertsToolResponse = {
  * @param ctx - Handler context with request info and logger
  * @returns Tool response
  */
-function listExpertsHandler(args: unknown, ctx: HandlerContext): Promise<ListExpertsToolResponse> {
+function listExpertsHandler(args: unknown, ctx: HandlerContext): Promise<ToolResult> {
   // Validate input
   const validationResult = ListExpertsInputSchema.safeParse(args);
   if (!validationResult.success) {
-    return Promise.resolve({
-      isError: true,
-      content: [
-        { type: 'text', text: `Validation error: ${formatZodError(validationResult.error)}` },
-      ],
-    });
+    return Promise.resolve(
+      toolError(`Validation error: ${formatZodError(validationResult.error)}`)
+    );
   }
 
   // Execute tool logic
@@ -173,10 +164,7 @@ function listExpertsHandler(args: unknown, ctx: HandlerContext): Promise<ListExp
   ctx.logger.debug('Listed available experts', { count: result.count });
 
   const data = result as unknown as Record<string, unknown>;
-  return Promise.resolve({
-    content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-    structuredContent: data,
-  });
+  return Promise.resolve(toolSuccessStructured(data));
 }
 
 /**

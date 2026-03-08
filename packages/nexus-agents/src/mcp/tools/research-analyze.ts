@@ -13,6 +13,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
 import { createLogger, formatZodError } from '../../core/index.js';
 import { withToolError } from '../middleware/tool-error-handler.js';
+import { toolError, toolSuccess, type ToolResult } from './tool-result.js';
 
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
@@ -353,25 +354,14 @@ async function executeAnalysis(input: ResearchAnalyzeInput): Promise<ResearchAna
 // MCP TOOL
 // =============================================================================
 
-/** MCP tool response type */
-type ResearchAnalyzeToolResponse = {
-  content: Array<{ type: 'text'; text: string }>;
-  isError?: boolean;
-};
-
 /**
  * Creates the core handler logic for research_analyze tool.
  */
 function createResearchAnalyzeHandler(deps: ResearchAnalyzeDeps) {
-  return async (args: unknown, ctx: HandlerContext): Promise<ResearchAnalyzeToolResponse> => {
+  return async (args: unknown, ctx: HandlerContext): Promise<ToolResult> => {
     const validationResult = ResearchAnalyzeInputSchema.safeParse(args);
     if (!validationResult.success) {
-      return {
-        isError: true,
-        content: [
-          { type: 'text', text: `Validation error: ${formatZodError(validationResult.error)}` },
-        ],
-      };
+      return toolError(`Validation error: ${formatZodError(validationResult.error)}`);
     }
 
     ctx.logger.debug('Analyzing research registry', {
@@ -381,9 +371,7 @@ function createResearchAnalyzeHandler(deps: ResearchAnalyzeDeps) {
     const logger = deps.logger ?? createLogger({ tool: 'research_analyze' });
     return withToolError('Analysis failed', logger, async () => {
       const result = await executeAnalysis(validationResult.data);
-      return {
-        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-      };
+      return toolSuccess(JSON.stringify(result, null, 2));
     });
   };
 }

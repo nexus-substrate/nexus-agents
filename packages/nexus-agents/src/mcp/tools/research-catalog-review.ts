@@ -13,6 +13,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
 import { createLogger, formatZodError } from '../../core/index.js';
 import { withToolError } from '../middleware/tool-error-handler.js';
+import { toolError, toolSuccess, type ToolResult } from './tool-result.js';
 
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
@@ -231,25 +232,14 @@ async function executeCatalogReview(
 // MCP TOOL
 // =============================================================================
 
-/** MCP tool response type */
-type CatalogReviewToolResponse = {
-  content: Array<{ type: 'text'; text: string }>;
-  isError?: boolean;
-};
-
 /**
  * Creates the core handler logic for research_catalog_review tool.
  */
 function createCatalogReviewHandler(deps: ResearchCatalogReviewDeps) {
-  return async (args: unknown, ctx: HandlerContext): Promise<CatalogReviewToolResponse> => {
+  return async (args: unknown, ctx: HandlerContext): Promise<ToolResult> => {
     const validationResult = ResearchCatalogReviewInputSchema.safeParse(args);
     if (!validationResult.success) {
-      return {
-        isError: true,
-        content: [
-          { type: 'text', text: `Validation error: ${formatZodError(validationResult.error)}` },
-        ],
-      };
+      return toolError(`Validation error: ${formatZodError(validationResult.error)}`);
     }
 
     ctx.logger.debug('Catalog review', { action: validationResult.data.action });
@@ -259,15 +249,10 @@ function createCatalogReviewHandler(deps: ResearchCatalogReviewDeps) {
       const result = await executeCatalogReview(validationResult.data, logger);
 
       if (!result.success) {
-        return {
-          isError: true,
-          content: [{ type: 'text', text: result.message }],
-        };
+        return toolError(result.message);
       }
 
-      return {
-        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-      };
+      return toolSuccess(JSON.stringify(result, null, 2));
     });
   };
 }

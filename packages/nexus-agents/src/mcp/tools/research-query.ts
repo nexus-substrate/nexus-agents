@@ -13,6 +13,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
 import { createLogger, formatZodError } from '../../core/index.js';
 import { withToolError } from '../middleware/tool-error-handler.js';
+import { toolError, toolSuccess, type ToolResult } from './tool-result.js';
 
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
@@ -196,25 +197,14 @@ async function executeQuery(input: ResearchQueryInput): Promise<ResearchQueryRes
 // MCP TOOL
 // =============================================================================
 
-/** MCP tool response type */
-type ResearchQueryToolResponse = {
-  content: Array<{ type: 'text'; text: string }>;
-  isError?: boolean;
-};
-
 /**
  * Creates the core handler logic for research_query tool.
  */
 function createResearchQueryHandler(deps: ResearchQueryDeps) {
-  return async (args: unknown, ctx: HandlerContext): Promise<ResearchQueryToolResponse> => {
+  return async (args: unknown, ctx: HandlerContext): Promise<ToolResult> => {
     const validationResult = ResearchQueryInputSchema.safeParse(args);
     if (!validationResult.success) {
-      return {
-        isError: true,
-        content: [
-          { type: 'text', text: `Validation error: ${formatZodError(validationResult.error)}` },
-        ],
-      };
+      return toolError(`Validation error: ${formatZodError(validationResult.error)}`);
     }
 
     ctx.logger.debug('Executing research query', { action: validationResult.data.action });
@@ -222,9 +212,7 @@ function createResearchQueryHandler(deps: ResearchQueryDeps) {
     const logger = deps.logger ?? createLogger({ tool: 'research_query' });
     return withToolError('Research query failed', logger, async () => {
       const result = await executeQuery(validationResult.data);
-      return {
-        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-      };
+      return toolSuccess(JSON.stringify(result, null, 2));
     });
   };
 }

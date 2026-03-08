@@ -17,6 +17,7 @@ import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
+import { toolError, toolSuccess, type ToolResult } from './tool-result.js';
 import { getToolMemory } from './tool-memory.js';
 
 // ============================================================================
@@ -173,35 +174,19 @@ async function collectMemoryStats(
   };
 }
 
-/** MCP tool response type */
-type MemoryStatsToolResponse = {
-  content: Array<{ type: 'text'; text: string }>;
-  isError?: boolean;
-};
-
 /**
  * Core handler logic for memory_stats tool.
  */
-async function memoryStatsHandler(
-  args: unknown,
-  ctx: HandlerContext
-): Promise<MemoryStatsToolResponse> {
+async function memoryStatsHandler(args: unknown, ctx: HandlerContext): Promise<ToolResult> {
   // Validate input
   const validationResult = MemoryStatsInputSchema.safeParse(args);
   if (!validationResult.success) {
-    return {
-      isError: true,
-      content: [
-        { type: 'text', text: `Validation error: ${formatZodError(validationResult.error)}` },
-      ],
-    };
+    return toolError(`Validation error: ${formatZodError(validationResult.error)}`);
   }
 
   return withToolError('Memory stats failed', ctx.logger, async () => {
     const result = await collectMemoryStats(validationResult.data, ctx.logger);
-    return {
-      content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-    };
+    return toolSuccess(JSON.stringify(result, null, 2));
   });
 }
 

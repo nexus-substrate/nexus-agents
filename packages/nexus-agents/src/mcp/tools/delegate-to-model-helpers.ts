@@ -6,6 +6,7 @@
  * @module mcp/tools/delegate-to-model-helpers
  */
 
+import { toolError, toolSuccess, toolSuccessStructured } from './tool-result.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type {
   BillingMode,
@@ -371,22 +372,19 @@ export function selectModel(
   return { model: best.name, reasoning, alternatives };
 }
 
-/** Creates error result. */
+/** Creates error result. Thin wrapper around canonical toolError. */
 export function errorResult(text: string): ToolResult {
-  return { isError: true, content: [{ type: 'text', text }] };
+  return toolError(text);
 }
 
-/** Creates success result. */
+/** Creates success result. Thin wrapper around canonical toolSuccess. */
 export function successResult(text: string): ToolResult {
-  return { content: [{ type: 'text', text }] };
+  return toolSuccess(text);
 }
 
 /** Creates success result with structured content for outputSchema (Issue #1117). */
 export function successResultStructured(data: Record<string, unknown>): ToolResult {
-  return {
-    content: [{ type: 'text', text: JSON.stringify(data, null, 2) }],
-    structuredContent: data,
-  };
+  return toolSuccessStructured(data);
 }
 
 /** Checks rate limit, returns error result if exceeded. */

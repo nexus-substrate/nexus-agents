@@ -14,6 +14,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
 import { getErrorMessage, createLogger, formatZodError } from '../../core/index.js';
 import { withToolError } from '../middleware/tool-error-handler.js';
+import { toolError, toolSuccess, type ToolResult } from './tool-result.js';
 
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
@@ -528,25 +529,14 @@ function recordDiscoveryOutcome(success: boolean, durationMs: number, errorMsg?:
 // MCP TOOL
 // =============================================================================
 
-/** MCP tool response type */
-type ResearchDiscoverToolResponse = {
-  content: Array<{ type: 'text'; text: string }>;
-  isError?: boolean;
-};
-
 /**
  * Creates the core handler logic for research_discover tool.
  */
 function createResearchDiscoverHandler(deps: ResearchDiscoverDeps) {
-  return async (args: unknown, ctx: HandlerContext): Promise<ResearchDiscoverToolResponse> => {
+  return async (args: unknown, ctx: HandlerContext): Promise<ToolResult> => {
     const validationResult = ResearchDiscoverInputSchema.safeParse(args);
     if (!validationResult.success) {
-      return {
-        isError: true,
-        content: [
-          { type: 'text', text: `Validation error: ${formatZodError(validationResult.error)}` },
-        ],
-      };
+      return toolError(`Validation error: ${formatZodError(validationResult.error)}`);
     }
 
     ctx.logger.debug('Discovering research', {
@@ -559,9 +549,7 @@ function createResearchDiscoverHandler(deps: ResearchDiscoverDeps) {
     const response = await withToolError('Discovery failed', logger, async () => {
       const result = await executeDiscovery(validationResult.data, logger);
       recordDiscoverySuccess(result.topic, result.newItems, result.sourcesQueried);
-      return {
-        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-      };
+      return toolSuccess(JSON.stringify(result, null, 2));
     });
     const durationMs = Date.now() - startMs;
     if (response.isError === true) {

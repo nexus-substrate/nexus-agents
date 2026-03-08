@@ -12,6 +12,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
 import { createLogger, formatZodError, getTimeProvider } from '../../core/index.js';
+import { toolError, toolSuccess, type ToolResult } from './tool-result.js';
 import { executeGraph } from '../../orchestration/graph/index.js';
 import type { CompiledGraph, GraphEvent, GraphState } from '../../orchestration/graph/index.js';
 import { createCheckpointStore } from '../../orchestration/graph/index.js';
@@ -186,8 +187,6 @@ async function handleRunGraphWorkflow(
 // Registration
 // ============================================================================
 
-type ToolResponse = { content: Array<{ type: 'text'; text: string }>; isError?: boolean };
-
 const GRAPH_WORKFLOW_DESCRIPTION =
   'Execute a predefined graph-based workflow with checkpointing, event streaming, and audit trail support';
 
@@ -208,17 +207,14 @@ const GRAPH_WORKFLOW_SCHEMA = {
 function createGraphWorkflowHandler(
   logger: ILogger,
   notifier: IMcpNotifier
-): (args: unknown, ctx: HandlerContext) => Promise<ToolResponse> {
-  return async (args: unknown, _ctx: HandlerContext): Promise<ToolResponse> => {
+): (args: unknown, ctx: HandlerContext) => Promise<ToolResult> {
+  return async (args: unknown, _ctx: HandlerContext): Promise<ToolResult> => {
     const parsed = RunGraphWorkflowInputSchema.safeParse(args);
     if (!parsed.success) {
-      return {
-        isError: true,
-        content: [{ type: 'text', text: `Validation error: ${formatZodError(parsed.error)}` }],
-      };
+      return toolError(`Validation error: ${formatZodError(parsed.error)}`);
     }
     if (parsed.data.workflow === 'list') {
-      return { content: [{ type: 'text', text: JSON.stringify(getGraphWorkflowList(), null, 2) }] };
+      return toolSuccess(JSON.stringify(getGraphWorkflowList(), null, 2));
     }
     notifier.info('run_graph_workflow', {
       event: 'graph_workflow_start',
@@ -236,10 +232,8 @@ function createGraphWorkflowHandler(
     // Record to memory and outcome store (Issue #1174)
     recordGraphWorkflowResult(result);
 
-    return {
-      content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-      ...(succeeded ? {} : { isError: true }),
-    };
+    const text = JSON.stringify(result, null, 2);
+    return succeeded ? toolSuccess(text) : toolError(text);
   };
 }
 

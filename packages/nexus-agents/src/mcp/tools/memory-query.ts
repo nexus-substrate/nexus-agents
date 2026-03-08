@@ -18,6 +18,7 @@ import type { SecurityConfig } from '../../config/schemas.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { getToolMemory, type UnifiedMemoryResult } from './tool-memory.js';
+import { toolError, toolSuccess, type ToolResult } from './tool-result.js';
 import {
   ReflectiveRetriever,
   ReflectionCache,
@@ -178,35 +179,19 @@ async function executeMemoryQuery(
   };
 }
 
-/** MCP tool response type */
-type MemoryQueryToolResponse = {
-  content: Array<{ type: 'text'; text: string }>;
-  isError?: boolean;
-};
-
 /**
  * Core handler logic for memory_query tool.
  */
-async function memoryQueryHandler(
-  args: unknown,
-  ctx: HandlerContext
-): Promise<MemoryQueryToolResponse> {
+async function memoryQueryHandler(args: unknown, ctx: HandlerContext): Promise<ToolResult> {
   // Validate input
   const validationResult = MemoryQueryInputSchema.safeParse(args);
   if (!validationResult.success) {
-    return {
-      isError: true,
-      content: [
-        { type: 'text', text: `Validation error: ${formatZodError(validationResult.error)}` },
-      ],
-    };
+    return toolError(`Validation error: ${formatZodError(validationResult.error)}`);
   }
 
   return withToolError('Memory query failed', ctx.logger, async () => {
     const result = await executeMemoryQuery(validationResult.data, ctx.logger);
-    return {
-      content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-    };
+    return toolSuccess(JSON.stringify(result, null, 2));
   });
 }
 

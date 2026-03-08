@@ -12,6 +12,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
 import { createLogger, formatZodError } from '../../core/index.js';
+import { toolError, toolSuccess, type ToolResult } from './tool-result.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
@@ -75,11 +76,6 @@ export interface IssueTriageResponse {
 // Handler
 // ============================================================================
 
-type IssueTriageToolResponse = {
-  content: Array<{ type: 'text'; text: string }>;
-  isError?: boolean;
-};
-
 /** Builds the structured triage response from raw triage result. */
 function buildTriageResponse(value: IssueTriageResult): IssueTriageResponse {
   return {
@@ -105,15 +101,10 @@ function buildTriageResponse(value: IssueTriageResult): IssueTriageResponse {
 }
 
 function createIssueTriageHandler(_deps: IssueTriageDeps) {
-  return async (args: unknown, ctx: HandlerContext): Promise<IssueTriageToolResponse> => {
+  return async (args: unknown, ctx: HandlerContext): Promise<ToolResult> => {
     const validationResult = IssueTriageInputSchema.safeParse(args);
     if (!validationResult.success) {
-      return {
-        isError: true,
-        content: [
-          { type: 'text', text: `Validation error: ${formatZodError(validationResult.error)}` },
-        ],
-      };
+      return toolError(`Validation error: ${formatZodError(validationResult.error)}`);
     }
 
     const input = validationResult.data;
@@ -126,19 +117,14 @@ function createIssueTriageHandler(_deps: IssueTriageDeps) {
 
     if (!result.ok) {
       recordTriageOutcome(false, durationMs, result.error.message);
-      return {
-        isError: true,
-        content: [{ type: 'text', text: `Triage failed: ${result.error.message}` }],
-      };
+      return toolError(`Triage failed: ${result.error.message}`);
     }
 
     recordTriageSuccess(result.value.category, result.value.categoryConfidence, durationMs);
     recordTriageOutcome(true, durationMs);
     const response = buildTriageResponse(result.value);
 
-    return {
-      content: [{ type: 'text', text: JSON.stringify(response, null, 2) }],
-    };
+    return toolSuccess(JSON.stringify(response, null, 2));
   };
 }
 

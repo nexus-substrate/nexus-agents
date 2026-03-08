@@ -44,6 +44,7 @@ import { requireAdapterAvailable } from '../middleware/adapter-availability.js';
 import { getExpertPool } from '../../agents/expert-pool.js';
 import { getHeartbeatMonitor } from '../../agents/heartbeat-monitor.js';
 import { clampTaskTtl, DEFAULT_TASK_TTL_MS } from '../task-store.js';
+import { toolError, toolSuccess } from './tool-result.js';
 
 /** Minimum effective timeout for expert tasks — LLM inference takes 20-90s minimum. (#1163, #1330) */
 export const EXPERT_TIMEOUT_FLOOR_MS = 120_000;
@@ -406,8 +407,7 @@ async function runBackgroundExpertTask(opts: BackgroundExpertTaskOpts): Promise<
 
     if (!result.ok) {
       await taskStore.storeTaskResult(taskId, 'failed', {
-        content: [{ type: 'text', text: `Failed to execute expert: ${result.error}` }],
-        isError: true,
+        ...toolError(`Failed to execute expert: ${result.error}`),
       });
       return;
     }
@@ -421,15 +421,14 @@ async function runBackgroundExpertTask(opts: BackgroundExpertTaskOpts): Promise<
     });
 
     await taskStore.storeTaskResult(taskId, 'completed', {
-      content: [{ type: 'text', text: JSON.stringify(result.value, null, 2) }],
+      ...toolSuccess(JSON.stringify(result.value, null, 2)),
     });
   } catch (error: unknown) {
     const message = getErrorMessage(error);
     logger.warn('Background expert task failed', { taskId, error: message });
     try {
       await taskStore.storeTaskResult(taskId, 'failed', {
-        content: [{ type: 'text', text: `Expert execution error: ${message}` }],
-        isError: true,
+        ...toolError(`Expert execution error: ${message}`),
       });
     } catch (storeError: unknown) {
       logger.warn('Failed to store task failure result', {

@@ -9,6 +9,7 @@
  */
 
 import { resolve, sep } from 'node:path';
+import { toolError, toolSuccess } from './tool-result.js';
 import type { Result } from '../../core/index.js';
 import type { WorkflowDefinition, StepResult } from '../../core/index.js';
 import { WorkflowError, SecurityError } from '../../core/index.js';
@@ -355,14 +356,14 @@ export function executeDryRun(
 /** MCP tool response type */
 export type ToolResponse = { content: Array<{ type: 'text'; text: string }>; isError?: boolean };
 
-/** Create a successful JSON response */
+/** Create a successful JSON response. Thin wrapper around canonical toolSuccess. */
 export function successResponse(data: unknown): ToolResponse {
-  return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+  return toolSuccess(JSON.stringify(data, null, 2));
 }
 
-/** Create an error response */
+/** Create an error response. Thin wrapper around canonical toolError. */
 export function errorResponse(message: string): ToolResponse {
-  return { isError: true, content: [{ type: 'text', text: message }] };
+  return toolError(message);
 }
 
 /** Create a failed workflow result */
@@ -376,7 +377,7 @@ export function createFailedResult(workflowName: string, errorMessage: string): 
     durationMs: 0,
     error: errorMessage,
   };
-  return { isError: true, content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  return toolError(JSON.stringify(result, null, 2));
 }
 
 /** Format validation errors into a message */

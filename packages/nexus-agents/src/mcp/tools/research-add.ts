@@ -19,6 +19,7 @@ import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middlewar
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { withToolError } from '../middleware/tool-error-handler.js';
 import { addResearchPaper, paperExists } from '../../cli/research-helpers.js';
+import { toolError, toolSuccess, type ToolResult } from './tool-result.js';
 import { getToolMemory } from './tool-memory.js';
 
 // =============================================================================
@@ -139,25 +140,14 @@ async function executeResearchAdd(
 // MCP TOOL
 // =============================================================================
 
-/** MCP tool response type */
-type ResearchAddToolResponse = {
-  content: Array<{ type: 'text'; text: string }>;
-  isError?: boolean;
-};
-
 /**
  * Creates the core handler logic for research_add tool.
  */
 function createResearchAddHandler(deps: ResearchAddDeps) {
-  return async (args: unknown, ctx: HandlerContext): Promise<ResearchAddToolResponse> => {
+  return async (args: unknown, ctx: HandlerContext): Promise<ToolResult> => {
     const validationResult = ResearchAddInputSchema.safeParse(args);
     if (!validationResult.success) {
-      return {
-        isError: true,
-        content: [
-          { type: 'text', text: `Validation error: ${formatZodError(validationResult.error)}` },
-        ],
-      };
+      return toolError(`Validation error: ${formatZodError(validationResult.error)}`);
     }
 
     ctx.logger.debug('Adding research paper', { arxivId: validationResult.data.arxivId });
@@ -167,15 +157,10 @@ function createResearchAddHandler(deps: ResearchAddDeps) {
       const result = await executeResearchAdd(validationResult.data, logger);
 
       if (!result.success) {
-        return {
-          isError: true,
-          content: [{ type: 'text', text: result.message }],
-        };
+        return toolError(result.message);
       }
 
-      return {
-        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-      };
+      return toolSuccess(JSON.stringify(result, null, 2));
     });
   };
 }
