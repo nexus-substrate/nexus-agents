@@ -103,6 +103,23 @@ export class OutcomeStore {
     this.entries.length = 0;
   }
 
+  /**
+   * Backfill: reclassify all entries missing failureCategory (#1444).
+   * Applies the same autoClassify logic used on append to historical entries
+   * that predate the auto-classify fix. Idempotent — already-classified entries
+   * are skipped. Returns count of reclassified entries.
+   */
+  reclassifyAll(): number {
+    let count = 0;
+    for (let i = 0; i < this.entries.length; i++) {
+      const entry = this.entries[i];
+      if (entry === undefined || entry.success || entry.failureCategory !== undefined) continue;
+      this.entries[i] = autoClassify(entry);
+      count++;
+    }
+    return count;
+  }
+
   private enforceLimit(): void {
     if (this.entries.length > this.maxEntries) {
       const excess = this.entries.length - this.maxEntries;

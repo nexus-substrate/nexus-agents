@@ -28,7 +28,12 @@ import {
   getRandomProvider,
   getTokenEstimator,
 } from '../core/index.js';
-import { BaseAdapter, type BaseAdapterConfig } from './base-adapter.js';
+import {
+  BaseAdapter,
+  type BaseAdapterConfig,
+  requireApiKey,
+  validateApiKeyPresence,
+} from './base-adapter.js';
 import { createStream } from './streaming.js';
 import {
   DEFAULT_MAX_TOKENS,
@@ -102,11 +107,7 @@ export class GeminiAdapter extends BaseAdapter {
     this.resolvedModelId = resolvedModelId;
 
     // Validate API key presence
-    if (!config.apiKey || config.apiKey.trim() === '') {
-      throw new ConfigError('Google API key is required', {
-        context: { providerId: 'google', modelId: config.modelId },
-      });
-    }
+    requireApiKey(config.apiKey, 'Google', config.modelId);
 
     // Create Google GenAI client
     this.client = new GoogleGenAI({ apiKey: config.apiKey });
@@ -123,14 +124,8 @@ export class GeminiAdapter extends BaseAdapter {
     }
 
     // Validate API key is present
-    const apiKey = this.config.apiKey;
-    if (apiKey === undefined || apiKey === '' || apiKey.trim() === '') {
-      return err(
-        new ConfigError('Google API key is required', {
-          context: { providerId: this.providerId, modelId: this.modelId },
-        })
-      );
-    }
+    const keyResult = validateApiKeyPresence(this.config.apiKey, this.providerId, this.modelId);
+    if (!keyResult.ok) return keyResult;
 
     return ok(undefined);
   }

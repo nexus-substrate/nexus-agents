@@ -19,7 +19,12 @@ import type {
   TokenUsage,
 } from '../core/index.js';
 import { ok, err, ModelError, ConfigError, getTokenEstimator } from '../core/index.js';
-import { BaseAdapter, type BaseAdapterConfig } from './base-adapter.js';
+import {
+  BaseAdapter,
+  type BaseAdapterConfig,
+  requireApiKey,
+  validateApiKeyPresence,
+} from './base-adapter.js';
 import { createStream } from './streaming.js';
 import {
   DEFAULT_MAX_TOKENS,
@@ -99,11 +104,7 @@ export class OpenAIAdapter extends BaseAdapter {
     this.resolvedModelId = resolvedModelId;
 
     // Validate API key presence
-    if (!config.apiKey || config.apiKey.trim() === '') {
-      throw new ConfigError('OpenAI API key is required', {
-        context: { providerId: 'openai', modelId: config.modelId },
-      });
-    }
+    requireApiKey(config.apiKey, 'OpenAI', config.modelId);
 
     this.client = this.createClient(config);
   }
@@ -141,14 +142,8 @@ export class OpenAIAdapter extends BaseAdapter {
     }
 
     // Validate API key is present
-    const apiKey = this.config.apiKey;
-    if (apiKey === undefined || apiKey === '' || apiKey.trim() === '') {
-      return err(
-        new ConfigError('OpenAI API key is required', {
-          context: { providerId: this.providerId, modelId: this.modelId },
-        })
-      );
-    }
+    const keyResult = validateApiKeyPresence(this.config.apiKey, this.providerId, this.modelId);
+    if (!keyResult.ok) return keyResult;
 
     return ok(undefined);
   }

@@ -532,11 +532,12 @@ function buildFailureBreakdown(input: WeatherReportOptions): readonly FailureBre
 
   const counts = new Map<string, number>();
   for (const o of failed) {
-    let cat = o.failureCategory ?? 'unknown';
-    // Retroactive reclassification: re-classify unknown failures using stored error message
-    if (cat === 'unknown' && typeof o.errorMessage === 'string' && o.errorMessage.length > 0) {
-      cat = categorizeOutcomeErrorMessage(o.errorMessage);
-    }
+    // Retroactive reclassification for pre-#1441 entries missing failureCategory
+    const cat =
+      o.failureCategory ??
+      (typeof o.errorMessage === 'string' && o.errorMessage.length > 0
+        ? categorizeOutcomeErrorMessage(o.errorMessage)
+        : 'execution');
     counts.set(cat, (counts.get(cat) ?? 0) + 1);
   }
 

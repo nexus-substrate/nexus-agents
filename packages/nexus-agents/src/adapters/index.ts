@@ -55,7 +55,13 @@ export {
 } from './retry.js';
 
 // Base adapter abstract class
-export { BaseAdapter, AdapterModelError, type BaseAdapterConfig } from './base-adapter.js';
+export {
+  BaseAdapter,
+  AdapterModelError,
+  type BaseAdapterConfig,
+  requireApiKey,
+  validateApiKeyPresence,
+} from './base-adapter.js';
 
 // Streaming utilities
 export {

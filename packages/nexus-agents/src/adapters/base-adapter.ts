@@ -68,6 +68,52 @@ export class AdapterModelError extends ModelError {
   }
 }
 
+// ============================================================================
+// API Key Validation Helpers (#1446 — DRY extraction)
+// ============================================================================
+
+/**
+ * Returns true if the given API key is missing or blank.
+ */
+function isApiKeyMissing(apiKey: string | undefined): boolean {
+  return apiKey === undefined || apiKey === '' || apiKey.trim() === '';
+}
+
+/**
+ * Validates API key presence in constructor — throws ConfigError if missing.
+ * Use in adapter constructors where throwing is appropriate.
+ */
+export function requireApiKey(
+  apiKey: string | undefined,
+  providerName: string,
+  modelId: string
+): void {
+  if (isApiKeyMissing(apiKey)) {
+    throw new ConfigError(`${providerName} API key is required`, {
+      context: { providerId: providerName.toLowerCase(), modelId },
+    });
+  }
+}
+
+/**
+ * Validates API key presence — returns Result for validate-style methods.
+ * Use in adapter validateConfig() methods that return Result.
+ */
+export function validateApiKeyPresence(
+  apiKey: string | undefined,
+  providerId: string,
+  modelId: string
+): Result<void, ConfigError> {
+  if (isApiKeyMissing(apiKey)) {
+    return err(
+      new ConfigError(`${providerId} API key is required`, {
+        context: { providerId, modelId },
+      })
+    );
+  }
+  return ok(undefined);
+}
+
 /**
  * Abstract base class for model adapters.
  *

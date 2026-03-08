@@ -326,3 +326,73 @@ describe('OutcomeStore auto-classification (#1441)', () => {
     expect(outcome?.failureCategory).toBeUndefined();
   });
 });
+
+// ============================================================================
+// Backfill reclassification (#1444)
+// ============================================================================
+
+describe('OutcomeStore.reclassifyAll (#1444)', () => {
+  let store: OutcomeStore;
+
+  beforeEach(() => {
+    store = new OutcomeStore();
+  });
+
+  it('reclassifies failed entries missing failureCategory', () => {
+    // Simulate pre-#1441 data by directly pushing to internal entries
+    const raw = makeOutcome({
+      id: 'old-1',
+      success: false,
+      errorMessage: 'Connection timed out',
+    });
+    // Use append but strip failureCategory to simulate legacy data
+    store.append(raw);
+    // The append auto-classifies, so let's test reclassifyAll on already-loaded data
+    // by creating a store that has unclassified entries injected
+    const store2 = new OutcomeStore();
+
+    (store2 as unknown as { entries: TaskOutcome[] }).entries.push({
+      ...makeOutcome({ id: 'legacy-1', success: false, errorMessage: 'Request timed out' }),
+    });
+    (store2 as unknown as { entries: TaskOutcome[] }).entries.push({
+      ...makeOutcome({ id: 'legacy-2', success: false }),
+    });
+    (store2 as unknown as { entries: TaskOutcome[] }).entries.push({
+      ...makeOutcome({ id: 'legacy-3', success: true }),
+    });
+
+    const count = store2.reclassifyAll();
+
+    expect(count).toBe(2);
+    const results = store2.query();
+    expect(results[0]?.failureCategory).toBe('timeout');
+    expect(results[1]?.failureCategory).toBe('execution');
+    expect(results[2]?.failureCategory).toBeUndefined();
+  });
+
+  it('skips entries that already have failureCategory', () => {
+    const store2 = new OutcomeStore();
+    (store2 as unknown as { entries: TaskOutcome[] }).entries.push({
+      ...makeOutcome({ id: 'classified', success: false, failureCategory: 'rate_limit' }),
+    });
+
+    const count = store2.reclassifyAll();
+
+    expect(count).toBe(0);
+    expect(store2.query()[0]?.failureCategory).toBe('rate_limit');
+  });
+
+  it('returns 0 for empty store', () => {
+    expect(store.reclassifyAll()).toBe(0);
+  });
+
+  it('is idempotent — second call returns 0', () => {
+    const store2 = new OutcomeStore();
+    (store2 as unknown as { entries: TaskOutcome[] }).entries.push({
+      ...makeOutcome({ id: 'legacy', success: false, errorMessage: 'rate limit exceeded' }),
+    });
+
+    expect(store2.reclassifyAll()).toBe(1);
+    expect(store2.reclassifyAll()).toBe(0);
+  });
+});
