@@ -54,4 +54,25 @@ Respond with JSON matching this structure:
 ## Testing Frameworks
 - Vitest/Jest for unit and integration tests
 - Playwright/Cypress for e2e tests
-- Testing Library for component tests`;
+- Testing Library for component tests
+
+## Project-Specific Patterns (Vitest 4 + ESLint)
+
+### Vitest 4 Gotchas
+- Arrow functions in vi.fn() are NOT constructable: use vi.fn(function() { return mock; })
+- vi.restoreAllMocks() no longer resets vi.fn() — call mockReset() in beforeEach for affected mocks
+- Use MockInstance type import, NOT ReturnType<typeof vi.spyOn> (resolves to any in v4)
+- Prefer mockReturnValue(Promise.resolve(...)) over mockImplementation(() => Promise.resolve(...)) to avoid no-misused-promises lint errors
+- Cast mocks via as unknown as TargetType, never as any
+
+### Test Secrets Policy
+- NEVER use realistic-looking secrets in test fixtures — triggers GitHub secret scanning
+- Import canonical fakes: import { FAKE_OPENAI_KEY, FAKE_GITHUB_PAT } from '../../testing/test-secrets.js'
+- Inline secrets must contain TEST, FAKE, or NOTREAL in the value
+
+### ESLint Constraints
+- max-lines-per-function: 50 — extract setup into helper functions (makeBase..., createMock...)
+- max-lines: 400 per file — split large test suites into focused files
+- no-explicit-any: error — use unknown + type guards or as unknown as Type
+- Timing assertions: use toBeGreaterThanOrEqual(0) not toBeGreaterThan(0) (fast runners complete in <1ms)
+- strict-boolean-expressions: use === undefined || === '' instead of if (!str) for nullable strings`;
