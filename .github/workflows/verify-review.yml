@@ -21,6 +21,7 @@ jobs:
   check-review-label:
     name: Check CLI Review
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     # Skip for dependabot and draft PRs
     if: |
       github.actor != 'dependabot[bot]' &&
@@ -59,6 +60,7 @@ jobs:
   remove-stale-label:
     name: Remove Stale Review Label
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     if: github.event_name == 'pull_request' && github.event.action == 'synchronize'
 
     steps:

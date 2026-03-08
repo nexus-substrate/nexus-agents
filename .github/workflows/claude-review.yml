@@ -25,6 +25,7 @@ jobs:
   manual-review:
     name: Claude Manual Review
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     # Separate concurrency group for manual review
     concurrency:
       group: claude-manual-review-${{ inputs.pr_number }}
@@ -100,6 +101,7 @@ jobs:
   interactive:
     name: Claude Interactive Response
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     # Separate concurrency group for interactive responses
     concurrency:
       group: claude-interactive-${{ github.event.issue.number || github.event.pull_request.number || github.run_id }}

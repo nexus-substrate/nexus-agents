@@ -1,0 +1,36 @@
+name: 'Setup Node.js'
+description: 'Checkout, setup pnpm + Node.js 22, install dependencies'
+
+inputs:
+  node-version:
+    description: 'Node.js version'
+    default: '22'
+  install:
+    description: 'Run pnpm install'
+    default: 'true'
+  fetch-depth:
+    description: 'Git fetch depth (0 for full history)'
+    default: '1'
+  registry-url:
+    description: 'npm registry URL (for publishing)'
+    default: ''
+
+runs:
+  using: 'composite'
+  steps:
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      with:
+        fetch-depth: ${{ inputs.fetch-depth }}
+
+    - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4
+
+    - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: 'pnpm'
+        registry-url: ${{ inputs.registry-url || '' }}
+
+    - name: Install dependencies
+      if: inputs.install == 'true'
+      shell: bash
+      run: pnpm install --frozen-lockfile

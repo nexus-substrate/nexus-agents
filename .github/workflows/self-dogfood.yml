@@ -35,6 +35,7 @@ jobs:
   review-pr:
     name: Self-Review PR
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     if: |
       (github.event_name == 'pull_request' &&
        github.event.pull_request.draft == false &&
@@ -45,22 +46,9 @@ jobs:
       pull-requests: write
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup-node
         with:
-          fetch-depth: 0
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6
-        with:
-          node-version: '22'
-          cache: 'pnpm'
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+          fetch-depth: '0'
 
       - name: Build nexus-agents
         run: pnpm build
@@ -145,6 +133,7 @@ jobs:
   triage-issue:
     name: Triage Issue
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     if: |
       github.event_name == 'issues' ||
       (github.event_name == 'workflow_dispatch' && inputs.issue_number != '')
@@ -153,20 +142,7 @@ jobs:
       issues: write
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6
-        with:
-          node-version: '22'
-          cache: 'pnpm'
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup-node
 
       - name: Build nexus-agents
         run: pnpm build

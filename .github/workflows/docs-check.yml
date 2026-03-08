@@ -23,18 +23,10 @@ jobs:
   typedoc-check:
     name: TypeDoc Verification
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-
-      - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4
-
-      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6
-        with:
-          node-version: '22'
-          cache: 'pnpm'
-
-      - run: pnpm install
+      - uses: ./.github/actions/setup-node
 
       - name: Generate TypeDoc
         run: pnpm --filter nexus-agents docs
@@ -53,18 +45,10 @@ jobs:
   link-check:
     name: Link Validation
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-
-      - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4
-
-      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6
-        with:
-          node-version: '22'
-          cache: 'pnpm'
-
-      - run: pnpm install
+      - uses: ./.github/actions/setup-node
 
       - name: Check markdown links
         run: |
@@ -85,6 +69,7 @@ jobs:
   docs-coverage:
     name: Documentation Coverage
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: github.event_name == 'pull_request'
     continue-on-error: true
 
@@ -268,18 +253,10 @@ jobs:
   llms-txt-check:
     name: LLMs.txt & Frontmatter Verification
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-
-      - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4
-
-      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6
-        with:
-          node-version: '22'
-          cache: 'pnpm'
-
-      - run: pnpm install
+      - uses: ./.github/actions/setup-node
 
       - name: Check llms.txt generation and frontmatter
         run: |
@@ -296,6 +273,7 @@ jobs:
   secrets-scan:
     name: Documentation Secrets Scan
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -354,18 +332,10 @@ jobs:
   repo-index:
     name: Repository Index Verification
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-
-      - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4
-
-      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6
-        with:
-          node-version: '22'
-          cache: 'pnpm'
-
-      - run: pnpm install
+      - uses: ./.github/actions/setup-node
 
       - name: Check repository index
         run: |
@@ -382,21 +352,13 @@ jobs:
   docops-skill-sync:
     name: DocOps Skill Sync
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: github.event_name == 'pull_request'
 
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup-node
         with:
-          fetch-depth: 0
-
-      - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4
-
-      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6
-        with:
-          node-version: '22'
-          cache: 'pnpm'
-
-      - run: pnpm install
+          fetch-depth: '0'
 
       - name: Check DocOps skill synchronization
         env:
@@ -415,18 +377,10 @@ jobs:
   canonical-index:
     name: Canonical Index Check
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-
-      - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4
-
-      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6
-        with:
-          node-version: '22'
-          cache: 'pnpm'
-
-      - run: pnpm install
+      - uses: ./.github/actions/setup-node
 
       - name: Check all docs are indexed
         run: |
@@ -444,18 +398,10 @@ jobs:
   markdown-lint:
     name: Markdown Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-
-      - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4
-
-      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6
-        with:
-          node-version: '22'
-          cache: 'pnpm'
-
-      - run: pnpm install
+      - uses: ./.github/actions/setup-node
 
       - name: Lint markdown files
         run: |
@@ -472,18 +418,10 @@ jobs:
   governance-drift:
     name: Governance Drift Check
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-
-      - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4
-
-      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6
-        with:
-          node-version: '22'
-          cache: 'pnpm'
-
-      - run: pnpm install
+      - uses: ./.github/actions/setup-node
 
       - name: Check governance registries
         run: |
@@ -512,20 +450,12 @@ jobs:
   spell-check:
     name: Spell Check
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     # Non-blocking - reports warnings only
     continue-on-error: true
 
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-
-      - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4
-
-      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6
-        with:
-          node-version: '22'
-          cache: 'pnpm'
-
-      - run: pnpm install
+      - uses: ./.github/actions/setup-node
 
       - name: Check spelling in documentation
         run: |
