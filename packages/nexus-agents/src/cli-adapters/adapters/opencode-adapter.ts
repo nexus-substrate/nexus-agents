@@ -104,6 +104,27 @@ function probeAvailableModels(): Promise<Set<string>> {
   return probePromise;
 }
 
+/** Patterns indicating an Anthropic provider in OpenCode models list. */
+const ANTHROPIC_MODEL_PATTERNS = ['anthropic/', 'custom/claude'];
+
+/**
+ * Logs a warning if OpenCode has an Anthropic provider configured (#1429).
+ * Claude Code subscription API keys must NOT be used with third-party tools.
+ */
+function warnIfAnthropicProvider(models: Set<string>): void {
+  const anthropicModels = [...models].filter((m) =>
+    ANTHROPIC_MODEL_PATTERNS.some((p) => m.toLowerCase().includes(p))
+  );
+  if (anthropicModels.length > 0) {
+    logger.warn(
+      'OpenCode has Anthropic/Claude models configured. ' +
+        'Ensure these use a SEPARATE API key from console.anthropic.com, ' +
+        'NOT a Claude Code subscription key (which is restricted to Claude Code only).',
+      { detectedModels: anthropicModels }
+    );
+  }
+}
+
 /**
  * OpenCode CLI adapter using subprocess transport.
  * Executes: opencode run --format json "<task>"
@@ -142,9 +163,11 @@ export class OpenCodeCliAdapter extends SubprocessCliAdapter {
 
   /**
    * Initializes the adapter — probes available models.
+   * Warns if Anthropic provider is configured (#1429 — API key boundaries).
    */
   override async initialize(): Promise<void> {
     this.availableModels = await probeAvailableModels();
+    warnIfAnthropicProvider(this.availableModels);
     await super.initialize();
   }
 
