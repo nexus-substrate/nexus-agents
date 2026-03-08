@@ -53,6 +53,7 @@ export class PersistentOutcomeStore extends OutcomeStore {
     const dataDir = config?.dataDir;
     ensureLearningDir(dataDir);
     this.hydrate();
+    this.reclassifyHydrated();
   }
 
   /** Override append to persist each entry to disk. */
@@ -64,6 +65,21 @@ export class PersistentOutcomeStore extends OutcomeStore {
   // ==========================================================================
   // Private
   // ==========================================================================
+
+  /**
+   * Reclassify hydrated entries that lack a failureCategory.
+   * Bounded: reclassifyAll() skips success outcomes and already-classified
+   * entries, so only unclassified failures are processed (#1457).
+   */
+  private reclassifyHydrated(): void {
+    if (this.size === 0) return;
+    const reclassified = this.reclassifyAll();
+    if (reclassified > 0) {
+      this.logger.info('Reclassified hydrated outcomes with updated categories', {
+        reclassified,
+      });
+    }
+  }
 
   private hydrate(): void {
     if (!existsSync(this.filePath)) {

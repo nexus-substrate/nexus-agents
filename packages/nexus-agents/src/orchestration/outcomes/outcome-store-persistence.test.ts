@@ -132,6 +132,43 @@ describe('PersistentOutcomeStore', () => {
       expect(store.size).toBe(0);
     });
 
+    it('reclassifies unclassified failed outcomes during hydration', () => {
+      // Write failed outcomes without failureCategory to simulate pre-#1441 data
+      const lines =
+        [
+          makeOutcomeLine({
+            id: 'fail-1',
+            success: false,
+            errorMessage: 'Connection timeout after 30s',
+          }),
+          makeOutcomeLine({
+            id: 'fail-2',
+            success: false,
+            errorMessage: 'ENOENT: no such file or directory',
+          }),
+          makeOutcomeLine({ id: 'ok-1', success: true }),
+        ].join('\n') + '\n';
+      writeFileSync(filePath, lines);
+
+      const store = new PersistentOutcomeStore({
+        filePath,
+        dataDir: tmpDir,
+      });
+
+      const entries = store.query();
+      expect(entries).toHaveLength(3);
+
+      // Failed outcomes should have failureCategory set after hydration + reclassify
+      const fail1 = entries.find((e) => e.id === 'fail-1');
+      const fail2 = entries.find((e) => e.id === 'fail-2');
+      const ok1 = entries.find((e) => e.id === 'ok-1');
+
+      expect(fail1?.failureCategory).toBeDefined();
+      expect(fail2?.failureCategory).toBeDefined();
+      // Success outcomes should not have failureCategory
+      expect(ok1?.failureCategory).toBeUndefined();
+    });
+
     it('enforces FIFO eviction when hydrated count exceeds maxEntries', () => {
       const lines =
         Array.from({ length: 10 }, (_, i) => makeOutcomeLine({ id: `out-${String(i)}` })).join(
