@@ -34,16 +34,22 @@ class TemplateRegistry implements ITemplateRegistry {
   private readonly definitions = new Map<string, WorkflowDefinition>();
   private readonly metadata = new Map<string, TemplateMetadata>();
   private initialized = false;
+  private initPromise: Promise<void> | undefined;
 
   /**
    * Initialize the registry with built-in templates.
    * Called automatically on first access if not already initialized.
+   * Uses promise coalescing to prevent duplicate init from concurrent calls.
    */
   async initialize(): Promise<void> {
-    if (this.initialized) {
-      return;
-    }
+    if (this.initialized) return;
+    this.initPromise ??= this.doInitialize().finally(() => {
+      this.initPromise = undefined;
+    });
+    return this.initPromise;
+  }
 
+  private async doInitialize(): Promise<void> {
     const builtInTemplates = await getBuiltInTemplatesWithMetadata();
 
     for (const { definition, metadata } of builtInTemplates) {
