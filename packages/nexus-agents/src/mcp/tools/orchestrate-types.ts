@@ -6,14 +6,13 @@
  */
 
 import { z } from 'zod';
-import type { Result, ILogger, Task } from '../../core/index.js';
+import type { Result, Task } from '../../core/index.js';
 import { ok, AgentError } from '../../core/index.js';
 import { clamp } from '../../utils/math-utils.js';
 import type { IOrchestrator, OrchestratorType } from '../../core/types/orchestrator.js';
 import type { WorkflowPattern } from '../../orchestration/workflow-router-types.js';
-import type { RateLimiter } from '../middleware/rate-limiter.js';
-import type { SecurityConfig } from '../../config/schemas.js';
 import type { IMcpNotifier } from '../mcp-notifier.js';
+import type { BaseMcpToolDeps } from './tool-result.js';
 import type { ExecutionPlan, Expert } from '../../agents/index.js';
 import { OrchestratorFactory } from '../../orchestration/orchestrator-factory.js';
 
@@ -120,7 +119,7 @@ export interface IExpertFactory {
   createBuiltIn(type: string): Result<Expert, AgentError>;
 }
 
-export interface OrchestrateDeps {
+export interface OrchestrateDeps extends BaseMcpToolDeps {
   /** Pre-configured orchestrator instance (unified interface). */
   orchestrator?: IOrchestrator;
   /** @deprecated Use orchestrator instead. Will be removed in v3.0. */
@@ -129,9 +128,6 @@ export interface OrchestrateDeps {
   /** @deprecated Not used with unified orchestrator pattern. Will be removed in v3.0. */
   // eslint-disable-next-line @typescript-eslint/no-deprecated -- Intentional: deprecated API for backwards compat
   expertFactory?: IExpertFactory;
-  logger?: ILogger;
-  rateLimiter: RateLimiter;
-  security?: SecurityConfig | undefined;
   /** Model adapter for fallback orchestration path (Issue #827) */
   modelAdapter?: import('../../core/index.js').IModelAdapter | undefined;
   /** MCP notifier for client-visible logging (Issue #974) */

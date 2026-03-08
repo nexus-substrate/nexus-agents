@@ -11,13 +11,15 @@
 
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { ILogger } from '../../core/index.js';
 import { createLogger, formatZodError } from '../../core/index.js';
-import type { RateLimiter } from '../middleware/rate-limiter.js';
-import type { SecurityConfig } from '../../config/schemas.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
-import { toolError, toolSuccessStructured, type ToolResult } from './tool-result.js';
+import {
+  toolError,
+  toolSuccessStructured,
+  type BaseMcpToolDeps,
+  type ToolResult,
+} from './tool-result.js';
 import { BUILT_IN_EXPERTS, type BuiltInExpertType } from '../../agents/index.js';
 
 /**
@@ -40,14 +42,7 @@ export type ListExpertsInput = z.infer<typeof ListExpertsInputSchema>;
 /**
  * Dependencies for list_experts tool.
  */
-export interface ListExpertsDeps {
-  /** Optional logger */
-  logger?: ILogger;
-  /** Rate limiter for throttling tool calls (required) */
-  rateLimiter: RateLimiter;
-  /** Security configuration (includes timeout settings - Issue #271, CVE-2026-0621) */
-  security?: SecurityConfig | undefined;
-}
+export type ListExpertsDeps = BaseMcpToolDeps;
 
 /**
  * Expert information returned by list_experts tool.

@@ -8,6 +8,29 @@
  * @module mcp/tools/tool-result
  */
 
+import type { ILogger } from '../../core/index.js';
+import type { RateLimiter } from '../middleware/rate-limiter.js';
+import type { SecurityConfig } from '../../config/schemas.js';
+
+// ============================================================================
+// Base Dependencies
+// ============================================================================
+
+/**
+ * Common dependency interface shared by all MCP tool handlers.
+ *
+ * Tool-specific deps interfaces should extend this base.
+ * (Source: Issue #1439 — DRY extraction of 25 duplicated Deps interfaces)
+ */
+export interface BaseMcpToolDeps {
+  /** Optional logger */
+  logger?: ILogger;
+  /** Rate limiter for throttling tool calls (required) */
+  rateLimiter: RateLimiter;
+  /** Security configuration (includes timeout settings) */
+  security?: SecurityConfig | undefined;
+}
+
 // ============================================================================
 // Types
 // ============================================================================

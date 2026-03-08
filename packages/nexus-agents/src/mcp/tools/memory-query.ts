@@ -13,12 +13,10 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
 import { createLogger, formatZodError } from '../../core/index.js';
 import { withToolError } from '../middleware/tool-error-handler.js';
-import type { RateLimiter } from '../middleware/rate-limiter.js';
-import type { SecurityConfig } from '../../config/schemas.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { getToolMemory, type UnifiedMemoryResult } from './tool-memory.js';
-import { toolError, toolSuccess, type ToolResult } from './tool-result.js';
+import { toolError, toolSuccess, type ToolResult, type BaseMcpToolDeps } from './tool-result.js';
 import {
   ReflectiveRetriever,
   ReflectionCache,
@@ -61,14 +59,7 @@ export type MemoryQueryInput = z.infer<typeof MemoryQueryInputSchema>;
 /**
  * Dependencies for memory_query tool.
  */
-export interface MemoryQueryDeps {
-  /** Optional logger */
-  logger?: ILogger;
-  /** Rate limiter for throttling tool calls (required) */
-  rateLimiter: RateLimiter;
-  /** Security configuration (includes timeout settings) */
-  security?: SecurityConfig | undefined;
-}
+export type MemoryQueryDeps = BaseMcpToolDeps;
 
 /**
  * Response from memory_query tool.

@@ -10,11 +10,8 @@
 
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { ILogger } from '../../core/index.js';
 import { createLogger, formatZodError } from '../../core/index.js';
-import { toolError, toolSuccess, type ToolResult } from './tool-result.js';
-import type { RateLimiter } from '../middleware/rate-limiter.js';
-import type { SecurityConfig } from '../../config/schemas.js';
+import { toolError, toolSuccess, type BaseMcpToolDeps, type ToolResult } from './tool-result.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { IssueTriage } from '../../dogfooding/issue-triage.js';
@@ -45,11 +42,7 @@ export const IssueTriageInputSchema = z.object({
 
 export type IssueTriageInput = z.infer<typeof IssueTriageInputSchema>;
 
-export interface IssueTriageDeps {
-  logger?: ILogger;
-  rateLimiter: RateLimiter;
-  security?: SecurityConfig | undefined;
-}
+export type IssueTriageDeps = BaseMcpToolDeps;
 
 export interface IssueTriageResponse {
   readonly issueNumber: number;

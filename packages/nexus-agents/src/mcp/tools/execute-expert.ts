@@ -27,8 +27,6 @@ import {
   getRandomProvider,
   formatZodError,
 } from '../../core/index.js';
-import type { RateLimiter } from '../middleware/rate-limiter.js';
-import type { SecurityConfig } from '../../config/schemas.js';
 import type { IMcpNotifier } from '../mcp-notifier.js';
 import { createMcpNotifier, NOOP_NOTIFIER, withProgressHeartbeat } from '../mcp-notifier.js';
 import type { Expert } from '../../agents/index.js';
@@ -44,7 +42,7 @@ import { requireAdapterAvailable } from '../middleware/adapter-availability.js';
 import { getExpertPool } from '../../agents/expert-pool.js';
 import { getHeartbeatMonitor } from '../../agents/heartbeat-monitor.js';
 import { clampTaskTtl, DEFAULT_TASK_TTL_MS } from '../task-store.js';
-import { toolError, toolSuccess } from './tool-result.js';
+import { toolError, toolSuccess, type BaseMcpToolDeps } from './tool-result.js';
 
 /** Minimum effective timeout for expert tasks — LLM inference takes 20-90s minimum. (#1163, #1330) */
 export const EXPERT_TIMEOUT_FLOOR_MS = 120_000;
@@ -73,15 +71,9 @@ export type ExecuteExpertInput = z.infer<typeof ExecuteExpertInputSchema>;
 /**
  * Dependencies for execute_expert tool.
  */
-export interface ExecuteExpertDeps {
+export interface ExecuteExpertDeps extends BaseMcpToolDeps {
   /** Registry of created experts (shared with create_expert) */
   expertRegistry: Map<string, Expert>;
-  /** Optional logger */
-  logger?: ILogger;
-  /** Rate limiter for throttling tool calls (required) */
-  rateLimiter: RateLimiter;
-  /** Security configuration (includes timeout settings - Issue #271, CVE-2026-0621) */
-  security?: SecurityConfig | undefined;
   /** Optional CLI detection cache for checking available CLIs (Issue #747) */
   cliCache?: ICliDetectionCache;
   /** MCP notifier for client-visible logging (Issue #974) */

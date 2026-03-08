@@ -10,13 +10,10 @@
 
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { ILogger } from '../../core/index.js';
 import { createLogger, formatZodError } from '../../core/index.js';
 import { withToolError } from '../middleware/tool-error-handler.js';
-import { toolError, toolSuccess, type ToolResult } from './tool-result.js';
+import { toolError, toolSuccess, type ToolResult, type BaseMcpToolDeps } from './tool-result.js';
 
-import type { RateLimiter } from '../middleware/rate-limiter.js';
-import type { SecurityConfig } from '../../config/schemas.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { getResearchStatus, findOverlaps } from '../../cli/research-helpers.js';
@@ -64,14 +61,7 @@ export type ResearchQueryInput = z.infer<typeof ResearchQueryInputSchema>;
 /**
  * Dependencies for research_query tool.
  */
-export interface ResearchQueryDeps {
-  /** Optional logger */
-  logger?: ILogger;
-  /** Rate limiter for throttling tool calls (required) */
-  rateLimiter: RateLimiter;
-  /** Security configuration (includes timeout settings) */
-  security?: SecurityConfig | undefined;
-}
+export type ResearchQueryDeps = BaseMcpToolDeps;
 
 // =============================================================================
 // RESPONSE

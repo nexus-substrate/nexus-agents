@@ -12,7 +12,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
 import { createLogger, formatZodError, getTimeProvider } from '../../core/index.js';
-import { toolError, toolSuccess, type ToolResult } from './tool-result.js';
+import { toolError, toolSuccess, type ToolResult, type BaseMcpToolDeps } from './tool-result.js';
 import { executeGraph } from '../../orchestration/graph/index.js';
 import type { CompiledGraph, GraphEvent, GraphState } from '../../orchestration/graph/index.js';
 import { createCheckpointStore } from '../../orchestration/graph/index.js';
@@ -21,8 +21,6 @@ import { createAuditTrail, createGraphAuditBridge } from '../../security/audit-t
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { CLI_SUBPROCESS_TIMEOUTS } from '../../config/timeouts.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
-import type { RateLimiter } from '../middleware/rate-limiter.js';
-import type { SecurityConfig } from '../../config/schemas.js';
 import type { IMcpNotifier } from '../mcp-notifier.js';
 import { createMcpNotifier } from '../mcp-notifier.js';
 import { getToolMemory } from './tool-memory.js';
@@ -53,10 +51,7 @@ export const RunGraphWorkflowInputSchema = z.object({
 
 export type RunGraphWorkflowInput = z.infer<typeof RunGraphWorkflowInputSchema>;
 
-export interface RunGraphWorkflowDeps {
-  readonly logger?: ILogger | undefined;
-  readonly rateLimiter: RateLimiter;
-  readonly security?: SecurityConfig | undefined;
+export interface RunGraphWorkflowDeps extends BaseMcpToolDeps {
   /** MCP notifier for client-visible logging (Issue #974) */
   readonly notifier?: IMcpNotifier | undefined;
 }

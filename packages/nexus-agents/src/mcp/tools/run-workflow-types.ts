@@ -7,10 +7,9 @@
  */
 
 import { z } from 'zod';
-import type { IWorkflowEngine, ILogger } from '../../core/index.js';
-import type { RateLimiter } from '../middleware/rate-limiter.js';
-import type { SecurityConfig } from '../../config/schemas.js';
+import type { IWorkflowEngine } from '../../core/index.js';
 import type { IMcpNotifier } from '../mcp-notifier.js';
+import type { BaseMcpToolDeps } from './tool-result.js';
 
 // ============================================================================
 // Input Schema
@@ -73,13 +72,8 @@ export interface DryRunResult {
 /**
  * Dependencies required by the run_workflow tool.
  */
-export interface RunWorkflowDeps {
+export interface RunWorkflowDeps extends BaseMcpToolDeps {
   workflowEngine: IWorkflowEngine;
-  logger?: ILogger;
-  /** Rate limiter for throttling tool calls (required) */
-  rateLimiter: RateLimiter;
-  /** Security configuration (includes timeout settings - Issue #271, CVE-2026-0621) */
-  security?: SecurityConfig | undefined;
   /** MCP notifier for client-visible logging (Issue #974) */
   notifier?: IMcpNotifier | undefined;
 }

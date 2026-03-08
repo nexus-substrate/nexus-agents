@@ -13,13 +13,11 @@ import {
   getRandomProvider,
   formatZodError,
 } from '../../core/index.js';
-import type { RateLimiter } from '../middleware/rate-limiter.js';
-import type { SecurityConfig } from '../../config/schemas.js';
 import type { IMcpNotifier } from '../mcp-notifier.js';
 import { createMcpNotifier, NOOP_NOTIFIER, withProgressHeartbeat } from '../mcp-notifier.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
-import { toolError, toolSuccess, type ToolResult } from './tool-result.js';
+import { toolError, toolSuccess, type ToolResult, type BaseMcpToolDeps } from './tool-result.js';
 import type { ConsensusAlgorithm, Vote, ConsensusResult, Proposal } from '../../consensus/types.js';
 import type { VoterRole, AgentVoteResult } from '../../cli/vote-types.js';
 import { collectRealVotes } from '../../cli/voter-agents.js';
@@ -78,10 +76,7 @@ export function resetCorrelationTracker(): void {
 }
 
 // --- Dependencies ---
-export interface ConsensusVoteDeps {
-  logger?: ILogger;
-  rateLimiter: RateLimiter;
-  security?: SecurityConfig | undefined;
+export interface ConsensusVoteDeps extends BaseMcpToolDeps {
   /** MCP notifier for client-visible logging (Issue #974) */
   notifier?: IMcpNotifier | undefined;
 }

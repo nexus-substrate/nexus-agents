@@ -8,11 +8,10 @@
  */
 
 import { z } from 'zod';
-import type { ILogger, ICompositeRouter } from '../../core/index.js';
-import type { RateLimiter } from '../middleware/rate-limiter.js';
-import type { SecurityConfig } from '../../config/schemas.js';
+import type { ICompositeRouter } from '../../core/index.js';
 import type { IFeedbackIntegration } from '../../learning/feedback-integration.js';
 import type { IMcpNotifier } from '../mcp-notifier.js';
+import type { BaseMcpToolDeps } from './tool-result.js';
 
 /**
  * Billing mode for model routing.
@@ -120,17 +119,11 @@ export type DelegateOutput = z.infer<typeof DelegateOutputSchema>;
 /**
  * Dependencies for the delegate_to_model tool.
  */
-export interface DelegateDeps {
-  /** Logger instance */
-  logger?: ILogger | undefined;
-  /** Rate limiter for throttling tool calls (required) */
-  rateLimiter: RateLimiter;
+export interface DelegateDeps extends BaseMcpToolDeps {
   /** Optional CompositeRouter for intelligent routing (Issue #169) */
   router?: ICompositeRouter | undefined;
   /** Optional FeedbackIntegration for closed-loop learning (Issue #167) */
   feedbackIntegration?: IFeedbackIntegration | undefined;
-  /** Security configuration (includes timeout settings - Issue #271) */
-  security?: SecurityConfig | undefined;
   /** MCP notifier for client-visible logging (Issue #974) */
   notifier?: IMcpNotifier | undefined;
 }

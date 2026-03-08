@@ -11,16 +11,13 @@
 
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { ILogger } from '../../core/index.js';
 import { createLogger, formatZodError } from '../../core/index.js';
 import { withToolError } from '../middleware/tool-error-handler.js';
-import type { RateLimiter } from '../middleware/rate-limiter.js';
-import type { SecurityConfig } from '../../config/schemas.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { synthesizeResearch } from '../../cli/research-helpers-synthesize.js';
 import type { SynthesisResult } from '../../cli/research-helpers-synthesize.js';
-import { toolError, toolSuccess, type ToolResult } from './tool-result.js';
+import { toolError, toolSuccess, type ToolResult, type BaseMcpToolDeps } from './tool-result.js';
 
 // =============================================================================
 // SCHEMAS
@@ -42,11 +39,7 @@ export type ResearchSynthesizeInput = z.infer<typeof ResearchSynthesizeInputSche
 // DEPS
 // =============================================================================
 
-export interface ResearchSynthesizeDeps {
-  readonly logger?: ILogger | undefined;
-  readonly rateLimiter: RateLimiter;
-  readonly security?: SecurityConfig | undefined;
-}
+export type ResearchSynthesizeDeps = BaseMcpToolDeps;
 
 // =============================================================================
 // RESPONSE

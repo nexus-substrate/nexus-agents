@@ -14,11 +14,9 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
 import { createLogger, formatZodError } from '../../core/index.js';
 import { withToolError } from '../middleware/tool-error-handler.js';
-import type { RateLimiter } from '../middleware/rate-limiter.js';
-import type { SecurityConfig } from '../../config/schemas.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
-import { toolError, toolSuccess, type ToolResult } from './tool-result.js';
+import { toolError, toolSuccess, type ToolResult, type BaseMcpToolDeps } from './tool-result.js';
 import { getToolMemory } from './tool-memory.js';
 
 // ============================================================================
@@ -56,14 +54,7 @@ export type MemoryWriteInput = z.infer<typeof MemoryWriteInputSchema>;
 /**
  * Dependencies for memory_write tool.
  */
-export interface MemoryWriteDeps {
-  /** Optional logger */
-  logger?: ILogger;
-  /** Rate limiter for throttling tool calls (required) */
-  rateLimiter: RateLimiter;
-  /** Security configuration (includes timeout settings) */
-  security?: SecurityConfig | undefined;
-}
+export type MemoryWriteDeps = BaseMcpToolDeps;
 
 /**
  * Response from memory_write tool.

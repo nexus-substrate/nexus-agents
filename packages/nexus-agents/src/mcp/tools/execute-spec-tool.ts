@@ -18,15 +18,13 @@ import { executeSpec } from '../../orchestration/spec-executor.js';
 import { analyzeFailures } from '../../orchestration/failure-analyzer.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
-import type { RateLimiter } from '../middleware/rate-limiter.js';
-import type { SecurityConfig } from '../../config/schemas.js';
 import { getToolMemory } from './tool-memory.js';
 import {
   getOutcomeStore,
   categorizeOutcomeErrorMessage,
 } from '../../orchestration/outcomes/index.js';
 import { DEFAULT_CLI } from '../../config/model-capabilities-types.js';
-import { toolError, toolSuccess, type ToolResult } from './tool-result.js';
+import { toolError, toolSuccess, type BaseMcpToolDeps, type ToolResult } from './tool-result.js';
 
 // ============================================================================
 // Types & Schema
@@ -39,11 +37,7 @@ export const ExecuteSpecInputSchema = z.object({
 
 export type ExecuteSpecInput = z.infer<typeof ExecuteSpecInputSchema>;
 
-export interface ExecuteSpecDeps {
-  readonly logger?: ILogger | undefined;
-  readonly rateLimiter: RateLimiter;
-  readonly security?: SecurityConfig | undefined;
-}
+export type ExecuteSpecDeps = BaseMcpToolDeps;
 
 // ============================================================================
 // Handler

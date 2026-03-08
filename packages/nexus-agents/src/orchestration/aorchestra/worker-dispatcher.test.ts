@@ -513,7 +513,7 @@ describe('RoleFailureTracker', () => {
     output: status === 'success' ? 'ok' : '',
     status,
     durationMs: 100,
-    error: status === 'error' ? 'failed' : undefined,
+    ...(status === 'error' ? { error: 'failed' } : {}),
   });
 
   it('disables a role after threshold consecutive failures', () => {

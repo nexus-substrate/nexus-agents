@@ -12,9 +12,8 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger, AgentCapability } from '../../core/index.js';
 import { createLogger, formatZodError } from '../../core/index.js';
-import { toolError, toolSuccess, type ToolResult } from './tool-result.js';
+import { toolError, toolSuccess, type ToolResult, type BaseMcpToolDeps } from './tool-result.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
-import type { SecurityConfig } from '../../config/schemas.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import {
@@ -79,17 +78,11 @@ export interface IExpertFactory {
 /**
  * Dependencies for create_expert tool.
  */
-export interface CreateExpertDeps {
+export interface CreateExpertDeps extends BaseMcpToolDeps {
   /** Expert factory for creating experts */
   expertFactory: IExpertFactory;
   /** Registry to track created experts */
   expertRegistry: Map<string, Expert>;
-  /** Optional logger */
-  logger?: ILogger;
-  /** Rate limiter for throttling tool calls (required) */
-  rateLimiter: RateLimiter;
-  /** Security configuration (includes timeout settings - Issue #271, CVE-2026-0621) */
-  security?: SecurityConfig | undefined;
   /** Optional CLI detection cache for checking available CLIs (Issue #747) */
   cliCache?: ICliDetectionCache;
   /** Model adapter for expert execution (Issue #808) */
@@ -349,15 +342,12 @@ export function registerCreateExpertTool(server: McpServer, deps: CreateExpertDe
  * @returns CreateExpertDeps with default factory and empty registry
  */
 export function createDefaultDeps(rateLimiter: RateLimiter, logger?: ILogger): CreateExpertDeps {
-  const deps: CreateExpertDeps = {
+  return {
     expertFactory: ExpertFactory,
     expertRegistry: new Map<string, Expert>(),
     rateLimiter,
+    ...(logger !== undefined ? { logger } : {}),
   };
-  if (logger !== undefined) {
-    deps.logger = logger;
-  }
-  return deps;
 }
 
 /**

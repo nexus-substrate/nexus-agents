@@ -11,15 +11,18 @@
 
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { ILogger, IWorkflowEngine } from '../../core/index.js';
+import type { IWorkflowEngine } from '../../core/index.js';
 import { createLogger, formatZodError } from '../../core/index.js';
 import { withToolError } from '../middleware/tool-error-handler.js';
 
-import type { RateLimiter } from '../middleware/rate-limiter.js';
-import type { SecurityConfig } from '../../config/schemas.js';
 import { wrapToolWithTimeout, toSdkCallback } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
-import { toolError, toolSuccessStructured, type ToolResult } from './tool-result.js';
+import {
+  toolError,
+  toolSuccessStructured,
+  type ToolResult,
+  type BaseMcpToolDeps,
+} from './tool-result.js';
 
 /**
  * Input schema for list_workflows tool.
@@ -41,15 +44,9 @@ export type ListWorkflowsInput = z.infer<typeof ListWorkflowsInputSchema>;
 /**
  * Dependencies for list_workflows tool.
  */
-export interface ListWorkflowsDeps {
+export interface ListWorkflowsDeps extends BaseMcpToolDeps {
   /** Workflow engine for listing templates */
   workflowEngine: IWorkflowEngine;
-  /** Optional logger */
-  logger?: ILogger;
-  /** Rate limiter for throttling tool calls (required) */
-  rateLimiter: RateLimiter;
-  /** Security configuration (includes timeout settings - Issue #271, CVE-2026-0621) */
-  security?: SecurityConfig | undefined;
 }
 
 /**
