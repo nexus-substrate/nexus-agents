@@ -69,10 +69,14 @@ const PROBE_TIMEOUT_MS = 10_000;
  * Caches result in a module-level variable for the process lifetime.
  */
 let cachedModels: Set<string> | undefined;
+/** Inflight probe promise for coalescing concurrent calls (Issue #1438). */
+let probePromise: Promise<Set<string>> | undefined;
+
 function probeAvailableModels(): Promise<Set<string>> {
   if (cachedModels !== undefined) return Promise.resolve(cachedModels);
+  if (probePromise !== undefined) return probePromise;
 
-  return new Promise((resolve) => {
+  probePromise = new Promise<Set<string>>((resolve) => {
     execFile('opencode', ['models'], { timeout: PROBE_TIMEOUT_MS }, (error, stdout) => {
       if (error !== null || stdout.trim() === '') {
         logger.debug('Failed to probe OpenCode models, will omit --model flag', {
@@ -93,7 +97,11 @@ function probeAvailableModels(): Promise<Set<string>> {
       cachedModels = models;
       resolve(cachedModels);
     });
+  }).finally(() => {
+    probePromise = undefined;
   });
+
+  return probePromise;
 }
 
 /**

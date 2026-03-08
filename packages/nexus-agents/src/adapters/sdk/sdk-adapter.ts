@@ -158,6 +158,8 @@ export class SdkAdapter extends BaseAdapter {
   private model: AiSdkModel | undefined;
   private sdkFunctions: AiSdkFunctions | undefined;
   private readonly sdkConfig: SdkAdapterConfig;
+  /** Inflight init promise for coalescing concurrent calls (Issue #1438). */
+  private initPromise: Promise<void> | undefined;
 
   constructor(config: SdkAdapterConfig, logger?: ILogger) {
     const apiKey = resolveApiKey(config.providerId, config.apiKey);
@@ -181,7 +183,20 @@ export class SdkAdapter extends BaseAdapter {
    */
   private async ensureInitialized(): Promise<void> {
     if (this.model !== undefined) return;
+    // Coalesce concurrent init calls into a single load (Issue #1438)
+    if (this.initPromise !== undefined) {
+      await this.initPromise;
+      return;
+    }
+    this.initPromise = this.doInitialize();
+    try {
+      await this.initPromise;
+    } finally {
+      this.initPromise = undefined;
+    }
+  }
 
+  private async doInitialize(): Promise<void> {
     const apiKey = resolveApiKey(this.sdkProviderId, this.sdkConfig.apiKey);
     if (apiKey === undefined) {
       throw new AdapterModelError(`No API key for ${this.sdkProviderId}`, {
