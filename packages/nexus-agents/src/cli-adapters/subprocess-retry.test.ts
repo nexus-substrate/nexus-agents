@@ -16,7 +16,7 @@ import { EventEmitter } from 'node:events';
 import type { ChildProcess } from 'node:child_process';
 import { Writable, Readable } from 'node:stream';
 
-import type { CliTask, ExecutionOptions, ICliResponseParser } from './types.js';
+import type { CliName, CliTask, ExecutionOptions, ICliResponseParser } from './types.js';
 import type { CommandConfig, TransientRetryConfig } from './subprocess-adapter.js';
 import { SubprocessCliAdapter, isTransientError } from './subprocess-adapter.js';
 
@@ -56,7 +56,7 @@ function createMockChildProcess() {
 
 /** Test adapter with retry disabled (default). */
 class NoRetryAdapter extends SubprocessCliAdapter {
-  override readonly name = 'claude' as const;
+  override readonly name: CliName = 'claude';
   protected readonly parser: ICliResponseParser = {
     name: 'test-parser',
     supportedVersionRange: '>=1.0.0',
@@ -85,7 +85,7 @@ class NoRetryAdapter extends SubprocessCliAdapter {
 
 /** Test adapter with retry enabled (like OpenCode). */
 class RetryAdapter extends NoRetryAdapter {
-  override readonly name = 'opencode' as const;
+  override readonly name: CliName = 'opencode';
   protected override readonly transientRetry: TransientRetryConfig = {
     enabled: true,
   };
@@ -171,32 +171,37 @@ describe('SubprocessCliAdapter transient retry', () => {
     const task: CliTask = { content: 'test' };
 
     // Set up 3 child processes: 2 timeouts + 1 success
-    const children = [createMockChildProcess(), createMockChildProcess(), createMockChildProcess()];
+    const child0 = createMockChildProcess();
+    const child1 = createMockChildProcess();
+    const child2 = createMockChildProcess();
+    const childList = [child0, child1, child2];
 
     let spawnIdx = 0;
     mockSpawn.mockImplementation(function () {
-      return children[spawnIdx++].mockChild;
+      const child = childList[spawnIdx++];
+      if (child === undefined) throw new Error('Too many spawn calls');
+      return child.mockChild;
     });
 
     const promise = adapter.executeTask(task, DEFAULT_OPTS);
 
     // First attempt: timeout
     vi.advanceTimersByTime(5001);
-    children[0].mockChild.emit('close', null);
+    child0.mockChild.emit('close', null);
 
     // Wait for 500ms delay
     await vi.advanceTimersByTimeAsync(500);
 
     // Second attempt: timeout
     vi.advanceTimersByTime(5001);
-    children[1].mockChild.emit('close', null);
+    child1.mockChild.emit('close', null);
 
     // Wait for 1000ms delay
     await vi.advanceTimersByTimeAsync(1000);
 
     // Third attempt: success
-    children[2].stdout.emit('data', Buffer.from('success\n'));
-    children[2].mockChild.emit('close', 0);
+    child2.stdout.emit('data', Buffer.from('success\n'));
+    child2.mockChild.emit('close', 0);
 
     const result = await promise;
     expect(result.ok).toBe(true);
@@ -210,28 +215,33 @@ describe('SubprocessCliAdapter transient retry', () => {
     const adapter = new RetryAdapter();
     const task: CliTask = { content: 'test' };
 
-    const children = [createMockChildProcess(), createMockChildProcess(), createMockChildProcess()];
+    const c0 = createMockChildProcess();
+    const c1 = createMockChildProcess();
+    const c2 = createMockChildProcess();
+    const cList = [c0, c1, c2];
 
     let spawnIdx = 0;
     mockSpawn.mockImplementation(function () {
-      return children[spawnIdx++].mockChild;
+      const child = cList[spawnIdx++];
+      if (child === undefined) throw new Error('Too many spawn calls');
+      return child.mockChild;
     });
 
     const promise = adapter.executeTask(task, DEFAULT_OPTS);
 
     // First attempt: timeout
     vi.advanceTimersByTime(5001);
-    children[0].mockChild.emit('close', null);
+    c0.mockChild.emit('close', null);
     await vi.advanceTimersByTimeAsync(500);
 
     // Second attempt: timeout
     vi.advanceTimersByTime(5001);
-    children[1].mockChild.emit('close', null);
+    c1.mockChild.emit('close', null);
     await vi.advanceTimersByTimeAsync(1000);
 
     // Third attempt: timeout
     vi.advanceTimersByTime(5001);
-    children[2].mockChild.emit('close', null);
+    c2.mockChild.emit('close', null);
 
     const result = await promise;
     expect(result.ok).toBe(false);
@@ -287,24 +297,27 @@ describe('SubprocessCliAdapter transient retry', () => {
     const adapter = new RetryAdapter();
     const task: CliTask = { content: 'test' };
 
-    const child1 = createMockChildProcess();
-    const child2 = createMockChildProcess();
+    const ch1 = createMockChildProcess();
+    const ch2 = createMockChildProcess();
+    const mocks = [ch1.mockChild, ch2.mockChild];
 
     let spawnIdx = 0;
     mockSpawn.mockImplementation(function () {
-      return [child1.mockChild, child2.mockChild][spawnIdx++];
+      const m = mocks[spawnIdx++];
+      if (m === undefined) throw new Error('Too many spawn calls');
+      return m;
     });
 
     const promise = adapter.executeTask(task, DEFAULT_OPTS);
 
     // First: timeout (transient)
     vi.advanceTimersByTime(5001);
-    child1.mockChild.emit('close', null);
+    ch1.mockChild.emit('close', null);
     await vi.advanceTimersByTimeAsync(500);
 
     // Second: execution error (not transient) — should stop
-    child2.stderr.emit('data', Buffer.from('crash\n'));
-    child2.mockChild.emit('close', 1);
+    ch2.stderr.emit('data', Buffer.from('crash\n'));
+    ch2.mockChild.emit('close', 1);
 
     const result = await promise;
     expect(result.ok).toBe(false);
@@ -318,24 +331,27 @@ describe('SubprocessCliAdapter transient retry', () => {
     const adapter = new RetryAdapter();
     const task: CliTask = { content: 'test' };
 
-    const child1 = createMockChildProcess();
-    const child2 = createMockChildProcess();
+    const r1 = createMockChildProcess();
+    const r2 = createMockChildProcess();
+    const rMocks = [r1.mockChild, r2.mockChild];
 
     let spawnIdx = 0;
     mockSpawn.mockImplementation(function () {
-      return [child1.mockChild, child2.mockChild][spawnIdx++];
+      const m = rMocks[spawnIdx++];
+      if (m === undefined) throw new Error('Too many spawn calls');
+      return m;
     });
 
     const promise = adapter.executeTask(task, DEFAULT_OPTS);
 
     // First: timeout
     vi.advanceTimersByTime(5001);
-    child1.mockChild.emit('close', null);
+    r1.mockChild.emit('close', null);
     await vi.advanceTimersByTimeAsync(500);
 
     // Second: success
-    child2.stdout.emit('data', Buffer.from('ok\n'));
-    child2.mockChild.emit('close', 0);
+    r2.stdout.emit('data', Buffer.from('ok\n'));
+    r2.mockChild.emit('close', 0);
 
     const result = await promise;
     expect(result.ok).toBe(true);
