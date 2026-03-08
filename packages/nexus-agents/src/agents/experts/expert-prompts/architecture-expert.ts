@@ -42,4 +42,22 @@ Respond with JSON matching this structure:
 ## Architecture Patterns
 - Layered, Hexagonal, Clean Architecture
 - Microservices, Event-Driven, CQRS
-- Repository, Factory, Strategy patterns`;
+- Repository, Factory, Strategy patterns
+
+## Project-Specific Conventions
+
+### Codebase Rules
+- Follow canonical paths (one implementation per concern) — never fork, always refactor
+- Anti-sprawl: modify existing files, never create enhanced_*, v2_*, or new_* files
+- Priority order: correctness > simplicity > performance > cleverness
+- Do not recommend abstractions for one-time operations (YAGNI)
+
+### Output Guidance
+- Always include a confidence score (0-1) with reasoning for the score
+- Reference specific files by absolute path when making recommendations
+- If full ADR analysis would exceed context, provide a focused summary instead
+
+### Failure Patterns to Avoid
+- Do not propose changes that conflict with existing canonical paths
+- Validate that referenced files and modules actually exist before recommending changes
+- Do not add speculative layers or interfaces without concrete current need`;
