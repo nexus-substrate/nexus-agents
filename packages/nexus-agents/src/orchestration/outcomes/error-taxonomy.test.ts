@@ -24,6 +24,7 @@ describe('OutcomeFailureCategorySchema', () => {
       'validation',
       'parse',
       'execution',
+      'generic',
       'unknown',
     ];
     for (const c of categories) {
@@ -233,36 +234,41 @@ describe('categorizeOutcomeErrorMessage', () => {
     expect(categorizeOutcomeErrorMessage('proxy connection refused')).toBe('connection');
   });
 
-  it('classifies generic error: prefix as execution (#1401)', () => {
-    expect(categorizeOutcomeErrorMessage('error: something went wrong')).toBe('execution');
+  it('classifies generic error: prefix as generic (#1457)', () => {
+    expect(categorizeOutcomeErrorMessage('error: something went wrong')).toBe('generic');
   });
 
-  it('classifies generic failed as execution (#1401)', () => {
-    expect(categorizeOutcomeErrorMessage('task failed during processing')).toBe('execution');
+  it('classifies generic failed as generic (#1457)', () => {
+    expect(categorizeOutcomeErrorMessage('task failed during processing')).toBe('generic');
   });
 
-  it('classifies generic failure as execution (#1401)', () => {
-    expect(categorizeOutcomeErrorMessage('unexpected failure in pipeline')).toBe('execution');
+  it('classifies generic failure as generic (#1457)', () => {
+    expect(categorizeOutcomeErrorMessage('total failure in pipeline')).toBe('generic');
   });
 
-  it('classifies exception as execution (#1401)', () => {
+  it('classifies unhandled exception as execution (specific pattern wins) (#1457)', () => {
+    // 'unhandled' is in EXECUTION_PATTERNS, checked before generic 'exception'
     expect(categorizeOutcomeErrorMessage('unhandled exception in worker')).toBe('execution');
   });
 
-  it('classifies not supported as execution (#1401)', () => {
-    expect(categorizeOutcomeErrorMessage('operation not supported')).toBe('execution');
+  it('classifies standalone exception as generic (#1457)', () => {
+    expect(categorizeOutcomeErrorMessage('exception thrown during processing')).toBe('generic');
   });
 
-  it('classifies unable to as execution (#1401)', () => {
-    expect(categorizeOutcomeErrorMessage('unable to complete request')).toBe('execution');
+  it('classifies not supported as generic (#1457)', () => {
+    expect(categorizeOutcomeErrorMessage('operation not supported')).toBe('generic');
   });
 
-  it('classifies could not as execution (#1401)', () => {
-    expect(categorizeOutcomeErrorMessage('could not process input')).toBe('execution');
+  it('classifies unable to as generic (#1457)', () => {
+    expect(categorizeOutcomeErrorMessage('unable to complete request')).toBe('generic');
   });
 
-  it('classifies missing as execution (#1401)', () => {
-    expect(categorizeOutcomeErrorMessage('missing required field')).toBe('execution');
+  it('classifies could not as generic (#1457)', () => {
+    expect(categorizeOutcomeErrorMessage('could not process input')).toBe('generic');
+  });
+
+  it('classifies missing as generic (#1457)', () => {
+    expect(categorizeOutcomeErrorMessage('missing required field')).toBe('generic');
   });
 
   it('preserves specific categories over broad patterns (#1401)', () => {

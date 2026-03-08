@@ -32,6 +32,7 @@ export const OutcomeFailureCategorySchema = z.enum([
   'validation',
   'parse',
   'execution',
+  'generic',
   'unknown',
 ]);
 
@@ -178,7 +179,9 @@ const EXECUTION_PATTERNS = [
   'service unavailable',
   'truncated',
   'incomplete',
-  // Broad catch-all patterns — checked LAST after all specific categories (#1401)
+];
+// Generic catch-all patterns — separated from execution for observability (#1457)
+const GENERIC_PATTERNS = [
   'error:',
   'error occurred',
   'failed',
@@ -200,6 +203,13 @@ function matchesAny(text: string, patterns: string[]): boolean {
   return patterns.some((p) => text.includes(p));
 }
 
+/** Classify execution vs generic catch-all patterns (#1457). */
+function classifyExecutionOrGeneric(text: string): OutcomeFailureCategory {
+  if (matchesAny(text, EXECUTION_PATTERNS)) return 'execution';
+  if (matchesAny(text, GENERIC_PATTERNS)) return 'generic';
+  return 'unknown';
+}
+
 /** Classifies a lowercase text string against all known failure patterns. */
 function classifyText(text: string): OutcomeFailureCategory {
   if (matchesAny(text, TIMEOUT_PATTERNS)) return 'timeout';
@@ -210,8 +220,7 @@ function classifyText(text: string): OutcomeFailureCategory {
   if (matchesAny(text, CRASH_PATTERNS)) return 'crash';
   if (matchesAny(text, VALIDATION_PATTERNS)) return 'validation';
   if (matchesAny(text, PARSE_PATTERNS)) return 'parse';
-  if (matchesAny(text, EXECUTION_PATTERNS)) return 'execution';
-  return 'unknown';
+  return classifyExecutionOrGeneric(text);
 }
 
 /** Classifies an error into an OutcomeFailureCategory for recording. */
