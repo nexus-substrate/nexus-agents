@@ -46,6 +46,14 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Upload build output
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: build-dist
+          path: packages/nexus-agents/dist/
+          retention-days: 1
+
   test:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -83,8 +91,11 @@ jobs:
     steps:
       - uses: ./.github/actions/setup-node
 
-      - name: Build
-        run: pnpm build
+      - name: Download build output
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4
+        with:
+          name: build-dist
+          path: packages/nexus-agents/dist/
 
       - name: Run fitness audit
         id: fitness
@@ -110,8 +121,11 @@ jobs:
     steps:
       - uses: ./.github/actions/setup-node
 
-      - name: Build
-        run: pnpm build
+      - name: Download build output
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4
+        with:
+          name: build-dist
+          path: packages/nexus-agents/dist/
 
       - name: Check index freshness
         run: |
