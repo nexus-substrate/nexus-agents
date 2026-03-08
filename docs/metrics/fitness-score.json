@@ -1,14 +1,14 @@
 {
-  "total": 100,
+  "total": 98,
   "maxTotal": 100,
-  "percentage": 100,
+  "percentage": 98,
   "components": [
     {
       "name": "Canonical Paths",
       "score": 20,
       "maxScore": 20,
-      "details": ["Routers: 8"],
-      "penalties": ["8 router implementations"],
+      "details": ["Routers: 6"],
+      "penalties": ["6 router implementations"],
       "rewards": [
         "CompositeRouter exists",
         "IOrchestrator interface defined",
@@ -17,29 +17,27 @@
     },
     {
       "name": "Determinism",
-      "score": 15,
+      "score": 13,
       "maxScore": 15,
-      "details": ["Random: 0", "Date.now: 5"],
-      "penalties": [],
+      "details": ["Random: 20", "Date.now: 118"],
+      "penalties": ["20 unseeded Math.random()", "118 Date.now() calls"],
       "rewards": [
-        "No unseeded random calls",
         "Injectable random provider",
-        "45 injectable random uses",
-        "Minimal Date.now() usage",
+        "50 injectable random uses",
         "Injectable time provider",
-        "715 injectable time uses"
+        "853 injectable time uses"
       ]
     },
     {
       "name": "Observability",
       "score": 15,
       "maxScore": 15,
-      "details": ["Logger uses: 181"],
+      "details": ["Logger uses: 335"],
       "penalties": [],
       "rewards": [
         "SwarmObserver exists",
         "Trace exporter exists",
-        "Strong logging (181 uses)",
+        "Strong logging (335 uses)",
         "Audit logging module"
       ]
     },
@@ -47,10 +45,10 @@
       "name": "CLI Ergonomics",
       "score": 15,
       "maxScore": 15,
-      "details": ["Commands: 159"],
+      "details": ["Commands: 271"],
       "penalties": [],
       "rewards": [
-        "Rich CLI (159 commands)",
+        "Rich CLI (271 commands)",
         "Doctor command",
         "Setup wizard",
         "Demo command",
@@ -76,18 +74,18 @@
       "score": 10,
       "maxScore": 10,
       "details": [],
-      "penalties": [],
-      "rewards": ["No adapter→agent violations", "No core→MCP violations"]
+      "penalties": ["1 adapter→agent imports"],
+      "rewards": ["No core→MCP violations"]
     },
     {
       "name": "Config Surface",
       "score": 10,
       "maxScore": 10,
-      "details": ["Schemas: 9"],
-      "penalties": [],
-      "rewards": ["Config schema count OK", "Unified config loader", "Runtime config manager"]
+      "details": ["Schemas: 16"],
+      "penalties": ["16 config schemas"],
+      "rewards": ["Unified config loader", "Runtime config manager"]
     }
   ],
   "trend": "stable",
-  "assessmentDate": "2026-01-30T18:04:53.184Z"
+  "assessmentDate": "2026-03-08T13:25:33.744Z"
 }
