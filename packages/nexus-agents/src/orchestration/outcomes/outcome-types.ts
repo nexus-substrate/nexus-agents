@@ -228,11 +228,42 @@ function classifyText(text: string): OutcomeFailureCategory {
   return classifyExecutionOrGeneric(text);
 }
 
+/** Maximum length for extracted error messages to prevent unbounded strings. */
+const MAX_ERROR_MESSAGE_LENGTH = 500;
+
+/**
+ * Extracts a classifiable message string from a non-Error value.
+ * Returns undefined if the value is truly unclassifiable (#1466).
+ */
+export function extractErrorMessage(error: unknown): string | undefined {
+  if (error === null || error === undefined) return undefined;
+  if (typeof error === 'string') {
+    return error.slice(0, MAX_ERROR_MESSAGE_LENGTH);
+  }
+  if (typeof error === 'object') {
+    const record = error as Record<string, unknown>;
+    if (typeof record['message'] === 'string') {
+      return record['message'].slice(0, MAX_ERROR_MESSAGE_LENGTH);
+    }
+    try {
+      const json = JSON.stringify(error);
+      return json.slice(0, MAX_ERROR_MESSAGE_LENGTH);
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
 /** Classifies an error into an OutcomeFailureCategory for recording. */
 export function categorizeOutcomeError(error: unknown): OutcomeFailureCategory {
-  if (!(error instanceof Error)) return 'unknown';
-  const text = `${error.message.toLowerCase()} ${error.name.toLowerCase()}`;
-  return classifyText(text);
+  if (error instanceof Error) {
+    const text = `${error.message.toLowerCase()} ${error.name.toLowerCase()}`;
+    return classifyText(text);
+  }
+  const extracted = extractErrorMessage(error);
+  if (extracted === undefined) return 'unknown';
+  return classifyText(extracted.toLowerCase());
 }
 
 /** Classifies an error message string into an OutcomeFailureCategory. */

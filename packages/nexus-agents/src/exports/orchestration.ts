@@ -171,6 +171,7 @@ export {
   OutcomeFailureCategorySchema,
   categorizeOutcomeError,
   categorizeOutcomeErrorMessage,
+  extractErrorMessage,
   PersistentOutcomeStore,
 } from '../orchestration/index.js';
 export type {

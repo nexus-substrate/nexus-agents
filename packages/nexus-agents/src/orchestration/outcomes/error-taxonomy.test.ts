@@ -9,6 +9,7 @@ import {
   OutcomeFailureCategorySchema,
   categorizeOutcomeError,
   categorizeOutcomeErrorMessage,
+  extractErrorMessage,
 } from './outcome-types.js';
 import { TaskOutcomeSchema } from './outcome-types.js';
 
@@ -100,10 +101,31 @@ describe('categorizeOutcomeError', () => {
     expect(categorizeOutcomeError(new Error('Something broke'))).toBe('unknown');
   });
 
-  it('returns unknown for non-Error values', () => {
-    expect(categorizeOutcomeError('string error')).toBe('unknown');
-    expect(categorizeOutcomeError(42)).toBe('unknown');
+  it('classifies string errors by content (#1466)', () => {
+    expect(categorizeOutcomeError('connection refused')).toBe('connection');
+  });
+
+  it('classifies objects with .message property (#1466)', () => {
+    expect(categorizeOutcomeError({ message: 'timed out' })).toBe('timeout');
+  });
+
+  it('classifies plain objects via JSON.stringify (#1466)', () => {
+    expect(categorizeOutcomeError({ code: 'ENOENT' })).not.toBe('unknown');
+  });
+
+  it('returns unknown for circular references (#1466)', () => {
+    const obj: Record<string, unknown> = {};
+    obj['self'] = obj;
+    expect(categorizeOutcomeError(obj)).toBe('unknown');
+  });
+
+  it('returns unknown for null and undefined (#1466)', () => {
     expect(categorizeOutcomeError(null)).toBe('unknown');
+    expect(categorizeOutcomeError(undefined)).toBe('unknown');
+  });
+
+  it('returns unknown for non-classifiable primitives (#1466)', () => {
+    expect(categorizeOutcomeError(42)).toBe('unknown');
   });
 
   it('checks error name for classification', () => {
@@ -298,5 +320,50 @@ describe('categorizeOutcomeErrorMessage', () => {
 
   it('classifies "failed to resolve DNS" as connection, not execution (#1461)', () => {
     expect(categorizeOutcomeErrorMessage('failed to resolve DNS')).toBe('connection');
+  });
+});
+
+describe('extractErrorMessage (#1466)', () => {
+  it('returns string directly', () => {
+    expect(extractErrorMessage('some error')).toBe('some error');
+  });
+
+  it('returns undefined for null', () => {
+    expect(extractErrorMessage(null)).toBeUndefined();
+  });
+
+  it('returns undefined for undefined', () => {
+    expect(extractErrorMessage(undefined)).toBeUndefined();
+  });
+
+  it('extracts .message from objects', () => {
+    expect(extractErrorMessage({ message: 'hello' })).toBe('hello');
+  });
+
+  it('falls back to JSON.stringify for objects without .message', () => {
+    const result = extractErrorMessage({ code: 'ENOENT' });
+    expect(result).toContain('ENOENT');
+  });
+
+  it('returns undefined for circular references', () => {
+    const obj: Record<string, unknown> = {};
+    obj['self'] = obj;
+    expect(extractErrorMessage(obj)).toBeUndefined();
+  });
+
+  it('truncates long strings to 500 chars', () => {
+    const long = 'x'.repeat(600);
+    const result = extractErrorMessage(long);
+    expect(result).toHaveLength(500);
+  });
+
+  it('truncates long .message to 500 chars', () => {
+    const result = extractErrorMessage({ message: 'y'.repeat(600) });
+    expect(result).toHaveLength(500);
+  });
+
+  it('returns undefined for non-object primitives', () => {
+    expect(extractErrorMessage(42)).toBeUndefined();
+    expect(extractErrorMessage(true)).toBeUndefined();
   });
 });
