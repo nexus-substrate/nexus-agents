@@ -216,8 +216,8 @@ describe('memory write logic', () => {
     expect(deduplicated).toBe(true);
 
     // When count increases, a new belief was created
-    const countAfterNew = 6;
-    const notDeduplicated = countAfterNew === countBefore;
+    const countAfterNew: number = 6;
+    const notDeduplicated = countAfterNew === (countBefore as number);
     expect(notDeduplicated).toBe(false);
   });
 
