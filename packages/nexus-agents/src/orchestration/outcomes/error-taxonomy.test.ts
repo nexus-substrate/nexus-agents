@@ -279,4 +279,24 @@ describe('categorizeOutcomeErrorMessage', () => {
     // 'unexpected token' should still be parse, not execution
     expect(categorizeOutcomeErrorMessage('unexpected token in JSON')).toBe('parse');
   });
+
+  it('classifies "failed to connect" as connection, not execution (#1461)', () => {
+    expect(categorizeOutcomeErrorMessage('failed to connect to server')).toBe('connection');
+  });
+
+  it('classifies "failed to authenticate" as auth, not execution (#1461)', () => {
+    expect(categorizeOutcomeErrorMessage('failed to authenticate')).toBe('authentication');
+  });
+
+  it('classifies "request timed out after 30s" as timeout, not execution (#1461)', () => {
+    expect(categorizeOutcomeErrorMessage('request timed out after 30s')).toBe('timeout');
+  });
+
+  it('classifies "cannot parse JSON response" as parse, not execution (#1461)', () => {
+    expect(categorizeOutcomeErrorMessage('cannot parse JSON response')).toBe('parse');
+  });
+
+  it('classifies "failed to resolve DNS" as connection, not execution (#1461)', () => {
+    expect(categorizeOutcomeErrorMessage('failed to resolve DNS')).toBe('connection');
+  });
 });

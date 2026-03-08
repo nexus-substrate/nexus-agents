@@ -101,6 +101,7 @@ const RATE_LIMIT_PATTERNS = [
 ];
 const CONNECTION_PATTERNS = [
   'connection',
+  'connect',
   'econnrefused',
   'enotfound',
   'econnreset',
@@ -142,6 +143,7 @@ const PARSE_PATTERNS = [
   'unexpected end of json',
   'syntax error',
   'failed to parse',
+  'cannot parse',
   'ndjson',
   'malformed',
 ];
@@ -210,12 +212,15 @@ function classifyExecutionOrGeneric(text: string): OutcomeFailureCategory {
   return 'unknown';
 }
 
-/** Classifies a lowercase text string against all known failure patterns. */
+/**
+ * Classifies a lowercase text string against all known failure patterns.
+ * Order: most-specific categories first, broad execution/generic last (#1461).
+ */
 function classifyText(text: string): OutcomeFailureCategory {
-  if (matchesAny(text, TIMEOUT_PATTERNS)) return 'timeout';
+  if (matchesAny(text, ADAPTER_PATTERNS)) return 'adapter_unavailable';
   if (matchesAny(text, AUTH_PATTERNS)) return 'authentication';
   if (matchesAny(text, RATE_LIMIT_PATTERNS)) return 'rate_limit';
-  if (matchesAny(text, ADAPTER_PATTERNS)) return 'adapter_unavailable';
+  if (matchesAny(text, TIMEOUT_PATTERNS)) return 'timeout';
   if (matchesAny(text, CONNECTION_PATTERNS)) return 'connection';
   if (matchesAny(text, CRASH_PATTERNS)) return 'crash';
   if (matchesAny(text, VALIDATION_PATTERNS)) return 'validation';
