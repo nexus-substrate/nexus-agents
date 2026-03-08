@@ -146,7 +146,7 @@ export function createNexusExecutorFromEnv(
 ): Result<NexusAgentExecutor, AgentRunnerError> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
 
-  if (isApiKeyMissing(apiKey)) {
+  if (apiKey === undefined || isApiKeyMissing(apiKey)) {
     return {
       ok: false,
       error: new AgentRunnerError(
