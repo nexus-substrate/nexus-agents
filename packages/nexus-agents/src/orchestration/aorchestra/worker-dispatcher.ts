@@ -27,6 +27,12 @@ export const WORKER_TIMEOUT_MS = WORKER_TIMEOUTS.defaultMs;
 /** Delay before next wave when rate-limit errors are detected (Issue #1328). */
 export const RATE_LIMIT_WAVE_DELAY_MS = 5_000;
 
+/**
+ * Number of consecutive failures before a role is auto-disabled (Issue #1425).
+ * Prevents repeated token burn from persistently failing roles.
+ */
+export const CONSECUTIVE_FAILURE_THRESHOLD = 3;
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -46,7 +52,7 @@ export interface WorkerResult {
   readonly role: string;
   readonly subTask: string;
   readonly output: string;
-  readonly status: 'success' | 'error';
+  readonly status: 'success' | 'error' | 'skipped';
   readonly durationMs: number;
   readonly error?: string;
   /** Discriminated error type — set only when status is 'error'. */
@@ -73,6 +79,8 @@ export interface WorkerDispatchOptions {
   readonly eventBus?: IEventBus;
   /** Execution ID for event correlation. */
   readonly executionId?: string;
+  /** Consecutive failures before auto-disabling a role (default: 3, Issue #1425). */
+  readonly consecutiveFailureThreshold?: number;
 }
 
 // ============================================================================
@@ -101,6 +109,54 @@ export function groupByWave(entries: readonly AgentPlanEntry[]): AgentPlanEntry[
   return Array.from(waveMap.entries())
     .sort(([a], [b]) => a - b)
     .map(([, group]) => group);
+}
+
+// ============================================================================
+// Role Failure Tracking (Issue #1425)
+// ============================================================================
+
+/**
+ * Tracks consecutive failures per role and auto-disables roles
+ * that exceed the threshold. Prevents repeated token burn.
+ */
+export class RoleFailureTracker {
+  private readonly counts = new Map<string, number>();
+  private readonly disabled = new Set<string>();
+  private readonly threshold: number;
+
+  constructor(threshold: number = CONSECUTIVE_FAILURE_THRESHOLD) {
+    this.threshold = threshold;
+  }
+
+  /** Record a worker result — resets on success, increments on error. */
+  record(result: WorkerResult): void {
+    if (result.status === 'skipped') return;
+    if (result.status === 'success') {
+      this.counts.set(result.role, 0);
+      return;
+    }
+    const current = this.counts.get(result.role) ?? 0;
+    const next = current + 1;
+    this.counts.set(result.role, next);
+    if (next >= this.threshold) {
+      this.disabled.add(result.role);
+      logger.warn('Auto-disabled role after consecutive failures', {
+        role: result.role,
+        consecutiveFailures: next,
+        threshold: this.threshold,
+      });
+    }
+  }
+
+  /** Check if a role is auto-disabled. */
+  isDisabled(role: string): boolean {
+    return this.disabled.has(role);
+  }
+
+  /** Get the set of disabled roles (for observability). */
+  getDisabledRoles(): ReadonlySet<string> {
+    return this.disabled;
+  }
 }
 
 // ============================================================================
@@ -157,6 +213,9 @@ export async function dispatchWorkers(
   const maxConcurrency = options.maxConcurrency ?? MAX_WORKERS_PER_WAVE;
   const waves = groupByWave(entries);
   const allResults: WorkerResult[] = [];
+  const failureTracker = new RoleFailureTracker(
+    options.consecutiveFailureThreshold ?? CONSECUTIVE_FAILURE_THRESHOLD
+  );
 
   const bus = options.eventBus;
   const execId = options.executionId ?? `dispatch-${Date.now().toString(36)}`;
@@ -168,6 +227,7 @@ export async function dispatchWorkers(
       maxConcurrency,
       options,
       priorResults: allResults.length > 0 ? [...allResults] : undefined,
+      failureTracker,
     });
     allResults.push(...waveResults);
 
@@ -188,6 +248,7 @@ interface ProcessWaveOptions {
   readonly maxConcurrency: number;
   readonly options: WorkerDispatchOptions;
   readonly priorResults: readonly WorkerResult[] | undefined;
+  readonly failureTracker: RoleFailureTracker;
 }
 
 /** Process a single wave: emit events, execute tasks, return results. */
@@ -211,14 +272,29 @@ async function processWave(
   const waveStartMs = Date.now();
 
   const tasks = wave.map((entry) => (): Promise<WorkerResult> => {
+    if (opts.failureTracker.isDisabled(entry.role)) {
+      logger.info('Skipping auto-disabled role', { role: entry.role, wave: waveNumber });
+      return Promise.resolve({
+        role: entry.role,
+        subTask: entry.subTask,
+        output: '',
+        status: 'skipped' as const,
+        durationMs: 0,
+        error: 'Role auto-disabled after consecutive failures',
+      });
+    }
     const timeoutMs = opts.options.workerTimeoutMs ?? getExpertTaskTimeout(entry.subTask);
     return executeSafe(entry, opts.options.executeWorker, opts.priorResults, timeoutMs);
   });
 
   const waveResults = await executeWithConcurrencyLimit(tasks, opts.maxConcurrency);
+  for (const result of waveResults) {
+    opts.failureTracker.record(result);
+  }
   const successes = waveResults.filter((r) => r.status === 'success').length;
   const errorCount = waveResults.filter((r) => r.status === 'error').length;
-  logger.info('Wave complete', { wave: waveNumber, successes, errors: errorCount });
+  const skipped = waveResults.filter((r) => r.status === 'skipped').length;
+  logger.info('Wave complete', { wave: waveNumber, successes, errors: errorCount, skipped });
   emitWaveCompleted(waveCtx, Date.now() - waveStartMs, successes, errorCount);
   return waveResults;
 }
