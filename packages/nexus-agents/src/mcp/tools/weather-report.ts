@@ -464,7 +464,20 @@ function findDominantError(
   return dominant;
 }
 
-/** Builds per-expert-role performance from worker dispatch outcomes (Issue #1324). */
+/** Count consecutive failures from the tail of an outcome list (Issue #1427). */
+function countTrailingFailures(outcomes: ReadonlyArray<{ success: boolean }>): number {
+  let count = 0;
+  for (let i = outcomes.length - 1; i >= 0; i--) {
+    if (outcomes[i]?.success === false) {
+      count++;
+    } else {
+      break;
+    }
+  }
+  return count;
+}
+
+/** Builds per-expert-role performance from worker dispatch outcomes (Issue #1324, #1427). */
 function buildExpertPerformance(): readonly ExpertPerformanceEntry[] {
   const store = getOutcomeStore();
   const allOutcomes = store.query();
@@ -484,17 +497,30 @@ function buildExpertPerformance(): readonly ExpertPerformanceEntry[] {
     const successes = outcomes.filter((o) => o.success).length;
     const totalDuration = outcomes.reduce((s, o) => s + o.durationMs, 0);
     const dominantErrorPattern = findDominantError(outcomes.filter((o) => !o.success));
+    const successRate = successes / outcomes.length;
+
+    // Count consecutive failures from the tail of history (Issue #1427)
+    const consecutiveFailures = countTrailingFailures(outcomes);
+
+    // Find last success timestamp
+    const lastSuccess = [...outcomes].reverse().find((o) => o.success);
+    const lastSuccessAt =
+      lastSuccess !== undefined ? new Date(lastSuccess.timestamp).toISOString() : undefined;
 
     entries.push({
       role,
       totalTasks: outcomes.length,
-      successRate: successes / outcomes.length,
+      successRate,
       avgDurationMs: Math.round(totalDuration / outcomes.length),
+      consecutiveFailures,
+      degraded: successRate < 0.5,
       ...(dominantErrorPattern !== undefined ? { dominantErrorPattern } : {}),
+      ...(lastSuccessAt !== undefined ? { lastSuccessAt } : {}),
     });
   }
 
-  return entries.sort((a, b) => b.totalTasks - a.totalTasks);
+  // Sort by reliability (worst first) per Issue #1427
+  return entries.sort((a, b) => a.successRate - b.successRate);
 }
 
 /** Builds failure breakdown from failed outcomes (Issue #1025). */

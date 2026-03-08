@@ -290,6 +290,60 @@ describe('expert performance in weather report (Issue #1324)', () => {
     expect(arch?.role).toBe('architecture');
   });
 
+  it('includes consecutiveFailures from tail of outcome history (#1427)', () => {
+    getOutcomeStore().append(makeOutcome({ model: 'worker-code', success: true, durationMs: 100 }));
+    getOutcomeStore().append(
+      makeOutcome({ model: 'worker-code', success: false, durationMs: 200 })
+    );
+    getOutcomeStore().append(
+      makeOutcome({ model: 'worker-code', success: false, durationMs: 300 })
+    );
+
+    const report = generateWeatherReport({});
+    const code = report.expertPerformance?.find((e) => e.role === 'code');
+    expect(code?.consecutiveFailures).toBe(2);
+  });
+
+  it('flags degraded roles with successRate below 0.5 (#1427)', () => {
+    getOutcomeStore().append(
+      makeOutcome({ model: 'worker-docs', success: false, durationMs: 100 })
+    );
+    getOutcomeStore().append(
+      makeOutcome({ model: 'worker-docs', success: false, durationMs: 200 })
+    );
+    getOutcomeStore().append(makeOutcome({ model: 'worker-docs', success: true, durationMs: 300 }));
+
+    const report = generateWeatherReport({});
+    const docs = report.expertPerformance?.find((e) => e.role === 'docs');
+    expect(docs?.degraded).toBe(true);
+    expect(docs?.successRate).toBeCloseTo(1 / 3, 2);
+  });
+
+  it('sorts by reliability worst-first (#1427)', () => {
+    getOutcomeStore().append(makeOutcome({ model: 'worker-good', success: true, durationMs: 100 }));
+    getOutcomeStore().append(makeOutcome({ model: 'worker-bad', success: false, durationMs: 100 }));
+
+    const report = generateWeatherReport({});
+    const roles = report.expertPerformance?.map((e) => e.role);
+    expect(roles?.[0]).toBe('bad'); // 0% success rate = worst
+    expect(roles?.[1]).toBe('good'); // 100% success rate = best
+  });
+
+  it('includes lastSuccessAt timestamp (#1427)', () => {
+    getOutcomeStore().append(
+      makeOutcome({ model: 'worker-infra', success: true, durationMs: 100 })
+    );
+    getOutcomeStore().append(
+      makeOutcome({ model: 'worker-infra', success: false, durationMs: 200 })
+    );
+
+    const report = generateWeatherReport({});
+    const infra = report.expertPerformance?.find((e) => e.role === 'infra');
+    expect(infra?.lastSuccessAt).toBeDefined();
+    // Should be a valid ISO timestamp
+    expect(new Date(infra!.lastSuccessAt!).getTime()).toBeGreaterThan(0);
+  });
+
   it('includes dominant error pattern for failed experts', () => {
     getOutcomeStore().append(
       makeOutcome({

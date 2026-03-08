@@ -131,13 +131,19 @@ export interface FailureBreakdownEntry {
   readonly percentage: number;
 }
 
-/** Per-expert-role performance stats from worker dispatch outcomes (Issue #1324). */
+/** Per-expert-role performance stats from worker dispatch outcomes (Issue #1324, #1427). */
 export interface ExpertPerformanceEntry {
   readonly role: string;
   readonly totalTasks: number;
   readonly successRate: number;
   readonly avgDurationMs: number;
   readonly dominantErrorPattern?: string;
+  /** Number of consecutive failures at tail of outcome history (Issue #1427). */
+  readonly consecutiveFailures: number;
+  /** ISO timestamp of last successful outcome (Issue #1427). */
+  readonly lastSuccessAt?: string;
+  /** True when successRate < 0.5 — signals operator attention needed (Issue #1427). */
+  readonly degraded: boolean;
 }
 
 /** Agent health summary from heartbeat monitor (Issue #1032). */
