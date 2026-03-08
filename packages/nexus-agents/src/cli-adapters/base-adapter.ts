@@ -42,6 +42,14 @@ import { CapacityTracker, createCapacityTracker } from './capacity-tracker.js';
 const execAsync = promisify(exec);
 
 /**
+ * Fallback capacity (in tokens) when capacity tracker is uninitialized.
+ * Uses a realistic 100k token budget instead of MAX_SAFE_INTEGER to prevent
+ * downstream consumers from treating the adapter as having unlimited capacity.
+ * Issue #1463.
+ */
+export const DEFAULT_CAPACITY_FALLBACK = 100_000;
+
+/**
  * Default execution options.
  *
  * Timeout reduced from 120s to 60s per Issue #280 to prevent
@@ -266,10 +274,13 @@ export abstract class BaseCliAdapter implements ICliAdapter {
    */
   getCapacity(): Promise<CapacityStatus> {
     if (this.capacityTracker === null) {
-      // Fallback for uninitialized tracker
+      this.logger.warn('Capacity tracker uninitialized, returning default fallback', {
+        cli: this.name,
+        fallbackTokens: DEFAULT_CAPACITY_FALLBACK,
+      });
       return Promise.resolve({
-        remainingTokens: Number.MAX_SAFE_INTEGER,
-        remainingRequests: Number.MAX_SAFE_INTEGER,
+        remainingTokens: DEFAULT_CAPACITY_FALLBACK,
+        remainingRequests: DEFAULT_CAPACITY_FALLBACK,
         resetTime: new Date(getTimeProvider().now() + 3600_000),
         utilizationPercent: 0,
         exhausted: false,

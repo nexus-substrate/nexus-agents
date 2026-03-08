@@ -126,8 +126,8 @@ export class MockCliAdapter implements ICliAdapter {
    */
   getCapacity(): Promise<CapacityStatus> {
     return Promise.resolve({
-      remainingTokens: Number.MAX_SAFE_INTEGER,
-      remainingRequests: Number.MAX_SAFE_INTEGER,
+      remainingTokens: 100_000,
+      remainingRequests: 100_000,
       resetTime: new Date(getTimeProvider().now() + 3600_000),
       utilizationPercent: 0,
       exhausted: false,

@@ -305,7 +305,7 @@ describe('CodexMcpAdapter', () => {
     it('should return capacity status', async () => {
       const capacity = await adapter.getCapacity();
 
-      expect(capacity.remainingTokens).toBe(Number.MAX_SAFE_INTEGER);
+      expect(capacity.remainingTokens).toBe(100_000);
       expect(capacity.exhausted).toBe(false);
       expect(capacity.utilizationPercent).toBe(0);
     });

@@ -271,8 +271,8 @@ describe('BaseCliAdapter', () => {
     it('should return full capacity by default', async () => {
       const capacity = await adapter.getCapacity();
 
-      expect(capacity.remainingTokens).toBe(Number.MAX_SAFE_INTEGER);
-      expect(capacity.remainingRequests).toBe(Number.MAX_SAFE_INTEGER);
+      expect(capacity.remainingTokens).toBe(100_000);
+      expect(capacity.remainingRequests).toBe(100_000);
       expect(capacity.utilizationPercent).toBe(0);
       expect(capacity.exhausted).toBe(false);
     });
