@@ -85,6 +85,9 @@ export interface ICliDetectionCache {
 
   /** Get cache statistics */
   getStats(): CacheStats;
+
+  /** Get effective TTL for a CLI (accounts for adaptive adjustments) */
+  getEffectiveTtl(cli: CliName): number;
 }
 
 /**

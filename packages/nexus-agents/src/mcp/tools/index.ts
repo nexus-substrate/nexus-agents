@@ -432,6 +432,7 @@ export function registerTools(
 
 // Tool result types and helpers — canonical source: ./tool-result.ts
 export {
+  type BaseMcpToolDeps,
   type TextContent,
   type ToolResult,
   toolSuccess,

@@ -63,6 +63,7 @@ export {
   toolError,
   type ToolRegistrationOptions,
   type ToolRegistrationResult,
+  type BaseMcpToolDeps,
   type TextContent,
   type ToolResult,
   // create_expert tool
