@@ -73,7 +73,7 @@ export const TASK_SPECIALIZATION_MATRIX: readonly TaskSpecialization[] = [
     primaryCli: 'claude',
     secondaryCli: 'codex',
     reasoning:
-      'Claude primary (n=156, improving trend); code-level security analysis, not scanning/tooling',
+      'Claude primary (n=178, improving trend); Codex secondary (60%, n=5). Bonus aligned to 10 per empirical data (#1443)',
     keywords: [
       'security review',
       'security analysis',
@@ -90,7 +90,7 @@ export const TASK_SPECIALIZATION_MATRIX: readonly TaskSpecialization[] = [
       'security',
       'vulnerability',
     ],
-    bonus: 7,
+    bonus: 10,
   },
   {
     category: 'planning',
