@@ -92,15 +92,24 @@ interface GhApiUserJson {
  * Caches the result to avoid repeated subprocess calls.
  */
 let cachedGhToken: string | undefined | null = null;
+let ghTokenPromise: Promise<string | undefined> | undefined;
 
 /** Reset the cached token (for testing). */
 export function resetGhTokenCache(): void {
   cachedGhToken = null;
+  ghTokenPromise = undefined;
 }
 
 async function resolveGhToken(): Promise<string | undefined> {
   if (cachedGhToken !== null) return cachedGhToken;
 
+  ghTokenPromise ??= resolveGhTokenImpl().finally(() => {
+    ghTokenPromise = undefined;
+  });
+  return ghTokenPromise;
+}
+
+async function resolveGhTokenImpl(): Promise<string | undefined> {
   const envToken = process.env['GITHUB_TOKEN'] ?? process.env['GH_TOKEN'];
   if (envToken !== undefined && envToken.length > 0) {
     cachedGhToken = envToken;

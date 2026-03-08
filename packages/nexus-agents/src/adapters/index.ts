@@ -59,6 +59,7 @@ export {
   BaseAdapter,
   AdapterModelError,
   type BaseAdapterConfig,
+  isApiKeyMissing,
   requireApiKey,
   validateApiKeyPresence,
 } from './base-adapter.js';

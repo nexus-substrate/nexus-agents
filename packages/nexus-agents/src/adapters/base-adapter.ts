@@ -75,7 +75,7 @@ export class AdapterModelError extends ModelError {
 /**
  * Returns true if the given API key is missing or blank.
  */
-function isApiKeyMissing(apiKey: string | undefined): boolean {
+export function isApiKeyMissing(apiKey: string | undefined): boolean {
   return apiKey === undefined || apiKey === '' || apiKey.trim() === '';
 }
 

@@ -6,7 +6,7 @@
  * (Source: Issue #1136 — Centralized SCM Provider Module)
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { GitHubProvider } from './github-provider.js';
 import {
   GitHubReviewer,
@@ -232,6 +232,45 @@ describe('GitHubUserInfo', () => {
     const result = await userInfo.fetchUserMetadata('nonexistent');
 
     expect(result.ok).toBe(false);
+  });
+});
+
+describe('resolveGhToken inflight coalescing', () => {
+  beforeEach(() => {
+    mockExecFile.mockReset();
+    resetGhTokenCache();
+    delete process.env['GITHUB_TOKEN'];
+    delete process.env['GH_TOKEN'];
+  });
+
+  afterEach(() => {
+    // Restore GH_TOKEN for other test suites
+    process.env['GH_TOKEN'] = 'test-token';
+  });
+
+  it('coalesces concurrent calls into a single gh auth token invocation', async () => {
+    let callCount = 0;
+    mockExecFile.mockImplementation(function (...args: unknown[]): Promise<{ stdout: string }> {
+      const cmdArgs = args[1] as string[];
+      if (cmdArgs[0] === 'auth' && cmdArgs[1] === 'token') {
+        callCount++;
+        return Promise.resolve({ stdout: 'test-resolved-token\n' });
+      }
+      // For execGhApi calls (api endpoint)
+      return Promise.resolve({ stdout: '{}' });
+    });
+
+    const provider = createFullGitHubProvider('owner/repo');
+
+    // Fire 3 concurrent calls that all trigger resolveGhToken
+    await Promise.all([
+      provider.getIssueDetail(1),
+      provider.getIssueDetail(2),
+      provider.getIssueDetail(3),
+    ]);
+
+    // gh auth token should have been called exactly once
+    expect(callCount).toBe(1);
   });
 });
 

@@ -11,6 +11,7 @@ import type { Result } from '../core/result.js';
 import { getTimeProvider } from '../core/index.js';
 import { ClaudeAdapter } from '../adapters/claude-adapter.js';
 import type { ClaudeAdapterConfig } from '../adapters/claude-adapter-types.js';
+import { isApiKeyMissing } from '../adapters/base-adapter.js';
 import type { IAgentExecutor, AgentContext, AgentExecutionResult } from './agent-runner.js';
 import { AgentRunnerError } from './agent-runner.js';
 import { getCliModelName, getDefaultModelForCli } from '../config/model-config-helpers.js';
@@ -145,7 +146,7 @@ export function createNexusExecutorFromEnv(
 ): Result<NexusAgentExecutor, AgentRunnerError> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
 
-  if (apiKey === undefined || apiKey.trim() === '') {
+  if (isApiKeyMissing(apiKey)) {
     return {
       ok: false,
       error: new AgentRunnerError(
