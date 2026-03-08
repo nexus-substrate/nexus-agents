@@ -34,8 +34,10 @@ export interface CliHealthResult {
  * Configuration for the CLI detection cache.
  */
 export interface CliDetectionCacheConfig {
-  /** Time-to-live in milliseconds (default: 5 minutes) */
+  /** Base time-to-live in milliseconds (default: 5 minutes) */
   readonly ttlMs: number;
+  /** Enable adaptive TTL based on health history (default: true) */
+  readonly adaptiveTtl?: boolean | undefined;
   /** Logger instance */
   readonly logger?: ILogger | undefined;
 }
@@ -52,7 +54,14 @@ export const CliDetectionCacheConfigSchema = z.object({
  */
 export const DEFAULT_CACHE_CONFIG: CliDetectionCacheConfig = {
   ttlMs: 300_000, // 5 minutes
+  adaptiveTtl: true,
 };
+
+/** Adaptive TTL multipliers. Healthy CLIs are polled less often; unhealthy more often. */
+const ADAPTIVE_MULTIPLIER_HEALTHY = 2.0;
+const ADAPTIVE_MULTIPLIER_UNHEALTHY = 0.25;
+/** Number of consecutive same-status results before the multiplier kicks in. */
+const ADAPTIVE_STREAK_THRESHOLD = 2;
 
 /**
  * Interface for CLI detection cache.
@@ -102,6 +111,8 @@ export class CliDetectionCache implements ICliDetectionCache {
   private readonly config: CliDetectionCacheConfig;
   private readonly logger: ILogger;
   private readonly cache: Map<CliName, CliHealthResult> = new Map();
+  /** Consecutive same-health-status count per CLI (for adaptive TTL). */
+  private readonly streaks: Map<CliName, { healthy: boolean; count: number }> = new Map();
   private hits = 0;
   private misses = 0;
   private lastReset: Date = new Date(getTimeProvider().now());
@@ -110,7 +121,11 @@ export class CliDetectionCache implements ICliDetectionCache {
     const validated = CliDetectionCacheConfigSchema.parse({
       ttlMs: config?.ttlMs ?? DEFAULT_CACHE_CONFIG.ttlMs,
     });
-    this.config = { ...validated, logger: config?.logger };
+    this.config = {
+      ...validated,
+      adaptiveTtl: config?.adaptiveTtl ?? DEFAULT_CACHE_CONFIG.adaptiveTtl,
+      logger: config?.logger,
+    };
     this.logger = config?.logger ?? createLogger({ component: 'CliDetectionCache' });
 
     this.logger.debug('CliDetectionCache initialized', { ttlMs: this.config.ttlMs });
@@ -138,6 +153,7 @@ export class CliDetectionCache implements ICliDetectionCache {
 
   set(cli: CliName, result: CliHealthResult): void {
     this.cache.set(cli, result);
+    this.updateStreak(cli, result.healthy);
     this.logger.debug('Cache updated', {
       cli,
       healthy: result.healthy,
@@ -150,15 +166,37 @@ export class CliDetectionCache implements ICliDetectionCache {
     if (result === undefined) return true;
 
     const age = getTimeProvider().now() - result.checkedAt.getTime();
-    return age > this.config.ttlMs;
+    return age > this.getEffectiveTtl(cli);
+  }
+
+  /** Returns the effective TTL for a CLI, applying adaptive multiplier if enabled. */
+  getEffectiveTtl(cli: CliName): number {
+    if (this.config.adaptiveTtl === false) return this.config.ttlMs;
+    const streak = this.streaks.get(cli);
+    if (streak === undefined || streak.count < ADAPTIVE_STREAK_THRESHOLD) {
+      return this.config.ttlMs;
+    }
+    const multiplier = streak.healthy ? ADAPTIVE_MULTIPLIER_HEALTHY : ADAPTIVE_MULTIPLIER_UNHEALTHY;
+    return this.config.ttlMs * multiplier;
+  }
+
+  private updateStreak(cli: CliName, healthy: boolean): void {
+    const prev = this.streaks.get(cli);
+    if (prev?.healthy === healthy) {
+      this.streaks.set(cli, { healthy, count: prev.count + 1 });
+    } else {
+      this.streaks.set(cli, { healthy, count: 1 });
+    }
   }
 
   invalidate(cli?: CliName): void {
     if (cli !== undefined) {
       this.cache.delete(cli);
+      this.streaks.delete(cli);
       this.logger.info('Cache invalidated', { cli });
     } else {
       this.cache.clear();
+      this.streaks.clear();
       this.logger.info('Cache cleared');
     }
   }

@@ -248,6 +248,108 @@ describe('CliDetectionCache', () => {
     });
   });
 
+  describe('adaptive TTL (#1426)', () => {
+    it('should extend TTL after consecutive healthy results', () => {
+      // 2 consecutive healthy results → 2x TTL (120s instead of 60s)
+      const healthy: CliHealthResult = {
+        healthy: true,
+        version: '2.0.5',
+        versionStatus: 'supported',
+        checkedAt: new Date(),
+      };
+      cache.set('claude', healthy);
+      cache.set('claude', { ...healthy, checkedAt: new Date() });
+
+      // At 90s (past base 60s TTL, within adaptive 120s TTL)
+      vi.advanceTimersByTime(90_000);
+      expect(cache.isStale('claude')).toBe(false);
+
+      // At 121s (past adaptive TTL)
+      vi.advanceTimersByTime(31_000);
+      expect(cache.isStale('claude')).toBe(true);
+    });
+
+    it('should shorten TTL after consecutive unhealthy results', () => {
+      // 2 consecutive unhealthy results → 0.25x TTL (15s instead of 60s)
+      const unhealthy: CliHealthResult = {
+        healthy: false,
+        version: '',
+        versionStatus: 'unsupported',
+        checkedAt: new Date(),
+      };
+      cache.set('claude', unhealthy);
+      cache.set('claude', { ...unhealthy, checkedAt: new Date() });
+
+      // At 16s (past adaptive 15s TTL)
+      vi.advanceTimersByTime(16_000);
+      expect(cache.isStale('claude')).toBe(true);
+    });
+
+    it('should reset streak when health status changes', () => {
+      const healthy: CliHealthResult = {
+        healthy: true,
+        version: '2.0.5',
+        versionStatus: 'supported',
+        checkedAt: new Date(),
+      };
+      const unhealthy: CliHealthResult = {
+        healthy: false,
+        version: '',
+        versionStatus: 'unsupported',
+        checkedAt: new Date(),
+      };
+      // Build healthy streak
+      cache.set('claude', healthy);
+      cache.set('claude', healthy);
+      // Break streak with unhealthy
+      cache.set('claude', { ...unhealthy, checkedAt: new Date() });
+
+      // Should be back to base TTL (streak count = 1, below threshold)
+      expect(cache.getEffectiveTtl('claude')).toBe(60_000);
+    });
+
+    it('should use base TTL when adaptiveTtl is disabled', () => {
+      const staticCache = new CliDetectionCache({ ttlMs: 60_000, adaptiveTtl: false });
+      const healthy: CliHealthResult = {
+        healthy: true,
+        version: '2.0.5',
+        versionStatus: 'supported',
+        checkedAt: new Date(),
+      };
+      staticCache.set('claude', healthy);
+      staticCache.set('claude', healthy);
+
+      expect(staticCache.getEffectiveTtl('claude')).toBe(60_000);
+    });
+
+    it('should use base TTL before streak threshold is reached', () => {
+      const healthy: CliHealthResult = {
+        healthy: true,
+        version: '2.0.5',
+        versionStatus: 'supported',
+        checkedAt: new Date(),
+      };
+      cache.set('claude', healthy); // streak = 1 (below threshold of 2)
+
+      expect(cache.getEffectiveTtl('claude')).toBe(60_000);
+    });
+
+    it('should clear streaks on invalidate', () => {
+      const healthy: CliHealthResult = {
+        healthy: true,
+        version: '2.0.5',
+        versionStatus: 'supported',
+        checkedAt: new Date(),
+      };
+      cache.set('claude', healthy);
+      cache.set('claude', healthy);
+      cache.invalidate('claude');
+
+      // After invalidation, no streak data
+      expect(cache.getEffectiveTtl('claude')).toBe(60_000);
+    });
+  });
+
   describe('fromHealthStatus', () => {
     it('should convert HealthStatus to CliHealthResult', () => {
       const healthStatus: HealthStatus = {
