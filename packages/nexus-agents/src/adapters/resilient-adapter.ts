@@ -202,15 +202,10 @@ export class ResilientAdapter implements IResilientAdapter {
       return this.currentAdapter;
     }
     // Coalesce concurrent detection calls into a single probe (Issue #1423)
-    if (this.detectionPromise !== undefined) {
-      return this.detectionPromise;
-    }
-    this.detectionPromise = this.detectAdapter();
-    try {
-      return await this.detectionPromise;
-    } finally {
+    this.detectionPromise ??= this.detectAdapter().finally(() => {
       this.detectionPromise = undefined;
-    }
+    });
+    return this.detectionPromise;
   }
 
   private async detectAdapter(): Promise<IModelAdapter | undefined> {

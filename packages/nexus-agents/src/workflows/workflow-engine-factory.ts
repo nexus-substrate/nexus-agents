@@ -76,6 +76,9 @@ export interface WorkflowEngineFactoryConfig extends WorkflowEngineConfig {
  */
 let cachedBuiltInTemplates: Map<string, WorkflowDefinition> | null = null;
 
+/** Inflight template-loading promise for coalescing concurrent calls. */
+let templateLoadPromise: Promise<Map<string, WorkflowDefinition>> | undefined;
+
 /**
  * Creates a simple step executor that returns mock results.
  * This is a placeholder - in production, this would use the StepExecutor
@@ -532,7 +535,11 @@ export function createWorkflowEngineDeps(config?: WorkflowEngineFactoryConfig): 
  * @returns Promise that resolves when templates are loaded
  */
 export async function initializeBuiltInTemplates(): Promise<Map<string, WorkflowDefinition>> {
-  cachedBuiltInTemplates ??= await getBuiltInTemplates();
+  if (cachedBuiltInTemplates !== null) return cachedBuiltInTemplates;
+  templateLoadPromise ??= getBuiltInTemplates().finally(() => {
+    templateLoadPromise = undefined;
+  });
+  cachedBuiltInTemplates = await templateLoadPromise;
   return cachedBuiltInTemplates;
 }
 
@@ -542,6 +549,7 @@ export async function initializeBuiltInTemplates(): Promise<Map<string, Workflow
  */
 export function clearTemplateCache(): void {
   cachedBuiltInTemplates = null;
+  templateLoadPromise = undefined;
 }
 
 /**
