@@ -20,6 +20,7 @@ import { createSecureHandler, type HandlerContext } from '../middleware/secure-h
 import { WeatherReportInputSchema } from './weather-report-types.js';
 import type { WeatherReportResponse, CliWeather, AdaptiveBonus } from './weather-report-types.js';
 import { generateWeatherReport } from './weather-report.js';
+import { toolError, toolSuccessStructured, type ToolResult } from './tool-result.js';
 
 // ============================================================================
 // Dependencies
@@ -62,19 +63,10 @@ function serializeBonus(b: AdaptiveBonus): unknown {
 // Handler
 // ============================================================================
 
-type ToolResponse = {
-  content: Array<{ type: 'text'; text: string }>;
-  isError?: boolean;
-  structuredContent?: Record<string, unknown>;
-};
-
-function weatherReportHandler(args: unknown, ctx: HandlerContext): Promise<ToolResponse> {
+function weatherReportHandler(args: unknown, ctx: HandlerContext): Promise<ToolResult> {
   const parsed = WeatherReportInputSchema.safeParse(args);
   if (!parsed.success) {
-    return Promise.resolve({
-      isError: true,
-      content: [{ type: 'text', text: `Validation error: ${formatZodError(parsed.error)}` }],
-    });
+    return Promise.resolve(toolError(`Validation error: ${formatZodError(parsed.error)}`));
   }
 
   try {
@@ -87,10 +79,7 @@ function weatherReportHandler(args: unknown, ctx: HandlerContext): Promise<ToolR
     const report = generateWeatherReport(opts);
     const serialized = serializeReport(report);
     const data = serialized as Record<string, unknown>;
-    return Promise.resolve({
-      content: [{ type: 'text', text: JSON.stringify(serialized, null, 2) }],
-      structuredContent: data,
-    });
+    return Promise.resolve(toolSuccessStructured(data));
   } catch (caught) {
     return Promise.resolve(toolErrorResponse('Weather report failed', caught, ctx.logger));
   }

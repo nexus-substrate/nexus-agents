@@ -26,6 +26,7 @@ import {
   categorizeOutcomeErrorMessage,
 } from '../../orchestration/outcomes/index.js';
 import { DEFAULT_CLI } from '../../config/model-capabilities-types.js';
+import { toolError, toolSuccess, type ToolResult } from './tool-result.js';
 
 // ============================================================================
 // Types & Schema
@@ -48,23 +49,15 @@ export interface ExecuteSpecDeps {
 // Handler
 // ============================================================================
 
-type ToolResponse = { content: Array<{ type: 'text'; text: string }>; isError?: boolean };
-
-function createDryRunResponse(input: ExecuteSpecInput, logger: ILogger): ToolResponse {
+function createDryRunResponse(input: ExecuteSpecInput, logger: ILogger): ToolResult {
   const parseResult = parseSpec(input.spec);
   if (!parseResult.ok) {
-    return {
-      isError: true,
-      content: [{ type: 'text', text: `Parse error: ${parseResult.error.message}` }],
-    };
+    return toolError(`Parse error: ${parseResult.error.message}`);
   }
 
   const dagResult = decomposeSpec(parseResult.value);
   if (!dagResult.ok) {
-    return {
-      isError: true,
-      content: [{ type: 'text', text: `Decompose error: ${dagResult.error.message}` }],
-    };
+    return toolError(`Decompose error: ${dagResult.error.message}`);
   }
 
   logger.info('Dry run completed', {
@@ -72,22 +65,17 @@ function createDryRunResponse(input: ExecuteSpecInput, logger: ILogger): ToolRes
     nodes: dagResult.value.nodes.length,
   });
   const output = { mode: 'dry_run', spec: parseResult.value, dag: dagResult.value };
-  return { content: [{ type: 'text', text: JSON.stringify(output, null, 2) }] };
+  return toolSuccess(JSON.stringify(output, null, 2));
 }
 
-async function createFullResponse(input: ExecuteSpecInput, logger: ILogger): Promise<ToolResponse> {
+async function createFullResponse(input: ExecuteSpecInput, logger: ILogger): Promise<ToolResult> {
   const startMs = Date.now();
   const result = await executeSpec(input.spec);
   const durationMs = Date.now() - startMs;
 
   if (!result.ok) {
     recordSpecOutcome(false, durationMs, result.error.stage);
-    return {
-      isError: true,
-      content: [
-        { type: 'text', text: `Execution error (${result.error.stage}): ${result.error.message}` },
-      ],
-    };
+    return toolError(`Execution error (${result.error.stage}): ${result.error.message}`);
   }
 
   const analysis = analyzeFailures(result.value);
@@ -105,7 +93,7 @@ async function createFullResponse(input: ExecuteSpecInput, logger: ILogger): Pro
     execution: result.value,
     analysis: analysis.ok ? analysis.value : null,
   };
-  return { content: [{ type: 'text', text: JSON.stringify(output, null, 2) }] };
+  return toolSuccess(JSON.stringify(output, null, 2));
 }
 
 // ============================================================================
@@ -116,13 +104,10 @@ async function createFullResponse(input: ExecuteSpecInput, logger: ILogger): Pro
 export function registerExecuteSpecTool(server: McpServer, deps: ExecuteSpecDeps): void {
   const logger = deps.logger ?? createLogger({ tool: 'execute_spec' });
 
-  const handler = async (args: unknown, _ctx: HandlerContext): Promise<ToolResponse> => {
+  const handler = async (args: unknown, _ctx: HandlerContext): Promise<ToolResult> => {
     const parsed = ExecuteSpecInputSchema.safeParse(args);
     if (!parsed.success) {
-      return {
-        isError: true,
-        content: [{ type: 'text', text: `Invalid input: ${formatZodError(parsed.error)}` }],
-      };
+      return toolError(`Invalid input: ${formatZodError(parsed.error)}`);
     }
 
     if (parsed.data.dryRun) {

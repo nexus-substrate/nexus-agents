@@ -11,12 +11,10 @@
 
 import type { ILogger } from '../../core/index.js';
 import { getErrorMessage } from '../../core/index.js';
+import type { ToolResult } from '../tools/tool-result.js';
 
 /** Standard MCP tool response shape. */
-interface ToolResponse {
-  content: Array<{ type: 'text'; text: string }>;
-  isError?: boolean;
-}
+type ToolResponse = ToolResult;
 
 /**
  * Creates a standardized MCP error response.

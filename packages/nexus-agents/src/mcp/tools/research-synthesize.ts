@@ -20,6 +20,7 @@ import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middlewar
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { synthesizeResearch } from '../../cli/research-helpers-synthesize.js';
 import type { SynthesisResult } from '../../cli/research-helpers-synthesize.js';
+import { toolError, toolSuccess, type ToolResult } from './tool-result.js';
 
 // =============================================================================
 // SCHEMAS
@@ -57,34 +58,22 @@ export type ResearchSynthesizeResponse = SynthesisResult;
 // HANDLER
 // =============================================================================
 
-type ToolResponse = { content: Array<{ type: 'text'; text: string }>; isError?: boolean };
-
 function createResearchSynthesizeHandler(
   deps: ResearchSynthesizeDeps
-): (args: unknown, ctx: HandlerContext) => Promise<ToolResponse> {
-  return async (args: unknown, _ctx: HandlerContext): Promise<ToolResponse> => {
+): (args: unknown, ctx: HandlerContext) => Promise<ToolResult> {
+  return async (args: unknown, _ctx: HandlerContext): Promise<ToolResult> => {
     const validationResult = ResearchSynthesizeInputSchema.safeParse(args);
     if (!validationResult.success) {
-      return {
-        isError: true,
-        content: [
-          { type: 'text', text: `Validation error: ${formatZodError(validationResult.error)}` },
-        ],
-      };
+      return toolError(`Validation error: ${formatZodError(validationResult.error)}`);
     }
 
     const logger = deps.logger ?? createLogger({ tool: 'research_synthesize' });
     return withToolError('Synthesis failed', logger, async () => {
       const result = await synthesizeResearch(validationResult.data.topic);
       if (!result.ok) {
-        return {
-          isError: true,
-          content: [{ type: 'text', text: `Synthesis failed: ${result.error.message}` }],
-        };
+        return toolError(`Synthesis failed: ${result.error.message}`);
       }
-      return {
-        content: [{ type: 'text', text: JSON.stringify(result.value, null, 2) }],
-      };
+      return toolSuccess(JSON.stringify(result.value, null, 2));
     });
   };
 }

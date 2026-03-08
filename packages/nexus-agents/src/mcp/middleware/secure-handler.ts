@@ -24,14 +24,9 @@ import type { RateLimiter } from './rate-limiter.js';
 import type { IAuditLogger } from '../../audit/audit-types.js';
 import { actorFromContext, resultToOutcome } from '../../audit/secure-handler-audit.js';
 import { sanitizeToolInput, logSanitizationResult } from './tool-input-sanitizer.js';
+import type { ToolResult } from '../tools/tool-result.js';
 
-/**
- * MCP tool result type.
- */
-export interface ToolResult {
-  content: Array<{ type: 'text'; text: string }>;
-  isError?: boolean;
-}
+export type { ToolResult };
 
 /**
  * Tool handler function signature.

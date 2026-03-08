@@ -18,6 +18,7 @@ import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
+import { toolError, toolSuccess, type ToolResult } from './tool-result.js';
 
 // ============================================================================
 // Input Schema
@@ -137,36 +138,18 @@ export async function queryTraceFromDisk(
 // Handler
 // ============================================================================
 
-type ToolResponse = {
-  content: Array<{ type: 'text'; text: string }>;
-  isError?: boolean;
-};
-
-function queryTraceHandler(args: unknown, ctx: HandlerContext): Promise<ToolResponse> {
+function queryTraceHandler(args: unknown, ctx: HandlerContext): Promise<ToolResult> {
   const parsed = QueryTraceInputSchema.safeParse(args);
   if (!parsed.success) {
-    return Promise.resolve({
-      isError: true,
-      content: [
-        {
-          type: 'text',
-          text: `Validation error: ${formatZodError(parsed.error)}`,
-        },
-      ],
-    });
+    return Promise.resolve(toolError(`Validation error: ${formatZodError(parsed.error)}`));
   }
 
   return queryTraceFromDisk(parsed.data)
-    .then((result) => ({
-      content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-    }))
+    .then((result) => toolSuccess(JSON.stringify(result, null, 2)))
     .catch((caught: unknown) => {
       const e = caught instanceof Error ? caught : new Error(String(caught));
       ctx.logger.error('Trace query failed', e);
-      return {
-        isError: true,
-        content: [{ type: 'text' as const, text: `Trace query failed: ${e.message}` }],
-      };
+      return toolError(`Trace query failed: ${e.message}`);
     });
 }
 

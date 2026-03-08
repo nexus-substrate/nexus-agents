@@ -20,6 +20,7 @@ import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middlewar
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { RepoAnalyzeInputSchema } from './repo-analyze-types.js';
 import { analyzeGitHubRepo } from './repo-analyze.js';
+import { toolError, toolSuccess, type ToolResult } from './tool-result.js';
 
 // ============================================================================
 // Dependencies
@@ -35,30 +36,15 @@ export interface RepoAnalyzeDeps {
 // Handler
 // ============================================================================
 
-type ToolResponse = {
-  content: Array<{ type: 'text'; text: string }>;
-  isError?: boolean;
-};
-
-async function repoAnalyzeHandler(args: unknown, ctx: HandlerContext): Promise<ToolResponse> {
+async function repoAnalyzeHandler(args: unknown, ctx: HandlerContext): Promise<ToolResult> {
   const parsed = RepoAnalyzeInputSchema.safeParse(args);
   if (!parsed.success) {
-    return {
-      isError: true,
-      content: [
-        {
-          type: 'text',
-          text: `Validation error: ${formatZodError(parsed.error)}`,
-        },
-      ],
-    };
+    return toolError(`Validation error: ${formatZodError(parsed.error)}`);
   }
 
   try {
     const result = await analyzeGitHubRepo(parsed.data);
-    return {
-      content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-    };
+    return toolSuccess(JSON.stringify(result, null, 2));
   } catch (caught) {
     return toolErrorResponse('Repository analysis failed', caught, ctx.logger);
   }

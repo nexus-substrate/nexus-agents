@@ -430,78 +430,11 @@ export function registerTools(
   };
 }
 
-/**
- * MCP tool content types.
- */
-export interface TextContent {
-  readonly type: 'text';
-  readonly text: string;
-}
-
-/**
- * MCP tool result.
- */
-export interface ToolResult {
-  readonly content: readonly TextContent[];
-  readonly isError?: boolean;
-  /** Structured output for SDK outputSchema validation (Issue #1117) */
-  readonly structuredContent?: Record<string, unknown>;
-}
-
-/**
- * Creates a successful tool result.
- *
- * @param text - The result text
- * @returns A ToolResult with the text content
- *
- * @example
- * ```typescript
- * return toolSuccess(JSON.stringify({ status: 'ok', data: result }));
- * ```
- */
-export function toolSuccess(text: string): ToolResult {
-  return {
-    content: [{ type: 'text', text }],
-  };
-}
-
-/**
- * Creates a successful tool result with structured content for outputSchema validation.
- *
- * When a tool is registered with outputSchema, the SDK validates structuredContent
- * against the schema. This helper returns both text (for display) and structured data.
- *
- * @param data - The structured result data (must match the tool's outputSchema)
- * @returns A ToolResult with both text content and structuredContent
- *
- * @example
- * ```typescript
- * return toolSuccessStructured({ experts: [...], count: 10 });
- * ```
- */
-export function toolSuccessStructured(data: Record<string, unknown>): ToolResult {
-  return {
-    content: [{ type: 'text', text: JSON.stringify(data, null, 2) }],
-    structuredContent: data,
-  };
-}
-
-/**
- * Creates an error tool result.
- *
- * @param message - The error message
- * @returns A ToolResult with isError set to true
- *
- * @example
- * ```typescript
- * if (!input.ok) {
- *   return toolError(`Validation failed: ${input.error}`);
- * }
- * ```
- */
-export function toolError(message: string): ToolResult {
-  return {
-    isError: true,
-    content: [{ type: 'text', text: message }],
-  };
-}
+// Tool result types and helpers — canonical source: ./tool-result.ts
+export {
+  type TextContent,
+  type ToolResult,
+  toolSuccess,
+  toolSuccessStructured,
+  toolError,
+} from './tool-result.js';

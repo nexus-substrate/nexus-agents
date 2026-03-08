@@ -19,6 +19,7 @@ import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middlewar
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { RepoSecurityPlanInputSchema } from './repo-security-plan-types.js';
 import { generateSecurityPlan } from './repo-security-plan.js';
+import { toolError, toolSuccess, type ToolResult } from './tool-result.js';
 
 // ============================================================================
 // Dependencies
@@ -34,25 +35,15 @@ export interface RepoSecurityPlanDeps {
 // Handler
 // ============================================================================
 
-type ToolResponse = {
-  content: Array<{ type: 'text'; text: string }>;
-  isError?: boolean;
-};
-
-async function handler(args: unknown, ctx: HandlerContext): Promise<ToolResponse> {
+async function handler(args: unknown, ctx: HandlerContext): Promise<ToolResult> {
   const parsed = RepoSecurityPlanInputSchema.safeParse(args);
   if (!parsed.success) {
-    return {
-      isError: true,
-      content: [{ type: 'text', text: `Validation error: ${formatZodError(parsed.error)}` }],
-    };
+    return toolError(`Validation error: ${formatZodError(parsed.error)}`);
   }
 
   try {
     const plan = await generateSecurityPlan(parsed.data);
-    return {
-      content: [{ type: 'text', text: JSON.stringify(plan, null, 2) }],
-    };
+    return toolSuccess(JSON.stringify(plan, null, 2));
   } catch (caught) {
     return toolErrorResponse('Security plan generation failed', caught, ctx.logger);
   }

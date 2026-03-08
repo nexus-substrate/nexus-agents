@@ -20,6 +20,7 @@ import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middlewar
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { RegistryImportInputSchema } from './registry-import-types.js';
 import { generateRegistryEntry } from './registry-import.js';
+import { toolError, toolSuccess, type ToolResult } from './tool-result.js';
 
 // ============================================================================
 // Dependencies
@@ -35,25 +36,15 @@ export interface RegistryImportDeps {
 // Handler
 // ============================================================================
 
-type ToolResponse = {
-  content: Array<{ type: 'text'; text: string }>;
-  isError?: boolean;
-};
-
-function registryImportHandler(args: unknown, ctx: HandlerContext): Promise<ToolResponse> {
+function registryImportHandler(args: unknown, ctx: HandlerContext): Promise<ToolResult> {
   const parsed = RegistryImportInputSchema.safeParse(args);
   if (!parsed.success) {
-    return Promise.resolve({
-      isError: true,
-      content: [{ type: 'text', text: `Validation error: ${formatZodError(parsed.error)}` }],
-    });
+    return Promise.resolve(toolError(`Validation error: ${formatZodError(parsed.error)}`));
   }
 
   try {
     const result = generateRegistryEntry(parsed.data);
-    return Promise.resolve({
-      content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-    });
+    return Promise.resolve(toolSuccess(JSON.stringify(result, null, 2)));
   } catch (caught) {
     return Promise.resolve(toolErrorResponse('Registry import failed', caught, ctx.logger));
   }
