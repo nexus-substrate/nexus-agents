@@ -52,10 +52,10 @@ describe('warm-up', () => {
 
     it('should distinguish primary from secondary reward levels', () => {
       const priors = generateSyntheticPriors();
-      // Claude: 4 primary (0.85) + 6 secondary (0.6) + 0 other (0.35)
-      // Expected: (4*0.85 + 6*0.6) / 10 = 0.70
+      // Claude: 4 primary (0.85) + 5 secondary (0.6) + 1 other (0.35)
+      // Expected: (4*0.85 + 5*0.6 + 1*0.35) / 10 = 0.675
       const claude = priors.get('claude') ?? 0;
-      expect(claude).toBeCloseTo(0.7, 2);
+      expect(claude).toBeCloseTo(0.675, 2);
     });
 
     it('should return consistent results on repeated calls', () => {

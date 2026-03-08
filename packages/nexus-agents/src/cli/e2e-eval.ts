@@ -120,7 +120,7 @@ function getCliRole(cli: CliName, category: TaskCategory): 'primary' | 'secondar
     ['devops', 'gemini'],
     ['research', 'claude'],
     ['documentation', 'claude'],
-    ['exploration', 'claude'],
+    ['exploration', 'codex'],
   ]);
   return cli === secondaryMap.get(category) ? 'secondary' : 'other';
 }

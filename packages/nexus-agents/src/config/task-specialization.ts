@@ -162,9 +162,9 @@ export const TASK_SPECIALIZATION_MATRIX: readonly TaskSpecialization[] = [
   {
     category: 'exploration',
     primaryCli: 'gemini',
-    secondaryCli: 'claude',
+    secondaryCli: 'codex',
     reasoning:
-      'Gemini primary (98.5%, n=202) for exploration with 1M context. Bonus aligned per weather data (#1454)',
+      'Gemini primary (98.5%, n=202) for exploration with 1M context. Claude removed as secondary (63.5% vs 98.5%, n=340) per #1462',
     keywords: ['explore', 'navigate', 'find', 'discover', 'scan codebase'],
     bonus: 15,
   },
