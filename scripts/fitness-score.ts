@@ -10,10 +10,7 @@ import { existsSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { countFiles, countPatternInDir, fileContains } from './fitness-utils.js';
 import type { FitnessComponent, FitnessResult } from './fitness-utils.js';
-
-const ROOT = join(dirname(import.meta.url.replace('file://', '')), '..');
-const SRC_ROOT = join(ROOT, 'packages/nexus-agents/src');
-const DOCS_ROOT = join(ROOT, 'docs');
+import { ROOT, SRC_ROOT, DOCS_ROOT } from './script-paths.js';
 
 const DETERMINISM_EXCLUDES = [
   /\.test\.ts$/,
@@ -71,30 +68,19 @@ function assessCanonicalPaths(): FitnessComponent {
   };
 }
 
+function countDeterminismPattern(pattern: RegExp): number {
+  return countPatternInDir(SRC_ROOT, /\.ts$/, pattern, DETERMINISM_EXCLUDES);
+}
+
 function assessDeterminism(): FitnessComponent {
   const penalties: string[] = [],
     rewards: string[] = [];
   let score = 15;
 
-  const randomCount = countPatternInDir(
-    SRC_ROOT,
-    /\.ts$/,
-    /Math\.random\(\)/g,
-    DETERMINISM_EXCLUDES
-  );
-  const dateNowCount = countPatternInDir(SRC_ROOT, /\.ts$/, /Date\.now\(\)/g, DETERMINISM_EXCLUDES);
-  const timeUsage = countPatternInDir(
-    SRC_ROOT,
-    /\.ts$/,
-    /getTimeProvider\(\)/g,
-    DETERMINISM_EXCLUDES
-  );
-  const randomUsage = countPatternInDir(
-    SRC_ROOT,
-    /\.ts$/,
-    /getRandomProvider\(\)/g,
-    DETERMINISM_EXCLUDES
-  );
+  const randomCount = countDeterminismPattern(/Math\.random\(\)/g);
+  const dateNowCount = countDeterminismPattern(/Date\.now\(\)/g);
+  const timeUsage = countDeterminismPattern(/getTimeProvider\(\)/g);
+  const randomUsage = countDeterminismPattern(/getRandomProvider\(\)/g);
 
   if (randomCount > 10) {
     penalties.push(`${String(randomCount)} unseeded Math.random()`);

@@ -1,0 +1,49 @@
+name: 'Fitness Gate'
+description: 'Run nexus-agents fitness audit and enforce score thresholds'
+
+inputs:
+  threshold:
+    description: 'Minimum score to pass (exit 1 if below)'
+    default: '90'
+  warn-threshold:
+    description: 'Score below which to emit a warning (0 to disable)'
+    default: '0'
+  working-directory:
+    description: 'Package directory containing dist/cli.js'
+    default: 'packages/nexus-agents'
+
+outputs:
+  score:
+    description: 'The fitness audit score'
+    value: ${{ steps.audit.outputs.score }}
+  report-path:
+    description: 'Path to the fitness report JSON'
+    value: ${{ steps.audit.outputs.report-path }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Run fitness audit
+      id: audit
+      shell: bash
+      run: |
+        cd "${{ inputs.working-directory }}"
+        # Run audit and strip logging header line before JSON
+        node dist/cli.js fitness-audit --format=json | tail -n +2 > fitness-report.json
+        SCORE=$(jq '.score' fitness-report.json)
+        echo "score=$SCORE" >> "$GITHUB_OUTPUT"
+        echo "report-path=${{ inputs.working-directory }}/fitness-report.json" >> "$GITHUB_OUTPUT"
+        echo "Fitness Score: $SCORE/100"
+
+        # Fail if below minimum threshold
+        if [ "$SCORE" -lt "${{ inputs.threshold }}" ]; then
+          echo "::error::Fitness score $SCORE is below threshold of ${{ inputs.threshold }}"
+          exit 1
+        fi
+
+        # Warn if below warning threshold (when set > 0)
+        if [ "${{ inputs.warn-threshold }}" -gt 0 ] && [ "$SCORE" -lt "${{ inputs.warn-threshold }}" ]; then
+          echo "::warning::Fitness score $SCORE is below target of ${{ inputs.warn-threshold }}"
+        fi
+
+        echo "::notice::Fitness audit passed with score $SCORE/100"

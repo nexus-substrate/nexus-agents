@@ -15,7 +15,7 @@
 /* eslint-disable no-console */
 
 import { writeFileSync, existsSync } from 'node:fs';
-import { join, dirname, resolve } from 'node:path';
+import { join } from 'node:path';
 import {
   type PaperEntry,
   type TechniqueEntry,
@@ -28,12 +28,7 @@ import {
   validateRegistry,
   computeTopicStats,
 } from './research-index-helpers.js';
-
-// ============================================================================
-// Configuration
-// ============================================================================
-
-const ROOT = resolve(dirname(import.meta.url.replace('file://', '')), '..');
+import { ROOT } from './script-paths.js';
 const REGISTRY_DIR = join(ROOT, 'docs/research/registry');
 const PAPERS_PATH = join(REGISTRY_DIR, 'papers.yaml');
 const TECHNIQUES_PATH = join(REGISTRY_DIR, 'techniques.yaml');

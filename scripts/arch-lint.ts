@@ -16,14 +16,8 @@
  */
 
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
-import { join, relative, dirname } from 'node:path';
-
-// Configuration
-const SRC_ROOT = join(
-  dirname(import.meta.url.replace('file://', '')),
-  '../packages/nexus-agents/src'
-);
-const DOCS_ROOT = join(dirname(import.meta.url.replace('file://', '')), '../docs');
+import { join, relative } from 'node:path';
+import { SRC_ROOT, DOCS_ROOT } from './script-paths.js';
 
 interface Violation {
   readonly file: string;

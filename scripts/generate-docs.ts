@@ -12,12 +12,8 @@
 
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { parse } from 'yaml';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const ROOT = join(__dirname, '..');
+import { join } from 'node:path';
+import { ROOT } from './script-paths.js';
 
 interface TopicEntry {
   summary: string;

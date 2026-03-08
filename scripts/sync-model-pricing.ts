@@ -12,14 +12,10 @@
 /* eslint-disable no-console */
 
 import { readFileSync, writeFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
+import { SRC_ROOT } from './script-paths.js';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const MODEL_CAP_PATH = resolve(
-  __dirname,
-  '../packages/nexus-agents/src/config/model-capabilities.ts'
-);
+const MODEL_CAP_PATH = join(SRC_ROOT, 'config/model-capabilities.ts');
 const MODELS_DEV_URL = 'https://models.dev/api.json';
 
 interface ModelsDevEntry {

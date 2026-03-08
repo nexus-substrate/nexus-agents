@@ -88,33 +88,17 @@ jobs:
 
       - name: Run fitness audit
         id: fitness
-        run: |
-          cd packages/nexus-agents
-          # Run audit and extract JSON (skip log line on first line)
-          node dist/cli.js fitness-audit --format=json | tail -n +2 > fitness-report.json
-          SCORE=$(jq '.score' fitness-report.json)
-          echo "score=$SCORE" >> $GITHUB_OUTPUT
-          echo "Fitness Score: $SCORE/100"
-
-          # Fail if below minimum threshold (70)
-          if [ "$SCORE" -lt 70 ]; then
-            echo "::error::Fitness score $SCORE is below minimum threshold of 70"
-            exit 1
-          fi
-
-          # Warn if below target threshold (90)
-          if [ "$SCORE" -lt 90 ]; then
-            echo "::warning::Fitness score $SCORE is below target threshold of 90"
-          fi
-
-          echo "::notice::Fitness audit passed with score $SCORE/100"
+        uses: ./.github/actions/fitness-gate
+        with:
+          threshold: '70'
+          warn-threshold: '90'
 
       - name: Upload fitness report
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         if: always()
         with:
           name: fitness-report-${{ matrix.os }}
-          path: packages/nexus-agents/fitness-report.json
+          path: ${{ steps.fitness.outputs.report-path }}
 
   index-check:
     name: Index Freshness Check

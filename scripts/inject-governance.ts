@@ -20,10 +20,8 @@
 /* eslint-disable no-console */
 
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
-import { join, dirname, basename } from 'node:path';
-
-// Configuration
-const ROOT = join(dirname(import.meta.url.replace('file://', '')), '..');
+import { join, basename } from 'node:path';
+import { ROOT } from './script-paths.js';
 const CLAUDE_MD_PATH = join(ROOT, 'CLAUDE.md');
 const TOOLS_INDEX = join(ROOT, 'packages/nexus-agents/src/mcp/tools/index.ts');
 const EXPERT_CONFIG = join(ROOT, 'packages/nexus-agents/src/agents/experts/expert-config.ts');
