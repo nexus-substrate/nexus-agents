@@ -130,24 +130,18 @@ export class HindsightBeliefMemory implements IHindsightBeliefMemory {
     skipDedup: boolean
   ): Promise<Result<Belief, MemoryError>> {
     try {
-      const validation = BeliefSchema.omit({
-        beliefId: true,
-        version: true,
-        createdAt: true,
-        updatedAt: true,
-        superseded: true,
-      }).safeParse(belief);
-      if (!validation.success) {
-        return Promise.resolve(
-          err(
-            new MemoryError('Invalid belief data', { context: { errors: validation.error.issues } })
-          )
-        );
-      }
+      const validationError = this.validateBeliefInput(belief);
+      if (validationError !== undefined) return Promise.resolve(err(validationError));
 
       const existingBelief = skipDedup
         ? undefined
         : this.findActiveBySubjectPredicate(belief.subject, belief.predicate);
+
+      // Content-hash dedup: skip write if identical content already exists (#1455)
+      const dedupResult = this.checkDedupMatch(existingBelief, belief);
+      if (dedupResult !== undefined) {
+        return Promise.resolve(ok(dedupResult));
+      }
 
       const version = existingBelief !== undefined ? existingBelief.version + 1 : 1;
       const now = new Date(getTimeProvider().now());
@@ -389,6 +383,53 @@ export class HindsightBeliefMemory implements IHindsightBeliefMemory {
   // =========================================================================
   // Private Helpers
   // =========================================================================
+
+  /** Validate belief input against schema; returns MemoryError if invalid. */
+  private validateBeliefInput(
+    belief: Omit<Belief, 'beliefId' | 'version' | 'createdAt' | 'updatedAt' | 'superseded'>
+  ): MemoryError | undefined {
+    const validation = BeliefSchema.omit({
+      beliefId: true,
+      version: true,
+      createdAt: true,
+      updatedAt: true,
+      superseded: true,
+    }).safeParse(belief);
+    if (!validation.success) {
+      return new MemoryError('Invalid belief data', {
+        context: { errors: validation.error.issues },
+      });
+    }
+    return undefined;
+  }
+
+  /** Return existing belief if content-identical, otherwise undefined (#1455). */
+  private checkDedupMatch(
+    existing: Belief | undefined,
+    incoming: Omit<Belief, 'beliefId' | 'version' | 'createdAt' | 'updatedAt' | 'superseded'>
+  ): Belief | undefined {
+    if (existing === undefined || !this.isIdenticalBelief(existing, incoming)) {
+      return undefined;
+    }
+    this.logger.debug('Skipping duplicate belief retain', {
+      beliefId: existing.beliefId,
+      subject: incoming.subject,
+      predicate: incoming.predicate,
+    });
+    return existing;
+  }
+
+  /** Check if an existing belief has identical content to a new belief (#1455). */
+  private isIdenticalBelief(
+    existing: Belief,
+    incoming: Omit<Belief, 'beliefId' | 'version' | 'createdAt' | 'updatedAt' | 'superseded'>
+  ): boolean {
+    return (
+      existing.object === incoming.object &&
+      existing.confidence === incoming.confidence &&
+      existing.sourceType === incoming.sourceType
+    );
+  }
 
   /** Find a non-superseded belief matching the given (subject, predicate). */
   private findActiveBySubjectPredicate(subject: string, predicate: string): Belief | undefined {

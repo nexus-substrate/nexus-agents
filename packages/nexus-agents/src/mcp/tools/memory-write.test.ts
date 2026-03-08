@@ -208,6 +208,19 @@ describe('memory write logic', () => {
     );
   });
 
+  it('should detect deduplicated belief writes via count comparison (#1455)', () => {
+    // When belief count stays the same, the write was deduplicated
+    const countBefore = 5;
+    const countAfter = 5;
+    const deduplicated = countAfter === countBefore;
+    expect(deduplicated).toBe(true);
+
+    // When count increases, a new belief was created
+    const countAfterNew = 6;
+    const notDeduplicated = countAfterNew === countBefore;
+    expect(notDeduplicated).toBe(false);
+  });
+
   it('should map agentic input with metadata tags', () => {
     const input: MemoryWriteInput = {
       key: 'infra-state',

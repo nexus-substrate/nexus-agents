@@ -309,6 +309,88 @@ describe('HindsightBeliefMemory', () => {
       }
     });
 
+    it('should skip retain when identical content already exists (#1455)', async () => {
+      const { memory } = createTestMemory();
+
+      const first = await memory.retain({
+        subject: 'nexus-agents',
+        predicate: 'has_knowledge',
+        object: 'uses TypeScript',
+        confidence: BeliefConfidenceEnum.MEDIUM,
+        sourceType: BeliefSourceTypeEnum.OBSERVATION,
+      });
+      expect(first.ok).toBe(true);
+
+      // Retain identical content — should return existing belief, not create new one
+      const second = await memory.retain({
+        subject: 'nexus-agents',
+        predicate: 'has_knowledge',
+        object: 'uses TypeScript',
+        confidence: BeliefConfidenceEnum.MEDIUM,
+        sourceType: BeliefSourceTypeEnum.OBSERVATION,
+      });
+      expect(second.ok).toBe(true);
+      if (first.ok && second.ok) {
+        expect(second.value.beliefId).toBe(first.value.beliefId);
+        expect(second.value.version).toBe(1);
+      }
+
+      // Only 1 belief should exist
+      const stats = await memory.getStats();
+      expect(stats.ok).toBe(true);
+      if (stats.ok) {
+        expect(stats.value.totalBeliefs).toBe(1);
+      }
+    });
+
+    it('should NOT dedup when object differs (#1455)', async () => {
+      const { memory } = createTestMemory();
+
+      await memory.retain({
+        subject: 'nexus-agents',
+        predicate: 'has_knowledge',
+        object: 'uses TypeScript',
+        confidence: BeliefConfidenceEnum.MEDIUM,
+        sourceType: BeliefSourceTypeEnum.OBSERVATION,
+      });
+
+      const second = await memory.retain({
+        subject: 'nexus-agents',
+        predicate: 'has_knowledge',
+        object: 'uses JavaScript', // different content
+        confidence: BeliefConfidenceEnum.MEDIUM,
+        sourceType: BeliefSourceTypeEnum.OBSERVATION,
+      });
+      expect(second.ok).toBe(true);
+      if (second.ok) {
+        expect(second.value.version).toBe(2); // new version, old one superseded
+      }
+    });
+
+    it('should NOT dedup when confidence differs (#1455)', async () => {
+      const { memory } = createTestMemory();
+
+      await memory.retain({
+        subject: 'nexus-agents',
+        predicate: 'has_knowledge',
+        object: 'uses TypeScript',
+        confidence: BeliefConfidenceEnum.MEDIUM,
+        sourceType: BeliefSourceTypeEnum.OBSERVATION,
+      });
+
+      const second = await memory.retain({
+        subject: 'nexus-agents',
+        predicate: 'has_knowledge',
+        object: 'uses TypeScript',
+        confidence: BeliefConfidenceEnum.HIGH, // different confidence
+        sourceType: BeliefSourceTypeEnum.OBSERVATION,
+      });
+      expect(second.ok).toBe(true);
+      if (second.ok) {
+        expect(second.value.version).toBe(2); // new version, old one superseded
+      }
+    });
+
     it('should not dedup beliefs with different predicates', async () => {
       const { memory } = createTestMemory();
 

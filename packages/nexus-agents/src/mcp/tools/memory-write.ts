@@ -66,6 +66,8 @@ export interface MemoryWriteResponse {
   backend: string;
   /** Key/subject written */
   key: string;
+  /** Whether write was skipped due to identical content already existing (#1455) */
+  deduplicated?: boolean;
   /** Error message if write failed */
   error?: string;
 }
@@ -95,6 +97,7 @@ function writeToSession(
 
 /**
  * Writes to the belief backend as a triple.
+ * Skips write if identical content already exists (content-hash dedup #1455).
  */
 async function writeToBelief(
   key: string,
@@ -102,8 +105,11 @@ async function writeToBelief(
   confidence: 'high' | 'medium' | 'low'
 ): Promise<MemoryWriteResponse> {
   const toolMemory = getToolMemory();
+  const countBefore = toolMemory.getBeliefCount();
   await toolMemory.recordBelief(key, 'has_knowledge', content, confidence);
-  return { success: true, backend: 'belief', key };
+  const countAfter = toolMemory.getBeliefCount();
+  const deduplicated = countAfter === countBefore;
+  return { success: true, backend: 'belief', key, ...(deduplicated ? { deduplicated: true } : {}) };
 }
 
 /**
