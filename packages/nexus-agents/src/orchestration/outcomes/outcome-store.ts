@@ -10,6 +10,7 @@
  */
 
 import type { TaskOutcome, OutcomeQuery, PerformanceSummary, GroupStats } from './outcome-types.js';
+import { categorizeOutcomeErrorMessage } from './outcome-types.js';
 import { isPersistenceEnabled } from '../../config/learning-persistence.js';
 
 // ============================================================================
@@ -28,6 +29,20 @@ export interface OutcomeStoreConfig {
 }
 
 /**
+ * Auto-classifies failed outcomes that are missing a failureCategory.
+ * Uses errorMessage if available; otherwise marks as 'execution' for non-success
+ * outcomes (better default than 'unknown' for outcomes that failed but have no error info).
+ */
+function autoClassify(outcome: TaskOutcome): TaskOutcome {
+  if (outcome.success || outcome.failureCategory !== undefined) return outcome;
+  if (typeof outcome.errorMessage === 'string' && outcome.errorMessage.length > 0) {
+    return { ...outcome, failureCategory: categorizeOutcomeErrorMessage(outcome.errorMessage) };
+  }
+  // Failed outcome with no error info — classify as 'execution' (generic failure)
+  return { ...outcome, failureCategory: 'execution' };
+}
+
+/**
  * Bounded, append-only, in-memory store for task outcomes.
  * Evicts oldest entries when capacity is exceeded.
  */
@@ -39,9 +54,9 @@ export class OutcomeStore {
     this.maxEntries = config?.maxEntries ?? DEFAULT_MAX_ENTRIES;
   }
 
-  /** Append a new outcome. Evicts oldest if at capacity. */
+  /** Append a new outcome. Auto-classifies failures missing failureCategory (#1441). */
   append(outcome: TaskOutcome): void {
-    this.entries.push(outcome);
+    this.entries.push(autoClassify(outcome));
     this.enforceLimit();
   }
 

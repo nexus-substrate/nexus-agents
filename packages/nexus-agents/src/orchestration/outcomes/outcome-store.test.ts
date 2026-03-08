@@ -279,3 +279,50 @@ describe('getOutcomeStore / resetOutcomeStore', () => {
     expect(getOutcomeStore().size).toBe(0);
   });
 });
+
+// ============================================================================
+// Auto-classification on append (#1441)
+// ============================================================================
+
+describe('OutcomeStore auto-classification (#1441)', () => {
+  let store: OutcomeStore;
+
+  beforeEach(() => {
+    store = new OutcomeStore();
+  });
+
+  it('auto-classifies failed outcome with errorMessage', () => {
+    store.append(
+      makeOutcome({
+        success: false,
+        errorMessage: 'Request timed out after 30s',
+      })
+    );
+    const [outcome] = store.query();
+    expect(outcome?.failureCategory).toBe('timeout');
+  });
+
+  it('defaults to execution for failed outcome without errorMessage', () => {
+    store.append(makeOutcome({ success: false }));
+    const [outcome] = store.query();
+    expect(outcome?.failureCategory).toBe('execution');
+  });
+
+  it('preserves existing failureCategory', () => {
+    store.append(
+      makeOutcome({
+        success: false,
+        failureCategory: 'rate_limit',
+        errorMessage: 'Something that looks like a timeout',
+      })
+    );
+    const [outcome] = store.query();
+    expect(outcome?.failureCategory).toBe('rate_limit');
+  });
+
+  it('does not classify successful outcomes', () => {
+    store.append(makeOutcome({ success: true }));
+    const [outcome] = store.query();
+    expect(outcome?.failureCategory).toBeUndefined();
+  });
+});

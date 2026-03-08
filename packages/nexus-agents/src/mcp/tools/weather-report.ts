@@ -323,8 +323,8 @@ function buildRecommendedMappings(): readonly RecommendedMapping[] {
   return mappings;
 }
 
-/** Minimum observations per category to count toward routing accuracy. */
-const ROUTING_MIN_SAMPLES = 3;
+/** Minimum observations per category to count toward routing accuracy (#1442). */
+const ROUTING_MIN_SAMPLES = 5;
 
 /** Confidence threshold for adaptation speed measurement. */
 const ADAPTATION_CONFIDENCE_THRESHOLD = 0.7;
@@ -336,8 +336,8 @@ interface CategoryRoutingStats {
   readonly regret: number;
 }
 
-/** Tolerance band for routing accuracy — CLIs within this % of best are "good". */
-const ROUTING_ACCURACY_TOLERANCE = 0.05;
+/** Tolerance band for routing accuracy — CLIs within this % of best are "good" (#1442). */
+const ROUTING_ACCURACY_TOLERANCE = 0.1;
 
 /** Analyzes routing accuracy and regret for a single category. */
 function analyzeCategoryRouting(
