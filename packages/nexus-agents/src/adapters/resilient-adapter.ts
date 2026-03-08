@@ -78,6 +78,8 @@ export class ResilientAdapter implements IResilientAdapter {
   private circuitListener: ((event: CircuitStateChangeEvent) => void) | undefined;
   private disposed = false;
   private readonly defaultCliTimeoutMs: number | undefined;
+  /** Inflight detection promise for coalescing concurrent calls (Issue #1423). */
+  private detectionPromise: Promise<IModelAdapter | undefined> | undefined;
 
   constructor(config?: ResilientAdapterConfig) {
     this.logger = config?.logger ?? createLogger({ component: 'resilient-adapter' });
@@ -155,6 +157,7 @@ export class ResilientAdapter implements IResilientAdapter {
   async refresh(): Promise<void> {
     this.currentAdapter = undefined;
     this.currentSelection = undefined;
+    this.detectionPromise = undefined;
     await this.ensureAdapter();
   }
 
@@ -198,7 +201,16 @@ export class ResilientAdapter implements IResilientAdapter {
     if (this.currentAdapter !== undefined) {
       return this.currentAdapter;
     }
-    return this.detectAdapter();
+    // Coalesce concurrent detection calls into a single probe (Issue #1423)
+    if (this.detectionPromise !== undefined) {
+      return this.detectionPromise;
+    }
+    this.detectionPromise = this.detectAdapter();
+    try {
+      return await this.detectionPromise;
+    } finally {
+      this.detectionPromise = undefined;
+    }
   }
 
   private async detectAdapter(): Promise<IModelAdapter | undefined> {

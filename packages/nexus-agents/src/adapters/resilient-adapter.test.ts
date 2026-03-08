@@ -273,6 +273,43 @@ describe('ResilientAdapter', () => {
     });
   });
 
+  describe('detection coalescing (#1423)', () => {
+    it('coalesces concurrent detection into a single probe call', async () => {
+      let resolveDetection: ((v: AdapterSelection) => void) | undefined;
+      vi.mocked(createAutoAdapter).mockImplementation(
+        () =>
+          new Promise<AdapterSelection>((resolve) => {
+            resolveDetection = resolve;
+          })
+      );
+
+      const freshAdapter = new ResilientAdapter();
+
+      // Launch 3 concurrent complete() calls — all trigger ensureAdapter()
+      const p1 = freshAdapter.complete({ messages: [] });
+      const p2 = freshAdapter.complete({ messages: [] });
+      const p3 = freshAdapter.complete({ messages: [] });
+
+      // Resolve the single detection
+      resolveDetection!(makeSelection());
+
+      await Promise.all([p1, p2, p3]);
+
+      // createAutoAdapter should only be called ONCE despite 3 concurrent calls
+      expect(createAutoAdapter).toHaveBeenCalledTimes(1);
+    });
+
+    it('allows new detection after previous completes', async () => {
+      const freshAdapter = new ResilientAdapter();
+      await freshAdapter.complete({ messages: [] });
+      expect(createAutoAdapter).toHaveBeenCalledTimes(1);
+
+      // Force re-detection via refresh
+      await freshAdapter.refresh();
+      expect(createAutoAdapter).toHaveBeenCalledTimes(2);
+    });
+  });
+
   describe('dispose()', () => {
     it('removes circuit breaker listener', () => {
       const removeListener = vi.fn();
