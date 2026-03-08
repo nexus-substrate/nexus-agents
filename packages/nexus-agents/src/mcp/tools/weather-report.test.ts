@@ -159,12 +159,13 @@ describe('generateWeatherReport', () => {
     expect(report.failureBreakdown).toBeUndefined();
   });
 
-  it('assigns unknown category to failures without failureCategory', () => {
+  it('auto-classifies failures without failureCategory as execution (#1441)', () => {
     getOutcomeStore().append(makeOutcome({ success: false }));
     const report = generateWeatherReport({});
     const breakdown = report.failureBreakdown ?? [];
     expect(breakdown).toHaveLength(1);
-    expect(breakdown[0]?.category).toBe('unknown');
+    // OutcomeStore.append() auto-classifies unclassified failures as 'execution'
+    expect(breakdown[0]?.category).toBe('execution');
   });
 
   it('reports exploration rate and cold start threshold', () => {
