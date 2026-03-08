@@ -12,6 +12,9 @@ import {
   WORKER_TIMEOUT_MS,
   RATE_LIMIT_WAVE_DELAY_MS,
   CONSECUTIVE_FAILURE_THRESHOLD,
+  RECOVERY_COOLDOWN_MS,
+  MAX_COOLDOWN_MS,
+  RATE_LIMIT_SPACING_MS,
   RoleFailureTracker,
   type WorkerDispatchOptions,
   type WorkerResult,
@@ -571,5 +574,115 @@ describe('RoleFailureTracker', () => {
     expect(tracker.isDisabled('code')).toBe(false);
     tracker.record(makeResult('code', 'error'));
     expect(tracker.isDisabled('code')).toBe(true);
+  });
+
+  // ---- Degradation Recovery (Issue #1458) ----
+
+  it('allows half-open retry after cooldown expires', () => {
+    let now = 1000;
+    const tracker = new RoleFailureTracker(2, () => now);
+
+    tracker.record(makeResult('code', 'error'));
+    tracker.record(makeResult('code', 'error'));
+    expect(tracker.shouldSkipRole('code')).toBe(true);
+
+    // Advance past cooldown
+    now += RECOVERY_COOLDOWN_MS + 1;
+    expect(tracker.shouldSkipRole('code')).toBe(false);
+  });
+
+  it('recovers role on success after half-open retry', () => {
+    let now = 1000;
+    const tracker = new RoleFailureTracker(2, () => now);
+
+    tracker.record(makeResult('code', 'error'));
+    tracker.record(makeResult('code', 'error'));
+    expect(tracker.isDisabled('code')).toBe(true);
+
+    now += RECOVERY_COOLDOWN_MS + 1;
+    // Trigger half-open
+    tracker.shouldSkipRole('code');
+    tracker.record(makeResult('code', 'success'));
+
+    expect(tracker.isDisabled('code')).toBe(false);
+    expect(tracker.shouldSkipRole('code')).toBe(false);
+  });
+
+  it('doubles cooldown on failure during half-open retry', () => {
+    let now = 1000;
+    const tracker = new RoleFailureTracker(2, () => now);
+
+    tracker.record(makeResult('code', 'error'));
+    tracker.record(makeResult('code', 'error'));
+
+    // First cooldown: RECOVERY_COOLDOWN_MS * 1
+    now += RECOVERY_COOLDOWN_MS + 1;
+    tracker.shouldSkipRole('code'); // enters half-open
+    tracker.record(makeResult('code', 'error')); // half-open failed
+
+    // Should be disabled again — need 2x cooldown now
+    expect(tracker.shouldSkipRole('code')).toBe(true);
+
+    // Original cooldown is not enough
+    now += RECOVERY_COOLDOWN_MS + 1;
+    expect(tracker.shouldSkipRole('code')).toBe(true);
+
+    // 2x cooldown should work
+    now += RECOVERY_COOLDOWN_MS; // total 2x + some
+    expect(tracker.shouldSkipRole('code')).toBe(false);
+  });
+
+  it('caps cooldown at MAX_COOLDOWN_MS', () => {
+    let now = 1000;
+    const tracker = new RoleFailureTracker(1, () => now);
+
+    // Trigger many backoffs to exceed max
+    for (let i = 0; i < 20; i++) {
+      tracker.record(makeResult('code', 'error'));
+      now += MAX_COOLDOWN_MS + 1;
+      tracker.shouldSkipRole('code'); // half-open
+      if (i < 19) {
+        tracker.record(makeResult('code', 'error')); // fail again
+      }
+    }
+
+    // After MAX_COOLDOWN_MS, should always be able to retry
+    now += MAX_COOLDOWN_MS + 1;
+    expect(tracker.shouldSkipRole('code')).toBe(false);
+  });
+
+  it('tracks rate-limited roles and returns spacing delay', () => {
+    let now = 1000;
+    const tracker = new RoleFailureTracker(5, () => now);
+
+    const rateLimitResult: WorkerResult = {
+      role: 'security',
+      subTask: 'task',
+      output: '',
+      status: 'error',
+      durationMs: 100,
+      error: 'Rate limited: too many requests',
+    };
+    tracker.record(rateLimitResult);
+
+    // Should need spacing
+    now += 500; // only 500ms elapsed
+    expect(tracker.getSpacingDelay('security')).toBe(RATE_LIMIT_SPACING_MS - 500);
+
+    // After enough time, no delay needed
+    now += RATE_LIMIT_SPACING_MS;
+    expect(tracker.getSpacingDelay('security')).toBe(0);
+  });
+
+  it('returns zero spacing for non-rate-limited roles', () => {
+    const tracker = new RoleFailureTracker(3, () => 1000);
+    tracker.record(makeResult('code', 'error'));
+    expect(tracker.getSpacingDelay('code')).toBe(0);
+  });
+
+  it('exports recovery constants', () => {
+    expect(RECOVERY_COOLDOWN_MS).toBe(30_000);
+    expect(MAX_COOLDOWN_MS).toBe(300_000);
+    expect(RATE_LIMIT_SPACING_MS).toBe(2_000);
   });
 });

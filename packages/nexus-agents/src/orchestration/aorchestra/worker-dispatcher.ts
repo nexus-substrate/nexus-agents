@@ -4,6 +4,7 @@
  * Groups AgentPlanEntry items by wave number and executes each wave
  * in parallel with bounded concurrency. Workers receive composed
  * prompts via PromptComposer and return structured results.
+ * Includes graduated degradation recovery (Issue #1458).
  *
  * @module orchestration/aorchestra/worker-dispatcher
  * (Source: Issue #1301, Epic #1299, arXiv:2602.20478)
@@ -32,6 +33,15 @@ export const RATE_LIMIT_WAVE_DELAY_MS = 5_000;
  * Prevents repeated token burn from persistently failing roles.
  */
 export const CONSECUTIVE_FAILURE_THRESHOLD = 3;
+
+/** Initial cooldown before a disabled role can attempt recovery (Issue #1458). */
+export const RECOVERY_COOLDOWN_MS = 30_000;
+
+/** Maximum cooldown after exponential backoff (5 minutes, Issue #1458). */
+export const MAX_COOLDOWN_MS = 300_000;
+
+/** Minimum spacing between requests to rate-limited roles (Issue #1458). */
+export const RATE_LIMIT_SPACING_MS = 2_000;
 
 // ============================================================================
 // Types
@@ -116,39 +126,50 @@ export function groupByWave(entries: readonly AgentPlanEntry[]): AgentPlanEntry[
 // ============================================================================
 
 /**
- * Tracks consecutive failures per role and auto-disables roles
- * that exceed the threshold. Prevents repeated token burn.
+ * Tracks consecutive failures per role with graduated degradation
+ * and recovery. Disabled roles enter a cooldown period, then get
+ * a half-open retry. Exponential backoff on repeated failures (Issue #1458).
  */
 export class RoleFailureTracker {
   private readonly counts = new Map<string, number>();
   private readonly disabled = new Set<string>();
+  private readonly cooldownUntil = new Map<string, number>();
+  private readonly cooldownMultiplier = new Map<string, number>();
+  private readonly halfOpen = new Set<string>();
+  private readonly rateLimitedRoles = new Set<string>();
+  private readonly lastRequestTime = new Map<string, number>();
   private readonly threshold: number;
+  private readonly nowFn: () => number;
 
-  constructor(threshold: number = CONSECUTIVE_FAILURE_THRESHOLD) {
+  constructor(threshold: number = CONSECUTIVE_FAILURE_THRESHOLD, nowFn?: () => number) {
     this.threshold = threshold;
+    this.nowFn = nowFn ?? ((): number => Date.now());
   }
 
-  /** Record a worker result — resets on success, increments on error. */
+  /** Record a worker result — handles recovery and backoff logic. */
   record(result: WorkerResult): void {
     if (result.status === 'skipped') return;
+    this.lastRequestTime.set(result.role, this.nowFn());
     if (result.status === 'success') {
-      this.counts.set(result.role, 0);
+      this.recordSuccess(result.role);
       return;
     }
-    const current = this.counts.get(result.role) ?? 0;
-    const next = current + 1;
-    this.counts.set(result.role, next);
-    if (next >= this.threshold) {
-      this.disabled.add(result.role);
-      logger.warn('Auto-disabled role after consecutive failures', {
-        role: result.role,
-        consecutiveFailures: next,
-        threshold: this.threshold,
-      });
-    }
+    this.recordFailure(result);
   }
 
-  /** Check if a role is auto-disabled. */
+  /** Check if a role should be skipped (disabled and not yet eligible for retry). */
+  shouldSkipRole(role: string): boolean {
+    if (!this.disabled.has(role)) return false;
+    const until = this.cooldownUntil.get(role);
+    if (until !== undefined && this.nowFn() >= until) {
+      this.halfOpen.add(role);
+      logger.info('Half-open retry for disabled role', { role });
+      return false;
+    }
+    return true;
+  }
+
+  /** Check if a role is auto-disabled (regardless of cooldown state). */
   isDisabled(role: string): boolean {
     return this.disabled.has(role);
   }
@@ -156,6 +177,70 @@ export class RoleFailureTracker {
   /** Get the set of disabled roles (for observability). */
   getDisabledRoles(): ReadonlySet<string> {
     return this.disabled;
+  }
+
+  /** Get minimum delay (ms) before next request to this role, 0 if none needed. */
+  getSpacingDelay(role: string): number {
+    if (!this.rateLimitedRoles.has(role)) return 0;
+    const last = this.lastRequestTime.get(role);
+    if (last === undefined) return 0;
+    const elapsed = this.nowFn() - last;
+    return Math.max(0, RATE_LIMIT_SPACING_MS - elapsed);
+  }
+
+  private recordSuccess(role: string): void {
+    this.counts.set(role, 0);
+    if (this.halfOpen.has(role)) {
+      this.halfOpen.delete(role);
+      this.disabled.delete(role);
+      this.cooldownUntil.delete(role);
+      this.cooldownMultiplier.delete(role);
+      this.rateLimitedRoles.delete(role);
+      logger.info('Role recovered from degraded state', { role });
+    }
+  }
+
+  private recordFailure(result: WorkerResult): void {
+    if (this.halfOpen.has(result.role)) {
+      this.extendCooldown(result.role);
+      return;
+    }
+    const current = this.counts.get(result.role) ?? 0;
+    const next = current + 1;
+    this.counts.set(result.role, next);
+    if (result.error !== undefined && isRateLimitError(result.error)) {
+      this.rateLimitedRoles.add(result.role);
+    }
+    if (next >= this.threshold) {
+      this.disableWithCooldown(result.role, next);
+    }
+  }
+
+  private disableWithCooldown(role: string, failures: number): void {
+    this.disabled.add(role);
+    const multiplier = this.cooldownMultiplier.get(role) ?? 1;
+    const cooldown = Math.min(RECOVERY_COOLDOWN_MS * multiplier, MAX_COOLDOWN_MS);
+    this.cooldownUntil.set(role, this.nowFn() + cooldown);
+    this.cooldownMultiplier.set(role, multiplier);
+    logger.warn('Auto-disabled role with recovery cooldown', {
+      role,
+      consecutiveFailures: failures,
+      threshold: this.threshold,
+      cooldownMs: cooldown,
+    });
+  }
+
+  private extendCooldown(role: string): void {
+    this.halfOpen.delete(role);
+    const multiplier = (this.cooldownMultiplier.get(role) ?? 1) * 2;
+    this.cooldownMultiplier.set(role, multiplier);
+    const cooldown = Math.min(RECOVERY_COOLDOWN_MS * multiplier, MAX_COOLDOWN_MS);
+    this.cooldownUntil.set(role, this.nowFn() + cooldown);
+    logger.warn('Half-open retry failed — extending cooldown', {
+      role,
+      cooldownMs: cooldown,
+      multiplier,
+    });
   }
 }
 
@@ -271,17 +356,21 @@ async function processWave(
   emitWaveStarted(waveCtx, wave.length, roles);
   const waveStartMs = Date.now();
 
-  const tasks = wave.map((entry) => (): Promise<WorkerResult> => {
-    if (opts.failureTracker.isDisabled(entry.role)) {
+  const tasks = wave.map((entry) => async (): Promise<WorkerResult> => {
+    if (opts.failureTracker.shouldSkipRole(entry.role)) {
       logger.info('Skipping auto-disabled role', { role: entry.role, wave: waveNumber });
-      return Promise.resolve({
+      return {
         role: entry.role,
         subTask: entry.subTask,
         output: '',
         status: 'skipped' as const,
         durationMs: 0,
         error: 'Role auto-disabled after consecutive failures',
-      });
+      };
+    }
+    const spacingDelay = opts.failureTracker.getSpacingDelay(entry.role);
+    if (spacingDelay > 0) {
+      await new Promise((resolve) => setTimeout(resolve, spacingDelay));
     }
     const timeoutMs = opts.options.workerTimeoutMs ?? getExpertTaskTimeout(entry.subTask);
     return executeSafe(entry, opts.options.executeWorker, opts.priorResults, timeoutMs);
