@@ -56,6 +56,46 @@ describe('TASK_SPECIALIZATION_MATRIX', () => {
       expect(spec.bonus).toBeLessThanOrEqual(20);
     }
   });
+
+  it('aligns bonuses with empirical weather data (#1454)', () => {
+    // Categories with n>=50 empirical evidence get bonus=15
+    const codeGen = TASK_SPECIALIZATION_MATRIX.find((s) => s.category === 'code_generation')!;
+    expect(codeGen.bonus).toBe(15);
+    expect(codeGen.primaryCli).toBe('codex'); // 91.9%, n=408
+
+    const codeReview = TASK_SPECIALIZATION_MATRIX.find((s) => s.category === 'code_review')!;
+    expect(codeReview.bonus).toBe(15);
+    expect(codeReview.primaryCli).toBe('codex'); // 88.3%, n=94
+
+    const testing = TASK_SPECIALIZATION_MATRIX.find((s) => s.category === 'testing')!;
+    expect(testing.bonus).toBe(15);
+    expect(testing.primaryCli).toBe('codex'); // 91.6%, n=143
+
+    const exploration = TASK_SPECIALIZATION_MATRIX.find((s) => s.category === 'exploration')!;
+    expect(exploration.bonus).toBe(15);
+    expect(exploration.primaryCli).toBe('gemini'); // 98.5%, n=202
+
+    const planning = TASK_SPECIALIZATION_MATRIX.find((s) => s.category === 'planning')!;
+    expect(planning.bonus).toBe(10);
+    expect(planning.primaryCli).toBe('claude'); // 92.0%, n=274
+  });
+
+  it('keeps low-sample categories unchanged (#1454)', () => {
+    // Categories with n<50 keep original bonus=10
+    const research = TASK_SPECIALIZATION_MATRIX.find((s) => s.category === 'research')!;
+    expect(research.bonus).toBe(15); // n=38, but was already 15 pre-#1454
+
+    const documentation = TASK_SPECIALIZATION_MATRIX.find((s) => s.category === 'documentation')!;
+    expect(documentation.bonus).toBe(10); // n=35, kept as-is
+
+    const architecture = TASK_SPECIALIZATION_MATRIX.find((s) => s.category === 'architecture')!;
+    expect(architecture.bonus).toBe(10); // n=24, kept as-is
+
+    const securityReview = TASK_SPECIALIZATION_MATRIX.find(
+      (s) => s.category === 'security_review'
+    )!;
+    expect(securityReview.bonus).toBe(10); // codex n=5, kept as-is
+  });
 });
 
 // ============================================================================

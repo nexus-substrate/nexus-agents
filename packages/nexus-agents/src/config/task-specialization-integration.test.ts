@@ -87,6 +87,21 @@ describe('calcSpecializationBonus', () => {
   it('returns 0 when no specialization match', () => {
     expect(calcSpecializationBonus('claude-opus', null)).toBe(0);
   });
+
+  it('returns full bonus=15 for code_review + codex (#1454)', () => {
+    const match = detectTaskCategory('Review the pull request code');
+    expect(match).not.toBeNull();
+    // code_review → codex primary, bonus=15
+    const bonus = calcSpecializationBonus('codex-5.3', match);
+    expect(bonus).toBe(15);
+  });
+
+  it('returns half bonus=7 for code_review + claude (#1454)', () => {
+    const match = detectTaskCategory('Review the pull request code');
+    // code_review → claude secondary, bonus=15 → floor(15/2)=7
+    const bonus = calcSpecializationBonus('claude-opus', match);
+    expect(bonus).toBe(7);
+  });
 });
 
 // ============================================================================

@@ -48,7 +48,8 @@ export const TASK_SPECIALIZATION_MATRIX: readonly TaskSpecialization[] = [
     category: 'code_generation',
     primaryCli: 'codex',
     secondaryCli: 'claude',
-    reasoning: 'Codex has highest code generation quality with sandboxed execution',
+    reasoning:
+      'Codex primary (91.9%, n=408) for code generation with sandboxed execution. Confirmed per weather data (#1454)',
     keywords: ['implement', 'generate code', 'write function', 'build feature'],
     bonus: 15,
   },
@@ -56,9 +57,10 @@ export const TASK_SPECIALIZATION_MATRIX: readonly TaskSpecialization[] = [
     category: 'code_review',
     primaryCli: 'codex',
     secondaryCli: 'claude',
-    reasoning: 'Codex combines code understanding with large context for full-file review',
+    reasoning:
+      'Codex primary (88.3%, n=94) for code review; Claude secondary. Bonus aligned per weather data (#1454)',
     keywords: ['review code', 'code review', 'pull request', 'pr review'],
-    bonus: 10,
+    bonus: 15,
   },
   {
     category: 'research',
@@ -96,7 +98,8 @@ export const TASK_SPECIALIZATION_MATRIX: readonly TaskSpecialization[] = [
     category: 'planning',
     primaryCli: 'claude',
     secondaryCli: 'codex',
-    reasoning: 'Claude has strongest reasoning for sprint planning and task decomposition',
+    reasoning:
+      'Claude primary (92.0%, n=274) for planning and task decomposition. Confirmed per weather data (#1454)',
     keywords: ['plan', 'sprint', 'roadmap', 'decompose', 'prioritize'],
     bonus: 10,
   },
@@ -112,9 +115,10 @@ export const TASK_SPECIALIZATION_MATRIX: readonly TaskSpecialization[] = [
     category: 'testing',
     primaryCli: 'codex',
     secondaryCli: 'claude',
-    reasoning: 'Codex has strongest code generation for test writing with sandbox execution',
+    reasoning:
+      'Codex primary (91.6%, n=143) for test writing with sandbox execution. Bonus aligned per weather data (#1454)',
     keywords: ['test', 'write tests', 'test coverage', 'unit test', 'integration test'],
-    bonus: 10,
+    bonus: 15,
   },
   {
     category: 'devops',
@@ -159,9 +163,10 @@ export const TASK_SPECIALIZATION_MATRIX: readonly TaskSpecialization[] = [
     category: 'exploration',
     primaryCli: 'gemini',
     secondaryCli: 'claude',
-    reasoning: 'Gemini 1M context window excels at codebase exploration and navigation',
+    reasoning:
+      'Gemini primary (98.5%, n=202) for exploration with 1M context. Bonus aligned per weather data (#1454)',
     keywords: ['explore', 'navigate', 'find', 'discover', 'scan codebase'],
-    bonus: 10,
+    bonus: 15,
   },
 ] as const;
 
