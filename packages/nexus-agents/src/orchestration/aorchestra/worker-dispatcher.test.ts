@@ -10,6 +10,8 @@ import {
   dispatchWorkers,
   groupByWave,
   WORKER_TIMEOUT_MS,
+  MIN_WORKER_TIMEOUT_MS,
+  MAX_WORKER_TIMEOUT_MS,
   RATE_LIMIT_WAVE_DELAY_MS,
   CONSECUTIVE_FAILURE_THRESHOLD,
   RECOVERY_COOLDOWN_MS,
@@ -382,6 +384,21 @@ describe('dispatchWorkers', () => {
 
   it('exports RATE_LIMIT_WAVE_DELAY_MS constant', () => {
     expect(RATE_LIMIT_WAVE_DELAY_MS).toBe(5_000);
+  });
+
+  // ---- Timeout bounds validation (Issue #1465) ----
+
+  it('exports MIN_WORKER_TIMEOUT_MS as 30s', () => {
+    expect(MIN_WORKER_TIMEOUT_MS).toBe(30_000);
+  });
+
+  it('exports MAX_WORKER_TIMEOUT_MS as 15min', () => {
+    expect(MAX_WORKER_TIMEOUT_MS).toBe(900_000);
+  });
+
+  it('clamps WORKER_TIMEOUT_MS within bounds', () => {
+    expect(WORKER_TIMEOUT_MS).toBeGreaterThanOrEqual(MIN_WORKER_TIMEOUT_MS);
+    expect(WORKER_TIMEOUT_MS).toBeLessThanOrEqual(MAX_WORKER_TIMEOUT_MS);
   });
 
   // ---- Consecutive failure auto-disable (Issue #1425) ----

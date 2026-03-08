@@ -19,11 +19,21 @@ import type { IEventBus } from '../../pipeline/event-types.js';
 
 const logger = createLogger({ component: 'worker-dispatcher' });
 
+/** Minimum allowed worker timeout (30s floor, Issue #1465). */
+export const MIN_WORKER_TIMEOUT_MS = 30_000;
+
+/** Maximum allowed worker timeout (15min ceiling, Issue #1465). */
+export const MAX_WORKER_TIMEOUT_MS = 900_000;
+
 /**
  * Default per-worker timeout. Delegates to centralized config/timeouts.ts.
+ * Clamped to [MIN_WORKER_TIMEOUT_MS, MAX_WORKER_TIMEOUT_MS] bounds (Issue #1465).
  * Supports NEXUS_WORKER_TIMEOUT_MS env override.
  */
-export const WORKER_TIMEOUT_MS = WORKER_TIMEOUTS.defaultMs;
+export const WORKER_TIMEOUT_MS = Math.max(
+  MIN_WORKER_TIMEOUT_MS,
+  Math.min(MAX_WORKER_TIMEOUT_MS, WORKER_TIMEOUTS.defaultMs)
+);
 
 /** Delay before next wave when rate-limit errors are detected (Issue #1328). */
 export const RATE_LIMIT_WAVE_DELAY_MS = 5_000;
