@@ -25,6 +25,7 @@ import {
 } from '../../core/index.js';
 import { BaseAdapter, AdapterModelError } from '../base-adapter.js';
 import { ErrorCode } from '../../core/index.js';
+import { isRateLimitLikeError } from '../rate-limit-detector.js';
 import type { SdkAdapterConfig, SdkProviderId } from './types.js';
 import { PROVIDER_ENV_KEYS } from './types.js';
 
@@ -133,10 +134,10 @@ function mapFinishReason(reason: string): CompletionResponse['stopReason'] {
  * Categorizes an error into an ErrorCode for the circuit breaker.
  */
 function categorizeError(error: unknown): ErrorCode {
-  const message = getErrorMessage(error).toLowerCase();
-  if (message.includes('rate limit') || message.includes('429')) {
+  if (isRateLimitLikeError(error)) {
     return ErrorCode.MODEL_RATE_LIMITED;
   }
+  const message = getErrorMessage(error).toLowerCase();
   if (message.includes('timeout') || message.includes('timed out')) {
     return ErrorCode.MODEL_TIMEOUT;
   }

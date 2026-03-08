@@ -16,6 +16,7 @@ import type {
   ModelCapability,
 } from '../core/index.js';
 import { getErrorMessage } from '../core/index.js';
+import { isRateLimitLikeError } from './rate-limit-detector.js';
 
 import {
   ok,
@@ -319,8 +320,8 @@ export abstract class BaseAdapter implements IModelAdapter {
     const message = error.message.toLowerCase();
     const errorObj = error as { status?: number; code?: string };
 
-    // Check for rate limiting
-    if (this.isRateLimitError(message, errorObj)) {
+    // Check for rate limiting (canonical detection from rate-limit-detector)
+    if (isRateLimitLikeError(error)) {
       return ErrorCode.MODEL_RATE_LIMITED;
     }
 
@@ -335,16 +336,6 @@ export abstract class BaseAdapter implements IModelAdapter {
     }
 
     return ErrorCode.MODEL_ERROR;
-  }
-
-  /**
-   * Check if error indicates rate limiting.
-   */
-  private isRateLimitError(message: string, errorObj: { status?: number; code?: string }): boolean {
-    const rateLimitPatterns = ['rate limit', 'too many requests', 'quota exceeded'];
-    return (
-      errorObj.status === 429 || rateLimitPatterns.some((pattern) => message.includes(pattern))
-    );
   }
 
   /**
