@@ -99,9 +99,13 @@ interface CacheEntry {
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 let cachedEntry: CacheEntry | null = null;
 
-/** Clear the cache (for testing). */
+/** Inflight fetch promise for probe coalescing (#1448). */
+let inflightFetch: Promise<ScannerRegistryManifest | null> | undefined;
+
+/** Clear the cache and inflight state (for testing). */
 export function clearRegistryCache(): void {
   cachedEntry = null;
+  inflightFetch = undefined;
 }
 
 // ============================================================================
@@ -226,8 +230,11 @@ export async function getRegistryManifest(): Promise<ScannerRegistryManifest | n
     }
   }
 
-  // Fetch fresh (also handles cache-refresh-only when tag unchanged)
-  const manifest = await fetchManifestFromGitHub();
+  // Coalesce concurrent fetches — only one inflight request at a time (#1448)
+  inflightFetch ??= fetchManifestFromGitHub().finally(() => {
+    inflightFetch = undefined;
+  });
+  const manifest = await inflightFetch;
   if (manifest !== null) {
     return manifest;
   }

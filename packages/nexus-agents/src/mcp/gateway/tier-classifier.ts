@@ -42,7 +42,7 @@ export const TOOL_TIER_MAP: Readonly<Record<string, RequestTier>> = {
   memory_query: RequestTier.DIRECT,
   memory_stats: RequestTier.DIRECT,
   weather_report: RequestTier.DIRECT,
-  research_query: RequestTier.DIRECT,
+  research_query: RequestTier.ANALYZED,
   research_analyze: RequestTier.DIRECT,
   research_catalog_review: RequestTier.DIRECT,
 

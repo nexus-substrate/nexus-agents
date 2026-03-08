@@ -25,7 +25,6 @@ describe('classifyRequestTier', () => {
       'memory_query',
       'memory_stats',
       'weather_report',
-      'research_query',
       'research_analyze',
       'research_catalog_review',
     ];
@@ -42,6 +41,7 @@ describe('classifyRequestTier', () => {
       'delegate_to_model',
       'create_expert',
       'execute_expert',
+      'research_query',
       'research_add',
       'research_discover',
       'registry_import',

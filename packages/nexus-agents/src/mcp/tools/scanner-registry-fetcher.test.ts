@@ -159,4 +159,48 @@ describe('getRegistryManifest', () => {
     const result = await getRegistryManifest();
     expect(result).toBeNull();
   });
+
+  it('coalesces concurrent fetches into a single GitHub request (#1448)', async () => {
+    const manifest = createManifest();
+    let callCount = 0;
+
+    // Mock child_process so we can count invocations
+    vi.doMock('node:child_process', () => ({
+      execFile: vi.fn(
+        (
+          _cmd: string,
+          args: string[],
+          _opts: Record<string, unknown>,
+          cb: (err: Error | null, result: { stdout: string; stderr: string }) => void
+        ) => {
+          callCount++;
+          // First call is getLatestReleaseTag, second is downloadManifest
+          if (Array.isArray(args) && args.includes('view')) {
+            cb(null, { stdout: 'v1.0.0\n', stderr: '' });
+          } else {
+            cb(null, { stdout: JSON.stringify(manifest), stderr: '' });
+          }
+        }
+      ),
+    }));
+
+    // Re-import to pick up mock
+    const mod = await import('./scanner-registry-fetcher.js');
+    mod.clearRegistryCache();
+
+    // Fire 3 concurrent calls — should coalesce into 1 fetch
+    const [r1, r2, r3] = await Promise.all([
+      mod.getRegistryManifest(),
+      mod.getRegistryManifest(),
+      mod.getRegistryManifest(),
+    ]);
+
+    // All should resolve to the same manifest
+    expect(r1).not.toBeNull();
+    expect(r1).toBe(r2);
+    expect(r2).toBe(r3);
+
+    // Only 2 subprocess calls (1 tag check + 1 download), not 6
+    expect(callCount).toBe(2);
+  });
 });
