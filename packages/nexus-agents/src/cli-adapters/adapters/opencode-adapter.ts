@@ -16,7 +16,11 @@ import type {
   CliName,
   BaseAdapterOptions,
 } from '../types.js';
-import { SubprocessCliAdapter, type CommandConfig } from '../subprocess-adapter.js';
+import {
+  SubprocessCliAdapter,
+  type CommandConfig,
+  type TransientRetryConfig,
+} from '../subprocess-adapter.js';
 import { OpenCodeResponseParser } from '../parsers/opencode-parser.js';
 import {
   getDefaultModelForCli,
@@ -135,6 +139,9 @@ function warnIfAnthropicProvider(models: Set<string>): void {
 export class OpenCodeCliAdapter extends SubprocessCliAdapter {
   readonly name: CliName = 'opencode';
   protected readonly parser: ICliResponseParser = new OpenCodeResponseParser();
+
+  /** Enable transient-error retry for OpenCode (#1456). */
+  protected override readonly transientRetry: TransientRetryConfig = { enabled: true };
 
   private readonly model: string;
   private availableModels: Set<string> | undefined;

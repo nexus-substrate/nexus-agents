@@ -46,7 +46,12 @@ export {
 export type { CapacityTrackerConfig } from './capacity-tracker.js';
 
 // Subprocess adapter (extracted from base-adapter per Issue #272)
-export { SubprocessCliAdapter, type CommandConfig } from './subprocess-adapter.js';
+export {
+  SubprocessCliAdapter,
+  isTransientError,
+  type CommandConfig,
+  type TransientRetryConfig,
+} from './subprocess-adapter.js';
 
 // Concrete adapters
 export { ClaudeCliAdapter } from './adapters/claude-adapter.js';
