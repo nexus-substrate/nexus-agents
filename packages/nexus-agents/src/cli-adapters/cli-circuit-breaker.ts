@@ -11,7 +11,7 @@ import type { Result, ILogger } from '../core/index.js';
 import { ok, err, createLogger, getTimeProvider } from '../core/index.js';
 import type { TaskCategory } from '../config/task-specialization-types.js';
 import type { FallbackTaskType } from './task-classifier.js';
-import { getFallbackChain } from './fallback-chains.js';
+import { getFallbackChainForCategory } from './fallback-chains.js';
 import type { ICliAdapter, CliName, CliTask, CliResponse, CliError } from './types.js';
 import {
   CircuitBreakerRegistry,
@@ -226,7 +226,7 @@ export class CliCircuitBreakerIntegration implements ICliCircuitBreakerIntegrati
   private getFallbackClis(excludeCli: CliName, taskCategory?: TaskCategory): CliName[] {
     const chain =
       taskCategory !== undefined
-        ? getFallbackChain(CATEGORY_TO_FALLBACK[taskCategory])
+        ? getFallbackChainForCategory(taskCategory, CATEGORY_TO_FALLBACK[taskCategory])
         : this.config.fallbackChain;
     return [...chain].filter(
       (cli) => cli !== excludeCli && !this.registry.isOpen(cli) && this.adapters.has(cli)

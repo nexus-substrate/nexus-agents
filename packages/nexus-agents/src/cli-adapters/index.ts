@@ -352,6 +352,7 @@ export type {
 // Fallback Chain Registry (Issue #362)
 export {
   getFallbackChain,
+  getFallbackChainForCategory,
   filterAvailableClis,
   getNextCli,
   isChainExhausted,
@@ -359,6 +360,7 @@ export {
   createFallbackChainManager,
   createFallbackChainRegistry,
   DEFAULT_FALLBACK_CHAINS,
+  CATEGORY_CHAIN_OVERRIDES,
   FallbackChainSchema,
   FallbackChainRegistrySchema,
 } from './fallback-chains.js';

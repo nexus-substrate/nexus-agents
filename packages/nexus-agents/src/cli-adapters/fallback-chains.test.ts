@@ -9,6 +9,8 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { CLI_NAMES } from '../config/model-capabilities-types.js';
 import {
   getFallbackChain,
+  getFallbackChainForCategory,
+  CATEGORY_CHAIN_OVERRIDES,
   filterAvailableClis,
   getNextCli,
   isChainExhausted,
@@ -86,6 +88,24 @@ describe('fallback-chains', () => {
       };
       const chain = getFallbackChain('code', customRegistry);
       expect(chain[0]).toBe('gemini');
+    });
+  });
+
+  describe('getFallbackChainForCategory', () => {
+    it('returns category-specific override when available', () => {
+      const chain = getFallbackChainForCategory('architecture', 'analysis');
+      expect(chain[0]).toBe('gemini');
+      expect(chain).toEqual(CATEGORY_CHAIN_OVERRIDES['architecture']);
+    });
+
+    it('falls back to bucket-level chain when no override', () => {
+      const chain = getFallbackChainForCategory('planning', 'analysis');
+      expect(chain).toEqual(DEFAULT_FALLBACK_CHAINS.analysis);
+    });
+
+    it('falls back to bucket-level for non-overridden categories', () => {
+      const chain = getFallbackChainForCategory('code_generation', 'code');
+      expect(chain).toEqual(DEFAULT_FALLBACK_CHAINS.code);
     });
   });
 

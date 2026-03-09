@@ -11,6 +11,7 @@
 import { z } from 'zod';
 import type { CliName } from './types-core.js';
 import type { FallbackTaskType } from './task-classifier.js';
+import type { TaskCategory } from '../config/task-specialization-types.js';
 
 /**
  * Fallback chain: ordered list of CLIs to try for a task type.
@@ -97,6 +98,35 @@ export const DEFAULT_FALLBACK_CHAINS: FallbackChainRegistry = {
   // general: balanced order
   general: ['claude', 'gemini', 'codex', 'opencode'],
 } as const;
+
+/**
+ * Per-category fallback chain overrides.
+ *
+ * Categories in the same FallbackTaskType bucket may need different CLI ordering.
+ * Entries here override the bucket-level chain from DEFAULT_FALLBACK_CHAINS.
+ *
+ * Weather data 2026-03-09:
+ * - architecture: gemini 66.7% (n=24) > claude 43.6% (n=220) → gemini first
+ * - planning/security_review: claude 93.8%/44.9% → keep claude first (bucket default)
+ */
+export const CATEGORY_CHAIN_OVERRIDES: Partial<Record<TaskCategory, FallbackChain>> = {
+  architecture: ['gemini', 'claude', 'codex', 'opencode'],
+} as const;
+
+/**
+ * Gets the fallback chain for a specific TaskCategory.
+ * Returns a category-specific override if available, otherwise falls through
+ * to the bucket-level chain via CATEGORY_TO_FALLBACK mapping.
+ */
+export function getFallbackChainForCategory(
+  category: TaskCategory,
+  bucketType: FallbackTaskType,
+  registry: FallbackChainRegistry = DEFAULT_FALLBACK_CHAINS
+): FallbackChain {
+  const override = CATEGORY_CHAIN_OVERRIDES[category];
+  if (override !== undefined) return override;
+  return registry[bucketType];
+}
 
 /**
  * Creates initial empty metrics for a task type.
