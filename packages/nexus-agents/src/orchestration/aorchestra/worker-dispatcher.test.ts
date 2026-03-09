@@ -481,6 +481,77 @@ describe('dispatchWorkers', () => {
     expect(wave1Call).toBe(2);
   });
 
+  it('awaits spacing delay before executing rate-limited roles (#1476)', async () => {
+    vi.useFakeTimers();
+    let now = 1000;
+    const callTimes: number[] = [];
+
+    const trackedExecute: WorkerDispatchOptions['executeWorker'] = vi
+      .fn()
+      .mockImplementation((entry: AgentPlanEntry): Promise<WorkerResult> => {
+        callTimes.push(now);
+        if (entry.wave === 1) {
+          return Promise.reject(new Error('Rate limited: too many requests'));
+        }
+        return Promise.resolve({
+          role: entry.role,
+          subTask: entry.subTask,
+          output: `result from ${entry.role}`,
+          status: 'success' as const,
+          durationMs: 50,
+        });
+      });
+
+    // Wave 1: triggers rate-limit error; Wave 2: same role should be delayed
+    const entries = [makeEntry('code', 1, 1), makeEntry('code', 2, 2)];
+
+    const dispatchPromise = dispatchWorkers(entries, {
+      executeWorker: trackedExecute,
+      consecutiveFailureThreshold: 10, // high so role is not auto-disabled
+    });
+
+    // Advance past both the spacing delay and the wave delay
+    await vi.advanceTimersByTimeAsync(RATE_LIMIT_WAVE_DELAY_MS + RATE_LIMIT_SPACING_MS + 500);
+    now += RATE_LIMIT_WAVE_DELAY_MS + RATE_LIMIT_SPACING_MS + 500;
+    const results = await dispatchPromise;
+
+    expect(results).toHaveLength(2);
+    // First call is the rate-limited failure, second is the delayed retry
+    expect(callTimes).toHaveLength(2);
+
+    vi.useRealTimers();
+  });
+
+  it('does not delay non-rate-limited roles (#1476)', async () => {
+    let executeCallCount = 0;
+    const fastExecute: WorkerDispatchOptions['executeWorker'] = vi
+      .fn()
+      .mockImplementation((entry: AgentPlanEntry): Promise<WorkerResult> => {
+        executeCallCount++;
+        if (entry.wave === 1) {
+          return Promise.reject(new Error('Some non-rate-limit error'));
+        }
+        return Promise.resolve({
+          role: entry.role,
+          subTask: entry.subTask,
+          output: `result from ${entry.role}`,
+          status: 'success' as const,
+          durationMs: 50,
+        });
+      });
+
+    const entries = [makeEntry('code', 1, 1), makeEntry('code', 2, 2)];
+    const results = await dispatchWorkers(entries, {
+      executeWorker: fastExecute,
+      consecutiveFailureThreshold: 10,
+    });
+
+    expect(results).toHaveLength(2);
+    expect(executeCallCount).toBe(2);
+    // Non-rate-limited role should execute without spacing delay
+    expect(results[1]?.status).toBe('success');
+  });
+
   it('exports CONSECUTIVE_FAILURE_THRESHOLD constant', () => {
     expect(CONSECUTIVE_FAILURE_THRESHOLD).toBe(3);
   });
