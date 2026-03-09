@@ -16,12 +16,21 @@ import type { WorkerResult } from '../../orchestration/aorchestra/index.js';
 import type { IModelAdapter } from '../../core/index.js';
 import { ok, err, createLogger, ModelError, ErrorCode } from '../../core/index.js';
 import { getOutcomeStore, resetOutcomeStore } from '../../orchestration/outcomes/index.js';
+import type { SynthesisResult } from '../../orchestration/aorchestra/result-synthesizer.js';
 
 // Disable persistence so getOutcomeStore() returns a fresh in-memory store
 // instead of loading historical outcomes from ~/.nexus-agents/learning/outcomes.jsonl
 vi.mock('../../config/learning-persistence.js', () => ({
   isPersistenceEnabled: vi.fn(() => false),
 }));
+
+// Allow overriding synthesizeResults for specific tests (#1469)
+const mockSynthesizeResults = vi.hoisted(() => vi.fn());
+vi.mock('../../orchestration/aorchestra/result-synthesizer.js', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../../orchestration/aorchestra/result-synthesizer.js')>();
+  return { ...actual, synthesizeResults: mockSynthesizeResults };
+});
 
 // ============================================================================
 // Helpers
@@ -289,6 +298,23 @@ describe('executeWorkerDispatch', () => {
 
     expect(result.conflicts).toHaveLength(1);
     expect(result.conflicts[0]?.filePath).toBe('src/auth.ts');
+  });
+
+  it('handles synthesis failure without crashing (#1469)', async () => {
+    const failureResult: SynthesisResult = { ok: false, error: 'Synthesis model unavailable' };
+    mockSynthesizeResults.mockResolvedValueOnce(failureResult);
+
+    const plan = makePlan(1);
+    const result = await executeWorkerDispatch({
+      agentPlan: plan,
+      taskDescription: 'Task with synthesis',
+      modelAdapter: makeMockAdapter('Worker output'),
+      logger,
+      synthesize: true,
+    });
+
+    expect(result.successCount).toBe(1);
+    expect(result.synthesis).toBeUndefined();
   });
 
   it('returns empty conflicts when no overlaps', async () => {

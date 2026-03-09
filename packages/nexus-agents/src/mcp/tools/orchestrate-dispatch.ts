@@ -221,6 +221,10 @@ async function runSynthesisPhase(
     modelAdapter: options.modelAdapter,
   });
   state.totalModelCalls++;
+  if (!synthResult.ok) {
+    options.logger.warn('Synthesis failed', { error: synthResult.error });
+    return;
+  }
   state.synthesisValue = synthResult.value;
   if (synthResult.synthesisSource !== undefined) {
     state.synthSource = synthResult.synthesisSource;
