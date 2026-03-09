@@ -225,7 +225,8 @@ function recordToOutcomeStore(
   taskDescription: string,
   success: boolean,
   durationMs: number,
-  failureCategory?: OutcomeFailureCategory
+  failureCategory?: OutcomeFailureCategory,
+  errorMessage?: string
 ): void {
   try {
     const match = detectTaskCategory(taskDescription);
@@ -239,6 +240,7 @@ function recordToOutcomeStore(
       timestamp: new Date(getTimeProvider().now()).toISOString(),
       source: 'delegate',
       ...(failureCategory !== undefined ? { failureCategory } : {}),
+      ...(errorMessage !== undefined ? { errorMessage: errorMessage.slice(0, 500) } : {}),
     });
   } catch (error: unknown) {
     createLogger({ tool: 'orchestrate' }).debug('Best-effort outcome recording failed', {
@@ -319,7 +321,7 @@ function recordOrchestrationError(
   // These are infrastructure issues (missing API keys), not task failures.
   // Recording them as failures poisons the weather_report success rates.
   if (fc !== 'adapter_unavailable') {
-    recordToOutcomeStore(taskDescription, false, durationMs ?? 0, fc);
+    recordToOutcomeStore(taskDescription, false, durationMs ?? 0, fc, errorMessage);
   }
 }
 

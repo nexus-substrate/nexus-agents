@@ -442,6 +442,16 @@ function mapErrorType(errorType: string | undefined, errorMsg: string): OutcomeF
   return 'unknown';
 }
 
+/** Builds failure fields (category + errorMessage) for a failed worker result. */
+function buildFailureFields(r: WorkerResult): {
+  failureCategory: OutcomeFailureCategory;
+  errorMessage?: string;
+} {
+  const failureCategory = mapErrorType(r.errorType, r.error ?? '');
+  const errorMessage = (r.error ?? '').slice(0, 500);
+  return errorMessage !== '' ? { failureCategory, errorMessage } : { failureCategory };
+}
+
 /**
  * Records per-worker outcomes to OutcomeStore for closed-loop learning.
  * Best-effort: never throws. Each worker result becomes one OutcomeStore entry.
@@ -459,8 +469,6 @@ export function recordWorkerOutcomes(
 
     for (const r of results) {
       const success = r.status === 'success';
-      const failureCategory = !success ? mapErrorType(r.errorType, r.error ?? '') : undefined;
-
       store.append({
         id: `worker-${r.role}-${String(Date.now())}-${Math.random().toString(36).slice(2, 6)}`,
         cli,
@@ -470,7 +478,7 @@ export function recordWorkerOutcomes(
         durationMs: r.durationMs,
         timestamp: ts,
         source: 'delegate',
-        ...(failureCategory !== undefined ? { failureCategory } : {}),
+        ...(!success ? buildFailureFields(r) : {}),
       });
     }
   } catch (error: unknown) {
