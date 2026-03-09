@@ -105,6 +105,50 @@ describe('detectConflicts', () => {
     expect(conflicts[0]?.filePath).toBe('src/App.tsx');
   });
 
+  // ---- Section overlap detection (#1507 Tier 1 accuracy) ----
+
+  it('detects overlapping markdown section headings between workers', () => {
+    const results: WorkerResult[] = [
+      makeResult('code', '## Architecture\nUse microservices pattern.'),
+      makeResult('security', '## Architecture\nUse monolith with security zones.'),
+    ];
+    const conflicts = detectConflicts(results);
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0]?.filePath).toBe('section:Architecture');
+    expect(conflicts[0]?.workers).toContain('code');
+    expect(conflicts[0]?.workers).toContain('security');
+  });
+
+  it('detects overlapping h3 sections between workers', () => {
+    const results: WorkerResult[] = [
+      makeResult('code', '### Error Handling\nUse try-catch.'),
+      makeResult('testing', '### Error Handling\nUse Result pattern.'),
+    ];
+    const conflicts = detectConflicts(results);
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0]?.filePath).toBe('section:Error Handling');
+  });
+
+  it('does not flag different section headings as conflicts', () => {
+    const results: WorkerResult[] = [
+      makeResult('code', '## Implementation\nDone.'),
+      makeResult('testing', '## Test Plan\nDone.'),
+    ];
+    const conflicts = detectConflicts(results);
+    expect(conflicts).toEqual([]);
+  });
+
+  it('detects both file and section conflicts in same dispatch', () => {
+    const results: WorkerResult[] = [
+      makeResult('code', '## Summary\nChanged src/auth.ts'),
+      makeResult('security', '## Summary\nHardened src/auth.ts'),
+    ];
+    const conflicts = detectConflicts(results);
+    expect(conflicts).toHaveLength(2);
+    const ids = conflicts.map((c) => c.filePath).sort();
+    expect(ids).toEqual(['section:Summary', 'src/auth.ts']);
+  });
+
   it('deduplicates workers per conflict', () => {
     const results: WorkerResult[] = [
       makeResult('code', 'Changed src/auth.ts in two places in src/auth.ts'),

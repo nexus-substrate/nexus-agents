@@ -37,6 +37,35 @@ export interface WorkerConflict {
 const FILE_PATH_PATTERN =
   /(?:^|[\s`"'(])([a-zA-Z0-9_./-]+\.(?:ts|tsx|js|jsx|json|yaml|yml|md|css|scss|html))\b/g;
 
+// ============================================================================
+// Section Heading Extraction
+// ============================================================================
+
+/**
+ * Pattern matching markdown section headings (## or ###).
+ * Captures the heading text for semantic overlap detection.
+ */
+const SECTION_HEADING_PATTERN = /^#{2,3}\s+(.+)$/gm;
+
+/** Extract markdown section headings from worker output. */
+function extractSectionHeadings(output: string): readonly string[] {
+  const headings = new Set<string>();
+  let match: RegExpExecArray | null = SECTION_HEADING_PATTERN.exec(output);
+  while (match !== null) {
+    const captured = match[1];
+    if (captured !== undefined) {
+      headings.add(captured.trim());
+    }
+    match = SECTION_HEADING_PATTERN.exec(output);
+  }
+  SECTION_HEADING_PATTERN.lastIndex = 0;
+  return [...headings];
+}
+
+// ============================================================================
+// File Path Extraction
+// ============================================================================
+
 /**
  * Extract file paths from worker output text.
  */
@@ -56,6 +85,20 @@ function extractFilePaths(output: string): readonly string[] {
 }
 
 // ============================================================================
+// Helpers
+// ============================================================================
+
+/** Add a worker role to the overlap map for a given identifier. */
+function addToOverlapMap(map: Map<string, Set<string>>, key: string, role: string): void {
+  const existing = map.get(key);
+  if (existing !== undefined) {
+    existing.add(role);
+  } else {
+    map.set(key, new Set([role]));
+  }
+}
+
+// ============================================================================
 // Public API
 // ============================================================================
 
@@ -72,26 +115,27 @@ function extractFilePaths(output: string): readonly string[] {
 export function detectConflicts(results: readonly WorkerResult[]): readonly WorkerConflict[] {
   if (results.length === 0) return [];
 
-  // Map: filePath → Set of worker roles
-  const fileWorkerMap = new Map<string, Set<string>>();
+  // Map: identifier → Set of worker roles
+  // Identifiers are either file paths or "section:Heading Name"
+  const overlapMap = new Map<string, Set<string>>();
 
   for (const result of results) {
     if (result.status !== 'success') continue;
 
-    const paths = extractFilePaths(result.output);
-    for (const filePath of paths) {
-      const existing = fileWorkerMap.get(filePath);
-      if (existing !== undefined) {
-        existing.add(result.role);
-      } else {
-        fileWorkerMap.set(filePath, new Set([result.role]));
-      }
+    // File path overlaps
+    for (const filePath of extractFilePaths(result.output)) {
+      addToOverlapMap(overlapMap, filePath, result.role);
+    }
+
+    // Section heading overlaps (#1507)
+    for (const heading of extractSectionHeadings(result.output)) {
+      addToOverlapMap(overlapMap, `section:${heading}`, result.role);
     }
   }
 
   // Filter to only entries with 2+ workers
   const conflicts: WorkerConflict[] = [];
-  for (const [filePath, workers] of fileWorkerMap) {
+  for (const [filePath, workers] of overlapMap) {
     if (workers.size >= 2) {
       conflicts.push({ filePath, workers: [...workers] });
     }
