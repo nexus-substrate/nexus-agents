@@ -152,10 +152,14 @@ export function getAdaptiveBonus(
 
   const thresholds = computeAdaptiveThresholds(store, cliName, category);
   const successRate = outcomes.filter((o) => o.success).length / outcomes.length;
-  const delta = successRate - thresholds.baseline;
+  // Compare against fixed baseline (0.7), not adaptive baseline (#1483).
+  // The adaptive baseline self-adjusts to match observed rate, zeroing delta.
+  const FIXED_BASELINE = 0.7;
+  const delta = successRate - FIXED_BASELINE;
 
-  // Scale: +30% above baseline → +maxBonus (adaptive, not hardcoded)
-  const maxBonus = thresholds.maxBonus > 0 ? thresholds.maxBonus : cfg.maxBonusAdjustment;
+  // Scale: +30% above baseline → +maxBonus; config caps adaptive value
+  const adaptiveMax = thresholds.maxBonus > 0 ? thresholds.maxBonus : cfg.maxBonusAdjustment;
+  const maxBonus = Math.min(adaptiveMax, cfg.maxBonusAdjustment);
   const scaled = (delta / 0.3) * maxBonus;
   return clamp(scaled, -maxBonus, maxBonus);
 }
