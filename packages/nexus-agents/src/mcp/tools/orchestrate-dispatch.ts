@@ -260,11 +260,15 @@ async function runRefinementPhase(
 ): Promise<boolean> {
   if (options.refine !== true || state.totalModelCalls >= maxCalls) return false;
 
+  const errorResults = state.results.filter((r) => r.status === 'error');
+  const allRateLimit =
+    errorResults.length > 0 && errorResults.every((r) => r.errorType === 'rate_limit');
   const signals: RefinementSignals = {
-    errorCount: state.results.filter((r) => r.status === 'error').length,
+    errorCount: errorResults.length,
     successCount: state.results.filter((r) => r.status === 'success').length,
     conflictCount: detectConflicts(state.results).length,
     ...(state.synthSource !== undefined ? { synthesisSource: state.synthSource } : {}),
+    ...(allRateLimit ? { allErrorsRateLimit: true } : {}),
   };
   if (!shouldRefine(signals)) return false;
 
@@ -464,10 +468,14 @@ export interface RefinementSignals {
   readonly successCount: number;
   readonly conflictCount: number;
   readonly synthesisSource?: SynthesisSource;
+  /** When all errors are rate-limit, refinement is unlikely to help (#1504). */
+  readonly allErrorsRateLimit?: boolean;
 }
 
 /** Returns true when result quality warrants a refinement pass. */
 export function shouldRefine(signals: RefinementSignals): boolean {
+  // Skip refinement when all errors are rate limits — retrying won't help (#1504)
+  if (signals.allErrorsRateLimit === true) return false;
   if (signals.successCount === 0) return true;
   if (signals.errorCount > 0) return true;
   if (signals.synthesisSource === 'fallback') return true;
