@@ -477,6 +477,42 @@ describe('OutcomeStore.reclassifyAll (#1444)', () => {
     // 'Unknown workflow' now matches validation pattern (#1507)
     expect(store2.query().find((o) => o.id === 'unk-3')?.failureCategory).toBe('validation');
   });
+
+  it('reclassifies execution entries with updated patterns (#1530)', () => {
+    const store2 = new OutcomeStore();
+    const entries = store2 as unknown as { entries: TaskOutcome[] };
+    entries.entries.push({
+      ...makeOutcome({
+        id: 'exec-5xx',
+        success: false,
+        failureCategory: 'execution',
+        errorMessage: '502 Bad Gateway',
+      }),
+    });
+    entries.entries.push({
+      ...makeOutcome({
+        id: 'exec-empty',
+        success: false,
+        failureCategory: 'execution',
+        errorMessage: 'Got empty response from model',
+      }),
+    });
+    entries.entries.push({
+      ...makeOutcome({
+        id: 'exec-real',
+        success: false,
+        failureCategory: 'execution',
+        errorMessage: 'TypeError: Cannot read properties',
+      }),
+    });
+
+    const count = store2.reclassifyAll();
+
+    expect(count).toBe(2);
+    expect(store2.query().find((o) => o.id === 'exec-5xx')?.failureCategory).toBe('connection');
+    expect(store2.query().find((o) => o.id === 'exec-empty')?.failureCategory).toBe('parse');
+    expect(store2.query().find((o) => o.id === 'exec-real')?.failureCategory).toBe('execution');
+  });
 });
 
 describe('OutcomeStore.purgeSkippedWorkers (#1528)', () => {

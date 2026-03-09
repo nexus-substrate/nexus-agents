@@ -202,8 +202,12 @@ describe('categorizeOutcomeErrorMessage', () => {
     expect(categorizeOutcomeErrorMessage('spawn error: ENOENT')).toBe('crash');
   });
 
-  it('classifies api error as execution', () => {
-    expect(categorizeOutcomeErrorMessage('APIError: Internal server error')).toBe('execution');
+  it('classifies api internal server error as connection (#1530)', () => {
+    expect(categorizeOutcomeErrorMessage('APIError: Internal server error')).toBe('connection');
+  });
+
+  it('classifies api SDK error as execution', () => {
+    expect(categorizeOutcomeErrorMessage('APIError: Invalid request format')).toBe('execution');
   });
 
   it('classifies 401 as authentication', () => {
@@ -230,8 +234,8 @@ describe('categorizeOutcomeErrorMessage', () => {
     expect(categorizeOutcomeErrorMessage('Process non-zero exit code 1')).toBe('execution');
   });
 
-  it('classifies empty response as execution (#1401)', () => {
-    expect(categorizeOutcomeErrorMessage('Got empty response from model')).toBe('execution');
+  it('classifies empty response as parse (#1530)', () => {
+    expect(categorizeOutcomeErrorMessage('Got empty response from model')).toBe('parse');
   });
 
   it('classifies empty string as execution (#1475)', () => {
@@ -264,16 +268,28 @@ describe('categorizeOutcomeErrorMessage', () => {
     expect(categorizeOutcomeErrorMessage('max retries exceeded')).toBe('rate_limit');
   });
 
-  it('classifies 502 bad gateway as execution (#1401)', () => {
-    expect(categorizeOutcomeErrorMessage('502 Bad Gateway')).toBe('execution');
+  it('classifies 502 bad gateway as connection (#1530)', () => {
+    expect(categorizeOutcomeErrorMessage('502 Bad Gateway')).toBe('connection');
   });
 
-  it('classifies service unavailable as execution (#1401)', () => {
-    expect(categorizeOutcomeErrorMessage('503 Service Unavailable')).toBe('execution');
+  it('classifies service unavailable as connection (#1530)', () => {
+    expect(categorizeOutcomeErrorMessage('503 Service Unavailable')).toBe('connection');
   });
 
-  it('classifies truncated response as execution (#1401)', () => {
-    expect(categorizeOutcomeErrorMessage('response was truncated')).toBe('execution');
+  it('classifies 500 internal server error as connection (#1530)', () => {
+    expect(categorizeOutcomeErrorMessage('500 Internal Server Error')).toBe('connection');
+  });
+
+  it('classifies 504 gateway timeout as timeout (timeout pattern takes priority)', () => {
+    expect(categorizeOutcomeErrorMessage('504 Gateway Timeout')).toBe('timeout');
+  });
+
+  it('classifies plain 504 as connection (#1530)', () => {
+    expect(categorizeOutcomeErrorMessage('HTTP 504 error')).toBe('connection');
+  });
+
+  it('classifies truncated response as parse (#1530)', () => {
+    expect(categorizeOutcomeErrorMessage('response was truncated')).toBe('parse');
   });
 
   it('classifies proxy errors as connection (#1401)', () => {

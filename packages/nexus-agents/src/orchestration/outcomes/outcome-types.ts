@@ -121,6 +121,14 @@ const CONNECTION_PATTERNS = [
   'ssl',
   'tls',
   'proxy',
+  // HTTP 5xx — transient server errors, not execution failures (#1530)
+  '500',
+  '502',
+  '503',
+  '504',
+  'internal server error',
+  'bad gateway',
+  'service unavailable',
 ];
 const CRASH_PATTERNS = [
   'crash',
@@ -166,6 +174,12 @@ const PARSE_PATTERNS = [
   'cannot parse',
   'ndjson',
   'malformed',
+  // Model output issues — not execution failures (#1530)
+  'empty response',
+  'no output',
+  'no content',
+  'truncated',
+  'incomplete',
 ];
 const EXECUTION_PATTERNS = [
   'api error',
@@ -189,18 +203,6 @@ const EXECUTION_PATTERNS = [
   'command failed',
   'non-zero exit',
   'exit code',
-  'empty response',
-  'no output',
-  'no content',
-  '500',
-  '502',
-  '503',
-  '504',
-  'internal server error',
-  'bad gateway',
-  'service unavailable',
-  'truncated',
-  'incomplete',
 ];
 // Generic catch-all patterns — separated from execution for observability (#1457)
 const GENERIC_PATTERNS = [

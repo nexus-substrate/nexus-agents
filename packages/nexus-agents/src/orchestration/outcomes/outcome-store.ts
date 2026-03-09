@@ -123,12 +123,14 @@ export class OutcomeStore {
       if (entry.failureCategory === undefined) {
         this.entries[i] = autoClassify(entry);
         count++;
-      } else if (entry.failureCategory === 'unknown') {
-        // Re-run classification with updated patterns (#1507)
+      } else if (entry.failureCategory === 'unknown' || entry.failureCategory === 'execution') {
+        // Re-run classification with updated patterns (#1507, #1530)
+        // Also reclassifies 'execution' entries since pattern ownership changed:
+        // HTTP 5xx → connection, empty response → parse (#1530).
         const newCategory = hasErrorMessage(entry)
           ? categorizeOutcomeErrorMessage(entry.errorMessage as string)
           : 'execution';
-        if (newCategory !== 'unknown') {
+        if (newCategory !== entry.failureCategory) {
           this.entries[i] = { ...entry, failureCategory: newCategory };
           count++;
         }
