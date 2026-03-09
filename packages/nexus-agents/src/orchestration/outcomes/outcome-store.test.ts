@@ -466,7 +466,7 @@ describe('OutcomeStore.reclassifyAll (#1444)', () => {
 });
 
 describe('OutcomeStore.purgeSkippedWorkers (#1528)', () => {
-  it('removes 0ms failed worker entries', () => {
+  it('removes all 0ms failed entries regardless of model', () => {
     const store = new OutcomeStore();
     store.append(
       makeOutcome({ id: 'real-1', success: true, model: 'worker-code', durationMs: 100 })
@@ -477,13 +477,14 @@ describe('OutcomeStore.purgeSkippedWorkers (#1528)', () => {
     store.append(
       makeOutcome({ id: 'real-2', success: false, model: 'worker-testing', durationMs: 500 })
     );
+    store.append(makeOutcome({ id: 'skip-2', success: false, model: 'expert', durationMs: 0 }));
     store.append(
-      makeOutcome({ id: 'skip-2', success: false, model: 'worker-code', durationMs: 0 })
+      makeOutcome({ id: 'skip-3', success: false, model: 'graph-workflow', durationMs: 0 })
     );
 
     const purged = store.purgeSkippedWorkers();
 
-    expect(purged).toBe(2);
+    expect(purged).toBe(3);
     expect(store.size).toBe(2);
     expect(store.query().map((o) => o.id)).toEqual(['real-1', 'real-2']);
   });
@@ -496,9 +497,9 @@ describe('OutcomeStore.purgeSkippedWorkers (#1528)', () => {
     expect(store.size).toBe(1);
   });
 
-  it('preserves non-worker 0ms failures', () => {
+  it('preserves failures with non-zero duration', () => {
     const store = new OutcomeStore();
-    store.append(makeOutcome({ id: 'e1', success: false, model: 'expert', durationMs: 0 }));
+    store.append(makeOutcome({ id: 'e1', success: false, model: 'expert', durationMs: 1 }));
 
     expect(store.purgeSkippedWorkers()).toBe(0);
     expect(store.size).toBe(1);

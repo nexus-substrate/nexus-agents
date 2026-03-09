@@ -138,10 +138,12 @@ export class OutcomeStore {
   }
 
   /**
-   * Purge false failures from skipped workers (#1528).
-   * Removes non-success entries with durationMs=0 and worker-* model prefix,
-   * which were routing decisions (circuit breaker, role auto-disable) recorded
-   * as failures before the #1528 fix.
+   * Purge false failures with zero execution time (#1528).
+   * Removes non-success entries with durationMs=0 — these are either:
+   * - Skipped workers (circuit breaker, role auto-disable)
+   * - Test-generated entries (E2E eval artifacts)
+   * - Pre-execution short-circuits (validation, initialization)
+   * Real model execution always takes >0ms.
    * Returns count of purged entries.
    */
   purgeSkippedWorkers(): number {
@@ -150,9 +152,8 @@ export class OutcomeStore {
     for (let i = 0; i < this.entries.length; i++) {
       const entry = this.entries[i];
       if (entry === undefined) continue;
-      const isSkippedWorker =
-        !entry.success && entry.durationMs === 0 && entry.model.startsWith('worker-');
-      if (!isSkippedWorker) {
+      const isZeroDurationFailure = !entry.success && entry.durationMs === 0;
+      if (!isZeroDurationFailure) {
         this.entries[writeIdx] = entry;
         writeIdx++;
       }
