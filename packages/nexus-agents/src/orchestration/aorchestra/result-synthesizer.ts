@@ -52,7 +52,7 @@ export interface SynthesizeResultsInput {
 }
 
 /** Source of synthesis output. */
-export type SynthesisSource = 'llm' | 'fallback';
+export type SynthesisSource = 'llm' | 'fallback' | 'deterministic';
 
 /** Successful synthesis result. */
 interface SynthesisSuccess {
@@ -204,27 +204,50 @@ function buildFallbackResponse(
 }
 
 // ============================================================================
-// Public API
+// Deterministic Merge — Tier 1 (#1507)
 // ============================================================================
 
 /**
- * Synthesize worker results into a unified response.
+ * Merge non-conflicting worker outputs without an LLM call.
  *
- * Makes a single LLM call to merge all worker outputs. On failure,
- * falls back to concatenated outputs with conflict warnings.
- *
- * @param input - Worker results, conflicts, task description, and model adapter
- * @returns Always succeeds — falls back gracefully on LLM failure
+ * When workers produce non-overlapping results (zero conflicts), their outputs
+ * can be directly merged with role headers. This saves tokens and latency on
+ * the majority of dispatches where workers operate on independent concerns.
  */
-export async function synthesizeResults(input: SynthesizeResultsInput): Promise<SynthesisResult> {
-  const { results, conflicts, taskDescription, modelAdapter } = input;
+function buildDeterministicMerge(results: readonly WorkerResult[]): string {
   const successResults = results.filter((r) => r.status === 'success' && r.output !== '');
-  const excludedWorkerCount = results.length - successResults.length;
+  if (successResults.length === 0) return '';
 
-  if (successResults.length === 0) {
-    return { ok: true, value: '', excludedWorkerCount };
+  const perWorkerBudget = Math.max(
+    MIN_PER_WORKER_BUDGET_CHARS,
+    Math.floor(MAX_SYNTHESIS_INPUT_CHARS / successResults.length)
+  );
+
+  const parts: string[] = [];
+  for (const result of successResults) {
+    const sanitized = sanitizeWorkerOutput(result.output);
+    const truncated =
+      sanitized.length > perWorkerBudget
+        ? sanitized.slice(0, perWorkerBudget) + ' [truncated]'
+        : sanitized;
+    parts.push(`### ${result.role}`);
+    parts.push(truncated);
+    parts.push('');
   }
 
+  return parts.join('\n');
+}
+
+// ============================================================================
+// Public API
+// ============================================================================
+
+/** Tier 2: LLM-assisted synthesis with fallback (#1507). */
+async function synthesizeViaLlm(
+  input: SynthesizeResultsInput,
+  excludedWorkerCount: number
+): Promise<SynthesisResult> {
+  const { results, conflicts, taskDescription, modelAdapter } = input;
   const prompt = buildSynthesisPrompt({ results, conflicts, taskDescription });
 
   try {
@@ -249,7 +272,6 @@ export async function synthesizeResults(input: SynthesizeResultsInput): Promise<
       (b: ContentBlock): b is ContentBlock & { type: 'text' } => b.type === 'text'
     );
 
-    // Guard: if no text blocks (e.g., only tool_use), fall back to raw worker outputs
     const text =
       textBlocks.length === 0
         ? results.map((r) => r.output).join('\n')
@@ -266,4 +288,38 @@ export async function synthesizeResults(input: SynthesizeResultsInput): Promise<
       excludedWorkerCount,
     };
   }
+}
+
+/**
+ * Synthesize worker results into a unified response.
+ *
+ * Uses tiered conflict resolution (#1507):
+ * - Tier 1: Deterministic merge when no conflicts (no LLM call)
+ * - Tier 2: LLM-assisted synthesis when conflicts exist
+ * - Fallback: Concatenated outputs if LLM fails
+ *
+ * @param input - Worker results, conflicts, task description, and model adapter
+ * @returns Always succeeds — falls back gracefully on LLM failure
+ */
+export async function synthesizeResults(input: SynthesizeResultsInput): Promise<SynthesisResult> {
+  const { results, conflicts } = input;
+  const successResults = results.filter((r) => r.status === 'success' && r.output !== '');
+  const excludedWorkerCount = results.length - successResults.length;
+
+  if (successResults.length === 0) {
+    return { ok: true, value: '', excludedWorkerCount };
+  }
+
+  // Tier 1: deterministic merge when no conflicts (#1507)
+  if (conflicts.length === 0) {
+    return {
+      ok: true,
+      value: buildDeterministicMerge(results),
+      synthesisSource: 'deterministic',
+      excludedWorkerCount,
+    };
+  }
+
+  // Tier 2: LLM-assisted synthesis when conflicts exist
+  return synthesizeViaLlm(input, excludedWorkerCount);
 }
