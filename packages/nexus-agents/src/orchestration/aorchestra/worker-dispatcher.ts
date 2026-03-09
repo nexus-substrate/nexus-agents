@@ -537,6 +537,23 @@ function classifyError(message: string, _durationMs: number, _timeoutMs: number)
 /** Timeout extension multiplier for triage-initiated retries (#1506). */
 const TIMEOUT_EXTENSION_FACTOR = 1.5;
 
+/** Max chars of error context appended to retry sub-task. */
+const MAX_RETRY_CONTEXT_CHARS = 200;
+
+/** Build a retry entry with failure context appended to the sub-task (#1507). */
+function buildRetryEntry(
+  original: AgentPlanEntry,
+  failedResult: WorkerResult,
+  triageReason: string
+): AgentPlanEntry {
+  const errorSnippet = (failedResult.error ?? '').slice(0, MAX_RETRY_CONTEXT_CHARS);
+  const retryContext =
+    `\n\n[Retry context: previous attempt failed — ${triageReason}.` +
+    (errorSnippet !== '' ? ` Error: ${errorSnippet}` : '') +
+    ` Adjust your approach to avoid this failure.]`;
+  return { ...original, subTask: original.subTask + retryContext };
+}
+
 /**
  * Execute a single worker with progressive watchdog monitoring (#1499)
  * and pattern-based failure triage with single retry (#1506).
@@ -623,7 +640,14 @@ async function maybeRetryAfterTriage(
     retryTimeout,
   });
 
-  const retryResult = await attemptExecution(entry, executeWorker, priorWaveResults, retryTimeout);
+  // Enrich retry entry with failure context so the model can avoid the same mistake
+  const retryEntry = buildRetryEntry(entry, failedResult, triage.reason);
+  const retryResult = await attemptExecution(
+    retryEntry,
+    executeWorker,
+    priorWaveResults,
+    retryTimeout
+  );
   if (retryResult.status === 'success') {
     logger.info('Triage retry succeeded', { role: entry.role, action: triage.action });
     return { ...retryResult, wasRetried: true };

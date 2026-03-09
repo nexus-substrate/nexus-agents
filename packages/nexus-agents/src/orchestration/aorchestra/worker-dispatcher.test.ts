@@ -812,6 +812,41 @@ describe('dispatchWorkers', () => {
     expect(results[0]?.wasRetried).toBe(true);
     expect(callCount).toBe(2);
   });
+
+  it('enriches retry subTask with failure context (#1507)', async () => {
+    const capturedSubTasks: string[] = [];
+    let callCount = 0;
+    const capturingExecute: WorkerDispatchOptions['executeWorker'] = vi
+      .fn()
+      .mockImplementation((entry: AgentPlanEntry): Promise<WorkerResult> => {
+        callCount++;
+        capturedSubTasks.push(entry.subTask);
+        if (callCount === 1) {
+          return Promise.reject(new Error('connection reset by peer'));
+        }
+        return Promise.resolve({
+          role: entry.role,
+          subTask: entry.subTask,
+          output: 'recovered',
+          status: 'success' as const,
+          durationMs: 100,
+        });
+      });
+
+    const entries = [makeEntry('code', 1, 1)];
+    await dispatchWorkers(entries, {
+      executeWorker: capturingExecute,
+      staggerDelayMs: 0,
+      consecutiveFailureThreshold: 10,
+    });
+
+    expect(callCount).toBe(2);
+    // First call: original subTask
+    expect(capturedSubTasks[0]).not.toContain('Retry context');
+    // Second call: enriched with failure context
+    expect(capturedSubTasks[1]).toContain('Retry context');
+    expect(capturedSubTasks[1]).toContain('connection reset');
+  });
 });
 
 // ============================================================================
