@@ -314,21 +314,18 @@ describe('Worker Dispatch E2E Pipeline', () => {
   });
 
   describe('synthesis integration', () => {
-    it('returns synthesis when synthesize=true', async () => {
+    it('returns deterministic synthesis when no conflicts (#1507)', async () => {
       let callCount = 0;
       const adapter = {
         complete: vi
           .fn()
           .mockImplementation((): Promise<{ ok: true; value: { content: ContentBlock[] } }> => {
             callCount++;
-            // First calls are worker executions, last call is synthesis
-            const text =
-              callCount <= 2
-                ? `Worker ${String(callCount)} output`
-                : 'Synthesized: Both workers completed successfully.';
             return Promise.resolve({
               ok: true as const,
-              value: { content: [{ type: 'text' as const, text }] },
+              value: {
+                content: [{ type: 'text' as const, text: `Worker ${String(callCount)} output` }],
+              },
             });
           }),
       } as unknown as IModelAdapter;
@@ -349,8 +346,50 @@ describe('Worker Dispatch E2E Pipeline', () => {
       expect(result.totalWorkers).toBe(2);
       expect(result.successCount).toBe(2);
       expect(result.synthesis).toBeDefined();
+      // Deterministic merge: no LLM call for synthesis (only 2 worker calls)
+      expect(callCount).toBe(2);
+      // Synthesis contains worker role headers from deterministic merge
+      expect(result.synthesis).toContain('code');
+      expect(result.synthesis).toContain('testing');
+    });
+
+    it('returns LLM synthesis when conflicts exist (#1507)', async () => {
+      let callCount = 0;
+      const adapter = {
+        complete: vi
+          .fn()
+          .mockImplementation((): Promise<{ ok: true; value: { content: ContentBlock[] } }> => {
+            callCount++;
+            // Workers reference same file → triggers conflict → LLM synthesis
+            const text =
+              callCount <= 2
+                ? `Modified src/shared.ts — Worker ${String(callCount)} output`
+                : 'Synthesized: Both workers completed successfully.';
+            return Promise.resolve({
+              ok: true as const,
+              value: { content: [{ type: 'text' as const, text }] },
+            });
+          }),
+      } as unknown as IModelAdapter;
+
+      const plan = makePlan([
+        makeEntry('code', 'Implement feature in src/shared.ts', 1),
+        makeEntry('security', 'Harden src/shared.ts', 1),
+      ]);
+
+      const result = await executeWorkerDispatch({
+        agentPlan: plan,
+        taskDescription: 'Build and harden shared module',
+        modelAdapter: adapter,
+        logger,
+        synthesize: true,
+      });
+
+      expect(result.totalWorkers).toBe(2);
+      expect(result.successCount).toBe(2);
+      expect(result.synthesis).toBeDefined();
       expect(result.synthesis).toContain('Synthesized');
-      // 2 worker calls + 1 synthesis call = 3 total
+      // 2 worker calls + 1 synthesis LLM call = 3 total
       expect(callCount).toBe(3);
     });
 
