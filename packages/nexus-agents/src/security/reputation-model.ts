@@ -126,10 +126,14 @@ export class ReputationCache {
     });
   }
 
+  /** Evict a batch of oldest entries (10% of maxSize, minimum 1). */
   private evictOldest(): void {
-    const firstKey = this.cache.keys().next();
-    if (firstKey.done !== true) {
-      this.cache.delete(firstKey.value);
+    const batchSize = Math.max(1, Math.floor(this.maxSize * 0.1));
+    const keys = this.cache.keys();
+    for (let i = 0; i < batchSize; i++) {
+      const next = keys.next();
+      if (next.done === true) break;
+      this.cache.delete(next.value);
     }
   }
 

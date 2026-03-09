@@ -296,15 +296,16 @@ describe('ReputationCache', () => {
     vi.useRealTimers();
   });
 
-  it('enforces max size and evicts oldest entry', () => {
+  it('enforces max size and evicts oldest entries in batch', () => {
     const cache = new ReputationCache(60000, 3);
     assessReputation(makeMetadata({ username: 'user1' }), cache);
     assessReputation(makeMetadata({ username: 'user2' }), cache);
     assessReputation(makeMetadata({ username: 'user3' }), cache);
     expect(cache.size).toBe(3);
 
+    // With maxSize=3, batch = max(1, floor(3*0.1)) = 1
     assessReputation(makeMetadata({ username: 'user4' }), cache);
-    expect(cache.size).toBe(3);
+    expect(cache.size).toBeLessThanOrEqual(3);
     expect(cache.get('user1')).toBeUndefined();
     expect(cache.get('user4')).toBeDefined();
   });
@@ -317,5 +318,48 @@ describe('ReputationCache', () => {
     expect(cache.size).toBe(2);
     expect(cache.get('user1')).toBeDefined();
     expect(cache.get('user2')).toBeDefined();
+  });
+
+  it('respects maxSize under rapid insertions', () => {
+    const maxSize = 20;
+    const cache = new ReputationCache(60000, maxSize);
+    for (let i = 0; i < 50; i++) {
+      assessReputation(makeMetadata({ username: `rapid-${String(i)}` }), cache);
+    }
+    expect(cache.size).toBeLessThanOrEqual(maxSize);
+  });
+
+  it('batch eviction removes ~10% when triggered', () => {
+    const maxSize = 20;
+    const cache = new ReputationCache(60000, maxSize);
+    // Fill to capacity
+    for (let i = 0; i < maxSize; i++) {
+      assessReputation(makeMetadata({ username: `fill-${String(i)}` }), cache);
+    }
+    expect(cache.size).toBe(maxSize);
+
+    // Insert one more to trigger batch eviction (10% of 20 = 2)
+    assessReputation(makeMetadata({ username: 'overflow' }), cache);
+    // Evicted 2, then added 1 → size = 19
+    expect(cache.size).toBe(maxSize - 1);
+  });
+
+  it('oldest entries are evicted first', () => {
+    const maxSize = 10;
+    const cache = new ReputationCache(60000, maxSize);
+    // Fill cache: oldest-0 through oldest-9
+    for (let i = 0; i < maxSize; i++) {
+      assessReputation(makeMetadata({ username: `oldest-${String(i)}` }), cache);
+    }
+
+    // Trigger eviction — batch = max(1, floor(10*0.1)) = 1
+    assessReputation(makeMetadata({ username: 'new-entry' }), cache);
+
+    // oldest-0 should be evicted (inserted first)
+    expect(cache.get('oldest-0')).toBeUndefined();
+    // oldest-1 through oldest-9 should remain
+    expect(cache.get('oldest-1')).toBeDefined();
+    expect(cache.get('oldest-9')).toBeDefined();
+    expect(cache.get('new-entry')).toBeDefined();
   });
 });
