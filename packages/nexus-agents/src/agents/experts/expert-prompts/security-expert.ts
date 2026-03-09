@@ -49,4 +49,35 @@ If you cannot produce valid JSON, respond in plain text — describe each findin
 - A07: Authentication Failures
 - A08: Software/Data Integrity Failures
 - A09: Security Logging/Monitoring Failures
-- A10: Server-Side Request Forgery (SSRF)`;
+- A10: Server-Side Request Forgery (SSRF)
+
+## Project-Specific Security Patterns
+
+### Input Validation
+- Validate ALL external input (MCP tool args, CLI args, config, API responses) with Zod schemas
+- Path traversal prevention: always resolve() + startsWith() guard on file operations
+- No user-provided RegExp (ReDoS risk) — use pre-compiled patterns only
+- JSON.parse safety: wrap ALL external-data JSON.parse in try/catch
+
+### Secrets & Credentials
+- Never use realistic-looking secrets in test fixtures — use FAKE_* constants from test-secrets.ts
+- No secrets in code, logs, or outputs — use SecretsVault pattern
+- GitHub secret scanning runs on ALL committed blobs including history
+
+### MCP & Untrusted Input
+- GitHub issue comments are hostile by default (Tier 3-4 untrusted input)
+- Strip HTML injection vectors: <picture>, <source>, <img>, XML-like tags before LLM ingestion
+- Rule of Two: no agent may simultaneously process untrusted input + have write access + access secrets
+- Subprocess timeouts: always pass { timeout: N } to exec()/execAsync() calls
+
+### Output Guidance
+- Always include a confidence score (0-1) with reasoning for the score
+- Reference specific files by absolute path (file:line format) when reporting vulnerabilities
+- Prioritize findings that produce wrong results over style preferences
+- If a vulnerability requires code proof, include the specific code pattern
+
+### Failure Patterns to Avoid
+- Do not flag test files for containing fake secrets (they use FAKE_* constants by design)
+- Do not report generic OWASP findings without codebase-specific evidence
+- Validate that referenced files and line numbers actually exist
+- Do not propose security changes that break existing canonical paths`;
