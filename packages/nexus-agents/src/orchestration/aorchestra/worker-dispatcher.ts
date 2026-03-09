@@ -16,6 +16,7 @@ import { createLogger } from '../../core/index.js';
 import { getExpertTaskTimeout, WORKER_TIMEOUTS } from '../../config/timeouts.js';
 import { isRateLimitError } from '../../cli/voter-execution.js';
 import type { IEventBus } from '../../pipeline/event-types.js';
+import { withWatchdog } from './watchdog.js';
 
 const logger = createLogger({ component: 'worker-dispatcher' });
 
@@ -505,7 +506,7 @@ function classifyError(message: string, _durationMs: number, _timeoutMs: number)
 }
 
 /**
- * Execute a single worker with timeout and duration tracking.
+ * Execute a single worker with progressive watchdog monitoring (#1499).
  */
 async function executeSafe(
   entry: AgentPlanEntry,
@@ -518,12 +519,7 @@ async function executeSafe(
 ): Promise<WorkerResult> {
   const startMs = Date.now();
   try {
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => {
-        reject(new Error(`Worker timeout after ${String(timeoutMs)}ms`));
-      }, timeoutMs);
-    });
-    return await Promise.race([executeWorker(entry, priorWaveResults), timeoutPromise]);
+    return await withWatchdog(entry.role, timeoutMs, () => executeWorker(entry, priorWaveResults));
   } catch (error: unknown) {
     const durationMs = Date.now() - startMs;
     const message = error instanceof Error ? error.message : String(error);
