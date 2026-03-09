@@ -11,6 +11,9 @@
 import { z } from 'zod';
 import { CliNameSchema } from '../../config/model-capabilities-types.js';
 import { TaskCategorySchema } from '../../config/task-specialization-types.js';
+import { createLogger } from '../../core/index.js';
+
+const logger = createLogger({ component: 'outcome-error-taxonomy' });
 
 // ============================================================================
 // Schemas
@@ -209,6 +212,8 @@ function matchesAny(text: string, patterns: string[]): boolean {
 function classifyExecutionOrGeneric(text: string): OutcomeFailureCategory {
   if (matchesAny(text, EXECUTION_PATTERNS)) return 'execution';
   if (matchesAny(text, GENERIC_PATTERNS)) return 'generic';
+  // Log unknown classifications for pattern analysis (#1499 diagnostics)
+  logger.debug('Unclassified error string', { sample: text.slice(0, 200) });
   return 'unknown';
 }
 
