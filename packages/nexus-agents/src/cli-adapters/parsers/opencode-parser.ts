@@ -97,13 +97,15 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
     let hasStepEvents = false;
     let hasAnyRecognizedEvent = false;
 
-    for (const line of lines) {
+    for (let idx = 0; idx < lines.length; idx++) {
+      const line = lines[idx];
       if (line.trim() === '') continue;
       const hadEvent = this.processLine(
         line,
         contentParts,
         (id) => (sessionId = id),
-        (u) => (usage = u)
+        (u) => (usage = u),
+        idx
       );
       if (hadEvent) hasStepEvents = true;
       if (hadEvent || this.isRecognizedLegacyEvent(line)) hasAnyRecognizedEvent = true;
@@ -241,7 +243,8 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
     line: string,
     contentParts: string[],
     setSessionId: (id: string) => void,
-    setUsage: (usage: TokenUsage) => void
+    setUsage: (usage: TokenUsage) => void,
+    lineIndex: number
   ): boolean {
     try {
       const record = asRecord(JSON.parse(line) as unknown);
@@ -252,9 +255,11 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
 
       this.processLegacyEvent(record, contentParts, setSessionId, setUsage);
       return false;
-    } catch (lineErr: unknown) {
-      // Skip malformed NDJSON lines — capture for debuggability
-      void lineErr;
+    } catch {
+      logger.debug('Skipped malformed NDJSON line', {
+        lineNumber: lineIndex + 1,
+        snippet: line.slice(0, 100),
+      });
       return false;
     }
   }

@@ -7,11 +7,27 @@
  * (Source: Issue #1124)
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { MockInstance } from 'vitest';
+
+// Mock createLogger to capture debug calls
+const { mockDebug } = vi.hoisted(() => ({ mockDebug: vi.fn() }));
+vi.mock('../../core/index.js', async () => {
+  const actual = await vi.importActual<typeof import('../../core/index.js')>('../../core/index.js');
+  return {
+    ...actual,
+    createLogger: vi.fn(() => ({ debug: mockDebug, info: vi.fn(), warn: vi.fn(), error: vi.fn() })),
+  };
+});
+
 import { OpenCodeResponseParser } from './opencode-parser.js';
 
 describe('OpenCodeResponseParser', () => {
   const parser = new OpenCodeResponseParser();
+
+  beforeEach(() => {
+    mockDebug.mockReset();
+  });
 
   /**
    * Helper to create NDJSON stream from events.
@@ -116,6 +132,25 @@ describe('OpenCodeResponseParser', () => {
 
       const result = parser.parse(raw);
       expect(result?.content).toBe('Valid line');
+    });
+
+    it('should log skipped malformed NDJSON lines at debug level (#1472)', () => {
+      const raw = [
+        JSON.stringify({ type: 'message.delta', content: 'OK' }),
+        'bad json here',
+        JSON.stringify({ type: 'message.delta', content: '!' }),
+      ].join('\n');
+
+      parser.parse(raw);
+
+      const malformedCalls = (mockDebug as MockInstance).mock.calls.filter(
+        (c: unknown[]) => c[0] === 'Skipped malformed NDJSON line'
+      );
+      expect(malformedCalls).toHaveLength(1);
+      expect(malformedCalls[0][1]).toEqual({
+        lineNumber: 2,
+        snippet: 'bad json here',
+      });
     });
 
     it('should fall back to plain JSON for non-NDJSON output', () => {
