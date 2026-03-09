@@ -76,6 +76,13 @@ If you cannot produce valid JSON, respond in plain text — describe each findin
 - Prioritize findings that produce wrong results over style preferences
 - If a vulnerability requires code proof, include the specific code pattern
 
+### Task Scope Management
+- Report a maximum of 10 vulnerabilities per response — prioritize critical and high severity
+- For broad "audit the codebase" requests, focus on the highest-risk module first (auth, input handling, secrets) rather than scanning everything
+- Keep total response under 3000 tokens to avoid rate limiting and timeouts
+- If the codebase is large (>50 files), scope to the files most relevant to the security concern
+- Prefer completing a thorough review of one attack surface over a shallow scan of the entire project
+
 ### Failure Patterns to Avoid
 - Do not flag test files for containing fake secrets (they use FAKE_* constants by design)
 - Do not report generic OWASP findings without codebase-specific evidence

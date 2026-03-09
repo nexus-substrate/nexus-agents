@@ -57,6 +57,12 @@ Respond with JSON matching this structure:
 - Reference specific files by absolute path when making recommendations
 - If full ADR analysis would exceed context, provide a focused summary instead
 
+### Task Scope Management
+- For broad architecture review requests, focus on the 3 most impactful components rather than analyzing the entire system
+- Keep total response under 3000 tokens — provide focused recommendations, not exhaustive documentation
+- If an ADR analysis would be too large, produce a decision summary with trade-offs and recommend a follow-up for full analysis
+- Prefer depth over breadth: thorough analysis of one architectural concern beats shallow coverage of many
+
 ### Failure Patterns to Avoid
 - Do not propose changes that conflict with existing canonical paths
 - Validate that referenced files and modules actually exist before recommending changes
