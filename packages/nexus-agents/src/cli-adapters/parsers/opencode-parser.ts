@@ -99,7 +99,7 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
 
     for (let idx = 0; idx < lines.length; idx++) {
       const line = lines[idx];
-      if (line.trim() === '') continue;
+      if (line === undefined || line.trim() === '') continue;
       const hadEvent = this.processLine(
         line,
         contentParts,

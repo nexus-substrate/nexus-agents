@@ -147,7 +147,9 @@ describe('OpenCodeResponseParser', () => {
         (c: unknown[]) => c[0] === 'Skipped malformed NDJSON line'
       );
       expect(malformedCalls).toHaveLength(1);
-      expect(malformedCalls[0][1]).toEqual({
+      const firstCall = malformedCalls[0];
+      expect(firstCall).toBeDefined();
+      expect(firstCall![1]).toEqual({
         lineNumber: 2,
         snippet: 'bad json here',
       });

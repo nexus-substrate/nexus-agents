@@ -332,6 +332,7 @@ describe('synthesizeResults', () => {
     });
 
     expect(result.ok).toBe(true);
+    if (!result.ok) return;
     expect(result.synthesisSource).toBe('llm');
   });
 
@@ -345,6 +346,7 @@ describe('synthesizeResults', () => {
     });
 
     expect(result.ok).toBe(true);
+    if (!result.ok) return;
     expect(result.synthesisSource).toBe('fallback');
   });
 
@@ -361,6 +363,7 @@ describe('synthesizeResults', () => {
     });
 
     expect(result.ok).toBe(true);
+    if (!result.ok) return;
     expect(result.synthesisSource).toBe('fallback');
   });
 
@@ -382,6 +385,7 @@ describe('synthesizeResults', () => {
     });
 
     expect(result.ok).toBe(true);
+    if (!result.ok) return;
     expect(result.excludedWorkerCount).toBe(1);
   });
 
@@ -416,6 +420,7 @@ describe('synthesizeResults', () => {
     });
 
     expect(result.ok).toBe(true);
+    if (!result.ok) return;
     expect(result.synthesisSource).toBe('llm');
     expect(result.value).toContain('Rate limiter implemented.');
     expect(result.value).toContain('Tests added.');
