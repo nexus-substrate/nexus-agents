@@ -4146,3 +4146,47 @@ papers:
     techniques_extracted: []
     related_issues: []
     implementation_status: not-started
+  arxiv-2502.14847:
+    title: Red-Teaming LLM Multi-Agent Systems via Communication Attacks
+    authors: []
+    source: arxiv
+    arxiv_id: '2502.14847'
+    url: https://arxiv.org/abs/2502.14847
+    publication_date: 2025-02
+    venue: null
+    topics:
+      - inter-agent-security
+    tags:
+      - multi-agent
+      - llm
+    reviewed_date: 2026-03-09
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2603.06007:
+    title:
+      'MASFactory: A Graph-centric Framework for Orchestrating LLM-Based Multi-Agent Systems with
+      Vibe Graphing'
+    authors: []
+    source: arxiv
+    arxiv_id: '2603.06007'
+    url: https://arxiv.org/abs/2603.06007
+    publication_date: 2026-03
+    venue: null
+    topics:
+      - graph-orchestration
+    tags:
+      - multi-agent
+      - llm
+    reviewed_date: 2026-03-09
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
