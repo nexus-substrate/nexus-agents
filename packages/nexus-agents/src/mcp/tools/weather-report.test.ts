@@ -53,7 +53,7 @@ describe('createDefaultWeatherConfig', () => {
     const config = createDefaultWeatherConfig();
     expect(config.coldStartThreshold).toBe(3);
     expect(config.explorationRate).toBe(0.1);
-    expect(config.maxBonusAdjustment).toBe(5);
+    expect(config.maxBonusAdjustment).toBe(10);
   });
 });
 

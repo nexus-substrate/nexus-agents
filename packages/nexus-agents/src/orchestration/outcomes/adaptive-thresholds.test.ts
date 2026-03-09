@@ -48,7 +48,7 @@ describe('computeAdaptiveThresholds', () => {
     const result = computeAdaptiveThresholds(store, 'claude', 'code_generation');
 
     expect(result.baseline).toBe(0.7);
-    expect(result.maxBonus).toBe(5);
+    expect(result.maxBonus).toBe(10);
     expect(result.coldStart).toBe(3);
     expect(result.trend).toBe('stable');
     expect(result.confidence).toBe(0);
@@ -94,7 +94,7 @@ describe('computeAdaptiveThresholds', () => {
     expect(result.confidence).toBe(1);
     // At full confidence, baseline = observed rate
     expect(result.baseline).toBe(1);
-    expect(result.maxBonus).toBe(5);
+    expect(result.maxBonus).toBe(10);
   });
 
   it('confidence ramps linearly', () => {
@@ -106,12 +106,12 @@ describe('computeAdaptiveThresholds', () => {
   });
 
   it('scales max bonus with confidence', () => {
-    // 10 samples → confidence = 10/50 = 0.2, maxBonus = 5 * 0.2 = 1
+    // 10 samples → confidence = 10/50 = 0.2, maxBonus = 10 * 0.2 = 2
     seedStore(store, 10, { cli: 'claude', category: 'planning', success: true });
 
     const result = computeAdaptiveThresholds(store, 'claude', 'planning');
 
-    expect(result.maxBonus).toBe(1);
+    expect(result.maxBonus).toBe(2);
   });
 
   it('detects improving trend', () => {

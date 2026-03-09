@@ -24,7 +24,7 @@ export type Trend = 'improving' | 'declining' | 'stable';
 export interface AdaptiveThresholdResult {
   /** Adjusted baseline success rate (default: 0.7). */
   readonly baseline: number;
-  /** Adjusted max bonus cap (default: 5). */
+  /** Adjusted max bonus cap (default: 10). */
   readonly maxBonus: number;
   /** Minimum samples before adjustment (always 10). */
   readonly coldStart: number;
@@ -41,7 +41,7 @@ export interface AdaptiveThresholdResult {
 // ============================================================================
 
 const DEFAULT_BASELINE = 0.7;
-const DEFAULT_MAX_BONUS = 5;
+const DEFAULT_MAX_BONUS = 10;
 // Reduced from 10→5→3 per E2E findings (#1047, #1134): real interactive sessions
 // generate too few outcomes per CLI×category pair for higher thresholds.
 const COLD_START_THRESHOLD = 3;

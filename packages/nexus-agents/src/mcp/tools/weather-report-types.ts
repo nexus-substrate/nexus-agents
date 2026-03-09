@@ -223,7 +223,7 @@ export const WeatherReportConfigSchema = z.object({
   /** Exploration rate: fraction of random routing (0.0-1.0). */
   explorationRate: z.number().min(0).max(1).default(0.1),
   /** Max adaptive bonus adjustment (+/-). */
-  maxBonusAdjustment: z.number().min(0).max(10).default(5),
+  maxBonusAdjustment: z.number().min(0).max(20).default(10),
 });
 
 export type WeatherReportConfig = z.infer<typeof WeatherReportConfigSchema>;
