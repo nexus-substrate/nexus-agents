@@ -152,10 +152,10 @@ export const API_TIMEOUTS = {
 export const WORKER_TIMEOUTS = {
   /** Default per-worker execution timeout. */
   defaultMs: 60_000,
-  /** Minimum allowed worker timeout. */
-  minMs: 5_000,
-  /** Maximum allowed worker timeout. */
-  maxMs: 300_000,
+  /** Minimum allowed worker timeout (aligned with dispatcher floor, #1490). */
+  minMs: 30_000,
+  /** Maximum allowed worker timeout (aligned with dispatcher ceiling, #1490). */
+  maxMs: 900_000,
 } as const;
 
 /**
