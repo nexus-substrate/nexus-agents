@@ -15,7 +15,13 @@ export {
   computeOptimalWaveSize,
 } from './agent-planner.js';
 export type { AgentPlan, AgentPlanEntry, PlanAgentTeamOptions } from './agent-planner.js';
-export { dispatchWorkers, groupByWave, WORKER_TIMEOUT_MS } from './worker-dispatcher.js';
+export {
+  dispatchWorkers,
+  groupByWave,
+  WORKER_TIMEOUT_MS,
+  DEFAULT_STAGGER_DELAY_MS,
+  RoleFailureTracker,
+} from './worker-dispatcher.js';
 export type { WorkerResult, WorkerDispatchOptions, WorkerErrorType } from './worker-dispatcher.js';
 export { composeWorkerPrompt, buildLearningsBlock } from './compose-worker-prompt.js';
 export type { ComposeWorkerPromptInput, WorkerLearning } from './compose-worker-prompt.js';
@@ -48,3 +54,10 @@ export type {
   SynthesisPromptInput,
   SynthesisSource,
 } from './result-synthesizer.js';
+export {
+  evaluateState,
+  withWatchdog,
+  WATCHDOG_THRESHOLDS,
+  WATCHDOG_CHECK_INTERVAL_MS,
+} from './watchdog.js';
+export type { WatchdogState, WatchdogEntry } from './watchdog.js';
