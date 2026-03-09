@@ -73,10 +73,10 @@ export const TASK_SPECIALIZATION_MATRIX: readonly TaskSpecialization[] = [
   },
   {
     category: 'security_review',
-    primaryCli: 'claude',
-    secondaryCli: 'codex',
+    primaryCli: 'codex',
+    secondaryCli: 'claude',
     reasoning:
-      'Claude primary (n=178, improving trend); Codex secondary (60%, n=5). Bonus aligned to 10 per empirical data (#1443)',
+      'Weather 2026-03-09: claude 44.9% (n=385, declining), codex 60% (n=5), gemini 50% (n=14). Codex primary, claude secondary. Low bonus — no CLI is clearly dominant.',
     keywords: [
       'security review',
       'security analysis',
@@ -93,7 +93,7 @@ export const TASK_SPECIALIZATION_MATRIX: readonly TaskSpecialization[] = [
       'security',
       'vulnerability',
     ],
-    bonus: 10,
+    bonus: 5,
   },
   {
     category: 'planning',

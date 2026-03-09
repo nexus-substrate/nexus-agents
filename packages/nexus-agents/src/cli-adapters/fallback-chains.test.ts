@@ -98,6 +98,12 @@ describe('fallback-chains', () => {
       expect(chain).toEqual(CATEGORY_CHAIN_OVERRIDES['architecture']);
     });
 
+    it('returns security_review override with codex first', () => {
+      const chain = getFallbackChainForCategory('security_review', 'analysis');
+      expect(chain[0]).toBe('codex');
+      expect(chain).toEqual(CATEGORY_CHAIN_OVERRIDES['security_review']);
+    });
+
     it('falls back to bucket-level chain when no override', () => {
       const chain = getFallbackChainForCategory('planning', 'analysis');
       expect(chain).toEqual(DEFAULT_FALLBACK_CHAINS.analysis);

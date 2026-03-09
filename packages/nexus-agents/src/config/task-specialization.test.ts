@@ -94,7 +94,7 @@ describe('TASK_SPECIALIZATION_MATRIX', () => {
     const securityReview = TASK_SPECIALIZATION_MATRIX.find(
       (s) => s.category === 'security_review'
     )!;
-    expect(securityReview.bonus).toBe(10); // codex n=5, kept as-is
+    expect(securityReview.bonus).toBe(5); // codex 60% (n=5) primary, low confidence
   });
 });
 
@@ -155,7 +155,7 @@ describe('detectTaskCategory', () => {
     const match = detectTaskCategory('Audit security of the API endpoints');
     expect(match).not.toBeNull();
     expect(match?.category).toBe('security_review');
-    expect(match?.primaryCli).toBe('claude');
+    expect(match?.primaryCli).toBe('codex');
   });
 
   it('detects devops for security scanning tasks (#1421)', () => {

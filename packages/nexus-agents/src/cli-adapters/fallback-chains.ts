@@ -107,10 +107,12 @@ export const DEFAULT_FALLBACK_CHAINS: FallbackChainRegistry = {
  *
  * Weather data 2026-03-09:
  * - architecture: gemini 66.7% (n=24) > claude 43.6% (n=220) → gemini first
- * - planning/security_review: claude 93.8%/44.9% → keep claude first (bucket default)
+ * - planning: claude 93.8% → keep claude first (bucket default)
+ * - security_review: codex 60% (n=5) > gemini 50% (n=14) > claude 44.9% (n=385) → codex first
  */
 export const CATEGORY_CHAIN_OVERRIDES: Partial<Record<TaskCategory, FallbackChain>> = {
   architecture: ['gemini', 'claude', 'codex', 'opencode'],
+  security_review: ['codex', 'gemini', 'claude', 'opencode'],
 } as const;
 
 /**
