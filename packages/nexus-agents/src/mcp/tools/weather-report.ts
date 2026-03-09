@@ -455,7 +455,7 @@ function findDominantError(
   if (failed.length === 0) return undefined;
   const counts = new Map<string, number>();
   for (const f of failed) {
-    const cat = f.failureCategory ?? 'unknown';
+    const cat = f.failureCategory ?? 'execution';
     counts.set(cat, (counts.get(cat) ?? 0) + 1);
   }
   let maxCount = 0;

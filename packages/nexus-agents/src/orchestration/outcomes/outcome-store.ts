@@ -42,6 +42,11 @@ function autoClassify(outcome: TaskOutcome): TaskOutcome {
   return { ...outcome, failureCategory: 'execution' };
 }
 
+/** Check if outcome has a non-empty error message. */
+function hasErrorMessage(o: TaskOutcome): boolean {
+  return typeof o.errorMessage === 'string' && o.errorMessage.length > 0;
+}
+
 /**
  * Bounded, append-only, in-memory store for task outcomes.
  * Evicts oldest entries when capacity is exceeded.
@@ -105,17 +110,23 @@ export class OutcomeStore {
 
   /**
    * Backfill: reclassify all entries missing failureCategory (#1444).
-   * Applies the same autoClassify logic used on append to historical entries
-   * that predate the auto-classify fix. Idempotent — already-classified entries
-   * are skipped. Returns count of reclassified entries.
+   * Also reclassifies 'unknown' entries with no error message as 'execution'
+   * (#1511) since 'unknown' with no diagnostic info is less useful than the
+   * default 'execution' category.
+   * Returns count of reclassified entries.
    */
   reclassifyAll(): number {
     let count = 0;
     for (let i = 0; i < this.entries.length; i++) {
       const entry = this.entries[i];
-      if (entry === undefined || entry.success || entry.failureCategory !== undefined) continue;
-      this.entries[i] = autoClassify(entry);
-      count++;
+      if (entry === undefined || entry.success) continue;
+      if (entry.failureCategory === undefined) {
+        this.entries[i] = autoClassify(entry);
+        count++;
+      } else if (entry.failureCategory === 'unknown' && !hasErrorMessage(entry)) {
+        this.entries[i] = { ...entry, failureCategory: 'execution' };
+        count++;
+      }
     }
     return count;
   }

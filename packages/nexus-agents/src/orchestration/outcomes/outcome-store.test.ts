@@ -411,4 +411,25 @@ describe('OutcomeStore.reclassifyAll (#1444)', () => {
     expect(store2.reclassifyAll()).toBe(1);
     expect(store2.reclassifyAll()).toBe(0);
   });
+
+  it('reclassifies unknown entries with no error message to execution (#1511)', () => {
+    const store2 = new OutcomeStore();
+    (store2 as unknown as { entries: TaskOutcome[] }).entries.push({
+      ...makeOutcome({ id: 'unk-1', success: false, failureCategory: 'unknown' }),
+    });
+    (store2 as unknown as { entries: TaskOutcome[] }).entries.push({
+      ...makeOutcome({
+        id: 'unk-2',
+        success: false,
+        failureCategory: 'unknown',
+        errorMessage: 'some error',
+      }),
+    });
+
+    const count = store2.reclassifyAll();
+
+    expect(count).toBe(1); // Only unk-1 (no error message) gets reclassified
+    expect(store2.query().find((o) => o.id === 'unk-1')?.failureCategory).toBe('execution');
+    expect(store2.query().find((o) => o.id === 'unk-2')?.failureCategory).toBe('unknown');
+  });
 });
