@@ -86,3 +86,10 @@ export type {
   ErrorCluster,
   DurationOutlier,
 } from './dispatch-insights.js';
+export {
+  WorkerCheckpointStore,
+  createCheckpoint,
+  MAX_PARTIAL_OUTPUT_CHARS,
+  MAX_CHECKPOINTS,
+} from './worker-checkpoint.js';
+export type { WorkerCheckpoint } from './worker-checkpoint.js';
