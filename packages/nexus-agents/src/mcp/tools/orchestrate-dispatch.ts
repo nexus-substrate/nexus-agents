@@ -512,6 +512,8 @@ export function recordWorkerOutcomes(
     const ts = new Date(getTimeProvider().now()).toISOString();
 
     for (const r of results) {
+      // Skip intentional routing decisions — not real failures (#1528)
+      if (r.status === 'skipped') continue;
       const success = r.status === 'success';
       // Use actual CLI that executed (#1527), fall back to specialization recommendation
       const cli = (r.resolvedCli ?? fallbackCli) as CliNameLiteral;

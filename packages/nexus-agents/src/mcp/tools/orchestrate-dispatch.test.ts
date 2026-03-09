@@ -557,6 +557,28 @@ describe('recordWorkerOutcomes', () => {
     expect(entries[0]?.cli).toBe('codex');
   });
 
+  it('excludes skipped workers from outcome recording (#1528)', () => {
+    const results: WorkerResult[] = [
+      { role: 'code', subTask: 'Code', output: 'done', status: 'success', durationMs: 100 },
+      {
+        role: 'security',
+        subTask: 'Audit',
+        output: '',
+        status: 'skipped',
+        durationMs: 0,
+        error: 'Role auto-disabled after consecutive failures',
+      },
+      { role: 'testing', subTask: 'Test', output: 'done', status: 'success', durationMs: 200 },
+    ];
+
+    recordWorkerOutcomes(results, 'Full review');
+
+    const entries = getOutcomeStore().query();
+    // Only success + error workers should be recorded, not skipped
+    expect(entries).toHaveLength(2);
+    expect(entries.every((e) => e.success)).toBe(true);
+  });
+
   it('falls back to specialization primaryCli when resolvedCli absent (#1527)', () => {
     const results: WorkerResult[] = [
       {
