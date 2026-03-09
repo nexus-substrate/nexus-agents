@@ -54,9 +54,10 @@ function createMockChildProcess() {
   return { mockChild, stdin, stdout, stderr };
 }
 
-/** Test adapter with retry disabled (default). */
+/** Test adapter with retry explicitly disabled. */
 class NoRetryAdapter extends SubprocessCliAdapter {
   override readonly name: CliName = 'claude';
+  protected override readonly transientRetry: TransientRetryConfig = { enabled: false };
   protected readonly parser: ICliResponseParser = {
     name: 'test-parser',
     supportedVersionRange: '>=1.0.0',
@@ -83,12 +84,31 @@ class NoRetryAdapter extends SubprocessCliAdapter {
   }
 }
 
-/** Test adapter with retry enabled (like OpenCode). */
-class RetryAdapter extends NoRetryAdapter {
+/** Test adapter using the default retry behavior (enabled). */
+class RetryAdapter extends SubprocessCliAdapter {
   override readonly name: CliName = 'opencode';
-  protected override readonly transientRetry: TransientRetryConfig = {
-    enabled: true,
+  protected readonly parser: ICliResponseParser = {
+    name: 'test-parser',
+    supportedVersionRange: '>=1.0.0',
+    parse: (raw: string) => raw,
+    extractResponse: (output: string) => output.trim() || null,
+    extractUsage: () => null,
+    extractSessionId: () => null,
   };
+  protected getCommand(_task: CliTask): CommandConfig {
+    return { command: 'echo', args: [] };
+  }
+  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+  getModelInfo() {
+    return {
+      id: 'test-model',
+      name: 'Test',
+      contextWindow: 100_000,
+      maxOutput: 10_000,
+      costPerMillionInput: 1,
+      costPerMillionOutput: 2,
+    };
+  }
 }
 
 const DEFAULT_OPTS: Required<ExecutionOptions> = {

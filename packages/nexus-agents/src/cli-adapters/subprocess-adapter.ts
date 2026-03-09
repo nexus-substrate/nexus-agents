@@ -144,7 +144,7 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
   protected abstract readonly parser: ICliResponseParser;
 
   /** Transient-error retry config. Override in subclass to enable. */
-  protected readonly transientRetry: TransientRetryConfig = { enabled: false };
+  protected readonly transientRetry: TransientRetryConfig = { enabled: true };
 
   /**
    * Gets CLI command and arguments for execution.

@@ -58,6 +58,8 @@ function createMockChildProcess() {
 class TestSubprocessAdapter extends SubprocessCliAdapter {
   override readonly name = 'claude' as const;
   readonly version = '1.0.0';
+  // Disable retry for unit tests that test single-attempt behavior
+  protected override readonly transientRetry = { enabled: false };
 
   protected readonly parser: ICliResponseParser = {
     name: 'test-parser',
