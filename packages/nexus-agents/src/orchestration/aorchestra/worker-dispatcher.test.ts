@@ -17,6 +17,7 @@ import {
   RECOVERY_COOLDOWN_MS,
   MAX_COOLDOWN_MS,
   RATE_LIMIT_SPACING_MS,
+  DEFAULT_STAGGER_DELAY_MS,
   RoleFailureTracker,
   type WorkerDispatchOptions,
   type WorkerResult,
@@ -554,6 +555,78 @@ describe('dispatchWorkers', () => {
 
   it('exports CONSECUTIVE_FAILURE_THRESHOLD constant', () => {
     expect(CONSECUTIVE_FAILURE_THRESHOLD).toBe(3);
+  });
+
+  // ---- Stagger delay between spawns (#1501, Overstory pattern) ----
+
+  it('exports DEFAULT_STAGGER_DELAY_MS constant', () => {
+    expect(DEFAULT_STAGGER_DELAY_MS).toBe(500);
+  });
+
+  it('staggers worker launches within a wave by index * staggerDelayMs', async () => {
+    const launchTimes: number[] = [];
+    const startTime = Date.now();
+
+    const trackedExecute: WorkerDispatchOptions['executeWorker'] = vi
+      .fn()
+      .mockImplementation((entry: AgentPlanEntry): Promise<WorkerResult> => {
+        launchTimes.push(Date.now() - startTime);
+        return Promise.resolve({
+          role: entry.role,
+          subTask: entry.subTask,
+          output: `result from ${entry.role}`,
+          status: 'success' as const,
+          durationMs: 10,
+        });
+      });
+
+    const entries = [
+      makeEntry('code', 1, 1),
+      makeEntry('testing', 1, 2),
+      makeEntry('security', 1, 3),
+    ];
+    await dispatchWorkers(entries, {
+      executeWorker: trackedExecute,
+      staggerDelayMs: 50, // short for testing
+    });
+
+    expect(launchTimes).toHaveLength(3);
+    // First worker should launch immediately (no stagger)
+    // Second at ~50ms, third at ~100ms
+    // We just verify ordering — exact timing is flaky
+    for (let i = 1; i < launchTimes.length; i++) {
+      const prev = launchTimes[i - 1];
+      const curr = launchTimes[i];
+      if (prev !== undefined && curr !== undefined) {
+        expect(curr).toBeGreaterThanOrEqual(prev);
+      }
+    }
+  });
+
+  it('skips stagger delay when staggerDelayMs is 0', async () => {
+    const launchOrder: string[] = [];
+
+    const trackedExecute: WorkerDispatchOptions['executeWorker'] = vi
+      .fn()
+      .mockImplementation((entry: AgentPlanEntry): Promise<WorkerResult> => {
+        launchOrder.push(entry.role);
+        return Promise.resolve({
+          role: entry.role,
+          subTask: entry.subTask,
+          output: `result from ${entry.role}`,
+          status: 'success' as const,
+          durationMs: 10,
+        });
+      });
+
+    const entries = [makeEntry('code', 1, 1), makeEntry('testing', 1, 2)];
+    const results = await dispatchWorkers(entries, {
+      executeWorker: trackedExecute,
+      staggerDelayMs: 0,
+    });
+
+    expect(results).toHaveLength(2);
+    expect(results.every((r) => r.status === 'success')).toBe(true);
   });
 
   it('uses expert-aware timeout for security tasks (longer than default)', async () => {

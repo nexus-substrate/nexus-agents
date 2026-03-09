@@ -38,6 +38,10 @@ export const WORKER_TIMEOUT_MS = Math.max(
 /** Delay before next wave when rate-limit errors are detected (Issue #1328). */
 export const RATE_LIMIT_WAVE_DELAY_MS = 5_000;
 
+/** Default stagger delay between spawns within a wave (#1501, Overstory pattern).
+ * Prevents burst API rate-limit errors when launching multiple workers. */
+export const DEFAULT_STAGGER_DELAY_MS = 500;
+
 /**
  * Number of consecutive failures before a role is auto-disabled (Issue #1425).
  * Prevents repeated token burn from persistently failing roles.
@@ -101,6 +105,8 @@ export interface WorkerDispatchOptions {
   readonly executionId?: string;
   /** Consecutive failures before auto-disabling a role (default: 3, Issue #1425). */
   readonly consecutiveFailureThreshold?: number;
+  /** Stagger delay (ms) between spawns within a wave (default: 500ms, #1501). */
+  readonly staggerDelayMs?: number;
 }
 
 // ============================================================================
@@ -315,6 +321,8 @@ export async function dispatchWorkers(
   const bus = options.eventBus;
   const execId = options.executionId ?? `dispatch-${Date.now().toString(36)}`;
 
+  const staggerDelayMs = options.staggerDelayMs ?? DEFAULT_STAGGER_DELAY_MS;
+
   for (const [waveIdx, wave] of waves.entries()) {
     const waveResults = await processWave(wave, waveIdx, waves.length, {
       bus,
@@ -323,6 +331,7 @@ export async function dispatchWorkers(
       options,
       priorResults: allResults.length > 0 ? [...allResults] : undefined,
       failureTracker,
+      staggerDelayMs,
     });
     allResults.push(...waveResults);
 
@@ -344,6 +353,40 @@ interface ProcessWaveOptions {
   readonly options: WorkerDispatchOptions;
   readonly priorResults: readonly WorkerResult[] | undefined;
   readonly failureTracker: RoleFailureTracker;
+  readonly staggerDelayMs: number;
+}
+
+/** Create a task closure for a single worker within a wave. */
+function createWorkerTask(
+  entry: AgentPlanEntry,
+  taskIndex: number,
+  waveNumber: number,
+  opts: ProcessWaveOptions
+): () => Promise<WorkerResult> {
+  return async (): Promise<WorkerResult> => {
+    if (opts.failureTracker.shouldSkipRole(entry.role)) {
+      logger.info('Skipping auto-disabled role', { role: entry.role, wave: waveNumber });
+      return {
+        role: entry.role,
+        subTask: entry.subTask,
+        output: '',
+        status: 'skipped' as const,
+        durationMs: 0,
+        error: 'Role auto-disabled after consecutive failures',
+      };
+    }
+    // Stagger delay: offset each worker launch to avoid API burst (#1501)
+    const staggerMs = taskIndex * opts.staggerDelayMs;
+    if (staggerMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, staggerMs));
+    }
+    const spacingDelay = opts.failureTracker.getSpacingDelay(entry.role);
+    if (spacingDelay > 0) {
+      await new Promise((resolve) => setTimeout(resolve, spacingDelay));
+    }
+    const timeoutMs = opts.options.workerTimeoutMs ?? getExpertTaskTimeout(entry.subTask);
+    return executeSafe(entry, opts.options.executeWorker, opts.priorResults, timeoutMs);
+  };
 }
 
 /** Process a single wave: emit events, execute tasks, return results. */
@@ -366,25 +409,9 @@ async function processWave(
   emitWaveStarted(waveCtx, wave.length, roles);
   const waveStartMs = Date.now();
 
-  const tasks = wave.map((entry) => async (): Promise<WorkerResult> => {
-    if (opts.failureTracker.shouldSkipRole(entry.role)) {
-      logger.info('Skipping auto-disabled role', { role: entry.role, wave: waveNumber });
-      return {
-        role: entry.role,
-        subTask: entry.subTask,
-        output: '',
-        status: 'skipped' as const,
-        durationMs: 0,
-        error: 'Role auto-disabled after consecutive failures',
-      };
-    }
-    const spacingDelay = opts.failureTracker.getSpacingDelay(entry.role);
-    if (spacingDelay > 0) {
-      await new Promise((resolve) => setTimeout(resolve, spacingDelay));
-    }
-    const timeoutMs = opts.options.workerTimeoutMs ?? getExpertTaskTimeout(entry.subTask);
-    return executeSafe(entry, opts.options.executeWorker, opts.priorResults, timeoutMs);
-  });
+  const tasks = wave.map((entry, taskIndex) =>
+    createWorkerTask(entry, taskIndex, waveNumber, opts)
+  );
 
   const waveResults = await executeWithConcurrencyLimit(tasks, opts.maxConcurrency);
   for (const result of waveResults) {
