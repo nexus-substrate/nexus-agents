@@ -40,6 +40,7 @@ import { getExpertTaskTimeout, HEARTBEAT_TIMEOUTS } from '../../config/timeouts.
 import type { ICliDetectionCache } from '../../cli-adapters/cli-detection-cache.js';
 import { requireAdapterAvailable } from '../middleware/adapter-availability.js';
 import { getExpertPool } from '../../agents/expert-pool.js';
+import { withDepthGuard } from '../middleware/spawn-depth-guard.js';
 import { getHeartbeatMonitor } from '../../agents/heartbeat-monitor.js';
 import { clampTaskTtl, DEFAULT_TASK_TTL_MS } from '../task-store.js';
 import { toolError, toolSuccess, type BaseMcpToolDeps } from './tool-result.js';
@@ -261,18 +262,25 @@ async function handleExecuteExpert(
   const adapterError = await requireAdapterAvailable(deps.cliCache);
   if (adapterError !== undefined) return { ok: false, error: adapterError };
 
-  const pool = getExpertPool();
-  let permit;
+  // Depth guard: prevent runaway nested expert execution (#1500)
   try {
-    permit = await pool.acquire();
-  } catch (acquireErr: unknown) {
-    return { ok: false, error: getErrorMessage(acquireErr) };
-  }
+    return await withDepthGuard('execute_expert', async () => {
+      const pool = getExpertPool();
+      let permit;
+      try {
+        permit = await pool.acquire();
+      } catch (acquireErr: unknown) {
+        return { ok: false as const, error: getErrorMessage(acquireErr) };
+      }
 
-  try {
-    return await runExpertTask(deps, args, lookup.expert);
-  } finally {
-    pool.release(permit);
+      try {
+        return await runExpertTask(deps, args, lookup.expert);
+      } finally {
+        pool.release(permit);
+      }
+    });
+  } catch (depthError: unknown) {
+    return { ok: false, error: getErrorMessage(depthError) };
   }
 }
 

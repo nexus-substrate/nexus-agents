@@ -173,6 +173,9 @@ export {
 // Tool error handler (Issue #1144 — DRY error handling)
 export { toolErrorResponse, withToolError } from './tool-error-handler.js';
 
+// Spawn depth guard (Issue #1500)
+export { MAX_SPAWN_DEPTH, getCurrentDepth, withDepthGuard } from './spawn-depth-guard.js';
+
 // Per-tool rate limiter factory (Issue #274 Phase 2)
 export {
   // Types

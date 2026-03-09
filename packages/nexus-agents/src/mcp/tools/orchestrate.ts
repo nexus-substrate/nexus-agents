@@ -31,6 +31,7 @@ import type {
 } from '../../core/types/orchestrator.js';
 import { wrapToolWithTimeout, toSdkCallback } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
+import { withDepthGuard } from '../middleware/spawn-depth-guard.js';
 import { toolError, toolSuccess, type ToolResult } from './tool-result.js';
 import { createMcpNotifier, NOOP_NOTIFIER, withProgressHeartbeat } from '../mcp-notifier.js';
 import type { ExecutionPlan } from '../../agents/index.js';
@@ -643,42 +644,52 @@ function createOrchestrateHandler(deps: OrchestrateDeps) {
       ctx.logger.warn('Invalid orchestrate input', { errors: validated.error.issues });
       return toolError(`Validation error: ${formatZodError(validated.error)}`);
     }
-    ctx.logger.debug('Starting orchestration', { taskLength: validated.data.task.length });
-    notifier.info('orchestrate', {
-      event: 'orchestrate_start',
-      taskLength: validated.data.task.length,
-    });
-    const startMs = getTimeProvider().now();
-    const v2Config = resolveV2Config();
-    if (v2Config.orchestrateEnabled) instrumentV2Orchestrate(validated.data, ctx.logger);
 
-    const agentPlan = v2Config.aorchestraEnabled
-      ? computeAgentPlan(validated.data.task, ctx.logger)
-      : undefined;
-    const workerDispatchResult = await tryWorkerDispatch(
-      agentPlan,
-      validated.data.task,
-      deps,
-      ctx.logger,
-      notifier
-    );
+    // Depth guard: prevent runaway nested orchestration (#1500)
+    try {
+      return await withDepthGuard('orchestrate', async () => {
+        ctx.logger.debug('Starting orchestration', { taskLength: validated.data.task.length });
+        notifier.info('orchestrate', {
+          event: 'orchestrate_start',
+          taskLength: validated.data.task.length,
+        });
+        const startMs = getTimeProvider().now();
+        const v2Config = resolveV2Config();
+        if (v2Config.orchestrateEnabled) instrumentV2Orchestrate(validated.data, ctx.logger);
 
-    recordAndReflect(workerDispatchResult, validated.data.task, deps);
+        const agentPlan = v2Config.aorchestraEnabled
+          ? computeAgentPlan(validated.data.task, ctx.logger)
+          : undefined;
+        const workerDispatchResult = await tryWorkerDispatch(
+          agentPlan,
+          validated.data.task,
+          deps,
+          ctx.logger,
+          notifier
+        );
 
-    const result = await withProgressHeartbeat('orchestrate', notifier, () =>
-      executeOrchestration(validated.data, deps)
-    );
-    if (!result.ok) {
-      return toolError(`Orchestration error: ${result.error.message}`);
+        recordAndReflect(workerDispatchResult, validated.data.task, deps);
+
+        const result = await withProgressHeartbeat('orchestrate', notifier, () =>
+          executeOrchestration(validated.data, deps)
+        );
+        if (!result.ok) {
+          return toolError(`Orchestration error: ${result.error.message}`);
+        }
+
+        notifier.info('orchestrate', {
+          event: 'orchestrate_complete',
+          subtaskCount: result.value.stepsCompleted,
+          durationMs: getTimeProvider().now() - startMs,
+        });
+
+        return assembleOrchestrateOutput(result.value, agentPlan, workerDispatchResult);
+      });
+    } catch (depthError: unknown) {
+      const msg = depthError instanceof Error ? depthError.message : String(depthError);
+      ctx.logger.warn('Orchestration depth guard triggered', { error: msg });
+      return toolError(`Depth limit: ${msg}`);
     }
-
-    notifier.info('orchestrate', {
-      event: 'orchestrate_complete',
-      subtaskCount: result.value.stepsCompleted,
-      durationMs: getTimeProvider().now() - startMs,
-    });
-
-    return assembleOrchestrateOutput(result.value, agentPlan, workerDispatchResult);
   };
 }
 
