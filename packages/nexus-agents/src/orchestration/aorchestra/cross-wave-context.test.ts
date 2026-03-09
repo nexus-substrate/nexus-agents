@@ -214,7 +214,7 @@ describe('buildPriorWaveContextBlock', () => {
     expect(block.length).toBeLessThanOrEqual(MAX_PRIOR_CONTEXT_CHARS + 200); // header overhead
   });
 
-  it('skips error results', () => {
+  it('excludes error results from success section but includes failure summary', () => {
     const results: WorkerResult[] = [
       makeResult('code', 'Good output.'),
       {
@@ -228,7 +228,11 @@ describe('buildPriorWaveContextBlock', () => {
     ];
     const block = buildPriorWaveContextBlock(results);
     expect(block).toContain('code');
-    expect(block).not.toContain('timeout');
+    // Error output should not appear in the success section
+    expect(block).not.toContain('### security (success)');
+    // But failure summary should mention the failed role
+    expect(block).toContain('Failed Workers');
+    expect(block).toContain('security');
   });
 
   it('sanitizes worker outputs before including them', () => {
@@ -236,6 +240,53 @@ describe('buildPriorWaveContextBlock', () => {
     const block = buildPriorWaveContextBlock(results);
     expect(block).not.toContain('<system>');
     expect(block).toContain('Result');
+  });
+
+  // ---- Failure context for later waves (#1507) ----
+
+  it('includes failed worker summary when failures exist alongside successes', () => {
+    const results: WorkerResult[] = [
+      makeResult('code', 'Implementation complete.'),
+      {
+        role: 'security',
+        subTask: 'Review security',
+        output: '',
+        status: 'error',
+        durationMs: 0,
+        error: 'rate limit exceeded — too many requests',
+      },
+    ];
+    const block = buildPriorWaveContextBlock(results);
+    expect(block).toContain('code');
+    expect(block).toContain('Implementation complete');
+    // Should include failure note
+    expect(block).toContain('Failed Workers');
+    expect(block).toContain('security');
+    expect(block).toContain('rate limit');
+  });
+
+  it('truncates long error messages in failure summary', () => {
+    const results: WorkerResult[] = [
+      makeResult('code', 'Done.'),
+      {
+        role: 'security',
+        subTask: 't',
+        output: '',
+        status: 'error',
+        durationMs: 0,
+        error: 'x'.repeat(500),
+      },
+    ];
+    const block = buildPriorWaveContextBlock(results);
+    expect(block).toContain('Failed Workers');
+    // Error should be truncated
+    expect(block.length).toBeLessThan(MAX_PRIOR_CONTEXT_CHARS + 500);
+  });
+
+  it('omits failure summary when all results succeeded', () => {
+    const results = [makeResult('code', 'Done.'), makeResult('testing', 'Tests pass.')];
+    const block = buildPriorWaveContextBlock(results);
+    expect(block).not.toContain('Failed Workers');
   });
 });
 

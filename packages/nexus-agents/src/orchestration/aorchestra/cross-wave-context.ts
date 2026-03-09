@@ -175,5 +175,28 @@ export function buildPriorWaveContextBlock(results: readonly WorkerResult[]): st
 
   if (entries.length === 0) return '';
 
-  return header + '\n' + entries.join('\n\n');
+  const failureSummary = buildFailureSummary(results, MAX_PRIOR_CONTEXT_CHARS - totalChars);
+  return header + '\n' + entries.join('\n\n') + failureSummary;
+}
+
+/** Max chars for individual error snippets in failure summary. */
+const MAX_ERROR_SNIPPET_CHARS = 100;
+
+/** Build a brief summary of failed workers for cross-wave context (#1507). */
+function buildFailureSummary(results: readonly WorkerResult[], budget: number): string {
+  const failures = results.filter((r) => r.status === 'error');
+  if (failures.length === 0 || budget < 50) return '';
+
+  const lines: string[] = ['\n\n### Failed Workers'];
+  let used = lines[0]?.length ?? 0;
+
+  for (const f of failures) {
+    const snippet = (f.error ?? 'unknown error').slice(0, MAX_ERROR_SNIPPET_CHARS);
+    const line = `- **${f.role}**: ${snippet}`;
+    if (used + line.length > budget) break;
+    lines.push(line);
+    used += line.length;
+  }
+
+  return lines.length > 1 ? lines.join('\n') : '';
 }
