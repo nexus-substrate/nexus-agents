@@ -385,6 +385,42 @@ describe('synthesizeResults', () => {
     expect(result.excludedWorkerCount).toBe(1);
   });
 
+  it('falls back to raw worker outputs when response has no text blocks (Issue #1468)', async () => {
+    const adapter = {
+      complete: vi.fn().mockImplementation(
+        (): Promise<{ ok: true; value: { content: ContentBlock[] } }> =>
+          Promise.resolve({
+            ok: true as const,
+            value: {
+              content: [
+                {
+                  type: 'tool_use' as const,
+                  id: 'tool-1',
+                  name: 'some_tool',
+                  input: { key: 'value' },
+                },
+              ],
+            },
+          })
+      ),
+    } as unknown as IModelAdapter;
+
+    const result = await synthesizeResults({
+      results: [
+        makeResult('code', 'Rate limiter implemented.'),
+        makeResult('testing', 'Tests added.'),
+      ],
+      conflicts: [],
+      taskDescription: 'Build a rate limiter',
+      modelAdapter: adapter,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.synthesisSource).toBe('llm');
+    expect(result.value).toContain('Rate limiter implemented.');
+    expect(result.value).toContain('Tests added.');
+  });
+
   it('sanitizes worker outputs in fallback path', async () => {
     const adapter = makeFailingAdapter('timeout');
     const result = await synthesizeResults({

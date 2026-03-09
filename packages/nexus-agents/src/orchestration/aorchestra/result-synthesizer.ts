@@ -54,8 +54,8 @@ export interface SynthesizeResultsInput {
 /** Source of synthesis output. */
 export type SynthesisSource = 'llm' | 'fallback';
 
-/** Result type for synthesis — always ok, falls back on failure. */
-export interface SynthesisResult {
+/** Successful synthesis result. */
+interface SynthesisSuccess {
   readonly ok: true;
   readonly value: string;
   /** How the synthesis was produced — 'llm' or 'fallback'. */
@@ -63,6 +63,15 @@ export interface SynthesisResult {
   /** Number of workers excluded (error/empty) from synthesis. */
   readonly excludedWorkerCount?: number;
 }
+
+/** Failed synthesis result (#1469). */
+interface SynthesisFailure {
+  readonly ok: false;
+  readonly error: string;
+}
+
+/** Result type for synthesis — discriminated union for safe access (#1469). */
+export type SynthesisResult = SynthesisSuccess | SynthesisFailure;
 
 // ============================================================================
 // Synthesis Prompt Builder
@@ -236,10 +245,15 @@ export async function synthesizeResults(input: SynthesizeResultsInput): Promise<
       };
     }
 
-    const text = response.value.content
-      .filter((b: ContentBlock): b is ContentBlock & { type: 'text' } => b.type === 'text')
-      .map((b) => b.text)
-      .join('\n');
+    const textBlocks = response.value.content.filter(
+      (b: ContentBlock): b is ContentBlock & { type: 'text' } => b.type === 'text'
+    );
+
+    // Guard: if no text blocks (e.g., only tool_use), fall back to raw worker outputs
+    const text =
+      textBlocks.length === 0
+        ? results.map((r) => r.output).join('\n')
+        : textBlocks.map((b) => b.text).join('\n');
 
     return { ok: true, value: text, synthesisSource: 'llm', excludedWorkerCount };
   } catch (error: unknown) {
