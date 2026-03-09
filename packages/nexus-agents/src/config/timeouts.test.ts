@@ -381,8 +381,8 @@ describe('Centralized Timeout Configuration', () => {
   describe('WORKER_TIMEOUTS', () => {
     it('has correct default values', () => {
       expect(WORKER_TIMEOUTS.defaultMs).toBe(60_000);
-      expect(WORKER_TIMEOUTS.minMs).toBe(5_000);
-      expect(WORKER_TIMEOUTS.maxMs).toBe(300_000);
+      expect(WORKER_TIMEOUTS.minMs).toBe(30_000);
+      expect(WORKER_TIMEOUTS.maxMs).toBe(900_000);
     });
   });
 

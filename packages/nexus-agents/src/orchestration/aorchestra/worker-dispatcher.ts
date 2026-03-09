@@ -19,11 +19,11 @@ import type { IEventBus } from '../../pipeline/event-types.js';
 
 const logger = createLogger({ component: 'worker-dispatcher' });
 
-/** Minimum allowed worker timeout (30s floor, Issue #1465). */
-export const MIN_WORKER_TIMEOUT_MS = 30_000;
+/** Minimum allowed worker timeout — delegates to centralized config (#1490). */
+export const MIN_WORKER_TIMEOUT_MS = WORKER_TIMEOUTS.minMs;
 
-/** Maximum allowed worker timeout (15min ceiling, Issue #1465). */
-export const MAX_WORKER_TIMEOUT_MS = 900_000;
+/** Maximum allowed worker timeout — delegates to centralized config (#1490). */
+export const MAX_WORKER_TIMEOUT_MS = WORKER_TIMEOUTS.maxMs;
 
 /**
  * Default per-worker timeout. Delegates to centralized config/timeouts.ts.
