@@ -10,6 +10,9 @@
 
 import type { ICliResponseParser, TokenUsage } from '../types.js';
 import { asRecord, extractNumberField } from '../../utils/type-coercion.js';
+import { createLogger } from '../../core/index.js';
+
+const logger = createLogger({ component: 'claude-parser' });
 
 /**
  * Claude CLI response structure.
@@ -63,6 +66,7 @@ export class ClaudeResponseParser implements ICliResponseParser<ClaudeCliRespons
 
       return data;
     } catch {
+      logger.debug('Skipped malformed output line', { snippet: raw.slice(0, 100) });
       return null;
     }
   }
@@ -89,6 +93,7 @@ export class ClaudeResponseParser implements ICliResponseParser<ClaudeCliRespons
 
       return null;
     } catch {
+      logger.debug('Skipped malformed output line', { snippet: raw.slice(0, 100) });
       return null;
     }
   }
@@ -121,6 +126,7 @@ export class ClaudeResponseParser implements ICliResponseParser<ClaudeCliRespons
         ...(cachedInputTokens !== null && { cachedInputTokens }),
       };
     } catch {
+      logger.debug('Skipped malformed output line', { snippet: raw.slice(0, 100) });
       return null;
     }
   }
@@ -141,6 +147,7 @@ export class ClaudeResponseParser implements ICliResponseParser<ClaudeCliRespons
 
       return null;
     } catch {
+      logger.debug('Skipped malformed output line', { snippet: raw.slice(0, 100) });
       return null;
     }
   }

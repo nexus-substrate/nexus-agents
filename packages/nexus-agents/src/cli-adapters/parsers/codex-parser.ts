@@ -10,6 +10,9 @@
 
 import type { ICliResponseParser, TokenUsage } from '../types.js';
 import { asRecord, extractNumberField } from '../../utils/type-coercion.js';
+import { createLogger } from '../../core/index.js';
+
+const logger = createLogger({ component: 'codex-parser' });
 
 /**
  * Codex CLI NDJSON event types.
@@ -136,9 +139,9 @@ export class CodexResponseParser implements ICliResponseParser<CodexCliResponse>
         const usage = this.extractUsageFromEvent(record);
         if (usage !== null) setUsage(usage);
       }
-    } catch (lineErr: unknown) {
-      // Skip malformed NDJSON lines — capture for debuggability
-      void lineErr;
+    } catch {
+      // Skip malformed NDJSON lines
+      logger.debug('Skipped malformed NDJSON line', { snippet: line.slice(0, 100) });
     }
   }
 
@@ -173,6 +176,7 @@ export class CodexResponseParser implements ICliResponseParser<CodexCliResponse>
           return this.extractUsageFromEvent(record);
         }
       } catch {
+        logger.debug('Skipped malformed NDJSON line', { snippet: line.slice(0, 100) });
         continue;
       }
     }
@@ -201,6 +205,7 @@ export class CodexResponseParser implements ICliResponseParser<CodexCliResponse>
           }
         }
       } catch {
+        logger.debug('Skipped malformed NDJSON line', { snippet: line.slice(0, 100) });
         continue;
       }
     }

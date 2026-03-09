@@ -10,6 +10,9 @@
 
 import type { ICliResponseParser, TokenUsage } from '../types.js';
 import { asRecord, extractNumberField } from '../../utils/type-coercion.js';
+import { createLogger } from '../../core/index.js';
+
+const logger = createLogger({ component: 'gemini-parser' });
 
 /**
  * Gemini CLI response structure.
@@ -62,6 +65,7 @@ export class GeminiResponseParser implements ICliResponseParser<GeminiCliRespons
 
       return data;
     } catch {
+      logger.debug('Skipped malformed output line', { snippet: raw.slice(0, 100) });
       return null;
     }
   }
@@ -82,6 +86,7 @@ export class GeminiResponseParser implements ICliResponseParser<GeminiCliRespons
 
       return null;
     } catch {
+      logger.debug('Skipped malformed output line', { snippet: raw.slice(0, 100) });
       return null;
     }
   }
@@ -104,6 +109,7 @@ export class GeminiResponseParser implements ICliResponseParser<GeminiCliRespons
 
       return this.aggregateModelTokens(models);
     } catch {
+      logger.debug('Skipped malformed output line', { snippet: raw.slice(0, 100) });
       return null;
     }
   }
@@ -160,6 +166,7 @@ export class GeminiResponseParser implements ICliResponseParser<GeminiCliRespons
 
       return null;
     } catch {
+      logger.debug('Skipped malformed output line', { snippet: raw.slice(0, 100) });
       return null;
     }
   }
