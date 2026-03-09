@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- Cohesive dispatch module (governance: 400-600 OK if cohesive) */
 /**
  * Worker Dispatch integration for the orchestrate MCP tool (Issue #1303).
  *
@@ -18,11 +19,13 @@ import {
   dispatchWorkers,
   detectConflicts,
   analyzeDispatch,
+  evaluateExitTriggers,
   WorkerCheckpointStore,
   createCheckpoint,
   type WorkerResult,
   type WorkerConflict,
   type QualityGateFn,
+  type ExitTriggerConfig,
 } from '../../orchestration/aorchestra/index.js';
 import { composeWorkerPrompt } from '../../orchestration/aorchestra/compose-worker-prompt.js';
 import type { WorkerLearning } from '../../orchestration/aorchestra/compose-worker-prompt.js';
@@ -68,6 +71,12 @@ function resolveMaxWorkerCalls(option?: number): number {
 
 /** Default maximum model calls per orchestrate invocation (#1321). */
 export const DEFAULT_MAX_WORKER_CALLS = 6;
+
+/** Default exit triggers: skip refinement when all workers done + no retriable errors (#1509). */
+const DEFAULT_EXIT_TRIGGERS: ExitTriggerConfig = {
+  allWorkersComplete: true,
+  noRetriableErrors: true,
+};
 
 /** Options for executing worker dispatch. */
 export interface WorkerDispatchExecutionOptions {
@@ -269,15 +278,23 @@ async function runSynthesisPhase(
   }
 }
 
-/** Run opt-in refinement pass if quality is low and budget allows (#1389). */
-async function runRefinementPhase(
+/** Check if refinement should be skipped due to exit triggers or signal analysis. */
+function shouldSkipRefinement(
   state: DispatchPhaseState,
   entries: readonly AgentPlanEntry[],
-  options: WorkerDispatchExecutionOptions,
-  maxCalls: number
-): Promise<boolean> {
-  if (options.refine !== true || state.totalModelCalls >= maxCalls) return false;
-
+  maxCalls: number,
+  log: ILogger
+): boolean {
+  const exitResult = evaluateExitTriggers(DEFAULT_EXIT_TRIGGERS, {
+    results: state.results,
+    totalModelCalls: state.totalModelCalls,
+    maxModelCalls: maxCalls,
+    plannedWorkers: entries.length,
+  });
+  if (exitResult.shouldExit) {
+    log.info('Exit triggers met — skipping refinement', { reasons: exitResult.reasons });
+    return true;
+  }
   const errorResults = state.results.filter((r) => r.status === 'error');
   const allRateLimit =
     errorResults.length > 0 && errorResults.every((r) => r.errorType === 'rate_limit');
@@ -288,7 +305,18 @@ async function runRefinementPhase(
     ...(state.synthSource !== undefined ? { synthesisSource: state.synthSource } : {}),
     ...(allRateLimit ? { allErrorsRateLimit: true } : {}),
   };
-  if (!shouldRefine(signals)) return false;
+  return !shouldRefine(signals);
+}
+
+/** Run opt-in refinement pass if quality is low and budget allows (#1389). */
+async function runRefinementPhase(
+  state: DispatchPhaseState,
+  entries: readonly AgentPlanEntry[],
+  options: WorkerDispatchExecutionOptions,
+  maxCalls: number
+): Promise<boolean> {
+  if (options.refine !== true || state.totalModelCalls >= maxCalls) return false;
+  if (shouldSkipRefinement(state, entries, maxCalls, options.logger)) return false;
 
   const remaining = maxCalls - state.totalModelCalls;
   const failedEntries = entries
