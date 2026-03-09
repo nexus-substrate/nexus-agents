@@ -193,7 +193,10 @@ function recordSpecOutcome(success: boolean, durationMs: number, stage?: string)
       timestamp: new Date().toISOString(),
       source: 'manual',
       ...(!success && stage !== undefined
-        ? { failureCategory: categorizeOutcomeErrorMessage(`Spec failed at stage: ${stage}`) }
+        ? {
+            failureCategory: categorizeOutcomeErrorMessage(`Spec failed at stage: ${stage}`),
+            errorMessage: `Spec failed at stage: ${stage}`.slice(0, 500),
+          }
         : {}),
     });
   } catch (storeErr: unknown) {

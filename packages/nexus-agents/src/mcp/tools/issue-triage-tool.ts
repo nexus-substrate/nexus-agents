@@ -214,7 +214,10 @@ function recordTriageOutcome(success: boolean, durationMs: number, errorMsg?: st
       timestamp: new Date().toISOString(),
       source: 'manual',
       ...(!success && errorMsg !== undefined
-        ? { failureCategory: categorizeOutcomeErrorMessage(errorMsg) }
+        ? {
+            failureCategory: categorizeOutcomeErrorMessage(errorMsg),
+            errorMessage: errorMsg.slice(0, 500),
+          }
         : {}),
     });
   } catch (storeErr: unknown) {

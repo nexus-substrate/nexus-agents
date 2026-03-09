@@ -139,6 +139,27 @@ describe('consensus-vote-recording', () => {
 
     expect(store.size).toBe(initialSize);
   });
+
+  it('recordVoteOutcomes captures errorMessage on failed votes (#1516)', async () => {
+    const { recordVoteOutcomes } = await import('./consensus-vote-recording.js');
+    const store = getOutcomeStore();
+
+    recordVoteOutcomes([
+      {
+        role: 'architect',
+        vote: { decision: 'approve', reasoning: '', confidence: 0 },
+        source: 'error' as const,
+        processingTimeMs: 500,
+        error: 'Rate limit exceeded',
+      },
+    ]);
+
+    const entries = store.query();
+    const last = entries[entries.length - 1];
+    expect(last?.success).toBe(false);
+    expect(last?.errorMessage).toBe('Rate limit exceeded');
+    expect(last?.failureCategory).toBeDefined();
+  });
 });
 
 // ============================================================================
@@ -220,6 +241,19 @@ describe('create-expert-recording', () => {
     const entries = store.query();
     const last = entries[entries.length - 1];
     expect(last?.success).toBe(false);
+  });
+
+  it('recordExpertOutcome captures errorMessage on failure (#1516)', async () => {
+    const { recordExpertOutcome } = await import('./create-expert-recording.js');
+    const store = getOutcomeStore();
+
+    recordExpertOutcome('security_expert', false, 100, 'Model adapter unavailable');
+
+    const entries = store.query();
+    const last = entries[entries.length - 1];
+    expect(last?.success).toBe(false);
+    expect(last?.errorMessage).toBe('Model adapter unavailable');
+    expect(last?.failureCategory).toBeDefined();
   });
 });
 

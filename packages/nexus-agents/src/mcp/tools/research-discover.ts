@@ -503,7 +503,10 @@ function recordDiscoveryOutcome(success: boolean, durationMs: number, errorMsg?:
       timestamp: new Date().toISOString(),
       source: 'manual',
       ...(!success && errorMsg !== undefined
-        ? { failureCategory: categorizeOutcomeErrorMessage(errorMsg) }
+        ? {
+            failureCategory: categorizeOutcomeErrorMessage(errorMsg),
+            errorMessage: errorMsg.slice(0, 500),
+          }
         : {}),
     });
   } catch (storeErr: unknown) {

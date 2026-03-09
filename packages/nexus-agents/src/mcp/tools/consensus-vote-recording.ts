@@ -91,7 +91,10 @@ export function recordVoteOutcomes(votes: readonly AgentVoteResult[]): void {
         timestamp: now,
         source: 'consensus',
         ...(!voteSuccess && vote.error !== undefined
-          ? { failureCategory: categorizeOutcomeErrorMessage(vote.error) }
+          ? {
+              failureCategory: categorizeOutcomeErrorMessage(vote.error),
+              errorMessage: vote.error.slice(0, 500),
+            }
           : {}),
       });
     }

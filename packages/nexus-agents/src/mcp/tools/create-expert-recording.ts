@@ -60,9 +60,15 @@ function resolveCategory(role: string): TaskCategory {
 }
 
 /** Records expert creation outcome for adaptive routing. */
-export function recordExpertOutcome(role: string, success: boolean, durationMs: number): void {
+export function recordExpertOutcome(
+  role: string,
+  success: boolean,
+  durationMs: number,
+  error?: string
+): void {
   try {
     const store = getOutcomeStore();
+    const errorMsg = error ?? 'expert creation failed';
     store.append({
       id: `expert-${String(Date.now())}-${Math.random().toString(36).slice(2, 8)}`,
       cli: DEFAULT_CLI,
@@ -73,7 +79,10 @@ export function recordExpertOutcome(role: string, success: boolean, durationMs: 
       timestamp: new Date().toISOString(),
       source: 'manual',
       ...(!success
-        ? { failureCategory: categorizeOutcomeErrorMessage('expert creation failed') }
+        ? {
+            failureCategory: categorizeOutcomeErrorMessage(errorMsg),
+            errorMessage: errorMsg.slice(0, 500),
+          }
         : {}),
     });
   } catch (error: unknown) {

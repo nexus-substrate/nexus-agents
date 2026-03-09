@@ -262,7 +262,7 @@ function createCreateExpertHandler(deps: CreateExpertDeps) {
 
     if (!result.ok) {
       recordExpertError(validationResult.data.role, result.error);
-      recordExpertOutcome(validationResult.data.role, false, durationMs);
+      recordExpertOutcome(validationResult.data.role, false, durationMs, result.error);
       return toolError(`Failed to create expert: ${result.error}`);
     }
 

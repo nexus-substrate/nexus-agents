@@ -366,7 +366,10 @@ function recordGraphWorkflowResult(result: RunGraphWorkflowResponse): void {
       timestamp: new Date().toISOString(),
       source: 'manual',
       ...(!succeeded && result.error !== undefined
-        ? { failureCategory: categorizeOutcomeErrorMessage(result.error) }
+        ? {
+            failureCategory: categorizeOutcomeErrorMessage(result.error),
+            errorMessage: result.error.slice(0, 500),
+          }
         : {}),
     });
   } catch (storeErr: unknown) {
