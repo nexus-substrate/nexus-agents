@@ -57,8 +57,9 @@ describe('router-scoring', () => {
       expect(CAPABILITY_MATRIX.code_implementation.codex).toBe(1.0);
       expect(CAPABILITY_MATRIX.test_generation.codex).toBe(1.0);
       expect(CAPABILITY_MATRIX.bulk_operations.gemini).toBe(1.0);
-      expect(CAPABILITY_MATRIX.code_review.claude).toBe(1.0);
-      expect(CAPABILITY_MATRIX.documentation.claude).toBe(0.9);
+      expect(CAPABILITY_MATRIX.code_review.claude).toBe(0.9);
+      expect(CAPABILITY_MATRIX.code_review.codex).toBe(0.9);
+      expect(CAPABILITY_MATRIX.documentation.gemini).toBe(0.9);
     });
   });
 

@@ -23,9 +23,9 @@ export const CAPABILITY_MATRIX: Record<TaskType, Record<CliName, number>> = {
   code_implementation: { claude: 0.8, gemini: 0.5, codex: 1.0, opencode: 0.7 },
   test_generation: { claude: 0.5, gemini: 0.4, codex: 1.0, opencode: 0.6 },
   bulk_operations: { claude: 0.4, gemini: 1.0, codex: 0.7, opencode: 0.7 },
-  code_review: { claude: 1.0, gemini: 0.6, codex: 0.7, opencode: 0.7 },
+  code_review: { claude: 0.9, gemini: 0.6, codex: 0.9, opencode: 0.7 },
   security_review: { claude: 0.5, gemini: 0.5, codex: 0.6, opencode: 0.5 },
-  documentation: { claude: 0.9, gemini: 0.7, codex: 0.5, opencode: 0.6 },
+  documentation: { claude: 0.7, gemini: 0.9, codex: 0.5, opencode: 0.6 },
   general: { claude: 0.8, gemini: 0.6, codex: 0.6, opencode: 0.65 },
 } as const;
 
