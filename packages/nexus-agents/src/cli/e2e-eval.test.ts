@@ -113,6 +113,31 @@ describe('e2e-eval', () => {
       const result = runE2EEval({ taskCount: 100 });
       expect(result.passed).toBe(true);
     });
+
+    it('should use in-memory store to avoid polluting persistent outcomes (#1528)', () => {
+      // Pre-seed a "production" outcome
+      getOutcomeStore().append({
+        id: 'production-outcome',
+        cli: 'claude',
+        category: 'architecture',
+        model: 'claude-default',
+        success: true,
+        durationMs: 5000,
+        timestamp: new Date().toISOString(),
+        source: 'delegate',
+      });
+
+      // Run eval (resets by default)
+      runE2EEval({ taskCount: 10 });
+
+      // After eval, getOutcomeStore() should only have eval outcomes
+      // (production outcome was in the old store, eval used a fresh in-memory one)
+      const outcomes = getOutcomeStore().query();
+      // All outcomes should be eval-marked
+      expect(outcomes.every((o) => o.qualitySignals?.includes(E2E_EVAL_MARKER) === true)).toBe(
+        true
+      );
+    });
   });
 
   describe('formatE2EEvalResult', () => {

@@ -8,7 +8,12 @@
 import { describe, it, expect, beforeEach, beforeAll, afterAll } from 'vitest';
 import { TaskOutcomeSchema, OutcomeQuerySchema } from './outcome-types.js';
 import type { TaskOutcome } from './outcome-types.js';
-import { OutcomeStore, getOutcomeStore, resetOutcomeStore } from './outcome-store.js';
+import {
+  OutcomeStore,
+  getOutcomeStore,
+  resetOutcomeStore,
+  setOutcomeStore,
+} from './outcome-store.js';
 
 // Force in-memory mode to avoid loading persistent data from disk
 const originalPersist = process.env['NEXUS_PERSIST_LEARNING'];
@@ -313,6 +318,15 @@ describe('getOutcomeStore / resetOutcomeStore', () => {
     expect(store.size).toBe(1);
     resetOutcomeStore();
     expect(getOutcomeStore().size).toBe(0);
+  });
+
+  it('setOutcomeStore replaces the singleton (#1528)', () => {
+    const custom = new OutcomeStore();
+    custom.append(makeOutcome({ id: 'custom-1' }));
+    setOutcomeStore(custom);
+    expect(getOutcomeStore()).toBe(custom);
+    expect(getOutcomeStore().size).toBe(1);
+    expect(getOutcomeStore().query()[0]?.id).toBe('custom-1');
   });
 });
 

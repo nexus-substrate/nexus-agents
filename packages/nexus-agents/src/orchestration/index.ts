@@ -181,6 +181,7 @@ export {
   OutcomeStore,
   getOutcomeStore,
   resetOutcomeStore,
+  setOutcomeStore,
   PersistentOutcomeStore,
 } from './outcomes/index.js';
 export type { OutcomeStoreConfig, PersistentOutcomeStoreConfig } from './outcomes/index.js';

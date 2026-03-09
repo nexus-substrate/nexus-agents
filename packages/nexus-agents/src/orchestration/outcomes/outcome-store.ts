@@ -197,6 +197,15 @@ export function resetOutcomeStore(): void {
   singletonStore = undefined;
 }
 
+/**
+ * Replace the singleton with a specific store instance.
+ * Used by E2E eval to inject an in-memory store that won't pollute
+ * the persistent outcome file (#1528).
+ */
+export function setOutcomeStore(store: OutcomeStore): void {
+  singletonStore = store;
+}
+
 // ============================================================================
 // Persistent factory registration (Issue #1009)
 // ============================================================================

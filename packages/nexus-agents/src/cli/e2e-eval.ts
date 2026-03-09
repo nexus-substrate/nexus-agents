@@ -12,7 +12,12 @@
 
 import type { TaskCategory } from '../config/task-specialization-types.js';
 import { TASK_CATEGORIES } from '../config/task-specialization-types.js';
-import { getOutcomeStore, resetOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
+import {
+  OutcomeStore,
+  getOutcomeStore,
+  resetOutcomeStore,
+  setOutcomeStore,
+} from '../orchestration/outcomes/outcome-store.js';
 import type { TaskOutcome } from '../orchestration/outcomes/outcome-types.js';
 import { getAdaptiveBonus } from '../mcp/tools/weather-report.js';
 import { createLogger, type ILogger } from '../core/index.js';
@@ -233,7 +238,12 @@ function buildDetails(
 export function runE2EEval(config?: Partial<E2EEvalConfig>, logger?: ILogger): E2EEvalResult {
   const log = logger ?? createLogger({ component: 'e2e-eval' });
   const taskCount = config?.taskCount ?? 50;
-  if (config?.resetStore !== false) resetOutcomeStore();
+  if (config?.resetStore !== false) {
+    resetOutcomeStore();
+    // Force in-memory store to prevent eval outcomes from polluting
+    // the persistent outcome file (#1528).
+    setOutcomeStore(new OutcomeStore());
+  }
 
   const counts = generateOutcomes(taskCount);
   log.info('E2E eval: outcomes recorded', { taskCount });

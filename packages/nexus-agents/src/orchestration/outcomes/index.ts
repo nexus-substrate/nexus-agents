@@ -28,6 +28,7 @@ export {
   OutcomeStore,
   getOutcomeStore,
   resetOutcomeStore,
+  setOutcomeStore,
   registerPersistentOutcomeStoreFactory,
   type OutcomeStoreConfig,
 } from './outcome-store.js';
