@@ -218,6 +218,14 @@ describe('categorizeOutcomeErrorMessage', () => {
     expect(categorizeOutcomeErrorMessage('Got empty response from model')).toBe('execution');
   });
 
+  it('classifies empty string as execution (#1475)', () => {
+    expect(categorizeOutcomeErrorMessage('')).toBe('execution');
+  });
+
+  it('classifies whitespace-only string as execution (#1475)', () => {
+    expect(categorizeOutcomeErrorMessage('   ')).toBe('execution');
+  });
+
   it('returns unknown for truly unrecognized messages (#1401)', () => {
     expect(categorizeOutcomeErrorMessage('xyzzy plugh nothing happens')).toBe('unknown');
   });

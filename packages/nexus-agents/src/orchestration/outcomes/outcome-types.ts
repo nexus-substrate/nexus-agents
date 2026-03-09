@@ -215,8 +215,10 @@ function classifyExecutionOrGeneric(text: string): OutcomeFailureCategory {
 /**
  * Classifies a lowercase text string against all known failure patterns.
  * Order: most-specific categories first, broad execution/generic last (#1461).
+ * Empty/whitespace-only strings default to 'execution' (#1475).
  */
 function classifyText(text: string): OutcomeFailureCategory {
+  if (text.trim() === '') return 'execution';
   if (matchesAny(text, ADAPTER_PATTERNS)) return 'adapter_unavailable';
   if (matchesAny(text, AUTH_PATTERNS)) return 'authentication';
   if (matchesAny(text, RATE_LIMIT_PATTERNS)) return 'rate_limit';
