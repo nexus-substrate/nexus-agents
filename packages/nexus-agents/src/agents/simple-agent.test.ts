@@ -239,20 +239,53 @@ describe('SimpleAgent', () => {
       }
     });
 
-    it('should return error when response has no content at all (#1521)', async () => {
-      const adapter = createMockAdapter({
+    it('should retry once on empty response before failing (#1528)', async () => {
+      const emptyResponse: CompletionResponse = {
         content: [],
         usage: { inputTokens: 5, outputTokens: 0, totalTokens: 5 },
         stopReason: 'end_turn',
         model: 'test-model',
-      });
+      };
+      const adapter = createMockAdapter(emptyResponse);
       const agent = createTestAgent({ adapter });
 
       const result = await agent.execute(createTestTask());
 
+      // Should have called complete twice (original + 1 retry)
+      expect(adapter.complete).toHaveBeenCalledTimes(2);
+      // Still fails after retry returns empty again
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.message).toBe('Model returned empty response');
+      }
+    });
+
+    it('should succeed on retry if second attempt returns content (#1528)', async () => {
+      const emptyResponse: CompletionResponse = {
+        content: [],
+        usage: { inputTokens: 5, outputTokens: 0, totalTokens: 5 },
+        stopReason: 'end_turn',
+        model: 'test-model',
+      };
+      const goodResponse: CompletionResponse = {
+        content: [{ type: 'text', text: 'Recovered' }],
+        usage: { inputTokens: 5, outputTokens: 10, totalTokens: 15 },
+        stopReason: 'end_turn',
+        model: 'test-model',
+      };
+      const adapter = createMockAdapter(emptyResponse);
+      // First call returns empty, second returns content
+      (adapter.complete as Mock)
+        .mockResolvedValueOnce(ok(emptyResponse))
+        .mockResolvedValueOnce(ok(goodResponse));
+      const agent = createTestAgent({ adapter });
+
+      const result = await agent.execute(createTestTask());
+
+      expect(adapter.complete).toHaveBeenCalledTimes(2);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.output).toBe('Recovered');
       }
     });
 

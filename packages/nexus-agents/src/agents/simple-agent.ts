@@ -46,13 +46,10 @@ export class SimpleAgent extends BaseAgent {
       .join('\n');
 
     // Guard: treat responses with no text and no tool calls as empty (#1521)
+    // Retry once — empty responses are often transient (#1528)
     const hasToolUse = result.value.content.some((b) => b.type === 'tool_use');
     if (textContent.trim() === '' && !hasToolUse) {
-      return err(
-        new AgentError('Model returned empty response', {
-          context: { taskId: task.id, model: result.value.model },
-        })
-      );
+      return this.retryOnEmpty(request, task, startTime);
     }
 
     return ok({
@@ -63,6 +60,39 @@ export class SimpleAgent extends BaseAgent {
         tokensUsed: result.value.usage.totalTokens,
         toolsUsed: [],
         model: result.value.model,
+      },
+    });
+  }
+
+  /** Retry once on empty response — returns success if retry has content, error otherwise. */
+  private async retryOnEmpty(
+    request: CompletionRequest,
+    task: Task,
+    startTime: number
+  ): Promise<Result<TaskResult, AgentError>> {
+    const retry = await this.complete(request);
+    if (!retry.ok) return err(retry.error);
+    const text = retry.value.content
+      .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
+      .map((b) => b.text)
+      .join('\n');
+    const hasTools = retry.value.content.some((b) => b.type === 'tool_use');
+    if (text.trim() === '' && !hasTools) {
+      return err(
+        new AgentError('Model returned empty response', {
+          context: { taskId: task.id, model: retry.value.model },
+        })
+      );
+    }
+    const durationMs = getTimeProvider().now() - startTime;
+    return ok({
+      taskId: task.id,
+      output: text,
+      metadata: {
+        durationMs,
+        tokensUsed: retry.value.usage.totalTokens,
+        toolsUsed: [],
+        model: retry.value.model,
       },
     });
   }
