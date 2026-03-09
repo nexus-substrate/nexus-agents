@@ -308,7 +308,7 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     // Non-zero exit with stderr errors: treat as execution error even if
     // stdout has partial data — prevents misclassifying as PARSE_ERROR (#1402)
     if (code !== 0 && state.stderr !== '' && looksLikeErrorStderr(state.stderr)) {
-      const msg = `Exit code ${String(code)}: ${state.stderr.slice(0, 300).trim()}`;
+      const msg = `Exit code ${String(code)}: ${state.stderr.slice(0, 500).trim()}`;
       return err(this.createError('EXECUTION_ERROR', msg));
     }
     return this.handleSubprocessOutput(state.stdout, state.stderr, startTime);
@@ -330,12 +330,12 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     if (text === null) {
       // Check for rate-limit indicators in raw stdout (#1320)
       if (isRateLimitOutput(stdout)) {
-        const snippet = stdout.slice(0, 200).trim();
+        const snippet = stdout.slice(0, 500).trim();
         return err(this.createError('RATE_LIMITED', snippet));
       }
-      const snippet = stdout.slice(0, 200).trim();
+      const snippet = stdout.slice(0, 500).trim();
       // Include stderr context in diagnostics when present (#1402)
-      const stderrHint = stderr !== '' ? ` [stderr: ${stderr.slice(0, 100).trim()}]` : '';
+      const stderrHint = stderr !== '' ? ` [stderr: ${stderr.slice(0, 300).trim()}]` : '';
       return err(
         this.createError('PARSE_ERROR', `Failed to parse response: ${snippet}${stderrHint}`)
       );
