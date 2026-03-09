@@ -14,7 +14,7 @@ import type { LinUCBBandit } from './linucb-bandit.js';
 import type { PreferenceRouter } from './preference-router.js';
 import type { IZeroRouter } from './zero-router.js';
 import { cliTaskToTask, buildDifficultyOutcome } from './composite-router-helpers.js';
-import { getOutcomeStore } from '../orchestration/outcomes/index.js';
+import { getOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 import { clamp01 } from '../utils/math-utils.js';
 
 /** Module-level singleton — SharedTaskAnalyzer is stateless. */

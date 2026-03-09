@@ -11,10 +11,8 @@
  */
 
 import type { PerformanceSummary, GroupStats } from '../../orchestration/outcomes/outcome-types.js';
-import {
-  getOutcomeStore,
-  categorizeOutcomeErrorMessage,
-} from '../../orchestration/outcomes/index.js';
+import { getOutcomeStore } from '../../orchestration/outcomes/outcome-store.js';
+import { categorizeOutcomeErrorMessage } from '../../orchestration/outcomes/outcome-types.js';
 import type { TaskCategory } from '../../config/task-specialization-types.js';
 import { TASK_CATEGORIES } from '../../config/task-specialization-types.js';
 import { getSpecialization } from '../../config/task-specialization.js';
