@@ -264,7 +264,9 @@ export function categorizeOutcomeError(error: unknown): OutcomeFailureCategory {
     return classifyText(text);
   }
   const extracted = extractNonErrorMessage(error);
-  if (extracted === undefined) return 'unknown';
+  // Null/undefined/unserializable errors default to 'execution' (#1494).
+  // Consistent with #1475 (empty strings → execution, not unknown).
+  if (extracted === undefined) return 'execution';
   return classifyText(extracted.toLowerCase());
 }
 

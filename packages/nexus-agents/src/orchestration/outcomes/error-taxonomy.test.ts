@@ -113,19 +113,19 @@ describe('categorizeOutcomeError', () => {
     expect(categorizeOutcomeError({ code: 'ENOENT' })).not.toBe('unknown');
   });
 
-  it('returns unknown for circular references (#1466)', () => {
+  it('returns execution for circular references (#1494)', () => {
     const obj: Record<string, unknown> = {};
     obj['self'] = obj;
-    expect(categorizeOutcomeError(obj)).toBe('unknown');
+    expect(categorizeOutcomeError(obj)).toBe('execution');
   });
 
-  it('returns unknown for null and undefined (#1466)', () => {
-    expect(categorizeOutcomeError(null)).toBe('unknown');
-    expect(categorizeOutcomeError(undefined)).toBe('unknown');
+  it('returns execution for null and undefined (#1494)', () => {
+    expect(categorizeOutcomeError(null)).toBe('execution');
+    expect(categorizeOutcomeError(undefined)).toBe('execution');
   });
 
-  it('returns unknown for non-classifiable primitives (#1466)', () => {
-    expect(categorizeOutcomeError(42)).toBe('unknown');
+  it('returns execution for non-classifiable primitives (#1494)', () => {
+    expect(categorizeOutcomeError(42)).toBe('execution');
   });
 
   it('checks error name for classification', () => {
