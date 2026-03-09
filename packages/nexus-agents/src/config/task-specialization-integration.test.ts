@@ -7,7 +7,7 @@
  * (Source: Issue #858 — Multi-model task specialization)
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterAll, beforeAll } from 'vitest';
 import {
   calcSpecializationBonus,
   getCliForModel,
@@ -18,6 +18,23 @@ import {
 import { MODEL_CAPABILITIES } from '../mcp/tools/delegate-to-model-types.js';
 import type { TaskRequirements } from '../mcp/tools/delegate-to-model-types.js';
 import { detectTaskCategory } from './task-specialization.js';
+import { resetOutcomeStore } from '../orchestration/outcomes/index.js';
+
+// Disable persistence so calcSpecializationBonus tests get clean outcome store
+let savedPersist: string | undefined;
+beforeAll(() => {
+  savedPersist = process.env['NEXUS_PERSIST_LEARNING'];
+  process.env['NEXUS_PERSIST_LEARNING'] = 'false';
+  resetOutcomeStore();
+});
+afterAll(() => {
+  if (savedPersist !== undefined) {
+    process.env['NEXUS_PERSIST_LEARNING'] = savedPersist;
+  } else {
+    delete process.env['NEXUS_PERSIST_LEARNING'];
+  }
+  resetOutcomeStore();
+});
 
 function makeReq(overrides: Partial<TaskRequirements> = {}): TaskRequirements {
   return {
@@ -62,6 +79,10 @@ describe('getCliForModel', () => {
 // ============================================================================
 
 describe('calcSpecializationBonus', () => {
+  beforeEach(() => {
+    resetOutcomeStore();
+  });
+
   it('returns full bonus for primary CLI match', () => {
     const match = detectTaskCategory('Design the system architecture');
     expect(match).not.toBeNull();
