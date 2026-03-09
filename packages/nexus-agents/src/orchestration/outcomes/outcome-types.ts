@@ -59,6 +59,8 @@ export const OutcomeQuerySchema = z.object({
   cli: CliNameSchema.optional(),
   category: TaskCategorySchema.optional(),
   source: OutcomeSourceSchema.optional(),
+  success: z.boolean().optional(),
+  failureCategory: OutcomeFailureCategorySchema.optional(),
   since: z.string().optional(),
   limit: z.number().int().positive().optional(),
 });

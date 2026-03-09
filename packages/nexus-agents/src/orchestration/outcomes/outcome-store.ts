@@ -186,14 +186,23 @@ export function registerPersistentOutcomeStoreFactory(factory: OutcomeStoreFacto
 // Helpers
 // ============================================================================
 
+/** Builds predicate functions from an OutcomeQuery filter. */
+function buildPredicates(filter: OutcomeQuery): Array<(o: TaskOutcome) => boolean> {
+  const preds: Array<(o: TaskOutcome) => boolean> = [];
+  if (filter.cli !== undefined) preds.push((o) => o.cli === filter.cli);
+  if (filter.category !== undefined) preds.push((o) => o.category === filter.category);
+  if (filter.source !== undefined) preds.push((o) => o.source === filter.source);
+  if (filter.success !== undefined) preds.push((o) => o.success === filter.success);
+  if (filter.failureCategory !== undefined) {
+    preds.push((o) => o.failureCategory === filter.failureCategory);
+  }
+  if (filter.since !== undefined) preds.push((o) => o.timestamp >= filter.since);
+  return preds;
+}
+
 function applyFilters(entries: readonly TaskOutcome[], filter: OutcomeQuery): TaskOutcome[] {
-  return entries.filter((o) => {
-    if (filter.cli !== undefined && o.cli !== filter.cli) return false;
-    if (filter.category !== undefined && o.category !== filter.category) return false;
-    if (filter.source !== undefined && o.source !== filter.source) return false;
-    if (filter.since !== undefined && o.timestamp < filter.since) return false;
-    return true;
-  });
+  const preds = buildPredicates(filter);
+  return entries.filter((o) => preds.every((p) => p(o)));
 }
 
 function groupBy(

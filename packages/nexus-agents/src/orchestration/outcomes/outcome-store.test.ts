@@ -92,6 +92,8 @@ describe('OutcomeQuerySchema', () => {
       cli: 'gemini',
       category: 'research',
       source: 'consensus',
+      success: false,
+      failureCategory: 'timeout',
       since: '2026-01-01T00:00:00Z',
       limit: 10,
     });
@@ -199,6 +201,24 @@ describe('OutcomeStore', () => {
     store.append(makeOutcome({ id: '2', cli: 'gemini', category: 'testing' }));
     store.append(makeOutcome({ id: '3', cli: 'claude', category: 'research' }));
     const results = store.query({ cli: 'claude', category: 'testing' });
+    expect(results).toHaveLength(1);
+    expect(results[0]?.id).toBe('1');
+  });
+
+  it('filters by success', () => {
+    store.append(makeOutcome({ id: '1', success: true }));
+    store.append(makeOutcome({ id: '2', success: false }));
+    store.append(makeOutcome({ id: '3', success: true }));
+    const results = store.query({ success: false });
+    expect(results).toHaveLength(1);
+    expect(results[0]?.id).toBe('2');
+  });
+
+  it('filters by failureCategory', () => {
+    store.append(makeOutcome({ id: '1', success: false, failureCategory: 'timeout' }));
+    store.append(makeOutcome({ id: '2', success: false, failureCategory: 'execution' }));
+    store.append(makeOutcome({ id: '3', success: true }));
+    const results = store.query({ failureCategory: 'timeout' });
     expect(results).toHaveLength(1);
     expect(results[0]?.id).toBe('1');
   });
