@@ -268,10 +268,10 @@ describe('CliCircuitBreaker', () => {
       expect(breaker.getSnapshot().failureCount).toBe(0);
     });
 
-    it('should not count rate limit errors as failures by default', async () => {
+    it('should count rate limit errors as failures by default (#1529)', async () => {
       await breaker.execute(() => Promise.reject(new Error('Rate limit exceeded, please retry')));
 
-      expect(breaker.getSnapshot().failureCount).toBe(0);
+      expect(breaker.getSnapshot().failureCount).toBe(1);
     });
 
     it('should categorize connection errors', async () => {

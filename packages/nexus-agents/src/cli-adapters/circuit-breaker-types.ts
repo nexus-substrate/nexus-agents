@@ -203,7 +203,7 @@ export const DEFAULT_CIRCUIT_BREAKER_CONFIG: CircuitBreakerConfig = {
   halfOpenSuccessThreshold: 2,
   countTimeoutsAsFailures: true,
   countAuthFailuresAsFailures: false,
-  countRateLimitsAsFailures: false,
+  countRateLimitsAsFailures: true,
   halfOpenMaxRequests: 3,
 } as const;
 

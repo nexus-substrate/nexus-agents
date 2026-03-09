@@ -257,8 +257,8 @@ export const DEFAULTS = {
     countTimeoutsAsFailures: true,
     /** Whether to count auth failures as failures. */
     countAuthFailuresAsFailures: false,
-    /** Whether to count rate limit errors as failures. */
-    countRateLimitsAsFailures: false,
+    /** Whether to count rate limit errors as failures (#1529). */
+    countRateLimitsAsFailures: true,
     /** Maximum requests allowed in half-open state. */
     halfOpenMaxRequests: 3,
   },
