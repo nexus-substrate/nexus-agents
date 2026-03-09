@@ -38,7 +38,10 @@ export interface CascadeRouterBaseConfig {
  */
 export const DEFAULT_CASCADE_BASE_CONFIG: Required<Omit<CascadeRouterBaseConfig, 'logger'>> = {
   maxStages: 3,
-  modelTimeoutMs: 30000,
+  // Cascade tasks are typically standard+ complexity (#1484).
+  // Previous 30s default caused premature timeouts for architecture,
+  // security, and research tasks that need 120-600s.
+  modelTimeoutMs: 120_000,
 };
 
 /**
