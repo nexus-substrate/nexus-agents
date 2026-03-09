@@ -9,6 +9,9 @@
 
 import type { Result, ILogger } from '../core/index.js';
 import { ok, err, createLogger, getTimeProvider } from '../core/index.js';
+import type { TaskCategory } from '../config/task-specialization-types.js';
+import type { FallbackTaskType } from './task-classifier.js';
+import { getFallbackChain } from './fallback-chains.js';
 import type { ICliAdapter, CliName, CliTask, CliResponse, CliError } from './types.js';
 import {
   CircuitBreakerRegistry,
@@ -18,6 +21,20 @@ import {
   type CircuitBreakerSnapshot,
   type CircuitStateChangeListener,
 } from './circuit-breaker.js';
+
+/** Maps canonical TaskCategory (10 types) to FallbackTaskType (5 types). */
+const CATEGORY_TO_FALLBACK: Record<TaskCategory, FallbackTaskType> = {
+  code_generation: 'code',
+  code_review: 'code',
+  testing: 'code',
+  research: 'research',
+  exploration: 'research',
+  documentation: 'documentation',
+  architecture: 'analysis',
+  security_review: 'analysis',
+  planning: 'analysis',
+  devops: 'general',
+};
 
 /** Configuration for CLI circuit breaker integration. */
 export interface CliCircuitBreakerConfig {
@@ -53,7 +70,8 @@ export interface CliCircuitHealthStatus {
 export interface ICliCircuitBreakerIntegration {
   execute(
     adapter: ICliAdapter,
-    task: CliTask
+    task: CliTask,
+    taskCategory?: TaskCategory
   ): Promise<Result<CircuitProtectedResult, CircuitError | CliError>>;
   getHealthStatus(): CliCircuitHealthStatus;
   getCircuitSnapshots(): Map<CliName, CircuitBreakerSnapshot>;
@@ -96,7 +114,8 @@ export class CliCircuitBreakerIntegration implements ICliCircuitBreakerIntegrati
 
   async execute(
     adapter: ICliAdapter,
-    task: CliTask
+    task: CliTask,
+    taskCategory?: TaskCategory
   ): Promise<Result<CircuitProtectedResult, CircuitError | CliError>> {
     const primaryCli = adapter.name;
     const fallbackAttempts: CliName[] = [];
@@ -112,7 +131,10 @@ export class CliCircuitBreakerIntegration implements ICliCircuitBreakerIntegrati
       return err(lastError);
     }
 
-    for (const cli of this.getFallbackClis(primaryCli).slice(0, this.config.maxFallbackAttempts)) {
+    for (const cli of this.getFallbackClis(primaryCli, taskCategory).slice(
+      0,
+      this.config.maxFallbackAttempts
+    )) {
       const fallbackAdapter = this.adapters.get(cli);
       if (!fallbackAdapter) continue;
       fallbackAttempts.push(cli);
@@ -201,8 +223,12 @@ export class CliCircuitBreakerIntegration implements ICliCircuitBreakerIntegrati
     return ok(result.value);
   }
 
-  private getFallbackClis(excludeCli: CliName): CliName[] {
-    return [...this.config.fallbackChain].filter(
+  private getFallbackClis(excludeCli: CliName, taskCategory?: TaskCategory): CliName[] {
+    const chain =
+      taskCategory !== undefined
+        ? getFallbackChain(CATEGORY_TO_FALLBACK[taskCategory])
+        : this.config.fallbackChain;
+    return [...chain].filter(
       (cli) => cli !== excludeCli && !this.registry.isOpen(cli) && this.adapters.has(cli)
     );
   }

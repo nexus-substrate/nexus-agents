@@ -388,6 +388,86 @@ describe('CliCircuitBreakerIntegration', () => {
       expect(event.newState).toBe('open');
     });
   });
+
+  describe('execute - task-aware fallback', () => {
+    it('should use generic chain when no taskCategory is provided', async () => {
+      const config: CliCircuitBreakerConfig = {
+        enableFallback: true,
+        fallbackChain: ['claude', 'gemini', 'codex'],
+        perCliConfig: {
+          claude: { failureThreshold: 2 },
+        },
+      };
+      const custom = new CliCircuitBreakerIntegration(adapters, config);
+      const failingAdapter = createMockAdapter('claude', 'circuit-error');
+      const task = createTask();
+
+      // Open the circuit
+      await custom.execute(failingAdapter, task);
+      await custom.execute(failingAdapter, task);
+
+      // Without taskCategory, should use generic chain (gemini first after claude)
+      const result = await custom.execute(failingAdapter, task);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.executedBy).toBe('gemini');
+        expect(result.value.usedFallback).toBe(true);
+      }
+    });
+
+    it('should prefer codex for code_generation tasks', async () => {
+      const config: CliCircuitBreakerConfig = {
+        enableFallback: true,
+        fallbackChain: ['claude', 'gemini', 'codex'],
+        perCliConfig: {
+          claude: { failureThreshold: 2 },
+        },
+      };
+      const custom = new CliCircuitBreakerIntegration(adapters, config);
+      const failingAdapter = createMockAdapter('claude', 'circuit-error');
+      const task = createTask();
+
+      // Open the circuit
+      await custom.execute(failingAdapter, task);
+      await custom.execute(failingAdapter, task);
+
+      // With code_generation, should use code chain: codex first
+      const result = await custom.execute(failingAdapter, task, 'code_generation');
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.executedBy).toBe('codex');
+        expect(result.value.usedFallback).toBe(true);
+      }
+    });
+
+    it('should prefer gemini for research tasks', async () => {
+      const config: CliCircuitBreakerConfig = {
+        enableFallback: true,
+        fallbackChain: ['claude', 'gemini', 'codex'],
+        perCliConfig: {
+          claude: { failureThreshold: 2 },
+        },
+      };
+      const custom = new CliCircuitBreakerIntegration(adapters, config);
+      const failingAdapter = createMockAdapter('claude', 'circuit-error');
+      const task = createTask();
+
+      // Open the circuit
+      await custom.execute(failingAdapter, task);
+      await custom.execute(failingAdapter, task);
+
+      // With research, should use research chain: gemini first
+      const result = await custom.execute(failingAdapter, task, 'research');
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.executedBy).toBe('gemini');
+        expect(result.value.usedFallback).toBe(true);
+      }
+    });
+  });
 });
 
 describe('createCliCircuitBreakerIntegration', () => {
