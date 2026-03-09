@@ -19,6 +19,7 @@ import {
   detectConflicts,
   type WorkerResult,
   type WorkerConflict,
+  type QualityGateFn,
 } from '../../orchestration/aorchestra/index.js';
 import { composeWorkerPrompt } from '../../orchestration/aorchestra/compose-worker-prompt.js';
 import type { WorkerLearning } from '../../orchestration/aorchestra/compose-worker-prompt.js';
@@ -82,6 +83,8 @@ export interface WorkerDispatchExecutionOptions {
   readonly learnings?: readonly WorkerLearning[];
   /** Opt-in: route each worker to its task-optimal CLI via specialization matrix (Issue #1416) */
   readonly perWorkerRouting?: boolean;
+  /** Quality gate for worker output validation (default: DEFAULT_QUALITY_GATE, #1502) */
+  readonly qualityGate?: QualityGateFn | false;
 }
 
 /** Result from worker dispatch execution. */
@@ -305,6 +308,9 @@ export async function executeWorkerDispatch(
     maxCalls,
   });
 
+  // Quality gate: opt-in via qualityGate option (#1502). Pass DEFAULT_QUALITY_GATE to enable.
+  const qualityGate = options.qualityGate === false ? undefined : options.qualityGate;
+
   const results = await dispatchWorkers(entries, {
     ...(maxConcurrency !== undefined ? { maxConcurrency } : {}),
     executeWorker: createWorkerExecutor(
@@ -316,6 +322,7 @@ export async function executeWorkerDispatch(
     ),
     eventBus: getPipelineEventBus(),
     executionId: `dispatch-${Date.now().toString(36)}`,
+    ...(qualityGate !== undefined ? { qualityGate } : {}),
   });
 
   const state: DispatchPhaseState = {
