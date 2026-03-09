@@ -700,6 +700,84 @@ describe('dispatchWorkers', () => {
     const results = await dispatchWorkers(entries, { executeWorker: mockExecute });
     expect(results[0]?.status).toBe('success');
   });
+
+  // ---- Failure triage integration (#1506) ----
+
+  it('retries transient failures via triage and reports wasRetried (#1506)', async () => {
+    let callCount = 0;
+    const flakeyExecute: WorkerDispatchOptions['executeWorker'] = vi
+      .fn()
+      .mockImplementation((entry: AgentPlanEntry): Promise<WorkerResult> => {
+        callCount++;
+        if (callCount === 1) {
+          // First call: transient failure
+          return Promise.reject(new Error('socket hang up'));
+        }
+        // Retry succeeds
+        return Promise.resolve({
+          role: entry.role,
+          subTask: entry.subTask,
+          output: 'recovered result',
+          status: 'success' as const,
+          durationMs: 100,
+        });
+      });
+
+    const entries = [makeEntry('code', 1, 1)];
+    const results = await dispatchWorkers(entries, {
+      executeWorker: flakeyExecute,
+      staggerDelayMs: 0,
+      consecutiveFailureThreshold: 10,
+    });
+
+    expect(results).toHaveLength(1);
+    expect(results[0]?.status).toBe('success');
+    expect(results[0]?.wasRetried).toBe(true);
+    expect(callCount).toBe(2);
+  });
+
+  it('does not retry non-retryable failures (#1506)', async () => {
+    let callCount = 0;
+    const authFailExecute: WorkerDispatchOptions['executeWorker'] = vi
+      .fn()
+      .mockImplementation((): Promise<WorkerResult> => {
+        callCount++;
+        return Promise.reject(new Error('Unauthorized access'));
+      });
+
+    const entries = [makeEntry('code', 1, 1)];
+    const results = await dispatchWorkers(entries, {
+      executeWorker: authFailExecute,
+      staggerDelayMs: 0,
+      consecutiveFailureThreshold: 10,
+    });
+
+    expect(results).toHaveLength(1);
+    expect(results[0]?.status).toBe('error');
+    expect(results[0]?.triageAction).toBe('abort');
+    // Should NOT have retried — auth errors are non-retryable
+    expect(callCount).toBe(1);
+  });
+
+  it('sets triageAction on failed results after retry also fails (#1506)', async () => {
+    const alwaysFailExecute: WorkerDispatchOptions['executeWorker'] = vi
+      .fn()
+      .mockImplementation(
+        (): Promise<WorkerResult> => Promise.reject(new Error('502 Bad Gateway'))
+      );
+
+    const entries = [makeEntry('code', 1, 1)];
+    const results = await dispatchWorkers(entries, {
+      executeWorker: alwaysFailExecute,
+      staggerDelayMs: 0,
+      consecutiveFailureThreshold: 10,
+    });
+
+    expect(results).toHaveLength(1);
+    expect(results[0]?.status).toBe('error');
+    expect(results[0]?.wasRetried).toBe(true);
+    expect(results[0]?.triageAction).toBe('retry_same_cli');
+  });
 });
 
 // ============================================================================

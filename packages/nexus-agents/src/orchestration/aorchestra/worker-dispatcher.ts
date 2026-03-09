@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- Cohesive module: wave dispatch + failure tracking + triage retry. 400-600 OK per governance. */
 /**
  * Worker Dispatcher — Wave-based parallel expert execution.
  *
@@ -18,6 +19,7 @@ import { isRateLimitError } from '../../cli/voter-execution.js';
 import type { IEventBus } from '../../pipeline/event-types.js';
 import { withWatchdog } from './watchdog.js';
 import { applyQualityGate, type QualityGateFn } from './quality-gate.js';
+import { triageWorkerFailure, type TriageAction } from './worker-triage.js';
 
 const logger = createLogger({ component: 'worker-dispatcher' });
 
@@ -85,6 +87,10 @@ export interface WorkerResult {
   readonly errorType?: WorkerErrorType;
   /** CLI that actually executed this worker (for accurate outcome recording, #1527). */
   readonly resolvedCli?: string;
+  /** Triage action taken on failure (#1506). Set only when status is 'error'. */
+  readonly triageAction?: TriageAction;
+  /** Whether this result came from a triage-initiated retry (#1506). */
+  readonly wasRetried?: boolean;
 }
 
 /**
@@ -523,8 +529,12 @@ function classifyError(message: string, _durationMs: number, _timeoutMs: number)
   return 'logic_error';
 }
 
+/** Timeout extension multiplier for triage-initiated retries (#1506). */
+const TIMEOUT_EXTENSION_FACTOR = 1.5;
+
 /**
- * Execute a single worker with progressive watchdog monitoring (#1499).
+ * Execute a single worker with progressive watchdog monitoring (#1499)
+ * and pattern-based failure triage with single retry (#1506).
  */
 async function executeSafe(
   entry: AgentPlanEntry,
@@ -532,6 +542,18 @@ async function executeSafe(
     entry: AgentPlanEntry,
     priorWaveResults?: readonly WorkerResult[]
   ) => Promise<WorkerResult>,
+  priorWaveResults: readonly WorkerResult[] | undefined,
+  timeoutMs: number
+): Promise<WorkerResult> {
+  const result = await attemptExecution(entry, executeWorker, priorWaveResults, timeoutMs);
+  if (result.status !== 'error') return result;
+  return maybeRetryAfterTriage(result, entry, executeWorker, priorWaveResults, timeoutMs);
+}
+
+/** Single execution attempt. Returns undefined on success (result returned directly), or failed WorkerResult. */
+async function attemptExecution(
+  entry: AgentPlanEntry,
+  executeWorker: (e: AgentPlanEntry, prior?: readonly WorkerResult[]) => Promise<WorkerResult>,
   priorWaveResults: readonly WorkerResult[] | undefined,
   timeoutMs: number
 ): Promise<WorkerResult> {
@@ -553,4 +575,49 @@ async function executeSafe(
       errorType,
     };
   }
+}
+
+/** Triage a failed result and retry once if recommended (#1506). */
+async function maybeRetryAfterTriage(
+  failedResult: WorkerResult,
+  entry: AgentPlanEntry,
+  executeWorker: (e: AgentPlanEntry, prior?: readonly WorkerResult[]) => Promise<WorkerResult>,
+  priorWaveResults: readonly WorkerResult[] | undefined,
+  timeoutMs: number
+): Promise<WorkerResult> {
+  if (failedResult.status !== 'error') return failedResult;
+
+  const triage = triageWorkerFailure(failedResult);
+  logger.info('Worker failure triaged', {
+    role: entry.role,
+    action: triage.action,
+    retryable: triage.retryable,
+    reason: triage.reason,
+    hasUsefulOutput: triage.hasUsefulOutput,
+  });
+
+  if (!triage.retryable || triage.action === 'retry_different_cli') {
+    return { ...failedResult, triageAction: triage.action };
+  }
+
+  // Single retry for retry_same_cli or extend_timeout
+  const retryTimeout =
+    triage.action === 'extend_timeout'
+      ? Math.min(timeoutMs * TIMEOUT_EXTENSION_FACTOR, MAX_WORKER_TIMEOUT_MS)
+      : timeoutMs;
+
+  logger.info('Retrying worker after triage', {
+    role: entry.role,
+    action: triage.action,
+    retryTimeout,
+  });
+
+  const retryResult = await attemptExecution(entry, executeWorker, priorWaveResults, retryTimeout);
+  if (retryResult.status === 'success') {
+    logger.info('Triage retry succeeded', { role: entry.role, action: triage.action });
+    return { ...retryResult, wasRetried: true };
+  }
+
+  logger.warn('Triage retry also failed', { role: entry.role, action: triage.action });
+  return { ...retryResult, triageAction: triage.action, wasRetried: true };
 }

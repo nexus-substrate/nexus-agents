@@ -93,3 +93,5 @@ export {
   MAX_CHECKPOINTS,
 } from './worker-checkpoint.js';
 export type { WorkerCheckpoint } from './worker-checkpoint.js';
+export { triageWorkerFailure } from './worker-triage.js';
+export type { TriageAction, TriageResult } from './worker-triage.js';
