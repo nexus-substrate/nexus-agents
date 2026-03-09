@@ -42,7 +42,6 @@ export const TOOL_TIER_MAP: Readonly<Record<string, RequestTier>> = {
   memory_query: RequestTier.DIRECT,
   memory_stats: RequestTier.DIRECT,
   weather_report: RequestTier.DIRECT,
-  research_query: RequestTier.ANALYZED,
   research_analyze: RequestTier.DIRECT,
   research_catalog_review: RequestTier.DIRECT,
 
@@ -51,7 +50,6 @@ export const TOOL_TIER_MAP: Readonly<Record<string, RequestTier>> = {
   create_expert: RequestTier.ANALYZED,
   execute_expert: RequestTier.ANALYZED,
   research_add: RequestTier.ANALYZED,
-  research_discover: RequestTier.ANALYZED,
   registry_import: RequestTier.ANALYZED,
 
   // Tier 3 — Full orchestration
@@ -61,6 +59,8 @@ export const TOOL_TIER_MAP: Readonly<Record<string, RequestTier>> = {
   run_workflow: RequestTier.ORCHESTRATED,
   run_graph_workflow: RequestTier.ORCHESTRATED,
   issue_triage: RequestTier.ORCHESTRATED,
+  research_query: RequestTier.ORCHESTRATED,
+  research_discover: RequestTier.ORCHESTRATED,
 };
 
 /**

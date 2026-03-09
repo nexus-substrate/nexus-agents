@@ -133,20 +133,20 @@ describe('generateTierRecommendations — demotion', () => {
     expect(result).toEqual([]);
   });
 
-  it('does demote Tier 2 research (research_query is ANALYZED, not DIRECT)', () => {
+  it('does demote Tier 3 research (research_query is ORCHESTRATED)', () => {
     const summary = makeSummary({
-      research: makeStats(55, 0.98), // research → research_query → Tier 2 (ANALYZED)
+      research: makeStats(55, 0.98), // research → research_query → Tier 3 (ORCHESTRATED)
     });
     const result = generateTierRecommendations(summary);
     expect(result).toEqual([
       {
         category: 'research',
-        currentTier: 2,
-        recommendedTier: 1,
+        currentTier: 3,
+        recommendedTier: 2,
         direction: 'demote',
         successRate: 0.98,
         sampleCount: 55,
-        reason: 'research: 98% success rate over 55 tasks — eligible for demotion to Tier 1',
+        reason: 'research: 98% success rate over 55 tasks — eligible for demotion to Tier 2',
       },
     ]);
   });

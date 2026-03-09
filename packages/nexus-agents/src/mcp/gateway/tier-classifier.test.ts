@@ -41,9 +41,7 @@ describe('classifyRequestTier', () => {
       'delegate_to_model',
       'create_expert',
       'execute_expert',
-      'research_query',
       'research_add',
-      'research_discover',
       'registry_import',
     ];
 
@@ -62,6 +60,8 @@ describe('classifyRequestTier', () => {
       'run_workflow',
       'run_graph_workflow',
       'issue_triage',
+      'research_query',
+      'research_discover',
     ];
 
     for (const tool of tier3Tools) {
