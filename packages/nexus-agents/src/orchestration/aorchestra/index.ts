@@ -71,3 +71,10 @@ export {
   WATCHDOG_CHECK_INTERVAL_MS,
 } from './watchdog.js';
 export type { WatchdogState, WatchdogEntry } from './watchdog.js';
+export { analyzeDispatch, OUTLIER_RATIO_THRESHOLD } from './dispatch-insights.js';
+export type {
+  DispatchInsights,
+  RoleProfile,
+  ErrorCluster,
+  DurationOutlier,
+} from './dispatch-insights.js';

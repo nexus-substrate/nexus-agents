@@ -292,10 +292,10 @@ describe('dispatchWorkers', () => {
     expect(result?.errorType).toBe('logic_error');
   });
 
-  it('sets errorType to model_error when worker returns error result with model prefix', async () => {
+  it('sets errorType to model_error when worker throws model-related error', async () => {
     const modelErrorExecute: WorkerDispatchOptions['executeWorker'] = vi
       .fn()
-      .mockRejectedValue(new Error('Model returned error: rate limited'));
+      .mockRejectedValue(new Error('Model adapter unavailable'));
 
     const entries = [makeEntry('code', 1, 1)];
     const results = await dispatchWorkers(entries, { executeWorker: modelErrorExecute });
@@ -303,6 +303,19 @@ describe('dispatchWorkers', () => {
     const result = results.at(0);
     expect(result?.status).toBe('error');
     expect(result?.errorType).toBe('model_error');
+  });
+
+  it('sets errorType to rate_limit when worker throws rate limit error', async () => {
+    const rateLimitExecute: WorkerDispatchOptions['executeWorker'] = vi
+      .fn()
+      .mockRejectedValue(new Error('429 Too Many Requests'));
+
+    const entries = [makeEntry('code', 1, 1)];
+    const results = await dispatchWorkers(entries, { executeWorker: rateLimitExecute });
+
+    const result = results.at(0);
+    expect(result?.status).toBe('error');
+    expect(result?.errorType).toBe('rate_limit');
   });
 
   // ---- Phase 2: Error duration tracking (Issue #1313) ----

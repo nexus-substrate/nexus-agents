@@ -17,6 +17,7 @@ import type { AgentPlan, AgentPlanEntry } from '../../orchestration/aorchestra/i
 import {
   dispatchWorkers,
   detectConflicts,
+  analyzeDispatch,
   type WorkerResult,
   type WorkerConflict,
   type QualityGateFn,
@@ -195,6 +196,22 @@ function makeErrorResult(entry: AgentPlanEntry, startMs: number, message: string
 }
 
 // ============================================================================
+// Internal: Dispatch Insights (#1505)
+// ============================================================================
+
+/** Log structured insights when errors are present. */
+function logDispatchInsights(results: readonly WorkerResult[], log: ILogger): void {
+  const insights = analyzeDispatch(results);
+  if (insights.dominantErrorType !== undefined) {
+    log.info('Dispatch insights', {
+      dominantErrorType: insights.dominantErrorType,
+      errorClusters: insights.errorClusters.length,
+      durationOutliers: insights.durationOutliers.length,
+    });
+  }
+}
+
+// ============================================================================
 // Internal: Synthesis + Refinement Helpers
 // ============================================================================
 
@@ -334,6 +351,8 @@ export async function executeWorkerDispatch(
   const refined = await runRefinementPhase(state, entries, options, maxCalls);
 
   const base = buildDispatchResult(state.results, startMs, logger, state.totalModelCalls);
+  logDispatchInsights(state.results, logger);
+
   return {
     ...base,
     ...(refined ? { refined: true } : {}),
@@ -354,6 +373,7 @@ function mapErrorType(errorType: string | undefined, errorMsg: string): OutcomeF
   }
   // Fall back to coarse WorkerErrorType when message classification fails
   if (errorType === 'timeout') return 'timeout';
+  if (errorType === 'rate_limit') return 'rate_limit';
   if (errorType === 'logic_error') return 'execution';
   if (errorType === 'model_error') return 'execution';
   return 'unknown';

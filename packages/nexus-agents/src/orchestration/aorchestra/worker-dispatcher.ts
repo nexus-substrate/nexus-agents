@@ -69,7 +69,7 @@ export const RATE_LIMIT_SPACING_MS = 2_000;
  * - `model_error`: Model adapter returned an error
  * - `logic_error`: Unexpected exception in worker logic
  */
-export type WorkerErrorType = 'timeout' | 'model_error' | 'logic_error';
+export type WorkerErrorType = 'timeout' | 'model_error' | 'logic_error' | 'rate_limit';
 
 /**
  * Result from a single worker execution.
@@ -516,6 +516,7 @@ function emitWaveCompleted(
 function classifyError(message: string, _durationMs: number, _timeoutMs: number): WorkerErrorType {
   const lower = message.toLowerCase();
   if (lower.includes('timeout')) return 'timeout';
+  if (isRateLimitError(message)) return 'rate_limit';
   if (lower.includes('model')) return 'model_error';
   return 'logic_error';
 }
