@@ -252,3 +252,36 @@ describe('buildLearningsBlock', () => {
     expect(result).not.toContain('Below threshold');
   });
 });
+
+// ============================================================================
+// Tool Restrictions (#1510)
+// ============================================================================
+
+describe('composeWorkerPrompt — tool restrictions', () => {
+  it('includes tool restrictions for read-only roles', () => {
+    const prompt = composeWorkerPrompt({
+      entry: makeEntry('architecture'),
+      taskDescription: 'Review the system design',
+    });
+    expect(prompt).toContain('Tool Restrictions');
+    expect(prompt).toContain('NOT modify');
+  });
+
+  it('includes tool restrictions for write roles', () => {
+    const prompt = composeWorkerPrompt({
+      entry: makeEntry('code'),
+      taskDescription: 'Implement feature X',
+    });
+    expect(prompt).toContain('Tool Restrictions');
+    expect(prompt).toContain('Edit');
+  });
+
+  it('includes allowed tools list', () => {
+    const prompt = composeWorkerPrompt({
+      entry: makeEntry('security'),
+      taskDescription: 'Audit for vulnerabilities',
+    });
+    expect(prompt).toContain('Allowed tools:');
+    expect(prompt).toContain('Grep');
+  });
+});

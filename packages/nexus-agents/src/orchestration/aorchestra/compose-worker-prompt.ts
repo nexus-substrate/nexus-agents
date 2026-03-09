@@ -21,6 +21,7 @@ import {
   sanitizeTaskContext,
 } from '../../agents/experts/expert-prompts/prompt-composer.js';
 import { buildPriorWaveContextBlock } from './cross-wave-context.js';
+import { buildToolRestrictionBlock } from './role-capabilities.js';
 
 // ============================================================================
 // Types
@@ -135,8 +136,13 @@ export function composeWorkerPrompt(input: ComposeWorkerPromptInput): string {
     ...(relevantFiles !== undefined ? { relevantFiles: [...relevantFiles] } : {}),
   });
 
-  // Combine task context with prior wave context and learnings
-  const contextParts = [taskContextLines, priorWaveBlock, learningsBlock].filter((p) => p !== '');
+  // Build tool restriction block for role-based capability scoping (#1510)
+  const toolRestriction = buildToolRestrictionBlock(entry.role);
+
+  // Combine task context with prior wave context, learnings, and tool restrictions
+  const contextParts = [taskContextLines, priorWaveBlock, learningsBlock, toolRestriction].filter(
+    (p) => p !== ''
+  );
   const taskContext = contextParts.join('\n\n');
 
   const outputConstraints = buildOutputConstraintsBlock({

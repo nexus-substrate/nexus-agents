@@ -72,6 +72,12 @@ export {
 } from './watchdog.js';
 export type { WatchdogState, WatchdogEntry } from './watchdog.js';
 export { analyzeDispatch, OUTLIER_RATIO_THRESHOLD } from './dispatch-insights.js';
+export {
+  getRoleCapability,
+  buildToolRestrictionBlock,
+  ROLE_CAPABILITIES,
+} from './role-capabilities.js';
+export type { CapabilityTier, RoleCapability } from './role-capabilities.js';
 export type {
   DispatchInsights,
   RoleProfile,
