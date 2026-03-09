@@ -231,7 +231,7 @@ export class RoleFailureTracker {
     const multiplier = this.cooldownMultiplier.get(role) ?? 1;
     const cooldown = Math.min(RECOVERY_COOLDOWN_MS * multiplier, MAX_COOLDOWN_MS);
     this.cooldownUntil.set(role, this.nowFn() + cooldown);
-    this.cooldownMultiplier.set(role, multiplier);
+    this.cooldownMultiplier.set(role, multiplier * 2);
     logger.warn('Auto-disabled role with recovery cooldown', {
       role,
       consecutiveFailures: failures,

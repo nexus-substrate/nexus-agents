@@ -708,15 +708,20 @@ describe('RoleFailureTracker', () => {
     tracker.shouldSkipRole('code'); // enters half-open
     tracker.record(makeResult('code', 'error')); // half-open failed
 
-    // Should be disabled again — need 2x cooldown now
+    // Should be disabled again — need 4x cooldown now
+    // (disableWithCooldown doubled 1→2, extendCooldown doubled 2→4)
     expect(tracker.shouldSkipRole('code')).toBe(true);
 
     // Original cooldown is not enough
     now += RECOVERY_COOLDOWN_MS + 1;
     expect(tracker.shouldSkipRole('code')).toBe(true);
 
-    // 2x cooldown should work
-    now += RECOVERY_COOLDOWN_MS; // total 2x + some
+    // 2x cooldown is still not enough (need 4x)
+    now += RECOVERY_COOLDOWN_MS;
+    expect(tracker.shouldSkipRole('code')).toBe(true);
+
+    // 4x cooldown should work
+    now += RECOVERY_COOLDOWN_MS * 2; // total 4x + some
     expect(tracker.shouldSkipRole('code')).toBe(false);
   });
 
@@ -737,6 +742,33 @@ describe('RoleFailureTracker', () => {
     // After MAX_COOLDOWN_MS, should always be able to retry
     now += MAX_COOLDOWN_MS + 1;
     expect(tracker.shouldSkipRole('code')).toBe(false);
+  });
+
+  it('increments multiplier on initial disable for subsequent backoff (#1489)', () => {
+    let now = 1000;
+    const tracker = new RoleFailureTracker(2, () => now);
+
+    // First disable: cooldown = 30s * 1, multiplier stored as 2
+    tracker.record(makeResult('security', 'error'));
+    tracker.record(makeResult('security', 'error'));
+    expect(tracker.isDisabled('security')).toBe(true);
+
+    // After first cooldown (30s), enter half-open
+    now += RECOVERY_COOLDOWN_MS + 1;
+    expect(tracker.shouldSkipRole('security')).toBe(false); // half-open
+
+    // Fail during half-open → extendCooldown doubles multiplier (2→4)
+    // cooldown = 30s * 4 = 120s
+    tracker.record(makeResult('security', 'error'));
+    expect(tracker.shouldSkipRole('security')).toBe(true);
+
+    // 2x base cooldown (60s) is NOT enough — need 4x (120s)
+    now += RECOVERY_COOLDOWN_MS * 2 + 1;
+    expect(tracker.shouldSkipRole('security')).toBe(true);
+
+    // 4x base cooldown (120s) IS enough
+    now += RECOVERY_COOLDOWN_MS * 2;
+    expect(tracker.shouldSkipRole('security')).toBe(false);
   });
 
   it('tracks rate-limited roles and returns spacing delay', () => {
