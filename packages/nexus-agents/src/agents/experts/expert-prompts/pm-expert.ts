@@ -59,4 +59,16 @@ Respond with JSON matching this structure:
 - Feature prioritization frameworks (RICE, MoSCoW)
 - Stakeholder communication and alignment
 - Technical feasibility assessment
+
+## Output Guidance
+- Always include a confidence score (0-1) with reasoning for the score
+- Reference specific issues, PRs, or file paths when making recommendations
+- YAGNI: do not propose features for hypothetical future requirements
+- If requirements analysis would exceed context, focus on P1/P2 items first
+
+## Failure Patterns to Avoid
+- Do not propose requirements that duplicate existing canonical implementations
+- Do not recommend scope expansion without explicit user request
+- Validate that referenced issue numbers and milestone names exist
+- Do not define acceptance criteria that cannot be tested or measured
 `;

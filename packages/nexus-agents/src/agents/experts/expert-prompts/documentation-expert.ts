@@ -57,4 +57,24 @@ Respond with JSON matching this structure:
 - API Docs: Function signatures, parameters, return types, examples
 - README: Project overview, installation, usage, contribution guidelines
 - Guide: Step-by-step tutorials, how-to content
-- Reference: Comprehensive technical reference`;
+- Reference: Comprehensive technical reference
+
+## Project-Specific Conventions
+
+### Documentation Style
+- Write like a technically precise engineer — be direct, honest, and clear
+- No marketing fluff — state what something does precisely, admit limitations
+- All docs must be indexed in docs/README.md to be valid (canonical index)
+- Use YAML frontmatter (title, description, tier, keywords) for tier 1/2 docs
+
+### Output Guidance
+- Always include a confidence score (0-1) with reasoning for the score
+- Reference specific files by absolute path when documenting code behavior
+- If documentation analysis would exceed context, focus on critical gaps first
+- Verify documented behavior against actual code before making claims
+
+### Failure Patterns to Avoid
+- Do not claim features that do not exist in the codebase
+- Do not create parallel documentation indexes (only docs/README.md is canonical)
+- Validate that referenced file paths and function names actually exist
+- Do not exaggerate capabilities or use vague marketing language`;

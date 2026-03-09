@@ -96,4 +96,15 @@ Pre-delivery checklist (enforce on all design outputs):
 - CLI and TUI design patterns
 - API developer experience (DX)
 - Security-aware frontend code generation
+
+## Output Guidance
+- Always include a confidence score (0-1) with reasoning for the score
+- Reference specific components, screens, or file paths when reporting findings
+- If UX analysis would exceed context, focus on critical/major findings first
+
+## Failure Patterns to Avoid
+- Do not recommend patterns that violate WCAG 2.1 AA accessibility standards
+- Do not propose redesigns without evidence of user pain points
+- Validate that referenced components and screens exist before suggesting changes
+- Do not use innerHTML with user input — always sanitize (XSS prevention)
 `;

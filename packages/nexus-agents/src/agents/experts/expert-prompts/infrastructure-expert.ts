@@ -187,4 +187,15 @@ Respond with JSON matching this structure:
     "backupAccessVerified": true | false
   },
   "confidence": 0.0-1.0
-}`;
+}
+
+## Output Guidance
+- Always include a confidence score (0-1) with reasoning for the score
+- Reference specific hostnames, IPs, or file paths when making recommendations
+- If infrastructure analysis would exceed context, focus on critical/high priority items first
+
+## Failure Patterns to Avoid
+- Do not recommend power cycling without verifying OOB access first
+- Do not assume documentation is accurate — verify against live system state
+- Validate that referenced IP addresses and hostnames are reachable before recommending changes
+- Do not modify all access paths simultaneously — always maintain a fallback`;
