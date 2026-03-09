@@ -31,7 +31,7 @@ import type {
   ExpertPerformanceEntry,
   SwarmHealthMetrics,
 } from './weather-report-types.js';
-import type { RateLimitReport } from './weather-report-types.js';
+import type { RateLimitReport, TriageStats } from './weather-report-types.js';
 import { createDefaultWeatherConfig } from './weather-report-types.js';
 import { generateTierRecommendations } from '../gateway/tier-recommender.js';
 import { computeAdaptiveThresholds } from '../../orchestration/outcomes/adaptive-thresholds.js';
@@ -45,6 +45,17 @@ import type { AgentHealthSummary } from './weather-report-types.js';
 // ============================================================================
 
 const CLI_NAMES = ['claude', 'gemini', 'codex', 'opencode'] as const;
+
+/** Collect non-empty optional sections into a spread-friendly object. */
+function collectOptionalSections(sections: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(sections)) {
+    if (value === undefined || value === null) continue;
+    if (Array.isArray(value) && value.length === 0) continue;
+    result[key] = value;
+  }
+  return result;
+}
 
 /**
  * Generates the weather report from current outcome data.
@@ -68,6 +79,16 @@ export function generateWeatherReport(
   const agentHealth = buildAgentHealth();
   const expertPerformance = buildExpertPerformance();
   const swarmHealth = buildSwarmHealth(expertPerformance);
+  const triageStats = buildTriageStats(input);
+  const optionalSections = collectOptionalSections({
+    rateLimits,
+    toolPerformance,
+    failureBreakdown,
+    agentHealth,
+    expertPerformance,
+    swarmHealth,
+    triageStats,
+  });
   const base = {
     overall: {
       totalTasks: summary.totalTasks,
@@ -77,12 +98,7 @@ export function generateWeatherReport(
     cliWeather,
     adaptiveBonuses,
     tierRecommendations,
-    ...(rateLimits.length > 0 ? { rateLimits } : {}),
-    ...(toolPerformance.length > 0 ? { toolPerformance } : {}),
-    ...(failureBreakdown.length > 0 ? { failureBreakdown } : {}),
-    ...(agentHealth !== undefined ? { agentHealth } : {}),
-    ...(expertPerformance.length > 0 ? { expertPerformance } : {}),
-    ...(swarmHealth !== undefined ? { swarmHealth } : {}),
+    ...optionalSections,
     explorationRate: cfg.explorationRate,
     coldStartThreshold: cfg.coldStartThreshold,
     collectedAt: new Date().toISOString(),
@@ -553,6 +569,34 @@ function buildFailureBreakdown(input: WeatherReportOptions): readonly FailureBre
     });
   }
   return entries.sort((a, b) => b.count - a.count);
+}
+
+/** Builds triage statistics from outcome data (#1506). */
+function buildTriageStats(input: WeatherReportOptions): TriageStats | undefined {
+  const store = getOutcomeStore();
+  const outcomes = store.query(buildQuery(input.cli, input.category));
+
+  const retriedOutcomes = outcomes.filter(
+    (o) => (o as Record<string, unknown>)['wasRetried'] === true
+  );
+  if (retriedOutcomes.length === 0) return undefined;
+
+  const retrySuccesses = retriedOutcomes.filter((o) => o.success).length;
+  const actionCounts = new Map<string, number>();
+  for (const o of outcomes) {
+    const action = (o as Record<string, unknown>)['triageAction'];
+    if (typeof action === 'string') {
+      actionCounts.set(action, (actionCounts.get(action) ?? 0) + 1);
+    }
+  }
+
+  return {
+    totalRetried: retriedOutcomes.length,
+    retrySuccessRate: Math.round((retrySuccesses / retriedOutcomes.length) * 1000) / 1000,
+    actionBreakdown: Array.from(actionCounts.entries())
+      .map(([action, count]) => ({ action, count }))
+      .sort((a, b) => b.count - a.count),
+  };
 }
 
 /** Builds per-tool performance stats from recorded metrics (#1022). */

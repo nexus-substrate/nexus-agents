@@ -181,6 +181,16 @@ export interface SwarmHealthMetrics {
   readonly observedRoles: number;
 }
 
+/** Worker failure triage statistics (#1506). */
+export interface TriageStats {
+  /** Total outcomes that were retried via triage. */
+  readonly totalRetried: number;
+  /** Retry success rate (retried + success / total retried). */
+  readonly retrySuccessRate: number;
+  /** Breakdown by triage action. */
+  readonly actionBreakdown: readonly { readonly action: string; readonly count: number }[];
+}
+
 /** Full weather report response. */
 export interface WeatherReportResponse {
   readonly overall: {
@@ -208,6 +218,8 @@ export interface WeatherReportResponse {
   readonly expertPerformance?: readonly ExpertPerformanceEntry[];
   /** Swarm health metrics dashboard (Issue #1403). */
   readonly swarmHealth?: SwarmHealthMetrics;
+  /** Worker failure triage statistics (#1506). */
+  readonly triageStats?: TriageStats;
   readonly explorationRate: number;
   readonly coldStartThreshold: number;
   readonly collectedAt: string;

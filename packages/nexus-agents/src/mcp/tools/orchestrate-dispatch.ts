@@ -471,14 +471,17 @@ function mapErrorType(errorType: string | undefined, errorMsg: string): OutcomeF
   return 'unknown';
 }
 
-/** Builds failure fields (category + errorMessage) for a failed worker result. */
-function buildFailureFields(r: WorkerResult): {
-  failureCategory: OutcomeFailureCategory;
-  errorMessage?: string;
-} {
-  const failureCategory = mapErrorType(r.errorType, r.error ?? '');
-  const errorMessage = (r.error ?? '').slice(0, 500);
-  return errorMessage !== '' ? { failureCategory, errorMessage } : { failureCategory };
+/** Builds optional metadata fields for a worker outcome entry. */
+function buildOptionalFields(r: WorkerResult): Record<string, unknown> {
+  const fields: Record<string, unknown> = {};
+  if (r.status !== 'success') {
+    fields['failureCategory'] = mapErrorType(r.errorType, r.error ?? '');
+    const errorMessage = (r.error ?? '').slice(0, 500);
+    if (errorMessage !== '') fields['errorMessage'] = errorMessage;
+  }
+  if (r.wasRetried === true) fields['wasRetried'] = true;
+  if (r.triageAction !== undefined) fields['triageAction'] = r.triageAction;
+  return fields;
 }
 
 /**
@@ -510,7 +513,7 @@ export function recordWorkerOutcomes(
         durationMs: r.durationMs,
         timestamp: ts,
         source: 'delegate',
-        ...(!success ? buildFailureFields(r) : {}),
+        ...buildOptionalFields(r),
       });
     }
   } catch (error: unknown) {

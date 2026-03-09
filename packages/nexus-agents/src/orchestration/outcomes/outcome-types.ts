@@ -52,6 +52,10 @@ export const TaskOutcomeSchema = z.object({
   failureCategory: OutcomeFailureCategorySchema.optional(),
   errorMessage: z.string().max(500).optional(),
   source: OutcomeSourceSchema,
+  /** Whether this outcome came from a triage-initiated retry (#1506). */
+  wasRetried: z.boolean().optional(),
+  /** Triage action taken on the failure (#1506). */
+  triageAction: z.string().max(30).optional(),
 });
 
 /** Schema for filtering outcomes. */
