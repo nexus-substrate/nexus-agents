@@ -340,8 +340,9 @@ interface CategoryRoutingStats {
   readonly regret: number;
 }
 
-/** Tolerance band for routing accuracy — CLIs within this % of best are "good" (#1442). */
-const ROUTING_ACCURACY_TOLERANCE = 0.1;
+/** Tolerance band for routing accuracy — CLIs within this % of best are "good" (#1442, #1488).
+ * Widened from 10% to 25%: a CLI achieving ≥75% of the best rate is acceptable routing. */
+const ROUTING_ACCURACY_TOLERANCE = 0.25;
 
 /** Analyzes routing accuracy and regret for a single category. */
 function analyzeCategoryRouting(
