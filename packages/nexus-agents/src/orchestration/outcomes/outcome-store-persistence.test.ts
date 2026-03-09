@@ -169,6 +169,40 @@ describe('PersistentOutcomeStore', () => {
       expect(ok1?.failureCategory).toBeUndefined();
     });
 
+    it('persists reclassified outcomes back to disk (#1513)', () => {
+      // Write failed outcomes with stale "unknown" category (no error message)
+      const lines =
+        [
+          JSON.stringify({
+            ...makeOutcome({ id: 'unk-1', success: false }),
+            failureCategory: 'unknown',
+          }),
+          JSON.stringify({
+            ...makeOutcome({ id: 'ok-1', success: true }),
+          }),
+        ].join('\n') + '\n';
+      writeFileSync(filePath, lines);
+
+      // Hydration + reclassify should fix in-memory AND on disk
+      new PersistentOutcomeStore({ filePath, dataDir: tmpDir });
+
+      // Read the file back — unknown should now be execution
+      const diskContent = readFileSync(filePath, 'utf-8');
+      const diskLines = diskContent.trim().split('\n');
+      expect(diskLines).toHaveLength(2);
+      const parsed0: Record<string, unknown> = JSON.parse(diskLines[0] ?? '{}') as Record<
+        string,
+        unknown
+      >;
+      expect(parsed0['failureCategory']).toBe('execution');
+      // Success entry unchanged
+      const parsed1: Record<string, unknown> = JSON.parse(diskLines[1] ?? '{}') as Record<
+        string,
+        unknown
+      >;
+      expect(parsed1['failureCategory']).toBeUndefined();
+    });
+
     it('enforces FIFO eviction when hydrated count exceeds maxEntries', () => {
       const lines =
         Array.from({ length: 10 }, (_, i) => makeOutcomeLine({ id: `out-${String(i)}` })).join(

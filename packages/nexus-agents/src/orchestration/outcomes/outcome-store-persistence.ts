@@ -9,7 +9,7 @@
  * (Source: Issue #1009 — Cross-session persistence)
  */
 
-import { appendFileSync, readFileSync, existsSync } from 'node:fs';
+import { appendFileSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 
 import type { ILogger } from '../../core/index.js';
 import { createLogger } from '../../core/index.js';
@@ -78,6 +78,7 @@ export class PersistentOutcomeStore extends OutcomeStore {
       this.logger.info('Reclassified hydrated outcomes with updated categories', {
         reclassified,
       });
+      this.rewriteFile();
     }
   }
 
@@ -123,6 +124,21 @@ export class PersistentOutcomeStore extends OutcomeStore {
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
       this.logger.warn('Failed to hydrate outcomes from disk', {
+        error: msg,
+        path: this.filePath,
+      });
+    }
+  }
+
+  /** Rewrite the JSONL file from in-memory state after reclassification. */
+  private rewriteFile(): void {
+    try {
+      const entries = this.query();
+      const content = entries.map((e) => JSON.stringify(e)).join('\n') + '\n';
+      writeFileSync(this.filePath, content, 'utf-8');
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      this.logger.warn('Failed to rewrite outcomes file after reclassification', {
         error: msg,
         path: this.filePath,
       });
