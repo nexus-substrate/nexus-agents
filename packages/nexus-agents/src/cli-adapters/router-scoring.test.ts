@@ -34,12 +34,13 @@ describe('router-scoring', () => {
       'test_generation',
       'bulk_operations',
       'code_review',
+      'security_review',
       'documentation',
       'general',
     ] as const;
 
-    it('has entries for all 8 task types with 3 CLI preferences each', () => {
-      expect(Object.keys(CAPABILITY_MATRIX)).toHaveLength(8);
+    it('has entries for all 9 task types with CLI preferences each', () => {
+      expect(Object.keys(CAPABILITY_MATRIX)).toHaveLength(9);
       taskTypes.forEach((taskType) => {
         expect(CAPABILITY_MATRIX[taskType]).toBeDefined();
         cliNames.forEach((cli) => {

@@ -201,6 +201,7 @@ function mapTaskTypeToDomain(taskType: TaskTypeCategory): ExpertTaskDomain {
     architecture: 'architecture',
     code_implementation: 'code',
     code_review: 'code',
+    security_review: 'security',
     test_generation: 'testing',
     documentation: 'documentation',
     large_codebase: 'code',
@@ -251,6 +252,7 @@ function extractRequiredCapabilities(analysis: SharedTaskAnalysisResult): string
     architecture: ['research', 'collaboration'],
     code_implementation: ['code_generation', 'tool_use'],
     code_review: ['code_review'],
+    security_review: ['code_review', 'research'],
     test_generation: ['code_generation', 'code_review', 'tool_use'],
     documentation: ['research', 'tool_use'],
     large_codebase: ['tool_use'],
@@ -310,7 +312,10 @@ function isSecurityFocused(analysis: SharedTaskAnalysisResult): boolean {
   }
 
   // Also check if task type suggests security review
-  if (analysis.taskType === 'code_review' && securityScore > 0) {
+  if (
+    (analysis.taskType === 'code_review' || analysis.taskType === 'security_review') &&
+    securityScore > 0
+  ) {
     securityScore++;
   }
 

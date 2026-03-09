@@ -52,7 +52,7 @@ export const KNOWLEDGE_PATTERNS: readonly WeightedPattern[] = [
   { pattern: /\b(tell me|show me|give me)\b/i, weight: 0.15, name: 'information-request' },
 ];
 
-/** Task type keywords for 8-type taxonomy */
+/** Task type keywords for 9-type taxonomy */
 export const TASK_TYPE_KEYWORDS: Record<TaskTypeCategory, readonly string[]> = {
   architecture: [
     'architecture',
@@ -75,16 +75,18 @@ export const TASK_TYPE_KEYWORDS: Record<TaskTypeCategory, readonly string[]> = {
     'module',
     'component',
   ],
-  code_review: [
-    'review',
-    'audit',
-    'check',
-    'analyze code',
-    'evaluate',
-    'inspect',
+  code_review: ['review', 'audit', 'check', 'analyze code', 'evaluate', 'inspect', 'bugs'],
+  security_review: [
     'security review',
-    'bugs',
+    'security audit',
     'vulnerabilities',
+    'cve',
+    'owasp',
+    'injection',
+    'xss',
+    'csrf',
+    'penetration',
+    'threat model',
   ],
   test_generation: [
     'test',

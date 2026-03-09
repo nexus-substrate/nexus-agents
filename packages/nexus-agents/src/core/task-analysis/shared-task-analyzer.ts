@@ -42,12 +42,13 @@ export type ReasoningKnowledgeType = 'reasoning' | 'knowledge' | 'unknown';
 export type ComplexityLevel = 'simple' | 'moderate' | 'complex' | 'expert';
 
 /**
- * 8-type task taxonomy for capability-based routing.
+ * 9-type task taxonomy for capability-based routing.
  */
 export type TaskTypeCategory =
   | 'architecture'
   | 'code_implementation'
   | 'code_review'
+  | 'security_review'
   | 'test_generation'
   | 'documentation'
   | 'large_codebase'
@@ -323,6 +324,7 @@ export class SharedTaskAnalyzer implements ISharedTaskAnalyzer {
       architecture: 0,
       code_implementation: 0,
       code_review: 0,
+      security_review: 0,
       test_generation: 0,
       documentation: 0,
       large_codebase: 0,

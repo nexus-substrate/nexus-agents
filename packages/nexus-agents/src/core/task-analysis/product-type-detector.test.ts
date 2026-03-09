@@ -1,7 +1,7 @@
 /**
  * Tests for product-type-detector.ts
  *
- * Covers keyword-based product type detection across the 8-type taxonomy.
+ * Covers keyword-based product type detection across the product taxonomy.
  */
 
 import { describe, it, expect } from 'vitest';

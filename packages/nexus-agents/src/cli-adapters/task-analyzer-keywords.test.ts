@@ -22,6 +22,7 @@ describe('TASK_TYPE_KEYWORDS', () => {
     'architecture',
     'code_implementation',
     'code_review',
+    'security_review',
     'test_generation',
     'documentation',
     'large_codebase',
@@ -29,9 +30,9 @@ describe('TASK_TYPE_KEYWORDS', () => {
     'general',
   ];
 
-  it('has all 8 TaskType keys', () => {
+  it('has all 9 TaskType keys', () => {
     const keys = Object.keys(TASK_TYPE_KEYWORDS);
-    expect(keys).toHaveLength(8);
+    expect(keys).toHaveLength(9);
     expect(keys.sort()).toEqual(ALL_TASK_TYPES.sort());
   });
 
@@ -216,6 +217,7 @@ describe('TYPE_COMPLEXITY', () => {
     'architecture',
     'code_implementation',
     'code_review',
+    'security_review',
     'test_generation',
     'documentation',
     'large_codebase',
@@ -223,9 +225,9 @@ describe('TYPE_COMPLEXITY', () => {
     'general',
   ];
 
-  it('has all 8 TaskType keys', () => {
+  it('has all 9 TaskType keys', () => {
     const keys = Object.keys(TYPE_COMPLEXITY);
-    expect(keys).toHaveLength(8);
+    expect(keys).toHaveLength(9);
     expect(keys.sort()).toEqual(ALL_TASK_TYPES.sort());
   });
 

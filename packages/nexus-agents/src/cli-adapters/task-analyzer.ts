@@ -57,6 +57,7 @@ export const TaskProfileSchema = z.object({
     'architecture',
     'code_implementation',
     'code_review',
+    'security_review',
     'test_generation',
     'documentation',
     'large_codebase',

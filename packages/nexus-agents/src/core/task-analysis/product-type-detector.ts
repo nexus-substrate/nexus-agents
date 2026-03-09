@@ -2,7 +2,7 @@
  * Product Type Detector
  *
  * Detects product type from task content using keyword matching against
- * the 8-type product matrix taxonomy. Used by SharedTaskAnalyzer to
+ * the product matrix taxonomy. Used by SharedTaskAnalyzer to
  * enrich analysis results with product routing information.
  *
  * @module core/task-analysis/product-type-detector

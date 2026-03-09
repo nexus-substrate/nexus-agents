@@ -98,11 +98,12 @@ describe('KNOWLEDGE_PATTERNS', () => {
 // ============================================================================
 
 describe('TASK_TYPE_KEYWORDS', () => {
-  it('has all 8 task type categories', () => {
+  it('has all 9 task type categories', () => {
     const categories = Object.keys(TASK_TYPE_KEYWORDS);
     expect(categories).toContain('architecture');
     expect(categories).toContain('code_implementation');
     expect(categories).toContain('code_review');
+    expect(categories).toContain('security_review');
     expect(categories).toContain('test_generation');
     expect(categories).toContain('documentation');
     expect(categories).toContain('large_codebase');

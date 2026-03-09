@@ -91,6 +91,7 @@ const TASK_TYPE_EXPERTS: Record<TaskTypeCategory, readonly BuiltInExpertType[]> 
   architecture: ['architecture', 'security', 'code'],
   code_implementation: ['code', 'testing', 'architecture'],
   code_review: ['code', 'security', 'testing'],
+  security_review: ['security', 'code', 'architecture'],
   test_generation: ['testing', 'code'],
   documentation: ['documentation', 'code'],
   large_codebase: ['architecture', 'code', 'devops'],

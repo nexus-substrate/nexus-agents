@@ -15,6 +15,7 @@ export type TaskType =
   | 'architecture'
   | 'code_implementation'
   | 'code_review'
+  | 'security_review'
   | 'test_generation'
   | 'documentation'
   | 'large_codebase'
@@ -56,10 +57,20 @@ export const TASK_TYPE_KEYWORDS: Record<TaskType, readonly string[]> = {
     'analyze',
     'evaluate',
     'inspect',
-    'security review',
     'code quality',
     'bugs',
+  ],
+  security_review: [
+    'security review',
+    'security audit',
     'vulnerabilities',
+    'cve',
+    'owasp',
+    'injection',
+    'xss',
+    'csrf',
+    'penetration',
+    'threat model',
   ],
   test_generation: [
     'test',
@@ -219,6 +230,7 @@ export const IMAGE_EXTENSIONS: readonly string[] = [
 export const TYPE_COMPLEXITY: Record<TaskType, number> = {
   architecture: 8,
   code_review: 6,
+  security_review: 7,
   code_implementation: 5,
   test_generation: 4,
   documentation: 3,
