@@ -125,6 +125,7 @@ interface CircuitBreakerDefaultsConst {
   readonly halfOpenSuccessThreshold: number;
   readonly countTimeoutsAsFailures: boolean;
   readonly countAuthFailuresAsFailures: boolean;
+  readonly countRateLimitsAsFailures: boolean;
   readonly halfOpenMaxRequests: number;
 }
 
@@ -225,6 +226,7 @@ export function createGetCircuitBreakerConfig(
       halfOpenSuccessThreshold: cbDefaults.halfOpenSuccessThreshold,
       countTimeoutsAsFailures: cbDefaults.countTimeoutsAsFailures,
       countAuthFailuresAsFailures: cbDefaults.countAuthFailuresAsFailures,
+      countRateLimitsAsFailures: cbDefaults.countRateLimitsAsFailures,
       halfOpenMaxRequests: cbDefaults.halfOpenMaxRequests,
     };
   };

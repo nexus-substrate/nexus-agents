@@ -43,6 +43,8 @@ export interface CircuitBreakerConfig {
   readonly countTimeoutsAsFailures: boolean;
   /** Whether to count auth failures as failures (default: false) */
   readonly countAuthFailuresAsFailures: boolean;
+  /** Whether to count rate limit errors as failures (default: false) */
+  readonly countRateLimitsAsFailures: boolean;
   /** Maximum number of requests allowed in half-open state (default: 3) */
   readonly halfOpenMaxRequests: number;
 }
@@ -201,6 +203,7 @@ export const DEFAULT_CIRCUIT_BREAKER_CONFIG: CircuitBreakerConfig = {
   halfOpenSuccessThreshold: 2,
   countTimeoutsAsFailures: true,
   countAuthFailuresAsFailures: false,
+  countRateLimitsAsFailures: false,
   halfOpenMaxRequests: 3,
 } as const;
 

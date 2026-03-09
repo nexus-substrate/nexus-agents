@@ -115,6 +115,7 @@ export interface CircuitBreakerDefaults {
   halfOpenSuccessThreshold: number;
   countTimeoutsAsFailures: boolean;
   countAuthFailuresAsFailures: boolean;
+  countRateLimitsAsFailures: boolean;
   halfOpenMaxRequests: number;
 }
 
@@ -201,6 +202,7 @@ export const CircuitBreakerDefaultsSchema = z.object({
   halfOpenSuccessThreshold: z.number().int().min(1).max(10).describe('Successes to close'),
   countTimeoutsAsFailures: z.boolean().describe('Count timeouts as failures'),
   countAuthFailuresAsFailures: z.boolean().describe('Count auth failures as failures'),
+  countRateLimitsAsFailures: z.boolean().describe('Count rate limit errors as failures'),
   halfOpenMaxRequests: positiveInt.describe('Max requests in half-open state'),
 });
 

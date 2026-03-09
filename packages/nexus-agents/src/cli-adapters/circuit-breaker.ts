@@ -252,6 +252,7 @@ export class CliCircuitBreaker implements ICircuitBreaker {
   private shouldCountFailure(category: FailureCategory): boolean {
     if (category === 'timeout') return this.config.countTimeoutsAsFailures;
     if (category === 'authentication') return this.config.countAuthFailuresAsFailures;
+    if (category === 'rate_limit') return this.config.countRateLimitsAsFailures;
     return true;
   }
 
@@ -470,9 +471,11 @@ export function integrateCapacityMonitorWithCircuitBreaker(
     }
 
     // Trip the circuit if capacity is critically low
+    // Use 'connection' category since exhausted capacity is an availability issue,
+    // not a transient rate limit (which is exempt from circuit breaker counting).
     if (remaining < mergedConfig.criticalTokenThreshold) {
       const breaker = registry.getBreaker(cliName);
-      breaker.recordFailure('rate_limit');
+      breaker.recordFailure('connection');
       logger?.warn('Circuit tripped due to low capacity', {
         provider,
         cliName,
