@@ -104,6 +104,20 @@ describe('fallback-chains', () => {
       expect(chain).toEqual(CATEGORY_CHAIN_OVERRIDES['security_review']);
     });
 
+    it('returns exploration override with gemini first (#1526)', () => {
+      const chain = getFallbackChainForCategory('exploration', 'research');
+      expect(chain[0]).toBe('gemini');
+      expect(chain[1]).toBe('codex');
+      expect(chain).toEqual(CATEGORY_CHAIN_OVERRIDES['exploration']);
+    });
+
+    it('returns devops override with claude first (#1526)', () => {
+      const chain = getFallbackChainForCategory('devops', 'analysis');
+      expect(chain[0]).toBe('claude');
+      expect(chain[1]).toBe('gemini');
+      expect(chain).toEqual(CATEGORY_CHAIN_OVERRIDES['devops']);
+    });
+
     it('falls back to bucket-level chain when no override', () => {
       const chain = getFallbackChainForCategory('planning', 'analysis');
       expect(chain).toEqual(DEFAULT_FALLBACK_CHAINS.analysis);

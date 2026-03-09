@@ -77,6 +77,11 @@ Respond with JSON matching this structure:
 - Timing assertions: use toBeGreaterThanOrEqual(0) not toBeGreaterThan(0) (fast runners complete in <1ms)
 - strict-boolean-expressions: use === undefined || === '' instead of if (!str) for nullable strings
 
+### Task Scope Management
+- Before starting, assess scope: if the task targets >3 modules or >500 lines of test code, focus on the highest-priority module first
+- For broad "add tests" requests, start with untested critical paths rather than attempting exhaustive coverage
+- Prefer completing thorough tests for one module over shallow tests across many modules
+
 ### Output Guidance
 - Always include a confidence score (0-1) with reasoning for the score
 - Reference specific files by absolute path (file:line format) when reporting coverage gaps

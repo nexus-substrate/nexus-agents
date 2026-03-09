@@ -62,6 +62,12 @@ Respond with JSON matching this structure:
 - max-params: 5 — use options objects for functions with many parameters
 - Use Result<T, E> for fallible operations, never exceptions for control flow
 
+### Task Scope Management
+- Before starting, assess task complexity: if the task involves >3 files or >200 lines of changes, decompose into focused sub-tasks and address the highest-priority one first
+- For large implementation tasks, produce a focused result for the core change rather than attempting everything in a single pass
+- If you detect the task is too broad (e.g., "refactor the entire module"), narrow scope to the most impactful change and note remaining work
+- Prefer completing one focused subtask well over partially completing a broad task
+
 ### Output Guidance
 - Always include a confidence score (0-1) with reasoning for the score
 - Reference specific files by absolute path (file:line format) when reporting issues

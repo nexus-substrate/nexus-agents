@@ -109,10 +109,14 @@ export const DEFAULT_FALLBACK_CHAINS: FallbackChainRegistry = {
  * - architecture: gemini 66.7% (n=24) > claude 43.6% (n=220) → gemini first
  * - planning: claude 93.8% → keep claude first (bucket default)
  * - security_review: codex 60% (n=5) > gemini 50% (n=14) > claude 44.9% (n=385) → codex first
+ * - exploration: gemini 98.9% (n=280) > claude 70.4% (n=419) → gemini first, codex secondary (#1526)
+ * - devops: claude 80% (n=5), gemini 100% (n=1) → keep claude first, gemini secondary (#1526)
  */
 export const CATEGORY_CHAIN_OVERRIDES: Partial<Record<TaskCategory, FallbackChain>> = {
   architecture: ['gemini', 'claude', 'codex', 'opencode'],
   security_review: ['codex', 'gemini', 'claude', 'opencode'],
+  exploration: ['gemini', 'codex', 'claude', 'opencode'],
+  devops: ['claude', 'gemini', 'codex', 'opencode'],
 } as const;
 
 /**
