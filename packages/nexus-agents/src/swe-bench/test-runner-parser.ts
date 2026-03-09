@@ -141,10 +141,10 @@ export function parseJsonResults(
  */
 export function parseStdoutResults(output: string, durationMs: number): TestSuiteResult {
   // Parse pytest-style summary line: "X passed, Y failed, Z skipped"
-  // ReDoS-safe: use atomic-like groups by matching each section independently (#1496).
-  const passedMatch = output.match(/(\d+) +passed/);
-  const failedMatch = output.match(/(\d+) +failed/);
-  const skippedMatch = output.match(/(\d+) +skipped/);
+  // ReDoS-safe: bounded quantifiers to satisfy CodeQL static analysis (#1496).
+  const passedMatch = output.match(/(\d{1,10}) {1,20}passed/);
+  const failedMatch = output.match(/(\d{1,10}) {1,20}failed/);
+  const skippedMatch = output.match(/(\d{1,10}) {1,20}skipped/);
   const summaryMatch = passedMatch;
 
   let passed = 0;

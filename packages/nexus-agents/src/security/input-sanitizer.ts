@@ -160,25 +160,33 @@ function stripXmlTags(content: string): {
   return { cleaned, stripped };
 }
 
-/** Strips HTML comments that may contain hidden instructions. */
+/** Strips HTML comments that may contain hidden instructions.
+ * Loops until stable to prevent reconstructed comment patterns (#1496). */
 function stripHtmlComments(content: string): {
   cleaned: string;
   stripped: StrippedElement[];
 } {
   const stripped: StrippedElement[] = [];
-  // First pass: strip matched HTML comments with instruction-like content
-  let cleaned = content.replace(HTML_COMMENT_PATTERN, (match, offset: number) => {
-    const hasInstruction = /\b(ignore|execute|close|merge|delete|apply)\b/i.test(match);
-    if (!hasInstruction) return match;
+  let cleaned = content;
+  // Loop until stable: stripping may reveal new instruction-bearing comments
+  const MAX_PASSES = 5;
+  for (let pass = 0; pass < MAX_PASSES; pass++) {
+    HTML_COMMENT_PATTERN.lastIndex = 0;
+    const prevLength = cleaned.length;
+    cleaned = cleaned.replace(HTML_COMMENT_PATTERN, (match, offset: number) => {
+      const hasInstruction = /\b(ignore|execute|close|merge|delete|apply)\b/i.test(match);
+      if (!hasInstruction) return match;
 
-    stripped.push({
-      tag: '<!-- ... -->',
-      reason: 'HTML comment with instruction-like content',
-      startIndex: offset,
-      length: match.length,
+      stripped.push({
+        tag: '<!-- ... -->',
+        reason: 'HTML comment with instruction-like content',
+        startIndex: offset,
+        length: match.length,
+      });
+      return '';
     });
-    return '';
-  });
+    if (cleaned.length === prevLength) break;
+  }
   // Second pass: strip unclosed <!-- tags (incomplete comment injection)
   let searchFrom = 0;
   while (searchFrom < cleaned.length) {

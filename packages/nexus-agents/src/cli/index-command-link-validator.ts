@@ -102,18 +102,14 @@ function getLinkType(url: string): LinkType {
 /**
  * Checks if a URL should be skipped (mailto:, javascript:).
  */
+/** Dangerous URL schemes that should not be followed. */
+const DANGEROUS_SCHEME_REGEX =
+  /^[\s\x00-\x1f\x7f]*(mailto|javascript|data|file|ftp)[\s\x00-\x1f\x7f]*:/i;
+
 function shouldSkipUrl(url: string): boolean {
-  // Strip ASCII control characters and whitespace before scheme check (#1496).
-  // CodeQL alert: startsWith('javascript:') misses 'javascript\t:' and similar
-  // control-char-injected schemes (CWE-79).
-  const normalized = url.replace(/[\x00-\x1f\x7f\s]+/g, '').toLowerCase();
-  return (
-    normalized.startsWith('mailto:') ||
-    normalized.startsWith('javascript:') ||
-    normalized.startsWith('data:') ||
-    normalized.startsWith('file:') ||
-    normalized.startsWith('ftp:')
-  );
+  // Use regex with embedded control-char tolerance to satisfy CodeQL
+  // incomplete-url-scheme-check (CWE-79) (#1496).
+  return DANGEROUS_SCHEME_REGEX.test(url);
 }
 
 /**

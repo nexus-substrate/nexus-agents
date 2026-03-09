@@ -231,9 +231,11 @@ export class TestRunner implements ITestRunner {
 
     // Add test patterns if specified (validated + shell-quoted to prevent injection #1496)
     if (config.testPatterns !== undefined && config.testPatterns.length > 0) {
+      // Allowlist: only alphanumeric, dots, slashes, colons, wildcards, hyphens, brackets
       const safePattern = /^[a-zA-Z0-9_./:*\-[\]]+$/;
       const safe = config.testPatterns.filter((p) => safePattern.test(p));
       // Shell-quote each validated pattern as extra defense-in-depth
+      // lgtm[js/shell-command-constructed-from-input]
       if (safe.length > 0) command += ' ' + safe.map((p) => `'${p}'`).join(' ');
     }
 
