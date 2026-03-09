@@ -137,6 +137,30 @@ export class OutcomeStore {
     return count;
   }
 
+  /**
+   * Purge false failures from skipped workers (#1528).
+   * Removes non-success entries with durationMs=0 and worker-* model prefix,
+   * which were routing decisions (circuit breaker, role auto-disable) recorded
+   * as failures before the #1528 fix.
+   * Returns count of purged entries.
+   */
+  purgeSkippedWorkers(): number {
+    const before = this.entries.length;
+    let writeIdx = 0;
+    for (let i = 0; i < this.entries.length; i++) {
+      const entry = this.entries[i];
+      if (entry === undefined) continue;
+      const isSkippedWorker =
+        !entry.success && entry.durationMs === 0 && entry.model.startsWith('worker-');
+      if (!isSkippedWorker) {
+        this.entries[writeIdx] = entry;
+        writeIdx++;
+      }
+    }
+    this.entries.length = writeIdx;
+    return before - writeIdx;
+  }
+
   private enforceLimit(): void {
     if (this.entries.length > this.maxEntries) {
       const excess = this.entries.length - this.maxEntries;

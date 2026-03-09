@@ -54,6 +54,7 @@ export class PersistentOutcomeStore extends OutcomeStore {
     ensureLearningDir(dataDir);
     this.hydrate();
     this.reclassifyHydrated();
+    this.purgeSkippedOnHydrate();
   }
 
   /** Override append to persist each entry to disk. */
@@ -71,6 +72,20 @@ export class PersistentOutcomeStore extends OutcomeStore {
    * Bounded: reclassifyAll() skips success outcomes and already-classified
    * entries, so only unclassified failures are processed (#1457).
    */
+  /**
+   * Purge false failures from skipped workers on hydration (#1528).
+   * These are 0ms non-success worker-* entries created before the
+   * recording fix, representing routing decisions not real failures.
+   */
+  private purgeSkippedOnHydrate(): void {
+    if (this.size === 0) return;
+    const purged = this.purgeSkippedWorkers();
+    if (purged > 0) {
+      this.logger.info('Purged skipped-worker false failures from history', { purged });
+      this.rewriteFile();
+    }
+  }
+
   private reclassifyHydrated(): void {
     if (this.size === 0) return;
     const reclassified = this.reclassifyAll();

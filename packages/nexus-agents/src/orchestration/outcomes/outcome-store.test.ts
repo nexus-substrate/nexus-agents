@@ -464,3 +464,48 @@ describe('OutcomeStore.reclassifyAll (#1444)', () => {
     expect(store2.query().find((o) => o.id === 'unk-3')?.failureCategory).toBe('validation');
   });
 });
+
+describe('OutcomeStore.purgeSkippedWorkers (#1528)', () => {
+  it('removes 0ms failed worker entries', () => {
+    const store = new OutcomeStore();
+    store.append(
+      makeOutcome({ id: 'real-1', success: true, model: 'worker-code', durationMs: 100 })
+    );
+    store.append(
+      makeOutcome({ id: 'skip-1', success: false, model: 'worker-security', durationMs: 0 })
+    );
+    store.append(
+      makeOutcome({ id: 'real-2', success: false, model: 'worker-testing', durationMs: 500 })
+    );
+    store.append(
+      makeOutcome({ id: 'skip-2', success: false, model: 'worker-code', durationMs: 0 })
+    );
+
+    const purged = store.purgeSkippedWorkers();
+
+    expect(purged).toBe(2);
+    expect(store.size).toBe(2);
+    expect(store.query().map((o) => o.id)).toEqual(['real-1', 'real-2']);
+  });
+
+  it('preserves successful 0ms entries', () => {
+    const store = new OutcomeStore();
+    store.append(makeOutcome({ id: 's1', success: true, model: 'worker-code', durationMs: 0 }));
+
+    expect(store.purgeSkippedWorkers()).toBe(0);
+    expect(store.size).toBe(1);
+  });
+
+  it('preserves non-worker 0ms failures', () => {
+    const store = new OutcomeStore();
+    store.append(makeOutcome({ id: 'e1', success: false, model: 'expert', durationMs: 0 }));
+
+    expect(store.purgeSkippedWorkers()).toBe(0);
+    expect(store.size).toBe(1);
+  });
+
+  it('returns 0 for empty store', () => {
+    const store = new OutcomeStore();
+    expect(store.purgeSkippedWorkers()).toBe(0);
+  });
+});
