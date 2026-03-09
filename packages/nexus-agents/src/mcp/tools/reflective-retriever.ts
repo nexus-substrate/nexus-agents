@@ -346,8 +346,13 @@ export class ReflectiveRetriever {
       throw new Error('No JSON object found in reflection response');
     }
 
-    const parsed: unknown = JSON.parse(text.slice(start, end + 1));
-    return ReflectionCriteriaSchema.parse(parsed);
+    try {
+      const parsed: unknown = JSON.parse(text.slice(start, end + 1));
+      return ReflectionCriteriaSchema.parse(parsed);
+    } catch (extractErr: unknown) {
+      const msg = extractErr instanceof Error ? extractErr.message : String(extractErr);
+      throw new Error(`Failed to parse reflection criteria from response: ${msg}`);
+    }
   }
 }
 
