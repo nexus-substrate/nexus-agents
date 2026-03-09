@@ -5,10 +5,25 @@
  * query filtering, aggregation summaries, and singleton behavior.
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, beforeAll, afterAll } from 'vitest';
 import { TaskOutcomeSchema, OutcomeQuerySchema } from './outcome-types.js';
 import type { TaskOutcome } from './outcome-types.js';
 import { OutcomeStore, getOutcomeStore, resetOutcomeStore } from './outcome-store.js';
+
+// Force in-memory mode to avoid loading persistent data from disk
+const originalPersist = process.env['NEXUS_PERSIST_LEARNING'];
+beforeAll(() => {
+  process.env['NEXUS_PERSIST_LEARNING'] = 'false';
+  resetOutcomeStore();
+});
+afterAll(() => {
+  if (originalPersist !== undefined) {
+    process.env['NEXUS_PERSIST_LEARNING'] = originalPersist;
+  } else {
+    delete process.env['NEXUS_PERSIST_LEARNING'];
+  }
+  resetOutcomeStore();
+});
 
 // ============================================================================
 // Helpers
@@ -272,6 +287,7 @@ describe('getOutcomeStore / resetOutcomeStore', () => {
   });
 
   it('reset clears previously stored data', () => {
+    resetOutcomeStore();
     const store = getOutcomeStore();
     store.append(makeOutcome());
     expect(store.size).toBe(1);
