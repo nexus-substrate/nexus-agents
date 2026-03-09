@@ -45,6 +45,16 @@ export class SimpleAgent extends BaseAgent {
       .map((block) => block.text)
       .join('\n');
 
+    // Guard: treat responses with no text and no tool calls as empty (#1521)
+    const hasToolUse = result.value.content.some((b) => b.type === 'tool_use');
+    if (textContent.trim() === '' && !hasToolUse) {
+      return err(
+        new AgentError('Model returned empty response', {
+          context: { taskId: task.id, model: result.value.model },
+        })
+      );
+    }
+
     return ok({
       taskId: task.id,
       output: textContent,

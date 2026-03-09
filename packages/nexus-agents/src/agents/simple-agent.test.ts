@@ -222,7 +222,7 @@ describe('SimpleAgent', () => {
       }
     });
 
-    it('should return empty string when no text content blocks', async () => {
+    it('should return empty string when only tool_use content blocks', async () => {
       const adapter = createMockAdapter({
         content: [{ type: 'tool_use', id: 'tool-1', name: 'search', input: {} }],
         usage: { inputTokens: 5, outputTokens: 10, totalTokens: 15 },
@@ -236,6 +236,23 @@ describe('SimpleAgent', () => {
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.value.output).toBe('');
+      }
+    });
+
+    it('should return error when response has no content at all (#1521)', async () => {
+      const adapter = createMockAdapter({
+        content: [],
+        usage: { inputTokens: 5, outputTokens: 0, totalTokens: 5 },
+        stopReason: 'end_turn',
+        model: 'test-model',
+      });
+      const agent = createTestAgent({ adapter });
+
+      const result = await agent.execute(createTestTask());
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.message).toBe('Model returned empty response');
       }
     });
 
