@@ -20,6 +20,7 @@ import type {
   CliName,
 } from '../router-stage.js';
 import { addTrace, filterCandidate, getRemainingCandidates } from '../router-stage.js';
+import { buildTopsisProfiles } from '../../../config/model-config-helpers.js';
 
 // ============================================================================
 // Configuration
@@ -34,15 +35,34 @@ interface QualityProfile {
   readonly avgLatencyMs: number; // Milliseconds
 }
 
+/** Max quality score from model registry (reasoning + codeGeneration are 0-10 each). */
+const MAX_QUALITY = 10;
+
 /**
- * CLI quality profiles.
+ * Derive quality profiles from the canonical model registry.
+ * Quality scores normalized from 0-10 to 0-1.
+ * Pricing converted from per-million to per-1k tokens.
  */
-const CLI_QUALITY_PROFILES: Record<CliName, QualityProfile> = {
-  claude: { qualityScore: 0.95, costPer1kTokens: 0.045, avgLatencyMs: 2000 },
-  gemini: { qualityScore: 0.8, costPer1kTokens: 0.003, avgLatencyMs: 1500 },
-  codex: { qualityScore: 0.85, costPer1kTokens: 0.009, avgLatencyMs: 1000 },
-  opencode: { qualityScore: 0.82, costPer1kTokens: 0.008, avgLatencyMs: 1500 },
-};
+function deriveQualityProfiles(): Record<CliName, QualityProfile> {
+  const profiles = buildTopsisProfiles();
+  const result: Record<string, QualityProfile> = {};
+  for (const p of profiles) {
+    result[p.cliName] = {
+      qualityScore: p.qualityScore / MAX_QUALITY,
+      costPer1kTokens: p.costPerMillionInput / 1000,
+      avgLatencyMs: p.averageLatencyMs,
+    };
+  }
+  return result as Record<CliName, QualityProfile>;
+}
+
+/** Lazy-initialized profiles derived from model registry. */
+let cachedProfiles: Record<CliName, QualityProfile> | undefined;
+
+function getQualityProfiles(): Record<CliName, QualityProfile> {
+  cachedProfiles ??= deriveQualityProfiles();
+  return cachedProfiles;
+}
 
 /**
  * Configuration for the quality constraint stage.
@@ -188,7 +208,7 @@ export class QualityConstraintStage implements IRouterStage {
     reason: string;
     violated: 'quality' | 'cost' | 'latency' | null;
   } {
-    const profile = CLI_QUALITY_PROFILES[cli];
+    const profile = getQualityProfiles()[cli];
 
     // Check quality
     if (profile.qualityScore < this.config.minQuality) {
@@ -235,8 +255,8 @@ export class QualityConstraintStage implements IRouterStage {
    */
   private selectFallback(candidates: CliName[]): CliName | undefined {
     const sorted = [...candidates].sort((a, b) => {
-      const profileA = CLI_QUALITY_PROFILES[a];
-      const profileB = CLI_QUALITY_PROFILES[b];
+      const profileA = getQualityProfiles()[a];
+      const profileB = getQualityProfiles()[b];
       return profileB.qualityScore - profileA.qualityScore;
     });
     return sorted[0];
@@ -291,4 +311,9 @@ export function createQualityConstraintStage(
   logger?: ILogger
 ): QualityConstraintStage {
   return new QualityConstraintStage(config, logger);
+}
+
+/** Reset cached profiles (for testing). */
+export function resetQualityProfileCache(): void {
+  cachedProfiles = undefined;
 }
