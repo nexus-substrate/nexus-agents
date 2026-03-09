@@ -91,8 +91,9 @@ export const DEFAULT_FALLBACK_CHAINS: FallbackChainRegistry = {
   research: ['gemini', 'claude', 'codex', 'opencode'],
   // documentation: gemini primary, claude secondary
   documentation: ['gemini', 'claude', 'codex', 'opencode'],
-  // architecture/security/planning: claude primary, codex secondary
-  analysis: ['claude', 'codex', 'gemini', 'opencode'],
+  // architecture/security/planning: claude primary, gemini secondary
+  // Weather data: gemini arch 66.7% (n=24) > codex 33.3% (n=3)
+  analysis: ['claude', 'gemini', 'codex', 'opencode'],
   // general: balanced order
   general: ['claude', 'gemini', 'codex', 'opencode'],
 } as const;
