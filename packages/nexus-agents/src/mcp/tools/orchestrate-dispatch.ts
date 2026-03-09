@@ -35,7 +35,7 @@ import {
 } from '../../orchestration/aorchestra/result-synthesizer.js';
 import { getTimeProvider } from '../../core/index.js';
 import type { ContentBlock } from '../../core/types/model.js';
-import { DEFAULT_CLI } from '../../config/model-capabilities-types.js';
+import { DEFAULT_CLI, type CliNameLiteral } from '../../config/model-capabilities-types.js';
 import { resolveAdapterForRole } from './create-expert-routing.js';
 import { detectTaskCategory } from '../../config/task-specialization.js';
 import { getPipelineEventBus } from '../../pipeline/event-bus.js';
@@ -133,31 +133,53 @@ export function isWorkerDispatchEnabled(): boolean {
 // Internal: Worker Execution
 // ============================================================================
 
+/** Resolved adapter with its CLI identity for outcome recording (#1527). */
+interface ResolvedWorkerAdapter {
+  readonly adapter: IModelAdapter;
+  readonly cliName: string;
+}
+
 /** Resolve the adapter for a worker, optionally routing by role (Issue #1416). */
 function resolveWorkerAdapter(
   entry: AgentPlanEntry,
   fallback: IModelAdapter,
+  fallbackCli: string,
   perWorkerRouting: boolean,
   log: ILogger
-): IModelAdapter {
-  if (!perWorkerRouting) return fallback;
+): ResolvedWorkerAdapter {
+  if (!perWorkerRouting) return { adapter: fallback, cliName: fallbackCli };
   const expertRole = `${entry.role}_expert`;
-  return resolveAdapterForRole(expertRole, fallback, log) ?? fallback;
+  const resolved = resolveAdapterForRole(expertRole, fallback, log) ?? fallback;
+  // Derive CLI name from the adapter's providerId (e.g., 'claude', 'codex', 'gemini')
+  const cliName = resolved.providerId;
+  return { adapter: resolved, cliName };
+}
+
+interface WorkerExecutorConfig {
+  readonly taskDescription: string;
+  readonly modelAdapter: IModelAdapter;
+  readonly logger: ILogger;
+  readonly learnings?: readonly WorkerLearning[];
+  readonly perWorkerRouting?: boolean;
 }
 
 function createWorkerExecutor(
-  taskDescription: string,
-  modelAdapter: IModelAdapter,
-  logger: ILogger,
-  learnings?: readonly WorkerLearning[],
-  perWorkerRouting?: boolean
+  config: WorkerExecutorConfig
 ): (entry: AgentPlanEntry, priorWaveResults?: readonly WorkerResult[]) => Promise<WorkerResult> {
+  const { taskDescription, modelAdapter, logger, learnings, perWorkerRouting } = config;
+  const effectiveFallbackCli = modelAdapter.providerId;
   return async (
     entry: AgentPlanEntry,
     priorWaveResults?: readonly WorkerResult[]
   ): Promise<WorkerResult> => {
     const workerStartMs = getTimeProvider().now();
-    const adapter = resolveWorkerAdapter(entry, modelAdapter, perWorkerRouting === true, logger);
+    const { adapter, cliName } = resolveWorkerAdapter(
+      entry,
+      modelAdapter,
+      effectiveFallbackCli,
+      perWorkerRouting === true,
+      logger
+    );
     const prompt = composeWorkerPrompt({
       entry,
       taskDescription,
@@ -172,7 +194,7 @@ function createWorkerExecutor(
       });
 
       if (!result.ok) {
-        return makeErrorResult(entry, workerStartMs, result.error.message);
+        return makeErrorResult(entry, workerStartMs, result.error.message, cliName);
       }
 
       const textContent = result.value.content
@@ -186,16 +208,22 @@ function createWorkerExecutor(
         output: textContent,
         status: 'success',
         durationMs: getTimeProvider().now() - workerStartMs,
+        resolvedCli: cliName,
       };
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       logger.warn('Worker execution failed', { role: entry.role, error: message });
-      return makeErrorResult(entry, workerStartMs, message);
+      return makeErrorResult(entry, workerStartMs, message, cliName);
     }
   };
 }
 
-function makeErrorResult(entry: AgentPlanEntry, startMs: number, message: string): WorkerResult {
+function makeErrorResult(
+  entry: AgentPlanEntry,
+  startMs: number,
+  message: string,
+  resolvedCli?: string
+): WorkerResult {
   return {
     role: entry.role,
     subTask: entry.subTask,
@@ -203,6 +231,7 @@ function makeErrorResult(entry: AgentPlanEntry, startMs: number, message: string
     status: 'error',
     durationMs: getTimeProvider().now() - startMs,
     error: message,
+    ...(resolvedCli !== undefined ? { resolvedCli } : {}),
   };
 }
 
@@ -330,13 +359,13 @@ async function runRefinementPhase(
     remaining,
     checkpoints: checkpointCount,
   });
-  const executor = createWorkerExecutor(
-    options.taskDescription,
-    options.modelAdapter,
-    options.logger,
-    options.learnings,
-    options.perWorkerRouting
-  );
+  const executor = createWorkerExecutor({
+    taskDescription: options.taskDescription,
+    modelAdapter: options.modelAdapter,
+    logger: options.logger,
+    learnings: options.learnings,
+    perWorkerRouting: options.perWorkerRouting,
+  });
   const refinedResults = await dispatchWorkers(failedEntries, {
     ...(options.maxConcurrency !== undefined ? { maxConcurrency: options.maxConcurrency } : {}),
     executeWorker: executor,
@@ -389,13 +418,13 @@ export async function executeWorkerDispatch(
 
   const results = await dispatchWorkers(entries, {
     ...(maxConcurrency !== undefined ? { maxConcurrency } : {}),
-    executeWorker: createWorkerExecutor(
+    executeWorker: createWorkerExecutor({
       taskDescription,
       modelAdapter,
       logger,
-      options.learnings,
-      options.perWorkerRouting
-    ),
+      learnings: options.learnings,
+      perWorkerRouting: options.perWorkerRouting,
+    }),
     eventBus: getPipelineEventBus(),
     executionId: `dispatch-${Date.now().toString(36)}`,
     ...(qualityGate !== undefined ? { qualityGate } : {}),
@@ -464,11 +493,14 @@ export function recordWorkerOutcomes(
     const store = getOutcomeStore();
     const match = detectTaskCategory(taskDescription);
     const category = match?.category ?? 'exploration';
-    const cli = match?.primaryCli ?? DEFAULT_CLI;
+    // Fallback CLI from specialization — only used when worker has no resolvedCli
+    const fallbackCli = match?.primaryCli ?? DEFAULT_CLI;
     const ts = new Date(getTimeProvider().now()).toISOString();
 
     for (const r of results) {
       const success = r.status === 'success';
+      // Use actual CLI that executed (#1527), fall back to specialization recommendation
+      const cli = (r.resolvedCli ?? fallbackCli) as CliNameLiteral;
       store.append({
         id: `worker-${r.role}-${String(Date.now())}-${Math.random().toString(36).slice(2, 6)}`,
         cli,

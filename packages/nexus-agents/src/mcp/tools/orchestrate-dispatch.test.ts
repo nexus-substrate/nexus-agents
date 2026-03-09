@@ -538,4 +538,41 @@ describe('recordWorkerOutcomes', () => {
     expect(successes).toHaveLength(2);
     expect(failures).toHaveLength(1);
   });
+
+  it('uses resolvedCli from worker result when available (#1527)', () => {
+    const results: WorkerResult[] = [
+      {
+        role: 'code',
+        subTask: 'Implement feature',
+        output: 'done',
+        status: 'success',
+        durationMs: 200,
+        resolvedCli: 'codex',
+      },
+    ];
+
+    recordWorkerOutcomes(results, 'Implement auth feature');
+
+    const entries = getOutcomeStore().query();
+    expect(entries[0]?.cli).toBe('codex');
+  });
+
+  it('falls back to specialization primaryCli when resolvedCli absent (#1527)', () => {
+    const results: WorkerResult[] = [
+      {
+        role: 'code',
+        subTask: 'Implement feature',
+        output: 'done',
+        status: 'success',
+        durationMs: 200,
+        // No resolvedCli — should use detectTaskCategory result
+      },
+    ];
+
+    recordWorkerOutcomes(results, 'Implement auth feature');
+
+    const entries = getOutcomeStore().query();
+    // 'Implement' matches code_generation → primaryCli is 'codex'
+    expect(entries[0]?.cli).toBe('codex');
+  });
 });

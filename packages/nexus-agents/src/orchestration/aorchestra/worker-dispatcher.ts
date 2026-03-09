@@ -83,6 +83,8 @@ export interface WorkerResult {
   readonly error?: string;
   /** Discriminated error type — set only when status is 'error'. */
   readonly errorType?: WorkerErrorType;
+  /** CLI that actually executed this worker (for accurate outcome recording, #1527). */
+  readonly resolvedCli?: string;
 }
 
 /**

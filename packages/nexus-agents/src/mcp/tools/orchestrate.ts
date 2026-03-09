@@ -53,7 +53,7 @@ import {
 } from '../../orchestration/outcomes/index.js';
 import type { OutcomeFailureCategory } from '../../orchestration/outcomes/index.js';
 import { detectTaskCategory } from '../../config/task-specialization.js';
-import { DEFAULT_CLI } from '../../config/model-capabilities-types.js';
+import { DEFAULT_CLI, type CliNameLiteral } from '../../config/model-capabilities-types.js';
 import {
   OrchestrateInputSchema,
   ORCHESTRATE_TOOL_SCHEMA,
@@ -220,27 +220,42 @@ function triggerPromotionPipeline(toolName: string): void {
     });
 }
 
+/** Optional fields for outcome recording. */
+interface OutcomeRecordOptions {
+  readonly failureCategory?: OutcomeFailureCategory;
+  readonly errorMessage?: string;
+  readonly actualCli?: CliNameLiteral;
+}
+
+/** Build failure fields for outcome record. */
+function buildOutcomeFailureFields(opts?: OutcomeRecordOptions): Record<string, string> {
+  const fields: Record<string, string> = {};
+  if (opts?.failureCategory !== undefined) fields['failureCategory'] = opts.failureCategory;
+  if (opts?.errorMessage !== undefined) fields['errorMessage'] = opts.errorMessage.slice(0, 500);
+  return fields;
+}
+
 /** Records orchestration outcome to OutcomeStore (Issue #1014). Best-effort, never throws. */
 function recordToOutcomeStore(
   taskDescription: string,
   success: boolean,
   durationMs: number,
-  failureCategory?: OutcomeFailureCategory,
-  errorMessage?: string
+  opts?: OutcomeRecordOptions
 ): void {
   try {
     const match = detectTaskCategory(taskDescription);
+    const cli = opts?.actualCli ?? match?.primaryCli ?? DEFAULT_CLI;
+    const category = match?.category ?? 'exploration';
     getOutcomeStore().append({
       id: `orch-${String(Date.now())}-${Math.random().toString(36).slice(2, 8)}`,
-      cli: match?.primaryCli ?? DEFAULT_CLI,
-      category: match?.category ?? 'exploration',
+      cli,
+      category,
       model: 'orchestrator',
       success,
       durationMs,
       timestamp: new Date(getTimeProvider().now()).toISOString(),
       source: 'delegate',
-      ...(failureCategory !== undefined ? { failureCategory } : {}),
-      ...(errorMessage !== undefined ? { errorMessage: errorMessage.slice(0, 500) } : {}),
+      ...buildOutcomeFailureFields(opts),
     });
   } catch (error: unknown) {
     createLogger({ tool: 'orchestrate' }).debug('Best-effort outcome recording failed', {
@@ -321,7 +336,10 @@ function recordOrchestrationError(
   // These are infrastructure issues (missing API keys), not task failures.
   // Recording them as failures poisons the weather_report success rates.
   if (fc !== 'adapter_unavailable') {
-    recordToOutcomeStore(taskDescription, false, durationMs ?? 0, fc, errorMessage);
+    recordToOutcomeStore(taskDescription, false, durationMs ?? 0, {
+      failureCategory: fc,
+      errorMessage,
+    });
   }
 }
 
