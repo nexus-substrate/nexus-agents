@@ -78,6 +78,8 @@ export {
   ROLE_CAPABILITIES,
 } from './role-capabilities.js';
 export type { CapabilityTier, RoleCapability } from './role-capabilities.js';
+export { evaluateExitTriggers } from './exit-triggers.js';
+export type { ExitTriggerConfig, ExitTriggerState, ExitTriggerResult } from './exit-triggers.js';
 export type {
   DispatchInsights,
   RoleProfile,
