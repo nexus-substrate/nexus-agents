@@ -119,6 +119,8 @@ export interface WorkerDispatchOptions {
   readonly staggerDelayMs?: number;
   /** Optional quality gate applied to worker results before acceptance (#1502). */
   readonly qualityGate?: QualityGateFn;
+  /** Enable pattern-based failure triage with automatic retry (#1506). Default: true. */
+  readonly enableTriage?: boolean;
 }
 
 // ============================================================================
@@ -345,6 +347,7 @@ export async function dispatchWorkers(
       failureTracker,
       staggerDelayMs,
       qualityGate: options.qualityGate,
+      enableTriage: options.enableTriage ?? true,
     });
     allResults.push(...waveResults);
 
@@ -368,6 +371,7 @@ interface ProcessWaveOptions {
   readonly failureTracker: RoleFailureTracker;
   readonly staggerDelayMs: number;
   readonly qualityGate: QualityGateFn | undefined;
+  readonly enableTriage: boolean;
 }
 
 /** Create a task closure for a single worker within a wave. */
@@ -403,7 +407,8 @@ function createWorkerTask(
       entry,
       opts.options.executeWorker,
       opts.priorResults,
-      timeoutMs
+      timeoutMs,
+      opts.enableTriage
     );
     // Apply quality gate if configured (#1502)
     if (opts.qualityGate !== undefined) {
@@ -543,10 +548,11 @@ async function executeSafe(
     priorWaveResults?: readonly WorkerResult[]
   ) => Promise<WorkerResult>,
   priorWaveResults: readonly WorkerResult[] | undefined,
-  timeoutMs: number
+  timeoutMs: number,
+  enableTriage: boolean = true
 ): Promise<WorkerResult> {
   const result = await attemptExecution(entry, executeWorker, priorWaveResults, timeoutMs);
-  if (result.status !== 'error') return result;
+  if (result.status !== 'error' || !enableTriage) return result;
   return maybeRetryAfterTriage(result, entry, executeWorker, priorWaveResults, timeoutMs);
 }
 
@@ -596,11 +602,16 @@ async function maybeRetryAfterTriage(
     hasUsefulOutput: triage.hasUsefulOutput,
   });
 
-  if (!triage.retryable || triage.action === 'retry_different_cli') {
+  if (!triage.retryable) {
     return { ...failedResult, triageAction: triage.action };
   }
 
-  // Single retry for retry_same_cli or extend_timeout
+  // Rate-limit retry: delay then retry same CLI (rate limits are usually temporary)
+  if (triage.action === 'retry_different_cli') {
+    await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_SPACING_MS));
+  }
+
+  // Single retry for all retryable actions
   const retryTimeout =
     triage.action === 'extend_timeout'
       ? Math.min(timeoutMs * TIMEOUT_EXTENSION_FACTOR, MAX_WORKER_TIMEOUT_MS)

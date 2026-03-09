@@ -366,6 +366,7 @@ describe('dispatchWorkers', () => {
 
     const dispatchPromise = dispatchWorkers(entries, {
       executeWorker: rateLimitThenSucceed,
+      enableTriage: false, // Disable triage — this test verifies wave-level delay, not worker retry
     });
 
     // Advance past the rate-limit delay
@@ -522,6 +523,7 @@ describe('dispatchWorkers', () => {
     const dispatchPromise = dispatchWorkers(entries, {
       executeWorker: trackedExecute,
       consecutiveFailureThreshold: 10, // high so role is not auto-disabled
+      enableTriage: false, // Disable triage — this test verifies per-role spacing delay
     });
 
     // Advance past both the spacing delay and the wave delay
@@ -558,6 +560,7 @@ describe('dispatchWorkers', () => {
     const results = await dispatchWorkers(entries, {
       executeWorker: fastExecute,
       consecutiveFailureThreshold: 10,
+      enableTriage: false, // Disable triage — this test verifies non-rate-limited behavior
     });
 
     expect(results).toHaveLength(2);
@@ -777,6 +780,37 @@ describe('dispatchWorkers', () => {
     expect(results[0]?.status).toBe('error');
     expect(results[0]?.wasRetried).toBe(true);
     expect(results[0]?.triageAction).toBe('retry_same_cli');
+  });
+
+  it('retries rate-limited workers after delay (#1506)', async () => {
+    let callCount = 0;
+    const rateLimitExecute: WorkerDispatchOptions['executeWorker'] = vi
+      .fn()
+      .mockImplementation((entry: AgentPlanEntry): Promise<WorkerResult> => {
+        callCount++;
+        if (callCount === 1) {
+          return Promise.reject(new Error('rate limit exceeded'));
+        }
+        return Promise.resolve({
+          role: entry.role,
+          subTask: entry.subTask,
+          output: 'recovered after rate limit',
+          status: 'success' as const,
+          durationMs: 100,
+        });
+      });
+
+    const entries = [makeEntry('code', 1, 1)];
+    const results = await dispatchWorkers(entries, {
+      executeWorker: rateLimitExecute,
+      staggerDelayMs: 0,
+      consecutiveFailureThreshold: 10,
+    });
+
+    expect(results).toHaveLength(1);
+    expect(results[0]?.status).toBe('success');
+    expect(results[0]?.wasRetried).toBe(true);
+    expect(callCount).toBe(2);
   });
 });
 
