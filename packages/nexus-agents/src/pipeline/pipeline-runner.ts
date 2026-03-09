@@ -268,6 +268,7 @@ function createTraceContext(task: TaskContract, options?: PipelineExecuteOptions
 }
 
 function emitPipelineStarted(ctx: TraceContext, task: TaskContract): void {
+  pipelineLogger.debug('Pipeline started', { taskId: task.id });
   if (ctx.bus === undefined) return;
   ctx.bus.emit({
     type: 'pipeline.started',
@@ -283,6 +284,7 @@ function emitPipelineCompleted(
   success: boolean,
   durationMs: number
 ): void {
+  pipelineLogger.debug('Pipeline completed', { executionId, success, durationMs });
   if (ctx.bus === undefined) return;
   ctx.bus.emit({
     type: 'pipeline.completed',
@@ -295,6 +297,12 @@ function emitPipelineCompleted(
 
 /** Emit stage.completed or stage.failed based on node result (#1179). */
 function emitStageEvent(bus: IEventBus | undefined, executionId: string, result: NodeResult): void {
+  pipelineLogger.debug('Stage event', {
+    executionId,
+    stageId: result.nodeId,
+    status: result.status,
+    durationMs: result.durationMs,
+  });
   if (bus === undefined) return;
   const now = Date.now();
   if (result.status === 'failed') {
