@@ -184,6 +184,66 @@ describe('EventBus', () => {
     });
   });
 
+  describe('unsubscribe compaction (#1473)', () => {
+    it('compacts subscription array on unsubscribe', () => {
+      const bus = new EventBus();
+      const unsub = bus.subscribe({}, vi.fn());
+      expect(bus.subscriptionCount).toBe(1);
+
+      unsub();
+      expect(bus.subscriptionCount).toBe(0);
+    });
+
+    it('maintains correct count after multiple subscribe/unsubscribe cycles', () => {
+      const bus = new EventBus();
+      const unsubs: (() => void)[] = [];
+
+      // Subscribe 5
+      for (let i = 0; i < 5; i++) {
+        unsubs.push(bus.subscribe({}, vi.fn()));
+      }
+      expect(bus.subscriptionCount).toBe(5);
+
+      // Unsubscribe first 3
+      unsubs[0]?.();
+      unsubs[1]?.();
+      unsubs[2]?.();
+      expect(bus.subscriptionCount).toBe(2);
+
+      // Subscribe 2 more
+      unsubs.push(bus.subscribe({}, vi.fn()));
+      unsubs.push(bus.subscribe({}, vi.fn()));
+      expect(bus.subscriptionCount).toBe(4);
+
+      // Unsubscribe all remaining
+      unsubs[3]?.();
+      unsubs[4]?.();
+      unsubs[5]?.();
+      unsubs[6]?.();
+      expect(bus.subscriptionCount).toBe(0);
+    });
+
+    it('emit still works correctly after unsubscribe compaction', () => {
+      const bus = new EventBus();
+      const handlerA = vi.fn();
+      const handlerB = vi.fn();
+      const handlerC = vi.fn();
+
+      const unsubA = bus.subscribe({}, handlerA);
+      bus.subscribe({}, handlerB);
+      bus.subscribe({}, handlerC);
+
+      // Remove middle-ish handler (A) to test compaction
+      unsubA();
+      expect(bus.subscriptionCount).toBe(2);
+
+      bus.emit(makeEvent());
+      expect(handlerA).not.toHaveBeenCalled();
+      expect(handlerB).toHaveBeenCalledOnce();
+      expect(handlerC).toHaveBeenCalledOnce();
+    });
+  });
+
   describe('subscriber snapshot safety (#1206)', () => {
     it('should handle unsubscribe during emission without skipping handlers', () => {
       const bus = new EventBus();

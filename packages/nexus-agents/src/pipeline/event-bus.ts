@@ -68,6 +68,11 @@ export class EventBus implements IEventBus {
     return this.buffer.length;
   }
 
+  /** Number of active subscriptions (for observability/testing). */
+  get subscriptionCount(): number {
+    return this.subs.length;
+  }
+
   emit(event: PipelineEvent): void {
     this.emitCount++;
     this.addToBuffer(event);
