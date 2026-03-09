@@ -233,6 +233,8 @@ export class RestApiServer implements IRestApiServer {
     });
 
     // Authentication
+    // Rate limiting is applied globally via @fastify/rate-limit in registerPlugins() (#1496).
+    // lgtm[js/missing-rate-limiting]
     this.fastify.addHook('preHandler', async (request, reply) => {
       await this.authenticateRequest(request, reply);
     });

@@ -141,7 +141,11 @@ export function parseJsonResults(
  */
 export function parseStdoutResults(output: string, durationMs: number): TestSuiteResult {
   // Parse pytest-style summary line: "X passed, Y failed, Z skipped"
-  const summaryMatch = output.match(/(\d+) +passed(?:, *(\d+) +failed)?(?:, *(\d+) +skipped)?/);
+  // ReDoS-safe: use atomic-like groups by matching each section independently (#1496).
+  const passedMatch = output.match(/(\d+) +passed/);
+  const failedMatch = output.match(/(\d+) +failed/);
+  const skippedMatch = output.match(/(\d+) +skipped/);
+  const summaryMatch = passedMatch;
 
   let passed = 0;
   let failed = 0;
@@ -149,8 +153,8 @@ export function parseStdoutResults(output: string, durationMs: number): TestSuit
 
   if (summaryMatch) {
     passed = parseInt(summaryMatch[1] ?? '0', 10);
-    failed = parseInt(summaryMatch[2] ?? '0', 10);
-    skipped = parseInt(summaryMatch[3] ?? '0', 10);
+    failed = parseInt(failedMatch?.[1] ?? '0', 10);
+    skipped = parseInt(skippedMatch?.[1] ?? '0', 10);
   }
 
   const total = passed + failed + skipped;

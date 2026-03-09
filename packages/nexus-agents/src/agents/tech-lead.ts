@@ -132,6 +132,36 @@ export interface ExecutionPlan extends ExecutionPlanData {
  * Renamed from TechLead in Issue #759. The old name is retained as a
  * deprecated type alias for backward compatibility.
  */
+/**
+ * Extracts JSON content from a markdown code block using indexOf (ReDoS-safe).
+ * Returns a match-like array [fullMatch, content] or null.
+ */
+function extractCodeBlock(text: string): [string, string] | null {
+  const startMarker = '```';
+  const startIdx = text.indexOf(startMarker);
+  if (startIdx === -1) return null;
+
+  // Skip past opening ``` and optional language tag (e.g., ```json)
+  let contentStart = startIdx + 3;
+  // Skip language identifier if present (alphanumeric only)
+  while (contentStart < text.length && /[a-zA-Z]/.test(text[contentStart] ?? '')) {
+    contentStart++;
+  }
+  // Skip whitespace/newline after language tag
+  while (
+    contentStart < text.length &&
+    (text[contentStart] === ' ' || text[contentStart] === '\t' || text[contentStart] === '\n')
+  ) {
+    contentStart++;
+  }
+
+  const endIdx = text.indexOf('```', contentStart);
+  if (endIdx === -1) return null;
+
+  const content = text.slice(contentStart, endIdx);
+  return [text.slice(startIdx, endIdx + 3), content];
+}
+
 export class Orchestrator extends BaseAgent {
   private readonly orchestratorOptions: Required<OrchestratorOptions>;
   private readonly collaborationHelper: OrchestratorCollaborationHelper;
@@ -455,7 +485,8 @@ export class Orchestrator extends BaseAgent {
   ): Result<T, AgentError> {
     try {
       let jsonText = text;
-      const match = text.match(/```(?:json)?[ \t\n]*([\s\S]*?)```/);
+      // ReDoS-safe: use indexOf-based extraction instead of lazy [\s\S]*? (#1496).
+      const match = extractCodeBlock(text);
       if (match?.[1] !== undefined) jsonText = match[1];
 
       const parsed = JSON.parse(jsonText) as unknown;

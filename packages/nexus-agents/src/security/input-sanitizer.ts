@@ -110,39 +110,53 @@ const INJECTION_PATTERNS: readonly PatternMatch[] = [
 // Core Sanitization Functions
 // ============================================================================
 
-/** Strips dangerous HTML tags and records what was removed. */
+/** Strips dangerous HTML tags and records what was removed.
+ * Loops until stable to prevent reconstructed patterns after removal (#1496). */
 function stripDangerousHtml(content: string): {
   cleaned: string;
   stripped: StrippedElement[];
 } {
   const stripped: StrippedElement[] = [];
-  const cleaned = content.replace(DANGEROUS_HTML_PATTERN, (match, _g1, _g2, offset: number) => {
-    stripped.push({
-      tag: match.slice(0, 30) + (match.length > 30 ? '...' : ''),
-      reason: 'Dangerous HTML tag (Trail of Bits injection vector)',
-      startIndex: offset,
-      length: match.length,
+  let cleaned = content;
+  const MAX_PASSES = 5;
+  for (let pass = 0; pass < MAX_PASSES; pass++) {
+    DANGEROUS_HTML_PATTERN.lastIndex = 0;
+    if (!DANGEROUS_HTML_PATTERN.test(cleaned)) break;
+    cleaned = cleaned.replace(DANGEROUS_HTML_PATTERN, (match, _g1, _g2, offset: number) => {
+      stripped.push({
+        tag: match.slice(0, 30) + (match.length > 30 ? '...' : ''),
+        reason: 'Dangerous HTML tag (Trail of Bits injection vector)',
+        startIndex: offset,
+        length: match.length,
+      });
+      return '';
     });
-    return '';
-  });
+  }
   return { cleaned, stripped };
 }
 
-/** Strips XML-like tags that mimic conversation structure. */
+/** Strips XML-like tags that mimic conversation structure.
+ * Loops until stable to prevent reconstructed patterns after removal (#1496). */
 function stripXmlTags(content: string): {
   cleaned: string;
   stripped: StrippedElement[];
 } {
   const stripped: StrippedElement[] = [];
-  const cleaned = content.replace(XML_INJECTION_PATTERN, (match, _g1, offset: number) => {
-    stripped.push({
-      tag: match,
-      reason: 'XML-like conversation injection tag',
-      startIndex: offset,
-      length: match.length,
+  let cleaned = content;
+  const MAX_PASSES = 5;
+  for (let pass = 0; pass < MAX_PASSES; pass++) {
+    XML_INJECTION_PATTERN.lastIndex = 0;
+    if (!XML_INJECTION_PATTERN.test(cleaned)) break;
+    cleaned = cleaned.replace(XML_INJECTION_PATTERN, (match, _g1, offset: number) => {
+      stripped.push({
+        tag: match,
+        reason: 'XML-like conversation injection tag',
+        startIndex: offset,
+        length: match.length,
+      });
+      return '';
     });
-    return '';
-  });
+  }
   return { cleaned, stripped };
 }
 

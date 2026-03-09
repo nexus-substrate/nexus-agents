@@ -55,22 +55,22 @@ const SECRET_PATTERNS = [
   /AIza[0-9A-Za-z_-]{35}/g,
   // Bearer tokens
   /Bearer [a-zA-Z0-9-_.]+/g,
-  // Generic credential patterns
-  /password["']?[ \t]*[:=][ \t]*["']?[^"'\s]+/gi,
-  /api[_-]?key["']?[ \t]*[:=][ \t]*["']?[^"'\s]+/gi,
-  /secret["']?[ \t]*[:=][ \t]*["']?[^"'\s]+/gi,
-  /token["']?[ \t]*[:=][ \t]*["']?[^"'\s]+/gi,
-  // AWS credentials
+  // Generic credential patterns — bounded quantifiers to prevent ReDoS (#1496)
+  /password["']?[ \t]*[:=][ \t]*["']?[^"'\s]{1,256}/gi,
+  /api[_-]?key["']?[ \t]*[:=][ \t]*["']?[^"'\s]{1,256}/gi,
+  /secret["']?[ \t]*[:=][ \t]*["']?[^"'\s]{1,256}/gi,
+  /token["']?[ \t]*[:=][ \t]*["']?[^"'\s]{1,256}/gi,
+  // AWS credentials — bounded quantifiers to prevent ReDoS (#1496)
   /AKIA[0-9A-Z]{16}/g,
-  /aws_secret_access_key["']?[ \t]*[:=][ \t]*["']?[^"'\s]+/gi,
-  /aws_session_token["']?[ \t]*[:=][ \t]*["']?[^"'\s]+/gi,
+  /aws_secret_access_key["']?[ \t]*[:=][ \t]*["']?[^"'\s]{1,256}/gi,
+  /aws_session_token["']?[ \t]*[:=][ \t]*["']?[^"'\s]{1,256}/gi,
   // Azure credentials
-  /AccountKey=[a-zA-Z0-9+/=]+/gi,
-  /SharedAccessSignature=[a-zA-Z0-9%]+/gi,
+  /AccountKey=[a-zA-Z0-9+/=]{1,256}/gi,
+  /SharedAccessSignature=[a-zA-Z0-9%]{1,256}/gi,
   /DefaultEndpointsProtocol=https?;AccountName=[^;]{1,256};AccountKey=[^;]{1,256}/gi,
-  // GCP credentials
-  /"private_key":\s*"-----BEGIN[^"]+-----END[^"]+-----"/g,
-  /"private_key_id":\s*"[a-f0-9]+"/gi,
+  // GCP credentials — bounded quantifiers to prevent ReDoS (#1496)
+  /"private_key":\s*"-----BEGIN[^"]{1,5000}-----END[^"]{1,500}-----"/g,
+  /"private_key_id":\s*"[a-f0-9]{1,256}"/gi,
   // GitHub tokens
   /ghp_[a-zA-Z0-9]{36}/g,
   /github_pat_[a-zA-Z0-9_]{22,}/g,

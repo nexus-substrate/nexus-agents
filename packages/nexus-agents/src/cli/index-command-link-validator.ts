@@ -103,13 +103,16 @@ function getLinkType(url: string): LinkType {
  * Checks if a URL should be skipped (mailto:, javascript:).
  */
 function shouldSkipUrl(url: string): boolean {
-  const lower = url.toLowerCase();
+  // Strip ASCII control characters and whitespace before scheme check (#1496).
+  // CodeQL alert: startsWith('javascript:') misses 'javascript\t:' and similar
+  // control-char-injected schemes (CWE-79).
+  const normalized = url.replace(/[\x00-\x1f\x7f\s]+/g, '').toLowerCase();
   return (
-    lower.startsWith('mailto:') ||
-    lower.startsWith('javascript:') ||
-    lower.startsWith('data:') ||
-    lower.startsWith('file:') ||
-    lower.startsWith('ftp:')
+    normalized.startsWith('mailto:') ||
+    normalized.startsWith('javascript:') ||
+    normalized.startsWith('data:') ||
+    normalized.startsWith('file:') ||
+    normalized.startsWith('ftp:')
   );
 }
 
