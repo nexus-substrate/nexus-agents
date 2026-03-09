@@ -85,6 +85,7 @@ export type {
   RoleProfile,
   ErrorCluster,
   DurationOutlier,
+  TriageSummary,
 } from './dispatch-insights.js';
 export {
   WorkerCheckpointStore,

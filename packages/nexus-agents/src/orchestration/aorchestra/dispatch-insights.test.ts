@@ -32,6 +32,8 @@ describe('analyzeDispatch', () => {
     expect(insights.errorClusters).toEqual([]);
     expect(insights.durationOutliers).toEqual([]);
     expect(insights.dominantErrorType).toBeUndefined();
+    expect(insights.triage.retriedCount).toBe(0);
+    expect(insights.triage.retrySuccesses).toBe(0);
   });
 
   it('computes overall success rate correctly', () => {
@@ -171,5 +173,49 @@ describe('analyzeDispatch', () => {
     // Median of [100, 120, 800] = 120. 800/120 ≈ 6.67 > 2.0 threshold
     expect(insights.durationOutliers).toHaveLength(1);
     expect(insights.durationOutliers[0]?.role).toBe('testing');
+  });
+
+  // ---- Triage Summary (#1506) ----
+
+  it('counts retried workers and their successes', () => {
+    const results: WorkerResult[] = [
+      makeResult('code', 'success', 100, { wasRetried: true }),
+      makeResult('security', 'error', 50, {
+        wasRetried: true,
+        error: 'fail',
+        errorType: 'timeout',
+        triageAction: 'extend_timeout',
+      }),
+      makeResult('testing', 'success', 200),
+    ];
+    const insights = analyzeDispatch(results);
+    expect(insights.triage.retriedCount).toBe(2);
+    expect(insights.triage.retrySuccesses).toBe(1);
+  });
+
+  it('tracks triage action breakdown', () => {
+    const results: WorkerResult[] = [
+      makeResult('a', 'error', 10, { error: 'fail', errorType: 'timeout', triageAction: 'abort' }),
+      makeResult('b', 'error', 20, {
+        error: 'fail',
+        errorType: 'rate_limit',
+        triageAction: 'retry_different_cli',
+      }),
+      makeResult('c', 'error', 30, { error: 'fail', errorType: 'timeout', triageAction: 'abort' }),
+    ];
+    const insights = analyzeDispatch(results);
+    expect(insights.triage.actionCounts.get('abort')).toBe(2);
+    expect(insights.triage.actionCounts.get('retry_different_cli')).toBe(1);
+  });
+
+  it('returns zero triage counts when no triage metadata present', () => {
+    const results: WorkerResult[] = [
+      makeResult('code', 'success', 100),
+      makeResult('testing', 'success', 200),
+    ];
+    const insights = analyzeDispatch(results);
+    expect(insights.triage.retriedCount).toBe(0);
+    expect(insights.triage.retrySuccesses).toBe(0);
+    expect(insights.triage.actionCounts.size).toBe(0);
   });
 });

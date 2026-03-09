@@ -13,6 +13,7 @@
  */
 
 import type { WorkerResult, WorkerErrorType } from './worker-dispatcher.js';
+import type { TriageAction } from './worker-triage.js';
 
 // ============================================================================
 // Types
@@ -43,6 +44,16 @@ export interface DurationOutlier {
   readonly ratio: number;
 }
 
+/** Triage summary for a dispatch execution (#1506). */
+export interface TriageSummary {
+  /** Number of workers that were retried via triage. */
+  readonly retriedCount: number;
+  /** Number of retried workers that succeeded. */
+  readonly retrySuccesses: number;
+  /** Breakdown by triage action. */
+  readonly actionCounts: ReadonlyMap<TriageAction, number>;
+}
+
 /** Structured insights from a dispatch execution. */
 export interface DispatchInsights {
   readonly roleProfiles: readonly RoleProfile[];
@@ -51,6 +62,8 @@ export interface DispatchInsights {
   readonly overallSuccessRate: number;
   readonly totalWorkers: number;
   readonly dominantErrorType: WorkerErrorType | undefined;
+  /** Triage statistics for this dispatch (#1506). */
+  readonly triage: TriageSummary;
 }
 
 // ============================================================================
@@ -137,6 +150,26 @@ function findDurationOutliers(results: readonly WorkerResult[]): DurationOutlier
 // Public API
 // ============================================================================
 
+/** Build triage summary from worker results (#1506). */
+function buildTriageSummary(results: readonly WorkerResult[]): TriageSummary {
+  const actionCounts = new Map<TriageAction, number>();
+  let retriedCount = 0;
+  let retrySuccesses = 0;
+
+  for (const r of results) {
+    if (r.triageAction !== undefined) {
+      const current = actionCounts.get(r.triageAction) ?? 0;
+      actionCounts.set(r.triageAction, current + 1);
+    }
+    if (r.wasRetried === true) {
+      retriedCount++;
+      if (r.status === 'success') retrySuccesses++;
+    }
+  }
+
+  return { retriedCount, retrySuccesses, actionCounts };
+}
+
 /**
  * Analyze dispatch results and produce structured insights.
  *
@@ -149,6 +182,7 @@ export function analyzeDispatch(results: readonly WorkerResult[]): DispatchInsig
   const roleProfiles = buildRoleProfiles(nonSkipped);
   const errorClusters = buildErrorClusters(nonSkipped);
   const durationOutliers = findDurationOutliers(nonSkipped);
+  const triage = buildTriageSummary(nonSkipped);
 
   return {
     roleProfiles,
@@ -157,5 +191,6 @@ export function analyzeDispatch(results: readonly WorkerResult[]): DispatchInsig
     overallSuccessRate: nonSkipped.length > 0 ? successCount / nonSkipped.length : 0,
     totalWorkers: nonSkipped.length,
     dominantErrorType: errorClusters.length > 0 ? errorClusters[0]?.errorType : undefined,
+    triage,
   };
 }
