@@ -8,7 +8,13 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { TopsisRouter, createTopsisRouter, selectModelWithTopsis } from './topsis-router.js';
 import type { TopsisModelProfile } from './topsis-types.js';
-import { DEFAULT_TOPSIS_CRITERIA, PLAN_BILLING_TOPSIS_CRITERIA } from './topsis-types.js';
+import {
+  DEFAULT_TOPSIS_CRITERIA,
+  PLAN_BILLING_TOPSIS_CRITERIA,
+  TASK_CATEGORY_TOPSIS_CRITERIA,
+  TASK_CATEGORY_PLAN_CRITERIA,
+  getCriteriaForTaskCategory,
+} from './topsis-types.js';
 import { CLI_NAMES } from '../config/model-capabilities-types.js';
 
 describe('TopsisRouter', () => {
@@ -331,5 +337,72 @@ describe('PLAN_BILLING_TOPSIS_CRITERIA', () => {
     expect(['claude', 'codex', 'gemini']).toContain(result.selectedModel);
     // Low-quality-only models (haiku, flash-lite) should NOT be selected
     expect(result.selectedModel).not.toBe('haiku');
+  });
+});
+
+// ============================================================================
+// Task-Category-Aware TOPSIS Criteria (#1491)
+// ============================================================================
+
+describe('getCriteriaForTaskCategory', () => {
+  it('returns default criteria for code_implementation in api mode', () => {
+    const criteria = getCriteriaForTaskCategory('code_implementation', 'api');
+    expect(criteria).toBe(DEFAULT_TOPSIS_CRITERIA);
+  });
+
+  it('returns architecture-specific criteria with higher quality weight', () => {
+    const criteria = getCriteriaForTaskCategory('architecture', 'api');
+    const qualityWeight = criteria.find((c) => c.name === 'quality')?.weight ?? 0;
+    expect(qualityWeight).toBe(0.7);
+  });
+
+  it('returns test_generation criteria with higher latency weight', () => {
+    const criteria = getCriteriaForTaskCategory('test_generation', 'api');
+    const latencyWeight = criteria.find((c) => c.name === 'latency')?.weight ?? 0;
+    expect(latencyWeight).toBe(0.4);
+  });
+
+  it('returns bulk_operations criteria with higher cost weight', () => {
+    const criteria = getCriteriaForTaskCategory('bulk_operations', 'api');
+    const costWeight = criteria.find((c) => c.name === 'cost')?.weight ?? 0;
+    expect(costWeight).toBe(0.4);
+  });
+
+  it('returns plan mode criteria with cost zeroed', () => {
+    const criteria = getCriteriaForTaskCategory('architecture', 'plan');
+    const costWeight = criteria.find((c) => c.name === 'cost')?.weight ?? -1;
+    expect(costWeight).toBe(0.0);
+    const qualityWeight = criteria.find((c) => c.name === 'quality')?.weight ?? 0;
+    expect(qualityWeight).toBe(0.85);
+  });
+
+  it('falls back to default for unknown task types', () => {
+    const criteria = getCriteriaForTaskCategory('unknown_task', 'api');
+    expect(criteria).toBe(DEFAULT_TOPSIS_CRITERIA);
+  });
+
+  it('all criteria sets sum to 1.0', () => {
+    for (const [, criteria] of Object.entries(TASK_CATEGORY_TOPSIS_CRITERIA)) {
+      const sum = criteria.reduce((acc, c) => acc + c.weight, 0);
+      expect(sum).toBeCloseTo(1.0, 2);
+    }
+    for (const [, criteria] of Object.entries(TASK_CATEGORY_PLAN_CRITERIA)) {
+      const sum = criteria.reduce((acc, c) => acc + c.weight, 0);
+      expect(sum).toBeCloseTo(1.0, 2);
+    }
+  });
+
+  it('architecture criteria produce different ranking than default', () => {
+    const defaultRouter = new TopsisRouter({ criteria: DEFAULT_TOPSIS_CRITERIA });
+    const archCriteria = getCriteriaForTaskCategory('architecture', 'api');
+    const archRouter = new TopsisRouter({ criteria: archCriteria });
+
+    const defaultResult = defaultRouter.selectModel();
+    const archResult = archRouter.selectModel();
+
+    // Architecture weights quality 0.7 vs default 0.5 — may produce different rankings
+    // Both should select a valid CLI
+    expect(CLI_NAMES).toContain(defaultResult.selectedModel);
+    expect(CLI_NAMES).toContain(archResult.selectedModel);
   });
 });

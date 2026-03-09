@@ -12,7 +12,12 @@ import { getTimeProvider, type TaskProfile } from '../core/index.js';
 import type { CliName, CliTask, BudgetConstraint } from './types.js';
 import type { BanditContext } from './budget-router-types.js';
 import type { TopsisModelProfile, TopsisResult } from './topsis-types.js';
-import { DEFAULT_MODEL_PROFILES, PLAN_BILLING_TOPSIS_CRITERIA } from './topsis-types.js';
+import {
+  DEFAULT_MODEL_PROFILES,
+  DEFAULT_TOPSIS_CRITERIA,
+  PLAN_BILLING_TOPSIS_CRITERIA,
+  getCriteriaForTaskCategory,
+} from './topsis-types.js';
 import type { BillingMode } from '../mcp/tools/delegate-to-model-types.js';
 import type { BudgetRouter } from './budget-router.js';
 import { TopsisRouter } from './topsis-router.js';
@@ -181,10 +186,27 @@ export interface TopsisRankingResult {
  */
 export const TOPSIS_TOLERANCE_BAND_PERCENT = 0.05;
 
-/** Returns a TopsisRouter with plan billing criteria when in plan mode, or the original router. */
-function selectTopsisRouter(router: TopsisRouter, billingMode: BillingMode): TopsisRouter {
-  if (billingMode !== 'plan') return router;
-  return new TopsisRouter({ criteria: PLAN_BILLING_TOPSIS_CRITERIA });
+/** Returns a TopsisRouter with task-category-aware criteria (#1491).
+ * Only creates a new router when the criteria differ from the billing-mode default. */
+function selectTopsisRouter(
+  router: TopsisRouter,
+  billingMode: BillingMode,
+  taskType?: string
+): TopsisRouter {
+  if (taskType !== undefined) {
+    const mode = billingMode === 'plan' ? 'plan' : 'api';
+    const criteria = getCriteriaForTaskCategory(taskType, mode);
+    const defaultCriteria =
+      mode === 'plan' ? PLAN_BILLING_TOPSIS_CRITERIA : DEFAULT_TOPSIS_CRITERIA;
+    // Only create a new router when category criteria differ from default
+    if (criteria !== defaultCriteria) {
+      return new TopsisRouter({ criteria });
+    }
+  }
+  if (billingMode === 'plan') {
+    return new TopsisRouter({ criteria: PLAN_BILLING_TOPSIS_CRITERIA });
+  }
+  return router;
 }
 
 /** Max quality boost from stage scores: +15%. */
@@ -233,7 +255,7 @@ export function adjustProfileWithStageScores(
 
 /**
  * Applies TOPSIS ranking to candidate CLIs.
- * In plan billing mode, uses PLAN_BILLING_TOPSIS_CRITERIA (cost weight = 0).
+ * Uses task-category-aware criteria weights when taskProfile.taskType is available (#1491).
  * When stageScores are provided, adjusts quality profiles before evaluation. (#1354)
  */
 export function applyTopsisRanking(
@@ -247,7 +269,7 @@ export function applyTopsisRanking(
     return { ranking: candidates, topScore: 1.0 };
   }
 
-  const router = selectTopsisRouter(topsisRouter, billingMode);
+  const router = selectTopsisRouter(topsisRouter, billingMode, taskProfile.taskType);
   const profiles = DEFAULT_MODEL_PROFILES.filter((p) => candidates.includes(p.cliName));
   let adjustedProfiles = profiles.map((p) => adjustProfileForTask(p, taskProfile));
   if (stageScores !== undefined && stageScores.size > 0) {

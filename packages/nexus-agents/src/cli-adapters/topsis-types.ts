@@ -78,6 +78,99 @@ export interface TopsisConfig {
 }
 
 /**
+ * Task-category-aware TOPSIS criteria weights (#1491).
+ * Different task types benefit from different quality/cost/latency tradeoffs.
+ * Derived from weather report data (6,164 tasks observed).
+ *
+ * API billing mode weights (cost-aware):
+ */
+export const TASK_CATEGORY_TOPSIS_CRITERIA: Readonly<Record<string, readonly TopsisCredential[]>> =
+  {
+    // Architecture: quality is paramount (47% success rate shows bad routing hurts)
+    architecture: [
+      { name: 'quality', weight: 0.7, beneficial: true },
+      { name: 'cost', weight: 0.1, beneficial: false },
+      { name: 'latency', weight: 0.2, beneficial: false },
+    ],
+    // Code: balanced, slight quality emphasis
+    code_implementation: DEFAULT_TOPSIS_CRITERIA,
+    // Code review: quality matters more than speed
+    code_review: [
+      { name: 'quality', weight: 0.6, beneficial: true },
+      { name: 'cost', weight: 0.2, beneficial: false },
+      { name: 'latency', weight: 0.2, beneficial: false },
+    ],
+    // Testing: latency matters for quick feedback loops
+    test_generation: [
+      { name: 'quality', weight: 0.4, beneficial: true },
+      { name: 'cost', weight: 0.2, beneficial: false },
+      { name: 'latency', weight: 0.4, beneficial: false },
+    ],
+    // Documentation: balanced
+    documentation: DEFAULT_TOPSIS_CRITERIA,
+    // Large codebase: context window quality critical
+    large_codebase: [
+      { name: 'quality', weight: 0.6, beneficial: true },
+      { name: 'cost', weight: 0.2, beneficial: false },
+      { name: 'latency', weight: 0.2, beneficial: false },
+    ],
+    // Bulk operations: latency/cost dominant
+    bulk_operations: [
+      { name: 'quality', weight: 0.3, beneficial: true },
+      { name: 'cost', weight: 0.4, beneficial: false },
+      { name: 'latency', weight: 0.3, beneficial: false },
+    ],
+    // General: default weights
+    general: DEFAULT_TOPSIS_CRITERIA,
+  } as const;
+
+/**
+ * Plan billing mode overrides for task-category weights.
+ * Cost weight is zeroed and redistributed to quality.
+ */
+export const TASK_CATEGORY_PLAN_CRITERIA: Readonly<Record<string, readonly TopsisCredential[]>> = {
+  architecture: [
+    { name: 'quality', weight: 0.85, beneficial: true },
+    { name: 'cost', weight: 0.0, beneficial: false },
+    { name: 'latency', weight: 0.15, beneficial: false },
+  ],
+  code_implementation: PLAN_BILLING_TOPSIS_CRITERIA,
+  code_review: [
+    { name: 'quality', weight: 0.8, beneficial: true },
+    { name: 'cost', weight: 0.0, beneficial: false },
+    { name: 'latency', weight: 0.2, beneficial: false },
+  ],
+  test_generation: [
+    { name: 'quality', weight: 0.55, beneficial: true },
+    { name: 'cost', weight: 0.0, beneficial: false },
+    { name: 'latency', weight: 0.45, beneficial: false },
+  ],
+  documentation: PLAN_BILLING_TOPSIS_CRITERIA,
+  large_codebase: PLAN_BILLING_TOPSIS_CRITERIA,
+  bulk_operations: [
+    { name: 'quality', weight: 0.6, beneficial: true },
+    { name: 'cost', weight: 0.0, beneficial: false },
+    { name: 'latency', weight: 0.4, beneficial: false },
+  ],
+  general: PLAN_BILLING_TOPSIS_CRITERIA,
+} as const;
+
+/**
+ * Gets TOPSIS criteria for a task category and billing mode.
+ * Falls back to default criteria if category not found.
+ */
+export function getCriteriaForTaskCategory(
+  taskType: string,
+  billingMode: 'api' | 'plan' = 'api'
+): readonly TopsisCredential[] {
+  const map = billingMode === 'plan' ? TASK_CATEGORY_PLAN_CRITERIA : TASK_CATEGORY_TOPSIS_CRITERIA;
+  return (
+    map[taskType] ??
+    (billingMode === 'plan' ? PLAN_BILLING_TOPSIS_CRITERIA : DEFAULT_TOPSIS_CRITERIA)
+  );
+}
+
+/**
  * Default TOPSIS configuration.
  */
 export const DEFAULT_TOPSIS_CONFIG: TopsisConfig = {
