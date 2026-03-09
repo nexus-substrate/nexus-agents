@@ -97,6 +97,12 @@ describe('categorizeOutcomeError', () => {
     expect(categorizeOutcomeError(new Error('Validation failed for input'))).toBe('validation');
   });
 
+  it('returns validation for unknown workflow errors (#1507)', () => {
+    expect(
+      categorizeOutcomeError(new Error("Unknown workflow 'nonexistent'. Available: code-review"))
+    ).toBe('validation');
+  });
+
   it('returns unknown for generic Error instances', () => {
     expect(categorizeOutcomeError(new Error('Something broke'))).toBe('unknown');
   });
@@ -150,6 +156,16 @@ describe('categorizeOutcomeErrorMessage', () => {
 
   it('classifies zod validation messages', () => {
     expect(categorizeOutcomeErrorMessage('Zod parse error')).toBe('validation');
+  });
+
+  it('classifies unknown workflow/template messages as validation (#1507)', () => {
+    expect(
+      categorizeOutcomeErrorMessage("unknown workflow 'foo'. available: code-review, security")
+    ).toBe('validation');
+    expect(categorizeOutcomeErrorMessage("unknown template 'bar'")).toBe('validation');
+    expect(categorizeOutcomeErrorMessage('type not recognized')).toBe('validation');
+    // 'unknown model' should still classify as adapter_unavailable (higher priority)
+    expect(categorizeOutcomeErrorMessage('unknown model gpt-5')).toBe('adapter_unavailable');
   });
 
   it('returns unknown for unrecognized messages', () => {

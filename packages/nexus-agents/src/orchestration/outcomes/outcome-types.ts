@@ -145,7 +145,18 @@ const ADAPTER_PATTERNS = [
   'unknown model',
   'model does not exist',
 ];
-const VALIDATION_PATTERNS = ['validation', 'invalid input', 'parse error', 'zod', 'schema'];
+const VALIDATION_PATTERNS = [
+  'validation',
+  'invalid input',
+  'parse error',
+  'zod',
+  'schema',
+  'unknown workflow',
+  'unknown template',
+  'unknown type',
+  'not recognized',
+  'available:',
+];
 const PARSE_PATTERNS = [
   'json parse',
   'unexpected token',

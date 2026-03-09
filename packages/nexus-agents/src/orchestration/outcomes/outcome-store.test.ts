@@ -432,7 +432,7 @@ describe('OutcomeStore.reclassifyAll (#1444)', () => {
     expect(store2.reclassifyAll()).toBe(0);
   });
 
-  it('reclassifies unknown entries with no error message to execution (#1511)', () => {
+  it('reclassifies all unknown entries (#1511, #1507)', () => {
     const store2 = new OutcomeStore();
     (store2 as unknown as { entries: TaskOutcome[] }).entries.push({
       ...makeOutcome({ id: 'unk-1', success: false, failureCategory: 'unknown' }),
@@ -445,11 +445,22 @@ describe('OutcomeStore.reclassifyAll (#1444)', () => {
         errorMessage: 'some error',
       }),
     });
+    (store2 as unknown as { entries: TaskOutcome[] }).entries.push({
+      ...makeOutcome({
+        id: 'unk-3',
+        success: false,
+        failureCategory: 'unknown',
+        errorMessage: "Unknown workflow 'foo'. Available: code-review",
+      }),
+    });
 
     const count = store2.reclassifyAll();
 
-    expect(count).toBe(1); // Only unk-1 (no error message) gets reclassified
+    expect(count).toBe(2); // unk-1 (no message) + unk-3 (now matches validation)
     expect(store2.query().find((o) => o.id === 'unk-1')?.failureCategory).toBe('execution');
+    // 'some error' still doesn't match any pattern — stays unknown
     expect(store2.query().find((o) => o.id === 'unk-2')?.failureCategory).toBe('unknown');
+    // 'Unknown workflow' now matches validation pattern (#1507)
+    expect(store2.query().find((o) => o.id === 'unk-3')?.failureCategory).toBe('validation');
   });
 });
