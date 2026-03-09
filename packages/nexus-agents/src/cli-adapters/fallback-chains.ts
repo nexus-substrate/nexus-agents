@@ -75,19 +75,25 @@ export const FallbackChainRegistrySchema = z.object({
 });
 
 /**
- * Default fallback chains optimized for each task type.
+ * Default fallback chains derived from the task specialization matrix.
+ * Each chain orders CLIs by: primary → secondary → others.
  *
- * - code: Claude excels at code, Codex is specialized, Gemini as backup
- * - research: Claude for reasoning, Gemini for large context research
- * - documentation: Claude for writing, Gemini for large docs
- * - analysis: Claude for deep analysis, Gemini for breadth
+ * - code: Codex primary (92.4% code_gen), Claude secondary
+ * - research: Gemini primary (86.8% research), Claude secondary
+ * - documentation: Gemini primary (71.4% docs), Claude secondary
+ * - analysis: Claude primary (architecture/security/planning), Codex secondary
  * - general: Balanced fallback order
  */
 export const DEFAULT_FALLBACK_CHAINS: FallbackChainRegistry = {
-  code: ['claude', 'codex', 'opencode', 'gemini'],
-  research: ['claude', 'gemini', 'opencode', 'codex'],
-  documentation: ['claude', 'gemini', 'opencode', 'codex'],
-  analysis: ['claude', 'gemini', 'opencode', 'codex'],
+  // code_generation/code_review/testing: codex primary, claude secondary
+  code: ['codex', 'claude', 'gemini', 'opencode'],
+  // research/exploration: gemini primary, claude secondary
+  research: ['gemini', 'claude', 'codex', 'opencode'],
+  // documentation: gemini primary, claude secondary
+  documentation: ['gemini', 'claude', 'codex', 'opencode'],
+  // architecture/security/planning: claude primary, codex secondary
+  analysis: ['claude', 'codex', 'gemini', 'opencode'],
+  // general: balanced order
   general: ['claude', 'gemini', 'codex', 'opencode'],
 } as const;
 

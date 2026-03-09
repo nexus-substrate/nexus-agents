@@ -34,20 +34,20 @@ describe('fallback-chains', () => {
       expect(DEFAULT_FALLBACK_CHAINS.general).toBeDefined();
     });
 
-    it('should have claude first for code tasks', () => {
-      expect(DEFAULT_FALLBACK_CHAINS.code[0]).toBe('claude');
+    it('should have codex first for code tasks (#1486)', () => {
+      expect(DEFAULT_FALLBACK_CHAINS.code[0]).toBe('codex');
     });
 
-    it('should have codex second for code tasks', () => {
-      expect(DEFAULT_FALLBACK_CHAINS.code[1]).toBe('codex');
+    it('should have claude second for code tasks (#1486)', () => {
+      expect(DEFAULT_FALLBACK_CHAINS.code[1]).toBe('claude');
     });
 
-    it('should have claude first for research tasks', () => {
-      expect(DEFAULT_FALLBACK_CHAINS.research[0]).toBe('claude');
+    it('should have gemini first for research tasks (#1486)', () => {
+      expect(DEFAULT_FALLBACK_CHAINS.research[0]).toBe('gemini');
     });
 
-    it('should have gemini second for research tasks', () => {
-      expect(DEFAULT_FALLBACK_CHAINS.research[1]).toBe('gemini');
+    it('should have claude second for research tasks (#1486)', () => {
+      expect(DEFAULT_FALLBACK_CHAINS.research[1]).toBe('claude');
     });
 
     it('should include all three CLIs in each chain', () => {
