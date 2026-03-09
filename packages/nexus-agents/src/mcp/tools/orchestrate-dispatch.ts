@@ -18,6 +18,8 @@ import {
   dispatchWorkers,
   detectConflicts,
   analyzeDispatch,
+  WorkerCheckpointStore,
+  createCheckpoint,
   type WorkerResult,
   type WorkerConflict,
   type QualityGateFn,
@@ -212,6 +214,21 @@ function logDispatchInsights(results: readonly WorkerResult[], log: ILogger): vo
 }
 
 // ============================================================================
+// Internal: Worker Checkpoints (#1508)
+// ============================================================================
+
+/** Save checkpoints for failed workers so refinement can resume context. */
+function saveFailedCheckpoints(
+  results: readonly WorkerResult[],
+  store: WorkerCheckpointStore
+): void {
+  for (const r of results) {
+    if (r.status !== 'error') continue;
+    store.save(`${r.role}:${r.subTask}`, createCheckpoint(r.role, r.subTask, r.output));
+  }
+}
+
+// ============================================================================
 // Internal: Synthesis + Refinement Helpers
 // ============================================================================
 
@@ -221,6 +238,7 @@ interface DispatchPhaseState {
   totalModelCalls: number;
   synthesisValue?: string;
   synthSource?: SynthesisSource;
+  checkpoints: WorkerCheckpointStore;
 }
 
 /** Run opt-in synthesis if within call budget (#1321). */
@@ -278,9 +296,11 @@ async function runRefinementPhase(
     .slice(0, remaining);
   if (failedEntries.length === 0) return false;
 
+  const checkpointCount = state.checkpoints.size;
   options.logger.info('Refinement pass', {
     roles: failedEntries.map((e) => e.role),
     remaining,
+    checkpoints: checkpointCount,
   });
   const executor = createWorkerExecutor(
     options.taskDescription,
@@ -304,6 +324,29 @@ async function runRefinementPhase(
 // Public API
 // ============================================================================
 
+/** Enforce call budget and log dispatch start. Returns budget-limited entries. */
+function prepareBudgetedEntries(
+  plan: AgentPlan,
+  maxCalls: number,
+  log: ILogger
+): readonly AgentPlanEntry[] {
+  const entries = plan.entries.slice(0, maxCalls);
+  if (entries.length < plan.entries.length) {
+    log.warn('Worker call budget exceeded — limiting dispatch', {
+      planned: plan.entries.length,
+      budgeted: maxCalls,
+      dispatching: entries.length,
+    });
+  }
+  log.info('Starting worker dispatch', {
+    totalExperts: entries.length,
+    taskType: plan.taskType,
+    complexity: plan.complexity,
+    maxCalls,
+  });
+  return entries;
+}
+
 /** Execute worker dispatch for an agent plan. */
 export async function executeWorkerDispatch(
   options: WorkerDispatchExecutionOptions
@@ -311,23 +354,7 @@ export async function executeWorkerDispatch(
   const { agentPlan, taskDescription, modelAdapter, logger, maxConcurrency } = options;
   const maxCalls = resolveMaxWorkerCalls(options.maxWorkerCalls);
   const startMs = getTimeProvider().now();
-
-  // Enforce call budget: limit entries to maxCalls (#1321)
-  const entries = agentPlan.entries.slice(0, maxCalls);
-  if (entries.length < agentPlan.entries.length) {
-    logger.warn('Worker call budget exceeded — limiting dispatch', {
-      planned: agentPlan.entries.length,
-      budgeted: maxCalls,
-      dispatching: entries.length,
-    });
-  }
-
-  logger.info('Starting worker dispatch', {
-    totalExperts: entries.length,
-    taskType: agentPlan.taskType,
-    complexity: agentPlan.complexity,
-    maxCalls,
-  });
+  const entries = prepareBudgetedEntries(agentPlan, maxCalls, logger);
 
   // Quality gate: opt-in via qualityGate option (#1502). Pass DEFAULT_QUALITY_GATE to enable.
   const qualityGate = options.qualityGate === false ? undefined : options.qualityGate;
@@ -346,9 +373,13 @@ export async function executeWorkerDispatch(
     ...(qualityGate !== undefined ? { qualityGate } : {}),
   });
 
+  const checkpoints = new WorkerCheckpointStore();
+  saveFailedCheckpoints(results, checkpoints);
+
   const state: DispatchPhaseState = {
     results: [...results],
     totalModelCalls: results.filter((r) => r.status === 'success' || r.error !== undefined).length,
+    checkpoints,
   };
 
   await runSynthesisPhase(state, options, maxCalls);
