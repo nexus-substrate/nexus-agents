@@ -664,6 +664,29 @@ describe('dispatchWorkers', () => {
     expect(results).toHaveLength(1);
     expect(results[0]?.status).toBe('success');
   });
+
+  // ---- Quality gates (#1502) ----
+
+  it('applies quality gate to worker results', async () => {
+    const entries = [makeEntry('code', 1, 1), makeEntry('testing', 1, 2)];
+    const results = await dispatchWorkers(entries, {
+      executeWorker: mockExecute,
+      qualityGate: (result) => (result.output.includes('code') ? undefined : 'wrong output'),
+    });
+
+    expect(results).toHaveLength(2);
+    // 'code' worker output contains 'code' → passes gate
+    expect(results[0]?.status).toBe('success');
+    // 'testing' worker output contains 'testing' not 'code' → rejected
+    expect(results[1]?.status).toBe('error');
+    expect(results[1]?.error).toContain('Quality gate');
+  });
+
+  it('skips quality gate when not configured', async () => {
+    const entries = [makeEntry('code', 1, 1)];
+    const results = await dispatchWorkers(entries, { executeWorker: mockExecute });
+    expect(results[0]?.status).toBe('success');
+  });
 });
 
 // ============================================================================

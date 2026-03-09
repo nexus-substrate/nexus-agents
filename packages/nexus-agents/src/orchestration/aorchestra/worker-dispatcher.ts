@@ -17,6 +17,7 @@ import { getExpertTaskTimeout, WORKER_TIMEOUTS } from '../../config/timeouts.js'
 import { isRateLimitError } from '../../cli/voter-execution.js';
 import type { IEventBus } from '../../pipeline/event-types.js';
 import { withWatchdog } from './watchdog.js';
+import { applyQualityGate, type QualityGateFn } from './quality-gate.js';
 
 const logger = createLogger({ component: 'worker-dispatcher' });
 
@@ -108,6 +109,8 @@ export interface WorkerDispatchOptions {
   readonly consecutiveFailureThreshold?: number;
   /** Stagger delay (ms) between spawns within a wave (default: 500ms, #1501). */
   readonly staggerDelayMs?: number;
+  /** Optional quality gate applied to worker results before acceptance (#1502). */
+  readonly qualityGate?: QualityGateFn;
 }
 
 // ============================================================================
@@ -333,6 +336,7 @@ export async function dispatchWorkers(
       priorResults: allResults.length > 0 ? [...allResults] : undefined,
       failureTracker,
       staggerDelayMs,
+      qualityGate: options.qualityGate,
     });
     allResults.push(...waveResults);
 
@@ -355,6 +359,7 @@ interface ProcessWaveOptions {
   readonly priorResults: readonly WorkerResult[] | undefined;
   readonly failureTracker: RoleFailureTracker;
   readonly staggerDelayMs: number;
+  readonly qualityGate: QualityGateFn | undefined;
 }
 
 /** Create a task closure for a single worker within a wave. */
@@ -386,7 +391,17 @@ function createWorkerTask(
       await new Promise((resolve) => setTimeout(resolve, spacingDelay));
     }
     const timeoutMs = opts.options.workerTimeoutMs ?? getExpertTaskTimeout(entry.subTask);
-    return executeSafe(entry, opts.options.executeWorker, opts.priorResults, timeoutMs);
+    const result = await executeSafe(
+      entry,
+      opts.options.executeWorker,
+      opts.priorResults,
+      timeoutMs
+    );
+    // Apply quality gate if configured (#1502)
+    if (opts.qualityGate !== undefined) {
+      return applyQualityGate(result, opts.qualityGate);
+    }
+    return result;
   };
 }
 
