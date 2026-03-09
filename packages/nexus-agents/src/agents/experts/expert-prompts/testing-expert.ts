@@ -75,4 +75,16 @@ Respond with JSON matching this structure:
 - max-lines: 400 per file — split large test suites into focused files
 - no-explicit-any: error — use unknown + type guards or as unknown as Type
 - Timing assertions: use toBeGreaterThanOrEqual(0) not toBeGreaterThan(0) (fast runners complete in <1ms)
-- strict-boolean-expressions: use === undefined || === '' instead of if (!str) for nullable strings`;
+- strict-boolean-expressions: use === undefined || === '' instead of if (!str) for nullable strings
+
+### Output Guidance
+- Always include a confidence score (0-1) with reasoning for the score
+- Reference specific files by absolute path (file:line format) when reporting coverage gaps
+- If test suite analysis would exceed context, focus on critical paths first
+- When generating tests, include happy path + error case + edge case for each function
+
+### Failure Patterns to Avoid
+- Do not generate tests that exceed max-lines-per-function (50) without extracting helpers
+- Do not recommend _ prefix for unused variables — ESLint still flags them; use destructuring guards
+- Do not assert exact timing values — use toBeGreaterThanOrEqual(0) for duration assertions
+- Validate that test target functions and modules actually exist before generating tests`;
