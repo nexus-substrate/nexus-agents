@@ -105,7 +105,7 @@ describe('TASK_SPECIALIZATION_MATRIX', () => {
 describe('getSpecialization', () => {
   it('returns specialization for architecture', () => {
     const spec = getSpecialization('architecture');
-    expect(spec.primaryCli).toBe('claude');
+    expect(spec.primaryCli).toBe('gemini');
     expect(spec.category).toBe('architecture');
   });
 
@@ -134,7 +134,7 @@ describe('detectTaskCategory', () => {
     const match = detectTaskCategory('Design the system architecture for auth');
     expect(match).not.toBeNull();
     expect(match?.category).toBe('architecture');
-    expect(match?.primaryCli).toBe('claude');
+    expect(match?.primaryCli).toBe('gemini');
   });
 
   it('detects code_generation from task description', () => {

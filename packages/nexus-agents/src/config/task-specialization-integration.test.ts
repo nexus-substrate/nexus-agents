@@ -86,21 +86,21 @@ describe('calcSpecializationBonus', () => {
   it('returns full bonus for primary CLI match', () => {
     const match = detectTaskCategory('Design the system architecture');
     expect(match).not.toBeNull();
-    // architecture → claude primary, bonus=10
-    const bonus = calcSpecializationBonus('claude-opus', match);
+    // architecture → gemini primary, bonus=10 (weather data 2026-03-09)
+    const bonus = calcSpecializationBonus('gemini-pro', match);
     expect(bonus).toBe(10);
   });
 
   it('returns half bonus for secondary CLI match', () => {
     const match = detectTaskCategory('Design the system architecture');
-    // architecture → gemini secondary, bonus=10
-    const bonus = calcSpecializationBonus('gemini-pro', match);
+    // architecture → claude secondary, bonus=10
+    const bonus = calcSpecializationBonus('claude-opus', match);
     expect(bonus).toBe(5); // floor(10/2)
   });
 
   it('returns 0 for non-matching CLI', () => {
     const match = detectTaskCategory('Design the system architecture');
-    // architecture → claude primary, gemini secondary, codex neither
+    // architecture → gemini primary, claude secondary, codex neither
     const bonus = calcSpecializationBonus('codex-5.3', match);
     expect(bonus).toBe(0);
   });
@@ -130,13 +130,13 @@ describe('calcSpecializationBonus', () => {
 // ============================================================================
 
 describe('scoreModel with specialization', () => {
-  it('boosts claude for architecture tasks', () => {
+  it('boosts gemini for architecture tasks', () => {
     const match = detectTaskCategory('Architect the new payment system');
-    const opus = MODEL_CAPABILITIES['claude-opus']!;
+    const gemini = MODEL_CAPABILITIES['gemini-3-pro']!;
     const codex = MODEL_CAPABILITIES['codex-5.3']!;
     const req = makeReq();
 
-    const opusScore = scoreModel('claude-opus', opus, req, {
+    const geminiScore = scoreModel('gemini-3-pro', gemini, req, {
       billingMode: 'plan',
       specialization: match,
     });
@@ -145,8 +145,8 @@ describe('scoreModel with specialization', () => {
       specialization: match,
     });
 
-    // Claude should get full 10pt bonus, codex gets 0 (not primary/secondary)
-    expect(opusScore).toBeGreaterThan(codexScore);
+    // Gemini should get full 10pt bonus, codex gets 0 (not primary/secondary)
+    expect(geminiScore).toBeGreaterThan(codexScore);
   });
 
   it('boosts codex for code generation tasks', () => {
@@ -191,7 +191,7 @@ describe('buildReasons with specialization', () => {
     const match = detectTaskCategory('Architect the auth system');
     const reasons = buildReasons(makeReq(), undefined, 'api', match);
     expect(reasons.some((r) => r.includes('architecture'))).toBe(true);
-    expect(reasons.some((r) => r.includes('claude'))).toBe(true);
+    expect(reasons.some((r) => r.includes('gemini'))).toBe(true);
   });
 
   it('omits specialization when no match', () => {

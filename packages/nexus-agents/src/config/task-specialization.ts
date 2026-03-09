@@ -38,9 +38,10 @@ export {
 export const TASK_SPECIALIZATION_MATRIX: readonly TaskSpecialization[] = [
   {
     category: 'architecture',
-    primaryCli: 'claude',
-    secondaryCli: 'gemini',
-    reasoning: 'Claude excels at reasoning; Gemini secondary (67% vs codex 33%, n=24 vs 3)',
+    primaryCli: 'gemini',
+    secondaryCli: 'claude',
+    reasoning:
+      'Gemini primary (66.7%, n=24) for architecture. Claude secondary (43.6%, n=220). Weather data 2026-03-09.',
     keywords: ['architect', 'design', 'system design', 'trade-off', 'adr'],
     bonus: 10,
   },

@@ -111,7 +111,7 @@ describe('resolveAdapterForRole', () => {
       expect.objectContaining({
         role: 'architecture_expert',
         category: 'architecture',
-        preferredCli: 'claude',
+        preferredCli: 'gemini',
       })
     );
   });

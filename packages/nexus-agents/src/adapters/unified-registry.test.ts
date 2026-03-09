@@ -84,9 +84,9 @@ describe('UnifiedAdapterRegistry', () => {
       }
     });
 
-    it('should route architecture to claude', () => {
+    it('should route architecture to gemini', () => {
       const routing = registry.getRouting('architecture');
-      expect(routing?.primaryCli).toBe('claude');
+      expect(routing?.primaryCli).toBe('gemini');
     });
 
     it('should route code_generation to codex', () => {
@@ -116,7 +116,7 @@ describe('UnifiedAdapterRegistry', () => {
 
     it('should return different adapters for different CLIs', () => {
       const codeAdapter = registry.getAdapter('code_generation'); // codex
-      const archAdapter = registry.getAdapter('architecture'); // claude
+      const archAdapter = registry.getAdapter('architecture'); // gemini
       expect(codeAdapter).not.toBe(archAdapter);
     });
   });
@@ -195,10 +195,10 @@ describe('UnifiedAdapterRegistry', () => {
       expect(snapshot.cachedAdapters).toContain('codex');
     });
 
-    it('should route architecture_expert to claude', () => {
+    it('should route architecture_expert to gemini', () => {
       registry.getAdapterForRole('architecture_expert');
       const snapshot = registry.getSnapshot();
-      expect(snapshot.cachedAdapters).toContain('claude');
+      expect(snapshot.cachedAdapters).toContain('gemini');
     });
 
     it('should route research_expert to gemini', () => {

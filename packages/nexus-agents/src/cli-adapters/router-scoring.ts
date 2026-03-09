@@ -18,7 +18,7 @@ type TaskType = TaskTypeCategory;
  * Maps task types to CLI preferences (0-1 scale).
  */
 export const CAPABILITY_MATRIX: Record<TaskType, Record<CliName, number>> = {
-  architecture: { claude: 1.0, gemini: 0.6, codex: 0.5, opencode: 0.6 },
+  architecture: { claude: 0.7, gemini: 1.0, codex: 0.5, opencode: 0.6 },
   large_codebase: { claude: 0.6, gemini: 1.0, codex: 0.5, opencode: 0.7 },
   code_implementation: { claude: 0.8, gemini: 0.5, codex: 1.0, opencode: 0.7 },
   test_generation: { claude: 0.5, gemini: 0.4, codex: 1.0, opencode: 0.6 },

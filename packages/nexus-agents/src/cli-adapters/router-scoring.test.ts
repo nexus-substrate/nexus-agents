@@ -51,7 +51,7 @@ describe('router-scoring', () => {
     });
 
     it('assigns optimal CLI per task type', () => {
-      expect(CAPABILITY_MATRIX.architecture.claude).toBe(1.0);
+      expect(CAPABILITY_MATRIX.architecture.gemini).toBe(1.0);
       expect(CAPABILITY_MATRIX.large_codebase.gemini).toBe(1.0);
       expect(CAPABILITY_MATRIX.code_implementation.codex).toBe(1.0);
       expect(CAPABILITY_MATRIX.test_generation.codex).toBe(1.0);
@@ -97,7 +97,7 @@ describe('router-scoring', () => {
 
   describe('getTypePreference', () => {
     it('returns correct preference from matrix', () => {
-      expect(getTypePreference('architecture', 'claude')).toBe(1.0);
+      expect(getTypePreference('architecture', 'gemini')).toBe(1.0);
       expect(getTypePreference('large_codebase', 'gemini')).toBe(1.0);
       expect(getTypePreference('code_implementation', 'codex')).toBe(1.0);
     });
@@ -121,7 +121,8 @@ describe('router-scoring', () => {
 
     it('multiplies preference by weight and pushes reason when > 0.5', () => {
       const reasons: string[] = [];
-      const score = scoreTaskType(baseProfile, 'claude', reasons);
+      // architecture → gemini=1.0 (primary), claude=0.7 (secondary)
+      const score = scoreTaskType(baseProfile, 'gemini', reasons);
       expect(score).toBe(1.0 * SCORING_WEIGHTS.taskType);
       expect(reasons).toContain('Preferred for architecture');
     });

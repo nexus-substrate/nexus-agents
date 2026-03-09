@@ -38,11 +38,11 @@ describe('warm-up', () => {
       }
     });
 
-    it('should give highest reward to CLI with most primary assignments', () => {
+    it('should give highest reward to CLI with most primary+secondary assignments', () => {
       const priors = generateSyntheticPriors();
-      // claude is primary for architecture, security_review, planning, devops (4)
-      // codex is primary for code_generation, code_review, testing (3)
-      // gemini is primary for research, documentation, exploration (3)
+      // claude: 3 primary + 6 secondary + 1 other → 0.65 (highest due to broad secondary coverage)
+      // gemini: 4 primary + 1 secondary + 5 other → 0.575
+      // codex: 3 primary + 3 secondary + 4 other → 0.575
       const claude = priors.get('claude') ?? 0;
       const codex = priors.get('codex') ?? 0;
       const gemini = priors.get('gemini') ?? 0;
@@ -52,10 +52,10 @@ describe('warm-up', () => {
 
     it('should distinguish primary from secondary reward levels', () => {
       const priors = generateSyntheticPriors();
-      // Claude: 4 primary (0.85) + 5 secondary (0.6) + 1 other (0.35)
-      // Expected: (4*0.85 + 5*0.6 + 1*0.35) / 10 = 0.675
+      // Claude: 3 primary (0.85) + 6 secondary (0.6) + 1 other (0.35)
+      // Expected: (3*0.85 + 6*0.6 + 1*0.35) / 10 = 0.65
       const claude = priors.get('claude') ?? 0;
-      expect(claude).toBeCloseTo(0.675, 2);
+      expect(claude).toBeCloseTo(0.65, 2);
     });
 
     it('should return consistent results on repeated calls', () => {
