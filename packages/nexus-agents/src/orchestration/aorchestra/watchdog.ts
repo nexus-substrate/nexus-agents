@@ -73,8 +73,9 @@ export async function withWatchdog<T>(
 
   const taskPromise = task();
 
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
   const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => {
+    timeoutHandle = setTimeout(() => {
       entry.state = 'terminated';
       logger.warn('Worker terminated by watchdog', {
         role,
@@ -108,5 +109,6 @@ export async function withWatchdog<T>(
     return await Promise.race([taskPromise, timeoutPromise]);
   } finally {
     clearInterval(watchdogTimer);
+    if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
   }
 }

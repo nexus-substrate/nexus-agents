@@ -84,9 +84,13 @@ describe('watchdog', () => {
         () => new Promise<string>(() => {}) // never resolves
       );
 
-      await vi.advanceTimersByTimeAsync(150);
+      // Advance past timeout threshold, then await rejection
+      vi.advanceTimersByTime(150);
 
       await expect(neverResolve).rejects.toThrow('Worker timeout after 100ms');
+
+      // Drain remaining timers (watchdog interval cleanup)
+      vi.clearAllTimers();
     });
 
     it('propagates task errors', async () => {
