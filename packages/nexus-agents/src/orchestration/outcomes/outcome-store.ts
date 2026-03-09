@@ -196,7 +196,10 @@ function buildPredicates(filter: OutcomeQuery): Array<(o: TaskOutcome) => boolea
   if (filter.failureCategory !== undefined) {
     preds.push((o) => o.failureCategory === filter.failureCategory);
   }
-  if (filter.since !== undefined) preds.push((o) => o.timestamp >= filter.since);
+  if (filter.since !== undefined) {
+    const since = filter.since;
+    preds.push((o) => o.timestamp >= since);
+  }
   return preds;
 }
 
