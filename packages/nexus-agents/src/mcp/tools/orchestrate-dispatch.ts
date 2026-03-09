@@ -303,7 +303,10 @@ async function runSynthesisPhase(
     taskDescription: options.taskDescription,
     modelAdapter: options.modelAdapter,
   });
-  state.totalModelCalls++;
+  // Only count LLM calls toward budget — deterministic merge is free
+  if (synthResult.ok && synthResult.synthesisSource !== 'deterministic') {
+    state.totalModelCalls++;
+  }
   if (!synthResult.ok) {
     options.logger.warn('Synthesis failed', { error: synthResult.error });
     return;
@@ -311,6 +314,7 @@ async function runSynthesisPhase(
   state.synthesisValue = synthResult.value;
   if (synthResult.synthesisSource !== undefined) {
     state.synthSource = synthResult.synthesisSource;
+    options.logger.info('Synthesis complete', { tier: synthResult.synthesisSource });
   }
 }
 
