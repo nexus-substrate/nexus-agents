@@ -31,13 +31,24 @@ function makeConflict(filePath: string, workers: string[]): WorkerConflict {
   return { filePath, workers };
 }
 
-function makeMockAdapter(response: string): IModelAdapter {
+function makeMockAdapter(responseOrFactory: string | (() => ContentBlock)): IModelAdapter {
+  if (typeof responseOrFactory === 'function') {
+    return {
+      complete: vi.fn().mockImplementation(
+        (): Promise<{ ok: true; value: { content: ContentBlock[] } }> =>
+          Promise.resolve({
+            ok: true as const,
+            value: { content: [responseOrFactory()] },
+          })
+      ),
+    } as unknown as IModelAdapter;
+  }
   return {
     complete: vi.fn().mockImplementation(
       (): Promise<{ ok: true; value: { content: ContentBlock[] } }> =>
         Promise.resolve({
           ok: true as const,
-          value: { content: [{ type: 'text' as const, text: response }] },
+          value: { content: [{ type: 'text' as const, text: responseOrFactory }] },
         })
     ),
   } as unknown as IModelAdapter;
@@ -573,5 +584,50 @@ describe('synthesizeResults', () => {
       expect(result.value).toContain('Fixed bug.');
       expect(result.value).toContain('Done.');
     }
+  });
+
+  it('escalates to reimagine when synthesis output is suspiciously short (#1507)', async () => {
+    // First call returns a suspiciously short synthesis (< 10% of input)
+    // Second call (reimagine) returns a proper reconstruction
+    const shortSynthesis = 'See above.';
+    const reimaginedOutput =
+      'Here is the complete merged implementation with all worker contributions integrated properly. The code worker implemented the feature in src/app.ts while the testing worker added comprehensive test coverage in src/app.test.ts.';
+    let callCount = 0;
+    const adapter = makeMockAdapter(() => {
+      callCount++;
+      const text = callCount === 1 ? shortSynthesis : reimaginedOutput;
+      return { type: 'text' as const, text };
+    });
+
+    const longOutput = 'A'.repeat(500);
+    const result = await synthesizeResults({
+      results: [makeResult('code', longOutput), makeResult('testing', longOutput)],
+      conflicts: [makeConflict('src/app.ts', ['code', 'testing'])],
+      taskDescription: 'Implement feature with tests',
+      modelAdapter: adapter,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toBe(reimaginedOutput);
+    expect(result.synthesisSource).toBe('reimagine');
+    expect(callCount).toBe(2);
+  });
+
+  it('uses fallback when reimagine also fails (#1507)', async () => {
+    const shortOutput = 'Ok.';
+    const adapter = makeMockAdapter(() => ({ type: 'text' as const, text: shortOutput }));
+
+    const result = await synthesizeResults({
+      results: [makeResult('code', 'A'.repeat(500)), makeResult('testing', 'B'.repeat(500))],
+      conflicts: [makeConflict('src/app.ts', ['code', 'testing'])],
+      taskDescription: 'Implement feature',
+      modelAdapter: adapter,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // After reimagine also returns short output, falls back to concatenation
+    expect(result.synthesisSource).toBe('fallback');
   });
 });

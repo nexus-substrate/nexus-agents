@@ -52,7 +52,7 @@ export interface SynthesizeResultsInput {
 }
 
 /** Source of synthesis output. */
-export type SynthesisSource = 'llm' | 'fallback' | 'deterministic';
+export type SynthesisSource = 'llm' | 'fallback' | 'deterministic' | 'reimagine';
 
 /** Successful synthesis result. */
 interface SynthesisSuccess {
@@ -242,52 +242,110 @@ function buildDeterministicMerge(results: readonly WorkerResult[]): string {
 // Public API
 // ============================================================================
 
-/** Tier 2: LLM-assisted synthesis with fallback (#1507). */
+/** Minimum ratio of synthesis output to worker input for quality check. */
+const SYNTHESIS_QUALITY_MIN_RATIO = 0.1;
+
+/** Extract text from LLM response content blocks. */
+function extractTextFromBlocks(blocks: readonly ContentBlock[]): string {
+  const textBlocks = blocks.filter(
+    (b: ContentBlock): b is ContentBlock & { type: 'text' } => b.type === 'text'
+  );
+  return textBlocks.map((b) => b.text).join('\n');
+}
+
+/** Check if synthesis output is suspiciously short relative to input. */
+function isSynthesisLowQuality(synthesisText: string, inputLength: number): boolean {
+  if (inputLength === 0) return false;
+  return synthesisText.length < inputLength * SYNTHESIS_QUALITY_MIN_RATIO;
+}
+
+/** Call LLM and return text or null on failure. Non-null may be empty string. */
+async function callLlm(adapter: IModelAdapter, prompt: string): Promise<string | null> {
+  try {
+    const response = await adapter.complete({
+      messages: [{ role: 'user', content: prompt }],
+      maxTokens: SYNTHESIS_MAX_TOKENS,
+    });
+    if (!response.ok) return null;
+    return extractTextFromBlocks(response.value.content);
+  } catch {
+    return null;
+  }
+}
+
+/** Build a reimagine prompt — stronger directive to reconstruct from scratch. */
+function buildReimaginePr(input: SynthesisPromptInput): string {
+  const base = buildSynthesisPrompt(input);
+  return [
+    base,
+    '',
+    '## IMPORTANT: Previous synthesis attempt was inadequate.',
+    'The previous merge attempt produced an insufficient response.',
+    'You MUST produce a comprehensive, detailed synthesis that:',
+    '- Integrates ALL substantive content from every worker',
+    '- Preserves code snippets, file paths, and technical details',
+    '- Clearly attributes contributions to source workers',
+    '- Is proportional in length to the combined worker outputs',
+  ].join('\n');
+}
+
+/** Tier 2: LLM-assisted synthesis with Tier 3 reimagine escalation (#1507). */
 async function synthesizeViaLlm(
   input: SynthesizeResultsInput,
   excludedWorkerCount: number
 ): Promise<SynthesisResult> {
   const { results, conflicts, taskDescription, modelAdapter } = input;
+  const successResults = results.filter((r) => r.status === 'success' && r.output !== '');
+  const inputLength = successResults.reduce((sum, r) => sum + r.output.length, 0);
   const prompt = buildSynthesisPrompt({ results, conflicts, taskDescription });
 
-  try {
-    const response = await modelAdapter.complete({
-      messages: [{ role: 'user', content: prompt }],
-      maxTokens: SYNTHESIS_MAX_TOKENS,
-    });
-
-    if (!response.ok) {
-      logger.warn('Synthesis LLM call failed, using fallback', {
-        error: response.error.message,
-      });
-      return {
-        ok: true,
-        value: buildFallbackResponse(results, conflicts),
-        synthesisSource: 'fallback',
-        excludedWorkerCount,
-      };
-    }
-
-    const textBlocks = response.value.content.filter(
-      (b: ContentBlock): b is ContentBlock & { type: 'text' } => b.type === 'text'
-    );
-
-    const text =
-      textBlocks.length === 0
-        ? results.map((r) => r.output).join('\n')
-        : textBlocks.map((b) => b.text).join('\n');
-
-    return { ok: true, value: text, synthesisSource: 'llm', excludedWorkerCount };
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.warn('Synthesis threw exception, using fallback', { error: message });
-    return {
-      ok: true,
-      value: buildFallbackResponse(results, conflicts),
-      synthesisSource: 'fallback',
-      excludedWorkerCount,
-    };
+  // Tier 2: LLM synthesis
+  const tier2Text = await callLlm(modelAdapter, prompt);
+  if (tier2Text === null) {
+    logger.warn('Synthesis LLM call failed, using fallback');
+    return mkFallback(results, conflicts, excludedWorkerCount);
   }
+
+  // If LLM returned no text (e.g., only tool_use blocks), use raw worker outputs
+  if (tier2Text === '') {
+    const raw = successResults.map((r) => r.output).join('\n');
+    return { ok: true, value: raw, synthesisSource: 'llm', excludedWorkerCount };
+  }
+
+  // Quality gate: check if synthesis is adequate
+  if (!isSynthesisLowQuality(tier2Text, inputLength)) {
+    return { ok: true, value: tier2Text, synthesisSource: 'llm', excludedWorkerCount };
+  }
+
+  // Tier 3: reimagine — re-prompt with stronger directive (#1507)
+  logger.info('Synthesis output suspiciously short, escalating to reimagine', {
+    synthesisLength: tier2Text.length,
+    inputLength,
+  });
+  const reimaginePrompt = buildReimaginePr({ results, conflicts, taskDescription });
+  const tier3Text = await callLlm(modelAdapter, reimaginePrompt);
+
+  if (tier3Text !== null && !isSynthesisLowQuality(tier3Text, inputLength)) {
+    return { ok: true, value: tier3Text, synthesisSource: 'reimagine', excludedWorkerCount };
+  }
+
+  // Reimagine also inadequate — fall back to concatenation
+  logger.warn('Reimagine also produced low-quality output, using fallback');
+  return mkFallback(results, conflicts, excludedWorkerCount);
+}
+
+/** Build fallback synthesis result. */
+function mkFallback(
+  results: readonly WorkerResult[],
+  conflicts: readonly WorkerConflict[],
+  excludedWorkerCount: number
+): SynthesisResult {
+  return {
+    ok: true,
+    value: buildFallbackResponse(results, conflicts),
+    synthesisSource: 'fallback',
+    excludedWorkerCount,
+  };
 }
 
 /**
