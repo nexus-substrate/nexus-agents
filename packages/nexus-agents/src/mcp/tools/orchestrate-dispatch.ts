@@ -249,6 +249,13 @@ function logDispatchInsights(results: readonly WorkerResult[], log: ILogger): vo
       durationOutliers: insights.durationOutliers.length,
     });
   }
+  if (insights.triage.retriedCount > 0) {
+    log.info('Triage summary', {
+      retried: insights.triage.retriedCount,
+      retrySuccesses: insights.triage.retrySuccesses,
+      retryRate: Math.round((insights.triage.retrySuccesses / insights.triage.retriedCount) * 100),
+    });
+  }
 }
 
 // ============================================================================
