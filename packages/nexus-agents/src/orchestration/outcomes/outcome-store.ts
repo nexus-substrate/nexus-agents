@@ -123,10 +123,15 @@ export class OutcomeStore {
       if (entry.failureCategory === undefined) {
         this.entries[i] = autoClassify(entry);
         count++;
-      } else if (entry.failureCategory === 'unknown' || entry.failureCategory === 'execution') {
-        // Re-run classification with updated patterns (#1507, #1530)
-        // Also reclassifies 'execution' entries since pattern ownership changed:
-        // HTTP 5xx → connection, empty response → parse (#1530).
+      } else if (
+        entry.failureCategory === 'unknown' ||
+        entry.failureCategory === 'execution' ||
+        entry.failureCategory === 'generic'
+      ) {
+        // Re-run classification with updated patterns (#1507, #1530, #1401)
+        // Reclassifies execution/generic/unknown entries since pattern ownership changed:
+        // HTTP 5xx → connection, empty response → parse (#1530),
+        // "service unavailable" → connection, exit code patterns → specific categories.
         const newCategory = hasErrorMessage(entry)
           ? categorizeOutcomeErrorMessage(entry.errorMessage as string)
           : 'execution';

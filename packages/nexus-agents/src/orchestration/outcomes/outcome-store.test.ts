@@ -513,6 +513,43 @@ describe('OutcomeStore.reclassifyAll (#1444)', () => {
     expect(store2.query().find((o) => o.id === 'exec-empty')?.failureCategory).toBe('parse');
     expect(store2.query().find((o) => o.id === 'exec-real')?.failureCategory).toBe('execution');
   });
+
+  it('reclassifies generic entries to more specific categories (#1401)', () => {
+    const store2 = new OutcomeStore();
+    const entries = store2 as unknown as { entries: TaskOutcome[] };
+    entries.entries.push({
+      ...makeOutcome({
+        id: 'gen-conn',
+        success: false,
+        failureCategory: 'generic',
+        errorMessage: 'error: service unavailable',
+      }),
+    });
+    entries.entries.push({
+      ...makeOutcome({
+        id: 'gen-timeout',
+        success: false,
+        failureCategory: 'generic',
+        errorMessage: 'failure: request timed out after 60s',
+      }),
+    });
+    entries.entries.push({
+      ...makeOutcome({
+        id: 'gen-real',
+        success: false,
+        failureCategory: 'generic',
+        errorMessage: 'error: not found',
+      }),
+    });
+
+    const count = store2.reclassifyAll();
+
+    // service unavailable → connection, timed out → timeout, not found stays generic
+    expect(count).toBe(2);
+    expect(store2.query().find((o) => o.id === 'gen-conn')?.failureCategory).toBe('connection');
+    expect(store2.query().find((o) => o.id === 'gen-timeout')?.failureCategory).toBe('timeout');
+    expect(store2.query().find((o) => o.id === 'gen-real')?.failureCategory).toBe('generic');
+  });
 });
 
 describe('OutcomeStore.purgeSkippedWorkers (#1528)', () => {
