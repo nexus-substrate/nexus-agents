@@ -38,6 +38,25 @@ function isRateLimitOutput(stdout: string): boolean {
   return RATE_LIMIT_PATTERNS.some((pattern) => lower.includes(pattern));
 }
 
+/** Minimum length for plaintext fallback to kick in. */
+const PLAINTEXT_FALLBACK_MIN_LENGTH = 100;
+
+/**
+ * Attempts to extract a usable response from raw stdout when the structured
+ * parser fails. Returns the trimmed text if it looks like natural language
+ * (not JSON/NDJSON) and exceeds the minimum length threshold.
+ *
+ * Recovers responses from CLIs that output plaintext instead of their
+ * expected structured format. (#1401)
+ */
+function tryPlaintextFallback(stdout: string): string | null {
+  const trimmed = stdout.trim();
+  if (trimmed.length < PLAINTEXT_FALLBACK_MIN_LENGTH) return null;
+  // Skip if it looks like structured output the parser should handle
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) return null;
+  return trimmed;
+}
+
 /** Error patterns in stderr that indicate a real failure, not debug output (#1402). */
 const STDERR_ERROR_PATTERNS = [
   'error:',
@@ -341,8 +360,18 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
         const snippet = stdout.slice(0, 500).trim();
         return err(this.createError('RATE_LIMITED', snippet));
       }
+      // Plaintext fallback: recover responses from CLIs outputting unstructured text (#1401)
+      const plaintext = tryPlaintextFallback(stdout);
+      if (plaintext !== null) {
+        subprocessLogger.debug('Using plaintext fallback for unparseable output');
+        return ok(
+          this.normalizeResponse(plaintext, undefined, {
+            durationMs: getTimeProvider().now() - startTime,
+            raw: stdout,
+          })
+        );
+      }
       const snippet = stdout.slice(0, 500).trim();
-      // Include stderr context in diagnostics when present (#1402)
       const stderrHint = stderr !== '' ? ` [stderr: ${stderr.slice(0, 300).trim()}]` : '';
       return err(
         this.createError('PARSE_ERROR', `Failed to parse response: ${snippet}${stderrHint}`)

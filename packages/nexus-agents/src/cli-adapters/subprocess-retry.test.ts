@@ -111,6 +111,47 @@ class RetryAdapter extends SubprocessCliAdapter {
   }
 }
 
+/** Test adapter with a parser that only accepts JSON — rejects plaintext. */
+class StrictJsonAdapter extends SubprocessCliAdapter {
+  override readonly name: CliName = 'claude';
+  protected override readonly transientRetry: TransientRetryConfig = { enabled: false };
+  protected readonly parser: ICliResponseParser = {
+    name: 'strict-json-parser',
+    supportedVersionRange: '>=1.0.0',
+    parse: (raw: string) => {
+      try {
+        return JSON.parse(raw) as unknown;
+      } catch {
+        return null;
+      }
+    },
+    extractResponse: (output: string) => {
+      try {
+        const parsed = JSON.parse(output) as Record<string, unknown>;
+        return typeof parsed['result'] === 'string' ? parsed['result'] : null;
+      } catch {
+        return null;
+      }
+    },
+    extractUsage: () => null,
+    extractSessionId: () => null,
+  };
+  protected getCommand(_task: CliTask): CommandConfig {
+    return { command: 'echo', args: [] };
+  }
+  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+  getModelInfo() {
+    return {
+      id: 'test-model',
+      name: 'Test',
+      contextWindow: 100_000,
+      maxOutput: 10_000,
+      costPerMillionInput: 1,
+      costPerMillionOutput: 2,
+    };
+  }
+}
+
 const DEFAULT_OPTS: Required<ExecutionOptions> = {
   timeoutMs: 5000,
   allowRetry: true,
@@ -505,6 +546,74 @@ describe('SubprocessCliAdapter buffer capping', () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.value.text).toBe('small output');
+    }
+  });
+});
+
+describe('SubprocessCliAdapter plaintext fallback', () => {
+  beforeEach(() => {
+    mockSpawn.mockReset();
+  });
+
+  it('should recover plaintext response when JSON parser fails', async () => {
+    const adapter = new StrictJsonAdapter();
+    const task: CliTask = { content: 'test' };
+    const longText = 'This is a detailed analysis of the codebase. '.repeat(5);
+
+    const { mockChild, stdout } = createMockChildProcess();
+    mockSpawn.mockReturnValue(mockChild);
+
+    const promise = adapter.executeTask(task, DEFAULT_OPTS);
+    setImmediate(() => {
+      stdout.emit('data', Buffer.from(longText));
+      mockChild.emit('close', 0);
+    });
+
+    const result = await promise;
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.text).toBe(longText.trim());
+    }
+  });
+
+  it('should NOT use plaintext fallback for short output', async () => {
+    const adapter = new StrictJsonAdapter();
+    const task: CliTask = { content: 'test' };
+
+    const { mockChild, stdout } = createMockChildProcess();
+    mockSpawn.mockReturnValue(mockChild);
+
+    const promise = adapter.executeTask(task, DEFAULT_OPTS);
+    setImmediate(() => {
+      stdout.emit('data', Buffer.from('short'));
+      mockChild.emit('close', 0);
+    });
+
+    const result = await promise;
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('PARSE_ERROR');
+    }
+  });
+
+  it('should NOT use plaintext fallback for JSON-like output', async () => {
+    const adapter = new StrictJsonAdapter();
+    const task: CliTask = { content: 'test' };
+    const jsonish = '{"malformed": "json", "missing_result": true}';
+
+    const { mockChild, stdout } = createMockChildProcess();
+    mockSpawn.mockReturnValue(mockChild);
+
+    const promise = adapter.executeTask(task, DEFAULT_OPTS);
+    setImmediate(() => {
+      stdout.emit('data', Buffer.from(jsonish));
+      mockChild.emit('close', 0);
+    });
+
+    const result = await promise;
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('PARSE_ERROR');
     }
   });
 });
