@@ -144,6 +144,22 @@ export function isTransientError(code: CliErrorCode): boolean {
   return TRANSIENT_ERROR_CODES.has(code);
 }
 
+/**
+ * Exit codes that indicate transient process termination (retryable).
+ * - 137 = 128 + SIGKILL (9): OOM killer, system resource limits
+ * - 143 = 128 + SIGTERM (15): external termination (our timeout SIGTERM
+ *   is already caught by the timeout handler before close fires)
+ */
+const TRANSIENT_EXIT_CODES = new Set([137, 143]);
+
+/**
+ * Checks whether a process exit code indicates a transient failure
+ * that is safe to retry (e.g., OOM kill, external SIGTERM).
+ */
+export function isTransientExitCode(code: number | null): boolean {
+  return code !== null && TRANSIENT_EXIT_CODES.has(code);
+}
+
 /** Internal state for buffered stream collection. */
 interface BufferState {
   stdout: string;
@@ -360,8 +376,15 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
   ): Result<CliResponse, CliError> {
     if (code !== 0 && state.stdout === '') {
       const msg = state.stderr !== '' ? state.stderr : `Process exited with code ${String(code)}`;
-      const errorCode = state.stderr !== '' ? classifyStderrError(state.stderr) : 'EXECUTION_ERROR';
-      return err(this.createError(errorCode, msg));
+      // Stderr classification takes priority over exit code (#1401)
+      if (state.stderr !== '') {
+        return err(this.createError(classifyStderrError(state.stderr), msg));
+      }
+      // Signal-killed processes (137=SIGKILL/OOM, 143=SIGTERM) are transient
+      if (isTransientExitCode(code)) {
+        return err(this.createError('CONNECTION_ERROR', msg));
+      }
+      return err(this.createError('EXECUTION_ERROR', msg));
     }
     // Non-zero exit with stderr errors: classify specifically to enable
     // transient retry for connection/rate-limit/timeout errors (#1401, #1402)

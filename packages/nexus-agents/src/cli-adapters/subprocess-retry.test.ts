@@ -18,7 +18,11 @@ import { Writable, Readable } from 'node:stream';
 
 import type { CliName, CliTask, ExecutionOptions, ICliResponseParser } from './types.js';
 import type { CommandConfig, TransientRetryConfig } from './subprocess-adapter.js';
-import { SubprocessCliAdapter, isTransientError } from './subprocess-adapter.js';
+import {
+  SubprocessCliAdapter,
+  isTransientError,
+  isTransientExitCode,
+} from './subprocess-adapter.js';
 
 // Mock node:child_process
 vi.mock('node:child_process', async (importOriginal) => {
@@ -700,6 +704,162 @@ describe('SubprocessCliAdapter stderr error classification', () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.code).toBe('EXECUTION_ERROR');
+    }
+  });
+});
+
+// ============================================================================
+// isTransientExitCode (#1401)
+// ============================================================================
+
+describe('isTransientExitCode()', () => {
+  it('should return true for exit code 137 (SIGKILL/OOM)', () => {
+    expect(isTransientExitCode(137)).toBe(true);
+  });
+
+  it('should return true for exit code 143 (external SIGTERM)', () => {
+    expect(isTransientExitCode(143)).toBe(true);
+  });
+
+  it('should return false for exit code 1 (generic failure)', () => {
+    expect(isTransientExitCode(1)).toBe(false);
+  });
+
+  it('should return false for exit code 139 (SIGSEGV)', () => {
+    expect(isTransientExitCode(139)).toBe(false);
+  });
+
+  it('should return false for exit code 0 (success)', () => {
+    expect(isTransientExitCode(0)).toBe(false);
+  });
+
+  it('should return false for null exit code', () => {
+    expect(isTransientExitCode(null)).toBe(false);
+  });
+});
+
+// ============================================================================
+// Signal exit code handling (#1401)
+// ============================================================================
+
+describe('SubprocessCliAdapter signal exit code handling', () => {
+  beforeEach(() => {
+    mockSpawn.mockReset();
+  });
+
+  it('should classify exit code 137 as CONNECTION_ERROR (transient)', async () => {
+    const adapter = new NoRetryAdapter();
+    const task: CliTask = { content: 'test' };
+
+    const { mockChild } = createMockChildProcess();
+    mockSpawn.mockReturnValue(mockChild);
+
+    const promise = adapter.executeTask(task, DEFAULT_OPTS);
+    setImmediate(() => {
+      // Exit 137 = SIGKILL (OOM killer), no stdout, no stderr
+      mockChild.emit('close', 137);
+    });
+
+    const result = await promise;
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('CONNECTION_ERROR');
+      expect(result.error.message).toContain('137');
+    }
+  });
+
+  it('should classify exit code 143 as CONNECTION_ERROR (transient)', async () => {
+    const adapter = new NoRetryAdapter();
+    const task: CliTask = { content: 'test' };
+
+    const { mockChild } = createMockChildProcess();
+    mockSpawn.mockReturnValue(mockChild);
+
+    const promise = adapter.executeTask(task, DEFAULT_OPTS);
+    setImmediate(() => {
+      mockChild.emit('close', 143);
+    });
+
+    const result = await promise;
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('CONNECTION_ERROR');
+    }
+  });
+
+  it('should retry exit code 137 when retry is enabled', async () => {
+    const adapter = new RetryAdapter();
+    const task: CliTask = { content: 'test' };
+
+    const c0 = createMockChildProcess();
+    const c1 = createMockChildProcess();
+    const cList = [c0, c1];
+
+    let spawnIdx = 0;
+    mockSpawn.mockImplementation(function () {
+      const child = cList[spawnIdx++];
+      if (child === undefined) throw new Error('Too many spawn calls');
+      return child.mockChild;
+    });
+
+    vi.useFakeTimers();
+    const promise = adapter.executeTask(task, DEFAULT_OPTS);
+
+    // First attempt: killed by OOM (exit 137)
+    c0.mockChild.emit('close', 137);
+    await vi.advanceTimersByTimeAsync(500);
+
+    // Second attempt: success
+    c1.stdout.emit('data', Buffer.from('recovered after OOM\n'));
+    c1.mockChild.emit('close', 0);
+
+    const result = await promise;
+    vi.useRealTimers();
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.text).toBe('recovered after OOM');
+    }
+    expect(mockSpawn).toHaveBeenCalledTimes(2);
+  });
+
+  it('should NOT classify exit code 1 as transient', async () => {
+    const adapter = new NoRetryAdapter();
+    const task: CliTask = { content: 'test' };
+
+    const { mockChild } = createMockChildProcess();
+    mockSpawn.mockReturnValue(mockChild);
+
+    const promise = adapter.executeTask(task, DEFAULT_OPTS);
+    setImmediate(() => {
+      mockChild.emit('close', 1);
+    });
+
+    const result = await promise;
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('EXECUTION_ERROR');
+    }
+  });
+
+  it('should prefer stderr classification over exit code when stderr present', async () => {
+    const adapter = new NoRetryAdapter();
+    const task: CliTask = { content: 'test' };
+
+    const { mockChild, stderr } = createMockChildProcess();
+    mockSpawn.mockReturnValue(mockChild);
+
+    const promise = adapter.executeTask(task, DEFAULT_OPTS);
+    setImmediate(() => {
+      // Exit 137 but stderr says rate limit — stderr should take priority
+      stderr.emit('data', Buffer.from('Error: rate limit exceeded'));
+      mockChild.emit('close', 137);
+    });
+
+    const result = await promise;
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('RATE_LIMITED');
     }
   });
 });

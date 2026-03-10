@@ -480,7 +480,8 @@ describe('OpenCodeCliAdapter', () => {
 
       expect(result.ok).toBe(false);
       if (!result.ok) {
-        expect(result.error.code).toBe('EXECUTION_ERROR');
+        // Stderr "connection refused" classified as CONNECTION_ERROR (#1401)
+        expect(result.error.code).toBe('CONNECTION_ERROR');
         expect(result.error.message).toContain('Connection refused');
       }
     });

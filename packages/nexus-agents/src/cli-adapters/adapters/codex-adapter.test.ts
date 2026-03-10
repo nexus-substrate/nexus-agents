@@ -421,7 +421,8 @@ describe('CodexCliAdapter (Subprocess)', () => {
 
       expect(result.ok).toBe(false);
       if (!result.ok) {
-        expect(result.error.code).toBe('EXECUTION_ERROR');
+        // Stderr "rate limit" classified as RATE_LIMITED (#1401)
+        expect(result.error.code).toBe('RATE_LIMITED');
         expect(result.error.message).toContain('API rate limit exceeded');
       }
     });
