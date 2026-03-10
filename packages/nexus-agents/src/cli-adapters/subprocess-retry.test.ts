@@ -617,3 +617,89 @@ describe('SubprocessCliAdapter plaintext fallback', () => {
     }
   });
 });
+
+describe('SubprocessCliAdapter stderr error classification', () => {
+  beforeEach(() => {
+    mockSpawn.mockReset();
+  });
+
+  it('should classify connection refused in stderr as CONNECTION_ERROR', async () => {
+    const adapter = new NoRetryAdapter();
+    const task: CliTask = { content: 'test' };
+
+    const { mockChild, stderr } = createMockChildProcess();
+    mockSpawn.mockReturnValue(mockChild);
+
+    const promise = adapter.executeTask(task, DEFAULT_OPTS);
+    setImmediate(() => {
+      stderr.emit('data', Buffer.from('Error: connection refused to api.example.com'));
+      mockChild.emit('close', 1);
+    });
+
+    const result = await promise;
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('CONNECTION_ERROR');
+    }
+  });
+
+  it('should classify rate limit in stderr as RATE_LIMITED', async () => {
+    const adapter = new NoRetryAdapter();
+    const task: CliTask = { content: 'test' };
+
+    const { mockChild, stderr } = createMockChildProcess();
+    mockSpawn.mockReturnValue(mockChild);
+
+    const promise = adapter.executeTask(task, DEFAULT_OPTS);
+    setImmediate(() => {
+      stderr.emit('data', Buffer.from('Error: rate limit exceeded, retry after 30s'));
+      mockChild.emit('close', 1);
+    });
+
+    const result = await promise;
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('RATE_LIMITED');
+    }
+  });
+
+  it('should classify timeout in stderr as TIMEOUT', async () => {
+    const adapter = new NoRetryAdapter();
+    const task: CliTask = { content: 'test' };
+
+    const { mockChild, stderr } = createMockChildProcess();
+    mockSpawn.mockReturnValue(mockChild);
+
+    const promise = adapter.executeTask(task, DEFAULT_OPTS);
+    setImmediate(() => {
+      stderr.emit('data', Buffer.from('Error: request timed out after 120s'));
+      mockChild.emit('close', 1);
+    });
+
+    const result = await promise;
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('TIMEOUT');
+    }
+  });
+
+  it('should classify generic errors as EXECUTION_ERROR', async () => {
+    const adapter = new NoRetryAdapter();
+    const task: CliTask = { content: 'test' };
+
+    const { mockChild, stderr } = createMockChildProcess();
+    mockSpawn.mockReturnValue(mockChild);
+
+    const promise = adapter.executeTask(task, DEFAULT_OPTS);
+    setImmediate(() => {
+      stderr.emit('data', Buffer.from('fatal: unhandled exception in module X'));
+      mockChild.emit('close', 1);
+    });
+
+    const result = await promise;
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('EXECUTION_ERROR');
+    }
+  });
+});

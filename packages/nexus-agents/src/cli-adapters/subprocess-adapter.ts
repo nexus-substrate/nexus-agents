@@ -85,6 +85,36 @@ function looksLikeErrorStderr(stderr: string): boolean {
   return STDERR_ERROR_PATTERNS.some((pattern) => lower.includes(pattern));
 }
 
+/** Stderr patterns indicating transient connection failures (retryable). */
+const STDERR_CONNECTION_PATTERNS = [
+  'connection refused',
+  'econnrefused',
+  'enotfound',
+  'econnreset',
+  'failed to connect',
+  'service unavailable',
+];
+
+/** Stderr patterns indicating rate limiting (retryable). */
+const STDERR_RATE_LIMIT_PATTERNS = ['rate limit', 'quota exceeded', '429', 'too many requests'];
+
+/** Stderr patterns indicating timeout (retryable). */
+const STDERR_TIMEOUT_PATTERNS = ['timeout', 'timed out', 'etimedout'];
+
+/**
+ * Classifies a stderr error message into the most specific CliErrorCode.
+ * Checks for transient patterns (connection, rate-limit, timeout) before
+ * falling back to EXECUTION_ERROR. This ensures transient failures in
+ * stderr are retried instead of treated as terminal. (#1401)
+ */
+function classifyStderrError(stderr: string): CliErrorCode {
+  const lower = stderr.toLowerCase();
+  if (STDERR_CONNECTION_PATTERNS.some((p) => lower.includes(p))) return 'CONNECTION_ERROR';
+  if (STDERR_RATE_LIMIT_PATTERNS.some((p) => lower.includes(p))) return 'RATE_LIMITED';
+  if (STDERR_TIMEOUT_PATTERNS.some((p) => lower.includes(p))) return 'TIMEOUT';
+  return 'EXECUTION_ERROR';
+}
+
 const subprocessLogger = createLogger({ component: 'subprocess-adapter' });
 
 /** Maximum buffer size for stdout/stderr (10 MB). */
@@ -330,13 +360,14 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
   ): Result<CliResponse, CliError> {
     if (code !== 0 && state.stdout === '') {
       const msg = state.stderr !== '' ? state.stderr : `Process exited with code ${String(code)}`;
-      return err(this.createError('EXECUTION_ERROR', msg));
+      const errorCode = state.stderr !== '' ? classifyStderrError(state.stderr) : 'EXECUTION_ERROR';
+      return err(this.createError(errorCode, msg));
     }
-    // Non-zero exit with stderr errors: treat as execution error even if
-    // stdout has partial data — prevents misclassifying as PARSE_ERROR (#1402)
+    // Non-zero exit with stderr errors: classify specifically to enable
+    // transient retry for connection/rate-limit/timeout errors (#1401, #1402)
     if (code !== 0 && state.stderr !== '' && looksLikeErrorStderr(state.stderr)) {
       const msg = `Exit code ${String(code)}: ${state.stderr.slice(0, 500).trim()}`;
-      return err(this.createError('EXECUTION_ERROR', msg));
+      return err(this.createError(classifyStderrError(state.stderr), msg));
     }
     return this.handleSubprocessOutput(state.stdout, state.stderr, startTime);
   }
