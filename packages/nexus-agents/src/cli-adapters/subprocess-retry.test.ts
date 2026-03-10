@@ -764,7 +764,8 @@ describe('SubprocessCliAdapter signal exit code handling', () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.code).toBe('CONNECTION_ERROR');
-      expect(result.error.message).toContain('137');
+      expect(result.error.message).toContain('SIGKILL');
+      expect(result.error.message).toContain('killed');
     }
   });
 

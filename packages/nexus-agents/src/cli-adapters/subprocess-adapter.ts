@@ -152,6 +152,19 @@ export function isTransientError(code: CliErrorCode): boolean {
  */
 const TRANSIENT_EXIT_CODES = new Set([137, 143]);
 
+/** Human-readable signal names for exit codes (128 + signal number). */
+const EXIT_CODE_SIGNAL_NAMES: Record<number, string> = {
+  137: 'SIGKILL (OOM or killed)',
+  143: 'SIGTERM (terminated)',
+};
+
+/** Builds an error message for signal exit codes that includes identifiable keywords. */
+function buildSignalExitMessage(code: number): string {
+  const signalName = EXIT_CODE_SIGNAL_NAMES[code];
+  if (signalName !== undefined) return `Process killed by ${signalName}, exit code ${String(code)}`;
+  return `Process exited with code ${String(code)}`;
+}
+
 /**
  * Checks whether a process exit code indicates a transient failure
  * that is safe to retry (e.g., OOM kill, external SIGTERM).
@@ -375,12 +388,14 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     startTime: number
   ): Result<CliResponse, CliError> {
     if (code !== 0 && state.stdout === '') {
-      const msg = state.stderr !== '' ? state.stderr : `Process exited with code ${String(code)}`;
       // Stderr classification takes priority over exit code (#1401)
       if (state.stderr !== '') {
+        const msg = state.stderr;
         return err(this.createError(classifyStderrError(state.stderr), msg));
       }
-      // Signal-killed processes (137=SIGKILL/OOM, 143=SIGTERM) are transient
+      // Signal-killed processes (137=SIGKILL/OOM, 143=SIGTERM) are transient.
+      // Message includes signal name for downstream outcome classification.
+      const msg = code !== null ? buildSignalExitMessage(code) : 'Process exited with unknown code';
       if (isTransientExitCode(code)) {
         return err(this.createError('CONNECTION_ERROR', msg));
       }
