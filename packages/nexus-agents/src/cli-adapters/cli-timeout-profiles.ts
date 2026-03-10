@@ -14,7 +14,10 @@ import {
   type TaskComplexity,
   type TimeoutProfile,
 } from '../config/timeouts.js';
-import { estimateTaskComplexity as _estimateTaskComplexity } from './cli-timeout-helpers.js';
+import {
+  estimateTaskComplexity as _estimateTaskComplexity,
+  getAdaptiveTimeout,
+} from './cli-timeout-helpers.js';
 
 // Re-export types for backward compatibility
 export type { TimeoutProfile, TaskComplexity };
@@ -39,8 +42,10 @@ export function estimateTaskComplexity(taskDescription: string): TaskComplexity 
   return _estimateTaskComplexity(taskDescription);
 }
 
-/** Get timeout with automatic complexity estimation. */
+/**
+ * Get timeout with automatic complexity estimation.
+ * Uses adaptive timeout from outcome history when sufficient data exists (#1534).
+ */
 export function getTimeoutForTaskAuto(cli: string, taskDescription: string): number {
-  const complexity = _estimateTaskComplexity(taskDescription);
-  return getCliTimeout(cli, complexity);
+  return getAdaptiveTimeout(cli, taskDescription);
 }
