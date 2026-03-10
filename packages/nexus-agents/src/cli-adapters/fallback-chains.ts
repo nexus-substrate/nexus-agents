@@ -111,8 +111,8 @@ export const DEFAULT_FALLBACK_CHAINS: FallbackChainRegistry = {
  * - security_review: codex 60% (n=5) > gemini 53.8% (n=13) > claude 54.2% (n=382) → codex first
  * - exploration: gemini 100% (n=307) > claude 83.9% (n=380) → gemini first, codex secondary (#1526)
  * - devops: claude 80% (n=5), gemini 100% (n=1) → keep claude first, gemini secondary (#1526)
- * - research: gemini 86.8% (n=38) > claude 84.1% (n=44) > codex 15% (n=20) → gemini first (#1401)
- * - documentation: gemini 71.4% (n=35) > claude 64.7% (n=17) > codex 33.3% (n=6) → gemini first (#1401)
+ * - research: gemini 86.8% (n=38) > claude 84.1% (n=44) > codex 15% (n=20) → gemini first, codex last (#1536)
+ * - documentation: gemini 71.4% (n=35) > claude 64.7% (n=17) > codex 33.3% (n=6) → gemini first, codex last (#1536)
  * - code_review: claude 91% (n=200) > codex 89.2% (n=93) > gemini 37.5% (n=8) → claude first (#1401)
  */
 export const CATEGORY_CHAIN_OVERRIDES: Partial<Record<TaskCategory, FallbackChain>> = {
@@ -121,8 +121,10 @@ export const CATEGORY_CHAIN_OVERRIDES: Partial<Record<TaskCategory, FallbackChai
   code_review: ['claude', 'codex', 'gemini', 'opencode'],
   exploration: ['gemini', 'codex', 'claude', 'opencode'],
   devops: ['claude', 'gemini', 'codex', 'opencode'],
-  research: ['gemini', 'claude', 'codex', 'opencode'],
-  documentation: ['gemini', 'claude', 'codex', 'opencode'],
+  // codex has 15% research success (n=20) — push to last position (#1536)
+  research: ['gemini', 'claude', 'opencode', 'codex'],
+  // codex has 33.3% docs success (n=6) — push to last position (#1536)
+  documentation: ['gemini', 'claude', 'opencode', 'codex'],
 } as const;
 
 /**
