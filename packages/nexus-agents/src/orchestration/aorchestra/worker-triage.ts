@@ -42,9 +42,12 @@ const TIMEOUT_EXTENDABLE_ROLES = new Set(['code', 'testing', 'security', 'devops
 const TRANSIENT_PATTERNS = [
   'econnreset',
   'econnrefused',
+  'etimedout',
+  'epipe',
   'socket hang up',
   'connection reset',
   'network error',
+  '500 internal server error',
   '502 bad gateway',
   '503 service unavailable',
   '504 gateway timeout',
@@ -54,6 +57,7 @@ const TRANSIENT_PATTERNS = [
   'truncated',
   'parse error',
   'cannot parse',
+  'command failed',
 ] as const;
 
 const RATE_LIMIT_PATTERNS = [
@@ -160,9 +164,9 @@ function classifyTimeoutOrUnknown(
   }
   if (errorMsg === '' || errorMsg.trim() === '') {
     return makeResult(
-      'abort',
-      'Empty error message — no signal for triage',
-      false,
+      'retry_same_cli',
+      'Empty error — likely transport issue, worth retrying (#1536)',
+      true,
       hasUsefulOutput
     );
   }

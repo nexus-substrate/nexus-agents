@@ -573,11 +573,10 @@ interface ExecuteSafeOptions {
   ) => Promise<WorkerResult>;
   readonly priorWaveResults: readonly WorkerResult[] | undefined;
   readonly timeoutMs: number;
-  readonly enableTriage?: boolean;
-  readonly altExecuteWorker?: (
-    e: AgentPlanEntry,
-    prior?: readonly WorkerResult[]
-  ) => Promise<WorkerResult>;
+  readonly enableTriage?: boolean | undefined;
+  readonly altExecuteWorker?:
+    | ((e: AgentPlanEntry, prior?: readonly WorkerResult[]) => Promise<WorkerResult>)
+    | undefined;
 }
 
 /**
@@ -636,10 +635,9 @@ interface TriageRetryOptions {
   ) => Promise<WorkerResult>;
   readonly priorWaveResults: readonly WorkerResult[] | undefined;
   readonly timeoutMs: number;
-  readonly altExecuteWorker?: (
-    e: AgentPlanEntry,
-    prior?: readonly WorkerResult[]
-  ) => Promise<WorkerResult>;
+  readonly altExecuteWorker?:
+    | ((e: AgentPlanEntry, prior?: readonly WorkerResult[]) => Promise<WorkerResult>)
+    | undefined;
 }
 
 /** Triage a failed result and retry once if recommended (#1506). */

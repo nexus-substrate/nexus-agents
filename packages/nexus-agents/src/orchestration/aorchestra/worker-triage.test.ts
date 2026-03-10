@@ -186,14 +186,52 @@ describe('triageWorkerFailure', () => {
     });
   });
 
-  describe('edge cases', () => {
-    it('handles missing error message gracefully', () => {
-      const result = makeFailedResult({ error: undefined });
+  describe('expanded retriable patterns (#1536)', () => {
+    it('triages empty error message as retry_same_cli', () => {
+      const result = makeFailedResult({ error: '' });
       const triage = triageWorkerFailure(result);
-      expect(triage.action).toBe('abort');
-      expect(triage.reason).toBeTruthy();
+      expect(triage.action).toBe('retry_same_cli');
+      expect(triage.retryable).toBe(true);
+      expect(triage.reason).toContain('Empty error');
     });
 
+    it('triages undefined error message as retry_same_cli', () => {
+      const result = makeFailedResult({ error: undefined });
+      const triage = triageWorkerFailure(result);
+      expect(triage.action).toBe('retry_same_cli');
+      expect(triage.retryable).toBe(true);
+    });
+
+    it('triages 500 Internal Server Error as retry_same_cli', () => {
+      const result = makeFailedResult({ error: '500 Internal Server Error' });
+      const triage = triageWorkerFailure(result);
+      expect(triage.action).toBe('retry_same_cli');
+      expect(triage.retryable).toBe(true);
+    });
+
+    it('triages "command failed with exit code 1" as retry_same_cli', () => {
+      const result = makeFailedResult({ error: 'command failed with exit code 1' });
+      const triage = triageWorkerFailure(result);
+      expect(triage.action).toBe('retry_same_cli');
+      expect(triage.retryable).toBe(true);
+    });
+
+    it('triages ETIMEDOUT as retry_same_cli', () => {
+      const result = makeFailedResult({ error: 'connect ETIMEDOUT 1.2.3.4:443' });
+      const triage = triageWorkerFailure(result);
+      expect(triage.action).toBe('retry_same_cli');
+      expect(triage.retryable).toBe(true);
+    });
+
+    it('triages EPIPE as retry_same_cli', () => {
+      const result = makeFailedResult({ error: 'write EPIPE' });
+      const triage = triageWorkerFailure(result);
+      expect(triage.action).toBe('retry_same_cli');
+      expect(triage.retryable).toBe(true);
+    });
+  });
+
+  describe('edge cases', () => {
     it('handles success results (no-op)', () => {
       const result: WorkerResult = {
         role: 'code',
