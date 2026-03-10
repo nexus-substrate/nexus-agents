@@ -126,6 +126,7 @@ const TRANSIENT_ERROR_CODES: ReadonlySet<CliErrorCode> = new Set([
   'TIMEOUT',
   'RATE_LIMITED',
   'CONNECTION_ERROR',
+  'PARSE_ERROR',
 ]);
 
 /** Delay schedule for transient-error retries (ms per attempt index). */
@@ -134,12 +135,20 @@ const TRANSIENT_RETRY_DELAYS_MS = [500, 1000] as const;
 /** Maximum number of transient-error retries. */
 const MAX_TRANSIENT_RETRIES = TRANSIENT_RETRY_DELAYS_MS.length;
 
+/**
+ * Maximum retries for PARSE_ERROR specifically (#1533).
+ * Parse errors are less likely to self-heal than timeouts/connection errors,
+ * so we cap at 1 retry instead of 2.
+ */
+export const MAX_PARSE_RETRIES = 1;
+
 /** Timeout extension multiplier when retrying a TIMEOUT error. (#1401) */
 export const TIMEOUT_RETRY_MULTIPLIER = 1.5;
 
 /**
  * Checks whether a CliErrorCode represents a transient failure.
- * Only timeout, rate_limit, and connection errors are transient.
+ * Timeout, rate_limit, connection, and parse errors are transient.
+ * Parse errors get fewer retries (MAX_PARSE_RETRIES) than others (#1533).
  */
 export function isTransientError(code: CliErrorCode): boolean {
   return TRANSIENT_ERROR_CODES.has(code);
@@ -237,8 +246,8 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
   /**
    * Executes a task via subprocess, with optional transient-error retry.
    * When `transientRetry.enabled` is true, transient errors (timeout,
-   * rate_limit, connection) are retried up to 2 times with exponential
-   * backoff (500ms, 1000ms). Non-transient errors fail immediately.
+   * rate_limit, connection, parse) are retried with exponential backoff
+   * (500ms, 1000ms). Parse errors get max 1 retry (#1533); others get 2.
    */
   async executeTask(
     task: CliTask,
@@ -260,9 +269,11 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     lastResult: Result<CliResponse, CliError>,
     attempt: number
   ): Promise<Result<CliResponse, CliError>> {
-    if (attempt >= MAX_TRANSIENT_RETRIES) return lastResult;
+    const isParseError = !lastResult.ok && lastResult.error.code === 'PARSE_ERROR';
+    const maxRetries = isParseError ? MAX_PARSE_RETRIES : MAX_TRANSIENT_RETRIES;
+    if (attempt >= maxRetries) return lastResult;
 
-    // Guard above ensures attempt < MAX_TRANSIENT_RETRIES (length of array)
+    // Guard above ensures attempt < maxRetries ≤ TRANSIENT_RETRY_DELAYS_MS.length
     const delayMs = TRANSIENT_RETRY_DELAYS_MS[attempt] as number;
     const isTimeout = !lastResult.ok && lastResult.error.code === 'TIMEOUT';
     subprocessLogger.debug('Retrying transient error', {

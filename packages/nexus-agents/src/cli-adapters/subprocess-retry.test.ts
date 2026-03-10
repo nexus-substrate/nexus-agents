@@ -22,6 +22,7 @@ import {
   SubprocessCliAdapter,
   isTransientError,
   isTransientExitCode,
+  MAX_PARSE_RETRIES,
 } from './subprocess-adapter.js';
 
 // Mock node:child_process
@@ -181,8 +182,8 @@ describe('isTransientError()', () => {
     expect(isTransientError('EXECUTION_ERROR')).toBe(false);
   });
 
-  it('should return false for PARSE_ERROR', () => {
-    expect(isTransientError('PARSE_ERROR')).toBe(false);
+  it('should return true for PARSE_ERROR (#1533)', () => {
+    expect(isTransientError('PARSE_ERROR')).toBe(true);
   });
 
   it('should return false for NOT_FOUND', () => {
@@ -551,6 +552,171 @@ describe('SubprocessCliAdapter buffer capping', () => {
     if (result.ok) {
       expect(result.value.text).toBe('small output');
     }
+  });
+});
+
+/** Test adapter with retry enabled AND strict JSON parser — produces PARSE_ERROR on plaintext. */
+class StrictJsonRetryAdapter extends SubprocessCliAdapter {
+  override readonly name: CliName = 'claude';
+  protected readonly parser: ICliResponseParser = {
+    name: 'strict-json-parser',
+    supportedVersionRange: '>=1.0.0',
+    parse: (raw: string) => {
+      try {
+        return JSON.parse(raw) as unknown;
+      } catch {
+        return null;
+      }
+    },
+    extractResponse: (output: string) => {
+      try {
+        const parsed = JSON.parse(output) as Record<string, unknown>;
+        return typeof parsed['result'] === 'string' ? parsed['result'] : null;
+      } catch {
+        return null;
+      }
+    },
+    extractUsage: () => null,
+    extractSessionId: () => null,
+  };
+  protected getCommand(_task: CliTask): CommandConfig {
+    return { command: 'echo', args: [] };
+  }
+  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+  getModelInfo() {
+    return {
+      id: 'test-model',
+      name: 'Test',
+      contextWindow: 100_000,
+      maxOutput: 10_000,
+      costPerMillionInput: 1,
+      costPerMillionOutput: 2,
+    };
+  }
+}
+
+// ============================================================================
+// Parse error retry (#1533)
+// ============================================================================
+
+describe('SubprocessCliAdapter parse error retry (#1533)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it('should export MAX_PARSE_RETRIES as 1', () => {
+    expect(MAX_PARSE_RETRIES).toBe(1);
+  });
+
+  it('should retry PARSE_ERROR once and succeed on second attempt', async () => {
+    const adapter = new StrictJsonRetryAdapter();
+    const task: CliTask = { content: 'test' };
+
+    const c0 = createMockChildProcess();
+    const c1 = createMockChildProcess();
+    const cList = [c0, c1];
+
+    let spawnIdx = 0;
+    mockSpawn.mockImplementation(function () {
+      const child = cList[spawnIdx++];
+      if (child === undefined) throw new Error('Too many spawn calls');
+      return child.mockChild;
+    });
+
+    const promise = adapter.executeTask(task, DEFAULT_OPTS);
+
+    // First attempt: malformed JSON → PARSE_ERROR
+    c0.stdout.emit('data', Buffer.from('{malformed'));
+    c0.mockChild.emit('close', 0);
+
+    // Wait for retry delay (500ms)
+    await vi.advanceTimersByTimeAsync(500);
+
+    // Second attempt: valid JSON → success
+    c1.stdout.emit('data', Buffer.from('{"result": "fixed output"}'));
+    c1.mockChild.emit('close', 0);
+
+    const result = await promise;
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.text).toBe('fixed output');
+    }
+    expect(mockSpawn).toHaveBeenCalledTimes(2);
+  });
+
+  it('should NOT retry PARSE_ERROR more than once (max 1 retry)', async () => {
+    const adapter = new StrictJsonRetryAdapter();
+    const task: CliTask = { content: 'test' };
+
+    const c0 = createMockChildProcess();
+    const c1 = createMockChildProcess();
+    const cList = [c0, c1];
+
+    let spawnIdx = 0;
+    mockSpawn.mockImplementation(function () {
+      const child = cList[spawnIdx++];
+      if (child === undefined) throw new Error('Too many spawn calls');
+      return child.mockChild;
+    });
+
+    const promise = adapter.executeTask(task, DEFAULT_OPTS);
+
+    // First attempt: malformed JSON → PARSE_ERROR
+    c0.stdout.emit('data', Buffer.from('{malformed'));
+    c0.mockChild.emit('close', 0);
+
+    // Wait for retry delay
+    await vi.advanceTimersByTimeAsync(500);
+
+    // Second attempt: also malformed → PARSE_ERROR again
+    c1.stdout.emit('data', Buffer.from('{still broken'));
+    c1.mockChild.emit('close', 0);
+
+    const result = await promise;
+    // Should fail after 1 retry (2 total attempts), NOT retry a third time
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('PARSE_ERROR');
+    }
+    expect(mockSpawn).toHaveBeenCalledTimes(2);
+  });
+
+  it('should NOT extend timeout when retrying PARSE_ERROR (unlike TIMEOUT)', async () => {
+    const adapter = new StrictJsonRetryAdapter();
+    const task: CliTask = { content: 'test' };
+
+    const c0 = createMockChildProcess();
+    const c1 = createMockChildProcess();
+    const cList = [c0, c1];
+
+    let spawnIdx = 0;
+    mockSpawn.mockImplementation(function () {
+      const child = cList[spawnIdx++];
+      if (child === undefined) throw new Error('Too many spawn calls');
+      return child.mockChild;
+    });
+
+    const promise = adapter.executeTask(task, DEFAULT_OPTS);
+
+    // First: parse error (not timeout — so no 1.5x extension)
+    c0.stdout.emit('data', Buffer.from('{bad json'));
+    c0.mockChild.emit('close', 0);
+    await vi.advanceTimersByTimeAsync(500);
+
+    // Second attempt: succeeds — verifies retry happened with same timeout
+    c1.stdout.emit('data', Buffer.from('{"result": "ok"}'));
+    c1.mockChild.emit('close', 0);
+
+    const result = await promise;
+    expect(result.ok).toBe(true);
+    // Key: spawned twice (retry happened), timeout NOT extended (parse ≠ timeout)
+    expect(mockSpawn).toHaveBeenCalledTimes(2);
   });
 });
 
