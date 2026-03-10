@@ -84,6 +84,9 @@ const TRANSIENT_RETRY_DELAYS_MS = [500, 1000] as const;
 /** Maximum number of transient-error retries. */
 const MAX_TRANSIENT_RETRIES = TRANSIENT_RETRY_DELAYS_MS.length;
 
+/** Timeout extension multiplier when retrying a TIMEOUT error. (#1401) */
+export const TIMEOUT_RETRY_MULTIPLIER = 1.5;
+
 /**
  * Checks whether a CliErrorCode represents a transient failure.
  * Only timeout, rate_limit, and connection errors are transient.
@@ -182,6 +185,7 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
 
     // Guard above ensures attempt < MAX_TRANSIENT_RETRIES (length of array)
     const delayMs = TRANSIENT_RETRY_DELAYS_MS[attempt] as number;
+    const isTimeout = !lastResult.ok && lastResult.error.code === 'TIMEOUT';
     subprocessLogger.debug('Retrying transient error', {
       cli: this.name,
       attempt: attempt + 1,
@@ -191,11 +195,15 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
 
     await this.delay(delayMs);
 
-    const result = await this.spawnSubprocess(task, options);
+    // Extend timeout on TIMEOUT retries so near-miss tasks can complete (#1401)
+    const retryOptions = isTimeout
+      ? { ...options, timeoutMs: Math.round(options.timeoutMs * TIMEOUT_RETRY_MULTIPLIER) }
+      : options;
+    const result = await this.spawnSubprocess(task, retryOptions);
     if (result.ok) return result;
     if (!isTransientError(result.error.code)) return result;
 
-    return this.retryTransient(task, options, result, attempt + 1);
+    return this.retryTransient(task, retryOptions, result, attempt + 1);
   }
 
   /**

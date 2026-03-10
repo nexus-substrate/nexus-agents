@@ -205,21 +205,21 @@ describe('SubprocessCliAdapter transient retry', () => {
 
     const promise = adapter.executeTask(task, DEFAULT_OPTS);
 
-    // First attempt: timeout
+    // First attempt: timeout at 5s
     vi.advanceTimersByTime(5001);
     child0.mockChild.emit('close', null);
 
     // Wait for 500ms delay
     await vi.advanceTimersByTimeAsync(500);
 
-    // Second attempt: timeout
-    vi.advanceTimersByTime(5001);
+    // Second attempt: timeout extended to 7.5s (5s * 1.5)
+    vi.advanceTimersByTime(7501);
     child1.mockChild.emit('close', null);
 
     // Wait for 1000ms delay
     await vi.advanceTimersByTimeAsync(1000);
 
-    // Third attempt: success
+    // Third attempt: success (within ~11.25s extended timeout)
     child2.stdout.emit('data', Buffer.from('success\n'));
     child2.mockChild.emit('close', 0);
 
@@ -249,18 +249,18 @@ describe('SubprocessCliAdapter transient retry', () => {
 
     const promise = adapter.executeTask(task, DEFAULT_OPTS);
 
-    // First attempt: timeout
+    // First attempt: timeout at 5s
     vi.advanceTimersByTime(5001);
     c0.mockChild.emit('close', null);
     await vi.advanceTimersByTimeAsync(500);
 
-    // Second attempt: timeout
-    vi.advanceTimersByTime(5001);
+    // Second attempt: timeout extended to 7.5s (5s * 1.5)
+    vi.advanceTimersByTime(7501);
     c1.mockChild.emit('close', null);
     await vi.advanceTimersByTimeAsync(1000);
 
-    // Third attempt: timeout
-    vi.advanceTimersByTime(5001);
+    // Third attempt: timeout extended to ~11.25s (7.5s * 1.5)
+    vi.advanceTimersByTime(11251);
     c2.mockChild.emit('close', null);
 
     const result = await promise;
@@ -343,6 +343,46 @@ describe('SubprocessCliAdapter transient retry', () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.code).toBe('EXECUTION_ERROR');
+    }
+    expect(mockSpawn).toHaveBeenCalledTimes(2);
+  });
+
+  it('should extend timeout by 1.5x when retrying a TIMEOUT error', async () => {
+    const adapter = new RetryAdapter();
+    const task: CliTask = { content: 'test' };
+    const opts: Required<ExecutionOptions> = { ...DEFAULT_OPTS, timeoutMs: 10000 };
+
+    const c0 = createMockChildProcess();
+    const c1 = createMockChildProcess();
+    const cList = [c0.mockChild, c1.mockChild];
+
+    let spawnIdx = 0;
+    mockSpawn.mockImplementation(function () {
+      const m = cList[spawnIdx++];
+      if (m === undefined) throw new Error('Too many spawn calls');
+      return m;
+    });
+
+    const promise = adapter.executeTask(task, opts);
+
+    // First: timeout at 10s
+    vi.advanceTimersByTime(10001);
+    c0.mockChild.emit('close', null);
+    await vi.advanceTimersByTimeAsync(500);
+
+    // Second: should have 15s timeout (10s * 1.5x)
+    // It should NOT timeout at 10s
+    vi.advanceTimersByTime(10001);
+    // At 10s, the process should still be running (extended timeout)
+    // Emit success at 14s (within 15s extended timeout)
+    vi.advanceTimersByTime(4000);
+    c1.stdout.emit('data', Buffer.from('success after longer wait\n'));
+    c1.mockChild.emit('close', 0);
+
+    const result = await promise;
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.text).toBe('success after longer wait');
     }
     expect(mockSpawn).toHaveBeenCalledTimes(2);
   });
