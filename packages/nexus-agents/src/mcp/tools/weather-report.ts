@@ -64,6 +64,27 @@ function collectOptionalSections(sections: Record<string, unknown>): Record<stri
 /**
  * Generates the weather report from current outcome data.
  */
+/** Builds all optional report sections, filtering out empty ones. */
+function buildOptionalSections(
+  input: WeatherReportOptions,
+  cfg: WeatherReportConfig
+): Record<string, unknown> {
+  const expertPerformance = buildExpertPerformance();
+  return collectOptionalSections({
+    rateLimits: buildRateLimitReport(),
+    toolPerformance: buildToolPerformance(),
+    failureBreakdown: buildFailureBreakdown(input),
+    agentHealth: buildAgentHealth(),
+    expertPerformance,
+    swarmHealth: buildSwarmHealth(expertPerformance),
+    triageStats: buildTriageStats(input),
+    recentWindow: buildRecentWindow(cfg),
+  });
+}
+
+/**
+ * Generates the weather report from current outcome data.
+ */
 export function generateWeatherReport(
   input: WeatherReportOptions,
   config?: Partial<WeatherReportConfig>
@@ -71,38 +92,18 @@ export function generateWeatherReport(
   const cfg = { ...createDefaultWeatherConfig(), ...config };
   const store = getOutcomeStore();
   const includeAdaptive = input.includeAdaptive ?? true;
-
   const summary = store.summarize(buildQuery(input.cli, input.category));
 
-  const cliWeather = buildCliWeather(summary, input);
-  const adaptiveBonuses = includeAdaptive ? computeAdaptiveBonuses(cfg) : [];
-  const tierRecommendations = buildTierRecommendations(summary);
-  const rateLimits = buildRateLimitReport();
-  const toolPerformance = buildToolPerformance();
-  const failureBreakdown = buildFailureBreakdown(input);
-  const agentHealth = buildAgentHealth();
-  const expertPerformance = buildExpertPerformance();
-  const swarmHealth = buildSwarmHealth(expertPerformance);
-  const triageStats = buildTriageStats(input);
-  const optionalSections = collectOptionalSections({
-    rateLimits,
-    toolPerformance,
-    failureBreakdown,
-    agentHealth,
-    expertPerformance,
-    swarmHealth,
-    triageStats,
-  });
   const base = {
     overall: {
       totalTasks: summary.totalTasks,
       successRate: summary.successRate,
       avgDurationMs: summary.avgDurationMs,
     },
-    cliWeather,
-    adaptiveBonuses,
-    tierRecommendations,
-    ...optionalSections,
+    cliWeather: buildCliWeather(summary, input),
+    adaptiveBonuses: includeAdaptive ? computeAdaptiveBonuses(cfg) : [],
+    tierRecommendations: buildTierRecommendations(summary),
+    ...buildOptionalSections(input, cfg),
     explorationRate: cfg.explorationRate,
     coldStartThreshold: cfg.coldStartThreshold,
     collectedAt: new Date().toISOString(),
@@ -135,6 +136,24 @@ function buildAgentHealth(): AgentHealthSummary | undefined {
       timeSinceHeartbeatMs: s.timeSinceHeartbeatMs,
       heartbeatCount: s.heartbeatCount,
     })),
+  };
+}
+
+/** Builds recent-window performance stats within the lookback period (#1401). */
+function buildRecentWindow(cfg: WeatherReportConfig): WeatherReportResponse['recentWindow'] {
+  if (cfg.outcomeLookbackMs <= 0) return undefined;
+  const store = getOutcomeStore();
+  const since = new Date(Date.now() - cfg.outcomeLookbackMs).toISOString();
+  const recent = store.query({ since });
+  if (recent.length === 0) return undefined;
+
+  const successes = recent.filter((o) => o.success).length;
+  const totalDuration = recent.reduce((s, o) => s + o.durationMs, 0);
+  return {
+    windowMs: cfg.outcomeLookbackMs,
+    totalTasks: recent.length,
+    successRate: round3(successes / recent.length),
+    avgDurationMs: Math.round(totalDuration / recent.length),
   };
 }
 

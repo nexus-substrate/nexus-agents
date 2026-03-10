@@ -331,6 +331,66 @@ describe('queryWithLookback', () => {
   });
 });
 
+// ============================================================================
+// Recent Window (#1401)
+// ============================================================================
+
+describe('recentWindow in weather report', () => {
+  it('includes recentWindow with outcomes within lookback', () => {
+    const recent = new Date(Date.now() - 1000).toISOString();
+    for (let i = 0; i < 5; i++) {
+      getOutcomeStore().append(makeOutcome({ success: true, durationMs: 200, timestamp: recent }));
+    }
+    for (let i = 0; i < 3; i++) {
+      getOutcomeStore().append(makeOutcome({ success: false, durationMs: 400, timestamp: recent }));
+    }
+
+    const report = generateWeatherReport({});
+    expect(report.recentWindow).toBeDefined();
+    expect(report.recentWindow?.totalTasks).toBe(8);
+    expect(report.recentWindow?.successRate).toBeCloseTo(5 / 8, 2);
+    expect(report.recentWindow?.avgDurationMs).toBeCloseTo(275, 0);
+    expect(report.recentWindow?.windowMs).toBe(7 * 24 * 60 * 60 * 1000);
+  });
+
+  it('excludes old outcomes from recentWindow', () => {
+    const old = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+    const recent = new Date(Date.now() - 1000).toISOString();
+
+    // 10 old failures
+    for (let i = 0; i < 10; i++) {
+      getOutcomeStore().append(makeOutcome({ success: false, durationMs: 500, timestamp: old }));
+    }
+    // 5 recent successes
+    for (let i = 0; i < 5; i++) {
+      getOutcomeStore().append(makeOutcome({ success: true, durationMs: 100, timestamp: recent }));
+    }
+
+    const report = generateWeatherReport({});
+    // Overall includes everything
+    expect(report.overall.totalTasks).toBe(15);
+    // Recent window only includes the 5 recent
+    expect(report.recentWindow?.totalTasks).toBe(5);
+    expect(report.recentWindow?.successRate).toBe(1);
+    expect(report.recentWindow?.avgDurationMs).toBe(100);
+  });
+
+  it('omits recentWindow when no outcomes in lookback', () => {
+    const old = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+    for (let i = 0; i < 5; i++) {
+      getOutcomeStore().append(makeOutcome({ timestamp: old }));
+    }
+
+    const report = generateWeatherReport({});
+    expect(report.recentWindow).toBeUndefined();
+  });
+
+  it('omits recentWindow when no outcomes at all', () => {
+    const report = generateWeatherReport({});
+    expect(report.recentWindow).toBeUndefined();
+  });
+});
+
 describe('expert performance in weather report (Issue #1324)', () => {
   it('includes expertPerformance when worker outcomes exist', () => {
     // Seed worker-role outcomes (as produced by recordWorkerOutcomes)

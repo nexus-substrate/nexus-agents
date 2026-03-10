@@ -220,6 +220,13 @@ export interface WeatherReportResponse {
   readonly swarmHealth?: SwarmHealthMetrics;
   /** Worker failure triage statistics (#1506). */
   readonly triageStats?: TriageStats;
+  /** Recent performance within the lookback window (#1401). */
+  readonly recentWindow?: {
+    readonly windowMs: number;
+    readonly totalTasks: number;
+    readonly successRate: number;
+    readonly avgDurationMs: number;
+  };
   readonly explorationRate: number;
   readonly coldStartThreshold: number;
   readonly collectedAt: string;
