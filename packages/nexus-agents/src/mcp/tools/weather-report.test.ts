@@ -6,7 +6,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { resetOutcomeStore, getOutcomeStore } from '../../orchestration/outcomes/index.js';
 import type { TaskOutcome } from '../../orchestration/outcomes/outcome-types.js';
-import { generateWeatherReport, getAdaptiveBonus, shouldExplore } from './weather-report.js';
+import {
+  generateWeatherReport,
+  getAdaptiveBonus,
+  shouldExplore,
+  queryWithLookback,
+} from './weather-report.js';
 import { createDefaultWeatherConfig } from './weather-report-types.js';
 import { CLI_NAMES } from '../../config/model-capabilities-types.js';
 
@@ -233,6 +238,96 @@ describe('getAdaptiveBonus', () => {
     const bonus = getAdaptiveBonus('gemini', 'documentation');
     // 70% success = baseline, should be near 0
     expect(Math.abs(bonus)).toBeLessThan(1);
+  });
+});
+
+// ============================================================================
+// queryWithLookback (#1401)
+// ============================================================================
+
+describe('queryWithLookback', () => {
+  it('returns only recent outcomes within lookback window', () => {
+    const store = getOutcomeStore();
+    const old = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString(); // 14 days ago
+    const recent = new Date(Date.now() - 1000).toISOString(); // 1 second ago
+
+    // Seed 5 old + 5 recent outcomes
+    for (let i = 0; i < 5; i++) {
+      store.append(makeOutcome({ cli: 'claude', category: 'testing', timestamp: old }));
+    }
+    for (let i = 0; i < 5; i++) {
+      store.append(makeOutcome({ cli: 'claude', category: 'testing', timestamp: recent }));
+    }
+
+    const cfg = { ...createDefaultWeatherConfig(), outcomeLookbackMs: 7 * 24 * 60 * 60 * 1000 };
+    const results = queryWithLookback(store, 'claude', 'testing', cfg);
+    // Should return only the 5 recent outcomes (within 7-day window)
+    expect(results).toHaveLength(5);
+  });
+
+  it('falls back to all history when lookback has insufficient samples', () => {
+    const store = getOutcomeStore();
+    const old = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+    const recent = new Date(Date.now() - 1000).toISOString();
+
+    // Seed 10 old + 2 recent outcomes
+    for (let i = 0; i < 10; i++) {
+      store.append(makeOutcome({ cli: 'claude', category: 'testing', timestamp: old }));
+    }
+    for (let i = 0; i < 2; i++) {
+      store.append(makeOutcome({ cli: 'claude', category: 'testing', timestamp: recent }));
+    }
+
+    const cfg = {
+      ...createDefaultWeatherConfig(),
+      outcomeLookbackMs: 7 * 24 * 60 * 60 * 1000,
+      coldStartThreshold: 3, // Need 3 samples, only 2 recent
+    };
+    const results = queryWithLookback(store, 'claude', 'testing', cfg);
+    // Should fall back to all 12 outcomes
+    expect(results).toHaveLength(12);
+  });
+
+  it('returns all outcomes when lookbackMs is 0', () => {
+    const store = getOutcomeStore();
+    const old = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+    for (let i = 0; i < 5; i++) {
+      store.append(makeOutcome({ cli: 'claude', category: 'testing', timestamp: old }));
+    }
+
+    const cfg = { ...createDefaultWeatherConfig(), outcomeLookbackMs: 0 };
+    const results = queryWithLookback(store, 'claude', 'testing', cfg);
+    expect(results).toHaveLength(5);
+  });
+
+  it('affects adaptive bonus calculation with lookback', () => {
+    const store = getOutcomeStore();
+    const old = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+    const recent = new Date(Date.now() - 1000).toISOString();
+
+    // 10 old failures + 10 recent successes
+    for (let i = 0; i < 10; i++) {
+      store.append(
+        makeOutcome({ cli: 'gemini', category: 'architecture', success: false, timestamp: old })
+      );
+    }
+    for (let i = 0; i < 10; i++) {
+      store.append(
+        makeOutcome({ cli: 'gemini', category: 'architecture', success: true, timestamp: recent })
+      );
+    }
+
+    // Without lookback (0): 10/20 = 50% success → negative bonus
+    const noLookback = getAdaptiveBonus('gemini', 'architecture', { outcomeLookbackMs: 0 });
+    // With 7-day lookback: 10/10 = 100% success → positive bonus
+    const withLookback = getAdaptiveBonus('gemini', 'architecture', {
+      outcomeLookbackMs: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    expect(withLookback).toBeGreaterThan(noLookback);
+    expect(withLookback).toBeGreaterThan(0);
+    expect(noLookback).toBeLessThan(withLookback);
   });
 });
 

@@ -229,6 +229,9 @@ export interface WeatherReportResponse {
 // Configuration
 // ============================================================================
 
+/** Default lookback window: 7 days in milliseconds. */
+export const DEFAULT_OUTCOME_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
+
 export const WeatherReportConfigSchema = z.object({
   /** Minimum observations before adjusting bonuses (lowered for faster activation). */
   coldStartThreshold: z.number().int().min(1).max(1000).default(3),
@@ -236,6 +239,12 @@ export const WeatherReportConfigSchema = z.object({
   explorationRate: z.number().min(0).max(1).default(0.1),
   /** Max adaptive bonus adjustment (+/-). */
   maxBonusAdjustment: z.number().min(0).max(20).default(10),
+  /**
+   * Lookback window for outcome queries (ms). Only outcomes within this
+   * window are used for adaptive bonuses. Falls back to all history if
+   * the window has fewer samples than coldStartThreshold. Default: 7 days.
+   */
+  outcomeLookbackMs: z.number().int().min(0).default(DEFAULT_OUTCOME_LOOKBACK_MS),
 });
 
 export type WeatherReportConfig = z.infer<typeof WeatherReportConfigSchema>;

@@ -10,8 +10,12 @@
  * (Source: Issue #865 — Weather report with adaptive routing)
  */
 
-import type { PerformanceSummary, GroupStats } from '../../orchestration/outcomes/outcome-types.js';
-import { getOutcomeStore } from '../../orchestration/outcomes/outcome-store.js';
+import type {
+  PerformanceSummary,
+  GroupStats,
+  TaskOutcome,
+} from '../../orchestration/outcomes/outcome-types.js';
+import { getOutcomeStore, type OutcomeStore } from '../../orchestration/outcomes/outcome-store.js';
 import { categorizeOutcomeErrorMessage } from '../../orchestration/outcomes/outcome-types.js';
 import type { TaskCategory } from '../../config/task-specialization-types.js';
 import { TASK_CATEGORIES } from '../../config/task-specialization-types.js';
@@ -145,6 +149,25 @@ function buildRateLimitReport(): readonly RateLimitReport[] {
 }
 
 /**
+ * Queries outcomes with a lookback window, falling back to all history
+ * if the window has fewer samples than coldStartThreshold. (#1401)
+ */
+export function queryWithLookback(
+  store: OutcomeStore,
+  cli: CliNameLiteral,
+  category: TaskCategory,
+  cfg: WeatherReportConfig
+): readonly TaskOutcome[] {
+  if (cfg.outcomeLookbackMs > 0) {
+    const since = new Date(Date.now() - cfg.outcomeLookbackMs).toISOString();
+    const recent = store.query({ cli, category, since });
+    if (recent.length >= cfg.coldStartThreshold) return recent;
+  }
+  // Fall back to all history if lookback window has insufficient data
+  return store.query({ cli, category });
+}
+
+/**
  * Calculates adaptive specialization bonus for a given CLI+category.
  * Returns the adjustment on top of the static bonus.
  *
@@ -161,7 +184,8 @@ export function getAdaptiveBonus(
   const store = getOutcomeStore();
   const cliName = cli as CliNameLiteral;
 
-  const outcomes = store.query({ cli: cliName, category });
+  // Use lookback window for recent-weighted adaptive bonuses (#1401)
+  const outcomes = queryWithLookback(store, cliName, category, cfg);
   if (outcomes.length < cfg.coldStartThreshold) return 0;
 
   const thresholds = computeAdaptiveThresholds(store, cliName, category);
@@ -245,7 +269,7 @@ function computeAdaptiveBonuses(cfg: WeatherReportConfig): readonly AdaptiveBonu
       const spec = getSpecialization(category);
       const staticBonus = getStaticBonusForCli(cli, spec);
       const store = getOutcomeStore();
-      const outcomes = store.query({ cli, category });
+      const outcomes = queryWithLookback(store, cli, category, cfg);
       const sampleCount = outcomes.length;
       const sufficient = sampleCount >= cfg.coldStartThreshold;
       const adaptiveAdj = sufficient ? getAdaptiveBonus(cli, category, cfg) : 0;
