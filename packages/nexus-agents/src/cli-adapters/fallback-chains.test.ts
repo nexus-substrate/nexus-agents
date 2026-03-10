@@ -118,6 +118,13 @@ describe('fallback-chains', () => {
       expect(chain).toEqual(CATEGORY_CHAIN_OVERRIDES['devops']);
     });
 
+    it('returns code_review override with claude first (#1401)', () => {
+      const chain = getFallbackChainForCategory('code_review', 'code');
+      expect(chain[0]).toBe('claude');
+      expect(chain[1]).toBe('codex');
+      expect(chain).toEqual(CATEGORY_CHAIN_OVERRIDES['code_review']);
+    });
+
     it('returns research override with gemini first (#1401)', () => {
       const chain = getFallbackChainForCategory('research', 'research');
       expect(chain[0]).toBe('gemini');
