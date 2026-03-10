@@ -16,6 +16,7 @@ import type { IModelAdapter } from '../../core/index.js';
 import type { ContentBlock } from '../../core/types/model.js';
 import { sanitizeWorkerOutput } from './cross-wave-context.js';
 import { createLogger } from '../../core/index.js';
+import { getSynthesisHistoryTracker, createConflictPatternKey } from './synthesis-history.js';
 
 const logger = createLogger({ component: 'result-synthesizer' });
 
@@ -289,47 +290,93 @@ function buildReimaginePr(input: SynthesisPromptInput): string {
   ].join('\n');
 }
 
+/** Extract unique conflicting worker roles for pattern keying. */
+function extractConflictRoles(conflicts: readonly WorkerConflict[]): readonly string[] {
+  const roles = new Set<string>();
+  for (const c of conflicts) {
+    for (const w of c.workers) roles.add(w);
+  }
+  return [...roles];
+}
+
 /** Tier 2: LLM-assisted synthesis with Tier 3 reimagine escalation (#1507). */
 async function synthesizeViaLlm(
   input: SynthesizeResultsInput,
   excludedWorkerCount: number
 ): Promise<SynthesisResult> {
-  const { results, conflicts, taskDescription, modelAdapter } = input;
+  const { results, conflicts } = input;
   const successResults = results.filter((r) => r.status === 'success' && r.output !== '');
   const inputLength = successResults.reduce((sum, r) => sum + r.output.length, 0);
+  const tracker = getSynthesisHistoryTracker();
+  const patternKey = createConflictPatternKey(extractConflictRoles(conflicts));
+  const startTier = tracker.recommendStartTier(patternKey);
+
+  // Skip Tier 2 if historical learning recommends Tier 3 (#1507)
+  if (startTier >= 3) {
+    logger.info('Skipping Tier 2 — historical failures for pattern', { patternKey });
+    return synthesizeTier3(input, inputLength, patternKey, excludedWorkerCount);
+  }
+
+  return synthesizeTier2(input, inputLength, patternKey, excludedWorkerCount);
+}
+
+/** Tier 2: LLM synthesis attempt. */
+async function synthesizeTier2(
+  input: SynthesizeResultsInput,
+  inputLength: number,
+  patternKey: string,
+  excludedWorkerCount: number
+): Promise<SynthesisResult> {
+  const { results, conflicts, taskDescription, modelAdapter } = input;
+  const successResults = results.filter((r) => r.status === 'success' && r.output !== '');
+  const tracker = getSynthesisHistoryTracker();
   const prompt = buildSynthesisPrompt({ results, conflicts, taskDescription });
 
-  // Tier 2: LLM synthesis
   const tier2Text = await callLlm(modelAdapter, prompt);
   if (tier2Text === null) {
+    tracker.record(patternKey, 2, false);
     logger.warn('Synthesis LLM call failed, using fallback');
     return mkFallback(results, conflicts, excludedWorkerCount);
   }
 
-  // If LLM returned no text (e.g., only tool_use blocks), use raw worker outputs
   if (tier2Text === '') {
+    tracker.record(patternKey, 2, true);
     const raw = successResults.map((r) => r.output).join('\n');
     return { ok: true, value: raw, synthesisSource: 'llm', excludedWorkerCount };
   }
 
-  // Quality gate: check if synthesis is adequate
   if (!isSynthesisLowQuality(tier2Text, inputLength)) {
+    tracker.record(patternKey, 2, true);
     return { ok: true, value: tier2Text, synthesisSource: 'llm', excludedWorkerCount };
   }
 
-  // Tier 3: reimagine — re-prompt with stronger directive (#1507)
+  // Quality gate failed — escalate to Tier 3
+  tracker.record(patternKey, 2, false);
   logger.info('Synthesis output suspiciously short, escalating to reimagine', {
     synthesisLength: tier2Text.length,
     inputLength,
   });
+  return synthesizeTier3(input, inputLength, patternKey, excludedWorkerCount);
+}
+
+/** Tier 3: reimagine — re-prompt with stronger directive. */
+async function synthesizeTier3(
+  input: SynthesizeResultsInput,
+  inputLength: number,
+  patternKey: string,
+  excludedWorkerCount: number
+): Promise<SynthesisResult> {
+  const { results, conflicts, taskDescription, modelAdapter } = input;
+  const tracker = getSynthesisHistoryTracker();
   const reimaginePrompt = buildReimaginePr({ results, conflicts, taskDescription });
   const tier3Text = await callLlm(modelAdapter, reimaginePrompt);
 
   if (tier3Text !== null && !isSynthesisLowQuality(tier3Text, inputLength)) {
+    tracker.record(patternKey, 3, true);
     return { ok: true, value: tier3Text, synthesisSource: 'reimagine', excludedWorkerCount };
   }
 
-  // Reimagine also inadequate — fall back to concatenation
+  tracker.record(patternKey, 3, false);
   logger.warn('Reimagine also produced low-quality output, using fallback');
   return mkFallback(results, conflicts, excludedWorkerCount);
 }

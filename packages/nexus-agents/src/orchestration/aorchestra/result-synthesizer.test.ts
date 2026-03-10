@@ -8,7 +8,7 @@
  * (Source: Issue #1309, Epic #1307)
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   synthesizeResults,
   buildSynthesisPrompt,
@@ -18,6 +18,12 @@ import type { WorkerResult } from './worker-dispatcher.js';
 import type { WorkerConflict } from './conflict-detector.js';
 import type { IModelAdapter } from '../../core/index.js';
 import type { ContentBlock } from '../../core/types/model.js';
+import { resetSynthesisHistory } from './synthesis-history.js';
+
+// Reset synthesis history between tests to prevent cross-test contamination
+beforeEach(() => {
+  resetSynthesisHistory();
+});
 
 // ============================================================================
 // Helpers
