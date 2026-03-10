@@ -170,6 +170,15 @@ function classifyTimeoutOrUnknown(
       hasUsefulOutput
     );
   }
+  // model_error errorType indicates model/CLI transport issues — often transient (#1536)
+  if (result.errorType === 'model_error') {
+    return makeResult(
+      'retry_same_cli',
+      `Model error — may be transient: ${truncate(result.error ?? 'unknown')}`,
+      true,
+      hasUsefulOutput
+    );
+  }
   return makeResult(
     'abort',
     `Unrecognized failure: ${truncate(result.error ?? 'unknown')}`,

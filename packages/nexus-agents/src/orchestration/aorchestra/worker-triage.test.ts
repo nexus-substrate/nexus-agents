@@ -229,6 +229,26 @@ describe('triageWorkerFailure', () => {
       expect(triage.action).toBe('retry_same_cli');
       expect(triage.retryable).toBe(true);
     });
+
+    it('triages unrecognized model_error as retry_same_cli', () => {
+      const result = makeFailedResult({
+        error: 'Model returned invalid response format',
+        errorType: 'model_error',
+      });
+      const triage = triageWorkerFailure(result);
+      expect(triage.action).toBe('retry_same_cli');
+      expect(triage.retryable).toBe(true);
+    });
+
+    it('still aborts unrecognized logic_error', () => {
+      const result = makeFailedResult({
+        error: 'Something completely unexpected happened',
+        errorType: 'logic_error',
+      });
+      const triage = triageWorkerFailure(result);
+      expect(triage.action).toBe('abort');
+      expect(triage.retryable).toBe(false);
+    });
   });
 
   describe('edge cases', () => {
