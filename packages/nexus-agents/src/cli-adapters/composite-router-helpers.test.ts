@@ -3,9 +3,9 @@
  *
  * Covers: adjustProfileForTask, adjustProfileWithStageScores, taskProfileToBanditContext,
  * calculateConfidence, buildReason, filterByPreferenceTier, cliTaskToTask, applyBudgetFilter,
- * applyTopsisRanking, defaultPreferenceStageResult, defaultZeroRouterStageResult,
- * filterByDifficultyTier, applyZeroRouterFilter, buildDifficultyOutcome,
- * buildDecisionFields, buildPreferenceStats.
+ * applyTopsisRanking, applyPerformanceFloorPenalty, defaultPreferenceStageResult,
+ * defaultZeroRouterStageResult, filterByDifficultyTier, applyZeroRouterFilter,
+ * buildDifficultyOutcome, buildDecisionFields, buildPreferenceStats.
  */
 
 import { describe, expect, it, vi } from 'vitest';
@@ -31,6 +31,7 @@ import {
   buildDifficultyOutcome,
   buildDecisionFields,
   buildPreferenceStats,
+  applyPerformanceFloorPenalty,
 } from './composite-router-helpers.js';
 
 // ============================================================================
@@ -389,6 +390,102 @@ describe('applyTopsisRanking', () => {
     };
     const result = applyTopsisRanking(makeTaskProfile(), candidates, mockRouter as never);
     expect(result.toleranceBandSize).toBe(3);
+  });
+});
+
+// ============================================================================
+// applyPerformanceFloorPenalty
+// ============================================================================
+
+describe('applyPerformanceFloorPenalty', () => {
+  it('returns profiles unchanged when no performance data', () => {
+    const profiles = [
+      makeModelProfile({ cliName: 'claude' as CliName, qualityScore: 9.5 }),
+      makeModelProfile({ cliName: 'gemini' as CliName, qualityScore: 8.5 }),
+    ];
+    const result = applyPerformanceFloorPenalty(profiles, new Map());
+    expect(result[0]?.qualityScore).toBe(9.5);
+    expect(result[1]?.qualityScore).toBe(8.5);
+  });
+
+  it('applies penalty when success rate below 50% with sufficient samples', () => {
+    const profiles = [
+      makeModelProfile({ cliName: 'claude' as CliName, qualityScore: 9.5 }),
+      makeModelProfile({ cliName: 'gemini' as CliName, qualityScore: 8.5 }),
+    ];
+    const perfData = new Map<CliName, { successRate: number; sampleCount: number }>([
+      ['claude' as CliName, { successRate: 0.41, sampleCount: 235 }],
+      ['gemini' as CliName, { successRate: 0.7, sampleCount: 23 }],
+    ]);
+    const result = applyPerformanceFloorPenalty(profiles, perfData);
+    // Claude should be penalized: 9.5 - 3.0 = 6.5
+    expect(result[0]?.qualityScore).toBe(6.5);
+    // Gemini should be unchanged
+    expect(result[1]?.qualityScore).toBe(8.5);
+  });
+
+  it('does not apply penalty when success rate above 50%', () => {
+    const profiles = [makeModelProfile({ cliName: 'claude' as CliName, qualityScore: 9.5 })];
+    const perfData = new Map<CliName, { successRate: number; sampleCount: number }>([
+      ['claude' as CliName, { successRate: 0.55, sampleCount: 100 }],
+    ]);
+    const result = applyPerformanceFloorPenalty(profiles, perfData);
+    expect(result[0]?.qualityScore).toBe(9.5);
+  });
+
+  it('does not apply penalty when sample count below threshold', () => {
+    const profiles = [makeModelProfile({ cliName: 'claude' as CliName, qualityScore: 9.5 })];
+    const perfData = new Map<CliName, { successRate: number; sampleCount: number }>([
+      ['claude' as CliName, { successRate: 0.3, sampleCount: 10 }],
+    ]);
+    const result = applyPerformanceFloorPenalty(profiles, perfData);
+    expect(result[0]?.qualityScore).toBe(9.5);
+  });
+
+  it('does not reduce quality below zero', () => {
+    const profiles = [makeModelProfile({ cliName: 'claude' as CliName, qualityScore: 2.0 })];
+    const perfData = new Map<CliName, { successRate: number; sampleCount: number }>([
+      ['claude' as CliName, { successRate: 0.3, sampleCount: 50 }],
+    ]);
+    const result = applyPerformanceFloorPenalty(profiles, perfData);
+    expect(result[0]?.qualityScore).toBe(0);
+  });
+
+  it('applies penalty to multiple underperforming CLIs', () => {
+    const profiles = [
+      makeModelProfile({ cliName: 'claude' as CliName, qualityScore: 9.5 }),
+      makeModelProfile({ cliName: 'codex' as CliName, qualityScore: 7.5 }),
+      makeModelProfile({ cliName: 'gemini' as CliName, qualityScore: 8.5 }),
+    ];
+    const perfData = new Map<CliName, { successRate: number; sampleCount: number }>([
+      ['claude' as CliName, { successRate: 0.41, sampleCount: 235 }],
+      ['codex' as CliName, { successRate: 0.33, sampleCount: 25 }],
+      ['gemini' as CliName, { successRate: 0.7, sampleCount: 23 }],
+    ]);
+    const result = applyPerformanceFloorPenalty(profiles, perfData);
+    expect(result[0]?.qualityScore).toBe(6.5); // claude penalized
+    expect(result[1]?.qualityScore).toBe(4.5); // codex penalized
+    expect(result[2]?.qualityScore).toBe(8.5); // gemini unchanged
+  });
+
+  it('handles exactly 50% success rate without penalty (boundary)', () => {
+    const profiles = [makeModelProfile({ cliName: 'claude' as CliName, qualityScore: 9.5 })];
+    const perfData = new Map<CliName, { successRate: number; sampleCount: number }>([
+      ['claude' as CliName, { successRate: 0.5, sampleCount: 100 }],
+    ]);
+    const result = applyPerformanceFloorPenalty(profiles, perfData);
+    // 50% is at the boundary — no penalty (strict less-than)
+    expect(result[0]?.qualityScore).toBe(9.5);
+  });
+
+  it('handles exactly 20 samples at threshold boundary', () => {
+    const profiles = [makeModelProfile({ cliName: 'claude' as CliName, qualityScore: 9.5 })];
+    const perfData = new Map<CliName, { successRate: number; sampleCount: number }>([
+      ['claude' as CliName, { successRate: 0.3, sampleCount: 20 }],
+    ]);
+    const result = applyPerformanceFloorPenalty(profiles, perfData);
+    // Exactly 20 samples should trigger penalty (>= 20)
+    expect(result[0]?.qualityScore).toBe(6.5);
   });
 });
 

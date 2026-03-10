@@ -40,9 +40,9 @@ describe('warm-up', () => {
 
     it('should give highest reward to CLI with most primary+secondary assignments', () => {
       const priors = generateSyntheticPriors();
-      // claude: 3 primary + 6 secondary + 1 other → 0.65 (highest due to broad secondary coverage)
+      // claude: 2 primary + 7 secondary + 1 other → 0.625 (highest due to broad secondary coverage)
       // gemini: 4 primary + 1 secondary + 5 other → 0.575
-      // codex: 3 primary + 3 secondary + 4 other → 0.575
+      // codex: 4 primary + 1 secondary + 5 other → 0.555
       const claude = priors.get('claude') ?? 0;
       const codex = priors.get('codex') ?? 0;
       const gemini = priors.get('gemini') ?? 0;
@@ -52,10 +52,10 @@ describe('warm-up', () => {
 
     it('should distinguish primary from secondary reward levels', () => {
       const priors = generateSyntheticPriors();
-      // Claude: 3 primary (0.85) + 6 secondary (0.6) + 1 other (0.35)
-      // Expected: (3*0.85 + 6*0.6 + 1*0.35) / 10 = 0.65
+      // Claude: 2 primary (0.85) + 7 secondary (0.6) + 1 other (0.35)
+      // Expected: (2*0.85 + 7*0.6 + 1*0.35) / 10 = 0.625
       const claude = priors.get('claude') ?? 0;
-      expect(claude).toBeCloseTo(0.65, 2);
+      expect(claude).toBeCloseTo(0.625, 2);
     });
 
     it('should return consistent results on repeated calls', () => {

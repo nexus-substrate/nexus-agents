@@ -44,9 +44,11 @@ import {
   defaultZeroRouterStageResult,
   type PreferenceStageResult,
   type ZeroRouterStageResult,
+  type PerformanceFloorEntry,
 } from './composite-router-helpers.js';
 import { getWeatherBonusScores } from './weather-bonus-stage.js';
 import { detectTaskCategory } from '../config/task-specialization.js';
+import { getOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 
 /** Module-level singleton — SharedTaskAnalyzer is stateless, no need to re-instantiate per call. */
 const sharedAnalyzer = createSharedTaskAnalyzer();
@@ -430,25 +432,47 @@ export function runZeroRouterStage(
   return result;
 }
 
+/** Builds per-CLI performance data for the given task category from the outcome store.
+ * Returns empty map if category is unknown or store is empty. (#1401) */
+function getPerformanceDataForCategory(taskContent: string): Map<CliName, PerformanceFloorEntry> {
+  try {
+    const match = detectTaskCategory(taskContent);
+    if (match === null) return new Map();
+    const summary = getOutcomeStore().summarize({ category: match.category });
+    const result = new Map<CliName, PerformanceFloorEntry>();
+    for (const [cli, stats] of summary.byCli) {
+      result.set(cli as CliName, {
+        successRate: stats.successRate,
+        sampleCount: stats.count,
+      });
+    }
+    return result;
+  } catch {
+    return new Map();
+  }
+}
+
 /** Runs TOPSIS ranking stage. Uses plan billing criteria when billingMode is 'plan'.
- * When stageScores are provided, adjusts quality profiles before evaluation. (#1354) */
+ * When stageScores are provided, adjusts quality profiles before evaluation. (#1354)
+ * When performance floor data is available, penalizes underperforming CLIs. (#1401) */
 export function runTopsisStage(
   taskProfile: TaskProfile,
   candidates: CliName[],
   stagesExecuted: string[],
   deps: StageDependencies,
-  stageScores?: ReadonlyMap<CliName, number>
+  options?: {
+    stageScores?: ReadonlyMap<CliName, number>;
+    performanceData?: ReadonlyMap<CliName, PerformanceFloorEntry>;
+  }
 ): { ranking: CliName[]; score: number | undefined } {
   if (!deps.config.enableTopsisRanking || deps.topsisRouter === undefined) {
     return { ranking: candidates, score: undefined };
   }
-  const result = applyTopsisRanking(
-    taskProfile,
-    candidates,
-    deps.topsisRouter,
-    deps.config.billingMode,
-    stageScores
-  );
+  const result = applyTopsisRanking(taskProfile, candidates, deps.topsisRouter, {
+    billingMode: deps.config.billingMode,
+    stageScores: options?.stageScores,
+    performanceData: options?.performanceData,
+  });
   stagesExecuted.push('topsis-ranking');
   return { ranking: result.ranking, score: result.topScore };
 }
@@ -703,13 +727,10 @@ export async function runPipeline(
   candidates = scoring.candidates;
   const stageScores = aggregateStageScores(scoring, task.content);
 
-  const topsisResult = runTopsisStage(
-    taskProfile,
-    candidates,
-    stagesExecuted,
-    deps,
-    stageScores.size > 0 ? stageScores : undefined
-  );
+  const topsisResult = runTopsisStage(taskProfile, candidates, stagesExecuted, deps, {
+    stageScores: stageScores.size > 0 ? stageScores : undefined,
+    performanceData: getPerformanceDataForCategory(task.content),
+  });
 
   const linucbResult = runLinUCBStage(taskProfile, topsisResult.ranking, stagesExecuted, deps);
   if (linucbResult.selectedCli === undefined) {

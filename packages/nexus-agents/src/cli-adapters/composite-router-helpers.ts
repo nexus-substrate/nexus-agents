@@ -209,6 +209,54 @@ function selectTopsisRouter(
   return router;
 }
 
+// ---------------------------------------------------------------------------
+// Performance Floor Gate (Issue #1401 — consensus-approved Option A)
+// ---------------------------------------------------------------------------
+
+/** Minimum observed success rate before quality penalty applies. */
+export const PERFORMANCE_FLOOR_THRESHOLD = 0.5;
+
+/** Minimum sample count required before the floor gate activates. */
+export const PERFORMANCE_FLOOR_MIN_SAMPLES = 20;
+
+/** Quality score penalty applied to underperforming CLI+category pairs. */
+export const PERFORMANCE_FLOOR_PENALTY = 3.0;
+
+/**
+ * Performance data for a CLI on a specific task category.
+ */
+export interface PerformanceFloorEntry {
+  successRate: number;
+  sampleCount: number;
+}
+
+/**
+ * Applies a quality penalty to CLI profiles whose observed success rate
+ * for the current task category falls below PERFORMANCE_FLOOR_THRESHOLD.
+ *
+ * Only activates when sufficient samples exist (>= PERFORMANCE_FLOOR_MIN_SAMPLES)
+ * to avoid penalizing CLIs with noisy small-sample data.
+ *
+ * This is a pre-TOPSIS adjustment that nudges routing away from
+ * empirically underperforming CLI+category pairs. (#1401)
+ */
+export function applyPerformanceFloorPenalty(
+  profiles: readonly TopsisModelProfile[],
+  performanceData: ReadonlyMap<CliName, PerformanceFloorEntry>
+): TopsisModelProfile[] {
+  if (performanceData.size === 0) return [...profiles];
+
+  return profiles.map((p) => {
+    const perf = performanceData.get(p.cliName);
+    if (perf === undefined) return p;
+    if (perf.sampleCount < PERFORMANCE_FLOOR_MIN_SAMPLES) return p;
+    if (perf.successRate >= PERFORMANCE_FLOOR_THRESHOLD) return p;
+
+    const penalized = Math.max(p.qualityScore - PERFORMANCE_FLOOR_PENALTY, 0);
+    return { ...p, qualityScore: penalized };
+  });
+}
+
 /** Max quality boost from stage scores: +15%. */
 const STAGE_SCORE_MAX_BOOST = 0.15;
 
@@ -253,6 +301,30 @@ export function adjustProfileWithStageScores(
   });
 }
 
+/** Options for TOPSIS ranking beyond the core required params. */
+export interface TopsisRankingOptions {
+  billingMode?: BillingMode;
+  stageScores?: ReadonlyMap<CliName, number>;
+  performanceData?: ReadonlyMap<CliName, PerformanceFloorEntry>;
+}
+
+/** Builds adjusted TOPSIS profiles from task, stage scores, and performance data. */
+function buildAdjustedProfiles(
+  taskProfile: TaskProfile,
+  candidates: CliName[],
+  options?: TopsisRankingOptions
+): TopsisModelProfile[] {
+  const profiles = DEFAULT_MODEL_PROFILES.filter((p) => candidates.includes(p.cliName));
+  let adjusted = profiles.map((p) => adjustProfileForTask(p, taskProfile));
+  if (options?.stageScores !== undefined && options.stageScores.size > 0) {
+    adjusted = adjustProfileWithStageScores(adjusted, options.stageScores);
+  }
+  if (options?.performanceData !== undefined && options.performanceData.size > 0) {
+    adjusted = applyPerformanceFloorPenalty(adjusted, options.performanceData);
+  }
+  return adjusted;
+}
+
 /**
  * Applies TOPSIS ranking to candidate CLIs.
  * Uses task-category-aware criteria weights when taskProfile.taskType is available (#1491).
@@ -262,19 +334,15 @@ export function applyTopsisRanking(
   taskProfile: TaskProfile,
   candidates: CliName[],
   topsisRouter: TopsisRouter | undefined,
-  billingMode: BillingMode = 'api',
-  stageScores?: ReadonlyMap<CliName, number>
+  options?: TopsisRankingOptions
 ): TopsisRankingResult {
   if (topsisRouter === undefined) {
     return { ranking: candidates, topScore: 1.0 };
   }
 
+  const billingMode = options?.billingMode ?? 'api';
   const router = selectTopsisRouter(topsisRouter, billingMode, taskProfile.taskType);
-  const profiles = DEFAULT_MODEL_PROFILES.filter((p) => candidates.includes(p.cliName));
-  let adjustedProfiles = profiles.map((p) => adjustProfileForTask(p, taskProfile));
-  if (stageScores !== undefined && stageScores.size > 0) {
-    adjustedProfiles = adjustProfileWithStageScores(adjustedProfiles, stageScores);
-  }
+  const adjustedProfiles = buildAdjustedProfiles(taskProfile, candidates, options);
   const result: TopsisResult = router.selectModel({ profiles: adjustedProfiles });
 
   const scoreMap = new Map(result.scores.map((s) => [s.cliName, s.closenessScore]));
