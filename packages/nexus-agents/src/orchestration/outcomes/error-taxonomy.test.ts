@@ -296,6 +296,14 @@ describe('categorizeOutcomeErrorMessage', () => {
     expect(categorizeOutcomeErrorMessage('proxy connection refused')).toBe('connection');
   });
 
+  it('classifies EPIPE as connection (#1536)', () => {
+    expect(categorizeOutcomeErrorMessage('write EPIPE')).toBe('connection');
+  });
+
+  it('classifies ETIMEDOUT as connection (#1536)', () => {
+    expect(categorizeOutcomeErrorMessage('connect ETIMEDOUT 1.2.3.4:443')).toBe('connection');
+  });
+
   it('classifies generic error: prefix as generic (#1457)', () => {
     expect(categorizeOutcomeErrorMessage('error: something went wrong')).toBe('generic');
   });

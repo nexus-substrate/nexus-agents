@@ -121,6 +121,8 @@ const CONNECTION_PATTERNS = [
   'ssl',
   'tls',
   'proxy',
+  'epipe',
+  'etimedout',
   // HTTP 5xx — transient server errors, not execution failures (#1530)
   '500',
   '502',
