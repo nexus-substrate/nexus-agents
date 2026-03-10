@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 /**
  * nexus-agents/mcp - Execute Expert Tool
  *
@@ -39,6 +40,7 @@ import {
 import { getExpertFallbackChain, ROLE_TO_TASK_CATEGORY } from './create-expert-routing.js';
 import { getGlobalRegistry } from '../../adapters/unified-registry.js';
 import { createExpert } from '../../agents/experts/expert-factory.js';
+import { getOutcomeStore } from '../../orchestration/outcomes/outcome-store.js';
 import { getExpertTaskTimeout, HEARTBEAT_TIMEOUTS } from '../../config/timeouts.js';
 import type { ICliDetectionCache } from '../../cli-adapters/cli-detection-cache.js';
 import { requireAdapterAvailable } from '../middleware/adapter-availability.js';
@@ -200,6 +202,32 @@ function isRateLimitFailure(message: string): boolean {
   return RATE_LIMIT_PATTERNS.some((p) => lower.includes(p));
 }
 
+/** Minimum consecutive failures before proactive fallback (#1401). */
+const DEGRADATION_CONSECUTIVE_THRESHOLD = 3;
+
+/** Worker model prefix for outcome queries. */
+const WORKER_PREFIX = 'worker-';
+
+/**
+ * Checks if an expert role is degraded based on recent outcome data.
+ * Returns true if the role has >= DEGRADATION_CONSECUTIVE_THRESHOLD
+ * consecutive trailing failures. Lightweight — filters outcome store in memory.
+ */
+export function isExpertDegraded(role: string): boolean {
+  const store = getOutcomeStore();
+  const modelKey = `${WORKER_PREFIX}${role}`;
+  const all = store.query();
+  const roleOutcomes = all.filter((o) => o.model === modelKey);
+  if (roleOutcomes.length < DEGRADATION_CONSECUTIVE_THRESHOLD) return false;
+  let consecutive = 0;
+  for (let i = roleOutcomes.length - 1; i >= 0; i--) {
+    const outcome = roleOutcomes[i];
+    if (outcome === undefined || outcome.success) break;
+    consecutive++;
+  }
+  return consecutive >= DEGRADATION_CONSECUTIVE_THRESHOLD;
+}
+
 /**
  * Attempts to execute the task with a fallback CLI after a rate-limit failure. (#1532)
  * Creates a temporary expert with the same config but a different adapter.
@@ -302,6 +330,14 @@ async function runExpertTask(
   const { expertId } = args;
   const task = buildTask(args);
   injectErrorHints(task, expert.role);
+
+  // Proactive fallback for degraded experts (#1401)
+  if (isExpertDegraded(expert.role)) {
+    deps.logger?.warn('Expert role degraded, trying fallback', { role: expert.role });
+    const fallback = await tryExpertFallback(expert, task, deps.logger);
+    if (fallback !== undefined) return fallback;
+  }
+
   deps.logger?.info('Executing expert task', { expertId, role: expert.role, taskId: task.id });
 
   const monitor = getHeartbeatMonitor();
