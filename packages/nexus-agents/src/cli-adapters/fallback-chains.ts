@@ -106,17 +106,21 @@ export const DEFAULT_FALLBACK_CHAINS: FallbackChainRegistry = {
  * Entries here override the bucket-level chain from DEFAULT_FALLBACK_CHAINS.
  *
  * Weather data 2026-03-09:
- * - architecture: gemini 66.7% (n=24) > claude 43.6% (n=220) → gemini first
- * - planning: claude 93.8% → keep claude first (bucket default)
- * - security_review: codex 60% (n=5) > gemini 50% (n=14) > claude 44.9% (n=385) → codex first
- * - exploration: gemini 98.9% (n=280) > claude 70.4% (n=419) → gemini first, codex secondary (#1526)
+ * - architecture: gemini 69.6% (n=23) > claude 40.9% (n=235) → gemini first
+ * - planning: claude 92.2% → keep claude first (bucket default)
+ * - security_review: codex 60% (n=5) > gemini 53.8% (n=13) > claude 54.2% (n=382) → codex first
+ * - exploration: gemini 100% (n=307) > claude 83.9% (n=380) → gemini first, codex secondary (#1526)
  * - devops: claude 80% (n=5), gemini 100% (n=1) → keep claude first, gemini secondary (#1526)
+ * - research: gemini 86.8% (n=38) > claude 84.1% (n=44) > codex 15% (n=20) → gemini first (#1401)
+ * - documentation: gemini 71.4% (n=35) > claude 64.7% (n=17) > codex 33.3% (n=6) → gemini first (#1401)
  */
 export const CATEGORY_CHAIN_OVERRIDES: Partial<Record<TaskCategory, FallbackChain>> = {
   architecture: ['gemini', 'claude', 'codex', 'opencode'],
   security_review: ['codex', 'gemini', 'claude', 'opencode'],
   exploration: ['gemini', 'codex', 'claude', 'opencode'],
   devops: ['claude', 'gemini', 'codex', 'opencode'],
+  research: ['gemini', 'claude', 'codex', 'opencode'],
+  documentation: ['gemini', 'claude', 'codex', 'opencode'],
 } as const;
 
 /**

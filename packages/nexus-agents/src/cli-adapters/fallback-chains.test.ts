@@ -118,6 +118,20 @@ describe('fallback-chains', () => {
       expect(chain).toEqual(CATEGORY_CHAIN_OVERRIDES['devops']);
     });
 
+    it('returns research override with gemini first (#1401)', () => {
+      const chain = getFallbackChainForCategory('research', 'research');
+      expect(chain[0]).toBe('gemini');
+      expect(chain[1]).toBe('claude');
+      expect(chain).toEqual(CATEGORY_CHAIN_OVERRIDES['research']);
+    });
+
+    it('returns documentation override with gemini first (#1401)', () => {
+      const chain = getFallbackChainForCategory('documentation', 'analysis');
+      expect(chain[0]).toBe('gemini');
+      expect(chain[1]).toBe('claude');
+      expect(chain).toEqual(CATEGORY_CHAIN_OVERRIDES['documentation']);
+    });
+
     it('falls back to bucket-level chain when no override', () => {
       const chain = getFallbackChainForCategory('planning', 'analysis');
       expect(chain).toEqual(DEFAULT_FALLBACK_CHAINS.analysis);
