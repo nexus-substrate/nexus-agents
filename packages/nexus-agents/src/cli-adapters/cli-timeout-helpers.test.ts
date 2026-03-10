@@ -41,6 +41,18 @@ describe('estimateTaskComplexity', () => {
       expect(estimateTaskComplexity('ARCHITECTURE review')).toBe('complex');
       expect(estimateTaskComplexity('REFACTOR the module')).toBe('complex');
     });
+
+    it('returns complex for security tasks (#1401)', () => {
+      expect(estimateTaskComplexity('Run a security scan on the module')).toBe('complex');
+    });
+
+    it('returns complex for audit tasks (#1401)', () => {
+      expect(estimateTaskComplexity('Audit the authentication flow')).toBe('complex');
+    });
+
+    it('returns complex for vulnerability tasks (#1401)', () => {
+      expect(estimateTaskComplexity('Check for vulnerability in dependencies')).toBe('complex');
+    });
   });
 
   describe('simple tasks', () => {

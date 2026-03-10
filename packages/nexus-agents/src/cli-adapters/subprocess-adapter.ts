@@ -38,8 +38,9 @@ function isRateLimitOutput(stdout: string): boolean {
   return RATE_LIMIT_PATTERNS.some((pattern) => lower.includes(pattern));
 }
 
-/** Minimum length for plaintext fallback to kick in. */
-const PLAINTEXT_FALLBACK_MIN_LENGTH = 100;
+/** Minimum length for plaintext fallback to kick in.
+ * Lowered from 100→30 to recover short but valid CLI responses (#1401). */
+const PLAINTEXT_FALLBACK_MIN_LENGTH = 30;
 
 /**
  * Attempts to extract a usable response from raw stdout when the structured

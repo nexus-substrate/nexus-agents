@@ -34,6 +34,9 @@ export function estimateTaskComplexity(taskDescription: string): TaskComplexity 
     'comprehensive',
     'deep analysis',
     'system-wide',
+    'security',
+    'audit',
+    'vulnerability',
   ];
   if (complexIndicators.some((indicator) => lower.includes(indicator))) {
     return 'complex';

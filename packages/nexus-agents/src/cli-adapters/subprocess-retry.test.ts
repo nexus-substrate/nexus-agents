@@ -600,6 +600,28 @@ describe('SubprocessCliAdapter plaintext fallback', () => {
     }
   });
 
+  it('should recover short plaintext output above 30-char threshold (#1401)', async () => {
+    const adapter = new StrictJsonAdapter();
+    const task: CliTask = { content: 'test' };
+    // 40 chars — above 30-char threshold but below old 100-char threshold
+    const shortResponse = 'The function handles edge cases correctly.';
+
+    const { mockChild, stdout } = createMockChildProcess();
+    mockSpawn.mockReturnValue(mockChild);
+
+    const promise = adapter.executeTask(task, DEFAULT_OPTS);
+    setImmediate(() => {
+      stdout.emit('data', Buffer.from(shortResponse));
+      mockChild.emit('close', 0);
+    });
+
+    const result = await promise;
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.text).toBe(shortResponse);
+    }
+  });
+
   it('should NOT use plaintext fallback for JSON-like output', async () => {
     const adapter = new StrictJsonAdapter();
     const task: CliTask = { content: 'test' };
