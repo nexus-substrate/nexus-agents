@@ -36,7 +36,8 @@ import {
 import { getTimeProvider } from '../../core/index.js';
 import type { ContentBlock } from '../../core/types/model.js';
 import { DEFAULT_CLI, type CliNameLiteral } from '../../config/model-capabilities-types.js';
-import { resolveAdapterForRole } from './create-expert-routing.js';
+import { resolveAdapterForRole, getExpertFallbackChain } from './create-expert-routing.js';
+import { getGlobalRegistry } from '../../adapters/unified-registry.js';
 import { detectTaskCategory } from '../../config/task-specialization.js';
 import { getPipelineEventBus } from '../../pipeline/event-bus.js';
 import {
@@ -163,15 +164,59 @@ interface WorkerExecutorConfig {
   readonly perWorkerRouting?: boolean;
 }
 
+/** Options for executeOnAdapter — bundled to stay within max-params (5). */
+interface AdapterExecutionOptions {
+  readonly entry: AgentPlanEntry;
+  readonly adapter: IModelAdapter;
+  readonly cliName: string;
+  readonly taskDescription: string;
+  readonly learnings?: readonly WorkerLearning[];
+  readonly priorWaveResults?: readonly WorkerResult[];
+  readonly workerStartMs: number;
+}
+
+/** Execute a worker task on a specific adapter, returning a WorkerResult. */
+async function executeOnAdapter(opts: AdapterExecutionOptions): Promise<WorkerResult> {
+  const { entry, adapter, cliName, taskDescription, learnings, priorWaveResults, workerStartMs } =
+    opts;
+  const prompt = composeWorkerPrompt({
+    entry,
+    taskDescription,
+    ...(priorWaveResults !== undefined ? { priorWaveResults } : {}),
+    ...(learnings !== undefined && learnings.length > 0 ? { learnings } : {}),
+  });
+  try {
+    const result = await adapter.complete({
+      messages: [{ role: 'user', content: prompt }],
+      maxTokens: WORKER_MAX_TOKENS,
+    });
+    if (!result.ok) {
+      return makeErrorResult(entry, workerStartMs, result.error.message, cliName);
+    }
+    const textContent = result.value.content
+      .filter((b: ContentBlock): b is ContentBlock & { type: 'text' } => b.type === 'text')
+      .map((b) => b.text)
+      .join('\n');
+    return {
+      role: entry.role,
+      subTask: entry.subTask,
+      output: textContent,
+      status: 'success',
+      durationMs: getTimeProvider().now() - workerStartMs,
+      resolvedCli: cliName,
+    };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    return makeErrorResult(entry, workerStartMs, message, cliName);
+  }
+}
+
 function createWorkerExecutor(
   config: WorkerExecutorConfig
 ): (entry: AgentPlanEntry, priorWaveResults?: readonly WorkerResult[]) => Promise<WorkerResult> {
   const { taskDescription, modelAdapter, logger, learnings, perWorkerRouting } = config;
   const effectiveFallbackCli = modelAdapter.providerId;
-  return async (
-    entry: AgentPlanEntry,
-    priorWaveResults?: readonly WorkerResult[]
-  ): Promise<WorkerResult> => {
+  return async (entry, priorWaveResults): Promise<WorkerResult> => {
     const workerStartMs = getTimeProvider().now();
     const { adapter, cliName } = resolveWorkerAdapter(
       entry,
@@ -180,41 +225,61 @@ function createWorkerExecutor(
       perWorkerRouting === true,
       logger
     );
-    const prompt = composeWorkerPrompt({
+    return executeOnAdapter({
       entry,
+      adapter,
+      cliName,
       taskDescription,
-      ...(priorWaveResults !== undefined ? { priorWaveResults } : {}),
-      ...(learnings !== undefined && learnings.length > 0 ? { learnings } : {}),
+      learnings,
+      priorWaveResults,
+      workerStartMs,
     });
+  };
+}
 
-    try {
-      const result = await adapter.complete({
-        messages: [{ role: 'user', content: prompt }],
-        maxTokens: WORKER_MAX_TOKENS,
-      });
+/** Resolve an alt adapter from the fallback chain for a worker role (#1535). */
+function resolveAltAdapter(
+  entry: AgentPlanEntry,
+  primaryCli: string,
+  log: ILogger
+): { adapter: IModelAdapter; cliName: string } | null {
+  const chain = getExpertFallbackChain(`${entry.role}_expert`, primaryCli, log);
+  if (chain.length === 0) return null;
+  const altCli = chain[0] as string;
+  try {
+    const registry = getGlobalRegistry({ logger: log });
+    return { adapter: registry.getAdapterForCli(altCli), cliName: altCli };
+  } catch {
+    log.debug('Alt CLI adapter unavailable', { altCli });
+    return null;
+  }
+}
 
-      if (!result.ok) {
-        return makeErrorResult(entry, workerStartMs, result.error.message, cliName);
-      }
-
-      const textContent = result.value.content
-        .filter((b: ContentBlock): b is ContentBlock & { type: 'text' } => b.type === 'text')
-        .map((b) => b.text)
-        .join('\n');
-
-      return {
-        role: entry.role,
-        subTask: entry.subTask,
-        output: textContent,
-        status: 'success',
-        durationMs: getTimeProvider().now() - workerStartMs,
-        resolvedCli: cliName,
-      };
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      logger.warn('Worker execution failed', { role: entry.role, error: message });
-      return makeErrorResult(entry, workerStartMs, message, cliName);
+/**
+ * Creates an alt executor that picks a different CLI from the fallback chain (#1535).
+ * Used for `retry_different_cli` triage action — actual CLI rotation on rate-limit.
+ */
+function createAltWorkerExecutor(
+  config: WorkerExecutorConfig
+): (entry: AgentPlanEntry, priorWaveResults?: readonly WorkerResult[]) => Promise<WorkerResult> {
+  const { taskDescription, modelAdapter, logger: log, learnings } = config;
+  const primaryCli = modelAdapter.providerId;
+  return async (entry, priorWaveResults): Promise<WorkerResult> => {
+    const workerStartMs = getTimeProvider().now();
+    const alt = resolveAltAdapter(entry, primaryCli, log);
+    if (alt === null) {
+      return makeErrorResult(entry, workerStartMs, 'No alternative CLI available');
     }
+    log.info('Using alt CLI for retry', { role: entry.role, primaryCli, altCli: alt.cliName });
+    return executeOnAdapter({
+      entry,
+      adapter: alt.adapter,
+      cliName: alt.cliName,
+      taskDescription,
+      learnings,
+      priorWaveResults,
+      workerStartMs,
+    });
   };
 }
 
@@ -427,15 +492,17 @@ export async function executeWorkerDispatch(
   // Quality gate: opt-in via qualityGate option (#1502). Pass DEFAULT_QUALITY_GATE to enable.
   const qualityGate = options.qualityGate === false ? undefined : options.qualityGate;
 
+  const executorConfig: WorkerExecutorConfig = {
+    taskDescription,
+    modelAdapter,
+    logger,
+    learnings: options.learnings,
+    perWorkerRouting: options.perWorkerRouting,
+  };
   const results = await dispatchWorkers(entries, {
     ...(maxConcurrency !== undefined ? { maxConcurrency } : {}),
-    executeWorker: createWorkerExecutor({
-      taskDescription,
-      modelAdapter,
-      logger,
-      learnings: options.learnings,
-      perWorkerRouting: options.perWorkerRouting,
-    }),
+    executeWorker: createWorkerExecutor(executorConfig),
+    altExecuteWorker: createAltWorkerExecutor(executorConfig),
     eventBus: getPipelineEventBus(),
     executionId: `dispatch-${Date.now().toString(36)}`,
     ...(qualityGate !== undefined ? { qualityGate } : {}),

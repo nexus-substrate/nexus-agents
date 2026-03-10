@@ -121,6 +121,15 @@ export interface WorkerDispatchOptions {
   readonly qualityGate?: QualityGateFn;
   /** Enable pattern-based failure triage with automatic retry (#1506). Default: true. */
   readonly enableTriage?: boolean;
+  /**
+   * Optional alternative executor for `retry_different_cli` triage action (#1535).
+   * When provided and triage recommends a different CLI, this executor is used
+   * instead of the primary one — enabling actual CLI rotation on rate-limit retries.
+   */
+  readonly altExecuteWorker?: (
+    entry: AgentPlanEntry,
+    priorWaveResults?: readonly WorkerResult[]
+  ) => Promise<WorkerResult>;
 }
 
 // ============================================================================
@@ -403,13 +412,14 @@ function createWorkerTask(
       await new Promise((resolve) => setTimeout(resolve, spacingDelay));
     }
     const timeoutMs = opts.options.workerTimeoutMs ?? getExpertTaskTimeout(entry.subTask);
-    const result = await executeSafe(
+    const result = await executeSafe({
       entry,
-      opts.options.executeWorker,
-      opts.priorResults,
+      executeWorker: opts.options.executeWorker,
+      priorWaveResults: opts.priorResults,
       timeoutMs,
-      opts.enableTriage
-    );
+      enableTriage: opts.enableTriage,
+      altExecuteWorker: opts.options.altExecuteWorker,
+    });
     // Apply quality gate if configured (#1502)
     if (opts.qualityGate !== undefined) {
       return applyQualityGate(result, opts.qualityGate);
@@ -554,23 +564,39 @@ function buildRetryEntry(
   return { ...original, subTask: original.subTask + retryContext };
 }
 
+/** Options for executeSafe — bundled to stay within max-params (5). */
+interface ExecuteSafeOptions {
+  readonly entry: AgentPlanEntry;
+  readonly executeWorker: (
+    e: AgentPlanEntry,
+    prior?: readonly WorkerResult[]
+  ) => Promise<WorkerResult>;
+  readonly priorWaveResults: readonly WorkerResult[] | undefined;
+  readonly timeoutMs: number;
+  readonly enableTriage?: boolean;
+  readonly altExecuteWorker?: (
+    e: AgentPlanEntry,
+    prior?: readonly WorkerResult[]
+  ) => Promise<WorkerResult>;
+}
+
 /**
  * Execute a single worker with progressive watchdog monitoring (#1499)
  * and pattern-based failure triage with single retry (#1506).
  */
-async function executeSafe(
-  entry: AgentPlanEntry,
-  executeWorker: (
-    entry: AgentPlanEntry,
-    priorWaveResults?: readonly WorkerResult[]
-  ) => Promise<WorkerResult>,
-  priorWaveResults: readonly WorkerResult[] | undefined,
-  timeoutMs: number,
-  enableTriage: boolean = true
-): Promise<WorkerResult> {
+async function executeSafe(opts: ExecuteSafeOptions): Promise<WorkerResult> {
+  const { entry, executeWorker, priorWaveResults, timeoutMs, altExecuteWorker } = opts;
+  const enableTriage = opts.enableTriage ?? true;
   const result = await attemptExecution(entry, executeWorker, priorWaveResults, timeoutMs);
   if (result.status !== 'error' || !enableTriage) return result;
-  return maybeRetryAfterTriage(result, entry, executeWorker, priorWaveResults, timeoutMs);
+  return maybeRetryAfterTriage({
+    failedResult: result,
+    entry,
+    executeWorker,
+    priorWaveResults,
+    timeoutMs,
+    altExecuteWorker,
+  });
 }
 
 /** Single execution attempt. Returns undefined on success (result returned directly), or failed WorkerResult. */
@@ -600,14 +626,26 @@ async function attemptExecution(
   }
 }
 
+/** Options for maybeRetryAfterTriage — bundled to stay within max-params (5). */
+interface TriageRetryOptions {
+  readonly failedResult: WorkerResult;
+  readonly entry: AgentPlanEntry;
+  readonly executeWorker: (
+    e: AgentPlanEntry,
+    prior?: readonly WorkerResult[]
+  ) => Promise<WorkerResult>;
+  readonly priorWaveResults: readonly WorkerResult[] | undefined;
+  readonly timeoutMs: number;
+  readonly altExecuteWorker?: (
+    e: AgentPlanEntry,
+    prior?: readonly WorkerResult[]
+  ) => Promise<WorkerResult>;
+}
+
 /** Triage a failed result and retry once if recommended (#1506). */
-async function maybeRetryAfterTriage(
-  failedResult: WorkerResult,
-  entry: AgentPlanEntry,
-  executeWorker: (e: AgentPlanEntry, prior?: readonly WorkerResult[]) => Promise<WorkerResult>,
-  priorWaveResults: readonly WorkerResult[] | undefined,
-  timeoutMs: number
-): Promise<WorkerResult> {
+async function maybeRetryAfterTriage(opts: TriageRetryOptions): Promise<WorkerResult> {
+  const { failedResult, entry, executeWorker, priorWaveResults, timeoutMs, altExecuteWorker } =
+    opts;
   if (failedResult.status !== 'error') return failedResult;
 
   const triage = triageWorkerFailure(failedResult);
@@ -623,7 +661,8 @@ async function maybeRetryAfterTriage(
     return { ...failedResult, triageAction: triage.action };
   }
 
-  // Rate-limit retry: delay then retry same CLI (rate limits are usually temporary)
+  // Rate-limit retry: use alt executor for different CLI if available (#1535)
+  const useAltCli = triage.action === 'retry_different_cli' && altExecuteWorker !== undefined;
   if (triage.action === 'retry_different_cli') {
     await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_SPACING_MS));
   }
@@ -634,22 +673,28 @@ async function maybeRetryAfterTriage(
       ? Math.min(timeoutMs * TIMEOUT_EXTENSION_FACTOR, MAX_WORKER_TIMEOUT_MS)
       : timeoutMs;
 
+  const retryExecutor = useAltCli ? altExecuteWorker : executeWorker;
   logger.info('Retrying worker after triage', {
     role: entry.role,
     action: triage.action,
     retryTimeout,
+    usingAltCli: useAltCli,
   });
 
   // Enrich retry entry with failure context so the model can avoid the same mistake
   const retryEntry = buildRetryEntry(entry, failedResult, triage.reason);
   const retryResult = await attemptExecution(
     retryEntry,
-    executeWorker,
+    retryExecutor,
     priorWaveResults,
     retryTimeout
   );
   if (retryResult.status === 'success') {
-    logger.info('Triage retry succeeded', { role: entry.role, action: triage.action });
+    logger.info('Triage retry succeeded', {
+      role: entry.role,
+      action: triage.action,
+      usingAltCli: useAltCli,
+    });
     return { ...retryResult, wasRetried: true };
   }
 
