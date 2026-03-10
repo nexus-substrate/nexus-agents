@@ -118,7 +118,7 @@ describe('triageWorkerFailure', () => {
       expect(triage.action).toBe('extend_timeout');
     });
 
-    it('triages timeout on architecture as abort (planning, not execution)', () => {
+    it('triages timeout on architecture as retry_same_cli (#1536)', () => {
       const result = makeFailedResult({
         role: 'architecture',
         error: 'Worker timeout after 60000ms',
@@ -126,8 +126,8 @@ describe('triageWorkerFailure', () => {
         durationMs: 60000,
       });
       const triage = triageWorkerFailure(result);
-      expect(triage.action).toBe('abort');
-      expect(triage.retryable).toBe(false);
+      expect(triage.action).toBe('retry_same_cli');
+      expect(triage.retryable).toBe(true);
     });
   });
 

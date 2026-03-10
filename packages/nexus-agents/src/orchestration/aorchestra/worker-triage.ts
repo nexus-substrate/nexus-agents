@@ -156,9 +156,9 @@ function classifyTimeoutOrUnknown(
       );
     }
     return makeResult(
-      'abort',
-      `Timeout on ${result.role} — unlikely to benefit from extension`,
-      false,
+      'retry_same_cli',
+      `Timeout on ${result.role} — retry without extension (#1536)`,
+      true,
       hasUsefulOutput
     );
   }
