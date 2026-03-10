@@ -9,6 +9,7 @@ import {
   ROLE_TO_TASK_CATEGORY,
   resolveAdapterForModelPreference,
   resolveAdapterForRole,
+  getExpertFallbackChain,
 } from './create-expert-routing.js';
 
 const mockLogger = {
@@ -134,5 +135,48 @@ describe('resolveAdapterForRole', () => {
       'Auto-routing expert to specialized CLI',
       expect.objectContaining({ preferredCli: 'codex' })
     );
+  });
+});
+
+// ============================================================================
+// getExpertFallbackChain (#1532)
+// ============================================================================
+
+describe('getExpertFallbackChain', () => {
+  it('returns fallback CLIs for security_expert excluding primary', () => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any
+    const chain = getExpertFallbackChain('security_expert', 'codex', mockLogger as any);
+    expect(chain.length).toBeGreaterThan(0);
+    expect(chain).not.toContain('codex');
+  });
+
+  it('returns empty array for unknown role', () => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any
+    const chain = getExpertFallbackChain('unknown_role', 'claude', mockLogger as any);
+    expect(chain).toEqual([]);
+  });
+
+  it('returns fallback CLIs for code_expert excluding codex', () => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any
+    const chain = getExpertFallbackChain('code_expert', 'codex', mockLogger as any);
+    expect(chain.length).toBeGreaterThan(0);
+    expect(chain).not.toContain('codex');
+    // code_expert fallback: claude should be first after codex
+    expect(chain[0]).toBe('claude');
+  });
+
+  it('preserves chain order after filtering', () => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any
+    const chain = getExpertFallbackChain('security_expert', 'codex', mockLogger as any);
+    // security_review override: ['codex', 'gemini', 'claude', 'opencode']
+    // After excluding codex: ['gemini', 'claude', 'opencode']
+    expect(chain[0]).toBe('gemini');
+    expect(chain[1]).toBe('claude');
+  });
+
+  it('returns all CLIs when excludeCli is not in chain', () => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any
+    const chain = getExpertFallbackChain('code_expert', 'nonexistent', mockLogger as any);
+    expect(chain.length).toBeGreaterThanOrEqual(4);
   });
 });

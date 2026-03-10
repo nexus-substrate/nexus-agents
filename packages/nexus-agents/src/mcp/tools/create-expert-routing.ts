@@ -16,6 +16,22 @@ import type { ILogger } from '../../core/index.js';
 import type { IModelAdapter } from '../../core/index.js';
 import { getGlobalRegistry } from '../../adapters/unified-registry.js';
 import type { TaskCategory } from '../../config/task-specialization-types.js';
+import type { CliName } from '../../cli-adapters/types.js';
+import { getFallbackChainForCategory } from '../../cli-adapters/fallback-chains.js';
+
+/** Maps TaskCategory to FallbackTaskType for chain lookup. */
+const CATEGORY_TO_FALLBACK_TYPE: Record<TaskCategory, string> = {
+  code_generation: 'code',
+  code_review: 'code',
+  testing: 'code',
+  research: 'research',
+  exploration: 'research',
+  documentation: 'documentation',
+  architecture: 'analysis',
+  security_review: 'analysis',
+  planning: 'analysis',
+  devops: 'general',
+};
 
 /**
  * Maps expert roles to task categories for CLI specialization (Issue #858).
@@ -75,4 +91,27 @@ export function resolveAdapterForRole(
     preferredCli: registry.getRouting(category)?.primaryCli,
   });
   return adapter;
+}
+
+/**
+ * Returns the fallback chain of CLIs for an expert role, excluding
+ * a specified CLI (typically the one that just failed). (#1532)
+ *
+ * Used by execute_expert to retry with a different CLI on rate-limit errors.
+ */
+export function getExpertFallbackChain(
+  role: string,
+  excludeCli: string,
+  logger: ILogger
+): CliName[] {
+  const category = ROLE_TO_TASK_CATEGORY[role];
+  if (category === undefined) return [];
+  const bucketType = CATEGORY_TO_FALLBACK_TYPE[category];
+  const chain = getFallbackChainForCategory(
+    category,
+    bucketType as Parameters<typeof getFallbackChainForCategory>[1]
+  );
+  const filtered = chain.filter((cli) => cli !== excludeCli);
+  logger.debug('Expert fallback chain resolved', { role, category, excludeCli, chain: filtered });
+  return [...filtered];
 }

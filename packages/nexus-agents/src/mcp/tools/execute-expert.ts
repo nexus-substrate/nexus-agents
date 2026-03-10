@@ -36,6 +36,9 @@ import {
   handleExpertFailure,
   handleExpertSuccess,
 } from './execute-expert-recording.js';
+import { getExpertFallbackChain, ROLE_TO_TASK_CATEGORY } from './create-expert-routing.js';
+import { getGlobalRegistry } from '../../adapters/unified-registry.js';
+import { createExpert } from '../../agents/experts/expert-factory.js';
 import { getExpertTaskTimeout, HEARTBEAT_TIMEOUTS } from '../../config/timeouts.js';
 import type { ICliDetectionCache } from '../../cli-adapters/cli-detection-cache.js';
 import { requireAdapterAvailable } from '../middleware/adapter-availability.js';
@@ -188,6 +191,108 @@ function injectErrorHints(task: Task, role: string): void {
 
 type ExpertResult = { ok: true; value: ExecuteExpertResponse } | { ok: false; error: string };
 
+/** Rate-limit indicator patterns in error messages. */
+const RATE_LIMIT_PATTERNS = ['rate limit', '429', 'too many requests', 'quota exceeded'];
+
+/** Checks whether an error message indicates a rate-limit failure. */
+function isRateLimitFailure(message: string): boolean {
+  const lower = message.toLowerCase();
+  return RATE_LIMIT_PATTERNS.some((p) => lower.includes(p));
+}
+
+/**
+ * Attempts to execute the task with a fallback CLI after a rate-limit failure. (#1532)
+ * Creates a temporary expert with the same config but a different adapter.
+ * Tries the first available fallback only (bounded retry).
+ */
+async function tryExpertFallback(
+  expert: Expert,
+  task: Task,
+  logger: ILogger | undefined
+): Promise<ExpertResult | undefined> {
+  const roleKey = `${expert.role}_expert`;
+  const category = ROLE_TO_TASK_CATEGORY[roleKey];
+  if (category === undefined) return undefined;
+  const effectiveLogger = logger ?? createLogger({ tool: 'execute_expert' });
+  const registry = getGlobalRegistry({ logger: effectiveLogger });
+  const routing = registry.getRouting(category);
+  const primaryCli = routing?.primaryCli ?? 'unknown';
+  const chain = getExpertFallbackChain(roleKey, primaryCli, effectiveLogger);
+  if (chain.length === 0) return undefined;
+  const fallbackCli = chain[0];
+  if (fallbackCli === undefined) return undefined;
+  const fallbackAdapter = registry.getAdapterForCli(fallbackCli);
+  logger?.info('Retrying expert with fallback CLI', { role: expert.role, fallbackCli });
+
+  const fallbackResult = createExpert(expert.expertConfig, { adapter: fallbackAdapter });
+  if (!fallbackResult.ok) return undefined;
+
+  const result = await fallbackResult.value.execute(task);
+  if (!result.ok) return undefined;
+
+  return {
+    ok: true,
+    value: buildSuccessResponse({
+      expertId: expert.id,
+      role: expert.role,
+      output: result.value.output,
+      durationMs: 0,
+      tokensUsed: result.value.metadata.tokensUsed,
+      modelUsed: fallbackCli,
+    }),
+  };
+}
+
+/** Options for classifyExpertResult. */
+interface ClassifyExpertResultOpts {
+  result: Awaited<ReturnType<Expert['execute']>>;
+  expert: Expert;
+  task: Task;
+  args: ExecuteExpertInput;
+  durationMs: number;
+  logger: ILogger | undefined;
+}
+
+/** Classifies expert execution result, with rate-limit fallback (#1532). */
+async function classifyExpertResult(opts: ClassifyExpertResultOpts): Promise<ExpertResult> {
+  const { result, expert, task, args, durationMs, logger } = opts;
+  const modelId = expert.expertConfig.modelPreference?.modelId;
+  const info = {
+    expertId: args.expertId,
+    role: expert.role,
+    ...(modelId !== undefined ? { modelId } : {}),
+  };
+
+  if (!result.ok) {
+    if (isRateLimitFailure(result.error.message)) {
+      const fallback = await tryExpertFallback(expert, task, logger);
+      if (fallback !== undefined) return fallback;
+    }
+    logger?.warn('Expert execution failed', {
+      expertId: args.expertId,
+      error: result.error.message,
+    });
+    return handleExpertFailure(args.task, info, result.error.message, durationMs);
+  }
+
+  logger?.info('Expert execution completed', { expertId: args.expertId, durationMs });
+  handleExpertSuccess(args.task, info, durationMs);
+  if (typeof result.value.output === 'string') {
+    autoCatalogScan(result.value.output, args.expertId, logger);
+  }
+  return {
+    ok: true,
+    value: buildSuccessResponse({
+      expertId: args.expertId,
+      role: expert.role,
+      output: result.value.output,
+      durationMs,
+      tokensUsed: result.value.metadata.tokensUsed,
+      modelUsed: modelId,
+    }),
+  };
+}
+
 /** Runs the expert task and records outcomes. Assumes permit is held. */
 async function runExpertTask(
   deps: ExecuteExpertDeps,
@@ -203,9 +308,6 @@ async function runExpertTask(
   const sessionId = monitor.startSession(expertId);
   const startTime = getTimeProvider().now();
 
-  // Periodic heartbeat + expiry detection (Issue #1087, #1088 Phase 2)
-  // Note: Check health BEFORE emitting heartbeat — checking after would
-  // always show 'alive' since heartbeat() resets the timer.
   const heartbeatTimer = setInterval(() => {
     if (monitor.isExpired(sessionId)) {
       deps.logger?.warn('Expert session expired', { expertId, sessionId });
@@ -221,31 +323,7 @@ async function runExpertTask(
     monitor.endSession(sessionId);
   }
   const durationMs = getTimeProvider().now() - startTime;
-  const modelId = expert.expertConfig.modelPreference?.modelId;
-  const info = { expertId, role: expert.role, ...(modelId !== undefined ? { modelId } : {}) };
-
-  if (!result.ok) {
-    deps.logger?.warn('Expert execution failed', { expertId, error: result.error.message });
-    return handleExpertFailure(args.task, info, result.error.message, durationMs);
-  }
-
-  deps.logger?.info('Expert execution completed', { expertId, durationMs });
-  handleExpertSuccess(args.task, info, durationMs);
-  if (typeof result.value.output === 'string') {
-    autoCatalogScan(result.value.output, expertId, deps.logger);
-  }
-
-  return {
-    ok: true,
-    value: buildSuccessResponse({
-      expertId,
-      role: expert.role,
-      output: result.value.output,
-      durationMs,
-      tokensUsed: result.value.metadata.tokensUsed,
-      modelUsed: expert.expertConfig.modelPreference?.modelId,
-    }),
-  };
+  return classifyExpertResult({ result, expert, task, args, durationMs, logger: deps.logger });
 }
 
 /**
