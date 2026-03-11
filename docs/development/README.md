@@ -158,8 +158,8 @@ const config: ExpertConfig = {
   tier: 'balanced',
 };
 
-// 2. Register with ExpertFactory
-ExpertFactory.register('my-expert', config);
+// 2. Add to BUILT_IN_EXPERTS in expert-config.ts
+// ExpertFactory.create('my-expert') will then find it
 ```
 
 ### Adding an MCP Tool

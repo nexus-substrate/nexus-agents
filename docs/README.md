@@ -238,9 +238,13 @@ Detailed technical documentation:
 
 #### Workflows
 
-| Document                                                                 | Description              |
-| ------------------------------------------------------------------------ | ------------------------ |
-| [SELF_DEVELOPMENT_WORKFLOW.md](./workflows/SELF_DEVELOPMENT_WORKFLOW.md) | Self-development process |
+| Document                                                                 | Description                      |
+| ------------------------------------------------------------------------ | -------------------------------- |
+| [SELF_DEVELOPMENT_WORKFLOW.md](./workflows/SELF_DEVELOPMENT_WORKFLOW.md) | Self-development process (hub)   |
+| [self-dev-phases.md](./workflows/self-dev-phases.md)                     | Phases 1-6: Analyze → Review     |
+| [self-dev-execution.md](./workflows/self-dev-execution.md)               | Phases 6.5-9: Implement → Commit |
+| [self-dev-operations.md](./workflows/self-dev-operations.md)             | Error handling, config, runbook  |
+| [self-dev-validation.md](./workflows/self-dev-validation.md)             | Validation gates, WIS framework  |
 
 #### Operational
 

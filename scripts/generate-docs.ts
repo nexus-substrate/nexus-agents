@@ -222,6 +222,9 @@ const FRONTMATTER_REQUIRED_FILES = [
   'docs/development/README.md',
   'docs/development/CLI_UX_QUALITY_GATE.md',
   'docs/development/SHELL_TESTING_ANTI_PATTERNS.md',
+  'docs/development/TOOL_DEVELOPMENT.md',
+  'docs/development/MEMORY_DEVELOPMENT.md',
+  'docs/development/CLI_DELEGATION_GUIDE.md',
   'docs/getting-started/INSTALLATION.md',
   'docs/getting-started/CONFIGURATION.md',
   'docs/guides/DEBUGGING_OBSERVABILITY.md',
@@ -229,6 +232,12 @@ const FRONTMATTER_REQUIRED_FILES = [
   'docs/guides/WORKFLOW_TEMPLATES.md',
   'docs/guides/CUSTOM_ENDPOINT_SETUP.md',
   'docs/research/RESEARCH_INDEX.md',
+  'docs/SECRETS_SETUP.md',
+  'docs/workflows/SELF_DEVELOPMENT_WORKFLOW.md',
+  'docs/workflows/self-dev-phases.md',
+  'docs/workflows/self-dev-execution.md',
+  'docs/workflows/self-dev-operations.md',
+  'docs/workflows/self-dev-validation.md',
 ];
 
 const REQUIRED_FRONTMATTER_FIELDS = ['title', 'description', 'tier', 'keywords'];

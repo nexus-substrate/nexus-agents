@@ -94,14 +94,15 @@ Your constraints:
 };
 ```
 
-### Step 2: Register with ExpertFactory
+### Step 2: Add to Built-In Experts
 
 ```typescript
-// src/agents/experts/expert-factory.ts
-import { myExpertConfig } from './my-expert.js';
-
-// In the factory registration
-ExpertFactory.register('my-domain', myExpertConfig);
+// src/agents/experts/expert-config.ts
+// Add your expert to the BUILT_IN_EXPERTS map
+export const BUILT_IN_EXPERTS: Record<BuiltInExpertType, ExpertConfig> = {
+  // ... existing experts ...
+  'my-domain': myExpertConfig,
+};
 ```
 
 ### Step 3: Use via MCP Tools

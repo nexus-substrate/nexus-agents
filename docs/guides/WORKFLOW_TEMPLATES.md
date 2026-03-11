@@ -51,15 +51,15 @@ inputs:
 steps:
   - id: analyze
     expert: code
-    task: 'Analyze {{ target }} for issues'
+    task: 'Analyze ${{ target }} for issues'
 
   - id: report
     expert: documentation
-    task: 'Create a report based on: {{ steps.analyze.output }}'
+    task: 'Create a report based on: ${{ steps.analyze.output }}'
     depends_on: [analyze]
 
 output:
-  summary: '{{ steps.report.output }}'
+  summary: '${{ steps.report.output }}'
 ```
 
 ## Workflow Structure
@@ -178,12 +178,12 @@ steps:
 
   - id: review
     expert: security
-    task: 'Security review of: {{ steps.analyze.output }}'
+    task: 'Security review of: ${{ steps.analyze.output }}'
     depends_on: [analyze]
 
   - id: document
     expert: documentation
-    task: 'Document findings from {{ steps.analyze.output }} and {{ steps.review.output }}'
+    task: 'Document findings from ${{ steps.analyze.output }} and ${{ steps.review.output }}'
     depends_on: [analyze, review]
 ```
 
@@ -229,49 +229,49 @@ steps:
   - id: generate-tests
     expert: testing
     task: 'Generate tests'
-    condition: '{{ not steps.check.output.hasTests }}'
+    condition: '${{ not steps.check.output.hasTests }}'
     depends_on: [check]
 ```
 
 ## Template Variables
 
-Use Jinja2-style templating:
+Use expression syntax with `${{ }}` delimiters:
 
 ### Input Variables
 
 ```yaml
-task: 'Analyze {{ url }} for {{ focus }}'
+task: 'Analyze ${{ url }} for ${{ focus }}'
 ```
 
 ### Step Output References
 
 ```yaml
-task: 'Based on {{ steps.previous_step.output }}'
+task: 'Based on ${{ steps.previous_step.output }}'
 ```
 
 ### Built-in Variables
 
-| Variable          | Description           |
-| ----------------- | --------------------- |
-| `{{ workflow }}`  | Workflow name         |
-| `{{ version }}`   | Workflow version      |
-| `{{ timestamp }}` | Execution timestamp   |
-| `{{ run_id }}`    | Unique run identifier |
+| Variable           | Description           |
+| ------------------ | --------------------- |
+| `${{ workflow }}`  | Workflow name         |
+| `${{ version }}`   | Workflow version      |
+| `${{ timestamp }}` | Execution timestamp   |
+| `${{ run_id }}`    | Unique run identifier |
 
 ### Filters
 
 ```yaml
 # Uppercase
-task: "Process {{ name | upper }}"
+task: "Process ${{ name | upper }}"
 
 # JSON encode
-task: "Config: {{ options | json }}"
+task: "Config: ${{ options | json }}"
 
 # Default value
-task: "Target: {{ target | default('main') }}"
+task: "Target: ${{ target | default('main') }}"
 
 # Truncate
-task: "Summary: {{ long_text | truncate(100) }}"
+task: "Summary: ${{ long_text | truncate(100) }}"
 ```
 
 ## Output Mapping
@@ -281,16 +281,16 @@ Define workflow outputs:
 ```yaml
 output:
   # Simple output
-  summary: '{{ steps.final.output }}'
+  summary: '${{ steps.final.output }}'
 
   # Structured output
   report:
-    analysis: '{{ steps.analyze.output }}'
-    recommendations: '{{ steps.review.output }}'
-    timestamp: '{{ timestamp }}'
+    analysis: '${{ steps.analyze.output }}'
+    recommendations: '${{ steps.review.output }}'
+    timestamp: '${{ timestamp }}'
 
   # Conditional output
-  status: "{{ 'success' if steps.all_passed else 'failed' }}"
+  status: "${{ 'success' if steps.all_passed else 'failed' }}"
 ```
 
 ## Built-in Workflows
@@ -371,7 +371,7 @@ steps:
 
   - id: report
     expert: documentation
-    task: 'Create report from {{ steps.security-scan.output }} and {{ steps.code-quality.output }}'
+    task: 'Create report from ${{ steps.security-scan.output }} and ${{ steps.code-quality.output }}'
     depends_on: [security-scan, code-quality]
 ```
 
@@ -383,12 +383,12 @@ Process items in a loop:
 steps:
   - id: process-files
     expert: code
-    task: 'Analyze file {{ item }}'
-    iterate_over: '{{ files }}'
+    task: 'Analyze file ${{ item }}'
+    iterate_over: '${{ files }}'
 
   - id: summarize
     expert: documentation
-    task: 'Summarize all analyses: {{ steps.process-files.outputs }}'
+    task: 'Summarize all analyses: ${{ steps.process-files.outputs }}'
     depends_on: [process-files]
 ```
 
@@ -406,7 +406,7 @@ steps:
   - id: fallback
     expert: code
     task: 'Execute fallback'
-    condition: '{{ steps.risky-operation.failed }}'
+    condition: '${{ steps.risky-operation.failed }}'
     depends_on: [risky-operation]
 ```
 
@@ -419,11 +419,11 @@ steps:
   - id: security
     workflow: security-audit
     inputs:
-      target: '{{ target }}'
+      target: '${{ target }}'
 
   - id: report
     expert: documentation
-    task: 'Report on {{ steps.security.output }}'
+    task: 'Report on ${{ steps.security.output }}'
     depends_on: [security]
 ```
 
@@ -481,7 +481,7 @@ inputs:
 steps:
   - id: greet
     expert: code
-    task: "Process: {{ message }}"
+    task: "Process: ${{ message }}"
 `);
 
 // Execute
@@ -533,42 +533,42 @@ inputs:
 steps:
   - id: fetch-pr
     expert: devops
-    task: 'Fetch PR metadata and changed files from {{ url }}'
+    task: 'Fetch PR metadata and changed files from ${{ url }}'
 
   - id: security-review
     expert: security
     task: |
       Review the following changes for security issues:
-      {{ steps.fetch-pr.output.files }}
+      ${{ steps.fetch-pr.output.files }}
     depends_on: [fetch-pr]
 
   - id: code-review
     expert: code
     task: |
       Review code quality and best practices:
-      {{ steps.fetch-pr.output.files }}
+      ${{ steps.fetch-pr.output.files }}
     depends_on: [fetch-pr]
 
   - id: test-coverage
     expert: testing
     task: |
       Analyze test coverage for changes:
-      {{ steps.fetch-pr.output.files }}
+      ${{ steps.fetch-pr.output.files }}
     depends_on: [fetch-pr]
 
   - id: compile-report
     expert: documentation
     task: |
       Create a comprehensive PR review report including:
-      - Security findings: {{ steps.security-review.output }}
-      - Code quality: {{ steps.code-review.output }}
-      - Test coverage: {{ steps.test-coverage.output }}
+      - Security findings: ${{ steps.security-review.output }}
+      - Code quality: ${{ steps.code-review.output }}
+      - Test coverage: ${{ steps.test-coverage.output }}
     depends_on: [security-review, code-review, test-coverage]
 
 output:
-  report: '{{ steps.compile-report.output }}'
-  security_issues: '{{ steps.security-review.output.issues }}'
-  approval_recommendation: '{{ steps.compile-report.output.recommendation }}'
+  report: '${{ steps.compile-report.output }}'
+  security_issues: '${{ steps.security-review.output.issues }}'
+  approval_recommendation: '${{ steps.compile-report.output.recommendation }}'
 ```
 
 ## Related Documentation

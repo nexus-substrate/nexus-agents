@@ -37,14 +37,10 @@ This guide covers debugging multi-agent workflows using the nexus-agents observa
 ## Quick Reference
 
 ```typescript
-import {
-  EventBus,
-  getGlobalEventBus,
-  generateCorrelationId,
-  createChildCorrelationId,
-} from 'nexus-agents/agents/collaboration/event-bus.js';
-import { getOrchestrationObserver } from 'nexus-agents/observability/orchestration-observer.js';
-import { createRoutingMetricsCollector } from 'nexus-agents/observability/routing-metrics.js';
+// All exports available from the root package
+import { createRoutingMetricsCollector } from 'nexus-agents';
+// EventBus is available via pipeline exports
+import { EventBus } from 'nexus-agents';
 ```
 
 | Component             | Purpose                  | Key Methods                                               |
@@ -451,7 +447,7 @@ The routing metrics collector tracks model selection patterns.
 ### Recording Routing Decisions
 
 ```typescript
-import { createRoutingMetricsCollector } from 'nexus-agents/observability/routing-metrics.js';
+import { createRoutingMetricsCollector } from 'nexus-agents';
 
 const metrics = createRoutingMetricsCollector({
   maxRecords: 10000,
