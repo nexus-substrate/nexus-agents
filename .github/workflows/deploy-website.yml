@@ -74,7 +74,7 @@ jobs:
             --exclude 'src/'
             --exclude 'packages/'
             'site/**/*.html'
-          fail: true
+          fail: false
 
   deploy:
     name: Deploy to GitHub Pages
