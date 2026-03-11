@@ -69,6 +69,11 @@ describe('getNestedValue', () => {
     const obj = { items: [1, 2, 3] };
     expect(getNestedValue(obj, ['items', '1'])).toBe(2);
   });
+
+  it('returns undefined for undefined intermediate value', () => {
+    const obj = { a: undefined };
+    expect(getNestedValue(obj, ['a', 'b'])).toBeUndefined();
+  });
 });
 
 // ============================================================================
@@ -160,6 +165,22 @@ describe('resolveSteps', () => {
     const result = resolveSteps(['step1'], ctx);
     expect(result.success).toBe(false);
   });
+
+  it('fails for empty path', () => {
+    const ctx = makeContext();
+    const result = resolveSteps([], ctx);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('requires at least');
+  });
+
+  it('fails for missing nested output field', () => {
+    const stepResults = new Map<string, StepResult>();
+    stepResults.set('step1', makeStepResult({ output: { data: 'hello' } }));
+    const ctx = makeContext({ stepResults });
+    const result = resolveSteps(['step1', 'output', 'nonexistent'], ctx);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('not found in step');
+  });
 });
 
 // ============================================================================
@@ -196,6 +217,15 @@ describe('resolveVariables', () => {
     const ctx = makeContext();
     const result = resolveVariables([], ctx);
     expect(result.success).toBe(false);
+  });
+
+  it('fails for missing nested variable field', () => {
+    const variables = new Map<string, unknown>();
+    variables.set('config', { port: 8080 });
+    const ctx = makeContext({ variables });
+    const result = resolveVariables(['config', 'host'], ctx);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('not found');
   });
 });
 
@@ -265,6 +295,19 @@ describe('resolveSingleExpression', () => {
     const ctx = makeContext();
     expect(() => resolveSingleExpression('inputs.missing', ctx, parse, resolve)).toThrow(
       ValidationError
+    );
+  });
+
+  it('throws with fallback message when error is undefined', () => {
+    const parse = (_expr: string): ParsedExpression | null => ({
+      original: 'inputs.x',
+      type: 'inputs',
+      path: ['x'],
+    });
+    const resolve = (): ResolveResult => ({ success: false, error: undefined });
+    const ctx = makeContext();
+    expect(() => resolveSingleExpression('inputs.x', ctx, parse, resolve)).toThrow(
+      'Failed to resolve'
     );
   });
 });

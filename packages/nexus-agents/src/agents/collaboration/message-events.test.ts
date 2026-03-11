@@ -132,6 +132,14 @@ describe('emitMessageReceived', () => {
     const event = bus.emit.mock.calls[0]![0];
     expect(event.correlationId).toBe('c2');
   });
+
+  it('omits optional metadata when undefined', () => {
+    const bus = makeMockEventBus();
+    emitMessageReceived(bus, { message: makeMessage(), by: 'b' });
+    const event = bus.emit.mock.calls[0]![0];
+    expect(event.sessionId).toBeUndefined();
+    expect(event.correlationId).toBeUndefined();
+  });
 });
 
 // ============================================================================
@@ -180,6 +188,19 @@ describe('emitTaskDelegated', () => {
     const event = bus.emit.mock.calls[0]![0];
     expect(event.sessionId).toBe('s3');
     expect(event.correlationId).toBe('c3');
+  });
+
+  it('omits optional metadata when undefined', () => {
+    const bus = makeMockEventBus();
+    emitTaskDelegated(bus, {
+      fromAgent: 'lead',
+      toAgent: 'worker',
+      taskDescription: 'Test',
+      priority: 'low',
+    });
+    const event = bus.emit.mock.calls[0]![0];
+    expect(event.sessionId).toBeUndefined();
+    expect(event.correlationId).toBeUndefined();
   });
 });
 
@@ -231,5 +252,17 @@ describe('emitResultBroadcast', () => {
     const event = bus.emit.mock.calls[0]![0];
     expect(event.sessionId).toBe('s4');
     expect(event.correlationId).toBe('c4');
+  });
+
+  it('omits optional metadata when undefined', () => {
+    const bus = makeMockEventBus();
+    emitResultBroadcast(bus, {
+      agentId: 'worker',
+      result: mockResult,
+      recipients: [],
+    });
+    const event = bus.emit.mock.calls[0]![0];
+    expect(event.sessionId).toBeUndefined();
+    expect(event.correlationId).toBeUndefined();
   });
 });

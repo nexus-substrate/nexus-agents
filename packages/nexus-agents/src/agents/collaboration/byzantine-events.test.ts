@@ -90,6 +90,20 @@ describe('emitWeightUpdated', () => {
     expect(event.sessionId).toBeUndefined();
     expect(event.correlationId).toBeUndefined();
   });
+
+  it('includes sessionId without correlationId', () => {
+    const bus = makeMockEventBus();
+    emitWeightUpdated(bus, {
+      agentId: 'a',
+      previousWeight: 1,
+      newWeight: 0.5,
+      reason: 'recalibration',
+      sessionId: 's1',
+    });
+    const event = bus.emit.mock.calls[0]![0];
+    expect(event.sessionId).toBe('s1');
+    expect(event.correlationId).toBeUndefined();
+  });
 });
 
 // ============================================================================
@@ -138,6 +152,33 @@ describe('emitPatternDetected', () => {
     const event = bus.emit.mock.calls[0]![0];
     expect(event.sessionId).toBe('s2');
     expect(event.correlationId).toBe('c2');
+  });
+
+  it('omits optional metadata when undefined', () => {
+    const bus = makeMockEventBus();
+    emitPatternDetected(bus, {
+      patternType: 'contrarian',
+      agentIds: ['a1'],
+      confidence: 0.7,
+      details: 'test',
+    });
+    const event = bus.emit.mock.calls[0]![0];
+    expect(event.sessionId).toBeUndefined();
+    expect(event.correlationId).toBeUndefined();
+  });
+
+  it('includes correlationId without sessionId', () => {
+    const bus = makeMockEventBus();
+    emitPatternDetected(bus, {
+      patternType: 'collusion',
+      agentIds: ['a1'],
+      confidence: 0.8,
+      details: 'test',
+      correlationId: 'c5',
+    });
+    const event = bus.emit.mock.calls[0]![0];
+    expect(event.sessionId).toBeUndefined();
+    expect(event.correlationId).toBe('c5');
   });
 });
 
@@ -188,6 +229,19 @@ describe('emitAgentFlagged', () => {
     expect(event.sessionId).toBe('s3');
     expect(event.correlationId).toBe('c3');
   });
+
+  it('omits optional metadata when undefined', () => {
+    const bus = makeMockEventBus();
+    emitAgentFlagged(bus, {
+      agentId: 'a',
+      reason: 'r',
+      previousWeight: 1,
+      canVote: false,
+    });
+    const event = bus.emit.mock.calls[0]![0];
+    expect(event.sessionId).toBeUndefined();
+    expect(event.correlationId).toBeUndefined();
+  });
 });
 
 // ============================================================================
@@ -236,5 +290,18 @@ describe('emitCollusionSuspected', () => {
     const event = bus.emit.mock.calls[0]![0];
     expect(event.sessionId).toBe('s4');
     expect(event.correlationId).toBe('c4');
+  });
+
+  it('omits optional metadata when undefined', () => {
+    const bus = makeMockEventBus();
+    emitCollusionSuspected(bus, {
+      groupAgentIds: ['a1'],
+      groupSize: 1,
+      votingBlock: 0.2,
+      threshold: 0.1,
+    });
+    const event = bus.emit.mock.calls[0]![0];
+    expect(event.sessionId).toBeUndefined();
+    expect(event.correlationId).toBeUndefined();
   });
 });
