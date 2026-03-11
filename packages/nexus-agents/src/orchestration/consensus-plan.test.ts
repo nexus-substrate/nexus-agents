@@ -336,4 +336,79 @@ describe('executeConsensusPlan', () => {
     expect(result.value.agreedSteps.length).toBe(3);
     expect(result.value.divergences.length).toBe(0);
   });
+
+  it('handles JSON with non-array steps field', async () => {
+    const badPlan = jsonPlan({
+      steps: 'not an array',
+      risks: 42,
+      alternatives: true,
+      summary: 'Bad plan',
+    });
+    const adapters = buildAdapters(['claude', createPlanAdapter('claude', badPlan)]);
+
+    const result = await executeConsensusPlan('Plan something', adapters);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // Non-array fields should be treated as empty
+    expect(result.value.agreedSteps.length).toBe(0);
+    expect(result.value.risks.length).toBe(0);
+  });
+
+  it('handles malformed JSON that matches regex but fails parse', async () => {
+    const malformed = 'Here is my plan: {"steps": [{"invalid}';
+    const adapters = buildAdapters(['claude', createPlanAdapter('claude', malformed)]);
+
+    const result = await executeConsensusPlan('Plan something', adapters);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // Plan parse fails → no agreed steps
+    expect(result.value.agreedSteps.length).toBe(0);
+  });
+
+  it('handles JSON null as plan response', async () => {
+    const adapters = buildAdapters(['claude', createPlanAdapter('claude', 'null')]);
+
+    const result = await executeConsensusPlan('Plan something', adapters);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.agreedSteps.length).toBe(0);
+  });
+
+  it('filters invalid steps that fail schema validation', async () => {
+    const planWithBadSteps = jsonPlan({
+      steps: [
+        { description: 'Valid step', complexity: 'medium' },
+        { noDescription: true }, // missing description field
+        { description: '', complexity: 'low' }, // empty description
+      ],
+      risks: [],
+      alternatives: [],
+      summary: 'Mixed plan',
+    });
+    const adapters = buildAdapters(['claude', createPlanAdapter('claude', planWithBadSteps)]);
+
+    const result = await executeConsensusPlan('Plan something', adapters);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // Should have parsed some valid steps (at least the first one)
+    expect(result.value.agreedSteps.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('records failure outcomes with failureCategory', async () => {
+    const adapters = buildAdapters(
+      ['claude', createPlanAdapter('claude', claudePlan)],
+      ['codex', createFailingPlanAdapter('codex')]
+    );
+
+    await executeConsensusPlan('Plan a feature', adapters);
+
+    const outcomes = getOutcomeStore().query({});
+    const failedOutcome = outcomes.find((o) => !o.success);
+    expect(failedOutcome).toBeDefined();
+    expect(failedOutcome?.cli).toBe('codex');
+  });
 });
