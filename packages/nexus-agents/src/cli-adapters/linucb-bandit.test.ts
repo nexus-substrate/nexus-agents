@@ -211,6 +211,176 @@ describe('LinUCBBandit', () => {
     });
   });
 
+  describe('getDetailedStats()', () => {
+    it('should return detailed stats with feature importance', () => {
+      const bandit = new LinUCBBandit(armNames);
+      const context = createContext({ isCodeTask: 1 });
+
+      bandit.update(0, context, 1.0);
+      bandit.update(0, context, 0.8);
+
+      const detailed = bandit.getDetailedStats();
+      expect(detailed).toHaveLength(armNames.length);
+      expect(detailed[0]?.name).toBe('claude');
+      expect(detailed[0]?.pullCount).toBe(2);
+      expect(detailed[0]?.avgReward).toBeCloseTo(0.9, 1);
+      expect(detailed[0]?.learnedWeights).toHaveLength(6);
+      expect(detailed[0]?.featureImportance).toHaveLength(6);
+      // Feature importance should be sorted by importance descending
+      const importances = detailed[0]?.featureImportance.map((f) => f.importance) ?? [];
+      for (let i = 1; i < importances.length; i++) {
+        expect(importances[i]).toBeLessThanOrEqual(importances[i - 1] ?? 0);
+      }
+    });
+
+    it('should return zero avg reward for unpulled arms', () => {
+      const bandit = new LinUCBBandit(armNames);
+      const detailed = bandit.getDetailedStats();
+      for (const arm of detailed) {
+        expect(arm.avgReward).toBe(0);
+        expect(arm.pullCount).toBe(0);
+        expect(arm.cumulativeReward).toBe(0);
+      }
+    });
+  });
+
+  describe('getExplorationStats()', () => {
+    it('should return exploration stats', () => {
+      const bandit = new LinUCBBandit(armNames);
+      const context = createContext();
+
+      for (let i = 0; i < 10; i++) {
+        bandit.update(0, context, 1.0);
+      }
+      for (let i = 0; i < 10; i++) {
+        bandit.update(1, context, 0.5);
+      }
+
+      const exploration = bandit.getExplorationStats();
+      expect(exploration.totalPulls).toBe(20);
+      expect(exploration.armDistribution).toHaveLength(armNames.length);
+      expect(exploration.explorationRatio).toBeGreaterThanOrEqual(0);
+      expect(exploration.explorationRatio).toBeLessThanOrEqual(1);
+    });
+
+    it('should return even distribution when no pulls', () => {
+      const bandit = new LinUCBBandit(armNames);
+      const exploration = bandit.getExplorationStats();
+      expect(exploration.totalPulls).toBe(0);
+      // With no pulls, each arm should have equal proportion
+      for (const arm of exploration.armDistribution) {
+        expect(arm.proportion).toBeCloseTo(1 / armNames.length, 5);
+      }
+    });
+
+    it('should report high exploration ratio for even distribution', () => {
+      const bandit = new LinUCBBandit(armNames);
+      const context = createContext();
+
+      // Train all arms equally
+      for (let i = 0; i < armNames.length; i++) {
+        for (let j = 0; j < 10; j++) {
+          bandit.update(i, context, 0.5);
+        }
+      }
+
+      const exploration = bandit.getExplorationStats();
+      expect(exploration.explorationRatio).toBeCloseTo(1.0, 1);
+    });
+  });
+
+  describe('seedPriors()', () => {
+    it('should seed arms with prior rewards', () => {
+      const bandit = new LinUCBBandit(armNames);
+      const priors = new Map([
+        ['claude', 0.9],
+        ['gemini', 0.7],
+        ['codex', 0.5],
+      ]);
+
+      bandit.seedPriors(priors, 5);
+
+      const stats = bandit.getStats();
+      expect(stats[0]?.pullCount).toBe(5);
+      expect(stats[1]?.pullCount).toBe(5);
+      expect(stats[2]?.pullCount).toBe(5);
+      expect(stats[0]?.avgReward).toBeCloseTo(0.9, 1);
+    });
+
+    it('should skip arms not in priors map', () => {
+      const bandit = new LinUCBBandit(armNames);
+      const priors = new Map([['claude', 0.9]]);
+
+      bandit.seedPriors(priors, 3);
+
+      const stats = bandit.getStats();
+      expect(stats[0]?.pullCount).toBe(3);
+      expect(stats[1]?.pullCount).toBe(0);
+      expect(stats[2]?.pullCount).toBe(0);
+    });
+
+    it('should clamp observation count to 20 max', () => {
+      const bandit = new LinUCBBandit(armNames);
+      const priors = new Map([['claude', 0.5]]);
+
+      bandit.seedPriors(priors, 100);
+
+      const stats = bandit.getStats();
+      expect(stats[0]?.pullCount).toBe(20);
+    });
+
+    it('should clamp rewards to 0-1', () => {
+      const bandit = new LinUCBBandit(armNames);
+      const priors = new Map([
+        ['claude', 1.5],
+        ['gemini', -0.5],
+      ]);
+
+      bandit.seedPriors(priors, 3);
+
+      const stats = bandit.getStats();
+      expect(stats[0]?.avgReward).toBeCloseTo(1.0, 1);
+      expect(stats[1]?.avgReward).toBeCloseTo(0.0, 1);
+    });
+  });
+
+  describe('warmStart()', () => {
+    it('should replay outcomes to warm start arms', () => {
+      const bandit = new LinUCBBandit(armNames);
+      const outcomes = [
+        { cli: 'claude' as const, success: true },
+        { cli: 'claude' as const, success: true },
+        { cli: 'gemini' as const, success: false },
+        { cli: 'codex' as const, success: true },
+      ] as Parameters<typeof bandit.warmStart>[0];
+
+      const replayed = bandit.warmStart(outcomes);
+
+      expect(replayed).toBe(4);
+      const stats = bandit.getStats();
+      expect(stats[0]?.pullCount).toBe(2);
+      expect(stats[1]?.pullCount).toBe(1);
+      expect(stats[2]?.pullCount).toBe(1);
+    });
+
+    it('should skip unknown CLI names', () => {
+      const bandit = new LinUCBBandit(armNames);
+      const outcomes = [
+        { cli: 'unknown-cli' as const, success: true },
+        { cli: 'claude' as const, success: true },
+      ] as Parameters<typeof bandit.warmStart>[0];
+
+      const replayed = bandit.warmStart(outcomes);
+
+      expect(replayed).toBe(1);
+    });
+
+    it('should return 0 for empty outcomes', () => {
+      const bandit = new LinUCBBandit(armNames);
+      expect(bandit.warmStart([])).toBe(0);
+    });
+  });
+
   describe('edge cases', () => {
     it('should handle single arm', () => {
       const bandit = new LinUCBBandit(['only-one']);

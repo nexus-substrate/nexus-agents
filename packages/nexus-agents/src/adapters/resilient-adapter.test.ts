@@ -8,7 +8,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AdapterSelection } from './auto-adapter.js';
 import type { ModelCapability } from '../core/types/model.js';
-import { ok } from '../core/result.js';
+import { ok, err } from '../core/result.js';
 import { ModelError } from '../core/errors.js';
 import type { CircuitStateChangeEvent } from '../cli-adapters/circuit-breaker-types.js';
 import type { CircuitBreakerRegistry } from '../cli-adapters/circuit-breaker.js';
@@ -31,8 +31,20 @@ vi.mock('../agents/collaboration/event-bus.js', () => ({
   getGlobalEventBus: vi.fn().mockReturnValue({ emit: vi.fn() }),
 }));
 
+vi.mock('./rate-limit-detector.js', () => ({
+  isRateLimitLikeError: vi.fn().mockReturnValue(false),
+  toRateLimitError: vi.fn().mockReturnValue({ message: 'rate limit', retryAfterMs: undefined }),
+  recordRateLimitEvent: vi.fn(),
+}));
+
 import { createAutoAdapter } from './auto-adapter.js';
 import { ResilientAdapter } from './resilient-adapter.js';
+import {
+  isRateLimitLikeError,
+  toRateLimitError,
+  recordRateLimitEvent,
+} from './rate-limit-detector.js';
+import { getGlobalEventBus } from '../agents/collaboration/event-bus.js';
 
 // ============================================================================
 // Helpers
@@ -307,6 +319,163 @@ describe('ResilientAdapter', () => {
       // Force re-detection via refresh
       await freshAdapter.refresh();
       expect(createAutoAdapter).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('stream() when adapter unavailable', () => {
+    it('yields nothing when no adapter detected', async () => {
+      vi.mocked(createAutoAdapter).mockRejectedValueOnce(new Error('No CLIs'));
+      const chunks: unknown[] = [];
+      for await (const chunk of adapter.stream({ messages: [] })) {
+        chunks.push(chunk);
+      }
+      expect(chunks).toEqual([]);
+    });
+  });
+
+  describe('countTokens() when adapter unavailable', () => {
+    it('returns 0 when no adapter detected', async () => {
+      vi.mocked(createAutoAdapter).mockRejectedValueOnce(new Error('No CLIs'));
+      const count = await adapter.countTokens('hello');
+      expect(count).toBe(0);
+    });
+  });
+
+  describe('rate limit detection in complete()', () => {
+    it('records rate limit event when error is rate-limit-like', async () => {
+      const rateLimitError = new ModelError('Rate limit exceeded, retry after 30 seconds');
+      mockComplete.mockReturnValue(Promise.resolve(err(rateLimitError)));
+      vi.mocked(isRateLimitLikeError).mockReturnValue(true);
+      vi.mocked(toRateLimitError).mockReturnValue({
+        message: 'Rate limit exceeded',
+        retryAfterMs: 30000,
+      } as unknown as ReturnType<typeof toRateLimitError>);
+
+      const result = await adapter.complete({ messages: [] });
+
+      expect(result.ok).toBe(false);
+      expect(isRateLimitLikeError).toHaveBeenCalledWith(rateLimitError);
+      expect(toRateLimitError).toHaveBeenCalledWith(rateLimitError, 'mock-provider');
+      expect(recordRateLimitEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          provider: 'mock-provider',
+          retryAfterMs: 30000,
+        })
+      );
+    });
+
+    it('does not record rate limit event for non-rate-limit errors', async () => {
+      const genericError = new ModelError('Something went wrong');
+      mockComplete.mockReturnValue(Promise.resolve(err(genericError)));
+      vi.mocked(isRateLimitLikeError).mockReturnValue(false);
+
+      await adapter.complete({ messages: [] });
+
+      expect(recordRateLimitEvent).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('circuit breaker non-open state handling', () => {
+    // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+    function makeMockRegistry() {
+      const listeners = new Set<(event: CircuitStateChangeEvent) => void>();
+      const registry = {
+        addGlobalStateChangeListener: vi.fn((cb: (event: CircuitStateChangeEvent) => void) => {
+          listeners.add(cb);
+        }),
+        removeGlobalStateChangeListener: vi.fn((cb: (event: CircuitStateChangeEvent) => void) => {
+          listeners.delete(cb);
+        }),
+      } as unknown as CircuitBreakerRegistry;
+      return { registry, listeners };
+    }
+
+    it('ignores half-open state changes for current CLI', async () => {
+      await adapter.complete({ messages: [] });
+      const { registry, listeners } = makeMockRegistry();
+      adapter.attachCircuitBreakerRegistry(registry);
+
+      for (const listener of listeners) {
+        listener({
+          cliName: 'claude',
+          previousState: 'open',
+          newState: 'half-open',
+          timestamp: Date.now(),
+          failureCount: 5,
+          reason: 'Half-open probe',
+        });
+      }
+
+      expect(adapter.getHealth()?.state).toBe('healthy');
+    });
+
+    it('ignores closed state changes for current CLI', async () => {
+      await adapter.complete({ messages: [] });
+      const { registry, listeners } = makeMockRegistry();
+      adapter.attachCircuitBreakerRegistry(registry);
+
+      for (const listener of listeners) {
+        listener({
+          cliName: 'claude',
+          previousState: 'half-open',
+          newState: 'closed',
+          timestamp: Date.now(),
+          failureCount: 0,
+          reason: 'Recovered',
+        });
+      }
+
+      expect(adapter.getHealth()?.state).toBe('healthy');
+    });
+  });
+
+  describe('failover callback error handling', () => {
+    it('catches and logs errors thrown by failover callbacks', async () => {
+      await adapter.complete({ messages: [] });
+
+      const throwingCallback = vi.fn(() => {
+        throw new Error('Callback exploded');
+      });
+      adapter.onFailover(throwingCallback);
+
+      // Trigger failover via refresh with a different adapter name
+      vi.mocked(createAutoAdapter).mockResolvedValueOnce(makeSelection('gemini'));
+      await adapter.refresh();
+
+      // Callback was called and error was caught (no throw propagated)
+      expect(throwingCallback).toHaveBeenCalledTimes(1);
+      expect(adapter.getHealth()?.state).toBe('healthy');
+    });
+  });
+
+  describe('EventBus emit failure handling', () => {
+    it('catches EventBus errors during failover emit', async () => {
+      await adapter.complete({ messages: [] });
+
+      vi.mocked(getGlobalEventBus).mockImplementation(() => {
+        throw new Error('EventBus unavailable');
+      });
+
+      // Trigger failover
+      vi.mocked(createAutoAdapter).mockResolvedValueOnce(makeSelection('codex'));
+      await adapter.refresh();
+
+      // Failover completed despite EventBus error
+      expect(adapter.getHealth()?.state).toBe('healthy');
+      expect(adapter.getHealth()?.failoverCount).toBe(1);
+    });
+  });
+
+  describe('mapSelectionSource with API source', () => {
+    it('returns api when selection source is not cli', async () => {
+      vi.mocked(createAutoAdapter).mockResolvedValueOnce({
+        ...makeSelection(),
+        source: 'api' as const,
+      });
+
+      await adapter.complete({ messages: [] });
+
+      expect(adapter.getHealth()?.source).toBe('api');
     });
   });
 

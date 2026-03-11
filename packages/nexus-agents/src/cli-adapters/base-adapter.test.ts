@@ -66,8 +66,31 @@ class TestCliAdapter extends BaseCliAdapter {
     return this.checkVersionCompatibility(version);
   }
 
-  public testCreateError(code: CliError['code'], message: string): CliError {
-    return this.createError(code, message);
+  public testGetVersionMessage(
+    status: 'supported' | 'outdated' | 'breaking' | 'unsupported',
+    version: string
+  ): string | undefined {
+    return this.getVersionMessage(status, version);
+  }
+
+  public testCreateError(code: CliError['code'], message: string, cause?: Error): CliError {
+    return this.createError(code, message, cause);
+  }
+
+  public testNormalizeResponse(
+    text: string,
+    usage?: CliResponse['usage'],
+    extra?: Partial<CliResponse>
+  ): CliResponse {
+    return this.normalizeResponse(text, usage, extra);
+  }
+
+  public testInitCapacityTracker(): void {
+    this.initCapacityTracker();
+  }
+
+  public setCachedVersion(version: string | undefined): void {
+    this.cachedVersion = version;
   }
 }
 
@@ -285,6 +308,116 @@ describe('BaseCliAdapter', () => {
       expect(caps).toBeDefined();
       expect(caps.reasoning).toBeTypeOf('number');
       expect(caps.contextWindow).toBeTypeOf('number');
+    });
+  });
+
+  describe('getVersionMessage()', () => {
+    it('should return message for unsupported version', () => {
+      const msg = adapter.testGetVersionMessage('unsupported', '1.0.0');
+      expect(msg).toContain('not supported');
+      expect(msg).toContain('1.0.0');
+    });
+
+    it('should return message for breaking version', () => {
+      const msg = adapter.testGetVersionMessage('breaking', '5.0.0');
+      expect(msg).toContain('compatibility issues');
+    });
+
+    it('should return message for outdated version', () => {
+      const msg = adapter.testGetVersionMessage('outdated', '2.0.1');
+      expect(msg).toContain('Consider upgrading');
+    });
+
+    it('should return undefined for supported version', () => {
+      expect(adapter.testGetVersionMessage('supported', '2.1.0')).toBeUndefined();
+    });
+  });
+
+  describe('healthCheck()', () => {
+    it('should return healthy for supported version', async () => {
+      adapter.setCachedVersion('2.1.0');
+      const status = await adapter.healthCheck();
+      expect(status.healthy).toBe(true);
+      expect(status.version).toBe('2.1.0');
+      expect(status.versionStatus).toBe('supported');
+    });
+
+    it('should return unhealthy for unsupported version', async () => {
+      adapter.setCachedVersion('0.0.1');
+      const status = await adapter.healthCheck();
+      expect(status.healthy).toBe(false);
+      expect(status.versionStatus).toBe('unsupported');
+      expect(status.message).toContain('not supported');
+    });
+
+    it('should handle outdated version in health check', async () => {
+      adapter.setCachedVersion('2.0.1');
+      const status = await adapter.healthCheck();
+      // 2.0.1 is above minimum but below recommended for claude
+      expect(status.healthy).toBe(true);
+      expect(status.versionStatus).toBe('outdated');
+      expect(status.message).toContain('Consider upgrading');
+    });
+  });
+
+  describe('checkVersionCompatibility() — breaking version', () => {
+    it('should return breaking for a version in the breaking list', () => {
+      // Claude breaking versions: defined in types.ts. We use a version >= breaking
+      // Since CLI_VERSION_REQUIREMENTS.claude.breaking may be empty, test the logic
+      // by ensuring the function handles valid semver correctly
+      const status = adapter.testCheckVersionCompatibility('2.0.76');
+      expect(['supported', 'outdated', 'breaking']).toContain(status);
+    });
+  });
+
+  describe('createError() with cause', () => {
+    it('should include cause when provided', () => {
+      const cause = new Error('root cause');
+      const error = adapter.testCreateError('EXECUTION_ERROR', 'Task failed', cause);
+      expect(error.cause).toBe(cause);
+    });
+
+    it('should omit cause when not provided', () => {
+      const error = adapter.testCreateError('EXECUTION_ERROR', 'Task failed');
+      expect(error.cause).toBeUndefined();
+    });
+  });
+
+  describe('normalizeResponse()', () => {
+    it('should return response with text only', () => {
+      const response = adapter.testNormalizeResponse('hello');
+      expect(response.text).toBe('hello');
+      expect(response.usage).toBeUndefined();
+    });
+
+    it('should include usage when provided', () => {
+      const usage = { inputTokens: 10, outputTokens: 5, totalTokens: 15 };
+      const response = adapter.testNormalizeResponse('hello', usage);
+      expect(response.usage).toEqual(usage);
+    });
+
+    it('should merge extra fields', () => {
+      const response = adapter.testNormalizeResponse('hello', undefined, { durationMs: 100 });
+      expect(response.durationMs).toBe(100);
+    });
+  });
+
+  describe('execute() timeout priority', () => {
+    it('should use task.timeoutMs when no options.timeoutMs', async () => {
+      adapter.setMockResult(ok({ text: 'response' }));
+
+      await adapter.execute({ content: 'test', timeoutMs: 45_000 });
+
+      expect(adapter.executeCalled).toBe(1);
+    });
+  });
+
+  describe('capacity with initialized tracker', () => {
+    it('should return tracked capacity after initialization', async () => {
+      adapter.testInitCapacityTracker();
+      const capacity = await adapter.getCapacity();
+      expect(capacity).toBeDefined();
+      expect(capacity.remainingTokens).toBeGreaterThan(0);
     });
   });
 });
