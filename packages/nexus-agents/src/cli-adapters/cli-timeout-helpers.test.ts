@@ -132,12 +132,13 @@ function makeOutcome(overrides: Partial<TaskOutcome>): TaskOutcome {
     id: `test-${String(Math.random())}`,
     cli: 'claude',
     category: 'code_generation',
+    model: 'claude-sonnet-4-6',
     success: true,
     durationMs: 10_000,
     timestamp: new Date().toISOString(),
-    source: 'expert',
+    source: 'delegate',
     ...overrides,
-  };
+  } as TaskOutcome;
 }
 
 describe('getAdaptiveTimeout (#1534)', () => {

@@ -4,18 +4,29 @@ import {
   type ExitTriggerConfig,
   type ExitTriggerState,
 } from './exit-triggers.js';
-import type { WorkerResult } from './worker-dispatcher.js';
+import type { WorkerResult, WorkerErrorType } from './worker-dispatcher.js';
 
 function makeResult(status: 'success' | 'error' | 'skipped', errorType?: string): WorkerResult {
+  if (status === 'error' && errorType !== undefined) {
+    return {
+      role: 'code',
+      subTask: 'task',
+      output: '',
+      status,
+      durationMs: 100,
+      error: 'fail',
+      errorType: errorType as WorkerErrorType,
+    };
+  }
+  if (status === 'error') {
+    return { role: 'code', subTask: 'task', output: '', status, durationMs: 100, error: 'fail' };
+  }
   return {
     role: 'code',
     subTask: 'task',
-    output: status === 'success' ? 'done' : '',
+    output: 'done',
     status,
     durationMs: 100,
-    ...(status === 'error'
-      ? { error: 'fail', errorType: errorType as WorkerResult['errorType'] }
-      : {}),
   };
 }
 

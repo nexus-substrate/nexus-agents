@@ -230,9 +230,9 @@ function createWorkerExecutor(
       adapter,
       cliName,
       taskDescription,
-      learnings,
-      priorWaveResults,
       workerStartMs,
+      ...(learnings !== undefined ? { learnings } : {}),
+      ...(priorWaveResults !== undefined ? { priorWaveResults } : {}),
     });
   };
 }
@@ -244,8 +244,9 @@ function resolveAltAdapter(
   log: ILogger
 ): { adapter: IModelAdapter; cliName: string } | null {
   const chain = getExpertFallbackChain(`${entry.role}_expert`, primaryCli, log);
-  if (chain.length === 0) return null;
-  const altCli = chain[0] as string;
+  const first = chain[0];
+  if (first === undefined) return null;
+  const altCli = first;
   try {
     const registry = getGlobalRegistry({ logger: log });
     return { adapter: registry.getAdapterForCli(altCli), cliName: altCli };
@@ -276,9 +277,9 @@ function createAltWorkerExecutor(
       adapter: alt.adapter,
       cliName: alt.cliName,
       taskDescription,
-      learnings,
-      priorWaveResults,
       workerStartMs,
+      ...(learnings !== undefined ? { learnings } : {}),
+      ...(priorWaveResults !== undefined ? { priorWaveResults } : {}),
     });
   };
 }
@@ -439,8 +440,10 @@ async function runRefinementPhase(
     taskDescription: options.taskDescription,
     modelAdapter: options.modelAdapter,
     logger: options.logger,
-    learnings: options.learnings,
-    perWorkerRouting: options.perWorkerRouting,
+    ...(options.learnings !== undefined ? { learnings: options.learnings } : {}),
+    ...(options.perWorkerRouting !== undefined
+      ? { perWorkerRouting: options.perWorkerRouting }
+      : {}),
   });
   const refinedResults = await dispatchWorkers(failedEntries, {
     ...(options.maxConcurrency !== undefined ? { maxConcurrency: options.maxConcurrency } : {}),
@@ -496,8 +499,10 @@ export async function executeWorkerDispatch(
     taskDescription,
     modelAdapter,
     logger,
-    learnings: options.learnings,
-    perWorkerRouting: options.perWorkerRouting,
+    ...(options.learnings !== undefined ? { learnings: options.learnings } : {}),
+    ...(options.perWorkerRouting !== undefined
+      ? { perWorkerRouting: options.perWorkerRouting }
+      : {}),
   };
   const results = await dispatchWorkers(entries, {
     ...(maxConcurrency !== undefined ? { maxConcurrency } : {}),

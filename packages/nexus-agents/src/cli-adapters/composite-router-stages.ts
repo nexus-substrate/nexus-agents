@@ -468,11 +468,13 @@ export function runTopsisStage(
   if (!deps.config.enableTopsisRanking || deps.topsisRouter === undefined) {
     return { ranking: candidates, score: undefined };
   }
-  const result = applyTopsisRanking(taskProfile, candidates, deps.topsisRouter, {
+  const topsisOptions: Parameters<typeof applyTopsisRanking>[3] = {
     billingMode: deps.config.billingMode,
-    stageScores: options?.stageScores,
-    performanceData: options?.performanceData,
-  });
+  };
+  if (options?.stageScores !== undefined) topsisOptions.stageScores = options.stageScores;
+  if (options?.performanceData !== undefined)
+    topsisOptions.performanceData = options.performanceData;
+  const result = applyTopsisRanking(taskProfile, candidates, deps.topsisRouter, topsisOptions);
   stagesExecuted.push('topsis-ranking');
   return { ranking: result.ranking, score: result.topScore };
 }
@@ -727,10 +729,11 @@ export async function runPipeline(
   candidates = scoring.candidates;
   const stageScores = aggregateStageScores(scoring, task.content);
 
-  const topsisResult = runTopsisStage(taskProfile, candidates, stagesExecuted, deps, {
-    stageScores: stageScores.size > 0 ? stageScores : undefined,
+  const topsisOpts: Parameters<typeof runTopsisStage>[4] = {
     performanceData: getPerformanceDataForCategory(task.content),
-  });
+  };
+  if (stageScores.size > 0) topsisOpts.stageScores = stageScores;
+  const topsisResult = runTopsisStage(taskProfile, candidates, stagesExecuted, deps, topsisOpts);
 
   const linucbResult = runLinUCBStage(taskProfile, topsisResult.ranking, stagesExecuted, deps);
   if (linucbResult.selectedCli === undefined) {

@@ -12,6 +12,7 @@ import type { TaskComplexity } from '../config/timeouts.js';
 import { getCliTimeout } from '../config/timeouts.js';
 import { detectTaskCategory } from '../config/task-specialization.js';
 import { getOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
+import type { CliNameLiteral } from '../config/model-capabilities-types.js';
 
 /**
  * Estimate task complexity from task description.
@@ -106,7 +107,7 @@ export function getAdaptiveTimeout(
 
   const store = options?.store ?? getOutcomeStore();
   const outcomes = store.query({
-    cli,
+    cli: cli as CliNameLiteral,
     category: match.category,
     success: true,
   });

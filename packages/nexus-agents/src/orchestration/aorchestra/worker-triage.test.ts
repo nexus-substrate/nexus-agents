@@ -196,7 +196,14 @@ describe('triageWorkerFailure', () => {
     });
 
     it('triages undefined error message as retry_same_cli', () => {
-      const result = makeFailedResult({ error: undefined });
+      const result: WorkerResult = {
+        role: 'code',
+        subTask: 'Implement feature',
+        output: '',
+        status: 'error',
+        durationMs: 5000,
+        errorType: 'logic_error',
+      };
       const triage = triageWorkerFailure(result);
       expect(triage.action).toBe('retry_same_cli');
       expect(triage.retryable).toBe(true);

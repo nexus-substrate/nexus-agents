@@ -304,7 +304,8 @@ describe('resolveSingleExpression', () => {
       type: 'inputs',
       path: ['x'],
     });
-    const resolve = (): ResolveResult => ({ success: false, error: undefined });
+
+    const resolve = (): ResolveResult => ({ success: false }) as ResolveResult;
     const ctx = makeContext();
     expect(() => resolveSingleExpression('inputs.x', ctx, parse, resolve)).toThrow(
       'Failed to resolve'
