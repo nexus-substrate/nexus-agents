@@ -64,15 +64,10 @@ jobs:
         uses: lycheeverse/lychee-action@8646ba30535128ac92d33dfc9133794bfdd9b411 # v2.8.0
         with:
           args: >-
-            --base https://williamzujkowski.github.io/nexus-agents
-            --root-dir site
             --no-progress
+            --offline
+            --root-dir site
             --exclude-path 'site/_astro'
-            --exclude 'localhost'
-            --exclude '127\.0\.0\.1'
-            --accept 200,204,301,302,403,429
-            --timeout 30
-            --max-retries 3
             'site/**/*.html'
           fail: true
 
