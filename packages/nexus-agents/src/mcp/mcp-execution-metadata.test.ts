@@ -76,33 +76,42 @@ describe('heartbeat progress notification mechanism', () => {
   });
 
   it('withProgressHeartbeat sends heartbeat notifications', async () => {
-    const { withProgressHeartbeat } = await import('./mcp-notifier.js');
-    const debugCalls: Array<Record<string, unknown>> = [];
-    const mockNotifier = {
-      info: vi.fn(),
-      debug: vi.fn((_logger: string, data: Record<string, unknown>) => {
-        debugCalls.push(data);
-      }),
-      warn: vi.fn(),
-    };
-
-    // Operation that takes 250ms — should trigger at least 1 heartbeat at 100ms interval
-    await withProgressHeartbeat(
-      'test_tool',
-      mockNotifier,
-      () =>
-        new Promise((resolve) => {
-          setTimeout(() => {
-            resolve('done');
-          }, 250);
+    vi.useFakeTimers();
+    try {
+      const { withProgressHeartbeat } = await import('./mcp-notifier.js');
+      const debugCalls: Array<Record<string, unknown>> = [];
+      const mockNotifier = {
+        info: vi.fn(),
+        debug: vi.fn((_logger: string, data: Record<string, unknown>) => {
+          debugCalls.push(data);
         }),
-      100
-    );
+        warn: vi.fn(),
+      };
 
-    expect(debugCalls.length).toBeGreaterThanOrEqual(1);
-    expect(debugCalls[0]).toHaveProperty('event', 'heartbeat');
-    expect(debugCalls[0]).toHaveProperty('beatCount', 1);
-    expect(debugCalls[0]).toHaveProperty('hasProgressToken', false);
+      // Start operation that resolves after 250ms — heartbeat fires at 100ms
+      const promise = withProgressHeartbeat(
+        'test_tool',
+        mockNotifier,
+        () =>
+          new Promise((resolve) => {
+            setTimeout(() => {
+              resolve('done');
+            }, 250);
+          }),
+        100
+      );
+
+      // Advance past first heartbeat (100ms) and operation completion (250ms)
+      await vi.advanceTimersByTimeAsync(300);
+      await promise;
+
+      expect(debugCalls.length).toBeGreaterThanOrEqual(1);
+      expect(debugCalls[0]).toHaveProperty('event', 'heartbeat');
+      expect(debugCalls[0]).toHaveProperty('beatCount', 1);
+      expect(debugCalls[0]).toHaveProperty('hasProgressToken', false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('toSdkCallback threads progressToken into AsyncLocalStorage', async () => {
@@ -142,35 +151,44 @@ describe('heartbeat progress notification mechanism', () => {
   });
 
   it('withProgressHeartbeat sends real progress when token is available', async () => {
-    const { withProgressHeartbeat, progressContextStorage } = await import('./mcp-notifier.js');
-    const mockNotifier = { info: vi.fn(), debug: vi.fn(), warn: vi.fn() };
+    vi.useFakeTimers();
+    try {
+      const { withProgressHeartbeat, progressContextStorage } = await import('./mcp-notifier.js');
+      const mockNotifier = { info: vi.fn(), debug: vi.fn(), warn: vi.fn() };
 
-    const notifications: Array<{ progress: number }> = [];
-    const progressCtx = {
-      progressToken: 'real-token',
-      sendNotification: (progress: number): void => {
-        notifications.push({ progress });
-      },
-    };
+      const notifications: Array<{ progress: number }> = [];
+      const progressCtx = {
+        progressToken: 'real-token',
+        sendNotification: (progress: number): void => {
+          notifications.push({ progress });
+        },
+      };
 
-    // Run within progress context to simulate real MCP request
-    await progressContextStorage.run(progressCtx, () =>
-      withProgressHeartbeat(
-        'test_tool',
-        mockNotifier,
-        () =>
-          new Promise((resolve) => {
-            setTimeout(() => {
-              resolve('ok');
-            }, 250);
-          }),
-        100
-      )
-    );
+      // Run within progress context to simulate real MCP request
+      const promise = progressContextStorage.run(progressCtx, () =>
+        withProgressHeartbeat(
+          'test_tool',
+          mockNotifier,
+          () =>
+            new Promise((resolve) => {
+              setTimeout(() => {
+                resolve('ok');
+              }, 250);
+            }),
+          100
+        )
+      );
 
-    // Should have sent real progress notifications
-    expect(notifications.length).toBeGreaterThanOrEqual(1);
-    expect(notifications[0]?.progress).toBe(1);
+      // Advance past first heartbeat (100ms) and operation completion (250ms)
+      await vi.advanceTimersByTimeAsync(300);
+      await promise;
+
+      // Should have sent real progress notifications
+      expect(notifications.length).toBeGreaterThanOrEqual(1);
+      expect(notifications[0]?.progress).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('abortSignalStorage is threaded by toSdkCallback', async () => {
