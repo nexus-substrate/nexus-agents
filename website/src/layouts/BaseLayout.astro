@@ -1,0 +1,125 @@
+---
+interface Props {
+  title: string;
+  description?: string;
+}
+
+const { title, description = 'Multi-agent orchestration MCP server' } = Astro.props;
+const siteTitle = `${title} — Nexus Agents`;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    <title>{siteTitle}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <nav class="site-nav">
+      <div class="nav-inner">
+        <a href="/nexus-agents/" class="nav-logo">
+          <svg viewBox="0 0 32 32" fill="none" width="28" height="28" aria-hidden="true">
+            <circle cx="16" cy="16" r="14" stroke="currentColor" stroke-width="2" />
+            <circle cx="10" cy="12" r="2.5" fill="currentColor" />
+            <circle cx="22" cy="12" r="2.5" fill="currentColor" />
+            <circle cx="16" cy="22" r="2.5" fill="currentColor" opacity="0.7" />
+            <line x1="10" y1="12" x2="22" y2="12" stroke="currentColor" stroke-width="1.5" opacity="0.4" />
+            <line x1="10" y1="12" x2="16" y2="22" stroke="currentColor" stroke-width="1.5" opacity="0.4" />
+            <line x1="22" y1="12" x2="16" y2="22" stroke="currentColor" stroke-width="1.5" opacity="0.4" />
+          </svg>
+          Nexus Agents
+        </a>
+        <div class="nav-links">
+          <a href="/nexus-agents/docs/getting-started/installation/">Docs</a>
+          <a href="/nexus-agents/docs/architecture/readme/">Architecture</a>
+          <a href="/nexus-agents/docs/guides/mcp_integration/">API</a>
+          <a href="https://github.com/williamzujkowski/nexus-agents" target="_blank" rel="noopener noreferrer">GitHub</a>
+        </div>
+      </div>
+    </nav>
+
+    <main>
+      <slot />
+    </main>
+
+    <footer class="site-footer">
+      <p>Nexus Agents &mdash; Multi-agent orchestration MCP server</p>
+      <p>MIT License</p>
+    </footer>
+  </body>
+</html>
+
+<style is:global>
+  @import '../styles/global.css';
+</style>
+
+<style>
+  body {
+    min-height: 100vh;
+    background: var(--color-surface);
+    color: var(--color-on-surface);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    margin: 0;
+  }
+
+  .site-nav {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    border-bottom: 1px solid var(--color-outline-variant);
+    background: var(--color-surface);
+    backdrop-filter: blur(8px);
+  }
+
+  .nav-inner {
+    max-width: 72rem;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1.5rem;
+  }
+
+  .nav-logo {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--color-primary);
+    text-decoration: none;
+  }
+
+  .nav-links {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+  }
+
+  .nav-links a {
+    font-size: 0.875rem;
+    color: var(--color-on-surface-variant);
+    text-decoration: none;
+    transition: color 200ms;
+  }
+  .nav-links a:hover { color: var(--color-primary); }
+
+  .site-footer {
+    border-top: 1px solid var(--color-outline-variant);
+    margin-top: 6rem;
+    padding: 3rem 1.5rem;
+    text-align: center;
+    font-size: 0.875rem;
+    color: var(--color-on-surface-variant);
+  }
+  .site-footer p { margin: 0.25rem 0; }
+</style>

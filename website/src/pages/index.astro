@@ -1,0 +1,274 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import '../styles/global.css';
+---
+
+<BaseLayout title="Home" description="Multi-agent orchestration MCP server">
+  <section class="section hero">
+    <div class="hero-content">
+      <p class="label">Multi-Agent Orchestration</p>
+      <h1 class="display-large">
+        Coordinate AI experts with
+        <span class="accent">research-backed protocols</span>
+      </h1>
+      <p class="subtitle">
+        One MCP server to route tasks to Claude, Gemini, Codex, and OpenCode.
+        Byzantine fault tolerance, intelligent routing, and 8 memory systems.
+      </p>
+      <div class="btn-row">
+        <a href="/nexus-agents/docs/getting-started/installation/" class="btn-primary">
+          Get Started &rarr;
+        </a>
+        <a href="https://github.com/williamzujkowski/nexus-agents" target="_blank" rel="noopener noreferrer" class="btn-outline">
+          View on GitHub &nearr;
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2 class="headline-large">How It Works</h2>
+    <p class="subtitle section-subtitle">
+      Tasks are analyzed, routed to the best available model, and validated through consensus when agents disagree.
+    </p>
+    <div class="card-grid">
+      <div class="card">
+        <h3 class="title-large">10 Expert Agents</h3>
+        <p class="card-text">Code, Architecture, Security, Documentation, Testing, DevOps, Research, PM, UX/UI, and Infrastructure experts with domain-specific knowledge.</p>
+      </div>
+      <div class="card">
+        <h3 class="title-large">Consensus Protocols</h3>
+        <p class="card-text">Aegean BFT and CPABFT for multi-agent agreement. 6 voting strategies resolve conflicts. Validated at 85.7% fault tolerance.</p>
+      </div>
+      <div class="card">
+        <h3 class="title-large">Intelligent Routing</h3>
+        <p class="card-text">LinUCB contextual bandits learn which model works best per task. TOPSIS multi-criteria scoring with adaptive timeouts.</p>
+      </div>
+      <div class="card">
+        <h3 class="title-large">8 Memory Systems</h3>
+        <p class="card-text">Graph, session, typed, belief, and adaptive memory backends. MIRIX six-type architecture for cross-session learning.</p>
+      </div>
+      <div class="card">
+        <h3 class="title-large">25 MCP Tools</h3>
+        <p class="card-text">Orchestration, expert creation, workflow execution, consensus voting, research tracking, and repository analysis via MCP.</p>
+      </div>
+      <div class="card">
+        <h3 class="title-large">Research-Backed</h3>
+        <p class="card-text">174+ papers tracked. 47 technique-to-implementation mappings. arXiv integration for continuous discovery.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2 class="headline-large">Quick Start</h2>
+    <p class="subtitle">Install and connect to Claude Desktop in under 5 minutes.</p>
+    <div class="code-grid">
+      <div>
+        <h3 class="title-large code-step">1. Install</h3>
+        <pre class="code-block"><code># Install globally
+pnpm install -g nexus-agents
+
+# Verify
+nexus-agents doctor</code></pre>
+      </div>
+      <div>
+        <h3 class="title-large code-step">2. Connect to Claude</h3>
+        <pre class="code-block"><code># ~/.claude/mcp.json
+{'{'}
+  "mcpServers": {'{'}
+    "nexus-agents": {'{'}
+      "command": "nexus-agents",
+      "args": ["--mode=server"]
+    {'}'}
+  {'}'}
+{'}'}</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2 class="headline-large">Architecture</h2>
+    <pre class="code-block"><code>MCP Protocol (25 tools, rate-limited, auth)
+    |
+Orchestrator (task analysis, expert delegation)
+    |
++--------+--------+--------+----------+
+| Claude | Gemini | Codex  | OpenCode |
++--------+--------+--------+----------+
+    |
+Composite Router
+  Budget &rarr; Zero &rarr; Preference &rarr; TOPSIS &rarr; LinUCB
+    |
++----------+--------+-----------+----------+
+| Consensus| Memory | Workflows | Security |
++----------+--------+-----------+----------+</code></pre>
+  </section>
+
+  <section class="section">
+    <h2 class="headline-large">Documentation</h2>
+    <div class="card-grid cols-4">
+      <a href="/nexus-agents/docs/getting-started/installation/" class="card link-card">
+        <h3 class="title-large">Getting Started</h3>
+        <p class="card-text">Installation, configuration, first orchestration.</p>
+      </a>
+      <a href="/nexus-agents/docs/guides/mcp_integration/" class="card link-card">
+        <h3 class="title-large">MCP Integration</h3>
+        <p class="card-text">Connect nexus-agents to Claude Desktop and other MCP clients.</p>
+      </a>
+      <a href="/nexus-agents/docs/guides/workflow_templates/" class="card link-card">
+        <h3 class="title-large">Workflows</h3>
+        <p class="card-text">Built-in workflow templates for common tasks.</p>
+      </a>
+      <a href="/nexus-agents/docs/research/research_index/" class="card link-card">
+        <h3 class="title-large">Research</h3>
+        <p class="card-text">Papers and techniques backing the protocols.</p>
+      </a>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .section {
+    max-width: 72rem;
+    margin: 0 auto;
+    padding: 4rem 1.5rem;
+  }
+  .hero {
+    padding-top: 5rem;
+    padding-bottom: 4rem;
+  }
+  .hero-content {
+    max-width: 48rem;
+  }
+
+  .label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--color-primary);
+    margin-bottom: 1rem;
+  }
+
+  .display-large {
+    margin-bottom: 1.5rem;
+  }
+
+  .accent { color: var(--color-primary); }
+
+  .subtitle {
+    font-size: 1.125rem;
+    line-height: 1.75;
+    color: var(--color-on-surface-variant);
+    max-width: 42rem;
+    margin-bottom: 2rem;
+  }
+  .section-subtitle {
+    margin-bottom: 3rem;
+  }
+
+  .headline-large {
+    margin-bottom: 1rem;
+  }
+
+  .title-large {
+    margin-bottom: 0.5rem;
+  }
+
+  .btn-row {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    border-radius: 9999px;
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+    padding: 0.75rem 1.5rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    text-decoration: none;
+    transition: box-shadow 200ms;
+  }
+  .btn-primary:hover { box-shadow: 0 4px 12px oklch(0 0 0 / 0.15); }
+
+  .btn-outline {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    border-radius: 9999px;
+    border: 1px solid var(--color-outline-variant);
+    color: var(--color-on-surface);
+    padding: 0.75rem 1.5rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    text-decoration: none;
+    transition: border-color 200ms, color 200ms;
+  }
+  .btn-outline:hover {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+  }
+
+  .card-grid {
+    display: grid;
+    gap: 1.5rem;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  }
+  .card-grid.cols-4 {
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  }
+
+  .card {
+    border: 1px solid var(--color-outline-variant);
+    border-radius: 0.75rem;
+    padding: 1.5rem;
+    background: var(--color-surface-container);
+    transition: border-color 200ms, box-shadow 200ms;
+  }
+  .card:hover {
+    border-color: var(--color-primary);
+    box-shadow: 0 2px 8px oklch(0 0 0 / 0.08);
+  }
+
+  .card-text {
+    font-size: 0.875rem;
+    line-height: 1.625;
+    color: var(--color-on-surface-variant);
+  }
+
+  .link-card {
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .link-card h3 {
+    color: var(--color-on-surface);
+    transition: color 200ms;
+  }
+  .link-card:hover h3 { color: var(--color-primary); }
+
+  .code-step {
+    margin-bottom: 1rem;
+  }
+
+  .code-grid {
+    display: grid;
+    gap: 2rem;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    margin-top: 2rem;
+  }
+
+  .code-block {
+    border-radius: 0.75rem;
+    background: var(--color-inverse-surface);
+    color: var(--color-inverse-on-surface);
+    padding: 1.5rem;
+    font-size: 0.875rem;
+    overflow-x: auto;
+    line-height: 1.625;
+  }
+</style>

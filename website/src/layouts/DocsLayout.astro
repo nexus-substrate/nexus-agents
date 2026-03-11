@@ -1,0 +1,266 @@
+---
+import BaseLayout from './BaseLayout.astro';
+
+interface Props {
+  title: string;
+  description?: string;
+}
+
+const { title, description } = Astro.props;
+const pathname = Astro.url.pathname;
+
+const base = '/nexus-agents/docs';
+const nav = [
+  {
+    section: 'Getting Started',
+    links: [
+      { label: 'Installation', href: `${base}/getting-started/installation/` },
+      { label: 'Configuration', href: `${base}/getting-started/configuration/` },
+    ],
+  },
+  {
+    section: 'Architecture',
+    links: [
+      { label: 'Overview', href: `${base}/architecture/readme/` },
+      { label: 'Consensus', href: `${base}/architecture/consensus_protocols/` },
+      { label: 'MCP Protocol', href: `${base}/architecture/mcp_protocol/` },
+      { label: 'Routing', href: `${base}/architecture/routing_system/` },
+      { label: 'Memory', href: `${base}/architecture/memory_system/` },
+      { label: 'Security', href: `${base}/architecture/security/` },
+    ],
+  },
+  {
+    section: 'Guides',
+    links: [
+      { label: 'MCP Integration', href: `${base}/guides/mcp_integration/` },
+      { label: 'Workflows', href: `${base}/guides/workflow_templates/` },
+      { label: 'Debugging', href: `${base}/guides/debugging_observability/` },
+      { label: 'Custom Endpoints', href: `${base}/guides/custom_endpoint_setup/` },
+    ],
+  },
+  {
+    section: 'Development',
+    links: [
+      { label: 'Contributing', href: `${base}/development/contribution_guide/` },
+      { label: 'Agent Dev', href: `${base}/development/agent_development/` },
+      { label: 'Shell Testing', href: `${base}/development/shell_testing_anti_patterns/` },
+    ],
+  },
+  {
+    section: 'Reference',
+    links: [
+      { label: 'Entrypoints', href: `${base}/entrypoints/` },
+      { label: 'Troubleshooting', href: `${base}/troubleshooting/` },
+      { label: 'Research Index', href: `${base}/research/research_index/` },
+    ],
+  },
+];
+---
+
+<BaseLayout title={title} description={description}>
+  <div class="docs-shell">
+    <button class="sidebar-toggle" aria-expanded="false" aria-controls="docs-sidebar" aria-label="Toggle navigation">
+      <svg viewBox="0 0 20 20" fill="currentColor" width="20" height="20" aria-hidden="true">
+        <rect x="2" y="4" width="16" height="2" rx="1" />
+        <rect x="2" y="9" width="16" height="2" rx="1" />
+        <rect x="2" y="14" width="16" height="2" rx="1" />
+      </svg>
+    </button>
+
+    <nav id="docs-sidebar" class="docs-sidebar" aria-label="Documentation navigation">
+      {nav.map(({ section, links }) => (
+        <div class="nav-section">
+          <p class="nav-section-label">{section}</p>
+          <ul role="list">
+            {links.map(({ label, href }) => {
+              const isActive = pathname === href || pathname.startsWith(href);
+              return (
+                <li>
+                  <a
+                    href={href}
+                    class:list={['nav-link', { 'nav-link--active': isActive }]}
+                    aria-current={isActive ? 'page' : undefined}
+                  >
+                    {label}
+                  </a>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ))}
+    </nav>
+
+    <div class="docs-content-wrap">
+      <article class="docs-content">
+        <slot />
+      </article>
+    </div>
+  </div>
+</BaseLayout>
+
+<script>
+  const toggle = document.querySelector('.sidebar-toggle') as HTMLButtonElement | null;
+  const sidebar = document.getElementById('docs-sidebar');
+
+  toggle?.addEventListener('click', () => {
+    const expanded = toggle.getAttribute('aria-expanded') === 'true';
+    toggle.setAttribute('aria-expanded', String(!expanded));
+    sidebar?.classList.toggle('docs-sidebar--open');
+  });
+</script>
+
+<style>
+  .docs-shell {
+    display: flex;
+    align-items: flex-start;
+    min-height: calc(100vh - 4rem);
+    max-width: 72rem;
+    margin: 0 auto;
+    padding: 0 1.5rem;
+    position: relative;
+  }
+
+  /* ── Sidebar ─────────────────────────────── */
+  .docs-sidebar {
+    width: 16rem;
+    flex-shrink: 0;
+    position: sticky;
+    top: 4rem;
+    max-height: calc(100vh - 4rem);
+    overflow-y: auto;
+    border-right: 1px solid var(--color-outline-variant);
+    padding: 2rem 1.25rem 2rem 0;
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-outline-variant) transparent;
+  }
+
+  .docs-sidebar::-webkit-scrollbar {
+    width: 4px;
+  }
+  .docs-sidebar::-webkit-scrollbar-thumb {
+    background: var(--color-outline-variant);
+    border-radius: 2px;
+  }
+
+  .nav-section {
+    margin-bottom: 1.75rem;
+  }
+
+  .nav-section-label {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-on-surface-variant);
+    margin-bottom: 0.5rem;
+    padding-left: 0.625rem;
+  }
+
+  .nav-section ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+  }
+
+  .nav-link {
+    display: block;
+    font-size: 0.875rem;
+    padding: 0.375rem 0.625rem;
+    border-radius: 0.375rem;
+    color: var(--color-on-surface-variant);
+    text-decoration: none;
+    transition: color 150ms, background-color 150ms;
+    line-height: 1.4;
+  }
+
+  .nav-link:hover {
+    color: var(--color-on-surface);
+    background-color: var(--color-surface-container);
+  }
+
+  .nav-link--active {
+    color: var(--color-primary);
+    background-color: var(--color-primary-container);
+    font-weight: 500;
+  }
+
+  .nav-link--active:hover {
+    color: var(--color-primary);
+    background-color: var(--color-primary-container);
+  }
+
+  /* ── Content ─────────────────────────────── */
+  .docs-content-wrap {
+    flex: 1;
+    min-width: 0;
+    padding: 2rem 0 2rem 2.5rem;
+  }
+
+  .docs-content {
+    max-width: 48rem;
+  }
+
+  /* ── Mobile toggle ───────────────────────── */
+  .sidebar-toggle {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    bottom: 1.5rem;
+    right: 1.5rem;
+    z-index: 40;
+    width: 3rem;
+    height: 3rem;
+    border-radius: 50%;
+    border: 1px solid var(--color-outline-variant);
+    background: var(--color-surface-container-high);
+    color: var(--color-on-surface);
+    cursor: pointer;
+    box-shadow: 0 2px 8px oklch(0 0 0 / 0.15);
+    transition: background-color 150ms;
+  }
+
+  .sidebar-toggle:hover {
+    background: var(--color-surface-container);
+  }
+
+  /* ── Responsive ──────────────────────────── */
+  @media (max-width: 767px) {
+    .docs-shell {
+      padding: 0;
+      flex-direction: column;
+    }
+
+    .sidebar-toggle {
+      display: flex;
+    }
+
+    .docs-sidebar {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      z-index: 30;
+      width: 16rem;
+      height: 100vh;
+      max-height: 100vh;
+      border-right: 1px solid var(--color-outline-variant);
+      background: var(--color-surface);
+      padding: 5rem 1.25rem 2rem;
+      box-shadow: 4px 0 24px oklch(0 0 0 / 0.12);
+    }
+
+    .docs-sidebar--open {
+      display: block;
+    }
+
+    .docs-content-wrap {
+      padding: 1.5rem 1rem;
+      width: 100%;
+    }
+  }
+</style>

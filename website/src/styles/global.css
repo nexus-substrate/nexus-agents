@@ -1,0 +1,215 @@
+/* Reset */
+*, *::before, *::after { box-sizing: border-box; margin: 0; }
+
+:root {
+  /* Typography */
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  /* OKLCH Colors — Primary hue 250 (blue-violet) */
+  --color-primary: oklch(0.55 0.2 250);
+  --color-on-primary: oklch(1 0 0);
+  --color-primary-container: oklch(0.88 0.06 250);
+  --color-secondary: oklch(0.5 0.12 300);
+  --color-tertiary: oklch(0.55 0.12 150);
+
+  --color-surface: oklch(0.98 0.005 250);
+  --color-on-surface: oklch(0.15 0.02 250);
+  --color-on-surface-variant: oklch(0.4 0.03 250);
+  --color-surface-container: oklch(0.95 0.008 250);
+  --color-surface-container-high: oklch(0.93 0.01 250);
+
+  --color-outline-variant: oklch(0.85 0.01 250);
+  --color-inverse-surface: oklch(0.18 0.02 250);
+  --color-inverse-on-surface: oklch(0.92 0.005 250);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-primary: oklch(0.78 0.12 250);
+    --color-on-primary: oklch(0.25 0.12 250);
+    --color-surface: oklch(0.13 0.01 250);
+    --color-on-surface: oklch(0.9 0.008 250);
+    --color-on-surface-variant: oklch(0.7 0.015 250);
+    --color-surface-container: oklch(0.16 0.012 250);
+    --color-surface-container-high: oklch(0.2 0.015 250);
+    --color-outline-variant: oklch(0.25 0.015 250);
+    --color-inverse-surface: oklch(0.88 0.008 250);
+    --color-inverse-on-surface: oklch(0.2 0.02 250);
+  }
+}
+
+body {
+  font-family: var(--font-sans);
+}
+
+code, pre {
+  font-family: var(--font-mono);
+}
+
+/* M3 Typography Scale */
+.display-large {
+  font-size: clamp(2.5rem, 5vw, 3.5625rem);
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+}
+
+.headline-large {
+  font-size: clamp(1.75rem, 3vw, 2rem);
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  font-weight: 600;
+}
+
+.title-large {
+  font-size: clamp(1.25rem, 2vw, 1.375rem);
+  line-height: 1.27;
+  font-weight: 600;
+}
+
+/* ── Prose — Rendered markdown content ──────── */
+.prose {
+  font-size: 1rem;
+  line-height: 1.75;
+  color: var(--color-on-surface);
+}
+
+.prose h1 {
+  font-size: clamp(1.75rem, 3vw, 2rem);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0 0 1.5rem;
+  line-height: 1.25;
+}
+
+.prose h2 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 2.5rem 0 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--color-outline-variant);
+  line-height: 1.3;
+}
+
+.prose h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 2rem 0 0.75rem;
+  line-height: 1.35;
+}
+
+.prose h4 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 1.5rem 0 0.5rem;
+}
+
+.prose p {
+  margin: 0 0 1rem;
+}
+
+.prose a {
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.prose a:hover {
+  text-decoration-thickness: 2px;
+}
+
+.prose ul, .prose ol {
+  margin: 0 0 1rem;
+  padding-left: 1.5rem;
+}
+.prose li {
+  margin-bottom: 0.25rem;
+}
+
+.prose code {
+  font-size: 0.875em;
+  padding: 0.15em 0.35em;
+  border-radius: 0.25rem;
+  background: var(--color-surface-container-high);
+  color: var(--color-primary);
+}
+
+.prose pre {
+  margin: 0 0 1.5rem;
+  padding: 1.25rem 1.5rem;
+  border-radius: 0.75rem;
+  background: var(--color-inverse-surface);
+  color: var(--color-inverse-on-surface);
+  overflow-x: auto;
+  font-size: 0.875rem;
+  line-height: 1.625;
+}
+
+.prose pre code {
+  padding: 0;
+  background: none;
+  color: inherit;
+  font-size: inherit;
+}
+
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 1.5rem;
+  font-size: 0.875rem;
+}
+
+.prose th {
+  text-align: left;
+  font-weight: 600;
+  padding: 0.625rem 0.75rem;
+  border-bottom: 2px solid var(--color-outline-variant);
+  color: var(--color-on-surface);
+}
+
+.prose td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--color-outline-variant);
+  color: var(--color-on-surface-variant);
+}
+
+.prose tr:last-child td {
+  border-bottom: none;
+}
+
+.prose blockquote {
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  border-left: 3px solid var(--color-primary);
+  background: var(--color-surface-container);
+  border-radius: 0 0.5rem 0.5rem 0;
+  color: var(--color-on-surface-variant);
+}
+
+.prose blockquote p:last-child {
+  margin-bottom: 0;
+}
+
+.prose hr {
+  border: none;
+  border-top: 1px solid var(--color-outline-variant);
+  margin: 2rem 0;
+}
+
+.prose img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+}
+
+.prose strong {
+  font-weight: 600;
+  color: var(--color-on-surface);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
