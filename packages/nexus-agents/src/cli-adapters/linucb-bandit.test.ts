@@ -352,7 +352,7 @@ describe('LinUCBBandit', () => {
         { cli: 'claude' as const, success: true },
         { cli: 'gemini' as const, success: false },
         { cli: 'codex' as const, success: true },
-      ] as Parameters<typeof bandit.warmStart>[0];
+      ] as unknown as Parameters<typeof bandit.warmStart>[0];
 
       const replayed = bandit.warmStart(outcomes);
 
@@ -368,7 +368,7 @@ describe('LinUCBBandit', () => {
       const outcomes = [
         { cli: 'unknown-cli' as const, success: true },
         { cli: 'claude' as const, success: true },
-      ] as Parameters<typeof bandit.warmStart>[0];
+      ] as unknown as Parameters<typeof bandit.warmStart>[0];
 
       const replayed = bandit.warmStart(outcomes);
 

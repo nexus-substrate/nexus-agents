@@ -89,7 +89,7 @@ class TestCliAdapter extends BaseCliAdapter {
     this.initCapacityTracker();
   }
 
-  public setCachedVersion(version: string | undefined): void {
+  public setCachedVersion(version: string): void {
     this.cachedVersion = version;
   }
 }
