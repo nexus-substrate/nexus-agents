@@ -5,7 +5,7 @@
  * (Source: System Mandate LOOP I)
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import type { ILogger } from '../core/index.js';
 import {
   FitnessScoreCalculator,
@@ -101,6 +101,30 @@ describe('FitnessScoreCalculator', () => {
       expect(audit.dimensions.observability).toBeLessThanOrEqual(15);
     });
 
+    it('should score configSimplicity dimension (max 10)', () => {
+      const calculator = new FitnessScoreCalculator();
+      const audit = calculator.audit('test');
+
+      expect(audit.dimensions.configSimplicity).toBeGreaterThanOrEqual(0);
+      expect(audit.dimensions.configSimplicity).toBeLessThanOrEqual(10);
+    });
+
+    it('should score layerSeparation dimension (max 10)', () => {
+      const calculator = new FitnessScoreCalculator();
+      const audit = calculator.audit('test');
+
+      expect(audit.dimensions.layerSeparation).toBeGreaterThanOrEqual(0);
+      expect(audit.dimensions.layerSeparation).toBeLessThanOrEqual(10);
+    });
+
+    it('should score operatorErgonomics dimension (max 10)', () => {
+      const calculator = new FitnessScoreCalculator();
+      const audit = calculator.audit('test');
+
+      expect(audit.dimensions.operatorErgonomics).toBeGreaterThanOrEqual(0);
+      expect(audit.dimensions.operatorErgonomics).toBeLessThanOrEqual(10);
+    });
+
     it('should score governanceIntegration dimension (max 5)', () => {
       const calculator = new FitnessScoreCalculator();
       const audit = calculator.audit('test');
@@ -133,17 +157,22 @@ describe('createFitnessScoreCalculator', () => {
     expect(calculator).toBeInstanceOf(FitnessScoreCalculator);
   });
 
-  it('should accept custom logger', () => {
+  it('should accept custom logger and invoke it during audit', () => {
     const mockLogger: ILogger = {
-      debug: () => {},
-      info: () => {},
-      warn: () => {},
-      error: () => {},
-      child: () => mockLogger,
-      setLevel: () => {},
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      child: vi.fn().mockReturnThis() as ILogger['child'],
+      setLevel: vi.fn(),
     };
     const calculator = createFitnessScoreCalculator(mockLogger);
-    expect(calculator).toBeInstanceOf(FitnessScoreCalculator);
+    calculator.audit('logger-test');
+
+    // Logger should be called with debug for each dimension check
+    expect(mockLogger.debug).toHaveBeenCalled();
+    // Logger should be called with info for the final result
+    expect(mockLogger.info).toHaveBeenCalled();
   });
 });
 
