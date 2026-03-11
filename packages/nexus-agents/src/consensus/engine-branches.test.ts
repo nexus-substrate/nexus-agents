@@ -331,3 +331,391 @@ describe('OWVoting fallbackToSimpleVoting: false', () => {
     expect(tracker.computeCorrelationMatrix).not.toHaveBeenCalled();
   });
 });
+
+// ============================================================================
+// 7. Agreement-based cascading (canCascadeEarly)
+// ============================================================================
+
+describe('agreement-based cascading', () => {
+  let engine: ConsensusEngine;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    engine = createConsensusEngine({
+      defaultTimeout: 60000,
+      minVotersForQuorum: 1,
+      maxActiveProposals: 10,
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('cascades early approval when enough approvals to guarantee outcome', async () => {
+    // simple_majority threshold = 0.5
+    // 5 required voters — if 3 approve out of 5, minApprovalRate = 3/5 = 0.6 > 0.5
+    // Even if remaining 2 reject, still passes. So cascade after 3rd approve.
+    const result = await engine.propose(
+      createProposal({
+        algorithm: 'simple_majority',
+        requiredVoters: ['a1', 'a2', 'a3', 'a4', 'a5'],
+      })
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const id = result.value;
+    await engine.vote(id, 'a1', approveVote());
+    await engine.vote(id, 'a2', approveVote());
+
+    // After 3rd approve, cascade should trigger auto-close
+    await engine.vote(id, 'a3', approveVote());
+
+    // Proposal should be closed with approved outcome
+    const outcome = await engine.getResult(id);
+    expect(outcome.ok).toBe(true);
+    if (outcome.ok) {
+      expect(outcome.value.outcome).toBe('approved');
+    }
+
+    // Attempting to vote should fail (closed)
+    const lateVote = await engine.vote(id, 'a4', rejectVote());
+    expect(lateVote.ok).toBe(false);
+  });
+
+  it('cascades early rejection when approval is mathematically impossible', async () => {
+    // supermajority threshold = 0.67
+    // 5 required voters — if 2 reject, maxPossibleApprovals = approvals + remaining
+    // After 2 rejects: approvals=0, remaining=3, max=3/5=0.6 < 0.67 → can never pass
+    const result = await engine.propose(
+      createProposal({
+        algorithm: 'supermajority',
+        requiredVoters: ['a1', 'a2', 'a3', 'a4', 'a5'],
+      })
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const id = result.value;
+    await engine.vote(id, 'a1', rejectVote());
+    // After 2nd reject: max possible = (0 + 3) / 5 = 0.6 < 0.67
+    await engine.vote(id, 'a2', rejectVote());
+
+    const outcome = await engine.getResult(id);
+    expect(outcome.ok).toBe(true);
+    if (outcome.ok) {
+      expect(outcome.value.outcome).toBe('rejected');
+    }
+  });
+
+  it('does not cascade when no required voters set', async () => {
+    const result = await engine.propose(createProposal({ algorithm: 'simple_majority' }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const id = result.value;
+    await engine.vote(id, 'a1', approveVote());
+    await engine.vote(id, 'a2', approveVote());
+
+    // Without requiredVoters, proposal stays open
+    expect(engine.getActiveProposalCount()).toBe(1);
+  });
+
+  it('does not cascade when outcome is still uncertain', async () => {
+    // supermajority threshold = 0.67
+    // 5 voters, 1 approve, 1 reject — remaining=3, maxRate=(1+3)/5=0.8 > 0.67
+    // minRate=1/5=0.2 < 0.67 — neither path triggers
+    const result = await engine.propose(
+      createProposal({
+        algorithm: 'supermajority',
+        requiredVoters: ['a1', 'a2', 'a3', 'a4', 'a5'],
+      })
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const id = result.value;
+    await engine.vote(id, 'a1', approveVote());
+    await engine.vote(id, 'a2', rejectVote());
+
+    // Should still be active — uncertain outcome
+    expect(engine.getActiveProposalCount()).toBe(1);
+  });
+});
+
+// ============================================================================
+// 8. Incremental quorum expansion (tryExpandQuorum)
+// ============================================================================
+
+describe('incremental quorum expansion', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('does not expand when quorum is disabled', async () => {
+    vi.useFakeTimers();
+    const engine = createConsensusEngine({
+      defaultTimeout: 60000,
+      minVotersForQuorum: 1,
+      maxActiveProposals: 10,
+      incrementalQuorum: {
+        enabled: false,
+        maxExpansionRounds: 2,
+        votersPerExpansion: 2,
+        confidenceThreshold: 0.6,
+        ambiguityBand: 0.15,
+      },
+    });
+
+    const callback = vi.fn();
+    engine.setVoterExpansionCallback(callback);
+
+    const result = await engine.propose(createProposal({ requiredVoters: ['a1', 'a2'] }));
+    if (!result.ok) return;
+
+    // Low-confidence votes to trigger ambiguity if quorum were enabled
+    await engine.vote(result.value, 'a1', approveVote(0.4));
+    await engine.vote(result.value, 'a2', rejectVote(0.4));
+
+    // Callback should NOT be called (disabled)
+    expect(callback).not.toHaveBeenCalled();
+  });
+
+  it('does not expand when no callback is set', async () => {
+    vi.useFakeTimers();
+    const engine = createConsensusEngine({
+      defaultTimeout: 60000,
+      minVotersForQuorum: 1,
+      maxActiveProposals: 10,
+      incrementalQuorum: {
+        enabled: true,
+        maxExpansionRounds: 2,
+        votersPerExpansion: 2,
+        confidenceThreshold: 0.6,
+        ambiguityBand: 0.15,
+      },
+    });
+
+    // No callback set
+    const result = await engine.propose(createProposal({ requiredVoters: ['a1', 'a2'] }));
+    if (!result.ok) return;
+
+    await engine.vote(result.value, 'a1', approveVote(0.4));
+    // After both vote, should auto-close (no expansion possible)
+    await engine.vote(result.value, 'a2', rejectVote(0.4));
+
+    // Proposal auto-closed since expansion couldn't happen
+    const outcome = await engine.getResult(result.value);
+    expect(outcome.ok).toBe(true);
+  });
+
+  it('expands voter pool when voting is ambiguous', async () => {
+    vi.useFakeTimers();
+    const engine = createConsensusEngine({
+      defaultTimeout: 60000,
+      minVotersForQuorum: 1,
+      maxActiveProposals: 10,
+      incrementalQuorum: {
+        enabled: true,
+        maxExpansionRounds: 2,
+        votersPerExpansion: 2,
+        confidenceThreshold: 0.9, // High threshold → low confidence triggers
+        ambiguityBand: 0.3, // Wide band → approval rate near threshold triggers
+      },
+    });
+
+    const callback = vi.fn().mockResolvedValue(['a3', 'a4']);
+    engine.setVoterExpansionCallback(callback);
+
+    const result = await engine.propose(
+      createProposal({
+        algorithm: 'simple_majority',
+        requiredVoters: ['a1', 'a2'],
+      })
+    );
+    if (!result.ok) return;
+
+    // Split vote with low confidence → ambiguous
+    await engine.vote(result.value, 'a1', approveVote(0.5));
+    await engine.vote(result.value, 'a2', rejectVote(0.5));
+
+    // Callback should have been called to expand
+    expect(callback).toHaveBeenCalledWith(result.value, 2, 2);
+
+    // Proposal should still be active (waiting for expanded voters)
+    expect(engine.getActiveProposalCount()).toBe(1);
+  });
+
+  it('closes immediately when expansion returns no new voters', async () => {
+    vi.useFakeTimers();
+    const engine = createConsensusEngine({
+      defaultTimeout: 60000,
+      minVotersForQuorum: 1,
+      maxActiveProposals: 10,
+      incrementalQuorum: {
+        enabled: true,
+        maxExpansionRounds: 2,
+        votersPerExpansion: 2,
+        confidenceThreshold: 0.9,
+        ambiguityBand: 0.3,
+      },
+    });
+
+    const callback = vi.fn().mockResolvedValue([]); // No new voters
+    engine.setVoterExpansionCallback(callback);
+
+    const result = await engine.propose(
+      createProposal({
+        algorithm: 'simple_majority',
+        requiredVoters: ['a1', 'a2'],
+      })
+    );
+    if (!result.ok) return;
+
+    await engine.vote(result.value, 'a1', approveVote(0.5));
+    await engine.vote(result.value, 'a2', rejectVote(0.5));
+
+    expect(callback).toHaveBeenCalled();
+
+    // Should have closed (no expansion possible)
+    const outcome = await engine.getResult(result.value);
+    expect(outcome.ok).toBe(true);
+  });
+
+  it('stops expanding after maxExpansionRounds', async () => {
+    vi.useFakeTimers();
+    const engine = createConsensusEngine({
+      defaultTimeout: 60000,
+      minVotersForQuorum: 1,
+      maxActiveProposals: 10,
+      incrementalQuorum: {
+        enabled: true,
+        maxExpansionRounds: 1,
+        votersPerExpansion: 1,
+        confidenceThreshold: 0.9,
+        ambiguityBand: 0.3,
+      },
+    });
+
+    let callCount = 0;
+    const callback = vi.fn().mockImplementation(() => {
+      callCount++;
+      return Promise.resolve([`new-voter-${String(callCount)}`]);
+    });
+    engine.setVoterExpansionCallback(callback);
+
+    const result = await engine.propose(
+      createProposal({
+        algorithm: 'simple_majority',
+        requiredVoters: ['a1', 'a2'],
+      })
+    );
+    if (!result.ok) return;
+
+    // Round 1: ambiguous → expand
+    await engine.vote(result.value, 'a1', approveVote(0.5));
+    await engine.vote(result.value, 'a2', rejectVote(0.5));
+    expect(callback).toHaveBeenCalledTimes(1);
+
+    // New voter votes, still ambiguous — but max rounds (1) reached
+    await engine.vote(result.value, 'new-voter-1', approveVote(0.5));
+
+    // Should NOT expand further (maxExpansionRounds=1 reached)
+    expect(callback).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ============================================================================
+// 9. handleTimeout race — timeout after close
+// ============================================================================
+
+describe('handleTimeout after close', () => {
+  it('is a no-op when proposal is already closed', async () => {
+    vi.useFakeTimers();
+    const engine = createConsensusEngine({
+      defaultTimeout: 5000,
+      minVotersForQuorum: 1,
+      maxActiveProposals: 10,
+    });
+
+    const result = await engine.propose(createProposal({ timeout: 5000 }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    // Close manually before timeout
+    await engine.vote(result.value, 'a1', approveVote());
+    await engine.close(result.value);
+
+    const metricsBefore = engine.getMetrics();
+
+    // Now advance past timeout — should be a no-op
+    vi.advanceTimersByTime(6000);
+
+    const metricsAfter = engine.getMetrics();
+    // timedOutProposals should NOT have incremented
+    expect(metricsAfter.timedOutProposals).toBe(metricsBefore.timedOutProposals);
+    vi.useRealTimers();
+  });
+});
+
+// ============================================================================
+// 10. closeInternal on already-closed proposal
+// ============================================================================
+
+describe('close on already-closed proposal', () => {
+  it('returns the cached result without error', async () => {
+    vi.useFakeTimers();
+    const engine = createConsensusEngine({
+      defaultTimeout: 60000,
+      minVotersForQuorum: 1,
+      maxActiveProposals: 10,
+    });
+
+    const result = await engine.propose(createProposal());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    await engine.vote(result.value, 'a1', approveVote());
+    const firstClose = await engine.close(result.value);
+    expect(firstClose.ok).toBe(true);
+
+    // Close again — should return cached result
+    const secondClose = await engine.close(result.value);
+    expect(secondClose.ok).toBe(true);
+    if (firstClose.ok && secondClose.ok) {
+      expect(secondClose.value.outcome).toBe(firstClose.value.outcome);
+    }
+    vi.useRealTimers();
+  });
+});
+
+// ============================================================================
+// 11. Metrics edge cases
+// ============================================================================
+
+describe('metrics edge cases', () => {
+  it('returns zero averages when no proposals are completed', () => {
+    const engine = createConsensusEngine();
+    const metrics = engine.getMetrics();
+    expect(metrics.averageDurationMs).toBe(0);
+    expect(metrics.averageVotesPerProposal).toBe(0);
+  });
+
+  it('tracks timeout in metrics via timer', async () => {
+    vi.useFakeTimers();
+    const engine = createConsensusEngine({
+      defaultTimeout: 1000,
+      minVotersForQuorum: 2,
+      maxActiveProposals: 10,
+    });
+
+    await engine.propose(createProposal({ timeout: 1000 }));
+    vi.advanceTimersByTime(2000);
+
+    const metrics = engine.getMetrics();
+    expect(metrics.timedOutProposals).toBe(1);
+    expect(metrics.totalProposals).toBe(1);
+    vi.useRealTimers();
+  });
+});

@@ -813,6 +813,115 @@ describe('dispatchWorkers', () => {
     expect(callCount).toBe(2);
   });
 
+  it('uses altExecuteWorker for retry_different_cli triage (#1535)', async () => {
+    let primaryCallCount = 0;
+    let altCallCount = 0;
+
+    const primaryExecute: WorkerDispatchOptions['executeWorker'] = vi
+      .fn()
+      .mockImplementation((): Promise<WorkerResult> => {
+        primaryCallCount++;
+        // Rate-limit error → triage recommends retry_different_cli
+        return Promise.reject(new Error('rate limit exceeded'));
+      });
+
+    const altExecute: WorkerDispatchOptions['executeWorker'] = vi
+      .fn()
+      .mockImplementation((entry: AgentPlanEntry): Promise<WorkerResult> => {
+        altCallCount++;
+        return Promise.resolve({
+          role: entry.role,
+          subTask: entry.subTask,
+          output: 'result from alt CLI',
+          status: 'success' as const,
+          durationMs: 100,
+        });
+      });
+
+    const entries = [makeEntry('code', 1, 1)];
+    const results = await dispatchWorkers(entries, {
+      executeWorker: primaryExecute,
+      altExecuteWorker: altExecute,
+      staggerDelayMs: 0,
+      consecutiveFailureThreshold: 10,
+    });
+
+    expect(results).toHaveLength(1);
+    expect(results[0]?.status).toBe('success');
+    expect(results[0]?.wasRetried).toBe(true);
+    expect(primaryCallCount).toBe(1);
+    expect(altCallCount).toBe(1);
+  });
+
+  it('extends timeout for retryable timeout on extendable roles (#1506)', async () => {
+    let callCount = 0;
+
+    const timeoutExecute: WorkerDispatchOptions['executeWorker'] = vi
+      .fn()
+      .mockImplementation((entry: AgentPlanEntry): Promise<WorkerResult> => {
+        callCount++;
+        if (callCount === 1) {
+          // First attempt: security role timeout → triage recommends extend_timeout
+          return Promise.reject(new Error('Worker timed out: exceeded timeout'));
+        }
+        // Second attempt (retry) succeeds
+        return Promise.resolve({
+          role: entry.role,
+          subTask: entry.subTask,
+          output: 'completed after extended timeout',
+          status: 'success' as const,
+          durationMs: 150,
+        });
+      });
+
+    // Security role is in TIMEOUT_EXTENDABLE_ROLES → triggers extend_timeout action
+    const entries: AgentPlanEntry[] = [
+      {
+        role: 'security',
+        subTask: 'audit authentication',
+        priority: 1,
+        reasoning: 'security review',
+        wave: 1,
+      },
+    ];
+    const results = await dispatchWorkers(entries, {
+      executeWorker: timeoutExecute,
+      staggerDelayMs: 0,
+      consecutiveFailureThreshold: 10,
+      workerTimeoutMs: 100,
+    });
+
+    expect(results).toHaveLength(1);
+    expect(results[0]?.status).toBe('success');
+    expect(results[0]?.wasRetried).toBe(true);
+    expect(callCount).toBe(2);
+  });
+
+  it('skips triage when enableTriage is false (#1506)', async () => {
+    let callCount = 0;
+    const failingExecute: WorkerDispatchOptions['executeWorker'] = vi
+      .fn()
+      .mockImplementation((): Promise<WorkerResult> => {
+        callCount++;
+        return Promise.reject(new Error('socket hang up')); // normally retryable
+      });
+
+    const entries = [makeEntry('code', 1, 1)];
+    const results = await dispatchWorkers(entries, {
+      executeWorker: failingExecute,
+      staggerDelayMs: 0,
+      enableTriage: false,
+      consecutiveFailureThreshold: 10,
+    });
+
+    expect(results).toHaveLength(1);
+    expect(results[0]?.status).toBe('error');
+    // With triage disabled, no retry should happen
+    expect(callCount).toBe(1);
+    expect(results[0]?.wasRetried).toBeUndefined();
+    expect(results[0]?.triageAction).toBeUndefined();
+  });
+
   it('enriches retry subTask with failure context (#1507)', async () => {
     const capturedSubTasks: string[] = [];
     let callCount = 0;
