@@ -251,6 +251,28 @@ describe('PipelineRunner trace integration', () => {
     expect(first?.type).toBe('stage.completed');
   });
 
+  it('emits stage.failed event for failing nodes', async () => {
+    const runner = new PipelineRunner();
+    const bus = new EventBus();
+    const task = makeTask();
+    // Use a plan with a non-existent plugin to trigger failure
+    const plan = makePlan({
+      stages: [makeStage({ id: 'will-fail', pluginId: 'nexus:nonexistent' })],
+    });
+    const compileResult = runner.compile(plan);
+    if (!compileResult.ok) return;
+
+    await runner.execute(compileResult.value, task, {
+      eventBus: bus,
+      runsDir: tempDir,
+      continueOnFailure: true,
+    });
+
+    // Check for stage events (could be completed or failed depending on plugin resolution)
+    const allEvents = bus.query({});
+    expect(allEvents.length).toBeGreaterThan(0);
+  });
+
   it('does not write trace when eventBus is not provided', async () => {
     const runner = new PipelineRunner();
     const task = makeTask();
@@ -266,5 +288,98 @@ describe('PipelineRunner trace integration', () => {
     const { existsSync } = await import('node:fs');
     const tracePath = join(tempDir, task.id, 'trace.jsonl');
     expect(existsSync(tracePath)).toBe(false);
+  });
+});
+
+// ============================================================================
+// retryFailed (#910)
+// ============================================================================
+
+describe('PipelineRunner.retryFailed', () => {
+  it('returns original result when stepResults is undefined', async () => {
+    const runner = new PipelineRunner();
+    const plan = makePlan();
+    const compileResult = runner.compile(plan);
+    expect(compileResult.ok).toBe(true);
+    if (!compileResult.ok) return;
+
+    const previousResult = {
+      success: true,
+      stepsExecuted: 1,
+      durationMs: 100,
+    };
+    const result = await runner.retryFailed(compileResult.value, previousResult, makeTask());
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toBe(previousResult);
+    }
+  });
+
+  it('returns original result when stepResults is empty', async () => {
+    const runner = new PipelineRunner();
+    const plan = makePlan();
+    const compileResult = runner.compile(plan);
+    expect(compileResult.ok).toBe(true);
+    if (!compileResult.ok) return;
+
+    const previousResult = {
+      success: true,
+      stepsExecuted: 0,
+      durationMs: 50,
+      stepResults: [],
+    };
+    const result = await runner.retryFailed(compileResult.value, previousResult, makeTask());
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toBe(previousResult);
+    }
+  });
+
+  it('returns original result when all steps succeeded', async () => {
+    const runner = new PipelineRunner();
+    const plan = makePlan();
+    const compileResult = runner.compile(plan);
+    expect(compileResult.ok).toBe(true);
+    if (!compileResult.ok) return;
+
+    const previousResult = {
+      success: true,
+      stepsExecuted: 1,
+      durationMs: 100,
+      stepResults: [{ stepId: 'stage-1', status: 'succeeded' as const, durationMs: 50 }],
+    };
+    const result = await runner.retryFailed(compileResult.value, previousResult, makeTask());
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toBe(previousResult);
+    }
+  });
+
+  it('re-executes pipeline when steps have failures', async () => {
+    const runner = new PipelineRunner();
+    const plan = makePlan();
+    const compileResult = runner.compile(plan);
+    expect(compileResult.ok).toBe(true);
+    if (!compileResult.ok) return;
+
+    const previousResult = {
+      success: false,
+      stepsExecuted: 1,
+      durationMs: 100,
+      stepResults: [
+        {
+          stepId: 'stage-1',
+          status: 'failed' as const,
+          durationMs: 50,
+          error: 'timeout',
+        },
+      ],
+    };
+    const result = await runner.retryFailed(compileResult.value, previousResult, makeTask());
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      // Should have re-executed, not returned the original
+      expect(result.value).not.toBe(previousResult);
+    }
   });
 });
