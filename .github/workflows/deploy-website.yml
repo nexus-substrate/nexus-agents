@@ -68,6 +68,11 @@ jobs:
             --offline
             --root-dir site
             --exclude-path 'site/_astro'
+            --exclude '\.md$'
+            --exclude '\.md#'
+            --exclude '\.\./\.\.'
+            --exclude 'src/'
+            --exclude 'packages/'
             'site/**/*.html'
           fail: true
 
