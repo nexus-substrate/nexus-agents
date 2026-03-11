@@ -14,7 +14,7 @@ related_files:
 
 # Contribution Guide
 
-**Tier 3** | Detailed contribution workflow and standards
+**Tier 2** | Detailed contribution workflow and standards
 **Hub:** [README.md](./README.md) | **Quick Start:** [CONTRIBUTING.md](../../CONTRIBUTING.md)
 
 ---

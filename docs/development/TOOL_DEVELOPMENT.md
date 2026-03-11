@@ -1,6 +1,13 @@
+---
+title: MCP Tool Development Guide
+description: Walkthrough for creating and registering new MCP tools in nexus-agents
+tier: 2
+keywords: [mcp, tool, development, zod, schema, registration]
+---
+
 # MCP Tool Development Guide
 
-**Tier 3** | Walkthrough for creating MCP tools
+**Tier 2** | Walkthrough for creating MCP tools
 **Hub:** [README.md](./README.md) | **Architecture:** [MCP_PROTOCOL.md](../architecture/MCP_PROTOCOL.md)
 
 ---

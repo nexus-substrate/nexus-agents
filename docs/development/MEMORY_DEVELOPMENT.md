@@ -1,6 +1,13 @@
+---
+title: Memory Development Guide
+description: Walkthrough for implementing and extending memory backends in nexus-agents
+tier: 2
+keywords: [memory, backend, development, session, belief, adaptive, typed]
+---
+
 # Memory Development Guide
 
-**Tier 3** | Walkthrough for implementing memory systems
+**Tier 2** | Walkthrough for implementing memory systems
 **Hub:** [README.md](./README.md) | **Architecture:** [MEMORY_SYSTEM.md](../architecture/MEMORY_SYSTEM.md)
 
 ---

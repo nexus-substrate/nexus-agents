@@ -1,6 +1,13 @@
+---
+title: CLI Delegation Guide
+description: Practical guide for delegating tasks to Claude, Gemini, Codex, and OpenCode CLIs
+tier: 2
+keywords: [cli, delegation, routing, adapter, claude, gemini, codex, opencode]
+---
+
 # CLI Delegation Guide
 
-**Tier 3** | Practical guide for delegating tasks to external CLIs
+**Tier 2** | Practical guide for delegating tasks to external CLIs
 **Hub:** [README.md](./README.md) | **Routing Architecture:** [ROUTING_SYSTEM.md](../architecture/ROUTING_SYSTEM.md)
 
 ---

@@ -10,7 +10,7 @@ related_files:
 
 # Security Architecture
 
-**Tier 3** | Deep technical documentation for security implementation
+**Tier 2** | Deep technical documentation for security implementation
 **Hub:** [README.md](./README.md) | **Full Architecture:** [ARCHITECTURE.md](../../ARCHITECTURE.md)
 
 ---

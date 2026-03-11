@@ -14,7 +14,7 @@ related_files:
 
 # MCP Protocol Architecture
 
-**Tier 3** | Deep technical documentation for MCP server development
+**Tier 2** | Deep technical documentation for MCP server development
 **Hub:** [README.md](./README.md) | **Full Architecture:** [ARCHITECTURE.md](../../ARCHITECTURE.md)
 
 ---
@@ -156,13 +156,18 @@ type ToolContentBlock =
 | `research_discover`       | Discover papers/repos from external sources      | topic, source, maxResults      |
 | `research_analyze`        | Analyze registry for gaps, trends, coverage      | focus, topic                   |
 | `research_catalog_review` | Review auto-cataloged research references        | action, identifier, topic      |
+| `research_synthesize`     | Synthesize registry into topic clusters          | topicFilter                    |
 | `memory_query`            | Query across all memory backends                 | query, limit, source           |
 | `memory_stats`            | Memory system statistics dashboard               | includeDecay, includePromotion |
+| `memory_write`            | Write entry to a specific memory backend         | backend, key, value, metadata  |
 | `weather_report`          | Multi-CLI performance weather report             | cli, category, includeAdaptive |
 | `issue_triage`            | Triage GitHub issues with trust classification   | issueUrl, dryRun               |
 | `run_graph_workflow`      | Execute graph-based workflows with checkpointing | workflow, inputs               |
 | `execute_spec`            | Execute AI software factory spec pipeline        | spec, dryRun                   |
 | `registry_import`         | Generate draft model registry entry              | provider, modelId, dryRun      |
+| `repo_analyze`            | Analyze a GitHub repository structure            | repoUrl, includeSecurityGaps   |
+| `repo_security_plan`      | Generate security scanning pipeline for a repo   | repoUrl, analysis              |
+| `query_trace`             | Query execution trace JSONL files from disk      | runId, eventType, limit        |
 
 ### Tool Examples
 
@@ -354,7 +359,7 @@ mcp:
     capabilities:
       tools: true
       resources: true
-      prompts: false
+      prompts: true # 4 prompts registered
 
   transport: stdio # stdio | tcp
   # tcp:
@@ -415,7 +420,7 @@ nexus-agents --mode=server --verbose
 ## Protocol Reference
 
 - **Specification:** [modelcontextprotocol.io](https://modelcontextprotocol.io)
-- **SDK Version:** @modelcontextprotocol/sdk@1.25.1
+- **SDK Version:** @modelcontextprotocol/sdk@1.27.1
 - **Protocol Version:** 2025-11-25
 
 ---

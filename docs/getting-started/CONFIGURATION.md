@@ -352,7 +352,7 @@ experts:
 
 ### Expert Prompt Templates
 
-Use variables in expert prompts:
+> **Planned feature:** Variable interpolation in expert prompts (`{{variable}}` syntax) is not yet implemented. The `variables` key shown below is not currently processed by the runtime. This section describes the intended configuration shape.
 
 ```yaml
 experts:
@@ -612,19 +612,27 @@ const result = await startStdioServer({
 });
 ```
 
-## Validating Configuration
+## Inspecting Configuration
 
-Check your configuration for errors:
-
-```bash
-nexus-agents config validate
-```
-
-Or with a specific file:
+View the resolved configuration (merging defaults, file, and environment variables):
 
 ```bash
-nexus-agents config validate --config ./custom-config.yaml
+nexus-agents config show
 ```
+
+Read a specific key:
+
+```bash
+nexus-agents config get models.default
+```
+
+Set a key in the config file:
+
+```bash
+nexus-agents config set models.default claude-haiku
+```
+
+> **Note:** `nexus-agents config validate` does not exist. The valid subcommands are: `init`, `show`, `get`, `set`, `import`.
 
 ## Configuration Examples
 

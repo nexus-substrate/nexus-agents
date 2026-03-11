@@ -6,7 +6,7 @@ _Nexus Agents reviewing Nexus Agents. No marketing. Evidence-backed._
 
 ## What Nexus Agents Is Today
 
-A multi-agent orchestration MCP server (650 source files, 426 test files) that coordinates Claude, Gemini, and Codex CLIs via 21 MCP tools. It works. Users can orchestrate tasks, run consensus votes, route to optimal models, execute graph workflows, and run an AI software factory pipeline.
+A multi-agent orchestration MCP server (650 source files, 426 test files) that coordinates Claude, Gemini, Codex, and OpenCode CLIs via 25 MCP tools. It works. Users can orchestrate tasks, run consensus votes, route to optimal models, execute graph workflows, and run an AI software factory pipeline.
 
 ## What's Wrong
 

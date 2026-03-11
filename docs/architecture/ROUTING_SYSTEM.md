@@ -14,7 +14,7 @@ related_files:
 
 # Routing System Architecture
 
-**Tier 3** | Deep technical documentation for model routing
+**Tier 2** | Deep technical documentation for model routing
 **Hub:** [README.md](./README.md) | **Full Architecture:** [ARCHITECTURE.md](../../ARCHITECTURE.md)
 
 ---
@@ -28,7 +28,7 @@ Task → BudgetRouter → ZeroRouter → PreferenceRouter → TopsisRouter → L
        (filter)        (fallback)   (preference)        (rank)         (learn)
 ```
 
-This achieves 43.9% cost reduction while maintaining quality thresholds. Use `CompositeRouter.route(task)` — do NOT directly instantiate stage routers.
+Use `CompositeRouter.route(task)` — do NOT directly instantiate stage routers.
 
 ---
 
@@ -481,14 +481,14 @@ estimator.calibrate({
 
 ## Research Sources
 
-| Technique             | Paper            | Key Metrics            |
-| --------------------- | ---------------- | ---------------------- |
-| DAAO Difficulty       | arXiv:2509.11079 | VAE-based estimation   |
-| PILOT Budget Routing  | arXiv:2508.21141 | Budget-constrained     |
-| TOPSIS Multi-Criteria | arXiv:2509.07571 | 31.46% cost reduction  |
-| IPR Quality Routing   | arXiv:2509.06274 | 43.9% cost reduction   |
-| RouteLLM Preference   | arXiv:2406.18665 | 2x cost reduction      |
-| SATER Confidence      | arXiv:2510.05164 | 50%+ cost, 80% latency |
+| Technique             | Paper            | Paper-Reported Metrics (not measured on this system) |
+| --------------------- | ---------------- | ---------------------------------------------------- |
+| DAAO Difficulty       | arXiv:2509.11079 | VAE-based estimation                                 |
+| PILOT Budget Routing  | arXiv:2508.21141 | Budget-constrained routing                           |
+| TOPSIS Multi-Criteria | arXiv:2509.07571 | 31.46% cost reduction (paper benchmark)              |
+| IPR Quality Routing   | arXiv:2509.06274 | 43.9% cost reduction (paper benchmark)               |
+| RouteLLM Preference   | arXiv:2406.18665 | 2x cost reduction (paper benchmark)                  |
+| SATER Confidence      | arXiv:2510.05164 | 50%+ cost reduction, 80% latency reduction (paper)   |
 
 ---
 

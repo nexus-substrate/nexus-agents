@@ -14,7 +14,7 @@ related_files:
 
 # Agent Development Guide
 
-**Tier 3** | Walkthrough for creating and extending agents
+**Tier 2** | Walkthrough for creating and extending agents
 **Hub:** [README.md](./README.md) | **Architecture:** [AGENT_SYSTEM.md](../architecture/AGENT_SYSTEM.md)
 
 ---

@@ -20,12 +20,13 @@ Detailed installation instructions for nexus-agents across all platforms, Docker
 
 ### Optional
 
-| Component  | Purpose                      |
-| ---------- | ---------------------------- |
-| Docker     | Sandboxed code execution     |
-| Claude CLI | Enhanced Claude model access |
-| Gemini CLI | Enhanced Gemini model access |
-| Codex CLI  | Enhanced OpenAI model access |
+| Component    | Purpose                        |
+| ------------ | ------------------------------ |
+| Docker       | Sandboxed code execution       |
+| Claude CLI   | Enhanced Claude model access   |
+| Gemini CLI   | Enhanced Gemini model access   |
+| Codex CLI    | Enhanced OpenAI model access   |
+| OpenCode CLI | Enhanced OpenCode model access |
 
 ### API Keys
 
@@ -37,7 +38,7 @@ You need at least one model provider API key:
 | OpenAI    | `OPENAI_API_KEY`    | [platform.openai.com](https://platform.openai.com)     |
 | Google AI | `GOOGLE_AI_API_KEY` | [aistudio.google.com](https://aistudio.google.com)     |
 
-For local models via Ollama, no API key is required.
+For local models via Ollama, no API key is required. Ollama support requires configuration of the `OLLAMA_HOST` environment variable.
 
 ## Installation Methods
 
@@ -209,6 +210,14 @@ gemini auth login
 npm install -g @openai/codex
 codex auth login
 ```
+
+### OpenCode CLI
+
+```bash
+npm install -g opencode-ai
+```
+
+OpenCode supports custom OpenAI-compatible endpoints, enabling routing to any hosted model that exposes an OpenAI-compatible API.
 
 ## MCP Client Configuration
 

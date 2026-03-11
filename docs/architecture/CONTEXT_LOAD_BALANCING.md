@@ -14,7 +14,7 @@ related_files:
 
 # Context Load Balancing Strategy
 
-**Tier 3** | Deep technical documentation for multi-CLI context distribution
+**Tier 2** | Deep technical documentation for multi-CLI context distribution
 **Hub:** [README.md](./README.md) | **Routing System:** [ROUTING_SYSTEM.md](./ROUTING_SYSTEM.md)
 
 ---

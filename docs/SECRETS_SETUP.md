@@ -1,3 +1,10 @@
+---
+title: Repository Secrets Configuration
+description: Required secrets and GitHub Apps for nexus-agents CI/CD workflows
+tier: 2
+keywords: [secrets, github, ci, api-key, configuration, security]
+---
+
 # Repository Secrets Configuration
 
 This guide documents the repository secrets and GitHub Apps required for nexus-agents workflows.

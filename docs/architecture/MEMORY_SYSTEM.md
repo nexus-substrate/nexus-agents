@@ -23,7 +23,7 @@ The memory system provides 7 distinct memory types inspired by MIRIX (arXiv:2507
 6. **Vault** - Cross-session persistence
 7. **Belief** - Hindsight belief memory for reasoning agents (arXiv:2512.12818)
 
-This architecture achieves +35% accuracy vs RAG with 99.9% storage reduction.
+This architecture is inspired by MIRIX (arXiv:2507.07957), which reports +35% accuracy vs baseline RAG and 99.9% storage reduction in paper benchmarks. These are research metrics from the paper, not measured on this system.
 
 ---
 
@@ -298,13 +298,13 @@ memory:
 
 ## Research Sources
 
-| Technique            | Paper            | Key Metrics                   |
-| -------------------- | ---------------- | ----------------------------- |
-| MIRIX Six-Type       | arXiv:2507.07957 | +35% accuracy, 99.9% storage  |
-| Mem0 Architecture    | arXiv:2504.19413 | 91% latency, 90% tokens       |
-| MobiMem Evolution    | arXiv:2512.15784 | 280x faster than GraphRAG     |
-| A-MEM Agentic Memory | arXiv:2502.12110 | Zettelkasten-inspired linking |
-| Reflexion            | arXiv:2303.11366 | 91% HumanEval                 |
+| Technique            | Paper            | Paper-Reported Metrics (not measured on this system)         |
+| -------------------- | ---------------- | ------------------------------------------------------------ |
+| MIRIX Six-Type       | arXiv:2507.07957 | +35% accuracy vs baseline RAG, 99.9% storage reduction       |
+| Mem0 Architecture    | arXiv:2504.19413 | 91% latency reduction, 90% token reduction (paper benchmark) |
+| MobiMem Evolution    | arXiv:2512.15784 | 280x faster than GraphRAG (paper benchmark)                  |
+| A-MEM Agentic Memory | arXiv:2502.12110 | Zettelkasten-inspired linking                                |
+| Reflexion            | arXiv:2303.11366 | 91% HumanEval (paper benchmark)                              |
 
 ---
 
