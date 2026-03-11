@@ -1,6 +1,6 @@
 ---
 title: MCP & Claude Desktop Integration
-description: 25 MCP tools for orchestration, experts, workflows, consensus, research, memory, and tracing
+description: MCP tools for orchestration, experts, workflows, consensus, research, memory, and tracing
 tier: 2
 keywords: [mcp, tool, server, claude-desktop, stdio, integration]
 related_files: [docs/ENTRYPOINTS.md, docs/reference/capabilities.md]
@@ -52,7 +52,7 @@ Claude will use the nexus-agents orchestration tool to analyze and respond.
 
 ## MCP Tools Reference
 
-Nexus-agents provides 25 MCP tools that Claude can use. The most commonly used tools are documented below. See [ENTRYPOINTS.md](../ENTRYPOINTS.md) for the complete list.
+Nexus-agents provides a comprehensive set of MCP tools that Claude can use. The most commonly used tools are documented below. See [ENTRYPOINTS.md](../ENTRYPOINTS.md) for the complete and authoritative list.
 
 ### orchestrate
 

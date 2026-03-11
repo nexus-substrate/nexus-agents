@@ -41,7 +41,7 @@ nexus-agents is a multi-agent orchestration system that coordinates AI models to
 | docs/architecture/README.md | Model adapter system — UnifiedAdapterRegistry, ResilientAdapter, Claude/Gemini/Codex/OpenCode adapters | ~400 |
 | docs/architecture/README.md | Task orchestration — AOrchestra, graph workflows, scenario validator | ~400 |
 | docs/architecture/SECURITY.md | Security pipeline — sanitizer, trust classifier, policy gate, corroboration, reputation model | ~400 |
-| docs/guides/MCP_INTEGRATION.md | 24 MCP tools — orchestrate, experts, workflows, consensus, research, memory, tracing | ~400 |
+| docs/guides/MCP_INTEGRATION.md | MCP tools — orchestrate, experts, workflows, consensus, research, memory, tracing | ~400 |
 | docs/ALIGNMENT_ROADMAP.md | Project alignment, phases, and progress tracking | ~400 |
 
 ### Tier 3: Deep Detail
@@ -317,4 +317,4 @@ packages/nexus-agents/src/
 - MCP Protocol: modelcontextprotocol.io
 - Research Index: docs/research/RESEARCH_INDEX.md
 
-<!-- Generated: 2026-03-05 from docs/INDEX.yaml -->
+<!-- Generated: 2026-03-11 from docs/INDEX.yaml -->

@@ -167,7 +167,7 @@ topics:
       - 'reputation'
 
   mcp_tools:
-    summary: '25 MCP tools — orchestrate, experts, workflows, consensus, research, memory, tracing'
+    summary: 'MCP tools — orchestrate, experts, workflows, consensus, research, memory, tracing'
     tier2_file: 'docs/guides/MCP_INTEGRATION.md'
     tier3_files:
       - 'docs/ENTRYPOINTS.md'

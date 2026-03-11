@@ -41,7 +41,7 @@ nexus-agents --help           # See all commands
 - docs/architecture/README.md - Model adapter system — UnifiedAdapterRegistry, ResilientAdapter, Claude/Gemini/Codex/OpenCode adapters
 - docs/architecture/README.md - Task orchestration — AOrchestra, graph workflows, scenario validator
 - docs/architecture/SECURITY.md - Security pipeline — sanitizer, trust classifier, policy gate, corroboration, reputation model
-- docs/guides/MCP_INTEGRATION.md - 24 MCP tools — orchestrate, experts, workflows, consensus, research, memory, tracing
+- docs/guides/MCP_INTEGRATION.md - MCP tools — orchestrate, experts, workflows, consensus, research, memory, tracing
 - docs/ALIGNMENT_ROADMAP.md - Project alignment, phases, and progress tracking
 
 ### Tier 3: Deep Detail (load on demand)
@@ -106,4 +106,4 @@ packages/nexus-agents/src/
 - Architecture: ARCHITECTURE.md
 - Contributing: CONTRIBUTING.md
 
-<!-- Generated: 2026-03-05 from docs/INDEX.yaml -->
+<!-- Generated: 2026-03-11 from docs/INDEX.yaml -->
