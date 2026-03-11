@@ -74,6 +74,11 @@ function rewriteHref(currentFilePath: string, href: string): string | null {
     return null;
   }
 
+  // Filter dangerous URI schemes.
+  if (/^(javascript|data|vbscript):/i.test(href)) {
+    return '';
+  }
+
   // Split off trailing anchor fragment.
   const hashIndex = href.indexOf('#');
   const rawPath = hashIndex === -1 ? href : href.slice(0, hashIndex);
