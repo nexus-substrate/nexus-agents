@@ -12,7 +12,8 @@
  *   5. Everything else — unchanged (best-effort passthrough)
  */
 
-import { join, normalize, dirname, extname } from 'node:path';
+import { join, normalize, dirname, extname, resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
 
 const DOCS_PREFIX = '/nexus-agents/docs';
 const GITHUB_BLOB = 'https://github.com/williamzujkowski/nexus-agents/blob/main';
@@ -59,59 +60,72 @@ function fileToSlug(name: string): string {
 }
 
 /**
+ * Returns true if the target file has YAML frontmatter with a `title:` field,
+ * meaning Astro will publish it as a docs page. Returns false on any error.
+ */
+function hasPublishedFrontmatter(docsRoot: string, resolved: string): boolean {
+  try {
+    const absPath = resolve(docsRoot, resolved);
+    // Guard against path traversal outside docsRoot.
+    if (!absPath.startsWith(resolve(docsRoot))) {
+      return false;
+    }
+    const content = readFileSync(absPath, 'utf8');
+    // Check for YAML frontmatter block starting at file top.
+    if (!content.startsWith('---')) {
+      return false;
+    }
+    const closeIdx = content.indexOf('\n---', 3);
+    if (closeIdx === -1) {
+      return false;
+    }
+    const frontmatter = content.slice(0, closeIdx);
+    return /^title\s*:/m.test(frontmatter);
+  } catch {
+    return false;
+  }
+}
+
+/** Rewrite a resolved path that stays inside docs/ to a website or GitHub URL. */
+function rewriteIntraDocsLink(docsRoot: string, resolved: string, anchor: string): string | null {
+  const ext = extname(resolved).toLowerCase();
+  if (ext !== '.md' && ext !== '') {
+    return null;
+  }
+  if (!hasPublishedFrontmatter(docsRoot, resolved)) {
+    return `${GITHUB_BLOB}/docs/${resolved}${anchor}`;
+  }
+  const parts = resolved.split('/');
+  const slugParts = parts.map((p, i) => (i === parts.length - 1 ? fileToSlug(p) : p.toLowerCase()));
+  return `${DOCS_PREFIX}/${slugParts.join('/')}/${anchor}`;
+}
+
+/**
  * Given the docs-relative path of the source file being processed
  * (e.g. "architecture/README.md") and a raw link href, return the
  * rewritten href or null to leave the link unchanged.
  */
-function rewriteHref(currentFilePath: string, href: string): string | null {
-  // 1. External URLs.
-  if (/^https?:\/\//i.test(href)) {
-    return null;
-  }
+function rewriteHref(docsRoot: string, currentFilePath: string, href: string): string | null {
+  if (/^https?:\/\//i.test(href)) return null;
+  if (href.startsWith('#')) return null;
+  if (/^(javascript|data|vbscript):/i.test(href)) return '';
 
-  // 2. Anchor-only links.
-  if (href.startsWith('#')) {
-    return null;
-  }
-
-  // Filter dangerous URI schemes.
-  if (/^(javascript|data|vbscript):/i.test(href)) {
-    return '';
-  }
-
-  // Split off trailing anchor fragment.
   const hashIndex = href.indexOf('#');
   const rawPath = hashIndex === -1 ? href : href.slice(0, hashIndex);
-  const anchor = hashIndex === -1 ? '' : href.slice(hashIndex); // includes '#'
+  const anchor = hashIndex === -1 ? '' : href.slice(hashIndex);
 
-  // Resolve relative to current file's directory inside docs/.
   const currentDir = dirname(currentFilePath);
   const resolved = normalize(join(currentDir, rawPath));
 
-  // 3. Path stays inside docs/ (normalize() leaves no leading "..").
   if (!resolved.startsWith('..')) {
-    const ext = extname(resolved).toLowerCase();
-    if (ext !== '.md' && ext !== '') {
-      // Non-markdown file inside docs/ (images, yaml, etc.) — leave unchanged.
-      return null;
-    }
-    // Build slug from resolved path parts.
-    const parts = resolved.split('/');
-    const slugParts = parts.map((p, i) =>
-      i === parts.length - 1 ? fileToSlug(p) : p.toLowerCase()
-    );
-    const slug = slugParts.join('/');
-    return `${DOCS_PREFIX}/${slug}/${anchor}`;
+    return rewriteIntraDocsLink(docsRoot, resolved, anchor);
   }
 
-  // 4. Path escapes docs/ — link to GitHub.
   const repoRelative = resolved.replace(/^\.\.\//, '');
-
   if (extname(repoRelative)) {
     return `${GITHUB_BLOB}/${repoRelative}${anchor}`;
   }
 
-  // No extension outside docs/ — unusual; leave unchanged.
   return null;
 }
 
@@ -129,8 +143,9 @@ export default function remarkRewriteLinks(): (tree: AstNode, vfile: VFileWithHi
     const docsMarker = '/docs/';
     const docsIdx = absPath.lastIndexOf(docsMarker);
     const currentFilePath = docsIdx !== -1 ? absPath.slice(docsIdx + docsMarker.length) : '';
+    const docsRoot = docsIdx !== -1 ? absPath.slice(0, docsIdx + docsMarker.length) : '';
 
-    if (currentFilePath === '') {
+    if (currentFilePath === '' || docsRoot === '') {
       return;
     }
 
@@ -138,7 +153,7 @@ export default function remarkRewriteLinks(): (tree: AstNode, vfile: VFileWithHi
       if (!isLink(node)) {
         return;
       }
-      const rewritten = rewriteHref(currentFilePath, node.url);
+      const rewritten = rewriteHref(docsRoot, currentFilePath, node.url);
       if (rewritten !== null) {
         node.url = rewritten;
       }
