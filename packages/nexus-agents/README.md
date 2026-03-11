@@ -170,7 +170,7 @@ The server exposes 24 MCP tools for integration. Key tools include:
 | `repo_analyze`       | Analyze GitHub repository structure            |
 | `repo_security_plan` | Generate security scanning pipeline for a repo |
 
-See the root [README](../../README.md) for the complete list of all 24 tools.
+See the root [README](../../README.md) for the complete tool list.
 
 ---
 
@@ -208,7 +208,7 @@ See [docs/architecture/README.md](../../docs/architecture/README.md) for detaile
 ### Dependency Flow
 
 ```
-MCP Server (external boundary, 24 tools)
+MCP Server (external boundary)
     ↓
 Orchestration Layer (workflows, graph execution, worker dispatch)
     ↓

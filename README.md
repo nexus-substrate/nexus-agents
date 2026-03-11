@@ -67,7 +67,7 @@ nexus-agents orchestrate "Explain the architecture of this codebase"
 | **Workflow Automation**        | 11 built-in YAML templates for code review, security audit, and more                                                                         |
 | **Research Registry**          | Track and discover academic papers and implementation techniques                                                                             |
 | **Memory System**              | 5 typed memory backends (session, belief, agentic, adaptive, typed)                                                                          |
-| **MCP Integration**            | 24 tools available for Claude Desktop, Claude Code, and other MCP clients                                                                    |
+| **MCP Integration**            | Full MCP tool suite for Claude Desktop, Claude Code, and other MCP clients                                                                   |
 
 ---
 
@@ -124,7 +124,7 @@ See [docs/ENTRYPOINTS.md](./docs/ENTRYPOINTS.md) for the complete CLI reference 
 
 ## MCP Tools
 
-When running as an MCP server, 24 tools are available:
+When running as an MCP server, the following tools are available:
 
 | Tool                      | Description                                              |
 | ------------------------- | -------------------------------------------------------- |

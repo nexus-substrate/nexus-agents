@@ -56,7 +56,7 @@ import { EventBus } from 'nexus-agents';
 ### Subscribing to Debug Events
 
 ```typescript
-import { EventBus, EventTopics } from 'nexus-agents/agents/collaboration/event-bus.js';
+import { EventBus, EventTopics } from 'nexus-agents';
 
 const bus = new EventBus({ maxHistorySize: 1000 });
 
@@ -130,10 +130,7 @@ Correlation IDs enable request tracing across agent boundaries.
 ### Generating Correlation IDs
 
 ```typescript
-import {
-  generateCorrelationId,
-  createChildCorrelationId,
-} from 'nexus-agents/agents/collaboration/event-bus.js';
+import { generateCorrelationId, createChildCorrelationId } from 'nexus-agents';
 
 // Generate root correlation ID for a request
 const rootId = generateCorrelationId();
@@ -154,7 +151,7 @@ const nestedId = createChildCorrelationId(subtask1Id);
 ### Using Correlation IDs in Events
 
 ```typescript
-import { createEvent } from 'nexus-agents/agents/collaboration/event-bus.js';
+import { createEvent } from 'nexus-agents';
 
 // Create event with correlation ID
 const event = createEvent(
@@ -364,7 +361,7 @@ The weighted voting system emits events when Byzantine patterns are detected.
 ### Subscribing to Byzantine Events
 
 ```typescript
-import { EventBus, EventTopics } from 'nexus-agents/agents/collaboration/event-bus.js';
+import { EventBus, EventTopics } from 'nexus-agents';
 
 const bus = new EventBus();
 
@@ -404,8 +401,8 @@ bus.subscribe(EventTopics.BYZANTINE_COLLUSION_SUSPECTED, (event) => {
 ### Using WeightedVoting with EventBus
 
 ```typescript
-import { createWeightedVoting } from 'nexus-agents/consensus/weighted-voting.js';
-import { EventBus } from 'nexus-agents/agents/collaboration/event-bus.js';
+import { createWeightedVoting } from 'nexus-agents';
+import { EventBus } from 'nexus-agents';
 
 const eventBus = new EventBus();
 const voting = createWeightedVoting({

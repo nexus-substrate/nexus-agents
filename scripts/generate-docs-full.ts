@@ -212,7 +212,7 @@ nexus-agents --verbose             # Verbose output
 }
 
 function getMcpToolsReference(): string {
-  return `## MCP Tools Reference (24 tools)
+  return `## MCP Tools Reference
 
 ### Task Orchestration
 - **orchestrate** — Analyze task, decompose into subtasks, coordinate experts
@@ -328,7 +328,7 @@ packages/nexus-agents/src/
 ├── cli-adapters/      # CLI integration: CompositeRouter, Budget/TOPSIS/LinUCB
 ├── context/           # Memory: typed, graph, adaptive, agentic, session, belief
 ├── consensus/         # 11 voting protocols, engine, voter-agents
-├── mcp/               # MCP server, 24 tools, middleware, SDK integration
+├── mcp/               # MCP server, tools, middleware, SDK integration
 ├── pipeline/          # V2: TaskContract, PipelineRunner, EventBus, PolicyEngine
 ├── orchestration/     # AOrchestra, graph workflows (7 templates), scenarios
 ├── security/          # Sanitizer, trust classifier, policy gate, reputation
