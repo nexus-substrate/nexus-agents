@@ -4,11 +4,35 @@
 
 Quick reference for git workflows. **Full documentation:** [CONTRIBUTION_GUIDE.md](../../docs/development/CONTRIBUTION_GUIDE.md)
 
-## Commit Messages
+## Commit Messages (Enforced)
 
 Use conventional commits: `type(scope): description`
 
 Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `perf`
+
+**Enforcement:** commitlint runs on every commit (via `.husky/commit-msg` hook) and on every PR (via CI). Non-conforming commits are rejected.
+
+**Examples:**
+
+```
+feat(routing): add adaptive timeout based on p95 latency
+fix(consensus): prevent duplicate votes in rapid succession
+test(opencode-parser): add branch coverage for error events
+refactor(mcp): extract tool registration into standalone table
+docs: update CLAUDE.md with new MCP tool reference
+chore: upgrade vitest to v4
+perf(topsis): cache normalized scores across routing calls
+```
+
+**Bad examples (will be rejected):**
+
+```
+Update routing           # missing type
+feat: Add Feature        # uppercase subject (warning)
+feature(routing): add x  # wrong type (feature → feat)
+```
+
+**Config:** `commitlint.config.ts` extends `@commitlint/config-conventional`.
 
 ## Branch Naming
 
