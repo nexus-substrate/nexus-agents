@@ -478,10 +478,10 @@ When providing research analysis:
 
   ux: {
     id: 'ux-expert',
-    name: 'UX Designer Expert',
+    name: 'UX/UI Front-End Engineer Expert',
     role: 'ux_expert',
     systemPrompt: buildUxPrompt(UX_EXPERT_BASE_PROMPT),
-    capabilities: ['task_execution', 'collaboration', 'research'],
+    capabilities: ['task_execution', 'collaboration', 'research', 'code_generation'],
     modelPreference: {
       temperature: 0.4,
     },

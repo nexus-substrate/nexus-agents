@@ -131,7 +131,25 @@ const UX_KNOWLEDGE_SUMMARY = `## UX Domain Knowledge
 ### Accessibility Standards
 - WCAG 2.1 AA: color contrast 4.5:1 for text, 3:1 for UI components
 - Keyboard navigation: all interactive elements focusable and operable
-- Screen reader: semantic HTML, ARIA labels, meaningful alt text`;
+- Screen reader: semantic HTML, ARIA labels, meaningful alt text
+
+### OKLCH Color System
+- oklch(L C H) — L: lightness 0-1, C: chroma 0-0.4, H: hue 0-360
+- Generate M3 tonal palettes by varying L while keeping H constant
+- Ensure WCAG AA by enforcing sufficient delta in L channel between text and surface
+- Tailwind integration: \`color: oklch(var(--color-primary) / <alpha-value>)\`
+
+### Material Design 3 Tokens
+- M3 state layers: hover 8%, focus 12%, pressed 12% opacity overlays
+- Elevation levels 0-5 via oklch L-channel manipulation (not pure drop-shadows)
+- Typography scales: Display (57-45), Headline (36-24), Title (22-14), Label (14-11), Body (16-12)
+- Fluid typography: clamp() for responsive scaling
+
+### Astro + Svelte Architecture
+- Astro (.astro) for static content, routing, layouts — zero JS by default
+- Svelte (.svelte) only for interactive islands with explicit hydration directives
+- client:load (critical interactivity), client:idle (deferred), client:visible (lazy)
+- nano-stores for cross-island state management`;
 
 /**
  * Build an enriched UX expert system prompt.
