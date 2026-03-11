@@ -594,5 +594,90 @@ describe('OpenCodeResponseParser', () => {
       expect(result).not.toBeNull();
       expect(result?.content).toContain('ProviderModelNotFoundError');
     });
+
+    it('should handle error event with null error object', () => {
+      const raw = createNdjson({
+        type: 'error',
+        sessionID: 'ses_789',
+      });
+
+      const result = parser.parse(raw);
+      // No error.data.message and no error.name → pushErrorContent returns early
+      // Only step_start-like events set hasStepEvents, but error also returns true
+      // from processRealEvent, so hasStepEvents is true → tool-only fallback
+      expect(result).not.toBeNull();
+      expect(result?.content).toBe('[Tool-only response — no text output]');
+    });
+
+    it('should handle error event with Unknown error fallback', () => {
+      const raw = createNdjson({
+        type: 'error',
+        sessionID: 'ses_err',
+        error: { data: { code: 500 } },
+      });
+
+      const result = parser.parse(raw);
+      expect(result).not.toBeNull();
+      expect(result?.content).toContain('Unknown error');
+    });
+
+    it('should handle plain JSON with camelCase sessionId', () => {
+      const raw = JSON.stringify({
+        content: 'Response with camelCase session',
+        sessionId: 'camel-sess-1',
+      });
+
+      const result = parser.parse(raw);
+      expect(result?.content).toBe('Response with camelCase session');
+      expect(result?.sessionId).toBe('camel-sess-1');
+    });
+
+    it('should reject recognized NDJSON with no content as plaintext', () => {
+      // message.start is recognized by isRecognizedLegacyEvent but has no handler
+      // that produces content → hasAnyRecognizedEvent = true, no content
+      const raw = createNdjson(
+        { type: 'message.start', id: 'msg-1' },
+        { type: 'session.start', session_id: 'sess-x' }
+      );
+
+      const result = parser.parse(raw);
+      // NDJSON recognized but no content → parsePlainJson → looks like NDJSON
+      // → rejected because hasAnyRecognizedEvent is true
+      expect(result).toBeNull();
+    });
+
+    it('should return null for usage with only one token field', () => {
+      const raw = createNdjson({
+        type: 'session.complete',
+        usage: { input_tokens: 100 },
+      });
+
+      const usage = parser.extractUsage(raw);
+      expect(usage).toBeNull();
+    });
+
+    it('should handle text event without part field', () => {
+      const raw = createNdjson({
+        type: 'text',
+        sessionID: 'ses_no_part',
+      });
+
+      const result = parser.parse(raw);
+      // text event processed (hasStepEvents=true) but no part.text → no content
+      // → hasStepEvents true → tool-only fallback
+      expect(result).not.toBeNull();
+      expect(result?.content).toBe('[Tool-only response — no text output]');
+    });
+
+    it('should handle step_finish without part field', () => {
+      const raw = createNdjson(
+        { type: 'text', sessionID: 'ses_1', part: { type: 'text', text: 'OK' } },
+        { type: 'step_finish', sessionID: 'ses_1' }
+      );
+
+      const result = parser.parse(raw);
+      expect(result?.content).toBe('OK');
+      expect(result?.usage).toBeUndefined();
+    });
   });
 });
