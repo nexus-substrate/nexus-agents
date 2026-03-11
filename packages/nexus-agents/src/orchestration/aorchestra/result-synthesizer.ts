@@ -269,7 +269,10 @@ async function callLlm(adapter: IModelAdapter, prompt: string): Promise<string |
     });
     if (!response.ok) return null;
     return extractTextFromBlocks(response.value.content);
-  } catch {
+  } catch (error) {
+    logger.debug('Synthesis LLM call failed', {
+      error: error instanceof Error ? error.message : String(error),
+    });
     return null;
   }
 }

@@ -325,7 +325,11 @@ function inferLanguageFromEntries(
   return fallback;
 }
 
-type ExecFileFn = (cmd: string, args: string[]) => Promise<{ stdout: string }>;
+type ExecFileFn = (
+  cmd: string,
+  args: string[],
+  options?: { timeout?: number }
+) => Promise<{ stdout: string }>;
 
 /** Lazy-load promisified execFile. */
 async function getExecFile(): Promise<ExecFileFn> {
@@ -339,24 +343,27 @@ async function fetchRepoData(
   repoId: string,
   exec: ExecFileFn
 ): Promise<{ metadata: GhRepoMetadata; entries: string[] }> {
-  const { stdout: metaJson } = await exec('gh', [
-    'api',
-    `repos/${repoId}`,
-    '--jq',
-    '{name: .name, full_name: .full_name, description: .description, language: .language, default_branch: .default_branch, stargazers_count: .stargazers_count, license: .license}',
-  ]);
+  const { stdout: metaJson } = await exec(
+    'gh',
+    [
+      'api',
+      `repos/${repoId}`,
+      '--jq',
+      '{name: .name, full_name: .full_name, description: .description, language: .language, default_branch: .default_branch, stargazers_count: .stargazers_count, license: .license}',
+    ],
+    { timeout: 30_000 }
+  );
   let metadata: GhRepoMetadata;
   try {
     metadata = JSON.parse(metaJson.trim()) as GhRepoMetadata;
   } catch {
     throw new Error(`Failed to parse repo metadata for ${repoId}: ${metaJson.slice(0, 200)}`);
   }
-  const { stdout: contentsJson } = await exec('gh', [
-    'api',
-    `repos/${repoId}/contents`,
-    '--jq',
-    '[.[].name]',
-  ]);
+  const { stdout: contentsJson } = await exec(
+    'gh',
+    ['api', `repos/${repoId}/contents`, '--jq', '[.[].name]'],
+    { timeout: 30_000 }
+  );
   let entries: string[];
   try {
     const parsed: unknown = JSON.parse(contentsJson.trim());
@@ -370,12 +377,11 @@ async function fetchRepoData(
 /** Resolve NOASSERTION license via the GitHub license API. */
 async function resolveLicense(repoId: string, exec: ExecFileFn): Promise<string | null> {
   try {
-    const { stdout } = await exec('gh', [
-      'api',
-      `repos/${repoId}/license`,
-      '--jq',
-      '.license.spdx_id',
-    ]);
+    const { stdout } = await exec(
+      'gh',
+      ['api', `repos/${repoId}/license`, '--jq', '.license.spdx_id'],
+      { timeout: 15_000 }
+    );
     const spdxId = stdout.trim();
     if (spdxId !== '' && spdxId !== 'null' && spdxId !== 'NOASSERTION') {
       return spdxId;
@@ -395,7 +401,7 @@ async function resolveLanguage(
 ): Promise<string | null> {
   let languages: Record<string, number> = {};
   try {
-    const { stdout } = await exec('gh', ['api', `repos/${repoId}/languages`]);
+    const { stdout } = await exec('gh', ['api', `repos/${repoId}/languages`], { timeout: 15_000 });
     languages = JSON.parse(stdout.trim()) as Record<string, number>;
   } catch {
     /* fall back to metadata.language */

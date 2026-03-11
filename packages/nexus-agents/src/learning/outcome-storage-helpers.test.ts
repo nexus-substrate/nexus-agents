@@ -338,12 +338,14 @@ describe('rowToDecision', () => {
     expect(decision.timestamp).toBe(new Date(0).toISOString());
   });
 
-  it('throws on invalid JSON in alternative_models', () => {
-    expect(() => rowToDecision(makeDecisionRow({ alternative_models: 'not-json' }))).toThrow();
+  it('returns empty fallbacks for invalid JSON in alternative_models', () => {
+    const decision = rowToDecision(makeDecisionRow({ alternative_models: 'not-json' }));
+    expect(decision.alternativeModels).toEqual([]);
   });
 
-  it('throws on invalid JSON in task_profile', () => {
-    expect(() => rowToDecision(makeDecisionRow({ task_profile: '{broken' }))).toThrow();
+  it('returns empty fallbacks for invalid JSON in task_profile', () => {
+    const decision = rowToDecision(makeDecisionRow({ task_profile: '{broken' }));
+    expect(decision.taskProfile).toEqual({});
   });
 
   it('preserves all router_type values', () => {

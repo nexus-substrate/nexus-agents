@@ -101,16 +101,28 @@ export function createIndexes(db: ISQLiteDatabase): void {
  * Convert a database row to a StoredRoutingDecision.
  */
 export function rowToDecision(row: RoutingDecisionRow): StoredRoutingDecision {
+  let alternativeModels: CliName[] = [];
+  let taskProfile: Record<string, unknown> = {};
+  try {
+    alternativeModels = JSON.parse(row.alternative_models) as CliName[];
+  } catch {
+    // Corrupt row data — use empty fallback
+  }
+  try {
+    taskProfile = JSON.parse(row.task_profile) as Record<string, unknown>;
+  } catch {
+    // Corrupt row data — use empty fallback
+  }
   return {
     id: row.id,
     traceId: row.trace_id,
     timestamp: new Date(row.timestamp).toISOString(),
     routerType: row.router_type as StoredRoutingDecision['routerType'],
     selectedModel: row.selected_model as CliName,
-    alternativeModels: JSON.parse(row.alternative_models) as CliName[],
+    alternativeModels,
     confidence: row.confidence,
     reason: row.reason,
-    taskProfile: JSON.parse(row.task_profile) as Record<string, unknown>,
+    taskProfile,
     requestId: row.request_id ?? undefined,
   };
 }
