@@ -436,6 +436,253 @@ describe('VotingProtocol', () => {
     });
   });
 
+  describe('getResult edge cases', () => {
+    it('should return null for non-existent session', async () => {
+      const result = await protocol.getResult('non-existent-id');
+      expect(result).toBeNull();
+    });
+
+    it('should return cached result for already completed session', async () => {
+      const session = protocol.createSession(topic, committee);
+      await protocol.startAnalysisRound(session.id);
+      await protocol.startDeliberationRound(session.id);
+      await protocol.startConsensusRound(session.id);
+
+      for (const agentId of committee) {
+        await protocol.submitFinalVote(session.id, agentId, {
+          decision: 'approve',
+          reasoning: 'Looks good',
+          confidence: 0.85,
+        });
+      }
+
+      const result1 = await protocol.getResult(session.id);
+      const result2 = await protocol.getResult(session.id);
+      expect(result1).toBe(result2); // Same reference — cached
+    });
+
+    it('should return null when not all committee members have voted', async () => {
+      const session = protocol.createSession(topic, committee);
+      await protocol.startAnalysisRound(session.id);
+      await protocol.startDeliberationRound(session.id);
+      await protocol.startConsensusRound(session.id);
+
+      await protocol.submitFinalVote(session.id, 'agent-1', {
+        decision: 'approve',
+        reasoning: 'Ok',
+        confidence: 0.8,
+      });
+
+      const result = await protocol.getResult(session.id);
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('Error branches', () => {
+    it('should reject submitFindings during wrong phase', async () => {
+      const session = protocol.createSession(topic, committee);
+      await protocol.startAnalysisRound(session.id);
+      await protocol.startDeliberationRound(session.id);
+
+      await expect(
+        protocol.submitFindings(session.id, 'agent-1', [
+          {
+            agentId: 'agent-1',
+            category: 'bug',
+            severity: 'minor',
+            description: 'x',
+            confidence: 0.5,
+          },
+        ])
+      ).rejects.toThrow('Findings can only be submitted during analysis round');
+    });
+
+    it('should reject voteOnFinding during wrong phase', async () => {
+      const session = protocol.createSession(topic, committee);
+      await protocol.startAnalysisRound(session.id);
+
+      await expect(
+        protocol.voteOnFinding(session.id, {
+          agentId: 'agent-1',
+          findingId: 'finding-1',
+          agree: true,
+        })
+      ).rejects.toThrow('Finding votes can only be submitted during deliberation');
+    });
+
+    it('should reject voteOnFinding from non-committee member', async () => {
+      const session = protocol.createSession(topic, committee);
+      await protocol.startAnalysisRound(session.id);
+      await protocol.submitFindings(session.id, 'agent-1', [
+        {
+          agentId: 'agent-1',
+          category: 'bug',
+          severity: 'minor',
+          description: 'x',
+          confidence: 0.5,
+        },
+      ]);
+      await protocol.startDeliberationRound(session.id);
+
+      const findingId = Array.from(
+        protocol.getSession(session.id)?.rounds[1]?.findings.keys() ?? []
+      )[0];
+
+      await expect(
+        protocol.voteOnFinding(session.id, {
+          agentId: 'outsider',
+          findingId: findingId!,
+          agree: true,
+        })
+      ).rejects.toThrow('Agent outsider is not a committee member');
+    });
+
+    it('should reject voteOnFinding for non-existent finding', async () => {
+      const session = protocol.createSession(topic, committee);
+      await protocol.startAnalysisRound(session.id);
+      await protocol.submitFindings(session.id, 'agent-1', [
+        {
+          agentId: 'agent-1',
+          category: 'bug',
+          severity: 'minor',
+          description: 'x',
+          confidence: 0.5,
+        },
+      ]);
+      await protocol.startDeliberationRound(session.id);
+
+      await expect(
+        protocol.voteOnFinding(session.id, {
+          agentId: 'agent-1',
+          findingId: 'non-existent-finding',
+          agree: true,
+        })
+      ).rejects.toThrow('Finding non-existent-finding not found');
+    });
+
+    it('should reject submitFinalVote during wrong phase', async () => {
+      const session = protocol.createSession(topic, committee);
+      await protocol.startAnalysisRound(session.id);
+
+      await expect(
+        protocol.submitFinalVote(session.id, 'agent-1', {
+          decision: 'approve',
+          reasoning: 'Ok',
+          confidence: 0.8,
+        })
+      ).rejects.toThrow('Final votes can only be submitted during consensus');
+    });
+
+    it('should reject submitFinalVote from non-committee member', async () => {
+      const session = protocol.createSession(topic, committee);
+      await protocol.startAnalysisRound(session.id);
+      await protocol.startDeliberationRound(session.id);
+      await protocol.startConsensusRound(session.id);
+
+      await expect(
+        protocol.submitFinalVote(session.id, 'outsider', {
+          decision: 'approve',
+          reasoning: 'Ok',
+          confidence: 0.8,
+        })
+      ).rejects.toThrow('Agent outsider is not a committee member');
+    });
+
+    it('should reject startDeliberationRound when not in round 1', async () => {
+      const session = protocol.createSession(topic, committee);
+
+      await expect(protocol.startDeliberationRound(session.id)).rejects.toThrow(
+        'Deliberation round can only be started after analysis'
+      );
+    });
+
+    it('should reject startConsensusRound when not in round 2', async () => {
+      const session = protocol.createSession(topic, committee);
+      await protocol.startAnalysisRound(session.id);
+
+      await expect(protocol.startConsensusRound(session.id)).rejects.toThrow(
+        'Consensus round can only be started after deliberation'
+      );
+    });
+
+    it('should throw when operating on completed session', async () => {
+      const session = protocol.createSession(topic, committee);
+      await protocol.startAnalysisRound(session.id);
+      await protocol.startDeliberationRound(session.id);
+      await protocol.startConsensusRound(session.id);
+
+      for (const agentId of committee) {
+        await protocol.submitFinalVote(session.id, agentId, {
+          decision: 'approve',
+          reasoning: 'Ok',
+          confidence: 0.8,
+        });
+      }
+
+      await protocol.getResult(session.id); // completes the session
+
+      expect(() => protocol.startAnalysisRound(session.id)).toThrow('is completed');
+    });
+
+    it('should replace duplicate finding vote from same agent', async () => {
+      const session = protocol.createSession(topic, committee);
+      await protocol.startAnalysisRound(session.id);
+      await protocol.submitFindings(session.id, 'agent-1', [
+        {
+          agentId: 'agent-1',
+          category: 'bug',
+          severity: 'minor',
+          description: 'x',
+          confidence: 0.5,
+        },
+      ]);
+      await protocol.startDeliberationRound(session.id);
+
+      const findingId = Array.from(
+        protocol.getSession(session.id)?.rounds[1]?.findings.keys() ?? []
+      )[0]!;
+
+      // Vote twice — second should replace first
+      await protocol.voteOnFinding(session.id, {
+        agentId: 'agent-2',
+        findingId,
+        agree: true,
+        reasoning: 'First vote',
+      });
+      await protocol.voteOnFinding(session.id, {
+        agentId: 'agent-2',
+        findingId,
+        agree: false,
+        reasoning: 'Changed mind',
+      });
+
+      const votes = protocol.getSession(session.id)?.rounds[1]?.findingVotes.get(findingId);
+      expect(votes).toHaveLength(1);
+      expect(votes![0]!.agree).toBe(false);
+    });
+  });
+
+  describe('Anti-sycophancy in deliberation', () => {
+    it('should detect sycophancy when starting deliberation with enableAntiSycophancy', async () => {
+      const session = protocol.createSession(topic, committee, {
+        enableAntiSycophancy: true,
+        sycophancyThreshold: 0.5,
+      });
+      await protocol.startAnalysisRound(session.id);
+
+      // All agents submit identical high-confidence findings
+      for (const agentId of committee) {
+        await protocol.submitFindings(session.id, agentId, [
+          { agentId, category: 'bug', severity: 'major', description: 'Same', confidence: 0.99 },
+        ]);
+      }
+
+      // Should not throw — sycophancy detection is logged, not blocking
+      const round = await protocol.startDeliberationRound(session.id);
+      expect(round.phase).toBe('deliberation');
+    });
+  });
+
   describe('createVotingProtocol', () => {
     it('should create a VotingProtocol instance', () => {
       const protocol = createVotingProtocol();

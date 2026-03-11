@@ -3,7 +3,8 @@
  * @module adapters/stream-operators-helpers.test
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { StreamCancelledError } from './streaming-types.js';
 import {
   take,
   skip,
@@ -49,6 +50,14 @@ describe('take', () => {
     const result = await collect(take(fromArray([1, 2, 3]), -1));
     expect(result).toEqual([]);
   });
+
+  it('throws StreamCancelledError when signal is aborted', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      collect(take(fromArray([1, 2, 3]), 2, { signal: controller.signal }))
+    ).rejects.toThrow(StreamCancelledError);
+  });
 });
 
 // ============================================================================
@@ -69,6 +78,14 @@ describe('skip', () => {
   it('returns all items when skip 0', async () => {
     const result = await collect(skip(fromArray([1, 2, 3]), 0));
     expect(result).toEqual([1, 2, 3]);
+  });
+
+  it('throws StreamCancelledError when signal is aborted', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      collect(skip(fromArray([1, 2, 3]), 1, { signal: controller.signal }))
+    ).rejects.toThrow(StreamCancelledError);
   });
 });
 
@@ -91,6 +108,14 @@ describe('concatStreams', () => {
     const result = await collect(concatStreams([]));
     expect(result).toEqual([]);
   });
+
+  it('throws StreamCancelledError when signal is aborted', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      collect(concatStreams([fromArray([1, 2])], { signal: controller.signal }))
+    ).rejects.toThrow(StreamCancelledError);
+  });
 });
 
 // ============================================================================
@@ -106,6 +131,23 @@ describe('fromArray', () => {
   it('handles empty array', async () => {
     const result = await collect(fromArray([]));
     expect(result).toEqual([]);
+  });
+
+  it('streams with delay between chunks', async () => {
+    vi.useFakeTimers();
+    const promise = collect(fromArray([1, 2], { delayMs: 100 }));
+    await vi.runAllTimersAsync();
+    const result = await promise;
+    expect(result).toEqual([1, 2]);
+    vi.useRealTimers();
+  });
+
+  it('throws StreamCancelledError when signal is aborted', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await expect(collect(fromArray([1, 2], { signal: controller.signal }))).rejects.toThrow(
+      StreamCancelledError
+    );
   });
 });
 
@@ -133,6 +175,14 @@ describe('tapStream', () => {
       })
     );
     expect(indices).toEqual([0, 1, 2]);
+  });
+
+  it('throws StreamCancelledError when signal is aborted', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      collect(tapStream(fromArray([1, 2]), () => {}, { signal: controller.signal }))
+    ).rejects.toThrow(StreamCancelledError);
   });
 });
 
@@ -164,6 +214,26 @@ describe('reduceStream', () => {
       throw new Error('stream failed');
     }
     const result = await reduceStream(failingStream(), (acc, val) => acc + val, 0);
+    expect(result.ok).toBe(false);
+  });
+
+  it('returns error on non-Error stream failure', async () => {
+    // eslint-disable-next-line @typescript-eslint/require-await
+    async function* failingStream(): AsyncIterable<number> {
+      yield 1;
+      // eslint-disable-next-line @typescript-eslint/only-throw-error, no-throw-literal
+      throw 'string error';
+    }
+    const result = await reduceStream(failingStream(), (acc, val) => acc + val, 0);
+    expect(result.ok).toBe(false);
+  });
+
+  it('returns error when signal is aborted', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const result = await reduceStream(fromArray([1, 2, 3]), (acc, val) => acc + val, 0, {
+      signal: controller.signal,
+    });
     expect(result.ok).toBe(false);
   });
 });
