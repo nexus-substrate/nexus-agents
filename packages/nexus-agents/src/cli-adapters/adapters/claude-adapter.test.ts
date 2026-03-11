@@ -235,7 +235,8 @@ describe('ClaudeCliAdapter', () => {
     it('should build correct command for basic task', async () => {
       mockSpawnResponse(
         JSON.stringify({
-          text: 'Hello!',
+          result: 'Hello!',
+          is_error: false,
           usage: { input_tokens: 10, output_tokens: 5 },
         })
       );
@@ -256,7 +257,7 @@ describe('ClaudeCliAdapter', () => {
     });
 
     it('should include system prompt when provided', async () => {
-      mockSpawnResponse(JSON.stringify({ text: 'Hello!' }));
+      mockSpawnResponse(JSON.stringify({ result: 'Hello!', is_error: false }));
 
       const task: CliTask = {
         content: 'Say hello',
@@ -270,7 +271,7 @@ describe('ClaudeCliAdapter', () => {
     });
 
     it('should include session ID for continuation', async () => {
-      mockSpawnResponse(JSON.stringify({ text: 'Continued!' }));
+      mockSpawnResponse(JSON.stringify({ result: 'Continued!', is_error: false }));
 
       const task: CliTask = {
         content: 'Continue please',
@@ -284,7 +285,7 @@ describe('ClaudeCliAdapter', () => {
     });
 
     it('should NOT pass maxTokens to CLI (Claude CLI does not support --max-tokens)', async () => {
-      mockSpawnResponse(JSON.stringify({ text: 'Short!' }));
+      mockSpawnResponse(JSON.stringify({ result: 'Short!', is_error: false }));
 
       const task: CliTask = {
         content: 'Be brief',
@@ -299,7 +300,7 @@ describe('ClaudeCliAdapter', () => {
     });
 
     it('should use task model over default when provided', async () => {
-      mockSpawnResponse(JSON.stringify({ text: 'From opus!' }));
+      mockSpawnResponse(JSON.stringify({ result: 'From opus!', is_error: false }));
 
       const task: CliTask = {
         content: 'Complex task',
@@ -314,7 +315,7 @@ describe('ClaudeCliAdapter', () => {
     });
 
     it('should handle multi-line content correctly', async () => {
-      mockSpawnResponse(JSON.stringify({ text: 'Done!' }));
+      mockSpawnResponse(JSON.stringify({ result: 'Done!', is_error: false }));
 
       const task: CliTask = {
         content: 'Line 1\nLine 2\nLine 3',
