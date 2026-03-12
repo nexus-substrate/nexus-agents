@@ -806,6 +806,14 @@ describe('categorizeError', () => {
     expect(categorizeError(new Error('MCP connection lost'))).toBe('connection');
   });
 
+  it('should categorize EADDRINUSE as connection errors', () => {
+    expect(categorizeError(new Error('EADDRINUSE: address already in use :::3000'))).toBe(
+      'connection'
+    );
+    expect(categorizeError(new Error('listen EADDRINUSE :::8080'))).toBe('connection');
+    expect(categorizeError(new Error('address already in use'))).toBe('connection');
+  });
+
   it('should categorize crash errors', () => {
     expect(categorizeError(new Error('Process crashed'))).toBe('crash');
     expect(categorizeError(new Error('Process exited unexpectedly'))).toBe('crash');

@@ -217,7 +217,14 @@ export const DEFAULT_CIRCUIT_BREAKER_CONFIG: CircuitBreakerConfig = {
 const TIMEOUT_PATTERNS = ['timeout', 'timed out'];
 const AUTH_PATTERNS = ['auth', 'unauthorized', 'forbidden', 'oauth'];
 const RATE_LIMIT_PATTERNS = ['rate limit', 'too many requests', '429'];
-const CONNECTION_PATTERNS = ['connection', 'econnrefused', 'enotfound', 'mcp'];
+const CONNECTION_PATTERNS = [
+  'connection',
+  'econnrefused',
+  'enotfound',
+  'mcp',
+  'eaddrinuse',
+  'address already in use',
+];
 const CRASH_PATTERNS = ['crash', 'exited', 'killed', 'sigterm', 'sigkill'];
 
 /**

@@ -37,6 +37,23 @@ When evaluating user experience:
 - **Tailwind Integration**: Structure custom themes to support opacity: \`color: oklch(var(--color-primary) / <alpha-value>)\`.
 - **Dynamic Palettes**: Manipulate \`l\` (lightness) and \`c\` (chroma) in oklch to generate Material Design tonal palettes. Keep \`h\` (hue) constant for brand consistency.
 
+## Dark Mode Implementation
+- CSS-only baseline: \`@media (prefers-color-scheme: dark)\` — no JS required
+- User override: \`.dark\` class on \`<html>\` toggled via JS, persisted with \`localStorage\`
+- OKLCH dark palettes: invert the L-channel (e.g., \`l: 1 - l\`) while keeping C and H constant
+- Always test both modes across all component states (hover, focus, disabled, error)
+
+## Visualization Library Selection
+- **CSS-only charts**: bar/line via clip-path or custom properties — zero JS, no CSP risk, limited interactivity
+- **D3.js + framework SVG**: best control, SSR-friendly, CSP-safe (no \`eval\`); use for complex or data-driven visuals
+- **Chart.js / Observable Plot**: rapid prototyping, but may require \`unsafe-eval\` in CSP — audit before use
+- **Rule**: never relax \`script-src\` CSP to accommodate a charting library; choose a CSP-safe alternative instead
+
+## Typography & Fonts
+- Fluid sizing with \`clamp()\`: e.g., \`font-size: clamp(1rem, 2.5vw, 1.5rem)\` — scales between breakpoints without media queries
+- Self-host fonts via \`@font-face\` to eliminate third-party tracking and lock down \`font-src\` in CSP
+- Always set \`font-display: swap\` to prevent invisible text (FOUT over FOIT)
+
 ## Material Design 3 (M3) Implementation
 - **State Layers**: Implement M3 state layers for interactive elements using oklch overlays:
   - Hover: 8% opacity overlay of on-surface or on-primary color

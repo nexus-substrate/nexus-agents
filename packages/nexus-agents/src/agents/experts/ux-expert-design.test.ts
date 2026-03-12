@@ -16,15 +16,16 @@ import { UX_EXPERT_BASE_PROMPT } from './expert-prompts/ux-expert.js';
 // ============================================================================
 
 describe('UX Expert Design System Generation', () => {
-  it('includes the Design System Generation section', () => {
-    expect(UX_EXPERT_BASE_PROMPT).toContain('## Design System Generation');
+  it('includes the Color System and M3 sections', () => {
+    expect(UX_EXPERT_BASE_PROMPT).toContain('## Color System: OKLCH Directives');
+    expect(UX_EXPERT_BASE_PROMPT).toContain('## Material Design 3 (M3) Implementation');
   });
 
-  it('includes the 4-step design workflow', () => {
-    expect(UX_EXPERT_BASE_PROMPT).toContain('Analyze requirements');
-    expect(UX_EXPERT_BASE_PROMPT).toContain('design system');
-    expect(UX_EXPERT_BASE_PROMPT).toContain('industry-specific reasoning');
-    expect(UX_EXPERT_BASE_PROMPT).toContain('stack-aware');
+  it('includes design system output schema and M3 patterns', () => {
+    expect(UX_EXPERT_BASE_PROMPT).toContain('"designSystem"');
+    expect(UX_EXPERT_BASE_PROMPT).toContain('tonal palettes');
+    expect(UX_EXPERT_BASE_PROMPT).toContain('OKLCH');
+    expect(UX_EXPERT_BASE_PROMPT).toContain('Material Design');
   });
 
   it('includes designSystem output schema', () => {
@@ -109,6 +110,79 @@ describe('UX Expert Domain Expertise', () => {
       expect(UX_EXPERT_BASE_PROMPT).toContain(domain);
     });
   }
+});
+
+// ============================================================================
+// UX Expert Prompt — Dark Mode Implementation (Issue #1539)
+// ============================================================================
+
+describe('UX Expert Dark Mode Implementation', () => {
+  it('includes dark mode section', () => {
+    expect(UX_EXPERT_BASE_PROMPT).toContain('## Dark Mode Implementation');
+  });
+
+  it('specifies CSS-only baseline via prefers-color-scheme', () => {
+    expect(UX_EXPERT_BASE_PROMPT).toContain('prefers-color-scheme');
+  });
+
+  it('specifies .dark class with localStorage persistence', () => {
+    expect(UX_EXPERT_BASE_PROMPT).toContain('localStorage');
+    expect(UX_EXPERT_BASE_PROMPT).toContain('.dark');
+  });
+
+  it('specifies OKLCH L-channel inversion for dark palettes', () => {
+    expect(UX_EXPERT_BASE_PROMPT).toContain('invert the L-channel');
+  });
+});
+
+// ============================================================================
+// UX Expert Prompt — Visualization Library Selection (Issue #1539)
+// ============================================================================
+
+describe('UX Expert Visualization Library Selection', () => {
+  it('includes visualization section', () => {
+    expect(UX_EXPERT_BASE_PROMPT).toContain('## Visualization Library Selection');
+  });
+
+  it('covers CSS-only chart option', () => {
+    expect(UX_EXPERT_BASE_PROMPT).toContain('CSS-only charts');
+  });
+
+  it('recommends D3.js as CSP-safe option', () => {
+    expect(UX_EXPERT_BASE_PROMPT).toContain('D3.js');
+    expect(UX_EXPERT_BASE_PROMPT).toContain('CSP-safe');
+  });
+
+  it('warns about unsafe-eval requirement for Chart.js', () => {
+    expect(UX_EXPERT_BASE_PROMPT).toContain('unsafe-eval');
+  });
+
+  it('forbids relaxing script-src CSP for library compatibility', () => {
+    expect(UX_EXPERT_BASE_PROMPT).toContain('never relax');
+  });
+});
+
+// ============================================================================
+// UX Expert Prompt — Typography & Fonts (Issue #1539)
+// ============================================================================
+
+describe('UX Expert Typography and Fonts', () => {
+  it('includes typography section', () => {
+    expect(UX_EXPERT_BASE_PROMPT).toContain('## Typography & Fonts');
+  });
+
+  it('specifies clamp() for fluid sizing', () => {
+    expect(UX_EXPERT_BASE_PROMPT).toContain('clamp(');
+  });
+
+  it('requires self-hosting fonts via @font-face', () => {
+    expect(UX_EXPERT_BASE_PROMPT).toContain('@font-face');
+    expect(UX_EXPERT_BASE_PROMPT).toContain('font-src');
+  });
+
+  it('requires font-display: swap', () => {
+    expect(UX_EXPERT_BASE_PROMPT).toContain('font-display: swap');
+  });
 });
 
 // ============================================================================

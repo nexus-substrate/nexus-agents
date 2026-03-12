@@ -149,7 +149,24 @@ const UX_KNOWLEDGE_SUMMARY = `## UX Domain Knowledge
 - Astro (.astro) for static content, routing, layouts — zero JS by default
 - Svelte (.svelte) only for interactive islands with explicit hydration directives
 - client:load (critical interactivity), client:idle (deferred), client:visible (lazy)
-- nano-stores for cross-island state management`;
+- nano-stores for cross-island state management
+
+### Dark Mode
+- CSS-only baseline via \`prefers-color-scheme\` media query; no JS required
+- User override: \`.dark\` class on \`<html>\`, persisted with localStorage
+- OKLCH dark palettes: invert L-channel (1 - L) while keeping C and H constant
+- Test both modes in all component states (hover, focus, disabled, error)
+
+### Visualization Library Selection
+- CSS-only charts: zero JS, no CSP risk, but limited interactivity
+- D3.js + framework SVG: best control, SSR-friendly, CSP-safe (\`unsafe-eval\` not needed)
+- Chart.js / Observable Plot: fast but may require \`unsafe-eval\` — audit CSP before adopting
+- Never relax \`script-src\` CSP to accommodate a charting library; pick a CSP-safe alternative
+
+### Typography & Fonts
+- Fluid sizing: \`clamp(1rem, 2.5vw, 1.5rem)\` scales without media queries
+- Self-host fonts via \`@font-face\` to eliminate third-party tracking and tighten \`font-src\` CSP
+- Always set \`font-display: swap\` to prevent invisible text during load`;
 
 /**
  * Build an enriched UX expert system prompt.

@@ -7,6 +7,7 @@ export default defineConfig({
   site: 'https://williamzujkowski.github.io',
   base: '/nexus-agents',
   integrations: [svelte(), sitemap()],
+  prefetch: true,
   markdown: {
     remarkPlugins: [remarkRewriteLinks],
   },

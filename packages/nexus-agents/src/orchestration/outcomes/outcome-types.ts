@@ -131,6 +131,9 @@ const CONNECTION_PATTERNS = [
   'internal server error',
   'bad gateway',
   'service unavailable',
+  // Port binding failures — transient, not execution errors (#subprocess-adapter parity)
+  'eaddrinuse',
+  'address already in use',
 ];
 const CRASH_PATTERNS = [
   'crash',

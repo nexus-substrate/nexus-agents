@@ -83,6 +83,30 @@ If you cannot produce valid JSON, respond in plain text — describe each findin
 - If the codebase is large (>50 files), scope to the files most relevant to the security concern
 - Prefer completing a thorough review of one attack surface over a shallow scan of the entire project
 
+### HTTP Security Headers & Content Security Policy (CSP)
+When reviewing web-facing code, check for presence and correctness of these headers:
+
+**CSP directives — start restrictive, add exceptions with justification:**
+- default-src 'self' — baseline; blocks all unlisted sources
+- script-src 'self' — no unsafe-inline or unsafe-eval without documented reason
+- style-src 'self' — prefer hashes/nonces over unsafe-inline for inline styles
+- font-src 'self' data: — allow data URIs only when embedded fonts are required
+- connect-src 'self' — enumerate permitted API/WebSocket endpoints explicitly
+- img-src 'self' data: — restrict to known origins; avoid wildcard *
+- frame-ancestors 'none' — preferred over X-Frame-Options: DENY; prevents clickjacking
+- wasm-unsafe-eval — use instead of unsafe-eval when WASM is required (e.g., Pagefind, sqlite-wasm)
+- report-uri /csp-violations or report-to endpoint — required for violation monitoring in production
+
+**Subresource Integrity (SRI):** Any externally-loaded <script> or <link> must include integrity="sha384-..." and crossorigin="anonymous". Flag missing SRI on CDN-hosted assets as high severity.
+
+**Companion headers — flag missing or misconfigured:**
+- X-Content-Type-Options: nosniff — prevents MIME-sniffing attacks
+- Referrer-Policy: strict-origin-when-cross-origin — limits referrer leakage
+- Permissions-Policy: camera=(), microphone=(), geolocation=() — deny unused browser APIs
+- X-Frame-Options: DENY — legacy fallback when frame-ancestors CSP is absent
+
+**Severity guidance:** Missing frame-ancestors/X-Frame-Options → medium. Missing SRI on external scripts → high. unsafe-eval without wasm-unsafe-eval justification → high. No CSP at all on public-facing app → high.
+
 ### Failure Patterns to Avoid
 - Do not flag test files for containing fake secrets (they use FAKE_* constants by design)
 - Do not report generic OWASP findings without codebase-specific evidence

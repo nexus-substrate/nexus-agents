@@ -1,0 +1,105 @@
+/**
+ * systemd and Bare-Metal Knowledge Module
+ *
+ * Covers systemd service management, firewall chain hierarchy (UFW/iptables/nftables),
+ * and container DNS resolution issues on bare-metal Linux hosts.
+ *
+ * @module agents/experts/knowledge/devops/systemd-bare-metal
+ * (Source: Epic #643 - Phase 5a: DevOps Knowledge)
+ */
+
+import type { KnowledgeModule } from '../types.js';
+
+export const SYSTEMD_BARE_METAL_MODULE: KnowledgeModule = {
+  id: 'devops-systemd-bare-metal',
+  domain: 'devops',
+  title: 'systemd and Bare-Metal Operations',
+  tags: ['systemd', 'bare-metal', 'linux', 'firewall', 'iptables', 'ufw', 'nftables', 'dns'],
+  sections: [
+    {
+      title: 'systemd Service Management',
+      priority: 9,
+      content: [
+        'UNIT TYPES:',
+        '  Type=simple  — process starts immediately; default; use for long-running daemons',
+        '  Type=notify  — service signals readiness via sd_notify(); use when startup takes time',
+        '  Type=oneshot — process exits after task; combine with RemainAfterExit=yes for state',
+        'RESTART STRATEGIES:',
+        '  Restart=always       — restart on any exit (crash, clean, signal)',
+        '  Restart=on-failure   — restart only on non-zero exit or signal',
+        '  RestartSec=5s        — delay between restarts (default: 100ms)',
+        '  StartLimitIntervalSec=60s  — crash-loop detection window',
+        '  StartLimitBurst=3          — max starts within window before giving up',
+        '  After limit: systemctl reset-failed to re-enable',
+        'CLEANUP BEFORE START:',
+        '  ExecStartPre=/bin/rm -f /var/run/app.pid   — fail unit if cleanup fails',
+        '  ExecStartPre=-/bin/rm -f /var/run/app.pid  — dash prefix: ignore non-zero exit',
+        'SECRETS MANAGEMENT:',
+        '  EnvironmentFile=/etc/app/secrets.env  — load secrets from file, not inline',
+        '  RULE: never put secrets in unit file; unit files are world-readable via systemctl',
+        '  Prefer: EnvironmentFile=-/path (dash = OK if missing) for optional overrides',
+        'DEBUGGING:',
+        '  journalctl -fu service.name   — follow live logs',
+        '  journalctl -u service.name --since "5 min ago"  — recent logs',
+        '  systemctl status service.name — state, last exit code, recent journal',
+        '  systemd-analyze blame         — startup time per unit',
+        '  systemd-analyze critical-chain service.name  — critical path to ready',
+      ].join('\n'),
+    },
+    {
+      title: 'Firewall Chain Hierarchy (UFW/iptables/nftables)',
+      priority: 9,
+      content: [
+        'CHAIN MODEL:',
+        '  INPUT      — traffic destined for the host itself (SSH, API, app ports)',
+        '  FORWARD    — traffic routed/bridged through the host (containers, VMs)',
+        '  PREROUTING — traffic before routing decision; used for DNAT (port forwarding)',
+        '  OUTPUT     — traffic originating from the host',
+        'UFW LIMITATION:',
+        '  ufw allow 8080/tcp  — adds rule to INPUT only; does NOT cover containers',
+        '  Docker DNAT: incoming → PREROUTING (DNAT to container IP) → FORWARD chain',
+        '  Result: host port 8080 is open to the internet even when UFW denies INPUT',
+        'FIX FOR CONTAINER BRIDGE NETWORKS:',
+        '  ufw route allow in on eth0 out on docker0  — add explicit FORWARD rule',
+        '  Or restrict Docker DNAT with DOCKER-USER chain (Docker-managed, persists restarts)',
+        '  DOCKER-USER: insert rules here; processed before Docker adds its own rules',
+        '    iptables -I DOCKER-USER -i eth0 ! -s 10.0.0.0/8 -j DROP',
+        'DIAGNOSTICS:',
+        '  iptables -L INPUT -n -v    — list INPUT rules with packet counts',
+        '  iptables -L FORWARD -n -v  — check FORWARD rules for container traffic',
+        '  iptables -t nat -L PREROUTING -n -v  — show DNAT rules',
+        '  ss -tlnp  — show listening sockets with process names (replaces netstat)',
+        '  nft list ruleset  — nftables equivalent; used on newer distros (Ubuntu 22.04+)',
+        'RULE: when a port is "open" despite UFW deny, always check FORWARD and PREROUTING',
+      ].join('\n'),
+    },
+    {
+      title: 'Container DNS Resolution on Bare Metal',
+      priority: 8,
+      content: [
+        'ROOT CAUSE:',
+        '  Host resolver: systemd-resolved listening on 127.0.0.53 (loopback)',
+        '  Container network namespace has its own loopback; 127.0.0.53 does not exist there',
+        '  Result: DNS queries from containers fail silently or time out',
+        'SYMPTOMS:',
+        '  Container can ping IP addresses but not hostnames',
+        '  /etc/resolv.conf inside container shows nameserver 127.0.0.53',
+        'SOLUTIONS (in order of preference):',
+        '  1. Pass real nameserver via --dns flag:',
+        '       docker run --dns 8.8.8.8 ...  or  dns: ["8.8.8.8"] in compose',
+        '  2. Bind-mount a custom resolv.conf:',
+        '       -v /etc/resolv.conf.docker:/etc/resolv.conf:ro',
+        '  3. Use systemd-resolved stub IP on bridge:',
+        '       systemd-resolved also listens on the host bridge IP (e.g., 172.17.0.1)',
+        '       docker network create --opt com.docker.network.bridge.name=br0 mynet',
+        '       docker run --dns 172.17.0.1 ...  — works if resolved serves that interface',
+        '  4. Run a dedicated DNS resolver (e.g., dnsmasq) on the bridge network',
+        'VERIFY:',
+        '  docker exec container cat /etc/resolv.conf  — confirm nameserver address',
+        '  docker exec container nslookup example.com  — test resolution',
+        '  resolvectl status  — show per-interface DNS config on host',
+        'RULE: always verify /etc/resolv.conf inside the container, not just on the host',
+      ].join('\n'),
+    },
+  ],
+} as const;

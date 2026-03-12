@@ -514,6 +514,33 @@ describe('OutcomeStore.reclassifyAll (#1444)', () => {
     expect(store2.query().find((o) => o.id === 'exec-real')?.failureCategory).toBe('execution');
   });
 
+  it('reclassifies EADDRINUSE execution entries to connection (#subprocess-adapter parity)', () => {
+    const store2 = new OutcomeStore();
+    const entries = store2 as unknown as { entries: TaskOutcome[] };
+    entries.entries.push({
+      ...makeOutcome({
+        id: 'eaddrinuse-1',
+        success: false,
+        failureCategory: 'execution',
+        errorMessage: 'listen EADDRINUSE :::3000',
+      }),
+    });
+    entries.entries.push({
+      ...makeOutcome({
+        id: 'eaddrinuse-2',
+        success: false,
+        failureCategory: 'execution',
+        errorMessage: 'Error: address already in use',
+      }),
+    });
+
+    const count = store2.reclassifyAll();
+
+    expect(count).toBe(2);
+    expect(store2.query().find((o) => o.id === 'eaddrinuse-1')?.failureCategory).toBe('connection');
+    expect(store2.query().find((o) => o.id === 'eaddrinuse-2')?.failureCategory).toBe('connection');
+  });
+
   it('reclassifies generic entries to more specific categories (#1401)', () => {
     const store2 = new OutcomeStore();
     const entries = store2 as unknown as { entries: TaskOutcome[] };

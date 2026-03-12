@@ -162,6 +162,24 @@ describe('buildUxPrompt', () => {
     const result = buildUxPrompt('base');
     expect(result).toContain('Nielsen');
   });
+
+  it('includes dark mode knowledge', () => {
+    const result = buildUxPrompt('base');
+    expect(result).toContain('Dark Mode');
+    expect(result).toContain('localStorage');
+  });
+
+  it('includes visualization library selection knowledge', () => {
+    const result = buildUxPrompt('base');
+    expect(result).toContain('Visualization Library Selection');
+    expect(result).toContain('CSP-safe');
+  });
+
+  it('includes typography and fonts knowledge', () => {
+    const result = buildUxPrompt('base');
+    expect(result).toContain('Typography & Fonts');
+    expect(result).toContain('font-display: swap');
+  });
 });
 
 describe('buildInfrastructurePrompt', () => {
