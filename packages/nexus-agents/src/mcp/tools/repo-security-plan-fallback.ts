@@ -207,6 +207,13 @@ const FALLBACK_SCANNERS: ScannerData['scanners'] = [
     license: 'Apache-2.0',
     pricingModel: 'free',
   },
+  {
+    name: 'trivy-image',
+    displayName: 'Trivy (image scan)',
+    categories: ['image-currency', 'container'],
+    license: 'Apache-2.0',
+    pricingModel: 'free',
+  },
 ];
 
 // ============================================================================

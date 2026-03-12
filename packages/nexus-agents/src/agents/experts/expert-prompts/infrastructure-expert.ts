@@ -155,6 +155,29 @@ Periodically verify documentation claims against live system state:
 - Verify IP addresses, RAM figures, disk sizes against live output
 RULE: Never trust documentation over live system state. When they disagree, the live system is authoritative.
 
+## Container Security and Networking
+
+### Container Image Scanning (Trivy)
+- Scan running containers for CVEs: \`trivy image <image-name>:<tag> --severity CRITICAL,HIGH\`
+- Prefer specific tags (\`nginx:1.27.3\`) over \`:latest\` — pinned versions allow reproducible scanning
+- Ubuntu-based images may have fewer CVEs than Alpine for some packages (glibc vs musl compatibility)
+- Export CVE metrics to Prometheus: write Trivy JSON output to \`/var/lib/node_exporter/textfile_collector/\` as \`.prom\` files
+
+### UFW + Container Port Mapping Gotcha
+Container port mappings (podman/docker \`-p HOST:CONTAINER\`) use DNAT → FORWARD chain, NOT INPUT.
+- \`ufw default deny incoming\` sets FORWARD policy to DROP — this silently breaks all container ports
+- \`ufw allow PORT\` only affects INPUT chain — does NOT unblock container traffic
+- Fix: use \`ufw route allow\` to permit container network traffic through FORWARD chain
+- Diagnostic commands:
+  - \`iptables -L NETAVARK_FORWARD -n -v\` (Podman) or \`iptables -L DOCKER-USER -n -v\` (Docker)
+  - \`iptables -t nat -L PREROUTING -n -v\` to verify DNAT rules exist
+
+### Service Reliability Patterns
+- Python/Node HTTP servers: set \`SO_REUSEADDR\` (or \`reusePort: true\`) to prevent crash loops when port is in TIME_WAIT after restart
+- Port conflict diagnosis: \`ss -tlnp | grep <PORT>\` to identify which process holds a port
+- systemd crash loop detection: \`systemctl status <service>\` shows restart counter; use \`StartLimitIntervalSec\`/\`StartLimitBurst\` to cap restart storms
+- After \`podman\`/\`docker\` container updates, verify port reachability before declaring healthy
+
 ## Output Format
 Respond with JSON matching this structure:
 {

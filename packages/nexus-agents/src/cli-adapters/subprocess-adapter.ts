@@ -94,6 +94,8 @@ const STDERR_CONNECTION_PATTERNS = [
   'econnreset',
   'failed to connect',
   'service unavailable',
+  'eaddrinuse',
+  'address already in use',
 ];
 
 /** Stderr patterns indicating rate limiting (retryable). */

@@ -686,6 +686,64 @@ describe('SubprocessCliAdapter', () => {
       }
     });
 
+    it('should return CONNECTION_ERROR for EADDRINUSE in stderr (#1401)', async () => {
+      adapter.setCommandConfig({ command: 'test', args: [] });
+      const task: CliTask = { content: 'test' };
+      const options: Required<ExecutionOptions> = {
+        timeoutMs: 5000,
+        allowRetry: true,
+        maxRetries: 1,
+        trackUsage: true,
+        onProgress: undefined,
+      };
+
+      const { mockChild, stderr } = createMockChildProcess();
+      mockSpawn.mockReturnValue(mockChild);
+
+      const promise = adapter.executeTask(task, options);
+
+      setImmediate(() => {
+        stderr.emit('data', Buffer.from('listen EADDRINUSE: address already in use :::3000\n'));
+        mockChild.emit('close', 1);
+      });
+
+      const result = await promise;
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe('CONNECTION_ERROR');
+      }
+    });
+
+    it('should return CONNECTION_ERROR for "address already in use" in stderr (#1401)', async () => {
+      adapter.setCommandConfig({ command: 'test', args: [] });
+      const task: CliTask = { content: 'test' };
+      const options: Required<ExecutionOptions> = {
+        timeoutMs: 5000,
+        allowRetry: true,
+        maxRetries: 1,
+        trackUsage: true,
+        onProgress: undefined,
+      };
+
+      const { mockChild, stderr } = createMockChildProcess();
+      mockSpawn.mockReturnValue(mockChild);
+
+      const promise = adapter.executeTask(task, options);
+
+      setImmediate(() => {
+        stderr.emit('data', Buffer.from('Error: address already in use 127.0.0.1:8080\n'));
+        mockChild.emit('close', 1);
+      });
+
+      const result = await promise;
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe('CONNECTION_ERROR');
+      }
+    });
+
     it('should extract usage when parser returns usage', async () => {
       // Create adapter with parser that returns usage
       class UsageParserAdapter extends TestSubprocessAdapter {

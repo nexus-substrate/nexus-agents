@@ -47,6 +47,7 @@ describe('FALLBACK_SCANNER_DATA', () => {
         'license',
         'sbom',
         'api',
+        'image-currency',
       ]);
       for (const scanner of FALLBACK_SCANNER_DATA.scanners) {
         for (const cat of scanner.categories) {

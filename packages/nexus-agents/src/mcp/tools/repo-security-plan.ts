@@ -143,6 +143,8 @@ const CI_SNIPPETS: Readonly<Record<string, string>> = {
   semgrep: '- uses: semgrep/semgrep-action@v1\n  with:\n    config: auto',
   codeql: '- uses: github/codeql-action/analyze@v3',
   trivy: '- uses: aquasecurity/trivy-action@master\n  with:\n    scan-type: fs',
+  'trivy-image':
+    '- uses: aquasecurity/trivy-action@master\n  with:\n    scan-type: image\n    image-ref: ${{ env.IMAGE_TAG }}\n    severity: CRITICAL,HIGH\n    exit-code: 1',
   gitleaks: '- uses: gitleaks/gitleaks-action@v2',
   bandit: '- run: pip install bandit && bandit -r . -f json',
   gosec: '- uses: securego/gosec@master\n  with:\n    args: ./...',
@@ -327,7 +329,7 @@ function detectRedundant(
 // Coverage Analysis
 // ============================================================================
 
-const ALL_CATEGORIES = ['sast', 'dast', 'sca', 'secrets', 'container', 'iac'];
+const ALL_CATEGORIES = ['sast', 'dast', 'sca', 'secrets', 'container', 'iac', 'image-currency'];
 
 function buildCoverage(
   recs: readonly ScannerRecommendation[],
@@ -379,6 +381,7 @@ function collectInfraRecs(
       recs,
       ctx
     );
+    tryAddScanner('trivy-image', 'image-currency', buildImageCurrencyRationale(), recs, ctx);
   }
   if (analysis.hasHelmCharts) {
     tryAddScanner(
@@ -389,6 +392,21 @@ function collectInfraRecs(
       ctx
     );
   }
+}
+
+/**
+ * Build the rationale string for periodic container base image CVE scanning.
+ * Extracted to keep collectInfraRecs within the 50-line function limit.
+ */
+function buildImageCurrencyRationale(): string {
+  return (
+    'Dockerfile detected — periodically scan built images with ' +
+    '`trivy image --severity CRITICAL,HIGH` to detect CVEs introduced by stale base images. ' +
+    'Pin base images to specific version tags (e.g., node:22.4.0-alpine3.20) rather than ' +
+    ':latest to get reproducible scans and predictable CVE surface area. ' +
+    'Alpine-based images typically have a smaller CVE surface than Debian/Ubuntu equivalents ' +
+    'due to musl libc and a minimal package set, but verify with trivy before assuming.'
+  );
 }
 
 /** Pure function: build plan from analysis + scanner data (testable). */

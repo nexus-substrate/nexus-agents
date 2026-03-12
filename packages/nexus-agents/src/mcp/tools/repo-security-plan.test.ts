@@ -198,4 +198,53 @@ describe('buildPlanFromAnalysis', () => {
     const uncovered = plan.gapsSummary.find((g) => g.startsWith('Uncovered'));
     expect(uncovered).toBeDefined();
   });
+
+  it('adds image-currency recommendation when Dockerfile is present', () => {
+    const plan = buildPlanFromAnalysis(makeAnalysis({ hasDockerfile: true, language: null }), {
+      repo: 'test/repo',
+    });
+
+    const imageCurrencyRecs = plan.recommendations.filter((r) => r.category === 'image-currency');
+    expect(imageCurrencyRecs.length).toBe(1);
+    expect(imageCurrencyRecs[0]?.name).toBe('trivy-image');
+  });
+
+  it('image-currency rationale mentions severity filtering and pinned tags', () => {
+    const plan = buildPlanFromAnalysis(makeAnalysis({ hasDockerfile: true, language: null }), {
+      repo: 'test/repo',
+    });
+
+    const rec = plan.recommendations.find((r) => r.name === 'trivy-image');
+    expect(rec?.rationale).toContain('CRITICAL,HIGH');
+    expect(rec?.rationale).toContain(':latest');
+    expect(rec?.rationale).toContain('Alpine');
+  });
+
+  it('image-currency recommendation has CI snippet for github-actions', () => {
+    const plan = buildPlanFromAnalysis(
+      makeAnalysis({ hasDockerfile: true, language: null, ciProvider: 'github-actions' }),
+      { repo: 'test/repo' }
+    );
+
+    const rec = plan.recommendations.find((r) => r.name === 'trivy-image');
+    expect(rec?.ciSnippet).not.toBeNull();
+    expect(rec?.ciSnippet).toContain('scan-type: image');
+    expect(rec?.ciSnippet).toContain('severity: CRITICAL,HIGH');
+  });
+
+  it('does not add image-currency when Dockerfile is absent', () => {
+    const plan = buildPlanFromAnalysis(makeAnalysis({ hasDockerfile: false, language: null }), {
+      repo: 'test/repo',
+    });
+
+    const imageCurrencyRecs = plan.recommendations.filter((r) => r.category === 'image-currency');
+    expect(imageCurrencyRecs.length).toBe(0);
+  });
+
+  it('coverage includes image-currency category', () => {
+    const plan = buildPlanFromAnalysis(makeAnalysis(), { repo: 'test/repo' });
+
+    const categories = plan.coverage.map((c) => c.category);
+    expect(categories).toContain('image-currency');
+  });
 });
