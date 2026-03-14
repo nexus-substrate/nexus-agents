@@ -200,6 +200,15 @@ function printRegistryAdvisory(advisory: RegistryAdvisory): void {
       writeLine(`  ${colors.dim}${m.displayName} — ${m.reason}${colors.reset}`);
     }
   }
+  // Registry staleness warning (#1549)
+  const ageText = `${String(advisory.registryAgeDays)} days old`;
+  if (advisory.registryStale) {
+    writeLine(
+      `${colors.yellow}${symbols.warn}${colors.reset} Model registry is ${ageText} — may have stale model data`
+    );
+  } else {
+    writeLine(`${formatStatus(true)} Model registry: ${ageText}`);
+  }
 }
 
 /**

@@ -107,6 +107,10 @@ export interface RegistryAdvisory {
   readonly availableModels: number;
   readonly unavailableModels: number;
   readonly models: readonly ModelAdvisory[];
+  /** Days since the registry was last updated. */
+  readonly registryAgeDays: number;
+  /** True if the registry is >30 days old and may have stale model data. */
+  readonly registryStale: boolean;
 }
 
 /**
@@ -358,11 +362,19 @@ function buildRegistryAdvisory(cliResults: CliCheckResult[]): RegistryAdvisory {
       return { modelId: m.id, displayName: m.displayName, cliName, available, reason };
     });
 
+  // Registry staleness check (#1549)
+  const STALE_THRESHOLD_DAYS = 30;
+  const updatedAt = new Date(DEFAULT_MODEL_CAPABILITIES.updatedAt);
+  const nowMs = getTimeProvider().now();
+  const ageDays = Math.floor((nowMs - updatedAt.getTime()) / (1000 * 60 * 60 * 24));
+
   return {
     totalModels: models.length,
     availableModels: models.filter((m) => m.available).length,
     unavailableModels: models.filter((m) => !m.available).length,
     models,
+    registryAgeDays: ageDays,
+    registryStale: ageDays > STALE_THRESHOLD_DAYS,
   };
 }
 
