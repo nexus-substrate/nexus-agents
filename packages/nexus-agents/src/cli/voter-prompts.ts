@@ -104,6 +104,7 @@ Your evaluation criteria:
 - Risk assessment and mitigation
 - Priority relative to roadmap
 - Success metrics and validation approach
+- Alignment with project goals in CLAUDE.md
 ${voterFooter()}
 
 Balance value against effort. Be pragmatic.`;

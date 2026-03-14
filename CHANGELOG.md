@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Model registry v3** — Claude Opus/Sonnet 4.6 context 200K → 1M (GA March 2026), Opus maxOutput 64K → 128K. Gemini 3 Pro → 3.1 Pro (Preview). GPT-5.3-Codex → GPT-5.4 (1M context, 128K output). OpenCode models updated to match upstream Claude. `context_caching` added to specialFeatures. (#1548)
+- **Model registry staleness detection** — `nexus-agents doctor` warns when registry `updatedAt` is >30 days old. Computed via TimeProvider for testability. (#1549)
+- **Evergreen documentation** — `inject-governance.ts` auto-generates model list from `DEFAULT_MODEL_CAPABILITIES` between `<!-- GOVERNANCE:MODEL_LIST -->` markers. README.md uses evergreen language (no hardcoded counts). (#1550)
+- **Voter context injection** — `getVoterPrompts(project?)` accepts target project name so voters evaluate proposals correctly for non-nexus-agents projects. Refactored monolithic prompts into per-role builder functions. Default "nexus-agents" preserved. (#1551)
+- **Vote success outcome recording** — `recordVoteSuccess()` records to outcome store via `recordVoteOutcomes()`, closing routing feedback loop (was session memory only). (#1551)
+- **Consensus vote error transparency** — all-error votes return structured `isError` with per-role failure reasons instead of synthetic "rejected" result. (#1552)
+
+### Fixed
+
+- **CLAUDE.md stale timestamp** — removed redundant manual `_Last updated_` line; auto-generated `_Governance Version_` handles it. (#1552)
+
+### Changed
+
+- **Vote result artifacts gitignored** — `.claude/vote-results/` and `vote_result.json` added to `.gitignore` (outcomes recorded to store). (#1552)
+- **SOFTWARE_FACTORY_REPORT.md** — "8 models across 3 CLIs" updated to evergreen "Multiple models across 4 CLIs". (#1550)
+
 ## [2.25.1] - 2026-02-28
 
 ### Changed
