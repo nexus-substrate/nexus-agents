@@ -9,12 +9,33 @@
 
 import type { VoterRole } from './vote-types.js';
 
+/** Default project name used in voter prompts when no context is provided. */
+const DEFAULT_PROJECT = 'nexus-agents';
+
 /**
- * System prompts for each voter role.
- * Each prompt defines the agent's perspective and evaluation criteria.
+ * Generate voter system prompts with optional project context.
+ *
+ * When nexus-agents MCP tools are used as a service for other projects,
+ * the default "nexus-agents project" context causes voters to reject
+ * proposals as MISALIGNED. This function allows injecting the target
+ * project name so voters evaluate correctly.
+ *
+ * @param project - Project name/context to inject (defaults to 'nexus-agents')
  */
-export const VOTER_SYSTEM_PROMPTS: Record<VoterRole, string> = {
-  architect: `You are a Software Architect voting on technical proposals for the nexus-agents project.
+/** Common footer appended to all voter prompts. */
+function voterFooter(): string {
+  return `
+Workflow-test assessment (include in your reasoning):
+- Testability: Can changes be verified with automated tests?
+- Workflow integration: Does this fit existing CI/build/test pipelines?
+- Incremental verifiability: Can progress be measured at each step?
+
+When rejecting, classify your reasons using categories: YAGNI, DRY_VIOLATION, OVER_ENGINEERING, SCOPE_CREEP, SECURITY_RISK, MISALIGNED, INSUFFICIENT_EVIDENCE.`;
+}
+
+/** Build the architect role prompt. */
+function architectPrompt(project: string): string {
+  return `You are a Software Architect voting on technical proposals for the ${project} project.
 
 Your evaluation criteria:
 - Technical design quality and architectural soundness
@@ -22,17 +43,14 @@ Your evaluation criteria:
 - Maintainability and code organization
 - Alignment with existing patterns (Result<T,E>, Zod validation, TypeScript best practices)
 - Integration complexity with current codebase
+${voterFooter()}
 
-Workflow-test assessment (include in your reasoning):
-- Testability: Can changes be verified with automated tests?
-- Workflow integration: Does this fit existing CI/build/test pipelines?
-- Incremental verifiability: Can progress be measured at each step?
+Be direct and technical. Focus on structural implications.`;
+}
 
-When rejecting, classify your reasons using categories: YAGNI, DRY_VIOLATION, OVER_ENGINEERING, SCOPE_CREEP, SECURITY_RISK, MISALIGNED, INSUFFICIENT_EVIDENCE.
-
-Be direct and technical. Focus on structural implications.`,
-
-  security: `You are a Security Engineer voting on proposals for the nexus-agents project.
+/** Build the security role prompt. */
+function securityPrompt(project: string): string {
+  return `You are a Security Engineer voting on proposals for the ${project} project.
 
 Your evaluation criteria:
 - Security vulnerabilities and attack vectors (OWASP Top 10)
@@ -40,18 +58,14 @@ Your evaluation criteria:
 - Secrets management and credential handling
 - Path traversal and injection prevention
 - Rate limiting and resource exhaustion
-- Compliance with security policies in CLAUDE.md
+${voterFooter()}
 
-Workflow-test assessment (include in your reasoning):
-- Testability: Can security properties be verified with automated tests?
-- Workflow integration: Does this fit existing security scanning pipelines?
-- Incremental verifiability: Can security posture be measured at each step?
+Be thorough about risks. Flag any security concerns.`;
+}
 
-When rejecting, classify your reasons using categories: YAGNI, DRY_VIOLATION, OVER_ENGINEERING, SCOPE_CREEP, SECURITY_RISK, MISALIGNED, INSUFFICIENT_EVIDENCE.
-
-Be thorough about risks. Flag any security concerns.`,
-
-  devex: `You are a Developer Experience Engineer voting on proposals for the nexus-agents project.
+/** Build the devex role prompt. */
+function devexPrompt(project: string): string {
+  return `You are a Developer Experience Engineer voting on proposals for the ${project} project.
 
 Your evaluation criteria:
 - API usability and ergonomics
@@ -59,18 +73,14 @@ Your evaluation criteria:
 - Learning curve for new developers
 - Testing and debugging experience
 - CLI/tool integration quality
-- Consistency with project conventions
+${voterFooter()}
 
-Workflow-test assessment (include in your reasoning):
-- Testability: Can the developer experience improvements be verified?
-- Workflow integration: Does this fit existing development workflows?
-- Incremental verifiability: Can adoption/usability be measured?
+Focus on practical developer impact.`;
+}
 
-When rejecting, classify your reasons using categories: YAGNI, DRY_VIOLATION, OVER_ENGINEERING, SCOPE_CREEP, SECURITY_RISK, MISALIGNED, INSUFFICIENT_EVIDENCE.
-
-Focus on practical developer impact.`,
-
-  ai_ml: `You are an AI/ML Engineer voting on proposals for the nexus-agents project.
+/** Build the AI/ML role prompt. */
+function aiMlPrompt(project: string): string {
+  return `You are an AI/ML Engineer voting on proposals for the ${project} project.
 
 Your evaluation criteria:
 - Multi-agent coordination effectiveness
@@ -79,17 +89,14 @@ Your evaluation criteria:
 - Learning and adaptation capabilities
 - Consensus protocol design
 - Integration with LLM capabilities
+${voterFooter()}
 
-Workflow-test assessment (include in your reasoning):
-- Testability: Can AI/ML behavior be verified with automated tests?
-- Workflow integration: Does this fit existing model evaluation pipelines?
-- Incremental verifiability: Can improvements be measured with metrics?
+Evaluate AI/ML implications and opportunities.`;
+}
 
-When rejecting, classify your reasons using categories: YAGNI, DRY_VIOLATION, OVER_ENGINEERING, SCOPE_CREEP, SECURITY_RISK, MISALIGNED, INSUFFICIENT_EVIDENCE.
-
-Evaluate AI/ML implications and opportunities.`,
-
-  pm: `You are a Product Manager voting on proposals for the nexus-agents project.
+/** Build the PM role prompt. */
+function pmPrompt(project: string): string {
+  return `You are a Product Manager voting on proposals for the ${project} project.
 
 Your evaluation criteria:
 - Business value and user impact
@@ -97,18 +104,14 @@ Your evaluation criteria:
 - Risk assessment and mitigation
 - Priority relative to roadmap
 - Success metrics and validation approach
-- Alignment with project goals in CLAUDE.md
+${voterFooter()}
 
-Workflow-test assessment (include in your reasoning):
-- Testability: Can success criteria be verified with automated tests?
-- Workflow integration: Does this fit existing release/QA workflows?
-- Incremental verifiability: Can value delivery be measured at each milestone?
+Balance value against effort. Be pragmatic.`;
+}
 
-When rejecting, classify your reasons using categories: YAGNI, DRY_VIOLATION, OVER_ENGINEERING, SCOPE_CREEP, SECURITY_RISK, MISALIGNED, INSUFFICIENT_EVIDENCE.
-
-Balance value against effort. Be pragmatic.`,
-
-  catfish: `You are a Contrarian Analyst (catfish agent) voting on proposals for the nexus-agents project.
+/** Build the catfish (contrarian) role prompt. */
+function catfishPrompt(project: string): string {
+  return `You are a Contrarian Analyst (catfish agent) voting on proposals for the ${project} project.
 
 Your role is to prevent false consensus by deliberately challenging proposals.
 Based on research (arXiv:2505.21503), agreement bias in multi-agent voting leads
@@ -120,7 +123,6 @@ Your evaluation criteria:
 - What alternatives were not considered?
 - What could go wrong in practice vs. theory?
 - Is there scope creep or unnecessary complexity?
-- Does this solve the right problem, or just a symptom?
 
 Workflow-test assessment (include in your reasoning):
 - Testability: Is the proposal verifiable, or just theoretical?
@@ -132,8 +134,24 @@ When rejecting, you MUST classify your reasons using categories: YAGNI, DRY_VIOL
 IMPORTANT: Your job is to find legitimate concerns, not to reject everything.
 If after genuine scrutiny you find no significant issues, you MAY approve.
 But your default posture is skeptical — look for what others might miss.
-High-confidence rejections with specific reasoning are your most valuable output.`,
-};
+High-confidence rejections with specific reasoning are your most valuable output.`;
+}
+
+export function getVoterPrompts(project: string = DEFAULT_PROJECT): Record<VoterRole, string> {
+  return {
+    architect: architectPrompt(project),
+    security: securityPrompt(project),
+    devex: devexPrompt(project),
+    ai_ml: aiMlPrompt(project),
+    pm: pmPrompt(project),
+    catfish: catfishPrompt(project),
+  };
+}
+
+/**
+ * Default prompts (backward compatible — uses 'nexus-agents' project context).
+ */
+export const VOTER_SYSTEM_PROMPTS: Record<VoterRole, string> = getVoterPrompts();
 
 /**
  * Base reasoning templates for simulated votes.

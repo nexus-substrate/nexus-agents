@@ -23,12 +23,13 @@ import {
 
 const logger = createLogger({ tool: 'consensus-vote' });
 
-/** Records a successful consensus vote to session memory. Best-effort. */
+/** Records a successful consensus vote to session memory AND outcome store. Best-effort. */
 export function recordVoteSuccess(
   proposal: string,
   strategy: string,
   outcome: string,
-  duration: number
+  duration: number,
+  votes?: readonly AgentVoteResult[]
 ): void {
   try {
     const memory = getToolMemory();
@@ -47,7 +48,12 @@ export function recordVoteSuccess(
       logger.warn('Promotion pipeline failed', { error });
     });
   } catch (error: unknown) {
-    logger.warn('Failed to record vote success', { error: getErrorMessage(error) });
+    logger.warn('Failed to record vote success to memory', { error: getErrorMessage(error) });
+  }
+
+  // Also record to outcome store for adaptive routing feedback (#1551)
+  if (votes !== undefined) {
+    recordVoteOutcomes(votes);
   }
 }
 

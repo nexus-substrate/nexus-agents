@@ -38,11 +38,7 @@ import {
   ConsensusVoteInputSchema,
   buildResponse,
 } from './consensus-vote-types.js';
-import {
-  recordVoteSuccess,
-  recordVoteError,
-  recordVoteOutcomes,
-} from './consensus-vote-recording.js';
+import { recordVoteSuccess, recordVoteError } from './consensus-vote-recording.js';
 import type {
   VotingStrategy,
   ConsensusVoteInput,
@@ -259,8 +255,13 @@ async function handleConsensusVote(
   try {
     const result = await executeVoting(args, logger);
     const strategy = args.strategy ?? 'simple_majority';
-    recordVoteSuccess(args.proposal, strategy, result.result.outcome, result.totalTimeMs);
-    recordVoteOutcomes(result.votes);
+    recordVoteSuccess(
+      args.proposal,
+      strategy,
+      result.result.outcome,
+      result.totalTimeMs,
+      result.votes
+    );
     return { ok: true, value: buildResponse(args, result) };
   } catch (error) {
     const message = getErrorMessage(error);
