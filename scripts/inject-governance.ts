@@ -27,11 +27,14 @@ const TOOLS_INDEX = join(ROOT, 'packages/nexus-agents/src/mcp/tools/index.ts');
 const EXPERT_CONFIG = join(ROOT, 'packages/nexus-agents/src/agents/experts/expert-config.ts');
 const TEMPLATE_TYPES = join(ROOT, 'packages/nexus-agents/src/workflows/template-types.ts');
 const SKILLS_DIR = join(ROOT, '.claude/skills');
+const MODEL_CAPS = join(ROOT, 'packages/nexus-agents/src/config/model-capabilities.ts');
 
 // Markers for governance sections
 const MARKERS = {
   toolIndexStart: '<!-- GOVERNANCE:TOOL_INDEX:START -->',
   toolIndexEnd: '<!-- GOVERNANCE:TOOL_INDEX:END -->',
+  modelListStart: '<!-- GOVERNANCE:MODEL_LIST:START -->',
+  modelListEnd: '<!-- GOVERNANCE:MODEL_LIST:END -->',
   versionStart: '<!-- GOVERNANCE:VERSION:START -->',
   versionEnd: '<!-- GOVERNANCE:VERSION:END -->',
 };
@@ -251,6 +254,43 @@ function extractSkills(): SkillMetadata[] {
   }));
 }
 
+/**
+ * Extract model IDs from model-capabilities.ts.
+ * Parses the models array for id, displayName, cliName, and contextWindow.
+ */
+interface ModelMetadata {
+  id: string;
+  displayName: string;
+  cliName: string;
+  contextWindow: number;
+}
+
+function extractModels(): ModelMetadata[] {
+  if (!existsSync(MODEL_CAPS)) {
+    console.error('Model capabilities not found: ' + MODEL_CAPS);
+    return [];
+  }
+
+  const content = readFileSync(MODEL_CAPS, 'utf-8');
+  const models: ModelMetadata[] = [];
+
+  // Match each model block
+  const modelBlocks = content.matchAll(
+    /id:\s*'([^']+)'[\s\S]*?displayName:\s*'([^']+)'[\s\S]*?contextWindow:\s*([\d_]+)[\s\S]*?cliName:\s*'([^']+)'/g
+  );
+
+  for (const match of modelBlocks) {
+    models.push({
+      id: match[1] ?? '',
+      displayName: match[2] ?? '',
+      contextWindow: parseInt((match[3] ?? '0').replace(/_/g, ''), 10),
+      cliName: match[4] ?? '',
+    });
+  }
+
+  return models;
+}
+
 // ============================================================================
 // Generation
 // ============================================================================
@@ -281,6 +321,14 @@ function generateToolIndex(tools: ToolMetadata[]): string {
   lines.push(MARKERS.toolIndexEnd);
 
   return lines.join('\n');
+}
+
+/**
+ * Generate the supported models list for CLAUDE.md billing mode section.
+ */
+function generateModelList(models: ModelMetadata[]): string {
+  const ids = models.map((m) => m.id).join(', ');
+  return `${MARKERS.modelListStart}Supported models: ${ids}.${MARKERS.modelListEnd}`;
 }
 
 /**
@@ -407,6 +455,7 @@ function checkGovernance(): boolean {
     experts: extractExpertTypes(),
     workflows: extractWorkflowTemplates(),
     skills: extractSkills(),
+    models: extractModels(),
   };
   const documented = extractDocumentedCounts(content);
 
@@ -426,6 +475,7 @@ function checkGovernance(): boolean {
     console.log(`  Expert Types: ${String(actual.experts.length)}`);
     console.log(`  Workflow Templates: ${String(actual.workflows.length)}`);
     console.log(`  Skills: ${String(actual.skills.length)}`);
+    console.log(`  Models: ${String(actual.models.length)}`);
   }
   return passed;
 }
@@ -446,10 +496,15 @@ function injectGovernance(): void {
   const experts = extractExpertTypes();
   const workflows = extractWorkflowTemplates();
   const skills = extractSkills();
+  const models = extractModels();
 
   // Generate and inject tool index
   const toolIndex = generateToolIndex(tools);
   content = injectSection(content, MARKERS.toolIndexStart, MARKERS.toolIndexEnd, toolIndex);
+
+  // Generate and inject model list
+  const modelList = generateModelList(models);
+  content = injectSection(content, MARKERS.modelListStart, MARKERS.modelListEnd, modelList);
 
   // Update canonical registry counts in the documentation section
   // These are inline references like: `expert-config.ts` (7 types)
@@ -481,6 +536,7 @@ function injectGovernance(): void {
   console.log(`  Expert Types: ${String(experts.length)}`);
   console.log(`  Workflow Templates: ${String(workflows.length)}`);
   console.log(`  Skills: ${String(skills.length)}`);
+  console.log(`  Models: ${String(models.length)}`);
 }
 
 // CLI interface

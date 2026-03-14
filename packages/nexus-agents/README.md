@@ -185,8 +185,8 @@ nexus-agents/
 │       │   ├── config/       # Configuration, model registry, timeouts
 │       │   ├── adapters/     # Model adapters (Claude, OpenAI, Gemini, Ollama)
 │       │   ├── agents/       # Agent framework (Orchestrator, Experts)
-│       │   ├── workflows/    # Workflow engine and 11 YAML templates
-│       │   ├── mcp/          # MCP server and 24 tool definitions
+│       │   ├── workflows/    # Workflow engine and YAML templates
+│       │   ├── mcp/          # MCP server and tool definitions
 │       │   ├── cli-adapters/ # External CLI integration (Claude/Gemini/Codex/OpenCode)
 │       │   ├── context/      # Token counting, work balancing
 │       │   ├── consensus/    # Multi-agent voting with higher-order aggregation
