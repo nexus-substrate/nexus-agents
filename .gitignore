@@ -47,6 +47,10 @@ Thumbs.db
 # Secrets (never commit)
 *.pem
 *.key
+
+# Consensus vote artifacts (ephemeral — outcomes recorded to store)
+.claude/vote-results/
+vote_result.json
 credentials.json
 secrets.json
 .claude-flow/

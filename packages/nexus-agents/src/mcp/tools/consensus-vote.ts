@@ -255,6 +255,19 @@ async function handleConsensusVote(
   try {
     const result = await executeVoting(args, logger);
     const strategy = args.strategy ?? 'simple_majority';
+
+    // Detect all-error votes: return structured error instead of fake "rejected" (#1552)
+    const errorVotes = result.votes.filter((v) => v.source === 'error');
+    if (errorVotes.length === result.votes.length && result.votes.length > 0) {
+      const failures = errorVotes.map((v) => `${v.role}: ${v.error ?? 'unknown error'}`).join('; ');
+      logger.warn('All voters failed', { failureCount: errorVotes.length, failures });
+      recordVoteError(args.proposal, `All ${String(errorVotes.length)} voters failed: ${failures}`);
+      return {
+        ok: false,
+        error: `All ${String(errorVotes.length)} voters failed. Failures: ${failures}`,
+      };
+    }
+
     recordVoteSuccess(
       args.proposal,
       strategy,
