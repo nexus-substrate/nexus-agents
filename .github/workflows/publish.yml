@@ -1,0 +1,56 @@
+name: Publish to npm
+
+on:
+  release:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: 'Dry run (skip actual publish)'
+        required: false
+        default: 'false'
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    name: Build, test, and publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: ./.github/actions/setup-node
+        with:
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Build
+        run: pnpm build
+
+      - name: Fitness audit
+        run: node packages/nexus-agents/dist/cli.js fitness-audit
+
+      - name: Verify version matches tag
+        if: github.event_name == 'release'
+        run: |
+          PKG_VERSION=$(node -p "require('./packages/nexus-agents/package.json').version")
+          TAG_VERSION="${GITHUB_REF_NAME#nexus-agents@}"
+          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "Version mismatch: package.json=$PKG_VERSION tag=$TAG_VERSION"
+            exit 1
+          fi
+          echo "Version verified: $PKG_VERSION"
+
+      - name: Publish to npm (OIDC provenance)
+        if: ${{ github.event.inputs.dry-run != 'true' }}
+        working-directory: packages/nexus-agents
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Dry run
+        if: ${{ github.event.inputs.dry-run == 'true' }}
+        working-directory: packages/nexus-agents
+        run: npm publish --access public --dry-run
