@@ -40,6 +40,12 @@ Releases are automated via changesets + GitHub Actions:
    permission in `.github/workflows/release.yml`). The trusted publisher is
    configured on npmjs.com to accept publishes from this repo's `release.yml`.
 
+   **IMPORTANT: npm trusted publisher config must match workflow filename.**
+   The npmjs.com package settings specify the exact workflow file (`release.yml`),
+   repository (`williamzujkowski/nexus-agents`), and environment. If you rename
+   the workflow file, update the npm trusted publisher config to match or
+   publishing will fail with OIDC token rejection.
+
 ## Manual Publish (emergency only)
 
 ```bash
