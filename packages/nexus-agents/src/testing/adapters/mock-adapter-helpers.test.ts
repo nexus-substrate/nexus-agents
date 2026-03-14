@@ -43,7 +43,7 @@ describe('DEFAULT_CONFIG', () => {
 describe('MODEL_INFO_BY_NAME', () => {
   it('contains info for claude', () => {
     expect(MODEL_INFO_BY_NAME.claude.id).toBe('claude-opus');
-    expect(MODEL_INFO_BY_NAME.claude.contextWindow).toBe(200_000);
+    expect(MODEL_INFO_BY_NAME.claude.contextWindow).toBe(1_000_000);
   });
 
   it('contains info for gemini', () => {

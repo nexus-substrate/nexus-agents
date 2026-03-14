@@ -184,7 +184,7 @@ describe('resources/read - models', () => {
       modelCount: number;
       models: Array<{ id: string; provider: string }>;
     };
-    expect(data.version).toBe(2);
+    expect(data.version).toBe(3);
     expect(data.modelCount).toBeGreaterThanOrEqual(13);
     expect(data.models.length).toBe(data.modelCount);
   });

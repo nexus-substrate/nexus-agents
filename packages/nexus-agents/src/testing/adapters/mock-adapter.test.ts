@@ -399,7 +399,7 @@ describe('MockCliAdapter', () => {
 
       expect(info.id).toBe('claude-opus');
       expect(info.name).toBe('Claude Opus 4.6');
-      expect(info.contextWindow).toBe(200_000);
+      expect(info.contextWindow).toBe(1_000_000);
     });
 
     it('should return gemini model info', () => {
@@ -408,7 +408,7 @@ describe('MockCliAdapter', () => {
       const info = geminiAdapter.getModelInfo();
 
       expect(info.id).toBe('gemini-3-pro');
-      expect(info.name).toBe('Gemini 3 Pro (Preview)');
+      expect(info.name).toBe('Gemini 3.1 Pro (Preview)');
       expect(info.contextWindow).toBe(1_000_000);
     });
 
@@ -418,8 +418,8 @@ describe('MockCliAdapter', () => {
       const info = codexAdapter.getModelInfo();
 
       expect(info.id).toBe('codex-5.3');
-      expect(info.name).toBe('GPT-5.3-Codex');
-      expect(info.contextWindow).toBe(400_000);
+      expect(info.name).toBe('GPT-5.4');
+      expect(info.contextWindow).toBe(1_000_000);
     });
   });
 
@@ -429,7 +429,7 @@ describe('MockCliAdapter', () => {
       const geminiCaps = new MockCliAdapter({ name: 'gemini' }).capabilities;
 
       expect(claudeCaps.reasoning).toBe(10);
-      expect(claudeCaps.contextWindow).toBe(200_000);
+      expect(claudeCaps.contextWindow).toBe(1_000_000);
       expect(geminiCaps.contextWindow).toBe(1_000_000);
     });
   });

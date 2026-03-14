@@ -31,8 +31,8 @@ describe('DEFAULT_MODEL_CAPABILITIES', () => {
     expect(DEFAULT_MODEL_CAPABILITIES.models).toHaveLength(13);
   });
 
-  it('should have version 2', () => {
-    expect(DEFAULT_MODEL_CAPABILITIES.version).toBe(2);
+  it('should have version 3', () => {
+    expect(DEFAULT_MODEL_CAPABILITIES.version).toBe(3);
   });
 
   it('all models should have required fields', () => {
@@ -240,10 +240,10 @@ describe('findModelsByProvider', () => {
 // ---------------------------------------------------------------------------
 
 describe('findBestModelForOutput', () => {
-  it('returns a gemini model for text (1M context)', () => {
+  it('returns claude-opus for text (1M context)', () => {
     const result = findBestModelForOutput('text');
     expect(result).toBeDefined();
-    expect(result?.id).toBe('gemini-3-pro');
+    expect(result?.id).toBe('claude-opus');
     expect(result?.contextWindow).toBe(1_000_000);
   });
 
@@ -276,11 +276,11 @@ describe('modelSupportsAll', () => {
     expect(result).toBe(false);
   });
 
-  it('returns false when context window too small', () => {
+  it('returns true when context window requirement met (1M >= 500K)', () => {
     const result = modelSupportsAll('claude-opus', {
       minContextWindow: 500_000,
     });
-    expect(result).toBe(false);
+    expect(result).toBe(true);
   });
 
   it('returns false when missing tool capability', () => {

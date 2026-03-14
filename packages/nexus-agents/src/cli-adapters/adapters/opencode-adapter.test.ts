@@ -142,7 +142,7 @@ describe('OpenCodeCliAdapter', () => {
       const info = adapter.getModelInfo();
 
       expect(info.id).toBe(EXPECTED_DEFAULT_ID);
-      expect(info.contextWindow).toBe(200_000);
+      expect(info.contextWindow).toBe(1_000_000);
       expect(info.maxOutput).toBe(64_000);
     });
 

@@ -124,7 +124,7 @@ describe('CodexCliAdapter (Subprocess)', () => {
       const caps = adapter.capabilities;
 
       expect(caps.reasoning).toBe(10);
-      expect(caps.contextWindow).toBe(400_000);
+      expect(caps.contextWindow).toBe(1_000_000);
       expect(caps.codeGeneration).toBe(10);
       expect(caps.speed).toBe(7);
       expect(caps.cost).toBe(5);
@@ -135,18 +135,18 @@ describe('CodexCliAdapter (Subprocess)', () => {
     it('should return correct model info for default model (from registry)', () => {
       const info = adapter.getModelInfo();
 
-      // Default model is derived from canonical registry (codex-5.3 → 'o3')
+      // Default model is derived from canonical registry (codex-5.3 → 'gpt-5.4')
       expect(info.id).toBe(EXPECTED_DEFAULT_ID);
-      expect(info.contextWindow).toBe(400_000);
-      expect(info.maxOutput).toBe(100_000);
+      expect(info.contextWindow).toBe(1_000_000);
+      expect(info.maxOutput).toBe(128_000);
     });
 
     it('should return registry-derived cost info for default model', () => {
       const info = adapter.getModelInfo();
 
-      // o3 maps to codex-5.3 in registry: pricing {2.0, 8.0}
-      expect(info.costPerMillionInput).toBe(2.0);
-      expect(info.costPerMillionOutput).toBe(8.0);
+      // gpt-5.4 maps to codex-5.3 in registry: pricing {2.5, 15.0}
+      expect(info.costPerMillionInput).toBe(2.5);
+      expect(info.costPerMillionOutput).toBe(15.0);
     });
 
     it('should return correct info for o3-mini model (from registry)', () => {

@@ -140,7 +140,7 @@ describe('resolveCliAlias', () => {
 
 describe('findCanonicalModel', () => {
   it('finds codex model by cliModelName', () => {
-    const model = findCanonicalModel('codex', 'o3');
+    const model = findCanonicalModel('codex', 'gpt-5.4');
     expect(model).toBeDefined();
     expect(model?.id).toBe('codex-5.3');
   });
@@ -169,14 +169,14 @@ describe('findCanonicalModel', () => {
 
 describe('buildModelInfo', () => {
   it('builds model info for codex model', () => {
-    const info = buildModelInfo('codex', 'o3');
+    const info = buildModelInfo('codex', 'gpt-5.4');
     expect(info).toBeDefined();
-    expect(info?.id).toBe('o3');
-    expect(info?.name).toBe('GPT-5.3-Codex');
-    expect(info?.contextWindow).toBe(400_000);
-    expect(info?.maxOutput).toBe(100_000);
-    expect(info?.costPerMillionInput).toBe(2.0);
-    expect(info?.costPerMillionOutput).toBe(8.0);
+    expect(info?.id).toBe('gpt-5.4');
+    expect(info?.name).toBe('GPT-5.4');
+    expect(info?.contextWindow).toBe(1_000_000);
+    expect(info?.maxOutput).toBe(128_000);
+    expect(info?.costPerMillionInput).toBe(2.5);
+    expect(info?.costPerMillionOutput).toBe(15.0);
   });
 
   it('builds model info for gemini model', () => {
@@ -192,8 +192,8 @@ describe('buildModelInfo', () => {
     expect(info).toBeDefined();
     expect(info?.id).toBe('opus');
     expect(info?.name).toBe('Claude Opus 4.6');
-    expect(info?.contextWindow).toBe(200_000);
-    expect(info?.maxOutput).toBe(64_000);
+    expect(info?.contextWindow).toBe(1_000_000);
+    expect(info?.maxOutput).toBe(128_000);
   });
 
   it('returns undefined for unknown model', () => {

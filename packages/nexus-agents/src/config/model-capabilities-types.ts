@@ -60,6 +60,7 @@ export const SPECIAL_FEATURES = [
   'image_editing',
   'voice_cloning',
   'live_api',
+  'context_caching',
 ] as const;
 
 export type SpecialFeature = (typeof SPECIAL_FEATURES)[number];

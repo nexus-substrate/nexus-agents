@@ -177,7 +177,7 @@ describe('ClaudeCliAdapter', () => {
       const caps = adapter.capabilities;
 
       expect(caps.reasoning).toBe(10);
-      expect(caps.contextWindow).toBe(200_000);
+      expect(caps.contextWindow).toBe(1_000_000);
       expect(caps.codeGeneration).toBe(9);
       expect(caps.speed).toBe(5);
       expect(caps.cost).toBe(6);
@@ -191,8 +191,8 @@ describe('ClaudeCliAdapter', () => {
       // Default model resolves to cliModelName from registry (Issue #1095)
       expect(info.id).toBe('claude-opus-4-6');
       expect(info.name).toBe('Claude Opus 4.6');
-      expect(info.contextWindow).toBe(200_000);
-      expect(info.maxOutput).toBe(64_000);
+      expect(info.contextWindow).toBe(1_000_000);
+      expect(info.maxOutput).toBe(128_000);
     });
 
     it('should return correct cost info for opus', () => {

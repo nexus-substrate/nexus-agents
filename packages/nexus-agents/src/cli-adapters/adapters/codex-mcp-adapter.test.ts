@@ -93,7 +93,7 @@ describe('CodexMcpAdapter', () => {
       const caps = adapter.capabilities;
 
       expect(caps.reasoning).toBe(10);
-      expect(caps.contextWindow).toBe(400_000);
+      expect(caps.contextWindow).toBe(1_000_000);
       expect(caps.codeGeneration).toBe(10);
       expect(caps.speed).toBe(7);
       expect(caps.cost).toBe(5);
@@ -105,16 +105,16 @@ describe('CodexMcpAdapter', () => {
       const info = adapter.getModelInfo();
 
       expect(info.id).toBe(EXPECTED_DEFAULT_ID);
-      expect(info.contextWindow).toBe(400_000);
-      expect(info.maxOutput).toBe(100_000);
+      expect(info.contextWindow).toBe(1_000_000);
+      expect(info.maxOutput).toBe(128_000);
     });
 
     it('should return registry-derived cost info for default model', () => {
       const info = adapter.getModelInfo();
 
-      // o3 maps to codex-5.3 in registry: pricing {2.0, 8.0}
-      expect(info.costPerMillionInput).toBe(2.0);
-      expect(info.costPerMillionOutput).toBe(8.0);
+      // o3 maps to codex-5.3 in registry: pricing {2.5, 15.0}
+      expect(info.costPerMillionInput).toBe(2.5);
+      expect(info.costPerMillionOutput).toBe(15.0);
     });
 
     it('should return correct info for o3-mini model (from registry)', () => {

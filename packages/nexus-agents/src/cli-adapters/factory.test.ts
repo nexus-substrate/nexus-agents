@@ -77,11 +77,11 @@ describe('createCliAdapter', () => {
   });
 
   it('should pass model option to Codex adapter', () => {
-    const adapter = createCliAdapter({ cli: 'codex', model: 'o3' });
+    const adapter = createCliAdapter({ cli: 'codex', model: 'gpt-5.4' });
     const info = adapter.getModelInfo();
 
-    expect(info.id).toBe('o3');
-    expect(info.name).toBe(expectedDisplayName('codex', 'o3'));
+    expect(info.id).toBe('gpt-5.4');
+    expect(info.name).toBe(expectedDisplayName('codex', 'gpt-5.4'));
   });
 
   it('should use default models when not specified', () => {
@@ -138,7 +138,7 @@ describe('adapter capabilities', () => {
     const caps = adapter.capabilities;
 
     expect(caps.reasoning).toBe(10);
-    expect(caps.contextWindow).toBe(200000);
+    expect(caps.contextWindow).toBe(1000000);
   });
 
   it('should have correct capabilities for Gemini', () => {
@@ -152,7 +152,7 @@ describe('adapter capabilities', () => {
     const adapter = createCliAdapter({ cli: 'codex' });
     const caps = adapter.capabilities;
 
-    expect(caps.contextWindow).toBe(400000);
+    expect(caps.contextWindow).toBe(1000000);
   });
 });
 
@@ -161,8 +161,8 @@ describe('model info', () => {
     const adapter = createCliAdapter({ cli: 'claude' });
     const info = adapter.getModelInfo();
 
-    expect(info.contextWindow).toBe(200000);
-    expect(info.maxOutput).toBe(64000);
+    expect(info.contextWindow).toBe(1000000);
+    expect(info.maxOutput).toBe(128000);
   });
 
   it('should return correct context window for Gemini', () => {
@@ -177,8 +177,8 @@ describe('model info', () => {
     const adapter = createCliAdapter({ cli: 'codex' });
     const info = adapter.getModelInfo();
 
-    expect(info.contextWindow).toBe(400000);
-    expect(info.maxOutput).toBe(100000);
+    expect(info.contextWindow).toBe(1000000);
+    expect(info.maxOutput).toBe(128000);
   });
 
   it('should return cost info for all adapters', () => {

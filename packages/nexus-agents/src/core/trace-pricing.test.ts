@@ -80,9 +80,9 @@ describe('trace-pricing', () => {
     });
 
     it('resolves codex models by cliModelName', () => {
-      // codex-5.3 has cliModelName 'o3': $2/1M input, $8/1M output
-      const cost = calculateCost('o3', 1_000_000, 1_000_000);
-      expect(cost).toBe(2 + 8);
+      // codex-5.3 has cliModelName 'gpt-5.4': $2.5/1M input, $15/1M output
+      const cost = calculateCost('gpt-5.4', 1_000_000, 1_000_000);
+      expect(cost).toBe(2.5 + 15);
     });
 
     it('returns undefined for deprecated models not in registry', () => {
