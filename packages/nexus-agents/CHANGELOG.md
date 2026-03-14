@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 2.27.0
+
+### Minor Changes
+
+- Model registry v3: 1M Claude context, Gemini 3.1 Pro, GPT-5.4. Staleness detection in doctor. Evergreen documentation with auto-generated model lists. Voter context injection for cross-project consensus. Vote success outcome recording. Consensus error transparency.
+
 ## 2.26.1
 
 ### Patch Changes
