@@ -79,6 +79,8 @@ function createMockDoctorResult(overrides: Partial<DoctorResult> = {}): DoctorRe
       availableModels: 11,
       unavailableModels: 0,
       models: [],
+      registryAgeDays: 1,
+      registryStale: false,
     },
     learningPersistence: {
       enabled: false,

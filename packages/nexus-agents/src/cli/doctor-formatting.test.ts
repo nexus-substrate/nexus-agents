@@ -142,6 +142,8 @@ describe('doctor-formatting', () => {
       availableModels: 10,
       unavailableModels: 0,
       models: [],
+      registryAgeDays: 1,
+      registryStale: false,
     },
     learningPersistence: {
       enabled: false,
