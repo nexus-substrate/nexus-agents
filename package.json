@@ -94,7 +94,8 @@
       "basic-ftp": ">=5.2.0",
       "markdownlint-cli>minimatch": ">=10.2.3",
       "rollup": ">=4.59.0",
-      "@modelcontextprotocol/sdk>express-rate-limit": ">=8.3.0"
+      "@modelcontextprotocol/sdk>express-rate-limit": ">=8.3.0",
+      "lodash": ">=4.17.23"
     }
   }
 }
