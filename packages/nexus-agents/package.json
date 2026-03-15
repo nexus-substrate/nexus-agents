@@ -62,7 +62,7 @@
     "prepublishOnly": "pnpm run build"
   },
   "optionalDependencies": {
-    "@atproto/api": "^0.19.0"
+    "@atproto/api": "^0.19.3"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
@@ -70,27 +70,27 @@
     "@fastify/rate-limit": "^10.3.0",
     "@fastify/swagger": "^9.7.0",
     "@fastify/swagger-ui": "^5.2.5",
-    "@google/genai": "^1.43.0",
+    "@google/genai": "^1.45.0",
     "@modelcontextprotocol/sdk": "^1.27.1",
-    "better-sqlite3": "^12.6.2",
-    "fastify": "^5.8.1",
+    "better-sqlite3": "^12.8.0",
+    "fastify": "^5.8.2",
     "jsonc-parser": "^3.3.1",
     "ollama": "^0.6.3",
-    "openai": "^6.25.0",
+    "openai": "^6.29.0",
     "semver": "^7.7.4",
     "tiktoken": "^1.0.22",
     "yaml": "^2.8.2",
-    "zod": "^3.24.0"
+    "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@ai-sdk/anthropic": "^3.0.53",
-    "@ai-sdk/google": "^3.0.36",
-    "@ai-sdk/openai": "^3.0.39",
+    "@ai-sdk/anthropic": "^3.0.58",
+    "@ai-sdk/google": "^3.0.43",
+    "@ai-sdk/openai": "^3.0.41",
     "@types/better-sqlite3": "^7.6.13",
     "@types/semver": "^7.7.1",
-    "ai": "^6.0.108",
+    "ai": "^6.0.116",
     "ts-morph": "^27.0.2",
-    "tsup": "^8.3.0",
+    "tsup": "^8.5.1",
     "typedoc": "0.28.17"
   },
   "peerDependencies": {
