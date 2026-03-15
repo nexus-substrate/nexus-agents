@@ -46,7 +46,7 @@ vi.mock('node:child_process', async () => {
     }
   };
   // Attach custom promisify so `promisify(execFile)` returns {stdout, stderr}
-  (execFileFn as Record<symbol, unknown>)[util.promisify.custom] = (
+  (execFileFn as unknown as Record<symbol, unknown>)[util.promisify.custom] = (
     ...args: unknown[]
   ): Promise<{ stdout: string; stderr?: string }> => {
     const result = mockExecFile(...args) as

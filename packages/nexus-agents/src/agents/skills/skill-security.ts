@@ -14,6 +14,7 @@
  */
 
 import { createHash } from 'crypto';
+import { z } from 'zod';
 import type { Result } from '../../core/result.js';
 import { ok, err } from '../../core/result.js';
 import { getTimeProvider } from '../../core/index.js';
@@ -155,7 +156,7 @@ export function validateSkillProvenance(
     return err({
       code: 'INVALID_PROVENANCE',
       message: `Invalid provenance: ${parseResult.error.message}`,
-      context: { zodError: parseResult.error.flatten() },
+      context: { zodError: z.treeifyError(parseResult.error) },
     });
   }
 
@@ -245,7 +246,7 @@ export function validateCapabilities(
     return err({
       code: 'PERMISSION_DENIED',
       message: `Invalid capabilities: ${parseResult.error.message}`,
-      context: { zodError: parseResult.error.flatten() },
+      context: { zodError: z.treeifyError(parseResult.error) },
     });
   }
 
@@ -281,7 +282,7 @@ export function validateRBAC(rbac: SkillRBAC): Result<void, SkillSecurityError> 
     return err({
       code: 'ROLE_NOT_ALLOWED',
       message: `Invalid RBAC: ${parseResult.error.message}`,
-      context: { zodError: parseResult.error.flatten() },
+      context: { zodError: z.treeifyError(parseResult.error) },
     });
   }
 
