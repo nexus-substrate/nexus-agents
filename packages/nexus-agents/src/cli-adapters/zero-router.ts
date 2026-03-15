@@ -162,7 +162,7 @@ export class ZeroRouter implements IZeroRouter {
   routeByDifficulty(task: CliTask, availableClis?: CliName[]): ZeroRoutingDecision {
     const difficulty = this.estimateDifficulty(task);
     const tier = difficulty.recommendedTier;
-    const tierClis = this.config.tierToClis[tier] as CliName[];
+    const tierClis = this.config.tierToClis[tier];
 
     // Filter by available CLIs if provided
     let candidates = tierClis;

@@ -123,7 +123,7 @@ export const SanitizedInputSchema = z.object({
   /** Whether any dangerous content was detected and stripped. */
   wasModified: z.boolean(),
   /** Timestamp of sanitization (ISO 8601). */
-  sanitizedAt: z.string().datetime(),
+  sanitizedAt: z.iso.datetime(),
 });
 export type SanitizedInput = z.infer<typeof SanitizedInputSchema>;
 

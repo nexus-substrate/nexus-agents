@@ -49,7 +49,7 @@ export type MetricDeltas = z.infer<typeof MetricDeltasSchema>;
  */
 export const BaselineComparisonSchema = z.object({
   baselineRunId: z.string().describe('Baseline run ID'),
-  baselineTimestamp: z.string().datetime().describe('Baseline run timestamp'),
+  baselineTimestamp: z.iso.datetime().describe('Baseline run timestamp'),
   improved: z.boolean().describe('Whether current run is better overall'),
   regressions: z.array(RegressionItemSchema).describe('Regressions detected'),
   improvements: z.array(ImprovementItemSchema).describe('Improvements detected'),

@@ -127,7 +127,7 @@ export class DAAOEstimator implements IDAAOEstimator {
   route(task: CliTask, availableClis?: CliName[]): DAAORoutingDecision {
     const estimate = this.estimateDifficulty(task);
     const tier = estimate.recommendedTier;
-    const tierClis = this.config.tierToClis[tier] as CliName[];
+    const tierClis = this.config.tierToClis[tier];
 
     let candidates = tierClis;
     if (availableClis !== undefined) {

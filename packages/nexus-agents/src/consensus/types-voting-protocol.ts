@@ -40,7 +40,7 @@ export const AgentFindingSchema = z.object({
   location: z.string().optional().describe('File path and line range if applicable'),
   suggestion: z.string().optional().describe('Recommended fix'),
   confidence: z.number().min(0).max(1),
-  timestamp: z.string().datetime().optional(),
+  timestamp: z.iso.datetime().optional(),
 });
 export type AgentFinding = z.infer<typeof AgentFindingSchema>;
 

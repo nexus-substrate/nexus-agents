@@ -21,7 +21,7 @@ export const AdapterConfigSchema = z.object({
   /** API key for authentication (optional, may come from environment) */
   apiKey: z.string().optional(),
   /** Base URL for the API (optional, uses provider default) */
-  baseUrl: z.string().url('Base URL must be a valid URL').optional(),
+  baseUrl: z.url('Base URL must be a valid URL').optional(),
   /** Request timeout in milliseconds */
   timeout: z.number().positive('Timeout must be positive').optional(),
   /** Maximum number of retries for failed requests */

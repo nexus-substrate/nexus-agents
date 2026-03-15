@@ -8,7 +8,7 @@
  * (Source: LOOP H-K consolidation)
  */
 
-import type { ZodError, ZodIssue } from 'zod';
+import type { ZodError, z } from 'zod';
 
 /**
  * Formats a single Zod issue into a readable string.
@@ -22,7 +22,7 @@ import type { ZodError, ZodIssue } from 'zod';
  * formatZodIssue(issue); // "user.email: Invalid email"
  * ```
  */
-export function formatZodIssue(issue: ZodIssue): string {
+export function formatZodIssue(issue: z.core.$ZodIssue): string {
   const path = issue.path.length > 0 ? `${issue.path.join('.')}: ` : '';
   return `${path}${issue.message}`;
 }
@@ -76,7 +76,7 @@ export function formatZodIssuesAsArray(error: ZodError): string[] {
  * // "root: Invalid type" or "field.path: Required"
  * ```
  */
-export function formatZodIssueWithRoot(issue: ZodIssue): string {
+export function formatZodIssueWithRoot(issue: z.core.$ZodIssue): string {
   const pathStr = issue.path.length > 0 ? issue.path.join('.') : 'root';
   return `${pathStr}: ${issue.message}`;
 }

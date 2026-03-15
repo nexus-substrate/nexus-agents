@@ -8,7 +8,7 @@
  * (Source: Issue #189 - Centralized MCP middleware chain)
  */
 
-import type { ZodSchema } from 'zod';
+import type { z } from 'zod';
 import type { ILogger } from '../../core/index.js';
 import { createLogger, getTimeProvider } from '../../core/index.js';
 import { validateToolInput } from './validation.js';
@@ -64,7 +64,7 @@ export interface MiddlewareChainConfig {
   /** Tool name for logging and policy evaluation */
   toolName: string;
   /** Zod schema for input validation (optional) */
-  schema?: ZodSchema;
+  schema?: z.ZodType;
   /** Policy firewall instance (optional) */
   policyFirewall?: IPolicyFirewall | undefined;
   /** Execution mode for policy evaluation */
@@ -118,7 +118,7 @@ function errorResult(message: string, requestId: string): ToolResult {
 /**
  * Creates validation middleware.
  */
-function createValidationMiddleware(schema: ZodSchema): Middleware {
+function createValidationMiddleware(schema: z.ZodType): Middleware {
   return async (args, ctx, next) => {
     const result = validateToolInput(schema, args);
     if (!result.ok) {
@@ -406,7 +406,7 @@ export function createMiddlewareFactory(
 ): (
   toolName: string,
   handler: ContextAwareToolHandler | ToolHandler,
-  schema?: ZodSchema
+  schema?: z.ZodType
 ) => ToolHandler {
   return (toolName, handler, schema) => {
     const options = schema !== undefined ? { ...sharedConfig, schema } : sharedConfig;

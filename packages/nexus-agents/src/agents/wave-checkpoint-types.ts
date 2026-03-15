@@ -37,7 +37,7 @@ export const CheckpointTaskResultSchema = z.object({
 export const WaveCheckpointEntrySchema = z.object({
   sessionId: z.string().min(1),
   waveIndex: z.number().int().nonnegative(),
-  timestamp: z.string().datetime(),
+  timestamp: z.iso.datetime(),
   results: z.array(CheckpointTaskResultSchema),
   totalTokens: z.number().int().nonnegative(),
   durationMs: z.number().nonnegative(),

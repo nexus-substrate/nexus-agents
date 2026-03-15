@@ -77,7 +77,7 @@ const LanguageMatrixEntrySchema = z
     iac: z.array(z.string()).optional(),
     dast: z.array(z.string()).optional(),
   })
-  .passthrough();
+  .loose();
 
 const ManifestSchema = z.object({
   version: z.string().min(1),

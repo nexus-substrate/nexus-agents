@@ -58,7 +58,7 @@ export type ConfigValue<C extends ConfigCategory, K extends ConfigKey<C>> = Wide
 // Validation
 // ============================================================================
 
-const NumericValueSchema = z.number().finite();
+const NumericValueSchema = z.number();
 const BooleanValueSchema = z.boolean();
 const StringValueSchema = z.string();
 

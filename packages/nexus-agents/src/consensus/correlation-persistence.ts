@@ -66,7 +66,7 @@ const PersistedProposalSchema = z.object({
   proposalId: z.string(),
   votes: z.array(PersistedVoteSchema),
   outcome: z.enum(['approved', 'rejected']),
-  timestamp: z.string().datetime(),
+  timestamp: z.iso.datetime(),
 });
 
 /** Type for a persisted proposal entry */
@@ -80,7 +80,7 @@ type PersistedProposal = z.infer<typeof PersistedProposalSchema>;
 export const PersistedCorrelationDataSchema = z.object({
   version: z.number().int().positive(),
   proposals: z.array(PersistedProposalSchema),
-  savedAt: z.string().datetime(),
+  savedAt: z.iso.datetime(),
 });
 
 /** Validated persisted correlation data */
