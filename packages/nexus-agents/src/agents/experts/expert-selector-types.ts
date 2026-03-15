@@ -144,7 +144,7 @@ export const SelectionResultSchema = z.object({
 export const SelectionOptionsSchema = z.object({
   minScore: z.number().min(0).max(1).optional(),
   maxAlternatives: z.number().min(0).max(10).optional(),
-  capabilityWeights: z.record(z.number().min(0).max(10)).optional(),
+  capabilityWeights: z.record(z.string(), z.number().min(0).max(10)).optional(),
   preferredDomains: z
     .array(z.enum(['code', 'security', 'architecture', 'documentation', 'testing', 'general']))
     .optional(),

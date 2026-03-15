@@ -69,10 +69,10 @@ function registerSinglePrompt(
       description: definition.description,
       argsSchema: definition.argsSchema,
     },
-    (args: Record<string, string | undefined>): GetPromptResult => {
+    (args: Record<string, unknown>): GetPromptResult => {
       logger.debug('Prompt requested', { prompt: definition.name });
 
-      const messages = definition.buildMessages(args);
+      const messages = definition.buildMessages(args as Record<string, string | undefined>);
 
       return {
         description: definition.description,

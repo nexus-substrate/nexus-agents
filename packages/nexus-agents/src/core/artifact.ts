@@ -66,9 +66,9 @@ export interface ArtifactMetadata {
  * Zod schema for artifact metadata validation.
  */
 export const ArtifactMetadataSchema = z.object({
-  createdAt: z.string().datetime({ message: 'createdAt must be ISO 8601 format' }),
+  createdAt: z.iso.datetime({ message: 'createdAt must be ISO 8601 format' }),
   createdBy: z.string().min(1, 'createdBy is required'),
-  parentId: z.string().uuid().optional(),
+  parentId: z.uuid().optional(),
   taskId: z.string().min(1, 'taskId is required'),
   traceId: z.string().optional(),
 });
@@ -123,25 +123,17 @@ export interface Artifact<T> {
  * const result = PlanArtifactSchema.safeParse(artifact);
  * ```
  */
-export function createArtifactSchema<T extends z.ZodTypeAny>(
+export function createArtifactSchema<T extends z.ZodType>(
   dataSchema: T
 ): z.ZodObject<{
-  id: z.ZodString;
-  type: z.ZodEnum<
-    [
-      typeof ArtifactType.PLAN,
-      typeof ArtifactType.ANALYSIS,
-      typeof ArtifactType.DECISION,
-      typeof ArtifactType.RESULT,
-      typeof ArtifactType.INTENT,
-    ]
-  >;
+  id: z.ZodUUID;
+  type: typeof ArtifactTypeSchema;
   schemaVersion: z.ZodString;
   data: T;
   metadata: typeof ArtifactMetadataSchema;
 }> {
   return z.object({
-    id: z.string().uuid(),
+    id: z.uuid(),
     type: ArtifactTypeSchema,
     schemaVersion: z.string().regex(/^\d+\.\d+\.\d+$/, 'schemaVersion must be semver'),
     data: dataSchema,

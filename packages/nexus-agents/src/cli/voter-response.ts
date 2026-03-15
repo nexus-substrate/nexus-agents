@@ -234,7 +234,7 @@ export function parseVoteResponse(
     }
 
     // Validation failed - throw or fallback based on config
-    const reason = `Validation failed: ${validated.error.errors.map((e) => e.message).join(', ')}`;
+    const reason = `Validation failed: ${validated.error.issues.map((e: { message: string }) => e.message).join(', ')}`;
     if (!allowSyntheticVote) {
       throw new SyntheticVoteError(reason, output);
     }

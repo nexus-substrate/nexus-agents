@@ -40,7 +40,7 @@ export const SwarmObserverConfigSchema = z.object({
  */
 export const AgentEventSchema = z.object({
   eventId: z.string().min(1),
-  timestamp: z.string().datetime(),
+  timestamp: z.iso.datetime(),
   agentId: z.string().min(1),
   eventType: z.enum([
     'state_change',
@@ -57,6 +57,6 @@ export const AgentEventSchema = z.object({
   traceId: z.string().length(32),
   spanId: z.string().length(16),
   parentSpanId: z.string().length(16).optional(),
-  payload: z.record(z.unknown()),
+  payload: z.record(z.string(), z.unknown()),
   durationMs: z.number().nonnegative().optional(),
 });

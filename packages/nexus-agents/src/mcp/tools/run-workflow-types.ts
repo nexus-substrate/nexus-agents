@@ -20,7 +20,7 @@ import type { BaseMcpToolDeps } from './tool-result.js';
  */
 export const RunWorkflowInputSchema = z.object({
   template: z.string().min(1).describe('Workflow template name (e.g., code-review) or file path'),
-  inputs: z.record(z.unknown()).describe('Workflow inputs as key-value pairs'),
+  inputs: z.record(z.string(), z.unknown()).describe('Workflow inputs as key-value pairs'),
   dryRun: z.boolean().optional().default(false).describe('Validate workflow without executing'),
 });
 

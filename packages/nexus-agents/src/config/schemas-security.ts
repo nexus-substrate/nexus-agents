@@ -67,7 +67,7 @@ export const TimeoutConfigSchema = z.object({
   /** Enable URI validation to prevent ReDoS (default: true) */
   uriValidation: z.boolean().default(true),
   /** Per-tool timeout overrides in milliseconds (Issue #657) */
-  perToolTimeout: z.record(z.number().positive().max(600000)).optional(),
+  perToolTimeout: z.record(z.string(), z.number().positive().max(600000)).optional(),
 });
 
 export type TimeoutConfig = z.infer<typeof TimeoutConfigSchema>;
@@ -115,9 +115,9 @@ export const SecurityConfigSchema = z.object({
       enabled: z.boolean().default(true),
       requestsPerMinute: z.number().positive().default(60),
       /** Per-tool rate limits (Issue #274 Phase 2) */
-      perTool: z.record(ToolRateLimitSchema).optional(),
+      perTool: z.record(z.string(), ToolRateLimitSchema).optional(),
     })
-    .default({}),
+    .default(() => ({ enabled: true, requestsPerMinute: 60 })),
   secretsFile: z.string().optional(),
   /** Policy firewall configuration */
   policy: PolicyConfigSchema.optional(),

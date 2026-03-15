@@ -122,7 +122,7 @@ export const UnifiedRoutingDecisionSchema = z.object({
   resolvedAtStage: z.number().int().nonnegative().optional(),
   consensusReached: z.boolean().optional(),
   agreementScore: z.number().min(0).max(1).optional(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 // ============================================================================

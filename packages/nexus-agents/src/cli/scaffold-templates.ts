@@ -41,7 +41,7 @@ import { createSecureHandler, type HandlerContext } from '../middleware/secure-h
  */
 export const ${pascal}InputSchema = z.object({
   input: z.string().min(1).describe('Primary input for ${name} operation'),
-  options: z.record(z.unknown()).optional().describe('Additional options'),
+  options: z.record(z.string(), z.unknown()).optional().describe('Additional options'),
 });
 
 export type ${pascal}Input = z.infer<typeof ${pascal}InputSchema>;

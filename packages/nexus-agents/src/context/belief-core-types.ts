@@ -123,5 +123,5 @@ export const BeliefSchema = z.object({
   superseded: z.boolean(),
   supersededBy: z.string().optional(),
   domain: z.string().optional(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });

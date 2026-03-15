@@ -50,7 +50,7 @@ export const PluginManifestSchema = z.object({
 export const StageResultSchema = z.object({
   success: z.boolean(),
   outputArtifacts: z.array(ArtifactRefSchema),
-  metadata: z.record(z.unknown()),
+  metadata: z.record(z.string(), z.unknown()),
   error: z.string().optional(),
 });
 

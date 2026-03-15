@@ -7,7 +7,7 @@
  * (Source: MCP Protocol 2025-11-25, Zod Documentation)
  */
 
-import type { ZodSchema } from 'zod';
+import type { ZodType } from 'zod';
 
 import { type Result, ok, err, ValidationError, formatZodError } from '../../core/index.js';
 
@@ -29,7 +29,7 @@ export { isZodError } from '../../core/index.js';
  * ```typescript
  * const InputSchema = z.object({
  *   task: z.string().min(1),
- *   context: z.record(z.unknown()).optional(),
+ *   context: z.record(z.string(), z.unknown()).optional(),
  * });
  *
  * server.tool('my_tool', InputSchema.shape, async (args) => {
@@ -43,7 +43,7 @@ export { isZodError } from '../../core/index.js';
  * ```
  */
 export function validateToolInput<T>(
-  schema: ZodSchema<T>,
+  schema: ZodType<T>,
   args: unknown
 ): Result<T, ValidationError> {
   const parsed = schema.safeParse(args);
@@ -81,7 +81,7 @@ export function validateToolInput<T>(
  * ```
  */
 export function createValidator<T>(
-  schema: ZodSchema<T>
+  schema: ZodType<T>
 ): (args: unknown) => Result<T, ValidationError> {
   return (args: unknown) => validateToolInput(schema, args);
 }
@@ -103,7 +103,7 @@ export function createValidator<T>(
  * ```typescript
  * const OutputSchema = z.object({
  *   success: z.boolean(),
- *   data: z.record(z.unknown()),
+ *   data: z.record(z.string(), z.unknown()),
  * });
  *
  * server.tool('my_tool', InputSchema.shape, async (args) => {
@@ -119,7 +119,7 @@ export function createValidator<T>(
  * ```
  */
 export function validateToolOutput<T>(
-  schema: ZodSchema<T>,
+  schema: ZodType<T>,
   output: unknown
 ): Result<T, ValidationError> {
   const parsed = schema.safeParse(output);
@@ -157,7 +157,7 @@ export function validateToolOutput<T>(
  * ```
  */
 export function createOutputValidator<T>(
-  schema: ZodSchema<T>
+  schema: ZodType<T>
 ): (output: unknown) => Result<T, ValidationError> {
   return (output: unknown) => validateToolOutput(schema, output);
 }

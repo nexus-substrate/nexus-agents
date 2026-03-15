@@ -142,7 +142,7 @@ export class ConsensusEngine implements IConsensusEngine {
       return Promise.resolve(
         err(
           new ConsensusError(`Invalid proposal: ${validation.error.message}`, {
-            errors: validation.error.errors,
+            errors: validation.error.issues,
           })
         )
       );
@@ -316,7 +316,7 @@ export class ConsensusEngine implements IConsensusEngine {
     const validation = VoteSchema.safeParse(vote);
     if (!validation.success) {
       return new ConsensusError(`Invalid vote: ${validation.error.message}`, {
-        errors: validation.error.errors,
+        errors: validation.error.issues,
       });
     }
     return undefined;

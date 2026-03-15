@@ -249,7 +249,7 @@ export const ExpertOptionsSchema = z.object({
  */
 export const ExpertOutputSchema = z.object({
   content: z.string(),
-  structuredData: z.record(z.unknown()).optional(),
+  structuredData: z.record(z.string(), z.unknown()).optional(),
   recommendations: z.array(z.string()).optional(),
   warnings: z.array(z.string()).optional(),
   confidence: z.number().min(0).max(1),

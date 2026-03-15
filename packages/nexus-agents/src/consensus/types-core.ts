@@ -76,7 +76,7 @@ export const VoteSchema = z.object({
     .array(RejectionCategorySchema)
     .optional()
     .describe('Rejection reason categories when decision is reject'),
-  timestamp: z.string().datetime().optional(),
+  timestamp: z.iso.datetime().optional(),
 });
 export type Vote = z.infer<typeof VoteSchema>;
 
@@ -90,8 +90,8 @@ export const ProposalSchema = z.object({
   algorithm: ConsensusAlgorithmSchema,
   timeout: z.number().int().positive().optional().describe('Timeout in milliseconds'),
   requiredVoters: z.array(z.string()).optional().describe('Agent IDs that must vote'),
-  metadata: z.record(z.unknown()).optional().describe('Additional context'),
-  createdAt: z.string().datetime().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional().describe('Additional context'),
+  createdAt: z.iso.datetime().optional(),
 });
 export type Proposal = z.infer<typeof ProposalSchema>;
 
@@ -161,8 +161,8 @@ export const ConsensusResultSchema = z.object({
     .optional(),
   approvalPercentage: z.number().min(0).max(100),
   quorumReached: z.boolean(),
-  startedAt: z.string().datetime(),
-  closedAt: z.string().datetime(),
+  startedAt: z.iso.datetime(),
+  closedAt: z.iso.datetime(),
   durationMs: z.number().int().nonnegative(),
 });
 
@@ -185,7 +185,7 @@ export const AgentPerformanceSchema = z.object({
   totalVotes: z.number().int().nonnegative(),
   correctVotes: z.number().int().nonnegative(),
   successRate: z.number().min(0).max(1),
-  lastUpdated: z.string().datetime(),
+  lastUpdated: z.iso.datetime(),
 });
 
 /**

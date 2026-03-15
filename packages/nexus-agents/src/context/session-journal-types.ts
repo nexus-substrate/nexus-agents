@@ -39,13 +39,13 @@ export type JournalEventType = z.infer<typeof JournalEventTypeSchema>;
  * Schema for a single journal entry (one JSONL line).
  */
 export const JournalEntrySchema = z.object({
-  timestamp: z.string().datetime(),
+  timestamp: z.iso.datetime(),
   event: JournalEventTypeSchema,
   sessionId: z.string().min(1),
   taskId: z.string().optional(),
   summary: z.string(),
   tokensUsed: z.number().int().nonnegative().optional(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 /** A single journal entry persisted to disk. */

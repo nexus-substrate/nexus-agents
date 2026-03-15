@@ -91,7 +91,7 @@ export type SessionEndInput = z.infer<typeof SessionEndInputSchema>;
 export const PreToolUseInputSchema = HookInputBaseSchema.extend({
   hook_event_name: z.literal('PreToolUse'),
   tool_name: z.string(),
-  tool_input: z.record(z.unknown()),
+  tool_input: z.record(z.string(), z.unknown()),
   tool_use_id: z.string(),
 });
 
@@ -100,8 +100,8 @@ export type PreToolUseInput = z.infer<typeof PreToolUseInputSchema>;
 export const PostToolUseInputSchema = HookInputBaseSchema.extend({
   hook_event_name: z.literal('PostToolUse'),
   tool_name: z.string(),
-  tool_input: z.record(z.unknown()),
-  tool_response: z.record(z.unknown()),
+  tool_input: z.record(z.string(), z.unknown()),
+  tool_response: z.record(z.string(), z.unknown()),
   tool_use_id: z.string(),
 });
 
@@ -110,7 +110,7 @@ export type PostToolUseInput = z.infer<typeof PostToolUseInputSchema>;
 export const PostToolUseFailureInputSchema = HookInputBaseSchema.extend({
   hook_event_name: z.literal('PostToolUseFailure'),
   tool_name: z.string(),
-  tool_input: z.record(z.unknown()),
+  tool_input: z.record(z.string(), z.unknown()),
   tool_use_id: z.string(),
   error: z.string().optional(),
 });
@@ -193,7 +193,7 @@ export type SubagentStartInput = z.infer<typeof SubagentStartInputSchema>;
 export const PermissionRequestInputSchema = HookInputBaseSchema.extend({
   hook_event_name: z.literal('PermissionRequest'),
   tool_name: z.string(),
-  tool_input: z.record(z.unknown()),
+  tool_input: z.record(z.string(), z.unknown()),
   tool_use_id: z.string(),
 });
 
@@ -250,7 +250,7 @@ export const PreToolUseOutputSchema = HookOutputBaseSchema.extend({
       hookEventName: z.literal('PreToolUse'),
       permissionDecision: PermissionDecision.optional(),
       permissionDecisionReason: z.string().optional(),
-      updatedInput: z.record(z.unknown()).optional(),
+      updatedInput: z.record(z.string(), z.unknown()).optional(),
       additionalContext: z.string().optional(),
     })
     .optional(),
@@ -313,7 +313,7 @@ export const PermissionRequestOutputSchema = HookOutputBaseSchema.extend({
       hookEventName: z.literal('PermissionRequest'),
       decision: z.object({
         behavior: z.enum(['allow', 'deny']),
-        updatedInput: z.record(z.unknown()).optional(),
+        updatedInput: z.record(z.string(), z.unknown()).optional(),
         message: z.string().optional(),
         interrupt: z.boolean().optional(),
       }),

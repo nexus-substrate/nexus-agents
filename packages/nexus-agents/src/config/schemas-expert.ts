@@ -57,18 +57,14 @@ export const CustomExpertDefinitionSchema = z.object({
   /** Model tier for routing */
   tier: z
     .enum(VALID_EXPERT_TIERS, {
-      errorMap: (_issue, _ctx) => ({
-        message: `Invalid tier. Valid options: ${VALID_EXPERT_TIERS.join(', ')}`,
-      }),
+      error: `Invalid tier. Valid options: ${VALID_EXPERT_TIERS.join(', ')}`,
     })
     .default('balanced'),
 
   /** Primary domain of expertise */
   domain: z
     .enum(VALID_EXPERT_DOMAINS, {
-      errorMap: (_issue, _ctx) => ({
-        message: `Invalid domain. Valid options: ${VALID_EXPERT_DOMAINS.join(', ')}`,
-      }),
+      error: `Invalid domain. Valid options: ${VALID_EXPERT_DOMAINS.join(', ')}`,
     })
     .default('general'),
 

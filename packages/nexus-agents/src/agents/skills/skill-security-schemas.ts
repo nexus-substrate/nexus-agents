@@ -152,5 +152,5 @@ export const SecurityErrorCodeSchema = z.enum([
 export const SkillSecurityErrorSchema = z.object({
   code: SecurityErrorCodeSchema,
   message: z.string().min(1).max(1024),
-  context: z.record(z.unknown()).optional(),
+  context: z.record(z.string(), z.unknown()).optional(),
 });

@@ -264,7 +264,7 @@ export const SkillLoaderErrorCodeSchema = z.enum([
 export const SkillLoaderErrorSchema = z.object({
   code: SkillLoaderErrorCodeSchema,
   message: z.string().min(1).max(1024),
-  context: z.record(z.unknown()).optional(),
+  context: z.record(z.string(), z.unknown()).optional(),
 });
 
 // ============================================================================

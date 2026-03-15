@@ -126,7 +126,7 @@ export const AuditEventSchema = z.object({
   // Context
   toolName: z.string().optional(),
   durationMs: z.number().optional(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 
   // Policy and security
   policyName: z.string().optional(),
@@ -156,7 +156,7 @@ export const AuditEventInputSchema = z.object({
   sessionId: z.string().optional(),
   toolName: z.string().optional(),
   durationMs: z.number().optional(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
   policyName: z.string().optional(),
   policyDecision: z.string().optional(),
   violationType: z.string().optional(),

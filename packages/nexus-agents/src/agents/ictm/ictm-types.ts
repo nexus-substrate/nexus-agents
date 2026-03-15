@@ -187,7 +187,7 @@ export const ICTMConfigSchema = z.object({
   context: ContextFilterSchema,
   tools: ToolSetSchema,
   model: ModelSelectionSchema,
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const ICTMInferenceResultSchema = z.object({

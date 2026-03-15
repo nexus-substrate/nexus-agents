@@ -488,7 +488,7 @@ describe('EnvironmentInfoSchema', () => {
       osVersion: '6.14.0',
       arch: 'x64',
       timezone: 'America/New_York',
-      cliVersions: { claude: '1.0.0', gemini: null, codex: null },
+      cliVersions: { claude: '1.0.0', gemini: null, codex: null, opencode: null },
       packageVersion: '2.3.0',
     });
     expect(result.success).toBe(true);

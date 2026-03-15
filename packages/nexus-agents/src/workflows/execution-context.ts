@@ -34,7 +34,7 @@ export interface WorkflowExecutionContext {
 /**
  * Schema for validating workflow inputs.
  */
-export const WorkflowInputsSchema = z.record(z.unknown());
+export const WorkflowInputsSchema = z.record(z.string(), z.unknown());
 
 /**
  * Options for creating an execution context.

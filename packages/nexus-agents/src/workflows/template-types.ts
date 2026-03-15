@@ -134,7 +134,7 @@ export const WorkflowStepSchema = z.object({
   agent: AgentRoleSchema,
   action: z.string().min(1, 'Action is required'),
   description: z.string().optional(),
-  inputs: z.record(z.unknown()).default({}),
+  inputs: z.record(z.string(), z.unknown()).default({}),
   dependsOn: z.array(z.string()).optional(),
   parallel: z.boolean().optional().default(false),
   retries: z.number().int().min(0).max(5).optional(),

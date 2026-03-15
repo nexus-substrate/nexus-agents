@@ -107,7 +107,7 @@ export const ReasoningNodeMetadataSchema = z.object({
   tokensUsed: z.number().int().nonnegative().optional(),
   generationTimeMs: z.number().nonnegative().optional(),
   crossReferences: z.array(z.string()).optional(),
-  custom: z.record(z.unknown()).optional(),
+  custom: z.record(z.string(), z.unknown()).optional(),
 });
 
 /**

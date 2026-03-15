@@ -121,7 +121,7 @@ export const DependencyErrorCodeSchema = z.enum([
 export const DependencyErrorSchema = z.object({
   code: DependencyErrorCodeSchema,
   message: z.string().min(1).max(1024),
-  context: z.record(z.unknown()).optional(),
+  context: z.record(z.string(), z.unknown()).optional(),
 });
 
 // ============================================================================

@@ -88,7 +88,7 @@ export const ApiErrorSchema = z.object({
   error: z.object({
     code: z.string(),
     message: z.string(),
-    details: z.record(z.unknown()).optional(),
+    details: z.record(z.string(), z.unknown()).optional(),
   }),
   requestId: z.string(),
   timestamp: z.string(),
@@ -98,7 +98,7 @@ export type ApiError = z.infer<typeof ApiErrorSchema>;
 /**
  * Standard API success response wrapper.
  */
-export function createApiSuccessSchema<T extends z.ZodTypeAny>(
+export function createApiSuccessSchema<T extends z.ZodType>(
   dataSchema: T
 ): z.ZodObject<{
   data: T;
@@ -128,7 +128,7 @@ export function createApiSuccessSchema<T extends z.ZodTypeAny>(
  */
 export const OrchestrateRequestSchema = z.object({
   task: z.string().min(1).describe('Task description to orchestrate'),
-  context: z.record(z.unknown()).optional().describe('Additional context'),
+  context: z.record(z.string(), z.unknown()).optional().describe('Additional context'),
   constraints: z
     .object({
       maxTokens: z.number().positive().optional(),
@@ -201,7 +201,7 @@ export type DelegateResponse = z.infer<typeof DelegateResponseSchema>;
 export const WorkflowRequestSchema = z.object({
   workflowId: z.string().optional().describe('ID of saved workflow'),
   workflowYaml: z.string().optional().describe('Inline workflow YAML'),
-  inputs: z.record(z.unknown()).optional().describe('Workflow inputs'),
+  inputs: z.record(z.string(), z.unknown()).optional().describe('Workflow inputs'),
 });
 export type WorkflowRequest = z.infer<typeof WorkflowRequestSchema>;
 
@@ -238,7 +238,7 @@ export type WorkflowResponse = z.infer<typeof WorkflowResponseSchema>;
 export const ExpertRequestSchema = z.object({
   type: z.enum(['code', 'security', 'architecture', 'testing', 'documentation']),
   task: z.string().min(1).describe('Task for the expert'),
-  options: z.record(z.unknown()).optional(),
+  options: z.record(z.string(), z.unknown()).optional(),
 });
 export type ExpertRequest = z.infer<typeof ExpertRequestSchema>;
 
@@ -268,6 +268,7 @@ export const HealthResponseSchema = z.object({
   version: z.string(),
   uptime: z.number(),
   checks: z.record(
+    z.string(),
     z.object({
       status: z.enum(['pass', 'fail']),
       message: z.string().optional(),
@@ -281,7 +282,7 @@ export type HealthResponse = z.infer<typeof HealthResponseSchema>;
  */
 export const MetricsResponseSchema = z.object({
   requestsTotal: z.number(),
-  requestsPerEndpoint: z.record(z.number()),
+  requestsPerEndpoint: z.record(z.string(), z.number()),
   avgResponseTimeMs: z.number(),
   errorRate: z.number(),
   activeConnections: z.number(),

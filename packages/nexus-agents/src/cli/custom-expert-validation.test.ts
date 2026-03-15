@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { ZodError, type ZodIssue, type ZodIssueCode } from 'zod';
+import { ZodError } from 'zod';
 import { resolve, sep } from 'node:path';
 import {
   validateConfigPath,
@@ -187,9 +187,9 @@ describe('getSuggestion', () => {
 
 describe('formatZodError', () => {
   const createZodError = (
-    issues: Array<{ path: (string | number)[]; message: string; code: ZodIssueCode }>
+    issues: Array<{ path: (string | number)[]; message: string; code: string }>
   ): ZodError => {
-    return new ZodError(issues as ZodIssue[]);
+    return new ZodError(issues as unknown as ConstructorParameters<typeof ZodError>[0]);
   };
 
   it('maps Zod issues to CustomExpertError array', () => {

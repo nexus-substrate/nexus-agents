@@ -23,7 +23,7 @@ export type LoggingConfig = z.infer<typeof LoggingConfigSchema>;
  */
 export const ProviderConfigSchema = z.object({
   apiKey: z.string().optional(),
-  baseUrl: z.string().url().optional(),
+  baseUrl: z.url().optional(),
   timeout: z.number().positive().default(30000),
   maxRetries: z.number().nonnegative().default(3),
 });
@@ -47,7 +47,7 @@ export type ModelTiers = z.infer<typeof ModelTiersSchema>;
 export const ModelConfigSchema = z.object({
   default: z.string(),
   tiers: ModelTiersSchema,
-  providers: z.record(ProviderConfigSchema).optional(),
+  providers: z.record(z.string(), ProviderConfigSchema).optional(),
 });
 
 export type ModelConfig = z.infer<typeof ModelConfigSchema>;

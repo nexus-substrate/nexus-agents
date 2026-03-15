@@ -8,7 +8,7 @@
  * (Source: Issue #332)
  */
 
-import { z } from 'zod';
+import { z, type ZodSafeParseResult } from 'zod';
 import {
   RiskLevel,
   ExpectedOutcome,
@@ -154,7 +154,7 @@ export function getTestCasesByTags(
  */
 export function validateSafetyCategory(
   category: unknown
-): z.SafeParseReturnType<typeof SafetyCategorySchema._input, z.infer<typeof SafetyCategorySchema>> {
+): ZodSafeParseResult<z.infer<typeof SafetyCategorySchema>> {
   return SafetyCategorySchema.safeParse(category);
 }
 
@@ -165,7 +165,7 @@ export function validateSafetyCategory(
  */
 export function validateTestCase(
   testCase: unknown
-): z.SafeParseReturnType<typeof SafetyTestCaseSchema._input, z.infer<typeof SafetyTestCaseSchema>> {
+): ZodSafeParseResult<z.infer<typeof SafetyTestCaseSchema>> {
   return SafetyTestCaseSchema.safeParse(testCase);
 }
 
@@ -176,10 +176,7 @@ export function validateTestCase(
  */
 export function validateEvaluationCriterion(
   criterion: unknown
-): z.SafeParseReturnType<
-  typeof EvaluationCriterionSchema._input,
-  z.infer<typeof EvaluationCriterionSchema>
-> {
+): ZodSafeParseResult<z.infer<typeof EvaluationCriterionSchema>> {
   return EvaluationCriterionSchema.safeParse(criterion);
 }
 

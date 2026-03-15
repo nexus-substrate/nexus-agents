@@ -19,22 +19,22 @@ import { HazardCategory, HazardSeverity, ConstraintPriority, RiskLevel } from '.
 /**
  * Zod schema for HazardCategory validation.
  */
-export const HazardCategorySchema = z.nativeEnum(HazardCategory);
+export const HazardCategorySchema = z.enum(HazardCategory);
 
 /**
  * Zod schema for HazardSeverity validation.
  */
-export const HazardSeveritySchema = z.nativeEnum(HazardSeverity);
+export const HazardSeveritySchema = z.enum(HazardSeverity);
 
 /**
  * Zod schema for ConstraintPriority validation.
  */
-export const ConstraintPrioritySchema = z.nativeEnum(ConstraintPriority);
+export const ConstraintPrioritySchema = z.enum(ConstraintPriority);
 
 /**
  * Zod schema for RiskLevel validation.
  */
-export const RiskLevelSchema = z.nativeEnum(RiskLevel);
+export const RiskLevelSchema = z.enum(RiskLevel);
 
 // =============================================================================
 // Core Type Schemas
@@ -116,7 +116,7 @@ export const PropertySchemaSchema = z.object({
  */
 export const ToolInputSchemaSchema = z.object({
   type: z.string(),
-  properties: z.record(PropertySchemaSchema).optional(),
+  properties: z.record(z.string(), PropertySchemaSchema).optional(),
   required: z.array(z.string()).optional(),
   additionalProperties: z.boolean().optional(),
 });

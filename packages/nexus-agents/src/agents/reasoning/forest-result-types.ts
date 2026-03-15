@@ -142,7 +142,7 @@ export const ExplorationEventSchema = z.object({
   eventType: ExplorationEventTypeSchema,
   treeId: z.string().optional(),
   nodeId: z.string().optional(),
-  details: z.record(z.unknown()),
+  details: z.record(z.string(), z.unknown()),
 });
 
 // ============================================================================

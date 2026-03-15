@@ -76,7 +76,7 @@ const ExternalSkillParameterSchema = z.object({
 });
 
 const ExternalSkillExampleSchema = z.object({
-  input: z.record(z.unknown()),
+  input: z.record(z.string(), z.unknown()),
   expectedOutput: z.string().optional(),
   description: z.string().optional(),
 });

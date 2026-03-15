@@ -38,9 +38,7 @@ export type ProductType = (typeof PRODUCT_TYPES)[number];
  * Schema for a valid product type identifier.
  */
 export const ProductTypeSchema = z.enum(PRODUCT_TYPES, {
-  errorMap: (_issue, _ctx) => ({
-    message: `Invalid product type. Valid options: ${PRODUCT_TYPES.join(', ')}`,
-  }),
+  error: `Invalid product type. Valid options: ${PRODUCT_TYPES.join(', ')}`,
 });
 
 /**

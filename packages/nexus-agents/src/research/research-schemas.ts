@@ -141,7 +141,7 @@ export const ResearchPaperSchema = z.object({
   /** arXiv ID (e.g., '2501.06322') */
   arxiv_id: z.string().optional(),
   /** URL to the paper */
-  url: z.string().url().optional(),
+  url: z.url().optional(),
   /** Publication date (YYYY-MM format) */
   publication_date: z.string().optional(),
   /** Publication venue */
@@ -212,7 +212,7 @@ export const ResearchTechniqueSchema = z.object({
   tags: z.array(z.string()).optional().default([]),
 
   /** Metrics associated with this technique */
-  metrics: z.record(z.string()).optional().default({}),
+  metrics: z.record(z.string(), z.string()).optional().default({}),
 
   /** Implementation status (required) */
   status: TechniqueStatusSchema,
@@ -249,7 +249,7 @@ export type ResearchTechnique = z.infer<typeof ResearchTechniqueSchema>;
  */
 export const PapersRegistrySchema = z.object({
   schema_version: z.string(),
-  papers: z.record(ResearchPaperSchema),
+  papers: z.record(z.string(), ResearchPaperSchema),
 });
 export type PapersRegistry = z.infer<typeof PapersRegistrySchema>;
 
@@ -258,7 +258,7 @@ export type PapersRegistry = z.infer<typeof PapersRegistrySchema>;
  */
 export const TechniquesRegistrySchema = z.object({
   schema_version: z.string(),
-  techniques: z.record(ResearchTechniqueSchema),
+  techniques: z.record(z.string(), ResearchTechniqueSchema),
 });
 export type TechniquesRegistry = z.infer<typeof TechniquesRegistrySchema>;
 

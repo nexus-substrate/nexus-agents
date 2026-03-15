@@ -187,7 +187,7 @@ export const OrchestrationObserverConfigSchema = z.object({
   /** Enable detailed event logging */
   verboseLogging: z.boolean().optional().default(false),
   /** Token cost rates per model (USD per 1K tokens) */
-  tokenCostRates: z.record(z.number().nonnegative()).optional().default({
+  tokenCostRates: z.record(z.string(), z.number().nonnegative()).optional().default({
     claude: 0.015,
     gemini: 0.001,
     codex: 0.01,

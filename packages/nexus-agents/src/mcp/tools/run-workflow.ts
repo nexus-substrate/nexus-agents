@@ -233,8 +233,8 @@ function createRunWorkflowHandler(
   return async (args: unknown, ctx: HandlerContext): Promise<ToolResponse> => {
     const validated = RunWorkflowInputSchema.safeParse(args);
     if (!validated.success) {
-      const errorMessage = validated.error.errors
-        .map((e) => `${e.path.join('.')}: ${e.message}`)
+      const errorMessage = validated.error.issues
+        .map((e: { path: PropertyKey[]; message: string }) => `${e.path.join('.')}: ${e.message}`)
         .join(', ');
       return errorResponse(`Validation error: ${errorMessage}`);
     }

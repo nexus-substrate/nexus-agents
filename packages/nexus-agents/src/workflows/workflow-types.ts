@@ -177,7 +177,7 @@ export type WorkflowDefinitionOutput = z.output<typeof WorkflowDefinitionSchema>
  */
 export interface ValidationIssue {
   /** Path to the problematic field */
-  path: (string | number)[];
+  path: PropertyKey[];
   /** Error message */
   message: string;
   /** Error code from Zod */

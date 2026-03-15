@@ -103,7 +103,7 @@ export function getBuiltInTemplatesPath(): string {
  * Create a validation error result.
  */
 function createValidationError(
-  errors: Array<{ path: (string | number)[]; message: string }>
+  errors: Array<{ path: PropertyKey[]; message: string }>
 ): Result<WorkflowDefinition, ParseError> {
   const firstError = errors[0];
   const errorPath = firstError?.path.join('.') ?? 'unknown';
@@ -145,7 +145,7 @@ export function parseTemplateContent(
     const validated = WorkflowDefinitionSchema.safeParse(parsed);
 
     if (!validated.success) {
-      return createValidationError(validated.error.errors);
+      return createValidationError(validated.error.issues);
     }
 
     const definition = validated.data as WorkflowDefinition;

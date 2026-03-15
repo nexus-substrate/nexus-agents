@@ -49,7 +49,7 @@ export const CollaborationConfigSchema = z.object({
   task: z.object({
     id: z.string().min(1),
     description: z.string().min(1),
-    context: z.record(z.unknown()),
+    context: z.record(z.string(), z.unknown()),
     constraints: z
       .object({
         maxDuration: z.number().positive().optional(),
@@ -80,9 +80,9 @@ export const ExpertParticipationSchema = z.object({
     'testing_expert',
     'custom',
   ]),
-  joinedAt: z.string().datetime(),
+  joinedAt: z.iso.datetime(),
   status: z.enum(['pending', 'working', 'submitted', 'reviewing', 'voted', 'failed']),
-  submittedAt: z.string().datetime().optional(),
+  submittedAt: z.iso.datetime().optional(),
   retryCount: z.number().min(0),
 });
 

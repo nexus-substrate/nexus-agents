@@ -22,7 +22,7 @@ import { OrchestratorFactory } from '../../orchestration/orchestrator-factory.js
 
 export const OrchestrateInputSchema = z.object({
   task: z.string().min(1).max(50000).describe('Task description to orchestrate'),
-  context: z.record(z.unknown()).optional().describe('Additional context for the task'),
+  context: z.record(z.string(), z.unknown()).optional().describe('Additional context for the task'),
   maxIterations: z
     .number()
     .min(1)
@@ -75,7 +75,7 @@ export type OrchestrateOutput = z.infer<typeof OrchestrateOutputSchema>;
 /** Tool input schema for MCP registration (mirrors OrchestrateInputSchema). */
 export const ORCHESTRATE_TOOL_SCHEMA = {
   task: z.string().min(1).max(50000).describe('Task description to orchestrate'),
-  context: z.record(z.unknown()).optional().describe('Additional context for the task'),
+  context: z.record(z.string(), z.unknown()).optional().describe('Additional context for the task'),
   maxIterations: z
     .number()
     .min(1)

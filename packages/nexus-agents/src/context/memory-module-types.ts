@@ -77,7 +77,7 @@ export const EpisodeDataSchema = z.object({
   agentId: z.string().min(1),
   action: z.string().min(1),
   outcome: z.enum(['success', 'failure', 'partial']),
-  context: z.record(z.unknown()),
+  context: z.record(z.string(), z.unknown()),
   learnings: z.array(z.string()).optional(),
   timestamp: z.date(),
   durationMs: z.number().positive().optional(),
@@ -176,7 +176,7 @@ export interface Procedure {
 export const ProcedureStepSchema = z.object({
   stepId: z.string().min(1),
   action: z.string().min(1),
-  parameters: z.record(z.unknown()).optional(),
+  parameters: z.record(z.string(), z.unknown()).optional(),
   preconditions: z.array(z.string()).optional(),
   postconditions: z.array(z.string()).optional(),
 });
@@ -238,7 +238,7 @@ export const ResourceReferenceSchema = z.object({
   hash: z.string().optional(),
   lastAccessed: z.date(),
   lastModified: z.date().optional(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 export interface IResourceMemory {

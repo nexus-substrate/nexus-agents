@@ -105,7 +105,7 @@ export type DecisionHistoryEntry = z.infer<typeof DecisionHistoryEntrySchema>;
 /**
  * Metrics associated with a paper (key-value pairs).
  */
-export const PaperMetricsSchema = z.record(z.string());
+export const PaperMetricsSchema = z.record(z.string(), z.string());
 export type PaperMetrics = z.infer<typeof PaperMetricsSchema>;
 
 /**
@@ -176,7 +176,7 @@ export const ResearchTechniqueSchema = z.object({
   tags: z.array(z.string()).optional().default([]),
 
   /** Metrics associated with this technique */
-  metrics: z.record(z.string()).optional().default({}),
+  metrics: z.record(z.string(), z.string()).optional().default({}),
 
   /** Implementation status */
   status: TechniqueStatusSchema,
@@ -250,7 +250,7 @@ export type ResearchSource = z.infer<typeof ResearchSourceSchema>;
  */
 export const PapersRegistrySchema = z.object({
   schema_version: z.string(),
-  papers: z.record(ResearchPaperSchema),
+  papers: z.record(z.string(), ResearchPaperSchema),
 });
 export type PapersRegistry = z.infer<typeof PapersRegistrySchema>;
 
@@ -259,7 +259,7 @@ export type PapersRegistry = z.infer<typeof PapersRegistrySchema>;
  */
 export const TechniquesRegistrySchema = z.object({
   schema_version: z.string(),
-  techniques: z.record(ResearchTechniqueSchema),
+  techniques: z.record(z.string(), ResearchTechniqueSchema),
 });
 export type TechniquesRegistry = z.infer<typeof TechniquesRegistrySchema>;
 
@@ -268,6 +268,6 @@ export type TechniquesRegistry = z.infer<typeof TechniquesRegistrySchema>;
  */
 export const SourcesRegistrySchema = z.object({
   schema_version: z.string(),
-  sources: z.record(ResearchSourceSchema),
+  sources: z.record(z.string(), ResearchSourceSchema),
 });
 export type SourcesRegistry = z.infer<typeof SourcesRegistrySchema>;

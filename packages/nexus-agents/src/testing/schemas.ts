@@ -137,7 +137,7 @@ export const TestCaseResultSchema = z.object({
   assertions: z.array(AssertionResultSchema).describe('Assertion results'),
   error: z.string().optional().describe('Error message if test failed'),
   stackTrace: z.string().optional().describe('Stack trace if available'),
-  metadata: z.record(z.unknown()).optional().describe('Additional metadata'),
+  metadata: z.record(z.string(), z.unknown()).optional().describe('Additional metadata'),
 });
 
 export type TestCaseResult = z.infer<typeof TestCaseResultSchema>;
@@ -241,8 +241,8 @@ export type LatencyMetrics = z.infer<typeof LatencyMetricsSchema>;
  * Schema for task timestamps.
  */
 export const TaskTimestampsSchema = z.object({
-  startedAt: z.string().datetime().describe('When task started (ISO 8601)'),
-  completedAt: z.string().datetime().describe('When task completed (ISO 8601)'),
+  startedAt: z.iso.datetime().describe('When task started (ISO 8601)'),
+  completedAt: z.iso.datetime().describe('When task completed (ISO 8601)'),
   durationMs: z.number().nonnegative().describe('Duration in milliseconds'),
 });
 
@@ -348,7 +348,7 @@ export type TestSummary = z.infer<typeof TestSummarySchema>;
  */
 export const TestRunResultSchema = z.object({
   id: z.string().describe('Unique identifier for this test run'),
-  timestamp: z.string().datetime().describe('ISO 8601 timestamp when run started'),
+  timestamp: z.iso.datetime().describe('ISO 8601 timestamp when run started'),
   timezone: z.string().describe('Timezone used (e.g., America/New_York)'),
   suites: z.array(TestSuiteResultSchema).describe('Test suite results'),
   totalDurationMs: z.number().nonnegative().describe('Total run duration'),
@@ -366,7 +366,7 @@ export const TestRunResultSchema = z.object({
     arch: z.string(),
     nexusAgentsVersion: z.string(),
   }),
-  metadata: z.record(z.unknown()).optional().describe('Additional run metadata'),
+  metadata: z.record(z.string(), z.unknown()).optional().describe('Additional run metadata'),
 });
 
 export type TestRunResult = z.infer<typeof TestRunResultSchema>;

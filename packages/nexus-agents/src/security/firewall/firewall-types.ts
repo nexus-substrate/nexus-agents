@@ -65,7 +65,14 @@ export function createDefaultStages(): FirewallStages {
  * The adapter is required; all other fields have sensible defaults.
  */
 export const FirewallConfigSchema = z.object({
-  stages: FirewallStagesSchema.default({}),
+  stages: FirewallStagesSchema.default(() => ({
+    sanitization: true,
+    trustClassification: true,
+    reputationAssessment: false,
+    policyEnforcement: true,
+    corroboration: false,
+    audit: true,
+  })),
   allowlistedMaintainers: z.array(z.string().min(1)).default([]),
   maxInputLength: z.number().int().positive().default(50_000),
   context: z
@@ -73,7 +80,10 @@ export const FirewallConfigSchema = z.object({
       hasWriteAccess: z.boolean().default(false),
       hasSecretAccess: z.boolean().default(false),
     })
-    .default({}),
+    .default(() => ({
+      hasWriteAccess: false,
+      hasSecretAccess: false,
+    })),
 });
 
 /**

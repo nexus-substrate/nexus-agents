@@ -16,7 +16,7 @@ import {
 
 describe('zod-helpers', () => {
   // Helper to create a Zod error from schema validation
-  const getZodError = (schema: z.ZodSchema, data: unknown): z.ZodError => {
+  const getZodError = (schema: z.ZodType, data: unknown): z.ZodError => {
     const result = schema.safeParse(data);
     if (result.success) {
       throw new Error('Expected validation to fail');
@@ -34,15 +34,14 @@ describe('zod-helpers', () => {
     it('formats issue without path', () => {
       const error = getZodError(z.string(), 123);
       const formatted = formatZodIssue(error.issues[0]!);
-      // No path prefix for root-level errors
-      expect(formatted).not.toContain(':');
-      expect(formatted).toContain('Expected string');
+      // In zod v4, message is "Invalid input: expected string, received number"
+      expect(formatted).toContain('expected string');
     });
 
     it('formats nested path correctly', () => {
       const schema = z.object({
         user: z.object({
-          email: z.string().email(),
+          email: z.email(),
         }),
       });
       const error = getZodError(schema, { user: { email: 'invalid' } });
@@ -64,7 +63,8 @@ describe('zod-helpers', () => {
     it('formats single issue', () => {
       const error = getZodError(z.string(), 123);
       const formatted = formatZodError(error);
-      expect(formatted).toContain('Expected string');
+      // In zod v4, message is "Invalid input: expected string, received number"
+      expect(formatted).toContain('expected string');
     });
 
     it('formats multiple issues with semicolon separator', () => {

@@ -163,7 +163,7 @@ export const PreferenceRouterConfigSchema = z.object({
   minDataPoints: z.number().int().positive().default(10),
   maxDataPoints: z.number().int().positive().default(10000),
   enableOnlineLearning: z.boolean().default(true),
-  domainThresholds: z.record(z.number().min(0).max(1)).optional(),
+  domainThresholds: z.record(z.string(), z.number().min(0).max(1)).optional(),
 });
 
 /**

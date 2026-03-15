@@ -92,15 +92,15 @@ export interface RoutingDecision {
  * Zod schema for routing decision.
  */
 export const RoutingDecisionSchema = z.object({
-  id: z.string().uuid(),
-  timestamp: z.string().datetime(),
+  id: z.uuid(),
+  timestamp: z.iso.datetime(),
   query: z.string(),
   routerType: z.enum(['linucb', 'preference', 'quality', 'cascade', 'topsis']),
   selectedModel: z.string(),
   selectedTier: z.enum(['strong', 'weak']).optional(),
   armIndex: z.number().int().min(0).optional(),
-  banditContext: z.record(z.unknown()).optional(),
-  queryFeatures: z.record(z.unknown()).optional(),
+  banditContext: z.record(z.string(), z.unknown()).optional(),
+  queryFeatures: z.record(z.string(), z.unknown()).optional(),
   ucbScore: z.number().optional(),
   confidence: z.number().min(0).max(1).optional(),
   traceId: z.string(),
@@ -137,8 +137,8 @@ export interface TaskOutcome {
  * Zod schema for task outcome.
  */
 export const TaskOutcomeSchema = z.object({
-  routingDecisionId: z.string().uuid(),
-  timestamp: z.string().datetime(),
+  routingDecisionId: z.uuid(),
+  timestamp: z.iso.datetime(),
   outcomeClass: z.enum(['success', 'partial', 'failure', 'timeout', 'error']),
   success: z.boolean(),
   qualityScore: z.number().min(0).max(1),

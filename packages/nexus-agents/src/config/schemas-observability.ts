@@ -35,7 +35,14 @@ export const EventBusConfigSchema = z.object({
       /** Subscribe to byzantine detection events (byzantine.*) */
       byzantine: z.boolean().default(true),
     })
-    .default({}),
+    .default(() => ({
+      consensus: true,
+      agent: true,
+      protocol: true,
+      session: true,
+      message: false,
+      byzantine: true,
+    })),
   /** Logging configuration for events */
   logging: z
     .object({
@@ -44,7 +51,10 @@ export const EventBusConfigSchema = z.object({
       /** Log level for important events (default: info) */
       importantEventLevel: z.enum(['debug', 'info']).default('info'),
     })
-    .default({}),
+    .default(() => ({
+      frequentEventLevel: 'debug' as const,
+      importantEventLevel: 'info' as const,
+    })),
 });
 
 export type EventBusConfig = z.infer<typeof EventBusConfigSchema>;

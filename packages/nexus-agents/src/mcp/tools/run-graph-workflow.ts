@@ -36,7 +36,11 @@ import { DEFAULT_CLI } from '../../config/model-capabilities-types.js';
 
 export const RunGraphWorkflowInputSchema = z.object({
   workflow: z.string().min(1).max(100).describe('Name of the predefined graph workflow to execute'),
-  inputs: z.record(z.unknown()).optional().default({}).describe('Input values for the workflow'),
+  inputs: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .default({})
+    .describe('Input values for the workflow'),
   enableCheckpointing: z
     .boolean()
     .optional()
@@ -193,7 +197,7 @@ const GRAPH_WORKFLOW_SCHEMA = {
     .describe(
       'Workflow name: echo, pipeline, code-review, security-scan. Use "list" for available workflows.'
     ),
-  inputs: z.record(z.unknown()).optional().describe('Input values for the workflow'),
+  inputs: z.record(z.string(), z.unknown()).optional().describe('Input values for the workflow'),
   enableCheckpointing: z.boolean().optional().describe('Enable checkpoint saving'),
   enableAuditTrail: z.boolean().optional().describe('Enable audit trail logging'),
 };

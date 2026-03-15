@@ -51,7 +51,7 @@ export const DetectedFailureSchema = z.object({
   indicators: z.array(z.string()).readonly(),
   confidence: z.number().min(0).max(1),
   timestamp: z.number(),
-  context: z.record(z.unknown()).optional(),
+  context: z.record(z.string(), z.unknown()).optional(),
 });
 
 /**
@@ -134,7 +134,7 @@ export const RecoveryResultSchema = z.object({
   attemptNumber: z.number().int().min(1),
   durationMs: z.number(),
   message: z.string(),
-  newContext: z.record(z.unknown()).optional(),
+  newContext: z.record(z.string(), z.unknown()).optional(),
 });
 
 /**

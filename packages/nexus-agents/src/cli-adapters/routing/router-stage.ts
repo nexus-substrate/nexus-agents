@@ -226,7 +226,7 @@ export { CliNameSchema } from '../../config/model-capabilities-types.js';
 export const StageConfigSchema = z.object({
   enabled: z.boolean().default(true),
   priority: z.number().int().min(0).max(100).default(50),
-  options: z.record(z.unknown()).optional(),
+  options: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const RoutingOutcomeSchema = z.object({

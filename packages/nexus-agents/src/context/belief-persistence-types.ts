@@ -141,7 +141,7 @@ export const BeliefSnapshotSchema = z.object({
       superseded: z.boolean(),
       supersededBy: z.string().optional(),
       domain: z.string().optional(),
-      metadata: z.record(z.unknown()).optional(),
+      metadata: z.record(z.string(), z.unknown()).optional(),
     })
   ),
   updates: z.array(
@@ -152,8 +152,8 @@ export const BeliefSnapshotSchema = z.object({
           updateId: z.string(),
           beliefId: z.string(),
           updateType: BeliefUpdateTypeSchema,
-          previousState: z.record(z.unknown()).optional(),
-          newState: z.record(z.unknown()),
+          previousState: z.record(z.string(), z.unknown()).optional(),
+          newState: z.record(z.string(), z.unknown()),
           reason: z.string().max(10_000),
           evidence: z.string().max(10_000).optional(),
           timestamp: z.string(),

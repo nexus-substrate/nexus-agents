@@ -125,7 +125,7 @@ export const ExpertConfigSchema = z.object({
   systemPrompt: z.string().min(1, 'System prompt is required'),
   capabilities: z.array(AgentCapabilitySchema).min(1, 'At least one capability required'),
   modelPreference: ModelPreferenceSchema.optional(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 /**

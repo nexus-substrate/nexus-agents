@@ -314,7 +314,7 @@ export const OrchestratorOptionsSchema = z.object({
   maxSubtasks: z.number().min(1).max(20).optional(),
   decompositionThreshold: z.number().min(1).max(10).optional(),
   enableParallelHints: z.boolean().optional(),
-  expertWeights: z.record(z.number().min(0).max(10)).optional(),
+  expertWeights: z.record(z.string(), z.number().min(0).max(10)).optional(),
 });
 
 /**

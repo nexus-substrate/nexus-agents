@@ -234,7 +234,7 @@ const OpenAlexWorkSchema = z.object({
   publication_date: z.string().nullable().optional(),
   cited_by_count: z.number().optional(),
   is_oa: z.boolean().optional(),
-  abstract_inverted_index: z.record(z.array(z.number())).nullable().optional(),
+  abstract_inverted_index: z.record(z.string(), z.array(z.number())).nullable().optional(),
   primary_location: z
     .object({
       landing_page_url: z.string().nullable().optional(),
