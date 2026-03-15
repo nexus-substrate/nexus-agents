@@ -46,9 +46,10 @@ jobs:
       pull-requests: write
 
     steps:
-      - uses: ./.github/actions/setup-node
+      - uses: actions/checkout@v6
         with:
-          fetch-depth: '0'
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-node
 
       - name: Build nexus-agents
         run: pnpm build
@@ -142,6 +143,7 @@ jobs:
       issues: write
 
     steps:
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/setup-node
 
       - name: Build nexus-agents

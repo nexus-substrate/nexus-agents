@@ -18,9 +18,10 @@ jobs:
     timeout-minutes: 5
     if: github.event_name == 'pull_request'
     steps:
-      - uses: ./.github/actions/setup-node
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+      - uses: ./.github/actions/setup-node
 
       - name: Validate conventional commits
         run: npx commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }} --verbose
@@ -30,6 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/setup-node
 
       - name: Run lint
@@ -40,6 +42,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/setup-node
 
       - name: Run typecheck
@@ -54,6 +57,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     steps:
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/setup-node
 
       - name: Build
@@ -76,6 +80,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     steps:
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/setup-node
 
       - name: Run tests with coverage
@@ -102,6 +107,7 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     needs: [build]
     steps:
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/setup-node
 
       - name: Download build output
@@ -132,6 +138,7 @@ jobs:
     continue-on-error: true
     needs: [build]
     steps:
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/setup-node
 
       - name: Download build output
@@ -150,6 +157,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/setup-node
 
       - name: Run security audit

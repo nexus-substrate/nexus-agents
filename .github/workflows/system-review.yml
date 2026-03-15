@@ -66,9 +66,10 @@ jobs:
       audit_vulns: ${{ steps.security.outputs.vulns }}
 
     steps:
-      - uses: ./.github/actions/setup-node
+      - uses: actions/checkout@v6
         with:
-          fetch-depth: '0'
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-node
 
       - name: Phase 1 - Registry Reconciliation
         id: registry
