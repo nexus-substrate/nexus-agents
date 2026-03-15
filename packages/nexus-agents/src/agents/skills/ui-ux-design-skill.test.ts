@@ -88,7 +88,7 @@ describe('ui-ux-design skill content sections', () => {
 
   it('has all 4 workflow steps', () => {
     expect(content).toContain('### Step 1: Analyze Requirements');
-    expect(content).toContain('### Step 2: Generate Design System');
+    expect(content).toContain('### Step 2: Generate Design Tokens');
     expect(content).toContain('### Step 3: Apply Industry Reasoning');
     expect(content).toContain('### Step 4: Generate Implementation');
   });
@@ -104,17 +104,17 @@ describe('ui-ux-design skill content sections', () => {
     expect(content).toContain('CSP');
   });
 
-  it('has Hierarchical Design System Pattern section', () => {
-    expect(content).toContain('## Hierarchical Design System Pattern');
-    expect(content).toContain('MASTER.md');
+  it('has Design Tokens section', () => {
+    expect(content).toContain('## Design Tokens');
+    expect(content).toContain('### Colors (OKLCH)');
   });
 
-  it('has Output Format section', () => {
-    expect(content).toContain('## Output Format');
+  it('has Color System section', () => {
+    expect(content).toContain('## Color System: OKLCH');
   });
 
-  it('has When to Use section', () => {
-    expect(content).toContain('## When to Use');
+  it('has Material Design 3 Rules section', () => {
+    expect(content).toContain('## Material Design 3 Rules');
   });
 
   it('covers industry-specific reasoning', () => {
@@ -125,9 +125,8 @@ describe('ui-ux-design skill content sections', () => {
   });
 
   it('covers stack-specific guidance', () => {
-    expect(content).toContain('React');
-    expect(content).toContain('Vue');
-    expect(content).toContain('Next.js');
+    expect(content).toContain('Astro');
+    expect(content).toContain('Svelte');
     expect(content).toContain('Tailwind');
   });
 });
