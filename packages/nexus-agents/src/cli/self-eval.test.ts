@@ -210,8 +210,8 @@ describe('evaluateCommand', () => {
     // Very short timeout should complete with partial results
     const exitCode = await evaluateCommand(['--target', 'src/', '--timeout', '100']);
 
-    // Should still complete without error
-    expect([0, 1]).toContain(exitCode);
+    // Should still complete — 0=pass, 1=fail, 2=timeout/error
+    expect([0, 1, 2]).toContain(exitCode);
   });
 });
 

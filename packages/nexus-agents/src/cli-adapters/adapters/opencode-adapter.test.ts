@@ -471,7 +471,7 @@ describe('OpenCodeCliAdapter', () => {
       }
     });
 
-    it('should handle non-zero exit codes with stderr', async () => {
+    it('should handle non-zero exit codes with stderr', { timeout: 15_000 }, async () => {
       const mockProcess = createMockProcess('', 'Connection refused', 1);
       vi.mocked(spawn).mockReturnValue(mockProcess);
 

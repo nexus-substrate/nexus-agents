@@ -15,18 +15,48 @@ import {
   resetGhTokenCache,
 } from './github-provider-traits.js';
 
-// Mock child_process.execFile
+// Mock child_process.execFile with a callback-compatible wrapper.
+// The source code uses `promisify(execFile)` — the real promisify uses
+// execFile[util.promisify.custom] if available, otherwise wraps for callback.
+// We attach the custom symbol so promisify returns {stdout, stderr} like the real one.
 const mockExecFile = vi.fn();
-vi.mock('node:child_process', () => ({
-  execFile: (...args: unknown[]): unknown => mockExecFile(...args),
-}));
 
-vi.mock('node:util', () => ({
-  promisify:
-    () =>
-    (...args: unknown[]): unknown =>
-      mockExecFile(...args),
-}));
+vi.mock('node:child_process', async () => {
+  const util = await import('node:util');
+  // Build a callback-style wrapper that also has a custom promisify
+  const execFileFn = (...args: unknown[]): void => {
+    // Find trailing callback
+    const lastArg = args[args.length - 1];
+    if (typeof lastArg === 'function') {
+      const cb = lastArg as (err: Error | null, stdout: string, stderr: string) => void;
+      const result = mockExecFile(...args) as
+        | Promise<{ stdout: string; stderr?: string }>
+        | { stdout: string; stderr?: string }
+        | undefined;
+      Promise.resolve(result)
+        .then((r) => {
+          const resolved = r ?? { stdout: '' };
+          cb(null, resolved.stdout, resolved.stderr ?? '');
+        })
+        .catch((e: unknown) => {
+          cb(e instanceof Error ? e : new Error(String(e)), '', '');
+        });
+    } else {
+      mockExecFile(...args);
+    }
+  };
+  // Attach custom promisify so `promisify(execFile)` returns {stdout, stderr}
+  (execFileFn as Record<symbol, unknown>)[util.promisify.custom] = (
+    ...args: unknown[]
+  ): Promise<{ stdout: string; stderr?: string }> => {
+    const result = mockExecFile(...args) as
+      | Promise<{ stdout: string; stderr?: string }>
+      | { stdout: string; stderr?: string }
+      | undefined;
+    return Promise.resolve(result).then((r) => r ?? { stdout: '' });
+  };
+  return { execFile: execFileFn };
+});
 
 describe('GitHubReviewer', () => {
   let reviewer: GitHubReviewer;
@@ -277,6 +307,9 @@ describe('resolveGhToken inflight coalescing', () => {
 describe('createFullGitHubProvider', () => {
   beforeEach(() => {
     mockExecFile.mockReset();
+    resetGhTokenCache();
+    // Set GH_TOKEN so resolveGhToken doesn't spawn `gh auth token`
+    process.env['GH_TOKEN'] = 'test-token';
   });
 
   it('creates provider with all trait methods', () => {

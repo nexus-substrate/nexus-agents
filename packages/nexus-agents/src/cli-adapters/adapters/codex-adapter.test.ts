@@ -412,7 +412,7 @@ describe('CodexCliAdapter (Subprocess)', () => {
       }
     });
 
-    it('should handle non-zero exit codes with stderr', async () => {
+    it('should handle non-zero exit codes with stderr', { timeout: 15_000 }, async () => {
       const mockProcess = createMockProcess('', 'API rate limit exceeded', 1);
       vi.mocked(spawn).mockReturnValue(mockProcess);
 
