@@ -206,6 +206,7 @@ function printRegistryAdvisory(advisory: RegistryAdvisory): void {
     writeLine(
       `${colors.yellow}${symbols.warn}${colors.reset} Model registry is ${ageText} — may have stale model data`
     );
+    writeLine(`  ${colors.dim}Run: npx tsx scripts/probe-models.ts${colors.reset}`);
   } else {
     writeLine(`${formatStatus(true)} Model registry: ${ageText}`);
   }
