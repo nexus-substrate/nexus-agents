@@ -508,4 +508,39 @@ describe('fallback-chains', () => {
       });
     });
   });
+
+  // -----------------------------------------------------------------------
+  // Data Integrity (cross-project learning from tsundoku)
+  // -----------------------------------------------------------------------
+
+  describe('data integrity', () => {
+    it('every override chain has at least 2 CLIs', () => {
+      for (const chain of Object.values(CATEGORY_CHAIN_OVERRIDES)) {
+        expect(chain.length).toBeGreaterThanOrEqual(2);
+      }
+    });
+
+    it('no duplicate CLIs in any default chain', () => {
+      for (const chain of Object.values(DEFAULT_FALLBACK_CHAINS)) {
+        const unique = new Set(chain);
+        expect(unique.size).toBe(chain.length);
+      }
+    });
+
+    it('no duplicate CLIs in any override chain', () => {
+      for (const chain of Object.values(CATEGORY_CHAIN_OVERRIDES)) {
+        const unique = new Set(chain);
+        expect(unique.size).toBe(chain.length);
+      }
+    });
+
+    it('all CLIs in override chains exist in CLI_NAMES', () => {
+      const validClis = new Set<string>(CLI_NAMES);
+      for (const chain of Object.values(CATEGORY_CHAIN_OVERRIDES)) {
+        for (const cli of chain) {
+          expect(validClis.has(cli)).toBe(true);
+        }
+      }
+    });
+  });
 });

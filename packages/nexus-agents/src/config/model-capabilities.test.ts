@@ -21,6 +21,7 @@ import {
   modelSupportsAll,
   ModelCapabilitySchema,
 } from './model-capabilities.js';
+import { CLI_NAMES, MODEL_IDS } from './model-capabilities-types.js';
 
 // ---------------------------------------------------------------------------
 // DEFAULT_MODEL_CAPABILITIES
@@ -338,5 +339,67 @@ describe('deprecation schema fields', () => {
     for (const model of DEFAULT_MODEL_CAPABILITIES.models) {
       expect(model.deprecated).toBeUndefined();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Data Integrity (cross-project learning from tsundoku)
+// ---------------------------------------------------------------------------
+
+describe('data integrity', () => {
+  const models = DEFAULT_MODEL_CAPABILITIES.models;
+
+  it('has no duplicate model IDs', () => {
+    const ids = models.map((m) => m.id);
+    const unique = new Set(ids);
+    expect(unique.size).toBe(ids.length);
+  });
+
+  it('pricing coherence: input < output for all models', () => {
+    for (const model of models) {
+      if (model.pricing) {
+        expect(model.pricing.inputPer1M).toBeLessThanOrEqual(model.pricing.outputPer1M);
+      }
+    }
+  });
+
+  it('every model has a cliName', () => {
+    for (const model of models) {
+      expect(model.cliName).toBeDefined();
+    }
+  });
+
+  it('quality scores are integers in 1-10 range', () => {
+    for (const model of models) {
+      const scores = model.qualityScores;
+      for (const val of Object.values(scores)) {
+        expect(val).toBeGreaterThanOrEqual(1);
+        expect(val).toBeLessThanOrEqual(10);
+        expect(Number.isInteger(val)).toBe(true);
+      }
+    }
+  });
+
+  it('every CLI in CLI_NAMES has a default model', () => {
+    for (const cli of CLI_NAMES) {
+      const defaultModel = DEFAULT_MODEL_PER_CLI[cli];
+      expect(defaultModel).toBeDefined();
+      const exists = models.some((m) => m.id === defaultModel);
+      expect(exists).toBe(true);
+    }
+  });
+
+  it('context window > max output tokens', () => {
+    for (const model of models) {
+      if (model.maxOutputTokens !== undefined && model.maxOutputTokens > 0) {
+        expect(model.contextWindow).toBeGreaterThan(model.maxOutputTokens);
+      }
+    }
+  });
+
+  it('MODEL_IDS matches actual model data', () => {
+    const dataIds = new Set(models.map((m) => m.id));
+    const enumIds = new Set(MODEL_IDS);
+    expect(dataIds).toEqual(enumIds);
   });
 });
