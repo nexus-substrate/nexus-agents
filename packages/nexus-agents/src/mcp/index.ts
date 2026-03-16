@@ -296,6 +296,10 @@ export {
   ExecuteSpecInputSchema,
   type ExecuteSpecInput,
   type ExecuteSpecDeps,
+  // Symbol extraction tool (Issue #1559)
+  registerExtractSymbolsTool,
+  ExtractSymbolsInputSchema,
+  type ExtractSymbolsDeps,
   // Query trace tool (Epic #952, Phase 5)
   registerQueryTraceTool,
   QueryTraceInputSchema,

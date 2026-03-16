@@ -38,6 +38,7 @@ import {
   registerRunGraphWorkflowTool,
   registerExecuteSpecTool,
   registerQueryTraceTool,
+  registerExtractSymbolsTool,
   createDefaultDeps,
 } from './mcp/index.js';
 // Import mock directly from source (not public API - used as fallback when no adapter)
@@ -503,6 +504,7 @@ const STANDALONE_TOOLS: ReadonlyArray<{
   { name: 'execute_spec', register: registerExecuteSpecTool as never },
   { name: 'list_experts', register: registerListExpertsTool as never },
   { name: 'query_trace', register: registerQueryTraceTool as never },
+  { name: 'extract_symbols', register: registerExtractSymbolsTool as never },
 ];
 
 /** Registers tool categories, skipping those blocked by allowlist. (Issue #740) */

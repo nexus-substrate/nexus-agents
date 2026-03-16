@@ -46,6 +46,7 @@ const {
   mockRegisterRunGraphWorkflowTool,
   mockRegisterExecuteSpecTool,
   mockRegisterQueryTraceTool,
+  mockRegisterExtractSymbolsTool,
   mockRegisterRepoAnalyzeTool,
   mockRegisterRepoSecurityPlanTool,
   mockCreateDefaultDeps,
@@ -89,6 +90,7 @@ const {
   mockRegisterRunGraphWorkflowTool: vi.fn(),
   mockRegisterExecuteSpecTool: vi.fn(),
   mockRegisterQueryTraceTool: vi.fn(),
+  mockRegisterExtractSymbolsTool: vi.fn(),
   mockRegisterRepoAnalyzeTool: vi.fn(),
   mockRegisterRepoSecurityPlanTool: vi.fn(),
   mockCreateDefaultDeps: vi.fn().mockReturnValue({
@@ -146,6 +148,7 @@ vi.mock('./mcp/index.js', () => ({
   registerRunGraphWorkflowTool: mockRegisterRunGraphWorkflowTool,
   registerExecuteSpecTool: mockRegisterExecuteSpecTool,
   registerQueryTraceTool: mockRegisterQueryTraceTool,
+  registerExtractSymbolsTool: mockRegisterExtractSymbolsTool,
   registerRepoAnalyzeTool: mockRegisterRepoAnalyzeTool,
   registerRepoSecurityPlanTool: mockRegisterRepoSecurityPlanTool,
   createDefaultDeps: mockCreateDefaultDeps,

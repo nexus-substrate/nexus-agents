@@ -294,6 +294,13 @@ export {
   type LanguageMatrixEntry,
   type ScannerRegistryManifest,
 } from './scanner-registry-fetcher.js';
+// Symbol extraction tool (Issue #1559 — 80%+ token savings)
+export {
+  registerExtractSymbolsTool,
+  ExtractSymbolsInputSchema,
+  type ExtractSymbolsDeps,
+  type ExtractSymbolsInput,
+} from './extract-symbols-tool.js';
 // Query trace tool (Epic #952, Phase 5)
 export {
   registerQueryTraceTool,
@@ -424,6 +431,7 @@ export function registerTools(
       'query_trace',
       'repo_analyze',
       'repo_security_plan',
+      'extract_symbols',
     ],
     logger,
     rateLimiter,
