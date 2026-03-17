@@ -296,6 +296,10 @@ export {
   ExecuteSpecInputSchema,
   type ExecuteSpecInput,
   type ExecuteSpecDeps,
+  // Codebase search tool (Issue #1567)
+  registerSearchCodebaseTool,
+  SearchCodebaseInputSchema,
+  type SearchCodebaseDeps,
   // Symbol extraction tool (Issue #1559)
   registerExtractSymbolsTool,
   ExtractSymbolsInputSchema,

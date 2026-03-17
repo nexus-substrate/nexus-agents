@@ -294,6 +294,13 @@ export {
   type LanguageMatrixEntry,
   type ScannerRegistryManifest,
 } from './scanner-registry-fetcher.js';
+// Codebase search tool (Issue #1567 — keyword search across symbol index)
+export {
+  registerSearchCodebaseTool,
+  SearchCodebaseInputSchema,
+  type SearchCodebaseDeps,
+  type SearchCodebaseInput,
+} from './search-codebase-tool.js';
 // Symbol extraction tool (Issue #1559 — 80%+ token savings)
 export {
   registerExtractSymbolsTool,
@@ -432,6 +439,7 @@ export function registerTools(
       'repo_analyze',
       'repo_security_plan',
       'extract_symbols',
+      'search_codebase',
     ],
     logger,
     rateLimiter,
