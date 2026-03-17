@@ -55,6 +55,8 @@ export interface ExpertConfig {
   capabilities: AgentCapability[];
   /** Optional model preferences */
   modelPreference?: ModelPreference;
+  /** Optional tool restrictions (allowlist/denylist per role) */
+  toolRestrictions?: ToolRestrictions;
   /** Optional metadata for extensions */
   metadata?: Record<string, unknown>;
 }
@@ -118,6 +120,23 @@ const AgentCapabilitySchema = z.enum([
 /**
  * Zod schema for ExpertConfig.
  */
+/**
+ * Tool restriction configuration for expert roles.
+ * Inspired by Augment Code's subagent tool access control.
+ * Allowlist takes priority — if set, only listed tools are available.
+ * Denylist blocks specific tools (used when allowlist is not set).
+ */
+export const ToolRestrictionsSchema = z
+  .object({
+    /** Tools the expert is allowed to use (allowlist — exclusive). */
+    allowedTools: z.array(z.string()).optional(),
+    /** Tools the expert is NOT allowed to use (denylist — additive). */
+    deniedTools: z.array(z.string()).optional(),
+  })
+  .optional();
+
+export type ToolRestrictions = z.infer<typeof ToolRestrictionsSchema>;
+
 export const ExpertConfigSchema = z.object({
   id: z.string().min(1, 'Expert ID is required'),
   name: z.string().min(1, 'Expert name is required'),
@@ -125,6 +144,7 @@ export const ExpertConfigSchema = z.object({
   systemPrompt: z.string().min(1, 'System prompt is required'),
   capabilities: z.array(AgentCapabilitySchema).min(1, 'At least one capability required'),
   modelPreference: ModelPreferenceSchema.optional(),
+  toolRestrictions: ToolRestrictionsSchema,
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
@@ -285,6 +305,10 @@ When providing security guidance:
 4. Provide remediation steps with code examples
 5. Reference relevant standards (OWASP, NIST, CWE)`),
     capabilities: ['task_execution', 'code_review', 'research'],
+    // Security experts should not write files — read-only analysis
+    toolRestrictions: {
+      deniedTools: ['write_file', 'save_file', 'str_replace_editor', 'launch_process'],
+    },
     modelPreference: {
       // Raised from 0.1 to 0.2 to allow nuanced analysis of ambiguous patterns
       // 0.1 was too rigid — caused parsing failures on contextual security questions
