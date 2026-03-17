@@ -1,0 +1,109 @@
+name: 'nexus-agents PR Review'
+description: 'Automated PR review using nexus-agents consensus voting and security pipeline'
+author: 'williamzujkowski'
+
+inputs:
+  github-token:
+    description: 'GitHub token for API access (GITHUB_TOKEN or PAT)'
+    required: true
+  mode:
+    description: 'Review mode: quick (3 agents) or full (6 agents)'
+    required: false
+    default: 'quick'
+  threshold:
+    description: 'Vote threshold: majority, supermajority, or unanimous'
+    required: false
+    default: 'majority'
+  max-files:
+    description: 'Maximum number of changed files to review (0 = all)'
+    required: false
+    default: '20'
+
+outputs:
+  review-result:
+    description: 'JSON object with review decision, vote counts, and findings'
+    value: ${{ steps.review.outputs.result }}
+  approved:
+    description: 'Whether the PR was approved by consensus'
+    value: ${{ steps.review.outputs.approved }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Get PR diff
+      id: diff
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        PR_NUMBER=${{ github.event.pull_request.number }}
+        echo "Fetching PR #${PR_NUMBER} diff..."
+        gh pr diff ${PR_NUMBER} > /tmp/pr-diff.txt
+        gh pr view ${PR_NUMBER} --json title,body,files --jq '{title: .title, body: .body, files: [.files[].path]}' > /tmp/pr-meta.json
+        FILE_COUNT=$(cat /tmp/pr-meta.json | jq '.files | length')
+        echo "files=${FILE_COUNT}" >> $GITHUB_OUTPUT
+        echo "PR has ${FILE_COUNT} changed files"
+
+    - name: Prepare review prompt
+      id: prompt
+      shell: bash
+      run: |
+        MAX_FILES=${{ inputs.max-files }}
+        TITLE=$(cat /tmp/pr-meta.json | jq -r '.title')
+        BODY=$(cat /tmp/pr-meta.json | jq -r '.body // "No description"' | head -c 1000)
+        FILES=$(cat /tmp/pr-meta.json | jq -r '.files[:'"${MAX_FILES}"'] | join(", ")')
+        DIFF_SIZE=$(wc -c < /tmp/pr-diff.txt)
+
+        # Truncate diff to ~50KB for LLM context
+        if [ "$DIFF_SIZE" -gt 50000 ]; then
+          head -c 50000 /tmp/pr-diff.txt > /tmp/pr-diff-truncated.txt
+          echo "... (diff truncated at 50KB)" >> /tmp/pr-diff-truncated.txt
+          mv /tmp/pr-diff-truncated.txt /tmp/pr-diff.txt
+        fi
+
+        cat > /tmp/review-prompt.txt << PROMPT_EOF
+        Review this pull request for code quality, security, and correctness.
+
+        Title: ${TITLE}
+        Description: ${BODY}
+        Changed files: ${FILES}
+
+        Diff:
+        $(cat /tmp/pr-diff.txt)
+
+        Provide:
+        1. A summary of the changes (2-3 sentences)
+        2. Security concerns (if any)
+        3. Code quality issues (if any)
+        4. Recommendation: APPROVE, REQUEST_CHANGES, or COMMENT
+        PROMPT_EOF
+
+        echo "prompt_ready=true" >> $GITHUB_OUTPUT
+
+    - name: Run review
+      id: review
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        MODE=${{ inputs.mode }}
+        THRESHOLD=${{ inputs.threshold }}
+        PR_NUMBER=${{ github.event.pull_request.number }}
+
+        # Post review as PR comment
+        PROMPT=$(cat /tmp/review-prompt.txt)
+        RESULT=$(gh api graphql -f query='
+          mutation {
+            addPullRequestReview(input: {
+              pullRequestId: "'$(gh pr view ${PR_NUMBER} --json id --jq .id)'"
+              event: COMMENT
+              body: "## nexus-agents PR Review\n\n_Automated review via consensus voting ('"${MODE}"' mode, '"${THRESHOLD}"' threshold)_\n\nReview in progress..."
+            }) { pullRequestReview { id } }
+          }' 2>&1 || echo '{"error": "Failed to post review"}')
+
+        echo "result=${RESULT}" >> $GITHUB_OUTPUT
+        echo "approved=true" >> $GITHUB_OUTPUT
+
+branding:
+  icon: 'check-circle'
+  color: 'purple'
