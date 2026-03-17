@@ -16,6 +16,7 @@ import {
   type ExpertConfig,
   type BuiltInExpertType,
   type ModelPreference,
+  type ToolRestrictions,
   ExpertConfigSchema,
   BuiltInExpertTypeSchema,
   BUILT_IN_EXPERTS,
@@ -118,6 +119,23 @@ function resolveMaxTokens(
 }
 
 /**
+ * Append tool restriction instructions to system prompt.
+ * Enforces allowlist/denylist at the prompt level.
+ */
+function applyToolRestrictions(prompt: string, restrictions: ToolRestrictions | undefined): string {
+  if (restrictions === undefined) return prompt;
+  const parts: string[] = ['\n\n## Tool Restrictions'];
+  if (restrictions.deniedTools !== undefined && restrictions.deniedTools.length > 0) {
+    parts.push(`You MUST NOT use these tools: ${restrictions.deniedTools.join(', ')}`);
+    parts.push('If you need write operations, report them as recommendations instead.');
+  }
+  if (restrictions.allowedTools !== undefined && restrictions.allowedTools.length > 0) {
+    parts.push(`You may ONLY use these tools: ${restrictions.allowedTools.join(', ')}`);
+  }
+  return parts.length > 1 ? prompt + parts.join('\n') : prompt;
+}
+
+/**
  * Build agent options from validated config.
  * (Source: Issue #476 - Wire context pruning to ExpertFactory)
  */
@@ -131,7 +149,7 @@ function buildAgentOptions(
     id: validConfig.id,
     role: validConfig.role,
     capabilities: capabilities as readonly AgentCapability[],
-    systemPrompt: validConfig.systemPrompt,
+    systemPrompt: applyToolRestrictions(validConfig.systemPrompt, validConfig.toolRestrictions),
     temperature: resolveTemperature(options?.modelOverrides, validConfig.modelPreference),
     maxTokens: resolveMaxTokens(options?.modelOverrides, validConfig.modelPreference),
   };
