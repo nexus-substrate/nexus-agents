@@ -18,7 +18,9 @@ export default defineConfig({
   outDir: 'dist',
   // ts-morph uses CommonJS internally and must be external.
   // better-sqlite3 is a native C++ addon and cannot be bundled.
-  external: ['ts-morph', '@ts-morph/common', 'better-sqlite3'],
+  // ts-morph/typescript use CommonJS internally (require("fs")) and must be external.
+  // better-sqlite3 is a native C++ addon and cannot be bundled.
+  external: ['ts-morph', '@ts-morph/common', 'better-sqlite3', 'typescript'],
   define: {
     __NEXUS_VERSION__: JSON.stringify(pkg.version),
   },
