@@ -184,10 +184,38 @@ async function writeToTyped(
 /**
  * Executes the memory write operation.
  */
+/** Track recently written keys to prevent immediate duplicate writes within a session. */
+const recentWriteKeys = new Map<string, string>();
+
+/** Maximum entries in the dedup cache before pruning oldest. */
+const MAX_DEDUP_CACHE = 200;
+
+/**
+ * Session-level dedup: prevent writing the same key+content twice.
+ * Returns true if this is a duplicate that should be skipped.
+ */
+function isDuplicateWrite(key: string, content: string): boolean {
+  const cacheKey = `${key}::${content.slice(0, 100)}`;
+  if (recentWriteKeys.has(cacheKey)) return true;
+  // Prune if cache is too large
+  if (recentWriteKeys.size >= MAX_DEDUP_CACHE) {
+    const firstKey = recentWriteKeys.keys().next().value;
+    if (firstKey !== undefined) recentWriteKeys.delete(firstKey);
+  }
+  recentWriteKeys.set(cacheKey, new Date().toISOString());
+  return false;
+}
+
 async function executeMemoryWrite(
   input: MemoryWriteInput,
   logger: ILogger
 ): Promise<MemoryWriteResponse> {
+  // Session-level dedup: skip if same key+content was written recently
+  if (isDuplicateWrite(input.key, input.content)) {
+    logger.debug('Skipping duplicate memory write', { key: input.key, backend: input.backend });
+    return { success: true, backend: input.backend, key: input.key, deduplicated: true };
+  }
+
   logger.debug('Writing to memory', {
     backend: input.backend,
     key: input.key,
