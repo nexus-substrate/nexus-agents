@@ -121,8 +121,9 @@ describe('edge cases', () => {
     // index.ts barrel files often just re-export
     const files = await findTsFiles(SRC_DIR, 1);
     const indexFiles = files.filter((f) => f.endsWith('/index.ts'));
-    if (indexFiles.length > 0) {
-      const result = await extractSymbols(indexFiles[0]);
+    const firstIndex = indexFiles[0];
+    if (firstIndex !== undefined) {
+      const result = await extractSymbols(firstIndex);
       // Index files may have 0 or some symbols — either is fine
       expect(result.totalChars).toBeGreaterThan(0);
     }

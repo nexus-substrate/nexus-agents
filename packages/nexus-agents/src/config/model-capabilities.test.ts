@@ -371,8 +371,9 @@ describe('data integrity', () => {
 
   it('quality scores are integers in 1-10 range', () => {
     for (const model of models) {
-      const scores = model.qualityScores;
-      for (const val of Object.values(scores)) {
+      if (model.qualityScores === undefined) continue;
+      const scoreValues = Object.values(model.qualityScores);
+      for (const val of scoreValues) {
         expect(val).toBeGreaterThanOrEqual(1);
         expect(val).toBeLessThanOrEqual(10);
         expect(Number.isInteger(val)).toBe(true);
