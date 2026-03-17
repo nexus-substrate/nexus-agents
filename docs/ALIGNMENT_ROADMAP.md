@@ -9,23 +9,24 @@ related_files: [CHANGELOG.md, architecture/README.md]
 # Nexus-Agents Alignment Roadmap
 
 **Goal:** Create the best software development agent swarm possible
-**Assessment Date:** 2026-01-09 (ET) | **Last Updated:** 2026-03-05 (ET)
+**Assessment Date:** 2026-01-09 (ET) | **Last Updated:** 2026-03-17 (ET)
 **Architecture Decision:** HYBRID APPROVED (5-0 unanimous)
-**Current Version:** v2.26.1 | **Fitness Score:** 98/100
+**Current Version:** v2.28.0 | **Fitness Score:** 98/100 | **SWE-bench Lite:** 65.7% (23/35)
 **Historical Reviews:** [docs/archive/system-reviews-2026-01.md](./archive/system-reviews-2026-01.md)
 
 ---
 
 ## Score Progression
 
-| Date       | Score   | Milestone                                     |
-| ---------- | ------- | --------------------------------------------- |
-| 2026-01-09 | 6.4/10  | Initial 5-agent consensus                     |
-| 2026-01-13 | 7.28/10 | Observability + docs automation               |
-| 2026-01-16 | 8.06/10 | v2.2.0 release, security complete             |
-| 2026-01-23 | 7.78/10 | Skills loader, deeper review                  |
-| 2026-03-04 | 8.0/10  | v2.26.1, feedback loops, research synthesis   |
-| 2026-03-05 | 8.0/10  | Roadmap accuracy audit, reliability hardening |
+| Date       | Score   | Milestone                                                                      |
+| ---------- | ------- | ------------------------------------------------------------------------------ |
+| 2026-01-09 | 6.4/10  | Initial 5-agent consensus                                                      |
+| 2026-01-13 | 7.28/10 | Observability + docs automation                                                |
+| 2026-01-16 | 8.06/10 | v2.2.0 release, security complete                                              |
+| 2026-01-23 | 7.78/10 | Skills loader, deeper review                                                   |
+| 2026-03-04 | 8.0/10  | v2.26.1, feedback loops, research synthesis                                    |
+| 2026-03-05 | 8.0/10  | Roadmap accuracy audit, reliability hardening                                  |
+| 2026-03-17 | 8.5/10  | v2.28.0, SWE-bench 65.7%, symbol extraction, codebase search, Augment analysis |
 
 **Trend:** Baseline 6.4 -> peak 8.06. Score fluctuations reflect increasingly rigorous review standards rather than capability regression.
 
@@ -88,13 +89,14 @@ The system has learned optimal CLI-to-task mappings from 3,806 observations:
 
 ## Phase Completion Summary
 
-| Phase | Goal                     | Status   | Key Deliverable                               |
-| ----- | ------------------------ | -------- | --------------------------------------------- |
-| 1     | Observability Foundation | COMPLETE | OrchestrationObserver, routing dashboard      |
-| 2     | Learning Loop            | COMPLETE | OutcomeFeedbackCollector, CompositeRouter     |
-| 3     | Dogfooding               | COMPLETE | Claude Code PR review, SICA test gen          |
-| 4     | Security Hardening       | COMPLETE | Docker sandbox, 113 pentest tests             |
-| 5     | Market Validation        | PARTIAL  | SWE-bench parallel runner + memory enrichment |
+| Phase | Goal                     | Status   | Key Deliverable                                       |
+| ----- | ------------------------ | -------- | ----------------------------------------------------- |
+| 1     | Observability Foundation | COMPLETE | OrchestrationObserver, routing dashboard              |
+| 2     | Learning Loop            | COMPLETE | OutcomeFeedbackCollector, CompositeRouter             |
+| 3     | Dogfooding               | COMPLETE | Claude Code PR review, SICA test gen                  |
+| 4     | Security Hardening       | COMPLETE | Docker sandbox, 113 pentest tests                     |
+| 5     | Market Validation        | PARTIAL  | SWE-bench 65.7% (23/35), test-aware prompting         |
+| 6     | Evidence-Based Hardening | ACTIVE   | Symbol extraction, codebase search, tool restrictions |
 
 **Phase details and 8 historical system review transcripts:** [archive/system-reviews-2026-01.md](./archive/system-reviews-2026-01.md)
 
@@ -106,7 +108,7 @@ The system has learned optimal CLI-to-task mappings from 3,806 observations:
 
 **Impact:** 8/10 (reduced from 9/10) — Infrastructure ready, execution pending
 
-The SWE-bench module now has parallel execution (#1407), cross-run memory enrichment, partial git clones for speed, and thread-safe JSONL output. What remains is executing the actual benchmark run.
+The SWE-bench module has parallel execution (#1407), cross-run memory enrichment, partial git clones, and thread-safe JSONL output. **First evaluation published:** 65.7% resolution rate (23/35 on SWE-bench Lite). Test-aware prompting (FAIL_TO_PASS + test_patch in prompt) flipped django\_\_django-14534 from failed to resolved. Analysis of 12 unresolved instances shows 100% file targeting accuracy but incorrect patch logic — all failures are "right location, wrong fix."
 
 **Completed:**
 

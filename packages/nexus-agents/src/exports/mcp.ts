@@ -188,6 +188,13 @@ export {
   type RegistryRelationship,
   type LanguageMatrixEntry,
   type ScannerRegistryManifest,
+  // Symbol extraction + codebase search (Issue #1559, #1567)
+  registerExtractSymbolsTool,
+  ExtractSymbolsInputSchema,
+  type ExtractSymbolsDeps,
+  registerSearchCodebaseTool,
+  SearchCodebaseInputSchema,
+  type SearchCodebaseDeps,
   // Prompts (Issue #1287)
   registerPrompts,
   PROMPT_DEFINITIONS,

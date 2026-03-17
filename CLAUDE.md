@@ -499,14 +499,16 @@ Governance rules (voting thresholds, refactor gates, fitness audit, documentatio
 | `query_trace`             | Query execution trace JSONL files from disk for a given run ID. Supports filtering by event type and pagination.                              |
 | `repo_analyze`            | Analyze a GitHub repository structure. Returns language, framework, package manager, CI provider, security tooling, and gap identification.   |
 | `repo_security_plan`      | Generate a security scanning pipeline recommendation for a GitHub repository based on detected tech stack.                                    |
+| `extract_symbols`         | extract_symbols tool                                                                                                                          |
+| `search_codebase`         | search_codebase tool                                                                                                                          |
 
-_Auto-generated from source. 25 tools registered._
+_Auto-generated from source. 27 tools registered._
 
 <!-- GOVERNANCE:TOOL_INDEX:END -->
 
 <!-- GOVERNANCE:VERSION:START -->
 
-_Governance Version: 2026-03-14_
+_Governance Version: 2026-03-17_
 
 <!-- GOVERNANCE:VERSION:END -->
 
