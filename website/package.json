@@ -10,10 +10,10 @@
     "check": "astro check"
   },
   "dependencies": {
-    "@astrojs/check": "^0.9.7",
+    "@astrojs/check": "^0.9.8",
     "@astrojs/sitemap": "^3.7.1",
-    "@astrojs/svelte": "^8.0.0",
-    "astro": "^6.0.4",
+    "@astrojs/svelte": "^8.0.1",
+    "astro": "^6.0.5",
     "svelte": "^5.53.12",
     "typescript": "^5.9.3"
   }
