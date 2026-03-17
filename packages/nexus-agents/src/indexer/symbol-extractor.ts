@@ -65,8 +65,9 @@ function getName(node: ts.Node): string {
   }
   if (ts.isVariableStatement(node)) {
     const decls = node.declarationList.declarations;
-    if (decls.length > 0) {
-      return decls[0].name.getText();
+    const firstDecl = decls[0];
+    if (firstDecl !== undefined) {
+      return firstDecl.name.getText();
     }
   }
   return '<anonymous>';

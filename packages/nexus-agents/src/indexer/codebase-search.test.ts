@@ -34,8 +34,10 @@ describe('CodebaseIndex', () => {
     it('finds exact symbol name matches', () => {
       const results = index.search('CLI_NAMES');
       expect(results.length).toBeGreaterThan(0);
-      expect(results[0].matchType).toBe('exact');
-      expect(results[0].symbol.name).toBe('CLI_NAMES');
+      const first = results[0];
+      expect(first).toBeDefined();
+      expect(first!.matchType).toBe('exact');
+      expect(first!.symbol.name).toBe('CLI_NAMES');
     });
 
     it('finds prefix matches', () => {
@@ -61,15 +63,20 @@ describe('CodebaseIndex', () => {
     it('sorts by relevance score', () => {
       const results = index.search('Model');
       for (let i = 1; i < results.length; i++) {
-        expect(results[i - 1].score).toBeGreaterThanOrEqual(results[i].score);
+        const prev = results[i - 1];
+        const curr = results[i];
+        expect(prev).toBeDefined();
+        expect(curr).toBeDefined();
+        expect(prev!.score).toBeGreaterThanOrEqual(curr!.score);
       }
     });
 
     it('gives exported symbols a bonus', () => {
       const results = index.search('DEFAULT_MODEL');
       const exported = results.filter((r) => r.symbol.exported);
-      if (exported.length > 0) {
-        expect(exported[0].score).toBeGreaterThan(0);
+      const firstExported = exported[0];
+      if (firstExported !== undefined) {
+        expect(firstExported.score).toBeGreaterThan(0);
       }
     });
   });
@@ -78,9 +85,11 @@ describe('CodebaseIndex', () => {
     it('returns summary for indexed file', () => {
       const files = index.listFiles();
       expect(files.length).toBeGreaterThan(0);
-      const summary = index.getFileSummary(files[0].path);
+      const firstFile = files[0];
+      expect(firstFile).toBeDefined();
+      const summary = index.getFileSummary(firstFile!.path);
       expect(summary).toBeDefined();
-      if (summary) {
+      if (summary !== undefined) {
         expect(summary.totalLines).toBeGreaterThan(0);
       }
     });
