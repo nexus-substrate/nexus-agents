@@ -8,6 +8,8 @@
 import type { Result, IModelAdapter, AgentCapability } from '../../core/index.js';
 import { ok, err, AgentError, formatZodError } from '../../core/index.js';
 import { extractLessons, formatLessonsForPrompt } from '../../orchestration/failure-lessons.js';
+// Skill matching available via ./skill-matcher.ts (async, opt-in)
+// Not auto-injected due to async filesystem access requirement.
 import type { TaskCategory } from '../../config/task-specialization-types.js';
 import type { ICTMConfig } from '../ictm/ictm-types.js';
 import { ictmToExpertConfig } from '../ictm/ictm-factory.js';
@@ -138,8 +140,9 @@ function applyToolRestrictions(prompt: string, restrictions: ToolRestrictions | 
 }
 
 /**
- * Inject failure lessons from OutcomeStore into the prompt.
- * MetaClaw pattern: past failures → structured guidance → better outcomes.
+ * Inject failure lessons + relevant skills into the prompt.
+ * Lessons: MetaClaw pattern (past failures → guidance).
+ * Skills: matched from .claude/skills/ by role keywords.
  */
 function applyFailureLessons(prompt: string, role: string): string {
   try {
