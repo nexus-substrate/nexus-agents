@@ -7,6 +7,8 @@
 
 import type { Result, IModelAdapter, AgentCapability } from '../../core/index.js';
 import { ok, err, AgentError, formatZodError } from '../../core/index.js';
+import { extractLessons, formatLessonsForPrompt } from '../../orchestration/failure-lessons.js';
+import type { TaskCategory } from '../../config/task-specialization-types.js';
 import type { ICTMConfig } from '../ictm/ictm-types.js';
 import { ictmToExpertConfig } from '../ictm/ictm-factory.js';
 import { SimpleAgent } from '../simple-agent.js';
@@ -136,6 +138,31 @@ function applyToolRestrictions(prompt: string, restrictions: ToolRestrictions | 
 }
 
 /**
+ * Inject failure lessons from OutcomeStore into the prompt.
+ * MetaClaw pattern: past failures → structured guidance → better outcomes.
+ */
+function applyFailureLessons(prompt: string, role: string): string {
+  try {
+    const category = ROLE_CATEGORY_MAP[role];
+    const lessons = extractLessons(category);
+    return prompt + formatLessonsForPrompt(lessons);
+  } catch {
+    return prompt; // Fail open — don't break expert creation
+  }
+}
+
+/** Map expert roles to task categories for lesson lookup. */
+const ROLE_CATEGORY_MAP: Record<string, TaskCategory | undefined> = {
+  code_expert: 'code_generation',
+  architecture_expert: 'architecture',
+  security_expert: 'security_review',
+  testing_expert: 'testing',
+  documentation_expert: 'documentation',
+  devops_expert: 'devops',
+  research_expert: 'research',
+};
+
+/**
  * Build agent options from validated config.
  * (Source: Issue #476 - Wire context pruning to ExpertFactory)
  */
@@ -149,7 +176,10 @@ function buildAgentOptions(
     id: validConfig.id,
     role: validConfig.role,
     capabilities: capabilities as readonly AgentCapability[],
-    systemPrompt: applyToolRestrictions(validConfig.systemPrompt, validConfig.toolRestrictions),
+    systemPrompt: applyFailureLessons(
+      applyToolRestrictions(validConfig.systemPrompt, validConfig.toolRestrictions),
+      validConfig.role
+    ),
     temperature: resolveTemperature(options?.modelOverrides, validConfig.modelPreference),
     maxTokens: resolveMaxTokens(options?.modelOverrides, validConfig.modelPreference),
   };
