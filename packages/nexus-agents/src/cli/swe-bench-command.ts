@@ -143,7 +143,11 @@ async function loadAndSelectInstances(
   options: SWEBenchOptions
 ): Promise<{ instances: SWEBenchInstance[]; error?: string }> {
   console.log('Loading dataset...');
-  const loadOptions = options.limit !== undefined ? { limit: options.limit } : {};
+  // Don't pass limit to dataset loader when --instance is specified,
+  // because limit would truncate the dataset before instance filtering.
+  const hasInstanceFilter = options.instances.length > 0;
+  const loadOptions =
+    !hasInstanceFilter && options.limit !== undefined ? { limit: options.limit } : {};
   const loadResult = await loadDataset(options.variant, loadOptions);
   if (!loadResult.ok) {
     logDatasetError(loadResult.error);
