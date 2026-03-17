@@ -11,7 +11,7 @@ related_files: [CHANGELOG.md, architecture/README.md]
 **Goal:** Create the best software development agent swarm possible
 **Assessment Date:** 2026-01-09 (ET) | **Last Updated:** 2026-03-17 (ET)
 **Architecture Decision:** HYBRID APPROVED (5-0 unanimous)
-**Current Version:** v2.28.0 | **Fitness Score:** 98/100 | **SWE-bench Lite:** 65.7% (23/35)
+**Current Version:** v2.28.0 | **Fitness Score:** 98/100 | **SWE-bench Lite:** 82.9% (29/35, +17.2pts from test-aware prompting)
 **Historical Reviews:** [docs/archive/system-reviews-2026-01.md](./archive/system-reviews-2026-01.md)
 
 ---
