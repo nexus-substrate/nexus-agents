@@ -36,6 +36,10 @@ export interface SWEBenchInstance {
   readonly version?: string;
   /** Environment setup script. */
   readonly environment_setup_commit?: string;
+  /** Tests that should pass after the fix (currently failing). */
+  readonly FAIL_TO_PASS?: readonly string[];
+  /** Tests that should continue passing after the fix. */
+  readonly PASS_TO_PASS?: readonly string[];
 }
 
 /**
