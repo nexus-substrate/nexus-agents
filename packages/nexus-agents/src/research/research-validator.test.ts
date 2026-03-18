@@ -32,6 +32,7 @@ function createValidRegistry(): ParsedRegistry {
         key_findings: [],
         related_issues: [],
         implementation_status: 'not-started',
+        rigor_tags: [],
       },
     },
   };

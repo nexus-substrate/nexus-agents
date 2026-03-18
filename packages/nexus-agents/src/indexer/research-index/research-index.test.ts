@@ -62,6 +62,7 @@ const mockPaper: ResearchPaperWithId = {
   techniques_extracted: ['test-technique'],
   related_issues: [100],
   implementation_status: 'planned',
+  rigor_tags: [],
 };
 
 const mockTechnique: ResearchTechniqueWithId = {
@@ -96,6 +97,7 @@ const mockSource: ResearchSourceWithId = {
   key_info: ['Info 1'],
   best_practices: ['Practice 1'],
   version_checked: '1.0.0',
+  techniques_extracted: [],
 };
 
 function createMockIndex(): ResearchIndex {

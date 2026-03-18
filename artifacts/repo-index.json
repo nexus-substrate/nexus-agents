@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-03-18T00:28:14.235Z",
+  "generated": "2026-03-18T16:49:27.048Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.28.0",
   "cli": {
@@ -321,6 +321,10 @@
       {
         "name": "research_add",
         "file": "src/mcp/tools/research-add.ts"
+      },
+      {
+        "name": "research_add_source",
+        "file": "src/mcp/tools/research-add-source.ts"
       },
       {
         "name": "research_analyze",

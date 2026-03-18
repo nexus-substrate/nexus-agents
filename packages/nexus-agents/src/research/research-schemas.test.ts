@@ -60,8 +60,9 @@ describe('ResearchTopicSchema', () => {
 
   it('should have descriptions for all topics', () => {
     for (const topic of RESEARCH_TOPICS) {
-      expect(TOPIC_DESCRIPTIONS[topic]).toBeDefined();
-      expect(TOPIC_DESCRIPTIONS[topic].length).toBeGreaterThan(0);
+      const desc = TOPIC_DESCRIPTIONS[topic];
+      expect(desc).toBeDefined();
+      expect(desc?.length).toBeGreaterThan(0);
     }
   });
 });

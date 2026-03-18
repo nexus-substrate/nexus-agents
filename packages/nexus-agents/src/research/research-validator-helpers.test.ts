@@ -39,6 +39,7 @@ function makePaper(overrides: Partial<ResearchPaper> = {}): ResearchPaper {
     key_findings: [],
     related_issues: [],
     implementation_status: 'not-started',
+    rigor_tags: [],
     ...overrides,
   };
 }
