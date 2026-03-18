@@ -111,3 +111,29 @@ export {
 } from './research-validator.js';
 
 export type { ValidatorOptions, ParsedRegistry } from './research-validator.js';
+
+// ============================================================================
+// Quality Scoring
+// ============================================================================
+
+export {
+  classifyVenue,
+  recencyBoost,
+  citationScore,
+  computeQualityScore,
+  computeEvidenceTier,
+  isPreprintOnly,
+} from './research-quality.js';
+
+export {
+  starScore,
+  reviewRecencyScore,
+  computeSourceQualityScore,
+  computeSourceEvidenceTier,
+} from './source-quality.js';
+
+// ============================================================================
+// Topic Taxonomy
+// ============================================================================
+
+export { TOPIC_ALIASES, normalizeTopicToCanonical } from './topic-aliases.js';

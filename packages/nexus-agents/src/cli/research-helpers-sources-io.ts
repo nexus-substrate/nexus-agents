@@ -21,15 +21,35 @@ import { getErrorMessage } from '../core/index.js';
 /** Sources registry file name. */
 const SOURCES_FILE = 'sources.yaml';
 
-/** Source entry in sources.yaml. */
+/** Source entry in sources.yaml. Aligned with ResearchSource schema. */
 export interface SourceEntry {
   readonly name: string;
-  readonly type: 'paper' | 'repository' | 'blog' | 'documentation';
+  readonly type:
+    | 'product_docs'
+    | 'specification'
+    | 'research_blog'
+    | 'code_analysis'
+    | 'open_source_repo';
   readonly url: string;
-  readonly description: string;
-  readonly added_date: string;
-  readonly status: 'active' | 'archived' | 'pending-review';
-  readonly tags: readonly string[];
+  readonly vendor?: string;
+  readonly topics?: readonly string[];
+  readonly tags?: readonly string[];
+  readonly reviewed_date?: string;
+  readonly reviewed_in?: string | null;
+  readonly key_info?: readonly string[];
+  readonly quality_signals?: {
+    readonly stars_at_review?: number;
+    readonly language?: string;
+    readonly has_tests?: boolean;
+    readonly has_docs?: boolean;
+    readonly has_paper?: boolean;
+    readonly arxiv_id?: string;
+  };
+  readonly techniques_extracted?: readonly string[];
+  readonly verdict?: 'adopted' | 'partially_adopted' | 'rejected' | 'monitoring' | 'planned';
+  readonly verdict_notes?: string;
+  readonly quality_score?: number;
+  readonly evidence_tier?: 'high' | 'medium' | 'low';
 }
 
 /** Sources registry structure. */

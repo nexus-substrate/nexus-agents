@@ -11,6 +11,10 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as yaml from 'yaml';
 import { getErrorMessage, getTimeProvider } from '../../core/index.js';
+import {
+  computeSourceQualityScore,
+  computeSourceEvidenceTier,
+} from '../../research/source-quality.js';
 import type { Result } from '../../core/result.js';
 import {
   type ResearchIndex,
@@ -148,10 +152,12 @@ export function parseSourcesRegistry(
   }
 
   const sources: ResearchSourceWithId[] = Object.entries(result.value.sources).map(
-    ([id, source]) => ({
-      id,
-      ...source,
-    })
+    ([id, source]) => {
+      const score = source.quality_score ?? computeSourceQualityScore(source);
+      const tier =
+        source.evidence_tier ?? computeSourceEvidenceTier({ ...source, quality_score: score });
+      return { id, ...source, quality_score: score, evidence_tier: tier };
+    }
   );
 
   return { ok: true, value: sources };

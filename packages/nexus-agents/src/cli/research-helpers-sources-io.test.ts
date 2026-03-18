@@ -18,13 +18,14 @@ vi.mock('./research-helpers-io.js', () => ({
 }));
 
 const mockSourceEntry: SourceEntry = {
-  name: 'Test Paper',
-  type: 'paper',
-  url: 'https://arxiv.org/abs/2401.12345',
-  description: 'A test paper',
-  added_date: '2024-01-15',
-  status: 'active',
+  name: 'Test Source',
+  type: 'product_docs',
+  url: 'https://docs.example.com/test',
+  vendor: 'Example Corp',
+  topics: ['orchestration'],
   tags: ['ml', 'nlp'],
+  reviewed_date: '2024-01-15',
+  key_info: ['Feature A', 'Feature B'],
 };
 
 const mockRegistry: SourcesRegistry = {
@@ -251,13 +252,12 @@ describe('addSourceToRegistry', () => {
 
   it('should add source to existing registry', async () => {
     const newEntry: SourceEntry = {
-      name: 'New Paper',
-      type: 'paper',
-      url: 'https://arxiv.org/abs/2402.00001',
-      description: 'Another paper',
-      added_date: '2024-02-01',
-      status: 'pending-review',
+      name: 'New Repo',
+      type: 'open_source_repo',
+      url: 'https://github.com/example/repo',
+      vendor: 'Example',
       tags: ['ai'],
+      quality_signals: { stars_at_review: 500, has_tests: true },
     };
 
     vi.mocked(fs.readFile).mockImplementation(() => Promise.resolve('yaml'));
@@ -345,7 +345,7 @@ describe('addSourceToRegistry', () => {
   it('should overwrite existing source with same id', async () => {
     const updatedEntry: SourceEntry = {
       ...mockSourceEntry,
-      description: 'Updated description',
+      vendor: 'Updated Corp',
     };
 
     vi.mocked(fs.readFile).mockImplementation(() => Promise.resolve('yaml'));

@@ -730,3 +730,124 @@ sources:
     verdict_notes: 'nexus-agents should register here for discoverability. registry_import tool alignment opportunity.'
     quality_score: 6
     evidence_tier: medium
+
+  # ============================================================================
+  # OPEN SOURCE REPOS — Discovery Wave 3 (2026-03-18, MCP-native projects)
+  # ============================================================================
+
+  mcp-agent-lastmile:
+    name: 'mcp-agent (LastMile AI)'
+    type: open_source_repo
+    url: 'https://github.com/lastmile-ai/mcp-agent'
+    vendor: LastMile AI
+    topics:
+      - orchestration
+      - tool-use
+    tags:
+      - mcp
+      - workflow-patterns
+      - map-reduce
+      - evaluator-optimizer
+      - durable-execution
+    reviewed_date: '2026-03-18'
+    reviewed_in: 'N/A (automated discovery)'
+    quality_signals:
+      stars_at_review: 5000
+      language: Python
+      has_tests: true
+      has_docs: true
+    techniques_extracted:
+      - mcp-workflow-patterns
+      - evaluator-optimizer-loop
+      - durable-agent-execution
+    verdict: monitoring
+    verdict_notes: 'Composable MCP workflow patterns (map-reduce, router, evaluator). Durable execution via Temporal. Direct MCP-native competitor.'
+    quality_score: 7
+    evidence_tier: medium
+
+  agentscope:
+    name: 'AgentScope'
+    type: open_source_repo
+    url: 'https://github.com/agentscope-ai/agentscope'
+    vendor: AgentScope AI
+    topics:
+      - orchestration
+      - memory
+    tags:
+      - multi-agent
+      - finetuning
+      - message-hub
+      - a2a-protocol
+      - human-in-the-loop
+    reviewed_date: '2026-03-18'
+    reviewed_in: 'N/A (automated discovery)'
+    quality_signals:
+      stars_at_review: 8000
+      language: Python
+      has_tests: true
+      has_docs: true
+    techniques_extracted:
+      - message-hub-orchestration
+      - agent-finetuning-loop
+      - a2a-protocol-support
+    verdict: monitoring
+    verdict_notes: 'Production-ready with built-in finetuning, A2A + MCP support, message hub for flexible multi-agent orchestration. Strong reference for memory + orchestration patterns.'
+    quality_score: 8
+    evidence_tier: high
+
+  agent-mcp:
+    name: 'Agent-MCP'
+    type: open_source_repo
+    url: 'https://github.com/rinadelph/Agent-MCP'
+    vendor: Community
+    topics:
+      - orchestration
+      - cli-tools
+    tags:
+      - mcp
+      - parallel-agents
+      - specialized-coordination
+    reviewed_date: '2026-03-18'
+    reviewed_in: 'N/A (automated discovery)'
+    quality_signals:
+      stars_at_review: 2000
+      language: TypeScript
+      has_tests: true
+      has_docs: true
+    techniques_extracted:
+      - mcp-based-agent-coordination
+      - parallel-specialized-agents
+    verdict: monitoring
+    verdict_notes: 'MCP-native multi-agent coordination. Parallel specialized agents pattern mirrors our worker dispatch.'
+    quality_score: 5
+    evidence_tier: medium
+
+  mcp-gateway-registry:
+    name: 'MCP Gateway Registry'
+    type: open_source_repo
+    url: 'https://github.com/agentic-community/mcp-gateway-registry'
+    vendor: Agentic Community
+    topics:
+      - security
+      - cli-tools
+    tags:
+      - mcp
+      - oauth
+      - keycloak
+      - tool-governance
+      - enterprise
+    reviewed_date: '2026-03-18'
+    reviewed_in: 'N/A (automated discovery)'
+    quality_signals:
+      stars_at_review: 1500
+      language: TypeScript
+      has_tests: true
+      has_docs: true
+    techniques_extracted:
+      - mcp-tool-governance
+      - oauth-tool-access
+      - dynamic-tool-discovery
+    verdict: monitoring
+    verdict_notes: 'Enterprise MCP gateway with OAuth, tool governance, and audit trails. Relevant for nexus-agents security hardening (#818).'
+    quality_score: 6
+    evidence_tier: medium

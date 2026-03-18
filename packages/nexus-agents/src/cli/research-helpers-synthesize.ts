@@ -13,6 +13,7 @@ import type { PapersRegistry } from './research-types.js';
 import type { Result } from '../core/result.js';
 import { getErrorMessage } from '../core/index.js';
 import { TECHNIQUE_IMPLEMENTATION_MAP, FEATURE_GATE_INVENTORY } from './research-alignment-map.js';
+import { normalizeTopicToCanonical } from '../research/topic-aliases.js';
 
 // =============================================================================
 // TYPES
@@ -190,12 +191,13 @@ function extractPapers(registry: PapersRegistry): SynthesisPaper[] {
 // GROUPING
 // =============================================================================
 
-/** Group papers by primary topic into clusters. */
+/** Group papers by primary topic into clusters, normalizing free-form topics. */
 function groupByTopic(papers: readonly SynthesisPaper[]): PaperCluster[] {
   const topicMap = new Map<string, SynthesisPaper[]>();
 
   for (const paper of papers) {
-    for (const topic of paper.topics) {
+    for (const rawTopic of paper.topics) {
+      const topic = normalizeTopicToCanonical(rawTopic);
       const existing = topicMap.get(topic);
       if (existing !== undefined) {
         existing.push(paper);
