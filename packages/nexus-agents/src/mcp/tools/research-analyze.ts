@@ -230,6 +230,49 @@ async function analyzePriorities(topic?: string): Promise<ResearchAnalyzeRespons
   return { focus: 'priorities', success: true, analysis: { backlog }, recommendations };
 }
 
+/** Check if a technique has an overdue evaluation deadline. */
+function checkEvaluationDeadline(tech: Record<string, unknown>): string | undefined {
+  const evalPlan = tech['evaluation_plan'] as { evaluation_deadline?: string } | undefined;
+  const evalStatus = tech['evaluation_status'] as string | undefined;
+  if (evalPlan?.evaluation_deadline === undefined || evalStatus !== 'pending') {
+    return undefined;
+  }
+  const deadline = new Date(evalPlan.evaluation_deadline);
+  if (deadline.getTime() < Date.now()) {
+    return `Evaluation deadline overdue (${evalPlan.evaluation_deadline}) — needs pass/fail decision`;
+  }
+  return undefined;
+}
+
+interface StaleEntry {
+  readonly id: string;
+  readonly name: string;
+  readonly status: string;
+  readonly reason: string;
+}
+
+/** Check a single technique for staleness reasons. */
+function findStaleReasons(
+  tech: {
+    name: string;
+    status: string;
+    implementation_issue: number | null;
+    decision_history: readonly unknown[];
+  },
+  techRecord: Record<string, unknown>
+): string[] {
+  const reasons: string[] = [];
+  if (tech.status === 'planned' && tech.implementation_issue === null) {
+    reasons.push('Planned but no implementation issue created');
+  }
+  if (tech.status === 'in-progress' && tech.decision_history.length === 0) {
+    reasons.push('In-progress but no decision history');
+  }
+  const deadlineReason = checkEvaluationDeadline(techRecord);
+  if (deadlineReason !== undefined) reasons.push(deadlineReason);
+  return reasons;
+}
+
 /** Analyze stale entries. */
 async function analyzeStale(topic?: string): Promise<ResearchAnalyzeResponse> {
   const techResult = await loadTechniquesRegistry();
@@ -243,33 +286,25 @@ async function analyzeStale(topic?: string): Promise<ResearchAnalyzeResponse> {
   }
 
   const techniques = techResult.value.techniques;
-  const staleEntries: Array<{ id: string; name: string; status: string; reason: string }> = [];
+  const staleEntries: StaleEntry[] = [];
 
   for (const [id, tech] of Object.entries(techniques)) {
     if (topic !== undefined && tech.topic !== topic) continue;
-    // Planned but no implementation issue
-    if (tech.status === 'planned' && tech.implementation_issue === null) {
-      staleEntries.push({
-        id,
-        name: tech.name,
-        status: tech.status,
-        reason: 'Planned but no implementation issue created',
-      });
-    }
-    // In-progress without recent decision history
-    if (tech.status === 'in-progress' && tech.decision_history.length === 0) {
-      staleEntries.push({
-        id,
-        name: tech.name,
-        status: tech.status,
-        reason: 'In-progress but no decision history',
-      });
+    const reasons = findStaleReasons(tech, tech as unknown as Record<string, unknown>);
+    for (const reason of reasons) {
+      staleEntries.push({ id, name: tech.name, status: tech.status, reason });
     }
   }
 
   const recommendations: string[] = [];
+  const overdueCount = staleEntries.filter((e) => e.reason.includes('Evaluation deadline')).length;
   if (staleEntries.length > 0) {
     recommendations.push(`${String(staleEntries.length)} entries may be stale - review and update`);
+  }
+  if (overdueCount > 0) {
+    recommendations.push(
+      `${String(overdueCount)} technique(s) have overdue evaluation deadlines — decide pass/fail/defer`
+    );
   }
 
   return {

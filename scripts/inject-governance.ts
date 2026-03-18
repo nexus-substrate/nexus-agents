@@ -115,6 +115,12 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
     'Analyze a GitHub repository structure. Returns language, framework, package manager, CI provider, security tooling, and gap identification.',
   repo_security_plan:
     'Generate a security scanning pipeline recommendation for a GitHub repository based on detected tech stack.',
+  research_add_source:
+    'Add a non-paper source (GitHub repo, tool, blog) to the research registry with auto quality scoring.',
+  extract_symbols:
+    'Extract code symbols (functions, classes, types) from source files for analysis.',
+  search_codebase:
+    'Search the codebase for code patterns, symbols, or text across all source files.',
 };
 
 /**

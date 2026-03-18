@@ -257,6 +257,61 @@ describe('ResearchTechniqueSchema', () => {
     expect(result.success).toBe(true);
   });
 
+  it('should accept technique with evaluation_plan', () => {
+    const technique = {
+      name: 'Test Technique',
+      description: 'A technique with evaluation plan',
+      topic: 'orchestration',
+      status: 'implemented',
+      evaluation_plan: {
+        success_criteria: '>20% improvement in routing accuracy',
+        evaluation_method: 'A/B test via weather_report over 50 tasks',
+        evaluation_deadline: '2026-06-18',
+        removal_criteria: '<2% improvement after 30 days',
+      },
+      evaluation_status: 'pending',
+    };
+    const result = ResearchTechniqueSchema.safeParse(technique);
+    expect(result.success).toBe(true);
+  });
+
+  it('should accept all evaluation_status values', () => {
+    for (const status of ['pending', 'passed', 'failed', 'deferred']) {
+      const tech = {
+        name: 'Test',
+        description: 'Test',
+        topic: 'routing',
+        status: 'implemented',
+        evaluation_status: status,
+      };
+      const result = ResearchTechniqueSchema.safeParse(tech);
+      expect(result.success, `evaluation_status '${status}' should be valid`).toBe(true);
+    }
+  });
+
+  it('should reject invalid evaluation_status', () => {
+    const tech = {
+      name: 'Test',
+      description: 'Test',
+      topic: 'routing',
+      status: 'implemented',
+      evaluation_status: 'invalid',
+    };
+    const result = ResearchTechniqueSchema.safeParse(tech);
+    expect(result.success).toBe(false);
+  });
+
+  it('should accept technique without evaluation_plan (optional)', () => {
+    const technique = {
+      name: 'Legacy Technique',
+      description: 'No evaluation plan',
+      topic: 'memory',
+      status: 'implemented',
+    };
+    const result = ResearchTechniqueSchema.safeParse(technique);
+    expect(result.success).toBe(true);
+  });
+
   it('should accept any topic string in techniques', () => {
     const technique = {
       name: 'Test',

@@ -484,6 +484,7 @@ Governance rules (voting thresholds, refactor gates, fitness audit, documentatio
 | `consensus_vote`          | Execute multi-model consensus voting on a proposal. Uses specialized agent roles to vote with configurable strategies.                        |
 | `research_query`          | Query the research registry for technique status, overlaps, statistics, or text search.                                                       |
 | `research_add`            | Add an arXiv paper to the research registry. Fetches metadata from the arXiv API and persists to the registry.                                |
+| `research_add_source`     | Add a non-paper source (GitHub repo, tool, blog) to the research registry with auto quality scoring.                                          |
 | `research_discover`       | Discover new research papers and repositories from external sources. Searches arXiv, GitHub, and other sources.                               |
 | `research_analyze`        | Analyze the research registry for gaps, trends, priorities, stale entries, or coverage.                                                       |
 | `research_catalog_review` | Review auto-cataloged research references found during tool execution.                                                                        |
@@ -499,16 +500,16 @@ Governance rules (voting thresholds, refactor gates, fitness audit, documentatio
 | `query_trace`             | Query execution trace JSONL files from disk for a given run ID. Supports filtering by event type and pagination.                              |
 | `repo_analyze`            | Analyze a GitHub repository structure. Returns language, framework, package manager, CI provider, security tooling, and gap identification.   |
 | `repo_security_plan`      | Generate a security scanning pipeline recommendation for a GitHub repository based on detected tech stack.                                    |
-| `extract_symbols`         | extract_symbols tool                                                                                                                          |
-| `search_codebase`         | search_codebase tool                                                                                                                          |
+| `extract_symbols`         | Extract code symbols (functions, classes, types) from source files for analysis.                                                              |
+| `search_codebase`         | Search the codebase for code patterns, symbols, or text across all source files.                                                              |
 
-_Auto-generated from source. 27 tools registered._
+_Auto-generated from source. 28 tools registered._
 
 <!-- GOVERNANCE:TOOL_INDEX:END -->
 
 <!-- GOVERNANCE:VERSION:START -->
 
-_Governance Version: 2026-03-17_
+_Governance Version: 2026-03-18_
 
 <!-- GOVERNANCE:VERSION:END -->
 
