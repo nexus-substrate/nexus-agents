@@ -289,3 +289,124 @@ sources:
       - 'Rich observability logging'
 
     version_checked: '2024-11-28'
+
+  # ============================================================================
+  # OPEN SOURCE REPOS — Agent Orchestration Ecosystem
+  # ============================================================================
+
+  augment-code-auggie:
+    name: 'Augment Code (Auggie CLI)'
+    type: open_source_repo
+    url: 'https://github.com/augmentcode/auggie'
+    vendor: Augment Code
+    topics:
+      - orchestration
+      - code-generation
+    tags:
+      - context-engine
+      - pr-review
+      - subagent
+      - skills
+    reviewed_date: '2026-03-17'
+    reviewed_in: 'memory/augment_code_research.md'
+    quality_signals:
+      stars_at_review: 161
+      language: TypeScript
+      has_tests: true
+      has_docs: true
+    techniques_extracted:
+      - context-engine-mcp
+      - subagent-tool-restrictions
+      - pr-review-action
+      - skill-relevance-matching
+    verdict: adopted
+    verdict_notes: 'Context Engine MCP pattern, tool restrictions, PR actions all implemented'
+    quality_score: 5
+    evidence_tier: medium
+
+  autoresearchclaw:
+    name: 'AutoResearchClaw'
+    type: open_source_repo
+    url: 'https://github.com/aiming-lab/AutoResearchClaw'
+    vendor: Aiming Lab
+    topics:
+      - orchestration
+      - agent architecture
+    tags:
+      - metaclaw
+      - self-learning
+      - multi-agent-debate
+      - paper-generation
+    reviewed_date: '2026-03-17'
+    reviewed_in: 'memory/autoresearchclaw_research.md'
+    quality_signals:
+      stars_at_review: 3536
+      language: Python
+      has_tests: true
+      has_docs: true
+    techniques_extracted:
+      - failure-lesson-injection
+      - pivot-refine-loop
+      - multi-agent-debate
+    verdict: partially_adopted
+    verdict_notes: 'Failure lessons implemented (#1568). PIVOT/REFINE rejected (scope creep). Multi-agent debate already exists as consensus voting.'
+    quality_score: 7
+    evidence_tier: medium
+
+  metaclaw:
+    name: 'MetaClaw'
+    type: open_source_repo
+    url: 'https://github.com/aiming-lab/MetaClaw'
+    vendor: Aiming Lab
+    topics:
+      - memory
+      - agent architecture
+    tags:
+      - meta-learning
+      - skill-evolution
+      - rl-training
+      - lora
+    reviewed_date: '2026-03-17'
+    reviewed_in: 'memory/metaclaw_research.md'
+    quality_signals:
+      stars_at_review: 1579
+      language: Python
+      has_tests: false
+      has_docs: true
+    techniques_extracted:
+      - skill-relevance-injection
+      - generation-aware-invalidation
+    verdict: partially_adopted
+    verdict_notes: 'Skill relevance matching implemented (#1569). RL training rejected (different product direction). Auto-skill extraction rejected (security risk).'
+    quality_score: 5
+    evidence_tier: medium
+
+  simplemem:
+    name: 'SimpleMem'
+    type: open_source_repo
+    url: 'https://github.com/aiming-lab/SimpleMem'
+    vendor: Aiming Lab
+    topics:
+      - memory
+    tags:
+      - semantic-compression
+      - lifelong-memory
+      - mcp
+      - cross-session
+    reviewed_date: '2026-03-17'
+    reviewed_in: 'memory/simplemem_research.md'
+    quality_signals:
+      stars_at_review: 3216
+      language: Python
+      has_tests: true
+      has_docs: true
+      has_paper: true
+      arxiv_id: '2601.02553'
+    techniques_extracted:
+      - write-time-deduplication
+      - multi-view-retrieval
+      - intent-aware-retrieval
+    verdict: partially_adopted
+    verdict_notes: 'Write-time dedup implemented (#1570). Multi-view indexing deferred. Intent-aware retrieval rejected (over-engineering for orchestration memory).'
+    quality_score: 8
+    evidence_tier: high

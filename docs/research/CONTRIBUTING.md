@@ -37,6 +37,51 @@ This guide explains how to add new research papers, techniques, and sources to t
 
 ---
 
+## Reviewing Open-Source Repos
+
+Not all research comes from papers. Many patterns come from GitHub repos. When reviewing a repo:
+
+### 1. Document what it does (1-2 sentences)
+
+### 2. Extract techniques/patterns applicable to nexus-agents
+
+### 3. Assess quality signals
+
+| Signal   | How to check                        |
+| -------- | ----------------------------------- |
+| Stars    | GitHub star count at time of review |
+| Activity | Last commit within 3 months?        |
+| Tests    | Does the repo have a test suite?    |
+| Docs     | README + API docs?                  |
+| Paper    | Is there an associated arXiv paper? |
+
+### 4. Record verdict
+
+| Verdict             | Meaning                                    |
+| ------------------- | ------------------------------------------ |
+| `adopted`           | Patterns implemented in nexus-agents       |
+| `partially_adopted` | Some patterns implemented, others rejected |
+| `rejected`          | Reviewed and decided not to adopt          |
+| `monitoring`        | Interesting but not actionable yet         |
+
+### 5. Add to sources.yaml
+
+```yaml
+repo-name:
+  name: 'Human-readable name'
+  type: open_source_repo
+  url: 'https://github.com/org/repo'
+  reviewed_date: 'YYYY-MM-DD'
+  techniques_extracted:
+    - pattern-name
+  verdict: adopted | partially_adopted | rejected | monitoring
+  verdict_notes: 'Why this verdict'
+  quality_score: 0-10
+  evidence_tier: high | medium | low
+```
+
+---
+
 ## ⚠️ MANDATORY: Check Registry Before Starting
 
 **You MUST check the registry before starting any new research.** This is not optional guidance—it is a required protocol to prevent duplicate efforts.
