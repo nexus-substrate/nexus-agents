@@ -170,6 +170,27 @@ export const ResearchPaperSchema = z.object({
   related_issues: z.array(z.number().int().positive()).optional().default([]),
   /** Implementation status */
   implementation_status: PaperStatusSchema.optional().default('not-started'),
+
+  // ── Quality Assessment (Issue #1571) ──────────────────────────
+  /** Citation count from Semantic Scholar (auto-fetched) */
+  citation_count: z.number().nonnegative().optional(),
+  /** Venue quality tier: 3=top (NeurIPS/ICML/ICLR), 2=good, 1=workshop, 0=preprint */
+  venue_tier: z.number().min(0).max(3).optional(),
+  /** Whether the paper links to a code repository */
+  has_code: z.boolean().optional(),
+  /** Code repository URL (from Papers With Code or manual) */
+  code_url: z.string().optional(),
+  /** Rigor assessment tags (factual, verifiable signals) */
+  rigor_tags: z
+    .array(
+      z.enum(['has-code', 'has-dataset', 'has-baselines', 'peer-reviewed', 'single-model-eval'])
+    )
+    .optional()
+    .default([]),
+  /** Composite quality score (0-10, auto-computed from signals) */
+  quality_score: z.number().min(0).max(10).optional(),
+  /** Evidence confidence tier for extracted techniques */
+  evidence_tier: z.enum(['high', 'medium', 'low']).optional(),
 });
 export type ResearchPaper = z.infer<typeof ResearchPaperSchema>;
 
