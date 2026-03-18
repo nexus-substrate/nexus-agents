@@ -265,6 +265,45 @@ export function computeStats(
     techniquesByStatus: countTechniquesByStatus(techniques),
     techniquesByPriority: countTechniquesByPriority(techniques),
     topicStats: computeTopicStats(papers, techniques),
+    qualityDistribution: computeQualityDistribution(papers),
+  };
+}
+
+/** Compute evidence tier distribution across papers. */
+function computeQualityDistribution(papers: readonly ResearchPaperWithId[]): {
+  high: number;
+  medium: number;
+  low: number;
+  unscored: number;
+  averageScore: number;
+} {
+  let high = 0;
+  let medium = 0;
+  let low = 0;
+  let unscored = 0;
+  let totalScore = 0;
+  let scored = 0;
+
+  for (const p of papers) {
+    const tier = (p as Record<string, unknown>)['evidence_tier'] as string | undefined;
+    if (tier === 'high') high++;
+    else if (tier === 'medium') medium++;
+    else if (tier === 'low') low++;
+    else unscored++;
+
+    const score = (p as Record<string, unknown>)['quality_score'] as number | undefined;
+    if (score !== undefined) {
+      totalScore += score;
+      scored++;
+    }
+  }
+
+  return {
+    high,
+    medium,
+    low,
+    unscored,
+    averageScore: scored > 0 ? Math.round((totalScore / scored) * 10) / 10 : 0,
   };
 }
 

@@ -81,6 +81,14 @@ export interface ResearchIndexStats {
   readonly techniquesByPriority: TechniquePriorityStats;
   /** Statistics per topic */
   readonly topicStats: readonly TopicStats[];
+  /** Quality distribution (evidence tiers) */
+  readonly qualityDistribution?: {
+    readonly high: number;
+    readonly medium: number;
+    readonly low: number;
+    readonly unscored: number;
+    readonly averageScore: number;
+  };
 }
 
 // ============================================================================

@@ -110,6 +110,17 @@ export function generateSummaryReport(index: ResearchIndex): string {
 - Not Started: ${String(techniquesByStatus.notStarted)}
 - Rejected: ${String(techniquesByStatus.rejected)}
 
+## Evidence Quality Distribution
+${
+  stats.qualityDistribution !== undefined
+    ? `- High evidence: ${String(stats.qualityDistribution.high)} papers
+- Medium evidence: ${String(stats.qualityDistribution.medium)} papers
+- Low evidence: ${String(stats.qualityDistribution.low)} papers
+- Unscored: ${String(stats.qualityDistribution.unscored)} papers
+- Average quality score: ${String(stats.qualityDistribution.averageScore)}/10`
+    : '- Quality scoring not yet applied'
+}
+
 ## Topics Coverage
 ${topicLines}
 `;
