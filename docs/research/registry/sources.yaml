@@ -996,3 +996,90 @@ sources:
     verdict_notes: 'Modular AI-native backend with perception/memory/reasoning/action layers. Architecture pattern relevant to nexus-agents pipeline design.'
     quality_score: 7
     evidence_tier: medium
+
+  # ============================================================================
+  # OPEN SOURCE REPOS — Discovery Wave 5 (2026-03-18, AI coding agents)
+  # ============================================================================
+
+  aider:
+    name: 'Aider'
+    type: open_source_repo
+    url: 'https://github.com/Aider-AI/aider'
+    vendor: Aider AI
+    topics:
+      - code-generation
+    tags:
+      - git-native
+      - pair-programming
+      - terminal
+      - multi-model
+    reviewed_date: '2026-03-18'
+    reviewed_in: 'N/A (automated discovery)'
+    quality_signals:
+      stars_at_review: 35000
+      language: Python
+      has_tests: true
+      has_docs: true
+    techniques_extracted:
+      - git-native-code-editing
+      - conversational-code-modification
+    verdict: monitoring
+    verdict_notes: 'Terminal-native AI pair programming. Git-native workflows with conversational editing. Reference for CLI code generation patterns.'
+    quality_score: 8
+    evidence_tier: high
+
+  cline:
+    name: 'Cline'
+    type: open_source_repo
+    url: 'https://github.com/cline/cline'
+    vendor: Cline
+    topics:
+      - code-generation
+      - tool-use
+    tags:
+      - ide-extension
+      - mcp
+      - plan-mode
+      - terminal-controls
+    reviewed_date: '2026-03-18'
+    reviewed_in: 'N/A (automated discovery)'
+    quality_signals:
+      stars_at_review: 40000
+      language: TypeScript
+      has_tests: true
+      has_docs: true
+    techniques_extracted:
+      - plan-mode-execution
+      - mcp-tool-integration
+    verdict: monitoring
+    verdict_notes: '5M installs. IDE-native with Plan Mode, MCP integration, and terminal-first controls. Zero markup pricing model. TypeScript stack aligns with nexus-agents.'
+    quality_score: 9
+    evidence_tier: high
+
+  antigravity:
+    name: 'Antigravity'
+    type: open_source_repo
+    url: 'https://github.com/google/anthropic-antigravity'
+    vendor: Google
+    topics:
+      - code-generation
+      - orchestration
+    tags:
+      - gemini
+      - swe-bench
+      - free-tier
+      - skills
+    reviewed_date: '2026-03-18'
+    reviewed_in: 'N/A (automated discovery)'
+    quality_signals:
+      stars_at_review: 15000
+      language: TypeScript
+      has_tests: true
+      has_docs: true
+    techniques_extracted:
+      - skill-based-agent-architecture
+      - gemini-native-orchestration
+    verdict: monitoring
+    verdict_notes: '76.2% SWE-bench, free. Gemini-native with skills-first architecture. Relevant as Gemini CLI alternative for nexus-agents routing.'
+    quality_score: 8
+    evidence_tier: high

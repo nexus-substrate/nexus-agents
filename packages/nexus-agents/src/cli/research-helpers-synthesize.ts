@@ -30,6 +30,8 @@ export interface SynthesisPaper {
   readonly relevance: string;
   readonly implementationStatus: string;
   readonly techniquesExtracted: readonly string[];
+  readonly qualityScore: number;
+  readonly evidenceTier: 'high' | 'medium' | 'low';
 }
 
 /** A cluster of related papers grouped by topic. */
@@ -47,6 +49,14 @@ export interface TechniqueAlignment {
   readonly improvementHint?: string | undefined;
 }
 
+/** Quality distribution within a cluster. */
+export interface QualityDistribution {
+  readonly avgScore: number;
+  readonly high: number;
+  readonly medium: number;
+  readonly low: number;
+}
+
 /** Synthesis output for a single topic cluster. */
 export interface ClusterSynthesis {
   readonly topic: string;
@@ -58,6 +68,7 @@ export interface ClusterSynthesis {
   readonly implementationOpportunities: readonly string[];
   readonly gaps: readonly string[];
   readonly alignedTechniques: readonly TechniqueAlignment[];
+  readonly qualityDistribution: QualityDistribution;
 }
 
 /** Summary of alignment between research and implementation. */
@@ -184,6 +195,8 @@ function extractPapers(registry: PapersRegistry): SynthesisPaper[] {
     relevance: p.relevance,
     implementationStatus: p.implementation_status,
     techniquesExtracted: safeArray(p.techniques_extracted),
+    qualityScore: p.quality_score ?? 0,
+    evidenceTier: p.evidence_tier ?? 'low',
   }));
 }
 
@@ -208,7 +221,9 @@ function groupByTopic(papers: readonly SynthesisPaper[]): PaperCluster[] {
   }
 
   const clusters: PaperCluster[] = [];
-  for (const [topic, topicPapers] of topicMap) {
+  for (const [topic, unsortedPapers] of topicMap) {
+    // Sort papers within cluster by quality_score descending (high-quality first)
+    const topicPapers = [...unsortedPapers].sort((a, b) => b.qualityScore - a.qualityScore);
     clusters.push({
       topic,
       papers: topicPapers,
@@ -224,6 +239,18 @@ function groupByTopic(papers: readonly SynthesisPaper[]): PaperCluster[] {
 // =============================================================================
 
 /** Generate synthesis for a single topic cluster. */
+/** Compute quality score distribution for a set of papers. */
+function computeClusterQuality(papers: readonly SynthesisPaper[]): QualityDistribution {
+  const scores = papers.map((p) => p.qualityScore);
+  const totalScore = scores.reduce((sum, s) => sum + s, 0);
+  return {
+    avgScore: scores.length > 0 ? Math.round((totalScore / scores.length) * 10) / 10 : 0,
+    high: papers.filter((p) => p.evidenceTier === 'high').length,
+    medium: papers.filter((p) => p.evidenceTier === 'medium').length,
+    low: papers.filter((p) => p.evidenceTier === 'low').length,
+  };
+}
+
 function synthesizeCluster(cluster: PaperCluster): ClusterSynthesis {
   const allTags = collectFrequencies(cluster.papers.flatMap((p) => [...p.tags]));
   const allTechniques = collectFrequencies(
@@ -266,6 +293,15 @@ function synthesizeCluster(cluster: PaperCluster): ClusterSynthesis {
   const allTechNames = [...allTechniques.keys()];
   const alignedTechniques = analyzeClusterAlignment(allTechNames);
 
+  const qualityDistribution = computeClusterQuality(cluster.papers);
+
+  // Add quality gap if most papers are low-quality
+  if (qualityDistribution.low > qualityDistribution.high + qualityDistribution.medium) {
+    gaps.push(
+      `Mostly low-evidence papers (${String(qualityDistribution.low)}/${String(cluster.paperCount)}) — findings need stronger validation`
+    );
+  }
+
   return {
     topic: cluster.topic,
     paperCount: cluster.paperCount,
@@ -276,6 +312,7 @@ function synthesizeCluster(cluster: PaperCluster): ClusterSynthesis {
     implementationOpportunities: uniqueOpportunities,
     gaps,
     alignedTechniques,
+    qualityDistribution,
   };
 }
 

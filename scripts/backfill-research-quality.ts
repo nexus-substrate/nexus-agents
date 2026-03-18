@@ -138,6 +138,15 @@ function sleep(ms: number): Promise<void> {
 
 // ── Main ────────────────────────────────────────────────────────
 
+/** Check if a date string is older than N days (or undefined). */
+function isOlderThanDays(dateStr: string | undefined, days: number): boolean {
+  if (dateStr === undefined) return true;
+  const checkDate = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - checkDate.getTime();
+  return diffMs > days * 24 * 60 * 60 * 1000;
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const dryRun = args.includes('--dry-run');
@@ -165,8 +174,12 @@ async function main(): Promise<void> {
     if (i >= limit) break;
     i++;
 
-    // Skip if already enriched
-    if (paper.quality_score !== undefined && paper.citation_count !== undefined) {
+    // Skip if already enriched with non-zero score
+    // Re-score papers with quality_score=0 if last check was >30 days ago
+    // (allows re-enrichment when Semantic Scholar has new data)
+    const isEnriched = paper.quality_score !== undefined && paper.citation_count !== undefined;
+    const isStaleZero = paper.quality_score === 0 && isOlderThanDays(paper.last_quality_check, 30);
+    if (isEnriched && !isStaleZero) {
       skipped++;
       continue;
     }
