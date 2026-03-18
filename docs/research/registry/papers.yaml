@@ -34,6 +34,8 @@ papers:
     venue_tier: 0
     quality_score: 0
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2505.19591:
     title: Multi-Agent Collaboration via Evolving Orchestration
     authors: []
@@ -75,7 +77,7 @@ papers:
     arxiv_id: '2502.19130'
     url: https://arxiv.org/abs/2502.19130
     publication_date: 2025-02
-    venue: null
+    venue: Annual Meeting of the Association for Computational Linguistics
     topics:
       - consensus
     tags:
@@ -100,9 +102,14 @@ papers:
       - consensus-protocol
     related_issues: []
     implementation_status: not-started
-    venue_tier: 0
-    quality_score: 0
+    venue_tier: 1
+    quality_score: 3
     evidence_tier: low
+    citation_count: 34
+    rigor_tags:
+      - peer-reviewed
+    last_quality_check: 2026-03-18
+    quality_notes: no code repository
   arxiv-2507.08616:
     title: AgentsNet
     authors: []
@@ -110,7 +117,7 @@ papers:
     arxiv_id: '2507.08616'
     url: https://arxiv.org/abs/2507.08616
     publication_date: 2025-07
-    venue: null
+    venue: arXiv.org
     topics:
       - orchestration
     tags:
@@ -128,8 +135,11 @@ papers:
     related_issues: []
     implementation_status: not-started
     venue_tier: 0
-    quality_score: 1
+    quality_score: 3
     evidence_tier: low
+    citation_count: 12
+    last_quality_check: 2026-03-18
+    quality_notes: arXiv preprint (not peer-reviewed); no code repository
   arxiv-2510.00615:
     title: 'Acon: Optimizing Context Compression'
     authors: []
@@ -165,7 +175,7 @@ papers:
     arxiv_id: '2509.09199'
     url: https://arxiv.org/abs/2509.09199
     publication_date: 2025-09
-    venue: null
+    venue: arXiv.org
     topics:
       - memory
     tags:
@@ -185,6 +195,9 @@ papers:
     venue_tier: 0
     quality_score: 1
     evidence_tier: low
+    citation_count: 0
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2504.19413:
     title: 'Mem0: Building Production-Ready AI Agents with Scalable Long-Term Memory'
     authors:
@@ -249,6 +262,8 @@ papers:
     venue_tier: 0
     quality_score: 1
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2410.10347:
     title: A Unified Approach to Routing and Cascading for LLMs
     authors:
@@ -285,6 +300,8 @@ papers:
     venue_tier: 0
     quality_score: 0
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2406.18510:
     title: 'RouteLLM: Cost-Quality Routing for LLM Inference'
     authors: []
@@ -311,6 +328,8 @@ papers:
     venue_tier: 0
     quality_score: 0
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2406.18665:
     title: 'RouteLLM: Learning to Route LLMs with Preference Data'
     authors: []
@@ -343,8 +362,10 @@ papers:
     venue_tier: 3
     rigor_tags:
       - peer-reviewed
-    quality_score: 3
-    evidence_tier: low
+    quality_score: 6
+    evidence_tier: medium
+    citation_count: 285
+    last_quality_check: 2026-03-18
   arxiv-2502.16696:
     title: OptiRoute
     authors: []
@@ -374,6 +395,8 @@ papers:
     venue_tier: 0
     quality_score: 0
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2502.17282:
     title: Capability Instruction Tuning
     authors: []
@@ -500,8 +523,10 @@ papers:
     venue_tier: 3
     rigor_tags:
       - peer-reviewed
-    quality_score: 3
-    evidence_tier: low
+    quality_score: 4
+    evidence_tier: medium
+    citation_count: 1
+    last_quality_check: 2026-03-18
   arxiv-2509.06274:
     title: 'IPR: Intelligent Prompt Routing'
     authors: []
@@ -536,6 +561,8 @@ papers:
     venue_tier: 0
     quality_score: 1
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2508.21141:
     title: 'PILOT: Preference-Prior Routing with Budget Constraints'
     authors: []
@@ -568,8 +595,11 @@ papers:
     venue_tier: 1
     rigor_tags:
       - peer-reviewed
-    quality_score: 1
+    quality_score: 2
     evidence_tier: low
+    citation_count: 9
+    last_quality_check: 2026-03-18
+    quality_notes: no code repository
   arxiv-2512.20184:
     title: 'Aegean: Formal Consensus Protocol for Stochastic Reasoning'
     authors: []
@@ -577,7 +607,7 @@ papers:
     arxiv_id: '2512.20184'
     url: https://arxiv.org/abs/2512.20184
     publication_date: 2025-12
-    venue: null
+    venue: arXiv.org
     topics:
       - consensus
     tags:
@@ -603,6 +633,9 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    citation_count: 0
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2511.10400:
     title: 'CP-WBFT: Confidence Probe-based Weighted Byzantine Fault Tolerant'
     authors: []
@@ -610,7 +643,7 @@ papers:
     arxiv_id: '2511.10400'
     url: https://arxiv.org/abs/2511.10400
     publication_date: 2025-11
-    venue: null
+    venue: arXiv.org
     topics:
       - consensus
     tags:
@@ -633,8 +666,11 @@ papers:
       - 103
     implementation_status: implemented
     venue_tier: 0
-    quality_score: 2
+    quality_score: 3
     evidence_tier: low
+    citation_count: 2
+    last_quality_check: 2026-03-18
+    quality_notes: arXiv preprint (not peer-reviewed); no code repository
   arxiv-2509.11035:
     title: 'Free-MAD: Score-Based Decision with Anti-Conformity'
     authors: []
@@ -667,6 +703,8 @@ papers:
     venue_tier: 0
     quality_score: 1
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2512.20845:
     title: 'MAR: Multi-Agent Reflexion Improves Reasoning Abilities'
     authors: []
@@ -699,6 +737,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2503.18893:
     title: 'xKV: Cross-Layer SVD for KV-Cache Compression'
     authors: []
@@ -729,6 +769,8 @@ papers:
     venue_tier: 0
     quality_score: 0
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2501.04987:
     title: 'TreeKV: Tree-Structured Cache Compression'
     authors: []
@@ -759,6 +801,8 @@ papers:
     venue_tier: 0
     quality_score: 0
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2511.23271:
     title: 'BET: Behavior-Equivalent Token'
     authors: []
@@ -823,6 +867,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2511.02200:
     title: 'STRMAC: State-Aware Routing'
     authors: []
@@ -854,6 +900,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2509.20368:
     title: 'LATTS: Locally Adaptive Test-Time Scaling'
     authors: []
@@ -861,7 +909,7 @@ papers:
     arxiv_id: '2509.20368'
     url: https://arxiv.org/abs/2509.20368
     publication_date: 2025-09
-    venue: null
+    venue: arXiv.org
     topics:
       - orchestration
     tags:
@@ -883,8 +931,11 @@ papers:
     related_issues: []
     implementation_status: implemented
     venue_tier: 0
-    quality_score: 1
+    quality_score: 2
     evidence_tier: low
+    citation_count: 2
+    last_quality_check: 2026-03-18
+    quality_notes: arXiv preprint (not peer-reviewed); no code repository
   arxiv-2510.04800:
     title: Hybrid Architectures for LLMs
     authors: []
@@ -912,6 +963,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2410.10039:
     title: Multi-LLM Orchestration Engine
     authors: []
@@ -940,6 +993,8 @@ papers:
     venue_tier: 0
     quality_score: 0
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2512.22402:
     title: 'Pick and Spin: Efficient Multi-Model Orchestration'
     authors: []
@@ -971,6 +1026,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2507.00672:
     title: 'Edge Multi-LLM: Hybrid Routing with Cascade/ABC Patterns'
     authors: []
@@ -978,7 +1035,7 @@ papers:
     arxiv_id: '2507.00672'
     url: https://arxiv.org/abs/2507.00672
     publication_date: 2025-07
-    venue: null
+    venue: IEEE Transactions on Cognitive Communications and Networking
     topics:
       - routing
     tags:
@@ -999,9 +1056,13 @@ papers:
       - agreement-based-cascading
     related_issues: []
     implementation_status: implemented
-    venue_tier: 0
-    quality_score: 1
-    evidence_tier: low
+    venue_tier: 1
+    quality_score: 4
+    evidence_tier: medium
+    citation_count: 31
+    rigor_tags:
+      - peer-reviewed
+    last_quality_check: 2026-03-18
   arxiv-2502.12110:
     title: 'A-MEM: Agentic Memory for LLM Agents'
     authors: []
@@ -1009,7 +1070,7 @@ papers:
     arxiv_id: '2502.12110'
     url: https://arxiv.org/abs/2502.12110
     publication_date: 2025-02
-    venue: null
+    venue: arXiv.org
     topics:
       - memory
     tags:
@@ -1037,8 +1098,11 @@ papers:
       - 122
     implementation_status: implemented
     venue_tier: 0
-    quality_score: 0
+    quality_score: 3
     evidence_tier: low
+    citation_count: 323
+    last_quality_check: 2026-03-18
+    quality_notes: arXiv preprint (not peer-reviewed); no code repository
   arxiv-2507.07957:
     title: 'MIRIX: Six-Type Memory System'
     authors: []
@@ -1072,6 +1136,8 @@ papers:
     venue_tier: 0
     quality_score: 1
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2512.15784:
     title: 'MobiMem: Post-Deployment Evolution via Memory Modules'
     authors: []
@@ -1185,6 +1251,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2303.17651:
     title: 'Self-Refine: Iterative Refinement with Self-Feedback'
     authors:
@@ -1218,6 +1286,8 @@ papers:
     venue_tier: 0
     quality_score: 0
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2304.05128:
     title: Teaching Large Language Models to Self-Debug
     authors:
@@ -1256,8 +1326,10 @@ papers:
     venue_tier: 1
     rigor_tags:
       - peer-reviewed
-    quality_score: 1
-    evidence_tier: low
+    quality_score: 4
+    evidence_tier: medium
+    citation_count: 1004
+    last_quality_check: 2026-03-18
   arxiv-2303.11366:
     title: 'Reflexion: Language Agents with Verbal Reinforcement Learning'
     authors:
@@ -1293,8 +1365,10 @@ papers:
     venue_tier: 3
     rigor_tags:
       - peer-reviewed
-    quality_score: 3
-    evidence_tier: low
+    quality_score: 6
+    evidence_tier: medium
+    citation_count: 2788
+    last_quality_check: 2026-03-18
   arxiv-2310.04406:
     title: 'LATS: Language Agent Tree Search'
     authors:
@@ -1329,8 +1403,10 @@ papers:
     venue_tier: 3
     rigor_tags:
       - peer-reviewed
-    quality_score: 3
-    evidence_tier: low
+    quality_score: 6
+    evidence_tier: medium
+    citation_count: 394
+    last_quality_check: 2026-03-18
   arxiv-2410.04444:
     title: 'Godel Agent: A Self-Referential Agent Framework'
     authors:
@@ -1365,6 +1441,8 @@ papers:
     venue_tier: 0
     quality_score: 0
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2504.15228:
     title: 'SICA: A Self-Improving Coding Agent'
     authors:
@@ -1402,6 +1480,8 @@ papers:
       - peer-reviewed
     quality_score: 1
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; no code repository
   arxiv-2412.17149:
     title: Multi-AI Agent System for Autonomous Optimization
     authors: []
@@ -1432,6 +1512,8 @@ papers:
     venue_tier: 0
     quality_score: 0
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2512.02731:
     title: Self-Improving AI Agents through Self-Play
     authors:
@@ -1440,7 +1522,7 @@ papers:
     arxiv_id: '2512.02731'
     url: https://arxiv.org/abs/2512.02731
     publication_date: 2025-12
-    venue: null
+    venue: arXiv.org
     topics:
       - code-generation
     tags:
@@ -1461,8 +1543,11 @@ papers:
     related_issues: []
     implementation_status: not-started
     venue_tier: 0
-    quality_score: 2
+    quality_score: 3
     evidence_tier: low
+    citation_count: 2
+    last_quality_check: 2026-03-18
+    quality_notes: arXiv preprint (not peer-reviewed); no code repository
   arxiv-2305.16291:
     title: 'Voyager: An Open-Ended Embodied Agent with Large Language Models'
     authors:
@@ -1498,6 +1583,8 @@ papers:
     venue_tier: 0
     quality_score: 0
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2410.14735:
     title: 'CycleQD: Quality-Diversity for Agent Skill Acquisition'
     authors: []
@@ -1529,6 +1616,8 @@ papers:
     venue_tier: 0
     quality_score: 0
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2506.04287:
     title: 'EXIF: Automated Skill Discovery for Language Agents'
     authors: []
@@ -1536,7 +1625,7 @@ papers:
     arxiv_id: '2506.04287'
     url: https://arxiv.org/abs/2506.04287
     publication_date: 2025-06
-    venue: null
+    venue: arXiv.org
     topics:
       - code-generation
     tags:
@@ -1557,8 +1646,11 @@ papers:
     related_issues: []
     implementation_status: not-started
     venue_tier: 0
-    quality_score: 1
+    quality_score: 2
     evidence_tier: low
+    citation_count: 1
+    last_quality_check: 2026-03-18
+    quality_notes: arXiv preprint (not peer-reviewed); no code repository
   arxiv-2406.14596:
     title: 'ICAL: Continual Learning of Multimodal Agents'
     authors: []
@@ -1590,6 +1682,8 @@ papers:
     venue_tier: 0
     quality_score: 0
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2309.00267:
     title: 'RLAIF vs. RLHF: Scaling Reinforcement Learning with AI Feedback'
     authors: []
@@ -1622,6 +1716,8 @@ papers:
     venue_tier: 0
     quality_score: 0
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2212.08073:
     title: 'Constitutional AI: Harmlessness from AI Feedback'
     authors: []
@@ -1654,6 +1750,8 @@ papers:
     venue_tier: 0
     quality_score: 0
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2408.07199:
     title: 'Agent Q: Advanced Reasoning and Learning for Autonomous AI Agents'
     authors: []
@@ -1685,6 +1783,8 @@ papers:
     venue_tier: 0
     quality_score: 0
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2504.01931:
     title: On the Role of Feedback in Test-Time Scaling of Agentic AI Workflows
     authors: []
@@ -1724,7 +1824,7 @@ papers:
     arxiv_id: '2501.07278'
     url: https://arxiv.org/abs/2501.07278
     publication_date: 2025-01
-    venue: null
+    venue: IEEE Transactions on Pattern Analysis and Machine Intelligence
     topics:
       - memory
     tags:
@@ -1744,9 +1844,14 @@ papers:
     techniques_extracted: []
     related_issues: []
     implementation_status: not-started
-    venue_tier: 0
-    quality_score: 0
+    venue_tier: 1
+    quality_score: 3
     evidence_tier: low
+    citation_count: 55
+    rigor_tags:
+      - peer-reviewed
+    last_quality_check: 2026-03-18
+    quality_notes: no code repository
   arxiv-2504.14520:
     title: Meta-Thinking in LLMs via Multi-Agent Reinforcement Learning
     authors: []
@@ -1777,6 +1882,8 @@ papers:
     venue_tier: 0
     quality_score: 1
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2507.17131:
     title: 'ARIA: Human-in-the-Loop Test-Time Learning'
     authors: []
@@ -1840,6 +1947,8 @@ papers:
     venue_tier: 0
     quality_score: 0
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2507.21046:
     title: A Survey of Self-Evolving Agents
     authors: []
@@ -1886,7 +1995,7 @@ papers:
     arxiv_id: '2512.10398'
     url: https://arxiv.org/abs/2512.10398
     publication_date: 2024-12
-    venue: null
+    venue: arXiv.org
     topics:
       - code-generation
       - orchestration
@@ -1913,8 +2022,11 @@ papers:
       - 279
     implementation_status: not-started
     venue_tier: 0
-    quality_score: 0
+    quality_score: 1
     evidence_tier: low
+    citation_count: 2
+    last_quality_check: 2026-03-18
+    quality_notes: arXiv preprint (not peer-reviewed); no code repository
   arxiv-2601.08012:
     title: 'STPA MCP Framework: System-Theoretic Process Analysis for MCP Safety'
     authors: []
@@ -1984,6 +2096,8 @@ papers:
     venue_tier: 0
     quality_score: 0
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2505.18646:
     title: 'SEW: Self-Evolving Workflows for Agent Systems'
     authors: []
@@ -1991,7 +2105,7 @@ papers:
     arxiv_id: '2505.18646'
     url: https://arxiv.org/abs/2505.18646
     publication_date: 2025-05
-    venue: null
+    venue: arXiv.org
     topics:
       - orchestration
     tags:
@@ -2015,8 +2129,11 @@ papers:
       - 330
     implementation_status: implemented
     venue_tier: 0
-    quality_score: 1
+    quality_score: 2
     evidence_tier: low
+    citation_count: 6
+    last_quality_check: 2026-03-18
+    quality_notes: arXiv preprint (not peer-reviewed); no code repository
   arxiv-2510.01499:
     title: 'Higher-Order Voting: Optimal Weighting and Information Score Prior'
     authors: []
@@ -2051,6 +2168,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2412.09078:
     title: 'Forest-of-Thought: Multi-Tree Reasoning with Sparse Activation'
     authors: []
@@ -2085,6 +2204,8 @@ papers:
     venue_tier: 0
     quality_score: 0
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2412.14470:
     title: 'Agent-SafetyBench: Comprehensive Safety Evaluation for AI Agents'
     authors: []
@@ -2152,8 +2273,11 @@ papers:
       - 334
     implementation_status: implemented
     venue_tier: 0
-    quality_score: 1
+    quality_score: 2
     evidence_tier: low
+    citation_count: 2
+    last_quality_check: 2026-03-18
+    quality_notes: arXiv preprint (not peer-reviewed); no code repository
   arxiv-2512.12818:
     title: Hindsight Belief Memory for Reasoning Agents
     authors: []
@@ -2161,7 +2285,7 @@ papers:
     arxiv_id: '2512.12818'
     url: https://arxiv.org/abs/2512.12818
     publication_date: 2025-12
-    venue: null
+    venue: arXiv.org
     topics:
       - memory
     tags:
@@ -2186,8 +2310,11 @@ papers:
       - 336
     implementation_status: implemented
     venue_tier: 0
-    quality_score: 2
+    quality_score: 3
     evidence_tier: low
+    citation_count: 2
+    last_quality_check: 2026-03-18
+    quality_notes: arXiv preprint (not peer-reviewed); no code repository
   arxiv-2512.08296:
     title: 'Scaling Agent Systems: Coordination Prediction and Resource Optimization'
     authors: []
@@ -2195,7 +2322,7 @@ papers:
     arxiv_id: '2512.08296'
     url: https://arxiv.org/abs/2512.08296
     publication_date: 2025-12
-    venue: null
+    venue: arXiv.org
     topics:
       - orchestration
     tags:
@@ -2220,8 +2347,10 @@ papers:
       - 337
     implementation_status: implemented
     venue_tier: 0
-    quality_score: 2
-    evidence_tier: low
+    quality_score: 4
+    evidence_tier: medium
+    citation_count: 32
+    last_quality_check: 2026-03-18
   arxiv-2602.03786:
     title: 'AOrchestra: Automating Sub-Agent Creation for Agentic Orchestration'
     authors:
@@ -2272,6 +2401,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2602.03794:
     title: 'arXiv Query: search_query=&amp;id_list=2602.03794&amp;start=0&amp;max_results=10'
     authors: []
@@ -2294,6 +2425,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2602.03784:
     title: 'arXiv Query: search_query=&amp;id_list=2602.03784&amp;start=0&amp;max_results=10'
     authors: []
@@ -2301,7 +2434,7 @@ papers:
     arxiv_id: '2602.03784'
     url: https://arxiv.org/abs/2602.03784
     publication_date: 2026-02
-    venue: null
+    venue: arXiv.org
     topics:
       - memory
     tags: []
@@ -2316,6 +2449,9 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    citation_count: 0
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2602.03814:
     title: 'arXiv Query: search_query=&amp;id_list=2602.03814&amp;start=0&amp;max_results=10'
     authors: []
@@ -2338,6 +2474,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2602.03845:
     title: 'arXiv Query: search_query=&amp;id_list=2602.03845&amp;start=0&amp;max_results=10'
     authors: []
@@ -2360,6 +2498,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2602.03695:
     title: 'arXiv Query: search_query=&amp;id_list=2602.03695&amp;start=0&amp;max_results=10'
     authors: []
@@ -2382,6 +2522,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2602.03474:
     title: 'arXiv Query: search_query=&amp;id_list=2602.03474&amp;start=0&amp;max_results=10'
     authors: []
@@ -2404,6 +2546,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2505.21503:
     title: 'arXiv Query: search_query=&amp;id_list=2505.21503&amp;start=0&amp;max_results=10'
     authors: []
@@ -2449,6 +2593,8 @@ papers:
     venue_tier: 0
     quality_score: 0
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2512.20237:
     title: 'arXiv Query: search_query=&amp;id_list=2512.20237&amp;start=0&amp;max_results=10'
     authors: []
@@ -2471,6 +2617,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2512.21567:
     title: 'arXiv Query: search_query=&amp;id_list=2512.21567&amp;start=0&amp;max_results=10'
     authors: []
@@ -2493,6 +2641,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2511.20857:
     title: 'arXiv Query: search_query=&amp;id_list=2511.20857&amp;start=0&amp;max_results=10'
     authors: []
@@ -2515,6 +2665,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2501.13956:
     title: 'arXiv Query: search_query=&amp;id_list=2501.13956&amp;start=0&amp;max_results=10'
     authors: []
@@ -2537,6 +2689,8 @@ papers:
     venue_tier: 0
     quality_score: 0
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2402.17753:
     title: 'arXiv Query: search_query=&amp;id_list=2402.17753&amp;start=0&amp;max_results=10'
     authors: []
@@ -2559,6 +2713,8 @@ papers:
     venue_tier: 0
     quality_score: 0
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2601.19793:
     title: 'arXiv Query: search_query=&amp;id_list=2601.19793&amp;start=0&amp;max_results=10'
     authors: []
@@ -2581,6 +2737,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2601.10560:
     title: 'arXiv Query: search_query=&amp;id_list=2601.10560&amp;start=0&amp;max_results=10'
     authors: []
@@ -2588,7 +2746,7 @@ papers:
     arxiv_id: '2601.10560'
     url: https://arxiv.org/abs/2601.10560
     publication_date: 2026-01
-    venue: null
+    venue: arXiv.org
     topics:
       - orchestration
     tags: []
@@ -2601,8 +2759,11 @@ papers:
     related_issues: []
     implementation_status: not-started
     venue_tier: 0
-    quality_score: 2
+    quality_score: 3
     evidence_tier: low
+    citation_count: 2
+    last_quality_check: 2026-03-18
+    quality_notes: arXiv preprint (not peer-reviewed); no code repository
   arxiv-2602.02050:
     title: Rethinking the Role of Entropy in Optimizing Tool-Use Behaviors for Large Language Model Agents
     authors: []
@@ -2627,6 +2788,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2602.05073:
     title: Towards Reducible Uncertainty Modeling for Reliable Large Language Model Agents
     authors: []
@@ -2651,6 +2814,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2602.16873:
     title: 'AdaptOrch: Task-Adaptive Multi-Agent Orchestration in the Era of LLM Performance Convergence'
     authors: []
@@ -2673,8 +2838,11 @@ papers:
     related_issues: []
     implementation_status: not-started
     venue_tier: 0
-    quality_score: 2
+    quality_score: 3
     evidence_tier: low
+    citation_count: 2
+    last_quality_check: 2026-03-18
+    quality_notes: arXiv preprint (not peer-reviewed); no code repository
   arxiv-2506.06579:
     title: 'Towards Efficient Multi-LLM Inference: Characterization and Analysis of LLM Routing and Hierarchical Techniques'
     authors: []
@@ -2698,6 +2866,8 @@ papers:
     venue_tier: 0
     quality_score: 1
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2602.20478:
     title: 'Codified Context: Infrastructure for AI Agents in a Complex Codebase'
     authors: []
@@ -2720,6 +2890,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2511.20663:
     title: 'MTTR-A: Measuring Cognitive Recovery Latency in Multi-Agent Systems'
     authors: []
@@ -2767,6 +2939,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2509.11067:
     title: 'Agentic Lybic: Multi-Agent Execution System with Tiered Reasoning and Orchestration'
     authors: []
@@ -2790,6 +2964,8 @@ papers:
     venue_tier: 0
     quality_score: 1
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2510.06727:
     title: Scaling LLM Multi-turn RL with End-to-end Summarization-based Context Management
     authors: []
@@ -2838,6 +3014,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2510.00841:
     title: LLM Routing with Dueling Feedback
     authors: []
@@ -2861,6 +3039,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2602.09341:
     title: Auditing Multi-Agent LLM Reasoning Trees Outperforms Majority Vote and LLM-as-Judge
     authors: []
@@ -2885,6 +3065,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2512.21352:
     title: Multi-Agent LLM Committees for Autonomous Software Beta Testing
     authors: []
@@ -2909,6 +3091,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2603.01548:
     title: Graph-Based Self-Healing Tool Routing for Cost-Efficient LLM Agents
     authors: []
@@ -2932,6 +3116,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2602.20229:
     title: 'HieraMAS: Optimizing Intra-Node LLM Mixtures and Inter-Node Topology for Multi-Agent Systems'
     authors: []
@@ -2956,6 +3142,9 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    citation_count: 0
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2601.10955:
     title: 'Beyond Max Tokens: Stealthy Resource Amplification via Tool Calling Chains in LLM Agents'
     authors: []
@@ -2979,6 +3168,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2512.17052:
     title: Dynamic Tool Dependency Retrieval for Efficient Function Calling
     authors: []
@@ -3072,6 +3263,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2602.20708:
     title: 'ICON: Indirect Prompt Injection Defense for Agents based on Inference-Time Correction'
     authors: []
@@ -3094,6 +3287,9 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    citation_count: 0
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2602.15945:
     title: 'From Tool Orchestration to Code Execution: A Study of MCP Design Choices'
     authors: []
@@ -3142,6 +3338,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2602.13377:
     title: A Survey of Code Review Benchmarks and Evaluation Practices in Pre-LLM and LLM Era
     authors: []
@@ -3167,6 +3365,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2603.00601:
     title: 'Theory of Code Space: Do Code Agents Understand Software Architecture?'
     authors: []
@@ -3189,6 +3389,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2602.22450:
     title: 'Silent Egress: When Implicit Prompt Injection Makes LLM Agents Leak Without a Trace'
     authors: []
@@ -3212,6 +3414,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2602.12709:
     title: 'ReFilter: Improving Robustness of Retrieval-Augmented Generation via Gated Filter'
     authors: []
@@ -3258,6 +3462,9 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    citation_count: 0
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2601.15652:
     title: Predictive Coding and Information Bottleneck for Hallucination Detection in Large Language Models
     authors: []
@@ -3281,6 +3488,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2602.01011:
     title: Multi-Agent Teams Hold Experts Back
     authors: []
@@ -3304,6 +3513,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2602.09902:
     title: Routing, Cascades, and User Choice for LLMs
     authors: []
@@ -3327,6 +3538,9 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    citation_count: 0
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2601.14735:
     title: Optimizing FaaS Platforms for MCP-enabled Agentic Workflows
     authors: []
@@ -3374,6 +3588,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2602.01797:
     title: 'ORCH: many analyses, one merge-a deterministic multi-agent orchestrator for discrete-choice reasoning with EMA-guided routing'
     authors: []
@@ -3381,7 +3597,7 @@ papers:
     arxiv_id: '2602.01797'
     url: https://arxiv.org/abs/2602.01797
     publication_date: 2026-02
-    venue: null
+    venue: Frontiers in Artificial Intelligence
     topics:
       - model routing
     tags:
@@ -3394,9 +3610,14 @@ papers:
     techniques_extracted: []
     related_issues: []
     implementation_status: not-started
-    venue_tier: 0
-    quality_score: 2
+    venue_tier: 1
+    quality_score: 3
     evidence_tier: low
+    citation_count: 0
+    rigor_tags:
+      - peer-reviewed
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; no code repository
   arxiv-2602.08009:
     title: 'Towards Adaptive, Scalable, and Robust Coordination of LLM Agents: A Dynamic Ad-Hoc Networking Perspective'
     authors: []
@@ -3420,6 +3641,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2512.24565:
     title: 'MCPAgentBench: A Real-world Task Benchmark for Evaluating LLM Agent MCP Tool Use'
     authors: []
@@ -3445,6 +3668,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2506.01056:
     title: 'MCP-Zero: Active Tool Discovery for Autonomous LLM Agents'
     authors: []
@@ -3452,7 +3677,7 @@ papers:
     arxiv_id: '2506.01056'
     url: https://arxiv.org/abs/2506.01056
     publication_date: 2025-06
-    venue: null
+    venue: arXiv.org
     topics:
       - tool use
     tags:
@@ -3466,8 +3691,11 @@ papers:
     related_issues: []
     implementation_status: not-started
     venue_tier: 0
-    quality_score: 1
+    quality_score: 3
     evidence_tier: low
+    citation_count: 20
+    last_quality_check: 2026-03-18
+    quality_notes: arXiv preprint (not peer-reviewed); no code repository
   arxiv-2602.21585:
     title: 'Duel-Evolve: Reward-Free Test-Time Scaling via LLM Self-Preferences'
     authors: []
@@ -3515,6 +3743,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2602.18914:
     title: 'From Docs to Descriptions: Smell-Aware Evaluation of MCP Server Descriptions'
     authors: []
@@ -3538,6 +3768,9 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    citation_count: 0
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2602.19514:
     title: 'Security Risks of AI Agents Hiring Humans: An Empirical Marketplace Study'
     authors: []
@@ -3560,6 +3793,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2602.20493:
     title: 'AWCP: A Workspace Delegation Protocol for Deep-Engagement Collaboration across Remote Agents'
     authors: []
@@ -3582,6 +3817,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2601.06037:
     title: 'TeleMem: Building Long-Term and Multimodal Memory for Agentic AI'
     authors: []
@@ -3604,6 +3841,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2512.16041:
     title: Are We on the Right Way to Assessing LLM-as-a-Judge?
     authors: []
@@ -3611,7 +3850,7 @@ papers:
     arxiv_id: '2512.16041'
     url: https://arxiv.org/abs/2512.16041
     publication_date: 2025-12
-    venue: null
+    venue: arXiv.org
     topics:
       - evaluation-methods
     tags:
@@ -3625,8 +3864,11 @@ papers:
     related_issues: []
     implementation_status: not-started
     venue_tier: 0
-    quality_score: 2
+    quality_score: 3
     evidence_tier: low
+    citation_count: 9
+    last_quality_check: 2026-03-18
+    quality_notes: arXiv preprint (not peer-reviewed); no code repository
   arxiv-2510.13501:
     title: 'Confidence as a Reward: Transforming LLMs into Reward Models'
     authors: []
@@ -3651,6 +3893,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2602.23047:
     title: 'CL4SE: A Context Learning Benchmark For Software Engineering Tasks'
     authors: []
@@ -3674,6 +3918,9 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    citation_count: 0
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2601.07353:
     title: 'TALON: Confidence-Aware Speculative Decoding with Adaptive Token Trees'
     authors: []
@@ -3720,6 +3967,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2510.24021:
     title: 'SelecTKD: Selective Token-Weighted Knowledge Distillation for LLMs'
     authors: []
@@ -3741,8 +3990,11 @@ papers:
     related_issues: []
     implementation_status: not-started
     venue_tier: 0
-    quality_score: 2
+    quality_score: 3
     evidence_tier: low
+    citation_count: 2
+    last_quality_check: 2026-03-18
+    quality_notes: arXiv preprint (not peer-reviewed); no code repository
   arxiv-2601.11940:
     title: 'Thinking Traps in Long Chain-of-Thought: A Measurable Study and Trap-Aware Adaptive Restart'
     authors: []
@@ -3750,7 +4002,7 @@ papers:
     arxiv_id: '2601.11940'
     url: https://arxiv.org/abs/2601.11940
     publication_date: 2026-01
-    venue: null
+    venue: arXiv.org
     topics:
       - reasoning-optimization
     tags: []
@@ -3765,6 +4017,9 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    citation_count: 0
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2601.06108:
     title: 'From RLHF to Direct Alignment: A Theoretical Unification of Preference Learning for Large Language Models'
     authors: []
@@ -3772,7 +4027,7 @@ papers:
     arxiv_id: '2601.06108'
     url: https://arxiv.org/abs/2601.06108
     publication_date: 2026-01
-    venue: null
+    venue: arXiv.org
     topics:
       - preference-optimization
     tags:
@@ -3787,8 +4042,11 @@ papers:
     related_issues: []
     implementation_status: not-started
     venue_tier: 0
-    quality_score: 2
+    quality_score: 3
     evidence_tier: low
+    citation_count: 1
+    last_quality_check: 2026-03-18
+    quality_notes: arXiv preprint (not peer-reviewed); no code repository
   arxiv-2512.14100:
     title: A First-Order Logic-Based Alternative to Reward Models in RLHF
     authors: []
@@ -3796,7 +4054,7 @@ papers:
     arxiv_id: '2512.14100'
     url: https://arxiv.org/abs/2512.14100
     publication_date: 2025-12
-    venue: null
+    venue: arXiv.org
     topics:
       - preference-optimization
     tags:
@@ -3812,6 +4070,9 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    citation_count: 0
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2511.21990:
     title: A Safety and Security Framework for Real-World Agentic Systems
     authors: []
@@ -3835,6 +4096,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2511.12236:
     title: 'Consistency Is the Key: Detecting Hallucinations in LLM Generated Text By Checking Inconsistencies About Key Facts'
     authors: []
@@ -3858,6 +4121,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2510.04905:
     title: 'Retrieval-Augmented Code Generation: A Survey with Focus on Repository-Level Approaches'
     authors: []
@@ -3904,6 +4169,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2601.04252:
     title: 'Sphinx: Benchmarking and Modeling for LLM-Driven Pull Request Review'
     authors: []
@@ -3976,6 +4243,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2601.19494:
     title: 'AACR-Bench: Evaluating Automatic Code Review with Holistic Repository-Level Context'
     authors: []
@@ -3999,6 +4268,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2602.19843:
     title: 'MAS-FIRE: Fault Injection and Reliability Evaluation for LLM-Based Multi-Agent Systems'
     authors: []
@@ -4024,6 +4295,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2412.01778:
     title: 'HackSynth: LLM Agent and Evaluation Framework for Autonomous Penetration Testing'
     authors: []
@@ -4048,6 +4321,8 @@ papers:
     venue_tier: 0
     quality_score: 0
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2512.19432:
     title: 'MobileWorld: Benchmarking Autonomous Mobile Agents in Agent-User Interactive and MCP-Augmented Environments'
     authors: []
@@ -4121,6 +4396,8 @@ papers:
     venue_tier: 0
     quality_score: 0
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2510.07038:
     title: 'Tool-Augmented Policy Optimization: Synergizing Reasoning and Adaptive Tool Use with Reinforcement Learning'
     authors: []
@@ -4144,6 +4421,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2509.26553:
     title: 'Towards Reliable Benchmarking: A Contamination Free, Controllable Evaluation Framework for Multi-step LLM Function Calling'
     authors: []
@@ -4168,6 +4447,8 @@ papers:
     venue_tier: 0
     quality_score: 1
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2511.09873:
     title: 'HierRouter: Coordinated Routing of Specialized Large Language Models via Reinforcement Learning'
     authors: []
@@ -4192,6 +4473,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2506.09033:
     title: 'Router-R1: Teaching LLMs Multi-Round Routing and Aggregation via Reinforcement Learning'
     authors: []
@@ -4262,6 +4545,9 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    citation_count: 0
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2512.13598:
     title: Textual Gradients are a Flawed Metaphor for Automatic Prompt Optimization
     authors: []
@@ -4309,6 +4595,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2601.18241:
     title: 'TAM-Eval: Evaluating LLMs for Automated Unit Test Maintenance'
     authors: []
@@ -4332,6 +4620,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2510.04851:
     title: 'LEGOMem: Modular Procedural Memory for Multi-agent LLM Systems for Workflow Automation'
     authors: []
@@ -4356,6 +4646,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2511.00074:
     title: 'ScaleCall -- Agentic Tool Calling at Scale for Fintech: Challenges, Methods, and Deployment Insights'
     authors: []
@@ -4378,6 +4670,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2510.15994:
     title: 'MCP Security Bench (MSB): Benchmarking Attacks Against Model Context Protocol in LLM Agents'
     authors: []
@@ -4402,6 +4696,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2603.02630:
     title: 'MASPOB: Bandit-Based Prompt Optimization for Multi-Agent Systems with Graph Neural Networks'
     authors: []
@@ -4425,6 +4721,9 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    citation_count: 0
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2602.23896:
     title: 'TSC: Topology-Conditioned Stackelberg Coordination for Multi-Agent Reinforcement Learning in Interactive Driving'
     authors: []
@@ -4449,6 +4748,9 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    citation_count: 0
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2603.02654:
     title: Generalized Per-Agent Advantage Estimation for Multi-Agent Policy Optimization
     authors: []
@@ -4472,6 +4774,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2602.22724:
     title: 'AgentSentry: Mitigating Indirect Prompt Injection in LLM Agents via Temporal Causal Diagnostics and Context Purification'
     authors: []
@@ -4493,8 +4797,11 @@ papers:
     related_issues: []
     implementation_status: not-started
     venue_tier: 0
-    quality_score: 2
+    quality_score: 3
     evidence_tier: low
+    citation_count: 1
+    last_quality_check: 2026-03-18
+    quality_notes: arXiv preprint (not peer-reviewed); no code repository
   arxiv-2603.02551:
     title: Fuzzing Microservices in Face of Intrinsic Uncertainties
     authors: []
@@ -4517,6 +4824,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2603.01193:
     title: Operator Learning Using Weak Supervision from Walk-on-Spheres
     authors: []
@@ -4539,6 +4848,9 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    citation_count: 0
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2603.02701:
     title: 'Graph-GRPO: Stabilizing Multi-Agent Topology Learning via Group Relative Policy Optimization'
     authors: []
@@ -4562,6 +4874,9 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    citation_count: 0
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2603.00724:
     title: 'RLAR: An Agentic Reward System for Multi-task Reinforcement Learning on Large Language Models'
     authors: []
@@ -4586,6 +4901,8 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2307.03025:
     title: 'Style Over Substance: Evaluation Biases for Large Language Models'
     authors: []
@@ -4619,7 +4936,7 @@ papers:
     arxiv_id: '2305.05176'
     url: https://arxiv.org/abs/2305.05176
     publication_date: 2023-05
-    venue: null
+    venue: Trans. Mach. Learn. Res.
     topics:
       - routing
     tags:
@@ -4632,9 +4949,13 @@ papers:
     techniques_extracted: []
     related_issues: []
     implementation_status: not-started
-    venue_tier: 0
-    quality_score: 0
-    evidence_tier: low
+    venue_tier: 1
+    quality_score: 4
+    evidence_tier: medium
+    citation_count: 478
+    rigor_tags:
+      - peer-reviewed
+    last_quality_check: 2026-03-18
   arxiv-2303.17760:
     title: 'CAMEL: Communicative Agents for "Mind" Exploration of Large Language Model Society'
     authors: []
@@ -4642,7 +4963,7 @@ papers:
     arxiv_id: '2303.17760'
     url: https://arxiv.org/abs/2303.17760
     publication_date: 2023-03
-    venue: null
+    venue: Neural Information Processing Systems
     topics:
       - orchestration
     tags:
@@ -4655,9 +4976,13 @@ papers:
     techniques_extracted: []
     related_issues: []
     implementation_status: not-started
-    venue_tier: 0
-    quality_score: 0
-    evidence_tier: low
+    venue_tier: 1
+    quality_score: 4
+    evidence_tier: medium
+    citation_count: 1150
+    rigor_tags:
+      - peer-reviewed
+    last_quality_check: 2026-03-18
   arxiv-2310.11511:
     title: 'Self-RAG: Learning to Retrieve, Generate, and Critique through Self-Reflection'
     authors: []
@@ -4680,6 +5005,8 @@ papers:
     venue_tier: 0
     quality_score: 0
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2602.22261:
     title: Sustainable LLM Inference using Context-Aware Model Switching
     authors: []
@@ -4728,6 +5055,8 @@ papers:
     venue_tier: 0
     quality_score: 0
     evidence_tier: low
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
   arxiv-2603.06007:
     title: 'MASFactory: A Graph-centric Framework for Orchestrating LLM-Based Multi-Agent Systems with Vibe Graphing'
     authors: []
@@ -4752,3 +5081,6 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+    citation_count: 0
+    last_quality_check: 2026-03-18
+    quality_notes: no citations found; arXiv preprint (not peer-reviewed); no code repository
