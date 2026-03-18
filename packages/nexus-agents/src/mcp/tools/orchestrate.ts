@@ -727,6 +727,7 @@ export function registerOrchestrateTool(server: McpServer, deps: OrchestrateDeps
 
   const secureHandler = createSecureHandler(createOrchestrateHandler(depsWithNotifier), {
     toolName: 'orchestrate',
+    securityTier: 'user-facing',
     rateLimiter: deps.rateLimiter,
     logger,
   });

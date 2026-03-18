@@ -149,6 +149,7 @@ export function registerIssueTriageTool(server: McpServer, deps: IssueTriageDeps
 
   const secureHandler = createSecureHandler(createIssueTriageHandler(deps), {
     toolName: 'issue_triage',
+    securityTier: 'external',
     rateLimiter: deps.rateLimiter,
     logger,
   });

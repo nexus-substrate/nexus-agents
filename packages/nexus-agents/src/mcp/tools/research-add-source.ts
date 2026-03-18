@@ -299,6 +299,7 @@ export function registerResearchAddSourceTool(
 
   const secureHandler = createSecureHandler(createResearchAddSourceHandler(deps), {
     toolName: 'research_add_source',
+    securityTier: 'external',
     rateLimiter: deps.rateLimiter,
     logger,
   });

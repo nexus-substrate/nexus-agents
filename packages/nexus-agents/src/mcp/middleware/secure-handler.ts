@@ -23,7 +23,11 @@ import { type IPolicyFirewall, type ExecutionMode, createPolicyContext } from '.
 import type { RateLimiter } from './rate-limiter.js';
 import type { IAuditLogger } from '../../audit/audit-types.js';
 import { actorFromContext, resultToOutcome } from '../../audit/secure-handler-audit.js';
-import { sanitizeToolInput, logSanitizationResult } from './tool-input-sanitizer.js';
+import {
+  sanitizeToolInput,
+  logSanitizationResult,
+  type SanitizeToolInputResult,
+} from './tool-input-sanitizer.js';
 import type { ToolResult } from '../tools/tool-result.js';
 
 export type { ToolResult };
@@ -34,11 +38,24 @@ export type { ToolResult };
 export type ToolHandler = (args: unknown) => Promise<ToolResult>;
 
 /**
+ * Security tier for MCP tools. Controls input validation strictness.
+ *
+ * - 'standard': Default. XML injection tag stripping only (existing behavior).
+ * - 'user-facing': Accepts user task descriptions. Rejects known injection patterns.
+ * - 'external': Processes external URLs/content. Strictest validation.
+ *
+ * @see Issue #1586 — Tiered security validation
+ */
+export type SecurityTier = 'standard' | 'user-facing' | 'external';
+
+/**
  * Configuration for the secure handler wrapper.
  */
 export interface SecureHandlerConfig {
   /** Tool name for logging and policy evaluation */
   toolName: string;
+  /** Security tier controlling input validation strictness (default: 'standard') */
+  securityTier?: SecurityTier;
   /** Policy firewall instance (optional - if not provided, policy checks are skipped) */
   policyFirewall?: IPolicyFirewall;
   /** Execution mode for policy evaluation */
@@ -284,6 +301,33 @@ function emitRateLimitAudit(
   });
 }
 
+/** Reject inputs with detected injection patterns for elevated security tiers. */
+function checkSecurityTier(
+  config: SecureHandlerConfig,
+  sanitizeResult: SanitizeToolInputResult,
+  logger: ILogger
+): ToolResult | null {
+  const tier = config.securityTier ?? 'standard';
+  if (tier === 'standard' || sanitizeResult.detectedPatterns.length === 0) {
+    return null;
+  }
+  logger.warn('Input rejected by security tier validation', {
+    tier,
+    patterns: sanitizeResult.detectedPatterns,
+  });
+  return {
+    isError: true,
+    content: [
+      {
+        type: 'text',
+        text:
+          `Input validation failed: detected patterns [${sanitizeResult.detectedPatterns.join(', ')}]. ` +
+          'Remove prompt injection patterns and retry.',
+      },
+    ],
+  };
+}
+
 /** Pre-execution checks: input size, input sanitization, rate limit, policy. */
 function runPreChecks(
   config: SecureHandlerConfig,
@@ -299,6 +343,10 @@ function runPreChecks(
   const sanitizeResult = sanitizeToolInput(args);
   logSanitizationResult(sanitizeResult, logger, config.toolName);
   const sanitizedArgs = sanitizeResult.wasModified ? sanitizeResult.sanitized : args;
+
+  // Tiered validation: reject (not strip) for user-facing/external tools (Issue #1586)
+  const tierError = checkSecurityTier(config, sanitizeResult, logger);
+  if (tierError !== null) return { error: tierError, sanitizedArgs };
 
   if (config.rateLimiter) {
     const rlResult = checkRateLimit(config.rateLimiter, logger);
