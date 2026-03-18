@@ -52,8 +52,10 @@ describe('extractLessons', () => {
     expect(lessons.length).toBeGreaterThan(0);
 
     // Timeout should be first (2 occurrences > 1)
-    expect(lessons[0].occurrences).toBe(2);
-    expect(lessons[0].guidance).toContain('timed out');
+    const first = lessons[0];
+    expect(first).toBeDefined();
+    expect(first!.occurrences).toBe(2);
+    expect(first!.guidance).toContain('timed out');
   });
 
   it('caps at MAX_LESSONS (5)', () => {
@@ -87,8 +89,10 @@ describe('extractLessons', () => {
 
     const lessons = extractLessons();
     expect(lessons.length).toBeGreaterThan(0);
-    expect(lessons[0].pattern).not.toContain('/home/user');
-    expect(lessons[0].pattern).not.toContain('sk-abc123');
+    const firstLesson = lessons[0];
+    expect(firstLesson).toBeDefined();
+    expect(firstLesson!.pattern).not.toContain('/home/user');
+    expect(firstLesson!.pattern).not.toContain('sk-abc123');
   });
 
   it('filters by category', () => {

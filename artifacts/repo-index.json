@@ -1,8 +1,8 @@
 {
   "version": "1.0.0",
-  "generated": "2026-03-08T15:37:53.811Z",
+  "generated": "2026-03-18T00:28:14.235Z",
   "generator": "scripts/generate-repo-index.ts",
-  "packageVersion": "2.26.1",
+  "packageVersion": "2.28.0",
   "cli": {
     "binary": "nexus-agents",
     "commands": [
@@ -271,6 +271,10 @@
         "file": "src/mcp/tools/execute-spec.ts"
       },
       {
+        "name": "extract_symbols",
+        "file": "src/mcp/tools/extract-symbols.ts"
+      },
+      {
         "name": "issue_triage",
         "file": "src/mcp/tools/issue-triage.ts"
       },
@@ -345,6 +349,10 @@
       {
         "name": "run_workflow",
         "file": "src/mcp/tools/run-workflow.ts"
+      },
+      {
+        "name": "search_codebase",
+        "file": "src/mcp/tools/search-codebase.ts"
       },
       {
         "name": "weather_report",

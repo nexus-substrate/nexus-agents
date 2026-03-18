@@ -1,7 +1,7 @@
 # Repository Capabilities Index
 
-**Generated:** 2026-03-08T15:37:53.811Z
-**Package Version:** 2.26.1
+**Generated:** 2026-03-18T00:28:14.235Z
+**Package Version:** 2.28.0
 **Generator:** `scripts/generate-repo-index.ts`
 
 > This file is auto-generated. Do not edit manually.
@@ -58,7 +58,7 @@ Binary: `nexus-agents`
 
 ---
 
-## MCP Tools (25)
+## MCP Tools (27)
 
 | Tool | Source File |
 | ------ | ------------- |
@@ -67,6 +67,7 @@ Binary: `nexus-agents`
 | `delegate_to_model` | `src/mcp/tools/delegate-to-model.ts` |
 | `execute_expert` | `src/mcp/tools/execute-expert.ts` |
 | `execute_spec` | `src/mcp/tools/execute-spec.ts` |
+| `extract_symbols` | `src/mcp/tools/extract-symbols.ts` |
 | `issue_triage` | `src/mcp/tools/issue-triage.ts` |
 | `list_experts` | `src/mcp/tools/list-experts.ts` |
 | `list_workflows` | `src/mcp/tools/list-workflows.ts` |
@@ -86,6 +87,7 @@ Binary: `nexus-agents`
 | `research_synthesize` | `src/mcp/tools/research-synthesize.ts` |
 | `run_graph_workflow` | `src/mcp/tools/run-graph-workflow.ts` |
 | `run_workflow` | `src/mcp/tools/run-workflow.ts` |
+| `search_codebase` | `src/mcp/tools/search-codebase.ts` |
 | `weather_report` | `src/mcp/tools/weather-report.ts` |
 
 ---

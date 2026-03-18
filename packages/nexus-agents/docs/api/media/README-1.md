@@ -95,7 +95,7 @@ interface IAgent {
 CompositeRouter pipeline for intelligent model selection:
 
 ```
-Task → TaskAnalyzer → BudgetRouter → TopsisRouter → LinUCB → Decision
+Task → BudgetRouter → ZeroRouter → PreferenceRouter → TopsisRouter → LinUCB → Decision
 ```
 
 - Budget constraints (tokens, cost, latency)
@@ -115,16 +115,17 @@ These are **sequential, not parallel**: `CompositeRouter` selects a CLI → CLI 
 
 - `ResilientAdapter` wraps API adapters with lazy init and circuit-breaker failover
 - `CliCircuitBreaker` provides subprocess-level resilience for CLI adapters
-- `CompositeRouter` chains 5 routing stages: Budget → ZeroRouter → Preference → TOPSIS → LinUCB
+- `CompositeRouter` chains routing stages: Budget → ZeroRouter → Preference → TOPSIS → LinUCB
 
 ### Consensus Protocols
 
-5 core voting algorithms for multi-agent decisions:
+6 core voting algorithms for multi-agent decisions:
 
 - **simple_majority**: >50% approval threshold
 - **supermajority**: ≥67% approval threshold
 - **unanimous**: 100% approval required
 - **proof_of_learning**: Weighted by agent performance
+- **higher_order**: Bayesian-optimal aggregation with correlation awareness
 - **opinion_wise**: Opinion-based aggregation
 
 ---
