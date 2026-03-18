@@ -70,6 +70,13 @@ export const ExecuteExpertInputSchema = z.object({
     .max(900_000)
     .optional()
     .describe('Optional timeout in ms (120s-900s). Overrides auto-detected timeout.'),
+  previousExpertSummary: z
+    .string()
+    .max(2000)
+    .optional()
+    .describe(
+      'Summary from a previous expert in the chain. Injected into prompt for context continuity.'
+    ),
 });
 
 /**
@@ -111,6 +118,14 @@ export interface ExecuteExpertResponse {
   modelUsed?: string;
 }
 
+/** Sanitize expert summary to prevent prompt injection (Issue #1585). */
+function sanitizeExpertSummary(summary: string): string {
+  return summary
+    .replace(/<[^>]*>/g, '') // Strip HTML/XML tags
+    .replace(/\b(ignore|forget|disregard)\s+(previous|above|all)\b/gi, '[REDACTED]')
+    .slice(0, 2000);
+}
+
 /**
  * Builds a task object from the tool input.
  * Zod schema enforces timeoutMs >= EXPERT_TIMEOUT_FLOOR_MS, so no runtime floor needed (#1330).
@@ -118,15 +133,23 @@ export interface ExecuteExpertResponse {
 function buildTask(input: ExecuteExpertInput): Task {
   const autoTimeout = getExpertTaskTimeout(input.task);
   const timeoutMs = input.timeoutMs ?? autoTimeout;
+
+  // Inject sanitized handoff context from previous expert (Issue #1585)
+  let description = input.task;
+  if (input.previousExpertSummary !== undefined) {
+    const sanitized = sanitizeExpertSummary(input.previousExpertSummary);
+    description = `[Previous expert context]\n${sanitized}\n\n[Your task]\n${input.task}`;
+  }
+
   return {
     id: `exec-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 9)}`,
-    description: input.task,
+    description,
     context: {
       metadata: input.context ?? {},
     },
     constraints: {
       maxTokens: 4096,
-      maxDuration: timeoutMs, // Caller override or dynamic detection (Issue #1028, #1129)
+      maxDuration: timeoutMs,
     },
   };
 }

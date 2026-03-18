@@ -6,18 +6,23 @@ Quick reference for governance enforcement. Loaded when working on architecture,
 
 ## Consensus Voting Triggers
 
-| Trigger                   | Threshold     | Agents    |
-| ------------------------- | ------------- | --------- |
-| Architecture changes      | supermajority | 5         |
-| Breaking API changes      | unanimous     | 5         |
-| Security-related changes  | supermajority | 5         |
-| Sprint planning decisions | majority      | 3 (quick) |
-| Feature prioritization    | majority      | 5         |
+| Trigger                   | Threshold     | Agents | Strategy        |
+| ------------------------- | ------------- | ------ | --------------- |
+| Architecture changes      | supermajority | 5      | higher_order    |
+| Breaking API changes      | unanimous     | 5      | higher_order    |
+| Security-related changes  | supermajority | 5      | higher_order    |
+| Sprint planning decisions | majority      | 3      | simple_majority |
+| Feature prioritization    | majority      | 5      | simple_majority |
 
 Overlapping triggers → use STRICTEST. Order: `unanimous > supermajority > majority`.
 
+**Strategy guidance:** Use `higher_order` (Bayesian correlation-aware aggregation) for architecture and security votes where correlated agent agreement is a risk. Use `simple_majority` for routine decisions. The `higher_order` strategy deweights correlated votes and applies Bayesian confidence calibration.
+
 ```bash
-nexus-agents vote --proposal "..." --threshold supermajority
+# Architecture/security votes — use higher_order strategy
+nexus-agents vote --proposal "..." --threshold supermajority --strategy higher_order
+
+# Routine decisions — simple majority is sufficient
 nexus-agents vote --proposal "..." --threshold majority --quick
 ```
 
