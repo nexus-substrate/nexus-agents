@@ -438,8 +438,8 @@ sources:
       - spec-driven-verification-loop
       - xml-structured-task-specs
       - atomic-commit-per-task
-    verdict: monitoring
-    verdict_notes: 'Excellent patterns for dev workflow. Not adopted — nexus-agents at 91.4% SWE-bench, patterns solve different problem (dev UX vs benchmark performance). Revisit if context exhaustion becomes an issue.'
+    verdict: planned
+    verdict_notes: 'Context management + verification patterns planned for SWE-bench Verified/Pro (#1574). Lite 91.4% is strong but not competitive benchmark.'
     quality_score: 9
     evidence_tier: high
 
