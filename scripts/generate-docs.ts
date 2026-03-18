@@ -91,7 +91,24 @@ nexus-agents --help           # See all commands
 \`\`\``;
 }
 
+/** Extract MCP tool names from the canonical tools array in index.ts. */
+function extractMcpToolNames(): string[] {
+  const toolsIndexPath = join(ROOT, 'packages/nexus-agents/src/mcp/tools/index.ts');
+  if (!existsSync(toolsIndexPath)) return [];
+  const content = readFileSync(toolsIndexPath, 'utf-8');
+  const toolsMatch = /tools:\s*\[([\s\S]*?)\]/m.exec(content);
+  if (toolsMatch === null) return [];
+  const toolNames = [...toolsMatch[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
+  return toolNames;
+}
+
 function getEntryPointsSection(): string {
+  const tools = extractMcpToolNames();
+  const toolLines =
+    tools.length > 0
+      ? tools.map((t) => `- ${t}`).join('\n')
+      : '- orchestrate\n- create_expert\n- run_workflow\n- list_experts';
+
   return `## Key Entry Points
 
 ### CLI Commands
@@ -101,11 +118,8 @@ function getEntryPointsSection(): string {
 - \`nexus-agents workflow run <template>\` - Execute workflow
 - \`nexus-agents doctor\` - Health check
 
-### MCP Tools (via Claude Desktop)
-- orchestrate - Task decomposition and delegation
-- create_expert - Spawn specialized agent
-- run_workflow - Execute workflow template
-- list_experts - Available expert types
+### MCP Tools (${String(tools.length)} registered)
+${toolLines}
 
 ### Programmatic API
 \`\`\`typescript

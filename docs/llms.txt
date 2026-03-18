@@ -68,11 +68,35 @@ nexus-agents --help           # See all commands
 - `nexus-agents workflow run <template>` - Execute workflow
 - `nexus-agents doctor` - Health check
 
-### MCP Tools (via Claude Desktop)
-- orchestrate - Task decomposition and delegation
-- create_expert - Spawn specialized agent
-- run_workflow - Execute workflow template
-- list_experts - Available expert types
+### MCP Tools (28 registered)
+- orchestrate
+- create_expert
+- execute_expert
+- run_workflow
+- delegate_to_model
+- list_experts
+- list_workflows
+- consensus_vote
+- research_query
+- research_add
+- research_add_source
+- research_discover
+- research_analyze
+- research_catalog_review
+- research_synthesize
+- memory_query
+- memory_stats
+- memory_write
+- weather_report
+- issue_triage
+- run_graph_workflow
+- execute_spec
+- registry_import
+- query_trace
+- repo_analyze
+- repo_security_plan
+- extract_symbols
+- search_codebase
 
 ### Programmatic API
 ```typescript
