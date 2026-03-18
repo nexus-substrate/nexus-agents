@@ -22,6 +22,7 @@ import {
   registerConsensusVoteTool,
   registerResearchQueryTool,
   registerResearchAddTool,
+  registerResearchAddSourceTool,
   registerResearchDiscoverTool,
   registerResearchAnalyzeTool,
   registerResearchCatalogReviewTool,
@@ -48,6 +49,7 @@ import {
   ConsensusVoteInputSchema,
   ResearchQueryInputSchema,
   ResearchAddInputSchema,
+  ResearchAddSourceInputSchema,
   ResearchDiscoverInputSchema,
   ResearchAnalyzeInputSchema,
   ResearchCatalogReviewInputSchema,
@@ -65,7 +67,7 @@ import {
   RepoSecurityPlanInputSchema,
 } from './index.js';
 
-const EXPECTED_TOOL_COUNT = 25;
+const EXPECTED_TOOL_COUNT = 28;
 
 const EXPECTED_TOOL_NAMES = [
   'orchestrate',
@@ -78,6 +80,7 @@ const EXPECTED_TOOL_NAMES = [
   'consensus_vote',
   'research_query',
   'research_add',
+  'research_add_source',
   'research_discover',
   'research_analyze',
   'research_catalog_review',
@@ -93,6 +96,8 @@ const EXPECTED_TOOL_NAMES = [
   'query_trace',
   'repo_analyze',
   'repo_security_plan',
+  'extract_symbols',
+  'search_codebase',
 ];
 
 describe('MCP tools index', () => {
@@ -135,6 +140,7 @@ describe('MCP tools index', () => {
       ['registerConsensusVoteTool', registerConsensusVoteTool],
       ['registerResearchQueryTool', registerResearchQueryTool],
       ['registerResearchAddTool', registerResearchAddTool],
+      ['registerResearchAddSourceTool', registerResearchAddSourceTool],
       ['registerResearchDiscoverTool', registerResearchDiscoverTool],
       ['registerResearchAnalyzeTool', registerResearchAnalyzeTool],
       ['registerResearchCatalogReviewTool', registerResearchCatalogReviewTool],
@@ -156,8 +162,10 @@ describe('MCP tools index', () => {
       expect(typeof fn).toBe('function');
     });
 
-    it('exports 23 register functions', () => {
-      expect(registerFunctions).toHaveLength(EXPECTED_TOOL_COUNT);
+    it('exports 26 register functions', () => {
+      // Register functions count differs from tool count because
+      // extract_symbols and search_codebase use a different pattern
+      expect(registerFunctions).toHaveLength(26);
     });
   });
 
@@ -173,6 +181,7 @@ describe('MCP tools index', () => {
       ['ConsensusVoteInputSchema', ConsensusVoteInputSchema],
       ['ResearchQueryInputSchema', ResearchQueryInputSchema],
       ['ResearchAddInputSchema', ResearchAddInputSchema],
+      ['ResearchAddSourceInputSchema', ResearchAddSourceInputSchema],
       ['ResearchDiscoverInputSchema', ResearchDiscoverInputSchema],
       ['ResearchAnalyzeInputSchema', ResearchAnalyzeInputSchema],
       ['ResearchCatalogReviewInputSchema', ResearchCatalogReviewInputSchema],
@@ -194,8 +203,10 @@ describe('MCP tools index', () => {
       expect(typeof schema.parse).toBe('function');
     });
 
-    it('exports 23 schemas', () => {
-      expect(schemas).toHaveLength(EXPECTED_TOOL_COUNT);
+    it('exports 26 schemas', () => {
+      // Schema count differs from tool count because extract_symbols
+      // and search_codebase don't have exported Zod schemas
+      expect(schemas).toHaveLength(26);
     });
   });
 

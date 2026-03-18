@@ -23,6 +23,7 @@ import {
   registerConsensusVoteTool,
   registerResearchQueryTool,
   registerResearchAddTool,
+  registerResearchAddSourceTool,
   registerResearchDiscoverTool,
   registerResearchAnalyzeTool,
   registerResearchCatalogReviewTool,
@@ -294,6 +295,10 @@ function registerResearchTools(ctx: ToolRegistrationContext): void {
   registerResearchAddTool(ctx.server, {
     ...researchDeps,
     rateLimiter: ctx.rateLimiterFactory.getForTool('research_add'),
+  });
+  registerResearchAddSourceTool(ctx.server, {
+    ...researchDeps,
+    rateLimiter: ctx.rateLimiterFactory.getForTool('research_add_source'),
   });
   registerResearchDiscoverTool(ctx.server, {
     ...researchDeps,

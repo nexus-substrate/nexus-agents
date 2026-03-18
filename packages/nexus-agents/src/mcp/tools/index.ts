@@ -132,6 +132,14 @@ export {
 } from './research-add.js';
 
 export {
+  registerResearchAddSourceTool,
+  ResearchAddSourceInputSchema,
+  type ResearchAddSourceInput,
+  type ResearchAddSourceDeps,
+  type ResearchAddSourceResponse,
+} from './research-add-source.js';
+
+export {
   registerResearchDiscoverTool,
   ResearchDiscoverInputSchema,
   type ResearchDiscoverInput,
@@ -423,6 +431,7 @@ export function registerTools(
       'consensus_vote',
       'research_query',
       'research_add',
+      'research_add_source',
       'research_discover',
       'research_analyze',
       'research_catalog_review',
