@@ -46,6 +46,7 @@ async function handler(args: unknown, ctx: HandlerContext): Promise<ToolResult> 
 // Registration
 // ============================================================================
 
+/** @category MCP */
 export function registerRepoSecurityPlanTool(server: McpServer, deps: RepoSecurityPlanDeps): void {
   const logger = deps.logger ?? createLogger({ tool: 'repo_security_plan' });
   const toolSchema = {

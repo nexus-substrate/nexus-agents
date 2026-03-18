@@ -128,6 +128,7 @@ function createIssueTriageHandler(_deps: IssueTriageDeps) {
 /**
  * Registers the issue_triage tool with the MCP server.
  * Uses createSecureHandler for rate limiting and input sanitization.
+ * @category MCP
  */
 export function registerIssueTriageTool(server: McpServer, deps: IssueTriageDeps): void {
   const logger = deps.logger ?? createLogger({ tool: 'issue_triage' });

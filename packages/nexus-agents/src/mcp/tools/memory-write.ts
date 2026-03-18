@@ -261,6 +261,7 @@ async function memoryWriteHandler(args: unknown, ctx: HandlerContext): Promise<T
 /**
  * Registers the memory_write tool with the MCP server.
  *
+ * @category MCP
  * @param server - MCP server instance
  * @param deps - Tool dependencies
  */

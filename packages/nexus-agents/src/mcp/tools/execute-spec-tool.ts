@@ -94,7 +94,7 @@ async function createFullResponse(input: ExecuteSpecInput, logger: ILogger): Pro
 // Registration
 // ============================================================================
 
-/** Registers the execute_spec tool with an MCP server. */
+/** Registers the execute_spec tool with an MCP server. @category MCP */
 export function registerExecuteSpecTool(server: McpServer, deps: ExecuteSpecDeps): void {
   const logger = deps.logger ?? createLogger({ tool: 'execute_spec' });
 

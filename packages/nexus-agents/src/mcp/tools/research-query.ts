@@ -210,6 +210,7 @@ function createResearchQueryHandler(deps: ResearchQueryDeps) {
 /**
  * Registers the research_query tool with the MCP server.
  *
+ * @category MCP
  * @param server - MCP server instance
  * @param deps - Tool dependencies
  */

@@ -124,6 +124,7 @@ async function searchCodebaseHandler(args: unknown, ctx: HandlerContext): Promis
 // Registration
 // ============================================================================
 
+/** @category MCP */
 export function registerSearchCodebaseTool(server: McpServer, deps: SearchCodebaseDeps): void {
   const logger = deps.logger ?? createLogger({ tool: 'search_codebase' });
 

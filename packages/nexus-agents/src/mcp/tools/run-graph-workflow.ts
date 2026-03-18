@@ -236,7 +236,7 @@ function createGraphWorkflowHandler(
   };
 }
 
-/** Registers the run_graph_workflow tool with an MCP server. */
+/** Registers the run_graph_workflow tool with an MCP server. @category MCP */
 export function registerRunGraphWorkflowTool(server: McpServer, deps: RunGraphWorkflowDeps): void {
   const logger = deps.logger ?? createLogger({ tool: 'run_graph_workflow' });
   const notifier = deps.notifier ?? createMcpNotifier(server);

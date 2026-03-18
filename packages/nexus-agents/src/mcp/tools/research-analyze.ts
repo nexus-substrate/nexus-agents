@@ -404,6 +404,7 @@ function createResearchAnalyzeHandler(deps: ResearchAnalyzeDeps) {
 /**
  * Registers the research_analyze tool with the MCP server.
  *
+ * @category MCP
  * @param server - MCP server instance
  * @param deps - Tool dependencies
  */

@@ -287,6 +287,7 @@ function createDelegateHandler(
  * Uses createSecureHandler for standardized security middleware (Issue #531).
  * Includes timeout protection for CVE-2026-0621 mitigation (Issue #271).
  *
+ * @category MCP
  * @param server - MCP server instance
  * @param deps - Dependencies
  */

@@ -190,6 +190,7 @@ function queryTraceHandler(args: unknown, ctx: HandlerContext): Promise<ToolResu
 // Registration
 // ============================================================================
 
+/** @category MCP */
 export function registerQueryTraceTool(server: McpServer, deps: QueryTraceDeps): void {
   const logger = deps.logger ?? createLogger({ tool: 'query_trace' });
   const toolSchema = {

@@ -177,12 +177,18 @@ function recordAddSourceLearning(
   }
 }
 
+/** Build entry and compute quality score. */
+function prepareSource(input: ResearchAddSourceInput): { entry: SourceEntry; score: number } {
+  const entry = buildSourceEntry(input);
+  const score = computeSourceQualityScore(entry as unknown as ResearchSource);
+  return { entry, score };
+}
+
 async function executeResearchAddSource(
   input: ResearchAddSourceInput,
   logger: ILogger
 ): Promise<ResearchAddSourceResponse> {
   const sourceId = generateSourceId(input.url);
-
   const exists = await sourceExistsInRegistry(input.url);
   if (exists) {
     return buildResponse({
@@ -195,17 +201,14 @@ async function executeResearchAddSource(
     });
   }
 
-  const entry = buildSourceEntry(input);
-  const qualityScore = computeSourceQualityScore(entry as unknown as ResearchSource);
-
+  const { entry, score } = prepareSource(input);
   if (input.dryRun) {
-    const msg = `[DRY RUN] Would add '${input.name}' (${sourceId}) quality=${String(qualityScore)}`;
     return buildResponse({
       success: true,
       sourceId,
       name: input.name,
-      qualityScore,
-      message: msg,
+      qualityScore: score,
+      message: `[DRY RUN] Would add '${input.name}' (${sourceId}) quality=${String(score)}`,
       dryRun: true,
     });
   }
@@ -216,22 +219,20 @@ async function executeResearchAddSource(
       success: false,
       sourceId,
       name: input.name,
-      qualityScore,
+      qualityScore: score,
       message: writeResult.error.message,
       dryRun: false,
     });
   }
 
-  recordAddSourceLearning(logger, input.name, sourceId, input.type, qualityScore);
-  logger.info('Added research source', { sourceId, name: input.name, qualityScore });
-
-  const msg = `Added '${input.name}' (${sourceId}) quality=${String(qualityScore)}`;
+  recordAddSourceLearning(logger, input.name, sourceId, input.type, score);
+  logger.info('Added research source', { sourceId, name: input.name, qualityScore: score });
   return buildResponse({
     success: true,
     sourceId,
     name: input.name,
-    qualityScore,
-    message: msg,
+    qualityScore: score,
+    message: `Added '${input.name}' (${sourceId}) quality=${String(score)}`,
     dryRun: false,
   });
 }
@@ -262,6 +263,7 @@ function createResearchAddSourceHandler(deps: ResearchAddSourceDeps) {
   };
 }
 
+/** @category MCP */
 export function registerResearchAddSourceTool(
   server: McpServer,
   deps: ResearchAddSourceDeps

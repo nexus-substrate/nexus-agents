@@ -97,6 +97,7 @@ async function extractSymbolsHandler(args: unknown, ctx: HandlerContext): Promis
 // Registration
 // ============================================================================
 
+/** @category MCP */
 export function registerExtractSymbolsTool(server: McpServer, deps: ExtractSymbolsDeps): void {
   const logger = deps.logger ?? createLogger({ tool: 'extract_symbols' });
 

@@ -188,6 +188,7 @@ async function memoryStatsHandler(args: unknown, ctx: HandlerContext): Promise<T
 /**
  * Registers the memory_stats tool with the MCP server.
  *
+ * @category MCP
  * @param server - MCP server instance
  * @param deps - Tool dependencies
  */

@@ -716,6 +716,7 @@ function createOrchestrateHandler(deps: OrchestrateDeps) {
 /**
  * Registers the orchestrate tool with the MCP server.
  * Uses createSecureHandler (Issue #531) with timeout protection (Issue #271).
+ * @category MCP
  */
 export function registerOrchestrateTool(server: McpServer, deps: OrchestrateDeps): void {
   const logger = deps.logger ?? createLogger({ tool: 'orchestrate' });

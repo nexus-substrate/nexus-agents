@@ -390,6 +390,7 @@ export const CONSENSUS_VOTE_OUTPUT_SCHEMA = {
 /**
  * Registers the consensus_vote tool with the MCP server.
  * Uses createSecureHandler (Issue #531) with timeout protection (Issue #271).
+ * @category MCP
  */
 export function registerConsensusVoteTool(server: McpServer, deps: ConsensusVoteDeps): void {
   const logger = deps.logger ?? createLogger({ tool: 'consensus_vote' });

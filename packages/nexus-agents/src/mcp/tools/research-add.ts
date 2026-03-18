@@ -165,6 +165,7 @@ function createResearchAddHandler(deps: ResearchAddDeps) {
 /**
  * Registers the research_add tool with the MCP server.
  *
+ * @category MCP
  * @param server - MCP server instance
  * @param deps - Tool dependencies
  */

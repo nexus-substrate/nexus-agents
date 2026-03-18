@@ -87,6 +87,7 @@ function weatherReportHandler(args: unknown, ctx: HandlerContext): Promise<ToolR
 // Registration
 // ============================================================================
 
+/** @category MCP */
 export function registerWeatherReportTool(server: McpServer, deps: WeatherReportDeps): void {
   const logger = deps.logger ?? createLogger({ tool: 'weather_report' });
   const toolSchema = {

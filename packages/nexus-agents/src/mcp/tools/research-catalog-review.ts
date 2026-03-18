@@ -251,6 +251,7 @@ function createCatalogReviewHandler(deps: ResearchCatalogReviewDeps) {
 /**
  * Registers the research_catalog_review tool with the MCP server.
  *
+ * @category MCP
  * @param server - MCP server instance
  * @param deps - Tool dependencies
  */

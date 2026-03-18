@@ -565,6 +565,7 @@ function createResearchDiscoverHandler(deps: ResearchDiscoverDeps) {
 /**
  * Registers the research_discover tool with the MCP server.
  *
+ * @category MCP
  * @param server - MCP server instance
  * @param deps - Tool dependencies
  */

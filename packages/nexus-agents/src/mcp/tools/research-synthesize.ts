@@ -78,6 +78,7 @@ function createResearchSynthesizeHandler(
 /**
  * Registers the research_synthesize tool with the MCP server.
  *
+ * @category MCP
  * @param server - MCP server instance
  * @param deps - Tool dependencies
  */

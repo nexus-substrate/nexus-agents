@@ -47,6 +47,7 @@ async function repoAnalyzeHandler(args: unknown, ctx: HandlerContext): Promise<T
 // Registration
 // ============================================================================
 
+/** @category MCP */
 export function registerRepoAnalyzeTool(server: McpServer, deps: RepoAnalyzeDeps): void {
   const logger = deps.logger ?? createLogger({ tool: 'repo_analyze' });
   const toolSchema = {

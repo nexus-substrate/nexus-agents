@@ -47,6 +47,7 @@ function registryImportHandler(args: unknown, ctx: HandlerContext): Promise<Tool
 // Registration
 // ============================================================================
 
+/** @category MCP */
 export function registerRegistryImportTool(server: McpServer, deps: RegistryImportDeps): void {
   const logger = deps.logger ?? createLogger({ tool: 'registry_import' });
   const toolSchema = {
