@@ -22,7 +22,15 @@ Guidelines:
 3. Start with files mentioned in the error/traceback, then search for the function/class name.
 4. Identify the root cause of the issue.
 5. Edit only the source files needed for a minimal fix. Maintain backward compatibility.
-6. Run \`git diff\` to verify your changes are correct BEFORE outputting the patch.
+6. VERIFY your fix by running the failing test(s) BEFORE outputting the patch.
+7. If the test still fails after your fix, analyze the failure output and iterate.
+8. Run \`git diff\` to confirm your final changes.
+
+CONTEXT BUDGET: You have limited context. Be efficient:
+- Don't read entire files — use grep/search to find relevant sections
+- Don't explore the whole codebase — go directly to files mentioned in the error
+- Keep your analysis concise — focus on the root cause, not comprehensive review
+- If you're running low on context, output your best patch immediately
 
 IMPORTANT: After making your fix, output the patch using this exact format:
 
@@ -50,7 +58,17 @@ function buildTestContext(instance: SWEBenchInstance): string[] {
       ...testNames.map((t: string) => `- \`${t}\``),
       '',
       'Read these test functions to understand the EXACT expected behavior',
-      'before writing your patch. The test assertions define correctness.'
+      'before writing your patch. The test assertions define correctness.',
+      '',
+      '**VERIFICATION LOOP:** After making your fix, run these tests:',
+      ...testNames.map((t: string) => {
+        // Extract test file path from test identifier
+        const testFile = t.split('::')[0] ?? t.split(' ')[0] ?? t;
+        return `  python -m pytest ${testFile} -x -v 2>&1 | tail -20`;
+      }),
+      '',
+      'If tests fail, read the output, fix your code, and re-run.',
+      'Only output the final patch after tests pass.'
     );
   }
 
