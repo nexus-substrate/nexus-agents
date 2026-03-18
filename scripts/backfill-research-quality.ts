@@ -198,6 +198,16 @@ async function main(): Promise<void> {
     paper.quality_score = computeScore(paper);
     paper.evidence_tier = computeTier(paper);
 
+    // Add quality audit trail — enables future re-review
+    paper.last_quality_check = new Date().toISOString().slice(0, 10);
+    if (paper.evidence_tier === 'low' && !paper.quality_notes) {
+      const reasons: string[] = [];
+      if (!paper.citation_count) reasons.push('no citations found');
+      if (paper.venue_tier === 0) reasons.push('arXiv preprint (not peer-reviewed)');
+      if (!paper.has_code) reasons.push('no code repository');
+      paper.quality_notes = reasons.join('; ');
+    }
+
     enriched++;
     const tier = paper.evidence_tier.toUpperCase().padEnd(6);
     console.log(

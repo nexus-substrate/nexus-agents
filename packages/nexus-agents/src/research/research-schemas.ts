@@ -191,6 +191,10 @@ export const ResearchPaperSchema = z.object({
   quality_score: z.number().min(0).max(10).optional(),
   /** Evidence confidence tier for extracted techniques */
   evidence_tier: z.enum(['high', 'medium', 'low']).optional(),
+  /** Why this paper scored low — enables future re-review when conditions change */
+  quality_notes: z.string().optional(),
+  /** When quality was last assessed (ISO date) — enables periodic re-review */
+  last_quality_check: z.string().optional(),
 });
 export type ResearchPaper = z.infer<typeof ResearchPaperSchema>;
 

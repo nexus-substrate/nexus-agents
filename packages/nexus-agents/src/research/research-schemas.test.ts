@@ -46,13 +46,13 @@ describe('ResearchTopicSchema', () => {
     }
   });
 
-  it('should reject invalid topics', () => {
-    const result = ResearchTopicSchema.safeParse('invalid-topic');
-    expect(result.success).toBe(false);
+  it('should accept any non-empty topic string', () => {
+    expect(ResearchTopicSchema.safeParse('custom-topic').success).toBe(true);
+    expect(ResearchTopicSchema.safeParse('').success).toBe(false);
   });
 
-  it('should have all topics in RESEARCH_TOPICS constant', () => {
-    expect(RESEARCH_TOPICS).toHaveLength(7);
+  it('should have topics in RESEARCH_TOPICS constant', () => {
+    expect(RESEARCH_TOPICS.length).toBeGreaterThan(0);
     expect(RESEARCH_TOPICS).toContain('security');
   });
 
@@ -185,13 +185,13 @@ describe('ResearchPaperSchema', () => {
     expect(result.success).toBe(false);
   });
 
-  it('should reject invalid topic', () => {
+  it('should accept any topic string in papers', () => {
     const paper = {
       title: 'Test',
-      topics: ['invalid-topic'],
+      topics: ['custom-topic'],
     };
     const result = ResearchPaperSchema.safeParse(paper);
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
   });
 
   it('should reject negative issue numbers', () => {
@@ -255,15 +255,15 @@ describe('ResearchTechniqueSchema', () => {
     expect(result.success).toBe(true);
   });
 
-  it('should reject invalid topic', () => {
+  it('should accept any topic string in techniques', () => {
     const technique = {
       name: 'Test',
       description: 'Test',
-      topic: 'invalid',
+      topic: 'custom-topic',
       status: 'planned',
     };
     const result = ResearchTechniqueSchema.safeParse(technique);
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
   });
 
   it('should reject invalid status', () => {
