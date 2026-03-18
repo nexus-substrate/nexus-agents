@@ -16,7 +16,7 @@ papers:
       - collaboration
       - survey
       - coordination
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: multi-agent-coordination.md
     summary: |
       Taxonomy of collaboration types (cooperation, competition, coopetition)
@@ -46,7 +46,7 @@ papers:
       - puppeteer
       - reinforcement-learning
       - coordination
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: multi-agent-coordination.md
     summary: |
       Puppeteer-style paradigm with RL-trained orchestrator for dynamic
@@ -76,7 +76,7 @@ papers:
       - debate
       - decision-making
       - multi-agent
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: multi-agent-coordination.md
     summary: |
       Empirical comparison of 7 decision protocols for multi-agent systems.
@@ -107,7 +107,7 @@ papers:
       - benchmark
       - multi-agent
       - coordination
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: multi-agent-coordination.md
     summary: |
       Benchmark for 100-agent coordination scenarios.
@@ -130,7 +130,7 @@ papers:
     tags:
       - context-compression
       - task-specific
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: multi-agent-coordination.md
     summary: |
       Task-specific context compression techniques.
@@ -154,7 +154,7 @@ papers:
     tags:
       - context-compression
       - learned-compression
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: multi-agent-coordination.md
     summary: |
       Learned compression modules for context management.
@@ -180,7 +180,7 @@ papers:
       - long-term-memory
       - graph-memory
       - production
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: multi-agent-coordination.md
     summary: |
       Scalable memory architecture achieving 91% latency reduction
@@ -210,7 +210,7 @@ papers:
     tags:
       - survey
       - context-management
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: multi-agent-coordination.md
     summary: |
       Taxonomy of context management strategies.
@@ -238,7 +238,7 @@ papers:
       - model-selection
       - cost-optimization
       - theoretical
-    reviewed_date: 2026-01-18
+    reviewed_date: '2026-01-18'
     reviewed_in: routing-optimization.md
     summary: |
       Derives optimal strategy for cascading, proves optimality of existing
@@ -267,7 +267,7 @@ papers:
       - quality-constrained
       - cost-reduction
       - routing-latency
-    reviewed_date: 2026-01-07
+    reviewed_date: '2026-01-07'
     reviewed_in: quality-router implementation
     summary: |
       Quality-constrained routing to cheapest model meeting
@@ -290,7 +290,7 @@ papers:
       - preference-data
       - cost-reduction
       - transfer-learning
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: multi-agent-coordination.md
     summary: |
       Train router on human preference data for dynamic selection
@@ -319,7 +319,7 @@ papers:
       - knn
       - hierarchical-filtering
       - cost-optimization
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: multi-agent-coordination.md
     summary: |
       kNN + hierarchical filtering with cost/ethics tradeoffs.
@@ -345,7 +345,7 @@ papers:
       - capability
       - instruction-tuning
       - model-zoo
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: multi-agent-coordination.md
     summary: |
       Achieves 80% GPT-4o coverage with smaller model zoo.
@@ -370,7 +370,7 @@ papers:
       - unified-routing
       - cost-optimization
       - topsis
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: multi-agent-coordination.md
     summary: |
       Unified LLM + agent routing with TOPSIS algorithm for
@@ -399,7 +399,7 @@ papers:
     tags:
       - cross-attention
       - query-model-matching
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: multi-agent-coordination.md
     summary: |
       Single-head cross-attention for query-model matching.
@@ -424,7 +424,7 @@ papers:
       - confidence-aware
       - cascade
       - cost-reduction
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: multi-agent-improvements-2025.md
     summary: |
       Dual-mode routing with shortest-response preference optimization
@@ -454,7 +454,7 @@ papers:
       - quality-constrained
       - tolerance-parameter
       - lightweight
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: multi-agent-improvements-2025.md
     summary: |
       Quality-constrained routing with user-controlled tolerance parameter
@@ -485,7 +485,7 @@ papers:
       - contextual-bandit
       - budget-constraints
       - linucb
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: multi-agent-improvements-2025.md
     summary: |
       Contextual bandit (LinUCB) with preference-prior routing and
@@ -514,7 +514,7 @@ papers:
       - formal-verification
       - quorum
       - streaming
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: multi-agent-improvements-2025.md
     summary: |
       Formal consensus protocol for stochastic reasoning with
@@ -544,7 +544,7 @@ papers:
       - byzantine
       - fault-tolerance
       - confidence-probe
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: multi-agent-improvements-2025.md
     summary: |
       Confidence Probe-based Weighted Byzantine Fault Tolerant consensus.
@@ -573,7 +573,7 @@ papers:
       - score-based
       - anti-conformity
       - debate
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: multi-agent-improvements-2025.md
     summary: |
       Score-based decision with anti-conformity to prevent majority
@@ -603,7 +603,7 @@ papers:
       - reflexion
       - multi-agent
       - reasoning
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: self-improvement-feedback-loops.md
     summary: |
       Multiple agents reflect and critique each other's outputs.
@@ -631,7 +631,7 @@ papers:
       - kv-cache
       - compression
       - svd
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: multi-agent-improvements-2025.md
     summary: |
       Cross-layer SVD for KV-cache compression exploiting singular
@@ -658,7 +658,7 @@ papers:
       - kv-cache
       - tree-structure
       - compression
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: multi-agent-improvements-2025.md
     summary: |
       Tree-structured cache compression with smooth context transitions.
@@ -684,7 +684,7 @@ papers:
     tags:
       - prompt-compression
       - behavior-distillation
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: multi-agent-improvements-2025.md
     summary: |
       Single-token compression of system prompts via reconstruction
@@ -712,7 +712,7 @@ papers:
       - coordinator
       - thinker-worker-verifier
       - cma-es
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: multi-agent-improvements-2025.md
     summary: |
       Evolved LLM coordinator with Thinker/Worker/Verifier roles
@@ -742,7 +742,7 @@ papers:
       - state-aware
       - history-encoding
       - self-evolving
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: multi-agent-improvements-2025.md
     summary: |
       State-aware routing with separate encoding of history and
@@ -770,7 +770,7 @@ papers:
       - test-time-scaling
       - verifier
       - backtrack
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: multi-agent-improvements-2025.md
     summary: |
       Locally adaptive test-time scaling with verifier-based
@@ -798,7 +798,7 @@ papers:
       - hybrid
       - transformer
       - ssm
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: multi-agent-coordination.md
     summary: |
       Transformer + SSM hybrid analysis.
@@ -822,7 +822,7 @@ papers:
       - temporal-graph
       - vector-db
       - integration
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: multi-agent-coordination.md
     summary: |
       Temporal graph + vector DB integration for multi-LLM orchestration.
@@ -847,7 +847,7 @@ papers:
       - kubernetes
       - helm
       - scale-to-zero
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: multi-agent-coordination.md
     summary: |
       Unified Helm-based deployment with adaptive scale-to-zero
@@ -875,7 +875,7 @@ papers:
       - cascade
       - agreement-based
       - edge
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: multi-agent-coordination.md
     summary: |
       Hybrid routing with cascade/ABC (Agreement-Based Cascading) patterns.
@@ -904,7 +904,7 @@ papers:
       - zettelkasten
       - dynamic-linking
       - memory-evolution
-    reviewed_date: 2026-01-09
+    reviewed_date: '2026-01-09'
     reviewed_in: 'Issue #122'
     summary: |
       Zettelkasten-inspired agentic memory system where memories are
@@ -937,7 +937,7 @@ papers:
       - six-type-memory
       - multimodal
       - rag
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: multi-agent-improvements-2025.md
     summary: |
       Six-type memory system with multi-agent management architecture.
@@ -968,7 +968,7 @@ papers:
       - profile
       - experience
       - action-memory
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: multi-agent-improvements-2025.md
     summary: |
       Post-deployment evolution via Profile, Experience, and Action
@@ -1008,7 +1008,7 @@ papers:
       - paging
       - self-editing-memory
       - long-context
-    reviewed_date: 2026-01-18
+    reviewed_date: '2026-01-18'
     reviewed_in: adaptive-memory technique
     summary: |
       Operating system-inspired memory management for LLMs with virtual
@@ -1039,7 +1039,7 @@ papers:
       - latent-space
       - embedding
       - inter-agent
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: multi-agent-improvements-2025.md
     summary: |
       Direct latent space collaboration through hidden state sharing.
@@ -1069,7 +1069,7 @@ papers:
       - self-improvement
       - iterative
       - training-free
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: self-improvement-feedback-loops.md
     summary: |
       A single LLM acts as generator, feedback provider, and refiner
@@ -1102,7 +1102,7 @@ papers:
       - code-repair
       - execution-feedback
       - rubber-duck
-    reviewed_date: 2026-01-18
+    reviewed_date: '2026-01-18'
     reviewed_in: self-improvement-feedback-loops.md
     summary: |
       Self-Debugging teaches LLMs to debug their own code via few-shot
@@ -1134,7 +1134,7 @@ papers:
       - verbal-rl
       - episodic-memory
       - reflection
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: self-improvement-feedback-loops.md
     summary: |
       Agents maintain an episodic memory of verbal reflections that
@@ -1167,7 +1167,7 @@ papers:
       - mcts
       - tree-search
       - planning
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: self-improvement-feedback-loops.md
     summary: |
       Combines Monte Carlo Tree Search (MCTS) with LLM-based value
@@ -1197,7 +1197,7 @@ papers:
       - self-referential
       - recursive
       - self-modification
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: self-improvement-feedback-loops.md
     summary: |
       Inspired by Godel machines, agents can modify their own logic
@@ -1228,7 +1228,7 @@ papers:
       - self-improvement
       - versioning
       - observability
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: self-improvement-feedback-loops.md
     summary: |
       A unified agent that performs tasks AND improves its own
@@ -1258,7 +1258,7 @@ papers:
       - optimization
       - specialized-agents
       - feedback-loop
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: self-improvement-feedback-loops.md
     summary: |
       Five specialized agents (Refinement, Execution, Evaluation,
@@ -1286,7 +1286,7 @@ papers:
       - self-play
       - theoretical
       - gvu-operator
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: self-improvement-feedback-loops.md
     summary: |
       Formalizes self-improvement as a Generator-Verifier-Updater (GVU)
@@ -1315,7 +1315,7 @@ papers:
       - skill-library
       - lifelong-learning
       - exploration
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: self-improvement-feedback-loops.md
     summary: |
       Lifelong learning agent that builds an ever-growing library of
@@ -1345,7 +1345,7 @@ papers:
       - quality-diversity
       - model-merging
       - svd-mutation
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: self-improvement-feedback-loops.md
     summary: |
       Uses Quality-Diversity framework with cyclic task focus, model
@@ -1373,7 +1373,7 @@ papers:
       - skill-discovery
       - exploration
       - two-agent
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: self-improvement-feedback-loops.md
     summary: |
       Exploration-first strategy using two agents (Alice explores,
@@ -1400,7 +1400,7 @@ papers:
       - continual-learning
       - multimodal
       - trajectory-abstraction
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: self-improvement-feedback-loops.md
     summary: |
       Build memory of multimodal experience from suboptimal
@@ -1428,7 +1428,7 @@ papers:
       - rlaif
       - ai-feedback
       - scaling
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: self-improvement-feedback-loops.md
     summary: |
       RLAIF achieves comparable performance to RLHF at 10x lower cost.
@@ -1457,7 +1457,7 @@ papers:
       - constitutional-ai
       - self-critique
       - anthropic
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: self-improvement-feedback-loops.md
     summary: |
       Two-phase approach: supervised phase (model critiques and revises)
@@ -1486,7 +1486,7 @@ papers:
       - mcts
       - self-critique
       - dpo
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: self-improvement-feedback-loops.md
     summary: |
       Combines guided MCTS with self-critique and DPO for learning
@@ -1514,7 +1514,7 @@ papers:
       - test-time
       - feedback
       - inference-scaling
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: self-improvement-feedback-loops.md
     summary: |
       Feedback mechanisms that enable agents to improve during
@@ -1542,7 +1542,7 @@ papers:
       - lifelong-learning
       - survey
       - roadmap
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: self-improvement-feedback-loops.md
     summary: |
       Three core modules: Perception (multimodal input), Memory
@@ -1569,7 +1569,7 @@ papers:
       - meta-thinking
       - multi-agent-rl
       - self-reflection
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: self-improvement-feedback-loops.md
     summary: |
       Develop meta-thinking (self-reflection, assessment, control of
@@ -1596,7 +1596,7 @@ papers:
       - human-in-the-loop
       - test-time
       - knowledge-gaps
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: self-improvement-feedback-loops.md
     summary: |
       Agents identify knowledge gaps through self-dialogue, request
@@ -1624,7 +1624,7 @@ papers:
       - survey
       - multi-agent
       - llm
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: self-improvement-feedback-loops.md
     summary: |
       Comprehensive survey on LLM-based multi-agent systems.
@@ -1650,7 +1650,7 @@ papers:
       - survey
       - self-evolving
       - agents
-    reviewed_date: 2026-01-06
+    reviewed_date: '2026-01-06'
     reviewed_in: self-improvement-feedback-loops.md
     summary: |
       Survey of self-evolving agent architectures and techniques.
@@ -1688,7 +1688,7 @@ papers:
       - hierarchical-memory
       - meta-agent
       - cross-session-learning
-    reviewed_date: 2026-01-16
+    reviewed_date: '2026-01-16'
     reviewed_in: 'Issue #279'
     summary: |
       Production-scale code agent with Confucius SDK. Achieves 54.3% Resolve@1
@@ -1719,7 +1719,7 @@ papers:
       - formal-safety
       - mcp
       - hazard-analysis
-    reviewed_date: 2026-01-17
+    reviewed_date: '2026-01-17'
     reviewed_in: consensus-vote-2026-01-17.md
     summary: |
       Formal STPA safety analysis methodology for MCP tools. Systematically
@@ -1750,7 +1750,7 @@ papers:
       - workflow-generation
       - automatic-discovery
       - optimization
-    reviewed_date: 2026-01-17
+    reviewed_date: '2026-01-17'
     reviewed_in: consensus-vote-2026-01-17.md
     summary: |
       Monte Carlo Tree Search (MCTS) for automatic workflow discovery and
@@ -1780,7 +1780,7 @@ papers:
       - self-evolving
       - workflow-optimization
       - feedback-learning
-    reviewed_date: 2026-01-17
+    reviewed_date: '2026-01-17'
     reviewed_in: consensus-vote-2026-01-17.md
     summary: |
       Self-evolving workflow patterns that adapt and improve through execution
@@ -1811,7 +1811,7 @@ papers:
       - correlation-aware
       - optimal-weighting
       - voting
-    reviewed_date: 2026-01-17
+    reviewed_date: '2026-01-17'
     reviewed_in: consensus-vote-2026-01-17.md
     summary: |
       Bayesian-optimal aggregation methods (Optimal Weighting and Information
@@ -1842,7 +1842,7 @@ papers:
       - multi-tree
       - sparse-activation
       - parallel-exploration
-    reviewed_date: 2026-01-17
+    reviewed_date: '2026-01-17'
     reviewed_in: consensus-vote-2026-01-17.md
     summary: |
       Multi-tree reasoning architecture with sparse activation for parallel
@@ -1873,7 +1873,7 @@ papers:
       - risk-assessment
       - benchmarking
       - compliance
-    reviewed_date: 2026-01-17
+    reviewed_date: '2026-01-17'
     reviewed_in: consensus-vote-2026-01-17.md
     summary: |
       Comprehensive safety evaluation suite for agent behaviors across multiple
@@ -1904,7 +1904,7 @@ papers:
       - difficulty-estimation
       - task-routing
       - latent-space
-    reviewed_date: 2026-01-17
+    reviewed_date: '2026-01-17'
     reviewed_in: consensus-vote-2026-01-17.md
     summary: |
       VAE-based difficulty estimation for intelligent task routing. Maps tasks
@@ -1935,7 +1935,7 @@ papers:
       - reasoning
       - hindsight
       - belief-memory
-    reviewed_date: 2026-01-17
+    reviewed_date: '2026-01-17'
     reviewed_in: consensus-vote-2026-01-17.md
     summary: |
       Belief Memory layer for reasoning agents that maintains and updates
@@ -1966,7 +1966,7 @@ papers:
       - coordination
       - prediction
       - resource-optimization
-    reviewed_date: 2026-01-17
+    reviewed_date: '2026-01-17'
     reviewed_in: consensus-vote-2026-01-17.md
     summary: |
       Prediction of coordination requirements for scaling multi-agent systems.
@@ -2008,7 +2008,7 @@ papers:
       - ictm-tuple
       - context-control
       - performance-cost-tradeoff
-    reviewed_date: 2026-02-05
+    reviewed_date: '2026-02-05'
     reviewed_in: consensus-vote-2026-02-05.md
     summary: |
       Framework for dynamic sub-agent creation via unified agent abstraction.
@@ -2040,7 +2040,7 @@ papers:
     topics:
       - orchestration
     tags: []
-    reviewed_date: 2026-02-04
+    reviewed_date: '2026-02-04'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2059,7 +2059,7 @@ papers:
     topics:
       - memory
     tags: []
-    reviewed_date: 2026-02-04
+    reviewed_date: '2026-02-04'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2078,7 +2078,7 @@ papers:
     topics:
       - routing
     tags: []
-    reviewed_date: 2026-02-04
+    reviewed_date: '2026-02-04'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2097,7 +2097,7 @@ papers:
     topics:
       - orchestration
     tags: []
-    reviewed_date: 2026-02-04
+    reviewed_date: '2026-02-04'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2116,7 +2116,7 @@ papers:
     topics:
       - orchestration
     tags: []
-    reviewed_date: 2026-02-04
+    reviewed_date: '2026-02-04'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2135,7 +2135,7 @@ papers:
     topics:
       - consensus
     tags: []
-    reviewed_date: 2026-02-04
+    reviewed_date: '2026-02-04'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2154,7 +2154,7 @@ papers:
     topics:
       - consensus
     tags: []
-    reviewed_date: 2026-02-04
+    reviewed_date: '2026-02-04'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2173,7 +2173,7 @@ papers:
     topics:
       - consensus
     tags: []
-    reviewed_date: 2026-02-04
+    reviewed_date: '2026-02-04'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2192,7 +2192,7 @@ papers:
     topics:
       - memory
     tags: []
-    reviewed_date: 2026-02-04
+    reviewed_date: '2026-02-04'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2211,7 +2211,7 @@ papers:
     topics:
       - memory
     tags: []
-    reviewed_date: 2026-02-04
+    reviewed_date: '2026-02-04'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2230,7 +2230,7 @@ papers:
     topics:
       - memory
     tags: []
-    reviewed_date: 2026-02-04
+    reviewed_date: '2026-02-04'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2249,7 +2249,7 @@ papers:
     topics:
       - memory
     tags: []
-    reviewed_date: 2026-02-04
+    reviewed_date: '2026-02-04'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2268,7 +2268,7 @@ papers:
     topics:
       - memory
     tags: []
-    reviewed_date: 2026-02-04
+    reviewed_date: '2026-02-04'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2287,7 +2287,7 @@ papers:
     topics:
       - routing
     tags: []
-    reviewed_date: 2026-02-05
+    reviewed_date: '2026-02-05'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2306,7 +2306,7 @@ papers:
     topics:
       - orchestration
     tags: []
-    reviewed_date: 2026-02-05
+    reviewed_date: '2026-02-05'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2325,7 +2325,7 @@ papers:
     topics:
       - orchestration
     tags: []
-    reviewed_date: 2026-02-06
+    reviewed_date: '2026-02-06'
     reviewed_in: ''
     summary: Entropy reduction correlates with higher-quality tool invocations. Dense process-based
       rewards improve performance by 22%.
@@ -2347,7 +2347,7 @@ papers:
     topics:
       - orchestration
     tags: []
-    reviewed_date: 2026-02-06
+    reviewed_date: '2026-02-06'
     reviewed_in: ''
     summary: Framework for uncertainty quantification in LLM agents using conditional uncertainty
       reduction across trajectories.
@@ -2371,7 +2371,7 @@ papers:
     tags:
       - multi-agent
       - llm
-    reviewed_date: 2026-02-21
+    reviewed_date: '2026-02-21'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2392,7 +2392,7 @@ papers:
       - routing
     tags:
       - llm
-    reviewed_date: 2026-02-22
+    reviewed_date: '2026-02-22'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2411,7 +2411,7 @@ papers:
     topics:
       - multi-agent-worker-dispatch
     tags: []
-    reviewed_date: 2026-03-01
+    reviewed_date: '2026-03-01'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2431,7 +2431,7 @@ papers:
       - multi-agent reliability
     tags:
       - multi-agent
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2451,7 +2451,7 @@ papers:
       - model-routing
     tags:
       - llm
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2471,7 +2471,7 @@ papers:
       - multi-agent-orchestration
     tags:
       - multi-agent
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2492,7 +2492,7 @@ papers:
     tags:
       - llm
       - reinforcement-learning
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2512,7 +2512,7 @@ papers:
       - model-routing
     tags:
       - llm
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2532,7 +2532,7 @@ papers:
       - model-routing
     tags:
       - llm
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2553,7 +2553,7 @@ papers:
     tags:
       - multi-agent
       - llm
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2574,7 +2574,7 @@ papers:
     tags:
       - multi-agent
       - llm
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2594,7 +2594,7 @@ papers:
       - graph-orchestration
     tags:
       - llm
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2615,7 +2615,7 @@ papers:
     tags:
       - multi-agent
       - llm
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2635,7 +2635,7 @@ papers:
       - agent security
     tags:
       - llm
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2654,7 +2654,7 @@ papers:
     topics:
       - tool routing optimization
     tags: []
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2674,7 +2674,7 @@ papers:
       - agent architecture
     tags:
       - llm
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2693,7 +2693,7 @@ papers:
     topics:
       - MCP protocol
     tags: []
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2713,7 +2713,7 @@ papers:
       - prompt injection defense
     tags:
       - llm
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2732,7 +2732,7 @@ papers:
     topics:
       - prompt injection defense
     tags: []
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2751,7 +2751,7 @@ papers:
     topics:
       - MCP protocol
     tags: []
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2773,7 +2773,7 @@ papers:
       - benchmark
       - llm
       - reinforcement-learning
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2795,7 +2795,7 @@ papers:
       - survey
       - benchmark
       - llm
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2814,7 +2814,7 @@ papers:
     topics:
       - agent architecture
     tags: []
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2834,7 +2834,7 @@ papers:
       - agent security
     tags:
       - llm
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2853,7 +2853,7 @@ papers:
     topics:
       - retrieval augmented generation
     tags: []
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2873,7 +2873,7 @@ papers:
       - MCP security
     tags:
       - llm
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2895,7 +2895,7 @@ papers:
       - LLM evaluation
     tags:
       - llm
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2915,7 +2915,7 @@ papers:
       - multi-agent orchestration
     tags:
       - multi-agent
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2935,7 +2935,7 @@ papers:
       - model routing
     tags:
       - llm
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2954,7 +2954,7 @@ papers:
     topics:
       - MCP protocol
     tags: []
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2976,7 +2976,7 @@ papers:
     tags:
       - multi-agent
       - llm
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -2998,7 +2998,7 @@ papers:
       - model routing
     tags:
       - multi-agent
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3019,7 +3019,7 @@ papers:
       - multi-agent orchestration
     tags:
       - llm
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3041,7 +3041,7 @@ papers:
       - benchmark
       - llm
       - reinforcement-learning
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3061,7 +3061,7 @@ papers:
       - tool use
     tags:
       - llm
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3082,7 +3082,7 @@ papers:
     tags:
       - llm
       - reinforcement-learning
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3101,7 +3101,7 @@ papers:
     topics:
       - agentic AI safety
     tags: []
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3121,7 +3121,7 @@ papers:
       - model-context-protocol
     tags:
       - benchmark
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3140,7 +3140,7 @@ papers:
     topics:
       - agentic-safety
     tags: []
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3159,7 +3159,7 @@ papers:
     topics:
       - multi-agent-coordination
     tags: []
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3178,7 +3178,7 @@ papers:
     topics:
       - agentic-memory
     tags: []
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3198,7 +3198,7 @@ papers:
       - evaluation-methods
     tags:
       - llm
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3219,7 +3219,7 @@ papers:
     tags:
       - llm
       - reinforcement-learning
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3239,7 +3239,7 @@ papers:
       - software-engineering
     tags:
       - benchmark
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3258,7 +3258,7 @@ papers:
     topics:
       - inference-optimization
     tags: []
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3278,7 +3278,7 @@ papers:
       - model-routing
     tags:
       - llm
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3298,7 +3298,7 @@ papers:
       - knowledge-distillation
     tags:
       - llm
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3317,7 +3317,7 @@ papers:
     topics:
       - reasoning-optimization
     tags: []
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3340,7 +3340,7 @@ papers:
     tags:
       - llm
       - reinforcement-learning
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3360,7 +3360,7 @@ papers:
       - preference-optimization
     tags:
       - reinforcement-learning
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3380,7 +3380,7 @@ papers:
       - agentic-safety
     tags:
       - reinforcement-learning
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3401,7 +3401,7 @@ papers:
       - hallucination-detection
     tags:
       - llm
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3421,7 +3421,7 @@ papers:
       - code-generation
     tags:
       - survey
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3440,7 +3440,7 @@ papers:
     topics:
       - code-generation
     tags: []
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3462,7 +3462,7 @@ papers:
       - survey
       - benchmark
       - llm
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3481,7 +3481,7 @@ papers:
     topics:
       - self-improvement
     tags: []
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3501,7 +3501,7 @@ papers:
       - knowledge-distillation
     tags:
       - llm
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3521,7 +3521,7 @@ papers:
       - code-review
     tags:
       - survey
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3543,7 +3543,7 @@ papers:
       - benchmark
       - multi-agent
       - llm
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3564,7 +3564,7 @@ papers:
     tags:
       - benchmark
       - llm
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3586,7 +3586,7 @@ papers:
     tags:
       - benchmark
       - reinforcement-learning
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3606,7 +3606,7 @@ papers:
       - LLM consensus and multi-agent voting mechanisms
     tags:
       - llm
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3625,7 +3625,7 @@ papers:
     topics:
       - adaptive model routing and selection optimization
     tags: []
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3646,7 +3646,7 @@ papers:
       - tool-augmented reasoning and function calling
     tags:
       - reinforcement-learning
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3669,7 +3669,7 @@ papers:
     tags:
       - benchmark
       - llm
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3691,7 +3691,7 @@ papers:
     tags:
       - llm
       - reinforcement-learning
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3712,7 +3712,7 @@ papers:
     tags:
       - llm
       - reinforcement-learning
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3733,7 +3733,7 @@ papers:
     topics:
       - agent-communication
     tags: []
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3752,7 +3752,7 @@ papers:
     topics:
       - mcp-applications
     tags: []
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3771,7 +3771,7 @@ papers:
     topics:
       - prompt-optimization
     tags: []
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3793,7 +3793,7 @@ papers:
     tags:
       - survey
       - llm
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3813,7 +3813,7 @@ papers:
       - code-generation
     tags:
       - llm
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3834,7 +3834,7 @@ papers:
     tags:
       - multi-agent
       - llm
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3855,7 +3855,7 @@ papers:
     topics:
       - orchestration
     tags: []
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3876,7 +3876,7 @@ papers:
     tags:
       - benchmark
       - llm
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3896,7 +3896,7 @@ papers:
       - Multi-Agent Orchestration
     tags:
       - multi-agent
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3919,7 +3919,7 @@ papers:
     tags:
       - multi-agent
       - reinforcement-learning
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3939,7 +3939,7 @@ papers:
       - multi-agent coordination
     tags:
       - multi-agent
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3960,7 +3960,7 @@ papers:
       - prompt injection defense
     tags:
       - llm
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3979,7 +3979,7 @@ papers:
     topics:
       - multi-agent-systems
     tags: []
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -3998,7 +3998,7 @@ papers:
     topics:
       - multi-agent-systems
     tags: []
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -4018,7 +4018,7 @@ papers:
       - multi-agent-systems
     tags:
       - multi-agent
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -4039,7 +4039,7 @@ papers:
     tags:
       - llm
       - reinforcement-learning
-    reviewed_date: 2026-03-03
+    reviewed_date: '2026-03-03'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -4059,7 +4059,7 @@ papers:
     tags:
       - benchmark
       - llm
-    reviewed_date: 2026-03-04
+    reviewed_date: '2026-03-04'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -4079,7 +4079,7 @@ papers:
       - routing
     tags:
       - llm
-    reviewed_date: 2026-03-04
+    reviewed_date: '2026-03-04'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -4099,7 +4099,7 @@ papers:
       - orchestration
     tags:
       - llm
-    reviewed_date: 2026-03-04
+    reviewed_date: '2026-03-04'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -4118,7 +4118,7 @@ papers:
     topics:
       - memory
     tags: []
-    reviewed_date: 2026-03-04
+    reviewed_date: '2026-03-04'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -4138,7 +4138,7 @@ papers:
       - routing
     tags:
       - llm
-    reviewed_date: 2026-03-04
+    reviewed_date: '2026-03-04'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -4159,7 +4159,7 @@ papers:
     tags:
       - multi-agent
       - llm
-    reviewed_date: 2026-03-09
+    reviewed_date: '2026-03-09'
     reviewed_in: ''
     summary: ''
     key_findings: []
@@ -4182,7 +4182,7 @@ papers:
     tags:
       - multi-agent
       - llm
-    reviewed_date: 2026-03-09
+    reviewed_date: '2026-03-09'
     reviewed_in: ''
     summary: ''
     key_findings: []
