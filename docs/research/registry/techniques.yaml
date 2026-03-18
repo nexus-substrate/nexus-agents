@@ -1840,3 +1840,150 @@ techniques:
       - date: '2026-01-17'
         decision: 'Implemented'
         rationale: 'ZeroRouter with difficulty space and calibration'
+
+  # ============================================================================
+  # SOURCE-DERIVED TECHNIQUES (from open-source project analysis)
+  # Added Wave 6 — closing traceability gap between sources.yaml and techniques
+  # ============================================================================
+
+  failure-lesson-injection:
+    name: 'Failure Lesson Injection'
+    description: |
+      Inject structured failure lessons from prior runs into agent prompts.
+      Prevents repeated mistakes by surfacing relevant failure patterns.
+    source_papers: []
+    topic: orchestration
+    tags:
+      - failure-recovery
+      - self-improvement
+      - context-injection
+    status: implemented
+    priority: P2
+    complexity: medium
+    integration_files:
+      - 'packages/nexus-agents/src/orchestration/failure-lessons.ts'
+      - 'packages/nexus-agents/src/orchestration/failure-lessons.test.ts'
+    implementation_issue: 1568
+    notes: |
+      Derived from AutoResearchClaw project analysis.
+      Injects lessons from prior failures into worker prompts to prevent repetition.
+    evaluation_plan:
+      success_criteria: 'Fewer repeated failures in orchestrate tasks (>20% reduction in retry rate)'
+      evaluation_method: 'Compare retry rates in weather_report before/after activation over 50 tasks'
+      evaluation_deadline: '2026-06-18'
+      removal_criteria: 'No measurable improvement after 3 months or causes >5% latency regression'
+    evaluation_status: pending
+
+  skill-relevance-matching:
+    name: 'Skill Relevance Matching'
+    description: |
+      Match task requirements to available agent skills based on semantic
+      relevance scoring. Routes tasks to agents with the best skill fit.
+    source_papers: []
+    topic: orchestration
+    tags:
+      - task-routing
+      - skill-library
+      - agent-specialization
+    status: implemented
+    priority: P2
+    complexity: medium
+    integration_files:
+      - 'packages/nexus-agents/src/agents/experts/skill-matcher.ts'
+      - 'packages/nexus-agents/src/agents/experts/skill-matcher.test.ts'
+    implementation_issue: 1569
+    notes: |
+      Derived from MetaClaw and Augment Code analysis.
+      Matches task keywords to skill descriptions for optimal agent routing.
+    evaluation_plan:
+      success_criteria: 'Expert selection accuracy >80% (correct expert for task category)'
+      evaluation_method: 'Review expert selection decisions in 30 orchestrate tasks via trace logs'
+      evaluation_deadline: '2026-06-18'
+      removal_criteria: 'Selection accuracy <60% or skill matching adds >2s latency per task'
+    evaluation_status: pending
+
+  context-rot-prevention:
+    name: 'Context Rot Prevention'
+    description: |
+      Actively manage and prune agent context to prevent quality degradation
+      as context windows fill. Token-efficient context budgeting.
+    source_papers: []
+    topic: memory
+    tags:
+      - context-management
+      - token-efficiency
+      - pruning
+    status: implemented
+    priority: P1
+    complexity: high
+    integration_files:
+      - 'packages/nexus-agents/src/agents/context-pruner.ts'
+      - 'packages/nexus-agents/src/agents/context-pruner-helpers.ts'
+      - 'packages/nexus-agents/src/agents/context-pruner.test.ts'
+    implementation_issue: 1574
+    notes: |
+      Derived from GSD (Get Shit Done) project analysis (34K stars).
+      Context pruning prevents quality degradation in long sessions.
+    evaluation_plan:
+      success_criteria: 'Stable output quality across 10+ tool calls in single session'
+      evaluation_method: 'SWE-bench Verified score comparison with/without context pruning enabled'
+      evaluation_deadline: '2026-06-18'
+      removal_criteria: 'No quality improvement or causes information loss in >10% of sessions'
+    evaluation_status: pending
+
+  wave-based-parallel-execution:
+    name: 'Wave-Based Parallel Execution'
+    description: |
+      Execute agent tasks in waves of parallel workers with cross-wave
+      context sharing and result synthesis between waves.
+    source_papers: []
+    topic: orchestration
+    tags:
+      - parallel-execution
+      - worker-dispatch
+      - wave-coordination
+    status: implemented
+    priority: P1
+    complexity: high
+    integration_files:
+      - 'packages/nexus-agents/src/orchestration/aorchestra/worker-dispatcher.ts'
+      - 'packages/nexus-agents/src/orchestration/aorchestra/cross-wave-context.ts'
+      - 'packages/nexus-agents/src/orchestration/aorchestra/worker-dispatcher.test.ts'
+    notes: |
+      Derived from GSD project analysis. AOrchestra worker dispatch
+      implements wave-based parallel execution with cross-wave context.
+    evaluation_plan:
+      success_criteria: 'Parallel execution reduces wall-clock time >30% vs sequential for multi-step tasks'
+      evaluation_method: 'Benchmark 20 orchestrate tasks: sequential vs wave dispatch, compare duration'
+      evaluation_deadline: '2026-06-18'
+      removal_criteria: 'Less than 10% wall-clock improvement or cross-wave context causes >15% error rate'
+    evaluation_status: pending
+
+  write-time-deduplication:
+    name: 'Write-Time Memory Deduplication'
+    description: |
+      Deduplicate memory entries at write time to prevent redundant storage
+      and improve retrieval quality. Semantic similarity check before insert.
+    source_papers:
+      - arxiv-2601.02553
+    topic: memory
+    tags:
+      - deduplication
+      - memory-efficiency
+      - semantic-similarity
+    status: implemented
+    priority: P2
+    complexity: medium
+    integration_files:
+      - 'packages/nexus-agents/src/mcp/tools/memory-write.ts'
+      - 'packages/nexus-agents/src/context/belief-memory.ts'
+    implementation_issue: 1570
+    notes: |
+      Derived from SimpleMem project analysis (3.2K stars, has paper).
+      Dedup at write time prevents memory bloat across sessions.
+    evaluation_plan:
+      success_criteria: 'Memory storage size reduced >25% vs no-dedup baseline over 100 writes'
+      evaluation_method: 'Compare memory_stats output with dedup enabled vs disabled over test workload'
+      evaluation_deadline: '2026-06-18'
+      removal_criteria: 'Dedup false positives >5% (distinct memories incorrectly merged) or <10% size reduction'
+    evaluation_status: pending

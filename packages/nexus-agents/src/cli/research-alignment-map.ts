@@ -280,6 +280,41 @@ export const TECHNIQUE_IMPLEMENTATION_MAP: ReadonlyMap<string, TechniqueMapping>
     },
   ],
   ['reflexion-verbal-rl', { status: 'implemented', path: 'mcp/tools/orchestrate-reflection.ts' }],
+
+  // Source-derived techniques (Wave 6 — from open-source project analysis)
+  ['failure-lesson-injection', { status: 'implemented', path: 'orchestration/failure-lessons.ts' }],
+  [
+    'skill-relevance-matching',
+    {
+      status: 'implemented',
+      path: 'agents/experts/skill-matcher.ts',
+      hint: 'Matches task keywords to agent skill descriptions for optimal routing',
+    },
+  ],
+  [
+    'context-rot-prevention',
+    {
+      status: 'implemented',
+      path: 'agents/context-pruner.ts',
+      hint: 'Token-efficient context pruning prevents quality degradation in long sessions',
+    },
+  ],
+  [
+    'wave-based-parallel-execution',
+    {
+      status: 'implemented',
+      path: 'orchestration/aorchestra/worker-dispatcher.ts',
+      hint: 'AOrchestra worker dispatch with cross-wave context sharing',
+    },
+  ],
+  [
+    'write-time-deduplication',
+    {
+      status: 'implemented',
+      path: 'mcp/tools/memory-write.ts',
+      hint: 'Semantic dedup at write time prevents memory bloat',
+    },
+  ],
 ]);
 
 // =============================================================================

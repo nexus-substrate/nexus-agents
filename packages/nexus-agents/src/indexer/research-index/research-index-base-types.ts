@@ -219,6 +219,19 @@ export const ResearchTechniqueSchema = z.object({
 
   /** Decision history */
   decision_history: z.array(DecisionHistoryEntrySchema).optional().default([]),
+
+  // ── Evaluation Plan (Issue #1576 Wave 6) ──────────────────────
+  /** Structured evaluation plan for keeping or removing the technique */
+  evaluation_plan: z
+    .object({
+      success_criteria: z.string().optional(),
+      evaluation_method: z.string().optional(),
+      evaluation_deadline: z.string().optional(),
+      removal_criteria: z.string().optional(),
+    })
+    .optional(),
+  /** Evaluation status: pending (not yet evaluated), passed, failed, deferred */
+  evaluation_status: z.enum(['pending', 'passed', 'failed', 'deferred']).optional(),
 });
 export type ResearchTechnique = z.infer<typeof ResearchTechniqueSchema>;
 
