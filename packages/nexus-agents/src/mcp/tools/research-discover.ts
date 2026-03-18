@@ -13,6 +13,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
 import { getErrorMessage, createLogger, formatZodError } from '../../core/index.js';
+import { normalizeTopicToCanonical } from '../../research/topic-aliases.js';
 import { withToolError } from '../middleware/tool-error-handler.js';
 import { toolError, toolSuccess, type ToolResult, type BaseMcpToolDeps } from './tool-result.js';
 
@@ -413,9 +414,14 @@ async function queryAllSources(
 
 /** Runs discovery across selected sources. */
 async function executeDiscovery(
-  input: ResearchDiscoverInput,
+  rawInput: ResearchDiscoverInput,
   logger: ILogger
 ): Promise<ResearchDiscoverResponse> {
+  // Normalize topic to canonical form (Issue #1576 Wave 4)
+  const input: ResearchDiscoverInput = {
+    ...rawInput,
+    topic: normalizeTopicToCanonical(rawInput.topic),
+  };
   const existingIds = await getExistingArxivIds();
   const {
     sources: sourcesToQuery,

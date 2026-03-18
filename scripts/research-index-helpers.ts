@@ -26,6 +26,10 @@ export interface PaperEntry {
   summary?: string;
   techniques_extracted?: string[];
   related_issues?: number[];
+  quality_score?: number;
+  evidence_tier?: 'high' | 'medium' | 'low';
+  venue_tier?: number;
+  citation_count?: number;
 }
 
 export interface TechniqueEntry {
@@ -61,16 +65,33 @@ export interface TopicStats {
 // ============================================================================
 
 export const TOPIC_META: Record<string, { display: string; description: string }> = {
-  consensus: { display: 'Consensus', description: 'Multi-agent decision protocols' },
-  routing: { display: 'Routing', description: 'Cost-efficient model routing' },
-  memory: { display: 'Memory', description: 'Context and long-term memory' },
+  consensus: { display: 'Consensus', description: 'Multi-agent decision protocols and voting' },
+  routing: { display: 'Routing', description: 'Cost-efficient model routing and selection' },
+  memory: { display: 'Memory', description: 'Context, long-term memory, and compression' },
   'code-generation': {
     display: 'Code Generation',
-    description: 'Self-improvement and skill learning',
+    description: 'Code generation, repair, and self-improvement',
   },
-  'cli-tools': { display: 'Cli Tools', description: 'External CLI integration' },
-  orchestration: { display: 'Orchestration', description: 'Multi-agent coordination' },
-  security: { display: 'Security', description: 'Agent safety and security evaluation' },
+  'cli-tools': { display: 'CLI Tools', description: 'External CLI integration and protocols' },
+  orchestration: {
+    display: 'Orchestration',
+    description: 'Multi-agent coordination and workflows',
+  },
+  security: { display: 'Security', description: 'Security analysis, prompt injection defense' },
+  evaluation: {
+    display: 'Evaluation',
+    description: 'Benchmarks, metrics, and testing methodologies',
+  },
+  safety: { display: 'Safety', description: 'AI safety, alignment, and reward hacking' },
+  planning: {
+    display: 'Planning',
+    description: 'Task planning, decomposition, and reasoning chains',
+  },
+  'tool-use': { display: 'Tool Use', description: 'Tool augmentation, function calling, and MCP' },
+  reasoning: {
+    display: 'Reasoning',
+    description: 'Reasoning, self-reflection, and search strategies',
+  },
 };
 
 export const ALL_TOPICS = Object.keys(TOPIC_META);

@@ -851,3 +851,148 @@ sources:
     verdict_notes: 'Enterprise MCP gateway with OAuth, tool governance, and audit trails. Relevant for nexus-agents security hardening (#818).'
     quality_score: 6
     evidence_tier: medium
+
+  # ============================================================================
+  # OPEN SOURCE REPOS — Discovery Wave 4 (2026-03-18, GitHub Blog Top 10 + trending)
+  # ============================================================================
+
+  owl-camel-ai:
+    name: 'OWL (CAMEL-AI)'
+    type: open_source_repo
+    url: 'https://github.com/camel-ai/owl'
+    vendor: CAMEL-AI
+    topics:
+      - orchestration
+      - tool-use
+    tags:
+      - multi-agent
+      - browser-agents
+      - mcp
+      - function-calling
+      - github-blog-top10
+    reviewed_date: '2026-03-18'
+    reviewed_in: 'N/A (GitHub Blog Top 10 Open Source AI Projects)'
+    quality_signals:
+      stars_at_review: 12000
+      language: Python
+      has_tests: true
+      has_docs: true
+    techniques_extracted:
+      - multi-agent-cooperation-via-mcp
+      - browser-terminal-tool-integration
+    verdict: monitoring
+    verdict_notes: 'GitHub Blog Top 10. Multi-agent cooperation through browsers, terminals, function calls, and MCP tools. Architecture mirrors our worker dispatch + tool-use patterns.'
+    quality_score: 8
+    evidence_tier: high
+
+  ruflo:
+    name: 'Ruflo'
+    type: open_source_repo
+    url: 'https://github.com/ruvnet/ruflo'
+    vendor: Community
+    topics:
+      - orchestration
+      - memory
+    tags:
+      - claude-code
+      - swarm-intelligence
+      - rag
+      - distributed-agents
+    reviewed_date: '2026-03-18'
+    reviewed_in: 'N/A (automated discovery)'
+    quality_signals:
+      stars_at_review: 3000
+      language: TypeScript
+      has_tests: true
+      has_docs: true
+    techniques_extracted:
+      - swarm-agent-orchestration
+      - conversational-ai-system
+    verdict: monitoring
+    verdict_notes: 'Claude-native agent orchestration with swarm intelligence and RAG. TypeScript stack aligns with nexus-agents.'
+    quality_score: 7
+    evidence_tier: medium
+
+  letta-agent-file:
+    name: 'Letta Agent File (.af)'
+    type: open_source_repo
+    url: 'https://github.com/letta-ai/agent-file'
+    vendor: Letta AI
+    topics:
+      - orchestration
+      - memory
+    tags:
+      - agent-format
+      - portable-agents
+      - memory-persistence
+      - interoperability
+    reviewed_date: '2026-03-18'
+    reviewed_in: 'N/A (GitHub Blog Top 10 Open Source AI Projects)'
+    quality_signals:
+      stars_at_review: 5000
+      language: Python
+      has_tests: true
+      has_docs: true
+    techniques_extracted:
+      - portable-agent-file-format
+      - memory-behavior-packaging
+    verdict: monitoring
+    verdict_notes: 'Open file format (.af) for packaging AI agents with memory and behavior. Interoperability concept relevant to nexus-agents expert serialization.'
+    quality_score: 7
+    evidence_tier: medium
+
+  praisonai:
+    name: 'PraisonAI'
+    type: open_source_repo
+    url: 'https://github.com/MervinPraison/PraisonAI'
+    vendor: PraisonAI
+    topics:
+      - orchestration
+    tags:
+      - multi-agent
+      - self-reflection
+      - mcp
+      - workflows
+      - memory
+    reviewed_date: '2026-03-18'
+    reviewed_in: 'N/A (automated discovery)'
+    quality_signals:
+      stars_at_review: 8000
+      language: Python
+      has_tests: true
+      has_docs: true
+    techniques_extracted:
+      - agent-self-reflection
+      - multi-agent-workflows-with-memory
+    verdict: monitoring
+    verdict_notes: 'Production-ready multi-AI agents with self-reflection, 100+ LLM support, MCP integration. Python + JS SDKs.'
+    quality_score: 8
+    evidence_tier: high
+
+  unbody:
+    name: 'Unbody'
+    type: open_source_repo
+    url: 'https://github.com/unbody-io/unbody'
+    vendor: Unbody
+    topics:
+      - orchestration
+      - memory
+    tags:
+      - ai-native-backend
+      - perception
+      - reasoning
+      - action-layers
+    reviewed_date: '2026-03-18'
+    reviewed_in: 'N/A (GitHub Blog Top 10 Open Source AI Projects)'
+    quality_signals:
+      stars_at_review: 4000
+      language: TypeScript
+      has_tests: true
+      has_docs: true
+    techniques_extracted:
+      - layered-ai-backend-architecture
+      - perception-memory-reasoning-action
+    verdict: monitoring
+    verdict_notes: 'Modular AI-native backend with perception/memory/reasoning/action layers. Architecture pattern relevant to nexus-agents pipeline design.'
+    quality_score: 7
+    evidence_tier: medium

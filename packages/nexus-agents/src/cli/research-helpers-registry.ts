@@ -13,6 +13,8 @@ import type { Result } from '../core/result.js';
 import { getTimeProvider } from '../core/index.js';
 import type { ArxivMetadata, PaperEntry, PapersRegistry } from './research-types.js';
 import { loadPapersRegistry, savePapersRegistry } from './research-helpers-io.js';
+import { computeQualityScore, computeEvidenceTier } from '../research/research-quality.js';
+import type { ResearchPaper } from '../research/research-schemas.js';
 
 // =============================================================================
 // TYPES
@@ -219,13 +221,24 @@ export function generateRegistryEntry(
     techniques_extracted: [],
     related_issues: [],
     implementation_status: 'not-started',
-    // Quality assessment — auto-computed on add (Issue #1572)
-    venue_tier: 0, // arXiv preprint
-    quality_score: 0, // Will be enriched with citation data
-    evidence_tier: 'low' as const, // Default for arXiv without code/baselines
   };
 
-  return { ok: true, value: entry };
+  // Auto-compute quality score from available signals (Issue #1576 Wave 4)
+  // At ingestion: venue=null, no citations, no code — but recency IS available.
+  // computeQualityScore handles undefined fields gracefully.
+  // Preprint cap (isPreprintOnly) applies automatically via computeQualityScore.
+  const paperForScoring = entry as unknown as ResearchPaper;
+  const qualityScore = computeQualityScore(paperForScoring);
+  const evidenceTier = computeEvidenceTier({ ...paperForScoring, quality_score: qualityScore });
+
+  const scoredEntry: PaperEntry = {
+    ...entry,
+    venue_tier: 0,
+    quality_score: qualityScore,
+    evidence_tier: evidenceTier,
+  };
+
+  return { ok: true, value: scoredEntry };
 }
 
 /**
