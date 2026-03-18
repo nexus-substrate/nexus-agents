@@ -22,6 +22,8 @@ import {
   isIntegrationFileRequired,
   RESEARCH_TOPICS,
   TOPIC_DESCRIPTIONS,
+  TOPIC_ALIASES,
+  normalizeTopicToCanonical,
 } from './research-schemas.js';
 
 // ============================================================================
@@ -411,5 +413,82 @@ describe('isIntegrationFileRequired', () => {
     // Simulate a parsed object (Zod would add required: true as default)
     const parsed = IntegrationFileSchema.parse({ path: 'src/test.ts' });
     expect(isIntegrationFileRequired(parsed)).toBe(true);
+  });
+});
+
+// ============================================================================
+// Topic Taxonomy Tests (Issue #1578)
+// ============================================================================
+
+describe('TOPIC_ALIASES', () => {
+  it('maps common free-form topics to canonical topics', () => {
+    expect(TOPIC_ALIASES['multi-agent']).toBe('orchestration');
+    expect(TOPIC_ALIASES['benchmark']).toBe('evaluation');
+    expect(TOPIC_ALIASES['mcts']).toBe('planning');
+    expect(TOPIC_ALIASES['self-reflection']).toBe('reasoning');
+    expect(TOPIC_ALIASES['prompt injection defense']).toBe('security');
+    expect(TOPIC_ALIASES['context-compression']).toBe('memory');
+    expect(TOPIC_ALIASES['model-routing']).toBe('routing');
+  });
+
+  it('all alias targets are canonical topics', () => {
+    const canonicalSet = new Set(RESEARCH_TOPICS);
+    for (const [alias, target] of Object.entries(TOPIC_ALIASES)) {
+      expect(canonicalSet.has(target), `alias '${alias}' → '${target}' is not canonical`).toBe(
+        true
+      );
+    }
+  });
+});
+
+describe('normalizeTopicToCanonical', () => {
+  it('normalizes known aliases', () => {
+    expect(normalizeTopicToCanonical('multi-agent')).toBe('orchestration');
+    expect(normalizeTopicToCanonical('benchmark')).toBe('evaluation');
+    expect(normalizeTopicToCanonical('voting')).toBe('consensus');
+  });
+
+  it('returns canonical topics unchanged', () => {
+    for (const topic of RESEARCH_TOPICS) {
+      expect(normalizeTopicToCanonical(topic)).toBe(topic);
+    }
+  });
+
+  it('returns unknown topics unchanged', () => {
+    expect(normalizeTopicToCanonical('brand-new-topic')).toBe('brand-new-topic');
+  });
+
+  it('is idempotent', () => {
+    const normalized = normalizeTopicToCanonical('multi-agent');
+    expect(normalizeTopicToCanonical(normalized)).toBe(normalized);
+  });
+});
+
+describe('RESEARCH_TOPICS expanded taxonomy', () => {
+  it('has 12 canonical topics', () => {
+    expect(RESEARCH_TOPICS.length).toBe(12);
+  });
+
+  it('includes new topics from Issue #1578', () => {
+    expect(RESEARCH_TOPICS).toContain('evaluation');
+    expect(RESEARCH_TOPICS).toContain('safety');
+    expect(RESEARCH_TOPICS).toContain('planning');
+    expect(RESEARCH_TOPICS).toContain('tool-use');
+    expect(RESEARCH_TOPICS).toContain('reasoning');
+  });
+
+  it('preserves original 7 topics', () => {
+    const original = [
+      'consensus',
+      'routing',
+      'memory',
+      'code-generation',
+      'cli-tools',
+      'orchestration',
+      'security',
+    ];
+    for (const topic of original) {
+      expect(RESEARCH_TOPICS).toContain(topic);
+    }
   });
 });

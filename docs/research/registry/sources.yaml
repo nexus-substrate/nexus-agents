@@ -411,37 +411,7 @@ sources:
     quality_score: 8
     evidence_tier: high
 
-  get-shit-done:
-    name: 'GSD (Get Shit Done)'
-    type: open_source_repo
-    url: 'https://github.com/gsd-build/get-shit-done'
-    vendor: TÂCHES
-    topics:
-      - orchestration
-      - code-generation
-    tags:
-      - spec-driven-development
-      - context-engineering
-      - meta-prompting
-      - wave-execution
-      - claude-code
-    reviewed_date: '2026-03-18'
-    reviewed_in: 'N/A (in-conversation analysis)'
-    quality_signals:
-      stars_at_review: 33164
-      language: JavaScript
-      has_tests: true
-      has_docs: true
-    techniques_extracted:
-      - context-rot-prevention
-      - wave-based-parallel-execution
-      - spec-driven-verification-loop
-      - xml-structured-task-specs
-      - atomic-commit-per-task
-    verdict: planned
-    verdict_notes: 'Context management + verification patterns planned for SWE-bench Verified/Pro (#1574). Lite 91.4% is strong but not competitive benchmark.'
-    quality_score: 9
-    evidence_tier: high
+  # get-shit-done: moved to gsd-get-shit-done (updated entry in Wave 2 below)
 
   composio-agent-orchestrator:
     name: 'Composio Agent Orchestrator'
@@ -528,3 +498,235 @@ sources:
     verdict_notes: 'Primary open-source SWE-bench competitor. SoTA on full. Live-SWE-agent 79.2% on Verified.'
     quality_score: 9
     evidence_tier: high
+
+  # ============================================================================
+  # OPEN SOURCE REPOS — Discovery Wave 2 (2026-03-18, Issue #1576)
+  # ============================================================================
+
+  openai-agents-sdk:
+    name: 'OpenAI Agents SDK'
+    type: open_source_repo
+    url: 'https://github.com/openai/openai-agents-python'
+    vendor: OpenAI
+    topics:
+      - orchestration
+      - tool-use
+    tags:
+      - multi-agent
+      - handoffs
+      - guardrails
+      - tracing
+      - mcp
+    reviewed_date: '2026-03-18'
+    reviewed_in: 'N/A (automated discovery)'
+    quality_signals:
+      stars_at_review: 19000
+      language: Python
+      has_tests: true
+      has_docs: true
+    techniques_extracted:
+      - agent-handoff-protocol
+      - guardrail-middleware
+      - structured-output-agents
+    verdict: monitoring
+    verdict_notes: 'Direct competitor. Lightweight handoff protocol and guardrail patterns worth studying. MCP-native.'
+    quality_score: 8
+    evidence_tier: high
+
+  openhands:
+    name: 'OpenHands (formerly OpenDevin)'
+    type: open_source_repo
+    url: 'https://github.com/All-Hands-AI/OpenHands'
+    vendor: All-Hands AI
+    topics:
+      - code-generation
+      - orchestration
+    tags:
+      - swe-bench
+      - sandboxed-execution
+      - browser-agent
+      - agent-sdk
+    reviewed_date: '2026-03-18'
+    reviewed_in: 'N/A (automated discovery)'
+    quality_signals:
+      stars_at_review: 68000
+      language: Python
+      has_tests: true
+      has_docs: true
+    techniques_extracted:
+      - sandboxed-code-execution
+      - agent-runtime-abstraction
+      - event-stream-architecture
+    verdict: monitoring
+    verdict_notes: '72% SWE-Bench Verified with Claude Sonnet. Sandbox execution model and event-stream architecture are strong reference patterns.'
+    quality_score: 9
+    evidence_tier: high
+
+  crewai:
+    name: 'CrewAI'
+    type: open_source_repo
+    url: 'https://github.com/crewAIInc/crewAI'
+    vendor: CrewAI Inc
+    topics:
+      - orchestration
+    tags:
+      - role-based-agents
+      - crew-pipelines
+      - task-delegation
+    reviewed_date: '2026-03-18'
+    reviewed_in: 'N/A (automated discovery)'
+    quality_signals:
+      stars_at_review: 44000
+      language: Python
+      has_tests: true
+      has_docs: true
+    techniques_extracted:
+      - role-based-agent-specialization
+      - sequential-crew-pipeline
+    verdict: monitoring
+    verdict_notes: 'Role specialization model mirrors nexus-agents create_expert. Crew pipeline concept similar to our graph workflows.'
+    quality_score: 7
+    evidence_tier: medium
+
+  pydantic-ai:
+    name: 'PydanticAI'
+    type: open_source_repo
+    url: 'https://github.com/pydantic/pydantic-ai'
+    vendor: Pydantic
+    topics:
+      - orchestration
+      - tool-use
+    tags:
+      - type-safe
+      - structured-output
+      - dependency-injection
+    reviewed_date: '2026-03-18'
+    reviewed_in: 'N/A (automated discovery)'
+    quality_signals:
+      stars_at_review: 15000
+      language: Python
+      has_tests: true
+      has_docs: true
+    techniques_extracted:
+      - typed-tool-definitions
+      - structured-result-validation
+    verdict: monitoring
+    verdict_notes: 'Validates our zero-any/type-safety approach. Structured output patterns for tool responses worth studying.'
+    quality_score: 7
+    evidence_tier: medium
+
+  gsd-get-shit-done:
+    name: 'GSD (Get Shit Done) — updated entry'
+    type: open_source_repo
+    url: 'https://github.com/gsd-build/get-shit-done'
+    vendor: TÂCHES
+    topics:
+      - orchestration
+      - code-generation
+    tags:
+      - spec-driven-development
+      - context-engineering
+      - meta-prompting
+      - wave-execution
+      - claude-code
+      - opencode
+      - gemini-cli
+      - codex
+    reviewed_date: '2026-03-18'
+    reviewed_in: 'N/A (in-conversation analysis)'
+    quality_signals:
+      stars_at_review: 34062
+      language: JavaScript
+      has_tests: true
+      has_docs: true
+    techniques_extracted:
+      - context-rot-prevention
+      - wave-based-parallel-execution
+      - spec-driven-verification-loop
+      - xml-structured-task-specs
+      - atomic-commit-per-task
+    verdict: partially_adopted
+    verdict_notes: 'Context management + verification patterns adopted for SWE-bench (#1574). 34K stars, multi-CLI support. Context rot prevention is the core innovation.'
+    quality_score: 9
+    evidence_tier: high
+
+  ai-researcher:
+    name: 'AI-Researcher'
+    type: open_source_repo
+    url: 'https://github.com/HKUDS/AI-Researcher'
+    vendor: HKUDS (HKU Data Science)
+    topics:
+      - orchestration
+      - reasoning
+    tags:
+      - research-automation
+      - paper-generation
+      - multi-agent-debate
+      - neurips-2025
+    reviewed_date: '2026-03-18'
+    reviewed_in: 'N/A (automated discovery)'
+    quality_signals:
+      stars_at_review: 3000
+      language: Python
+      has_tests: true
+      has_docs: true
+      has_paper: true
+    techniques_extracted:
+      - writer-reviewer-critic-loop
+      - automated-literature-review
+    verdict: monitoring
+    verdict_notes: 'NeurIPS 2025 Spotlight. Research synthesis architecture directly applicable to research_synthesize tool. Writer/Reviewer/Critic loop parallels our consensus voting.'
+    quality_score: 8
+    evidence_tier: high
+
+  awesome-ai-agent-papers:
+    name: 'awesome-ai-agent-papers'
+    type: open_source_repo
+    url: 'https://github.com/VoltAgent/awesome-ai-agent-papers'
+    vendor: VoltAgent
+    topics:
+      - evaluation
+    tags:
+      - paper-registry
+      - curated-list
+      - agent-research
+    reviewed_date: '2026-03-18'
+    reviewed_in: 'N/A (automated discovery)'
+    quality_signals:
+      stars_at_review: 2000
+      language: Markdown
+      has_tests: false
+      has_docs: true
+    techniques_extracted:
+      - curated-paper-feed
+    verdict: monitoring
+    verdict_notes: 'Potential input feed for research_discover tool. Curated agent paper list maintained by community.'
+    quality_score: 4
+    evidence_tier: low
+
+  mcp-registry:
+    name: 'MCP Server Registry'
+    type: open_source_repo
+    url: 'https://github.com/modelcontextprotocol/registry'
+    vendor: Anthropic
+    topics:
+      - cli-tools
+      - tool-use
+    tags:
+      - mcp
+      - registry
+      - discoverability
+    reviewed_date: '2026-03-18'
+    reviewed_in: 'N/A (automated discovery)'
+    quality_signals:
+      stars_at_review: 1000
+      language: TypeScript
+      has_tests: true
+      has_docs: true
+    techniques_extracted:
+      - mcp-server-discovery
+      - tool-registry-pattern
+    verdict: planned
+    verdict_notes: 'nexus-agents should register here for discoverability. registry_import tool alignment opportunity.'
+    quality_score: 6
+    evidence_tier: medium

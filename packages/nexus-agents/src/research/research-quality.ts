@@ -84,6 +84,22 @@ export function citationScore(count: number | undefined): number {
   return 3;
 }
 
+/** Citation threshold that bypasses the preprint quality cap. */
+const PREPRINT_CAP_CITATION_BYPASS = 100;
+
+/** Maximum quality score for unreviewed preprints without high citations. */
+const PREPRINT_QUALITY_CAP = 6;
+
+/**
+ * Check if a paper is a preprint-only submission (no peer review).
+ * Returns true when source is 'arxiv', venue is empty/null, and venue_tier is 0.
+ */
+export function isPreprintOnly(paper: ResearchPaper): boolean {
+  const venueTier = paper.venue_tier ?? classifyVenue(paper.venue);
+  const hasNoVenue = paper.venue === null || paper.venue === undefined || paper.venue.length === 0;
+  return (paper.source === 'arxiv' || paper.source === 'preprint') && hasNoVenue && venueTier === 0;
+}
+
 /**
  * Compute composite quality score (0-10) for a paper.
  *
@@ -93,6 +109,9 @@ export function citationScore(count: number | undefined): number {
  * - Has code: 0 or 2
  * - Recency boost: 0-2
  *
+ * Preprint cap (Issue #1579): arXiv-only papers without peer review
+ * are capped at 6 unless they have ≥100 citations (field-validated).
+ *
  * Total max: 10
  */
 export function computeQualityScore(paper: ResearchPaper): number {
@@ -101,7 +120,15 @@ export function computeQualityScore(paper: ResearchPaper): number {
   const code = paper.has_code === true ? 2 : 0;
   const recency = recencyBoost(paper.publication_date);
 
-  return Math.min(10, citations + venue + code + recency);
+  let score = Math.min(10, citations + venue + code + recency);
+
+  // Preprint cap: unreviewed papers can't exceed 6 without high citations
+  const citationCount = paper.citation_count ?? 0;
+  if (isPreprintOnly(paper) && citationCount < PREPRINT_CAP_CITATION_BYPASS) {
+    score = Math.min(score, PREPRINT_QUALITY_CAP);
+  }
+
+  return score;
 }
 
 /**

@@ -73,6 +73,7 @@ export const SourceTypeSchema = z.enum([
   'specification',
   'research_blog',
   'code_analysis',
+  'open_source_repo',
 ]);
 export type SourceType = z.infer<typeof SourceTypeSchema>;
 
@@ -143,6 +144,31 @@ export const ResearchPaperSchema = z.object({
   related_issues: z.array(z.number()).optional().default([]),
   /** Implementation status */
   implementation_status: PaperStatusSchema.optional().default('not-started'),
+
+  // ── Quality Assessment (Issue #1571) ──────────────────────────
+  /** Citation count from Semantic Scholar */
+  citation_count: z.number().nonnegative().optional(),
+  /** Venue quality tier: 3=top, 2=good, 1=workshop, 0=preprint */
+  venue_tier: z.number().min(0).max(3).optional(),
+  /** Whether the paper links to a code repository */
+  has_code: z.boolean().optional(),
+  /** Code repository URL */
+  code_url: z.string().optional(),
+  /** Rigor assessment tags */
+  rigor_tags: z
+    .array(
+      z.enum(['has-code', 'has-dataset', 'has-baselines', 'peer-reviewed', 'single-model-eval'])
+    )
+    .optional()
+    .default([]),
+  /** Composite quality score (0-10) */
+  quality_score: z.number().min(0).max(10).optional(),
+  /** Evidence confidence tier */
+  evidence_tier: z.enum(['high', 'medium', 'low']).optional(),
+  /** Quality notes for low-scoring papers */
+  quality_notes: z.string().optional(),
+  /** When quality was last assessed (ISO date) */
+  last_quality_check: z.string().optional(),
 });
 export type ResearchPaper = z.infer<typeof ResearchPaperSchema>;
 
@@ -230,6 +256,29 @@ export const ResearchSourceSchema = z.object({
 
   /** Version checked */
   version_checked: z.string().optional(),
+
+  // ── Repo/Tool Quality Signals (for open_source_repo type) ──────
+  /** Quality signals for repositories and tools */
+  quality_signals: z
+    .object({
+      stars_at_review: z.number().nonnegative().optional(),
+      language: z.string().optional(),
+      has_tests: z.boolean().optional(),
+      has_docs: z.boolean().optional(),
+      has_paper: z.boolean().optional(),
+      arxiv_id: z.string().optional(),
+    })
+    .optional(),
+  /** Techniques extracted from this source */
+  techniques_extracted: z.array(z.string()).optional().default([]),
+  /** Adoption verdict: adopted, partially_adopted, rejected, monitoring, planned */
+  verdict: z.enum(['adopted', 'partially_adopted', 'rejected', 'monitoring', 'planned']).optional(),
+  /** Notes explaining the verdict */
+  verdict_notes: z.string().optional(),
+  /** Composite quality score (0-10) */
+  quality_score: z.number().min(0).max(10).optional(),
+  /** Evidence confidence tier */
+  evidence_tier: z.enum(['high', 'medium', 'low']).optional(),
 });
 export type ResearchSource = z.infer<typeof ResearchSourceSchema>;
 

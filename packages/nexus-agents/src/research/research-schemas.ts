@@ -24,13 +24,14 @@ export const RESEARCH_SCHEMA_VERSION = '1.1' as const;
  * Research topics tracked in the registry.
  * Extended to include 'security' topic per issue #367.
  */
-// Topics are free-form strings — the registry has 56+ unique topics.
+// Topics are free-form strings — the registry has 200+ unique topic strings.
 // Using z.string() instead of z.enum() to avoid validation failures
 // when new topics are added to papers.yaml.
+// Use normalizeTopicToCanonical() to map free-form → canonical.
 export const ResearchTopicSchema = z.string().min(1);
 export type ResearchTopic = z.infer<typeof ResearchTopicSchema>;
 
-/** All valid research topics. */
+/** Canonical research topics (Issue #1578). */
 export const RESEARCH_TOPICS: readonly ResearchTopic[] = [
   'consensus',
   'routing',
@@ -39,20 +40,39 @@ export const RESEARCH_TOPICS: readonly ResearchTopic[] = [
   'cli-tools',
   'orchestration',
   'security',
+  'evaluation',
+  'safety',
+  'planning',
+  'tool-use',
+  'reasoning',
 ] as const;
 
 /**
  * Topic descriptions for documentation.
  */
-export const TOPIC_DESCRIPTIONS: Readonly<Record<ResearchTopic, string>> = {
-  consensus: 'Multi-agent decision protocols',
-  routing: 'Cost-efficient model routing',
-  memory: 'Context and long-term memory',
-  'code-generation': 'Self-improvement and skill learning',
-  'cli-tools': 'External CLI integration',
-  orchestration: 'Multi-agent coordination',
-  security: 'Safety analysis and evaluation',
+export const TOPIC_DESCRIPTIONS: Readonly<Record<string, string>> = {
+  consensus: 'Multi-agent decision protocols and voting',
+  routing: 'Cost-efficient model routing and selection',
+  memory: 'Context, long-term memory, and compression',
+  'code-generation': 'Code generation, repair, and self-improvement',
+  'cli-tools': 'External CLI integration and protocols',
+  orchestration: 'Multi-agent coordination and workflows',
+  security: 'Security analysis, prompt injection defense',
+  evaluation: 'Benchmarks, metrics, and testing methodologies',
+  safety: 'AI safety, alignment, and reward hacking',
+  planning: 'Task planning, decomposition, and reasoning chains',
+  'tool-use': 'Tool augmentation, function calling, and MCP',
+  reasoning: 'Reasoning, self-reflection, and search strategies',
 };
+
+// Re-export topic aliases from dedicated module (split for max-lines compliance)
+export { TOPIC_ALIASES } from './topic-aliases.js';
+
+/**
+ * Normalize a free-form topic string to a canonical topic.
+ * Returns the canonical topic if a mapping exists, otherwise the original string.
+ */
+export { normalizeTopicToCanonical } from './topic-aliases.js';
 
 /**
  * Technique implementation status.

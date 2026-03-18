@@ -285,13 +285,13 @@ function computeQualityDistribution(papers: readonly ResearchPaperWithId[]): {
   let scored = 0;
 
   for (const p of papers) {
-    const tier = (p as Record<string, unknown>)['evidence_tier'] as string | undefined;
+    const tier = p.evidence_tier;
     if (tier === 'high') high++;
     else if (tier === 'medium') medium++;
     else if (tier === 'low') low++;
     else unscored++;
 
-    const score = (p as Record<string, unknown>)['quality_score'] as number | undefined;
+    const score = p.quality_score;
     if (score !== undefined) {
       totalScore += score;
       scored++;

@@ -10,6 +10,7 @@ import {
   citationScore,
   computeQualityScore,
   computeEvidenceTier,
+  isPreprintOnly,
 } from './research-quality.js';
 import type { ResearchPaper } from './research-schemas.js';
 
@@ -119,5 +120,84 @@ describe('computeEvidenceTier', () => {
   it('returns high for quality >= 7', () => {
     const paper = makePaper({ quality_score: 8 });
     expect(computeEvidenceTier(paper)).toBe('high');
+  });
+});
+
+describe('isPreprintOnly', () => {
+  it('returns true for arxiv with no venue', () => {
+    const paper = makePaper({ source: 'arxiv', venue: null });
+    expect(isPreprintOnly(paper)).toBe(true);
+  });
+
+  it('returns false for arxiv with a venue', () => {
+    const paper = makePaper({ source: 'arxiv', venue: 'NeurIPS' });
+    expect(isPreprintOnly(paper)).toBe(false);
+  });
+
+  it('returns false for conference papers', () => {
+    const paper = makePaper({ source: 'conference', venue: 'ICML' });
+    expect(isPreprintOnly(paper)).toBe(false);
+  });
+
+  it('returns true for preprint source with no venue', () => {
+    const paper = makePaper({ source: 'preprint', venue: null });
+    expect(isPreprintOnly(paper)).toBe(true);
+  });
+});
+
+describe('preprint quality cap', () => {
+  it('caps preprint-only papers at 6', () => {
+    const recent = new Date();
+    recent.setMonth(recent.getMonth() - 2);
+    const paper = makePaper({
+      source: 'arxiv',
+      venue: null,
+      has_code: true,
+      publication_date: recent.toISOString().slice(0, 7),
+    });
+    // code(2) + recency(2) = 4, but would be higher without cap context
+    const score = computeQualityScore(paper);
+    expect(score).toBeLessThanOrEqual(6);
+  });
+
+  it('allows high-citation preprints to exceed cap', () => {
+    const paper = makePaper({
+      source: 'arxiv',
+      venue: null,
+      citation_count: 200,
+      has_code: true,
+      publication_date: '2024-01',
+    });
+    // citations(3) + code(2) = 5, but no cap because citations >= 100
+    const score = computeQualityScore(paper);
+    expect(score).toBe(5);
+  });
+
+  it('does not cap peer-reviewed papers', () => {
+    const recent = new Date();
+    recent.setMonth(recent.getMonth() - 2);
+    const paper = makePaper({
+      source: 'conference',
+      venue: 'NeurIPS',
+      has_code: true,
+      citation_count: 50,
+      publication_date: recent.toISOString().slice(0, 7),
+    });
+    const score = computeQualityScore(paper);
+    expect(score).toBeGreaterThan(6);
+  });
+
+  it('caps at 6 even with code + recency for zero-citation preprint', () => {
+    const recent = new Date();
+    recent.setMonth(recent.getMonth() - 1);
+    const paper = makePaper({
+      source: 'arxiv',
+      venue: null,
+      venue_tier: 0,
+      has_code: true,
+      citation_count: 0,
+      publication_date: recent.toISOString().slice(0, 7),
+    });
+    expect(computeQualityScore(paper)).toBeLessThanOrEqual(6);
   });
 });

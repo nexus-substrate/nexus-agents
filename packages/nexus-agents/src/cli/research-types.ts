@@ -56,6 +56,11 @@ export interface PaperEntry {
 
   readonly related_issues: readonly number[];
   readonly implementation_status: PaperImplementationStatus;
+
+  // Quality assessment (Issue #1571)
+  readonly venue_tier?: number;
+  readonly quality_score?: number;
+  readonly evidence_tier?: 'high' | 'medium' | 'low';
 }
 
 /**
