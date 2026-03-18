@@ -410,3 +410,91 @@ sources:
     verdict_notes: 'Write-time dedup implemented (#1570). Multi-view indexing deferred. Intent-aware retrieval rejected (over-engineering for orchestration memory).'
     quality_score: 8
     evidence_tier: high
+
+  get-shit-done:
+    name: 'GSD (Get Shit Done)'
+    type: open_source_repo
+    url: 'https://github.com/gsd-build/get-shit-done'
+    vendor: TÂCHES
+    topics:
+      - orchestration
+      - code-generation
+    tags:
+      - spec-driven-development
+      - context-engineering
+      - meta-prompting
+      - wave-execution
+      - claude-code
+    reviewed_date: '2026-03-18'
+    reviewed_in: 'N/A (in-conversation analysis)'
+    quality_signals:
+      stars_at_review: 33164
+      language: JavaScript
+      has_tests: true
+      has_docs: true
+    techniques_extracted:
+      - context-rot-prevention
+      - wave-based-parallel-execution
+      - spec-driven-verification-loop
+      - xml-structured-task-specs
+      - atomic-commit-per-task
+    verdict: monitoring
+    verdict_notes: 'Excellent patterns for dev workflow. Not adopted — nexus-agents at 91.4% SWE-bench, patterns solve different problem (dev UX vs benchmark performance). Revisit if context exhaustion becomes an issue.'
+    quality_score: 9
+    evidence_tier: high
+
+  composio-agent-orchestrator:
+    name: 'Composio Agent Orchestrator'
+    type: open_source_repo
+    url: 'https://github.com/ComposioHQ/agent-orchestrator'
+    vendor: Composio
+    topics:
+      - orchestration
+      - code-generation
+    tags:
+      - parallel-agents
+      - git-worktrees
+      - ci-fixes
+      - multi-agent
+    reviewed_date: '2026-03-18'
+    reviewed_in: 'N/A (in-conversation analysis)'
+    quality_signals:
+      stars_at_review: 4628
+      language: TypeScript
+      has_tests: true
+      has_docs: true
+    techniques_extracted:
+      - git-worktree-parallelism
+      - agent-agnostic-orchestration
+    verdict: monitoring
+    verdict_notes: 'Git worktree-based parallel agent execution. Interesting but our per-instance directory approach works. Revisit if parallelism becomes a bottleneck.'
+    quality_score: 6
+    evidence_tier: medium
+
+  microsoft-agent-framework:
+    name: 'Microsoft Agent Framework'
+    type: open_source_repo
+    url: 'https://github.com/microsoft/agent-framework'
+    vendor: Microsoft
+    topics:
+      - orchestration
+      - agent architecture
+    tags:
+      - graph-orchestration
+      - multi-agent
+      - dotnet
+      - python
+    reviewed_date: '2026-03-18'
+    reviewed_in: 'N/A (in-conversation analysis)'
+    quality_signals:
+      stars_at_review: 8027
+      language: Python
+      has_tests: true
+      has_docs: true
+    techniques_extracted:
+      - graph-based-workflow-orchestration
+      - multi-agent-conversation-patterns
+    verdict: monitoring
+    verdict_notes: 'Graph-based orchestration similar to our GraphBuilder. Multi-language support (Python + .NET). Monitor for novel patterns we lack.'
+    quality_score: 7
+    evidence_tier: medium
