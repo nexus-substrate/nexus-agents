@@ -24,15 +24,10 @@ export const RESEARCH_SCHEMA_VERSION = '1.1' as const;
  * Research topics tracked in the registry.
  * Extended to include 'security' topic per issue #367.
  */
-export const ResearchTopicSchema = z.enum([
-  'consensus',
-  'routing',
-  'memory',
-  'code-generation',
-  'cli-tools',
-  'orchestration',
-  'security',
-]);
+// Topics are free-form strings — the registry has 56+ unique topics.
+// Using z.string() instead of z.enum() to avoid validation failures
+// when new topics are added to papers.yaml.
+export const ResearchTopicSchema = z.string().min(1);
 export type ResearchTopic = z.infer<typeof ResearchTopicSchema>;
 
 /** All valid research topics. */
@@ -141,7 +136,8 @@ export const ResearchPaperSchema = z.object({
   /** arXiv ID (e.g., '2501.06322') */
   arxiv_id: z.string().optional(),
   /** URL to the paper */
-  url: z.url().optional(),
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- z.url() fails at runtime despite being recommended
+  url: z.string().url().optional(),
   /** Publication date (YYYY-MM format) */
   publication_date: z.string().optional(),
   /** Publication venue */
@@ -151,7 +147,7 @@ export const ResearchPaperSchema = z.object({
    * Research topics (array).
    * First topic is considered primary for counting purposes.
    */
-  topics: z.array(ResearchTopicSchema).optional().default([]),
+  topics: z.array(z.string()).optional().default([]),
   /** Tags for searching */
   tags: z.array(z.string()).optional().default([]),
 

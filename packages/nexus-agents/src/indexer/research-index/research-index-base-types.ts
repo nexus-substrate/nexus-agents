@@ -24,16 +24,8 @@ export const RESEARCH_INDEX_SCHEMA_VERSION = '1.0' as const;
 /**
  * Research topics tracked in the registry.
  */
-export const ResearchTopicSchema = z.enum([
-  'consensus',
-  'routing',
-  'memory',
-  'code-generation',
-  'cli-tools',
-  'orchestration',
-  'security',
-  'multi-agent-worker-dispatch',
-]);
+// Topics are free-form strings — the registry has 56+ unique topics.
+export const ResearchTopicSchema = z.string().min(1);
 export type ResearchTopic = z.infer<typeof ResearchTopicSchema>;
 
 /**

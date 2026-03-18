@@ -27,7 +27,6 @@ import {
   DEFAULT_RESEARCH_INDEX_PARSER_OPTIONS,
   PapersRegistrySchema,
   ResearchIndexParseError,
-  ResearchTopicSchema,
   SourcesRegistrySchema,
   TechniquesRegistrySchema,
 } from './research-index-types.js';
@@ -218,14 +217,27 @@ function countTechniquesByPriority(
 /**
  * Compute statistics per topic.
  */
-/** All research topics derived from the Zod enum schema. */
-const ALL_RESEARCH_TOPICS: readonly ResearchTopic[] = ResearchTopicSchema.options;
+/** Derive all unique topics from actual paper + technique data. */
+function deriveAllTopics(
+  papers: readonly ResearchPaperWithId[],
+  techniques: readonly ResearchTechniqueWithId[]
+): ResearchTopic[] {
+  const topicSet = new Set<string>();
+  for (const p of papers) {
+    for (const t of p.topics) topicSet.add(t);
+  }
+  for (const t of techniques) {
+    topicSet.add(t.topic);
+  }
+  return [...topicSet].sort();
+}
 
 function computeTopicStats(
   papers: readonly ResearchPaperWithId[],
   techniques: readonly ResearchTechniqueWithId[]
 ): readonly TopicStats[] {
-  return ALL_RESEARCH_TOPICS.map((topic) => {
+  const allTopics = deriveAllTopics(papers, techniques);
+  return allTopics.map((topic) => {
     const paperCount = papers.filter((p) => p.topics.includes(topic)).length;
     const techniqueCount = techniques.filter((t) => t.topic === topic).length;
 
@@ -249,7 +261,7 @@ export function computeStats(
     totalPapers: papers.length,
     totalTechniques: techniques.length,
     totalSources: sources.length,
-    totalTopics: ALL_RESEARCH_TOPICS.length,
+    totalTopics: deriveAllTopics(papers, techniques).length,
     techniquesByStatus: countTechniquesByStatus(techniques),
     techniquesByPriority: countTechniquesByPriority(techniques),
     topicStats: computeTopicStats(papers, techniques),

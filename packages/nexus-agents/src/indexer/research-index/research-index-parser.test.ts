@@ -123,7 +123,8 @@ describe('computeStats', () => {
     expect(stats.totalPapers).toBe(2);
     expect(stats.totalTechniques).toBe(1);
     expect(stats.totalSources).toBe(2);
-    expect(stats.totalTopics).toBe(8);
+    // Topics derived from data (no longer fixed enum)
+    expect(stats.totalTopics).toBeGreaterThanOrEqual(1);
   });
 
   it('counts techniques by status', () => {
@@ -161,18 +162,10 @@ describe('computeStats', () => {
     expect(stats.techniquesByPriority.none).toBe(1);
   });
 
-  it('computes topic stats for all 8 topics', () => {
-    const stats = computeStats([], [], []);
-    expect(stats.topicStats).toHaveLength(8);
-    const topics = stats.topicStats.map((t) => t.topic);
-    expect(topics).toContain('consensus');
-    expect(topics).toContain('routing');
-    expect(topics).toContain('memory');
-    expect(topics).toContain('code-generation');
-    expect(topics).toContain('cli-tools');
-    expect(topics).toContain('orchestration');
-    expect(topics).toContain('security');
-    expect(topics).toContain('multi-agent-worker-dispatch');
+  it('derives topics from actual data (no fixed enum)', () => {
+    // With empty data, no topics should be derived
+    const emptyStats = computeStats([], [], []);
+    expect(emptyStats.topicStats).toHaveLength(0);
   });
 
   it('counts papers and techniques per topic', () => {
