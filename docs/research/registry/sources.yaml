@@ -498,3 +498,33 @@ sources:
     verdict_notes: 'Graph-based orchestration similar to our GraphBuilder. Multi-language support (Python + .NET). Monitor for novel patterns we lack.'
     quality_score: 7
     evidence_tier: medium
+
+  swe-agent:
+    name: 'SWE-agent'
+    type: open_source_repo
+    url: 'https://github.com/SWE-agent/SWE-agent'
+    vendor: Princeton NLP
+    topics:
+      - code-generation
+      - agent architecture
+    tags:
+      - swe-bench
+      - github-issues
+      - automated-repair
+      - neurips-2024
+    reviewed_date: '2026-03-18'
+    reviewed_in: 'N/A (competitive analysis)'
+    quality_signals:
+      stars_at_review: 18769
+      language: Python
+      has_tests: true
+      has_docs: true
+      has_paper: true
+    techniques_extracted:
+      - agent-computer-interface
+      - file-viewer-tool
+      - search-replace-editing
+    verdict: monitoring
+    verdict_notes: 'Primary open-source SWE-bench competitor. SoTA on full. Live-SWE-agent 79.2% on Verified.'
+    quality_score: 9
+    evidence_tier: high
