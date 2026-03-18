@@ -118,11 +118,17 @@ async function executeResearchAdd(
     }
   }
 
+  // Quality gate: warn about evidence tier for new papers
+  const qualityNote =
+    result.success && !input.dryRun
+      ? ' [evidence_tier=low — arXiv preprint, no citation data yet. Run backfill-research-quality.ts to enrich.]'
+      : '';
+
   return {
     success: result.success,
     paperId: result.paperId,
     title: result.title,
-    message: result.message,
+    message: `${result.message}${qualityNote}`,
     dryRun: result.dryRun,
   };
 }

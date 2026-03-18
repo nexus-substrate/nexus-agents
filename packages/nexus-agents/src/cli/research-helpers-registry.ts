@@ -219,6 +219,10 @@ export function generateRegistryEntry(
     techniques_extracted: [],
     related_issues: [],
     implementation_status: 'not-started',
+    // Quality assessment — auto-computed on add (Issue #1572)
+    venue_tier: 0, // arXiv preprint
+    quality_score: 0, // Will be enriched with citation data
+    evidence_tier: 'low' as const, // Default for arXiv without code/baselines
   };
 
   return { ok: true, value: entry };

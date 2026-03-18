@@ -1,8 +1,39 @@
 # Contributing to Research Documentation
 
-**Last Updated:** 2026-01-11 (ET)
+**Last Updated:** 2026-03-18 (ET)
 
 This guide explains how to add new research papers, techniques, and sources to the nexus-agents research tracking system.
+
+---
+
+## ⚠️ Quality-First Workflow
+
+**97% of papers in our registry are evidence_tier=low** (arXiv preprints without peer review, code, or baselines). Before implementing techniques from a paper, assess its evidence quality:
+
+### Evidence Tiers
+
+| Tier       | Criteria                                                       | Action                                                            |
+| ---------- | -------------------------------------------------------------- | ----------------------------------------------------------------- |
+| **High**   | Peer-reviewed + has code + has baselines, OR quality_score ≥ 7 | Implement with confidence                                         |
+| **Medium** | Has code OR quality_score ≥ 4                                  | Implement with caution, verify claims                             |
+| **Low**    | arXiv preprint, no code, no baselines                          | Research only — do NOT implement without independent verification |
+
+### Quality Score (0-10, auto-computed)
+
+| Signal         | Points | Source                                   |
+| -------------- | ------ | ---------------------------------------- |
+| Citation count | 0-3    | Semantic Scholar API                     |
+| Venue tier     | 0-3    | NeurIPS/ICML/ICLR=3, workshop=1, arXiv=0 |
+| Has code repo  | 0 or 2 | Papers With Code / manual                |
+| Recency (<6mo) | 0-2    | Publication date                         |
+
+### Red Flags (manual assessment)
+
+- Paper only evaluated on one model or one dataset
+- No comparison against established baselines
+- Claims >50% improvement without ablation study
+- Authors are from the company selling the product
+- No code repository linked despite claiming reproducibility
 
 ---
 
