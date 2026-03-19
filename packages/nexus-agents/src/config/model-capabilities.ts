@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- 436 lines, cohesive model registry data per governance */
 /**
  * nexus-agents/config - Model Capabilities Matrix
  *
@@ -349,6 +350,43 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       cliName: 'opencode',
       cliAlias: 'custom-sonnet',
       cliModelName: 'custom/claude-sonnet-4-6',
+    },
+
+    // ── OpenRouter Free Models (via OpenAI-compatible API) ────────
+    {
+      id: 'openrouter-nemotron-super',
+      displayName: 'NVIDIA Nemotron 3 Super 120B (free)',
+      provider: 'openrouter',
+      contextWindow: 1_000_000,
+      outputModalities: ['text', 'structured_json', 'code'],
+      inputModalities: ['text', 'code'],
+      toolCapabilities: ['function_calling', 'structured_output'],
+      specialFeatures: ['streaming'],
+      notes:
+        'Hybrid Mamba-Transformer MoE (120B total, 12B active). ' +
+        'Designed for agentic reasoning. Free via OpenRouter.',
+      pricing: { inputPer1M: 0, outputPer1M: 0 },
+      qualityScores: { reasoning: 7, codeGeneration: 7, speed: 8, cost: 10 },
+      maxOutputTokens: 32_768,
+      cliName: 'opencode',
+      cliModelName: 'nvidia/nemotron-3-super-120b-a12b:free',
+    },
+    {
+      id: 'openrouter-qwen-coder',
+      displayName: 'Qwen3 Coder 480B (free)',
+      provider: 'openrouter',
+      contextWindow: 262_144,
+      outputModalities: ['text', 'structured_json', 'code'],
+      inputModalities: ['text', 'code'],
+      toolCapabilities: ['function_calling', 'structured_output'],
+      specialFeatures: ['streaming'],
+      notes:
+        'Strongest free coding model on OpenRouter. ' + '480B parameters, 262K context. Free tier.',
+      pricing: { inputPer1M: 0, outputPer1M: 0 },
+      qualityScores: { reasoning: 7, codeGeneration: 8, speed: 6, cost: 10 },
+      maxOutputTokens: 32_768,
+      cliName: 'opencode',
+      cliModelName: 'qwen/qwen3-coder-480b-a35b:free',
     },
   ],
 };

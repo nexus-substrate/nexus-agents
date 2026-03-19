@@ -26,6 +26,7 @@ const PROVIDER_CLI_MAP: Record<Provider, CliNameLiteral> = {
   google: 'gemini',
   openai: 'codex',
   'custom-openai': 'opencode',
+  openrouter: 'opencode',
 };
 
 /** Default context windows when we can't determine from API. */
@@ -34,6 +35,7 @@ const DEFAULT_CONTEXT_WINDOWS: Record<Provider, number> = {
   google: 1_000_000,
   openai: 128_000,
   'custom-openai': 200_000,
+  openrouter: 262_144,
 };
 
 // ============================================================================
@@ -125,6 +127,7 @@ function formatDisplayName(provider: Provider, modelId: string): string {
     google: 'Gemini',
     openai: 'Codex',
     'custom-openai': 'Custom',
+    openrouter: 'OpenRouter',
   };
   const base = providerNames[provider];
   const cleaned = modelId

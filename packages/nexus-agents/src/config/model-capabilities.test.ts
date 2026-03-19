@@ -29,7 +29,7 @@ import { CLI_NAMES, MODEL_IDS } from './model-capabilities-types.js';
 
 describe('DEFAULT_MODEL_CAPABILITIES', () => {
   it('should contain exactly 13 models', () => {
-    expect(DEFAULT_MODEL_CAPABILITIES.models).toHaveLength(13);
+    expect(DEFAULT_MODEL_CAPABILITIES.models).toHaveLength(15);
   });
 
   it('should have version 3', () => {
@@ -51,7 +51,9 @@ describe('DEFAULT_MODEL_CAPABILITIES', () => {
 
   it('all providers should be represented', () => {
     const providers = new Set(DEFAULT_MODEL_CAPABILITIES.models.map((m) => m.provider));
-    expect(providers).toEqual(new Set(['anthropic', 'google', 'openai', 'custom-openai']));
+    expect(providers).toEqual(
+      new Set(['anthropic', 'google', 'openai', 'custom-openai', 'openrouter'])
+    );
   });
 
   it('all quality scores should be in range 1-10', () => {
@@ -121,7 +123,7 @@ describe('getModelCapabilities', () => {
 describe('findModelsByOutputModality', () => {
   it('returns models supporting text output', () => {
     const results = findModelsByOutputModality('text');
-    expect(results).toHaveLength(13);
+    expect(results).toHaveLength(15);
   });
 
   it('returns subset for image_png (only gemini models)', () => {
@@ -142,7 +144,7 @@ describe('findModelsByOutputModality', () => {
 describe('findModelsByInputModality', () => {
   it('all models support text input', () => {
     const results = findModelsByInputModality('text');
-    expect(results).toHaveLength(13);
+    expect(results).toHaveLength(15);
   });
 
   it('only gemini supports video input', () => {
@@ -163,7 +165,7 @@ describe('findModelsByInputModality', () => {
 describe('findModelsByToolCapability', () => {
   it('all models support function_calling', () => {
     const results = findModelsByToolCapability('function_calling');
-    expect(results).toHaveLength(13);
+    expect(results).toHaveLength(15);
   });
 
   it('claude and custom-openai models support mcp', () => {
@@ -181,7 +183,7 @@ describe('findModelsByToolCapability', () => {
 describe('findModelsByFeature', () => {
   it('multiple models support streaming', () => {
     const results = findModelsByFeature('streaming');
-    expect(results).toHaveLength(13);
+    expect(results).toHaveLength(15);
   });
 
   it('gemini pro models support deep_research', () => {
