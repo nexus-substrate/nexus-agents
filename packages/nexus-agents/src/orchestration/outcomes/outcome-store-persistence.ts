@@ -12,7 +12,7 @@
 import { appendFileSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 
 import type { ILogger } from '../../core/index.js';
-import { createLogger } from '../../core/index.js';
+import { createLogger, getErrorMessage } from '../../core/index.js';
 import { TaskOutcomeSchema } from './outcome-types.js';
 import type { TaskOutcome } from './outcome-types.js';
 import { OutcomeStore, registerPersistentOutcomeStoreFactory } from './outcome-store.js';
@@ -123,7 +123,7 @@ export class PersistentOutcomeStore extends OutcomeStore {
           }
         } catch (parseErr: unknown) {
           this.logger.debug('Skipping malformed outcome line during hydration', {
-            error: parseErr instanceof Error ? parseErr.message : String(parseErr),
+            error: getErrorMessage(parseErr),
             linePreview: line.slice(0, 80),
           });
           skipped++;
@@ -137,7 +137,7 @@ export class PersistentOutcomeStore extends OutcomeStore {
         path: this.filePath,
       });
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
+      const msg = getErrorMessage(error);
       this.logger.warn('Failed to hydrate outcomes from disk', {
         error: msg,
         path: this.filePath,
@@ -152,7 +152,7 @@ export class PersistentOutcomeStore extends OutcomeStore {
       const content = entries.map((e) => JSON.stringify(e)).join('\n') + '\n';
       writeFileSync(this.filePath, content, 'utf-8');
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
+      const msg = getErrorMessage(error);
       this.logger.warn('Failed to rewrite outcomes file after reclassification', {
         error: msg,
         path: this.filePath,
@@ -164,7 +164,7 @@ export class PersistentOutcomeStore extends OutcomeStore {
     try {
       appendFileSync(this.filePath, JSON.stringify(outcome) + '\n', 'utf-8');
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
+      const msg = getErrorMessage(error);
       this.logger.warn('Failed to persist outcome to disk', {
         error: msg,
         path: this.filePath,

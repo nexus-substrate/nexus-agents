@@ -13,7 +13,7 @@
 
 import type { AgentPlanEntry } from './agent-planner.js';
 import { MAX_WORKERS_PER_WAVE } from './agent-planner.js';
-import { createLogger } from '../../core/index.js';
+import { createLogger, getErrorMessage } from '../../core/index.js';
 import { getExpertTaskTimeout, WORKER_TIMEOUTS } from '../../config/timeouts.js';
 import { isRateLimitError } from '../../cli/voter-execution.js';
 import type { IEventBus } from '../../pipeline/event-types.js';
@@ -610,7 +610,7 @@ async function attemptExecution(
     return await withWatchdog(entry.role, timeoutMs, () => executeWorker(entry, priorWaveResults));
   } catch (error: unknown) {
     const durationMs = Date.now() - startMs;
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     const errorType = classifyError(message, durationMs, timeoutMs);
     logger.warn('Worker failed', { role: entry.role, error: message, errorType, durationMs });
     return {

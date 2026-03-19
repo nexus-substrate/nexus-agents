@@ -75,7 +75,7 @@ function parseInputs(inputArg: string): ParsedInputs {
     try {
       return JSON.parse(content) as ParsedInputs;
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
+      const msg = getErrorMessage(e);
       throw new Error(`Invalid JSON in input file "${inputArg}": ${msg}`);
     }
   }
@@ -84,7 +84,7 @@ function parseInputs(inputArg: string): ParsedInputs {
   try {
     return JSON.parse(inputArg) as ParsedInputs;
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
+    const msg = getErrorMessage(e);
     throw new Error(
       `Invalid JSON input: ${msg}\nHint: Provide a valid JSON string or path to a .json file.`
     );

@@ -153,6 +153,15 @@ export function setTimeProvider(provider: ITimeProvider): void {
 }
 
 /**
+ * Get current date as YYYY-MM-DD string using the global time provider.
+ * Test-mockable via setTimeProvider(). Canonical source for date strings.
+ * @see Issue #1596 — DRY consolidation
+ */
+export function getCurrentDateString(): string {
+  return new Date(getTimeProvider().now()).toISOString().slice(0, 10);
+}
+
+/**
  * Reset the global time provider to system clock.
  */
 export function resetTimeProvider(): void {

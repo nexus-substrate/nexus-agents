@@ -182,6 +182,7 @@ export {
   getTimeProvider,
   setTimeProvider,
   resetTimeProvider,
+  getCurrentDateString,
   createTimeProvider,
 } from './time-provider.js';
 
