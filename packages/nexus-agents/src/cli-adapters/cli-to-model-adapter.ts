@@ -15,6 +15,7 @@ import type {
   ModelCapability,
 } from '../core/index.js';
 import { ModelCapability as MC, ok, err, ModelError, ConfigError } from '../core/index.js';
+import { estimateTokens } from '../core/token-estimator.js';
 import type { ICliAdapter, CliTask, CliResponse, CliError, ExecutionOptions } from './types.js';
 import type { StreamChunk } from '../core/types/model.js';
 
@@ -185,11 +186,10 @@ export class CliToModelAdapter implements IModelAdapter {
   }
 
   /**
-   * Approximate token count based on character length.
+   * Token count via canonical estimator (DRY consolidation Issue #1596).
    */
   countTokens(text: string): Promise<number> {
-    // Rough approximation: ~4 chars per token
-    return Promise.resolve(Math.ceil(text.length / 4));
+    return Promise.resolve(estimateTokens(text));
   }
 
   /**

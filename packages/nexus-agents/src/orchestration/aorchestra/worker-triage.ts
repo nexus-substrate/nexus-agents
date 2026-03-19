@@ -13,6 +13,7 @@
  */
 
 import type { WorkerResult } from './worker-dispatcher.js';
+import { isRateLimitLikeError } from '../../adapters/rate-limit-detector.js';
 
 /** Action recommendation from failure triage. */
 export type TriageAction = 'retry_same_cli' | 'retry_different_cli' | 'extend_timeout' | 'abort';
@@ -60,15 +61,7 @@ const TRANSIENT_PATTERNS = [
   'command failed',
 ] as const;
 
-const RATE_LIMIT_PATTERNS = [
-  'rate limit',
-  'rate_limit',
-  'quota exceeded',
-  '429',
-  'too many requests',
-  'max retries',
-  'throttl',
-] as const;
+// Rate limit detection delegated to canonical isRateLimitLikeError (DRY Issue #1596)
 
 const NON_RETRYABLE_PATTERNS = [
   'unauthorized',
@@ -121,7 +114,7 @@ function classifyFailure(
       hasUsefulOutput
     );
   }
-  if (result.errorType === 'rate_limit' || matchesAny(errorMsg, RATE_LIMIT_PATTERNS)) {
+  if (result.errorType === 'rate_limit' || isRateLimitLikeError(new Error(errorMsg))) {
     return makeResult(
       'retry_different_cli',
       'Rate limited — try alternate CLI',

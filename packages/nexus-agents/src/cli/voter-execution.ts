@@ -48,16 +48,15 @@ const INITIAL_RETRY_DELAY_MS = 1_000;
  */
 export const RATE_LIMIT_RETRY_DELAY_MS = 5_000;
 
-/** Rate-limit indicator patterns (case-insensitive). */
-const RATE_LIMIT_PATTERNS = ['rate limit', '429', 'too many requests', 'quota exceeded'];
-
 /**
  * Detects whether an error message indicates a rate-limit condition.
- * Used to apply longer retry delays instead of masking the error (Issue #1319).
+ * Delegates to canonical rate-limit-detector (DRY consolidation Issue #1596).
  */
+import { isRateLimitLikeError } from '../adapters/rate-limit-detector.js';
+
+/** @see isRateLimitLikeError — re-exported for backward compatibility */
 export function isRateLimitError(message: string): boolean {
-  const lower = message.toLowerCase();
-  return RATE_LIMIT_PATTERNS.some((pattern) => lower.includes(pattern));
+  return isRateLimitLikeError(new Error(message));
 }
 
 /** Validates and clamps timeout. Canonical source: `config/timeouts.ts`. */

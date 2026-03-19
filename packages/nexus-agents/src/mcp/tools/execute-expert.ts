@@ -21,6 +21,7 @@ import type {
 import type { CreateTaskResult, GetTaskResult } from '@modelcontextprotocol/sdk/experimental/tasks';
 import type { ILogger, Task } from '../../core/index.js';
 import { getErrorMessage } from '../../core/index.js';
+import { isRateLimitLikeError } from '../../adapters/rate-limit-detector.js';
 
 import {
   createLogger,
@@ -219,13 +220,9 @@ function injectErrorHints(task: Task, role: string): void {
 
 type ExpertResult = { ok: true; value: ExecuteExpertResponse } | { ok: false; error: string };
 
-/** Rate-limit indicator patterns in error messages. */
-const RATE_LIMIT_PATTERNS = ['rate limit', '429', 'too many requests', 'quota exceeded'];
-
 /** Checks whether an error message indicates a rate-limit failure. */
 function isRateLimitFailure(message: string): boolean {
-  const lower = message.toLowerCase();
-  return RATE_LIMIT_PATTERNS.some((p) => lower.includes(p));
+  return isRateLimitLikeError(new Error(message));
 }
 
 /** Minimum consecutive failures before proactive fallback (#1401). */
