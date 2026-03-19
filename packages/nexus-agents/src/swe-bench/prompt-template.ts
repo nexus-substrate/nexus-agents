@@ -162,37 +162,30 @@ export function createRetryPrompt(
   return parts.join('\n');
 }
 
+/** Ordered extraction patterns for diff/patch content. */
+const PATCH_PATTERNS: readonly RegExp[] = [
+  // Code fence: ```diff
+  /```diff\n([\s\S]*?)```/i,
+  // Alternative fences: ```patch, ```text, ``` with diff --git
+  /```(?:patch|text|)\n(diff --git[\s\S]*?)```/i,
+  // Unified diff in fenced block: --- a/file
+  /```(?:diff|patch|text|)\n(---\s+a\/[\s\S]*?)```/i,
+  // Raw diff --git without fences
+  /(diff --git[\s\S]*?)(?:\n\n[^d]|$)/,
+  // Raw unified diff without fences
+  /\n(--- a\/[\s\S]*?\n\+\+\+ b\/[\s\S]*?)(?:\n\n[^-+@ ]|$)/,
+];
+
 /**
  * Extracts a git diff patch from agent response.
  */
 export function extractPatch(response: string): string | null {
-  // Try to find diff block with code fence
-  const diffBlockMatch = /```diff\n([\s\S]*?)```/i.exec(response);
-  if (diffBlockMatch !== null) {
-    const patch = diffBlockMatch[1];
-    if (patch !== undefined) {
-      return normalizePatch(patch);
+  for (const pattern of PATCH_PATTERNS) {
+    const match = pattern.exec(response);
+    if (match?.[1] !== undefined) {
+      return normalizePatch(match[1]);
     }
   }
-
-  // Try to find diff block without language specifier
-  const codeBlockMatch = /```\n(diff --git[\s\S]*?)```/i.exec(response);
-  if (codeBlockMatch !== null) {
-    const patch = codeBlockMatch[1];
-    if (patch !== undefined) {
-      return normalizePatch(patch);
-    }
-  }
-
-  // Try to find raw diff content starting with diff --git
-  const rawDiffMatch = /(diff --git[\s\S]*?)(?:\n\n[^d]|$)/.exec(response);
-  if (rawDiffMatch !== null) {
-    const patch = rawDiffMatch[1];
-    if (patch !== undefined) {
-      return normalizePatch(patch);
-    }
-  }
-
   return null;
 }
 

@@ -136,6 +136,19 @@ function summarizeApproach(response: string): string {
 /**
  * Extracts an approach record from agent response and iteration metadata.
  */
+/** Extract a concise error hint from agent response for failed iterations. */
+function extractErrorHint(response: string, maxLen: number = 200): string {
+  // Look for error/traceback patterns in agent output
+  const errorMatch = /(?:Error|Exception|Traceback|FAILED|AssertionError)[^\n]{0,200}/i.exec(
+    response
+  );
+  if (errorMatch !== null) return errorMatch[0].slice(0, maxLen);
+  // Look for "the test still fails" or similar
+  const failMatch = /(?:still fails|test.*fail|doesn't work|incorrect)[^\n]{0,100}/i.exec(response);
+  if (failMatch !== null) return failMatch[0].slice(0, maxLen);
+  return '';
+}
+
 export function extractApproach(
   response: string,
   iteration: number,
@@ -147,7 +160,12 @@ export function extractApproach(
 
   const base: ApproachRecord = { iteration, approach, outcome };
   if (outcome === 'no_patch' || outcome === 'patch_rejected') {
-    return { ...base, errorSummary: `Iteration ${iteration.toString()}: ${outcome}` };
+    const hint = extractErrorHint(response);
+    const summary =
+      hint.length > 0
+        ? `Iteration ${iteration.toString()}: ${outcome} — ${hint}`
+        : `Iteration ${iteration.toString()}: ${outcome}`;
+    return { ...base, errorSummary: summary };
   }
   return base;
 }
