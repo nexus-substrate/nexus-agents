@@ -17,6 +17,7 @@ import { INPUT_VALIDATION_MODULE } from './input-validation.js';
 import { SECRETS_MANAGEMENT_MODULE } from './secrets-management.js';
 import { THREAT_MODELING_MODULE } from './threat-modeling.js';
 import { NIST_CONTROLS_MODULE } from './nist-controls.js';
+import { SUPPLY_CHAIN_MODULE } from './supply-chain.js';
 
 export {
   OWASP_API_TOP10_MODULE,
@@ -26,6 +27,7 @@ export {
   SECRETS_MANAGEMENT_MODULE,
   THREAT_MODELING_MODULE,
   NIST_CONTROLS_MODULE,
+  SUPPLY_CHAIN_MODULE,
 };
 
 /**
@@ -40,6 +42,7 @@ export const SECURITY_KNOWLEDGE_MODULES: readonly KnowledgeModule[] = [
   SECRETS_MANAGEMENT_MODULE,
   THREAT_MODELING_MODULE,
   NIST_CONTROLS_MODULE,
+  SUPPLY_CHAIN_MODULE,
 ];
 
 /**
