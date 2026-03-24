@@ -63,7 +63,11 @@ export function rowToEdge(row: GraphEdgeRow): GraphEdge {
     createdAt: new Date(row.created_at),
   };
   if (row.metadata !== null) {
-    return { ...base, metadata: JSON.parse(row.metadata) as Record<string, unknown> };
+    try {
+      return { ...base, metadata: JSON.parse(row.metadata) as Record<string, unknown> };
+    } catch {
+      return { ...base, metadata: {} };
+    }
   }
   return base;
 }
