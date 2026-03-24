@@ -20,6 +20,7 @@ import {
   resetGlobalRegistry,
 } from './unified-registry.js';
 import { TASK_SPECIALIZATION_MATRIX } from '../config/task-specialization.js';
+import { DEFAULT_MODEL_CAPABILITIES } from '../config/model-capabilities.js';
 
 // Silence logging in tests
 const mockLogger = {
@@ -259,9 +260,9 @@ describe('UnifiedAdapterRegistry', () => {
       expect(snapshot.taskRouting).toHaveLength(10);
     });
 
-    it('should report model count', () => {
+    it('should report model count matching canonical registry', () => {
       const snapshot = registry.getSnapshot();
-      expect(snapshot.availableModels).toBe(15);
+      expect(snapshot.availableModels).toBe(DEFAULT_MODEL_CAPABILITIES.models.length);
     });
   });
 });
