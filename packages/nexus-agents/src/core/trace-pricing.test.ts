@@ -73,6 +73,8 @@ describe('trace-pricing', () => {
     it('calculates all canonical models have pricing', () => {
       for (const m of DEFAULT_MODEL_CAPABILITIES.models) {
         if (m.pricing === undefined) continue;
+        // Skip free models (e.g., OpenRouter free tier) — zero cost is correct
+        if (m.pricing.inputPer1M === 0 && m.pricing.outputPer1M === 0) continue;
         const cost = calculateCost(m.id, 1_000_000, 1_000_000);
         expect(cost, `${m.id} should have cost`).toBeDefined();
         expect(cost, `${m.id} should have positive cost`).toBeGreaterThan(0);
