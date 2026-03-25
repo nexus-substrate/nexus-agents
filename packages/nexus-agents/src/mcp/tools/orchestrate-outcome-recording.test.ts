@@ -6,7 +6,11 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { getOutcomeStore, resetOutcomeStore } from '../../orchestration/outcomes/index.js';
+import {
+  getOutcomeStore,
+  setOutcomeStore,
+  OutcomeStore,
+} from '../../orchestration/outcomes/index.js';
 
 // Pre-import heavy modules once instead of dynamic import per test (perf: saves ~2s)
 import * as orchestrateMod from './orchestrate.js';
@@ -60,11 +64,11 @@ vi.mock('./orchestrate-aorchestra.js', () => ({
 
 describe('Orchestrate OutcomeStore recording (Issue #1014)', () => {
   beforeEach(() => {
-    resetOutcomeStore();
+    setOutcomeStore(new OutcomeStore());
   });
 
   afterEach(() => {
-    resetOutcomeStore();
+    setOutcomeStore(new OutcomeStore());
   });
 
   it('records a success outcome to OutcomeStore after orchestration', () => {
@@ -134,11 +138,11 @@ describe('Orchestrate OutcomeStore recording (Issue #1014)', () => {
 
 describe('Execute-expert OutcomeStore recording (Issue #1014)', () => {
   beforeEach(() => {
-    resetOutcomeStore();
+    setOutcomeStore(new OutcomeStore());
   });
 
   afterEach(() => {
-    resetOutcomeStore();
+    setOutcomeStore(new OutcomeStore());
   });
 
   it('OutcomeStore accepts expert execution outcomes', () => {

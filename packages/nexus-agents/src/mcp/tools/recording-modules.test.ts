@@ -12,7 +12,11 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { getOutcomeStore, resetOutcomeStore } from '../../orchestration/outcomes/index.js';
+import {
+  getOutcomeStore,
+  setOutcomeStore,
+  OutcomeStore,
+} from '../../orchestration/outcomes/index.js';
 
 // ============================================================================
 // Mocks
@@ -58,7 +62,7 @@ describe('consensus-vote-recording', () => {
       learningsPromotedToBelief: 0,
       beliefsPromotedToAgentic: 0,
     });
-    resetOutcomeStore();
+    setOutcomeStore(new OutcomeStore());
   });
 
   it('recordVoteSuccess records task and learning to memory', async () => {
@@ -173,7 +177,7 @@ describe('create-expert-recording', () => {
       learningsPromotedToBelief: 0,
       beliefsPromotedToAgentic: 0,
     });
-    resetOutcomeStore();
+    setOutcomeStore(new OutcomeStore());
   });
 
   it('recordExpertCreated records task and learning', async () => {
@@ -268,7 +272,7 @@ describe('execute-expert-recording', () => {
       learningsPromotedToBelief: 0,
       beliefsPromotedToAgentic: 0,
     });
-    resetOutcomeStore();
+    setOutcomeStore(new OutcomeStore());
   });
 
   it('recordExpertOutcome records success to OutcomeStore', async () => {
