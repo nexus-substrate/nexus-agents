@@ -65,7 +65,7 @@ describe('Default check definitions', () => {
 
   it('all weights sum to 1.25 across all checks', () => {
     const checks = [TYPECHECK, LINT, TEST, BUILD, SECURITY_AUDIT, COVERAGE];
-    const totalWeight = checks.reduce<number>((sum, c) => sum + (c.weight ?? 0), 0);
+    const totalWeight = checks.reduce((sum, c) => sum + (c.weight ?? 0), 0);
     expect(totalWeight).toBeCloseTo(1.25, 5);
   });
 });

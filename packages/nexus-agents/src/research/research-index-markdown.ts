@@ -102,7 +102,7 @@ export function generateTopicsTable(stats: RegistryStats): string {
     const topicDisplay = capitalizeTopicName(ts.topic);
     const topicLink = `[${topicDisplay}](topics/${ts.topic}/README.md)`;
     const desc = TOPIC_DESCRIPTIONS[ts.topic];
-    return `| ${topicLink} | ${String(ts.papers)} | ${String(ts.techniques)} | ${desc} |`;
+    return `| ${topicLink} | ${String(ts.papers)} | ${String(ts.techniques)} | ${desc ?? ''} |`;
   });
 
   return `## Topics
