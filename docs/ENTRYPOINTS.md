@@ -1,8 +1,8 @@
 ---
 title: 'Nexus-Agents Entrypoints'
-description: Complete reference for all CLI commands, MCP tools, REST API endpoints, and workflow templates
+description: Complete reference for all CLI commands, MCP tools, and workflow templates
 tier: 1
-keywords: [entrypoints, cli, mcp, rest, api, tools, commands, reference]
+keywords: [entrypoints, cli, mcp, api, tools, commands, reference]
 ---
 
 # Nexus-Agents Entrypoints
@@ -17,12 +17,11 @@ keywords: [entrypoints, cli, mcp, rest, api, tools, commands, reference]
 
 Nexus-agents provides four interface categories:
 
-| Interface        | Use Case                            | Transport           |
-| ---------------- | ----------------------------------- | ------------------- |
-| CLI Commands     | Terminal usage, CI/CD pipelines     | Process             |
-| MCP Tools        | Claude Desktop, MCP clients         | JSON-RPC over stdio |
-| REST API         | Enterprise integration, web clients | HTTP                |
-| Programmatic API | Library usage, custom applications  | TypeScript import   |
+| Interface        | Use Case                           | Transport           |
+| ---------------- | ---------------------------------- | ------------------- |
+| CLI Commands     | Terminal usage, CI/CD pipelines    | Process             |
+| MCP Tools        | Claude Desktop, MCP clients        | JSON-RPC over stdio |
+| Programmatic API | Library usage, custom applications | TypeScript import   |
 
 ---
 
@@ -856,113 +855,6 @@ nexus-agents hooks stop --check-tasks
 
 ---
 
-## REST API
-
-**Base URL:** `http://localhost:3000`
-**API Version:** v1
-
-| Method | Endpoint               | Description           | Auth    | Rate Limit |
-| ------ | ---------------------- | --------------------- | ------- | ---------- |
-| GET    | `/health`              | Health check          | None    | None       |
-| GET    | `/metrics`             | Prometheus metrics    | None    | None       |
-| GET    | `/metrics/prometheus`  | Prometheus format     | None    | None       |
-| POST   | `/api/v1/orchestrate`  | Task orchestration    | API Key | 60/min     |
-| POST   | `/api/v1/delegate`     | Model routing         | API Key | 60/min     |
-| POST   | `/api/v1/workflow`     | Workflow execution    | API Key | 60/min     |
-| POST   | `/api/v1/expert`       | Expert task execution | API Key | 60/min     |
-| GET    | `/api/v1/expert/types` | List expert types     | API Key | 60/min     |
-
-### Authentication
-
-All `/api/v1/*` endpoints require API key authentication. An API key is auto-generated on first start and stored at `~/.nexus-agents/auth/rest-api-key`:
-
-```bash
-# Read the auto-generated key
-API_KEY=$(cat ~/.nexus-agents/auth/rest-api-key)
-
-curl -X POST http://localhost:3000/api/v1/orchestrate \
-  -H "X-API-Key: $API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"task": "Review this code"}'
-```
-
-### Request/Response Examples
-
-#### POST /api/v1/orchestrate
-
-```json
-// Request
-{
-  "task": "Analyze security vulnerabilities in auth.ts",
-  "context": { "file": "src/auth.ts" },
-  "maxIterations": 3
-}
-
-// Response
-{
-  "success": true,
-  "result": {
-    "summary": "...",
-    "experts_consulted": ["security", "code"],
-    "recommendations": [...]
-  },
-  "metadata": {
-    "duration_ms": 1234,
-    "tokens_used": 5678
-  }
-}
-```
-
-#### POST /api/v1/workflow
-
-```json
-// Request
-{
-  "template": "code-review",
-  "inputs": {
-    "url": "https://github.com/owner/repo/pull/123"
-  },
-  "dryRun": false
-}
-
-// Response
-{
-  "success": true,
-  "result": {
-    "status": "completed",
-    "steps": [...],
-    "output": "..."
-  }
-}
-```
-
-### Configuration
-
-```yaml
-# nexus-agents.yaml
-api:
-  port: 3000
-  host: 0.0.0.0
-  enableCors: true
-  rateLimitPerMinute: 60
-  apiKeyHeader: X-API-Key
-```
-
-### Source Files
-
-| File                            | Purpose               |
-| ------------------------------- | --------------------- |
-| `src/api/rest-server.ts`        | Server implementation |
-| `src/api/rest-types.ts`         | Type definitions      |
-| `src/api/routes/index.ts`       | Route registration    |
-| `src/api/routes/health.ts`      | Health endpoints      |
-| `src/api/routes/orchestrate.ts` | Orchestrate endpoint  |
-| `src/api/routes/delegate.ts`    | Delegate endpoint     |
-| `src/api/routes/workflow.ts`    | Workflow endpoint     |
-| `src/api/routes/expert.ts`      | Expert endpoint       |
-
----
-
 ## Programmatic API
 
 **Package:** `nexus-agents`
@@ -1166,19 +1058,6 @@ import {
 } from 'nexus-agents';
 ```
 
-### REST API Server
-
-```typescript
-import {
-  RestApiServer,
-  createRestApiServer,
-
-  // Types
-  type RestApiConfig,
-  type RestApiServerOptions,
-} from 'nexus-agents';
-```
-
 ### Quick Start Examples
 
 #### MCP Server Mode
@@ -1206,20 +1085,6 @@ const result = await orchestrator.execute({
 if (result.ok) {
   console.log(result.value.summary);
 }
-```
-
-#### REST API Server
-
-```typescript
-import { createRestApiServer } from 'nexus-agents';
-
-const server = await createRestApiServer({
-  port: 3000,
-  enableCors: true,
-  rateLimitPerMinute: 100,
-});
-
-await server.start();
 ```
 
 ### Source Files
@@ -1355,39 +1220,6 @@ mcp_tools:
 ```
 
 <!-- END:MCP_TOOLS -->
-
-<!-- BEGIN:REST_API -->
-
-```yaml
-rest_api:
-  base_url: http://localhost:3000
-  version: v1
-  endpoints:
-    - method: GET
-      path: /health
-      auth: none
-    - method: GET
-      path: /metrics
-      auth: none
-    - method: POST
-      path: /api/v1/orchestrate
-      auth: api_key
-      rate_limit: 60/min
-    - method: POST
-      path: /api/v1/delegate
-      auth: api_key
-      rate_limit: 60/min
-    - method: POST
-      path: /api/v1/workflow
-      auth: api_key
-      rate_limit: 60/min
-    - method: POST
-      path: /api/v1/expert
-      auth: api_key
-      rate_limit: 60/min
-```
-
-<!-- END:REST_API -->
 
 ---
 

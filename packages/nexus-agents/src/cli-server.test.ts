@@ -114,13 +114,6 @@ vi.mock('./cli-server-feedback.js', () => ({
   })),
 }));
 
-vi.mock('./cli-server-rest.js', () => ({
-  extractRestConfig: vi.fn(() => ({ enabled: false })),
-  startRestApiServer: vi.fn(() => Promise.resolve(null)),
-  stopRestApiServer: vi.fn(() => Promise.resolve()),
-  logRestApiConfig: vi.fn(),
-}));
-
 vi.mock('./mcp/tools/tool-memory.js', () => ({
   shutdownToolMemory: vi.fn(),
 }));

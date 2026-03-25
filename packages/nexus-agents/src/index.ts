@@ -64,9 +64,6 @@ export * from './exports/learning.js';
 // Audit - Structured audit logging (Issue #193)
 export * from './exports/audit.js';
 
-// API - REST API Gateway (Issue #184)
-export * from './exports/api.js';
-
 // Security - Sandboxing, safety evaluation, and security components (Issue #332)
 export * from './exports/security.js';
 

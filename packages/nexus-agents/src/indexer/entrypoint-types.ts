@@ -91,26 +91,6 @@ export interface McpToolSpec {
   readonly source_line: number;
 }
 
-/**
- * REST endpoint specification extracted from source.
- */
-export interface RestEndpointSpec {
-  /** HTTP method (GET, POST, PUT, DELETE, PATCH) */
-  readonly method: string;
-  /** Endpoint path (e.g., '/api/v1/orchestrate') */
-  readonly path: string;
-  /** Description of what the endpoint does */
-  readonly description: string;
-  /** Request body parameters (for POST/PUT/PATCH) */
-  readonly body_params?: readonly ParameterSpec[];
-  /** Query parameters (for GET) */
-  readonly query_params?: readonly ParameterSpec[];
-  /** Source file where the route is defined */
-  readonly source_file: string;
-  /** Line number in source file */
-  readonly source_line: number;
-}
-
 // ============================================================================
 // Manifest Type
 // ============================================================================
@@ -127,8 +107,6 @@ export interface EntrypointManifest {
   readonly cli_commands: readonly CliCommandSpec[];
   /** Extracted MCP tools */
   readonly mcp_tools: readonly McpToolSpec[];
-  /** Extracted REST endpoints */
-  readonly rest_endpoints: readonly RestEndpointSpec[];
 }
 
 // ============================================================================
@@ -169,22 +147,11 @@ export const McpToolSpecSchema = z.object({
   source_line: z.number().int().positive(),
 });
 
-export const RestEndpointSpecSchema = z.object({
-  method: z.string(),
-  path: z.string(),
-  description: z.string(),
-  body_params: z.array(ParameterSpecSchema).readonly().optional(),
-  query_params: z.array(ParameterSpecSchema).readonly().optional(),
-  source_file: z.string(),
-  source_line: z.number().int().positive(),
-});
-
 export const EntrypointManifestSchema = z.object({
   schema_version: z.literal(ENTRYPOINT_SCHEMA_VERSION),
   generated_at: z.string(),
   cli_commands: z.array(CliCommandSpecSchema).readonly(),
   mcp_tools: z.array(McpToolSpecSchema).readonly(),
-  rest_endpoints: z.array(RestEndpointSpecSchema).readonly(),
 });
 
 // ============================================================================
@@ -201,8 +168,6 @@ export interface EntrypointExtractorOptions {
   readonly cliCommandsPath: string;
   /** Path to MCP tools directory (relative to packageRoot) */
   readonly mcpToolsPath: string;
-  /** Path to REST routes directory (relative to packageRoot) */
-  readonly restRoutesPath: string;
   /** Whether to sanitize extracted values */
   readonly sanitize: boolean;
 }
@@ -214,7 +179,6 @@ export const DEFAULT_ENTRYPOINT_EXTRACTOR_OPTIONS: EntrypointExtractorOptions = 
   packageRoot: 'packages/nexus-agents',
   cliCommandsPath: 'src/cli-commands.ts',
   mcpToolsPath: 'src/mcp/tools',
-  restRoutesPath: 'src/api/routes',
   sanitize: true,
 };
 

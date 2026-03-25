@@ -12,7 +12,6 @@ import {
   sanitizeOption,
   sanitizeCommand,
   sanitizeTool,
-  sanitizeEndpoint,
 } from './entrypoint-sanitizer.js';
 
 // ============================================================================
@@ -228,60 +227,5 @@ describe('sanitizeTool', () => {
     });
     expect(tool.source_file).toBe('src/mcp/tools/test.ts');
     expect(tool.source_line).toBe(42);
-  });
-});
-
-// ============================================================================
-// sanitizeEndpoint
-// ============================================================================
-
-describe('sanitizeEndpoint', () => {
-  it('sanitizes endpoint description', () => {
-    const endpoint = sanitizeEndpoint({
-      method: 'POST',
-      path: '/api/v1/orchestrate',
-      description: 'Send Bearer token123.abc to 10.0.0.1',
-      source_file: 'src/api/routes.ts',
-      source_line: 50,
-    });
-    expect(endpoint.method).toBe('POST');
-    expect(endpoint.path).toBe('/api/v1/orchestrate');
-    expect(endpoint.description).toContain('[REDACTED]');
-  });
-
-  it('sanitizes body params', () => {
-    const endpoint = sanitizeEndpoint({
-      method: 'POST',
-      path: '/api/v1/data',
-      description: 'Submit data',
-      source_file: 'src/api/routes.ts',
-      source_line: 60,
-      body_params: [{ name: 'apiKey', type: 'string', default: 'sk-' + 'a'.repeat(32) }],
-    });
-    expect(endpoint.body_params?.[0]?.default).toContain('[REDACTED]');
-  });
-
-  it('sanitizes query params', () => {
-    const endpoint = sanitizeEndpoint({
-      method: 'GET',
-      path: '/api/v1/search',
-      description: 'Search',
-      source_file: 'src/api/routes.ts',
-      source_line: 70,
-      query_params: [{ name: 'host', type: 'string', default: 'localhost:8080' }],
-    });
-    expect(endpoint.query_params?.[0]?.default).toContain('[REDACTED]');
-  });
-
-  it('handles endpoint with no optional params', () => {
-    const endpoint = sanitizeEndpoint({
-      method: 'GET',
-      path: '/health',
-      description: 'Health check',
-      source_file: 'src/api/health.ts',
-      source_line: 1,
-    });
-    expect(endpoint.body_params).toBeUndefined();
-    expect(endpoint.query_params).toBeUndefined();
   });
 });

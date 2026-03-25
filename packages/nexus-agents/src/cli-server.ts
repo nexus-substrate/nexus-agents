@@ -47,13 +47,6 @@ import { initializeExperts } from './cli-server-experts.js';
 import { initializeSkillLibrary } from './cli-server-skills.js';
 import { initializeSica } from './cli-server-sica.js';
 import { initializeFeedbackIntegration } from './cli-server-feedback.js';
-import {
-  extractRestConfig,
-  startRestApiServer,
-  stopRestApiServer,
-  logRestApiConfig,
-} from './cli-server-rest.js';
-import type { RestApiServer } from './api/rest-server.js';
 import { initializeAuth, type AuthInitResult } from './cli-server-auth.js';
 import { shutdownToolMemory } from './mcp/tools/tool-memory.js';
 import {
@@ -203,8 +196,6 @@ interface ShutdownCleanupOptions {
   readonly server: McpServer;
   readonly serverLogger: ILogger;
   readonly logger: ILogger;
-  /** REST API server (if started) - Issue #524 */
-  readonly restServer: RestApiServer | null;
   /** Audit logger (if enabled) - Issue #740 Phase 2 */
   readonly auditLogger: AuditLogger | null;
 }
@@ -213,21 +204,10 @@ interface ShutdownCleanupOptions {
  * Creates the shutdown cleanup handler.
  */
 function createShutdownCleanup(options: ShutdownCleanupOptions): () => Promise<void> {
-  const {
-    eventBusBridge,
-    observer,
-    eventContext,
-    server,
-    serverLogger,
-    logger,
-    restServer,
-    auditLogger,
-  } = options;
+  const { eventBusBridge, observer, eventContext, server, serverLogger, logger, auditLogger } =
+    options;
 
   return async (): Promise<void> => {
-    // Stop REST API server first (Issue #524)
-    await stopRestApiServer(restServer, logger);
-
     // Flush and close audit logger (Issue #740 Phase 2)
     await shutdownAuditLogger(auditLogger, logger);
 
@@ -521,16 +501,11 @@ export async function startServer(
   validateNexusEnv(logger); // Warn-only env var validation (Issue #1016)
 
   // Initialize all subsystems
-  const { server, serverLogger, observer, eventBusBridge, auditLogger, authInit } =
+  const { server, serverLogger, observer, eventBusBridge, auditLogger } =
     await initializeSubsystems(configResult.config, logger);
 
   // Connect to transport
   await connectToStdioTransport(server, logger, serverLogger);
-
-  // Start REST API server if enabled (Issue #524)
-  const restConfig = extractRestConfig(configResult.config);
-  logRestApiConfig(restConfig, logger);
-  const restServer = await startRestApiServer(restConfig, logger, authInit.handler);
 
   // Record server startup event for observability
   const eventContext = recordServerStartup(observer);
@@ -543,7 +518,7 @@ export async function startServer(
     process.exit(0);
   });
 
-  // Setup graceful shutdown with observer, EventBus, and REST API cleanup
+  // Setup graceful shutdown with observer and EventBus cleanup
   const cleanup = createShutdownCleanup({
     eventBusBridge,
     observer,
@@ -551,7 +526,6 @@ export async function startServer(
     server,
     serverLogger,
     logger,
-    restServer,
     auditLogger,
   });
   setupShutdownHandlers(cleanup, logger);

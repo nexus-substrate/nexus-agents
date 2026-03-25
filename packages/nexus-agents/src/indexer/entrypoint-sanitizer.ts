@@ -6,13 +6,7 @@
  * (Source: Epic #261 - Automated Documentation System)
  */
 
-import type {
-  CliCommandSpec,
-  McpToolSpec,
-  RestEndpointSpec,
-  ParameterSpec,
-  OptionSpec,
-} from './entrypoint-types.js';
+import type { CliCommandSpec, McpToolSpec, ParameterSpec, OptionSpec } from './entrypoint-types.js';
 
 // ============================================================================
 // Sanitization Patterns
@@ -128,29 +122,4 @@ export function sanitizeTool(tool: McpToolSpec): McpToolSpec {
     source_file: tool.source_file,
     source_line: tool.source_line,
   };
-}
-
-/**
- * Sanitizes a REST endpoint spec.
- */
-export function sanitizeEndpoint(endpoint: RestEndpointSpec): RestEndpointSpec {
-  const result: RestEndpointSpec = {
-    method: endpoint.method,
-    path: endpoint.path,
-    description: sanitizeValue(endpoint.description),
-    source_file: endpoint.source_file,
-    source_line: endpoint.source_line,
-  };
-
-  if (endpoint.body_params !== undefined) {
-    (result as { body_params: readonly ParameterSpec[] }).body_params =
-      endpoint.body_params.map(sanitizeParameter);
-  }
-
-  if (endpoint.query_params !== undefined) {
-    (result as { query_params: readonly ParameterSpec[] }).query_params =
-      endpoint.query_params.map(sanitizeParameter);
-  }
-
-  return result;
 }

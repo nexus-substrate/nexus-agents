@@ -317,7 +317,6 @@ async function entrypointsCommand(options: IndexCommandOptions): Promise<IndexCo
     packageRoot: 'packages/nexus-agents',
     cliCommandsPath: 'src/cli-commands.ts',
     mcpToolsPath: 'src/mcp/tools',
-    restRoutesPath: 'src/api/routes',
     sanitize: true,
   });
 
@@ -346,12 +345,11 @@ async function entrypointsCommand(options: IndexCommandOptions): Promise<IndexCo
 
   logger.info(`Wrote entrypoints manifest to ${outputPath}`);
 
-  const total =
-    manifest.cli_commands.length + manifest.mcp_tools.length + manifest.rest_endpoints.length;
+  const total = manifest.cli_commands.length + manifest.mcp_tools.length;
 
   return {
     success: true,
-    message: `Extracted ${String(total)} entrypoints (${String(manifest.cli_commands.length)} CLI, ${String(manifest.mcp_tools.length)} MCP, ${String(manifest.rest_endpoints.length)} REST)`,
+    message: `Extracted ${String(total)} entrypoints (${String(manifest.cli_commands.length)} CLI, ${String(manifest.mcp_tools.length)} MCP)`,
     data: {
       outputPath,
     },

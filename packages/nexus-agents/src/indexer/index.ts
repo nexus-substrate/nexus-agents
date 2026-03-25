@@ -76,7 +76,6 @@ export type {
   ParameterSpec,
   CliCommandSpec,
   McpToolSpec,
-  RestEndpointSpec,
   EntrypointManifest,
   EntrypointExtractorOptions,
   EntrypointExtractionResult,
@@ -90,7 +89,6 @@ export {
   ParameterSpecSchema,
   CliCommandSpecSchema,
   McpToolSpecSchema,
-  RestEndpointSpecSchema,
   EntrypointManifestSchema,
 } from './entrypoint-types.js';
 
@@ -100,7 +98,6 @@ export {
   extractEntrypoints,
   extractCliCommands,
   extractMcpTools,
-  extractRestEndpoints,
   manifestToYaml,
   manifestToJson,
 } from './entrypoint-extractor.js';

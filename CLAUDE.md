@@ -38,7 +38,7 @@ nexus-agents fitness-audit # CLI fitness score audit
 nexus-agents --help       # Full command list
 ```
 
-**Full CLI/MCP/REST reference:** [docs/ENTRYPOINTS.md](./docs/ENTRYPOINTS.md)
+**Full CLI/MCP reference:** [docs/ENTRYPOINTS.md](./docs/ENTRYPOINTS.md)
 
 ---
 
@@ -448,18 +448,18 @@ Governance rules (voting thresholds, refactor gates, fitness audit, documentatio
 
 ## File References
 
-| Need To...                 | Go To                                                                                              |
-| -------------------------- | -------------------------------------------------------------------------------------------------- |
-| Find any documentation     | [docs/README.md](./docs/README.md)                                                                 |
-| CLI/MCP/REST API reference | [docs/ENTRYPOINTS.md](./docs/ENTRYPOINTS.md)                                                       |
-| Architecture docs          | [docs/architecture/README.md](./docs/architecture/README.md)                                       |
-| Development/contributing   | [docs/development/README.md](./docs/development/README.md)                                         |
-| Coding standards           | [CODING_STANDARDS.md](./CODING_STANDARDS.md)                                                       |
-| Research tracking          | [docs/research/RESEARCH_INDEX.md](./docs/research/RESEARCH_INDEX.md)                               |
-| Context load balancing     | [docs/architecture/CONTEXT_LOAD_BALANCING.md](./docs/architecture/CONTEXT_LOAD_BALANCING.md)       |
-| Consensus protocols        | [docs/architecture/CONSENSUS_PROTOCOLS.md](./docs/architecture/CONSENSUS_PROTOCOLS.md)             |
-| Alignment roadmap          | [docs/ALIGNMENT_ROADMAP.md](./docs/ALIGNMENT_ROADMAP.md)                                           |
-| Input hardening            | [docs/architecture/UNTRUSTED_INPUT_HARDENING.md](./docs/architecture/UNTRUSTED_INPUT_HARDENING.md) |
+| Need To...               | Go To                                                                                              |
+| ------------------------ | -------------------------------------------------------------------------------------------------- |
+| Find any documentation   | [docs/README.md](./docs/README.md)                                                                 |
+| CLI/MCP API reference    | [docs/ENTRYPOINTS.md](./docs/ENTRYPOINTS.md)                                                       |
+| Architecture docs        | [docs/architecture/README.md](./docs/architecture/README.md)                                       |
+| Development/contributing | [docs/development/README.md](./docs/development/README.md)                                         |
+| Coding standards         | [CODING_STANDARDS.md](./CODING_STANDARDS.md)                                                       |
+| Research tracking        | [docs/research/RESEARCH_INDEX.md](./docs/research/RESEARCH_INDEX.md)                               |
+| Context load balancing   | [docs/architecture/CONTEXT_LOAD_BALANCING.md](./docs/architecture/CONTEXT_LOAD_BALANCING.md)       |
+| Consensus protocols      | [docs/architecture/CONSENSUS_PROTOCOLS.md](./docs/architecture/CONSENSUS_PROTOCOLS.md)             |
+| Alignment roadmap        | [docs/ALIGNMENT_ROADMAP.md](./docs/ALIGNMENT_ROADMAP.md)                                           |
+| Input hardening          | [docs/architecture/UNTRUSTED_INPUT_HARDENING.md](./docs/architecture/UNTRUSTED_INPUT_HARDENING.md) |
 
 ### Source Code
 

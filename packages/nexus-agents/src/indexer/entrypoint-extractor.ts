@@ -25,13 +25,10 @@ import {
 export { sanitizeValue } from './entrypoint-sanitizer.js';
 export { extractCliCommands } from './entrypoint-cli-extractor.js';
 export { extractMcpTools } from './entrypoint-mcp-extractor.js';
-export { extractRestEndpoints } from './entrypoint-rest-extractor.js';
-
 // Import from submodules
-import { sanitizeCommand, sanitizeTool, sanitizeEndpoint } from './entrypoint-sanitizer.js';
+import { sanitizeCommand, sanitizeTool } from './entrypoint-sanitizer.js';
 import { extractCliCommands } from './entrypoint-cli-extractor.js';
 import { extractMcpTools } from './entrypoint-mcp-extractor.js';
-import { extractRestEndpoints } from './entrypoint-rest-extractor.js';
 
 // ============================================================================
 // Main Extraction Function
@@ -65,7 +62,6 @@ function createProject(opts: EntrypointExtractorOptions): Project {
     path.join(opts.packageRoot, opts.cliCommandsPath),
     path.join(opts.packageRoot, 'src/cli-types.ts'),
     path.join(opts.packageRoot, opts.mcpToolsPath, '*.ts'),
-    path.join(opts.packageRoot, opts.restRoutesPath, '*.ts'),
   ]);
   return project;
 }
@@ -92,18 +88,15 @@ export function extractEntrypoints(
       'src/cli-types.ts'
     );
     const mcpTools = extractMcpTools(project, opts.packageRoot, opts.mcpToolsPath);
-    const restEndpoints = extractRestEndpoints(project, opts.packageRoot, opts.restRoutesPath);
 
     const finalCommands = opts.sanitize ? cliCommands.map(sanitizeCommand) : cliCommands;
     const finalTools = opts.sanitize ? mcpTools.map(sanitizeTool) : mcpTools;
-    const finalEndpoints = opts.sanitize ? restEndpoints.map(sanitizeEndpoint) : restEndpoints;
 
     const manifest: EntrypointManifest = {
       schema_version: ENTRYPOINT_SCHEMA_VERSION,
       generated_at: generateTimestamp(),
       cli_commands: finalCommands,
       mcp_tools: finalTools,
-      rest_endpoints: finalEndpoints,
     };
     return { success: true, manifest, errors, warnings };
   } catch (error) {
