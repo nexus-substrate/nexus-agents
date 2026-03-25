@@ -118,6 +118,11 @@ function findBlockEnd(source: string, start: number): number {
   return start;
 }
 
+/** Extract capture group 1 from a regex match, defaulting to '0'. */
+function group1(match: RegExpExecArray): string {
+  return match[1] ?? '0';
+}
+
 /** Parse a model block into a RegistryModel, or undefined if missing fields. */
 function parseModelBlock(block: string, cliModelName: string): RegistryModel | undefined {
   const displayMatch = /displayName:\s*'([^']+)'/.exec(block);
@@ -130,11 +135,11 @@ function parseModelBlock(block: string, cliModelName: string): RegistryModel | u
     cliModelName,
     displayName: displayMatch?.[1] ?? cliModelName,
     pricing: {
-      inputPer1M: parseFloat(inputMatch[1]),
-      outputPer1M: parseFloat(outputMatch[1]),
+      inputPer1M: parseFloat(group1(inputMatch)),
+      outputPer1M: parseFloat(group1(outputMatch)),
     },
-    contextWindow: parseInt(ctxMatch[1].replace(/_/g, ''), 10),
-    maxOutputTokens: parseInt(maxOutMatch[1].replace(/_/g, ''), 10),
+    contextWindow: parseInt(group1(ctxMatch).replace(/_/g, ''), 10),
+    maxOutputTokens: parseInt(group1(maxOutMatch).replace(/_/g, ''), 10),
   };
 }
 
@@ -146,7 +151,8 @@ function extractRegistryModels(source: string): RegistryModel[] {
     const blockStart = findBlockStart(source, match.index);
     const blockEnd = findBlockEnd(source, blockStart);
     const block = source.slice(blockStart, blockEnd);
-    const parsed = parseModelBlock(block, match[1]);
+    const cliName = match[1] ?? '';
+    const parsed = parseModelBlock(block, cliName);
     if (parsed) models.push(parsed);
   }
   return models;

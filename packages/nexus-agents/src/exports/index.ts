@@ -19,7 +19,6 @@ export * from './cli-adapters.js';
 export * from './context.js';
 export * from './learning.js';
 export * from './audit.js';
-export * from './api.js';
 export * from './security.js';
 export * from './consensus.js';
 export * from './observability.js';

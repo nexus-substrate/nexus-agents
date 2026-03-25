@@ -23,8 +23,8 @@ const config: UserConfig = {
     // No max header length — some descriptions need context
     'header-max-length': [1, 'always', 100],
     // Body and footer are optional
-    'body-max-line-length': [0, 'always'],
-    'footer-max-line-length': [0, 'always'],
+    'body-max-line-length': [0] as const,
+    'footer-max-line-length': [0] as const,
   },
 };
 

@@ -137,17 +137,6 @@ describe('extractEntrypoints', () => {
     }
   });
 
-  it('should extract REST endpoints when successful', { timeout: AST_PARSE_TIMEOUT }, () => {
-    const result = extractEntrypoints({
-      packageRoot: 'packages/nexus-agents',
-    });
-
-    if (result.success && result.manifest) {
-      expect(result.manifest.rest_endpoints).toBeDefined();
-      expect(Array.isArray(result.manifest.rest_endpoints)).toBe(true);
-    }
-  });
-
   it('should include schema version', { timeout: AST_PARSE_TIMEOUT }, () => {
     const result = extractEntrypoints({
       packageRoot: 'packages/nexus-agents',
@@ -288,62 +277,6 @@ describe('extractMcpTools', () => {
 // REST Endpoint Extraction Tests
 // ============================================================================
 
-describe('extractRestEndpoints', () => {
-  it('should extract health endpoint', { timeout: AST_PARSE_TIMEOUT }, () => {
-    const result = extractEntrypoints({
-      packageRoot: 'packages/nexus-agents',
-    });
-
-    if (result.success && result.manifest) {
-      const healthEndpoint = result.manifest.rest_endpoints.find((e) => e.path === '/health');
-      expect(healthEndpoint).toBeDefined();
-      if (healthEndpoint) {
-        expect(healthEndpoint.method).toBe('GET');
-      }
-    }
-  });
-
-  it('should include HTTP methods', { timeout: AST_PARSE_TIMEOUT }, () => {
-    const result = extractEntrypoints({
-      packageRoot: 'packages/nexus-agents',
-    });
-
-    if (result.success && result.manifest) {
-      const methods = new Set(result.manifest.rest_endpoints.map((e) => e.method));
-
-      // Should have at least GET and POST methods
-      expect(methods.has('GET')).toBe(true);
-      expect(methods.has('POST')).toBe(true);
-    }
-  });
-
-  it('should include source file information', { timeout: AST_PARSE_TIMEOUT }, () => {
-    const result = extractEntrypoints({
-      packageRoot: 'packages/nexus-agents',
-    });
-
-    if (result.success && result.manifest) {
-      for (const endpoint of result.manifest.rest_endpoints) {
-        expect(endpoint.source_file).toBeDefined();
-        expect(endpoint.source_line).toBeGreaterThan(0);
-      }
-    }
-  });
-
-  it('should extract endpoint descriptions', { timeout: AST_PARSE_TIMEOUT }, () => {
-    const result = extractEntrypoints({
-      packageRoot: 'packages/nexus-agents',
-    });
-
-    if (result.success && result.manifest) {
-      for (const endpoint of result.manifest.rest_endpoints) {
-        expect(endpoint.description).toBeDefined();
-        expect(endpoint.description.length).toBeGreaterThan(0);
-      }
-    }
-  });
-});
-
 // ============================================================================
 // Edge Cases and Error Handling
 // ============================================================================
@@ -375,7 +308,6 @@ describe('integration', () => {
       expect(Object.isFrozen(result.manifest.cli_commands)).toBe(false); // Not frozen, but readonly type
       expect(Array.isArray(result.manifest.cli_commands)).toBe(true);
       expect(Array.isArray(result.manifest.mcp_tools)).toBe(true);
-      expect(Array.isArray(result.manifest.rest_endpoints)).toBe(true);
     }
   });
 

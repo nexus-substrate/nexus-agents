@@ -98,7 +98,10 @@ function extractMcpToolNames(): string[] {
   const content = readFileSync(toolsIndexPath, 'utf-8');
   const toolsMatch = /tools:\s*\[([\s\S]*?)\]/m.exec(content);
   if (toolsMatch === null) return [];
-  const toolNames = [...toolsMatch[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
+  const matchContent = toolsMatch[1] ?? '';
+  const toolNames = [...matchContent.matchAll(/'([a-z_]+)'/g)]
+    .map((m) => m[1])
+    .filter((n): n is string => n !== undefined);
   return toolNames;
 }
 

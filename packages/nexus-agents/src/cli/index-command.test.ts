@@ -407,7 +407,6 @@ src/
             { name: 'test', description: 'Test cmd', source_file: 'cli.ts', source_line: 1 },
           ],
           mcp_tools: [],
-          rest_endpoints: [],
         },
         warnings: [],
         errors: [],

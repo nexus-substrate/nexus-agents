@@ -135,7 +135,8 @@ export function tryParseStructuredOutput(
   }
 
   try {
-    const parsed: unknown = JSON.parse(jsonMatch[1]);
+    const jsonContent = jsonMatch[1] ?? jsonMatch[0];
+    const parsed: unknown = JSON.parse(jsonContent);
     const result = schema.safeParse(parsed);
 
     if (result.success) {

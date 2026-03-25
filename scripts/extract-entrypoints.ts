@@ -2,7 +2,7 @@
 /**
  * Entrypoint Extraction Script
  *
- * Extracts CLI commands, MCP tools, and REST endpoints from source code AST
+ * Extracts CLI commands and MCP tools from source code AST
  * and generates a machine-readable manifest at docs/.generated/entrypoints.yaml.
  *
  * Usage:
@@ -50,7 +50,7 @@ const DEFAULT_OUTPUT = 'docs/.generated/entrypoints.yaml';
 const HELP_TEXT = `
 Entrypoint Extraction Script
 
-Extracts CLI commands, MCP tools, and REST endpoints from source code AST
+Extracts CLI commands and MCP tools from source code AST
 and generates a machine-readable manifest.
 
 Usage: pnpm extract-entrypoints [options]
@@ -171,7 +171,6 @@ function printSummary(result: EntrypointExtractionResult): void {
   console.log('\nExtraction Summary:');
   console.log(`  CLI Commands:    ${String(manifest.cli_commands.length)}`);
   console.log(`  MCP Tools:       ${String(manifest.mcp_tools.length)}`);
-  console.log(`  REST Endpoints:  ${String(manifest.rest_endpoints.length)}`);
 
   const warnings = result.warnings;
   if (warnings.length > 0) {
@@ -208,11 +207,6 @@ function printDetails(result: EntrypointExtractionResult): void {
   for (const tool of manifest.mcp_tools) {
     const params = tool.parameters.map((p: ParameterSpec) => p.name).join(', ');
     console.log(`  - ${tool.name}(${params})`);
-  }
-
-  console.log('\nREST Endpoints:');
-  for (const endpoint of manifest.rest_endpoints) {
-    console.log(`  - ${endpoint.method} ${endpoint.path}`);
   }
 }
 

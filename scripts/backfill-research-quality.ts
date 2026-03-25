@@ -178,7 +178,9 @@ async function main(): Promise<void> {
     // Re-score papers with quality_score=0 if last check was >30 days ago
     // (allows re-enrichment when Semantic Scholar has new data)
     const isEnriched = paper.quality_score !== undefined && paper.citation_count !== undefined;
-    const isStaleZero = paper.quality_score === 0 && isOlderThanDays(paper.last_quality_check, 30);
+    const lastCheck =
+      typeof paper.last_quality_check === 'string' ? paper.last_quality_check : undefined;
+    const isStaleZero = paper.quality_score === 0 && isOlderThanDays(lastCheck, 30);
     if (isEnriched && !isStaleZero) {
       skipped++;
       continue;
@@ -205,7 +207,9 @@ async function main(): Promise<void> {
     const tags: string[] = [...(paper.rigor_tags ?? [])];
     if (paper.has_code && !tags.includes('has-code')) tags.push('has-code');
     if (paper.venue_tier >= 1 && !tags.includes('peer-reviewed')) tags.push('peer-reviewed');
-    paper.rigor_tags = tags.length > 0 ? tags : undefined;
+    if (tags.length > 0) {
+      paper.rigor_tags = tags;
+    }
 
     // Compute quality score and evidence tier
     paper.quality_score = computeScore(paper);
