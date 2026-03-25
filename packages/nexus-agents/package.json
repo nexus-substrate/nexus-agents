@@ -67,7 +67,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",
     "@google/genai": "^1.46.0",
-    "@modelcontextprotocol/sdk": "^1.27.1",
+    "@modelcontextprotocol/sdk": "^1.28.0",
     "better-sqlite3": "^12.8.0",
     "jsonc-parser": "^3.3.1",
     "ollama": "^0.6.3",
@@ -78,12 +78,12 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@ai-sdk/anthropic": "^3.0.63",
+    "@ai-sdk/anthropic": "^3.0.64",
     "@ai-sdk/google": "^3.0.53",
     "@ai-sdk/openai": "^3.0.48",
     "@types/better-sqlite3": "^7.6.13",
     "@types/semver": "^7.7.1",
-    "ai": "^6.0.137",
+    "ai": "^6.0.138",
     "ts-morph": "^27.0.2",
     "tsup": "^8.5.1",
     "typedoc": "0.28.18"
