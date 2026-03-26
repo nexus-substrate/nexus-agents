@@ -14,7 +14,7 @@ concurrency:
 jobs:
   commitlint:
     name: Commit Messages
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5
     if: github.event_name == 'pull_request'
     steps:
@@ -28,7 +28,7 @@ jobs:
 
   lint:
     name: Lint
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -39,7 +39,7 @@ jobs:
 
   typecheck:
     name: Type Check
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -50,7 +50,7 @@ jobs:
 
   build:
     name: Build (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ vars.CI_RUNNER || matrix.os }}
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -73,7 +73,7 @@ jobs:
 
   test:
     name: Test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ vars.CI_RUNNER || matrix.os }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -99,7 +99,7 @@ jobs:
 
   fitness-audit:
     name: Fitness Audit (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ vars.CI_RUNNER || matrix.os }}
     timeout-minutes: 10
     strategy:
       fail-fast: false
@@ -132,7 +132,7 @@ jobs:
 
   index-check:
     name: Index Freshness Check
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 10
     # Warning only - does not block CI
     continue-on-error: true
@@ -154,7 +154,7 @@ jobs:
 
   security:
     name: Security Audit
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -168,7 +168,7 @@ jobs:
   ci-success:
     name: CI Success
     needs: [commitlint, lint, typecheck, build, test, fitness-audit]
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5
     if: always()
     steps:

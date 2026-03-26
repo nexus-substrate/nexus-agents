@@ -22,7 +22,7 @@ jobs:
   # Job 1: TypeDoc Drift Detection
   typedoc-check:
     name: TypeDoc Verification
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 10
 
     steps:
@@ -45,7 +45,7 @@ jobs:
   # Job 2: Link Validation
   link-check:
     name: Link Validation
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 10
 
     steps:
@@ -70,7 +70,7 @@ jobs:
   # Job 3: Documentation Coverage Check (non-blocking warning per DevEx amendment)
   docs-coverage:
     name: Documentation Coverage
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 10
     if: github.event_name == 'pull_request'
     continue-on-error: true
@@ -254,7 +254,7 @@ jobs:
   # Job 4: LLMs.txt Generation + Frontmatter Check
   llms-txt-check:
     name: LLMs.txt & Frontmatter Verification
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 10
 
     steps:
@@ -275,7 +275,7 @@ jobs:
   # Job 5: Secrets Guardrails
   secrets-scan:
     name: Documentation Secrets Scan
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 10
 
     steps:
@@ -291,7 +291,7 @@ jobs:
   # Job 6: Repository Index Check
   repo-index:
     name: Repository Index Verification
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 10
 
     steps:
@@ -312,7 +312,7 @@ jobs:
   # Job 8: DocOps Skill Synchronization
   docops-skill-sync:
     name: DocOps Skill Sync
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 10
     if: github.event_name == 'pull_request'
 
@@ -338,7 +338,7 @@ jobs:
   # Job 9: Canonical Index Validation
   canonical-index:
     name: Canonical Index Check
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 10
 
     steps:
@@ -360,7 +360,7 @@ jobs:
   # Job 10: Markdown Linting
   markdown-lint:
     name: Markdown Lint
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 10
 
     steps:
@@ -381,7 +381,7 @@ jobs:
   # Job 11: Governance Registry Drift Detection
   governance-drift:
     name: Governance Drift Check
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 10
 
     steps:
@@ -414,7 +414,7 @@ jobs:
   # Job 13: Spell Check (Warning Only)
   spell-check:
     name: Spell Check
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 10
     # Non-blocking - reports warnings only
     continue-on-error: true
