@@ -18,8 +18,8 @@ concurrency:
 
 jobs:
   opencode-e2e:
-    name: OpenCode E2E (macOS)
-    runs-on: macos-latest
+    name: OpenCode E2E (Linux)
+    runs-on: ubuntu-latest
     timeout-minutes: 15
 
     steps:
