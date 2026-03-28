@@ -46,6 +46,7 @@ import {
   type GeminiRequestConfig,
   type GeminiRequestParams,
 } from './gemini-types.js';
+import { extractRequestSystemPrompt } from './prompt-utils.js';
 
 // Re-export types and constants
 export { GEMINI_MODELS, GEMINI_MODEL_ALIASES, type GeminiAdapterConfig } from './gemini-types.js';
@@ -258,38 +259,13 @@ export class GeminiAdapter extends BaseAdapter {
   }
 
   /**
-   * Extracts system prompt from request.
-   */
-  private extractSystemPrompt(request: CompletionRequest): string | undefined {
-    // Check explicit systemPrompt field first
-    if (request.systemPrompt !== undefined && request.systemPrompt !== '') {
-      return request.systemPrompt;
-    }
-
-    // Check for system message in messages array
-    const systemMessage = request.messages.find((m) => m.role === 'system');
-    if (systemMessage === undefined) {
-      return undefined;
-    }
-
-    if (typeof systemMessage.content === 'string') {
-      return systemMessage.content;
-    }
-
-    return systemMessage.content
-      .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
-      .map((b) => b.text)
-      .join('\n');
-  }
-
-  /**
    * Builds generation config from request parameters.
    */
   private buildGenerationConfig(request: CompletionRequest): GeminiRequestConfig {
     const config: GeminiRequestConfig = {};
     config.maxOutputTokens = request.maxTokens ?? DEFAULT_MAX_TOKENS;
 
-    const systemPrompt = this.extractSystemPrompt(request);
+    const systemPrompt = extractRequestSystemPrompt(request);
     if (systemPrompt !== undefined) config.systemInstruction = systemPrompt;
     if (request.temperature !== undefined) config.temperature = request.temperature;
     if (request.stop !== undefined && request.stop.length > 0) config.stopSequences = request.stop;

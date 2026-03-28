@@ -7,6 +7,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   isRateLimitLikeError,
+  isRateLimitText,
+  RATE_LIMIT_PATTERNS,
   parseRetryAfterMs,
   toRateLimitError,
   recordRateLimitEvent,
@@ -17,6 +19,44 @@ import { RateLimitError } from '../core/errors.js';
 
 beforeEach(() => {
   clearRateLimitEvents();
+});
+
+// ============================================================================
+// Shared Pattern Tests (Issue #1596)
+// ============================================================================
+
+describe('RATE_LIMIT_PATTERNS', () => {
+  it('is exported as a readonly array', () => {
+    expect(Array.isArray(RATE_LIMIT_PATTERNS)).toBe(true);
+    expect(RATE_LIMIT_PATTERNS.length).toBeGreaterThan(0);
+  });
+
+  it('includes all canonical patterns', () => {
+    expect(RATE_LIMIT_PATTERNS).toContain('rate limit');
+    expect(RATE_LIMIT_PATTERNS).toContain('429');
+    expect(RATE_LIMIT_PATTERNS).toContain('quota exceeded');
+    expect(RATE_LIMIT_PATTERNS).toContain('usage limit');
+  });
+});
+
+describe('isRateLimitText', () => {
+  it('detects rate limit patterns in plain text', () => {
+    expect(isRateLimitText('Error: rate limit exceeded')).toBe(true);
+    expect(isRateLimitText('HTTP 429')).toBe(true);
+    expect(isRateLimitText('API quota exceeded')).toBe(true);
+    expect(isRateLimitText('usage limit reached')).toBe(true);
+  });
+
+  it('is case-insensitive', () => {
+    expect(isRateLimitText('RATE LIMIT')).toBe(true);
+    expect(isRateLimitText('Rate Limit')).toBe(true);
+  });
+
+  it('returns false for non-rate-limit text', () => {
+    expect(isRateLimitText('Connection refused')).toBe(false);
+    expect(isRateLimitText('Success')).toBe(false);
+    expect(isRateLimitText('')).toBe(false);
+  });
 });
 
 // ============================================================================

@@ -23,21 +23,7 @@ import type {
 } from './types.js';
 import { BaseCliAdapter } from './base-adapter.js';
 import { sanitizeOutput } from '../security/output-sanitizer.js';
-
-/** Rate-limit indicator patterns in CLI stdout (case-insensitive). */
-const RATE_LIMIT_PATTERNS = [
-  'rate limit',
-  '429',
-  'too many requests',
-  'quota exceeded',
-  'usage limit',
-];
-
-/** Checks if raw stdout contains rate-limit indicators (#1320). */
-function isRateLimitOutput(stdout: string): boolean {
-  const lower = stdout.toLowerCase();
-  return RATE_LIMIT_PATTERNS.some((pattern) => lower.includes(pattern));
-}
+import { isRateLimitText } from '../adapters/rate-limit-detector.js';
 
 /** Minimum length for plaintext fallback to kick in.
  * Lowered from 100→30 to recover short but valid CLI responses (#1401). */
@@ -99,9 +85,6 @@ const STDERR_CONNECTION_PATTERNS = [
   'address already in use',
 ];
 
-/** Stderr patterns indicating rate limiting (retryable). */
-const STDERR_RATE_LIMIT_PATTERNS = ['rate limit', 'quota exceeded', '429', 'too many requests'];
-
 /** Stderr patterns indicating timeout (retryable). */
 const STDERR_TIMEOUT_PATTERNS = ['timeout', 'timed out', 'etimedout'];
 
@@ -110,11 +93,13 @@ const STDERR_TIMEOUT_PATTERNS = ['timeout', 'timed out', 'etimedout'];
  * Checks for transient patterns (connection, rate-limit, timeout) before
  * falling back to EXECUTION_ERROR. This ensures transient failures in
  * stderr are retried instead of treated as terminal. (#1401)
+ *
+ * Rate-limit detection uses shared patterns from rate-limit-detector. (#1596)
  */
 function classifyStderrError(stderr: string): CliErrorCode {
   const lower = stderr.toLowerCase();
   if (STDERR_CONNECTION_PATTERNS.some((p) => lower.includes(p))) return 'CONNECTION_ERROR';
-  if (STDERR_RATE_LIMIT_PATTERNS.some((p) => lower.includes(p))) return 'RATE_LIMITED';
+  if (isRateLimitText(stderr)) return 'RATE_LIMITED';
   if (STDERR_TIMEOUT_PATTERNS.some((p) => lower.includes(p))) return 'TIMEOUT';
   return 'EXECUTION_ERROR';
 }
@@ -444,7 +429,7 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     const text = this.parser.extractResponse(stdout);
     if (text === null) {
       // Check for rate-limit indicators in raw stdout (#1320)
-      if (isRateLimitOutput(stdout)) {
+      if (isRateLimitText(stdout)) {
         const snippet = stdout.slice(0, 500).trim();
         return err(this.createError('RATE_LIMITED', snippet));
       }
