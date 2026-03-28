@@ -73,6 +73,8 @@ export { handleStatusCommand } from './cli/status-command.js';
 export { handleScenarioCommand } from './cli/scenario-command.js';
 // Issue #1403: Health Command
 export { handleHealthCommand } from './cli/health-command.js';
+// Issue #1598: Validate Command
+export { handleValidateCommand } from './cli/validate-command.js';
 
 // Import handlers for dispatch
 import {
@@ -131,6 +133,8 @@ import { handleMemoryBenchmarkCommand } from './cli/memory-benchmark-command.js'
 import { handleScenarioCommand } from './cli/scenario-command.js';
 // Issue #1403: Health Command
 import { handleHealthCommand } from './cli/health-command.js';
+// Issue #1598: Validate Command
+import { handleValidateCommand } from './cli/validate-command.js';
 // Issue #1398: Lazy data directory initialization
 import { initDataDirectories } from './cli/setup-data-dir.js';
 
@@ -232,6 +236,8 @@ const ASYNC_COMMAND_HANDLERS: Record<string, ((args: ParsedCliArgs) => Promise<v
     'memory-benchmark': handleMemoryBenchmarkCommand,
     // Epic #952: Scenario Command
     scenario: handleScenarioCommand,
+    // Issue #1598: Validate Command
+    validate: handleValidateCommand,
   };
 
 /**

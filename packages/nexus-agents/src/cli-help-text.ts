@@ -52,6 +52,7 @@ COMMANDS:
   capabilities    Show model capabilities matrix (modalities, tools, features)
   status          At-a-glance project health dashboard (fitness, adapters, version)
   health          Swarm health metrics dashboard (utilization, routing accuracy, failures)
+  validate        Run unified validation (doctor + fitness + config)
   auth            Manage MCP authentication tokens (init, show, rotate)
 
 OPTIONS:

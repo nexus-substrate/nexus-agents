@@ -67,7 +67,8 @@ export type CliCommand =
   | 'e2e-eval'
   | 'routing-ab'
   | 'memory-eval'
-  | 'health';
+  | 'health'
+  | 'validate';
 
 /**
  * Parsed CLI arguments and command.
@@ -418,6 +419,7 @@ export function isValidCommand(value: string): value is CliCommand {
     'routing-ab',
     'memory-eval',
     'health',
+    'validate',
   ];
   return validCommands.includes(value as CliCommand);
 }
