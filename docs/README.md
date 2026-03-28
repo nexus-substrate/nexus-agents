@@ -173,13 +173,7 @@ Detailed technical documentation:
 
 #### Plans
 
-| Document                                                                   | Description             | Status     |
-| -------------------------------------------------------------------------- | ----------------------- | ---------- |
-| [cli-integration-plan.md](./plans/cli-integration-plan.md)                 | CLI integration roadmap | Active     |
-| [e2e-testing-epic-final.md](./plans/e2e-testing-epic-final.md)             | E2E testing plan        | Active     |
-| [agent-improvement-epic-draft.md](./plans/agent-improvement-epic-draft.md) | Agent improvements      | Draft      |
-| [e2e-testing-epic-draft.md](./plans/e2e-testing-epic-draft.md)             | E2E testing draft       | Superseded |
-| [PROJECT_PLAN_2026-01-03.md](./plans/PROJECT_PLAN_2026-01-03.md)           | Original project plan   | Historical |
+_No active plan documents. Historical plans have been archived._
 
 #### Design Documents
 
@@ -224,17 +218,9 @@ Detailed technical documentation:
 
 #### Proposals
 
-| Document                                                                             | Description           | Status      |
-| ------------------------------------------------------------------------------------ | --------------------- | ----------- |
-| [TIERED_DOCS_PLAN.md](./proposals/TIERED_DOCS_PLAN.md)                               | Documentation tiering | Implemented |
-| [automated-documentation-system.md](./proposals/automated-documentation-system.md)   | Auto-docs proposal    | Proposed    |
-| [cli-pr-review-workflow.md](./proposals/cli-pr-review-workflow.md)                   | PR review workflow    | Proposed    |
-| [hook-integration-proposal.md](./proposals/hook-integration-proposal.md)             | Hook integration      | Implemented |
-| [interface-contract-238.md](./proposals/interface-contract-238.md)                   | Interface contracts   | Implemented |
-| [process-automation-improvements.md](./proposals/process-automation-improvements.md) | Process automation    | Proposed    |
-| [protocol-improvement-system.md](./proposals/protocol-improvement-system.md)         | Protocol improvements | Implemented |
-| [self-evaluation-mvp.md](./proposals/self-evaluation-mvp.md)                         | Self-evaluation MVP   | Implemented |
-| [adapter-architecture-review.md](./proposals/adapter-architecture-review.md)         | Adapter review        | Implemented |
+| Document                                                           | Description        | Status   |
+| ------------------------------------------------------------------ | ------------------ | -------- |
+| [cli-pr-review-workflow.md](./proposals/cli-pr-review-workflow.md) | PR review workflow | Proposed |
 
 #### Workflows
 
@@ -253,7 +239,7 @@ Detailed technical documentation:
 | [ALIGNMENT_ROADMAP.md](./ALIGNMENT_ROADMAP.md)                           | Strategic alignment, north star, gaps       |
 | [archive/system-reviews-2026-01.md](./archive/system-reviews-2026-01.md) | Historical system review transcripts        |
 | [SECRETS_SETUP.md](./SECRETS_SETUP.md)                                   | Secrets configuration                       |
-| [SECURITY_AUDIT_2026-01-23.md](./SECURITY_AUDIT_2026-01-23.md)           | Security audit report                       |
+| [security/API_KEY_BOUNDARIES.md](./security/API_KEY_BOUNDARIES.md)       | API key boundary documentation              |
 | [system-map.md](./architecture/system-map.md)                            | System component map                        |
 | [deprecation-pipeline.md](./architecture/deprecation-pipeline.md)        | Deprecation tracking & v3.0 migration guide |
 | [redundancy-analysis.md](./architecture/redundancy-analysis.md)          | Code redundancy analysis                    |
@@ -283,15 +269,18 @@ Documents at repository root (for discoverability):
 
 Documents kept for historical reference only:
 
-| Document                                       | Reason                    | Replacement                                       |
-| ---------------------------------------------- | ------------------------- | ------------------------------------------------- |
-| [docs/research/\_legacy/](./research/_legacy/) | Historical research notes | [RESEARCH_INDEX.md](./research/RESEARCH_INDEX.md) |
+| Document                                                                       | Reason                  | Replacement                 |
+| ------------------------------------------------------------------------------ | ----------------------- | --------------------------- |
+| [archive/REVIEW_2026-01-23.md](./archive/REVIEW_2026-01-23.md)                 | Archived system review  | Current system reviews      |
+| [archive/SECURITY_AUDIT_2026-01-23.md](./archive/SECURITY_AUDIT_2026-01-23.md) | Archived security audit | Current security docs       |
+| [archive/consensus-vote-2026-01-17.md](./archive/consensus-vote-2026-01-17.md) | Archived consensus vote | Current consensus protocols |
 
-**Recently Archived/Removed:**
+**Previously Archived/Removed:**
 
-- `PROJECT_PLAN.md` - Moved to [plans/PROJECT_PLAN_2026-01-03.md](./plans/PROJECT_PLAN_2026-01-03.md)
-- `RESEARCH_SUMMARY.md` - Removed (content exists in [research/topics/agent-skills/](./research/topics/agent-skills/))
-- `docs/codebase-index.yaml` - Removed (was empty; use packages/nexus-agents/docs/codebase-index.yaml)
+- `PROJECT_PLAN.md`, plan docs — archived/removed
+- `RESEARCH_SUMMARY.md` — content in [research/topics/agent-skills/](./research/topics/agent-skills/)
+- `SECURITY_AUDIT_2026-01-23.md` — moved to [archive/](./archive/)
+- Proposal docs (implemented) — removed after completion
 
 ---
 
