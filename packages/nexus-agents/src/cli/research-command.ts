@@ -51,6 +51,7 @@ import {
   parseResearchIndexArgs,
   getResearchIndexHelp,
 } from './research-index-command.js';
+import { handleImportCommand } from './research-import-command.js';
 export type {
   ResearchIndexOptions,
   ResearchIndexResult,
@@ -430,7 +431,8 @@ export type ResearchSubcommand =
   | 'discover'
   | 'review'
   | 'prioritize'
-  | 'synthesize';
+  | 'synthesize'
+  | 'import';
 
 /** All valid subcommand names. */
 const VALID_SUBCOMMANDS = [
@@ -445,6 +447,7 @@ const VALID_SUBCOMMANDS = [
   'review',
   'prioritize',
   'synthesize',
+  'import',
 ] as const;
 
 /** Validates that a subcommand is valid. */
@@ -476,6 +479,7 @@ const SUBCOMMAND_HANDLERS: Record<ResearchSubcommand, SubcommandHandler> = {
   review: handleReviewCommand,
   prioritize: handlePrioritizeCommand,
   synthesize: handleSynthesizeCommand,
+  import: handleImportCommand,
 };
 
 /**
