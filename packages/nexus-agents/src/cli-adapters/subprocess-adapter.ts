@@ -22,6 +22,7 @@ import type {
   ICliResponseParser,
 } from './types.js';
 import { BaseCliAdapter } from './base-adapter.js';
+import { sanitizeOutput } from '../security/output-sanitizer.js';
 
 /** Rate-limit indicator patterns in CLI stdout (case-insensitive). */
 const RATE_LIMIT_PATTERNS = [
@@ -401,6 +402,10 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     state: BufferState,
     startTime: number
   ): Result<CliResponse, CliError> {
+    // Redact API keys from output before any processing, logging, or tracing (#1597)
+    state.stdout = sanitizeOutput(state.stdout);
+    state.stderr = sanitizeOutput(state.stderr);
+
     if (code !== 0 && state.stdout === '') {
       // Stderr classification takes priority over exit code (#1401)
       if (state.stderr !== '') {
@@ -489,7 +494,7 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
       return err(this.createError('NOT_FOUND', `${this.name} CLI not found`, error));
     }
 
-    return err(this.createError('EXECUTION_ERROR', error.message, error));
+    return err(this.createError('EXECUTION_ERROR', sanitizeOutput(error.message), error));
   }
 
   /**

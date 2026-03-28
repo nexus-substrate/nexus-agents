@@ -77,5 +77,8 @@ export type {
   GraphExecutionAuditEvent,
 } from './audit-trail.js';
 
+// Output sanitization — subprocess key redaction (Issue #1597)
+export { sanitizeOutput, REDACTED_KEY_PLACEHOLDER } from './output-sanitizer.js';
+
 // Hostile input firewall (Issue #826)
 export * from './firewall/index.js';
