@@ -14,24 +14,37 @@ import { RateLimitError, getErrorMessage } from '../core/index.js';
 // Detection
 // ============================================================================
 
-const RATE_LIMIT_PATTERNS = [
+/**
+ * Canonical rate-limit detection patterns.
+ * Shared by API adapters and CLI subprocess adapters. (Issue #1596)
+ */
+export const RATE_LIMIT_PATTERNS = [
   'rate limit',
   'rate_limit',
   'too many requests',
   '429',
   'quota exceeded',
   'throttl',
+  'usage limit',
   'requests per minute',
   'tokens per minute',
 ] as const;
+
+/**
+ * Checks whether a text string contains rate-limit indicators.
+ * Used by CLI subprocess adapters for stdout/stderr classification. (Issue #1596)
+ */
+export function isRateLimitText(text: string): boolean {
+  const lower = text.toLowerCase();
+  return RATE_LIMIT_PATTERNS.some((p) => lower.includes(p));
+}
 
 /**
  * Detects whether an error is a rate limit error.
  * Pattern-matches against common provider error messages.
  */
 export function isRateLimitLikeError(error: unknown): boolean {
-  const message = getErrorMessage(error).toLowerCase();
-  return RATE_LIMIT_PATTERNS.some((p) => message.includes(p));
+  return isRateLimitText(getErrorMessage(error));
 }
 
 /**

@@ -40,6 +40,23 @@ export {
   createGoogleQuotaTracker,
 } from './capacity-monitor-helpers.js';
 
+// Prompt extraction utilities (Issue #1596 — DRY adapter standardization)
+export { extractRequestSystemPrompt } from './prompt-utils.js';
+
+// Rate limit detection (Issue #996 — Rate limit error surfacing)
+export {
+  isRateLimitLikeError,
+  isRateLimitText,
+  RATE_LIMIT_PATTERNS,
+  parseRetryAfterMs,
+  toRateLimitError,
+  recordRateLimitEvent,
+  getRateLimitStats,
+  clearRateLimitEvents,
+  type RateLimitEvent,
+  type RateLimitStats,
+} from './rate-limit-detector.js';
+
 // Retry logic with exponential backoff
 export {
   withRetry,

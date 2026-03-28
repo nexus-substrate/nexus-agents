@@ -37,6 +37,7 @@ import {
   resolveModelId,
   getModelCapabilities,
 } from './claude-adapter-helpers.js';
+import { extractRequestSystemPrompt } from './prompt-utils.js';
 
 // Re-export types and constants for backward compatibility
 export type { ClaudeAdapterConfig } from './claude-adapter-types.js';
@@ -222,31 +223,6 @@ export class ClaudeAdapter extends BaseAdapter {
   }
 
   /**
-   * Extracts system prompt from request, checking both systemPrompt field and messages.
-   */
-  private extractSystemPrompt(request: CompletionRequest): string | undefined {
-    // Check explicit systemPrompt field first
-    if (request.systemPrompt !== undefined && request.systemPrompt !== '') {
-      return request.systemPrompt;
-    }
-
-    // Check for system message in messages array
-    const systemMessage = request.messages.find((m) => m.role === 'system');
-    if (systemMessage === undefined) {
-      return undefined;
-    }
-
-    if (typeof systemMessage.content === 'string') {
-      return systemMessage.content;
-    }
-
-    return systemMessage.content
-      .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
-      .map((b) => b.text)
-      .join('\n');
-  }
-
-  /**
    * Builds Anthropic API request parameters from our CompletionRequest.
    */
   private buildRequestParams(
@@ -262,7 +238,7 @@ export class ClaudeAdapter extends BaseAdapter {
     };
 
     // Add system prompt if provided
-    const systemPrompt = this.extractSystemPrompt(request);
+    const systemPrompt = extractRequestSystemPrompt(request);
     if (systemPrompt !== undefined) {
       params.system = systemPrompt;
     }

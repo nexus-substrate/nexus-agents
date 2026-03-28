@@ -34,6 +34,7 @@ import {
   getTokenEstimator,
 } from '../core/index.js';
 import { BaseAdapter, type BaseAdapterConfig } from './base-adapter.js';
+import { extractRequestSystemPrompt } from './prompt-utils.js';
 import { createStream } from './streaming.js';
 
 /** Popular Ollama model identifiers. */
@@ -248,18 +249,6 @@ export class OllamaAdapter extends BaseAdapter {
     }
   }
 
-  private extractSystemPrompt(request: CompletionRequest): string | undefined {
-    if (request.systemPrompt !== undefined && request.systemPrompt !== '')
-      return request.systemPrompt;
-    const sys = request.messages.find((m) => m.role === 'system');
-    if (sys === undefined) return undefined;
-    if (typeof sys.content === 'string') return sys.content;
-    return sys.content
-      .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
-      .map((b) => b.text)
-      .join('\n');
-  }
-
   private buildOptions(request: CompletionRequest): Record<string, unknown> {
     const options: Record<string, unknown> = {
       num_predict: request.maxTokens ?? DEFAULT_MAX_TOKENS,
@@ -279,7 +268,7 @@ export class OllamaAdapter extends BaseAdapter {
 
   private buildRequestParams(request: CompletionRequest): OllamaChatRequest {
     const messages = request.messages.filter((m) => m.role !== 'system').map(mapMessage);
-    const systemPrompt = this.extractSystemPrompt(request);
+    const systemPrompt = extractRequestSystemPrompt(request);
     if (systemPrompt !== undefined) messages.unshift({ role: 'system', content: systemPrompt });
     const params: OllamaChatRequest = {
       model: this.modelId,

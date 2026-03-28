@@ -37,14 +37,8 @@ import {
   type CircuitBreakerConfig,
   type CircuitBreakerSnapshot,
 } from '../circuit-breaker.js';
-import {
-  GEMINI_LEGACY_DEFAULTS,
-  calculateBackoffDelay,
-  isRetryableError,
-  categorizeError,
-  createCircuitOpenError,
-  delay,
-} from './gemini-adapter-helpers.js';
+import { GEMINI_LEGACY_DEFAULTS, createCircuitOpenError } from './gemini-adapter-helpers.js';
+import { executeCliRetryLoop } from '../cli-retry-loop.js';
 import {
   DEFAULT_MODEL_PER_CLI,
   DEFAULT_MODEL_CAPABILITIES,
@@ -68,14 +62,6 @@ export interface GeminiConfig extends BaseAdapterOptions {
   readonly circuitBreakerConfig?: Partial<CircuitBreakerConfig>;
   /** Enable circuit breaker (default: true) */
   readonly enableCircuitBreaker?: boolean;
-}
-
-/** Retry context for tracking retry state. */
-interface RetryContext {
-  readonly attempt: number;
-  readonly maxAttempts: number;
-  readonly lastError?: CliError;
-  readonly totalDelayMs: number;
 }
 
 /** Execution result with metadata. */
@@ -287,92 +273,14 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
     task: CliTask,
     options: Required<ExecutionOptions>
   ): Promise<Result<{ response: CliResponse; retryCount: number }, CliError>> {
-    const maxAttempts = options.allowRetry ? options.maxRetries + 1 : 1;
-    let retryContext: RetryContext = {
-      attempt: 0,
-      maxAttempts,
-      totalDelayMs: 0,
-    };
-
-    while (retryContext.attempt < maxAttempts) {
-      retryContext = { ...retryContext, attempt: retryContext.attempt + 1 };
-
-      this.logRetryAttempt(retryContext, task);
-
-      const result = await this.executeTask(task, options);
-
-      if (result.ok) {
-        return ok({ response: result.value, retryCount: retryContext.attempt - 1 });
-      }
-
-      const error = result.error;
-      retryContext = { ...retryContext, lastError: error };
-
-      // Record failure with circuit breaker
-      if (this.circuitBreaker !== null) {
-        this.circuitBreaker.recordFailure(categorizeError(error));
-      }
-
-      // Check if error is retryable
-      if (!this.shouldRetry(error, retryContext)) {
-        return err(error);
-      }
-
-      // Calculate and apply backoff delay
-      const delayMs = calculateBackoffDelay(
-        retryContext.attempt,
-        this.baseDelayMs,
-        this.maxDelayMs
-      );
-      retryContext = { ...retryContext, totalDelayMs: retryContext.totalDelayMs + delayMs };
-
-      this.logRetryDelay(retryContext, delayMs);
-      await delay(delayMs);
-    }
-
-    return err(retryContext.lastError ?? this.createError('UNKNOWN', 'Max retries exceeded'));
-  }
-
-  private shouldRetry(error: CliError, context: RetryContext): boolean {
-    // Don't retry if we've exhausted attempts
-    if (context.attempt >= context.maxAttempts) {
-      return false;
-    }
-
-    // Don't retry terminal errors
-    if (!error.retryable) {
-      return false;
-    }
-
-    // Don't retry if circuit breaker is open
-    if (this.circuitBreaker?.getState() === 'open') {
-      return false;
-    }
-
-    // Retry timeouts, rate limits, and connection errors
-    return isRetryableError(error.code);
-  }
-
-  private logRetryAttempt(context: RetryContext, task: CliTask): void {
-    if (context.attempt === 1) {
-      this.adapterLogger.debug('Executing Gemini task', {
-        contentLength: task.content.length,
-        model: task.model ?? this.model,
-      });
-    } else {
-      this.adapterLogger.info('Retrying Gemini task', {
-        attempt: context.attempt,
-        maxAttempts: context.maxAttempts,
-        lastError: context.lastError?.code,
-      });
-    }
-  }
-
-  private logRetryDelay(context: RetryContext, delayMs: number): void {
-    this.adapterLogger.debug('Backoff delay before retry', {
-      attempt: context.attempt,
-      delayMs: Math.round(delayMs),
-      totalDelayMs: Math.round(context.totalDelayMs),
+    return executeCliRetryLoop(() => this.executeTask(task, options), {
+      maxRetries: options.maxRetries,
+      allowRetry: options.allowRetry,
+      baseDelayMs: this.baseDelayMs,
+      maxDelayMs: this.maxDelayMs,
+      circuitBreaker: this.circuitBreaker,
+      cli: this.name,
+      logger: this.adapterLogger,
     });
   }
 }

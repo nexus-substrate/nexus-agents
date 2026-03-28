@@ -27,7 +27,7 @@ related_files: [docs/INDEX.yaml, docs/llms.txt, docs/reference/capabilities.md]
 | **Create a workflow**    | [guides/WORKFLOW_TEMPLATES.md](./guides/WORKFLOW_TEMPLATES.md)               | Built-in templates in `src/workflows/templates/`                                   |
 | **Understand routing**   | [architecture/ROUTING_SYSTEM.md](./architecture/ROUTING_SYSTEM.md)           | [architecture/CONTEXT_LOAD_BALANCING.md](./architecture/CONTEXT_LOAD_BALANCING.md) |
 | **Understand consensus** | [architecture/CONSENSUS_PROTOCOLS.md](./architecture/CONSENSUS_PROTOCOLS.md) | [research/topics/consensus/](./research/topics/consensus/)                         |
-| **Review security**      | [architecture/SECURITY.md](./architecture/SECURITY.md)                       | [SECURITY_AUDIT_2026-01-23.md](./SECURITY_AUDIT_2026-01-23.md)                     |
+| **Review security**      | [architecture/SECURITY.md](./architecture/SECURITY.md)                       | [security/API_KEY_BOUNDARIES.md](./security/API_KEY_BOUNDARIES.md)                 |
 | **Make a release**       | [CHANGELOG.md](../CHANGELOG.md)                                              | [ALIGNMENT_ROADMAP.md](./ALIGNMENT_ROADMAP.md)                                     |
 | **Set up MCP server**    | [guides/MCP_INTEGRATION.md](./guides/MCP_INTEGRATION.md)                     | [QUICK_START.md](../QUICK_START.md)                                                |
 
