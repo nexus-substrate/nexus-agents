@@ -71,7 +71,7 @@
     "better-sqlite3": "^12.8.0",
     "jsonc-parser": "^3.3.1",
     "ollama": "^0.6.3",
-    "openai": "^6.32.0",
+    "openai": "^6.33.0",
     "semver": "^7.7.4",
     "tiktoken": "^1.0.22",
     "yaml": "^2.8.3",
@@ -83,10 +83,12 @@
     "@ai-sdk/openai": "^3.0.48",
     "@types/better-sqlite3": "^7.6.13",
     "@types/semver": "^7.7.1",
-    "ai": "^6.0.138",
+    "@vitest/coverage-v8": "4.1.2",
+    "ai": "^6.0.141",
     "ts-morph": "^27.0.2",
     "tsup": "^8.5.1",
-    "typedoc": "0.28.18"
+    "typedoc": "0.28.18",
+    "vitest": "4.1.2"
   },
   "peerDependencies": {
     "@ai-sdk/anthropic": "^3.0.0",
