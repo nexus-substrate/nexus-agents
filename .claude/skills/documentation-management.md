@@ -29,11 +29,8 @@ allowed-tools: Read, Edit, Write, Bash, Grep, Glob, Task
 # 1. Edit canonical source
 edit docs/architecture/MEMORY_SYSTEM.md  # or relevant file
 
-# 2. If INDEX.yaml changed, regenerate LLM context
-npx tsx scripts/generate-docs.ts
-
-# 3. Verify
-npx tsx scripts/generate-docs.ts --check
+# 2. Verify docs are indexed
+npx tsx scripts/check-docs-indexed.ts
 ```
 
 ### Add New Document
@@ -41,8 +38,7 @@ npx tsx scripts/generate-docs.ts --check
 1. Create file in appropriate `docs/` directory
 2. **REQUIRED:** Add YAML frontmatter (`title`, `description`, `tier`, `keywords`, `related_files`)
 3. **REQUIRED:** Add entry to `docs/README.md`
-4. If tier 1/2, add to `FRONTMATTER_REQUIRED_FILES` in `scripts/generate-docs.ts`
-5. Commit and push
+4. Commit and push
 
 ### Change Doc Pipeline
 
@@ -55,7 +51,7 @@ npx tsx scripts/generate-docs.ts --check
 ### Verify Pipeline Health
 
 ```bash
-npx tsx scripts/generate-docs.ts --check
+npx tsx scripts/check-docs-indexed.ts
 npx tsx scripts/generate-repo-index.ts --check
 npx tsx scripts/inject-governance.ts check
 ```

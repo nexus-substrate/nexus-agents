@@ -123,11 +123,11 @@ Hub documents for each major section:
 
 ### Completed
 
-| Gap                          | Status | Implementation                        |
-| ---------------------------- | ------ | ------------------------------------- |
-| Reference/capabilities index | Done   | `docs/reference/capabilities.md`      |
-| `artifacts/repo-index.json`  | Done   | `scripts/generate-repo-index.ts`      |
-| LLMs.txt files               | Done   | `docs/llms.txt`, `docs/llms-full.txt` |
+| Gap                          | Status  | Implementation                   |
+| ---------------------------- | ------- | -------------------------------- |
+| Reference/capabilities index | Done    | `docs/reference/capabilities.md` |
+| `artifacts/repo-index.json`  | Done    | `scripts/generate-repo-index.ts` |
+| ~~LLMs.txt files~~           | Removed | Removed in #1619                 |
 
 ### Remaining Gaps
 

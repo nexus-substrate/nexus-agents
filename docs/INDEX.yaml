@@ -12,8 +12,6 @@ last_updated: '2026-02-22'
 
 navigation:
   primary_index: 'docs/INDEX.yaml'
-  llm_navigation: 'docs/llms.txt'
-  llm_comprehensive: 'docs/llms-full.txt'
   human_quickstart: 'QUICK_START.md'
   troubleshooting: 'docs/TROUBLESHOOTING.md'
   skills_index: 'docs/skills-index.md'
@@ -221,29 +219,27 @@ context_budgets:
     tokens: 800
     description: 'Quick tasks - single file edits, simple questions'
     load:
-      - 'docs/llms.txt'
+      - 'CLAUDE.md (reduced)'
       - 'Relevant topic tier2_file only'
 
   standard:
     tokens: 2500
     description: 'Feature work - implementation, bug fixes'
     load:
-      - 'docs/llms.txt'
-      - 'CLAUDE.md (reduced)'
+      - 'CLAUDE.md'
       - 'Relevant topic tier2_file + tier3_files as needed'
 
   research:
     tokens: 1500
     description: 'Research context - exploring codebase, understanding design'
     load:
-      - 'docs/llms-full.txt'
+      - 'CLAUDE.md'
       - 'docs/research/RESEARCH_INDEX.md'
 
   full:
     tokens: 6000
     description: 'System review - architecture decisions, major refactoring'
     load:
-      - 'docs/llms-full.txt'
       - 'CLAUDE.md'
       - 'ARCHITECTURE.md'
       - 'All relevant tier2 and tier3 files'
@@ -258,8 +254,8 @@ quick_reference:
     then: 'CONTRIBUTING.md'
 
   implement_feature:
-    start: 'docs/llms.txt'
-    then: 'CLAUDE.md'
+    start: 'CLAUDE.md'
+    then: 'docs/ENTRYPOINTS.md'
     reference: 'docs/ENTRYPOINTS.md'
 
   debug_issue:

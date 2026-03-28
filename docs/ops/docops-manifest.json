@@ -4,8 +4,6 @@
   "description": "DocOps pipeline manifest for enforcement gates",
   "created": "2026-02-01",
   "pipeline_files": [
-    "scripts/generate-docs.ts",
-    "scripts/generate-docs-full.ts",
     "scripts/generate-repo-index.ts",
     "scripts/inject-governance.ts",
     "scripts/check-docops-skill.ts",
@@ -18,8 +16,6 @@
   "canonical_index": "docs/README.md",
   "machine_index": "docs/INDEX.yaml",
   "generated_outputs": {
-    "llms_txt": "docs/llms.txt",
-    "llms_full_txt": "docs/llms-full.txt",
     "capabilities": "docs/reference/capabilities.md",
     "repo_index": "artifacts/repo-index.json"
   },
@@ -27,7 +23,6 @@
     "workflow": ".github/workflows/docs-check.yml",
     "jobs": [
       "typedoc-check",
-      "llms-txt-check",
       "repo-index",
       "link-check",
       "docs-coverage",
