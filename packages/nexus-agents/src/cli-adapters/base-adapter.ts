@@ -12,10 +12,10 @@
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import semver from 'semver';
-import { CLI_SUBPROCESS_TIMEOUTS, BACKOFF_CONFIG } from '../config/timeouts.js';
+import { CLI_SUBPROCESS_TIMEOUTS } from '../config/timeouts.js';
 
 import type { Result } from '../core/index.js';
-import { err, getTimeProvider } from '../core/index.js';
+import { getTimeProvider } from '../core/index.js';
 import type { ILogger } from '../core/index.js';
 import { createLogger } from '../core/index.js';
 
@@ -38,6 +38,7 @@ import type {
 import { CLI_VERSION_REQUIREMENTS, DEFAULT_CAPABILITIES } from './types.js';
 import { getTimeoutForTaskAuto } from './cli-timeout-profiles.js';
 import { CapacityTracker, createCapacityTracker } from './capacity-tracker.js';
+import { executeCliRetryLoop } from './cli-retry-loop.js';
 
 const execAsync = promisify(exec);
 
@@ -159,58 +160,38 @@ export abstract class BaseCliAdapter implements ICliAdapter {
   }
 
   /**
-   * Executes task with retry logic.
+   * Executes task with retry logic via shared retry loop.
    */
   private async executeWithRetry(
     task: CliTask,
     opts: Required<ExecutionOptions>
   ): Promise<Result<CliResponse, CliError>> {
-    let lastError: CliError | undefined;
-    const maxAttempts = opts.allowRetry ? opts.maxRetries + 1 : 1;
+    const result = await executeCliRetryLoop(() => this.executeTask(task, opts), {
+      maxRetries: opts.maxRetries,
+      allowRetry: opts.allowRetry,
+      baseDelayMs: 1_000,
+      maxDelayMs: 16_000,
+      cli: this.name,
+      logger: this.logger,
+    });
 
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      const result = await this.executeTask(task, opts);
-
-      if (result.ok) {
-        this.recordUsage(result.value);
-        this.logger.info('Task executed successfully', {
-          cli: this.name,
-          attempt,
-          durationMs: result.value.durationMs,
-          tokensUsed: result.value.usage?.totalTokens,
-        });
-        return result;
-      }
-
-      lastError = result.error;
-
-      if (this.isTerminalAttempt(result.error, attempt, maxAttempts)) {
-        this.logger.warn('Task execution failed', {
-          cli: this.name,
-          attempt,
-          error: result.error.message,
-          retryable: result.error.retryable,
-        });
-        return result;
-      }
-
-      this.logger.debug('Retrying task execution', {
+    if (result.ok) {
+      this.recordUsage(result.value.response);
+      this.logger.info('Task executed successfully', {
         cli: this.name,
-        attempt,
-        nextAttempt: attempt + 1,
+        attempt: result.value.retryCount + 1,
+        durationMs: result.value.response.durationMs,
+        tokensUsed: result.value.response.usage?.totalTokens,
       });
-
-      await this.delay(Math.pow(BACKOFF_CONFIG.exponentBase, attempt) * BACKOFF_CONFIG.baseDelayMs);
+      return { ok: true, value: result.value.response };
     }
 
-    return err(lastError ?? this.createError('UNKNOWN', 'Unknown error'));
-  }
-
-  /**
-   * Checks if this attempt should be the final one.
-   */
-  private isTerminalAttempt(error: CliError, attempt: number, maxAttempts: number): boolean {
-    return !error.retryable || attempt === maxAttempts;
+    this.logger.warn('Task execution failed', {
+      cli: this.name,
+      error: result.error.message,
+      retryable: result.error.retryable,
+    });
+    return result;
   }
 
   /**

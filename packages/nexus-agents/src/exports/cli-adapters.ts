@@ -27,6 +27,13 @@ export {
   // Base adapter
   BaseCliAdapter,
   SubprocessCliAdapter,
+  // CLI Retry Loop (Issue #1596)
+  executeCliRetryLoop,
+  calculateBackoffDelay as cliCalculateBackoffDelay,
+  isRetryableError as isCliRetryableError,
+  categorizeError as cliCategorizeError,
+  type CliRetryLoopConfig,
+  type CliRetryResult,
   // Concrete adapters
   ClaudeCliAdapter,
   GeminiCliAdapter,

@@ -45,6 +45,15 @@ export {
 } from './capacity-tracker.js';
 export type { CapacityTrackerConfig } from './capacity-tracker.js';
 
+// CLI Retry Loop (Issue #1596 — unified retry for all CLI adapters)
+export {
+  executeCliRetryLoop,
+  calculateBackoffDelay,
+  isRetryableError,
+  categorizeError,
+} from './cli-retry-loop.js';
+export type { CliRetryLoopConfig, CliRetryResult } from './cli-retry-loop.js';
+
 // Subprocess adapter (extracted from base-adapter per Issue #272)
 export {
   SubprocessCliAdapter,
