@@ -113,7 +113,7 @@ This proposal directly addresses the six identified problems with reasonable mai
 
 ## How to Vote
 
-Each agent should review `RESEARCH_TRACKING_PROPOSAL.md` and vote:
+Each agent should review the research tracking proposal and vote:
 
 - **APPROVE**: Accept proposal as-is
 - **APPROVE WITH AMENDMENTS**: Accept with specific changes
@@ -124,4 +124,4 @@ Include reasoning for your vote.
 
 ---
 
-**Full Proposal:** [RESEARCH_TRACKING_PROPOSAL.md](./RESEARCH_TRACKING_PROPOSAL.md)
+**Full Proposal:** _(RESEARCH_TRACKING_PROPOSAL.md — archived after implementation)_

@@ -1,7 +1,7 @@
 ---
 title: Research Index
 description: Auto-generated index of research papers, techniques, and topics
-tier: tier1
+tier: 1
 keywords: [research, papers, techniques, arxiv, index]
 ---
 
