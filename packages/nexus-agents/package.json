@@ -65,7 +65,7 @@
     "@atproto/api": "^0.19.5"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.80.0",
+    "@anthropic-ai/sdk": "^0.81.0",
     "@google/genai": "^1.47.0",
     "@modelcontextprotocol/sdk": "^1.28.0",
     "better-sqlite3": "^12.8.0",
