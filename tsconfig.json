@@ -1,7 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
   "compilerOptions": {
-    "ignoreDeprecations": "6.0",
     "target": "ES2024",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
