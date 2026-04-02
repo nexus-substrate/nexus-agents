@@ -62,11 +62,11 @@
     "prepublishOnly": "pnpm run build"
   },
   "optionalDependencies": {
-    "@atproto/api": "^0.19.4"
+    "@atproto/api": "^0.19.5"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",
-    "@google/genai": "^1.46.0",
+    "@google/genai": "^1.47.0",
     "@modelcontextprotocol/sdk": "^1.28.0",
     "better-sqlite3": "^12.8.0",
     "jsonc-parser": "^3.3.1",
