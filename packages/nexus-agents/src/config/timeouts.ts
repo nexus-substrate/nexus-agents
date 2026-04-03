@@ -58,8 +58,10 @@ export const CLI_TIMEOUTS = {
  * Increased from 90s to 120s per Issue #983 for slower CLIs.
  */
 export const VOTE_TIMEOUTS = {
-  /** Default per-agent vote timeout. */
-  defaultMs: 180_000,
+  /** Default per-agent vote timeout.
+   * Increased from 180s to 300s per Issue #1640 — architecture/security
+   * experts regularly exceed 180s on complex proposals (avg 315s observed). */
+  defaultMs: 300_000,
   /** Minimum allowed vote timeout (floor for env override). */
   minMs: 30_000,
   /** Maximum allowed vote timeout (cap for env override). */
