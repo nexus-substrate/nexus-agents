@@ -22,7 +22,7 @@
 
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { SRC_ROOT, DOCS_ROOT } from './script-paths.js';
+import { ROOT, SRC_ROOT, DOCS_ROOT } from './script-paths.js';
 
 const CHECK_MODE = process.argv.includes('--check');
 const TOOLS_INDEX = join(SRC_ROOT, 'mcp/tools/index.ts');
@@ -282,15 +282,16 @@ function checkPapersYaml(): void {
 function checkTechniqueFiles(): void {
   if (!existsSync(TECHNIQUES_YAML)) return;
   const content = readFileSync(TECHNIQUES_YAML, 'utf-8');
+  const repoRoot = ROOT;
 
   // Extract integration_files paths and check they exist
-  const fileRefs = content.match(/- src\/[^\n]+/g);
+  const fileRefs = content.match(/- 'packages\/[^']+'/g);
   if (!fileRefs) return;
 
   const missing: string[] = [];
   for (const ref of fileRefs) {
-    const filePath = ref.replace('- ', '').trim();
-    const fullPath = join(SRC_ROOT, '..', filePath);
+    const filePath = ref.replace(/^- '/, '').replace(/'$/, '');
+    const fullPath = join(repoRoot, filePath);
     if (!existsSync(fullPath)) {
       missing.push(filePath);
     }
@@ -302,6 +303,17 @@ function checkTechniqueFiles(): void {
       section: 'integration_files',
       expected: 'All integration files exist in source',
       actual: `${String(missing.length)} missing: ${missing.slice(0, 3).join(', ')}${missing.length > 3 ? '...' : ''}`,
+    });
+  }
+
+  // Check all techniques have implementation_issue
+  const nullIssues = content.match(/implementation_issue:\s*null/g);
+  if (nullIssues) {
+    drifts.push({
+      file: 'docs/research/registry/techniques.yaml',
+      section: 'implementation_issue tracking',
+      expected: 'All techniques have a GitHub issue',
+      actual: `${String(nullIssues.length)} techniques have null implementation_issue`,
     });
   }
 }

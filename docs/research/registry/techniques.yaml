@@ -169,7 +169,7 @@ techniques:
       - 'packages/nexus-agents/src/agents/collaboration/reflexion-types.ts'
       - 'packages/nexus-agents/src/agents/collaboration/reflexion-protocol.ts'
 
-    implementation_issue: null
+    implementation_issue: 1657
     related_prs: []
 
     notes: |
@@ -1331,7 +1331,7 @@ techniques:
     complexity: high
 
     integration_files: []
-    implementation_issue: null
+    implementation_issue: 1659
     related_prs: []
 
     notes: |
@@ -1944,6 +1944,7 @@ techniques:
     status: implemented
     priority: P1
     complexity: high
+    implementation_issue: 1658
     integration_files:
       - 'packages/nexus-agents/src/orchestration/aorchestra/worker-dispatcher.ts'
       - 'packages/nexus-agents/src/orchestration/aorchestra/cross-wave-context.ts'
