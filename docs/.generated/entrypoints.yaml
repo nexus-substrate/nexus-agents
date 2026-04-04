@@ -1,95 +1,147 @@
 schema_version: '1.0'
-generated_at: 01/13/2026, 19:31:53
-cli_commands:
-  - name: doctor
-    description: Check CLI installations and health status
-    source_file: packages/nexus-agents/src/cli-commands.ts
-    source_line: 1
-  - name: config
-    description: Generate starter configuration file
-    source_file: packages/nexus-agents/src/cli-commands.ts
-    source_line: 55
-    subcommands:
-      - init
-  - name: expert
-    description: List available experts (built-in and custom)
-    source_file: packages/nexus-agents/src/cli-commands.ts
-    source_line: 79
-    subcommands:
-      - list
-  - name: workflow
-    description: List available workflow templates
-    source_file: packages/nexus-agents/src/cli-commands.ts
-    source_line: 93
-    subcommands:
-      - list
-      - run
-  - name: review
-    description: Review a GitHub pull request (dogfooding)
-    source_file: packages/nexus-agents/src/cli-commands.ts
-    source_line: 134
-    subcommands:
-      - <url>
-  - name: routing-audit
-    description: Debug model routing decisions
-    source_file: packages/nexus-agents/src/cli-commands.ts
-    source_line: 157
-  - name: orchestrate
-    description: Execute task using CLI tools (standalone mode)
-    source_file: packages/nexus-agents/src/cli-commands.ts
-    source_line: 192
-  - name: system-review
-    description: Run automated system review (5-phase checklist)
-    source_file: packages/nexus-agents/src/cli-commands.ts
-    source_line: 232
-  - name: index
-    description: Generate and manage codebase index
-    source_file: packages/nexus-agents/src/cli-commands.ts
-    source_line: 296
+generated_at: 04/04/2026, 00:11:17
+cli_commands: []
 mcp_tools:
+  - name: name
+    description: ''
+    parameters: []
+    source_file: packages/nexus-agents/src/mcp/tools/annotation-proxy.ts
+    source_line: 48
+  - name: consensus_vote
+    description: ''
+    parameters: []
+    source_file: packages/nexus-agents/src/mcp/tools/consensus-vote.ts
+    source_line: 430
   - name: create_expert
-    description: description
+    description: ''
     parameters: []
     source_file: packages/nexus-agents/src/mcp/tools/create-expert.ts
-    source_line: 260
+    source_line: 330
   - name: delegate_to_model
-    description: description
-    parameters:
-      - name: task
-        type: string
-        description: Task to execute or analyze
-        required: true
-      - name: preferred_capability
-        type: unknown
-        description: Preferred capability for routing
-        required: false
-      - name: model_hint
-        type: string
-        description: Explicit model preference
-        required: false
-      - name: estimate_tokens
-        type: boolean
-        description: Return token estimate only
-        required: false
+    description: Route a task to the optimal model based on capability matching. Returns model recommendation with reasoning.
+    parameters: []
     source_file: packages/nexus-agents/src/mcp/tools/delegate-to-model.ts
-    source_line: 518
+    source_line: 313
+  - name: execute_spec
+    description: ''
+    parameters: []
+    source_file: packages/nexus-agents/src/mcp/tools/execute-spec-tool.ts
+    source_line: 140
+  - name: extract_symbols
+    description: ''
+    parameters: []
+    source_file: packages/nexus-agents/src/mcp/tools/extract-symbols-tool.ts
+    source_line: 129
+  - name: issue_triage
+    description: ''
+    parameters: []
+    source_file: packages/nexus-agents/src/mcp/tools/issue-triage-tool.ts
+    source_line: 163
+  - name: list_experts
+    description: ''
+    parameters: []
+    source_file: packages/nexus-agents/src/mcp/tools/list-experts.ts
+    source_line: 211
+  - name: list_workflows
+    description: ''
+    parameters: []
+    source_file: packages/nexus-agents/src/mcp/tools/list-workflows.ts
+    source_line: 201
+  - name: memory_query
+    description: ''
+    parameters: []
+    source_file: packages/nexus-agents/src/mcp/tools/memory-query.ts
+    source_line: 232
+  - name: memory_stats
+    description: ''
+    parameters: []
+    source_file: packages/nexus-agents/src/mcp/tools/memory-stats.ts
+    source_line: 216
+  - name: memory_write
+    description: ''
+    parameters: []
+    source_file: packages/nexus-agents/src/mcp/tools/memory-write.ts
+    source_line: 304
   - name: orchestrate
-    description: description
-    parameters:
-      - name: task
-        type: string
-        description: Task description to orchestrate
-        required: true
-      - name: context
-        type: object
-        description: Additional context for the task
-        required: false
-      - name: maxIterations
-        type: unknown
-        description: 'Maximum iterations for orchestration (default: 10)'
-        required: false
+    description: ''
+    parameters: []
     source_file: packages/nexus-agents/src/mcp/tools/orchestrate.ts
-    source_line: 322
+    source_line: 741
+  - name: query_trace
+    description: ''
+    parameters: []
+    source_file: packages/nexus-agents/src/mcp/tools/query-trace-tool.ts
+    source_line: 226
+  - name: registry_import
+    description: ''
+    parameters: []
+    source_file: packages/nexus-agents/src/mcp/tools/registry-import-tool.ts
+    source_line: 78
+  - name: repo_analyze
+    description: ''
+    parameters: []
+    source_file: packages/nexus-agents/src/mcp/tools/repo-analyze-tool.ts
+    source_line: 79
+  - name: repo_security_plan
+    description: ''
+    parameters: []
+    source_file: packages/nexus-agents/src/mcp/tools/repo-security-plan-tool.ts
+    source_line: 85
+  - name: research_add_source
+    description: ''
+    parameters: []
+    source_file: packages/nexus-agents/src/mcp/tools/research-add-source.ts
+    source_line: 313
+  - name: research_add
+    description: ''
+    parameters: []
+    source_file: packages/nexus-agents/src/mcp/tools/research-add.ts
+    source_line: 201
+  - name: research_analyze
+    description: ''
+    parameters: []
+    source_file: packages/nexus-agents/src/mcp/tools/research-analyze.ts
+    source_line: 436
+  - name: research_catalog_review
+    description: ''
+    parameters: []
+    source_file: packages/nexus-agents/src/mcp/tools/research-catalog-review.ts
+    source_line: 288
+  - name: research_discover
+    description: ''
+    parameters: []
+    source_file: packages/nexus-agents/src/mcp/tools/research-discover.ts
+    source_line: 617
+  - name: research_query
+    description: ''
+    parameters: []
+    source_file: packages/nexus-agents/src/mcp/tools/research-query.ts
+    source_line: 253
+  - name: research_synthesize
+    description: ''
+    parameters: []
+    source_file: packages/nexus-agents/src/mcp/tools/research-synthesize.ts
+    source_line: 111
+  - name: run_graph_workflow
+    description: GRAPH_WORKFLOW_DESCRIPTION
+    parameters:
+      - name: workflow
+        type: unknown
+        required: true
+      - name: inputs
+        type: string
+        description: Input values for the workflow
+        required: false
+      - name: enableCheckpointing
+        type: boolean
+        description: Enable checkpoint saving
+        required: false
+      - name: enableAuditTrail
+        type: boolean
+        description: Enable audit trail logging
+        required: false
+    source_file: packages/nexus-agents/src/mcp/tools/run-graph-workflow.ts
+    source_line: 254
   - name: run_workflow
     description: Execute a workflow template with provided inputs, supporting built-in templates and custom paths
     parameters:
@@ -98,7 +150,7 @@ mcp_tools:
         description: Workflow template name (e.g., code-review) or file path
         required: true
       - name: inputs
-        type: object
+        type: string
         description: Workflow inputs as key-value pairs
         required: true
       - name: dryRun
@@ -107,71 +159,19 @@ mcp_tools:
         default: 'false'
         required: false
     source_file: packages/nexus-agents/src/mcp/tools/run-workflow.ts
-    source_line: 400
-rest_endpoints:
-  - method: POST
-    path: /delegate
-    description: POST /delegate
-    source_file: packages/nexus-agents/src/api/routes/delegate.ts
-    source_line: 112
-  - method: POST
-    path: /expert
-    description: Execute a task using a specialized expert
-    source_file: packages/nexus-agents/src/api/routes/expert.ts
-    source_line: 78
-    body_params:
-      - name: type
-        type: string
-        description: Expert type
-        required: true
-      - name: task
-        type: string
-        description: Task for the expert
-        required: true
-      - name: options
-        type: object
-        description: Expert-specific options
-        required: false
-  - method: GET
-    path: /expert/types
-    description: List available expert types
-    source_file: packages/nexus-agents/src/api/routes/expert.ts
-    source_line: 128
-  - method: GET
-    path: /health
-    description: Health check endpoint
-    source_file: packages/nexus-agents/src/api/routes/health.ts
-    source_line: 39
-  - method: GET
-    path: /metrics
-    description: Server metrics endpoint
-    source_file: packages/nexus-agents/src/api/routes/health.ts
-    source_line: 75
-  - method: GET
-    path: /metrics/prometheus
-    description: Prometheus format metrics
-    source_file: packages/nexus-agents/src/api/routes/health.ts
-    source_line: 133
-  - method: POST
-    path: /orchestrate
-    description: POST /orchestrate
-    source_file: packages/nexus-agents/src/api/routes/orchestrate.ts
-    source_line: 172
-  - method: POST
-    path: /workflow
-    description: Execute a workflow
-    source_file: packages/nexus-agents/src/api/routes/workflow.ts
-    source_line: 72
-    body_params:
-      - name: workflowId
-        type: string
-        description: ID of saved workflow
-        required: false
-      - name: workflowYaml
-        type: string
-        description: Inline workflow YAML
-        required: false
-      - name: inputs
-        type: object
-        description: Workflow inputs
-        required: false
+    source_line: 290
+  - name: search_codebase
+    description: ''
+    parameters: []
+    source_file: packages/nexus-agents/src/mcp/tools/search-codebase-tool.ts
+    source_line: 152
+  - name: name
+    description: ''
+    parameters: []
+    source_file: packages/nexus-agents/src/mcp/tools/tool-observability-proxy.ts
+    source_line: 53
+  - name: weather_report
+    description: ''
+    parameters: []
+    source_file: packages/nexus-agents/src/mcp/tools/weather-report-tool.ts
+    source_line: 135

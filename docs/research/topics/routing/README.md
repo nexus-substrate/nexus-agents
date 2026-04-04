@@ -1,6 +1,6 @@
 # Model Routing
 
-**Last Updated:** 2026-01-10 (ET)
+**Last Updated:** 2026-04-03 (ET)
 **Status:** Active Research (Core Routing Implemented)
 
 ---
@@ -13,9 +13,9 @@ Research on intelligent routing of tasks to optimal models based on cost, qualit
 
 | Paper                                               | Key Contribution                                  | Priority | Status          |
 | --------------------------------------------------- | ------------------------------------------------- | -------- | --------------- |
-| [IPR](https://arxiv.org/abs/2509.06274)             | Quality-constrained routing, 43.9% cost reduction | P1       | partial         |
+| [IPR](https://arxiv.org/abs/2509.06274)             | Quality-constrained routing, 43.9% cost reduction | P1       | **implemented** |
 | [PILOT](https://arxiv.org/abs/2508.21141)           | Budget-constrained LinUCB routing                 | P1       | **implemented** |
-| [SATER](https://arxiv.org/abs/2510.05164)           | Confidence-aware rejection, 50%+ cost reduction   | P2       | partial         |
+| [SATER](https://arxiv.org/abs/2510.05164)           | Confidence-aware rejection, 50%+ cost reduction   | P2       | **implemented** |
 | [MoMA](https://arxiv.org/abs/2509.07571)            | TOPSIS multi-criteria, 31.46% cost reduction      | P2       | **implemented** |
 | [RouteLLM](https://arxiv.org/abs/2406.18665)        | Preference-trained routing, 2x cost reduction     | P2       | planned         |
 | [Edge Multi-LLM](https://arxiv.org/abs/2507.00672)  | Agreement-based cascading                         | P2       | **implemented** |
@@ -89,11 +89,14 @@ Cascade of increasingly powerful models with ensemble agreement at each stage. E
 - ✅ FeedbackIntegration for closed-loop learning
 - ✅ CliDetectionCache for health check caching
 
-**Planned (v2.3.0+):**
+**Completed (v2.3.0+):**
 
-- IPR quality estimators (lightweight quality prediction)
+- ✅ IPR quality estimators (lightweight quality prediction)
+- ✅ SATER confidence-aware rejection
+
+**Planned:**
+
 - RouteLLM preference training (requires training data collection)
-- SATER confidence-aware rejection (partial via cascade)
 
 ## Related Topics
 

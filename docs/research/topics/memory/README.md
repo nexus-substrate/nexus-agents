@@ -13,14 +13,14 @@ Research on memory architectures for AI agents including long-term memory, conte
 
 | Paper                                       | Key Contribution                                 | Priority | Status      |
 | ------------------------------------------- | ------------------------------------------------ | -------- | ----------- |
-| [Mem0](https://arxiv.org/abs/2504.19413)    | Scalable long-term memory, 91% latency reduction | P2       | planned     |
-| [MIRIX](https://arxiv.org/abs/2507.07957)   | Six-type memory system, 35% accuracy improvement | P2       | planned     |
-| [MobiMem](https://arxiv.org/abs/2512.15784) | Post-deployment evolution, 280x faster retrieval | P2       | planned     |
-| [BET](https://arxiv.org/abs/2511.23271)     | 3000x prompt compression                         | P3       | not-started |
-| [TreeKV](https://arxiv.org/abs/2501.04987)  | 16x cache reduction                              | P3       | not-started |
-| [xKV](https://arxiv.org/abs/2503.18893)     | 6.8x KV-cache compression                        | P4       | not-started |
-| [Acon](https://arxiv.org/abs/2510.00615)    | Task-specific compression                        | -        | not-started |
-| [CCF](https://arxiv.org/abs/2509.09199)     | Learned compression modules                      | -        | not-started |
+| [Mem0](https://arxiv.org/abs/2504.19413)    | Scalable long-term memory, 91% latency reduction | P2       | implemented |
+| [MIRIX](https://arxiv.org/abs/2507.07957)   | Six-type memory system, 35% accuracy improvement | P2       | implemented |
+| [MobiMem](https://arxiv.org/abs/2512.15784) | Post-deployment evolution, 280x faster retrieval | P2       | implemented |
+| [BET](https://arxiv.org/abs/2511.23271)     | 3000x prompt compression                         | P3       | implemented |
+| [TreeKV](https://arxiv.org/abs/2501.04987)  | 16x cache reduction                              | P3       | implemented |
+| [xKV](https://arxiv.org/abs/2503.18893)     | 6.8x KV-cache compression                        | P4       | implemented |
+| [Acon](https://arxiv.org/abs/2510.00615)    | Task-specific compression                        | -        | implemented |
+| [CCF](https://arxiv.org/abs/2509.09199)     | Learned compression modules                      | -        | implemented |
 
 ## Recommended Techniques
 

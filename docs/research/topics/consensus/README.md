@@ -1,6 +1,6 @@
 # Consensus Protocols
 
-**Last Updated:** 2026-01-07 (ET)
+**Last Updated:** 2026-04-03 (ET)
 **Status:** Active Research
 
 ---
@@ -13,12 +13,14 @@ Research on multi-agent consensus mechanisms for coordinating decision-making ac
 
 | Paper                                                                | Key Contribution                                                 | Priority | Status      |
 | -------------------------------------------------------------------- | ---------------------------------------------------------------- | -------- | ----------- |
-| [Aegean](https://arxiv.org/abs/2512.20184)                           | Formal consensus with incremental quorum, 20x latency reduction  | P1       | planned     |
-| [Voting or Consensus](https://arxiv.org/abs/2502.19130)              | Task-type protocol selection (+13.2% reasoning, +2.8% knowledge) | P1       | planned     |
-| [MAR](https://arxiv.org/abs/2512.20845)                              | Multi-agent reflexion for cross-agent critique                   | P1       | planned     |
-| [CP-WBFT](https://arxiv.org/abs/2511.10400)                          | Byzantine fault tolerance with 85.7% fault rate tolerance        | P2       | planned     |
-| [Free-MAD](https://arxiv.org/abs/2509.11035)                         | Anti-conformity scoring to prevent majority influence            | P2       | not-started |
+| [Aegean](https://arxiv.org/abs/2512.20184)                           | Formal consensus with incremental quorum, 20x latency reduction  | P1       | implemented |
+| [Voting or Consensus](https://arxiv.org/abs/2502.19130)              | Task-type protocol selection (+13.2% reasoning, +2.8% knowledge) | P1       | implemented |
+| [MAR](https://arxiv.org/abs/2512.20845)                              | Multi-agent reflexion for cross-agent critique                   | P1       | implemented |
+| [CP-WBFT](https://arxiv.org/abs/2511.10400)                          | Byzantine fault tolerance with 85.7% fault rate tolerance        | P2       | implemented |
+| [Free-MAD](https://arxiv.org/abs/2509.11035)                         | Anti-conformity scoring to prevent majority influence            | P2       | implemented |
 | [Multi-Agent Collaboration Survey](https://arxiv.org/abs/2501.06322) | Taxonomy of coordination strategies                              | -        | not-started |
+
+> **Note:** The techniques registry contains 6 consensus techniques (including Higher-Order Voting, arxiv-2510.01499); this table covers 5 of them plus the survey paper. The registry is the authoritative source.
 
 ## Recommended Techniques
 
@@ -60,11 +62,16 @@ Cross-agent critique within collaboration spaces for diverse perspectives and co
 
 Confidence probe-based weighted voting for Byzantine fault tolerance in expert collaboration.
 
-## Implementation Roadmap
+## Implementation Status
 
-1. **Phase 1 (v2.3.0):** Aegean consensus, task-aware protocol selection
-2. **Phase 2 (v2.4.0):** MAR cross-agent critique, Free-MAD scoring
-3. **Phase 3 (v3.0.0):** CP-WBFT Byzantine fault tolerance
+All planned consensus techniques are **implemented**:
+
+- Aegean consensus protocol (`aegean-protocol.ts`)
+- Task-aware protocol selection (`adaptive-protocol-selector.ts`)
+- Multi-Agent Reflexion / MAR (`reflexion-protocol.ts`)
+- CP-WBFT Byzantine fault tolerance (`result-aggregator.ts`)
+- Free-MAD anti-conformity scoring (`free-mad-scoring.ts`)
+- Higher-Order Voting / OW+ISP (`higher-order-voting.ts`)
 
 ## Related Topics
 

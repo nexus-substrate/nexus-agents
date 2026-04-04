@@ -1,6 +1,6 @@
 # Code Generation & Self-Improvement
 
-**Last Updated:** 2026-01-07 (ET)
+**Last Updated:** 2026-04-03 (ET)
 **Status:** Active Research
 
 ---
@@ -15,10 +15,10 @@ Research on self-improvement mechanisms for code-generating AI agents, including
 | ----------------------------------------------------- | --------------------------------------------------- | -------- | ----------- |
 | [Self-Refine](https://arxiv.org/abs/2303.17651)       | Training-free iterative refinement, 20% improvement | P1       | implemented |
 | [Reflexion](https://arxiv.org/abs/2303.11366)         | Verbal RL with episodic memory, 91% HumanEval       | P1       | implemented |
-| [Self-Debug](https://arxiv.org/abs/2304.05128)        | Rubber duck debugging, 96% vuln reduction           | P3       | in-progress |
-| [Voyager](https://arxiv.org/abs/2305.16291)           | Skill library pattern, 15.3x faster milestones      | P2       | planned     |
-| [SICA](https://arxiv.org/abs/2504.15228)              | Self-improving agent, 17%→53% SWE-Bench             | P2       | planned     |
-| [Constitutional AI](https://arxiv.org/abs/2212.08073) | Principle-based self-critique                       | P2       | planned     |
+| [Self-Debug](https://arxiv.org/abs/2304.05128)        | Rubber duck debugging, 96% vuln reduction           | P3       | implemented |
+| [Voyager](https://arxiv.org/abs/2305.16291)           | Skill library pattern, 15.3x faster milestones      | P2       | implemented |
+| [SICA](https://arxiv.org/abs/2504.15228)              | Self-improving agent, 17%→53% SWE-Bench             | P2       | implemented |
+| [Constitutional AI](https://arxiv.org/abs/2212.08073) | Principle-based self-critique                       | P2       | implemented |
 | [Agent Q](https://arxiv.org/abs/2408.07199)           | MCTS + self-critique, 340% improvement              | -        | not-started |
 | [LATS](https://arxiv.org/abs/2310.04406)              | Tree search with reflection, 92.7% HumanEval        | -        | not-started |
 | [Godel Agent](https://arxiv.org/abs/2410.04444)       | Recursive self-modification                         | -        | not-started |
@@ -47,37 +47,40 @@ Agents maintain episodic memory of verbal reflections that guide future behavior
 
 ### Medium Priority (P2)
 
-#### Voyager Skill Library Pattern
+#### Voyager Skill Library Pattern ✅
 
 - **Source:** [arxiv-2305.16291](https://arxiv.org/abs/2305.16291)
 - **Key Metrics:** 3.3x more discoveries, 15.3x faster milestone achievement
 - **Integration Point:** `packages/nexus-agents/src/agents/`
+- **Status:** Implemented
 
 Ever-growing library of executable code skills with automatic curriculum. Skills are temporally extended, interpretable, and compositional.
 
-#### SICA Self-Improving Agent
+#### SICA Self-Improving Agent ✅
 
 - **Source:** [arxiv-2504.15228](https://arxiv.org/abs/2504.15228)
 - **Key Metrics:** SWE-Bench 17%→53%, file editing 82%→94%
-- **Integration Point:** `packages/nexus-agents/src/agents/`
+- **Integration Point:** `packages/nexus-agents/src/agents/self-improving/`
+- **Status:** Implemented (#151)
 
 Unified agent that performs tasks AND improves its own implementation through tool orchestration. Requires agent versioning with performance tracking.
 
-#### Constitutional AI Self-Critique
+#### Constitutional AI Self-Critique ✅
 
 - **Source:** [arxiv-2212.08073](https://arxiv.org/abs/2212.08073)
-- **Integration Point:** `packages/nexus-agents/src/agents/`
+- **Integration Point:** `packages/nexus-agents/src/agents/collaboration/constitutional-critic.ts`
+- **Status:** Implemented (#147)
 
 Define constitution of principles for agent behavior. Self-critique against explicit criteria scales without human labelers.
 
-### In Progress (P3)
+### P3
 
-#### Self-Debug Code Repair 🚧
+#### Self-Debug Code Repair ✅
 
 - **Source:** [arxiv-2304.05128](https://arxiv.org/abs/2304.05128)
 - **Key Metrics:** 96% vulnerability reduction with multi-tool feedback
 - **Integration Point:** `packages/nexus-agents/src/agents/collaboration/self-debug-protocol.ts`
-- **Status:** In Progress (#131)
+- **Status:** Implemented (#131)
 
 "Rubber duck debugging" approach where the model explains its own code line-by-line, identifies errors via execution feedback, and iteratively fixes issues. Complements Self-Refine with execution-based validation.
 

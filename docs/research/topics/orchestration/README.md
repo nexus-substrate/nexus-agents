@@ -13,13 +13,13 @@ Research on coordinating multiple AI agents for complex task completion, includi
 
 | Paper                                                      | Key Contribution                                   | Priority | Status      |
 | ---------------------------------------------------------- | -------------------------------------------------- | -------- | ----------- |
-| [TRINITY](https://arxiv.org/abs/2512.04695)                | Thinker/Worker/Verifier roles, 86.2% LiveCodeBench | P1       | planned     |
-| [Multi-Agent Survey](https://arxiv.org/abs/2501.06322)     | Coordination taxonomy (rule/role/model-based)      | -        | not-started |
-| [Evolving Orchestration](https://arxiv.org/abs/2505.19591) | RL-trained orchestrator, 15-30% improvement        | P4       | not-started |
-| [LATTS](https://arxiv.org/abs/2509.20368)                  | Adaptive test-time compute                         | P2       | not-started |
-| [Pick and Spin](https://arxiv.org/abs/2512.22402)          | Helm deployment, 21.6% higher success              | -        | not-started |
-| [Multi-LLM Engine](https://arxiv.org/abs/2410.10039)       | Temporal graph + vector DB                         | -        | not-started |
-| [AgentsNet](https://arxiv.org/abs/2507.08616)              | 100-agent coordination benchmark                   | -        | not-started |
+| [TRINITY](https://arxiv.org/abs/2512.04695)                | Thinker/Worker/Verifier roles, 86.2% LiveCodeBench | P1       | implemented |
+| [Multi-Agent Survey](https://arxiv.org/abs/2501.06322)     | Coordination taxonomy (rule/role/model-based)      | -        | implemented |
+| [Evolving Orchestration](https://arxiv.org/abs/2505.19591) | RL-trained orchestrator, 15-30% improvement        | P4       | implemented |
+| [LATTS](https://arxiv.org/abs/2509.20368)                  | Adaptive test-time compute                         | P2       | implemented |
+| [Pick and Spin](https://arxiv.org/abs/2512.22402)          | Helm deployment, 21.6% higher success              | -        | implemented |
+| [Multi-LLM Engine](https://arxiv.org/abs/2410.10039)       | Temporal graph + vector DB                         | -        | implemented |
+| [AgentsNet](https://arxiv.org/abs/2507.08616)              | 100-agent coordination benchmark                   | -        | implemented |
 
 ## Recommended Techniques
 

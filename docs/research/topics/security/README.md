@@ -15,15 +15,10 @@ Research on safety analysis and evaluation for multi-agent systems, including fo
 
 ### Implemented
 
-| Technique                                                            | Paper            | Issue | Key Metrics                               |
-| -------------------------------------------------------------------- | ---------------- | ----- | ----------------------------------------- |
-| [STPA MCP Framework](../../registry/techniques.yaml#stpa-mcp-safety) | arXiv:2601.08012 | #328  | Formal STPA safety analysis for MCP tools |
-
-### In Progress
-
-| Technique                                                              | Paper            | Issue | Key Metrics                         |
-| ---------------------------------------------------------------------- | ---------------- | ----- | ----------------------------------- |
-| [Agent-SafetyBench](../../registry/techniques.yaml#agent-safety-bench) | arXiv:2412.14470 | #332  | Safety evaluation suite integration |
+| Technique                                                              | Paper            | Issue | Key Metrics                               |
+| ---------------------------------------------------------------------- | ---------------- | ----- | ----------------------------------------- |
+| [STPA MCP Framework](../../registry/techniques.yaml#stpa-mcp-safety)   | arXiv:2601.08012 | #328  | Formal STPA safety analysis for MCP tools |
+| [Agent-SafetyBench](../../registry/techniques.yaml#agent-safety-bench) | arXiv:2412.14470 | #332  | Safety evaluation suite integration       |
 
 ---
 
@@ -53,4 +48,4 @@ Research on safety analysis and evaluation for multi-agent systems, including fo
 
 ---
 
-_Last updated: 2026-01-17 (ET)_
+_Last updated: 2026-04-03 (ET)_

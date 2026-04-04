@@ -80,7 +80,7 @@ techniques:
     complexity: low
 
     integration_files:
-      - 'packages/nexus-agents/src/agents/collaboration/task-type-classifier.ts'
+      - 'packages/nexus-agents/src/core/task-analysis/task-type-classifier.ts'
       - 'packages/nexus-agents/src/agents/collaboration/adaptive-protocol-selector.ts'
 
     implementation_issue: 125
@@ -316,8 +316,7 @@ techniques:
     complexity: medium
 
     integration_files:
-      - 'packages/nexus-agents/src/adapters/quality-router.ts'
-      - 'packages/nexus-agents/src/adapters/complexity-estimator.ts'
+      - 'packages/nexus-agents/src/cli-adapters/routing/stages/quality-constraint-stage.ts'
 
     implementation_issue: 128
     related_prs:
@@ -783,7 +782,7 @@ techniques:
 
     integration_files:
       - 'packages/nexus-agents/src/context/agentic-memory-types.ts'
-      - 'packages/nexus-agents/src/context/agentic-memory-helpers.ts'
+      - 'packages/nexus-agents/src/context/agentic-memory-operations.ts'
       - 'packages/nexus-agents/src/context/agentic-memory-linking.ts'
       - 'packages/nexus-agents/src/context/agentic-memory.ts'
       - 'packages/nexus-agents/src/context/agentic-memory.test.ts'

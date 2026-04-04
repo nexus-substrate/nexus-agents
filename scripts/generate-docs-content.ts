@@ -29,6 +29,8 @@ const TOOLS_INDEX = join(SRC_ROOT, 'mcp/tools/index.ts');
 const TEMPLATE_TYPES = join(SRC_ROOT, 'workflows/template-types.ts');
 const AGENT_TYPES = join(SRC_ROOT, 'core/types/agent.ts');
 const ADR_DIR = join(DOCS_ROOT, 'adr');
+const PAPERS_YAML = join(DOCS_ROOT, 'research/registry/papers.yaml');
+const TECHNIQUES_YAML = join(DOCS_ROOT, 'research/registry/techniques.yaml');
 
 // ─── Extractors ──────────────────────────────────────────────────────────────
 
@@ -248,7 +250,63 @@ function checkAgentRoles(): void {
   }
 }
 
-// ─── Main ────────────────────────────────────────────────────────────────────
+// ─── Research Registry Validators ────────────────────────────────────────────
+
+function checkPapersYaml(): void {
+  if (!existsSync(PAPERS_YAML)) return;
+  const content = readFileSync(PAPERS_YAML, 'utf-8');
+
+  // Check for malformed titles (arXiv API URL strings)
+  const malformedTitles = content.match(/title:\s*['"]?arXiv Query/g);
+  if (malformedTitles) {
+    drifts.push({
+      file: 'docs/research/registry/papers.yaml',
+      section: 'Paper titles',
+      expected: 'All papers have proper titles',
+      actual: `${String(malformedTitles.length)} papers have raw arXiv API URL as title`,
+    });
+  }
+
+  // Check for empty topics
+  const emptyTopics = content.match(/topics:\s*\[\s*\]/g);
+  if (emptyTopics) {
+    drifts.push({
+      file: 'docs/research/registry/papers.yaml',
+      section: 'Paper topics',
+      expected: 'All papers have at least one topic',
+      actual: `${String(emptyTopics.length)} papers have empty topics`,
+    });
+  }
+}
+
+function checkTechniqueFiles(): void {
+  if (!existsSync(TECHNIQUES_YAML)) return;
+  const content = readFileSync(TECHNIQUES_YAML, 'utf-8');
+
+  // Extract integration_files paths and check they exist
+  const fileRefs = content.match(/- src\/[^\n]+/g);
+  if (!fileRefs) return;
+
+  const missing: string[] = [];
+  for (const ref of fileRefs) {
+    const filePath = ref.replace('- ', '').trim();
+    const fullPath = join(SRC_ROOT, '..', filePath);
+    if (!existsSync(fullPath)) {
+      missing.push(filePath);
+    }
+  }
+
+  if (missing.length > 0) {
+    drifts.push({
+      file: 'docs/research/registry/techniques.yaml',
+      section: 'integration_files',
+      expected: 'All integration files exist in source',
+      actual: `${String(missing.length)} missing: ${missing.slice(0, 3).join(', ')}${missing.length > 3 ? '...' : ''}`,
+    });
+  }
+}
+
+// ─── Main ───────────────��────────────────────────────────────────────────────
 
 function main(): void {
   console.log('Checking documentation content drift...\n');
@@ -257,6 +315,8 @@ function main(): void {
   checkAdrCount();
   checkBuiltInTemplates();
   checkAgentRoles();
+  checkPapersYaml();
+  checkTechniqueFiles();
 
   // Summary stats (always print)
   const toolCount = extractMcpToolCount();

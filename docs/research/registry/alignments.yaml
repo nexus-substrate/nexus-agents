@@ -141,16 +141,17 @@ alignments:
   self-improve-refine-eval:
     techniques:
       - self-refine-loop
-      - self-evaluation-protocol
+      - sica-self-improvement
     category: complementary
     relationship: |
       Self-refine provides iterative improvement loop (generate -> feedback -> refine).
-      Self-evaluation provides component assessment for deprecation.
+      SICA self-improvement extends this with tool-orchestrated versioning and
+      performance tracking across agent iterations.
       Different scopes: self-refine for individual outputs,
-      self-evaluation for codebase components.
+      sica for full agent implementation improvement.
     integration_approach: |
-      Could use self-evaluation to identify components needing
-      refactoring, then apply self-refine to improve them.
+      Could use SICA versioning to identify best-performing configurations,
+      then apply self-refine to improve individual outputs within each version.
     status: implemented
     date: '2026-01-07'
 
