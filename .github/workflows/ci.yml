@@ -1,1 +1,189 @@
+name: CI
 
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: read-all
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  commitlint:
+    name: Commit Messages
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 5
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-node
+
+      - name: Validate conventional commits
+        run: npx commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }} --verbose
+
+  lint:
+    name: Lint
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup-node
+
+      - name: Run lint
+        run: pnpm lint
+
+  typecheck:
+    name: Type Check
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup-node
+
+      - name: Run typecheck
+        run: pnpm typecheck
+
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ vars.CI_RUNNER || matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup-node
+
+      - name: Build
+        run: pnpm build
+
+      - name: Upload build output
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: build-dist
+          path: packages/nexus-agents/dist/
+          retention-days: 1
+
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ vars.CI_RUNNER || matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup-node
+
+      - name: Run tests with coverage
+        run: pnpm test:coverage
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v5
+        if: github.event_name == 'pull_request' && matrix.os == 'ubuntu-latest'
+        with:
+          files: ./packages/nexus-agents/coverage/lcov.info
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  fitness-audit:
+    name: Fitness Audit (${{ matrix.os }})
+    runs-on: ${{ vars.CI_RUNNER || matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+    needs: [build]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup-node
+
+      - name: Download build output
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v4
+        with:
+          name: build-dist
+          path: packages/nexus-agents/dist/
+
+      - name: Run fitness audit
+        id: fitness
+        uses: ./.github/actions/fitness-gate
+        with:
+          threshold: '70'
+          warn-threshold: '90'
+
+      - name: Upload fitness report
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        if: always()
+        with:
+          name: fitness-report-${{ matrix.os }}
+          path: ${{ steps.fitness.outputs.report-path }}
+
+  index-check:
+    name: Index Freshness Check
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 10
+    # Warning only - does not block CI
+    continue-on-error: true
+    needs: [build]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup-node
+
+      - name: Download build output
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v4
+        with:
+          name: build-dist
+          path: packages/nexus-agents/dist/
+
+      - name: Check index freshness
+        run: |
+          cd packages/nexus-agents
+          node dist/cli.js index check || echo "::warning::Codebase index is out of date. Run 'nexus-agents index generate' to update."
+
+  security:
+    name: Security Audit
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup-node
+
+      - name: Run security audit
+        run: pnpm audit --audit-level=high
+        continue-on-error: true
+
+  # Gate for branch protection - requires all checks to pass
+  ci-success:
+    name: CI Success
+    needs: [commitlint, lint, typecheck, build, test, fitness-audit]
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 5
+    if: always()
+    steps:
+      - name: Check required jobs
+        run: |
+          # commitlint is skipped on push (not a PR) — treat skipped as success
+          if [[ "${{ needs.commitlint.result }}" != "success" && "${{ needs.commitlint.result }}" != "skipped" ]] || \
+             [[ "${{ needs.lint.result }}" != "success" ]] || \
+             [[ "${{ needs.typecheck.result }}" != "success" ]] || \
+             [[ "${{ needs.test.result }}" != "success" ]] || \
+             [[ "${{ needs.build.result }}" != "success" ]] || \
+             [[ "${{ needs.fitness-audit.result }}" != "success" ]]; then
+            echo "One or more required jobs failed"
+            exit 1
+          fi
+          echo "All required checks passed!"
