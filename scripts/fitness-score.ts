@@ -6,7 +6,7 @@
  * @module scripts/fitness-score
  */
 
-import { existsSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { countFiles, countPatternInDir, fileContains } from './fitness-utils.js';
 import type { FitnessComponent, FitnessResult } from './fitness-utils.js';
@@ -201,42 +201,81 @@ function assessCliErgonomics(): FitnessComponent {
   };
 }
 
+interface ScoreAdjustment {
+  score: number;
+  penalties: string[];
+  rewards: string[];
+}
+
+function assessResearchHealth(): ScoreAdjustment {
+  const penalties: string[] = [];
+  const rewards: string[] = [];
+  let score = 0;
+
+  const papersYaml = join(DOCS_ROOT, 'research/registry/papers.yaml');
+  if (existsSync(papersYaml)) {
+    const content = readFileSync(papersYaml, 'utf-8');
+    const malformed = content.match(/title:\s*['"]?arXiv Query/g);
+    if (malformed) {
+      penalties.push(`${String(malformed.length)} malformed paper titles`);
+      score -= 2;
+    }
+    const empty = content.match(/topics:\s*\[\s*\]/g);
+    if (empty) {
+      penalties.push(`${String(empty.length)} papers with empty topics`);
+      score -= 1;
+    }
+  }
+
+  const techYaml = join(DOCS_ROOT, 'research/registry/techniques.yaml');
+  if (existsSync(techYaml)) {
+    const content = readFileSync(techYaml, 'utf-8');
+    const refs = content.match(/- 'packages\/[^']+'/g);
+    if (refs) {
+      const missing = refs.filter((r) => {
+        const p = r.replace(/^- '/, '').replace(/'$/, '');
+        return !existsSync(join(ROOT, p));
+      }).length;
+      if (missing > 0) {
+        penalties.push(`${String(missing)} broken technique files`);
+        score -= Math.min(3, missing);
+      } else {
+        rewards.push('All technique files valid');
+      }
+    }
+  }
+
+  return { score, penalties, rewards };
+}
+
 function assessGovernance(): FitnessComponent {
-  const penalties: string[] = [],
-    rewards: string[] = [];
+  const penalties: string[] = [];
+  const rewards: string[] = [];
   let score = 15;
 
-  if (existsSync(join(ROOT, 'CLAUDE.md'))) {
-    rewards.push('CLAUDE.md exists');
-    score += 3;
-  } else {
-    penalties.push('No CLAUDE.md');
-    score -= 5;
+  const artifacts: [string, string, number][] = [
+    [join(ROOT, 'CLAUDE.md'), 'CLAUDE.md exists', 3],
+    [join(DOCS_ROOT, 'architecture/wiring-graph.json'), 'Wiring graph', 2],
+    [join(DOCS_ROOT, 'metrics/fitness-score.json'), 'Fitness score tracked', 2],
+    [join(DOCS_ROOT, 'architecture/redundancy-analysis.md'), 'Redundancy analysis', 2],
+    [join(ROOT, 'scripts/generate-docs-content.ts'), 'Docs drift detection', 1],
+  ];
+  for (const [path, label, bonus] of artifacts) {
+    if (existsSync(path)) {
+      rewards.push(label);
+      score += bonus;
+    }
   }
 
-  if (existsSync(join(DOCS_ROOT, 'architecture/wiring-graph.json'))) {
-    rewards.push('Wiring graph');
-    score += 2;
-  } else {
-    penalties.push('No wiring-graph.json');
-    score -= 2;
-  }
-
-  if (existsSync(join(DOCS_ROOT, 'metrics/completeness-score.json'))) {
-    rewards.push('Completeness tracked');
-    score += 2;
-  }
-  if (existsSync(join(DOCS_ROOT, 'architecture/redundancy-analysis.md'))) {
-    rewards.push('Redundancy analysis');
-    score += 2;
-  }
   if (existsSync(join(DOCS_ROOT, 'adr'))) {
     rewards.push('ADR records');
     score += 1;
-  } else {
-    penalties.push('No ADR directory');
-    score -= 1;
   }
+
+  const research = assessResearchHealth();
+  score += research.score;
+  penalties.push(...research.penalties);
+  rewards.push(...research.rewards);
 
   return {
     name: 'Governance',

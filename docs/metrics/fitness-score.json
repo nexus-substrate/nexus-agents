@@ -1,7 +1,7 @@
 {
-  "total": 98,
+  "total": 97,
   "maxTotal": 100,
-  "percentage": 98,
+  "percentage": 97,
   "components": [
     {
       "name": "Canonical Paths",
@@ -19,25 +19,25 @@
       "name": "Determinism",
       "score": 13,
       "maxScore": 15,
-      "details": ["Random: 20", "Date.now: 118"],
-      "penalties": ["20 unseeded Math.random()", "118 Date.now() calls"],
+      "details": ["Random: 22", "Date.now: 133"],
+      "penalties": ["22 unseeded Math.random()", "133 Date.now() calls"],
       "rewards": [
         "Injectable random provider",
-        "50 injectable random uses",
+        "49 injectable random uses",
         "Injectable time provider",
-        "853 injectable time uses"
+        "838 injectable time uses"
       ]
     },
     {
       "name": "Observability",
       "score": 15,
       "maxScore": 15,
-      "details": ["Logger uses: 335"],
+      "details": ["Logger uses: 349"],
       "penalties": [],
       "rewards": [
         "SwarmObserver exists",
         "Trace exporter exists",
-        "Strong logging (335 uses)",
+        "Strong logging (349 uses)",
         "Audit logging module"
       ]
     },
@@ -45,10 +45,10 @@
       "name": "CLI Ergonomics",
       "score": 15,
       "maxScore": 15,
-      "details": ["Commands: 271"],
+      "details": ["Commands: 275"],
       "penalties": [],
       "rewards": [
-        "Rich CLI (271 commands)",
+        "Rich CLI (275 commands)",
         "Doctor command",
         "Setup wizard",
         "Demo command",
@@ -64,17 +64,19 @@
       "rewards": [
         "CLAUDE.md exists",
         "Wiring graph",
-        "Completeness tracked",
+        "Fitness score tracked",
         "Redundancy analysis",
-        "ADR records"
+        "Docs drift detection",
+        "ADR records",
+        "All technique files valid"
       ]
     },
     {
       "name": "Layer Coupling",
-      "score": 10,
+      "score": 9,
       "maxScore": 10,
       "details": [],
-      "penalties": ["1 adapter→agent imports"],
+      "penalties": ["2 adapter→agent imports"],
       "rewards": ["No core→MCP violations"]
     },
     {
@@ -87,5 +89,5 @@
     }
   ],
   "trend": "stable",
-  "assessmentDate": "2026-03-08T13:25:33.744Z"
+  "assessmentDate": "2026-04-04T04:45:33.623Z"
 }

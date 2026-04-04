@@ -6,16 +6,16 @@
 
 ## Consolidation Progress (as of 2026-01-31)
 
-| Item                       | Status         | Commits/Issues            |
-| -------------------------- | -------------- | ------------------------- |
-| Token estimation           | ✅ COMPLETE    | 11fadd6, 06724b5, 45abf43 |
-| toError utility            | ✅ COMPLETE    | ecdf0e3                   |
-| Error message hints        | ✅ COMPLETE    | d4346a7                   |
-| OrchestrationObserver wire | ✅ COMPLETE    | Issue #587, 03d97a2       |
-| CommandResult base type    | ✅ COMPLETE    | Issue #584, 765d6a9       |
-| Task analyzer migration    | 🔄 IN PROGRESS | Issue #586                |
-| Layer separation           | ✅ COMPLETE    | Issue #588                |
-| Consensus caching          | 📋 PLANNED     | Issue #589                |
+| Item                       | Status      | Commits/Issues            |
+| -------------------------- | ----------- | ------------------------- |
+| Token estimation           | ✅ COMPLETE | 11fadd6, 06724b5, 45abf43 |
+| toError utility            | ✅ COMPLETE | ecdf0e3                   |
+| Error message hints        | ✅ COMPLETE | d4346a7                   |
+| OrchestrationObserver wire | ✅ COMPLETE | Issue #587, 03d97a2       |
+| CommandResult base type    | ✅ COMPLETE | Issue #584, 765d6a9       |
+| Task analyzer migration    | ✅ COMPLETE | Issue #586 (CLOSED)       |
+| Layer separation           | ✅ COMPLETE | Issue #588                |
+| Consensus caching          | ✅ COMPLETE | Issue #589 (CLOSED)       |
 
 **Fitness Score:** 92/100 ✓ (target: 90+)
 

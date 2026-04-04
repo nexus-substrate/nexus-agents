@@ -1,31 +1,87 @@
 /**
- * nexus-agents/governance - CLI Orchestration Fitness Score
- *
- * Measures architectural quality for CLI orchestration. Used to track
- * consolidation progress and prevent regression.
- *
- * Penalizes:
- * - Duplicate paths to accomplish the same workflow
- * - Hidden/implicit behavior (magic routing)
- * - Non-determinism
- * - Poor observability
- * - Too many config surfaces
- * - Cross-layer coupling
- *
- * Rewards:
- * - Single canonical paths
- * - Clear contracts/interfaces
- * - Deterministic runs
- * - Strong telemetry
- * - Predictable failure modes
- * - Minimal operator steps
- * - Strong governance
- *
+ * CLI Orchestration Fitness Score — real filesystem analysis.
+ * Penalizes duplicate paths, hidden behavior, non-determinism, poor
+ * observability, config sprawl, cross-layer coupling. Rewards canonical
+ * paths, determinism, telemetry, CLI ergonomics, governance.
  * @module governance/fitness-score
- * (Source: System Mandate LOOP I)
  */
 
+/* eslint-disable max-lines -- cohesive fitness calculator (governance allows 400-600) */
+
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { createLogger, type ILogger } from '../core/index.js';
+
+/** Package src root: packages/nexus-agents/src */
+const SRC_ROOT = join(import.meta.dirname, '..');
+/** Repository root: packages/nexus-agents/../../.. */
+const REPO_ROOT = join(import.meta.dirname, '../../../..');
+/** Docs root: repo/docs */
+const DOCS_ROOT = join(REPO_ROOT, 'docs');
+
+const DETERMINISM_EXCLUDES: RegExp[] = [
+  /\.test\.ts$/,
+  /\.spec\.ts$/,
+  /random-provider\.ts$/,
+  /time-provider\.ts$/,
+];
+
+// =========================================================================
+// Filesystem utility methods (inlined from scripts/fitness-utils.ts)
+// =========================================================================
+
+function countFiles(dir: string, pattern: RegExp): number {
+  if (!existsSync(dir)) return 0;
+  let count = 0;
+  for (const entry of readdirSync(dir)) {
+    const fullPath = join(dir, entry);
+    const stat = statSync(fullPath);
+    if (stat.isDirectory() && !entry.startsWith('.')) {
+      count += countFiles(fullPath, pattern);
+    } else if (pattern.test(entry)) {
+      count++;
+    }
+  }
+  return count;
+}
+
+function fileContains(filePath: string, pattern: RegExp): boolean {
+  if (!existsSync(filePath)) return false;
+  return pattern.test(readFileSync(filePath, 'utf-8'));
+}
+
+function isExcluded(entry: string, excludePatterns?: RegExp[]): boolean {
+  return excludePatterns?.some((p) => p.test(entry)) ?? false;
+}
+
+function countMatchesInFile(fullPath: string, contentPattern: RegExp): number {
+  const matches = readFileSync(fullPath, 'utf-8').match(contentPattern);
+  return matches?.length ?? 0;
+}
+
+function countPatternInDir(
+  dir: string,
+  filePattern: RegExp,
+  contentPattern: RegExp,
+  excludePatterns?: RegExp[]
+): number {
+  if (!existsSync(dir)) return 0;
+  let count = 0;
+  for (const entry of readdirSync(dir)) {
+    const fullPath = join(dir, entry);
+    const stat = statSync(fullPath);
+    if (stat.isDirectory() && !entry.startsWith('.') && entry !== 'node_modules') {
+      count += countPatternInDir(fullPath, filePattern, contentPattern, excludePatterns);
+    } else if (filePattern.test(entry) && !isExcluded(entry, excludePatterns)) {
+      count += countMatchesInFile(fullPath, contentPattern);
+    }
+  }
+  return count;
+}
+
+// =========================================================================
+// Public types
+// =========================================================================
 
 /**
  * Individual fitness dimension scores.
@@ -101,6 +157,11 @@ interface FitnessCheckResult {
   readonly findings: FitnessFinding[];
 }
 
+/** Clamp score to [0, max]. */
+function clamp(score: number, max: number): number {
+  return Math.max(0, Math.min(max, score));
+}
+
 /**
  * CLI Orchestration Fitness Score calculator.
  */
@@ -113,78 +174,61 @@ export class FitnessScoreCalculator {
     this.registerDefaultChecks();
   }
 
-  /**
-   * Register default fitness checks.
-   */
+  /** Register default fitness checks. */
   private registerDefaultChecks(): void {
-    // Canonical Paths (20 points max)
-    this.checks.push({
-      dimension: 'canonicalPaths',
-      maxPoints: 20,
-      name: 'Canonical Path Analysis',
-      check: () => this.checkCanonicalPaths(),
-    });
-
-    // Explicit Behavior (15 points max)
-    this.checks.push({
-      dimension: 'explicitBehavior',
-      maxPoints: 15,
-      name: 'Explicit Behavior Analysis',
-      check: () => this.checkExplicitBehavior(),
-    });
-
-    // Determinism (15 points max)
-    this.checks.push({
-      dimension: 'determinism',
-      maxPoints: 15,
-      name: 'Determinism Analysis',
-      check: () => this.checkDeterminism(),
-    });
-
-    // Observability (15 points max)
-    this.checks.push({
-      dimension: 'observability',
-      maxPoints: 15,
-      name: 'Observability Analysis',
-      check: () => this.checkObservability(),
-    });
-
-    // Config Simplicity (10 points max)
-    this.checks.push({
-      dimension: 'configSimplicity',
-      maxPoints: 10,
-      name: 'Config Simplicity Analysis',
-      check: () => this.checkConfigSimplicity(),
-    });
-
-    // Layer Separation (10 points max)
-    this.checks.push({
-      dimension: 'layerSeparation',
-      maxPoints: 10,
-      name: 'Layer Separation Analysis',
-      check: () => this.checkLayerSeparation(),
-    });
-
-    // Operator Ergonomics (10 points max)
-    this.checks.push({
-      dimension: 'operatorErgonomics',
-      maxPoints: 10,
-      name: 'Operator Ergonomics Analysis',
-      check: () => this.checkOperatorErgonomics(),
-    });
-
-    // Governance Integration (5 points max)
-    this.checks.push({
-      dimension: 'governanceIntegration',
-      maxPoints: 5,
-      name: 'Governance Integration Analysis',
-      check: () => this.checkGovernanceIntegration(),
-    });
+    this.checks.push(
+      {
+        dimension: 'canonicalPaths',
+        maxPoints: 20,
+        name: 'Canonical Path Analysis',
+        check: () => this.checkCanonicalPaths(),
+      },
+      {
+        dimension: 'explicitBehavior',
+        maxPoints: 15,
+        name: 'Explicit Behavior Analysis',
+        check: () => this.checkExplicitBehavior(),
+      },
+      {
+        dimension: 'determinism',
+        maxPoints: 15,
+        name: 'Determinism Analysis',
+        check: () => this.checkDeterminism(),
+      },
+      {
+        dimension: 'observability',
+        maxPoints: 15,
+        name: 'Observability Analysis',
+        check: () => this.checkObservability(),
+      },
+      {
+        dimension: 'configSimplicity',
+        maxPoints: 10,
+        name: 'Config Simplicity Analysis',
+        check: () => this.checkConfigSimplicity(),
+      },
+      {
+        dimension: 'layerSeparation',
+        maxPoints: 10,
+        name: 'Layer Separation Analysis',
+        check: () => this.checkLayerSeparation(),
+      },
+      {
+        dimension: 'operatorErgonomics',
+        maxPoints: 10,
+        name: 'Operator Ergonomics Analysis',
+        check: () => this.checkOperatorErgonomics(),
+      },
+      {
+        dimension: 'governanceIntegration',
+        maxPoints: 5,
+        name: 'Governance Integration Analysis',
+        check: () => this.checkGovernanceIntegration(),
+      }
+    );
   }
 
-  /**
-   * Run full fitness audit.
-   */
+  /** Run full fitness audit. */
   audit(version: string): FitnessAudit {
     const findings: FitnessFinding[] = [];
     const dimensions: Record<string, number> = {};
@@ -197,7 +241,6 @@ export class FitnessScoreCalculator {
     }
 
     const score = Object.values(dimensions).reduce((sum, val) => sum + val, 0);
-
     this.logger.info('Fitness audit complete', { score, version });
 
     return {
@@ -210,207 +253,453 @@ export class FitnessScoreCalculator {
   }
 
   // =========================================================================
-  // Individual Checks
+  // Individual Checks — real filesystem analysis
   // =========================================================================
 
-  /**
-   * Check canonical paths - penalize duplicate paths to same workflow.
-   * Target: 18/20 after consolidation (per Issue #574)
-   */
+  /** Check canonical paths: penalize duplicate router implementations. */
   private checkCanonicalPaths(): FitnessCheckResult {
     const findings: FitnessFinding[] = [];
-    const score = 20;
+    let score = 20;
 
-    // Check: Token estimation unified - COMPLETE
-    // All adapters now use unified TokenEstimator from core/token-estimator.ts
-    // 11fadd6: Ollama adapter migrated
-    // 06724b5: Dead constants removed (CLAUDE/OPENAI/GEMINI_CHARS_PER_TOKEN)
-    // No deduction - fully consolidated
+    const routerCount = countFiles(join(SRC_ROOT, 'cli-adapters'), /router\.ts$/);
+    if (routerCount > 5) {
+      const excess = routerCount - 5;
+      const deduction = Math.min(5, excess);
+      score -= deduction;
+      findings.push(
+        this.finding(
+          'canonicalPaths',
+          'warning',
+          `${String(routerCount)} router implementations found (target: <=5)`,
+          deduction,
+          'Consolidate duplicate routers into CompositeRouter'
+        )
+      );
+    }
 
-    // Check: Task analysis unified - COMPLETE
-    // CLI routing pipeline uses SharedTaskAnalyzer via taskAnalysisResultToTaskProfile():
-    //   - composite-router-stages.ts:analyzeTaskProfile() calls createSharedTaskAnalyzer()
-    //   - composite-router-helpers.ts, composite-router-types.ts import TaskProfile from core
-    //   - router-scoring.ts, difficulty-space.ts import TaskProfile from core
-    // Legacy cli-adapters/task-analyzer.ts preserved for backward compatibility only:
-    //   - Re-exported from cli-adapters/index.ts for external consumers
-    //   - Scheduled for removal in v3.0 (Issue #574)
-    // No deduction - routing pipeline fully migrated
+    if (existsSync(join(SRC_ROOT, 'cli-adapters/composite-router.ts'))) {
+      score += 2;
+    } else {
+      score -= 3;
+      findings.push(
+        this.finding(
+          'canonicalPaths',
+          'critical',
+          'CompositeRouter missing — no unified routing entry point',
+          3
+        )
+      );
+    }
 
-    // Check: Router implementations
-    // Canonical routers (5): CompositeRouter, BudgetRouter, ZeroRouter, PreferenceRouter, TopsisRouter
-    // Removed: TaskRouter (class removed, ITaskRouter interface migrated to router-types.ts)
-    // Removed: ConfidenceRouter (use ConfidenceCascadeStage), QualityRouter (use TopsisRouter)
-    // Separate patterns (not counted): AgreementCascadeRouter (ensemble), AgentMessageRouter (collaboration)
-    // No deduction - all deprecated router implementations removed
+    score = this.checkOrchestratorInterface(score, findings);
 
-    // Consolidated: toError utility (ecdf0e3) - no deduction
-    // Consolidated: STPA safety framework (7bbf6e5) - no deduction
-    // Consolidated: REST API server integration (bbd3709) - no deduction
-    // Consolidated: Memory DB utilities (ADR-0013, 48f7aad) - no deduction
-    //   - memoryRowToEntry, memoryExists, getMemoryRow, getAllMemoryRows
-    //   - tokenize, tokenizeFiltered, stringifyValue
-    // Consolidated: ID generation utilities (ADR-0013, a5f9c31) - no deduction
-    //   - generateId, generateHyphenId, generateShortUuid
-    // Consolidated: STOPWORDS across 4 modules (ADR-0013, 03a5928) - no deduction
-    //   - policy-feature-extraction, task-analyzer-keywords, task-analyzer, agentic-memory
-    // Consolidated: Orchestrator factory wiring (ADR-0014, b2e4c0e) - no deduction
-    //   - OrchestratorAdapter (née TechLeadAdapter), PuppeteerAdapter now accept instances
-    // Consolidated: MCP orchestrate tool to IOrchestrator (ADR-0014, 33c8748) - no deduction
-    //   - Uses OrchestratorFactory, ITechLead deprecated
-    // Consolidated: Similarity utilities (ADR-0013, 2bc7ff1) - no deduction
-    //   - calculateTokenOverlap, calculateJaccardSimilarity, calculateTextJaccardSimilarity
-    //   - Used by adaptive-memory-helpers, policy-feature-extraction
-    // Consolidated: REST orchestrate to IOrchestrator (ADR-0014, e83e9b5) - no deduction
-    //   - Uses OrchestratorFactory, same pattern as MCP tool
-    // Architectural decision: CLI orchestrate uses different pattern (JUSTIFIED)
-    //   - CLI uses CompositeRouter for external tool delegation (Claude/Gemini/Codex)
-    //   - MCP/REST use IOrchestrator for internal agent orchestration
-    //   - Different use cases, not redundancy
+    return { score: clamp(score, 20), findings };
+  }
 
-    return { score: Math.max(0, score), findings };
+  /** Sub-check for IOrchestrator interface and adapter wiring. */
+  private checkOrchestratorInterface(score: number, findings: FitnessFinding[]): number {
+    const orchPath = join(SRC_ROOT, 'core/types/orchestrator.ts');
+    if (existsSync(orchPath) && fileContains(orchPath, /interface IOrchestrator/)) {
+      score += 3;
+    } else {
+      score -= 2;
+      findings.push(
+        this.finding('canonicalPaths', 'warning', 'No IOrchestrator interface in core/types', 2)
+      );
+    }
+
+    const adapterPath = join(SRC_ROOT, 'orchestration/orchestrator-adapters.ts');
+    if (existsSync(adapterPath) && fileContains(adapterPath, /TechLeadAdapter|PuppeteerAdapter/)) {
+      score += 2;
+    }
+
+    return score;
   }
 
   /**
-   * Check explicit behavior - penalize hidden/magic behavior.
+   * Check explicit behavior: penalize hidden/magic behavior.
+   * TODO: This dimension lacks strong filesystem signals. Currently checks
+   * for NEXUS_ALLOW_MOCK_ORCHESTRATION guard and magic routing patterns.
+   * Future: add AST-based detection of implicit fallbacks.
    */
   private checkExplicitBehavior(): FitnessCheckResult {
     const findings: FitnessFinding[] = [];
-    const score = 15;
+    let score = 15;
 
-    // Check: Implicit mock fallback fixed (Issue #554)
-    // Full points if NEXUS_ALLOW_MOCK_ORCHESTRATION is required
-    // This was fixed, so no deduction
+    // Check: mock orchestration requires explicit env var opt-in
+    const mockGuardCount = countPatternInDir(
+      SRC_ROOT,
+      /\.ts$/,
+      /NEXUS_ALLOW_MOCK_ORCHESTRATION/g,
+      DETERMINISM_EXCLUDES
+    );
+    if (mockGuardCount === 0) {
+      score -= 3;
+      findings.push(
+        this.finding(
+          'explicitBehavior',
+          'warning',
+          'No NEXUS_ALLOW_MOCK_ORCHESTRATION guard found — mock fallback may be implicit',
+          3,
+          'Require explicit env var for mock orchestration'
+        )
+      );
+    }
 
-    // Check: Magic routing in delegate_to_model
-    // Currently uses explicit capability matching
-    // No deduction
+    // Check: magic routing patterns (delegate without explicit capability match)
+    const magicRouting = countPatternInDir(
+      SRC_ROOT,
+      /\.ts$/,
+      /fallback.*=.*true|implicitRoute/g,
+      DETERMINISM_EXCLUDES
+    );
+    if (magicRouting > 5) {
+      const deduction = Math.min(3, Math.floor(magicRouting / 3));
+      score -= deduction;
+      findings.push(
+        this.finding(
+          'explicitBehavior',
+          'info',
+          `${String(magicRouting)} implicit fallback/routing patterns detected`,
+          deduction
+        )
+      );
+    }
 
-    return { score, findings };
+    return { score: clamp(score, 15), findings };
   }
 
-  /**
-   * Check determinism - reward deterministic execution.
-   */
+  /** Check determinism: penalize unseeded random and raw Date.now(). */
   private checkDeterminism(): FitnessCheckResult {
     const findings: FitnessFinding[] = [];
     let score = 15;
 
-    // Check: Time provider abstraction exists
-    // Full points - getTimeProvider() is used
+    score = this.checkRandomDeterminism(score, findings);
+    score = this.checkTimeDeterminism(score, findings);
 
-    // Check: Random provider abstraction exists
-    // Full points - getRandomProvider() is used
-
-    // Check: Consensus voting determinism
-    // Deduct if votes could vary without seed
-    score -= 2;
-    findings.push({
-      dimension: 'determinism',
-      severity: 'info',
-      description: 'Consensus voting uses LLM responses which are non-deterministic',
-      pointsDeducted: 2,
-      suggestion: 'Consider caching/memoization for repeated proposals',
-    });
-
-    return { score: Math.max(0, score), findings };
+    return { score: clamp(score, 15), findings };
   }
 
-  /**
-   * Check observability - reward telemetry coverage.
-   */
+  /** Sub-check for Math.random() and injectable random provider. */
+  private checkRandomDeterminism(score: number, findings: FitnessFinding[]): number {
+    const randomCount = countPatternInDir(
+      SRC_ROOT,
+      /\.ts$/,
+      /Math\.random\(\)/g,
+      DETERMINISM_EXCLUDES
+    );
+    if (randomCount > 10) {
+      const deduction = Math.min(5, Math.floor(randomCount / 5));
+      score -= deduction;
+      findings.push(
+        this.finding(
+          'determinism',
+          'warning',
+          `${String(randomCount)} unseeded Math.random() calls in production code`,
+          deduction,
+          'Use getRandomProvider() for injectable randomness'
+        )
+      );
+    } else if (randomCount === 0) {
+      score += 2;
+    }
+
+    if (existsSync(join(SRC_ROOT, 'core/random-provider.ts'))) {
+      score += 1;
+    }
+    const randomUsage = countPatternInDir(
+      SRC_ROOT,
+      /\.ts$/,
+      /getRandomProvider\(\)/g,
+      DETERMINISM_EXCLUDES
+    );
+    if (randomUsage > 5) {
+      score += 1;
+    }
+
+    return score;
+  }
+
+  /** Sub-check for Date.now() and injectable time provider. */
+  private checkTimeDeterminism(score: number, findings: FitnessFinding[]): number {
+    const dateNowCount = countPatternInDir(
+      SRC_ROOT,
+      /\.ts$/,
+      /Date\.now\(\)/g,
+      DETERMINISM_EXCLUDES
+    );
+    if (dateNowCount > 50) {
+      score -= 2;
+      findings.push(
+        this.finding(
+          'determinism',
+          'info',
+          `${String(dateNowCount)} Date.now() calls in production code`,
+          2,
+          'Use getTimeProvider() for injectable time'
+        )
+      );
+    }
+
+    if (existsSync(join(SRC_ROOT, 'core/time-provider.ts'))) {
+      score += 1;
+    }
+    const timeUsage = countPatternInDir(
+      SRC_ROOT,
+      /\.ts$/,
+      /getTimeProvider\(\)/g,
+      DETERMINISM_EXCLUDES
+    );
+    if (timeUsage > 10) {
+      score += 1;
+    }
+
+    return score;
+  }
+
+  /** Check observability: reward tracing, logging, and audit coverage. */
   private checkObservability(): FitnessCheckResult {
     const findings: FitnessFinding[] = [];
-    const score = 15;
+    let score = 15;
 
-    // Check: Tracing infrastructure exists
-    // Full points - Tracer, TraceExporter exist
+    if (existsSync(join(SRC_ROOT, 'observability/swarm-observer.ts'))) {
+      score += 3;
+    } else {
+      score -= 3;
+      findings.push(
+        this.finding(
+          'observability',
+          'warning',
+          'No SwarmObserver found',
+          3,
+          'Add observability/swarm-observer.ts'
+        )
+      );
+    }
 
-    // Check: Metrics collection
-    // Full points - ErrorMetricsCollector exists
+    if (existsSync(join(SRC_ROOT, 'core/trace.ts'))) {
+      score += 2;
+    }
 
-    // Check: OrchestrationObserver integration - COMPLETE (Issue #587)
-    // CompositeRouter now accepts orchestrationObserver config and records all routing decisions
-    // Commit: Wire OrchestrationObserver to CompositeRouter
-    // No deduction - fully wired
+    const loggerCount = countPatternInDir(SRC_ROOT, /\.ts$/, /createLogger\(/g);
+    if (loggerCount > 50) {
+      score += 2;
+    } else {
+      findings.push(
+        this.finding(
+          'observability',
+          'info',
+          `Only ${String(loggerCount)} createLogger() calls (target: >50)`,
+          0
+        )
+      );
+    }
 
-    return { score: Math.max(0, score), findings };
+    if (existsSync(join(SRC_ROOT, 'audit'))) {
+      score += 2;
+    }
+
+    return { score: clamp(score, 15), findings };
   }
 
-  /**
-   * Check config simplicity - penalize too many config surfaces.
-   */
+  /** Check config simplicity: penalize excessive schema sprawl. */
   private checkConfigSimplicity(): FitnessCheckResult {
     const findings: FitnessFinding[] = [];
-    const score = 10;
+    let score = 10;
 
-    // Check: Unified config schema exists
-    // Full points - nexus-agents.yaml with schemas
+    const schemaCount = countFiles(join(SRC_ROOT, 'config'), /schema.*\.ts$/);
+    if (schemaCount > 10) {
+      score -= 2;
+      findings.push(
+        this.finding(
+          'configSimplicity',
+          'info',
+          `${String(schemaCount)} config schemas (target: <=10)`,
+          2,
+          'Consolidate related schemas'
+        )
+      );
+    } else {
+      score += 1;
+    }
 
-    // Check: Config validation
-    // 25+ Zod schemas are defined in config/schemas-*.ts
-    // All major config types have validation (Issue #574, v2.4.0)
-    // No deduction - validation is complete
+    if (existsSync(join(SRC_ROOT, 'config/config-loader.ts'))) {
+      score += 2;
+    }
+    if (existsSync(join(SRC_ROOT, 'config/config-manager.ts'))) {
+      score += 1;
+    }
 
-    return { score: Math.max(0, score), findings };
+    return { score: clamp(score, 10), findings };
   }
 
-  /**
-   * Check layer separation - penalize cross-layer coupling.
-   */
+  /** Check layer separation: penalize cross-layer imports. */
   private checkLayerSeparation(): FitnessCheckResult {
     const findings: FitnessFinding[] = [];
-    const score = 10;
+    let score = 10;
 
-    // Check: Core has no adapter imports
-    // Full points if clean
+    const adapterAgentImports = countPatternInDir(
+      join(SRC_ROOT, 'adapters'),
+      /\.ts$/,
+      /from ['"]\.\.\/agents\//g
+    );
+    if (adapterAgentImports > 0) {
+      const deduction = Math.min(5, adapterAgentImports);
+      score -= deduction;
+      findings.push(
+        this.finding(
+          'layerSeparation',
+          'warning',
+          `${String(adapterAgentImports)} adapter->agent import violations`,
+          deduction,
+          'Adapters should not import from agents layer'
+        )
+      );
+    } else {
+      score += 2;
+    }
 
-    // Check: MCP tools don't import CLI adapters directly
-    // COMPLETE (Issue #588): MCP tools now import ICompositeRouter from core/routing
-    // core/routing/index.ts provides a stable interface layer over cli-adapters
-    // No deduction - proper abstraction in place
+    const coreMcpImports = countPatternInDir(
+      join(SRC_ROOT, 'core'),
+      /\.ts$/,
+      /from ['"]\.\.\/mcp\//g
+    );
+    if (coreMcpImports > 0) {
+      const deduction = Math.min(3, coreMcpImports);
+      score -= deduction;
+      findings.push(
+        this.finding(
+          'layerSeparation',
+          'critical',
+          `${String(coreMcpImports)} core->MCP import violations`,
+          deduction,
+          'Core must not depend on MCP layer'
+        )
+      );
+    } else {
+      score += 1;
+    }
 
-    return { score: Math.max(0, score), findings };
+    return { score: clamp(score, 10), findings };
   }
 
-  /**
-   * Check operator ergonomics - reward minimal CLI steps.
-   */
+  /** Check operator ergonomics: reward rich CLI commands. */
   private checkOperatorErgonomics(): FitnessCheckResult {
     const findings: FitnessFinding[] = [];
-    const score = 10;
+    let score = 10;
 
-    // Check: nexus-agents doctor command exists
-    // Full points
+    const commandCount = countFiles(join(SRC_ROOT, 'cli'), /\.ts$/);
+    if (commandCount >= 20) {
+      score += 3;
+    } else {
+      findings.push(
+        this.finding(
+          'operatorErgonomics',
+          'info',
+          `${String(commandCount)} CLI commands (target: >=20)`,
+          0
+        )
+      );
+    }
 
-    // Check: nexus-agents setup wizard exists
-    // Full points (Issue #425)
+    score = this.checkCliCommands(score, findings);
 
-    // Check: Clear error messages
-    // d4346a7: Added actionable hints to key CLI error messages
-    // (workflow-run.ts, session-commands.ts, config-command.ts)
-    // Full points - major user-facing errors now include hints
-
-    return { score: Math.max(0, score), findings };
+    return { score: clamp(score, 10), findings };
   }
 
-  /**
-   * Check governance integration - reward governance injection.
-   */
+  /** Sub-check for essential CLI commands (doctor, setup, demo, config). */
+  private checkCliCommands(score: number, findings: FitnessFinding[]): number {
+    const commands: Array<[string, string, number]> = [
+      ['cli/doctor.ts', 'Doctor command', 2],
+      ['cli/setup-command.ts', 'Setup wizard', 2],
+      ['cli/demo-command.ts', 'Demo command', 1],
+      ['cli/config-command.ts', 'Config command', 1],
+    ];
+
+    for (const [path, name, bonus] of commands) {
+      if (existsSync(join(SRC_ROOT, path))) {
+        score += bonus;
+      } else {
+        findings.push(this.finding('operatorErgonomics', 'info', `Missing ${name} (${path})`, 0));
+      }
+    }
+
+    return score;
+  }
+
+  /** Check governance integration: policy firewall, rate limiter, docs. */
   private checkGovernanceIntegration(): FitnessCheckResult {
     const findings: FitnessFinding[] = [];
-    const score = 5;
+    let score = 5;
 
-    // Check: Policy firewall exists
-    // Full points
+    score = this.checkGovernanceDocs(score, findings);
+    score = this.checkGovernanceInfra(score, findings);
 
-    // Check: Rate limiting on all MCP tools
-    // Full points
+    return { score: clamp(score, 5), findings };
+  }
 
-    // Check: Timeout protection (CVE-2026-0621)
-    // Full points
+  /** Sub-check for governance documentation artifacts. */
+  private checkGovernanceDocs(score: number, findings: FitnessFinding[]): number {
+    if (!existsSync(join(REPO_ROOT, 'CLAUDE.md'))) {
+      score -= 3;
+      findings.push(
+        this.finding('governanceIntegration', 'critical', 'No CLAUDE.md governance document', 3)
+      );
+    } else {
+      score += 1;
+    }
 
-    return { score, findings };
+    if (existsSync(join(DOCS_ROOT, 'architecture/wiring-graph.json'))) {
+      score += 1;
+    }
+
+    if (existsSync(join(DOCS_ROOT, 'adr'))) {
+      score += 1;
+    } else {
+      findings.push(this.finding('governanceIntegration', 'info', 'No ADR directory', 0));
+    }
+
+    return score;
+  }
+
+  /** Sub-check for governance runtime infrastructure. */
+  private checkGovernanceInfra(score: number, findings: FitnessFinding[]): number {
+    const hasPolicyFirewall =
+      countPatternInDir(join(SRC_ROOT, 'security'), /\.ts$/, /PolicyGate|policyFirewall/g) > 0;
+    if (hasPolicyFirewall) {
+      score += 1;
+    } else {
+      findings.push(
+        this.finding(
+          'governanceIntegration',
+          'warning',
+          'No policy firewall detected in security layer',
+          0
+        )
+      );
+    }
+
+    const hasRateLimiter = countPatternInDir(SRC_ROOT, /\.ts$/, /RateLimiter|rateLimiter/g) > 0;
+    if (hasRateLimiter) {
+      score += 1;
+    }
+
+    return score;
+  }
+
+  /** Helper to create a FitnessFinding with defaults. */
+  private finding(
+    dimension: keyof FitnessDimensions,
+    severity: FitnessFinding['severity'],
+    description: string,
+    pointsDeducted: number,
+    suggestion?: string
+  ): FitnessFinding {
+    const base: FitnessFinding = { dimension, severity, description, pointsDeducted };
+    if (suggestion !== undefined) {
+      return { ...base, suggestion };
+    }
+    return base;
   }
 }
 
