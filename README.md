@@ -1,5 +1,7 @@
 # Nexus Agents
 
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/12365/badge)](https://www.bestpractices.dev/projects/12365) [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/williamzujkowski/nexus-agents/badge)](https://securityscorecards.dev/viewer/?uri=github.com/williamzujkowski/nexus-agents)
+
 > Orchestrate multiple AI experts from a single interface
 
 [![npm version](https://img.shields.io/npm/v/nexus-agents)](https://www.npmjs.com/package/nexus-agents)
