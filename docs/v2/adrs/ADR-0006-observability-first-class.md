@@ -1,6 +1,6 @@
 # ADR-0006: Observability as First-Class (Event Bus + Provenance)
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-02-08
 **Deciders:** DevEx, Architect, PM
 

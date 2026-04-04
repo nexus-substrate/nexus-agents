@@ -145,12 +145,12 @@ WorkflowEngine.execute(workflow, inputs)
          v               v              v               v              v
 +--------------------------------------------------------------------------------+
 |                           Adapters Layer                                        |
-|  +------------+  +-----------+  +------------+  +------------+                 |
-|  | Claude     |  | OpenAI    |  | Gemini     |  | Ollama     |                 |
-|  | Adapter    |  | Adapter   |  | Adapter    |  | Adapter    |                 |
-|  +-----+------+  +-----+-----+  +-----+------+  +-----+------+                 |
-+--------|---------------|--------------|--------------|---------------------------+
-         |               |              |              |
+|  +------------+  +-----------+  +------------+  +------------+  +----------+  |
+|  | Claude     |  | OpenAI    |  | Gemini     |  | Ollama     |  | OpenCode |  |
+|  | Adapter    |  | Adapter   |  | Adapter    |  | Adapter    |  | Adapter  |  |
+|  +-----+------+  +-----+-----+  +-----+------+  +-----+------+  +----+-----+  |
++--------|---------------|--------------|--------------|--------------|------------+
+         |               |              |              |              |
          v               v              v              v
 +--------------------------------------------------------------------------------+
 |                              Core Layer                                         |
@@ -281,19 +281,28 @@ src/
 |   +-- workflow-run.ts # Workflow execution
 |
 +-- cli-adapters/       # CLI ADAPTER LAYER - External CLI integration
-    +-- types.ts        # CLI adapter type definitions
-    +-- base-adapter.ts # Abstract CLI adapter base class
-    +-- factory.ts      # CLI adapter factory
-    +-- router.ts       # Capability-based task routing
-    +-- circuit-breaker.ts # Fault tolerance patterns
-    +-- adapters/       # Concrete adapter implementations
-    |   +-- claude-adapter.ts
-    |   +-- gemini-adapter.ts
-    |   +-- codex-adapter.ts
-    +-- parsers/        # Output parsing per CLI
-        +-- claude-parser.ts
-        +-- gemini-parser.ts
-        +-- codex-parser.ts
+|   +-- types.ts        # CLI adapter type definitions
+|   +-- base-adapter.ts # Abstract CLI adapter base class
+|   +-- factory.ts      # CLI adapter factory
+|   +-- router.ts       # Capability-based task routing
+|   +-- circuit-breaker.ts # Fault tolerance patterns
+|   +-- adapters/       # Concrete adapter implementations
+|   |   +-- claude-adapter.ts
+|   |   +-- gemini-adapter.ts
+|   |   +-- codex-adapter.ts
+|   |   +-- opencode-adapter.ts
+|   +-- parsers/        # Output parsing per CLI
+|       +-- claude-parser.ts
+|       +-- gemini-parser.ts
+|       +-- codex-parser.ts
+|
++-- pipeline/           # PIPELINE LAYER - Task contracts, event bus, plugins
+    +-- task-contract.ts    # TaskContractSchema — canonical task shape
+    +-- pipeline-runner.ts  # PipelineRunner
+    +-- plugin-registry.ts  # PluginRegistry
+    +-- event-bus.ts        # EventBus
+    +-- artifact-store.ts   # ArtifactStore
+    +-- policy-engine.ts    # PolicyEngine
 ```
 
 ---

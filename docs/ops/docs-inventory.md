@@ -48,16 +48,16 @@ Hub documents for each major section:
 
 ### Tier 3: Detail (Reference as Needed)
 
-| Section              | File Count |
-| -------------------- | ---------- |
-| Architecture details | 18         |
-| Development guides   | 6          |
-| Research (all)       | 39         |
-| ADRs                 | 14         |
-| Interfaces           | 5          |
-| Proposals            | 8          |
-| Plans                | 5          |
-| Operational          | 4          |
+| Section              | File Count | Notes                         |
+| -------------------- | ---------- | ----------------------------- |
+| Architecture details | 18         |                               |
+| Development guides   | 6          |                               |
+| Research (all)       | 39         |                               |
+| ADRs                 | 16         |                               |
+| Interfaces           | 5          |                               |
+| Proposals            | —          | Directory removed (was empty) |
+| Plans                | —          | Directory removed (was empty) |
+| Operational          | 4          |                               |
 
 ---
 
@@ -92,18 +92,38 @@ Hub documents for each major section:
 | `validation`       | sync  | Implemented | docs/ENTRYPOINTS.md |
 | `learning-metrics` | sync  | Implemented | docs/ENTRYPOINTS.md |
 
-### MCP Tools (8 total)
+### MCP Tools (28 total)
 
-| Tool                | Status      | Documentation                  |
-| ------------------- | ----------- | ------------------------------ |
-| `orchestrate`       | Implemented | docs/guides/MCP_INTEGRATION.md |
-| `create_expert`     | Implemented | docs/guides/MCP_INTEGRATION.md |
-| `execute_expert`    | Implemented | docs/guides/MCP_INTEGRATION.md |
-| `run_workflow`      | Implemented | docs/guides/MCP_INTEGRATION.md |
-| `delegate_to_model` | Implemented | docs/guides/MCP_INTEGRATION.md |
-| `list_experts`      | Implemented | docs/guides/MCP_INTEGRATION.md |
-| `list_workflows`    | Implemented | docs/guides/MCP_INTEGRATION.md |
-| `consensus_vote`    | Implemented | docs/guides/MCP_INTEGRATION.md |
+| Tool                      | Status      | Documentation                  |
+| ------------------------- | ----------- | ------------------------------ |
+| `orchestrate`             | Implemented | docs/guides/MCP_INTEGRATION.md |
+| `create_expert`           | Implemented | docs/guides/MCP_INTEGRATION.md |
+| `execute_expert`          | Implemented | docs/guides/MCP_INTEGRATION.md |
+| `run_workflow`            | Implemented | docs/guides/MCP_INTEGRATION.md |
+| `delegate_to_model`       | Implemented | docs/guides/MCP_INTEGRATION.md |
+| `list_experts`            | Implemented | docs/guides/MCP_INTEGRATION.md |
+| `list_workflows`          | Implemented | docs/guides/MCP_INTEGRATION.md |
+| `consensus_vote`          | Implemented | docs/guides/MCP_INTEGRATION.md |
+| `research_query`          | Implemented | docs/guides/MCP_INTEGRATION.md |
+| `research_add`            | Implemented | docs/guides/MCP_INTEGRATION.md |
+| `research_add_source`     | Implemented | docs/guides/MCP_INTEGRATION.md |
+| `research_discover`       | Implemented | docs/guides/MCP_INTEGRATION.md |
+| `research_analyze`        | Implemented | docs/guides/MCP_INTEGRATION.md |
+| `research_catalog_review` | Implemented | docs/guides/MCP_INTEGRATION.md |
+| `research_synthesize`     | Implemented | docs/guides/MCP_INTEGRATION.md |
+| `memory_query`            | Implemented | docs/guides/MCP_INTEGRATION.md |
+| `memory_stats`            | Implemented | docs/guides/MCP_INTEGRATION.md |
+| `memory_write`            | Implemented | docs/guides/MCP_INTEGRATION.md |
+| `weather_report`          | Implemented | docs/guides/MCP_INTEGRATION.md |
+| `issue_triage`            | Implemented | docs/guides/MCP_INTEGRATION.md |
+| `run_graph_workflow`      | Implemented | docs/guides/MCP_INTEGRATION.md |
+| `execute_spec`            | Implemented | docs/guides/MCP_INTEGRATION.md |
+| `registry_import`         | Implemented | docs/guides/MCP_INTEGRATION.md |
+| `query_trace`             | Implemented | docs/guides/MCP_INTEGRATION.md |
+| `repo_analyze`            | Implemented | docs/guides/MCP_INTEGRATION.md |
+| `repo_security_plan`      | Implemented | docs/guides/MCP_INTEGRATION.md |
+| `extract_symbols`         | Implemented | docs/guides/MCP_INTEGRATION.md |
+| `search_codebase`         | Implemented | docs/guides/MCP_INTEGRATION.md |
 
 ### Workflow Templates (7 built-in)
 

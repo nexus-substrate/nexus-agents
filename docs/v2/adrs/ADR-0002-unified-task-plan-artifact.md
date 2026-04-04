@@ -1,6 +1,6 @@
 # ADR-0002: Unified TaskContract + PlanContract + ArtifactStore
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-02-08
 **Deciders:** Architect, PM, DevEx
 

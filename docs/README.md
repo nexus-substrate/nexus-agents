@@ -168,6 +168,7 @@ Detailed technical documentation:
 | [README.md](./interfaces/README.md)                   | Interface documentation hub |
 | [agent.md](./interfaces/agent.md)                     | Agent interface spec        |
 | [model-adapter.md](./interfaces/model-adapter.md)     | Model adapter spec          |
+| [orchestrator.md](./interfaces/orchestrator.md)       | Orchestrator interface spec |
 | [tool.md](./interfaces/tool.md)                       | Tool interface spec         |
 | [workflow-engine.md](./interfaces/workflow-engine.md) | Workflow engine spec        |
 

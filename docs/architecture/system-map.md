@@ -11,7 +11,7 @@
 │    MCP Server      │    CLI Commands    │        REST API (planned)          │
 │  (cli-server.ts)   │    (cli.ts)        │       (api-gateway.ts)             │
 │                    │                    │                                    │
-│  24 MCP Tools:     │  30+ Commands:     │  Future:                           │
+│  28 MCP Tools:     │  30+ Commands:     │  Future:                           │
 │  • orchestrate     │  • doctor          │  • /orchestrate                    │
 │  • create_expert   │  • setup           │  • /experts                        │
 │  • execute_expert  │  • orchestrate     │  • /workflows                      │
@@ -19,7 +19,7 @@
 │  • consensus_vote  │  • expert          │                                    │
 │  • list_experts    │  • research        │                                    │
 │  • list_workflows  │  • sprint/vote     │                                    │
-│  • delegate_model  │  • session         │                                    │
+│  • delegate_to_model│  • session         │                                    │
 └────────────────────┴────────────────────┴────────────────────────────────────┘
                                     │
                                     ▼

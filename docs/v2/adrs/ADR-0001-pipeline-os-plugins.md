@@ -1,6 +1,6 @@
 # ADR-0001: Pipeline OS + Plugins as the Only Orchestration Primitive
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-02-08
 **Deciders:** Architect, Security, DevEx, PM, AI/ML
 

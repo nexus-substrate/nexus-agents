@@ -1,6 +1,6 @@
 # ADR-0003: Graph Execution Model (LangGraph Semantics) + Bounded Iteration
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-02-08
 **Deciders:** Architect, AI/ML, Security
 

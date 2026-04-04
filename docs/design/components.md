@@ -8,18 +8,19 @@ _Generated: 2026-02-08_
 
 ## Module Summary
 
-| Module        | Files | Tests | Layer | Purpose                                        |
-| ------------- | ----- | ----- | ----- | ---------------------------------------------- |
-| core          | 39    | 31    | 0     | Types, errors, logging, tracing, task analysis |
-| security      | 35    | 38    | 0     | Trust classification, policy gates, firewall   |
-| config        | 25    | 15    | 1     | App config, model registry, routing config     |
-| consensus     | 20    | 14    | 1     | Voting strategies, quorum, correlation         |
-| agents        | 287   | 144   | 2     | Agent framework, experts, orchestrator         |
-| adapters      | 26    | 19    | 2     | Direct API adapters, resilient wrapper         |
-| cli-adapters  | 90    | 68    | 3     | CLI subprocess adapters, composite router      |
-| learning      | 14    | 9     | 3     | Outcome feedback, A/B testing                  |
-| orchestration | 33    | 17    | 4     | Graph workflows, spec factory, pattern router  |
-| mcp           | 81    | 71    | 4     | MCP server, 20 tool handlers, gateway          |
+| Module        | Files | Tests | Layer | Purpose                                             |
+| ------------- | ----- | ----- | ----- | --------------------------------------------------- |
+| core          | 39    | 31    | 0     | Types, errors, logging, tracing, task analysis      |
+| security      | 35    | 38    | 0     | Trust classification, policy gates, firewall        |
+| config        | 25    | 15    | 1     | App config, model registry, routing config          |
+| consensus     | 20    | 14    | 1     | Voting strategies, quorum, correlation              |
+| agents        | 287   | 144   | 2     | Agent framework, experts, orchestrator              |
+| adapters      | 26    | 19    | 2     | Direct API adapters, resilient wrapper              |
+| cli-adapters  | 90    | 68    | 3     | CLI subprocess adapters, composite router           |
+| learning      | 14    | 9     | 3     | Outcome feedback, A/B testing                       |
+| orchestration | 33    | 17    | 4     | Graph workflows, spec factory, pattern router       |
+| pipeline      | 20    | 18    | 4     | Task contracts, pipeline runner, event bus, plugins |
+| mcp           | 81    | 71    | 4     | MCP server, 28 tool handlers, gateway               |
 
 **Total: 650 source files, 426 test files**
 
@@ -113,7 +114,7 @@ Direct API adapters for model providers.
 
 **Key components:**
 
-- **AdapterFactory** (`adapters/adapter-factory.ts`): Registry pattern for adapter creation
+- **AdapterFactory** (`adapters/factory.ts`): Registry pattern for adapter creation
 - **BaseAdapter** (`adapters/base-adapter.ts`): Abstract base with retry, rate limiting
 - **ResilientAdapter** (`adapters/resilient-adapter.ts`, Issue #811): Lazy detection, circuit breaker integration, automatic failover
 - **Provider adapters**: Claude, OpenAI, Ollama, Gemini
@@ -165,6 +166,19 @@ High-level workflow patterns and the AI software factory.
 - **OutcomeStore** (`orchestration/outcomes/`, Issue #861): Bounded append-only store for task outcome tracking
 - **Multi-CLI orchestration** (Issues #862-#866): `executeParallelExploration`, `executeTriangulatedReview`, `executeConsensusPlan`
 
+### pipeline/
+
+Task pipeline infrastructure: contracts, runners, plugins, and event bus.
+
+**Key components:**
+
+- **TaskContract** (`pipeline/task-contract.ts`): `TaskContractSchema` — canonical task shape with Zod validation
+- **PipelineRunner** (`pipeline/pipeline-runner.ts`): Executes task contracts through registered plugins
+- **PluginRegistry** (`pipeline/plugin-registry.ts`): Registers and resolves pipeline plugins
+- **EventBus** (`pipeline/event-bus.ts`): Publish/subscribe event system for pipeline stage transitions
+- **ArtifactStore** (`pipeline/artifact-store.ts`): Stores and retrieves task artifacts across pipeline stages
+- **PolicyEngine** (`pipeline/policy-engine.ts`): Evaluates policy rules against pipeline state
+
 ### mcp/
 
 MCP protocol server and tool handlers.
@@ -172,10 +186,10 @@ MCP protocol server and tool handlers.
 **Key components:**
 
 - **Server** (`mcp/server.ts`): MCP 2025-11-25 protocol server
-- **Tool Registration** (`mcp/tools/index.ts`): `registerTools()` — 21 tools total
+- **Tool Registration** (`mcp/tools/index.ts`): `registerTools()` — 28 tools total
 - **Gateway** (`mcp/gateway/`, Issue #888): Tier classifier + middleware. Wraps all tool dispatch with classification (DIRECT, ANALYZED, ORCHESTRATED) and logging.
 - **Rate Limiter** (`mcp/rate-limiter.ts`): Single shared bucket (capacity: 100, refill: 10/sec)
 - **Tool handlers**: Each tool in `mcp/tools/*.ts`
 
-**Registered tools (21):**
-orchestrate, create_expert, execute_expert, run_workflow, delegate_to_model, list_experts, list_workflows, consensus_vote, research_query, research_add, research_discover, research_analyze, research_catalog_review, memory_query, memory_stats, weather_report, issue_triage, run_graph_workflow, execute_spec, registry_import
+**Registered tools (28):**
+orchestrate, create_expert, execute_expert, run_workflow, delegate_to_model, list_experts, list_workflows, consensus_vote, research_query, research_add, research_add_source, research_discover, research_analyze, research_catalog_review, research_synthesize, memory_query, memory_stats, memory_write, weather_report, issue_triage, run_graph_workflow, execute_spec, registry_import, query_trace, repo_analyze, repo_security_plan, extract_symbols, search_codebase

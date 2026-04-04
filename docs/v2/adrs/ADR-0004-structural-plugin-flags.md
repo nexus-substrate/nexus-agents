@@ -1,6 +1,6 @@
 # ADR-0004: Structural Plugin Flags for Experimental Features (Default Off)
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-02-08
 **Deciders:** Security, Architect, DevEx
 

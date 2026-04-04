@@ -236,14 +236,16 @@ interface ContextPrunerConfig {
 
 ## Source Files
 
-| File                           | Purpose                          |
-| ------------------------------ | -------------------------------- |
-| `src/core/types/agent.ts`      | Core type definitions            |
-| `src/agents/base-agent.ts`     | Base agent implementation        |
-| `src/agents/tech-lead/`        | Orchestrator (formerly TechLead) |
-| `src/agents/experts/`          | Domain expert implementations    |
-| `src/agents/collaboration/`    | Collaboration protocols          |
-| `src/agents/context-pruner.ts` | Context management               |
+| File                                    | Purpose                                      |
+| --------------------------------------- | -------------------------------------------- |
+| `src/core/types/agent.ts`               | Core type definitions                        |
+| `src/agents/base-agent.ts`              | Base agent implementation                    |
+| `src/agents/tech-lead.ts`               | Orchestrator entry point (formerly TechLead) |
+| `src/agents/tech-lead-decomposition.ts` | Task decomposition logic                     |
+| `src/agents/tech-lead-collaboration.ts` | Collaboration protocol integration           |
+| `src/agents/experts/`                   | Domain expert implementations                |
+| `src/agents/collaboration/`             | Collaboration protocols                      |
+| `src/agents/context-pruner.ts`          | Context management                           |
 
 ---
 

@@ -60,13 +60,21 @@ type AgentState = 'idle' | 'thinking' | 'acting' | 'waiting' | 'error';
 
 ```typescript
 type AgentRole =
-  | 'orchestrator' // preferred (formerly 'tech_lead')
-  | 'tech_lead' // deprecated alias
+  | 'orchestrator' // Preferred: coordinates multi-agent workflows (Issue #759)
+  | 'tech_lead' // @deprecated Use 'orchestrator' instead. Retained for backward compatibility.
   | 'code_expert'
   | 'architecture_expert'
   | 'security_expert'
   | 'documentation_expert'
   | 'testing_expert'
+  | 'devops_expert'
+  | 'research_expert'
+  | 'pm_expert' // Product manager: requirements, user stories, acceptance criteria (Issue #902)
+  | 'ux_expert' // UX designer: interaction design, usability, user journeys (Issue #902)
+  | 'infrastructure_expert' // Physical server, bare metal, OOB management (Issue #1082)
+  | 'thinker' // TRINITY: High-level reasoning (arXiv:2512.04695)
+  | 'worker' // TRINITY: Task execution
+  | 'verifier' // TRINITY: Output validation
   | 'custom';
 ```
 

@@ -309,46 +309,45 @@ nexus-agents workflow run code-review \
 - `files` (array, required) - Files to review
 - `focus` (string, optional) - Review focus area
 
-### pr-review
+### docs-audit
 
-Review a GitHub pull request.
+Audit documentation for accuracy and drift from source code.
 
 ```bash
-nexus-agents workflow run pr-review \
-  --input='{"url": "https://github.com/owner/repo/pull/123"}'
+nexus-agents workflow run docs-audit \
+  --input='{"target": "docs/"}'
 ```
 
 **Inputs:**
 
-- `url` (string, required) - PR URL
+- `target` (string, required) - Documentation path to audit
 
-### test-gen
+### infrastructure-audit
 
-Generate tests for code.
+Audit physical infrastructure including servers and out-of-band management.
 
 ```bash
-nexus-agents workflow run test-gen \
+nexus-agents workflow run infrastructure-audit \
+  --input='{"target": "homelab"}'
+```
+
+**Inputs:**
+
+- `target` (string, required) - Infrastructure target to audit
+
+### test-generation
+
+Generate tests for code files.
+
+```bash
+nexus-agents workflow run test-generation \
   --input='{"file": "src/utils.ts", "framework": "vitest"}'
 ```
 
 **Inputs:**
 
-- `file` (string, required) - File to test
+- `file` (string, required) - File to generate tests for
 - `framework` (string, optional) - Test framework
-
-### doc-gen
-
-Generate documentation.
-
-```bash
-nexus-agents workflow run doc-gen \
-  --input='{"target": "src/api/", "format": "markdown"}'
-```
-
-**Inputs:**
-
-- `target` (string, required) - Target path
-- `format` (string, optional) - Output format
 
 ## Advanced Patterns
 

@@ -1,6 +1,6 @@
 # ADR-0005: Unified Adapter Interface Boundary (Even If Transports Differ)
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-02-08
 **Deciders:** Architect, DevEx
 

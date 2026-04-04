@@ -45,10 +45,40 @@ interface IWorkflowEngine {
    * @returns Array of available templates
    */
   listTemplates(): Promise<WorkflowTemplate[]>;
+
+  /**
+   * Get a built-in or registered template definition by name.
+   * @param name - Template name (e.g., 'code-review')
+   * @returns The workflow definition, or undefined if not found
+   */
+  getTemplateByName(name: string): Promise<WorkflowDefinition | undefined>;
 }
 ```
 
 ## Supporting Types
+
+### ContextBudget
+
+```typescript
+interface ContextBudget {
+  /** System instructions and project context (default: 15%) */
+  system: number;
+  /** Current task description and requirements (default: 20%) */
+  task: number;
+  /** Active working content (default: 50%) */
+  active: number;
+  /** Reserved for response generation (default: 15%) */
+  reserved: number;
+}
+```
+
+### PartialContextBudget
+
+```typescript
+type PartialContextBudget = Partial<ContextBudget>;
+```
+
+Used for step-level overrides that merge with the workflow's `defaultBudget`.
 
 ### WorkflowDefinition
 
@@ -60,6 +90,8 @@ interface WorkflowDefinition {
   inputs: InputDefinition[];
   steps: WorkflowStep[];
   timeout?: number;
+  /** Default context budget for workflow steps (individual steps can override) */
+  defaultBudget?: ContextBudget;
 }
 ```
 
@@ -76,6 +108,8 @@ interface WorkflowStep {
   retries?: number;
   timeout?: number;
   condition?: string;
+  /** Step-specific context budget override (merges with workflow defaultBudget) */
+  contextBudget?: PartialContextBudget;
 }
 ```
 

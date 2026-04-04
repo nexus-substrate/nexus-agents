@@ -219,16 +219,16 @@ Create `nexus-agents.yaml` in your project root:
 # Model configuration — use latest models from each provider
 # Providers: Anthropic (Claude), OpenAI (GPT/o-series), Google (Gemini), Ollama (local)
 models:
-  default: claude-sonnet-4
+  default: claude-sonnet-4-6
   tiers:
     fast:
-      - claude-haiku-3
+      - claude-haiku-4-5
       - gpt-4o-mini
     balanced:
-      - claude-sonnet-4
+      - claude-sonnet-4-6
       - gpt-4o
     powerful:
-      - claude-opus-4
+      - claude-opus-4-6
       - o1-pro
 
 # Expert configuration
@@ -320,15 +320,15 @@ Claude uses delegate_to_model:
 
 ### Workflow Execution
 
-User: "Run the PR review workflow for PR #123"
+User: "Run the code review workflow for the changed files"
 
 Claude uses run_workflow:
 
 ```json
 {
-  "template": "pr-review",
+  "template": "code-review",
   "inputs": {
-    "url": "https://github.com/owner/repo/pull/123"
+    "files": ["src/auth.ts", "src/api.ts"]
   }
 }
 ```

@@ -27,7 +27,6 @@ This specification defines the **single canonical documentation pipeline** for n
                          ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                    GENERATION LAYER                              │
-│  generate-docs.ts → LLM context (docs/llms.txt, llms-full.txt)  │
 │  generate-repo-index.ts → Capabilities (docs/reference/)         │
 │  inject-governance.ts → CLAUDE.md tool index                    │
 └────────────────────────┬────────────────────────────────────────┘
@@ -35,9 +34,8 @@ This specification defines the **single canonical documentation pipeline** for n
                          ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                    VALIDATION LAYER                              │
-│  docs-check.yml (10 CI jobs)                                    │
+│  docs-check.yml (9 CI jobs)                                     │
 │  - typedoc-check: API docs drift                                │
-│  - llms-txt-check: Generated context freshness                  │
 │  - repo-index: Capabilities freshness                           │
 │  - link-check: URL validation                                   │
 │  - docs-coverage: PR documentation updates                      │
@@ -78,8 +76,6 @@ This specification defines the **single canonical documentation pipeline** for n
 | Location           | Content                       | Reason              |
 | ------------------ | ----------------------------- | ------------------- |
 | `docs/adr/`        | Architecture Decision Records | Internal decisions  |
-| `docs/proposals/`  | Design proposals              | Internal planning   |
-| `docs/plans/`      | Implementation plans          | Internal planning   |
 | `docs/interfaces/` | Interface specifications      | Internal reference  |
 | `docs/ops/`        | Operations documentation      | Internal operations |
 
@@ -87,18 +83,10 @@ This specification defines the **single canonical documentation pipeline** for n
 
 ## Generation Scripts
 
-### generate-docs.ts (INDEX.yaml → LLM Context)
+### generate-docs.ts (Removed in #1619)
 
-```bash
-# Usage
-npx tsx scripts/generate-docs.ts       # Generate llms.txt and llms-full.txt
-npx tsx scripts/generate-docs.ts --check # CI validation
-```
-
-**Outputs:**
-
-- `docs/llms.txt` - Condensed (~400 tokens)
-- `docs/llms-full.txt` - Comprehensive (~1200 tokens)
+> **Note:** `generate-docs.ts` and the `docs/llms.txt` / `docs/llms-full.txt` outputs were removed
+> in PR #1619. The `llms-txt-check` CI job was also removed at that time.
 
 ### generate-repo-index.ts (Source → Capabilities)
 
@@ -130,12 +118,11 @@ npx tsx scripts/inject-governance.ts check   # CI validation
 
 ## CI Validation Jobs
 
-### docs-check.yml (10 Jobs)
+### docs-check.yml (9 Jobs)
 
 | Job                 | Purpose                    | Blocking     | Trigger  |
 | ------------------- | -------------------------- | ------------ | -------- |
 | `typedoc-check`     | API docs drift detection   | Yes          | Push, PR |
-| `llms-txt-check`    | LLM context freshness      | Yes          | Push, PR |
 | `repo-index`        | Capabilities freshness     | Yes          | Push, PR |
 | `link-check`        | URL validation             | Yes          | Push, PR |
 | `docs-coverage`     | PR documentation updates   | No (warning) | PR only  |
@@ -168,7 +155,6 @@ All documentation MUST be indexed in `docs/README.md`.
 
 ### Rule 3: Generated Files Must Match Source
 
-- `docs/llms.txt` must match `docs/INDEX.yaml`
 - `docs/reference/capabilities.md` must match source code
 
 **Enforcement:** CI `--check` modes
@@ -177,7 +163,6 @@ All documentation MUST be indexed in `docs/README.md`.
 
 Changes to ANY of these files require updating the Documentation Management skill:
 
-- `scripts/generate-docs.ts`
 - `scripts/generate-repo-index.ts`
 - `scripts/inject-governance.ts`
 - `.github/workflows/docs-check.yml`
@@ -195,8 +180,6 @@ The following files constitute the DocOps pipeline. Changes to these files trigg
 {
   "version": "1.0.0",
   "pipeline_files": [
-    "scripts/generate-docs.ts",
-    "scripts/generate-docs-full.ts",
     "scripts/generate-repo-index.ts",
     "scripts/inject-governance.ts",
     ".github/workflows/docs-check.yml",
@@ -215,15 +198,14 @@ The following files constitute the DocOps pipeline. Changes to these files trigg
 ### "I want to update documentation content"
 
 1. Edit canonical source in `docs/` or root
-2. Run `npx tsx scripts/generate-docs.ts` if INDEX.yaml changed
-3. Commit and push
+2. Commit and push
 
 ### "I want to add a new document"
 
 1. Create file in appropriate `docs/` directory
 2. Add entry to `docs/README.md` (required)
-3. Update `docs/INDEX.yaml` if it should appear in LLM context
-4. Run generation scripts
+3. Update `docs/INDEX.yaml` if needed
+4. Run `npx tsx scripts/generate-repo-index.ts` if capabilities changed
 5. Commit and push
 
 ### "I want to change the doc pipeline"
@@ -238,7 +220,6 @@ The following files constitute the DocOps pipeline. Changes to these files trigg
 
 ```bash
 # Run all checks locally
-npx tsx scripts/generate-docs.ts --check
 npx tsx scripts/generate-repo-index.ts --check
 npx tsx scripts/inject-governance.ts check
 ```
