@@ -10,6 +10,7 @@ on:
       - 'packages/nexus-agents/docs/**'
       - 'docs/**'
       - 'scripts/inject-governance.ts'
+      - 'scripts/generate-docs-content.ts'
       - 'CLAUDE.md'
       - '.claude/skills/**'
       - '.github/workflows/docs-check.yml'
@@ -355,6 +356,27 @@ jobs:
           else
             echo "::error::Markdown linting errors found"
             echo "Run 'pnpm lint:md:fix' to auto-fix issues"
+            exit 1
+          fi
+
+  # Job 10.5: Documentation Content Drift Detection
+  docs-content-drift:
+    name: Docs Content Drift
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup-node
+
+      - name: Check documentation content drift
+        run: |
+          npx tsx scripts/generate-docs-content.ts --check
+          if [ $? -eq 0 ]; then
+            echo "✅ Documentation content matches source of truth"
+          else
+            echo "::error::Documentation content has drifted from source"
+            echo "Run 'npx tsx scripts/generate-docs-content.ts' to see details"
             exit 1
           fi
 
