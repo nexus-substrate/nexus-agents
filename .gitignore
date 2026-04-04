@@ -70,3 +70,14 @@ predictions.jsonl
 
 # Runtime outputs (execution traces, delegation logs)
 runs/
+
+# Local development configs (not project config)
+docker-compose.opencode.yml
+opencode.json
+nexus-agents.yaml
+
+# Separate projects cloned into root (not part of this repo)
+adversary-lab/
+cap-citation-pipeline/
+repo-health-report/
+tsundoku/
