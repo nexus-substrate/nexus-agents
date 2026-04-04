@@ -21,10 +21,11 @@ on:
         default: false
         type: boolean
 
+permissions: read-all
+
 concurrency:
   group: sica-test-generation
   cancel-in-progress: false
-
 env:
   NODE_VERSION: '22'
   TARGET_COVERAGE: ${{ github.event.inputs.target_coverage || '85' }}

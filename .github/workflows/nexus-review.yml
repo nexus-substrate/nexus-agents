@@ -16,10 +16,11 @@ on:
         type: number
 
 # Only run on non-draft PRs
+permissions: read-all
+
 concurrency:
   group: nexus-review-${{ github.event.pull_request.number }}
   cancel-in-progress: true
-
 jobs:
   review:
     name: Multi-Agent Review

@@ -20,10 +20,11 @@ on:
         required: false
         type: number
 
+permissions: read-all
+
 concurrency:
   group: self-dogfood-${{ github.event.pull_request.number || github.event.issue.number || github.run_id }}
   cancel-in-progress: true
-
 env:
   # Protocol selection: reflexion for multi-perspective review
   NEXUS_PROTOCOL: reflexion

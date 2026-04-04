@@ -14,10 +14,11 @@ on:
       - '.claude/skills/**'
       - '.github/workflows/docs-check.yml'
 
+permissions: read-all
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
   # Job 1: TypeDoc Drift Detection
   typedoc-check:

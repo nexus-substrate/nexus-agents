@@ -12,10 +12,11 @@ on:
         default: false
         type: boolean
 
+permissions: read-all
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false # Never cancel a release mid-flight
-
 jobs:
   # Automated release via changesets (runs on push to main)
   release:

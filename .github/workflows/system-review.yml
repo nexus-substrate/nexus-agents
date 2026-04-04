@@ -17,10 +17,11 @@ on:
   issues:
     types: [closed]
 
+permissions: read-all
+
 concurrency:
   group: system-review
   cancel-in-progress: false
-
 jobs:
   check-trigger:
     name: Check Trigger Conditions

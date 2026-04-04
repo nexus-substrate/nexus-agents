@@ -20,6 +20,7 @@ on:
   pull_request_review_comment:
     types: [created]
 
+permissions: read-all
 jobs:
   # Manual code review via workflow_dispatch
   manual-review:
