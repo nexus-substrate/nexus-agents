@@ -1,0 +1,27 @@
+diff --git a/sympy/printing/latex.py b/sympy/printing/latex.py
+index a0eb97792e..c87885e6b8 100644
+--- a/sympy/printing/latex.py
++++ b/sympy/printing/latex.py
+@@ -1538,6 +1538,10 @@ def _print_ZeroMatrix(self, Z):
+     def _print_Identity(self, I):
+         return r"\mathbb{I}"
+ 
++    def _print_Trace(self, expr):
++        mat = self._print(expr.arg)
++        return r'\mathrm{tr}\left (%s \right )' % mat
++
+     def _print_NDimArray(self, expr):
+ 
+         if expr.rank() == 0:
+@@ -2185,6 +2189,11 @@ def _print_Differential(self, diff):
+             string = self._print(field)
+             return r'\mathrm{d}\left(%s\right)' % string
+ 
++    def _print_Basic(self, expr):
++        l = [self._print(o) for o in expr.args]
++        return self._deal_with_super_sub(expr.__class__.__name__) + \
++            r"\left(%s\right)" % ", ".join(l)
++
+     def _print_Tr(self, p):
+         #Todo: Handle indices
+         contents = self._print(p.args[0])

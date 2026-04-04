@@ -1,0 +1,19 @@
+diff --git a/sympy/printing/ccode.py b/sympy/printing/ccode.py
+index 30a07a7b59..f611ce88d0 100644
+--- a/sympy/printing/ccode.py
++++ b/sympy/printing/ccode.py
+@@ -237,6 +237,14 @@ def _print_AugmentedAssignment(self, expr):
+         rhs_code = self._print(expr.rhs)
+         return "{0} {1} {2};".format(lhs_code, op, rhs_code)
+ 
++    def _print_sinc(self, expr):
++        from sympy.functions.elementary.trigonometric import sin
++        from sympy.core.relational import Ne
++        from sympy.functions import Piecewise
++        _piecewise = Piecewise(
++            (sin(expr.args[0]) / expr.args[0], Ne(expr.args[0], 0)), (1, True))
++        return self._print(_piecewise)
++
+     def _print_For(self, expr):
+         target = self._print(expr.target)
+         if isinstance(expr.iterable, Range):

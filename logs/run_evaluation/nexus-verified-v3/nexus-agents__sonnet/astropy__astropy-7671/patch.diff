@@ -1,0 +1,39 @@
+diff --git a/astropy/utils/introspection.py b/astropy/utils/introspection.py
+index 3e784f9fc..4e4f0fee4 100644
+--- a/astropy/utils/introspection.py
++++ b/astropy/utils/introspection.py
+@@ -4,6 +4,7 @@
+ 
+ 
+ import inspect
++import re
+ import types
+ import importlib
+ from distutils.version import LooseVersion
+@@ -139,10 +140,22 @@ def minversion(module, version, inclusive=True, version_path='__version__'):
+     else:
+         have_version = resolve_name(module.__name__, version_path)
+ 
+-    if inclusive:
+-        return LooseVersion(have_version) >= LooseVersion(version)
+-    else:
+-        return LooseVersion(have_version) > LooseVersion(version)
++    try:
++        if inclusive:
++            return LooseVersion(have_version) >= LooseVersion(version)
++        else:
++            return LooseVersion(have_version) > LooseVersion(version)
++    except TypeError:
++        # Python 3 doesn't support comparing unorderable types, so LooseVersion
++        # can fail when comparing version strings that mix numeric and string
++        # components (e.g. '1.14.3' vs '1.14dev').  Fall back to normalizing
++        # both version strings by stripping any non-numeric suffix.
++        def _normalize(v):
++            return re.sub(r'[a-zA-Z].*$', '', v.split('+')[0]).rstrip('.')
++        if inclusive:
++            return LooseVersion(_normalize(have_version)) >= LooseVersion(_normalize(version))
++        else:
++            return LooseVersion(_normalize(have_version)) > LooseVersion(_normalize(version))
+ 
+ 
+ def find_current_module(depth=1, finddiff=False):

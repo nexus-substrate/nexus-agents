@@ -1,0 +1,26 @@
+diff --git a/django/db/models/deletion.py b/django/db/models/deletion.py
+index 3a462f1c4c..c6587588e8 100644
+--- a/django/db/models/deletion.py
++++ b/django/db/models/deletion.py
+@@ -232,9 +232,20 @@ class Collector:
+         """
+         Get a QuerySet of objects related to `objs` via the relation `related`.
+         """
+-        return related.related_model._base_manager.using(self.using).filter(
++        qs = related.related_model._base_manager.using(self.using).filter(
+             **{"%s__in" % related.field.name: objs}
+         )
++        if not (signals.pre_delete.has_listeners(related.related_model) or
++                signals.post_delete.has_listeners(related.related_model)):
++            # Avoid fetching fields that aren't needed for deletion. Only the
++            # pk and fields referenced by foreign keys of related objects are
++            # needed.
++            fields = {related.related_model._meta.pk.name}
++            for rel in get_candidate_relations_to_delete(related.related_model._meta):
++                if rel.field.remote_field.on_delete is not DO_NOTHING:
++                    fields |= {f.name for f in rel.field.foreign_related_fields}
++            qs = qs.only(*fields)
++        return qs
+ 
+     def instances_with_model(self):
+         for model, instances in self.data.items():

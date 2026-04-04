@@ -1,0 +1,16 @@
+diff --git a/seaborn/axisgrid.py b/seaborn/axisgrid.py
+index 7534909..1b128a0 100644
+--- a/seaborn/axisgrid.py
++++ b/seaborn/axisgrid.py
+@@ -1241,6 +1241,11 @@ class PairGrid(Grid):
+ 
+         super().__init__()
+ 
++        # Handle MultiIndex columns by converting to flat string representations
++        if isinstance(data.columns, pd.MultiIndex):
++            data = data.copy()
++            data.columns = ["_".join(map(str, col)).strip("_") for col in data.columns]
++
+         # Sort out the variables that define the grid
+         numeric_cols = self._find_numeric_cols(data)
+         if hue in numeric_cols:

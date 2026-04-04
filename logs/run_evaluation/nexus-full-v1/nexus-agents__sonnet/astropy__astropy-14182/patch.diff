@@ -1,0 +1,71 @@
+diff --git a/astropy/io/ascii/rst.py b/astropy/io/ascii/rst.py
+index 0ee2d09cd..2eab8bb2a 100644
+--- a/astropy/io/ascii/rst.py
++++ b/astropy/io/ascii/rst.py
+@@ -29,6 +29,48 @@ class SimpleRSTData(FixedWidthData):
+     end_line = -1
+     splitter_class = FixedWidthTwoLineDataSplitter
+
++    def write(self, lines):
++        vals_list = []
++        col_str_iters = self.str_vals()
++        for vals in zip(*col_str_iters):
++            vals_list.append(vals)
++
++        for i, col in enumerate(self.cols):
++            col.width = max([len(vals[i]) for vals in vals_list])
++            # Ensure column is wide enough for all header rows
++            for header_row in self.header.header_rows:
++                if header_row == 'name':
++                    col.width = max(col.width, len(col.info.name))
++                else:
++                    val = getattr(col.info, header_row, None)
++                    if val is not None:
++                        col.width = max(col.width, len(str(val)))
++
++        widths = [col.width for col in self.cols]
++
++        # Write each header row
++        for header_row in self.header.header_rows:
++            if header_row == 'name':
++                vals = [col.info.name for col in self.cols]
++            else:
++                vals = [str(getattr(col.info, header_row, '') or '')
++                        for col in self.cols]
++            lines.append(self.splitter.join(vals, widths))
++
++        # Write the position line (===...)
++        if self.header.position_line is not None:
++            char = self.header.position_char
++            if len(char) != 1:
++                raise ValueError(
++                    f'Position_char="{char}" must be a single character')
++            vals = [char * col.width for col in self.cols]
++            lines.append(self.splitter.join(vals, widths))
++
++        for vals in vals_list:
++            lines.append(self.splitter.join(vals, widths))
++
++        return lines
++
+
+ class RST(FixedWidth):
+     """reStructuredText simple format table.
+@@ -54,10 +96,15 @@ class RST(FixedWidth):
+     data_class = SimpleRSTData
+     header_class = SimpleRSTHeader
+
+-    def __init__(self):
++    def __init__(self, header_rows=None):
+         super().__init__(delimiter_pad=None, bookend=False)
++        if header_rows is None:
++            header_rows = ['name']
++        self.header.header_rows = header_rows
+
+     def write(self, lines):
+         lines = super().write(lines)
+-        lines = [lines[1]] + lines + [lines[1]]
++        # The separator line comes after all header rows; use it to wrap the table
++        idx = len(self.header.header_rows)
++        lines = [lines[idx]] + lines + [lines[idx]]
+         return lines
