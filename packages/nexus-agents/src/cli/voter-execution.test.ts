@@ -44,7 +44,7 @@ type MockCompletionResult = Result<CompletionResponse, ModelError>;
 describe('voter-execution', () => {
   describe('constants', () => {
     it('should have reasonable timeout value', () => {
-      expect(DEFAULT_VOTE_TIMEOUT_MS).toBe(180_000);
+      expect(DEFAULT_VOTE_TIMEOUT_MS).toBe(300_000);
     });
 
     it('should have 10 minute max timeout', () => {

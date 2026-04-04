@@ -70,7 +70,7 @@ describe('Centralized Timeout Configuration', () => {
 
   describe('VOTE_TIMEOUTS', () => {
     it('has correct defaults', () => {
-      expect(VOTE_TIMEOUTS.defaultMs).toBe(180_000);
+      expect(VOTE_TIMEOUTS.defaultMs).toBe(300_000);
       expect(VOTE_TIMEOUTS.minMs).toBe(30_000);
       expect(VOTE_TIMEOUTS.maxMs).toBe(600_000);
       expect(VOTE_TIMEOUTS.maxRetries).toBe(2);
@@ -184,7 +184,7 @@ describe('Centralized Timeout Configuration', () => {
 
     it('returns default when env var not set', () => {
       delete process.env.NEXUS_VOTE_TIMEOUT_MS;
-      expect(resolveVoteTimeout()).toBe(180_000);
+      expect(resolveVoteTimeout()).toBe(300_000);
     });
 
     it('reads from env var', () => {
@@ -204,7 +204,7 @@ describe('Centralized Timeout Configuration', () => {
 
     it('ignores invalid values', () => {
       process.env[envKey] = 'not_a_number';
-      expect(resolveVoteTimeout()).toBe(180_000);
+      expect(resolveVoteTimeout()).toBe(300_000);
     });
   });
 
