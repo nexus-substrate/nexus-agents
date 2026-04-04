@@ -35,20 +35,20 @@ keywords: [research, papers, techniques, arxiv, index]
 
 ## Topics
 
-| Topic                                               | Papers | Techniques | Description                                        |
-| --------------------------------------------------- | ------ | ---------- | -------------------------------------------------- |
-| [Consensus](topics/consensus/README.md)             | 10     | 6          | Multi-agent decision protocols and voting          |
-| [Routing](topics/routing/README.md)                 | 19     | 8          | Cost-efficient model routing and selection         |
-| [Memory](topics/memory/README.md)                   | 23     | 9          | Context, long-term memory, and compression         |
-| [Code Generation](topics/code-generation/README.md) | 21     | 6          | Code generation, repair, and self-improvement      |
-| [CLI Tools](topics/cli-tools/README.md)             | 0      | 0          | External CLI integration and protocols             |
-| [Orchestration](topics/orchestration/README.md)     | 27     | 12         | Multi-agent coordination and workflows             |
-| [Security](topics/security/README.md)               | 2      | 2          | Security analysis, prompt injection defense        |
-| [Evaluation](topics/evaluation/README.md)           | 0      | 0          | Benchmarks, metrics, and testing methodologies     |
-| [Safety](topics/safety/README.md)                   | 0      | 0          | AI safety, alignment, and reward hacking           |
-| [Planning](topics/planning/README.md)               | 0      | 0          | Task planning, decomposition, and reasoning chains |
-| [Tool Use](topics/tool-use/README.md)               | 0      | 0          | Tool augmentation, function calling, and MCP       |
-| [Reasoning](topics/reasoning/README.md)             | 0      | 0          | Reasoning, self-reflection, and search strategies  |
+| Topic                                               | Papers | Techniques | Description                                                  |
+| --------------------------------------------------- | ------ | ---------- | ------------------------------------------------------------ |
+| [Consensus](topics/consensus/README.md)             | 10     | 6          | Multi-agent decision protocols and voting                    |
+| [Routing](topics/routing/README.md)                 | 19     | 8          | Cost-efficient model routing and selection                   |
+| [Memory](topics/memory/README.md)                   | 23     | 9          | Context, long-term memory, and compression                   |
+| [Code Generation](topics/code-generation/README.md) | 21     | 6          | Code generation, repair, and self-improvement                |
+| [CLI Tools](topics/cli-tools/README.md)             | 0      | 0          | External CLI integration and protocols                       |
+| [Orchestration](topics/orchestration/README.md)     | 27     | 12         | Multi-agent coordination and workflows                       |
+| [Security](topics/security/README.md)               | 2      | 2          | Security analysis, prompt injection defense                  |
+| Evaluation                                          | 0      | 0          | Benchmarks, metrics, and testing methodologies (planned)     |
+| Safety                                              | 0      | 0          | AI safety, alignment, and reward hacking (planned)           |
+| Planning                                            | 0      | 0          | Task planning, decomposition, and reasoning chains (planned) |
+| Tool Use                                            | 0      | 0          | Tool augmentation, function calling, and MCP (planned)       |
+| Reasoning                                           | 0      | 0          | Reasoning, self-reflection, and search strategies (planned)  |
 
 ---
 

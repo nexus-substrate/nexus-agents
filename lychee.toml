@@ -23,6 +23,9 @@ exclude_path = [
   "packages/nexus-agents/src/**/*.test.ts",
   "packages/nexus-agents/docs/api",
   "logs",
+  # Archived docs have stale cross-references to pre-archive paths;
+  # not worth maintaining link accuracy in frozen historical documents.
+  "docs/archive",
 ]
 
 # Exclude specific URLs
