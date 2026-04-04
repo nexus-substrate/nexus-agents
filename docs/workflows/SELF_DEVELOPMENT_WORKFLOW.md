@@ -92,12 +92,12 @@ This specification defines a meta-workflow for nexus-agents self-development. Th
 
 This workflow specification is split into focused sub-documents for readability:
 
-| Document                                                | Contents                                                                                |
-| ------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| [Phases 1-6](./self-dev-phases.md)                      | Analyze, Research, Plan (TRINITY), Refine (Reflexion), Vote (Consensus), Review (Human) |
-| [Execution Phases](./self-dev-execution.md)             | Code Review, Implement (Docker sandbox), Security Check, Verify, Commit                 |
-| [Operations](./self-dev-operations.md)                  | Error handling, configuration, metrics, rate limiting, rollback, runbook, audit trail   |
-| [Validation & Implementation](./self-dev-validation.md) | Improvement validation protocol (Tier 1-3 gates), WIS framework, implementation notes   |
+| Document                                                                   | Contents                                                                                |
+| -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| [Phases 1-6](../archive/workflows/self-dev-phases.md)                      | Analyze, Research, Plan (TRINITY), Refine (Reflexion), Vote (Consensus), Review (Human) |
+| [Execution Phases](../archive/workflows/self-dev-execution.md)             | Code Review, Implement (Docker sandbox), Security Check, Verify, Commit                 |
+| [Operations](../archive/workflows/self-dev-operations.md)                  | Error handling, configuration, metrics, rate limiting, rollback, runbook, audit trail   |
+| [Validation & Implementation](../archive/workflows/self-dev-validation.md) | Improvement validation protocol (Tier 1-3 gates), WIS framework, implementation notes   |
 
 ---
 

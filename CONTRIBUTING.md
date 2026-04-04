@@ -266,7 +266,7 @@ If CLI tools are unavailable, maintainers can:
 - Manually trigger GitHub Actions workflow (requires API keys)
 - Manually add the `cli-reviewed` label after human review
 
-See [docs/proposals/cli-pr-review-workflow.md](./docs/proposals/cli-pr-review-workflow.md) for full design rationale.
+See [docs/archive/proposals/cli-pr-review-workflow.md](./docs/archive/proposals/cli-pr-review-workflow.md) for full design rationale.
 
 ---
 
