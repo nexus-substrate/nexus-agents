@@ -12,11 +12,23 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { createLogger, type ILogger } from '../core/index.js';
 
-/** Package src root: packages/nexus-agents/src */
-const SRC_ROOT = join(import.meta.dirname, '..');
-/** Repository root: packages/nexus-agents/../../.. */
-const REPO_ROOT = join(import.meta.dirname, '../../../..');
-/** Docs root: repo/docs */
+/** Find package root by walking up from current dir to find package.json with our name */
+function findPkgRoot(): string {
+  let dir = import.meta.dirname;
+  for (let i = 0; i < 10; i++) {
+    const pkgPath = join(dir, 'package.json');
+    if (existsSync(pkgPath)) {
+      const content = readFileSync(pkgPath, 'utf-8');
+      if (content.includes('"nexus-agents"')) return dir;
+    }
+    dir = join(dir, '..');
+  }
+  return join(import.meta.dirname, '../..');
+}
+
+const PKG_ROOT = findPkgRoot();
+const SRC_ROOT = join(PKG_ROOT, 'src');
+const REPO_ROOT = join(PKG_ROOT, '../..');
 const DOCS_ROOT = join(REPO_ROOT, 'docs');
 
 const DETERMINISM_EXCLUDES: RegExp[] = [
@@ -176,55 +188,23 @@ export class FitnessScoreCalculator {
 
   /** Register default fitness checks. */
   private registerDefaultChecks(): void {
-    this.checks.push(
-      {
-        dimension: 'canonicalPaths',
-        maxPoints: 20,
-        name: 'Canonical Path Analysis',
-        check: () => this.checkCanonicalPaths(),
-      },
-      {
-        dimension: 'explicitBehavior',
-        maxPoints: 15,
-        name: 'Explicit Behavior Analysis',
-        check: () => this.checkExplicitBehavior(),
-      },
-      {
-        dimension: 'determinism',
-        maxPoints: 15,
-        name: 'Determinism Analysis',
-        check: () => this.checkDeterminism(),
-      },
-      {
-        dimension: 'observability',
-        maxPoints: 15,
-        name: 'Observability Analysis',
-        check: () => this.checkObservability(),
-      },
-      {
-        dimension: 'configSimplicity',
-        maxPoints: 10,
-        name: 'Config Simplicity Analysis',
-        check: () => this.checkConfigSimplicity(),
-      },
-      {
-        dimension: 'layerSeparation',
-        maxPoints: 10,
-        name: 'Layer Separation Analysis',
-        check: () => this.checkLayerSeparation(),
-      },
-      {
-        dimension: 'operatorErgonomics',
-        maxPoints: 10,
-        name: 'Operator Ergonomics Analysis',
-        check: () => this.checkOperatorErgonomics(),
-      },
-      {
-        dimension: 'governanceIntegration',
-        maxPoints: 5,
-        name: 'Governance Integration Analysis',
-        check: () => this.checkGovernanceIntegration(),
-      }
+    const reg = (
+      dimension: keyof FitnessDimensions,
+      maxPoints: number,
+      name: string,
+      check: () => FitnessCheckResult
+    ): void => {
+      this.checks.push({ dimension, maxPoints, name, check });
+    };
+    reg('canonicalPaths', 20, 'Canonical Paths', () => this.checkCanonicalPaths());
+    reg('explicitBehavior', 15, 'Explicit Behavior', () => this.checkExplicitBehavior());
+    reg('determinism', 15, 'Determinism', () => this.checkDeterminism());
+    reg('observability', 15, 'Observability', () => this.checkObservability());
+    reg('configSimplicity', 10, 'Config Simplicity', () => this.checkConfigSimplicity());
+    reg('layerSeparation', 10, 'Layer Separation', () => this.checkLayerSeparation());
+    reg('operatorErgonomics', 10, 'Operator Ergonomics', () => this.checkOperatorErgonomics());
+    reg('governanceIntegration', 5, 'Governance Integration', () =>
+      this.checkGovernanceIntegration()
     );
   }
 
