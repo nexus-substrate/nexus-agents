@@ -245,7 +245,6 @@ _No active plan documents. Historical plans have been archived._
 | [deprecation-pipeline.md](./architecture/deprecation-pipeline.md)        | Deprecation tracking & v3.0 migration guide |
 | [redundancy-analysis.md](./architecture/redundancy-analysis.md)          | Code redundancy analysis                    |
 | [invocation-matrix.md](./architecture/invocation-matrix.md)              | Component invocation map                    |
-| [completeness-score.md](./metrics/completeness-score.md)                 | CLI completeness metrics                    |
 
 ---
 
@@ -310,7 +309,6 @@ The following are excluded from this index:
 - `coverage/` - Test coverage reports (generated)
 - `node_modules/` - Dependencies
 - `packages/nexus-agents/docs/api/` - Generated TypeDoc output
-- `packages/nexus-agents/docs/codebase-index.yaml` - Generated codebase index
 
 ---
 
