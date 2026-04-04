@@ -179,12 +179,12 @@ _No active plan documents. Historical plans have been archived._
 
 | Document                                                                        | Description                     | Status    |
 | ------------------------------------------------------------------------------- | ------------------------------- | --------- |
-| [as-is.md](./design/as-is.md)                                                   | Current system state assessment | Canonical |
-| [v2-proposal.md](./design/v2-proposal.md)                                       | V2 pipeline OS architecture     | Canonical |
+| [as-is.md](./archive/design-v2/as-is.md)                                        | Current system state assessment | Archived  |
+| [v2-proposal.md](./archive/design-v2/v2-proposal.md)                            | V2 pipeline OS architecture     | Archived  |
 | [components.md](./design/components.md)                                         | Component inventory             | Canonical |
 | [interfaces.md](./design/interfaces.md)                                         | Key interfaces and contracts    | Canonical |
 | [flows.md](./design/flows.md)                                                   | Dataflow traces                 | Canonical |
-| [gaps.md](./design/gaps.md)                                                     | Intended vs actual gaps         | Canonical |
+| [gaps.md](./archive/design-v2/gaps.md)                                          | Intended vs actual gaps         | Archived  |
 | [ARCHITECTURE_MAP.json](./design/ARCHITECTURE_MAP.json)                         | Machine-readable component map  | Generated |
 | [scaling-coordination-predictor.md](./design/scaling-coordination-predictor.md) | Scaling design                  | Canonical |
 | [EXECUTION_DASHBOARD_DESIGN.md](./architecture/EXECUTION_DASHBOARD_DESIGN.md)   | Dashboard design                | Canonical |
@@ -218,19 +218,19 @@ _No active plan documents. Historical plans have been archived._
 
 #### Proposals
 
-| Document                                                           | Description        | Status   |
-| ------------------------------------------------------------------ | ------------------ | -------- |
-| [cli-pr-review-workflow.md](./proposals/cli-pr-review-workflow.md) | PR review workflow | Proposed |
+| Document                                                                   | Description        | Status   |
+| -------------------------------------------------------------------------- | ------------------ | -------- |
+| [cli-pr-review-workflow.md](./archive/proposals/cli-pr-review-workflow.md) | PR review workflow | Archived |
 
 #### Workflows
 
-| Document                                                                 | Description                      |
-| ------------------------------------------------------------------------ | -------------------------------- |
-| [SELF_DEVELOPMENT_WORKFLOW.md](./workflows/SELF_DEVELOPMENT_WORKFLOW.md) | Self-development process (hub)   |
-| [self-dev-phases.md](./workflows/self-dev-phases.md)                     | Phases 1-6: Analyze → Review     |
-| [self-dev-execution.md](./workflows/self-dev-execution.md)               | Phases 6.5-9: Implement → Commit |
-| [self-dev-operations.md](./workflows/self-dev-operations.md)             | Error handling, config, runbook  |
-| [self-dev-validation.md](./workflows/self-dev-validation.md)             | Validation gates, WIS framework  |
+| Document                                                                 | Description                                 |
+| ------------------------------------------------------------------------ | ------------------------------------------- |
+| [SELF_DEVELOPMENT_WORKFLOW.md](./workflows/SELF_DEVELOPMENT_WORKFLOW.md) | Self-development process (hub)              |
+| [self-dev-phases.md](./archive/workflows/self-dev-phases.md)             | Phases 1-6: Analyze → Review (Archived)     |
+| [self-dev-execution.md](./archive/workflows/self-dev-execution.md)       | Phases 6.5-9: Implement → Commit (Archived) |
+| [self-dev-operations.md](./archive/workflows/self-dev-operations.md)     | Error handling, config, runbook (Archived)  |
+| [self-dev-validation.md](./archive/workflows/self-dev-validation.md)     | Validation gates, WIS framework (Archived)  |
 
 #### Operational
 

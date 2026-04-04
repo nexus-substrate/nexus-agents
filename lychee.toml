@@ -22,10 +22,13 @@ exclude_path = [
   ".pnpm-store",
   "packages/nexus-agents/src/**/*.test.ts",
   "packages/nexus-agents/docs/api",
+  "logs",
 ]
 
 # Exclude specific URLs
 exclude = [
+  # Local file references (e.g. SWE-bench eval logs)
+  "^file:///",
   # Localhost and development URLs
   "^http://localhost",
   "^http://127.0.0.1",
