@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- cohesive module, governance allows 400-600 */
 /**
  * nexus-agents/mcp - Repository Analyze Logic
  *
@@ -56,14 +57,43 @@ export function detectCiProvider(entries: readonly string[]): string | null {
   return null;
 }
 
-/** Detect security tooling from files. */
-export function detectSecurityTooling(entries: readonly string[]): readonly string[] {
+/** Tool names detectable from CI workflow filenames (#1674). */
+const WORKFLOW_SECURITY_PATTERNS: ReadonlyArray<readonly [string, string]> = [
+  ['semgrep', 'semgrep'],
+  ['codeql', 'codeql'],
+  ['trivy', 'trivy'],
+  ['snyk', 'snyk'],
+];
+
+/** Detect security tools from .github/workflows/ filenames. */
+function detectWorkflowSecurity(
+  workflowEntries: readonly string[],
+  existing: readonly string[]
+): readonly string[] {
+  const wfLower = workflowEntries.map((w) => w.toLowerCase());
+  const found: string[] = [];
+  for (const [pattern, tool] of WORKFLOW_SECURITY_PATTERNS) {
+    if (!existing.includes(tool) && wfLower.some((w) => w.includes(pattern))) {
+      found.push(tool);
+    }
+  }
+  return found;
+}
+
+/** Detect security tooling from root files and CI workflow filenames (#1674). */
+export function detectSecurityTooling(
+  entries: readonly string[],
+  workflowEntries?: readonly string[]
+): readonly string[] {
   const tools: string[] = [];
   if (entries.includes('.semgrep.yml') || entries.includes('.semgrep')) tools.push('semgrep');
   if (entries.includes('.snyk')) tools.push('snyk');
   if (entries.includes('SECURITY.md')) tools.push('security-policy');
   if (entries.includes('.trivyignore')) tools.push('trivy');
   if (entries.includes('CODEOWNERS')) tools.push('codeowners');
+  if (workflowEntries !== undefined) {
+    tools.push(...detectWorkflowSecurity(workflowEntries, tools));
+  }
   return tools;
 }
 
@@ -83,7 +113,10 @@ const GAP_RULES: ReadonlyArray<readonly [readonly string[], string]> = [
   [['SECURITY.md'], 'No SECURITY.md policy'],
   [['CODEOWNERS'], 'No CODEOWNERS file'],
   [['LICENSE', 'LICENSE.md'], 'No LICENSE file'],
-  [['.semgrep.yml', '.semgrep', '.trivyignore'], 'No SAST/SCA security scanning configured'],
+  [
+    ['.semgrep.yml', '.semgrep', '.trivyignore', '.snyk'],
+    'No SAST/SCA security scanning configured',
+  ],
   // Test detection handled separately via detectTestInfra (supports monorepo + co-located patterns)
   [['.gitignore'], 'No .gitignore file'],
 ];
@@ -177,6 +210,18 @@ export function getLanguageRecommendations(
   return recs;
 }
 
+/** SAST tool names that suppress the generic gap message. */
+const SAST_TOOLS = new Set(['semgrep', 'codeql', 'snyk']);
+const SAST_GAP_MSG = 'No SAST/SCA security scanning configured';
+
+/** Remove the SAST/SCA gap if any SAST tool was detected (#1674). */
+function removeSastGapIfToolDetected(gaps: string[], secTools: readonly string[]): void {
+  if (secTools.some((t) => SAST_TOOLS.has(t))) {
+    const idx = gaps.indexOf(SAST_GAP_MSG);
+    if (idx !== -1) gaps.splice(idx, 1);
+  }
+}
+
 /** Identify gaps in repository best practices. */
 export function identifyGaps(
   entries: readonly string[],
@@ -191,6 +236,9 @@ export function identifyGaps(
   }
   // Test detection: uses detectTestInfra for monorepo + co-located pattern support (#1130)
   if (!detectTestInfra(entries)) gaps.push('No test directory detected');
+
+  // Remove SAST/SCA gap if workflow-level security was detected (#1674)
+  removeSastGapIfToolDetected(gaps, securityTooling ?? []);
 
   // Language-specific recommendations when generic SAST/SCA gap detected
   const hasGenericSecGap = gaps.includes('No SAST/SCA security scanning configured');
@@ -225,10 +273,11 @@ export interface GhRepoMetadata {
 /** Analyze a GitHub repository given its metadata and file tree. */
 export function analyzeRepo(
   metadata: GhRepoMetadata,
-  topLevelEntries: readonly string[]
+  topLevelEntries: readonly string[],
+  workflowEntries?: readonly string[]
 ): RepoAnalysis {
   const ciProvider = detectCiProvider(topLevelEntries);
-  const secTooling = detectSecurityTooling(topLevelEntries);
+  const secTooling = detectSecurityTooling(topLevelEntries, workflowEntries);
   const hasTests = detectTestInfra(topLevelEntries);
 
   return {
@@ -413,6 +462,21 @@ async function resolveLanguage(
   return primary;
 }
 
+/** Fetch workflow filenames from .github/workflows/ (#1674). Best-effort. */
+async function fetchWorkflowEntries(repoId: string, exec: ExecFileFn): Promise<readonly string[]> {
+  try {
+    const { stdout } = await exec(
+      'gh',
+      ['api', `repos/${repoId}/contents/.github/workflows`, '--jq', '[.[].name]'],
+      { timeout: 15_000 }
+    );
+    const parsed: unknown = JSON.parse(stdout.trim());
+    return Array.isArray(parsed) ? parsed.filter((e): e is string => typeof e === 'string') : [];
+  } catch {
+    return []; // No workflows directory or API error — graceful fallback
+  }
+}
+
 /** Fetch repo data from GitHub and produce analysis. */
 export async function analyzeGitHubRepo(input: RepoAnalyzeInput): Promise<RepoAnalysis> {
   const repoId = normalizeRepoId(input.repo);
@@ -430,5 +494,10 @@ export async function analyzeGitHubRepo(input: RepoAnalyzeInput): Promise<RepoAn
     if (resolved !== null) enhanced.license = { spdx_id: resolved };
   }
 
-  return analyzeRepo(enhanced, entries);
+  // Fetch workflow filenames for CI-level security detection (#1674)
+  const workflowEntries = entries.includes('.github')
+    ? await fetchWorkflowEntries(repoId, exec)
+    : [];
+
+  return analyzeRepo(enhanced, entries, workflowEntries);
 }
