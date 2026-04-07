@@ -53,6 +53,13 @@ import {
   type DecayRunStats,
   type DecayAggregateStats,
 } from './memory-decay.js';
+import {
+  querySessionMemory as querySessionMemoryHelper,
+  queryBeliefMemory as queryBeliefMemoryHelper,
+  queryAgenticMemory as queryAgenticMemoryHelper,
+  queryTypedMemory as queryTypedMemoryHelper,
+  queryAdaptiveMemory as queryAdaptiveMemoryHelper,
+} from './tool-memory-query.js';
 
 // Re-export types tools may need
 export type { SessionLearning, CompletedTask, ResolvedError, Belief };
@@ -779,180 +786,54 @@ export class ToolMemoryManager {
   }
 
   /** Query SessionMemory for learnings. */
+  // Per-backend query helpers delegated to tool-memory-query.ts (#1671).
+
   private querySessionMemory(
     query: string,
     keywords: readonly string[],
     limit: number
   ): UnifiedMemoryResult[] {
-    const results: UnifiedMemoryResult[] = [];
-    const learnings = this.searchLearnings(query);
-    const now = new Date();
-    for (const l of learnings.slice(0, limit)) {
-      results.push({
-        source: 'session',
-        type: 'learning',
-        content: `${l.pattern} (${l.context})`,
-        relevance: this.scoreRelevance(l.pattern + ' ' + l.context, keywords),
-        timestamp: now,
-        metadata: { confidence: l.confidence, source: l.source },
-      });
-    }
-    return results;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-return -- cross-module type resolution
+    return querySessionMemoryHelper(this.searchLearnings(query), keywords, limit);
   }
 
-  /** Query BeliefMemory for beliefs. Falls back to keyword search when exact subject match misses (#1225). */
   private async queryBeliefMemory(
     query: string,
     keywords: readonly string[],
     limit: number
   ): Promise<UnifiedMemoryResult[]> {
-    const results: UnifiedMemoryResult[] = [];
-    try {
-      // Try exact subject match first (fast path via subjectIndex)
-      const beliefResult = await this.beliefs.recallBySubject(query, limit);
-      let beliefs: readonly Belief[] = [];
-      if (beliefResult.ok && beliefResult.value.length > 0) {
-        beliefs = beliefResult.value;
-      } else if (keywords.length > 0) {
-        // Fallback: keyword scan across all beliefs (capped at 1000 candidates) (#1225)
-        const KEYWORD_SCAN_LIMIT = 1000;
-        const allResult = await this.beliefs.query({
-          includeSuperseded: false,
-          limit: KEYWORD_SCAN_LIMIT,
-        });
-        if (allResult.ok) {
-          beliefs = allResult.value.filter((b) => {
-            const text = (b.subject + ' ' + b.predicate + ' ' + b.object).toLowerCase();
-            return keywords.some((k) => text.includes(k));
-          });
-        }
-      }
-      for (const b of beliefs.filter((x) => !x.superseded)) {
-        results.push({
-          source: 'belief',
-          type: 'belief',
-          content: `${b.subject} ${b.predicate} ${b.object}`,
-          relevance: this.scoreRelevance(b.subject + ' ' + b.predicate + ' ' + b.object, keywords),
-          timestamp: b.createdAt,
-          metadata: { confidence: b.confidence },
-        });
-      }
-    } catch (e: unknown) {
-      this.log.debug('Belief memory query failed', { error: String(e) });
-    }
-    return results;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-return -- cross-module type resolution
+    return queryBeliefMemoryHelper(this.beliefs, query, keywords, limit, this.log);
   }
 
-  /** Query AgenticMemory for knowledge. */
   private async queryAgenticMemory(
     query: string,
     keywords: readonly string[],
     limit: number
   ): Promise<UnifiedMemoryResult[]> {
     if (this.agentic === null) return [];
-    const results: UnifiedMemoryResult[] = [];
-    try {
-      const agResult = await this.agentic.searchAgentic(query, limit);
-      if (agResult.ok) {
-        for (const e of agResult.value) {
-          results.push({
-            source: 'agentic',
-            type: 'knowledge',
-            content: `${e.key}: ${JSON.stringify(e.value).slice(0, 100)}`,
-            relevance: this.scoreRelevance(e.key + ' ' + e.attributes.keywords.join(' '), keywords),
-            timestamp: e.createdAt,
-            metadata: { keywords: e.attributes.keywords },
-          });
-        }
-      }
-    } catch (e: unknown) {
-      this.log.debug('Agentic memory query failed', { error: String(e) });
-    }
-    return results;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-return -- cross-module type resolution
+    return queryAgenticMemoryHelper(this.agentic, query, keywords, limit, this.log);
   }
 
-  /** Query TypedMemory for semantic and episodic entries. */
   private async queryTypedMemory(
     query: string,
     keywords: readonly string[],
     limitPerType: number
   ): Promise<UnifiedMemoryResult[]> {
     if (this.typed === null) return [];
-    const results: UnifiedMemoryResult[] = [];
-    try {
-      const [semanticResult, episodicResult] = await Promise.all([
-        this.typed.queryByType('semantic', query, limitPerType),
-        this.typed.queryByType('episodic', query, limitPerType),
-      ]);
-      for (const r of [semanticResult, episodicResult]) {
-        if (r.ok) {
-          for (const e of r.value) {
-            results.push({
-              source: 'typed',
-              type: e.type,
-              content: String(e.value).slice(0, 150),
-              relevance: this.scoreRelevance(String(e.value), keywords),
-              timestamp: e.createdAt,
-            });
-          }
-        }
-      }
-    } catch (e: unknown) {
-      this.log.debug('Typed memory query failed', { error: String(e) });
-    }
-    return results;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-return -- cross-module type resolution
+    return queryTypedMemoryHelper(this.typed, query, keywords, limitPerType, this.log);
   }
 
-  /** Query AdaptiveMemory for priority-scored entries (#1226). */
   private async queryAdaptiveMemory(
     query: string,
     keywords: readonly string[],
     limit: number
   ): Promise<UnifiedMemoryResult[]> {
     if (this.adaptive === null) return [];
-    const results: UnifiedMemoryResult[] = [];
-    try {
-      const searchResult = await this.adaptive.search(query, limit);
-      if (searchResult.ok) {
-        for (const e of searchResult.value) {
-          results.push({
-            source: 'adaptive',
-            type: 'adaptive',
-            content: `${e.key}: ${JSON.stringify(e.value).slice(0, 100)}`,
-            relevance: this.scoreRelevance(
-              e.key + ' ' + JSON.stringify(e.value).slice(0, 200),
-              keywords
-            ),
-            timestamp: e.createdAt,
-            metadata: { importance: e.metadata.importance },
-          });
-        }
-      }
-    } catch (e: unknown) {
-      this.log.debug('Adaptive memory query failed', { error: String(e) });
-    }
-    return results;
-  }
-
-  /**
-   * Calculate relevance score based on keyword matches (#1227).
-   * Uses graduated scoring: base ratio + partial match bonus + exact phrase bonus.
-   */
-  private scoreRelevance(text: string, keywords: readonly string[]): number {
-    if (keywords.length === 0) return 0.5;
-    const lower = text.toLowerCase();
-    const matched = keywords.filter((k) => lower.includes(k));
-    const matchRatio = matched.length / keywords.length;
-    // Bonus for multi-occurrence of matched keywords (term frequency)
-    let tfBonus = 0;
-    for (const k of matched) {
-      const count = lower.split(k).length - 1;
-      if (count > 1) tfBonus += 0.05 * Math.min(count - 1, 3);
-    }
-    // Bonus for exact phrase match (all keywords in order)
-    const phrase = keywords.join(' ');
-    const phraseBonus = lower.includes(phrase) ? 0.15 : 0;
-    return Math.min(1, matchRatio * 0.8 + tfBonus + phraseBonus);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-return -- cross-module type resolution
+    return queryAdaptiveMemoryHelper(this.adaptive, query, keywords, limit, this.log);
   }
 
   // ==========================================================================
