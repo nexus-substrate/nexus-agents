@@ -75,14 +75,6 @@ describe('env-schema', () => {
       expect(inv?.value).toBe('maybe');
     });
 
-    it('detects invalid port for NEXUS_REST_PORT', () => {
-      vi.stubEnv('NEXUS_REST_PORT', '99999');
-      const result = validateNexusEnv();
-      const inv = result.invalidVars.find((v) => v.name === 'NEXUS_REST_PORT');
-      expect(inv).toBeDefined();
-      expect(inv?.value).toBe('99999');
-    });
-
     it('detects invalid log level', () => {
       vi.stubEnv('NEXUS_LOG_LEVEL', 'verbose');
       const result = validateNexusEnv();
@@ -102,11 +94,8 @@ describe('env-schema', () => {
 
     it('accepts all valid boolean values', () => {
       vi.stubEnv('NEXUS_AUTH_ENABLED', 'true');
-      vi.stubEnv('NEXUS_REST_ENABLED', 'false');
       const result = validateNexusEnv();
-      const boolInvalids = result.invalidVars.filter(
-        (v) => v.name === 'NEXUS_AUTH_ENABLED' || v.name === 'NEXUS_REST_ENABLED'
-      );
+      const boolInvalids = result.invalidVars.filter((v) => v.name === 'NEXUS_AUTH_ENABLED');
       expect(boolInvalids).toHaveLength(0);
     });
 
@@ -114,13 +103,6 @@ describe('env-schema', () => {
       vi.stubEnv('NEXUS_REFLECTIVE_MEMORY', 'shadow');
       const result = validateNexusEnv();
       const inv = result.invalidVars.find((v) => v.name === 'NEXUS_REFLECTIVE_MEMORY');
-      expect(inv).toBeUndefined();
-    });
-
-    it('accepts valid port number', () => {
-      vi.stubEnv('NEXUS_REST_PORT', '3000');
-      const result = validateNexusEnv();
-      const inv = result.invalidVars.find((v) => v.name === 'NEXUS_REST_PORT');
       expect(inv).toBeUndefined();
     });
 
@@ -165,7 +147,6 @@ describe('env-schema', () => {
       expect(names).toContain('NEXUS_LOG_LEVEL');
       expect(names).toContain('NEXUS_PERSIST_LEARNING');
       expect(names).toContain('NEXUS_AUTH_ENABLED');
-      expect(names).toContain('NEXUS_REST_PORT');
       expect(names).toContain('NEXUS_BILLING_MODE');
     });
 

@@ -23,18 +23,6 @@ const positiveIntStr = z.string().regex(/^\d+$/, 'Must be a positive integer str
 /** String "true" or "false". */
 const boolStr = z.enum(['true', 'false']);
 
-/** String that parses to a port number (1-65535). */
-const portStr = z
-  .string()
-  .regex(/^\d+$/)
-  .refine(
-    (v) => {
-      const n = parseInt(v, 10);
-      return n >= 1 && n <= 65535;
-    },
-    { message: 'Must be a port number (1-65535)' }
-  );
-
 /** String that parses to a non-negative float. */
 const floatStr = z.string().regex(/^\d+(\.\d+)?$/, 'Must be a non-negative number string');
 
@@ -103,9 +91,6 @@ const NexusEnvSchema = z.object({
   // --- Server ---
   NEXUS_AUTH_ENABLED: boolStr.optional(),
   NEXUS_AUTH_METHOD: z.string().optional(),
-  NEXUS_REST_ENABLED: boolStr.optional(),
-  NEXUS_REST_PORT: portStr.optional(),
-  NEXUS_REST_HOST: z.string().optional(),
 
   // --- Logging ---
   NEXUS_LOG_LEVEL: z

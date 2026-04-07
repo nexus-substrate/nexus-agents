@@ -366,7 +366,6 @@ export const FEATURE_GATE_INVENTORY: readonly FeatureGate[] = [
     techniques: ['self-refine-loop', 'recursive-improvement'],
   },
   { envVar: 'NEXUS_AUTH_ENABLED', defaultValue: 'true', description: 'Server authentication' },
-  { envVar: 'NEXUS_REST_ENABLED', defaultValue: 'false', description: 'REST API server' },
   { envVar: 'NEXUS_EVENTBUS_ENABLED', defaultValue: 'true', description: 'EventBus A2A bridge' },
   {
     envVar: 'NEXUS_RATE_LIMIT_ENABLED',

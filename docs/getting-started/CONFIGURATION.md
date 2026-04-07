@@ -254,7 +254,6 @@ Files stored:
 
 | Variable                          | Description                               | Default |
 | --------------------------------- | ----------------------------------------- | ------- |
-| `NEXUS_REST_ENABLED`              | Enable REST API server                    | `false` |
 | `NEXUS_EVENTBUS_ENABLED`          | EventBus A2A bridge                       | `true`  |
 | `NEXUS_RATE_LIMIT_ENABLED`        | Token-bucket rate limiter                 | `true`  |
 | `NEXUS_CIRCUIT_BREAKER_THRESHOLD` | Circuit breaker failure threshold         | `5`     |

@@ -34,7 +34,7 @@ Security-first design with 7 defense layers:
 Nexus-agents uses a **secure-by-default** approach appropriate for its primary use case as a local CLI/MCP tool:
 
 - **MCP mode (default):** Communicates over stdio with the parent process only — no network listener, no external access possible. Authentication is not required because only the local process can communicate with the server.
-- **REST API mode (opt-in):** When enabled via `NEXUS_REST_ENABLED=true`, an API key is auto-generated and stored at `~/.nexus-agents/auth/rest-api-key` with restrictive file permissions (0600). All REST endpoints require this key via the `Authorization` header.
+- **REST API mode (opt-in):** When enabled via the YAML config `api.enabled: true`, an API key is auto-generated and stored at `~/.nexus-agents/auth/rest-api-key` with restrictive file permissions (0600). All REST endpoints require this key via the `Authorization` header.
 
 | Environment           | Auth Needed? | Notes                                        |
 | --------------------- | ------------ | -------------------------------------------- |
