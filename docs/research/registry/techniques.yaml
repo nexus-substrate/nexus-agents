@@ -1,769 +1,691 @@
-# registry/techniques.yaml
-# Implementation techniques extracted from research papers
-# Schema version for future migrations
 schema_version: '1.0'
-
 techniques:
-  # ============================================================================
-  # CONSENSUS PROTOCOLS
-  # ============================================================================
-
   aegean-consensus:
-    name: 'Aegean Consensus Protocol'
-    description: |
-      Formal consensus protocol for stochastic reasoning with
+    name: Aegean Consensus Protocol
+    description: 'Formal consensus protocol for stochastic reasoning with
+
       incremental quorum detection. Achieves 1.2x-20x latency
+
       reduction and 4.4x token reduction.
 
+      '
     source_papers:
       - arxiv-2512.20184
-
     topic: consensus
     tags:
       - formal-verification
       - quorum
       - streaming
-
     metrics:
-      latency_reduction: '1.2x-20x'
-      token_reduction: '4.4x'
-      quality_impact: 'within 2.5% of baseline'
-
+      latency_reduction: 1.2x-20x
+      token_reduction: 4.4x
+      quality_impact: within 2.5% of baseline
     status: implemented
     priority: P1
     complexity: medium
-
     integration_files:
-      - 'packages/nexus-agents/src/agents/collaboration/aegean-types.ts'
-      - 'packages/nexus-agents/src/agents/collaboration/aegean-protocol.ts'
-
+      - packages/nexus-agents/src/agents/collaboration/aegean-types.ts
+      - packages/nexus-agents/src/agents/collaboration/aegean-protocol.ts
     implementation_issue: 119
     related_prs: []
+    notes: 'Implemented as AegeanProtocol class with:
 
-    notes: |
-      Implemented as AegeanProtocol class with:
       - Leader-based coordination with round-robin selection
+
       - Incremental quorum detection for early termination
+
       - Byzantine fault tolerance (tolerates f faults out of 3f+1 agents)
+
       - Full test coverage (23 tests)
 
+      '
     dependencies: []
-
     decision_history:
       - date: '2026-01-06'
-        decision: 'Added to roadmap Phase 1'
-        rationale: 'High impact, direct replacement for existing module'
+        decision: Added to roadmap Phase 1
+        rationale: High impact, direct replacement for existing module
       - date: '2026-01-07'
-        decision: 'Implemented'
+        decision: Implemented
         rationale: 'Commit 8bca0fa - feat(collaboration): implement Aegean consensus protocol (#119)'
-
   task-aware-protocol-selection:
-    name: 'Task-Type Protocol Selection'
-    description: |
-      Select consensus protocol (voting vs consensus) based on task type.
+    name: Task-Type Protocol Selection
+    description: 'Select consensus protocol (voting vs consensus) based on task type.
+
       Voting for reasoning tasks (+13.2%), consensus for knowledge tasks.
 
+      '
     source_papers:
       - arxiv-2502.19130
-
     topic: consensus
     tags:
       - task-classification
       - protocol-selection
-
     metrics:
-      reasoning_improvement: '+13.2%'
-      knowledge_improvement: '+2.8%'
-
+      reasoning_improvement: +13.2%
+      knowledge_improvement: +2.8%
     status: implemented
     priority: P1
     complexity: low
-
     integration_files:
-      - 'packages/nexus-agents/src/core/task-analysis/task-type-classifier.ts'
-      - 'packages/nexus-agents/src/agents/collaboration/adaptive-protocol-selector.ts'
-
+      - packages/nexus-agents/src/core/task-analysis/task-type-classifier.ts
+      - packages/nexus-agents/src/agents/collaboration/adaptive-protocol-selector.ts
     implementation_issue: 125
     related_prs: []
+    notes: 'Implemented TaskTypeClassifier and AdaptiveProtocolSelector:
 
-    notes: |
-      Implemented TaskTypeClassifier and AdaptiveProtocolSelector:
       - Keyword-based task classification (reasoning vs knowledge)
+
       - Automatic protocol selection based on task type
+
       - Configurable pattern mapping
+
       - 31 comprehensive tests
 
+      '
     dependencies: []
-
     decision_history:
       - date: '2026-01-06'
-        decision: 'Added to roadmap Phase 1'
-        rationale: 'Low complexity, immediate benefit'
+        decision: Added to roadmap Phase 1
+        rationale: Low complexity, immediate benefit
       - date: '2026-01-07'
-        decision: 'Implemented'
+        decision: Implemented
         rationale: 'Commit 33f1f95 - feat(collaboration): implement task-aware protocol selection (#125)'
-
   cp-wbft-consensus:
-    name: 'CP-WBFT Byzantine Fault Tolerant Consensus'
-    description: |
-      Confidence Probe-based Weighted Byzantine Fault Tolerant consensus
+    name: CP-WBFT Byzantine Fault Tolerant Consensus
+    description: 'Confidence Probe-based Weighted Byzantine Fault Tolerant consensus
+
       with 85.7% fault rate tolerance.
 
+      '
     source_papers:
       - arxiv-2511.10400
-
     topic: consensus
     tags:
       - byzantine
       - fault-tolerance
       - weighted
-
     metrics:
-      fault_tolerance: '85.7%'
-
+      fault_tolerance: 85.7%
     status: implemented
     priority: P2
     complexity: medium
-
     integration_files:
-      - 'packages/nexus-agents/src/agents/collaboration/result-aggregator.ts'
-
+      - packages/nexus-agents/src/agents/collaboration/result-aggregator.ts
     implementation_issue: 103
     related_prs: []
+    notes: 'Implemented weighted Byzantine fault tolerance for expert collaboration.
 
-    notes: |
-      Implemented weighted Byzantine fault tolerance for expert collaboration.
       Confidence probes for vote weighting.
 
+      '
     dependencies:
       - aegean-consensus
-
     decision_history:
       - date: '2026-01-07'
-        decision: 'Implemented'
+        decision: Implemented
         rationale: 'Issue #103 closed'
-
   multi-agent-reflexion:
-    name: 'Multi-Agent Reflexion (MAR)'
-    description: |
-      Multiple agents reflect and critique each other's outputs for
+    name: Multi-Agent Reflexion (MAR)
+    description: "Multiple agents reflect and critique each other's outputs for
+
       improved reasoning through cross-agent evaluation.
 
+      "
     source_papers:
       - arxiv-2512.20845
-
     topic: consensus
     tags:
       - reflexion
       - cross-critique
       - reasoning
-
     metrics:
-      reasoning_improvement: 'significant across benchmarks'
-
+      reasoning_improvement: significant across benchmarks
     status: implemented
     priority: P1
     complexity: medium
-
     integration_files:
-      - 'packages/nexus-agents/src/agents/collaboration/reflexion-types.ts'
-      - 'packages/nexus-agents/src/agents/collaboration/reflexion-protocol.ts'
-
+      - packages/nexus-agents/src/agents/collaboration/reflexion-types.ts
+      - packages/nexus-agents/src/agents/collaboration/reflexion-protocol.ts
     implementation_issue: 1657
     related_prs: []
+    notes: 'Implemented as ReflexionProtocol class with:
 
-    notes: |
-      Implemented as ReflexionProtocol class with:
       - Persona-based multi-agent debates
+
       - Weighted severity scoring
+
       - Iterative critique and synthesis rounds
+
       - Default code review personas (security, performance, maintainability, correctness)
 
+      '
     dependencies: []
-
     decision_history:
       - date: '2026-01-06'
-        decision: 'Added to roadmap Phase 1'
-        rationale: 'High impact on reasoning quality'
+        decision: Added to roadmap Phase 1
+        rationale: High impact on reasoning quality
       - date: '2026-01-07'
-        decision: 'Implemented'
+        decision: Implemented
         rationale: 'Commit 133ad09 - feat(collaboration): implement Multi-Agent Reflexion protocol'
-
   free-mad-scoring:
-    name: 'Free-MAD Anti-Conformity Scoring'
-    description: |
-      Score-based decision with anti-conformity to prevent majority
+    name: Free-MAD Anti-Conformity Scoring
+    description: 'Score-based decision with anti-conformity to prevent majority
+
       influence on correct answers.
 
+      '
     source_papers:
       - arxiv-2509.11035
-
     topic: consensus
     tags:
       - anti-conformity
       - scoring
       - debate
-
     metrics:
-      robustness: 'enhanced against attacks'
-
+      robustness: enhanced against attacks
     status: implemented
     priority: P2
     complexity: low
-
     integration_files:
-      - 'packages/nexus-agents/src/agents/collaboration/free-mad-types.ts'
-      - 'packages/nexus-agents/src/agents/collaboration/free-mad-scoring.ts'
-      - 'packages/nexus-agents/src/agents/collaboration/free-mad-scoring.test.ts'
-
+      - packages/nexus-agents/src/agents/collaboration/free-mad-types.ts
+      - packages/nexus-agents/src/agents/collaboration/free-mad-scoring.ts
+      - packages/nexus-agents/src/agents/collaboration/free-mad-scoring.test.ts
     implementation_issue: 152
     related_prs: []
+    notes: 'Implemented as FreeMadScorer class with:
 
-    notes: |
-      Implemented as FreeMadScorer class with:
       - Debate trajectory tracking across multiple rounds
+
       - Anti-conformity scoring with configurable penalty weights
+
       - Persistence bonus for minority position maintainers
+
       - Conformity detection when agents change to match majority
+
       - Integration helpers for existing consensus protocols
+
       - 19 comprehensive tests
 
+      '
     dependencies: []
-
     decision_history:
       - date: '2026-01-09'
-        decision: 'Issue created'
-        rationale: 'Created during dogfooding session'
+        decision: Issue created
+        rationale: Created during dogfooding session
       - date: '2026-01-09'
-        decision: 'Implemented'
-        rationale: 'FreeMadScorer with trajectory evaluation and anti-conformity scoring'
-
-  # ============================================================================
-  # ROUTING
-  # ============================================================================
-
+        decision: Implemented
+        rationale: FreeMadScorer with trajectory evaluation and anti-conformity scoring
   topsis-routing:
-    name: 'TOPSIS Multi-Criteria Routing'
-    description: |
-      Multi-criteria decision algorithm for Pareto-optimal
+    name: TOPSIS Multi-Criteria Routing
+    description: 'Multi-criteria decision algorithm for Pareto-optimal
+
       model selection (performance vs cost).
 
+      '
     source_papers:
       - arxiv-2509.07571
-
     topic: routing
     tags:
       - cost-optimization
       - multi-criteria
       - pareto
-
     metrics:
-      cost_reduction: '31.46%'
-
+      cost_reduction: 31.46%
     status: implemented
     priority: P2
     complexity: medium
-
     integration_files:
-      - 'packages/nexus-agents/src/cli-adapters/topsis-router.ts'
-      - 'packages/nexus-agents/src/cli-adapters/topsis-types.ts'
-      - 'packages/nexus-agents/src/cli-adapters/topsis-router.test.ts'
-
+      - packages/nexus-agents/src/cli-adapters/topsis-router.ts
+      - packages/nexus-agents/src/cli-adapters/topsis-types.ts
+      - packages/nexus-agents/src/cli-adapters/topsis-router.test.ts
     implementation_issue: 146
+    notes: 'Implemented TopsisRouter with:
 
-    notes: |
-      Implemented TopsisRouter with:
       - Vector normalization of decision matrix
+
       - Configurable criteria weights (quality, cost, latency)
+
       - Positive/negative ideal solution calculation
+
       - Closeness score ranking
+
       - Cost savings estimation vs highest quality model
+
       - 22 comprehensive tests
 
+      '
     related_prs: []
-
     dependencies:
       - expert-cost-modeling
-
     decision_history:
       - date: '2026-01-09'
-        decision: 'Issue created'
-        rationale: 'Created during dogfooding session'
-
+        decision: Issue created
+        rationale: Created during dogfooding session
   ipr-quality-estimators:
-    name: 'IPR Quality-Constrained Routing'
-    description: |
-      Quality-constrained routing with user-controlled tolerance
+    name: IPR Quality-Constrained Routing
+    description: 'Quality-constrained routing with user-controlled tolerance
+
       parameter and lightweight estimators. Routes to cheapest
+
       model meeting quality threshold.
 
+      '
     source_papers:
       - arxiv-2509.06274
       - arxiv-2406.18510
-
     topic: routing
     tags:
       - quality-constrained
       - lightweight
       - tolerance
-
     metrics:
-      cost_reduction: '43.9%'
-      latency: 'sub-150ms'
-
+      cost_reduction: 43.9%
+      latency: sub-150ms
     status: implemented
     priority: P1
     complexity: medium
-
     integration_files:
-      - 'packages/nexus-agents/src/cli-adapters/routing/stages/quality-constraint-stage.ts'
-
+      - packages/nexus-agents/src/cli-adapters/routing/stages/quality-constraint-stage.ts
     implementation_issue: 128
     related_prs:
       - 134
+    notes: 'Implemented as QualityRouter class with TaskComplexityEstimator:
 
-    notes: |
-      Implemented as QualityRouter class with TaskComplexityEstimator:
       - Task complexity estimation (5 factors: length, structure, domain, reasoning, tools)
+
       - Quality/cost trade-off optimization for CLI adapters
+
       - Sub-150ms routing latency achieved
+
       - 22 comprehensive tests
 
+      '
     dependencies: []
-
     decision_history:
       - date: '2026-01-06'
-        decision: 'Added to roadmap Phase 1'
-        rationale: 'High impact, aligns with existing architecture'
+        decision: Added to roadmap Phase 1
+        rationale: High impact, aligns with existing architecture
       - date: '2026-01-07'
-        decision: 'Implemented'
+        decision: Implemented
         rationale: 'PR #134 merged - feat: implement quality-constrained routing (#128)'
-
   pilot-budget-routing:
-    name: 'PILOT Budget-Constrained Routing'
-    description: |
-      Contextual bandit (LinUCB) with preference-prior routing and
+    name: PILOT Budget-Constrained Routing
+    description: 'Contextual bandit (LinUCB) with preference-prior routing and
+
       multi-choice knapsack budget constraints.
 
+      '
     source_papers:
       - arxiv-2508.21141
-
     topic: routing
     tags:
       - budget-constraint
       - contextual-bandit
       - linucb
-
     metrics:
-      adaptive: 'handles diverse budget requirements'
-
+      adaptive: handles diverse budget requirements
     status: implemented
     priority: P2
     complexity: medium
-
     integration_files:
-      - 'packages/nexus-agents/src/cli-adapters/budget-router.ts'
-      - 'packages/nexus-agents/src/cli-adapters/linucb-bandit.ts'
-      - 'packages/nexus-agents/src/cli-adapters/composite-router.ts'
-      - 'packages/nexus-agents/src/cli-adapters/budget-utils.ts'
-      - 'packages/nexus-agents/src/cli-adapters/budget-warnings.ts'
-      - 'packages/nexus-agents/src/cli-adapters/budget-errors.ts'
-      - 'packages/nexus-agents/src/cli-adapters/budget-router-types.ts'
-
+      - packages/nexus-agents/src/cli-adapters/budget-router.ts
+      - packages/nexus-agents/src/cli-adapters/linucb-bandit.ts
+      - packages/nexus-agents/src/cli-adapters/composite-router.ts
+      - packages/nexus-agents/src/cli-adapters/budget-utils.ts
+      - packages/nexus-agents/src/cli-adapters/budget-warnings.ts
+      - packages/nexus-agents/src/cli-adapters/budget-errors.ts
+      - packages/nexus-agents/src/cli-adapters/budget-router-types.ts
     implementation_issue: 102
     related_prs: []
+    notes: 'Full PILOT Budget-Constrained Routing implemented:
 
-    notes: |
-      Full PILOT Budget-Constrained Routing implemented:
       - LinUCB contextual bandit (462 lines) with 6-feature context
+
       - Token, cost, and latency budget enforcement
+
       - Session budget tracking with auto-reset
+
       - Budget warnings at configurable thresholds
+
       - 3-stage CompositeRouter: Budget → TOPSIS → LinUCB
+
       - Comprehensive test coverage (43+ budget tests, 40+ LinUCB tests)
 
+      '
     dependencies: []
-
     decision_history:
       - date: '2026-01-06'
-        decision: 'Added to roadmap Phase 1'
-        rationale: 'High impact, fills gap in current implementation'
+        decision: Added to roadmap Phase 1
+        rationale: High impact, fills gap in current implementation
       - date: '2026-01-07'
-        decision: 'Basic budget routing implemented'
+        decision: Basic budget routing implemented
         rationale: 'Issue #102 closed - basic budget constraints work'
       - date: '2026-01-08'
-        decision: 'LinUCB bandit and CompositeRouter implemented'
-        rationale: 'Full 3-stage routing pipeline complete with 80+ tests'
+        decision: LinUCB bandit and CompositeRouter implemented
+        rationale: Full 3-stage routing pipeline complete with 80+ tests
       - date: '2026-01-11'
-        decision: 'Status updated to implemented'
-        rationale: 'Registry status corrected - LinUCB was already complete'
-
+        decision: Status updated to implemented
+        rationale: Registry status corrected - LinUCB was already complete
   sater-routing:
-    name: 'SATER Confidence-Aware Routing'
-    description: |
-      Dual-mode routing with shortest-response preference optimization
+    name: SATER Confidence-Aware Routing
+    description: 'Dual-mode routing with shortest-response preference optimization
+
       and confidence-aware rejection.
 
+      '
     source_papers:
       - arxiv-2510.05164
-
     topic: routing
     tags:
       - confidence-aware
       - cascade
       - shortest-response
-
     metrics:
-      cost_reduction: '50%+'
-      latency_reduction: '80%+ cascade'
-
+      cost_reduction: 50%+
+      latency_reduction: 80%+ cascade
     status: implemented
     priority: P2
     complexity: high
-
     integration_files:
-      - 'packages/nexus-agents/src/adapters/'
-      - 'packages/nexus-agents/src/agents/experts/expert-selector.ts'
-
+      - packages/nexus-agents/src/adapters/
+      - packages/nexus-agents/src/agents/experts/expert-selector.ts
     implementation_issue: 99
     related_prs: []
+    notes: 'Implemented confidence-aware cascade routing.
 
-    notes: |
-      Implemented confidence-aware cascade routing.
       Confidence estimation before model escalation.
 
+      '
     dependencies: []
-
     decision_history:
       - date: '2026-01-07'
-        decision: 'Implemented'
+        decision: Implemented
         rationale: 'Issue #99 closed'
-
   cascade-routing:
-    name: 'Agreement-Based Cascading (ABC)'
-    description: |
-      Cascade of increasingly powerful models with ensemble agreement
+    name: Agreement-Based Cascading (ABC)
+    description: 'Cascade of increasingly powerful models with ensemble agreement
+
       at each stage. Escalate only when agreement threshold not met.
 
+      '
     source_papers:
       - arxiv-2410.10347
-
     topic: routing
     tags:
       - cascade
       - ensemble
       - agreement
-
     metrics:
-      cost_optimization: 'significant'
-
+      cost_optimization: significant
     status: implemented
     priority: P2
     complexity: medium
-
     integration_files:
-      - 'packages/nexus-agents/src/cli-adapters/agreement-cascade-router.ts'
-      - 'packages/nexus-agents/src/cli-adapters/agreement-cascade-router.test.ts'
-
+      - packages/nexus-agents/src/cli-adapters/agreement-cascade-router.ts
+      - packages/nexus-agents/src/cli-adapters/agreement-cascade-router.test.ts
     implementation_issue: 121
     related_prs: []
+    notes: 'Implemented AgreementCascadeRouter class with:
 
-    notes: |
-      Implemented AgreementCascadeRouter class with:
       - Multi-model execution at each cascade stage
+
       - Jaccard similarity-based response clustering
+
       - Configurable agreement thresholds (default 0.7)
+
       - Cost savings tracking for early resolution
+
       - 14 comprehensive tests
 
+      '
     dependencies:
       - expert-cost-modeling
-
     decision_history:
       - date: '2026-01-07'
-        decision: 'Implemented'
+        decision: Implemented
         rationale: 'Commit 36436f1 - feat(cli-adapters): implement agreement-based cascade routing (#121)'
-
   preference-trained-routing:
-    name: 'Preference-Trained Router (RouteLLM)'
-    description: |
-      Train router on human preference data for dynamic selection
+    name: Preference-Trained Router (RouteLLM)
+    description: 'Train router on human preference data for dynamic selection
+
       between strong/weak LLM. Transfer learning maintains performance.
 
+      '
     source_papers:
       - arxiv-2406.18665
-
     topic: routing
     tags:
       - preference-data
       - transfer-learning
       - dynamic
-
     metrics:
-      cost_reduction: '2x'
-
+      cost_reduction: 2x
     status: implemented
     priority: P2
     complexity: high
-
     integration_files:
-      - 'packages/nexus-agents/src/cli-adapters/preference-router.ts'
-      - 'packages/nexus-agents/src/cli-adapters/preference-router-types.ts'
-      - 'packages/nexus-agents/src/cli-adapters/preference-router.test.ts'
-
+      - packages/nexus-agents/src/cli-adapters/preference-router.ts
+      - packages/nexus-agents/src/cli-adapters/preference-router-types.ts
+      - packages/nexus-agents/src/cli-adapters/preference-router.test.ts
     implementation_issue: 148
     related_prs: []
+    notes: 'Implemented PreferenceRouter with preference-based model selection.
 
-    notes: |
-      Implemented PreferenceRouter with preference-based model selection.
       Uses historical preference data for routing decisions.
 
+      '
     dependencies: []
-
     decision_history:
       - date: '2026-01-09'
-        decision: 'Issue created'
-        rationale: 'Created during dogfooding session'
+        decision: Issue created
+        rationale: Created during dogfooding session
       - date: '2026-01-13'
-        decision: 'Status updated to implemented'
-        rationale: 'PreferenceRouter in cli-adapters/ - commit a3d8e06'
-
-  # ============================================================================
-  # MEMORY SYSTEMS
-  # ============================================================================
-
+        decision: Status updated to implemented
+        rationale: PreferenceRouter in cli-adapters/ - commit a3d8e06
   mem0-memory-architecture:
-    name: 'Mem0 Scalable Long-Term Memory'
-    description: |
-      Scalable memory architecture with dynamic extraction of salient
+    name: Mem0 Scalable Long-Term Memory
+    description: 'Scalable memory architecture with dynamic extraction of salient
+
       information and consolidation across sessions.
 
+      '
     source_papers:
       - arxiv-2504.19413
-
     topic: memory
     tags:
       - long-term
       - scalable
       - production
-
     metrics:
-      latency_reduction: '91% lower p95'
-      token_savings: '90%'
-      quality_improvement: '26%'
-
+      latency_reduction: 91% lower p95
+      token_savings: 90%
+      quality_improvement: 26%
     status: implemented
     priority: P2
     complexity: high
-
     integration_files:
-      - 'packages/nexus-agents/src/context/agentic-memory.ts'
-      - 'packages/nexus-agents/src/context/adaptive-memory.ts'
-      - 'packages/nexus-agents/src/context/graph-memory.ts'
-      - 'packages/nexus-agents/src/context/memory-backend.ts'
-
+      - packages/nexus-agents/src/context/agentic-memory.ts
+      - packages/nexus-agents/src/context/adaptive-memory.ts
+      - packages/nexus-agents/src/context/graph-memory.ts
+      - packages/nexus-agents/src/context/memory-backend.ts
     implementation_issue: 156
     related_prs: []
+    notes: 'Core features implemented via agentic-memory, adaptive-memory, and graph-memory.
 
-    notes: |
-      Core features implemented via agentic-memory, adaptive-memory, and graph-memory.
       Provides dynamic extraction, cross-session consolidation, and scalable retrieval.
+
       Benchmarking for claimed metrics (91% latency, 90% tokens) remains future work.
 
+      '
     dependencies: []
-
     decision_history:
       - date: '2026-01-09'
-        decision: 'Reviewed - ENHANCE_EXISTING recommendation'
-        rationale: 'Core features in agentic-memory, adaptive-memory, graph-memory. Need benchmarks.'
+        decision: Reviewed - ENHANCE_EXISTING recommendation
+        rationale: Core features in agentic-memory, adaptive-memory, graph-memory. Need benchmarks.
       - date: '2026-01-13'
-        decision: 'Status updated to implemented'
-        rationale: 'Core architecture complete - benchmarking is enhancement, not blocker'
-
+        decision: Status updated to implemented
+        rationale: Core architecture complete - benchmarking is enhancement, not blocker
   mirix-six-type-memory:
-    name: 'MIRIX Six-Type Memory System'
-    description: |
-      Six-type memory system: Core, Episodic, Semantic, Procedural,
+    name: MIRIX Six-Type Memory System
+    description: 'Six-type memory system: Core, Episodic, Semantic, Procedural,
+
       Resource, Knowledge Vault with multi-agent management.
 
+      '
     source_papers:
       - arxiv-2507.07957
-
     topic: memory
     tags:
       - structured-memory
       - multimodal
       - comprehensive
-
     metrics:
-      accuracy_vs_rag: '+35%'
-      storage_reduction: '99.9%'
-      benchmark_accuracy: '85.4%'
-
+      accuracy_vs_rag: +35%
+      storage_reduction: 99.9%
+      benchmark_accuracy: 85.4%
     status: implemented
     priority: P2
     complexity: high
-
     integration_files:
-      - 'packages/nexus-agents/src/context/typed-memory.ts'
-      - 'packages/nexus-agents/src/context/typed-memory-impl.ts'
-      - 'packages/nexus-agents/src/context/memory-types.ts'
-
+      - packages/nexus-agents/src/context/typed-memory.ts
+      - packages/nexus-agents/src/context/typed-memory-impl.ts
+      - packages/nexus-agents/src/context/memory-types.ts
     implementation_issue: 157
     related_prs: []
+    notes: 'ALREADY IMPLEMENTED - All six memory types present in typed-memory.ts.
 
-    notes: |
-      ALREADY IMPLEMENTED - All six memory types present in typed-memory.ts.
       Code explicitly cites arXiv:2507.07957 in comments.
+
       Implementation exceeds MIRIX with A-MEM and Voyager integration.
 
+      '
     dependencies: []
-
     decision_history:
       - date: '2026-01-06'
-        decision: 'Added to Phase 3 roadmap'
-        rationale: 'High potential, significant implementation effort'
+        decision: Added to Phase 3 roadmap
+        rationale: High potential, significant implementation effort
       - date: '2026-01-09'
         decision: 'Created issue #157 with relevance review requirement'
-        rationale: 'Overlap with existing A-MEM and Voyager needs evaluation'
+        rationale: Overlap with existing A-MEM and Voyager needs evaluation
       - date: '2026-01-09'
         decision: 'Closed #157 - already implemented'
-        rationale: 'Review found all six memory types already in typed-memory.ts'
-
+        rationale: Review found all six memory types already in typed-memory.ts
   mobimem-evolution:
-    name: 'MobiMem Post-Deployment Evolution'
-    description: |
-      Post-deployment evolution via Profile, Experience, and Action
+    name: MobiMem Post-Deployment Evolution
+    description: 'Post-deployment evolution via Profile, Experience, and Action
+
       memory modules for continuous agent improvement.
 
+      '
     source_papers:
       - arxiv-2512.15784
-
     topic: memory
     tags:
       - post-deployment
       - evolution
       - three-module
-
     metrics:
-      profile_alignment: '83.1%'
-      retrieval_speed: '280x faster than GraphRAG'
-      task_success_improvement: '50.3%'
-
+      profile_alignment: 83.1%
+      retrieval_speed: 280x faster than GraphRAG
+      task_success_improvement: 50.3%
     status: implemented
     priority: P2
     complexity: high
-
     integration_files:
-      - 'packages/nexus-agents/src/context/mobimem.ts'
-      - 'packages/nexus-agents/src/context/mobimem-impl.ts'
-      - 'packages/nexus-agents/src/context/mobimem-types.ts'
-      - 'packages/nexus-agents/src/context/mobimem.test.ts'
-
+      - packages/nexus-agents/src/context/mobimem.ts
+      - packages/nexus-agents/src/context/mobimem-impl.ts
+      - packages/nexus-agents/src/context/mobimem-types.ts
+      - packages/nexus-agents/src/context/mobimem.test.ts
     implementation_issue: 149
     related_prs: []
+    notes: 'Implemented MobiMemBackend with Profile, Experience, and Action modules.
 
-    notes: |
-      Implemented MobiMemBackend with Profile, Experience, and Action modules.
       Enables post-deployment evolution without retraining.
+
       Experience Memory tracks workflow patterns for improvement.
 
+      '
     dependencies: []
-
     decision_history:
       - date: '2026-01-09'
-        decision: 'Issue created'
-        rationale: 'Created during dogfooding session'
+        decision: Issue created
+        rationale: Created during dogfooding session
       - date: '2026-01-13'
-        decision: 'Status updated to implemented'
-        rationale: 'MobiMemBackend in context/ - commit 1c5d1b2'
-
+        decision: Status updated to implemented
+        rationale: MobiMemBackend in context/ - commit 1c5d1b2
   graph-based-memory:
-    name: 'Graph-Based Memory'
-    description: |
-      Graph-based relational structures for entity relationships
+    name: Graph-Based Memory
+    description: 'Graph-based relational structures for entity relationships
+
       extracted from context with semantic retrieval.
 
+      '
     source_papers:
       - arxiv-2504.19413
-
     topic: memory
     tags:
       - graph
       - relational
       - semantic
-
     metrics:
-      performance_improvement: '+2%'
-
+      performance_improvement: +2%
     status: implemented
     priority: P3
     complexity: high
-
     integration_files:
-      - 'packages/nexus-agents/src/context/graph-memory.ts'
-      - 'packages/nexus-agents/src/context/graph-memory-types.ts'
-      - 'packages/nexus-agents/src/context/graph-memory-helpers.ts'
-
+      - packages/nexus-agents/src/context/graph-memory.ts
+      - packages/nexus-agents/src/context/graph-memory-types.ts
+      - packages/nexus-agents/src/context/graph-memory-helpers.ts
     implementation_issue: 142
     related_prs: []
+    notes: 'Extension of Mem0 architecture.
 
-    notes: |
-      Extension of Mem0 architecture.
-
+      '
     dependencies:
       - mem0-memory-architecture
-
     decision_history: []
-
   adaptive-memory:
-    name: 'Adaptive Memory'
-    description: |
-      Priority-based memory retrieval combining recency decay,
+    name: Adaptive Memory
+    description: 'Priority-based memory retrieval combining recency decay,
+
       importance weighting, and context relevance scoring.
 
+      '
     source_papers:
       - arxiv-2310.08560
-
     topic: memory
     tags:
       - priority
       - recency-decay
       - relevance
-
     metrics:
-      performance_improvement: 'Configurable priority scoring'
-
+      performance_improvement: Configurable priority scoring
     status: implemented
     priority: P2
     complexity: medium
-
     integration_files:
-      - 'packages/nexus-agents/src/context/adaptive-memory.ts'
-      - 'packages/nexus-agents/src/context/adaptive-memory-types.ts'
-      - 'packages/nexus-agents/src/context/adaptive-memory-helpers.ts'
-
+      - packages/nexus-agents/src/context/adaptive-memory.ts
+      - packages/nexus-agents/src/context/adaptive-memory-types.ts
+      - packages/nexus-agents/src/context/adaptive-memory-helpers.ts
     implementation_issue: 143
     related_prs: []
+    notes: 'Complements graph-based-memory with temporal and importance scoring.
 
-    notes: |
-      Complements graph-based-memory with temporal and importance scoring.
-
+      '
     dependencies:
       - mem0-memory-architecture
-
     decision_history: []
-
   amem-agentic-memory:
-    name: 'A-MEM Agentic Memory'
-    description: |
-      Zettelkasten-inspired agentic memory where memories are treated as
+    name: A-MEM Agentic Memory
+    description: 'Zettelkasten-inspired agentic memory where memories are treated as
+
       notes with attributes (keywords, tags, entities, context description).
+
       Dynamic linking and evolution detection enables semantic organization.
 
+      '
     source_papers:
       - arxiv-2502.12110
-
     topic: memory
     tags:
       - agentic-memory
@@ -771,1085 +693,995 @@ techniques:
       - dynamic-linking
       - memory-evolution
       - attribute-extraction
-
     metrics:
-      semantic_organization: 'Automatic attribute extraction and linking'
-      evolution_detection: 'Refinement, extension, supersession detection'
-
+      semantic_organization: Automatic attribute extraction and linking
+      evolution_detection: Refinement, extension, supersession detection
     status: implemented
     priority: P1
     complexity: medium
-
     integration_files:
-      - 'packages/nexus-agents/src/context/agentic-memory-types.ts'
-      - 'packages/nexus-agents/src/context/agentic-memory-operations.ts'
-      - 'packages/nexus-agents/src/context/agentic-memory-linking.ts'
-      - 'packages/nexus-agents/src/context/agentic-memory.ts'
-      - 'packages/nexus-agents/src/context/agentic-memory.test.ts'
-
+      - packages/nexus-agents/src/context/agentic-memory-types.ts
+      - packages/nexus-agents/src/context/agentic-memory-operations.ts
+      - packages/nexus-agents/src/context/agentic-memory-linking.ts
+      - packages/nexus-agents/src/context/agentic-memory.ts
+      - packages/nexus-agents/src/context/agentic-memory.test.ts
     implementation_issue: 122
     related_prs: []
+    notes: 'Implemented as AgenticMemoryBackend class with:
 
-    notes: |
-      Implemented as AgenticMemoryBackend class with:
       - Automatic attribute extraction (keywords, tags, entities, context)
+
       - Dynamic link suggestion based on similarity (60% keyword, 40% entity)
+
       - Memory evolution detection (refinement, extension, supersession, contradiction)
+
       - PII filtering in entity extraction
+
       - Composition with HybridMemoryBackend and GraphMemoryBackend
+
       - Phase 1 uses rule-based extraction; Phase 2 will add embeddings
+
       - 31 comprehensive tests
 
+      '
     dependencies:
       - graph-based-memory
       - adaptive-memory
-
     decision_history:
       - date: '2026-01-09'
-        decision: 'Implemented'
+        decision: Implemented
         rationale: 'Issue #122 - A-MEM Agentic Memory implementation'
-
-  # ============================================================================
-  # ORCHESTRATION
-  # ============================================================================
-
   trinity-roles:
-    name: 'TRINITY Thinker/Worker/Verifier Roles'
-    description: |
-      Evolved LLM coordinator with Thinker (reasoning), Worker
+    name: TRINITY Thinker/Worker/Verifier Roles
+    description: 'Evolved LLM coordinator with Thinker (reasoning), Worker
+
       (execution), Verifier (validation) roles using CMA-ES optimization.
 
+      '
     source_papers:
       - arxiv-2512.04695
-
     topic: orchestration
     tags:
       - role-based
       - coordinator
       - evolutionary
-
     metrics:
-      benchmark_accuracy: '86.2% on LiveCodeBench'
-
+      benchmark_accuracy: 86.2% on LiveCodeBench
     status: implemented
     priority: P1
     complexity: medium
-
     integration_files:
-      - 'packages/nexus-agents/src/agents/collaboration/trinity-types.ts'
-      - 'packages/nexus-agents/src/agents/collaboration/trinity-coordinator.ts'
-      - 'packages/nexus-agents/src/agents/collaboration/trinity-helpers.ts'
-      - 'packages/nexus-agents/src/core/types/agent.ts'
-
+      - packages/nexus-agents/src/agents/collaboration/trinity-types.ts
+      - packages/nexus-agents/src/agents/collaboration/trinity-coordinator.ts
+      - packages/nexus-agents/src/agents/collaboration/trinity-helpers.ts
+      - packages/nexus-agents/src/core/types/agent.ts
     implementation_issue: 141
     related_prs: []
+    notes: 'Implemented as TrinityCoordinator class with:
 
-    notes: |
-      Implemented as TrinityCoordinator class with:
       - Thinker role for problem decomposition and planning
+
       - Worker role for task execution
+
       - Verifier role for output validation with pass/fail verdict
+
       - Iterative refinement loop (max 3 iterations)
+
       - 22 comprehensive tests
 
+      '
     dependencies: []
-
     decision_history:
       - date: '2026-01-06'
-        decision: 'Added to roadmap Phase 2'
-        rationale: 'High impact, architectural alignment'
+        decision: Added to roadmap Phase 2
+        rationale: High impact, architectural alignment
       - date: '2026-01-08'
-        decision: 'Implemented'
+        decision: Implemented
         rationale: 'Commit pending - feat(collaboration): implement TRINITY coordinator (#141)'
-
   rl-orchestrator:
-    name: 'RL-Trained Orchestrator'
-    description: |
-      Dynamic agent selection via RL-trained policy mapping context
+    name: RL-Trained Orchestrator
+    description: 'Dynamic agent selection via RL-trained policy mapping context
+
       to agent probabilities.
 
+      '
     source_papers:
       - arxiv-2505.19591
-
     topic: orchestration
     tags:
       - reinforcement-learning
       - dynamic-selection
       - policy
-
     metrics:
-      task_completion_improvement: '15-30%'
-
+      task_completion_improvement: 15-30%
     status: implemented
     priority: P4
     complexity: high
-
     integration_files:
-      - 'packages/nexus-agents/src/agents/orchestration/learnable-policy.ts'
-      - 'packages/nexus-agents/src/agents/orchestration/learnable-policy.test.ts'
-      - 'packages/nexus-agents/src/agents/orchestration/trajectory-converter.ts'
-      - 'packages/nexus-agents/src/agents/orchestration/trajectory-converter.test.ts'
-      - 'packages/nexus-agents/src/agents/orchestration/learning-integration.ts'
-      - 'packages/nexus-agents/src/agents/orchestration/experience-buffer.ts'
-      - 'packages/nexus-agents/src/agents/orchestration/experience-buffer.test.ts'
-      - 'packages/nexus-agents/src/agents/orchestration/policy-types.ts'
-
+      - packages/nexus-agents/src/agents/orchestration/learnable-policy.ts
+      - packages/nexus-agents/src/agents/orchestration/learnable-policy.test.ts
+      - packages/nexus-agents/src/agents/orchestration/trajectory-converter.ts
+      - packages/nexus-agents/src/agents/orchestration/trajectory-converter.test.ts
+      - packages/nexus-agents/src/agents/orchestration/learning-integration.ts
+      - packages/nexus-agents/src/agents/orchestration/experience-buffer.ts
+      - packages/nexus-agents/src/agents/orchestration/experience-buffer.test.ts
+      - packages/nexus-agents/src/agents/orchestration/policy-types.ts
     implementation_issue: 154
     related_prs: []
+    notes: 'REINFORCE with baseline policy gradient implementation:
 
-    notes: |
-      REINFORCE with baseline policy gradient implementation:
       - LearnablePolicy class with gradient-based weight updates
+
       - TrajectoryConverter for PuppeteerStepResult → PolicyTrajectoryStep
+
       - LearningIntegration utilities for orchestrator connection
+
       - ExperienceBuffer for trajectory storage (10K capacity, priority sampling)
+
       - 51 comprehensive tests for learnable-policy module
 
+      '
     dependencies:
       - rule-based-coordination
-
     decision_history:
       - date: '2026-01-06'
-        decision: 'Deferred to Phase 3+'
-        rationale: 'Requires significant infrastructure'
+        decision: Deferred to Phase 3+
+        rationale: Requires significant infrastructure
       - date: '2026-01-09'
-        decision: 'Issue created'
-        rationale: 'Created during dogfooding session'
+        decision: Issue created
+        rationale: Created during dogfooding session
       - date: '2026-01-24'
-        decision: 'Implemented'
-        rationale: 'LearnablePolicy with REINFORCE algorithm - 51 tests passing'
-
+        decision: Implemented
+        rationale: LearnablePolicy with REINFORCE algorithm - 51 tests passing
   evolving-orchestration:
-    name: 'Evolving Orchestration Upgrade'
-    description: |
-      Puppeteer-style paradigm with RL-trained orchestrator for dynamic
+    name: Evolving Orchestration Upgrade
+    description: 'Puppeteer-style paradigm with RL-trained orchestrator for dynamic
+
       agent selection. Upgrades existing orchestration with learned policies.
 
+      '
     source_papers:
       - arxiv-2505.19591
-
     topic: orchestration
     tags:
       - reinforcement-learning
       - puppeteer
       - dynamic-selection
       - policy
-
     metrics:
-      task_completion_improvement: '15-30%'
-
+      task_completion_improvement: 15-30%
     status: implemented
     priority: P2
     complexity: high
-
     integration_files:
-      - 'packages/nexus-agents/src/agents/orchestration/puppeteer-orchestrator.ts'
-      - 'packages/nexus-agents/src/agents/orchestration/puppeteer-types.ts'
-      - 'packages/nexus-agents/src/agents/orchestration/puppeteer-helpers.ts'
-      - 'packages/nexus-agents/src/agents/orchestration/puppeteer-events.ts'
-      - 'packages/nexus-agents/src/agents/orchestration/puppeteer-orchestrator.test.ts'
-
+      - packages/nexus-agents/src/agents/orchestration/puppeteer-orchestrator.ts
+      - packages/nexus-agents/src/agents/orchestration/puppeteer-types.ts
+      - packages/nexus-agents/src/agents/orchestration/puppeteer-helpers.ts
+      - packages/nexus-agents/src/agents/orchestration/puppeteer-events.ts
+      - packages/nexus-agents/src/agents/orchestration/puppeteer-orchestrator.test.ts
     implementation_issue: 335
     related_prs: []
+    notes: 'Phase 1 (rule-based puppeteer) complete. Learned policies pending rl-orchestrator.
 
-    notes: |
-      Phase 1 (rule-based puppeteer) complete. Learned policies pending rl-orchestrator.
       Builds on rl-orchestrator (#154) infrastructure when available.
 
+      '
     dependencies:
       - rl-orchestrator
-
     decision_history:
       - date: '2026-01-17'
-        decision: 'APPROVED via consensus vote'
-        rationale: 'Weighted score 0.83, 12/15 agents FOR'
-
+        decision: APPROVED via consensus vote
+        rationale: Weighted score 0.83, 12/15 agents FOR
   latts-adaptive-compute:
-    name: 'LATTS Adaptive Test-Time Compute'
-    description: |
-      Locally adaptive test-time scaling with verifier-based acceptance
+    name: LATTS Adaptive Test-Time Compute
+    description: 'Locally adaptive test-time scaling with verifier-based acceptance
+
       criterion. Decisions: resample, backtrack, restart, or stop.
 
+      '
     source_papers:
       - arxiv-2509.20368
-
     topic: orchestration
     tags:
       - adaptive
       - test-time
       - verifier
-
     metrics:
-      performance_parity: '1B model matches 405B'
-
+      performance_parity: 1B model matches 405B
     status: implemented
     priority: P2
     complexity: high
-
     integration_files:
-      - 'packages/nexus-agents/src/workflows/latts.ts'
-      - 'packages/nexus-agents/src/workflows/latts-types.ts'
-      - 'packages/nexus-agents/src/workflows/latts-controller.ts'
-      - 'packages/nexus-agents/src/workflows/latts-verifier.ts'
-      - 'packages/nexus-agents/src/workflows/latts.test.ts'
-
+      - packages/nexus-agents/src/workflows/latts.ts
+      - packages/nexus-agents/src/workflows/latts-types.ts
+      - packages/nexus-agents/src/workflows/latts-controller.ts
+      - packages/nexus-agents/src/workflows/latts-verifier.ts
+      - packages/nexus-agents/src/workflows/latts.test.ts
     implementation_issue: 153
     related_prs: []
+    notes: 'Implemented LATTS adaptive test-time compute:
 
-    notes: |
-      Implemented LATTS adaptive test-time compute:
       - LattsController for adaptive decision making
+
       - LattsVerifier for acceptance criteria
+
       - Resample, backtrack, restart, stop decisions
+
       - Full test coverage
 
+      '
     dependencies: []
-
     decision_history:
       - date: '2026-01-09'
-        decision: 'Issue created'
-        rationale: 'Created during dogfooding session'
+        decision: Issue created
+        rationale: Created during dogfooding session
       - date: '2026-01-09'
-        decision: 'Implemented'
+        decision: Implemented
         rationale: 'Issue #153 closed - full LATTS implementation'
-
-  # ============================================================================
-  # SELF-IMPROVEMENT
-  # ============================================================================
-
   self-refine-loop:
-    name: 'Self-Refine Iterative Loop'
-    description: |
-      Single LLM acts as generator, feedback provider, and refiner
+    name: Self-Refine Iterative Loop
+    description: 'Single LLM acts as generator, feedback provider, and refiner
+
       in an iterative loop without any training.
 
+      '
     source_papers:
       - arxiv-2303.17651
-
     topic: code-generation
     tags:
       - iterative
       - training-free
       - self-feedback
-
     metrics:
-      average_improvement: '20%'
-
+      average_improvement: 20%
     status: implemented
     priority: P1
     complexity: low
-
     integration_files:
-      - 'packages/nexus-agents/src/agents/collaboration/self-refine-protocol.ts'
-      - 'packages/nexus-agents/src/agents/collaboration/self-refine-protocol.test.ts'
-
+      - packages/nexus-agents/src/agents/collaboration/self-refine-protocol.ts
+      - packages/nexus-agents/src/agents/collaboration/self-refine-protocol.test.ts
     implementation_issue: 126
     related_prs: []
+    notes: 'Implemented as SelfRefineProtocol with configurable iterations and
 
-    notes: |
-      Implemented as SelfRefineProtocol with configurable iterations and
       convergence detection. Uses Jaccard similarity for convergence.
 
+      '
     dependencies: []
-
     decision_history:
       - date: '2026-01-06'
-        decision: 'Added to Phase 1 Foundation'
-        rationale: 'Low complexity, immediate benefit'
+        decision: Added to Phase 1 Foundation
+        rationale: Low complexity, immediate benefit
       - date: '2026-01-07'
-        decision: 'Implemented'
+        decision: Implemented
         rationale: 'Issue #126 - Iterative generate→feedback→refine loop'
-
   reflexion-verbal-rl:
-    name: 'Reflexion Verbal Reinforcement Learning'
-    description: |
-      Agents maintain episodic memory of verbal reflections that
+    name: Reflexion Verbal Reinforcement Learning
+    description: 'Agents maintain episodic memory of verbal reflections that
+
       guide future behavior, converting feedback into semantic gradients.
 
+      '
     source_papers:
       - arxiv-2303.11366
-
     topic: code-generation
     tags:
       - verbal-rl
       - reflection
       - episodic-memory
-
     metrics:
-      alfworld_improvement: '+22%'
-      hotpotqa_improvement: '+20%'
-      humaneval_pass1: '91%'
-
+      alfworld_improvement: +22%
+      hotpotqa_improvement: +20%
+      humaneval_pass1: 91%
     status: implemented
     priority: P1
     complexity: medium
-
     integration_files:
-      - 'packages/nexus-agents/src/context/session-memory.ts'
-      - 'packages/nexus-agents/src/context/session-memory.test.ts'
-
+      - packages/nexus-agents/src/context/session-memory.ts
+      - packages/nexus-agents/src/context/session-memory.test.ts
     implementation_issue: 130
     related_prs: []
+    notes: 'Implemented as SessionMemory class for cross-session persistence:
 
-    notes: |
-      Implemented as SessionMemory class for cross-session persistence:
       - Session lifecycle (start/end with automatic episode persistence)
+
       - Record learnings, tasks, and resolved errors during sessions
+
       - Load relevant learnings on session start (confidence-filtered)
+
       - Search learnings by query and retrieve error solutions
+
       - JSON-based file storage for human readability
+
       - 22 comprehensive tests covering all functionality
 
+      '
     dependencies: []
-
     decision_history:
       - date: '2026-01-06'
-        decision: 'Added to Phase 1 Foundation'
-        rationale: 'High impact on agent performance'
+        decision: Added to Phase 1 Foundation
+        rationale: High impact on agent performance
       - date: '2026-01-07'
-        decision: 'Implemented'
+        decision: Implemented
         rationale: 'Issue #130 - Cross-session episodic memory persistence'
-
   voyager-skill-library:
-    name: 'Voyager Skill Library Pattern'
-    description: |
-      Ever-growing library of executable code skills built through
+    name: Voyager Skill Library Pattern
+    description: 'Ever-growing library of executable code skills built through
+
       environmental interaction with automatic curriculum.
 
+      '
     source_papers:
       - arxiv-2305.16291
-
     topic: code-generation
     tags:
       - skill-library
       - lifelong-learning
       - executable
-
     metrics:
-      discovery_improvement: '3.3x more unique items'
-      speed_improvement: 'up to 15.3x faster milestone'
-
+      discovery_improvement: 3.3x more unique items
+      speed_improvement: up to 15.3x faster milestone
     status: implemented
     priority: P2
     complexity: medium
-
     integration_files:
-      - 'packages/nexus-agents/src/agents/skills/'
-
+      - packages/nexus-agents/src/agents/skills/
     implementation_issue: 150
     related_prs: []
+    notes: 'Implemented skill library as code snippets with metadata.
 
-    notes: |
-      Implemented skill library as code snippets with metadata.
       Skills are temporally extended, interpretable, compositional.
+
       Includes SkillLibrary class with storage, retrieval, metrics tracking.
+
       SkillComposer for combining skills to solve complex tasks.
 
+      '
     dependencies: []
-
     decision_history:
       - date: '2026-01-06'
-        decision: 'Added to Phase 2 Skill Learning'
-        rationale: 'High impact for code-related tasks'
+        decision: Added to Phase 2 Skill Learning
+        rationale: High impact for code-related tasks
       - date: '2026-01-09'
-        decision: 'Issue created'
-        rationale: 'Created during dogfooding session'
+        decision: Issue created
+        rationale: Created during dogfooding session
       - date: '2026-01-09'
-        decision: 'Implementation completed'
-        rationale: 'SkillLibrary and SkillComposer with 40 tests'
-
+        decision: Implementation completed
+        rationale: SkillLibrary and SkillComposer with 40 tests
   sica-self-improvement:
-    name: 'SICA Self-Improving Agent'
-    description: |
-      Unified agent that performs tasks AND improves its own
+    name: SICA Self-Improving Agent
+    description: 'Unified agent that performs tasks AND improves its own
+
       implementation through tool orchestration, not weight updates.
 
+      '
     source_papers:
       - arxiv-2504.15228
-
     topic: code-generation
     tags:
       - self-improvement
       - versioning
       - observability
-
     metrics:
-      swebench_improvement: '17% -> 53%'
-      file_editing_improvement: '82% -> 94%'
-
+      swebench_improvement: 17% -> 53%
+      file_editing_improvement: 82% -> 94%
     status: implemented
     priority: P2
     complexity: high
-
     integration_files:
-      - 'packages/nexus-agents/src/agents/self-improving/sica-types.ts'
-      - 'packages/nexus-agents/src/agents/self-improving/sica-version-manager.ts'
-      - 'packages/nexus-agents/src/agents/self-improving/sica-agent.ts'
-      - 'packages/nexus-agents/src/agents/self-improving/index.ts'
-
+      - packages/nexus-agents/src/agents/self-improving/sica-types.ts
+      - packages/nexus-agents/src/agents/self-improving/sica-version-manager.ts
+      - packages/nexus-agents/src/agents/self-improving/sica-agent.ts
+      - packages/nexus-agents/src/agents/self-improving/index.ts
     implementation_issue: 151
     related_prs: []
+    notes: 'Implement agent versioning with performance tracking.
 
-    notes: |
-      Implement agent versioning with performance tracking.
       Use best-performing configuration as base for improvements.
+
       Prioritize observability for safety.
 
+      '
     dependencies:
       - self-refine-loop
-
     decision_history:
       - date: '2026-01-09'
-        decision: 'Issue created'
-        rationale: 'Created during dogfooding session'
-
+        decision: Issue created
+        rationale: Created during dogfooding session
   constitutional-ai:
-    name: 'Constitutional AI Self-Critique'
-    description: |
-      Self-critique against explicit constitutional principles.
+    name: Constitutional AI Self-Critique
+    description: 'Self-critique against explicit constitutional principles.
+
       Two phases: supervised (critique/revise) and RL (judge).
 
+      '
     source_papers:
       - arxiv-2212.08073
-
     topic: code-generation
     tags:
       - constitutional
       - self-critique
       - principles
-
     metrics:
-      scales: 'without human labelers'
-
+      scales: without human labelers
     status: implemented
     priority: P2
     complexity: medium
-
     integration_files:
-      - 'packages/nexus-agents/src/agents/collaboration/constitutional-critic.ts'
-      - 'packages/nexus-agents/src/agents/collaboration/constitutional-types.ts'
-      - 'packages/nexus-agents/src/agents/collaboration/constitutions/code.ts'
-      - 'packages/nexus-agents/src/agents/collaboration/constitutional-critic.test.ts'
-
+      - packages/nexus-agents/src/agents/collaboration/constitutional-critic.ts
+      - packages/nexus-agents/src/agents/collaboration/constitutional-types.ts
+      - packages/nexus-agents/src/agents/collaboration/constitutions/code.ts
+      - packages/nexus-agents/src/agents/collaboration/constitutional-critic.test.ts
     implementation_issue: 147
     related_prs: []
+    notes: 'Implemented Constitutional AI self-critique protocol.
 
-    notes: |
-      Implemented Constitutional AI self-critique protocol.
       - ConstitutionalCritic class with critique(), revise(), refineWithConstitution()
+
       - CODE_CONSTITUTION with 8 security/quality principles
+
       - Pattern-based violation detection with confidence scoring
+
       - Iterative refinement loop with convergence detection
+
       - 21 tests covering all functionality
+
       Can integrate with TRINITY verifier role.
 
+      '
     dependencies: []
-
     decision_history:
       - date: '2026-01-09'
-        decision: 'Issue created'
-        rationale: 'Created during dogfooding session'
-
+        decision: Issue created
+        rationale: Created during dogfooding session
   self-debug-repair:
-    name: 'Self-Debug Code Repair'
-    description: |
-      Teaching LLMs to self-debug through "rubber duck debugging" where the
+    name: Self-Debug Code Repair
+    description: 'Teaching LLMs to self-debug through "rubber duck debugging" where the
+
       model explains its own code, identifies errors via execution feedback,
+
       and iteratively fixes issues until tests pass.
 
+      '
     source_papers:
       - arxiv-2304.05128
-
     topic: code-generation
     tags:
       - self-debug
       - code-repair
       - execution-feedback
       - rubber-duck
-
     metrics:
-      security_reduction: '96% vulnerability reduction with multi-tool feedback'
-      pass_rate_improvement: 'significant across benchmarks'
-
+      security_reduction: 96% vulnerability reduction with multi-tool feedback
+      pass_rate_improvement: significant across benchmarks
     status: implemented
     priority: P3
     complexity: medium
-
     integration_files:
-      - 'packages/nexus-agents/src/agents/collaboration/self-debug-types.ts'
-      - 'packages/nexus-agents/src/agents/collaboration/self-debug-protocol.ts'
-      - 'packages/nexus-agents/src/agents/collaboration/self-debug-helpers.ts'
-      - 'packages/nexus-agents/src/agents/collaboration/self-debug-protocol.test.ts'
-
+      - packages/nexus-agents/src/agents/collaboration/self-debug-types.ts
+      - packages/nexus-agents/src/agents/collaboration/self-debug-protocol.ts
+      - packages/nexus-agents/src/agents/collaboration/self-debug-helpers.ts
+      - packages/nexus-agents/src/agents/collaboration/self-debug-protocol.test.ts
     implementation_issue: 131
     related_prs: []
+    notes: 'Implemented as SelfDebugProtocol class with:
 
-    notes: |
-      Implemented as SelfDebugProtocol class with:
       - Debug loop: execute → detect_error → explain → fix → verify
+
       - Multi-language error parsing (TypeScript, ESLint, Node.js, Python, Go, Rust)
+
       - Synthetic error creation for unparseable execution failures
+
       - Configurable max iterations and explanation inclusion
+
       - Cancellation support for long-running debug sessions
+
       - 21 comprehensive tests covering all functionality
 
+      '
     dependencies:
       - self-refine-loop
-
     decision_history:
       - date: '2026-01-07'
-        decision: 'Started implementation'
+        decision: Started implementation
         rationale: 'Issue #131 - Automatic error recovery for code generation'
       - date: '2026-01-08'
-        decision: 'Implemented'
-        rationale: 'Complete with types, protocol, helpers, and 21 tests'
-
-  # ============================================================================
-  # REJECTED TECHNIQUES
-  # ============================================================================
-
+        decision: Implemented
+        rationale: Complete with types, protocol, helpers, and 21 tests
   latent-space-sharing:
-    name: 'LatentMAS Latent Space Collaboration'
-    description: |
-      Direct collaboration through hidden state sharing between agents.
+    name: LatentMAS Latent Space Collaboration
+    description: 'Direct collaboration through hidden state sharing between agents.
 
+      '
     source_papers:
       - arxiv-2511.20639
-
     topic: orchestration
     tags:
       - latent-space
       - embedding
       - inter-agent
-
     metrics:
-      accuracy_improvement: 'up to 14.6%'
-      token_reduction: '70.8%-83.7%'
-
+      accuracy_improvement: up to 14.6%
+      token_reduction: 70.8%-83.7%
     status: rejected
     priority: null
     complexity: high
-
     integration_files: []
     implementation_issue: 1659
     related_prs: []
+    notes: 'Requires same-model deployment for embedding compatibility.
 
-    notes: |
-      Requires same-model deployment for embedding compatibility.
       Not applicable to hybrid CLI architecture.
 
+      '
     dependencies: []
-
     decision_history:
       - date: '2026-01-07'
-        decision: 'Rejected for current architecture'
-        rationale: 'Requires same-model agents; hybrid CLI arch uses different models'
-
-  # ============================================================================
-  # NEW TECHNIQUES FROM 2026-01-17 CONSENSUS VOTE
-  # ============================================================================
-
+        decision: Rejected for current architecture
+        rationale: Requires same-model agents; hybrid CLI arch uses different models
   stpa-mcp-safety:
-    name: 'STPA MCP Framework'
-    description: |
-      System-Theoretic Process Analysis (STPA) for formal safety analysis of
+    name: STPA MCP Framework
+    description: 'System-Theoretic Process Analysis (STPA) for formal safety analysis of
+
       MCP tools. Identifies unsafe control actions and generates safety constraints.
 
+      '
     source_papers:
       - arxiv-2601.08012
-
     topic: security
     tags:
       - stpa
       - formal-safety
       - mcp
       - hazard-analysis
-
     metrics:
-      hazard_coverage: 'Systematic UCA identification'
-      safety_constraints: 'Auto-generated from analysis'
-
+      hazard_coverage: Systematic UCA identification
+      safety_constraints: Auto-generated from analysis
     status: implemented
     priority: P1
     complexity: medium
-
     integration_files:
-      - 'packages/nexus-agents/src/mcp/safety/stpa-analyzer.ts'
-      - 'packages/nexus-agents/src/mcp/safety/stpa-types.ts'
-      - 'packages/nexus-agents/src/mcp/safety/stpa-helpers.ts'
-      - 'packages/nexus-agents/src/mcp/safety/hazard-catalog.ts'
-      - 'packages/nexus-agents/src/mcp/safety/stpa-analyzer.test.ts'
-
+      - packages/nexus-agents/src/mcp/safety/stpa-analyzer.ts
+      - packages/nexus-agents/src/mcp/safety/stpa-types.ts
+      - packages/nexus-agents/src/mcp/safety/stpa-helpers.ts
+      - packages/nexus-agents/src/mcp/safety/hazard-catalog.ts
+      - packages/nexus-agents/src/mcp/safety/stpa-analyzer.test.ts
     implementation_issue: 328
     related_prs: []
+    notes: 'Implemented as StpaAnalyzer class with:
 
-    notes: |
-      Implemented as StpaAnalyzer class with:
       - Tool category classification
+
       - Hazard identification from catalog
+
       - UCA generation for each hazard
+
       - Safety constraint generation
+
       - Risk scoring and level determination
 
+      '
     dependencies: []
-
     decision_history:
       - date: '2026-01-17'
-        decision: 'APPROVED via consensus vote'
-        rationale: 'Weighted score 0.87, 12/15 agents FOR'
+        decision: APPROVED via consensus vote
+        rationale: Weighted score 0.87, 12/15 agents FOR
       - date: '2026-01-17'
-        decision: 'Implemented'
-        rationale: 'StpaAnalyzer with hazard catalog and constraint generation'
-
+        decision: Implemented
+        rationale: StpaAnalyzer with hazard catalog and constraint generation
   aflow-mcts-workflows:
-    name: 'AFlow MCTS Workflow Generation'
-    description: |
-      Monte Carlo Tree Search for automatic workflow discovery and optimization.
+    name: AFlow MCTS Workflow Generation
+    description: 'Monte Carlo Tree Search for automatic workflow discovery and optimization.
+
       Agents discover optimal workflow structures through search.
 
+      '
     source_papers:
       - arxiv-2410.10762
-
     topic: orchestration
     tags:
       - mcts
       - workflow-generation
       - automatic-discovery
-
     metrics:
-      workflow_quality: 'Improved through search optimization'
-
+      workflow_quality: Improved through search optimization
     status: implemented
     priority: P1
     complexity: high
-
     integration_files:
-      - 'packages/nexus-agents/src/workflows/aflow/mcts-tree.ts'
-      - 'packages/nexus-agents/src/workflows/aflow/aflow-types.ts'
-      - 'packages/nexus-agents/src/workflows/aflow/aflow-generator.ts'
-      - 'packages/nexus-agents/src/workflows/aflow/action-space.ts'
-      - 'packages/nexus-agents/src/workflows/aflow/evaluation.ts'
-      - 'packages/nexus-agents/src/workflows/aflow/aflow-generator.test.ts'
-
+      - packages/nexus-agents/src/workflows/aflow/mcts-tree.ts
+      - packages/nexus-agents/src/workflows/aflow/aflow-types.ts
+      - packages/nexus-agents/src/workflows/aflow/aflow-generator.ts
+      - packages/nexus-agents/src/workflows/aflow/action-space.ts
+      - packages/nexus-agents/src/workflows/aflow/evaluation.ts
+      - packages/nexus-agents/src/workflows/aflow/aflow-generator.test.ts
     implementation_issue: 329
     related_prs: []
+    notes: 'Implemented as MCTSTree and AFlowGenerator classes with:
 
-    notes: |
-      Implemented as MCTSTree and AFlowGenerator classes with:
       - MCTS tree with UCT selection for workflow exploration
+
       - Action space defining workflow mutation operations
+
       - Workflow evaluation and scoring
+
       - Full test coverage
 
+      '
     dependencies: []
-
     decision_history:
       - date: '2026-01-17'
-        decision: 'APPROVED via consensus vote'
-        rationale: 'Weighted score 0.95, 14/15 agents FOR'
+        decision: APPROVED via consensus vote
+        rationale: Weighted score 0.95, 14/15 agents FOR
       - date: '2026-01-17'
-        decision: 'Implemented'
-        rationale: 'MCTSTree with UCT selection and AFlowGenerator'
-
+        decision: Implemented
+        rationale: MCTSTree with UCT selection and AFlowGenerator
   sew-self-evolving-workflows:
-    name: 'SEW Self-Evolving Workflows'
-    description: |
-      Self-evolving workflow patterns that adapt through execution feedback.
+    name: SEW Self-Evolving Workflows
+    description: 'Self-evolving workflow patterns that adapt through execution feedback.
+
       Workflows learn and improve automatically over time.
 
+      '
     source_papers:
       - arxiv-2505.18646
-
     topic: orchestration
     tags:
       - self-evolving
       - workflow-optimization
       - feedback-learning
-
     metrics:
-      improvement_rate: 'Continuous through execution feedback'
-
+      improvement_rate: Continuous through execution feedback
     status: implemented
     priority: P1
     complexity: medium
-
     integration_files:
-      - 'packages/nexus-agents/src/workflows/self-evolving/workflow-evolver.ts'
-      - 'packages/nexus-agents/src/workflows/self-evolving/sew-types.ts'
-      - 'packages/nexus-agents/src/workflows/self-evolving/mutation-operators.ts'
-      - 'packages/nexus-agents/src/workflows/self-evolving/workflow-evolver-helpers.ts'
-      - 'packages/nexus-agents/src/workflows/self-evolving/workflow-evolver.test.ts'
-
+      - packages/nexus-agents/src/workflows/self-evolving/workflow-evolver.ts
+      - packages/nexus-agents/src/workflows/self-evolving/sew-types.ts
+      - packages/nexus-agents/src/workflows/self-evolving/mutation-operators.ts
+      - packages/nexus-agents/src/workflows/self-evolving/workflow-evolver-helpers.ts
+      - packages/nexus-agents/src/workflows/self-evolving/workflow-evolver.test.ts
     implementation_issue: 330
     related_prs: []
+    notes: 'Implemented as WorkflowEvolver class with:
 
-    notes: |
-      Implemented as WorkflowEvolver class with:
       - Genetic algorithm-based workflow evolution
+
       - Mutation operators for workflow parameter modification
+
       - Fitness tracking and version management
+
       - Tournament selection and crossover
+
       - Full test coverage
 
+      '
     dependencies: []
-
     decision_history:
       - date: '2026-01-17'
-        decision: 'APPROVED via consensus vote'
-        rationale: 'Weighted score 0.78, 11/15 agents FOR'
+        decision: APPROVED via consensus vote
+        rationale: Weighted score 0.78, 11/15 agents FOR
       - date: '2026-01-17'
-        decision: 'Implemented'
-        rationale: 'WorkflowEvolver with genetic algorithm and mutation operators'
-
+        decision: Implemented
+        rationale: WorkflowEvolver with genetic algorithm and mutation operators
   higher-order-voting:
-    name: 'Higher-Order Voting (OW/ISP)'
-    description: |
-      Optimal Weighting (OW) and Information Score Prior (ISP) for
+    name: Higher-Order Voting (OW/ISP)
+    description: 'Optimal Weighting (OW) and Information Score Prior (ISP) for
+
       Bayesian-optimal aggregation with inter-agent correlation awareness.
 
+      '
     source_papers:
       - arxiv-2510.01499
-
     topic: consensus
     tags:
       - bayesian
       - correlation-aware
       - optimal-weighting
-
     metrics:
-      correlation_handling: 'Improved consensus on correlated inputs'
-
+      correlation_handling: Improved consensus on correlated inputs
     status: implemented
     priority: P2
     complexity: medium
-
     integration_files:
-      - 'packages/nexus-agents/src/consensus/higher-order-voting.ts'
-      - 'packages/nexus-agents/src/consensus/higher-order-types.ts'
-      - 'packages/nexus-agents/src/consensus/higher-order-helpers.ts'
-      - 'packages/nexus-agents/src/consensus/correlation-tracker.ts'
-      - 'packages/nexus-agents/src/consensus/correlation-helpers.ts'
-      - 'packages/nexus-agents/src/consensus/higher-order-voting.test.ts'
-
+      - packages/nexus-agents/src/consensus/higher-order-voting.ts
+      - packages/nexus-agents/src/consensus/higher-order-types.ts
+      - packages/nexus-agents/src/consensus/higher-order-helpers.ts
+      - packages/nexus-agents/src/consensus/correlation-tracker.ts
+      - packages/nexus-agents/src/consensus/correlation-helpers.ts
+      - packages/nexus-agents/src/consensus/higher-order-voting.test.ts
     implementation_issue: 333
     related_prs: []
+    notes: 'Implemented as OWVoting and ISPVoting classes with:
 
-    notes: |
-      Implemented as OWVoting and ISPVoting classes with:
       - Opinion-Wise (OW) Bayesian aggregation with correlation awareness
+
       - Independent Subset Partition (ISP) for groupthink mitigation
+
       - Correlation tracking across voting history
+
       - Integration with existing VotingProtocol
 
+      '
     dependencies:
       - cp-wbft-consensus
-
     decision_history:
       - date: '2026-01-17'
-        decision: 'APPROVED via consensus vote'
-        rationale: 'Weighted score 0.89, 13/15 agents FOR'
+        decision: APPROVED via consensus vote
+        rationale: Weighted score 0.89, 13/15 agents FOR
       - date: '2026-01-17'
-        decision: 'Implemented'
-        rationale: 'OWVoting and ISPVoting with correlation tracking'
-
+        decision: Implemented
+        rationale: OWVoting and ISPVoting with correlation tracking
   forest-of-thought:
-    name: 'Forest-of-Thought Multi-Tree Reasoning'
-    description: |
-      Multi-tree reasoning with sparse activation for parallel exploration
+    name: Forest-of-Thought Multi-Tree Reasoning
+    description: 'Multi-tree reasoning with sparse activation for parallel exploration
+
       of diverse reasoning paths.
 
+      '
     source_papers:
       - arxiv-2412.09078
-
     topic: orchestration
     tags:
       - reasoning
       - multi-tree
       - sparse-activation
-
     metrics:
-      reasoning_quality: 'Improved through diverse exploration'
-      efficiency: 'Sparse activation reduces compute'
-
+      reasoning_quality: Improved through diverse exploration
+      efficiency: Sparse activation reduces compute
     status: implemented
     priority: P2
     complexity: high
-
     integration_files:
-      - 'packages/nexus-agents/src/agents/reasoning/forest-types.ts'
-      - 'packages/nexus-agents/src/agents/reasoning/forest-node-types.ts'
-      - 'packages/nexus-agents/src/agents/reasoning/forest-tree-types.ts'
-      - 'packages/nexus-agents/src/agents/reasoning/forest-config-types.ts'
-      - 'packages/nexus-agents/src/agents/reasoning/forest-result-types.ts'
-      - 'packages/nexus-agents/src/agents/reasoning/forest-types.test.ts'
-
+      - packages/nexus-agents/src/agents/reasoning/forest-types.ts
+      - packages/nexus-agents/src/agents/reasoning/forest-node-types.ts
+      - packages/nexus-agents/src/agents/reasoning/forest-tree-types.ts
+      - packages/nexus-agents/src/agents/reasoning/forest-config-types.ts
+      - packages/nexus-agents/src/agents/reasoning/forest-result-types.ts
+      - packages/nexus-agents/src/agents/reasoning/forest-types.test.ts
     implementation_issue: 331
     related_prs: []
+    notes: 'Types defined, implementation in progress:
 
-    notes: |
-      Types defined, implementation in progress:
       - ForestState, ForestConfig, ForestResult types complete
+
       - ReasoningNode, ReasoningTree types complete
+
       - Main Forest class and execution logic pending
 
+      '
     dependencies: []
-
     decision_history:
       - date: '2026-01-17'
-        decision: 'APPROVED via consensus vote'
-        rationale: 'Weighted score 0.78, 11/15 agents FOR'
+        decision: APPROVED via consensus vote
+        rationale: Weighted score 0.78, 11/15 agents FOR
       - date: '2026-01-17'
-        decision: 'Types implemented'
-        rationale: 'Forest type definitions complete, implementation pending'
-
+        decision: Types implemented
+        rationale: Forest type definitions complete, implementation pending
   agent-safety-bench:
-    name: 'Agent-SafetyBench Evaluation Suite'
-    description: |
-      Comprehensive safety evaluation suite for agent behaviors across
+    name: Agent-SafetyBench Evaluation Suite
+    description: 'Comprehensive safety evaluation suite for agent behaviors across
+
       multiple risk dimensions.
 
+      '
     source_papers:
       - arxiv-2412.14470
-
     topic: security
     tags:
       - safety-evaluation
       - risk-assessment
       - benchmarking
-
     metrics:
-      coverage: 'Multi-dimensional safety evaluation'
-
+      coverage: Multi-dimensional safety evaluation
     status: implemented
     priority: P2
     complexity: medium
-
     integration_files:
-      - 'packages/nexus-agents/src/security/safety-bench/safety-categories.ts'
-      - 'packages/nexus-agents/src/security/safety-bench/safety-enums.ts'
-      - 'packages/nexus-agents/src/security/safety-bench/safety-schemas.ts'
-      - 'packages/nexus-agents/src/security/safety-bench/safety-category-definitions.ts'
-      - 'packages/nexus-agents/src/security/safety-bench/safety-category-definitions-2.ts'
-      - 'packages/nexus-agents/src/security/safety-bench/safety-categories.test.ts'
-      - 'packages/nexus-agents/src/security/safety-bench/index.ts'
-
+      - packages/nexus-agents/src/security/safety-bench/safety-categories.ts
+      - packages/nexus-agents/src/security/safety-bench/safety-enums.ts
+      - packages/nexus-agents/src/security/safety-bench/safety-schemas.ts
+      - packages/nexus-agents/src/security/safety-bench/safety-category-definitions.ts
+      - packages/nexus-agents/src/security/safety-bench/safety-category-definitions-2.ts
+      - packages/nexus-agents/src/security/safety-bench/safety-categories.test.ts
+      - packages/nexus-agents/src/security/safety-bench/index.ts
     implementation_issue: 332
     related_prs: []
+    notes: 'Safety taxonomy and categories implemented:
 
-    notes: |
-      Safety taxonomy and categories implemented:
       - 10 safety categories (harm, deception, bias, privacy, etc.)
+
       - Risk level enums and evaluation criteria schemas
+
       - Category definitions with test case schemas
+
       - Main evaluation harness (safety-bench.ts) pending
 
+      '
     dependencies: []
-
     decision_history:
       - date: '2026-01-17'
-        decision: 'APPROVED via consensus vote'
-        rationale: 'Weighted score 0.72, 10/15 agents FOR'
+        decision: APPROVED via consensus vote
+        rationale: Weighted score 0.72, 10/15 agents FOR
       - date: '2026-01-17'
-        decision: 'Categories implemented'
-        rationale: 'Safety taxonomy complete, evaluation harness pending'
-
+        decision: Categories implemented
+        rationale: Safety taxonomy complete, evaluation harness pending
   daao-difficulty-estimation:
-    name: 'DAAO VAE Difficulty Estimation'
-    description: |
-      VAE-based difficulty estimation for intelligent task routing.
+    name: DAAO VAE Difficulty Estimation
+    description: 'VAE-based difficulty estimation for intelligent task routing.
+
       Maps tasks to continuous difficulty spectrum.
 
+      '
     source_papers:
       - arxiv-2509.11079
-
     topic: routing
     tags:
       - vae
       - difficulty-estimation
       - routing
-
     metrics:
-      routing_accuracy: 'Improved task-model alignment'
-
+      routing_accuracy: Improved task-model alignment
     status: implemented
     priority: P2
     complexity: medium
-
     integration_files:
-      - 'packages/nexus-agents/src/cli-adapters/daao-estimator.ts'
-      - 'packages/nexus-agents/src/cli-adapters/daao-types.ts'
-      - 'packages/nexus-agents/src/cli-adapters/daao-feature-extraction.ts'
-      - 'packages/nexus-agents/src/cli-adapters/daao-estimator.test.ts'
-
+      - packages/nexus-agents/src/cli-adapters/daao-estimator.ts
+      - packages/nexus-agents/src/cli-adapters/daao-types.ts
+      - packages/nexus-agents/src/cli-adapters/daao-feature-extraction.ts
+      - packages/nexus-agents/src/cli-adapters/daao-estimator.test.ts
     implementation_issue: 334
     related_prs: []
+    notes: 'Implemented as DAAOEstimator class with:
 
-    notes: |
-      Implemented as DAAOEstimator class with:
       - 8-dimension feature extraction (lexical, syntactic, semantic, etc.)
+
       - Difficulty estimation with configurable weights
+
       - Calibration support for continuous improvement
+
       - Integration with routing infrastructure
 
+      '
     dependencies:
       - pilot-budget-routing
-
     decision_history:
       - date: '2026-01-17'
-        decision: 'APPROVED via consensus vote'
-        rationale: 'Weighted score 0.67, 9/15 agents FOR'
+        decision: APPROVED via consensus vote
+        rationale: Weighted score 0.67, 9/15 agents FOR
       - date: '2026-01-17'
-        decision: 'Implemented'
-        rationale: 'DAAOEstimator with 8-dimension feature extraction'
-
+        decision: Implemented
+        rationale: DAAOEstimator with 8-dimension feature extraction
   hindsight-belief-memory:
-    name: 'Hindsight Belief Memory'
-    description: |
-      Belief Memory layer for reasoning agents. Maintains and updates
+    name: Hindsight Belief Memory
+    description: 'Belief Memory layer for reasoning agents. Maintains and updates
+
       beliefs about the world for sophisticated reasoning.
 
+      '
     source_papers:
       - arxiv-2512.12818
-
     topic: memory
     tags:
       - belief-state
       - reasoning
       - hindsight
-
     metrics:
-      reasoning_quality: 'Improved through belief tracking'
-
+      reasoning_quality: Improved through belief tracking
     status: implemented
     priority: P2
     complexity: medium
-
     integration_files:
-      - 'packages/nexus-agents/src/context/belief-memory.ts'
-      - 'packages/nexus-agents/src/context/belief-types.ts'
-
+      - packages/nexus-agents/src/context/belief-memory.ts
+      - packages/nexus-agents/src/context/belief-types.ts
     implementation_issue: 336
     related_prs: []
+    notes: 'Integrates with existing memory systems.
 
-    notes: |
-      Integrates with existing memory systems.
       Hindsight correction improves belief accuracy.
 
+      '
     dependencies:
       - adaptive-memory
-
     decision_history:
       - date: '2026-01-17'
-        decision: 'APPROVED via consensus vote'
-        rationale: 'Weighted score 0.78, 11/15 agents FOR'
+        decision: APPROVED via consensus vote
+        rationale: Weighted score 0.78, 11/15 agents FOR
       - date: '2026-01-17'
-        decision: 'Implemented in commit 409dd49'
-        rationale: 'Swarm iteration 2 implementation'
-
+        decision: Implemented in commit 409dd49
+        rationale: Swarm iteration 2 implementation
   scaling-coordination-predictor:
-    name: 'Scaling Agent Coordination Predictor'
-    description: |
-      Prediction of coordination requirements for scaling multi-agent systems.
+    name: Scaling Agent Coordination Predictor
+    description: 'Prediction of coordination requirements for scaling multi-agent systems.
+
       Enables optimal agent allocation and resource utilization.
 
+      '
     source_papers:
       - arxiv-2512.08296
-
     topic: orchestration
     tags:
       - scaling
       - coordination
       - prediction
-
     metrics:
-      allocation_efficiency: 'Improved agent utilization'
-
+      allocation_efficiency: Improved agent utilization
     status: implemented
     priority: P2
     complexity: medium
-
     integration_files:
-      - 'packages/nexus-agents/src/agents/coordination/scaling-predictor.ts'
-      - 'packages/nexus-agents/src/agents/coordination/scaling-types.ts'
-
+      - packages/nexus-agents/src/agents/coordination/scaling-predictor.ts
+      - packages/nexus-agents/src/agents/coordination/scaling-types.ts
     implementation_issue: 337
     related_prs: []
+    notes: 'Integrates with orchestration layer.
 
-    notes: |
-      Integrates with orchestration layer.
       Models scaling behavior for resource optimization.
 
+      '
     dependencies: []
-
     decision_history:
       - date: '2026-01-17'
-        decision: 'APPROVED via consensus vote'
-        rationale: 'Weighted score 0.67, 9/15 agents FOR'
+        decision: APPROVED via consensus vote
+        rationale: Weighted score 0.67, 9/15 agents FOR
       - date: '2026-01-17'
-        decision: 'Implemented in commit 409dd49'
-        rationale: 'Swarm iteration 2 implementation'
-
+        decision: Implemented in commit 409dd49
+        rationale: Swarm iteration 2 implementation
   zerorouter-universal-difficulty:
-    name: 'ZeroRouter Universal Difficulty Space'
-    description: |
-      Universal difficulty space for model routing. Maps diverse tasks to a
+    name: ZeroRouter Universal Difficulty Space
+    description: 'Universal difficulty space for model routing. Maps diverse tasks to a
+
       unified difficulty metric for improved model selection across domains.
 
+      '
     source_papers:
       - zerorouter-tbd
-
     topic: routing
     tags:
       - universal-difficulty
       - routing
       - transfer-learning
-
     metrics:
-      routing_accuracy: 'Cross-domain difficulty assessment'
-
+      routing_accuracy: Cross-domain difficulty assessment
     status: implemented
     priority: P1
     complexity: medium
-
     integration_files:
-      - 'packages/nexus-agents/src/cli-adapters/zero-router.ts'
-      - 'packages/nexus-agents/src/cli-adapters/zero-router-types.ts'
-      - 'packages/nexus-agents/src/cli-adapters/difficulty-space.ts'
-      - 'packages/nexus-agents/src/cli-adapters/difficulty-estimators.ts'
-      - 'packages/nexus-agents/src/cli-adapters/zero-router-calibration.ts'
-      - 'packages/nexus-agents/src/cli-adapters/zero-router.test.ts'
-
+      - packages/nexus-agents/src/cli-adapters/zero-router.ts
+      - packages/nexus-agents/src/cli-adapters/zero-router-types.ts
+      - packages/nexus-agents/src/cli-adapters/difficulty-space.ts
+      - packages/nexus-agents/src/cli-adapters/difficulty-estimators.ts
+      - packages/nexus-agents/src/cli-adapters/zero-router-calibration.ts
+      - packages/nexus-agents/src/cli-adapters/zero-router.test.ts
     implementation_issue: 338
     related_prs: []
+    notes: 'Implemented as ZeroRouter class with:
 
-    notes: |
-      Implemented as ZeroRouter class with:
       - Universal difficulty space mapping across task types
+
       - Difficulty level classification (trivial, easy, medium, hard, expert)
+
       - Calibration tracking for accuracy improvement
+
       - Integration with routing infrastructure
 
+      '
     dependencies:
       - pilot-budget-routing
-
     decision_history:
       - date: '2026-01-17'
-        decision: 'APPROVED via consensus vote'
-        rationale: 'Weighted score 0.72, 10/15 agents FOR'
+        decision: APPROVED via consensus vote
+        rationale: Weighted score 0.72, 10/15 agents FOR
       - date: '2026-01-17'
-        decision: 'Implemented'
-        rationale: 'ZeroRouter with difficulty space and calibration'
-
-  # ============================================================================
-  # SOURCE-DERIVED TECHNIQUES (from open-source project analysis)
-  # Added Wave 6 — closing traceability gap between sources.yaml and techniques
-  # ============================================================================
-
+        decision: Implemented
+        rationale: ZeroRouter with difficulty space and calibration
   failure-lesson-injection:
-    name: 'Failure Lesson Injection'
-    description: |
-      Inject structured failure lessons from prior runs into agent prompts.
+    name: Failure Lesson Injection
+    description: 'Inject structured failure lessons from prior runs into agent prompts.
+
       Prevents repeated mistakes by surfacing relevant failure patterns.
+
+      '
     source_papers: []
     topic: orchestration
     tags:
@@ -1860,24 +1692,27 @@ techniques:
     priority: P2
     complexity: medium
     integration_files:
-      - 'packages/nexus-agents/src/orchestration/failure-lessons.ts'
-      - 'packages/nexus-agents/src/orchestration/failure-lessons.test.ts'
+      - packages/nexus-agents/src/orchestration/failure-lessons.ts
+      - packages/nexus-agents/src/orchestration/failure-lessons.test.ts
     implementation_issue: 1568
-    notes: |
-      Derived from AutoResearchClaw project analysis.
-      Injects lessons from prior failures into worker prompts to prevent repetition.
-    evaluation_plan:
-      success_criteria: 'Fewer repeated failures in orchestrate tasks (>20% reduction in retry rate)'
-      evaluation_method: 'Compare retry rates in weather_report before/after activation over 50 tasks'
-      evaluation_deadline: '2026-06-18'
-      removal_criteria: 'No measurable improvement after 3 months or causes >5% latency regression'
-    evaluation_status: pending
+    notes: 'Derived from AutoResearchClaw project analysis.
 
+      Injects lessons from prior failures into worker prompts to prevent repetition.
+
+      '
+    evaluation_plan:
+      success_criteria: Fewer repeated failures in orchestrate tasks (>20% reduction in retry rate)
+      evaluation_method: Compare retry rates in weather_report before/after activation over 50 tasks
+      evaluation_deadline: '2026-06-18'
+      removal_criteria: No measurable improvement after 3 months or causes >5% latency regression
+    evaluation_status: pending
   skill-relevance-matching:
-    name: 'Skill Relevance Matching'
-    description: |
-      Match task requirements to available agent skills based on semantic
+    name: Skill Relevance Matching
+    description: 'Match task requirements to available agent skills based on semantic
+
       relevance scoring. Routes tasks to agents with the best skill fit.
+
+      '
     source_papers: []
     topic: orchestration
     tags:
@@ -1888,24 +1723,27 @@ techniques:
     priority: P2
     complexity: medium
     integration_files:
-      - 'packages/nexus-agents/src/agents/experts/skill-matcher.ts'
-      - 'packages/nexus-agents/src/agents/experts/skill-matcher.test.ts'
+      - packages/nexus-agents/src/agents/experts/skill-matcher.ts
+      - packages/nexus-agents/src/agents/experts/skill-matcher.test.ts
     implementation_issue: 1569
-    notes: |
-      Derived from MetaClaw and Augment Code analysis.
-      Matches task keywords to skill descriptions for optimal agent routing.
-    evaluation_plan:
-      success_criteria: 'Expert selection accuracy >80% (correct expert for task category)'
-      evaluation_method: 'Review expert selection decisions in 30 orchestrate tasks via trace logs'
-      evaluation_deadline: '2026-06-18'
-      removal_criteria: 'Selection accuracy <60% or skill matching adds >2s latency per task'
-    evaluation_status: pending
+    notes: 'Derived from MetaClaw and Augment Code analysis.
 
+      Matches task keywords to skill descriptions for optimal agent routing.
+
+      '
+    evaluation_plan:
+      success_criteria: Expert selection accuracy >80% (correct expert for task category)
+      evaluation_method: Review expert selection decisions in 30 orchestrate tasks via trace logs
+      evaluation_deadline: '2026-06-18'
+      removal_criteria: Selection accuracy <60% or skill matching adds >2s latency per task
+    evaluation_status: pending
   context-rot-prevention:
-    name: 'Context Rot Prevention'
-    description: |
-      Actively manage and prune agent context to prevent quality degradation
+    name: Context Rot Prevention
+    description: 'Actively manage and prune agent context to prevent quality degradation
+
       as context windows fill. Token-efficient context budgeting.
+
+      '
     source_papers: []
     topic: memory
     tags:
@@ -1916,25 +1754,28 @@ techniques:
     priority: P1
     complexity: high
     integration_files:
-      - 'packages/nexus-agents/src/agents/context-pruner.ts'
-      - 'packages/nexus-agents/src/agents/context-pruner-helpers.ts'
-      - 'packages/nexus-agents/src/agents/context-pruner.test.ts'
+      - packages/nexus-agents/src/agents/context-pruner.ts
+      - packages/nexus-agents/src/agents/context-pruner-helpers.ts
+      - packages/nexus-agents/src/agents/context-pruner.test.ts
     implementation_issue: 1574
-    notes: |
-      Derived from GSD (Get Shit Done) project analysis (34K stars).
-      Context pruning prevents quality degradation in long sessions.
-    evaluation_plan:
-      success_criteria: 'Stable output quality across 10+ tool calls in single session'
-      evaluation_method: 'SWE-bench Verified score comparison with/without context pruning enabled'
-      evaluation_deadline: '2026-06-18'
-      removal_criteria: 'No quality improvement or causes information loss in >10% of sessions'
-    evaluation_status: pending
+    notes: 'Derived from GSD (Get Shit Done) project analysis (34K stars).
 
+      Context pruning prevents quality degradation in long sessions.
+
+      '
+    evaluation_plan:
+      success_criteria: Stable output quality across 10+ tool calls in single session
+      evaluation_method: SWE-bench Verified score comparison with/without context pruning enabled
+      evaluation_deadline: '2026-06-18'
+      removal_criteria: No quality improvement or causes information loss in >10% of sessions
+    evaluation_status: pending
   wave-based-parallel-execution:
-    name: 'Wave-Based Parallel Execution'
-    description: |
-      Execute agent tasks in waves of parallel workers with cross-wave
+    name: Wave-Based Parallel Execution
+    description: 'Execute agent tasks in waves of parallel workers with cross-wave
+
       context sharing and result synthesis between waves.
+
+      '
     source_papers: []
     topic: orchestration
     tags:
@@ -1946,24 +1787,27 @@ techniques:
     complexity: high
     implementation_issue: 1658
     integration_files:
-      - 'packages/nexus-agents/src/orchestration/aorchestra/worker-dispatcher.ts'
-      - 'packages/nexus-agents/src/orchestration/aorchestra/cross-wave-context.ts'
-      - 'packages/nexus-agents/src/orchestration/aorchestra/worker-dispatcher.test.ts'
-    notes: |
-      Derived from GSD project analysis. AOrchestra worker dispatch
+      - packages/nexus-agents/src/orchestration/aorchestra/worker-dispatcher.ts
+      - packages/nexus-agents/src/orchestration/aorchestra/cross-wave-context.ts
+      - packages/nexus-agents/src/orchestration/aorchestra/worker-dispatcher.test.ts
+    notes: 'Derived from GSD project analysis. AOrchestra worker dispatch
+
       implements wave-based parallel execution with cross-wave context.
+
+      '
     evaluation_plan:
-      success_criteria: 'Parallel execution reduces wall-clock time >30% vs sequential for multi-step tasks'
+      success_criteria: Parallel execution reduces wall-clock time >30% vs sequential for multi-step tasks
       evaluation_method: 'Benchmark 20 orchestrate tasks: sequential vs wave dispatch, compare duration'
       evaluation_deadline: '2026-06-18'
-      removal_criteria: 'Less than 10% wall-clock improvement or cross-wave context causes >15% error rate'
+      removal_criteria: Less than 10% wall-clock improvement or cross-wave context causes >15% error rate
     evaluation_status: pending
-
   write-time-deduplication:
-    name: 'Write-Time Memory Deduplication'
-    description: |
-      Deduplicate memory entries at write time to prevent redundant storage
+    name: Write-Time Memory Deduplication
+    description: 'Deduplicate memory entries at write time to prevent redundant storage
+
       and improve retrieval quality. Semantic similarity check before insert.
+
+      '
     source_papers:
       - arxiv-2601.02553
     topic: memory
@@ -1975,15 +1819,17 @@ techniques:
     priority: P2
     complexity: medium
     integration_files:
-      - 'packages/nexus-agents/src/mcp/tools/memory-write.ts'
-      - 'packages/nexus-agents/src/context/belief-memory.ts'
+      - packages/nexus-agents/src/mcp/tools/memory-write.ts
+      - packages/nexus-agents/src/context/belief-memory.ts
     implementation_issue: 1570
-    notes: |
-      Derived from SimpleMem project analysis (3.2K stars, has paper).
+    notes: 'Derived from SimpleMem project analysis (3.2K stars, has paper).
+
       Dedup at write time prevents memory bloat across sessions.
+
+      '
     evaluation_plan:
-      success_criteria: 'Memory storage size reduced >25% vs no-dedup baseline over 100 writes'
-      evaluation_method: 'Compare memory_stats output with dedup enabled vs disabled over test workload'
+      success_criteria: Memory storage size reduced >25% vs no-dedup baseline over 100 writes
+      evaluation_method: Compare memory_stats output with dedup enabled vs disabled over test workload
       evaluation_deadline: '2026-06-18'
-      removal_criteria: 'Dedup false positives >5% (distinct memories incorrectly merged) or <10% size reduction'
+      removal_criteria: Dedup false positives >5% (distinct memories incorrectly merged) or <10% size reduction
     evaluation_status: pending

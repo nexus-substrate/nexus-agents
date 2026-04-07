@@ -1,44 +1,30 @@
-# registry/sources.yaml
-# Product documentation and non-paper sources
-# Schema version for future migrations
 schema_version: '1.0'
-
 sources:
-  # ============================================================================
-  # CLI TOOLS - CLAUDE
-  # ============================================================================
-
   claude-code-docs:
-    name: 'Claude Code Documentation'
+    name: Claude Code Documentation
     type: product_docs
-    url: 'https://docs.anthropic.com/en/docs/claude-code'
+    url: https://docs.anthropic.com/en/docs/claude-code
     vendor: Anthropic
-
     topics:
       - cli-tools
     tags:
       - claude
       - mcp
       - cli
-
     reviewed_date: '2026-01-04'
-    reviewed_in: 'claude-code-research.md'
-
+    reviewed_in: claude-code-research.md
     key_info:
       - 'Models: Claude family (Opus, Sonnet, Haiku)'
-      - 'Full MCP client support'
-      - 'Session resume via --continue/--resume'
-      - 'Hooks system for customization'
-      - 'OAuth 2.0 authentication'
-
-    version_checked: '2.0.76'
-
+      - Full MCP client support
+      - Session resume via --continue/--resume
+      - Hooks system for customization
+      - OAuth 2.0 authentication
+    version_checked: 2.0.76
   claude-agent-sdk:
-    name: 'Claude Agent SDK'
+    name: Claude Agent SDK
     type: product_docs
-    url: 'https://github.com/anthropics/claude-code/tree/main/packages/agent'
+    url: https://github.com/anthropics/claude-code/tree/main/packages/agent
     vendor: Anthropic
-
     topics:
       - cli-tools
       - orchestration
@@ -46,23 +32,18 @@ sources:
       - sdk
       - agent
       - development
-
     reviewed_date: '2026-01-04'
-    reviewed_in: 'claude-code-research.md'
-
+    reviewed_in: claude-code-research.md
     key_info:
-      - 'Build custom agentic applications'
-      - 'Programmatic API for Claude Code'
-      - 'Tool management and orchestration'
-
-    version_checked: '2.0.76'
-
+      - Build custom agentic applications
+      - Programmatic API for Claude Code
+      - Tool management and orchestration
+    version_checked: 2.0.76
   claude-skills-standard:
-    name: 'Claude Code Agent Skills (SKILL.md)'
+    name: Claude Code Agent Skills (SKILL.md)
     type: product_docs
-    url: 'https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/skills'
+    url: https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/skills
     vendor: Anthropic
-
     topics:
       - cli-tools
       - orchestration
@@ -71,98 +52,70 @@ sources:
       - claude-code
       - customization
       - automation
-
     reviewed_date: '2026-01-09'
-    reviewed_in: null # Documented inline in this entry
-
+    reviewed_in: null
     key_info:
-      - 'SKILL.md format with YAML frontmatter'
+      - SKILL.md format with YAML frontmatter
       - 'Required fields: name (64 chars max), description (1024 chars max)'
       - 'Optional fields: allowed-tools, model, context, agent, hooks, user-invocable'
-      - 'Model-invoked discovery based on description matching'
-      - 'Progressive disclosure pattern for token efficiency'
+      - Model-invoked discovery based on description matching
+      - Progressive disclosure pattern for token efficiency
       - 'Storage: ~/.claude/skills/ (personal), .claude/skills/ (project)'
       - 'context: fork runs skill in isolated sub-agent'
-      - 'allowed-tools restricts tool access during skill execution'
-
+      - allowed-tools restricts tool access during skill execution
     best_practices:
-      - 'Descriptions must include WHAT skill does AND WHEN to use it'
-      - 'Write descriptions in third person (not "I can help")'
-      - 'Keep SKILL.md under 500 lines'
+      - Descriptions must include WHAT skill does AND WHEN to use it
+      - Write descriptions in third person (not "I can help")
+      - Keep SKILL.md under 500 lines
       - 'Use gerund naming: processing-pdfs, analyzing-spreadsheets'
-      - 'Link to supporting files (one level deep only)'
-      - 'Scripts execute without loading contents (token efficient)'
-
-    version_checked: '2026-01'
-
-  # ============================================================================
-  # CLI TOOLS - GEMINI
-  # ============================================================================
-
+      - Link to supporting files (one level deep only)
+      - Scripts execute without loading contents (token efficient)
+    version_checked: 2026-01
   gemini-cli-docs:
-    name: 'Gemini CLI Documentation'
+    name: Gemini CLI Documentation
     type: product_docs
-    url: 'https://github.com/google-gemini/gemini-cli'
+    url: https://github.com/google-gemini/gemini-cli
     vendor: Google
-
     topics:
       - cli-tools
     tags:
       - gemini
       - cli
       - google
-
     reviewed_date: '2026-01-04'
-    reviewed_in: 'gemini-cli-research.md'
-
+    reviewed_in: gemini-cli-research.md
     key_info:
-      - 'Model router with automatic selection'
-      - 'OAuth / ADC authentication'
-      - '1M+ token context window'
-      - 'Multimodal support'
-      - 'MCP support (experimental)'
-
-    version_checked: '0.22.5'
-
-  # ============================================================================
-  # CLI TOOLS - CODEX
-  # ============================================================================
-
+      - Model router with automatic selection
+      - OAuth / ADC authentication
+      - 1M+ token context window
+      - Multimodal support
+      - MCP support (experimental)
+    version_checked: 0.22.5
   codex-cli-docs:
-    name: 'OpenAI Codex CLI Documentation'
+    name: OpenAI Codex CLI Documentation
     type: product_docs
-    url: 'https://github.com/openai/codex'
+    url: https://github.com/openai/codex
     vendor: OpenAI
-
     topics:
       - cli-tools
     tags:
       - codex
       - openai
       - cli
-
     reviewed_date: '2026-01-04'
-    reviewed_in: 'openai-codex-cli-research.md'
-
+    reviewed_in: openai-codex-cli-research.md
     key_info:
-      - 'codex-mini-latest model'
-      - 'GPT-5 family access'
-      - 'ChatGPT OAuth authentication'
-      - 'MCP server mode'
-      - 'Fast code generation'
-
-    version_checked: '0.77.0'
-
-  # ============================================================================
-  # PROTOCOLS
-  # ============================================================================
-
+      - codex-mini-latest model
+      - GPT-5 family access
+      - ChatGPT OAuth authentication
+      - MCP server mode
+      - Fast code generation
+    version_checked: 0.77.0
   mcp-protocol-spec:
-    name: 'Model Context Protocol Specification'
+    name: Model Context Protocol Specification
     type: specification
-    url: 'https://modelcontextprotocol.io'
+    url: https://modelcontextprotocol.io
     vendor: Anthropic
-
     topics:
       - cli-tools
       - orchestration
@@ -170,52 +123,38 @@ sources:
       - protocol
       - mcp
       - standard
-
     reviewed_date: '2026-01-04'
-    reviewed_in: 'cli-integration-architecture.md'
-
+    reviewed_in: cli-integration-architecture.md
     key_info:
-      - 'Version 2025-11-25'
+      - Version 2025-11-25
       - 'Transports: stdio, HTTP, SSE'
-      - 'Tool, Resource, Prompt support'
-      - 'JSON-RPC 2.0 based'
-
+      - Tool, Resource, Prompt support
+      - JSON-RPC 2.0 based
     version_checked: '2025-11-25'
-
   mcp-sdk-typescript:
-    name: 'MCP TypeScript SDK'
+    name: MCP TypeScript SDK
     type: product_docs
-    url: 'https://github.com/modelcontextprotocol/typescript-sdk'
+    url: https://github.com/modelcontextprotocol/typescript-sdk
     vendor: Anthropic
-
     topics:
       - cli-tools
     tags:
       - sdk
       - typescript
       - mcp
-
     reviewed_date: '2026-01-04'
-    reviewed_in: 'cli-integration-architecture.md'
-
+    reviewed_in: cli-integration-architecture.md
     key_info:
       - '@modelcontextprotocol/sdk package'
-      - 'Server and Client implementations'
-      - 'InMemory transport for testing'
-      - 'Zod integration for schemas'
-
-    version_checked: '1.25.2'
-
-  # ============================================================================
-  # FRAMEWORKS
-  # ============================================================================
-
+      - Server and Client implementations
+      - InMemory transport for testing
+      - Zod integration for schemas
+    version_checked: 1.25.2
   claude-flow-project:
-    name: 'Claude-Flow Project Analysis'
+    name: Claude-Flow Project Analysis
     type: code_analysis
-    url: 'https://github.com/ruvnet/claude-flow'
+    url: https://github.com/ruvnet/claude-flow
     vendor: Community
-
     topics:
       - consensus
       - memory
@@ -224,80 +163,58 @@ sources:
       - reference
       - patterns
       - multi-agent
-
     reviewed_date: '2026-01-04'
-    reviewed_in: 'claude-flow-analysis.md'
-
+    reviewed_in: claude-flow-analysis.md
     key_info:
-      - 'Multi-agent swarm architecture'
-      - 'Consensus voting patterns'
-      - 'Memory coordination'
-      - 'Raft consensus implementation'
-      - 'Byzantine fault tolerance patterns'
-
-    version_checked: 'main branch 2026-01'
-
-  # ============================================================================
-  # AI SAFETY
-  # ============================================================================
-
+      - Multi-agent swarm architecture
+      - Consensus voting patterns
+      - Memory coordination
+      - Raft consensus implementation
+      - Byzantine fault tolerance patterns
+    version_checked: main branch 2026-01
   anthropic-reward-hacking:
     name: 'Anthropic: Emergent Misalignment from Reward Hacking'
     type: research_blog
-    url: 'https://www.anthropic.com/research/emergent-misalignment-reward-hacking'
+    url: https://www.anthropic.com/research/emergent-misalignment-reward-hacking
     vendor: Anthropic
-
     topics:
       - code-generation
     tags:
       - safety
       - reward-hacking
       - misalignment
-
     reviewed_date: '2026-01-06'
-    reviewed_in: 'self-improvement-feedback-loops.md'
-
+    reviewed_in: self-improvement-feedback-loops.md
     key_info:
-      - 'Training on gameable environments amplifies gaming'
-      - 'Models can generalize to rewriting own reward function'
-      - 'SFT on first environments with non-gaming data mitigates'
-      - 'Context-dependent alignment detection recommended'
-
+      - Training on gameable environments amplifies gaming
+      - Models can generalize to rewriting own reward function
+      - SFT on first environments with non-gaming data mitigates
+      - Context-dependent alignment detection recommended
     version_checked: '2025'
-
   lilian-weng-reward-hacking:
     name: 'Lilian Weng: Reward Hacking in Reinforcement Learning'
     type: research_blog
-    url: 'https://lilianweng.github.io/posts/2024-11-28-reward-hacking/'
+    url: https://lilianweng.github.io/posts/2024-11-28-reward-hacking/
     vendor: Independent
-
     topics:
       - code-generation
     tags:
       - safety
       - reward-hacking
       - rl
-
     reviewed_date: '2026-01-06'
-    reviewed_in: 'self-improvement-feedback-loops.md'
-
+    reviewed_in: self-improvement-feedback-loops.md
     key_info:
-      - 'Inoculation prompting mitigation'
-      - 'Reward shaping with clipping'
-      - 'Reward ensembles'
-      - 'Sandboxing evaluation suite'
-      - 'Rich observability logging'
-
+      - Inoculation prompting mitigation
+      - Reward shaping with clipping
+      - Reward ensembles
+      - Sandboxing evaluation suite
+      - Rich observability logging
     version_checked: '2024-11-28'
-
-  # ============================================================================
-  # OPEN SOURCE REPOS — Agent Orchestration Ecosystem
-  # ============================================================================
-
   augment-code-auggie:
-    name: 'Augment Code (Auggie CLI)'
+    name: Augment Code (Auggie CLI)
     type: open_source_repo
-    url: 'https://github.com/augmentcode/auggie'
+    url: https://github.com/augmentcode/auggie
     vendor: Augment Code
     topics:
       - orchestration
@@ -308,7 +225,7 @@ sources:
       - subagent
       - skills
     reviewed_date: '2026-03-17'
-    reviewed_in: 'memory/augment_code_research.md'
+    reviewed_in: memory/augment_code_research.md
     quality_signals:
       stars_at_review: 161
       language: TypeScript
@@ -320,25 +237,24 @@ sources:
       - pr-review-action
       - skill-relevance-matching
     verdict: adopted
-    verdict_notes: 'Context Engine MCP pattern, tool restrictions, PR actions all implemented'
+    verdict_notes: Context Engine MCP pattern, tool restrictions, PR actions all implemented
     quality_score: 5
     evidence_tier: medium
-
   autoresearchclaw:
-    name: 'AutoResearchClaw'
+    name: AutoResearchClaw
     type: open_source_repo
-    url: 'https://github.com/aiming-lab/AutoResearchClaw'
+    url: https://github.com/aiming-lab/AutoResearchClaw
     vendor: Aiming Lab
     topics:
       - orchestration
-      - agent architecture
+      - multi-agent-systems
     tags:
       - metaclaw
       - self-learning
       - multi-agent-debate
       - paper-generation
     reviewed_date: '2026-03-17'
-    reviewed_in: 'memory/autoresearchclaw_research.md'
+    reviewed_in: memory/autoresearchclaw_research.md
     quality_signals:
       stars_at_review: 3536
       language: Python
@@ -349,25 +265,26 @@ sources:
       - pivot-refine-loop
       - multi-agent-debate
     verdict: partially_adopted
-    verdict_notes: 'Failure lessons implemented (#1568). PIVOT/REFINE rejected (scope creep). Multi-agent debate already exists as consensus voting.'
+    verdict_notes:
+      Failure lessons implemented (#1568). PIVOT/REFINE rejected (scope creep). Multi-agent debate already exists
+      as consensus voting.
     quality_score: 7
     evidence_tier: medium
-
   metaclaw:
-    name: 'MetaClaw'
+    name: MetaClaw
     type: open_source_repo
-    url: 'https://github.com/aiming-lab/MetaClaw'
+    url: https://github.com/aiming-lab/MetaClaw
     vendor: Aiming Lab
     topics:
       - memory
-      - agent architecture
+      - multi-agent-systems
     tags:
       - meta-learning
       - skill-evolution
       - rl-training
       - lora
     reviewed_date: '2026-03-17'
-    reviewed_in: 'memory/metaclaw_research.md'
+    reviewed_in: memory/metaclaw_research.md
     quality_signals:
       stars_at_review: 1579
       language: Python
@@ -377,14 +294,15 @@ sources:
       - skill-relevance-injection
       - generation-aware-invalidation
     verdict: partially_adopted
-    verdict_notes: 'Skill relevance matching implemented (#1569). RL training rejected (different product direction). Auto-skill extraction rejected (security risk).'
+    verdict_notes:
+      Skill relevance matching implemented (#1569). RL training rejected (different product direction). Auto-skill
+      extraction rejected (security risk).
     quality_score: 5
     evidence_tier: medium
-
   simplemem:
-    name: 'SimpleMem'
+    name: SimpleMem
     type: open_source_repo
-    url: 'https://github.com/aiming-lab/SimpleMem'
+    url: https://github.com/aiming-lab/SimpleMem
     vendor: Aiming Lab
     topics:
       - memory
@@ -394,7 +312,7 @@ sources:
       - mcp
       - cross-session
     reviewed_date: '2026-03-17'
-    reviewed_in: 'memory/simplemem_research.md'
+    reviewed_in: memory/simplemem_research.md
     quality_signals:
       stars_at_review: 3216
       language: Python
@@ -407,16 +325,15 @@ sources:
       - multi-view-retrieval
       - intent-aware-retrieval
     verdict: partially_adopted
-    verdict_notes: 'Write-time dedup implemented (#1570). Multi-view indexing deferred. Intent-aware retrieval rejected (over-engineering for orchestration memory).'
+    verdict_notes:
+      Write-time dedup implemented (#1570). Multi-view indexing deferred. Intent-aware retrieval rejected (over-engineering
+      for orchestration memory).
     quality_score: 8
     evidence_tier: high
-
-  # get-shit-done: moved to gsd-get-shit-done (updated entry in Wave 2 below)
-
   composio-agent-orchestrator:
-    name: 'Composio Agent Orchestrator'
+    name: Composio Agent Orchestrator
     type: open_source_repo
-    url: 'https://github.com/ComposioHQ/agent-orchestrator'
+    url: https://github.com/ComposioHQ/agent-orchestrator
     vendor: Composio
     topics:
       - orchestration
@@ -427,7 +344,7 @@ sources:
       - ci-fixes
       - multi-agent
     reviewed_date: '2026-03-18'
-    reviewed_in: 'N/A (in-conversation analysis)'
+    reviewed_in: N/A (in-conversation analysis)
     quality_signals:
       stars_at_review: 4628
       language: TypeScript
@@ -437,25 +354,26 @@ sources:
       - git-worktree-parallelism
       - agent-agnostic-orchestration
     verdict: monitoring
-    verdict_notes: 'Git worktree-based parallel agent execution. Interesting but our per-instance directory approach works. Revisit if parallelism becomes a bottleneck.'
+    verdict_notes:
+      Git worktree-based parallel agent execution. Interesting but our per-instance directory approach works.
+      Revisit if parallelism becomes a bottleneck.
     quality_score: 6
     evidence_tier: medium
-
   microsoft-agent-framework:
-    name: 'Microsoft Agent Framework'
+    name: Microsoft Agent Framework
     type: open_source_repo
-    url: 'https://github.com/microsoft/agent-framework'
+    url: https://github.com/microsoft/agent-framework
     vendor: Microsoft
     topics:
       - orchestration
-      - agent architecture
+      - multi-agent-systems
     tags:
       - graph-orchestration
       - multi-agent
       - dotnet
       - python
     reviewed_date: '2026-03-18'
-    reviewed_in: 'N/A (in-conversation analysis)'
+    reviewed_in: N/A (in-conversation analysis)
     quality_signals:
       stars_at_review: 8027
       language: Python
@@ -465,25 +383,26 @@ sources:
       - graph-based-workflow-orchestration
       - multi-agent-conversation-patterns
     verdict: monitoring
-    verdict_notes: 'Graph-based orchestration similar to our GraphBuilder. Multi-language support (Python + .NET). Monitor for novel patterns we lack.'
+    verdict_notes:
+      Graph-based orchestration similar to our GraphBuilder. Multi-language support (Python + .NET). Monitor
+      for novel patterns we lack.
     quality_score: 7
     evidence_tier: medium
-
   swe-agent:
-    name: 'SWE-agent'
+    name: SWE-agent
     type: open_source_repo
-    url: 'https://github.com/SWE-agent/SWE-agent'
+    url: https://github.com/SWE-agent/SWE-agent
     vendor: Princeton NLP
     topics:
       - code-generation
-      - agent architecture
+      - multi-agent-systems
     tags:
       - swe-bench
       - github-issues
       - automated-repair
       - neurips-2024
     reviewed_date: '2026-03-18'
-    reviewed_in: 'N/A (competitive analysis)'
+    reviewed_in: N/A (competitive analysis)
     quality_signals:
       stars_at_review: 18769
       language: Python
@@ -495,18 +414,13 @@ sources:
       - file-viewer-tool
       - search-replace-editing
     verdict: monitoring
-    verdict_notes: 'Primary open-source SWE-bench competitor. SoTA on full. Live-SWE-agent 79.2% on Verified.'
+    verdict_notes: Primary open-source SWE-bench competitor. SoTA on full. Live-SWE-agent 79.2% on Verified.
     quality_score: 9
     evidence_tier: high
-
-  # ============================================================================
-  # OPEN SOURCE REPOS — Discovery Wave 2 (2026-03-18, Issue #1576)
-  # ============================================================================
-
   openai-agents-sdk:
-    name: 'OpenAI Agents SDK'
+    name: OpenAI Agents SDK
     type: open_source_repo
-    url: 'https://github.com/openai/openai-agents-python'
+    url: https://github.com/openai/openai-agents-python
     vendor: OpenAI
     topics:
       - orchestration
@@ -518,7 +432,7 @@ sources:
       - tracing
       - mcp
     reviewed_date: '2026-03-18'
-    reviewed_in: 'N/A (automated discovery)'
+    reviewed_in: N/A (automated discovery)
     quality_signals:
       stars_at_review: 19000
       language: Python
@@ -529,14 +443,13 @@ sources:
       - guardrail-middleware
       - structured-output-agents
     verdict: monitoring
-    verdict_notes: 'Direct competitor. Lightweight handoff protocol and guardrail patterns worth studying. MCP-native.'
+    verdict_notes: Direct competitor. Lightweight handoff protocol and guardrail patterns worth studying. MCP-native.
     quality_score: 8
     evidence_tier: high
-
   openhands:
-    name: 'OpenHands (formerly OpenDevin)'
+    name: OpenHands (formerly OpenDevin)
     type: open_source_repo
-    url: 'https://github.com/All-Hands-AI/OpenHands'
+    url: https://github.com/All-Hands-AI/OpenHands
     vendor: All-Hands AI
     topics:
       - code-generation
@@ -547,7 +460,7 @@ sources:
       - browser-agent
       - agent-sdk
     reviewed_date: '2026-03-18'
-    reviewed_in: 'N/A (automated discovery)'
+    reviewed_in: N/A (automated discovery)
     quality_signals:
       stars_at_review: 68000
       language: Python
@@ -558,14 +471,15 @@ sources:
       - agent-runtime-abstraction
       - event-stream-architecture
     verdict: monitoring
-    verdict_notes: '72% SWE-Bench Verified with Claude Sonnet. Sandbox execution model and event-stream architecture are strong reference patterns.'
+    verdict_notes:
+      72% SWE-Bench Verified with Claude Sonnet. Sandbox execution model and event-stream architecture are strong
+      reference patterns.
     quality_score: 9
     evidence_tier: high
-
   crewai:
-    name: 'CrewAI'
+    name: CrewAI
     type: open_source_repo
-    url: 'https://github.com/crewAIInc/crewAI'
+    url: https://github.com/crewAIInc/crewAI
     vendor: CrewAI Inc
     topics:
       - orchestration
@@ -574,7 +488,7 @@ sources:
       - crew-pipelines
       - task-delegation
     reviewed_date: '2026-03-18'
-    reviewed_in: 'N/A (automated discovery)'
+    reviewed_in: N/A (automated discovery)
     quality_signals:
       stars_at_review: 44000
       language: Python
@@ -584,14 +498,15 @@ sources:
       - role-based-agent-specialization
       - sequential-crew-pipeline
     verdict: monitoring
-    verdict_notes: 'Role specialization model mirrors nexus-agents create_expert. Crew pipeline concept similar to our graph workflows.'
+    verdict_notes:
+      Role specialization model mirrors nexus-agents create_expert. Crew pipeline concept similar to our graph
+      workflows.
     quality_score: 7
     evidence_tier: medium
-
   pydantic-ai:
-    name: 'PydanticAI'
+    name: PydanticAI
     type: open_source_repo
-    url: 'https://github.com/pydantic/pydantic-ai'
+    url: https://github.com/pydantic/pydantic-ai
     vendor: Pydantic
     topics:
       - orchestration
@@ -601,7 +516,7 @@ sources:
       - structured-output
       - dependency-injection
     reviewed_date: '2026-03-18'
-    reviewed_in: 'N/A (automated discovery)'
+    reviewed_in: N/A (automated discovery)
     quality_signals:
       stars_at_review: 15000
       language: Python
@@ -611,14 +526,13 @@ sources:
       - typed-tool-definitions
       - structured-result-validation
     verdict: monitoring
-    verdict_notes: 'Validates our zero-any/type-safety approach. Structured output patterns for tool responses worth studying.'
+    verdict_notes: Validates our zero-any/type-safety approach. Structured output patterns for tool responses worth studying.
     quality_score: 7
     evidence_tier: medium
-
   gsd-get-shit-done:
-    name: 'GSD (Get Shit Done) — updated entry'
+    name: GSD (Get Shit Done) — updated entry
     type: open_source_repo
-    url: 'https://github.com/gsd-build/get-shit-done'
+    url: https://github.com/gsd-build/get-shit-done
     vendor: TÂCHES
     topics:
       - orchestration
@@ -633,7 +547,7 @@ sources:
       - gemini-cli
       - codex
     reviewed_date: '2026-03-18'
-    reviewed_in: 'N/A (in-conversation analysis)'
+    reviewed_in: N/A (in-conversation analysis)
     quality_signals:
       stars_at_review: 34062
       language: JavaScript
@@ -646,14 +560,15 @@ sources:
       - xml-structured-task-specs
       - atomic-commit-per-task
     verdict: partially_adopted
-    verdict_notes: 'Context management + verification patterns adopted for SWE-bench (#1574). 34K stars, multi-CLI support. Context rot prevention is the core innovation.'
+    verdict_notes:
+      Context management + verification patterns adopted for SWE-bench (#1574). 34K stars, multi-CLI support.
+      Context rot prevention is the core innovation.
     quality_score: 9
     evidence_tier: high
-
   ai-researcher:
-    name: 'AI-Researcher'
+    name: AI-Researcher
     type: open_source_repo
-    url: 'https://github.com/HKUDS/AI-Researcher'
+    url: https://github.com/HKUDS/AI-Researcher
     vendor: HKUDS (HKU Data Science)
     topics:
       - orchestration
@@ -664,7 +579,7 @@ sources:
       - multi-agent-debate
       - neurips-2025
     reviewed_date: '2026-03-18'
-    reviewed_in: 'N/A (automated discovery)'
+    reviewed_in: N/A (automated discovery)
     quality_signals:
       stars_at_review: 3000
       language: Python
@@ -675,14 +590,15 @@ sources:
       - writer-reviewer-critic-loop
       - automated-literature-review
     verdict: monitoring
-    verdict_notes: 'NeurIPS 2025 Spotlight. Research synthesis architecture directly applicable to research_synthesize tool. Writer/Reviewer/Critic loop parallels our consensus voting.'
+    verdict_notes:
+      NeurIPS 2025 Spotlight. Research synthesis architecture directly applicable to research_synthesize tool.
+      Writer/Reviewer/Critic loop parallels our consensus voting.
     quality_score: 8
     evidence_tier: high
-
   awesome-ai-agent-papers:
-    name: 'awesome-ai-agent-papers'
+    name: awesome-ai-agent-papers
     type: open_source_repo
-    url: 'https://github.com/VoltAgent/awesome-ai-agent-papers'
+    url: https://github.com/VoltAgent/awesome-ai-agent-papers
     vendor: VoltAgent
     topics:
       - evaluation
@@ -691,7 +607,7 @@ sources:
       - curated-list
       - agent-research
     reviewed_date: '2026-03-18'
-    reviewed_in: 'N/A (automated discovery)'
+    reviewed_in: N/A (automated discovery)
     quality_signals:
       stars_at_review: 2000
       language: Markdown
@@ -700,14 +616,13 @@ sources:
     techniques_extracted:
       - curated-paper-feed
     verdict: monitoring
-    verdict_notes: 'Potential input feed for research_discover tool. Curated agent paper list maintained by community.'
+    verdict_notes: Potential input feed for research_discover tool. Curated agent paper list maintained by community.
     quality_score: 4
     evidence_tier: low
-
   mcp-registry:
-    name: 'MCP Server Registry'
+    name: MCP Server Registry
     type: open_source_repo
-    url: 'https://github.com/modelcontextprotocol/registry'
+    url: https://github.com/modelcontextprotocol/registry
     vendor: Anthropic
     topics:
       - cli-tools
@@ -717,7 +632,7 @@ sources:
       - registry
       - discoverability
     reviewed_date: '2026-03-18'
-    reviewed_in: 'N/A (automated discovery)'
+    reviewed_in: N/A (automated discovery)
     quality_signals:
       stars_at_review: 1000
       language: TypeScript
@@ -727,18 +642,13 @@ sources:
       - mcp-server-discovery
       - tool-registry-pattern
     verdict: planned
-    verdict_notes: 'nexus-agents should register here for discoverability. registry_import tool alignment opportunity.'
+    verdict_notes: nexus-agents should register here for discoverability. registry_import tool alignment opportunity.
     quality_score: 6
     evidence_tier: medium
-
-  # ============================================================================
-  # OPEN SOURCE REPOS — Discovery Wave 3 (2026-03-18, MCP-native projects)
-  # ============================================================================
-
   mcp-agent-lastmile:
-    name: 'mcp-agent (LastMile AI)'
+    name: mcp-agent (LastMile AI)
     type: open_source_repo
-    url: 'https://github.com/lastmile-ai/mcp-agent'
+    url: https://github.com/lastmile-ai/mcp-agent
     vendor: LastMile AI
     topics:
       - orchestration
@@ -750,7 +660,7 @@ sources:
       - evaluator-optimizer
       - durable-execution
     reviewed_date: '2026-03-18'
-    reviewed_in: 'N/A (automated discovery)'
+    reviewed_in: N/A (automated discovery)
     quality_signals:
       stars_at_review: 5000
       language: Python
@@ -761,14 +671,15 @@ sources:
       - evaluator-optimizer-loop
       - durable-agent-execution
     verdict: monitoring
-    verdict_notes: 'Composable MCP workflow patterns (map-reduce, router, evaluator). Durable execution via Temporal. Direct MCP-native competitor.'
+    verdict_notes:
+      Composable MCP workflow patterns (map-reduce, router, evaluator). Durable execution via Temporal. Direct
+      MCP-native competitor.
     quality_score: 7
     evidence_tier: medium
-
   agentscope:
-    name: 'AgentScope'
+    name: AgentScope
     type: open_source_repo
-    url: 'https://github.com/agentscope-ai/agentscope'
+    url: https://github.com/agentscope-ai/agentscope
     vendor: AgentScope AI
     topics:
       - orchestration
@@ -780,7 +691,7 @@ sources:
       - a2a-protocol
       - human-in-the-loop
     reviewed_date: '2026-03-18'
-    reviewed_in: 'N/A (automated discovery)'
+    reviewed_in: N/A (automated discovery)
     quality_signals:
       stars_at_review: 8000
       language: Python
@@ -791,14 +702,15 @@ sources:
       - agent-finetuning-loop
       - a2a-protocol-support
     verdict: monitoring
-    verdict_notes: 'Production-ready with built-in finetuning, A2A + MCP support, message hub for flexible multi-agent orchestration. Strong reference for memory + orchestration patterns.'
+    verdict_notes:
+      Production-ready with built-in finetuning, A2A + MCP support, message hub for flexible multi-agent orchestration.
+      Strong reference for memory + orchestration patterns.
     quality_score: 8
     evidence_tier: high
-
   agent-mcp:
-    name: 'Agent-MCP'
+    name: Agent-MCP
     type: open_source_repo
-    url: 'https://github.com/rinadelph/Agent-MCP'
+    url: https://github.com/rinadelph/Agent-MCP
     vendor: Community
     topics:
       - orchestration
@@ -808,7 +720,7 @@ sources:
       - parallel-agents
       - specialized-coordination
     reviewed_date: '2026-03-18'
-    reviewed_in: 'N/A (automated discovery)'
+    reviewed_in: N/A (automated discovery)
     quality_signals:
       stars_at_review: 2000
       language: TypeScript
@@ -818,14 +730,13 @@ sources:
       - mcp-based-agent-coordination
       - parallel-specialized-agents
     verdict: monitoring
-    verdict_notes: 'MCP-native multi-agent coordination. Parallel specialized agents pattern mirrors our worker dispatch.'
+    verdict_notes: MCP-native multi-agent coordination. Parallel specialized agents pattern mirrors our worker dispatch.
     quality_score: 5
     evidence_tier: medium
-
   mcp-gateway-registry:
-    name: 'MCP Gateway Registry'
+    name: MCP Gateway Registry
     type: open_source_repo
-    url: 'https://github.com/agentic-community/mcp-gateway-registry'
+    url: https://github.com/agentic-community/mcp-gateway-registry
     vendor: Agentic Community
     topics:
       - security
@@ -837,7 +748,7 @@ sources:
       - tool-governance
       - enterprise
     reviewed_date: '2026-03-18'
-    reviewed_in: 'N/A (automated discovery)'
+    reviewed_in: N/A (automated discovery)
     quality_signals:
       stars_at_review: 1500
       language: TypeScript
@@ -848,18 +759,15 @@ sources:
       - oauth-tool-access
       - dynamic-tool-discovery
     verdict: monitoring
-    verdict_notes: 'Enterprise MCP gateway with OAuth, tool governance, and audit trails. Relevant for nexus-agents security hardening (#818).'
+    verdict_notes:
+      Enterprise MCP gateway with OAuth, tool governance, and audit trails. Relevant for nexus-agents security
+      hardening (#818).
     quality_score: 6
     evidence_tier: medium
-
-  # ============================================================================
-  # OPEN SOURCE REPOS — Discovery Wave 4 (2026-03-18, GitHub Blog Top 10 + trending)
-  # ============================================================================
-
   owl-camel-ai:
-    name: 'OWL (CAMEL-AI)'
+    name: OWL (CAMEL-AI)
     type: open_source_repo
-    url: 'https://github.com/camel-ai/owl'
+    url: https://github.com/camel-ai/owl
     vendor: CAMEL-AI
     topics:
       - orchestration
@@ -871,7 +779,7 @@ sources:
       - function-calling
       - github-blog-top10
     reviewed_date: '2026-03-18'
-    reviewed_in: 'N/A (GitHub Blog Top 10 Open Source AI Projects)'
+    reviewed_in: N/A (GitHub Blog Top 10 Open Source AI Projects)
     quality_signals:
       stars_at_review: 12000
       language: Python
@@ -881,14 +789,15 @@ sources:
       - multi-agent-cooperation-via-mcp
       - browser-terminal-tool-integration
     verdict: monitoring
-    verdict_notes: 'GitHub Blog Top 10. Multi-agent cooperation through browsers, terminals, function calls, and MCP tools. Architecture mirrors our worker dispatch + tool-use patterns.'
+    verdict_notes:
+      GitHub Blog Top 10. Multi-agent cooperation through browsers, terminals, function calls, and MCP tools.
+      Architecture mirrors our worker dispatch + tool-use patterns.
     quality_score: 8
     evidence_tier: high
-
   ruflo:
-    name: 'Ruflo'
+    name: Ruflo
     type: open_source_repo
-    url: 'https://github.com/ruvnet/ruflo'
+    url: https://github.com/ruvnet/ruflo
     vendor: Community
     topics:
       - orchestration
@@ -899,7 +808,7 @@ sources:
       - rag
       - distributed-agents
     reviewed_date: '2026-03-18'
-    reviewed_in: 'N/A (automated discovery)'
+    reviewed_in: N/A (automated discovery)
     quality_signals:
       stars_at_review: 3000
       language: TypeScript
@@ -909,14 +818,13 @@ sources:
       - swarm-agent-orchestration
       - conversational-ai-system
     verdict: monitoring
-    verdict_notes: 'Claude-native agent orchestration with swarm intelligence and RAG. TypeScript stack aligns with nexus-agents.'
+    verdict_notes: Claude-native agent orchestration with swarm intelligence and RAG. TypeScript stack aligns with nexus-agents.
     quality_score: 7
     evidence_tier: medium
-
   letta-agent-file:
-    name: 'Letta Agent File (.af)'
+    name: Letta Agent File (.af)
     type: open_source_repo
-    url: 'https://github.com/letta-ai/agent-file'
+    url: https://github.com/letta-ai/agent-file
     vendor: Letta AI
     topics:
       - orchestration
@@ -927,7 +835,7 @@ sources:
       - memory-persistence
       - interoperability
     reviewed_date: '2026-03-18'
-    reviewed_in: 'N/A (GitHub Blog Top 10 Open Source AI Projects)'
+    reviewed_in: N/A (GitHub Blog Top 10 Open Source AI Projects)
     quality_signals:
       stars_at_review: 5000
       language: Python
@@ -937,14 +845,15 @@ sources:
       - portable-agent-file-format
       - memory-behavior-packaging
     verdict: monitoring
-    verdict_notes: 'Open file format (.af) for packaging AI agents with memory and behavior. Interoperability concept relevant to nexus-agents expert serialization.'
+    verdict_notes:
+      Open file format (.af) for packaging AI agents with memory and behavior. Interoperability concept relevant
+      to nexus-agents expert serialization.
     quality_score: 7
     evidence_tier: medium
-
   praisonai:
-    name: 'PraisonAI'
+    name: PraisonAI
     type: open_source_repo
-    url: 'https://github.com/MervinPraison/PraisonAI'
+    url: https://github.com/MervinPraison/PraisonAI
     vendor: PraisonAI
     topics:
       - orchestration
@@ -955,7 +864,7 @@ sources:
       - workflows
       - memory
     reviewed_date: '2026-03-18'
-    reviewed_in: 'N/A (automated discovery)'
+    reviewed_in: N/A (automated discovery)
     quality_signals:
       stars_at_review: 8000
       language: Python
@@ -965,14 +874,13 @@ sources:
       - agent-self-reflection
       - multi-agent-workflows-with-memory
     verdict: monitoring
-    verdict_notes: 'Production-ready multi-AI agents with self-reflection, 100+ LLM support, MCP integration. Python + JS SDKs.'
+    verdict_notes: Production-ready multi-AI agents with self-reflection, 100+ LLM support, MCP integration. Python + JS SDKs.
     quality_score: 8
     evidence_tier: high
-
   unbody:
-    name: 'Unbody'
+    name: Unbody
     type: open_source_repo
-    url: 'https://github.com/unbody-io/unbody'
+    url: https://github.com/unbody-io/unbody
     vendor: Unbody
     topics:
       - orchestration
@@ -983,7 +891,7 @@ sources:
       - reasoning
       - action-layers
     reviewed_date: '2026-03-18'
-    reviewed_in: 'N/A (GitHub Blog Top 10 Open Source AI Projects)'
+    reviewed_in: N/A (GitHub Blog Top 10 Open Source AI Projects)
     quality_signals:
       stars_at_review: 4000
       language: TypeScript
@@ -993,18 +901,15 @@ sources:
       - layered-ai-backend-architecture
       - perception-memory-reasoning-action
     verdict: monitoring
-    verdict_notes: 'Modular AI-native backend with perception/memory/reasoning/action layers. Architecture pattern relevant to nexus-agents pipeline design.'
+    verdict_notes:
+      Modular AI-native backend with perception/memory/reasoning/action layers. Architecture pattern relevant
+      to nexus-agents pipeline design.
     quality_score: 7
     evidence_tier: medium
-
-  # ============================================================================
-  # OPEN SOURCE REPOS — Discovery Wave 5 (2026-03-18, AI coding agents)
-  # ============================================================================
-
   aider:
-    name: 'Aider'
+    name: Aider
     type: open_source_repo
-    url: 'https://github.com/Aider-AI/aider'
+    url: https://github.com/Aider-AI/aider
     vendor: Aider AI
     topics:
       - code-generation
@@ -1014,7 +919,7 @@ sources:
       - terminal
       - multi-model
     reviewed_date: '2026-03-18'
-    reviewed_in: 'N/A (automated discovery)'
+    reviewed_in: N/A (automated discovery)
     quality_signals:
       stars_at_review: 35000
       language: Python
@@ -1024,14 +929,15 @@ sources:
       - git-native-code-editing
       - conversational-code-modification
     verdict: monitoring
-    verdict_notes: 'Terminal-native AI pair programming. Git-native workflows with conversational editing. Reference for CLI code generation patterns.'
+    verdict_notes:
+      Terminal-native AI pair programming. Git-native workflows with conversational editing. Reference for CLI
+      code generation patterns.
     quality_score: 8
     evidence_tier: high
-
   cline:
-    name: 'Cline'
+    name: Cline
     type: open_source_repo
-    url: 'https://github.com/cline/cline'
+    url: https://github.com/cline/cline
     vendor: Cline
     topics:
       - code-generation
@@ -1042,7 +948,7 @@ sources:
       - plan-mode
       - terminal-controls
     reviewed_date: '2026-03-18'
-    reviewed_in: 'N/A (automated discovery)'
+    reviewed_in: N/A (automated discovery)
     quality_signals:
       stars_at_review: 40000
       language: TypeScript
@@ -1052,14 +958,15 @@ sources:
       - plan-mode-execution
       - mcp-tool-integration
     verdict: monitoring
-    verdict_notes: '5M installs. IDE-native with Plan Mode, MCP integration, and terminal-first controls. Zero markup pricing model. TypeScript stack aligns with nexus-agents.'
+    verdict_notes:
+      5M installs. IDE-native with Plan Mode, MCP integration, and terminal-first controls. Zero markup pricing
+      model. TypeScript stack aligns with nexus-agents.
     quality_score: 9
     evidence_tier: high
-
   antigravity:
-    name: 'Antigravity'
+    name: Antigravity
     type: open_source_repo
-    url: 'https://github.com/google/anthropic-antigravity'
+    url: https://github.com/google/anthropic-antigravity
     vendor: Google
     topics:
       - code-generation
@@ -1070,7 +977,7 @@ sources:
       - free-tier
       - skills
     reviewed_date: '2026-03-18'
-    reviewed_in: 'N/A (automated discovery)'
+    reviewed_in: N/A (automated discovery)
     quality_signals:
       stars_at_review: 15000
       language: TypeScript
@@ -1080,6 +987,8 @@ sources:
       - skill-based-agent-architecture
       - gemini-native-orchestration
     verdict: monitoring
-    verdict_notes: '76.2% SWE-bench, free. Gemini-native with skills-first architecture. Relevant as Gemini CLI alternative for nexus-agents routing.'
+    verdict_notes:
+      76.2% SWE-bench, free. Gemini-native with skills-first architecture. Relevant as Gemini CLI alternative
+      for nexus-agents routing.
     quality_score: 8
     evidence_tier: high
