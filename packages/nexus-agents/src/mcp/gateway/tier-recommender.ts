@@ -69,7 +69,7 @@ function getCategoryTier(category: string): RequestTier {
     security_review: 'orchestrate',
     planning: 'orchestrate',
     documentation: 'run_workflow',
-    testing: 'run_workflow',
+    testing: 'execute_expert',
     devops: 'delegate_to_model',
   };
 
