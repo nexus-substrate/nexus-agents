@@ -177,13 +177,15 @@ export function queryWithLookback(
   category: TaskCategory,
   cfg: WeatherReportConfig
 ): readonly TaskOutcome[] {
+  // Exclude e2e-eval outcomes — they measure the eval harness, not CLI reliability (#1680)
+  const exclude = ['e2e-eval'];
   if (cfg.outcomeLookbackMs > 0) {
     const since = new Date(Date.now() - cfg.outcomeLookbackMs).toISOString();
-    const recent = store.query({ cli, category, since });
+    const recent = store.query({ cli, category, since, excludeQualitySignals: exclude });
     if (recent.length >= cfg.coldStartThreshold) return recent;
   }
   // Fall back to all history if lookback window has insufficient data
-  return store.query({ cli, category });
+  return store.query({ cli, category, excludeQualitySignals: exclude });
 }
 
 /**

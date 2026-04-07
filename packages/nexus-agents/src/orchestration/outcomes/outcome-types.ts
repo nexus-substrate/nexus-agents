@@ -67,6 +67,8 @@ export const OutcomeQuerySchema = z.object({
   failureCategory: OutcomeFailureCategorySchema.optional(),
   since: z.string().optional(),
   limit: z.number().int().positive().optional(),
+  /** Exclude outcomes with any of these quality signals (#1680). */
+  excludeQualitySignals: z.array(z.string()).optional(),
 });
 
 // ============================================================================

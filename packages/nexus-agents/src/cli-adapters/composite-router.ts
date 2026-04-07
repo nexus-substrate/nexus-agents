@@ -316,7 +316,10 @@ export class CompositeRouter implements ICompositeRouter {
         // specialization matrix changes (e.g., architecture claude→gemini) (#1667)
         const WARM_START_LOOKBACK_MS = 30 * 24 * 60 * 60 * 1000;
         const since = new Date(Date.now() - WARM_START_LOOKBACK_MS).toISOString();
-        const outcomes = getOutcomeStore().query({ since });
+        const outcomes = getOutcomeStore().query({
+          since,
+          excludeQualitySignals: ['e2e-eval'],
+        });
         if (outcomes.length > 0) {
           replayed = this.linucbBandit.warmStart(outcomes);
           this.logger.info('LinUCB warm-started from recent outcomes', {

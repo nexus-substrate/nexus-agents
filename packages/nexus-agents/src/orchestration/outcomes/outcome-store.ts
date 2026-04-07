@@ -247,6 +247,14 @@ function buildPredicates(filter: OutcomeQuery): Array<(o: TaskOutcome) => boolea
     const since = filter.since;
     preds.push((o) => o.timestamp >= since);
   }
+  if (filter.excludeQualitySignals !== undefined && filter.excludeQualitySignals.length > 0) {
+    const excluded = new Set(filter.excludeQualitySignals);
+    preds.push((o) => {
+      const signals = o.qualitySignals;
+      if (signals === undefined || signals.length === 0) return true;
+      return !signals.some((s) => excluded.has(s));
+    });
+  }
   return preds;
 }
 
