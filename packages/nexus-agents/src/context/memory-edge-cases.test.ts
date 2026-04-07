@@ -578,7 +578,7 @@ describe('MobiMem Edge Cases', () => {
 
 describe('Error Recovery', () => {
   it('should handle malformed JSON in metadata gracefully', () => {
-    // This tests the assumption that rowToEntry will throw on bad JSON
+    // rowToEntry returns safe defaults instead of throwing (fdf35828)
     const badRow: MemoryRow = {
       key: 'bad-meta',
       value: JSON.stringify('valid'),
@@ -588,7 +588,10 @@ describe('Error Recovery', () => {
       expires_at: null,
     };
 
-    expect(() => rowToEntry(badRow)).toThrow();
+    const entry = rowToEntry(badRow);
+    expect(entry.key).toBe('bad-meta');
+    expect(entry.value).toBe('valid');
+    expect(entry.metadata.importance).toBe('medium');
   });
 
   it('should handle malformed JSON in value gracefully', () => {
@@ -601,7 +604,10 @@ describe('Error Recovery', () => {
       expires_at: null,
     };
 
-    expect(() => rowToEntry(badRow)).toThrow();
+    const entry = rowToEntry(badRow);
+    expect(entry.key).toBe('bad-value');
+    expect(entry.value).toBeNull();
+    expect(entry.metadata.importance).toBe(MemoryImportance.LOW);
   });
 
   it('should propagate backend errors correctly', async () => {
