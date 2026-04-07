@@ -1,15 +1,8 @@
 name: OpenCode E2E
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'packages/nexus-agents/src/cli-adapters/**'
-      - 'packages/nexus-agents/src/config/model-capabilities*'
-      - '.github/workflows/opencode-e2e.yml'
-  schedule:
-    # Weekly on Sundays at 06:00 UTC
-    - cron: '0 6 * * 0'
+  # Converted to manual-only to avoid $170/mo macOS runner costs (#1616).
+  # Was: push (main), schedule (weekly Sunday 06:00 UTC).
   workflow_dispatch:
 
 permissions: read-all

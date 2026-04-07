@@ -1757,7 +1757,7 @@ techniques:
       - packages/nexus-agents/src/agents/context-pruner.ts
       - packages/nexus-agents/src/agents/context-pruner-helpers.ts
       - packages/nexus-agents/src/agents/context-pruner.test.ts
-    implementation_issue: 1574
+    implementation_issue: 1670
     notes: 'Derived from GSD (Get Shit Done) project analysis (34K stars).
 
       Context pruning prevents quality degradation in long sessions.
