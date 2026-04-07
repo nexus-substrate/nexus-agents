@@ -299,6 +299,13 @@ export class ToolMemoryManager {
       });
       // Start auto-decay for long-running sessions
       this.decayManager.startAutoDecay();
+      // Run decay once at startup — the setInterval timer may never fire
+      // in short-lived MCP sessions, so this ensures at least one run (#1673).
+      void this.decayManager.runDecay().catch((error: unknown) => {
+        this.log.debug('Startup decay run failed', {
+          error: getErrorMessage(error),
+        });
+      });
       this.log.info('MemoryDecayManager activated (Phase 5 #746)');
     } catch (error: unknown) {
       this.log.debug('MemoryDecayManager init failed', {
