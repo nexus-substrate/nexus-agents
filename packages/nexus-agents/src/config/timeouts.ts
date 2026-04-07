@@ -47,7 +47,7 @@ export { isKnownCliName };
  */
 export const CLI_TIMEOUTS = {
   claude: { simple: 30_000, standard: 120_000, complex: 600_000 },
-  gemini: { simple: 30_000, standard: 120_000, complex: 600_000 },
+  gemini: { simple: 30_000, standard: 180_000, complex: 600_000 },
   codex: { simple: 10_000, standard: 60_000, complex: 300_000 },
   opencode: { simple: 30_000, standard: 120_000, complex: 600_000 },
   default: { simple: 30_000, standard: 120_000, complex: 600_000 },
@@ -196,12 +196,16 @@ export const EXPERT_TIMEOUTS = {
   minMs: 30_000,
   /** Maximum allowed expert timeout. */
   maxMs: 900_000,
-  /** Categories considered complex (longer timeout). */
+  /** Categories considered complex (longer timeout).
+   * Updated: Issue #1675 — devops (avg 54s) and documentation (avg 64s on gemini)
+   * regularly exceed the 120s standard CLI timeout. */
   complexCategories: [
     'architecture',
     'security_review',
     'planning',
     'research',
+    'devops',
+    'documentation',
   ] as readonly string[],
 } as const;
 

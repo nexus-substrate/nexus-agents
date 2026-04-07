@@ -103,7 +103,7 @@ describe('TIMEOUT_PROFILES', () => {
 
   it('should have correct Gemini profile values', () => {
     expect(TIMEOUT_PROFILES.gemini.simple).toBe(30_000);
-    expect(TIMEOUT_PROFILES.gemini.standard).toBe(120_000);
+    expect(TIMEOUT_PROFILES.gemini.standard).toBe(180_000);
     expect(TIMEOUT_PROFILES.gemini.complex).toBe(600_000);
   });
 
@@ -409,7 +409,7 @@ describe('backward compatibility', () => {
     expect(TIMEOUT_PROFILES.claude.standard).toBe(120_000);
     expect(TIMEOUT_PROFILES.claude.complex).toBe(600_000);
     expect(TIMEOUT_PROFILES.gemini.simple).toBe(30_000);
-    expect(TIMEOUT_PROFILES.gemini.standard).toBe(120_000);
+    expect(TIMEOUT_PROFILES.gemini.standard).toBe(180_000);
     expect(TIMEOUT_PROFILES.gemini.complex).toBe(600_000);
     expect(TIMEOUT_PROFILES.codex.simple).toBe(10_000);
     expect(TIMEOUT_PROFILES.codex.standard).toBe(60_000);

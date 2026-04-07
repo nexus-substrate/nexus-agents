@@ -46,7 +46,7 @@ describe('Centralized Timeout Configuration', () => {
     it('has correct gemini timeouts', () => {
       expect(CLI_TIMEOUTS.gemini).toEqual({
         simple: 30_000,
-        standard: 120_000,
+        standard: 180_000,
         complex: 600_000,
       });
     });
@@ -277,7 +277,9 @@ describe('Centralized Timeout Configuration', () => {
       expect(EXPERT_TIMEOUTS.complexCategories).toContain('security_review');
       expect(EXPERT_TIMEOUTS.complexCategories).toContain('planning');
       expect(EXPERT_TIMEOUTS.complexCategories).toContain('research');
-      expect(EXPERT_TIMEOUTS.complexCategories).toHaveLength(4);
+      expect(EXPERT_TIMEOUTS.complexCategories).toContain('devops');
+      expect(EXPERT_TIMEOUTS.complexCategories).toContain('documentation');
+      expect(EXPERT_TIMEOUTS.complexCategories).toHaveLength(6);
     });
   });
 
@@ -296,17 +298,17 @@ describe('Centralized Timeout Configuration', () => {
       expect(getExpertTaskTimeout('Perform a security review of auth')).toBe(600_000);
     });
 
-    it('returns standard timeout for research tasks', () => {
-      // "Research ..." matches research category (not security_review) with best-match scoring
-      expect(getExpertTaskTimeout('Research the vulnerability scanner landscape')).toBe(300_000);
+    it('returns complex timeout for research tasks', () => {
+      // "Research ..." matches research category (in complexCategories) with best-match scoring
+      expect(getExpertTaskTimeout('Research the vulnerability scanner landscape')).toBe(600_000);
     });
 
     it('returns standard timeout for code generation tasks', () => {
       expect(getExpertTaskTimeout('Generate unit tests for the API')).toBe(300_000);
     });
 
-    it('returns standard timeout for documentation tasks', () => {
-      expect(getExpertTaskTimeout('Write documentation for this module')).toBe(300_000);
+    it('returns complex timeout for documentation tasks', () => {
+      expect(getExpertTaskTimeout('Write documentation for this module')).toBe(600_000);
     });
 
     it('returns standard timeout for unrecognized tasks', () => {
