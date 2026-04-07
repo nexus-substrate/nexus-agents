@@ -18,14 +18,31 @@ import type {
 } from './memory-backend-types.js';
 import { MemoryError } from './memory-backend-types.js';
 
+/** Safely parse JSON from a DB column, returning null on corrupt data. */
+function safeParseJson(raw: string): unknown {
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+/** Parse metadata JSON or return safe defaults for corrupt rows. */
+function parseMetadataOrDefault(raw: string): MemoryMetadata {
+  const parsed = safeParseJson(raw);
+  if (parsed !== null && typeof parsed === 'object') return parsed as MemoryMetadata;
+  return { source: 'unknown', importance: 0.5, keywords: [] };
+}
+
 /**
  * Converts a database row to a MemoryEntry.
+ * Gracefully handles corrupt JSON in DB rows (#1680 quality scan).
  */
 export function rowToEntry(row: MemoryRow): MemoryEntry {
   return {
     key: row.key,
-    value: JSON.parse(row.value) as unknown,
-    metadata: JSON.parse(row.metadata) as MemoryMetadata,
+    value: safeParseJson(row.value),
+    metadata: parseMetadataOrDefault(row.metadata),
     createdAt: new Date(row.created_at),
     accessedAt: new Date(row.accessed_at),
   };
