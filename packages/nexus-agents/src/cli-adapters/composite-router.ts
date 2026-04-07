@@ -304,30 +304,39 @@ export class CompositeRouter implements ICompositeRouter {
     }
   }
 
-  /** Warm-start LinUCB bandit from persisted outcomes (Issue #1015). Best-effort. */
+  /** Warm-start LinUCB bandit from persisted outcomes (Issue #1015).
+   * Uses a 30-day lookback window so stale outcomes don't override
+   * routing changes like primaryCli specialization (#1667). */
   private warmStartBandit(): void {
     if (this.linucbBandit === undefined) return;
     try {
       let replayed = 0;
       if (isPersistenceEnabled()) {
-        const outcomes = getOutcomeStore().query();
+        // Use 30-day lookback — stale all-time data was overriding
+        // specialization matrix changes (e.g., architecture claude→gemini) (#1667)
+        const WARM_START_LOOKBACK_MS = 30 * 24 * 60 * 60 * 1000;
+        const since = new Date(Date.now() - WARM_START_LOOKBACK_MS).toISOString();
+        const outcomes = getOutcomeStore().query({ since });
         if (outcomes.length > 0) {
           replayed = this.linucbBandit.warmStart(outcomes);
-          this.logger.info('LinUCB warm-started from persisted outcomes', {
+          this.logger.info('LinUCB warm-started from recent outcomes', {
             outcomesAvailable: outcomes.length,
             outcomesReplayed: replayed,
+            lookbackDays: 30,
           });
         }
       }
-      // Cold-start fallback: seed from specialization matrix (Issue #1023)
+      // Always seed specialization priors — not just cold-start (#1667).
+      // This ensures primaryCli preferences from TASK_SPECIALIZATION_MATRIX
+      // always influence LinUCB, even when warm-start data disagrees.
+      const priors = generateSyntheticPriors();
+      this.linucbBandit.seedPriors(priors, replayed === 0 ? 3 : 1);
       if (replayed === 0) {
         const result = runWarmUp(this.logger);
         if (!result.skipped) {
           const outcomes = getOutcomeStore().query();
           this.linucbBandit.warmStart(outcomes);
         }
-        const priors = generateSyntheticPriors();
-        this.linucbBandit.seedPriors(priors, 3);
         this.logger.info('LinUCB cold-start seeded from specialization matrix', {
           syntheticOutcomes: result.seeded,
         });
