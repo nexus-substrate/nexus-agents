@@ -31,7 +31,7 @@ function safeParseJson(raw: string): unknown {
 function parseMetadataOrDefault(raw: string): MemoryMetadata {
   const parsed = safeParseJson(raw);
   if (parsed !== null && typeof parsed === 'object') return parsed as MemoryMetadata;
-  return { source: 'unknown', importance: 0.5, keywords: [] };
+  return { importance: 'medium' };
 }
 
 /**

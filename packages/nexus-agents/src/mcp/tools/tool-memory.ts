@@ -53,6 +53,7 @@ import {
   type DecayRunStats,
   type DecayAggregateStats,
 } from './memory-decay.js';
+import type { UnifiedMemoryResult } from './tool-memory-types.js';
 import {
   querySessionMemory as querySessionMemoryHelper,
   queryBeliefMemory as queryBeliefMemoryHelper,
@@ -64,24 +65,8 @@ import {
 // Re-export types tools may need
 export type { SessionLearning, CompletedTask, ResolvedError, Belief };
 
-/**
- * Result from unified cross-memory query (Phase 3 #746).
- * Includes source attribution and relevance scoring.
- */
-export interface UnifiedMemoryResult {
-  /** Source memory system */
-  source: 'session' | 'belief' | 'agentic' | 'typed' | 'adaptive';
-  /** Type of memory entry */
-  type: string;
-  /** Content summary (may be truncated) */
-  content: string;
-  /** Relevance score (0-1) based on keyword matching */
-  relevance: number;
-  /** When the entry was created */
-  timestamp: Date;
-  /** Additional metadata (e.g., confidence, keywords) */
-  metadata?: Record<string, unknown>;
-}
+// UnifiedMemoryResult extracted to tool-memory-types.ts to avoid circular imports (#1671)
+export type { UnifiedMemoryResult } from './tool-memory-types.js';
 export type {
   TypedMemoryEntry,
   TypedMemoryStats,
@@ -793,7 +778,6 @@ export class ToolMemoryManager {
     keywords: readonly string[],
     limit: number
   ): UnifiedMemoryResult[] {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-return -- cross-module type resolution
     return querySessionMemoryHelper(this.searchLearnings(query), keywords, limit);
   }
 
@@ -802,7 +786,6 @@ export class ToolMemoryManager {
     keywords: readonly string[],
     limit: number
   ): Promise<UnifiedMemoryResult[]> {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-return -- cross-module type resolution
     return queryBeliefMemoryHelper(this.beliefs, query, keywords, limit, this.log);
   }
 
@@ -812,7 +795,7 @@ export class ToolMemoryManager {
     limit: number
   ): Promise<UnifiedMemoryResult[]> {
     if (this.agentic === null) return [];
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-return -- cross-module type resolution
+
     return queryAgenticMemoryHelper(this.agentic, query, keywords, limit, this.log);
   }
 
@@ -822,7 +805,7 @@ export class ToolMemoryManager {
     limitPerType: number
   ): Promise<UnifiedMemoryResult[]> {
     if (this.typed === null) return [];
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-return -- cross-module type resolution
+
     return queryTypedMemoryHelper(this.typed, query, keywords, limitPerType, this.log);
   }
 
@@ -832,7 +815,7 @@ export class ToolMemoryManager {
     limit: number
   ): Promise<UnifiedMemoryResult[]> {
     if (this.adaptive === null) return [];
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-return -- cross-module type resolution
+
     return queryAdaptiveMemoryHelper(this.adaptive, query, keywords, limit, this.log);
   }
 

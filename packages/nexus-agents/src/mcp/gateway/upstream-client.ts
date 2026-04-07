@@ -10,7 +10,7 @@
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import type { CallToolResult, Tool } from '@modelcontextprotocol/sdk/types.js';
+import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ILogger } from '../../core/index.js';
 import { createLogger } from '../../core/index.js';
 import type { UpstreamServerConfig } from '../../config/schemas-gateway.js';
@@ -60,11 +60,16 @@ export class UpstreamClient {
 
     this.state = 'connecting';
     try {
-      const env = { ...process.env, ...resolveEnv(this.config.env) };
+      const resolvedEnv = resolveEnv(this.config.env);
+      // Filter out undefined values from process.env for StdioServerParameters compatibility
+      const baseEnv: Record<string, string> = {};
+      for (const [k, v] of Object.entries(process.env)) {
+        if (v !== undefined) baseEnv[k] = v;
+      }
       this.transport = new StdioClientTransport({
         command: this.config.command,
         args: [...this.config.args],
-        env,
+        env: { ...baseEnv, ...resolvedEnv },
       });
       this.client = new Client(
         { name: `nexus-upstream-${this.name}`, version: '1.0.0' },
@@ -101,8 +106,11 @@ export class UpstreamClient {
     }));
   }
 
-  /** Call a tool on the upstream server. */
-  async callTool(toolName: string, args: Record<string, unknown>): Promise<CallToolResult> {
+  /** Call a tool on the upstream server. Returns the raw SDK result. */
+  async callTool(
+    toolName: string,
+    args: Record<string, unknown>
+  ): Promise<Awaited<ReturnType<Client['callTool']>>> {
     if (this.client === null || this.state !== 'connected') {
       if (this.config.lazy) {
         await this.connect();
@@ -210,7 +218,7 @@ export class UpstreamClientManager {
   async callTool(
     prefixedName: string,
     args: Record<string, unknown>
-  ): Promise<CallToolResult | null> {
+  ): Promise<Awaited<ReturnType<Client['callTool']>> | null> {
     const dotIndex = prefixedName.indexOf('.');
     if (dotIndex === -1) return null;
 
