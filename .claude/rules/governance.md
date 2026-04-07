@@ -42,7 +42,7 @@ Preserve: files 400-600 lines if cohesive, functions 50-90 lines if clear, clear
 
 ## Fitness Audit
 
-Target: **90+/100** (current: 98/100). Releases MUST have fitness score ≥ 90.
+Target: **90+/100** (current: 97/100). Releases MUST have fitness score ≥ 90.
 
 ```bash
 nexus-agents fitness-audit
