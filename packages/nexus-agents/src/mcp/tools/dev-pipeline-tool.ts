@@ -16,7 +16,7 @@ import { runDevPipeline } from '../../pipeline/dev-pipeline.js';
 import type { DevPipelineResult } from '../../pipeline/dev-pipeline.js';
 import { createAgentStages } from '../../pipeline/agent-executor.js';
 import { createTaskTracker, detectBackend } from '../../pipeline/task-tracker.js';
-import { toolSuccessStructured, toolError } from './tool-result.js';
+// toolSuccessStructured not used directly — server.tool() expects different return type
 import type { TrackerBackend } from '../../pipeline/task-tracker.js';
 
 // ============================================================================
@@ -140,9 +140,16 @@ export function registerDevPipelineTool(
       const taskText = resolveTaskInput(input);
       const stages = await createStages(input);
       const result = await runDevPipeline(taskText, stages);
-      return toolSuccessStructured(buildStructuredOutput(result));
+      const structured = buildStructuredOutput(result);
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(structured, null, 2) }],
+        structuredContent: structured,
+      };
     } catch (error: unknown) {
-      return toolError(getErrorMessage(error));
+      return {
+        content: [{ type: 'text' as const, text: `Pipeline error: ${getErrorMessage(error)}` }],
+        isError: true,
+      };
     }
   });
 }
