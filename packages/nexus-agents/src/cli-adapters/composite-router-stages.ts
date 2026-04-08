@@ -727,8 +727,18 @@ export async function runPipeline(
 
   const scoring = await runScoringStages(task, candidates, stagesExecuted, deps);
   candidates = scoring.candidates;
-  const stageScores = aggregateStageScores(scoring, task.content);
 
+  // Constraint-first: run quality constraints BEFORE selection (#1686).
+  // This filters out policy-violating CLIs before TOPSIS/LinUCB score them.
+  const qualityResult = await runQualityConstraintStage(candidates, stagesExecuted, deps);
+  candidates = qualityResult.eligible;
+  if (candidates.length === 0) {
+    return err(
+      new CompositeRoutingError('All candidates rejected by quality constraints', 'selection')
+    );
+  }
+
+  const stageScores = aggregateStageScores(scoring, task.content);
   const topsisOpts: Parameters<typeof runTopsisStage>[4] = {
     performanceData: getPerformanceDataForCategory(task.content),
   };
@@ -740,8 +750,7 @@ export async function runPipeline(
     return err(new CompositeRoutingError('No candidates available', 'selection'));
   }
 
-  const qualityResult = await runQualityConstraintStage(candidates, stagesExecuted, deps);
-  const latencyResult = runLatencyStage(qualityResult.eligible, stagesExecuted, deps);
+  const latencyResult = runLatencyStage(candidates, stagesExecuted, deps);
   const selectedCli = selectWithMemoryInfluence(
     linucbResult.selectedCli,
     scoring.memoryResult,
