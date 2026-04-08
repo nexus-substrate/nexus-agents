@@ -165,7 +165,7 @@ async function implementQaLoop(tasks: PipelineTask[], stages: DevPipelineStages)
   let totalQaIterations = 0;
 
   for (const task of tasks) {
-    let currentTask = { ...task, status: 'in_progress' as const };
+    let currentTask: PipelineTask = { ...task, status: 'in_progress' };
 
     for (let i = 1; i <= MAX_QA_ITERATIONS; i++) {
       totalQaIterations++;
@@ -185,7 +185,14 @@ async function implementQaLoop(tasks: PipelineTask[], stages: DevPipelineStages)
         verdict: review.verdict,
         issues: review.issues.length,
       });
-      currentTask = { ...currentTask, feedback: review.feedback, status: 'rejected' };
+      currentTask = {
+        id: currentTask.id,
+        title: currentTask.title,
+        description: currentTask.description,
+        assignedTo: currentTask.assignedTo,
+        status: 'rejected',
+        feedback: review.feedback,
+      };
     }
   }
 

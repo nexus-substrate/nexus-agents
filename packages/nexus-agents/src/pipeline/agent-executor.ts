@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/strict-boolean-expressions, @typescript-eslint/restrict-template-expressions, @typescript-eslint/no-base-to-string, max-lines-per-function */
+/* eslint-disable @typescript-eslint/restrict-template-expressions, @typescript-eslint/no-base-to-string, max-lines-per-function */
 /**
  * Agent Executor — Connects pipeline stages to real expert agents (#1684)
  *
@@ -55,7 +55,7 @@ async function getAdapter(category: string): Promise<Record<string, unknown> | u
   try {
     const { getGlobalRegistry } = await import('../adapters/unified-registry.js');
     const registry = getGlobalRegistry();
-    return registry.getAdapter(category) as Record<string, unknown>;
+    return registry.getAdapter(category as 'code_generation') as unknown as Record<string, unknown>;
   } catch {
     return undefined;
   }
@@ -70,7 +70,12 @@ async function executeWithAdapter(
   const adapter = await getAdapter(category);
   if (adapter === undefined) return fallback;
   try {
-    const result = await adapter.execute({ content: prompt });
+    const exec = adapter['execute'] as (opts: { content: string }) => Promise<unknown>;
+    const result = (await exec({ content: prompt })) as {
+      ok: boolean;
+      value: { content: string };
+      error: { message: string };
+    };
     return result.ok ? result.value.content : `${category} failed: ${result.error.message}`;
   } catch (error) {
     return `${category} error: ${String(error)}`;
@@ -113,8 +118,10 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
       await postProgress(config, 'Vote', 'Running consensus vote...');
       try {
         const { collectRealVotes } = await import('../cli/voter-agents.js');
-        const { VOTER_ROLES } = await import('../cli/vote-types.js');
-        const roles = Object.keys(VOTER_ROLES);
+        const voteTypes = await import('../cli/vote-types.js');
+        const roles = Object.keys(voteTypes.VOTER_ROLES) as unknown as ReadonlyArray<
+          keyof typeof voteTypes.VOTER_ROLES
+        >;
         const votes = await collectRealVotes({
           roles,
           proposal: plan.slice(0, 4000),
