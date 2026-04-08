@@ -104,7 +104,7 @@ function parseLog(log: SarifLog, maxFindings: number, errors: string[]): SarifPa
   if (runs === undefined || runs.length === 0) {
     return { scanner: 'unknown', totalFindings: 0, findings: [], errors: ['No runs in SARIF'] };
   }
-  const run = runs[0];
+  const run = runs[0] as SarifRun; // Length checked above
   const scanner = run.tool?.driver?.name ?? 'unknown';
   const ruleMap = buildRuleMap(run.tool?.driver?.rules ?? []);
   const results = run.results ?? [];
@@ -154,33 +154,38 @@ interface ParsedLocation {
   snippet?: string;
 }
 
-/** Get the first physical location from a SARIF result, or null. */
-function getPhysicalLocation(result: SarifResult): SarifLocation['physicalLocation'] | null {
+/** Get the first physical location, or null if missing. */
+function getFirstPhysicalLocation(
+  result: SarifResult
+): NonNullable<SarifLocation['physicalLocation']> | null {
   const locations = result.locations;
   if (locations === undefined || locations.length === 0) return null;
-  return locations[0].physicalLocation ?? null;
+  const first = locations[0] as SarifLocation;
+  return first.physicalLocation ?? null;
+}
+
+/** Build a ParsedLocation from validated physical location fields. */
+function buildLocation(
+  file: string,
+  startLine: number,
+  phys: NonNullable<SarifLocation['physicalLocation']>
+): ParsedLocation {
+  const loc: ParsedLocation = { file, startLine };
+  const endLine = phys.region?.endLine;
+  const snippetText = phys.region?.snippet?.text;
+  if (endLine !== undefined) loc.endLine = endLine;
+  if (snippetText !== undefined) loc.snippet = snippetText.slice(0, 500);
+  return loc;
 }
 
 /** Extract file and line from SARIF location. */
 function extractLocation(result: SarifResult): ParsedLocation | null {
-  const phys = getPhysicalLocation(result);
-  if (phys === null || phys === undefined) return null;
-  return buildParsedLocation(phys);
-}
-
-/** Build ParsedLocation from a physical location. Returns null if required fields missing. */
-function buildParsedLocation(
-  phys: NonNullable<SarifLocation['physicalLocation']>
-): ParsedLocation | null {
+  const phys = getFirstPhysicalLocation(result);
+  if (phys === null) return null;
   const file = phys.artifactLocation?.uri;
   const startLine = phys.region?.startLine;
   if (file === undefined || file === '' || startLine === undefined) return null;
-  return {
-    file,
-    startLine,
-    endLine: phys.region?.endLine,
-    snippet: phys.region?.snippet?.text?.slice(0, 500),
-  };
+  return buildLocation(file, startLine, phys);
 }
 
 /** Parse a single SARIF result into a SecurityFinding. */

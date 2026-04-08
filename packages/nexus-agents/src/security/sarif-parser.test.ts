@@ -6,6 +6,14 @@
 
 import { describe, it, expect } from 'vitest';
 import { parseSarif } from './sarif-parser.js';
+import type { SecurityFinding } from './sarif-types.js';
+
+/** Get first finding from SARIF parse result (asserts exists). */
+function firstFinding(sarifJson: string): SecurityFinding {
+  const result = parseSarif(sarifJson);
+  expect(result.findings.length).toBeGreaterThan(0);
+  return result.findings[0] as SecurityFinding;
+}
 
 /** Minimal valid SARIF with one finding. */
 function makeSarif(overrides?: {
@@ -72,7 +80,7 @@ describe('parseSarif', () => {
     expect(result.findings).toHaveLength(1);
     expect(result.errors).toHaveLength(0);
 
-    const f = result.findings[0];
+    const f = firstFinding(makeSarif());
     expect(f.rule).toBe('javascript.lang.security.detect-eval');
     expect(f.file).toBe('src/app.ts');
     expect(f.startLine).toBe(42);
@@ -84,36 +92,36 @@ describe('parseSarif', () => {
   });
 
   it('maps SARIF levels to severity', () => {
-    expect(parseSarif(makeSarif({ level: 'error' })).findings[0].severity).toBe('high');
-    expect(parseSarif(makeSarif({ level: 'warning' })).findings[0].severity).toBe('medium');
-    expect(parseSarif(makeSarif({ level: 'note' })).findings[0].severity).toBe('low');
-    expect(parseSarif(makeSarif({ level: 'none' })).findings[0].severity).toBe('info');
+    expect(firstFinding(makeSarif({ level: 'error' })).severity).toBe('high');
+    expect(firstFinding(makeSarif({ level: 'warning' })).severity).toBe('medium');
+    expect(firstFinding(makeSarif({ level: 'note' })).severity).toBe('low');
+    expect(firstFinding(makeSarif({ level: 'none' })).severity).toBe('info');
   });
 
   it('prefers security-severity over level', () => {
-    const result = parseSarif(makeSarif({ level: 'warning', securitySeverity: '9.5' }));
-    expect(result.findings[0].severity).toBe('critical');
+    expect(firstFinding(makeSarif({ level: 'warning', securitySeverity: '9.5' })).severity).toBe(
+      'critical'
+    );
   });
 
   it('maps security-severity scores to severity tiers', () => {
-    expect(parseSarif(makeSarif({ securitySeverity: '9.0' })).findings[0].severity).toBe(
-      'critical'
-    );
-    expect(parseSarif(makeSarif({ securitySeverity: '7.5' })).findings[0].severity).toBe('high');
-    expect(parseSarif(makeSarif({ securitySeverity: '5.0' })).findings[0].severity).toBe('medium');
-    expect(parseSarif(makeSarif({ securitySeverity: '2.0' })).findings[0].severity).toBe('low');
+    expect(firstFinding(makeSarif({ securitySeverity: '9.0' })).severity).toBe('critical');
+    expect(firstFinding(makeSarif({ securitySeverity: '7.5' })).severity).toBe('high');
+    expect(firstFinding(makeSarif({ securitySeverity: '5.0' })).severity).toBe('medium');
+    expect(firstFinding(makeSarif({ securitySeverity: '2.0' })).severity).toBe('low');
   });
 
   it('maps precision to confidence', () => {
-    expect(parseSarif(makeSarif({ precision: 'very-high' })).findings[0].confidence).toBe(0.95);
-    expect(parseSarif(makeSarif({ precision: 'high' })).findings[0].confidence).toBe(0.8);
-    expect(parseSarif(makeSarif({ precision: 'medium' })).findings[0].confidence).toBe(0.6);
-    expect(parseSarif(makeSarif({ precision: 'low' })).findings[0].confidence).toBe(0.3);
+    expect(firstFinding(makeSarif({ precision: 'very-high' })).confidence).toBe(0.95);
+    expect(firstFinding(makeSarif({ precision: 'high' })).confidence).toBe(0.8);
+    expect(firstFinding(makeSarif({ precision: 'medium' })).confidence).toBe(0.6);
+    expect(firstFinding(makeSarif({ precision: 'low' })).confidence).toBe(0.3);
   });
 
   it('extracts CWE IDs from tags', () => {
-    const result = parseSarif(makeSarif({ tags: ['CWE-79', 'external/cwe/cwe-89', 'security'] }));
-    expect(result.findings[0].cweIds).toEqual(['CWE-79', 'CWE-89']);
+    expect(
+      firstFinding(makeSarif({ tags: ['CWE-79', 'external/cwe/cwe-89', 'security'] })).cweIds
+    ).toEqual(['CWE-79', 'CWE-89']);
   });
 
   it('handles invalid JSON gracefully', () => {
@@ -176,8 +184,10 @@ describe('parseSarif', () => {
       ],
     });
     const result = parseSarif(sarif);
-    expect(result.findings[0].severity).toBe('high');
-    expect(result.findings[1].severity).toBe('low');
+    expect(result.findings).toHaveLength(2);
+    const [first, second] = result.findings as [SecurityFinding, SecurityFinding];
+    expect(first.severity).toBe('high');
+    expect(second.severity).toBe('low');
   });
 
   it('respects maxFindings cap', () => {
