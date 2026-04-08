@@ -40,8 +40,8 @@ export const DevPipelineInputSchema = z.object({
     .max(5)
     .default(3)
     .describe('Max QA review iterations per task'),
-  /** Directory to security scan (default: current working directory). */
-  scanTarget: z.string().max(500).optional().describe('Directory to security scan (default: cwd)'),
+  /** Working directory for the pipeline (default: cwd). Used for security scan and context. */
+  workingDir: z.string().max(500).optional().describe('Working directory (default: cwd)'),
   /** GitHub issue number to track progress on. Updates posted as comments. */
   issueNumber: z.number().int().positive().optional().describe('GitHub issue to post progress to'),
   /** GitHub repo (owner/name) for issue tracking. */
@@ -97,7 +97,7 @@ async function createStages(
       ? createTaskTracker({ backend, repo: input.repo, labels: input.labels })
       : undefined;
   return createAgentStages({
-    scanTarget: input.scanTarget,
+    scanTarget: input.workingDir,
     simulateVotes: false,
     issueNumber: input.issueNumber,
     repo: input.repo,

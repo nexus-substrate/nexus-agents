@@ -46,11 +46,11 @@ describe('DevPipelineInputSchema', () => {
     expect(() => DevPipelineInputSchema.parse({ task: 'test', maxQaIterations: 0 })).toThrow();
   });
 
-  it('accepts scanTarget', () => {
+  it('accepts workingDir', () => {
     const parsed = DevPipelineInputSchema.parse({
       task: 'test',
-      scanTarget: '/home/user/project',
+      workingDir: '/home/user/project',
     });
-    expect(parsed.scanTarget).toBe('/home/user/project');
+    expect(parsed.workingDir).toBe('/home/user/project');
   });
 });
