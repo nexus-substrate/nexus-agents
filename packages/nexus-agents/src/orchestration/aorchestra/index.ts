@@ -63,7 +63,8 @@ export {
   MIN_OUTPUT_LENGTH,
   MAX_OUTPUT_LENGTH,
 } from './quality-gate.js';
-export type { QualityGateFn } from './quality-gate.js';
+export type { QualityGateFn, AsyncQualityGateFn } from './quality-gate.js';
+export { createQaGate } from './quality-gate.js';
 export {
   evaluateState,
   withWatchdog,

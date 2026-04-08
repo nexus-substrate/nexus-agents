@@ -67,6 +67,60 @@ export function composeGates(...gates: readonly QualityGateFn[]): QualityGateFn 
 /** Default quality gate: non-empty + length bounds. */
 export const DEFAULT_QUALITY_GATE: QualityGateFn = composeGates(nonEmptyGate, outputLengthGate);
 
+// ============================================================================
+// Async QA Gate — uses runQaLoop for semantic review (#1710)
+// ============================================================================
+
+/**
+ * Async quality gate that runs a QA review loop on worker output.
+ * Returns undefined (pass) or rejection reason (fail).
+ *
+ * Unlike the sync QualityGateFn, this performs semantic review:
+ * the reviewer analyzes the output content, not just its format.
+ */
+export type AsyncQualityGateFn = (result: WorkerResult) => Promise<string | undefined>;
+
+/**
+ * Create an async QA gate from a review function.
+ *
+ * Uses runQaLoop under the hood — the worker's output is reviewed,
+ * and if rejected, the rejection reason is returned. Note: the gate
+ * itself does NOT re-implement (that's the dispatcher's job via
+ * shouldRefine). It only determines pass/fail with a reason.
+ *
+ * @param reviewFn - Function that reviews worker output and returns a verdict
+ * @returns Async quality gate function
+ *
+ * @example
+ * ```typescript
+ * import { createQaGate } from './quality-gate.js';
+ *
+ * const qaGate = createQaGate(async (output) => ({
+ *   verdict: output.includes('test') ? 'pass' : 'needs_work',
+ *   feedback: 'Missing test coverage',
+ *   issues: ['No tests'],
+ * }));
+ *
+ * dispatchWorkers(entries, { asyncQualityGate: qaGate });
+ * ```
+ */
+export function createQaGate(
+  reviewFn: (
+    output: string
+  ) => Promise<{
+    verdict: 'pass' | 'needs_work' | 'reject';
+    feedback: string;
+    issues: readonly string[];
+  }>
+): AsyncQualityGateFn {
+  return async (result: WorkerResult): Promise<string | undefined> => {
+    if (result.status !== 'success') return undefined;
+    const review = await reviewFn(result.output);
+    if (review.verdict === 'pass') return undefined;
+    return `QA ${review.verdict}: ${review.feedback}`;
+  };
+}
+
 /**
  * Applies a quality gate to a worker result.
  * If the result fails the gate, returns a new result with status 'error'

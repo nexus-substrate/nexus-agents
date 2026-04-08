@@ -18,7 +18,7 @@ import { getExpertTaskTimeout, WORKER_TIMEOUTS } from '../../config/timeouts.js'
 import { isRateLimitError } from '../../cli/voter-execution.js';
 import type { IEventBus } from '../../pipeline/event-types.js';
 import { withWatchdog } from './watchdog.js';
-import { applyQualityGate, type QualityGateFn } from './quality-gate.js';
+import { applyQualityGate, type QualityGateFn, type AsyncQualityGateFn } from './quality-gate.js';
 import { triageWorkerFailure, type TriageAction } from './worker-triage.js';
 
 const logger = createLogger({ component: 'worker-dispatcher' });
@@ -117,8 +117,10 @@ export interface WorkerDispatchOptions {
   readonly consecutiveFailureThreshold?: number;
   /** Stagger delay (ms) between spawns within a wave (default: 500ms, #1501). */
   readonly staggerDelayMs?: number;
-  /** Optional quality gate applied to worker results before acceptance (#1502). */
+  /** Optional sync quality gate applied to worker results before acceptance (#1502). */
   readonly qualityGate?: QualityGateFn;
+  /** Optional async QA gate for semantic review of worker output (#1710). */
+  readonly asyncQualityGate?: AsyncQualityGateFn;
   /** Enable pattern-based failure triage with automatic retry (#1506). Default: true. */
   readonly enableTriage?: boolean;
   /**
@@ -356,6 +358,7 @@ export async function dispatchWorkers(
       failureTracker,
       staggerDelayMs,
       qualityGate: options.qualityGate,
+      asyncQualityGate: options.asyncQualityGate,
       enableTriage: options.enableTriage ?? true,
     });
     allResults.push(...waveResults);
@@ -380,6 +383,7 @@ interface ProcessWaveOptions {
   readonly failureTracker: RoleFailureTracker;
   readonly staggerDelayMs: number;
   readonly qualityGate: QualityGateFn | undefined;
+  readonly asyncQualityGate: AsyncQualityGateFn | undefined;
   readonly enableTriage: boolean;
 }
 
@@ -420,11 +424,28 @@ function createWorkerTask(
       enableTriage: opts.enableTriage,
       altExecuteWorker: opts.options.altExecuteWorker,
     });
-    // Apply quality gate if configured (#1502)
+    // Apply sync quality gate if configured (#1502)
+    let gatedResult = result;
     if (opts.qualityGate !== undefined) {
-      return applyQualityGate(result, opts.qualityGate);
+      gatedResult = applyQualityGate(result, opts.qualityGate);
     }
-    return result;
+    // Apply async QA gate for semantic review (#1710)
+    if (opts.asyncQualityGate !== undefined && gatedResult.status === 'success') {
+      const rejection = await opts.asyncQualityGate(gatedResult);
+      if (rejection !== undefined) {
+        logger.info('Worker output rejected by async QA gate', {
+          role: entry.role,
+          reason: rejection.slice(0, 200),
+        });
+        return {
+          ...gatedResult,
+          status: 'error' as const,
+          error: rejection,
+          errorType: 'logic_error' as const,
+        };
+      }
+    }
+    return gatedResult;
   };
 }
 
