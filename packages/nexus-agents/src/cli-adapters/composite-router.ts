@@ -54,6 +54,7 @@ import {
 } from '../learning/strategy-distiller.js';
 import { getOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 import { isPersistenceEnabled } from '../config/learning-persistence.js';
+import { getPipelineEventBus } from '../pipeline/event-bus.js';
 import { generateSyntheticPriors, runWarmUp } from '../cli/warm-up.js';
 import {
   CompositeRouterConfigSchema,
@@ -304,6 +305,18 @@ export class CompositeRouter implements ICompositeRouter {
     }
   }
 
+  /** Emit routing.decision event to pipeline event bus (#1687). */
+  private emitRoutingDecision(decision: CompositeRoutingDecision, taskDescription: string): void {
+    getPipelineEventBus().emit({
+      type: 'routing.decision',
+      timestamp: getTimeProvider().now(),
+      taskId: taskDescription.slice(0, 100),
+      selectedModel: decision.cliName,
+      reasoning: decision.reason,
+      decisionPath: decision.stagesExecuted,
+    });
+  }
+
   /** Warm-start LinUCB bandit from persisted outcomes (Issue #1015).
    * Uses a 30-day lookback window so stale outcomes don't override
    * routing changes like primaryCli specialization (#1667). */
@@ -369,7 +382,12 @@ export class CompositeRouter implements ICompositeRouter {
   }
 
   async route(task: CliTask): Promise<Result<CompositeRoutingDecision, CompositeRoutingError>> {
-    return this.executeRouting(task, getTimeProvider().now());
+    const result = await this.executeRouting(task, getTimeProvider().now());
+    // Emit routing.decision to pipeline event bus for trace persistence (#1687)
+    if (result.ok) {
+      this.emitRoutingDecision(result.value, task.content);
+    }
+    return result;
   }
 
   /**
