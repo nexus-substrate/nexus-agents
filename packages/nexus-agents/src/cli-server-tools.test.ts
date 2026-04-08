@@ -229,6 +229,11 @@ vi.mock('./mcp/tools/annotation-proxy.js', () => ({
   createAnnotationsProxy: (server: unknown) => server,
 }));
 
+// Mock dev pipeline tool (tested separately in dev-pipeline-tool.test.ts)
+vi.mock('./mcp/tools/dev-pipeline-tool.js', () => ({
+  registerDevPipelineTool: vi.fn(),
+}));
+
 // Mock observability proxy as identity (tested separately in tool-observability-proxy.test.ts)
 vi.mock('./mcp/tools/tool-observability-proxy.js', () => ({
   createToolObservabilityProxy: (server: unknown) => server,
