@@ -58,6 +58,8 @@ import { getPipelineEventBus } from './pipeline/event-bus.js';
 import { createEventBusBridge } from './pipeline/event-bus-bridge.js';
 import { createDefaultPolicyEngine } from './pipeline/policy-engine.js';
 import { resolveV2Config } from './pipeline/v2-config.js';
+import { UpstreamClientManager } from './mcp/gateway/upstream-client.js';
+import type { GatewayConfigType } from './config/schemas-gateway.js';
 
 // Re-export for public API
 export { StpaSafetyError };
@@ -378,6 +380,46 @@ function registerOrchestrateToolSafe(ctx: ToolRegistrationContext): void {
   }
 }
 
+/** Initialize upstream MCP servers and register their tools as proxies (#1498). */
+async function initUpstreamServers(
+  gatewayConfig: GatewayConfigType | undefined,
+  server: McpServer,
+  logger: ILogger
+): Promise<void> {
+  const upstreamServers = gatewayConfig?.upstreamServers;
+  if (upstreamServers === undefined || upstreamServers.length === 0) return;
+
+  const manager = new UpstreamClientManager(logger);
+  manager.registerServers(upstreamServers);
+  await manager.connectEager();
+
+  const tools = manager.getAllTools();
+  logger.info('Upstream MCP servers initialized', {
+    servers: upstreamServers.length,
+    tools: tools.length,
+  });
+
+  // Register each upstream tool as a proxy on our server
+  for (const tool of tools) {
+    const toolName = tool.name;
+    const schema = tool.inputSchema;
+    server.registerTool(
+      toolName,
+      { inputSchema: schema },
+      async (args: { [key: string]: unknown }) => {
+        const result = await manager.callTool(toolName, args);
+        if (result === null) {
+          return {
+            isError: true,
+            content: [{ type: 'text' as const, text: 'Upstream tool not found' }],
+          };
+        }
+        return result;
+      }
+    );
+  }
+}
+
 /** Runs STPA analysis if enabled in options. */
 function maybeRunStpaAnalysis(options: RegisterMcpToolsOptions, logger: ILogger): void {
   const enableStpa = options.enableStpaSafetyAnalysis ?? false;
@@ -579,6 +621,9 @@ export function registerMcpTools(options: RegisterMcpToolsOptions): void {
   const gatewayOptions = { ...options, server: observableServer };
   const ctx = createToolContext(gatewayOptions, toolInfra, rateLimiterFactory);
   registerToolCategories(ctx);
+
+  // Wire upstream MCP servers from gateway config (#1498)
+  void initUpstreamServers(gatewayConfig, observableServer, logger);
 
   // Register MCP prompts and resources (Issue #1287, #1288)
   registerPrompts(observableServer, logger);
