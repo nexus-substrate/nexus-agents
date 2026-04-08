@@ -40,7 +40,7 @@ export interface TaskTrackerConfig {
   /** Directory for JSON backend output. */
   readonly outputDir?: string;
   /** Labels to apply to created issues. */
-  readonly labels?: readonly string[];
+  readonly labels?: readonly string[] | undefined;
 }
 
 /** Task tracker interface — create, update, comment. */
@@ -79,7 +79,7 @@ class GitHubTaskTracker implements ITaskTracker {
     }
     const url = await exec('gh', args, 30_000);
     const match = /\/(\d+)$/.exec(url);
-    const id = match !== null ? match[1] : url;
+    const id = match?.[1] ?? url;
     logger.info('Created GitHub issue', { id, url });
     return { id, title, status: 'open', url };
   }
@@ -115,7 +115,7 @@ class GitLabTaskTracker implements ITaskTracker {
       30_000
     );
     const match = /\/(\d+)$/.exec(url);
-    const id = match !== null ? match[1] : url;
+    const id = match?.[1] ?? url;
     logger.info('Created GitLab issue', { id, url });
     return { id, title, status: 'open', url };
   }

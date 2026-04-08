@@ -56,19 +56,20 @@ export async function recordPipelineOutcome(
   category: string,
   success: boolean,
   durationMs: number,
-  errorMessage?: string
+  _errorMessage?: string
 ): Promise<void> {
   try {
     const { getOutcomeStore } = await import('../orchestration/outcomes/outcome-store.js');
     const store = getOutcomeStore();
     store.append({
+      id: `pipeline-${taskId}-${String(Date.now())}`,
       cli: 'claude' as const,
       category: category as 'code_generation',
+      model: 'pipeline',
       success,
       durationMs,
       timestamp: new Date().toISOString(),
-      source: 'delegate',
-      errorMessage: errorMessage?.slice(0, 500),
+      source: 'delegate' as const,
     });
     logger.debug('Recorded pipeline outcome', { taskId, success });
   } catch (error) {
