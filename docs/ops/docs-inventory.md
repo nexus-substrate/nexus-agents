@@ -92,7 +92,7 @@ Hub documents for each major section:
 | `validation`       | sync  | Implemented | docs/ENTRYPOINTS.md |
 | `learning-metrics` | sync  | Implemented | docs/ENTRYPOINTS.md |
 
-### MCP Tools (28 total)
+### MCP Tools (29 total)
 
 | Tool                      | Status      | Documentation                  |
 | ------------------------- | ----------- | ------------------------------ |
@@ -124,6 +124,7 @@ Hub documents for each major section:
 | `repo_security_plan`      | Implemented | docs/guides/MCP_INTEGRATION.md |
 | `extract_symbols`         | Implemented | docs/guides/MCP_INTEGRATION.md |
 | `search_codebase`         | Implemented | docs/guides/MCP_INTEGRATION.md |
+| `run_dev_pipeline`        | Implemented | docs/ENTRYPOINTS.md            |
 
 ### Workflow Templates (7 built-in)
 

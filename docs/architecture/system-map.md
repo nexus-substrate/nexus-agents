@@ -11,7 +11,7 @@
 │    MCP Server      │    CLI Commands    │        REST API (planned)          │
 │  (cli-server.ts)   │    (cli.ts)        │       (api-gateway.ts)             │
 │                    │                    │                                    │
-│  28 MCP Tools:     │  30+ Commands:     │  Future:                           │
+│  29 MCP Tools:     │  30+ Commands:     │  Future:                           │
 │  • orchestrate     │  • doctor          │  • /orchestrate                    │
 │  • create_expert   │  • setup           │  • /experts                        │
 │  • execute_expert  │  • orchestrate     │  • /workflows                      │

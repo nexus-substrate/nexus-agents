@@ -40,7 +40,7 @@ The foundational module providing types, error handling, and task analysis.
 - **Tracer** (`core/tracer.ts`): OpenTelemetry-compatible tracing with `getTracer()`, `withSpan()`
 - **SharedTaskAnalyzer** (`core/task-analysis/shared-task-analyzer.ts`): Canonical task classification (ADR-0004). Consolidates 5 prior independent analyzers. Outputs: `taskType`, `complexity`, `reasoningType`, `ambiguityScore`, `constraints`, `requiredCapabilities`.
 - **TaskAnalysisResult** extensions (Issue #903): `ambiguityScore` (0-1), `constraints` (time/quality/scope), `requiredCapabilities` (tools + experts).
-- **Capability Gap Detector** (`core/task-analysis/capability-gap-detector.ts`, Issue #906): Cross-checks required capabilities against 28 registered tools and 10 expert roles.
+- **Capability Gap Detector** (`core/task-analysis/capability-gap-detector.ts`, Issue #906): Cross-checks required capabilities against 29 registered tools and 10 expert roles.
 - **Token Estimator** (`core/token-estimator.ts`): Approximate token counting for budget management.
 - **ICompositeRouter** (`core/types/`): Interface for the canonical routing pipeline.
 
@@ -191,5 +191,5 @@ MCP protocol server and tool handlers.
 - **Rate Limiter** (`mcp/rate-limiter.ts`): Single shared bucket (capacity: 100, refill: 10/sec)
 - **Tool handlers**: Each tool in `mcp/tools/*.ts`
 
-**Registered tools (28):**
+**Registered tools (29):**
 orchestrate, create_expert, execute_expert, run_workflow, delegate_to_model, list_experts, list_workflows, consensus_vote, research_query, research_add, research_add_source, research_discover, research_analyze, research_catalog_review, research_synthesize, memory_query, memory_stats, memory_write, weather_report, issue_triage, run_graph_workflow, execute_spec, registry_import, query_trace, repo_analyze, repo_security_plan, extract_symbols, search_codebase
