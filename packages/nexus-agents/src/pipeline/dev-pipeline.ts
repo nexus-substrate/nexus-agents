@@ -160,41 +160,43 @@ async function planVoteLoop(
   return { plan, iterations: MAX_VOTE_ITERATIONS };
 }
 
-/** Implement each task, QA review, loop back to PM on failure. */
+/** Implement a single task with QA iteration loop. */
+async function implementSingleTask(task: PipelineTask, stages: DevPipelineStages): Promise<number> {
+  let currentTask: PipelineTask = { ...task, status: 'in_progress' };
+  for (let i = 1; i <= MAX_QA_ITERATIONS; i++) {
+    logger.info('Stage: implement', { task: currentTask.id, iteration: i });
+    const implementation = await stages.implement(currentTask);
+    logger.info('Stage: qa review', { task: currentTask.id, iteration: i });
+    const review = await stages.qaReview(currentTask, implementation);
+    if (review.verdict === 'pass') {
+      logger.info('Task passed QA', { task: currentTask.id });
+      return i;
+    }
+    logger.warn('QA rejected', { task: currentTask.id, verdict: review.verdict });
+    currentTask = {
+      id: currentTask.id,
+      title: currentTask.title,
+      description: currentTask.description,
+      assignedTo: currentTask.assignedTo,
+      status: 'rejected',
+      feedback: review.feedback,
+    };
+  }
+  return MAX_QA_ITERATIONS;
+}
+
+/** Implement tasks with parallel dispatch for independent tasks (#1695). */
 async function implementQaLoop(tasks: PipelineTask[], stages: DevPipelineStages): Promise<number> {
-  let totalQaIterations = 0;
-
-  for (const task of tasks) {
-    let currentTask: PipelineTask = { ...task, status: 'in_progress' };
-
-    for (let i = 1; i <= MAX_QA_ITERATIONS; i++) {
-      totalQaIterations++;
-      logger.info('Stage: implement', { task: currentTask.id, iteration: i });
-      const implementation = await stages.implement(currentTask);
-
-      logger.info('Stage: qa review', { task: currentTask.id, iteration: i });
-      const review = await stages.qaReview(currentTask, implementation);
-
-      if (review.verdict === 'pass') {
-        logger.info('Task passed QA', { task: currentTask.id });
-        break;
-      }
-
-      logger.warn('QA rejected, reassigning', {
-        task: currentTask.id,
-        verdict: review.verdict,
-        issues: review.issues.length,
-      });
-      currentTask = {
-        id: currentTask.id,
-        title: currentTask.title,
-        description: currentTask.description,
-        assignedTo: currentTask.assignedTo,
-        status: 'rejected',
-        feedback: review.feedback,
-      };
+  if (tasks.length === 0) return 0;
+  // Run all tasks concurrently — each has its own QA iteration loop
+  const results = await Promise.allSettled(tasks.map((task) => implementSingleTask(task, stages)));
+  let totalIterations = 0;
+  for (const r of results) {
+    if (r.status === 'fulfilled') totalIterations += r.value;
+    else {
+      logger.error('Task implementation failed', { error: String(r.reason) });
+      totalIterations++;
     }
   }
-
-  return totalQaIterations;
+  return totalIterations;
 }

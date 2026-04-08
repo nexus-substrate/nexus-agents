@@ -101,22 +101,28 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
     vote: async (plan) => {
       emitStageEvent('vote', 'started');
       const start = getTimeProvider().now();
-      await postProgress(config, 'Vote', 'Running consensus...');
+      await postProgress(config, 'Vote', 'Running consensus with higher_order strategy...');
       try {
-        const { collectRealVotes } = await import('../cli/voter-agents.js');
-        const voteTypes = await import('../cli/vote-types.js');
-        const roles = Object.keys(voteTypes.VOTER_ROLES) as ReadonlyArray<
-          keyof typeof voteTypes.VOTER_ROLES
-        >;
-        const votes = await collectRealVotes({
-          roles,
-          proposal: plan.slice(0, 4000),
-          simulate: config.simulateVotes ?? false,
-        });
-        const approvals = votes.filter((v) => v.vote.decision === 'approve').length;
-        const pct = votes.length > 0 ? (approvals / votes.length) * 100 : 0;
-        const approved = pct >= 50;
-        const feedback = votes
+        // DRY: use the full consensus_vote pipeline (#1694)
+        const { executeVoting } = await import('../mcp/tools/consensus-vote.js');
+        const votingResult = await executeVoting(
+          {
+            proposal: plan.slice(0, 4000),
+            strategy: 'higher_order',
+            simulateVotes: config.simulateVotes ?? false,
+            quickMode: false,
+          },
+          logger
+        );
+        const approved = votingResult.result.outcome === 'approved';
+        const pct =
+          (votingResult.result.voteCounts.approve /
+            Math.max(
+              1,
+              votingResult.result.voteCounts.approve + votingResult.result.voteCounts.reject
+            )) *
+          100;
+        const feedback = votingResult.votes
           .filter((v) => v.vote.decision !== 'approve')
           .map((v) => v.vote.reasoning)
           .join('\n');
@@ -126,7 +132,7 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
         await postProgress(
           config,
           'Vote',
-          `${approved ? 'Approved' : 'Rejected'} (${approvals}/${votes.length})`
+          `${approved ? 'Approved' : 'Rejected'} (${Math.round(pct)}%, ${ms}ms)`
         );
         return { approved, feedback, approvalPercentage: pct };
       } catch (error) {

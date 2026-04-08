@@ -202,7 +202,8 @@ function recordVotesToTracker(
   }
 }
 
-async function executeVoting(
+/** Execute a consensus vote with full strategy support. Exported for pipeline DRY (#1694). */
+export async function executeVoting(
   input: ConsensusVoteInput,
   logger: ILogger
 ): Promise<ExtendedVotingResult> {
