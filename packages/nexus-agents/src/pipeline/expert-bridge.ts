@@ -37,11 +37,28 @@ export interface ExpertBridgeResult {
 interface RouterLike {
   executeTask(task: {
     content: string;
+    options?: Record<string, unknown> | undefined;
   }): Promise<{ ok: boolean; value: { text: string }; error: { message: string } }>;
 }
 
 // Cached router — lazily initialized, reused across calls within a session
 let cachedRouter: RouterLike | null = null;
+
+// Cached MCP config — generated once, reused across expert calls (#1708)
+let cachedMcpConfigPath: string | null = null;
+
+/** Get or create cached MCP config path for expert CLI sessions (#1708). */
+async function getMcpConfigPath(): Promise<string | null> {
+  if (cachedMcpConfigPath !== null) return cachedMcpConfigPath;
+  try {
+    const { generateMcpConfig } = await import('../swe-bench/mcp-config.js');
+    const config = await generateMcpConfig();
+    cachedMcpConfigPath = config.configPath;
+    return cachedMcpConfigPath;
+  } catch {
+    return null; // MCP config not available — experts run without tools
+  }
+}
 
 /** Get or create a cached CompositeRouter. */
 async function getRouter(): Promise<RouterLike | null> {
@@ -75,7 +92,13 @@ export async function executeExpert(
       };
     }
 
-    const result = await router.executeTask({ content: fullPrompt });
+    // Pass MCP config so CLI experts can call nexus-agents tools (#1708)
+    const mcpConfigPath = await getMcpConfigPath();
+    const task: { content: string; options?: Record<string, unknown> | undefined } = {
+      content: fullPrompt,
+    };
+    if (mcpConfigPath !== null) task.options = { mcpConfigPath };
+    const result = await router.executeTask(task);
     const durationMs = getTimeProvider().now() - start;
 
     if (result.ok) {
