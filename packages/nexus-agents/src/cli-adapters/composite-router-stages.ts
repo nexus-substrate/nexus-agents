@@ -707,6 +707,26 @@ function getWeatherBonusForTask(taskContent: string): Map<CliName, number> {
   }
 }
 
+/** Apply quality constraints and return filtered candidates or error (#1686). */
+async function applyQualityConstraints(
+  candidates: CliName[],
+  stagesExecuted: string[],
+  deps: StageDependencies
+): Promise<
+  Result<
+    { candidates: CliName[]; qualityResult: QualityConstraintStageResult },
+    CompositeRoutingError
+  >
+> {
+  const qualityResult = await runQualityConstraintStage(candidates, stagesExecuted, deps);
+  if (qualityResult.eligible.length === 0) {
+    return err(
+      new CompositeRoutingError('All candidates rejected by quality constraints', 'selection')
+    );
+  }
+  return ok({ candidates: qualityResult.eligible, qualityResult });
+}
+
 /** Executes full pipeline and returns result. (Made async in Issue #1350) */
 export async function runPipeline(
   task: CliTask,
@@ -729,13 +749,9 @@ export async function runPipeline(
   candidates = scoring.candidates;
 
   // Constraint-first: quality constraints filter BEFORE TOPSIS/LinUCB (#1686)
-  const qualityResult = await runQualityConstraintStage(candidates, stagesExecuted, deps);
-  candidates = qualityResult.eligible;
-  if (candidates.length === 0)
-    return err(
-      new CompositeRoutingError('All candidates rejected by quality constraints', 'selection')
-    );
-
+  const constrained = await applyQualityConstraints(candidates, stagesExecuted, deps);
+  if (!constrained.ok) return constrained;
+  candidates = constrained.value.candidates;
   const stageScores = aggregateStageScores(scoring, task.content);
   const topsisOpts: Parameters<typeof runTopsisStage>[4] = {
     performanceData: getPerformanceDataForCategory(task.content),
@@ -758,7 +774,7 @@ export async function runPipeline(
   return ok(
     buildPipelineResult({
       ...scoring,
-      qualityResult,
+      qualityResult: constrained.value.qualityResult,
       topsisResult,
       linucbResult: { ucbScore: linucbResult.ucbScore },
       latencyResult,
