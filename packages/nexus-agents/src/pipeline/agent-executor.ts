@@ -1,52 +1,68 @@
-/* eslint-disable @typescript-eslint/restrict-template-expressions, @typescript-eslint/no-base-to-string, max-lines-per-function */
+/* eslint-disable @typescript-eslint/restrict-template-expressions, @typescript-eslint/no-base-to-string, @typescript-eslint/no-unsafe-return, max-lines-per-function */
 /**
- * Agent Executor — Connects pipeline stages to real expert agents (#1684)
+ * Agent Executor — Connects pipeline stages to nexus-agents infrastructure (#1684)
  *
- * Bridges the DevPipelineStages interface to nexus-agents' expert system.
- * Uses the UnifiedAdapterRegistry to route tasks to the best available CLI.
- * Posts updates to GitHub issues for tracking when issueNumber is provided.
+ * DRY integration (Issue #1691):
+ * - CompositeRouter for intelligent multi-CLI routing (#1692)
+ * - Pipeline observability events + OutcomeStore recording (#1696)
+ * - Task tracker for GitHub/GitLab/JSON issue management
  *
  * @module pipeline/agent-executor
  */
 
-import { createLogger } from '../core/index.js';
+import { createLogger, getTimeProvider } from '../core/index.js';
 import type { DevPipelineStages, PipelineTask, QaReviewResult } from './dev-pipeline.js';
 import { checkSecurityScan } from './security-gate.js';
 import type { ITaskTracker } from './task-tracker.js';
-// pipeline-observability.ts provides emitStageEvent + recordPipelineOutcome for future use
+import { emitStageEvent, recordPipelineOutcome } from './pipeline-observability.js';
 
 const logger = createLogger({ component: 'agent-executor' });
 
 /** Configuration for the agent executor. */
 export interface AgentExecutorConfig {
-  /** Directory to security scan. */
   readonly scanTarget?: string | undefined;
-  /** Whether to use simulated votes (for testing without CLIs). */
   readonly simulateVotes?: boolean | undefined;
-  /** Task tracker for creating/updating issues (GitHub, GitLab, or JSON). */
   readonly tracker?: ITaskTracker | undefined;
-  /** GitHub issue number to post progress updates to (legacy, use tracker instead). */
   readonly issueNumber?: number | undefined;
-  /** GitHub repo (owner/name) for issue updates (legacy, use tracker instead). */
   readonly repo?: string | undefined;
 }
 
-/** Post a progress update via tracker and/or legacy GitHub issue. */
+// ============================================================================
+// Routing via CompositeRouter (#1692)
+// ============================================================================
+
+/** Execute a prompt through the 14-stage CompositeRouter. */
+async function routeAndExecute(prompt: string, fallback: string): Promise<string> {
+  try {
+    const { createAllAdapters } = await import('../cli-adapters/factory.js');
+    const { createCompositeRouter } = await import('../cli-adapters/composite-router.js');
+    const adapters = createAllAdapters();
+    if (adapters.size === 0) return fallback;
+    const router = createCompositeRouter(adapters);
+    const result = await router.executeTask({ content: prompt });
+    if (result.ok) return result.value.content;
+    return `Routing failed: ${result.error.message}`;
+  } catch (error) {
+    return `Execution error: ${error instanceof Error ? error.message : String(error)}`;
+  }
+}
+
+// ============================================================================
+// Progress Tracking
+// ============================================================================
+
 async function postProgress(
   config: AgentExecutorConfig,
   stage: string,
-  message: string,
-  taskId?: string
+  message: string
 ): Promise<void> {
-  // Use tracker if available
-  if (config.tracker !== undefined && taskId !== undefined) {
+  if (config.tracker !== undefined && config.issueNumber !== undefined) {
     try {
-      await config.tracker.postComment(taskId, `**[${stage}]** ${message}`);
-    } catch (error) {
-      logger.debug('Tracker comment failed', { error: String(error) });
+      await config.tracker.postComment(String(config.issueNumber), `**[${stage}]** ${message}`);
+    } catch {
+      /* best effort */
     }
   }
-  // Legacy: direct gh CLI
   if (config.issueNumber !== undefined && config.repo !== undefined) {
     try {
       const { execFile } = await import('node:child_process');
@@ -65,82 +81,57 @@ async function postProgress(
         ],
         { timeout: 15000 }
       );
-    } catch (error) {
-      logger.debug('gh comment failed', { error: String(error) });
+    } catch {
+      /* best effort */
     }
   }
 }
 
-/** Get an adapter from the registry, or undefined if unavailable. */
-async function getAdapter(category: string): Promise<Record<string, unknown> | undefined> {
-  try {
-    const { getGlobalRegistry } = await import('../adapters/unified-registry.js');
-    const registry = getGlobalRegistry();
-    return registry.getAdapter(category as 'code_generation') as unknown as Record<string, unknown>;
-  } catch {
-    return undefined;
-  }
-}
+// ============================================================================
+// Pipeline Stages
+// ============================================================================
 
-/** Execute a prompt via an adapter, returning the response text or a fallback. */
-async function executeWithAdapter(
-  category: string,
-  prompt: string,
-  fallback: string
-): Promise<string> {
-  const adapter = await getAdapter(category);
-  if (adapter === undefined) return fallback;
-  try {
-    const exec = adapter['execute'] as (opts: { content: string }) => Promise<unknown>;
-    const result = (await exec({ content: prompt })) as {
-      ok: boolean;
-      value: { content: string };
-      error: { message: string };
-    };
-    return result.ok ? result.value.content : `${category} failed: ${result.error.message}`;
-  } catch (error) {
-    return `${category} error: ${String(error)}`;
-  }
-}
-
-/**
- * Create pipeline stages wired to real nexus-agents infrastructure.
- * Posts progress updates to GitHub issues when configured.
- */
 export function createAgentStages(config: AgentExecutorConfig = {}): DevPipelineStages {
   return {
     research: async (task) => {
-      await postProgress(config, 'Research', 'Gathering context...');
-      const result = await executeWithAdapter(
-        'research',
+      emitStageEvent('research', 'started');
+      const start = getTimeProvider().now();
+      await postProgress(config, 'Research', 'Gathering context via CompositeRouter...');
+      const result = await routeAndExecute(
         `You are a research expert. Gather context for:\n\n${task}`,
-        `[Research skipped] ${task.slice(0, 500)}`
+        `[No adapters] ${task.slice(0, 500)}`
       );
-      await postProgress(config, 'Research', `Complete (${result.length} chars)`);
+      const ms = getTimeProvider().now() - start;
+      emitStageEvent('research', 'completed', { durationMs: ms });
+      void recordPipelineOutcome('research', 'research', true, ms);
+      await postProgress(config, 'Research', `Done (${result.length} chars, ${ms}ms)`);
       return result;
     },
 
     plan: async (task, research, feedback) => {
-      const hasFeedback = feedback !== undefined;
-      await postProgress(
-        config,
-        'Plan',
-        hasFeedback ? `Revising plan based on feedback...` : 'Creating implementation plan...'
-      );
-      const prompt = hasFeedback
-        ? `Revise the plan based on vote feedback.\n\nFeedback: ${feedback}\n\nTask: ${task}\n\nResearch: ${research}`
-        : `Create a detailed implementation plan for:\n\n${task}\n\nResearch: ${research}`;
-      const result = await executeWithAdapter('architecture', prompt, prompt);
-      await postProgress(config, 'Plan', `Plan created (${result.length} chars)`);
+      emitStageEvent('plan', 'started');
+      const start = getTimeProvider().now();
+      const prompt =
+        feedback !== undefined
+          ? `Revise plan.\n\nFeedback: ${feedback}\n\nTask: ${task}\n\nResearch: ${research}`
+          : `Create implementation plan for:\n\n${task}\n\nResearch: ${research}`;
+      await postProgress(config, 'Plan', feedback !== undefined ? 'Revising...' : 'Planning...');
+      const result = await routeAndExecute(prompt, prompt);
+      const ms = getTimeProvider().now() - start;
+      emitStageEvent('plan', 'completed', { durationMs: ms });
+      void recordPipelineOutcome('plan', 'architecture', true, ms);
+      await postProgress(config, 'Plan', `Done (${result.length} chars, ${ms}ms)`);
       return result;
     },
 
     vote: async (plan) => {
-      await postProgress(config, 'Vote', 'Running consensus vote...');
+      emitStageEvent('vote', 'started');
+      const start = getTimeProvider().now();
+      await postProgress(config, 'Vote', 'Running consensus...');
       try {
         const { collectRealVotes } = await import('../cli/voter-agents.js');
         const voteTypes = await import('../cli/vote-types.js');
-        const roles = Object.keys(voteTypes.VOTER_ROLES) as unknown as ReadonlyArray<
+        const roles = Object.keys(voteTypes.VOTER_ROLES) as ReadonlyArray<
           keyof typeof voteTypes.VOTER_ROLES
         >;
         const votes = await collectRealVotes({
@@ -149,69 +140,91 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
           simulate: config.simulateVotes ?? false,
         });
         const approvals = votes.filter((v) => v.vote.decision === 'approve').length;
-        const total = votes.length;
-        const pct = total > 0 ? (approvals / total) * 100 : 0;
+        const pct = votes.length > 0 ? (approvals / votes.length) * 100 : 0;
         const approved = pct >= 50;
         const feedback = votes
           .filter((v) => v.vote.decision !== 'approve')
           .map((v) => v.vote.reasoning)
           .join('\n');
+        const ms = getTimeProvider().now() - start;
+        emitStageEvent('vote', 'completed', { durationMs: ms });
+        void recordPipelineOutcome('vote', 'planning', approved, ms);
         await postProgress(
           config,
           'Vote',
-          `${approved ? 'Approved' : 'Rejected'} (${approvals}/${total}, ${Math.round(pct)}%)`
+          `${approved ? 'Approved' : 'Rejected'} (${approvals}/${votes.length})`
         );
         return { approved, feedback, approvalPercentage: pct };
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
-        logger.warn('Vote failed, auto-approving', { error: msg });
-        await postProgress(config, 'Vote', `Vote error (auto-approved): ${msg.slice(0, 200)}`);
+        emitStageEvent('vote', 'failed', { error: msg });
+        void recordPipelineOutcome('vote', 'planning', false, getTimeProvider().now() - start, msg);
+        await postProgress(config, 'Vote', `Error (auto-approved): ${msg.slice(0, 200)}`);
         return { approved: true, feedback: `Vote error: ${msg}`, approvalPercentage: 0 };
       }
     },
 
     decompose: async (plan) => {
-      await postProgress(config, 'PM Decompose', 'Splitting plan into tasks...');
-      const prompt = `You are a product manager. Decompose this plan into discrete tasks.\nReturn a JSON array: [{id, title, description, assignedTo}]\n\nPlan:\n${plan}`;
-      const response = await executeWithAdapter('planning', prompt, '');
-      const tasks = parseTasksFromResponse(response, plan);
-      await postProgress(
-        config,
-        'PM Decompose',
-        `Created ${tasks.length} task(s): ${tasks.map((t) => t.title).join(', ')}`
+      emitStageEvent('decompose', 'started');
+      const start = getTimeProvider().now();
+      await postProgress(config, 'PM', 'Decomposing...');
+      const response = await routeAndExecute(
+        `PM: Decompose into tasks.\nReturn JSON: [{id,title,description,assignedTo}]\n\n${plan}`,
+        ''
       );
+      const tasks = parseTasksFromResponse(response, plan);
+      const ms = getTimeProvider().now() - start;
+      emitStageEvent('decompose', 'completed', { durationMs: ms });
+      void recordPipelineOutcome('decompose', 'planning', true, ms);
+      await postProgress(config, 'PM', `${tasks.length} task(s)`);
       return tasks;
     },
 
     implement: async (task) => {
-      await postProgress(config, `Implement [${task.id}]`, `Working on: ${task.title}`);
-      const feedbackSection =
-        task.feedback !== undefined ? `\n\nQA feedback to address: ${task.feedback}` : '';
-      const prompt = `Implement:\n\nTitle: ${task.title}\nDescription: ${task.description}${feedbackSection}`;
-      const result = await executeWithAdapter('code_generation', prompt, `[No adapter] ${prompt}`);
-      await postProgress(config, `Implement [${task.id}]`, `Complete (${result.length} chars)`);
+      emitStageEvent(`impl-${task.id}`, 'started');
+      const start = getTimeProvider().now();
+      await postProgress(config, `Code [${task.id}]`, task.title);
+      const fb = task.feedback !== undefined ? `\n\nQA feedback: ${task.feedback}` : '';
+      const result = await routeAndExecute(
+        `Implement:\n\n${task.title}\n${task.description}${fb}`,
+        `[No adapter] ${task.description}`
+      );
+      const ms = getTimeProvider().now() - start;
+      emitStageEvent(`impl-${task.id}`, 'completed', { durationMs: ms });
+      void recordPipelineOutcome(task.id, 'code_generation', true, ms);
+      await postProgress(config, `Code [${task.id}]`, `Done (${ms}ms)`);
       return result;
     },
 
     qaReview: async (task, implementation) => {
-      await postProgress(config, `QA [${task.id}]`, `Reviewing: ${task.title}`);
-      const prompt = `QA review:\n\nTask: ${task.title}\n\nImplementation:\n${implementation.slice(0, 3000)}\n\nVerdict: PASS, NEEDS_WORK, or REJECT\nList specific issues.`;
-      const response = await executeWithAdapter('code_review', prompt, '');
-      const review = parseQaFromResponse(response);
-      await postProgress(
-        config,
-        `QA [${task.id}]`,
-        `Verdict: ${review.verdict}${review.issues.length > 0 ? ` (${review.issues.length} issues)` : ''}`
+      emitStageEvent(`qa-${task.id}`, 'started');
+      const start = getTimeProvider().now();
+      await postProgress(config, `QA [${task.id}]`, 'Reviewing...');
+      const response = await routeAndExecute(
+        `QA:\n\nTask: ${task.title}\n\nImpl:\n${implementation.slice(0, 3000)}\n\nVerdict: PASS/NEEDS_WORK/REJECT`,
+        ''
       );
+      const review = parseQaFromResponse(response);
+      const ms = getTimeProvider().now() - start;
+      emitStageEvent(`qa-${task.id}`, review.verdict === 'pass' ? 'completed' : 'failed', {
+        durationMs: ms,
+      });
+      void recordPipelineOutcome(task.id, 'code_review', review.verdict === 'pass', ms);
+      await postProgress(config, `QA [${task.id}]`, review.verdict);
       return review;
     },
 
     securityScan: async () => {
+      emitStageEvent('security', 'started');
+      const start = getTimeProvider().now();
       const target = config.scanTarget ?? process.cwd();
       await postProgress(config, 'Security', `Scanning ${target}...`);
       const check = checkSecurityScan(target);
       const result = await check();
       const passed = result.verdict !== 'fail';
+      const ms = getTimeProvider().now() - start;
+      emitStageEvent('security', passed ? 'completed' : 'failed', { durationMs: ms });
+      void recordPipelineOutcome('security', 'security_review', passed, ms);
       await postProgress(config, 'Security', passed ? 'Passed' : `BLOCKED: ${result.details}`);
       return { passed, feedback: result.details };
     },
@@ -219,7 +232,7 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
 }
 
 // ============================================================================
-// Response Parsers
+// Parsers
 // ============================================================================
 
 function parseTasksFromResponse(response: string, fallbackPlan: string): PipelineTask[] {
@@ -236,7 +249,7 @@ function parseTasksFromResponse(response: string, fallbackPlan: string): Pipelin
       }));
     }
   } catch {
-    logger.debug('Failed to parse task JSON from PM response');
+    logger.debug('Failed to parse PM response');
   }
   return [
     {
@@ -250,10 +263,10 @@ function parseTasksFromResponse(response: string, fallbackPlan: string): Pipelin
 }
 
 function parseQaFromResponse(response: string): QaReviewResult {
-  const lower = response.toLowerCase();
-  if (lower.includes('reject'))
+  const l = response.toLowerCase();
+  if (l.includes('reject'))
     return { verdict: 'reject', feedback: response, issues: extractIssues(response) };
-  if (lower.includes('needs_work') || lower.includes('needs work'))
+  if (l.includes('needs_work') || l.includes('needs work'))
     return { verdict: 'needs_work', feedback: response, issues: extractIssues(response) };
   return { verdict: 'pass', feedback: response, issues: [] };
 }
@@ -261,7 +274,7 @@ function parseQaFromResponse(response: string): QaReviewResult {
 function extractIssues(text: string): string[] {
   return text
     .split('\n')
-    .filter((l) => l.trim().startsWith('-') || l.trim().startsWith('*'))
+    .filter((l) => /^\s*[-*]/.test(l))
     .map((l) => l.trim().replace(/^[-*]\s*/, ''))
     .filter((l) => l.length > 5)
     .slice(0, 10);
