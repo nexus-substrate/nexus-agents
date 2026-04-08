@@ -285,6 +285,29 @@ export class GitHubProvider implements IScmProvider {
     }
   }
 
+  async createIssue(
+    title: string,
+    body: string,
+    labels?: readonly string[]
+  ): Promise<Result<ScmIssue, ScmError>> {
+    const args = ['issue', 'create', '--title', title, '--body', body];
+    if (labels !== undefined && labels.length > 0) args.push('--label', labels.join(','));
+    logger.debug('Creating issue', { repo: this.repo, title });
+    const result = await execGh(args, this.repo);
+    if (!result.ok) return result;
+    const url = result.value.trim();
+    const match = /\/(\d+)$/.exec(url);
+    const number = match?.[1] !== undefined ? parseInt(match[1], 10) : 0;
+    return ok({
+      number,
+      title,
+      body,
+      labels: labels !== undefined ? [...labels] : [],
+      author: 'pipeline',
+      createdAt: new Date().toISOString(),
+    });
+  }
+
   async addComment(issueNumber: number, body: string): Promise<Result<void, ScmError>> {
     const args = ['issue', 'comment', String(issueNumber), '--body', body];
 

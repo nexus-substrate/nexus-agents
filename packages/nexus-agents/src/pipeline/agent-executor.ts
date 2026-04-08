@@ -14,10 +14,69 @@ import { createLogger, getTimeProvider } from '../core/index.js';
 import type { DevPipelineStages, PipelineTask, QaReviewResult } from './dev-pipeline.js';
 import { checkSecurityScan } from './security-gate.js';
 import type { ITaskTracker } from './task-tracker.js';
-import { emitStageEvent, recordPipelineOutcome } from './pipeline-observability.js';
+import { getPipelineEventBus } from './event-bus.js';
+import type { PipelineEvent } from './event-types.js';
 import { executeExpert } from './expert-bridge.js';
 
 const logger = createLogger({ component: 'agent-executor' });
+
+// Inlined from pipeline-observability.ts (DRY: same pattern as pipeline-runner.ts)
+function emitStageEvent(
+  stage: string,
+  status: 'started' | 'completed' | 'failed',
+  details?: Record<string, unknown>
+): void {
+  const bus = getPipelineEventBus();
+  const ts = getTimeProvider().now();
+  const execId = `dev-pipeline-${stage}`;
+  if (status === 'started')
+    bus.emit({
+      type: 'stage.started',
+      timestamp: ts,
+      executionId: execId,
+      stageId: stage,
+    } as PipelineEvent);
+  else if (status === 'completed')
+    bus.emit({
+      type: 'stage.completed',
+      timestamp: ts,
+      executionId: execId,
+      stageId: stage,
+      durationMs: (details?.['durationMs'] as number) || 0,
+    } as PipelineEvent);
+  else
+    bus.emit({
+      type: 'stage.failed',
+      timestamp: ts,
+      executionId: execId,
+      stageId: stage,
+      error: (details?.['error'] as string) || 'Unknown',
+    } as PipelineEvent);
+}
+
+function recordOutcome(
+  taskId: string,
+  category: string,
+  success: boolean,
+  durationMs: number
+): void {
+  import('../orchestration/outcomes/outcome-store.js')
+    .then(({ getOutcomeStore }) => {
+      getOutcomeStore().append({
+        id: `pipeline-${taskId}-${String(Date.now())}`,
+        cli: 'claude' as const,
+        category: category as 'code_generation',
+        model: 'pipeline',
+        success,
+        durationMs,
+        timestamp: new Date().toISOString(),
+        source: 'delegate' as const,
+      });
+    })
+    .catch(() => {
+      /* best effort */
+    });
+}
 
 /** Configuration for the agent executor. */
 export interface AgentExecutorConfig {
@@ -79,7 +138,7 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
       await postProgress(config, 'Research', 'Research expert gathering context...');
       const r = await executeExpert('research', `Gather context for:\n\n${task}`);
       emitStageEvent('research', r.success ? 'completed' : 'failed', { durationMs: r.durationMs });
-      void recordPipelineOutcome('research', 'research', r.success, r.durationMs, r.error);
+      recordOutcome('research', 'research', r.success, r.durationMs);
       await postProgress(config, 'Research', `Done (${r.text.length} chars, ${r.durationMs}ms)`);
       return r.text || `[Research failed: ${r.error}] ${task.slice(0, 500)}`;
     },
@@ -93,7 +152,7 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
       await postProgress(config, 'Plan', feedback !== undefined ? 'Revising...' : 'Planning...');
       const r = await executeExpert('architecture', prompt);
       emitStageEvent('plan', r.success ? 'completed' : 'failed', { durationMs: r.durationMs });
-      void recordPipelineOutcome('plan', 'architecture', r.success, r.durationMs, r.error);
+      recordOutcome('plan', 'architecture', r.success, r.durationMs);
       await postProgress(config, 'Plan', `Done (${r.text.length} chars, ${r.durationMs}ms)`);
       return r.text || prompt;
     },
@@ -128,7 +187,7 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
           .join('\n');
         const ms = getTimeProvider().now() - start;
         emitStageEvent('vote', 'completed', { durationMs: ms });
-        void recordPipelineOutcome('vote', 'planning', approved, ms);
+        recordOutcome('vote', 'planning', approved, ms);
         await postProgress(
           config,
           'Vote',
@@ -138,7 +197,7 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         emitStageEvent('vote', 'failed', { error: msg });
-        void recordPipelineOutcome('vote', 'planning', false, getTimeProvider().now() - start, msg);
+        recordOutcome('vote', 'planning', false, getTimeProvider().now() - start);
         await postProgress(config, 'Vote', `Error (auto-approved): ${msg.slice(0, 200)}`);
         return { approved: true, feedback: `Vote error: ${msg}`, approvalPercentage: 0 };
       }
@@ -153,7 +212,7 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
       );
       const tasks = parseTasksFromResponse(r.text, plan);
       emitStageEvent('decompose', 'completed', { durationMs: r.durationMs });
-      void recordPipelineOutcome('decompose', 'planning', r.success, r.durationMs, r.error);
+      recordOutcome('decompose', 'planning', r.success, r.durationMs);
       await postProgress(config, 'PM', `${tasks.length} task(s)`);
       return tasks;
     },
@@ -169,7 +228,7 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
       emitStageEvent(`impl-${task.id}`, r.success ? 'completed' : 'failed', {
         durationMs: r.durationMs,
       });
-      void recordPipelineOutcome(task.id, 'code_generation', r.success, r.durationMs, r.error);
+      recordOutcome(task.id, 'code_generation', r.success, r.durationMs);
       await postProgress(config, `Code [${task.id}]`, `Done (${r.durationMs}ms)`);
       return r.text || `[Implementation failed: ${r.error}]`;
     },
@@ -185,7 +244,7 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
       emitStageEvent(`qa-${task.id}`, review.verdict === 'pass' ? 'completed' : 'failed', {
         durationMs: r.durationMs,
       });
-      void recordPipelineOutcome(task.id, 'code_review', review.verdict === 'pass', r.durationMs);
+      recordOutcome(task.id, 'code_review', review.verdict === 'pass', r.durationMs);
       await postProgress(config, `QA [${task.id}]`, review.verdict);
       return review;
     },
@@ -200,7 +259,7 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
       const passed = result.verdict !== 'fail';
       const ms = getTimeProvider().now() - start;
       emitStageEvent('security', passed ? 'completed' : 'failed', { durationMs: ms });
-      void recordPipelineOutcome('security', 'security_review', passed, ms);
+      recordOutcome('security', 'security_review', passed, ms);
       await postProgress(config, 'Security', passed ? 'Passed' : `BLOCKED: ${result.details}`);
       return { passed, feedback: result.details };
     },

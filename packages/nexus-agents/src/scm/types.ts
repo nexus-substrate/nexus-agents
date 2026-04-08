@@ -191,6 +191,11 @@ export interface IScmProvider {
   // Issues
   getIssue(number: number): Promise<Result<ScmIssue, ScmError>>;
   listIssues(filters?: IssueFilters): Promise<Result<readonly ScmIssue[], ScmError>>;
+  createIssue(
+    title: string,
+    body: string,
+    labels?: readonly string[]
+  ): Promise<Result<ScmIssue, ScmError>>;
   addLabels(issueNumber: number, labels: readonly string[]): Promise<Result<void, ScmError>>;
 
   // Pull Requests

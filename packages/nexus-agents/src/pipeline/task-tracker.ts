@@ -67,35 +67,43 @@ async function exec(cmd: string, args: readonly string[], timeout = 15_000): Pro
 // GitHub Backend
 // ============================================================================
 
+/** GitHub backend — delegates through GitHubProvider (DRY: reuses scm/github-provider.ts). */
 class GitHubTaskTracker implements ITaskTracker {
   constructor(private readonly config: TaskTrackerConfig) {}
 
+  private async getProvider(): Promise<{
+    createIssue: (
+      t: string,
+      b: string,
+      l?: readonly string[]
+    ) => Promise<{ ok: boolean; value: { number: number; url?: string } }>;
+    addComment: (n: number, b: string) => Promise<{ ok: boolean }>;
+  }> {
+    const { createScmProvider } = await import('../scm/factory.js');
+    const result = await createScmProvider({ repo: this.config.repo ?? '' });
+    if (!result.ok) throw new Error(`SCM provider error: ${result.error.message}`);
+    return result.value as never;
+  }
+
   async createTask(title: string, body: string): Promise<TrackedTask> {
-    const repo = this.config.repo;
-    if (repo === undefined) throw new Error('GitHub backend requires repo config');
-    const args = ['issue', 'create', '--repo', repo, '--title', title, '--body', body];
-    if (this.config.labels !== undefined && this.config.labels.length > 0) {
-      args.push('--label', this.config.labels.join(','));
-    }
-    const url = await exec('gh', args, 30_000);
-    const match = /\/(\d+)$/.exec(url);
-    const id = match?.[1] ?? url;
-    logger.info('Created GitHub issue', { id, url });
-    return { id, title, status: 'open', url };
+    const provider = await this.getProvider();
+    const result = await provider.createIssue(title, body, this.config.labels);
+    if (!result.ok) throw new Error('Failed to create issue');
+    const id = String(result.value.number);
+    logger.info('Created GitHub issue via SCM provider', { id });
+    return { id, title, status: 'open', url: (result.value as { url?: string }).url };
   }
 
   async updateStatus(taskId: string, status: TrackedTask['status']): Promise<void> {
+    if (status !== 'closed') return;
     const repo = this.config.repo;
     if (repo === undefined) return;
-    if (status === 'closed') {
-      await exec('gh', ['issue', 'close', taskId, '--repo', repo]);
-    }
+    await exec('gh', ['issue', 'close', taskId, '--repo', repo]);
   }
 
   async postComment(taskId: string, comment: string): Promise<void> {
-    const repo = this.config.repo;
-    if (repo === undefined) return;
-    await exec('gh', ['issue', 'comment', taskId, '--repo', repo, '--body', comment]);
+    const provider = await this.getProvider();
+    await provider.addComment(parseInt(taskId, 10), comment);
   }
 }
 
