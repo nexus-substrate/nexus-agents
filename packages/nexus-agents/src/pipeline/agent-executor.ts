@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/restrict-template-expressions, @typescript-eslint/no-base-to-string, @typescript-eslint/no-unsafe-return, max-lines-per-function */
+/* eslint-disable @typescript-eslint/restrict-template-expressions, @typescript-eslint/no-base-to-string, max-lines-per-function */
 /**
  * Agent Executor — Connects pipeline stages to nexus-agents infrastructure (#1684)
  *
@@ -40,7 +40,7 @@ async function routeAndExecute(prompt: string, fallback: string): Promise<string
     if (adapters.size === 0) return fallback;
     const router = createCompositeRouter(adapters);
     const result = await router.executeTask({ content: prompt });
-    if (result.ok) return result.value.content;
+    if (result.ok) return result.value.text;
     return `Routing failed: ${result.error.message}`;
   } catch (error) {
     return `Execution error: ${error instanceof Error ? error.message : String(error)}`;
