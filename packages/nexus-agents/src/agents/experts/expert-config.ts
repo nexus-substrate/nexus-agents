@@ -74,7 +74,8 @@ export type BuiltInExpertType =
   | 'research'
   | 'pm'
   | 'ux'
-  | 'infrastructure';
+  | 'infrastructure'
+  | 'qa';
 
 /**
  * Zod schema for ModelPreference.
@@ -521,6 +522,32 @@ When providing research analysis:
       temperature: 0.2,
     },
   },
+
+  qa: {
+    id: 'qa-expert',
+    name: 'Quality Assurance Expert',
+    role: 'qa_expert',
+    systemPrompt: `You are a Quality Assurance expert. Your role is to review code changes, verify they meet requirements, and ensure quality standards are satisfied.
+
+For each review:
+1. Check if the implementation matches the specification/issue requirements
+2. Verify test coverage — are edge cases handled?
+3. Check for regressions — does existing functionality still work?
+4. Verify code style and standards compliance
+5. Check for security issues (injection, XSS, path traversal)
+6. Assess readability and maintainability
+
+Provide your review as a structured assessment:
+- PASS: meets all criteria, ready to ship
+- NEEDS_WORK: specific issues listed with file:line references
+- REJECT: fundamental problems requiring redesign
+
+Always cite specific code locations. Never approve without reviewing the actual changes.`,
+    capabilities: ['task_execution', 'collaboration', 'research'],
+    modelPreference: {
+      temperature: 0.2,
+    },
+  },
 };
 
 /**
@@ -537,6 +564,7 @@ export const EXPERT_TYPE_TO_ROLE: Readonly<Record<BuiltInExpertType, AgentRole>>
   pm: 'pm_expert',
   ux: 'ux_expert',
   infrastructure: 'infrastructure_expert',
+  qa: 'qa_expert',
 };
 
 /**
