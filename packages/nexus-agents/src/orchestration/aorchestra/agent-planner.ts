@@ -162,6 +162,7 @@ const SUBTASK_TEMPLATES: Record<BuiltInExpertType, string> = {
   pm: 'Analyze requirements and acceptance criteria for: {task}',
   ux: 'Evaluate user experience impact of: {task}',
   infrastructure: 'Assess physical infrastructure and hardware management for: {task}',
+  qa: 'Review code quality, standards compliance, and regressions for: {task}',
 };
 
 // ============================================================================

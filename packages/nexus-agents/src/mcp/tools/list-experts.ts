@@ -82,6 +82,7 @@ const EXPERT_TYPE_TO_ROLE: Record<BuiltInExpertType, string> = {
   pm: 'pm_expert',
   ux: 'ux_expert',
   infrastructure: 'infrastructure_expert',
+  qa: 'qa_expert',
 };
 
 /**

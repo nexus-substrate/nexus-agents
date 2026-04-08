@@ -90,7 +90,7 @@ describe('list_experts tool', () => {
 
       expect(parsed.count).toBeGreaterThan(0);
       expect(parsed.experts).toBeInstanceOf(Array);
-      expect(parsed.experts.length).toBe(10); // 10 built-in experts
+      expect(parsed.experts.length).toBe(11); // 10 built-in experts
 
       // Check structure
       const expert = parsed.experts[0];
@@ -135,7 +135,7 @@ describe('list_experts tool', () => {
       const result = await handler({ format: 'names' });
       const parsed = JSON.parse(result.content[0]?.text ?? '{}');
 
-      expect(parsed.experts.length).toBe(10);
+      expect(parsed.experts.length).toBe(11);
       const expert = parsed.experts[0];
       expect(expert.role).toBeDefined();
       expect(expert.name).toBeDefined();
@@ -208,7 +208,7 @@ describe('list_experts tool', () => {
 
       expect(result.structuredContent).toBeDefined();
       const sc = result.structuredContent as Record<string, unknown>;
-      expect(sc['count']).toBe(10);
+      expect(sc['count']).toBe(11);
       expect(Array.isArray(sc['experts'])).toBe(true);
     });
   });

@@ -252,6 +252,7 @@ export const DEFAULT_RELEVANCE_CONFIG: RelevanceFilterConfig = {
       MemoryType.EPISODIC,
       MemoryType.VAULT,
     ],
+    qa_expert: [MemoryType.SEMANTIC, MemoryType.EPISODIC, MemoryType.PROCEDURAL, MemoryType.BELIEF],
     custom: [MemoryType.SEMANTIC, MemoryType.PROCEDURAL, MemoryType.RESOURCE],
     // TRINITY roles (arXiv:2512.04695) - thinker and verifier benefit from belief memory
     thinker: [MemoryType.SEMANTIC, MemoryType.CORE, MemoryType.VAULT, MemoryType.BELIEF],
