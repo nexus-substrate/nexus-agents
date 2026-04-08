@@ -101,6 +101,10 @@ export {
   type CliCircuitBreakerConfig,
   type CircuitProtectedResult,
   type CliCircuitHealthStatus,
+  // Circuit Breaker Types — exported for TypeDoc resolution (#1697)
+  type ICircuitBreaker,
+  type FailureCategory as CircuitBreakerFailureCategory,
+  type CircuitState,
   // PreferenceRouter - Preference-Trained Routing (Issue #148, arXiv:2406.18665)
   PreferenceRouter,
   createPreferenceRouter,
