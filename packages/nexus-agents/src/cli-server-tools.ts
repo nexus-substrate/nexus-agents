@@ -413,14 +413,10 @@ async function initUpstreamServers(
       toolName,
       { description: desc, inputSchema: passthroughSchema },
       async (args) => {
-        const result = await manager.callTool(toolName, args as Record<string, unknown>);
-        if (result === null) {
-          return {
-            isError: true,
-            content: [{ type: 'text' as const, text: 'Upstream tool not found' }],
-          };
-        }
-        return result;
+        const upstreamResult = await manager.callTool(toolName, args as Record<string, unknown>);
+        const text =
+          upstreamResult !== null ? JSON.stringify(upstreamResult) : 'Upstream tool not found';
+        return { content: [{ type: 'text' as const, text }] };
       }
     );
   }
