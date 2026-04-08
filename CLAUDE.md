@@ -503,8 +503,9 @@ Governance rules (voting thresholds, refactor gates, fitness audit, documentatio
 | `repo_security_plan`      | Generate a security scanning pipeline recommendation for a GitHub repository based on detected tech stack.                                    |
 | `extract_symbols`         | Extract code symbols (functions, classes, types) from source files for analysis.                                                              |
 | `search_codebase`         | Search the codebase for code patterns, symbols, or text across all source files.                                                              |
+| `run_dev_pipeline`        | run_dev_pipeline tool                                                                                                                         |
 
-_Auto-generated from source. 28 tools registered._
+_Auto-generated from source. 29 tools registered._
 
 <!-- GOVERNANCE:TOOL_INDEX:END -->
 
