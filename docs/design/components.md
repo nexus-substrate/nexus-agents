@@ -20,7 +20,7 @@ _Generated: 2026-02-08_
 | learning      | 14    | 9     | 3     | Outcome feedback, A/B testing                       |
 | orchestration | 33    | 17    | 4     | Graph workflows, spec factory, pattern router       |
 | pipeline      | 20    | 18    | 4     | Task contracts, pipeline runner, event bus, plugins |
-| mcp           | 81    | 71    | 4     | MCP server, 28 tool handlers, gateway               |
+| mcp           | 81    | 71    | 4     | MCP server, 29 tool handlers, gateway               |
 
 **Total: 650 source files, 426 test files**
 

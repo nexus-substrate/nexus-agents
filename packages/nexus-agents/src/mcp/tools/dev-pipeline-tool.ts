@@ -16,6 +16,7 @@ import { runDevPipeline } from '../../pipeline/dev-pipeline.js';
 import type { DevPipelineResult } from '../../pipeline/dev-pipeline.js';
 import { createAgentStages } from '../../pipeline/agent-executor.js';
 import { createTaskTracker, detectBackend } from '../../pipeline/task-tracker.js';
+import { toolSuccessStructured, toolError } from './tool-result.js';
 import type { TrackerBackend } from '../../pipeline/task-tracker.js';
 
 // ============================================================================
@@ -126,26 +127,6 @@ function buildStructuredOutput(result: DevPipelineResult): Record<string, unknow
   };
 }
 
-/** Format pipeline result as readable text + structured JSON. */
-function formatResult(
-  result: DevPipelineResult,
-  dryRun: boolean
-): { text: string; structured: Record<string, unknown> } {
-  const lines: string[] = [
-    `## Pipeline ${result.completed ? 'Complete' : 'Blocked'}`,
-    `Vote: ${String(result.voteIterations)} iterations | QA: ${String(result.qaIterations)} iterations | Tasks: ${String(result.tasks.length)}`,
-    '',
-  ];
-  if (dryRun) lines.push('*Dry run — stopped after plan+vote.*', '');
-  lines.push('### Plan', result.plan.slice(0, 2000), '');
-  for (const task of result.tasks) {
-    lines.push(`**${task.id}**: ${task.title} (${task.status})`);
-    if (task.implementation !== undefined)
-      lines.push('```', task.implementation.slice(0, 1000), '```');
-  }
-  return { text: lines.join('\n'), structured: buildStructuredOutput(result) };
-}
-
 /** Register the run_dev_pipeline MCP tool. */
 export function registerDevPipelineTool(
   server: McpServer,
@@ -159,17 +140,9 @@ export function registerDevPipelineTool(
       const taskText = resolveTaskInput(input);
       const stages = await createStages(input);
       const result = await runDevPipeline(taskText, stages);
-      const output = formatResult(result, input.dryRun);
-      return {
-        content: [{ type: 'text' as const, text: output.text }],
-        structuredContent: output.structured,
-      };
+      return toolSuccessStructured(buildStructuredOutput(result));
     } catch (error: unknown) {
-      const msg = getErrorMessage(error);
-      return {
-        content: [{ type: 'text' as const, text: `Pipeline error: ${msg}` }],
-        isError: true,
-      };
+      return toolError(getErrorMessage(error));
     }
   });
 }

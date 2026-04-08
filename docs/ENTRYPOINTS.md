@@ -332,6 +332,7 @@ nexus-agents hooks stop --check-tasks
 | `repo_security_plan`      | Generate security scanning pipeline for a repository               | None (local) | Shared bucket |
 | `extract_symbols`         | Extract code symbols (functions, classes, types) from source files | None (local) | Shared bucket |
 | `search_codebase`         | Search codebase for code patterns, symbols, or text                | None (local) | Shared bucket |
+| `run_dev_pipeline`        | Multi-agent dev pipeline: research→plan→vote→implement→QA→security | Optional     | Shared bucket |
 
 **Rate limiting:** All tools share a single token bucket rate limiter (capacity: 100 tokens, refill: 10 tokens/sec). Each tool call consumes one token.
 

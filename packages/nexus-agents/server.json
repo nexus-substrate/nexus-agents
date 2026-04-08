@@ -73,6 +73,7 @@
     "extract_symbols",
     "query_trace",
     "research_add_source",
-    "research_catalog_review"
+    "research_catalog_review",
+    "run_dev_pipeline"
   ]
 }
