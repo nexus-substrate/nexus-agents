@@ -17,6 +17,8 @@
  * @module pipeline/dev-pipeline
  */
 
+import { runQaLoop } from '../orchestration/qa-loop.js';
+
 import { createLogger } from '../core/index.js';
 
 const logger = createLogger({ component: 'dev-pipeline' });
@@ -168,33 +170,42 @@ interface TaskImplResult {
   readonly task: PipelineTask;
 }
 
-/** Implement a single task with QA iteration loop. Returns task with implementation. */
+/** Implement a single task with QA iteration loop via reusable runQaLoop (#1707). */
 async function implementSingleTask(
   task: PipelineTask,
   stages: DevPipelineStages
 ): Promise<TaskImplResult> {
   let currentTask: PipelineTask = { ...task, status: 'in_progress' };
-  let lastImpl = '';
-  for (let i = 1; i <= MAX_QA_ITERATIONS; i++) {
-    logger.info('Stage: implement', { task: currentTask.id, iteration: i });
-    lastImpl = await stages.implement(currentTask);
-    logger.info('Stage: qa review', { task: currentTask.id, iteration: i });
-    const review = await stages.qaReview(currentTask, lastImpl);
-    if (review.verdict === 'pass') {
-      logger.info('Task passed QA', { task: currentTask.id });
-      return { iterations: i, task: { ...currentTask, status: 'done', implementation: lastImpl } };
-    }
-    logger.warn('QA rejected', { task: currentTask.id, verdict: review.verdict });
-    currentTask = {
-      id: currentTask.id,
-      title: currentTask.title,
-      description: currentTask.description,
-      assignedTo: currentTask.assignedTo,
-      status: 'rejected',
-      feedback: review.feedback,
-    };
-  }
-  return { iterations: MAX_QA_ITERATIONS, task: { ...currentTask, implementation: lastImpl } };
+  const qaResult = await runQaLoop<string>(
+    async (feedback) => {
+      if (feedback !== undefined) {
+        currentTask = {
+          id: task.id,
+          title: task.title,
+          description: task.description,
+          assignedTo: task.assignedTo,
+          status: 'rejected',
+          feedback,
+        };
+      }
+      return stages.implement(currentTask);
+    },
+    async (impl) => {
+      const review = await stages.qaReview(currentTask, impl);
+      return { verdict: review.verdict, feedback: review.feedback, issues: review.issues };
+    },
+    MAX_QA_ITERATIONS
+  );
+  const finalTask: PipelineTask = {
+    id: task.id,
+    title: task.title,
+    description: task.description,
+    assignedTo: task.assignedTo,
+    status: qaResult.approved ? 'done' : 'rejected',
+    implementation: qaResult.output,
+    feedback: qaResult.feedback,
+  };
+  return { iterations: qaResult.iterations, task: finalTask };
 }
 
 /** Result of the implement+QA loop. */

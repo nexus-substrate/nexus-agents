@@ -180,6 +180,10 @@ export type {
   TaskTrackerConfig,
 } from './task-tracker.js';
 
+// QA Loop — reusable implement→review→iterate pattern (#1707)
+export { runQaLoop, DEFAULT_MAX_QA_ITERATIONS } from '../orchestration/qa-loop.js';
+export type { QaVerdict, QaReviewOutput, QaLoopResult } from '../orchestration/qa-loop.js';
+
 // Replay — decision trace comparison (#1688)
 export { parseTraceJsonl, extractDecisions, compareDecisions } from '../replay/replay-executor.js';
 export type { TracedDecision, ReplayComparison, ReplaySummary } from '../replay/replay-executor.js';
