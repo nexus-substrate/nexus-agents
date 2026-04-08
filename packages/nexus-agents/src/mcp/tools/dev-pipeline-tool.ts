@@ -11,11 +11,10 @@ import { z } from 'zod';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { createLogger, getErrorMessage } from '../../core/index.js';
+import { getErrorMessage } from '../../core/index.js';
 import { runDevPipeline } from '../../pipeline/dev-pipeline.js';
-import type { DevPipelineStages, DevPipelineResult } from '../../pipeline/dev-pipeline.js';
-
-const logger = createLogger({ component: 'run-dev-pipeline' });
+import type { DevPipelineResult } from '../../pipeline/dev-pipeline.js';
+import { createAgentStages } from '../../pipeline/agent-executor.js';
 
 // ============================================================================
 // Input Schema
@@ -67,52 +66,12 @@ function resolveTaskInput(input: DevPipelineInput): string {
 // Stub Stages (replaced by real agents when available)
 // ============================================================================
 
-/** Create pipeline stages. Uses stub implementations that describe what each
- *  agent would do — real wiring to execute_expert/consensus_vote is Phase 2. */
-function createStages(input: DevPipelineInput): DevPipelineStages {
-  return {
-    research: (task) => {
-      logger.info('Research stage', { taskLength: task.length });
-      return Promise.resolve(`Research context for: ${task.slice(0, 200)}`);
-    },
-    plan: (task, research, feedback) => {
-      const prompt =
-        feedback !== undefined
-          ? `Revise plan based on feedback: ${feedback}\n\nOriginal task: ${task}\nResearch: ${research}`
-          : `Create implementation plan for: ${task}\nResearch: ${research}`;
-      logger.info('Plan stage', { hasFeedback: feedback !== undefined });
-      return Promise.resolve(prompt);
-    },
-    vote: (plan) => {
-      logger.info('Vote stage', { planLength: plan.length });
-      return Promise.resolve({ approved: true, feedback: '', approvalPercentage: 100 });
-    },
-    decompose: (plan) => {
-      logger.info('Decompose stage');
-      return Promise.resolve([
-        {
-          id: 'task-1',
-          title: 'Implementation',
-          description: plan,
-          assignedTo: 'coder' as const,
-          status: 'pending' as const,
-        },
-      ]);
-    },
-    implement: (task) => {
-      logger.info('Implement stage', { taskId: task.id });
-      return Promise.resolve(`Implementation of ${task.title}: ${task.description.slice(0, 200)}`);
-    },
-    qaReview: (task, _implementation) => {
-      logger.info('QA stage', { taskId: task.id });
-      return Promise.resolve({ verdict: 'pass' as const, feedback: 'Approved', issues: [] });
-    },
-    securityScan: () => {
-      const target = input.scanTarget ?? process.cwd();
-      logger.info('Security scan stage', { target });
-      return Promise.resolve({ passed: true, feedback: 'No critical findings' });
-    },
-  };
+/** Create pipeline stages wired to real agents via agent-executor. */
+function createStages(input: DevPipelineInput): ReturnType<typeof createAgentStages> {
+  return createAgentStages({
+    scanTarget: input.scanTarget,
+    simulateVotes: false,
+  });
 }
 
 // ============================================================================
