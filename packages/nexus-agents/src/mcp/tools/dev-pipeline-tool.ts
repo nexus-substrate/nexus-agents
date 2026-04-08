@@ -39,6 +39,14 @@ export const DevPipelineInputSchema = z.object({
     .describe('Max QA review iterations per task'),
   /** Directory to security scan (default: current working directory). */
   scanTarget: z.string().max(500).optional().describe('Directory to security scan (default: cwd)'),
+  /** GitHub issue number to track progress on. Updates posted as comments. */
+  issueNumber: z.number().int().positive().optional().describe('GitHub issue to post progress to'),
+  /** GitHub repo (owner/name) for issue tracking. */
+  repo: z
+    .string()
+    .max(200)
+    .optional()
+    .describe('GitHub repo for issue tracking (e.g., owner/repo)'),
 });
 
 export type DevPipelineInput = z.infer<typeof DevPipelineInputSchema>;
@@ -71,6 +79,8 @@ function createStages(input: DevPipelineInput): ReturnType<typeof createAgentSta
   return createAgentStages({
     scanTarget: input.scanTarget,
     simulateVotes: false,
+    issueNumber: input.issueNumber,
+    repo: input.repo,
   });
 }
 

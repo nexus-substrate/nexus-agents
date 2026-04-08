@@ -65,6 +65,7 @@ function createMockFactory(shouldSucceed = true, errorMessage = 'Factory error')
           pm: 'pm_expert',
           ux: 'ux_expert',
           infrastructure: 'infrastructure_expert',
+          qa: 'qa_expert',
         };
         return { ok: true as const, value: createMockExpert(roleMap[type]) };
       }
