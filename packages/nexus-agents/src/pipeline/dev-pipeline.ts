@@ -194,7 +194,8 @@ async function implementQaLoop(tasks: PipelineTask[], stages: DevPipelineStages)
   for (const r of results) {
     if (r.status === 'fulfilled') totalIterations += r.value;
     else {
-      logger.error('Task implementation failed', { error: String(r.reason) });
+      const reason = r.reason instanceof Error ? r.reason : new Error(String(r.reason));
+      logger.error('Task implementation failed', reason, {});
       totalIterations++;
     }
   }
