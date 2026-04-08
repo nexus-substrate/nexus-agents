@@ -27,7 +27,7 @@ export interface TrackedTask {
   readonly id: string;
   readonly title: string;
   readonly status: 'open' | 'in_progress' | 'closed';
-  readonly url?: string;
+  readonly url?: string | undefined;
 }
 
 /** Configuration for the task tracker. */
