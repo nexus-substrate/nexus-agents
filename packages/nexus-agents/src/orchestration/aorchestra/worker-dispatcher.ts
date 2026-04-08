@@ -387,6 +387,24 @@ interface ProcessWaveOptions {
   readonly enableTriage: boolean;
 }
 
+/** Apply sync + async quality gates to a worker result (#1502, #1710). */
+async function applyGates(
+  result: WorkerResult,
+  role: string,
+  syncGate: QualityGateFn | undefined,
+  asyncGate: AsyncQualityGateFn | undefined
+): Promise<WorkerResult> {
+  let gated = syncGate !== undefined ? applyQualityGate(result, syncGate) : result;
+  if (asyncGate !== undefined && gated.status === 'success') {
+    const rejection = await asyncGate(gated);
+    if (rejection !== undefined) {
+      logger.info('Async QA gate rejected', { role, reason: rejection.slice(0, 200) });
+      gated = { ...gated, status: 'error', error: rejection, errorType: 'logic_error' as const };
+    }
+  }
+  return gated;
+}
+
 /** Create a task closure for a single worker within a wave. */
 function createWorkerTask(
   entry: AgentPlanEntry,
@@ -424,28 +442,7 @@ function createWorkerTask(
       enableTriage: opts.enableTriage,
       altExecuteWorker: opts.options.altExecuteWorker,
     });
-    // Apply sync quality gate if configured (#1502)
-    let gatedResult = result;
-    if (opts.qualityGate !== undefined) {
-      gatedResult = applyQualityGate(result, opts.qualityGate);
-    }
-    // Apply async QA gate for semantic review (#1710)
-    if (opts.asyncQualityGate !== undefined && gatedResult.status === 'success') {
-      const rejection = await opts.asyncQualityGate(gatedResult);
-      if (rejection !== undefined) {
-        logger.info('Worker output rejected by async QA gate', {
-          role: entry.role,
-          reason: rejection.slice(0, 200),
-        });
-        return {
-          ...gatedResult,
-          status: 'error' as const,
-          error: rejection,
-          errorType: 'logic_error' as const,
-        };
-      }
-    }
-    return gatedResult;
+    return applyGates(result, entry.role, opts.qualityGate, opts.asyncQualityGate);
   };
 }
 
