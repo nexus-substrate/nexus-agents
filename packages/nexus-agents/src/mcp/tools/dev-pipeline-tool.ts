@@ -108,32 +108,42 @@ async function createStages(
 // Tool Registration
 // ============================================================================
 
-/** Format pipeline result for MCP response. */
-function formatResult(result: DevPipelineResult, dryRun: boolean): string {
+/** Build structured JSON output for harness consumption (#1700). */
+function buildStructuredOutput(result: DevPipelineResult): Record<string, unknown> {
+  return {
+    completed: result.completed,
+    securityPassed: result.securityPassed,
+    voteIterations: result.voteIterations,
+    qaIterations: result.qaIterations,
+    plan: result.plan,
+    tasks: result.tasks.map((t) => ({
+      id: t.id,
+      title: t.title,
+      status: t.status,
+      implementation: t.implementation ?? null,
+      feedback: t.feedback ?? null,
+    })),
+  };
+}
+
+/** Format pipeline result as readable text + structured JSON. */
+function formatResult(
+  result: DevPipelineResult,
+  dryRun: boolean
+): { text: string; structured: Record<string, unknown> } {
   const lines: string[] = [
-    `## Development Pipeline ${result.completed ? 'Complete' : 'Blocked'}`,
-    '',
-    `**Status:** ${result.completed ? 'All gates passed' : `Blocked (security: ${String(result.securityPassed)})`}`,
-    `**Vote iterations:** ${String(result.voteIterations)}`,
-    `**QA iterations:** ${String(result.qaIterations)}`,
-    `**Tasks:** ${String(result.tasks.length)}`,
+    `## Pipeline ${result.completed ? 'Complete' : 'Blocked'}`,
+    `Vote: ${String(result.voteIterations)} iterations | QA: ${String(result.qaIterations)} iterations | Tasks: ${String(result.tasks.length)}`,
     '',
   ];
-
-  if (dryRun) {
-    lines.push('*Dry run — stopped after plan+vote.*', '');
+  if (dryRun) lines.push('*Dry run — stopped after plan+vote.*', '');
+  lines.push('### Plan', result.plan.slice(0, 2000), '');
+  for (const task of result.tasks) {
+    lines.push(`**${task.id}**: ${task.title} (${task.status})`);
+    if (task.implementation !== undefined)
+      lines.push('```', task.implementation.slice(0, 1000), '```');
   }
-
-  lines.push('### Plan', '', result.plan.slice(0, 2000), '');
-
-  if (result.tasks.length > 0) {
-    lines.push('### Tasks', '');
-    for (const task of result.tasks) {
-      lines.push(`- **${task.id}**: ${task.title} (${task.status})`);
-    }
-  }
-
-  return lines.join('\n');
+  return { text: lines.join('\n'), structured: buildStructuredOutput(result) };
 }
 
 /** Register the run_dev_pipeline MCP tool. */
@@ -149,8 +159,11 @@ export function registerDevPipelineTool(
       const taskText = resolveTaskInput(input);
       const stages = await createStages(input);
       const result = await runDevPipeline(taskText, stages);
-      const text = formatResult(result, input.dryRun);
-      return { content: [{ type: 'text' as const, text }] };
+      const output = formatResult(result, input.dryRun);
+      return {
+        content: [{ type: 'text' as const, text: output.text }],
+        structuredContent: output.structured,
+      };
     } catch (error: unknown) {
       const msg = getErrorMessage(error);
       return {

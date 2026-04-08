@@ -36,6 +36,8 @@ export interface PipelineTask {
   readonly assignedTo: PipelineRole;
   readonly status: 'pending' | 'in_progress' | 'review' | 'done' | 'rejected';
   readonly feedback?: string;
+  /** Implementation text from the code expert (surfaced for harness use). */
+  readonly implementation?: string;
 }
 
 /** Vote result from consensus. */
@@ -115,7 +117,7 @@ export async function runDevPipeline(
   const tasks = await stages.decompose(planResult.plan);
 
   // 4. IMPLEMENT + QA (per-task loop)
-  const qaIterations = await implementQaLoop(tasks, stages);
+  const implResult = await implementQaLoop(tasks, stages);
 
   // 5. SECURITY SCAN
   logger.info('Stage: security scan');
@@ -124,9 +126,9 @@ export async function runDevPipeline(
   return {
     completed: security.passed,
     plan: planResult.plan,
-    tasks,
+    tasks: implResult.completedTasks.length > 0 ? implResult.completedTasks : tasks,
     voteIterations: planResult.iterations,
-    qaIterations,
+    qaIterations: implResult.totalIterations,
     securityPassed: security.passed,
   };
 }
@@ -160,17 +162,27 @@ async function planVoteLoop(
   return { plan, iterations: MAX_VOTE_ITERATIONS };
 }
 
-/** Implement a single task with QA iteration loop. */
-async function implementSingleTask(task: PipelineTask, stages: DevPipelineStages): Promise<number> {
+/** Result of implementing a single task. */
+interface TaskImplResult {
+  readonly iterations: number;
+  readonly task: PipelineTask;
+}
+
+/** Implement a single task with QA iteration loop. Returns task with implementation. */
+async function implementSingleTask(
+  task: PipelineTask,
+  stages: DevPipelineStages
+): Promise<TaskImplResult> {
   let currentTask: PipelineTask = { ...task, status: 'in_progress' };
+  let lastImpl = '';
   for (let i = 1; i <= MAX_QA_ITERATIONS; i++) {
     logger.info('Stage: implement', { task: currentTask.id, iteration: i });
-    const implementation = await stages.implement(currentTask);
+    lastImpl = await stages.implement(currentTask);
     logger.info('Stage: qa review', { task: currentTask.id, iteration: i });
-    const review = await stages.qaReview(currentTask, implementation);
+    const review = await stages.qaReview(currentTask, lastImpl);
     if (review.verdict === 'pass') {
       logger.info('Task passed QA', { task: currentTask.id });
-      return i;
+      return { iterations: i, task: { ...currentTask, status: 'done', implementation: lastImpl } };
     }
     logger.warn('QA rejected', { task: currentTask.id, verdict: review.verdict });
     currentTask = {
@@ -182,22 +194,33 @@ async function implementSingleTask(task: PipelineTask, stages: DevPipelineStages
       feedback: review.feedback,
     };
   }
-  return MAX_QA_ITERATIONS;
+  return { iterations: MAX_QA_ITERATIONS, task: { ...currentTask, implementation: lastImpl } };
+}
+
+/** Result of the implement+QA loop. */
+interface ImplLoopResult {
+  readonly totalIterations: number;
+  readonly completedTasks: readonly PipelineTask[];
 }
 
 /** Implement tasks with parallel dispatch for independent tasks (#1695). */
-async function implementQaLoop(tasks: PipelineTask[], stages: DevPipelineStages): Promise<number> {
-  if (tasks.length === 0) return 0;
-  // Run all tasks concurrently — each has its own QA iteration loop
+async function implementQaLoop(
+  tasks: PipelineTask[],
+  stages: DevPipelineStages
+): Promise<ImplLoopResult> {
+  if (tasks.length === 0) return { totalIterations: 0, completedTasks: [] };
   const results = await Promise.allSettled(tasks.map((task) => implementSingleTask(task, stages)));
   let totalIterations = 0;
+  const completedTasks: PipelineTask[] = [];
   for (const r of results) {
-    if (r.status === 'fulfilled') totalIterations += r.value;
-    else {
+    if (r.status === 'fulfilled') {
+      totalIterations += r.value.iterations;
+      completedTasks.push(r.value.task);
+    } else {
       const reason = r.reason instanceof Error ? r.reason : new Error(String(r.reason));
       logger.error('Task implementation failed', reason, {});
       totalIterations++;
     }
   }
-  return totalIterations;
+  return { totalIterations, completedTasks };
 }

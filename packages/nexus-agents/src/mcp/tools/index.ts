@@ -449,6 +449,7 @@ export function registerTools(
       'repo_security_plan',
       'extract_symbols',
       'search_codebase',
+      'run_dev_pipeline',
     ],
     logger,
     rateLimiter,
