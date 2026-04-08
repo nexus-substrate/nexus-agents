@@ -59,7 +59,7 @@ import { createEventBusBridge } from './pipeline/event-bus-bridge.js';
 import { createDefaultPolicyEngine } from './pipeline/policy-engine.js';
 import { resolveV2Config } from './pipeline/v2-config.js';
 import { UpstreamClientManager } from './mcp/gateway/upstream-client.js';
-import type { GatewayConfigType } from './config/schemas-gateway.js';
+import type { UpstreamServerConfig } from './config/schemas-gateway.js';
 
 // Re-export for public API
 export { StpaSafetyError };
@@ -382,11 +382,14 @@ function registerOrchestrateToolSafe(ctx: ToolRegistrationContext): void {
 
 /** Initialize upstream MCP servers and register their tools as proxies (#1498). */
 async function initUpstreamServers(
-  gatewayConfig: GatewayConfigType | undefined,
+  gatewayConfig: GatewayConfig | undefined,
   server: McpServer,
   logger: ILogger
 ): Promise<void> {
-  const upstreamServers = gatewayConfig?.upstreamServers;
+  // GatewayConfig from the proxy module may include upstreamServers when Zod-parsed
+  const upstreamServers = (gatewayConfig as Record<string, unknown> | undefined)?.[
+    'upstreamServers'
+  ] as readonly UpstreamServerConfig[] | undefined;
   if (upstreamServers === undefined || upstreamServers.length === 0) return;
 
   const manager = new UpstreamClientManager(logger);
@@ -399,15 +402,18 @@ async function initUpstreamServers(
     tools: tools.length,
   });
 
-  // Register each upstream tool as a proxy on our server
+  // Register each upstream tool as a proxy on our server.
+  // Use z.object({}).passthrough() since upstream schemas are JSON Schema, not Zod.
+  const { z } = await import('zod');
+  const passthroughSchema = z.looseObject({});
   for (const tool of tools) {
     const toolName = tool.name;
-    const schema = tool.inputSchema;
+    const desc = tool.description ?? `Upstream tool: ${toolName}`;
     server.registerTool(
       toolName,
-      { inputSchema: schema },
-      async (args: { [key: string]: unknown }) => {
-        const result = await manager.callTool(toolName, args);
+      { description: desc, inputSchema: passthroughSchema },
+      async (args) => {
+        const result = await manager.callTool(toolName, args as Record<string, unknown>);
         if (result === null) {
           return {
             isError: true,
