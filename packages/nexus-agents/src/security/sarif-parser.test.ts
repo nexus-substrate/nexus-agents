@@ -1,0 +1,188 @@
+/**
+ * SARIF Parser Tests (#1682)
+ *
+ * @module security/sarif-parser.test
+ */
+
+import { describe, it, expect } from 'vitest';
+import { parseSarif } from './sarif-parser.js';
+
+/** Minimal valid SARIF with one finding. */
+function makeSarif(overrides?: {
+  level?: string;
+  ruleId?: string;
+  securitySeverity?: string;
+  precision?: string;
+  tags?: string[];
+  file?: string;
+  startLine?: number;
+}): string {
+  const o = {
+    level: 'error',
+    ruleId: 'javascript.lang.security.detect-eval',
+    file: 'src/app.ts',
+    startLine: 42,
+    ...overrides,
+  };
+  const rule: Record<string, unknown> = {
+    id: o.ruleId,
+    shortDescription: { text: 'Use of eval detected' },
+    properties: {
+      precision: overrides?.precision ?? 'high',
+      tags: overrides?.tags ?? ['CWE-95'],
+    },
+  };
+  if (overrides?.securitySeverity !== undefined) {
+    (rule.properties as Record<string, unknown>)['security-severity'] = overrides.securitySeverity;
+  }
+  return JSON.stringify({
+    version: '2.1.0',
+    runs: [
+      {
+        tool: { driver: { name: 'semgrep', rules: [rule] } },
+        results: [
+          {
+            ruleId: o.ruleId,
+            level: o.level,
+            message: { text: 'Avoid eval()' },
+            locations: [
+              {
+                physicalLocation: {
+                  artifactLocation: { uri: o.file },
+                  region: {
+                    startLine: o.startLine,
+                    endLine: o.startLine + 2,
+                    snippet: { text: 'eval(userInput)' },
+                  },
+                },
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  });
+}
+
+describe('parseSarif', () => {
+  it('parses a minimal SARIF file', () => {
+    const result = parseSarif(makeSarif());
+    expect(result.scanner).toBe('semgrep');
+    expect(result.totalFindings).toBe(1);
+    expect(result.findings).toHaveLength(1);
+    expect(result.errors).toHaveLength(0);
+
+    const f = result.findings[0];
+    expect(f.rule).toBe('javascript.lang.security.detect-eval');
+    expect(f.file).toBe('src/app.ts');
+    expect(f.startLine).toBe(42);
+    expect(f.endLine).toBe(44);
+    expect(f.message).toBe('Avoid eval()');
+    expect(f.snippet).toBe('eval(userInput)');
+    expect(f.cweIds).toEqual(['CWE-95']);
+    expect(f.confidence).toBe(0.8);
+  });
+
+  it('maps SARIF levels to severity', () => {
+    expect(parseSarif(makeSarif({ level: 'error' })).findings[0].severity).toBe('high');
+    expect(parseSarif(makeSarif({ level: 'warning' })).findings[0].severity).toBe('medium');
+    expect(parseSarif(makeSarif({ level: 'note' })).findings[0].severity).toBe('low');
+    expect(parseSarif(makeSarif({ level: 'none' })).findings[0].severity).toBe('info');
+  });
+
+  it('prefers security-severity over level', () => {
+    const result = parseSarif(makeSarif({ level: 'warning', securitySeverity: '9.5' }));
+    expect(result.findings[0].severity).toBe('critical');
+  });
+
+  it('maps security-severity scores to severity tiers', () => {
+    expect(parseSarif(makeSarif({ securitySeverity: '9.0' })).findings[0].severity).toBe(
+      'critical'
+    );
+    expect(parseSarif(makeSarif({ securitySeverity: '7.5' })).findings[0].severity).toBe('high');
+    expect(parseSarif(makeSarif({ securitySeverity: '5.0' })).findings[0].severity).toBe('medium');
+    expect(parseSarif(makeSarif({ securitySeverity: '2.0' })).findings[0].severity).toBe('low');
+  });
+
+  it('maps precision to confidence', () => {
+    expect(parseSarif(makeSarif({ precision: 'very-high' })).findings[0].confidence).toBe(0.95);
+    expect(parseSarif(makeSarif({ precision: 'high' })).findings[0].confidence).toBe(0.8);
+    expect(parseSarif(makeSarif({ precision: 'medium' })).findings[0].confidence).toBe(0.6);
+    expect(parseSarif(makeSarif({ precision: 'low' })).findings[0].confidence).toBe(0.3);
+  });
+
+  it('extracts CWE IDs from tags', () => {
+    const result = parseSarif(makeSarif({ tags: ['CWE-79', 'external/cwe/cwe-89', 'security'] }));
+    expect(result.findings[0].cweIds).toEqual(['CWE-79', 'CWE-89']);
+  });
+
+  it('handles invalid JSON gracefully', () => {
+    const result = parseSarif('not json');
+    expect(result.scanner).toBe('unknown');
+    expect(result.totalFindings).toBe(0);
+    expect(result.errors).toContain('Invalid JSON');
+  });
+
+  it('handles empty runs array', () => {
+    const result = parseSarif(JSON.stringify({ version: '2.1.0', runs: [] }));
+    expect(result.totalFindings).toBe(0);
+    expect(result.errors).toContain('No runs in SARIF');
+  });
+
+  it('skips findings without location', () => {
+    const sarif = JSON.stringify({
+      version: '2.1.0',
+      runs: [
+        {
+          tool: { driver: { name: 'test', rules: [] } },
+          results: [{ ruleId: 'test-rule', message: { text: 'test' } }],
+        },
+      ],
+    });
+    const result = parseSarif(sarif);
+    expect(result.totalFindings).toBe(0);
+    expect(result.errors).toHaveLength(1);
+  });
+
+  it('sorts findings by severity', () => {
+    const sarif = JSON.stringify({
+      version: '2.1.0',
+      runs: [
+        {
+          tool: { driver: { name: 'test', rules: [] } },
+          results: [
+            {
+              ruleId: 'low-rule',
+              level: 'note',
+              message: { text: 'low' },
+              locations: [
+                {
+                  physicalLocation: { artifactLocation: { uri: 'a.ts' }, region: { startLine: 1 } },
+                },
+              ],
+            },
+            {
+              ruleId: 'high-rule',
+              level: 'error',
+              message: { text: 'high' },
+              locations: [
+                {
+                  physicalLocation: { artifactLocation: { uri: 'b.ts' }, region: { startLine: 1 } },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    const result = parseSarif(sarif);
+    expect(result.findings[0].severity).toBe('high');
+    expect(result.findings[1].severity).toBe('low');
+  });
+
+  it('respects maxFindings cap', () => {
+    const result = parseSarif(makeSarif(), 0);
+    expect(result.totalFindings).toBe(1);
+    expect(result.findings).toHaveLength(0);
+  });
+});
