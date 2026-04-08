@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-return, @typescript-eslint/restrict-template-expressions, @typescript-eslint/no-base-to-string, max-lines-per-function -- Bridge module with dynamic imports; ESLint can't resolve cross-module types */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/strict-boolean-expressions, @typescript-eslint/restrict-template-expressions, @typescript-eslint/no-base-to-string, max-lines-per-function */
 /**
  * Agent Executor — Connects pipeline stages to real expert agents (#1684)
  *
@@ -51,20 +51,11 @@ async function postProgress(
 }
 
 /** Get an adapter from the registry, or undefined if unavailable. */
-async function getAdapter(
-  category: string
-): Promise<
-  | {
-      execute: (opts: {
-        content: string;
-      }) => Promise<{ ok: boolean; value: { content: string }; error: { message: string } }>;
-    }
-  | undefined
-> {
+async function getAdapter(category: string): Promise<Record<string, unknown> | undefined> {
   try {
     const { getGlobalRegistry } = await import('../adapters/unified-registry.js');
     const registry = getGlobalRegistry();
-    return registry.getAdapter(category as never);
+    return registry.getAdapter(category) as Record<string, unknown>;
   } catch {
     return undefined;
   }
@@ -122,19 +113,20 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
       await postProgress(config, 'Vote', 'Running consensus vote...');
       try {
         const { collectRealVotes } = await import('../cli/voter-agents.js');
-        const { DEFAULT_VOTER_ROLES } = await import('../cli/voter-prompts.js');
+        const { VOTER_ROLES } = await import('../cli/vote-types.js');
+        const roles = Object.keys(VOTER_ROLES);
         const votes = await collectRealVotes({
-          roles: DEFAULT_VOTER_ROLES,
+          roles,
           proposal: plan.slice(0, 4000),
           simulate: config.simulateVotes ?? false,
         });
-        const approvals = votes.filter((v) => v.decision === 'approve').length;
+        const approvals = votes.filter((v) => v.vote.decision === 'approve').length;
         const total = votes.length;
         const pct = total > 0 ? (approvals / total) * 100 : 0;
         const approved = pct >= 50;
         const feedback = votes
-          .filter((v) => v.decision !== 'approve')
-          .map((v) => v.reasoning)
+          .filter((v) => v.vote.decision !== 'approve')
+          .map((v) => v.vote.reasoning)
           .join('\n');
         await postProgress(
           config,
