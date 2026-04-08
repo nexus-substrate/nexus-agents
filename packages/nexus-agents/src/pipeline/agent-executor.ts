@@ -15,6 +15,7 @@ import type { DevPipelineStages, PipelineTask, QaReviewResult } from './dev-pipe
 import { checkSecurityScan } from './security-gate.js';
 import type { ITaskTracker } from './task-tracker.js';
 import { emitStageEvent, recordPipelineOutcome } from './pipeline-observability.js';
+import { executeExpert } from './expert-bridge.js';
 
 const logger = createLogger({ component: 'agent-executor' });
 
@@ -25,26 +26,6 @@ export interface AgentExecutorConfig {
   readonly tracker?: ITaskTracker | undefined;
   readonly issueNumber?: number | undefined;
   readonly repo?: string | undefined;
-}
-
-// ============================================================================
-// Routing via CompositeRouter (#1692)
-// ============================================================================
-
-/** Execute a prompt through the 14-stage CompositeRouter. */
-async function routeAndExecute(prompt: string, fallback: string): Promise<string> {
-  try {
-    const { createAllAdapters } = await import('../cli-adapters/factory.js');
-    const { createCompositeRouter } = await import('../cli-adapters/composite-router.js');
-    const adapters = createAllAdapters();
-    if (adapters.size === 0) return fallback;
-    const router = createCompositeRouter(adapters);
-    const result = await router.executeTask({ content: prompt });
-    if (result.ok) return result.value.text;
-    return `Routing failed: ${result.error.message}`;
-  } catch (error) {
-    return `Execution error: ${error instanceof Error ? error.message : String(error)}`;
-  }
 }
 
 // ============================================================================
@@ -95,33 +76,26 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
   return {
     research: async (task) => {
       emitStageEvent('research', 'started');
-      const start = getTimeProvider().now();
-      await postProgress(config, 'Research', 'Gathering context via CompositeRouter...');
-      const result = await routeAndExecute(
-        `You are a research expert. Gather context for:\n\n${task}`,
-        `[No adapters] ${task.slice(0, 500)}`
-      );
-      const ms = getTimeProvider().now() - start;
-      emitStageEvent('research', 'completed', { durationMs: ms });
-      void recordPipelineOutcome('research', 'research', true, ms);
-      await postProgress(config, 'Research', `Done (${result.length} chars, ${ms}ms)`);
-      return result;
+      await postProgress(config, 'Research', 'Research expert gathering context...');
+      const r = await executeExpert('research', `Gather context for:\n\n${task}`);
+      emitStageEvent('research', r.success ? 'completed' : 'failed', { durationMs: r.durationMs });
+      void recordPipelineOutcome('research', 'research', r.success, r.durationMs, r.error);
+      await postProgress(config, 'Research', `Done (${r.text.length} chars, ${r.durationMs}ms)`);
+      return r.text || `[Research failed: ${r.error}] ${task.slice(0, 500)}`;
     },
 
     plan: async (task, research, feedback) => {
       emitStageEvent('plan', 'started');
-      const start = getTimeProvider().now();
       const prompt =
         feedback !== undefined
           ? `Revise plan.\n\nFeedback: ${feedback}\n\nTask: ${task}\n\nResearch: ${research}`
           : `Create implementation plan for:\n\n${task}\n\nResearch: ${research}`;
       await postProgress(config, 'Plan', feedback !== undefined ? 'Revising...' : 'Planning...');
-      const result = await routeAndExecute(prompt, prompt);
-      const ms = getTimeProvider().now() - start;
-      emitStageEvent('plan', 'completed', { durationMs: ms });
-      void recordPipelineOutcome('plan', 'architecture', true, ms);
-      await postProgress(config, 'Plan', `Done (${result.length} chars, ${ms}ms)`);
-      return result;
+      const r = await executeExpert('architecture', prompt);
+      emitStageEvent('plan', r.success ? 'completed' : 'failed', { durationMs: r.durationMs });
+      void recordPipelineOutcome('plan', 'architecture', r.success, r.durationMs, r.error);
+      await postProgress(config, 'Plan', `Done (${r.text.length} chars, ${r.durationMs}ms)`);
+      return r.text || prompt;
     },
 
     vote: async (plan) => {
@@ -166,50 +140,46 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
 
     decompose: async (plan) => {
       emitStageEvent('decompose', 'started');
-      const start = getTimeProvider().now();
-      await postProgress(config, 'PM', 'Decomposing...');
-      const response = await routeAndExecute(
-        `PM: Decompose into tasks.\nReturn JSON: [{id,title,description,assignedTo}]\n\n${plan}`,
-        ''
+      await postProgress(config, 'PM', 'PM expert decomposing...');
+      const r = await executeExpert(
+        'pm',
+        `Decompose into tasks.\nReturn JSON: [{id,title,description,assignedTo}]\n\n${plan}`
       );
-      const tasks = parseTasksFromResponse(response, plan);
-      const ms = getTimeProvider().now() - start;
-      emitStageEvent('decompose', 'completed', { durationMs: ms });
-      void recordPipelineOutcome('decompose', 'planning', true, ms);
+      const tasks = parseTasksFromResponse(r.text, plan);
+      emitStageEvent('decompose', 'completed', { durationMs: r.durationMs });
+      void recordPipelineOutcome('decompose', 'planning', r.success, r.durationMs, r.error);
       await postProgress(config, 'PM', `${tasks.length} task(s)`);
       return tasks;
     },
 
     implement: async (task) => {
       emitStageEvent(`impl-${task.id}`, 'started');
-      const start = getTimeProvider().now();
       await postProgress(config, `Code [${task.id}]`, task.title);
       const fb = task.feedback !== undefined ? `\n\nQA feedback: ${task.feedback}` : '';
-      const result = await routeAndExecute(
-        `Implement:\n\n${task.title}\n${task.description}${fb}`,
-        `[No adapter] ${task.description}`
+      const r = await executeExpert(
+        'code',
+        `Implement:\n\n${task.title}\n${task.description}${fb}`
       );
-      const ms = getTimeProvider().now() - start;
-      emitStageEvent(`impl-${task.id}`, 'completed', { durationMs: ms });
-      void recordPipelineOutcome(task.id, 'code_generation', true, ms);
-      await postProgress(config, `Code [${task.id}]`, `Done (${ms}ms)`);
-      return result;
+      emitStageEvent(`impl-${task.id}`, r.success ? 'completed' : 'failed', {
+        durationMs: r.durationMs,
+      });
+      void recordPipelineOutcome(task.id, 'code_generation', r.success, r.durationMs, r.error);
+      await postProgress(config, `Code [${task.id}]`, `Done (${r.durationMs}ms)`);
+      return r.text || `[Implementation failed: ${r.error}]`;
     },
 
     qaReview: async (task, implementation) => {
       emitStageEvent(`qa-${task.id}`, 'started');
-      const start = getTimeProvider().now();
-      await postProgress(config, `QA [${task.id}]`, 'Reviewing...');
-      const response = await routeAndExecute(
-        `QA:\n\nTask: ${task.title}\n\nImpl:\n${implementation.slice(0, 3000)}\n\nVerdict: PASS/NEEDS_WORK/REJECT`,
-        ''
+      await postProgress(config, `QA [${task.id}]`, 'QA expert reviewing...');
+      const r = await executeExpert(
+        'qa',
+        `QA:\n\nTask: ${task.title}\n\nImpl:\n${implementation.slice(0, 3000)}\n\nVerdict: PASS/NEEDS_WORK/REJECT`
       );
-      const review = parseQaFromResponse(response);
-      const ms = getTimeProvider().now() - start;
+      const review = parseQaFromResponse(r.text);
       emitStageEvent(`qa-${task.id}`, review.verdict === 'pass' ? 'completed' : 'failed', {
-        durationMs: ms,
+        durationMs: r.durationMs,
       });
-      void recordPipelineOutcome(task.id, 'code_review', review.verdict === 'pass', ms);
+      void recordPipelineOutcome(task.id, 'code_review', review.verdict === 'pass', r.durationMs);
       await postProgress(config, `QA [${task.id}]`, review.verdict);
       return review;
     },
