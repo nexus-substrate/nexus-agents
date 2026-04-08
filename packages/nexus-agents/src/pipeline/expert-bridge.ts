@@ -33,22 +33,39 @@ export interface ExpertBridgeResult {
  * @param prompt - Task prompt for the expert
  * @returns Expert result with text output
  */
+/** Minimal router interface for the bridge. */
+interface RouterLike {
+  executeTask(task: {
+    content: string;
+  }): Promise<{ ok: boolean; value: { text: string }; error: { message: string } }>;
+}
+
+// Cached router — lazily initialized, reused across calls within a session
+let cachedRouter: RouterLike | null = null;
+
+/** Get or create a cached CompositeRouter. */
+async function getRouter(): Promise<RouterLike | null> {
+  if (cachedRouter !== null) return cachedRouter;
+  const { createAllAdapters } = await import('../cli-adapters/factory.js');
+  const { createCompositeRouter } = await import('../cli-adapters/composite-router.js');
+  const adapters = createAllAdapters();
+  if (adapters.size === 0) return null;
+  cachedRouter = createCompositeRouter(adapters) as unknown as RouterLike;
+  return cachedRouter;
+}
+
 export async function executeExpert(
   expertType: BuiltInExpertType,
   prompt: string
 ): Promise<ExpertBridgeResult> {
   const start = getTimeProvider().now();
   try {
-    // Use CompositeRouter for intelligent multi-CLI routing
-    const { createAllAdapters } = await import('../cli-adapters/factory.js');
-    const { createCompositeRouter } = await import('../cli-adapters/composite-router.js');
     const { BUILT_IN_EXPERTS } = await import('../agents/experts/expert-config.js');
-
     const config = BUILT_IN_EXPERTS[expertType];
     const fullPrompt = `${config.systemPrompt}\n\n${prompt}`;
 
-    const adapters = createAllAdapters();
-    if (adapters.size === 0) {
+    const router = await getRouter();
+    if (router === null) {
       return {
         success: false,
         text: `[No adapters] ${prompt}`,
@@ -58,7 +75,6 @@ export async function executeExpert(
       };
     }
 
-    const router = createCompositeRouter(adapters);
     const result = await router.executeTask({ content: fullPrompt });
     const durationMs = getTimeProvider().now() - start;
 

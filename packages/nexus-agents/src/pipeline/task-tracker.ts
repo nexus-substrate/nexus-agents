@@ -71,6 +71,8 @@ async function exec(cmd: string, args: readonly string[], timeout = 15_000): Pro
 class GitHubTaskTracker implements ITaskTracker {
   constructor(private readonly config: TaskTrackerConfig) {}
 
+  private cachedProvider: unknown = null;
+
   private async getProvider(): Promise<{
     createIssue: (
       t: string,
@@ -79,9 +81,11 @@ class GitHubTaskTracker implements ITaskTracker {
     ) => Promise<{ ok: boolean; value: { number: number; url?: string } }>;
     addComment: (n: number, b: string) => Promise<{ ok: boolean }>;
   }> {
+    if (this.cachedProvider !== null) return this.cachedProvider as never;
     const { createScmProvider } = await import('../scm/factory.js');
     const result = await createScmProvider({ repo: this.config.repo ?? '' });
     if (!result.ok) throw new Error(`SCM provider error: ${result.error.message}`);
+    this.cachedProvider = result.value;
     return result.value as never;
   }
 

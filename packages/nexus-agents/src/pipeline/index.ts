@@ -154,3 +154,32 @@ export {
 } from './trace-schema.js';
 
 export { TraceWriter, type TraceWriterOptions } from './trace-writer.js';
+
+// Dev Pipeline — multi-agent development workflow (#1684)
+export { runDevPipeline } from './dev-pipeline.js';
+export type {
+  DevPipelineStages,
+  DevPipelineResult,
+  PipelineTask,
+  PipelineRole,
+  VoteResult,
+  QaReviewResult,
+} from './dev-pipeline.js';
+export { runQualityPipeline } from './quality-pipeline.js';
+export type { StageConfig, PipelineRunResult } from './quality-pipeline.js';
+export { checkSecurityScan } from './security-gate.js';
+export { executeExpert } from './expert-bridge.js';
+export type { ExpertBridgeResult } from './expert-bridge.js';
+export { createAgentStages } from './agent-executor.js';
+export type { AgentExecutorConfig } from './agent-executor.js';
+export { createTaskTracker, createAutoTaskTracker, detectBackend } from './task-tracker.js';
+export type {
+  ITaskTracker,
+  TrackerBackend,
+  TrackedTask,
+  TaskTrackerConfig,
+} from './task-tracker.js';
+
+// Replay — decision trace comparison (#1688)
+export { parseTraceJsonl, extractDecisions, compareDecisions } from '../replay/replay-executor.js';
+export type { TracedDecision, ReplayComparison, ReplaySummary } from '../replay/replay-executor.js';

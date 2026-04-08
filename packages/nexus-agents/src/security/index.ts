@@ -82,3 +82,28 @@ export { sanitizeOutput, REDACTED_KEY_PLACEHOLDER } from './output-sanitizer.js'
 
 // Hostile input firewall (Issue #826)
 export * from './firewall/index.js';
+
+// SARIF parser for security scanner output (#1682)
+export { parseSarif } from './sarif-parser.js';
+export type { SecurityFinding, SarifParseResult, FindingSeverity } from './sarif-types.js';
+export {
+  SecurityFindingSchema,
+  FindingSeveritySchema,
+  SARIF_LEVEL_MAP,
+  SEVERITY_ORDER,
+} from './sarif-types.js';
+
+// Quality gate engine (#1684)
+export { runQualityGate } from './quality-gate.js';
+export type { GateCheckFn } from './quality-gate.js';
+export type {
+  PipelineStage,
+  GateVerdict,
+  GateCheckResult,
+  QualityGateResult,
+} from './quality-gate-types.js';
+export {
+  PipelineStageSchema,
+  GateVerdictSchema,
+  MAX_GATE_ITERATIONS,
+} from './quality-gate-types.js';
