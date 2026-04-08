@@ -15,6 +15,8 @@ import { getErrorMessage } from '../../core/index.js';
 import { runDevPipeline } from '../../pipeline/dev-pipeline.js';
 import type { DevPipelineResult } from '../../pipeline/dev-pipeline.js';
 import { createAgentStages } from '../../pipeline/agent-executor.js';
+import { createTaskTracker, detectBackend } from '../../pipeline/task-tracker.js';
+import type { TrackerBackend } from '../../pipeline/task-tracker.js';
 
 // ============================================================================
 // Input Schema
@@ -47,6 +49,13 @@ export const DevPipelineInputSchema = z.object({
     .max(200)
     .optional()
     .describe('GitHub repo for issue tracking (e.g., owner/repo)'),
+  /** Task tracking backend: github, gitlab, or json (default: json). */
+  trackerBackend: z
+    .enum(['github', 'gitlab', 'json'])
+    .default('json')
+    .describe('Task tracking backend for issue creation'),
+  /** Labels to apply to created issues. */
+  labels: z.array(z.string()).optional().describe('Labels for created issues'),
 });
 
 export type DevPipelineInput = z.infer<typeof DevPipelineInputSchema>;
@@ -75,12 +84,23 @@ function resolveTaskInput(input: DevPipelineInput): string {
 // ============================================================================
 
 /** Create pipeline stages wired to real agents via agent-executor. */
-function createStages(input: DevPipelineInput): ReturnType<typeof createAgentStages> {
+async function createStages(
+  input: DevPipelineInput
+): Promise<ReturnType<typeof createAgentStages>> {
+  // Auto-detect tracker backend if set to 'auto' or default
+  const backendChoice = input.trackerBackend as TrackerBackend;
+  const backend =
+    backendChoice === 'json' && input.repo !== undefined ? await detectBackend() : backendChoice;
+  const tracker =
+    input.repo !== undefined
+      ? createTaskTracker({ backend, repo: input.repo, labels: input.labels })
+      : undefined;
   return createAgentStages({
     scanTarget: input.scanTarget,
     simulateVotes: false,
     issueNumber: input.issueNumber,
     repo: input.repo,
+    tracker,
   });
 }
 
@@ -127,7 +147,7 @@ export function registerDevPipelineTool(
 
     try {
       const taskText = resolveTaskInput(input);
-      const stages = createStages(input);
+      const stages = await createStages(input);
       const result = await runDevPipeline(taskText, stages);
       const text = formatResult(result, input.dryRun);
       return { content: [{ type: 'text' as const, text }] };

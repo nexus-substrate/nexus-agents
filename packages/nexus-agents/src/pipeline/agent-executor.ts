@@ -12,6 +12,8 @@
 import { createLogger } from '../core/index.js';
 import type { DevPipelineStages, PipelineTask, QaReviewResult } from './dev-pipeline.js';
 import { checkSecurityScan } from './security-gate.js';
+import type { ITaskTracker } from './task-tracker.js';
+// pipeline-observability.ts provides emitStageEvent + recordPipelineOutcome for future use
 
 const logger = createLogger({ component: 'agent-executor' });
 
@@ -21,32 +23,51 @@ export interface AgentExecutorConfig {
   readonly scanTarget?: string | undefined;
   /** Whether to use simulated votes (for testing without CLIs). */
   readonly simulateVotes?: boolean | undefined;
-  /** GitHub issue number to post progress updates to. */
+  /** Task tracker for creating/updating issues (GitHub, GitLab, or JSON). */
+  readonly tracker?: ITaskTracker | undefined;
+  /** GitHub issue number to post progress updates to (legacy, use tracker instead). */
   readonly issueNumber?: number | undefined;
-  /** GitHub repo (owner/name) for issue updates. */
+  /** GitHub repo (owner/name) for issue updates (legacy, use tracker instead). */
   readonly repo?: string | undefined;
 }
 
-/** Post a progress update to a GitHub issue if configured. */
+/** Post a progress update via tracker and/or legacy GitHub issue. */
 async function postProgress(
   config: AgentExecutorConfig,
   stage: string,
-  message: string
+  message: string,
+  taskId?: string
 ): Promise<void> {
-  if (config.issueNumber === undefined || config.repo === undefined) return;
-  try {
-    const { execFile } = await import('node:child_process');
-    const { promisify } = await import('node:util');
-    const exec = promisify(execFile);
-    const body = `**[${stage}]** ${message}`;
-    await exec(
-      'gh',
-      ['issue', 'comment', String(config.issueNumber), '--repo', config.repo, '--body', body],
-      { timeout: 15000 }
-    );
-    logger.info('Posted progress to GitHub', { issue: config.issueNumber, stage });
-  } catch (error) {
-    logger.debug('Failed to post GitHub progress', { error: String(error) });
+  // Use tracker if available
+  if (config.tracker !== undefined && taskId !== undefined) {
+    try {
+      await config.tracker.postComment(taskId, `**[${stage}]** ${message}`);
+    } catch (error) {
+      logger.debug('Tracker comment failed', { error: String(error) });
+    }
+  }
+  // Legacy: direct gh CLI
+  if (config.issueNumber !== undefined && config.repo !== undefined) {
+    try {
+      const { execFile } = await import('node:child_process');
+      const { promisify } = await import('node:util');
+      const exec = promisify(execFile);
+      await exec(
+        'gh',
+        [
+          'issue',
+          'comment',
+          String(config.issueNumber),
+          '--repo',
+          config.repo,
+          '--body',
+          `**[${stage}]** ${message}`,
+        ],
+        { timeout: 15000 }
+      );
+    } catch (error) {
+      logger.debug('gh comment failed', { error: String(error) });
+    }
   }
 }
 
