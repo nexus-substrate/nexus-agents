@@ -728,15 +728,13 @@ export async function runPipeline(
   const scoring = await runScoringStages(task, candidates, stagesExecuted, deps);
   candidates = scoring.candidates;
 
-  // Constraint-first: run quality constraints BEFORE selection (#1686).
-  // This filters out policy-violating CLIs before TOPSIS/LinUCB score them.
+  // Constraint-first: quality constraints filter BEFORE TOPSIS/LinUCB (#1686)
   const qualityResult = await runQualityConstraintStage(candidates, stagesExecuted, deps);
   candidates = qualityResult.eligible;
-  if (candidates.length === 0) {
+  if (candidates.length === 0)
     return err(
       new CompositeRoutingError('All candidates rejected by quality constraints', 'selection')
     );
-  }
 
   const stageScores = aggregateStageScores(scoring, task.content);
   const topsisOpts: Parameters<typeof runTopsisStage>[4] = {
