@@ -1,6 +1,7 @@
 {
   "name": "nexus-agents-website",
   "version": "1.0.0",
+  "description": "Documentation and marketing website for Nexus Agents",
   "private": true,
   "type": "module",
   "scripts": {

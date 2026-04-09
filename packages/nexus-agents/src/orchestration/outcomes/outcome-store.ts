@@ -230,6 +230,34 @@ export function registerPersistentOutcomeStoreFactory(factory: OutcomeStoreFacto
 }
 
 // ============================================================================
+// Context Helpers (#1711 — Central Workflow Hub)
+// ============================================================================
+
+/**
+ * Build a human-readable outcome summary for planning context.
+ * Returns empty string when no outcomes are available (cold start).
+ * Includes success rate and recent failure patterns with categories.
+ */
+export function getOutcomeSummaryText(limit = 5): string {
+  const store = getOutcomeStore();
+  const summary = store.summarize();
+  if (summary.totalTasks === 0) return '';
+  const failures = store.query({ success: false, limit });
+  const failLines = failures
+    .map((f) => {
+      const cat = f.failureCategory ?? 'unknown';
+      const msg = f.errorMessage ?? '';
+      return msg.length > 0 ? `${cat}: ${msg}` : cat;
+    })
+    .filter((l) => l.length > 0);
+  const taskCount = String(summary.totalTasks);
+  const pct = String(Math.round(summary.successRate * 100));
+  const header = `## Outcome Context (${taskCount} tasks, ${pct}% success)`;
+  const failSection = failLines.length > 0 ? `\nRecent failures:\n${failLines.join('\n')}` : '';
+  return `${header}${failSection}`;
+}
+
+// ============================================================================
 // Helpers
 // ============================================================================
 

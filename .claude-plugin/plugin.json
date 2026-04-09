@@ -1,0 +1,11 @@
+{
+  "name": "nexus-agents",
+  "description": "Intelligent orchestration platform for AI coding tools — routes tasks to the best model, learns from outcomes, and enforces quality through multi-model consensus. 29 MCP tools for agent management, research, memory, consensus voting, codebase intelligence, and a full dev pipeline.",
+  "author": {
+    "name": "William Zujkowski",
+    "email": "williamzujkowski@gmail.com",
+    "url": "https://williamzujkowski.github.io"
+  },
+  "repository": "https://github.com/williamzujkowski/nexus-agents",
+  "homepage": "https://williamzujkowski.github.io/nexus-agents"
+}

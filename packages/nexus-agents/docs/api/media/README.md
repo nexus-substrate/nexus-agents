@@ -2,7 +2,7 @@
 
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/12365/badge)](https://www.bestpractices.dev/projects/12365) [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/williamzujkowski/nexus-agents/badge)](https://securityscorecards.dev/viewer/?uri=github.com/williamzujkowski/nexus-agents)
 
-> Orchestrate multiple AI experts from a single interface
+> The intelligence layer between you and your AI coding tools
 
 [![npm version](https://img.shields.io/npm/v/nexus-agents)](https://www.npmjs.com/package/nexus-agents)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -12,7 +12,7 @@
 
 ## Why Nexus Agents?
 
-**One tool to coordinate Claude, Gemini, Codex, and OpenCode.** Instead of switching between AI tools, nexus-agents routes your tasks to specialized experts that collaborate on complex problems.
+nexus-agents coordinates multiple AI coding CLIs (Claude, Codex, Gemini, OpenCode) through a single MCP server. It routes each task to the best model using data-driven algorithms, validates outputs through multi-model consensus voting, and continuously improves through outcome-driven learning.
 
 ```
 You: "Review this code for security and performance"

@@ -22,7 +22,7 @@
 
 ## Overview
 
-Nexus Agents is a multi-agent orchestration MCP server that coordinates AI experts with model diversity, workflow automation, and security-first design.
+Nexus Agents is an intelligent orchestration platform for AI coding tools. It coordinates multiple AI CLIs (Claude, Codex, Gemini, OpenCode) through a single MCP server, routing tasks to the best model using data-driven algorithms, validating outputs through multi-model consensus, and continuously improving through outcome-driven learning.
 
 ### Key Features
 

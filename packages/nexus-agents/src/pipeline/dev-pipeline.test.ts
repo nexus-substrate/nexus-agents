@@ -15,7 +15,7 @@ function createMockStages(overrides?: Partial<DevPipelineStages>): DevPipelineSt
   return {
     research: vi.fn().mockResolvedValue('Research findings: relevant context gathered'),
     plan: vi.fn().mockResolvedValue('Implementation plan: step 1, step 2, step 3'),
-    vote: vi.fn().mockResolvedValue({ approved: true, feedback: '', approvalPercentage: 83 }),
+    vote: vi.fn().mockResolvedValue({ kind: 'approved', approvalPercentage: 83 } as VoteResult),
     decompose: vi.fn().mockResolvedValue([
       {
         id: 'task-1',
@@ -33,13 +33,11 @@ function createMockStages(overrides?: Partial<DevPipelineStages>): DevPipelineSt
       },
     ] satisfies PipelineTask[]),
     implement: vi.fn().mockResolvedValue('Code implementation complete'),
-    qaReview: vi
-      .fn()
-      .mockResolvedValue({
-        verdict: 'pass',
-        feedback: 'Looks good',
-        issues: [],
-      } satisfies QaReviewResult),
+    qaReview: vi.fn().mockResolvedValue({
+      verdict: 'pass',
+      feedback: 'Looks good',
+      issues: [],
+    } satisfies QaReviewResult),
     securityScan: vi.fn().mockResolvedValue({ passed: true, feedback: 'No findings' }),
     ...overrides,
   };
@@ -66,12 +64,12 @@ describe('runDevPipeline', () => {
         callCount++;
         if (callCount === 1) {
           return Promise.resolve({
-            approved: false,
+            kind: 'rejected',
             feedback: 'Missing error handling',
             approvalPercentage: 33,
           });
         }
-        return Promise.resolve({ approved: true, feedback: '', approvalPercentage: 83 });
+        return Promise.resolve({ kind: 'approved', approvalPercentage: 83 });
       }),
     });
 
@@ -98,17 +96,15 @@ describe('runDevPipeline', () => {
         }
         return Promise.resolve({ verdict: 'pass', feedback: 'Fixed', issues: [] });
       }),
-      decompose: vi
-        .fn()
-        .mockResolvedValue([
-          {
-            id: 'task-1',
-            title: 'Task 1',
-            description: 'Do it',
-            assignedTo: 'coder',
-            status: 'pending',
-          },
-        ] satisfies PipelineTask[]),
+      decompose: vi.fn().mockResolvedValue([
+        {
+          id: 'task-1',
+          title: 'Task 1',
+          description: 'Do it',
+          assignedTo: 'coder',
+          status: 'pending',
+        },
+      ] satisfies PipelineTask[]),
     });
 
     const result = await runDevPipeline('Build feature X', stages);
@@ -130,13 +126,11 @@ describe('runDevPipeline', () => {
 
   it('proceeds after max vote iterations with last plan', async () => {
     const stages = createMockStages({
-      vote: vi
-        .fn()
-        .mockResolvedValue({
-          approved: false,
-          feedback: 'Still not right',
-          approvalPercentage: 40,
-        }),
+      vote: vi.fn().mockResolvedValue({
+        kind: 'rejected',
+        feedback: 'Still not right',
+        approvalPercentage: 40,
+      }),
     });
 
     const result = await runDevPipeline('Build feature X', stages);
@@ -150,16 +144,49 @@ describe('runDevPipeline', () => {
       vote: vi
         .fn()
         .mockResolvedValueOnce({
-          approved: false,
+          kind: 'rejected',
           feedback: 'Add retry logic',
           approvalPercentage: 33,
         })
-        .mockResolvedValueOnce({ approved: true, feedback: '', approvalPercentage: 83 }),
+        .mockResolvedValueOnce({ kind: 'approved', approvalPercentage: 83 }),
     });
 
     await runDevPipeline('Build feature X', stages);
     const planCalls = vi.mocked(stages.plan).mock.calls;
     expect(planCalls[0]?.[2]).toBeUndefined(); // First call: no prior feedback
     expect(planCalls[1]?.[2]).toBe('Add retry logic'); // Second call: has feedback
+  });
+
+  it('stops after plan+vote in dryRun mode (#1717)', async () => {
+    const stages = createMockStages();
+    const result = await runDevPipeline('Build feature X', stages, { dryRun: true });
+
+    expect(result.completed).toBe(false);
+    expect(result.plan).toBeDefined();
+    expect(result.tasks).toHaveLength(0);
+    expect(result.qaIterations).toBe(0);
+    expect(result.securityPassed).toBe(false);
+    // Should NOT have called decompose, implement, qa, or security
+    expect(stages.decompose).not.toHaveBeenCalled();
+    expect(stages.implement).not.toHaveBeenCalled();
+    expect(stages.qaReview).not.toHaveBeenCalled();
+    expect(stages.securityScan).not.toHaveBeenCalled();
+  });
+
+  it('returns tasks for external implementation in harness mode (#1704)', async () => {
+    const stages = createMockStages();
+    const result = await runDevPipeline('Build feature X', stages, { mode: 'harness' });
+
+    expect(result.completed).toBe(false);
+    expect(result.plan).toBeDefined();
+    // Harness mode includes decomposed tasks but no implementations
+    expect(result.tasks).toHaveLength(2);
+    expect(result.tasks[0]?.status).toBe('pending');
+    expect(result.qaIterations).toBe(0);
+    // decompose SHOULD have been called, but implement/qa/security should NOT
+    expect(stages.decompose).toHaveBeenCalled();
+    expect(stages.implement).not.toHaveBeenCalled();
+    expect(stages.qaReview).not.toHaveBeenCalled();
+    expect(stages.securityScan).not.toHaveBeenCalled();
   });
 });

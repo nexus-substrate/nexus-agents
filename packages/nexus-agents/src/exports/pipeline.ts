@@ -115,4 +115,27 @@ export {
   resolveV2Config,
   type V2Mode,
   type V2Config,
+  // Dev Pipeline — multi-agent development workflow (#1684)
+  runDevPipeline,
+  type DevPipelineStages,
+  type DevPipelineOptions,
+  type DevPipelineResult,
+  type PipelineTask,
+  type PipelineRole,
+  type VoteResult,
+  type QaReviewResult,
+  createAgentStages,
+  flushPipelineMemory,
+  type AgentExecutorConfig,
+  executeExpert,
+  type ExpertBridgeResult,
+  // Research Trigger (#1715)
+  checkForResearchTriggers,
+  type ResearchTriggerConfig,
+  // Pipeline Checkpoint (#1703)
+  saveStageCheckpoint,
+  loadCheckpointState,
+  cleanupCheckpoint,
+  checkpointToResult,
+  type PipelineCheckpointState,
 } from '../pipeline/index.js';

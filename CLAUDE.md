@@ -8,7 +8,7 @@ related_files: [CODING_STANDARDS.md, docs/ENTRYPOINTS.md]
 
 # Nexus Agents - Claude Code Instructions
 
-**Project:** Multi-agent orchestration MCP server
+**Project:** Intelligent orchestration platform for AI coding tools
 **Repository:** github.com/williamzujkowski/nexus-agents
 **Owner:** @williamzujkowski
 

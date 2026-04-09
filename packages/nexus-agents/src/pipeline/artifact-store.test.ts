@@ -9,8 +9,11 @@ import {
   ArtifactStore,
   getPipelineArtifactStore,
   resetPipelineArtifactStore,
+  CheckpointStore,
+  getCheckpointStore,
+  resetCheckpointStore,
 } from './artifact-store.js';
-import type { Artifact, IArtifactStore } from './artifact-store.js';
+import type { Artifact, IArtifactStore, StageCheckpoint } from './artifact-store.js';
 
 // ============================================================================
 // Fixtures
@@ -157,6 +160,153 @@ describe('ArtifactStore', () => {
       const a = getPipelineArtifactStore();
       resetPipelineArtifactStore();
       const b = getPipelineArtifactStore();
+      expect(a).not.toBe(b);
+    });
+  });
+});
+
+// ============================================================================
+// CheckpointStore Tests
+// ============================================================================
+
+function makeCheckpoint(overrides: Partial<StageCheckpoint> = {}): StageCheckpoint {
+  return {
+    stageId: 'analyze',
+    keyword: 'test-keyword',
+    cursor: 0,
+    completedAt: Date.now(),
+    itemsProcessed: 10,
+    ...overrides,
+  };
+}
+
+describe('CheckpointStore', () => {
+  describe('save and load', () => {
+    it('saves and retrieves checkpoint by stage+keyword', () => {
+      const store = new CheckpointStore();
+      const cp = makeCheckpoint({ stageId: 'stage1', keyword: 'kw1', cursor: 42 });
+      store.save(cp);
+      const loaded = store.load('stage1', 'kw1');
+      expect(loaded).toBeDefined();
+      expect(loaded?.cursor).toBe(42);
+    });
+
+    it('returns undefined for missing checkpoint', () => {
+      const store = new CheckpointStore();
+      expect(store.load('missing', 'missing')).toBeUndefined();
+    });
+
+    it('overwrites existing checkpoint for same stage+keyword', () => {
+      const store = new CheckpointStore();
+      store.save(makeCheckpoint({ stageId: 's', keyword: 'k', cursor: 1 }));
+      store.save(makeCheckpoint({ stageId: 's', keyword: 'k', cursor: 99 }));
+      const loaded = store.load('s', 'k');
+      expect(loaded?.cursor).toBe(99);
+    });
+  });
+
+  describe('loadAllForStage', () => {
+    it('returns all checkpoints for a stage', () => {
+      const store = new CheckpointStore();
+      store.save(makeCheckpoint({ stageId: 'analyze', keyword: 'kw1', cursor: 1 }));
+      store.save(makeCheckpoint({ stageId: 'analyze', keyword: 'kw2', cursor: 2 }));
+      store.save(makeCheckpoint({ stageId: 'route', keyword: 'kw1', cursor: 3 }));
+      const results = store.loadAllForStage('analyze');
+      expect(results).toHaveLength(2);
+    });
+
+    it('returns empty for stage with no checkpoints', () => {
+      const store = new CheckpointStore();
+      expect(store.loadAllForStage('empty')).toHaveLength(0);
+    });
+  });
+
+  describe('clear operations', () => {
+    it('clears specific checkpoint', () => {
+      const store = new CheckpointStore();
+      store.save(makeCheckpoint({ stageId: 's', keyword: 'k' }));
+      store.clear('s', 'k');
+      expect(store.load('s', 'k')).toBeUndefined();
+    });
+
+    it('clears all checkpoints for a stage', () => {
+      const store = new CheckpointStore();
+      store.save(makeCheckpoint({ stageId: 'stage1', keyword: 'k1' }));
+      store.save(makeCheckpoint({ stageId: 'stage1', keyword: 'k2' }));
+      store.save(makeCheckpoint({ stageId: 'stage2', keyword: 'k3' }));
+      store.clearStage('stage1');
+      expect(store.loadAllForStage('stage1')).toHaveLength(0);
+      expect(store.load('stage2', 'k3')).toBeDefined();
+    });
+
+    it('clears all checkpoints', () => {
+      const store = new CheckpointStore();
+      store.save(makeCheckpoint());
+      store.save(makeCheckpoint({ stageId: 's2', keyword: 'k2' }));
+      store.clearAll();
+      expect(store.size).toBe(0);
+    });
+  });
+
+  describe('bounds', () => {
+    it('respects max checkpoints with eviction', () => {
+      const store = new CheckpointStore({ maxCheckpoints: 3 });
+      store.save(makeCheckpoint({ stageId: 's1', keyword: 'k1', cursor: 1 }));
+      store.save(makeCheckpoint({ stageId: 's2', keyword: 'k2', cursor: 2 }));
+      store.save(makeCheckpoint({ stageId: 's3', keyword: 'k3', cursor: 3 }));
+      store.save(makeCheckpoint({ stageId: 's4', keyword: 'k4', cursor: 4 }));
+      expect(store.size).toBe(3);
+      expect(store.load('s1', 'k1')).toBeUndefined();
+      expect(store.load('s4', 'k4')).toBeDefined();
+    });
+
+    it('updates existing checkpoint without eviction', () => {
+      const store = new CheckpointStore({ maxCheckpoints: 2 });
+      store.save(makeCheckpoint({ stageId: 's1', keyword: 'k1', cursor: 1 }));
+      store.save(makeCheckpoint({ stageId: 's2', keyword: 'k2', cursor: 2 }));
+      store.save(makeCheckpoint({ stageId: 's1', keyword: 'k1', cursor: 99 }));
+      expect(store.size).toBe(2);
+      expect(store.load('s1', 'k1')?.cursor).toBe(99);
+    });
+
+    it('reports correct size', () => {
+      const store = new CheckpointStore();
+      expect(store.size).toBe(0);
+      store.save(makeCheckpoint());
+      expect(store.size).toBe(1);
+    });
+  });
+
+  describe('cursor types', () => {
+    it('supports string cursors', () => {
+      const store = new CheckpointStore();
+      store.save(makeCheckpoint({ cursor: 'page-3' }));
+      const loaded = store.load('analyze', 'test-keyword');
+      expect(typeof loaded?.cursor).toBe('string');
+      expect(loaded?.cursor).toBe('page-3');
+    });
+
+    it('supports number cursors', () => {
+      const store = new CheckpointStore();
+      store.save(makeCheckpoint({ cursor: 100 }));
+      const loaded = store.load('analyze', 'test-keyword');
+      expect(typeof loaded?.cursor).toBe('number');
+      expect(loaded?.cursor).toBe(100);
+    });
+  });
+
+  describe('getCheckpointStore singleton', () => {
+    it('returns the same instance on repeated calls', () => {
+      resetCheckpointStore();
+      const a = getCheckpointStore();
+      const b = getCheckpointStore();
+      expect(a).toBe(b);
+    });
+
+    it('returns a new instance after reset', () => {
+      const a = getCheckpointStore();
+      resetCheckpointStore();
+      const b = getCheckpointStore();
       expect(a).not.toBe(b);
     });
   });

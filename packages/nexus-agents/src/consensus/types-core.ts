@@ -14,6 +14,7 @@ import { z } from 'zod';
  * - unanimous: 100% approval required
  * - proof_of_learning: weighted voting based on agent performance
  * - opinion_wise: higher-order voting with correlation awareness (Issue #333)
+ * - higher_order: alias for opinion_wise (Issue #514)
  */
 export const ConsensusAlgorithmSchema = z.enum([
   'simple_majority',
@@ -21,6 +22,7 @@ export const ConsensusAlgorithmSchema = z.enum([
   'unanimous',
   'proof_of_learning',
   'opinion_wise',
+  'higher_order',
 ]);
 export type ConsensusAlgorithm = z.infer<typeof ConsensusAlgorithmSchema>;
 
@@ -295,6 +297,7 @@ export const VOTING_THRESHOLDS: Record<ConsensusAlgorithm, number> = {
   unanimous: 1.0,
   proof_of_learning: 0.5, // Uses weighted voting
   opinion_wise: 0.5, // Uses correlation-aware Bayesian aggregation (Issue #333)
+  higher_order: 0.5, // Alias for opinion_wise (Issue #514)
 };
 
 /**

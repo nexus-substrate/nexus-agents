@@ -11,7 +11,7 @@
  * Help text for the CLI.
  */
 export const HELP_TEXT = `
-nexus-agents - Multi-agent orchestration MCP server
+nexus-agents - Intelligent orchestration platform for AI coding tools
 
 USAGE:
   nexus-agents [OPTIONS]

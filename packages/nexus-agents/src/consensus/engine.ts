@@ -558,6 +558,7 @@ export class ConsensusEngine implements IConsensusEngine {
         unanimous: 0,
         proof_of_learning: 0,
         opinion_wise: 0,
+        higher_order: 0,
       },
     };
   }

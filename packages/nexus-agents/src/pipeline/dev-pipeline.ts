@@ -20,6 +20,12 @@
 import { runQaLoop } from '../orchestration/qa-loop.js';
 
 import { createLogger } from '../core/index.js';
+import {
+  saveStageCheckpoint,
+  loadCheckpointState,
+  cleanupCheckpoint,
+} from './pipeline-checkpoint.js';
+import type { PipelineCheckpointState } from './pipeline-checkpoint.js';
 
 const logger = createLogger({ component: 'dev-pipeline' });
 
@@ -30,7 +36,7 @@ const logger = createLogger({ component: 'dev-pipeline' });
 /** Agent roles used in the pipeline. */
 export type PipelineRole = 'researcher' | 'architect' | 'pm' | 'coder' | 'qa' | 'security';
 
-/** A task decomposed by the PM. */
+/** A task decomposed by the PM, potentially with conditional approval requirements. */
 export interface PipelineTask {
   readonly id: string;
   readonly title: string;
@@ -40,13 +46,48 @@ export interface PipelineTask {
   readonly feedback?: string;
   /** Implementation text from the code expert (surfaced for harness use). */
   readonly implementation?: string;
+  /** Conditions required for task completion (from conditional_go vote). */
+  readonly conditions?: readonly string[] | undefined;
+  /** Caveats/warnings associated with the task (from conditional_go vote). */
+  readonly caveats?: readonly string[] | undefined;
 }
 
-/** Vote result from consensus. */
-export interface VoteResult {
-  readonly approved: boolean;
-  readonly feedback: string;
-  readonly approvalPercentage: number;
+/** Vote result from consensus — discriminated union with conditional approval support. */
+export type VoteResult =
+  | { readonly kind: 'approved'; readonly approvalPercentage: number }
+  | { readonly kind: 'rejected'; readonly feedback: string; readonly approvalPercentage: number }
+  | {
+      readonly kind: 'conditional_go';
+      readonly conditions: readonly string[];
+      readonly caveats: readonly string[];
+      readonly approvalPercentage: number;
+    };
+
+/** Construct VoteResult from legacy approval flow. */
+export function createVoteResult(
+  approved: boolean,
+  feedback: string,
+  approvalPercentage: number,
+  conditions?: readonly string[]
+): VoteResult {
+  if (!approved) {
+    return { kind: 'rejected', feedback, approvalPercentage };
+  }
+  if (conditions !== undefined && conditions.length > 0) {
+    return { kind: 'conditional_go', conditions, caveats: [], approvalPercentage };
+  }
+  return { kind: 'approved', approvalPercentage };
+}
+
+/** Check if vote result is approved (either explicit or conditional). */
+export function isApproved(result: VoteResult): boolean {
+  return result.kind === 'approved' || result.kind === 'conditional_go';
+}
+
+/** Get feedback from vote result (only available for rejected). */
+export function getVoteFeedback(result: VoteResult): string {
+  if (result.kind === 'rejected') return result.feedback;
+  return '';
 }
 
 /** QA review result. */
@@ -96,34 +137,165 @@ export interface DevPipelineStages {
 const MAX_VOTE_ITERATIONS = 3;
 const MAX_QA_ITERATIONS = 3;
 
+/** Pipeline execution mode. */
+export type PipelineMode = 'autonomous' | 'harness';
+
+/** Options for pipeline execution. */
+export interface DevPipelineOptions {
+  /** Session ID for checkpoint/resume. Omit for no persistence. */
+  readonly sessionId?: string | undefined;
+  /** When true, stop after plan+vote and return partial result (#1717). */
+  readonly dryRun?: boolean | undefined;
+  /**
+   * Pipeline mode (#1704):
+   * - 'autonomous' (default): full pipeline runs internally
+   * - 'harness': stops after decompose, returns tasks for external implementation
+   */
+  readonly mode?: PipelineMode | undefined;
+}
+
 /**
  * Execute the full multi-agent development pipeline.
  *
+ * When `sessionId` is provided, each stage checkpoints to disk. On crash,
+ * re-running with the same sessionId resumes from the last completed stage.
+ *
  * @param task - High-level task description
  * @param stages - Pluggable stage implementations
+ * @param options - Pipeline options (sessionId for checkpoint/resume)
  * @returns Pipeline result with all outputs
  */
 export async function runDevPipeline(
   task: string,
-  stages: DevPipelineStages
+  stages: DevPipelineStages,
+  options?: DevPipelineOptions
 ): Promise<DevPipelineResult> {
-  // 1. RESEARCH
-  logger.info('Stage: research', { task: task.slice(0, 100) });
-  const research = await stages.research(task);
+  const sid = options?.sessionId;
+  const prior = sid !== undefined ? loadCheckpointState(sid) : null;
 
-  // 2. PLAN + VOTE (iterative loop)
-  const planResult = await planVoteLoop(task, research, stages);
+  // Phases 1-2: Research + Plan/Vote
+  const { planResult } = await runPlanningPhase(task, stages, sid, prior);
 
-  // 3. DECOMPOSE (PM splits into tasks)
-  logger.info('Stage: decompose');
-  const tasks = await stages.decompose(planResult.plan);
+  // DRY RUN: stop after plan+vote, return partial result (#1717)
+  if (options?.dryRun === true) {
+    logger.info('Dry run — stopping after plan+vote');
+    return buildDryRunResult(planResult);
+  }
 
-  // 4. IMPLEMENT + QA (per-task loop)
+  // Phase 3: Decompose
+  const tasks = await runOrResumeDecompose(prior, planResult.plan, stages, {
+    conditional: planResult.conditional,
+    conditions: planResult.conditions,
+    caveats: planResult.caveats,
+  });
+  if (sid !== undefined) saveStageCheckpoint(sid, 'decompose', { type: 'decompose', tasks });
+
+  // HARNESS MODE: stop after decompose, return tasks for external implementation (#1704)
+  if (options?.mode === 'harness') {
+    logger.info('Harness mode — returning tasks for external implementation');
+    return buildHarnessResult(planResult, tasks);
+  }
+
+  // Phases 4-5: Implement + Security
+  return runImplSecurityPhase(planResult, tasks, stages, sid);
+}
+
+/** Build a partial result for dry-run mode. */
+function buildDryRunResult(planResult: {
+  plan: string;
+  iterations: number;
+  conditional: boolean;
+  conditions: readonly string[];
+  caveats: readonly string[];
+}): DevPipelineResult {
+  return {
+    completed: false,
+    plan: planResult.plan,
+    tasks: [],
+    voteIterations: planResult.iterations,
+    qaIterations: 0,
+    securityPassed: false,
+  };
+}
+
+/** Phases 1-2: Research + Plan/Vote with checkpoint support. */
+async function runPlanningPhase(
+  task: string,
+  stages: DevPipelineStages,
+  sid: string | undefined,
+  prior: PipelineCheckpointState | null
+): Promise<{
+  planResult: {
+    plan: string;
+    iterations: number;
+    conditional: boolean;
+    conditions: readonly string[];
+    caveats: readonly string[];
+  };
+}> {
+  const research = await runOrResume(prior, 'research', () => {
+    logger.info('Stage: research', { task: task.slice(0, 100) });
+    return stages.research(task);
+  });
+  if (sid !== undefined) saveStageCheckpoint(sid, 'research', { type: 'research', text: research });
+
+  const planResult = await runPlanOrResume(prior, task, research, stages);
+  if (sid !== undefined) {
+    saveStageCheckpoint(sid, 'plan', {
+      type: 'plan',
+      text: planResult.plan,
+      iterations: planResult.iterations,
+    });
+    saveStageCheckpoint(sid, 'vote', {
+      type: 'vote',
+      approved: planResult.conditional || planResult.iterations > 0,
+      conditional: planResult.conditional,
+      conditions: planResult.conditions,
+      caveats: planResult.caveats,
+      iterations: planResult.iterations,
+    });
+  }
+  return { planResult };
+}
+
+/** Build result for harness mode — tasks returned for external implementation. */
+function buildHarnessResult(
+  planResult: {
+    plan: string;
+    iterations: number;
+    conditional: boolean;
+    conditions: readonly string[];
+    caveats: readonly string[];
+  },
+  tasks: PipelineTask[]
+): DevPipelineResult {
+  return {
+    completed: false,
+    plan: planResult.plan,
+    tasks,
+    voteIterations: planResult.iterations,
+    qaIterations: 0,
+    securityPassed: false,
+  };
+}
+
+/** Phases 4-5: Implement/QA + Security with checkpoint support. */
+async function runImplSecurityPhase(
+  planResult: { plan: string; iterations: number },
+  tasks: PipelineTask[],
+  stages: DevPipelineStages,
+  sid: string | undefined
+): Promise<DevPipelineResult> {
   const implResult = await implementQaLoop(tasks, stages);
+  if (sid !== undefined)
+    saveStageCheckpoint(sid, 'implement', { type: 'implement', tasks: implResult.completedTasks });
 
-  // 5. SECURITY SCAN
   logger.info('Stage: security scan');
   const security = await stages.securityScan();
+  if (sid !== undefined) {
+    saveStageCheckpoint(sid, 'security', { type: 'security', passed: security.passed });
+    if (security.passed) cleanupCheckpoint(sid);
+  }
 
   return {
     completed: security.passed,
@@ -135,12 +307,89 @@ export async function runDevPipeline(
   };
 }
 
+/** Run stage or return cached result from checkpoint. */
+async function runOrResume(
+  prior: PipelineCheckpointState | null,
+  stage: string,
+  run: () => Promise<string>
+): Promise<string> {
+  if (prior?.research !== undefined && stage === 'research') {
+    logger.info('Resuming from checkpoint', { stage });
+    return prior.research;
+  }
+  return run();
+}
+
+/** Run plan/vote or return from checkpoint. */
+async function runPlanOrResume(
+  prior: PipelineCheckpointState | null,
+  task: string,
+  research: string,
+  stages: DevPipelineStages
+): Promise<{
+  plan: string;
+  iterations: number;
+  conditional: boolean;
+  conditions: readonly string[];
+  caveats: readonly string[];
+}> {
+  if (prior?.plan !== undefined) {
+    logger.info('Resuming from checkpoint', { stage: 'plan' });
+    return {
+      plan: prior.plan,
+      iterations: prior.voteIterations ?? 0,
+      conditional: prior.voteConditional ?? false,
+      conditions: prior.voteConditions ?? [],
+      caveats: prior.voteCaveats ?? [],
+    };
+  }
+  return planVoteLoop(task, research, stages);
+}
+
+/** Conditional vote metadata for task annotation. */
+interface ConditionalMeta {
+  readonly conditional: boolean;
+  readonly conditions: readonly string[];
+  readonly caveats: readonly string[];
+}
+
+/** Run decompose or return from checkpoint. */
+async function runOrResumeDecompose(
+  prior: PipelineCheckpointState | null,
+  plan: string,
+  stages: DevPipelineStages,
+  meta: ConditionalMeta
+): Promise<PipelineTask[]> {
+  if (prior?.tasks !== undefined) {
+    logger.info('Resuming from checkpoint', { stage: 'decompose' });
+    return [...prior.tasks];
+  }
+  logger.info('Stage: decompose');
+  const tasks = await stages.decompose(plan);
+  if (meta.conditional && tasks.length > 0) {
+    return tasks.map((t) => ({
+      ...t,
+      conditions: meta.conditions,
+      caveats: meta.caveats,
+    }));
+  }
+  return tasks;
+}
+
+/** Extract conditional metadata from an approved vote. */
+function extractConditionalMeta(vote: VoteResult): ConditionalMeta {
+  if (vote.kind === 'conditional_go') {
+    return { conditional: true, conditions: vote.conditions, caveats: vote.caveats };
+  }
+  return { conditional: false, conditions: [], caveats: [] };
+}
+
 /** Plan → Vote → iterate on feedback until approved or exhausted. */
 async function planVoteLoop(
   task: string,
   research: string,
   stages: DevPipelineStages
-): Promise<{ plan: string; iterations: number }> {
+): Promise<{ plan: string; iterations: number } & ConditionalMeta> {
   let feedback: string | undefined;
   let plan = '';
 
@@ -151,17 +400,18 @@ async function planVoteLoop(
     logger.info('Stage: vote', { iteration: i });
     const vote = await stages.vote(plan);
 
-    if (vote.approved) {
-      logger.info('Plan approved', { iteration: i, approval: vote.approvalPercentage });
-      return { plan, iterations: i };
+    if (isApproved(vote)) {
+      const meta = extractConditionalMeta(vote);
+      logger.info('Plan approved', { iteration: i, approval: vote.approvalPercentage, ...meta });
+      return { plan, iterations: i, ...meta };
     }
 
-    feedback = vote.feedback;
+    feedback = getVoteFeedback(vote);
     logger.warn('Plan rejected, iterating', { iteration: i, feedback: feedback.slice(0, 200) });
   }
 
   logger.warn('Max vote iterations reached, proceeding with last plan');
-  return { plan, iterations: MAX_VOTE_ITERATIONS };
+  return { plan, iterations: MAX_VOTE_ITERATIONS, conditional: false, conditions: [], caveats: [] };
 }
 
 /** Result of implementing a single task. */

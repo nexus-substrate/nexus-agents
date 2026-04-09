@@ -32,6 +32,15 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@ stable
+        with:
+          toolchain: stable
+
+      - name: Install cargo-sbom
+        run: cargo install cargo-sbom
+
       - uses: ./.github/actions/setup-node
         with:
           registry-url: 'https://registry.npmjs.org'
@@ -52,33 +61,35 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
 
-      - name: Create GitHub Release
+      - name: Generate and Upload SBOM
         if: steps.changesets.outputs.published == 'true'
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        run: |
+          cd crates/iso-parser
+          cargo sbom --output-format spdx --file ../../sbom.spdx.json
+          cargo sbom --output-format cyclonedx --file ../../sbom.cdx.json
+        shell: bash
+
+      - name: Upload SBOM to Release
+        if: steps.changesets.outputs.published == 'true'
+        uses: actions/upload-release-asset@efa4c9b8d30e83b8a6df3c8bf25afc44fa9c2f98 # v1
         env:
-          PUBLISHED_PACKAGES: ${{ steps.changesets.outputs.publishedPackages }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          script: |
-            const packages = JSON.parse(process.env.PUBLISHED_PACKAGES);
-            for (const pkg of packages) {
-              const tag = `${pkg.name}@${pkg.version}`;
-              try {
-                await github.rest.repos.createRelease({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  tag_name: tag,
-                  name: tag,
-                  generate_release_notes: true,
-                });
-                console.log(`Created release: ${tag}`);
-              } catch (err) {
-                if (err.status === 422) {
-                  console.log(`Release ${tag} already exists — skipping`);
-                } else {
-                  throw err;
-                }
-              }
-            }
+          upload_url: ${{ steps.changesets.outputs.uploadUrl }}
+          asset_path: ./sbom.spdx.json
+          asset_name: sbom.spdx.json
+          asset_content_type: application/json
+
+      - name: Upload CycloneDX SBOM to Release
+        if: steps.changesets.outputs.published == 'true'
+        uses: actions/upload-release-asset@efa4c9b8d30e83b8a6df3c8bf25afc44fa9c2f98 # v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.changesets.outputs.uploadUrl }}
+          asset_path: ./sbom.cdx.json
+          asset_name: sbom.cdx.json
+          asset_content_type: application/json
 
   # Manual publish (runs on workflow_dispatch)
   manual-publish:

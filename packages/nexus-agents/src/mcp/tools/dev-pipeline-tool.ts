@@ -14,7 +14,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { getErrorMessage } from '../../core/index.js';
 import { runDevPipeline } from '../../pipeline/dev-pipeline.js';
 import type { DevPipelineResult } from '../../pipeline/dev-pipeline.js';
-import { createAgentStages } from '../../pipeline/agent-executor.js';
+import { createAgentStages, flushPipelineMemory } from '../../pipeline/agent-executor.js';
 import { createTaskTracker, detectBackend } from '../../pipeline/task-tracker.js';
 // toolSuccessStructured not used directly — server.tool() expects different return type
 import type { TrackerBackend } from '../../pipeline/task-tracker.js';
@@ -57,6 +57,25 @@ export const DevPipelineInputSchema = z.object({
     .describe('Task tracking backend for issue creation'),
   /** Labels to apply to created issues. */
   labels: z.array(z.string()).optional().describe('Labels for created issues'),
+  /** Session ID for checkpoint/resume. Enables crash recovery. */
+  sessionId: z
+    .string()
+    .max(128)
+    .regex(/^[a-zA-Z0-9_-]+$/)
+    .optional()
+    .describe('Session ID for checkpoint/resume (crash recovery)'),
+  /** When true, use simulated votes instead of real CLI consensus (for testing). */
+  simulateVotes: z
+    .boolean()
+    .default(false)
+    .describe('Use simulated votes (for testing without real CLIs)'),
+  /** Pipeline execution mode. */
+  mode: z
+    .enum(['autonomous', 'harness'])
+    .default('autonomous')
+    .describe(
+      "'autonomous': full pipeline. 'harness': stops after decompose, returns tasks for caller to implement."
+    ),
 });
 
 export type DevPipelineInput = z.infer<typeof DevPipelineInputSchema>;
@@ -98,7 +117,7 @@ async function createStages(
       : undefined;
   return createAgentStages({
     scanTarget: input.workingDir,
-    simulateVotes: false,
+    simulateVotes: input.simulateVotes,
     issueNumber: input.issueNumber,
     repo: input.repo,
     tracker,
@@ -139,7 +158,19 @@ export function registerDevPipelineTool(
     try {
       const taskText = resolveTaskInput(input);
       const stages = await createStages(input);
-      const result = await runDevPipeline(taskText, stages);
+      const pipelineOptions = {
+        ...(input.sessionId !== undefined ? { sessionId: input.sessionId } : {}),
+        ...(input.dryRun ? { dryRun: true } : {}),
+        ...(input.mode === 'harness' ? { mode: 'harness' as const } : {}),
+      };
+      const hasOptions = Object.keys(pipelineOptions).length > 0;
+      const result = await runDevPipeline(
+        taskText,
+        stages,
+        hasOptions ? pipelineOptions : undefined
+      );
+      // Always flush memory session — including dry-run exits (#1716)
+      flushPipelineMemory();
       const structured = buildStructuredOutput(result);
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(structured, null, 2) }],

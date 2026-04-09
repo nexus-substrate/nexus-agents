@@ -36,16 +36,16 @@ related_files: [CHANGELOG.md, architecture/README.md]
 
 These capabilities form the foundation — confirmed by multiple consensus agents:
 
-| Strength                     | Evidence                                                        |
-| ---------------------------- | --------------------------------------------------------------- |
-| Research-backed protocols    | 34/47 mapped techniques implemented, 13 partial                 |
-| Multi-criteria model routing | TOPSIS + LinUCB bandit + KNN + preference + cascade + tolerance |
-| Memory system diversity      | 8 backends + reflective MemR3 enhancement                       |
-| Closed-loop learning         | Weather report, feedback integration, self-refinement           |
-| Security posture             | 113 pentest tests, Docker sandbox, rate limiting                |
-| Zero-credential architecture | OAuth 2.0/PKCE, SecretsVault, no stored creds                   |
-| Strong type system           | Result<T,E>, Zod validation, strict TypeScript                  |
-| Multi-CLI orchestration      | 4 CLIs (claude/gemini/codex/opencode), 3,806 observed tasks     |
+| Strength                     | Evidence                                                               |
+| ---------------------------- | ---------------------------------------------------------------------- |
+| Research-backed protocols    | 34/47 mapped techniques implemented, 13 partial                        |
+| Multi-criteria model routing | TOPSIS + LinUCB bandit + KNN + preference + cascade + tolerance        |
+| Memory system diversity      | 8 backends + reflective MemR3 enhancement                              |
+| Closed-loop learning         | Weather report, feedback integration, self-refinement                  |
+| Security posture             | 113 pentest tests, Docker sandbox, rate limiting                       |
+| Zero-credential architecture | OAuth 2.0/PKCE, SecretsVault, no stored creds                          |
+| Strong type system           | Result<T,E>, Zod validation, strict TypeScript                         |
+| Multi-CLI orchestration      | 5 CLIs (claude/gemini/codex/codex-mcp/opencode), 3,806+ observed tasks |
 
 ---
 

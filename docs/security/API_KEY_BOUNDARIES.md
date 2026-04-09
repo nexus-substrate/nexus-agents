@@ -47,7 +47,7 @@ This warning appears during adapter initialization when `anthropic/` or `custom/
 
 ## Safe Multi-Model Diversity
 
-For consensus voting and multi-model orchestration, 3 CLIs provide sufficient diversity:
+For consensus voting and multi-model orchestration, 5 CLIs (claude, gemini, codex, codex-mcp, opencode) provide diversity:
 
 | Strategy             | CLIs Used               | Sufficient For                                         |
 | -------------------- | ----------------------- | ------------------------------------------------------ |

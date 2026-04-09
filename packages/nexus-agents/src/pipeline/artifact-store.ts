@@ -45,6 +45,65 @@ export interface ProvenanceEntry {
   readonly inputArtifacts: readonly string[];
 }
 
+/**
+ * Checkpoint state for a single stage+keyword combination.
+ * Stores the cursor/page information for resumable processing.
+ */
+export interface StageCheckpoint {
+  readonly stageId: string;
+  readonly keyword: string;
+  readonly cursor: string | number;
+  readonly completedAt: number;
+  readonly itemsProcessed: number;
+}
+
+/**
+ * Port for checkpoint persistence.
+ * Implementations can store checkpoints in memory, on disk, or in external storage.
+ */
+export interface CheckpointPort {
+  /**
+   * Save checkpoint for a stage+keyword combination.
+   * Overwrites any existing checkpoint for the same stage+keyword.
+   */
+  save(checkpoint: StageCheckpoint): void;
+
+  /**
+   * Load checkpoint for a specific stage+keyword.
+   * Returns undefined if no checkpoint exists.
+   */
+  load(stageId: string, keyword: string): StageCheckpoint | undefined;
+
+  /**
+   * Get all checkpoints for a given stage (all keywords).
+   */
+  loadAllForStage(stageId: string): readonly StageCheckpoint[];
+
+  /**
+   * Clear checkpoint for a stage+keyword after successful completion.
+   */
+  clear(stageId: string, keyword: string): void;
+
+  /**
+   * Clear all checkpoints for a stage.
+   */
+  clearStage(stageId: string): void;
+
+  /**
+   * Clear all checkpoints.
+   */
+  clearAll(): void;
+
+  /** Number of stored checkpoints. */
+  readonly size: number;
+}
+
+/** Options for CheckpointStore behavior. */
+export interface CheckpointStoreOptions {
+  /** Maximum checkpoints to retain. Default: 1000 */
+  readonly maxCheckpoints?: number;
+}
+
 /** Artifact store interface. */
 export interface IArtifactStore {
   put(artifact: Artifact): ArtifactRef;
@@ -140,8 +199,65 @@ export class ArtifactStore implements IArtifactStore {
 }
 
 // ============================================================================
-// Filter Matching
+// Checkpoint Store — Persistent Cursor/Page per Stage+Keyword
 // ============================================================================
+
+/**
+ * In-memory checkpoint store with bounded capacity.
+ * Stores cursor/page position per stage+keyword for resumable processing.
+ * Enables idempotent re-runs after crash or rate-limit exhaustion.
+ */
+export class CheckpointStore implements CheckpointPort {
+  private readonly checkpoints = new Map<string, StageCheckpoint>();
+  private readonly maxCheckpoints: number;
+
+  constructor(options?: CheckpointStoreOptions) {
+    this.maxCheckpoints = options?.maxCheckpoints ?? 1000;
+  }
+
+  get size(): number {
+    return this.checkpoints.size;
+  }
+
+  save(checkpoint: StageCheckpoint): void {
+    const key = this.makeKey(checkpoint.stageId, checkpoint.keyword);
+    if (this.checkpoints.size >= this.maxCheckpoints && !this.checkpoints.has(key)) {
+      const firstKey = this.checkpoints.keys().next().value;
+      if (firstKey !== undefined) {
+        this.checkpoints.delete(firstKey);
+      }
+    }
+    this.checkpoints.set(key, checkpoint);
+  }
+
+  load(stageId: string, keyword: string): StageCheckpoint | undefined {
+    return this.checkpoints.get(this.makeKey(stageId, keyword));
+  }
+
+  loadAllForStage(stageId: string): readonly StageCheckpoint[] {
+    return Array.from(this.checkpoints.values()).filter((cp) => cp.stageId === stageId);
+  }
+
+  clear(stageId: string, keyword: string): void {
+    this.checkpoints.delete(this.makeKey(stageId, keyword));
+  }
+
+  clearStage(stageId: string): void {
+    for (const key of this.checkpoints.keys()) {
+      if (key.startsWith(`${stageId}:`)) {
+        this.checkpoints.delete(key);
+      }
+    }
+  }
+
+  clearAll(): void {
+    this.checkpoints.clear();
+  }
+
+  private makeKey(stageId: string, keyword: string): string {
+    return `${stageId}:${keyword}`;
+  }
+}
 
 // ============================================================================
 // Global Singleton (#1179)
@@ -158,6 +274,20 @@ export function getPipelineArtifactStore(): IArtifactStore {
 /** Resets the global ArtifactStore (for testing). */
 export function resetPipelineArtifactStore(): void {
   globalArtifactStore = undefined;
+}
+
+/** Global CheckpointStore singleton for pipeline resume capability. */
+let globalCheckpointStore: CheckpointStore | undefined;
+
+/** Returns the global CheckpointStore (created lazily on first call). */
+export function getCheckpointStore(): CheckpointStore {
+  globalCheckpointStore ??= new CheckpointStore();
+  return globalCheckpointStore;
+}
+
+/** Resets the global CheckpointStore (for testing). */
+export function resetCheckpointStore(): void {
+  globalCheckpointStore = undefined;
 }
 
 // ============================================================================

@@ -284,6 +284,7 @@ export class VotingStrategyFactory {
       ['unanimous', new UnanimousStrategy()],
       ['proof_of_learning', new ProofOfLearningStrategy()],
       ['opinion_wise', new HigherOrderVotingStrategy()],
+      ['higher_order', new HigherOrderVotingStrategy()],
     ]);
   }
 

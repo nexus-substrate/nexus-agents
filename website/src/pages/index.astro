@@ -1,19 +1,30 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import '../styles/global.css';
+import {
+  MCP_TOOL_COUNT,
+  EXPERT_TYPE_COUNT,
+  CLI_ADAPTER_COUNT,
+  ROUTING_STAGE_COUNT,
+  CONSENSUS_ALGORITHM_COUNT,
+  MEMORY_BACKEND_COUNT,
+  DISCOVERY_SOURCE_COUNT,
+  PAPER_COUNT,
+} from '../data/site-data';
 ---
 
-<BaseLayout title="Home" description="Multi-agent orchestration MCP server">
+<BaseLayout title="Home" description="Intelligent orchestration platform for AI coding tools">
   <section class="section hero">
     <div class="hero-content">
-      <p class="label">Multi-Agent Orchestration</p>
+      <p class="label">AI Development Platform</p>
       <h1 class="display-large">
-        Coordinate AI experts with
-        <span class="accent">research-backed protocols</span>
+        The intelligence layer between you and your
+        <span class="accent">AI coding tools</span>
       </h1>
       <p class="subtitle">
-        One MCP server to route tasks to Claude, Gemini, Codex, and OpenCode.
-        Byzantine fault tolerance, intelligent routing, and multi-backend memory.
+        Give it a task. It picks the best AI model, validates the output, and remembers what worked.
+        Next time, it's smarter. Connect Claude, Codex, Gemini, and OpenCode through one MCP server
+        that learns from every interaction.
       </p>
       <div class="btn-row">
         <a href="/nexus-agents/docs/getting-started/installation/" class="btn-primary">
@@ -26,42 +37,74 @@ import '../styles/global.css';
     </div>
   </section>
 
+  <!-- Stats bar -->
+  <section class="section stats-bar">
+    <div class="stat"><span class="stat-number">{MCP_TOOL_COUNT}</span><span class="stat-label">MCP Tools</span></div>
+    <div class="stat"><span class="stat-number">{EXPERT_TYPE_COUNT}</span><span class="stat-label">Expert Types</span></div>
+    <div class="stat"><span class="stat-number">{CLI_ADAPTER_COUNT}</span><span class="stat-label">CLI Adapters</span></div>
+    <div class="stat"><span class="stat-number">{MEMORY_BACKEND_COUNT}</span><span class="stat-label">Memory Backends</span></div>
+    <div class="stat"><span class="stat-number">{ROUTING_STAGE_COUNT}</span><span class="stat-label">Routing Stages</span></div>
+    <div class="stat"><span class="stat-number">{PAPER_COUNT}+</span><span class="stat-label">Papers Tracked</span></div>
+  </section>
+
   <section class="section">
     <h2 class="headline-large">How It Works</h2>
     <p class="subtitle section-subtitle">
-      Tasks are analyzed, routed to the best available model, and validated through consensus when agents disagree.
+      Every task flows through analysis, intelligent routing, quality validation, and outcome recording.
+      The system learns from each execution and improves over time.
     </p>
     <div class="card-grid">
       <div class="card">
-        <h3 class="title-large">10 Expert Agents</h3>
-        <p class="card-text">Code, Architecture, Security, Documentation, Testing, DevOps, Research, PM, UX/UI, and Infrastructure experts with domain-specific knowledge.</p>
-      </div>
-      <div class="card">
-        <h3 class="title-large">Consensus Protocols</h3>
-        <p class="card-text">Aegean BFT and CP-WBFT for multi-agent agreement. 6 voting strategies resolve conflicts with Byzantine fault tolerance.</p>
-      </div>
-      <div class="card">
         <h3 class="title-large">Intelligent Routing</h3>
-        <p class="card-text">LinUCB contextual bandits learn which model works best per task. TOPSIS multi-criteria scoring with adaptive timeouts.</p>
+        <p class="card-text">A {ROUTING_STAGE_COUNT}-stage pipeline analyzes your task and picks the best AI model. LinUCB contextual bandits learn from real outcomes — routing gets smarter with every task you run.</p>
       </div>
       <div class="card">
-        <h3 class="title-large">Multi-Backend Memory</h3>
-        <p class="card-text">Graph, session, typed, belief, agentic, and adaptive memory backends. MIRIX six-type architecture for cross-session learning.</p>
+        <h3 class="title-large">Dynamic Expert Creation</h3>
+        <p class="card-text">{EXPERT_TYPE_COUNT} expert types are created on demand based on task analysis. Each gets a specialized system prompt, routed to the best CLI, and coordinated by TechLead and Orchestrator agents.</p>
       </div>
       <div class="card">
-        <h3 class="title-large">MCP Tools</h3>
-        <p class="card-text">Orchestration, expert creation, workflow execution, consensus voting, research tracking, and repository analysis via MCP.</p>
+        <h3 class="title-large">Consensus Quality Gates</h3>
+        <p class="card-text">{CONSENSUS_ALGORITHM_COUNT} voting algorithms — including higher-order Bayesian aggregation — validate outputs before they ship. Agents vote, disagree, and iterate until quality passes.</p>
       </div>
       <div class="card">
-        <h3 class="title-large">Research-Backed</h3>
-        <p class="card-text">174+ papers tracked. 47 technique-to-implementation mappings. arXiv integration for continuous discovery.</p>
+        <h3 class="title-large">Continuous Learning</h3>
+        <p class="card-text">{MEMORY_BACKEND_COUNT} memory backends persist what works across sessions. Outcomes feed routing decisions, failed approaches are avoided, and successful patterns are reinforced automatically.</p>
+      </div>
+      <div class="card">
+        <h3 class="title-large">Development Pipeline</h3>
+        <p class="card-text">Full workflow: research papers, plan architecture, vote on proposals, decompose into tasks, implement in parallel, QA review with iteration, security scan. Three modes: autonomous, harness, and dry-run.</p>
+      </div>
+      <div class="card">
+        <h3 class="title-large">Research Discovery</h3>
+        <p class="card-text">{PAPER_COUNT}+ papers tracked across {DISCOVERY_SOURCE_COUNT} sources (arXiv, GitHub, Semantic Scholar). New discoveries auto-trigger pipeline assessments. Quality scoring and topic synthesis built in.</p>
       </div>
     </div>
   </section>
 
+  <!-- Learning loop visualization -->
+  <section class="section">
+    <h2 class="headline-large">The Learning Loop</h2>
+    <p class="subtitle section-subtitle">
+      This is the core differentiator. Every execution makes the next one better.
+    </p>
+    <pre class="code-block"><code>  You give a task
+       |
+  Task Analysis &rarr; picks best model from {CLI_ADAPTER_COUNT} CLIs
+       |
+  Expert executes &rarr; {EXPERT_TYPE_COUNT} specialized types, created on demand
+       |
+  Consensus validates &rarr; multi-model voting catches errors
+       |
+  Outcome recorded &rarr; success/failure feeds {MEMORY_BACKEND_COUNT} memory backends
+       |
+  Next task &rarr; routing is smarter, memory recalls what worked
+       |
+  Repeat &rarr; system improves continuously</code></pre>
+  </section>
+
   <section class="section">
     <h2 class="headline-large">Quick Start</h2>
-    <p class="subtitle">Install and connect to Claude Desktop in under 5 minutes.</p>
+    <p class="subtitle">Install and connect to your editor in under 5 minutes.</p>
     <div class="code-grid">
       <div>
         <h3 class="title-large code-step">1. Install</h3>
@@ -72,8 +115,11 @@ pnpm install -g nexus-agents
 nexus-agents doctor</code></pre>
       </div>
       <div>
-        <h3 class="title-large code-step">2. Connect to Claude</h3>
-        <pre class="code-block"><code># ~/.claude/mcp.json
+        <h3 class="title-large code-step">2. Connect to Claude Code</h3>
+        <pre class="code-block"><code># Auto-configure MCP server
+nexus-agents setup
+
+# Or manually: ~/.claude/mcp.json
 {'{'}
   "mcpServers": {'{'}
     "nexus-agents": {'{'}
@@ -88,20 +134,21 @@ nexus-agents doctor</code></pre>
 
   <section class="section">
     <h2 class="headline-large">Architecture</h2>
-    <pre class="code-block"><code>MCP Protocol (25 tools, rate-limited, auth)
+    <pre class="code-block"><code>MCP Protocol ({MCP_TOOL_COUNT} tools, rate-limited, auth)
     |
-Orchestrator (task analysis, expert delegation)
+Orchestrator (task analysis, dynamic expert creation)
     |
-+--------+--------+--------+----------+
-| Claude | Gemini | Codex  | OpenCode |
-+--------+--------+--------+----------+
++--------+--------+--------+-----------+----------+
+| Claude | Gemini | Codex  | Codex-MCP | OpenCode |
++--------+--------+--------+-----------+----------+
     |
-Composite Router
-  Budget &rarr; Zero &rarr; Preference &rarr; TOPSIS &rarr; LinUCB
-    |
-+----------+--------+-----------+----------+
-| Consensus| Memory | Workflows | Security |
-+----------+--------+-----------+----------+</code></pre>
+Composite Router ({ROUTING_STAGE_COUNT} stages)
+  Budget &rarr; Capability &rarr; Preference &rarr; TOPSIS &rarr; LinUCB &rarr; Latency
+    |                                                        |
++----------+-----------+----------+----------+    Outcome Store
+| Consensus| Memory    | Pipeline | Security |    (feeds back)
+| ({CONSENSUS_ALGORITHM_COUNT} algos) | ({MEMORY_BACKEND_COUNT} backends)| (3 modes)| (sandbox) |
++----------+-----------+----------+----------+</code></pre>
   </section>
 
   <section class="section">
@@ -113,15 +160,15 @@ Composite Router
       </a>
       <a href="/nexus-agents/docs/guides/mcp_integration/" class="card link-card">
         <h3 class="title-large">MCP Integration</h3>
-        <p class="card-text">Connect nexus-agents to Claude Desktop and other MCP clients.</p>
+        <p class="card-text">Connect to Claude Code, Cursor, VS Code, or any MCP client.</p>
       </a>
       <a href="/nexus-agents/docs/guides/workflow_templates/" class="card link-card">
-        <h3 class="title-large">Workflows</h3>
-        <p class="card-text">Built-in workflow templates for common tasks.</p>
+        <h3 class="title-large">Dev Pipeline</h3>
+        <p class="card-text">Research, plan, vote, implement, QA — the full workflow.</p>
       </a>
       <a href="/nexus-agents/docs/research/research_index/" class="card link-card">
         <h3 class="title-large">Research</h3>
-        <p class="card-text">Papers and techniques backing the protocols.</p>
+        <p class="card-text">{PAPER_COUNT}+ papers and {DISCOVERY_SOURCE_COUNT} discovery sources.</p>
       </a>
     </div>
   </section>
@@ -135,7 +182,7 @@ Composite Router
   }
   .hero {
     padding-top: 5rem;
-    padding-bottom: 4rem;
+    padding-bottom: 2rem;
   }
   .hero-content {
     max-width: 48rem;
@@ -212,6 +259,34 @@ Composite Router
   .btn-outline:hover {
     border-color: var(--color-primary);
     color: var(--color-primary);
+  }
+
+  /* Stats bar */
+  .stats-bar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 2rem;
+    padding-top: 0;
+    padding-bottom: 2rem;
+    border-bottom: 1px solid var(--color-outline-variant);
+  }
+  .stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  .stat-number {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--color-primary);
+  }
+  .stat-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-on-surface-variant);
   }
 
   .card-grid {

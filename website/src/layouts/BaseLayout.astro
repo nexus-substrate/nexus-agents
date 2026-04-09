@@ -7,7 +7,7 @@ interface Props {
   noindex?: boolean;
 }
 
-const { title, description = 'Multi-agent orchestration MCP server', noindex = false } = Astro.props;
+const { title, description = 'Intelligent orchestration platform for AI coding tools', noindex = false } = Astro.props;
 const siteTitle = `${title} — Nexus Agents`;
 const canonicalURL = new URL(Astro.url.pathname, Astro.site);
 ---
@@ -50,7 +50,7 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
       "@context": "https://schema.org",
       "@type": "SoftwareApplication",
       "name": "Nexus Agents",
-      "description": "Multi-agent orchestration MCP server for AI-powered development workflows",
+      "description": "Intelligent orchestration platform for AI coding tools — routes tasks to the best model, learns from outcomes, and enforces quality through multi-model consensus",
       "url": Astro.site?.toString(),
       "applicationCategory": "DeveloperApplication",
       "operatingSystem": "Cross-platform",
@@ -102,7 +102,7 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
     </main>
 
     <footer class="site-footer">
-      <p>Nexus Agents &mdash; Multi-agent orchestration MCP server</p>
+      <p>Nexus Agents &mdash; Intelligent orchestration platform for AI coding tools</p>
       <p>MIT License</p>
     </footer>
   </body>

@@ -25,13 +25,15 @@ export const MAX_PROPOSAL_LENGTH = 4000;
  * - `unanimous`: Requires 100% approval
  * - `proof_of_learning`: Weighted by agent performance (Issue #103)
  * - `higher_order`: Bayesian-optimal with correlation awareness (Issue #514)
+ * - `opinion_wise`: Alias for higher_order (Issue #333)
  */
 export type VotingStrategy =
   | 'simple_majority'
   | 'supermajority'
   | 'unanimous'
   | 'proof_of_learning'
-  | 'higher_order';
+  | 'higher_order'
+  | 'opinion_wise';
 
 export const VotingStrategySchema = z.enum([
   'simple_majority',
@@ -39,6 +41,7 @@ export const VotingStrategySchema = z.enum([
   'unanimous',
   'proof_of_learning',
   'higher_order',
+  'opinion_wise',
 ]);
 
 // ============================================================================

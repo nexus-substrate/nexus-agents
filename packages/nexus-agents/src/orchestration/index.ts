@@ -180,6 +180,7 @@ export {
   extractNonErrorMessage,
   OutcomeStore,
   getOutcomeStore,
+  getOutcomeSummaryText,
   resetOutcomeStore,
   setOutcomeStore,
   PersistentOutcomeStore,

@@ -1,43 +1,44 @@
 {
-  "$schema": "https://raw.githubusercontent.com/modelcontextprotocol/registry/main/schema/server.json",
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.williamzujkowski/nexus-agents",
-  "description": "Multi-agent orchestration MCP server. Routes tasks to specialized experts (Claude, Gemini, Codex, OpenCode) with consensus voting, adaptive routing, and 24 MCP tools.",
+  "description": "Intelligent orchestration platform for AI coding tools. Routes tasks to the best model (Claude, Codex, Gemini, OpenCode) using data-driven algorithms (LinUCB, TOPSIS), enforces quality through multi-model consensus voting, and learns from outcomes across sessions. 29 MCP tools, 8 memory backends, full dev pipeline with research/plan/vote/implement/QA stages.",
   "repository": {
-    "type": "git",
-    "url": "https://github.com/williamzujkowski/nexus-agents"
+    "url": "https://github.com/williamzujkowski/nexus-agents",
+    "source": "github"
   },
-  "version_detail": {
-    "version": "2.28.0",
-    "release_date": "2026-04-07"
-  },
+  "version": "2.28.0",
   "packages": [
     {
-      "registry_type": "npm",
-      "name": "nexus-agents",
+      "registryType": "npm",
+      "identifier": "nexus-agents",
       "version": "2.28.0",
       "runtime": "node",
-      "runtime_arguments": ["--experimental-vm-modules"],
-      "package_arguments": ["--mode=server"],
-      "environment_variables": [
+      "runtimeArguments": ["--experimental-vm-modules"],
+      "packageArguments": ["--mode=server"],
+      "environmentVariables": [
         {
           "name": "ANTHROPIC_API_KEY",
           "description": "API key for Claude adapter",
-          "required": false
+          "isRequired": false,
+          "isSecret": true
         },
         {
           "name": "OPENAI_API_KEY",
           "description": "API key for OpenAI/Codex adapter",
-          "required": false
+          "isRequired": false,
+          "isSecret": true
         },
         {
           "name": "GOOGLE_AI_API_KEY",
           "description": "API key for Gemini adapter",
-          "required": false
+          "isRequired": false,
+          "isSecret": true
         },
         {
           "name": "OPENROUTER_API_KEY",
           "description": "API key for OpenRouter adapter (free models)",
-          "required": false
+          "isRequired": false,
+          "isSecret": true
         }
       ],
       "transport": {
@@ -57,8 +58,10 @@
     "list_workflows",
     "research_query",
     "research_add",
+    "research_add_source",
     "research_discover",
     "research_analyze",
+    "research_catalog_review",
     "research_synthesize",
     "memory_query",
     "memory_stats",
@@ -72,8 +75,7 @@
     "search_codebase",
     "extract_symbols",
     "query_trace",
-    "research_add_source",
-    "research_catalog_review",
-    "run_dev_pipeline"
+    "run_dev_pipeline",
+    "run_research_pipeline"
   ]
 }

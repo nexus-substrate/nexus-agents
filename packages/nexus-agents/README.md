@@ -1,6 +1,6 @@
 # Nexus Agents
 
-> Multi-agent orchestration MCP server with model diversity and workflow automation
+> The intelligence layer between you and your AI coding tools
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D22.0.0-brightgreen)](https://nodejs.org)
@@ -12,17 +12,18 @@
 
 ## Overview
 
-Nexus Agents is an MCP (Model Context Protocol) server that coordinates multiple AI experts to handle software development tasks. It provides a unified interface for different AI models and enables multi-agent collaboration through an Orchestrator and 10 specialized experts.
+Nexus Agents makes your AI coding tools work together intelligently. It coordinates Claude, Codex, Gemini, and OpenCode — routing each task to the best model using data-driven algorithms (LinUCB bandit, TOPSIS scoring, adaptive bonuses), validating outputs through multi-model consensus voting, and continuously improving through outcome-driven learning. Connect it to any MCP-compatible editor and it handles the rest.
 
 ### Key Capabilities
 
-- **Multi-Agent Orchestration** - Orchestrator coordinates 10 specialized experts for complex tasks
-- **Model Diversity** - Support for Claude, Gemini, Codex, and OpenCode (with custom OpenAI-compatible endpoints)
-- **Workflow Automation** - 11 YAML-based templates for repeatable processes
-- **Consensus Voting** - Multi-agent voting with higher-order Bayesian aggregation
-- **Memory System** - 5 typed backends (session, belief, agentic, adaptive, typed)
-- **24 MCP Tools** - Full integration with Claude Code, Claude Desktop, and other MCP clients
-- **Security-First Design** - Defense in depth with input validation and untrusted input hardening
+- **Intelligent Routing** — 9-stage CompositeRouter with LinUCB bandit, TOPSIS multi-criteria, and adaptive bonuses. Learns from outcomes.
+- **Multi-Expert Orchestration** — 9 specialized experts (code, architecture, security, testing, docs, devops, research, PM, UX) coordinated by TechLead/Orchestrator agents
+- **Consensus Voting** — 7 algorithms including higher-order Bayesian aggregation with correlation awareness
+- **Development Pipeline** — Research → Plan → Vote → Decompose → Implement → QA → Security. Autonomous, harness, and dry-run modes.
+- **Memory & Learning** — 8 backends (session, belief, adaptive, routing, graph, hybrid, agentic, typed) with cross-session persistence
+- **29 MCP Tools** — Agent management, workflow execution, research, memory, codebase intelligence, repo analysis, consensus, operations
+- **Research System** — 9 discovery sources (arXiv, GitHub, Semantic Scholar, etc) with auto-catalog and synthesis
+- **Security** — Sandboxing, trust classification, SARIF parsing, input sanitization, red team pipeline
 
 ---
 
@@ -190,7 +191,7 @@ nexus-agents/
 │       │   ├── cli-adapters/ # External CLI integration (Claude/Gemini/Codex/OpenCode)
 │       │   ├── context/      # Token counting, work balancing
 │       │   ├── consensus/    # Multi-agent voting with higher-order aggregation
-│       │   ├── memory/       # 5 typed memory backends (session, belief, agentic, adaptive, typed)
+│       │   ├── memory/       # 8 memory backends (session, belief, adaptive, routing, graph, hybrid, agentic, typed)
 │       │   ├── security/     # Input sanitization, trust classification, policy gate
 │       │   ├── orchestration/# Graph workflows, AOrchestra, worker dispatch
 │       │   ├── pipeline/     # Task contracts, plugin registry, event bus

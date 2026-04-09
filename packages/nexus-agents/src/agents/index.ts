@@ -55,6 +55,25 @@ export {
   type OnWaveCompleteCallback,
 } from './wave-checkpoint-types.js';
 
+// Research Checkpoint Persistence
+export {
+  appendResearchCheckpoint,
+  loadResearchCheckpoints,
+  summarizeResearchCheckpoints,
+  cleanupResearchCheckpoint,
+  type AppendResearchCheckpointOptions,
+} from './research-checkpoint-persistence.js';
+
+export {
+  ResearchCheckpointEntrySchema,
+  ResearchCheckpointQuerySchema,
+  DEFAULT_RESEARCH_CHECKPOINT_CONFIG,
+  type ResearchCheckpointEntry,
+  type ResearchCheckpointConfig,
+  type ResearchCheckpointSummary,
+  type OnResearchStepCompleteCallback,
+} from './research-checkpoint-types.js';
+
 // Wave Pressure Integration (Issue #800 - Context Exhaustion Prevention)
 export { buildPressureAwareConfig, type PressureAwareConfig } from './wave-pressure-integration.js';
 

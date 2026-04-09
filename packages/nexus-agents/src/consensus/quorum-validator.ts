@@ -134,6 +134,7 @@ export const DEFAULT_QUORUM_THRESHOLDS: Readonly<
   unanimous: 1.0,
   proof_of_learning: 0.5,
   opinion_wise: 0.5,
+  higher_order: 0.5,
   weighted_byzantine: 0.67,
 };
 

@@ -27,6 +27,7 @@ export {
 export {
   OutcomeStore,
   getOutcomeStore,
+  getOutcomeSummaryText,
   resetOutcomeStore,
   setOutcomeStore,
   registerPersistentOutcomeStoreFactory,

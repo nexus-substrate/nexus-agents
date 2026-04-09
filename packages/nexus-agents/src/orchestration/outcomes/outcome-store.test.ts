@@ -11,6 +11,7 @@ import type { TaskOutcome } from './outcome-types.js';
 import {
   OutcomeStore,
   getOutcomeStore,
+  getOutcomeSummaryText,
   resetOutcomeStore,
   setOutcomeStore,
 } from './outcome-store.js';
@@ -622,5 +623,63 @@ describe('OutcomeStore.purgeSkippedWorkers (#1528)', () => {
   it('returns 0 for empty store', () => {
     const store = new OutcomeStore();
     expect(store.purgeSkippedWorkers()).toBe(0);
+  });
+});
+
+// ============================================================================
+// getOutcomeSummaryText (#1711 — Central Workflow Hub)
+// ============================================================================
+
+describe('getOutcomeSummaryText', () => {
+  beforeEach(() => {
+    resetOutcomeStore();
+    setOutcomeStore(new OutcomeStore());
+  });
+
+  it('returns empty string when no outcomes', () => {
+    expect(getOutcomeSummaryText()).toBe('');
+  });
+
+  it('includes success rate and task count', () => {
+    const store = getOutcomeStore();
+    store.append(makeOutcome({ id: 'o1', success: true }));
+    store.append(makeOutcome({ id: 'o2', success: true }));
+    store.append(makeOutcome({ id: 'o3', success: false, errorMessage: 'timeout' }));
+
+    const text = getOutcomeSummaryText();
+    expect(text).toContain('3 tasks');
+    expect(text).toContain('67%');
+  });
+
+  it('includes failure categories and messages', () => {
+    const store = getOutcomeStore();
+    store.append(
+      makeOutcome({
+        id: 'o1',
+        success: false,
+        failureCategory: 'timeout',
+        errorMessage: 'CLI timed out',
+      })
+    );
+    store.append(
+      makeOutcome({ id: 'o2', success: false, failureCategory: 'parse', errorMessage: 'bad JSON' })
+    );
+
+    const text = getOutcomeSummaryText();
+    expect(text).toContain('timeout: CLI timed out');
+    expect(text).toContain('parse: bad JSON');
+  });
+
+  it('respects limit parameter', () => {
+    const store = getOutcomeStore();
+    for (let i = 0; i < 10; i++) {
+      store.append(
+        makeOutcome({ id: `o${String(i)}`, success: false, errorMessage: `err${String(i)}` })
+      );
+    }
+
+    const text = getOutcomeSummaryText(2);
+    // Should only show last 2 failures (limit=2 in query)
+    expect(text).toContain('err');
   });
 });
