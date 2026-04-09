@@ -12,14 +12,61 @@
 
 ## Why Nexus Agents?
 
-nexus-agents coordinates multiple AI coding CLIs (Claude, Codex, Gemini, OpenCode) through a single MCP server. It routes each task to the best model using data-driven algorithms, validates outputs through multi-model consensus voting, and continuously improves through outcome-driven learning.
+nexus-agents makes your AI coding tools work together intelligently. It coordinates Claude, Codex, Gemini, and OpenCode — routing each task to the best model using data-driven algorithms, validating outputs through multi-model consensus voting, and continuously improving through outcome-driven learning. Connect it to any MCP-compatible editor (Claude Code, Cursor, VS Code) and it handles the rest.
+
+**What it does for you:**
+
+- **Routes intelligently** — LinUCB bandit + TOPSIS scoring + adaptive bonuses pick the right model for each task, learned from real outcomes
+- **Enforces quality** — consensus voting (7 algorithms including Bayesian higher-order), QA review loops, security scans with SARIF
+- **Learns over time** — 8 memory backends track what works, feeding routing, planning, and research decisions
+- **Runs a full dev pipeline** — research papers, plan architecture, vote on proposals, decompose into tasks, implement, QA review, ship
+- **Connects everything** — 29 MCP tools, 9 research sources, graph workflows, checkpoint/resume, GitHub/GitLab issue tracking
 
 ```
 You: "Review this code for security and performance"
      ↓
-Orchestrator analyzes → delegates to Security Expert + Code Expert
+CompositeRouter selects best CLI per category → Security Expert + Code Expert
      ↓
-Combined response with findings from both experts
+Consensus-validated response — outcomes feed back into routing for next time
+```
+
+**What it is NOT:**
+
+- Not an autonomous agent — humans stay in the loop via votes and harness mode
+- Not a chat framework — it orchestrates real CLI tools with real file I/O
+- Not a model API proxy — the intelligence IS the routing, quality gates, and learning
+
+---
+
+## Architecture at a Glance
+
+```
+                         ┌─────────────────────────────────┐
+                         │         Your IDE / CLI           │
+                         │  (Claude Code, Cursor, VS Code)  │
+                         └──────────────┬──────────────────┘
+                                        │ MCP Protocol
+                         ┌──────────────▼──────────────────┐
+                         │       nexus-agents server        │
+                         │                                  │
+                         │  ┌──────────┐  ┌──────────────┐ │
+                         │  │ 29 MCP   │  │ Dev Pipeline  │ │
+                         │  │ Tools    │  │ research→plan │ │
+                         │  └────┬─────┘  │ →vote→impl   │ │
+                         │       │        │ →QA→ship      │ │
+                         │  ┌────▼─────┐  └──────────────┘ │
+                         │  │Composite │                    │
+                         │  │Router    │  ┌──────────────┐ │
+                         │  │(9 stages)│  │ 8 Memory     │ │
+                         │  └────┬─────┘  │ Backends     │ │
+                         │       │        └──────────────┘ │
+                         └───────┼─────────────────────────┘
+                    ┌────────────┼────────────┐
+                    ▼            ▼             ▼
+               ┌────────┐  ┌────────┐   ┌──────────┐
+               │ Claude │  │ Gemini │   │  Codex   │ ...
+               │  CLI   │  │  CLI   │   │   CLI    │
+               └────────┘  └────────┘   └──────────┘
 ```
 
 ---
@@ -59,17 +106,19 @@ nexus-agents orchestrate "Explain the architecture of this codebase"
 
 ---
 
-## What It Does
+## Capabilities
 
-| Feature                        | Description                                                                                                                                                 |
-| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Multi-Expert Orchestration** | Orchestrator coordinates specialized expert types across Code, Security, Architecture, Testing, Documentation, DevOps, Research, PM, UX, and Infrastructure |
-| **Model Routing**              | Routes tasks to the best model based on capability (reasoning, speed, context size, budget) across all supported CLIs and providers                         |
-| **Consensus Voting**           | Multi-agent voting on proposals with higher-order Bayesian aggregation                                                                                      |
-| **Workflow Automation**        | Built-in YAML templates for code review, security audit, and more                                                                                           |
-| **Research Registry**          | Track and discover academic papers and implementation techniques                                                                                            |
-| **Memory System**              | 5 typed memory backends (session, belief, agentic, adaptive, typed)                                                                                         |
-| **MCP Integration**            | Full MCP tool suite for Claude Desktop, Claude Code, and other MCP clients                                                                                  |
+| Category                       | Details                                                                                                                                     |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Intelligent Routing**        | 9-stage CompositeRouter: budget-aware, LinUCB bandit, TOPSIS multi-criteria, preference-trained, weather-adaptive. Learns from outcomes.    |
+| **Multi-Expert Orchestration** | 9 built-in expert types (code, architecture, security, testing, docs, devops, research, PM, UX) coordinated by TechLead/Orchestrator agents |
+| **Consensus Voting**           | 7 algorithms: simple majority, supermajority, unanimous, weighted, ordered-weighted, higher-order Bayesian, incremental quorum              |
+| **Development Pipeline**       | Research → Plan → Vote → Decompose → Implement → QA → Security. Three modes: autonomous, harness (caller implements), dry-run               |
+| **Memory & Learning**          | 8 backends (session, belief, adaptive, routing, graph, hybrid, agentic, typed). Cross-session persistence. Outcomes feed routing.           |
+| **Research System**            | 9 discovery sources (arXiv, GitHub, Semantic Scholar, etc). Auto-catalog, quality scoring, synthesis into topic clusters                    |
+| **Security**                   | Sandboxing (Docker/policy), trust classification, SARIF parsing, input sanitization, red team pipeline, firewall                            |
+| **Graph Workflows**            | DAG-based workflow execution with checkpoint/resume, state reduction, and event hooks                                                       |
+| **29 MCP Tools**               | Agent management, workflow execution, research, memory, codebase intelligence, repo analysis, consensus, operations                         |
 
 ---
 
@@ -92,14 +141,15 @@ nexus-agents orchestrate "Explain the architecture of this codebase"
 
 ## Supported CLIs & Providers
 
-Nexus-agents routes tasks through 4 CLI adapters, each connecting to major AI providers:
+Nexus-agents routes tasks through 5 CLI adapters, each connecting to major AI providers:
 
-| CLI      | Provider             | Best For                       |
-| -------- | -------------------- | ------------------------------ |
-| claude   | Anthropic (Claude)   | Complex reasoning, analysis    |
-| gemini   | Google (Gemini)      | Long context, multimodal       |
-| codex    | OpenAI (Codex)       | Code generation, reasoning     |
-| opencode | Custom OpenAI-compat | Custom endpoints, local models |
+| CLI       | Provider             | Best For                       |
+| --------- | -------------------- | ------------------------------ |
+| claude    | Anthropic (Claude)   | Complex reasoning, analysis    |
+| gemini    | Google (Gemini)      | Long context, multimodal       |
+| codex     | OpenAI (Codex CLI)   | Code generation, reasoning     |
+| codex-mcp | OpenAI (Codex MCP)   | MCP-native Codex integration   |
+| opencode  | Custom OpenAI-compat | Custom endpoints, local models |
 
 ---
 
@@ -154,6 +204,11 @@ When running as an MCP server, the following tools are available:
 | `query_trace`             | Query execution traces for observability                 |
 | `repo_analyze`            | Analyze GitHub repository structure                      |
 | `repo_security_plan`      | Generate security scanning pipeline for a repo           |
+| `research_add_source`     | Add non-paper source (GitHub repo, tool, blog)           |
+| `research_synthesize`     | Synthesize registry into topic clusters with themes      |
+| `extract_symbols`         | Extract code symbols from source files for analysis      |
+| `search_codebase`         | Search codebase for patterns, symbols, or text           |
+| `run_dev_pipeline`        | Full dev pipeline: research, plan, vote, implement, QA   |
 
 ---
 
