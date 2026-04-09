@@ -180,8 +180,12 @@ jobs:
 
       - name: Run cargo-audit
         run: |
-          cargo install cargo-audit
-          cd crates/iso-parser && cargo audit
+          if [ -d "crates/iso-parser" ]; then
+            cargo install cargo-audit
+            cd crates/iso-parser && cargo audit
+          else
+            echo "crates/iso-parser not found, skipping cargo audit"
+          fi
 
   cargo-deny:
     name: Cargo Deny
@@ -197,8 +201,12 @@ jobs:
 
       - name: Run cargo-deny
         run: |
-          cargo install cargo-deny
-          cd crates/iso-parser && cargo deny check advisories bans licenses
+          if [ -d "crates/iso-parser" ]; then
+            cargo install cargo-deny
+            cd crates/iso-parser && cargo deny check advisories bans licenses
+          else
+            echo "crates/iso-parser not found, skipping cargo deny"
+          fi
 
   # Gate for branch protection - requires all checks to pass
   ci-success:

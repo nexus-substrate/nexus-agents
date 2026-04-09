@@ -62,7 +62,7 @@ jobs:
           NPM_CONFIG_PROVENANCE: true
 
       - name: Generate and Upload SBOM
-        if: steps.changesets.outputs.published == 'true'
+        if: steps.changesets.outputs.published == 'true' && hashFiles('crates/iso-parser/Cargo.toml') != ''
         run: |
           cd crates/iso-parser
           cargo sbom --output-format spdx --file ../../sbom.spdx.json
