@@ -142,29 +142,4 @@ export { TOPIC_ALIASES, normalizeTopicToCanonical } from './topic-aliases.js';
 // ArxivCrossref Adapter (Fallback Paper Source)
 // ============================================================================
 
-export {
-  ArxivCrossrefAdapter,
-  createArxivCrossrefAdapter,
-  DEFAULT_ADAPTER_CONFIG,
-} from './arxiv-crossref-adapter.js';
-
-export type {
-  ArxivCrossrefAdapterConfig,
-  PaperSourceError,
-  PaperSourceErrorCode,
-  FetchedPaper,
-  PaperQuery,
-  PaperSourcePort,
-} from './arxiv-crossref-adapter.js';
-
-// ============================================================================
-// Research Decomposition (LLM-assisted)
-// ============================================================================
-
-export { decomposeResearch } from './decompose-research.js';
-export type {
-  ResearchSubtask,
-  ResearchSubtaskType,
-  SubtaskPriority,
-  DecomposeResearchConfig,
-} from './decompose-research.js';
+// ArxivCrossrefAdapter and decomposeResearch — pending lint cleanup, not yet exported
