@@ -54,13 +54,13 @@ const stages: DevPipelineStages = {
     console.log(`[VOTE #${String(voteCount)}] Evaluating plan...`);
     if (voteCount === 1) {
       return {
-        approved: false,
+        kind: 'rejected' as const,
         feedback:
           'Plan should also include export contract tests to prevent regression. Also verify @internal markers.',
         approvalPercentage: 40,
       };
     }
-    return { approved: true, feedback: '', approvalPercentage: 83 };
+    return { kind: 'approved' as const, approvalPercentage: 83 };
   },
 
   decompose: async (plan) => {

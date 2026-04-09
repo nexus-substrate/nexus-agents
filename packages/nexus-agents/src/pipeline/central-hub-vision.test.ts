@@ -18,7 +18,7 @@ Wire all nexus-agents tools into the dev pipeline:
 3. outcome store provides historical context
 4. research triggers auto-create pipeline tasks`;
 
-function createVisionStages(): { stages: DevPipelineStages; voteCount: number } {
+function createVisionStages(): { stages: DevPipelineStages } {
   const state = { voteCount: 0 };
 
   const stages: DevPipelineStages = {

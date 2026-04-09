@@ -60,13 +60,14 @@ describe('DEFAULT_QUORUM_THRESHOLDS', () => {
     expect(DEFAULT_QUORUM_THRESHOLDS.unanimous).toBe(1.0);
     expect(DEFAULT_QUORUM_THRESHOLDS.proof_of_learning).toBe(0.5);
     expect(DEFAULT_QUORUM_THRESHOLDS.opinion_wise).toBe(0.5);
+    expect(DEFAULT_QUORUM_THRESHOLDS.higher_order).toBe(0.5);
     expect(DEFAULT_QUORUM_THRESHOLDS.weighted_byzantine).toBe(0.67);
   });
 
   it('is typed as Readonly', () => {
     // Readonly<Record<...>> at type level; verify values are not writable at runtime
     const keys = Object.keys(DEFAULT_QUORUM_THRESHOLDS);
-    expect(keys.length).toBe(6);
+    expect(keys.length).toBe(7);
   });
 });
 

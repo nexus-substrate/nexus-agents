@@ -26,12 +26,12 @@ const mockStages: DevPipelineStages = {
     console.log(`[VOTE #${String(voteCount)}] Plan length: ${String(plan.length)}`);
     if (voteCount === 1) {
       return {
-        approved: false,
+        kind: 'rejected' as const,
         feedback: 'Missing error handling for degraded services',
         approvalPercentage: 33,
       };
     }
-    return { approved: true, feedback: '', approvalPercentage: 83 };
+    return { kind: 'approved' as const, approvalPercentage: 83 };
   },
   decompose: async (plan) => {
     console.log('[PM] Decomposing into tasks...');
