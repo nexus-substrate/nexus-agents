@@ -122,23 +122,6 @@ export type {
 export { ErrorMetricsCollector, errorMetrics, recordError } from './metrics.js';
 export type { ErrorMetrics, RecordErrorOptions, MetricsExport } from './metrics.js';
 
-// Observability - OpenTelemetry-compatible metrics and structured logging
-export {
-  Histogram,
-  Counter,
-  Gauge,
-  LATENCY_BUCKETS,
-  MetricsCollector,
-  metrics,
-  CorrelatedLogger,
-  createCorrelatedLogger,
-  generateCorrelationId,
-  enableDeterministicMode,
-  disableDeterministicMode,
-  isDeterministicMode,
-} from './observability.js';
-export type { MetricSnapshot, MetricsSummary } from './observability.js';
-
 // Safe Regex (Issue #341 - ReDoS prevention)
 export {
   escapeRegex,

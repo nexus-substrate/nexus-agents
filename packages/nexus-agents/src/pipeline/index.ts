@@ -146,16 +146,6 @@ export {
   type PolicyViolation,
 } from './policy-evaluator.js';
 
-export {
-  createAuthorRepoPort,
-  type AuthorRecord,
-  type AuthorRecordFilter,
-  type AuthorCheckpoint,
-  type AuthorRepoPortOptions,
-  type AuthorRepoPort,
-  JsonlAuthorRepoPort,
-} from './author-repo-port.js';
-
 export { orchestrateInputToTaskContract, executeOrchestratePipeline } from './v2-orchestrate.js';
 export type { OrchestrateInputLike } from './v2-orchestrate.js';
 
@@ -196,46 +186,6 @@ export type {
   TrackedTask,
   TaskTrackerConfig,
 } from './task-tracker.js';
-
-// Research Pipeline — orchestrated research workflow with quality gates (#1711)
-export {
-  // Types
-  type ResearchStageInput,
-  type ResearchStageOutput,
-  type SourceRef,
-  type DecomposeStageInput,
-  type DecomposeStageOutput,
-  type ResearchTask,
-  type VoteStageInput,
-  type VoteStageOutput,
-  // Conditional Go Outcomes
-  type ConditionalGoOutcome,
-  type GoAheadOutcome,
-  type RetryOutcome,
-  type RevertOutcome,
-  type StopOutcome,
-  isGoAhead,
-  isRetry,
-  isRevert,
-  isStop,
-  // Checkpoint Config
-  type CheckpointConfig,
-  DEFAULT_CHECKPOINT_CONFIG,
-  type ResearchPipelineStage,
-  type ResearchCheckpointData,
-  type ResearchCheckpointEntry,
-  // Stage Interfaces
-  type IResearchStage,
-  type IDecomposeStage,
-  type IVoteStage,
-  // Pipeline Interface
-  type ResearchPipelineOptions,
-  type ResearchPipelineResult,
-  type ResearchStageExecutionRecord,
-  type IResearchPipeline,
-  type ResearchPipelineState,
-  type ResearchPipelineConfig,
-} from './research-pipeline.js';
 
 // Research Trigger — auto-create pipeline tasks from discoveries (#1715)
 export { checkForResearchTriggers } from './research-trigger.js';

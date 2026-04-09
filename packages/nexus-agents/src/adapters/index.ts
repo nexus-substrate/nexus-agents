@@ -182,19 +182,3 @@ export {
 export { SdkAdapter } from './sdk/index.js';
 export type { SdkAdapterConfig, SdkProviderId } from './sdk/index.js';
 export { PROVIDER_ENV_KEYS } from './sdk/index.js';
-
-// Paper source port and adapters (Issue #1578 — research paper discovery)
-export type { PaperSourcePort } from './paper-source-port.js';
-export { DEFAULT_PAPER_SOURCE_CONFIG, RESEARCH_KEYWORDS } from './paper-source-port.js';
-export type {
-  PaperSourceSearchConfig,
-  PaperSourceResult,
-  PaperSourceError,
-  PaperSourceErrorCode,
-  DeadLetterRecord,
-} from './paper-source-port.js';
-export {
-  SemanticScholarAdapter,
-  createSemanticScholarAdapter,
-} from './semantic-scholar-adapter.js';
-export type { SemanticScholarAdapterConfig } from './semantic-scholar-adapter.js';
