@@ -109,8 +109,8 @@ describe('e2e-eval', () => {
     });
 
     it('should produce passed=true with enough tasks', () => {
-      // With 100 tasks, success rate spread should be visible
-      const result = runE2EEval({ taskCount: 100 });
+      // Seed ensures deterministic success distribution — spread is always visible
+      const result = runE2EEval({ taskCount: 100, seed: 42 });
       expect(result.passed).toBe(true);
     });
 

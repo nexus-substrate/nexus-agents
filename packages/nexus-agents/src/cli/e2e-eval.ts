@@ -74,6 +74,23 @@ const LATENCY_RANGES = {
 export interface E2EEvalConfig {
   readonly taskCount: number;
   readonly resetStore: boolean;
+  /** Random seed for deterministic evaluation. Omit for Math.random(). */
+  readonly seed?: number;
+}
+
+// ============================================================================
+// Seedable PRNG (mulberry32) — deterministic when seed provided
+// ============================================================================
+
+function createRng(seed?: number): () => number {
+  if (seed === undefined) return Math.random;
+  let s = seed | 0;
+  return (): number => {
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
 export interface E2EEvalResult {
@@ -91,8 +108,8 @@ export interface E2EEvalResult {
 // ============================================================================
 
 /** Generate a random task category based on the distribution. */
-function pickCategory(): TaskCategory {
-  const roll = Math.random();
+function pickCategory(rng: () => number): TaskCategory {
+  const roll = rng();
   let cumulative = 0;
   for (const [category, weight] of DEFAULT_TASK_DISTRIBUTION) {
     cumulative += weight;
@@ -102,12 +119,12 @@ function pickCategory(): TaskCategory {
 }
 
 /** Pick a random CLI weighted toward primary. */
-function pickCli(category: TaskCategory): CliName {
+function pickCli(category: TaskCategory, rng: () => number): CliName {
   const primary = PRIMARY_CLI.get(category) ?? 'claude';
-  const roll = Math.random();
+  const roll = rng();
   if (roll < 0.5) return primary;
   if (roll < 0.75) return CLI_NAMES.find((c) => c !== primary) ?? 'gemini';
-  return CLI_NAMES[Math.floor(Math.random() * CLI_NAMES.length)] ?? 'claude';
+  return CLI_NAMES[Math.floor(rng() * CLI_NAMES.length)] ?? 'claude';
 }
 
 /** Determine CLI role for a given category. */
@@ -131,12 +148,17 @@ function getCliRole(cli: CliName, category: TaskCategory): 'primary' | 'secondar
 }
 
 /** Simulate task execution and return an outcome. */
-function simulateTask(taskIndex: number, category: TaskCategory, cli: CliName): TaskOutcome {
+function simulateTask(
+  taskIndex: number,
+  category: TaskCategory,
+  cli: CliName,
+  rng: () => number
+): TaskOutcome {
   const role = getCliRole(cli, category);
   const successRate = SUCCESS_RATES[role];
   const latency = LATENCY_RANGES[role];
-  const success = Math.random() < successRate;
-  const durationMs = latency.min + Math.random() * (latency.max - latency.min);
+  const success = rng() < successRate;
+  const durationMs = latency.min + rng() * (latency.max - latency.min);
 
   return {
     id: `e2e-${String(taskIndex)}-${cli}-${category}`,
@@ -161,7 +183,7 @@ interface CliCounts {
 }
 
 /** Phase 1: Generate and record simulated outcomes. */
-function generateOutcomes(taskCount: number): CliCounts {
+function generateOutcomes(taskCount: number, rng: () => number): CliCounts {
   const store = getOutcomeStore();
   const success = new Map<string, number>();
   const total = new Map<string, number>();
@@ -171,9 +193,9 @@ function generateOutcomes(taskCount: number): CliCounts {
   }
 
   for (let i = 0; i < taskCount; i++) {
-    const category = pickCategory();
-    const cli = pickCli(category);
-    const outcome = simulateTask(i, category, cli);
+    const category = pickCategory(rng);
+    const cli = pickCli(category, rng);
+    const outcome = simulateTask(i, category, cli, rng);
     store.append(outcome);
     total.set(cli, (total.get(cli) ?? 0) + 1);
     if (outcome.success) success.set(cli, (success.get(cli) ?? 0) + 1);
@@ -245,7 +267,8 @@ export function runE2EEval(config?: Partial<E2EEvalConfig>, logger?: ILogger): E
     setOutcomeStore(new OutcomeStore());
   }
 
-  const counts = generateOutcomes(taskCount);
+  const rng = createRng(config?.seed);
+  const counts = generateOutcomes(taskCount, rng);
   log.info('E2E eval: outcomes recorded', { taskCount });
 
   const { bonuses, nonZeroCount } = checkAdaptiveBonuses();
