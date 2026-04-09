@@ -451,7 +451,6 @@ export function registerTools(
       'extract_symbols',
       'search_codebase',
       'run_dev_pipeline',
-      'run_research_pipeline',
     ],
     logger,
     rateLimiter,
