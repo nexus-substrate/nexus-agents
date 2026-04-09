@@ -34,7 +34,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@ stable
+        uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
 
@@ -71,7 +71,7 @@ jobs:
 
       - name: Upload SBOM to Release
         if: steps.changesets.outputs.published == 'true'
-        uses: actions/upload-release-asset@efa4c9b8d30e83b8a6df3c8bf25afc44fa9c2f98 # v1
+        uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1.0.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -82,7 +82,7 @@ jobs:
 
       - name: Upload CycloneDX SBOM to Release
         if: steps.changesets.outputs.published == 'true'
-        uses: actions/upload-release-asset@efa4c9b8d30e83b8a6df3c8bf25afc44fa9c2f98 # v1
+        uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1.0.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
