@@ -24,6 +24,7 @@ import {
 import { PM_EXPERT_BASE_PROMPT } from './expert-prompts/pm-expert.js';
 import { UX_EXPERT_BASE_PROMPT } from './expert-prompts/ux-expert.js';
 import { INFRASTRUCTURE_EXPERT_BASE_PROMPT } from './expert-prompts/infrastructure-expert.js';
+import { DATA_VISUALIZATION_EXPERT_BASE_PROMPT } from './expert-prompts/data-visualization-expert.js';
 
 /**
  * Model preference configuration for an expert.
@@ -75,7 +76,8 @@ export type BuiltInExpertType =
   | 'pm'
   | 'ux'
   | 'infrastructure'
-  | 'qa';
+  | 'qa'
+  | 'data-visualization';
 
 /**
  * Zod schema for ModelPreference.
@@ -164,6 +166,7 @@ export const BuiltInExpertTypeSchema = z.enum([
   'pm',
   'ux',
   'infrastructure',
+  'data-visualization',
 ]);
 
 /**
@@ -549,6 +552,16 @@ Always cite specific code locations. Never approve without reviewing the actual 
       temperature: 0.2,
     },
   },
+  'data-visualization': {
+    id: 'data-visualization-expert',
+    name: 'Data Visualization Expert',
+    role: 'data_visualization_expert',
+    systemPrompt: DATA_VISUALIZATION_EXPERT_BASE_PROMPT,
+    capabilities: ['task_execution', 'research', 'code_generation', 'collaboration'],
+    modelPreference: {
+      temperature: 0.3,
+    },
+  },
 };
 
 /**
@@ -566,6 +579,7 @@ export const EXPERT_TYPE_TO_ROLE: Readonly<Record<BuiltInExpertType, AgentRole>>
   ux: 'ux_expert',
   infrastructure: 'infrastructure_expert',
   qa: 'qa_expert',
+  'data-visualization': 'data_visualization_expert',
 };
 
 /**
