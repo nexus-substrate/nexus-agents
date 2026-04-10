@@ -142,14 +142,14 @@ export async function resolveScannerData(): Promise<ScannerData> {
 const CI_SNIPPETS: Readonly<Record<string, string>> = {
   semgrep: '- uses: semgrep/semgrep-action@v1\n  with:\n    config: auto',
   codeql: '- uses: github/codeql-action/analyze@v3',
-  trivy: '- uses: aquasecurity/trivy-action@master\n  with:\n    scan-type: fs',
-  'trivy-image':
-    '- uses: aquasecurity/trivy-action@master\n  with:\n    scan-type: image\n    image-ref: ${{ env.IMAGE_TAG }}\n    severity: CRITICAL,HIGH\n    exit-code: 1',
+  grype: '- uses: anchore/scan-action@v4\n  with:\n    path: .',
+  'grype-image':
+    '- uses: anchore/scan-action@v4\n  with:\n    image: ${{ env.IMAGE_TAG }}\n    severity: CRITICAL,HIGH\n    exit-code: 1',
   gitleaks: '- uses: gitleaks/gitleaks-action@v2',
   bandit: '- run: pip install bandit && bandit -r . -f json',
   gosec: '- uses: securego/gosec@master\n  with:\n    args: ./...',
   checkov: '- uses: bridgecrewio/checkov-action@master',
-  grype: '- uses: anchore/scan-action@v4\n  with:\n    path: .',
+  'osv-scanner': '- uses: google/osv-scanner-action@v1',
   snyk: '- uses: snyk/actions/node@master # adjust for language',
   shellcheck: '- uses: ludeeus/action-shellcheck@master',
 };
@@ -375,13 +375,13 @@ function collectInfraRecs(
 ): void {
   if (analysis.hasDockerfile) {
     tryAddScanner(
-      'trivy',
+      'grype',
       'container',
       'Dockerfile detected — scan container images for vulnerabilities',
       recs,
       ctx
     );
-    tryAddScanner('trivy-image', 'image-currency', buildImageCurrencyRationale(), recs, ctx);
+    tryAddScanner('grype-image', 'image-currency', buildImageCurrencyRationale(), recs, ctx);
   }
   if (analysis.hasHelmCharts) {
     tryAddScanner(
@@ -401,11 +401,11 @@ function collectInfraRecs(
 function buildImageCurrencyRationale(): string {
   return (
     'Dockerfile detected — periodically scan built images with ' +
-    '`trivy image --severity CRITICAL,HIGH` to detect CVEs introduced by stale base images. ' +
+    '`grype image --severity CRITICAL,HIGH` to detect CVEs introduced by stale base images. ' +
     'Pin base images to specific version tags (e.g., node:22.4.0-alpine3.20) rather than ' +
     ':latest to get reproducible scans and predictable CVE surface area. ' +
     'Alpine-based images typically have a smaller CVE surface than Debian/Ubuntu equivalents ' +
-    'due to musl libc and a minimal package set, but verify with trivy before assuming.'
+    'due to musl libc and a minimal package set, but verify with grype before assuming.'
   );
 }
 

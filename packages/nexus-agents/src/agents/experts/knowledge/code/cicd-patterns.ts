@@ -93,7 +93,7 @@ export const CICD_PATTERNS: KnowledgeModule = {
         'Never use `latest` tag in production deployments. Always pin specific version.',
         'Sign artifacts: cosign for container images, GPG for packages.',
         'Store artifacts in registry with retention policy. Clean old pre-release images.',
-        'Bill of materials: generate SBOM with syft or trivy for supply chain security.',
+        'Bill of materials: generate SBOM with syft or grype for supply chain security.',
       ].join('\n'),
     },
     {

@@ -24,7 +24,7 @@ export const CONTAINER_ORCHESTRATION_MODULE: KnowledgeModule = {
         'MULTI-STAGE: build in one stage, copy artifacts to minimal runtime stage',
         'LAYER ORDER: least-changing layers first (OS deps, app deps, app code)',
         'USER: run as non-root; set USER directive in Dockerfile',
-        'SCANNING: scan images for CVEs with trivy, grype, or snyk',
+        'SCANNING: scan images for CVEs with grype, osv-scanner, or snyk',
         'TAGGING: never use :latest in production; pin to SHA or semver',
         'SIZE: target < 100MB for application images; smaller = faster deploys',
       ].join('\n'),

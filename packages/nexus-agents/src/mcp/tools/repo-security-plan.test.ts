@@ -93,26 +93,26 @@ describe('buildPlanFromAnalysis', () => {
     expect(names).not.toContain('gitleaks');
   });
 
-  it('adds container scanning when Dockerfile present and trivy not already recommended', () => {
-    // With language=null, no language-specific SCA recs (so trivy not already added)
+  it('adds container scanning when Dockerfile present and grype not already recommended', () => {
+    // With language=null, no language-specific SCA recs (so grype not already added)
     const plan = buildPlanFromAnalysis(makeAnalysis({ hasDockerfile: true, language: null }), {
       repo: 'test/repo',
     });
 
     const containerRecs = plan.recommendations.filter((r) => r.category === 'container');
     expect(containerRecs.length).toBeGreaterThan(0);
-    expect(containerRecs[0]?.name).toBe('trivy');
+    expect(containerRecs[0]?.name).toBe('grype');
   });
 
-  it('skips duplicate trivy when already recommended for SCA', () => {
-    // TypeScript adds trivy via SCA; Dockerfile should not add a duplicate
+  it('skips duplicate grype when already recommended for SCA', () => {
+    // TypeScript adds osv-scanner via SCA; Dockerfile should not add a duplicate
     const plan = buildPlanFromAnalysis(
       makeAnalysis({ hasDockerfile: true, language: 'TypeScript' }),
       { repo: 'test/repo' }
     );
 
-    const trivyRecs = plan.recommendations.filter((r) => r.name === 'trivy');
-    expect(trivyRecs.length).toBe(1);
+    const grypeRecs = plan.recommendations.filter((r) => r.name === 'grype');
+    expect(grypeRecs.length).toBe(1);
   });
 
   it('adds IaC scanning when Helm charts present', () => {
@@ -206,7 +206,7 @@ describe('buildPlanFromAnalysis', () => {
 
     const imageCurrencyRecs = plan.recommendations.filter((r) => r.category === 'image-currency');
     expect(imageCurrencyRecs.length).toBe(1);
-    expect(imageCurrencyRecs[0]?.name).toBe('trivy-image');
+    expect(imageCurrencyRecs[0]?.name).toBe('grype-image');
   });
 
   it('image-currency rationale mentions severity filtering and pinned tags', () => {
@@ -214,7 +214,7 @@ describe('buildPlanFromAnalysis', () => {
       repo: 'test/repo',
     });
 
-    const rec = plan.recommendations.find((r) => r.name === 'trivy-image');
+    const rec = plan.recommendations.find((r) => r.name === 'grype-image');
     expect(rec?.rationale).toContain('CRITICAL,HIGH');
     expect(rec?.rationale).toContain(':latest');
     expect(rec?.rationale).toContain('Alpine');
@@ -226,9 +226,9 @@ describe('buildPlanFromAnalysis', () => {
       { repo: 'test/repo' }
     );
 
-    const rec = plan.recommendations.find((r) => r.name === 'trivy-image');
+    const rec = plan.recommendations.find((r) => r.name === 'grype-image');
     expect(rec?.ciSnippet).not.toBeNull();
-    expect(rec?.ciSnippet).toContain('scan-type: image');
+    expect(rec?.ciSnippet).toContain('image:');
     expect(rec?.ciSnippet).toContain('severity: CRITICAL,HIGH');
   });
 

@@ -165,7 +165,7 @@ describe('detectTaskCategory', () => {
   });
 
   it('detects devops for vulnerability scanning (#1421)', () => {
-    const match = detectTaskCategory('Run vulnerability scan with trivy');
+    const match = detectTaskCategory('Run vulnerability scan with grype');
     expect(match).not.toBeNull();
     expect(match?.category).toBe('devops');
   });

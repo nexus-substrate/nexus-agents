@@ -58,7 +58,7 @@ export const IAC_PATTERNS_MODULE: KnowledgeModule = {
       title: 'IaC Security Practices',
       priority: 9,
       content: [
-        'SCANNING: use tfsec, checkov, or trivy for security misconfigurations',
+        'SCANNING: use tfsec, checkov, or grype for security misconfigurations',
         'SECRETS: never hardcode credentials; use vault references or OIDC',
         'LEAST PRIVILEGE: IAM roles scoped to minimum required permissions',
         'ENCRYPTION: enable encryption by default (EBS, S3, RDS, GCS)',

@@ -61,7 +61,7 @@ export function detectCiProvider(entries: readonly string[]): string | null {
 const WORKFLOW_SECURITY_PATTERNS: ReadonlyArray<readonly [string, string]> = [
   ['semgrep', 'semgrep'],
   ['codeql', 'codeql'],
-  ['trivy', 'trivy'],
+  ['grype', 'grype'],
   ['snyk', 'snyk'],
 ];
 
@@ -89,7 +89,7 @@ export function detectSecurityTooling(
   if (entries.includes('.semgrep.yml') || entries.includes('.semgrep')) tools.push('semgrep');
   if (entries.includes('.snyk')) tools.push('snyk');
   if (entries.includes('SECURITY.md')) tools.push('security-policy');
-  if (entries.includes('.trivyignore')) tools.push('trivy');
+  if (entries.includes('.grype.yaml')) tools.push('grype');
   if (entries.includes('CODEOWNERS')) tools.push('codeowners');
   if (workflowEntries !== undefined) {
     tools.push(...detectWorkflowSecurity(workflowEntries, tools));
@@ -114,7 +114,7 @@ const GAP_RULES: ReadonlyArray<readonly [readonly string[], string]> = [
   [['CODEOWNERS'], 'No CODEOWNERS file'],
   [['LICENSE', 'LICENSE.md'], 'No LICENSE file'],
   [
-    ['.semgrep.yml', '.semgrep', '.trivyignore', '.snyk'],
+    ['.semgrep.yml', '.semgrep', '.grype.yaml', '.snyk'],
     'No SAST/SCA security scanning configured',
   ],
   // Test detection handled separately via detectTestInfra (supports monorepo + co-located patterns)
@@ -130,51 +130,51 @@ interface LanguageScanners {
 const LANGUAGE_SCANNER_MATRIX: Readonly<Record<string, LanguageScanners>> = {
   TypeScript: {
     sast: ['semgrep (p/typescript, p/nodejs)', 'eslint-plugin-security'],
-    sca: ['trivy', 'npm audit'],
+    sca: ['osv-scanner', 'npm audit'],
   },
   JavaScript: {
     sast: ['semgrep (p/javascript, p/nodejs)', 'eslint-plugin-security'],
-    sca: ['trivy', 'npm audit'],
+    sca: ['osv-scanner', 'npm audit'],
   },
   Python: {
     sast: ['semgrep (p/python)', 'bandit'],
-    sca: ['trivy', 'pip-audit'],
+    sca: ['osv-scanner', 'pip-audit'],
   },
   Java: {
     sast: ['semgrep (p/java)', 'spotbugs + find-sec-bugs'],
-    sca: ['trivy', 'OWASP dependency-check'],
+    sca: ['osv-scanner', 'OWASP dependency-check'],
   },
   Go: {
     sast: ['semgrep (p/golang)', 'gosec'],
-    sca: ['trivy', 'govulncheck'],
+    sca: ['osv-scanner', 'govulncheck'],
   },
   Rust: {
     sast: ['semgrep (p/rust)'],
-    sca: ['trivy', 'cargo-audit'],
+    sca: ['osv-scanner', 'cargo-audit'],
   },
   'C++': {
     sast: ['semgrep (p/c)', 'cppcheck'],
-    sca: ['trivy'],
+    sca: ['osv-scanner'],
   },
   C: {
     sast: ['semgrep (p/c)', 'cppcheck'],
-    sca: ['trivy'],
+    sca: ['osv-scanner'],
   },
   Kotlin: {
     sast: ['semgrep (p/kotlin)', 'detekt'],
-    sca: ['trivy', 'OWASP dependency-check'],
+    sca: ['osv-scanner', 'OWASP dependency-check'],
   },
   Swift: {
     sast: ['semgrep (p/swift)'],
-    sca: ['trivy'],
+    sca: ['osv-scanner'],
   },
   Ruby: {
     sast: ['semgrep (p/ruby)', 'brakeman'],
-    sca: ['trivy', 'bundler-audit'],
+    sca: ['osv-scanner', 'bundler-audit'],
   },
   PHP: {
     sast: ['semgrep (p/php)', 'phpstan'],
-    sca: ['trivy', 'composer audit'],
+    sca: ['osv-scanner', 'composer audit'],
   },
   Shell: {
     sast: ['semgrep (p/bash)', 'shellcheck'],
@@ -182,7 +182,7 @@ const LANGUAGE_SCANNER_MATRIX: Readonly<Record<string, LanguageScanners>> = {
   },
   HCL: {
     sast: ['semgrep (p/terraform)', 'tfsec'],
-    sca: ['trivy'],
+    sca: ['osv-scanner'],
   },
 };
 
@@ -196,7 +196,10 @@ export function getLanguageRecommendations(
   if (scanners === undefined) return [];
 
   const hasSast = securityTooling.includes('semgrep') || securityTooling.includes('snyk');
-  const hasSca = securityTooling.includes('trivy') || securityTooling.includes('snyk');
+  const hasSca =
+    securityTooling.includes('osv-scanner') ||
+    securityTooling.includes('grype') ||
+    securityTooling.includes('snyk');
 
   const recs: string[] = [];
   if (!hasSast && scanners.sast.length > 0) {

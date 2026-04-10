@@ -187,8 +187,8 @@ describe('detectSecurityTooling', () => {
     expect(detectSecurityTooling(['SECURITY.md'])).toContain('security-policy');
   });
 
-  it('detects trivy from .trivyignore', () => {
-    expect(detectSecurityTooling(['.trivyignore'])).toContain('trivy');
+  it('detects grype from .grype.yaml', () => {
+    expect(detectSecurityTooling(['.grype.yaml'])).toContain('grype');
   });
 
   it('detects codeowners from CODEOWNERS', () => {
@@ -276,8 +276,8 @@ describe('getLanguageRecommendations', () => {
     expect(recs.some((r) => r.includes('SCA'))).toBe(true);
   });
 
-  it('skips SCA recommendation when trivy is present', () => {
-    const recs = getLanguageRecommendations('TypeScript', ['trivy']);
+  it('skips SCA recommendation when osv-scanner or grype is present', () => {
+    const recs = getLanguageRecommendations('TypeScript', ['osv-scanner']);
     expect(recs.some((r) => r.includes('SAST'))).toBe(true);
     expect(recs.some((r) => r.includes('SCA'))).toBe(false);
   });
@@ -369,8 +369,8 @@ describe('identifyGaps', () => {
     expect(gaps).toContain('No SAST/SCA security scanning configured');
   });
 
-  it('.trivyignore satisfies SAST/SCA check', () => {
-    const entries = fullEntries.map((e) => (e === '.semgrep.yml' ? '.trivyignore' : e));
+  it('.grype.yaml satisfies SAST/SCA check', () => {
+    const entries = fullEntries.map((e) => (e === '.semgrep.yml' ? '.grype.yaml' : e));
     const gaps = identifyGaps(entries, 'github-actions');
     expect(gaps).not.toContain('No SAST/SCA security scanning configured');
   });

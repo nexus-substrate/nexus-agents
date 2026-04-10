@@ -295,8 +295,8 @@ describe('getLanguageRecommendations', () => {
     expect(recs.some((r) => r.includes('SCA'))).toBe(true);
   });
 
-  it('skips SCA when trivy is present', () => {
-    const recs = getLanguageRecommendations('Go', ['trivy']);
+  it('skips SCA when grype is present', () => {
+    const recs = getLanguageRecommendations('Go', ['grype']);
     expect(recs.some((r) => r.includes('SCA'))).toBe(false);
     expect(recs.some((r) => r.includes('SAST'))).toBe(true);
   });

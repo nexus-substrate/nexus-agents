@@ -2,8 +2,9 @@
  * Supply Chain Security Knowledge Module
  *
  * Domain knowledge for supply chain attack detection and prevention,
- * derived from adversary-lab research on Trivy/TeamPCP (March 2026)
+ * derived from adversary-lab research on Aqua Security/TeamPCP (March 2026)
  * and CyberStrike/FortiGate (Jan-Feb 2026) incidents.
+ * Note: Trivy (Aqua) replaced with Grype (Anchore) + OSV-Scanner (Google) per #1690.
  *
  * @module agents/experts/knowledge/security/supply-chain
  * (Source: adversary-lab research, nexus-agents #1605)
