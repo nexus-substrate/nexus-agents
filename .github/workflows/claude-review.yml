@@ -44,7 +44,7 @@ jobs:
           fetch-depth: 0
 
       - name: Claude Code Review
-        uses: anthropics/claude-code-action@88c168b39e7e64da0286d812b6e9fbebb6708185 # v1
+        uses: anthropics/claude-code-action@657fb7c9c986158a19624b357bcbc8c6deb83598 # v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           track_progress: true
@@ -128,7 +128,7 @@ jobs:
           fetch-depth: 0
 
       - name: Claude Interactive Response
-        uses: anthropics/claude-code-action@88c168b39e7e64da0286d812b6e9fbebb6708185 # v1
+        uses: anthropics/claude-code-action@657fb7c9c986158a19624b357bcbc8c6deb83598 # v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           track_progress: true
