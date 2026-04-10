@@ -93,6 +93,15 @@ export {
   SEVERITY_ORDER,
 } from './sarif-types.js';
 
+// Finding triage — LLM false positive filter (#1681 Phase 2)
+export {
+  triageFinding,
+  triageFindings,
+  DEFAULT_CONFIG as DEFAULT_TRIAGE_CONFIG,
+} from './finding-triage.js';
+export type { TriageVerdict, TriageConfig } from './finding-triage.js';
+export { TriageVerdictSchema } from './finding-triage.js';
+
 // Quality gate engine (#1684)
 export { runQualityGate } from './quality-gate.js';
 export type { GateCheckFn } from './quality-gate.js';
