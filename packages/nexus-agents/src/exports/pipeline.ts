@@ -138,4 +138,16 @@ export {
   cleanupCheckpoint,
   checkpointToResult,
   type PipelineCheckpointState,
+  // Research Pipeline (#1711)
+  runResearchPipeline,
+  createResearchStages,
+  type ResearchPipelineStages,
+  type ResearchPipelineOptions,
+  type ResearchPipelineResult,
+  type ResearchTrack,
+  type TrackFinding,
+  type EvidenceItem,
+  type ResearchSynthesis,
+  type ResearchDeliverable,
+  type ResearchAgentConfig,
 } from '../pipeline/index.js';

@@ -209,6 +209,23 @@ export type {
 export { runQaLoop, DEFAULT_MAX_QA_ITERATIONS } from '../orchestration/qa-loop.js';
 export type { QaVerdict, QaReviewOutput, QaLoopResult } from '../orchestration/qa-loop.js';
 
+// Research Pipeline — external research + project feasibility (#1711)
+export { runResearchPipeline } from './research-pipeline.js';
+export type {
+  ResearchPipelineStages,
+  ResearchPipelineOptions,
+  ResearchPipelineResult,
+  ResearchTrack,
+  TrackFinding,
+  EvidenceItem,
+  ResearchSynthesis,
+  ResearchDeliverable,
+} from './research-pipeline.js';
+
+// Research Agent Executor — wires research stages to real agents (#1711)
+export { createResearchStages } from './research-agent-executor.js';
+export type { ResearchAgentConfig } from './research-agent-executor.js';
+
 // Replay — decision trace comparison (#1688)
 export { parseTraceJsonl, extractDecisions, compareDecisions } from '../replay/replay-executor.js';
 export type { TracedDecision, ReplayComparison, ReplaySummary } from '../replay/replay-executor.js';
