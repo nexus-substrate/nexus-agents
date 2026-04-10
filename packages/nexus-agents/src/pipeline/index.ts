@@ -226,6 +226,30 @@ export type {
 export { runIterativeConsensus } from './iterative-consensus.js';
 export type { IterativeConsensusConfig, IterativeConsensusResult } from './iterative-consensus.js';
 
+// Stage Types — shared interfaces for graph-backed pipelines (#1735 Phase 2)
+export { PIPELINE_STATE_KEYS } from './stage-types.js';
+export type {
+  IPipelineStage,
+  PipelineContext,
+  StageOutput,
+  PipelineTemplate,
+  PipelineEdge,
+} from './stage-types.js';
+
+// Pipeline Graph Compiler (#1735 Phase 2)
+export { compilePipelineGraph } from './pipeline-graph.js';
+export type { PipelineGraphResult, StageRegistry } from './pipeline-graph.js';
+
+// Pipeline Templates (#1735 Phase 2)
+export {
+  DEV_PIPELINE_TEMPLATE,
+  RESEARCH_PIPELINE_TEMPLATE,
+  AUDIT_PIPELINE_TEMPLATE,
+  PIPELINE_TEMPLATES,
+  getTemplate,
+  listTemplateIds,
+} from './templates.js';
+
 // Replay — decision trace comparison (#1688)
 export { parseTraceJsonl, extractDecisions, compareDecisions } from '../replay/replay-executor.js';
 export type { TracedDecision, ReplayComparison, ReplaySummary } from '../replay/replay-executor.js';
