@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */ // Pipeline orchestration — cohesive single module (governance: 400-600 OK)
 /**
  * Multi-Agent Development Pipeline (#1684)
  *
@@ -17,15 +18,22 @@
  * @module pipeline/dev-pipeline
  */
 
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+
 import { runQaLoop } from '../orchestration/qa-loop.js';
 
 import { createLogger } from '../core/index.js';
+import { getPipelineEventBus } from './event-bus.js';
 import {
   saveStageCheckpoint,
   loadCheckpointState,
   cleanupCheckpoint,
 } from './pipeline-checkpoint.js';
 import type { PipelineCheckpointState } from './pipeline-checkpoint.js';
+import { TraceWriter } from './trace-writer.js';
+import type { IHindsightBeliefMemory } from '../context/belief-memory-interface.js';
+import type { HindsightRecord } from '../context/belief-hindsight-types.js';
 
 const logger = createLogger({ component: 'dev-pipeline' });
 
@@ -152,6 +160,8 @@ export interface DevPipelineOptions {
    * - 'harness': stops after decompose, returns tasks for external implementation
    */
   readonly mode?: PipelineMode | undefined;
+  /** Optional BeliefMemory for hindsight updates after plan outcomes (#1720). */
+  readonly beliefMemory?: IHindsightBeliefMemory | undefined;
 }
 
 /**
@@ -173,8 +183,31 @@ export async function runDevPipeline(
   const sid = options?.sessionId;
   const prior = sid !== undefined ? loadCheckpointState(sid) : null;
 
+  // Wire TraceWriter for execution replay (#1719)
+  const traceWriter = createTraceWriter(sid);
+
+  try {
+    return await runDevPipelineInner(task, stages, options, sid, prior);
+  } finally {
+    await flushTraceWriter(traceWriter);
+  }
+}
+
+/** Core pipeline logic, separated for trace writer try/finally. */
+async function runDevPipelineInner(
+  task: string,
+  stages: DevPipelineStages,
+  options: DevPipelineOptions | undefined,
+  sid: string | undefined,
+  prior: PipelineCheckpointState | null
+): Promise<DevPipelineResult> {
+  const bm = options?.beliefMemory;
+
   // Phases 1-2: Research + Plan/Vote
   const { planResult } = await runPlanningPhase(task, stages, sid, prior);
+
+  // Reinforce/weaken beliefs based on vote outcome (#1720)
+  reinforcePlanBeliefs(bm, task, planResult.iterations);
 
   // DRY RUN: stop after plan+vote, return partial result (#1717)
   if (options?.dryRun === true) {
@@ -197,7 +230,90 @@ export async function runDevPipeline(
   }
 
   // Phases 4-5: Implement + Security
-  return runImplSecurityPhase(planResult, tasks, stages, sid);
+  const result = await runImplSecurityPhase(planResult, tasks, stages, sid);
+
+  // Apply hindsight with actual pipeline outcome (#1720)
+  applyPipelineHindsight(bm, task, sid, result);
+
+  return result;
+}
+
+/** Create a TraceWriter when sessionId is available (#1719). */
+function createTraceWriter(sessionId: string | undefined): TraceWriter | null {
+  if (sessionId === undefined) return null;
+  try {
+    const tracesDir = join(homedir(), '.nexus-agents', 'traces');
+    return new TraceWriter(getPipelineEventBus(), {
+      runsDir: tracesDir,
+      runId: `pipeline-${sessionId}`,
+    });
+  } catch (error: unknown) {
+    logger.warn('Failed to create TraceWriter', { error: String(error) });
+    return null;
+  }
+}
+
+/** Flush and stop the TraceWriter, swallowing errors. */
+async function flushTraceWriter(writer: TraceWriter | null): Promise<void> {
+  if (writer === null) return;
+  try {
+    await writer.flush();
+  } catch (error: unknown) {
+    logger.warn('Failed to flush execution trace', { error: String(error) });
+  } finally {
+    writer.stop();
+  }
+}
+
+/**
+ * Reinforce or weaken beliefs based on plan vote outcome (#1720).
+ * First-iteration approval → reinforce. Multiple iterations → weaken.
+ * Fire-and-forget — pipeline does not block on belief updates.
+ */
+function reinforcePlanBeliefs(
+  bm: IHindsightBeliefMemory | undefined,
+  task: string,
+  iterations: number
+): void {
+  if (bm === undefined) return;
+  const beliefId = `plan-approach:${task.slice(0, 80)}`;
+  if (iterations <= 1) {
+    void bm.reinforce(beliefId, 'Plan approved on first vote iteration').catch(() => undefined);
+  } else {
+    void bm
+      .weaken(beliefId, `Plan required ${String(iterations)} vote iterations before approval`)
+      .catch(() => undefined);
+  }
+}
+
+/**
+ * Apply hindsight with actual pipeline outcome (#1720).
+ * Fire-and-forget — pipeline does not block on hindsight persistence.
+ */
+function applyPipelineHindsight(
+  bm: IHindsightBeliefMemory | undefined,
+  task: string,
+  sessionId: string | undefined,
+  result: DevPipelineResult
+): void {
+  if (bm === undefined) return;
+  const record: HindsightRecord = {
+    hindsightId: `pipeline-${sessionId ?? 'ephemeral'}-${Date.now().toString(36)}`,
+    taskId: sessionId ?? task.slice(0, 40),
+    priorBeliefs: [],
+    expectedOutcome: 'Pipeline completes with all gates passed',
+    actualOutcome: result.completed
+      ? `Completed: ${String(result.tasks.length)} tasks, security ${result.securityPassed ? 'passed' : 'failed'}`
+      : `Incomplete: ${String(result.voteIterations)} vote iterations, ${String(result.qaIterations)} QA iterations`,
+    outcomeMatched: result.completed && result.securityPassed,
+    correctedBeliefs: [],
+    newBeliefs: [],
+    lessons: result.completed
+      ? [`Pipeline succeeded for task type: ${task.slice(0, 60)}`]
+      : [`Pipeline did not complete — review plan approach for: ${task.slice(0, 60)}`],
+    createdAt: new Date(),
+  };
+  void bm.applyHindsight(record).catch(() => undefined);
 }
 
 /** Build a partial result for dry-run mode. */
