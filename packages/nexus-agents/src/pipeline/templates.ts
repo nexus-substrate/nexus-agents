@@ -45,6 +45,28 @@ export const AUDIT_PIPELINE_TEMPLATE: PipelineTemplate = {
 };
 
 // ============================================================================
+// Greenfield Pipeline Template
+// ============================================================================
+
+/** Greenfield pipeline: parseSpec → research → plan → vote → scaffold → decompose → implement → qa → security. */
+export const GREENFIELD_PIPELINE_TEMPLATE: PipelineTemplate = {
+  id: 'greenfield',
+  name: 'Greenfield Pipeline',
+  stages: [
+    'parseSpec',
+    'research',
+    'plan',
+    'vote',
+    'scaffold',
+    'decompose',
+    'implement',
+    'qa',
+    'security',
+  ],
+  dryRunStopAfter: 'vote',
+};
+
+// ============================================================================
 // Template Registry
 // ============================================================================
 
@@ -53,6 +75,7 @@ export const PIPELINE_TEMPLATES: ReadonlyMap<string, PipelineTemplate> = new Map
   ['dev', DEV_PIPELINE_TEMPLATE],
   ['research', RESEARCH_PIPELINE_TEMPLATE],
   ['audit', AUDIT_PIPELINE_TEMPLATE],
+  ['greenfield', GREENFIELD_PIPELINE_TEMPLATE],
 ]);
 
 /** Get a pipeline template by ID. */

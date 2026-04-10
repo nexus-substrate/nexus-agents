@@ -74,6 +74,17 @@ describe('classifyTask', () => {
     expect(result.pipelineType).toBe('dev');
   });
 
+  it('classifies greenfield tasks', () => {
+    const result = classifyTask('Create a new project from scratch with scaffold');
+    expect(result.pipelineType).toBe('greenfield');
+    expect(result.keywords).toContain('new project');
+  });
+
+  it('detects greenfield from spec file language', () => {
+    const result = classifyTask('Bootstrap a greenfield repo and initialize project structure');
+    expect(result.pipelineType).toBe('greenfield');
+  });
+
   it('detects complex tasks', () => {
     const result = classifyTask('Comprehensive system-wide architecture refactor');
     expect(result.complexity).toBe('complex');

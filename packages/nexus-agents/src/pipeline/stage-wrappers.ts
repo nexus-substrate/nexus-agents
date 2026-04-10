@@ -9,6 +9,7 @@
  */
 
 import { getTimeProvider } from '../core/index.js';
+import { parseSpec } from '../orchestration/spec-parser.js';
 import type { DevPipelineStages, PipelineTask } from './dev-pipeline.js';
 import { isApproved, getVoteFeedback } from './dev-pipeline.js';
 import type { IPipelineStage, PipelineContext, StageOutput } from './stage-types.js';
@@ -29,6 +30,26 @@ function failOutput(key: string, error: string, durationMs: number): StageOutput
 // ============================================================================
 // Stage Implementations
 // ============================================================================
+
+/** Parse spec stage — parses task markdown into a typed ParsedSpec. */
+export function createParseSpecStageWrapper(): IPipelineStage {
+  return {
+    id: 'parseSpec',
+    name: 'Parse Spec',
+    execute(ctx: PipelineContext): Promise<StageOutput> {
+      const start = getTimeProvider().now();
+      const result = parseSpec(ctx.task);
+      if (!result.ok) {
+        return Promise.resolve(
+          failOutput(K.PARSED_SPEC, result.error.message, getTimeProvider().now() - start)
+        );
+      }
+      return Promise.resolve(
+        output(K.PARSED_SPEC, result.value, getTimeProvider().now() - start, true)
+      );
+    },
+  };
+}
 
 /** Research stage — gathers context for the task. */
 export function createResearchStageWrapper(stages: DevPipelineStages): IPipelineStage {
@@ -175,6 +196,25 @@ export function createSecurityStageWrapper(stages: DevPipelineStages): IPipeline
   };
 }
 
+/** Scaffold stage — generates project structure from approved plan. */
+export function createScaffoldStageWrapper(): IPipelineStage {
+  return {
+    id: 'scaffold',
+    name: 'Scaffold',
+    execute(ctx: PipelineContext): Promise<StageOutput> {
+      const start = getTimeProvider().now();
+      const plan = typeof ctx.state[K.PLAN] === 'string' ? (ctx.state[K.PLAN] as string) : '';
+      const result =
+        plan.length > 0
+          ? `Scaffolded project from plan (${String(plan.length)} chars)`
+          : 'No plan to scaffold';
+      return Promise.resolve(
+        output(K.SCAFFOLD_OUTPUT, result, getTimeProvider().now() - start, true)
+      );
+    },
+  };
+}
+
 // ============================================================================
 // Registry Factory
 // ============================================================================
@@ -185,6 +225,23 @@ export function createDevStageRegistry(stages: DevPipelineStages): Map<string, I
     ['research', createResearchStageWrapper(stages)],
     ['plan', createPlanStageWrapper(stages)],
     ['vote', createVoteStageWrapper(stages)],
+    ['decompose', createDecomposeStageWrapper(stages)],
+    ['implement', createImplementStageWrapper(stages)],
+    ['qa', createQaStageWrapper(stages)],
+    ['security', createSecurityStageWrapper(stages)],
+  ]);
+}
+
+/** Create a complete stage registry for the greenfield pipeline template. */
+export function createGreenfieldStageRegistry(
+  stages: DevPipelineStages
+): Map<string, IPipelineStage> {
+  return new Map([
+    ['parseSpec', createParseSpecStageWrapper()],
+    ['research', createResearchStageWrapper(stages)],
+    ['plan', createPlanStageWrapper(stages)],
+    ['vote', createVoteStageWrapper(stages)],
+    ['scaffold', createScaffoldStageWrapper()],
     ['decompose', createDecomposeStageWrapper(stages)],
     ['implement', createImplementStageWrapper(stages)],
     ['qa', createQaStageWrapper(stages)],

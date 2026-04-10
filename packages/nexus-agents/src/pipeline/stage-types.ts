@@ -94,5 +94,7 @@ export const PIPELINE_STATE_KEYS = {
   FINDINGS: 'findings',
   SYNTHESIS: 'synthesis',
   DELIVERABLES: 'deliverables',
+  PARSED_SPEC: 'parsedSpec',
+  SCAFFOLD_OUTPUT: 'scaffoldOutput',
   COMPLETED: 'completed',
 } as const;

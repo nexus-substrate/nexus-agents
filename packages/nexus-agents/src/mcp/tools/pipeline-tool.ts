@@ -9,12 +9,17 @@
  */
 
 import { z } from 'zod';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { getErrorMessage } from '../../core/index.js';
 import { runAdaptiveOrchestrator } from '../../pipeline/adaptive-orchestrator.js';
 import type { AdaptiveOrchestratorResult } from '../../pipeline/adaptive-orchestrator.js';
 import { createAgentStages } from '../../pipeline/agent-executor.js';
-import { createDevStageRegistry } from '../../pipeline/stage-wrappers.js';
+import {
+  createDevStageRegistry,
+  createGreenfieldStageRegistry,
+} from '../../pipeline/stage-wrappers.js';
 import { listTemplateIds } from '../../pipeline/templates.js';
 
 // ============================================================================
@@ -28,7 +33,13 @@ export const PipelineInputSchema = z.object({
     .min(5)
     .max(10000)
     .describe('Task description — pipeline template auto-selected based on content'),
-  /** Override template (dev, research, audit). Auto-detected if omitted. */
+  /** Path to a spec file (.md, .yaml) to use as task input. */
+  specFile: z
+    .string()
+    .max(500)
+    .optional()
+    .describe('Path to a spec file — content prepended to task for greenfield projects'),
+  /** Override template (dev, research, audit, greenfield). Auto-detected if omitted. */
   template: z
     .string()
     .max(50)
@@ -62,6 +73,32 @@ function buildOutput(result: AdaptiveOrchestratorResult): Record<string, unknown
 }
 
 // ============================================================================
+// Input Resolution
+// ============================================================================
+
+/** Resolve task text — prepend spec file content if provided. */
+function resolveTask(task: string, specFile: string | undefined): string {
+  if (specFile === undefined) return task;
+  const resolved = path.resolve(specFile);
+  if (!fs.existsSync(resolved)) {
+    throw new Error(`Spec file not found: ${resolved}`);
+  }
+  const specContent = fs.readFileSync(resolved, 'utf-8');
+  return `${specContent}\n\n---\n\n${task}`;
+}
+
+/** Select the appropriate stage registry based on template. */
+function selectStageRegistry(
+  template: string | undefined,
+  agentStages: ReturnType<typeof createAgentStages>
+): Map<string, import('../../pipeline/stage-types.js').IPipelineStage> {
+  if (template === 'greenfield') {
+    return createGreenfieldStageRegistry(agentStages);
+  }
+  return createDevStageRegistry(agentStages);
+}
+
+// ============================================================================
 // Tool Registration
 // ============================================================================
 
@@ -75,12 +112,13 @@ export function registerPipelineTool(
     const input = PipelineInputSchema.parse(args);
 
     try {
+      const task = resolveTask(input.task, input.specFile);
       const agentStages = createAgentStages({
         simulateVotes: input.simulateVotes,
       });
-      const stages = createDevStageRegistry(agentStages);
+      const stages = selectStageRegistry(input.template, agentStages);
 
-      const result = await runAdaptiveOrchestrator(input.task, {
+      const result = await runAdaptiveOrchestrator(task, {
         stages,
         templateId: input.template,
         dryRun: input.dryRun,

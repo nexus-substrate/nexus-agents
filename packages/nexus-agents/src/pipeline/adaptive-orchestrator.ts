@@ -50,7 +50,7 @@ export interface TaskClassification {
 }
 
 /** Pipeline type derived from task analysis. */
-export type PipelineType = 'dev' | 'research' | 'audit' | 'general';
+export type PipelineType = 'dev' | 'research' | 'audit' | 'greenfield' | 'general';
 
 // ============================================================================
 // Task Classification
@@ -99,6 +99,18 @@ const PIPELINE_TYPE_KEYWORDS: Record<PipelineType, readonly string[]> = {
     'owasp',
     'threat model',
   ],
+  greenfield: [
+    'new project',
+    'from scratch',
+    'scaffold',
+    'bootstrap',
+    'create repo',
+    'greenfield',
+    'project spec',
+    'spec file',
+    'starter',
+    'initialize',
+  ],
   general: [],
 };
 
@@ -136,7 +148,13 @@ export function classifyTask(task: string): TaskClassification {
 
 /** Calculate match scores for each pipeline type. */
 function calculateTypeScores(lower: string): Record<PipelineType, number> {
-  const scores: Record<PipelineType, number> = { dev: 0, research: 0, audit: 0, general: 0 };
+  const scores: Record<PipelineType, number> = {
+    dev: 0,
+    research: 0,
+    audit: 0,
+    greenfield: 0,
+    general: 0,
+  };
   for (const [type, keywords] of Object.entries(PIPELINE_TYPE_KEYWORDS)) {
     scores[type as PipelineType] = keywords.filter((kw) => lower.includes(kw)).length;
   }
