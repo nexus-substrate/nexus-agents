@@ -384,7 +384,13 @@ function extractConditionalMeta(vote: VoteResult): ConditionalMeta {
   return { conditional: false, conditions: [], caveats: [] };
 }
 
-/** Plan → Vote → iterate on feedback until approved or exhausted. */
+/**
+ * Plan → Vote → iterate on feedback until approved or exhausted.
+ *
+ * Uses DevPipelineStages.vote() for each round (preserves progress
+ * callbacks, outcome recording, event emission from agent-executor).
+ * The iteration pattern matches runIterativeConsensus (#1734).
+ */
 async function planVoteLoop(
   task: string,
   research: string,
