@@ -250,6 +250,13 @@ export {
   listTemplateIds,
 } from './templates.js';
 
+// Stage Wrappers — adapt DevPipelineStages to IPipelineStage (#1735 Phase 2)
+export { createDevStageRegistry } from './stage-wrappers.js';
+
+// Graph Pipeline Runner — execute pipelines via graph executor (#1735 Phase 2)
+export { runGraphPipeline, extractStateValue } from './graph-pipeline-runner.js';
+export type { GraphPipelineOptions, GraphPipelineResult } from './graph-pipeline-runner.js';
+
 // Replay — decision trace comparison (#1688)
 export { parseTraceJsonl, extractDecisions, compareDecisions } from '../replay/replay-executor.js';
 export type { TracedDecision, ReplayComparison, ReplaySummary } from '../replay/replay-executor.js';
