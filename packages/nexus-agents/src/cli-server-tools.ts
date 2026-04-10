@@ -46,6 +46,7 @@ import {
 // Import mock directly from source (not public API - used as fallback when no adapter)
 import { createMockTechLead } from './mcp/tools/orchestrate.js';
 import { registerDevPipelineTool } from './mcp/tools/dev-pipeline-tool.js';
+import { registerPipelineTool } from './mcp/tools/pipeline-tool.js';
 
 import type { Expert } from './agents/index.js';
 import { createRealWorkflowEngine } from './workflows/index.js';
@@ -559,6 +560,7 @@ const STANDALONE_TOOLS: ReadonlyArray<{
   { name: 'extract_symbols', register: registerExtractSymbolsTool as never },
   { name: 'search_codebase', register: registerSearchCodebaseTool as never },
   { name: 'run_dev_pipeline', register: registerDevPipelineTool as never },
+  { name: 'run_pipeline', register: registerPipelineTool as never },
 ];
 
 /** Registers tool categories, skipping those blocked by allowlist. (Issue #740) */

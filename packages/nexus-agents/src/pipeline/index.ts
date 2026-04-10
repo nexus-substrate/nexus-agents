@@ -257,6 +257,15 @@ export { createDevStageRegistry } from './stage-wrappers.js';
 export { runGraphPipeline, extractStateValue } from './graph-pipeline-runner.js';
 export type { GraphPipelineOptions, GraphPipelineResult } from './graph-pipeline-runner.js';
 
+// Adaptive Orchestrator — task-driven pipeline selection (#1736 Phase 3)
+export { runAdaptiveOrchestrator, classifyTask } from './adaptive-orchestrator.js';
+export type {
+  AdaptiveOrchestratorOptions,
+  AdaptiveOrchestratorResult,
+  TaskClassification,
+  PipelineType,
+} from './adaptive-orchestrator.js';
+
 // Replay — decision trace comparison (#1688)
 export { parseTraceJsonl, extractDecisions, compareDecisions } from '../replay/replay-executor.js';
 export type { TracedDecision, ReplayComparison, ReplaySummary } from '../replay/replay-executor.js';

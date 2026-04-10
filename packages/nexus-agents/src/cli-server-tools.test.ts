@@ -234,6 +234,11 @@ vi.mock('./mcp/tools/dev-pipeline-tool.js', () => ({
   registerDevPipelineTool: vi.fn(),
 }));
 
+// Mock unified pipeline tool (tested separately)
+vi.mock('./mcp/tools/pipeline-tool.js', () => ({
+  registerPipelineTool: vi.fn(),
+}));
+
 // Mock observability proxy as identity (tested separately in tool-observability-proxy.test.ts)
 vi.mock('./mcp/tools/tool-observability-proxy.js', () => ({
   createToolObservabilityProxy: (server: unknown) => server,
