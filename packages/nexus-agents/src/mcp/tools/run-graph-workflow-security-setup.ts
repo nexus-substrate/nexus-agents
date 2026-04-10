@@ -4,7 +4,7 @@
  * Three independent pipeline templates for setting up security scanning CI:
  * - security-setup-semgrep: SAST via Semgrep (language-aware rule selection)
  * - security-setup-zap: DAST via ZAP (target URL baseline scanning)
- * - security-setup-trivy: SCA/container scanning via Trivy
+ * - security-setup-grype: SCA/container scanning via Grype
  *
  * Each template is independently invocable so projects import only the
  * scanners relevant to their stack and threat model.
@@ -161,10 +161,10 @@ export const ZAP_SETUP_METADATA: GraphWorkflowInfo = {
   hasConditionalEdges: false,
 };
 
-export const TRIVY_SETUP_METADATA: GraphWorkflowInfo = {
-  name: 'security-setup-trivy',
+export const GRYPE_SETUP_METADATA: GraphWorkflowInfo = {
+  name: 'security-setup-grype',
   description:
-    'SCA pipeline: generates GitHub Actions workflow for Trivy filesystem ' +
+    'SCA pipeline: generates GitHub Actions workflow for Grype filesystem ' +
     'and container image scanning. Detects stack for package-manager targeting.',
   inputFields: ['stack', 'scanType'],
   nodeCount: 3,
@@ -174,7 +174,7 @@ export const TRIVY_SETUP_METADATA: GraphWorkflowInfo = {
 export const SECURITY_SETUP_TEMPLATES: readonly GraphWorkflowInfo[] = [
   SEMGREP_SETUP_METADATA,
   ZAP_SETUP_METADATA,
-  TRIVY_SETUP_METADATA,
+  GRYPE_SETUP_METADATA,
 ];
 
 // ============================================================================
@@ -430,17 +430,17 @@ export function createZapSetupGraph(): CompiledGraph | undefined {
 }
 
 // ============================================================================
-// Trivy Setup — SCA / Container Pipeline
+// Grype Setup — SCA / Container Pipeline
 // ============================================================================
 
-const TRIVY_SCAN_TYPES: Record<string, string> = {
+const GRYPE_SCAN_TYPES: Record<string, string> = {
   fs: "'fs'",
   image: "'image'",
   repo: "'repo'",
 };
 
-/** Detect stack and resolve scan type for Trivy. */
-export function trivyDetectStackHandler(state: Readonly<GraphState>): Promise<Partial<GraphState>> {
+/** Detect stack and resolve scan type for Grype. */
+export function grypeDetectStackHandler(state: Readonly<GraphState>): Promise<Partial<GraphState>> {
   const detected = normalizeStack(state['stack']);
   const rawScanType = state['scanType'];
   let scanTypeStr = 'fs';
@@ -448,12 +448,12 @@ export function trivyDetectStackHandler(state: Readonly<GraphState>): Promise<Pa
     scanTypeStr = toStr(rawScanType);
   }
   const rawType = scanTypeStr.toLowerCase();
-  const scanType = rawType in TRIVY_SCAN_TYPES ? rawType : 'fs';
+  const scanType = rawType in GRYPE_SCAN_TYPES ? rawType : 'fs';
   return Promise.resolve({ detectedStack: detected, resolvedScanType: scanType });
 }
 
-/** Generate GitHub Actions workflow for Trivy. */
-export function trivyGenerateConfigHandler(
+/** Generate GitHub Actions workflow for Grype. */
+export function grypeGenerateConfigHandler(
   state: Readonly<GraphState>
 ): Promise<Partial<GraphState>> {
   const rawScanType = state['resolvedScanType'];
@@ -461,32 +461,30 @@ export function trivyGenerateConfigHandler(
   if (rawScanType !== undefined && rawScanType !== null) {
     scanType = toStr(rawScanType);
   }
-  const scanTypeYaml = TRIVY_SCAN_TYPES[scanType] ?? "'fs'";
+  const scanTypeYaml = GRYPE_SCAN_TYPES[scanType] ?? "'fs'";
 
   const ciConfig =
-    ciHeader('Trivy Security Scan') +
+    ciHeader('Grype Security Scan') +
     '\n' +
     [
-      '  trivy:',
+      '  grype:',
       '    runs-on: ubuntu-latest',
       '    steps:',
       '      - uses: actions/checkout@v4',
-      '      - name: Run Trivy vulnerability scanner',
-      '        uses: aquasecurity/trivy-action@master',
+      '      - name: Run Grype vulnerability scanner',
+      '        uses: anchore/scan-action@v4',
       '        with:',
-      `          scan-type: ${scanTypeYaml}`,
-      "          scan-ref: '.'",
-      "          format: 'sarif'",
-      "          output: 'trivy-results.sarif'",
+      `          path: ${scanTypeYaml}`,
       '          severity: CRITICAL,HIGH',
+      "          output: 'grype-results.sarif'",
       '      - name: Upload SARIF',
       '        uses: github/codeql-action/upload-sarif@v3',
       '        with:',
-      '          sarif_file: trivy-results.sarif',
+      '          sarif_file: grype-results.sarif',
     ].join('\n');
 
   const scannerConfig = [
-    '# trivy.yaml',
+    '# grype.yaml',
     'severity:',
     '  - CRITICAL',
     '  - HIGH',
@@ -505,8 +503,8 @@ export function trivyGenerateConfigHandler(
   return Promise.resolve({ ciConfig, scannerConfig });
 }
 
-/** Validate Trivy pipeline output. */
-export function trivyValidateHandler(state: Readonly<GraphState>): Promise<Partial<GraphState>> {
+/** Validate Grype pipeline output. */
+export function grypeValidateHandler(state: Readonly<GraphState>): Promise<Partial<GraphState>> {
   const rawCi = state['ciConfig'];
   let ciConfig = '';
   if (rawCi !== undefined && rawCi !== null) {
@@ -519,14 +517,14 @@ export function trivyValidateHandler(state: Readonly<GraphState>): Promise<Parti
     scannerConfig = toStr(rawScanner);
   }
   const errors = validateCiConfig(ciConfig);
-  if (!ciConfig.includes('trivy')) errors.push('Missing trivy job');
+  if (!ciConfig.includes('grype')) errors.push('Missing grype job');
   if (scannerConfig.length === 0) errors.push('Empty scanner config');
   const output = buildOutput(ciConfig, scannerConfig, errors);
   return Promise.resolve({ validationErrors: errors, output });
 }
 
-/** Creates the Trivy SCA setup graph. */
-export function createTrivySetupGraph(): CompiledGraph | undefined {
+/** Creates the Grype SCA setup graph. */
+export function createGrypeSetupGraph(): CompiledGraph | undefined {
   const result = new GraphBuilder()
     .addState('stack', overwrite(''))
     .addState('scanType', overwrite('fs'))
@@ -536,9 +534,9 @@ export function createTrivySetupGraph(): CompiledGraph | undefined {
     .addState('scannerConfig', overwrite(''))
     .addState('validationErrors', overwrite([] as string[]))
     .addState('output', overwrite(''))
-    .addNode('detect_stack', trivyDetectStackHandler)
-    .addNode('generate_config', trivyGenerateConfigHandler)
-    .addNode('validate', trivyValidateHandler)
+    .addNode('detect_stack', grypeDetectStackHandler)
+    .addNode('generate_config', grypeGenerateConfigHandler)
+    .addNode('validate', grypeValidateHandler)
     .addEdge(START, 'detect_stack')
     .addEdge('detect_stack', 'generate_config')
     .addEdge('generate_config', 'validate')
@@ -558,6 +556,6 @@ export function getSecuritySetupRegistry(): ReadonlyMap<string, GraphFactory> {
   return new Map<string, GraphFactory>([
     ['security-setup-semgrep', createSemgrepSetupGraph],
     ['security-setup-zap', createZapSetupGraph],
-    ['security-setup-trivy', createTrivySetupGraph],
+    ['security-setup-grype', createGrypeSetupGraph],
   ]);
 }

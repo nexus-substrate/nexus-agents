@@ -4,7 +4,7 @@
  * Three independent pipelines:
  * - security-setup-semgrep (SAST)
  * - security-setup-zap (DAST)
- * - security-setup-trivy (SCA/container)
+ * - security-setup-grype (SCA/container)
  *
  * (Source: Issue #1075 — Security Scan Setup graph workflow templates)
  */
@@ -19,12 +19,12 @@ import {
   zapConfigureTargetHandler,
   zapGenerateConfigHandler,
   zapValidateHandler,
-  trivyDetectStackHandler,
-  trivyGenerateConfigHandler,
-  trivyValidateHandler,
+  grypeDetectStackHandler,
+  grypeGenerateConfigHandler,
+  grypeValidateHandler,
   SEMGREP_SETUP_METADATA,
   ZAP_SETUP_METADATA,
-  TRIVY_SETUP_METADATA,
+  GRYPE_SETUP_METADATA,
   SECURITY_SETUP_TEMPLATES,
 } from './run-graph-workflow-security-setup.js';
 
@@ -59,7 +59,7 @@ describe('security setup registry', () => {
     expect([...registry.keys()]).toEqual([
       'security-setup-semgrep',
       'security-setup-zap',
-      'security-setup-trivy',
+      'security-setup-grype',
     ]);
   });
 
@@ -93,9 +93,9 @@ describe('SECURITY_SETUP_TEMPLATES metadata', () => {
     expect(ZAP_SETUP_METADATA.inputFields).toEqual(['targetUrl', 'failThreshold']);
   });
 
-  it('trivy metadata is correct', () => {
-    expect(TRIVY_SETUP_METADATA.name).toBe('security-setup-trivy');
-    expect(TRIVY_SETUP_METADATA.inputFields).toEqual(['stack', 'scanType']);
+  it('grype metadata is correct', () => {
+    expect(GRYPE_SETUP_METADATA.name).toBe('security-setup-grype');
+    expect(GRYPE_SETUP_METADATA.inputFields).toEqual(['stack', 'scanType']);
   });
 });
 
@@ -406,82 +406,82 @@ describe('security-setup-zap full execution', () => {
 });
 
 // ============================================================================
-// Trivy — Node Handlers
+// Grype — Node Handlers
 // ============================================================================
 
-describe('trivyDetectStackHandler', () => {
+describe('grypeDetectStackHandler', () => {
   it('detects valid stack', async () => {
-    const r = await trivyDetectStackHandler({ stack: 'go', scanType: 'fs' });
+    const r = await grypeDetectStackHandler({ stack: 'go', scanType: 'fs' });
     expect(r['detectedStack']).toBe('go');
     expect(r['resolvedScanType']).toBe('fs');
   });
 
   it('resolves image scan type', async () => {
-    const r = await trivyDetectStackHandler({ stack: 'node', scanType: 'image' });
+    const r = await grypeDetectStackHandler({ stack: 'node', scanType: 'image' });
     expect(r['resolvedScanType']).toBe('image');
   });
 
   it('defaults scan type for invalid input', async () => {
-    const r = await trivyDetectStackHandler({ stack: 'node', scanType: 'invalid' });
+    const r = await grypeDetectStackHandler({ stack: 'node', scanType: 'invalid' });
     expect(r['resolvedScanType']).toBe('fs');
   });
 });
 
-describe('trivyGenerateConfigHandler', () => {
-  it('generates CI workflow with trivy job', async () => {
-    const r = await trivyGenerateConfigHandler({ resolvedScanType: 'fs' });
+describe('grypeGenerateConfigHandler', () => {
+  it('generates CI workflow with grype job', async () => {
+    const r = await grypeGenerateConfigHandler({ resolvedScanType: 'fs' });
     const ci = String(r['ciConfig']);
-    expect(ci).toContain('name: Trivy Security Scan');
-    expect(ci).toContain('trivy-action');
-    expect(ci).toContain("scan-type: 'fs'");
+    expect(ci).toContain('name: Grype Security Scan');
+    expect(ci).toContain('anchore/scan-action');
+    expect(ci).toContain("path: 'fs'");
   });
 
   it('uses image scan type', async () => {
-    const r = await trivyGenerateConfigHandler({ resolvedScanType: 'image' });
+    const r = await grypeGenerateConfigHandler({ resolvedScanType: 'image' });
     const ci = String(r['ciConfig']);
-    expect(ci).toContain("scan-type: 'image'");
+    expect(ci).toContain("path: 'image'");
   });
 
   it('generates scanner config with skip dirs', async () => {
-    const r = await trivyGenerateConfigHandler({ resolvedScanType: 'fs' });
+    const r = await grypeGenerateConfigHandler({ resolvedScanType: 'fs' });
     const cfg = String(r['scannerConfig']);
-    expect(cfg).toContain('trivy.yaml');
+    expect(cfg).toContain('grype.yaml');
     expect(cfg).toContain('skip-dirs');
     expect(cfg).toContain('node_modules');
   });
 });
 
-describe('trivyValidateHandler', () => {
+describe('grypeValidateHandler', () => {
   it('passes valid config', async () => {
-    const r = await trivyValidateHandler({
-      ciConfig: 'name: X\non: push\njobs:\n  trivy:',
+    const r = await grypeValidateHandler({
+      ciConfig: 'name: X\non: push\njobs:\n  grype:',
       scannerConfig: 'severity: CRITICAL',
     });
     expect(r['validationErrors']).toEqual([]);
   });
 
-  it('detects missing trivy job', async () => {
-    const r = await trivyValidateHandler({
+  it('detects missing grype job', async () => {
+    const r = await grypeValidateHandler({
       ciConfig: 'name: X\non: push\njobs:\n  other:',
       scannerConfig: 'config',
     });
-    expect(r['validationErrors']).toContain('Missing trivy job');
+    expect(r['validationErrors']).toContain('Missing grype job');
   });
 });
 
 // ============================================================================
-// Trivy — Full Execution
+// Grype — Full Execution
 // ============================================================================
 
-describe('security-setup-trivy full execution', () => {
+describe('security-setup-grype full execution', () => {
   it('runs with default inputs', async () => {
-    const result = await runGraph('security-setup-trivy', { stack: 'node' });
+    const result = await runGraph('security-setup-grype', { stack: 'node' });
     const output = String(result.finalState['output']);
-    expect(output).toContain('Trivy Security Scan');
+    expect(output).toContain('Grype Security Scan');
   });
 
   it('runs with image scan type', async () => {
-    const result = await runGraph('security-setup-trivy', {
+    const result = await runGraph('security-setup-grype', {
       stack: 'node',
       scanType: 'image',
     });
@@ -490,19 +490,19 @@ describe('security-setup-trivy full execution', () => {
   });
 
   it('executes 3 nodes', async () => {
-    const result = await runGraph('security-setup-trivy', { stack: 'go' });
+    const result = await runGraph('security-setup-grype', { stack: 'go' });
     expect(result.nodeResults).toHaveLength(3);
   });
 
   it('produces valid output structure', async () => {
-    const result = await runGraph('security-setup-trivy', { stack: 'python' });
+    const result = await runGraph('security-setup-grype', { stack: 'python' });
     const output = String(result.finalState['output']);
     expect(output).toContain('## CI Workflow');
     expect(output).toContain('## Scanner Configuration');
   });
 
   it('has no validation errors for well-formed config', async () => {
-    const result = await runGraph('security-setup-trivy', { stack: 'node' });
+    const result = await runGraph('security-setup-grype', { stack: 'node' });
     const errors = result.finalState['validationErrors'] as string[];
     expect(errors).toHaveLength(0);
   });

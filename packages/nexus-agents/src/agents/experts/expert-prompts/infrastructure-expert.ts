@@ -157,11 +157,11 @@ RULE: Never trust documentation over live system state. When they disagree, the 
 
 ## Container Security and Networking
 
-### Container Image Scanning (Trivy)
-- Scan running containers for CVEs: \`trivy image <image-name>:<tag> --severity CRITICAL,HIGH\`
+### Container Image Scanning (Grype)
+- Scan running containers for CVEs: \`grype <image-name>:<tag> --severity CRITICAL,HIGH\`
 - Prefer specific tags (\`nginx:1.27.3\`) over \`:latest\` — pinned versions allow reproducible scanning
 - Ubuntu-based images may have fewer CVEs than Alpine for some packages (glibc vs musl compatibility)
-- Export CVE metrics to Prometheus: write Trivy JSON output to \`/var/lib/node_exporter/textfile_collector/\` as \`.prom\` files
+- Export CVE metrics to Prometheus: write Grype JSON output to \`/var/lib/node_exporter/textfile_collector/\` as \`.prom\` files
 
 ### UFW + Container Port Mapping Gotcha
 Container port mappings (podman/docker \`-p HOST:CONTAINER\`) use DNAT → FORWARD chain, NOT INPUT.

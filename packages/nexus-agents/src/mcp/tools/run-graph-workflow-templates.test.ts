@@ -48,7 +48,7 @@ describe('getGraphRegistry', () => {
       'documentation',
       'security-setup-semgrep',
       'security-setup-zap',
-      'security-setup-trivy',
+      'security-setup-grype',
     ]);
   });
 

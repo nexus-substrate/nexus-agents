@@ -38,17 +38,17 @@ function createManifest(overrides?: Partial<ScannerRegistryManifest>): ScannerRe
         pricingModel: 'freemium',
       },
       {
-        name: 'trivy',
-        displayName: 'Trivy',
+        name: 'grype',
+        displayName: 'Grype',
         categories: ['sca', 'container'],
         license: 'Apache-2.0',
         pricingModel: 'free',
-        relationships: [{ target: 'grype', type: 'competes-with' }],
+        relationships: [{ target: 'osv-scanner', type: 'competes-with' }],
       },
     ],
     languageMatrix: {
-      TypeScript: { sast: ['semgrep'], sca: ['trivy', 'npm-audit'] },
-      Python: { sast: ['semgrep', 'bandit'], sca: ['trivy', 'pip-audit'] },
+      TypeScript: { sast: ['semgrep'], sca: ['grype', 'npm-audit'] },
+      Python: { sast: ['semgrep', 'bandit'], sca: ['grype', 'pip-audit'] },
     },
     ...overrides,
   };
@@ -64,7 +64,7 @@ describe('extractScannerEntries', () => {
     const result = extractScannerEntries(manifest);
     expect(result).toHaveLength(2);
     expect(result[0]?.name).toBe('semgrep');
-    expect(result[1]?.name).toBe('trivy');
+    expect(result[1]?.name).toBe('grype');
   });
 
   it('returns empty array for manifest with no scanners', () => {
@@ -75,9 +75,9 @@ describe('extractScannerEntries', () => {
 
   it('preserves relationships on scanner entries', () => {
     const manifest = createManifest();
-    const trivy = extractScannerEntries(manifest).find((s: RegistryScanner) => s.name === 'trivy');
-    expect(trivy?.relationships).toHaveLength(1);
-    expect(trivy?.relationships?.[0]?.type).toBe('competes-with');
+    const grype = extractScannerEntries(manifest).find((s: RegistryScanner) => s.name === 'grype');
+    expect(grype?.relationships).toHaveLength(1);
+    expect(grype?.relationships?.[0]?.type).toBe('competes-with');
   });
 });
 
@@ -96,7 +96,7 @@ describe('extractLanguageMatrix', () => {
     const manifest = createManifest();
     const ts: LanguageMatrixEntry | undefined = extractLanguageMatrix(manifest)['TypeScript'];
     expect(ts?.sast).toEqual(['semgrep']);
-    expect(ts?.sca).toEqual(['trivy', 'npm-audit']);
+    expect(ts?.sca).toEqual(['grype', 'npm-audit']);
   });
 
   it('handles empty language matrix', () => {

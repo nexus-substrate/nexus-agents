@@ -56,10 +56,11 @@ describe('FALLBACK_SCANNER_DATA', () => {
       }
     });
 
-    it('includes key scanners: semgrep, trivy, gitleaks', () => {
+    it('includes key scanners: semgrep, grype, osv-scanner, gitleaks', () => {
       const names = new Set(FALLBACK_SCANNER_DATA.scanners.map((s) => s.name));
       expect(names.has('semgrep')).toBe(true);
-      expect(names.has('trivy')).toBe(true);
+      expect(names.has('grype')).toBe(true);
+      expect(names.has('osv-scanner')).toBe(true);
       expect(names.has('gitleaks')).toBe(true);
     });
 

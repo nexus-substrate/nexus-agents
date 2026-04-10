@@ -150,7 +150,7 @@ export const TASK_SPECIALIZATION_MATRIX: readonly TaskSpecialization[] = [
       'dast',
       'zap',
       'semgrep',
-      'trivy',
+      'grype',
       'fork',
       'kind',
       'cluster',

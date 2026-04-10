@@ -191,7 +191,7 @@ const INFRASTRUCTURE_KNOWLEDGE_SUMMARY = `## Infrastructure Domain Knowledge
 - Document physical topology: rack location, serial numbers, OOB IPs
 
 ### Container Security and Networking
-- Scan images with Trivy (\`--severity CRITICAL,HIGH\`); pin specific tags, not :latest
+- Scan images with Grype (\`--severity CRITICAL,HIGH\`); pin specific tags, not :latest
 - UFW FORWARD chain gotcha: \`ufw allow\` only affects INPUT — use \`ufw route allow\` for container ports
 - Diagnose port conflicts: \`ss -tlnp | grep PORT\`; set SO_REUSEADDR to prevent restart crash loops`;
 

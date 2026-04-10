@@ -102,19 +102,11 @@ const FALLBACK_SCANNERS: ScannerData['scanners'] = [
     pricingModel: 'freemium',
   },
   {
-    name: 'trivy',
-    displayName: 'Trivy',
+    name: 'osv-scanner',
+    displayName: 'OSV-Scanner',
     categories: ['sca', 'container', 'iac', 'sbom'],
     license: 'Apache-2.0',
     pricingModel: 'free',
-    supersedes: ['tfsec'],
-  },
-  {
-    name: 'snyk',
-    displayName: 'Snyk',
-    categories: ['sca', 'sast', 'container'],
-    license: 'Proprietary',
-    pricingModel: 'freemium',
   },
   {
     name: 'grype',
@@ -122,6 +114,13 @@ const FALLBACK_SCANNERS: ScannerData['scanners'] = [
     categories: ['sca', 'container'],
     license: 'Apache-2.0',
     pricingModel: 'free',
+  },
+  {
+    name: 'snyk',
+    displayName: 'Snyk',
+    categories: ['sca', 'sast', 'container'],
+    license: 'Proprietary',
+    pricingModel: 'freemium',
   },
   {
     name: 'npm-audit',
@@ -208,8 +207,8 @@ const FALLBACK_SCANNERS: ScannerData['scanners'] = [
     pricingModel: 'free',
   },
   {
-    name: 'trivy-image',
-    displayName: 'Trivy (image scan)',
+    name: 'grype-image',
+    displayName: 'Grype (image scan)',
     categories: ['image-currency', 'container'],
     license: 'Apache-2.0',
     pricingModel: 'free',
@@ -223,72 +222,72 @@ const FALLBACK_SCANNERS: ScannerData['scanners'] = [
 const FALLBACK_LANGUAGE_MAP: ScannerData['languageMap'] = {
   TypeScript: {
     sast: ['semgrep', 'eslint-security', 'codeql'],
-    sca: ['npm-audit', 'trivy'],
+    sca: ['npm-audit', 'osv-scanner'],
     secrets: ['gitleaks'],
   },
   JavaScript: {
     sast: ['semgrep', 'eslint-security', 'codeql'],
-    sca: ['npm-audit', 'trivy'],
+    sca: ['npm-audit', 'osv-scanner'],
     secrets: ['gitleaks'],
   },
   Python: {
     sast: ['bandit', 'semgrep', 'codeql'],
-    sca: ['pip-audit', 'trivy'],
+    sca: ['pip-audit', 'osv-scanner'],
     secrets: ['gitleaks'],
   },
   Java: {
     sast: ['codeql', 'semgrep', 'spotbugs'],
-    sca: ['owasp-dependency-check', 'trivy'],
+    sca: ['owasp-dependency-check', 'osv-scanner'],
     secrets: ['gitleaks'],
   },
   Go: {
     sast: ['gosec', 'semgrep', 'codeql'],
-    sca: ['govulncheck', 'trivy'],
+    sca: ['govulncheck', 'osv-scanner'],
     secrets: ['gitleaks'],
   },
   Ruby: {
     sast: ['brakeman', 'semgrep', 'codeql'],
-    sca: ['bundler-audit', 'trivy'],
+    sca: ['bundler-audit', 'osv-scanner'],
     secrets: ['gitleaks'],
   },
   PHP: {
     sast: ['phpstan', 'semgrep'],
-    sca: ['trivy'],
+    sca: ['osv-scanner'],
     secrets: ['gitleaks'],
   },
   'C#': {
     sast: ['codeql', 'semgrep'],
-    sca: ['trivy'],
+    sca: ['osv-scanner'],
     secrets: ['gitleaks'],
   },
   C: {
     sast: ['cppcheck', 'codeql', 'semgrep'],
-    sca: ['trivy'],
+    sca: ['osv-scanner'],
     secrets: ['gitleaks'],
   },
   'C++': {
     sast: ['cppcheck', 'codeql', 'semgrep'],
-    sca: ['trivy'],
+    sca: ['osv-scanner'],
     secrets: ['gitleaks'],
   },
   Rust: {
     sast: ['semgrep'],
-    sca: ['cargo-audit', 'trivy'],
+    sca: ['cargo-audit', 'osv-scanner'],
     secrets: ['gitleaks'],
   },
   Kotlin: {
     sast: ['detekt', 'semgrep', 'codeql'],
-    sca: ['trivy'],
+    sca: ['osv-scanner'],
     secrets: ['gitleaks'],
   },
   Swift: {
     sast: ['codeql', 'semgrep'],
-    sca: ['trivy'],
+    sca: ['osv-scanner'],
     secrets: ['gitleaks'],
   },
   Scala: {
     sast: ['semgrep', 'spotbugs'],
-    sca: ['trivy'],
+    sca: ['osv-scanner'],
     secrets: ['gitleaks'],
   },
   Shell: {
@@ -298,7 +297,7 @@ const FALLBACK_LANGUAGE_MAP: ScannerData['languageMap'] = {
   },
   HCL: {
     sast: ['checkov', 'tfsec'],
-    sca: ['trivy'],
+    sca: ['osv-scanner'],
     secrets: ['gitleaks'],
   },
 };
