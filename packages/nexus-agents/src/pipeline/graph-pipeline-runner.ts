@@ -1,0 +1,169 @@
+/**
+ * Graph Pipeline Runner — Execute pipelines via GraphBuilder (#1735, Phase 2)
+ *
+ * Provides a runGraphPipeline() function that compiles a PipelineTemplate
+ * + stage registry into an executable graph and runs it through the
+ * graph executor with checkpoint/resume support.
+ *
+ * @module pipeline/graph-pipeline-runner
+ */
+
+import { createLogger, getTimeProvider } from '../core/index.js';
+import { executeGraph } from '../orchestration/graph/graph-executor.js';
+import type { CompiledGraph } from '../orchestration/graph/graph-types.js';
+import { compilePipelineGraph } from './pipeline-graph.js';
+import type { PipelineTemplate } from './stage-types.js';
+import { PIPELINE_STATE_KEYS as K } from './stage-types.js';
+import type { StageRegistry } from './pipeline-graph.js';
+import { emitPipelineStageEvent } from './pipeline-observability.js';
+
+const logger = createLogger({ component: 'graph-pipeline-runner' });
+
+// ============================================================================
+// Types
+// ============================================================================
+
+/** Options for graph-based pipeline execution. */
+export interface GraphPipelineOptions {
+  /** When true, stop after the dryRunStopAfter stage. */
+  readonly dryRun?: boolean | undefined;
+  /** Maximum graph execution steps (default: 20). */
+  readonly maxSteps?: number | undefined;
+}
+
+/** Result of a graph-based pipeline execution. */
+export interface GraphPipelineResult {
+  readonly success: boolean;
+  readonly templateId: string;
+  readonly stepsExecuted: number;
+  readonly durationMs: number;
+  readonly finalState: Readonly<Record<string, unknown>>;
+  readonly error?: string | undefined;
+}
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+const DEFAULT_MAX_STEPS = 20;
+
+// ============================================================================
+// Execution
+// ============================================================================
+
+/**
+ * Run a pipeline using graph-based execution.
+ *
+ * Compiles the template + stages into a graph, then executes via
+ * the graph executor (super-step BSP model).
+ */
+export async function runGraphPipeline(
+  task: string,
+  template: PipelineTemplate,
+  stages: StageRegistry,
+  options?: GraphPipelineOptions
+): Promise<GraphPipelineResult> {
+  const startTime = getTimeProvider().now();
+
+  const graphResult = compileEffectiveGraph(template, stages, options);
+  if (graphResult.error !== undefined) {
+    return buildError(template.id, graphResult.error, startTime);
+  }
+
+  return executeAndReport(task, template, graphResult.graph, options, startTime);
+}
+
+/** Compile the graph, handling dryRun truncation. */
+function compileEffectiveGraph(
+  template: PipelineTemplate,
+  stages: StageRegistry,
+  options: GraphPipelineOptions | undefined
+): { graph: CompiledGraph; error?: undefined } | { graph?: undefined; error: string } {
+  const effective = resolveEffectiveTemplate(template, options);
+  const compiled = compilePipelineGraph(effective, stages);
+  if (!compiled.ok || compiled.graph === undefined) {
+    return { error: compiled.error ?? 'Compilation failed' };
+  }
+  return { graph: compiled.graph };
+}
+
+/** Execute the compiled graph and emit observability events. */
+async function executeAndReport(
+  task: string,
+  template: PipelineTemplate,
+  graph: CompiledGraph,
+  options: GraphPipelineOptions | undefined,
+  startTime: number
+): Promise<GraphPipelineResult> {
+  logger.info('Executing graph pipeline', {
+    template: template.id,
+    dryRun: options?.dryRun === true,
+  });
+
+  emitPipelineStageEvent(template.id, 'pipeline', 'started');
+
+  const result = await executeGraph(
+    graph,
+    { [K.TASK]: task },
+    {
+      maxSteps: options?.maxSteps ?? DEFAULT_MAX_STEPS,
+    }
+  );
+
+  const durationMs = getTimeProvider().now() - startTime;
+
+  if (!result.ok) {
+    emitPipelineStageEvent(template.id, 'pipeline', 'failed', { error: result.error.message });
+    return buildError(template.id, result.error.message, startTime);
+  }
+
+  emitPipelineStageEvent(template.id, 'pipeline', 'completed', { durationMs });
+  return {
+    success: true,
+    templateId: template.id,
+    stepsExecuted: result.value.stepsExecuted,
+    durationMs,
+    finalState: result.value.finalState,
+  };
+}
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+/** Resolve effective template — truncate stages for dryRun. */
+function resolveEffectiveTemplate(
+  template: PipelineTemplate,
+  options: GraphPipelineOptions | undefined
+): PipelineTemplate {
+  if (options?.dryRun !== true) return template;
+  if (template.dryRunStopAfter === undefined) return template;
+
+  const stopIdx = template.stages.indexOf(template.dryRunStopAfter);
+  if (stopIdx < 0) return template;
+
+  return {
+    ...template,
+    stages: template.stages.slice(0, stopIdx + 1),
+  };
+}
+
+function buildError(templateId: string, error: string, startTime: number): GraphPipelineResult {
+  return {
+    success: false,
+    templateId,
+    stepsExecuted: 0,
+    durationMs: getTimeProvider().now() - startTime,
+    finalState: {},
+    error,
+  };
+}
+
+// ============================================================================
+// State Extractors — typed access to well-known state keys
+// ============================================================================
+
+/** Extract a value from the final pipeline state. */
+export function extractStateValue(state: Readonly<Record<string, unknown>>, key: string): unknown {
+  return state[key];
+}

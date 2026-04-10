@@ -138,4 +138,62 @@ export {
   cleanupCheckpoint,
   checkpointToResult,
   type PipelineCheckpointState,
+  // Pipeline Observability (#1734 Phase 1.1)
+  emitStageStarted,
+  emitStageCompleted,
+  emitStageFailed,
+  emitPipelineStageEvent,
+  type StageStartedOptions,
+  type StageCompletedOptions,
+  type StageFailedOptions,
+  // Iterative Consensus (#1734 Phase 1.2)
+  runIterativeConsensus,
+  type IterativeConsensusConfig,
+  type IterativeConsensusResult,
+  // Stage Types (#1735 Phase 2)
+  PIPELINE_STATE_KEYS,
+  compilePipelineGraph,
+  type IPipelineStage,
+  type PipelineContext,
+  type StageOutput,
+  type PipelineTemplate,
+  type PipelineGraphResult,
+  type StageRegistry,
+  // Templates (#1735 Phase 2)
+  DEV_PIPELINE_TEMPLATE,
+  RESEARCH_PIPELINE_TEMPLATE,
+  AUDIT_PIPELINE_TEMPLATE,
+  PIPELINE_TEMPLATES,
+  getTemplate,
+  listTemplateIds,
+  // Stage Wrappers (#1735 Phase 2)
+  createDevStageRegistry,
+  // Graph Pipeline Runner (#1735 Phase 2)
+  runGraphPipeline,
+  extractStateValue,
+  type GraphPipelineOptions,
+  type GraphPipelineResult,
+  // Adaptive Orchestrator (#1736 Phase 3)
+  runAdaptiveOrchestrator,
+  classifyTask,
+  type AdaptiveOrchestratorOptions,
+  type AdaptiveOrchestratorResult,
+  type TaskClassification,
+  type PipelineType,
+  // Incomplete Result (#1737 Phase 4)
+  isIncompleteResult,
+  createIncompleteResult,
+  canPipelineProceed,
+  filterBySeverity,
+  type IncompleteResult,
+  type IncompleteSeverity,
+  // Shared Memory (#1737 Phase 4)
+  SharedMemoryStore,
+  type SharedMemoryEntry,
+  type SharedMemoryTag,
+  // Dynamic Expert (#1737 Phase 4)
+  DynamicExpertManager,
+  MAX_DYNAMIC_EXPERTS,
+  type DynamicExpertSpec,
+  type DynamicExpert,
 } from '../pipeline/index.js';

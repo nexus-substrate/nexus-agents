@@ -327,6 +327,10 @@ export {
 } from './query-trace-tool.js';
 
 // Research pipeline tool (Issue #1711)
+
+// Unified pipeline tool (Issue #1736, Phase 3)
+export { registerPipelineTool, PipelineInputSchema, type PipelineInput } from './pipeline-tool.js';
+
 // Tool annotations and side effects (Issue #993)
 export {
   TOOL_ANNOTATIONS,
@@ -451,6 +455,7 @@ export function registerTools(
       'extract_symbols',
       'search_codebase',
       'run_dev_pipeline',
+      'run_pipeline',
     ],
     logger,
     rateLimiter,

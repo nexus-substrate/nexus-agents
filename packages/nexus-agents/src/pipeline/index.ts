@@ -209,6 +209,80 @@ export type {
 export { runQaLoop, DEFAULT_MAX_QA_ITERATIONS } from '../orchestration/qa-loop.js';
 export type { QaVerdict, QaReviewOutput, QaLoopResult } from '../orchestration/qa-loop.js';
 
+// Pipeline Observability — shared stage event emission (#1734)
+export {
+  emitStageStarted,
+  emitStageCompleted,
+  emitStageFailed,
+  emitPipelineStageEvent,
+} from './pipeline-observability.js';
+export type {
+  StageStartedOptions,
+  StageCompletedOptions,
+  StageFailedOptions,
+} from './pipeline-observability.js';
+
+// Iterative Consensus — reusable vote loop (#1734 Phase 1.2)
+export { runIterativeConsensus } from './iterative-consensus.js';
+export type { IterativeConsensusConfig, IterativeConsensusResult } from './iterative-consensus.js';
+
+// Stage Types — shared interfaces for graph-backed pipelines (#1735 Phase 2)
+export { PIPELINE_STATE_KEYS } from './stage-types.js';
+export type {
+  IPipelineStage,
+  PipelineContext,
+  StageOutput,
+  PipelineTemplate,
+  PipelineEdge,
+} from './stage-types.js';
+
+// Pipeline Graph Compiler (#1735 Phase 2)
+export { compilePipelineGraph } from './pipeline-graph.js';
+export type { PipelineGraphResult, StageRegistry } from './pipeline-graph.js';
+
+// Pipeline Templates (#1735 Phase 2)
+export {
+  DEV_PIPELINE_TEMPLATE,
+  RESEARCH_PIPELINE_TEMPLATE,
+  AUDIT_PIPELINE_TEMPLATE,
+  PIPELINE_TEMPLATES,
+  getTemplate,
+  listTemplateIds,
+} from './templates.js';
+
+// Stage Wrappers — adapt DevPipelineStages to IPipelineStage (#1735 Phase 2)
+export { createDevStageRegistry } from './stage-wrappers.js';
+
+// Graph Pipeline Runner — execute pipelines via graph executor (#1735 Phase 2)
+export { runGraphPipeline, extractStateValue } from './graph-pipeline-runner.js';
+export type { GraphPipelineOptions, GraphPipelineResult } from './graph-pipeline-runner.js';
+
+// Adaptive Orchestrator — task-driven pipeline selection (#1736 Phase 3)
+export { runAdaptiveOrchestrator, classifyTask } from './adaptive-orchestrator.js';
+export type {
+  AdaptiveOrchestratorOptions,
+  AdaptiveOrchestratorResult,
+  TaskClassification,
+  PipelineType,
+} from './adaptive-orchestrator.js';
+
+// Incomplete Result — typed partial completion (#1737 Phase 4)
+export {
+  isIncompleteResult,
+  createIncompleteResult,
+  canPipelineProceed,
+  filterBySeverity,
+} from './incomplete-result.js';
+export type { IncompleteResult, IncompleteSeverity } from './incomplete-result.js';
+
+// Shared Memory — cross-stage knowledge propagation (#1737 Phase 4)
+export { SharedMemoryStore } from './shared-memory.js';
+export type { SharedMemoryEntry, SharedMemoryTag } from './shared-memory.js';
+
+// Dynamic Expert — bounded runtime expert creation (#1737 Phase 4)
+export { DynamicExpertManager, MAX_DYNAMIC_EXPERTS } from './dynamic-expert.js';
+export type { DynamicExpertSpec, DynamicExpert } from './dynamic-expert.js';
+
 // Replay — decision trace comparison (#1688)
 export { parseTraceJsonl, extractDecisions, compareDecisions } from '../replay/replay-executor.js';
 export type { TracedDecision, ReplayComparison, ReplaySummary } from '../replay/replay-executor.js';

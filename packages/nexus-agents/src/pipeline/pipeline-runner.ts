@@ -21,6 +21,7 @@ import type {
   NodeResult,
 } from '../orchestration/graph/graph-types.js';
 import type { IEventBus } from './event-types.js';
+import { emitStageCompleted, emitStageFailed } from './pipeline-observability.js';
 import type { PlanContract, TaskContract } from './task-contract.js';
 
 const pipelineLogger = createLogger({ component: 'PipelineRunner' });
@@ -295,7 +296,7 @@ function emitPipelineCompleted(
   });
 }
 
-/** Emit stage.completed or stage.failed based on node result (#1179). */
+/** Emit stage.completed or stage.failed based on node result (#1179, #1734). */
 function emitStageEvent(bus: IEventBus | undefined, executionId: string, result: NodeResult): void {
   pipelineLogger.debug('Stage event', {
     executionId,
@@ -303,24 +304,20 @@ function emitStageEvent(bus: IEventBus | undefined, executionId: string, result:
     status: result.status,
     durationMs: result.durationMs,
   });
-  if (bus === undefined) return;
-  const now = Date.now();
   if (result.status === 'failed') {
-    bus.emit({
-      type: 'stage.failed',
+    emitStageFailed({
+      bus,
       executionId,
       stageId: result.nodeId,
       error: result.error ?? 'Unknown error',
-      timestamp: now,
     });
   } else {
-    bus.emit({
-      type: 'stage.completed',
+    emitStageCompleted({
+      bus,
       executionId,
       stageId: result.nodeId,
       durationMs: result.durationMs,
       success: result.status === 'success',
-      timestamp: now,
     });
   }
 }

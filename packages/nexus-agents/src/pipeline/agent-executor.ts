@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/restrict-template-expressions, @typescript-eslint/no-base-to-string, max-lines-per-function, max-lines */
+/* eslint-disable @typescript-eslint/restrict-template-expressions, @typescript-eslint/no-base-to-string, max-lines-per-function */
 /**
  * Agent Executor — Connects pipeline stages to nexus-agents infrastructure (#1684)
  *
@@ -14,46 +14,20 @@ import { createLogger, getTimeProvider } from '../core/index.js';
 import type { DevPipelineStages, PipelineTask, QaReviewResult } from './dev-pipeline.js';
 import { checkSecurityScan } from './security-gate.js';
 import type { ITaskTracker } from './task-tracker.js';
-import { getPipelineEventBus } from './event-bus.js';
-import type { PipelineEvent } from './event-types.js';
 import { executeExpert } from './expert-bridge.js';
 import { getOutcomeStore, getOutcomeSummaryText } from '../orchestration/outcomes/outcome-store.js';
 import { detectTrend } from '../orchestration/outcomes/adaptive-thresholds.js';
+import { emitPipelineStageEvent } from './pipeline-observability.js';
 
 const logger = createLogger({ component: 'agent-executor' });
 
-// Inlined from pipeline-observability.ts (DRY: same pattern as pipeline-runner.ts)
+// DRY: delegate to shared pipeline-observability.ts (#1734 Phase 1.1)
 function emitStageEvent(
   stage: string,
   status: 'started' | 'completed' | 'failed',
   details?: Record<string, unknown>
 ): void {
-  const bus = getPipelineEventBus();
-  const ts = getTimeProvider().now();
-  const execId = `dev-pipeline-${stage}`;
-  if (status === 'started')
-    bus.emit({
-      type: 'stage.started',
-      timestamp: ts,
-      executionId: execId,
-      stageId: stage,
-    } as PipelineEvent);
-  else if (status === 'completed')
-    bus.emit({
-      type: 'stage.completed',
-      timestamp: ts,
-      executionId: execId,
-      stageId: stage,
-      durationMs: (details?.['durationMs'] as number) || 0,
-    } as PipelineEvent);
-  else
-    bus.emit({
-      type: 'stage.failed',
-      timestamp: ts,
-      executionId: execId,
-      stageId: stage,
-      error: (details?.['error'] as string) || 'Unknown',
-    } as PipelineEvent);
+  emitPipelineStageEvent('dev-pipeline', stage, status, details);
 }
 
 function recordOutcome(
