@@ -135,4 +135,8 @@ export {
   findActiveSession,
   identifySessionsToRemove,
   calculateTokenCost,
+  // Orchestration Observer Types (TypeDoc #1741)
+  type RoutingDecision as ObserverRoutingDecision, // Renamed: multiple modules define RoutingDecision
+  type IOrchestrationObserver,
+  type ConsensusStats,
 } from '../agents/observability/index.js';
