@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-04-10T08:27:40.344Z",
+  "generated": "2026-04-10T16:09:29.066Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.29.0",
   "cli": {
@@ -309,10 +309,6 @@
         "file": "src/mcp/tools/orchestrate.ts"
       },
       {
-        "name": "pipeline",
-        "file": "src/mcp/tools/pipeline.ts"
-      },
-      {
         "name": "query_trace",
         "file": "src/mcp/tools/query-trace.ts"
       },
@@ -357,8 +353,16 @@
         "file": "src/mcp/tools/research-synthesize.ts"
       },
       {
+        "name": "run_dev_pipeline",
+        "file": "src/mcp/tools/run-dev-pipeline.ts"
+      },
+      {
         "name": "run_graph_workflow",
         "file": "src/mcp/tools/run-graph-workflow.ts"
+      },
+      {
+        "name": "run_pipeline",
+        "file": "src/mcp/tools/run-pipeline.ts"
       },
       {
         "name": "run_workflow",

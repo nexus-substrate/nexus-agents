@@ -1,6 +1,6 @@
 # Repository Capabilities Index
 
-**Generated:** 2026-04-10T08:27:40.344Z
+**Generated:** 2026-04-10T16:09:29.066Z
 **Package Version:** 2.29.0
 **Generator:** `scripts/generate-repo-index.ts`
 
@@ -59,7 +59,7 @@ Binary: `nexus-agents`
 
 ---
 
-## MCP Tools (29)
+## MCP Tools (30)
 
 | Tool | Source File |
 | ------ | ------------- |
@@ -76,7 +76,6 @@ Binary: `nexus-agents`
 | `memory_stats` | `src/mcp/tools/memory-stats.ts` |
 | `memory_write` | `src/mcp/tools/memory-write.ts` |
 | `orchestrate` | `src/mcp/tools/orchestrate.ts` |
-| `pipeline` | `src/mcp/tools/pipeline.ts` |
 | `query_trace` | `src/mcp/tools/query-trace.ts` |
 | `registry_import` | `src/mcp/tools/registry-import.ts` |
 | `repo_analyze` | `src/mcp/tools/repo-analyze.ts` |
@@ -88,7 +87,9 @@ Binary: `nexus-agents`
 | `research_discover` | `src/mcp/tools/research-discover.ts` |
 | `research_query` | `src/mcp/tools/research-query.ts` |
 | `research_synthesize` | `src/mcp/tools/research-synthesize.ts` |
+| `run_dev_pipeline` | `src/mcp/tools/run-dev-pipeline.ts` |
 | `run_graph_workflow` | `src/mcp/tools/run-graph-workflow.ts` |
+| `run_pipeline` | `src/mcp/tools/run-pipeline.ts` |
 | `run_workflow` | `src/mcp/tools/run-workflow.ts` |
 | `search_codebase` | `src/mcp/tools/search-codebase.ts` |
 | `weather_report` | `src/mcp/tools/weather-report.ts` |

@@ -149,33 +149,26 @@ function extractCLICommands(): CLICommand[] {
  */
 function extractMCPTools(): MCPTool[] {
   const content = fs.readFileSync(MCP_TOOLS_INDEX, 'utf-8');
-  const tools: MCPTool[] = [];
-  const seenTools = new Set<string>();
 
-  const registerRegex = /register(\w+)Tool/g;
-  let match: RegExpExecArray | null;
-
-  while ((match = registerRegex.exec(content)) !== null) {
-    const toolPart = match[1];
-    if (toolPart === undefined) continue;
-
-    // Convert PascalCase to snake_case
-    const toolName = toolPart
-      .replace(/([A-Z])/g, '_$1')
-      .toLowerCase()
-      .replace(/^_/, '');
-
-    if (!seenTools.has(toolName)) {
-      seenTools.add(toolName);
-      const fileName = toolName.replace(/_/g, '-') + '.ts';
-      tools.push({
-        name: toolName,
-        file: `src/mcp/tools/${fileName}`,
-      });
-    }
+  // Parse the canonical tools array from the registerTools() return value
+  // Same approach as inject-governance.ts — single source of truth
+  const toolsMatch = content.match(/tools:\s*\[([\s\S]*?)\]/);
+  if (toolsMatch?.[1] === undefined) {
+    console.error('Could not parse tools array from MCP tools index');
+    return [];
   }
 
-  return tools.sort((a, b) => a.name.localeCompare(b.name));
+  const toolNames = toolsMatch[1]
+    .split('\n')
+    .map((line) => line.match(/'([^']+)'/)?.[1])
+    .filter((name): name is string => name !== undefined);
+
+  return toolNames
+    .map((name) => ({
+      name,
+      file: `src/mcp/tools/${name.replace(/_/g, '-')}.ts`,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /**

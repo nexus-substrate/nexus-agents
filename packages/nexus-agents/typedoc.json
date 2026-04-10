@@ -69,7 +69,6 @@
     "CommandConfig",
     "CompileResult",
     "CompositeRouterConfigWithPreference",
-    "ConsensusStats",
     "ContextBudget",
     "ContextItemCategory",
     "ContextPrunerAgentConfig",

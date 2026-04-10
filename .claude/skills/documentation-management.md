@@ -16,6 +16,7 @@ allowed-tools: Read, Edit, Write, Bash, Grep, Glob, Task
 <!-- PIPELINE NOTE: docs-check.yml docs-coverage job set continue-on-error:true for non-blocking (2026-02-03) -->
 <!-- PIPELINE NOTE: docs-check.yml docs-coverage handles empty CHANGED_SRC to avoid GITHUB_OUTPUT format errors (2026-02-04) -->
 <!-- PIPELINE NOTE: website removed (2026-02-22) — sync-docs.ts, check-frontmatter.ts, deploy-docs.yml deleted -->
+<!-- PIPELINE NOTE: generate-repo-index.ts extractMCPTools() switched from register regex to tools array parsing (2026-04-10) -->
 
 **Full specification:** [docops-spec.md](../../docs/ops/docops-spec.md)
 
@@ -99,7 +100,8 @@ npx tsx scripts/generate-docs.ts --check # CI validation
 
 ### generate-repo-index.ts
 
-Generates capability index from source code.
+Generates capability index from source code. MCP tools are discovered by parsing
+the canonical `tools: [...]` return array in `mcp/tools/index.ts`.
 
 ```bash
 npx tsx scripts/generate-repo-index.ts       # Generate index

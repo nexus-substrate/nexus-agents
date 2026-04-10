@@ -120,6 +120,7 @@ export {
   type DevPipelineStages,
   type DevPipelineOptions,
   type DevPipelineResult,
+  type PipelineMode,
   type PipelineTask,
   type PipelineRole,
   type VoteResult,
@@ -138,6 +139,8 @@ export {
   cleanupCheckpoint,
   checkpointToResult,
   type PipelineCheckpointState,
+  type PipelineStage as CheckpointPipelineStage, // Renamed: orchestration.ts exports PipelineStage from graph
+  type PipelineStageData,
   // Pipeline Observability (#1734 Phase 1.1)
   emitStageStarted,
   emitStageCompleted,
@@ -154,6 +157,7 @@ export {
   PIPELINE_STATE_KEYS,
   compilePipelineGraph,
   type IPipelineStage,
+  type PipelineEdge,
   type PipelineContext,
   type StageOutput,
   type PipelineTemplate,
