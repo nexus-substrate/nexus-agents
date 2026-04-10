@@ -209,6 +209,19 @@ export type {
 export { runQaLoop, DEFAULT_MAX_QA_ITERATIONS } from '../orchestration/qa-loop.js';
 export type { QaVerdict, QaReviewOutput, QaLoopResult } from '../orchestration/qa-loop.js';
 
+// Pipeline Observability — shared stage event emission (#1734)
+export {
+  emitStageStarted,
+  emitStageCompleted,
+  emitStageFailed,
+  emitPipelineStageEvent,
+} from './pipeline-observability.js';
+export type {
+  StageStartedOptions,
+  StageCompletedOptions,
+  StageFailedOptions,
+} from './pipeline-observability.js';
+
 // Replay — decision trace comparison (#1688)
 export { parseTraceJsonl, extractDecisions, compareDecisions } from '../replay/replay-executor.js';
 export type { TracedDecision, ReplayComparison, ReplaySummary } from '../replay/replay-executor.js';
