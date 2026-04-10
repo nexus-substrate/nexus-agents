@@ -504,7 +504,7 @@ Governance rules (voting thresholds, refactor gates, fitness audit, documentatio
 | `extract_symbols`         | Extract code symbols (functions, classes, types) from source files for analysis.                                                              |
 | `search_codebase`         | Search the codebase for code patterns, symbols, or text across all source files.                                                              |
 | `run_dev_pipeline`        | run_dev_pipeline tool                                                                                                                         |
-| `run_pipeline`            | Unified adaptive pipeline — auto-classifies task and routes to dev/research/audit template via graph executor                                 |
+| `run_pipeline`            | run_pipeline tool                                                                                                                             |
 
 _Auto-generated from source. 30 tools registered._
 
@@ -512,7 +512,7 @@ _Auto-generated from source. 30 tools registered._
 
 <!-- GOVERNANCE:VERSION:START -->
 
-_Governance Version: 2026-04-09_
+_Governance Version: 2026-04-10_
 
 <!-- GOVERNANCE:VERSION:END -->
 

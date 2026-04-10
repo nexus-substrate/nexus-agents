@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-04-09T13:53:29.788Z",
+  "generated": "2026-04-10T08:27:40.344Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.29.0",
   "cli": {
@@ -307,6 +307,10 @@
       {
         "name": "orchestrate",
         "file": "src/mcp/tools/orchestrate.ts"
+      },
+      {
+        "name": "pipeline",
+        "file": "src/mcp/tools/pipeline.ts"
       },
       {
         "name": "query_trace",

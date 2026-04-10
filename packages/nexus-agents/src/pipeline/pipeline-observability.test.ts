@@ -19,9 +19,10 @@ vi.mock('./event-bus.js', () => ({
 function createMockBus(): IEventBus {
   return {
     emit: vi.fn(),
-    on: vi.fn().mockReturnValue(() => undefined),
+    subscribe: vi.fn().mockReturnValue(() => undefined),
     query: vi.fn().mockReturnValue([]),
-    clear: vi.fn(),
+    totalEmitted: 0,
+    bufferSize: 0,
   };
 }
 
