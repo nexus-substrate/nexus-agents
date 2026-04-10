@@ -58,6 +58,33 @@ async function getIndex(dir: string): Promise<CodebaseIndex> {
 }
 
 // ============================================================================
+// Helpers
+// ============================================================================
+
+/** Resolve and validate directory against path traversal. */
+function resolveSearchDir(directory: string | undefined): { dir: string } | { error: string } {
+  const dir = resolve(directory ?? process.cwd());
+  const cwdRoot = resolve('.');
+  if (!dir.startsWith(cwdRoot)) {
+    return { error: `Path traversal denied: directory must be within ${cwdRoot}` };
+  }
+  return { dir };
+}
+
+/** Format list mode output. */
+function formatListOutput(index: CodebaseIndex): string {
+  const files = index.listFiles();
+  const output = files
+    .sort((a, b) => b.symbols - a.symbols)
+    .map(
+      (f) =>
+        `${String(f.symbols).padStart(4)} symbols  ${String(f.lines).padStart(5)} lines  ${f.path}`
+    )
+    .join('\n');
+  return `${String(index.stats.files)} files, ${String(index.stats.symbols)} symbols indexed\n\n${output}`;
+}
+
+// ============================================================================
 // Handler
 // ============================================================================
 
@@ -68,24 +95,13 @@ async function searchCodebaseHandler(args: unknown, ctx: HandlerContext): Promis
   }
 
   const { query, directory, limit, mode } = parsed.data;
-  const dir = resolve(directory ?? process.cwd());
+  const dirResult = resolveSearchDir(directory);
+  if ('error' in dirResult) return toolError(dirResult.error);
 
   try {
-    const index = await getIndex(dir);
+    const index = await getIndex(dirResult.dir);
 
-    if (mode === 'list') {
-      const files = index.listFiles();
-      const output = files
-        .sort((a, b) => b.symbols - a.symbols)
-        .map(
-          (f) =>
-            `${String(f.symbols).padStart(4)} symbols  ${String(f.lines).padStart(5)} lines  ${f.path}`
-        )
-        .join('\n');
-      return toolSuccess(
-        `${String(index.stats.files)} files, ${String(index.stats.symbols)} symbols indexed\n\n${output}`
-      );
-    }
+    if (mode === 'list') return toolSuccess(formatListOutput(index));
 
     if (mode === 'summary') {
       const summary = index.getFileSummary(query);

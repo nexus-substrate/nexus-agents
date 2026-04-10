@@ -54,6 +54,12 @@ async function extractSymbolsHandler(args: unknown, ctx: HandlerContext): Promis
   const { filePath, mode } = parsed.data;
   const resolvedPath = resolve(filePath);
 
+  // Path traversal guard — restrict to cwd subtree (security audit 2026-04-10)
+  const cwdRoot = resolve('.');
+  if (!resolvedPath.startsWith(cwdRoot)) {
+    return toolError(`Path traversal denied: path must be within ${cwdRoot}`);
+  }
+
   try {
     if (mode === 'full') {
       const result = await extractSymbols(resolvedPath);

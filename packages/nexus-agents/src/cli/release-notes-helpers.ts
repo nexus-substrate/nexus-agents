@@ -11,7 +11,7 @@
 /* eslint-disable @typescript-eslint/strict-boolean-expressions */
 /* eslint-disable @typescript-eslint/prefer-nullish-coalescing */
 
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import {
   type CategorizedCommit,
   type ReleaseNotesCategory,
@@ -27,7 +27,7 @@ import { CLI_SUBPROCESS_TIMEOUTS } from '../config/timeouts.js';
  */
 export function getLatestTag(): string | undefined {
   try {
-    const result = execSync('git describe --tags --abbrev=0', {
+    const result = execFileSync('git', ['describe', '--tags', '--abbrev=0'], {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
       timeout: CLI_SUBPROCESS_TIMEOUTS.ghCommandMs,
@@ -46,8 +46,13 @@ export function getLatestTag(): string | undefined {
  * @returns Array of commit lines
  */
 export function getCommitsBetween(from: string, to = 'HEAD'): string[] {
+  // Validate git refs to prevent command injection (security audit 2026-04-10)
+  const SAFE_REF = /^[a-zA-Z0-9._\-/~^]+$/;
+  if (!SAFE_REF.test(from) || !SAFE_REF.test(to)) {
+    return [];
+  }
   try {
-    const result = execSync(`git log ${from}..${to} --oneline --format="%h %s"`, {
+    const result = execFileSync('git', ['log', `${from}..${to}`, '--oneline', '--format=%h %s'], {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
       timeout: CLI_SUBPROCESS_TIMEOUTS.ghCommandMs,

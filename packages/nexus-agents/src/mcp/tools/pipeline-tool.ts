@@ -80,6 +80,11 @@ function buildOutput(result: AdaptiveOrchestratorResult): Record<string, unknown
 function resolveTask(task: string, specFile: string | undefined): string {
   if (specFile === undefined) return task;
   const resolved = path.resolve(specFile);
+  // Path traversal guard — restrict to cwd subtree (security audit 2026-04-10)
+  const cwdRoot = path.resolve('.');
+  if (!resolved.startsWith(cwdRoot)) {
+    throw new Error(`Path traversal denied: specFile must be within ${cwdRoot}`);
+  }
   if (!fs.existsSync(resolved)) {
     throw new Error(`Spec file not found: ${resolved}`);
   }

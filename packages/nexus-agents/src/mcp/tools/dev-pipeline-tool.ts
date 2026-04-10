@@ -91,6 +91,11 @@ function resolveTaskInput(input: DevPipelineInput): string {
   }
   if (input.planFile !== undefined) {
     const resolved = path.resolve(input.planFile);
+    // Path traversal guard — restrict to cwd subtree (security audit 2026-04-10)
+    const cwdRoot = path.resolve('.');
+    if (!resolved.startsWith(cwdRoot)) {
+      throw new Error(`Path traversal denied: planFile must be within ${cwdRoot}`);
+    }
     if (!fs.existsSync(resolved)) {
       throw new Error(`Plan file not found: ${resolved}`);
     }
