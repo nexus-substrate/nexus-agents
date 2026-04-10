@@ -167,13 +167,38 @@ function rebuildState(lines: string[]): PipelineCheckpointState {
 function applyEntry(state: Record<string, unknown>, entry: PipelineCheckpointEntry): void {
   state['lastCompletedStage'] = entry.stage;
   const d = entry.data;
-  if (d.type === 'research') state['research'] = d.text;
-  else if (d.type === 'plan') {
-    state['plan'] = d.text;
-    state['voteIterations'] = d.iterations;
-  } else if (d.type === 'decompose') state['tasks'] = d.tasks;
+  if (d.type === 'research') applyResearch(state, d);
+  else if (d.type === 'plan') applyPlan(state, d);
+  else if (d.type === 'vote') applyVote(state, d);
+  else if (d.type === 'decompose') state['tasks'] = d.tasks;
   else if (d.type === 'implement') state['implementedTasks'] = d.tasks;
-  else if (d.type === 'security') state['securityPassed'] = d.passed;
+  else state['securityPassed'] = d.passed;
+}
+
+function applyResearch(state: Record<string, unknown>, d: { text: string }): void {
+  state['research'] = d.text;
+}
+
+function applyPlan(state: Record<string, unknown>, d: { text: string; iterations: number }): void {
+  state['plan'] = d.text;
+  state['voteIterations'] = d.iterations;
+}
+
+/** Fix: vote conditional metadata was saved but never rehydrated (#1734). */
+function applyVote(
+  state: Record<string, unknown>,
+  d: {
+    approved: boolean;
+    conditional: boolean;
+    conditions?: readonly string[];
+    caveats?: readonly string[];
+    iterations: number;
+  }
+): void {
+  state['voteIterations'] = d.iterations;
+  state['voteConditional'] = d.conditional;
+  if (d.conditions !== undefined) state['voteConditions'] = d.conditions;
+  if (d.caveats !== undefined) state['voteCaveats'] = d.caveats;
 }
 
 // ============================================================================

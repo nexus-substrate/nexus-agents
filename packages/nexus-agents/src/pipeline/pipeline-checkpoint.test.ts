@@ -73,6 +73,30 @@ describe('saveStageCheckpoint + loadCheckpointState', () => {
     expect(state?.lastCompletedStage).toBe('decompose');
   });
 
+  it('round-trips vote checkpoint with conditional metadata (#1734)', () => {
+    const sid = 'test-vote-conditional';
+    saveStageCheckpoint(
+      sid,
+      'vote',
+      {
+        type: 'vote',
+        approved: true,
+        conditional: true,
+        conditions: ['Must validate builds'],
+        caveats: ['High maintenance'],
+        iterations: 2,
+      },
+      TEST_DIR
+    );
+
+    const state = loadCheckpointState(sid, TEST_DIR);
+    expect(state?.voteIterations).toBe(2);
+    expect(state?.voteConditional).toBe(true);
+    expect(state?.voteConditions).toEqual(['Must validate builds']);
+    expect(state?.voteCaveats).toEqual(['High maintenance']);
+    expect(state?.lastCompletedStage).toBe('vote');
+  });
+
   it('returns null for non-existent session', () => {
     expect(loadCheckpointState('nonexistent', TEST_DIR)).toBeNull();
   });
