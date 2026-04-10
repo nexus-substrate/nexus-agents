@@ -138,6 +138,9 @@ importers:
       tiktoken:
         specifier: ^1.0.22
         version: 1.0.22
+      ts-morph:
+        specifier: ^27.0.2
+        version: 27.0.2
       yaml:
         specifier: ^2.8.3
         version: 2.8.3
@@ -170,9 +173,6 @@ importers:
       ai:
         specifier: ^6.0.141
         version: 6.0.141(zod@4.3.6)
-      ts-morph:
-        specifier: ^27.0.2
-        version: 27.0.2
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(jiti@2.6.1)(postcss@8.5.8)(typescript@6.0.2)(yaml@2.8.3)
