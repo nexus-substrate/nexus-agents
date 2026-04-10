@@ -63,16 +63,16 @@
     "prepublishOnly": "pnpm run build"
   },
   "optionalDependencies": {
-    "@atproto/api": "^0.19.5"
+    "@atproto/api": "^0.19.8"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.81.0",
-    "@google/genai": "^1.47.0",
-    "@modelcontextprotocol/sdk": "^1.28.0",
+    "@anthropic-ai/sdk": "^0.88.0",
+    "@google/genai": "^1.49.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "better-sqlite3": "^12.8.0",
     "jsonc-parser": "^3.3.1",
     "ollama": "^0.6.3",
-    "openai": "^6.33.0",
+    "openai": "^6.34.0",
     "semver": "^7.7.4",
     "tiktoken": "^1.0.22",
     "ts-morph": "^27.0.2",
@@ -80,16 +80,16 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@ai-sdk/anthropic": "^3.0.64",
-    "@ai-sdk/google": "^3.0.53",
-    "@ai-sdk/openai": "^3.0.48",
+    "@ai-sdk/anthropic": "^3.0.68",
+    "@ai-sdk/google": "^3.0.61",
+    "@ai-sdk/openai": "^3.0.52",
     "@types/better-sqlite3": "^7.6.13",
     "@types/semver": "^7.7.1",
-    "@vitest/coverage-v8": "4.1.2",
-    "ai": "^6.0.141",
+    "@vitest/coverage-v8": "4.1.4",
+    "ai": "^6.0.158",
     "tsup": "^8.5.1",
     "typedoc": "0.28.18",
-    "vitest": "4.1.2"
+    "vitest": "4.1.4"
   },
   "peerDependencies": {
     "@ai-sdk/anthropic": "^3.0.0",

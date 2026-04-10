@@ -14,8 +14,8 @@
     "@astrojs/check": "^0.9.8",
     "@astrojs/sitemap": "^3.7.2",
     "@astrojs/svelte": "^8.0.4",
-    "astro": "^6.1.1",
-    "svelte": "^5.55.1",
+    "astro": "^6.1.5",
+    "svelte": "^5.55.3",
     "typescript": "^5.9.3"
   }
 }
