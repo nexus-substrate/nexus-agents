@@ -66,7 +66,11 @@ describe('GitHubReviewer', () => {
     reviewer = new GitHubReviewer(provider);
     mockExecFile.mockReset();
     resetGhTokenCache();
-    // Set GH_TOKEN so resolveGhToken doesn't spawn `gh auth token`
+    // Ensure resolveGhToken finds a token from env and doesn't spawn `gh auth token`
+    // (which would consume a mockResolvedValueOnce meant for the API call).
+    // GITHUB_TOKEN is checked first by resolveGhTokenImpl, so delete it to avoid
+    // an empty-string value (e.g. from CI) bypassing GH_TOKEN.
+    delete process.env['GITHUB_TOKEN'];
     process.env['GH_TOKEN'] = 'test-token';
   });
 

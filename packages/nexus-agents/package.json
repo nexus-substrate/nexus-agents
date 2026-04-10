@@ -75,6 +75,7 @@
     "openai": "^6.33.0",
     "semver": "^7.7.4",
     "tiktoken": "^1.0.22",
+    "ts-morph": "^27.0.2",
     "yaml": "^2.8.3",
     "zod": "^4.3.6"
   },
@@ -86,7 +87,6 @@
     "@types/semver": "^7.7.1",
     "@vitest/coverage-v8": "4.1.2",
     "ai": "^6.0.141",
-    "ts-morph": "^27.0.2",
     "tsup": "^8.5.1",
     "typedoc": "0.28.18",
     "vitest": "4.1.2"
