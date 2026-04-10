@@ -464,24 +464,66 @@ interface ImplLoopResult {
   readonly completedTasks: readonly PipelineTask[];
 }
 
-/** Implement tasks with parallel dispatch for independent tasks (#1695). */
+/** Max concurrent task implementations per wave (#1734 Phase 1.3). */
+const MAX_IMPL_CONCURRENCY = 4;
+
+/** Implement tasks with bounded-concurrency parallel dispatch (#1695, #1734). */
 async function implementQaLoop(
   tasks: PipelineTask[],
   stages: DevPipelineStages
 ): Promise<ImplLoopResult> {
   if (tasks.length === 0) return { totalIterations: 0, completedTasks: [] };
-  const results = await Promise.allSettled(tasks.map((task) => implementSingleTask(task, stages)));
+
+  const taskFns = tasks.map((task) => () => implementSingleTaskSafe(task, stages));
+  const results = await executeWithConcurrency(taskFns, MAX_IMPL_CONCURRENCY);
+  return aggregateImplResults(results);
+}
+
+/** Execute a task with error handling, returning a safe result. */
+async function implementSingleTaskSafe(
+  task: PipelineTask,
+  stages: DevPipelineStages
+): Promise<TaskImplResult | null> {
+  try {
+    return await implementSingleTask(task, stages);
+  } catch (error) {
+    const reason = error instanceof Error ? error : new Error(String(error));
+    logger.error('Task implementation failed', reason, {});
+    return null;
+  }
+}
+
+/** Aggregate implementation results into totals. */
+function aggregateImplResults(results: ReadonlyArray<TaskImplResult | null>): ImplLoopResult {
   let totalIterations = 0;
   const completedTasks: PipelineTask[] = [];
   for (const r of results) {
-    if (r.status === 'fulfilled') {
-      totalIterations += r.value.iterations;
-      completedTasks.push(r.value.task);
+    if (r !== null) {
+      totalIterations += r.iterations;
+      completedTasks.push(r.task);
     } else {
-      const reason = r.reason instanceof Error ? r.reason : new Error(String(r.reason));
-      logger.error('Task implementation failed', reason, {});
       totalIterations++;
     }
   }
   return { totalIterations, completedTasks };
+}
+
+/** Execute async tasks with bounded concurrency (#1734). */
+async function executeWithConcurrency<T>(
+  tasks: ReadonlyArray<() => Promise<T>>,
+  limit: number
+): Promise<T[]> {
+  const results: T[] = [];
+  let nextIndex = 0;
+  async function runNext(): Promise<void> {
+    while (nextIndex < tasks.length) {
+      const idx = nextIndex;
+      nextIndex++;
+      const task = tasks[idx];
+      if (task !== undefined) results[idx] = await task();
+    }
+  }
+  const workers = Array.from({ length: Math.min(limit, tasks.length) }, () => runNext());
+  await Promise.all(workers);
+  return results;
 }
