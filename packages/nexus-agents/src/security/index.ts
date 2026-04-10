@@ -126,6 +126,22 @@ export { queryOsv, queryOsvBatch, DEFAULT_OSV_CONFIG } from './osv-lookup.js';
 export type { OsvVulnerability, OsvLookupResult, OsvLookupConfig } from './osv-lookup.js';
 export { OsvVulnerabilitySchema } from './osv-lookup.js';
 
+// Finding lifecycle — scan→triage→fix→verify tracking (#1681 Phase 3)
+export {
+  recordDetected,
+  recordTriaged,
+  recordFixGenerated,
+  recordScanResults,
+  summarizeLifecycle,
+} from './finding-lifecycle.js';
+export type {
+  FindingLifecycleStage,
+  FindingLifecycleEntry,
+  FindingLifecycleSummary,
+  PersistFn,
+} from './finding-lifecycle.js';
+export { FindingLifecycleStageSchema } from './finding-lifecycle.js';
+
 // Quality gate engine (#1684)
 export { runQualityGate } from './quality-gate.js';
 export type { GateCheckFn } from './quality-gate.js';
