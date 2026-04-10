@@ -56,7 +56,7 @@ export GOOGLE_AI_API_KEY=your-key    # For Gemini adapter
 
 At least one API key is needed for real model routing. Without keys, tools like `consensus_vote` can use `simulateVotes: true` for testing.
 
-## Available Tools (29)
+## Available Tools (30)
 
 Once connected, these MCP tools are available:
 
@@ -70,6 +70,7 @@ Once connected, these MCP tools are available:
 - `weather_report` — CLI performance monitoring and routing health
 - `repo_analyze` / `repo_security_plan` — Repository analysis and security planning
 - `search_codebase` / `extract_symbols` — Code intelligence
+- `run_pipeline` — Configurable multi-stage pipeline execution
 - And 15 more (run `nexus-agents --help` for full list)
 
 ## Troubleshooting
