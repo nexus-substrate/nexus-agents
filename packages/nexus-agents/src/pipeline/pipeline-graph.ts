@@ -119,7 +119,9 @@ function createNodeHandler(
     const context: PipelineContext = {
       executionId: `${template.id}-${stage.id}`,
       task:
-        typeof state[PIPELINE_STATE_KEYS.TASK] === 'string' ? state[PIPELINE_STATE_KEYS.TASK] : '',
+        typeof state[PIPELINE_STATE_KEYS.TASK] === 'string'
+          ? (state[PIPELINE_STATE_KEYS.TASK] as string)
+          : '',
       templateId: template.id,
       state,
     };

@@ -54,9 +54,12 @@ export function createPlanStageWrapper(stages: DevPipelineStages): IPipelineStag
     name: 'Plan',
     async execute(ctx: PipelineContext): Promise<StageOutput> {
       const start = getTimeProvider().now();
-      const research = typeof ctx.state[K.RESEARCH] === 'string' ? ctx.state[K.RESEARCH] : '';
+      const research =
+        typeof ctx.state[K.RESEARCH] === 'string' ? (ctx.state[K.RESEARCH] as string) : '';
       const feedback =
-        typeof ctx.state[K.VOTE_FEEDBACK] === 'string' ? ctx.state[K.VOTE_FEEDBACK] : undefined;
+        typeof ctx.state[K.VOTE_FEEDBACK] === 'string'
+          ? (ctx.state[K.VOTE_FEEDBACK] as string)
+          : undefined;
       try {
         const result = await stages.plan(ctx.task, research, feedback);
         return output(K.PLAN, result, getTimeProvider().now() - start, true);
@@ -74,7 +77,7 @@ export function createVoteStageWrapper(stages: DevPipelineStages): IPipelineStag
     name: 'Vote',
     async execute(ctx: PipelineContext): Promise<StageOutput> {
       const start = getTimeProvider().now();
-      const plan = typeof ctx.state[K.PLAN] === 'string' ? ctx.state[K.PLAN] : '';
+      const plan = typeof ctx.state[K.PLAN] === 'string' ? (ctx.state[K.PLAN] as string) : '';
       try {
         const vote = await stages.vote(plan);
         const ms = getTimeProvider().now() - start;
@@ -99,7 +102,7 @@ export function createDecomposeStageWrapper(stages: DevPipelineStages): IPipelin
     name: 'Decompose',
     async execute(ctx: PipelineContext): Promise<StageOutput> {
       const start = getTimeProvider().now();
-      const plan = typeof ctx.state[K.PLAN] === 'string' ? ctx.state[K.PLAN] : '';
+      const plan = typeof ctx.state[K.PLAN] === 'string' ? (ctx.state[K.PLAN] as string) : '';
       try {
         const tasks = await stages.decompose(plan);
         return output(K.TASKS, tasks, getTimeProvider().now() - start, true);

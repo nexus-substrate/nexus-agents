@@ -10,6 +10,7 @@
 import { createLogger, getTimeProvider } from '../core/index.js';
 import type { ILogger } from '../core/index.js';
 import type { VoteResult } from './dev-pipeline.js';
+import type { VotingStrategy } from '../mcp/tools/consensus-vote-types.js';
 import { emitPipelineStageEvent } from './pipeline-observability.js';
 
 const defaultLogger = createLogger({ component: 'iterative-consensus' });
@@ -27,7 +28,7 @@ export interface IterativeConsensusConfig {
   /** Use quick mode (3 agents instead of 6). */
   readonly quickMode?: boolean | undefined;
   /** Voting strategy (default: 'higher_order'). */
-  readonly strategy?: string | undefined;
+  readonly strategy?: VotingStrategy | undefined;
   /** Max proposal length sent to voters (default: 4000). */
   readonly maxProposalLength?: number | undefined;
   /** Logger instance. */
@@ -49,7 +50,7 @@ export interface IterativeConsensusResult {
 
 const DEFAULT_MAX_ITERATIONS = 3;
 const DEFAULT_MAX_PROPOSAL_LENGTH = 4000;
-const DEFAULT_STRATEGY = 'higher_order';
+const DEFAULT_STRATEGY: VotingStrategy = 'higher_order';
 const DEFAULT_PREFIX = 'pipeline';
 
 // ============================================================================
@@ -160,7 +161,7 @@ function buildExhaustedResult(
 function buildVotingInput(
   plan: string,
   config: IterativeConsensusConfig | undefined
-): { proposal: string; strategy: string; simulateVotes: boolean; quickMode: boolean } {
+): { proposal: string; strategy: VotingStrategy; simulateVotes: boolean; quickMode: boolean } {
   const maxLen = config?.maxProposalLength ?? DEFAULT_MAX_PROPOSAL_LENGTH;
   return {
     proposal: plan.slice(0, maxLen),
