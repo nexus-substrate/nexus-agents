@@ -102,6 +102,30 @@ export {
 export type { TriageVerdict, TriageConfig } from './finding-triage.js';
 export { TriageVerdictSchema } from './finding-triage.js';
 
+// Severity consensus — multi-model vote on critical findings (#1681 Phase 2b)
+export {
+  assessSeverity,
+  assessSeverityBatch,
+  DEFAULT_SEVERITY_CONSENSUS_CONFIG,
+} from './severity-consensus.js';
+export type {
+  SeverityVerdict,
+  SeverityConsensusConfig,
+  TriagedFinding,
+  ConsensusFn,
+} from './severity-consensus.js';
+export { SeverityVerdictSchema } from './severity-consensus.js';
+
+// Fix generator — security expert drafts patches (#1681 Phase 2c)
+export { generateFix, generateFixBatch, DEFAULT_FIX_CONFIG } from './fix-generator.js';
+export type { GeneratedFix, FixGeneratorConfig } from './fix-generator.js';
+export { GeneratedFixSchema } from './fix-generator.js';
+
+// OSV lookup — query CVE database for npm packages (#1681 Phase 3a)
+export { queryOsv, queryOsvBatch, DEFAULT_OSV_CONFIG } from './osv-lookup.js';
+export type { OsvVulnerability, OsvLookupResult, OsvLookupConfig } from './osv-lookup.js';
+export { OsvVulnerabilitySchema } from './osv-lookup.js';
+
 // Quality gate engine (#1684)
 export { runQualityGate } from './quality-gate.js';
 export type { GateCheckFn } from './quality-gate.js';
