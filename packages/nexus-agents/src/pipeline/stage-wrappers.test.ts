@@ -10,6 +10,7 @@ import {
   createDecomposeStageWrapper,
   createSecurityStageWrapper,
   createDevStageRegistry,
+  createParseSpecStageWrapper,
 } from './stage-wrappers.js';
 import type { DevPipelineStages, VoteResult, QaReviewResult } from './dev-pipeline.js';
 import type { PipelineContext } from './stage-types.js';
@@ -213,5 +214,41 @@ describe('createDevStageRegistry', () => {
     for (const [key, stage] of registry) {
       expect(stage.id).toBe(key);
     }
+  });
+});
+
+describe('createParseSpecStageWrapper', () => {
+  it('parses valid spec from task content', async () => {
+    const wrapper = createParseSpecStageWrapper();
+    const ctx = makeContext();
+
+    const specCtx = { ...ctx, task: '# My Feature\n\n## Overview\nDo the thing.\n' };
+
+    const result = await wrapper.execute(specCtx);
+
+    expect(result.stateKey).toBe(K.PARSED_SPEC);
+    expect(result.success).toBe(true);
+    const spec = result.value as { title: string };
+    expect(spec.title).toBe('My Feature');
+  });
+
+  it('fails on empty task', async () => {
+    const wrapper = createParseSpecStageWrapper();
+    const ctx = { ...makeContext(), task: '' };
+
+    const result = await wrapper.execute(ctx);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Spec is empty');
+  });
+
+  it('fails on task with no title heading', async () => {
+    const wrapper = createParseSpecStageWrapper();
+    const ctx = { ...makeContext(), task: 'Just some text without headings' };
+
+    const result = await wrapper.execute(ctx);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('No title heading found (expected # or ## heading)');
   });
 });

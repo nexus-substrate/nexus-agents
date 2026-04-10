@@ -33,6 +33,19 @@ export const FileReferenceSchema = z.object({
 export type FileReference = z.infer<typeof FileReferenceSchema>;
 
 /**
+ * Technology stack inferred or specified for a specification.
+ */
+export const TechStackSchema = z.object({
+  /** Programming language */
+  language: z.string().optional(),
+  /** Framework or library */
+  framework: z.string().optional(),
+  /** Package manager */
+  packageManager: z.string().optional(),
+});
+export type TechStack = z.infer<typeof TechStackSchema>;
+
+/**
  * Parsed specification from a markdown document.
  */
 export const ParsedSpecSchema = z.object({
@@ -54,6 +67,8 @@ export const ParsedSpecSchema = z.object({
   missingSections: z.array(z.string()),
   /** Raw markdown source */
   rawMarkdown: z.string(),
+  /** Inferred technology stack */
+  techStack: TechStackSchema.optional(),
 });
 export type ParsedSpec = z.infer<typeof ParsedSpecSchema>;
 

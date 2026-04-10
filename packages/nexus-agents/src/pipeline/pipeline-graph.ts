@@ -94,6 +94,8 @@ function registerStateFields(builder: GraphBuilder): void {
   builder.addState(keys.FINDINGS, { defaultValue: [], reducer: { type: 'overwrite' } });
   builder.addState(keys.SYNTHESIS, { defaultValue: null, reducer: { type: 'overwrite' } });
   builder.addState(keys.DELIVERABLES, { defaultValue: [], reducer: { type: 'overwrite' } });
+  builder.addState(keys.PARSED_SPEC, { defaultValue: null, reducer: { type: 'overwrite' } });
+  builder.addState(keys.SCAFFOLD_OUTPUT, { defaultValue: null, reducer: { type: 'overwrite' } });
   builder.addState(keys.COMPLETED, { defaultValue: false, reducer: { type: 'overwrite' } });
 }
 

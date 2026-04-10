@@ -9,6 +9,7 @@ import { PIPELINE_STATE_KEYS } from './stage-types.js';
 import {
   DEV_PIPELINE_TEMPLATE,
   RESEARCH_PIPELINE_TEMPLATE,
+  GREENFIELD_PIPELINE_TEMPLATE,
   PIPELINE_TEMPLATES,
   getTemplate,
   listTemplateIds,
@@ -69,9 +70,10 @@ describe('Pipeline Templates', () => {
   });
 
   it('PIPELINE_TEMPLATES contains all templates', () => {
-    expect(PIPELINE_TEMPLATES.size).toBeGreaterThanOrEqual(3);
+    expect(PIPELINE_TEMPLATES.size).toBe(4);
     expect(getTemplate('dev')).toBe(DEV_PIPELINE_TEMPLATE);
     expect(getTemplate('research')).toBe(RESEARCH_PIPELINE_TEMPLATE);
+    expect(getTemplate('greenfield')).toBe(GREENFIELD_PIPELINE_TEMPLATE);
     expect(getTemplate('nonexistent')).toBeUndefined();
   });
 
@@ -80,6 +82,33 @@ describe('Pipeline Templates', () => {
     expect(ids).toContain('dev');
     expect(ids).toContain('research');
     expect(ids).toContain('audit');
+    expect(ids).toContain('greenfield');
+  });
+});
+
+describe('Greenfield Pipeline Template', () => {
+  it('GREENFIELD_PIPELINE_TEMPLATE has 9 stages', () => {
+    expect(GREENFIELD_PIPELINE_TEMPLATE.stages).toHaveLength(9);
+    expect(GREENFIELD_PIPELINE_TEMPLATE.stages).toEqual([
+      'parseSpec',
+      'research',
+      'plan',
+      'vote',
+      'scaffold',
+      'decompose',
+      'implement',
+      'qa',
+      'security',
+    ]);
+    expect(GREENFIELD_PIPELINE_TEMPLATE.dryRunStopAfter).toBe('vote');
+  });
+
+  it('compiles GREENFIELD_PIPELINE_TEMPLATE via compilePipelineGraph', () => {
+    const stages = makeStageRegistry(GREENFIELD_PIPELINE_TEMPLATE.stages);
+    const result = compilePipelineGraph(GREENFIELD_PIPELINE_TEMPLATE, stages);
+
+    expect(result.ok).toBe(true);
+    expect(result.graph).toBeDefined();
   });
 });
 

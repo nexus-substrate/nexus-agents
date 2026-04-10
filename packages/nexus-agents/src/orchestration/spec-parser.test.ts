@@ -274,3 +274,92 @@ The color &#123; should not be an issue ref.
     expect(result.value.missingSections).toContain('overview');
   });
 });
+
+// ============================================================================
+// ParsedSpec Schema Validation
+// ============================================================================
+
+import { ParsedSpecSchema } from './spec-parser-types.js';
+
+describe('ParsedSpecSchema techStack field', () => {
+  it('accepts a ParsedSpec with full techStack', () => {
+    const spec = {
+      title: 'Test',
+      overview: 'A test spec',
+      requirements: ['req1'],
+      acceptanceCriteria: [],
+      constraints: [],
+      issueReferences: [],
+      fileReferences: [],
+      missingSections: [],
+      rawMarkdown: '# Test',
+      techStack: { language: 'TypeScript', framework: 'Express', packageManager: 'pnpm' },
+    };
+    const result = ParsedSpecSchema.safeParse(spec);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.techStack).toEqual({
+        language: 'TypeScript',
+        framework: 'Express',
+        packageManager: 'pnpm',
+      });
+    }
+  });
+
+  it('accepts a ParsedSpec without techStack', () => {
+    const spec = {
+      title: 'Test',
+      overview: '',
+      requirements: [],
+      acceptanceCriteria: [],
+      constraints: [],
+      issueReferences: [],
+      fileReferences: [],
+      missingSections: [],
+      rawMarkdown: '# Test',
+    };
+    const result = ParsedSpecSchema.safeParse(spec);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.techStack).toBeUndefined();
+    }
+  });
+
+  it('accepts partial techStack fields', () => {
+    const spec = {
+      title: 'Test',
+      overview: '',
+      requirements: [],
+      acceptanceCriteria: [],
+      constraints: [],
+      issueReferences: [],
+      fileReferences: [],
+      missingSections: [],
+      rawMarkdown: '# Test',
+      techStack: { language: 'Python' },
+    };
+    const result = ParsedSpecSchema.safeParse(spec);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.techStack?.language).toBe('Python');
+      expect(result.data.techStack?.framework).toBeUndefined();
+    }
+  });
+
+  it('rejects invalid techStack values', () => {
+    const spec = {
+      title: 'Test',
+      overview: '',
+      requirements: [],
+      acceptanceCriteria: [],
+      constraints: [],
+      issueReferences: [],
+      fileReferences: [],
+      missingSections: [],
+      rawMarkdown: '# Test',
+      techStack: { language: 123 },
+    };
+    const result = ParsedSpecSchema.safeParse(spec);
+    expect(result.success).toBe(false);
+  });
+});
