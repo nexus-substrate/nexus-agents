@@ -42,16 +42,14 @@ jobs:
             const hasLabel = pr.labels.some(label => label.name === 'cli-reviewed');
 
             if (!hasLabel) {
-              core.setFailed(`
-              ❌ PR requires CLI review before merge.
-
-              To review this PR:
-              1. Run: pnpm review ${context.payload.pull_request.number}
-              2. Or manually add the 'cli-reviewed' label after review
-
-              Available CLI tools: claude, gemini, codex
-              See: docs/proposals/cli-pr-review-workflow.md
-              `);
+              // Informational — warn instead of failing CI (#1742).
+              // Use branch protection "require labels" for enforcement.
+              core.warning([
+                'PR has not been CLI-reviewed yet.',
+                `To review: pnpm review ${context.payload.pull_request.number}`,
+                "Or manually add the 'cli-reviewed' label after review.",
+                'Available CLI tools: claude, gemini, codex',
+              ].join('\n'));
             } else {
               console.log('✅ PR has been reviewed with CLI tools');
             }
