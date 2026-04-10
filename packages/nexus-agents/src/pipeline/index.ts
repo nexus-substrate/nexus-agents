@@ -266,6 +266,23 @@ export type {
   PipelineType,
 } from './adaptive-orchestrator.js';
 
+// Incomplete Result — typed partial completion (#1737 Phase 4)
+export {
+  isIncompleteResult,
+  createIncompleteResult,
+  canPipelineProceed,
+  filterBySeverity,
+} from './incomplete-result.js';
+export type { IncompleteResult, IncompleteSeverity } from './incomplete-result.js';
+
+// Shared Memory — cross-stage knowledge propagation (#1737 Phase 4)
+export { SharedMemoryStore } from './shared-memory.js';
+export type { SharedMemoryEntry, SharedMemoryTag } from './shared-memory.js';
+
+// Dynamic Expert — bounded runtime expert creation (#1737 Phase 4)
+export { DynamicExpertManager, MAX_DYNAMIC_EXPERTS } from './dynamic-expert.js';
+export type { DynamicExpertSpec, DynamicExpert } from './dynamic-expert.js';
+
 // Replay — decision trace comparison (#1688)
 export { parseTraceJsonl, extractDecisions, compareDecisions } from '../replay/replay-executor.js';
 export type { TracedDecision, ReplayComparison, ReplaySummary } from '../replay/replay-executor.js';
