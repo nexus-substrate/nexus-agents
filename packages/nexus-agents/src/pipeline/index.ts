@@ -222,6 +222,10 @@ export type {
   StageFailedOptions,
 } from './pipeline-observability.js';
 
+// Iterative Consensus — reusable vote loop (#1734 Phase 1.2)
+export { runIterativeConsensus } from './iterative-consensus.js';
+export type { IterativeConsensusConfig, IterativeConsensusResult } from './iterative-consensus.js';
+
 // Replay — decision trace comparison (#1688)
 export { parseTraceJsonl, extractDecisions, compareDecisions } from '../replay/replay-executor.js';
 export type { TracedDecision, ReplayComparison, ReplaySummary } from '../replay/replay-executor.js';
