@@ -48,6 +48,7 @@
   },
   "intentionallyNotExported": [
     "AgentConfig",
+    "AgentStateSchema",
     "AgentContext",
     "AgentMemoryConfig",
     "AgentMemoryError",
@@ -89,6 +90,7 @@
     "FirewallConfig",
     "FirewallError",
     "GeminiConfig",
+    "IHindsightBeliefMemory",
     "GeminiExecutionResult",
     "GhRepoMetadata",
     "GitHubInputSchema",

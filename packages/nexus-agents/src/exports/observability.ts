@@ -135,8 +135,23 @@ export {
   findActiveSession,
   identifySessionsToRemove,
   calculateTokenCost,
-  // Orchestration Observer Types (TypeDoc #1741)
+  // Orchestration Observer Types (TypeDoc #1741, #1756)
   type RoutingDecision as ObserverRoutingDecision, // Renamed: multiple modules define RoutingDecision
   type IOrchestrationObserver,
   type ConsensusStats,
+  type SessionMetrics as ObserverSessionMetrics,
+  type TokenUsage as ObserverTokenUsage, // Renamed: core.ts exports TokenUsage
+  type CostMetrics as ObserverCostMetrics,
+  type TrackedAgent as ObserverTrackedAgent, // Renamed: core types may also export TrackedAgent
+  type OrchestrationStats,
+  type OrchestrationObserverListener,
+  type OrchestrationObserverEvent,
+  type AgentState as ObserverAgentState, // Renamed: swarm observer also exports AgentState
 } from '../agents/observability/index.js';
+
+// Pipeline Task Tracker (TypeDoc #1756)
+export type { ITaskTracker, TrackedTask } from '../pipeline/task-tracker.js';
+
+// IHindsightBeliefMemory intentionally not exported — it's an optional config type
+// referenced by DevPipelineOptions.beliefMemory. Exporting it cascades 7+ context
+// types into the public API. Added to typedoc.json intentionallyNotExported instead.
