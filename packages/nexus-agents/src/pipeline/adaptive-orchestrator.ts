@@ -238,6 +238,63 @@ async function tryIssueTriage(task: string): Promise<TaskClassification | null> 
 }
 
 // ============================================================================
+// LLM Classification Refinement (#1798)
+// ============================================================================
+
+/** Threshold below which keyword classification triggers LLM refinement. */
+const LLM_REFINEMENT_THRESHOLD = 0.3;
+
+/** Valid pipeline template names for LLM classification parsing. */
+const VALID_TEMPLATES = new Set<PipelineType>([
+  'dev',
+  'research',
+  'audit',
+  'greenfield',
+  'general',
+]);
+
+/**
+ * Use a lightweight LLM call to classify ambiguous tasks.
+ * Only called when keyword confidence < LLM_REFINEMENT_THRESHOLD.
+ * Falls back to null on any failure (zero regression risk).
+ */
+async function classifyWithLLM(task: string): Promise<TaskClassification | null> {
+  try {
+    const { executeExpert } = await import('./expert-bridge.js');
+    const prompt = [
+      'Classify this task into exactly one pipeline template.',
+      'Templates: dev (implementation/bug fix/refactor), research (investigate/evaluate/compare),',
+      'audit (security review/vulnerability scan), greenfield (new project from scratch),',
+      'general (ambiguous/other).',
+      '',
+      `Task: "${task}"`,
+      '',
+      'Respond with ONLY the template name (one word): dev, research, audit, greenfield, or general.',
+    ].join('\n');
+
+    const result = await executeExpert('architecture', prompt);
+    if (!result.success) return null;
+
+    // Parse response — extract the first matching template name
+    const lower = result.text.toLowerCase().trim();
+    for (const template of VALID_TEMPLATES) {
+      if (lower.includes(template)) {
+        logger.info('LLM classification refinement', { task: task.slice(0, 60), template });
+        return {
+          pipelineType: template,
+          complexity: 'moderate',
+          confidence: 0.7, // LLM classification gets moderate confidence
+          keywords: ['llm-classified'],
+        };
+      }
+    }
+    return null; // LLM didn't return a valid template name
+  } catch {
+    return null; // LLM call failed — keep keyword result
+  }
+}
+
+// ============================================================================
 // Orchestration
 // ============================================================================
 
@@ -259,8 +316,10 @@ export async function runAdaptiveOrchestrator(
 
   let classification = classifyTask(cleanTask);
 
-  // Low-confidence fallback: use issue_triage for richer signal (#1779)
-  if (classification.confidence < 0.3 && options.templateId === undefined) {
+  // Low-confidence fallback chain (#1779, #1798):
+  // 1. Try issue_triage for GitHub issue URLs
+  // 2. Try LLM classification for remaining ambiguous tasks
+  if (classification.confidence < LLM_REFINEMENT_THRESHOLD && options.templateId === undefined) {
     const enriched = await tryIssueTriage(cleanTask);
     if (enriched !== null) {
       logger.info('Classification enriched via issue_triage', {
@@ -268,6 +327,16 @@ export async function runAdaptiveOrchestrator(
         enriched: enriched.pipelineType,
       });
       classification = enriched;
+    } else {
+      // LLM refinement: delegate to expert for semantic classification (#1798)
+      const llmResult = await classifyWithLLM(cleanTask);
+      if (llmResult !== null) {
+        logger.info('Classification refined via LLM', {
+          original: classification.pipelineType,
+          refined: llmResult.pipelineType,
+        });
+        classification = llmResult;
+      }
     }
   }
 
