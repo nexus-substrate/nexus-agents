@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */ // Consensus voting — cohesive single module (governance: 400-600 OK)
 /**
  * nexus-agents/mcp - Consensus Vote Tool
  * @module mcp/tools/consensus-vote
@@ -126,6 +127,45 @@ function createEmptyConsensusResult(
   };
 }
 
+/** Thresholds per algorithm for cascade detection. */
+const CASCADE_THRESHOLDS: Record<string, number> = {
+  majority: 0.5,
+  supermajority: 0.67,
+  unanimous: 1.0,
+};
+
+/** Detect if vote outcome is mathematically decided (#1765). */
+function detectEarlyCascade(
+  algorithm: string,
+  approvals: number,
+  rejections: number,
+  total: number
+): { decided: boolean; reason: string } {
+  const threshold = CASCADE_THRESHOLDS[algorithm] ?? 0.5;
+  if (total === 0) return { decided: false, reason: '' };
+
+  // Unanimous: any rejection decides
+  if (algorithm === 'unanimous' && rejections > 0) {
+    return { decided: true, reason: `Unanimous rejected: ${String(rejections)} rejection(s)` };
+  }
+  // Approval locked: even if all remaining vote reject, approval holds
+  if (approvals / total > threshold) {
+    return {
+      decided: true,
+      reason: `Approval locked: ${String(approvals)}/${String(total)} > ${String(threshold)}`,
+    };
+  }
+  // Rejection locked: even if all remaining vote approve, rejection holds
+  const remaining = total - approvals - rejections;
+  if ((approvals + remaining) / total < threshold) {
+    return {
+      decided: true,
+      reason: `Rejection locked: max possible ${String(approvals + remaining)}/${String(total)} < ${String(threshold)}`,
+    };
+  }
+  return { decided: false, reason: '' };
+}
+
 async function processVotesThroughEngine(
   votes: readonly AgentVoteResult[],
   proposal: string,
@@ -204,6 +244,52 @@ function recordVotesToTracker(
   }
 }
 
+/** Process votes with cascade detection — extracted for max-lines-per-function (#1765). */
+async function processVotesWithCascade(
+  votes: readonly AgentVoteResult[],
+  opts: {
+    totalRoles: number;
+    proposal: string;
+    algorithm: ConsensusAlgorithm;
+    strategy: VotingStrategy;
+    log: ILogger;
+  }
+): Promise<{
+  engineResult: ConsensusResult;
+  voteMap: Map<string, Vote>;
+  higherOrderResult: ReturnType<typeof runHigherOrderVoting>;
+  outcome: 'approved' | 'rejected';
+  cascaded: boolean;
+}> {
+  const validVotes = votes.filter((v) => v.source !== 'error');
+  const approvals = validVotes.filter((v) => v.vote.decision === 'approve').length;
+  const rejections = validVotes.filter((v) => v.vote.decision === 'reject').length;
+  const cascadeInfo = detectEarlyCascade(opts.algorithm, approvals, rejections, opts.totalRoles);
+
+  if (cascadeInfo.decided) {
+    opts.log.info('Vote cascade: outcome decided early', {
+      approvals,
+      rejections,
+      total: opts.totalRoles,
+      reason: cascadeInfo.reason,
+    });
+  }
+
+  const engineResult = await processVotesThroughEngine(votes, opts.proposal, opts.algorithm);
+  const voteMap = new Map<string, Vote>();
+  for (const { role, vote, source } of votes) {
+    if (source !== 'error') voteMap.set(role, vote);
+  }
+
+  const higherOrderResult = cascadeInfo.decided
+    ? undefined
+    : runHigherOrderVoting(opts.strategy, voteMap, opts.log);
+  const outcome: 'approved' | 'rejected' =
+    engineResult.outcome === 'approved' ? 'approved' : 'rejected';
+
+  return { engineResult, voteMap, higherOrderResult, outcome, cascaded: cascadeInfo.decided };
+}
+
 /** Execute a consensus vote with full strategy support. Exported for pipeline DRY (#1694). */
 export async function executeVoting(
   input: ConsensusVoteInput,
@@ -221,20 +307,21 @@ export async function executeVoting(
     proposal: input.proposal,
     simulate: input.simulateVotes,
   });
-  const engineResult = await processVotesThroughEngine(votes, input.proposal, algorithm);
 
-  const voteMap = new Map<string, Vote>();
-  for (const { role, vote, source } of votes) {
-    if (source !== 'error') voteMap.set(role, vote);
-  }
+  // Check for early cascade and process votes (#1765)
+  const { engineResult, voteMap, higherOrderResult, outcome, cascaded } =
+    await processVotesWithCascade(votes, {
+      totalRoles: roles.length,
+      proposal: input.proposal,
+      algorithm,
+      strategy,
+      log: logger,
+    });
 
-  const higherOrderResult = runHigherOrderVoting(strategy, voteMap, logger);
-  const outcome: 'approved' | 'rejected' =
-    engineResult.outcome === 'approved' ? 'approved' : 'rejected';
   recordVotesToTracker(votes, voteMap, outcome, logger);
 
   const totalTimeMs = getTimeProvider().now() - startTime;
-  logger.info('Consensus vote completed', { strategy, outcome, durationMs: totalTimeMs });
+  logger.info('Consensus vote completed', { strategy, outcome, durationMs: totalTimeMs, cascaded });
 
   const result: ExtendedVotingResult = {
     proposal: input.proposal,

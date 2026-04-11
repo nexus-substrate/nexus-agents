@@ -60,7 +60,16 @@ async function getMcpConfigPath(): Promise<string | null> {
   }
 }
 
-/** Get or create a cached CompositeRouter. */
+/** Cached circuit breaker for health monitoring (#1766). */
+let cachedCircuitBreaker: {
+  getHealthStatus(): {
+    systemHealthy: boolean;
+    healthyCount: number;
+    clis: ReadonlyArray<{ name: string; healthy: boolean }>;
+  };
+} | null = null;
+
+/** Get or create a cached CompositeRouter with circuit breaker monitoring. */
 async function getRouter(): Promise<RouterLike | null> {
   if (cachedRouter !== null) return cachedRouter;
   const { createAllAdapters } = await import('../cli-adapters/factory.js');
@@ -68,7 +77,30 @@ async function getRouter(): Promise<RouterLike | null> {
   const adapters = createAllAdapters();
   if (adapters.size === 0) return null;
   cachedRouter = createCompositeRouter(adapters) as unknown as RouterLike;
+
+  // Initialize circuit breaker monitoring (#1766)
+  try {
+    const { createCliCircuitBreakerIntegration } =
+      await import('../cli-adapters/cli-circuit-breaker.js');
+    cachedCircuitBreaker = createCliCircuitBreakerIntegration([...adapters.values()]);
+  } catch {
+    // Circuit breaker not available — continue without it
+  }
+
   return cachedRouter;
+}
+
+/** Check CLI health before dispatch (#1766). */
+function checkCircuitHealth(): { healthy: boolean; message: string } {
+  if (cachedCircuitBreaker === null) return { healthy: true, message: '' };
+  const status = cachedCircuitBreaker.getHealthStatus();
+  if (!status.systemHealthy) {
+    return {
+      healthy: false,
+      message: `All CLI circuits open (${String(status.healthyCount)}/${String(status.clis.length)} healthy)`,
+    };
+  }
+  return { healthy: true, message: '' };
 }
 
 export async function executeExpert(
@@ -89,6 +121,19 @@ export async function executeExpert(
         expertType,
         durationMs: getTimeProvider().now() - start,
         error: 'No CLI adapters available',
+      };
+    }
+
+    // Check circuit breaker health before dispatch (#1766)
+    const health = checkCircuitHealth();
+    if (!health.healthy) {
+      logger.warn('Circuit breaker: all CLIs unavailable', { expertType, reason: health.message });
+      return {
+        success: false,
+        text: '',
+        expertType,
+        durationMs: getTimeProvider().now() - start,
+        error: health.message,
       };
     }
 

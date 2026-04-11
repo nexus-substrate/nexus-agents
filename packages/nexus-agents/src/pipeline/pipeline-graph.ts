@@ -118,6 +118,12 @@ function createNodeHandler(
   template: PipelineTemplate
 ): (state: Readonly<Record<string, unknown>>) => Promise<Partial<Record<string, unknown>>> {
   return async (state) => {
+    // Extract or create SharedMemoryStore from graph state (#1764)
+    const existingStore = state[PIPELINE_STATE_KEYS.SHARED_MEMORY];
+    const { SharedMemoryStore } = await import('./shared-memory.js');
+    const sharedMemory =
+      existingStore instanceof SharedMemoryStore ? existingStore : new SharedMemoryStore();
+
     const context: PipelineContext = {
       executionId: `${template.id}-${stage.id}`,
       task:
@@ -126,6 +132,7 @@ function createNodeHandler(
           : '',
       templateId: template.id,
       state,
+      sharedMemory,
     };
 
     const output = await stage.execute(context);
