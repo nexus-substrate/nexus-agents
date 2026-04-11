@@ -86,6 +86,14 @@ export const DevPipelineInputSchema = z.object({
     .boolean()
     .default(false)
     .describe('Use 3 agents instead of 6 for faster consensus voting'),
+  /** Maximum execution time per stage in milliseconds (min 30s, max 600s). */
+  timeoutMs: z
+    .number()
+    .int()
+    .min(30_000)
+    .max(600_000)
+    .optional()
+    .describe('Max time per stage in ms (30000-600000). Default: varies by stage complexity'),
   /** Pipeline execution mode. */
   mode: z
     .enum(['autonomous', 'harness'])

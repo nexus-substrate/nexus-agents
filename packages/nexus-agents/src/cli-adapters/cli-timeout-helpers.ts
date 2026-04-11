@@ -47,7 +47,20 @@ export function estimateTaskComplexity(taskDescription: string): TaskComplexity 
   }
 
   // Simple indicators
-  const simpleIndicators = ['single', 'quick', 'one function', 'simple', 'small', 'brief', 'short'];
+  // Testing and exploration demoted to simple per weather data (99%+ success) (#1401)
+  const simpleIndicators = [
+    'single',
+    'quick',
+    'one function',
+    'simple',
+    'small',
+    'brief',
+    'short',
+    'run tests',
+    'test suite',
+    'exploration',
+    'explore',
+  ];
   if (simpleIndicators.some((indicator) => lower.includes(indicator))) {
     return 'simple';
   }
