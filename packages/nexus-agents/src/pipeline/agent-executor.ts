@@ -34,7 +34,8 @@ function recordOutcome(
   taskId: string,
   category: string,
   success: boolean,
-  durationMs: number
+  durationMs: number,
+  extra?: { routingStage?: string; retryCount?: number }
 ): void {
   try {
     getOutcomeStore().append({
@@ -46,6 +47,8 @@ function recordOutcome(
       durationMs,
       timestamp: new Date().toISOString(),
       source: 'delegate' as const,
+      routingStage: extra?.routingStage,
+      retryCount: extra?.retryCount,
     });
   } catch (error) {
     logger.debug('Failed to record outcome', { taskId, error: String(error) });
@@ -143,9 +146,27 @@ function recordMemoryError(error: string, solution: string): void {
   void getPipelineMemoryAsync().then((m) => m?.recordError({ error, solution }));
 }
 
-/** Flush pipeline memory session. Called at end of pipeline run. Exported for dry-run cleanup. */
+/** Flush pipeline memory session + persist MobiMem state (#1782). */
 export function flushPipelineMemory(): void {
   void getPipelineMemoryAsync().then((m) => m?.flush());
+  // Persist MobiMem/RoutingMemory to disk if enabled (#1782)
+  void persistMobiMemState();
+}
+
+/** Save MobiMem state to disk for cross-session learning (#1782). */
+async function persistMobiMemState(): Promise<void> {
+  try {
+    const { isPersistenceEnabled } = await import('../config/learning-persistence.js');
+    if (!isPersistenceEnabled()) return;
+    const os = await import('node:os');
+    const path = await import('node:path');
+    const { createMobiMem } = await import('../context/mobimem.js');
+    const mobimem = createMobiMem();
+    const savePath = path.join(os.homedir(), '.nexus-agents', 'memory', 'mobimem-state.json');
+    await mobimem.save(savePath);
+  } catch {
+    // MobiMem persistence failure must never block pipeline completion
+  }
 }
 
 // Cached RoutingMemory — lazy-initialized, one per process

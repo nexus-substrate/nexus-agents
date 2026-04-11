@@ -56,6 +56,10 @@ export const TaskOutcomeSchema = z.object({
   wasRetried: z.boolean().optional(),
   /** Triage action taken on the failure (#1506). */
   triageAction: z.string().max(30).optional(),
+  /** Routing stage that selected this CLI (#1785). */
+  routingStage: z.string().max(50).optional(),
+  /** Number of retry attempts before this outcome (#1785). */
+  retryCount: z.number().int().nonnegative().optional(),
 });
 
 /** Schema for filtering outcomes. */
