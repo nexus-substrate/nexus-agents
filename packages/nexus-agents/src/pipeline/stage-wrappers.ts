@@ -60,6 +60,8 @@ export function createResearchStageWrapper(stages: DevPipelineStages): IPipeline
       const start = getTimeProvider().now();
       try {
         const result = await stages.research(ctx.task);
+        // Write research findings to shared memory for downstream stages (#1764)
+        ctx.sharedMemory.write('research', 'discovery', result);
         return output(K.RESEARCH, result, getTimeProvider().now() - start, true);
       } catch (e) {
         return failOutput(K.RESEARCH, String(e), getTimeProvider().now() - start);
@@ -83,6 +85,8 @@ export function createPlanStageWrapper(stages: DevPipelineStages): IPipelineStag
           : undefined;
       try {
         const result = await stages.plan(ctx.task, research, feedback);
+        // Write plan decisions to shared memory for downstream stages (#1764)
+        ctx.sharedMemory.write('plan', 'decision', result);
         return output(K.PLAN, result, getTimeProvider().now() - start, true);
       } catch (e) {
         return failOutput(K.PLAN, String(e), getTimeProvider().now() - start);

@@ -15,6 +15,7 @@ import {
 import type { DevPipelineStages, VoteResult, QaReviewResult } from './dev-pipeline.js';
 import type { PipelineContext } from './stage-types.js';
 import { PIPELINE_STATE_KEYS as K } from './stage-types.js';
+import { SharedMemoryStore } from './shared-memory.js';
 
 // ============================================================================
 // Helpers
@@ -31,6 +32,7 @@ function makeContext(stateOverrides?: Record<string, unknown>): PipelineContext 
       [K.PLAN]: 'Implementation plan',
       ...stateOverrides,
     },
+    sharedMemory: new SharedMemoryStore(),
   };
 }
 

@@ -9,6 +9,7 @@
  */
 
 import { createLogger, getTimeProvider } from '../core/index.js';
+import { SharedMemoryStore } from './shared-memory.js';
 import { executeGraph } from '../orchestration/graph/graph-executor.js';
 import type { CompiledGraph } from '../orchestration/graph/graph-types.js';
 import { compilePipelineGraph } from './pipeline-graph.js';
@@ -102,9 +103,12 @@ async function executeAndReport(
 
   emitPipelineStageEvent(template.id, 'pipeline', 'started');
 
+  // Create SharedMemoryStore for cross-stage context sharing (#1764)
+  const sharedMemory = new SharedMemoryStore();
+
   const result = await executeGraph(
     graph,
-    { [K.TASK]: task },
+    { [K.TASK]: task, [K.SHARED_MEMORY]: sharedMemory },
     {
       maxSteps: options?.maxSteps ?? DEFAULT_MAX_STEPS,
     }

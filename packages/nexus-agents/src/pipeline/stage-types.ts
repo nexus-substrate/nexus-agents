@@ -21,6 +21,8 @@ export interface PipelineContext {
   readonly templateId: string;
   /** Accumulated state from prior stages. */
   readonly state: Readonly<Record<string, unknown>>;
+  /** Cross-stage knowledge store for discoveries, decisions, constraints (#1764). */
+  readonly sharedMemory: import('./shared-memory.js').SharedMemoryStore;
 }
 
 /** Result of executing a single pipeline stage. */
@@ -97,4 +99,5 @@ export const PIPELINE_STATE_KEYS = {
   PARSED_SPEC: 'parsedSpec',
   SCAFFOLD_OUTPUT: 'scaffoldOutput',
   COMPLETED: 'completed',
+  SHARED_MEMORY: '__sharedMemory__',
 } as const;
