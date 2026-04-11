@@ -65,6 +65,8 @@ const PIPELINE_TYPE_KEYWORDS: Record<PipelineType, readonly string[]> = {
     'create',
     'add ',
     'fix bug',
+    'fix ',
+    'bug',
     'refactor',
     'write code',
     'function',
@@ -242,7 +244,8 @@ async function tryIssueTriage(task: string): Promise<TaskClassification | null> 
 // ============================================================================
 
 /** Threshold below which keyword classification triggers LLM refinement. */
-const LLM_REFINEMENT_THRESHOLD = 0.3;
+/** Triggers LLM on truly ambiguous tasks (0 keyword matches = 0 confidence). */
+const LLM_REFINEMENT_THRESHOLD = 0.2;
 
 /** Valid pipeline template names for LLM classification parsing. */
 const VALID_TEMPLATES = new Set<PipelineType>([
