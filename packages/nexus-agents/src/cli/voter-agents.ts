@@ -79,8 +79,8 @@ import { resolveVoteTimeout, VOTE_TIMEOUTS } from '../config/timeouts.js';
 /**
  * Options for executing voter agents.
  */
-/** Default inter-agent delay to prevent rate limiting (ms). */
-export const DEFAULT_INTER_AGENT_DELAY_MS = 1000;
+/** Default inter-agent delay to prevent rate limiting (ms). Raised from 1s to 2s (#1802). */
+export const DEFAULT_INTER_AGENT_DELAY_MS = 2000;
 
 export interface VoterAgentOptions {
   /** Logger instance */
