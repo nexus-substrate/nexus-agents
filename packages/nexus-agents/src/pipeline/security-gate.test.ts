@@ -73,7 +73,7 @@ describe('checkSecurityScan', () => {
     const check = checkSecurityScan('/tmp/test');
     const result = await check();
     expect(result.verdict).toBe('fail');
-    expect(result.details).toContain('sql-injection');
+    expect(result.details).toContain('confirmed blocking');
   });
 
   it('skips when scanner unavailable', async () => {
