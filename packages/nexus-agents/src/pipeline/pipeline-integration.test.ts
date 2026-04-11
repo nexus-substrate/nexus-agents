@@ -62,17 +62,21 @@ function createMockStages(): DevPipelineStages {
     vote: vi
       .fn<(plan: string) => Promise<VoteResult>>()
       .mockResolvedValue({ kind: 'approved', approvalPercentage: 85 }),
-    decompose: vi
-      .fn<(plan: string) => Promise<PipelineTask[]>>()
-      .mockResolvedValue([
-        { id: 'task-1', title: 'Create auth service', description: 'Build it', status: 'pending' },
-      ]),
+    decompose: vi.fn<(plan: string) => Promise<PipelineTask[]>>().mockResolvedValue([
+      {
+        id: 'task-1',
+        title: 'Create auth service',
+        description: 'Build it',
+        assignedTo: 'coder' as const,
+        status: 'pending' as const,
+      },
+    ]),
     implement: vi
       .fn<(task: PipelineTask) => Promise<string>>()
       .mockResolvedValue('Implementation complete'),
     qaReview: vi
-      .fn<(impl: string) => Promise<QaReviewResult>>()
-      .mockResolvedValue({ verdict: 'pass', approved: true, feedback: 'Looks good' }),
+      .fn<(task: PipelineTask, impl: string) => Promise<QaReviewResult>>()
+      .mockResolvedValue({ verdict: 'pass', feedback: 'Looks good', issues: [] }),
     securityScan: vi.fn().mockResolvedValue({ passed: true, findings: [] }),
   };
 }
@@ -114,7 +118,15 @@ describe('Pipeline Integration — SharedMemoryStore propagation', () => {
     const ctx = makeContext(
       { sharedMemory },
       {
-        [K.TASKS]: [{ id: 't1', title: 'Task', description: 'Do it', status: 'pending' as const }],
+        [K.TASKS]: [
+          {
+            id: 't1',
+            title: 'Task',
+            description: 'Do it',
+            assignedTo: 'coder',
+            status: 'pending' as const,
+          },
+        ],
       }
     );
 
