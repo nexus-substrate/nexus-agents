@@ -59,12 +59,16 @@ export function createResearchStageWrapper(stages: DevPipelineStages): IPipeline
     async execute(ctx: PipelineContext): Promise<StageOutput> {
       const start = getTimeProvider().now();
       try {
-        // Inject codebase context into research (#1778)
+        // Inject adaptive memory context (#1781) + codebase context (#1778)
+        const priorContext = await retrieveAdaptiveMemory(ctx.task);
         const codeContext = await searchCodebaseForTask(ctx.task);
-        const enrichedTask =
-          codeContext !== null && codeContext !== ''
-            ? `${ctx.task}\n\n## Codebase Context\n${codeContext}`
-            : ctx.task;
+        let enrichedTask = ctx.task;
+        if (priorContext !== null) {
+          enrichedTask = `${enrichedTask}\n\n## Prior Context (Adaptive Memory)\n${priorContext}`;
+        }
+        if (codeContext !== null && codeContext !== '') {
+          enrichedTask = `${enrichedTask}\n\n## Codebase Context\n${codeContext}`;
+        }
         const result = await stages.research(enrichedTask);
         // Write research findings to shared memory for downstream stages (#1764)
         ctx.sharedMemory.write('research', 'discovery', result);
@@ -90,7 +94,13 @@ export function createPlanStageWrapper(stages: DevPipelineStages): IPipelineStag
           ? (ctx.state[K.VOTE_FEEDBACK] as string)
           : undefined;
       try {
-        const result = await stages.plan(ctx.task, research, feedback);
+        // Seed plan with relevant research prior-art (#1783)
+        const priorArt = await queryResearchRegistry(ctx.task);
+        const enrichedResearch =
+          priorArt !== null
+            ? `${research}\n\n## Prior Art (Research Registry)\n${priorArt}`
+            : research;
+        const result = await stages.plan(ctx.task, enrichedResearch, feedback);
         // Write plan decisions to shared memory for downstream stages (#1764)
         ctx.sharedMemory.write('plan', 'decision', result);
         return output(K.PLAN, result, getTimeProvider().now() - start, true);
@@ -159,6 +169,8 @@ export function createImplementStageWrapper(stages: DevPipelineStages): IPipelin
           ctx.sharedMemory.write('implement', 'context', symbolContext);
         }
         const results = await Promise.all(tasks.map((t) => stages.implement(t)));
+        // Post-implement trust gate: classify generated output trust level (#1784)
+        classifyImplementationTrust(results, ctx);
         return output(K.IMPLEMENTATIONS, results, getTimeProvider().now() - start, true);
       } catch (e) {
         return failOutput(K.IMPLEMENTATIONS, String(e), getTimeProvider().now() - start);
@@ -283,6 +295,65 @@ async function extractSymbolsForTask(task: string): Promise<string | null> {
     return summaries.length > 0 ? summaries.join('\n') : null;
   } catch {
     return null;
+  }
+}
+
+/** Retrieve relevant prior context from AdaptiveMemory (#1781). */
+async function retrieveAdaptiveMemory(task: string): Promise<string | null> {
+  try {
+    const { AdaptiveMemoryBackend } = await import('../context/adaptive-memory.js');
+    const os = await import('node:os');
+    const path = await import('node:path');
+    const baseDir = path.join(os.homedir(), '.nexus-agents', 'memory');
+    const memory = new AdaptiveMemoryBackend({
+      dbPath: path.join(baseDir, 'adaptive.db'),
+      markdownDir: path.join(baseDir, 'adaptive-md'),
+    });
+    // Use first 50 chars of task as retrieval key
+    const key = task.slice(0, 50).replace(/\s+/g, '-').toLowerCase();
+    const result = await memory.retrieve(key);
+    if (!result.ok) return null;
+    const value = result.value;
+    return typeof value === 'string' && value.length > 0 ? value : null;
+  } catch {
+    return null; // Adaptive memory not available — continue without
+  }
+}
+
+/** Query research registry for techniques relevant to the task (#1783). */
+async function queryResearchRegistry(task: string): Promise<string | null> {
+  try {
+    const { synthesizeResearch } = await import('../cli/research-helpers-synthesize.js');
+    // Extract key topic from task (first meaningful phrase)
+    const topic = task
+      .split(/[.!?\n]/)
+      .filter((s) => s.trim().length > 10)[0]
+      ?.trim();
+    if (topic === undefined) return null;
+    const result = await synthesizeResearch(topic.slice(0, 50));
+    if (!result.ok) return null;
+    const themes = result.value.crossCuttingThemes.slice(0, 3);
+    if (themes.length === 0) return null;
+    return `Relevant themes: ${themes.join(', ')}`;
+  } catch {
+    return null; // Research registry not available — continue without
+  }
+}
+
+/** Classify trust of generated implementations (#1784). */
+function classifyImplementationTrust(results: unknown[], ctx: PipelineContext): void {
+  try {
+    // Record trust assessment — fire-and-forget, never blocks pipeline
+    const implCount = results.length;
+    const trustLevel = implCount > 0 ? 'semi-trusted' : 'unknown';
+    ctx.sharedMemory.write('implement', 'risk', {
+      trustLevel,
+      source: 'pipeline-agent',
+      requiresReview: true,
+      count: implCount,
+    });
+  } catch {
+    // Trust classification failure must never block the pipeline
   }
 }
 

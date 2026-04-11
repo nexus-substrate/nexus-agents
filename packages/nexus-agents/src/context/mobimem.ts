@@ -94,6 +94,34 @@ export class MobiMem implements IMobiMem {
   close(): void {
     logger.info('MobiMem closed');
   }
+
+  /** Export MobiMem state for disk persistence (#1782). */
+  exportData(): MobiMemSnapshot {
+    return {
+      stats: this.getStats(),
+      exportedAt: new Date().toISOString(),
+    };
+  }
+
+  /** Save MobiMem state to disk (#1782). */
+  async save(filePath: string): Promise<void> {
+    try {
+      const fs = await import('node:fs/promises');
+      const path = await import('node:path');
+      await fs.mkdir(path.dirname(filePath), { recursive: true });
+      const data = JSON.stringify(this.exportData(), null, 2);
+      await fs.writeFile(filePath, data, 'utf-8');
+      logger.debug('MobiMem state saved', { path: filePath });
+    } catch (error) {
+      logger.warn('Failed to save MobiMem state', { error: String(error) });
+    }
+  }
+}
+
+/** Snapshot of MobiMem state for persistence (#1782). */
+export interface MobiMemSnapshot {
+  readonly stats: MobiMemStats;
+  readonly exportedAt: string;
 }
 
 /**
