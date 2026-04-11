@@ -14,6 +14,12 @@ import type { BuiltInExpertType } from '../agents/experts/expert-config.js';
 
 const logger = createLogger({ component: 'expert-bridge' });
 
+/** Rate limit detection patterns (#1802). */
+const RATE_LIMIT_INDICATORS = ['rate limit', '429', 'too many requests', 'throttl', 'quota'];
+
+/** Base delay for rate limit retry backoff (ms). Scales linearly: 3s, 6s, 9s. */
+const RATE_LIMIT_BASE_DELAY_MS = 3000;
+
 /** Result of an expert execution. */
 export interface ExpertBridgeResult {
   readonly success: boolean;
@@ -103,6 +109,45 @@ function checkCircuitHealth(): { healthy: boolean; message: string } {
   return { healthy: true, message: '' };
 }
 
+/** Dispatch task to router with rate limit retry (#1802). */
+async function dispatchWithRateLimitRetry(
+  router: RouterLike,
+  task: { content: string; options?: Record<string, unknown> | undefined },
+  expertType: BuiltInExpertType,
+  start: number
+): Promise<ExpertBridgeResult> {
+  const maxAttempts = 3;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const result = await router.executeTask(task);
+    const durationMs = getTimeProvider().now() - start;
+
+    if (result.ok) {
+      logger.info('Expert executed successfully', { expertType, durationMs });
+      return { success: true, text: result.value.text, expertType, durationMs };
+    }
+
+    const errorMsg = result.error.message.toLowerCase();
+    const isRateLimit = RATE_LIMIT_INDICATORS.some((p) => errorMsg.includes(p));
+    if (isRateLimit && attempt < maxAttempts - 1) {
+      const backoffMs = RATE_LIMIT_BASE_DELAY_MS * (attempt + 1);
+      logger.warn('Expert rate limited, retrying', { expertType, attempt: attempt + 1, backoffMs });
+      await new Promise((resolve) => setTimeout(resolve, backoffMs));
+      continue;
+    }
+
+    logger.warn('Expert execution failed', { expertType, error: result.error.message });
+    return { success: false, text: '', expertType, durationMs, error: result.error.message };
+  }
+
+  return {
+    success: false,
+    text: '',
+    expertType,
+    durationMs: getTimeProvider().now() - start,
+    error: 'Max retry attempts exceeded',
+  };
+}
+
 export async function executeExpert(
   expertType: BuiltInExpertType,
   prompt: string
@@ -143,16 +188,8 @@ export async function executeExpert(
       content: fullPrompt,
     };
     if (mcpConfigPath !== null) task.options = { mcpConfigPath };
-    const result = await router.executeTask(task);
-    const durationMs = getTimeProvider().now() - start;
 
-    if (result.ok) {
-      logger.info('Expert executed successfully', { expertType, durationMs });
-      return { success: true, text: result.value.text, expertType, durationMs };
-    }
-
-    logger.warn('Expert execution failed', { expertType, error: result.error.message });
-    return { success: false, text: '', expertType, durationMs, error: result.error.message };
+    return await dispatchWithRateLimitRetry(router, task, expertType, start);
   } catch (error) {
     const durationMs = getTimeProvider().now() - start;
     const msg = error instanceof Error ? error.message : String(error);

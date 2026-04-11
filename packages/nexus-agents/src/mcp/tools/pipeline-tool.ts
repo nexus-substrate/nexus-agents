@@ -97,6 +97,11 @@ function buildOutput(result: AdaptiveOrchestratorResult): Record<string, unknown
     stepsExecuted: result.stepsExecuted,
     durationMs: result.durationMs,
     error: result.error ?? null,
+    // Rate limit awareness (#1802)
+    rateLimitHint:
+      result.error?.toLowerCase().includes('rate limit') === true
+        ? 'Consider using quickMode or increasing delay between pipeline runs'
+        : undefined,
   };
 }
 
