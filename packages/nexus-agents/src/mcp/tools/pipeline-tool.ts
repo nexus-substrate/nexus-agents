@@ -13,7 +13,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { getErrorMessage } from '../../core/index.js';
-import { runAdaptiveOrchestrator } from '../../pipeline/adaptive-orchestrator.js';
+import { runAdaptiveOrchestrator, classifyTask } from '../../pipeline/adaptive-orchestrator.js';
 import type { AdaptiveOrchestratorResult } from '../../pipeline/adaptive-orchestrator.js';
 import { createAgentStages } from '../../pipeline/agent-executor.js';
 import {
@@ -120,15 +120,17 @@ function resolveTask(task: string, specFile: string | undefined): string {
   return `${specContent}\n\n---\n\n${task}`;
 }
 
-/** Select the appropriate stage registry based on template. */
+/** Select the appropriate stage registry based on template or auto-detection. */
 function selectStageRegistry(
   template: string | undefined,
+  task: string,
   agentStages: ReturnType<typeof createAgentStages>
 ): Map<string, import('../../pipeline/stage-types.js').IPipelineStage> {
-  if (template === 'greenfield') {
+  const effective = template ?? classifyTask(task).pipelineType;
+  if (effective === 'greenfield') {
     return createGreenfieldStageRegistry(agentStages);
   }
-  if (template === 'audit') {
+  if (effective === 'audit') {
     return createAuditStageRegistry();
   }
   return createDevStageRegistry(agentStages);
@@ -154,7 +156,7 @@ export function registerPipelineTool(
         votingStrategy: input.votingStrategy,
         quickMode: input.quickMode,
       });
-      const stages = selectStageRegistry(input.template, agentStages);
+      const stages = selectStageRegistry(input.template, task, agentStages);
 
       const result = await runAdaptiveOrchestrator(task, {
         stages,
