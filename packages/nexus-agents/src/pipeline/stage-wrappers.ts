@@ -59,7 +59,13 @@ export function createResearchStageWrapper(stages: DevPipelineStages): IPipeline
     async execute(ctx: PipelineContext): Promise<StageOutput> {
       const start = getTimeProvider().now();
       try {
-        const result = await stages.research(ctx.task);
+        // Inject codebase context into research (#1778)
+        const codeContext = await searchCodebaseForTask(ctx.task);
+        const enrichedTask =
+          codeContext !== null && codeContext !== ''
+            ? `${ctx.task}\n\n## Codebase Context\n${codeContext}`
+            : ctx.task;
+        const result = await stages.research(enrichedTask);
         // Write research findings to shared memory for downstream stages (#1764)
         ctx.sharedMemory.write('research', 'discovery', result);
         return output(K.RESEARCH, result, getTimeProvider().now() - start, true);
@@ -147,6 +153,11 @@ export function createImplementStageWrapper(stages: DevPipelineStages): IPipelin
       const start = getTimeProvider().now();
       const tasks = Array.isArray(ctx.state[K.TASKS]) ? (ctx.state[K.TASKS] as PipelineTask[]) : [];
       try {
+        // Inject symbol context before implementation (#1777)
+        const symbolContext = await extractSymbolsForTask(ctx.task);
+        if (symbolContext !== null && symbolContext !== '') {
+          ctx.sharedMemory.write('implement', 'context', symbolContext);
+        }
         const results = await Promise.all(tasks.map((t) => stages.implement(t)));
         return output(K.IMPLEMENTATIONS, results, getTimeProvider().now() - start, true);
       } catch (e) {
@@ -220,6 +231,62 @@ export function createScaffoldStageWrapper(): IPipelineStage {
 }
 
 // ============================================================================
+// Codebase Intelligence Helpers (#1777, #1778)
+// ============================================================================
+
+/** Search codebase for symbols related to the task (#1778). */
+async function searchCodebaseForTask(task: string): Promise<string | null> {
+  try {
+    const { CodebaseIndex } = await import('../indexer/codebase-search.js');
+    const index = new CodebaseIndex(process.cwd());
+    // Extract key terms from task (first 3 significant words)
+    const terms = task
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((w) => w.length > 4)
+      .slice(0, 3);
+    if (terms.length === 0) return null;
+    const results = index.search(terms.join(' '), 5);
+    if (results.length === 0) return null;
+    return results
+      .map(
+        (r) =>
+          `${r.symbol.kind} ${r.symbol.name} (${r.symbol.filePath}:${String(r.symbol.startLine)})`
+      )
+      .join('\n');
+  } catch {
+    return null; // Indexing not available — continue without context
+  }
+}
+
+/** Extract symbols from files referenced in the task (#1777). */
+async function extractSymbolsForTask(task: string): Promise<string | null> {
+  try {
+    // Look for file paths in the task
+    const fileRefs = task.match(/(?:src|lib|packages)\/[^\s,)]+\.ts/g);
+    if (fileRefs === null || fileRefs.length === 0) return null;
+    const { extractSymbols } = await import('../indexer/symbol-extractor.js');
+    const path = await import('node:path');
+    const summaries: string[] = [];
+    for (const ref of fileRefs.slice(0, 3)) {
+      try {
+        const resolved = path.resolve(ref);
+        const result = await extractSymbols(resolved);
+        const exported = result.symbols.filter((s) => s.exported);
+        if (exported.length > 0) {
+          summaries.push(`${ref}: ${exported.map((s) => `${s.kind} ${s.name}`).join(', ')}`);
+        }
+      } catch {
+        // File not found — skip
+      }
+    }
+    return summaries.length > 0 ? summaries.join('\n') : null;
+  } catch {
+    return null;
+  }
+}
+
+// ============================================================================
 // Registry Factory
 // ============================================================================
 
@@ -250,5 +317,90 @@ export function createGreenfieldStageRegistry(
     ['implement', createImplementStageWrapper(stages)],
     ['qa', createQaStageWrapper(stages)],
     ['security', createSecurityStageWrapper(stages)],
+  ]);
+}
+
+// ============================================================================
+// Audit Pipeline Stages (#1774)
+// ============================================================================
+
+/** Analyze stage — detect repo tech stack via repo_analyze. */
+export function createAnalyzeStageWrapper(): IPipelineStage {
+  return {
+    id: 'analyze',
+    name: 'Analyze Repository',
+    async execute(ctx: PipelineContext): Promise<StageOutput> {
+      const start = getTimeProvider().now();
+      try {
+        // Use task as repo slug if it looks like owner/name
+        const slug = ctx.task.match(/([a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+)/)?.[1];
+        if (slug === undefined) {
+          return output(
+            K.RESEARCH,
+            'No repository slug found in task',
+            getTimeProvider().now() - start,
+            true
+          );
+        }
+        const { analyzeGitHubRepo } = await import('../mcp/tools/repo-analyze.js');
+        const analysis = await analyzeGitHubRepo({ repo: slug, depth: 'deep' });
+        const summary = `Language: ${String(analysis.language)}, Framework: ${String(analysis.framework)}, CI: ${String(analysis.ciProvider)}, Security: ${analysis.securityTooling.join(', ') || 'none'}`;
+        ctx.sharedMemory.write('analyze', 'discovery', { slug, analysis: summary });
+        return output(K.RESEARCH, summary, getTimeProvider().now() - start, true);
+      } catch (e) {
+        return failOutput(K.RESEARCH, String(e), getTimeProvider().now() - start);
+      }
+    },
+  };
+}
+
+/** Scan stage — run security scan with recommendations from repo_security_plan. */
+export function createScanStageWrapper(): IPipelineStage {
+  return {
+    id: 'scan',
+    name: 'Security Scan',
+    async execute(ctx: PipelineContext): Promise<StageOutput> {
+      const start = getTimeProvider().now();
+      try {
+        const slug = ctx.task.match(/([a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+)/)?.[1];
+        if (slug !== undefined) {
+          const { generateSecurityPlan } = await import('../mcp/tools/repo-security-plan.js');
+          const plan = await generateSecurityPlan({ repo: slug, maxScanners: 10 });
+          const recs = plan.recommendations
+            .slice(0, 5)
+            .map((r) => `${r.priority}: ${r.displayName} (${r.category})`)
+            .join('; ');
+          ctx.sharedMemory.write('scan', 'decision', { recommendations: recs });
+          return output(K.FINDINGS, recs, getTimeProvider().now() - start, true);
+        }
+        return output(K.FINDINGS, 'No repository to scan', getTimeProvider().now() - start, true);
+      } catch (e) {
+        return failOutput(K.FINDINGS, String(e), getTimeProvider().now() - start);
+      }
+    },
+  };
+}
+
+/** Report stage — summarize analysis + scan findings. */
+export function createReportStageWrapper(): IPipelineStage {
+  return {
+    id: 'report',
+    name: 'Security Report',
+    execute(ctx: PipelineContext): Promise<StageOutput> {
+      const start = getTimeProvider().now();
+      const research = typeof ctx.state[K.RESEARCH] === 'string' ? ctx.state[K.RESEARCH] : '';
+      const findings = typeof ctx.state[K.FINDINGS] === 'string' ? ctx.state[K.FINDINGS] : '';
+      const report = `## Security Report\n\n### Analysis\n${String(research)}\n\n### Findings\n${String(findings)}`;
+      return Promise.resolve(output(K.COMPLETED, report, getTimeProvider().now() - start, true));
+    },
+  };
+}
+
+/** Create a stage registry for the audit pipeline template. */
+export function createAuditStageRegistry(): Map<string, IPipelineStage> {
+  return new Map([
+    ['analyze', createAnalyzeStageWrapper()],
+    ['scan', createScanStageWrapper()],
+    ['report', createReportStageWrapper()],
   ]);
 }
