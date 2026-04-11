@@ -727,7 +727,29 @@ async function applyQualityConstraints(
   return ok({ candidates: qualityResult.eligible, qualityResult });
 }
 
+/** Override LinUCB selection if the chosen CLI is below performance floor (#1790). */
+function applyLinUCBFloorOverride(
+  linucbCli: CliName,
+  topsisRanking: CliName[],
+  opts: {
+    perfData?: ReadonlyMap<CliName, PerformanceFloorEntry> | undefined;
+    taskType: string;
+    stagesExecuted: string[];
+  }
+): CliName {
+  if (opts.perfData === undefined) return linucbCli;
+  const cliPerf = opts.perfData.get(linucbCli);
+  if (cliPerf === undefined || cliPerf.sampleCount < 20 || cliPerf.successRate >= 0.5) {
+    return linucbCli;
+  }
+  const topsisTop = topsisRanking[0];
+  if (topsisTop === undefined || topsisTop === linucbCli) return linucbCli;
+  opts.stagesExecuted.push('perf-floor-override');
+  return topsisTop;
+}
+
 /** Executes full pipeline and returns result. (Made async in Issue #1350) */
+// eslint-disable-next-line max-lines-per-function -- routing pipeline is a cohesive sequence
 export async function runPipeline(
   task: CliTask,
   taskProfile: TaskProfile,
@@ -764,12 +786,19 @@ export async function runPipeline(
     return err(new CompositeRoutingError('No candidates available', 'selection'));
   }
 
-  const latencyResult = runLatencyStage(candidates, stagesExecuted, deps);
-  const selectedCli = selectWithMemoryInfluence(
+  // Performance floor override: reject LinUCB selection if CLI is below floor (#1790)
+  const effectiveSelection = applyLinUCBFloorOverride(
     linucbResult.selectedCli,
-    scoring.memoryResult,
-    deps
+    topsisResult.ranking,
+    {
+      perfData: topsisOpts.performanceData,
+      taskType: taskProfile.taskType,
+      stagesExecuted,
+    }
   );
+
+  const latencyResult = runLatencyStage(candidates, stagesExecuted, deps);
+  const selectedCli = selectWithMemoryInfluence(effectiveSelection, scoring.memoryResult, deps);
 
   return ok(
     buildPipelineResult({
