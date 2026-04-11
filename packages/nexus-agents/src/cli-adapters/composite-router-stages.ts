@@ -732,7 +732,7 @@ function applyLinUCBFloorOverride(
   linucbCli: CliName,
   topsisRanking: CliName[],
   opts: {
-    perfData?: ReadonlyMap<CliName, PerformanceFloorEntry>;
+    perfData?: ReadonlyMap<CliName, PerformanceFloorEntry> | undefined;
     taskType: string;
     stagesExecuted: string[];
   }
