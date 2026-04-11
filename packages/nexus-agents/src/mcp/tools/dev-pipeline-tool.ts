@@ -69,6 +69,18 @@ export const DevPipelineInputSchema = z.object({
     .boolean()
     .default(false)
     .describe('Use simulated votes (for testing without real CLIs)'),
+  /** Voting strategy for consensus stages. */
+  votingStrategy: z
+    .enum([
+      'simple_majority',
+      'supermajority',
+      'unanimous',
+      'higher_order',
+      'proof_of_learning',
+      'opinion_wise',
+    ])
+    .optional()
+    .describe('Voting strategy for plan approval (default: higher_order)'),
   /** Pipeline execution mode. */
   mode: z
     .enum(['autonomous', 'harness'])
@@ -123,6 +135,7 @@ async function createStages(
   return createAgentStages({
     scanTarget: input.workingDir,
     simulateVotes: input.simulateVotes,
+    votingStrategy: input.votingStrategy,
     issueNumber: input.issueNumber,
     repo: input.repo,
     tracker,

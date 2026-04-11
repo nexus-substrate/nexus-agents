@@ -69,9 +69,20 @@ describe('classifyTask', () => {
     expect(result.keywords).toContain('audit');
   });
 
-  it('defaults to dev for ambiguous tasks', () => {
+  it('classifies review tasks as audit', () => {
+    const result = classifyTask('Review this repo for security issues');
+    expect(result.pipelineType).toBe('audit');
+    expect(result.keywords).toContain('review');
+  });
+
+  it('classifies inspection tasks as audit', () => {
+    const result = classifyTask('Inspect the codebase and check for vulnerabilities');
+    expect(result.pipelineType).toBe('audit');
+  });
+
+  it('defaults to general for ambiguous tasks (fail-safe with security gate)', () => {
     const result = classifyTask('Do something');
-    expect(result.pipelineType).toBe('dev');
+    expect(result.pipelineType).toBe('general');
   });
 
   it('classifies greenfield tasks', () => {

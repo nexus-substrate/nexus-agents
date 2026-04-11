@@ -98,6 +98,11 @@ const PIPELINE_TYPE_KEYWORDS: Record<PipelineType, readonly string[]> = {
     'cve',
     'owasp',
     'threat model',
+    'review',
+    'inspect',
+    'check',
+    'posture',
+    'hardening',
   ],
   greenfield: [
     'new project',
@@ -171,7 +176,8 @@ function selectBestType(scores: Record<PipelineType, number>): PipelineType {
       best = type as PipelineType;
     }
   }
-  return bestScore === 0 ? 'dev' : best;
+  // Zero-confidence → general template (includes security gate — fail-safe)
+  return bestScore === 0 ? 'general' : best;
 }
 
 /** Estimate task complexity from keywords. */
