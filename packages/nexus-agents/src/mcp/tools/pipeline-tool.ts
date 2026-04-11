@@ -19,6 +19,7 @@ import { createAgentStages } from '../../pipeline/agent-executor.js';
 import {
   createDevStageRegistry,
   createGreenfieldStageRegistry,
+  createAuditStageRegistry,
 } from '../../pipeline/stage-wrappers.js';
 import { listTemplateIds } from '../../pipeline/templates.js';
 
@@ -118,6 +119,9 @@ function selectStageRegistry(
 ): Map<string, import('../../pipeline/stage-types.js').IPipelineStage> {
   if (template === 'greenfield') {
     return createGreenfieldStageRegistry(agentStages);
+  }
+  if (template === 'audit') {
+    return createAuditStageRegistry();
   }
   return createDevStageRegistry(agentStages);
 }

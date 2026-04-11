@@ -195,6 +195,45 @@ function extractMatchedKeywords(lower: string, type: PipelineType): string[] {
 }
 
 // ============================================================================
+// Issue Triage Fallback (#1779)
+// ============================================================================
+
+/** Map issue_triage category to pipeline type. */
+const TRIAGE_CATEGORY_MAP: Record<string, PipelineType> = {
+  bug: 'dev',
+  feature: 'dev',
+  documentation: 'general',
+  security: 'audit',
+  research: 'research',
+};
+
+/** Try using issue_triage for richer classification when confidence is low. */
+async function tryIssueTriage(task: string): Promise<TaskClassification | null> {
+  try {
+    // Check if the task looks like a GitHub issue URL
+    const issueMatch = task.match(/github\.com\/([^/]+\/[^/]+)\/issues\/(\d+)/);
+    if (issueMatch === null) return null;
+
+    const { createIssueTriage } = await import('../dogfooding/issue-triage.js');
+    const triage = createIssueTriage();
+    const owner = issueMatch[1] ?? '';
+    const num = issueMatch[2] ?? '';
+    const triageResult = await triage.triageIssue(`https://github.com/${owner}/issues/${num}`);
+    if (!triageResult.ok) return null;
+    const result = triageResult.value;
+    const mapped = TRIAGE_CATEGORY_MAP[result.category] ?? 'general';
+    return {
+      pipelineType: mapped,
+      complexity: 'moderate',
+      confidence: Math.max(0.5, result.categoryConfidence),
+      keywords: [result.category],
+    };
+  } catch {
+    return null; // Triage not available — fall back to keyword classification
+  }
+}
+
+// ============================================================================
 // Orchestration
 // ============================================================================
 
@@ -214,7 +253,19 @@ export async function runAdaptiveOrchestrator(
   }
   const cleanTask = sanitized.content;
 
-  const classification = classifyTask(cleanTask);
+  let classification = classifyTask(cleanTask);
+
+  // Low-confidence fallback: use issue_triage for richer signal (#1779)
+  if (classification.confidence < 0.3 && options.templateId === undefined) {
+    const enriched = await tryIssueTriage(cleanTask);
+    if (enriched !== null) {
+      logger.info('Classification enriched via issue_triage', {
+        original: classification.pipelineType,
+        enriched: enriched.pipelineType,
+      });
+      classification = enriched;
+    }
+  }
 
   // Template selection: explicit override or auto-detected
   const templateId = options.templateId ?? classification.pipelineType;

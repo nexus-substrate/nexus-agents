@@ -253,7 +253,11 @@ export {
 } from './templates.js';
 
 // Stage Wrappers — adapt DevPipelineStages to IPipelineStage (#1735 Phase 2)
-export { createDevStageRegistry, createGreenfieldStageRegistry } from './stage-wrappers.js';
+export {
+  createDevStageRegistry,
+  createGreenfieldStageRegistry,
+  createAuditStageRegistry,
+} from './stage-wrappers.js';
 
 // Graph Pipeline Runner — execute pipelines via graph executor (#1735 Phase 2)
 export { runGraphPipeline, extractStateValue } from './graph-pipeline-runner.js';
