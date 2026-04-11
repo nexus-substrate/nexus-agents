@@ -59,6 +59,11 @@ export const PipelineInputSchema = z.object({
     .describe(
       'Voting strategy for plan approval. simple_majority (default), supermajority (67%), unanimous, higher_order (Bayesian), proof_of_learning, opinion_wise'
     ),
+  /** Use 3 agents instead of 6 for faster voting. */
+  quickMode: z
+    .boolean()
+    .default(false)
+    .describe('Use 3 agents instead of 6 for faster consensus voting'),
   /** Stop after planning/voting (no implementation). */
   dryRun: z.boolean().default(false).describe('Stop after vote stage (no implementation)'),
   /** Use simulated votes (for testing). */
@@ -135,6 +140,7 @@ export function registerPipelineTool(
       const agentStages = createAgentStages({
         simulateVotes: input.simulateVotes,
         votingStrategy: input.votingStrategy,
+        quickMode: input.quickMode,
       });
       const stages = selectStageRegistry(input.template, agentStages);
 

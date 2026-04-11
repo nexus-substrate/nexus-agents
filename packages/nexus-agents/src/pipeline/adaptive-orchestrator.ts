@@ -12,6 +12,7 @@
  */
 
 import { createLogger } from '../core/index.js';
+import { sanitizeInput } from '../security/input-sanitizer.js';
 import { runGraphPipeline } from './graph-pipeline-runner.js';
 import type { GraphPipelineOptions, GraphPipelineResult } from './graph-pipeline-runner.js';
 import { getTemplate, PIPELINE_TEMPLATES } from './templates.js';
@@ -206,7 +207,14 @@ export async function runAdaptiveOrchestrator(
   task: string,
   options: AdaptiveOrchestratorOptions
 ): Promise<AdaptiveOrchestratorResult> {
-  const classification = classifyTask(task);
+  // Sanitize task input to prevent prompt injection (#1767)
+  const sanitized = sanitizeInput(task, 'collaborator', 'pipeline');
+  if (sanitized.strippedElements.length > 0) {
+    logger.warn('Pipeline input sanitized', { stripped: sanitized.strippedElements.length });
+  }
+  const cleanTask = sanitized.content;
+
+  const classification = classifyTask(cleanTask);
 
   // Template selection: explicit override or auto-detected
   const templateId = options.templateId ?? classification.pipelineType;
@@ -222,7 +230,7 @@ export async function runAdaptiveOrchestrator(
   });
 
   // Execute via graph pipeline runner
-  const result = await runGraphPipeline(task, template, options.stages, options);
+  const result = await runGraphPipeline(cleanTask, template, options.stages, options);
 
   // Record outcome for future routing adjustments
   recordPipelineOutcome(template.id, classification, result.success);

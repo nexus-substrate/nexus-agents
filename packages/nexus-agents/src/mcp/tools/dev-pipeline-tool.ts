@@ -81,6 +81,11 @@ export const DevPipelineInputSchema = z.object({
     ])
     .optional()
     .describe('Voting strategy for plan approval (default: higher_order)'),
+  /** Use 3 agents instead of 6 for faster voting. */
+  quickMode: z
+    .boolean()
+    .default(false)
+    .describe('Use 3 agents instead of 6 for faster consensus voting'),
   /** Pipeline execution mode. */
   mode: z
     .enum(['autonomous', 'harness'])
@@ -136,6 +141,7 @@ async function createStages(
     scanTarget: input.workingDir,
     simulateVotes: input.simulateVotes,
     votingStrategy: input.votingStrategy,
+    quickMode: input.quickMode,
     issueNumber: input.issueNumber,
     repo: input.repo,
     tracker,

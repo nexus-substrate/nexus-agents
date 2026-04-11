@@ -65,6 +65,8 @@ export interface AgentExecutorConfig {
     | 'proof_of_learning'
     | 'opinion_wise'
     | undefined;
+  /** Use 3 agents instead of 6 for faster voting (default: false). */
+  readonly quickMode?: boolean | undefined;
   readonly tracker?: ITaskTracker | undefined;
   readonly issueNumber?: number | undefined;
   readonly repo?: string | undefined;
@@ -330,7 +332,7 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
             proposal: plan.slice(0, 4000),
             strategy,
             simulateVotes: config.simulateVotes ?? false,
-            quickMode: false,
+            quickMode: config.quickMode ?? false,
           },
           logger
         );
