@@ -67,6 +67,21 @@ export const GREENFIELD_PIPELINE_TEMPLATE: PipelineTemplate = {
 };
 
 // ============================================================================
+// General Pipeline Template
+// ============================================================================
+
+/**
+ * General-purpose pipeline for tasks that don't match a specific template.
+ * Includes security gate (fail-safe: unclassified tasks must not bypass security).
+ */
+export const GENERAL_PIPELINE_TEMPLATE: PipelineTemplate = {
+  id: 'general',
+  name: 'General Pipeline',
+  stages: ['research', 'plan', 'vote', 'implement', 'qa', 'security'],
+  dryRunStopAfter: 'vote',
+};
+
+// ============================================================================
 // Template Registry
 // ============================================================================
 
@@ -76,6 +91,7 @@ export const PIPELINE_TEMPLATES: ReadonlyMap<string, PipelineTemplate> = new Map
   ['research', RESEARCH_PIPELINE_TEMPLATE],
   ['audit', AUDIT_PIPELINE_TEMPLATE],
   ['greenfield', GREENFIELD_PIPELINE_TEMPLATE],
+  ['general', GENERAL_PIPELINE_TEMPLATE],
 ]);
 
 /** Get a pipeline template by ID. */

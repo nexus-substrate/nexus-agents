@@ -45,6 +45,20 @@ export const PipelineInputSchema = z.object({
     .max(50)
     .optional()
     .describe(`Pipeline template override. Available: ${listTemplateIds().join(', ')}`),
+  /** Voting strategy for consensus stages. */
+  votingStrategy: z
+    .enum([
+      'simple_majority',
+      'supermajority',
+      'unanimous',
+      'higher_order',
+      'proof_of_learning',
+      'opinion_wise',
+    ])
+    .optional()
+    .describe(
+      'Voting strategy for plan approval. simple_majority (default), supermajority (67%), unanimous, higher_order (Bayesian), proof_of_learning, opinion_wise'
+    ),
   /** Stop after planning/voting (no implementation). */
   dryRun: z.boolean().default(false).describe('Stop after vote stage (no implementation)'),
   /** Use simulated votes (for testing). */
@@ -120,6 +134,7 @@ export function registerPipelineTool(
       const task = resolveTask(input.task, input.specFile);
       const agentStages = createAgentStages({
         simulateVotes: input.simulateVotes,
+        votingStrategy: input.votingStrategy,
       });
       const stages = selectStageRegistry(input.template, agentStages);
 

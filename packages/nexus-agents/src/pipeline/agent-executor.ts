@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/restrict-template-expressions, @typescript-eslint/no-base-to-string, max-lines-per-function */
+/* eslint-disable @typescript-eslint/restrict-template-expressions, @typescript-eslint/no-base-to-string, max-lines-per-function, max-lines */
 /**
  * Agent Executor — Connects pipeline stages to nexus-agents infrastructure (#1684)
  *
@@ -56,6 +56,15 @@ function recordOutcome(
 export interface AgentExecutorConfig {
   readonly scanTarget?: string | undefined;
   readonly simulateVotes?: boolean | undefined;
+  /** Voting strategy for consensus stages (default: higher_order). */
+  readonly votingStrategy?:
+    | 'simple_majority'
+    | 'supermajority'
+    | 'unanimous'
+    | 'higher_order'
+    | 'proof_of_learning'
+    | 'opinion_wise'
+    | undefined;
   readonly tracker?: ITaskTracker | undefined;
   readonly issueNumber?: number | undefined;
   readonly repo?: string | undefined;
@@ -311,14 +320,15 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
     vote: async (plan) => {
       emitStageEvent('vote', 'started');
       const start = getTimeProvider().now();
-      await postProgress(config, 'Vote', 'Running consensus with higher_order strategy...');
+      const strategy = config.votingStrategy ?? 'higher_order';
+      await postProgress(config, 'Vote', `Running consensus with ${strategy} strategy...`);
       try {
         // DRY: use the full consensus_vote pipeline (#1694)
         const { executeVoting } = await import('../mcp/tools/consensus-vote.js');
         const votingResult = await executeVoting(
           {
             proposal: plan.slice(0, 4000),
-            strategy: 'higher_order',
+            strategy,
             simulateVotes: config.simulateVotes ?? false,
             quickMode: false,
           },

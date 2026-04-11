@@ -70,10 +70,11 @@ describe('Pipeline Templates', () => {
   });
 
   it('PIPELINE_TEMPLATES contains all templates', () => {
-    expect(PIPELINE_TEMPLATES.size).toBe(4);
+    expect(PIPELINE_TEMPLATES.size).toBe(5);
     expect(getTemplate('dev')).toBe(DEV_PIPELINE_TEMPLATE);
     expect(getTemplate('research')).toBe(RESEARCH_PIPELINE_TEMPLATE);
     expect(getTemplate('greenfield')).toBe(GREENFIELD_PIPELINE_TEMPLATE);
+    expect(getTemplate('general')).toBeDefined();
     expect(getTemplate('nonexistent')).toBeUndefined();
   });
 
