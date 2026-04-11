@@ -291,6 +291,58 @@ async function processVotesWithCascade(
 }
 
 /** Execute a consensus vote with full strategy support. Exported for pipeline DRY (#1694). */
+/** Confidence threshold above which a contrarian rejection triggers escalation (#1799). */
+const CONTRARIAN_ESCALATION_THRESHOLD = 0.8;
+
+/** Run a single contrarian agent to check for YAGNI/MISALIGNED/SECURITY_RISK (#1799). */
+async function runContrarianCheck(
+  proposal: string,
+  log: ILogger
+): Promise<{ shouldEscalate: boolean; reason: string; confidence: number }> {
+  try {
+    const { executeExpert } = await import('../../pipeline/expert-bridge.js');
+    const prompt = [
+      'You are a contrarian analyst. Your job is to find reasons this proposal should be REJECTED.',
+      'Look for: YAGNI (not needed), MISALIGNED (wrong tech/architecture), SECURITY_RISK, SCOPE_CREEP.',
+      '',
+      `Proposal: ${proposal.slice(0, 2000)}`,
+      '',
+      'If you find a strong reason to reject, respond with JSON:',
+      '{"decision":"reject","confidence":0.0-1.0,"reasoning":"your concern"}',
+      'If the proposal is sound, respond with:',
+      '{"decision":"approve","confidence":0.0-1.0,"reasoning":"why it is acceptable"}',
+    ].join('\n');
+
+    const result = await executeExpert('architecture', prompt);
+    if (!result.success) return { shouldEscalate: false, reason: '', confidence: 0 };
+
+    const jsonMatch = result.text.match(/\{[\s\S]*\}/);
+    if (jsonMatch === null) return { shouldEscalate: false, reason: '', confidence: 0 };
+
+    const parsed = JSON.parse(jsonMatch[0]) as {
+      decision?: string;
+      confidence?: number;
+      reasoning?: string;
+    };
+
+    const isRejection = parsed.decision === 'reject';
+    const confidence = typeof parsed.confidence === 'number' ? parsed.confidence : 0;
+    const reasoning = typeof parsed.reasoning === 'string' ? parsed.reasoning : '';
+
+    if (isRejection && confidence >= CONTRARIAN_ESCALATION_THRESHOLD) {
+      log.info('Contrarian rejected with high confidence', {
+        confidence,
+        reasoning: reasoning.slice(0, 200),
+      });
+      return { shouldEscalate: true, reason: reasoning, confidence };
+    }
+
+    return { shouldEscalate: false, reason: '', confidence };
+  } catch {
+    return { shouldEscalate: false, reason: '', confidence: 0 };
+  }
+}
+
 export async function executeVoting(
   input: ConsensusVoteInput,
   logger: ILogger
@@ -319,6 +371,20 @@ export async function executeVoting(
     });
 
   recordVotesToTracker(votes, voteMap, outcome, logger);
+
+  // Contrarian check for quickMode approvals (#1799):
+  // When quickMode approves, run a single contrarian agent to catch YAGNI/SECURITY_RISK.
+  // If contrarian rejects with high confidence, escalate to full vote.
+  if (input.quickMode && outcome === 'approved' && !input.simulateVotes) {
+    const escalation = await runContrarianCheck(input.proposal, logger);
+    if (escalation.shouldEscalate) {
+      logger.warn('Contrarian escalation: re-running with full vote', {
+        reason: escalation.reason,
+        confidence: escalation.confidence,
+      });
+      return executeVoting({ ...input, quickMode: false }, logger);
+    }
+  }
 
   const totalTimeMs = getTimeProvider().now() - startTime;
   logger.info('Consensus vote completed', { strategy, outcome, durationMs: totalTimeMs, cascaded });
