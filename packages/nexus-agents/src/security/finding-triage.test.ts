@@ -182,4 +182,53 @@ describe('triageFindings', () => {
 
     expect(result.original).toBe(findings);
   });
+
+  it('refuses to read files outside the current working directory (path traversal guard)', async () => {
+    // A malicious scanner emits a traversal path. Before the fix, triage
+    // would readFileSync('/etc/passwd') and include its contents in the LLM
+    // prompt. After the fix, the prompt falls back to the scanner snippet.
+    const evil = createFinding({
+      file: '../../../../etc/passwd',
+      snippet: '  safe-snippet-only;',
+    });
+    let promptSeen = '';
+    const delegateFn = vi.fn((prompt: string) => {
+      promptSeen = prompt;
+      return Promise.resolve(
+        JSON.stringify({
+          confirmed: false,
+          confidence: 0.9,
+          reasoning: 'traversal-probe',
+          suggestedSeverity: 'info',
+        })
+      );
+    });
+    await triageFinding(evil, delegateFn);
+    // Prompt must contain the scanner snippet, NOT any traversed file content.
+    expect(promptSeen).toContain('safe-snippet-only');
+    expect(promptSeen).not.toContain('root:x:');
+    expect(promptSeen).not.toContain('/etc/passwd\n');
+  });
+
+  it('refuses absolute paths outside cwd (path traversal guard)', async () => {
+    const evil = createFinding({
+      file: '/etc/passwd',
+      snippet: '  scanner-snippet;',
+    });
+    let promptSeen = '';
+    const delegateFn = vi.fn((prompt: string) => {
+      promptSeen = prompt;
+      return Promise.resolve(
+        JSON.stringify({
+          confirmed: false,
+          confidence: 0.9,
+          reasoning: 't',
+          suggestedSeverity: 'info',
+        })
+      );
+    });
+    await triageFinding(evil, delegateFn);
+    expect(promptSeen).toContain('scanner-snippet');
+    expect(promptSeen).not.toContain('root:x:');
+  });
 });
