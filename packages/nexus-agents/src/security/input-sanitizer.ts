@@ -98,7 +98,9 @@ const INJECTION_PATTERNS: readonly PatternMatch[] = [
   },
   {
     flag: 'base64_encoded',
-    pattern: /(?:[A-Za-z0-9+/]{40,}={0,2})/,
+    // Requires at least one base64-discriminating char (g-z/G-Z or +, /, =)
+    // to avoid false positives on SHA-1 / SHA-256 hex hashes (#1811).
+    pattern: /(?=[A-Za-z0-9+/]*[g-zG-Z+/=])[A-Za-z0-9+/]{40,}={0,2}/,
   },
   {
     flag: 'external_link_instruction',
