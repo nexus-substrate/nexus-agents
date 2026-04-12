@@ -257,6 +257,7 @@ export class ClaudeAdapter extends BaseAdapter {
     request: CompletionRequest
   ): void {
     if (request.temperature !== undefined) {
+      // eslint-disable-next-line @typescript-eslint/no-deprecated -- SDK 0.88 deprecated `temperature` for post-Opus-4.6 models; kept for backward compat with older Anthropic models and value 1.0
       params.temperature = request.temperature;
     }
 
