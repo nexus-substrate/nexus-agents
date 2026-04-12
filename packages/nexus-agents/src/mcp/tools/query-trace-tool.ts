@@ -8,7 +8,7 @@
  */
 
 import { readFile, stat } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, formatZodError } from '../../core/index.js';
@@ -120,10 +120,11 @@ export async function queryTraceFromDisk(
   const dir = runsDir ?? DEFAULT_RUNS_DIR;
   const tracePath = join(dir, input.runId, 'trace.jsonl');
 
-  // Path traversal guard: resolved path must stay within runs directory
+  // Path traversal guard: resolved path must stay within runs directory.
+  // Guards against sibling-prefix bypass (#1816): dir=/foo must not accept /foobar.
   const resolvedDir = resolve(dir);
   const resolvedTrace = resolve(tracePath);
-  if (!resolvedTrace.startsWith(resolvedDir)) {
+  if (!resolvedTrace.startsWith(resolvedDir + sep) && resolvedTrace !== resolvedDir) {
     return { runId: input.runId, ...EMPTY_RESPONSE };
   }
 

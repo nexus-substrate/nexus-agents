@@ -13,7 +13,7 @@
  * @module security/safe-path
  */
 
-import { resolve } from 'node:path';
+import { resolve, sep } from 'node:path';
 
 /**
  * Resolve a scanner-supplied path against the workspace root, returning null
@@ -28,6 +28,6 @@ export function resolveInsideRoot(filePath: string, root: string = process.cwd()
   const resolvedRoot = resolve(root);
   const resolved = resolve(resolvedRoot, filePath);
   if (resolved === resolvedRoot) return resolved;
-  if (resolved.startsWith(resolvedRoot + '/')) return resolved;
+  if (resolved.startsWith(resolvedRoot + sep)) return resolved;
   return null;
 }
