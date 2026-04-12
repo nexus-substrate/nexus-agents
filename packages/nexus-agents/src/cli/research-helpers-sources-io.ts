@@ -75,7 +75,8 @@ function validatePath(
 ): Result<string, SourcesIOError> {
   const resolved = path.resolve(constructedPath);
   const root = path.resolve(allowedRoot);
-  if (!resolved.startsWith(root)) {
+  // Guards against sibling-prefix bypass (#1816): root=/foo must not accept /foobar.
+  if (!resolved.startsWith(root + path.sep) && resolved !== root) {
     return {
       ok: false,
       error: { code: 'PATH_TRAVERSAL', message: `Path ${resolved} is outside ${root}` },
