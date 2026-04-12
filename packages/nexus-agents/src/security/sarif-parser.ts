@@ -28,10 +28,10 @@ interface SarifLocation {
 }
 
 interface SarifResult {
-  readonly ruleId?: string;
-  readonly level?: string;
-  readonly message?: { readonly text?: string };
-  readonly locations?: readonly SarifLocation[];
+  readonly ruleId?: string | null;
+  readonly level?: string | null;
+  readonly message?: { readonly text?: string } | null;
+  readonly locations?: readonly SarifLocation[] | null;
 }
 
 interface SarifRule {
@@ -159,7 +159,7 @@ function getFirstPhysicalLocation(
   result: SarifResult
 ): NonNullable<SarifLocation['physicalLocation']> | null {
   const locations = result.locations;
-  if (locations === undefined || locations.length === 0) return null;
+  if (locations === undefined || locations === null || locations.length === 0) return null;
   const first = locations[0] as SarifLocation;
   return first.physicalLocation ?? null;
 }
@@ -209,7 +209,7 @@ function parseResult(
     id: `${scanner}:${ruleId}:${loc.file}:${String(loc.startLine)}`,
     scanner,
     rule: ruleId,
-    severity: resolveSeverity(result.level, rule),
+    severity: resolveSeverity(result.level ?? undefined, rule),
     message,
     file: loc.file,
     startLine: loc.startLine,
