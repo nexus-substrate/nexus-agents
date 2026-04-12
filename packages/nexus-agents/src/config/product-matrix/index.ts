@@ -9,7 +9,7 @@
  */
 
 import { readFileSync, existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { resolve, sep } from 'node:path';
 import * as yaml from 'yaml';
 
 import { ProductMatrixSchema } from './types.js';
@@ -220,9 +220,10 @@ export const DEFAULT_PRODUCT_MATRIX: ProductMatrix = {
  */
 function validateFilePath(filePath: string): string {
   const resolved = resolve(filePath);
-  const cwd = process.cwd();
-  if (!resolved.startsWith(resolve(cwd))) {
-    throw new Error(`Path traversal detected: ${filePath} escapes ${cwd}`);
+  const resolvedCwd = resolve(process.cwd());
+  // Guards against sibling-prefix bypass (#1816): cwd=/foo must not accept /foobar.
+  if (!resolved.startsWith(resolvedCwd + sep) && resolved !== resolvedCwd) {
+    throw new Error(`Path traversal detected: ${filePath} escapes ${resolvedCwd}`);
   }
   return resolved;
 }
