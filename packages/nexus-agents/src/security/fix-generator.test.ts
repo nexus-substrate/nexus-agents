@@ -90,6 +90,30 @@ describe('generateFix', () => {
     expect(prompt).toContain('detect-eval');
     expect(prompt).toContain('CWE-94');
   });
+
+  it('refuses relative path traversal via finding.file (cwd guard)', async () => {
+    const delegateFn = vi.fn().mockResolvedValue(VALID_FIX_JSON);
+    await generateFix(
+      makeFinding({ file: '../../../../etc/passwd' }),
+      makeVerdict({ confirmed: true }),
+      delegateFn
+    );
+    const prompt = delegateFn.mock.calls[0]?.[0] as string;
+    expect(prompt).toContain('(source unavailable)');
+    expect(prompt).not.toContain('root:x:');
+  });
+
+  it('refuses absolute path traversal via finding.file (cwd guard)', async () => {
+    const delegateFn = vi.fn().mockResolvedValue(VALID_FIX_JSON);
+    await generateFix(
+      makeFinding({ file: '/etc/passwd' }),
+      makeVerdict({ confirmed: true }),
+      delegateFn
+    );
+    const prompt = delegateFn.mock.calls[0]?.[0] as string;
+    expect(prompt).toContain('(source unavailable)');
+    expect(prompt).not.toContain('root:x:');
+  });
 });
 
 describe('generateFixBatch', () => {

@@ -12,6 +12,7 @@ import { z } from 'zod';
 import type { SecurityFinding } from './sarif-types.js';
 import type { TriageVerdict } from './finding-triage.js';
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 // ============================================================================
 // Types
@@ -50,10 +51,18 @@ export const DEFAULT_FIX_CONFIG: FixGeneratorConfig = {
 
 /**
  * Read source context around a finding location.
+ * Guards against path traversal: scanner-controlled file must resolve inside
+ * the current working directory. Otherwise returns '(source unavailable)' to
+ * avoid exfiltrating arbitrary files via the LLM prompt.
  */
 function readSourceContext(file: string, startLine: number, contextLines: number): string {
+  const root = resolve(process.cwd());
+  const resolved = resolve(root, file);
+  if (!resolved.startsWith(root + '/') && resolved !== root) {
+    return '(source unavailable)';
+  }
   try {
-    const content = readFileSync(file, 'utf-8');
+    const content = readFileSync(resolved, 'utf-8');
     const lines = content.split('\n');
     const start = Math.max(0, startLine - contextLines - 1);
     const end = Math.min(lines.length, startLine + contextLines);
