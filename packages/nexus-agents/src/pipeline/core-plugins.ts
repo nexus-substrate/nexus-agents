@@ -78,11 +78,26 @@ export const CLI_EXECUTOR_PLUGIN = createCorePlugin(
   ['execute']
 );
 
+/**
+ * Research pipeline plugin — multi-stage research-to-project runner (#1822).
+ * Stages: decompose → investigate (parallel waves) → synthesize → vote → scaffold.
+ * Full runner is invoked via `runResearchPipeline` from `./research-pipeline.js`.
+ */
+export const RESEARCH_PIPELINE_PLUGIN = createCorePlugin(
+  'nexus:research-pipeline',
+  'Multi-stage research-to-project pipeline with parallel investigation and vote feedback loop',
+  // Research stages mapped onto canonical pipeline stage types:
+  //   decompose → analyze, investigate → execute, synthesize → aggregate,
+  //   vote → validate, scaffold → execute (reused).
+  ['analyze', 'execute', 'aggregate', 'validate']
+);
+
 /** All core plugins in registration order. */
 export const CORE_PLUGINS: readonly PipelinePlugin[] = [
   TASK_ANALYZER_PLUGIN,
   MODEL_ROUTER_PLUGIN,
   CLI_EXECUTOR_PLUGIN,
+  RESEARCH_PIPELINE_PLUGIN,
 ];
 
 // ============================================================================
