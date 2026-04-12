@@ -12,7 +12,7 @@ import { z } from 'zod';
 import type { SecurityFinding } from './sarif-types.js';
 import type { TriageVerdict } from './finding-triage.js';
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { resolveInsideRoot } from './safe-path.js';
 
 // ============================================================================
 // Types
@@ -56,11 +56,8 @@ export const DEFAULT_FIX_CONFIG: FixGeneratorConfig = {
  * avoid exfiltrating arbitrary files via the LLM prompt.
  */
 function readSourceContext(file: string, startLine: number, contextLines: number): string {
-  const root = resolve(process.cwd());
-  const resolved = resolve(root, file);
-  if (!resolved.startsWith(root + '/') && resolved !== root) {
-    return '(source unavailable)';
-  }
+  const resolved = resolveInsideRoot(file);
+  if (resolved === null) return '(source unavailable)';
   try {
     const content = readFileSync(resolved, 'utf-8');
     const lines = content.split('\n');

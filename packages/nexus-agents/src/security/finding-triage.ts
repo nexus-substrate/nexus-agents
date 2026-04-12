@@ -11,7 +11,7 @@ import { z } from 'zod';
 import type { SecurityFinding } from './sarif-types.js';
 import { SEVERITY_ORDER } from './sarif-types.js';
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { resolveInsideRoot } from './safe-path.js';
 
 /** Verdict from triage assessment. */
 export const TriageVerdictSchema = z.object({
@@ -44,11 +44,8 @@ export const DEFAULT_CONFIG: TriageConfig = {
  * via LLM prompts.
  */
 function readContext(finding: SecurityFinding, contextLines: number): string {
-  const root = resolve(process.cwd());
-  const resolved = resolve(root, finding.file);
-  if (!resolved.startsWith(root + '/') && resolved !== root) {
-    return finding.snippet ?? '';
-  }
+  const resolved = resolveInsideRoot(finding.file);
+  if (resolved === null) return finding.snippet ?? '';
   try {
     const content = readFileSync(resolved, 'utf-8');
     const lines = content.split('\n');
