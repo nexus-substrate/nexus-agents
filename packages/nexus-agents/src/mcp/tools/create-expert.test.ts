@@ -66,6 +66,7 @@ function createMockFactory(shouldSucceed = true, errorMessage = 'Factory error')
           ux: 'ux_expert',
           infrastructure: 'infrastructure_expert',
           qa: 'qa_expert',
+          'data-visualization': 'data_visualization_expert',
         };
         return { ok: true as const, value: createMockExpert(roleMap[type]) };
       }
@@ -357,7 +358,9 @@ describe('getAvailableRoles', () => {
     expect(roles).toContain('devops_expert');
     expect(roles).toContain('research_expert');
     expect(roles).toContain('infrastructure_expert');
-    expect(roles).toHaveLength(10);
+    expect(roles).toContain('data_visualization_expert');
+    expect(roles).toContain('qa_expert');
+    expect(roles).toHaveLength(12);
   });
 });
 

@@ -51,6 +51,7 @@ export const CreateExpertInputSchema = z.object({
       'pm_expert',
       'ux_expert',
       'infrastructure_expert',
+      'data_visualization_expert',
     ])
     .describe('Expert role to create'),
   modelPreference: z
@@ -123,6 +124,8 @@ const ROLE_TO_EXPERT_TYPE: Record<string, BuiltInExpertType> = {
   pm_expert: 'pm',
   ux_expert: 'ux',
   infrastructure_expert: 'infrastructure',
+  qa_expert: 'qa',
+  data_visualization_expert: 'data-visualization',
 };
 
 /**

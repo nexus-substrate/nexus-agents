@@ -338,6 +338,7 @@ export const EXPERT_DEFAULT_CAPABILITIES: Record<AgentRole, readonly AgentCapabi
   ux_expert: ['task_execution', 'collaboration', 'research', 'code_generation'],
   infrastructure_expert: ['task_execution', 'code_generation', 'tool_use', 'collaboration'],
   qa_expert: ['task_execution', 'code_review', 'collaboration', 'research'],
+  data_visualization_expert: ['task_execution', 'research', 'code_generation', 'collaboration'],
   tech_lead: ['task_execution', 'delegation', 'collaboration', 'research'], // @deprecated - same as orchestrator
   custom: ['task_execution'],
   // TRINITY roles (arXiv:2512.04695)
