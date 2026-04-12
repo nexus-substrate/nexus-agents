@@ -191,6 +191,19 @@ export type {
 export { checkForResearchTriggers } from './research-trigger.js';
 export type { ResearchTriggerConfig } from './research-trigger.js';
 
+// Research Pipeline — multi-stage research-to-project runner (#1822)
+export { runResearchPipeline } from './research-pipeline.js';
+export type {
+  ResearchPipelineStages,
+  ResearchPipelineOptions,
+  ResearchPipelineResult,
+  ResearchTrack,
+  TrackFinding,
+  EvidenceItem,
+  ResearchSynthesis,
+  ResearchDeliverable,
+} from './research-pipeline.js';
+
 // Pipeline Checkpoint — crash recovery via stage persistence (#1703)
 export {
   saveStageCheckpoint,
