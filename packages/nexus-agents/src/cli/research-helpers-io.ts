@@ -10,7 +10,8 @@
  */
 
 import * as fs from 'node:fs/promises';
-import { join, resolve, sep } from 'node:path';
+import { join, resolve } from 'node:path';
+import { resolveInsideRoot } from '../security/safe-path.js';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import type { Result } from '../core/index.js';
 import { SecurityError, getErrorMessage } from '../core/index.js';
@@ -55,14 +56,12 @@ export function getProjectRoot(): string {
  * @returns Result with validated absolute path or SecurityError
  */
 function validatePath(constructedPath: string, allowedRoot: string): Result<string, SecurityError> {
-  const resolvedRoot = resolve(allowedRoot);
-  const resolved = resolve(constructedPath);
-
-  if (!resolved.startsWith(resolvedRoot + sep) && resolved !== resolvedRoot) {
+  const resolved = resolveInsideRoot(constructedPath, allowedRoot);
+  if (resolved === null) {
     return {
       ok: false,
       error: new SecurityError('Path traversal detected: path escapes allowed root directory', {
-        context: { constructedPath, allowedRoot: resolvedRoot },
+        context: { constructedPath, allowedRoot: resolve(allowedRoot) },
       }),
     };
   }

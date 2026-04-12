@@ -12,6 +12,7 @@ import * as path from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import type { Result } from '../core/result.js';
 import { REGISTRY_PATH, getProjectRoot } from './research-helpers-io.js';
+import { resolveInsideRoot } from '../security/safe-path.js';
 import { getErrorMessage } from '../core/index.js';
 
 // =============================================================================
@@ -73,13 +74,15 @@ function validatePath(
   constructedPath: string,
   allowedRoot: string
 ): Result<string, SourcesIOError> {
-  const resolved = path.resolve(constructedPath);
-  const root = path.resolve(allowedRoot);
-  // Guards against sibling-prefix bypass (#1816): root=/foo must not accept /foobar.
-  if (!resolved.startsWith(root + path.sep) && resolved !== root) {
+  const resolved = resolveInsideRoot(constructedPath, allowedRoot);
+  if (resolved === null) {
+    const root = path.resolve(allowedRoot);
     return {
       ok: false,
-      error: { code: 'PATH_TRAVERSAL', message: `Path ${resolved} is outside ${root}` },
+      error: {
+        code: 'PATH_TRAVERSAL',
+        message: `Path ${path.resolve(constructedPath)} is outside ${root}`,
+      },
     };
   }
   return { ok: true, value: resolved };

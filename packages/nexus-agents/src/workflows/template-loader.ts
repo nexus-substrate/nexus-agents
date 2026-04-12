@@ -12,6 +12,7 @@ import { dirname } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import type { Result } from '../core/index.js';
 import { ParseError, SecurityError } from '../core/index.js';
+import { resolveInsideRoot } from '../security/safe-path.js';
 import type { WorkflowDefinition } from '../core/index.js';
 import {
   WorkflowDefinitionSchema,
@@ -38,14 +39,12 @@ export interface ParsedTemplate {
  * @returns Result with validated absolute path or SecurityError
  */
 function validatePath(userPath: string, allowedRoot: string): Result<string, SecurityError> {
-  const resolvedRoot = resolve(allowedRoot);
-  const resolved = resolve(allowedRoot, userPath);
-
-  if (!resolved.startsWith(resolvedRoot + sep) && resolved !== resolvedRoot) {
+  const resolved = resolveInsideRoot(userPath, allowedRoot);
+  if (resolved === null) {
     return {
       ok: false,
       error: new SecurityError('Path traversal detected: path escapes allowed root directory', {
-        context: { userPath, allowedRoot: resolvedRoot },
+        context: { userPath, allowedRoot: resolve(allowedRoot) },
       }),
     };
   }
