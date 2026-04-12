@@ -80,6 +80,7 @@ Detailed technical documentation:
 | [AGENT_SYSTEM.md](./architecture/AGENT_SYSTEM.md)                                 | Agent framework design         | Canonical |
 | [MEMORY_SYSTEM.md](./architecture/MEMORY_SYSTEM.md)                               | 7-type memory architecture     | Canonical |
 | [ROUTING_SYSTEM.md](./architecture/ROUTING_SYSTEM.md)                             | Model routing pipeline         | Canonical |
+| [RESEARCH_PIPELINE.md](./architecture/RESEARCH_PIPELINE.md)                       | Research-to-project runner     | Canonical |
 | [CONSENSUS_PROTOCOLS.md](./architecture/CONSENSUS_PROTOCOLS.md)                   | 5 consensus algorithms         | Canonical |
 | [CONTEXT_LOAD_BALANCING.md](./architecture/CONTEXT_LOAD_BALANCING.md)             | Claude/Gemini/Codex routing    | Canonical |
 | [SECURITY.md](./architecture/SECURITY.md)                                         | Security model, sandboxing     | Canonical |
