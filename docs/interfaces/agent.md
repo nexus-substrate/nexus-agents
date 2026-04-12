@@ -73,6 +73,7 @@ type AgentRole =
   | 'ux_expert' // UX designer: interaction design, usability, user journeys (Issue #902)
   | 'infrastructure_expert' // Physical server, bare metal, OOB management (Issue #1082)
   | 'qa_expert' // Quality assurance: code review, standards compliance, regression (#1684)
+  | 'data_visualization_expert' // Data analysis, chart design, interactive visualizations
   | 'thinker' // TRINITY: High-level reasoning (arXiv:2512.04695)
   | 'worker' // TRINITY: Task execution
   | 'verifier' // TRINITY: Output validation
