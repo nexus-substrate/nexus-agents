@@ -214,8 +214,8 @@ describe('resources/read - experts', () => {
       expertCount: number;
       experts: Array<{ role: string; name: string }>;
     };
-    expect(data.expertCount).toBe(10);
-    expect(data.experts.length).toBe(10);
+    expect(data.expertCount).toBe(12);
+    expect(data.experts.length).toBe(12);
   });
 
   it('includes expected expert roles', async () => {

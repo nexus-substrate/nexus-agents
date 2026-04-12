@@ -124,6 +124,7 @@ const ROLE_TO_EXPERT_TYPE: Record<string, BuiltInExpertType> = {
   pm_expert: 'pm',
   ux_expert: 'ux',
   infrastructure_expert: 'infrastructure',
+  qa_expert: 'qa',
   data_visualization_expert: 'data-visualization',
 };
 

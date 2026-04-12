@@ -105,6 +105,7 @@ const AgentRoleSchema = z.enum([
   'ux_expert',
   'infrastructure_expert',
   'qa_expert',
+  'data_visualization_expert',
   'custom',
 ]);
 
