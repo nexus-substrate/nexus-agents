@@ -11,11 +11,9 @@
 
 import { createLogger, getTimeProvider } from '../core/index.js';
 import type { BuiltInExpertType } from '../agents/experts/expert-config.js';
+import { isRateLimitText } from '../adapters/rate-limit-detector.js';
 
 const logger = createLogger({ component: 'expert-bridge' });
-
-/** Rate limit detection patterns (#1802). */
-const RATE_LIMIT_INDICATORS = ['rate limit', '429', 'too many requests', 'throttl', 'quota'];
 
 /** Base delay for rate limit retry backoff (ms). Scales linearly: 3s, 6s, 9s. */
 const RATE_LIMIT_BASE_DELAY_MS = 3000;
@@ -126,8 +124,7 @@ async function dispatchWithRateLimitRetry(
       return { success: true, text: result.value.text, expertType, durationMs };
     }
 
-    const errorMsg = result.error.message.toLowerCase();
-    const isRateLimit = RATE_LIMIT_INDICATORS.some((p) => errorMsg.includes(p));
+    const isRateLimit = isRateLimitText(result.error.message);
     if (isRateLimit && attempt < maxAttempts - 1) {
       const backoffMs = RATE_LIMIT_BASE_DELAY_MS * (attempt + 1);
       logger.warn('Expert rate limited, retrying', { expertType, attempt: attempt + 1, backoffMs });
