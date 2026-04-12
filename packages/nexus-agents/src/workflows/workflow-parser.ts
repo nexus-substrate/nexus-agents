@@ -16,6 +16,7 @@ import {
   type WorkflowDefinitionOutput,
 } from './workflow-types.js';
 import { validateDependencyGraph } from './dependency-graph.js';
+import { resolveInsideRoot } from '../security/safe-path.js';
 
 /**
  * Maximum file size for workflow templates (1MB).
@@ -35,13 +36,11 @@ const SUPPORTED_EXTENSIONS = ['.yaml', '.yml', '.json'] as const;
  * @returns Result with validated absolute path or SecurityError
  */
 function validatePath(userPath: string, allowedRoot: string): Result<string, SecurityError> {
-  const resolvedRoot = path.resolve(allowedRoot);
-  const resolved = path.resolve(allowedRoot, userPath);
-
-  if (!resolved.startsWith(resolvedRoot + path.sep) && resolved !== resolvedRoot) {
+  const resolved = resolveInsideRoot(userPath, allowedRoot);
+  if (resolved === null) {
     return err(
       new SecurityError('Path traversal detected: path escapes allowed root directory', {
-        context: { userPath, allowedRoot: resolvedRoot },
+        context: { userPath, allowedRoot: path.resolve(allowedRoot) },
       })
     );
   }

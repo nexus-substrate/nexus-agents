@@ -9,7 +9,8 @@
  */
 
 import { readFileSync, existsSync } from 'node:fs';
-import { resolve, join, sep } from 'node:path';
+import { resolve, join } from 'node:path';
+import { resolveInsideRoot } from '../security/safe-path.js';
 import { homedir } from 'node:os';
 import * as yaml from 'yaml';
 import { AppConfigSchema, type AppConfig, defaultConfig } from './schemas.js';
@@ -79,10 +80,8 @@ export interface ConfigLoadOptions {
  * Validates that a path doesn't escape the allowed root.
  */
 function validatePath(userPath: string, root: string): Result<string, ConfigLoadError> {
-  const resolvedRoot = resolve(root);
-  const resolved = resolve(resolvedRoot, userPath);
-  // Guards against sibling-prefix bypass (#1816): root=/foo must not accept /foobar.
-  if (!resolved.startsWith(resolvedRoot + sep) && resolved !== resolvedRoot) {
+  const resolved = resolveInsideRoot(userPath, root);
+  if (resolved === null) {
     return err(
       new ConfigLoadError(
         `Config path traversal detected: ${userPath} escapes ${root}`,
