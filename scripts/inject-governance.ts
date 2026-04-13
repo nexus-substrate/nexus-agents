@@ -30,6 +30,7 @@ const TEMPLATE_TYPES = join(ROOT, 'packages/nexus-agents/src/workflows/template-
 const SKILLS_DIR = join(ROOT, 'skills');
 const AGENTS_DIR = join(ROOT, 'agents');
 const MODEL_CAPS = join(ROOT, 'packages/nexus-agents/src/config/model-capabilities.ts');
+const PACKAGE_JSON_PATH = join(ROOT, 'packages/nexus-agents/package.json');
 
 // Additional inject targets for #1837 count-drift prevention.
 const AGENTS_MD_PATH = join(ROOT, 'AGENTS.md');
@@ -492,6 +493,7 @@ function checkGovernance(): boolean {
     skillCount: actual.skills.length,
     agentCount: agents.length,
   });
+  const versionOk = checkPluginVersion();
 
   const checks = [
     checkRegistryDrift('MCP tools', documented.tools, actual.tools.length),
@@ -501,6 +503,7 @@ function checkGovernance(): boolean {
     content.includes(MARKERS.toolIndexStart) ||
       (console.error('Tool index section not found'), false),
     ancillaryOk,
+    versionOk,
   ];
 
   const passed = checks.every(Boolean);
@@ -520,106 +523,111 @@ function checkGovernance(): boolean {
  * Verify that ancillary count surfaces (plugin manifests, AGENTS.md,
  * install docs) match the canonical registry counts. (#1837)
  */
-function checkAncillaryCounts(counts: {
-  toolCount: number;
-  skillCount: number;
-  agentCount: number;
-}): boolean {
-  const { toolCount, skillCount, agentCount } = counts;
-  const probes: Array<{ path: string; pattern: RegExp; expected: number; label: string }> = [
+interface Probe {
+  path: string;
+  pattern: RegExp;
+  expected: number;
+  label: string;
+}
+
+function buildAncillaryProbes(counts: AncillaryCounts): Probe[] {
+  const { toolCount: t, skillCount: s, agentCount: a } = counts;
+  return [
     {
       path: AGENTS_MD_PATH,
       pattern: /for all (\d+) skills\./,
-      expected: skillCount,
+      expected: s,
       label: 'AGENTS.md skills count',
     },
     {
       path: AGENTS_MD_PATH,
       pattern: /Nexus-agents exposes (\d+) MCP tools/,
-      expected: toolCount,
+      expected: t,
       label: 'AGENTS.md MCP tools count',
     },
     {
       path: PLUGIN_JSON_PATH,
       pattern: /(\d+) MCP tools for agent management/,
-      expected: toolCount,
+      expected: t,
       label: 'plugin.json MCP tools count',
     },
     {
       path: MARKETPLACE_JSON_PATH,
       pattern: /(\d+) MCP tools \(orchestrate/,
-      expected: toolCount,
+      expected: t,
       label: 'marketplace.json MCP tools count',
     },
     {
       path: MARKETPLACE_JSON_PATH,
       pattern: /, (\d+) skills,/,
-      expected: skillCount,
+      expected: s,
       label: 'marketplace.json skills count',
     },
     {
       path: MARKETPLACE_JSON_PATH,
       pattern: /, (\d+) expert agents/,
-      expected: agentCount,
+      expected: a,
       label: 'marketplace.json agents count',
     },
     {
       path: PLUGIN_INSTALL_PATH,
       pattern: /- (\d+) MCP tools \(/,
-      expected: toolCount,
+      expected: t,
       label: 'PLUGIN_INSTALL MCP tools count',
     },
     {
       path: PLUGIN_INSTALL_PATH,
       pattern: /- (\d+) skills \(research-and-vote/,
-      expected: skillCount,
+      expected: s,
       label: 'PLUGIN_INSTALL skills count',
     },
     {
       path: PLUGIN_INSTALL_PATH,
       pattern: /- (\d+) agent mirrors/,
-      expected: agentCount,
+      expected: a,
       label: 'PLUGIN_INSTALL agent mirrors count',
     },
     {
       path: PLUGIN_INSTALL_PATH,
       pattern: /After install, confirm the (\d+) MCP tools/,
-      expected: toolCount,
+      expected: t,
       label: 'PLUGIN_INSTALL verify tools count',
     },
     {
       path: PLUGIN_INSTALL_PATH,
       pattern: /The (\d+) skills appear in `\/skills`/,
-      expected: skillCount,
+      expected: s,
       label: 'PLUGIN_INSTALL /skills count',
     },
     {
       path: PLUGIN_INSTALL_PATH,
       pattern: /and the (\d+) agents in `\/agents`/,
-      expected: agentCount,
+      expected: a,
       label: 'PLUGIN_INSTALL /agents count',
     },
   ];
+}
 
-  let allOk = true;
-  for (const { path, pattern, expected, label } of probes) {
-    if (!existsSync(path)) continue;
-    const content = readFileSync(path, 'utf-8');
-    const match = pattern.exec(content);
-    if (match === null) {
-      console.error(`❌ ${label}: pattern not found in ${path}`);
-      allOk = false;
-      continue;
-    }
-    const actual = Number(match[1]);
-    if (actual !== expected) {
-      console.error(
-        `❌ ${label}: expected ${String(expected)}, found ${String(actual)} in ${path}`
-      );
-      allOk = false;
-    }
+function runProbe(probe: Probe): boolean {
+  if (!existsSync(probe.path)) return true;
+  const content = readFileSync(probe.path, 'utf-8');
+  const match = probe.pattern.exec(content);
+  if (match === null) {
+    console.error(`❌ ${probe.label}: pattern not found in ${probe.path}`);
+    return false;
   }
-  return allOk;
+  const actual = Number(match[1]);
+  if (actual !== probe.expected) {
+    console.error(
+      `❌ ${probe.label}: expected ${String(probe.expected)}, found ${String(actual)} in ${probe.path}`
+    );
+    return false;
+  }
+  return true;
+}
+
+function checkAncillaryCounts(counts: AncillaryCounts): boolean {
+  return buildAncillaryProbes(counts).every(runProbe);
 }
 
 /**
@@ -682,6 +690,11 @@ function injectGovernance(): void {
     agentCount: agents.length,
   });
 
+  // #1839: keep .claude-plugin/plugin.json `version` in sync with
+  // packages/nexus-agents/package.json so marketplace listing never
+  // drifts from the shipped npm package.
+  syncPluginVersion();
+
   console.log('Governance injected:');
   console.log(`  MCP Tools: ${String(tools.length)}`);
   console.log(`  Expert Types: ${String(experts.length)}`);
@@ -708,6 +721,7 @@ interface Replacement {
   replacement: string;
 }
 
+// eslint-disable-next-line max-lines-per-function -- declarative probe table, splitting would just add cosmetic helpers
 function buildAncillaryReplacements(c: AncillaryCounts): Replacement[] {
   const { toolCount: t, skillCount: s, agentCount: a } = c;
   return [
@@ -777,6 +791,39 @@ function injectAncillaryCounts(counts: AncillaryCounts): void {
     const updated = current.replace(pattern, replacement);
     if (updated !== current) writeFileSync(path, updated);
   }
+}
+
+/**
+ * CI drift probe for plugin manifest version (#1839).
+ * Fails if .claude-plugin/plugin.json `version` !== package.json `version`.
+ */
+function checkPluginVersion(): boolean {
+  if (!existsSync(PACKAGE_JSON_PATH) || !existsSync(PLUGIN_JSON_PATH)) return true;
+  const pkg = JSON.parse(readFileSync(PACKAGE_JSON_PATH, 'utf-8')) as { version?: string };
+  const plugin = JSON.parse(readFileSync(PLUGIN_JSON_PATH, 'utf-8')) as { version?: string };
+  if (pkg.version === plugin.version) return true;
+  console.error(
+    `❌ Plugin manifest version: plugin.json has ${String(plugin.version)}, package.json has ${String(pkg.version)}`
+  );
+  return false;
+}
+
+/**
+ * Keep .claude-plugin/plugin.json `version` aligned with
+ * packages/nexus-agents/package.json (#1839 marketplace submission prep).
+ * The plugin manifest is what Anthropic's marketplace listing reads.
+ */
+function syncPluginVersion(): void {
+  if (!existsSync(PACKAGE_JSON_PATH) || !existsSync(PLUGIN_JSON_PATH)) return;
+  const pkgVersion = (JSON.parse(readFileSync(PACKAGE_JSON_PATH, 'utf-8')) as { version?: string })
+    .version;
+  if (typeof pkgVersion !== 'string' || pkgVersion.length === 0) return;
+
+  const plugin = JSON.parse(readFileSync(PLUGIN_JSON_PATH, 'utf-8')) as Record<string, unknown>;
+  if (plugin['version'] === pkgVersion) return;
+
+  plugin['version'] = pkgVersion;
+  writeFileSync(PLUGIN_JSON_PATH, JSON.stringify(plugin, null, 2) + '\n');
 }
 
 // CLI interface
