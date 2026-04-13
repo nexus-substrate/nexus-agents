@@ -1,0 +1,46 @@
+schema_version: "1.0"
+generated_by: scripts/generate-agents-index.ts
+agents:
+  - name: architecture-expert
+    description: Architecture expert for system design, design patterns, and architectural trade-offs.
+    path: agents/architecture-expert.md
+  - name: code-expert
+    description: Code expert for code review, refactoring, and multi-language best practices.
+    path: agents/code-expert.md
+  - name: data-visualization-expert
+    description: Data visualization expert for chart selection, interactive dashboards, WCAG-AA color
+      palettes, and ECharts/D3 code.
+    path: agents/data-visualization-expert.md
+  - name: devops-expert
+    description: DevOps/SRE expert for CI/CD pipelines, infrastructure-as-code, observability, and
+      reliability engineering.
+    path: agents/devops-expert.md
+  - name: documentation-expert
+    description: Documentation expert for technical writing, API docs, README authoring, and
+      docs-content governance.
+    path: agents/documentation-expert.md
+  - name: infrastructure-expert
+    description: Infrastructure expert for bare-metal, out-of-band (iDRAC/iLO), networking, and
+      physical-server operations.
+    path: agents/infrastructure-expert.md
+  - name: pm-expert
+    description: Product management expert for requirements gathering, user stories, acceptance
+      criteria, and scope decisions.
+    path: agents/pm-expert.md
+  - name: qa-expert
+    description: Quality assurance expert for code review, requirements verification, regression
+      analysis, and standards compliance.
+    path: agents/qa-expert.md
+  - name: research-expert
+    description: Research expert for literature review, prior-art analysis, and evidence-based recommendations.
+    path: agents/research-expert.md
+  - name: security-expert
+    description: Security expert for OWASP-aware code review, threat modeling, and vulnerability analysis.
+    path: agents/security-expert.md
+  - name: testing-expert
+    description: Testing expert for TDD, test strategy, coverage analysis, and edge-case identification.
+    path: agents/testing-expert.md
+  - name: ux-expert
+    description: UX design expert for interaction design, usability analysis, accessibility, and
+      user-journey mapping.
+    path: agents/ux-expert.md

@@ -122,20 +122,14 @@ npx tsx scripts/inject-governance.ts check   # CI validation
 
 ## CI Validation
 
-### docs-check.yml (10 jobs)
+### docs-check.yml jobs
 
-| Job                 | What it checks                        | Blocking?    |
-| ------------------- | ------------------------------------- | ------------ |
-| `typedoc-check`     | API docs match source                 | Yes          |
-| `llms-txt-check`    | llms.txt matches INDEX.yaml           | Yes          |
-| `repo-index`        | capabilities.md matches source        | Yes          |
-| `link-check`        | All URLs resolve                      | Yes          |
-| `docs-coverage`     | PRs include doc updates               | No (warning) |
-| `secrets-scan`      | No secrets in generated docs          | Yes          |
-| `docops-skill-sync` | Pipeline changes require skill update | Yes (PRs)    |
-| `canonical-index`   | All docs indexed in docs/README.md    | Yes          |
-| `markdown-lint`     | Markdown style consistency            | Yes          |
-| `spell-check`       | Documentation spelling                | No (warning) |
+<!-- Count + job list intentionally not hardcoded here. See #1837 for
+     the work to inject counts programmatically. Authoritative source:
+     `.github/workflows/docs-check.yml` — grep for `^  [a-z-]+:` under
+     `jobs:` for the current list. -->
+
+The pipeline runs a family of jobs covering: TypeDoc freshness, `llms.txt` drift, `capabilities.md` regeneration, link validation, docs coverage, secrets scanning, DocOps skill sync, canonical-index enforcement, markdown lint, spell check, skills/index.yaml freshness, agents/index.yaml + gap-coverage check, and governance drift. Blocking-vs-warning status is declared per job in the workflow file.
 
 ---
 

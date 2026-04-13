@@ -28,6 +28,12 @@ This repo ships skills at **`skills/<name>/SKILL.md`** following the Anthropic A
 
 **Freshness:** `skills/index.yaml` is regenerated via `npx tsx scripts/generate-skills-index.ts` and gated in CI. Never edit it by hand.
 
+## Expert agents
+
+Twelve expert-role prompts ship at **`agents/<name>-expert.md`** (security, architecture, code, research, testing, documentation, devops, pm, ux, infrastructure, qa, data-visualization). Claude Code surfaces these via `/agents`.
+
+**Discovery for non-Claude agents:** read **[`agents/index.yaml`](./agents/index.yaml)** — `{name, description, path}` per expert. Pick the one matching the task (e.g., security review → `security-expert`) and read its full prompt before responding. Regenerated via `npx tsx scripts/generate-agents-index.ts`; CI enforces gap-coverage against `BUILT_IN_EXPERTS`.
+
 ## MCP server
 
 Nexus-agents exposes 30 MCP tools via stdio. From any MCP-aware agent:
