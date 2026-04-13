@@ -73,6 +73,7 @@ export {
 export type {
   SubTask,
   TaskAnalysis,
+  TaskCommitment,
   ExpertAssignment,
   SynthesizedResult,
   ResultSummary,
