@@ -21,8 +21,8 @@ Process open issues following the self-development protocol.
 
 **Full workflows:**
 
-- [CONTRIBUTION_GUIDE.md](../../docs/development/CONTRIBUTION_GUIDE.md)
-- [Research CONTRIBUTING.md](../../docs/research/CONTRIBUTING.md)
+- [CONTRIBUTION_GUIDE.md](../../../docs/development/CONTRIBUTION_GUIDE.md)
+- [Research CONTRIBUTING.md](../../../docs/research/CONTRIBUTING.md)
 
 ## Pre-Flight Checks
 
@@ -50,7 +50,7 @@ Priority order:
 
 ## Implementation
 
-Follow [CONTRIBUTION_GUIDE.md](../../docs/development/CONTRIBUTION_GUIDE.md):
+Follow [CONTRIBUTION_GUIDE.md](../../../docs/development/CONTRIBUTION_GUIDE.md):
 
 1. **Research** - Check registry, verify dependencies
 2. **Interface First** - Define before implementation
@@ -60,7 +60,7 @@ Follow [CONTRIBUTION_GUIDE.md](../../docs/development/CONTRIBUTION_GUIDE.md):
 
 ## Quality Checklist
 
-See [CODING_STANDARDS.md](../../CODING_STANDARDS.md#10-quality-gates):
+See [CODING_STANDARDS.md](../../../CODING_STANDARDS.md#10-quality-gates):
 
 - [ ] Tests pass, lint/types clean
 - [ ] Coverage ≥ 80%

@@ -1,0 +1,9 @@
+{
+  "_comment": "Portable MCP config for distributing nexus-agents as a Claude Code plugin (#1826). Copy to .mcp.json (gitignored) or ship this file at plugin-root as .mcp.json in the marketplace repo.",
+  "mcpServers": {
+    "nexus-agents": {
+      "command": "npx",
+      "args": ["-y", "nexus-agents", "--mode=server"]
+    }
+  }
+}

@@ -18,8 +18,8 @@ allowed-tools: Bash, Read, Glob, Grep, Task
 
 **Full documentation:**
 
-- [ROUTING_SYSTEM.md](../../docs/architecture/ROUTING_SYSTEM.md)
-- [ENTRYPOINTS.md](../../docs/ENTRYPOINTS.md)
+- [ROUTING_SYSTEM.md](../../../docs/architecture/ROUTING_SYSTEM.md)
+- [ENTRYPOINTS.md](../../../docs/ENTRYPOINTS.md)
 
 ## Real-World Performance (Tested 2026-01-18)
 

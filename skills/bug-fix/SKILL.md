@@ -11,7 +11,7 @@ allowed-tools: Read, Edit, Write, Bash, Grep, Glob, Task
 
 <!-- CANONICAL SOURCE: docs/development/CONTRIBUTION_GUIDE.md -->
 
-**Full workflow:** [CONTRIBUTION_GUIDE.md](../../docs/development/CONTRIBUTION_GUIDE.md)
+**Full workflow:** [CONTRIBUTION_GUIDE.md](../../../docs/development/CONTRIBUTION_GUIDE.md)
 
 ## Workflow
 

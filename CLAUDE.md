@@ -415,7 +415,7 @@ Before any LLM processes GitHub content, strip:
 
 ## Workflows (via Skills)
 
-Detailed workflow steps are in `.claude/skills/`:
+Detailed workflow steps are in `skills/<name>/SKILL.md` (canonical per Anthropic Agent Skills spec, #1828). Non-Claude agents discover via [`skills/index.yaml`](./skills/index.yaml) referenced from [AGENTS.md](./AGENTS.md).
 
 | Workflow               | Skill                       | Trigger Keywords                                    |
 | ---------------------- | --------------------------- | --------------------------------------------------- |

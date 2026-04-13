@@ -19,8 +19,8 @@ allowed-tools: Bash, Read, Grep, Glob
 
 **Full documentation:**
 
-- [Gemini CLI Research](../../docs/research/_legacy/gemini-cli-research.md)
-- [ROUTING_SYSTEM.md](../../docs/architecture/ROUTING_SYSTEM.md)
+- [Gemini CLI Research](../../../docs/research/_legacy/gemini-cli-research.md)
+- [ROUTING_SYSTEM.md](../../../docs/architecture/ROUTING_SYSTEM.md)
 
 ## Real-World Performance (Tested 2026-01-18)
 

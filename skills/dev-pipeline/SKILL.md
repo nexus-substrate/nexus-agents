@@ -1,3 +1,12 @@
+---
+name: dev-pipeline
+description: |
+  Multi-agent development pipeline (Orchestrator + workers + consensus vote).
+  Use when the user asks to "build a feature", "fix a bug with the pipeline", or "run the dev pipeline".
+  Triggers on "dev pipeline", "multi-agent pipeline", "run pipeline".
+allowed-tools: Read, Write, Edit, Bash, Grep, Glob, Task
+---
+
 # Development Pipeline Skill
 
 Use this skill when the user asks to build a feature, fix a bug, or implement a plan using the multi-agent development pipeline.

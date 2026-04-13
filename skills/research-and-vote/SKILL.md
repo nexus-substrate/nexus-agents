@@ -18,8 +18,8 @@ context: fork
 
 **Full documentation:**
 
-- [CONSENSUS_PROTOCOLS.md](../../docs/architecture/CONSENSUS_PROTOCOLS.md)
-- [Research CONTRIBUTING.md](../../docs/research/CONTRIBUTING.md)
+- [CONSENSUS_PROTOCOLS.md](../../../docs/architecture/CONSENSUS_PROTOCOLS.md)
+- [Research CONTRIBUTING.md](../../../docs/research/CONTRIBUTING.md)
 
 ## Process
 
@@ -49,7 +49,7 @@ Create proposal with:
 | Architecture | Supermajority |
 | Security-critical | Unanimous |
 
-See [CONSENSUS_PROTOCOLS.md](../../docs/architecture/CONSENSUS_PROTOCOLS.md) for protocol selection matrix.
+See [CONSENSUS_PROTOCOLS.md](../../../docs/architecture/CONSENSUS_PROTOCOLS.md) for protocol selection matrix.
 
 ### Phase 4: Documentation
 

@@ -15,7 +15,7 @@ allowed-tools: Read, Edit, Write, Bash, Grep, Glob, Task
   - CODING_STANDARDS.md
 -->
 
-**Full workflow:** [CONTRIBUTION_GUIDE.md](../../docs/development/CONTRIBUTION_GUIDE.md#workflow-feature-implementation)
+**Full workflow:** [CONTRIBUTION_GUIDE.md](../../../docs/development/CONTRIBUTION_GUIDE.md#workflow-feature-implementation)
 
 ## Pre-Implementation Checklist
 
@@ -34,7 +34,7 @@ interface IFeature {
 }
 ```
 
-See [CONTRIBUTION_GUIDE.md](../../docs/development/CONTRIBUTION_GUIDE.md) for boundary checklist.
+See [CONTRIBUTION_GUIDE.md](../../../docs/development/CONTRIBUTION_GUIDE.md) for boundary checklist.
 
 ### Phase 2: TDD
 
@@ -62,7 +62,7 @@ gh pr create --title "feat(scope): description" --base main
 
 ## Quality Checklist
 
-See [CODING_STANDARDS.md](../../CODING_STANDARDS.md#10-quality-gates) for full checklist.
+See [CODING_STANDARDS.md](../../../CODING_STANDARDS.md#10-quality-gates) for full checklist.
 
 - [ ] Tests pass, coverage ≥ 80%
 - [ ] Lint and types clean

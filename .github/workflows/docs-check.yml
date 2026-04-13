@@ -380,6 +380,25 @@ jobs:
             exit 1
           fi
 
+  # Job 10.6: Skills Index Freshness (#1828)
+  skills-index-check:
+    name: Skills Index Freshness
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup-node
+
+      - name: Check skills/index.yaml freshness
+        run: |
+          npx tsx scripts/generate-skills-index.ts --check
+          if [ $? -ne 0 ]; then
+            echo "::error::skills/index.yaml is stale"
+            echo "Run: npx tsx scripts/generate-skills-index.ts"
+            exit 1
+          fi
+
   # Job 11: Governance Registry Drift Detection
   governance-drift:
     name: Governance Drift Check
