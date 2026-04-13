@@ -8,10 +8,10 @@ import { resolve } from 'node:path';
 import { loadSkills, matchSkills, formatSkillsForPrompt } from './skill-matcher.js';
 
 // Skills are at repo root, not package root
-const SKILLS_DIR = resolve(import.meta.dirname ?? '.', '../../../../../.claude/skills');
+const SKILLS_DIR = resolve(import.meta.dirname ?? '.', '../../../../../skills');
 
 describe('loadSkills', () => {
-  it('loads skills from .claude/skills/', async () => {
+  it('loads skills from skills/', async () => {
     const skills = await loadSkills(SKILLS_DIR);
     expect(skills.length).toBeGreaterThan(5);
   });

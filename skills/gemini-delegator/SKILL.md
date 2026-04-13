@@ -12,14 +12,12 @@ allowed-tools: Bash, Read, Grep, Glob
 # Gemini Delegator Skill
 
 <!-- CANONICAL SOURCES:
-  - docs/research/_legacy/gemini-cli-research.md
   - docs/architecture/ROUTING_SYSTEM.md
   - packages/nexus-agents/src/mcp/tools/delegate-to-model.ts
 -->
 
 **Full documentation:**
 
-- [Gemini CLI Research](../../docs/research/_legacy/gemini-cli-research.md)
 - [ROUTING_SYSTEM.md](../../docs/architecture/ROUTING_SYSTEM.md)
 
 ## Real-World Performance (Tested 2026-01-18)

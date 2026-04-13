@@ -12,7 +12,7 @@
     ".github/workflows/link-check.yml",
     "docs/ops/docops-spec.md"
   ],
-  "skill_file": ".claude/skills/documentation-management.md",
+  "skill_file": "skills/documentation-management/SKILL.md",
   "canonical_index": "docs/README.md",
   "machine_index": "docs/INDEX.yaml",
   "generated_outputs": {

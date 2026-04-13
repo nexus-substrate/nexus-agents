@@ -15,7 +15,7 @@ import { join, resolve } from 'node:path';
 // Helpers
 // ============================================================================
 
-const SKILLS_DIR = resolve(import.meta.dirname, '../../../../../.claude/skills');
+const SKILLS_DIR = resolve(import.meta.dirname, '../../../../../skills');
 
 /** Parse simple YAML key-value pairs from a string */
 
@@ -51,7 +51,7 @@ function parseSkillFrontmatter(filePath: string): Record<string, string> {
 // ============================================================================
 
 describe('ui-ux-design skill YAML frontmatter', () => {
-  const skillPath = join(SKILLS_DIR, 'ui-ux-design.md');
+  const skillPath = join(SKILLS_DIR, 'ui-ux-design', 'SKILL.md');
   const meta = parseSkillFrontmatter(skillPath);
 
   it('has a name field', () => {
@@ -79,7 +79,7 @@ describe('ui-ux-design skill YAML frontmatter', () => {
 // ============================================================================
 
 describe('ui-ux-design skill content sections', () => {
-  const skillPath = join(SKILLS_DIR, 'ui-ux-design.md');
+  const skillPath = join(SKILLS_DIR, 'ui-ux-design', 'SKILL.md');
   const content = readFileSync(skillPath, 'utf-8');
 
   it('has Design Workflow section', () => {

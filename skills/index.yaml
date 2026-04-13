@@ -1,0 +1,225 @@
+schema_version: "1.0"
+generated_by: scripts/generate-skills-index.ts
+skills:
+  - name: bug-fix
+    description: |-
+      Fix a bug following project standards.
+      Use when fixing defects, debugging issues, or resolving reported problems.
+      Triggers on "fix bug", "debug", "fix issue", "resolve bug".
+    path: skills/bug-fix/SKILL.md
+    triggers:
+      - fix bug
+      - debug
+      - fix issue
+      - resolve bug
+      - fixing defects
+  - name: codex-delegator
+    description: |-
+      Delegate code generation tasks to Codex CLI for optimal performance.
+      Use when implementing features, generating tests, refactoring code, or
+      making bulk code changes. Triggers on "delegate to codex", "route to codex",
+      "use codex", "code generation".
+    path: skills/codex-delegator/SKILL.md
+    triggers:
+      - delegate to codex
+      - route to codex
+      - use codex
+      - code generation
+      - implementing features
+  - name: dev-pipeline
+    description: >-
+      Multi-agent development pipeline (Orchestrator + workers + consensus vote).
+
+      Use when the user asks to "build a feature", "fix a bug with the pipeline", or "run the dev
+      pipeline".
+
+      Triggers on "dev pipeline", "multi-agent pipeline", "run pipeline".
+    path: skills/dev-pipeline/SKILL.md
+    triggers:
+      - build a feature
+      - fix a bug with the pipeline
+      - run the dev pipeline
+      - dev pipeline
+      - multi-agent pipeline
+      - run pipeline
+      - the user asks to "build a feature"
+  - name: documentation-management
+    description: |-
+      Operating manual for documentation work in nexus-agents.
+      Use when updating docs, adding new docs, changing doc pipeline, or troubleshooting doc issues.
+      Triggers on "update docs", "add documentation", "doc pipeline".
+    path: skills/documentation-management/SKILL.md
+    triggers:
+      - update docs
+      - add documentation
+      - doc pipeline
+      - updating docs
+  - name: dogfooding-issues
+    description: |-
+      Process open GitHub issues using the self-development protocol.
+      Implements features from research registry with proper voting and testing.
+      Use when working on open issues, implementing research techniques, or
+      following the dogfooding workflow. Triggers on "dogfood", "work on issues",
+      "implement issue", "self-development", "process issues".
+    path: skills/dogfooding-issues/SKILL.md
+    triggers:
+      - dogfood
+      - work on issues
+      - implement issue
+      - self-development
+      - process issues
+      - working on open issues
+  - name: gemini-delegator
+    description: |-
+      Delegate large context and multimodal tasks to Gemini CLI.
+      Use when context exceeds 100K tokens, analyzing images/screenshots,
+      processing large codebases, or for speed/cost-sensitive operations.
+      Triggers on "delegate to gemini", "route to gemini", "use gemini",
+      "large context", "analyze image", "screenshot analysis".
+    path: skills/gemini-delegator/SKILL.md
+    triggers:
+      - delegate to gemini
+      - route to gemini
+      - use gemini
+      - large context
+      - analyze image
+      - screenshot analysis
+      - context exceeds 100k tokens
+  - name: hotfix
+    description: |-
+      Apply a hotfix for critical production issues.
+      Use for security vulnerabilities or bugs that prevent core functionality.
+      Triggers on "hotfix", "emergency fix", "critical fix", "production bug".
+    path: skills/hotfix/SKILL.md
+    triggers:
+      - hotfix
+      - emergency fix
+      - critical fix
+      - production bug
+  - name: implement-feature
+    description: |-
+      Implement a new feature following project standards.
+      Use when adding functionality, creating new modules, or extending capabilities.
+      Triggers on "implement", "add feature", "create", "build".
+    path: skills/implement-feature/SKILL.md
+    triggers:
+      - implement
+      - add feature
+      - create
+      - build
+      - adding functionality
+  - name: infrastructure-management
+    description: |-
+      Manage physical server infrastructure, bare metal systems, and OOB management.
+      Handles iDRAC/iLO/IPMI access, SSH connectivity checks, boot time estimation,
+      and hardware health monitoring. Triggers on "infrastructure", "bare metal",
+      "server management", "idrac", "hardware check".
+    path: skills/infrastructure-management/SKILL.md
+    triggers:
+      - infrastructure
+      - bare metal
+      - server management
+      - idrac
+      - hardware check
+  - name: release
+    description: |-
+      Execute a release following project standards.
+      Use when publishing a new version, creating release tags, or deploying.
+      Triggers on "release", "publish", "version bump", "create release".
+    path: skills/release/SKILL.md
+    triggers:
+      - release
+      - publish
+      - version bump
+      - create release
+      - publishing a new version
+  - name: requirements-gathering
+    description: |-
+      Extract structured requirements from vague user requests. Decompose ideas
+      into user stories with acceptance criteria, map to available capabilities,
+      and identify gaps. Triggers on "requirements", "user stories", "what do I need",
+      "break down this request", "analyze this feature".
+    path: skills/requirements-gathering/SKILL.md
+    triggers:
+      - requirements
+      - user stories
+      - what do i need
+      - break down this request
+      - analyze this feature
+  - name: research-and-vote
+    description: |-
+      Research a topic using multiple sources and conduct multi-agent voting.
+      Use when making architectural decisions, choosing dependencies, or
+      designing APIs. Triggers on "research", "decide", "vote on", "consensus".
+    path: skills/research-and-vote/SKILL.md
+    triggers:
+      - research
+      - decide
+      - vote on
+      - consensus
+      - making architectural decisions
+  - name: reviewing-code
+    description: |-
+      Review code changes following project standards and security guidelines.
+      Checks for lint compliance, type safety, test coverage, and security issues.
+      Use when reviewing PRs, auditing code, or checking implementation quality.
+      Triggers on "review code", "code review", "check this", "audit", "PR review".
+    path: skills/reviewing-code/SKILL.md
+    triggers:
+      - review code
+      - code review
+      - check this
+      - audit
+      - pr review
+      - reviewing prs
+  - name: security-scanning
+    description: |-
+      Review and fix security scanning alerts from CodeQL and secret scanning.
+      Run as part of system reviews, after CI runs, or on manual request.
+      Triggers on "security scan", "codeql", "secret scanning", "security alerts".
+    path: skills/security-scanning/SKILL.md
+    triggers:
+      - security scan
+      - codeql
+      - secret scanning
+      - security alerts
+  - name: system-review
+    description: |-
+      Run a system review to check project health.
+      Use when issues drop below 5, an EPIC closes, or 7+ days since last review.
+      Triggers on "system review", "project health", "review system".
+    path: skills/system-review/SKILL.md
+    triggers:
+      - system review
+      - project health
+      - review system
+      - issues drop below 5
+  - name: ui-ux-design
+    description: |-
+      Generate design systems and implement UX/UI for software products using
+      Astro, Svelte, Tailwind CSS, Material Design 3, and OKLCH color system.
+      Covers style selection, color palettes, typography, layout patterns,
+      accessibility, and frontend code generation. Triggers on "design system",
+      "UI design", "color palette", "typography", "landing page design",
+      "dashboard design", "style guide", "component design", "frontend".
+    path: skills/ui-ux-design/SKILL.md
+    triggers:
+      - design system
+      - ui design
+      - color palette
+      - typography
+      - landing page design
+      - dashboard design
+      - style guide
+      - component design
+      - frontend
+  - name: version-check
+    description: |-
+      Check that dependencies are current stable versions and not deprecated.
+      Use before adding new dependencies or at project setup.
+      Triggers on "check versions", "verify dependencies", "audit packages".
+    path: skills/version-check/SKILL.md
+    triggers:
+      - check versions
+      - verify dependencies
+      - audit packages

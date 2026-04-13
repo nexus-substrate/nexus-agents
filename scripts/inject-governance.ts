@@ -20,13 +20,13 @@
 /* eslint-disable no-console */
 
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
-import { join, basename } from 'node:path';
+import { join } from 'node:path';
 import { ROOT } from './script-paths.js';
 const CLAUDE_MD_PATH = join(ROOT, 'CLAUDE.md');
 const TOOLS_INDEX = join(ROOT, 'packages/nexus-agents/src/mcp/tools/index.ts');
 const EXPERT_CONFIG = join(ROOT, 'packages/nexus-agents/src/agents/experts/expert-config.ts');
 const TEMPLATE_TYPES = join(ROOT, 'packages/nexus-agents/src/workflows/template-types.ts');
-const SKILLS_DIR = join(ROOT, '.claude/skills');
+const SKILLS_DIR = join(ROOT, 'skills');
 const MODEL_CAPS = join(ROOT, 'packages/nexus-agents/src/config/model-capabilities.ts');
 
 // Markers for governance sections
@@ -250,13 +250,15 @@ function extractSkills(): SkillMetadata[] {
     return [];
   }
 
-  const files = readdirSync(SKILLS_DIR)
-    .filter((f) => f.endsWith('.md'))
+  // Canonical layout (#1828): skills/<name>/SKILL.md
+  const dirs = readdirSync(SKILLS_DIR, { withFileTypes: true })
+    .filter((e) => e.isDirectory() && existsSync(join(SKILLS_DIR, e.name, 'SKILL.md')))
+    .map((e) => e.name)
     .sort();
 
-  return files.map((f) => ({
-    name: basename(f, '.md'),
-    filename: f,
+  return dirs.map((name) => ({
+    name,
+    filename: join(name, 'SKILL.md'),
   }));
 }
 
@@ -419,7 +421,7 @@ function extractDocumentedCounts(content: string): RegistrySummary {
   const workflowCount = workflowMatches ? parseInt(workflowMatches[1] ?? '0', 10) : 0;
 
   // Skills: count from canonical registries
-  const skillMatches = content.match(/Skills:.*?`\.claude\/skills\/\*\.md`\s*\((\d+)\s*skills\)/);
+  const skillMatches = content.match(/Skills:.*?`skills\/<name>\/SKILL\.md`\s*\((\d+)\s*skills\)/);
   const skillCount = skillMatches ? parseInt(skillMatches[1] ?? '0', 10) : 0;
 
   return {
@@ -528,7 +530,7 @@ function injectGovernance(): void {
   );
   content = content.replace(
     /Skills:.*?`\.claude\/skills\/\*\.md`\s*\(\d+\s*skills\)/,
-    `Skills: \`.claude/skills/*.md\` (${String(skills.length)} skills)`
+    `Skills: \`skills/<name>/SKILL.md\` (${String(skills.length)} skills)`
   );
 
   // Generate and inject version section

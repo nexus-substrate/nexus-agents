@@ -12,7 +12,7 @@ on:
       - 'scripts/inject-governance.ts'
       - 'scripts/generate-docs-content.ts'
       - 'CLAUDE.md'
-      - '.claude/skills/**'
+      - 'skills/**'
       - '.github/workflows/docs-check.yml'
 
 permissions: read-all
@@ -312,7 +312,7 @@ jobs:
             echo "✅ DocOps skill sync check passed"
           else
             echo "::error::DocOps pipeline changed without skill update"
-            echo "Update .claude/skills/documentation-management.md to reflect pipeline changes"
+            echo "Update skills/documentation-management/SKILL.md to reflect pipeline changes"
             exit 1
           fi
 
@@ -377,6 +377,25 @@ jobs:
           else
             echo "::error::Documentation content has drifted from source"
             echo "Run 'npx tsx scripts/generate-docs-content.ts' to see details"
+            exit 1
+          fi
+
+  # Job 10.6: Skills Index Freshness (#1828)
+  skills-index-check:
+    name: Skills Index Freshness
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup-node
+
+      - name: Check skills/index.yaml freshness
+        run: |
+          npx tsx scripts/generate-skills-index.ts --check
+          if [ $? -ne 0 ]; then
+            echo "::error::skills/index.yaml is stale"
+            echo "Run: npx tsx scripts/generate-skills-index.ts"
             exit 1
           fi
 
