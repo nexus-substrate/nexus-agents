@@ -1,0 +1,23 @@
+{
+  "$schema": "https://anthropic.com/claude-code/hooks.schema.json",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": {
+          "tool_name": "Bash",
+          "tool_input": "git push|gh pr merge"
+        },
+        "command": "${CLAUDE_PLUGIN_ROOT}/hooks/fitness-gate.sh",
+        "description": "Block push/merge if fitness score < 90 (#1830)"
+      },
+      {
+        "matcher": {
+          "tool_name": "Write|Edit",
+          "tool_input": "\\.env|credentials\\.json|secrets\\.ya?ml"
+        },
+        "command": "${CLAUDE_PLUGIN_ROOT}/hooks/secret-scan.sh",
+        "description": "Warn on credential patterns in sensitive files (#1830)"
+      }
+    ]
+  }
+}
