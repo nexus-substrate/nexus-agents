@@ -265,3 +265,38 @@ describe('inject-governance with fixture', () => {
     expect(output).toContain('Governance check passed');
   });
 });
+
+// ============================================================================
+// Ancillary count injection (#1837)
+// ============================================================================
+
+describe('inject-governance ancillary counts (#1837)', () => {
+  it('reports agent count from agents/*.md', { timeout: SUBPROCESS_TIMEOUT }, () => {
+    const output = runScript('check');
+    const match = /Agents:\s*(\d+)/.exec(output);
+    expect(match).not.toBeNull();
+    const count = parseInt(match![1]!, 10);
+    expect(count).toBeGreaterThanOrEqual(5);
+  });
+
+  it('reports correct skill count', { timeout: SUBPROCESS_TIMEOUT }, () => {
+    const output = runScript('check');
+    const match = /Skills:\s*(\d+)/.exec(output);
+    expect(match).not.toBeNull();
+    const count = parseInt(match![1]!, 10);
+    expect(count).toBeGreaterThanOrEqual(10);
+  });
+
+  it(
+    'ancillary count probes pass for plugin manifests + install doc',
+    { timeout: SUBPROCESS_TIMEOUT },
+    () => {
+      // Full `check` output includes ancillary probe failures if any drift exists.
+      // A green run means all probes matched canonical counts.
+      const output = runScript('check');
+      expect(output).not.toContain('pattern not found');
+      expect(output).not.toContain('expected');
+      expect(output).toContain('Governance check passed');
+    }
+  );
+});
