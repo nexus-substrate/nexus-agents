@@ -72,10 +72,38 @@ interface OrchestratorExtendedOptions {
   expertAgents?: Map<string, IAgent>;
 }
 
-/** System prompt for task analysis. */
+/**
+ * System prompt for task analysis (#1827).
+ *
+ * Adopts the `frontend-design` plugin's "commit-before-generate" pattern:
+ * before dispatching workers, the orchestrator must explicitly commit to
+ * a purpose, approach, differentiation, and hard constraints. This counters
+ * LLM mode-collapse toward safe, undifferentiated defaults.
+ */
 const ANALYSIS_PROMPT = `You are an orchestrator analyzing a software development task.
-Analyze the task and provide a structured JSON assessment with: taskId, complexity (1-10),
-taskType, requirements[], risks[], needsDecomposition, approach, estimatedEffort.`;
+
+Before decomposing or dispatching, commit to a direction. Emit a \`commitment\` object
+with these fields — do not skip any:
+
+  commitment.purpose          // What is this task fundamentally about? One sentence.
+  commitment.approach         // The non-obvious choice you're making and why.
+                              // If your answer sounds like the average LLM suggestion,
+                              // pick a sharper one.
+  commitment.differentiation  // What would make the output worse if solved by default
+                              // patterns? Name the failure mode to avoid.
+  commitment.constraints[]    // Hard limits: deadlines, scope boundaries, invariants
+                              // that must not be violated.
+
+Then provide the structured JSON assessment with: taskId, complexity (1-10),
+taskType, requirements[], risks[], needsDecomposition, approach, estimatedEffort,
+**commitment** (the object above).
+
+Rules:
+- Match implementation complexity to the aesthetic vision — don't over-engineer
+  a simple fix, don't under-scope a non-trivial redesign.
+- State anti-patterns explicitly where relevant (e.g., "NEVER silently retry on
+  rate-limit errors" for an adapter task) — named failures are more actionable
+  than positive-only guidance.`;
 
 /** System prompt for task decomposition. */
 const DECOMPOSITION_PROMPT = `You are an orchestrator breaking down a complex task.

@@ -66,6 +66,28 @@ export interface TaskAnalysis {
   approach: string;
   /** Estimated total effort in relative units */
   estimatedEffort: number;
+  /**
+   * Commit-before-generate block (#1827).
+   * Forces the orchestrator to commit to a direction before dispatching workers,
+   * countering LLM mode-collapse toward safe defaults. Optional for backward
+   * compatibility with older analysis outputs.
+   */
+  commitment?: TaskCommitment | undefined;
+}
+
+/**
+ * Orchestrator's directional commitment, emitted before decomposition (#1827).
+ * Modeled after the `frontend-design` plugin's Design Thinking pre-phase.
+ */
+export interface TaskCommitment {
+  /** What this task is fundamentally about (one sentence). */
+  purpose: string;
+  /** The non-obvious choice being made. */
+  approach: string;
+  /** What would make the output worse if solved by default patterns. */
+  differentiation: string;
+  /** Hard limits: deadlines, scope boundaries, invariants. */
+  constraints: string[];
 }
 
 /**
@@ -237,6 +259,16 @@ export const TaskAnalysisSchema = z.object({
     const n = typeof v === 'number' ? v : Number(v);
     return Number.isFinite(n) ? Math.max(0, n) : 5;
   }),
+  // #1827 commit-before-generate pre-phase. Optional for backward compat
+  // with older analysis outputs that pre-date this field.
+  commitment: z
+    .object({
+      purpose: z.string().min(1),
+      approach: z.string().min(1),
+      differentiation: z.string().min(1),
+      constraints: z.array(z.string()),
+    })
+    .optional(),
 });
 
 /**

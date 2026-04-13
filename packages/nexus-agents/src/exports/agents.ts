@@ -19,6 +19,7 @@ export {
   // Orchestrator types
   type SubTask,
   type TaskAnalysis,
+  type TaskCommitment,
   type ExpertAssignment,
   type SynthesizedResult,
   type ResultSummary,
