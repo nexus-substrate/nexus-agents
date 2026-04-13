@@ -76,7 +76,7 @@
     "semver": "^7.7.4",
     "tiktoken": "^1.0.22",
     "ts-morph": "^27.0.2",
-    "typescript": "^5.9.3",
+    "typescript": "^6.0.2",
     "yaml": "^2.8.3",
     "zod": "^4.3.6"
   },
