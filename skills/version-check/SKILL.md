@@ -11,7 +11,7 @@ allowed-tools: Bash, Read, WebFetch
 
 <!-- CANONICAL SOURCE: CLAUDE.md Core Operating Principles - Version Currency Enforcement -->
 
-**Full documentation:** [CLAUDE.md](../../../CLAUDE.md#2-version-currency-enforcement)
+**Full documentation:** [CLAUDE.md](../../CLAUDE.md#2-version-currency-enforcement)
 
 ## Quick Process
 
@@ -47,4 +47,4 @@ If deprecated or outdated:
 2. Create GitHub issue to track migration
 3. Document migration path
 
-See [CLAUDE.md](../../../CLAUDE.md#2-version-currency-enforcement) for complete version verification protocol.
+See [CLAUDE.md](../../CLAUDE.md#2-version-currency-enforcement) for complete version verification protocol.

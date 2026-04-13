@@ -1,7 +1,7 @@
 /**
  * Skill relevance matching for expert prompt injection.
  *
- * Reads .claude/skills/ Markdown files, scores them against
+ * Reads skills/ Markdown files, scores them against
  * expert roles using keyword matching, and returns the top-K
  * most relevant skills for injection into expert prompts.
  *
@@ -83,22 +83,32 @@ function scoreSkill(skill: ParsedSkill, role: string): number {
 }
 
 /**
- * Load all skills from the .claude/skills/ directory.
+ * Load all skills from the skills/ directory.
  * Returns empty array if directory doesn't exist.
  */
 export async function loadSkills(skillsDir?: string): Promise<ParsedSkill[]> {
-  const dir = skillsDir ?? resolve(process.cwd(), '.claude/skills');
+  const dir = skillsDir ?? resolve(process.cwd(), 'skills');
   const skills: ParsedSkill[] = [];
 
   try {
-    const files = await readdir(dir);
-    for (const file of files) {
-      if (!file.endsWith('.md')) continue;
-      const filePath = join(dir, file);
-      const raw = await readFile(filePath, 'utf-8');
-      const { name, description, body } = parseFrontmatter(raw);
-      if (name.length > 0) {
-        skills.push({ name, description, content: body, filePath });
+    const entries = await readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      // Canonical layout (#1828): skills/<name>/SKILL.md
+      // Legacy fallback: skills/<name>.md (kept for backward compat)
+      const filePath = entry.isDirectory()
+        ? join(dir, entry.name, 'SKILL.md')
+        : entry.name.endsWith('.md')
+          ? join(dir, entry.name)
+          : null;
+      if (filePath === null) continue;
+      try {
+        const raw = await readFile(filePath, 'utf-8');
+        const { name, description, body } = parseFrontmatter(raw);
+        if (name.length > 0) {
+          skills.push({ name, description, content: body, filePath });
+        }
+      } catch {
+        // Skip entries without a readable SKILL.md (e.g., index.yaml)
       }
     }
   } catch {

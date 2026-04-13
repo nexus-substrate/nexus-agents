@@ -12,7 +12,7 @@ on:
       - 'scripts/inject-governance.ts'
       - 'scripts/generate-docs-content.ts'
       - 'CLAUDE.md'
-      - '.claude/skills/**'
+      - 'skills/**'
       - '.github/workflows/docs-check.yml'
 
 permissions: read-all
@@ -312,7 +312,7 @@ jobs:
             echo "✅ DocOps skill sync check passed"
           else
             echo "::error::DocOps pipeline changed without skill update"
-            echo "Update .claude/skills/documentation-management.md to reflect pipeline changes"
+            echo "Update skills/documentation-management/SKILL.md to reflect pipeline changes"
             exit 1
           fi
 

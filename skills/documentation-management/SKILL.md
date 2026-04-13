@@ -18,7 +18,7 @@ allowed-tools: Read, Edit, Write, Bash, Grep, Glob, Task
 <!-- PIPELINE NOTE: website removed (2026-02-22) — sync-docs.ts, check-frontmatter.ts, deploy-docs.yml deleted -->
 <!-- PIPELINE NOTE: generate-repo-index.ts extractMCPTools() switched from register regex to tools array parsing (2026-04-10) -->
 
-**Full specification:** [docops-spec.md](../../../docs/ops/docops-spec.md)
+**Full specification:** [docops-spec.md](../../docs/ops/docops-spec.md)
 
 ---
 
@@ -207,6 +207,6 @@ Before committing documentation changes:
 
 ## Related Documents
 
-- **DocOps Spec:** [docs/ops/docops-spec.md](../../../docs/ops/docops-spec.md)
-- **Documentation Index:** [docs/README.md](../../../docs/README.md)
-- **Inventory:** [docs/ops/docs-inventory.md](../../../docs/ops/docs-inventory.md)
+- **DocOps Spec:** [docs/ops/docops-spec.md](../../docs/ops/docops-spec.md)
+- **Documentation Index:** [docs/README.md](../../docs/README.md)
+- **Inventory:** [docs/ops/docs-inventory.md](../../docs/ops/docs-inventory.md)

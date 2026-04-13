@@ -17,8 +17,8 @@ allowed-tools: Read, Grep, Glob, Bash, LSP
 
 **Full documentation:**
 
-- [CODING_STANDARDS.md](../../../CODING_STANDARDS.md)
-- [SECURITY.md](../../../docs/architecture/SECURITY.md)
+- [CODING_STANDARDS.md](../../CODING_STANDARDS.md)
+- [SECURITY.md](../../docs/architecture/SECURITY.md)
 
 ## Review Checklist
 
@@ -42,7 +42,7 @@ allowed-tools: Read, Grep, Glob, Bash, LSP
 - [ ] Path traversal prevention
 - [ ] No user-provided RegExp
 
-See [SECURITY.md](../../../docs/architecture/SECURITY.md) for full threat model.
+See [SECURITY.md](../../docs/architecture/SECURITY.md) for full threat model.
 
 ## Review Process
 
@@ -72,4 +72,4 @@ pnpm test:coverage
 [ ] APPROVE / [ ] REQUEST_CHANGES
 ```
 
-See [CODING_STANDARDS.md](../../../CODING_STANDARDS.md) for common issues and patterns.
+See [CODING_STANDARDS.md](../../CODING_STANDARDS.md) for common issues and patterns.

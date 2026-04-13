@@ -142,7 +142,7 @@ function applyToolRestrictions(prompt: string, restrictions: ToolRestrictions | 
 /**
  * Inject failure lessons + relevant skills into the prompt.
  * Lessons: MetaClaw pattern (past failures → guidance).
- * Skills: matched from .claude/skills/ by role keywords.
+ * Skills: matched from skills/ by role keywords.
  */
 function applyFailureLessons(prompt: string, role: string): string {
   try {
