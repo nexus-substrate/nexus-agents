@@ -1,0 +1,80 @@
+name: Verify NPM Install
+
+# Catches packaging regressions BEFORE publish (#1841 was the canary): packs
+# the local source as if for npm publish, installs the tarball in a clean
+# Docker container, and runs a 6-phase smoke test (binary on PATH, --version,
+# --help core commands, doctor, MCP stdio handshake with tools/list).
+#
+# Triggers:
+#   - PRs touching package.json, src/, or the smoke-test infra
+#   - Pushes to main
+#   - Weekly cron (catches drift in the published version against current source)
+#   - Manual dispatch
+
+on:
+  pull_request:
+    paths:
+      - 'packages/nexus-agents/package.json'
+      - 'packages/nexus-agents/src/**'
+      - 'scripts/verify-npm-install.sh'
+      - 'Dockerfile.npm-verify'
+      - '.github/workflows/npm-verify.yml'
+  push:
+    branches: [main]
+  schedule:
+    # Sundays 10:00 UTC — weekly canary against published @latest
+    - cron: '0 10 * * 0'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version or tarball path (default: latest)'
+        required: false
+        default: 'latest'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-from-source:
+    name: Verify pre-publish tarball
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup-node
+
+      - name: Build + pack nexus-agents
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter nexus-agents build
+          cd packages/nexus-agents
+          npm pack --pack-destination "${{ runner.temp }}"
+          ls "${{ runner.temp }}"/*.tgz
+
+      - name: Build verification image
+        run: docker build -t nexus-verify -f Dockerfile.npm-verify .
+
+      - name: Run smoke test against pre-publish tarball
+        run: |
+          TARBALL=$(ls "${{ runner.temp }}"/nexus-agents-*.tgz | head -1)
+          docker run --rm -v "${TARBALL}:/pkg.tgz:ro" nexus-verify \
+            bash /home/verifier/verify.sh /pkg.tgz
+
+  verify-published-latest:
+    name: Verify published @latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Build verification image
+        run: docker build -t nexus-verify -f Dockerfile.npm-verify .
+
+      - name: Run smoke test
+        run: |
+          docker run --rm nexus-verify bash /home/verifier/verify.sh \
+            "${{ github.event.inputs.version || 'latest' }}"

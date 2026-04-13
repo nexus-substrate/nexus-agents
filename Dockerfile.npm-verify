@@ -1,0 +1,45 @@
+# syntax=docker/dockerfile:1.7
+# Verify a clean global install of nexus-agents.
+#
+# Three modes:
+#   1. Latest published (default):
+#        docker build -t nexus-verify -f Dockerfile.npm-verify .
+#        docker run --rm nexus-verify
+#   2. Pinned version:
+#        docker build --build-arg NEXUS_VERSION=2.29.0 -t nexus-verify -f Dockerfile.npm-verify .
+#   3. Pre-publish tarball (catches packaging bugs before they ship — #1841):
+#        cd packages/nexus-agents && pnpm build && npm pack --pack-destination /tmp
+#        docker build -t nexus-verify -f Dockerfile.npm-verify .
+#        docker run --rm -v /tmp/nexus-agents-2.29.0.tgz:/pkg.tgz nexus-verify bash /home/verifier/verify.sh /pkg.tgz
+FROM node:22-bookworm-slim
+
+ARG NEXUS_VERSION=latest
+ENV NEXUS_LOG_LEVEL=warn
+ENV NEXUS_AUTH_ENABLED=false
+
+# Minimal deps. better-sqlite3 needs build tooling at install time on some
+# Node alpine variants; bookworm-slim ships them precompiled for our binary
+# but we still install build-essential as a defensive fallback for
+# native-module rebuilds during npm install.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates python3 build-essential \
+  && rm -rf /var/lib/apt/lists/*
+
+# Run as non-root to mirror the marketplace install path
+RUN useradd -m -s /bin/bash verifier
+USER verifier
+WORKDIR /home/verifier
+
+# Copy the smoke-test script
+COPY --chown=verifier:verifier scripts/verify-npm-install.sh /home/verifier/verify.sh
+
+# Ensure global npm installs go to user-writable prefix (no sudo needed)
+ENV NPM_CONFIG_PREFIX=/home/verifier/.npm-global
+ENV PATH=/home/verifier/.npm-global/bin:$PATH
+
+# Re-export build arg so CMD shell form can read it
+ENV NEXUS_VERSION=${NEXUS_VERSION}
+
+# Default command runs the verification at the pinned version. Override:
+#   docker run --rm nexus-verify bash -c 'nexus-agents --version'
+CMD bash /home/verifier/verify.sh "$NEXUS_VERSION"
