@@ -68,10 +68,11 @@ Detailed technical documentation:
 
 #### Getting Started
 
-| Document                                               | Description                 | Status    |
-| ------------------------------------------------------ | --------------------------- | --------- |
-| [INSTALLATION.md](./getting-started/INSTALLATION.md)   | Platform installation guide | Canonical |
-| [CONFIGURATION.md](./getting-started/CONFIGURATION.md) | YAML and env configuration  | Canonical |
+| Document                                                 | Description                                  | Status    |
+| -------------------------------------------------------- | -------------------------------------------- | --------- |
+| [INSTALLATION.md](./getting-started/INSTALLATION.md)     | Platform installation guide                  | Canonical |
+| [CONFIGURATION.md](./getting-started/CONFIGURATION.md)   | YAML and env configuration                   | Canonical |
+| [PLUGIN_INSTALL.md](./getting-started/PLUGIN_INSTALL.md) | Install nexus-agents as a Claude Code plugin | Canonical |
 
 #### Architecture
 
