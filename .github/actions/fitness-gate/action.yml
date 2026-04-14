@@ -28,8 +28,11 @@ runs:
       shell: bash
       run: |
         cd "${{ inputs.working-directory }}"
-        # Run audit and strip logging header line before JSON
-        node dist/cli.js fitness-audit --format=json | tail -n +2 > fitness-report.json
+        # Silence info-level logger output so stdout is pure JSON (#1868).
+        # Previously `tail -n +2` stripped one header line, but depending on
+        # log level / check count the JSON could be on a different line and
+        # jq would then read a log record with no top-level `.score`.
+        NEXUS_LOG_LEVEL=error node dist/cli.js fitness-audit --format=json > fitness-report.json
         SCORE=$(jq '.score' fitness-report.json)
         echo "score=$SCORE" >> "$GITHUB_OUTPUT"
         echo "report-path=${{ inputs.working-directory }}/fitness-report.json" >> "$GITHUB_OUTPUT"

@@ -68,9 +68,30 @@ import {
   createSimulationVoteResult,
   createSimulatedVotes,
   executeWithRetries,
-  delay,
 } from './voter-execution.js';
 import { resolveVoteTimeout, VOTE_TIMEOUTS } from '../config/timeouts.js';
+import { launchVotesWithOverallDeadline } from './voter-agents-deadline.js';
+
+/**
+ * Computes an overall wall-clock deadline for a consensus vote call (#1871).
+ *
+ * Acts as a safety net above per-vote timeouts: even if executeAgentVote's
+ * internal withTimeout race fails to resolve (e.g. subprocess adapter hang),
+ * this deadline bounds total wall time and lets partial results return.
+ *
+ * Formula: worst-case legitimate completion (timeoutMs * (maxRetries+1))
+ * plus staggered launch headroom, plus a 60s buffer.
+ */
+export function computeOverallConsensusDeadlineMs(
+  timeoutMs: number,
+  maxRetries: number,
+  roleCount: number,
+  interDelayMs: number
+): number {
+  const perVoteBudget = timeoutMs * (maxRetries + 1);
+  const staggerBudget = Math.max(0, roleCount - 1) * interDelayMs;
+  return perVoteBudget + staggerBudget + 60_000;
+}
 
 // ============================================================================
 // Agent Vote Execution
@@ -276,20 +297,31 @@ interface StaggeredVoteInput {
   readonly interDelay: number;
 }
 
-/** Launches votes with staggered delays to prevent rate limiting (Issue #1319). */
+/**
+ * Launches votes with staggered delays to prevent rate limiting (Issue #1319)
+ * and an overall wall-clock deadline to prevent indefinite hangs (Issue #1871).
+ */
 async function launchStaggeredVotes(
   input: StaggeredVoteInput
 ): Promise<readonly AgentVoteResult[]> {
   const { roles, proposal, roleAdapters, fallbackAdapter, logger, voteOptions, interDelay } = input;
-  const votePromises: Promise<AgentVoteResult>[] = [];
-  for (const [i, role] of roles.entries()) {
-    if (i > 0 && interDelay > 0) {
-      await delay(interDelay);
-    }
-    const adapter = roleAdapters.get(role) ?? fallbackAdapter;
-    votePromises.push(executeAgentVote(role, proposal, adapter, logger, voteOptions));
-  }
-  return Promise.all(votePromises);
+  const overallDeadlineMs = computeOverallConsensusDeadlineMs(
+    voteOptions.timeoutMs,
+    voteOptions.maxRetries,
+    roles.length,
+    interDelay
+  );
+  return launchVotesWithOverallDeadline({
+    roles,
+    proposal,
+    roleAdapters,
+    fallbackAdapter,
+    logger,
+    voteOptions,
+    interDelay,
+    overallDeadlineMs,
+    voteFn: executeAgentVote,
+  });
 }
 
 /**
