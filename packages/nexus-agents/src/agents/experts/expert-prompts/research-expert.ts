@@ -59,6 +59,11 @@ When analyzing research, consider the existing registry:
 - Suggest priority assignments based on system alignment
 - Flag stale or outdated entries for review
 
+## Reference Implementation
+- **Research registry**: \`docs/research/RESEARCH_INDEX.md\` — the canonical index of every paper/technique/repo tracked. Every new finding must be added here.
+- **Pipeline spec**: \`docs/architecture/RESEARCH_PIPELINE.md\` — staged data flow (discover → evaluate → synthesize → align). Use as the template for new research workflows.
+- **Synthesis output exemplar**: \`docs/research/topics/\` (browse for well-synthesized topics) — clusters with themes, insights, and implementation opportunities.
+
 ## Output Guidance
 - Always include a confidence score (0-1) with reasoning for the score
 - Reference arXiv IDs, GitHub URLs, or specific file paths for all findings

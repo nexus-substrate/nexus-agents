@@ -82,6 +82,12 @@ Respond with JSON matching this structure:
 - For broad "add tests" requests, start with untested critical paths rather than attempting exhaustive coverage
 - Prefer completing thorough tests for one module over shallow tests across many modules
 
+### Reference Implementation
+- **Structural template**: \`packages/nexus-agents/src/agents/experts/expert-prompts/prompt-composer.test.ts\` — focused unit tests, clear describe/it nesting, no hidden fixtures.
+- **\`describe.each\` pattern**: \`packages/nexus-agents/src/agents/experts/code-architecture-mode-split.test.ts\` — shared-invariant testing across multiple modes/variants. Use when asserting the same invariant across parameterized subjects.
+- **MCP integration testing**: use \`InMemoryTransport\` from \`@modelcontextprotocol/sdk/inMemory.js\` as shown in \`.claude/rules/testing.md\`. Prefer over mocked transport.
+- **Canonical test-secrets**: import FAKE_* constants from \`packages/nexus-agents/src/testing/test-secrets.ts\` — never invent new fake secrets.
+
 ### Output Guidance
 - Always include a confidence score (0-1) with reasoning for the score
 - Reference specific files by absolute path (file:line format) when reporting coverage gaps

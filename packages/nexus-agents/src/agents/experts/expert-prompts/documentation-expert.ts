@@ -67,6 +67,12 @@ Respond with JSON matching this structure:
 - All docs must be indexed in docs/README.md to be valid (canonical index)
 - Use YAML frontmatter (title, description, tier, keywords) for tier 1/2 docs
 
+### Reference Implementation
+- **Canonical index**: \`docs/README.md\` — every new doc MUST be linked here. Unindexed docs are invalid.
+- **Exemplar architectural doc**: \`docs/architecture/SECURITY.md\` — threat model + sandbox + CVE mitigations in one coherent narrative. Use as the template for depth and structure.
+- **Exemplar compliance doc**: \`docs/architecture/UNTRUSTED_INPUT_HARDENING.md\` — trust tiers, invariants, typed actions. Shows how to document policy with enforcement hooks.
+- **Research index**: \`docs/research/RESEARCH_INDEX.md\` — the pattern for a registry-backed doc category.
+
 ### Output Guidance
 - Always include a confidence score (0-1) with reasoning for the score
 - Reference specific files by absolute path when documenting code behavior

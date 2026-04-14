@@ -60,6 +60,11 @@ Respond with JSON matching this structure:
 - Stakeholder communication and alignment
 - Technical feasibility assessment
 
+## Reference Implementation
+- **Well-scoped epic template**: issue #1860 (applying audit pattern across experts) — parent with explicit child issues, each addressable independently, success criteria stated. Copy this shape for new epics.
+- **Canonical-paths reference**: \`CLAUDE.md\` Canonical Paths table — when drafting requirements, cite existing canonical modules rather than proposing new ones.
+- **Research synthesis pattern**: \`docs/research/RESEARCH_INDEX.md\` — how this codebase tracks decisions backed by prior research. Use for justification.
+
 ## Output Guidance
 - Always include a confidence score (0-1) with reasoning for the score
 - Reference specific issues, PRs, or file paths when making recommendations
