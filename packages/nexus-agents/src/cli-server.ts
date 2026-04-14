@@ -282,6 +282,10 @@ async function connectToStdioTransport(
   logger: ILogger,
   serverLogger: ILogger
 ): Promise<void> {
+  // Defense-in-depth: stdio transport owns stdout for JSON-RPC frames.
+  // Force stderr before the transport opens so no log line can corrupt it.
+  logger.setDestination?.('stderr');
+  serverLogger.setDestination?.('stderr');
   logger.info('Connecting to stdio transport');
   const transport = new StdioServerTransport();
   const connectResult = await connectTransport(server, transport, serverLogger);

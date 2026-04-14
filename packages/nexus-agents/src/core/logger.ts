@@ -293,7 +293,11 @@ function formatPretty(entry: LogEntry): string {
 
 /** Global logger configuration state. */
 let globalFormat: LogFormat = 'json';
-let globalDestination: LogDestination = 'stdout';
+// Default to stderr: when this process runs as an MCP stdio server, stdout is
+// reserved for JSON-RPC frames. A stdout default would corrupt the transport
+// on the first log call. CLI commands that want user-facing output use
+// console.log / explicit writers, not the structured logger.
+let globalDestination: LogDestination = 'stderr';
 let globalFilePath: string | undefined;
 let fileStream: import('fs').WriteStream | undefined;
 

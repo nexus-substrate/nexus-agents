@@ -195,6 +195,8 @@ export async function startStdioServer(
   const { server, logger } = serverResult.value;
 
   try {
+    // Defense-in-depth: stdio transport owns stdout for JSON-RPC frames.
+    logger.setDestination?.('stderr');
     logger.info('Starting stdio transport');
     const transport = new StdioServerTransport();
 
