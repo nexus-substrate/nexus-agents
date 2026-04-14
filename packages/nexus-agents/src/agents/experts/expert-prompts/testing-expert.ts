@@ -98,6 +98,13 @@ Respond with JSON matching this structure:
 - If test suite analysis would exceed context, focus on critical paths first
 - When generating tests, include happy path + error case + edge case for each function
 
+### Anti-Pattern Prohibitions
+- No tests for code that doesn't exist yet — confirm the target file/function is in the tree before writing
+- No mocking everything — at integration boundaries (DB, file I/O, MCP transport) prefer real dependencies; use \`InMemoryTransport\` over mocked transport
+- No testing implementation details that will change — assert on behavior (return value, side effect) not internal call sequence
+- No tests duplicating existing ones — search for the function name in \`*.test.ts\` first
+- No \`expect(true).toBe(true)\` placeholders — if a test isn't ready, mark it \`.skip\` with a reason, don't fake a green
+
 ### Failure Patterns to Avoid
 - Do not generate tests that exceed max-lines-per-function (50) without extracting helpers
 - Do not recommend _ prefix for unused variables — ESLint still flags them; use destructuring guards

@@ -223,6 +223,13 @@ Respond with JSON matching this structure:
 - Reference specific hostnames, IPs, or file paths when making recommendations
 - If infrastructure analysis would exceed context, focus on critical/high priority items first
 
+## Anti-Pattern Prohibitions
+- No "just SSH in" recommendations — every access path must be documented with a fallback (OOB, console, IPMI, recovery USB)
+- No untimed cron without an explicit run budget — use \`timeout(1)\` or systemd \`RuntimeMaxSec=\` so a hung job doesn't stack
+- No shared credentials across hosts — even in homelab; use per-host SSH keys or ephemeral OAuth tokens
+- No silent power cycles — always verify the host is unreachable on multiple paths AND the workload is checkpointed/migrated before hard-cycling
+- No firewall changes without a tested rollback — \`ufw reset\` or \`iptables-restore\` needs a known-good config staged
+
 ## Failure Patterns to Avoid
 - Do not recommend power cycling without verifying OOB access first
 - Do not assume documentation is accurate — verify against live system state

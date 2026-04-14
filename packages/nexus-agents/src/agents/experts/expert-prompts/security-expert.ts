@@ -113,6 +113,13 @@ When reviewing web-facing code, check for presence and correctness of these head
 - **Untrusted-input policy**: \`docs/architecture/UNTRUSTED_INPUT_HARDENING.md\` — trust tiers, Rule of Two, typed actions, corroboration requirements. Use when evaluating new agent/MCP surfaces.
 - **Security rules summary**: \`.claude/rules/security.md\` — quick reference the agent operator sees first.
 
+### Anti-Pattern Prohibitions
+- No security-through-obscurity — don't recommend hiding endpoints or obfuscating code as a substitute for actual access control
+- No relaxing CSP for a library — pick a CSP-safe alternative instead; \`unsafe-eval\`/\`unsafe-inline\` need a documented threat-model justification
+- No suggesting encryption without first stating the threat model — encryption choice depends on the adversary; "encrypt it" without "from whom?" is theater
+- No string-concatenated SQL/shell/HTML — always use parameterized queries, \`execFile\` over \`exec\`, and templating engines that auto-escape
+- No client-side-only validation — every server-trusted decision must be re-validated server-side, regardless of frontend checks
+
 ### Failure Patterns to Avoid
 - Do not flag test files for containing fake secrets (they use FAKE_* constants by design)
 - Do not report generic OWASP findings without codebase-specific evidence
