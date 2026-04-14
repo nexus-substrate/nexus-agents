@@ -17,8 +17,60 @@ context: fork
   - CLAUDE.md Canonical Paths
   - Epic #946 (UI UX Pro Max Integration)
   - Issue #1539 (Frontend engineering capabilities)
+  - Issue #1853 (creative vs enforcement mode split)
   - Methodology adapted from github.com/nextlevelbuilder/ui-ux-pro-max-skill
+  - Creative-mode direction informed by Claude frontend-design plugin
 -->
+
+## Two Modes
+
+This skill operates in one of two modes. Pick before writing any code.
+
+### Enforcement mode (default)
+
+For PR review, a11y audits, compliance gating, pattern consistency checks.
+Produces structured findings. Uses the full pre-delivery checklist. JSON output
+format. M3 available as an opt-in reference but not required.
+
+### Creative mode
+
+For greenfield design, visual identity, landing pages, distinctive product
+interfaces. Producer must commit to an **aesthetic direction** from the tone
+catalog before writing code.
+
+**Tone catalog (pick ONE):** editorial/magazine · brutalist/raw ·
+retro-futuristic · art-deco/geometric · soft/pastel · industrial/utilitarian ·
+luxury/refined · playful/toy-like · organic/natural · maximalist-chaos ·
+brutally-minimal · typewriter/archive
+
+**Anti-AI-slop prohibitions in creative mode:**
+
+- Do NOT use Inter, Roboto, Arial, system-ui, or Space Grotesk as the primary
+  **display** typeface. (Body sans is OK; Inter acceptable as body.)
+- Do NOT use purple gradients on white.
+- Do NOT default to centered `max-w-2xl` + card grid.
+- Do NOT apply Material Design 3 unless the caller explicitly requests it.
+- Rotate aesthetic direction across requests in the same session — no two
+  designs should share a primary display typeface.
+
+**Preferred display faces:** Fraunces, Newsreader, Crimson Pro, EB Garamond,
+DM Serif Display, Unica One, Bodoni Moda, Vollkorn.
+**Preferred mono:** IBM Plex Mono, Berkeley Mono, Redaction 35, Courier Prime.
+
+### Mandatory in BOTH modes
+
+OKLCH (never hex/rgb/hsl) · WCAG 2.1 AA (4.5:1 text, 3:1 non-text) ·
+APCA advisory reported · Touch targets ≥ 44×44 · prefers-reduced-motion ·
+Zero-JS default · Self-hosted fonts · Page has an h1 (sr-only OK).
+
+## Reference Implementation
+
+For a proven pattern reconciling distinctive creative direction with hard
+accessibility gates, see williamzujkowski/remarque (design system) and
+williamzujkowski.github.io (consumer): editorial broadsheet with italic
+oldstyle-figure numerals, Fraunces + IBM Plex Mono + Inter typography,
+CRT-phosphor dark mode, every color pair passing WCAG 2 AA AND APCA draft,
+full axe-core AA across 16 pages × 2 themes in CI.
 
 ## Target Stack
 
@@ -127,7 +179,11 @@ Ensure sufficient L-channel delta between text and background:
 - **Large text** (3:1): `|L_text - L_bg| >= 0.35`
 - Always verify computed contrast ratios — OKLCH deltas are approximate guides
 
-## Material Design 3 Rules
+## Material Design 3 Rules (opt-in)
+
+**Not mandatory.** Apply only when the caller explicitly requests M3 or when
+building a Material-framework product. For other aesthetics, use the tone
+catalog above and design from first principles.
 
 ### State Layers
 
