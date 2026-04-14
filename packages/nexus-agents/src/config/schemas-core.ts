@@ -12,7 +12,8 @@ import { z } from 'zod';
 export const LoggingConfigSchema = z.object({
   level: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   format: z.enum(['json', 'pretty']).default('json'),
-  destination: z.enum(['stdout', 'stderr', 'file']).default('stdout'),
+  // Default to stderr: MCP stdio transport reserves stdout for JSON-RPC frames.
+  destination: z.enum(['stdout', 'stderr', 'file']).default('stderr'),
   filePath: z.string().optional(),
 });
 

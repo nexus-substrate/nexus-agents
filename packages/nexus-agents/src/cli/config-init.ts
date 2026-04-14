@@ -149,7 +149,9 @@ logging:
   format: json
 
   # Destination: stdout, stderr, file
-  destination: stdout
+  # NOTE: stdout is unsafe when running as an MCP stdio server (corrupts
+  # JSON-RPC frames). Keep stderr unless you have a specific need.
+  destination: stderr
 
   # Log file path (required if destination is 'file')
   # filePath: ./logs/nexus-agents.log

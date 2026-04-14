@@ -163,7 +163,9 @@ export const defaultConfig: Partial<AppConfig> = {
   logging: {
     level: 'info',
     format: 'json',
-    destination: 'stdout',
+    // stderr is the safe default: MCP stdio transport reserves stdout for
+    // JSON-RPC frames. Any log written to stdout corrupts the transport.
+    destination: 'stderr',
   },
   security: {
     allowedPaths: ['./'],

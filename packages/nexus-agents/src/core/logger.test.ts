@@ -4,7 +4,7 @@
  * Covers sanitize, sanitizeDeep, createLogger, and secret redaction.
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { sanitize, sanitizeDeep, createLogger } from './logger.js';
 import { FixedTimeProvider, setTimeProvider, resetTimeProvider } from './time-provider.js';
 import {
@@ -175,5 +175,23 @@ describe('createLogger', () => {
       logger.warn('warn msg');
       logger.error('error msg', new Error('test'));
     }).not.toThrow();
+  });
+
+  // Regression: stdio MCP transport reserves stdout for JSON-RPC frames.
+  // If the default log destination were stdout, the first logger call inside
+  // any tool handler would emit a non-JSON-RPC frame and the client would
+  // close the transport with a ZodError. The default must be stderr.
+  it('writes to stderr by default, not stdout', () => {
+    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      const logger = createLogger({ component: 'test' });
+      logger.info('hello');
+      expect(stdoutSpy).not.toHaveBeenCalled();
+      expect(stderrSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      stdoutSpy.mockRestore();
+      stderrSpy.mockRestore();
+    }
   });
 });
