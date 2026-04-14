@@ -61,35 +61,39 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
 
-      - name: Generate and Upload SBOM
+      - name: Generate SBOM artifacts
+        # cargo-sbom 0.10 output formats: spdx_json_2_3 | cyclone_dx_json_1_6
+        # (not `spdx` / `cyclonedx`); SBOM is written to stdout, not --file.
         if: steps.changesets.outputs.published == 'true' && hashFiles('crates/iso-parser/Cargo.toml') != ''
-        run: |
-          cd crates/iso-parser
-          cargo sbom --output-format spdx --file ../../sbom.spdx.json
-          cargo sbom --output-format cyclonedx --file ../../sbom.cdx.json
         shell: bash
+        run: |
+          set -euo pipefail
+          cd crates/iso-parser
+          cargo sbom --output-format spdx_json_2_3 > ../../sbom.spdx.json
+          cargo sbom --output-format cyclone_dx_json_1_6 > ../../sbom.cdx.json
+          ls -la ../../sbom.*.json
 
-      - name: Upload SBOM to Release
-        if: steps.changesets.outputs.published == 'true'
-        uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1.0.2
+      - name: Upload SBOM artifacts to GitHub Release
+        # changesets/action creates the GitHub release itself via
+        # @changesets/changelog-github; it does NOT expose an `uploadUrl`
+        # output for the legacy actions/upload-release-asset to consume.
+        # Derive the release tag from publishedPackages and use `gh release
+        # upload` which looks up the release by tag. (#1841 follow-up)
+        if: steps.changesets.outputs.published == 'true' && hashFiles('sbom.spdx.json') != ''
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.changesets.outputs.uploadUrl }}
-          asset_path: ./sbom.spdx.json
-          asset_name: sbom.spdx.json
-          asset_content_type: application/json
-
-      - name: Upload CycloneDX SBOM to Release
-        if: steps.changesets.outputs.published == 'true'
-        uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1.0.2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.changesets.outputs.uploadUrl }}
-          asset_path: ./sbom.cdx.json
-          asset_name: sbom.cdx.json
-          asset_content_type: application/json
+          PUBLISHED_PACKAGES: ${{ steps.changesets.outputs.publishedPackages }}
+        run: |
+          set -euo pipefail
+          # publishedPackages is a JSON array: [{"name": "...", "version": "..."}]
+          TAG=$(printf '%s' "$PUBLISHED_PACKAGES" \
+            | jq -r '.[] | select(.name == "nexus-agents") | "\(.name)@\(.version)"')
+          if [[ -z "$TAG" ]]; then
+            echo "::warning::nexus-agents not in publishedPackages; skipping SBOM upload"
+            exit 0
+          fi
+          echo "Uploading SBOMs to release tag: $TAG"
+          gh release upload "$TAG" sbom.spdx.json sbom.cdx.json --clobber
 
   # Manual publish (runs on workflow_dispatch)
   manual-publish:
