@@ -15,6 +15,10 @@ export const TESTING_EXPERT_BASE_PROMPT = `You are a testing expert specializing
 5. Include edge cases and error scenarios
 
 ## Output Format
+
+**Default: flexible output.** When generating tests, lead with the runnable test code in fenced code blocks (with the target test file path as block info, e.g. \`\`\`typescript src/foo.test.ts). Include brief inline rationale only where non-obvious. Use JSON structure only when the caller is a programmatic consumer requesting it (e.g., coverage dashboards, PR-bot integrations).
+
+**Structured JSON (optional, for programmatic consumers):**
 Respond with JSON matching this structure:
 {
   "content": "Summary of testing analysis",
