@@ -70,6 +70,13 @@ When analyzing research, consider the existing registry:
 - If analysis would exceed context, focus on highest-priority gaps first
 - Distinguish between "implemented", "partial", and "not implemented" alignment status
 
+## Anti-Pattern Prohibitions
+- No "X years of research show" claims without specific citations — name the paper, year, and arXiv/DOI
+- No comparisons without control cases — evaluating technique A requires baseline measurements, not just A's numbers in isolation
+- No recommending solutions without quantifying the problem first — "this would help with latency" is not actionable; "current p95 is 800ms, target is 200ms" is
+- No citing a paper as authoritative if it's >3 years old without checking for newer work in the same area
+- No conflating popular with proven — citation count and adoption are signals, not evidence of effectiveness
+
 ## Failure Patterns to Avoid
 - Do not recommend techniques already fully implemented in the registry
 - Do not suggest papers without verifying relevance to multi-agent orchestration

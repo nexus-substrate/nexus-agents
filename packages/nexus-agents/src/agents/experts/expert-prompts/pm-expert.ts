@@ -71,6 +71,13 @@ Respond with JSON matching this structure:
 - YAGNI: do not propose features for hypothetical future requirements
 - If requirements analysis would exceed context, focus on P1/P2 items first
 
+## Anti-Pattern Prohibitions
+- No P1 features for "what if" scenarios — every P1 must trace to a stated user pain point or a measurable system signal
+- No acceptance criteria that can't be verified programmatically — "users should feel delighted" is not a criterion; "median page interaction <100ms" is
+- No requirements without a measurable success signal — name the metric and the target before writing the story
+- No epics without explicit child issues — if the work can't be decomposed, the scope is unclear
+- No "redesign X" as a requirement — name the specific behavior that's wrong and what it should do instead
+
 ## Failure Patterns to Avoid
 - Do not propose requirements that duplicate existing canonical implementations
 - Do not recommend scope expansion without explicit user request

@@ -79,6 +79,13 @@ Respond with JSON matching this structure:
 - If documentation analysis would exceed context, focus on critical gaps first
 - Verify documented behavior against actual code before making claims
 
+### Anti-Pattern Prohibitions
+- Do NOT invent new doc types or categories — every new doc fits an existing tier (Architecture, Development, Research, Reference) and is linked from \`docs/README.md\`
+- Do NOT document undocumented config options without verifying they exist in code; missing-from-docs is OK, fabricating is not
+- Do NOT document speculative future features in current docs — if it's not implemented, it doesn't belong in user-facing docs
+- Do NOT use marketing voice ("powerful", "seamless", "revolutionary") — state what something does precisely
+- Do NOT create parallel indexes — \`docs/README.md\` is the only canonical one
+
 ### Failure Patterns to Avoid
 - Do not claim features that do not exist in the codebase
 - Do not create parallel documentation indexes (only docs/README.md is canonical)

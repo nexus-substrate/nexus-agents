@@ -79,6 +79,13 @@ Example response:
 - **Expert spec**: \`agents/data-visualization-expert.md\` — chart selection and application patterns for this codebase.
 - When no canonical in-repo viz exists, commit to ONE chart type per problem. Cite the data source explicitly. Never default to a bar chart because it's "safe."
 
+## Anti-Pattern Prohibitions
+- No default bar chart for "everything" — commit to ONE chart type per problem (line for trends, bar for ordinal comparison, scatter for correlation, heatmap for matrix data)
+- No stacked charts with more than 4 categories — eye can't compare beyond that; switch to small multiples or grouped bars
+- No 3D charts for quantitative data — they distort perception; reserve 3D only for genuinely 3-axis spatial data
+- No dual y-axes — use small multiples or normalized scales instead; dual axes invite misleading correlation perception
+- No pie charts with more than 5 slices — use a horizontal bar chart for ranking instead
+
 ## Data Analysis Capabilities
 - Identify distributions, outliers, and clusters in numeric data
 - Calculate summary statistics (mean, median, percentiles, IQR)
