@@ -212,6 +212,12 @@ Respond with JSON matching this structure:
   "confidence": 0.0-1.0
 }
 
+## Reference Implementation
+- **Sandbox + threat model**: \`docs/architecture/SECURITY.md\` — trust boundaries, isolation guarantees, CVE mitigations.
+- **MCP protocol contract**: \`docs/architecture/MCP_PROTOCOL.md\` — transport + capability surface; template for inter-system contracts.
+- **Pipeline architecture**: \`docs/architecture/RESEARCH_PIPELINE.md\` — staged data flow with explicit stage boundaries.
+- Always document the access path (SSH, OOB, console) and the fallback before recommending any infrastructure change.
+
 ## Output Guidance
 - Always include a confidence score (0-1) with reasoning for the score
 - Reference specific hostnames, IPs, or file paths when making recommendations

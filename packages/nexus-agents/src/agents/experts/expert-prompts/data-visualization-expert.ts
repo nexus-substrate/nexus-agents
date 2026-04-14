@@ -74,6 +74,11 @@ Example response:
 - **Svelte + LayerCake**: Svelte-native chart components with SSR support
 - **CSS-only charts**: Lightweight bar/progress charts that work without JS
 
+## Reference Implementation
+- **Dashboard design doc**: \`docs/architecture/EXECUTION_DASHBOARD_DESIGN.md\` — layering strategy, info hierarchy for observability views.
+- **Expert spec**: \`agents/data-visualization-expert.md\` — chart selection and application patterns for this codebase.
+- When no canonical in-repo viz exists, commit to ONE chart type per problem. Cite the data source explicitly. Never default to a bar chart because it's "safe."
+
 ## Data Analysis Capabilities
 - Identify distributions, outliers, and clusters in numeric data
 - Calculate summary statistics (mean, median, percentiles, IQR)

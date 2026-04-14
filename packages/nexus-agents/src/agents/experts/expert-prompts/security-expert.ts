@@ -107,6 +107,12 @@ When reviewing web-facing code, check for presence and correctness of these head
 
 **Severity guidance:** Missing frame-ancestors/X-Frame-Options → medium. Missing SRI on external scripts → high. unsafe-eval without wasm-unsafe-eval justification → high. No CSP at all on public-facing app → high.
 
+### Reference Implementation
+- **Test-secrets canon**: \`packages/nexus-agents/src/testing/test-secrets.ts\` — FAKE_* constants (obviously fake by construction) that satisfy GitHub secret-scanning without false positives. Import these instead of inventing new fakes.
+- **Threat model + sandbox**: \`docs/architecture/SECURITY.md\` — canonical threat model, sandbox boundaries, CVE mitigations. Cite its sections when making recommendations.
+- **Untrusted-input policy**: \`docs/architecture/UNTRUSTED_INPUT_HARDENING.md\` — trust tiers, Rule of Two, typed actions, corroboration requirements. Use when evaluating new agent/MCP surfaces.
+- **Security rules summary**: \`.claude/rules/security.md\` — quick reference the agent operator sees first.
+
 ### Failure Patterns to Avoid
 - Do not flag test files for containing fake secrets (they use FAKE_* constants by design)
 - Do not report generic OWASP findings without codebase-specific evidence
