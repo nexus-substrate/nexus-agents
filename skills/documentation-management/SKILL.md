@@ -202,6 +202,78 @@ Before committing documentation changes:
 
 ---
 
+## Periodic Drift Audit
+
+Adapted from `paperclipai/paperclip` doc-maintenance skill. Triggers: weekly cadence, post-release, after a major merge, or on explicit request ("audit docs", "doc drift").
+
+### Targets
+
+User-facing docs that get stale fastest as the codebase moves:
+
+- `README.md` — features table, quickstart, prerequisites
+- `docs/README.md` — canonical doc index
+- `docs/getting-started/INSTALLATION.md` — install commands, Node/pnpm versions
+- `docs/getting-started/CONFIGURATION.md` — env var table, config schema
+- `CLAUDE.md` — Canonical Paths table, MCP Tools table (auto-generated, but check the _non_-auto sections)
+
+### Cursor Pattern (incremental review)
+
+Store the last-reviewed commit SHA in `.doc-review-cursor` (gitignored — it's local audit state, not project state). On each audit run:
+
+```bash
+LAST_SHA=$(cat .doc-review-cursor 2>/dev/null || echo "HEAD~200")
+git log "$LAST_SHA"..HEAD --oneline --no-merges > /tmp/audit-window.log
+```
+
+After committing the audit fixes:
+
+```bash
+git rev-parse HEAD > .doc-review-cursor
+```
+
+Without the cursor, every audit re-reads the whole history → audits get skipped. With it, audits stay incremental and cheap.
+
+### Commit Classification
+
+From the audit window, only these commit prefixes warrant a doc check:
+
+| Prefix                                     | Action                                                   |
+| ------------------------------------------ | -------------------------------------------------------- |
+| `feat:` / `feat(...)`:                     | Check feature tables, README highlights, capability docs |
+| `fix:` containing `breaking` / API-removal | Check API reference, migration notes                     |
+| New top-level `src/` directory             | Check architecture overview, canonical paths             |
+| `chore(deps):` major bumps                 | Check prerequisites + compat tables                      |
+
+Ignore: `refactor`, `test`, `chore(ci)`, `docs`, `style` — they don't shift user-facing surface.
+
+### What to Look For
+
+Run the audit through this lens:
+
+| Drift class             | Signal                                                                                                                                            |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **False negative**      | Shipped capability missing from feature/MCP tool/expert tables. Resolved design questions still marked TBD. Removed adapters/skills still listed. |
+| **False positive**      | "Coming soon" / "planned" features that have shipped. Cancelled items still on roadmap. Capability claims that contradict current implementation. |
+| **Quickstart breakage** | `npx`/`pnpm` commands that don't work. Prerequisites pinning unsupported versions. Clone URL drift. Required env vars unmentioned.                |
+| **Feature-table drift** | `## MCP Tools Reference` count mismatch. Adapter "Works with" table missing recently-added CLI. Skill index missing a new skill.                  |
+
+For our auto-generated tables (CLAUDE.md MCP tools, capabilities.md, llms.txt), drift is a generation-script bug, not a doc edit — file an issue against the script instead of editing the rendered output.
+
+### Audit-PR Discipline
+
+- Branch: `docs/audit-$(date +%Y%m%d)`
+- Commit message lists fixes + the source PR/commit that triggered each
+- **Factual fixes only** — do NOT bundle style refactors, link-checker autofixes, or formatting passes. Style/refactor PRs are separate; mixing them defeats the audit's signal-to-noise.
+- If a doc needs _more_ than drift fixes (e.g., a section is structurally wrong), open a follow-up issue rather than expanding the audit PR
+
+### Out of Scope
+
+- Auto-generated tables (handled by `scripts/inject-governance.ts`, `generate-docs.ts`, `generate-repo-index.ts`, etc.) — see Pipeline section above
+- Style/voice/markdown formatting — orthogonal, separate PRs
+- Adding new docs — separate workflow; this audit only fixes drift in existing docs
+
+---
+
 ## Related Documents
 
 - **DocOps Spec:** [docs/ops/docops-spec.md](../../docs/ops/docops-spec.md)
