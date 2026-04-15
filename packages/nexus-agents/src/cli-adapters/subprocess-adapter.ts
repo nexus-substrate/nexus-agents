@@ -203,6 +203,13 @@ export interface CommandConfig {
   args: string[];
   /** Optional stdin content (prompt passed via stdin instead of args) */
   stdin?: string;
+  /**
+   * Optional cleanup callback invoked after the subprocess resolves
+   * (success, error, or timeout). Used by adapters that materialize
+   * temp files for the subprocess (e.g. codex `model_instructions_file`).
+   * Errors thrown by cleanup are logged but do not affect the request result.
+   */
+  cleanup?: () => void | Promise<void>;
 }
 
 /**
@@ -294,7 +301,26 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     const cmdConfig = this.getCommand(task);
     const startTime = getTimeProvider().now();
 
-    return new Promise((resolve) => {
+    const cleanup = cmdConfig.cleanup;
+    const runCleanup = (): void => {
+      if (cleanup === undefined) return;
+      try {
+        const r = cleanup();
+        if (r instanceof Promise) {
+          r.catch((e: unknown) => {
+            this.logger.warn('Subprocess cleanup failed', { error: String(e) });
+          });
+        }
+      } catch (e: unknown) {
+        this.logger.warn('Subprocess cleanup threw', { error: String(e) });
+      }
+    };
+
+    return new Promise((resolveOuter) => {
+      const resolve = (result: Result<CliResponse, CliError>): void => {
+        runCleanup();
+        resolveOuter(result);
+      };
       // Strip CLAUDECODE env var to allow nested CLI sessions (SWE-bench, etc.)
       const childEnv = { ...process.env };
       delete childEnv['CLAUDECODE'];

@@ -12,6 +12,9 @@
  * User task content is passed as a single argv element (no shell interpolation).
  */
 
+import { writeFileSync, unlinkSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type {
   ICliResponseParser,
   CliTask,
@@ -92,9 +95,27 @@ export class CodexCliAdapter extends SubprocessCliAdapter {
     // Skip git repo check for standalone prompts
     args.push('--skip-git-repo-check');
 
+    // Honor systemPrompt via codex's `model_instructions_file` config key
+    // (per openai/codex#11588 — closed with this workaround). We materialize
+    // the prompt into a tempfile, pass it via `-c`, and clean up on exit.
+    let cleanup: (() => void) | undefined;
+    if (task.systemPrompt !== undefined && task.systemPrompt !== '') {
+      const dir = mkdtempSync(join(tmpdir(), 'nexus-codex-sysprompt-'));
+      const file = join(dir, 'instructions.md');
+      writeFileSync(file, task.systemPrompt, { encoding: 'utf8', mode: 0o600 });
+      args.push('-c', `model_instructions_file=${file}`);
+      cleanup = (): void => {
+        try {
+          unlinkSync(file);
+        } catch {
+          // best-effort; tempdir auto-cleanup will eventually reap it
+        }
+      };
+    }
+
     // Add the task content (no JSON.stringify needed without shell: true)
     args.push(task.content);
 
-    return { command: 'codex', args };
+    return cleanup === undefined ? { command: 'codex', args } : { command: 'codex', args, cleanup };
   }
 }
