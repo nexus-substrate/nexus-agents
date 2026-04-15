@@ -23,6 +23,26 @@ allowed-tools: Read, Edit, Write, Bash, Grep, Glob, Task
 2. **Check/create GitHub issue:** `gh issue list --state open`
 3. **Check research registry** if implementing a technique
 
+## Hard Design Decisions — Constraint-Divergent Design
+
+When the problem has multiple plausible approaches (e.g., "event-driven or polling?", "synchronous vs queue-based?", "monolithic helper vs split modules?"), **do not generate the same solution three times with different variable names**. Instead, articulate 2–3 _distinct constraints_ first, then sketch one solution per constraint and compare.
+
+Anchor constraints in real tradeoffs:
+
+- "minimize allocations" vs "minimize lines of code" vs "minimize external deps"
+- "lowest latency" vs "lowest memory" vs "easiest to test"
+- "fewest moving parts" vs "easiest to extend" vs "matches existing pattern X"
+
+Three constraints that each eliminate ~70% of the solution space leave you searching ~2.7% of it — a focused region, not blind sampling. (Pattern adapted from `itigges22/ATLAS` PlanSearch; the math is theirs.)
+
+Apply this discipline only for genuinely-multivalent decisions. Indicators:
+
+- Multiple plausible architectures where reviewers would reasonably disagree
+- A wrong choice would be expensive to reverse (data-shape migration, public API surface, cross-package boundary)
+- You catch yourself thinking "I'll just pick one and see what review says" — pick deliberately, by constraint, instead
+
+Out of scope: routine work where the approach is dictated by canonical paths or existing patterns. Don't over-apply.
+
 ## Implementation Process
 
 ### Phase 1: Interface First
