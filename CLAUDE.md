@@ -189,6 +189,8 @@ When a non-canonical implementation exists, migrate its logic to the canonical l
 
 Subagents share the same ~100k token context limit. Unmanaged, parallel agents exhaust context and lose work. Follow these guidelines:
 
+**Handoff hygiene:** Every subagent response MUST end with an explicit `## Status: complete | blocked — <reason> | partial — cutoff at X of Y`. Blockers surface in the same response where hit; output-budget cutoffs are named, not hidden behind compressed summaries. Full rules in `.claude/rules/subagent-coordination.md` (auto-loaded).
+
 **Scope bounding:** Each agent prompt MUST specify a bounded scope. Prefer directory-level partitions (e.g., "scan `src/consensus/`") over codebase-wide sweeps. For whole-codebase tasks, partition by top-level directory and assign one agent per partition.
 
 **Output budgets:** Agent prompts MUST include an output constraint: "Return a prioritized summary of top-N findings. Reference files by path. Max 2000 characters." Never ask an agent to "list all" or "return everything."
