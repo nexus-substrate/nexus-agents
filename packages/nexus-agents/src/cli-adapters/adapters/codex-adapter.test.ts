@@ -324,6 +324,50 @@ describe('CodexCliAdapter (Subprocess)', () => {
       expect(args).toContain('-m');
       expect(args).toContain(EXPECTED_DEFAULT_ID);
     });
+
+    it('honors task.systemPrompt via model_instructions_file (#1886)', async () => {
+      const ndjsonResponse = [
+        JSON.stringify({ type: 'thread.started', thread_id: 'thread-123' }),
+        JSON.stringify({
+          type: 'item.completed',
+          item: { id: 'item-1', type: 'agent_message', text: 'ok' },
+        }),
+        JSON.stringify({ type: 'turn.completed' }),
+      ].join('\n');
+      const mockProcess = createMockProcess(ndjsonResponse);
+      vi.mocked(spawn).mockReturnValue(mockProcess);
+
+      const task: CliTask = {
+        content: 'do the thing',
+        systemPrompt: 'You are a strict reviewer.',
+      };
+      await adapter.execute(task);
+
+      const args = vi.mocked(spawn).mock.calls[0]?.[1] as string[];
+      const cIdx = args.indexOf('-c');
+      expect(cIdx).toBeGreaterThanOrEqual(0);
+      const cVal = args[cIdx + 1];
+      expect(cVal).toMatch(/^model_instructions_file=.+instructions\.md$/);
+    });
+
+    it('omits -c model_instructions_file when systemPrompt is empty', async () => {
+      const ndjsonResponse = [
+        JSON.stringify({ type: 'thread.started', thread_id: 'thread-123' }),
+        JSON.stringify({
+          type: 'item.completed',
+          item: { id: 'item-1', type: 'agent_message', text: 'ok' },
+        }),
+        JSON.stringify({ type: 'turn.completed' }),
+      ].join('\n');
+      const mockProcess = createMockProcess(ndjsonResponse);
+      vi.mocked(spawn).mockReturnValue(mockProcess);
+
+      const task: CliTask = { content: 'do the thing' };
+      await adapter.execute(task);
+
+      const args = vi.mocked(spawn).mock.calls[0]?.[1] as string[];
+      expect(args).not.toContain('-c');
+    });
   });
 
   describe('execute()', () => {
