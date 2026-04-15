@@ -469,11 +469,25 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
 // Parsers
 // ============================================================================
 
+/**
+ * Extracts the first JSON array substring from a response.
+ * Uses index-based slicing (O(n)) instead of regex backtracking to avoid
+ * polynomial-ReDoS on inputs with many leading `[` chars (CodeQL alert).
+ * Exported for direct testing.
+ */
+export function extractJsonArray(response: string): string | undefined {
+  const start = response.indexOf('[');
+  if (start === -1) return undefined;
+  const end = response.lastIndexOf(']');
+  if (end <= start) return undefined;
+  return response.slice(start, end + 1);
+}
+
 function parseTasksFromResponse(response: string, fallbackPlan: string): PipelineTask[] {
   try {
-    const jsonMatch = /\[[\s\S]*\]/.exec(response);
-    if (jsonMatch !== null) {
-      const parsed = JSON.parse(jsonMatch[0]) as Array<Record<string, unknown>>;
+    const candidate = extractJsonArray(response);
+    if (candidate !== undefined) {
+      const parsed = JSON.parse(candidate) as Array<Record<string, unknown>>;
       return parsed.map((t, i) => ({
         id: String(t['id'] ?? `task-${String(i + 1)}`),
         title: String(t['title'] ?? `Task ${String(i + 1)}`),
