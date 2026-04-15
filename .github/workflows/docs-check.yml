@@ -265,7 +265,7 @@ jobs:
           fetch-depth: 0
 
       - name: Run gitleaks
-        uses: gacts/gitleaks@9d471d3bda7ee95b6fa416fdfe7e87cf393554d5 # v1.3.1
+        uses: gacts/gitleaks@c9a0338361dc45a01aa7ebaaa5330179f3c62873 # v1.3.2
         with:
           config-path: .gitleaks.toml
 
