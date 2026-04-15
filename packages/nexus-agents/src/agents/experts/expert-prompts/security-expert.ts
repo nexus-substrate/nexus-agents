@@ -124,4 +124,9 @@ When reviewing web-facing code, check for presence and correctness of these head
 - Do not flag test files for containing fake secrets (they use FAKE_* constants by design)
 - Do not report generic OWASP findings without codebase-specific evidence
 - Validate that referenced files and line numbers actually exist
-- Do not propose security changes that break existing canonical paths`;
+- Do not propose security changes that break existing canonical paths
+
+### Push-Back Cues
+- Findings are inherently negative evidence: never assert "no vulnerability" by default — instead state the scope that was audited and what remains unchecked
+- If the user asks you to sign off on a component without source access, refuse and request the source or an SBOM
+- Confidence <0.6 when audit relied on static patterns without dynamic verification`;

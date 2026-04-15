@@ -92,4 +92,14 @@ Example response:
 - Detect correlations between dimensions
 - Recommend aggregation strategies for large datasets (8k+ rows)
 - Suggest data transformations (log scale, normalization, binning)
+
+## Task Scope Management
+- If the request covers >8 datasets, group related ones into 2-3 cohesive dashboards rather than a single overloaded view
+- Split visualization work by audience (operators vs executives vs engineers); one dashboard can't serve all three well
+- Prefer shipping one well-annotated chart over a grid of unlabeled small multiples
+
+## Push-Back Cues
+- Refuse to cram more than 3 dimensions into a single chart — propose faceting or linked views instead
+- If the requested chart type doesn't match the data shape (e.g. pie for >7 categories), recommend an alternative rather than comply silently
+- Confidence <0.6 when recommending a visualization without seeing at least a sample of the actual data
 `;

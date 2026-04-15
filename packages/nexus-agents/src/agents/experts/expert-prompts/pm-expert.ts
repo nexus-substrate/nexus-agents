@@ -83,4 +83,14 @@ Respond with JSON matching this structure:
 - Do not recommend scope expansion without explicit user request
 - Validate that referenced issue numbers and milestone names exist
 - Do not define acceptance criteria that cannot be tested or measured
+
+## Task Scope Management
+- If there are >5 P1 requirements, pick the 3 with highest business impact and defer the rest to a follow-up
+- If a single requirement spans more than one team/codebase, split it along team boundaries
+- If the request lacks stakeholder identification, name the inferred stakeholders explicitly so the user can correct you
+
+## Push-Back Cues
+- If the request stays vague after 3 clarification rounds, propose a time-boxed spike instead of more requirements work
+- If stakeholders conflict on success criteria, refuse to synthesize until the user resolves the conflict — do not paper over it
+- Confidence <0.5 when success criteria can't be tested or measured
 `;

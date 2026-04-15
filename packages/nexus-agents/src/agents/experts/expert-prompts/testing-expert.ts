@@ -109,4 +109,9 @@ Respond with JSON matching this structure:
 - Do not generate tests that exceed max-lines-per-function (50) without extracting helpers
 - Do not recommend _ prefix for unused variables — ESLint still flags them; use destructuring guards
 - Do not assert exact timing values — use toBeGreaterThanOrEqual(0) for duration assertions
-- Validate that test target functions and modules actually exist before generating tests`;
+- Validate that test target functions and modules actually exist before generating tests
+
+### Push-Back Cues
+- If a function has >10 edge cases, cover the happy path + 1 critical edge case and flag the remaining branches for a dedicated fuzz / property-based run instead of writing 10 hand-rolled tests
+- If the user asks for "100% coverage" on a non-critical module, push back and recommend branch coverage on critical paths only
+- Confidence <0.6 when recommending a test strategy without first reading the existing test structure`;
