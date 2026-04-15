@@ -17,6 +17,7 @@ allowed-tools: Read, Edit, Write, Bash, Grep, Glob, Task
 <!-- PIPELINE NOTE: docs-check.yml docs-coverage handles empty CHANGED_SRC to avoid GITHUB_OUTPUT format errors (2026-02-04) -->
 <!-- PIPELINE NOTE: inject-governance.ts extended with ancillary-count injection for AGENTS.md, .claude-plugin/*.json, PLUGIN_INSTALL.md (#1837, 2026-04-12) -->
 <!-- PIPELINE NOTE: inject-governance.ts syncs plugin.json version + validates category/license/keywords (#1839, 2026-04-12) -->
+<!-- PIPELINE NOTE: link-check.yml + verify-review.yml bumped actions/github-script v8 → v9 (ESM-only @actions/github; our scripts use injected `github`/`core` so unaffected) (#1848, 2026-04-15) -->
 <!-- PIPELINE NOTE: website removed (2026-02-22) — sync-docs.ts, check-frontmatter.ts, deploy-docs.yml deleted -->
 <!-- PIPELINE NOTE: generate-repo-index.ts extractMCPTools() switched from register regex to tools array parsing (2026-04-10) -->
 
