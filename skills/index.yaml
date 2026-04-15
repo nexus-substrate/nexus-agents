@@ -172,6 +172,25 @@ skills:
       - audit
       - pr review
       - reviewing prs
+  - name: security-advisory-response
+    description: >-
+      Respond to a reporter-filed GitHub Security Advisory with coordinated disclosure discipline:
+
+      confidential triage, private-fork patching, simultaneous publish, post-mortem.
+
+      Use when someone files a security advisory against this repo, OR when our own discovery (via
+
+      .security-discoveries.jsonl) is escalated to a reporter-facing advisory.
+
+      Triggers on "security advisory", "CVE response", "coordinated disclosure", "private fork
+      patch".
+    path: skills/security-advisory-response/SKILL.md
+    triggers:
+      - security advisory
+      - cve response
+      - coordinated disclosure
+      - private fork patch
+      - someone files a security advisory against this repo
   - name: security-scanning
     description: |-
       Review and fix security scanning alerts from CodeQL and secret scanning.
