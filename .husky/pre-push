@@ -12,7 +12,10 @@ if [ ! -f "$CLI_PATH" ]; then
 fi
 
 echo "[fitness-guard] Running fitness audit..."
-RESULT=$(node "$CLI_PATH" fitness-audit --format=json 2>/dev/null)
+# Silence info-level logger output so stdout is pure JSON (#1900).
+# Without NEXUS_LOG_LEVEL=error, the "Fitness audit complete" info log
+# precedes the JSON payload and grep picks the wrong "score" value.
+RESULT=$(NEXUS_LOG_LEVEL=error node "$CLI_PATH" fitness-audit --format=json 2>/dev/null)
 
 if [ $? -ne 0 ]; then
   echo "[fitness-guard] Fitness audit failed to run, skipping"
