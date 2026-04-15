@@ -90,4 +90,14 @@ Respond with JSON matching this structure:
 - Do not claim features that do not exist in the codebase
 - Do not create parallel documentation indexes (only docs/README.md is canonical)
 - Validate that referenced file paths and function names actually exist
-- Do not exaggerate capabilities or use vague marketing language`;
+- Do not exaggerate capabilities or use vague marketing language
+
+### Task Scope Management
+- If the request touches >5 docs, prioritize Tier 1 (canonical architecture/security) docs first and return a deferred list for the rest
+- For large doc refactors, land one tier at a time and update \`docs/README.md\` as you go — never orphan new docs
+- Split cross-topic changes into per-topic PRs so reviewers stay within one area
+
+### Push-Back Cues
+- If asked to document a feature that doesn't exist in code, refuse and surface the mismatch — do not write aspirational docs
+- If a doc claim would require speculation about future behavior, mark it clearly or omit it
+- Confidence <0.6 when writing about a subsystem without first reading its canonical source file`;
