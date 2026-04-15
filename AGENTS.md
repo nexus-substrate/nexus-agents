@@ -22,7 +22,7 @@ This repo ships skills at **`skills/<name>/SKILL.md`** following the Anthropic A
 
 **Discovery for non-Claude agents:**
 
-1. Read **[`skills/index.yaml`](./skills/index.yaml)** — compact list of `{name, description, triggers, path}` for all 17 skills.
+1. Read **[`skills/index.yaml`](./skills/index.yaml)** — compact list of `{name, description, triggers, path}` for all 18 skills.
 2. When a user request matches a skill's triggers, read the full `SKILL.md` at the listed path.
 3. Follow its workflow.
 
