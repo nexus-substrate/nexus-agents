@@ -5,13 +5,15 @@ on:
 
 permissions:
   contents: read
-  security-events: write
 
 jobs:
   scan:
     name: semgrep-oss/scan
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write # SARIF upload
     container:
       image: semgrep/semgrep
     if: github.actor != 'dependabot[bot]'
