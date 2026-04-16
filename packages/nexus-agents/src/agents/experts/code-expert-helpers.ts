@@ -153,8 +153,27 @@ export function extractJsonFromText(text: string): string {
   return match?.[1]?.trim() ?? text.trim();
 }
 
+/** Valid operationType values for CodeAnalysisResult. */
+const VALID_OPERATION_TYPES = new Set<CodeAnalysisResult['operationType']>([
+  'generation',
+  'refactoring',
+  'optimization',
+  'debugging',
+]);
+
+/** Narrow an unknown value to a CodeAnalysisResult operationType. */
+function isValidOperationType(v: unknown): v is CodeAnalysisResult['operationType'] {
+  return typeof v === 'string' && VALID_OPERATION_TYPES.has(v as CodeAnalysisResult['operationType']);
+}
+
 /**
  * Parse code result from model response.
+ *
+ * Previously used `JSON.parse(...) as Partial<CodeAnalysisResult>` which
+ * skipped runtime validation — an LLM returning `{ confidence: "high" }`
+ * would slip through (string passes `?? fallback` since it's truthy).
+ * Now validates each field with explicit type guards and falls back to
+ * defaults on mismatch (#1913 Class A).
  */
 export function parseCodeResult(
   text: string,
@@ -162,24 +181,33 @@ export function parseCodeResult(
 ): CodeAnalysisResult {
   try {
     const jsonText = extractJsonFromText(text);
-    const parsed = JSON.parse(jsonText) as Partial<CodeAnalysisResult>;
+    const rawParsed: unknown = JSON.parse(jsonText);
+    if (typeof rawParsed !== 'object' || rawParsed === null || Array.isArray(rawParsed)) {
+      throw new Error('Parsed value is not a plain object');
+    }
+    const p = rawParsed as Record<string, unknown>;
 
     const result: CodeAnalysisResult = {
-      content: parsed.content ?? 'Code analysis completed',
-      operationType: parsed.operationType ?? defaultType,
-      confidence: parsed.confidence ?? 0.7,
+      content: typeof p['content'] === 'string' ? p['content'] : 'Code analysis completed',
+      operationType: isValidOperationType(p['operationType']) ? p['operationType'] : defaultType,
+      confidence:
+        typeof p['confidence'] === 'number' && p['confidence'] >= 0 && p['confidence'] <= 1
+          ? p['confidence']
+          : 0.7,
     };
-    if (parsed.affectedFiles !== undefined) {
-      result.affectedFiles = parsed.affectedFiles;
+    if (Array.isArray(p['affectedFiles']) && p['affectedFiles'].every((x) => typeof x === 'string')) {
+      result.affectedFiles = p['affectedFiles'];
     }
-    if (parsed.codeChanges !== undefined) {
-      result.codeChanges = parsed.codeChanges;
+    if (Array.isArray(p['codeChanges'])) {
+      // Shape-validated below by the receiving consumer; at this layer
+      // we accept the array as-is if it's at least an array.
+      result.codeChanges = p['codeChanges'] as CodeAnalysisResult['codeChanges'];
     }
-    if (parsed.recommendations !== undefined) {
-      result.recommendations = parsed.recommendations;
+    if (Array.isArray(p['recommendations']) && p['recommendations'].every((x) => typeof x === 'string')) {
+      result.recommendations = p['recommendations'];
     }
-    if (parsed.warnings !== undefined) {
-      result.warnings = parsed.warnings;
+    if (Array.isArray(p['warnings']) && p['warnings'].every((x) => typeof x === 'string')) {
+      result.warnings = p['warnings'];
     }
     return result;
   } catch {
