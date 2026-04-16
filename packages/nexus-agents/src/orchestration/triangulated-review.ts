@@ -17,6 +17,7 @@ import {
   createLogger,
   getTimeProvider,
   extractJsonArray,
+  withStep,
 } from '../core/index.js';
 
 import type { ICliAdapter, CliName, CliResponse, CliError } from '../cli-adapters/types.js';
@@ -63,45 +64,48 @@ export async function executeTriangulatedReview(
     return err(new Error('No CLI adapters available for review'));
   }
 
-  logger.info('Starting triangulated review', {
-    clis: selectedClis.map((s) => s.cli),
-    diffLength: diff.length,
-  });
+  return withStep(
+    {
+      name: 'triangulated-review',
+      kind: 'consensus.vote',
+      attrs: {
+        clis: selectedClis.map((s) => s.cli),
+        diffLength: diff.length,
+      },
+    },
+    async (ctx) => {
+      const startTime = getTimeProvider().now();
 
-  const startTime = getTimeProvider().now();
+      const partitions = await dispatchReviews(diff, selectedClis, config, logger);
 
-  const partitions = await dispatchReviews(diff, selectedClis, config, logger);
+      const totalDurationMs = getTimeProvider().now() - startTime;
+      const clisUsed = partitions.filter((p) => p.success).map((p) => p.cli);
 
-  const totalDurationMs = getTimeProvider().now() - startTime;
-  const clisUsed = partitions.filter((p) => p.success).map((p) => p.cli);
+      // Collect all findings and deduplicate
+      const allFindings = partitions.flatMap((p) => (p.success ? [...p.findings] : []));
+      const deduplicated = deduplicateFindings(allFindings, partitions, config.lineProximity);
 
-  // Collect all findings and deduplicate
-  const allFindings = partitions.flatMap((p) => (p.success ? [...p.findings] : []));
-  const deduplicated = deduplicateFindings(allFindings, partitions, config.lineProximity);
+      const countBySeverity = countFindings(deduplicated);
+      const summary = buildSummary(deduplicated, clisUsed);
 
-  const countBySeverity = countFindings(deduplicated);
-  const summary = buildSummary(deduplicated, clisUsed);
+      // Record outcomes (best-effort)
+      recordReviewOutcomes(partitions);
 
-  // Record outcomes (best-effort)
-  recordReviewOutcomes(partitions);
+      const result: TriangulatedReviewResult = {
+        partitions,
+        findings: deduplicated,
+        clisUsed,
+        totalDurationMs,
+        summary,
+        countBySeverity,
+      };
 
-  const result: TriangulatedReviewResult = {
-    partitions,
-    findings: deduplicated,
-    clisUsed,
-    totalDurationMs,
-    summary,
-    countBySeverity,
-  };
-
-  logger.info('Triangulated review completed', {
-    totalDurationMs,
-    clisUsed,
-    totalFindings: allFindings.length,
-    deduplicatedFindings: deduplicated.length,
-  });
-
-  return ok(result);
+      ctx.setSummary(
+        `${String(deduplicated.length)} findings (${String(allFindings.length)} raw), ${String(clisUsed.length)}/${String(selectedClis.length)} CLIs`
+      );
+      return ok(result);
+    }
+  );
 }
 
 // ============================================================================
