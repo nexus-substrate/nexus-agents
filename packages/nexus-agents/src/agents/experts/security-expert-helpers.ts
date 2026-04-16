@@ -256,23 +256,38 @@ export function parseSecurityResult(
 ): SecurityAnalysisResult {
   try {
     const jsonText = extractJsonFromText(text);
-    const parsed = JSON.parse(jsonText) as Partial<SecurityAnalysisResult>;
+    // Runtime type guards instead of `as Partial<T>` (#1913 Class A).
+    const rawParsed: unknown = JSON.parse(jsonText);
+    if (typeof rawParsed !== 'object' || rawParsed === null || Array.isArray(rawParsed)) {
+      throw new Error('Parsed value is not a plain object');
+    }
+    const p = rawParsed as Record<string, unknown>;
 
-    // Validate vulnerabilities
-    const validVulns = (parsed.vulnerabilities ?? [])
+    // Validate vulnerabilities array items via the caller-supplied validator
+    const vulnCandidates = Array.isArray(p['vulnerabilities']) ? p['vulnerabilities'] : [];
+    const validVulns = vulnCandidates
       .map((v) => validator(v))
       .filter((r) => r.success)
       .map((r) => r.data as Vulnerability);
 
+    const score = p['securityScore'];
+    const conf = p['confidence'];
     const result: SecurityAnalysisResult = {
-      content: parsed.content ?? 'Security analysis completed',
+      content: typeof p['content'] === 'string' ? p['content'] : 'Security analysis completed',
       vulnerabilities: validVulns,
-      securityScore: parsed.securityScore ?? calculateScore(validVulns),
-      confidence: parsed.confidence ?? 0.7,
+      securityScore:
+        typeof score === 'number' && score >= 0 && score <= 100 ? score : calculateScore(validVulns),
+      confidence: typeof conf === 'number' && conf >= 0 && conf <= 1 ? conf : 0.7,
     };
-    if (parsed.compliance !== undefined) result.compliance = parsed.compliance;
-    if (parsed.recommendations !== undefined) result.recommendations = parsed.recommendations;
-    if (parsed.warnings !== undefined) result.warnings = parsed.warnings;
+    if (p['compliance'] !== undefined) {
+      result.compliance = p['compliance'] as SecurityAnalysisResult['compliance'];
+    }
+    if (Array.isArray(p['recommendations']) && p['recommendations'].every((x) => typeof x === 'string')) {
+      result.recommendations = p['recommendations'];
+    }
+    if (Array.isArray(p['warnings']) && p['warnings'].every((x) => typeof x === 'string')) {
+      result.warnings = p['warnings'];
+    }
     return result;
   } catch {
     // JSON parse failed — fall back to heuristic detection on model output (#1404)

@@ -244,23 +244,52 @@ function extractJsonFromText(text: string): string {
   return text.trim();
 }
 
+const VALID_DOC_TYPES = new Set<DocumentationResult['documentationType']>([
+  'api',
+  'readme',
+  'guide',
+  'reference',
+]);
+
+function isValidDocType(v: unknown): v is DocumentationResult['documentationType'] {
+  return typeof v === 'string' && VALID_DOC_TYPES.has(v as DocumentationResult['documentationType']);
+}
+
+/**
+ * Parse documentation result with runtime type guards (#1913 Class A).
+ * Replaces `as Partial<DocumentationResult>` with validated field access.
+ */
 function parseDocumentationResult(
   text: string,
   defaultType: DocumentationResult['documentationType']
 ): DocumentationResult {
   try {
     const jsonText = extractJsonFromText(text);
-    const parsed = JSON.parse(jsonText) as Partial<DocumentationResult>;
+    const rawParsed: unknown = JSON.parse(jsonText);
+    if (typeof rawParsed !== 'object' || rawParsed === null || Array.isArray(rawParsed)) {
+      throw new Error('Parsed value is not a plain object');
+    }
+    const p = rawParsed as Record<string, unknown>;
 
     const result: DocumentationResult = {
-      content: parsed.content ?? 'Documentation generated',
-      documentationType: parsed.documentationType ?? defaultType,
-      confidence: parsed.confidence ?? 0.7,
+      content: typeof p['content'] === 'string' ? p['content'] : 'Documentation generated',
+      documentationType: isValidDocType(p['documentationType']) ? p['documentationType'] : defaultType,
+      confidence:
+        typeof p['confidence'] === 'number' && p['confidence'] >= 0 && p['confidence'] <= 1
+          ? p['confidence']
+          : 0.7,
     };
-    if (parsed.sections !== undefined) result.sections = parsed.sections;
-    if (parsed.apiDocs !== undefined) result.apiDocs = parsed.apiDocs;
-    if (parsed.recommendations !== undefined) result.recommendations = parsed.recommendations;
-    if (parsed.warnings !== undefined) result.warnings = parsed.warnings;
+    if (Array.isArray(p['sections'])) result.sections = p['sections'] as DocumentationResult['sections'];
+    // apiDocs is an object (ApiDocumentation) with endpoints/types arrays, not a top-level array
+    if (typeof p['apiDocs'] === 'object' && p['apiDocs'] !== null && !Array.isArray(p['apiDocs'])) {
+      result.apiDocs = p['apiDocs'] as DocumentationResult['apiDocs'];
+    }
+    if (Array.isArray(p['recommendations']) && p['recommendations'].every((x) => typeof x === 'string')) {
+      result.recommendations = p['recommendations'];
+    }
+    if (Array.isArray(p['warnings']) && p['warnings'].every((x) => typeof x === 'string')) {
+      result.warnings = p['warnings'];
+    }
     return result;
   } catch {
     return { content: text, documentationType: defaultType, confidence: 0.5 };
