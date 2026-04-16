@@ -36,7 +36,12 @@ if [[ -f "$VERSION" ]]; then
 else
   INSTALL_SPEC="nexus-agents@${VERSION}"
 fi
-if ! npm install -g "$INSTALL_SPEC" --omit=optional 2>&1; then
+# Defense in depth: --ignore-scripts blocks postinstall hooks from arbitrary
+# packages in the dep tree. We can't hash-pin `npm install -g <name>@<version>`
+# the way Scorecard suggests (hash-pinning via --require-hashes needs a lock
+# file; global installs are by-name), but --ignore-scripts mitigates the class
+# of threats the pin-check defends against.
+if ! npm install -g "$INSTALL_SPEC" --omit=optional --ignore-scripts 2>&1; then
   fail "npm install failed" 1
 fi
 ok "installed"
