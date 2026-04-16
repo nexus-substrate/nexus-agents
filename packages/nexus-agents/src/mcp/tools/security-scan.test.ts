@@ -42,6 +42,36 @@ describe('executeSecurityScan', () => {
     const result = await executeSecurityScan(input);
     expect('error' in result).toBe(true);
   });
+
+  it('rejects target outside cwd (path traversal guard #1913)', async () => {
+    // An absolute path outside cwd must be rejected, not silently accepted.
+    // Prior check `resolved.startsWith(path.resolve('/'))` was a no-op.
+    const input: SecurityScanInput = {
+      target: '/etc/passwd',
+      scanner: 'auto',
+      rulesets: ['p/default'],
+      maxFindings: 10,
+    };
+    const result = await executeSecurityScan(input);
+    expect('error' in result).toBe(true);
+    if ('error' in result) {
+      expect(result.error).toMatch(/Invalid target path/);
+    }
+  });
+
+  it('rejects ../ traversal', async () => {
+    const input: SecurityScanInput = {
+      target: '../../../etc',
+      scanner: 'auto',
+      rulesets: ['p/default'],
+      maxFindings: 10,
+    };
+    const result = await executeSecurityScan(input);
+    expect('error' in result).toBe(true);
+    if ('error' in result) {
+      expect(result.error).toMatch(/Invalid target path/);
+    }
+  });
 });
 
 describe('SecurityScanInputSchema', () => {
