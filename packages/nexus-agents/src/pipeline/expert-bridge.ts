@@ -73,6 +73,36 @@ let cachedCircuitBreaker: {
   };
 } | null = null;
 
+/**
+ * Adapt a CompositeRouter to the narrower RouterLike interface used by this
+ * bridge. Previously did `as unknown as RouterLike` which hid any structural
+ * mismatch between CompositeRouter's `Result<CliResponse, CliError>` and
+ * RouterLike's flat `{ ok, value: { text }, error: { message } }` shape.
+ * If CliResponse renames `.text` → `.output` (or similar), this adapter
+ * breaks at compile time instead of silently returning wrong data (#1921).
+ */
+function adaptCompositeRouter(
+  compositeRouter: import('../cli-adapters/composite-router.js').ICompositeRouter,
+): RouterLike {
+  return {
+    async executeTask(task): Promise<{
+      ok: boolean;
+      value: { text: string };
+      error: { message: string };
+    }> {
+      const cliTask: import('../cli-adapters/types.js').CliTask = {
+        content: task.content,
+        ...(task.options !== undefined ? { options: task.options } : {}),
+      };
+      const result = await compositeRouter.executeTask(cliTask);
+      if (result.ok) {
+        return { ok: true, value: { text: result.value.text }, error: { message: '' } };
+      }
+      return { ok: false, value: { text: '' }, error: { message: result.error.message } };
+    },
+  };
+}
+
 /** Get or create a cached CompositeRouter with circuit breaker monitoring. */
 async function getRouter(): Promise<RouterLike | null> {
   if (cachedRouter !== null) return cachedRouter;
@@ -80,7 +110,7 @@ async function getRouter(): Promise<RouterLike | null> {
   const { createCompositeRouter } = await import('../cli-adapters/composite-router.js');
   const adapters = createAllAdapters();
   if (adapters.size === 0) return null;
-  cachedRouter = createCompositeRouter(adapters) as unknown as RouterLike;
+  cachedRouter = adaptCompositeRouter(createCompositeRouter(adapters));
 
   // Initialize circuit breaker monitoring (#1766)
   try {
