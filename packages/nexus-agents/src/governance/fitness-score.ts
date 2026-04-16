@@ -223,9 +223,24 @@ export class FitnessScoreCalculator {
     const score = Object.values(dimensions).reduce((sum, val) => sum + val, 0);
     this.logger.info('Fitness audit complete', { score, version });
 
+    // Build a strictly-typed FitnessDimensions instead of `as unknown as` cast
+    // (#1913 Class G). If a check skipped a dimension it defaults to 0,
+    // making it explicit rather than UB.
+    const safeDim = (k: keyof FitnessDimensions): number => dimensions[k] ?? 0;
+    const typedDimensions: FitnessDimensions = {
+      canonicalPaths: safeDim('canonicalPaths'),
+      explicitBehavior: safeDim('explicitBehavior'),
+      determinism: safeDim('determinism'),
+      observability: safeDim('observability'),
+      configSimplicity: safeDim('configSimplicity'),
+      layerSeparation: safeDim('layerSeparation'),
+      operatorErgonomics: safeDim('operatorErgonomics'),
+      governanceIntegration: safeDim('governanceIntegration'),
+    };
+
     return {
       score,
-      dimensions: dimensions as unknown as FitnessDimensions,
+      dimensions: typedDimensions,
       findings,
       timestamp: new Date().toISOString(),
       version,
