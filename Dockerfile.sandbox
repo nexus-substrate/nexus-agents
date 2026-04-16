@@ -8,7 +8,7 @@
 # Requires: Docker Desktop with Sandbox v0.12.0+
 
 # Stage 1: Build nexus-agents (reused from Dockerfile.opencode)
-FROM node:22-slim AS builder
+FROM node:22-slim@sha256:f3a68cf41a855d227d1b0ab832bed9749469ef38cf4f58182fb8c893bc462383 AS builder
 
 RUN corepack enable && corepack prepare pnpm@9 --activate
 
@@ -25,7 +25,7 @@ COPY tsconfig.json ./
 RUN pnpm build
 
 # Stage 2: Flat node_modules via npm (no pnpm symlinks)
-FROM node:22-slim AS runtime-deps
+FROM node:22-slim@sha256:f3a68cf41a855d227d1b0ab832bed9749469ef38cf4f58182fb8c893bc462383 AS runtime-deps
 
 WORKDIR /opt/nexus-agents
 COPY --from=builder /app/packages/nexus-agents/package.json ./
@@ -34,7 +34,7 @@ RUN npm install --ignore-scripts 2>/dev/null; exit 0
 RUN npm rebuild 2>/dev/null; exit 0
 
 # Stage 3: Extend official opencode sandbox template
-FROM docker/sandbox-templates:opencode
+FROM docker/sandbox-templates:opencode@sha256:809e53f7a44e7a297fc88e1b81586143a150b9bfafe749a7b9c8801a07d90ece
 
 USER root
 
