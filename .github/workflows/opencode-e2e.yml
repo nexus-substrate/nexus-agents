@@ -24,7 +24,7 @@ jobs:
         run: pnpm build
 
       - name: Install OpenCode CLI (pinned version)
-        run: npm install -g opencode-ai@1.2.15
+        run: npm install -g opencode-ai@1.2.15 --ignore-scripts
 
       - name: Verify OpenCode installation
         run: |

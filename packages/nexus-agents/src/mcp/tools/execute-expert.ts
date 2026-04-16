@@ -119,10 +119,25 @@ export interface ExecuteExpertResponse {
   modelUsed?: string;
 }
 
-/** Sanitize expert summary to prevent prompt injection (Issue #1585). */
+/**
+ * Sanitize expert summary to prevent prompt injection (Issue #1585).
+ *
+ * Uses iterative replacement until the input is stable — single-pass regex
+ * sanitization is incomplete because removing one tag can create a new one
+ * (CodeQL js/incomplete-multi-character-sanitization). Example:
+ * `<scr<script>ipt>` → after one pass: `<script>` (the bypass survives).
+ */
 function sanitizeExpertSummary(summary: string): string {
-  return summary
-    .replace(/<[^>]*>/g, '') // Strip HTML/XML tags
+  let cleaned = summary;
+  // Iterate until stable to defeat nested-tag bypasses.
+  // Cap iterations to prevent worst-case quadratic behavior on pathological
+  // input (the slice(0, 2000) below also bounds total work).
+  for (let i = 0; i < 10; i++) {
+    const next = cleaned.replace(/<[^>]*>/g, '');
+    if (next === cleaned) break;
+    cleaned = next;
+  }
+  return cleaned
     .replace(/\b(ignore|forget|disregard)\s+(previous|above|all)\b/gi, '[REDACTED]')
     .slice(0, 2000);
 }

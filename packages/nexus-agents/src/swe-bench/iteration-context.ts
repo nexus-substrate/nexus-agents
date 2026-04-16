@@ -143,8 +143,10 @@ function extractErrorHint(response: string, maxLen: number = 200): string {
     response
   );
   if (errorMatch !== null) return errorMatch[0].slice(0, maxLen);
-  // Look for "the test still fails" or similar
-  const failMatch = /(?:still fails|test.*fail|doesn't work|incorrect)[^\n]{0,100}/i.exec(response);
+  // Look for "the test still fails" or similar.
+  // Bounded `.{0,200}` instead of `.*` to prevent polynomial backtracking
+  // on inputs with many `test` repetitions (CodeQL js/polynomial-redos #49).
+  const failMatch = /(?:still fails|test.{0,200}?fail|doesn't work|incorrect)[^\n]{0,100}/i.exec(response);
   if (failMatch !== null) return failMatch[0].slice(0, maxLen);
   return '';
 }
