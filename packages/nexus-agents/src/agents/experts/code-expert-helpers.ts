@@ -166,6 +166,24 @@ function isValidOperationType(v: unknown): v is CodeAnalysisResult['operationTyp
   return typeof v === 'string' && VALID_OPERATION_TYPES.has(v as CodeAnalysisResult['operationType']);
 }
 
+function isNumberInUnitRange(v: unknown): v is number {
+  return typeof v === 'number' && v >= 0 && v <= 1;
+}
+
+function isStringArray(v: unknown): v is string[] {
+  return Array.isArray(v) && v.every((x) => typeof x === 'string');
+}
+
+/** Populate optional array fields on result, validating element types. */
+function applyOptionalArrays(result: CodeAnalysisResult, p: Record<string, unknown>): void {
+  if (isStringArray(p['affectedFiles'])) result.affectedFiles = p['affectedFiles'];
+  if (Array.isArray(p['codeChanges'])) {
+    result.codeChanges = p['codeChanges'] as CodeAnalysisResult['codeChanges'];
+  }
+  if (isStringArray(p['recommendations'])) result.recommendations = p['recommendations'];
+  if (isStringArray(p['warnings'])) result.warnings = p['warnings'];
+}
+
 /**
  * Parse code result from model response.
  *
@@ -190,25 +208,9 @@ export function parseCodeResult(
     const result: CodeAnalysisResult = {
       content: typeof p['content'] === 'string' ? p['content'] : 'Code analysis completed',
       operationType: isValidOperationType(p['operationType']) ? p['operationType'] : defaultType,
-      confidence:
-        typeof p['confidence'] === 'number' && p['confidence'] >= 0 && p['confidence'] <= 1
-          ? p['confidence']
-          : 0.7,
+      confidence: isNumberInUnitRange(p['confidence']) ? p['confidence'] : 0.7,
     };
-    if (Array.isArray(p['affectedFiles']) && p['affectedFiles'].every((x) => typeof x === 'string')) {
-      result.affectedFiles = p['affectedFiles'];
-    }
-    if (Array.isArray(p['codeChanges'])) {
-      // Shape-validated below by the receiving consumer; at this layer
-      // we accept the array as-is if it's at least an array.
-      result.codeChanges = p['codeChanges'] as CodeAnalysisResult['codeChanges'];
-    }
-    if (Array.isArray(p['recommendations']) && p['recommendations'].every((x) => typeof x === 'string')) {
-      result.recommendations = p['recommendations'];
-    }
-    if (Array.isArray(p['warnings']) && p['warnings'].every((x) => typeof x === 'string')) {
-      result.warnings = p['warnings'];
-    }
+    applyOptionalArrays(result, p);
     return result;
   } catch {
     // Fall back to treating the whole response as content

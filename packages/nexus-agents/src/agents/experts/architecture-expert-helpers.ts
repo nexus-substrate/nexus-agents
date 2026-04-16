@@ -270,6 +270,25 @@ function isValidAnalysisType(v: unknown): v is ArchitectureAnalysisResult['analy
   return typeof v === 'string' && VALID_ANALYSIS_TYPES.has(v as ArchitectureAnalysisResult['analysisType']);
 }
 
+function isUnitRangeNum(v: unknown): v is number {
+  return typeof v === 'number' && v >= 0 && v <= 1;
+}
+
+function isStrArr(v: unknown): v is string[] {
+  return Array.isArray(v) && v.every((x) => typeof x === 'string');
+}
+
+/** Populate optional array fields on the architecture result. */
+function applyArchOptionals(result: ArchitectureAnalysisResult, p: Record<string, unknown>): void {
+  if (Array.isArray(p['patterns'])) result.patterns = p['patterns'] as ArchitectureAnalysisResult['patterns'];
+  if (Array.isArray(p['decisions'])) result.decisions = p['decisions'] as ArchitectureAnalysisResult['decisions'];
+  if (Array.isArray(p['components'])) {
+    result.components = p['components'] as ArchitectureAnalysisResult['components'];
+  }
+  if (isStrArr(p['recommendations'])) result.recommendations = p['recommendations'];
+  if (isStrArr(p['warnings'])) result.warnings = p['warnings'];
+}
+
 /**
  * Parses architecture result from model response.
  *
@@ -290,22 +309,9 @@ export function parseArchitectureResult(
     const result: ArchitectureAnalysisResult = {
       content: typeof p['content'] === 'string' ? p['content'] : 'Architecture analysis completed',
       analysisType: isValidAnalysisType(p['analysisType']) ? p['analysisType'] : defaultType,
-      confidence:
-        typeof p['confidence'] === 'number' && p['confidence'] >= 0 && p['confidence'] <= 1
-          ? p['confidence']
-          : 0.7,
+      confidence: isUnitRangeNum(p['confidence']) ? p['confidence'] : 0.7,
     };
-    // Structural arrays validated only at outer-array level here; individual
-    // item shape is validated by downstream consumers.
-    if (Array.isArray(p['patterns'])) result.patterns = p['patterns'] as ArchitectureAnalysisResult['patterns'];
-    if (Array.isArray(p['decisions'])) result.decisions = p['decisions'] as ArchitectureAnalysisResult['decisions'];
-    if (Array.isArray(p['components'])) result.components = p['components'] as ArchitectureAnalysisResult['components'];
-    if (Array.isArray(p['recommendations']) && p['recommendations'].every((x) => typeof x === 'string')) {
-      result.recommendations = p['recommendations'];
-    }
-    if (Array.isArray(p['warnings']) && p['warnings'].every((x) => typeof x === 'string')) {
-      result.warnings = p['warnings'];
-    }
+    applyArchOptionals(result, p);
     return result;
   } catch {
     return { content: text, analysisType: defaultType, confidence: 0.5 };
