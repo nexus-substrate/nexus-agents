@@ -221,6 +221,31 @@ describe('GeminiCliAdapter', () => {
   });
 });
 
+describe('GeminiCliAdapter systemPrompt (#1886)', () => {
+  it('passes --policy <tempfile> when systemPrompt is set', () => {
+    const adapter = new GeminiCliAdapter();
+    // Access protected getCommand via type assertion (test-only)
+    const cmd = (
+      adapter as unknown as { getCommand: (t: unknown) => { args: string[]; cleanup?: () => void } }
+    ).getCommand({ content: 'test prompt', systemPrompt: 'You are strict.' });
+    const policyIdx = cmd.args.indexOf('--policy');
+    expect(policyIdx).toBeGreaterThanOrEqual(0);
+    expect(cmd.args[policyIdx + 1]).toMatch(/policy\.md$/);
+    expect(cmd.cleanup).toBeDefined();
+    // Clean up the temp file
+    if (cmd.cleanup !== undefined) cmd.cleanup();
+  });
+
+  it('omits --policy when systemPrompt is empty', () => {
+    const adapter = new GeminiCliAdapter();
+    const cmd = (
+      adapter as unknown as { getCommand: (t: unknown) => { args: string[]; cleanup?: () => void } }
+    ).getCommand({ content: 'test prompt' });
+    expect(cmd.args).not.toContain('--policy');
+    expect(cmd.cleanup).toBeUndefined();
+  });
+});
+
 describe('GeminiCliAdapter resilient parsing', () => {
   it('should use resilient parser for JSON parsing', async () => {
     const adapter = new GeminiCliAdapter();

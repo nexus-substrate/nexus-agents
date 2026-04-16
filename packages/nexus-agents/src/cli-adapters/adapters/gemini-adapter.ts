@@ -12,6 +12,9 @@
  * (Source: Issue #389 - Merged enhanced adapter back to canonical)
  */
 
+import { writeFileSync, unlinkSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { Result, ILogger } from '../../core/index.js';
 import { ok, err, createLogger, getTimeProvider } from '../../core/index.js';
 import type {
@@ -218,7 +221,27 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
     // Note: Sandbox mode (-s) removed - causes npm permission issues
     // and "rebuilt dependencies successfully" contamination
 
-    return { command: 'gemini', args };
+    // Honor systemPrompt via gemini's --policy flag (#1886).
+    // Gemini treats policy files as system-level instructions, preserving
+    // the system-role framing (unlike prepending to user content).
+    let cleanup: (() => void) | undefined;
+    if (task.systemPrompt !== undefined && task.systemPrompt !== '') {
+      const dir = mkdtempSync(join(tmpdir(), 'nexus-gemini-sysprompt-'));
+      const file = join(dir, 'policy.md');
+      writeFileSync(file, task.systemPrompt, { encoding: 'utf8', mode: 0o600 });
+      args.push('--policy', file);
+      cleanup = (): void => {
+        try {
+          unlinkSync(file);
+        } catch {
+          // best-effort; tempdir auto-cleanup will eventually reap it
+        }
+      };
+    }
+
+    return cleanup === undefined
+      ? { command: 'gemini', args }
+      : { command: 'gemini', args, cleanup };
   }
 
   private checkCircuitBreaker(): CliError | null {

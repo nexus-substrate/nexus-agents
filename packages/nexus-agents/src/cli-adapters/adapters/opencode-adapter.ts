@@ -223,7 +223,18 @@ export class OpenCodeCliAdapter extends SubprocessCliAdapter {
     const args: string[] = ['run', '--format', 'json'];
     this.appendModelArg(args, task);
     this.appendTaskFlags(args, task);
-    return { command: 'opencode', args, stdin: task.content };
+
+    // Honor systemPrompt by prepending to stdin content (#1886).
+    // OpenCode CLI has no --system-prompt or --policy equivalent, so
+    // prepend is the only option. This loses the formal system-role
+    // distinction, but satisfies the contract that systemPrompt
+    // influences the call (far better than silently dropping it).
+    const content =
+      task.systemPrompt !== undefined && task.systemPrompt !== ''
+        ? `${task.systemPrompt}\n\n---\n\n${task.content}`
+        : task.content;
+
+    return { command: 'opencode', args, stdin: content };
   }
 }
 

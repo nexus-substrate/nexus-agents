@@ -614,6 +614,29 @@ describe('OpenCodeCliAdapter', () => {
   });
 });
 
+describe('OpenCodeCliAdapter systemPrompt (#1886)', () => {
+  it('prepends systemPrompt to stdin content when set', () => {
+    const adapter = new OpenCodeCliAdapter();
+    const cmd = (
+      adapter as unknown as { getCommand: (t: unknown) => { args: string[]; stdin?: string } }
+    ).getCommand({ content: 'do the work', systemPrompt: 'Be strict.' });
+    expect(cmd.stdin).toContain('Be strict.');
+    expect(cmd.stdin).toContain('do the work');
+    // systemPrompt comes before task content
+    const sysIdx = cmd.stdin?.indexOf('Be strict.') ?? -1;
+    const taskIdx = cmd.stdin?.indexOf('do the work') ?? -1;
+    expect(sysIdx).toBeLessThan(taskIdx);
+  });
+
+  it('passes content unchanged when systemPrompt is empty', () => {
+    const adapter = new OpenCodeCliAdapter();
+    const cmd = (
+      adapter as unknown as { getCommand: (t: unknown) => { args: string[]; stdin?: string } }
+    ).getCommand({ content: 'do the work' });
+    expect(cmd.stdin).toBe('do the work');
+  });
+});
+
 describe('createOpenCodeAdapter', () => {
   it('should create adapter instance', () => {
     const adapter = createOpenCodeAdapter();
