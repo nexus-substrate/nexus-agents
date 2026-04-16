@@ -137,6 +137,8 @@ import { handleHealthCommand } from './cli/health-command.js';
 import { handleValidateCommand } from './cli/validate-command.js';
 // Issue #1398: Lazy data directory initialization
 import { initDataDirectories } from './cli/setup-data-dir.js';
+// #1930: Step notifications (human-readable progress trail)
+import { bootstrapStepNotifications } from './core/step-notifications.js';
 
 /**
  * Prints help text to stdout.
@@ -258,6 +260,11 @@ async function handleAsyncCommand(args: ParsedCliArgs): Promise<void> {
 export async function dispatchCommand(args: ParsedCliArgs): Promise<void> {
   // Ensure data directories exist before any command runs (#1398)
   initDataDirectories();
+
+  // #1930: Wire step notifications. `server` command is the MCP stdio server —
+  // renderer must default off there to protect JSON-RPC frames. All other
+  // commands are human-facing CLI where the renderer helps.
+  bootstrapStepNotifications({ mode: args.command === 'server' ? 'mcp-stdio' : 'cli' });
 
   if (!handleSyncCommand(args)) {
     await handleAsyncCommand(args);
