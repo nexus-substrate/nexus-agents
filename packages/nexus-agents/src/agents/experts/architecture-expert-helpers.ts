@@ -259,8 +259,21 @@ export function detectArchitectureWarnings(description: string): string[] {
 // Result Parsing
 // ============================================================================
 
+/** Valid analysisType values. */
+const VALID_ANALYSIS_TYPES = new Set<ArchitectureAnalysisResult['analysisType']>([
+  'design',
+  'review',
+  'pattern_selection',
+]);
+
+function isValidAnalysisType(v: unknown): v is ArchitectureAnalysisResult['analysisType'] {
+  return typeof v === 'string' && VALID_ANALYSIS_TYPES.has(v as ArchitectureAnalysisResult['analysisType']);
+}
+
 /**
  * Parses architecture result from model response.
+ *
+ * Uses runtime type guards instead of `as Partial<T>` (#1913 Class A).
  */
 export function parseArchitectureResult(
   text: string,
@@ -268,18 +281,31 @@ export function parseArchitectureResult(
 ): ArchitectureAnalysisResult {
   try {
     const jsonText = extractJsonFromText(text);
-    const parsed = JSON.parse(jsonText) as Partial<ArchitectureAnalysisResult>;
+    const rawParsed: unknown = JSON.parse(jsonText);
+    if (typeof rawParsed !== 'object' || rawParsed === null || Array.isArray(rawParsed)) {
+      throw new Error('Parsed value is not a plain object');
+    }
+    const p = rawParsed as Record<string, unknown>;
 
     const result: ArchitectureAnalysisResult = {
-      content: parsed.content ?? 'Architecture analysis completed',
-      analysisType: parsed.analysisType ?? defaultType,
-      confidence: parsed.confidence ?? 0.7,
+      content: typeof p['content'] === 'string' ? p['content'] : 'Architecture analysis completed',
+      analysisType: isValidAnalysisType(p['analysisType']) ? p['analysisType'] : defaultType,
+      confidence:
+        typeof p['confidence'] === 'number' && p['confidence'] >= 0 && p['confidence'] <= 1
+          ? p['confidence']
+          : 0.7,
     };
-    if (parsed.patterns !== undefined) result.patterns = parsed.patterns;
-    if (parsed.decisions !== undefined) result.decisions = parsed.decisions;
-    if (parsed.components !== undefined) result.components = parsed.components;
-    if (parsed.recommendations !== undefined) result.recommendations = parsed.recommendations;
-    if (parsed.warnings !== undefined) result.warnings = parsed.warnings;
+    // Structural arrays validated only at outer-array level here; individual
+    // item shape is validated by downstream consumers.
+    if (Array.isArray(p['patterns'])) result.patterns = p['patterns'] as ArchitectureAnalysisResult['patterns'];
+    if (Array.isArray(p['decisions'])) result.decisions = p['decisions'] as ArchitectureAnalysisResult['decisions'];
+    if (Array.isArray(p['components'])) result.components = p['components'] as ArchitectureAnalysisResult['components'];
+    if (Array.isArray(p['recommendations']) && p['recommendations'].every((x) => typeof x === 'string')) {
+      result.recommendations = p['recommendations'];
+    }
+    if (Array.isArray(p['warnings']) && p['warnings'].every((x) => typeof x === 'string')) {
+      result.warnings = p['warnings'];
+    }
     return result;
   } catch {
     return { content: text, analysisType: defaultType, confidence: 0.5 };
