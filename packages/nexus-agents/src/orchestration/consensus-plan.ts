@@ -18,6 +18,7 @@ import {
   createLogger,
   getTimeProvider,
   extractJsonObject,
+  withStep,
 } from '../core/index.js';
 
 import type { ICliAdapter, CliName, CliResponse, CliError } from '../cli-adapters/types.js';
@@ -65,43 +66,46 @@ export async function executeConsensusPlan(
     return err(new Error('No CLI adapters available for planning'));
   }
 
-  logger.info('Starting consensus planning', {
-    clis: selectedClis.map((s) => s.cli),
-    taskLength: task.length,
-  });
+  return withStep(
+    {
+      name: 'consensus-plan',
+      kind: 'consensus.vote',
+      attrs: {
+        clis: selectedClis.map((s) => s.cli),
+        taskLength: task.length,
+      },
+    },
+    async (ctx) => {
+      const startTime = getTimeProvider().now();
+      const partitions = await dispatchPlans(task, selectedClis, config, logger);
+      const totalDurationMs = getTimeProvider().now() - startTime;
+      const clisUsed = partitions.filter((p) => p.success).map((p) => p.cli);
+      const successPlans = partitions.filter((p) => p.success && p.plan !== null);
 
-  const startTime = getTimeProvider().now();
-  const partitions = await dispatchPlans(task, selectedClis, config, logger);
-  const totalDurationMs = getTimeProvider().now() - startTime;
-  const clisUsed = partitions.filter((p) => p.success).map((p) => p.cli);
-  const successPlans = partitions.filter((p) => p.success && p.plan !== null);
+      const { agreedSteps, divergences } = synthesize(successPlans);
+      const risks = collectRisks(successPlans);
+      const alternatives = collectAlternatives(successPlans);
+      const summary = buildPlanSummary(agreedSteps, divergences, clisUsed);
 
-  const { agreedSteps, divergences } = synthesize(successPlans);
-  const risks = collectRisks(successPlans);
-  const alternatives = collectAlternatives(successPlans);
-  const summary = buildPlanSummary(agreedSteps, divergences, clisUsed);
+      recordPlanOutcomes(partitions);
 
-  recordPlanOutcomes(partitions);
+      const result: ConsensusPlanResult = {
+        partitions,
+        agreedSteps,
+        divergences,
+        risks,
+        alternatives,
+        summary,
+        clisUsed,
+        totalDurationMs,
+      };
 
-  const result: ConsensusPlanResult = {
-    partitions,
-    agreedSteps,
-    divergences,
-    risks,
-    alternatives,
-    summary,
-    clisUsed,
-    totalDurationMs,
-  };
-
-  logger.info('Consensus planning completed', {
-    totalDurationMs,
-    clisUsed,
-    agreedSteps: agreedSteps.length,
-    divergences: divergences.length,
-  });
-
-  return ok(result);
+      ctx.setSummary(
+        `${String(agreedSteps.length)} agreed, ${String(divergences.length)} divergent, ${String(clisUsed.length)}/${String(selectedClis.length)} CLIs`
+      );
+      return ok(result);
+    }
+  );
 }
 
 // ============================================================================
