@@ -189,8 +189,11 @@ function recordRoutingExperience(category: string, success: boolean, durationMs:
       routingMemoryCache = createRoutingMemory();
       callRecord(routingMemoryCache);
     })
-    .catch(() => {
-      /* best effort */
+    .catch((error: unknown) => {
+      // Best-effort: routing-memory is optional persistence; log so we
+      // can diagnose if it silently stops recording.
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.debug('Routing memory init failed; continuing without it', { error: msg });
     });
 }
 

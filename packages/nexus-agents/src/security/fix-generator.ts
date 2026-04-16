@@ -13,7 +13,9 @@ import type { SecurityFinding } from './sarif-types.js';
 import type { TriageVerdict } from './finding-triage.js';
 import { readFileSync } from 'node:fs';
 import { resolveInsideRoot } from './safe-path.js';
-import { extractJsonObject } from '../core/index.js';
+import { createLogger, getErrorMessage, extractJsonObject } from '../core/index.js';
+
+const logger = createLogger({ component: 'security-fix-generator' });
 
 // ============================================================================
 // Types
@@ -68,7 +70,11 @@ function readSourceContext(file: string, startLine: number, contextLines: number
       .slice(start, end)
       .map((line, i) => `${String(start + i + 1).padStart(4)} | ${line}`)
       .join('\n');
-  } catch {
+  } catch (error: unknown) {
+    logger.debug('Could not read source context', {
+      file: resolved,
+      error: getErrorMessage(error),
+    });
     return '(source unavailable)';
   }
 }
