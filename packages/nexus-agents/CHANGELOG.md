@@ -1,5 +1,17 @@
 # nexus-agents
 
+## 2.30.4
+
+### Patch Changes
+
+- [#1908](https://github.com/williamzujkowski/nexus-agents/pull/1908) [`df32d0f`](https://github.com/williamzujkowski/nexus-agents/commit/df32d0f24b3b0a8f2267810bfccbbc558a2373d5) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(adapters): honor task.systemPrompt in gemini and opencode adapters ([#1886](https://github.com/williamzujkowski/nexus-agents/issues/1886))
+
+  Completes the adapter parity fix started in v2.30.1 (codex). All 4 CLI adapters now honor `CompletionRequest.systemPrompt`:
+  - **claude**: `--system-prompt` flag (already working)
+  - **codex**: `-c model_instructions_file=<tempfile>` (fixed in v2.30.1)
+  - **gemini**: `--policy <tempfile>` — preserves system-role framing via gemini's policy file mechanism
+  - **opencode**: prepend to stdin content — no system-prompt flag exists in opencode CLI, so systemPrompt is prepended to user content with a `---` separator. Documented tradeoff: loses formal system-role distinction but satisfies the contract.
+
 ## 2.30.3
 
 ### Patch Changes
