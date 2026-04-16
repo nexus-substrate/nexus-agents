@@ -255,4 +255,44 @@ describe('parseCodeResult', () => {
     expect(result.warnings).toEqual(['Check this']);
     expect(result.affectedFiles).toEqual(['a.ts']);
   });
+
+  // Type-guard regression tests (#1913 Class A) — previously used
+  // `as Partial<CodeAnalysisResult>` which let malformed fields slip
+  // through the `?? fallback` (strings pass as truthy).
+
+  it('ignores confidence when it is a string, falls back to 0.7', () => {
+    const json = JSON.stringify({ content: 'x', confidence: 'high' });
+    const result = parseCodeResult(json, 'debugging');
+    expect(result.confidence).toBe(0.7);
+  });
+
+  it('ignores confidence outside [0,1], falls back to 0.7', () => {
+    const json = JSON.stringify({ content: 'x', confidence: 42 });
+    const result = parseCodeResult(json, 'debugging');
+    expect(result.confidence).toBe(0.7);
+  });
+
+  it('ignores invalid operationType, falls back to default', () => {
+    const json = JSON.stringify({ operationType: 'not-a-real-op' });
+    const result = parseCodeResult(json, 'refactoring');
+    expect(result.operationType).toBe('refactoring');
+  });
+
+  it('drops affectedFiles when array contains non-strings', () => {
+    const json = JSON.stringify({ content: 'x', affectedFiles: ['a.ts', 42, true] });
+    const result = parseCodeResult(json, 'generation');
+    expect(result.affectedFiles).toBeUndefined();
+  });
+
+  it('drops recommendations when array contains non-strings', () => {
+    const json = JSON.stringify({ content: 'x', recommendations: ['ok', null] });
+    const result = parseCodeResult(json, 'generation');
+    expect(result.recommendations).toBeUndefined();
+  });
+
+  it('treats JSON array (non-object) as invalid, falls back', () => {
+    const result = parseCodeResult('[1,2,3]', 'debugging');
+    expect(result.content).toBe('[1,2,3]');
+    expect(result.confidence).toBe(0.5);
+  });
 });

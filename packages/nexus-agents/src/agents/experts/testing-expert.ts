@@ -277,34 +277,66 @@ function validateTests(tests: unknown[] | undefined): GeneratedTest[] {
     .map((r) => r.data as GeneratedTest);
 }
 
+const VALID_TESTING_OP_TYPES = new Set<TestingAnalysisResult['operationType']>([
+  'generation',
+  'coverage_analysis',
+  'quality_assessment',
+]);
+
+function isValidTestingOpType(v: unknown): v is TestingAnalysisResult['operationType'] {
+  return typeof v === 'string' && VALID_TESTING_OP_TYPES.has(v as TestingAnalysisResult['operationType']);
+}
+
+function isTestUnitConfidence(v: unknown): v is number {
+  return typeof v === 'number' && v >= 0 && v <= 1;
+}
+
+function isTestStringArray(v: unknown): v is string[] {
+  return Array.isArray(v) && v.every((x) => typeof x === 'string');
+}
+
+function applyTestingOptionalFields(
+  result: TestingAnalysisResult,
+  p: Record<string, unknown>,
+  validTests: GeneratedTest[],
+  coverage: CoverageMetrics | undefined
+): void {
+  if (validTests.length > 0) result.tests = validTests;
+  if (coverage !== undefined) result.coverage = coverage;
+  if (p['quality'] !== undefined) result.quality = p['quality'] as TestingAnalysisResult['quality'];
+  if (isTestStringArray(p['recommendations'])) result.recommendations = p['recommendations'];
+  if (isTestStringArray(p['warnings'])) result.warnings = p['warnings'];
+}
+
 function buildTestingResult(
-  parsed: Partial<TestingAnalysisResult>,
+  p: Record<string, unknown>,
   defaultType: TestingAnalysisResult['operationType']
 ): TestingAnalysisResult {
-  const validTests = validateTests(parsed.tests);
-  const coverageResult = CoverageMetricsSchema.safeParse(parsed.coverage);
+  const validTests = validateTests(Array.isArray(p['tests']) ? p['tests'] : []);
+  const coverageResult = CoverageMetricsSchema.safeParse(p['coverage']);
+  const coverage = coverageResult.success ? (coverageResult.data as CoverageMetrics) : undefined;
 
   const result: TestingAnalysisResult = {
-    content: parsed.content ?? 'Testing analysis completed',
-    operationType: parsed.operationType ?? defaultType,
-    confidence: parsed.confidence ?? 0.7,
+    content: typeof p['content'] === 'string' ? p['content'] : 'Testing analysis completed',
+    operationType: isValidTestingOpType(p['operationType']) ? p['operationType'] : defaultType,
+    confidence: isTestUnitConfidence(p['confidence']) ? p['confidence'] : 0.7,
   };
-  if (validTests.length > 0) result.tests = validTests;
-  if (coverageResult.success) result.coverage = coverageResult.data as CoverageMetrics;
-  if (parsed.quality !== undefined) result.quality = parsed.quality;
-  if (parsed.recommendations !== undefined) result.recommendations = parsed.recommendations;
-  if (parsed.warnings !== undefined) result.warnings = parsed.warnings;
+  applyTestingOptionalFields(result, p, validTests, coverage);
   return result;
 }
 
+/** Parse testing result with runtime type guards (#1913 Class A). */
 function parseTestingResult(
   text: string,
   defaultType: TestingAnalysisResult['operationType']
 ): TestingAnalysisResult {
   try {
     const jsonText = extractJsonFromText(text);
-    const parsed = JSON.parse(jsonText) as Partial<TestingAnalysisResult>;
-    return buildTestingResult(parsed, defaultType);
+    const rawParsed: unknown = JSON.parse(jsonText);
+    if (typeof rawParsed !== 'object' || rawParsed === null || Array.isArray(rawParsed)) {
+      throw new Error('Parsed value is not a plain object');
+    }
+    return buildTestingResult(rawParsed as Record<string, unknown>, defaultType);
   } catch {
     return { content: text, operationType: defaultType, confidence: 0.5 };
   }

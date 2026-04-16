@@ -153,8 +153,45 @@ export function extractJsonFromText(text: string): string {
   return match?.[1]?.trim() ?? text.trim();
 }
 
+/** Valid operationType values for CodeAnalysisResult. */
+const VALID_OPERATION_TYPES = new Set<CodeAnalysisResult['operationType']>([
+  'generation',
+  'refactoring',
+  'optimization',
+  'debugging',
+]);
+
+/** Narrow an unknown value to a CodeAnalysisResult operationType. */
+function isValidOperationType(v: unknown): v is CodeAnalysisResult['operationType'] {
+  return typeof v === 'string' && VALID_OPERATION_TYPES.has(v as CodeAnalysisResult['operationType']);
+}
+
+function isNumberInUnitRange(v: unknown): v is number {
+  return typeof v === 'number' && v >= 0 && v <= 1;
+}
+
+function isStringArray(v: unknown): v is string[] {
+  return Array.isArray(v) && v.every((x) => typeof x === 'string');
+}
+
+/** Populate optional array fields on result, validating element types. */
+function applyOptionalArrays(result: CodeAnalysisResult, p: Record<string, unknown>): void {
+  if (isStringArray(p['affectedFiles'])) result.affectedFiles = p['affectedFiles'];
+  if (Array.isArray(p['codeChanges'])) {
+    result.codeChanges = p['codeChanges'] as CodeAnalysisResult['codeChanges'];
+  }
+  if (isStringArray(p['recommendations'])) result.recommendations = p['recommendations'];
+  if (isStringArray(p['warnings'])) result.warnings = p['warnings'];
+}
+
 /**
  * Parse code result from model response.
+ *
+ * Previously used `JSON.parse(...) as Partial<CodeAnalysisResult>` which
+ * skipped runtime validation — an LLM returning `{ confidence: "high" }`
+ * would slip through (string passes `?? fallback` since it's truthy).
+ * Now validates each field with explicit type guards and falls back to
+ * defaults on mismatch (#1913 Class A).
  */
 export function parseCodeResult(
   text: string,
@@ -162,25 +199,18 @@ export function parseCodeResult(
 ): CodeAnalysisResult {
   try {
     const jsonText = extractJsonFromText(text);
-    const parsed = JSON.parse(jsonText) as Partial<CodeAnalysisResult>;
+    const rawParsed: unknown = JSON.parse(jsonText);
+    if (typeof rawParsed !== 'object' || rawParsed === null || Array.isArray(rawParsed)) {
+      throw new Error('Parsed value is not a plain object');
+    }
+    const p = rawParsed as Record<string, unknown>;
 
     const result: CodeAnalysisResult = {
-      content: parsed.content ?? 'Code analysis completed',
-      operationType: parsed.operationType ?? defaultType,
-      confidence: parsed.confidence ?? 0.7,
+      content: typeof p['content'] === 'string' ? p['content'] : 'Code analysis completed',
+      operationType: isValidOperationType(p['operationType']) ? p['operationType'] : defaultType,
+      confidence: isNumberInUnitRange(p['confidence']) ? p['confidence'] : 0.7,
     };
-    if (parsed.affectedFiles !== undefined) {
-      result.affectedFiles = parsed.affectedFiles;
-    }
-    if (parsed.codeChanges !== undefined) {
-      result.codeChanges = parsed.codeChanges;
-    }
-    if (parsed.recommendations !== undefined) {
-      result.recommendations = parsed.recommendations;
-    }
-    if (parsed.warnings !== undefined) {
-      result.warnings = parsed.warnings;
-    }
+    applyOptionalArrays(result, p);
     return result;
   } catch {
     // Fall back to treating the whole response as content
