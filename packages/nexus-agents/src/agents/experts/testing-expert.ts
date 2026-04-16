@@ -287,30 +287,41 @@ function isValidTestingOpType(v: unknown): v is TestingAnalysisResult['operation
   return typeof v === 'string' && VALID_TESTING_OP_TYPES.has(v as TestingAnalysisResult['operationType']);
 }
 
+function isTestUnitConfidence(v: unknown): v is number {
+  return typeof v === 'number' && v >= 0 && v <= 1;
+}
+
+function isTestStringArray(v: unknown): v is string[] {
+  return Array.isArray(v) && v.every((x) => typeof x === 'string');
+}
+
+function applyTestingOptionalFields(
+  result: TestingAnalysisResult,
+  p: Record<string, unknown>,
+  validTests: GeneratedTest[],
+  coverage: CoverageMetrics | undefined
+): void {
+  if (validTests.length > 0) result.tests = validTests;
+  if (coverage !== undefined) result.coverage = coverage;
+  if (p['quality'] !== undefined) result.quality = p['quality'] as TestingAnalysisResult['quality'];
+  if (isTestStringArray(p['recommendations'])) result.recommendations = p['recommendations'];
+  if (isTestStringArray(p['warnings'])) result.warnings = p['warnings'];
+}
+
 function buildTestingResult(
   p: Record<string, unknown>,
   defaultType: TestingAnalysisResult['operationType']
 ): TestingAnalysisResult {
   const validTests = validateTests(Array.isArray(p['tests']) ? p['tests'] : []);
   const coverageResult = CoverageMetricsSchema.safeParse(p['coverage']);
+  const coverage = coverageResult.success ? (coverageResult.data as CoverageMetrics) : undefined;
 
   const result: TestingAnalysisResult = {
     content: typeof p['content'] === 'string' ? p['content'] : 'Testing analysis completed',
     operationType: isValidTestingOpType(p['operationType']) ? p['operationType'] : defaultType,
-    confidence:
-      typeof p['confidence'] === 'number' && p['confidence'] >= 0 && p['confidence'] <= 1
-        ? p['confidence']
-        : 0.7,
+    confidence: isTestUnitConfidence(p['confidence']) ? p['confidence'] : 0.7,
   };
-  if (validTests.length > 0) result.tests = validTests;
-  if (coverageResult.success) result.coverage = coverageResult.data as CoverageMetrics;
-  if (p['quality'] !== undefined) result.quality = p['quality'] as TestingAnalysisResult['quality'];
-  if (Array.isArray(p['recommendations']) && p['recommendations'].every((x) => typeof x === 'string')) {
-    result.recommendations = p['recommendations'];
-  }
-  if (Array.isArray(p['warnings']) && p['warnings'].every((x) => typeof x === 'string')) {
-    result.warnings = p['warnings'];
-  }
+  applyTestingOptionalFields(result, p, validTests, coverage);
   return result;
 }
 

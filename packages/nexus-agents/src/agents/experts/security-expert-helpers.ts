@@ -249,6 +249,41 @@ export function generateSecurityWarnings(vulnerabilities: Vulnerability[]): stri
 /**
  * Parses security result from model response.
  */
+function isSecPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+function isSecStringArray(v: unknown): v is string[] {
+  return Array.isArray(v) && v.every((x) => typeof x === 'string');
+}
+
+function applySecOptionalFields(
+  result: SecurityAnalysisResult,
+  p: Record<string, unknown>
+): void {
+  if (isSecPlainObject(p['compliance'])) {
+    result.compliance = p['compliance'] as unknown as NonNullable<SecurityAnalysisResult['compliance']>;
+  }
+  if (isSecStringArray(p['recommendations'])) result.recommendations = p['recommendations'];
+  if (isSecStringArray(p['warnings'])) result.warnings = p['warnings'];
+}
+
+function buildSecurityCore(
+  p: Record<string, unknown>,
+  validVulns: Vulnerability[],
+  calculateScore: (vulns: Vulnerability[]) => number
+): SecurityAnalysisResult {
+  const score = p['securityScore'];
+  const conf = p['confidence'];
+  return {
+    content: typeof p['content'] === 'string' ? p['content'] : 'Security analysis completed',
+    vulnerabilities: validVulns,
+    securityScore:
+      typeof score === 'number' && score >= 0 && score <= 100 ? score : calculateScore(validVulns),
+    confidence: typeof conf === 'number' && conf >= 0 && conf <= 1 ? conf : 0.7,
+  };
+}
+
 export function parseSecurityResult(
   text: string,
   calculateScore: (vulns: Vulnerability[]) => number,
@@ -258,36 +293,17 @@ export function parseSecurityResult(
     const jsonText = extractJsonFromText(text);
     // Runtime type guards instead of `as Partial<T>` (#1913 Class A).
     const rawParsed: unknown = JSON.parse(jsonText);
-    if (typeof rawParsed !== 'object' || rawParsed === null || Array.isArray(rawParsed)) {
-      throw new Error('Parsed value is not a plain object');
-    }
-    const p = rawParsed as Record<string, unknown>;
+    if (!isSecPlainObject(rawParsed)) throw new Error('Parsed value is not a plain object');
 
     // Validate vulnerabilities array items via the caller-supplied validator
-    const vulnCandidates = Array.isArray(p['vulnerabilities']) ? p['vulnerabilities'] : [];
+    const vulnCandidates = Array.isArray(rawParsed['vulnerabilities']) ? rawParsed['vulnerabilities'] : [];
     const validVulns = vulnCandidates
       .map((v) => validator(v))
       .filter((r) => r.success)
       .map((r) => r.data as Vulnerability);
 
-    const score = p['securityScore'];
-    const conf = p['confidence'];
-    const result: SecurityAnalysisResult = {
-      content: typeof p['content'] === 'string' ? p['content'] : 'Security analysis completed',
-      vulnerabilities: validVulns,
-      securityScore:
-        typeof score === 'number' && score >= 0 && score <= 100 ? score : calculateScore(validVulns),
-      confidence: typeof conf === 'number' && conf >= 0 && conf <= 1 ? conf : 0.7,
-    };
-    if (typeof p['compliance'] === 'object' && p['compliance'] !== null) {
-      result.compliance = p['compliance'] as NonNullable<SecurityAnalysisResult['compliance']>;
-    }
-    if (Array.isArray(p['recommendations']) && p['recommendations'].every((x) => typeof x === 'string')) {
-      result.recommendations = p['recommendations'];
-    }
-    if (Array.isArray(p['warnings']) && p['warnings'].every((x) => typeof x === 'string')) {
-      result.warnings = p['warnings'];
-    }
+    const result = buildSecurityCore(rawParsed, validVulns, calculateScore);
+    applySecOptionalFields(result, rawParsed);
     return result;
   } catch {
     // JSON parse failed — fall back to heuristic detection on model output (#1404)

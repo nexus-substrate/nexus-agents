@@ -255,6 +255,31 @@ function isValidDocType(v: unknown): v is DocumentationResult['documentationType
   return typeof v === 'string' && VALID_DOC_TYPES.has(v as DocumentationResult['documentationType']);
 }
 
+function isDocUnitConfidence(v: unknown): v is number {
+  return typeof v === 'number' && v >= 0 && v <= 1;
+}
+
+function isDocStringArray(v: unknown): v is string[] {
+  return Array.isArray(v) && v.every((x) => typeof x === 'string');
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+function applyDocOptionalFields(
+  result: DocumentationResult,
+  p: Record<string, unknown>
+): void {
+  if (Array.isArray(p['sections'])) result.sections = p['sections'] as DocumentationResult['sections'];
+  // apiDocs is an object (ApiDocumentation), not a top-level array.
+  if (isPlainObject(p['apiDocs'])) {
+    result.apiDocs = p['apiDocs'] as unknown as NonNullable<DocumentationResult['apiDocs']>;
+  }
+  if (isDocStringArray(p['recommendations'])) result.recommendations = p['recommendations'];
+  if (isDocStringArray(p['warnings'])) result.warnings = p['warnings'];
+}
+
 /**
  * Parse documentation result with runtime type guards (#1913 Class A).
  * Replaces `as Partial<DocumentationResult>` with validated field access.
@@ -266,30 +291,17 @@ function parseDocumentationResult(
   try {
     const jsonText = extractJsonFromText(text);
     const rawParsed: unknown = JSON.parse(jsonText);
-    if (typeof rawParsed !== 'object' || rawParsed === null || Array.isArray(rawParsed)) {
+    if (!isPlainObject(rawParsed)) {
       throw new Error('Parsed value is not a plain object');
     }
-    const p = rawParsed as Record<string, unknown>;
-
     const result: DocumentationResult = {
-      content: typeof p['content'] === 'string' ? p['content'] : 'Documentation generated',
-      documentationType: isValidDocType(p['documentationType']) ? p['documentationType'] : defaultType,
-      confidence:
-        typeof p['confidence'] === 'number' && p['confidence'] >= 0 && p['confidence'] <= 1
-          ? p['confidence']
-          : 0.7,
+      content: typeof rawParsed['content'] === 'string' ? rawParsed['content'] : 'Documentation generated',
+      documentationType: isValidDocType(rawParsed['documentationType'])
+        ? rawParsed['documentationType']
+        : defaultType,
+      confidence: isDocUnitConfidence(rawParsed['confidence']) ? rawParsed['confidence'] : 0.7,
     };
-    if (Array.isArray(p['sections'])) result.sections = p['sections'] as DocumentationResult['sections'];
-    // apiDocs is an object (ApiDocumentation) with endpoints/types arrays, not a top-level array
-    if (typeof p['apiDocs'] === 'object' && p['apiDocs'] !== null && !Array.isArray(p['apiDocs'])) {
-      result.apiDocs = p['apiDocs'] as DocumentationResult['apiDocs'];
-    }
-    if (Array.isArray(p['recommendations']) && p['recommendations'].every((x) => typeof x === 'string')) {
-      result.recommendations = p['recommendations'];
-    }
-    if (Array.isArray(p['warnings']) && p['warnings'].every((x) => typeof x === 'string')) {
-      result.warnings = p['warnings'];
-    }
+    applyDocOptionalFields(result, rawParsed);
     return result;
   } catch {
     return { content: text, documentationType: defaultType, confidence: 0.5 };
