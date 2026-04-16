@@ -12,6 +12,7 @@ import type { SecurityFinding } from './sarif-types.js';
 import { SEVERITY_ORDER } from './sarif-types.js';
 import { readFileSync } from 'node:fs';
 import { resolveInsideRoot } from './safe-path.js';
+import { extractJsonObject } from '../core/index.js';
 
 /** Verdict from triage assessment. */
 export const TriageVerdictSchema = z.object({
@@ -102,14 +103,15 @@ Only respond with JSON, no additional text.`;
  * Parse triage response from expert.
  */
 function parseTriageResponse(response: string): TriageVerdict | null {
-  const jsonMatch = response.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
+  // ReDoS-safe extraction (#1912): indexOf/lastIndexOf is O(n) vs regex
+  // backtracking. Previously `/\{[\s\S]*\}/` — same class as #1899.
+  const candidate = extractJsonObject(response);
+  if (candidate === undefined) {
     return null;
   }
   try {
-    const jsonStr: string = jsonMatch[0];
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    const parsed = JSON.parse(jsonStr);
+    const parsed = JSON.parse(candidate);
     return TriageVerdictSchema.parse(parsed);
   } catch {
     return null;
