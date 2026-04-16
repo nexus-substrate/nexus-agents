@@ -144,6 +144,12 @@ interface ParallelState {
   timeoutId: ReturnType<typeof setTimeout> | undefined;
   queue: TaskQueue<StepResult>;
   abortController: AbortController;
+  /**
+   * The registered abort listener + the signal it was bound to — kept so
+   * `cleanupExecution` can remove it and avoid leaking listeners on
+   * long-lived parent signals (bug-hunt #1913 wave 5).
+   */
+  abortCleanup?: { signal: AbortSignal; handler: () => void };
 }
 
 /** Creates WorkflowError for step failure */
@@ -180,6 +186,12 @@ function cleanupExecution(state: ParallelState): void {
     clearTimeout(state.timeoutId);
   }
   state.queue.cancel();
+  // Remove abort listener so long-lived parent signals don't accumulate
+  // one listener per parallel execution (#1913 wave 5).
+  if (state.abortCleanup !== undefined) {
+    state.abortCleanup.signal.removeEventListener('abort', state.abortCleanup.handler);
+    state.abortCleanup = undefined;
+  }
 }
 
 /** Sorts results by original step order */
@@ -216,6 +228,7 @@ export async function executeParallel(
   };
   if (context.signal !== undefined) {
     context.signal.addEventListener('abort', abortHandler);
+    state.abortCleanup = { signal: context.signal, handler: abortHandler };
   }
 
   try {
