@@ -279,8 +279,8 @@ export function parseSecurityResult(
         typeof score === 'number' && score >= 0 && score <= 100 ? score : calculateScore(validVulns),
       confidence: typeof conf === 'number' && conf >= 0 && conf <= 1 ? conf : 0.7,
     };
-    if (p['compliance'] !== undefined) {
-      result.compliance = p['compliance'] as SecurityAnalysisResult['compliance'];
+    if (typeof p['compliance'] === 'object' && p['compliance'] !== null) {
+      result.compliance = p['compliance'] as NonNullable<SecurityAnalysisResult['compliance']>;
     }
     if (Array.isArray(p['recommendations']) && p['recommendations'].every((x) => typeof x === 'string')) {
       result.recommendations = p['recommendations'];
