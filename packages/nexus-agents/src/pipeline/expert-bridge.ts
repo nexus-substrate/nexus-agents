@@ -87,8 +87,11 @@ async function getRouter(): Promise<RouterLike | null> {
     const { createCliCircuitBreakerIntegration } =
       await import('../cli-adapters/cli-circuit-breaker.js');
     cachedCircuitBreaker = createCliCircuitBreakerIntegration([...adapters.values()]);
-  } catch {
-    // Circuit breaker not available — continue without it
+  } catch (error: unknown) {
+    // Circuit breaker not available — continue without it. Log so we can
+    // notice if initialization silently stops working (#1913 Class B).
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.debug('Circuit breaker init failed; continuing without it', { error: msg });
   }
 
   return cachedRouter;
