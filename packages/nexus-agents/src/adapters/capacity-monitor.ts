@@ -9,7 +9,7 @@
  * @see Google Cloud: https://cloud.google.com/docs/quota
  */
 
-import { getTimeProvider } from '../core/index.js';
+import { getTimeProvider, createLogger, type ILogger } from '../core/index.js';
 import { clampPercent } from '../utils/math-utils.js';
 import {
   type CapacityInfo,
@@ -62,6 +62,7 @@ export class CapacityMonitor implements ICapacityMonitor {
   private readonly providers: Map<string, ProviderCapacityState>;
   private readonly callbacks: Set<LowCapacityCallback>;
   private readonly config: Required<CapacityMonitorConfig>;
+  private readonly logger: ILogger = createLogger({ component: 'capacity-monitor' });
 
   constructor(config?: CapacityMonitorConfig) {
     this.providers = new Map();
@@ -218,8 +219,15 @@ export class CapacityMonitor implements ICapacityMonitor {
       for (const callback of this.callbacks) {
         try {
           callback(provider, state.remainingTokens, info);
-        } catch {
-          // Ignore callback errors
+        } catch (error: unknown) {
+          // Callback errors must not halt the capacity-check loop, but
+          // silent catch loses visibility when a user-provided callback
+          // misbehaves. Log at warn so it surfaces in normal operation.
+          const msg = error instanceof Error ? error.message : String(error);
+          this.logger.warn('Capacity-monitor callback threw; continuing loop', {
+            provider,
+            error: msg,
+          });
         }
       }
     }
