@@ -25,9 +25,20 @@ export {
 import { StreamError, StreamCancelledError } from './streaming-types.js';
 
 /**
+ * Default cap on collected chunks — prevents unbounded memory growth when
+ * callers forget to pass `maxChunks`. Callers that genuinely need no cap
+ * must opt in explicitly with `{ maxChunks: Infinity }`. (#1913 Class F)
+ */
+export const DEFAULT_COLLECT_STREAM_MAX_CHUNKS = 100_000;
+
+/**
  * Collects all chunks from a stream into an array.
+ *
  * @param stream - The stream to collect
- * @param options - Options including optional AbortSignal
+ * @param options - Options including optional AbortSignal.
+ *   `maxChunks` defaults to {@link DEFAULT_COLLECT_STREAM_MAX_CHUNKS} to
+ *   prevent unbounded memory growth on forgotten limits. Pass
+ *   `Infinity` explicitly for truly unbounded collection.
  * @returns Result containing collected chunks or error
  */
 export async function collectStream<T>(
@@ -35,7 +46,7 @@ export async function collectStream<T>(
   options: { signal?: AbortSignal; maxChunks?: number } = {}
 ): Promise<Result<T[], StreamError>> {
   const chunks: T[] = [];
-  const maxChunks = options.maxChunks ?? Infinity;
+  const maxChunks = options.maxChunks ?? DEFAULT_COLLECT_STREAM_MAX_CHUNKS;
 
   try {
     for await (const chunk of stream) {
