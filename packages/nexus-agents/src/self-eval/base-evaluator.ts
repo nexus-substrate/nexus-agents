@@ -50,7 +50,9 @@ export abstract class BaseEvaluator {
     // an unhandled rejection (#1913 wave 5).
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     const timeoutPromise = new Promise<never>((_, reject) => {
-      timeoutId = setTimeout(() => reject(new Error('Evaluation timeout')), this.timeoutMs);
+      timeoutId = setTimeout(() => {
+        reject(new Error('Evaluation timeout'));
+      }, this.timeoutMs);
     });
     try {
       const result = await Promise.race([this.performEvaluation(component), timeoutPromise]).finally(

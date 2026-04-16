@@ -190,7 +190,7 @@ function cleanupExecution(state: ParallelState): void {
   // one listener per parallel execution (#1913 wave 5).
   if (state.abortCleanup !== undefined) {
     state.abortCleanup.signal.removeEventListener('abort', state.abortCleanup.handler);
-    state.abortCleanup = undefined;
+    delete state.abortCleanup;
   }
 }
 
