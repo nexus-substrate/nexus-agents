@@ -48,11 +48,22 @@ async function runSemgrep(targetDir: string, rulesets: readonly string[]): Promi
   return stdout;
 }
 
-/** Validate that target path is safe (no traversal). */
+/**
+ * Validate that target path is safe (no traversal).
+ *
+ * Security: the target must resolve inside the current working directory.
+ * The previous check `resolved.startsWith(path.resolve('/'))` was
+ * effectively a no-op on POSIX (every absolute path starts with `/`).
+ * (#1913 Class D — path traversal gap.)
+ */
 function validateTargetPath(target: string): string {
-  const resolved = path.resolve(target);
-  if (!resolved.startsWith(path.resolve('/'))) {
-    throw new Error('Invalid target path');
+  const root = path.resolve(process.cwd());
+  const resolved = path.resolve(root, target);
+  // Require resolved path to be inside cwd (or cwd itself).
+  if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+    throw new Error(
+      `Invalid target path: must resolve inside ${root} (got ${resolved})`,
+    );
   }
   return resolved;
 }
@@ -66,7 +77,12 @@ function validateTargetPath(target: string): string {
 export async function executeSecurityScan(
   input: SecurityScanInput
 ): Promise<SarifParseResult | { error: string }> {
-  const targetDir = validateTargetPath(input.target);
+  let targetDir: string;
+  try {
+    targetDir = validateTargetPath(input.target);
+  } catch (e: unknown) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
 
   logger.info('Starting security scan', {
     target: targetDir,
