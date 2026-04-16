@@ -162,7 +162,7 @@ export function createRetryPrompt(
   return parts.join('\n');
 }
 
-/** Ordered extraction patterns for diff/patch content. */
+/** Ordered extraction patterns for diff/patch content (fenced forms only). */
 const PATCH_PATTERNS: readonly RegExp[] = [
   // Code fence: ```diff
   /```diff\n([\s\S]*?)```/i,
@@ -170,11 +170,57 @@ const PATCH_PATTERNS: readonly RegExp[] = [
   /```(?:patch|text|)\n(diff --git[\s\S]*?)```/i,
   // Unified diff in fenced block: --- a/file
   /```(?:diff|patch|text|)\n(---\s+a\/[\s\S]*?)```/i,
-  // Raw diff --git without fences
-  /(diff --git[\s\S]*?)(?:\n\n[^d]|$)/,
-  // Raw unified diff without fences
-  /\n(--- a\/[\s\S]*?\n\+\+\+ b\/[\s\S]*?)(?:\n\n[^-+@ ]|$)/,
 ];
+
+/**
+ * Maximum input length for raw-patch extraction. Real patches are well under
+ * this; bounding input prevents pathological-input ReDoS in the raw extractors
+ * (CodeQL js/polynomial-redos #50). 256KB ≈ ~5000 lines of unified diff.
+ */
+const MAX_RAW_EXTRACT_LEN = 256 * 1024;
+
+/**
+ * Extract a `diff --git` block from raw (non-fenced) response. Index-based
+ * scanning instead of regex to avoid polynomial backtracking on input with
+ * many `diff --git` repetitions.
+ */
+function extractRawDiffGit(response: string): string | null {
+  const start = response.indexOf('diff --git');
+  if (start === -1) return null;
+  // Find the natural end: a `\n\n` followed by a non-`d` char, OR end of input
+  let i = start;
+  while (i < response.length) {
+    const nl = response.indexOf('\n\n', i);
+    if (nl === -1) return response.slice(start);
+    const after = response.charAt(nl + 2);
+    if (after !== 'd' && after !== '') return response.slice(start, nl);
+    i = nl + 2;
+  }
+  return response.slice(start);
+}
+
+/**
+ * Extract a `--- a/ ... +++ b/` unified diff from raw response. Index-based,
+ * no regex backtracking.
+ */
+function extractRawUnifiedDiff(response: string): string | null {
+  const start = response.indexOf('\n--- a/');
+  if (start === -1) return null;
+  const plusIdx = response.indexOf('\n+++ b/', start);
+  if (plusIdx === -1) return null;
+  // Find end: a `\n\n` followed by non-diff-line char (not `-`, `+`, `@`, ` `)
+  let i = plusIdx;
+  while (i < response.length) {
+    const nl = response.indexOf('\n\n', i);
+    if (nl === -1) return response.slice(start + 1);
+    const after = response.charAt(nl + 2);
+    if (after !== '-' && after !== '+' && after !== '@' && after !== ' ' && after !== '') {
+      return response.slice(start + 1, nl);
+    }
+    i = nl + 2;
+  }
+  return response.slice(start + 1);
+}
 
 /**
  * Extracts a git diff patch from agent response.
@@ -186,6 +232,15 @@ export function extractPatch(response: string): string | null {
       return normalizePatch(match[1]);
     }
   }
+  // Raw forms — bounded length to avoid pathological-input ReDoS classes
+  // even though we're now using index-based extraction (defense in depth).
+  const bounded = response.length > MAX_RAW_EXTRACT_LEN
+    ? response.slice(0, MAX_RAW_EXTRACT_LEN)
+    : response;
+  const raw1 = extractRawDiffGit(bounded);
+  if (raw1 !== null) return normalizePatch(raw1);
+  const raw2 = extractRawUnifiedDiff(bounded);
+  if (raw2 !== null) return normalizePatch(raw2);
   return null;
 }
 

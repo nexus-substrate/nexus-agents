@@ -15,8 +15,11 @@
 /* eslint-disable no-console */
 // Console output is intentional for CLI user feedback
 
-import { execSync, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { execSync, execFileSync, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { writeFileSync, unlinkSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 // Types
 interface ReviewOptions {
@@ -189,10 +192,13 @@ function spawnCLI(model: string, prompt: string): ChildProcessWithoutNullStreams
   }
 
   if (model === 'claude') {
-    const escaped = prompt.replace(/"/g, '\\"');
-    return spawn('sh', ['-c', `echo "${escaped}" | ${config.cmd} ${config.args.join(' ')}`], {
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
+    // Avoid shell interpolation entirely — pipe prompt via stdin instead of
+    // building a shell-escaped echo command. The prior `replace(/"/g, '\\"')`
+    // didn't escape backslashes (CodeQL js/incomplete-sanitization).
+    const child = spawn(config.cmd, config.args, { stdio: ['pipe', 'pipe', 'pipe'] });
+    child.stdin.write(prompt);
+    child.stdin.end();
+    return child;
   }
 
   if (model === 'gemini') {
@@ -276,9 +282,24 @@ This review was generated using locally authenticated CLI tools.
 }
 
 function postReviewToGitHub(prNumber: number, comment: string, addLabel: boolean): void {
-  execSync(`gh pr comment ${String(prNumber)} --body "${comment.replace(/"/g, '\\"')}"`, {
-    stdio: 'inherit',
-  });
+  // Write comment to a tempfile and use --body-file to avoid any shell
+  // interpolation. The prior `replace(/"/g, '\\"')` didn't escape backslashes,
+  // so an attacker-controlled comment with `\"` could escape the quoted block
+  // and inject shell commands (CodeQL js/incomplete-sanitization).
+  const dir = mkdtempSync(join(tmpdir(), 'nexus-review-'));
+  const file = join(dir, 'comment.md');
+  writeFileSync(file, comment, { encoding: 'utf8', mode: 0o600 });
+  try {
+    execFileSync('gh', ['pr', 'comment', String(prNumber), '--body-file', file], {
+      stdio: 'inherit',
+    });
+  } finally {
+    try {
+      unlinkSync(file);
+    } catch {
+      // best-effort cleanup
+    }
+  }
 
   if (addLabel) {
     try {
