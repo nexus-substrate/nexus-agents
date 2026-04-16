@@ -13,6 +13,7 @@ import type { SecurityFinding } from './sarif-types.js';
 import type { TriageVerdict } from './finding-triage.js';
 import { readFileSync } from 'node:fs';
 import { resolveInsideRoot } from './safe-path.js';
+import { extractJsonObject } from '../core/index.js';
 
 // ============================================================================
 // Types
@@ -120,11 +121,13 @@ Only respond with JSON, no additional text.`;
  * Parse a fix generation response.
  */
 function parseFixResponse(response: string): GeneratedFix | null {
-  const jsonMatch = response.match(/\{[\s\S]*\}/);
-  if (jsonMatch === null) return null;
+  // ReDoS-safe extraction (#1912): indexOf/lastIndexOf is O(n) vs regex
+  // backtracking. Previously `/\{[\s\S]*\}/` — same class as #1899.
+  const candidate = extractJsonObject(response);
+  if (candidate === undefined) return null;
 
   try {
-    const parsed: unknown = JSON.parse(jsonMatch[0]);
+    const parsed: unknown = JSON.parse(candidate);
     return GeneratedFixSchema.parse(parsed);
   } catch {
     return null;

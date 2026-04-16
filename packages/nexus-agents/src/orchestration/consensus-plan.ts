@@ -11,7 +11,14 @@
  */
 
 import type { Result, ILogger } from '../core/index.js';
-import { getErrorMessage, ok, err, createLogger, getTimeProvider } from '../core/index.js';
+import {
+  getErrorMessage,
+  ok,
+  err,
+  createLogger,
+  getTimeProvider,
+  extractJsonObject,
+} from '../core/index.js';
 
 import type { ICliAdapter, CliName, CliResponse, CliError } from '../cli-adapters/types.js';
 import { getOutcomeStore, categorizeOutcomeErrorMessage } from './outcomes/index.js';
@@ -214,10 +221,12 @@ const moduleLogger = createLogger({ component: 'consensus-plan' });
 /** Parses CLI output into a structured plan. */
 function parsePlan(text: string): CliPlan | null {
   try {
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (jsonMatch === null) return null;
+    // ReDoS-safe extraction (#1912): indexOf/lastIndexOf is O(n) vs regex
+    // backtracking. Previously `/\{[\s\S]*\}/` — same class as #1899.
+    const candidate = extractJsonObject(text);
+    if (candidate === undefined) return null;
 
-    const parsed: unknown = JSON.parse(jsonMatch[0]);
+    const parsed: unknown = JSON.parse(candidate);
     if (typeof parsed !== 'object' || parsed === null) return null;
 
     const obj = parsed as Record<string, unknown>;
