@@ -10,7 +10,14 @@
  */
 
 import type { Result, ILogger } from '../core/index.js';
-import { getErrorMessage, ok, err, createLogger, getTimeProvider } from '../core/index.js';
+import {
+  getErrorMessage,
+  ok,
+  err,
+  createLogger,
+  getTimeProvider,
+  extractJsonArray,
+} from '../core/index.js';
 
 import type { ICliAdapter, CliName, CliResponse, CliError } from '../cli-adapters/types.js';
 import type { ReviewFinding } from '../dogfooding/pr-review-types.js';
@@ -228,11 +235,12 @@ const moduleLogger = createLogger({ component: 'triangulated-review' });
 /** Parses CLI output into structured findings. */
 function parseFindings(text: string, cli: CliName): ReviewFinding[] {
   try {
-    // Try to extract JSON array from response
-    const jsonMatch = text.match(/\[[\s\S]*\]/);
-    if (jsonMatch === null) return [];
+    // ReDoS-safe extraction (#1912): indexOf/lastIndexOf is O(n) vs regex
+    // backtracking. Previously `/\[[\s\S]*\]/` — same class as #1899.
+    const candidate = extractJsonArray(text);
+    if (candidate === undefined) return [];
 
-    const parsed: unknown = JSON.parse(jsonMatch[0]);
+    const parsed: unknown = JSON.parse(candidate);
     if (!Array.isArray(parsed)) return [];
 
     return parsed

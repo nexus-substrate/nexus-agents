@@ -469,23 +469,16 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
 // Parsers
 // ============================================================================
 
-/**
- * Extracts the first JSON array substring from a response.
- * Uses index-based slicing (O(n)) instead of regex backtracking to avoid
- * polynomial-ReDoS on inputs with many leading `[` chars (CodeQL alert).
- * Exported for direct testing.
- */
-export function extractJsonArray(response: string): string | undefined {
-  const start = response.indexOf('[');
-  if (start === -1) return undefined;
-  const end = response.lastIndexOf(']');
-  if (end <= start) return undefined;
-  return response.slice(start, end + 1);
-}
+// Re-export the shared ReDoS-safe JSON-array extractor (moved to
+// core/json-extract.ts in #1912 to serve multiple callers). Kept as a
+// re-export for backwards compatibility with the existing regression
+// tests in agent-executor-redos.test.ts.
+export { extractJsonArray } from '../core/json-extract.js';
+import { extractJsonArray as _extractJsonArray } from '../core/index.js';
 
 function parseTasksFromResponse(response: string, fallbackPlan: string): PipelineTask[] {
   try {
-    const candidate = extractJsonArray(response);
+    const candidate = _extractJsonArray(response);
     if (candidate !== undefined) {
       const parsed = JSON.parse(candidate) as Array<Record<string, unknown>>;
       return parsed.map((t, i) => ({

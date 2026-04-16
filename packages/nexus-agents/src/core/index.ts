@@ -7,6 +7,9 @@
 export type { Result } from './result.js';
 export { ok, err, isOk, isErr, map, mapErr, unwrap, unwrapOr } from './result.js';
 
+// Safe JSON substring extraction (ReDoS-safe, O(n))
+export { extractJsonArray, extractJsonObject } from './json-extract.js';
+
 // Command result pattern (Issue #584 - CLI result consolidation)
 export type { CommandResult } from './command-result.js';
 export {

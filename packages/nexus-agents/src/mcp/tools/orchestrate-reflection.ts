@@ -12,7 +12,7 @@
 import type { WorkerResult } from '../../orchestration/aorchestra/index.js';
 import type { IModelAdapter } from '../../core/index.js';
 import type { ContentBlock } from '../../core/types/model.js';
-import { createLogger, getErrorMessage } from '../../core/index.js';
+import { createLogger, getErrorMessage, extractJsonArray } from '../../core/index.js';
 import { isReflectiveMemoryEnabled } from './reflective-retriever.js';
 import { createSessionMemory } from '../../context/session-memory.js';
 import * as os from 'node:os';
@@ -91,10 +91,12 @@ export function buildReflectionPrompt(
 /** Parse learnings from LLM response text. Returns empty array on failure. */
 export function parseLearnings(text: string): ExtractedLearning[] {
   try {
-    const jsonMatch = text.match(/\[[\s\S]*\]/);
-    if (jsonMatch === null) return [];
+    // ReDoS-safe extraction (#1912): indexOf/lastIndexOf is O(n) vs regex
+    // backtracking. Previously `/\[[\s\S]*\]/` — same class as #1899.
+    const candidate = extractJsonArray(text);
+    if (candidate === undefined) return [];
 
-    const parsed: unknown = JSON.parse(jsonMatch[0]);
+    const parsed: unknown = JSON.parse(candidate);
     if (!Array.isArray(parsed)) return [];
 
     const learnings: ExtractedLearning[] = [];

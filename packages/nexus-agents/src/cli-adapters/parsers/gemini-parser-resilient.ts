@@ -14,6 +14,7 @@
 import type { ICliResponseParser, TokenUsage } from '../types.js';
 import type { GeminiCliResponse } from './gemini-parser.js';
 import type { ResilientParseResult, GeminiErrorInfo } from './gemini-parser-resilient-types.js';
+import { extractJsonObject } from '../../core/index.js';
 import {
   asRecord,
   extractStringField,
@@ -203,23 +204,17 @@ export class ResilientGeminiParser implements ICliResponseParser<GeminiCliRespon
   }
 
   private tryExtractJson(raw: string): ResilientParseResult | null {
-    // Look for JSON object patterns in the output
-    const jsonPatterns = [
-      /\{[\s\S]*"response"\s*:\s*"[\s\S]*"\s*[\s\S]*\}/,
-      /\{[\s\S]*"response"\s*:\s*'[\s\S]*'\s*[\s\S]*\}/,
-    ];
-
-    for (const pattern of jsonPatterns) {
-      const match = pattern.exec(raw);
-      if (match !== null) {
-        const jsonStr = match[0];
-        const result = this.tryParseJson(jsonStr);
-        if (result !== null) {
-          return { ...result, parseStrategy: 'json-extracted', raw };
-        }
-      }
+    // ReDoS-safe extraction (#1912): previously used compound patterns like
+    // `/\{[\s\S]*"response"\s*:\s*"[\s\S]*"\s*[\s\S]*\}/` which have THREE
+    // `[\s\S]*` groups — catastrophic backtracking on large non-matching
+    // input. Now we extract the JSON object via indexOf/lastIndexOf (O(n))
+    // and let tryParseJson validate the "response" field structurally.
+    const candidate = extractJsonObject(raw);
+    if (candidate === undefined) return null;
+    const result = this.tryParseJson(candidate);
+    if (result !== null) {
+      return { ...result, parseStrategy: 'json-extracted', raw };
     }
-
     return null;
   }
 
