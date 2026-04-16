@@ -277,12 +277,18 @@ function reinforcePlanBeliefs(
 ): void {
   if (bm === undefined) return;
   const beliefId = `plan-approach:${task.slice(0, 80)}`;
+  // Fire-and-forget: belief memory is optional persistence. Log on failure
+  // so we notice if the belief store silently stops receiving updates.
+  const logBmError = (op: string) => (error: unknown) => {
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.debug(`Belief-memory ${op} failed`, { beliefId, error: msg });
+  };
   if (iterations <= 1) {
-    void bm.reinforce(beliefId, 'Plan approved on first vote iteration').catch(() => undefined);
+    void bm.reinforce(beliefId, 'Plan approved on first vote iteration').catch(logBmError('reinforce'));
   } else {
     void bm
       .weaken(beliefId, `Plan required ${String(iterations)} vote iterations before approval`)
-      .catch(() => undefined);
+      .catch(logBmError('weaken'));
   }
 }
 
@@ -313,7 +319,15 @@ function applyPipelineHindsight(
       : [`Pipeline did not complete — review plan approach for: ${task.slice(0, 60)}`],
     createdAt: new Date(),
   };
-  void bm.applyHindsight(record).catch(() => undefined);
+  void bm.applyHindsight(record).catch((error: unknown) => {
+    // Fire-and-forget: hindsight persistence is optional. Log so we can
+    // notice if records are silently failing to land.
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.debug('Belief-memory applyHindsight failed', {
+      hindsightId: record.hindsightId,
+      error: msg,
+    });
+  });
 }
 
 /** Build a partial result for dry-run mode. */

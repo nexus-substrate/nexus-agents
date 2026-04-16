@@ -12,7 +12,9 @@ import type { SecurityFinding } from './sarif-types.js';
 import { SEVERITY_ORDER } from './sarif-types.js';
 import { readFileSync } from 'node:fs';
 import { resolveInsideRoot } from './safe-path.js';
-import { extractJsonObject } from '../core/index.js';
+import { createLogger, getErrorMessage, extractJsonObject } from '../core/index.js';
+
+const logger = createLogger({ component: 'security-finding-triage' });
 
 /** Verdict from triage assessment. */
 export const TriageVerdictSchema = z.object({
@@ -53,7 +55,12 @@ function readContext(finding: SecurityFinding, contextLines: number): string {
     const start = Math.max(0, finding.startLine - contextLines - 1);
     const end = Math.min(lines.length, finding.endLine ?? finding.startLine + contextLines);
     return lines.slice(start, end).join('\n');
-  } catch {
+  } catch (error: unknown) {
+    logger.debug('Could not read finding context', {
+      file: resolved,
+      findingId: finding.id,
+      error: getErrorMessage(error),
+    });
     return finding.snippet ?? '';
   }
 }

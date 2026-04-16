@@ -10,6 +10,9 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import yaml from 'yaml';
+import { createLogger, getErrorMessage } from '../core/index.js';
+
+const logger = createLogger({ component: 'negative-results' });
 
 interface NegativeResult {
   name: string;
@@ -34,7 +37,11 @@ function loadNegativeResults(): NegativeResultsRegistry {
     const content = readFileSync(REGISTRY_PATH, 'utf-8');
     cachedResults = yaml.parse(content) as NegativeResultsRegistry;
     return cachedResults;
-  } catch {
+  } catch (error: unknown) {
+    logger.debug('Could not load negative-results registry', {
+      path: REGISTRY_PATH,
+      error: getErrorMessage(error),
+    });
     return { negative_results: {} };
   }
 }
