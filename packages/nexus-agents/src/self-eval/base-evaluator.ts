@@ -45,8 +45,21 @@ export abstract class BaseEvaluator {
   async evaluate(component: ComponentInfo): Promise<EvaluationResult> {
     const startTime = getTimeProvider().now();
 
+    // Racing a timeout promise against work: if work wins, we must clear the
+    // timeout or the setTimeout keeps the event loop alive + eventually fires
+    // an unhandled rejection (#1913 wave 5).
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(new Error('Evaluation timeout'));
+      }, this.timeoutMs);
+    });
     try {
-      const result = await Promise.race([this.performEvaluation(component), this.timeout()]);
+      const result = await Promise.race([this.performEvaluation(component), timeoutPromise]).finally(
+        () => {
+          if (timeoutId !== undefined) clearTimeout(timeoutId);
+        }
+      );
 
       this.log.debug('Evaluation complete', {
         component: component.path,
@@ -106,14 +119,4 @@ export abstract class BaseEvaluator {
     return { metric, value, source, ...(threshold !== undefined ? { threshold } : {}) };
   }
 
-  /**
-   * Timeout promise.
-   */
-  private timeout(): Promise<never> {
-    return new Promise((_, reject) => {
-      setTimeout(() => {
-        reject(new Error('Evaluation timeout'));
-      }, this.timeoutMs);
-    });
-  }
 }
