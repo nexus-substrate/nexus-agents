@@ -27,6 +27,7 @@ overrides:
   vite: '>=7.3.2'
   yaml@<2.8.3: '>=2.8.3'
   protobufjs@<7.5.5: ^7.5.5
+  encoding-sniffer@<1.0.0: ^1.0.0
 
 importers:
   .:
@@ -1742,6 +1743,18 @@ packages:
         integrity: sha512-rZAP3aVgB9ds9KOeUSL+zZ21hPmo8dh6fnIFwRQj5EAZl9gzR7wxYbYXYysAM8CTqGmUGyp2S4kUdV17MnGuWQ==,
       }
     engines: { node: ^20.19.0 || ^22.13.0 || >=24 }
+
+  '@exodus/bytes@1.15.0':
+    resolution:
+      {
+        integrity: sha512-UY0nlA+feH81UGSHv92sLEPLCeZFjXOuHhrIo0HQydScuQc8s0A7kL/UdgwgDq8g8ilksmuoF35YVTNphV2aBQ==,
+      }
+    engines: { node: ^20.19.0 || ^22.12.0 || >=24.0.0 }
+    peerDependencies:
+      '@noble/hashes': ^1.8.0 || ^2.0.0
+    peerDependenciesMeta:
+      '@noble/hashes':
+        optional: true
 
   '@gerrit0/mini-shiki@3.23.0':
     resolution:
@@ -4352,11 +4365,12 @@ packages:
       }
     engines: { node: '>= 0.8' }
 
-  encoding-sniffer@0.2.1:
+  encoding-sniffer@1.0.2:
     resolution:
       {
-        integrity: sha512-5gvq20T6vfpekVtqrYQsSCFZ1wEg5+wW0/QaZMWkFr6BqD3NfKs0rLCx4rrVlSWJeZb5NBJgVLswK/w2MWU+Gw==,
+        integrity: sha512-dlQ0jlnDJ2ElE1Ky4crYX0pPEPxQY9F2j+ZMIXlBedLJToEfDed9pvPqXg4fZnuu4qVBbcIrZVeg3S4aibTYGw==,
       }
+    engines: { node: '>=20.19.0' }
 
   end-of-stream@1.4.5:
     resolution:
@@ -8449,14 +8463,6 @@ packages:
         integrity: sha512-2JAn3z8AR6rjK8Sm8orRC0h/bcl/DqL7tRPdGZ4I1CjdF+EaMLmYxBHyXuKL849eucPFhvBoxMsflfOb8kxaeQ==,
       }
 
-  whatwg-encoding@3.1.1:
-    resolution:
-      {
-        integrity: sha512-6qN4hJdMwfYBtE3YBTTHhoeuUrDBPZmbQaxWAqSALV/MeEnR5z1xd8UKud2RAkFoPkmB+hli1TZSnyi84xz1vQ==,
-      }
-    engines: { node: '>=18' }
-    deprecated: Use @exodus/bytes instead for a more spec-conformant and faster implementation
-
   whatwg-fetch@3.6.20:
     resolution:
       {
@@ -9633,6 +9639,8 @@ snapshots:
       '@eslint/core': 1.2.1
       levn: 0.4.1
 
+  '@exodus/bytes@1.15.0': {}
+
   '@gerrit0/mini-shiki@3.23.0':
     dependencies:
       '@shikijs/engine-oniguruma': 3.23.0
@@ -10805,13 +10813,15 @@ snapshots:
       dom-serializer: 2.0.0
       domhandler: 5.0.3
       domutils: 3.2.2
-      encoding-sniffer: 0.2.1
+      encoding-sniffer: 1.0.2
       htmlparser2: 10.1.0
       parse5: 7.3.0
       parse5-htmlparser2-tree-adapter: 7.1.0
       parse5-parser-stream: 7.1.2
       undici: 7.24.3
       whatwg-mimetype: 4.0.0
+    transitivePeerDependencies:
+      - '@noble/hashes'
 
   chokidar@4.0.3:
     dependencies:
@@ -11163,10 +11173,11 @@ snapshots:
 
   encodeurl@2.0.0: {}
 
-  encoding-sniffer@0.2.1:
+  encoding-sniffer@1.0.2:
     dependencies:
-      iconv-lite: 0.6.3
-      whatwg-encoding: 3.1.1
+      '@exodus/bytes': 1.15.0
+    transitivePeerDependencies:
+      - '@noble/hashes'
 
   end-of-stream@1.4.5:
     dependencies:
@@ -11761,6 +11772,8 @@ snapshots:
   html-link-extractor@1.0.5:
     dependencies:
       cheerio: 1.2.0
+    transitivePeerDependencies:
+      - '@noble/hashes'
 
   html-void-elements@3.0.0: {}
 
@@ -12157,12 +12170,15 @@ snapshots:
       proxy-agent: 6.5.0
       xmlbuilder2: 4.0.3
     transitivePeerDependencies:
+      - '@noble/hashes'
       - supports-color
 
   markdown-link-extractor@4.0.3:
     dependencies:
       html-link-extractor: 1.0.5
       marked: 17.0.4
+    transitivePeerDependencies:
+      - '@noble/hashes'
 
   markdown-table@3.0.4: {}
 
@@ -13974,10 +13990,6 @@ snapshots:
   web-streams-polyfill@3.3.3: {}
 
   webidl-conversions@3.0.1: {}
-
-  whatwg-encoding@3.1.1:
-    dependencies:
-      iconv-lite: 0.6.3
 
   whatwg-fetch@3.6.20: {}
 
