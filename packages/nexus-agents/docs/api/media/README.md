@@ -17,10 +17,10 @@ nexus-agents makes your AI coding tools work together intelligently. It coordina
 **What it does for you:**
 
 - **Routes intelligently** — LinUCB bandit + TOPSIS scoring + adaptive bonuses pick the right model for each task, learned from real outcomes
-- **Enforces quality** — consensus voting (7 algorithms including Bayesian higher-order), QA review loops, security scans with SARIF
-- **Learns over time** — 8 memory backends track what works, feeding routing, planning, and research decisions
+- **Enforces quality** — consensus voting (6 strategies including Bayesian higher-order), QA review loops, security scans with SARIF
+- **Learns over time** — 5 memory backends (session, belief, agentic, adaptive, typed) track what works, feeding routing, planning, and research decisions
 - **Runs a full dev pipeline** — research papers, plan architecture, vote on proposals, decompose into tasks, implement, QA review, ship
-- **Connects everything** — 29 MCP tools, 9 research sources, graph workflows, checkpoint/resume, GitHub/GitLab issue tracking
+- **Connects everything** — 30 MCP tools, 9 research sources, graph workflows, checkpoint/resume, GitHub/GitLab issue tracking
 
 ```
 You: "Review this code for security and performance"
@@ -50,14 +50,14 @@ Consensus-validated response — outcomes feed back into routing for next time
                          │       nexus-agents server        │
                          │                                  │
                          │  ┌──────────┐  ┌──────────────┐ │
-                         │  │ 29 MCP   │  │ Dev Pipeline  │ │
+                         │  │ 30 MCP   │  │ Dev Pipeline  │ │
                          │  │ Tools    │  │ research→plan │ │
                          │  └────┬─────┘  │ →vote→impl   │ │
                          │       │        │ →QA→ship      │ │
                          │  ┌────▼─────┐  └──────────────┘ │
                          │  │Composite │                    │
                          │  │Router    │  ┌──────────────┐ │
-                         │  │(9 stages)│  │ 8 Memory     │ │
+                         │  │(9 stages)│  │ 5 Memory     │ │
                          │  └────┬─────┘  │ Backends     │ │
                          │       │        └──────────────┘ │
                          └───────┼─────────────────────────┘
@@ -108,17 +108,17 @@ nexus-agents orchestrate "Explain the architecture of this codebase"
 
 ## Capabilities
 
-| Category                       | Details                                                                                                                                     |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Intelligent Routing**        | 9-stage CompositeRouter: budget-aware, LinUCB bandit, TOPSIS multi-criteria, preference-trained, weather-adaptive. Learns from outcomes.    |
-| **Multi-Expert Orchestration** | 9 built-in expert types (code, architecture, security, testing, docs, devops, research, PM, UX) coordinated by TechLead/Orchestrator agents |
-| **Consensus Voting**           | 7 algorithms: simple majority, supermajority, unanimous, weighted, ordered-weighted, higher-order Bayesian, incremental quorum              |
-| **Development Pipeline**       | Research → Plan → Vote → Decompose → Implement → QA → Security. Three modes: autonomous, harness (caller implements), dry-run               |
-| **Memory & Learning**          | 8 backends (session, belief, adaptive, routing, graph, hybrid, agentic, typed). Cross-session persistence. Outcomes feed routing.           |
-| **Research System**            | 9 discovery sources (arXiv, GitHub, Semantic Scholar, etc). Auto-catalog, quality scoring, synthesis into topic clusters                    |
-| **Security**                   | Sandboxing (Docker/policy), trust classification, SARIF parsing, input sanitization, red team pipeline, firewall                            |
-| **Graph Workflows**            | DAG-based workflow execution with checkpoint/resume, state reduction, and event hooks                                                       |
-| **29 MCP Tools**               | Agent management, workflow execution, research, memory, codebase intelligence, repo analysis, consensus, operations                         |
+| Category                       | Details                                                                                                                                                                          |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Intelligent Routing**        | 9-stage CompositeRouter: budget-aware, LinUCB bandit, TOPSIS multi-criteria, preference-trained, weather-adaptive. Learns from outcomes.                                         |
+| **Multi-Expert Orchestration** | 11 built-in expert types (code, architecture, security, testing, docs, devops, research, PM, UX, infrastructure, data-visualization) coordinated by TechLead/Orchestrator agents |
+| **Consensus Voting**           | 6 strategies: simple_majority, supermajority, unanimous, higher_order (Bayesian correlation-aware), opinion_wise, proof_of_learning                                              |
+| **Development Pipeline**       | Research → Plan → Vote → Decompose → Implement → QA → Security. Three modes: autonomous, harness (caller implements), dry-run                                                    |
+| **Memory & Learning**          | 5 user-facing backends (session, belief, agentic, adaptive, typed). Cross-session persistence. Outcomes feed routing.                                                            |
+| **Research System**            | 9 discovery sources (arXiv, GitHub, Semantic Scholar, etc). Auto-catalog, quality scoring, synthesis into topic clusters                                                         |
+| **Security**                   | Sandboxing (Docker/policy), trust classification, SARIF parsing, input sanitization, red team pipeline, firewall                                                                 |
+| **Graph Workflows**            | DAG-based workflow execution with checkpoint/resume, state reduction, and event hooks                                                                                            |
+| **30 MCP Tools**               | Agent management, workflow execution, research, memory, codebase intelligence, repo analysis, consensus, operations                                                              |
 
 ---
 
@@ -136,6 +136,7 @@ nexus-agents orchestrate "Explain the architecture of this codebase"
 | PM             | Product management, requirements, priorities |
 | UX             | User experience, usability, accessibility    |
 | Infrastructure | Server management, bare metal, networking    |
+| Data Viz       | Charts, dashboards, visual data presentation |
 
 ---
 
@@ -209,6 +210,7 @@ When running as an MCP server, the following tools are available:
 | `extract_symbols`         | Extract code symbols from source files for analysis      |
 | `search_codebase`         | Search codebase for patterns, symbols, or text           |
 | `run_dev_pipeline`        | Full dev pipeline: research, plan, vote, implement, QA   |
+| `run_pipeline`            | Execute a pipeline plugin by name with typed input       |
 
 ---
 
