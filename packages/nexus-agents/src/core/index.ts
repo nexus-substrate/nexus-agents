@@ -10,6 +10,24 @@ export { ok, err, isOk, isErr, map, mapErr, unwrap, unwrapOr } from './result.js
 // Safe JSON substring extraction (ReDoS-safe, O(n))
 export { extractJsonArray, extractJsonObject } from './json-extract.js';
 
+// Step event vocabulary + `withStep` wrapper (#1930 — human console notifications)
+export type {
+  StepKind,
+  StepErrorCategory,
+  StepStartedEvent,
+  StepCompletedEvent,
+  StepFailedEvent,
+  StepEvent,
+} from './step-events.js';
+export { STEP_SUMMARY_MAX_LEN, truncateSummary } from './step-events.js';
+export { stepBus } from './step-bus.js';
+export type { StepOptions, StepContext } from './with-step.js';
+export { withStep, currentStepId } from './with-step.js';
+export { startConsoleRenderer } from './console-renderer.js';
+export { startStepLoggerBridge } from './step-logger-bridge.js';
+export type { BootstrapOptions, NotificationHandles } from './step-notifications.js';
+export { bootstrapStepNotifications, shouldEnableConsoleRenderer } from './step-notifications.js';
+
 // Command result pattern (Issue #584 - CLI result consolidation)
 export type { CommandResult } from './command-result.js';
 export {

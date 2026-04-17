@@ -23,7 +23,7 @@ import { join } from 'node:path';
 
 import { runQaLoop } from '../orchestration/qa-loop.js';
 
-import { createLogger } from '../core/index.js';
+import { createLogger, withStep } from '../core/index.js';
 import { getPipelineEventBus } from './event-bus.js';
 import {
   saveStageCheckpoint,
@@ -284,7 +284,9 @@ function reinforcePlanBeliefs(
     logger.debug(`Belief-memory ${op} failed`, { beliefId, error: msg });
   };
   if (iterations <= 1) {
-    void bm.reinforce(beliefId, 'Plan approved on first vote iteration').catch(logBmError('reinforce'));
+    void bm
+      .reinforce(beliefId, 'Plan approved on first vote iteration')
+      .catch(logBmError('reinforce'));
   } else {
     void bm
       .weaken(beliefId, `Plan required ${String(iterations)} vote iterations before approval`)
@@ -363,10 +365,16 @@ async function runPlanningPhase(
     caveats: readonly string[];
   };
 }> {
-  const research = await runOrResume(prior, 'research', () => {
-    logger.info('Stage: research', { task: task.slice(0, 100) });
-    return stages.research(task);
-  });
+  const research = await runOrResume(prior, 'research', () =>
+    withStep(
+      { name: 'research', kind: 'pipeline.stage', attrs: { task: task.slice(0, 100) } },
+      async (ctx) => {
+        const r = await stages.research(task);
+        ctx.setSummary(`${String(r.length)} chars`);
+        return r;
+      }
+    )
+  );
   if (sid !== undefined) saveStageCheckpoint(sid, 'research', { type: 'research', text: research });
 
   const planResult = await runPlanOrResume(prior, task, research, stages);
@@ -420,8 +428,14 @@ async function runImplSecurityPhase(
   if (sid !== undefined)
     saveStageCheckpoint(sid, 'implement', { type: 'implement', tasks: implResult.completedTasks });
 
-  logger.info('Stage: security scan');
-  const security = await stages.securityScan();
+  const security = await withStep(
+    { name: 'security-scan', kind: 'pipeline.stage' },
+    async (ctx) => {
+      const r = await stages.securityScan();
+      ctx.setSummary(r.passed ? 'passed' : 'FAILED');
+      return r;
+    }
+  );
   if (sid !== undefined) {
     saveStageCheckpoint(sid, 'security', { type: 'security', passed: security.passed });
     if (security.passed) cleanupCheckpoint(sid);
@@ -494,8 +508,11 @@ async function runOrResumeDecompose(
     logger.info('Resuming from checkpoint', { stage: 'decompose' });
     return [...prior.tasks];
   }
-  logger.info('Stage: decompose');
-  const tasks = await stages.decompose(plan);
+  const tasks = await withStep({ name: 'decompose', kind: 'pipeline.stage' }, async (ctx) => {
+    const r = await stages.decompose(plan);
+    ctx.setSummary(`${String(r.length)} tasks`);
+    return r;
+  });
   if (meta.conditional && tasks.length > 0) {
     return tasks.map((t) => ({
       ...t,
@@ -530,11 +547,21 @@ async function planVoteLoop(
   let plan = '';
 
   for (let i = 1; i <= MAX_VOTE_ITERATIONS; i++) {
-    logger.info('Stage: plan', { iteration: i });
-    plan = await stages.plan(task, research, feedback);
+    plan = await withStep(
+      { name: `plan (i=${String(i)})`, kind: 'pipeline.stage', attrs: { iteration: i } },
+      () => stages.plan(task, research, feedback)
+    );
 
-    logger.info('Stage: vote', { iteration: i });
-    const vote = await stages.vote(plan);
+    const vote = await withStep(
+      { name: `vote (i=${String(i)})`, kind: 'consensus.vote', attrs: { iteration: i } },
+      async (ctx) => {
+        const r = await stages.vote(plan);
+        ctx.setSummary(
+          `${String(Math.round(r.approvalPercentage))}% ${isApproved(r) ? 'approved' : 'rejected'}`
+        );
+        return r;
+      }
+    );
 
     if (isApproved(vote)) {
       const meta = extractConditionalMeta(vote);
