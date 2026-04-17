@@ -9,7 +9,7 @@
  */
 
 import type { Result } from '../../core/index.js';
-import { ok, err, createLogger, getTimeProvider } from '../../core/index.js';
+import { ok, err, createLogger, getTimeProvider, withStep } from '../../core/index.js';
 import type {
   GraphNode,
   GraphState,
@@ -266,26 +266,38 @@ async function executeHook<T>(
   onSuccess: (durationMs: number) => T,
   onFailure: (durationMs: number, errorMsg: string) => T
 ): Promise<T> {
-  const startTime = getTimeProvider().now();
-  emitHookEvent({ type: 'hook_started', ...base });
+  return withStep(
+    {
+      name: `hook:${base.hookPhase}:${base.nodeId}`,
+      kind: 'graph.hook',
+      attrs: { nodeId: base.nodeId, hookName: base.hookName, phase: base.hookPhase },
+    },
+    async (ctx) => {
+      const startTime = getTimeProvider().now();
+      emitHookEvent({ type: 'hook_started', ...base });
 
-  try {
-    const result = await run();
-    const durationMs = getTimeProvider().now() - startTime;
+      try {
+        const result = await run();
+        const durationMs = getTimeProvider().now() - startTime;
 
-    if (result.ok) {
-      emitHookEvent({ type: 'hook_completed', ...base, durationMs });
-      return onSuccess(durationMs);
+        if (result.ok) {
+          emitHookEvent({ type: 'hook_completed', ...base, durationMs });
+          ctx.setSummary(`${base.hookPhase} passed`);
+          return onSuccess(durationMs);
+        }
+
+        emitHookFailed({ ...base, error: result.error.message });
+        ctx.setSummary(`${base.hookPhase} failed: ${result.error.message}`);
+        return onFailure(durationMs, result.error.message);
+      } catch (error: unknown) {
+        const durationMs = getTimeProvider().now() - startTime;
+        const msg = error instanceof Error ? error.message : String(error);
+        emitHookFailed({ ...base, error: msg });
+        ctx.setSummary(`${base.hookPhase} error: ${msg}`);
+        return onFailure(durationMs, msg);
+      }
     }
-
-    emitHookFailed({ ...base, error: result.error.message });
-    return onFailure(durationMs, result.error.message);
-  } catch (error: unknown) {
-    const durationMs = getTimeProvider().now() - startTime;
-    const msg = error instanceof Error ? error.message : String(error);
-    emitHookFailed({ ...base, error: msg });
-    return onFailure(durationMs, msg);
-  }
+  );
 }
 
 // ============================================================================
