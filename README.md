@@ -57,7 +57,7 @@ Consensus-validated response — outcomes feed back into routing for next time
                          │  ┌────▼─────┐  └──────────────┘ │
                          │  │Composite │                    │
                          │  │Router    │  ┌──────────────┐ │
-                         │  │(9 stages)│  │ 8 Memory     │ │
+                         │  │(9 stages)│  │ 5 Memory     │ │
                          │  └────┬─────┘  │ Backends     │ │
                          │       │        └──────────────┘ │
                          └───────┼─────────────────────────┘
