@@ -88,6 +88,7 @@ export {
   StreamCancelledError,
   createStream,
   collectStream,
+  DEFAULT_COLLECT_STREAM_MAX_CHUNKS,
   transformStream,
   mergeStreams,
   takeUntil,
