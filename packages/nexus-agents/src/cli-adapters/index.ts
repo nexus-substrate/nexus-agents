@@ -428,6 +428,14 @@ export {
 } from './unified-routing-types.js';
 export type { RoutingStrategy, UnifiedRoutingDecision } from './unified-routing-types.js';
 
+// Typed Structured Output (Issue #1897)
+export { generateObject } from './generate-object.js';
+export type {
+  GenerateObjectOptions,
+  GenerateObjectResult,
+  GenerateObjectError,
+} from './generate-object.js';
+
 // Cascade Router Base (Issue #574)
 export { CascadeRouterBase, DEFAULT_CASCADE_BASE_CONFIG } from './cascade-router-base.js';
 export type {
