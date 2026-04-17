@@ -4,12 +4,17 @@
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 1.0.x   | :white_check_mark: |
-| < 1.0   | :x:                |
+| 2.x     | :white_check_mark: |
+| < 2.0   | :x:                |
 
 ## Reporting a Vulnerability
 
-We take security seriously. If you discover a security vulnerability, please follow these steps:
+We take security seriously. If you discover a security vulnerability, please report it responsibly.
+
+### Security Contact
+
+- **Email**: [williamzujkowski@gmail.com](mailto:williamzujkowski@gmail.com)
+- **GitHub Security Advisory** (preferred): https://github.com/williamzujkowski/nexus-agents/security/advisories/new
 
 ### Do NOT
 
@@ -17,14 +22,13 @@ We take security seriously. If you discover a security vulnerability, please fol
 - Disclose the vulnerability publicly before it has been addressed
 - Exploit the vulnerability for any purpose
 
-### Do
+### What to Include
 
-1. **GitHub Security Advisory**: Create a private security advisory at https://github.com/williamzujkowski/nexus-agents/security/advisories/new
-2. **Include**:
-   - Description of the vulnerability
-   - Steps to reproduce
-   - Potential impact
-   - Suggested fix (if any)
+- Description of the vulnerability
+- Steps to reproduce
+- Potential impact assessment
+- Suggested fix (if any)
+- CWE identifier (if known)
 
 ### What to Expect
 
@@ -99,4 +103,4 @@ Security updates are released as patch versions. Subscribe to GitHub releases to
 
 ---
 
-_Last updated: 2026-01-04_
+_Last updated: 2026-04-17_
