@@ -1,6 +1,8 @@
 {
   "$schema": "https://typedoc.org/schema.json",
   "entryPoints": ["src/index.ts"],
+  "tsconfig": "tsconfig.docs.json",
+  "exclude": ["**/*.test.ts", "**/*.spec.ts", "**/*.fuzz.test.ts"],
   "out": "docs/api",
   "name": "nexus-agents",
   "includeVersion": true,

@@ -26,6 +26,7 @@ import {
 import { getConfig, adaptRoutingConfig } from '../config/index.js';
 import { executeWithPuppeteer } from './orchestrate-puppeteer.js';
 import type { OrchestrateOptions, PuppeteerOrchestrationResult } from './orchestrate-types.js';
+import { buildDryRunReport, renderDryRunText, type DryRunReport } from './orchestrate-dry-run.js';
 
 // Re-export types for backward compatibility
 export type { OrchestrateEngine, OrchestrateOptions } from './orchestrate-types.js';
@@ -38,6 +39,8 @@ interface OrchestrationResult {
   routing?: CompositeRoutingDecision;
   error?: string;
   durationMs: number;
+  /** Present only when dryRun=true — enriched task analysis + cost estimate. */
+  dryRun?: DryRunReport;
 }
 
 /**
@@ -119,6 +122,7 @@ async function executeWithRouting(
       success: true,
       model: decision.cliName,
       routing: decision,
+      dryRun: buildDryRunReport(task, decision),
       durationMs: time.now() - startTime,
     };
   }
@@ -225,6 +229,12 @@ function formatPuppeteerStats(puppeteer: PuppeteerOrchestrationResult['puppeteer
 function formatResultText(result: OrchestrationResult | PuppeteerOrchestrationResult): string {
   const lines: string[] = [];
   const puppeteerResult = result as PuppeteerOrchestrationResult;
+  const resultWithDryRun = result as OrchestrationResult;
+
+  // Dry run: emit enriched report instead of minimal routing summary
+  if (resultWithDryRun.dryRun !== undefined) {
+    return renderDryRunText(resultWithDryRun.dryRun);
+  }
 
   if (result.success) {
     lines.push(`Task completed using ${result.model} (${String(result.durationMs)}ms)`);

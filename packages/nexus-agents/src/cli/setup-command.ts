@@ -38,6 +38,7 @@ import { detectGeminiCli, configureGemini } from './setup-gemini.js';
 import { detectCodexCli, configureCodex } from './setup-codex.js';
 import { VERSION } from '../version.js';
 import { runWizard } from './setup-wizard.js';
+import { generatePermissionsSnippet, buildPermissionsBanner } from './setup-permissions.js';
 
 // ============================================================================
 // Output Helpers
@@ -752,6 +753,14 @@ function printDetailSections(result: SetupResult): void {
   }
   if (result.rulesPath !== undefined) printRulesFile(result.rulesPath);
   if (result.dataDirPath !== undefined) printDataDirSection(result);
+  printPermissionsSuggestion();
+}
+
+/** Prints the Claude Code permissions suggestion (#1945). */
+function printPermissionsSuggestion(): void {
+  const snippet = generatePermissionsSnippet('all');
+  const banner = buildPermissionsBanner(snippet);
+  writeLine(banner);
 }
 
 /** Prints the data directory section. */
