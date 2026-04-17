@@ -1,5 +1,25 @@
 # nexus-agents
 
+## 2.32.0
+
+### Minor Changes
+
+- [#1940](https://github.com/williamzujkowski/nexus-agents/pull/1940) [`bf7a4c4`](https://github.com/williamzujkowski/nexus-agents/commit/bf7a4c43871fa862ad606e3612fbf256d4b42c44) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(cli-adapters): add generateObject<T> for typed structured output with retry-with-feedback ([#1897](https://github.com/williamzujkowski/nexus-agents/issues/1897))
+
+  New `generateObject()` helper wraps CLI adapter execution with:
+  - Zod schema → JSON Schema instruction appended to prompt
+  - Automatic JSON extraction from LLM response (object or array)
+  - Zod validation of extracted data
+  - On validation failure: retry once with the validation error fed back
+    to the LLM ("Your previous response failed JSON validation: ...")
+  - Returns `Result<GenerateObjectResult<T>, GenerateObjectError>`
+
+  This replaces the manual `extractJsonObject → JSON.parse → Zod.parse`
+  pattern scattered across consensus-plan, triangulated-review, security
+  fix-generator, and finding-triage. Inspired by vercel/ai's
+  `generateObject` and pydantic-ai's parse-retry-with-feedback pattern
+  (surfaced in [#1892](https://github.com/williamzujkowski/nexus-agents/issues/1892) research).
+
 ## 2.31.1
 
 ### Patch Changes
