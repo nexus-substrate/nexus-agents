@@ -154,9 +154,9 @@ describe('CodexCliAdapter (Subprocess)', () => {
       const info = miniAdapter.getModelInfo();
 
       expect(info.id).toBe('o3-mini');
-      // o3-mini maps to codex-5.1-mini in registry: pricing {0.5, 2.0}
-      expect(info.costPerMillionInput).toBe(0.5);
-      expect(info.costPerMillionOutput).toBe(2.0);
+      // o3-mini maps to codex-5.1-mini in registry: pricing {1.1, 4.4}
+      expect(info.costPerMillionInput).toBe(1.1);
+      expect(info.costPerMillionOutput).toBe(4.4);
     });
 
     it('should return legacy costs for non-canonical model', () => {

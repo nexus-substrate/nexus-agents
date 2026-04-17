@@ -1211,9 +1211,9 @@ describe('Tracer', () => {
         provider: 'openai',
       });
 
-      // codex-5.1-mini: $0.5/1M input, $2/1M output
-      // 10M * 0.5 + 5M * 2 = 5 + 10 = 15
-      expect(tracer.getSpan(span!.context.spanId)?.llmMetrics?.costUsd).toBeCloseTo(15.0, 2);
+      // codex-5.1-mini: $1.10/1M input, $4.40/1M output
+      // 10M * 1.10 + 5M * 4.40 = 11.0 + 22.0 = 33.0
+      expect(tracer.getSpan(span!.context.spanId)?.llmMetrics?.costUsd).toBeCloseTo(33.0, 2);
     });
 
     it('should calculate correct cost for gemini-flash', () => {
