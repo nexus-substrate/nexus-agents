@@ -104,7 +104,7 @@ describe('GeminiCliAdapter', () => {
       expect(caps.contextWindow).toBe(1_000_000);
       expect(caps.codeGeneration).toBe(9);
       expect(caps.speed).toBe(8);
-      expect(caps.cost).toBe(7);
+      expect(caps.cost).toBe(6);
     });
   });
 
@@ -121,8 +121,8 @@ describe('GeminiCliAdapter', () => {
     it('should return correct cost info for pro', () => {
       const info = adapter.getModelInfo();
 
-      expect(info.costPerMillionInput).toBe(1.25);
-      expect(info.costPerMillionOutput).toBe(10.0);
+      expect(info.costPerMillionInput).toBe(2.0);
+      expect(info.costPerMillionOutput).toBe(12.0);
     });
 
     it('should return correct info for pro model', () => {
