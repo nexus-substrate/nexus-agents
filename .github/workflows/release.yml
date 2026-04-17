@@ -28,6 +28,7 @@ jobs:
       contents: write
       pull-requests: write
       id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
@@ -94,6 +95,20 @@ jobs:
           fi
           echo "Uploading SBOMs to release tag: $TAG"
           gh release upload "$TAG" sbom.spdx.json sbom.cdx.json --clobber
+
+      - name: Attest SBOM artifacts
+        if: steps.changesets.outputs.published == 'true' && hashFiles('sbom.spdx.json') != ''
+        uses: actions/attest-build-provenance@db473fddc028af60658334401dc6fa3ffd8669fd # v2.3.0
+        with:
+          subject-path: |
+            sbom.spdx.json
+            sbom.cdx.json
+
+      - name: Attest npm package
+        if: steps.changesets.outputs.published == 'true'
+        uses: actions/attest-build-provenance@db473fddc028af60658334401dc6fa3ffd8669fd # v2.3.0
+        with:
+          subject-path: packages/nexus-agents/package.json
 
   # Manual publish (runs on workflow_dispatch)
   manual-publish:
