@@ -1225,9 +1225,9 @@ describe('Tracer', () => {
         provider: 'google',
       });
 
-      // gemini-flash: $0.15/1M input, $0.6/1M output
-      // 10M * 0.15 + 5M * 0.6 = 1.5 + 3.0 = 4.5
-      expect(tracer.getSpan(span!.context.spanId)?.llmMetrics?.costUsd).toBeCloseTo(4.5, 2);
+      // gemini-flash: $0.30/1M input, $2.50/1M output
+      // 10M * 0.30 + 5M * 2.50 = 3.0 + 12.5 = 15.5
+      expect(tracer.getSpan(span!.context.spanId)?.llmMetrics?.costUsd).toBeCloseTo(15.5, 2);
     });
   });
 });
