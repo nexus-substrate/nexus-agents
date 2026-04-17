@@ -28,6 +28,7 @@ import {
   getTimeProvider,
   getRandomProvider,
   formatZodError,
+  withStep,
 } from '../../core/index.js';
 import type { IMcpNotifier } from '../mcp-notifier.js';
 import { createMcpNotifier, NOOP_NOTIFIER, withProgressHeartbeat } from '../mcp-notifier.js';
@@ -376,28 +377,40 @@ async function runExpertTask(
     if (fallback !== undefined) return fallback;
   }
 
-  deps.logger?.info('Executing expert task', { expertId, role: expert.role, taskId: task.id });
+  return withStep(
+    { name: `expert:${expert.role}`, kind: 'expert.exec', attrs: { expertId, role: expert.role } },
+    async (ctx) => {
+      const monitor = getHeartbeatMonitor();
+      const sessionId = monitor.startSession(expertId);
+      const startTime = getTimeProvider().now();
 
-  const monitor = getHeartbeatMonitor();
-  const sessionId = monitor.startSession(expertId);
-  const startTime = getTimeProvider().now();
+      const heartbeatTimer = setInterval(() => {
+        if (monitor.isExpired(sessionId)) {
+          deps.logger?.warn('Expert session expired', { expertId, sessionId });
+        }
+        monitor.heartbeat(sessionId);
+      }, HEARTBEAT_TIMEOUTS.heartbeatIntervalMs);
 
-  const heartbeatTimer = setInterval(() => {
-    if (monitor.isExpired(sessionId)) {
-      deps.logger?.warn('Expert session expired', { expertId, sessionId });
+      let result;
+      try {
+        result = await expert.execute(task);
+      } finally {
+        clearInterval(heartbeatTimer);
+        monitor.endSession(sessionId);
+      }
+      const durationMs = getTimeProvider().now() - startTime;
+      const classified = await classifyExpertResult({
+        result,
+        expert,
+        task,
+        args,
+        durationMs,
+        logger: deps.logger,
+      });
+      ctx.setSummary(classified.ok ? `${expert.role} ok` : `${expert.role} failed`);
+      return classified;
     }
-    monitor.heartbeat(sessionId);
-  }, HEARTBEAT_TIMEOUTS.heartbeatIntervalMs);
-
-  let result;
-  try {
-    result = await expert.execute(task);
-  } finally {
-    clearInterval(heartbeatTimer);
-    monitor.endSession(sessionId);
-  }
-  const durationMs = getTimeProvider().now() - startTime;
-  return classifyExpertResult({ result, expert, task, args, durationMs, logger: deps.logger });
+  );
 }
 
 /**
