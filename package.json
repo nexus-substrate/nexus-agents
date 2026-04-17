@@ -51,7 +51,7 @@
     "review": "npx tsx scripts/review-pr.ts",
     "link-check": "npx lychee --config lychee.toml .",
     "changeset": "changeset",
-    "changeset:version": "changeset version && npx tsx scripts/sync-plugin-version.ts && pnpm governance:inject && npx tsx scripts/generate-repo-index.ts && npx tsx scripts/generate-docs.ts && pnpm --filter nexus-agents docs",
+    "changeset:version": "changeset version && npx tsx scripts/sync-plugin-version.ts && pnpm governance:inject && npx tsx scripts/generate-repo-index.ts && npx tsx scripts/generate-docs-content.ts && pnpm --filter nexus-agents docs",
     "changeset:publish": "changeset publish",
     "release": "pnpm build && changeset publish"
   },
