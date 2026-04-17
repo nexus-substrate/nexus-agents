@@ -1,5 +1,48 @@
 # nexus-agents
 
+## 2.31.0
+
+### Minor Changes
+
+- [#1930](https://github.com/williamzujkowski/nexus-agents/pull/1930) [`2ed122d`](https://github.com/williamzujkowski/nexus-agents/commit/2ed122dc5c9036ac4cb5fde33a12bef343a7e435) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(core): human console notifications for step boundaries ([#1930](https://github.com/williamzujkowski/nexus-agents/issues/1930))
+
+  Adds a typed step event bus and stderr console renderer so operators see a
+  scannable trail of what nexus-agents is doing when invoked via CLI or
+  pipeline. JSON logs remain the source of truth; the renderer is a peer
+  subscriber to the same `stepBus`.
+  - New `core/step-events` vocabulary: `step.started | step.completed | step.failed`
+    with stable fields (stepId, parentStepId, kind, durationMs, errorCategory,
+    summary).
+  - New `core/with-step` wrapper propagates parent step IDs via AsyncLocalStorage,
+    so nested steps display correctly indented without threading context.
+  - New `core/console-renderer` subscribes to the bus and writes to stderr only;
+    glyph mode when TTY, ASCII otherwise; honors `NO_COLOR`.
+  - `core/step-logger-bridge` emits the same events as structured JSON logs for
+    backward compatibility.
+  - `bootstrapStepNotifications({ mode })` wires both subscribers. Defaults:
+    `cli` and `mcp-http` on, `mcp-stdio` off (protects JSON-RPC frames).
+    Override with `NEXUS_CONSOLE=0|1`. Bootstrap is idempotent.
+  - First canonical migration: `pipeline/dev-pipeline.ts` research,
+    security-scan, decompose, plan, and vote stages now emit step events with
+    useful summaries (e.g., `83% approved`, `12 tasks`).
+
+  No behavior change to existing JSON logs or MCP frames.
+
+### Patch Changes
+
+- [#1932](https://github.com/williamzujkowski/nexus-agents/pull/1932) [`a28ce80`](https://github.com/williamzujkowski/nexus-agents/commit/a28ce803a631d378c1b0331dd2cf6ff8d29083ac) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(orchestration): wire step notifications into consensus-plan + triangulated-review
+
+  Second wave of step-notification migrations (follows [#1930](https://github.com/williamzujkowski/nexus-agents/issues/1930)). Both
+  multi-CLI orchestration entry points now emit `step.started`/`completed`
+  events to the shared step bus, with useful summaries:
+  - `consensus-plan` → `"3 agreed, 1 divergent, 3/3 CLIs"`
+  - `triangulated-review` → `"7 findings (12 raw), 3/3 CLIs"`
+
+  The previous `logger.info` start/end pairs are replaced by `withStep(...)`;
+  the ILogger is still used for per-CLI dispatch logs and outcome recording.
+  JSON logs remain the source of truth (step events flow through the same
+  bus and get logged by the existing bridge).
+
 ## 2.30.8
 
 ### Patch Changes
