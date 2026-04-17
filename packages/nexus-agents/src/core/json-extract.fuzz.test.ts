@@ -52,8 +52,9 @@ describe('extractJsonObject — fuzzing', () => {
         (obj) => {
           const json = JSON.stringify(obj);
           const extracted = extractJsonObject(json);
+          expect(extracted).toBeDefined();
+          if (extracted === undefined) return; // type narrowing
           expect(extracted).toBe(json);
-          // Verify parse succeeds
           const parsed: unknown = JSON.parse(extracted);
           expect(parsed).toEqual(obj);
         }
@@ -118,6 +119,8 @@ describe('extractJsonArray — fuzzing', () => {
         (arr) => {
           const json = JSON.stringify(arr);
           const extracted = extractJsonArray(json);
+          expect(extracted).toBeDefined();
+          if (extracted === undefined) return;
           expect(extracted).toBe(json);
           const parsed: unknown = JSON.parse(extracted);
           expect(parsed).toEqual(arr);
