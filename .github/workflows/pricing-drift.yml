@@ -1,0 +1,72 @@
+name: Pricing Drift Check
+
+on:
+  schedule:
+    - cron: '23 8 * * 1' # Weekly Monday ~8:23am UTC (off-minute per CLAUDE.md)
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    name: Check model pricing drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: ./.github/actions/setup-node
+
+      - name: Check pricing drift against litellm
+        id: drift
+        run: |
+          OUTPUT=$(pnpm check:pricing-drift 2>&1)
+          echo "$OUTPUT"
+          # Extract drift count from output
+          DRIFT=$(echo "$OUTPUT" | grep -oP '(\d+) field' | grep -oP '\d+' || echo "0")
+          echo "drift_count=$DRIFT" >> "$GITHUB_OUTPUT"
+          echo "$OUTPUT" > drift-report.txt
+
+      - name: Create issue if significant drift found
+        if: steps.drift.outputs.drift_count > 5
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        with:
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('drift-report.txt', 'utf-8');
+            const count = '${{ steps.drift.outputs.drift_count }}';
+
+            // Check for existing open issue
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'tech-debt,discovered',
+              per_page: 100,
+            });
+            const hasIssue = existing.data.some(i =>
+              i.title.includes('pricing drift')
+            );
+            if (hasIssue) {
+              console.log('Pricing drift issue already open, skipping');
+              return;
+            }
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `chore(model-registry): review + update pricing drift (${count} fields)`,
+              labels: ['tech-debt', 'discovered'],
+              body: [
+                '**Found during:** weekly pricing drift check',
+                `**Severity:** medium — stale pricing affects cost-aware routing`,
+                '',
+                '```',
+                report.slice(0, 3000),
+                '```',
+                '',
+                'Review and update `packages/nexus-agents/src/config/model-capabilities.ts`.',
+              ].join('\n'),
+            });
