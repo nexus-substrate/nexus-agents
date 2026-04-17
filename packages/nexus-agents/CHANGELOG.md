@@ -1,5 +1,17 @@
 # nexus-agents
 
+## 2.31.1
+
+### Patch Changes
+
+- [#1936](https://github.com/williamzujkowski/nexus-agents/pull/1936) [`dd615b9`](https://github.com/williamzujkowski/nexus-agents/commit/dd615b9d20cb7496642beb5736156bed2548f5cb) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(mcp,graph): wire step notifications into execute-expert + graph-hooks
+
+  Third wave of step-notification migrations. Operators now see:
+  - `expert:code_expert` / `expert:security_expert` etc. during expert
+    execution with summary like `"code_expert ok"` or `"security_expert failed"`
+  - `hook:precondition:nodeId` / `hook:verify:nodeId` during graph workflow
+    hook execution with summary like `"precondition passed"` or `"verify failed: ..."`
+
 ## 2.31.0
 
 ### Minor Changes
