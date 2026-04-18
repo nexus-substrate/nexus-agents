@@ -463,6 +463,10 @@ export function printSweBenchHelp(): void {
   console.log(`
 Usage: nexus-agents swe-bench <subcommand> [options]
 
+DEPRECATED: This command is being superseded by \`nexus-eval-swebench\`
+(https://github.com/williamzujkowski/nexus-eval-swebench). It remains
+functional for backwards compatibility but will not receive new features.
+
 Subcommands:
   run       Run agents on SWE-bench instances
   status    Show progress and completed predictions
@@ -488,12 +492,27 @@ Evaluate options:
 `);
 }
 
+let deprecationWarned = false;
+
+function emitDeprecationWarning(): void {
+  if (deprecationWarned) return;
+  deprecationWarned = true;
+  if (process.env['NEXUS_SUPPRESS_SWEBENCH_DEPRECATION'] === '1') return;
+  console.warn(
+    '[deprecation] `nexus-agents swe-bench` is superseded by `nexus-eval-swebench` ' +
+      '(https://github.com/williamzujkowski/nexus-eval-swebench). This in-tree command ' +
+      'remains functional but will not receive new benchmark features. Suppress this ' +
+      'warning with NEXUS_SUPPRESS_SWEBENCH_DEPRECATION=1.'
+  );
+}
+
 /** Main SWE-bench command handler. */
 export async function sweBenchCommand(args: readonly string[]): Promise<number> {
   if (args.length === 0 || args[0] === '--help' || args[0] === '-h') {
     printSweBenchHelp();
     return 0;
   }
+  emitDeprecationWarning();
   const options = parseSweBenchArgs(args);
   try {
     const result =
