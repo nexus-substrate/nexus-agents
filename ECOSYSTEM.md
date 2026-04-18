@@ -47,11 +47,12 @@ Full applications built on top of nexus-agents, demonstrating real-world usage p
 
 Standalone benchmark harnesses implementing the `BenchmarkAdapter` contract from nexus-agents ≥2.33.1. Each is a runnable npm package with its own CLI; nexus-agents supplies the orchestrator (`runBenchmark`), types, and reporting surface.
 
-| Repo                                                                           | Benchmark                                               | Pattern                                                 |
-| ------------------------------------------------------------------------------ | ------------------------------------------------------- | ------------------------------------------------------- |
-| [nexus-eval-template](https://github.com/williamzujkowski/nexus-eval-template) | Template scaffold — copy via GitHub "Use this template" | `is_template=true` + topic `nexus-agents-eval-template` |
+| Repo                                                                           | Benchmark                                                  | Pattern                                                 |
+| ------------------------------------------------------------------------------ | ---------------------------------------------------------- | ------------------------------------------------------- |
+| [nexus-eval-template](https://github.com/williamzujkowski/nexus-eval-template) | Template scaffold — copy via GitHub "Use this template"    | `is_template=true` + topic `nexus-agents-eval-template` |
+| [nexus-eval-swebench](https://github.com/williamzujkowski/nexus-eval-swebench) | SWE-bench Lite / Verified / Full — GitHub issue resolution | Wraps `SWEBenchRunner`; prediction-only MVP             |
 
-New harnesses land here as they are extracted (SWE-bench is tracked by #1962). To build one, start from the template: `gh repo create yourname/nexus-eval-<bench> --template williamzujkowski/nexus-eval-template --public`.
+New harnesses land here as they are extracted. To build one, start from the template: `gh repo create yourname/nexus-eval-<bench> --template williamzujkowski/nexus-eval-template --public`.
 
 ## Companions (`nexus-agents-companion`)
 
