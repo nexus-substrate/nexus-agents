@@ -11,6 +11,9 @@ gh search repos --owner williamzujkowski --topic nexus-agents-test
 # Showcase / demo projects built on nexus-agents
 gh search repos --owner williamzujkowski --topic nexus-agents-demo
 
+# Standalone benchmark / evaluation harnesses
+gh search repos --owner williamzujkowski --topic nexus-agents-eval
+
 # Sibling projects that integrate with nexus-agents
 gh search repos --owner williamzujkowski --topic nexus-agents-companion
 ```
@@ -40,6 +43,16 @@ Full applications built on top of nexus-agents, demonstrating real-world usage p
 | [repo-health-report](https://github.com/williamzujkowski/repo-health-report) | Multi-agent orchestration + consensus voting on real GitHub repos     |
 | [siteprobe](https://github.com/williamzujkowski/siteprobe)                   | Standalone CLI derived from dogfooding the step-notifications pattern |
 
+## Evaluations / Benchmarks (`nexus-agents-eval`)
+
+Standalone benchmark harnesses implementing the `BenchmarkAdapter` contract from nexus-agents ≥2.33.1. Each is a runnable npm package with its own CLI; nexus-agents supplies the orchestrator (`runBenchmark`), types, and reporting surface.
+
+| Repo                                                                           | Benchmark                                               | Pattern                                                 |
+| ------------------------------------------------------------------------------ | ------------------------------------------------------- | ------------------------------------------------------- |
+| [nexus-eval-template](https://github.com/williamzujkowski/nexus-eval-template) | Template scaffold — copy via GitHub "Use this template" | `is_template=true` + topic `nexus-agents-eval-template` |
+
+New harnesses land here as they are extracted (SWE-bench is tracked by #1962). To build one, start from the template: `gh repo create yourname/nexus-eval-<bench> --template williamzujkowski/nexus-eval-template --public`.
+
 ## Companions (`nexus-agents-companion`)
 
 Sibling projects that either use nexus-agents or are designed to be used alongside it.
@@ -56,11 +69,13 @@ Sibling projects that either use nexus-agents or are designed to be used alongsi
 
 The `ecosystem-smoke` workflow (see `.github/workflows/ecosystem-smoke.yml`) periodically checks out each `nexus-agents-test` repo and runs its tests against the latest nexus-agents. Failures surface as issues on this repo with a `discovered` label.
 
+`nexus-agents-eval` repos are NOT part of ecosystem-smoke by default — benchmark runs are too expensive/long-running for a weekly gate. Each eval repo owns its own CI (typically: unit tests in GitHub Actions + a smaller `--limit 5` smoke job; full benchmark runs are dispatched manually or on release).
+
 ### Adding a new repo to the ecosystem
 
 1. Apply the appropriate topic:
    ```sh
-   gh repo edit owner/repo --add-topic nexus-agents-test  # or -demo, -companion
+   gh repo edit owner/repo --add-topic nexus-agents-test  # or -demo, -eval, -companion
    ```
 2. Ensure the repo has a `pnpm test` (or equivalent) entry point for smoke testing.
 3. Open a PR adding a row to the appropriate table above.
