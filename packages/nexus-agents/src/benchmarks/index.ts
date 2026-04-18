@@ -88,5 +88,5 @@ export {
 // (nexus-eval-swebench, nexus-eval-safety, etc.) implement this.
 export type { BenchmarkAdapter, BenchmarkRunContext, BenchmarkRunSummary } from './adapter.js';
 export { NOOP_PROGRESS } from './adapter.js';
-export type { OrchestratorOptions } from './orchestrator.js';
+export type { BenchmarkOrchestratorOptions } from './orchestrator.js';
 export { runBenchmark } from './orchestrator.js';

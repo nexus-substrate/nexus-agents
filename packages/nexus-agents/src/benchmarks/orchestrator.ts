@@ -9,7 +9,7 @@
 
 import type { BenchmarkAdapter, BenchmarkRunContext, BenchmarkRunSummary } from './adapter.js';
 
-export interface OrchestratorOptions {
+export interface BenchmarkOrchestratorOptions {
   /** Max parallel `runInstance` calls. Default 1 (serial). */
   readonly concurrency?: number;
   /** Per-instance timeout in ms. Default 300_000 (5 min). */
@@ -37,7 +37,7 @@ interface RunOneArgs<TInstance, TPrediction, TEvalResult> {
   readonly state: RunState<TEvalResult>;
   readonly idx: number;
   readonly total: number;
-  readonly onProgress: OrchestratorOptions['onProgress'];
+  readonly onProgress: BenchmarkOrchestratorOptions['onProgress'];
 }
 
 async function runOneInstance<TInstance, TPrediction, TEvalResult>(
@@ -56,7 +56,7 @@ interface WorkerPoolArgs<TInstance, TPrediction, TEvalResult> {
   readonly ctx: BenchmarkRunContext;
   readonly state: RunState<TEvalResult>;
   readonly concurrency: number;
-  readonly onProgress: OrchestratorOptions['onProgress'];
+  readonly onProgress: BenchmarkOrchestratorOptions['onProgress'];
 }
 
 async function runWorkerPool<TInstance, TPrediction, TEvalResult>(
@@ -100,7 +100,7 @@ async function runWorkerPool<TInstance, TPrediction, TEvalResult>(
 export async function runBenchmark<TInstance, TPrediction, TEvalResult>(
   adapter: BenchmarkAdapter<TInstance, TPrediction, TEvalResult>,
   config: Record<string, unknown>,
-  options: OrchestratorOptions = {}
+  options: BenchmarkOrchestratorOptions = {}
 ): Promise<BenchmarkRunSummary> {
   const concurrency = Math.max(1, options.concurrency ?? 1);
   const instanceTimeoutMs = options.instanceTimeoutMs ?? DEFAULT_INSTANCE_TIMEOUT_MS;

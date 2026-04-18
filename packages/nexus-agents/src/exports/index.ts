@@ -24,5 +24,6 @@ export * from './consensus.js';
 export * from './observability.js';
 export * from './orchestration.js';
 export * from './swe-bench.js';
+export * from './benchmarks.js';
 export * from './pipeline.js';
 export * from './scm.js';
