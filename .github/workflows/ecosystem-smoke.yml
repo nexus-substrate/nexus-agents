@@ -1,0 +1,164 @@
+name: Ecosystem Smoke
+
+# Weekly smoke-test the nexus-agents-test topic-tagged repos to catch
+# regressions in our public API contract. Discovers target repos via
+# GitHub topic search — no hard-coded list to keep in sync.
+#
+# On failure, auto-files an issue with the failing repo for triage.
+
+on:
+  schedule:
+    - cron: '37 7 * * 1' # Mondays 7:37 UTC (off-minute per CLAUDE.md)
+  workflow_dispatch:
+    inputs:
+      repo_filter:
+        description: 'Filter to specific repo (substring match)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  discover:
+    name: Discover test repos
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      repos: ${{ steps.list.outputs.repos }}
+    steps:
+      - name: List nexus-agents-test repos
+        id: list
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FILTER: ${{ inputs.repo_filter }}
+        run: |
+          set -euo pipefail
+          repos=$(gh search repos --owner williamzujkowski --topic nexus-agents-test \
+            --json name --jq '[.[].name]')
+          if [[ -n "$FILTER" ]]; then
+            repos=$(echo "$repos" | jq --arg f "$FILTER" '[.[] | select(contains($f))]')
+          fi
+          echo "Repos: $repos"
+          echo "repos=$repos" >> "$GITHUB_OUTPUT"
+
+  smoke:
+    name: Smoke — ${{ matrix.repo }}
+    needs: discover
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: ${{ needs.discover.outputs.repos != '[]' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        repo: ${{ fromJson(needs.discover.outputs.repos) }}
+    steps:
+      - name: Checkout ${{ matrix.repo }}
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          repository: williamzujkowski/${{ matrix.repo }}
+          path: target
+          persist-credentials: false
+
+      - name: Detect project type
+        id: detect
+        run: |
+          set -euo pipefail
+          cd target
+          if [[ -f package.json ]]; then
+            echo "type=node" >> "$GITHUB_OUTPUT"
+            if [[ -f pnpm-lock.yaml ]]; then
+              echo "pkgmgr=pnpm" >> "$GITHUB_OUTPUT"
+            else
+              echo "pkgmgr=npm" >> "$GITHUB_OUTPUT"
+            fi
+          elif [[ -f pyproject.toml || -f requirements.txt ]]; then
+            echo "type=python" >> "$GITHUB_OUTPUT"
+          else
+            echo "type=unknown" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Node
+        if: steps.detect.outputs.type == 'node'
+        uses: ./target/.github/actions/setup-node
+        continue-on-error: true
+
+      - name: Fallback Node setup
+        if: steps.detect.outputs.type == 'node'
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
+        with:
+          node-version: '22'
+
+      - name: Install (pnpm)
+        if: steps.detect.outputs.type == 'node' && steps.detect.outputs.pkgmgr == 'pnpm'
+        working-directory: target
+        run: |
+          set -euo pipefail
+          npm install -g pnpm@9
+          pnpm install --frozen-lockfile
+
+      - name: Install (npm)
+        if: steps.detect.outputs.type == 'node' && steps.detect.outputs.pkgmgr == 'npm'
+        working-directory: target
+        run: |
+          set -euo pipefail
+          npm ci || npm install
+
+      - name: Run smoke test
+        id: smoke
+        working-directory: target
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          if [[ -f package.json ]]; then
+            # Try common test entry points in order
+            if jq -e '.scripts.test' package.json > /dev/null; then
+              ${{ steps.detect.outputs.pkgmgr == 'pnpm' && 'pnpm' || 'npm' }} test || exit 1
+            elif jq -e '.scripts.build' package.json > /dev/null; then
+              ${{ steps.detect.outputs.pkgmgr == 'pnpm' && 'pnpm' || 'npm' }} run build || exit 1
+            else
+              echo "::warning::No test or build script found"
+            fi
+          elif [[ -f pyproject.toml ]]; then
+            pip install -e . || pip install -r requirements.txt
+            pytest --no-header || exit 1
+          else
+            echo "::warning::Unknown project type — skipping"
+          fi
+
+      - name: Report failure
+        if: steps.smoke.outcome == 'failure'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        with:
+          script: |
+            const repo = '${{ matrix.repo }}';
+            const run = '${{ github.run_id }}';
+            const title = `ecosystem-smoke: ${repo} failed`;
+            // Dedupe: skip if open issue exists for this repo
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'discovered,ecosystem-smoke',
+              per_page: 100,
+            });
+            if (existing.data.some(i => i.title === title)) {
+              console.log('Issue already open, skipping');
+              return;
+            }
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              labels: ['discovered', 'ecosystem-smoke'],
+              body: [
+                `Ecosystem smoke test failed for \`williamzujkowski/${repo}\`.`,
+                ``,
+                `Run: https://github.com/${{ github.repository }}/actions/runs/${run}`,
+                ``,
+                `**Why this matters**: ${repo} is tagged \`nexus-agents-test\` — it exercises our MCP tool contracts. A failure here suggests a regression in the nexus-agents public API.`,
+                ``,
+                `**Next steps**: clone the repo, reproduce locally, decide whether the fix belongs in nexus-agents or the test repo.`,
+              ].join('\n'),
+            });
