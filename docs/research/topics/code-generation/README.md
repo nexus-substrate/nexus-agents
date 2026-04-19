@@ -40,10 +40,10 @@ Single LLM acts as generator, feedback provider, and refiner in an iterative loo
 
 - **Source:** [arxiv-2303.11366](https://arxiv.org/abs/2303.11366)
 - **Key Metrics:** +22% AlfWorld, +20% HotPotQA, 91% HumanEval pass@1
-- **Integration Point:** `packages/nexus-agents/src/context/session-memory.ts`
+- **Integration Point:** `packages/nexus-agents/src/agents/collaboration/reflexion-protocol.ts` (orchestration protocol) + `packages/nexus-agents/src/context/session-memory.ts` (episodic memory backing store)
 - **Status:** Implemented (#130)
 
-Agents maintain episodic memory of verbal reflections that guide future behavior. Implemented as `SessionMemory` class with cross-session persistence, learning recording, and relevance-based retrieval.
+Agents maintain episodic memory of verbal reflections that guide future behavior. `ReflexionProtocol` owns the generate-reflect-refine loop; `SessionMemory` persists the reflections with cross-session persistence, learning recording, and relevance-based retrieval.
 
 ### Medium Priority (P2)
 

@@ -2,9 +2,20 @@
 
 **Author:** System Architecture Designer
 **Date:** 2026-01-09 (ET)
-**Status:** Proposal
+**Status:** Proposal — implementation has since landed with different class names; see note below.
 **Issue:** TBD
-**Related:** OrchestrationObserver (`packages/nexus-agents/src/observability/`)
+**Related:** SwarmObserver + Dashboard (`packages/nexus-agents/src/observability/`)
+
+> **Implementation note (2026-04-19):** This proposal uses the planned
+> `OrchestrationObserver` / `DashboardSubscriber` names, but the live
+> code kept the pre-existing `SwarmObserver` / `Dashboard` class names
+> (the rename is in-flight and planned for v3.0 per
+> [deprecation-pipeline.md](./deprecation-pipeline.md)). Concrete
+> renderer classes shipped as `TextDashboardRenderer`,
+> `JsonDashboardRenderer`, and `CompactDashboardRenderer` from
+> `observability/dashboard-renderer.ts`. Use this doc for design-intent
+> context and the source (`packages/nexus-agents/src/observability/`)
+> for current API surface.
 
 ---
 
