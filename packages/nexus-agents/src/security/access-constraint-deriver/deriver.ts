@@ -12,6 +12,7 @@
  */
 
 import { createHash } from 'node:crypto';
+import { getPolicyCache } from './cache.js';
 import { resolveAccessPolicyMode } from './config.js';
 import type { TaskAccessPolicy, AccessPolicyMode } from './types.js';
 
@@ -25,22 +26,35 @@ import type { TaskAccessPolicy, AccessPolicyMode } from './types.js';
  */
 export function deriveAccessPolicy(userObjective: string): Promise<TaskAccessPolicy> {
   const mode = resolveAccessPolicyMode();
+  const hash = hashObjective(userObjective);
+
+  // Condition 5: cache by objectiveHash to avoid re-derivation on repeated
+  // invocations of the same task. Cache hit short-circuits the LLM call
+  // (once wired) AND the mode check — the cached mode wins so policies
+  // stay stable across an env-var flip mid-session (tests exercise this).
+  const cache = getPolicyCache();
+  const cached = cache.get(hash);
+  if (cached !== undefined) return Promise.resolve(cached);
+
   // TODO(#1977): in audit/enforce mode, call LLM-based deriver with regex
-  // fallback. Gate on the 7 PR conditions (UnifiedAdapterRegistry, Zod,
-  // hardcoded unbypassable denylist, trust-tier input gating, timeout+cache,
-  // <500ms p95 validation, deterministic mocked tests). The Promise return
-  // type is already correct for the future async LLM integration; the
-  // skeleton resolves synchronously.
-  return Promise.resolve(buildBypassPolicy(userObjective, mode));
+  // fallback. Gate on remaining PR conditions (UnifiedAdapterRegistry call,
+  // trust-tier input gating, <500ms p95 validation).
+  const policy = buildBypassPolicy(userObjective, mode, hash);
+  cache.set(hash, policy);
+  return Promise.resolve(policy);
 }
 
 /** Builds an unrestricted policy. */
-function buildBypassPolicy(userObjective: string, mode: AccessPolicyMode): TaskAccessPolicy {
+function buildBypassPolicy(
+  _userObjective: string,
+  mode: AccessPolicyMode,
+  hash: string
+): TaskAccessPolicy {
   return {
     allowedTools: '*',
     allowedPathPatterns: [],
     allowedOperations: '*',
-    objectiveHash: hashObjective(userObjective),
+    objectiveHash: hash,
     derivedAt: new Date().toISOString(),
     source: 'bypass',
     mode,

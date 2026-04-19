@@ -6,14 +6,19 @@
  * later LLM integration cannot regress the public surface.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
   deriveAccessPolicy,
   hashObjective,
   resolveAccessPolicyMode,
   checkAccess,
+  resetPolicyCache,
   TaskAccessPolicySchema,
 } from './index.js';
+
+beforeEach(() => {
+  resetPolicyCache();
+});
 
 describe('resolveAccessPolicyMode', () => {
   it('defaults to "off" when env var is unset', () => {
@@ -122,5 +127,68 @@ describe('checkAccess (enforcer)', () => {
     };
     const result = checkAccess('gh_issue_close', policy);
     expect(result.decision).toBe('log-and-allow');
+  });
+
+  it('denies unbypassable tools even under bypass policy', () => {
+    const result = checkAccess('git_push_force', bypassPolicy);
+    expect(result.decision).toBe('deny');
+    if (result.decision === 'deny') {
+      expect(result.matchedRule).toBe('unbypassable:tool');
+    }
+  });
+
+  it('denies unbypassable tools even when LLM policy tries to allow them', () => {
+    const policy = {
+      ...bypassPolicy,
+      allowedTools: ['git_push_force', 'rm_recursive_force'] as const,
+      mode: 'enforce' as const,
+    };
+    // Even though policy claims to allow, denylist still wins.
+    const result = checkAccess('git_push_force', policy);
+    expect(result.decision).toBe('deny');
+    if (result.decision === 'deny') {
+      expect(result.matchedRule).toBe('unbypassable:tool');
+    }
+  });
+
+  it('denies unbypassable paths even under bypass policy', () => {
+    const result = checkAccess('read_file', bypassPolicy, { path: '.env' });
+    expect(result.decision).toBe('deny');
+    if (result.decision === 'deny') {
+      expect(result.matchedRule).toBe('unbypassable:path');
+    }
+  });
+
+  it('denies SSH key paths regardless of policy', () => {
+    const policy = {
+      ...bypassPolicy,
+      allowedTools: ['read_file'] as const,
+      mode: 'enforce' as const,
+    };
+    const result = checkAccess('read_file', policy, { path: '~/.ssh/id_rsa' });
+    expect(result.decision).toBe('deny');
+    if (result.decision === 'deny') {
+      expect(result.matchedRule).toBe('unbypassable:path');
+    }
+  });
+
+  it('allows ordinary paths under bypass policy', () => {
+    const result = checkAccess('read_file', bypassPolicy, { path: 'src/index.ts' });
+    expect(result.decision).toBe('allow');
+  });
+});
+
+describe('deriveAccessPolicy caching (#1977 condition 5)', () => {
+  it('returns the same policy for repeat invocations with same objective', async () => {
+    const a = await deriveAccessPolicy('test objective');
+    const b = await deriveAccessPolicy('test objective');
+    // Same cache hit → identical reference (or at least identical derivedAt)
+    expect(a.derivedAt).toBe(b.derivedAt);
+  });
+
+  it('returns distinct policies for different objectives', async () => {
+    const a = await deriveAccessPolicy('first task');
+    const b = await deriveAccessPolicy('second task');
+    expect(a.objectiveHash).not.toBe(b.objectiveHash);
   });
 });

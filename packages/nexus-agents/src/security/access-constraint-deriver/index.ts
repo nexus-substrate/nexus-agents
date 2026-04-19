@@ -8,6 +8,14 @@ export { resolveAccessPolicyMode } from './config.js';
 export { deriveAccessPolicy, hashObjective } from './deriver.js';
 export { checkAccess } from './enforcer.js';
 export {
+  UNBYPASSABLE_PATH_PATTERNS,
+  UNBYPASSABLE_TOOL_NAMES,
+  isPathDenied,
+  isToolDenied,
+  matchDenyPattern,
+} from './denylist.js';
+export { PolicyCache, getPolicyCache, resetPolicyCache } from './cache.js';
+export {
   AccessPolicyModeSchema,
   AccessPolicySourceSchema,
   AccessOperationSchema,
