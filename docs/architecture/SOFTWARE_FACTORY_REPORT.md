@@ -27,7 +27,7 @@ Task -> BudgetRouter -> ZeroRouter -> PreferenceRouter -> TopsisRouter -> LinUCB
 ```
 
 - 5-stage composite routing with contextual bandit (LinUCB) final selection
-- Multiple supported models across 5 CLIs (claude, gemini, codex, codex-mcp, opencode)
+- Multiple supported models across 4 CLIs (claude, gemini, codex, opencode)
 - OutcomeStore records task outcomes for reward computation
 
 ### Orchestration Graph
