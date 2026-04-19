@@ -47,9 +47,9 @@ Select between voting (reasoning) and consensus (knowledge) protocols based on t
 
 - **Source:** [arxiv-2512.20845](https://arxiv.org/abs/2512.20845)
 - **Key Metrics:** Significant reasoning improvements
-- **Integration Point:** `packages/nexus-agents/src/agents/collaboration/collaboration-space.ts`
+- **Integration Point:** `packages/nexus-agents/src/agents/collaboration/collaboration-session.ts` + `packages/nexus-agents/src/agents/collaboration/collaboration-protocol.ts`
 
-Cross-agent critique within collaboration spaces for diverse perspectives and consensus through multi-agent evaluation.
+Cross-agent critique within collaboration sessions for diverse perspectives and consensus through multi-agent evaluation.
 
 ### Medium Priority (P2)
 
