@@ -1,5 +1,7 @@
 # Agent Skills and Capability Management
 
+> ⚠ This doc was last validated 2026-04-19 against current source; some sections may need refresh.
+
 **Hub:** Research on skill loading, assignment, and dependency management in multi-agent systems.
 
 ---
@@ -263,7 +265,7 @@ Potential enhancements (beyond current roadmap):
 
 ## Status
 
-**Last Updated:** 2026-01-22 (ET)
+**Last Updated:** 2026-04-19 (ET)
 **Research Status:** Complete
 **Implementation Status:** Pending prioritization vote
 **Next Step:** Review SKILL_ASSIGNMENT_RESEARCH.md, vote on P1-P5 priorities

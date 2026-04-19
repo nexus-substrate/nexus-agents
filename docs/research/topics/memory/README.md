@@ -1,6 +1,8 @@
 # Memory Systems
 
-**Last Updated:** 2026-01-07 (ET)
+> ⚠ This doc was last validated 2026-04-19 against current source; some sections may need refresh.
+
+**Last Updated:** 2026-04-19 (ET)
 **Status:** Active Research
 
 ---
