@@ -1,5 +1,52 @@
 # nexus-agents
 
+## 2.46.0
+
+### Minor Changes
+
+- [#2045](https://github.com/williamzujkowski/nexus-agents/pull/2045) [`a487660`](https://github.com/williamzujkowski/nexus-agents/commit/a4876605fc7c9f73bcdc6efc50adfde10c5570f6) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(orchestrate): wire structured task state into orchestration lifecycle ([#2043](https://github.com/williamzujkowski/nexus-agents/issues/2043) / [#2033](https://github.com/williamzujkowski/nexus-agents/issues/2033))
+
+  Integration follow-up for [#2033](https://github.com/williamzujkowski/nexus-agents/issues/2033). The orchestrate MCP tool now records
+  lifecycle events (init → executing → complete | blocked) into the
+  structured task state log when `NEXUS_TASK_STATE_ENABLED=1` is set.
+  - New helpers `recordTaskStateInit`, `recordTaskStateStage`,
+    `recordTaskStateBlocker` in orchestrate.ts. Each checks the env flag
+    first and is a no-op when unset; zero behavior change by default.
+  - Wired into `executeOrchestration`:
+    - Init on entry with stage `planning`
+    - Stage update to `executing` before `orchestrator.execute`
+    - On failure: append blocker + stage `blocked`
+    - On success: stage `complete`
+    - On exception: append blocker + stage `blocked`
+  - All helpers wrap the underlying Result-returning functions and log
+    failures via `logger.warn` — orchestration never fails because the
+    state log couldn't be written.
+
+  6 new tests cover the env gate, the success lifecycle (3 entries),
+  the failure lifecycle (4 entries including blocker), and the
+  never-throws contract on filesystem errors.
+
+- [#2048](https://github.com/williamzujkowski/nexus-agents/pull/2048) [`2c908ed`](https://github.com/williamzujkowski/nexus-agents/commit/2c908eddcec3a82204056e37f8c7ddc6b1c3083e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(mcp): query_task_state tool for reading structured task logs ([#2046](https://github.com/williamzujkowski/nexus-agents/issues/2046))
+
+  Closes the loop on the [#2033](https://github.com/williamzujkowski/nexus-agents/issues/2033) structured-task-state pipeline. The
+  orchestrate tool ([#2045](https://github.com/williamzujkowski/nexus-agents/issues/2045)) writes state to JSONL logs; the new
+  `query_task_state` MCP tool reads them back and returns the current
+  snapshot.
+  - New tool at `mcp/tools/query-task-state-tool.ts` following the
+    `query_trace` pattern (secure handler, rate limiter, timeout guard).
+  - Uses `readTaskState` from `context/structured-task-state.ts`, so
+    path-traversal validation and malformed-line resilience are
+    inherited.
+  - Non-throwing error contract: missing logs or validation failures
+    return `{found: false, errorMessage: ...}` inside a successful
+    tool result rather than raising.
+  - Wired into `cli-server-tools.ts` dispatcher, `mcp/tools/index.ts`
+    barrel, `mcp/index.ts` re-exports, and tools array.
+  - 5 tests for input schema + registration; existing tools-index and
+    cli-server-tools tests updated to expect 31 tools (was 30).
+
+  Closes [#2046](https://github.com/williamzujkowski/nexus-agents/issues/2046).
+
 ## 2.45.0
 
 ### Minor Changes
