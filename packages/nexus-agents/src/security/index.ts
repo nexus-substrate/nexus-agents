@@ -83,6 +83,12 @@ export { sanitizeOutput, REDACTED_KEY_PLACEHOLDER } from './output-sanitizer.js'
 // Hostile input firewall (Issue #826)
 export * from './firewall/index.js';
 
+// Access constraint deriver — ClawGuard-style per-task tool allowlist (#1977)
+// NOTE: current implementation is a skeleton; off/audit/enforce modes all
+// return a bypass policy. Full LLM-derivation path gated on the 7 PR conditions
+// from the design-approval vote (see #1977).
+export * from './access-constraint-deriver/index.js';
+
 // SARIF parser for security scanner output (#1682)
 export { parseSarif } from './sarif-parser.js';
 export type { SecurityFinding, SarifParseResult, FindingSeverity } from './sarif-types.js';
