@@ -1,5 +1,14 @@
 # nexus-agents
 
+## 2.39.1
+
+### Patch Changes
+
+- [#2009](https://github.com/williamzujkowski/nexus-agents/pull/2009) [`4f9f9bc`](https://github.com/williamzujkowski/nexus-agents/commit/4f9f9bc764082fc91604aa59a347e9fb22067ff1) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - docs: refresh stale Last Updated timestamps (closes [#2004](https://github.com/williamzujkowski/nexus-agents/issues/2004))
+
+  Bumped 5 timestamps to 2026-04-19; added "last validated" banner
+  to 4 docs needing content refresh.
+
 ## 2.39.0
 
 ### Minor Changes
