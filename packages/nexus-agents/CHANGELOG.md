@@ -1,5 +1,36 @@
 # nexus-agents
 
+## 2.47.0
+
+### Minor Changes
+
+- [#2049](https://github.com/williamzujkowski/nexus-agents/pull/2049) [`25dacbd`](https://github.com/williamzujkowski/nexus-agents/commit/25dacbdf3b833dd73f474754f41ad8c68be6b4a3) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(orchestration): wire topological wave recomputation into worker-dispatcher ([#2043](https://github.com/williamzujkowski/nexus-agents/issues/2043) / [#2034](https://github.com/williamzujkowski/nexus-agents/issues/2034))
+
+  Integration follow-up for [#2034](https://github.com/williamzujkowski/nexus-agents/issues/2034). The pure utility has been live since
+  [#2038](https://github.com/williamzujkowski/nexus-agents/issues/2038); this PR makes it take effect in real dispatch:
+  - Adds optional `dependsOn?: readonly BuiltInExpertType[]` field on
+    `AgentPlanEntry`. Absent or empty → entry keeps its priority-based
+    wave assignment; pre-dependsOn plans are unaffected.
+  - New `applyDependencyWaves(entries)` helper in `worker-dispatcher.ts`
+    checks whether any entry declares `dependsOn`; if yes, runs the plan
+    through `topologicalWaveAssign` before dispatch; if no, returns the
+    plan unchanged by identity.
+  - `dispatchWorkers` calls `applyDependencyWaves` before `groupByWave`,
+    so the live pipeline now respects DAG edges.
+  - Fallback policy: cycles or missing refs log a warning and revert to
+    the original priority-based assignment — dispatch never fails because
+    the plan's dependency graph is malformed.
+  - 6 new integration tests cover: unchanged pass-through, linear chain,
+    diamond grouping, cycle fallback, missing-ref fallback, empty plan.
+  - 133 existing aorchestra tests still pass unchanged.
+
+  Planner-side emission of `dependsOn` (so `planAgentTeam` actually
+  produces DAGs) is a deliberate follow-up — this PR establishes the
+  consumer contract so custom planners and trigger-table authors can
+  start producing DAGs today.
+
+  Remaining from [#2043](https://github.com/williamzujkowski/nexus-agents/issues/2043): verify-loop integration ([#2032](https://github.com/williamzujkowski/nexus-agents/issues/2032)) into agent-runner.
+
 ## 2.46.0
 
 ### Minor Changes
