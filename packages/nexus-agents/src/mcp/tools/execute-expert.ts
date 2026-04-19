@@ -50,6 +50,11 @@ import {
   withAccessPolicy,
   resolveAccessPolicyMode,
 } from '../../security/access-constraint-deriver/index.js';
+// Per-expert context-budget observer (#2031). Telemetry-only; never
+// influences the call. Emits `context_warning` when utilization crosses
+// threshold (default 85%, overridable via NEXUS_CONTEXT_WARN_THRESHOLD).
+import { observeExpertContext } from './expert-context-observer.js';
+import type { ExpertContextObservation } from './expert-context-observer.js';
 import { getExpertTaskTimeout, HEARTBEAT_TIMEOUTS } from '../../config/timeouts.js';
 import type { ICliDetectionCache } from '../../cli-adapters/cli-detection-cache.js';
 import { requireAdapterAvailable } from '../middleware/adapter-availability.js';
@@ -227,6 +232,30 @@ function buildSuccessResponse(params: SuccessResponseParams): ExecuteExpertRespo
 }
 
 /** Injects past error solutions into task context (best-effort). */
+/**
+ * Observe context-budget utilization if the expert call succeeded
+ * (#2031). Extracted to keep runExpertTask under the 50-line limit.
+ */
+function observeExpertContextIfOk(
+  result: Awaited<ReturnType<Expert['execute']>>,
+  expert: Expert,
+  task: Task,
+  durationMs: number,
+  logger: ILogger | undefined
+): void {
+  if (!result.ok) return;
+  const expertModelId = expert.expertConfig.modelPreference?.modelId;
+  const observation: ExpertContextObservation = {
+    expertId: expert.id,
+    role: expert.role,
+    modelId: expertModelId as ExpertContextObservation['modelId'],
+    tokensUsed: result.value.metadata.tokensUsed,
+    taskDescription: task.description,
+    durationMs,
+  };
+  observeExpertContext(observation, logger);
+}
+
 /**
  * Derive a ClawGuard access policy for this expert invocation (#1977, #2022).
  *
@@ -451,6 +480,7 @@ async function runExpertTask(
         monitor.endSession(sessionId);
       }
       const durationMs = getTimeProvider().now() - startTime;
+      observeExpertContextIfOk(result, expert, task, durationMs, deps.logger);
       const classified = await classifyExpertResult({
         result,
         expert,
