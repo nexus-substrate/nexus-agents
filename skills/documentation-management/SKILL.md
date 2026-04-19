@@ -20,6 +20,8 @@ allowed-tools: Read, Edit, Write, Bash, Grep, Glob, Task
 <!-- PIPELINE NOTE: link-check.yml + verify-review.yml bumped actions/github-script v8 → v9 (ESM-only @actions/github; our scripts use injected `github`/`core` so unaffected) (#1848, 2026-04-15) -->
 <!-- PIPELINE NOTE: website removed (2026-02-22) — sync-docs.ts, check-frontmatter.ts, deploy-docs.yml deleted -->
 <!-- PIPELINE NOTE: generate-repo-index.ts extractMCPTools() switched from register regex to tools array parsing (2026-04-10) -->
+<!-- PIPELINE NOTE: docops-spec.md tagged with "last validated 2026-04-19" banner per #2004 audit; no functional pipeline change -->
+<!-- PIPELINE NOTE: outdated-docs banner pattern documented for use when content drift exists but no immediate refresh is scheduled (2026-04-19) -->
 
 **Full specification:** [docops-spec.md](../../docs/ops/docops-spec.md)
 
