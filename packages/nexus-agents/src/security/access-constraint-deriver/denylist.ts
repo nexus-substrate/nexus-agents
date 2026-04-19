@@ -87,8 +87,12 @@ export const UNBYPASSABLE_TOOL_NAMES: readonly string[] = [
  */
 function compileGlobToRegex(pattern: string): RegExp {
   const pat = pattern.toLowerCase();
+  // Escape regex metacharacters INCLUDING backslash (per CodeQL — without
+  // backslash in the class, a `\` in input would leak into the regex output
+  // unescaped). Do NOT escape `*` here — it's a glob wildcard that the
+  // subsequent replaces expand into regex wildcards.
   const escaped = pat
-    .replace(/[.+^$()|[\]{}]/g, '\\$&')
+    .replace(/[\\.+^$()|[\]{}]/g, '\\$&')
     .replace(/\*\*/g, '__DOUBLESTAR__')
     .replace(/\*/g, '[^/]*')
     .replace(/__DOUBLESTAR__/g, '.*');
