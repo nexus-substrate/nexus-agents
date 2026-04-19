@@ -97,3 +97,11 @@ export {
 export type { WorkerCheckpoint } from './worker-checkpoint.js';
 export { triageWorkerFailure } from './worker-triage.js';
 export type { TriageAction, TriageResult } from './worker-triage.js';
+// DAG dependency resolution (#2034).
+export {
+  topologicalWaveAssign,
+  groupByTopologicalWave,
+  CycleError,
+  MissingDependencyError,
+} from './topological-wave.js';
+export type { WaveEntry } from './topological-wave.js';
