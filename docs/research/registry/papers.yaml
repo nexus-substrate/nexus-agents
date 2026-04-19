@@ -5163,14 +5163,37 @@ papers:
       - routing
     tags:
       - llm
-    reviewed_date: 2026-04-18
-    reviewed_in: ''
-    summary: ''
-    key_findings: []
+      - multi-turn
+      - mcts
+      - cumulative-reward
+    reviewed_date: 2026-04-19
+    reviewed_in: 'Issue #1978'
+    summary: 'MCTS over dialogue branches induced by different LLM selections; distills a
+      lightweight routing policy from search-derived data to predict cumulative
+      cross-turn cost/quality.
+
+      '
+    key_findings:
+      - Per-turn routing predictive of multi-turn cumulative reward
+      - Lightweight inference policy (no online MCTS at runtime)
+      - Requires offline MCTS on multi-turn dialogue corpus with rewards
     relevance: medium
     techniques_extracted: []
-    related_issues: []
-    implementation_status: not-started
+    related_issues:
+      - 1978
+    implementation_status: deferred
+    deferral_rationale: |
+      Deferred 2026-04-19 at abstract-level review (Issue #1978). Most of our
+      tasks are single-shot via CompositeRouter; we do not have a multi-turn
+      "session" concept where one routing decision affects subsequent ones.
+      Adopting DialRouter would require building a multi-turn corpus with
+      ground-truth rewards (we have per-task outcomes via weather report but
+      not the multi-turn equivalent). Adjacent fits exist (SWE-bench long runs
+      #1414, multi-round consensus_vote, graph workflows) but none currently
+      show cumulative-quality regression that DialRouter would specifically fix.
+      Re-open triggers: SWE-bench full-run analysis (#1414) shows cumulative-
+      quality gains being missed; OR graph workflows become dominant enough to
+      need cross-node routing coordination.
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
@@ -5210,14 +5233,32 @@ papers:
       - consensus
     tags:
       - multi-agent
-    reviewed_date: 2026-04-18
-    reviewed_in: ''
-    summary: ''
-    key_findings: []
+      - early-stopping
+      - sequential-execution
+    reviewed_date: 2026-04-19
+    reviewed_in: 'Issue #1980'
+    summary: 'Adaptive Incremental Voting (AIV) — sequentially invokes agents and
+      terminates on majority. 32% reduction in invoked agents across 6 benchmarks.
+
+      '
+    key_findings:
+      - 32% fewer agent invocations on average
+      - Requires sequential agent execution
     relevance: medium
     techniques_extracted: []
-    related_issues: []
-    implementation_status: not-started
+    related_issues:
+      - 1980
+    implementation_status: rejected
+    rejection_rationale: |
+      Rejected 2026-04-19 at abstract-level review (Issue #1980).
+      Architectural mismatch: EMS's 32% cost saving requires sequential agent
+      execution to enable early-stopping. Our ConsensusEngine runs agents in
+      parallel; wall-clock matters more than agent-count for the consensus_vote
+      tool (interactive use case). Existing canCascadeEarly() primitive already
+      gives parallel-result early aggregation; quickMode (3 vs 6 agents) already
+      addresses agent-count cost when speed matters. Adopting EMS directly
+      would regress wall-clock latency.
+      Re-open trigger: if consensus_vote ever switches to sequential execution.
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
