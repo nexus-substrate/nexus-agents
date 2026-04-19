@@ -13,9 +13,9 @@
   "dependencies": {
     "@astrojs/check": "^0.9.8",
     "@astrojs/sitemap": "^3.7.2",
-    "@astrojs/svelte": "^8.0.4",
-    "astro": "^6.1.5",
-    "svelte": "^5.55.3",
+    "@astrojs/svelte": "^8.0.5",
+    "astro": "^6.1.8",
+    "svelte": "^5.55.4",
     "typescript": "^5.9.3"
   }
 }
