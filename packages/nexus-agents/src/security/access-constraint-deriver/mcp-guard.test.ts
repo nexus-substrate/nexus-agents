@@ -140,13 +140,21 @@ describe('createAccessPolicyMiddleware', () => {
     return { requestContext: { requestId: 'req_test' } };
   }
 
-  function makeLogger(): { warn: ReturnType<typeof vi.fn>; info: ReturnType<typeof vi.fn> } {
-    return { warn: vi.fn(), info: vi.fn() };
+  interface MockLogger {
+    warn: ReturnType<typeof vi.fn>;
+    info: ReturnType<typeof vi.fn>;
+  }
+
+  function makeLogger(): MockLogger {
+    return {
+      warn: vi.fn() as unknown as ReturnType<typeof vi.fn>,
+      info: vi.fn() as unknown as ReturnType<typeof vi.fn>,
+    };
   }
 
   it('is a pass-through when no policy is active', async () => {
     const logger = makeLogger();
-    const mw = createAccessPolicyMiddleware({ toolName: 'gh_issue_view', logger });
+    const mw = createAccessPolicyMiddleware({ toolName: 'gh_issue_view', logger: logger as never });
     const next = vi.fn(() => Promise.resolve({ ok: true }));
     const result = await mw({ a: 1 }, makeCtx(), next as never);
     expect(next).toHaveBeenCalledOnce();
@@ -156,7 +164,7 @@ describe('createAccessPolicyMiddleware', () => {
 
   it('is a pass-through in off mode', async () => {
     const logger = makeLogger();
-    const mw = createAccessPolicyMiddleware({ toolName: 'any_tool', logger });
+    const mw = createAccessPolicyMiddleware({ toolName: 'any_tool', logger: logger as never });
     const next = vi.fn(() => Promise.resolve({ ok: true }));
     await withAccessPolicy(policyFactory({ mode: 'off' }), () => mw({}, makeCtx(), next as never));
     expect(next).toHaveBeenCalledOnce();
@@ -164,7 +172,10 @@ describe('createAccessPolicyMiddleware', () => {
 
   it('allows in audit mode but logs when tool is out of scope', async () => {
     const logger = makeLogger();
-    const mw = createAccessPolicyMiddleware({ toolName: 'gh_issue_close', logger });
+    const mw = createAccessPolicyMiddleware({
+      toolName: 'gh_issue_close',
+      logger: logger as never,
+    });
     const next = vi.fn(() => Promise.resolve({ ok: true }));
     await withAccessPolicy(
       policyFactory({
@@ -186,7 +197,10 @@ describe('createAccessPolicyMiddleware', () => {
 
   it('denies in enforce mode when tool is out of scope', async () => {
     const logger = makeLogger();
-    const mw = createAccessPolicyMiddleware({ toolName: 'gh_issue_close', logger });
+    const mw = createAccessPolicyMiddleware({
+      toolName: 'gh_issue_close',
+      logger: logger as never,
+    });
     const next = vi.fn(() => Promise.resolve({ ok: true }));
     const result = (await withAccessPolicy(
       policyFactory({
@@ -206,7 +220,10 @@ describe('createAccessPolicyMiddleware', () => {
 
   it('denies unbypassable tools even under audit mode', async () => {
     const logger = makeLogger();
-    const mw = createAccessPolicyMiddleware({ toolName: 'git_push_force', logger });
+    const mw = createAccessPolicyMiddleware({
+      toolName: 'git_push_force',
+      logger: logger as never,
+    });
     const next = vi.fn(() => Promise.resolve({ ok: true }));
     const result = (await withAccessPolicy(policyFactory({ mode: 'audit' }), async () =>
       mw({}, makeCtx(), next as never)
@@ -217,7 +234,7 @@ describe('createAccessPolicyMiddleware', () => {
 
   it('extracts path from args for path denylist check', async () => {
     const logger = makeLogger();
-    const mw = createAccessPolicyMiddleware({ toolName: 'read_file', logger });
+    const mw = createAccessPolicyMiddleware({ toolName: 'read_file', logger: logger as never });
     const next = vi.fn(() => Promise.resolve({ ok: true }));
     const result = (await withAccessPolicy(policyFactory({ mode: 'enforce' }), async () =>
       mw({ path: '~/.ssh/id_rsa' }, makeCtx(), next as never)
