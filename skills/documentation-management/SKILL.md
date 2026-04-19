@@ -23,6 +23,7 @@ allowed-tools: Read, Edit, Write, Bash, Grep, Glob, Task
 <!-- PIPELINE NOTE: docops-spec.md tagged with "last validated 2026-04-19" banner per #2004 audit; no functional pipeline change -->
 <!-- PIPELINE NOTE: outdated-docs banner pattern documented for use when content drift exists but no immediate refresh is scheduled (2026-04-19) -->
 <!-- PIPELINE NOTE: docops-spec.md skill file reference updated from `.claude/skills/documentation-management.md` to `skills/documentation-management/SKILL.md` (#2014, 2026-04-19) -->
+<!-- PIPELINE NOTE: TypeDoc Verification CI job (docs-check.yml) downgraded from blocking failure to warning annotation (#2027, 2026-04-19) — drift was creating merge-round-trip noise without providing actionable signal -->
 
 **Full specification:** [docops-spec.md](../../docs/ops/docops-spec.md)
 
