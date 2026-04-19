@@ -1,5 +1,138 @@
 # nexus-agents
 
+## 2.40.0
+
+### Minor Changes
+
+- [#2021](https://github.com/williamzujkowski/nexus-agents/pull/2021) [`f07367f`](https://github.com/williamzujkowski/nexus-agents/commit/f07367f8ab203cda1c9d88699419a136965b402e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(security): wire ClawGuard access-policy enforcer into MCP middleware chain ([#1977](https://github.com/williamzujkowski/nexus-agents/issues/1977))
+
+  Activates the access-constraint-deriver runtime guard so every tool
+  call in the standard MCP middleware chain now passes through the
+  ClawGuard enforcer.
+  - Adds `createAccessPolicyChainMiddleware(toolName)` that bridges the
+    existing ALS-backed guard (`mcp-guard.ts`) to the strongly-typed
+    `Middleware` contract consumed by `buildMiddlewareStack`.
+  - Adds `accessPolicy?: boolean` to `MiddlewareSkipConfig` for explicit
+    opt-out.
+  - The new middleware is **always mounted** but behaves as a no-op
+    pass-through unless an orchestrator has wrapped the call with
+    `withAccessPolicy(...)` — so runtime behavior is unchanged for
+    callers that haven't set up a per-task policy.
+
+  Closes the [#1977](https://github.com/williamzujkowski/nexus-agents/issues/1977) "activation" gap: the deriver + enforcer + smoke
+  tests were already landed, but no production code path ran them.
+  This is the final wiring that makes the research-backed runtime
+  defense actually effective, with a 7-test integration suite
+  covering allow/deny/audit/off paths and the hardcoded unbypassable
+  tool + path denylists.
+
+  Also widens the return type of `denyToToolResult` from readonly
+  arrays to the `{isError; content: Array<…>}` shape that matches the
+  middleware chain's `ToolResult` contract.
+
+- [#2016](https://github.com/williamzujkowski/nexus-agents/pull/2016) [`a0023d2`](https://github.com/williamzujkowski/nexus-agents/commit/a0023d290f8e9a5c2d5d970d2bacfaeab98a2486) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(cli): add atbench CLI command ([#1981](https://github.com/williamzujkowski/nexus-agents/issues/1981) follow-up)
+
+  Adds the user-facing `atbench` CLI command with `info` and `run`
+  subcommands. Programmatic API exported from `nexus-agents/cli`;
+  top-level dispatcher wiring (`nexus-agents atbench ...`) is a
+  separate small follow-up.
+
+  ## API
+
+  ```ts
+  import { atbenchCommand, parseAtbenchArgs } from 'nexus-agents/cli';
+
+  const opts = parseAtbenchArgs(process.argv.slice(2));
+  const result = await atbenchCommand(opts);
+  ```
+
+  ## Subcommands
+  - `info` — prints variant, source (HF or fixture), scorer mode, instance limit
+  - `run` — loads trajectories, scores them via stub or LLM, prints summary with
+    precision/recall/F1/confusion matrix
+
+  ## Flags
+  - `--variant=<claw|codex>` — dataset variant (default: claw)
+  - `--limit=<N>` — cap instances for smoke runs
+  - `--fixture=<path>` — local JSONL instead of HuggingFace
+  - `--llm-scoring` — enable LLM scorer (default: stub oracle)
+  - `--verbose, -v` — per-instance progress
+
+  ## Tests (17 new)
+  - arg parsing: defaults, info subcommand, all flags, invalid limit fallback
+  - runInfo: HF source vs fixture source
+  - runEvaluation against local fixture: 100% pass with stub oracle, --limit cap, verbose progress
+  - atbenchCommand top-level dispatch: routes info vs run
+  - printAtbenchHelp: smoke
+
+  ## Validation
+  - typecheck clean
+  - 17/17 atbench-command tests pass
+  - 3364/3364 cli + benchmarks tests pass overall
+  - TypeDoc regenerated
+
+  ## [#1981](https://github.com/williamzujkowski/nexus-agents/issues/1981) progress
+
+  | Sub-task                       | Status                                                                   |
+  | ------------------------------ | ------------------------------------------------------------------------ |
+  | BenchmarkAdapter contract impl | ✅ [#1996](https://github.com/williamzujkowski/nexus-agents/issues/1996) |
+  | Stub scorer + confusion math   | ✅ [#1996](https://github.com/williamzujkowski/nexus-agents/issues/1996) |
+  | HF dataset loader              | ✅ [#2006](https://github.com/williamzujkowski/nexus-agents/issues/2006) |
+  | LLM-based scorer               | ✅ [#2010](https://github.com/williamzujkowski/nexus-agents/issues/2010) |
+  | **CLI integration**            | ✅ this PR (programmatic API; top-level dispatcher wiring follow-up)     |
+  | CI smoke workflow              | ⏳ follow-up                                                             |
+
+- [#2018](https://github.com/williamzujkowski/nexus-agents/pull/2018) [`91671f8`](https://github.com/williamzujkowski/nexus-agents/commit/91671f807a74a9c4cc53039885ebc56dfa3e3793) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(cli): wire atbench into top-level dispatcher ([#1981](https://github.com/williamzujkowski/nexus-agents/issues/1981))
+
+  Completes the CLI integration for ATBench. After this PR, end users
+  can invoke the benchmark directly:
+
+  ```bash
+  nexus-agents atbench info
+  nexus-agents atbench run --variant=claw --limit=10
+  nexus-agents atbench run --fixture=./test/fixture.jsonl --verbose
+  ```
+
+  ## Changes
+  - `cli-types.ts` — added `'atbench'` to the command union and validCommands array
+  - `cli-commands-handlers-complex.ts` — `handleAtbenchCommand` builds argv from parsed CLI args and dispatches to `atbenchCommand` from `cli/atbench-command.ts`
+  - `cli-commands-handlers.ts` — re-exports `handleAtbenchCommand` for the dispatcher
+  - `cli-commands.ts` — wired into the command-handler map (`atbench: handleAtbenchCommand`)
+  - `cli-help-text.ts` — added ATBENCH OPTIONS block and example invocations
+  - `cli-commands.test.ts` — added `handleAtbenchCommand` to the mock map
+
+  ## Tests
+  - 38 dispatcher + handler tests pass
+  - 26043/26059 full-suite pass
+  - typecheck clean
+  - TypeDoc regenerated
+
+  ## [#1981](https://github.com/williamzujkowski/nexus-agents/issues/1981) status
+
+  | Sub-task                        | Status             |
+  | ------------------------------- | ------------------ |
+  | BenchmarkAdapter contract       | ✅                 |
+  | Stub scorer + math              | ✅                 |
+  | HF dataset loader               | ✅                 |
+  | LLM-based scorer                | ✅                 |
+  | CLI programmatic API            | ✅                 |
+  | **Top-level dispatcher wiring** | ✅ this PR         |
+  | CI smoke workflow               | ⏳ final follow-up |
+
+### Patch Changes
+
+- [#2019](https://github.com/williamzujkowski/nexus-agents/pull/2019) [`2f35ed1`](https://github.com/williamzujkowski/nexus-agents/commit/2f35ed184491f8aa4086fdf7fdd49e527cbdf22f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - ci(atbench): add fixture-based smoke workflow ([#1981](https://github.com/williamzujkowski/nexus-agents/issues/1981))
+
+  Adds an in-repo JSONL fixture (`test-fixtures/atbench-smoke.jsonl`)
+  and a `.github/workflows/atbench-smoke.yml` PR gate that exercises
+  `atbench info` and `atbench run --fixture=...` end-to-end against
+  the stub scorer. Stays offline (no HF, no LLM) and asserts the
+  stub oracle returns `5/5 passed` with `F1=1.000`.
+
+  Also wires the `--fixture` and `--llm-scoring` flags into
+  `PARSE_ARGS_CONFIG` and the top-level argv builder so they are
+  accepted by `nexus-agents atbench run`.
+
 ## 2.39.1
 
 ### Patch Changes
