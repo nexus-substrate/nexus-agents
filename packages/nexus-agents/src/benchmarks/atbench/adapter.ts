@@ -13,6 +13,7 @@
  */
 
 import type { BenchmarkAdapter, BenchmarkRunContext, BenchmarkRunSummary } from '../adapter.js';
+import { fetchAtbenchFromHf } from './dataset-loader.js';
 import { classifyConfusion, scoreTrajectoryStub } from './scorer.js';
 import type {
   ATBenchEvalResult,
@@ -35,31 +36,17 @@ export class ATBenchAdapter implements BenchmarkAdapter<
   }
 
   /**
-   * Loads trajectories from a local JSONL fixture. HF dataset loading
-   * (`AI45Research/ATBench-Claw`) lands in the follow-up.
+   * Loads trajectories from either a local JSONL fixture (offline / CI smoke
+   * test) or the public HuggingFace Datasets API (production evaluation).
+   *
+   * Precedence: `fixturePath` wins if provided; otherwise fetches from
+   * `AI45Research/ATBench-Claw` (or `-CodeX`) via the HF Datasets Server.
+   * Public datasets — no auth required.
    */
   async loadInstances(config: Record<string, unknown>): Promise<readonly ATBenchTrajectory[]> {
     const typed = config as unknown as ATBenchLoadConfig;
-    if (typeof typed.fixturePath !== 'string' || typed.fixturePath.length === 0) {
-      throw new Error(
-        'ATBenchAdapter skeleton requires config.fixturePath (JSONL). HF dataset loader arrives in follow-up.'
-      );
-    }
-    const { readFile } = await import('node:fs/promises');
-    const raw = await readFile(typed.fixturePath, 'utf8');
-    const lines = raw.split('\n').filter((l) => l.trim().length > 0);
-    const trajectories: ATBenchTrajectory[] = lines.map((line, idx) => {
-      const parsed = ATBenchTrajectorySchema.safeParse(JSON.parse(line));
-      if (!parsed.success) {
-        throw new Error(
-          `ATBench fixture line ${String(idx + 1)} failed schema validation: ${parsed.error.message}`
-        );
-      }
-      return parsed.data;
-    });
-    return typeof typed.maxInstances === 'number'
-      ? trajectories.slice(0, typed.maxInstances)
-      : trajectories;
+    const hasFixture = typeof typed.fixturePath === 'string' && typed.fixturePath.length > 0;
+    return hasFixture ? loadFromFixture(typed) : loadFromHf(typed, this.variant);
   }
 
   async runInstance(
@@ -106,12 +93,7 @@ export class ATBenchAdapter implements BenchmarkAdapter<
       passRate: total > 0 ? passed / total : 0,
       runTimeMs,
       metadata: {
-        confusionMatrix: {
-          tp,
-          fp,
-          fn,
-          tn: total - tp - fp - fn,
-        },
+        confusionMatrix: { tp, fp, fn, tn: total - tp - fp - fn },
         precision,
         recall,
         f1,
@@ -119,4 +101,44 @@ export class ATBenchAdapter implements BenchmarkAdapter<
       },
     };
   }
+}
+
+/** Read trajectories from a local JSONL fixture. */
+async function loadFromFixture(typed: ATBenchLoadConfig): Promise<readonly ATBenchTrajectory[]> {
+  const { readFile } = await import('node:fs/promises');
+  const path = typed.fixturePath as string;
+  const raw = await readFile(path, 'utf8');
+  const lines = raw.split('\n').filter((l) => l.trim().length > 0);
+  const trajectories: ATBenchTrajectory[] = lines.map((line, idx) => {
+    const parsed = ATBenchTrajectorySchema.safeParse(JSON.parse(line));
+    if (!parsed.success) {
+      throw new Error(
+        `ATBench fixture line ${String(idx + 1)} failed schema validation: ${parsed.error.message}`
+      );
+    }
+    return parsed.data;
+  });
+  return typeof typed.maxInstances === 'number'
+    ? trajectories.slice(0, typed.maxInstances)
+    : trajectories;
+}
+
+/** Fetch trajectories from HuggingFace Datasets API. */
+async function loadFromHf(
+  typed: ATBenchLoadConfig,
+  adapterVariant: string
+): Promise<readonly ATBenchTrajectory[]> {
+  // typed.variant is declared required on ATBenchLoadConfig but the runtime
+  // call site may omit it; treat it as optional and fall back to the adapter's
+  // own variant.
+  const requested = (typed as { variant?: 'claw' | 'codex' }).variant;
+  const variant: 'claw' | 'codex' = requested ?? (adapterVariant === 'codex' ? 'codex' : 'claw');
+  const result = await fetchAtbenchFromHf({
+    variant,
+    ...(typeof typed.maxInstances === 'number' ? { limit: typed.maxInstances } : {}),
+  });
+  if (!result.ok) {
+    throw new Error(`ATBench HF load failed: ${result.error.message}`);
+  }
+  return result.value.trajectories;
 }
