@@ -31,7 +31,7 @@ describe('tool registration', () => {
   it('registers query_task_state tool with correct name', async () => {
     const { registerQueryTaskStateTool } = await import('./query-task-state-tool.js');
     const { RateLimiter } = await import('../middleware/rate-limiter.js');
-    const rateLimiter = new RateLimiter({ capacity: 100, refillPerSecond: 10 });
+    const rateLimiter = new RateLimiter({ capacity: 100, refillRate: 10 });
 
     const registerTool = vi.fn();
     const mockServer = { registerTool } as unknown as Parameters<
