@@ -266,13 +266,12 @@ Once all routing stages are validated, these routers should be deprecated:
 
 ## Metrics
 
-- **Total deprecated items**: 43
+- **Total `@deprecated` markers in source** (as of 2026-04-19): 31 across 14 files
+- **Verify live count**: `rg '@deprecated' packages/nexus-agents/src --type ts`
 - **Completed removals**: 1 (nexus-tui — removed v2.25.1)
-- **v3.0 module removals**: 7
-- **v3.0 interface/type removals**: 11
-- **v3.0 function/method removals**: 11
-- **v3.0 field/constant removals**: 14
 - **Awaiting validation (routers)**: 7 (all replacement stages implemented)
+
+> The v3.0 cleanup pass is tracked in #1986; the per-category breakdown below is the planned removal set, which currently exceeds the live `@deprecated` count because several removals landed ahead of schedule in v2.x. Always prefer the live grep over this summary.
 
 ## Removal Checklist
 
