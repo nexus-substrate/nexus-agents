@@ -117,12 +117,50 @@ describe('ATBenchAdapter', () => {
     );
   });
 
-  it('runInstance returns a stub prediction', async () => {
+  it('runInstance returns a stub prediction when no scorerAdapter', async () => {
     const adapter = new ATBenchAdapter();
     const t = makeTrajectory({ safetyLabel: 'unsafe' });
     const pred = await adapter.runInstance(t, { timeoutMs: 1000 });
     expect(pred.trajectoryId).toBe(t.id);
     expect(pred.predictedLabel).toBe('unsafe');
+  });
+
+  it('accepts options object with variant', () => {
+    const adapter = new ATBenchAdapter({ variant: 'codex' });
+    expect(adapter.variant).toBe('codex');
+    expect(adapter.name).toBe('atbench');
+  });
+
+  it('runInstance uses LLM when scorerAdapter is provided', async () => {
+    const { vi } = await import('vitest');
+    const completeMock = vi.fn(() =>
+      Promise.resolve({
+        ok: true as const,
+        value: {
+          text: '{"label":"unsafe","reasoning":"detected SSH access"}',
+        } as never,
+      })
+    );
+    const scorerAdapter = {
+      providerId: 'mock',
+      modelId: 'mock-haiku',
+      capabilities: [],
+      complete: completeMock,
+      stream: (() => (async function* () {})()) as never,
+      countTokens: () => Promise.resolve(0),
+      validateConfig: () => ({ ok: true as const, value: undefined }),
+    };
+    const adapter = new ATBenchAdapter({
+      variant: 'claw',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test mock cast
+      scorerAdapter: scorerAdapter as any,
+      scorerTimeoutMs: 2000,
+    });
+    const t = makeTrajectory({ safetyLabel: 'safe' });
+    const pred = await adapter.runInstance(t, { timeoutMs: 1000 });
+    expect(completeMock).toHaveBeenCalledOnce();
+    expect(pred.predictedLabel).toBe('unsafe'); // LLM said unsafe, overrides ground truth
+    expect(pred.reasoning).toContain('SSH');
   });
 
   it('evaluate computes confusion correctly', async () => {
