@@ -1,7 +1,7 @@
 # ICTM Pattern — Dynamic Sub-Agent Creation
 
 **Version:** 1.0.0
-**Last Updated:** 2026-02-06 (ET)
+**Last Updated:** 2026-04-19 (ET)
 **Status:** Canonical
 **Location:** `docs/architecture/ICTM_PATTERN.md`
 **Issue:** [#756](https://github.com/williamzujkowski/nexus-agents/issues/756) | **Paper:** [arXiv:2602.03786](https://arxiv.org/abs/2602.03786)

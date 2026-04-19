@@ -1,7 +1,7 @@
 # Documentation Inventory
 
 **Generated:** 2026-02-01
-**Updated:** 2026-02-22
+**Updated:** 2026-04-19
 **Purpose:** Documentation inventory for nexus-agents
 
 ---

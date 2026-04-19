@@ -15,7 +15,7 @@ related_files:
 # Debugging with Observability
 
 **Version:** 1.0.0
-**Last Updated:** 2026-01-12 (ET)
+**Last Updated:** 2026-04-19 (ET)
 **Sprint:** #228 (A2A Observability Completion)
 
 This guide covers debugging multi-agent workflows using the nexus-agents observability infrastructure.

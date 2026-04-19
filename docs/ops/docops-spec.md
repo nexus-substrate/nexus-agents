@@ -1,8 +1,10 @@
+> ⚠ This doc was last validated 2026-04-19 against current source; some sections may need refresh.
+
 # Documentation Operations Specification
 
 **Version:** 1.1.0
 **Created:** 2026-02-01
-**Updated:** 2026-02-22
+**Updated:** 2026-04-19
 **Status:** Canonical
 **Governance:** This document defines the canonical DocOps pipeline. Changes require Documentation Management skill update.
 

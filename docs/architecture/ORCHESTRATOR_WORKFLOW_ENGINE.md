@@ -1,7 +1,7 @@
 # Orchestrator vs WorkflowEngine Architecture
 
 **Version:** 2.1.0
-**Last Updated:** 2026-02-05 (ET)
+**Last Updated:** 2026-04-19 (ET)
 **Status:** Canonical
 **Location:** `docs/architecture/ORCHESTRATOR_WORKFLOW_ENGINE.md`
 
