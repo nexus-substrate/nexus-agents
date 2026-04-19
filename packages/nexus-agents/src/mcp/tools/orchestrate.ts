@@ -64,6 +64,14 @@ import {
   type OrchestrateDeps,
   type RoutingInfo,
 } from './orchestrate-types.js';
+// ClawGuard access-policy derivation (#1977, #2022).
+// When NEXUS_ACCESS_POLICY_MODE is unset/off, this returns a bypass policy
+// and the middleware short-circuits — zero behavior change from pre-#2022.
+import {
+  deriveAccessPolicy,
+  withAccessPolicy,
+  resolveAccessPolicyMode,
+} from '../../security/access-constraint-deriver/index.js';
 
 // Re-export types and values for consumers
 export {
@@ -552,8 +560,9 @@ async function executeOrchestration(
   const task = await createTaskFromInput(input, taskId);
   const definition: OrchestratorDefinition = { type: 'task', task };
   const hb = startHeartbeatTracking(`orchestrate-${taskId}`, logger);
+  const policy = await deriveOrchestratePolicy(input.task, deps, logger);
   try {
-    const result = await orchestrator.execute(definition, {});
+    const result = await withAccessPolicy(policy, () => orchestrator.execute(definition, {}));
     if (!result.ok) {
       return handleOrchestratorFailure({
         error: result.error,
@@ -578,6 +587,54 @@ async function executeOrchestration(
     return handleOrchestrationException(error, taskId, input.task, logger);
   } finally {
     hb.cleanup();
+  }
+}
+
+/**
+ * Derive a ClawGuard access policy for this orchestration (#1977, #2022).
+ *
+ * Returns a live policy when `NEXUS_ACCESS_POLICY_MODE=audit|enforce` and
+ * a model adapter is available; returns a bypass policy in `off` mode
+ * (the default), which makes the mounted middleware short-circuit to
+ * pass-through.
+ *
+ * Never throws — derivation failure falls back to a permissive `off`
+ * policy so orchestration proceeds. All failures are logged.
+ */
+async function deriveOrchestratePolicy(
+  taskText: string,
+  deps: OrchestrateDeps,
+  logger: ILogger
+): Promise<Awaited<ReturnType<typeof deriveAccessPolicy>>> {
+  const mode = resolveAccessPolicyMode();
+  try {
+    const opts: Parameters<typeof deriveAccessPolicy>[1] = {
+      mode,
+      trustTier: '1',
+      ...(deps.modelAdapter !== undefined ? { adapter: deps.modelAdapter } : {}),
+    };
+    const policy = await deriveAccessPolicy(taskText, opts);
+    if (mode !== 'off') {
+      logger.info('access-policy: derived', {
+        mode,
+        source: policy.source,
+        allowedToolsWildcard: policy.allowedTools === '*',
+      });
+    }
+    return policy;
+  } catch (error) {
+    logger.warn('access-policy: derivation failed, falling back to off', {
+      error: getErrorMessage(error),
+    });
+    return {
+      allowedTools: '*',
+      allowedPathPatterns: [],
+      allowedOperations: '*',
+      objectiveHash: 'derivation-failed',
+      derivedAt: new Date().toISOString(),
+      source: 'bypass',
+      mode: 'off',
+    };
   }
 }
 
