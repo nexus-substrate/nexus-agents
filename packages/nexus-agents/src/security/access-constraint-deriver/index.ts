@@ -5,7 +5,18 @@
  */
 
 export { resolveAccessPolicyMode } from './config.js';
-export { deriveAccessPolicy, hashObjective } from './deriver.js';
+export { deriveAccessPolicy, deriveWithTelemetry, hashObjective } from './deriver.js';
+export type { DerivationOptions, DerivationTelemetry } from './deriver.js';
+export { deriveFallbackPolicy, FALLBACK_KEYWORDS } from './fallback-regex.js';
+export {
+  deriveViaLlm,
+  DEFAULT_LLM_TIMEOUT_MS,
+  INDUCTION_PROMPT,
+  LlmPolicyOutputSchema,
+} from './llm-deriver.js';
+export type { LlmPolicyOutput, LlmDerivationResult } from './llm-deriver.js';
+export { gateTrust } from './trust-gate.js';
+export type { TrustGateDecision } from './trust-gate.js';
 export { checkAccess } from './enforcer.js';
 export {
   UNBYPASSABLE_PATH_PATTERNS,
