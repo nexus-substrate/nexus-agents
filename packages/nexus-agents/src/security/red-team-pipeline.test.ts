@@ -619,5 +619,8 @@ describe('Input Truncation', () => {
     const sanitized = sanitizeInput(content, 'unknown', 'user');
     // Default maxInputLength is 50000, so the payload is within range
     expect(sanitized.wasModified).toBe(true);
-  });
+  }, // Extended timeout: under full suite load with GC pressure, scanning
+  // 50k chars through multiple regex passes can exceed 5s. In isolation
+  // the test completes in <10ms. See #1990 for the root cause diagnosis.
+  15_000);
 });
