@@ -122,6 +122,9 @@ interface ParsedValues {
   'max-workers'?: string;
   'run-id'?: string;
   'output-dir'?: string;
+  // ATBench options (#1981)
+  fixture?: string;
+  'llm-scoring': boolean;
   // Learning-metrics options
   period?: string;
   export?: string;
@@ -220,6 +223,17 @@ function buildSweBenchOptions(values: ParsedValues): Record<string, unknown> & {
   return base;
 }
 
+/** Builds atbench-specific options (#1981). */
+function buildAtbenchOptions(values: ParsedValues): {
+  fixture?: string;
+  llmScoring?: boolean;
+} {
+  const result: { fixture?: string; llmScoring?: boolean } = {};
+  if (values.fixture !== undefined) result.fixture = values.fixture;
+  if (values['llm-scoring']) result.llmScoring = true;
+  return result;
+}
+
 /** Builds learning-metrics specific options. */
 function buildLearningMetricsOptions(values: ParsedValues): {
   period?: number;
@@ -306,6 +320,7 @@ function buildOptions(values: ParsedValues): ParsedCliArgs['options'] {
     ...buildOrchestrateOptions(values),
     ...buildVoteOptions(values),
     ...buildSweBenchOptions(values),
+    ...buildAtbenchOptions(values),
     ...buildLearningMetricsOptions(values),
     ...buildSetupOptions(values),
   };
