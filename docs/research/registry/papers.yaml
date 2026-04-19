@@ -5233,14 +5233,38 @@ papers:
       - routing
     tags:
       - llm
-    reviewed_date: 2026-04-18
-    reviewed_in: ''
-    summary: ''
-    key_findings: []
+      - swe-bench
+      - code-health-signals
+      - tier-routing
+    reviewed_date: 2026-04-19
+    reviewed_in: 'Issue #1979 (deep-read notes)'
+    summary: 'Proposal paper (not yet evaluated). Routes SE tasks to light/standard/heavy
+      tiers (Haiku/Sonnet/Opus analogues) using 25+ code-health sub-factors as
+      pre-computed routing signals.
+
+      '
+    key_findings:
+      - Three routing tiers proposed (light/standard/heavy)
+      - 25+ code-health sub-factors as routing signals (cyclomatic complexity, coupling,
+        file size, duplication, naming, etc.)
+      - Three policy families to evaluate (heuristic thresholds, trained ML, perfect-hindsight
+        oracle)
+      - 'NO empirical results yet — paper explicitly states "presents a new idea, not yet
+        fully proven"'
+      - No GitHub repo / open-source code available
     relevance: medium
     techniques_extracted: []
-    related_issues: []
-    implementation_status: not-started
+    related_issues:
+      - 1979
+    implementation_status: deferred
+    deferral_rationale: |
+      Deferred 2026-04-19 after deep read (Issue #1979). The paper is methodology-
+      only — no empirical results vs single-frontier baselines, no heuristic-vs-ML
+      comparison, no oracle-gap measurement, no open-source reference code.
+      Re-implementing an unproven hypothesis is not justified given our existing
+      CompositeRouter (TOPSIS + LinUCB + 65.7% on 35-task SWE-bench subset) is
+      better-supported empirically. Re-open trigger: when the authors publish the
+      full 300-task SWE-bench Lite results AND release reference code.
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
@@ -5298,14 +5322,42 @@ papers:
       - evaluation
     tags:
       - benchmark
-    reviewed_date: 2026-04-18
-    reviewed_in: ''
-    summary: ''
-    key_findings: []
-    relevance: medium
+      - trajectory-safety
+      - claude
+      - codex
+      - mcp-supply-chain
+    reviewed_date: 2026-04-19
+    reviewed_in: 'Issue #1981 (deep-read notes)'
+    summary: 'CLI-specific trajectory safety benchmarks (ATBench-Claw for OpenClaw,
+      ATBench-CodeX for OpenAI Codex). Three-dimensional safety taxonomy over
+      risk source, failure mode, and real-world harm. Public dataset and code.
+
+      '
+    key_findings:
+      - 'Public HuggingFace dataset: AI45Research/ATBench-Claw (and CodeX equivalent)'
+      - 'Public code: github.com/AI45Lab/AgentDoG'
+      - 'Trajectory format includes meta, context, ordered events, binary safety labels,
+        actionability signals'
+      - 'Risk-source dimension covers MCP supply-chain, repo artifact injection,
+        jailbreaks'
+      - 'Failure-mode dimension covers over-privileged actions, unsafe shell exec,
+        cross-tool chaining'
+      - Specialized guard models score ~0.50 accuracy / ~0.02 F1 on hardest tasks
+        (benchmark is genuinely difficult)
+    relevance: high
     techniques_extracted: []
-    related_issues: []
+    related_issues:
+      - 1981
     implementation_status: not-started
+    review_status: deep-read-complete-strong-promote-pending-implementation-decision
+    review_notes: |
+      2026-04-19 deep read complete. Strong promote candidate with public dataset
+      and code already available — no upstream blockers for integration. Could land
+      as a BenchmarkAdapter in nexus-eval-* ecosystem (peer to nexus-eval-swebench),
+      using the BenchmarkAdapter contract from #1965. Effort estimate: ~1 week for
+      full adapter (HF dataset loader + trajectory replay + scoring), or smaller if
+      we skip replay and only score binary labels. Open questions: per-instance
+      runtime cost (CI lane budget) and whether scoring requires human review.
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
