@@ -35,6 +35,14 @@ export interface AgentPlanEntry {
   readonly reasoning: string;
   /** Wave group for parallel execution (1-based, lower = earlier) */
   readonly wave: number;
+  /**
+   * Optional DAG dependency — roles that MUST complete before this entry
+   * can run. When present, the consumer (worker-dispatcher) runs the plan
+   * through `topologicalWaveAssign` to recompute wave assignments
+   * (#2034 → #2043 integration). Absent or empty → entry keeps its
+   * priority-based wave.
+   */
+  readonly dependsOn?: readonly BuiltInExpertType[];
 }
 
 /** Minimum expert success rate before deprioritization (Issue #1325). */

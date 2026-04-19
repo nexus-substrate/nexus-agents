@@ -13,6 +13,7 @@
 
 import type { AgentPlanEntry } from './agent-planner.js';
 import { MAX_WORKERS_PER_WAVE } from './agent-planner.js';
+import { topologicalWaveAssign } from './topological-wave.js';
 import { createLogger, getErrorMessage } from '../../core/index.js';
 import { getExpertTaskTimeout, WORKER_TIMEOUTS } from '../../config/timeouts.js';
 import { isRateLimitError } from '../../cli/voter-execution.js';
@@ -137,6 +138,29 @@ export interface WorkerDispatchOptions {
 // ============================================================================
 // Wave Grouping
 // ============================================================================
+
+/**
+ * Apply topological wave recomputation when any entry declares
+ * `dependsOn` (#2034 → #2043). Returns the plan unchanged when no
+ * dependencies are declared, so pre-dependsOn plans are unaffected.
+ * Cycles or missing refs log a warning and fall back to the original
+ * priority-based wave assignment — never fail the dispatch over a
+ * bad plan.
+ */
+export function applyDependencyWaves(
+  entries: readonly AgentPlanEntry[]
+): readonly AgentPlanEntry[] {
+  const hasDeps = entries.some((e) => e.dependsOn !== undefined && e.dependsOn.length > 0);
+  if (!hasDeps) return entries;
+  const result = topologicalWaveAssign(entries);
+  if (!result.ok) {
+    logger.warn('Topological wave assignment failed, falling back to priority-only', {
+      error: result.error.message,
+    });
+    return entries;
+  }
+  return result.value;
+}
 
 /**
  * Groups plan entries by their wave number, sorted ascending.
@@ -337,7 +361,8 @@ export async function dispatchWorkers(
   if (entries.length === 0) return [];
 
   const maxConcurrency = options.maxConcurrency ?? MAX_WORKERS_PER_WAVE;
-  const waves = groupByWave(entries);
+  const effectiveEntries = applyDependencyWaves(entries);
+  const waves = groupByWave(effectiveEntries);
   const allResults: WorkerResult[] = [];
   const failureTracker = new RoleFailureTracker(
     options.consecutiveFailureThreshold ?? CONSECUTIVE_FAILURE_THRESHOLD

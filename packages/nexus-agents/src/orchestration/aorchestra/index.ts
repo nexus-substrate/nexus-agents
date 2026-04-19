@@ -18,6 +18,7 @@ export type { AgentPlan, AgentPlanEntry, PlanAgentTeamOptions } from './agent-pl
 export {
   dispatchWorkers,
   groupByWave,
+  applyDependencyWaves,
   WORKER_TIMEOUT_MS,
   DEFAULT_STAGGER_DELAY_MS,
   RoleFailureTracker,
