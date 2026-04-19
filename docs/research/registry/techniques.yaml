@@ -1634,8 +1634,7 @@ techniques:
       unified difficulty metric for improved model selection across domains.
 
       '
-    source_papers:
-      - zerorouter-tbd
+    source_papers: []
     topic: routing
     tags:
       - universal-difficulty
@@ -1808,8 +1807,7 @@ techniques:
       and improve retrieval quality. Semantic similarity check before insert.
 
       '
-    source_papers:
-      - arxiv-2601.02553
+    source_papers: []
     topic: memory
     tags:
       - deduplication

@@ -69,7 +69,7 @@ papers:
       - rl-orchestrator
       - dynamic-agent-selection
     related_issues: []
-    implementation_status: not-started
+    implementation_status: implemented
     citation_count: 41
     venue_tier: 0
     quality_score: 3
@@ -106,7 +106,7 @@ papers:
       - majority-voting
       - consensus-protocol
     related_issues: []
-    implementation_status: not-started
+    implementation_status: implemented
     venue_tier: 1
     quality_score: 3
     evidence_tier: low
@@ -2320,7 +2320,7 @@ papers:
       - forest-of-thought
     related_issues:
       - 331
-    implementation_status: partial
+    implementation_status: implemented
     venue_tier: 0
     quality_score: 0
     evidence_tier: low
@@ -2359,7 +2359,7 @@ papers:
       - agent-safety-bench
     related_issues:
       - 332
-    implementation_status: partial
+    implementation_status: implemented
     citation_count: 116
     venue_tier: 0
     quality_score: 3
