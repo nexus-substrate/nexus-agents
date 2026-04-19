@@ -43,6 +43,13 @@ import { getExpertFallbackChain, ROLE_TO_TASK_CATEGORY } from './create-expert-r
 import { getGlobalRegistry } from '../../adapters/unified-registry.js';
 import { createExpert } from '../../agents/experts/expert-factory.js';
 import { getOutcomeStore } from '../../orchestration/outcomes/outcome-store.js';
+// ClawGuard access-policy derivation (#1977, #2022).
+// When NEXUS_ACCESS_POLICY_MODE is unset/off, this is a no-op wrapper.
+import {
+  deriveAccessPolicy,
+  withAccessPolicy,
+  resolveAccessPolicyMode,
+} from '../../security/access-constraint-deriver/index.js';
 import { getExpertTaskTimeout, HEARTBEAT_TIMEOUTS } from '../../config/timeouts.js';
 import type { ICliDetectionCache } from '../../cli-adapters/cli-detection-cache.js';
 import { requireAdapterAvailable } from '../middleware/adapter-availability.js';
@@ -220,6 +227,50 @@ function buildSuccessResponse(params: SuccessResponseParams): ExecuteExpertRespo
 }
 
 /** Injects past error solutions into task context (best-effort). */
+/**
+ * Derive a ClawGuard access policy for this expert invocation (#1977, #2022).
+ *
+ * Mirrors the orchestrate-tool pattern: in `off` mode returns a bypass
+ * policy (zero behavior change); in audit/enforce modes derives a real
+ * policy via the regex fallback (no LLM adapter on `ExecuteExpertDeps`).
+ *
+ * Never throws — derivation failure falls back to a permissive `off`
+ * policy so expert execution is never blocked by a policy-derivation
+ * bug.
+ */
+async function deriveExpertAccessPolicy(
+  task: Task,
+  logger: ILogger | undefined
+): Promise<Awaited<ReturnType<typeof deriveAccessPolicy>>> {
+  const mode = resolveAccessPolicyMode();
+  try {
+    const policy = await deriveAccessPolicy(task.description, {
+      mode,
+      trustTier: '1',
+    });
+    if (mode !== 'off') {
+      logger?.info('access-policy: derived (expert)', {
+        mode,
+        source: policy.source,
+      });
+    }
+    return policy;
+  } catch (error) {
+    logger?.warn('access-policy: derivation failed, falling back to off (expert)', {
+      error: getErrorMessage(error),
+    });
+    return {
+      allowedTools: '*',
+      allowedPathPatterns: [],
+      allowedOperations: '*',
+      objectiveHash: 'derivation-failed',
+      derivedAt: new Date().toISOString(),
+      source: 'bypass',
+      mode: 'off',
+    };
+  }
+}
+
 function injectErrorHints(task: Task, role: string): void {
   try {
     const hints = getToolMemory().getRelevantErrorHints(role);
@@ -393,7 +444,8 @@ async function runExpertTask(
 
       let result;
       try {
-        result = await expert.execute(task);
+        const policy = await deriveExpertAccessPolicy(task, deps.logger);
+        result = await withAccessPolicy(policy, () => expert.execute(task));
       } finally {
         clearInterval(heartbeatTimer);
         monitor.endSession(sessionId);
