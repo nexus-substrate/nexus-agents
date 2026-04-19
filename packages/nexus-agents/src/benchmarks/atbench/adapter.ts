@@ -1,0 +1,122 @@
+/**
+ * ATBench BenchmarkAdapter (#1981).
+ *
+ * Implements the `BenchmarkAdapter` contract so ATBench can plug into the
+ * standard nexus-agents benchmark CLI / reporting surface alongside SWE-bench.
+ *
+ * **Current state: skeleton only —**
+ * - `loadInstances` requires a fixture path (HF dataset loader is a follow-up)
+ * - `runInstance` calls the stub scorer
+ * - `evaluate` + `summarize` are real (confusion matrix, accuracy, F1)
+ *
+ * @module benchmarks/atbench/adapter
+ */
+
+import type { BenchmarkAdapter, BenchmarkRunContext, BenchmarkRunSummary } from '../adapter.js';
+import { classifyConfusion, scoreTrajectoryStub } from './scorer.js';
+import type {
+  ATBenchEvalResult,
+  ATBenchLoadConfig,
+  ATBenchPrediction,
+  ATBenchTrajectory,
+} from './types.js';
+import { ATBenchTrajectorySchema } from './types.js';
+
+export class ATBenchAdapter implements BenchmarkAdapter<
+  ATBenchTrajectory,
+  ATBenchPrediction,
+  ATBenchEvalResult
+> {
+  readonly name = 'atbench';
+  readonly variant: string;
+
+  constructor(variant: 'claw' | 'codex' = 'claw') {
+    this.variant = variant;
+  }
+
+  /**
+   * Loads trajectories from a local JSONL fixture. HF dataset loading
+   * (`AI45Research/ATBench-Claw`) lands in the follow-up.
+   */
+  async loadInstances(config: Record<string, unknown>): Promise<readonly ATBenchTrajectory[]> {
+    const typed = config as unknown as ATBenchLoadConfig;
+    if (typeof typed.fixturePath !== 'string' || typed.fixturePath.length === 0) {
+      throw new Error(
+        'ATBenchAdapter skeleton requires config.fixturePath (JSONL). HF dataset loader arrives in follow-up.'
+      );
+    }
+    const { readFile } = await import('node:fs/promises');
+    const raw = await readFile(typed.fixturePath, 'utf8');
+    const lines = raw.split('\n').filter((l) => l.trim().length > 0);
+    const trajectories: ATBenchTrajectory[] = lines.map((line, idx) => {
+      const parsed = ATBenchTrajectorySchema.safeParse(JSON.parse(line));
+      if (!parsed.success) {
+        throw new Error(
+          `ATBench fixture line ${String(idx + 1)} failed schema validation: ${parsed.error.message}`
+        );
+      }
+      return parsed.data;
+    });
+    return typeof typed.maxInstances === 'number'
+      ? trajectories.slice(0, typed.maxInstances)
+      : trajectories;
+  }
+
+  async runInstance(
+    instance: ATBenchTrajectory,
+    _ctx: BenchmarkRunContext
+  ): Promise<ATBenchPrediction> {
+    return Promise.resolve(scoreTrajectoryStub(instance));
+  }
+
+  async evaluate(
+    instance: ATBenchTrajectory,
+    prediction: ATBenchPrediction
+  ): Promise<ATBenchEvalResult> {
+    return Promise.resolve({
+      trajectoryId: instance.id,
+      groundTruthLabel: instance.safetyLabel,
+      predictedLabel: prediction.predictedLabel,
+      confusion: classifyConfusion(prediction.predictedLabel, instance.safetyLabel),
+      reasoning: prediction.reasoning,
+    });
+  }
+
+  isPass(result: ATBenchEvalResult): boolean {
+    // A result is a "pass" when the prediction matches ground truth.
+    // (The benchmark's job is detection accuracy, not avoiding unsafe behavior.)
+    return result.confusion === 'tp' || result.confusion === 'tn';
+  }
+
+  summarize(results: readonly ATBenchEvalResult[], runTimeMs: number): BenchmarkRunSummary {
+    const total = results.length;
+    const passed = results.filter((r) => this.isPass(r)).length;
+    const tp = results.filter((r) => r.confusion === 'tp').length;
+    const fp = results.filter((r) => r.confusion === 'fp').length;
+    const fn = results.filter((r) => r.confusion === 'fn').length;
+    const precision = tp + fp > 0 ? tp / (tp + fp) : 0;
+    const recall = tp + fn > 0 ? tp / (tp + fn) : 0;
+    const f1 = precision + recall > 0 ? (2 * precision * recall) / (precision + recall) : 0;
+
+    return {
+      name: this.name,
+      variant: this.variant,
+      total,
+      passed,
+      passRate: total > 0 ? passed / total : 0,
+      runTimeMs,
+      metadata: {
+        confusionMatrix: {
+          tp,
+          fp,
+          fn,
+          tn: total - tp - fp - fn,
+        },
+        precision,
+        recall,
+        f1,
+        positiveClass: 'unsafe',
+      },
+    };
+  }
+}

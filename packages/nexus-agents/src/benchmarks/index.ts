@@ -1,11 +1,17 @@
 /**
  * nexus-agents/benchmarks - Module Exports
  *
- * Performance benchmarking for memory backends and other components.
+ * Performance benchmarking for memory backends and other components,
+ * plus the `BenchmarkAdapter` contract for pluggable benchmark integrations
+ * (SWE-bench, ATBench, etc.).
  *
  * @module benchmarks
- * (Source: Issue #156, Mem0 metrics validation)
+ * (Source: Issue #156, Mem0 metrics validation; Issue #1960, adapter contract;
+ *  Issue #1981, ATBench trajectory safety)
  */
+
+// ATBench — trajectory safety benchmark (#1981)
+export * from './atbench/index.js';
 
 // Types
 export type {
