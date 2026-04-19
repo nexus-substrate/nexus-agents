@@ -1,5 +1,84 @@
 # nexus-agents
 
+## 2.34.0
+
+### Minor Changes
+
+- [#1993](https://github.com/williamzujkowski/nexus-agents/pull/1993) [`65861d2`](https://github.com/williamzujkowski/nexus-agents/commit/65861d22e921fc6e1083c4bf853ce4bde1320994) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(security): add access-constraint-deriver skeleton ([#1977](https://github.com/williamzujkowski/nexus-agents/issues/1977) partial)
+
+  Lands the skeleton module for ClawGuard-style per-task tool access
+  policies (arxiv-2604.11790). Current state is **skeleton only** —
+  off/audit/enforce modes all return a bypass (allow-all) policy.
+
+  **New exports from `nexus-agents/security`:**
+  - `deriveAccessPolicy(objective): Promise<TaskAccessPolicy>` — returns a bypass policy in all modes today
+  - `checkAccess(toolName, policy): AccessDecision` — enforcer; passes through under bypass
+  - `resolveAccessPolicyMode(env?): 'off' | 'audit' | 'enforce'` — reads `NEXUS_ACCESS_POLICY_MODE`
+  - `TaskAccessPolicy`, `AccessDecision`, `AccessPolicyMode`, `AccessOperation` types + Zod schemas
+
+  **Runtime behavior: unchanged.** Default `NEXUS_ACCESS_POLICY_MODE=off` is a no-op. Dispatch path is NOT yet wired to the enforcer; that lands when the full LLM-derivation implementation arrives (follow-up commit).
+
+  **Why land the skeleton separately:**
+
+  Design was vote-approved in [#1977](https://github.com/williamzujkowski/nexus-agents/issues/1977) with 7 mandatory PR conditions. This PR covers conditions that can land without the LLM integration:
+  - ✅ Types + Zod validation (condition 2)
+  - ✅ Result-style `AccessDecision` discriminated union (condition 2)
+  - ✅ Deterministic tests for the skeleton surface (condition 7)
+  - ⏳ UnifiedAdapterRegistry LLM call (condition 1) — deferred
+  - ⏳ Hardcoded unbypassable denylist (condition 3) — deferred
+  - ⏳ Trust-tier gating on objective (condition 4) — deferred
+  - ⏳ Timeout + cache (condition 5) — deferred
+  - ⏳ <500ms p95 validation (condition 6) — deferred
+
+  17 tests cover mode resolution, objective hashing, skeleton derivation,
+  and enforcer contract (allow/deny/log-and-allow).
+
+  Full security suite passes (1640/1640).
+
+### Patch Changes
+
+- [#1991](https://github.com/williamzujkowski/nexus-agents/pull/1991) [`aa374d3`](https://github.com/williamzujkowski/nexus-agents/commit/aa374d3a1db2d8f15495e543d62b19b6a227d2d8) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - chore(deps): bump cspell 9.8.0 → 10.0.0 (closes [#1988](https://github.com/williamzujkowski/nexus-agents/issues/1988))
+
+  cspell major bump evaluated and applied. Breaking changes:
+  - Requires Node.js >=22.18 (we use Node 22, CI setup-node defaults to
+    latest 22.x — no action needed; local dev is on 22.22 already)
+  - Internal `import-fresh` v3→v4 async shift — does not affect consumers
+
+  Dictionary: added `yourname` as a placeholder word used in ECOSYSTEM.md
+  template-repo examples.
+
+  Validation: `pnpm spell` passes 139 files / 0 issues.
+
+- [#1989](https://github.com/williamzujkowski/nexus-agents/pull/1989) [`5b45187`](https://github.com/williamzujkowski/nexus-agents/commit/5b451878db56ba651465fce9eab01a14e62694de) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - chore(deps): minor + patch bumps across monorepo (closes [#1987](https://github.com/williamzujkowski/nexus-agents/issues/1987))
+
+  Safe minor/patch bumps only — no major-version changes in this batch.
+
+  **nexus-agents (runtime)**
+  - @ai-sdk/anthropic → 3.0.71
+  - @ai-sdk/google → 3.0.64
+  - @ai-sdk/openai → 3.0.53
+  - @google/genai → 1.50.1
+  - ai (Vercel AI SDK) → 6.0.168
+  - better-sqlite3 → 12.9.0
+  - typescript → 6.0.3
+
+  **nexus-agents (dev)**
+  - @changesets/cli → 2.31.0
+  - eslint → 10.2.1
+  - prettier → 3.8.3
+  - typescript-eslint → 8.58.2
+
+  **website**
+  - astro → 6.1.8
+  - @astrojs/svelte → 8.0.5
+  - svelte → 5.55.4
+
+  Excluded from this batch (need separate review):
+  - cspell 9.8.0 → 10.0.0 (major bump — tracked in [#1988](https://github.com/williamzujkowski/nexus-agents/issues/1988))
+  - ts-morph 27 → 28 (major bump)
+  - typescript 5 → 6 for nexus-agents-website (major bump)
+  - @anthropic-ai/sdk 0.88 → 0.90 (pre-1.0 — semver-minor treated as major)
+
 ## 2.33.2
 
 ### Patch Changes
