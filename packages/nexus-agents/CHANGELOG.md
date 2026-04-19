@@ -1,5 +1,59 @@
 # nexus-agents
 
+## 2.35.0
+
+### Minor Changes
+
+- [#1996](https://github.com/williamzujkowski/nexus-agents/pull/1996) [`b0a3d45`](https://github.com/williamzujkowski/nexus-agents/commit/b0a3d45f9d3fa2b3661fe6bc3e5675df0ce951a7) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(benchmarks): add ATBench skeleton adapter ([#1981](https://github.com/williamzujkowski/nexus-agents/issues/1981) partial)
+
+  Tier 1 (score-only) skeleton of ATBench — trajectory safety benchmark
+  from arxiv-2604.14858. Public dataset:
+  https://huggingface.co/datasets/AI45Research/ATBench-Claw
+
+  Lands the `BenchmarkAdapter` contract implementation with deterministic
+  stub scorer so the pipeline works end-to-end before the LLM classifier
+  integration arrives. Follow-up adds HF dataset loader + real security-
+  expert scorer per the vote-approved design ([#1981](https://github.com/williamzujkowski/nexus-agents/issues/1981)).
+
+  **New exports from `nexus-agents/benchmarks`:**
+  - `ATBenchAdapter` — implements BenchmarkAdapter contract (load/run/evaluate/isPass/summarize)
+  - `scoreTrajectoryStub()`, `classifyConfusion()` — scorer helpers
+  - `ATBenchTrajectory`, `ATBenchPrediction`, `ATBenchEvalResult`, `SafetyLabel`, `SafetyTaxonomy`, `ToolEvent` types + Zod schemas
+
+  **Fixture-based for now.** `loadInstances` requires `config.fixturePath` pointing at a JSONL file; HF download path is the follow-up.
+
+  **Scoring math is real.** Tier 1 stub is a perfect oracle (echoes ground truth) to exercise the contract deterministically, but precision/recall/F1/confusion-matrix computation is production code.
+
+  15 tests pass covering:
+  - confusion classification (tp/tn/fp/fn)
+  - fixture loading (+ maxInstances cap, missing-path error)
+  - adapter contract (name, variant, runInstance, evaluate, isPass)
+  - summarize math (precision/recall/F1, empty-results zeros)
+
+### Patch Changes
+
+- [#1994](https://github.com/williamzujkowski/nexus-agents/pull/1994) [`f0fd91d`](https://github.com/williamzujkowski/nexus-agents/commit/f0fd91d3de440ec84731f7fd7050c481fc44e749) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - docs(cli-adapters,coordination): correct task-classifier and task-features deprecation markers (closes [#1985](https://github.com/williamzujkowski/nexus-agents/issues/1985))
+
+  Audit during [#1985](https://github.com/williamzujkowski/nexus-agents/issues/1985) found that the `@deprecated — use SharedTaskAnalyzer`
+  markers on two modules were aspirational, not actionable:
+  - `cli-adapters/task-classifier.ts` exposes `FallbackTaskType` — a 5-value
+    taxonomy (code/research/documentation/analysis/general) tuned for
+    CLI fallback-chain selection. `SharedTaskAnalyzer.TaskTypeCategory`
+    has 9 values tuned for capability routing. They are not interchangeable.
+  - `agents/coordination/task-features.ts` exposes `extractTaskFeatures` —
+    produces `ScalingTaskType`-categorized features for the scaling-predictor
+    model. That is a different feature set than `SharedTaskAnalyzer.analyze()`
+    produces for capability routing.
+
+  Both modules serve distinct, still-needed purposes. Removed the misleading
+  `@deprecated` markers and clarified each module's role + relationship to
+  `SharedTaskAnalyzer`. No code behavior changes.
+
+  The original issue [#1985](https://github.com/williamzujkowski/nexus-agents/issues/1985) ("migrate to SharedTaskAnalyzer") is resolved
+  because there is nothing to migrate — the modules were incorrectly
+  deprecated. A future unification (if warranted) would be a new design
+  proposal, not a 1:1 migration.
+
 ## 2.34.0
 
 ### Minor Changes
