@@ -45,6 +45,7 @@ export type CliCommand =
   | 'validation'
   | 'learning-metrics'
   | 'swe-bench'
+  | 'atbench'
   | 'setup'
   | 'hooks'
   | 'demo'
@@ -396,6 +397,7 @@ export function isValidCommand(value: string): value is CliCommand {
     'validation',
     'learning-metrics',
     'swe-bench',
+    'atbench',
     'setup',
     'hooks',
     'demo',

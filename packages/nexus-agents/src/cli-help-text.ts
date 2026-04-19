@@ -42,6 +42,7 @@ COMMANDS:
   validation      Show learning validation dashboard
   learning-metrics Show aggregated learning metrics dashboard
   swe-bench       Run SWE-bench evaluation benchmark
+  atbench         Run ATBench trajectory-safety evaluation (#1981)
   hooks           Claude CLI hook integration commands
   fitness-audit   Run CLI orchestration fitness score audit
   release-notes   Generate release notes from git commits
@@ -170,6 +171,14 @@ SWE-BENCH OPTIONS:
   --resume               Skip already completed instances
   --instance=<id>        Run specific instance (can be repeated)
   --verbose              Enable verbose output
+
+ATBENCH OPTIONS:
+  atbench run            Score trajectories + summarize (default)
+  atbench info           Print dataset metadata + scorer mode
+  --variant=<claw|codex> Dataset variant (default: claw)
+  --limit=<N>            Cap instances (smoke runs)
+  --fixture=<path>       Use local JSONL instead of HuggingFace
+  --llm-scoring          Enable LLM scorer (default: stub oracle)
 
 HOOKS OPTIONS:
   hooks session-start    Handle SessionStart hook events
@@ -336,6 +345,8 @@ EXAMPLES:
   nexus-agents swe-bench run --limit=5            Run 5 SWE-bench instances
   nexus-agents swe-bench status                   Check progress
   nexus-agents swe-bench evaluate                 Evaluate predictions
+  nexus-agents atbench info                       Show ATBench info
+  nexus-agents atbench run --variant=claw --limit=10  Smoke-test ATBench
   nexus-agents hooks --help                       Show hooks command help
   nexus-agents hooks session-start                Handle session start hook
   nexus-agents hooks pre-tool --tool Bash         Handle pre-tool hook for Bash

@@ -9,10 +9,12 @@
  */
 
 import {
+  atbenchCommand,
   configInitCommand,
   configCommand,
   isValidConfigAction,
   orchestrateCommand,
+  parseAtbenchArgs,
   sweBenchCommand,
 } from './cli/index.js';
 import { EXIT_CODES, type ParsedCliArgs } from './cli-types.js';
@@ -185,4 +187,26 @@ function buildSweBenchSubArgs(args: ParsedCliArgs): string[] {
 export async function handleSweBenchCommand(args: ParsedCliArgs): Promise<void> {
   const exitCode = await sweBenchCommand(buildSweBenchSubArgs(args));
   process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
+}
+
+/** Build raw argv for atbench from parsed CLI args (#1981). */
+function buildAtbenchArgv(args: ParsedCliArgs): readonly string[] {
+  // ParsedCliArgs is strictly typed; access loose options via Record cast.
+  const opts = args.options as unknown as Record<string, unknown>;
+  const argv: string[] = [args.positionals[1] ?? 'run'];
+  if (typeof opts['variant'] === 'string') argv.push(`--variant=${opts['variant']}`);
+  if (typeof opts['limit'] === 'number' || typeof opts['limit'] === 'string') {
+    argv.push(`--limit=${String(opts['limit'])}`);
+  }
+  if (typeof opts['fixture'] === 'string') argv.push(`--fixture=${opts['fixture']}`);
+  if (opts['llm-scoring'] === true || opts['llmScoring'] === true) argv.push('--llm-scoring');
+  if (opts['verbose'] === true) argv.push('--verbose');
+  return argv;
+}
+
+/** Handler for `nexus-agents atbench ...` (#1981). */
+export async function handleAtbenchCommand(args: ParsedCliArgs): Promise<void> {
+  const opts = parseAtbenchArgs(buildAtbenchArgv(args));
+  const result = await atbenchCommand(opts);
+  process.exit(result.success ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
 }
