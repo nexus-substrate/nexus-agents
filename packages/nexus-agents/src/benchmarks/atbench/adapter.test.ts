@@ -107,9 +107,14 @@ describe('ATBenchAdapter', () => {
     }
   });
 
-  it('loadInstances throws a clear error when fixturePath is missing', async () => {
+  it('loadInstances falls back to HF when no fixturePath (error surfaced if network unavailable)', async () => {
     const adapter = new ATBenchAdapter();
-    await expect(adapter.loadInstances({ variant: 'claw' })).rejects.toThrow(/fixturePath/);
+    // Without a mocked fetch, the HF call will fail; we assert the error
+    // surfaces from the HF path (not the "fixturePath missing" error from
+    // the prior skeleton).
+    await expect(adapter.loadInstances({ variant: 'claw', maxInstances: 1 })).rejects.toThrow(
+      /HF load failed|HuggingFace/
+    );
   });
 
   it('runInstance returns a stub prediction', async () => {
