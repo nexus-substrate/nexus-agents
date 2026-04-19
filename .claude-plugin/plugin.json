@@ -1,7 +1,7 @@
 {
   "name": "nexus-agents",
   "version": "2.45.0",
-  "description": "Intelligent orchestration platform for AI coding tools — routes tasks to the best model, learns from outcomes, and enforces quality through multi-model consensus. 30 MCP tools for agent management, research, memory, consensus voting, codebase intelligence, and a full dev pipeline.",
+  "description": "Intelligent orchestration platform for AI coding tools — routes tasks to the best model, learns from outcomes, and enforces quality through multi-model consensus. 31 MCP tools for agent management, research, memory, consensus voting, codebase intelligence, and a full dev pipeline.",
   "author": {
     "name": "William Zujkowski",
     "email": "williamzujkowski@gmail.com",

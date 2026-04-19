@@ -501,6 +501,7 @@ Governance rules (voting thresholds, refactor gates, fitness audit, documentatio
 | `execute_spec`            | Execute an AI software factory spec through the full pipeline (parse, decompose, compile, execute, validate).                                 |
 | `registry_import`         | Generate a draft model registry entry for a new AI model. Returns a template with conservative defaults for human review.                     |
 | `query_trace`             | Query execution trace JSONL files from disk for a given run ID. Supports filtering by event type and pagination.                              |
+| `query_task_state`        | query_task_state tool                                                                                                                         |
 | `repo_analyze`            | Analyze a GitHub repository structure. Returns language, framework, package manager, CI provider, security tooling, and gap identification.   |
 | `repo_security_plan`      | Generate a security scanning pipeline recommendation for a GitHub repository based on detected tech stack.                                    |
 | `extract_symbols`         | Extract code symbols (functions, classes, types) from source files for analysis.                                                              |
@@ -508,7 +509,7 @@ Governance rules (voting thresholds, refactor gates, fitness audit, documentatio
 | `run_dev_pipeline`        | run_dev_pipeline tool                                                                                                                         |
 | `run_pipeline`            | run_pipeline tool                                                                                                                             |
 
-_Auto-generated from source. 30 tools registered._
+_Auto-generated from source. 31 tools registered._
 
 <!-- GOVERNANCE:TOOL_INDEX:END -->
 

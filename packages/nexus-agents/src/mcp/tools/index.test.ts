@@ -36,6 +36,7 @@ import {
   registerExecuteSpecTool,
   registerRegistryImportTool,
   registerQueryTraceTool,
+  registerQueryTaskStateTool,
   registerRepoAnalyzeTool,
   registerRepoSecurityPlanTool,
   // Zod schemas
@@ -67,7 +68,7 @@ import {
   RepoSecurityPlanInputSchema,
 } from './index.js';
 
-const EXPECTED_TOOL_COUNT = 30;
+const EXPECTED_TOOL_COUNT = 31;
 
 const EXPECTED_TOOL_NAMES = [
   'orchestrate',
@@ -94,6 +95,7 @@ const EXPECTED_TOOL_NAMES = [
   'execute_spec',
   'registry_import',
   'query_trace',
+  'query_task_state',
   'repo_analyze',
   'repo_security_plan',
   'extract_symbols',
@@ -156,6 +158,7 @@ describe('MCP tools index', () => {
       ['registerExecuteSpecTool', registerExecuteSpecTool],
       ['registerRegistryImportTool', registerRegistryImportTool],
       ['registerQueryTraceTool', registerQueryTraceTool],
+      ['registerQueryTaskStateTool', registerQueryTaskStateTool],
       ['registerRepoAnalyzeTool', registerRepoAnalyzeTool],
       ['registerRepoSecurityPlanTool', registerRepoSecurityPlanTool],
     ] as const;
@@ -164,10 +167,10 @@ describe('MCP tools index', () => {
       expect(typeof fn).toBe('function');
     });
 
-    it('exports 26 register functions', () => {
+    it('exports 27 register functions', () => {
       // Register functions count differs from tool count because
       // extract_symbols and search_codebase use a different pattern
-      expect(registerFunctions).toHaveLength(26);
+      expect(registerFunctions).toHaveLength(27);
     });
   });
 

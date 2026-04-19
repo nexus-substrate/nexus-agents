@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-04-19T19:57:42.310Z",
+  "generated": "2026-04-19T20:52:38.019Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.45.0",
   "cli": {
@@ -313,6 +313,10 @@
       {
         "name": "orchestrate",
         "file": "src/mcp/tools/orchestrate.ts"
+      },
+      {
+        "name": "query_task_state",
+        "file": "src/mcp/tools/query-task-state.ts"
       },
       {
         "name": "query_trace",

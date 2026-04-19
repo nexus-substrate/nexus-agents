@@ -326,6 +326,15 @@ export {
   type QueryTraceResponse,
 } from './query-trace-tool.js';
 
+// Query task state tool (#2046)
+export {
+  registerQueryTaskStateTool,
+  QueryTaskStateInputSchema,
+  type QueryTaskStateDeps,
+  type QueryTaskStateInput,
+  type QueryTaskStateResponse,
+} from './query-task-state-tool.js';
+
 // Research pipeline tool (Issue #1711)
 
 // Unified pipeline tool (Issue #1736, Phase 3)
@@ -450,6 +459,7 @@ export function registerTools(
       'execute_spec',
       'registry_import',
       'query_trace',
+      'query_task_state',
       'repo_analyze',
       'repo_security_plan',
       'extract_symbols',
