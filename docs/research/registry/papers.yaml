@@ -439,8 +439,22 @@ papers:
     relevance: medium
     techniques_extracted:
       - capability-instruction-tuning
-    related_issues: []
-    implementation_status: not-started
+    related_issues:
+      - 1975
+    implementation_status: rejected
+    rejection_rationale: |
+      Rejected 2026-04-18 via consensus vote (100% approve, PM timeout).
+      Four-part rationale: (1) architectural mismatch — paper targets
+      single-model capability coverage via tuning; nexus-agents is a
+      meta-routing layer over already-trained frontier CLIs. (2) No
+      training-pipeline / data-curation / model-hosting infrastructure
+      exists; build-out would be multi-quarter. (3) NEXUS_BILLING_MODE=plan
+      zeros cost in scoring, eliminating the paper's cost-compression
+      value prop for our dominant usage mode. (4) Zero consumer signal in
+      1+ year since indexing; routing success climbing (83.6% → 86.5%)
+      indicates no plateau to address.
+      Re-open triggers: self-hosting models, routing-accuracy plateau,
+      or api-billing-heavy usage. See #1975 for the decision record.
     citation_count: 20
     venue_tier: 1
     rigor_tags:
