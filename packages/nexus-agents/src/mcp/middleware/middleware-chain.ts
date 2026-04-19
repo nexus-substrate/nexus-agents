@@ -18,6 +18,7 @@ import { TimeoutGuard, type TimeoutGuardConfig } from './timeout-guard.js';
 import { createRequestContext, contextForLogging, type RequestContext } from './request-context.js';
 import { createMetricsMiddleware } from './tool-metrics.js';
 import { abortSignalStorage } from '../mcp-notifier.js';
+import { createAccessPolicyChainMiddleware } from '../../security/access-constraint-deriver/chain-adapter.js';
 
 /**
  * MCP tool result type.
@@ -90,6 +91,8 @@ export interface MiddlewareSkipConfig {
   rateLimit?: boolean | undefined;
   timeout?: boolean | undefined;
   audit?: boolean | undefined;
+  /** Skip the ClawGuard access-policy middleware (#1977). */
+  accessPolicy?: boolean | undefined;
 }
 
 /**
@@ -317,6 +320,24 @@ function addTimeoutMiddleware(
   }
 }
 
+/**
+ * Helper: adds the ClawGuard access-policy middleware (#1977).
+ *
+ * Always added unless explicitly skipped. The middleware is ALS-backed
+ * and a no-op pass-through when no orchestrator has called
+ * `withAccessPolicy(...)` — so runtime behavior is unchanged for callers
+ * that haven't opted in.
+ */
+function addAccessPolicyMiddleware(
+  middlewares: Middleware[],
+  config: MiddlewareChainConfig,
+  skip: MiddlewareSkipConfig
+): void {
+  if (skip.accessPolicy !== true) {
+    middlewares.push(createAccessPolicyChainMiddleware(config.toolName));
+  }
+}
+
 /** Helper: builds the middleware stack */
 function buildMiddlewareStack(config: MiddlewareChainConfig): Middleware[] {
   const skip = config.skip ?? {};
@@ -327,6 +348,7 @@ function buildMiddlewareStack(config: MiddlewareChainConfig): Middleware[] {
   addRateLimitMiddleware(middlewares, config, skip);
   addValidationMiddleware(middlewares, config, skip);
   addPolicyMiddleware(middlewares, config, skip);
+  addAccessPolicyMiddleware(middlewares, config, skip); // #1977 ClawGuard
   addTimeoutMiddleware(middlewares, config, skip);
 
   return middlewares;
