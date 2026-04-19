@@ -29,8 +29,16 @@ alignments:
       QualityRouter selects initial model based on complexity.
       AgreementCascadeRouter escalates on disagreement.
       Chain: QualityRouter -> AgreementCascadeRouter -> final result
-    status: identified
-    date: '2026-01-07'
+    status: rejected
+    date: '2026-04-18'
+    decision_rationale: |
+      Both components ship independently: QualityConstraintStage lives in the
+      CompositeRouter pipeline; AgreementCascadeRouter / canCascadeEarly() lives
+      in the consensus engine. They solve different problems (model selection vs
+      consensus escalation) and run in different execution paths. A unified
+      chain was never needed — CompositeRouter handles quality-aware selection;
+      the consensus engine handles cascade-on-disagreement. No consumer has
+      requested the combined pipeline in 3+ months.
 
   routing-quality-budget:
     techniques:
@@ -46,8 +54,15 @@ alignments:
       Could unify into single router with mode selection:
       - quality_constrained: minimize cost, quality >= threshold
       - budget_constrained: maximize quality, cost <= budget
-    status: planned
-    date: '2026-01-07'
+    status: rejected
+    date: '2026-04-18'
+    decision_rationale: |
+      YAGNI. CompositeRouter runs both stages sequentially (BudgetRouter first,
+      QualityConstraintStage later) and the dual-pipeline approach has been
+      stable across 10k+ observed tasks (84% overall success). Unification would
+      require refactoring two production stages to resolve a conflict that
+      hasn't materialized in practice. Additionally, NEXUS_BILLING_MODE=plan
+      zeros cost for most users, making quality-first the effective default.
 
   routing-sater-cascade:
     techniques:
@@ -61,8 +76,15 @@ alignments:
     integration_approach: |
       Add confidence scoring to AgreementCascadeRouter.
       Use both agreement threshold AND confidence for escalation.
-    status: identified
-    date: '2026-01-07'
+    status: rejected
+    date: '2026-04-18'
+    decision_rationale: |
+      Different subsystems. SATER is a ConfidenceCascadeStage in the routing
+      pipeline (pre-dispatch model selection). AgreementCascadeRouter runs in
+      the consensus engine (post-dispatch escalation on disagreement). Fusing
+      their confidence signals would cross a subsystem boundary without a clear
+      benefit — the confidence information SATER needs comes from response
+      content, which is only available after consensus execution starts.
 
   # ============================================================================
   # CONSENSUS TECHNIQUE ALIGNMENTS
@@ -112,8 +134,15 @@ alignments:
     integration_approach: |
       Add confidence scoring with anti-conformity adjustment
       to Aegean's position aggregation phase.
-    status: identified
-    date: '2026-01-07'
+    status: rejected
+    date: '2026-04-18'
+    decision_rationale: |
+      Superseded by higher-order-voting (OW/ISP). The Bayesian correlation-aware
+      aggregation in higher-order-voting addresses the same problem Free-MAD
+      solves (majority-over-correct bias, groupthink) with a more principled
+      mathematical framework. ConsensusEngine uses higher_order strategy for
+      architecture/security votes; adding Free-MAD's anti-conformity scoring on
+      top would be redundant.
 
   # ============================================================================
   # MEMORY TECHNIQUE ALIGNMENTS
@@ -131,8 +160,17 @@ alignments:
     integration_approach: |
       After Reflexion completes, extract learnings and store
       in MIRIX episodic memory for future session retrieval.
-    status: planned
-    date: '2026-01-07'
+    status: deferred
+    date: '2026-04-18'
+    decision_rationale: |
+      Both components ship independently: ReflexionProtocol (collaboration/)
+      maintains its own per-session episodic memory; MIRIX provides the
+      multi-backend memory system. A dedicated Reflexion→MIRIX bridge would add
+      cross-session persistence of reflexion traces, but no current consumer
+      requires this. Promote when a real workflow needs reflexion learnings
+      retrieved across sessions (candidates: SWE-bench long-running runs
+      #1414/#1574, or evolving-orchestration with learned-policy carryover).
+      Matches the deferred-research pattern of #1895 and #1898.
 
   # ============================================================================
   # SELF-IMPROVEMENT ALIGNMENTS
@@ -164,4 +202,8 @@ summary:
     enhances: 3
     conflicting: 0
     supersedes: 0
-  last_updated: '2026-01-07'
+  by_status:
+    implemented: 3
+    rejected: 4
+    deferred: 1
+  last_updated: '2026-04-18'

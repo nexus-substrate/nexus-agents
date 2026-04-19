@@ -45,6 +45,54 @@ When a subagent hits its output limit, token budget, or context ceiling mid-scan
 
 Compressed summaries that hide coverage gaps are the worst-case output: they look complete but silently miss scope. Always prefer "honestly partial" over "dishonestly whole."
 
+## Polling and Waiting
+
+When work needs to wait for an external signal (CI completion, deploy finish, long-running job, file appears), there are three correct patterns. A fourth pattern — chained sleep — is explicitly banned because the harness will block it.
+
+### BANNED: chained sleep + check
+
+```bash
+# WRONG — the harness rejects this with a "use Monitor or run_in_background" error
+sleep 30 && gh pr checks 1234
+```
+
+Why banned: the harness treats chained leading sleeps as a polling workaround. Don't try to defeat it by breaking the sleep into smaller pieces either — that pattern is also detected.
+
+### PATTERN 1: fire-and-wait with background notification
+
+Use when you kicked off the long-running command yourself and want to be notified when it finishes.
+
+```
+Bash(command: "pnpm test -- --run", run_in_background: true)
+# Do other work; the harness notifies you when the background task completes.
+```
+
+Right for: build/test/deploy that you started, long agent spawns.
+
+### PATTERN 2: poll-until-condition as one command
+
+Use when you need to wait for a condition that some external process will eventually satisfy.
+
+```bash
+until gh pr checks 1234 | grep -q "^CI Success.*pass"; do sleep 2; done
+```
+
+This is a single command — not a chained one — so the harness allows it. The `sleep 2` inside the loop body is a body-level delay, not a leading sleep.
+
+Right for: waiting on CI, waiting on a file to appear, waiting for a port to open.
+
+### PATTERN 3: schedule-and-revisit with Monitor
+
+Use when the wait is long (minutes+) and you don't want to keep a shell open.
+
+Use the `Monitor` tool (see tool list when spawned) to stream events from a background process. For pure timer-based waits, use `ScheduleWakeup` with a reason describing what you're waiting for.
+
+Right for: idle cycles in `/loop`, "come back in 20 minutes to check the deploy," polling that would otherwise burn cache windows.
+
+### Discovery note
+
+If you hit the harness block unexpectedly, it means you wrote a chained-sleep pattern. Switch to Pattern 1, 2, or 3 — don't retry the same approach with shorter sleeps.
+
 ## Security Constraint on Status Outputs
 
 When surfacing a blocker per rule 2, redact secrets before writing the status:

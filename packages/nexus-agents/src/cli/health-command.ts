@@ -26,6 +26,8 @@ import type {
 export interface CliHealthSummary {
   readonly cli: string;
   readonly successRate: number;
+  readonly adapterAttemptSuccessRate: number;
+  readonly adapterUnavailableCount: number;
   readonly totalTasks: number;
   readonly avgDurationMs: number;
 }
@@ -33,6 +35,8 @@ export interface CliHealthSummary {
 export interface HealthResult {
   readonly swarmHealth: SwarmHealthMetrics | undefined;
   readonly overallSuccessRate: number;
+  readonly adapterAttemptSuccessRate: number;
+  readonly adapterUnavailableCount: number;
   readonly totalTasks: number;
   readonly failureBreakdown: readonly FailureBreakdownEntry[];
   readonly cliCount: number;
@@ -51,6 +55,8 @@ export function collectHealth(): HealthResult {
   return {
     swarmHealth: report.swarmHealth,
     overallSuccessRate: report.overall.successRate,
+    adapterAttemptSuccessRate: report.overall.adapterAttemptSuccessRate,
+    adapterUnavailableCount: report.overall.adapterUnavailableCount,
     totalTasks: report.overall.totalTasks,
     failureBreakdown: report.failureBreakdown ?? [],
     cliCount: report.cliWeather.length,
@@ -63,6 +69,8 @@ function toCliSummary(cw: CliWeather): CliHealthSummary {
   return {
     cli: cw.cli,
     successRate: cw.successRate,
+    adapterAttemptSuccessRate: cw.adapterAttemptSuccessRate,
+    adapterUnavailableCount: cw.adapterUnavailableCount,
     totalTasks: cw.totalTasks,
     avgDurationMs: cw.avgDurationMs,
   };
@@ -155,7 +163,11 @@ function renderTable(health: HealthResult): void {
         : c.red;
   const rateSym = health.overallSuccessRate >= 0.8 ? s.check : s.warn;
   const pctStr = `${(health.overallSuccessRate * 100).toFixed(1)}%`;
+  const attemptPctStr = `${(health.adapterAttemptSuccessRate * 100).toFixed(1)}%`;
   w(`  Success Rate:  ${rateColor}${pctStr}${c.reset}  ${rateSym}\n`);
+  w(
+    `  Attempt Rate:  ${c.cyan}${attemptPctStr}${c.reset}  ${c.dim}(excludes adapter_unavailable: ${String(health.adapterUnavailableCount)})${c.reset}\n`
+  );
   w(`  Total Tasks:   ${c.cyan}${String(health.totalTasks)}${c.reset}\n`);
   w(`  Active CLIs:   ${c.cyan}${String(health.cliCount)}${c.reset}\n\n`);
 

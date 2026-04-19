@@ -26,6 +26,7 @@ import type {
   WeatherReportResponse,
   CliWeather,
   AdaptiveBonus,
+  AdapterAttemptStats,
   WeatherReportConfig,
   TierRecommendationEntry,
   LearningInsight,
@@ -93,12 +94,14 @@ export function generateWeatherReport(
   const store = getOutcomeStore();
   const includeAdaptive = input.includeAdaptive ?? true;
   const summary = store.summarize(buildQuery(input.cli, input.category));
+  const overallOutcomes = store.query(buildQuery(input.cli, input.category));
 
   const base = {
     overall: {
       totalTasks: summary.totalTasks,
       successRate: summary.successRate,
       avgDurationMs: summary.avgDurationMs,
+      ...computeAdapterAttemptStats(overallOutcomes),
     },
     cliWeather: buildCliWeather(summary, input),
     adaptiveBonuses: includeAdaptive ? computeAdaptiveBonuses(cfg) : [],
@@ -249,6 +252,34 @@ function buildQuery(
   return query;
 }
 
+/**
+ * Computes adapter attempt stats from a set of outcomes, separating infrastructure
+ * failures (adapter_unavailable) from model-quality failures. Returns an empty
+ * stats object (zeros) when the input is empty. (#1982)
+ */
+function computeAdapterAttemptStats(outcomes: readonly TaskOutcome[]): AdapterAttemptStats {
+  if (outcomes.length === 0) {
+    return { adapterAttemptSuccessRate: 0, adapterUnavailableCount: 0, adapterUnavailableRate: 0 };
+  }
+  const adapterUnavailable = outcomes.filter((o) => {
+    if (o.success) return false;
+    const cat =
+      o.failureCategory ??
+      (typeof o.errorMessage === 'string' && o.errorMessage.length > 0
+        ? categorizeOutcomeErrorMessage(o.errorMessage)
+        : undefined);
+    return cat === 'adapter_unavailable';
+  }).length;
+  const attempted = outcomes.length - adapterUnavailable;
+  const successes = outcomes.filter((o) => o.success).length;
+  const attemptSuccessRate = attempted > 0 ? successes / attempted : 0;
+  return {
+    adapterAttemptSuccessRate: round3(attemptSuccessRate),
+    adapterUnavailableCount: adapterUnavailable,
+    adapterUnavailableRate: round3(adapterUnavailable / outcomes.length),
+  };
+}
+
 function buildCliWeather(
   summary: PerformanceSummary,
   input: WeatherReportOptions
@@ -281,6 +312,7 @@ function buildCliWeather(
       successRate: stats?.successRate ?? 0,
       avgDurationMs: stats?.avgDurationMs ?? 0,
       byCategory,
+      ...computeAdapterAttemptStats(cliOutcomes),
     };
   });
 }

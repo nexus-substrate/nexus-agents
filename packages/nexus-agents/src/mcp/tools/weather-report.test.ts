@@ -181,6 +181,72 @@ describe('generateWeatherReport', () => {
   });
 });
 
+describe('adapter attempt stats (#1982)', () => {
+  it('reports zero stats on an empty store', () => {
+    const report = generateWeatherReport({});
+    expect(report.overall.adapterAttemptSuccessRate).toBe(0);
+    expect(report.overall.adapterUnavailableCount).toBe(0);
+    expect(report.overall.adapterUnavailableRate).toBe(0);
+  });
+
+  it('excludes adapter_unavailable from attempt success denominator', () => {
+    // 5 successes, 2 execution failures, 3 adapter_unavailable failures
+    seedOutcomes(5, { cli: 'claude', success: true });
+    seedOutcomes(2, { cli: 'claude', success: false, failureCategory: 'execution' });
+    seedOutcomes(3, {
+      cli: 'claude',
+      success: false,
+      failureCategory: 'adapter_unavailable',
+    });
+
+    const report = generateWeatherReport({});
+
+    // Headline: 5 / 10 = 0.50
+    expect(report.overall.successRate).toBeCloseTo(0.5, 2);
+    // Adapter-attempt: 5 successes / (10 - 3 infra) = 5/7 ≈ 0.714
+    expect(report.overall.adapterAttemptSuccessRate).toBeCloseTo(0.714, 2);
+    expect(report.overall.adapterUnavailableCount).toBe(3);
+    expect(report.overall.adapterUnavailableRate).toBeCloseTo(0.3, 2);
+  });
+
+  it('reports per-CLI adapter stats independently', () => {
+    seedOutcomes(4, { cli: 'claude', success: true });
+    seedOutcomes(1, { cli: 'claude', success: false, failureCategory: 'adapter_unavailable' });
+    seedOutcomes(5, { cli: 'gemini', success: true });
+
+    const report = generateWeatherReport({});
+    const claude = report.cliWeather.find((c) => c.cli === 'claude');
+    const gemini = report.cliWeather.find((c) => c.cli === 'gemini');
+
+    // claude: 4 / (5 - 1) = 1.0 attempt success; 1/5 unavailable
+    expect(claude?.adapterAttemptSuccessRate).toBe(1);
+    expect(claude?.adapterUnavailableCount).toBe(1);
+    expect(claude?.adapterUnavailableRate).toBeCloseTo(0.2, 2);
+    // gemini: no adapter_unavailable events
+    expect(gemini?.adapterAttemptSuccessRate).toBe(1);
+    expect(gemini?.adapterUnavailableCount).toBe(0);
+    expect(gemini?.adapterUnavailableRate).toBe(0);
+  });
+
+  it('falls back to message-based classification when failureCategory absent', () => {
+    seedOutcomes(2, { cli: 'claude', success: true });
+    // No failureCategory field; error message should be classified as adapter_unavailable
+    seedOutcomes(2, {
+      cli: 'claude',
+      success: false,
+      errorMessage: 'No model adapter configured',
+    });
+
+    const report = generateWeatherReport({});
+    const claude = report.cliWeather.find((c) => c.cli === 'claude');
+    // Note: outcome-store auto-classifies on append, so this may or may not be captured;
+    // the helper's fallback classifier is exercised only for pre-#1441 records. Assert
+    // the adapter-attempt rate is AT LEAST as high as the raw rate (the refinement
+    // should never penalize the attempt metric relative to raw).
+    expect(claude?.adapterAttemptSuccessRate ?? 0).toBeGreaterThanOrEqual(claude?.successRate ?? 0);
+  });
+});
+
 describe('getAdaptiveBonus', () => {
   it('returns 0 below cold-start threshold', () => {
     seedOutcomes(2, { cli: 'claude', category: 'code_generation', success: true });

@@ -1,7 +1,7 @@
 # Model Routing
 
-**Last Updated:** 2026-04-03 (ET)
-**Status:** Active Research (Core Routing Implemented)
+**Last Updated:** 2026-04-18 (ET)
+**Status:** Core Routing Complete — all P1/P2 routing techniques implemented
 
 ---
 
@@ -17,16 +17,19 @@ Research on intelligent routing of tasks to optimal models based on cost, qualit
 | [PILOT](https://arxiv.org/abs/2508.21141)           | Budget-constrained LinUCB routing                 | P1       | **implemented** |
 | [SATER](https://arxiv.org/abs/2510.05164)           | Confidence-aware rejection, 50%+ cost reduction   | P2       | **implemented** |
 | [MoMA](https://arxiv.org/abs/2509.07571)            | TOPSIS multi-criteria, 31.46% cost reduction      | P2       | **implemented** |
-| [RouteLLM](https://arxiv.org/abs/2406.18665)        | Preference-trained routing, 2x cost reduction     | P2       | planned         |
+| [RouteLLM](https://arxiv.org/abs/2406.18665)        | Preference-trained routing, 2x cost reduction     | P2       | **implemented** |
 | [Edge Multi-LLM](https://arxiv.org/abs/2507.00672)  | Agreement-based cascading                         | P2       | **implemented** |
-| [Cross-Attention](https://arxiv.org/abs/2509.09782) | Query-model matching                              | -        | not-started     |
-| [OptiRoute](https://arxiv.org/abs/2502.16696)       | kNN + hierarchical filtering                      | -        | not-started     |
+| [Cross-Attention](https://arxiv.org/abs/2509.09782) | Query-model matching                              | -        | **implemented** |
+| [OptiRoute](https://arxiv.org/abs/2502.16696)       | kNN + hierarchical filtering                      | -        | **implemented** |
 
 **Implementation Notes:**
 
 - PILOT: BudgetRouter + LinUCBBandit in `cli-adapters/`
 - MoMA: TopsisRouter in `cli-adapters/topsis-router.ts`
 - Edge Multi-LLM: AgreementCascadeRouter in `cli-adapters/agreement-cascade-router.ts`
+- RouteLLM: PreferenceRouter in `cli-adapters/preference-router.ts`
+- Cross-Attention: CapabilityMatchStage in `cli-adapters/routing/stages/capability-match-stage.ts` (cross-attention matrix over task features × capability dimensions)
+- OptiRoute (kNN): KnnRoutingStage in `cli-adapters/routing/stages/knn-routing-stage.ts` (commit 34f1db73)
 - All unified via CompositeRouter (Epic #164)
 
 ## Recommended Techniques

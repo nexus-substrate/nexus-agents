@@ -27,9 +27,20 @@ const SWARM_HEALTH = {
   observedRoles: 4,
 } as const;
 
+const ZERO_ADAPTER_STATS = {
+  adapterAttemptSuccessRate: 0,
+  adapterUnavailableCount: 0,
+  adapterUnavailableRate: 0,
+} as const;
+
 function makeBaseReport(): Omit<ReturnType<typeof generateWeatherReport>, 'swarmHealth'> {
   return {
-    overall: { totalTasks: 3405, successRate: 0.74, avgDurationMs: 4000 },
+    overall: {
+      totalTasks: 3405,
+      successRate: 0.74,
+      avgDurationMs: 4000,
+      ...ZERO_ADAPTER_STATS,
+    },
     cliWeather: [
       {
         cli: 'claude',
@@ -37,6 +48,7 @@ function makeBaseReport(): Omit<ReturnType<typeof generateWeatherReport>, 'swarm
         totalTasks: 1200,
         avgDurationMs: 5000,
         byCategory: new Map(),
+        ...ZERO_ADAPTER_STATS,
       },
       {
         cli: 'gemini',
@@ -44,6 +56,7 @@ function makeBaseReport(): Omit<ReturnType<typeof generateWeatherReport>, 'swarm
         totalTasks: 800,
         avgDurationMs: 3000,
         byCategory: new Map(),
+        ...ZERO_ADAPTER_STATS,
       },
     ],
     failureBreakdown: [

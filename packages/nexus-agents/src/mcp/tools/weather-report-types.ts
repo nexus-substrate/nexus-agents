@@ -58,8 +58,24 @@ export interface WeatherReportOptions {
 // Output Types
 // ============================================================================
 
+/** Adapter attempt stats separating infra failures from model-quality failures (#1982). */
+export interface AdapterAttemptStats {
+  /**
+   * Success rate excluding adapter_unavailable failures. Represents model-quality
+   * success when the adapter could actually attempt the task. Rounded to 3 decimals.
+   */
+  readonly adapterAttemptSuccessRate: number;
+  /** Count of adapter_unavailable failures in the sample. */
+  readonly adapterUnavailableCount: number;
+  /**
+   * Fraction of total attempts that failed due to adapter_unavailable. Rounded
+   * to 3 decimals. Useful for comparing infra availability across CLIs/categories.
+   */
+  readonly adapterUnavailableRate: number;
+}
+
 /** Per-CLI performance stats in the weather report. */
-export interface CliWeather {
+export interface CliWeather extends AdapterAttemptStats {
   readonly cli: string;
   readonly totalTasks: number;
   readonly successRate: number;
@@ -193,7 +209,7 @@ export interface TriageStats {
 
 /** Full weather report response. */
 export interface WeatherReportResponse {
-  readonly overall: {
+  readonly overall: AdapterAttemptStats & {
     readonly totalTasks: number;
     readonly successRate: number;
     readonly avgDurationMs: number;
