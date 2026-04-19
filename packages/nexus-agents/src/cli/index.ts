@@ -303,6 +303,16 @@ export type { VerifyOptions, VerifyCheck, VerifyResult } from './verify-command.
 export { sweBenchCommand, parseSweBenchArgs, printSweBenchHelp } from './swe-bench-command.js';
 export type { SWEBenchOptions, SWEBenchCommandResult } from './swe-bench-command.js';
 
+// ATBench Command (Issue #1981 - trajectory safety benchmark)
+export {
+  atbenchCommand,
+  parseAtbenchArgs,
+  printAtbenchHelp,
+  runEvaluation as atbenchRun,
+  runInfo as atbenchInfo,
+} from './atbench-command.js';
+export type { ATBenchOptions, ATBenchCommandResult } from './atbench-command.js';
+
 // Learning Metrics Dashboard (Issue #284)
 export {
   learningMetricsCommand,
