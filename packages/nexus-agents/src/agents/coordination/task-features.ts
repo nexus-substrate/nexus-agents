@@ -1,17 +1,19 @@
 /**
- * Task Feature Extraction
+ * Task Feature Extraction for Scaling Prediction
  *
- * Extracts features from tasks for scaling prediction.
- * Uses keyword matching, pattern detection, and structural analysis.
+ * Extracts features from tasks specifically for scaling-predictor inputs
+ * (how many agents to dispatch). Uses keyword matching, pattern detection,
+ * and structural analysis against the `ScalingTaskType` taxonomy.
  *
- * @deprecated Use SharedTaskAnalyzer from 'nexus-agents/core' instead.
- * This module is superseded by the unified SharedTaskAnalyzer (ADR-0004).
- * Migration: import { createSharedTaskAnalyzer } from 'nexus-agents/core'
- *   - analyze() provides unified feature extraction
- *   - getCapabilities() replaces parallelizable/multimodal detection
+ * This module is distinct from `SharedTaskAnalyzer`:
+ * - `task-features` (here): features for scaling-predictor model input
+ *   (sequential_reasoning / parallelizable / tool_heavy, etc.)
+ * - `SharedTaskAnalyzer` (core): features for capability-based CLI routing
+ *
+ * Both coexist by design.
  *
  * @module agents/coordination/task-features
- * (Source: Issue #337, arXiv:2512.08296)
+ * (Source: Issue #337, arXiv:2512.08296; Issue #1985 audit)
  */
 
 import type { Task } from '../../core/index.js';
