@@ -78,21 +78,15 @@ export const UNBYPASSABLE_TOOL_NAMES: readonly string[] = [
 ];
 
 /**
- * Returns true if the given file path matches any unbypassable deny pattern.
- * Uses simple glob semantics: `**` matches any segment, `*` matches any
- * non-separator characters. Case-insensitive.
+ * Compiles a glob pattern to a regex at module-load time.
+ * Supports: `**` (any path segments), `*` (any non-separator chars),
+ * `~/` (home-anchor prefix). All other regex metachars escaped.
  *
- * Exported for testing; in production callers should use `isPathDenied`.
+ * Regexes built here come from the hardcoded `UNBYPASSABLE_PATH_PATTERNS`
+ * constant — never from user input — so they are ReDoS-safe by construction.
  */
-export function matchDenyPattern(path: string, pattern: string): boolean {
-  const normalized = path.toLowerCase();
+function compileGlobToRegex(pattern: string): RegExp {
   const pat = pattern.toLowerCase();
-
-  // Expand glob to regex:
-  //   **  → .*
-  //   *   → [^/]*
-  //   .   → escaped
-  //   ~/  → anchor at home-prefix
   const escaped = pat
     .replace(/[.+^$()|[\]{}]/g, '\\$&')
     .replace(/\*\*/g, '__DOUBLESTAR__')
@@ -103,14 +97,37 @@ export function matchDenyPattern(path: string, pattern: string): boolean {
     : escaped.startsWith('/')
       ? `^${escaped}$`
       : `(^|/)${escaped}$`;
+  return new RegExp(anchored);
+}
 
-  const re = new RegExp(anchored);
-  return re.test(normalized);
+/**
+ * Precompiled regexes for every unbypassable path pattern, computed once
+ * at module load. Static inputs → no ReDoS surface.
+ */
+const COMPILED_PATH_PATTERNS: ReadonlyArray<{
+  readonly pattern: string;
+  readonly regex: RegExp;
+}> = UNBYPASSABLE_PATH_PATTERNS.map((pattern) => ({
+  pattern,
+  regex: compileGlobToRegex(pattern),
+}));
+
+/**
+ * Returns true if a lowercased file path matches the given pattern.
+ * Exported for tests; production code should use `isPathDenied`.
+ */
+export function matchDenyPattern(path: string, pattern: string): boolean {
+  const normalized = path.toLowerCase();
+  const compiled = COMPILED_PATH_PATTERNS.find((c) => c.pattern === pattern);
+  if (compiled !== undefined) return compiled.regex.test(normalized);
+  // Fallback for ad-hoc test patterns not in the static list.
+  return compileGlobToRegex(pattern).test(normalized);
 }
 
 /** Returns true if the path hits any unbypassable pattern. */
 export function isPathDenied(path: string): boolean {
-  return UNBYPASSABLE_PATH_PATTERNS.some((p) => matchDenyPattern(path, p));
+  const normalized = path.toLowerCase();
+  return COMPILED_PATH_PATTERNS.some((c) => c.regex.test(normalized));
 }
 
 /** Returns true if the tool name is unconditionally denied. */
