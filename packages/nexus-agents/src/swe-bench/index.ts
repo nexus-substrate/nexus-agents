@@ -72,7 +72,12 @@ export type {
   IAgentExecutor,
   AgentExecutionResult,
   RunOptions,
+  IVerifyAdapter,
+  VerifyResult,
 } from './agent-runner.js';
+
+// Harness-backed verify adapter (#2054)
+export { HarnessVerifyAdapter, translateEvaluationResult } from './harness-verify-adapter.js';
 
 // Nexus agent executor (API-based)
 export { NexusAgentExecutor, createNexusExecutorFromEnv } from './nexus-agent-executor.js';
