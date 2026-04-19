@@ -19,6 +19,14 @@ export { gateTrust } from './trust-gate.js';
 export type { TrustGateDecision } from './trust-gate.js';
 export { checkAccess } from './enforcer.js';
 export {
+  withAccessPolicy,
+  getActivePolicy,
+  guardMcpToolCall,
+  denyToToolResult,
+  createAccessPolicyMiddleware,
+} from './mcp-guard.js';
+export type { GuardArgs } from './mcp-guard.js';
+export {
   UNBYPASSABLE_PATH_PATTERNS,
   UNBYPASSABLE_TOOL_NAMES,
   isPathDenied,
