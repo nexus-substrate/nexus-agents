@@ -46,6 +46,16 @@ export type {
   OperationComparison,
   BenchmarkComparison,
 } from '../benchmarks/memory-benchmarks.js';
+// Re-export IMemoryBackend and its transitive surface because they're the
+// parameter types of `runMemoryBenchmarks` in the public surface; without
+// these, TypeDoc warns that the referenced types are not included.
+export type {
+  IMemoryBackend,
+  MemoryEntry,
+  MemoryMetadata,
+  MemoryImportance,
+} from '../context/memory-backend-types.js';
+export { MemoryError } from '../context/memory-backend-types.js';
 export {
   DEFAULT_MEMORY_BENCHMARK_CONFIG,
   runMemoryBenchmarks,
