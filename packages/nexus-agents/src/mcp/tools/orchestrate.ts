@@ -72,6 +72,10 @@ import {
   withAccessPolicy,
   resolveAccessPolicyMode,
 } from '../../security/access-constraint-deriver/index.js';
+// Structured task state (#2033, integration from #2043). Opt-in via
+// NEXUS_TASK_STATE_ENABLED=1 — when disabled, helpers no-op silently.
+import { initTaskState, updateStage, appendBlocker } from '../../context/structured-task-state.js';
+import type { StructuredTaskState } from '../../context/structured-task-state-types.js';
 
 // Re-export types and values for consumers
 export {
@@ -557,36 +561,130 @@ async function executeOrchestration(
   });
   if (fastResult !== undefined) return fastResult;
   logger.info('Starting orchestration', { taskId, taskLength: input.task.length });
+  recordTaskStateInit(taskId, input.task, logger);
   const task = await createTaskFromInput(input, taskId);
   const definition: OrchestratorDefinition = { type: 'task', task };
   const hb = startHeartbeatTracking(`orchestrate-${taskId}`, logger);
   const policy = await deriveOrchestratePolicy(input.task, deps, logger);
   try {
-    const result = await withAccessPolicy(policy, () => orchestrator.execute(definition, {}));
-    if (!result.ok) {
-      return handleOrchestratorFailure({
-        error: result.error,
-        taskId,
-        task: input.task,
-        decision,
-        workflowRouter,
-        startTime,
-        logger,
-      });
-    }
-    return handleOrchestratorSuccess({
-      orchResult: result.value,
+    return await runOrchestratorWithStateTracking({
       taskId,
-      taskDescription: input.task,
+      taskInput: input.task,
+      definition,
+      orchestrator,
+      policy,
       decision,
       workflowRouter,
       startTime,
       logger,
     });
   } catch (error) {
+    recordTaskStateBlocker(taskId, error instanceof Error ? error.message : String(error), logger);
+    recordTaskStateStage(taskId, 'blocked', logger);
     return handleOrchestrationException(error, taskId, input.task, logger);
   } finally {
     hb.cleanup();
+  }
+}
+
+/** Run the orchestrator and record success/failure stage transitions (#2043). */
+async function runOrchestratorWithStateTracking(params: {
+  readonly taskId: string;
+  readonly taskInput: string;
+  readonly definition: OrchestratorDefinition;
+  readonly orchestrator: IOrchestrator;
+  readonly policy: Awaited<ReturnType<typeof deriveAccessPolicy>>;
+  readonly decision: import('../../orchestration/workflow-router-types.js').RoutingDecision;
+  readonly workflowRouter: IWorkflowRouter;
+  readonly startTime: number;
+  readonly logger: ILogger;
+}): Promise<Result<OrchestrateOutput, OrchestrationError>> {
+  const { taskId, taskInput, definition, orchestrator, policy, logger } = params;
+  recordTaskStateStage(taskId, 'executing', logger);
+  const result = await withAccessPolicy(policy, () => orchestrator.execute(definition, {}));
+  if (!result.ok) {
+    recordTaskStateBlocker(taskId, result.error.message, logger);
+    recordTaskStateStage(taskId, 'blocked', logger);
+    return handleOrchestratorFailure({
+      error: result.error,
+      taskId,
+      task: taskInput,
+      decision: params.decision,
+      workflowRouter: params.workflowRouter,
+      startTime: params.startTime,
+      logger,
+    });
+  }
+  recordTaskStateStage(taskId, 'complete', logger);
+  return handleOrchestratorSuccess({
+    orchResult: result.value,
+    taskId,
+    taskDescription: taskInput,
+    decision: params.decision,
+    workflowRouter: params.workflowRouter,
+    startTime: params.startTime,
+    logger,
+  });
+}
+
+/** Opt-in flag for structured-task-state recording (#2033). */
+function isTaskStateEnabled(): boolean {
+  return process.env['NEXUS_TASK_STATE_ENABLED'] === '1';
+}
+
+/**
+ * Initialize structured state for this orchestration (#2033). No-op
+ * when NEXUS_TASK_STATE_ENABLED is unset — zero behavior change by
+ * default. Never throws; failures are logged and ignored.
+ */
+function recordTaskStateInit(taskId: string, taskText: string, logger: ILogger): void {
+  if (!isTaskStateEnabled()) return;
+  const now = new Date().toISOString();
+  const initial: StructuredTaskState = {
+    taskId,
+    stage: 'planning',
+    decisions: [],
+    blockers: [],
+    position: { currentStep: 'orchestrate.init' },
+    updatedAt: now,
+  };
+  const result = initTaskState(initial);
+  if (!result.ok) {
+    logger.warn('task-state: init failed, continuing', {
+      taskId,
+      error: result.error.message,
+      taskLength: taskText.length,
+    });
+  }
+}
+
+/** Record a stage transition. Silently swallows failures. */
+function recordTaskStateStage(
+  taskId: string,
+  stage: StructuredTaskState['stage'],
+  logger: ILogger
+): void {
+  if (!isTaskStateEnabled()) return;
+  const result = updateStage(taskId, stage, new Date().toISOString());
+  if (!result.ok) {
+    logger.warn('task-state: stage update failed', {
+      taskId,
+      stage,
+      error: result.error.message,
+    });
+  }
+}
+
+/** Record a blocker. Silently swallows failures. */
+function recordTaskStateBlocker(taskId: string, blocker: string, logger: ILogger): void {
+  if (!isTaskStateEnabled()) return;
+  const ts = new Date().toISOString();
+  const result = appendBlocker(taskId, { ts, blocker });
+  if (!result.ok) {
+    logger.warn('task-state: blocker record failed', {
+      taskId,
+      error: result.error.message,
+    });
   }
 }
 
