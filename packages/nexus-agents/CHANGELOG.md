@@ -1,5 +1,99 @@
 # nexus-agents
 
+## 2.39.0
+
+### Minor Changes
+
+- [#2006](https://github.com/williamzujkowski/nexus-agents/pull/2006) [`6220ced`](https://github.com/williamzujkowski/nexus-agents/commit/6220cedff09bc5c6cd040ca67b42bef343e7b0ae) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(benchmarks): atbench huggingface dataset loader ([#1981](https://github.com/williamzujkowski/nexus-agents/issues/1981) follow-up)
+
+  Adds the HuggingFace Datasets API loader for the ATBench adapter
+  ([#1981](https://github.com/williamzujkowski/nexus-agents/issues/1981)). Mirrors the swe-bench `dataset-loader.ts` pattern: native
+  fetch, no auth needed for public datasets, paginated up to 100 rows
+  per request, 30s timeout.
+
+  **Behavior change:** `ATBenchAdapter.loadInstances()` now falls back
+  to HuggingFace when no `fixturePath` is provided. Existing fixture-
+  based tests still work unchanged. Production callers can omit
+  `fixturePath` and get the live dataset:
+
+  ```ts
+  const adapter = new ATBenchAdapter('claw');
+  const instances = await adapter.loadInstances({
+    variant: 'claw',
+    maxInstances: 50, // optional cap for smoke runs
+  });
+  ```
+
+  **Tests** (12 new, ATBench module total now 27):
+  - fetchPage: 2xx happy path, URL encoding, 4xx errors, missing-rows[],
+    network-failure
+  - fetchAtbenchFromHf: single-page success, pagination short-return
+    termination, drop-invalid-rows count, all-rows-invalid error,
+    empty-upstream OK, codex variant URL, network-failure surface
+  - adapter: HF fallback when no fixturePath (verifies error path)
+
+  Resilience: invalid rows are DROPPED with a count rather than failing
+  the whole load, so upstream HF schema drift produces a partial result
+  - telemetry rather than a crash.
+
+  Validation: 218/218 benchmark tests pass, typecheck clean, TypeDoc
+  regenerated.
+
+- [#2010](https://github.com/williamzujkowski/nexus-agents/pull/2010) [`4439a14`](https://github.com/williamzujkowski/nexus-agents/commit/4439a14d36ee5667d6e215ad8515a315ecc8524b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(benchmarks): atbench llm-based safety scorer ([#1981](https://github.com/williamzujkowski/nexus-agents/issues/1981) follow-up)
+
+  Replaces the perfect-oracle stub with a real IModelAdapter-backed
+  classifier. Mirrors the ClawGuard llm-deriver pattern: Promise.race
+  timeout, Zod-validated output, discriminated `LlmScoreResult`,
+  fall-through to stub on any LLM failure (timeout, error, parse,
+  empty, invalid label).
+
+  **New API**
+
+  `ATBenchAdapter` constructor accepts an options object:
+
+  ```ts
+  new ATBenchAdapter({
+    variant: 'claw',
+    scorerAdapter: registry.getAdapterForCli('claude'), // optional
+    scorerTimeoutMs: 5_000, // optional
+  });
+  ```
+
+  When `scorerAdapter` is omitted, `runInstance` returns the perfect-
+  oracle stub (existing behavior). When provided, each trajectory is
+  scored via LLM with stub fallback on failure.
+
+  **Backwards-compatible**: existing `new ATBenchAdapter('claw')` and
+  `new ATBenchAdapter('codex')` calls still work.
+
+  **New module** `llm-scorer.ts` (~190 LOC):
+  - `formatTrajectoryPrompt(trajectory)` — structured prompt with caps
+    on event/transcript size for cheap-model context budgets
+  - `scoreTrajectoryViaLlm(adapter, trajectory, timeoutMs?)` — returns
+    `LlmScoreResult` discriminated union
+  - `LlmScorerOutputSchema` — Zod-validated JSON shape: `{ label, reasoning }`
+
+  **Tests** (12 new for llm-scorer + 2 for adapter integration; 41
+  module total now):
+  - formatTrajectoryPrompt: includes user request, lists tool events,
+    caps at 20 entries, truncates 800-char request to 500
+  - happy path: LLM returns valid JSON → LLM-derived prediction
+  - markdown code-fence wrap handled correctly
+  - Failure modes (all → stub fallback): adapter error, timeout,
+    garbage non-JSON, empty response, invalid label value
+  - adapter integration: stub used when no scorerAdapter; LLM used
+    when provided (LLM result overrides ground truth)
+
+  Validation: 232/232 src/benchmarks/ tests pass, typecheck clean,
+  TypeDoc regenerated.
+
+### Patch Changes
+
+- [#2008](https://github.com/williamzujkowski/nexus-agents/pull/2008) [`c592157`](https://github.com/williamzujkowski/nexus-agents/commit/c592157dac2e0c739845670d892f59317037fdb9) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - docs: fix stale 5 CLIs claim → 4 CLIs (closes [#2003](https://github.com/williamzujkowski/nexus-agents/issues/2003))
+
+  Per CLI_NAMES in src/config/model-capabilities-types.ts. codex-mcp
+  is not a distinct CLI.
+
 ## 2.38.0
 
 ### Minor Changes
