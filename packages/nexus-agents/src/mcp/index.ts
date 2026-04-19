@@ -316,6 +316,12 @@ export {
   type QueryTraceDeps,
   type QueryTraceInput,
   type QueryTraceResponse,
+  // Query task state tool (#2046)
+  registerQueryTaskStateTool,
+  QueryTaskStateInputSchema,
+  type QueryTaskStateDeps,
+  type QueryTaskStateInput,
+  type QueryTaskStateResponse,
 } from './tools/index.js';
 
 // Gateway — Tiered Orchestration Routing (Issue #888, #892, #893, #894)
