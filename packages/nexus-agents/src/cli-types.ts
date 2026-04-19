@@ -122,6 +122,9 @@ export interface ParsedCliArgs {
     maxWorkers?: string;
     runId?: string;
     outputDir?: string;
+    // ATBench command options (#1981)
+    fixture?: string;
+    llmScoring?: boolean;
     // Learning-metrics command options
     period?: number;
     export?: string;
@@ -305,6 +308,14 @@ export const PARSE_ARGS_CONFIG = {
     'output-dir': {
       type: 'string' as const,
       default: './logs/run_evaluation',
+    },
+    // ATBench command options (#1981)
+    fixture: {
+      type: 'string' as const,
+    },
+    'llm-scoring': {
+      type: 'boolean' as const,
+      default: false,
     },
     // Learning-metrics command options
     period: {
