@@ -90,7 +90,7 @@ interface MiddlewareLogger {
 export function denyToToolResult(
   decision: Extract<AccessDecision, { decision: 'deny' }>,
   requestId: string
-): { readonly isError: true; readonly content: readonly { type: 'text'; text: string }[] } {
+): { isError: true; content: Array<{ type: 'text'; text: string }> } {
   return {
     isError: true,
     content: [

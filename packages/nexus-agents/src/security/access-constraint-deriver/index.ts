@@ -26,6 +26,7 @@ export {
   createAccessPolicyMiddleware,
 } from './mcp-guard.js';
 export type { GuardArgs } from './mcp-guard.js';
+export { createAccessPolicyChainMiddleware } from './chain-adapter.js';
 export {
   UNBYPASSABLE_PATH_PATTERNS,
   UNBYPASSABLE_TOOL_NAMES,
