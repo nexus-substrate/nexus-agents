@@ -5139,14 +5139,37 @@ papers:
       - security
     tags:
       - llm
-    reviewed_date: 2026-04-18
-    reviewed_in: ''
-    summary: ''
-    key_findings: []
-    relevance: medium
+      - prompt-injection
+      - tool-call-boundary
+      - access-constraint-derivation
+    reviewed_date: 2026-04-19
+    reviewed_in: 'Issue #1977 (deep-read notes)'
+    summary: 'Deterministic interceptor at tool-call boundary. LLM-based rule induction
+      derives task-specific access constraints from the user objective before any
+      external tool invocation. Defends against indirect prompt injection from web
+      content, MCP servers, and skill files.
+
+      '
+    key_findings:
+      - 'AgentDojo: 0.6-3.1% baseline ASR → 0% with ClawGuard'
+      - 'MCPSafeBench: 36.5-46.1% baseline ASR → 10.2-11.2% with ClawGuard (~75% reduction)'
+      - 'Utility (Completion Rate): AgentDojo ~100% preserved; MCPSafeBench drops 1.5-2.7pt'
+      - 'Bypass classes acknowledged: content-misleading attacks (text outputs), low-coverage
+        domains'
+      - Latency overhead not measured by authors
+    relevance: high
     techniques_extracted: []
-    related_issues: []
+    related_issues:
+      - 1977
     implementation_status: not-started
+    review_status: deep-read-complete-pending-implementation-decision
+    review_notes: |
+      2026-04-19 deep read complete. Strong promote candidate but no commitment yet.
+      Fits cleanly into src/security/ pipeline as a new pre-execution stage.
+      Effort estimate: 2-4 days for AccessConstraintDeriver + tool-dispatch hook.
+      Open questions before promotion: (1) measure latency overhead on our workload
+      (paper does not report this); (2) confirm trust-tier interaction — derive
+      constraints only from Tier 1/2 user objective, not aggregated context.
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
