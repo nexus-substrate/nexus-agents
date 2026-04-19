@@ -1,7 +1,5 @@
 # Agent Skills and Capability Management
 
-> ⚠ This doc was last validated 2026-04-19 against current source; some sections may need refresh.
-
 **Hub:** Research on skill loading, assignment, and dependency management in multi-agent systems.
 
 ---
@@ -38,13 +36,22 @@ See: `packages/nexus-agents/src/agents/experts/expert-selector.ts`
 
 ### 3. Role-Based Organization
 
-Five built-in roles with specialized domains:
+The CLI ships **nine** default experts (`DEFAULT_EXPERTS` in `expert-defaults.ts`); the MCP `create_expert` tool exposes **twelve** role identifiers (`ROLE_TO_EXPERT_TYPE` in `create-expert.ts`). The MCP set adds `research`, `qa`, and `data-visualization` beyond the CLI defaults:
 
-- `code` - Code generation and refactoring
-- `security` - Vulnerability analysis
-- `architecture` - System design
-- `testing` - Test development
-- `documentation` - Technical writing
+| Role                 | CLI default | MCP role id                 | Focus                         |
+| -------------------- | ----------- | --------------------------- | ----------------------------- |
+| `code`               | yes         | `code_expert`               | Code generation & refactoring |
+| `security`           | yes         | `security_expert`           | Vulnerability analysis        |
+| `architecture`       | yes         | `architecture_expert`       | System design                 |
+| `testing`            | yes         | `testing_expert`            | Test development              |
+| `documentation`      | yes         | `documentation_expert`      | Technical writing             |
+| `devops`             | yes         | `devops_expert`             | CI/CD, deploys                |
+| `infrastructure`     | yes         | `infrastructure_expert`     | Homelab, bare-metal, iDRAC    |
+| `pm`                 | yes         | `pm_expert`                 | Product management            |
+| `ux`                 | yes         | `ux_expert`                 | UX / design                   |
+| `research`           | —           | `research_expert`           | Evidence gathering, synthesis |
+| `qa`                 | —           | `qa_expert`                 | Quality assurance             |
+| `data-visualization` | —           | `data_visualization_expert` | Charts, dashboards, reports   |
 
 ### 4. Skill Dependency Management
 

@@ -1,7 +1,5 @@
 # CLI Tools Integration
 
-> ⚠ This doc was last validated 2026-04-19 against current source; some sections may need refresh.
-
 **Last Updated:** 2026-04-19 (ET)
 **Status:** Active Research
 
@@ -9,15 +7,17 @@
 
 ## Overview
 
-Research on integrating external CLI tools (Claude CLI, Gemini CLI, Codex CLI) with nexus-agents for multi-model orchestration. Covers authentication patterns, capability profiles, and MCP integration.
+Research on integrating external CLI tools (Claude CLI, Gemini CLI, Codex CLI, OpenCode) plus OpenRouter-backed free models with nexus-agents for multi-model orchestration. Covers authentication patterns, capability profiles, and MCP integration. The live, canonical model registry (pricing, quality, context windows) lives in [`packages/nexus-agents/src/config/model-capabilities.ts`](../../../../packages/nexus-agents/src/config/model-capabilities.ts) — prefer it over this summary when they disagree.
 
 ## CLI Comparison
 
-| CLI            | Version | Models                          | Context | Auth          | MCP Support  |
-| -------------- | ------- | ------------------------------- | ------- | ------------- | ------------ |
-| **Claude CLI** | 2.0.76  | Opus 4.6, Sonnet 4.5, Haiku 4.5 | 200K    | OAuth 2.0     | Full client  |
-| **Gemini CLI** | 0.22.5  | Gemini 2.5/3 Pro, Flash         | 1M+     | OAuth/ADC     | Experimental |
-| **Codex CLI**  | 0.77.0  | codex-mini, GPT-5 family        | ~128K   | ChatGPT OAuth | Server mode  |
+| CLI            | Models                                                                           | Context | Auth                         | MCP Support   |
+| -------------- | -------------------------------------------------------------------------------- | ------- | ---------------------------- | ------------- |
+| **Claude CLI** | Opus 4.7 (1M), Sonnet 4.6, Haiku 4.5                                             | 200K–1M | OAuth 2.0 / API key          | Full client   |
+| **Gemini CLI** | Gemini 3 Pro, Gemini 3 Flash (+ 2.5 family)                                      | 1M+     | OAuth/ADC                    | Experimental  |
+| **Codex CLI**  | codex-5.3, codex-5.2, codex-5.1-mini                                             | ~200K   | ChatGPT OAuth / API key      | Server mode   |
+| **OpenCode**   | `opencode/*` default models + custom `custom-opus`/`custom-sonnet` via Anthropic | Varies  | Inherits Claude / OpenRouter | Full client   |
+| **OpenRouter** | `openrouter-nemotron-super`, `openrouter-qwen-coder` (free tier)                 | Varies  | OpenRouter API key           | n/a (adapter) |
 
 ## Sources
 
@@ -57,20 +57,23 @@ Complexity Classification:
   Powerful (complex)       -> Claude Opus, Claude Sonnet
 ```
 
-| Task Type               | Primary       | Secondary     | Tertiary     |
-| ----------------------- | ------------- | ------------- | ------------ |
-| Architecture decisions  | Claude Opus   | Claude Sonnet | Gemini Pro   |
-| Complex reasoning       | Claude Opus   | Codex         | Gemini Pro   |
-| Large codebase analysis | Gemini Pro    | Claude Sonnet | Codex        |
-| Code implementation     | Claude Sonnet | Codex         | Gemini Flash |
-| Test generation         | Codex         | Claude Haiku  | Gemini Flash |
-| Bulk operations         | Gemini Flash  | Codex Mini    | Claude Haiku |
+| Task Type               | Primary        | Secondary      | Tertiary                 |
+| ----------------------- | -------------- | -------------- | ------------------------ |
+| Architecture decisions  | Gemini 3 Pro   | Claude Opus    | Claude Sonnet            |
+| Complex reasoning       | Claude Opus    | Codex 5.3      | Gemini 3 Pro             |
+| Large codebase analysis | Gemini 3 Pro   | Claude Sonnet  | Codex 5.3                |
+| Code implementation     | Claude Sonnet  | Codex 5.3      | OpenCode (custom-sonnet) |
+| Test generation         | Codex 5.3      | Claude Haiku   | Gemini 3 Flash           |
+| Security review         | Codex 5.3      | Claude Opus    | Gemini 3 Pro             |
+| Bulk operations         | Gemini 3 Flash | Codex 5.1-mini | Claude Haiku             |
+
+Routing primaries reflect CATEGORY-level overrides in `composite-router.ts` / `cli-adapters/composite-router-helpers.ts` as of 2026-04-19; the canonical registry remains the single source of truth.
 
 ## Implementation Architecture
 
 ```typescript
 interface ICliAdapter {
-  readonly name: 'claude' | 'gemini' | 'codex';
+  readonly name: 'claude' | 'gemini' | 'codex' | 'opencode';
   readonly transport: 'mcp' | 'subprocess';
   readonly capabilities: CapabilityProfile;
 
