@@ -69,6 +69,7 @@ export {
   handleConfigCommand,
   handleOrchestrateCommand,
   handleSweBenchCommand,
+  handleAtbenchCommand,
 } from './cli-commands-handlers-complex.js';
 
 /**

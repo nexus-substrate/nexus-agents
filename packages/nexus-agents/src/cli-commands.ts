@@ -31,6 +31,7 @@ export {
   handleValidationCommand,
   handleLearningMetricsCommand,
   handleSweBenchCommand,
+  handleAtbenchCommand,
   handleVerifyCommand,
   handleDoctorCommand,
   handleSetupCommand,
@@ -94,6 +95,7 @@ import {
   handleIndexCommand,
   handleResearchCommand,
   handleSweBenchCommand,
+  handleAtbenchCommand,
   handleSetupCommandAsync,
   handleHelloCommand,
   handleHooksCommand,
@@ -223,6 +225,7 @@ const ASYNC_COMMAND_HANDLERS: Record<string, ((args: ParsedCliArgs) => Promise<v
     index: handleIndexCommand,
     research: handleResearchCommand,
     'swe-bench': handleSweBenchCommand,
+    atbench: handleAtbenchCommand,
     hooks: handleHooksCommand,
     setup: handleSetupCommandAsync, // Uses async for interactive wizard support (Issue #425)
     demo: handleDemoCommand, // Made async for live CLI execution
