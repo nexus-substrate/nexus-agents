@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- Cohesive runner module: iteration loop + verify loop + helpers. */
 /**
  * nexus-agents/swe-bench - Agent Runner
  *
@@ -10,6 +11,7 @@
 import type { Result } from '../core/result.js';
 import { getTimeProvider } from '../core/index.js';
 import type { SWEBenchInstance, SWEBenchRunResult, SWEBenchConfig } from './types.js';
+import { buildVerifyOutcome } from './verify-loop.js';
 import {
   SWE_BENCH_SYSTEM_PROMPT,
   createInstancePrompt,
@@ -86,6 +88,27 @@ interface IterationLoopOptions {
   readonly onMessage: ((msg: string) => void) | undefined;
   readonly systemPrompt: string | undefined;
   iterationContext: IterationContext;
+  readonly verifyAdapter?: IVerifyAdapter;
+  readonly maxVerifyRetries?: number;
+  verifyAttempts: number;
+}
+
+/**
+ * Result of a post-patch verification attempt (#2032 integration).
+ */
+export interface VerifyResult {
+  readonly passed: boolean;
+  readonly stderr: string;
+  readonly stdout: string;
+}
+
+/**
+ * Adapter that runs the instance's test suite against a freshly-applied
+ * patch (#2032 integration). Verification is opt-in — when no adapter
+ * is provided, the runner behaves exactly as before.
+ */
+export interface IVerifyAdapter {
+  verify(instance: SWEBenchInstance, patch: string, workDir: string): Promise<VerifyResult>;
 }
 
 /**
@@ -98,6 +121,15 @@ export interface RunOptions {
   readonly signal?: AbortSignal;
   /** Override system prompt (e.g., with memory-enriched version). */
   readonly systemPrompt?: string;
+  /**
+   * Optional post-patch verify adapter (#2032). When provided, successful
+   * patches are verified by running the instance's test suite; failures
+   * trigger a bounded retry loop using the classification + retry-hint
+   * logic from `verify-loop.ts`. Default cap: 2 retries.
+   */
+  readonly verifyAdapter?: IVerifyAdapter;
+  /** Override max verify retries (default 2). */
+  readonly maxVerifyRetries?: number;
 }
 
 // ============================================================================
@@ -282,6 +314,11 @@ export async function runAgentOnInstance(
     onMessage,
     systemPrompt: options.systemPrompt,
     iterationContext: createEmptyContext(),
+    verifyAttempts: 0,
+    ...(options.verifyAdapter !== undefined ? { verifyAdapter: options.verifyAdapter } : {}),
+    ...(options.maxVerifyRetries !== undefined
+      ? { maxVerifyRetries: options.maxVerifyRetries }
+      : {}),
   };
   const result = await runIterationLoop(executor, context, state, loopOptions);
   return { ok: true, value: result };
@@ -357,6 +394,87 @@ function buildDuplicateResult(
   return buildFailedResult(instanceId, 'Duplicate patch — agent is stuck', startTime, state);
 }
 
+/** Invoke the verify adapter and build the outcome. Pure wrapper. */
+async function invokeVerifyAdapter(
+  adapter: IVerifyAdapter,
+  patch: string,
+  context: AgentContext,
+  options: IterationLoopOptions
+): Promise<ReturnType<typeof buildVerifyOutcome>> {
+  const { passed, stderr, stdout } = await adapter.verify(context.instance, patch, context.workDir);
+  return buildVerifyOutcome({
+    passed,
+    iteration: options.verifyAttempts - 1,
+    stderr,
+    stdout,
+    ...(options.maxVerifyRetries !== undefined ? { maxRetries: options.maxVerifyRetries } : {}),
+  });
+}
+
+/** Record verification-failure state and reset finalPatch so the next iteration runs. */
+function applyVerifyRetry(
+  outcome: ReturnType<typeof buildVerifyOutcome>,
+  state: IterationState,
+  onMessage: ((msg: string) => void) | undefined
+): void {
+  const category = outcome.classification?.category ?? 'unknown';
+  onMessage?.(`Verify failed (${category}); retrying with hint`);
+  state.lastError = outcome.retryHint ?? 'Verification failed; re-emit the patch';
+  state.lastPatch = state.finalPatch;
+  state.finalPatch = undefined;
+}
+
+/**
+ * Run post-patch verification if a verify adapter is configured (#2032).
+ * Returns `true` when the outer iteration loop should break (no adapter,
+ * verify passes, or retry cap reached). Returns `false` when retry is
+ * permitted — state.lastError now holds the retry hint for the agent.
+ */
+async function runPostPatchVerify(
+  context: AgentContext,
+  state: IterationState,
+  options: IterationLoopOptions
+): Promise<boolean> {
+  const adapter = options.verifyAdapter;
+  if (adapter === undefined || state.finalPatch === undefined) return true;
+  options.verifyAttempts += 1;
+  options.onMessage?.(`Verifying patch (attempt ${String(options.verifyAttempts)})`);
+  const outcome = await invokeVerifyAdapter(adapter, state.finalPatch, context, options);
+  if (outcome.ok) return true;
+  if (!outcome.willRetry) {
+    const category = outcome.classification?.category ?? 'unknown';
+    options.onMessage?.(`Verify failed (${category}); no more retries`);
+    return true;
+  }
+  applyVerifyRetry(outcome, state, options.onMessage);
+  return false;
+}
+
+/** Outcome of a single loop iteration: keep looping, break, or early-exit with a built result. */
+type IterationControl = 'break' | 'continue' | { readonly result: SWEBenchRunResult };
+
+async function handleIterationDone(
+  context: AgentContext,
+  state: IterationState,
+  options: IterationLoopOptions,
+  seenPatches: Set<string>
+): Promise<IterationControl> {
+  if (isDuplicatePatch(state.finalPatch, seenPatches)) {
+    state.finalPatch = undefined;
+    return {
+      result: buildDuplicateResult(
+        context.instance.instance_id,
+        options.startTime,
+        state,
+        options.onMessage
+      ),
+    };
+  }
+  options.onMessage?.('Patch applies successfully');
+  const verifyOk = await runPostPatchVerify(context, state, options);
+  return verifyOk ? 'break' : 'continue';
+}
+
 async function runIterationLoop(
   executor: IAgentExecutor,
   context: AgentContext,
@@ -375,12 +493,10 @@ async function runIterationLoop(
 
     const done = await executeOneIteration(executor, context, state, options);
     if (done) {
-      if (isDuplicatePatch(state.finalPatch, seenPatches)) {
-        state.finalPatch = undefined;
-        return buildDuplicateResult(context.instance.instance_id, startTime, state, onMessage);
-      }
-      onMessage?.('Patch applies successfully');
-      break;
+      const control = await handleIterationDone(context, state, options, seenPatches);
+      if (control === 'break') break;
+      if (control === 'continue') continue;
+      return control.result;
     }
 
     if (isDuplicatePatch(state.lastPatch, seenPatches)) {
