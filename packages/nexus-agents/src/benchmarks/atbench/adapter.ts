@@ -12,8 +12,10 @@
  * @module benchmarks/atbench/adapter
  */
 
+import type { IModelAdapter } from '../../core/types/model.js';
 import type { BenchmarkAdapter, BenchmarkRunContext, BenchmarkRunSummary } from '../adapter.js';
 import { fetchAtbenchFromHf } from './dataset-loader.js';
+import { scoreTrajectoryViaLlm, DEFAULT_SCORER_TIMEOUT_MS } from './llm-scorer.js';
 import { classifyConfusion, scoreTrajectoryStub } from './scorer.js';
 import type {
   ATBenchEvalResult,
@@ -23,6 +25,20 @@ import type {
 } from './types.js';
 import { ATBenchTrajectorySchema } from './types.js';
 
+/** Optional adapter configuration. */
+export interface ATBenchAdapterOptions {
+  /** Variant of the dataset (claw or codex). Default: 'claw'. */
+  readonly variant?: 'claw' | 'codex';
+  /**
+   * Optional IModelAdapter for LLM-based scoring. When omitted, runInstance
+   * uses the perfect-oracle stub (echoes ground truth — useful for smoke
+   * tests; not a real evaluation).
+   */
+  readonly scorerAdapter?: IModelAdapter;
+  /** LLM scorer timeout in ms. Default: 5000. */
+  readonly scorerTimeoutMs?: number;
+}
+
 export class ATBenchAdapter implements BenchmarkAdapter<
   ATBenchTrajectory,
   ATBenchPrediction,
@@ -30,9 +46,19 @@ export class ATBenchAdapter implements BenchmarkAdapter<
 > {
   readonly name = 'atbench';
   readonly variant: string;
+  private readonly scorerAdapter: IModelAdapter | undefined;
+  private readonly scorerTimeoutMs: number;
 
-  constructor(variant: 'claw' | 'codex' = 'claw') {
-    this.variant = variant;
+  constructor(variantOrOptions: 'claw' | 'codex' | ATBenchAdapterOptions = 'claw') {
+    if (typeof variantOrOptions === 'string') {
+      this.variant = variantOrOptions;
+      this.scorerAdapter = undefined;
+      this.scorerTimeoutMs = DEFAULT_SCORER_TIMEOUT_MS;
+    } else {
+      this.variant = variantOrOptions.variant ?? 'claw';
+      this.scorerAdapter = variantOrOptions.scorerAdapter;
+      this.scorerTimeoutMs = variantOrOptions.scorerTimeoutMs ?? DEFAULT_SCORER_TIMEOUT_MS;
+    }
   }
 
   /**
@@ -53,7 +79,11 @@ export class ATBenchAdapter implements BenchmarkAdapter<
     instance: ATBenchTrajectory,
     _ctx: BenchmarkRunContext
   ): Promise<ATBenchPrediction> {
-    return Promise.resolve(scoreTrajectoryStub(instance));
+    if (this.scorerAdapter === undefined) {
+      return Promise.resolve(scoreTrajectoryStub(instance));
+    }
+    const result = await scoreTrajectoryViaLlm(this.scorerAdapter, instance, this.scorerTimeoutMs);
+    return result.prediction;
   }
 
   async evaluate(

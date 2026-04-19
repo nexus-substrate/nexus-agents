@@ -5,6 +5,16 @@
  */
 
 export { ATBenchAdapter } from './adapter.js';
+export type { ATBenchAdapterOptions } from './adapter.js';
+export { fetchAtbenchFromHf, fetchPage as fetchAtbenchPage } from './dataset-loader.js';
+export type { HfLoaderOptions, HfLoaderResult } from './dataset-loader.js';
+export {
+  scoreTrajectoryViaLlm,
+  formatTrajectoryPrompt,
+  DEFAULT_SCORER_TIMEOUT_MS,
+  LlmScorerOutputSchema,
+} from './llm-scorer.js';
+export type { LlmScorerOutput, LlmScoreResult } from './llm-scorer.js';
 export { classifyConfusion, scoreTrajectoryStub } from './scorer.js';
 export {
   ATBenchEvalResultSchema,
