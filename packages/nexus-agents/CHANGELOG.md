@@ -1,5 +1,50 @@
 # nexus-agents
 
+## 2.41.0
+
+### Minor Changes
+
+- [#2024](https://github.com/williamzujkowski/nexus-agents/pull/2024) [`6fa5bca`](https://github.com/williamzujkowski/nexus-agents/commit/6fa5bca88c23ed05155037b8716bbd07ebd916b8) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(security): orchestrator opt-in for ClawGuard policy derivation ([#2022](https://github.com/williamzujkowski/nexus-agents/issues/2022))
+
+  Completes the last step of the ClawGuard activation chain: the
+  `orchestrate` MCP tool now derives an access policy at task start
+  and wraps `orchestrator.execute(...)` in `withAccessPolicy(...)` so
+  the middleware chain enforcer ([#2021](https://github.com/williamzujkowski/nexus-agents/issues/2021)) can see it.
+
+  Runtime behavior:
+  - `NEXUS_ACCESS_POLICY_MODE` unset or `off` (default): derives a
+    bypass/off policy; the middleware short-circuits to pass-through.
+    Zero observable change.
+  - `NEXUS_ACCESS_POLICY_MODE=audit`: derives a real policy (LLM when
+    `deps.modelAdapter` is available, regex fallback otherwise);
+    violations are logged but NOT blocked. This is the recommended
+    bake mode for telemetry before flipping to enforce.
+  - `NEXUS_ACCESS_POLICY_MODE=enforce`: same derivation; violations
+    deny the tool call with an `isError` result.
+
+  Derivation failures (adapter error, timeout, etc.) never throw —
+  they fall through to a permissive bypass policy so orchestration
+  cannot be taken down by a policy-derivation bug. All failures are
+  logged.
+
+- [#2026](https://github.com/williamzujkowski/nexus-agents/pull/2026) [`0425a09`](https://github.com/williamzujkowski/nexus-agents/commit/0425a09164dbf146b29d5fa58508ec86a34f0206) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(security): extend ClawGuard opt-in to execute_expert ([#2022](https://github.com/williamzujkowski/nexus-agents/issues/2022) follow-up)
+
+  Mirrors the orchestrate-tool activation from [#2024](https://github.com/williamzujkowski/nexus-agents/issues/2024) for the
+  `execute_expert` MCP tool. Every expert invocation now derives an
+  access policy from the task description and wraps `expert.execute(task)`
+  in `withAccessPolicy(policy, ...)` so the mounted middleware ([#2021](https://github.com/williamzujkowski/nexus-agents/issues/2021))
+  can enforce it.
+
+  Behavior matrix is identical to orchestrate:
+  - `NEXUS_ACCESS_POLICY_MODE` unset / `off` → bypass policy →
+    middleware short-circuit → zero observable change.
+  - `audit` → regex-fallback policy (ExecuteExpertDeps has no
+    `modelAdapter`, so LLM derivation path isn't available); violations
+    logged, execution proceeds.
+  - `enforce` → violations deny with `isError` ToolResult.
+
+  Derivation failures never throw — fall through to permissive bypass.
+
 ## 2.40.0
 
 ### Minor Changes
