@@ -5161,15 +5161,16 @@ papers:
     techniques_extracted: []
     related_issues:
       - 1977
-    implementation_status: not-started
-    review_status: deep-read-complete-pending-implementation-decision
+    implementation_status: planned
+    review_status: design-approved-80pct-consensus-2026-04-19
     review_notes: |
-      2026-04-19 deep read complete. Strong promote candidate but no commitment yet.
-      Fits cleanly into src/security/ pipeline as a new pre-execution stage.
-      Effort estimate: 2-4 days for AccessConstraintDeriver + tool-dispatch hook.
-      Open questions before promotion: (1) measure latency overhead on our workload
-      (paper does not report this); (2) confirm trust-tier interaction — derive
-      constraints only from Tier 1/2 user objective, not aggregated context.
+      2026-04-19: design reviewed and approved via consensus_vote (higher_order,
+      4 approve / 1 reject / 1 error). Implementation plan published to #1977
+      and bound by 7 mandatory PR conditions: UnifiedAdapterRegistry usage,
+      Result<T,E> + Zod, hardcoded unbypassable denylist layered over LLM policy,
+      trust-tier gating on objective input, 1s timeout + caching, empirical
+      <500ms p95 validation before enforce mode, deterministic mocked tests.
+      Default release mode: audit. Scope: 300-500 LOC + 200 LOC tests, 2-4 days.
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
@@ -5348,16 +5349,17 @@ papers:
     techniques_extracted: []
     related_issues:
       - 1981
-    implementation_status: not-started
-    review_status: deep-read-complete-strong-promote-pending-implementation-decision
+    implementation_status: planned
+    review_status: design-approved-80pct-consensus-2026-04-19
     review_notes: |
-      2026-04-19 deep read complete. Strong promote candidate with public dataset
-      and code already available — no upstream blockers for integration. Could land
-      as a BenchmarkAdapter in nexus-eval-* ecosystem (peer to nexus-eval-swebench),
-      using the BenchmarkAdapter contract from #1965. Effort estimate: ~1 week for
-      full adapter (HF dataset loader + trajectory replay + scoring), or smaller if
-      we skip replay and only score binary labels. Open questions: per-instance
-      runtime cost (CI lane budget) and whether scoring requires human review.
+      2026-04-19: design reviewed and approved via consensus_vote (higher_order,
+      4 approve / 1 reject / 1 error). Implementation plan in #1981. Two-tier
+      scope with Tier 1 (score-only, ~3 days) approved as starting point;
+      Tier 2 (replay, ~1 week) deferred unless Tier 1 surfaces interesting
+      signal. Integration via new sibling package packages/nexus-eval-atbench/
+      using the BenchmarkAdapter contract from #1965. Public HF dataset
+      (AI45Research/ATBench-Claw) and code (AI45Lab/AgentDoG) already
+      available — no upstream blockers.
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
