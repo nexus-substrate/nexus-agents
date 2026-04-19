@@ -1,7 +1,5 @@
 # Memory Systems
 
-> ⚠ This doc was last validated 2026-04-19 against current source; some sections may need refresh.
-
 **Last Updated:** 2026-04-19 (ET)
 **Status:** Active Research
 
@@ -32,7 +30,7 @@ Research on memory architectures for AI agents including long-term memory, conte
 
 - **Source:** [arxiv-2504.19413](https://arxiv.org/abs/2504.19413)
 - **Key Metrics:** 91% latency reduction, 90% token savings, 26% quality improvement
-- **Integration Point:** `packages/nexus-agents/src/agents/memory/`
+- **Integration Point:** `packages/nexus-agents/src/context/` (see `agentic-memory*.ts`, `mobimem*.ts`)
 - **GitHub Issue:** #101
 
 Scalable memory architecture with dynamic extraction of salient information and consolidation across sessions. Graph-based variant provides additional 2% improvement.
@@ -41,7 +39,7 @@ Scalable memory architecture with dynamic extraction of salient information and 
 
 - **Source:** [arxiv-2507.07957](https://arxiv.org/abs/2507.07957)
 - **Key Metrics:** 35% accuracy vs RAG, 99.9% storage reduction
-- **Integration Point:** `packages/nexus-agents/src/agents/memory/`
+- **Integration Point:** `packages/nexus-agents/src/context/` (see `typed-memory*.ts`, `memory-types.ts`)
 - **GitHub Issue:** #101
 
 Comprehensive six-type memory: Core, Episodic, Semantic, Procedural, Resource, Knowledge Vault. Active Retrieval aligns with context manager categories.
@@ -50,7 +48,7 @@ Comprehensive six-type memory: Core, Episodic, Semantic, Procedural, Resource, K
 
 - **Source:** [arxiv-2512.15784](https://arxiv.org/abs/2512.15784)
 - **Key Metrics:** 83.1% profile alignment, 280x faster retrieval, 50.3% task success
-- **Integration Point:** `packages/nexus-agents/src/agents/`, `packages/nexus-agents/src/workflows/`
+- **Integration Point:** `packages/nexus-agents/src/context/mobimem*.ts`
 
 Three-module architecture: Profile Memory (user preferences), Experience Memory (task patterns), Action Memory (caching). Enables post-deployment agent improvement.
 
@@ -60,7 +58,7 @@ Three-module architecture: Profile Memory (user preferences), Experience Memory 
 
 - **Source:** [arxiv-2511.23271](https://arxiv.org/abs/2511.23271)
 - **Key Metrics:** Up to 3000x prompt reduction
-- **Integration Point:** `packages/nexus-agents/src/agents/experts/`
+- **Integration Point:** `packages/nexus-agents/src/context/` (prompt-compression pipeline, BET shims in `bet-*.ts`)
 
 Single-token compression of system prompts via behavior distillation. Requires training phase per expert type.
 

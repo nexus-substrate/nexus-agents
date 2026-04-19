@@ -1,5 +1,3 @@
-> ⚠ This doc was last validated 2026-04-19 against current source; some sections may need refresh.
-
 # Documentation Operations Specification
 
 **Version:** 1.1.0
@@ -188,7 +186,7 @@ The following files constitute the DocOps pipeline. Changes to these files trigg
     ".github/workflows/link-check.yml",
     "docs/ops/docops-spec.md"
   ],
-  "skill_file": ".claude/skills/documentation-management.md",
+  "skill_file": "skills/documentation-management/SKILL.md",
   "checksum_location": "docs/ops/docops-manifest.json"
 }
 ```
@@ -230,7 +228,7 @@ npx tsx scripts/inject-governance.ts check
 
 ## Related Documents
 
-- **Documentation Management Skill:** `.claude/skills/documentation-management.md`
+- **Documentation Management Skill:** `skills/documentation-management/SKILL.md`
 - **Documentation Index:** `docs/README.md`
 - **Machine Index:** `docs/INDEX.yaml`
 - **Inventory:** `docs/ops/docs-inventory.md`
