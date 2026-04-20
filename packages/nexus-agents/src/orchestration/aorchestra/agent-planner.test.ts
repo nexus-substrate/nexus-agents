@@ -670,4 +670,38 @@ describe('AgentPlanner', () => {
       expect(roles).toContain('code');
     });
   });
+
+  describe('dependsOn emission (#2055)', () => {
+    it('emits dependsOn on entries whose role has declared dependencies', () => {
+      // code_implementation/complex pulls in code + testing + architecture.
+      // testing depends on ['code'] per EXPERT_DEPENDENCIES.
+      const plan = planFor('code_implementation', 'complex');
+      const testingEntry = plan.entries.find((e) => e.role === 'testing');
+      if (testingEntry !== undefined) {
+        expect(testingEntry.dependsOn).toEqual(['code']);
+      }
+    });
+
+    it('omits dependsOn when the declared deps are not present in the plan', () => {
+      // A plan that has only architecture (no code) — architecture has no
+      // declared dependencies, and testing won't be included here.
+      const plan = planFor('documentation', 'simple');
+      for (const entry of plan.entries) {
+        const declaredDeps = EXPERT_DEPENDENCIES[entry.role] ?? [];
+        const presentDeps = declaredDeps.filter((d) => plan.entries.some((e) => e.role === d));
+        if (presentDeps.length === 0) {
+          expect(entry.dependsOn).toBeUndefined();
+        }
+      }
+    });
+
+    it('never emits empty dependsOn arrays', () => {
+      const plan = planFor('code_implementation', 'complex');
+      for (const entry of plan.entries) {
+        if (entry.dependsOn !== undefined) {
+          expect(entry.dependsOn.length).toBeGreaterThan(0);
+        }
+      }
+    });
+  });
 });

@@ -334,10 +334,16 @@ function assignDependencyAwareWaves(entries: readonly AgentPlanEntry[]): AgentPl
     }
   }
 
-  return entries.map((entry) => ({
-    ...entry,
-    wave: roleToWave.get(entry.role) ?? entry.wave,
-  }));
+  return entries.map((entry) => {
+    const deps = EXPERT_DEPENDENCIES[entry.role];
+    // Only include roles that are actually present in the plan.
+    const presentDeps = deps?.filter((d) => roleToWave.has(d)) ?? [];
+    return {
+      ...entry,
+      wave: roleToWave.get(entry.role) ?? entry.wave,
+      ...(presentDeps.length > 0 ? { dependsOn: presentDeps } : {}),
+    };
+  });
 }
 
 /**
