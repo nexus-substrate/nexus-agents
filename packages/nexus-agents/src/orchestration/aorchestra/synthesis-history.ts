@@ -8,6 +8,8 @@
  * @module orchestration/aorchestra/synthesis-history
  */
 
+import { getTimeProvider } from '../../core/index.js';
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -67,13 +69,13 @@ export class SynthesisHistoryTracker {
         tier2Successes: 0,
         tier3Successes: 0,
         consecutiveTier2Failures: 0,
-        lastUpdated: Date.now(),
+        lastUpdated: getTimeProvider().now(),
       };
       this.patterns.set(patternKey, entry);
     }
 
     entry.totalAttempts++;
-    entry.lastUpdated = Date.now();
+    entry.lastUpdated = getTimeProvider().now();
 
     if (tier === 2) {
       if (success) {
