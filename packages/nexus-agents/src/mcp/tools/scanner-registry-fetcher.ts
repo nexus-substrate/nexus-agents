@@ -10,7 +10,7 @@
  */
 
 import { z } from 'zod';
-import { createLogger } from '../../core/index.js';
+import { createLogger, getTimeProvider } from '../../core/index.js';
 
 // ============================================================================
 // Types
@@ -200,14 +200,14 @@ async function fetchManifestFromGitHub(): Promise<ScannerRegistryManifest | null
     // If cached version matches the latest tag, refresh timer only
     if (cachedEntry !== null && cachedEntry.releaseTag === tag) {
       logger.debug('Scanner registry unchanged, refreshing cache timer', { tag });
-      cachedEntry = { ...cachedEntry, fetchedAt: Date.now() };
+      cachedEntry = { ...cachedEntry, fetchedAt: getTimeProvider().now() };
       return cachedEntry.manifest;
     }
 
     // New release — download full manifest
     const manifest = await downloadManifest(execFileAsync);
     if (manifest !== null) {
-      cachedEntry = { manifest, fetchedAt: Date.now(), releaseTag: tag };
+      cachedEntry = { manifest, fetchedAt: getTimeProvider().now(), releaseTag: tag };
     }
     return manifest;
   } catch (err) {
@@ -224,7 +224,7 @@ async function fetchManifestFromGitHub(): Promise<ScannerRegistryManifest | null
 export async function getRegistryManifest(): Promise<ScannerRegistryManifest | null> {
   // Check cache
   if (cachedEntry !== null) {
-    const age = Date.now() - cachedEntry.fetchedAt;
+    const age = getTimeProvider().now() - cachedEntry.fetchedAt;
     if (age < CACHE_TTL_MS) {
       return cachedEntry.manifest;
     }

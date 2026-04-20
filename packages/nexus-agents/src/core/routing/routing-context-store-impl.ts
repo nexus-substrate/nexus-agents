@@ -7,6 +7,7 @@
  */
 
 import { ok, err, type Result } from '../result.js';
+import { getTimeProvider } from '../time-provider.js';
 import type { CliName } from '../../cli-adapters/types.js';
 import type {
   IRoutingContextStore,
@@ -269,7 +270,7 @@ export class RoutingContextStore implements IRoutingContextStore {
       this.cacheMisses++;
       return undefined;
     }
-    if (Date.now() - cached.cachedAt.getTime() > this.config.actionCacheTtlMs) {
+    if (getTimeProvider().now() - cached.cachedAt.getTime() > this.config.actionCacheTtlMs) {
       this.actionCache.delete(action);
       this.cacheMisses++;
       return undefined;
@@ -299,7 +300,7 @@ export class RoutingContextStore implements IRoutingContextStore {
   }
 
   getMetrics(periodHours: number): RoutingMetricsSummary {
-    const cutoff = new Date(Date.now() - periodHours * 60 * 60 * 1000);
+    const cutoff = new Date(getTimeProvider().now() - periodHours * 60 * 60 * 1000);
     const cutoffStr = cutoff.toISOString();
     const recentDecisions = this.routingDecisions.filter((d) => d.timestamp >= cutoffStr);
     const recentOutcomes = this.taskOutcomes.filter((o) => o.timestamp >= cutoffStr);
@@ -321,12 +322,12 @@ export class RoutingContextStore implements IRoutingContextStore {
   }
 
   getRoutingDecisions(periodHours: number): readonly RoutingDecision[] {
-    const cutoff = new Date(Date.now() - periodHours * 60 * 60 * 1000).toISOString();
+    const cutoff = new Date(getTimeProvider().now() - periodHours * 60 * 60 * 1000).toISOString();
     return this.routingDecisions.filter((d) => d.timestamp >= cutoff);
   }
 
   getTaskOutcomes(periodHours: number): readonly TaskOutcome[] {
-    const cutoff = new Date(Date.now() - periodHours * 60 * 60 * 1000).toISOString();
+    const cutoff = new Date(getTimeProvider().now() - periodHours * 60 * 60 * 1000).toISOString();
     return this.taskOutcomes.filter((o) => o.timestamp >= cutoff);
   }
 
@@ -373,7 +374,9 @@ export class RoutingContextStore implements IRoutingContextStore {
 
   cleanup(): void {
     this.cleanupActionCache();
-    const cutoff = new Date(Date.now() - this.config.retentionHours * 60 * 60 * 1000).toISOString();
+    const cutoff = new Date(
+      getTimeProvider().now() - this.config.retentionHours * 60 * 60 * 1000
+    ).toISOString();
     cleanupOldRecords(this.routingDecisions, cutoff, (r) => r.timestamp);
     cleanupOldRecords(this.taskOutcomes, cutoff, (r) => r.timestamp);
   }
@@ -434,7 +437,7 @@ export class RoutingContextStore implements IRoutingContextStore {
   }
 
   private cleanupActionCache(): void {
-    const now = Date.now();
+    const now = getTimeProvider().now();
     for (const [key, cached] of this.actionCache) {
       if (now - cached.cachedAt.getTime() > this.config.actionCacheTtlMs) {
         this.actionCache.delete(key);

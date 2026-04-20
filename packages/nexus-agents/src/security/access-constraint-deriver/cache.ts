@@ -12,6 +12,7 @@
  * @module security/access-constraint-deriver/cache
  */
 
+import { getTimeProvider } from '../../core/index.js';
 import type { TaskAccessPolicy } from './types.js';
 
 /** Max number of policies retained in the cache before LRU eviction. */
@@ -46,7 +47,7 @@ export class PolicyCache {
       const oldest = this.entries.keys().next().value;
       if (oldest !== undefined) this.entries.delete(oldest);
     }
-    this.entries.set(objectiveHash, { policy, insertedAt: Date.now() });
+    this.entries.set(objectiveHash, { policy, insertedAt: getTimeProvider().now() });
   }
 
   /** Clears all entries. Useful for tests. */
