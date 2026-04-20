@@ -14,7 +14,7 @@
 
 import { z } from 'zod';
 import type { IModelAdapter, ILogger } from '../../core/index.js';
-import { createLogger, getErrorMessage } from '../../core/index.js';
+import { createLogger, getErrorMessage, getTimeProvider } from '../../core/index.js';
 import { withTimeout } from '../../utils/async-utils.js';
 
 // ============================================================================
@@ -81,7 +81,7 @@ export class ReflectionCache {
     const key = this.normalize(query);
     const entry = this.entries.get(key);
     if (entry === undefined) return undefined;
-    if (Date.now() - entry.timestamp > this.ttlMs) {
+    if (getTimeProvider().now() - entry.timestamp > this.ttlMs) {
       this.entries.delete(key);
       return undefined;
     }
@@ -99,7 +99,7 @@ export class ReflectionCache {
       const oldest = this.entries.keys().next();
       if (oldest.done !== true) this.entries.delete(oldest.value);
     }
-    this.entries.set(key, { criteria, timestamp: Date.now() });
+    this.entries.set(key, { criteria, timestamp: getTimeProvider().now() });
   }
 
   get size(): number {
