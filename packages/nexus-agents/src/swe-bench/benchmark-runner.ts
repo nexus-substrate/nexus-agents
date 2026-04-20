@@ -12,7 +12,15 @@
 
 import type { Result } from '../core/result.js';
 import type { SWEBenchConfig, SWEBenchInstance, SWEBenchRunResult } from './types.js';
-import { runAgentOnInstance, type RunOptions, type IAgentExecutor } from './agent-runner.js';
+import {
+  runAgentOnInstance,
+  type RunOptions,
+  type IAgentExecutor,
+  type IVerifyAdapter,
+} from './agent-runner.js';
+import { HarnessVerifyAdapter } from './harness-verify-adapter.js';
+import { createValidatedHarness } from './evaluation-harness.js';
+import type { EvaluationHarnessConfig } from './evaluation-config-types.js';
 import { AgentRunnerError } from './agent-runner.js';
 import { PredictionWriter } from './prediction-writer.js';
 import { createNexusExecutorFromEnv } from './nexus-agent-executor.js';
@@ -64,6 +72,37 @@ export interface ExecutorWithModel extends IAgentExecutor {
 export interface CreateExecutorOptions {
   readonly verbose: boolean;
   readonly mcpEnabled?: boolean;
+}
+
+/** Options for constructing a HarnessVerifyAdapter. */
+export interface CreateVerifyAdapterOptions {
+  readonly modelName: string;
+  readonly evalConfig: EvaluationHarnessConfig;
+}
+
+/**
+ * Construct a HarnessVerifyAdapter for per-instance post-patch
+ * verification. Validates the harness environment first (Docker,
+ * disk, CPU) — returns `err` if prerequisites aren't met so callers
+ * can fall back to running without verify.
+ *
+ * Consumers pass the returned adapter to `runAgentOnInstance` via
+ * `RunOptions.verifyAdapter` to enable the retry loop from #2032.
+ */
+export async function createHarnessVerifyAdapter(
+  opts: CreateVerifyAdapterOptions
+): Promise<Result<IVerifyAdapter, AgentRunnerError>> {
+  const harnessResult = await createValidatedHarness();
+  if (!harnessResult.ok) {
+    return {
+      ok: false,
+      error: new AgentRunnerError(`Verify adapter unavailable: ${harnessResult.error.message}`),
+    };
+  }
+  return {
+    ok: true,
+    value: new HarnessVerifyAdapter(harnessResult.value, opts.modelName, opts.evalConfig),
+  };
 }
 
 /**
@@ -144,14 +183,21 @@ export interface SingleInstanceOptions {
   readonly writer: IBenchmarkWriter;
   readonly verbose: boolean;
   readonly systemPrompt?: string;
+  /**
+   * Optional post-patch verify adapter (#2032). When present, runs the
+   * instance's test suite after each successful patch; on failure,
+   * feeds a retry hint back to the agent for up to `maxVerifyRetries`
+   * iterations. Construct via `createHarnessVerifyAdapter`.
+   */
+  readonly verifyAdapter?: IVerifyAdapter;
+  /** Override max verify retries (default 2). */
+  readonly maxVerifyRetries?: number;
 }
 
-/** Run single instance and handle result. */
-export async function runSingleInstance(
-  opts: SingleInstanceOptions
-): Promise<{ completed: boolean; tokens: number }> {
-  const { instance, executor, config, writer, verbose, systemPrompt } = opts;
-  const runOpts: RunOptions = {
+/** Build RunOptions for runAgentOnInstance from SingleInstanceOptions. */
+function buildRunOptions(opts: SingleInstanceOptions): RunOptions {
+  const { executor, config, verbose, systemPrompt, verifyAdapter, maxVerifyRetries } = opts;
+  return {
     executor,
     config,
     ...(verbose && {
@@ -160,7 +206,17 @@ export async function runSingleInstance(
       },
     }),
     ...(systemPrompt !== undefined && { systemPrompt }),
+    ...(verifyAdapter !== undefined && { verifyAdapter }),
+    ...(maxVerifyRetries !== undefined && { maxVerifyRetries }),
   };
+}
+
+/** Run single instance and handle result. */
+export async function runSingleInstance(
+  opts: SingleInstanceOptions
+): Promise<{ completed: boolean; tokens: number }> {
+  const { instance, writer } = opts;
+  const runOpts = buildRunOptions(opts);
 
   const result = await runAgentOnInstance(instance, runOpts);
 
