@@ -105,19 +105,19 @@ import {
     <p class="subtitle section-subtitle">
       This is the core differentiator. Every execution makes the next one better.
     </p>
-    <pre class="code-block"><code>  You give a task
-       |
-  Task Analysis &rarr; picks best model from {CLI_ADAPTER_COUNT} CLIs
-       |
-  Expert executes &rarr; {EXPERT_TYPE_COUNT} specialized types, created on demand
-       |
-  Consensus validates &rarr; multi-model voting catches errors
-       |
-  Outcome recorded &rarr; success/failure feeds {MEMORY_BACKEND_COUNT} memory backends
-       |
-  Next task &rarr; routing is smarter, memory recalls what worked
-       |
-  Repeat &rarr; system improves continuously</code></pre>
+    <div class="mermaid" aria-label="Diagram showing the learning loop: a task is analyzed, routed to an expert, validated by consensus, recorded as an outcome, and that outcome improves routing for the next task.">
+{`flowchart TD
+  task["You give a task"] --> analysis["Task Analysis<br/>picks best model from ${CLI_ADAPTER_COUNT} CLIs"]
+  analysis --> expert["Expert executes<br/>${EXPERT_TYPE_COUNT} specialized types, created on demand"]
+  expert --> consensus["Consensus validates<br/>multi-model voting catches errors"]
+  consensus --> outcome["Outcome recorded<br/>success/failure feeds ${MEMORY_BACKEND_COUNT} memory backends"]
+  outcome -.->|feeds next routing decision| analysis
+  outcome --> better["Next task: routing is smarter,<br/>memory recalls what worked"]
+  classDef primary fill:#6750A4,stroke:#6750A4,color:#ffffff;
+  classDef accent fill:#e8def8,stroke:#6750A4,color:#1c1b1f;
+  class task,better primary;
+  class analysis,expert,consensus,outcome accent;`}
+    </div>
   </section>
 
   <section class="section">
@@ -152,21 +152,52 @@ nexus-agents setup
 
   <section class="section">
     <h2 class="headline-large">Architecture</h2>
-    <pre class="code-block"><code>MCP Protocol ({MCP_TOOL_COUNT} tools, rate-limited, auth)
-    |
-Orchestrator (task analysis, dynamic expert creation)
-    |
-+--------+--------+--------+-----------+----------+
-| Claude | Gemini | Codex  | Codex-MCP | OpenCode |
-+--------+--------+--------+-----------+----------+
-    |
-Composite Router ({ROUTING_STAGE_COUNT} stages)
-  Budget &rarr; Capability &rarr; Preference &rarr; TOPSIS &rarr; LinUCB &rarr; Latency
-    |                                                        |
-+----------+-----------+----------+----------+    Outcome Store
-| Consensus| Memory    | Pipeline | Security |    (feeds back)
-| ({CONSENSUS_ALGORITHM_COUNT} algos) | ({MEMORY_BACKEND_COUNT} backends)| (3 modes)| (sandbox) |
-+----------+-----------+----------+----------+</code></pre>
+    <p class="subtitle section-subtitle">
+      Tasks enter through MCP, route through a {ROUTING_STAGE_COUNT}-stage pipeline,
+      execute on the best available CLI, and get validated by consensus before
+      outcomes feed back into the router.
+    </p>
+    <div class="mermaid" aria-label="Nexus Agents architecture: MCP protocol feeds the Orchestrator, which routes through a multi-stage pipeline to one of several CLIs. Consensus, memory, pipeline, and security services run alongside. Outcomes feed back into the router.">
+{`flowchart TD
+  mcp["MCP Protocol<br/>${MCP_TOOL_COUNT} tools · rate-limited · auth"]
+  orch["Orchestrator<br/>task analysis · dynamic experts"]
+  router["Composite Router · ${ROUTING_STAGE_COUNT} stages<br/>Budget → Capability → Preference<br/>TOPSIS → LinUCB → Latency"]
+  claude["Claude"]
+  gemini["Gemini"]
+  codex["Codex"]
+  codexmcp["Codex-MCP"]
+  opencode["OpenCode"]
+  outcome[("Outcome Store<br/>feeds back")]
+
+  subgraph services ["Supporting Services"]
+    consensus["Consensus<br/>${CONSENSUS_ALGORITHM_COUNT} algorithms"]
+    memory["Memory<br/>${MEMORY_BACKEND_COUNT} backends"]
+    pipeline["Pipeline<br/>3 modes"]
+    security["Security<br/>sandbox"]
+  end
+
+  mcp --> orch
+  orch --> router
+  router --> claude
+  router --> gemini
+  router --> codex
+  router --> codexmcp
+  router --> opencode
+  claude --> outcome
+  gemini --> outcome
+  codex --> outcome
+  codexmcp --> outcome
+  opencode --> outcome
+  outcome -.->|learns routing| router
+  orch -.-> services
+
+  classDef primary fill:#6750A4,stroke:#6750A4,color:#ffffff;
+  classDef cli fill:#e8def8,stroke:#6750A4,color:#1c1b1f;
+  classDef store fill:#f5eff7,stroke:#6750A4,color:#1c1b1f,stroke-dasharray: 5 3;
+  class mcp,orch,router primary;
+  class claude,gemini,codex,codexmcp,opencode cli;
+  class outcome store;`}
+    </div>
   </section>
 
   <section class="section">

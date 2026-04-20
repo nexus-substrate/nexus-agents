@@ -76,15 +76,13 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
   <body>
     <nav class="site-nav">
       <div class="nav-inner">
-        <a href="/nexus-agents/" class="nav-logo">
+        <a href="/nexus-agents/" class="nav-logo" aria-label="Nexus Agents home">
           <svg viewBox="0 0 32 32" fill="none" width="28" height="28" aria-hidden="true">
-            <circle cx="16" cy="16" r="14" stroke="currentColor" stroke-width="2" />
-            <circle cx="10" cy="12" r="2.5" fill="currentColor" />
-            <circle cx="22" cy="12" r="2.5" fill="currentColor" />
-            <circle cx="16" cy="22" r="2.5" fill="currentColor" opacity="0.7" />
-            <line x1="10" y1="12" x2="22" y2="12" stroke="currentColor" stroke-width="1.5" opacity="0.4" />
-            <line x1="10" y1="12" x2="16" y2="22" stroke="currentColor" stroke-width="1.5" opacity="0.4" />
-            <line x1="22" y1="12" x2="16" y2="22" stroke="currentColor" stroke-width="1.5" opacity="0.4" />
+            <path d="M4 7 L19 16" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+            <path d="M4 16 L19 16" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" opacity="0.55"/>
+            <path d="M4 25 L19 16" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+            <path d="M19 16 L28 16" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+            <circle cx="19" cy="16" r="2.75" fill="currentColor"/>
           </svg>
           Nexus Agents
         </a>
@@ -140,6 +138,84 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
         attach();
         document.addEventListener('astro:page-load', attach);
       })();
+    </script>
+
+    <!-- Mermaid renderer: dynamic import so the ~600KB library never enters
+         the critical path. Re-runs after view transitions. Theme is derived
+         from brand tokens so diagrams match the rest of the site. -->
+    <script>
+      import type { MermaidConfig } from 'mermaid';
+
+      const THEME: MermaidConfig = {
+        startOnLoad: false,
+        theme: 'base',
+        securityLevel: 'strict',
+        fontFamily: "'Inter', system-ui, sans-serif",
+        themeVariables: {
+          primaryColor: '#6750A4',
+          primaryTextColor: '#ffffff',
+          primaryBorderColor: '#6750A4',
+          secondaryColor: '#e8def8',
+          secondaryTextColor: '#1c1b1f',
+          tertiaryColor: '#f5eff7',
+          tertiaryTextColor: '#1c1b1f',
+          lineColor: '#938f99',
+          textColor: '#e6e1e9',
+          mainBkg: '#6750A4',
+          secondBkg: '#e8def8',
+          background: 'transparent',
+          nodeBorder: '#6750A4',
+          clusterBkg: 'rgba(103, 80, 164, 0.06)',
+          clusterBorder: '#6750A4',
+          defaultLinkColor: '#938f99',
+          edgeLabelBackground: '#211f26',
+          fontSize: '14px',
+        },
+        flowchart: { curve: 'basis', padding: 16, useMaxWidth: true },
+      };
+
+      let mermaidPromise: Promise<typeof import('mermaid').default> | null = null;
+      function loadMermaid(): Promise<typeof import('mermaid').default> {
+        mermaidPromise ??= import('mermaid').then((m) => {
+          m.default.initialize(THEME);
+          return m.default;
+        });
+        return mermaidPromise;
+      }
+
+      async function renderMermaid(): Promise<void> {
+        const blocks = document.querySelectorAll<HTMLElement>(
+          '.mermaid:not([data-mermaid-rendered])'
+        );
+        if (blocks.length === 0) return;
+        const mermaid = await loadMermaid();
+        for (const block of blocks) {
+          const source = (block.dataset.source ?? block.textContent ?? '').trim();
+          if (!block.dataset.source) block.dataset.source = source;
+          try {
+            const id = `mermaid-${Math.random().toString(36).slice(2, 11)}`;
+            const { svg } = await mermaid.render(id, source);
+            block.innerHTML = svg;
+            block.dataset.mermaidRendered = '1';
+          } catch (err) {
+            block.innerHTML = `<pre class="code-block" style="color:#f87171;">Diagram render failed: ${String(err)}</pre>`;
+          }
+        }
+      }
+
+      renderMermaid();
+      document.addEventListener('astro:page-load', () => {
+        document
+          .querySelectorAll<HTMLElement>('.mermaid[data-mermaid-rendered]')
+          .forEach((el) => {
+            const source = el.dataset.source;
+            if (source !== undefined) {
+              el.textContent = source;
+              delete el.dataset.mermaidRendered;
+            }
+          });
+        void renderMermaid();
+      });
     </script>
   </body>
 </html>
