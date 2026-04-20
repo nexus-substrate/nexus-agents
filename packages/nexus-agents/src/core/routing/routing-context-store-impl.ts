@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- Cohesive in-memory routing context store; 402 lines with injectable time (governance allows 400-600). */
 /**
  * RoutingContextStore Implementation (ADR-0008)
  *

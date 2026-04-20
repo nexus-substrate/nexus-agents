@@ -9,7 +9,15 @@
  */
 
 import type { Result } from '../core/result.js';
-import { getTimeProvider } from '../core/index.js';
+import type { ILogger } from '../core/index.js';
+import { getTimeProvider, createLogger, getErrorMessage } from '../core/index.js';
+// ClawGuard + structured task state integration (#1414 runner wiring).
+import {
+  deriveAccessPolicy,
+  withAccessPolicy,
+  resolveAccessPolicyMode,
+} from '../security/access-constraint-deriver/index.js';
+import { initTaskState, updateStage, appendBlocker } from '../context/structured-task-state.js';
 import type { SWEBenchInstance, SWEBenchRunResult, SWEBenchConfig } from './types.js';
 import { buildVerifyOutcome } from './verify-loop.js';
 import {
@@ -320,8 +328,115 @@ export async function runAgentOnInstance(
       ? { maxVerifyRetries: options.maxVerifyRetries }
       : {}),
   };
-  const result = await runIterationLoop(executor, context, state, loopOptions);
+
+  // Derive ClawGuard policy + init task state before the iteration loop.
+  // Both are no-ops when respective env flags are disabled.
+  const runnerLogger = createLogger({ component: 'swe-bench-runner' });
+  const taskId = `swebench-${instance.instance_id}`;
+  const policy = await deriveRunnerAccessPolicy(instance, runnerLogger);
+  recordRunnerTaskInit(taskId, instance, runnerLogger);
+  const result = await withAccessPolicy(policy, () =>
+    runIterationLoop(executor, context, state, loopOptions)
+  );
+  recordRunnerTaskFinal(taskId, result, runnerLogger);
   return { ok: true, value: result };
+}
+
+/**
+ * Derive a ClawGuard access policy for this SWE-bench instance. Returns
+ * a bypass/off policy when NEXUS_ACCESS_POLICY_MODE is off (default in
+ * v2.50 was audit, but callers may still disable). Never throws —
+ * derivation failure falls back to bypass.
+ */
+async function deriveRunnerAccessPolicy(
+  instance: SWEBenchInstance,
+  logger: ILogger
+): Promise<Awaited<ReturnType<typeof deriveAccessPolicy>>> {
+  const mode = resolveAccessPolicyMode();
+  try {
+    const policy = await deriveAccessPolicy(`Fix: ${instance.problem_statement.slice(0, 500)}`, {
+      mode,
+      trustTier: '1',
+    });
+    if (mode !== 'off') {
+      logger.info('access-policy: runner policy derived', {
+        instanceId: instance.instance_id,
+        mode,
+        source: policy.source,
+      });
+    }
+    return policy;
+  } catch (error) {
+    logger.warn('access-policy: runner derivation failed, falling back to off', {
+      instanceId: instance.instance_id,
+      error: getErrorMessage(error),
+    });
+    return {
+      allowedTools: '*',
+      allowedPathPatterns: [],
+      allowedOperations: '*',
+      objectiveHash: 'runner-derivation-failed',
+      derivedAt: getTimeProvider().nowIso(),
+      source: 'bypass',
+      mode: 'off',
+    };
+  }
+}
+
+/** Opt-in check for task-state recording (shared with orchestrate.ts). */
+function isRunnerTaskStateEnabled(): boolean {
+  const raw = process.env['NEXUS_TASK_STATE_ENABLED'];
+  if (raw === undefined || raw === '') return true;
+  const normalized = raw.toLowerCase();
+  return normalized !== '0' && normalized !== 'false';
+}
+
+function recordRunnerTaskInit(taskId: string, instance: SWEBenchInstance, logger: ILogger): void {
+  if (!isRunnerTaskStateEnabled()) return;
+  const now = getTimeProvider().nowIso();
+  const result = initTaskState({
+    taskId,
+    stage: 'planning',
+    decisions: [],
+    blockers: [],
+    position: {
+      currentStep: `swe-bench.clone(${instance.repo})`,
+    },
+    updatedAt: now,
+  });
+  if (!result.ok) {
+    logger.warn('task-state: runner init failed', {
+      taskId,
+      error: result.error.message,
+    });
+    return;
+  }
+  updateStage(taskId, 'executing', now);
+}
+
+function recordRunnerTaskFinal(taskId: string, result: SWEBenchRunResult, logger: ILogger): void {
+  if (!isRunnerTaskStateEnabled()) return;
+  const now = getTimeProvider().nowIso();
+  // Runner reports "completed" when a patch was produced; errors → blocked.
+  const succeeded = result.completed && result.error === undefined;
+  if (!succeeded && result.error !== undefined) {
+    const blockerResult = appendBlocker(taskId, { ts: now, blocker: result.error });
+    if (!blockerResult.ok) {
+      logger.warn('task-state: runner blocker record failed', {
+        taskId,
+        error: blockerResult.error.message,
+      });
+    }
+  }
+  const stage = succeeded ? 'complete' : 'blocked';
+  const stageResult = updateStage(taskId, stage, now);
+  if (!stageResult.ok) {
+    logger.warn('task-state: runner stage update failed', {
+      taskId,
+      stage,
+      error: stageResult.error.message,
+    });
+  }
 }
 
 function checkEarlyExit(
