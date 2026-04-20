@@ -251,21 +251,35 @@ export class FitnessScoreCalculator {
   // Individual Checks — real filesystem analysis
   // =========================================================================
 
-  /** Check canonical paths: penalize duplicate router implementations. */
+  /**
+   * Check canonical paths: penalize duplicate router implementations.
+   *
+   * The current minimum is 6 (raised from 5 in #2063 after an audit):
+   *   1. composite-router — pipeline orchestrator
+   *   2. budget-router — budget/cost filtering
+   *   3. zero-router — hard-constraint exclusion
+   *   4. preference-router — user/task preference application
+   *   5. topsis-router — TOPSIS multi-criteria scoring
+   *   6. agreement-cascade-router — agreement-based cascade retry
+   *
+   * Each stage is distinct per CLAUDE.md's documented pipeline:
+   * Task → BudgetRouter → ZeroRouter → PreferenceRouter → TopsisRouter → Agreement → Model
+   */
   private checkCanonicalPaths(): FitnessCheckResult {
     const findings: FitnessFinding[] = [];
     let score = 20;
 
     const routerCount = countFiles(join(SRC_ROOT, 'cli-adapters'), /router\.ts$/);
-    if (routerCount > 5) {
-      const excess = routerCount - 5;
+    const ROUTER_COUNT_THRESHOLD = 6;
+    if (routerCount > ROUTER_COUNT_THRESHOLD) {
+      const excess = routerCount - ROUTER_COUNT_THRESHOLD;
       const deduction = Math.min(5, excess);
       score -= deduction;
       findings.push(
         this.finding(
           'canonicalPaths',
           'warning',
-          `${String(routerCount)} router implementations found (target: <=5)`,
+          `${String(routerCount)} router implementations found (target: <=${String(ROUTER_COUNT_THRESHOLD)})`,
           deduction,
           'Consolidate duplicate routers into CompositeRouter'
         )
