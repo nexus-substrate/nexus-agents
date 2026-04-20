@@ -1,5 +1,95 @@
 # nexus-agents
 
+## 2.53.0
+
+### Minor Changes
+
+- [#2081](https://github.com/williamzujkowski/nexus-agents/pull/2081) [`c6c4bb2`](https://github.com/williamzujkowski/nexus-agents/commit/c6c4bb22e52612f871cd5bf6fbe35664afb93dad) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(swe-bench): pre-flight research lookup for runAgentOnInstance ([#1414](https://github.com/williamzujkowski/nexus-agents/issues/1414) option 3)
+
+  Opt-in pre-flight research that appends top-3 relevant papers from
+  the in-repo research registry to the system prompt before the first
+  iteration runs.
+  - New module `swe-bench/preflight-research.ts`:
+    - `findRelevantPapers(problemStatement, topN=3)` — scores every
+      paper in `docs/research/registry/papers.yaml` against keywords
+      extracted from the problem statement; returns top-N hits
+    - `extractKeywords(text)` — simple heuristic: alphanumeric tokens
+      ≥ 4 chars, stopwords filtered, deduped, capped at 15
+    - `renderResearchContext(hits)` — compact markdown fragment ready
+      to concatenate to the system prompt
+    - `isPreflightResearchEnabled()` — reads `NEXUS_PREFLIGHT_RESEARCH=1`
+      (default off)
+  - Wired into `runAgentOnInstance`: when enabled AND hits found,
+    appends the research context block to the system prompt once before
+    the iteration loop starts. No-op otherwise.
+
+  ## Zero-cost design
+  - No LLM calls
+  - Registry is bundled with the package (loaded via
+    `loadPapersRegistry()`)
+  - Pure in-memory keyword matching
+  - Off by default so cost-sensitive runs see no extra prompt size
+
+  11 new tests cover keyword extraction, env gate, paper scoring, and
+  rendering. 9 existing agent-runner tests pass unchanged.
+
+  Closes the last option from my [#1414](https://github.com/williamzujkowski/nexus-agents/issues/1414) resume-plan message. Remaining
+  work for the epic: Phase 5 PipelineRunner refactor (design call) +
+  Verified 500 sweep ([#2035](https://github.com/williamzujkowski/nexus-agents/issues/2035) cost-gated).
+
+- [#2078](https://github.com/williamzujkowski/nexus-agents/pull/2078) [`efa8ca1`](https://github.com/williamzujkowski/nexus-agents/commit/efa8ca17b4413ac6b1fa510a6207b673a0715ce0) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(swe-bench): wire ClawGuard + structured task state into runAgentOnInstance ([#1414](https://github.com/williamzujkowski/nexus-agents/issues/1414))
+
+  Phase 5 progress for [#1414](https://github.com/williamzujkowski/nexus-agents/issues/1414). The SWE-bench runner now participates in
+  the same ClawGuard audit + structured-task-state journaling that the
+  orchestrate path gained in v2.50.
+  - `runAgentOnInstance` wraps the iteration loop in
+    `withAccessPolicy(policy, ...)` after deriving a per-instance policy
+    from the first 500 chars of `problem_statement`
+  - New helpers `deriveRunnerAccessPolicy`, `recordRunnerTaskInit`,
+    `recordRunnerTaskFinal` mirror the pattern from orchestrate.ts;
+    each is env-flag-gated (reuses `NEXUS_ACCESS_POLICY_MODE` and
+    `NEXUS_TASK_STATE_ENABLED` from v2.50)
+  - Task state log captures lifecycle per instance:
+    `planning → executing → (complete | blocked)`, with blockers
+    recorded when the runner reports an error
+  - Derivation + recording never throw; they log and continue so a
+    runner regression cannot take down a SWE-bench sweep
+
+  3 new integration tests cover policy shape on instance inputs;
+  existing 13 agent-runner tests unchanged.
+
+  Remaining [#1414](https://github.com/williamzujkowski/nexus-agents/issues/1414) work: `HarnessVerifyAdapter` wiring in
+  `createExecutor` (option 1) and pre-flight `research_query` hook
+  (option 3) — tracked as follow-up tasks.
+
+- [#2080](https://github.com/williamzujkowski/nexus-agents/pull/2080) [`6ab684a`](https://github.com/williamzujkowski/nexus-agents/commit/6ab684ad1717557c098da188e513ab0aecb83aaf) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(swe-bench): add createHarnessVerifyAdapter factory + thread verify into runSingleInstance ([#1414](https://github.com/williamzujkowski/nexus-agents/issues/1414))
+
+  Builds on [#2056](https://github.com/williamzujkowski/nexus-agents/issues/2056) (HarnessVerifyAdapter class) and [#2078](https://github.com/williamzujkowski/nexus-agents/issues/2078) (runner
+  ClawGuard + task-state wiring) to expose post-patch verification at
+  the benchmark-runner layer.
+  - New `createHarnessVerifyAdapter({ modelName, evalConfig })` factory
+    in `benchmark-runner.ts`. Validates the evaluation harness
+    environment (Docker, disk, CPU) before constructing the adapter;
+    returns `Result.err` if prerequisites aren't met so callers can
+    fall back to running without verify.
+  - `SingleInstanceOptions` extended with optional `verifyAdapter` +
+    `maxVerifyRetries` fields that flow into `RunOptions`.
+  - `runSingleInstance` threads both into `runAgentOnInstance`.
+  - 2 new factory tests: Result shape on environment failure, options
+    type compatibility.
+  - 12 existing benchmark-runner tests pass unchanged.
+
+  Enables SWE-bench sweeps to opt into the retry loop:
+
+  ```ts
+  const adapterResult = await createHarnessVerifyAdapter({
+    modelName: executor.getModelId(),
+    evalConfig,
+  });
+  const verifyAdapter = adapterResult.ok ? adapterResult.value : undefined;
+  await runSingleInstance({ ...opts, verifyAdapter });
+  ```
+
 ## 2.52.0
 
 ### Minor Changes
