@@ -328,7 +328,7 @@ export class CompositeRouter implements ICompositeRouter {
         // Use 30-day lookback — stale all-time data was overriding
         // specialization matrix changes (e.g., architecture claude→gemini) (#1667)
         const WARM_START_LOOKBACK_MS = 30 * 24 * 60 * 60 * 1000;
-        const since = new Date(Date.now() - WARM_START_LOOKBACK_MS).toISOString();
+        const since = new Date(getTimeProvider().now() - WARM_START_LOOKBACK_MS).toISOString();
         const outcomes = getOutcomeStore().query({
           since,
           excludeQualitySignals: ['e2e-eval'],
