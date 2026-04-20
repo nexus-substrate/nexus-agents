@@ -12,7 +12,7 @@
  * @module orchestration/aorchestra/watchdog
  */
 
-import { createLogger } from '../../core/index.js';
+import { createLogger, getTimeProvider } from '../../core/index.js';
 
 const logger = createLogger({ component: 'worker-watchdog' });
 
@@ -66,7 +66,7 @@ export async function withWatchdog<T>(
 ): Promise<T> {
   const entry: WatchdogEntry = {
     role,
-    startMs: Date.now(),
+    startMs: getTimeProvider().now(),
     timeoutMs,
     state: 'healthy',
   };
@@ -80,7 +80,7 @@ export async function withWatchdog<T>(
       logger.warn('Worker terminated by watchdog', {
         role,
         timeoutMs,
-        elapsed: Date.now() - entry.startMs,
+        elapsed: getTimeProvider().now() - entry.startMs,
         state: 'terminated',
       });
       reject(new Error(`Worker timeout after ${String(timeoutMs)}ms`));
@@ -89,11 +89,11 @@ export async function withWatchdog<T>(
 
   // Periodic check for warn escalation
   const watchdogTimer = setInterval(() => {
-    const newState = evaluateState(entry, Date.now());
+    const newState = evaluateState(entry, getTimeProvider().now());
     if (newState !== entry.state) {
       entry.state = newState;
       if (newState === 'warned') {
-        const elapsed = Date.now() - entry.startMs;
+        const elapsed = getTimeProvider().now() - entry.startMs;
         logger.warn('Worker approaching timeout', {
           role,
           elapsed,

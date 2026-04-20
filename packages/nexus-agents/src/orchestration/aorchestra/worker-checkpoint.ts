@@ -13,6 +13,8 @@
  * @module orchestration/aorchestra/worker-checkpoint
  */
 
+import { getTimeProvider } from '../../core/index.js';
+
 // ============================================================================
 // Constants
 // ============================================================================
@@ -51,7 +53,7 @@ export function createCheckpoint(
     subTask,
     partialOutput,
     elapsedMs: 0,
-    timestamp: Date.now(),
+    timestamp: getTimeProvider().now(),
   };
 }
 
