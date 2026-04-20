@@ -16,15 +16,15 @@ import {
 <BaseLayout title="Home" description="Intelligent orchestration platform for AI coding tools">
   <section class="section hero">
     <div class="hero-content">
-      <p class="label">AI Development Platform</p>
+      <p class="label">Open source · MIT · Node 22+</p>
       <h1 class="display-large">
-        The intelligence layer between you and your
-        <span class="accent">AI coding tools</span>
+        One MCP server.
+        <span class="accent nowrap">Every AI coding tool.</span>
       </h1>
       <p class="subtitle">
-        Give it a task. It picks the best AI model, validates the output, and remembers what worked.
-        Next time, it's smarter. Connect Claude, Codex, Gemini, and OpenCode through one MCP server
-        that learns from every interaction.
+        Nexus Agents routes each task to the best model across Claude, Codex, Gemini,
+        and OpenCode — then remembers what worked. Plug it into Claude Code, Cursor, or
+        any MCP client and your agent gets smarter with every run.
       </p>
       <div class="btn-row">
         <a href="/nexus-agents/docs/getting-started/installation/" class="btn-primary">
@@ -38,13 +38,31 @@ import {
   </section>
 
   <!-- Stats bar -->
-  <section class="section stats-bar">
-    <div class="stat"><span class="stat-number">{MCP_TOOL_COUNT}</span><span class="stat-label">MCP Tools</span></div>
-    <div class="stat"><span class="stat-number">{EXPERT_TYPE_COUNT}</span><span class="stat-label">Expert Types</span></div>
-    <div class="stat"><span class="stat-number">{CLI_ADAPTER_COUNT}</span><span class="stat-label">CLI Adapters</span></div>
-    <div class="stat"><span class="stat-number">{MEMORY_BACKEND_COUNT}</span><span class="stat-label">Memory Backends</span></div>
-    <div class="stat"><span class="stat-number">{ROUTING_STAGE_COUNT}</span><span class="stat-label">Routing Stages</span></div>
-    <div class="stat"><span class="stat-number">{PAPER_COUNT}+</span><span class="stat-label">Papers Tracked</span></div>
+  <section class="section stats-bar" aria-label="Platform capabilities at a glance">
+    <div class="stat" title="MCP tools exposed to client editors (orchestrate, consensus, research, memory, etc.)">
+      <span class="stat-number">{MCP_TOOL_COUNT}</span>
+      <span class="stat-label">MCP Tools</span>
+    </div>
+    <div class="stat" title="Specialized expert agents spun up on demand — code, security, architecture, testing, and more">
+      <span class="stat-number">{EXPERT_TYPE_COUNT}</span>
+      <span class="stat-label">Expert Types</span>
+    </div>
+    <div class="stat" title="CLI adapters: Claude, Gemini, Codex, Codex-MCP, OpenCode — swap any in without code changes">
+      <span class="stat-number">{CLI_ADAPTER_COUNT}</span>
+      <span class="stat-label">CLI Adapters</span>
+    </div>
+    <div class="stat" title="Memory backends: session, belief, agentic, adaptive, typed, and more — learn across runs">
+      <span class="stat-number">{MEMORY_BACKEND_COUNT}</span>
+      <span class="stat-label">Memory Backends</span>
+    </div>
+    <div class="stat" title="Pipeline stages that pick the best model: budget → capability → preference → TOPSIS → LinUCB → latency">
+      <span class="stat-number">{ROUTING_STAGE_COUNT}</span>
+      <span class="stat-label">Routing Stages</span>
+    </div>
+    <div class="stat" title="Research papers tracked in the on-disk registry — feed the planner with current technique evidence">
+      <span class="stat-number">{PAPER_COUNT}+</span>
+      <span class="stat-label">Papers Tracked</span>
+    </div>
   </section>
 
   <section class="section">
@@ -153,22 +171,27 @@ Composite Router ({ROUTING_STAGE_COUNT} stages)
 
   <section class="section">
     <h2 class="headline-large">Documentation</h2>
+    <p class="subtitle section-subtitle">Pick where to start based on what you want to do next.</p>
     <div class="card-grid cols-4">
       <a href="/nexus-agents/docs/getting-started/installation/" class="card link-card">
         <h3 class="title-large">Getting Started</h3>
-        <p class="card-text">Installation, configuration, first orchestration.</p>
+        <p class="card-text">Install, configure, and run your first orchestration in under 5 minutes.</p>
+        <span class="card-cta">Read the guide &rarr;</span>
       </a>
       <a href="/nexus-agents/docs/guides/mcp_integration/" class="card link-card">
         <h3 class="title-large">MCP Integration</h3>
-        <p class="card-text">Connect to Claude Code, Cursor, VS Code, or any MCP client.</p>
+        <p class="card-text">Wire up Claude Code, Cursor, VS Code, or any MCP client in three steps.</p>
+        <span class="card-cta">Connect your editor &rarr;</span>
       </a>
       <a href="/nexus-agents/docs/guides/workflow_templates/" class="card link-card">
         <h3 class="title-large">Dev Pipeline</h3>
-        <p class="card-text">Research, plan, vote, implement, QA — the full workflow.</p>
+        <p class="card-text">Research, plan, vote, implement, QA — run the whole workflow from one command.</p>
+        <span class="card-cta">Run the pipeline &rarr;</span>
       </a>
       <a href="/nexus-agents/docs/research/research_index/" class="card link-card">
-        <h3 class="title-large">Research</h3>
-        <p class="card-text">{PAPER_COUNT}+ papers and {DISCOVERY_SOURCE_COUNT} discovery sources.</p>
+        <h3 class="title-large">Research Registry</h3>
+        <p class="card-text">{PAPER_COUNT}+ papers across {DISCOVERY_SOURCE_COUNT} sources with technique alignment and synthesis.</p>
+        <span class="card-cta">Browse the registry &rarr;</span>
       </a>
     </div>
   </section>
@@ -202,6 +225,10 @@ Composite Router ({ROUTING_STAGE_COUNT} stages)
   }
 
   .accent { color: var(--color-primary); }
+  .nowrap { white-space: nowrap; }
+  @media (max-width: 640px) {
+    .nowrap { white-space: normal; }
+  }
 
   .subtitle {
     font-size: 1.125rem;
@@ -276,6 +303,7 @@ Composite Router ({ROUTING_STAGE_COUNT} stages)
     flex-direction: column;
     align-items: center;
     gap: 0.25rem;
+    cursor: help;
   }
   .stat-number {
     font-size: 1.75rem;
@@ -319,12 +347,23 @@ Composite Router ({ROUTING_STAGE_COUNT} stages)
   .link-card {
     text-decoration: none;
     cursor: pointer;
+    display: flex;
+    flex-direction: column;
   }
   .link-card h3 {
     color: var(--color-on-surface);
     transition: color 200ms;
   }
   .link-card:hover h3 { color: var(--color-primary); }
+  .card-cta {
+    display: inline-block;
+    margin-top: 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--color-primary);
+    transition: transform 200ms;
+  }
+  .link-card:hover .card-cta { transform: translateX(2px); }
 
   .code-step {
     margin-bottom: 1rem;

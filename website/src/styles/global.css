@@ -157,10 +157,22 @@ code, pre {
 }
 
 .prose table {
+  /* display: block + overflow-x: auto lets wide tables scroll horizontally
+     inside the docs content area instead of blowing out the layout. */
+  display: block;
   width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
   border-collapse: collapse;
   margin: 0 0 1.5rem;
   font-size: 0.875rem;
+}
+
+.prose table thead,
+.prose table tbody,
+.prose table tr {
+  /* Keep rows full-width inside the scrolling container. */
+  width: 100%;
 }
 
 .prose th {
