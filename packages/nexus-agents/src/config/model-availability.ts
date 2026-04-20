@@ -9,6 +9,7 @@
  * (Source: Issue #869)
  */
 
+import { getTimeProvider } from '../core/index.js';
 import type { ModelId, CliNameLiteral } from './model-capabilities-types.js';
 import { DEFAULT_MODEL_PER_CLI } from './model-capabilities.js';
 
@@ -67,7 +68,7 @@ export class AvailabilityCache {
   get(modelId: ModelId): ProbeResult | undefined {
     const entry = this.cache.get(modelId);
     if (entry === undefined) return undefined;
-    if (Date.now() - entry.checkedAt > this.ttlMs) {
+    if (getTimeProvider().now() - entry.checkedAt > this.ttlMs) {
       this.cache.delete(modelId);
       return undefined;
     }
@@ -91,7 +92,7 @@ export class AvailabilityCache {
       modelId,
       available: false,
       latencyMs: 0,
-      checkedAt: Date.now(),
+      checkedAt: getTimeProvider().now(),
       error,
     });
   }
@@ -102,7 +103,7 @@ export class AvailabilityCache {
       modelId,
       available: true,
       latencyMs,
-      checkedAt: Date.now(),
+      checkedAt: getTimeProvider().now(),
     });
   }
 

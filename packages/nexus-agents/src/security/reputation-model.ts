@@ -11,6 +11,7 @@
 
 import { z } from 'zod';
 
+import { getTimeProvider } from '../core/index.js';
 import type { TrustTier, GitHubUserRole, InjectionFlag } from './trust-types.js';
 import { TRUST_TIER_NUMERIC, ROLE_DEFAULT_TRUST } from './trust-types.js';
 
@@ -109,7 +110,7 @@ export class ReputationCache {
   get(username: string): ReputationAssessment | undefined {
     const entry = this.cache.get(username);
     if (entry === undefined) return undefined;
-    if (Date.now() > entry.expiresAt) {
+    if (getTimeProvider().now() > entry.expiresAt) {
       this.cache.delete(username);
       return undefined;
     }
@@ -122,7 +123,7 @@ export class ReputationCache {
     }
     this.cache.set(username, {
       assessment,
-      expiresAt: Date.now() + this.ttlMs,
+      expiresAt: getTimeProvider().now() + this.ttlMs,
     });
   }
 
