@@ -19,7 +19,7 @@ import type {
   Vote,
 } from './types.js';
 import { DEFAULT_WEIGHTED_VOTING_CONFIG } from './types.js';
-import type { IEventBus } from '../agents/collaboration/event-bus-types.js';
+import type { IEventBus } from '../core/event-bus.js';
 import {
   emitWeightUpdated,
   emitPatternDetected,

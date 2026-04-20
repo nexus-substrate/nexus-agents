@@ -11,7 +11,7 @@
 import { getTimeProvider } from '../core/index.js';
 import { clamp01 } from '../utils/math-utils.js';
 import type { WeightedAgentRecord, WeightedConsensusResult, Vote } from './types.js';
-import type { IEventBus } from '../agents/collaboration/event-bus-types.js';
+import type { IEventBus } from '../core/event-bus.js';
 
 /**
  * Mutable agent record for internal tracking.

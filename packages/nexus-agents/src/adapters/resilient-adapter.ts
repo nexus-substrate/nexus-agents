@@ -39,7 +39,7 @@ import type {
 } from './resilient-adapter-types.js';
 import type { CircuitStateChangeEvent } from '../cli-adapters/circuit-breaker-types.js';
 import type { CircuitBreakerRegistry } from '../cli-adapters/circuit-breaker.js';
-import { getGlobalEventBus } from '../agents/collaboration/event-bus.js';
+import { getGlobalEventBus } from '../core/event-bus.js';
 
 // ============================================================================
 // Factory
