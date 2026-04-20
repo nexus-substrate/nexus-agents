@@ -259,7 +259,7 @@ function recordToOutcomeStore(
     const cli = opts?.actualCli ?? match?.primaryCli ?? DEFAULT_CLI;
     const category = match?.category ?? 'exploration';
     getOutcomeStore().append({
-      id: `orch-${String(Date.now())}-${Math.random().toString(36).slice(2, 8)}`,
+      id: `orch-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 8)}`,
       cli,
       category,
       model: 'orchestrator',

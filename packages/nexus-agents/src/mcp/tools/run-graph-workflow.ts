@@ -11,7 +11,12 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
-import { createLogger, formatZodError, getTimeProvider } from '../../core/index.js';
+import {
+  createLogger,
+  formatZodError,
+  getTimeProvider,
+  getRandomProvider,
+} from '../../core/index.js';
 import { toolError, toolSuccess, type ToolResult, type BaseMcpToolDeps } from './tool-result.js';
 import { executeGraph } from '../../orchestration/graph/index.js';
 import type { CompiledGraph, GraphEvent, GraphState } from '../../orchestration/graph/index.js';
@@ -361,7 +366,7 @@ function recordGraphWorkflowResult(result: RunGraphWorkflowResponse): void {
   try {
     const store = getOutcomeStore();
     store.append({
-      id: `graph-${String(Date.now())}-${Math.random().toString(36).slice(2, 8)}`,
+      id: `graph-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 8)}`,
       cli: DEFAULT_CLI,
       category: workflowToCategory(result.workflow),
       model: 'graph-workflow',

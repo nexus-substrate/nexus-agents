@@ -11,7 +11,12 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
-import { createLogger, formatZodError } from '../../core/index.js';
+import {
+  createLogger,
+  formatZodError,
+  getTimeProvider,
+  getRandomProvider,
+} from '../../core/index.js';
 import { parseSpec } from '../../orchestration/spec-parser.js';
 import { decomposeSpec } from '../../orchestration/spec-decomposer.js';
 import { executeSpec } from '../../orchestration/spec-executor.js';
@@ -184,7 +189,7 @@ function recordSpecOutcome(success: boolean, durationMs: number, stage?: string)
     }
     const store = getOutcomeStore();
     store.append({
-      id: `spec-${String(Date.now())}-${Math.random().toString(36).slice(2, 8)}`,
+      id: `spec-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 8)}`,
       cli: DEFAULT_CLI,
       category: 'code_generation',
       model: 'spec-executor',
