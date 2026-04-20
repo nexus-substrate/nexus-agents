@@ -20,6 +20,7 @@ import {
 import { initTaskState, updateStage, appendBlocker } from '../context/structured-task-state.js';
 import type { SWEBenchInstance, SWEBenchRunResult, SWEBenchConfig } from './types.js';
 import { buildVerifyOutcome } from './verify-loop.js';
+import { findRelevantPapers, renderResearchContext } from './preflight-research.js';
 import {
   SWE_BENCH_SYSTEM_PROMPT,
   createInstancePrompt,
@@ -315,19 +316,7 @@ export async function runAgentOnInstance(
     finalPatch: undefined,
   };
 
-  const loopOptions: IterationLoopOptions = {
-    config,
-    signal,
-    startTime,
-    onMessage,
-    systemPrompt: options.systemPrompt,
-    iterationContext: createEmptyContext(),
-    verifyAttempts: 0,
-    ...(options.verifyAdapter !== undefined ? { verifyAdapter: options.verifyAdapter } : {}),
-    ...(options.maxVerifyRetries !== undefined
-      ? { maxVerifyRetries: options.maxVerifyRetries }
-      : {}),
-  };
+  const loopOptions = await buildLoopOptions(instance, options, startTime);
 
   // Derive ClawGuard policy + init task state before the iteration loop.
   // Both are no-ops when respective env flags are disabled.
@@ -340,6 +329,37 @@ export async function runAgentOnInstance(
   );
   recordRunnerTaskFinal(taskId, result, runnerLogger);
   return { ok: true, value: result };
+}
+
+/**
+ * Build the iteration-loop options, including pre-flight research
+ * context injection (#1414 option 3). Extracted to keep
+ * runAgentOnInstance under the max-lines cap.
+ */
+async function buildLoopOptions(
+  instance: SWEBenchInstance,
+  options: RunOptions,
+  startTime: number
+): Promise<IterationLoopOptions> {
+  const researchContext = await findRelevantPapers(instance.problem_statement);
+  const systemPrompt =
+    researchContext.length > 0
+      ? `${options.systemPrompt ?? SWE_BENCH_SYSTEM_PROMPT}\n\n${renderResearchContext(researchContext)}`
+      : options.systemPrompt;
+
+  return {
+    config: options.config,
+    signal: options.signal,
+    startTime,
+    onMessage: options.onMessage,
+    systemPrompt,
+    iterationContext: createEmptyContext(),
+    verifyAttempts: 0,
+    ...(options.verifyAdapter !== undefined ? { verifyAdapter: options.verifyAdapter } : {}),
+    ...(options.maxVerifyRetries !== undefined
+      ? { maxVerifyRetries: options.maxVerifyRetries }
+      : {}),
+  };
 }
 
 /**
