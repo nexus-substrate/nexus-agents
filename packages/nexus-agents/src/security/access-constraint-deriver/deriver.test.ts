@@ -21,12 +21,16 @@ beforeEach(() => {
 });
 
 describe('resolveAccessPolicyMode', () => {
-  it('defaults to "off" when env var is unset', () => {
-    expect(resolveAccessPolicyMode({})).toBe('off');
+  it('defaults to "audit" when env var is unset (v2.50+)', () => {
+    expect(resolveAccessPolicyMode({})).toBe('audit');
   });
 
   it('returns "audit" when env is set to audit', () => {
     expect(resolveAccessPolicyMode({ NEXUS_ACCESS_POLICY_MODE: 'audit' })).toBe('audit');
+  });
+
+  it('returns "off" when env is explicitly set to off', () => {
+    expect(resolveAccessPolicyMode({ NEXUS_ACCESS_POLICY_MODE: 'off' })).toBe('off');
   });
 
   it('returns "enforce" when env is set to enforce', () => {
@@ -37,12 +41,12 @@ describe('resolveAccessPolicyMode', () => {
     expect(resolveAccessPolicyMode({ NEXUS_ACCESS_POLICY_MODE: 'AUDIT' })).toBe('audit');
   });
 
-  it('falls back to "off" on invalid values', () => {
-    expect(resolveAccessPolicyMode({ NEXUS_ACCESS_POLICY_MODE: 'lockdown' })).toBe('off');
+  it('falls back to default (audit) on invalid values', () => {
+    expect(resolveAccessPolicyMode({ NEXUS_ACCESS_POLICY_MODE: 'lockdown' })).toBe('audit');
   });
 
-  it('falls back to "off" on empty string', () => {
-    expect(resolveAccessPolicyMode({ NEXUS_ACCESS_POLICY_MODE: '' })).toBe('off');
+  it('falls back to default (audit) on empty string', () => {
+    expect(resolveAccessPolicyMode({ NEXUS_ACCESS_POLICY_MODE: '' })).toBe('audit');
   });
 });
 
@@ -62,8 +66,11 @@ describe('hashObjective', () => {
 });
 
 describe('deriveAccessPolicy (skeleton)', () => {
-  it('returns a bypass policy with allow-all tools/ops', async () => {
-    const policy = await deriveAccessPolicy('summarize this issue');
+  it('returns a fallback-keyword policy by default (v2.50+ audit mode)', async () => {
+    // Default env is now 'audit', which produces regex-fallback policies
+    // (no adapter available in the test). Explicit mode: 'off' restores
+    // the bypass-policy behavior for tests that need it.
+    const policy = await deriveAccessPolicy('summarize this issue', { mode: 'off' });
     expect(policy.allowedTools).toBe('*');
     expect(policy.allowedOperations).toBe('*');
     expect(policy.source).toBe('bypass');

@@ -2,8 +2,9 @@
  * Tests for the ClawGuard access-policy opt-in in orchestrate (#2022).
  *
  * Verifies that:
- * - When NEXUS_ACCESS_POLICY_MODE is unset/off, the derived policy is
- *   bypass/off and the middleware short-circuits (no behavior change).
+ * - When NEXUS_ACCESS_POLICY_MODE is unset, defaults to 'audit' mode.
+ *   When explicitly set to 'off', the derived policy is bypass/off and
+ *   the middleware short-circuits.
  * - When mode is 'audit', a policy is derived with the configured mode
  *   and the orchestrator.execute call observes it in ALS.
  */
@@ -28,8 +29,8 @@ describe('orchestrate access-policy opt-in (#2022)', () => {
     resetPolicyCache();
   });
 
-  it('defaults to off mode when env var unset', () => {
-    expect(resolveAccessPolicyMode()).toBe('off');
+  it('defaults to audit mode when env var unset (v2.50+)', () => {
+    expect(resolveAccessPolicyMode()).toBe('audit');
   });
 
   it('derives bypass policy in off mode (no behavior change)', async () => {
@@ -64,13 +65,14 @@ describe('orchestrate access-policy opt-in (#2022)', () => {
   });
 
   it('honors env var override', () => {
-    process.env['NEXUS_ACCESS_POLICY_MODE'] = 'audit';
-    expect(resolveAccessPolicyMode()).toBe('audit');
+    process.env['NEXUS_ACCESS_POLICY_MODE'] = 'off';
+    expect(resolveAccessPolicyMode()).toBe('off');
 
     process.env['NEXUS_ACCESS_POLICY_MODE'] = 'enforce';
     expect(resolveAccessPolicyMode()).toBe('enforce');
 
+    // Invalid values silently fall through to the default (audit).
     process.env['NEXUS_ACCESS_POLICY_MODE'] = 'invalid';
-    expect(resolveAccessPolicyMode()).toBe('off');
+    expect(resolveAccessPolicyMode()).toBe('audit');
   });
 });
