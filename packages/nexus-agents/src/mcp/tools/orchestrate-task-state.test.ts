@@ -29,18 +29,28 @@ afterEach(() => {
   delete process.env['NEXUS_TASK_STATE_ENABLED'];
 });
 
-describe('structured-task-state env gate', () => {
-  it('flag is opt-in (unset → disabled)', () => {
+describe('structured-task-state env gate (default-on from v2.50+)', () => {
+  it('flag defaults to enabled when env var unset', () => {
     expect(process.env['NEXUS_TASK_STATE_ENABLED']).toBeUndefined();
+    // Implementation treats unset / empty as enabled.
   });
 
-  it('flag activates only when set to "1"', () => {
-    process.env['NEXUS_TASK_STATE_ENABLED'] = '1';
-    expect(process.env['NEXUS_TASK_STATE_ENABLED']).toBe('1');
-
-    process.env['NEXUS_TASK_STATE_ENABLED'] = 'true';
-    // Implementation checks === '1' strictly; other truthy values don't activate.
-    expect(process.env['NEXUS_TASK_STATE_ENABLED']).not.toBe('1');
+  it('disables only when explicitly set to "0" or "false"', () => {
+    const disableValues = ['0', 'false', 'FALSE'];
+    const enableValues = ['1', 'true', 'yes', ''];
+    for (const val of disableValues) {
+      process.env['NEXUS_TASK_STATE_ENABLED'] = val;
+      // Implementation: raw === '0' || raw.toLowerCase() === 'false' → disabled.
+      const normalized = val.toLowerCase();
+      expect(normalized === '0' || normalized === 'false').toBe(true);
+    }
+    for (const val of enableValues) {
+      process.env['NEXUS_TASK_STATE_ENABLED'] = val;
+      const raw = process.env['NEXUS_TASK_STATE_ENABLED'] ?? '';
+      const normalized = raw.toLowerCase();
+      const disabled = raw === '0' || normalized === 'false';
+      expect(disabled).toBe(false);
+    }
   });
 });
 

@@ -72,8 +72,9 @@ import {
   withAccessPolicy,
   resolveAccessPolicyMode,
 } from '../../security/access-constraint-deriver/index.js';
-// Structured task state (#2033, integration from #2043). Opt-in via
-// NEXUS_TASK_STATE_ENABLED=1 — when disabled, helpers no-op silently.
+// Structured task state (#2033, integration from #2043). Enabled by
+// default from v2.50+; set NEXUS_TASK_STATE_ENABLED=0 to opt out.
+// When disabled, helpers no-op silently.
 import { initTaskState, updateStage, appendBlocker } from '../../context/structured-task-state.js';
 import type { StructuredTaskState } from '../../context/structured-task-state-types.js';
 
@@ -628,14 +629,22 @@ async function runOrchestratorWithStateTracking(params: {
 }
 
 /** Opt-in flag for structured-task-state recording (#2033). */
+/**
+ * Structured task-state recording is ON by default as of v2.50+. Set
+ * `NEXUS_TASK_STATE_ENABLED=0` (or `false`) to opt out — any other value
+ * (or unset) leaves it enabled.
+ */
 function isTaskStateEnabled(): boolean {
-  return process.env['NEXUS_TASK_STATE_ENABLED'] === '1';
+  const raw = process.env['NEXUS_TASK_STATE_ENABLED'];
+  if (raw === undefined || raw === '') return true;
+  const normalized = raw.toLowerCase();
+  return normalized !== '0' && normalized !== 'false';
 }
 
 /**
- * Initialize structured state for this orchestration (#2033). No-op
- * when NEXUS_TASK_STATE_ENABLED is unset — zero behavior change by
- * default. Never throws; failures are logged and ignored.
+ * Initialize structured state for this orchestration (#2033). On by
+ * default; set NEXUS_TASK_STATE_ENABLED=0 to opt out. Never throws —
+ * failures are logged and ignored.
  */
 function recordTaskStateInit(taskId: string, taskText: string, logger: ILogger): void {
   if (!isTaskStateEnabled()) return;
