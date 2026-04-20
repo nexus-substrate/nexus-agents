@@ -639,7 +639,7 @@ function isTaskStateEnabled(): boolean {
  */
 function recordTaskStateInit(taskId: string, taskText: string, logger: ILogger): void {
   if (!isTaskStateEnabled()) return;
-  const now = new Date().toISOString();
+  const now = getTimeProvider().nowIso();
   const initial: StructuredTaskState = {
     taskId,
     stage: 'planning',
@@ -665,7 +665,7 @@ function recordTaskStateStage(
   logger: ILogger
 ): void {
   if (!isTaskStateEnabled()) return;
-  const result = updateStage(taskId, stage, new Date().toISOString());
+  const result = updateStage(taskId, stage, getTimeProvider().nowIso());
   if (!result.ok) {
     logger.warn('task-state: stage update failed', {
       taskId,
@@ -678,7 +678,7 @@ function recordTaskStateStage(
 /** Record a blocker. Silently swallows failures. */
 function recordTaskStateBlocker(taskId: string, blocker: string, logger: ILogger): void {
   if (!isTaskStateEnabled()) return;
-  const ts = new Date().toISOString();
+  const ts = getTimeProvider().nowIso();
   const result = appendBlocker(taskId, { ts, blocker });
   if (!result.ok) {
     logger.warn('task-state: blocker record failed', {
@@ -729,7 +729,7 @@ async function deriveOrchestratePolicy(
       allowedPathPatterns: [],
       allowedOperations: '*',
       objectiveHash: 'derivation-failed',
-      derivedAt: new Date().toISOString(),
+      derivedAt: getTimeProvider().nowIso(),
       source: 'bypass',
       mode: 'off',
     };

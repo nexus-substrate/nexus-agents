@@ -293,7 +293,7 @@ async function deriveExpertAccessPolicy(
       allowedPathPatterns: [],
       allowedOperations: '*',
       objectiveHash: 'derivation-failed',
-      derivedAt: new Date().toISOString(),
+      derivedAt: getTimeProvider().nowIso(),
       source: 'bypass',
       mode: 'off',
     };
