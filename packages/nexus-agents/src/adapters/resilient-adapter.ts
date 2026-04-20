@@ -23,6 +23,7 @@ import type { Result } from '../core/result.js';
 import { ok, err } from '../core/result.js';
 import { ModelError, ConfigError } from '../core/errors.js';
 import type { ILogger } from '../core/index.js';
+import { getTimeProvider, getRandomProvider } from '../core/index.js';
 import { getErrorMessage, createLogger } from '../core/index.js';
 
 import { createAutoAdapter, type AdapterSelection } from './auto-adapter.js';
@@ -113,7 +114,7 @@ export class ResilientAdapter implements IResilientAdapter {
       const rlError = toRateLimitError(result.error, adapter.providerId);
       recordRateLimitEvent({
         provider: adapter.providerId,
-        timestamp: Date.now(),
+        timestamp: getTimeProvider().now(),
         retryAfterMs: rlError.retryAfterMs,
       });
       this.logger.warn('Rate limit detected', {
@@ -304,7 +305,7 @@ export class ResilientAdapter implements IResilientAdapter {
     try {
       const eventBus = getGlobalEventBus();
       eventBus.emit({
-        eventId: `failover-${Date.now().toString(36)}`,
+        eventId: `failover-${getTimeProvider().now().toString(36)}-${getRandomProvider().random().toString(36).slice(2, 8)}`,
         timestamp: new Date().toISOString(),
         topic: 'adapter.failover',
         payload: info,
