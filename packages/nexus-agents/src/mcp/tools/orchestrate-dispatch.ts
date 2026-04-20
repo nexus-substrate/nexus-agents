@@ -33,7 +33,7 @@ import {
   synthesizeResults,
   type SynthesisSource,
 } from '../../orchestration/aorchestra/result-synthesizer.js';
-import { getTimeProvider } from '../../core/index.js';
+import { getTimeProvider, getRandomProvider } from '../../core/index.js';
 import type { ContentBlock } from '../../core/types/model.js';
 import { DEFAULT_CLI, type CliNameLiteral } from '../../config/model-capabilities-types.js';
 import { resolveAdapterForRole, getExpertFallbackChain } from './create-expert-routing.js';
@@ -590,7 +590,7 @@ export function recordWorkerOutcomes(
       // Use actual CLI that executed (#1527), fall back to specialization recommendation
       const cli = (r.resolvedCli ?? fallbackCli) as CliNameLiteral;
       store.append({
-        id: `worker-${r.role}-${String(Date.now())}-${Math.random().toString(36).slice(2, 6)}`,
+        id: `worker-${r.role}-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 6)}`,
         cli,
         category,
         model: `worker-${r.role}`,

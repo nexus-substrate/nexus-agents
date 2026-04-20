@@ -18,6 +18,7 @@ import {
   createLogger,
   formatZodError,
   getTimeProvider,
+  getRandomProvider,
   type ILogger,
 } from '../../core/index.js';
 import { DEFAULTS } from '../../config/defaults.js';
@@ -129,7 +130,7 @@ function recordToOutcomeStore(
       qualitySignals.push(`governance:${governance.domain}`);
     }
     getOutcomeStore().append({
-      id: `del-${String(Date.now())}-${Math.random().toString(36).slice(2, 8)}`,
+      id: `del-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 8)}`,
       cli,
       category: match?.category ?? 'exploration',
       model,

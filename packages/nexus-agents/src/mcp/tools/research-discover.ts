@@ -12,7 +12,13 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
-import { getErrorMessage, createLogger, formatZodError } from '../../core/index.js';
+import {
+  getErrorMessage,
+  createLogger,
+  formatZodError,
+  getTimeProvider,
+  getRandomProvider,
+} from '../../core/index.js';
 import { normalizeTopicToCanonical } from '../../research/topic-aliases.js';
 import { withToolError } from '../middleware/tool-error-handler.js';
 import { toolError, toolSuccess, type ToolResult, type BaseMcpToolDeps } from './tool-result.js';
@@ -500,7 +506,7 @@ function recordDiscoveryOutcome(success: boolean, durationMs: number, errorMsg?:
     }
     const store = getOutcomeStore();
     store.append({
-      id: `research-discover-${String(Date.now())}-${Math.random().toString(36).slice(2, 8)}`,
+      id: `research-discover-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 8)}`,
       cli: DEFAULT_CLI,
       category: 'research',
       model: 'research-discover',

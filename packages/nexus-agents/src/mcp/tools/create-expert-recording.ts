@@ -8,7 +8,12 @@
  * (Source: Issue #1174 — Add observability to dark MCP tools)
  */
 
-import { createLogger, getErrorMessage } from '../../core/index.js';
+import {
+  createLogger,
+  getErrorMessage,
+  getTimeProvider,
+  getRandomProvider,
+} from '../../core/index.js';
 import { getToolMemory } from './tool-memory.js';
 import {
   getOutcomeStore,
@@ -70,7 +75,7 @@ export function recordExpertOutcome(
     const store = getOutcomeStore();
     const errorMsg = error ?? 'expert creation failed';
     store.append({
-      id: `expert-${String(Date.now())}-${Math.random().toString(36).slice(2, 8)}`,
+      id: `expert-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 8)}`,
       cli: DEFAULT_CLI,
       category: resolveCategory(role),
       model: 'expert',

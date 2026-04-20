@@ -8,7 +8,12 @@
  * (Source: Issue #753 memory, Issue #1134 cold start)
  */
 
-import { createLogger, getErrorMessage } from '../../core/index.js';
+import {
+  createLogger,
+  getErrorMessage,
+  getTimeProvider,
+  getRandomProvider,
+} from '../../core/index.js';
 import type { AgentVoteResult } from '../../cli/vote-types.js';
 import { getToolMemory } from './tool-memory.js';
 import {
@@ -88,7 +93,7 @@ export function recordVoteOutcomes(votes: readonly AgentVoteResult[]): void {
           : DEFAULT_CLI;
       const voteSuccess = vote.source === 'llm';
       store.append({
-        id: `vote-${String(Date.now())}-${Math.random().toString(36).slice(2, 8)}`,
+        id: `vote-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 8)}`,
         cli: cliName,
         category: 'planning',
         model: 'consensus',

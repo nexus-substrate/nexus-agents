@@ -16,6 +16,7 @@ import {
   err,
   createLogger,
   getTimeProvider,
+  getRandomProvider,
   extractJsonArray,
   withStep,
 } from '../core/index.js';
@@ -432,7 +433,7 @@ function recordReviewOutcomes(partitions: readonly CliReviewPartition[]): void {
     const store = getOutcomeStore();
     for (const p of partitions) {
       store.append({
-        id: `rev-${String(Date.now())}-${Math.random().toString(36).slice(2, 8)}`,
+        id: `rev-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 8)}`,
         cli: p.cli,
         category: 'code_review',
         model: p.model ?? 'unknown',

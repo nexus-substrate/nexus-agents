@@ -8,7 +8,12 @@
  * (Source: Issue #1298 — extracted during Layer 2 refactor)
  */
 
-import { createLogger, getErrorMessage, getTimeProvider } from '../../core/index.js';
+import {
+  createLogger,
+  getErrorMessage,
+  getTimeProvider,
+  getRandomProvider,
+} from '../../core/index.js';
 import type { OutcomeFailureCategory } from '../../orchestration/outcomes/index.js';
 import {
   getOutcomeStore,
@@ -62,7 +67,7 @@ export function recordExpertOutcome(opts: ExpertOutcomeOpts): void {
   try {
     const match = detectTaskCategory(opts.task);
     getOutcomeStore().append({
-      id: `exp-${String(Date.now())}-${Math.random().toString(36).slice(2, 8)}`,
+      id: `exp-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 8)}`,
       cli: match?.primaryCli ?? DEFAULT_CLI,
       category: resolveExpertCategory(opts),
       model: opts.model ?? 'expert',

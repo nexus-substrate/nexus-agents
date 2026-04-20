@@ -17,6 +17,7 @@ import {
   err,
   createLogger,
   getTimeProvider,
+  getRandomProvider,
   extractJsonObject,
   withStep,
 } from '../core/index.js';
@@ -464,7 +465,7 @@ function recordPlanOutcomes(partitions: readonly CliPlanPartition[]): void {
     const store = getOutcomeStore();
     for (const p of partitions) {
       store.append({
-        id: `cpn-${String(Date.now())}-${Math.random().toString(36).slice(2, 8)}`,
+        id: `cpn-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 8)}`,
         cli: p.cli,
         category: 'planning',
         model: p.model ?? 'unknown',

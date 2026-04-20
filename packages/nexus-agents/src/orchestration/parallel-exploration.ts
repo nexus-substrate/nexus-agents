@@ -10,7 +10,14 @@
  */
 
 import type { Result, ILogger } from '../core/index.js';
-import { getErrorMessage, ok, err, createLogger, getTimeProvider } from '../core/index.js';
+import {
+  getErrorMessage,
+  ok,
+  err,
+  createLogger,
+  getTimeProvider,
+  getRandomProvider,
+} from '../core/index.js';
 // CLI_NAMES canonical source: config/model-capabilities-types.ts
 // CliName type ensures these stay in sync with the canonical list
 
@@ -263,7 +270,7 @@ function recordOutcomes(partitions: readonly PartitionResult[], category: TaskCa
     const store = getOutcomeStore();
     for (const p of partitions) {
       store.append({
-        id: `pex-${String(Date.now())}-${Math.random().toString(36).slice(2, 8)}`,
+        id: `pex-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 8)}`,
         cli: p.cli,
         category,
         model: p.model ?? 'unknown',
