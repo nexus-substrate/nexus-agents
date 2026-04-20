@@ -44,7 +44,7 @@ import {
   toRateLimitError,
   recordRateLimitEvent,
 } from './rate-limit-detector.js';
-import { getGlobalEventBus } from '../agents/collaboration/event-bus.js';
+import { getGlobalEventBus } from '../core/event-bus.js';
 
 // ============================================================================
 // Helpers
