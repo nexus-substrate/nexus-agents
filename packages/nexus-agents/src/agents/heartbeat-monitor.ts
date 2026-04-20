@@ -10,6 +10,7 @@
  */
 
 import { randomBytes } from 'node:crypto';
+import { getTimeProvider } from '../core/index.js';
 
 // ============================================================================
 // Types
@@ -110,7 +111,7 @@ export class HeartbeatMonitor {
   /** Start tracking a new expert session. Returns session ID. */
   startSession(expertId: string): string {
     const sessionId = `hb-${expertId}-${randomBytes(6).toString('hex')}`;
-    const now = Date.now();
+    const now = getTimeProvider().now();
     this.sessions.set(sessionId, {
       expertId,
       startedAt: now,
@@ -125,7 +126,7 @@ export class HeartbeatMonitor {
   heartbeat(sessionId: string): void {
     const entry = this.sessions.get(sessionId);
     if (entry === undefined) return;
-    entry.lastHeartbeat = Date.now();
+    entry.lastHeartbeat = getTimeProvider().now();
     entry.heartbeatCount++;
   }
 
@@ -138,7 +139,7 @@ export class HeartbeatMonitor {
   isStalled(sessionId: string): boolean {
     const entry = this.sessions.get(sessionId);
     if (entry === undefined) return false;
-    const elapsed = Date.now() - entry.lastHeartbeat;
+    const elapsed = getTimeProvider().now() - entry.lastHeartbeat;
     return elapsed >= this.config.stalledThresholdMs;
   }
 
@@ -146,12 +147,12 @@ export class HeartbeatMonitor {
   isExpired(sessionId: string): boolean {
     const entry = this.sessions.get(sessionId);
     if (entry === undefined) return false;
-    return Date.now() - entry.startedAt >= this.config.absoluteMaxMs;
+    return getTimeProvider().now() - entry.startedAt >= this.config.absoluteMaxMs;
   }
 
   /** Get aggregate health report for all active sessions. */
   getHealth(): AgentHealthReport {
-    const now = Date.now();
+    const now = getTimeProvider().now();
     const sessions: ExpertSessionSnapshot[] = [];
     let stalledCount = 0;
 
@@ -187,7 +188,7 @@ export class HeartbeatMonitor {
   getSessionHealth(sessionId: string): HealthTransition | undefined {
     const entry = this.sessions.get(sessionId);
     if (entry === undefined) return undefined;
-    const now = Date.now();
+    const now = getTimeProvider().now();
     const timeSince = now - entry.lastHeartbeat;
     const health = this.classifyHealth(timeSince);
     const changed = health !== entry.previousHealth;
