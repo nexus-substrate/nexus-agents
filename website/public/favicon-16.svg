@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" shape-rendering="crispEdges">
+  <!-- 16x16 variant: integer strokes pixel-snapped, no opacity trick (would blur to invisible at this size) -->
+  <path d="M2 3 L10 8" stroke="#6750A4" stroke-width="2" stroke-linecap="square"/>
+  <path d="M2 13 L10 8" stroke="#6750A4" stroke-width="2" stroke-linecap="square"/>
+  <path d="M10 8 L14 8" stroke="#6750A4" stroke-width="2" stroke-linecap="square"/>
+  <rect x="8" y="6" width="4" height="4" fill="#6750A4"/>
+</svg>

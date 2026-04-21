@@ -23,8 +23,9 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
     <!-- Canonical URL -->
     <link rel="canonical" href={canonicalURL} />
 
-    <!-- Favicon -->
-    <link rel="icon" type="image/svg+xml" href={`${import.meta.env.BASE_URL}/favicon.svg`} />
+    <!-- Favicon: 16x16 variant for small sizes (thicker strokes, no opacity tricks to avoid sub-pixel blur) -->
+    <link rel="icon" type="image/svg+xml" sizes="16x16" href={`${import.meta.env.BASE_URL}/favicon-16.svg`} />
+    <link rel="icon" type="image/svg+xml" sizes="any" href={`${import.meta.env.BASE_URL}/favicon.svg`} />
     <meta name="theme-color" content="#6750A4" />
 
     <!-- Security headers via meta -->
@@ -77,7 +78,8 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
     <nav class="site-nav">
       <div class="nav-inner">
         <a href="/nexus-agents/" class="nav-logo" aria-label="Nexus Agents home">
-          <svg viewBox="0 0 32 32" fill="none" width="28" height="28" aria-hidden="true">
+          <svg viewBox="0 0 32 32" fill="none" width="28" height="28" role="img">
+            <title>Nexus Agents</title>
             <path d="M4 7 L19 16" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
             <path d="M4 16 L19 16" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" opacity="0.55"/>
             <path d="M4 25 L19 16" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
@@ -146,38 +148,58 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
     <script>
       import type { MermaidConfig } from 'mermaid';
 
-      const THEME: MermaidConfig = {
-        startOnLoad: false,
-        theme: 'base',
-        securityLevel: 'strict',
-        fontFamily: "'Inter', system-ui, sans-serif",
-        themeVariables: {
-          primaryColor: '#6750A4',
-          primaryTextColor: '#ffffff',
-          primaryBorderColor: '#6750A4',
-          secondaryColor: '#e8def8',
-          secondaryTextColor: '#1c1b1f',
-          tertiaryColor: '#f5eff7',
-          tertiaryTextColor: '#1c1b1f',
-          lineColor: '#938f99',
-          textColor: '#e6e1e9',
-          mainBkg: '#6750A4',
-          secondBkg: '#e8def8',
-          background: 'transparent',
-          nodeBorder: '#6750A4',
-          clusterBkg: 'rgba(103, 80, 164, 0.06)',
-          clusterBorder: '#6750A4',
-          defaultLinkColor: '#938f99',
-          edgeLabelBackground: '#211f26',
-          fontSize: '14px',
-        },
-        flowchart: { curve: 'basis', padding: 16, useMaxWidth: true },
-      };
+      // Theme variables derived from brand tokens. The two palettes mirror the
+      // site's light/dark theme: primary purple stays constant, but text
+      // colours, edge-label backgrounds, and cluster tints flip so diagrams
+      // stay legible in either mode. Re-initialized when prefers-color-scheme
+      // changes so users get an immediate, correct render on theme switch.
+      const LIGHT_VARS = {
+        primaryColor: '#6750A4',
+        primaryTextColor: '#ffffff',
+        primaryBorderColor: '#6750A4',
+        secondaryColor: '#e8def8',
+        secondaryTextColor: '#1c1b1f',
+        tertiaryColor: '#f5eff7',
+        tertiaryTextColor: '#1c1b1f',
+        lineColor: '#79747e',
+        textColor: '#1c1b1f',
+        mainBkg: '#6750A4',
+        secondBkg: '#e8def8',
+        background: 'transparent',
+        nodeBorder: '#6750A4',
+        clusterBkg: 'rgba(103, 80, 164, 0.06)',
+        clusterBorder: '#6750A4',
+        defaultLinkColor: '#79747e',
+        edgeLabelBackground: '#f5eff7',
+        fontSize: '14px',
+      } as const;
+
+      const DARK_VARS = {
+        ...LIGHT_VARS,
+        lineColor: '#938f99',
+        textColor: '#e6e1e9',
+        edgeLabelBackground: '#211f26',
+      } as const;
+
+      function buildTheme(isDark: boolean): MermaidConfig {
+        return {
+          startOnLoad: false,
+          theme: 'base',
+          securityLevel: 'strict',
+          fontFamily: "'Inter', system-ui, sans-serif",
+          themeVariables: isDark ? DARK_VARS : LIGHT_VARS,
+          flowchart: { curve: 'basis', padding: 16, useMaxWidth: true },
+        };
+      }
 
       let mermaidPromise: Promise<typeof import('mermaid').default> | null = null;
+      function currentIsDark(): boolean {
+        return window.matchMedia('(prefers-color-scheme: dark)').matches;
+      }
+
       function loadMermaid(): Promise<typeof import('mermaid').default> {
         mermaidPromise ??= import('mermaid').then((m) => {
-          m.default.initialize(THEME);
+          m.default.initialize(buildTheme(currentIsDark()));
           return m.default;
         });
         return mermaidPromise;
@@ -203,8 +225,7 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
         }
       }
 
-      renderMermaid();
-      document.addEventListener('astro:page-load', () => {
+      function resetAndRender(): void {
         document
           .querySelectorAll<HTMLElement>('.mermaid[data-mermaid-rendered]')
           .forEach((el) => {
@@ -215,6 +236,16 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
             }
           });
         void renderMermaid();
+      }
+
+      renderMermaid();
+      document.addEventListener('astro:page-load', resetAndRender);
+
+      // Re-init theme and re-render when the user switches light/dark at the
+      // OS level so diagram contrast flips without a page reload.
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+        mermaidPromise = null; // force re-import + re-initialize
+        resetAndRender();
       });
     </script>
   </body>
