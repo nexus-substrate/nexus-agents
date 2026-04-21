@@ -50,29 +50,11 @@ jobs:
           fi
 
   # Job 2: Link Validation
-  link-check:
-    name: Link Validation
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
-    timeout-minutes: 10
-
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: ./.github/actions/setup-node
-
-      - name: Check markdown links
-        run: |
-          echo "Checking links in markdown files..."
-          find docs -name '*.md' -not -path 'docs/api/*' | head -50 | while read file; do
-            echo "Checking: $file"
-            pnpm exec markdown-link-check "$file" --config .markdown-link-check.json || true
-          done
-          # Also check root markdown files
-          for file in README.md ARCHITECTURE.md CLAUDE.md CODING_STANDARDS.md CHANGELOG.md; do
-            if [ -f "$file" ]; then
-              echo "Checking: $file"
-              pnpm exec markdown-link-check "$file" --config .markdown-link-check.json || true
-            fi
-          done
+  # Link validation happens in a dedicated workflow (.github/workflows/link-check.yml)
+  # using lychee (broader coverage: external URLs, relative paths, anchors).
+  # The previous markdown-link-check job here wrapped every invocation in `|| true`
+  # so failures were swallowed — effectively dead CI time. Removed with the
+  # devDep cleanup in #2101 (epic #2096).
 
   # Job 3: Documentation Coverage Check (non-blocking warning per DevEx amendment)
   docs-coverage:
