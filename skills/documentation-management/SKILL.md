@@ -25,6 +25,7 @@ allowed-tools: Read, Edit, Write, Bash, Grep, Glob, Task
 <!-- PIPELINE NOTE: docops-spec.md skill file reference updated from `.claude/skills/documentation-management.md` to `skills/documentation-management/SKILL.md` (#2014, 2026-04-19) -->
 <!-- PIPELINE NOTE: TypeDoc Verification CI job (docs-check.yml) downgraded from blocking failure to warning annotation (#2027, 2026-04-19) — drift was creating merge-round-trip noise without providing actionable signal -->
 <!-- PIPELINE NOTE: link-check.yml bumped actions/cache v5.0.4 → v5.0.5 (patch-level bump; no behavioral change) (#2087, 2026-04-20) -->
+<!-- PIPELINE NOTE: docs-check.yml link-check job removed; it invoked markdown-link-check with `|| true` so all failures were swallowed. lychee in link-check.yml is now the single canonical link-validation path (#2101, 2026-04-21) -->
 
 **Full specification:** [docops-spec.md](../../docs/ops/docops-spec.md)
 
