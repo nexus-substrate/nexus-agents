@@ -28,6 +28,7 @@ import {
   resolveWorkerTimeout,
   getCliTimeout,
   getExpertTaskTimeout,
+  getMcpSafeDeadlineMs,
   resolveVoteTimeout,
   resolveEnvTimeout,
   validateTimeout,
@@ -88,6 +89,59 @@ describe('Centralized Timeout Configuration', () => {
       expect(MCP_TIMEOUTS.perTool['consensus_vote']).toBe(600_000);
       expect(MCP_TIMEOUTS.perTool['execute_expert']).toBe(900_000);
       expect(MCP_TIMEOUTS.perTool['run_workflow']).toBe(900_000);
+    });
+
+    it('exposes a safety buffer for internal deadlines', () => {
+      expect(MCP_TIMEOUTS.perToolSafetyBufferMs).toBeGreaterThan(0);
+      // Must be much smaller than the smallest per-tool cap so clamping
+      // never swallows the whole timeout.
+      const smallestPerTool = Math.min(...Object.values(MCP_TIMEOUTS.perTool));
+      expect(MCP_TIMEOUTS.perToolSafetyBufferMs).toBeLessThan(smallestPerTool / 10);
+    });
+  });
+
+  describe('getMcpSafeDeadlineMs()', () => {
+    it('clamps a computed deadline larger than the MCP wrapper minus buffer', () => {
+      // consensus_vote cap is 600_000; buffer is 10_000 → safe cap 590_000.
+      // computed 970_000 (the pre-fix default) → clamped to 590_000.
+      const computed = 970_000;
+      const result = getMcpSafeDeadlineMs(computed, 'consensus_vote');
+      expect(result).toBe(
+        MCP_TIMEOUTS.perTool['consensus_vote']! - MCP_TIMEOUTS.perToolSafetyBufferMs
+      );
+      expect(result).toBeLessThan(MCP_TIMEOUTS.perTool['consensus_vote']!);
+    });
+
+    it('leaves a computed deadline smaller than the safe cap unchanged', () => {
+      // A fast call with a short computed deadline must not be inflated.
+      const computed = 120_000; // 2 min
+      expect(getMcpSafeDeadlineMs(computed, 'consensus_vote')).toBe(120_000);
+    });
+
+    it('falls back to the default MCP timeout for unknown tool names', () => {
+      // Unknown tool: safe cap = defaultMs (60_000) - buffer (10_000) = 50_000.
+      const computed = 900_000;
+      expect(getMcpSafeDeadlineMs(computed, 'not_a_real_tool')).toBe(50_000);
+    });
+
+    it('floors the return value so tools remain minimally useful', () => {
+      // If a future change set perTool.x to a tiny value, we never return
+      // less than defaultMs / 2 (= 30_000) — the tool is still callable.
+      // We can't mutate the frozen record, so we simulate via the unknown-
+      // tool path with a computed deadline much smaller than the safe cap.
+      const tiny = 1;
+      const out = getMcpSafeDeadlineMs(tiny, 'consensus_vote');
+      // min(tiny, safeCap) = 1 → floored to 30_000
+      expect(out).toBe(Math.floor(MCP_TIMEOUTS.defaultMs / 2));
+    });
+
+    it('the clamped consensus_vote deadline always fires before the MCP wrapper', () => {
+      // Guard the core invariant: no matter what the caller computes, the
+      // clamped deadline is strictly less than the MCP per-tool timeout.
+      for (const computed of [100, 600_000, 970_000, 1_800_000]) {
+        const out = getMcpSafeDeadlineMs(computed, 'consensus_vote');
+        expect(out).toBeLessThan(MCP_TIMEOUTS.perTool['consensus_vote']!);
+      }
     });
   });
 

@@ -69,7 +69,7 @@ import {
   createSimulatedVotes,
   executeWithRetries,
 } from './voter-execution.js';
-import { resolveVoteTimeout, VOTE_TIMEOUTS } from '../config/timeouts.js';
+import { resolveVoteTimeout, VOTE_TIMEOUTS, getMcpSafeDeadlineMs } from '../config/timeouts.js';
 import { launchVotesWithOverallDeadline } from './voter-agents-deadline.js';
 
 /**
@@ -305,12 +305,26 @@ async function launchStaggeredVotes(
   input: StaggeredVoteInput
 ): Promise<readonly AgentVoteResult[]> {
   const { roles, proposal, roleAdapters, fallbackAdapter, logger, voteOptions, interDelay } = input;
-  const overallDeadlineMs = computeOverallConsensusDeadlineMs(
+  // Raw "worst legitimate completion" estimate — retained unchanged so the
+  // formula still answers "how long could this vote take in principle?".
+  const computedDeadlineMs = computeOverallConsensusDeadlineMs(
     voteOptions.timeoutMs,
     voteOptions.maxRetries,
     roles.length,
     interDelay
   );
+  // Clamp below the outer MCP tool-wrapper timeout. Without this, the
+  // middleware kills the promise chain before launchVotesWithOverallDeadline
+  // can produce structured partial results — clients see a naked timeout
+  // error instead of a `source: 'error' / error: 'overall consensus deadline
+  // exceeded'` vote per stuck role. (Issue #2105)
+  const overallDeadlineMs = getMcpSafeDeadlineMs(computedDeadlineMs, 'consensus_vote');
+  if (overallDeadlineMs < computedDeadlineMs) {
+    logger.debug('Consensus deadline clamped to MCP wrapper timeout', {
+      computedDeadlineMs,
+      overallDeadlineMs,
+    });
+  }
   return launchVotesWithOverallDeadline({
     roles,
     proposal,

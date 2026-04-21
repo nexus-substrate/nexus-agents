@@ -79,6 +79,17 @@ export const MCP_TIMEOUTS = {
   defaultMs: 60_000,
   /** Maximum allowed MCP tool timeout. */
   maxMs: 900_000,
+  /**
+   * Safety buffer between an internal wall-clock deadline (e.g. the consensus
+   * overall deadline) and when the outer `wrapToolWithTimeout` middleware
+   * would fire. Tools that race their own partial-result deadline MUST clamp
+   * that deadline to `perTool[toolName] - perToolSafetyBufferMs` so the
+   * internal timeout always fires first; otherwise the middleware kills the
+   * promise chain before the tool can serialise its partial response and the
+   * client sees a naked `Operation '<tool>' timed out after Nms` error.
+   * (Source: Issue #2104 — MCP wrapper aborts before internal deadline)
+   */
+  perToolSafetyBufferMs: 10_000,
   /** Per-tool timeout overrides for long-running tools. */
   perTool: {
     orchestrate: 900_000, // 15 min — multi-step agent orchestration
@@ -87,6 +98,31 @@ export const MCP_TIMEOUTS = {
     run_workflow: 900_000, // 15 min — multi-step workflow execution
   } as Readonly<Record<string, number>>,
 } as const;
+
+/**
+ * Clamps a computed internal wall-clock deadline so it always fires before
+ * the outer MCP tool-wrapper timeout. Returns the smaller of:
+ *   - the caller's computed deadline,
+ *   - `perTool[toolName] - perToolSafetyBufferMs`.
+ *
+ * Floored at `defaultMs / 2` so the tool remains minimally useful even if a
+ * future change lowers the MCP cap far below what the tool's formula expects.
+ *
+ * @param computedMs - The tool's own wall-clock deadline (e.g. sum of per-vote
+ *                     budgets plus stagger + response buffer).
+ * @param toolName - Key into `MCP_TIMEOUTS.perTool`; falls back to `defaultMs`
+ *                   for unknown tools.
+ * @returns Clamped deadline in milliseconds.
+ * (Source: Issue #2105 — consensus_vote overallDeadlineMs > MCP wrapper)
+ */
+export function getMcpSafeDeadlineMs(computedMs: number, toolName: string): number {
+  const perToolCap = MCP_TIMEOUTS.perTool[toolName] ?? MCP_TIMEOUTS.defaultMs;
+  const safeCap = perToolCap - MCP_TIMEOUTS.perToolSafetyBufferMs;
+  const floor = Math.floor(MCP_TIMEOUTS.defaultMs / 2);
+  // Never return less than the floor (keeps tools usable under tight caps).
+  const capped = Math.min(computedMs, safeCap);
+  return Math.max(capped, floor);
+}
 
 /**
  * Workflow execution timeouts.
