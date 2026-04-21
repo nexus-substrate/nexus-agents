@@ -92,7 +92,7 @@ export function reviseBeliefInternal(
       beliefId,
       updateType: BeliefUpdateTypeEnum.REVISE,
       previousState: { object: existing.object, confidence: existing.confidence },
-      newState: updates as Record<string, unknown>,
+      newState: updates,
       reason,
     });
     stores.logger.debug('Belief revised', { beliefId, reason });

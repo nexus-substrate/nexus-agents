@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type { CliError, CliName } from '../types.js';
+import type { CliError } from '../types.js';
 import {
   GEMINI_LEGACY_DEFAULTS,
   isRetryableError,
@@ -94,7 +94,7 @@ describe('categorizeError', () => {
 
 describe('createCircuitOpenError', () => {
   it('creates error for given CLI', () => {
-    const error = createCircuitOpenError('gemini' as CliName);
+    const error = createCircuitOpenError('gemini');
     expect(error.code).toBe('EXECUTION_ERROR');
     expect(error.message).toContain('gemini');
     expect(error.message).toContain('Circuit breaker');

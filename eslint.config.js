@@ -42,11 +42,6 @@ export default defineConfig([
       '@typescript-eslint/prefer-nullish-coalescing': 'error',
       '@typescript-eslint/prefer-optional-chain': 'error',
       '@typescript-eslint/strict-boolean-expressions': 'error',
-      // typescript-eslint 8.59.0 made this rule more aggressive; it produces
-      // false positives when combined with `exactOptionalPropertyTypes`
-      // (type assertions that look redundant to eslint are still required by
-      // tsc to narrow union types). Keep as a warning for diagnostic value.
-      '@typescript-eslint/no-unnecessary-type-assertion': 'warn',
 
       // Best practices
       'no-console': ['warn', { allow: ['warn', 'error'] }],

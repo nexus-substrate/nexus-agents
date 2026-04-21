@@ -561,7 +561,7 @@ describe('registerMcpTools - tool allowlisting', () => {
     const options = makeDefaultOptions({
       securityConfig: {
         toolAllowlist: ['delegate_to_model', 'orchestrate'],
-      } as RegisterMcpToolsOptions['securityConfig'],
+      },
     });
     registerMcpTools(options);
 
@@ -579,7 +579,7 @@ describe('registerMcpTools - tool allowlisting', () => {
       logger,
       securityConfig: {
         toolAllowlist: ['delegate_to_model'],
-      } as RegisterMcpToolsOptions['securityConfig'],
+      },
     });
     registerMcpTools(options);
 
@@ -617,7 +617,7 @@ describe('registerMcpTools - rate limiting', () => {
     const options = makeDefaultOptions({
       securityConfig: {
         rateLimit: { enabled: false },
-      } as RegisterMcpToolsOptions['securityConfig'],
+      },
     });
     registerMcpTools(options);
     expect(mockCreateToolRateLimiterFactory).toHaveBeenCalledWith(
@@ -647,7 +647,7 @@ describe('registerMcpTools - workflow config', () => {
         timeout: 30000,
         maxParallel: 4,
         templatesDir: '/tmp/templates',
-      } as RegisterMcpToolsOptions['workflowConfig'],
+      },
     });
     registerMcpTools(options);
     expect(mockCreateRealWorkflowEngine).toHaveBeenCalledWith(
@@ -684,7 +684,7 @@ describe('registerMcpTools - policy firewall', () => {
     const options = makeDefaultOptions({
       logger,
       policyFirewall: mockFirewall,
-      executionMode: 'read-write' as RegisterMcpToolsOptions['executionMode'],
+      executionMode: 'read-write',
     });
     registerMcpTools(options);
 

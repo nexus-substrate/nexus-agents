@@ -253,7 +253,7 @@ describe('refine phase - executeRefine', () => {
 
     it('returns fallback output when reflexion is undefined', async () => {
       const plan = createMockPlan();
-      const result = await executeRefine(deps as SelfDevWorkflowDependencies, fallbackState, plan);
+      const result = await executeRefine(deps, fallbackState, plan);
 
       expect(result.converged).toBe(true);
       expect(result.iterations).toBe(1);
@@ -263,11 +263,7 @@ describe('refine phase - executeRefine', () => {
     });
 
     it('builds fallback critiques from all personas', async () => {
-      const result = await executeRefine(
-        deps as SelfDevWorkflowDependencies,
-        fallbackState,
-        createMockPlan()
-      );
+      const result = await executeRefine(deps, fallbackState, createMockPlan());
 
       expect(result.critiques).toHaveLength(SELF_DEV_PERSONAS.length);
       for (let i = 0; i < SELF_DEV_PERSONAS.length; i++) {
@@ -277,11 +273,7 @@ describe('refine phase - executeRefine', () => {
     });
 
     it('generates heuristic critiques based on plan content', async () => {
-      const result = await executeRefine(
-        deps as SelfDevWorkflowDependencies,
-        fallbackState,
-        createMockPlan()
-      );
+      const result = await executeRefine(deps, fallbackState, createMockPlan());
 
       // Check that critiques have some content
       for (const critique of result.critiques) {
@@ -293,18 +285,14 @@ describe('refine phase - executeRefine', () => {
 
     it('preserves refinedPlan from original plan', async () => {
       const plan = createMockPlan();
-      const result = await executeRefine(deps as SelfDevWorkflowDependencies, fallbackState, plan);
+      const result = await executeRefine(deps, fallbackState, plan);
 
       expect(result.refinedPlan).toBe(plan.plan);
     });
 
     it('tracks duration correctly', async () => {
       const startTime = Date.now();
-      const result = await executeRefine(
-        deps as SelfDevWorkflowDependencies,
-        fallbackState,
-        createMockPlan()
-      );
+      const result = await executeRefine(deps, fallbackState, createMockPlan());
       const endTime = Date.now();
 
       expect(result.durationMs).toBeGreaterThanOrEqual(0);
@@ -346,11 +334,7 @@ describe('refine phase - executeRefine', () => {
       } as unknown as SelfDevWorkflowState;
       delete (deps as { reflexion?: unknown }).reflexion;
 
-      const result = await executeRefine(
-        deps as SelfDevWorkflowDependencies,
-        stateWithFallback,
-        createMockPlan()
-      );
+      const result = await executeRefine(deps, stateWithFallback, createMockPlan());
 
       expect(result.converged).toBe(true);
       expect(result.iterations).toBe(1);

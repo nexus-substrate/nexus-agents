@@ -36,7 +36,7 @@ const mockLogger = (): ILogger => {
     setLevel: vi.fn(),
   };
   logger.child.mockReturnValue(logger);
-  return logger as unknown as ILogger;
+  return logger;
 };
 
 const createMockContext = (

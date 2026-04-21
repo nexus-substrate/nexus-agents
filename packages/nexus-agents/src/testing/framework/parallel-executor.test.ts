@@ -8,7 +8,6 @@ import {
   createSingleTaskExecutor,
   runParallelLoop,
   type SingleTaskExecutorOptions,
-  type ParallelExecutorOptions,
 } from './parallel-executor.js';
 import type { CliName } from '../../cli-adapters/types.js';
 import type { ILogger } from '../../core/logger.js';
@@ -82,7 +81,7 @@ describe('createSingleTaskExecutor', () => {
           debug: vi.fn(),
         } as unknown as ILogger,
         adapters: new Map<CliName, never>(),
-      } as ParallelExecutorOptions,
+      },
       executeWithRetry: vi.fn(() => Promise.resolve(mkResult('1'))),
       completed: { count: 0, successCount: 0 },
       reportProgress: vi.fn(),
@@ -106,7 +105,7 @@ describe('createSingleTaskExecutor', () => {
           debug: vi.fn(),
         } as unknown as ILogger,
         adapters: new Map<CliName, never>(),
-      } as ParallelExecutorOptions,
+      },
       executeWithRetry: vi.fn(() => Promise.resolve(mkResult('1'))),
       completed: { count: 0, successCount: 0 },
       reportProgress: vi.fn(),
@@ -131,7 +130,7 @@ describe('createSingleTaskExecutor', () => {
           debug: vi.fn(),
         } as unknown as ILogger,
         adapters: new Map<CliName, never>(),
-      } as ParallelExecutorOptions,
+      },
       executeWithRetry: vi.fn(() => Promise.resolve(mkResult('1', true))),
       completed,
       reportProgress: vi.fn(),

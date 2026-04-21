@@ -18,8 +18,6 @@ import type {
   TaskResult,
   AgentMessage,
   AgentResponse,
-  AgentState,
-  AgentRole,
   AgentCapability,
 } from '../../core/index.js';
 import { ok, AgentCapability as Cap, AgentError } from '../../core/index.js';
@@ -32,8 +30,8 @@ function createMockAgent(id: string, outputs: string[] = ['Default output']): IA
   let callIndex = 0;
   return {
     id,
-    role: 'custom' as AgentRole,
-    state: 'idle' as AgentState,
+    role: 'custom',
+    state: 'idle',
     capabilities: [Cap.TASK_EXECUTION] as readonly AgentCapability[],
     execute: vi.fn((task: Task) => {
       const output = outputs[callIndex] ?? outputs[outputs.length - 1];
@@ -528,8 +526,8 @@ describe('error handling', () => {
 
     const failingAgent: IAgent = {
       id: 'failing-agent',
-      role: 'custom' as AgentRole,
-      state: 'idle' as AgentState,
+      role: 'custom',
+      state: 'idle',
       capabilities: [Cap.TASK_EXECUTION] as readonly AgentCapability[],
       execute: vi.fn(() => {
         return Promise.resolve({

@@ -16,7 +16,7 @@ import {
 // ============================================================================
 
 function makeTask(description: string): Task {
-  return { id: 'test-task', description, context: {} } as Task;
+  return { id: 'test-task', description, context: {} };
 }
 
 // ============================================================================

@@ -4,12 +4,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import type {
-  RoutingDecision,
-  TaskOutcome,
-  OutcomeClass,
-  RouterType,
-} from './outcome-feedback-types.js';
+import type { RoutingDecision, TaskOutcome } from './outcome-feedback-types.js';
 import {
   countOutcomesByClass,
   countDecisionsByRouter,
@@ -38,7 +33,7 @@ function makeOutcome(overrides: Partial<TaskOutcome> = {}): TaskOutcome {
   return {
     routingDecisionId: 'dec-1',
     success: true,
-    outcomeClass: 'success' as OutcomeClass,
+    outcomeClass: 'success',
     qualityScore: 0.85,
     durationMs: 5000,
     timestamp: '2023-11-14T22:13:20.000Z',
@@ -57,7 +52,7 @@ function makeDecision(overrides: Partial<RoutingDecision> = {}): RoutingDecision
     id: 'dec-1',
     query: 'test task',
     selectedModel: 'claude',
-    routerType: 'linucb' as RouterType,
+    routerType: 'linucb',
     confidence: 0.85,
     timestamp: '2023-11-14T22:13:20.000Z',
     traceId: 'trace-1',

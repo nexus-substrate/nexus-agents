@@ -14,8 +14,6 @@ import type {
   TaskResult,
   AgentMessage,
   AgentResponse,
-  AgentState,
-  AgentRole,
   AgentCapability,
 } from '../../../core/index.js';
 import { ok, err, AgentError, AgentCapability as Cap } from '../../../core/index.js';
@@ -37,8 +35,8 @@ export function createMockAgent(options: MockAgentOptions = {}): IAgent {
 
   return {
     id: generateTestId('mock-agent'),
-    role: 'custom' as AgentRole,
-    state: 'idle' as AgentState,
+    role: 'custom',
+    state: 'idle',
     capabilities: [Cap.TASK_EXECUTION] as readonly AgentCapability[],
     execute: vi.fn(async (task: Task) => {
       if (delayMs > 0) await new Promise((r) => setTimeout(r, delayMs));

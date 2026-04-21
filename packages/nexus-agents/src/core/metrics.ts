@@ -229,7 +229,7 @@ export class ErrorMetricsCollector {
       return error.code;
     }
     // Default to INTERNAL_ERROR for non-NexusError errors
-    return 'INTERNAL_ERROR' as ErrorCode;
+    return 'INTERNAL_ERROR';
   }
 }
 

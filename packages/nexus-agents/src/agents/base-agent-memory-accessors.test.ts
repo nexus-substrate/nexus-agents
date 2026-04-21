@@ -52,7 +52,7 @@ function makeMemoryState(): AgentMemoryState {
         resolvedAt: new Date(),
       },
     ],
-  } as AgentMemoryState;
+  };
 }
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type

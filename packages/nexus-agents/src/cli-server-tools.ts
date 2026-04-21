@@ -417,7 +417,7 @@ async function initUpstreamServers(
       toolName,
       { description: desc, inputSchema: passthroughSchema },
       async (args) => {
-        const upstreamResult = await manager.callTool(toolName, args as Record<string, unknown>);
+        const upstreamResult = await manager.callTool(toolName, args);
         const text =
           upstreamResult !== null ? JSON.stringify(upstreamResult) : 'Upstream tool not found';
         return { content: [{ type: 'text' as const, text }] };
@@ -548,21 +548,21 @@ const STANDALONE_TOOLS: ReadonlyArray<{
   readonly name: string;
   readonly register: (server: McpServer, deps: never) => void;
 }> = [
-  { name: 'consensus_vote', register: registerConsensusVoteTool as never },
-  { name: 'weather_report', register: registerWeatherReportTool as never },
-  { name: 'registry_import', register: registerRegistryImportTool as never },
-  { name: 'repo_analyze', register: registerRepoAnalyzeTool as never },
-  { name: 'repo_security_plan', register: registerRepoSecurityPlanTool as never },
-  { name: 'issue_triage', register: registerIssueTriageTool as never },
-  { name: 'run_graph_workflow', register: registerRunGraphWorkflowTool as never },
-  { name: 'execute_spec', register: registerExecuteSpecTool as never },
-  { name: 'list_experts', register: registerListExpertsTool as never },
-  { name: 'query_trace', register: registerQueryTraceTool as never },
-  { name: 'query_task_state', register: registerQueryTaskStateTool as never },
-  { name: 'extract_symbols', register: registerExtractSymbolsTool as never },
-  { name: 'search_codebase', register: registerSearchCodebaseTool as never },
-  { name: 'run_dev_pipeline', register: registerDevPipelineTool as never },
-  { name: 'run_pipeline', register: registerPipelineTool as never },
+  { name: 'consensus_vote', register: registerConsensusVoteTool },
+  { name: 'weather_report', register: registerWeatherReportTool },
+  { name: 'registry_import', register: registerRegistryImportTool },
+  { name: 'repo_analyze', register: registerRepoAnalyzeTool },
+  { name: 'repo_security_plan', register: registerRepoSecurityPlanTool },
+  { name: 'issue_triage', register: registerIssueTriageTool },
+  { name: 'run_graph_workflow', register: registerRunGraphWorkflowTool },
+  { name: 'execute_spec', register: registerExecuteSpecTool },
+  { name: 'list_experts', register: registerListExpertsTool },
+  { name: 'query_trace', register: registerQueryTraceTool },
+  { name: 'query_task_state', register: registerQueryTaskStateTool },
+  { name: 'extract_symbols', register: registerExtractSymbolsTool },
+  { name: 'search_codebase', register: registerSearchCodebaseTool },
+  { name: 'run_dev_pipeline', register: registerDevPipelineTool },
+  { name: 'run_pipeline', register: registerPipelineTool },
 ];
 
 /** Registers tool categories, skipping those blocked by allowlist. (Issue #740) */

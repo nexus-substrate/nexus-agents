@@ -41,7 +41,7 @@ function makeDecision(overrides: Partial<RoutingDecisionDetails> = {}) {
     decisionTimeMs: 10,
     taskProfile: {} as TaskProfile,
     ...overrides,
-  } as RoutingDecisionDetails;
+  };
 }
 
 // ============================================================================

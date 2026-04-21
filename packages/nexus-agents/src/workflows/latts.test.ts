@@ -341,7 +341,7 @@ describe('LATTS', () => {
         output: { data: 'valid result' },
         durationMs: 100,
         status: 'success',
-      } as StepResult);
+      });
 
       const result = await executor.execute(executeStep, 'test-step', 'Test task', new Map());
 
@@ -383,7 +383,7 @@ describe('LATTS', () => {
         output: 'Error: persistent failure',
         durationMs: 100,
         status: 'success',
-      } as StepResult);
+      });
 
       const result = await executor.execute(executeStep, 'test-step', 'Test task', new Map());
 
@@ -400,7 +400,7 @@ describe('LATTS', () => {
         output: { data: 'valid' },
         durationMs: 100,
         status: 'success',
-      } as StepResult);
+      });
 
       await executor.execute(executeStep, 'test-step', 'Test task', new Map());
 
@@ -437,7 +437,7 @@ describe('LATTS', () => {
         output: null,
         durationMs: 100,
         status: 'success',
-      } as StepResult);
+      });
 
       const result = await customExecutor.execute(executeStep, 'test-step', 'Test task', new Map());
 
@@ -467,7 +467,7 @@ describe('LATTS', () => {
         output: { data: 'valid' },
         durationMs: 100,
         status: 'success',
-      } as StepResult);
+      });
 
       const result = await earlyStopExecutor.execute(
         executeStep,

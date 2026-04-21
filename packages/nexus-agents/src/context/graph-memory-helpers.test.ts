@@ -24,7 +24,7 @@ function makeEdge(overrides: Partial<GraphEdge> = {}): GraphEdge {
   return {
     from: 'node-a',
     to: 'node-b',
-    type: 'related_to' as RelationType,
+    type: 'related_to',
     weight: 1.0,
     createdAt: new Date('2026-01-01'),
     ...overrides,

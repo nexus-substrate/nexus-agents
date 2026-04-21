@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import type { CliName, CliErrorCode } from '../../cli-adapters/types.js';
+import type { CliErrorCode } from '../../cli-adapters/types.js';
 import {
   DEFAULT_CONFIG,
   MODEL_INFO_BY_NAME,
@@ -61,28 +61,28 @@ describe('MODEL_INFO_BY_NAME', () => {
 
 describe('createCliError', () => {
   it('creates error with retryable flag for retryable codes', () => {
-    const error = createCliError('RATE_LIMITED' as CliErrorCode, 'Too fast', 'claude' as CliName);
+    const error = createCliError('RATE_LIMITED', 'Too fast', 'claude');
     expect(error.code).toBe('RATE_LIMITED');
     expect(error.retryable).toBe(true);
   });
 
   it('creates non-retryable error for non-retryable codes', () => {
-    const error = createCliError('INVALID_REQUEST' as CliErrorCode, 'Bad', 'claude' as CliName);
+    const error = createCliError('INVALID_REQUEST' as CliErrorCode, 'Bad', 'claude');
     expect(error.retryable).toBe(false);
   });
 
   it('marks TIMEOUT as retryable', () => {
-    const error = createCliError('TIMEOUT' as CliErrorCode, 'Timed out', 'gemini' as CliName);
+    const error = createCliError('TIMEOUT', 'Timed out', 'gemini');
     expect(error.retryable).toBe(true);
   });
 
   it('marks CONNECTION_ERROR as retryable', () => {
-    const error = createCliError('CONNECTION_ERROR' as CliErrorCode, 'Lost', 'codex' as CliName);
+    const error = createCliError('CONNECTION_ERROR', 'Lost', 'codex');
     expect(error.retryable).toBe(true);
   });
 
   it('includes cli name', () => {
-    const error = createCliError('UNKNOWN' as CliErrorCode, 'msg', 'gemini' as CliName);
+    const error = createCliError('UNKNOWN', 'msg', 'gemini');
     expect(error.cli).toBe('gemini');
   });
 });

@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import type { IAgent, AgentRole } from '../../../core/index.js';
+import type { IAgent } from '../../../core/index.js';
 import { ok } from '../../../core/index.js';
 import { createAegeanProtocol } from '../../../agents/collaboration/aegean-protocol.js';
 import { measureLatency, withTimeout } from '../utils/index.js';
@@ -103,7 +103,7 @@ describe('Aegean Multi-Round Consensus E2E', () => {
     let round = 0;
     const switchingAgent: IAgent = {
       id: 'agent2',
-      role: 'code_expert' as AgentRole,
+      role: 'code_expert',
       capabilities: [],
       state: 'idle',
       execute: vi.fn().mockImplementation(() => {

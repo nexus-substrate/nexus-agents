@@ -58,7 +58,7 @@ export function parseExpression(expression: string): ParsedExpression | null {
 
   return {
     original: expression,
-    type: type as ParsedExpression['type'],
+    type: type,
     path: parts.slice(1),
   };
 }

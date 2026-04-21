@@ -23,7 +23,7 @@ function makeCriterion(overrides: Partial<RubricCriterion> = {}): RubricCriterio
     weight: 0.5,
     scoringType: 'binary',
     ...overrides,
-  } as RubricCriterion;
+  };
 }
 
 function makeRubric(overrides: Partial<ScoringRubric> = {}): ScoringRubric {
@@ -34,7 +34,7 @@ function makeRubric(overrides: Partial<ScoringRubric> = {}): ScoringRubric {
     passingScore: 5,
     criteria: [makeCriterion()],
     ...overrides,
-  } as ScoringRubric;
+  };
 }
 
 // ============================================================================

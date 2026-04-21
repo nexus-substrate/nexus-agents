@@ -37,7 +37,7 @@ describe('CODE_EXPERT_SYSTEM_PROMPT', () => {
 
 describe('buildCodeExpertBaseOptions', () => {
   it('builds with defaults', () => {
-    const result = buildCodeExpertBaseOptions({}, {} as CodeExpertOptions);
+    const result = buildCodeExpertBaseOptions({}, {});
     expect(result.id).toBe('code-expert');
     expect(result.role).toBe('code_expert');
     expect(result.maxTokens).toBe(8192);
@@ -45,19 +45,22 @@ describe('buildCodeExpertBaseOptions', () => {
   });
 
   it('uses custom id', () => {
-    const result = buildCodeExpertBaseOptions({ id: 'my-expert' }, {} as CodeExpertOptions);
+    const result = buildCodeExpertBaseOptions({ id: 'my-expert' }, {});
     expect(result.id).toBe('my-expert');
   });
 
   it('uses custom temperature', () => {
-    const result = buildCodeExpertBaseOptions({}, { temperature: 0.3 } as CodeExpertOptions);
+    const result = buildCodeExpertBaseOptions({}, { temperature: 0.3 });
     expect(result.temperature).toBe(0.3);
   });
 
   it('uses systemPromptOverride', () => {
-    const result = buildCodeExpertBaseOptions({}, {
-      systemPromptOverride: 'Custom prompt',
-    } as CodeExpertOptions);
+    const result = buildCodeExpertBaseOptions(
+      {},
+      {
+        systemPromptOverride: 'Custom prompt',
+      }
+    );
     expect(result.systemPrompt).toBe('Custom prompt');
   });
 
@@ -65,7 +68,7 @@ describe('buildCodeExpertBaseOptions', () => {
     const adapter = { name: 'test' };
     const result = buildCodeExpertBaseOptions(
       { adapter } as unknown as Partial<BaseAgentOptions>,
-      {} as CodeExpertOptions
+      {}
     );
     expect(result.adapter).toBe(adapter);
   });

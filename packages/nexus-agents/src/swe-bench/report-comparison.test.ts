@@ -26,7 +26,7 @@ function makeMetrics(overrides: Record<string, number> = {}): EvaluationRunResul
     avgDurationMs: 1000,
     totalDurationMs: 100000,
     ...overrides,
-  } as EvaluationRunResult['metrics'];
+  };
 }
 
 function makeResult(overrides: Partial<EvaluationRunResult> = {}): EvaluationRunResult {

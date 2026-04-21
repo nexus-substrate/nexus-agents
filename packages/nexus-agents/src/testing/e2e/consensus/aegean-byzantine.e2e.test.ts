@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import type { IAgent, AgentRole } from '../../../core/index.js';
+import type { IAgent } from '../../../core/index.js';
 import { ok } from '../../../core/index.js';
 import { createAegeanProtocol } from '../../../agents/collaboration/aegean-protocol.js';
 import {
@@ -99,7 +99,7 @@ describe('Aegean Byzantine Fault Tolerance E2E', () => {
     let byzantineCallCount = 0;
     const byzantineAgent: IAgent = {
       id: 'byzantine',
-      role: 'code_expert' as AgentRole,
+      role: 'code_expert',
       capabilities: [],
       state: 'idle',
       execute: vi.fn().mockImplementation(() => {

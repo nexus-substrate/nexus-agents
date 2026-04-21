@@ -19,7 +19,7 @@ import {
   type Persona,
   type PersonaCritique,
 } from '../../../agents/collaboration/index.js';
-import type { IAgent, Task, TaskResult, AgentState, AgentRole } from '../../../core/index.js';
+import type { IAgent, Task } from '../../../core/index.js';
 import { ok, AgentError } from '../../../core/index.js';
 import { measureLatency, generateTestId, withTimeout } from '../utils/index.js';
 
@@ -29,8 +29,8 @@ function createMockAgent(id: string, outputGen?: (task: Task) => string): IAgent
     outputGen ?? (() => 'Generated code with proper error handling and best practices.');
   return {
     id,
-    role: 'code_expert' as AgentRole,
-    state: 'idle' as AgentState,
+    role: 'code_expert',
+    state: 'idle',
     capabilities: ['code_generation', 'code_review'],
     execute: vi.fn().mockImplementation((task: Task) =>
       Promise.resolve(
@@ -38,7 +38,7 @@ function createMockAgent(id: string, outputGen?: (task: Task) => string): IAgent
           taskId: task.id,
           output: genOutput(task),
           metadata: { durationMs: 100, tokensUsed: 50, toolsUsed: [], model: 'test' },
-        } as TaskResult)
+        })
       )
     ),
     handleMessage: vi
@@ -310,8 +310,8 @@ describe('Reflexion Collaboration E2E', () => {
     it('should handle production failure gracefully', async () => {
       const failing: IAgent = {
         id: 'failing',
-        role: 'code_expert' as AgentRole,
-        state: 'idle' as AgentState,
+        role: 'code_expert',
+        state: 'idle',
         capabilities: ['code_generation'],
         execute: vi.fn().mockResolvedValue({ ok: false, error: new AgentError('Failed') }),
         handleMessage: vi.fn(),
@@ -348,8 +348,8 @@ describe('Reflexion Collaboration E2E', () => {
       // Test cancellation
       const slowProducer: IAgent = {
         id: 'slow',
-        role: 'code_expert' as AgentRole,
-        state: 'idle' as AgentState,
+        role: 'code_expert',
+        state: 'idle',
         capabilities: ['code_generation'],
         execute: vi.fn().mockImplementation(async () => {
           await new Promise((r) => setTimeout(r, 100));
@@ -455,8 +455,8 @@ describe('Reflexion Collaboration E2E', () => {
       // Object output
       const objProducer: IAgent = {
         id: 'obj',
-        role: 'code_expert' as AgentRole,
-        state: 'idle' as AgentState,
+        role: 'code_expert',
+        state: 'idle',
         capabilities: ['code_generation'],
         execute: vi.fn().mockResolvedValue(
           ok({

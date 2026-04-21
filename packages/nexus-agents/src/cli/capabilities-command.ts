@@ -23,7 +23,7 @@ import {
   TOOL_CAPABILITIES,
   SPECIAL_FEATURES,
 } from '../config/model-capabilities.js';
-import type { ModelCapability, ModelId } from '../config/model-capabilities.js';
+import type { ModelCapability } from '../config/model-capabilities.js';
 
 // ============================================================================
 // Constants
@@ -254,8 +254,8 @@ function handleCompare(args: ParsedCliArgs): void {
     write(`${C.red}Usage: nexus-agents capabilities compare <model1> <model2>${C.reset}`);
     process.exit(EXIT_CODES.INVALID_ARGS);
   }
-  const m1 = getModelCapabilities(id1 as ModelId);
-  const m2 = getModelCapabilities(id2 as ModelId);
+  const m1 = getModelCapabilities(id1);
+  const m2 = getModelCapabilities(id2);
   if (m1 === undefined || m2 === undefined) {
     const missing = m1 === undefined ? id1 : id2;
     const ids = DEFAULT_MODEL_CAPABILITIES.models.map((m) => m.id).join(', ');

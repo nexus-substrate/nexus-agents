@@ -11,11 +11,9 @@ import type {
   ILogger,
   IModelAdapter,
   Task,
-  AgentCapability,
   CompletionResponse,
   CompletionRequest,
   StreamChunk,
-  ModelCapability,
 } from '../core/index.js';
 import { ok, err, ModelError } from '../core/index.js';
 import { SimpleAgent } from './simple-agent.js';
@@ -62,7 +60,7 @@ function createMockAdapter(
   return {
     providerId: 'test-provider',
     modelId: 'test-model',
-    capabilities: ['completion' as ModelCapability],
+    capabilities: ['completion'],
     completeResult: ok(response ?? defaultResponse),
     complete: vi.fn().mockImplementation(function (this: {
       completeResult: Result<CompletionResponse, ModelError>;
@@ -85,7 +83,7 @@ function createTestAgent(overrides: Partial<BaseAgentOptions> = {}): SimpleAgent
   const defaults: BaseAgentOptions = {
     id: 'simple-test-agent',
     role: 'code_expert',
-    capabilities: ['task_execution' as AgentCapability],
+    capabilities: ['task_execution'],
     logger: createMockLogger(),
     ...overrides,
   };

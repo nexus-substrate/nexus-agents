@@ -289,7 +289,7 @@ export function scoreAllModels(
     .filter(([name]) => eligible === null || eligible.has(name))
     .filter(([name]) => !availCache.isKnownUnavailable(name as ModelId))
     .map(([name, profile]) => {
-      const cap = getModelCapabilities(name as ModelId);
+      const cap = getModelCapabilities(name);
       const opts: ScoreModelOptions = {
         preferredCapability: pref,
         billingMode,

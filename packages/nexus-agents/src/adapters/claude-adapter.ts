@@ -217,7 +217,7 @@ export class ClaudeAdapter extends BaseAdapter {
 
       controller.complete();
     } catch (error) {
-      const modelError = this.transformError(error as Error);
+      const modelError = this.transformError(error);
       controller.error(modelError);
     }
   }

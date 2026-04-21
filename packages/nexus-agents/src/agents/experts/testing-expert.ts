@@ -274,7 +274,7 @@ function validateTests(tests: unknown[] | undefined): GeneratedTest[] {
   return (tests ?? [])
     .map((t) => GeneratedTestSchema.safeParse(t))
     .filter((r) => r.success)
-    .map((r) => r.data as GeneratedTest);
+    .map((r) => r.data);
 }
 
 const VALID_TESTING_OP_TYPES = new Set<TestingAnalysisResult['operationType']>([
@@ -284,7 +284,9 @@ const VALID_TESTING_OP_TYPES = new Set<TestingAnalysisResult['operationType']>([
 ]);
 
 function isValidTestingOpType(v: unknown): v is TestingAnalysisResult['operationType'] {
-  return typeof v === 'string' && VALID_TESTING_OP_TYPES.has(v as TestingAnalysisResult['operationType']);
+  return (
+    typeof v === 'string' && VALID_TESTING_OP_TYPES.has(v as TestingAnalysisResult['operationType'])
+  );
 }
 
 function isTestUnitConfidence(v: unknown): v is number {

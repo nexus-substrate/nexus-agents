@@ -82,7 +82,7 @@ describe('session-commands', () => {
     stdoutWriteSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     mockExistsSync.mockReturnValue(true);
-    mockCreateSessionStorage.mockReturnValue(createMockStorage() as never);
+    mockCreateSessionStorage.mockReturnValue(createMockStorage());
   });
 
   afterEach(() => {
@@ -117,7 +117,7 @@ describe('session-commands', () => {
           ],
         }),
       });
-      mockCreateSessionStorage.mockReturnValue(mockStorage as never);
+      mockCreateSessionStorage.mockReturnValue(mockStorage);
 
       const result = await sessionList({ limit: 10 });
 
@@ -135,7 +135,7 @@ describe('session-commands', () => {
           error: new Error('DB init failed'),
         }),
       });
-      mockCreateSessionStorage.mockReturnValue(mockStorage as never);
+      mockCreateSessionStorage.mockReturnValue(mockStorage);
 
       const result = await sessionList();
 
@@ -145,7 +145,7 @@ describe('session-commands', () => {
     it('should create directory if not exists', async () => {
       mockExistsSync.mockReturnValue(false);
       const mockStorage = createMockStorage();
-      mockCreateSessionStorage.mockReturnValue(mockStorage as never);
+      mockCreateSessionStorage.mockReturnValue(mockStorage);
 
       await sessionList();
 
@@ -223,7 +223,7 @@ describe('session-commands', () => {
       const mockStorage = createMockStorage({
         getSessionWithTasks: vi.fn().mockResolvedValue({ ok: true, value: mockSession }),
       });
-      mockCreateSessionStorage.mockReturnValue(mockStorage as never);
+      mockCreateSessionStorage.mockReturnValue(mockStorage);
 
       const result = await sessionShow({ sessionId: 'session-1' });
 
@@ -300,7 +300,7 @@ describe('session-commands', () => {
       const mockStorage = createMockStorage({
         getSessionWithTasks: vi.fn().mockResolvedValue({ ok: true, value: mockSession }),
       });
-      mockCreateSessionStorage.mockReturnValue(mockStorage as never);
+      mockCreateSessionStorage.mockReturnValue(mockStorage);
 
       const result = await sessionExport({ sessionId: 'session-1', format: 'json' });
 
@@ -330,7 +330,7 @@ describe('session-commands', () => {
       const mockStorage = createMockStorage({
         getSessionWithTasks: vi.fn().mockResolvedValue({ ok: true, value: mockSession }),
       });
-      mockCreateSessionStorage.mockReturnValue(mockStorage as never);
+      mockCreateSessionStorage.mockReturnValue(mockStorage);
 
       const result = await sessionExport({ sessionId: 'session-1', format: 'markdown' });
 
@@ -353,7 +353,7 @@ describe('session-commands', () => {
       const mockStorage = createMockStorage({
         getSessionWithTasks: vi.fn().mockResolvedValue({ ok: true, value: mockSession }),
       });
-      mockCreateSessionStorage.mockReturnValue(mockStorage as never);
+      mockCreateSessionStorage.mockReturnValue(mockStorage);
 
       await sessionExport({
         sessionId: 'session-1',
@@ -372,7 +372,7 @@ describe('session-commands', () => {
       const mockStorage = createMockStorage({
         getSessionWithTasks: vi.fn().mockResolvedValue({ ok: true, value: null }),
       });
-      mockCreateSessionStorage.mockReturnValue(mockStorage as never);
+      mockCreateSessionStorage.mockReturnValue(mockStorage);
 
       const result = await sessionExport({ sessionId: 'nonexistent' });
 
@@ -385,7 +385,7 @@ describe('session-commands', () => {
       const mockStorage = createMockStorage({
         deleteSession: vi.fn().mockResolvedValue({ ok: true, value: true }),
       });
-      mockCreateSessionStorage.mockReturnValue(mockStorage as never);
+      mockCreateSessionStorage.mockReturnValue(mockStorage);
 
       const result = await sessionDelete({ sessionId: 'session-1' });
 
@@ -401,7 +401,7 @@ describe('session-commands', () => {
       const mockStorage = createMockStorage({
         prune: vi.fn().mockResolvedValue({ ok: true, value: 5 }),
       });
-      mockCreateSessionStorage.mockReturnValue(mockStorage as never);
+      mockCreateSessionStorage.mockReturnValue(mockStorage);
 
       const result = await sessionPrune({ days: 30 });
 
@@ -421,7 +421,7 @@ describe('session-commands', () => {
           ],
         }),
       });
-      mockCreateSessionStorage.mockReturnValue(mockStorage as never);
+      mockCreateSessionStorage.mockReturnValue(mockStorage);
 
       const result = await sessionPrune({ days: 30, dryRun: true });
 
@@ -437,7 +437,7 @@ describe('session-commands', () => {
       const mockStorage = createMockStorage({
         listSessions: vi.fn().mockResolvedValue({ ok: true, value: [] }),
       });
-      mockCreateSessionStorage.mockReturnValue(mockStorage as never);
+      mockCreateSessionStorage.mockReturnValue(mockStorage);
 
       await sessionCommand('list', []);
 
@@ -460,7 +460,7 @@ describe('session-commands', () => {
       const mockStorage = createMockStorage({
         getSessionWithTasks: vi.fn().mockResolvedValue({ ok: true, value: mockSession }),
       });
-      mockCreateSessionStorage.mockReturnValue(mockStorage as never);
+      mockCreateSessionStorage.mockReturnValue(mockStorage);
 
       await sessionCommand('export', ['session-1']);
 
@@ -471,7 +471,7 @@ describe('session-commands', () => {
       const mockStorage = createMockStorage({
         deleteSession: vi.fn().mockResolvedValue({ ok: true, value: true }),
       });
-      mockCreateSessionStorage.mockReturnValue(mockStorage as never);
+      mockCreateSessionStorage.mockReturnValue(mockStorage);
 
       await sessionCommand('delete', ['session-1']);
 
@@ -483,7 +483,7 @@ describe('session-commands', () => {
       const mockStorage = createMockStorage({
         prune: vi.fn().mockResolvedValue({ ok: true, value: 3 }),
       });
-      mockCreateSessionStorage.mockReturnValue(mockStorage as never);
+      mockCreateSessionStorage.mockReturnValue(mockStorage);
 
       await sessionCommand('prune', ['30']);
 
@@ -513,7 +513,7 @@ describe('session-commands', () => {
           ],
         }),
       });
-      mockCreateSessionStorage.mockReturnValue(mockStorage as never);
+      mockCreateSessionStorage.mockReturnValue(mockStorage);
 
       await sessionCommand('list', ['--json']);
 
@@ -523,7 +523,7 @@ describe('session-commands', () => {
 
     it('should handle limit flag', async () => {
       const mockStorage = createMockStorage();
-      mockCreateSessionStorage.mockReturnValue(mockStorage as never);
+      mockCreateSessionStorage.mockReturnValue(mockStorage);
 
       await sessionCommand('list', ['--limit', '5']);
 

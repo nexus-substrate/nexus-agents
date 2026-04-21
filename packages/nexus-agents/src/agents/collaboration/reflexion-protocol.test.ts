@@ -27,23 +27,15 @@ function createTestProtocol(options?: ReflexionProtocolOptions): ReflexionProtoc
     },
   });
 }
-import type {
-  IAgent,
-  Task,
-  TaskResult,
-  AgentState,
-  AgentRole,
-  AgentResponse,
-  AgentCapability,
-} from '../../core/index.js';
+import type { IAgent, Task, AgentCapability } from '../../core/index.js';
 import { ok, AgentError } from '../../core/index.js';
 
 // Mock agent implementation
 function createMockAgent(id: string): IAgent {
   return {
     id,
-    role: 'code_expert' as AgentRole,
-    state: 'idle' as AgentState,
+    role: 'code_expert',
+    state: 'idle',
     capabilities: ['code_generation', 'code_review'] as AgentCapability[],
     execute: vi.fn().mockResolvedValue(
       ok({
@@ -56,14 +48,14 @@ function createMockAgent(id: string): IAgent {
           toolsUsed: [],
           model: 'test-model',
         },
-      } as TaskResult)
+      })
     ),
     handleMessage: vi.fn().mockResolvedValue(
       ok({
         messageId: 'msg-1',
         status: 'completed',
         data: { acknowledged: true },
-      } as AgentResponse)
+      })
     ),
     initialize: vi.fn().mockResolvedValue(undefined),
     cleanup: vi.fn().mockResolvedValue(undefined),
@@ -311,15 +303,15 @@ describe('ReflexionProtocol - Edge Cases', () => {
       // Mock agent that always produces "needs improvement" output
       const mockProducer: IAgent = {
         id: 'producer',
-        role: 'code_expert' as AgentRole,
-        state: 'idle' as AgentState,
+        role: 'code_expert',
+        state: 'idle',
         capabilities: ['code_generation'] as AgentCapability[],
         execute: vi.fn().mockResolvedValue(
           ok({
             taskId: 'test-task',
             output: 'Short output', // Short output triggers feedback
             metadata: { durationMs: 100, tokensUsed: 50, toolsUsed: [], model: 'test' },
-          } as TaskResult)
+          })
         ),
         handleMessage: vi.fn().mockResolvedValue(ok({ messageId: 'm1', status: 'completed' })),
         initialize: vi.fn().mockResolvedValue(undefined),
@@ -385,15 +377,15 @@ describe('ReflexionProtocol - Edge Cases', () => {
 
       const emptyOutputAgent: IAgent = {
         id: 'producer',
-        role: 'code_expert' as AgentRole,
-        state: 'idle' as AgentState,
+        role: 'code_expert',
+        state: 'idle',
         capabilities: ['code_generation'] as AgentCapability[],
         execute: vi.fn().mockResolvedValue(
           ok({
             taskId: 'test-task',
             output: '', // Empty output
             metadata: { durationMs: 100, tokensUsed: 50, toolsUsed: [], model: 'test' },
-          } as TaskResult)
+          })
         ),
         handleMessage: vi.fn().mockResolvedValue(ok({ messageId: 'm1', status: 'completed' })),
         initialize: vi.fn().mockResolvedValue(undefined),

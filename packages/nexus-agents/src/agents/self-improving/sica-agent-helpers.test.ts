@@ -5,7 +5,7 @@
 
 import { describe, it, expect } from 'vitest';
 import type { TaskResult } from '../../core/index.js';
-import type { AgentConfiguration, VersionMetrics, ImprovementOptions } from './sica-types.js';
+import type { AgentConfiguration, VersionMetrics } from './sica-types.js';
 import {
   estimateQuality,
   improvePromptGeneral,
@@ -161,35 +161,27 @@ describe('applyChanges', () => {
 describe('generateHypothesis', () => {
   it('suggests error handling for low success rate', () => {
     const metrics = makeMetrics({ successRate: 0.3 });
-    expect(
-      generateHypothesis(metrics, { focusArea: 'reliability' } as ImprovementOptions)
-    ).toContain('error handling');
+    expect(generateHypothesis(metrics, { focusArea: 'reliability' })).toContain('error handling');
   });
 
   it('suggests faster execution for speed focus', () => {
     const metrics = makeMetrics({ successRate: 0.8, avgDurationMs: 15000 });
-    expect(generateHypothesis(metrics, { focusArea: 'speed' } as ImprovementOptions)).toContain(
-      'faster'
-    );
+    expect(generateHypothesis(metrics, { focusArea: 'speed' })).toContain('faster');
   });
 
   it('suggests quality enhancement for quality focus', () => {
     const metrics = makeMetrics({ successRate: 0.8, avgQualityScore: 0.4 });
-    expect(generateHypothesis(metrics, { focusArea: 'quality' } as ImprovementOptions)).toContain(
-      'quality'
-    );
+    expect(generateHypothesis(metrics, { focusArea: 'quality' })).toContain('quality');
   });
 
   it('suggests token reduction for cost focus', () => {
     const metrics = makeMetrics({ successRate: 0.8, avgTokensUsed: 5000 });
-    expect(generateHypothesis(metrics, { focusArea: 'cost' } as ImprovementOptions)).toContain(
-      'token usage'
-    );
+    expect(generateHypothesis(metrics, { focusArea: 'cost' })).toContain('token usage');
   });
 
   it('defaults to general improvement', () => {
     const metrics = makeMetrics({ successRate: 0.8 });
-    expect(generateHypothesis(metrics, {} as ImprovementOptions)).toContain('General');
+    expect(generateHypothesis(metrics, {})).toContain('General');
   });
 });
 

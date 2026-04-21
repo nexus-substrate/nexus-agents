@@ -8,13 +8,7 @@ import {
   createSecurityExpert,
   type SecurityExpertOptions,
 } from './security-expert.js';
-import type {
-  Task,
-  IModelAdapter,
-  CompletionResponse,
-  ModelCapability,
-  StreamChunk,
-} from '../../core/index.js';
+import type { Task, IModelAdapter, CompletionResponse, StreamChunk } from '../../core/index.js';
 import { ok } from '../../core/index.js';
 import { type SecurityAnalysisResult } from './expert-types.js';
 
@@ -59,7 +53,7 @@ function createMockAdapter(responseOverride?: Partial<CompletionResponse>): IMod
   return {
     providerId: 'test-provider',
     modelId: 'test-model',
-    capabilities: ['completion' as ModelCapability],
+    capabilities: ['completion'],
     complete: vi.fn().mockResolvedValue(ok(defaultResponse)),
     stream: vi.fn().mockImplementation(function* (): Iterable<StreamChunk> {
       yield { type: 'message_start', message: { model: 'test-model' } };

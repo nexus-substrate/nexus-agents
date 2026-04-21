@@ -16,7 +16,6 @@ import type {
   CompletionResponse,
   Message,
   StreamChunk,
-  ModelCapability,
 } from '../core/index.js';
 import { ok, err, AgentError, ModelError, ErrorCode } from '../core/index.js';
 import {
@@ -70,7 +69,7 @@ function createMockAdapter(): IModelAdapter & {
   return {
     providerId: 'test-provider',
     modelId: 'test-model',
-    capabilities: ['completion' as ModelCapability],
+    capabilities: ['completion'],
     completeResult: ok(mockResponse),
     complete: vi.fn().mockImplementation(function (this: {
       completeResult: Result<CompletionResponse, ModelError>;
@@ -97,7 +96,7 @@ class TestAgent extends BaseAgent {
     const baseOptions: BaseAgentOptions = {
       id: options.id ?? 'test-agent',
       role: options.role ?? 'code_expert',
-      capabilities: options.capabilities ?? ['task_execution' as AgentCapability],
+      capabilities: options.capabilities ?? ['task_execution'],
     };
     if (options.adapter !== undefined) {
       baseOptions.adapter = options.adapter;
@@ -626,8 +625,8 @@ describe('BaseAgent', () => {
         capabilities: ['task_execution', 'code_generation'] as AgentCapability[],
       });
 
-      expect(agent.testHasCapability('task_execution' as AgentCapability)).toBe(true);
-      expect(agent.testHasCapability('code_generation' as AgentCapability)).toBe(true);
+      expect(agent.testHasCapability('task_execution')).toBe(true);
+      expect(agent.testHasCapability('code_generation')).toBe(true);
     });
 
     it('should return false for non-existing capability', () => {
@@ -635,7 +634,7 @@ describe('BaseAgent', () => {
         capabilities: ['task_execution'] as AgentCapability[],
       });
 
-      expect(agent.testHasCapability('delegation' as AgentCapability)).toBe(false);
+      expect(agent.testHasCapability('delegation')).toBe(false);
     });
   });
 

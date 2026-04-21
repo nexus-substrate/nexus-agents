@@ -26,7 +26,7 @@ function makeTask(overrides: Partial<Task> = {}): Task {
     description: 'Test task',
     context: {},
     ...overrides,
-  } as Task;
+  };
 }
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
@@ -60,7 +60,7 @@ function makeContext(overrides: Partial<ExecuteFlowContext> = {}) {
 }
 
 function makeMessage(role: 'user' | 'assistant', content: string): Message {
-  return { role, content } as Message;
+  return { role, content };
 }
 
 // ============================================================================

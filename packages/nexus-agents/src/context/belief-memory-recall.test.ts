@@ -35,7 +35,7 @@ function makeBelief(overrides: Partial<Belief> = {}): Belief {
     updatedAt: NOW,
     superseded: false,
     ...overrides,
-  } as Belief;
+  };
 }
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type

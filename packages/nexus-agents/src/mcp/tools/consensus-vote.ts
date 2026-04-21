@@ -97,7 +97,7 @@ function resolveStrategy(input: ConsensusVoteInput): VotingStrategy {
 function strategyToAlgorithm(strategy: VotingStrategy): ConsensusAlgorithm {
   if (strategy === 'higher_order') return 'higher_order';
   if (strategy === 'opinion_wise') return 'opinion_wise';
-  return strategy as ConsensusAlgorithm;
+  return strategy;
 }
 
 function getVoterRoles(quickMode: boolean): readonly VoterRole[] {

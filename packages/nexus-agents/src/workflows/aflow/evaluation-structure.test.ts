@@ -40,8 +40,7 @@ import type { TaskSpecification } from './aflow-types.js';
 // Fixtures
 // ============================================================================
 
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-function makeWorkflow(overrides: Partial<WorkflowDefinition> = {}) {
+function makeWorkflow(overrides: Partial<WorkflowDefinition> = {}): WorkflowDefinition {
   return {
     name: 'test',
     version: '1.0.0',
@@ -57,11 +56,10 @@ function makeWorkflow(overrides: Partial<WorkflowDefinition> = {}) {
       },
     ],
     ...overrides,
-  } as WorkflowDefinition;
+  };
 }
 
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-function makeTask(overrides: Partial<TaskSpecification> = {}) {
+function makeTask(overrides: Partial<TaskSpecification> = {}): TaskSpecification {
   return {
     description: 'Build a feature',
     requiredCapabilities: ['code', 'testing'],
@@ -69,7 +67,7 @@ function makeTask(overrides: Partial<TaskSpecification> = {}) {
       requiredAgents: ['code_expert', 'testing_expert'],
     },
     ...overrides,
-  } as TaskSpecification;
+  } as unknown as TaskSpecification;
 }
 
 // ============================================================================

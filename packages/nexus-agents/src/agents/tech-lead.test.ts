@@ -10,7 +10,6 @@ import type {
   Task,
   TaskResult,
   CompletionResponse,
-  ModelCapability,
   StreamChunk,
 } from '../core/index.js';
 import { ok, err, AgentError, ModelError } from '../core/index.js';
@@ -60,7 +59,7 @@ function createMockAdapter(): IModelAdapter & {
   return {
     providerId: 'test-provider',
     modelId: 'test-model',
-    capabilities: ['completion' as ModelCapability],
+    capabilities: ['completion'],
     completeResult: ok(mockResponse),
     complete: vi.fn().mockImplementation(function (this: {
       completeResult: Result<CompletionResponse, ModelError>;

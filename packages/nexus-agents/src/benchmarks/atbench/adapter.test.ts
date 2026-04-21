@@ -152,8 +152,8 @@ describe('ATBenchAdapter', () => {
     };
     const adapter = new ATBenchAdapter({
       variant: 'claw',
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test mock cast
-      scorerAdapter: scorerAdapter as any,
+
+      scorerAdapter: scorerAdapter,
       scorerTimeoutMs: 2000,
     });
     const t = makeTrajectory({ safetyLabel: 'safe' });

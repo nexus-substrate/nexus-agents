@@ -16,7 +16,7 @@ import {
   type ExpertDefinition,
   type SelectionOptions,
 } from './expert-selector.js';
-import { TaskDomain } from './task-analyzer.js';
+import {} from './task-analyzer.js';
 
 /**
  * Creates a test task with the given description.
@@ -54,7 +54,7 @@ function createExpert(overrides: Partial<ExpertDefinition>): ExpertDefinition {
     name: 'Test Expert',
     description: 'A test expert',
     capabilities: ['task_execution'],
-    primaryDomain: 'code' as TaskDomain,
+    primaryDomain: 'code',
     secondaryDomains: [],
     weight: 1.0,
     available: true,
@@ -257,7 +257,7 @@ describe('selectExperts', () => {
     it('should apply preferred domains', () => {
       const task = createTask('Help with some code stuff');
       const options: SelectionOptions = {
-        preferredDomains: ['testing' as TaskDomain],
+        preferredDomains: ['testing'],
       };
       const result = selectExperts(task, defaultRegistry, options);
 
@@ -448,13 +448,13 @@ describe('selectExperts', () => {
           id: 'custom-1',
           name: 'Custom Expert 1',
           capabilities: ['task_execution', 'code_generation'],
-          primaryDomain: 'code' as TaskDomain,
+          primaryDomain: 'code',
         }),
         createExpert({
           id: 'custom-2',
           name: 'Custom Expert 2',
           capabilities: ['task_execution', 'research'],
-          primaryDomain: 'architecture' as TaskDomain,
+          primaryDomain: 'architecture',
         }),
       ];
       const registry = createRegistry(experts);
@@ -473,13 +473,13 @@ describe('selectExperts', () => {
           id: 'low-weight',
           weight: 0.2,
           capabilities: ['task_execution', 'code_generation'],
-          primaryDomain: 'code' as TaskDomain,
+          primaryDomain: 'code',
         }),
         createExpert({
           id: 'high-weight',
           weight: 1.0,
           capabilities: ['task_execution', 'code_generation'],
-          primaryDomain: 'code' as TaskDomain,
+          primaryDomain: 'code',
         }),
       ];
       const registry = createRegistry(experts);
@@ -496,8 +496,8 @@ describe('selectExperts', () => {
       const experts: ExpertDefinition[] = [
         createExpert({
           id: 'multi-domain',
-          primaryDomain: 'code' as TaskDomain,
-          secondaryDomains: ['security' as TaskDomain, 'testing' as TaskDomain],
+          primaryDomain: 'code',
+          secondaryDomains: ['security', 'testing'],
         }),
       ];
       const registry = createRegistry(experts);
@@ -567,7 +567,7 @@ describe('createDefaultRegistry', () => {
 
   it('should return experts by domain', () => {
     const registry = createDefaultRegistry();
-    const securityExperts = registry.getByDomain('security' as TaskDomain);
+    const securityExperts = registry.getByDomain('security');
 
     expect(securityExperts.length).toBeGreaterThan(0);
   });

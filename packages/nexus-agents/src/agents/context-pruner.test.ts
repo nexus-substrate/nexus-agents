@@ -3,13 +3,7 @@
  */
 
 import { describe, it, expect, vi, type Mock } from 'vitest';
-import type {
-  IModelAdapter,
-  ILogger,
-  CompletionResponse,
-  StreamChunk,
-  ModelCapability,
-} from '../core/index.js';
+import type { IModelAdapter, ILogger, CompletionResponse, StreamChunk } from '../core/index.js';
 import { ok, ValidationError } from '../core/index.js';
 import { ContextManager, ContentPriority } from './context-manager.js';
 import { ContextPruner, PruningStrategy, type ContextPrunerConfig } from './context-pruner.js';
@@ -52,7 +46,7 @@ function createMockAdapter(): IModelAdapter & {
   return {
     providerId: 'test-provider',
     modelId: 'test-model',
-    capabilities: ['completion' as ModelCapability],
+    capabilities: ['completion'],
     setTokenCount: (count: number) => {
       tokenCount = count;
     },

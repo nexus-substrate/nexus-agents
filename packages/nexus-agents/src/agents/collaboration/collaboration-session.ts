@@ -58,7 +58,7 @@ export class CollaborationSession {
     this.logger = options.logger ?? createLogger({ component: 'CollaborationSession' });
     this.onStatusChange = options.onStatusChange;
     this.onMessage = options.onMessage;
-    this.roleResolver = options.roleResolver ?? (() => 'custom' as AgentRole);
+    this.roleResolver = options.roleResolver ?? (() => 'custom');
     this.eventBus = options.eventBus;
   }
 

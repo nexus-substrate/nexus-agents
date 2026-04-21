@@ -33,7 +33,7 @@ function createTestTask(overrides: Partial<Task> = {}) {
     description: 'Test task description',
     context: {},
     ...overrides,
-  } as Task;
+  };
 }
 
 /**

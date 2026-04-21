@@ -22,7 +22,7 @@ function makeTask(overrides: Partial<EvaluationTask> = {}): EvaluationTask {
     difficulty: 'easy',
     expectedTaskType: 'code_implementation',
     ...overrides,
-  } as EvaluationTask;
+  };
 }
 
 // ============================================================================

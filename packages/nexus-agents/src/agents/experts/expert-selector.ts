@@ -230,10 +230,10 @@ function isHighComplexityMultiDomain(a: TaskAnalysisResult): boolean {
   return a.complexity === TaskComplexity.HIGH && a.secondaryDomains.length > 0;
 }
 function isCodeSecurityTask(a: TaskAnalysisResult): boolean {
-  return a.domain === 'code' && a.secondaryDomains.includes('security' as TaskDomain);
+  return a.domain === 'code' && a.secondaryDomains.includes('security');
 }
 function isCodeTestingTask(a: TaskAnalysisResult): boolean {
-  return a.domain === 'code' && a.secondaryDomains.includes('testing' as TaskDomain);
+  return a.domain === 'code' && a.secondaryDomains.includes('testing');
 }
 function isHighEffortMultiDomain(a: TaskAnalysisResult): boolean {
   return a.estimatedEffort >= 7 && a.secondaryDomains.length >= 2;

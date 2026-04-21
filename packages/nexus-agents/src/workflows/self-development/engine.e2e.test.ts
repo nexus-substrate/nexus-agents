@@ -11,7 +11,7 @@ import { SelfDevWorkflowEngine, createSelfDevWorkflowEngine } from './engine.js'
 import { createAuditTrail, InMemoryAuditStorage } from './audit-trail.js';
 import { NotificationService } from './notifications.js';
 import type { IGitClient, IGitHubClient, GitHubIssue, GitHubPR, PRStatus } from './interfaces.js';
-import type { IModelAdapter, CompletionResponse } from '../../core/index.js';
+import type { IModelAdapter } from '../../core/index.js';
 import type { Notification, INotificationHandler } from './notifications.js';
 
 /** Mock model adapter that returns structured responses. */
@@ -22,7 +22,7 @@ function createMockModelAdapter(): IModelAdapter {
       model: 'mock-model',
       stopReason: 'end_turn',
       usage: { inputTokens: 100, outputTokens: 50 },
-    } as CompletionResponse),
+    }),
     streamComplete: vi.fn(),
     capabilities: new Set(['chat', 'tools']),
     name: 'mock',

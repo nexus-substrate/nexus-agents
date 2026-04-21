@@ -32,9 +32,12 @@ import {
 let mockExit: { mockRestore: () => void };
 
 beforeEach(() => {
-  mockExit = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
-    throw new Error(`process.exit(${String(code)})`);
-  }) as unknown as typeof process.exit);
+  mockExit = vi.spyOn(process, 'exit').mockImplementation(
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- process.exit accepts string|number|null|undefined; simpler (code?: number) signature needs explicit widening to match
+    ((code?: number) => {
+      throw new Error(`process.exit(${String(code)})`);
+    }) as unknown as typeof process.exit
+  );
 });
 
 /**

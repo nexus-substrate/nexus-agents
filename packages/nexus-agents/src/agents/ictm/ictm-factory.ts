@@ -268,7 +268,7 @@ export function inferICTM(subtask: SubTask, analysis: TaskAnalysis): ICTMInferen
  */
 export function validateICTM(config: unknown): ICTMConfig | null {
   const result = ICTMConfigSchema.safeParse(config);
-  return result.success ? (result.data as ICTMConfig) : null;
+  return result.success ? result.data : null;
 }
 
 /**

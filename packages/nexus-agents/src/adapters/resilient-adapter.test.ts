@@ -7,7 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AdapterSelection } from './auto-adapter.js';
-import type { ModelCapability } from '../core/types/model.js';
+import type {} from '../core/types/model.js';
 import { ok, err } from '../core/result.js';
 import { ModelError } from '../core/errors.js';
 import type { CircuitStateChangeEvent } from '../cli-adapters/circuit-breaker-types.js';
@@ -56,7 +56,7 @@ function makeSelection(name = 'claude') {
     adapter: {
       providerId: 'mock-provider',
       modelId: 'mock-model',
-      capabilities: ['completion' as ModelCapability],
+      capabilities: ['completion'],
       complete: mockComplete,
       stream: mockStream,
       countTokens: mockCountTokens,

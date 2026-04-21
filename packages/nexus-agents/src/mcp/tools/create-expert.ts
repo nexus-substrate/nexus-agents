@@ -178,10 +178,7 @@ function createExpertFromFactory(
   }
 
   const factoryOptions = Object.keys(options).length > 0 ? options : undefined;
-  const result = deps.expertFactory.createBuiltIn(
-    expertType,
-    factoryOptions as Parameters<typeof deps.expertFactory.createBuiltIn>[1]
-  );
+  const result = deps.expertFactory.createBuiltIn(expertType, factoryOptions);
 
   if (!result.ok) {
     return { ok: false, error: result.error.message };

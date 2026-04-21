@@ -273,7 +273,7 @@ export class FailureDetector {
         if (typeof m.content === 'string') return m.content;
         return m.content
           .filter((b) => b.type === 'text')
-          .map((b) => (b as { type: 'text'; text: string }).text)
+          .map((b) => b.text)
           .join(' ');
       })
       .join('\n');

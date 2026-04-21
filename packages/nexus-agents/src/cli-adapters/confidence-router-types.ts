@@ -8,7 +8,7 @@
  * (Source: Issue #99, arXiv:2510.05164 - EMNLP 2025)
  */
 
-import type { CliName, CliResponse, ConfidenceEstimate, CascadeOptions } from './types.js';
+import type { CliResponse, ConfidenceEstimate, CascadeOptions } from './types.js';
 
 // =============================================================================
 // Types
@@ -46,8 +46,8 @@ export interface CacheStats {
  */
 export const DEFAULT_CASCADE_OPTIONS: Required<CascadeOptions> = {
   confidenceThreshold: 0.7,
-  fastModel: 'gemini' as CliName, // Gemini Flash for speed/cost
-  expensiveModel: 'claude' as CliName, // Claude for quality
+  fastModel: 'gemini', // Gemini Flash for speed/cost
+  expensiveModel: 'claude', // Claude for quality
   maxEscalations: 2,
   cacheResponses: true,
 };

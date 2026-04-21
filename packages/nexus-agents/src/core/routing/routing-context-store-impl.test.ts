@@ -65,7 +65,7 @@ function makeDecision(overrides: Partial<RoutingDecision> = {}): RoutingDecision
   return {
     timestamp: new Date().toISOString(),
     traceId: `trace-${Math.random().toString(36).slice(2, 8)}`,
-    selectedModel: 'claude' as CliName,
+    selectedModel: 'claude',
     alternativeModels: ['gemini'] as CliName[],
     isExploration: false,
     ...overrides,
@@ -76,7 +76,7 @@ function makeOutcome(overrides: Partial<TaskOutcome> = {}): TaskOutcome {
   return {
     timestamp: new Date().toISOString(),
     traceId: `trace-${Math.random().toString(36).slice(2, 8)}`,
-    model: 'claude' as CliName,
+    model: 'claude',
     success: true,
     reward: 0.9,
     ...overrides,
@@ -202,14 +202,14 @@ describe('RoutingContextStore Performance', () => {
 
   it('stores and accumulates model performance', () => {
     const perf = makePerformance({ observations: 5 });
-    const result = store.storeModelPerformance('claude' as CliName, 'coding', perf);
+    const result = store.storeModelPerformance('claude', 'coding', perf);
     expect(result.ok).toBe(true);
   });
 
   it('returns model preferences sorted by strength', () => {
     // Store enough observations to pass minObservations threshold
     store.storeModelPerformance(
-      'claude' as CliName,
+      'claude',
       'coding',
       makePerformance({
         avgQuality: 0.9,
@@ -218,7 +218,7 @@ describe('RoutingContextStore Performance', () => {
       })
     );
     store.storeModelPerformance(
-      'gemini' as CliName,
+      'gemini',
       'coding',
       makePerformance({
         avgQuality: 0.7,
@@ -235,7 +235,7 @@ describe('RoutingContextStore Performance', () => {
 
   it('excludes models with too few observations from preferences', () => {
     store.storeModelPerformance(
-      'claude' as CliName,
+      'claude',
       'coding',
       makePerformance({
         observations: 1, // below minObservations of 3
@@ -250,7 +250,7 @@ describe('RoutingContextStore Performance', () => {
     // 10 observations with minObservations=3 and confidenceThreshold=0.6
     // confidence = min(1, 10 / (3*2)) = 1.0 >= 0.6
     store.storeModelPerformance(
-      'claude' as CliName,
+      'claude',
       'coding',
       makePerformance({
         avgQuality: 0.9,
@@ -265,7 +265,7 @@ describe('RoutingContextStore Performance', () => {
 
   it('returns undefined recommendation when insufficient confidence', () => {
     store.storeModelPerformance(
-      'claude' as CliName,
+      'claude',
       'coding',
       makePerformance({
         observations: 3, // confidence = min(1, 3 / (3*2)) = 0.5 < 0.6
@@ -347,7 +347,7 @@ describe('RoutingContextStore Action Cache', () => {
   });
 
   it('caches and retrieves actions', () => {
-    store.cacheAction('build-project', 'claude' as CliName, { output: 'success' }, 500);
+    store.cacheAction('build-project', 'claude', { output: 'success' }, 500);
     const cached = store.getCachedAction('build-project');
     expect(cached).toBeDefined();
     expect(cached?.action).toBe('build-project');
@@ -361,7 +361,7 @@ describe('RoutingContextStore Action Cache', () => {
   });
 
   it('tracks cache hits and misses', () => {
-    store.cacheAction('action1', 'claude' as CliName, 'result', 100);
+    store.cacheAction('action1', 'claude', 'result', 100);
 
     store.getCachedAction('action1'); // hit
     store.getCachedAction('action1'); // hit
@@ -374,7 +374,7 @@ describe('RoutingContextStore Action Cache', () => {
 
   it('expires cached actions after TTL', () => {
     const shortTtl = new RoutingContextStore({ actionCacheTtlMs: 1 });
-    shortTtl.cacheAction('action1', 'claude' as CliName, 'result', 100);
+    shortTtl.cacheAction('action1', 'claude', 'result', 100);
 
     // Wait a few ms for TTL to expire
     const start = Date.now();
@@ -477,9 +477,9 @@ describe('RoutingContextStore unified methods', () => {
 
   it('returns comprehensive stats', () => {
     store.storePreference(makePreference('dp-1'));
-    store.storeModelPerformance('claude' as CliName, 'coding', makePerformance());
+    store.storeModelPerformance('claude', 'coding', makePerformance());
     store.recordExperience('wf', ['claude'] as CliName[], true, 1000);
-    store.cacheAction('action1', 'claude' as CliName, 'result', 100);
+    store.cacheAction('action1', 'claude', 'result', 100);
     store.recordRoutingDecision(makeDecision());
     store.recordTaskOutcome(makeOutcome());
 
@@ -494,8 +494,8 @@ describe('RoutingContextStore unified methods', () => {
 
   it('clears all data', () => {
     store.storePreference(makePreference('dp-1'));
-    store.storeModelPerformance('claude' as CliName, 'coding', makePerformance());
-    store.cacheAction('action1', 'claude' as CliName, 'result', 100);
+    store.storeModelPerformance('claude', 'coding', makePerformance());
+    store.cacheAction('action1', 'claude', 'result', 100);
     store.getCachedAction('action1'); // cache hit
     store.recordRoutingDecision(makeDecision());
     store.recordTaskOutcome(makeOutcome());
@@ -513,7 +513,7 @@ describe('RoutingContextStore unified methods', () => {
 
   it('cleanup removes expired cache entries', () => {
     const shortTtl = new RoutingContextStore({ actionCacheTtlMs: 1 });
-    shortTtl.cacheAction('action1', 'claude' as CliName, 'result', 100);
+    shortTtl.cacheAction('action1', 'claude', 'result', 100);
 
     const start = Date.now();
     while (Date.now() - start < 5) {
@@ -534,9 +534,9 @@ describe('RoutingContextStore serialization', () => {
   it('round-trips data through toJSON/fromJSON', () => {
     const store = new RoutingContextStore();
     store.storePreference(makePreference('dp-1'));
-    store.storeModelPerformance('claude' as CliName, 'coding', makePerformance());
+    store.storeModelPerformance('claude', 'coding', makePerformance());
     store.recordExperience('wf', ['claude'] as CliName[], true, 1000);
-    store.cacheAction('action1', 'claude' as CliName, 'result', 100);
+    store.cacheAction('action1', 'claude', 'result', 100);
     store.getCachedAction('action1'); // cache hit
     store.getCachedAction('unknown'); // cache miss
     store.recordRoutingDecision(makeDecision());

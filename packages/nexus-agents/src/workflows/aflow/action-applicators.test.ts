@@ -22,8 +22,7 @@ import type { WorkflowDefinition, WorkflowStep } from '../../core/index.js';
 // Fixtures
 // ============================================================================
 
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-function makeWorkflow(overrides: Partial<WorkflowDefinition> = {}) {
+function makeWorkflow(overrides: Partial<WorkflowDefinition> = {}): WorkflowDefinition {
   return {
     name: 'test',
     version: '1.0.0',
@@ -39,7 +38,7 @@ function makeWorkflow(overrides: Partial<WorkflowDefinition> = {}) {
       },
     ],
     ...overrides,
-  } as WorkflowDefinition;
+  };
 }
 
 // ============================================================================
@@ -210,7 +209,7 @@ describe('applyModifications', () => {
     agent: 'code_expert',
     action: 'implement',
     inputs: {},
-  } as WorkflowStep;
+  };
 
   it('applies timeout modification', () => {
     const result = applyModifications(step, { timeout: 5000 });

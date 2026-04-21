@@ -34,7 +34,7 @@ function createOptions(overrides: Partial<MemoryInitOptions> = {}): MemoryInitOp
     role: 'code_expert' as const,
     logger: createMockLogger(),
     ...overrides,
-  } as unknown as MemoryInitOptions;
+  };
   return opts;
 }
 

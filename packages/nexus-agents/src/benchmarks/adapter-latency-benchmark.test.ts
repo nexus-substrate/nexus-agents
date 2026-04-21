@@ -43,7 +43,7 @@ function makeMockAdapter(
             resolve({
               ok: true,
               value: { text: 'Mock response', model: 'mock-model' },
-            } as Result<CliResponse, CliError>);
+            });
           }
         }, latencyMs);
       })

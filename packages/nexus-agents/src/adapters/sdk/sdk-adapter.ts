@@ -211,7 +211,7 @@ export class SdkAdapter extends BaseAdapter {
 
     // AI SDK is an optional peer dependency — validate shape at runtime
     const aiModule = await import('ai');
-    this.sdkFunctions = extractAiSdkFunctions(aiModule as Record<string, unknown>);
+    this.sdkFunctions = extractAiSdkFunctions(aiModule);
   }
 
   /**
@@ -225,22 +225,19 @@ export class SdkAdapter extends BaseAdapter {
     switch (this.sdkProviderId) {
       case 'anthropic': {
         const mod = await import('@ai-sdk/anthropic');
-        const factory = extractProviderFactory(mod as Record<string, unknown>, 'createAnthropic');
+        const factory = extractProviderFactory(mod, 'createAnthropic');
         const provider = factory({ apiKey });
         return { model: provider(this.modelId) };
       }
       case 'openai': {
         const mod = await import('@ai-sdk/openai');
-        const factory = extractProviderFactory(mod as Record<string, unknown>, 'createOpenAI');
+        const factory = extractProviderFactory(mod, 'createOpenAI');
         const provider = factory({ apiKey });
         return { model: provider(this.modelId) };
       }
       case 'google': {
         const mod = await import('@ai-sdk/google');
-        const factory = extractProviderFactory(
-          mod as Record<string, unknown>,
-          'createGoogleGenerativeAI'
-        );
+        const factory = extractProviderFactory(mod, 'createGoogleGenerativeAI');
         const provider = factory({ apiKey });
         return { model: provider(this.modelId) };
       }

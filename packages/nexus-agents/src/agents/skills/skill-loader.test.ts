@@ -23,7 +23,6 @@ import type { SkillRBAC } from './skill-security.js';
 import type {
   AgentRole,
   IAgent,
-  AgentState,
   AgentCapability,
   Task,
   TaskResult,
@@ -86,7 +85,7 @@ function createMockAgent(role: AgentRole, id: string = 'test-agent'): IAgent {
   return {
     id,
     role,
-    state: 'idle' as AgentState,
+    state: 'idle',
     capabilities: ['task_execution'] as readonly AgentCapability[],
     execute: (_task: Task): Promise<Result<TaskResult, AgentError>> => {
       return Promise.resolve({

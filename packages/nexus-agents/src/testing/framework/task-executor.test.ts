@@ -23,8 +23,7 @@ import type { ICliAdapter } from '../../cli-adapters/types.js';
 // Fixtures
 // ============================================================================
 
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-function makeEvalTask(overrides: Partial<EvaluationTask> = {}) {
+function makeEvalTask(overrides: Partial<EvaluationTask> = {}): EvaluationTask {
   return {
     id: 'eval-1',
     name: 'Test Task',
@@ -33,18 +32,17 @@ function makeEvalTask(overrides: Partial<EvaluationTask> = {}) {
     difficulty: 'easy',
     expectedTaskType: 'code_implementation',
     ...overrides,
-  } as EvaluationTask;
+  };
 }
 
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-function makeRubricScore(overrides: Partial<RubricScore> = {}) {
+function makeRubricScore(overrides: Partial<RubricScore> = {}): RubricScore {
   return {
     overallScore: 0.8,
     criterionScores: [],
     rubricId: 'test',
     timestamp: '2026-01-01T00:00:00-05:00',
     ...overrides,
-  } as RubricScore;
+  };
 }
 
 // ============================================================================

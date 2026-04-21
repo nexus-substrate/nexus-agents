@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type { CliName } from '../types.js';
+import type {} from '../types.js';
 import {
   CODEX_LEGACY_DEFAULTS,
   createCodexError,
@@ -40,7 +40,7 @@ describe('CODEX_LEGACY_DEFAULTS', () => {
 
 describe('createCodexError', () => {
   it('creates error with retryable flag for retryable codes', () => {
-    const error = createCodexError('RATE_LIMITED', 'Too fast', 'codex' as CliName);
+    const error = createCodexError('RATE_LIMITED', 'Too fast', 'codex');
     expect(error.code).toBe('RATE_LIMITED');
     expect(error.message).toBe('Too fast');
     expect(error.cli).toBe('codex');
@@ -48,28 +48,26 @@ describe('createCodexError', () => {
   });
 
   it('creates non-retryable error for non-retryable codes', () => {
-    const error = createCodexError('PARSE_ERROR', 'Bad input', 'codex' as CliName);
+    const error = createCodexError('PARSE_ERROR', 'Bad input', 'codex');
     expect(error.retryable).toBe(false);
   });
 
   it('marks TIMEOUT as retryable', () => {
-    expect(createCodexError('TIMEOUT', 'Timed out', 'codex' as CliName).retryable).toBe(true);
+    expect(createCodexError('TIMEOUT', 'Timed out', 'codex').retryable).toBe(true);
   });
 
   it('marks CONNECTION_ERROR as retryable', () => {
-    expect(
-      createCodexError('CONNECTION_ERROR', 'Lost connection', 'codex' as CliName).retryable
-    ).toBe(true);
+    expect(createCodexError('CONNECTION_ERROR', 'Lost connection', 'codex').retryable).toBe(true);
   });
 
   it('includes cause when provided', () => {
     const cause = new Error('Root cause');
-    const error = createCodexError('UNKNOWN', 'Something', 'codex' as CliName, cause);
+    const error = createCodexError('UNKNOWN', 'Something', 'codex', cause);
     expect(error.cause).toBe(cause);
   });
 
   it('omits cause when not provided', () => {
-    const error = createCodexError('UNKNOWN', 'Something', 'codex' as CliName);
+    const error = createCodexError('UNKNOWN', 'Something', 'codex');
     expect('cause' in error).toBe(false);
   });
 });

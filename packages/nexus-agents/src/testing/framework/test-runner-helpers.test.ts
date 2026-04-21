@@ -5,7 +5,7 @@
 
 import { describe, it, expect } from 'vitest';
 import type { EvaluationTask, TestRunResult, TaskTestResult } from './types.js';
-import type { CliName } from '../../cli-adapters/types.js';
+import type {} from '../../cli-adapters/types.js';
 import { filterTasksByCli, createRunCompleteLog } from './test-runner-helpers.js';
 
 // ============================================================================
@@ -29,7 +29,7 @@ function makeTaskResult(overrides: Partial<TaskTestResult> = {}): TaskTestResult
     task: makeTask(),
     success: true,
     durationMs: 100,
-    cli: 'claude' as CliName,
+    cli: 'claude',
     response: 'output',
     rubricScore: {
       overallScore: 0.8,
@@ -41,7 +41,7 @@ function makeTaskResult(overrides: Partial<TaskTestResult> = {}): TaskTestResult
     costUsd: 0.01,
     timestamp: '2026-01-01T00:00:00Z',
     ...overrides,
-  } as TaskTestResult;
+  };
 }
 
 // ============================================================================
@@ -51,35 +51,35 @@ function makeTaskResult(overrides: Partial<TaskTestResult> = {}): TaskTestResult
 describe('filterTasksByCli', () => {
   it('includes tasks with no preferred CLIs', () => {
     const tasks = [makeTask({ id: 't1' })];
-    const result = filterTasksByCli(tasks, ['claude' as CliName]);
+    const result = filterTasksByCli(tasks, ['claude']);
     expect(result).toHaveLength(1);
   });
 
   it('includes tasks with matching preferred CLI', () => {
-    const tasks = [makeTask({ id: 't1', preferredClis: ['claude' as CliName] })];
-    const result = filterTasksByCli(tasks, ['claude' as CliName]);
+    const tasks = [makeTask({ id: 't1', preferredClis: ['claude'] })];
+    const result = filterTasksByCli(tasks, ['claude']);
     expect(result).toHaveLength(1);
   });
 
   it('excludes tasks with non-matching preferred CLI', () => {
-    const tasks = [makeTask({ id: 't1', preferredClis: ['gemini' as CliName] })];
-    const result = filterTasksByCli(tasks, ['claude' as CliName]);
+    const tasks = [makeTask({ id: 't1', preferredClis: ['gemini'] })];
+    const result = filterTasksByCli(tasks, ['claude']);
     expect(result).toHaveLength(0);
   });
 
   it('includes tasks with empty preferredClis array', () => {
     const tasks = [makeTask({ id: 't1', preferredClis: [] })];
-    const result = filterTasksByCli(tasks, ['claude' as CliName]);
+    const result = filterTasksByCli(tasks, ['claude']);
     expect(result).toHaveLength(1);
   });
 
   it('handles multiple CLIs', () => {
     const tasks = [
-      makeTask({ id: 't1', preferredClis: ['claude' as CliName] }),
-      makeTask({ id: 't2', preferredClis: ['gemini' as CliName] }),
-      makeTask({ id: 't3', preferredClis: ['codex' as CliName] }),
+      makeTask({ id: 't1', preferredClis: ['claude'] }),
+      makeTask({ id: 't2', preferredClis: ['gemini'] }),
+      makeTask({ id: 't3', preferredClis: ['codex'] }),
     ];
-    const result = filterTasksByCli(tasks, ['claude' as CliName, 'gemini' as CliName]);
+    const result = filterTasksByCli(tasks, ['claude', 'gemini']);
     expect(result).toHaveLength(2);
   });
 });

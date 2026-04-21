@@ -208,7 +208,7 @@ export abstract class BaseAgent implements IAgent {
   async initialize(ctx: AgentContext): Promise<Result<void, AgentError>> {
     const initCtx = buildInitializationContext(this.contextState);
     const result = await performInitialization(initCtx, ctx);
-    if (!result.ok) return result as Result<void, AgentError>;
+    if (!result.ok) return result;
     this.config = ctx.config;
     this.sharedState = ctx.sharedState ?? {};
     if (result.value.memoryState !== null) this.memoryState = result.value.memoryState;

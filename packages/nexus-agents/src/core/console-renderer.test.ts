@@ -5,7 +5,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { startConsoleRenderer } from './console-renderer.js';
 import { withStep } from './with-step.js';
 import { stepBus } from './step-bus.js';
-import type { StepEvent } from './step-events.js';
+import type {} from './step-events.js';
 
 describe('ConsoleRenderer', () => {
   let lines: string[];
@@ -93,7 +93,7 @@ describe('ConsoleRenderer', () => {
       kind: 'pipeline.stage',
       durationMs: 2300,
       status: 'ok',
-    } as StepEvent);
+    });
     expect(lines[0]).toMatch(/2\.3s/);
   });
 });

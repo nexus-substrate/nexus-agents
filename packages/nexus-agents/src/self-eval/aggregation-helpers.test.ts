@@ -52,7 +52,7 @@ function makeResult(overrides: Partial<AggregatedResult> = {}): AggregatedResult
       },
     ],
     ...overrides,
-  } as AggregatedResult;
+  };
 }
 
 // ============================================================================

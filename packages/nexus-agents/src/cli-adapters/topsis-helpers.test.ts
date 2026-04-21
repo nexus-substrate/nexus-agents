@@ -21,7 +21,7 @@ import {
 
 function makeProfile(overrides: Partial<TopsisModelProfile> = {}): TopsisModelProfile {
   return {
-    cliName: 'claude' as CliName,
+    cliName: 'claude',
     capabilities: { reasoning: 9, codeGeneration: 8, speed: 6, contextWindow: 200000, cost: 5 },
     costPerMillionInput: 3.0,
     costPerMillionOutput: 15.0,

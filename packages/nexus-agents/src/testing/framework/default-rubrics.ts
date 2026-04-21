@@ -9,36 +9,6 @@
 import type { EvaluationRubric } from './types.js';
 
 /**
- * Configuration for pattern matching scoring.
- */
-interface PatternMatchConfig {
-  readonly patterns?: readonly string[];
-  readonly caseSensitive?: boolean;
-  readonly matchAll?: boolean;
-  readonly [key: string]: unknown;
-}
-
-/**
- * Configuration for keyword presence scoring.
- */
-interface KeywordPresenceConfig {
-  readonly keywords?: readonly string[];
-  readonly minCount?: number;
-  readonly caseSensitive?: boolean;
-  readonly [key: string]: unknown;
-}
-
-/**
- * Configuration for length check scoring.
- */
-interface LengthCheckConfig {
-  readonly minLength?: number;
-  readonly maxLength?: number;
-  readonly targetLength?: number;
-  readonly [key: string]: unknown;
-}
-
-/**
  * Default evaluation rubrics for common task categories.
  */
 export const DEFAULT_RUBRICS: readonly EvaluationRubric[] = [
@@ -54,21 +24,21 @@ export const DEFAULT_RUBRICS: readonly EvaluationRubric[] = [
         config: {
           keywords: ['function', 'const', 'let', 'class', 'return', 'async', '=>'],
           minCount: 2,
-        } as KeywordPresenceConfig,
+        },
       },
       {
         id: 'pattern-coverage',
         description: 'Response includes expected patterns',
         weight: 0.4,
         scoringFunction: 'pattern_match',
-        config: { matchAll: false } as PatternMatchConfig,
+        config: { matchAll: false },
       },
       {
         id: 'response-length',
         description: 'Response has appropriate length',
         weight: 0.3,
         scoringFunction: 'length_check',
-        config: { minLength: 50, maxLength: 10000 } as LengthCheckConfig,
+        config: { minLength: 50, maxLength: 10000 },
       },
     ],
   },
@@ -81,14 +51,14 @@ export const DEFAULT_RUBRICS: readonly EvaluationRubric[] = [
         description: 'Identifies issues in the code',
         weight: 0.4,
         scoringFunction: 'pattern_match',
-        config: { matchAll: false } as PatternMatchConfig,
+        config: { matchAll: false },
       },
       {
         id: 'explanation-quality',
         description: 'Provides clear explanations',
         weight: 0.3,
         scoringFunction: 'length_check',
-        config: { minLength: 100, maxLength: 5000 } as LengthCheckConfig,
+        config: { minLength: 100, maxLength: 5000 },
       },
       {
         id: 'fix-suggestion',
@@ -98,7 +68,7 @@ export const DEFAULT_RUBRICS: readonly EvaluationRubric[] = [
         config: {
           keywords: ['fix', 'change', 'instead', 'should', 'recommend', 'suggest', 'better'],
           minCount: 2,
-        } as KeywordPresenceConfig,
+        },
       },
     ],
   },
@@ -114,21 +84,21 @@ export const DEFAULT_RUBRICS: readonly EvaluationRubric[] = [
         config: {
           keywords: ['service', 'component', 'module', 'layer', 'api', 'database', 'interface'],
           minCount: 3,
-        } as KeywordPresenceConfig,
+        },
       },
       {
         id: 'pattern-coverage',
         description: 'Response includes expected patterns',
         weight: 0.4,
         scoringFunction: 'pattern_match',
-        config: { matchAll: false } as PatternMatchConfig,
+        config: { matchAll: false },
       },
       {
         id: 'thoroughness',
         description: 'Provides thorough analysis',
         weight: 0.3,
         scoringFunction: 'length_check',
-        config: { minLength: 200, maxLength: 15000 } as LengthCheckConfig,
+        config: { minLength: 200, maxLength: 15000 },
       },
     ],
   },
@@ -144,21 +114,21 @@ export const DEFAULT_RUBRICS: readonly EvaluationRubric[] = [
         config: {
           keywords: ['describe', 'it', 'test', 'expect', 'assert', 'mock', 'beforeEach'],
           minCount: 3,
-        } as KeywordPresenceConfig,
+        },
       },
       {
         id: 'pattern-coverage',
         description: 'Response includes expected patterns',
         weight: 0.4,
         scoringFunction: 'pattern_match',
-        config: { matchAll: false } as PatternMatchConfig,
+        config: { matchAll: false },
       },
       {
         id: 'test-count',
         description: 'Contains multiple test cases',
         weight: 0.2,
         scoringFunction: 'length_check',
-        config: { minLength: 100, maxLength: 10000 } as LengthCheckConfig,
+        config: { minLength: 100, maxLength: 10000 },
       },
     ],
   },
@@ -174,21 +144,21 @@ export const DEFAULT_RUBRICS: readonly EvaluationRubric[] = [
         config: {
           keywords: ['@param', '@returns', '@example', '@description', '/**', '*/'],
           minCount: 2,
-        } as KeywordPresenceConfig,
+        },
       },
       {
         id: 'pattern-coverage',
         description: 'Response includes expected patterns',
         weight: 0.4,
         scoringFunction: 'pattern_match',
-        config: { matchAll: false } as PatternMatchConfig,
+        config: { matchAll: false },
       },
       {
         id: 'content-length',
         description: 'Appropriate documentation length',
         weight: 0.2,
         scoringFunction: 'length_check',
-        config: { minLength: 50, maxLength: 5000 } as LengthCheckConfig,
+        config: { minLength: 50, maxLength: 5000 },
       },
     ],
   },
@@ -201,14 +171,14 @@ export const DEFAULT_RUBRICS: readonly EvaluationRubric[] = [
         description: 'Addresses the full context',
         weight: 0.5,
         scoringFunction: 'pattern_match',
-        config: { matchAll: false } as PatternMatchConfig,
+        config: { matchAll: false },
       },
       {
         id: 'thoroughness',
         description: 'Provides thorough analysis',
         weight: 0.5,
         scoringFunction: 'length_check',
-        config: { minLength: 200, maxLength: 20000 } as LengthCheckConfig,
+        config: { minLength: 200, maxLength: 20000 },
       },
     ],
   },

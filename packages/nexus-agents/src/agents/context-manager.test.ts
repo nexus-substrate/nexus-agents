@@ -3,13 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
-import type {
-  IModelAdapter,
-  ILogger,
-  CompletionResponse,
-  StreamChunk,
-  ModelCapability,
-} from '../core/index.js';
+import type { IModelAdapter, ILogger, CompletionResponse, StreamChunk } from '../core/index.js';
 import { ok, ValidationError } from '../core/index.js';
 import {
   ContextManager,
@@ -57,7 +51,7 @@ function createMockAdapter(): IModelAdapter {
   return {
     providerId: 'test-provider',
     modelId: 'test-model',
-    capabilities: ['completion' as ModelCapability],
+    capabilities: ['completion'],
     complete: vi.fn().mockResolvedValue(ok(mockResponse)),
     stream: vi.fn().mockImplementation(function* (): Iterable<StreamChunk> {
       yield { type: 'message_start', message: { model: 'test-model' } };

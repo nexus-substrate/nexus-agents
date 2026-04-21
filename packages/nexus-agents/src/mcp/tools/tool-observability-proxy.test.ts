@@ -74,7 +74,7 @@ describe('createToolObservabilityProxy', () => {
 
     proxy.registerTool(
       'test_tool',
-      {} as never,
+      {},
       mockHandler({ content: [{ type: 'text', text: 'ok' }] }) as never
     );
 
@@ -101,7 +101,7 @@ describe('createToolObservabilityProxy', () => {
     const mock = createMockServer();
     const proxy = createToolObservabilityProxy(mock as never, eventBus);
 
-    proxy.registerTool('failing_tool', {} as never, failingHandler('test failure') as never);
+    proxy.registerTool('failing_tool', {}, failingHandler('test failure'));
 
     const entry = mock.registered.get('failing_tool');
     expect(entry).toBeDefined();
@@ -118,8 +118,8 @@ describe('createToolObservabilityProxy', () => {
     const mock = createMockServer();
     const proxy = createToolObservabilityProxy(mock as never, eventBus);
 
-    proxy.registerTool('tool_a', {} as never, mockHandler() as never);
-    proxy.registerTool('tool_b', {} as never, mockHandler() as never);
+    proxy.registerTool('tool_a', {}, mockHandler() as never);
+    proxy.registerTool('tool_b', {}, mockHandler() as never);
 
     await mock.registered.get('tool_a')!.cb({}, {});
     await mock.registered.get('tool_b')!.cb({}, {});
@@ -139,7 +139,7 @@ describe('createToolObservabilityProxy', () => {
     const proxy = createToolObservabilityProxy(mock as never, eventBus);
 
     const config = { title: 'My Tool', description: 'Does stuff' };
-    proxy.registerTool('configured_tool', config as never, mockHandler() as never);
+    proxy.registerTool('configured_tool', config, mockHandler() as never);
 
     const entry = mock.registered.get('configured_tool');
     expect(entry).toBeDefined();

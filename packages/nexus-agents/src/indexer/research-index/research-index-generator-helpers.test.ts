@@ -45,7 +45,7 @@ function makeIndex(overrides: Partial<ResearchIndex> = {}): ResearchIndex {
       topicStats: [],
     },
     ...overrides,
-  } as ResearchIndex;
+  };
 }
 
 function makeTechnique(overrides: Partial<ResearchTechniqueWithId> = {}): ResearchTechniqueWithId {

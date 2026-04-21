@@ -39,7 +39,7 @@ function readVersionFromPackage(): string {
   try {
     const raw: unknown = JSON.parse(readFileSync('package.json', 'utf-8'));
     if (typeof raw === 'object' && raw !== null && 'version' in raw) {
-      const pkg = raw as { version: unknown };
+      const pkg = raw;
       return typeof pkg.version === 'string' ? pkg.version : 'unknown';
     }
     return 'unknown';

@@ -629,7 +629,7 @@ describe('manifest extraction patterns', () => {
     };
 
     const extracted = module.default ?? module.manifest ?? module;
-    expect((extracted as { name: string }).name).toBe('from-default');
+    expect(extracted.name).toBe('from-default');
   });
 
   it('should use named manifest if no default', () => {
@@ -638,7 +638,7 @@ describe('manifest extraction patterns', () => {
     };
 
     const extracted = module.manifest ?? module;
-    expect((extracted as { name: string }).name).toBe('from-manifest');
+    expect(extracted.name).toBe('from-manifest');
   });
 
   it('should use module itself if no default or manifest', () => {

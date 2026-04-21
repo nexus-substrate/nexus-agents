@@ -357,7 +357,7 @@ That's my vote.`;
         stream: vi.fn(),
         countTokens: vi.fn().mockResolvedValue(100),
         validateConfig: vi.fn().mockReturnValue({ ok: true }),
-      } as unknown as IModelAdapter;
+      };
     }
 
     it('should return successful vote on first attempt', async () => {
@@ -527,7 +527,7 @@ That's my vote.`;
         stream: vi.fn(),
         countTokens: vi.fn().mockResolvedValue(100),
         validateConfig: vi.fn().mockReturnValue({ ok: true }),
-      } as unknown as IModelAdapter;
+      };
 
       const results = await collectRealVotes({
         roles: ['architect'],

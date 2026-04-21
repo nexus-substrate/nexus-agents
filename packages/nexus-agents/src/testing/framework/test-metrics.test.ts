@@ -199,7 +199,7 @@ describe('computeCategoryMetrics', () => {
     ];
     const metrics = computeCategoryMetrics(results);
     expect(metrics.size).toBe(2);
-    expect(metrics.get('code_generation' as never)?.taskCount).toBe(1);
+    expect(metrics.get('code_generation')?.taskCount).toBe(1);
   });
 
   it('identifies best CLI for each category', () => {
@@ -216,7 +216,7 @@ describe('computeCategoryMetrics', () => {
       }),
     ];
     const metrics = computeCategoryMetrics(results);
-    expect(metrics.get('code_generation' as never)?.bestCli).toBe('claude');
+    expect(metrics.get('code_generation')?.bestCli).toBe('claude');
   });
 });
 
@@ -232,8 +232,8 @@ describe('computeDifficultyMetrics', () => {
     ];
     const metrics = computeDifficultyMetrics(results);
     expect(metrics.size).toBe(2);
-    expect(metrics.get('easy' as never)?.taskCount).toBe(1);
-    expect(metrics.get('hard' as never)?.taskCount).toBe(1);
+    expect(metrics.get('easy')?.taskCount).toBe(1);
+    expect(metrics.get('hard')?.taskCount).toBe(1);
   });
 });
 

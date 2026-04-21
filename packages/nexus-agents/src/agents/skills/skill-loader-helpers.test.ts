@@ -32,7 +32,7 @@ function makeSkill(overrides: Partial<Skill> = {}): Skill {
     id: 'skill-1',
     name: 'Test Skill',
     description: 'A test skill',
-    category: 'general' as SkillCategory,
+    category: 'general',
     complexity: 'simple',
     code: 'console.log("test")',
     dependencies: [],
@@ -66,20 +66,20 @@ describe('createLoaderError', () => {
 
 describe('findMappingForRole', () => {
   const mappings: RoleSkillMapping[] = [
-    { role: 'code_expert' as AgentRole, requiredCategories: ['code-generation'] },
-    { role: 'security_expert' as AgentRole, requiredCategories: ['code-analysis'] },
+    { role: 'code_expert', requiredCategories: ['code-generation'] },
+    { role: 'security_expert', requiredCategories: ['code-analysis'] },
   ];
 
   it('finds mapping from index', () => {
     const index = new Map<AgentRole, RoleSkillMapping>();
-    index.set('code_expert' as AgentRole, mappings[0]!);
-    const result = findMappingForRole('code_expert' as AgentRole, index, mappings);
+    index.set('code_expert', mappings[0]!);
+    const result = findMappingForRole('code_expert', index, mappings);
     expect(result).toBe(mappings[0]);
   });
 
   it('falls back to linear search when not in index', () => {
     const emptyIndex = new Map<AgentRole, RoleSkillMapping>();
-    const result = findMappingForRole('security_expert' as AgentRole, emptyIndex, mappings);
+    const result = findMappingForRole('security_expert', emptyIndex, mappings);
     expect(result).toBe(mappings[1]);
   });
 
@@ -200,8 +200,8 @@ describe('getCategoriesFromSkills', () => {
     ];
     const cats = getCategoriesFromSkills(skills);
     expect(cats.size).toBe(2);
-    expect(cats.has('testing' as SkillCategory)).toBe(true);
-    expect(cats.has('general' as SkillCategory)).toBe(true);
+    expect(cats.has('testing')).toBe(true);
+    expect(cats.has('general')).toBe(true);
   });
 });
 
@@ -217,8 +217,8 @@ describe('countSkillsByCategory', () => {
       makeSkill({ id: 's3', category: 'general' as SkillCategory }),
     ];
     const counts = countSkillsByCategory(skills);
-    expect(counts.get('testing' as SkillCategory)).toBe(2);
-    expect(counts.get('general' as SkillCategory)).toBe(1);
+    expect(counts.get('testing')).toBe(2);
+    expect(counts.get('general')).toBe(1);
   });
 
   it('returns empty map for no skills', () => {
@@ -233,7 +233,7 @@ describe('countSkillsByCategory', () => {
 describe('getAllCategoriesFromMapping', () => {
   it('returns required categories only when no optional', () => {
     const mapping: RoleSkillMapping = {
-      role: 'code_expert' as AgentRole,
+      role: 'code_expert',
       requiredCategories: ['code-generation', 'testing'],
     };
     const cats = getAllCategoriesFromMapping(mapping);
@@ -244,7 +244,7 @@ describe('getAllCategoriesFromMapping', () => {
 
   it('combines required and optional (deduped)', () => {
     const mapping: RoleSkillMapping = {
-      role: 'code_expert' as AgentRole,
+      role: 'code_expert',
       requiredCategories: ['code-generation', 'testing'],
       optionalCategories: ['testing', 'debugging'],
     };

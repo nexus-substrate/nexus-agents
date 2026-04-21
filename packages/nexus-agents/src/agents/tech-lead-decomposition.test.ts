@@ -97,20 +97,12 @@ describe('heuristicDecomposition', () => {
 
   describe('generic task type', () => {
     it('creates 3 subtasks for unknown type', () => {
-      const subtasks = heuristicDecomposition(
-        makeTask(),
-        makeAnalysis('research' as TaskAnalysis['taskType']),
-        10
-      );
+      const subtasks = heuristicDecomposition(makeTask(), makeAnalysis('research'), 10);
       expect(subtasks).toHaveLength(3);
     });
 
     it('uses task complexity for main subtask', () => {
-      const subtasks = heuristicDecomposition(
-        makeTask(),
-        makeAnalysis('research' as TaskAnalysis['taskType'], 8),
-        10
-      );
+      const subtasks = heuristicDecomposition(makeTask(), makeAnalysis('research', 8), 10);
       // Second subtask (main execution) should have the complexity
       expect(subtasks[1]?.complexity).toBe(8);
     });

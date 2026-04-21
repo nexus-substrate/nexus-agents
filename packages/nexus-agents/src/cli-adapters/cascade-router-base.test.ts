@@ -122,14 +122,14 @@ describe('CascadeRouterBase', () => {
 
   beforeEach(() => {
     adapters = new Map();
-    adapters.set('claude' as CliName, createMockAdapter('claude' as CliName));
-    adapters.set('gemini' as CliName, createMockAdapter('gemini' as CliName));
-    adapters.set('codex' as CliName, createMockAdapter('codex' as CliName));
+    adapters.set('claude', createMockAdapter('claude'));
+    adapters.set('gemini', createMockAdapter('gemini'));
+    adapters.set('codex', createMockAdapter('codex'));
   });
 
   describe('execute', () => {
     it('should stop at first stage when threshold is met', async () => {
-      const stages: CliName[][] = [['claude' as CliName], ['gemini' as CliName]];
+      const stages: CliName[][] = [['claude'], ['gemini']];
       const router = new TestCascadeRouter(adapters, stages, 0.5);
       const task = createTask();
 
@@ -146,9 +146,9 @@ describe('CascadeRouterBase', () => {
 
     it('should cascade to next stage when threshold is not met', async () => {
       // First stage fails, second stage succeeds
-      adapters.set('claude' as CliName, createMockAdapter('claude' as CliName, undefined, true));
+      adapters.set('claude', createMockAdapter('claude', undefined, true));
 
-      const stages: CliName[][] = [['claude' as CliName], ['gemini' as CliName]];
+      const stages: CliName[][] = [['claude'], ['gemini']];
       const router = new TestCascadeRouter(adapters, stages, 0.5);
       const task = createTask();
 
@@ -163,7 +163,7 @@ describe('CascadeRouterBase', () => {
     });
 
     it('should execute multiple models in parallel within a stage', async () => {
-      const stages: CliName[][] = [['claude' as CliName, 'gemini' as CliName, 'codex' as CliName]];
+      const stages: CliName[][] = [['claude', 'gemini', 'codex']];
       const router = new TestCascadeRouter(adapters, stages, 0.5);
       const task = createTask();
 
@@ -177,16 +177,12 @@ describe('CascadeRouterBase', () => {
     });
 
     it('should respect maxStages configuration', async () => {
-      const stages: CliName[][] = [
-        ['claude' as CliName],
-        ['gemini' as CliName],
-        ['codex' as CliName],
-      ];
+      const stages: CliName[][] = [['claude'], ['gemini'], ['codex']];
 
       // All stages fail
-      adapters.set('claude' as CliName, createMockAdapter('claude' as CliName, undefined, true));
-      adapters.set('gemini' as CliName, createMockAdapter('gemini' as CliName, undefined, true));
-      adapters.set('codex' as CliName, createMockAdapter('codex' as CliName, undefined, true));
+      adapters.set('claude', createMockAdapter('claude', undefined, true));
+      adapters.set('gemini', createMockAdapter('gemini', undefined, true));
+      adapters.set('codex', createMockAdapter('codex', undefined, true));
 
       const router = new TestCascadeRouter(adapters, stages, 1.0);
       const task = createTask();
@@ -201,10 +197,10 @@ describe('CascadeRouterBase', () => {
     });
 
     it('should track stage history correctly', async () => {
-      const stages: CliName[][] = [['claude' as CliName], ['gemini' as CliName]];
+      const stages: CliName[][] = [['claude'], ['gemini']];
 
       // First stage fails, second succeeds
-      adapters.set('claude' as CliName, createMockAdapter('claude' as CliName, undefined, true));
+      adapters.set('claude', createMockAdapter('claude', undefined, true));
 
       const router = new TestCascadeRouter(adapters, stages, 0.5);
       const task = createTask();
@@ -233,7 +229,7 @@ describe('CascadeRouterBase', () => {
     });
 
     it('should use fallback when cascade exhausts without meeting threshold', async () => {
-      const stages: CliName[][] = [['claude' as CliName], ['gemini' as CliName]];
+      const stages: CliName[][] = [['claude'], ['gemini']];
 
       // Both succeed, but with a threshold of 2.0 (impossible), it will exhaust
       const router = new TestCascadeRouter(adapters, stages, 2.0);
@@ -253,11 +249,7 @@ describe('CascadeRouterBase', () => {
   describe('toUnifiedDecision', () => {
     it('should convert cascade result to unified decision format', async () => {
       // Use multiple stages so stopping early produces cost savings
-      const stages: CliName[][] = [
-        ['claude' as CliName],
-        ['gemini' as CliName],
-        ['codex' as CliName],
-      ];
+      const stages: CliName[][] = [['claude'], ['gemini'], ['codex']];
       const router = new TestCascadeRouter(adapters, stages, 0.5);
       const task = createTask();
 
@@ -295,11 +287,7 @@ describe('CascadeRouterBase', () => {
 
   describe('cost savings calculation', () => {
     it('should calculate cost savings when stopping early', async () => {
-      const stages: CliName[][] = [
-        ['claude' as CliName],
-        ['gemini' as CliName],
-        ['codex' as CliName],
-      ];
+      const stages: CliName[][] = [['claude'], ['gemini'], ['codex']];
       const router = new TestCascadeRouter(adapters, stages, 0.5);
       const task = createTask();
 
@@ -313,7 +301,7 @@ describe('CascadeRouterBase', () => {
     });
 
     it('should report zero savings when cascade exhausts', async () => {
-      const stages: CliName[][] = [['claude' as CliName]];
+      const stages: CliName[][] = [['claude']];
       const router = new TestCascadeRouter(adapters, stages, 2.0); // Impossible threshold
       const task = createTask();
 
@@ -328,13 +316,10 @@ describe('CascadeRouterBase', () => {
 
   describe('contributing models', () => {
     it('should track all successful models', async () => {
-      const stages: CliName[][] = [
-        ['claude' as CliName, 'gemini' as CliName],
-        ['codex' as CliName],
-      ];
+      const stages: CliName[][] = [['claude', 'gemini'], ['codex']];
 
       // Make first stage not meet threshold
-      adapters.set('claude' as CliName, createMockAdapter('claude' as CliName, undefined, true));
+      adapters.set('claude', createMockAdapter('claude', undefined, true));
 
       const router = new TestCascadeRouter(adapters, stages, 0.6);
       const task = createTask();

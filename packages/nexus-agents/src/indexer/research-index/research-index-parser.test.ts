@@ -66,7 +66,7 @@ function makeTechnique(overrides: Partial<ResearchTechniqueWithId> = {}): Resear
     related_prs: [],
     dependencies: [],
     ...overrides,
-  } as ResearchTechniqueWithId;
+  };
 }
 
 function makeSource(overrides: Partial<ResearchSourceWithId> = {}): ResearchSourceWithId {

@@ -85,7 +85,7 @@ function createMockCircuitBreaker(overrides: Partial<IBudgetCircuitBreaker> = {}
     addStateChangeListener: vi.fn(),
     removeStateChangeListener: vi.fn(),
     ...overrides,
-  } as IBudgetCircuitBreaker;
+  };
 }
 
 function createMockWorkflow(overrides?: Partial<WorkflowDefinition>): WorkflowDefinition {
@@ -96,7 +96,7 @@ function createMockWorkflow(overrides?: Partial<WorkflowDefinition>): WorkflowDe
     steps: [],
     inputs: [],
     ...overrides,
-  } as WorkflowDefinition;
+  };
 }
 
 function createMockStep(id: string): WorkflowStep {
@@ -105,7 +105,7 @@ function createMockStep(id: string): WorkflowStep {
     agent: 'code_expert',
     action: 'test-action',
     inputs: {},
-  } as WorkflowStep;
+  };
 }
 
 // ============================================================================

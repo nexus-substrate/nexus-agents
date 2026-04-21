@@ -139,7 +139,7 @@ function validateInstance(raw: RawSWEBenchInstance): SWEBenchInstance | null {
   // Build optional properties and merge
   const optionalProps = buildOptionalProps(raw);
 
-  return { ...base, ...optionalProps } as SWEBenchInstance;
+  return { ...base, ...optionalProps };
 }
 
 /**

@@ -341,7 +341,7 @@ describe('analyzeToolForHazards', () => {
 
   it('should return error for invalid tool definition', () => {
     const invalidTool = { name: '', description: 'Test', inputSchema: { type: 'object' } };
-    const result = analyzeToolForHazards(invalidTool as ToolDefinition);
+    const result = analyzeToolForHazards(invalidTool);
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error).toBeInstanceOf(StpaAnalysisError);

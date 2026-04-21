@@ -22,7 +22,7 @@ function makeMessage(overrides: Partial<AgentMessage> = {}): AgentMessage {
     payload: {},
     timestamp: new Date().toISOString(),
     ...overrides,
-  } as AgentMessage;
+  };
 }
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type

@@ -13,13 +13,13 @@ import {
   createSimpleRoutingDecision,
   UnifiedRoutingDecisionSchema,
 } from './unified-routing-types.js';
-import type { CliName } from './types-core.js';
+import type {} from './types-core.js';
 
 describe('UnifiedRoutingDecision', () => {
   describe('RoutingDecisionBuilder', () => {
     it('should build a valid routing decision with all required fields', () => {
       const decision = new RoutingDecisionBuilder()
-        .withSelectedCli('claude' as CliName)
+        .withSelectedCli('claude')
         .withConfidence(0.95)
         .withReason('High quality response expected')
         .withStrategy('composite')
@@ -37,7 +37,7 @@ describe('UnifiedRoutingDecision', () => {
 
     it('should clamp confidence to 0-1 range', () => {
       const decisionHigh = new RoutingDecisionBuilder()
-        .withSelectedCli('claude' as CliName)
+        .withSelectedCli('claude')
         .withConfidence(1.5)
         .withReason('Test')
         .withStrategy('direct')
@@ -47,7 +47,7 @@ describe('UnifiedRoutingDecision', () => {
       expect(decisionHigh.confidence).toBe(1);
 
       const decisionLow = new RoutingDecisionBuilder()
-        .withSelectedCli('claude' as CliName)
+        .withSelectedCli('claude')
         .withConfidence(-0.5)
         .withReason('Test')
         .withStrategy('direct')
@@ -59,12 +59,12 @@ describe('UnifiedRoutingDecision', () => {
 
     it('should include optional fields when set', () => {
       const decision = new RoutingDecisionBuilder()
-        .withSelectedCli('gemini' as CliName)
+        .withSelectedCli('gemini')
         .withConfidence(0.8)
         .withReason('Multimodal task')
         .withStrategy('quality')
         .withDecisionTime(25)
-        .withAlternatives(['claude' as CliName, 'codex' as CliName])
+        .withAlternatives(['claude', 'codex'])
         .withStagesExecuted(['budget', 'topsis', 'linucb'])
         .withBudgetStatus(true)
         .withComplexity('complex')
@@ -84,7 +84,7 @@ describe('UnifiedRoutingDecision', () => {
 
     it('should include cascade-specific fields', () => {
       const decision = new RoutingDecisionBuilder()
-        .withSelectedCli('claude' as CliName)
+        .withSelectedCli('claude')
         .withConfidence(0.9)
         .withReason('Agreement reached')
         .withStrategy('agreement_cascade')
@@ -103,7 +103,7 @@ describe('UnifiedRoutingDecision', () => {
 
     it('should include metadata when set', () => {
       const decision = new RoutingDecisionBuilder()
-        .withSelectedCli('codex' as CliName)
+        .withSelectedCli('codex')
         .withConfidence(0.75)
         .withReason('Code task')
         .withStrategy('zero_router')
@@ -116,7 +116,7 @@ describe('UnifiedRoutingDecision', () => {
 
     it('should merge metadata from multiple calls', () => {
       const decision = new RoutingDecisionBuilder()
-        .withSelectedCli('claude' as CliName)
+        .withSelectedCli('claude')
         .withConfidence(0.9)
         .withReason('Test')
         .withStrategy('direct')
@@ -142,7 +142,7 @@ describe('UnifiedRoutingDecision', () => {
     it('should throw when required field is missing - confidence', () => {
       expect(() =>
         new RoutingDecisionBuilder()
-          .withSelectedCli('claude' as CliName)
+          .withSelectedCli('claude')
           .withReason('Test')
           .withStrategy('direct')
           .withDecisionTime(10)
@@ -153,7 +153,7 @@ describe('UnifiedRoutingDecision', () => {
     it('should throw when required field is missing - reason', () => {
       expect(() =>
         new RoutingDecisionBuilder()
-          .withSelectedCli('claude' as CliName)
+          .withSelectedCli('claude')
           .withConfidence(0.9)
           .withStrategy('direct')
           .withDecisionTime(10)
@@ -164,7 +164,7 @@ describe('UnifiedRoutingDecision', () => {
     it('should throw when required field is missing - strategy', () => {
       expect(() =>
         new RoutingDecisionBuilder()
-          .withSelectedCli('claude' as CliName)
+          .withSelectedCli('claude')
           .withConfidence(0.9)
           .withReason('Test')
           .withDecisionTime(10)
@@ -175,7 +175,7 @@ describe('UnifiedRoutingDecision', () => {
     it('should throw when required field is missing - decisionTimeMs', () => {
       expect(() =>
         new RoutingDecisionBuilder()
-          .withSelectedCli('claude' as CliName)
+          .withSelectedCli('claude')
           .withConfidence(0.9)
           .withReason('Test')
           .withStrategy('direct')
@@ -193,7 +193,7 @@ describe('UnifiedRoutingDecision', () => {
 
   describe('createSimpleRoutingDecision', () => {
     it('should create a minimal routing decision', () => {
-      const decision = createSimpleRoutingDecision('claude' as CliName, 'Direct selection', 5);
+      const decision = createSimpleRoutingDecision('claude', 'Direct selection', 5);
 
       expect(decision.selectedCli).toBe('claude');
       expect(decision.confidence).toBe(1.0);

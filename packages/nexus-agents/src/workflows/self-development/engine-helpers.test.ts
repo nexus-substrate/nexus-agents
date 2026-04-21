@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import type { SelfDevWorkflowState, WorkflowPhase } from './types.js';
+import type { SelfDevWorkflowState } from './types.js';
 import type { WorkflowEvent } from './interfaces.js';
 import { emitEvent, getPhase, updateStatus } from './engine-helpers.js';
 
@@ -60,7 +60,7 @@ describe('getPhase', () => {
   it('returns phase for existing execution', () => {
     const states = new Map<string, SelfDevWorkflowState>();
     states.set('exec-1', {
-      currentPhase: 'implement' as WorkflowPhase,
+      currentPhase: 'implement',
     } as SelfDevWorkflowState);
     expect(getPhase(states, 'exec-1')).toBe('implement');
   });

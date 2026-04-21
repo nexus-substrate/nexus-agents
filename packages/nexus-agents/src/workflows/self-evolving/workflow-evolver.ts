@@ -322,11 +322,7 @@ export class WorkflowEvolver {
     avgFitness: number;
     totalOutcomes: number;
   } {
-    return calculateEvolutionStats(
-      this.getAllVersions(),
-      this.activeVersionId,
-      this.outcomes as Map<string, readonly { success: boolean }[]>
-    );
+    return calculateEvolutionStats(this.getAllVersions(), this.activeVersionId, this.outcomes);
   }
 
   /** Describe version history for debugging. */

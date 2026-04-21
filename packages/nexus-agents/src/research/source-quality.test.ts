@@ -24,7 +24,7 @@ function makeSource(overrides: Partial<ResearchSource> = {}): ResearchSource {
     best_practices: [],
     techniques_extracted: [],
     ...overrides,
-  } as ResearchSource;
+  };
 }
 
 describe('starScore', () => {

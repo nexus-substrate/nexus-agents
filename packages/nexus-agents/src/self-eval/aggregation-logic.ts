@@ -8,7 +8,7 @@
  * (Source: Issue #139, Multi-Agent Evaluation research)
  */
 
-import type { EvaluationResult, Recommendation, EvaluatorRole } from './evaluation-agents.js';
+import type { EvaluationResult, Recommendation } from './evaluation-agents.js';
 import type { ILogger } from '../core/index.js';
 import { createLogger, getTimeProvider } from '../core/index.js';
 import type {
@@ -105,7 +105,7 @@ export class EvaluationAggregator {
 
     auditTrail.push({
       timestamp,
-      agent: 'code-quality' as EvaluatorRole,
+      agent: 'code-quality',
       claim: 'Aggregation started',
       evidence: `${String(evaluations.length)} evaluations received`,
       verified: true,
@@ -113,7 +113,7 @@ export class EvaluationAggregator {
 
     auditTrail.push({
       timestamp: new Date(getTimeProvider().now()),
-      agent: 'code-quality' as EvaluatorRole,
+      agent: 'code-quality',
       claim: `Component classified as ${criticality}`,
       evidence: componentPath,
       verified: true,
@@ -164,7 +164,7 @@ export class EvaluationAggregator {
   ): void {
     auditTrail.push({
       timestamp: new Date(getTimeProvider().now()),
-      agent: 'code-quality' as EvaluatorRole,
+      agent: 'code-quality',
       claim: `Final recommendation: ${recommendation}`,
       evidence: `Confidence: ${confidence.toFixed(2)}, Evidence quality: ${evidenceQuality.toFixed(2)}`,
       verified: true,

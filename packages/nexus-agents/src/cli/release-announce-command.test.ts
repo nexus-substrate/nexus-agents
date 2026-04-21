@@ -65,17 +65,14 @@ function setupReleaseNotesMocks() {
     'abc1234 feat: add orchestration',
     'def5678 fix: resolve timeout',
   ]);
-  vi.mocked(parseConventionalCommit).mockImplementation(
-    (_hash: string, msg: string) =>
-      ({
-        hash: 'abc1234',
-        type: msg.startsWith('feat') ? 'feat' : 'fix',
-        subject: msg.replace(/^(feat|fix): /, ''),
-        message: msg,
-        breaking: false,
-        issues: [],
-      }) as ReturnType<typeof parseConventionalCommit>
-  );
+  vi.mocked(parseConventionalCommit).mockImplementation((_hash: string, msg: string) => ({
+    hash: 'abc1234',
+    type: msg.startsWith('feat') ? 'feat' : 'fix',
+    subject: msg.replace(/^(feat|fix): /, ''),
+    message: msg,
+    breaking: false,
+    issues: [],
+  }));
   vi.mocked(groupCommitsByCategory).mockReturnValue([
     {
       name: 'Added',

@@ -22,8 +22,7 @@ import type { ActionSpaceConfig, TaskSpecification } from './aflow-types.js';
 // Fixtures
 // ============================================================================
 
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-function makeWorkflow(overrides: Partial<WorkflowDefinition> = {}) {
+function makeWorkflow(overrides: Partial<WorkflowDefinition> = {}): WorkflowDefinition {
   return {
     name: 'test',
     version: '1.0.0',
@@ -39,22 +38,20 @@ function makeWorkflow(overrides: Partial<WorkflowDefinition> = {}) {
       },
     ],
     ...overrides,
-  } as WorkflowDefinition;
+  };
 }
 
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-function makeConfig(overrides: Partial<ActionSpaceConfig> = {}) {
+function makeConfig(overrides: Partial<ActionSpaceConfig> = {}): ActionSpaceConfig {
   return {
     availableAgents: ['code_expert', 'testing_expert', 'security_expert'],
     availableActions: ['implement', 'review'],
     defaultTimeout: 60000,
     defaultRetries: 2,
     ...overrides,
-  } as ActionSpaceConfig;
+  } as unknown as ActionSpaceConfig;
 }
 
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-function makeTask(overrides: Partial<TaskSpecification> = {}) {
+function makeTask(overrides: Partial<TaskSpecification> = {}): TaskSpecification {
   return {
     description: 'Build feature',
     requiredCapabilities: ['code'],
@@ -62,7 +59,7 @@ function makeTask(overrides: Partial<TaskSpecification> = {}) {
       requiredAgents: ['code_expert', 'testing_expert'],
     },
     ...overrides,
-  } as TaskSpecification;
+  } as unknown as TaskSpecification;
 }
 
 // ============================================================================

@@ -126,7 +126,7 @@ function makeResult(overrides: Partial<PuppeteerResult> = {}) {
     terminationReason: 'task_complete' as const,
     sessionId: 'session-abc',
     ...overrides,
-  } as PuppeteerResult;
+  };
 }
 
 describe('DEFAULT_LEARNING_CONFIG', () => {
@@ -180,7 +180,7 @@ describe('processOrchestrationForLearning', () => {
       addEpisode: vi.fn().mockImplementation(() => {
         throw new Error('buffer full');
       }),
-    } as unknown as Partial<ExperienceBuffer>);
+    });
     const engine = makeEngine();
     await processOrchestrationForLearning(makeResult(), buffer, engine);
     expect(engine.updatePolicy).not.toHaveBeenCalled();
@@ -249,7 +249,7 @@ describe('processOrchestrationForLearning', () => {
       addEpisode: vi.fn().mockImplementation(() => {
         throw new Error('buffer error');
       }),
-    } as unknown as Partial<ExperienceBuffer>);
+    });
     const engine = makeEngine();
     await processOrchestrationForLearning(makeResult(), buffer, engine);
     expect(engine.updatePolicy).not.toHaveBeenCalled();
@@ -272,7 +272,7 @@ describe('processOrchestrationForLearning', () => {
   it('calls getStats on buffer after adding episode', async () => {
     const buffer = makeBuffer({
       getStats: vi.fn().mockReturnValue(makeBufferStats({ episodeCount: 5 })),
-    } as unknown as Partial<ExperienceBuffer>);
+    });
     await processOrchestrationForLearning(makeResult(), buffer, makeEngine());
     expect(buffer.getStats).toHaveBeenCalled();
   });

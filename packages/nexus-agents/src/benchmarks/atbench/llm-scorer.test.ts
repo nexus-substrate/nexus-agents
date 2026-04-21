@@ -66,7 +66,7 @@ function makeAdapter(
     stream: (() => (async function* () {})()) as never,
     countTokens: () => Promise.resolve(0),
     validateConfig: () => ({ ok: true as const, value: undefined }),
-  } as IModelAdapter;
+  };
 }
 
 describe('formatTrajectoryPrompt', () => {

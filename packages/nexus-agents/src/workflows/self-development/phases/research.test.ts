@@ -55,7 +55,7 @@ function createDeps(overrides?: Partial<SelfDevWorkflowDependencies>) {
   return {
     modelAdapter: createMockAdapter(),
     ...overrides,
-  } as SelfDevWorkflowDependencies;
+  };
 }
 
 function createIssue(overrides?: Partial<AnalyzedIssue>): AnalyzedIssue {

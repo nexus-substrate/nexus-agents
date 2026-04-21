@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { TaskAnalysisSchema, type TaskAnalysis } from './tech-lead-types.js';
+import { TaskAnalysisSchema } from './tech-lead-types.js';
 
 // Read ANALYSIS_PROMPT from the module by importing the source as text — tests
 // from the tech-lead implementation are not exported directly, so we check via
@@ -58,7 +58,7 @@ describe('TaskAnalysis commitment (#1827)', () => {
     const result = TaskAnalysisSchema.safeParse(withCommit);
     expect(result.success).toBe(true);
     if (result.success) {
-      const commit = (result.data as TaskAnalysis).commitment;
+      const commit = result.data.commitment;
       expect(commit?.purpose).toContain('memory leak');
       expect(commit?.constraints).toHaveLength(2);
     }

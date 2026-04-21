@@ -13,19 +13,17 @@ import type { StepExecutor, ExecutionContext } from './parallel-executor.js';
 // Fixtures
 // ============================================================================
 
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-function makeStep(id: string, overrides: Partial<WorkflowStep> = {}) {
-  return { id, agent: 'code_expert', action: 'do', inputs: {}, ...overrides } as WorkflowStep;
+function makeStep(id: string, overrides: Partial<WorkflowStep> = {}): WorkflowStep {
+  return { id, agent: 'code_expert', action: 'do', inputs: {}, ...overrides };
 }
 
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-function makeContext(overrides: Partial<ExecutionContext> = {}) {
+function makeContext(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
   return {
     executionId: 'exec-1',
     stepResults: new Map(),
     inputs: {},
     ...overrides,
-  } as ExecutionContext;
+  };
 }
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
@@ -89,7 +87,7 @@ describe('getFailedSteps', () => {
 
 describe('withRetries', () => {
   it('returns success on first attempt', async () => {
-    const base: StepExecutor = vi.fn() as unknown as StepExecutor;
+    const base: StepExecutor = vi.fn();
     (base as ReturnType<typeof vi.fn>).mockResolvedValue(successResult('a'));
 
     const retrying = withRetries(base);

@@ -74,7 +74,7 @@ function createWrappedRegisterTool(
   return (name: string, config: ToolRegistrationConfig, cb: SdkCallback): unknown => {
     if (typeof cb !== 'function') {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any -- SDK generic boundary
-      return server.registerTool(name, config as any, cb as any);
+      return server.registerTool(name, config as any, cb);
     }
 
     // Wrap SDK callback with gateway tier-aware dispatch.

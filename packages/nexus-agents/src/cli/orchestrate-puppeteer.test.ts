@@ -203,8 +203,8 @@ describe('orchestrate-puppeteer', () => {
   describe('createAgentsFromAdapters', () => {
     it('should create agents from adapters map', () => {
       const adapters = new Map<CliName, ICliAdapter>([
-        ['claude' as CliName, createMockAdapter()],
-        ['codex' as CliName, createMockAdapter()],
+        ['claude', createMockAdapter()],
+        ['codex', createMockAdapter()],
       ]);
 
       const agents = createAgentsFromAdapters(adapters);
@@ -367,7 +367,7 @@ describe('orchestrate-puppeteer', () => {
 
   describe('executeWithPuppeteer', () => {
     it('should execute task successfully with learnable policy', async () => {
-      const adapters = new Map<CliName, ICliAdapter>([['claude' as CliName, createMockAdapter()]]);
+      const adapters = new Map<CliName, ICliAdapter>([['claude', createMockAdapter()]]);
       const options: OrchestrateOptions = { learn: true, task: 'test', policyPath: '/policy.json' };
       const mockPolicy = {
         getParameters: vi.fn(() => ({ weights: { a: 0.1 }, bias: 0.2 })),
@@ -417,7 +417,7 @@ describe('orchestrate-puppeteer', () => {
     });
 
     it('should return error when orchestrator execution fails', async () => {
-      const adapters = new Map<CliName, ICliAdapter>([['claude' as CliName, createMockAdapter()]]);
+      const adapters = new Map<CliName, ICliAdapter>([['claude', createMockAdapter()]]);
       const mockOrchestrator = {
         execute: vi.fn(() => Promise.resolve(createMockPuppeteerResult(false, '', 0, 0))),
       };
@@ -425,7 +425,7 @@ describe('orchestrate-puppeteer', () => {
       (CliAdapterAgent as unknown as Mock).mockImplementation(function () {
         return { id: 'agent-1' };
       });
-      (createRuleBasedPolicy as Mock).mockReturnValue({} as unknown as IPolicyEngine);
+      (createRuleBasedPolicy as Mock).mockReturnValue({});
 
       (PuppeteerOrchestrator as unknown as Mock).mockImplementation(function () {
         return mockOrchestrator;
@@ -450,7 +450,7 @@ describe('orchestrate-puppeteer', () => {
     });
 
     it('should not save policy when learn is false', async () => {
-      const adapters = new Map<CliName, ICliAdapter>([['claude' as CliName, createMockAdapter()]]);
+      const adapters = new Map<CliName, ICliAdapter>([['claude', createMockAdapter()]]);
       const mockOrchestrator = {
         execute: vi.fn(() => Promise.resolve(createMockPuppeteerResult(true, 'result', 1, 1))),
       };
@@ -458,7 +458,7 @@ describe('orchestrate-puppeteer', () => {
       (CliAdapterAgent as unknown as Mock).mockImplementation(function () {
         return { id: 'agent-1' };
       });
-      (createRuleBasedPolicy as Mock).mockReturnValue({} as unknown as IPolicyEngine);
+      (createRuleBasedPolicy as Mock).mockReturnValue({});
 
       (PuppeteerOrchestrator as unknown as Mock).mockImplementation(function () {
         return mockOrchestrator;
@@ -477,7 +477,7 @@ describe('orchestrate-puppeteer', () => {
     });
 
     it('should generate unique task ID using timestamp', async () => {
-      const adapters = new Map<CliName, ICliAdapter>([['claude' as CliName, createMockAdapter()]]);
+      const adapters = new Map<CliName, ICliAdapter>([['claude', createMockAdapter()]]);
       const mockOrchestrator = {
         execute: vi.fn(() => Promise.resolve(createMockPuppeteerResult(true, 'result', 1, 1))),
       };
@@ -485,7 +485,7 @@ describe('orchestrate-puppeteer', () => {
       (CliAdapterAgent as unknown as Mock).mockImplementation(function () {
         return { id: 'agent-1' };
       });
-      (createRuleBasedPolicy as Mock).mockReturnValue({} as unknown as IPolicyEngine);
+      (createRuleBasedPolicy as Mock).mockReturnValue({});
 
       (PuppeteerOrchestrator as unknown as Mock).mockImplementation(function () {
         return mockOrchestrator;

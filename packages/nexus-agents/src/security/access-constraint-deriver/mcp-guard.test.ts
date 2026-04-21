@@ -147,8 +147,8 @@ describe('createAccessPolicyMiddleware', () => {
 
   function makeLogger(): MockLogger {
     return {
-      warn: vi.fn() as unknown as ReturnType<typeof vi.fn>,
-      info: vi.fn() as unknown as ReturnType<typeof vi.fn>,
+      warn: vi.fn(),
+      info: vi.fn(),
     };
   }
 
@@ -156,7 +156,7 @@ describe('createAccessPolicyMiddleware', () => {
     const logger = makeLogger();
     const mw = createAccessPolicyMiddleware({ toolName: 'gh_issue_view', logger: logger as never });
     const next = vi.fn(() => Promise.resolve({ ok: true }));
-    const result = await mw({ a: 1 }, makeCtx(), next as never);
+    const result = await mw({ a: 1 }, makeCtx(), next);
     expect(next).toHaveBeenCalledOnce();
     expect(result).toEqual({ ok: true });
     expect(logger.warn).not.toHaveBeenCalled();

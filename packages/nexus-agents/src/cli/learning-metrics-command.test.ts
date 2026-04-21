@@ -96,7 +96,7 @@ describe('learningMetricsCommand', () => {
     process.stdout.write = vi.fn((chunk: unknown) => {
       stdoutOutput += String(chunk);
       return true;
-    }) as typeof process.stdout.write;
+    });
   });
 
   afterEach(() => {

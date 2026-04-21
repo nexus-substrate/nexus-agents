@@ -32,7 +32,7 @@ beforeEach(() => {
       stdoutOutput.push(chunk);
     }
     return true;
-  }) as typeof process.stdout.write;
+  });
 });
 
 afterEach(() => {

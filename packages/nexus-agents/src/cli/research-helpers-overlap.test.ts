@@ -30,8 +30,7 @@ vi.mock('./research-helpers-io.js', () => ({
 // Fixtures
 // ============================================================================
 
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-function makeTechnique(overrides: Partial<TechniqueEntry> = {}) {
+function makeTechnique(overrides: Partial<TechniqueEntry> = {}): TechniqueEntry {
   return {
     name: 'Test Technique',
     description: 'A test technique',
@@ -49,7 +48,7 @@ function makeTechnique(overrides: Partial<TechniqueEntry> = {}) {
     dependencies: [],
     decision_history: [],
     ...overrides,
-  } as TechniqueEntry;
+  };
 }
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type

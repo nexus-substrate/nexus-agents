@@ -16,11 +16,7 @@ import type {
   CriterionScore,
   TaskCategory,
 } from './types.js';
-import type {
-  PatternMatchConfig,
-  KeywordPresenceConfig,
-  LengthCheckConfig,
-} from './scoring-helpers.js';
+import type {} from './scoring-helpers.js';
 import { scorePatternMatch, scoreKeywordPresence, scoreLengthCheck } from './scoring-helpers.js';
 
 // Re-export from split files
@@ -194,21 +190,11 @@ export class RubricScorer {
   ): number {
     switch (criterion.scoringFunction) {
       case 'pattern_match':
-        return scorePatternMatch(
-          criterion.config as unknown as PatternMatchConfig | undefined,
-          response,
-          task?.expectedPatterns
-        );
+        return scorePatternMatch(criterion.config, response, task?.expectedPatterns);
       case 'keyword_presence':
-        return scoreKeywordPresence(
-          criterion.config as unknown as KeywordPresenceConfig | undefined,
-          response
-        );
+        return scoreKeywordPresence(criterion.config, response);
       case 'length_check':
-        return scoreLengthCheck(
-          criterion.config as unknown as LengthCheckConfig | undefined,
-          response
-        );
+        return scoreLengthCheck(criterion.config, response);
       case 'custom':
         return this.scoreCustom(response);
       default:

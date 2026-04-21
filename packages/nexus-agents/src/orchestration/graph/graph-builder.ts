@@ -17,7 +17,6 @@ import type {
   GraphNode,
   GraphEdge,
   NodeHandler,
-  StateSchema,
   StateFieldSchema,
   StateReducer,
   CompileResult,
@@ -137,7 +136,7 @@ export class GraphBuilder {
     if (reachError !== undefined) return err(reachError);
 
     const entryEdges = this.edges.filter((e) => e.from === START);
-    const stateSchema = Object.fromEntries(this.stateFields) as StateSchema;
+    const stateSchema = Object.fromEntries(this.stateFields);
 
     return ok({
       nodes: new Map(this.nodes),
