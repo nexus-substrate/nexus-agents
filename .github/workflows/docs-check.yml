@@ -385,6 +385,51 @@ jobs:
             exit 1
           fi
 
+      # Guard against re-introduction of paths removed in #1619 (llms.txt
+      # pipeline). The removed files don't exist, so a reference to them in
+      # any doc or workflow is almost certainly stale. Exceptions:
+      #   - docs/ops/docops-spec.md explicitly documents the removal
+      #   - skills/documentation-management/SKILL.md line 15 pipeline note
+      #     (PIPELINE NOTE: "...removed in #1619")
+      #   - docs/archive/ is frozen historical content
+      - name: Guard against references to removed files (#2096)
+        run: |
+          set -e
+          REMOVED_PATHS=(
+            "scripts/generate-docs.ts"
+            "scripts/generate-docs-full.ts"
+            "docs/llms.txt"
+            "docs/llms-full.txt"
+          )
+          any_failed=0
+          for path in "${REMOVED_PATHS[@]}"; do
+            # Escape periods for grep's BRE pattern
+            pattern="${path//./\\.}"
+            hits=$(grep -rn "$pattern" \
+              --include='*.md' --include='*.yml' --include='*.yaml' \
+              --include='*.json' --include='*.ts' \
+              --exclude-dir=node_modules --exclude-dir=.git \
+              --exclude-dir=dist --exclude-dir=.astro --exclude-dir=coverage \
+              --exclude-dir=docs/archive \
+              . 2>/dev/null \
+              | grep -v 'docs/ops/docops-spec.md' \
+              | grep -v 'skills/documentation-management/SKILL.md:.*PIPELINE NOTE' \
+              | grep -v '.github/workflows/docs-check.yml' || true)
+            if [ -n "$hits" ]; then
+              echo "::error::Found stale reference to removed path \`$path\` (removed in #1619):"
+              echo "$hits"
+              any_failed=1
+            fi
+          done
+          if [ "$any_failed" -ne 0 ]; then
+            echo ""
+            echo "These files were removed in #1619. Update the reference to point at the"
+            echo "current replacement (\`scripts/generate-docs-content.ts\`, \`docs/README.md\`)"
+            echo "or remove the mention if it no longer applies. See #2096 for context."
+            exit 1
+          fi
+          echo "✅ No stale references to removed paths"
+
   # Job 10.6: Skills Index Freshness (#1828)
   skills-index-check:
     name: Skills Index Freshness
