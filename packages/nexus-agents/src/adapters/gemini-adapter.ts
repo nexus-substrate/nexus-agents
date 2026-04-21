@@ -254,7 +254,7 @@ export class GeminiAdapter extends BaseAdapter {
 
       this.emitStreamEnd(controller, hasStartedBlock, index);
     } catch (error) {
-      controller.error(this.transformError(error as Error));
+      controller.error(this.transformError(error));
     }
   }
 

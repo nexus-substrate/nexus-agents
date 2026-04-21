@@ -99,7 +99,7 @@ export async function performInitialization(
 > {
   const validationResult = validateNotInitialized(ctx.agentId, ctx.initialized);
   if (!validationResult.ok) {
-    return validationResult as Result<never, AgentError>;
+    return validationResult;
   }
 
   ctx.logger.info('Initializing agent', {

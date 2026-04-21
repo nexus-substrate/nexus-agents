@@ -47,7 +47,7 @@ function makeParticipant(overrides: Partial<ExpertParticipation> = {}): ExpertPa
     status: 'pending',
     retryCount: 0,
     ...overrides,
-  } as ExpertParticipation;
+  };
 }
 
 function makeTaskResult(overrides: Partial<TaskResult> = {}): TaskResult {

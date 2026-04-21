@@ -29,7 +29,7 @@ function makeDecision(overrides: Partial<RoutingDecision> = {}): RoutingDecision
   return {
     timestamp: new Date().toISOString(),
     traceId: `trace-${String(Math.random()).slice(2, 8)}`,
-    selectedModel: 'claude' as CliName,
+    selectedModel: 'claude',
     alternativeModels: [],
     isExploration: false,
     ...overrides,
@@ -40,7 +40,7 @@ function makeOutcome(overrides: Partial<TaskOutcome> = {}): TaskOutcome {
   return {
     timestamp: new Date().toISOString(),
     traceId: `trace-${String(Math.random()).slice(2, 8)}`,
-    model: 'claude' as CliName,
+    model: 'claude',
     success: true,
     reward: 0.8,
     ...overrides,
@@ -127,7 +127,7 @@ describe('aggregateByModel', () => {
     const outcomeMap = new Map<string, TaskOutcome>();
 
     const aggs = aggregateByModel(decisions, outcomeMap);
-    expect(aggs.get('claude' as CliName)?.selectionCount).toBe(2);
+    expect(aggs.get('claude')?.selectionCount).toBe(2);
     expect(aggs.get('openai' as CliName)?.selectionCount).toBe(1);
   });
 
@@ -138,7 +138,7 @@ describe('aggregateByModel', () => {
       makeDecision({ isExploration: true, traceId: 't3' }),
     ];
     const aggs = aggregateByModel(decisions, new Map());
-    expect(aggs.get('claude' as CliName)?.explorationCount).toBe(2);
+    expect(aggs.get('claude')?.explorationCount).toBe(2);
   });
 
   it('adds outcome data when available', () => {
@@ -148,7 +148,7 @@ describe('aggregateByModel', () => {
     ]);
 
     const aggs = aggregateByModel(decisions, outcomeMap);
-    const claudeAgg = aggs.get('claude' as CliName);
+    const claudeAgg = aggs.get('claude');
     expect(claudeAgg?.rewards).toEqual([0.9]);
     expect(claudeAgg?.qualities).toEqual([0.85]);
     expect(claudeAgg?.latencies).toEqual([300]);
@@ -158,7 +158,7 @@ describe('aggregateByModel', () => {
   it('handles decisions without matching outcomes', () => {
     const decisions = [makeDecision({ traceId: 't1' })];
     const aggs = aggregateByModel(decisions, new Map());
-    const claudeAgg = aggs.get('claude' as CliName);
+    const claudeAgg = aggs.get('claude');
     expect(claudeAgg?.rewards).toEqual([]);
     expect(claudeAgg?.successes).toBe(0);
   });

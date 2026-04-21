@@ -24,7 +24,7 @@ const ALL_CLIS: readonly CliName[] = ['claude', 'gemini', 'codex', 'opencode'] a
 /**
  * All available task categories for iteration.
  */
-const ALL_CATEGORIES: readonly TaskCategory[] = Object.values(TaskCategoryEnum) as TaskCategory[];
+const ALL_CATEGORIES: readonly TaskCategory[] = Object.values(TaskCategoryEnum);
 
 /**
  * Gets the current timestamp in America/New_York timezone as ISO 8601.

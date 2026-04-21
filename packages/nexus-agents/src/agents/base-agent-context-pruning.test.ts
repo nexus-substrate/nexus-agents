@@ -10,12 +10,10 @@ import type {
   ILogger,
   IModelAdapter,
   Task,
-  AgentCapability,
   CompletionRequest,
   CompletionResponse,
   Message,
   StreamChunk,
-  ModelCapability,
 } from '../core/index.js';
 import { ok, AgentError } from '../core/index.js';
 import { BaseAgent, type BaseAgentOptions } from './base-agent.js';
@@ -60,7 +58,7 @@ function createMockAdapter(): IModelAdapter {
   return {
     providerId: 'test-provider',
     modelId: 'test-model',
-    capabilities: ['completion' as ModelCapability],
+    capabilities: ['completion'],
     complete: vi.fn().mockResolvedValue(ok(mockResponse)),
     stream: vi.fn().mockImplementation(function* (): Iterable<StreamChunk> {
       yield { type: 'message_start', message: { model: 'test-model' } };
@@ -79,7 +77,7 @@ class TestPruningAgent extends BaseAgent {
     const baseOptions: BaseAgentOptions = {
       id: options.id ?? 'test-pruning-agent',
       role: options.role ?? 'code_expert',
-      capabilities: options.capabilities ?? ['task_execution' as AgentCapability],
+      capabilities: options.capabilities ?? ['task_execution'],
     };
     if (options.adapter !== undefined) {
       baseOptions.adapter = options.adapter;
@@ -309,7 +307,7 @@ describe('BaseAgent Context Pruning Integration (Issue #306)', () => {
       const agent = new TestPruningAgent({
         id: 'legacy-agent',
         role: 'code_expert',
-        capabilities: ['task_execution' as AgentCapability],
+        capabilities: ['task_execution'],
         adapter: mockAdapter,
         logger: mockLogger,
       });

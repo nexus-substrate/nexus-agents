@@ -124,7 +124,7 @@ function mapTool(tool: ToolDefinition): OllamaTool {
   const schema = tool.inputSchema;
   const hasProperties = Object.keys(schema).length > 0;
   if (hasProperties) {
-    fn.parameters = schema as NonNullable<OllamaTool['function']['parameters']>;
+    fn.parameters = schema;
   }
   return { type: 'function', function: fn };
 }
@@ -245,7 +245,7 @@ export class OllamaAdapter extends BaseAdapter {
       }
       controller.complete();
     } catch (error) {
-      controller.error(this.transformError(error as Error));
+      controller.error(this.transformError(error));
     }
   }
 

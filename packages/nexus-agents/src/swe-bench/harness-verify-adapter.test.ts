@@ -30,7 +30,7 @@ function makeResult(overrides: Partial<InstanceEvaluationResult>): InstanceEvalu
     patchApplied: true,
     durationMs: 100,
     ...overrides,
-  } as InstanceEvaluationResult;
+  };
 }
 
 describe('translateEvaluationResult', () => {

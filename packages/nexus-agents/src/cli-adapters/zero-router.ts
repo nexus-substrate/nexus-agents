@@ -297,7 +297,7 @@ export class ZeroRouter implements IZeroRouter {
   }
 
   private getTierForLevel(level: DifficultyLevel): ModelTier {
-    return this.config.difficultyToTier[level] as ModelTier;
+    return this.config.difficultyToTier[level];
   }
 
   private hasMinimumCalibrationData(): boolean {

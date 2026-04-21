@@ -606,7 +606,7 @@ function createTaskHandler(
           notifier,
         });
 
-        return { task } as CreateTaskResult;
+        return { task };
       });
 
       return taskPromise;
@@ -616,7 +616,7 @@ function createTaskHandler(
       _args: ExecuteExpertInput,
       extra: TaskRequestHandlerExtra
     ): Promise<GetTaskResult> => {
-      return extra.taskStore.getTask(extra.taskId) as Promise<GetTaskResult>;
+      return extra.taskStore.getTask(extra.taskId);
     },
 
     getTaskResult: (

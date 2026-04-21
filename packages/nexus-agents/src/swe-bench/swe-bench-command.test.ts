@@ -735,7 +735,7 @@ describe('swe-bench dataset integration', () => {
 
       mockCreateExecutor.mockResolvedValue({
         ok: true,
-        value: mockExecutor as never,
+        value: mockExecutor,
       });
 
       const instances = [
@@ -798,7 +798,7 @@ describe('swe-bench dataset integration', () => {
 
       mockCreateExecutor.mockResolvedValue({
         ok: true,
-        value: mockExecutor as never,
+        value: mockExecutor,
       });
 
       const instances = [
@@ -855,7 +855,7 @@ describe('swe-bench dataset integration', () => {
 
       mockCreateExecutor.mockResolvedValue({
         ok: true,
-        value: mockExecutor as never,
+        value: mockExecutor,
       });
 
       const instances = [

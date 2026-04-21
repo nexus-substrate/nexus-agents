@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import type { IAgent, Task, AgentRole } from '../../core/index.js';
+import type { IAgent, Task } from '../../core/index.js';
 import { ok } from '../../core/index.js';
 import { AegeanProtocol, createAegeanProtocol } from './aegean-protocol.js';
 import { calculateQuorumSize, hasAcceptQuorum, isConsensusFailed } from './aegean-types.js';
@@ -41,7 +41,7 @@ function createMockEventBus(): IEventBus & { emittedEvents: TypedEvent[] } {
 function createMockAgent(id: string, output: unknown): IAgent {
   return {
     id,
-    role: 'code_expert' as AgentRole,
+    role: 'code_expert',
     capabilities: [],
     state: 'idle',
     execute: vi.fn().mockResolvedValue(

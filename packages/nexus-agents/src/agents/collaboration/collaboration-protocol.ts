@@ -283,7 +283,7 @@ export class ProtocolFactory {
       case 'aegean':
         return new AegeanProtocol(this.options);
       case 'self-refine':
-        return new SelfRefineProtocol(this.options) as unknown as ICollaborationProtocol;
+        return new SelfRefineProtocol(this.options);
       case 'self-debug':
         // Self-debug is a code repair protocol, not a multi-agent collaboration.
         // Use createSelfDebugProtocol() from self-debug-protocol.ts instead.

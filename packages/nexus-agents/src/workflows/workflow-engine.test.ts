@@ -109,7 +109,7 @@ describe('WorkflowEngine', () => {
             { steps: [workflow.steps[0] as WorkflowStep] },
             { steps: [workflow.steps[1] as WorkflowStep] },
           ],
-        } as ExecutionPlan)
+        })
       );
       mockDeps.executePhase = vi
         .fn()
@@ -142,7 +142,7 @@ describe('WorkflowEngine', () => {
       mockDeps.createExecutionPlan = vi.fn().mockReturnValue(
         ok({
           phases: [{ steps: [workflow.steps[0] as WorkflowStep] }],
-        } as ExecutionPlan)
+        })
       );
       mockDeps.executePhase = vi
         .fn()
@@ -178,7 +178,7 @@ describe('WorkflowEngine', () => {
       mockDeps.createExecutionPlan = vi.fn().mockReturnValue(
         ok({
           phases: [{ steps: [workflow.steps[0] as WorkflowStep] }],
-        } as ExecutionPlan)
+        })
       );
       mockDeps.executePhase = vi.fn().mockResolvedValue(err(new WorkflowError('Step failed')));
 
@@ -212,7 +212,7 @@ describe('WorkflowEngine', () => {
       mockDeps.createExecutionPlan = vi.fn().mockReturnValue(
         ok({
           phases: [{ steps: [workflow.steps[0] as WorkflowStep] }],
-        } as ExecutionPlan)
+        })
       );
       mockDeps.executePhase = vi.fn().mockReturnValue(phasePromise);
 
@@ -319,7 +319,7 @@ describe('WorkflowEngine', () => {
       mockDeps.createExecutionPlan = vi.fn().mockReturnValue(
         ok({
           phases: [{ steps: [workflow.steps[0] as WorkflowStep] }],
-        } as ExecutionPlan)
+        })
       );
       mockDeps.executePhase = vi
         .fn()
@@ -349,7 +349,7 @@ describe('WorkflowEngine', () => {
       mockDeps.createExecutionPlan = vi.fn().mockReturnValue(
         ok({
           phases: [{ steps: [workflow.steps[0] as WorkflowStep] }],
-        } as ExecutionPlan)
+        })
       );
       mockDeps.executePhase = vi
         .fn()
@@ -385,7 +385,7 @@ describe('WorkflowEngine', () => {
             { steps: [workflow.steps[0] as WorkflowStep] },
             { steps: [workflow.steps[1] as WorkflowStep] },
           ],
-        } as ExecutionPlan)
+        })
       );
       mockDeps.executePhase = vi
         .fn()
@@ -432,7 +432,7 @@ describe('WorkflowEngine', () => {
       mockDeps.createExecutionPlan = vi.fn().mockReturnValue(
         ok({
           phases: [{ steps: [workflowWithBudget.steps[0] as WorkflowStep] }],
-        } as ExecutionPlan)
+        })
       );
       mockDeps.executePhase = vi
         .fn()
@@ -476,7 +476,7 @@ describe('WorkflowEngine', () => {
       mockDeps.createExecutionPlan = vi.fn().mockReturnValue(
         ok({
           phases: [{ steps: [workflowWithStepBudget.steps[0] as WorkflowStep] }],
-        } as ExecutionPlan)
+        })
       );
       mockDeps.executePhase = vi
         .fn()
@@ -528,7 +528,7 @@ describe('WorkflowEngine', () => {
       mockDeps.createExecutionPlan = vi.fn().mockReturnValue(
         ok({
           phases: [{ steps: [workflow.steps[0] as WorkflowStep] }],
-        } as ExecutionPlan)
+        })
       );
       mockDeps.executePhase = vi
         .fn()

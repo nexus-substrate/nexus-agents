@@ -409,7 +409,7 @@ export function withMiddleware(
   const wrappedHandler: ContextAwareToolHandler = (args, ctx) => {
     // Check if handler expects context (2 params)
     if (handler.length >= 2) {
-      return (handler as ContextAwareToolHandler)(args, ctx);
+      return handler(args, ctx);
     }
     return (handler as ToolHandler)(args);
   };

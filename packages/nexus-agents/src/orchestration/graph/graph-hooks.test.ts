@@ -48,7 +48,7 @@ function passingVerify() {
 
 function failingVerify(message = 'verification failed') {
   return (ctx: NodeHookContext) =>
-    Promise.resolve(err({ hookName: 'verify', nodeId: ctx.nodeId, message } as HookError));
+    Promise.resolve(err({ hookName: 'verify', nodeId: ctx.nodeId, message }));
 }
 
 // ============================================================================

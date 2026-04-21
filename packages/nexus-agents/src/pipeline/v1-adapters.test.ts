@@ -9,10 +9,7 @@ import { analysisToTaskContract, taskContractToToolResponse } from './v1-adapter
 import { TaskContractSchema } from './task-contract.js';
 
 import type { TaskAnalysisResult } from '../core/task-analysis/shared-task-analyzer.js';
-import type {
-  TaskConstraints,
-  RequiredCapabilities,
-} from '../core/task-analysis/task-analysis-advocate.js';
+import type {} from '../core/task-analysis/task-analysis-advocate.js';
 
 // ============================================================================
 // Fixtures
@@ -38,11 +35,11 @@ function makeAnalysisResult(): TaskAnalysisResult {
     ambiguityScore: 0.2,
     constraints: {
       scope: ['src/auth/'],
-    } as TaskConstraints,
+    },
     requiredCapabilities: {
       tools: ['create_expert'],
       experts: ['code_expert'],
-    } as RequiredCapabilities,
+    },
   };
 }
 
@@ -104,11 +101,11 @@ describe('analysisToTaskContract', () => {
       estimatedTokens: 1000,
       matchedSignals: [],
       ambiguityScore: 0,
-      constraints: { scope: [] } as TaskConstraints,
+      constraints: { scope: [] },
       requiredCapabilities: {
         tools: [],
         experts: [],
-      } as RequiredCapabilities,
+      },
     };
     const contract = analysisToTaskContract('simple task', analysis);
     const result = TaskContractSchema.safeParse(contract);

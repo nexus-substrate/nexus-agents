@@ -8,7 +8,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 
 import type { ILogger } from '../core/index.js';
 import { getTimeProvider, getRandomProvider } from '../core/index.js';
-import type { CliName, ICliAdapter } from './types.js';
+import type { ICliAdapter } from './types.js';
 import type { TaskProfile } from '../core/index.js';
 import type {
   CompositeRoutingDecision,
@@ -60,7 +60,7 @@ function makeTaskProfile(overrides: Partial<TaskProfile> = {}) {
 function makeDecision(overrides: Partial<CompositeRoutingDecision> = {}) {
   return {
     adapter: {} as ICliAdapter,
-    cliName: 'claude' as CliName,
+    cliName: 'claude',
     confidence: 0.85,
     reason: 'Best match',
     stagesExecuted: ['budget', 'topsis', 'linucb'],

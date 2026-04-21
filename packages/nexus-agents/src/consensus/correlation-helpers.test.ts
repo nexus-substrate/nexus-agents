@@ -38,7 +38,7 @@ function makeObs(decision: 'approve' | 'reject' | 'abstain'): VotingObservation 
 
 function makeHistory(overrides: Partial<MutablePairwiseHistory> = {}): MutablePairwiseHistory {
   return {
-    pairKey: 'a:b' as AgentPairKey,
+    pairKey: 'a:b',
     jointObservations: 10,
     agreements: 7,
     disagreements: 3,

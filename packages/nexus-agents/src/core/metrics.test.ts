@@ -69,7 +69,7 @@ describe('ErrorMetricsCollector', () => {
         error: new Error('Something broke'),
       });
 
-      expect(collector.getCountByCode('INTERNAL_ERROR' as ErrorCode)).toBe(1);
+      expect(collector.getCountByCode('INTERNAL_ERROR')).toBe(1);
     });
   });
 

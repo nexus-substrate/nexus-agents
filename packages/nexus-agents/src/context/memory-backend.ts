@@ -113,7 +113,7 @@ export class HybridMemoryBackend implements IMemoryBackend {
       }
 
       const Database = betterSqlite3Module.default;
-      this.db = new (Database as new (path: string) => ISQLiteDatabase)(this.dbPath);
+      this.db = new Database(this.dbPath);
       this.createTables();
       this.markdown.ensureDir();
       this.initialized = true;

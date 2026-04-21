@@ -19,7 +19,7 @@ function makeOptions(overrides: Partial<SandboxExecutionOptions> = {}) {
   return {
     policy: STANDARD_POLICY,
     ...overrides,
-  } as SandboxExecutionOptions;
+  };
 }
 
 // ============================================================================

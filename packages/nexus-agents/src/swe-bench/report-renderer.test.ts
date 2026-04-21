@@ -159,7 +159,7 @@ function makeReport(overrides: Partial<EvaluationReport> = {}): EvaluationReport
       },
     },
     ...overrides,
-  } as EvaluationReport;
+  };
 }
 
 // ============================================================================

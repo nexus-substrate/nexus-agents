@@ -226,7 +226,7 @@ describe('FeedbackIntegration', () => {
         durationMs: 1000,
         tokenUsage: 2000,
         retryCount: 1,
-        traceId: 'trace-abc' as TraceId,
+        traceId: 'trace-abc',
       };
 
       integration.recordOutcome(params);

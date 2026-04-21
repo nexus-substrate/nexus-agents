@@ -111,7 +111,7 @@ export class SQLiteSessionStorage implements ISessionStorage {
       }
 
       const Database = betterSqlite3Module.default;
-      this.db = new (Database as new (path: string) => ISQLiteDatabase)(this.dbPath);
+      this.db = new Database(this.dbPath);
       this.createTables();
       this.initialized = true;
       this.logger.info('SQLiteSessionStorage initialized', { dbPath: this.dbPath });

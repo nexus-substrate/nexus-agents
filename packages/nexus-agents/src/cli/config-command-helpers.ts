@@ -95,7 +95,7 @@ export function parseConfigKey(fullKey: string): ParsedConfigKey {
  * Gets the list of valid config categories.
  */
 export function getValidCategories(): readonly string[] {
-  return Object.keys(DEFAULTS) as ConfigCategory[];
+  return Object.keys(DEFAULTS);
 }
 
 /**

@@ -35,7 +35,7 @@ function makeResult(overrides: Partial<InstanceEvaluationResult> = {}): Instance
     patchApplied: false,
     durationMs: 1000,
     ...overrides,
-  } as InstanceEvaluationResult;
+  };
 }
 
 function makeProgress(overrides: Partial<RawHarnessProgress> = {}): RawHarnessProgress {

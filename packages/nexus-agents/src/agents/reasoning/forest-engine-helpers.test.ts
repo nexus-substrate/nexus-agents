@@ -745,7 +745,7 @@ describe('buildForestResult', () => {
       forestId: 'forest-1',
       problem: 'Test problem',
       trees,
-      terminationReason: 'max_time' as TerminationReason,
+      terminationReason: 'max_time',
       tokensUsed: 500,
       durationMs: 10000,
       explorationHistory: [],

@@ -85,11 +85,7 @@ describe('createGatewayServerProxy', () => {
       content: [{ type: 'text', text: 'ok' }],
     });
 
-    proxy.registerTool(
-      'test_tool',
-      { description: 'test', inputSchema: {} },
-      originalCb as unknown as Parameters<McpServer['registerTool']>[2]
-    );
+    proxy.registerTool('test_tool', { description: 'test', inputSchema: {} }, originalCb);
 
     expect(mockServer.registerTool).toHaveBeenCalledOnce();
     const [name, , wrappedCb] = mockServer.registerTool.mock.calls[0] as [string, unknown, unknown];
@@ -105,11 +101,7 @@ describe('createGatewayServerProxy', () => {
       content: [{ type: 'text', text: 'hello' }],
     });
 
-    proxy.registerTool(
-      'test_tool',
-      { description: 'test', inputSchema: {} },
-      originalCb as unknown as Parameters<McpServer['registerTool']>[2]
-    );
+    proxy.registerTool('test_tool', { description: 'test', inputSchema: {} }, originalCb);
 
     const wrappedCb = getRegisteredCallback(mockServer);
     const result = await wrappedCb({ task: 'foo' }, { requestId: '1' });
@@ -125,11 +117,7 @@ describe('createGatewayServerProxy', () => {
       content: [{ type: 'text', text: 'ok' }],
     });
 
-    proxy.registerTool(
-      'delegate_to_model',
-      { description: 'test', inputSchema: {} },
-      originalCb as unknown as Parameters<McpServer['registerTool']>[2]
-    );
+    proxy.registerTool('delegate_to_model', { description: 'test', inputSchema: {} }, originalCb);
 
     const wrappedCb = getRegisteredCallback(mockServer);
     await wrappedCb({ task: 'test' }, undefined);
@@ -144,11 +132,7 @@ describe('createGatewayServerProxy', () => {
     const error = new Error('tool failed');
     const originalCb = vi.fn().mockRejectedValue(error);
 
-    proxy.registerTool(
-      'test_tool',
-      { description: 'test', inputSchema: {} },
-      originalCb as unknown as Parameters<McpServer['registerTool']>[2]
-    );
+    proxy.registerTool('test_tool', { description: 'test', inputSchema: {} }, originalCb);
 
     const wrappedCb = getRegisteredCallback(mockServer);
     await expect(wrappedCb({}, undefined)).rejects.toThrow('tool failed');
@@ -162,11 +146,7 @@ describe('createGatewayServerProxy', () => {
       content: [{ type: 'text', text: 'ok' }],
     });
 
-    proxy.registerTool(
-      'test_tool',
-      { description: 'test', inputSchema: {} },
-      originalCb as unknown as Parameters<McpServer['registerTool']>[2]
-    );
+    proxy.registerTool('test_tool', { description: 'test', inputSchema: {} }, originalCb);
 
     const wrappedCb = getRegisteredCallback(mockServer);
     const extraCtx = { requestId: 'abc', signal: {} };
@@ -183,11 +163,7 @@ describe('createGatewayServerProxy', () => {
       isError: true,
     });
 
-    proxy.registerTool(
-      'test_tool',
-      { description: 'test', inputSchema: {} },
-      originalCb as unknown as Parameters<McpServer['registerTool']>[2]
-    );
+    proxy.registerTool('test_tool', { description: 'test', inputSchema: {} }, originalCb);
 
     const wrappedCb = getRegisteredCallback(mockServer);
     const result = await wrappedCb({}, undefined);

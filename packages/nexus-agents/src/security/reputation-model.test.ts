@@ -21,7 +21,7 @@ function makeMetadata(overrides?: Partial<GitHubUserMetadata>) {
     authorAssociation: 'CONTRIBUTOR',
     injectionFlags: [],
     ...overrides,
-  } as GitHubUserMetadata;
+  };
 }
 
 describe('assessReputation', () => {

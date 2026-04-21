@@ -52,7 +52,7 @@ describe('buildPlanFromAnalysis', () => {
   });
 
   it('normalizes lowercase language names from repo_analyze (#1182)', () => {
-    const plan = buildPlanFromAnalysis(makeAnalysis({ language: 'typescript' as never }), {
+    const plan = buildPlanFromAnalysis(makeAnalysis({ language: 'typescript' }), {
       repo: 'test/repo',
     });
 

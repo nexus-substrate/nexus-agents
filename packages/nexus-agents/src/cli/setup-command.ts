@@ -838,7 +838,7 @@ export async function setupCommandAsync(options: SetupCommandOptions = {}): Prom
 
     // Merge wizard options with any existing options (wizard options take precedence)
     const mergedOptions = { ...options, ...wizardOptions };
-    delete (mergedOptions as SetupCommandOptions).interactive; // Remove interactive flag
+    delete mergedOptions.interactive; // Remove interactive flag
 
     const result = runSetup(mergedOptions);
     printSetupResult(result, mergedOptions.verbose ?? false);

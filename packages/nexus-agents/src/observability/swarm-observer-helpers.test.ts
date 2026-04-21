@@ -71,12 +71,12 @@ describe('calculateContribution', () => {
         type: 'message',
         direction: 'sent',
         messageType: 'request',
-      } as AgentEvent['payload']),
+      }),
       makeEvent({
         type: 'message',
         direction: 'sent',
         messageType: 'request',
-      } as AgentEvent['payload']),
+      }),
     ];
     const result = calculateContribution('agent-1', events);
     expect(result.messagesSent).toBe(2);
@@ -89,7 +89,7 @@ describe('calculateContribution', () => {
         type: 'message',
         direction: 'received',
         messageType: 'response',
-      } as AgentEvent['payload']),
+      }),
     ];
     const result = calculateContribution('agent-1', events);
     expect(result.messagesReceived).toBe(1);
@@ -102,7 +102,7 @@ describe('calculateContribution', () => {
         phase: 'completed',
         toolName: 'search',
         success: true,
-      } as AgentEvent['payload']),
+      }),
     ];
     const result = calculateContribution('agent-1', events);
     expect(result.successfulTools).toBe(1);
@@ -118,14 +118,8 @@ describe('calculateContribution', () => {
 
   it('tracks active time', () => {
     const events = [
-      makeEvent(
-        { type: 'message', direction: 'sent', messageType: 'request' } as AgentEvent['payload'],
-        100
-      ),
-      makeEvent(
-        { type: 'message', direction: 'sent', messageType: 'request' } as AgentEvent['payload'],
-        200
-      ),
+      makeEvent({ type: 'message', direction: 'sent', messageType: 'request' }, 100),
+      makeEvent({ type: 'message', direction: 'sent', messageType: 'request' }, 200),
     ];
     const result = calculateContribution('agent-1', events);
     expect(result.activeTimeMs).toBe(300);
@@ -138,18 +132,18 @@ describe('calculateContribution', () => {
         type: 'message',
         direction: 'sent',
         messageType: 'req',
-      } as AgentEvent['payload']),
+      }),
       makeEvent({
         type: 'message',
         direction: 'sent',
         messageType: 'req',
-      } as AgentEvent['payload']),
+      }),
       makeEvent({
         type: 'tool',
         phase: 'completed',
         toolName: 'x',
         success: true,
-      } as AgentEvent['payload']),
+      }),
     ];
     const result = calculateContribution('agent-1', events);
     expect(result.score).toBeCloseTo(0.5);

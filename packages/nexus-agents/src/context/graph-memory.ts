@@ -103,7 +103,7 @@ export class GraphMemoryBackend implements IGraphMemory {
           new MemoryError('better-sqlite3 not installed. Install: npm install better-sqlite3')
         );
       const Database = mod.default;
-      this.db = new (Database as new (p: string) => ISQLiteDatabase)(this.config.dbPath);
+      this.db = new Database(this.config.dbPath);
       this.createGraphTables();
       this.initialized = true;
       this.log.info('GraphMemoryBackend initialized');

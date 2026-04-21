@@ -53,7 +53,7 @@ describe('EventBus', () => {
       const bus = new EventBus();
       const handler = vi.fn();
       bus.subscribe({ type: 'task.failed' }, handler);
-      bus.emit(makeEvent({ type: 'task.created' } as Partial<PipelineEvent>));
+      bus.emit(makeEvent({ type: 'task.created' }));
       expect(handler).not.toHaveBeenCalled();
 
       bus.emit(
@@ -61,7 +61,7 @@ describe('EventBus', () => {
           type: 'task.failed',
           taskId: 'task-1',
           error: 'boom',
-        } as Partial<PipelineEvent>)
+        })
       );
       expect(handler).toHaveBeenCalledOnce();
     });
@@ -76,7 +76,7 @@ describe('EventBus', () => {
           type: 'task.failed',
           taskId: 'x',
           error: 'e',
-        } as Partial<PipelineEvent>)
+        })
       );
       bus.emit(
         makeEvent({
@@ -84,7 +84,7 @@ describe('EventBus', () => {
           executionId: 'x',
           stageId: 's',
           pluginId: 'p',
-        } as Partial<PipelineEvent>)
+        })
       );
       expect(handler).toHaveBeenCalledTimes(2);
     });
@@ -93,8 +93,8 @@ describe('EventBus', () => {
       const bus = new EventBus();
       const handler = vi.fn();
       bus.subscribe({ taskId: 'task-2' }, handler);
-      bus.emit(makeEvent({ taskId: 'task-1' } as Partial<PipelineEvent>));
-      bus.emit(makeEvent({ taskId: 'task-2' } as Partial<PipelineEvent>));
+      bus.emit(makeEvent({ taskId: 'task-1' }));
+      bus.emit(makeEvent({ taskId: 'task-2' }));
       expect(handler).toHaveBeenCalledOnce();
     });
 
@@ -139,7 +139,7 @@ describe('EventBus', () => {
           type: 'task.failed',
           taskId: 'x',
           error: 'e',
-        } as Partial<PipelineEvent>)
+        })
       );
       const result = bus.query({ type: 'task.created' });
       expect(result).toHaveLength(1);
@@ -147,9 +147,9 @@ describe('EventBus', () => {
 
     it('filters by since timestamp', () => {
       const bus = new EventBus();
-      bus.emit(makeEvent({ timestamp: 100 } as Partial<PipelineEvent>));
-      bus.emit(makeEvent({ timestamp: 200 } as Partial<PipelineEvent>));
-      bus.emit(makeEvent({ timestamp: 300 } as Partial<PipelineEvent>));
+      bus.emit(makeEvent({ timestamp: 100 }));
+      bus.emit(makeEvent({ timestamp: 200 }));
+      bus.emit(makeEvent({ timestamp: 300 }));
       const result = bus.query({ since: 200 });
       expect(result).toHaveLength(2);
     });
@@ -170,7 +170,7 @@ describe('EventBus', () => {
         bus.emit(
           makeEvent({
             timestamp: i,
-          } as Partial<PipelineEvent>)
+          })
         );
       }
       expect(bus.bufferSize).toBe(5);

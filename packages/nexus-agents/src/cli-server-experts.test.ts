@@ -36,9 +36,11 @@ function createMockLogger(): ILogger {
 function createMockRegistry() {
   return {
     register: vi.fn(
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- widens mock return so tests downstream can also return { error }
       () => ({ ok: true, value: undefined }) as { ok: boolean; value?: unknown; error?: Error }
     ),
     registerMany: vi.fn(
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- widens mock return so tests downstream can also return { error }
       () => ({ ok: true, value: undefined }) as { ok: boolean; value?: unknown; error?: Error }
     ),
   };

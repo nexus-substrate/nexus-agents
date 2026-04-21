@@ -282,7 +282,7 @@ function adaptContextBudget(
 function workflowStepToCoreStep(step: WorkflowStep): CoreWorkflowStep {
   const result: CoreWorkflowStep = {
     id: step.id,
-    agent: step.agent as CoreWorkflowStep['agent'],
+    agent: step.agent,
     action: step.action,
     inputs: step.inputs,
   };

@@ -54,7 +54,7 @@ function makeStats(overrides: Partial<RegistryStats> = {}) {
       { topic: 'memory', papers: 2, techniques: 1 },
     ],
     ...overrides,
-  } as RegistryStats;
+  };
 }
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type

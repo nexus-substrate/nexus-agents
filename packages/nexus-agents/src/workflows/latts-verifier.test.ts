@@ -23,7 +23,7 @@ function makeContext(overrides: Partial<VerifierContext> = {}) {
     stepResults: new Map(),
     totalAttempts: 0,
     ...overrides,
-  } as VerifierContext;
+  };
 }
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type

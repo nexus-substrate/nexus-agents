@@ -31,7 +31,7 @@ function createMockAdapter(name: CliName, response: string): ICliAdapter {
         usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
         durationMs: 500,
         model: 'test-model',
-      } as CliResponse)
+      })
     ),
     healthCheck: vi.fn().mockResolvedValue({
       healthy: true,
@@ -97,7 +97,7 @@ describe('AgreementCascadeRouter', () => {
 
   describe('execute', () => {
     it('should return early when single model agrees with itself', async () => {
-      adapters.set('gemini' as CliName, createMockAdapter('gemini' as CliName, 'Response A'));
+      adapters.set('gemini', createMockAdapter('gemini', 'Response A'));
 
       const router = new AgreementCascadeRouter(adapters);
       const stages: CascadeStage[] = [
@@ -116,14 +116,8 @@ describe('AgreementCascadeRouter', () => {
 
     it('should reach consensus when models agree', async () => {
       // Two models returning similar responses
-      adapters.set(
-        'gemini' as CliName,
-        createMockAdapter('gemini' as CliName, 'The answer is forty two')
-      );
-      adapters.set(
-        'codex' as CliName,
-        createMockAdapter('codex' as CliName, 'The answer is forty two exactly')
-      );
+      adapters.set('gemini', createMockAdapter('gemini', 'The answer is forty two'));
+      adapters.set('codex', createMockAdapter('codex', 'The answer is forty two exactly'));
 
       const router = new AgreementCascadeRouter(adapters, { agreementThreshold: 0.5 });
       const stages: CascadeStage[] = [
@@ -142,16 +136,10 @@ describe('AgreementCascadeRouter', () => {
 
     it('should escalate when models disagree', async () => {
       // First stage: disagreeing models
-      adapters.set('gemini' as CliName, createMockAdapter('gemini' as CliName, 'Answer is A'));
-      adapters.set(
-        'codex' as CliName,
-        createMockAdapter('codex' as CliName, 'Completely different B')
-      );
+      adapters.set('gemini', createMockAdapter('gemini', 'Answer is A'));
+      adapters.set('codex', createMockAdapter('codex', 'Completely different B'));
       // Second stage: agreeing models
-      adapters.set(
-        'claude' as CliName,
-        createMockAdapter('claude' as CliName, 'The correct answer is definitely A')
-      );
+      adapters.set('claude', createMockAdapter('claude', 'The correct answer is definitely A'));
 
       const router = new AgreementCascadeRouter(adapters, { agreementThreshold: 0.7 });
       const stages: CascadeStage[] = [
@@ -169,18 +157,18 @@ describe('AgreementCascadeRouter', () => {
 
     it('should handle adapter failures gracefully', async () => {
       const failingAdapter: ICliAdapter = {
-        ...createMockAdapter('gemini' as CliName, ''),
+        ...createMockAdapter('gemini', ''),
         execute: vi.fn().mockResolvedValue(
           err({
             code: 'EXECUTION_ERROR',
             message: 'Model failed',
-            cli: 'gemini' as CliName,
+            cli: 'gemini',
             retryable: true,
           })
         ),
       };
-      adapters.set('gemini' as CliName, failingAdapter);
-      adapters.set('codex' as CliName, createMockAdapter('codex' as CliName, 'Valid response'));
+      adapters.set('gemini', failingAdapter);
+      adapters.set('codex', createMockAdapter('codex', 'Valid response'));
 
       const router = new AgreementCascadeRouter(adapters);
       const stages: CascadeStage[] = [
@@ -197,17 +185,17 @@ describe('AgreementCascadeRouter', () => {
 
     it('should return error when all models fail', async () => {
       const failingAdapter: ICliAdapter = {
-        ...createMockAdapter('gemini' as CliName, ''),
+        ...createMockAdapter('gemini', ''),
         execute: vi.fn().mockResolvedValue(
           err({
             code: 'EXECUTION_ERROR',
             message: 'Model failed',
-            cli: 'gemini' as CliName,
+            cli: 'gemini',
             retryable: true,
           })
         ),
       };
-      adapters.set('gemini' as CliName, failingAdapter);
+      adapters.set('gemini', failingAdapter);
 
       const router = new AgreementCascadeRouter(adapters);
       const stages: CascadeStage[] = [
@@ -223,7 +211,7 @@ describe('AgreementCascadeRouter', () => {
     });
 
     it('should calculate cost savings correctly', async () => {
-      adapters.set('gemini' as CliName, createMockAdapter('gemini' as CliName, 'Quick answer'));
+      adapters.set('gemini', createMockAdapter('gemini', 'Quick answer'));
 
       const router = new AgreementCascadeRouter(adapters);
       const stages: CascadeStage[] = [
@@ -255,7 +243,7 @@ describe('AgreementCascadeRouter', () => {
     it('should return 1 score for single response', () => {
       const router = new AgreementCascadeRouter(adapters);
       const responses = new Map<CliName, CliResponse>();
-      responses.set('gemini' as CliName, {
+      responses.set('gemini', {
         text: 'Single response',
         usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
         durationMs: 500,
@@ -271,13 +259,13 @@ describe('AgreementCascadeRouter', () => {
     it('should detect agreement between similar responses', () => {
       const router = new AgreementCascadeRouter(adapters, { agreementThreshold: 0.5 });
       const responses = new Map<CliName, CliResponse>();
-      responses.set('gemini' as CliName, {
+      responses.set('gemini', {
         text: 'The implementation uses a recursive algorithm to solve the problem efficiently',
         usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
         durationMs: 500,
         model: 'test',
       });
-      responses.set('codex' as CliName, {
+      responses.set('codex', {
         text: 'A recursive algorithm is used to solve this problem in an efficient manner',
         usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
         durationMs: 500,
@@ -293,19 +281,19 @@ describe('AgreementCascadeRouter', () => {
     it('should detect disagreement between different responses', () => {
       const router = new AgreementCascadeRouter(adapters, { agreementThreshold: 0.9 });
       const responses = new Map<CliName, CliResponse>();
-      responses.set('gemini' as CliName, {
+      responses.set('gemini', {
         text: 'Use a recursive algorithm',
         usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
         durationMs: 500,
         model: 'test',
       });
-      responses.set('codex' as CliName, {
+      responses.set('codex', {
         text: 'Use an iterative approach',
         usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
         durationMs: 500,
         model: 'test',
       });
-      responses.set('claude' as CliName, {
+      responses.set('claude', {
         text: 'Apply dynamic programming',
         usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
         durationMs: 500,

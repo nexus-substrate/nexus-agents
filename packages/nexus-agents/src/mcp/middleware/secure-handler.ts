@@ -235,9 +235,7 @@ async function executeHandler(
 ): Promise<ToolResult> {
   const startTime = getTimeProvider().now();
   const result =
-    handler.length >= 2
-      ? await (handler as ContextAwareHandler)(args, ctx)
-      : await (handler as ToolHandler)(args);
+    handler.length >= 2 ? await handler(args, ctx) : await (handler as ToolHandler)(args);
 
   const durationMs = getTimeProvider().now() - startTime;
   if (result.isError === true) {

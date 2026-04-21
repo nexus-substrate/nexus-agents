@@ -230,7 +230,7 @@ describe('tool-input-sanitizer', () => {
         modifiedCount: 2,
         detectedPatterns: [],
       };
-      logSanitizationResult(result, logger as unknown as ILogger, 'orchestrate');
+      logSanitizationResult(result, logger, 'orchestrate');
       expect(logger.warn).toHaveBeenCalledWith(
         'Tool input sanitized — XML injection tags stripped',
         { tool: 'orchestrate', modifiedFields: 2 }
@@ -245,7 +245,7 @@ describe('tool-input-sanitizer', () => {
         modifiedCount: 0,
         detectedPatterns: ['system_prompt_override'],
       };
-      logSanitizationResult(result, logger as unknown as ILogger, 'run_workflow');
+      logSanitizationResult(result, logger, 'run_workflow');
       expect(logger.warn).toHaveBeenCalledWith('Injection patterns detected in tool input', {
         tool: 'run_workflow',
         patterns: ['system_prompt_override'],
@@ -260,7 +260,7 @@ describe('tool-input-sanitizer', () => {
         modifiedCount: 0,
         detectedPatterns: [],
       };
-      logSanitizationResult(result, logger as unknown as ILogger, 'test_tool');
+      logSanitizationResult(result, logger, 'test_tool');
       expect(logger.warn).not.toHaveBeenCalled();
     });
 
@@ -272,7 +272,7 @@ describe('tool-input-sanitizer', () => {
         modifiedCount: 1,
         detectedPatterns: ['role_impersonation'],
       };
-      logSanitizationResult(result, logger as unknown as ILogger, 'execute_expert');
+      logSanitizationResult(result, logger, 'execute_expert');
       expect(logger.warn).toHaveBeenCalledTimes(2);
     });
   });

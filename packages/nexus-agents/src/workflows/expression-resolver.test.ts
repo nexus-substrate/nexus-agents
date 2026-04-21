@@ -29,7 +29,7 @@ function makeContext(overrides: Partial<WorkflowExecutionContext> = {}) {
     startedAt: new Date(),
     cancelled: false,
     ...overrides,
-  } as WorkflowExecutionContext;
+  };
 }
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type

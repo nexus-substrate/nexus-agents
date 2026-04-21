@@ -70,7 +70,7 @@ describe('OrchestratorFactory', () => {
 
   beforeEach(() => {
     mockEngine = makeMockWorkflowEngine();
-    factory = new OrchestratorFactory({ logger: mockLogger as never }, mockEngine);
+    factory = new OrchestratorFactory({ logger: mockLogger }, mockEngine);
   });
 
   describe('listTypes', () => {
@@ -107,14 +107,14 @@ describe('OrchestratorFactory', () => {
     });
 
     it('throws when workflow engine not initialized', () => {
-      const factoryNoEngine = new OrchestratorFactory({ logger: mockLogger as never });
+      const factoryNoEngine = new OrchestratorFactory({ logger: mockLogger });
       expect(() => factoryNoEngine.create('workflow')).toThrow(OrchestratorError);
     });
 
     it('wires TechLead instance when provided', () => {
       const mockTechLead = { execute: vi.fn() };
       const factoryWithTL = new OrchestratorFactory(
-        { logger: mockLogger as never, techLead: mockTechLead as never },
+        { logger: mockLogger, techLead: mockTechLead },
         mockEngine
       );
       const orchestrator = factoryWithTL.create('tech_lead');
@@ -124,7 +124,7 @@ describe('OrchestratorFactory', () => {
     it('wires PuppeteerOrchestrator instance when provided', () => {
       const mockPuppeteer = { execute: vi.fn() };
       const factoryWithPP = new OrchestratorFactory(
-        { logger: mockLogger as never, puppeteerOrchestrator: mockPuppeteer as never },
+        { logger: mockLogger, puppeteerOrchestrator: mockPuppeteer },
         mockEngine
       );
       const orchestrator = factoryWithPP.create('puppeteer');
@@ -144,7 +144,7 @@ describe('WorkflowOrchestratorAdapter', () => {
 
   beforeEach(() => {
     mockEngine = makeMockWorkflowEngine();
-    adapter = new WorkflowOrchestratorAdapter(mockEngine, mockLogger as never);
+    adapter = new WorkflowOrchestratorAdapter(mockEngine, mockLogger);
   });
 
   it('has workflow type', () => {
@@ -152,7 +152,7 @@ describe('WorkflowOrchestratorAdapter', () => {
   });
 
   it('has a unique id', () => {
-    const adapter2 = new WorkflowOrchestratorAdapter(mockEngine, mockLogger as never);
+    const adapter2 = new WorkflowOrchestratorAdapter(mockEngine, mockLogger);
     expect(adapter.id).not.toBe(adapter2.id);
     expect(adapter.id).toMatch(/^workflow-/);
   });
@@ -190,7 +190,7 @@ describe('WorkflowOrchestratorAdapter', () => {
       mockEngine = makeMockWorkflowEngine({
         loadTemplate: vi.fn().mockResolvedValue(err(new Error('Template not found'))),
       });
-      adapter = new WorkflowOrchestratorAdapter(mockEngine, mockLogger as never);
+      adapter = new WorkflowOrchestratorAdapter(mockEngine, mockLogger);
       const result = await adapter.execute(workflowDef, {});
       expect(result.ok).toBe(false);
       if (!result.ok) {
@@ -202,7 +202,7 @@ describe('WorkflowOrchestratorAdapter', () => {
       mockEngine = makeMockWorkflowEngine({
         execute: vi.fn().mockResolvedValue(err(new Error('Execution failed'))),
       });
-      adapter = new WorkflowOrchestratorAdapter(mockEngine, mockLogger as never);
+      adapter = new WorkflowOrchestratorAdapter(mockEngine, mockLogger);
       const result = await adapter.execute(workflowDef, {});
       expect(result.ok).toBe(false);
       if (!result.ok) {
@@ -214,7 +214,7 @@ describe('WorkflowOrchestratorAdapter', () => {
       mockEngine = makeMockWorkflowEngine({
         loadTemplate: vi.fn().mockRejectedValue(new Error('Network error')),
       });
-      adapter = new WorkflowOrchestratorAdapter(mockEngine, mockLogger as never);
+      adapter = new WorkflowOrchestratorAdapter(mockEngine, mockLogger);
       const result = await adapter.execute(workflowDef, {});
       expect(result.ok).toBe(false);
       if (!result.ok) {

@@ -7,14 +7,7 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import type { Result } from '../core/index.js';
 import { ok, err } from '../core/index.js';
-import type {
-  ICliAdapter,
-  CliName,
-  CliTask,
-  CliResponse,
-  CliError,
-  CliErrorCode,
-} from './types.js';
+import type { ICliAdapter, CliName, CliTask, CliResponse, CliError } from './types.js';
 import {
   CliCircuitBreakerIntegration,
   createCliCircuitBreakerIntegration,
@@ -46,7 +39,7 @@ function createMockAdapter(
     execute.mockImplementation(() =>
       Promise.resolve(
         err({
-          code: 'EXECUTION_ERROR' as CliErrorCode,
+          code: 'EXECUTION_ERROR',
           message: `Error from ${name}`,
           cli: name,
           retryable: true,
@@ -57,7 +50,7 @@ function createMockAdapter(
     execute.mockImplementation(() =>
       Promise.resolve(
         err({
-          code: 'TIMEOUT' as CliErrorCode,
+          code: 'TIMEOUT',
           message: `Timeout from ${name}`,
           cli: name,
           retryable: true,

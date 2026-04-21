@@ -19,7 +19,7 @@ import {
 // ============================================================================
 
 function makeVote(decision: 'approve' | 'reject' | 'abstain'): Vote {
-  return { decision, confidence: 0.8, reasoning: 'test' } as Vote;
+  return { decision, confidence: 0.8, reasoning: 'test' };
 }
 
 function makeVotes(approve: number, reject: number, abstain: number): Map<string, Vote> {

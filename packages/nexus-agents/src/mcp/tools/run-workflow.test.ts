@@ -9,7 +9,6 @@ import type {
   WorkflowDefinition,
   WorkflowResult,
   WorkflowTemplate,
-  ExecutionStatus,
   ILogger,
 } from '../../core/index.js';
 import { WorkflowError, ParseError } from '../../core/index.js';
@@ -165,9 +164,7 @@ function createMockWorkflowEngine(options?: {
     return Promise.resolve({ ok: true, value: defaultResult });
   });
 
-  const getStatus = vi
-    .fn()
-    .mockReturnValue({ state: 'completed', result: defaultResult } as ExecutionStatus);
+  const getStatus = vi.fn().mockReturnValue({ state: 'completed', result: defaultResult });
   const cancel = vi.fn().mockResolvedValue({ ok: true, value: undefined });
   const listTemplates = vi.fn().mockResolvedValue(options?.templates ?? createDefaultTemplates());
 

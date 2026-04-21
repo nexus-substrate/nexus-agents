@@ -192,7 +192,7 @@ export class FeedbackIntegration implements IFeedbackIntegration {
 
   recordRoutingDecision(decision: CompositeRoutingDecision, traceId?: TraceId): string {
     const id = randomUUID();
-    const trace = traceId ?? (randomUUID() as TraceId);
+    const trace = traceId ?? randomUUID();
     const now = getTimeProvider().now();
 
     // Evict stale entries (throttled to once per minute)
@@ -287,7 +287,7 @@ export class FeedbackIntegration implements IFeedbackIntegration {
     } = params;
     const outcomeClass = this.determineOutcomeClass(success, qualityScore);
     const completionRatio = success ? 1.0 : qualityScore / this.config.successQualityThreshold;
-    const trace = traceId ?? (randomUUID() as TraceId);
+    const trace = traceId ?? randomUUID();
 
     const outcome: TaskOutcome = {
       routingDecisionId,

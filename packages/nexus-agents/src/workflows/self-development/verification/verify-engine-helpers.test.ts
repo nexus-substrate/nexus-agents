@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type { CheckDefinition, CheckResult, CheckIssue } from './verify-types.js';
+import type { CheckDefinition, CheckResult } from './verify-types.js';
 import {
   findFailurePatterns,
   hasSuccessPatternMatch,
@@ -41,7 +41,7 @@ function makeCheckResult(overrides: Partial<CheckResult> = {}): CheckResult {
     durationMs: 100,
     output: 'all passed',
     ...overrides,
-  } as CheckResult;
+  };
 }
 
 // ============================================================================
@@ -250,9 +250,9 @@ describe('extractFilesFromIssues', () => {
     const results = [
       makeCheckResult({
         issues: [
-          { code: 'c1', message: 'err', severity: 'error', file: 'src/a.ts' } as CheckIssue,
-          { code: 'c1', message: 'err', severity: 'error', file: 'src/a.ts' } as CheckIssue,
-          { code: 'c1', message: 'err', severity: 'error', file: 'src/b.ts' } as CheckIssue,
+          { code: 'c1', message: 'err', severity: 'error', file: 'src/a.ts' },
+          { code: 'c1', message: 'err', severity: 'error', file: 'src/a.ts' },
+          { code: 'c1', message: 'err', severity: 'error', file: 'src/b.ts' },
         ],
       }),
     ];

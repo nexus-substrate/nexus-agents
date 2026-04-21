@@ -137,7 +137,7 @@ function parseActions(raw: unknown): JourneyAction[] {
       if (typeof obj.timeoutMs === 'number') {
         optional.timeoutMs = obj.timeoutMs;
       }
-      return { ...base, ...optional } as JourneyAction;
+      return { ...base, ...optional };
     });
 }
 
@@ -302,7 +302,7 @@ export class JourneySimulator implements IJourneySimulator {
     if (state.error !== undefined) {
       optional.error = state.error;
     }
-    return { ...base, ...optional } as JourneyResult;
+    return { ...base, ...optional };
   }
 
   /**

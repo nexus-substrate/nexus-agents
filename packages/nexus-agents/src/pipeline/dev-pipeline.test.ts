@@ -15,7 +15,7 @@ function createMockStages(overrides?: Partial<DevPipelineStages>): DevPipelineSt
   return {
     research: vi.fn().mockResolvedValue('Research findings: relevant context gathered'),
     plan: vi.fn().mockResolvedValue('Implementation plan: step 1, step 2, step 3'),
-    vote: vi.fn().mockResolvedValue({ kind: 'approved', approvalPercentage: 83 } as VoteResult),
+    vote: vi.fn().mockResolvedValue({ kind: 'approved', approvalPercentage: 83 }),
     decompose: vi.fn().mockResolvedValue([
       {
         id: 'task-1',

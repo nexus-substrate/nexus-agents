@@ -54,7 +54,7 @@ function optProp<K extends string, V>(
   key: K,
   value: V | undefined
 ): { [P in K]: V } | Record<string, never> {
-  if (value === undefined) return {} as Record<string, never>;
+  if (value === undefined) return {};
   return { [key]: value } as { [P in K]: V };
 }
 
@@ -144,7 +144,7 @@ export function createSnapshot(data: BeliefMemoryData): BeliefSnapshot {
           updateId: u.updateId,
           beliefId: u.beliefId,
           updateType: u.updateType,
-          newState: u.newState as Record<string, unknown>,
+          newState: u.newState,
           reason: u.reason,
           timestamp: u.timestamp.toISOString(),
           ...optProp('previousState', u.previousState as Record<string, unknown> | undefined),
@@ -187,7 +187,7 @@ function hydrateUpdates(entries: BeliefSnapshot['updates']): Map<string, BeliefU
           updateId: u.updateId,
           beliefId: u.beliefId,
           updateType: u.updateType as BeliefUpdate['updateType'],
-          newState: u.newState as Partial<Belief>,
+          newState: u.newState,
           reason: u.reason,
           timestamp: new Date(u.timestamp),
           ...optProp('previousState', u.previousState as Partial<Belief> | undefined),
@@ -334,7 +334,7 @@ export function loadBeliefSnapshot(logger: ILogger): Result<HydratedBeliefData |
           continue;
         }
         // Cast required due to exactOptionalPropertyTypes — Zod validated the data
-        const hydrated = hydrateSnapshot(validation.data as BeliefSnapshot);
+        const hydrated = hydrateSnapshot(validation.data);
         logger.info('Belief memory snapshot loaded', { file, beliefs: hydrated.beliefs.size });
         return ok(hydrated);
       } catch (error: unknown) {

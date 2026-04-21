@@ -40,7 +40,7 @@ function makeRoutingResult(overrides: Partial<MockRoutingResult> = {}) {
     selectedModel: 'claude',
     selectionReason: 'Best overall score',
     ...overrides,
-  } as MockRoutingResult;
+  };
 }
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
@@ -57,7 +57,7 @@ function makeMockWorkflow(overrides: Partial<MockWorkflow> = {}) {
       { id: 'review', agent: 'code_expert', description: 'Review changes' },
     ],
     ...overrides,
-  } as MockWorkflow;
+  };
 }
 
 // ============================================================================

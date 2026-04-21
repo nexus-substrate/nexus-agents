@@ -9,7 +9,7 @@
  */
 
 import { vi } from 'vitest';
-import type { IAgent, Task, AgentRole } from '../../../core/index.js';
+import type { IAgent, Task } from '../../../core/index.js';
 import { ok, err, AgentError } from '../../../core/index.js';
 import type { CollaborationConfig } from '../../../agents/collaboration/collaboration-types.js';
 import type { IEventBus, TypedEvent } from '../../../agents/collaboration/event-bus-types.js';
@@ -68,7 +68,7 @@ export function createConfigurableAgent(id: string, behavior: AgentBehavior): IA
   let callCount = 0;
   return {
     id,
-    role: 'code_expert' as AgentRole,
+    role: 'code_expert',
     capabilities: [],
     state: 'idle',
     execute: vi.fn().mockImplementation(async (task: Task) => {
@@ -107,7 +107,7 @@ export function createRejectingAgent(id: string, proposalOutput: unknown): IAgen
 export function createFailingAgent(id: string): IAgent {
   return {
     id,
-    role: 'code_expert' as AgentRole,
+    role: 'code_expert',
     capabilities: [],
     state: 'idle',
     execute: vi.fn().mockResolvedValue(err(new AgentError('Agent execution failed'))),

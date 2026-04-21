@@ -109,7 +109,7 @@ describe('generateTestCode', () => {
   });
 
   it('generates fallback for unknown framework', () => {
-    const code = generateTestCode('src/helpers.ts', 'area', 'unit', 'mocha' as 'vitest');
+    const code = generateTestCode('src/helpers.ts', 'area', 'unit', 'mocha');
     expect(code).toContain('mocha test for area');
   });
 

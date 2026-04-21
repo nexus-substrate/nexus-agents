@@ -138,7 +138,7 @@ function makeOutcome(overrides: Partial<TaskOutcome>): TaskOutcome {
     timestamp: new Date().toISOString(),
     source: 'delegate',
     ...overrides,
-  } as TaskOutcome;
+  };
 }
 
 describe('getAdaptiveTimeout (#1534)', () => {

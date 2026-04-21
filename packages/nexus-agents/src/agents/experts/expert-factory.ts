@@ -178,7 +178,7 @@ function buildAgentOptions(
   const baseOptions: BaseAgentOptions = {
     id: validConfig.id,
     role: validConfig.role,
-    capabilities: capabilities as readonly AgentCapability[],
+    capabilities: capabilities,
     systemPrompt: applyFailureLessons(
       applyToolRestrictions(validConfig.systemPrompt, validConfig.toolRestrictions),
       validConfig.role
@@ -324,7 +324,7 @@ export function createManyExperts(
   for (const config of configs) {
     const result = createExpert(config, options);
     if (!result.ok) {
-      return result as Result<never, FactoryError>;
+      return result;
     }
     experts.push(result.value);
   }
@@ -358,7 +358,7 @@ export function createAllBuiltInExperts(
   for (const type of types) {
     const result = createBuiltInExpert(type, options);
     if (!result.ok) {
-      return result as Result<never, FactoryError>;
+      return result;
     }
     experts.push(result.value);
   }

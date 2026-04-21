@@ -34,7 +34,7 @@ describe('session-storage', () => {
     };
     return {
       exec: vi.fn(),
-      prepare: vi.fn().mockReturnValue(mockStatement) as unknown as CallableMock,
+      prepare: vi.fn().mockReturnValue(mockStatement),
       close: vi.fn(),
     };
   };

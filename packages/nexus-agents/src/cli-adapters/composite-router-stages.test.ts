@@ -69,7 +69,7 @@ function makeDeps(overrides: Partial<StageDependencies> = {}): StageDependencies
       maxDecisionTimeMs: 50,
       preferenceMinDataPoints: 10,
     },
-    logger: mockLogger as unknown as StageDependencies['logger'],
+    logger: mockLogger,
     cliNames: ['claude', 'gemini', 'codex'] as CliName[],
     budgetRouter: undefined,
     zeroRouter: undefined,
@@ -226,7 +226,7 @@ describe('runConfidenceCascadeStage', () => {
   it('returns defaults on stage error', async () => {
     const stages: string[] = [];
     const mockStage = {
-      route: vi.fn().mockResolvedValue({ ok: false, error: new Error('cascade fail') } as unknown),
+      route: vi.fn().mockResolvedValue({ ok: false, error: new Error('cascade fail') }),
     };
     const deps = makeDeps({
       config: { ...makeDeps().config, enableConfidenceCascade: true },

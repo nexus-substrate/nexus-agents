@@ -35,7 +35,7 @@ function makeResult(overrides: Partial<ExpertResult> = {}): ExpertResult {
     },
     confidence: 0.8,
     ...overrides,
-  } as ExpertResult;
+  };
 }
 
 // ============================================================================

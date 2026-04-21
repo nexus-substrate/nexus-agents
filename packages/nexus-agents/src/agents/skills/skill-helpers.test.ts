@@ -63,7 +63,7 @@ function makeExecution(overrides: Partial<SkillExecution> = {}): SkillExecution 
     status: 'success',
     input: {},
     ...overrides,
-  } as SkillExecution;
+  };
 }
 
 function makeSkillWithMetrics(overrides: Partial<SkillWithMetrics> = {}): SkillWithMetrics {
@@ -71,7 +71,7 @@ function makeSkillWithMetrics(overrides: Partial<SkillWithMetrics> = {}): SkillW
     ...makeSkill(),
     metrics: makeMetrics(),
     ...overrides,
-  } as SkillWithMetrics;
+  };
 }
 
 // ============================================================================
@@ -183,8 +183,8 @@ describe('addMetricsToSkill', () => {
 describe('sortSkillsByCriteria', () => {
   it('sorts by name ascending', () => {
     const skills = [
-      makeSkillWithMetrics({ name: 'Banana' } as Partial<SkillWithMetrics>),
-      makeSkillWithMetrics({ name: 'Apple' } as Partial<SkillWithMetrics>),
+      makeSkillWithMetrics({ name: 'Banana' }),
+      makeSkillWithMetrics({ name: 'Apple' }),
     ];
     const sorted = sortSkillsByCriteria(skills, 'name', 'asc');
     expect(sorted[0]!.name).toBe('Apple');
@@ -194,10 +194,10 @@ describe('sortSkillsByCriteria', () => {
     const skills = [
       makeSkillWithMetrics({
         metrics: makeMetrics({ successRate: 0.5 }),
-      } as Partial<SkillWithMetrics>),
+      }),
       makeSkillWithMetrics({
         metrics: makeMetrics({ successRate: 0.9 }),
-      } as Partial<SkillWithMetrics>),
+      }),
     ];
     const sorted = sortSkillsByCriteria(skills, 'successRate', 'desc');
     expect(sorted[0]!.metrics.successRate).toBe(0.9);

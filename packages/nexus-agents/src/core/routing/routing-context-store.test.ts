@@ -478,11 +478,7 @@ describe('AggregatedModelMetrics type shape', () => {
 describe('ModelPreference type shape', () => {
   it('returns preferences with all required fields', () => {
     const store = createRoutingContextStore({ minObservations: 1 });
-    store.storeModelPerformance(
-      'claude' as CliName,
-      'coding',
-      makePerformance({ observations: 5 })
-    );
+    store.storeModelPerformance('claude', 'coding', makePerformance({ observations: 5 }));
 
     const prefs = store.getModelPreferences('coding');
     expect(prefs).toHaveLength(1);
@@ -526,7 +522,7 @@ describe('ExperiencePattern type shape', () => {
 describe('CachedActionResult type shape', () => {
   it('returns cached action with all required fields', () => {
     const store = createRoutingContextStore();
-    store.cacheAction('build', 'claude' as CliName, { status: 'ok' }, 250);
+    store.cacheAction('build', 'claude', { status: 'ok' }, 250);
 
     const cached: CachedActionResult | undefined = store.getCachedAction('build');
     expect(cached).toBeDefined();

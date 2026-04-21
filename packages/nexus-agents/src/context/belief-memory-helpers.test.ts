@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type { Belief, BeliefQuery, BeliefMemoryStats } from './belief-types.js';
+import type { Belief, BeliefMemoryStats } from './belief-types.js';
 import {
   compareConfidence,
   strengthenConfidence,
@@ -150,29 +150,29 @@ describe('sortBeliefs', () => {
 describe('matchesQueryFilters', () => {
   it('filters out superseded beliefs by default', () => {
     const belief = makeBelief({ superseded: true });
-    expect(matchesQueryFilters(belief, {} as BeliefQuery)).toBe(false);
+    expect(matchesQueryFilters(belief, {})).toBe(false);
   });
 
   it('includes superseded when requested', () => {
     const belief = makeBelief({ superseded: true });
-    expect(matchesQueryFilters(belief, { includeSuperseded: true } as BeliefQuery)).toBe(true);
+    expect(matchesQueryFilters(belief, { includeSuperseded: true })).toBe(true);
   });
 
   it('filters by minimum confidence', () => {
     const belief = makeBelief({ confidence: 'low' });
-    expect(matchesQueryFilters(belief, { minConfidence: 'medium' } as BeliefQuery)).toBe(false);
-    expect(matchesQueryFilters(belief, { minConfidence: 'low' } as BeliefQuery)).toBe(true);
+    expect(matchesQueryFilters(belief, { minConfidence: 'medium' })).toBe(false);
+    expect(matchesQueryFilters(belief, { minConfidence: 'low' })).toBe(true);
   });
 
   it('filters by source type', () => {
     const belief = makeBelief({ sourceType: 'observation' });
-    expect(matchesQueryFilters(belief, { sourceType: 'observation' } as BeliefQuery)).toBe(true);
-    expect(matchesQueryFilters(belief, { sourceType: 'inference' } as BeliefQuery)).toBe(false);
+    expect(matchesQueryFilters(belief, { sourceType: 'observation' })).toBe(true);
+    expect(matchesQueryFilters(belief, { sourceType: 'inference' })).toBe(false);
   });
 
   it('passes with no filters', () => {
     const belief = makeBelief();
-    expect(matchesQueryFilters(belief, {} as BeliefQuery)).toBe(true);
+    expect(matchesQueryFilters(belief, {})).toBe(true);
   });
 });
 

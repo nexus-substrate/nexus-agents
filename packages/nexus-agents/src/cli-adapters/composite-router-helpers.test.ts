@@ -13,7 +13,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { TaskProfile } from '../core/index.js';
 import type { CliName, CliTask } from './types.js';
 import type { TopsisModelProfile } from './topsis-types.js';
-import type { ModelTier } from './zero-router-types.js';
+import type {} from './zero-router-types.js';
 import {
   adjustProfileForTask,
   adjustProfileWithStageScores,
@@ -51,7 +51,7 @@ function makeTaskProfile(overrides: Partial<TaskProfile> = {}): TaskProfile {
 
 function makeModelProfile(overrides: Partial<TopsisModelProfile> = {}): TopsisModelProfile {
   return {
-    cliName: 'claude' as CliName,
+    cliName: 'claude',
     capabilities: {
       reasoning: 10,
       contextWindow: 200_000,
@@ -414,8 +414,8 @@ describe('applyPerformanceFloorPenalty', () => {
       makeModelProfile({ cliName: 'gemini' as CliName, qualityScore: 8.5 }),
     ];
     const perfData = new Map<CliName, { successRate: number; sampleCount: number }>([
-      ['claude' as CliName, { successRate: 0.41, sampleCount: 235 }],
-      ['gemini' as CliName, { successRate: 0.7, sampleCount: 23 }],
+      ['claude', { successRate: 0.41, sampleCount: 235 }],
+      ['gemini', { successRate: 0.7, sampleCount: 23 }],
     ]);
     const result = applyPerformanceFloorPenalty(profiles, perfData);
     // Claude should be penalized: 9.5 - 3.0 = 6.5
@@ -427,7 +427,7 @@ describe('applyPerformanceFloorPenalty', () => {
   it('does not apply penalty when success rate above 50%', () => {
     const profiles = [makeModelProfile({ cliName: 'claude' as CliName, qualityScore: 9.5 })];
     const perfData = new Map<CliName, { successRate: number; sampleCount: number }>([
-      ['claude' as CliName, { successRate: 0.55, sampleCount: 100 }],
+      ['claude', { successRate: 0.55, sampleCount: 100 }],
     ]);
     const result = applyPerformanceFloorPenalty(profiles, perfData);
     expect(result[0]?.qualityScore).toBe(9.5);
@@ -436,7 +436,7 @@ describe('applyPerformanceFloorPenalty', () => {
   it('does not apply penalty when sample count below threshold', () => {
     const profiles = [makeModelProfile({ cliName: 'claude' as CliName, qualityScore: 9.5 })];
     const perfData = new Map<CliName, { successRate: number; sampleCount: number }>([
-      ['claude' as CliName, { successRate: 0.3, sampleCount: 10 }],
+      ['claude', { successRate: 0.3, sampleCount: 10 }],
     ]);
     const result = applyPerformanceFloorPenalty(profiles, perfData);
     expect(result[0]?.qualityScore).toBe(9.5);
@@ -445,7 +445,7 @@ describe('applyPerformanceFloorPenalty', () => {
   it('does not reduce quality below zero', () => {
     const profiles = [makeModelProfile({ cliName: 'claude' as CliName, qualityScore: 2.0 })];
     const perfData = new Map<CliName, { successRate: number; sampleCount: number }>([
-      ['claude' as CliName, { successRate: 0.3, sampleCount: 50 }],
+      ['claude', { successRate: 0.3, sampleCount: 50 }],
     ]);
     const result = applyPerformanceFloorPenalty(profiles, perfData);
     expect(result[0]?.qualityScore).toBe(0);
@@ -458,9 +458,9 @@ describe('applyPerformanceFloorPenalty', () => {
       makeModelProfile({ cliName: 'gemini' as CliName, qualityScore: 8.5 }),
     ];
     const perfData = new Map<CliName, { successRate: number; sampleCount: number }>([
-      ['claude' as CliName, { successRate: 0.41, sampleCount: 235 }],
-      ['codex' as CliName, { successRate: 0.33, sampleCount: 25 }],
-      ['gemini' as CliName, { successRate: 0.7, sampleCount: 23 }],
+      ['claude', { successRate: 0.41, sampleCount: 235 }],
+      ['codex', { successRate: 0.33, sampleCount: 25 }],
+      ['gemini', { successRate: 0.7, sampleCount: 23 }],
     ]);
     const result = applyPerformanceFloorPenalty(profiles, perfData);
     expect(result[0]?.qualityScore).toBe(6.5); // claude penalized
@@ -471,7 +471,7 @@ describe('applyPerformanceFloorPenalty', () => {
   it('handles exactly 50% success rate without penalty (boundary)', () => {
     const profiles = [makeModelProfile({ cliName: 'claude' as CliName, qualityScore: 9.5 })];
     const perfData = new Map<CliName, { successRate: number; sampleCount: number }>([
-      ['claude' as CliName, { successRate: 0.5, sampleCount: 100 }],
+      ['claude', { successRate: 0.5, sampleCount: 100 }],
     ]);
     const result = applyPerformanceFloorPenalty(profiles, perfData);
     // 50% is at the boundary — no penalty (strict less-than)
@@ -481,7 +481,7 @@ describe('applyPerformanceFloorPenalty', () => {
   it('handles exactly 20 samples at threshold boundary', () => {
     const profiles = [makeModelProfile({ cliName: 'claude' as CliName, qualityScore: 9.5 })];
     const perfData = new Map<CliName, { successRate: number; sampleCount: number }>([
-      ['claude' as CliName, { successRate: 0.3, sampleCount: 20 }],
+      ['claude', { successRate: 0.3, sampleCount: 20 }],
     ]);
     const result = applyPerformanceFloorPenalty(profiles, perfData);
     // Exactly 20 samples should trigger penalty (>= 20)
@@ -565,7 +565,7 @@ describe('applyZeroRouterFilter', () => {
     const mockRouter = {
       routeByDifficulty: vi.fn(() => ({
         difficulty: { aggregateScore: 0.8 },
-        tier: 'powerful' as ModelTier,
+        tier: 'powerful',
       })),
     };
     const result = applyZeroRouterFilter(makeCliTask(), candidates, mockRouter as never);
@@ -708,9 +708,9 @@ describe('adjustProfileWithStageScores', () => {
 
   it('boosts quality for CLI with above-average stage score', () => {
     const scores = new Map<CliName, number>([
-      ['claude' as CliName, 3.0],
-      ['gemini' as CliName, 1.0],
-      ['codex' as CliName, 1.0],
+      ['claude', 3.0],
+      ['gemini', 1.0],
+      ['codex', 1.0],
     ]);
     const result = adjustProfileWithStageScores(profiles, scores);
     // Claude has highest score → boosted
@@ -722,8 +722,8 @@ describe('adjustProfileWithStageScores', () => {
 
   it('caps quality boost at +15%', () => {
     const scores = new Map<CliName, number>([
-      ['claude' as CliName, 100.0],
-      ['gemini' as CliName, 0.0],
+      ['claude', 100.0],
+      ['gemini', 0.0],
     ]);
     const result = adjustProfileWithStageScores([claude, gemini], scores);
     // Max boost: 9.0 * 1.15 = 10.35, capped at 10
@@ -733,8 +733,8 @@ describe('adjustProfileWithStageScores', () => {
 
   it('limits quality penalty to -10%', () => {
     const scores = new Map<CliName, number>([
-      ['claude' as CliName, 0.0],
-      ['gemini' as CliName, 100.0],
+      ['claude', 0.0],
+      ['gemini', 100.0],
     ]);
     const result = adjustProfileWithStageScores([claude, gemini], scores);
     // Min penalty: 9.0 * 0.90 = 8.1
@@ -743,7 +743,7 @@ describe('adjustProfileWithStageScores', () => {
   });
 
   it('does not modify CLIs without stage scores', () => {
-    const scores = new Map<CliName, number>([['claude' as CliName, 5.0]]);
+    const scores = new Map<CliName, number>([['claude', 5.0]]);
     const result = adjustProfileWithStageScores(profiles, scores);
     // gemini and codex have no score → unchanged
     expect(result[1]?.qualityScore).toBe(8.0);
@@ -752,8 +752,8 @@ describe('adjustProfileWithStageScores', () => {
 
   it('handles equal scores (no deviation) gracefully', () => {
     const scores = new Map<CliName, number>([
-      ['claude' as CliName, 5.0],
-      ['gemini' as CliName, 5.0],
+      ['claude', 5.0],
+      ['gemini', 5.0],
     ]);
     const result = adjustProfileWithStageScores([claude, gemini], scores);
     // Equal scores → deviation is 0 → multiplier is 1.0 → no change
@@ -767,8 +767,8 @@ describe('adjustProfileWithStageScores', () => {
       qualityScore: 9.8,
     });
     const scores = new Map<CliName, number>([
-      ['claude' as CliName, 10.0],
-      ['gemini' as CliName, 1.0],
+      ['claude', 10.0],
+      ['gemini', 1.0],
     ]);
     const result = adjustProfileWithStageScores([highQuality, gemini], scores);
     expect(result[0]?.qualityScore).toBeLessThanOrEqual(10);

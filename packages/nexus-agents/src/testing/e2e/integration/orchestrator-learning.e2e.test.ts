@@ -21,8 +21,6 @@ import type {
   TaskResult,
   AgentMessage,
   AgentResponse,
-  AgentState,
-  AgentRole,
   AgentCapability,
 } from '../../../core/index.js';
 import { ok, AgentCapability as Cap } from '../../../core/index.js';
@@ -37,8 +35,8 @@ function createMockAgent(id: string, outputs: string[] = ['Task completed succes
   let callIndex = 0;
   return {
     id,
-    role: 'custom' as AgentRole,
-    state: 'idle' as AgentState,
+    role: 'custom',
+    state: 'idle',
     capabilities: [Cap.TASK_EXECUTION] as readonly AgentCapability[],
     execute: vi.fn((task: Task) => {
       const output = outputs[callIndex] ?? outputs[outputs.length - 1];

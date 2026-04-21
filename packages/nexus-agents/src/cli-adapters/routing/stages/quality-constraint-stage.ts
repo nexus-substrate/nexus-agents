@@ -53,7 +53,7 @@ function deriveQualityProfiles(): Record<CliName, QualityProfile> {
       avgLatencyMs: p.averageLatencyMs,
     };
   }
-  return result as Record<CliName, QualityProfile>;
+  return result;
 }
 
 /** Lazy-initialized profiles derived from model registry. */

@@ -26,7 +26,7 @@ describe('env-schema', () => {
       // Clear all NEXUS_* vars via stubEnv
       for (const key of Object.keys(process.env)) {
         if (key.startsWith('NEXUS_')) {
-          vi.stubEnv(key, undefined as unknown as string);
+          vi.stubEnv(key, undefined);
         }
       }
       const result = validateNexusEnv();

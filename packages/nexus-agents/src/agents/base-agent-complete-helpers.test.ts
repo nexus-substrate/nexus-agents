@@ -222,7 +222,7 @@ describe('executeModelCompletion', () => {
       adapter: {
         complete: vi.fn().mockImplementation(() => Promise.resolve({ ok: true, value: response })),
       } as never,
-      request: { messages: [] } as never,
+      request: { messages: [] },
       budgetTracker: { recordUsage } as never,
     };
 
@@ -245,7 +245,7 @@ describe('executeModelCompletion', () => {
           .fn()
           .mockImplementation(() => Promise.resolve({ ok: false, error: new Error('API down') })),
       } as never,
-      request: { messages: [] } as never,
+      request: { messages: [] },
       budgetTracker: { recordUsage: vi.fn() } as never,
     };
 

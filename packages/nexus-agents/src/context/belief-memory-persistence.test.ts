@@ -149,7 +149,7 @@ describe('belief-memory-persistence', () => {
       /* no-op */
     });
     vi.mocked(fs.readFileSync).mockReturnValue('');
-    vi.mocked(fs.readdirSync).mockReturnValue([] as unknown as ReturnType<typeof fs.readdirSync>);
+    vi.mocked(fs.readdirSync).mockReturnValue([]);
     vi.mocked(fs.unlinkSync).mockImplementation(() => {
       /* no-op */
     });
@@ -372,7 +372,7 @@ describe('belief-memory-persistence', () => {
     it('returns null when no snapshot files exist', () => {
       const logger = createMockLogger();
 
-      vi.mocked(fs.readdirSync).mockReturnValue([] as unknown as ReturnType<typeof fs.readdirSync>);
+      vi.mocked(fs.readdirSync).mockReturnValue([]);
 
       const result = loadBeliefSnapshot(logger);
 

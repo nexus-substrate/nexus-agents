@@ -9,7 +9,7 @@
 import { describe, it, expect } from 'vitest';
 import { AdaptiveLattsController } from './latts-controller.js';
 import type { VerificationResult, LattsHistoryEntry, DecisionContext } from './latts-types.js';
-import type { StepResult } from '../core/index.js';
+import type {} from '../core/index.js';
 
 // ============================================================================
 // Fixtures
@@ -22,7 +22,7 @@ function makeVerification(overrides: Partial<VerificationResult> = {}) {
     confidence: 0.5,
     reason: 'test reason',
     ...overrides,
-  } as VerificationResult;
+  };
 }
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
@@ -36,7 +36,7 @@ function makeContext(overrides: Partial<DecisionContext> = {}) {
     elapsedMs: 0,
     maxTimeMs: 300000,
     ...overrides,
-  } as DecisionContext;
+  };
 }
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
@@ -48,7 +48,7 @@ function makeHistoryEntry(overrides: Partial<LattsHistoryEntry> = {}) {
     decision: { type: 'resample' as const, reason: 'test' },
     durationMs: 100,
     ...overrides,
-  } as LattsHistoryEntry;
+  };
 }
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
@@ -180,7 +180,7 @@ describe('AdaptiveLattsController - exhausted attempts', () => {
     const v = makeVerification();
     const history = [
       makeHistoryEntry({
-        result: { stepId: 'step-B', output: 'ok', durationMs: 10, status: 'success' } as StepResult,
+        result: { stepId: 'step-B', output: 'ok', durationMs: 10, status: 'success' },
         verification: makeVerification({ accepted: true }),
       }),
     ];
@@ -218,7 +218,7 @@ describe('AdaptiveLattsController - exhausted attempts', () => {
           output: 'best result',
           durationMs: 10,
           status: 'success',
-        } as StepResult,
+        },
       }),
     ];
     const ctx = makeContext({ currentAttempt: 2 });
@@ -256,7 +256,7 @@ describe('AdaptiveLattsController - time budget', () => {
           output: 'partial',
           durationMs: 10,
           status: 'success',
-        } as StepResult,
+        },
       }),
     ];
     const v = makeVerification();

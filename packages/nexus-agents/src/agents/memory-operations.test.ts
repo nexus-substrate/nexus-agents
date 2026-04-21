@@ -147,7 +147,7 @@ describe('persistMemoryState', () => {
       taskLearnings: [
         { id: 'l1', taskType: 'code', insight: 'test', confidence: 0.9, learnedAt: new Date() },
       ],
-    } as unknown as Partial<AgentMemoryState>);
+    });
 
     await persistMemoryState(backend, state, logger);
 

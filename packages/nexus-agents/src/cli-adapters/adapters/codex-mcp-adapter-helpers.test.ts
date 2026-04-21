@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type { CliName } from '../types.js';
+import type {} from '../types.js';
 import {
   DEFAULT_CODEX_MCP_OPTIONS,
   CODEX_LEGACY_DEFAULTS,
@@ -108,7 +108,7 @@ describe('isRetryableErrorCode', () => {
 
 describe('createCliError', () => {
   it('creates error with correct fields', () => {
-    const error = createCliError('TIMEOUT', 'Request timed out', 'codex' as CliName);
+    const error = createCliError('TIMEOUT', 'Request timed out', 'codex');
     expect(error.code).toBe('TIMEOUT');
     expect(error.message).toBe('Request timed out');
     expect(error.cli).toBe('codex');
@@ -116,18 +116,18 @@ describe('createCliError', () => {
   });
 
   it('marks non-retryable errors correctly', () => {
-    const error = createCliError('NOT_FOUND', 'CLI not found', 'codex' as CliName);
+    const error = createCliError('NOT_FOUND', 'CLI not found', 'codex');
     expect(error.retryable).toBe(false);
   });
 
   it('includes cause when provided', () => {
     const cause = new Error('underlying error');
-    const error = createCliError('EXECUTION_ERROR', 'Failed', 'codex' as CliName, cause);
+    const error = createCliError('EXECUTION_ERROR', 'Failed', 'codex', cause);
     expect(error.cause).toBe(cause);
   });
 
   it('omits cause when not provided', () => {
-    const error = createCliError('PARSE_ERROR', 'Bad parse', 'codex' as CliName);
+    const error = createCliError('PARSE_ERROR', 'Bad parse', 'codex');
     expect(error.cause).toBeUndefined();
   });
 });

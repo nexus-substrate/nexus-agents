@@ -46,7 +46,7 @@ export class LockedWriter implements IBenchmarkWriter {
     });
     return this.chain.then(() => {
       if (resultCapture === undefined) {
-        return { ok: false as const, error: new Error('Write failed') } as WriteReturn;
+        return { ok: false as const, error: new Error('Write failed') };
       }
       return resultCapture;
     });

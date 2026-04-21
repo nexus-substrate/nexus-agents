@@ -86,7 +86,7 @@ export function applyRemoveStep(
         }
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { dependsOn, ...rest } = s;
-        return rest as WorkflowStep;
+        return rest;
       }),
   };
 }
@@ -169,7 +169,7 @@ export function applyRemoveDependency(
       }
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { dependsOn, ...rest } = s;
-      return rest as WorkflowStep;
+      return rest;
     }),
   };
 }

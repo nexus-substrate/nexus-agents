@@ -3,15 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type {
-  Result,
-  IAgent,
-  Task,
-  TaskResult,
-  AgentRole,
-  AgentState,
-  AgentCapability,
-} from '../../core/index.js';
+import type { Result, IAgent, Task, TaskResult, AgentCapability } from '../../core/index.js';
 import { ok, err, AgentError } from '../../core/index.js';
 import {
   SequentialProtocol,
@@ -32,8 +24,8 @@ function createMockAgent(
 ): IAgent {
   return {
     id,
-    role: 'code_expert' as AgentRole,
-    state: 'idle' as AgentState,
+    role: 'code_expert',
+    state: 'idle',
     capabilities: ['task_execution'] as readonly AgentCapability[],
     execute: vi.fn().mockResolvedValue(executeResult),
     handleMessage: vi.fn().mockResolvedValue(ok({ messageId: '1', status: 'completed' })),

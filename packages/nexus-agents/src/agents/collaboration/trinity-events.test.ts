@@ -40,7 +40,7 @@ describe('emitTrinityStarted', () => {
     const bus = makeMockEventBus();
     emitTrinityStarted(bus, {
       sessionId: 's1',
-      trinityConfig: { maxIterations: 5 } as never,
+      trinityConfig: { maxIterations: 5 },
     });
     expect(bus.emit).toHaveBeenCalledOnce();
     const event = bus.emit.mock.calls[0]![0];
@@ -52,7 +52,7 @@ describe('emitTrinityStarted', () => {
     const bus = makeMockEventBus();
     emitTrinityStarted(bus, {
       sessionId: 's1',
-      trinityConfig: { maxIterations: 3 } as never,
+      trinityConfig: { maxIterations: 3 },
     });
     const event = bus.emit.mock.calls[0]![0];
     expect(event.payload.config.agentCount).toBe(3);
@@ -62,7 +62,7 @@ describe('emitTrinityStarted', () => {
     const bus = makeMockEventBus();
     emitTrinityStarted(bus, {
       sessionId: 's1',
-      trinityConfig: { maxIterations: 10 } as never,
+      trinityConfig: { maxIterations: 10 },
     });
     const event = bus.emit.mock.calls[0]![0];
     expect(event.payload.config.maxRounds).toBe(10);
@@ -72,7 +72,7 @@ describe('emitTrinityStarted', () => {
     const bus = makeMockEventBus();
     emitTrinityStarted(bus, {
       sessionId: 'my-session',
-      trinityConfig: { maxIterations: 5 } as never,
+      trinityConfig: { maxIterations: 5 },
     });
     const event = bus.emit.mock.calls[0]![0];
     expect(event.sessionId).toBe('my-session');

@@ -17,7 +17,7 @@ import type { DevPipelineResult } from '../../pipeline/dev-pipeline.js';
 import { createAgentStages, flushPipelineMemory } from '../../pipeline/agent-executor.js';
 import { createTaskTracker, detectBackend } from '../../pipeline/task-tracker.js';
 // toolSuccessStructured not used directly — server.tool() expects different return type
-import type { TrackerBackend } from '../../pipeline/task-tracker.js';
+import type {} from '../../pipeline/task-tracker.js';
 
 // ============================================================================
 // Input Schema
@@ -138,7 +138,7 @@ async function createStages(
   input: DevPipelineInput
 ): Promise<ReturnType<typeof createAgentStages>> {
   // Auto-detect tracker backend if set to 'auto' or default
-  const backendChoice = input.trackerBackend as TrackerBackend;
+  const backendChoice = input.trackerBackend;
   const backend =
     backendChoice === 'json' && input.repo !== undefined ? await detectBackend() : backendChoice;
   const tracker =

@@ -34,7 +34,7 @@ function createTestLogger(): ILogger {
     error: vi.fn(),
     child: vi.fn().mockReturnThis(),
     setLevel: vi.fn(),
-  } as unknown as ILogger;
+  };
 }
 
 describe('MCP Server Lifecycle E2E Tests', () => {

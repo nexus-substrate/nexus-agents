@@ -10,12 +10,7 @@
 
 import { generateStepId } from '../../utils/index.js';
 import type { WorkflowDefinition, AgentRole } from '../../core/index.js';
-import type {
-  WorkflowAction,
-  ActionType,
-  ActionSpaceConfig,
-  TaskSpecification,
-} from './aflow-types.js';
+import type { WorkflowAction, ActionSpaceConfig, TaskSpecification } from './aflow-types.js';
 
 /**
  * Generate add_step actions for available agents.
@@ -59,7 +54,7 @@ export function createAddStepActionsForAgent(
   config: ActionSpaceConfig
 ): WorkflowAction[] {
   return config.availableActions.map((action) => ({
-    type: 'add_step' as ActionType,
+    type: 'add_step',
     newStep: {
       id: generateStepId(),
       agent,
@@ -78,7 +73,7 @@ export function createAddStepActionsForAgent(
  */
 export function generateRemoveStepActions(workflow: WorkflowDefinition): WorkflowAction[] {
   return workflow.steps.map((step) => ({
-    type: 'remove_step' as ActionType,
+    type: 'remove_step',
     targetStepId: step.id,
   }));
 }

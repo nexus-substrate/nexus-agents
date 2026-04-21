@@ -164,7 +164,7 @@ describe('checkDuration', () => {
     const failures: string[] = [];
     checkDuration(
       makeStepResult({ durationMs: 100 }),
-      makeExpectation({ maxDurationMs: 200 } as StepExpectation),
+      makeExpectation({ maxDurationMs: 200 }),
       failures
     );
     expect(failures).toEqual([]);
@@ -174,7 +174,7 @@ describe('checkDuration', () => {
     const failures: string[] = [];
     checkDuration(
       makeStepResult({ durationMs: 300 }),
-      makeExpectation({ maxDurationMs: 200 } as StepExpectation),
+      makeExpectation({ maxDurationMs: 200 }),
       failures
     );
     expect(failures).toHaveLength(1);
@@ -197,7 +197,7 @@ describe('checkOutputPattern', () => {
     const failures: string[] = [];
     checkOutputPattern(
       makeStepResult({ output: 'hello world' }),
-      makeExpectation({ outputPattern: 'hello.*' } as StepExpectation),
+      makeExpectation({ outputPattern: 'hello.*' }),
       failures
     );
     expect(failures).toEqual([]);
@@ -207,7 +207,7 @@ describe('checkOutputPattern', () => {
     const failures: string[] = [];
     checkOutputPattern(
       makeStepResult({ output: 'goodbye' }),
-      makeExpectation({ outputPattern: '^hello$' } as StepExpectation),
+      makeExpectation({ outputPattern: '^hello$' }),
       failures
     );
     expect(failures).toHaveLength(1);
@@ -223,7 +223,7 @@ describe('checkOutputPattern', () => {
     const failures: string[] = [];
     checkOutputPattern(
       makeStepResult({ output: { key: 'value' } }),
-      makeExpectation({ outputPattern: 'key' } as StepExpectation),
+      makeExpectation({ outputPattern: 'key' }),
       failures
     );
     expect(failures).toEqual([]);

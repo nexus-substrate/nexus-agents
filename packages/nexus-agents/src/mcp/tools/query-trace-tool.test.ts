@@ -201,7 +201,7 @@ describe('queryTraceFromDisk', () => {
 
   it('blocks path traversal at runtime via resolve guard', async () => {
     // Even if schema validation were bypassed, the resolve guard should block
-    const result = await queryTraceFromDisk({ runId: '..\\..\\etc' } as never, tempDir);
+    const result = await queryTraceFromDisk({ runId: '..\\..\\etc' }, tempDir);
 
     expect(result.source).toBe('not_found');
     expect(result.events).toHaveLength(0);

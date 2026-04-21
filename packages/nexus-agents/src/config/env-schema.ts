@@ -117,7 +117,7 @@ const NexusEnvSchema = z.object({
 // Known variable names (derived from schema)
 // ============================================================================
 
-const KNOWN_NAMES: readonly string[] = Object.keys(NexusEnvSchema.shape) as readonly string[];
+const KNOWN_NAMES: readonly string[] = Object.keys(NexusEnvSchema.shape);
 
 // ============================================================================
 // Levenshtein distance

@@ -20,7 +20,7 @@ import {
 // ============================================================================
 
 function makeResponse(text: string): CliResponse {
-  return { text } as CliResponse;
+  return { text };
 }
 
 function makeStageResult(
@@ -34,7 +34,7 @@ function makeStageResult(
     agreementScore: 0,
     durationMs: 100,
     ...overrides,
-  } as StageResult;
+  };
 }
 
 // ============================================================================
@@ -215,9 +215,7 @@ describe('calculateSimilarity', () => {
 
 describe('calculateClusterSimilarity', () => {
   it('returns 1 for single model', () => {
-    const responses = new Map<CliName, CliResponse>([
-      ['claude' as CliName, makeResponse('hello world test')],
-    ]);
+    const responses = new Map<CliName, CliResponse>([['claude', makeResponse('hello world test')]]);
     expect(calculateClusterSimilarity(['claude'] as CliName[], responses)).toBe(1);
   });
 
@@ -227,8 +225,8 @@ describe('calculateClusterSimilarity', () => {
 
   it('calculates average pairwise similarity for two models', () => {
     const responses = new Map<CliName, CliResponse>([
-      ['claude' as CliName, makeResponse('hello world test')],
-      ['gemini' as CliName, makeResponse('hello world different')],
+      ['claude', makeResponse('hello world test')],
+      ['gemini', makeResponse('hello world different')],
     ]);
     const sim = calculateClusterSimilarity(['claude', 'gemini'] as CliName[], responses);
     expect(sim).toBeGreaterThan(0);
@@ -238,9 +236,9 @@ describe('calculateClusterSimilarity', () => {
   it('returns 1 for identical responses from all models', () => {
     const text = 'the quick brown fox jumps over';
     const responses = new Map<CliName, CliResponse>([
-      ['claude' as CliName, makeResponse(text)],
-      ['gemini' as CliName, makeResponse(text)],
-      ['codex' as CliName, makeResponse(text)],
+      ['claude', makeResponse(text)],
+      ['gemini', makeResponse(text)],
+      ['codex', makeResponse(text)],
     ]);
     const sim = calculateClusterSimilarity(['claude', 'gemini', 'codex'] as CliName[], responses);
     expect(sim).toBe(1);
@@ -248,17 +246,15 @@ describe('calculateClusterSimilarity', () => {
 
   it('returns 0 for completely disjoint responses', () => {
     const responses = new Map<CliName, CliResponse>([
-      ['claude' as CliName, makeResponse('alpha bravo charlie delta')],
-      ['gemini' as CliName, makeResponse('echo foxtrot golf hotel')],
+      ['claude', makeResponse('alpha bravo charlie delta')],
+      ['gemini', makeResponse('echo foxtrot golf hotel')],
     ]);
     const sim = calculateClusterSimilarity(['claude', 'gemini'] as CliName[], responses);
     expect(sim).toBe(0);
   });
 
   it('handles missing model in responses map', () => {
-    const responses = new Map<CliName, CliResponse>([
-      ['claude' as CliName, makeResponse('hello world test')],
-    ]);
+    const responses = new Map<CliName, CliResponse>([['claude', makeResponse('hello world test')]]);
     // 'gemini' not in map: no valid pairs, pairCount = 0 → returns 0
     const sim = calculateClusterSimilarity(['claude', 'gemini'] as CliName[], responses);
     expect(sim).toBe(0);
@@ -266,9 +262,9 @@ describe('calculateClusterSimilarity', () => {
 
   it('averages across three model pairs', () => {
     const responses = new Map<CliName, CliResponse>([
-      ['claude' as CliName, makeResponse('hello world test abc')],
-      ['gemini' as CliName, makeResponse('hello world test xyz')],
-      ['codex' as CliName, makeResponse('hello world test abc')],
+      ['claude', makeResponse('hello world test abc')],
+      ['gemini', makeResponse('hello world test xyz')],
+      ['codex', makeResponse('hello world test abc')],
     ]);
     const sim = calculateClusterSimilarity(['claude', 'gemini', 'codex'] as CliName[], responses);
     // 3 pairs: (claude,gemini), (claude,codex), (gemini,codex)
@@ -295,8 +291,8 @@ describe('clusterResponses', () => {
   it('creates single cluster for identical responses', () => {
     const text = 'the same response about programming with typescript and testing';
     const responses = new Map<CliName, CliResponse>([
-      ['claude' as CliName, makeResponse(text)],
-      ['gemini' as CliName, makeResponse(text)],
+      ['claude', makeResponse(text)],
+      ['gemini', makeResponse(text)],
     ]);
     const clusters = clusterResponses(responses);
     expect(clusters).toHaveLength(1);
@@ -305,8 +301,8 @@ describe('clusterResponses', () => {
 
   it('creates separate clusters for dissimilar responses', () => {
     const responses = new Map<CliName, CliResponse>([
-      ['claude' as CliName, makeResponse('alpha bravo charlie delta echo foxtrot')],
-      ['gemini' as CliName, makeResponse('golf hotel india juliet kilo lima')],
+      ['claude', makeResponse('alpha bravo charlie delta echo foxtrot')],
+      ['gemini', makeResponse('golf hotel india juliet kilo lima')],
     ]);
     const clusters = clusterResponses(responses);
     expect(clusters).toHaveLength(2);
@@ -316,7 +312,7 @@ describe('clusterResponses', () => {
 
   it('handles single response', () => {
     const responses = new Map<CliName, CliResponse>([
-      ['claude' as CliName, makeResponse('single response text here')],
+      ['claude', makeResponse('single response text here')],
     ]);
     const clusters = clusterResponses(responses);
     expect(clusters).toHaveLength(1);
@@ -326,9 +322,9 @@ describe('clusterResponses', () => {
 
   it('groups two similar and one dissimilar', () => {
     const responses = new Map<CliName, CliResponse>([
-      ['claude' as CliName, makeResponse('the quick brown fox jumps over lazy dog today')],
-      ['gemini' as CliName, makeResponse('the quick brown fox jumps over lazy dog today')],
-      ['codex' as CliName, makeResponse('completely different topic about quantum physics')],
+      ['claude', makeResponse('the quick brown fox jumps over lazy dog today')],
+      ['gemini', makeResponse('the quick brown fox jumps over lazy dog today')],
+      ['codex', makeResponse('completely different topic about quantum physics')],
     ]);
     const clusters = clusterResponses(responses);
     expect(clusters.length).toBeGreaterThanOrEqual(2);
@@ -339,9 +335,9 @@ describe('clusterResponses', () => {
 
   it('assigns each model to exactly one cluster', () => {
     const responses = new Map<CliName, CliResponse>([
-      ['claude' as CliName, makeResponse('alpha bravo charlie delta echo')],
-      ['gemini' as CliName, makeResponse('foxtrot golf hotel india juliet')],
-      ['codex' as CliName, makeResponse('kilo lima mike november oscar')],
+      ['claude', makeResponse('alpha bravo charlie delta echo')],
+      ['gemini', makeResponse('foxtrot golf hotel india juliet')],
+      ['codex', makeResponse('kilo lima mike november oscar')],
     ]);
     const clusters = clusterResponses(responses);
     const allModels = clusters.flatMap((c) => [...c.models]);
@@ -352,8 +348,8 @@ describe('clusterResponses', () => {
   it('cluster response field is from the first model in cluster', () => {
     const resp1 = makeResponse('the quick brown fox jumps over lazy dog');
     const responses = new Map<CliName, CliResponse>([
-      ['claude' as CliName, resp1],
-      ['gemini' as CliName, makeResponse('the quick brown fox jumps over lazy dog')],
+      ['claude', resp1],
+      ['gemini', makeResponse('the quick brown fox jumps over lazy dog')],
     ]);
     const clusters = clusterResponses(responses);
     expect(clusters[0]?.response).toBe(resp1);
@@ -362,8 +358,8 @@ describe('clusterResponses', () => {
   it('internalSimilarity is 1 for identical responses in cluster', () => {
     const text = 'typescript programming language features testing';
     const responses = new Map<CliName, CliResponse>([
-      ['claude' as CliName, makeResponse(text)],
-      ['gemini' as CliName, makeResponse(text)],
+      ['claude', makeResponse(text)],
+      ['gemini', makeResponse(text)],
     ]);
     const clusters = clusterResponses(responses);
     expect(clusters[0]?.internalSimilarity).toBe(1);
@@ -375,8 +371,8 @@ describe('clusterResponses', () => {
     // tokens2 = {aaa, bbb, ccc, ddd, eee, hhh, iii}
     // intersection = 5, union = 9 => Jaccard = 5/9 = 0.556 (< 0.7) => separate
     const responses = new Map<CliName, CliResponse>([
-      ['claude' as CliName, makeResponse('aaa bbb ccc ddd eee fff ggg')],
-      ['gemini' as CliName, makeResponse('aaa bbb ccc ddd eee hhh iii')],
+      ['claude', makeResponse('aaa bbb ccc ddd eee fff ggg')],
+      ['gemini', makeResponse('aaa bbb ccc ddd eee hhh iii')],
     ]);
     const clusters = clusterResponses(responses);
     expect(clusters).toHaveLength(2);
@@ -390,8 +386,8 @@ describe('clusterResponses', () => {
     // Need: 7 overlap out of 10 total = 7/10 = 0.7
     // tokens both have exactly 7 same, 0 different each
     const responses = new Map<CliName, CliResponse>([
-      ['claude' as CliName, makeResponse('aaa bbb ccc ddd eee fff ggg')],
-      ['gemini' as CliName, makeResponse('aaa bbb ccc ddd eee fff ggg')],
+      ['claude', makeResponse('aaa bbb ccc ddd eee fff ggg')],
+      ['gemini', makeResponse('aaa bbb ccc ddd eee fff ggg')],
     ]);
     const clusters = clusterResponses(responses);
     // Identical => similarity 1.0 => definitely clustered
@@ -409,9 +405,9 @@ describe('selectBestResponse', () => {
   });
 
   it('prefers later stages over earlier stages', () => {
-    const stage1 = makeStageResult([['gemini' as CliName, makeResponse('short answer')]]);
+    const stage1 = makeStageResult([['gemini', makeResponse('short answer')]]);
     const stage2 = makeStageResult([
-      ['claude' as CliName, makeResponse('a longer and more detailed response here')],
+      ['claude', makeResponse('a longer and more detailed response here')],
     ]);
     const result = selectBestResponse([stage1, stage2]);
     expect(result?.model).toBe('claude');
@@ -419,8 +415,8 @@ describe('selectBestResponse', () => {
 
   it('selects longest response within a stage', () => {
     const stage = makeStageResult([
-      ['gemini' as CliName, makeResponse('short')],
-      ['codex' as CliName, makeResponse('a much longer response with more detail and content')],
+      ['gemini', makeResponse('short')],
+      ['codex', makeResponse('a much longer response with more detail and content')],
     ]);
     const result = selectBestResponse([stage]);
     expect(result?.model).toBe('codex');
@@ -428,14 +424,14 @@ describe('selectBestResponse', () => {
 
   it('returns single response from single stage', () => {
     const resp = makeResponse('the only response here');
-    const stage = makeStageResult([['claude' as CliName, resp]]);
+    const stage = makeStageResult([['claude', resp]]);
     const result = selectBestResponse([stage]);
     expect(result?.response).toBe(resp);
     expect(result?.model).toBe('claude');
   });
 
   it('skips stages with empty responses and falls back to earlier', () => {
-    const stage1 = makeStageResult([['gemini' as CliName, makeResponse('some response text')]]);
+    const stage1 = makeStageResult([['gemini', makeResponse('some response text')]]);
     const stage2 = makeStageResult([]);
     const result = selectBestResponse([stage1, stage2]);
     expect(result?.model).toBe('gemini');
@@ -448,10 +444,10 @@ describe('selectBestResponse', () => {
   });
 
   it('handles three stages and returns from last with responses', () => {
-    const stage1 = makeStageResult([['gemini' as CliName, makeResponse('fast response')]]);
-    const stage2 = makeStageResult([['codex' as CliName, makeResponse('balanced response text')]]);
+    const stage1 = makeStageResult([['gemini', makeResponse('fast response')]]);
+    const stage2 = makeStageResult([['codex', makeResponse('balanced response text')]]);
     const stage3 = makeStageResult([
-      ['claude' as CliName, makeResponse('powerful detailed response with lots of content')],
+      ['claude', makeResponse('powerful detailed response with lots of content')],
     ]);
     const result = selectBestResponse([stage1, stage2, stage3]);
     expect(result?.model).toBe('claude');
@@ -459,8 +455,8 @@ describe('selectBestResponse', () => {
 
   it('among equal-length responses in same stage, picks first after sort', () => {
     const stage = makeStageResult([
-      ['gemini' as CliName, makeResponse('abc')],
-      ['codex' as CliName, makeResponse('xyz')],
+      ['gemini', makeResponse('abc')],
+      ['codex', makeResponse('xyz')],
     ]);
     // Both have same length, sort is stable so first in sorted order wins
     const result = selectBestResponse([stage]);
@@ -471,13 +467,13 @@ describe('selectBestResponse', () => {
 
   it('returns correct response object reference', () => {
     const resp = makeResponse('the target response to find');
-    const stage = makeStageResult([['claude' as CliName, resp]]);
+    const stage = makeStageResult([['claude', resp]]);
     const result = selectBestResponse([stage]);
     expect(result?.response).toBe(resp);
   });
 
   it('handles single stage with single empty-text response', () => {
-    const stage = makeStageResult([['claude' as CliName, makeResponse('')]]);
+    const stage = makeStageResult([['claude', makeResponse('')]]);
     const result = selectBestResponse([stage]);
     expect(result).toBeDefined();
     expect(result?.response.text).toBe('');

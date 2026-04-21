@@ -142,10 +142,7 @@ function parseHeader(headerLine: string): Result<Record<string, number>, { messa
   if (missing.length > 0) {
     return { ok: false, error: { message: `Missing CSV columns: ${missing.join(', ')}` } };
   }
-  const colIndex = Object.fromEntries(required.map((col) => [col, header.indexOf(col)])) as Record<
-    string,
-    number
-  >;
+  const colIndex = Object.fromEntries(required.map((col) => [col, header.indexOf(col)]));
   return { ok: true, value: colIndex };
 }
 

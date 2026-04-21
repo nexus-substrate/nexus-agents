@@ -250,7 +250,7 @@ export class BudgetRouter implements IBudgetRouter {
       error: {
         code: 'NOT_FOUND',
         message: 'No adapter available within budget constraints',
-        cli: 'claude' as CliName,
+        cli: 'claude',
         retryable: false,
       },
     };

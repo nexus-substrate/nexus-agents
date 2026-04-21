@@ -26,7 +26,7 @@ function makeCtx(overrides: Partial<PolicyContext> = {}) {
     args: {},
     mode: 'read-only' as const,
     ...overrides,
-  } as PolicyContext;
+  };
 }
 
 // ============================================================================
