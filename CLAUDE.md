@@ -469,9 +469,9 @@ Concretely:
 
 ### Trigger phrases I should recognize
 
-- "Run the pipeline on <X>" / "full pipeline" / "dev pipeline"
-- "Research, vote, and plan <X>"
-- "Open an epic for <X>"
+- "Run the pipeline on _topic_" / "full pipeline" / "dev pipeline"
+- "Research, vote, and plan _topic_"
+- "Open an epic for _topic_"
 - "Research + vote before implementing"
 
 If the ask is ambiguous (could be trivial or could be structural), lean toward **pipeline** and present it as "I'll run the full pipeline unless you want a one-shot." Better to ask than to skip audit on something that needed it.
