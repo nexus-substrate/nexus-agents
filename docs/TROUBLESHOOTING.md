@@ -388,7 +388,7 @@ cat workflows/<template>.yaml
 ### Resources
 
 - **Documentation Index:** `docs/INDEX.yaml`
-- **Full Docs:** `docs/llms-full.txt`
+- **Human-readable Index:** `docs/README.md`
 - **Architecture:** `ARCHITECTURE.md`
 
 ### Reporting Issues

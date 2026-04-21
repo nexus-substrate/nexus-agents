@@ -3,7 +3,7 @@ title: Skills Index
 description: Quick navigation for common tasks and key file paths
 tier: 1
 keywords: [navigation, tasks, skills, entry-points, quick-start]
-related_files: [docs/INDEX.yaml, docs/llms.txt, docs/reference/capabilities.md]
+related_files: [docs/INDEX.yaml, docs/reference/capabilities.md]
 ---
 
 # Skills Index
@@ -121,11 +121,11 @@ nexus-agents doctor
 # Run fitness audit
 nexus-agents fitness-audit
 
-# Generate docs index
+# Generate capabilities index (MCP tools, CLIs, etc.)
 npx tsx scripts/generate-repo-index.ts
 
-# Generate llms.txt
-npx tsx scripts/generate-docs.ts
+# Regenerate source-derived docs (AgentRole interface, module inventory, ADR counts)
+npx tsx scripts/generate-docs-content.ts
 ```
 
 ---
