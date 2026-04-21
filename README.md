@@ -20,7 +20,7 @@ nexus-agents makes your AI coding tools work together intelligently. It coordina
 - **Enforces quality** — consensus voting (6 strategies including Bayesian higher-order), QA review loops, security scans with SARIF
 - **Learns over time** — 5 memory backends (session, belief, agentic, adaptive, typed) track what works, feeding routing, planning, and research decisions
 - **Runs a full dev pipeline** — research papers, plan architecture, vote on proposals, decompose into tasks, implement, QA review, ship
-- **Connects everything** — 30 MCP tools, 9 research sources, graph workflows, checkpoint/resume, GitHub/GitLab issue tracking
+- **Connects everything** — 31 MCP tools, 9 research sources, graph workflows, checkpoint/resume, GitHub/GitLab issue tracking
 
 ```
 You: "Review this code for security and performance"
@@ -50,7 +50,7 @@ Consensus-validated response — outcomes feed back into routing for next time
                          │       nexus-agents server        │
                          │                                  │
                          │  ┌──────────┐  ┌──────────────┐ │
-                         │  │ 30 MCP   │  │ Dev Pipeline  │ │
+                         │  │ 31 MCP   │  │ Dev Pipeline  │ │
                          │  │ Tools    │  │ research→plan │ │
                          │  └────┬─────┘  │ →vote→impl   │ │
                          │       │        │ →QA→ship      │ │
@@ -78,6 +78,14 @@ Consensus-validated response — outcomes feed back into routing for next time
 ```bash
 npm install -g nexus-agents
 ```
+
+**Or as a Claude Code plugin** (single-command install from the official marketplace):
+
+```
+/plugin install nexus-agents
+```
+
+See [docs/getting-started/PLUGIN_INSTALL.md](docs/getting-started/PLUGIN_INSTALL.md) for plugin-specific setup, or [llms-install.md](llms-install.md) for the short install guide an AI agent can follow.
 
 ### 2. Verify
 
