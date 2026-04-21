@@ -443,6 +443,41 @@ Detailed workflow steps are in `skills/<name>/SKILL.md` (canonical per Anthropic
 
 ---
 
+## Default Working Mode
+
+For any **non-trivial** work — ≥3 steps, architecture, security-sensitive, cross-package, or anything I'd want an audit trail for — default to the full pipeline:
+
+**research → vote → plan → epic → child issues → implement**
+
+Concretely:
+
+1. **Research** — `research_discover` + `research_synthesize` (and/or targeted `WebFetch`/`Grep`) to ground the approach in current evidence, not assumptions.
+2. **Vote** — `consensus_vote` (strategy: `higher_order` for architecture/security, `simple_majority` for routine calls). Surface the specific alternatives and the tradeoff I'm weighing; don't rubber-stamp a pre-decided answer.
+3. **Plan** — write the implementation plan only after the vote resolves. Name the files touched and the order.
+4. **Epic + child issues** — `gh issue create` a tracking epic, then 3–5 child issues with scoped titles, labels, and milestones. Link children ↔ epic.
+5. **Implement** — start on the first child issue. Update epic checkboxes as each child lands.
+
+### When to skip the pipeline
+
+- **Trivial fix** — single-file bug fix, dep bump, typo, docs tweak
+- **User says "just do it"** or "one-shot" — go direct, no voting, no issues
+- **Explicit escape hatches:**
+  - `no vote` — research + plan + issues but skip consensus
+  - `no issues` — do the work inline, don't file anything on GitHub
+  - `dry-run` — produce the plan + vote + issue drafts, don't push to GitHub
+  - `just implement` — skip research + vote, go straight to code
+
+### Trigger phrases I should recognize
+
+- "Run the pipeline on _topic_" / "full pipeline" / "dev pipeline"
+- "Research, vote, and plan _topic_"
+- "Open an epic for _topic_"
+- "Research + vote before implementing"
+
+If the ask is ambiguous (could be trivial or could be structural), lean toward **pipeline** and present it as "I'll run the full pipeline unless you want a one-shot." Better to ask than to skip audit on something that needed it.
+
+---
+
 ## Governance
 
 Governance rules (voting thresholds, refactor gates, fitness audit, documentation governance) are in `.claude/rules/governance.md` — auto-loaded when relevant.
