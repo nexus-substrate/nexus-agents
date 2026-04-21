@@ -63,10 +63,10 @@
     "prepublishOnly": "pnpm run build"
   },
   "optionalDependencies": {
-    "@atproto/api": "^0.19.8"
+    "@atproto/api": "^0.19.9"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.88.0",
+    "@anthropic-ai/sdk": "^0.90.0",
     "@google/genai": "^1.50.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "better-sqlite3": "^12.9.0",
@@ -90,7 +90,7 @@
     "ai": "^6.0.168",
     "fast-check": "^4.7.0",
     "tsup": "^8.5.1",
-    "typedoc": "0.28.18",
+    "typedoc": "0.28.19",
     "vitest": "4.1.4"
   },
   "peerDependencies": {
