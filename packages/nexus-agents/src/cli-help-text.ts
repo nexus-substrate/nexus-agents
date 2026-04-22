@@ -4,8 +4,17 @@
  * Help documentation for the CLI commands and options.
  * Extracted from cli-types.ts to maintain file size limits.
  *
+ * HELP_TEXT below is the full (`--all`) view and also doubles as the raw
+ * template that `entrypoint-cli-extractor.ts` parses via AST to build the
+ * entrypoint index. Do not reshape its top-level sections without updating
+ * that extractor. Tiered rendering (default vs `--all`) lives in
+ * `renderHelp({ all })`, which swaps the COMMANDS block based on the
+ * audience catalog in `cli-command-catalog.ts`.
+ *
  * @module cli-help-text
  */
+
+import { renderCommandsSection } from './cli-command-catalog.js';
 
 /**
  * Help text for the CLI.
@@ -393,3 +402,27 @@ EXAMPLES:
 
 For more information, visit: https://github.com/williamzujkowski/nexus-agents
 `.trim();
+
+/**
+ * Regex matching the COMMANDS: block in HELP_TEXT, from the heading line
+ * through (but not including) the blank line before OPTIONS:.
+ *
+ * The template literal in HELP_TEXT has the COMMANDS list indented 2 spaces,
+ * followed by a blank line, followed by `OPTIONS:`. We swap out everything
+ * between `COMMANDS:\n` and the blank line before `OPTIONS:`.
+ */
+const COMMANDS_BLOCK_RE = /COMMANDS:\n([\s\S]*?)\n\nOPTIONS:/;
+
+/**
+ * Renders the top-level help output.
+ *
+ * @param opts.all - If true, returns the full HELP_TEXT (includes maintainer
+ *   commands like benchmarks and release tooling). If false, returns a tiered
+ *   view that hides maintainer commands — surfaced via `--all` hint at the
+ *   bottom of the COMMANDS block.
+ */
+export function renderHelp(opts: { all: boolean }): string {
+  if (opts.all) return HELP_TEXT;
+  const replacement = renderCommandsSection(false);
+  return HELP_TEXT.replace(COMMANDS_BLOCK_RE, `COMMANDS:\n${replacement}\n\nOPTIONS:`);
+}

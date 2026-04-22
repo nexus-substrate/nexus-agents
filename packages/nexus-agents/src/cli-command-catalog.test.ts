@@ -1,0 +1,137 @@
+/**
+ * Tests for the CLI command catalog (Issue #2135).
+ *
+ * Verifies audience filtering, grouping, and rendered output shape used by
+ * the tiered `--help`.
+ */
+
+import { describe, it, expect } from 'vitest';
+
+import {
+  COMMAND_CATALOG,
+  filterCatalog,
+  groupByAudience,
+  renderCommandsSection,
+} from './cli-command-catalog.js';
+import { renderHelp, HELP_TEXT } from './cli-help-text.js';
+
+describe('cli-command-catalog (#2135)', () => {
+  describe('COMMAND_CATALOG invariants', () => {
+    it('has no duplicate command names', () => {
+      const names = COMMAND_CATALOG.map((e) => e.command);
+      expect(new Set(names).size).toBe(names.length);
+    });
+
+    it('tags every entry with a valid audience', () => {
+      const valid = new Set(['essential', 'advanced', 'maintainer']);
+      for (const entry of COMMAND_CATALOG) {
+        expect(valid.has(entry.audience)).toBe(true);
+      }
+    });
+
+    it('keeps the essential tier small (<=12) so new users are not overwhelmed', () => {
+      const essentialCount = COMMAND_CATALOG.filter((e) => e.audience === 'essential').length;
+      expect(essentialCount).toBeLessThanOrEqual(12);
+    });
+  });
+
+  describe('filterCatalog', () => {
+    it('excludes maintainer entries by default', () => {
+      const filtered = filterCatalog(false);
+      for (const entry of filtered) {
+        expect(entry.audience).not.toBe('maintainer');
+      }
+    });
+
+    it('returns the full catalog when showAll=true', () => {
+      const filtered = filterCatalog(true);
+      expect(filtered.length).toBe(COMMAND_CATALOG.length);
+    });
+
+    it('shrinks the visible surface in default mode', () => {
+      const defaultCount = filterCatalog(false).length;
+      const allCount = filterCatalog(true).length;
+      expect(defaultCount).toBeLessThan(allCount);
+    });
+  });
+
+  describe('groupByAudience', () => {
+    it('preserves catalog order within each group', () => {
+      const groups = groupByAudience(COMMAND_CATALOG);
+      const essential = groups.get('essential') ?? [];
+      const catalogEssential = COMMAND_CATALOG.filter((e) => e.audience === 'essential').map(
+        (e) => e.command
+      );
+      expect(essential.map((e) => e.command)).toEqual(catalogEssential);
+    });
+  });
+
+  describe('renderCommandsSection', () => {
+    it('produces tiered output with Essential + Advanced headings but not Maintainer by default', () => {
+      const out = renderCommandsSection(false);
+      expect(out).toContain('Essential');
+      expect(out).toContain('Advanced');
+      expect(out).not.toContain('Maintainer');
+      expect(out).toContain('Run with --all');
+    });
+
+    it('includes Maintainer heading when showAll=true', () => {
+      const out = renderCommandsSection(true);
+      expect(out).toContain('Essential');
+      expect(out).toContain('Advanced');
+      expect(out).toContain('Maintainer');
+      expect(out).not.toContain('Run with --all');
+    });
+
+    it('indents entries with 4 spaces so they nest under COMMANDS:', () => {
+      const out = renderCommandsSection(false);
+      // Every entry row starts with 4 spaces (command name column) — the
+      // grouping heading is indented 2 spaces instead.
+      const entryLines = out.split('\n').filter((l) => /^ {4}\S/.test(l));
+      expect(entryLines.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('renderHelp — top-level tiering', () => {
+    it('returns HELP_TEXT verbatim when all=true', () => {
+      expect(renderHelp({ all: true })).toBe(HELP_TEXT);
+    });
+
+    it('swaps in the tiered COMMANDS block when all=false', () => {
+      const tiered = renderHelp({ all: false });
+      expect(tiered).toContain('Essential');
+      expect(tiered).toContain('Run with --all');
+      // Maintainer-only commands must not appear in the COMMANDS listing
+      // itself. (Examples further down may still reference them; filtering
+      // the EXAMPLES block is intentionally out of scope for #2135.)
+      const commandsMatch = /COMMANDS:\n([\s\S]*?)\n\nOPTIONS:/.exec(tiered);
+      expect(commandsMatch).not.toBeNull();
+      const commandsBlock = commandsMatch?.[1] ?? '';
+      expect(commandsBlock).not.toMatch(/^ {4}swe-bench\b/m);
+      expect(commandsBlock).not.toMatch(/^ {4}release-validate\b/m);
+      expect(commandsBlock).not.toMatch(/^ {4}fitness-audit\b/m);
+    });
+
+    it('preserves surrounding USAGE / OPTIONS / SETUP sections in default mode', () => {
+      const tiered = renderHelp({ all: false });
+      expect(tiered).toContain('USAGE:');
+      expect(tiered).toContain('OPTIONS:');
+      expect(tiered).toContain('SETUP OPTIONS:');
+      expect(tiered).toContain('EXAMPLES:');
+    });
+
+    it('keeps the full view showing all commands when all=true', () => {
+      const full = renderHelp({ all: true });
+      // Sanity: maintainer-band commands come back when --all is set.
+      expect(full).toContain('swe-bench');
+      expect(full).toContain('fitness-audit');
+      expect(full).toContain('release-notes');
+    });
+
+    it('default view is substantially shorter than --all view', () => {
+      const tiered = renderHelp({ all: false });
+      const full = renderHelp({ all: true });
+      expect(tiered.length).toBeLessThan(full.length);
+    });
+  });
+});

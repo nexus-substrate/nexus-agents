@@ -1,0 +1,289 @@
+/**
+ * nexus-agents CLI command catalog (Issue #2135).
+ *
+ * Single source of truth for every top-level command: name, one-line
+ * description, and the *audience* that cares about it. `renderHelp`
+ * consumes this to produce tiered output:
+ *
+ * - Default `nexus-agents --help`: essential + advanced, grouped
+ * - `nexus-agents --help --all`: everything, grouped
+ *
+ * Maintainer-audience commands (benchmarks, release tooling, deep
+ * observability) are still fully functional — they just don't clutter
+ * the default --help. `nexus-agents <cmd> --help` still works for all
+ * of them.
+ *
+ * @module cli-command-catalog
+ */
+
+/** Who the command is aimed at. Drives the default --help filter. */
+export type CommandAudience = 'essential' | 'advanced' | 'maintainer';
+
+/** One entry per top-level command. */
+export interface CommandCatalogEntry {
+  readonly command: string;
+  readonly description: string;
+  readonly audience: CommandAudience;
+}
+
+/**
+ * All top-level commands, in display order within their audience band.
+ *
+ * Audience rationale:
+ * - **essential**: what a new user needs to install, configure, verify, and
+ *   run their first task. If this list is >12 we are doing something wrong.
+ * - **advanced**: useful day-to-day but not first-touch (session mgmt,
+ *   capability inspection, workflow scaffolding, auth token rotation).
+ * - **maintainer**: benchmarks, release tooling, self-audits, deep
+ *   observability dashboards, dogfooding helpers.
+ */
+export const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
+  // ── Essential ────────────────────────────────────────────────────────────
+  {
+    command: '(default)',
+    description: 'Start MCP server with stdio transport',
+    audience: 'essential',
+  },
+  {
+    command: 'hello',
+    description: 'Show welcome message and quick start (no API keys needed)',
+    audience: 'essential',
+  },
+  {
+    command: 'setup',
+    description: 'Configure CLI integration (MCP + .rules + data dirs)',
+    audience: 'essential',
+  },
+  {
+    command: 'verify',
+    description: 'Check install health (sqlite, adapters, config)',
+    audience: 'essential',
+  },
+  {
+    command: 'doctor',
+    description: 'Detailed system/adapter health check',
+    audience: 'essential',
+  },
+  {
+    command: 'config',
+    description: 'Manage configuration (init, get, set, list, export, import)',
+    audience: 'essential',
+  },
+  {
+    command: 'orchestrate',
+    description: 'Execute a task via CLI tools (standalone mode)',
+    audience: 'essential',
+  },
+  {
+    command: 'vote',
+    description: 'Run consensus vote on a proposal (5-6 agents)',
+    audience: 'essential',
+  },
+  {
+    command: 'workflow',
+    description: 'Manage and run workflow templates (list, run)',
+    audience: 'essential',
+  },
+  {
+    command: 'expert',
+    description: 'Manage expert agents (list, create, execute)',
+    audience: 'essential',
+  },
+  {
+    command: 'research',
+    description: 'Manage research registry (status, add, stats, refresh)',
+    audience: 'essential',
+  },
+
+  // ── Advanced ─────────────────────────────────────────────────────────────
+  {
+    command: 'session',
+    description: 'Manage session persistence (list, show, export, delete)',
+    audience: 'advanced',
+  },
+  {
+    command: 'auth',
+    description: 'Manage MCP authentication tokens (init, show, rotate)',
+    audience: 'advanced',
+  },
+  {
+    command: 'status',
+    description: 'At-a-glance project health dashboard',
+    audience: 'advanced',
+  },
+  {
+    command: 'capabilities',
+    description: 'Show model capabilities matrix',
+    audience: 'advanced',
+  },
+  {
+    command: 'review',
+    description: 'Review a GitHub PR (dogfooding helper)',
+    audience: 'advanced',
+  },
+  {
+    command: 'scaffold',
+    description: 'Generate project files from templates',
+    audience: 'advanced',
+  },
+  {
+    command: 'validate',
+    description: 'Run unified validation (doctor + fitness + config)',
+    audience: 'advanced',
+  },
+  {
+    command: 'index',
+    description: 'Generate and manage codebase index',
+    audience: 'advanced',
+  },
+
+  // ── Maintainer (hidden by default) ───────────────────────────────────────
+  {
+    command: 'demo',
+    description: 'API-free exploration mode (marketing/demo flow)',
+    audience: 'maintainer',
+  },
+  {
+    command: 'hooks',
+    description: 'Claude CLI hook integration commands',
+    audience: 'maintainer',
+  },
+  {
+    command: 'routing-audit',
+    description: 'Debug model routing decisions',
+    audience: 'maintainer',
+  },
+  {
+    command: 'fitness-audit',
+    description: 'Run CLI orchestration fitness score audit',
+    audience: 'maintainer',
+  },
+  {
+    command: 'system-review',
+    description: 'Automated system review (5-phase checklist)',
+    audience: 'maintainer',
+  },
+  {
+    command: 'sprint',
+    description: 'Automated sprint planning from open issues',
+    audience: 'maintainer',
+  },
+  {
+    command: 'evaluate',
+    description: 'Self-evaluation of codebase components',
+    audience: 'maintainer',
+  },
+  {
+    command: 'issue',
+    description: 'Issue template validation and management',
+    audience: 'maintainer',
+  },
+  {
+    command: 'validation',
+    description: 'Learning validation dashboard',
+    audience: 'maintainer',
+  },
+  {
+    command: 'learning-metrics',
+    description: 'Aggregated learning metrics dashboard',
+    audience: 'maintainer',
+  },
+  {
+    command: 'swe-bench',
+    description: 'Run SWE-bench evaluation benchmark',
+    audience: 'maintainer',
+  },
+  {
+    command: 'atbench',
+    description: 'Run ATBench trajectory-safety evaluation',
+    audience: 'maintainer',
+  },
+  {
+    command: 'visualize',
+    description: 'Generate Mermaid diagrams and ASCII dashboards',
+    audience: 'maintainer',
+  },
+  {
+    command: 'health',
+    description: 'Swarm health metrics dashboard',
+    audience: 'maintainer',
+  },
+  {
+    command: 'release-notes',
+    description: 'Generate release notes from git commits',
+    audience: 'maintainer',
+  },
+  {
+    command: 'release-validate',
+    description: 'Run expert swarm validation for releases',
+    audience: 'maintainer',
+  },
+  {
+    command: 'release-announce',
+    description: 'Generate release announcements (blog, social)',
+    audience: 'maintainer',
+  },
+];
+
+/** Returns the catalog filtered by the `showAll` flag. */
+export function filterCatalog(showAll: boolean): readonly CommandCatalogEntry[] {
+  if (showAll) return COMMAND_CATALOG;
+  return COMMAND_CATALOG.filter((e) => e.audience !== 'maintainer');
+}
+
+/** Groups entries by audience, preserving catalog order within each group. */
+export function groupByAudience(
+  entries: readonly CommandCatalogEntry[]
+): ReadonlyMap<CommandAudience, readonly CommandCatalogEntry[]> {
+  const groups = new Map<CommandAudience, CommandCatalogEntry[]>();
+  for (const entry of entries) {
+    const existing = groups.get(entry.audience) ?? [];
+    existing.push(entry);
+    groups.set(entry.audience, existing);
+  }
+  return groups;
+}
+
+const AUDIENCE_HEADINGS: Record<CommandAudience, string> = {
+  essential: 'Essential — install, configure, run',
+  advanced: 'Advanced — day-to-day extras',
+  maintainer: 'Maintainer — benchmarks, releases, deep diagnostics',
+};
+
+/**
+ * Renders the COMMANDS section of `--help`, grouped and tiered.
+ *
+ * Output shape (indent-sensitive — consumed verbatim inside `COMMANDS:` block):
+ *
+ * ```
+ *   Essential — install, configure, run
+ *     hello           Show welcome message...
+ *     setup           Configure CLI integration...
+ *
+ *   Advanced — day-to-day extras
+ *     ...
+ * ```
+ *
+ * Trailing hint line ("Run with --all…") is appended only when `showAll=false`.
+ */
+export function renderCommandsSection(showAll: boolean): string {
+  const filtered = filterCatalog(showAll);
+  const groups = groupByAudience(filtered);
+  const lines: string[] = [];
+  const order: CommandAudience[] = showAll
+    ? ['essential', 'advanced', 'maintainer']
+    : ['essential', 'advanced'];
+  for (const audience of order) {
+    const entries = groups.get(audience);
+    if (entries === undefined || entries.length === 0) continue;
+    lines.push(`  ${AUDIENCE_HEADINGS[audience]}`);
+    for (const entry of entries) {
+      lines.push(`    ${entry.command.padEnd(16)} ${entry.description}`);
+    }
+    lines.push('');
+  }
+  if (!showAll) {
+    lines.push('  Run with --all to show maintainer commands (benchmarks, release tooling).');
+  }
+  return lines.join('\n').replace(/\n+$/, '');
+}
