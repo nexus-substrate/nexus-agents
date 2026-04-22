@@ -135,6 +135,16 @@ const SETUP_HELP: CommandHelpEntry = {
       defaultValue: 'user',
     },
     { flag: '--dry-run', description: 'Show changes without applying them' },
+    {
+      flag: '--custom-api <url>',
+      description:
+        'Configure OpenAI-compatible gateway (short-circuits normal setup; validates URL + probes /models) [#2124]',
+    },
+    { flag: '--custom-api-key <key>', description: 'API key for --custom-api (else prompt/env)' },
+    {
+      flag: '--custom-model <id>',
+      description: 'Default model for --custom-api (default: gpt-4o)',
+    },
   ],
 };
 
