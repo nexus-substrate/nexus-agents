@@ -1,7 +1,18 @@
 /**
  * nexus-agents/indexer - CLI Command Extractor
  *
- * Extracts CLI commands from source code using TypeScript AST parsing.
+ * Emits `CliCommandSpec[]` for the entrypoints manifest.
+ *
+ * Command names + descriptions are read from the `cli-command-catalog.ts`
+ * single-source-of-truth (#2156). Handler source lines and per-command
+ * option bindings are still resolved via ts-morph against
+ * `cli-commands.ts` and `cli-types.ts`.
+ *
+ * Prior to #2156 this module parsed commands out of the HELP_TEXT string
+ * via regex — that regex had a long-standing miss on long command names
+ * (#2146, release-validate / release-announce / learning-metrics) and
+ * silently disagreed with `scripts/generate-repo-index.ts` on command
+ * count. Reading from the catalog removes both failure modes.
  *
  * (Source: Epic #261 - Automated Documentation System)
  */
@@ -9,77 +20,7 @@
 import { SyntaxKind, type Project, type SourceFile } from 'ts-morph';
 import * as path from 'node:path';
 import type { CliCommandSpec, OptionSpec } from './entrypoint-types.js';
-
-// ============================================================================
-// Types
-// ============================================================================
-
-/**
- * CLI command metadata from HELP_TEXT parsing.
- */
-interface CliCommandMeta {
-  name: string;
-  description: string;
-  subcommands: string[];
-}
-
-// ============================================================================
-// HELP_TEXT Parsing
-// ============================================================================
-
-/**
- * Parses CLI commands from the HELP_TEXT constant.
- * Looks for the COMMANDS: section and extracts command names/descriptions.
- */
-// eslint-disable-next-line complexity -- AST parsing requires nested conditions
-function parseHelpTextCommands(helpText: string): CliCommandMeta[] {
-  const commands: CliCommandMeta[] = [];
-  const lines = helpText.split('\n');
-  let inCommandsSection = false;
-
-  for (const line of lines) {
-    // Detect section boundaries
-    if (line.trim() === 'COMMANDS:') {
-      inCommandsSection = true;
-      continue;
-    }
-    const trimmed = line.trim();
-    if (trimmed.endsWith(':') && trimmed !== 'COMMANDS:' && !trimmed.startsWith('-')) {
-      inCommandsSection = false;
-      continue;
-    }
-
-    if (!inCommandsSection) continue;
-
-    // Parse command lines (format: "  command       Description")
-    const match = line.match(/^\s{2}(\S+(?:\s+\S+)?)\s{2,}(.+)$/);
-    if (match !== null) {
-      const cmdPart = match[1];
-      const descriptionPart = match[2];
-      if (cmdPart === undefined || descriptionPart === undefined) continue;
-
-      const parts = cmdPart.trim().split(/\s+/);
-      const name = parts[0];
-      if (name === undefined) continue;
-
-      const subcommand = parts.length > 1 ? parts[1] : undefined;
-
-      // Find existing command or create new
-      const existing = commands.find((c) => c.name === name);
-      if (existing !== undefined && subcommand !== undefined) {
-        existing.subcommands.push(subcommand);
-      } else if (existing === undefined) {
-        commands.push({
-          name,
-          description: descriptionPart.trim(),
-          subcommands: subcommand !== undefined ? [subcommand] : [],
-        });
-      }
-    }
-  }
-
-  return commands;
-}
+import { catalogForExtractors } from '../cli-command-catalog.js';
 
 // ============================================================================
 // Options Extraction
@@ -122,24 +63,9 @@ function extractCliOptions(sourceFile: SourceFile): Map<string, OptionSpec> {
       type: 'string', // Default
     };
 
-    // Consolidated from three near-identical extractOption* helpers (#2160).
-    // Each field does the same ts-morph traversal, differing only in name and
-    // post-processing. `type` strips both quotes and `as const`; `short`
-    // strips quotes; `default` keeps the raw text.
-    const typeRaw = extractOptionProperty(optValue, 'type');
-    if (typeRaw !== undefined) {
-      const t = typeRaw.replace(/['"]/g, '').replace(' as const', '');
-      if (t !== '') (spec as { type: string }).type = t;
-    }
-    const shortRaw = extractOptionProperty(optValue, 'short');
-    if (shortRaw !== undefined) {
-      const s = shortRaw.replace(/['"]/g, '');
-      if (s !== '') (spec as { short: string }).short = s;
-    }
-    const defaultRaw = extractOptionProperty(optValue, 'default');
-    if (defaultRaw !== undefined && defaultRaw !== '') {
-      (spec as { default: string }).default = defaultRaw;
-    }
+    extractOptionType(optValue, spec);
+    extractOptionShort(optValue, spec);
+    extractOptionDefault(optValue, spec);
 
     options.set(optName, spec);
   }
@@ -148,29 +74,76 @@ function extractCliOptions(sourceFile: SourceFile): Map<string, OptionSpec> {
 }
 
 /**
- * Returns the raw `getText()` of a named property inside an option object
- * literal, or `undefined` if the property (or its initializer) is absent.
- *
- * Consolidates three nearly-identical helpers (`extractOptionType`,
- * `extractOptionShort`, `extractOptionDefault`) that each walked the same
- * three-level ts-morph null-guard chain differing only in the property name
- * and trailing string normalization (#2160). Callers normalize the returned
- * raw text themselves.
+ * Extracts the type from an option object.
  */
-function extractOptionProperty(optValue: unknown, propName: string): string | undefined {
+function extractOptionType(optValue: unknown, spec: OptionSpec): void {
   const obj = optValue as {
     getProperty(name: string): { asKind(kind: unknown): unknown } | undefined;
   };
-  const prop = obj.getProperty(propName);
-  if (prop === undefined) return undefined;
+  const typeProp = obj.getProperty('type');
+  if (typeProp === undefined) return;
 
-  const propAssign = prop.asKind(SyntaxKind.PropertyAssignment) as
+  const propAssign = typeProp.asKind(SyntaxKind.PropertyAssignment) as
     | { getInitializer(): { getText(): string } | undefined }
     | undefined;
-  if (propAssign === undefined) return undefined;
+  if (propAssign === undefined) return;
 
   const init = propAssign.getInitializer();
-  return init?.getText();
+  if (init === undefined) return;
+
+  const text = init.getText();
+  const typeValue = text.replace(/['"]/g, '').replace(' as const', '');
+  if (typeValue !== '') {
+    (spec as { type: string }).type = typeValue;
+  }
+}
+
+/**
+ * Extracts the short alias from an option object.
+ */
+function extractOptionShort(optValue: unknown, spec: OptionSpec): void {
+  const obj = optValue as {
+    getProperty(name: string): { asKind(kind: unknown): unknown } | undefined;
+  };
+  const shortProp = obj.getProperty('short');
+  if (shortProp === undefined) return;
+
+  const propAssign = shortProp.asKind(SyntaxKind.PropertyAssignment) as
+    | { getInitializer(): { getText(): string } | undefined }
+    | undefined;
+  if (propAssign === undefined) return;
+
+  const init = propAssign.getInitializer();
+  if (init === undefined) return;
+
+  const text = init.getText().replace(/['"]/g, '');
+  if (text !== '') {
+    (spec as { short: string }).short = text;
+  }
+}
+
+/**
+ * Extracts the default value from an option object.
+ */
+function extractOptionDefault(optValue: unknown, spec: OptionSpec): void {
+  const obj = optValue as {
+    getProperty(name: string): { asKind(kind: unknown): unknown } | undefined;
+  };
+  const defaultProp = obj.getProperty('default');
+  if (defaultProp === undefined) return;
+
+  const propAssign = defaultProp.asKind(SyntaxKind.PropertyAssignment) as
+    | { getInitializer(): { getText(): string } | undefined }
+    | undefined;
+  if (propAssign === undefined) return;
+
+  const init = propAssign.getInitializer();
+  if (init === undefined) return;
+
+  const text = init.getText();
+  if (text !== '') {
+    (spec as { default: string }).default = text;
+  }
 }
 
 // ============================================================================
@@ -189,6 +162,10 @@ function toPascalCase(str: string): string {
 
 /**
  * Maps command options based on command name.
+ *
+ * Legacy hand-crafted mapping from before PARSE_ARGS_CONFIG was parseable
+ * via ts-morph. Kept for stability of the manifest output — switching it
+ * to a declarative per-command option list is a separate change.
  */
 function getCommandOptions(name: string, cliOptions: Map<string, OptionSpec>): OptionSpec[] {
   const cmdOptions: OptionSpec[] = [];
@@ -216,78 +193,56 @@ function getCommandOptions(name: string, cliOptions: Map<string, OptionSpec>): O
   return cmdOptions;
 }
 
-/**
- * Loads and parses the CLI command metadata from HELP_TEXT.
- *
- * HELP_TEXT was split out of cli-types.ts in #293 (Jan 2026) and now lives
- * in cli-help-text.ts. cli-types.ts only re-exports it; ts-morph doesn't
- * chase re-exports for variable declarations, so we read from the source
- * file directly. The typesFile fallback is kept for robustness.
- */
-function loadHelpTextCommands(
-  project: Project,
-  packageRoot: string,
-  typesFile: SourceFile | undefined
-): CliCommandMeta[] {
-  const helpTextPath = path.join(packageRoot, 'src/cli-help-text.ts');
-  const helpTextFile = project.getSourceFile(helpTextPath) ?? typesFile;
-  if (helpTextFile === undefined) return [];
-
-  const helpTextVar = helpTextFile.getVariableDeclaration('HELP_TEXT');
-  if (helpTextVar === undefined) return [];
-
-  const helpText = helpTextVar.getInitializer()?.getText() ?? '';
-  const cleanText = helpText
-    .slice(1, -1)
-    .replace(/^\s*\n/, '')
-    .replace(/\n\s*$/, '');
-  return parseHelpTextCommands(cleanText);
+/** Per-catalog-entry build context — packaged to keep buildCommandSpec ≤5 params. */
+interface BuildContext {
+  readonly commandsFile: SourceFile;
+  readonly relativePath: string;
+  readonly cliOptions: Map<string, OptionSpec>;
+  readonly cliCommandsPath: string;
+  readonly warnings?: string[];
 }
 
 /**
- * Emits non-fatal diagnostics for the silent-empty paths that caused the
- * 3-month regression fixed in #2147 (#2153). Extracted from
- * `extractCliCommands` to keep that function under the 50-line cap.
+ * Builds one `CliCommandSpec` from a catalog entry. Extracted to keep
+ * `extractCliCommands` under the 50-line cap.
  */
-function pushExtractionWarnings(
-  warnings: string[] | undefined,
-  issue: {
-    typesFile: SourceFile | undefined;
-    typesFullPath: string;
-    helpTextCount: number;
-    commandsFile: SourceFile | undefined;
-    commandsFullPath: string;
-  }
-): void {
-  if (warnings === undefined) return;
-  if (issue.typesFile === undefined) {
-    warnings.push(
-      `CLI extraction: types file not loaded (${issue.typesFullPath}). ` +
-        `PARSE_ARGS_CONFIG options will be missing from the manifest.`
+function buildCommandSpec(
+  entry: { command: string; description: string },
+  ctx: BuildContext
+): CliCommandSpec {
+  const handlerName = `handle${toPascalCase(entry.command)}Command`;
+  const handlerFunc = ctx.commandsFile.getFunction(handlerName);
+  const sourceLine = handlerFunc?.getStartLineNumber() ?? 1;
+
+  if (handlerFunc === undefined && ctx.warnings !== undefined) {
+    ctx.warnings.push(
+      `CLI extraction: catalog entry "${entry.command}" has no matching ` +
+        `${handlerName} function in ${ctx.cliCommandsPath}. Check naming drift.`
     );
   }
-  if (issue.helpTextCount === 0) {
-    warnings.push(
-      `CLI extraction: HELP_TEXT parsed to zero commands. ` +
-        `Check cli-help-text.ts is in the ts-morph project and COMMANDS: section is present.`
-    );
+
+  const cmdOptions = getCommandOptions(entry.command, ctx.cliOptions);
+  const cmdSpec: CliCommandSpec = {
+    name: entry.command,
+    description: entry.description,
+    source_file: ctx.relativePath,
+    source_line: sourceLine,
+  };
+  if (cmdOptions.length > 0) {
+    (cmdSpec as { options: readonly OptionSpec[] }).options = cmdOptions;
   }
-  if (issue.commandsFile === undefined) {
-    warnings.push(
-      `CLI extraction: commands file not loaded (${issue.commandsFullPath}). ` +
-        `Returning zero commands.`
-    );
-  }
+  return cmdSpec;
 }
 
 /**
- * Extracts CLI commands from source files.
+ * Extracts CLI commands from the catalog + cli-commands source file.
  *
- * @param warnings - Optional sink for non-fatal diagnostics. When supplied,
- *   the extractor surfaces silent-empty paths (missing cli-types.ts, HELP_TEXT
- *   parsed as empty, cli-commands.ts not in the ts-morph project) as actionable
- *   messages (#2153). Same class as the 3-month silent regression fixed in
- *   #2147.
+ * Name and description come from `cli-command-catalog.ts`. Handler source
+ * location comes from locating `handle<PascalName>Command` in
+ * `cli-commands.ts` via ts-morph. Option bindings come from
+ * `PARSE_ARGS_CONFIG` in `cli-types.ts`.
+ *
+ * @param warnings - Optional sink for non-fatal diagnostics (#2153).
  */
 export function extractCliCommands(
   project: Project,
@@ -296,56 +251,35 @@ export function extractCliCommands(
   cliTypesPath: string,
   warnings?: string[]
 ): CliCommandSpec[] {
-  const commands: CliCommandSpec[] = [];
-
   const typesFullPath = path.join(packageRoot, cliTypesPath);
   const typesFile = project.getSourceFile(typesFullPath);
-  const helpTextCommands = loadHelpTextCommands(project, packageRoot, typesFile);
+  if (typesFile === undefined && warnings !== undefined) {
+    warnings.push(
+      `CLI extraction: types file not loaded (${typesFullPath}). ` +
+        `PARSE_ARGS_CONFIG options will be missing from the manifest.`
+    );
+  }
   const cliOptions =
     typesFile !== undefined ? extractCliOptions(typesFile) : new Map<string, OptionSpec>();
 
   const commandsFullPath = path.join(packageRoot, cliCommandsPath);
   const commandsFile = project.getSourceFile(commandsFullPath);
-
-  pushExtractionWarnings(warnings, {
-    typesFile,
-    typesFullPath,
-    helpTextCount: helpTextCommands.length,
-    commandsFile,
-    commandsFullPath,
-  });
-
-  if (commandsFile === undefined) return commands;
-
-  // Map commands from HELP_TEXT with source locations from switch cases
-  const relativePath = path.relative(process.cwd(), commandsFullPath);
-
-  for (const cmdMeta of helpTextCommands) {
-    // Skip (default) command as it's not a real command
-    if (cmdMeta.name === '(default)') continue;
-
-    // Find the handler function for this command
-    const handlerName = `handle${toPascalCase(cmdMeta.name)}Command`;
-    const handlerFunc = commandsFile.getFunction(handlerName);
-    const sourceLine = handlerFunc?.getStartLineNumber() ?? 1;
-
-    // Get options for this command
-    const cmdOptions = getCommandOptions(cmdMeta.name, cliOptions);
-
-    const cmdSpec: CliCommandSpec = {
-      name: cmdMeta.name,
-      description: cmdMeta.description,
-      source_file: relativePath,
-      source_line: sourceLine,
-    };
-    if (cmdMeta.subcommands.length > 0) {
-      (cmdSpec as { subcommands: readonly string[] }).subcommands = cmdMeta.subcommands;
+  if (commandsFile === undefined) {
+    if (warnings !== undefined) {
+      warnings.push(
+        `CLI extraction: commands file not loaded (${commandsFullPath}). ` +
+          `Returning zero commands.`
+      );
     }
-    if (cmdOptions.length > 0) {
-      (cmdSpec as { options: readonly OptionSpec[] }).options = cmdOptions;
-    }
-    commands.push(cmdSpec);
+    return [];
   }
 
-  return commands;
+  const ctx: BuildContext = {
+    commandsFile,
+    relativePath: path.relative(process.cwd(), commandsFullPath),
+    cliOptions,
+    cliCommandsPath,
+    ...(warnings !== undefined && { warnings }),
+  };
+  return catalogForExtractors().map((entry) => buildCommandSpec(entry, ctx));
 }

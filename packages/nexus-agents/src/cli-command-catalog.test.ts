@@ -12,6 +12,7 @@ import {
   filterCatalog,
   groupByAudience,
   renderCommandsSection,
+  catalogForExtractors,
 } from './cli-command-catalog.js';
 import { renderHelp, HELP_TEXT } from './cli-help-text.js';
 
@@ -23,7 +24,7 @@ describe('cli-command-catalog (#2135)', () => {
     });
 
     it('tags every entry with a valid audience', () => {
-      const valid = new Set(['essential', 'advanced', 'maintainer']);
+      const valid = new Set(['essential', 'advanced', 'maintainer', 'internal']);
       for (const entry of COMMAND_CATALOG) {
         expect(valid.has(entry.audience)).toBe(true);
       }
@@ -43,15 +44,43 @@ describe('cli-command-catalog (#2135)', () => {
       }
     });
 
-    it('returns the full catalog when showAll=true', () => {
+    it('returns every non-internal entry when showAll=true (#2156)', () => {
+      // internal-tier entries are never shown in human-facing output, even
+      // under --all. The extractor path uses catalogForExtractors() instead.
       const filtered = filterCatalog(true);
-      expect(filtered.length).toBe(COMMAND_CATALOG.length);
+      const nonInternalCount = COMMAND_CATALOG.filter((e) => e.audience !== 'internal').length;
+      expect(filtered.length).toBe(nonInternalCount);
+      for (const entry of filtered) {
+        expect(entry.audience).not.toBe('internal');
+      }
+    });
+
+    it('always excludes internal-tier entries from human-facing output (#2156)', () => {
+      for (const entry of filterCatalog(false)) expect(entry.audience).not.toBe('internal');
+      for (const entry of filterCatalog(true)) expect(entry.audience).not.toBe('internal');
     });
 
     it('shrinks the visible surface in default mode', () => {
       const defaultCount = filterCatalog(false).length;
       const allCount = filterCatalog(true).length;
       expect(defaultCount).toBeLessThan(allCount);
+    });
+  });
+
+  describe('catalogForExtractors (#2156)', () => {
+    it('excludes the (default) placeholder — it has no handler', () => {
+      const extractor = catalogForExtractors();
+      expect(extractor.find((e) => e.command === '(default)')).toBeUndefined();
+    });
+
+    it('includes internal-tier entries (unlike filterCatalog)', () => {
+      const extractor = catalogForExtractors();
+      expect(extractor.some((e) => e.audience === 'internal')).toBe(true);
+    });
+
+    it('includes every real command (essential + advanced + maintainer + internal)', () => {
+      const expected = COMMAND_CATALOG.filter((e) => e.command !== '(default)').length;
+      expect(catalogForExtractors().length).toBe(expected);
     });
   });
 

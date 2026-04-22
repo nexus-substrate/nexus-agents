@@ -17,7 +17,7 @@
  */
 
 /** Who the command is aimed at. Drives the default --help filter. */
-export type CommandAudience = 'essential' | 'advanced' | 'maintainer';
+export type CommandAudience = 'essential' | 'advanced' | 'maintainer' | 'internal';
 
 /** One entry per top-level command. */
 export interface CommandCatalogEntry {
@@ -36,6 +36,10 @@ export interface CommandCatalogEntry {
  *   capability inspection, workflow scaffolding, auth token rotation).
  * - **maintainer**: benchmarks, release tooling, self-audits, deep
  *   observability dashboards, dogfooding helpers.
+ * - **internal**: dev/eval loops that aren't part of the product surface
+ *   (e2e-eval, routing-ab, memory-benchmark). Hidden from both default
+ *   `--help` AND `--help --all`. Still present for entrypoint extraction
+ *   (repo-index / entrypoints.yaml) because they're real CLI commands.
  */
 export const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
   // ── Essential ────────────────────────────────────────────────────────────
@@ -223,12 +227,71 @@ export const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
     description: 'Generate release announcements (blog, social)',
     audience: 'maintainer',
   },
+
+  // ── Internal (hidden everywhere; here for extractor/index completeness) ──
+  {
+    command: 'server',
+    // Synonym for the no-arg invocation — `nexus-agents` and
+    // `nexus-agents server` both run `handleServerCommand`. Listed here for
+    // extractor completeness; humans see `(default)` in --help.
+    description: 'Start MCP server with stdio transport (explicit form)',
+    audience: 'internal',
+  },
+  {
+    command: 'e2e-eval',
+    description: 'E2E evaluation scenario runner (dev loop)',
+    audience: 'internal',
+  },
+  {
+    command: 'memory-benchmark',
+    description: 'Memory-system benchmark runner (dev loop)',
+    audience: 'internal',
+  },
+  {
+    command: 'memory-eval',
+    description: 'Comparative memory evaluation benchmark (dev loop)',
+    audience: 'internal',
+  },
+  {
+    command: 'routing-ab',
+    description: 'A/B comparison of routing strategies (dev loop)',
+    audience: 'internal',
+  },
+  {
+    command: 'scenario',
+    description: 'Execute a named scenario from the testing framework',
+    audience: 'internal',
+  },
+  {
+    command: 'warm-up',
+    description: 'Warm the model/adapter caches before a run',
+    audience: 'internal',
+  },
 ];
 
-/** Returns the catalog filtered by the `showAll` flag. */
+/**
+ * Returns the catalog filtered for `--help` output.
+ *
+ * - `showAll: false` → essential + advanced (the default `--help` surface)
+ * - `showAll: true` → essential + advanced + maintainer (`--help --all`)
+ *
+ * `internal` audience entries are **always excluded** from human-facing
+ * output. They're still reachable via `COMMAND_CATALOG` for extractors that
+ * need a complete inventory (repo-index, entrypoints.yaml).
+ */
 export function filterCatalog(showAll: boolean): readonly CommandCatalogEntry[] {
-  if (showAll) return COMMAND_CATALOG;
-  return COMMAND_CATALOG.filter((e) => e.audience !== 'maintainer');
+  const visible = COMMAND_CATALOG.filter((e) => e.audience !== 'internal');
+  if (showAll) return visible;
+  return visible.filter((e) => e.audience !== 'maintainer');
+}
+
+/**
+ * Returns every real top-level command, including internal ones, but
+ * excluding the `(default)` placeholder (no actual handler). Used by
+ * entrypoint extractors and the repo-index generator — #2156.
+ */
+export function catalogForExtractors(): readonly CommandCatalogEntry[] {
+  return COMMAND_CATALOG.filter((e) => e.command !== '(default)');
 }
 
 /** Groups entries by audience, preserving catalog order within each group. */
@@ -248,6 +311,9 @@ const AUDIENCE_HEADINGS: Record<CommandAudience, string> = {
   essential: 'Essential — install, configure, run',
   advanced: 'Advanced — day-to-day extras',
   maintainer: 'Maintainer — benchmarks, releases, deep diagnostics',
+  // Never rendered (filterCatalog strips internal before renderCommandsSection
+  // iterates), but required by the Record<CommandAudience, string> contract.
+  internal: 'Internal — dev/eval loops (hidden from --help)',
 };
 
 /**
