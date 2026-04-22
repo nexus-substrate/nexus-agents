@@ -249,9 +249,36 @@ function getCommandOptions(name: string, cliOptions: Map<string, OptionSpec>): O
 }
 
 /**
+ * Loads and parses the CLI command metadata from HELP_TEXT.
+ *
+ * HELP_TEXT was split out of cli-types.ts in #293 (Jan 2026) and now lives
+ * in cli-help-text.ts. cli-types.ts only re-exports it; ts-morph doesn't
+ * chase re-exports for variable declarations, so we read from the source
+ * file directly. The typesFile fallback is kept for robustness.
+ */
+function loadHelpTextCommands(
+  project: Project,
+  packageRoot: string,
+  typesFile: SourceFile | undefined
+): CliCommandMeta[] {
+  const helpTextPath = path.join(packageRoot, 'src/cli-help-text.ts');
+  const helpTextFile = project.getSourceFile(helpTextPath) ?? typesFile;
+  if (helpTextFile === undefined) return [];
+
+  const helpTextVar = helpTextFile.getVariableDeclaration('HELP_TEXT');
+  if (helpTextVar === undefined) return [];
+
+  const helpText = helpTextVar.getInitializer()?.getText() ?? '';
+  const cleanText = helpText
+    .slice(1, -1)
+    .replace(/^\s*\n/, '')
+    .replace(/\n\s*$/, '');
+  return parseHelpTextCommands(cleanText);
+}
+
+/**
  * Extracts CLI commands from source files.
  */
-// eslint-disable-next-line complexity -- Multi-step extraction with early returns
 export function extractCliCommands(
   project: Project,
   packageRoot: string,
@@ -260,29 +287,11 @@ export function extractCliCommands(
 ): CliCommandSpec[] {
   const commands: CliCommandSpec[] = [];
 
-  // Load CLI types file for HELP_TEXT and options
   const typesFullPath = path.join(packageRoot, cliTypesPath);
   const typesFile = project.getSourceFile(typesFullPath);
-
-  let helpTextCommands: CliCommandMeta[] = [];
-  let cliOptions = new Map<string, OptionSpec>();
-
-  if (typesFile !== undefined) {
-    // Extract HELP_TEXT
-    const helpTextVar = typesFile.getVariableDeclaration('HELP_TEXT');
-    if (helpTextVar !== undefined) {
-      const helpText = helpTextVar.getInitializer()?.getText() ?? '';
-      // Remove template literal backticks and trim
-      const cleanText = helpText
-        .slice(1, -1)
-        .replace(/^\s*\n/, '')
-        .replace(/\n\s*$/, '');
-      helpTextCommands = parseHelpTextCommands(cleanText);
-    }
-
-    // Extract options from PARSE_ARGS_CONFIG
-    cliOptions = extractCliOptions(typesFile);
-  }
+  const helpTextCommands = loadHelpTextCommands(project, packageRoot, typesFile);
+  const cliOptions =
+    typesFile !== undefined ? extractCliOptions(typesFile) : new Map<string, OptionSpec>();
 
   // Load CLI commands file for source locations
   const commandsFullPath = path.join(packageRoot, cliCommandsPath);
