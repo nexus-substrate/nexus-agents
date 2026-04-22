@@ -239,6 +239,13 @@ function mergeNodeResults(
   return state;
 }
 
+/**
+ * Warn-once cache for undeclared state fields. Keyed by `${executionId}:${field}`
+ * so a single executor instance does not spam the log for the same field, but
+ * different graphs/runs are each reported on their first occurrence.
+ */
+const undeclaredFieldWarned = new Set<string>();
+
 /** Applies a single node's state updates using reducers. */
 function applyStateUpdates(
   graph: CompiledGraph,
@@ -251,7 +258,18 @@ function applyStateUpdates(
     const schema: StateFieldSchema | undefined = graph.stateSchema[field];
 
     if (schema === undefined) {
-      // No reducer defined — use overwrite by default
+      // No reducer defined — the graph-builder header invariant ("all state
+      // fields have reducers") is violated. Behaviour is kept as silent
+      // overwrite for back-compat, but the violation is logged once per
+      // field so operators can find and fix it.
+      const key = `${String(Object.keys(graph.stateSchema).length)}:${field}`;
+      if (!undeclaredFieldWarned.has(key)) {
+        undeclaredFieldWarned.add(key);
+        logger.warn('Node wrote to undeclared state field; defaulting to overwrite reducer', {
+          field,
+          knownFields: Object.keys(graph.stateSchema),
+        });
+      }
       newState[field] = value;
       continue;
     }

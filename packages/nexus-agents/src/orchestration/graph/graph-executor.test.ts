@@ -273,6 +273,26 @@ describe('executeGraph', () => {
   });
 
   describe('checkpointing (Issue #837)', () => {
+    it('preserves undeclared state field writes via overwrite default', async () => {
+      // Back-compat: silent overwrite for undeclared fields still happens,
+      // but is now logged. The state-merge behaviour is unchanged.
+      const graph = new GraphBuilder()
+        .addState('declared', overwrite(0))
+        .addNode('A', () => Promise.resolve({ declared: 1, undeclared: 'surprise' }))
+        .addEdge(START, 'A')
+        .addEdge('A', END)
+        .compile();
+
+      expect(graph.ok).toBe(true);
+      if (!graph.ok) return;
+
+      const result = await executeGraph(graph.value, {}, { executionId: 'undeclared' });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.finalState['declared']).toBe(1);
+      expect(result.value.finalState['undeclared']).toBe('surprise');
+    });
+
     it('continues execution when checkpoint store fails', async () => {
       const failingStore = {
         save: vi.fn(() => {
