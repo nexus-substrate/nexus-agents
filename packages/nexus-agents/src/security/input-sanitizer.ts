@@ -109,6 +109,77 @@ const INJECTION_PATTERNS: readonly PatternMatch[] = [
 ];
 
 // ============================================================================
+// HTML Entity Decoding (evasion defense)
+// ============================================================================
+
+/**
+ * Dangerous-tag names we will still match after entity decoding.
+ * Kept in sync with DANGEROUS_HTML_PATTERN and XML_INJECTION_PATTERN above.
+ */
+const DANGEROUS_TAG_NAMES =
+  'picture|source|img|system|human|assistant|instructions|user|prompt|context|tool_use|tool_result';
+
+/**
+ * Detects whether the input contains entity-encoded forms of any dangerous
+ * tag (&lt;picture, &#60;system, &#x3c;img …). Used as a cheap pre-check so
+ * that benign content with legitimate entities (e.g. "AT&amp;T") is passed
+ * through untouched and wasModified stays false.
+ */
+const ENCODED_DANGEROUS_TAG_PATTERN = new RegExp(
+  `&(?:lt|#0*60|#x0*3c);\\s*\\/?\\s*(?:${DANGEROUS_TAG_NAMES})\\b`,
+  'i'
+);
+
+/** Decodes the subset of HTML entities that can reconstruct tag syntax. */
+function decodeEntities(content: string): string {
+  return (
+    content
+      // Numeric (decimal) references
+      .replace(/&#(\d+);/g, (_match, dec: string) => {
+        const code = Number.parseInt(dec, 10);
+        return Number.isFinite(code) ? String.fromCodePoint(code) : _match;
+      })
+      // Numeric (hex) references
+      .replace(/&#x([0-9a-f]+);/gi, (_match, hex: string) => {
+        const code = Number.parseInt(hex, 16);
+        return Number.isFinite(code) ? String.fromCodePoint(code) : _match;
+      })
+      // Named entities most relevant to tag reconstruction
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/&quot;/gi, '"')
+      .replace(/&apos;/gi, "'")
+      // &amp; must be decoded last so that &amp;lt; does not resurface as <
+      .replace(/&amp;/gi, '&')
+  );
+}
+
+/**
+ * Runs decodeEntities only if the input contains an entity-encoded dangerous
+ * tag. This keeps benign content with legitimate entities untouched.
+ */
+function applyEntityEvasionDefense(content: string): {
+  cleaned: string;
+  stripped: StrippedElement[];
+} {
+  if (!ENCODED_DANGEROUS_TAG_PATTERN.test(content)) {
+    return { cleaned: content, stripped: [] };
+  }
+  const decoded = decodeEntities(content);
+  return {
+    cleaned: decoded,
+    stripped: [
+      {
+        tag: '&…;',
+        reason: 'HTML entity-encoded dangerous tag decoded for stripping (CWE-79)',
+        startIndex: 0,
+        length: content.length,
+      },
+    ],
+  };
+}
+
+// ============================================================================
 // Core Sanitization Functions
 // ============================================================================
 
@@ -280,11 +351,17 @@ export function sanitizeInput(
   const truncated = content.slice(0, cfg.maxInputLength);
   const allowlisted = cfg.allowlistedMaintainers.includes(username);
 
-  // Pipeline: strip dangerous content
-  const html = stripDangerousHtml(truncated);
+  // Pipeline: decode entity-encoded dangerous tags, then strip dangerous content
+  const entityDecoded = applyEntityEvasionDefense(truncated);
+  const html = stripDangerousHtml(entityDecoded.cleaned);
   const xml = stripXmlTags(html.cleaned);
   const comments = stripHtmlComments(xml.cleaned);
-  const allStripped = [...html.stripped, ...xml.stripped, ...comments.stripped];
+  const allStripped = [
+    ...entityDecoded.stripped,
+    ...html.stripped,
+    ...xml.stripped,
+    ...comments.stripped,
+  ];
 
   // Detect injection patterns on ORIGINAL content (before stripping)
   const injectionFlags = detectInjectionPatterns(truncated);
