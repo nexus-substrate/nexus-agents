@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import { homedir, platform } from 'node:os';
 import { getErrorMessage } from '../core/index.js';
 import { createLogger } from '../core/index.js';
+import { classifyExecError, type DetectionError } from './cli-detection-error.js';
 
 const logger = createLogger({ component: 'setup-gemini' });
 
@@ -20,6 +21,13 @@ const logger = createLogger({ component: 'setup-gemini' });
 export interface GeminiCliInfo {
   readonly installed: boolean;
   readonly version: string | undefined;
+  /**
+   * Classification of why detection failed. Only set when `installed` is
+   * `false` OR when the binary was located but `--version` failed. Lets
+   * doctor/verify distinguish "not installed" from "installed but broken
+   * or inaccessible" (#2152).
+   */
+  readonly detectionError?: DetectionError;
 }
 
 /** Gemini MCP configuration result. */
@@ -44,8 +52,8 @@ export function detectGeminiCli(): GeminiCliInfo {
   try {
     const cmd = platform() === 'win32' ? 'where' : 'which';
     execFileSync(cmd, ['gemini'], { timeout: 3000, stdio: 'pipe' });
-  } catch {
-    return { installed: false, version: undefined };
+  } catch (err: unknown) {
+    return { installed: false, version: undefined, detectionError: classifyExecError(err) };
   }
 
   try {
@@ -56,8 +64,10 @@ export function detectGeminiCli(): GeminiCliInfo {
     });
     const match = /(\d+\.\d+\.\d+)/.exec(output);
     return { installed: true, version: match?.[1] };
-  } catch {
-    return { installed: true, version: undefined };
+  } catch (err: unknown) {
+    // The binary was located but `--version` failed. Still treat as installed
+    // so downstream flow can proceed, but surface why version-probing failed.
+    return { installed: true, version: undefined, detectionError: classifyExecError(err) };
   }
 }
 
