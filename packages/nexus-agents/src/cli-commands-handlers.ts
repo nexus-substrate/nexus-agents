@@ -54,6 +54,7 @@ import {
   isValidIndexFormat,
   isValidResearchFormat,
   isValidResearchSubcommand,
+  parsePositiveInt,
 } from './cli-commands-validators.js';
 import {
   printWorkflowRunUsage,
@@ -671,9 +672,7 @@ export function handleWarmUpCommand(_args: ParsedCliArgs): void {
  * (Source: Issue #1030 — E2E scenario runner)
  */
 export function handleE2EEvalCommand(args: ParsedCliArgs): void {
-  const countArg = args.positionals[1];
-  const taskCount = countArg !== undefined ? parseInt(countArg, 10) : 50;
-  const count = Number.isNaN(taskCount) || taskCount <= 0 ? 50 : taskCount;
+  const count = parsePositiveInt(args.positionals[1], 50);
   const result = runE2EEval({ taskCount: count });
   process.stdout.write(formatE2EEvalResult(result) + '\n');
   process.exit(result.passed ? EXIT_CODES.SUCCESS : 1);
@@ -684,9 +683,7 @@ export function handleE2EEvalCommand(args: ParsedCliArgs): void {
  * (Source: Issue #1033 — Routing strategy A/B framework)
  */
 export function handleRoutingABCommand(args: ParsedCliArgs): void {
-  const countArg = args.positionals[1];
-  const taskCount = countArg !== undefined ? parseInt(countArg, 10) : 30;
-  const count = Number.isNaN(taskCount) || taskCount <= 0 ? 30 : taskCount;
+  const count = parsePositiveInt(args.positionals[1], 30);
   const result = runRoutingAB({ taskCount: count });
   process.stdout.write(formatABReport(result) + '\n');
   process.exit(EXIT_CODES.SUCCESS);
@@ -697,9 +694,7 @@ export function handleRoutingABCommand(args: ParsedCliArgs): void {
  * (Source: Issue #1034 — Comparative memory evaluation benchmark)
  */
 export function handleMemoryEvalCommand(args: ParsedCliArgs): void {
-  const sizeArg = args.positionals[1];
-  const size = sizeArg !== undefined ? parseInt(sizeArg, 10) : 50;
-  const count = Number.isNaN(size) || size <= 0 ? 50 : size;
+  const count = parsePositiveInt(args.positionals[1], 50);
   const result = runMemoryEval(count);
   process.stdout.write(formatMemoryEvalReport(result) + '\n');
   process.exit(EXIT_CODES.SUCCESS);
