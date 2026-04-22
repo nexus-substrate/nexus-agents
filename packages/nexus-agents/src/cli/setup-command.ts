@@ -39,6 +39,11 @@ import { detectCodexCli, configureCodex } from './setup-codex.js';
 import { VERSION } from '../version.js';
 import { runWizard } from './setup-wizard.js';
 import { generatePermissionsSnippet, buildPermissionsBanner } from './setup-permissions.js';
+// #2137: post-setup health gate. Surfaces install-time issues that are easy
+// to miss (better-sqlite3 native build, missing API keys, unwritable data
+// dirs) inline at the end of setup, with copy-pasteable remediation.
+import { runVerify } from './verify-command.js';
+import { colors, symbols } from './ansi-output.js';
 
 // ============================================================================
 // Output Helpers
@@ -795,6 +800,61 @@ export function printSetupResult(result: SetupResult, verbose: boolean): void {
 }
 
 /**
+ * Runs the post-setup health gate (#2137).
+ *
+ * After setup writes its files, this runs the verify checks and prints a
+ * structured health summary inline. Returns `true` when no `severity: 'hard'`
+ * checks failed — warnings still pass the gate.
+ *
+ * In `--dry-run` mode, the gate is skipped entirely (the user is previewing,
+ * not actually installing).
+ */
+async function runPostSetupHealthGate(dryRun: boolean): Promise<boolean> {
+  if (dryRun) return true;
+
+  const result = await runVerify();
+  const passed = result.checks.filter((c) => c.passed).length;
+  const total = result.checks.length;
+
+  writeEmptyLine();
+  writeLine(formatHeader(`Health check (${String(passed)}/${String(total)} passed)`));
+  writeLine('─'.repeat(40));
+
+  for (const check of result.checks) {
+    let symbol: string;
+    if (check.passed) {
+      symbol = `${colors.green}${symbols.check}${colors.reset}`;
+    } else if (check.severity === 'warn') {
+      symbol = `${colors.yellow}${symbols.warn}${colors.reset}`;
+    } else {
+      symbol = `${colors.red}${symbols.cross}${colors.reset}`;
+    }
+    writeLine(`  ${symbol} ${check.name}: ${check.message}`);
+    if (!check.passed && check.fix !== undefined) {
+      writeLine(`     ${colors.dim}→ Fix: ${check.fix}${colors.reset}`);
+    }
+  }
+
+  writeEmptyLine();
+  if (!result.noHardFailures) {
+    writeLine(
+      `${colors.red}${colors.bold}Action required: fix the blocking issues above before using nexus-agents.${colors.reset}`
+    );
+  } else if (!result.allPassed) {
+    const warnCount = result.checks.filter((c) => !c.passed).length;
+    writeLine(
+      `${colors.yellow}${colors.bold}Setup complete with ${String(warnCount)} warning(s) — nexus-agents will run but some features are degraded.${colors.reset}`
+    );
+  } else {
+    writeLine(
+      `${colors.green}${colors.bold}All health checks passed. nexus-agents is ready.${colors.reset}`
+    );
+  }
+
+  return result.noHardFailures;
+}
+
+/**
  * Setup command entry point (synchronous, non-interactive).
  *
  * @returns Exit code (0 = success, 1 = failure)
@@ -824,29 +884,41 @@ export interface SetupCommandOptions extends Partial<SetupOptions> {
  * Setup command entry point with interactive wizard support.
  * (Source: Issue #425 - Interactive setup wizard)
  *
- * @returns Exit code (0 = success, 1 = failure)
+ * Also runs the post-setup health gate (#2137): after the configuration
+ * steps complete, calls into `runVerify()` to surface install-time issues
+ * that are easy to miss but break things at runtime (better-sqlite3 native
+ * build, data dir writability, missing API keys). Health-gate warnings do
+ * NOT fail setup — only `severity: 'hard'` failures do.
+ *
+ * @returns Exit code (0 = setup + no hard health failures, 1 = either failed)
  */
+/**
+ * Runs the interactive wizard branch and returns its exit code.
+ * Extracted from `setupCommandAsync` to keep cyclomatic complexity ≤10.
+ */
+async function runInteractiveSetup(options: SetupCommandOptions): Promise<number> {
+  const wizardOptions = await runWizard();
+  if (wizardOptions === undefined) return 1; // User cancelled.
+
+  const mergedOptions = { ...options, ...wizardOptions };
+  delete mergedOptions.interactive;
+
+  const result = runSetup(mergedOptions);
+  printSetupResult(result, mergedOptions.verbose ?? false);
+  const healthOk = await runPostSetupHealthGate(mergedOptions.dryRun ?? false);
+  return result.success && healthOk ? 0 : 1;
+}
+
 export async function setupCommandAsync(options: SetupCommandOptions = {}): Promise<number> {
-  // Run interactive wizard if requested
   if (options.interactive === true) {
-    const wizardOptions = await runWizard();
-
-    if (wizardOptions === undefined) {
-      // User cancelled the wizard
-      return 1;
-    }
-
-    // Merge wizard options with any existing options (wizard options take precedence)
-    const mergedOptions = { ...options, ...wizardOptions };
-    delete mergedOptions.interactive; // Remove interactive flag
-
-    const result = runSetup(mergedOptions);
-    printSetupResult(result, mergedOptions.verbose ?? false);
-    return result.success ? 0 : 1;
+    return runInteractiveSetup(options);
   }
 
-  // Fall back to synchronous command
-  return setupCommand(options);
+  // Sync setup, then run the health gate.
+  const setupExitCode = setupCommand(options);
+  const healthOk = await runPostSetupHealthGate(options.dryRun ?? false);
+  // Hard health failures override a successful setup; warnings don't.
+  return setupExitCode !== 0 || !healthOk ? 1 : 0;
 }
 
 // ============================================================================
