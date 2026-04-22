@@ -4,15 +4,6 @@
  * Metrics calculation and scoring for CLI testing framework.
  */
 
-// Routing scorer
-export {
-  RoutingScorer,
-  evaluateRouting,
-  calculateRoutingMetrics,
-  getByCategory,
-  getCliStats,
-} from './routing-scorer.js';
-
 // Rubric scorer
 export {
   RubricScorer,
