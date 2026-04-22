@@ -27,7 +27,8 @@ import { BaseAdapter, AdapterModelError } from '../base-adapter.js';
 import { ErrorCode } from '../../core/index.js';
 import { isRateLimitLikeError } from '../rate-limit-detector.js';
 import type { SdkAdapterConfig, SdkProviderId } from './types.js';
-import { PROVIDER_ENV_KEYS } from './types.js';
+import { PROVIDER_ENV_KEYS, CUSTOM_API_BASE_URL_ENV } from './types.js';
+import { validateCustomApiBaseUrl } from './custom-api-validation.js';
 
 /** Minimal AI SDK model interface (duck-typed for optional dependency). */
 interface AiSdkModel {
@@ -114,6 +115,22 @@ function resolveApiKey(providerId: SdkProviderId, configKey?: string): string | 
 }
 
 /**
+ * For the `custom-openai` provider only: resolve the base URL (config >
+ * env) and run it through the SSRF guard. Returns `undefined` for every
+ * other provider (the AI SDK's built-in factories handle their own
+ * endpoints). Throws `ConfigError` at construction time for invalid
+ * custom-openai setups — catching misconfiguration immediately rather
+ * than on the first request.
+ */
+function resolveAndValidateCustomBaseUrl(config: SdkAdapterConfig): string | undefined {
+  if (config.providerId !== 'custom-openai') return undefined;
+  const raw = config.baseUrl ?? process.env[CUSTOM_API_BASE_URL_ENV];
+  const validated = validateCustomApiBaseUrl(raw);
+  if (!validated.ok) throw validated.error;
+  return validated.value.toString();
+}
+
+/**
  * Maps AI SDK finish reasons to our StopReason type.
  */
 function mapFinishReason(reason: string): CompletionResponse['stopReason'] {
@@ -159,6 +176,8 @@ export class SdkAdapter extends BaseAdapter {
   private model: AiSdkModel | undefined;
   private sdkFunctions: AiSdkFunctions | undefined;
   private readonly sdkConfig: SdkAdapterConfig;
+  /** Validated base URL for custom-openai provider; undefined for built-ins. */
+  private readonly customBaseUrl: string | undefined;
   /** Inflight init promise for coalescing concurrent calls (Issue #1438). */
   private initPromise: Promise<void> | undefined;
 
@@ -175,6 +194,7 @@ export class SdkAdapter extends BaseAdapter {
     });
     this.sdkProviderId = config.providerId;
     this.sdkConfig = config;
+    this.customBaseUrl = resolveAndValidateCustomBaseUrl(config);
   }
 
   /**
@@ -239,6 +259,18 @@ export class SdkAdapter extends BaseAdapter {
         const mod = await import('@ai-sdk/google');
         const factory = extractProviderFactory(mod, 'createGoogleGenerativeAI');
         const provider = factory({ apiKey });
+        return { model: provider(this.modelId) };
+      }
+      case 'custom-openai': {
+        // OpenAI-compatible gateway (multi-vendor proxies, self-hosted servers,
+        // corporate LLM gateways). Reuses @ai-sdk/openai with a configurable
+        // baseURL. See custom-api-validation.ts for the SSRF guard; the
+        // adapter constructor validates before this method is reached.
+        const mod = await import('@ai-sdk/openai');
+        const factory = extractProviderFactory(mod, 'createOpenAI');
+        const opts: Record<string, unknown> = { apiKey };
+        if (this.customBaseUrl !== undefined) opts['baseURL'] = this.customBaseUrl;
+        const provider = factory(opts);
         return { model: provider(this.modelId) };
       }
     }

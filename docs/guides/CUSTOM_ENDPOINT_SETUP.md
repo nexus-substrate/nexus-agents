@@ -7,16 +7,35 @@ keywords: [custom, openai-compatible, gateway, opencode, endpoint, proxy]
 
 # Custom OpenAI-Compatible Endpoint Setup
 
-Route nexus-agents tasks through a custom OpenAI-compatible API gateway using OpenCode as the transport layer. This supports environments where models are brokered through an intermediary API endpoint.
+Route nexus-agents tasks through a custom OpenAI-compatible API gateway. Two paths are supported — pick based on whether you want nexus-agents to hold the credentials directly.
 
-## Architecture
+## Path A: Direct SDK (recommended for most cases, v2.54.2+)
+
+```
+nexus-agents → @ai-sdk/openai → Custom Gateway → Model Provider
+                (HTTP POST)      (OpenAI-compat)   (Claude, Gemini, etc.)
+```
+
+Set three env vars and any auto-adapter caller picks up the gateway:
+
+```bash
+export NEXUS_CUSTOM_API_BASE_URL="https://your-gateway.example.com/v1"
+export NEXUS_CUSTOM_API_KEY="your-api-key"
+export NEXUS_CUSTOM_MODEL="claude-opus-4-5"   # optional; default: gpt-4o
+```
+
+The adapter validates the base URL through an SSRF guard before making any request — loopback, RFC 1918 private ranges, and link-local (incl. AWS IMDS `169.254.169.254`) are rejected by default. Set `NEXUS_CUSTOM_API_ALLOW_PRIVATE=1` if your gateway runs on a trusted internal host.
+
+No CLI subprocess, no OpenCode in the chain. nexus-agents speaks OpenAI-compatible chat/completions directly. See [adapters/sdk/custom-api-validation.ts](../../packages/nexus-agents/src/adapters/sdk/custom-api-validation.ts) for the guard rules.
+
+## Path B: OpenCode transport (for environments already managing creds in OpenCode)
 
 ```
 nexus-agents → OpenCode CLI → Custom Gateway → Model Provider
                 (subprocess)    (OpenAI-compat)   (Claude, etc.)
 ```
 
-nexus-agents invokes `opencode run --model custom/<model-name> <prompt>` as a subprocess. OpenCode handles the HTTP transport to the custom gateway. No API keys or credentials are managed by nexus-agents.
+nexus-agents invokes `opencode run --model custom/<model-name> <prompt>` as a subprocess. OpenCode handles the HTTP transport to the custom gateway. No API keys or credentials are managed by nexus-agents — handy when the user's gateway credentials are already in `opencode.json` and you don't want a second copy.
 
 ## Prerequisites
 

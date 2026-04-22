@@ -200,8 +200,43 @@ function tryApiAdapter(config: AutoAdapterConfig, logger: ILogger): AdapterSelec
     };
   }
 
+  // 4. Custom OpenAI-compatible gateway (multi-vendor proxies, self-hosted
+  //    LLM servers, corporate gateways). Extracted for line limit.
+  const custom = tryCustomOpenAiAdapter(logger);
+  if (custom !== null) return custom;
+
   logger.info('No API keys available for any provider');
   return null;
+}
+
+/**
+ * Tries the custom-openai SDK adapter if `NEXUS_CUSTOM_API_KEY` and
+ * `NEXUS_CUSTOM_API_BASE_URL` are both set. The adapter constructor
+ * runs the base URL through an SSRF guard (see
+ * adapters/sdk/custom-api-validation.ts). Epic #2119.
+ */
+function tryCustomOpenAiAdapter(logger: ILogger): AdapterSelection | null {
+  const customKey = resolveApiKeyFromEnv(undefined, 'NEXUS_CUSTOM_API_KEY');
+  const customBaseUrl = process.env['NEXUS_CUSTOM_API_BASE_URL'];
+  if (customKey === undefined || customBaseUrl === undefined || customBaseUrl === '') {
+    return null;
+  }
+  const customModelId = process.env['NEXUS_CUSTOM_MODEL'] ?? 'gpt-4o';
+  logger.info('Using custom-openai SDK adapter', {
+    model: customModelId,
+    baseUrl: customBaseUrl,
+  });
+  return {
+    adapter: new SdkAdapter({
+      providerId: 'custom-openai',
+      modelId: customModelId,
+      apiKey: customKey,
+      baseUrl: customBaseUrl,
+    }),
+    source: 'api',
+    name: 'custom-openai',
+    reason: `Using custom OpenAI-compatible gateway at ${customBaseUrl} (model: ${customModelId})`,
+  };
 }
 
 /** Try CLI first, then API as fallback. */
