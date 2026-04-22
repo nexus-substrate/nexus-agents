@@ -122,9 +122,24 @@ function extractCliOptions(sourceFile: SourceFile): Map<string, OptionSpec> {
       type: 'string', // Default
     };
 
-    extractOptionType(optValue, spec);
-    extractOptionShort(optValue, spec);
-    extractOptionDefault(optValue, spec);
+    // Consolidated from three near-identical extractOption* helpers (#2160).
+    // Each field does the same ts-morph traversal, differing only in name and
+    // post-processing. `type` strips both quotes and `as const`; `short`
+    // strips quotes; `default` keeps the raw text.
+    const typeRaw = extractOptionProperty(optValue, 'type');
+    if (typeRaw !== undefined) {
+      const t = typeRaw.replace(/['"]/g, '').replace(' as const', '');
+      if (t !== '') (spec as { type: string }).type = t;
+    }
+    const shortRaw = extractOptionProperty(optValue, 'short');
+    if (shortRaw !== undefined) {
+      const s = shortRaw.replace(/['"]/g, '');
+      if (s !== '') (spec as { short: string }).short = s;
+    }
+    const defaultRaw = extractOptionProperty(optValue, 'default');
+    if (defaultRaw !== undefined && defaultRaw !== '') {
+      (spec as { default: string }).default = defaultRaw;
+    }
 
     options.set(optName, spec);
   }
@@ -133,76 +148,29 @@ function extractCliOptions(sourceFile: SourceFile): Map<string, OptionSpec> {
 }
 
 /**
- * Extracts the type from an option object.
+ * Returns the raw `getText()` of a named property inside an option object
+ * literal, or `undefined` if the property (or its initializer) is absent.
+ *
+ * Consolidates three nearly-identical helpers (`extractOptionType`,
+ * `extractOptionShort`, `extractOptionDefault`) that each walked the same
+ * three-level ts-morph null-guard chain differing only in the property name
+ * and trailing string normalization (#2160). Callers normalize the returned
+ * raw text themselves.
  */
-function extractOptionType(optValue: unknown, spec: OptionSpec): void {
+function extractOptionProperty(optValue: unknown, propName: string): string | undefined {
   const obj = optValue as {
     getProperty(name: string): { asKind(kind: unknown): unknown } | undefined;
   };
-  const typeProp = obj.getProperty('type');
-  if (typeProp === undefined) return;
+  const prop = obj.getProperty(propName);
+  if (prop === undefined) return undefined;
 
-  const propAssign = typeProp.asKind(SyntaxKind.PropertyAssignment) as
+  const propAssign = prop.asKind(SyntaxKind.PropertyAssignment) as
     | { getInitializer(): { getText(): string } | undefined }
     | undefined;
-  if (propAssign === undefined) return;
+  if (propAssign === undefined) return undefined;
 
   const init = propAssign.getInitializer();
-  if (init === undefined) return;
-
-  const text = init.getText();
-  const typeValue = text.replace(/['"]/g, '').replace(' as const', '');
-  if (typeValue !== '') {
-    (spec as { type: string }).type = typeValue;
-  }
-}
-
-/**
- * Extracts the short alias from an option object.
- */
-function extractOptionShort(optValue: unknown, spec: OptionSpec): void {
-  const obj = optValue as {
-    getProperty(name: string): { asKind(kind: unknown): unknown } | undefined;
-  };
-  const shortProp = obj.getProperty('short');
-  if (shortProp === undefined) return;
-
-  const propAssign = shortProp.asKind(SyntaxKind.PropertyAssignment) as
-    | { getInitializer(): { getText(): string } | undefined }
-    | undefined;
-  if (propAssign === undefined) return;
-
-  const init = propAssign.getInitializer();
-  if (init === undefined) return;
-
-  const text = init.getText().replace(/['"]/g, '');
-  if (text !== '') {
-    (spec as { short: string }).short = text;
-  }
-}
-
-/**
- * Extracts the default value from an option object.
- */
-function extractOptionDefault(optValue: unknown, spec: OptionSpec): void {
-  const obj = optValue as {
-    getProperty(name: string): { asKind(kind: unknown): unknown } | undefined;
-  };
-  const defaultProp = obj.getProperty('default');
-  if (defaultProp === undefined) return;
-
-  const propAssign = defaultProp.asKind(SyntaxKind.PropertyAssignment) as
-    | { getInitializer(): { getText(): string } | undefined }
-    | undefined;
-  if (propAssign === undefined) return;
-
-  const init = propAssign.getInitializer();
-  if (init === undefined) return;
-
-  const text = init.getText();
-  if (text !== '') {
-    (spec as { default: string }).default = text;
-  }
+  return init?.getText();
 }
 
 // ============================================================================
