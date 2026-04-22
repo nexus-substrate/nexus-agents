@@ -87,6 +87,7 @@ interface ParsedValues {
   version: boolean;
   verbose: boolean;
   interactive: boolean;
+  all: boolean;
   mode: unknown;
   output?: string;
   force: boolean;
@@ -303,6 +304,7 @@ function buildOptions(values: ParsedValues): ParsedCliArgs['options'] {
     version: values.version,
     verbose: values.verbose,
     interactive: values.interactive,
+    all: values.all,
     mode: detectionResult.mode,
     force: values.force,
     format: values.format,

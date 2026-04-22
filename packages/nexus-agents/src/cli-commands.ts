@@ -12,7 +12,8 @@
  */
 
 import { VERSION } from './version.js';
-import { EXIT_CODES, HELP_TEXT, type ParsedCliArgs } from './cli-types.js';
+import { EXIT_CODES, type ParsedCliArgs } from './cli-types.js';
+import { renderHelp } from './cli-help-text.js';
 
 // Re-export handlers for backward compatibility
 export {
@@ -144,9 +145,14 @@ import { bootstrapStepNotifications } from './core/step-notifications.js';
 
 /**
  * Prints help text to stdout.
+ *
+ * Default output hides maintainer commands (benchmarks, release tooling, deep
+ * diagnostics). Pass `--all` to include them. See `cli-command-catalog.ts` for
+ * the audience classification.
  */
-export function printHelp(): void {
-  process.stdout.write(HELP_TEXT + '\n');
+export function printHelp(args?: ParsedCliArgs): void {
+  const all = args?.options.all ?? false;
+  process.stdout.write(renderHelp({ all }) + '\n');
 }
 
 /**
@@ -194,7 +200,7 @@ const SYNC_COMMAND_HANDLERS: Record<string, ((args: ParsedCliArgs) => void) | un
 function handleSyncCommand(args: ParsedCliArgs): boolean {
   // Handle help and version separately (they have special exit behavior)
   if (args.command === 'help') {
-    printHelp();
+    printHelp(args);
     process.exit(EXIT_CODES.SUCCESS);
   }
   if (args.command === 'version') {

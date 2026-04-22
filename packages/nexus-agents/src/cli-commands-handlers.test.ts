@@ -42,6 +42,7 @@ function createMockArgs(overrides: Partial<ParsedCliArgs> = {}): ParsedCliArgs {
     version: false,
     verbose: false,
     interactive: false,
+    all: false,
     mode: 'server' as ServerMode,
     force: false,
     format: 'table',

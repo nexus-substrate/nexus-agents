@@ -82,6 +82,8 @@ export interface ParsedCliArgs {
     version: boolean;
     verbose: boolean;
     interactive: boolean;
+    // Tiered --help output (Issue #2135)
+    all: boolean;
     mode: ServerMode;
     output?: string;
     force: boolean;
@@ -172,6 +174,11 @@ export const PARSE_ARGS_CONFIG = {
       default: false,
     },
     interactive: {
+      type: 'boolean' as const,
+      default: false,
+    },
+    // Tiered --help output (Issue #2135): `--help --all` unhides maintainer commands
+    all: {
       type: 'boolean' as const,
       default: false,
     },

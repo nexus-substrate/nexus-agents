@@ -178,6 +178,7 @@ function createArgs(overrides: Record<string, unknown>): {
     version: boolean;
     verbose: boolean;
     interactive: boolean;
+    all: boolean;
     mode: 'server';
     force: boolean;
     format: string;
@@ -209,6 +210,7 @@ function createArgs(overrides: Record<string, unknown>): {
       version: false,
       verbose: false,
       interactive: false,
+      all: false,
       mode: 'server' as const,
       force: false,
       format: (overrides['format'] as string) ?? 'table',
