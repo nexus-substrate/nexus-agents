@@ -327,9 +327,15 @@ export class FitnessScoreCalculator {
 
   /**
    * Check explicit behavior: penalize hidden/magic behavior.
-   * TODO: This dimension lacks strong filesystem signals. Currently checks
-   * for NEXUS_ALLOW_MOCK_ORCHESTRATION guard and magic routing patterns.
-   * Future: add AST-based detection of implicit fallbacks.
+   *
+   * Implementation is intentionally filesystem-signal-based (no AST parse).
+   * The `NEXUS_ALLOW_MOCK_ORCHESTRATION` guard and magic-routing pattern
+   * grep capture the observable failure modes that historically slipped
+   * past review. AST-based detection of implicit fallbacks was considered
+   * but not pursued — it would significantly widen this function's
+   * footprint and the filesystem signals already catch the recurring
+   * regressions. Revisit only if a new class of hidden-behavior bug
+   * surfaces that this grep-over-source approach can't catch.
    */
   private checkExplicitBehavior(): FitnessCheckResult {
     const findings: FitnessFinding[] = [];
