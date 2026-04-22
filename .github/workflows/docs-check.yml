@@ -412,6 +412,63 @@ jobs:
           fi
           echo "✅ No stale references to removed paths"
 
+      # MCP tool count must agree across every file that claims to know it
+      # (see #2106 for the failure mode — three files claimed 29/30/31). The
+      # source of truth is the `tools: [...]` array in
+      # `packages/nexus-agents/src/mcp/tools/index.ts`. Other callers mirror
+      # it, and silent drift means marketplace metadata lies about what we ship.
+      - name: Guard against MCP_TOOL_COUNT drift (#2107)
+        run: |
+          set -e
+          TOOLS_SRC=packages/nexus-agents/src/mcp/tools/index.ts
+          SITE_DATA=website/src/data/site-data.ts
+          SERVER_JSON=packages/nexus-agents/server.json
+          README=README.md
+
+          # 1. Authoritative count: lines of the form `    'tool_name',` between
+          #    `tools: [` and the next `]`. Grep is robust to reformatting.
+          src_count=$(awk '/tools: \[/,/\]/' "$TOOLS_SRC" \
+            | grep -cE "^\s+'[a-z_]+'," || true)
+          echo "Authoritative tool count (from $TOOLS_SRC): $src_count"
+
+          # 2. MCP_TOOL_COUNT constant in site-data.ts
+          site_count=$(grep -oE "MCP_TOOL_COUNT\s*=\s*[0-9]+" "$SITE_DATA" \
+            | grep -oE "[0-9]+" | head -1)
+
+          # 3. server.json tools array length (simple JSON-aware parse via jq)
+          server_count=$(jq '.tools | length' "$SERVER_JSON")
+
+          # 4. server.json description prose: "N MCP tools"
+          server_desc_count=$(jq -r '.description' "$SERVER_JSON" \
+            | grep -oE "[0-9]+ MCP tools" | grep -oE "^[0-9]+" | head -1)
+
+          # 5. README.md prose: "N MCP tools" (may appear multiple times)
+          readme_counts=$(grep -oE "[0-9]+ MCP tools" "$README" \
+            | grep -oE "^[0-9]+" | sort -u)
+
+          any_drift=0
+          check() {
+            local label="$1" actual="$2"
+            if [ "$actual" != "$src_count" ]; then
+              echo "::error::MCP tool count drift: $label reports '$actual' but source has $src_count"
+              any_drift=1
+            fi
+          }
+          check "site-data.ts MCP_TOOL_COUNT" "$site_count"
+          check "server.json tools[]" "$server_count"
+          check "server.json description prose" "$server_desc_count"
+          while IFS= read -r n; do
+            [ -n "$n" ] && check "README.md prose '$n MCP tools'" "$n"
+          done <<< "$readme_counts"
+
+          if [ "$any_drift" -ne 0 ]; then
+            echo ""
+            echo "Update the drifted value(s) to match $TOOLS_SRC."
+            echo "See #2107 for context."
+            exit 1
+          fi
+          echo "✅ MCP_TOOL_COUNT agrees everywhere ($src_count)"
+
   # Job 10.6: Skills Index Freshness (#1828)
   skills-index-check:
     name: Skills Index Freshness
