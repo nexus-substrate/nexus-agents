@@ -277,13 +277,56 @@ function loadHelpTextCommands(
 }
 
 /**
+ * Emits non-fatal diagnostics for the silent-empty paths that caused the
+ * 3-month regression fixed in #2147 (#2153). Extracted from
+ * `extractCliCommands` to keep that function under the 50-line cap.
+ */
+function pushExtractionWarnings(
+  warnings: string[] | undefined,
+  issue: {
+    typesFile: SourceFile | undefined;
+    typesFullPath: string;
+    helpTextCount: number;
+    commandsFile: SourceFile | undefined;
+    commandsFullPath: string;
+  }
+): void {
+  if (warnings === undefined) return;
+  if (issue.typesFile === undefined) {
+    warnings.push(
+      `CLI extraction: types file not loaded (${issue.typesFullPath}). ` +
+        `PARSE_ARGS_CONFIG options will be missing from the manifest.`
+    );
+  }
+  if (issue.helpTextCount === 0) {
+    warnings.push(
+      `CLI extraction: HELP_TEXT parsed to zero commands. ` +
+        `Check cli-help-text.ts is in the ts-morph project and COMMANDS: section is present.`
+    );
+  }
+  if (issue.commandsFile === undefined) {
+    warnings.push(
+      `CLI extraction: commands file not loaded (${issue.commandsFullPath}). ` +
+        `Returning zero commands.`
+    );
+  }
+}
+
+/**
  * Extracts CLI commands from source files.
+ *
+ * @param warnings - Optional sink for non-fatal diagnostics. When supplied,
+ *   the extractor surfaces silent-empty paths (missing cli-types.ts, HELP_TEXT
+ *   parsed as empty, cli-commands.ts not in the ts-morph project) as actionable
+ *   messages (#2153). Same class as the 3-month silent regression fixed in
+ *   #2147.
  */
 export function extractCliCommands(
   project: Project,
   packageRoot: string,
   cliCommandsPath: string,
-  cliTypesPath: string
+  cliTypesPath: string,
+  warnings?: string[]
 ): CliCommandSpec[] {
   const commands: CliCommandSpec[] = [];
 
@@ -293,9 +336,16 @@ export function extractCliCommands(
   const cliOptions =
     typesFile !== undefined ? extractCliOptions(typesFile) : new Map<string, OptionSpec>();
 
-  // Load CLI commands file for source locations
   const commandsFullPath = path.join(packageRoot, cliCommandsPath);
   const commandsFile = project.getSourceFile(commandsFullPath);
+
+  pushExtractionWarnings(warnings, {
+    typesFile,
+    typesFullPath,
+    helpTextCount: helpTextCommands.length,
+    commandsFile,
+    commandsFullPath,
+  });
 
   if (commandsFile === undefined) return commands;
 

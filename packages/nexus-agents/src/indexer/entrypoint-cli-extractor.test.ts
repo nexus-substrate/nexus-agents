@@ -642,6 +642,44 @@ describe('extractCliCommands', () => {
       expect(result).toEqual([]);
     });
 
+    it('pushes a warning when commands file not found (#2153)', () => {
+      // Regression: previously empty-return with no signal. #2147's 3-month
+      // silent regression was the same class. Now surfaces via warnings.
+      const typesFile = makeMockTypesFile(BASIC_HELP_TEXT, []);
+      const project = makeMockProject({ 'cli-types.ts': typesFile });
+      const warnings: string[] = [];
+      extractCliCommands(project as never, '/pkg', 'cli-commands.ts', 'cli-types.ts', warnings);
+      expect(warnings.some((w) => /commands file not loaded/.test(w))).toBe(true);
+    });
+
+    it('pushes a warning when HELP_TEXT parses to zero commands (#2153)', () => {
+      const typesFile = makeMockTypesFile(EMPTY_HELP_TEXT, []);
+      const cmdsFile = makeMockCommandsFile({});
+      const project = makeMockProject({
+        'cli-types.ts': typesFile,
+        'cli-commands.ts': cmdsFile,
+      });
+      const warnings: string[] = [];
+      extractCliCommands(project as never, '/pkg', 'cli-commands.ts', 'cli-types.ts', warnings);
+      expect(warnings.some((w) => /HELP_TEXT parsed to zero commands/.test(w))).toBe(true);
+    });
+
+    it('pushes a warning when types file not loaded (#2153)', () => {
+      const cmdsFile = makeMockCommandsFile({});
+      const project = makeMockProject({ 'cli-commands.ts': cmdsFile });
+      const warnings: string[] = [];
+      extractCliCommands(project as never, '/pkg', 'cli-commands.ts', 'cli-types.ts', warnings);
+      expect(warnings.some((w) => /types file not loaded/.test(w))).toBe(true);
+    });
+
+    it('does not push warnings when warnings array is not provided (backwards compat)', () => {
+      const project = makeMockProject({});
+      // No warnings arg — must not throw.
+      expect(() => {
+        extractCliCommands(project as never, '/pkg', 'cli-commands.ts', 'cli-types.ts');
+      }).not.toThrow();
+    });
+
     it('should return empty array for empty HELP_TEXT', () => {
       const typesFile = makeMockTypesFile(EMPTY_HELP_TEXT, []);
       const cmdsFile = makeMockCommandsFile({});

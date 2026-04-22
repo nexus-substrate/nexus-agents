@@ -81,17 +81,31 @@ function extractZodParameters(schemaObj: Node): ParameterSpec[] {
 
 /**
  * Extracts MCP tools from the tools directory.
+ *
+ * @param warnings - Optional sink for non-fatal diagnostics (e.g. the tools
+ *   directory glob matched zero files — a repeat-offender silent-failure
+ *   class that shipped the `cli_commands: []` regression for 3 months before
+ *   #2147 caught it). When supplied, the extractor pushes actionable
+ *   messages here rather than silently returning an empty result (#2153).
  */
 export function extractMcpTools(
   project: Project,
   packageRoot: string,
-  mcpToolsPath: string
+  mcpToolsPath: string,
+  warnings?: string[]
 ): McpToolSpec[] {
   const tools: McpToolSpec[] = [];
   const toolsDir = path.join(packageRoot, mcpToolsPath);
 
   // Get all TypeScript files in the tools directory
   const toolFiles = project.getSourceFiles(`${toolsDir}/*.ts`);
+
+  if (toolFiles.length === 0 && warnings !== undefined) {
+    warnings.push(
+      `MCP tool extraction: glob "${toolsDir}/*.ts" matched zero files. ` +
+        `Check that the path exists and is included in the ts-morph project.`
+    );
+  }
 
   for (const sourceFile of toolFiles) {
     const filePath = sourceFile.getFilePath();

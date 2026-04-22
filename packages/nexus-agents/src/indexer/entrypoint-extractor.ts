@@ -86,13 +86,18 @@ export function extractEntrypoints(
 
   try {
     const project = createProject(opts);
+    // Both extractors push non-fatal diagnostics into `warnings` (#2153).
+    // Previously they returned empty results on mis-configuration with zero
+    // signal — that's how the #2147 HELP_TEXT regression went unnoticed for
+    // 3 months.
     const cliCommands = extractCliCommands(
       project,
       opts.packageRoot,
       opts.cliCommandsPath,
-      'src/cli-types.ts'
+      'src/cli-types.ts',
+      warnings
     );
-    const mcpTools = extractMcpTools(project, opts.packageRoot, opts.mcpToolsPath);
+    const mcpTools = extractMcpTools(project, opts.packageRoot, opts.mcpToolsPath, warnings);
 
     const finalCommands = opts.sanitize ? cliCommands.map(sanitizeCommand) : cliCommands;
     const finalTools = opts.sanitize ? mcpTools.map(sanitizeTool) : mcpTools;

@@ -88,4 +88,32 @@ describe('extractMcpTools', () => {
       expect(tools).toHaveLength(0);
     });
   });
+
+  describe('empty-glob warning channel (#2153)', () => {
+    it('pushes a warning when the tools directory glob matches zero files', () => {
+      // Create a project with NO files in the tools dir — repro for the
+      // 3-month silent regression class (#2147) at this layer.
+      const project = new Project({ useInMemoryFileSystem: true });
+      const warnings: string[] = [];
+      const tools = extractMcpTools(project, '/', '/nonexistent/tools', warnings);
+      expect(tools).toHaveLength(0);
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toMatch(/matched zero files/);
+      expect(warnings[0]).toContain('/nonexistent/tools');
+    });
+
+    it('omits the warning when warnings array is not provided (backwards compat)', () => {
+      const project = new Project({ useInMemoryFileSystem: true });
+      // Call without the warnings parameter — must not throw.
+      expect(() => extractMcpTools(project, '/', '/nonexistent/tools')).not.toThrow();
+    });
+
+    it('does not push a warning when the glob matches files (happy path)', () => {
+      const source = `server.tool('real', 'desc', {}, async () => {});`;
+      const { project, toolsDir } = makeProject('real.ts', source);
+      const warnings: string[] = [];
+      extractMcpTools(project, '/', toolsDir, warnings);
+      expect(warnings).toHaveLength(0);
+    });
+  });
 });
