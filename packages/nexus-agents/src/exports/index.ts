@@ -10,7 +10,6 @@ export * from './core.js';
 export * from './config.js';
 export * from './adapters.js';
 export * from './agents.js';
-export * from './agents-compat.js';
 export * from './agents-skills.js';
 export * from './agents-ictm.js';
 export * from './workflows.js';

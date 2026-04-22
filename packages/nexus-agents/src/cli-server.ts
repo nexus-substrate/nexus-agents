@@ -91,12 +91,19 @@ export function setupShutdownHandlers(cleanup: () => Promise<void>, logger: ILog
     }
   };
 
-  process.on('SIGINT', () => {
-    void handleShutdown('SIGINT');
-  });
-  process.on('SIGTERM', () => {
-    void handleShutdown('SIGTERM');
-  });
+  // `handleShutdown` has an internal try/catch that calls `process.exit` on
+  // both success and failure, so the chance of an unhandled rejection is
+  // low. Attach `.catch` anyway — defence against future edits that might
+  // throw synchronously before the try block, and to make the error path
+  // explicit (#2163).
+  const onSignal = (signal: string) => (): void => {
+    handleShutdown(signal).catch((err: unknown) => {
+      logger.error('Shutdown handler crashed', err instanceof Error ? err : new Error(String(err)));
+      process.exit(EXIT_CODES.SHUTDOWN_ERROR);
+    });
+  };
+  process.on('SIGINT', onSignal('SIGINT'));
+  process.on('SIGTERM', onSignal('SIGTERM'));
 
   // Handle uncaught errors
   process.on('uncaughtException', (error: Error) => {
@@ -478,6 +485,16 @@ async function initializeSubsystems(
  * @param modeWasExplicit - Whether mode was explicitly set via --mode flag
  * @param orchestratorOptions - Options for orchestrator mode (when mode is 'orchestrator')
  */
+/**
+ * Watchdog timeout for the server-mode startup sequence (#2163).
+ *
+ * If subsystem init, transport connect, or anything else on the path to
+ * "waiting for requests" hangs past this deadline, we log and exit rather
+ * than leave a zombie process. Chosen conservatively — subsystem init on
+ * a fresh install has been observed ~5-8s, so 30s leaves ample headroom.
+ */
+const SERVER_STARTUP_TIMEOUT_MS = 30_000;
+
 export async function startServer(
   verbose: boolean,
   mode: ServerMode,
@@ -494,6 +511,19 @@ export async function startServer(
     await startOrchestratorMode(orchestratorOptions ?? { verbose });
     return;
   }
+
+  // Watchdog: if startup hangs, surface it rather than hang indefinitely
+  // (#2163). Cleared once we reach "waiting for requests".
+  const startupWatchdog = setTimeout(() => {
+    logger.error(
+      `Server startup exceeded ${String(SERVER_STARTUP_TIMEOUT_MS)}ms — aborting. ` +
+        'Common causes: hung config load, blocked subsystem init, stdio transport stall.'
+    );
+    process.exit(EXIT_CODES.SERVER_START_FAILED);
+  }, SERVER_STARTUP_TIMEOUT_MS);
+  // Prevent the watchdog from keeping the process alive if everything shuts
+  // down cleanly before it fires (for short-lived test harnesses).
+  startupWatchdog.unref();
 
   const detectionResult = detectMode({ explicitMode: modeWasExplicit ? mode : undefined });
   logStartupInfo(logger, detectionResult, verbose);
@@ -534,5 +564,8 @@ export async function startServer(
   });
   setupShutdownHandlers(cleanup, logger);
 
+  // Startup complete — cancel the watchdog so it can't fire during request
+  // handling (#2163).
+  clearTimeout(startupWatchdog);
   logger.debug('Server running, waiting for requests...');
 }

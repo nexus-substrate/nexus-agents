@@ -310,5 +310,4 @@ export {
   type WaveTaskExecutor,
 } from '../agents/index.js';
 
-// Backward compatibility aliases: agents-compat.ts
 // Skills module exports: agents-skills.ts
