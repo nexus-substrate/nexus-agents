@@ -392,13 +392,13 @@ function requiresCitation(type: string): boolean {
 
 ### Scenario 5: Repo Poisoning via PR
 
-**Attack:** Attacker submits PR modifying `.claude/rules/` or `CLAUDE.md` to weaken trust policy.
+**Attack:** Attacker submits PR modifying `.rules/` or `CLAUDE.md` to weaken trust policy.
 
 **Defense:**
 
 - Layer 1: Changes to policy files detected by diff analysis.
 - Layer 2: Agent flags as security-relevant change requiring supermajority consensus vote.
-- Layer 3: Modifications to CLAUDE.md or `.claude/rules/` require maintainer approval AND passing CI.
+- Layer 3: Modifications to CLAUDE.md or `.rules/` require maintainer approval AND passing CI.
 
 ### Scenario 6: Multi-Step Chained Injection
 
@@ -425,7 +425,7 @@ function requiresCitation(type: string): boolean {
 - `src/security/trust-types.ts` — Zod schemas for all trust types
 - `src/security/action-schema.ts` — typed action schema with validation
 - `src/security/action-validator.ts` — schema enforcement
-- CLAUDE.md policy section and `.claude/rules/untrusted-input.md`
+- CLAUDE.md policy section and `.rules/untrusted-input.md`
 
 **Failure mode:** Fails open — sanitizer logs warnings but doesn't block. Schema validation logs violations but allows processing. This phase is observability-focused.
 

@@ -70,7 +70,7 @@ SETUP OPTIONS:
   --non-interactive    Skip prompts (for CI/automation)
   --force              Overwrite existing files
   --skip-mcp           Skip MCP configuration snippet
-  --skip-rules         Skip .claude/rules/nexus-agents.md generation
+  --skip-rules         Skip .rules/nexus-agents.md generation
   --skip-hooks         Skip hook configuration in settings.json
   --scope=<scope>      MCP config scope: user, project (default: user)
   --dry-run            Show changes without making them

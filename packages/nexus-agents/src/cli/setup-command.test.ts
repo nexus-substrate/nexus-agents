@@ -313,9 +313,9 @@ describe('Setup Command', () => {
   });
 
   describe('getRulesFilePath()', () => {
-    it('should return correct rules file path', () => {
+    it('should return correct rules file path (.rules/ canonical since #2121)', () => {
       const result = getRulesFilePath(testTmpDir);
-      expect(result).toBe(join(testTmpDir, '.claude', 'rules', 'nexus-agents.md'));
+      expect(result).toBe(join(testTmpDir, '.rules', 'nexus-agents.md'));
     });
   });
 

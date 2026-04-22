@@ -111,7 +111,7 @@ When reviewing web-facing code, check for presence and correctness of these head
 - **Test-secrets canon**: \`packages/nexus-agents/src/testing/test-secrets.ts\` — FAKE_* constants (obviously fake by construction) that satisfy GitHub secret-scanning without false positives. Import these instead of inventing new fakes.
 - **Threat model + sandbox**: \`docs/architecture/SECURITY.md\` — canonical threat model, sandbox boundaries, CVE mitigations. Cite its sections when making recommendations.
 - **Untrusted-input policy**: \`docs/architecture/UNTRUSTED_INPUT_HARDENING.md\` — trust tiers, Rule of Two, typed actions, corroboration requirements. Use when evaluating new agent/MCP surfaces.
-- **Security rules summary**: \`.claude/rules/security.md\` — quick reference the agent operator sees first.
+- **Security rules summary**: \`.rules/security.md\` — quick reference the agent operator sees first.
 
 ### Anti-Pattern Prohibitions
 - No security-through-obscurity — don't recommend hiding endpoints or obfuscating code as a substitute for actual access control

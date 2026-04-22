@@ -308,7 +308,7 @@ For programmatic access, see [INDEX.yaml](./INDEX.yaml).
 
 The following are excluded from this index:
 
-- `.claude/rules/` - Agent-specific configuration (loaded automatically)
+- `.rules/` - Agent-specific configuration (loaded automatically)
 - `.claude/skills/` - Agent skill definitions (loaded automatically)
 - `coverage/` - Test coverage reports (generated)
 - `node_modules/` - Dependencies

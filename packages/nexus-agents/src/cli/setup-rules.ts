@@ -84,9 +84,14 @@ Run the code-review workflow with the current changes
 
 /**
  * Gets the rules file path.
+ *
+ * As of #2121 rules live at `<root>/.rules/` (harness-neutral location,
+ * was `.claude/rules/`). Claude Code finds them via CLAUDE.md references,
+ * so the move doesn't break its auto-load. Non-Claude harnesses (OpenCode,
+ * Codex, Cursor, etc.) can point at the same directory.
  */
 export function getRulesFilePath(projectRoot: string): string {
-  return join(projectRoot, '.claude', 'rules', 'nexus-agents.md');
+  return join(projectRoot, '.rules', 'nexus-agents.md');
 }
 
 /**

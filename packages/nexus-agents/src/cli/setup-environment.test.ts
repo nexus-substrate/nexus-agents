@@ -359,7 +359,7 @@ describe('setup-environment', () => {
         const paths = [
           '/project/package.json',
           '/project/CLAUDE.md',
-          '/project/.claude/rules',
+          '/project/.rules',
           '/project/nexus-agents.yaml',
           '/project/tsconfig.json',
         ];
