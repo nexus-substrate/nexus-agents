@@ -8,6 +8,12 @@
 
 import { describe, it, expect } from 'vitest';
 import { buildTimeoutOrchestrationResult, OrchestrateOutputSchema } from './orchestrate.js';
+import {
+  createOrchestrationStateSnapshot,
+  setAnalysis,
+  setRouting,
+  incrementStepsCompleted,
+} from './orchestration-state-snapshot.js';
 
 describe('buildTimeoutOrchestrationResult (#2104 sub-issue B)', () => {
   it('returns an ok Result with a schema-valid OrchestrateOutput', () => {
@@ -78,5 +84,105 @@ describe('buildTimeoutOrchestrationResult (#2104 sub-issue B)', () => {
     if (!result.ok) return;
     expect(result.value.taskId).toBe('task-trace-me');
     expect(result.value.analysis.taskId).toBe('task-trace-me');
+  });
+
+  describe('with OrchestrationStateSnapshot (#2111)', () => {
+    it('uses snapshot.analysis when present (richer partial result)', () => {
+      const snap = createOrchestrationStateSnapshot(0);
+      setAnalysis(snap, {
+        taskId: 'real-task',
+        complexity: 7,
+        taskType: 'code_generation',
+        requirements: ['req-a', 'req-b'],
+        risks: ['risk-x'],
+        needsDecomposition: true,
+        approach: 'Iterative implementation',
+        estimatedEffort: 5,
+      });
+
+      const result = buildTimeoutOrchestrationResult('task-1', 5_000, 'reason', snap);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.analysis.complexity).toBe(7);
+      expect(result.value.analysis.taskType).toBe('code_generation');
+      expect(result.value.analysis.requirements).toEqual(['req-a', 'req-b']);
+      expect(result.value.metadata.timeoutReason).toBe('reason');
+    });
+
+    it('falls back to sentinel analysis when snapshot has no analysis (backward-compat)', () => {
+      const snap = createOrchestrationStateSnapshot(0);
+      // No setAnalysis call — snapshot.analysis is undefined
+
+      const result = buildTimeoutOrchestrationResult('task-1', 5_000, 'reason', snap);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.analysis.complexity).toBe(1);
+      expect(result.value.analysis.taskType).toBe('unknown');
+      expect(result.value.analysis.approach).toContain('reason');
+    });
+
+    it('includes snapshot.routing in the output when populated', () => {
+      const snap = createOrchestrationStateSnapshot(0);
+      setRouting(snap, {
+        pattern: 'sequential',
+        reasoning: 'low complexity',
+        confidence: 0.85,
+        orchestratorType: 'tech_lead',
+      });
+
+      const result = buildTimeoutOrchestrationResult('task-1', 5_000, 'reason', snap);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.routing).toBeDefined();
+      expect(result.value.routing?.pattern).toBe('sequential');
+      expect(result.value.routing?.confidence).toBe(0.85);
+    });
+
+    it('carries snapshot.stepsCompleted into the output (not forced to 0)', () => {
+      const snap = createOrchestrationStateSnapshot(0);
+      incrementStepsCompleted(snap);
+      incrementStepsCompleted(snap);
+      incrementStepsCompleted(snap);
+
+      const result = buildTimeoutOrchestrationResult('task-1', 5_000, 'reason', snap);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.stepsCompleted).toBe(3);
+    });
+
+    it('produces a schema-valid OrchestrateOutput with a populated snapshot', () => {
+      const snap = createOrchestrationStateSnapshot(0);
+      setAnalysis(snap, {
+        taskId: 'task-1',
+        complexity: 4,
+        taskType: 'refactor',
+        requirements: [],
+        risks: [],
+        needsDecomposition: false,
+        approach: 'straight edit',
+        estimatedEffort: 1,
+      });
+      setRouting(snap, {
+        pattern: 'single',
+        reasoning: '',
+        confidence: 1.0,
+        orchestratorType: 'tech_lead',
+      });
+      incrementStepsCompleted(snap);
+
+      const result = buildTimeoutOrchestrationResult('task-1', 100, 'x', snap);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      const parsed = OrchestrateOutputSchema.safeParse(result.value);
+      if (!parsed.success) {
+        throw new Error(`Schema validation failed: ${JSON.stringify(parsed.error.issues)}`);
+      }
+      expect(parsed.success).toBe(true);
+    });
   });
 });
