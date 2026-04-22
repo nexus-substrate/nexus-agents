@@ -8,8 +8,9 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger, Result, Task, TaskContext } from '../../core/index.js';
 import { getErrorMessage } from '../../core/index.js';
-import { MCP_TIMEOUTS, HEARTBEAT_TIMEOUTS } from '../../config/timeouts.js';
+import { MCP_TIMEOUTS, HEARTBEAT_TIMEOUTS, getMcpSafeDeadlineMs } from '../../config/timeouts.js';
 import { getHeartbeatMonitor } from '../../agents/heartbeat-monitor.js';
+import { raceAgainstDeadline } from '../../core/race/race-against-deadline.js';
 
 import {
   orchestrateInputToTaskContract,
@@ -820,6 +821,118 @@ function recordAndReflect(
   }
 }
 
+/**
+ * Builds a structured partial OrchestrateOutput for wall-clock timeouts
+ * (sub-issue B of #2104). Returns an `ok` Result so the happy-path
+ * assembler runs and the client sees structured data instead of a naked
+ * wrapper error. `timeoutReason` in `metadata` is the client's signal to
+ * distinguish a truncated run from a normal low-depth one.
+ *
+ * Exported for unit testing only; downstream code should NOT call this
+ * helper directly — it is internal plumbing for `executeOrchestrationWithDeadline`.
+ */
+export function buildTimeoutOrchestrationResult(
+  taskId: string,
+  elapsedMs: number,
+  reason: string
+): Result<OrchestrateOutput, OrchestrationError> {
+  // analysis.complexity has a schema min of 1 (see orchestrate-types.ts);
+  // use 1 as the "unknown / truncated" sentinel. The distinguishing signal
+  // for a truncated run is `metadata.timeoutReason` being set.
+  return ok({
+    taskId,
+    analysis: {
+      taskId,
+      complexity: 1,
+      taskType: 'unknown',
+      requirements: [],
+      risks: [],
+      needsDecomposition: false,
+      approach: `Orchestration aborted: ${reason}`,
+      estimatedEffort: 0,
+    },
+    result: undefined,
+    stepsCompleted: 0,
+    metadata: {
+      durationMs: elapsedMs,
+      tokensUsed: 0,
+      expertsUsed: [],
+      timeoutReason: reason,
+    },
+  });
+}
+
+/**
+ * Races `executeOrchestration` against a wall-clock deadline clamped below
+ * the MCP wrapper cap (sub-issue B of #2104). On timeout, returns a
+ * structured partial result. See buildTimeoutOrchestrationResult.
+ */
+async function executeOrchestrationWithDeadline(params: {
+  readonly input: OrchestrateInput;
+  readonly deps: OrchestrateDeps;
+  readonly notifier: ReturnType<typeof createMcpNotifier>;
+  readonly logger: ILogger;
+}): Promise<Result<OrchestrateOutput, OrchestrationError>> {
+  const { input, deps, notifier, logger } = params;
+  const overallDeadlineMs = getMcpSafeDeadlineMs(
+    MCP_TIMEOUTS.perTool['orchestrate'] ?? MCP_TIMEOUTS.defaultMs,
+    'orchestrate'
+  );
+  const timeoutTaskId = generateTaskId();
+  return raceAgainstDeadline(
+    withProgressHeartbeat('orchestrate', notifier, () => executeOrchestration(input, deps)),
+    overallDeadlineMs,
+    (elapsedMs) => {
+      logger.warn('Orchestration overall deadline reached; returning partial result', {
+        overallDeadlineMs,
+        elapsedMs,
+      });
+      return buildTimeoutOrchestrationResult(
+        timeoutTaskId,
+        elapsedMs,
+        'orchestration overall deadline exceeded'
+      );
+    }
+  );
+}
+
+/** Body of the depth-guarded orchestration pipeline (extracted for line limit). */
+async function runOrchestratePipeline(params: {
+  readonly input: OrchestrateInput;
+  readonly deps: OrchestrateDeps;
+  readonly notifier: ReturnType<typeof createMcpNotifier>;
+  readonly logger: ILogger;
+}): Promise<ToolResult> {
+  const { input, deps, notifier, logger } = params;
+  logger.debug('Starting orchestration', { taskLength: input.task.length });
+  notifier.info('orchestrate', { event: 'orchestrate_start', taskLength: input.task.length });
+  const startMs = getTimeProvider().now();
+  const v2Config = resolveV2Config();
+  if (v2Config.orchestrateEnabled) instrumentV2Orchestrate(input, logger);
+
+  const agentPlan = v2Config.aorchestraEnabled ? computeAgentPlan(input.task, logger) : undefined;
+  const workerDispatchResult = await tryWorkerDispatch(
+    agentPlan,
+    input.task,
+    deps,
+    logger,
+    notifier
+  );
+  recordAndReflect(workerDispatchResult, input.task, deps);
+
+  // Wall-clock safeguard (sub-issue B of #2104): see helper doc.
+  const result = await executeOrchestrationWithDeadline({ input, deps, notifier, logger });
+  if (!result.ok) {
+    return toolError(`Orchestration error: ${result.error.message}`);
+  }
+  notifier.info('orchestrate', {
+    event: 'orchestrate_complete',
+    subtaskCount: result.value.stepsCompleted,
+    durationMs: getTimeProvider().now() - startMs,
+  });
+  return assembleOrchestrateOutput(result.value, agentPlan, workerDispatchResult);
+}
+
 function createOrchestrateHandler(deps: OrchestrateDeps) {
   const notifier = deps.notifier ?? NOOP_NOTIFIER;
   return async (args: unknown, ctx: HandlerContext) => {
@@ -828,47 +941,16 @@ function createOrchestrateHandler(deps: OrchestrateDeps) {
       ctx.logger.warn('Invalid orchestrate input', { errors: validated.error.issues });
       return toolError(`Validation error: ${formatZodError(validated.error)}`);
     }
-
     // Depth guard: prevent runaway nested orchestration (#1500)
     try {
-      return await withDepthGuard('orchestrate', async () => {
-        ctx.logger.debug('Starting orchestration', { taskLength: validated.data.task.length });
-        notifier.info('orchestrate', {
-          event: 'orchestrate_start',
-          taskLength: validated.data.task.length,
-        });
-        const startMs = getTimeProvider().now();
-        const v2Config = resolveV2Config();
-        if (v2Config.orchestrateEnabled) instrumentV2Orchestrate(validated.data, ctx.logger);
-
-        const agentPlan = v2Config.aorchestraEnabled
-          ? computeAgentPlan(validated.data.task, ctx.logger)
-          : undefined;
-        const workerDispatchResult = await tryWorkerDispatch(
-          agentPlan,
-          validated.data.task,
+      return await withDepthGuard('orchestrate', () =>
+        runOrchestratePipeline({
+          input: validated.data,
           deps,
-          ctx.logger,
-          notifier
-        );
-
-        recordAndReflect(workerDispatchResult, validated.data.task, deps);
-
-        const result = await withProgressHeartbeat('orchestrate', notifier, () =>
-          executeOrchestration(validated.data, deps)
-        );
-        if (!result.ok) {
-          return toolError(`Orchestration error: ${result.error.message}`);
-        }
-
-        notifier.info('orchestrate', {
-          event: 'orchestrate_complete',
-          subtaskCount: result.value.stepsCompleted,
-          durationMs: getTimeProvider().now() - startMs,
-        });
-
-        return assembleOrchestrateOutput(result.value, agentPlan, workerDispatchResult);
-      });
+          notifier,
+          logger: ctx.logger,
+        })
+      );
     } catch (depthError: unknown) {
       const msg = depthError instanceof Error ? depthError.message : String(depthError);
       ctx.logger.warn('Orchestration depth guard triggered', { error: msg });

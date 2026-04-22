@@ -67,6 +67,12 @@ export const OrchestrateOutputSchema = z.object({
     durationMs: z.number(),
     tokensUsed: z.number(),
     expertsUsed: z.array(z.string()),
+    /**
+     * Populated only when the outer wall-clock deadline fires before
+     * `executeOrchestration` settles. Clients inspect this to distinguish a
+     * complete low-depth run from a truncated partial result. See #2104.
+     */
+    timeoutReason: z.string().optional(),
   }),
 });
 
