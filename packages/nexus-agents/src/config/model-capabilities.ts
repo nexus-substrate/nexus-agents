@@ -275,6 +275,7 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       qualityScores: { reasoning: 9, codeGeneration: 10, speed: 8, cost: 7 },
       maxOutputTokens: 100_000,
       cliName: 'codex',
+      cliModelName: 'gpt-5.2-codex',
     },
     {
       id: 'codex-5.1-mini',
