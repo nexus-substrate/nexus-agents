@@ -12,6 +12,7 @@ import {
   isValidIndexSubcommand,
   isValidIndexFormat,
   isValidResearchFormat,
+  parsePositiveInt,
 } from './cli-commands-validators.js';
 
 // ============================================================================
@@ -166,5 +167,48 @@ describe('isValidResearchFormat', () => {
 
   it('rejects empty string', () => {
     expect(isValidResearchFormat('')).toBe(false);
+  });
+});
+
+// ============================================================================
+// parsePositiveInt (#2161)
+// ============================================================================
+
+describe('parsePositiveInt', () => {
+  it('returns the parsed integer when input is a positive numeric string', () => {
+    expect(parsePositiveInt('7', 10)).toBe(7);
+    expect(parsePositiveInt('100', 50)).toBe(100);
+  });
+
+  it('returns defaultVal when arg is undefined', () => {
+    expect(parsePositiveInt(undefined, 50)).toBe(50);
+  });
+
+  it('returns defaultVal when input is not numeric', () => {
+    expect(parsePositiveInt('abc', 50)).toBe(50);
+    expect(parsePositiveInt('', 50)).toBe(50);
+  });
+
+  it('returns defaultVal for zero (boundary: <=0 is rejected)', () => {
+    expect(parsePositiveInt('0', 30)).toBe(30);
+  });
+
+  it('returns defaultVal for negative numbers', () => {
+    expect(parsePositiveInt('-5', 30)).toBe(30);
+  });
+
+  it('truncates floating-point-looking input (parseInt behavior)', () => {
+    // Documents the parseInt(arg, 10) truncation for future readers.
+    expect(parsePositiveInt('12.9', 0)).toBe(12);
+  });
+
+  it('parses leading numeric prefix (parseInt behavior)', () => {
+    // parseInt stops at the first non-numeric character. This is the same
+    // behavior the three original call sites had.
+    expect(parsePositiveInt('42abc', 0)).toBe(42);
+  });
+
+  it('respects radix 10 for inputs like "08" (not octal)', () => {
+    expect(parsePositiveInt('08', 0)).toBe(8);
   });
 });
