@@ -162,16 +162,10 @@ export type {
 } from './framework/index.js';
 
 // ============================================================================
-// Scoring Utilities
+// Scoring Utilities (#2162: scoring/routing-scorer.ts was dead code with
+// no source callers — deleted; only rubric scorer remains, re-exported
+// directly where consumed)
 // ============================================================================
-
-export {
-  RoutingScorer,
-  evaluateRouting,
-  calculateRoutingMetrics,
-  getByCategory,
-  getCliStats,
-} from './scoring/index.js';
 
 // ============================================================================
 // E2E Workflow Testing
