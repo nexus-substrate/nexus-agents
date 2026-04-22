@@ -511,11 +511,21 @@ export class ConsensusEngine implements IConsensusEngine {
 
     if (!ambiguous) return false;
 
-    const newVoters = await this.voterExpansionCallback(
-      proposalId,
-      required.length,
-      this.quorumConfig.votersPerExpansion
-    );
+    let newVoters: readonly string[];
+    try {
+      newVoters = await this.voterExpansionCallback(
+        proposalId,
+        required.length,
+        this.quorumConfig.votersPerExpansion
+      );
+    } catch (err: unknown) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      this.logger.warn('Incremental quorum: expansion callback threw; closing as-is', {
+        proposalId,
+        errorMessage: error.message,
+      });
+      return false;
+    }
 
     if (newVoters.length === 0) {
       this.logger.info('Incremental quorum: no additional voters available', { proposalId });

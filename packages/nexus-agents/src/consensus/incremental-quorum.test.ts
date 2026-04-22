@@ -214,6 +214,80 @@ describe('ConsensusEngine incremental quorum', () => {
     }
   });
 
+  it('closes the proposal when voterExpansionCallback throws', async () => {
+    const expansionCallback = vi.fn<VoterExpansionCallback>(() =>
+      Promise.reject(new Error('voter registry offline'))
+    );
+
+    const engine = createConsensusEngine({
+      defaultTimeout: 60000,
+      incrementalQuorum: {
+        enabled: true,
+        maxExpansionRounds: 2,
+        votersPerExpansion: 2,
+        confidenceThreshold: 0.6,
+        ambiguityBand: 0.3,
+      },
+    });
+
+    engine.setVoterExpansionCallback(expansionCallback);
+
+    const result = await engine.propose({
+      title: 'Callback throws',
+      description: 'Should not crash the vote path',
+      algorithm: 'simple_majority',
+      requiredVoters: ['a1', 'a2', 'a3'],
+    });
+    if (!result.ok) return;
+    const pid = result.value;
+
+    await engine.vote(pid, 'a1', makeVote('approve'));
+    await engine.vote(pid, 'a2', makeVote('reject'));
+    // Third vote triggers tryExpandQuorum → callback rejects.
+    const voteResult = await engine.vote(pid, 'a3', makeVote('approve'));
+    expect(voteResult.ok).toBe(true);
+
+    // Proposal closed normally (no expansion, no crash).
+    const closeResult = await engine.getResult(pid);
+    expect(closeResult.ok).toBe(true);
+    if (closeResult.ok) {
+      expect(closeResult.value.outcome).toBe('approved');
+    }
+  });
+
+  it('closes the proposal when voterExpansionCallback throws synchronously', async () => {
+    const expansionCallback = vi.fn<VoterExpansionCallback>(() => {
+      throw new Error('sync crash');
+    });
+
+    const engine = createConsensusEngine({
+      defaultTimeout: 60000,
+      incrementalQuorum: {
+        enabled: true,
+        maxExpansionRounds: 2,
+        votersPerExpansion: 2,
+        confidenceThreshold: 0.6,
+        ambiguityBand: 0.3,
+      },
+    });
+
+    engine.setVoterExpansionCallback(expansionCallback);
+
+    const result = await engine.propose({
+      title: 'Callback sync-throws',
+      description: 'Should not crash the vote path',
+      algorithm: 'simple_majority',
+      requiredVoters: ['a1', 'a2', 'a3'],
+    });
+    if (!result.ok) return;
+    const pid = result.value;
+
+    await engine.vote(pid, 'a1', makeVote('approve'));
+    await engine.vote(pid, 'a2', makeVote('reject'));
+    const voteResult = await engine.vote(pid, 'a3', makeVote('approve'));
+    expect(voteResult.ok).toBe(true);
+  });
+
   it('does not expand when quorum is disabled', async () => {
     const engine = createConsensusEngine({
       defaultTimeout: 60000,
