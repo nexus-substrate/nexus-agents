@@ -800,6 +800,35 @@ export function printSetupResult(result: SetupResult, verbose: boolean): void {
 }
 
 /**
+ * Prints the post-setup "Getting Started" banner (#2138).
+ *
+ * Three numbered steps tailored to what setup actually configured. If Claude
+ * Code's MCP wiring succeeded we point step 2 at the integrated harness
+ * (`/mcp` in Claude); otherwise we suggest the standalone `orchestrate`
+ * command. Always shown after a successful setup — printing 3 lines is not
+ * worth gating on first-run detection.
+ *
+ * @param mcpConfigured - True when an MCP harness (Claude/etc.) was wired up.
+ */
+function printGettingStartedBanner(mcpConfigured: boolean): void {
+  writeEmptyLine();
+  writeLine(formatHeader('Getting started'));
+  writeLine('─'.repeat(40));
+
+  writeLine('  1. nexus-agents hello             — guided tour (no API keys needed)');
+  if (mcpConfigured) {
+    writeLine('  2. Use through Claude Code        — type /mcp in Claude to list tools');
+  } else {
+    writeLine('  2. nexus-agents orchestrate "..."  — run your first task');
+  }
+  writeLine('  3. nexus-agents workflow list     — explore built-in workflows');
+
+  writeEmptyLine();
+  writeLine(`  ${colors.dim}Docs: https://github.com/williamzujkowski/nexus-agents${colors.reset}`);
+  writeLine(`  ${colors.dim}Harness wiring: docs/guides/HARNESS_COMPATIBILITY.md${colors.reset}`);
+}
+
+/**
  * Runs the post-setup health gate (#2137).
  *
  * After setup writes its files, this runs the verify checks and prints a
@@ -906,6 +935,9 @@ async function runInteractiveSetup(options: SetupCommandOptions): Promise<number
   const result = runSetup(mergedOptions);
   printSetupResult(result, mergedOptions.verbose ?? false);
   const healthOk = await runPostSetupHealthGate(mergedOptions.dryRun ?? false);
+  if (result.success && !(mergedOptions.dryRun ?? false)) {
+    printGettingStartedBanner(result.mcpConfigured === true);
+  }
   return result.success && healthOk ? 0 : 1;
 }
 
@@ -914,11 +946,34 @@ export async function setupCommandAsync(options: SetupCommandOptions = {}): Prom
     return runInteractiveSetup(options);
   }
 
-  // Sync setup, then run the health gate.
-  const setupExitCode = setupCommand(options);
+  // Sync setup, then run the health gate, then print the getting-started banner.
+  const setupResult = runSetupAndPrint(options);
   const healthOk = await runPostSetupHealthGate(options.dryRun ?? false);
+  if (setupResult.exitCode === 0 && !(options.dryRun ?? false)) {
+    printGettingStartedBanner(setupResult.mcpConfigured);
+  }
   // Hard health failures override a successful setup; warnings don't.
-  return setupExitCode !== 0 || !healthOk ? 1 : 0;
+  return setupResult.exitCode !== 0 || !healthOk ? 1 : 0;
+}
+
+/**
+ * Runs setupCommand and captures both the exit code and the
+ * `mcpConfigured` signal we need for the banner. Wraps the existing
+ * synchronous path without changing its signature.
+ */
+function runSetupAndPrint(options: SetupCommandOptions): {
+  exitCode: number;
+  mcpConfigured: boolean;
+} {
+  const parsedOptions = SetupOptionsSchema.parse(options);
+  if (!isInteractive() && !parsedOptions.nonInteractive) {
+    writeLine('Non-interactive environment detected.');
+    writeLine('Run with --non-interactive or set CI=true.');
+    return { exitCode: 1, mcpConfigured: false };
+  }
+  const result = runSetup(options);
+  printSetupResult(result, parsedOptions.verbose);
+  return { exitCode: result.success ? 0 : 1, mcpConfigured: result.mcpConfigured === true };
 }
 
 // ============================================================================

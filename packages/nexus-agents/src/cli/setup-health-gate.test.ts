@@ -221,6 +221,51 @@ describe('setup health gate (#2137)', () => {
     expect(exitCode).toBe(0);
   });
 
+  it('prints the Getting Started banner after a successful setup (#2138)', async () => {
+    mockedRunVerify.mockResolvedValueOnce(
+      makeVerifyResult([{ name: 'OK', passed: true, message: 'ok' }], true)
+    );
+
+    const output = await captureStdout(async () => {
+      await setupCommandAsync({
+        nonInteractive: true,
+        skipMcp: true,
+        skipRules: true,
+        skipHooks: true,
+        skipConfig: true,
+        skipOpencode: true,
+        skipGemini: true,
+        skipCodex: true,
+      });
+    });
+
+    expect(output).toContain('Getting started');
+    expect(output).toContain('1. nexus-agents hello');
+    expect(output).toContain('3. nexus-agents workflow list');
+    expect(output).toContain('Docs: https://github.com/williamzujkowski/nexus-agents');
+    // Default (no MCP wired) → step 2 is the standalone orchestrate hint.
+    expect(output).toContain('2. nexus-agents orchestrate');
+    expect(output).not.toContain('Use through Claude Code');
+  });
+
+  it('omits the Getting Started banner in --dry-run mode (#2138)', async () => {
+    const output = await captureStdout(async () => {
+      await setupCommandAsync({
+        nonInteractive: true,
+        dryRun: true,
+        skipMcp: true,
+        skipRules: true,
+        skipHooks: true,
+        skipConfig: true,
+        skipOpencode: true,
+        skipGemini: true,
+        skipCodex: true,
+      });
+    });
+
+    expect(output).not.toContain('Getting started');
+  });
+
   it('returns exit 1 when a hard-severity health check failed', async () => {
     mockedRunVerify.mockResolvedValueOnce(
       makeVerifyResult(
