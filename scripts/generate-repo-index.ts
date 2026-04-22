@@ -19,6 +19,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { catalogForExtractors } from '../packages/nexus-agents/src/cli-command-catalog.js';
 
 // ============================================================================
 // Configuration
@@ -138,6 +139,27 @@ function extractCLICommands(): CLICommand[] {
   const asyncBlock = asyncMatch?.[1];
   if (asyncBlock !== undefined) {
     commands.push(...parseCommandsFromBlock(asyncBlock, 'async', 'handle'));
+  }
+
+  // Cross-check against the catalog single-source-of-truth (#2156). Warn on
+  // drift in either direction — a new dispatch-table entry without a catalog
+  // row, or a catalog row with no dispatch handler. Non-fatal: the index
+  // still emits, but CI sees the message.
+  const catalogNames = new Set(catalogForExtractors().map((e) => e.command));
+  const dispatchNames = new Set(commands.map((c) => c.name));
+  for (const name of dispatchNames) {
+    if (!catalogNames.has(name)) {
+      log(
+        `[warn] dispatch command "${name}" has no entry in cli-command-catalog.ts — add one (#2156)`
+      );
+    }
+  }
+  for (const name of catalogNames) {
+    if (!dispatchNames.has(name)) {
+      log(
+        `[warn] catalog command "${name}" has no handler in SYNC/ASYNC_COMMAND_HANDLERS — check naming drift (#2156)`
+      );
+    }
   }
 
   // Sort alphabetically for deterministic output
