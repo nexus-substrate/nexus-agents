@@ -26,7 +26,6 @@ import { detectMode, type ServerMode, type ModeDetectionResult } from './cli/ind
 import { EXIT_CODES } from './cli-types.js';
 import { SwarmObserver } from './observability/index.js';
 import { initializeSandbox, getSandboxMode } from './security/sandbox/index.js';
-import type { IPolicyFirewall } from './mcp/middleware/index.js';
 import {
   initializeSwarmObserver,
   initializeEventBus,
@@ -47,7 +46,7 @@ import { initializeExperts } from './cli-server-experts.js';
 import { initializeSkillLibrary } from './cli-server-skills.js';
 import { initializeSica } from './cli-server-sica.js';
 import { initializeFeedbackIntegration } from './cli-server-feedback.js';
-import { initializeAuth, type AuthInitResult } from './cli-server-auth.js';
+import { initializeAuth } from './cli-server-auth.js';
 import { shutdownToolMemory } from './mcp/tools/tool-memory.js';
 import {
   initializeAuditLogger,
@@ -401,7 +400,12 @@ function applyLoggingConfig(logger: ILogger, verbose: boolean, config: AppConfig
 
 /**
  * Initializes all subsystems from configuration.
- * Returns the initialized components needed for server operation.
+ *
+ * Returns ONLY the components the caller (startServer) actually consumes
+ * downstream. `policyFirewall` and `authInit` are used during tool
+ * registration and auth wiring inside this function but are not referenced
+ * after return — they stayed on the return shape historically and the
+ * caller silently dropped them. Narrowed per #2154.
  */
 async function initializeSubsystems(
   config: AppConfig,
@@ -411,9 +415,7 @@ async function initializeSubsystems(
   serverLogger: ILogger;
   observer: SwarmObserver;
   eventBusBridge: EventBusBridgeResult;
-  policyFirewall: IPolicyFirewall;
   auditLogger: AuditLogger | null;
-  authInit: AuthInitResult;
 }> {
   // Initialize experts from configuration (Issue #486)
   const expertResult = initializeExperts({ expertConfig: config.experts, logger });
@@ -456,8 +458,9 @@ async function initializeSubsystems(
   const policyFirewall = logSecurityConfig(serverLogger, config);
   const auditLogger = initializeAuditLogger(config.security, serverLogger);
 
-  // Initialize authentication handler (Issue #739)
-  const authInit = initializeAuth(config, serverLogger);
+  // Initialize authentication handler (Issue #739). Side effects only —
+  // auth state is wired into the request pipeline inside initializeAuth.
+  initializeAuth(config, serverLogger);
   // Pass FeedbackIntegration to tools for closed-loop learning (Issue #490)
   await initializeAndRegisterTools(
     server,
@@ -467,7 +470,7 @@ async function initializeSubsystems(
     feedbackResult.feedbackIntegration
   );
 
-  return { server, serverLogger, observer, eventBusBridge, policyFirewall, auditLogger, authInit };
+  return { server, serverLogger, observer, eventBusBridge, auditLogger };
 }
 
 /**
