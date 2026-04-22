@@ -19,6 +19,7 @@ import {
   createAuditTrail,
   emitReputationEvent,
   emitSanitizationEvent,
+  MAX_STRIPPED_ELEMENTS_PER_EVENT,
   emitTrustEvent,
 } from '../audit-trail.js';
 import { sanitizeInput } from '../input-sanitizer.js';
@@ -166,6 +167,9 @@ export class HostileInputFirewall {
         wasModified: result.wasModified,
         strippedCount: result.strippedElements.length,
         injectionFlagCount: result.injectionFlags.length,
+        strippedElements: result.strippedElements
+          .slice(0, MAX_STRIPPED_ELEMENTS_PER_EVENT)
+          .map((e) => ({ tag: e.tag, reason: e.reason })),
       });
     }
 

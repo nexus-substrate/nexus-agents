@@ -140,6 +140,11 @@ describe('AuditTrail', () => {
         wasModified: true,
         strippedCount: 3,
         injectionFlagCount: 1,
+        strippedElements: [
+          { tag: '<picture>', reason: 'Dangerous HTML tag' },
+          { tag: '<system>', reason: 'XML-like conversation tag' },
+          { tag: '<!-- … -->', reason: 'Instruction-bearing comment' },
+        ],
       });
 
       const events = trail.query({ type: 'sanitization' });
@@ -147,6 +152,8 @@ describe('AuditTrail', () => {
       if (events[0]?.type === 'sanitization') {
         expect(events[0].wasModified).toBe(true);
         expect(events[0].strippedCount).toBe(3);
+        expect(events[0].strippedElements).toHaveLength(3);
+        expect(events[0].strippedElements[0]!.tag).toBe('<picture>');
       }
     });
   });
