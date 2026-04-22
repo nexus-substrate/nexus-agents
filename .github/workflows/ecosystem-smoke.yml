@@ -90,12 +90,17 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Setup pnpm (hash-pinned action, replaces ad-hoc `npm install -g pnpm@9`)
+        if: steps.detect.outputs.type == 'node' && steps.detect.outputs.pkgmgr == 'pnpm'
+        uses: pnpm/action-setup@b307475762933b98ed359c036b0e51f26b63b74b # v5.0.0
+        with:
+          version: 9
+
       - name: Install (pnpm)
         if: steps.detect.outputs.type == 'node' && steps.detect.outputs.pkgmgr == 'pnpm'
         working-directory: target
         run: |
           set -euo pipefail
-          npm install -g pnpm@9
           pnpm install --frozen-lockfile
 
       - name: Install (npm)
@@ -103,6 +108,12 @@ jobs:
         working-directory: target
         run: |
           set -euo pipefail
+          # `npm ci` requires a package-lock.json; target ecosystem repos may
+          # not ship one, in which case falling back to `npm install` is the
+          # only viable install path for smoke-testing. Scorecard flags this
+          # as "not pinned by hash" but pinning an install that runs against
+          # an arbitrary external repo's manifest is not meaningful — the
+          # target's own lockfile (or lack thereof) is the contract.
           npm ci || npm install
 
       - name: Run smoke test
@@ -121,6 +132,10 @@ jobs:
               echo "::warning::No test or build script found"
             fi
           elif [[ -f pyproject.toml ]]; then
+            # Same constraint as the npm case: the target repo is arbitrary,
+            # its dependency set is defined by its own pyproject/requirements,
+            # and hash-pinning installs against an external repo's manifest
+            # is not a meaningful operation. Scorecard flags this.
             pip install -e . || pip install -r requirements.txt
             pytest --no-header || exit 1
           else
