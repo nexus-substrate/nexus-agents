@@ -61,6 +61,11 @@ function createProject(opts: EntrypointExtractorOptions): Project {
   project.addSourceFilesAtPaths([
     path.join(opts.packageRoot, opts.cliCommandsPath),
     path.join(opts.packageRoot, 'src/cli-types.ts'),
+    // HELP_TEXT was extracted to cli-help-text.ts in #293 (Jan 2026) and
+    // cli-types.ts now only re-exports it. The extractor reads it via AST,
+    // so we have to load the defining file — a bare re-export isn't enough.
+    // Without this line the CLI command list silently came back empty.
+    path.join(opts.packageRoot, 'src/cli-help-text.ts'),
     path.join(opts.packageRoot, opts.mcpToolsPath, '*.ts'),
   ]);
   return project;

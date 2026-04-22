@@ -236,6 +236,48 @@ describe('extractCliCommands', () => {
       expect(names).toContain('vote');
     });
 
+    it('finds HELP_TEXT in cli-help-text.ts when cli-types.ts only has PARSE_ARGS_CONFIG (regression: 3-month silent empty output)', () => {
+      // Simulates the real layout after #293 (Jan 2026): HELP_TEXT lives in
+      // cli-help-text.ts and cli-types.ts only re-exports it. Prior to the
+      // fix, the extractor only looked in cli-types.ts and returned zero
+      // commands. See fix/entrypoint-cli-extractor-help-text-load.
+      const typesFile = makeMockTypesFile('', []);
+      // Override so the types file intentionally has no HELP_TEXT declaration
+      // — mirrors the real post-split state where only a re-export exists.
+      (typesFile as { getVariableDeclaration: (name: string) => unknown }).getVariableDeclaration =
+        (name: string) =>
+          name === 'HELP_TEXT' ? undefined : makeMockTypesFile('', []).getVariableDeclaration(name);
+
+      const helpTextFile = {
+        getVariableDeclaration: (name: string) =>
+          name === 'HELP_TEXT'
+            ? { getInitializer: () => ({ getText: () => '`' + BASIC_HELP_TEXT + '`' }) }
+            : undefined,
+      };
+      const cmdsFile = makeMockCommandsFile({
+        handleDoctorCommand: 10,
+        handleOrchestrateCommand: 50,
+        handleVoteCommand: 100,
+      });
+      const project = makeMockProject({
+        'cli-types.ts': typesFile,
+        'cli-help-text.ts': helpTextFile,
+        'cli-commands.ts': cmdsFile,
+      });
+
+      const result = extractCliCommands(
+        project as never,
+        '/pkg',
+        'cli-commands.ts',
+        'cli-types.ts'
+      );
+
+      expect(result).toHaveLength(3);
+      expect(result.map((c) => c.name)).toEqual(
+        expect.arrayContaining(['doctor', 'orchestrate', 'vote'])
+      );
+    });
+
     it('should extract command descriptions', () => {
       const typesFile = makeMockTypesFile(BASIC_HELP_TEXT, []);
       const cmdsFile = makeMockCommandsFile({ handleDoctorCommand: 10 });
