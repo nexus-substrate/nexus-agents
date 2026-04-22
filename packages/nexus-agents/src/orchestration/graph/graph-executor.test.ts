@@ -273,6 +273,45 @@ describe('executeGraph', () => {
   });
 
   describe('checkpointing (Issue #837)', () => {
+    it('continues execution when checkpoint store fails', async () => {
+      const failingStore = {
+        save: vi.fn(() => {
+          throw new Error('disk full');
+        }),
+        latest: vi.fn(() => undefined),
+        list: vi.fn(() => []),
+        load: vi.fn(() => undefined),
+        delete: vi.fn(() => true),
+        clear: vi.fn(() => 0),
+        size: vi.fn(() => 0),
+      };
+
+      const graph = new GraphBuilder()
+        .addState('value', overwrite(0))
+        .addNode('A', () => Promise.resolve({ value: 1 }))
+        .addEdge(START, 'A')
+        .addEdge('A', END)
+        .compile();
+
+      expect(graph.ok).toBe(true);
+      if (!graph.ok) return;
+
+      const result = await executeGraph(
+        graph.value,
+        {},
+        {
+          checkpointStore: failingStore,
+          executionId: 'exec-fail',
+        }
+      );
+
+      // Execution completed despite the checkpoint failure.
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.finalState['value']).toBe(1);
+      expect(failingStore.save).toHaveBeenCalled();
+    });
+
     it('saves checkpoints after each super-step', async () => {
       const store = new InMemoryCheckpointStore();
 

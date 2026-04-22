@@ -191,7 +191,19 @@ function saveCheckpointIfConfigured(ctx: ExecutionContext, options?: GraphExecut
     pendingNodeIds: ctx.runnableIds,
     completedResults: ctx.allResults,
   });
-  store.save(checkpoint);
+  try {
+    store.save(checkpoint);
+  } catch (err: unknown) {
+    // Checkpoint persistence failure should not abort the in-flight
+    // super-step — the state is still consistent, resume just won't be
+    // possible from this point. Log loudly so operators can investigate.
+    const error = err instanceof Error ? err : new Error(String(err));
+    logger.warn('Checkpoint save failed; execution continues without resumable state', {
+      executionId: execId,
+      stepNumber: ctx.stepsExecuted,
+      errorMessage: error.message,
+    });
+  }
 }
 
 /** Initializes graph state from schema defaults + provided inputs. */
