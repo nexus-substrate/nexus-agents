@@ -15,6 +15,7 @@ import { homedir, platform } from 'node:os';
 import { parse as jsoncParse, modify, applyEdits } from 'jsonc-parser';
 import { getErrorMessage } from '../core/index.js';
 import { createLogger } from '../core/index.js';
+import { classifyExecError, type DetectionError } from './cli-detection-error.js';
 
 const logger = createLogger({ component: 'setup-opencode' });
 
@@ -22,6 +23,11 @@ const logger = createLogger({ component: 'setup-opencode' });
 export interface OpenCodeCliInfo {
   readonly installed: boolean;
   readonly version: string | undefined;
+  /**
+   * Classification of why detection failed. Only set when `installed` is
+   * `false` OR when the binary was located but `--version` failed (#2152).
+   */
+  readonly detectionError?: DetectionError;
 }
 
 /** OpenCode MCP configuration result. */
@@ -46,8 +52,8 @@ export function detectOpenCodeCli(): OpenCodeCliInfo {
   try {
     const cmd = platform() === 'win32' ? 'where' : 'which';
     execFileSync(cmd, ['opencode'], { timeout: 3000, stdio: 'pipe' });
-  } catch {
-    return { installed: false, version: undefined };
+  } catch (err: unknown) {
+    return { installed: false, version: undefined, detectionError: classifyExecError(err) };
   }
 
   try {
@@ -58,8 +64,8 @@ export function detectOpenCodeCli(): OpenCodeCliInfo {
     });
     const match = /(\d+\.\d+\.\d+)/.exec(output);
     return { installed: true, version: match?.[1] };
-  } catch {
-    return { installed: true, version: undefined };
+  } catch (err: unknown) {
+    return { installed: true, version: undefined, detectionError: classifyExecError(err) };
   }
 }
 
