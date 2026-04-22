@@ -139,6 +139,10 @@ export interface ParsedCliArgs {
     skipGemini: boolean;
     skipCodex: boolean;
     scope?: 'user' | 'project';
+    // Setup --custom-api for OpenAI-compatible gateway configuration (#2124)
+    customApi?: string;
+    customApiKey?: string;
+    customModel?: string;
     // Demo command options
     mock: boolean;
     // Doctor command options (Issue #1031)
@@ -365,6 +369,16 @@ export const PARSE_ARGS_CONFIG = {
     scope: {
       type: 'string' as const,
       default: 'user',
+    },
+    // Setup --custom-api for OpenAI-compatible gateway configuration (#2124)
+    'custom-api': {
+      type: 'string' as const,
+    },
+    'custom-api-key': {
+      type: 'string' as const,
+    },
+    'custom-model': {
+      type: 'string' as const,
     },
     // Demo command options
     mock: {

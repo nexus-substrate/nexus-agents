@@ -380,8 +380,18 @@ export function handleSetupCommand(args: ParsedCliArgs): void {
 /**
  * Handles setup command with interactive wizard support (async version).
  * (Source: Issue #425 - Interactive setup wizard)
+ *
+ * #2124: when `--custom-api <url>` is set, short-circuits the normal flow
+ * and just configures the custom gateway (URL validation + probe + shell
+ * fragment). Rationale: normal setup configures Claude/OpenCode/Codex
+ * MCP hookup; custom-api is orthogonal — the user has a gateway they
+ * want to plug in, not a harness they want to wire up.
  */
 export async function handleSetupCommandAsync(args: ParsedCliArgs): Promise<void> {
+  if (args.options.customApi !== undefined && args.options.customApi !== '') {
+    const exitCode = await runCustomApiSetup(args);
+    process.exit(exitCode);
+  }
   const exitCode = await setupCommandAsync({
     interactive: args.options.interactive,
     nonInteractive: args.options.nonInteractive,
@@ -398,6 +408,31 @@ export async function handleSetupCommandAsync(args: ParsedCliArgs): Promise<void
     scope: args.options.scope === 'project' ? 'project' : 'user',
   });
   process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
+}
+
+/** Wrapper for `setup --custom-api` (#2124). */
+async function runCustomApiSetup(args: ParsedCliArgs): Promise<number> {
+  const { configureCustomApi } = await import('./cli/setup-custom-api.js');
+  const baseUrl = args.options.customApi;
+  if (baseUrl === undefined) return EXIT_CODES.SERVER_START_FAILED;
+  const input: Parameters<typeof configureCustomApi>[0] = {
+    baseUrl,
+    nonInteractive: args.options.nonInteractive,
+    ...(args.options.customApiKey !== undefined ? { apiKey: args.options.customApiKey } : {}),
+    ...(args.options.customModel !== undefined ? { model: args.options.customModel } : {}),
+  };
+  const result = await configureCustomApi(input);
+  if (!result.ok) {
+    process.stderr.write(`✗ ${result.error.message}\n`);
+    return EXIT_CODES.SERVER_START_FAILED;
+  }
+  const { baseUrl: canonical, model, probeSucceeded, shellFragment } = result.value;
+  process.stdout.write(`✓ Gateway validated: ${canonical}\n`);
+  process.stdout.write(`✓ Model: ${model}\n`);
+  if (probeSucceeded) process.stdout.write(`✓ Probe succeeded (GET /models → 2xx)\n`);
+  process.stdout.write('\nAdd the following to your shell rc (~/.bashrc, ~/.zshrc, etc.):\n\n');
+  process.stdout.write(shellFragment);
+  return EXIT_CODES.SUCCESS;
 }
 
 /**
