@@ -146,7 +146,17 @@ export class ArtifactStore implements IArtifactStore {
 
   put(artifact: Artifact): ArtifactRef {
     this.validateContentSize(artifact);
-    this.evictIfNeeded();
+    const isReplace = this.artifacts.has(artifact.id);
+    if (isReplace) {
+      // Remove the stale position so it does not linger in insertOrder. A
+      // re-put does not consume a new slot, so eviction is skipped — the
+      // old buggy behaviour ran evictIfNeeded unconditionally and dropped
+      // unrelated live artifacts whenever a replace happened at capacity.
+      const idx = this.insertOrder.indexOf(artifact.id);
+      if (idx !== -1) this.insertOrder.splice(idx, 1);
+    } else {
+      this.evictIfNeeded();
+    }
     this.artifacts.set(artifact.id, artifact);
     this.insertOrder.push(artifact.id);
     return { id: artifact.id, type: artifact.type };
