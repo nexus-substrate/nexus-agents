@@ -302,6 +302,7 @@ describe('executeGraph', () => {
         list: vi.fn(() => []),
         load: vi.fn(() => undefined),
         delete: vi.fn(() => true),
+        deleteExecution: vi.fn(() => 0),
         clear: vi.fn(() => 0),
         size: vi.fn(() => 0),
       };
