@@ -130,10 +130,22 @@ function extractToolsFromFile(
     const args = callExpr.getArguments();
     if (args.length < 2) continue;
 
-    // Extract tool name (first string argument)
+    // Extract tool name (first string argument).
+    //
+    // Reject non-literal first arguments — Proxy/wrapper modules forward
+    // calls like `target.registerTool(name, ...)` where `name` is a
+    // parameter, not a tool identifier. Accepting those produces spurious
+    // tools named "name". See #2148.
     const nameArg = args[0];
     if (nameArg === undefined) continue;
-    const toolName = nameArg.getText().replace(/['"]/g, '');
+    const nameKind = nameArg.getKind();
+    if (
+      nameKind !== SyntaxKind.StringLiteral &&
+      nameKind !== SyntaxKind.NoSubstitutionTemplateLiteral
+    ) {
+      continue;
+    }
+    const toolName = nameArg.getText().replace(/['"`]/g, '');
 
     // Extract description and schema based on call type
     const { description, schemaArg } = extractToolMeta(callText, args, sourceFile);
