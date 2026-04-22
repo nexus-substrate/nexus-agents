@@ -100,6 +100,16 @@ async function extractSymbolsHandler(args: unknown, ctx: HandlerContext): Promis
 }
 
 // ============================================================================
+// Testing exports (#2159)
+// ============================================================================
+
+/** Test-only surface — do not import in production code. */
+export const _testing = {
+  /** Raw handler for unit testing (bypasses secure-handler + timeout middleware). */
+  extractSymbolsHandler,
+};
+
+// ============================================================================
 // Registration
 // ============================================================================
 

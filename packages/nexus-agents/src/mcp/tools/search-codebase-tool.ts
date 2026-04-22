@@ -137,6 +137,23 @@ async function searchCodebaseHandler(args: unknown, ctx: HandlerContext): Promis
 }
 
 // ============================================================================
+// Testing exports (#2159)
+// ============================================================================
+
+/** Test-only surface — do not import in production code. */
+export const _testing = {
+  /** Raw handler for unit testing (bypasses secure-handler + timeout middleware). */
+  searchCodebaseHandler,
+  /** Exposes the shared dir-validation + resolution logic. */
+  resolveSearchDir,
+  /** Clears the module-level index cache so tests can start fresh. */
+  clearIndexCache: (): void => {
+    cachedIndex = undefined;
+    cachedDir = '';
+  },
+};
+
+// ============================================================================
 // Registration
 // ============================================================================
 
