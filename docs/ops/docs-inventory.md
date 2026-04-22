@@ -8,12 +8,12 @@
 
 ## Summary Statistics
 
-| Category                       | Count   | Status          |
-| ------------------------------ | ------- | --------------- |
-| Canonical docs (`docs/`)       | 99      | Source of truth |
-| Root-level docs                | 8       | Entry points    |
-| Agent rules (`.claude/rules/`) | 6       | Auto-loaded     |
-| **Total**                      | **113** |                 |
+| Category                 | Count   | Status          |
+| ------------------------ | ------- | --------------- |
+| Canonical docs (`docs/`) | 99      | Source of truth |
+| Root-level docs          | 8       | Entry points    |
+| Agent rules (`.rules/`)  | 6       | Auto-loaded     |
+| **Total**                | **113** |                 |
 
 ---
 

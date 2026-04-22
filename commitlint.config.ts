@@ -8,7 +8,7 @@ import type { UserConfig } from '@commitlint/types';
  * Types: feat, fix, refactor, docs, test, chore, perf
  * Scopes: optional, freeform (e.g., consensus, routing, mcp, cli, docs)
  *
- * @see .claude/rules/git.md for full conventions
+ * @see .rules/git.md for full conventions
  * @see https://www.conventionalcommits.org/en/v1.0.0/
  */
 const config: UserConfig = {

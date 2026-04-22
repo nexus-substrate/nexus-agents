@@ -282,15 +282,13 @@ describe('setup-rules functions', () => {
       const content = setupHelpers.generateRulesContent();
       expect(content).toContain('# Nexus-Agents Integration');
       expect(content).toContain('orchestrate');
-      expect(setupHelpers.getRulesFilePath('/project')).toBe(
-        '/project/.claude/rules/nexus-agents.md'
-      );
+      expect(setupHelpers.getRulesFilePath('/project')).toBe('/project/.rules/nexus-agents.md');
     });
   });
 
   describe('createRulesFile', () => {
     it('creates file when not dry run, skips when dry run', () => {
-      const expectedPath = '/project/.claude/rules/nexus-agents.md';
+      const expectedPath = '/project/.rules/nexus-agents.md';
       expect(setupHelpers.createRulesFile('/project', false)).toBe(expectedPath);
       expect(mockWriteFileSync).toHaveBeenCalled();
 

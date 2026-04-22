@@ -27,6 +27,7 @@ allowed-tools: Read, Edit, Write, Bash, Grep, Glob, Task
 <!-- PIPELINE NOTE: link-check.yml bumped actions/cache v5.0.4 → v5.0.5 (patch-level bump; no behavioral change) (#2087, 2026-04-20) -->
 <!-- PIPELINE NOTE: docs-check.yml link-check job removed; it invoked markdown-link-check with `|| true` so all failures were swallowed. lychee in link-check.yml is now the single canonical link-validation path (#2101, 2026-04-21) -->
 <!-- PIPELINE NOTE: docs-check.yml docs-content-drift job extended with MCP_TOOL_COUNT cross-check — fails CI when site-data.ts MCP_TOOL_COUNT, server.json tools[], server.json description prose, or README.md prose disagree with the authoritative count in src/mcp/tools/index.ts registerTools() (#2107, 2026-04-22) -->
+<!-- PIPELINE NOTE: .claude/rules/ moved to .rules/ for harness neutrality (#2121, 2026-04-22). setup-rules.ts now writes to .rules/nexus-agents.md; detectProjectInfo accepts both paths during migration. CLAUDE.md pointers updated. -->
 
 **Full specification:** [docops-spec.md](../../docs/ops/docops-spec.md)
 

@@ -89,7 +89,7 @@ Respond with JSON matching this structure:
 ### Reference Implementation
 - **Structural template**: \`packages/nexus-agents/src/agents/experts/expert-prompts/prompt-composer.test.ts\` — focused unit tests, clear describe/it nesting, no hidden fixtures.
 - **\`describe.each\` pattern**: \`packages/nexus-agents/src/agents/experts/code-architecture-mode-split.test.ts\` — shared-invariant testing across multiple modes/variants. Use when asserting the same invariant across parameterized subjects.
-- **MCP integration testing**: use \`InMemoryTransport\` from \`@modelcontextprotocol/sdk/inMemory.js\` as shown in \`.claude/rules/testing.md\`. Prefer over mocked transport.
+- **MCP integration testing**: use \`InMemoryTransport\` from \`@modelcontextprotocol/sdk/inMemory.js\` as shown in \`.rules/testing.md\`. Prefer over mocked transport.
 - **Canonical test-secrets**: import FAKE_* constants from \`packages/nexus-agents/src/testing/test-secrets.ts\` — never invent new fake secrets.
 
 ### Output Guidance

@@ -36,7 +36,7 @@ describe.each(EXPERTS)('Expert %s has Reference Implementation section', (_name,
   });
 
   it('cites at least one concrete repo path', () => {
-    // Any of: src/, docs/, packages/, or .claude/rules/
+    // Any of: src/, docs/, packages/, or .rules/
     expect(prompt).toMatch(/`(src\/|docs\/|packages\/|\.claude\/|agents\/|CLAUDE\.md)/);
   });
 });

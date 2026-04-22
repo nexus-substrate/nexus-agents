@@ -64,18 +64,18 @@ describe('generateRulesContent', () => {
 // ============================================================================
 
 describe('getRulesFilePath', () => {
-  it('returns path under .claude/rules/', () => {
+  it('returns path under .rules/', () => {
     const path = getRulesFilePath('/home/user/project');
-    expect(path).toBe('/home/user/project/.claude/rules/nexus-agents.md');
+    expect(path).toBe('/home/user/project/.rules/nexus-agents.md');
   });
 
   it('works with trailing slash', () => {
     const path = getRulesFilePath('/home/user/project/');
-    expect(path).toContain('.claude/rules/nexus-agents.md');
+    expect(path).toContain('.rules/nexus-agents.md');
   });
 
   it('works with relative path', () => {
     const path = getRulesFilePath('.');
-    expect(path).toContain('.claude/rules/nexus-agents.md');
+    expect(path).toContain('.rules/nexus-agents.md');
   });
 });

@@ -168,7 +168,10 @@ export function detectProjectInfo(root: string): ProjectInfo {
     root,
     hasPackageJson: existsSync(join(root, 'package.json')),
     hasClaudeMd: existsSync(join(root, 'CLAUDE.md')),
-    hasClaudeRules: existsSync(join(root, '.claude', 'rules')),
+    // Rules relocated in #2121: canonical is `.rules/`. Still accept the
+    // legacy `.claude/rules/` path so detection doesn't break on repos that
+    // haven't migrated yet.
+    hasClaudeRules: existsSync(join(root, '.rules')) || existsSync(join(root, '.claude', 'rules')),
     hasNexusConfig: existsSync(join(root, 'nexus-agents.yaml')),
     projectType: detectProjectType(root),
     packageName: packageName ?? basename(root),

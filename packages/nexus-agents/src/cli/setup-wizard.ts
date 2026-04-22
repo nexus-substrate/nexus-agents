@@ -255,11 +255,11 @@ async function askConfirmation(
   if (!skipMcp) {
     writeLine('Will configure:');
     writeLine('  - MCP server for Claude integration');
-    writeLine('  - Rules file (.claude/rules/nexus-agents.md)');
+    writeLine('  - Rules file (.rules/nexus-agents.md)');
     writeLine('  - Hooks for session tracking');
   } else {
     writeLine('Will configure:');
-    writeLine('  - Rules file (.claude/rules/nexus-agents.md)');
+    writeLine('  - Rules file (.rules/nexus-agents.md)');
     writeLine('  - (Skipping MCP/hooks - not needed for standalone mode)');
   }
 

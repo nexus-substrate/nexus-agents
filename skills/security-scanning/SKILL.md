@@ -75,7 +75,7 @@ All fake secrets in test code MUST be obviously fake:
 
 - Import from `src/testing/test-secrets.ts` (canonical constants: `FAKE_OPENAI_KEY`, `FAKE_GOOGLE_KEY`, etc.)
 - Every value contains "TEST", "FAKE", "EXAMPLE", or placeholder chars (xxxx, 0000)
-- See `.claude/rules/test-secrets.md` for the full policy
+- See `.rules/test-secrets.md` for the full policy
 
 **Why:** GitHub secret scanning scans ALL committed blobs (including history) and has NO allowlist config. Gitleaks path exclusions don't help server-side. Values must be self-evidently fake.
 

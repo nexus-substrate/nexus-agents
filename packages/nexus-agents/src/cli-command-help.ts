@@ -124,7 +124,7 @@ const SETUP_HELP: CommandHelpEntry = {
     { flag: '--force', description: 'Overwrite existing configuration files' },
     { flag: '--skip-mcp', description: 'Skip MCP configuration' },
     { flag: '--skip-config', description: 'Skip config file generation' },
-    { flag: '--skip-rules', description: 'Skip .claude/rules generation' },
+    { flag: '--skip-rules', description: 'Skip .rules generation' },
     { flag: '--skip-hooks', description: 'Skip hook configuration' },
     { flag: '--skip-opencode', description: 'Skip OpenCode MCP setup' },
     { flag: '--skip-gemini', description: 'Skip Gemini MCP setup' },

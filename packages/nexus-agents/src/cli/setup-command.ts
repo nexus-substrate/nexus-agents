@@ -3,7 +3,7 @@
  * nexus-agents setup command
  *
  * Configures Claude CLI integration with nexus-agents MCP server.
- * Generates MCP configuration snippet and .claude/rules/nexus-agents.md.
+ * Generates MCP configuration snippet and .rules/nexus-agents.md.
  *
  * @module cli/setup-command
  * (Source: Issue #363 - Auto-configure Claude CLI integration)
