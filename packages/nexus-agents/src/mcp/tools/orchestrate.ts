@@ -11,6 +11,12 @@ import { getErrorMessage } from '../../core/index.js';
 import { MCP_TIMEOUTS, HEARTBEAT_TIMEOUTS, getMcpSafeDeadlineMs } from '../../config/timeouts.js';
 import { getHeartbeatMonitor } from '../../agents/heartbeat-monitor.js';
 import { raceAgainstDeadline } from '../../core/race/race-against-deadline.js';
+import {
+  createOrchestrationStateSnapshot,
+  setRouting,
+  setAnalysis,
+  type OrchestrationStateSnapshot,
+} from './orchestration-state-snapshot.js';
 
 import {
   orchestrateInputToTaskContract,
@@ -548,11 +554,14 @@ function handleOrchestratorSuccess(ctx: {
 async function executeOrchestration(
   input: OrchestrateInput,
   deps: OrchestrateDeps,
-  router?: IWorkflowRouter
+  router?: IWorkflowRouter,
+  snapshot?: OrchestrationStateSnapshot
 ): Promise<Result<OrchestrateOutput, OrchestrationError>> {
   const { workflowRouter, decision, orchestrator, logger } = routeAndPrepare(input, deps, router);
   const taskId = generateTaskId();
   const startTime = getTimeProvider().now();
+  // Snapshot: routing decision available once routeAndPrepare returns (#2111)
+  if (snapshot !== undefined) setRouting(snapshot, buildRoutingInfo(decision));
   const fastResult = trySimpleTaskFastPath({
     taskId,
     task: input.task,
@@ -561,7 +570,11 @@ async function executeOrchestration(
     startTime,
     logger,
   });
-  if (fastResult !== undefined) return fastResult;
+  if (fastResult !== undefined) {
+    // Fast-path produced a full analysis — capture it for the deadline handler
+    if (snapshot !== undefined && fastResult.ok) setAnalysis(snapshot, fastResult.value.analysis);
+    return fastResult;
+  }
   logger.info('Starting orchestration', { taskId, taskLength: input.task.length });
   recordTaskStateInit(taskId, input.task, logger);
   const task = await createTaskFromInput(input, taskId);
@@ -828,38 +841,48 @@ function recordAndReflect(
  * wrapper error. `timeoutReason` in `metadata` is the client's signal to
  * distinguish a truncated run from a normal low-depth one.
  *
+ * If `snapshot` is provided (issue #2111 follow-up), analysis / routing /
+ * stepsCompleted are populated from whatever the orchestration captured
+ * before the deadline fired, instead of sentinel values.
+ *
  * Exported for unit testing only; downstream code should NOT call this
  * helper directly — it is internal plumbing for `executeOrchestrationWithDeadline`.
  */
 export function buildTimeoutOrchestrationResult(
   taskId: string,
   elapsedMs: number,
-  reason: string
+  reason: string,
+  snapshot?: OrchestrationStateSnapshot
 ): Result<OrchestrateOutput, OrchestrationError> {
   // analysis.complexity has a schema min of 1 (see orchestrate-types.ts);
   // use 1 as the "unknown / truncated" sentinel. The distinguishing signal
   // for a truncated run is `metadata.timeoutReason` being set.
-  return ok({
+  const analysis = snapshot?.analysis ?? {
     taskId,
-    analysis: {
-      taskId,
-      complexity: 1,
-      taskType: 'unknown',
-      requirements: [],
-      risks: [],
-      needsDecomposition: false,
-      approach: `Orchestration aborted: ${reason}`,
-      estimatedEffort: 0,
-    },
+    complexity: 1,
+    taskType: 'unknown',
+    requirements: [],
+    risks: [],
+    needsDecomposition: false,
+    approach: `Orchestration aborted: ${reason}`,
+    estimatedEffort: 0,
+  };
+  const output: OrchestrateOutput = {
+    taskId,
+    analysis,
     result: undefined,
-    stepsCompleted: 0,
+    stepsCompleted: snapshot?.stepsCompleted ?? 0,
     metadata: {
       durationMs: elapsedMs,
       tokensUsed: 0,
       expertsUsed: [],
       timeoutReason: reason,
     },
-  });
+  };
+  if (snapshot?.routing !== undefined) {
+    output.routing = snapshot.routing;
+  }
+  return ok(output);
 }
 
 /**
@@ -879,18 +902,25 @@ async function executeOrchestrationWithDeadline(params: {
     'orchestrate'
   );
   const timeoutTaskId = generateTaskId();
+  // Shared snapshot: executeOrchestration fills it as sub-steps complete; the
+  // timeout handler reads it to produce a richer partial result (#2111).
+  const snapshot = createOrchestrationStateSnapshot(getTimeProvider().now());
   return raceAgainstDeadline(
-    withProgressHeartbeat('orchestrate', notifier, () => executeOrchestration(input, deps)),
+    withProgressHeartbeat('orchestrate', notifier, () =>
+      executeOrchestration(input, deps, undefined, snapshot)
+    ),
     overallDeadlineMs,
     (elapsedMs) => {
       logger.warn('Orchestration overall deadline reached; returning partial result', {
         overallDeadlineMs,
         elapsedMs,
+        stage: snapshot.stage,
       });
       return buildTimeoutOrchestrationResult(
         timeoutTaskId,
         elapsedMs,
-        'orchestration overall deadline exceeded'
+        'orchestration overall deadline exceeded',
+        snapshot
       );
     }
   );
