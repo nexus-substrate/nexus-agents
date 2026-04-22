@@ -96,6 +96,11 @@ export class UnifiedAdapterRegistry {
   // Public API
   // --------------------------------------------------------------------------
 
+  /** Logger used by this registry. Exposed so singleton helpers can warn. */
+  getLogger(): ILogger {
+    return this.logger;
+  }
+
   /**
    * Get adapter for a task category. Uses pre-computed routing.
    * Falls back to default adapter if category unknown.
@@ -292,9 +297,25 @@ export function createUnifiedRegistry(config?: UnifiedRegistryConfig): UnifiedAd
 /**
  * Get the global singleton registry.
  * Creates it on first access with default config.
+ *
+ * If the singleton already exists and a non-empty config is supplied, the
+ * config is ignored — callers get the pre-existing instance. A warning is
+ * emitted so this asymmetry is not silent.
  */
 export function getGlobalRegistry(config?: UnifiedRegistryConfig): UnifiedAdapterRegistry {
-  globalRegistry ??= new UnifiedAdapterRegistry(config);
+  if (globalRegistry === undefined) {
+    globalRegistry = new UnifiedAdapterRegistry(config);
+    return globalRegistry;
+  }
+  if (config !== undefined && Object.keys(config).length > 0) {
+    globalRegistry
+      .getLogger()
+      .warn(
+        'UnifiedAdapterRegistry singleton already initialized; provided config ignored. ' +
+          'Call resetGlobalRegistry() first if reconfiguration is intentional.',
+        { providedKeys: Object.keys(config) }
+      );
+  }
   return globalRegistry;
 }
 
