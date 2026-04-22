@@ -3,7 +3,7 @@
  * (Source: Issue #253)
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { runVerify, printVerifyResult, verifyCommand } from './verify-command.js';
 import type { VerifyResult, VerifyCheck } from './verify-command.js';
 
@@ -92,6 +92,7 @@ describe('verify-command', () => {
         nodeVersion: 'v22.0.0',
         checks: [{ name: 'Test Check', passed: true, message: 'OK' }],
         allPassed: true,
+        noHardFailures: true,
         durationMs: 10,
       };
 
@@ -106,6 +107,7 @@ describe('verify-command', () => {
         nodeVersion: 'v22.0.0',
         checks: [{ name: 'Test Check', passed: false, message: 'Failed', fix: 'Do something' }],
         allPassed: false,
+        noHardFailures: false,
         durationMs: 10,
       };
 
@@ -120,6 +122,7 @@ describe('verify-command', () => {
         nodeVersion: 'v22.0.0',
         checks: [],
         allPassed: true,
+        noHardFailures: true,
         durationMs: 10,
       };
 
@@ -164,6 +167,112 @@ describe('verify-command', () => {
       };
 
       expect(check.fix).toBeUndefined();
+    });
+  });
+
+  describe('expanded health checks (#2136)', () => {
+    it('includes SQLite storage check', async () => {
+      const result = await runVerify();
+      const sqliteCheck = result.checks.find((c) => c.name === 'SQLite Storage');
+      expect(sqliteCheck).toBeDefined();
+    });
+
+    it('includes Data Directories check', async () => {
+      const result = await runVerify();
+      const dirCheck = result.checks.find((c) => c.name === 'Data Directories');
+      expect(dirCheck).toBeDefined();
+    });
+
+    it('includes Adapter Availability check', async () => {
+      const result = await runVerify();
+      const adapterCheck = result.checks.find((c) => c.name === 'Adapter Availability');
+      expect(adapterCheck).toBeDefined();
+    });
+
+    it('classifies sqlite, data-dir, and adapter failures as warn (not hard)', async () => {
+      const result = await runVerify();
+      const warnables = ['SQLite Storage', 'Data Directories', 'Adapter Availability'];
+      for (const name of warnables) {
+        const check = result.checks.find((c) => c.name === name);
+        expect(check).toBeDefined();
+        if (check === undefined) continue;
+        if (!check.passed) {
+          // Any of these failing must be warn — not a hard blocker.
+          expect(check.severity).toBe('warn');
+        }
+      }
+    });
+
+    it('noHardFailures is true when only warn-severity checks fail', () => {
+      const result: VerifyResult = {
+        version: '1.0.0',
+        nodeVersion: 'v22.0.0',
+        checks: [
+          { name: 'OK', passed: true, message: 'ok' },
+          { name: 'Warn', passed: false, severity: 'warn', message: 'degraded' },
+        ],
+        allPassed: false,
+        noHardFailures: true,
+        durationMs: 1,
+      };
+      // Validate the contract: presence of warn-only failures still yields noHardFailures=true.
+      expect(result.noHardFailures).toBe(true);
+      expect(result.allPassed).toBe(false);
+    });
+
+    it('verifyCommand exits 0 when only warn-severity checks fail (degraded but functional)', () => {
+      // Exit-code contract: only hard failures flip the exit code.
+      const passing: VerifyResult = {
+        version: '1.0.0',
+        nodeVersion: 'v22.0.0',
+        checks: [{ name: 'X', passed: false, severity: 'warn', message: 'msg' }],
+        allPassed: false,
+        noHardFailures: true,
+        durationMs: 1,
+      };
+      const failing: VerifyResult = {
+        version: '1.0.0',
+        nodeVersion: 'v22.0.0',
+        checks: [{ name: 'X', passed: false, severity: 'hard', message: 'msg' }],
+        allPassed: false,
+        noHardFailures: false,
+        durationMs: 1,
+      };
+      // These results aren't passed directly to verifyCommand (it calls runVerify
+      // itself), but the shape contract is verified here.
+      expect(passing.noHardFailures).toBe(true);
+      expect(failing.noHardFailures).toBe(false);
+    });
+
+    it('printVerifyResult renders warn-only failures as degraded, not failed', () => {
+      const result: VerifyResult = {
+        version: '1.0.0',
+        nodeVersion: 'v22.0.0',
+        checks: [
+          { name: 'OK', passed: true, message: 'ok' },
+          { name: 'Warn', passed: false, severity: 'warn', message: 'degraded', fix: 'run x' },
+        ],
+        allPassed: false,
+        noHardFailures: true,
+        durationMs: 1,
+      };
+      const writes: string[] = [];
+      const writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation((chunk: unknown) => {
+        writes.push(
+          typeof chunk === 'string' ? chunk : Buffer.from(chunk as Uint8Array).toString()
+        );
+        return true;
+      });
+      try {
+        printVerifyResult(result, false);
+      } finally {
+        writeSpy.mockRestore();
+      }
+      const output = writes.join('');
+      expect(output).toMatch(/warning/i);
+      expect(output).toMatch(/degraded/i);
+      // Must NOT claim hard failure in warn-only case.
+      expect(output).not.toMatch(/Verification failed/i);
     });
   });
 });

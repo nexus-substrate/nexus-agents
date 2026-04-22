@@ -314,8 +314,11 @@ function checkNodeVersion(): NodeVersionCheck {
 /**
  * Checks which API keys are configured in the environment.
  * Does NOT expose the actual key values - only reports presence.
+ *
+ * Exported so `verify` (#2136) and other health gates can reuse it without
+ * running the full doctor pipeline.
  */
-function checkApiKeys(): ApiKeyCheck[] {
+export function checkApiKeys(): ApiKeyCheck[] {
   return API_KEY_VARS.map((name) => ({
     name,
     configured: typeof process.env[name] === 'string' && process.env[name] !== '',
@@ -456,8 +459,11 @@ function checkLearningPersistence(): LearningPersistenceCheck {
 /**
  * Checks if better-sqlite3 is available (#1249).
  * Memory backends (agentic, adaptive, typed, mobimem, decay) require it.
+ *
+ * Exported so `verify` (#2136) can reuse it without running the full doctor
+ * pipeline.
  */
-async function checkSqlite(): Promise<SqliteCheck> {
+export async function checkSqlite(): Promise<SqliteCheck> {
   try {
     await import('better-sqlite3');
     return { available: true, error: null };
@@ -475,8 +481,11 @@ async function checkSqlite(): Promise<SqliteCheck> {
 
 /**
  * Checks the ~/.nexus-agents/ data directory health (#1249).
+ *
+ * Exported so `verify` (#2136) can reuse it without running the full doctor
+ * pipeline.
  */
-function checkDataDirectory(): DataDirectoryCheck {
+export function checkDataDirectory(): DataDirectoryCheck {
   const rootPath = join(homedir(), '.nexus-agents');
   const rootExists = existsSync(rootPath);
 

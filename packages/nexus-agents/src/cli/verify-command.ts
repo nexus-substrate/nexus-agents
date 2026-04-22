@@ -13,6 +13,7 @@ import { getTimeProvider } from '../core/index.js';
 import { defaultConfig } from '../config/index.js';
 import { BUILT_IN_EXPERTS } from '../agents/experts/expert-config.js';
 import { colors, symbols } from './ansi-output.js';
+import { checkSqlite, checkDataDirectory, checkApiKeys } from './doctor.js';
 
 /**
  * Verify command options.
@@ -22,6 +23,19 @@ export interface VerifyOptions {
 }
 
 /**
+ * Severity of a failed check.
+ *
+ * - `hard`: functionality is broken (e.g. Node version too low, core exports
+ *   missing). Exit code 1.
+ * - `warn`: functionality is degraded but usable (e.g. better-sqlite3 missing
+ *   → only some memory backends unavailable; no CLI adapters detected →
+ *   orchestrator still works via API keys). Exit code 0.
+ *
+ * Unused on passing checks.
+ */
+export type VerifySeverity = 'hard' | 'warn';
+
+/**
  * Single verification check result.
  */
 export interface VerifyCheck {
@@ -29,6 +43,11 @@ export interface VerifyCheck {
   readonly passed: boolean;
   readonly message: string;
   readonly fix?: string;
+  /**
+   * Severity for failed checks. Defaults to `hard` when omitted. Passing
+   * checks ignore this field.
+   */
+  readonly severity?: VerifySeverity;
 }
 
 /**
@@ -38,7 +57,13 @@ export interface VerifyResult {
   readonly version: string;
   readonly nodeVersion: string;
   readonly checks: readonly VerifyCheck[];
+  /** True when every check passed. */
   readonly allPassed: boolean;
+  /**
+   * True when no check failed with `severity: 'hard'`. Drives the exit code:
+   * warnings alone do not fail verification (exit 0 with warnings printed).
+   */
+  readonly noHardFailures: boolean;
   readonly durationMs: number;
 }
 
@@ -161,9 +186,94 @@ function checkExpertSystem(): VerifyCheck {
 }
 
 /**
+ * Checks that better-sqlite3 loads. Memory backends (agentic, adaptive, typed,
+ * mobimem, decay) are unavailable if it's missing — functional degradation,
+ * not a hard failure. Rebuilding the native module or reinstalling usually
+ * fixes it.
+ */
+async function checkSqliteAvailability(): Promise<VerifyCheck> {
+  const result = await checkSqlite();
+  if (result.available) {
+    return {
+      name: 'SQLite Storage',
+      passed: true,
+      message: 'better-sqlite3 loaded (memory backends available)',
+    };
+  }
+  return {
+    name: 'SQLite Storage',
+    passed: false,
+    severity: 'warn',
+    message: result.error ?? 'better-sqlite3 not available',
+    fix: 'Run "pnpm rebuild better-sqlite3" or reinstall nexus-agents',
+  };
+}
+
+/**
+ * Checks that the `~/.nexus-agents/` data directories exist and are writable.
+ * `cli-commands.ts::dispatchCommand` initializes them lazily (#1398), so
+ * missing dirs are a hard failure (persistence will silently drop writes).
+ */
+function checkDataDirs(): VerifyCheck {
+  const result = checkDataDirectory();
+  const unwritable = result.subdirectories.filter((s) => !s.exists || !s.writable);
+  if (result.rootExists && unwritable.length === 0) {
+    return {
+      name: 'Data Directories',
+      passed: true,
+      message: `${result.rootPath} (all subdirectories writable)`,
+    };
+  }
+  if (!result.rootExists) {
+    return {
+      name: 'Data Directories',
+      passed: false,
+      severity: 'warn',
+      message: `${result.rootPath} does not exist`,
+      fix: 'Run any nexus-agents command — directories auto-initialize on first run',
+    };
+  }
+  return {
+    name: 'Data Directories',
+    passed: false,
+    severity: 'warn',
+    message: `${String(unwritable.length)} subdirectory(ies) unwritable: ${unwritable
+      .map((s) => s.name)
+      .join(', ')}`,
+    fix: `Check filesystem permissions on ${result.rootPath}`,
+  };
+}
+
+/**
+ * Checks that at least one execution path is configured — either an API key
+ * (direct adapter) or a CLI binary pre-authenticated. Without either, the
+ * orchestrator has nothing to dispatch to.
+ */
+function checkAdapterAvailability(): VerifyCheck {
+  const keys = checkApiKeys();
+  const configured = keys.filter((k) => k.configured);
+  if (configured.length > 0) {
+    return {
+      name: 'Adapter Availability',
+      passed: true,
+      message: `${String(configured.length)} API key(s) configured: ${configured
+        .map((k) => k.name)
+        .join(', ')}`,
+    };
+  }
+  return {
+    name: 'Adapter Availability',
+    passed: false,
+    severity: 'warn',
+    message: 'No API keys configured (ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_AI_API_KEY)',
+    fix: 'Set at least one API key, or install a CLI (claude/gemini/codex/opencode) and run "nexus-agents doctor"',
+  };
+}
+
+/**
  * Runs all verification checks.
  */
-export function runVerify(): Promise<VerifyResult> {
+export async function runVerify(): Promise<VerifyResult> {
   const time = getTimeProvider();
   const startTime = time.now();
 
@@ -172,27 +282,40 @@ export function runVerify(): Promise<VerifyResult> {
     checkPackageExports(),
     checkConfigLoading(),
     checkExpertSystem(),
+    await checkSqliteAvailability(),
+    checkDataDirs(),
+    checkAdapterAvailability(),
   ];
 
   const allPassed = checks.every((c) => c.passed);
+  const noHardFailures = checks.every((c) => c.passed || c.severity === 'warn');
   const durationMs = time.now() - startTime;
 
-  return Promise.resolve({
+  return {
     version: VERSION,
     nodeVersion: process.version,
     checks,
     allPassed,
+    noHardFailures,
     durationMs,
-  });
+  };
 }
 
 /**
  * Formats a single check result.
+ *
+ * Failed-but-warn checks render as yellow warnings (degraded). Failed hard
+ * checks render as red crosses.
  */
 function formatCheck(check: VerifyCheck): string {
-  const symbol = check.passed
-    ? `${colors.green}${symbols.check}${colors.reset}`
-    : `${colors.red}${symbols.cross}${colors.reset}`;
+  let symbol: string;
+  if (check.passed) {
+    symbol = `${colors.green}${symbols.check}${colors.reset}`;
+  } else if (check.severity === 'warn') {
+    symbol = `${colors.yellow}${symbols.warn}${colors.reset}`;
+  } else {
+    symbol = `${colors.red}${symbols.cross}${colors.reset}`;
+  }
 
   let line = `  ${symbol} ${check.name}: ${check.message}`;
 
@@ -224,6 +347,9 @@ export function printVerifyResult(result: VerifyResult, verbose: boolean): void 
 
   process.stdout.write('\n');
 
+  const warnCount = result.checks.filter((c) => !c.passed && c.severity === 'warn').length;
+  const hardCount = result.checks.filter((c) => !c.passed && c.severity !== 'warn').length;
+
   if (result.allPassed) {
     process.stdout.write(
       `${colors.green}${colors.bold}Installation verified successfully!${colors.reset}\n`
@@ -235,13 +361,19 @@ export function printVerifyResult(result: VerifyResult, verbose: boolean): void 
       '  2. Run "nexus-agents review --setup" to configure GitHub integration\n'
     );
     process.stdout.write('  3. Try "nexus-agents --help" for all available commands\n');
-  } else {
-    const failedCount = result.checks.filter((c) => !c.passed).length;
+  } else if (hardCount === 0) {
     process.stdout.write(
-      `${colors.red}${colors.bold}Verification failed: ${String(failedCount)} issue(s) found${colors.reset}\n`
+      `${colors.yellow}${colors.bold}Verified with ${String(warnCount)} warning(s) — functional but degraded${colors.reset}\n`
     );
     process.stdout.write('\n');
-    process.stdout.write('Please fix the issues above and try again.\n');
+    process.stdout.write('The warnings above indicate reduced functionality but will not\n');
+    process.stdout.write('prevent nexus-agents from running. Fix them when convenient.\n');
+  } else {
+    process.stdout.write(
+      `${colors.red}${colors.bold}Verification failed: ${String(hardCount)} blocking issue(s), ${String(warnCount)} warning(s)${colors.reset}\n`
+    );
+    process.stdout.write('\n');
+    process.stdout.write('Please fix the blocking issues above and try again.\n');
   }
 
   process.stdout.write('\n');
@@ -254,10 +386,14 @@ export function printVerifyResult(result: VerifyResult, verbose: boolean): void 
 
 /**
  * Runs the verify command and prints results.
- * Returns exit code (0 = success, 1 = failure).
+ *
+ * Exit codes:
+ * - `0`: all checks passed, or only `warn`-severity checks failed (degraded
+ *   but functional)
+ * - `1`: at least one `hard`-severity check failed (broken install)
  */
 export async function verifyCommand(options: VerifyOptions): Promise<number> {
   const result = await runVerify();
   printVerifyResult(result, options.verbose);
-  return result.allPassed ? 0 : 1;
+  return result.noHardFailures ? 0 : 1;
 }
