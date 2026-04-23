@@ -9,6 +9,10 @@
 
 import type { ExecutionOptions, CliError, CliName } from '../types.js';
 import { CODEX_MCP_TIMEOUTS } from '../../config/timeouts.js';
+import {
+  createCliError as sharedCreateCliError,
+  isRetryableErrorCode as sharedIsRetryableErrorCode,
+} from '../cli-error-helpers.js';
 
 // Re-export legacy defaults from the subprocess helpers (DRY)
 export { CODEX_LEGACY_DEFAULTS } from './codex-adapter-helpers.js';
@@ -37,32 +41,26 @@ export interface McpToolResult {
 // Error Handling
 // -----------------------------------------------------------------------------
 
-/** Error codes that are retryable. */
-const RETRYABLE_ERROR_CODES: ReadonlyArray<CliError['code']> = [
-  'RATE_LIMITED',
-  'TIMEOUT',
-  'CONNECTION_ERROR',
-];
-
-/** Checks if an error code is retryable. */
+/**
+ * Checks if an error code is retryable. Kept exported for backward
+ * compatibility with callers that imported from this module; delegates
+ * to the canonical helper (#2181).
+ */
 export function isRetryableErrorCode(code: CliError['code']): boolean {
-  return RETRYABLE_ERROR_CODES.includes(code);
+  return sharedIsRetryableErrorCode(code);
 }
 
-/** Creates a CLI error object. */
+/**
+ * Creates a CLI error object with the canonical retryable-flag logic.
+ * Kept exported for backward compatibility (#2181).
+ */
 export function createCliError(
   code: CliError['code'],
   message: string,
   cli: CliName,
   cause?: Error
 ): CliError {
-  return {
-    code,
-    message,
-    cli,
-    retryable: isRetryableErrorCode(code),
-    ...(cause !== undefined && { cause }),
-  };
+  return sharedCreateCliError(code, message, cli, cause);
 }
 
 // -----------------------------------------------------------------------------
