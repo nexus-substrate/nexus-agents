@@ -170,15 +170,19 @@ describe.skipIf(!OPENCODE_E2E)('OpenCode E2E', () => {
   });
 
   describe('custom provider config validation', () => {
-    it('should handle custom model format in getCommand', () => {
+    it('should handle unknown custom model format with fallback info', () => {
+      // Use a genuinely unregistered model id so the fallback branch runs.
+      // 'custom/claude-opus-4-6' is now present in the canonical registry
+      // (opencode-custom-opus, 1M context) and therefore does not hit the
+      // fallback — which broke the original assertion.
       const customAdapter = new OpenCodeCliAdapter({
-        model: 'custom/claude-opus-4-6',
+        model: 'custom/unregistered-model-x',
       });
 
       const info = customAdapter.getModelInfo();
 
-      // Custom model returns fallback info
-      expect(info.id).toBe('custom/claude-opus-4-6');
+      // Unknown custom model returns fallback info
+      expect(info.id).toBe('custom/unregistered-model-x');
       expect(info.contextWindow).toBe(200_000);
     });
   });
