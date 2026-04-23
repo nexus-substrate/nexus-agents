@@ -31,6 +31,7 @@ import type {
   ModelCapability,
   Pricing,
 } from './model-capabilities-types.js';
+import { loadCapabilityOverlay } from './capability-overlay.js';
 
 // ---------------------------------------------------------------------------
 // Generated (T2) shape — mirrors scripts/build-model-registry-types.ts
@@ -353,6 +354,7 @@ let globalDiscovery: CapabilityDiscovery | undefined;
 export function getCapabilityDiscovery(): CapabilityDiscovery {
   globalDiscovery ??= new CapabilityDiscovery({
     generated: loadBundledGeneratedRegistry(),
+    overlay: loadCapabilityOverlay().entries,
     // Fail-closed default (#2177): unknown models get 8 K context and a
     // structured warn instead of the silent 200 K fall-through the legacy
     // getModelContextWindow used to return.
