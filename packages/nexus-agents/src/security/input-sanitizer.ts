@@ -294,6 +294,13 @@ function detectInjectionPatterns(content: string): InjectionFlag[] {
   return Array.from(flags);
 }
 
+/** Lower-cases an arbitrary role literal and maps it to a known role. */
+function normalizeRole(userRole: string): GitHubUserRole {
+  const lower = userRole.toLowerCase();
+  if (lower in ROLE_DEFAULT_TRUST) return lower as GitHubUserRole;
+  return 'unknown';
+}
+
 /**
  * Assigns trust tier based on user role and injection analysis.
  * Injection patterns can only DOWNGRADE trust, never upgrade.
@@ -305,7 +312,12 @@ function assignTrustTier(
 ): TrustTier {
   if (allowlisted) return '1';
 
-  const baseTier = ROLE_DEFAULT_TRUST[userRole];
+  // Defensive lowercase — the type says GitHubUserRole, but callers
+  // sometimes cast an unnormalized GitHub author_association literal
+  // (e.g. 'OWNER', 'MEMBER') directly. Normalize here so the maintainer
+  // exemption below matches regardless of case (CWE-178).
+  const normalizedRole = normalizeRole(userRole);
+  const baseTier = ROLE_DEFAULT_TRUST[normalizedRole];
 
   // Content with injection patterns is downgraded to Tier 4 (hostile)
   const hostileFlags: InjectionFlag[] = ['system_prompt_manipulation', 'fake_conversation'];
@@ -314,8 +326,8 @@ function assignTrustTier(
   // Content with authority claims from non-maintainers is suspicious
   if (
     injectionFlags.includes('authority_claim') &&
-    userRole !== 'owner' &&
-    userRole !== 'maintainer'
+    normalizedRole !== 'owner' &&
+    normalizedRole !== 'maintainer'
   ) {
     return '4';
   }
@@ -335,6 +347,17 @@ function assignTrustTier(
  * 4. Injection pattern detection
  * 5. Trust tier assignment
  *
+ * ⚠ **Use HostileInputFirewall.process() in agent code paths.** Calling
+ * sanitizeInput() directly only runs Layer 1 — it does not evaluate the
+ * Rule of Two (enforced in policy-gate.ts via evaluatePolicy) and does
+ * not emit audit-trail events. An agent that processes untrusted input
+ * while holding both write access and secrets violates the Rule of Two;
+ * the policy gate is what catches this, and it only runs inside the
+ * firewall pipeline. Direct use of this function is appropriate for
+ * unit tests and pure content analysis, not for agent decision paths.
+ *
+ * @see packages/nexus-agents/src/security/firewall/firewall-pipeline.ts
+ * @see packages/nexus-agents/src/security/policy-gate.ts
  * @param content - Raw untrusted content from GitHub
  * @param userRole - GitHub user's relationship to the repository
  * @param username - GitHub username (for allowlist check)
@@ -351,32 +374,70 @@ export function sanitizeInput(
   const truncated = content.slice(0, cfg.maxInputLength);
   const allowlisted = cfg.allowlistedMaintainers.includes(username);
 
-  // Pipeline: decode entity-encoded dangerous tags, then strip dangerous content
-  const entityDecoded = applyEntityEvasionDefense(truncated);
-  const html = stripDangerousHtml(entityDecoded.cleaned);
-  const xml = stripXmlTags(html.cleaned);
-  const comments = stripHtmlComments(xml.cleaned);
-  const allStripped = [
-    ...entityDecoded.stripped,
-    ...html.stripped,
-    ...xml.stripped,
-    ...comments.stripped,
-  ];
+  try {
+    // Pipeline: decode entity-encoded dangerous tags, then strip dangerous content
+    const entityDecoded = applyEntityEvasionDefense(truncated);
+    const html = stripDangerousHtml(entityDecoded.cleaned);
+    const xml = stripXmlTags(html.cleaned);
+    const comments = stripHtmlComments(xml.cleaned);
+    const allStripped = [
+      ...entityDecoded.stripped,
+      ...html.stripped,
+      ...xml.stripped,
+      ...comments.stripped,
+    ];
 
-  // Detect injection patterns on ORIGINAL content (before stripping)
-  const injectionFlags = detectInjectionPatterns(truncated);
+    // Detect injection patterns on ORIGINAL content (before stripping)
+    const injectionFlags = detectInjectionPatterns(truncated);
 
-  // Assign trust tier
-  const trustTier = assignTrustTier(userRole, injectionFlags, allowlisted);
+    // Assign trust tier
+    const trustTier = assignTrustTier(userRole, injectionFlags, allowlisted);
 
+    return {
+      content: comments.cleaned,
+      originalLength: content.length,
+      trustTier,
+      userRole,
+      injectionFlags,
+      strippedElements: allStripped,
+      wasModified: allStripped.length > 0,
+      sanitizedAt: new Date().toISOString(),
+    };
+  } catch (err: unknown) {
+    return buildFailClosedResult(err, content, truncated, userRole, allowlisted);
+  }
+}
+
+/**
+ * Fail-closed result returned when the sanitizer pipeline throws.
+ * Returns empty content at Tier-4 (or Tier-1 for allowlisted maintainers,
+ * since their bypass is not regex-dependent) so downstream consumers
+ * cannot act on untrusted content we could not validate.
+ * CLAUDE.md: "Fail closed on ambiguity."
+ */
+function buildFailClosedResult(
+  err: unknown,
+  originalContent: string,
+  truncated: string,
+  userRole: GitHubUserRole,
+  allowlisted: boolean
+): SanitizedInput {
+  const message = err instanceof Error ? err.message : String(err);
   return {
-    content: comments.cleaned,
-    originalLength: content.length,
-    trustTier,
+    content: '',
+    originalLength: originalContent.length,
+    trustTier: allowlisted ? '1' : '4',
     userRole,
-    injectionFlags,
-    strippedElements: allStripped,
-    wasModified: allStripped.length > 0,
+    injectionFlags: [],
+    strippedElements: [
+      {
+        tag: '(pipeline-failure)',
+        reason: `Sanitizer pipeline threw; input discarded as fail-closed: ${message}`,
+        startIndex: 0,
+        length: truncated.length,
+      },
+    ],
+    wasModified: true,
     sanitizedAt: new Date().toISOString(),
   };
 }
