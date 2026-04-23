@@ -75,8 +75,14 @@ export function computeExpertContextUtilization(
   observation: Pick<ExpertContextObservation, 'modelId' | 'tokensUsed'>,
   threshold: number = DEFAULT_CONTEXT_WARN_THRESHOLD
 ): ContextUtilization {
+  // Fail-closed 8 K default when modelId is unknown (#2177). Old 200 K
+  // masked routing-critical metadata for unknown models and gave
+  // utilization a rosy baseline that hid overruns.
+  const UNKNOWN_MODEL_CTX_DEFAULT = 8_192;
   const contextWindow =
-    observation.modelId !== undefined ? getModelContextWindow(observation.modelId) : 200_000;
+    observation.modelId !== undefined
+      ? getModelContextWindow(observation.modelId)
+      : UNKNOWN_MODEL_CTX_DEFAULT;
   const utilization = contextWindow > 0 ? observation.tokensUsed / contextWindow : 0;
   return {
     tokensUsed: observation.tokensUsed,

@@ -70,26 +70,26 @@ describe('resolveContextWarnThreshold', () => {
 });
 
 describe('computeExpertContextUtilization', () => {
-  it('uses 200k default window when modelId is undefined', () => {
-    const u = computeExpertContextUtilization({ modelId: undefined, tokensUsed: 100_000 });
-    expect(u.contextWindow).toBe(200_000);
+  it('uses fail-closed 8k default window when modelId is undefined (#2177)', () => {
+    const u = computeExpertContextUtilization({ modelId: undefined, tokensUsed: 4_096 });
+    expect(u.contextWindow).toBe(8_192);
     expect(u.utilization).toBeCloseTo(0.5, 5);
     expect(u.warned).toBe(false);
   });
 
   it('sets warned=true when utilization >= threshold', () => {
-    const u = computeExpertContextUtilization({ modelId: undefined, tokensUsed: 170_000 }, 0.85);
-    expect(u.utilization).toBeCloseTo(0.85, 5);
+    const u = computeExpertContextUtilization({ modelId: undefined, tokensUsed: 7_000 }, 0.85);
+    expect(u.utilization).toBeGreaterThanOrEqual(0.85);
     expect(u.warned).toBe(true);
   });
 
   it('sets warned=false when utilization < threshold', () => {
-    const u = computeExpertContextUtilization({ modelId: undefined, tokensUsed: 100_000 }, 0.85);
+    const u = computeExpertContextUtilization({ modelId: undefined, tokensUsed: 4_000 }, 0.85);
     expect(u.warned).toBe(false);
   });
 
   it('honors custom threshold', () => {
-    const u = computeExpertContextUtilization({ modelId: undefined, tokensUsed: 80_000 }, 0.3);
+    const u = computeExpertContextUtilization({ modelId: undefined, tokensUsed: 3_000 }, 0.3);
     expect(u.warned).toBe(true);
   });
 });

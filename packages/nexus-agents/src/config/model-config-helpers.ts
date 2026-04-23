@@ -36,9 +36,22 @@ export function getModelDisplayName(modelId: ModelId): string {
   return getModelCapabilities(modelId)?.displayName ?? modelId;
 }
 
-/** Get context window for a model, defaulting to 200_000. */
+/**
+ * Get context window for a model.
+ *
+ * Unknown ids fall through to the fail-closed 8 K default (#2177) instead
+ * of the previous silent 200 K fall-through — the old value silently
+ * masked routing-critical metadata for Bedrock / custom endpoints / new
+ * vendor releases. Callers passing through the ModelId closed enum hit
+ * the canonical T1 path; the 8 K branch fires only when a caller casts a
+ * raw string to ModelId (type-lying), which is the same latent bug the
+ * recent codex-5.2 `cliModelName` regression surfaced.
+ *
+ * Callers that need full tier resolution (T2 bundled, T3 overlay)
+ * should call `CapabilityDiscovery.resolve(id)` directly — #2176.
+ */
 export function getModelContextWindow(modelId: ModelId): number {
-  return getModelCapabilities(modelId)?.contextWindow ?? 200_000;
+  return getModelCapabilities(modelId)?.contextWindow ?? 8_192;
 }
 
 /** Get max output tokens for a model, or undefined if not set. */

@@ -353,6 +353,10 @@ let globalDiscovery: CapabilityDiscovery | undefined;
 export function getCapabilityDiscovery(): CapabilityDiscovery {
   globalDiscovery ??= new CapabilityDiscovery({
     generated: loadBundledGeneratedRegistry(),
+    // Fail-closed default (#2177): unknown models get 8 K context and a
+    // structured warn instead of the silent 200 K fall-through the legacy
+    // getModelContextWindow used to return.
+    conservativeDefault: FAIL_CLOSED_DEFAULT,
   });
   return globalDiscovery;
 }
