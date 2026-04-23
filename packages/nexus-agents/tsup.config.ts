@@ -24,5 +24,9 @@ export default defineConfig({
   define: {
     __NEXUS_VERSION__: JSON.stringify(pkg.version),
   },
-  onSuccess: 'cp -r src/workflows/templates dist/workflows/ 2>/dev/null || true',
+  onSuccess: [
+    'cp -r src/workflows/templates dist/workflows/ 2>/dev/null || true',
+    // T2 bundled model registry (#2174 / #2175) — runtime reads from dist
+    'cp src/config/model-registry.generated.json dist/model-registry.generated.json 2>/dev/null || true',
+  ].join(' && '),
 });

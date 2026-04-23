@@ -121,6 +121,11 @@ export const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
     audience: 'advanced',
   },
   {
+    command: 'registry',
+    description: 'Inspect + refresh the dynamic model registry (doctor / refresh)',
+    audience: 'advanced',
+  },
+  {
     command: 'review',
     description: 'Review a GitHub PR (dogfooding helper)',
     audience: 'advanced',
