@@ -142,10 +142,16 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: ./.github/actions/setup-node
 
-      # Advisory mode (#2199 Child 3). Findings print to job summary but do
-      # not fail the build. Will flip to blocking via NEXUS_DRIFT_ADVISORY=0
-      # in #2199 Child 4 after at least one merge cycle without false positives.
-      - name: Run model-string drift check (advisory)
+      # Blocking mode (#2199 Child 4). Drift findings fail the build.
+      #
+      # Rollback to advisory: set the env var below to '1' (or any non-'0' value).
+      #   env:
+      #     NEXUS_DRIFT_ADVISORY: '1'
+      # The drift script defaults to advisory; the explicit '0' below is what
+      # makes this job blocking.
+      - name: Run model-string drift check (blocking)
+        env:
+          NEXUS_DRIFT_ADVISORY: '0'
         run: |
           set +e
           OUTPUT=$(pnpm --silent check:model-drift 2>&1)
@@ -165,7 +171,7 @@ jobs:
               echo "✓ No new drift. Allowlisted sites tracked in scripts/model-string-drift-allowlist.ts."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
-          exit 0
+          exit $STATUS
 
   index-check:
     name: Index Freshness Check

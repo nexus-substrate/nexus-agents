@@ -40,3 +40,17 @@ if [ "$SCORE" -lt "$THRESHOLD" ]; then
 fi
 
 echo "[fitness-guard] Fitness score: $SCORE/100 (threshold: $THRESHOLD)"
+
+# Model-string drift check (#2199 Child 4) — blocking
+# Rollback: set NEXUS_DRIFT_ADVISORY=1 in your shell or skip with --no-verify.
+echo "[drift-guard] Running model-string drift check..."
+if NEXUS_DRIFT_ADVISORY=0 npx --quiet tsx scripts/check-model-string-drift.ts; then
+  echo "[drift-guard] No new model-version drift detected."
+else
+  echo ""
+  echo "[drift-guard] BLOCKED: hardcoded model-version string outside config/."
+  echo "[drift-guard] Migrate to config/model-capabilities.ts or add an"
+  echo "[drift-guard] allowlist entry referencing companion epic #2200."
+  echo "[drift-guard] Skip with: git push --no-verify"
+  exit 1
+fi
