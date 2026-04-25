@@ -104,28 +104,17 @@ export function loadCapabilityOverlay(
   const sizeStatus = checkSize(path, log);
   if (sizeStatus !== undefined) return sizeStatus;
 
-  const body = readFileSync(path, 'utf-8').trim();
+  const bodyResult = readBody(path, log);
+  if ('result' in bodyResult) return bodyResult.result;
+  const body = bodyResult.body;
   if (body === '') {
     log.info('Model registry overlay file is empty', { path });
     return { entries: [], rejections: [], path, status: 'empty' };
   }
 
-  let parsed: unknown;
-  try {
-    parsed = parseYaml(body);
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    log.warn('Model registry overlay YAML parse failed; treated as empty', {
-      path,
-      errorMessage: message,
-    });
-    return {
-      entries: [],
-      rejections: [{ index: -1, reason: `YAML parse error: ${message}` }],
-      path,
-      status: 'malformed',
-    };
-  }
+  const parseResult = parseBody(body, path, log);
+  if ('result' in parseResult) return parseResult.result;
+  const parsed = parseResult.parsed;
 
   const rawEntries = extractEntries(parsed);
   if (rawEntries === undefined) {
@@ -154,8 +143,60 @@ function resolvePath(pathOrEnv: string | NodeJS.ProcessEnv | undefined): string 
   return resolveOverlayPath();
 }
 
+type ReadBodyResult = { body: string } | { result: OverlayLoadResult };
+function readBody(path: string, log: ILogger): ReadBodyResult {
+  try {
+    return { body: readFileSync(path, 'utf-8').trim() };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    log.warn('Model registry overlay file read failed; treated as empty', {
+      path,
+      errorMessage: message,
+    });
+    return {
+      result: {
+        entries: [],
+        rejections: [{ index: -1, reason: `file read error: ${message}` }],
+        path,
+        status: 'malformed',
+      },
+    };
+  }
+}
+
+type ParseBodyResult = { parsed: unknown } | { result: OverlayLoadResult };
+function parseBody(body: string, path: string, log: ILogger): ParseBodyResult {
+  try {
+    return { parsed: parseYaml(body) };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    log.warn('Model registry overlay YAML parse failed; treated as empty', {
+      path,
+      errorMessage: message,
+    });
+    return {
+      result: {
+        entries: [],
+        rejections: [{ index: -1, reason: `YAML parse error: ${message}` }],
+        path,
+        status: 'malformed',
+      },
+    };
+  }
+}
+
 function checkSize(path: string, log: ILogger): OverlayLoadResult | undefined {
-  const size = statSync(path).size;
+  let size: number;
+  try {
+    size = statSync(path).size;
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    log.warn('Model registry overlay statSync failed; treated as missing', {
+      path,
+      errorMessage: message,
+    });
+    return { entries: [], rejections: [], path, status: 'missing' };
+  }
   if (size <= OVERLAY_MAX_BYTES) return undefined;
   log.warn('Model registry overlay exceeds size cap; refusing to load', {
     path,

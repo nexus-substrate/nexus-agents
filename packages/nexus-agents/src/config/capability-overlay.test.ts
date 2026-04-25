@@ -117,6 +117,16 @@ describe('loadCapabilityOverlay — malformed files', () => {
     expect(result.status).toBe('too-large');
     expect(result.rejections[0]!.reason).toMatch(/size .* exceeds cap/);
   });
+
+  it('does not throw when path resolves to a directory (fs-error fail-closed)', () => {
+    // existsSync(dir) is true and statSync(dir) succeeds, but readFileSync
+    // throws EISDIR. Loader docstring promises no throws on fs errors.
+    const result = loadCapabilityOverlay(tempDir, silentLogger());
+    expect(result.status).toBe('malformed');
+    expect(result.entries).toHaveLength(0);
+    expect(result.rejections).toHaveLength(1);
+    expect(result.rejections[0]!.reason).toMatch(/file read|EISDIR|illegal/i);
+  });
 });
 
 // ---------------------------------------------------------------------------
