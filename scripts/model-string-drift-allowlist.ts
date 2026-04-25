@@ -37,12 +37,6 @@ export interface AllowlistEntry {
  */
 export const ALLOWLIST: readonly AllowlistEntry[] = [
   {
-    file: 'packages/nexus-agents/src/cli-adapters/adapters/claude-adapter.ts',
-    reason:
-      'Legacy Claude CLI alias map + display/cost fallbacks for retired versions. Migrate to ModelCapability.aliases via #2200 Child 1.',
-    trackingIssue: 2200,
-  },
-  {
     file: 'packages/nexus-agents/src/adapters/gemini-types.ts',
     reason:
       'Runtime model id constants + alias map for Gemini. Migrate to ModelCapability.aliases via #2200 Child 2.',

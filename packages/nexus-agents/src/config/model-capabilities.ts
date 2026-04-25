@@ -88,7 +88,7 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       cliName: 'claude',
       cliAlias: 'opus',
       cliModelName: 'claude-opus-4-6',
-      aliases: ['claude-opus-4'],
+      aliases: ['claude-opus-4', 'claude-opus-4-5-20251101'],
     },
     {
       id: 'claude-sonnet',
@@ -106,7 +106,7 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       cliName: 'claude',
       cliAlias: 'sonnet',
       cliModelName: 'claude-sonnet-4-6',
-      aliases: ['claude-sonnet-4'],
+      aliases: ['claude-sonnet-4', 'claude-sonnet-4-5-20250929'],
     },
     {
       id: 'claude-haiku',

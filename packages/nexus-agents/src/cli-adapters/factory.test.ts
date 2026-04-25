@@ -61,11 +61,13 @@ describe('createCliAdapter', () => {
   });
 
   it('should pass model option to Claude adapter', () => {
+    // Legacy claude-opus-4 alias resolves to current Claude Opus via the
+    // registry's aliases[] field (#2200 Child 1).
     const adapter = createCliAdapter({ cli: 'claude', model: 'claude-opus-4' });
     const info = adapter.getModelInfo();
 
     expect(info.id).toBe('claude-opus-4');
-    expect(info.name).toBe('Claude Opus 4');
+    expect(info.name).toBe('Claude Opus 4.6');
   });
 
   it('should pass model option to Gemini adapter', () => {

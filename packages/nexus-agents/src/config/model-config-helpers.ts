@@ -218,15 +218,23 @@ export interface ModelInfoShape {
 
 /**
  * Search the canonical registry by CLI name + CLI model identifier.
- * Matches against both cliModelName (e.g., 'o3', 'gemini-2.5-pro')
- * and cliAlias (e.g., 'opus', 'sonnet') for CLI tools that use aliases.
+ *
+ * Matches against (in order):
+ *   1. `cliModelName` ('gemini-2.5-pro', 'claude-opus-4-6')
+ *   2. `cliAlias` ('opus', 'sonnet', 'haiku')
+ *   3. `aliases[]` membership — legacy / version-suffix names that resolve
+ *      to this entry (#2200 Child 1)
  */
 export function findCanonicalModel(
   cli: CliNameLiteral,
   cliModelName: string
 ): ModelCapability | undefined {
   return DEFAULT_MODEL_CAPABILITIES.models.find(
-    (m) => m.cliName === cli && (m.cliModelName === cliModelName || m.cliAlias === cliModelName)
+    (m) =>
+      m.cliName === cli &&
+      (m.cliModelName === cliModelName ||
+        m.cliAlias === cliModelName ||
+        (m.aliases?.includes(cliModelName) ?? false))
   );
 }
 
