@@ -781,18 +781,32 @@ describe('OPENAI_MODELS', () => {
 });
 
 describe('OPENAI_MODEL_ALIASES', () => {
-  it('should map GPT-5.2 aliases to full model IDs', () => {
-    expect(OPENAI_MODEL_ALIASES['gpt-5.2']).toBe(OPENAI_MODELS.GPT_5_2);
-    expect(OPENAI_MODEL_ALIASES['gpt-5.2-instant']).toBe(OPENAI_MODELS.GPT_5_2_INSTANT);
-    expect(OPENAI_MODEL_ALIASES['gpt-5.2-chat-latest']).toBe(OPENAI_MODELS.GPT_5_2_INSTANT);
-    expect(OPENAI_MODEL_ALIASES['gpt-5.2-pro']).toBe(OPENAI_MODELS.GPT_5_2_PRO);
-    expect(OPENAI_MODEL_ALIASES['gpt-5.2-codex']).toBe(OPENAI_MODELS.GPT_5_2_CODEX);
+  // After #2200 Child 3, identity-only mappings were removed
+  // (resolveModelId passes unknown ids through unchanged via `?? modelId`).
+  // Only entries that translate a shorthand to a dated version remain.
+  it('contains only shorthand → dated entries (no identity mappings)', () => {
+    expect(Object.keys(OPENAI_MODEL_ALIASES).sort()).toEqual([
+      'gpt-3.5-turbo',
+      'gpt-4-turbo',
+      'gpt-4o',
+      'gpt-4o-mini',
+      'gpt-5.2-instant',
+    ]);
   });
 
-  it('should map GPT-4o aliases to full model IDs', () => {
+  it('shorthand aliases map to dated identifiers', () => {
+    expect(OPENAI_MODEL_ALIASES['gpt-5.2-instant']).toBe(OPENAI_MODELS.GPT_5_2_INSTANT);
     expect(OPENAI_MODEL_ALIASES['gpt-4o']).toBe(OPENAI_MODELS.GPT_4O);
     expect(OPENAI_MODEL_ALIASES['gpt-4o-mini']).toBe(OPENAI_MODELS.GPT_4O_MINI);
     expect(OPENAI_MODEL_ALIASES['gpt-4-turbo']).toBe(OPENAI_MODELS.GPT_4_TURBO);
     expect(OPENAI_MODEL_ALIASES['gpt-3.5-turbo']).toBe(OPENAI_MODELS.GPT_35_TURBO);
+  });
+});
+
+describe('OPENAI_MODELS — derived constants', () => {
+  it('GPT_5_2_CODEX derives from canonical registry codex-5.2 entry', () => {
+    // Locks in #2200 Child 3 partial migration: this single overlap with
+    // the CLI registry (codex-5.2's cliModelName) is registry-derived.
+    expect(OPENAI_MODELS.GPT_5_2_CODEX).toBe('gpt-5.2-codex');
   });
 });
