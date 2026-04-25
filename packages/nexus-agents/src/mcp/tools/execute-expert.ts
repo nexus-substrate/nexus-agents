@@ -374,8 +374,10 @@ async function tryExpertFallback(
   const fallbackResult = createExpert(expert.expertConfig, { adapter: fallbackAdapter });
   if (!fallbackResult.ok) return undefined;
 
+  const fallbackStart = getTimeProvider().now();
   const result = await fallbackResult.value.execute(task);
   if (!result.ok) return undefined;
+  const fallbackDurationMs = getTimeProvider().now() - fallbackStart;
 
   return {
     ok: true,
@@ -383,7 +385,7 @@ async function tryExpertFallback(
       expertId: expert.id,
       role: expert.role,
       output: result.value.output,
-      durationMs: 0,
+      durationMs: fallbackDurationMs,
       tokensUsed: result.value.metadata.tokensUsed,
       modelUsed: fallbackCli,
     }),
