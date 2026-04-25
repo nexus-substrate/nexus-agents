@@ -16,20 +16,6 @@ import { ModelCapability } from '../core/index.js';
 import { getCliModelName, resolveCliAlias } from '../config/model-config-helpers.js';
 
 /**
- * Legacy version-suffix aliases that pre-date the canonical model registry.
- * They map historical user-facing names to the current registry id, so the
- * actual cliModelName comes from `model-capabilities.ts` (single source of
- * truth — issue #2186 Child 1). Add legacy entries here, never the model
- * version strings themselves.
- */
-const LEGACY_CLAUDE_ALIASES: Record<string, string> = {
-  'claude-opus-4': 'claude-opus',
-  'claude-sonnet-4': 'claude-sonnet',
-  'claude-haiku-4': 'claude-haiku',
-  'claude-haiku-3': 'claude-haiku',
-};
-
-/**
  * Maps Anthropic stop reasons to our StopReason type.
  */
 export function mapStopReason(anthropicReason: string | null): StopReason {
@@ -132,17 +118,14 @@ export function mapTool(tool: ToolDefinition): Anthropic.Tool {
 /**
  * Resolves a Claude model alias to the full identifier the SDK expects.
  *
- * Resolution order:
- *   1. Legacy aliases (`claude-opus-4`, `claude-haiku-3`, etc.) → current registry id
- *   2. Registry CLI aliases (`opus`, `sonnet`, `haiku`) → registry id
- *   3. Pass through unknown ids unchanged (e.g., custom Bedrock identifiers)
+ * `resolveCliAlias` consults the canonical registry — both the cliAlias /
+ * id columns AND the `aliases` array (#2199 Child 5 migration). Unknown
+ * ids pass through (e.g., custom Bedrock identifiers).
  *
  * The canonical model strings live in `config/model-capabilities.ts`; this
  * function never holds them directly (issue #2186 Child 1).
  */
 export function resolveModelId(modelId: string): string {
-  const legacyId = LEGACY_CLAUDE_ALIASES[modelId];
-  if (legacyId !== undefined) return getCliModelName(legacyId as never);
   const registryId = resolveCliAlias(modelId);
   if (registryId !== undefined) return getCliModelName(registryId);
   return modelId;

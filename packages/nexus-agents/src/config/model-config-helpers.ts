@@ -75,9 +75,17 @@ export function getCliModelName(modelId: ModelId): string {
   return cap?.cliModelName ?? cap?.cliAlias ?? modelId;
 }
 
-/** Resolve a CLI alias (e.g., 'opus') to its canonical ModelId. */
+/**
+ * Resolve a CLI alias (e.g., 'opus') or legacy version-suffix name (e.g.,
+ * 'claude-opus-4') to its canonical ModelId. Resolution order:
+ *   1. cliAlias match ('opus' → claude-opus)
+ *   2. id match ('claude-opus' → claude-opus)
+ *   3. aliases[] membership (legacy version names — #2199 Child 5)
+ */
 export function resolveCliAlias(alias: string): ModelId | undefined {
-  return DEFAULT_MODEL_CAPABILITIES.models.find((m) => m.cliAlias === alias || m.id === alias)?.id;
+  return DEFAULT_MODEL_CAPABILITIES.models.find(
+    (m) => m.cliAlias === alias || m.id === alias || (m.aliases?.includes(alias) ?? false)
+  )?.id;
 }
 
 // ---------------------------------------------------------------------------

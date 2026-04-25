@@ -88,6 +88,7 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       cliName: 'claude',
       cliAlias: 'opus',
       cliModelName: 'claude-opus-4-6',
+      aliases: ['claude-opus-4'],
     },
     {
       id: 'claude-sonnet',
@@ -105,6 +106,7 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       cliName: 'claude',
       cliAlias: 'sonnet',
       cliModelName: 'claude-sonnet-4-6',
+      aliases: ['claude-sonnet-4'],
     },
     {
       id: 'claude-haiku',
@@ -122,6 +124,7 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       cliName: 'claude',
       cliAlias: 'haiku',
       cliModelName: 'claude-haiku-4-5-20251001',
+      aliases: ['claude-haiku-4', 'claude-haiku-3'],
     },
     // ----- Google Gemini -----
     {
