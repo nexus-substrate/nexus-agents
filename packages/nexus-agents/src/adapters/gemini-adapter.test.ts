@@ -681,23 +681,19 @@ describe('GEMINI_MODELS', () => {
 });
 
 describe('GEMINI_MODEL_ALIASES', () => {
-  it('should map Gemini 2.5 aliases to full model IDs', () => {
-    expect(GEMINI_MODEL_ALIASES['gemini-2.5-pro']).toBe(GEMINI_MODELS.PRO_2_5);
-    expect(GEMINI_MODEL_ALIASES['gemini-2.5-flash']).toBe(GEMINI_MODELS.FLASH_2_5);
+  // After #2200 Child 2, only legacy 1.5 / 2.0 aliases live in this map.
+  // 2.5+ and short aliases resolve via the canonical registry.
+  it('contains only Gemini 1.5 / 2.0 legacy entries (registry covers current)', () => {
+    expect(Object.keys(GEMINI_MODEL_ALIASES).sort()).toEqual([
+      'gemini-1.5-flash',
+      'gemini-1.5-pro',
+      'gemini-2.0-flash',
+    ]);
   });
 
-  it('should map Gemini 2.x aliases to full model IDs', () => {
-    expect(GEMINI_MODEL_ALIASES['gemini-2.5-flash']).toBe(GEMINI_MODELS.FLASH_2_5);
-    expect(GEMINI_MODEL_ALIASES['gemini-2.0-flash']).toBe(GEMINI_MODELS.FLASH_2_0);
-  });
-
-  it('should map Gemini 1.5 aliases to full model IDs', () => {
+  it('legacy 1.5 / 2.0 entries pass through unchanged', () => {
     expect(GEMINI_MODEL_ALIASES['gemini-1.5-pro']).toBe(GEMINI_MODELS.PRO_1_5);
     expect(GEMINI_MODEL_ALIASES['gemini-1.5-flash']).toBe(GEMINI_MODELS.FLASH_1_5);
-  });
-
-  it('should map short aliases to latest versions', () => {
-    expect(GEMINI_MODEL_ALIASES['gemini-flash']).toBe(GEMINI_MODELS.FLASH_2_5);
-    expect(GEMINI_MODEL_ALIASES['gemini-pro']).toBe(GEMINI_MODELS.PRO_2_5);
+    expect(GEMINI_MODEL_ALIASES['gemini-2.0-flash']).toBe(GEMINI_MODELS.FLASH_2_0);
   });
 });
