@@ -740,9 +740,11 @@ describe('createClaudeAdapter', () => {
 });
 
 describe('CLAUDE_MODELS', () => {
-  it('should have correct model identifiers', () => {
-    expect(CLAUDE_MODELS.OPUS_4).toBe('claude-opus-4-20250514');
-    expect(CLAUDE_MODELS.SONNET_4).toBe('claude-sonnet-4-20250514');
+  it('derives current cliModelName from the canonical registry (issue #2186)', () => {
+    // Values now come from config/model-capabilities.ts so they refresh
+    // automatically when the registry is updated, not when this file is edited.
+    expect(CLAUDE_MODELS.OPUS_4).toBe('claude-opus-4-6');
+    expect(CLAUDE_MODELS.SONNET_4).toBe('claude-sonnet-4-6');
     expect(CLAUDE_MODELS.HAIKU_4).toBe('claude-haiku-4-5-20251001');
   });
 });
