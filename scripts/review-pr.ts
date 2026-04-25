@@ -15,11 +15,18 @@
 /* eslint-disable no-console */
 // Console output is intentional for CLI user feedback
 
-import { execSync, execFileSync, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import {
+  execSync,
+  execFileSync,
+  spawn,
+  type ChildProcessWithoutNullStreams,
+} from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { writeFileSync, unlinkSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+
+import { REVIEW_PROMPT } from './review-pr-prompt.js';
 
 // Types
 interface ReviewOptions {
@@ -53,27 +60,6 @@ interface PRInfo {
 }
 
 // Constants
-const REVIEW_PROMPT = `You are reviewing a pull request for the nexus-agents project.
-
-REVIEW FOCUS:
-1. Security: No secrets, input validation, path traversal prevention, no user-provided RegExp
-2. Code Quality: TypeScript best practices, Result<T,E> pattern, function ≤50 lines, file ≤400 lines
-3. Testing: Adequate coverage, edge cases, error paths
-4. Architecture: Clear boundaries, interfaces before implementations
-5. Documentation: Accurate, no marketing fluff, working examples
-
-OUTPUT FORMAT:
-Start with DECISION: APPROVE, REQUEST_CHANGES, or COMMENT
-
-Then list findings as:
-- [SEVERITY] Category: Description (file:line if applicable)
-
-Severities: CRITICAL, HIGH, MEDIUM, LOW, INFO
-
-End with a brief summary.
-
-PR DIFF:
-`;
 
 const MODEL_COMMANDS: Record<string, { cmd: string; args: string[] }> = {
   claude: { cmd: 'claude', args: ['-p', '--output-format', 'text'] },
