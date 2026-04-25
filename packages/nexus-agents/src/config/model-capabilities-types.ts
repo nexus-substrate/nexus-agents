@@ -160,6 +160,17 @@ export const ModelCapabilitySchema = z.object({
   cliAlias: z.string().optional(),
   /** Model name the CLI binary expects (e.g., 'gemini-2.5-pro') */
   cliModelName: z.string().optional(),
+  /**
+   * Legacy / version-suffixed names that resolve to this model. Used by
+   * adapters and routing to map historical user-facing names (e.g.,
+   * `claude-opus-4-5-20251101`, `gemini-2.5-pro`) to the current registry
+   * entry. Empty strings are rejected; uniqueness within the array is not
+   * enforced at schema level (caller responsibility).
+   *
+   * Added for issue #2199 Child 1; populated by the companion migration
+   * epic #2200.
+   */
+  aliases: z.array(z.string().min(1)).optional(),
   /** Whether this model is deprecated and should receive a scoring penalty */
   deprecated: z.boolean().optional(),
   /** ISO date when the model was deprecated (informational) */
