@@ -9,26 +9,21 @@
  */
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
-import { homedir, platform } from 'node:os';
+import { homedir } from 'node:os';
 import { parse as jsoncParse, modify, applyEdits } from 'jsonc-parser';
 import { getErrorMessage } from '../core/index.js';
 import { createLogger } from '../core/index.js';
-import { classifyExecError, type DetectionError } from './cli-detection-error.js';
+import { detectCliBinary, type CliDetectionInfo } from './setup-cli-detection.js';
 
 const logger = createLogger({ component: 'setup-opencode' });
 
-/** OpenCode detection result. */
-export interface OpenCodeCliInfo {
-  readonly installed: boolean;
-  readonly version: string | undefined;
-  /**
-   * Classification of why detection failed. Only set when `installed` is
-   * `false` OR when the binary was located but `--version` failed (#2152).
-   */
-  readonly detectionError?: DetectionError;
-}
+/**
+ * OpenCode detection result.
+ *
+ * Type alias of {@link CliDetectionInfo} — see #2155.
+ */
+export type OpenCodeCliInfo = CliDetectionInfo;
 
 /** OpenCode MCP configuration result. */
 export interface OpenCodeConfigResult {
@@ -45,28 +40,9 @@ export interface ResolvedConfig {
   readonly exists: boolean;
 }
 
-/**
- * Detects OpenCode CLI installation.
- */
+/** Detects OpenCode CLI installation. Delegates to {@link detectCliBinary}. */
 export function detectOpenCodeCli(): OpenCodeCliInfo {
-  try {
-    const cmd = platform() === 'win32' ? 'where' : 'which';
-    execFileSync(cmd, ['opencode'], { timeout: 3000, stdio: 'pipe' });
-  } catch (err: unknown) {
-    return { installed: false, version: undefined, detectionError: classifyExecError(err) };
-  }
-
-  try {
-    const output = execFileSync('opencode', ['--version'], {
-      timeout: 5000,
-      stdio: 'pipe',
-      encoding: 'utf-8',
-    });
-    const match = /(\d+\.\d+\.\d+)/.exec(output);
-    return { installed: true, version: match?.[1] };
-  } catch (err: unknown) {
-    return { installed: true, version: undefined, detectionError: classifyExecError(err) };
-  }
+  return detectCliBinary('opencode');
 }
 
 /**
