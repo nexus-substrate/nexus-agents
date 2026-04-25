@@ -6,23 +6,31 @@
  * @module adapters/claude-adapter-types
  */
 
+import { getCliModelName } from '../config/model-config-helpers.js';
+
 /**
  * Supported Claude model identifiers.
+ *
+ * Derived from `config/model-capabilities.ts` (single source of truth — issue
+ * #2186). Do not hardcode model-version strings here; update the registry.
  */
 export const CLAUDE_MODELS = {
-  OPUS_4: 'claude-opus-4-20250514',
-  SONNET_4: 'claude-sonnet-4-20250514',
-  HAIKU_4: 'claude-haiku-4-5-20251001',
+  OPUS_4: getCliModelName('claude-opus'),
+  SONNET_4: getCliModelName('claude-sonnet'),
+  HAIKU_4: getCliModelName('claude-haiku'),
 } as const;
 
 /**
- * Model aliases for convenience.
+ * Legacy version-suffix aliases mapped to the current registry cliModelName.
+ *
+ * Values come from `CLAUDE_MODELS` so they stay in sync with the canonical
+ * registry. Add legacy entries here, never the version strings themselves.
  */
 export const CLAUDE_MODEL_ALIASES: Record<string, string> = {
   'claude-opus-4': CLAUDE_MODELS.OPUS_4,
   'claude-sonnet-4': CLAUDE_MODELS.SONNET_4,
   'claude-haiku-4': CLAUDE_MODELS.HAIKU_4,
-  // Legacy alias
+  // Legacy alias — pre-4.x users routed to the current haiku.
   'claude-haiku-3': CLAUDE_MODELS.HAIKU_4,
 } as const;
 
