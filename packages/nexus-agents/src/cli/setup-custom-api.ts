@@ -18,6 +18,7 @@
 import { createInterface } from 'node:readline';
 import { validateCustomApiBaseUrl } from '../adapters/sdk/custom-api-validation.js';
 import { CUSTOM_API_BASE_URL_ENV, CUSTOM_API_ALLOW_PRIVATE_ENV } from '../adapters/sdk/types.js';
+import { CUSTOM_API_DEFAULT_MODEL as DEFAULT_MODEL } from '../config/defaults.js';
 import { ok, err, type Result } from '../core/index.js';
 
 /** Inputs to `configureCustomApi`. */
@@ -64,8 +65,6 @@ export interface CustomApiSetupResult {
    */
   readonly shellFragment: string;
 }
-
-const DEFAULT_MODEL = 'gpt-4o';
 
 /**
  * Configures a custom OpenAI-compatible gateway.

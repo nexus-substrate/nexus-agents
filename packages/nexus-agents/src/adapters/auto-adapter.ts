@@ -21,6 +21,7 @@ import { SdkAdapter } from './sdk/index.js';
 import type { CliName } from '../cli-adapters/types.js';
 import type { ICliDetectionCache } from '../cli-adapters/cli-detection-cache.js';
 import { createCliDetectionCache } from '../cli-adapters/cli-detection-cache.js';
+import { CUSTOM_API_DEFAULT_MODEL } from '../config/defaults.js';
 import { getCliModelName } from '../config/model-config-helpers.js';
 import { DEFAULT_MODEL_PER_CLI } from '../config/model-capabilities.js';
 
@@ -221,7 +222,7 @@ function tryCustomOpenAiAdapter(logger: ILogger): AdapterSelection | null {
   if (customKey === undefined || customBaseUrl === undefined || customBaseUrl === '') {
     return null;
   }
-  const customModelId = process.env['NEXUS_CUSTOM_MODEL'] ?? 'gpt-4o';
+  const customModelId = process.env['NEXUS_CUSTOM_MODEL'] ?? CUSTOM_API_DEFAULT_MODEL;
   logger.info('Using custom-openai SDK adapter', {
     model: customModelId,
     baseUrl: customBaseUrl,

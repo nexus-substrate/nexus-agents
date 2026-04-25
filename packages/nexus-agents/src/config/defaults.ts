@@ -81,6 +81,23 @@ import {
 } from './timeouts.js';
 
 // ============================================================================
+// Default Model IDs (#2200 Child 4)
+// ============================================================================
+
+/**
+ * Default model identifier for the custom OpenAI-compatible API gateway.
+ *
+ * Used by both `cli/setup-custom-api.ts` (write to nexus-agents.yaml) and
+ * `adapters/auto-adapter.ts` (NEXUS_CUSTOM_MODEL env-var fallback). Single
+ * source of truth so changes flow through all consumers.
+ *
+ * `gpt-4o` is widely supported across OpenAI-compatible gateways (vLLM,
+ * LiteLLM, Together AI, etc.) — a pragmatic baseline rather than the
+ * cheapest or most capable. Operators are expected to override.
+ */
+export const CUSTOM_API_DEFAULT_MODEL = 'gpt-4o';
+
+// ============================================================================
 // Central Defaults Object
 // ============================================================================
 

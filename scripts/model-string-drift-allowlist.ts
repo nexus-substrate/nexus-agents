@@ -55,22 +55,9 @@ export const ALLOWLIST: readonly AllowlistEntry[] = [
     trackingIssue: 2200,
   },
   {
-    file: 'packages/nexus-agents/src/cli/setup-custom-api.ts',
-    reason:
-      'Default `gpt-4o` for custom API fallback. Migrate to a config constant via #2200 Child 4.',
-    trackingIssue: 2200,
-  },
-  {
-    file: 'packages/nexus-agents/src/adapters/auto-adapter.ts',
-    literal: 'gpt-4o',
-    reason:
-      'Fallback when NEXUS_CUSTOM_MODEL env var is unset. Same migration target as setup-custom-api.ts — #2200 Child 4.',
-    trackingIssue: 2200,
-  },
-  {
     file: 'packages/nexus-agents/src/context/token-counter-types.ts',
     reason:
-      'tiktoken model map (external library mapping). May legitimately stay; review in #2200 Child 4.',
+      'tiktoken library identifiers (NOT nexus-agents model IDs). Documented architectural exception — these stay outside the canonical registry intentionally because they map to tiktoken encodings, not API model versions. Reviewed and confirmed legitimate during #2200 Child 4.',
     trackingIssue: 2200,
   },
 ];
