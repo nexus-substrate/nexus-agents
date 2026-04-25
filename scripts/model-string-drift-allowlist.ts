@@ -43,18 +43,6 @@ export const ALLOWLIST: readonly AllowlistEntry[] = [
     trackingIssue: 2200,
   },
   {
-    file: 'packages/nexus-agents/src/adapters/claude-adapter-types.ts',
-    reason:
-      'Legacy CLAUDE_MODEL_ALIASES re-export surface (kept for backward compat with external imports). Will be reviewed in #2186 Child 4 (drop public re-exports).',
-    trackingIssue: 2186,
-  },
-  {
-    file: 'packages/nexus-agents/src/adapters/claude-adapter-helpers.ts',
-    reason:
-      'LEGACY_CLAUDE_ALIASES table maps user-supplied legacy names to current registry ids. Will fold into ModelCapability.aliases via #2200 Child 1.',
-    trackingIssue: 2200,
-  },
-  {
     file: 'packages/nexus-agents/src/adapters/gemini-types.ts',
     reason:
       'Runtime model id constants + alias map for Gemini. Migrate to ModelCapability.aliases via #2200 Child 2.',

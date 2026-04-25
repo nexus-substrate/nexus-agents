@@ -135,6 +135,25 @@ describe('resolveCliAlias', () => {
     const resolved = resolveCliAlias('totally-fake');
     expect(resolved).toBeUndefined();
   });
+
+  // #2199 Child 5: aliases field migration. Legacy version-suffix names
+  // resolve via the registry's `aliases` array, so adapter files don't need
+  // to maintain their own LEGACY_CLAUDE_ALIASES lookups.
+  it('resolves claude-opus-4 legacy alias to claude-opus via registry aliases', () => {
+    expect(resolveCliAlias('claude-opus-4')).toBe('claude-opus');
+  });
+
+  it('resolves claude-sonnet-4 legacy alias to claude-sonnet via registry aliases', () => {
+    expect(resolveCliAlias('claude-sonnet-4')).toBe('claude-sonnet');
+  });
+
+  it('resolves claude-haiku-4 legacy alias to claude-haiku via registry aliases', () => {
+    expect(resolveCliAlias('claude-haiku-4')).toBe('claude-haiku');
+  });
+
+  it('resolves claude-haiku-3 legacy alias to claude-haiku (pre-4.x compat)', () => {
+    expect(resolveCliAlias('claude-haiku-3')).toBe('claude-haiku');
+  });
 });
 
 // ============================================================================
