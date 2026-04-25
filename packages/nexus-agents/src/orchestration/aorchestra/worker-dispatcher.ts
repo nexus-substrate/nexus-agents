@@ -133,6 +133,15 @@ export interface WorkerDispatchOptions {
     entry: AgentPlanEntry,
     priorWaveResults?: readonly WorkerResult[]
   ) => Promise<WorkerResult>;
+  /**
+   * Optional AbortSignal for cooperative cancellation (#2188).
+   *
+   * Honored at two safe points: between waves (skips remaining waves) and
+   * before pulling the next task within a wave. In-flight workers are not
+   * forcibly killed — they finish their current task. Cancelled dispatches
+   * return whatever results accumulated up to the abort.
+   */
+  readonly signal?: AbortSignal;
 }
 
 // ============================================================================
@@ -313,18 +322,30 @@ export class RoleFailureTracker {
 // Concurrency-Limited Execution
 // ============================================================================
 
+/** Cooperative-cancellation predicate (#2188). Extracted for complexity budget. */
+function isCancelled(signal: AbortSignal | undefined): boolean {
+  return signal?.aborted === true;
+}
+
 /**
  * Execute an array of async tasks with bounded concurrency.
+ *
+ * Honors an optional AbortSignal between tasks (#2188). In-flight workers
+ * are not forcibly killed — they finish their current task. Cancellation
+ * causes the remaining un-pulled tasks to be skipped and `results` to
+ * contain only what completed before the abort.
  */
 async function executeWithConcurrencyLimit<T>(
   tasks: ReadonlyArray<() => Promise<T>>,
-  limit: number
+  limit: number,
+  signal?: AbortSignal
 ): Promise<T[]> {
   const results: T[] = [];
   let nextIndex = 0;
 
   async function runNext(): Promise<void> {
     while (nextIndex < tasks.length) {
+      if (isCancelled(signal)) return;
       const currentIndex = nextIndex;
       nextIndex++;
       const task = tasks[currentIndex];
@@ -374,6 +395,8 @@ export async function dispatchWorkers(
   const staggerDelayMs = options.staggerDelayMs ?? DEFAULT_STAGGER_DELAY_MS;
 
   for (const [waveIdx, wave] of waves.entries()) {
+    if (isCancelled(options.signal)) break;
+
     const waveResults = await processWave(wave, waveIdx, waves.length, {
       bus,
       executionId: execId,
@@ -495,7 +518,11 @@ async function processWave(
     createWorkerTask(entry, taskIndex, waveNumber, opts)
   );
 
-  const waveResults = await executeWithConcurrencyLimit(tasks, opts.maxConcurrency);
+  const waveResults = await executeWithConcurrencyLimit(
+    tasks,
+    opts.maxConcurrency,
+    opts.options.signal
+  );
   for (const result of waveResults) {
     opts.failureTracker.record(result);
   }

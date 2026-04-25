@@ -88,6 +88,65 @@ describe('dispatchWorkers', () => {
     );
   });
 
+  // #2188: AbortSignal cooperative cancellation between/within waves
+  describe('AbortSignal cancellation (#2188)', () => {
+    it('returns empty results when signal is already aborted before first wave', async () => {
+      const controller = new AbortController();
+      controller.abort();
+      const entries = [makeEntry('code', 1, 1), makeEntry('testing', 2, 2)];
+      const results = await dispatchWorkers(entries, {
+        executeWorker: mockExecute,
+        signal: controller.signal,
+      });
+      expect(results).toEqual([]);
+    });
+
+    it('skips remaining waves when aborted between waves', async () => {
+      const controller = new AbortController();
+      const wave1Roles: string[] = [];
+      const wave2Roles: string[] = [];
+
+      const tracker: WorkerDispatchOptions['executeWorker'] = (entry) => {
+        if (entry.wave === 1) wave1Roles.push(entry.role);
+        if (entry.wave === 2) wave2Roles.push(entry.role);
+        // Abort after the first wave entry runs — wave 2 should be skipped.
+        if (entry.wave === 1 && wave1Roles.length === 1) controller.abort();
+        return Promise.resolve({
+          role: entry.role,
+          subTask: entry.subTask,
+          output: `out ${entry.role}`,
+          status: 'success' as const,
+          durationMs: 1,
+        });
+      };
+
+      const entries = [
+        makeEntry('code', 1, 1),
+        makeEntry('testing', 2, 1),
+        makeEntry('documentation', 2, 2),
+      ];
+      const results = await dispatchWorkers(entries, {
+        executeWorker: tracker,
+        signal: controller.signal,
+        maxConcurrency: 1,
+      });
+
+      // Wave 1 entry should have run; wave 2 entries should NOT have started.
+      expect(wave1Roles).toEqual(['code']);
+      expect(wave2Roles).toEqual([]);
+      expect(results).toHaveLength(1);
+      expect(results.at(0)?.role).toBe('code');
+    });
+
+    it('omitting signal behaves like no-signal (regression guard)', async () => {
+      const entries = [makeEntry('code', 1, 1), makeEntry('testing', 1, 2)];
+      const results = await dispatchWorkers(entries, {
+        executeWorker: mockExecute,
+      });
+      expect(results).toHaveLength(2);
+    });
+  });
+
   it('executes all entries and returns results', async () => {
     const entries = [makeEntry('code', 1, 1), makeEntry('testing', 1, 2)];
     const results = await dispatchWorkers(entries, { executeWorker: mockExecute });
