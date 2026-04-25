@@ -96,17 +96,43 @@ const INJECTION_PATTERNS: readonly PatternMatch[] = [
     flag: 'fake_conversation',
     pattern: /<(?:assistant|human|user|system)>/i,
   },
-  {
-    flag: 'base64_encoded',
-    // Requires at least one base64-discriminating char (g-z/G-Z or +, /, =)
-    // to avoid false positives on SHA-1 / SHA-256 hex hashes (#1811).
-    pattern: /(?=[A-Za-z0-9+/]*[g-zG-Z+/=])[A-Za-z0-9+/]{40,}={0,2}/,
-  },
+  // base64_encoded is detected separately by `looksLikeBase64Payload` below.
+  // The lookahead-based regex it replaced exhibited catastrophic backtracking
+  // on long hex-only inputs (#2191) — see `looksLikeBase64Payload` for the
+  // two-phase rewrite that preserves the #1811 SHA-hash false-positive guard.
   {
     flag: 'external_link_instruction',
     pattern: /(?:apply|run|execute|install)\s+(?:this\s+)?(?:from\s+)?https?:\/\//i,
   },
 ];
+
+/**
+ * Two-phase base64-payload detection (#2191).
+ *
+ * The original `(?=[A-Za-z0-9+/]*[g-zG-Z+/=])[A-Za-z0-9+/]{40,}={0,2}` regex
+ * was vulnerable to catastrophic backtracking — V8 took ~1.8s on a 50K
+ * hex-only adversarial input. Splitting the check into two non-overlapping
+ * phases removes the lookahead and makes the worst case linear.
+ *
+ *   Phase 1: find a 40+ run of base64-alphabet chars (no lookahead).
+ *   Phase 2: confirm the matched substring contains a base64-discriminating
+ *            char (g-z, G-Z, +, /, =) so SHA-1 / SHA-256 hex hashes don't
+ *            false-positive (preserves #1811 behavior).
+ *
+ * Same detection coverage as the original; same false-positive resistance.
+ */
+const BASE64_RUN_GLOBAL = /[A-Za-z0-9+/]{40,}={0,2}/g;
+const BASE64_DISCRIMINATOR = /[g-zG-Z+/=]/;
+
+function looksLikeBase64Payload(content: string): boolean {
+  // Iterate every 40+ base64-alphabet run rather than just the first one,
+  // so a long hex-only prefix doesn't mask a real base64 payload that
+  // appears later in the content.
+  for (const match of content.matchAll(BASE64_RUN_GLOBAL)) {
+    if (BASE64_DISCRIMINATOR.test(match[0])) return true;
+  }
+  return false;
+}
 
 // ============================================================================
 // HTML Entity Decoding (evasion defense)
@@ -290,6 +316,9 @@ function detectInjectionPatterns(content: string): InjectionFlag[] {
     if (pattern.test(content)) {
       flags.add(flag);
     }
+  }
+  if (looksLikeBase64Payload(content)) {
+    flags.add('base64_encoded');
   }
   return Array.from(flags);
 }
