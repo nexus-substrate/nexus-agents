@@ -1,20 +1,41 @@
 /**
  * nexus-agents/adapters - OpenAI Type Helpers
  *
- * Type definitions and constants for OpenAI adapter.
+ * Type definitions and constants for the OpenAI direct-API SDK adapter.
+ *
+ * **Architectural boundary (#2200 Child 3):** these constants do NOT live
+ * in `config/model-capabilities.ts`. The canonical registry's `cliName`
+ * dimension targets CLI tools (`claude` / `gemini` / `codex` / `opencode`)
+ * — there is no `openai` CLI binary. Adding `'openai'` to the CLI_NAMES
+ * enum would force a fifth case in 4+ exhaustive switches across the
+ * codebase, violating the semantic of "CLI tool name."
+ *
+ * The OpenAI direct adapter is conceptually different from CLI adapters:
+ * it talks to the OpenAI HTTPS API directly, not via a subprocess CLI.
+ * Its model identifiers are OpenAI's own (`gpt-4o-2024-11-20`,
+ * `gpt-3.5-turbo-0125`, etc.) — these are upstream API constants, not
+ * versions WE chose. They drift only when OpenAI ships new dated releases.
+ *
+ * This file is the single source of truth for OpenAI direct-API model
+ * identifiers. The model-string drift fitness-guard (#2199) treats it as
+ * a documented architectural exception in the allowlist.
  */
 
 import type { ModelCapability } from '../core/index.js';
 import { ModelCapability as MC } from '../core/index.js';
+import { getCliModelName } from '../config/model-config-helpers.js';
 
 /**
- * Supported OpenAI model identifiers.
+ * Supported OpenAI direct-API model identifiers (OpenAI's own dated names).
+ *
+ * GPT_5_2_CODEX derives from the canonical registry (codex-5.2's cliModelName)
+ * because it overlaps with the Codex CLI; the rest are pure-API constants.
  */
 export const OPENAI_MODELS = {
   GPT_5_2: 'gpt-5.2',
   GPT_5_2_INSTANT: 'gpt-5.2-chat-latest',
   GPT_5_2_PRO: 'gpt-5.2-pro',
-  GPT_5_2_CODEX: 'gpt-5.2-codex',
+  GPT_5_2_CODEX: getCliModelName('codex-5.2'),
   GPT_4O: 'gpt-4o-2024-11-20',
   GPT_4O_MINI: 'gpt-4o-mini-2024-07-18',
   GPT_4_TURBO: 'gpt-4-turbo-2024-04-09',
@@ -22,16 +43,15 @@ export const OPENAI_MODELS = {
 } as const;
 
 /**
- * Model aliases for convenience.
+ * User-friendly OpenAI aliases → dated model identifiers.
+ *
+ * Identity-only mappings (e.g., `'gpt-5.2-pro' → 'gpt-5.2-pro'`) were
+ * removed in #2200 Child 3 — `resolveModelId` already passes unknown ids
+ * through unchanged via `?? modelId`. Only entries that translate a
+ * shorthand into a dated version remain.
  */
 export const OPENAI_MODEL_ALIASES: Record<string, string> = {
-  // GPT-5.2 aliases
-  'gpt-5.2': OPENAI_MODELS.GPT_5_2,
   'gpt-5.2-instant': OPENAI_MODELS.GPT_5_2_INSTANT,
-  'gpt-5.2-chat-latest': OPENAI_MODELS.GPT_5_2_INSTANT,
-  'gpt-5.2-pro': OPENAI_MODELS.GPT_5_2_PRO,
-  'gpt-5.2-codex': OPENAI_MODELS.GPT_5_2_CODEX,
-  // GPT-4o aliases
   'gpt-4o': OPENAI_MODELS.GPT_4O,
   'gpt-4o-mini': OPENAI_MODELS.GPT_4O_MINI,
   'gpt-4-turbo': OPENAI_MODELS.GPT_4_TURBO,
