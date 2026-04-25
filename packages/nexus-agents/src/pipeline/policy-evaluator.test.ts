@@ -137,6 +137,51 @@ describe('evaluatePolicy', () => {
     expect(r2.mode).toBe('block');
     expect(r3.mode).toBe('off');
   });
+
+  it('treats a throwing rule as a violation (fail-closed) instead of crashing', () => {
+    engine.registerRule({
+      id: 'throws',
+      priority: 50,
+      evaluate: () => {
+        throw new Error('rule blew up');
+      },
+    });
+    engine.registerRule(createPassingRule('passes'));
+
+    const result = evaluatePolicy({ engine, eventBus, mode: 'warn' }, ctx);
+
+    expect(result.violations).toHaveLength(1);
+    expect(result.violations[0]!.ruleId).toBe('throws');
+    expect(result.violations[0]!.reason.toLowerCase()).toContain('threw');
+  });
+
+  it('continues evaluating remaining rules after a rule throws', () => {
+    const laterRule = vi.fn(() => ({ allow: true as const }));
+    engine.registerRule({
+      id: 'throws',
+      priority: 50,
+      evaluate: () => {
+        throw new Error('boom');
+      },
+    });
+    engine.registerRule({ id: 'later', priority: 50, evaluate: laterRule });
+
+    evaluatePolicy({ engine, eventBus, mode: 'warn' }, ctx);
+
+    expect(laterRule).toHaveBeenCalledOnce();
+  });
+
+  it('BLOCK mode: throwing rule halts the pipeline (allowed=false)', () => {
+    engine.registerRule({
+      id: 'throws',
+      priority: 50,
+      evaluate: () => {
+        throw new Error('boom');
+      },
+    });
+    const result = evaluatePolicy({ engine, eventBus, mode: 'block' }, ctx);
+    expect(result.allowed).toBe(false);
+  });
 });
 
 describe('getPolicyMode', () => {

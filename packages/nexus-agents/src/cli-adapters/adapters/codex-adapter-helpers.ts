@@ -6,6 +6,7 @@
  */
 
 import type { CliError, CliName, TokenUsage, CliResponse } from '../types.js';
+import { createCliError as sharedCreateCliError } from '../cli-error-helpers.js';
 
 // -----------------------------------------------------------------------------
 // Legacy Fallback Defaults (for non-canonical models)
@@ -38,29 +39,20 @@ export const CODEX_LEGACY_DEFAULTS = {
 // Error Handling
 // -----------------------------------------------------------------------------
 
-/** Error codes that are retryable. */
-const RETRYABLE_ERROR_CODES: ReadonlySet<CliError['code']> = new Set([
-  'RATE_LIMITED',
-  'TIMEOUT',
-  'CONNECTION_ERROR',
-]);
-
-/** Creates a CLI error with appropriate retryable flag. */
+/**
+ * Creates a CLI error with the canonical retryable-flag logic.
+ * Kept as an alias under this name for backward compatibility with callers
+ * that imported `createCodexError` before the helper was consolidated in
+ * `cli-error-helpers.ts` (#2181). Prefer `createCliError` from the shared
+ * helper in new code.
+ */
 export function createCodexError(
   code: CliError['code'],
   message: string,
   cli: CliName,
   cause?: Error
 ): CliError {
-  const retryable = RETRYABLE_ERROR_CODES.has(code);
-
-  return {
-    code,
-    message,
-    cli,
-    retryable,
-    ...(cause !== undefined && { cause }),
-  };
+  return sharedCreateCliError(code, message, cli, cause);
 }
 
 // -----------------------------------------------------------------------------

@@ -79,7 +79,24 @@ export function evaluatePolicy(
   const rules = options.engine.listRules();
 
   for (const rule of rules) {
-    const decision: PolicyDecision = rule.evaluate(context);
+    let decision: PolicyDecision;
+    try {
+      decision = rule.evaluate(context);
+    } catch (err: unknown) {
+      // Fail closed: a rule that throws is counted as a violation. This stops
+      // a buggy or hostile rule from crashing the entire pipeline (CWE-248).
+      const error = err instanceof Error ? err : new Error(String(err));
+      logger.error('Policy rule threw during evaluation', error, {
+        ruleId: rule.id,
+        stageId: context.stageId,
+      });
+      const message = error.message;
+      violations.push({
+        ruleId: rule.id,
+        reason: `Rule threw during evaluation: ${message}`,
+      });
+      continue;
+    }
     if (!decision.allow) {
       violations.push({
         ruleId: rule.id,

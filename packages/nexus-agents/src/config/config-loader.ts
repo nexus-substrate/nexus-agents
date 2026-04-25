@@ -146,31 +146,40 @@ function parseYaml(content: string): Result<unknown, ConfigLoadError> {
   }
 }
 
+/** Keys that must never be merged — they target the prototype chain (CWE-1321). */
+const PROTOTYPE_POLLUTION_KEYS: ReadonlySet<string> = new Set([
+  '__proto__',
+  'constructor',
+  'prototype',
+]);
+
+/** True when both values are mergeable plain objects (not arrays/null). */
+function isMergeableObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 /**
  * Deep merges two objects, with source taking precedence.
+ *
+ * Exported for direct unit testing of the prototype-pollution guard.
+ * @internal
  */
-function deepMerge<T extends Record<string, unknown>>(target: T, source: Partial<T>): T {
-  const result = { ...target };
+export function deepMerge(
+  target: Record<string, unknown>,
+  source: Record<string, unknown>
+): Record<string, unknown> {
+  const result: Record<string, unknown> = { ...target };
 
-  for (const key of Object.keys(source) as Array<keyof T>) {
+  for (const key of Object.keys(source)) {
+    if (PROTOTYPE_POLLUTION_KEYS.has(key)) continue;
     const sourceValue = source[key];
+    if (sourceValue === undefined) continue;
     const targetValue = target[key];
 
-    if (
-      sourceValue !== undefined &&
-      typeof sourceValue === 'object' &&
-      sourceValue !== null &&
-      !Array.isArray(sourceValue) &&
-      typeof targetValue === 'object' &&
-      targetValue !== null &&
-      !Array.isArray(targetValue)
-    ) {
-      result[key] = deepMerge(
-        targetValue as Record<string, unknown>,
-        sourceValue as Record<string, unknown>
-      ) as T[keyof T];
-    } else if (sourceValue !== undefined) {
-      result[key] = sourceValue as T[keyof T];
+    if (isMergeableObject(sourceValue) && isMergeableObject(targetValue)) {
+      result[key] = deepMerge(targetValue, sourceValue);
+    } else {
+      result[key] = sourceValue;
     }
   }
 

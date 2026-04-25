@@ -40,7 +40,12 @@ import { wrapToolWithTimeout, toSdkCallback } from '../middleware/tool-wrapper.j
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { withDepthGuard } from '../middleware/spawn-depth-guard.js';
 import { toolError, toolSuccess, type ToolResult } from './tool-result.js';
-import { createMcpNotifier, NOOP_NOTIFIER, withProgressHeartbeat } from '../mcp-notifier.js';
+import {
+  createMcpNotifier,
+  NOOP_NOTIFIER,
+  withProgressHeartbeat,
+  abortSignalStorage,
+} from '../mcp-notifier.js';
 import type { ExecutionPlan } from '../../agents/index.js';
 import { createOrchestratorWithSica } from './orchestrate-sica.js';
 import { OrchestratorFactory } from '../../orchestration/orchestrator-factory.js';
@@ -781,6 +786,15 @@ async function tryWorkerDispatch(
 ): Promise<Awaited<ReturnType<typeof executeWorkerDispatch>> | undefined> {
   const adapter = deps.modelAdapter;
   if (agentPlan === undefined || !isWorkerDispatchEnabled() || adapter === undefined) {
+    return undefined;
+  }
+  // Short-circuit if the MCP client has already cancelled the request.
+  // The MCP middleware parks the active AbortSignal in AsyncLocalStorage;
+  // checking it here avoids kicking off expensive worker dispatch for a
+  // request the client no longer cares about.
+  const abortSignal = abortSignalStorage.getStore();
+  if (abortSignal?.aborted === true) {
+    logger.info('Worker dispatch aborted before start (client cancelled)');
     return undefined;
   }
   try {

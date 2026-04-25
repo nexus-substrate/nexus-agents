@@ -144,6 +144,9 @@ interface ParsedValues {
   mock: boolean;
   // Doctor command options (Issue #1031)
   deep: boolean;
+  // Registry command options (#2179)
+  json: boolean;
+  source?: string;
 }
 
 /** Builds orchestrate-specific options. */
@@ -317,6 +320,8 @@ function buildOptions(values: ParsedValues): ParsedCliArgs['options'] {
     quick: values.quick,
     mock: values.mock,
     deep: values.deep,
+    json: values.json,
+    ...(values.source !== undefined && { source: values.source }),
     ...(values.output !== undefined && { output: values.output }),
     ...(values.input !== undefined && { input: values.input }),
     ...buildOrchestrateOptions(values),

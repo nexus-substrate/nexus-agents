@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- canonical CLI types + parseArgs config, intentionally centralized */
 /**
  * nexus-agents CLI Types
  *
@@ -69,7 +70,8 @@ export type CliCommand =
   | 'routing-ab'
   | 'memory-eval'
   | 'health'
-  | 'validate';
+  | 'validate'
+  | 'registry';
 
 /**
  * Parsed CLI arguments and command.
@@ -149,6 +151,9 @@ export interface ParsedCliArgs {
     mock: boolean;
     // Doctor command options (Issue #1031)
     deep: boolean;
+    // Registry command options (#2179)
+    json?: boolean;
+    source?: string;
   };
   positionals: string[];
 }
@@ -397,6 +402,14 @@ export const PARSE_ARGS_CONFIG = {
       type: 'boolean' as const,
       default: false,
     },
+    // Registry command options (#2179)
+    json: {
+      type: 'boolean' as const,
+      default: false,
+    },
+    source: {
+      type: 'string' as const,
+    },
   },
   allowPositionals: true,
   strict: true,
@@ -454,6 +467,7 @@ export function isValidCommand(value: string): value is CliCommand {
     'memory-eval',
     'health',
     'validate',
+    'registry',
   ];
   return validCommands.includes(value as CliCommand);
 }

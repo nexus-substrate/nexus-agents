@@ -62,9 +62,12 @@ describe('getModelContextWindow', () => {
     expect(ctx).toBeGreaterThan(0);
   });
 
-  it('returns default 200k for unknown model', () => {
+  it('returns fail-closed 8k default for unknown model (#2177)', () => {
+    // Previously returned a silent 200_000 — masked routing-critical
+    // metadata for unknown models. CapabilityDiscovery now resolves
+    // unknown ids at T4 with a conservative 8 K default + structured warn.
     const ctx = getModelContextWindow('nonexistent' as 'claude-sonnet');
-    expect(ctx).toBe(200_000);
+    expect(ctx).toBe(8_192);
   });
 });
 

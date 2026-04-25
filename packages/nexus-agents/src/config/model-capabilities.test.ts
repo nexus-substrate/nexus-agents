@@ -49,6 +49,20 @@ describe('DEFAULT_MODEL_CAPABILITIES', () => {
     }
   });
 
+  it('every CLI-bound model declares a cliModelName', () => {
+    // Without cliModelName, getCliModelName() falls back to cliAlias ?? modelId,
+    // which passes the registry id (e.g. "codex-5.2") to the CLI — usually not
+    // a valid upstream model identifier.
+    for (const model of DEFAULT_MODEL_CAPABILITIES.models) {
+      if (model.cliName !== undefined) {
+        expect(
+          model.cliModelName,
+          `model ${model.id} has cliName=${model.cliName} but no cliModelName`
+        ).toBeTruthy();
+      }
+    }
+  });
+
   it('all providers should be represented', () => {
     const providers = new Set(DEFAULT_MODEL_CAPABILITIES.models.map((m) => m.provider));
     expect(providers).toEqual(

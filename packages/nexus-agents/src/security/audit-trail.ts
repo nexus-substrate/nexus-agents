@@ -82,6 +82,17 @@ export interface ReputationEvent extends AuditEventBase {
   readonly signalCount: number;
 }
 
+/** Summary of a single element stripped during sanitization. */
+export interface StrippedElementSummary {
+  /** Truncated tag text (≤30 chars + '...' from the sanitizer). */
+  readonly tag: string;
+  /** Reason the element was removed (e.g. 'Trail of Bits injection vector'). */
+  readonly reason: string;
+}
+
+/** Max stripped-element details retained per sanitization event. */
+export const MAX_STRIPPED_ELEMENTS_PER_EVENT = 20;
+
 /** Input sanitization result. */
 export interface SanitizationEvent extends AuditEventBase {
   readonly type: 'sanitization';
@@ -89,6 +100,12 @@ export interface SanitizationEvent extends AuditEventBase {
   readonly wasModified: boolean;
   readonly strippedCount: number;
   readonly injectionFlagCount: number;
+  /**
+   * Per-element tag/reason details, truncated to at most
+   * MAX_STRIPPED_ELEMENTS_PER_EVENT entries. Required by CLAUDE.md's
+   * Untrusted Input Policy: "Log stripped elements for audit trail."
+   */
+  readonly strippedElements: readonly StrippedElementSummary[];
 }
 
 /** Graph execution lifecycle event (Issue #839). */

@@ -10,6 +10,7 @@ import {
   clearConfigCache,
   reloadConfig,
   ConfigLoadError,
+  deepMerge,
 } from './config-loader.js';
 import { existsSync, readFileSync } from 'node:fs';
 import * as yaml from 'yaml';
@@ -232,6 +233,47 @@ describe('config-loader', () => {
       if (reloaded.ok) {
         expect(reloaded.value.usingDefaults).toBe(true);
       }
+    });
+  });
+
+  describe('deepMerge prototype-pollution guard (CWE-1321)', () => {
+    it('skips __proto__ key — does not replace target prototype', () => {
+      const target: Record<string, unknown> = { a: 1 };
+      const hostile = JSON.parse('{"__proto__":{"polluted":"yes"}}') as Record<string, unknown>;
+
+      const merged = deepMerge(target, hostile);
+
+      expect(Object.getPrototypeOf(merged)).toBe(Object.prototype);
+      expect(merged['polluted']).toBeUndefined();
+    });
+
+    it('skips constructor key — does not replace target.constructor', () => {
+      const target: Record<string, unknown> = { a: 1 };
+      const hostile = JSON.parse('{"constructor":"hijacked"}') as Record<string, unknown>;
+
+      const merged = deepMerge(target, hostile);
+
+      expect(merged['constructor']).toBe(Object);
+    });
+
+    it('skips prototype key — does not write to target.prototype', () => {
+      const target: Record<string, unknown> = { a: 1 };
+      const hostile = JSON.parse('{"prototype":{"polluted":true}}') as Record<string, unknown>;
+
+      const merged = deepMerge(target, hostile);
+
+      expect(merged['prototype']).toBeUndefined();
+    });
+
+    it('preserves normal merge behavior for benign keys', () => {
+      const target: Record<string, unknown> = { a: 1, nested: { x: 'old', y: 'keep' } };
+      const source: Record<string, unknown> = { a: 2, nested: { x: 'new' } };
+
+      const merged = deepMerge(target, source);
+
+      expect(merged['a']).toBe(2);
+      expect((merged['nested'] as Record<string, unknown>)['x']).toBe('new');
+      expect((merged['nested'] as Record<string, unknown>)['y']).toBe('keep');
     });
   });
 });

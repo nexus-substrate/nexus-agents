@@ -48,6 +48,8 @@
     "research:check": "npx tsx scripts/update-research-index.ts --check",
     "research:validate": "npx tsx scripts/update-research-index.ts --validate",
     "check:pricing-drift": "npx tsx scripts/check-pricing-drift.ts",
+    "build:registry": "npx tsx scripts/build-model-registry.ts",
+    "build:registry:dry": "npx tsx scripts/build-model-registry.ts --dry",
     "review": "npx tsx scripts/review-pr.ts",
     "link-check": "npx lychee --config lychee.toml .",
     "changeset": "changeset",

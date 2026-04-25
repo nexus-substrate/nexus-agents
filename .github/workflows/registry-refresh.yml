@@ -1,0 +1,130 @@
+name: Registry Refresh
+
+# Weekly regeneration of packages/nexus-agents/src/config/model-registry.generated.json
+# from models.dev + LiteLLM. When the diff is non-trivial, opens a PR with a
+# summary in the body. Bounded-diff guardrail labels `needs-human-review` on
+# anything that trips the deletion-rate or cost-spike thresholds defined in
+# scripts/check-registry-diff.ts (epic #2174 / issue #2180).
+
+on:
+  schedule:
+    # Sundays 04:17 UTC (off-minute per CLAUDE.md convention).
+    - cron: '17 4 * * 0'
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: 'Print diff only, do not open a PR'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh:
+    name: Regenerate bundled registry
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Setup Node + pnpm
+        uses: ./.github/actions/setup-node
+
+      - name: Snapshot current registry
+        id: snapshot
+        run: |
+          cp packages/nexus-agents/src/config/model-registry.generated.json /tmp/old-registry.json
+
+      - name: Regenerate registry from upstream
+        run: pnpm build:registry
+
+      - name: Compute diff + guardrail verdict
+        id: diff
+        run: |
+          set -euo pipefail
+          OUTPUT=$(npx tsx scripts/check-registry-diff.ts \
+            /tmp/old-registry.json \
+            packages/nexus-agents/src/config/model-registry.generated.json \
+            --json)
+          echo "$OUTPUT" > /tmp/diff-report.json
+          REQUIRES_REVIEW=$(echo "$OUTPUT" | npx tsx -e 'process.stdin.on("data",d=>{const r=JSON.parse(d);console.log(r.verdict.requiresHumanReview)})' || echo "false")
+          TOTAL_ADDED=$(echo "$OUTPUT" | npx tsx -e 'process.stdin.on("data",d=>{const r=JSON.parse(d);console.log(r.summary.added.length)})')
+          TOTAL_REMOVED=$(echo "$OUTPUT" | npx tsx -e 'process.stdin.on("data",d=>{const r=JSON.parse(d);console.log(r.summary.removed.length)})')
+          TOTAL_CHANGED=$(echo "$OUTPUT" | npx tsx -e 'process.stdin.on("data",d=>{const r=JSON.parse(d);console.log(r.summary.changed.length)})')
+          echo "requires_review=$REQUIRES_REVIEW" >> "$GITHUB_OUTPUT"
+          echo "total_added=$TOTAL_ADDED" >> "$GITHUB_OUTPUT"
+          echo "total_removed=$TOTAL_REMOVED" >> "$GITHUB_OUTPUT"
+          echo "total_changed=$TOTAL_CHANGED" >> "$GITHUB_OUTPUT"
+          npx tsx scripts/check-registry-diff.ts \
+            /tmp/old-registry.json \
+            packages/nexus-agents/src/config/model-registry.generated.json \
+            > /tmp/diff-report.md
+
+      - name: Check if file actually changed
+        id: changed
+        run: |
+          if git diff --quiet packages/nexus-agents/src/config/model-registry.generated.json; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open PR with refreshed registry
+        if: steps.changed.outputs.changed == 'true' && inputs['dry-run'] != 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: automated/registry-refresh
+          delete-branch: true
+          commit-message: |
+            chore(registry): weekly refresh of model-registry.generated.json
+
+            Added: ${{ steps.diff.outputs.total_added }}, Removed: ${{ steps.diff.outputs.total_removed }}, Changed: ${{ steps.diff.outputs.total_changed }}.
+          title: 'chore(registry): weekly refresh of model-registry.generated.json'
+          body-path: /tmp/diff-report.md
+          labels: |
+            architecture
+            capabilities-matrix
+            automated
+
+      - name: Label PR needs-human-review when guardrails trip
+        if: steps.changed.outputs.changed == 'true' && steps.diff.outputs.requires_review == 'true' && inputs['dry-run'] != 'true'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        with:
+          script: |
+            const { data: prs } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              head: `${context.repo.owner}:automated/registry-refresh`,
+              state: 'open',
+            });
+            const pr = prs[0];
+            if (pr === undefined) return;
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number,
+              labels: ['needs-human-review'],
+            });
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number,
+              body: [
+                '⚠ Bounded-diff guardrail tripped — see the PR body for the reasons.',
+                '',
+                'Do not auto-merge this PR. A human must review the model deletions / cost',
+                'bumps before landing. Thresholds are defined in `scripts/check-registry-diff.ts`',
+                '(5% deletion rate, 10× cost ratio) per epic #2174.',
+              ].join('\n'),
+            });
+
+      - name: Print diff summary
+        if: always()
+        run: cat /tmp/diff-report.md || echo '(no diff report)'

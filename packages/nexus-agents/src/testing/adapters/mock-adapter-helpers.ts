@@ -32,28 +32,17 @@ export const DEFAULT_CONFIG: MockAdapterConfig = {
  */
 
 import { buildMockModelInfo } from '../../config/model-config-helpers.js';
+import { createCliError as sharedCreateCliError } from '../../cli-adapters/cli-error-helpers.js';
 
 export const MODEL_INFO_BY_NAME: Readonly<Record<CliName, ModelInfo>> = buildMockModelInfo();
 
 /**
- * Error codes that are considered retryable.
- */
-const RETRYABLE_ERROR_CODES: ReadonlySet<CliErrorCode> = new Set<CliErrorCode>([
-  'RATE_LIMITED',
-  'TIMEOUT',
-  'CONNECTION_ERROR',
-]);
-
-/**
  * Creates a CLI error with automatic retryable detection.
+ * Delegates to the canonical helper in cli-adapters/cli-error-helpers.ts
+ * so retryable-code classification stays in one place (#2181).
  */
 export function createCliError(code: CliErrorCode, message: string, cliName: CliName): CliError {
-  return {
-    code,
-    message,
-    cli: cliName,
-    retryable: RETRYABLE_ERROR_CODES.has(code),
-  };
+  return sharedCreateCliError(code, message, cliName);
 }
 
 /**

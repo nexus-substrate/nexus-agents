@@ -16,6 +16,7 @@ vi.mock('./cli-commands-handlers.js', () => ({
   handleVoteCommand: vi.fn(() => Promise.resolve()),
   handleIndexCommand: vi.fn(() => Promise.resolve()),
   handleResearchCommand: vi.fn(() => Promise.resolve()),
+  handleRegistryCommand: vi.fn(() => Promise.resolve()),
   handleValidationCommand: vi.fn(),
   handleLearningMetricsCommand: vi.fn(),
   handleSweBenchCommand: vi.fn(() => Promise.resolve()),

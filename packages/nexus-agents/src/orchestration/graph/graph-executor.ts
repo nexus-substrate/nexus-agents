@@ -148,7 +148,15 @@ async function executeSuperStep(
   ctx.runnableIds = resolveNextNodes(graph, completedIds, ctx.state, ctx);
 
   for (const result of results) {
-    options?.onNodeComplete?.(result);
+    try {
+      options?.onNodeComplete?.(result);
+    } catch (error: unknown) {
+      // Observer errors must never abort the super-step loop.
+      logger.warn('onNodeComplete callback threw — continuing execution', {
+        nodeId: result.nodeId,
+        error: getErrorMessage(error),
+      });
+    }
   }
 
   emitNodeResults(ctx, results, options);
@@ -191,7 +199,19 @@ function saveCheckpointIfConfigured(ctx: ExecutionContext, options?: GraphExecut
     pendingNodeIds: ctx.runnableIds,
     completedResults: ctx.allResults,
   });
-  store.save(checkpoint);
+  try {
+    store.save(checkpoint);
+  } catch (err: unknown) {
+    // Checkpoint persistence failure should not abort the in-flight
+    // super-step — the state is still consistent, resume just won't be
+    // possible from this point. Log loudly so operators can investigate.
+    const error = err instanceof Error ? err : new Error(String(err));
+    logger.warn('Checkpoint save failed; execution continues without resumable state', {
+      executionId: execId,
+      stepNumber: ctx.stepsExecuted,
+      errorMessage: error.message,
+    });
+  }
 }
 
 /** Initializes graph state from schema defaults + provided inputs. */
@@ -227,6 +247,13 @@ function mergeNodeResults(
   return state;
 }
 
+/**
+ * Warn-once cache for undeclared state fields. Keyed by `${executionId}:${field}`
+ * so a single executor instance does not spam the log for the same field, but
+ * different graphs/runs are each reported on their first occurrence.
+ */
+const undeclaredFieldWarned = new Set<string>();
+
 /** Applies a single node's state updates using reducers. */
 function applyStateUpdates(
   graph: CompiledGraph,
@@ -239,7 +266,18 @@ function applyStateUpdates(
     const schema: StateFieldSchema | undefined = graph.stateSchema[field];
 
     if (schema === undefined) {
-      // No reducer defined — use overwrite by default
+      // No reducer defined — the graph-builder header invariant ("all state
+      // fields have reducers") is violated. Behaviour is kept as silent
+      // overwrite for back-compat, but the violation is logged once per
+      // field so operators can find and fix it.
+      const key = `${String(Object.keys(graph.stateSchema).length)}:${field}`;
+      if (!undeclaredFieldWarned.has(key)) {
+        undeclaredFieldWarned.add(key);
+        logger.warn('Node wrote to undeclared state field; defaulting to overwrite reducer', {
+          field,
+          knownFields: Object.keys(graph.stateSchema),
+        });
+      }
       newState[field] = value;
       continue;
     }

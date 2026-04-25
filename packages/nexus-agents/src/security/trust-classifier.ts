@@ -83,6 +83,15 @@ export interface ClassifyResult {
  * 1. Allowlist membership (always Tier 1)
  * 2. GitHub author_association → role → default tier
  * 3. Content injection analysis (can only downgrade, never upgrade)
+ *
+ * ⚠ **Use HostileInputFirewall.process() in agent code paths.** Calling
+ * classifyTrust() directly skips the Rule-of-Two check in policy-gate
+ * and does not emit audit-trail events. The firewall is the canonical
+ * entry point for agent decisions; direct use is for unit tests and
+ * non-decision analysis only.
+ *
+ * @see packages/nexus-agents/src/security/firewall/firewall-pipeline.ts
+ * @see packages/nexus-agents/src/security/policy-gate.ts
  */
 export function classifyTrust(input: ClassifyInput): ClassifyResult {
   const allowlistedMaintainers = input.config?.allowlistedMaintainers ?? [];

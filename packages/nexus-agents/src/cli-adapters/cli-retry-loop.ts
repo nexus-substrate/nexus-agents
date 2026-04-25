@@ -13,6 +13,7 @@ import type { ILogger } from '../core/index.js';
 import type { CliResponse, CliError, CliErrorCode, CliName } from './types.js';
 import type { ICircuitBreaker, FailureCategory } from './circuit-breaker-types.js';
 import { delay } from '../utils/async-utils.js';
+import { RETRYABLE_ERROR_CODES } from './cli-error-helpers.js';
 
 // ============================================================================
 // Types
@@ -36,13 +37,6 @@ export interface CliRetryResult {
 // ============================================================================
 // Retry Logic (moved from gemini-adapter-helpers.ts)
 // ============================================================================
-
-/** Error codes that can be retried. */
-const RETRYABLE_ERROR_CODES: ReadonlySet<CliErrorCode> = new Set([
-  'TIMEOUT',
-  'RATE_LIMITED',
-  'CONNECTION_ERROR',
-]);
 
 /**
  * Calculates exponential backoff delay with jitter.

@@ -249,6 +249,33 @@ describe('executeGraph', () => {
       expect(onNodeComplete).toHaveBeenCalledTimes(2);
       expect(completedNodes).toEqual(['A', 'B']);
     });
+
+    it('does not crash execution when onNodeComplete throws', async () => {
+      const graph = new GraphBuilder()
+        .addNode('A', noop)
+        .addNode('B', noop)
+        .addEdge(START, 'A')
+        .addEdge('A', 'B')
+        .addEdge('B', END)
+        .compile();
+
+      expect(graph.ok).toBe(true);
+      if (!graph.ok) return;
+
+      let invocations = 0;
+      const throwingCallback = (_: NodeResult): void => {
+        invocations++;
+        throw new Error('observer broken');
+      };
+
+      const result = await executeGraph(graph.value, {}, { onNodeComplete: throwingCallback });
+
+      // Both nodes should still complete despite the throwing observer.
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.nodeResults).toHaveLength(2);
+      expect(invocations).toBe(2);
+    });
   });
 
   describe('initial inputs', () => {
@@ -273,6 +300,66 @@ describe('executeGraph', () => {
   });
 
   describe('checkpointing (Issue #837)', () => {
+    it('preserves undeclared state field writes via overwrite default', async () => {
+      // Back-compat: silent overwrite for undeclared fields still happens,
+      // but is now logged. The state-merge behaviour is unchanged.
+      const graph = new GraphBuilder()
+        .addState('declared', overwrite(0))
+        .addNode('A', () => Promise.resolve({ declared: 1, undeclared: 'surprise' }))
+        .addEdge(START, 'A')
+        .addEdge('A', END)
+        .compile();
+
+      expect(graph.ok).toBe(true);
+      if (!graph.ok) return;
+
+      const result = await executeGraph(graph.value, {}, { executionId: 'undeclared' });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.finalState['declared']).toBe(1);
+      expect(result.value.finalState['undeclared']).toBe('surprise');
+    });
+
+    it('continues execution when checkpoint store fails', async () => {
+      const failingStore = {
+        save: vi.fn(() => {
+          throw new Error('disk full');
+        }),
+        latest: vi.fn(() => undefined),
+        list: vi.fn(() => []),
+        load: vi.fn(() => undefined),
+        delete: vi.fn(() => true),
+        deleteExecution: vi.fn(() => 0),
+        clear: vi.fn(() => 0),
+        size: vi.fn(() => 0),
+      };
+
+      const graph = new GraphBuilder()
+        .addState('value', overwrite(0))
+        .addNode('A', () => Promise.resolve({ value: 1 }))
+        .addEdge(START, 'A')
+        .addEdge('A', END)
+        .compile();
+
+      expect(graph.ok).toBe(true);
+      if (!graph.ok) return;
+
+      const result = await executeGraph(
+        graph.value,
+        {},
+        {
+          checkpointStore: failingStore,
+          executionId: 'exec-fail',
+        }
+      );
+
+      // Execution completed despite the checkpoint failure.
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.finalState['value']).toBe(1);
+      expect(failingStore.save).toHaveBeenCalled();
+    });
+
     it('saves checkpoints after each super-step', async () => {
       const store = new InMemoryCheckpointStore();
 

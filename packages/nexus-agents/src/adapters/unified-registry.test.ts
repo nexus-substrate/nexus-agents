@@ -289,4 +289,21 @@ describe('global registry singleton', () => {
     const r2 = getGlobalRegistry({ logger: mockLogger });
     expect(r1).not.toBe(r2);
   });
+
+  it('should warn when config is supplied to an already-initialized singleton', () => {
+    getGlobalRegistry({ logger: mockLogger });
+    mockLogger.warn.mockClear();
+    getGlobalRegistry({ logger: mockLogger, defaultCliTimeoutMs: 9_999 });
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('already initialized'),
+      expect.any(Object)
+    );
+  });
+
+  it('should not warn when config is omitted on subsequent calls', () => {
+    getGlobalRegistry({ logger: mockLogger });
+    mockLogger.warn.mockClear();
+    getGlobalRegistry();
+    expect(mockLogger.warn).not.toHaveBeenCalled();
+  });
 });

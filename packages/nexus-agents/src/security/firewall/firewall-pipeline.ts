@@ -19,14 +19,15 @@ import {
   createAuditTrail,
   emitReputationEvent,
   emitSanitizationEvent,
+  MAX_STRIPPED_ELEMENTS_PER_EVENT,
   emitTrustEvent,
 } from '../audit-trail.js';
 import { sanitizeInput } from '../input-sanitizer.js';
 import type { ReputationAssessment, GitHubUserMetadata } from '../reputation-model.js';
 import { assessReputation, ReputationCache } from '../reputation-model.js';
 import type { ClassifyResult } from '../trust-classifier.js';
-import { classifyTrust } from '../trust-classifier.js';
-import type { SanitizedInput, GitHubUserRole } from '../trust-types.js';
+import { classifyTrust, mapAuthorAssociation } from '../trust-classifier.js';
+import type { SanitizedInput } from '../trust-types.js';
 import { generateATL } from './agent-trust-labels.js';
 import type {
   ATLData,
@@ -152,7 +153,7 @@ export class HostileInputFirewall {
 
     const result = sanitizeInput(
       meta.content,
-      meta.authorAssociation as GitHubUserRole,
+      mapAuthorAssociation(meta.authorAssociation),
       meta.username,
       {
         allowlistedMaintainers: [...this.allowlisted],
@@ -166,6 +167,9 @@ export class HostileInputFirewall {
         wasModified: result.wasModified,
         strippedCount: result.strippedElements.length,
         injectionFlagCount: result.injectionFlags.length,
+        strippedElements: result.strippedElements
+          .slice(0, MAX_STRIPPED_ELEMENTS_PER_EVENT)
+          .map((e) => ({ tag: e.tag, reason: e.reason })),
       });
     }
 
@@ -257,7 +261,7 @@ function createPassthroughSanitized(meta: SourceMetadata): SanitizedInput {
     content: meta.content,
     originalLength: meta.content.length,
     trustTier: '3',
-    userRole: meta.authorAssociation as GitHubUserRole,
+    userRole: mapAuthorAssociation(meta.authorAssociation),
     injectionFlags: [],
     strippedElements: [],
     wasModified: false,
@@ -268,7 +272,7 @@ function createPassthroughSanitized(meta: SourceMetadata): SanitizedInput {
 function createPassthroughClassification(meta: SourceMetadata): ClassifyResult {
   return {
     trustTier: '3',
-    userRole: meta.authorAssociation as GitHubUserRole,
+    userRole: mapAuthorAssociation(meta.authorAssociation),
     isAllowlisted: false,
     wasDowngraded: false,
     reason: 'Trust classification disabled — default Tier 3',

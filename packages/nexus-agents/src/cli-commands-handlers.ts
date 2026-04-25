@@ -308,6 +308,37 @@ export async function handleResearchCommand(args: ParsedCliArgs): Promise<void> 
 }
 
 /**
+ * Handles the `registry` command: doctor or refresh subcommand (#2179).
+ * Dispatches to registryCommand and forwards the text + exit code.
+ */
+export async function handleRegistryCommand(args: ParsedCliArgs): Promise<void> {
+  const { registryCommand, isValidRegistrySubcommand, formatRegistryUsage } =
+    await import('./cli/registry-command.js');
+  const subcommand = args.subcommand;
+  if (!isValidRegistrySubcommand(subcommand)) {
+    process.stdout.write(`${formatRegistryUsage()}\n`);
+    process.exit(EXIT_CODES.INVALID_ARGS);
+  }
+
+  const source = typeof args.options.source === 'string' ? args.options.source : undefined;
+  const options = {
+    json: args.options.json === true,
+    dryRun: args.options.dryRun,
+    ...(source !== undefined ? { source } : {}),
+  };
+
+  try {
+    const result = await registryCommand(subcommand, options);
+    process.stdout.write(`${result.text}\n`);
+    process.exit(result.exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
+  } catch (error) {
+    const message = getErrorMessage(error);
+    process.stdout.write(`Error: ${message}\n`);
+    process.exit(EXIT_CODES.SERVER_START_FAILED);
+  }
+}
+
+/**
  * Handles the validation command for learning validation dashboard.
  * (Source: Issue #273)
  */

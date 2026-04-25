@@ -136,6 +136,33 @@ describe('ArtifactStore', () => {
       store.put(makeArtifact({ id: 's2' }));
       expect(store.size).toBe(2);
     });
+
+    it('re-putting the same id keeps store.size stable', () => {
+      const store = new ArtifactStore({ maxArtifacts: 3 });
+      store.put(makeArtifact({ id: 'same' }));
+      store.put(makeArtifact({ id: 'same' }));
+      store.put(makeArtifact({ id: 'same' }));
+      expect(store.size).toBe(1);
+    });
+
+    it('re-putting an existing id does not evict other live artifacts', () => {
+      // Before the fix, put() always ran evictIfNeeded — even when the id
+      // already existed. At capacity, the first entry in insertOrder was
+      // shifted and its artifact deleted, even though the caller was
+      // merely replacing an existing entry. Result: every re-put at
+      // capacity silently lost an unrelated live artifact.
+      const store = new ArtifactStore({ maxArtifacts: 2 });
+      store.put(makeArtifact({ id: 'a' }));
+      store.put(makeArtifact({ id: 'b' }));
+      // Re-put 'b' (the newest) — this must NOT evict 'a'. With the bug,
+      // evictIfNeeded runs even though size is not growing, shifts 'a'
+      // off the front of insertOrder and deletes it.
+      store.put(makeArtifact({ id: 'b' }));
+
+      expect(store.size).toBe(2);
+      expect(store.get({ id: 'a', type: 'code' })).toBeDefined();
+      expect(store.get({ id: 'b', type: 'code' })).toBeDefined();
+    });
   });
 
   describe('interface conformance', () => {
