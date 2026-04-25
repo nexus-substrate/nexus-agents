@@ -7,33 +7,38 @@
 import type { Content, Part, FunctionDeclaration } from '@google/genai';
 import type { ContentBlock, Message, ToolDefinition, StopReason } from '../core/index.js';
 import { ModelCapability, getTimeProvider, getRandomProvider } from '../core/index.js';
+import { findCanonicalModel, getCliModelName } from '../config/model-config-helpers.js';
 
 /**
  * Supported Gemini model identifiers.
+ *
+ * Current models (2.5+ and 3.x) derive from `config/model-capabilities.ts`
+ * (single source of truth — #2200 Child 2). Legacy 1.5 / 2.0 strings remain
+ * as constants for backward compat with external consumers; they are not in
+ * the canonical registry because Google deprecated those generations
+ * upstream in 2025.
  */
 export const GEMINI_MODELS = {
-  PRO_2_5: 'gemini-2.5-pro',
-  FLASH_2_5: 'gemini-2.5-flash',
+  PRO_2_5: getCliModelName('gemini-pro'),
+  FLASH_2_5: getCliModelName('gemini-flash'),
+  // Legacy — not in canonical registry. Kept for backward compat.
   FLASH_2_0: 'gemini-2.0-flash',
   PRO_1_5: 'gemini-1.5-pro',
   FLASH_1_5: 'gemini-1.5-flash',
 } as const;
 
 /**
- * Model aliases for convenience.
+ * Legacy aliases for Gemini models not in the canonical registry.
+ *
+ * 2.5 / 3.x aliases are NOT in this map — they resolve via the canonical
+ * registry (cliModelName / cliAlias / aliases[]). See `resolveModelId`.
+ * Only generations Google has deprecated upstream live here, kept for
+ * backward compat with users who hardcoded these strings.
  */
 export const GEMINI_MODEL_ALIASES: Record<string, string> = {
-  // Gemini 2.5 aliases (current latest)
-  'gemini-2.5-pro': GEMINI_MODELS.PRO_2_5,
-  'gemini-2.5-flash': GEMINI_MODELS.FLASH_2_5,
-  // Gemini 2.0 aliases
   'gemini-2.0-flash': GEMINI_MODELS.FLASH_2_0,
-  // Gemini 1.5 aliases
   'gemini-1.5-pro': GEMINI_MODELS.PRO_1_5,
   'gemini-1.5-flash': GEMINI_MODELS.FLASH_1_5,
-  // Short aliases (point to latest versions — Gemini 2.5)
-  'gemini-flash': GEMINI_MODELS.FLASH_2_5,
-  'gemini-pro': GEMINI_MODELS.PRO_2_5,
 } as const;
 
 /**
@@ -158,9 +163,17 @@ export function mapToolToFunctionDeclaration(tool: ToolDefinition): FunctionDecl
 }
 
 /**
- * Resolves model alias to full model identifier.
+ * Resolves a Gemini model alias to the full identifier the SDK expects.
+ *
+ * Resolution order:
+ *   1. Canonical registry (cliModelName / cliAlias / aliases[]) — handles
+ *      'gemini-pro', 'gemini-2.5-pro', 'gemini-flash', 'gemini-3-pro', etc.
+ *   2. Legacy 1.5 / 2.0 alias map — pre-deprecation generations
+ *   3. Pass through unknown ids unchanged
  */
 export function resolveModelId(modelId: string): string {
+  const canonical = findCanonicalModel('gemini', modelId);
+  if (canonical?.cliModelName !== undefined) return canonical.cliModelName;
   return GEMINI_MODEL_ALIASES[modelId] ?? modelId;
 }
 
