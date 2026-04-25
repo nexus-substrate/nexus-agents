@@ -128,7 +128,7 @@ function main(): void {
     const allowedCount = ALLOWLIST.length;
     process.stdout.write(
       `✓ No new model-version drift detected. Source root: ${SRC_ROOT}\n` +
-        `  ${String(allowedCount)} grandfathered site(s) in allowlist (#2200 will reduce this).\n`
+        `  ${String(allowedCount)} grandfathered site(s) in allowlist (documented architectural decisions).\n`
     );
     process.exit(0);
   }
