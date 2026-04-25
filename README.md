@@ -126,7 +126,7 @@ nexus-agents orchestrate "Explain the architecture of this codebase"
 | **Research System**            | 9 discovery sources (arXiv, GitHub, Semantic Scholar, etc). Auto-catalog, quality scoring, synthesis into topic clusters                                                         |
 | **Security**                   | Sandboxing (Docker/policy), trust classification, SARIF parsing, input sanitization, red team pipeline, firewall                                                                 |
 | **Graph Workflows**            | DAG-based workflow execution with checkpoint/resume, state reduction, and event hooks                                                                                            |
-| **30 MCP Tools**               | Agent management, workflow execution, research, memory, codebase intelligence, repo analysis, consensus, operations                                                              |
+| **31 MCP Tools**               | Agent management, workflow execution, research, memory, codebase intelligence, repo analysis, consensus, operations                                                              |
 
 ---
 

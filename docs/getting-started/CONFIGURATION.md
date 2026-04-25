@@ -192,12 +192,16 @@ All configuration can be overridden with environment variables:
 
 ### Model Provider Keys
 
-| Variable            | Description                                           |
-| ------------------- | ----------------------------------------------------- |
-| `ANTHROPIC_API_KEY` | Claude API key                                        |
-| `OPENAI_API_KEY`    | OpenAI API key                                        |
-| `GOOGLE_AI_API_KEY` | Google AI (Gemini) API key                            |
-| `OLLAMA_HOST`       | Ollama server URL (default: `http://localhost:11434`) |
+| Variable                    | Description                                                    |
+| --------------------------- | -------------------------------------------------------------- |
+| `ANTHROPIC_API_KEY`         | Claude API key                                                 |
+| `OPENAI_API_KEY`            | OpenAI API key                                                 |
+| `GOOGLE_AI_API_KEY`         | Google AI (Gemini) API key                                     |
+| `OPENROUTER_API_KEY`        | OpenRouter API key (for free-model adapters)                   |
+| `OLLAMA_HOST`               | Ollama server URL (default: `http://localhost:11434`)          |
+| `NEXUS_CUSTOM_API_BASE_URL` | Custom OpenAI-compatible gateway base URL                      |
+| `NEXUS_CUSTOM_API_KEY`      | API key for the custom gateway                                 |
+| `NEXUS_CUSTOM_MODEL`        | Model id for the custom gateway (default: `gpt-4o`, see #2208) |
 
 ### Routing Variables
 
@@ -209,12 +213,13 @@ All configuration can be overridden with environment variables:
 
 ### Security Variables
 
-| Variable             | Description         | Default  |
-| -------------------- | ------------------- | -------- |
-| `NEXUS_SANDBOX_MODE` | Sandbox mode        | `policy` |
-| `NEXUS_RATE_LIMIT`   | Requests per minute | `60`     |
-| `NEXUS_AUTH_ENABLED` | Enable MCP auth     | `true`   |
-| `NEXUS_AUTH_METHOD`  | Auth method         | `token`  |
+| Variable               | Description                                                           | Default  |
+| ---------------------- | --------------------------------------------------------------------- | -------- |
+| `NEXUS_SANDBOX_MODE`   | Sandbox mode                                                          | `policy` |
+| `NEXUS_RATE_LIMIT`     | Requests per minute                                                   | `60`     |
+| `NEXUS_AUTH_ENABLED`   | Enable MCP auth                                                       | `true`   |
+| `NEXUS_AUTH_METHOD`    | Auth method                                                           | `token`  |
+| `NEXUS_DRIFT_ADVISORY` | Model-string drift CI gate: `1`=advisory (warn), `0`=blocking (#2199) | `0`      |
 
 ### Orchestration Variables
 

@@ -12,7 +12,7 @@
  * const result = await startStdioServer({ name: 'my-server', version: '1.0.0' });
  *
  * // Or use programmatically
- * const adapter = createClaudeAdapter({ model: 'claude-sonnet-4-20250514' });
+ * const adapter = createClaudeAdapter({ model: 'claude-sonnet-4' });
  * const orchestrator = new Orchestrator({ adapter });
  * ```
  *
