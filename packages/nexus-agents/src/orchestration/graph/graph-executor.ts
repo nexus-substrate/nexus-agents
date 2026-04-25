@@ -148,7 +148,15 @@ async function executeSuperStep(
   ctx.runnableIds = resolveNextNodes(graph, completedIds, ctx.state, ctx);
 
   for (const result of results) {
-    options?.onNodeComplete?.(result);
+    try {
+      options?.onNodeComplete?.(result);
+    } catch (error: unknown) {
+      // Observer errors must never abort the super-step loop.
+      logger.warn('onNodeComplete callback threw — continuing execution', {
+        nodeId: result.nodeId,
+        error: getErrorMessage(error),
+      });
+    }
   }
 
   emitNodeResults(ctx, results, options);

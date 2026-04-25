@@ -249,6 +249,33 @@ describe('executeGraph', () => {
       expect(onNodeComplete).toHaveBeenCalledTimes(2);
       expect(completedNodes).toEqual(['A', 'B']);
     });
+
+    it('does not crash execution when onNodeComplete throws', async () => {
+      const graph = new GraphBuilder()
+        .addNode('A', noop)
+        .addNode('B', noop)
+        .addEdge(START, 'A')
+        .addEdge('A', 'B')
+        .addEdge('B', END)
+        .compile();
+
+      expect(graph.ok).toBe(true);
+      if (!graph.ok) return;
+
+      let invocations = 0;
+      const throwingCallback = (_: NodeResult): void => {
+        invocations++;
+        throw new Error('observer broken');
+      };
+
+      const result = await executeGraph(graph.value, {}, { onNodeComplete: throwingCallback });
+
+      // Both nodes should still complete despite the throwing observer.
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.nodeResults).toHaveLength(2);
+      expect(invocations).toBe(2);
+    });
   });
 
   describe('initial inputs', () => {
