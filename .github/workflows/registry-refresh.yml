@@ -21,15 +21,19 @@ on:
           - 'false'
           - 'true'
 
-permissions:
-  contents: write
-  pull-requests: write
+# Top-level: read-only by default. Write scopes are granted only to the
+# refresh job that needs them for `peter-evans/create-pull-request`
+# (Scorecard TokenPermissions / OpenSSF SLSA-1 hardening).
+permissions: read-all
 
 jobs:
   refresh:
     name: Regenerate bundled registry
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
