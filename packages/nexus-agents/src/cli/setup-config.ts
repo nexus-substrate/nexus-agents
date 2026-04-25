@@ -8,7 +8,7 @@
  * (Source: Issue #1252 - Setup auto-generates nexus-agents.yaml)
  */
 
-import { existsSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { getErrorMessage } from '../core/index.js';
 
@@ -75,20 +75,50 @@ export function runConfigInitSync(
     };
   }
 
+  const backup = ensureBackup(outputPath);
+  if ('error' in backup) return backup.error;
+
   try {
     writeFileSync(outputPath, SETUP_CONFIG_TEMPLATE, 'utf-8');
-    return {
-      success: true,
-      path: outputPath,
-      created: true,
-      message: `Created: ${outputPath}`,
-    };
+    const message =
+      backup.path !== undefined
+        ? `Created: ${outputPath} (backup saved at ${backup.path})`
+        : `Created: ${outputPath}`;
+    return { success: true, path: outputPath, created: true, message };
   } catch (error: unknown) {
     return {
       success: false,
       path: outputPath,
       created: false,
       message: `Failed: ${getErrorMessage(error)}`,
+    };
+  }
+}
+
+/**
+ * Saves a timestamped backup of an existing config file before overwrite (#2183).
+ *
+ * Returns `{ path }` with the backup path (or undefined if no existing file)
+ * on success, or `{ error }` with a populated `ConfigStepResult` on failure.
+ * Failure to write the backup aborts the overwrite — better to keep the
+ * user's customizations intact than to lose them silently.
+ */
+function ensureBackup(
+  outputPath: string
+): { path: string | undefined } | { error: ConfigStepResult } {
+  if (!existsSync(outputPath)) return { path: undefined };
+  const backupPath = `${outputPath}.bak.${String(Date.now())}`;
+  try {
+    copyFileSync(outputPath, backupPath);
+    return { path: backupPath };
+  } catch (err: unknown) {
+    return {
+      error: {
+        success: false,
+        path: outputPath,
+        created: false,
+        message: `Failed to back up existing config: ${getErrorMessage(err)}`,
+      },
     };
   }
 }
