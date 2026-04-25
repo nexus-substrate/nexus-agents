@@ -9,23 +9,20 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { platform } from 'node:os';
 import { getErrorMessage } from '../core/index.js';
 import { createLogger } from '../core/index.js';
-import { classifyExecError, type DetectionError } from './cli-detection-error.js';
+import { detectCliBinary, type CliDetectionInfo } from './setup-cli-detection.js';
 
 const logger = createLogger({ component: 'setup-codex' });
 
-/** Codex CLI detection result. */
-export interface CodexCliInfo {
-  readonly installed: boolean;
-  readonly version: string | undefined;
-  /**
-   * Classification of why detection failed. Only set when `installed` is
-   * `false` OR when the binary was located but `--version` failed (#2152).
-   */
-  readonly detectionError?: DetectionError;
-}
+/**
+ * Codex CLI detection result.
+ *
+ * Type alias of {@link CliDetectionInfo} — kept as a named type for the
+ * public API surface (re-exported from `cli/index.ts`). Identical shape
+ * across all three CLI setups (#2155).
+ */
+export type CodexCliInfo = CliDetectionInfo;
 
 /** Codex MCP configuration result. */
 export interface CodexConfigResult {
@@ -34,28 +31,9 @@ export interface CodexConfigResult {
   readonly message: string;
 }
 
-/**
- * Detects Codex CLI installation.
- */
+/** Detects Codex CLI installation. Delegates to {@link detectCliBinary}. */
 export function detectCodexCli(): CodexCliInfo {
-  try {
-    const cmd = platform() === 'win32' ? 'where' : 'which';
-    execFileSync(cmd, ['codex'], { timeout: 3000, stdio: 'pipe' });
-  } catch (err: unknown) {
-    return { installed: false, version: undefined, detectionError: classifyExecError(err) };
-  }
-
-  try {
-    const output = execFileSync('codex', ['--version'], {
-      timeout: 5000,
-      stdio: 'pipe',
-      encoding: 'utf-8',
-    });
-    const match = /(\d+\.\d+\.\d+)/.exec(output);
-    return { installed: true, version: match?.[1] };
-  } catch (err: unknown) {
-    return { installed: true, version: undefined, detectionError: classifyExecError(err) };
-  }
+  return detectCliBinary('codex');
 }
 
 /**
