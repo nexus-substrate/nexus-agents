@@ -169,6 +169,30 @@ describe('resolveModelId', () => {
   it('returns raw id for unknown alias', () => {
     expect(resolveModelId('custom-model-id')).toBe('custom-model-id');
   });
+
+  // Issue #2186 Child 1: aliases derive from model-capabilities.ts (single
+  // source of truth), so the legacy claude-opus-4 / claude-sonnet-4 / claude-haiku-4
+  // aliases must resolve to the current registry values, not the May-2025 strings
+  // that were hardcoded in claude-adapter-types.ts.
+  it('resolves claude-opus-4 to the current registry cliModelName (not stale 4-20250514)', () => {
+    expect(resolveModelId('claude-opus-4')).toBe('claude-opus-4-6');
+  });
+
+  it('resolves claude-sonnet-4 to the current registry cliModelName', () => {
+    expect(resolveModelId('claude-sonnet-4')).toBe('claude-sonnet-4-6');
+  });
+
+  it('resolves claude-haiku-4 to the current registry cliModelName', () => {
+    expect(resolveModelId('claude-haiku-4')).toBe('claude-haiku-4-5-20251001');
+  });
+
+  it('honors legacy claude-haiku-3 alias and routes it to the current haiku', () => {
+    expect(resolveModelId('claude-haiku-3')).toBe('claude-haiku-4-5-20251001');
+  });
+
+  it('passes through bare CLI aliases like "opus" via the registry', () => {
+    expect(resolveModelId('opus')).toBe('claude-opus-4-6');
+  });
 });
 
 // ============================================================================
