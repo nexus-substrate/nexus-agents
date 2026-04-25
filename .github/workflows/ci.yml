@@ -132,6 +132,41 @@ jobs:
           name: fitness-report-${{ matrix.os }}
           path: ${{ steps.fitness.outputs.report-path }}
 
+  model-string-drift:
+    name: Model String Drift Check
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup-node
+
+      # Advisory mode (#2199 Child 3). Findings print to job summary but do
+      # not fail the build. Will flip to blocking via NEXUS_DRIFT_ADVISORY=0
+      # in #2199 Child 4 after at least one merge cycle without false positives.
+      - name: Run model-string drift check (advisory)
+        run: |
+          set +e
+          OUTPUT=$(pnpm --silent check:model-drift 2>&1)
+          STATUS=$?
+          echo "$OUTPUT"
+          {
+            echo "## Model String Drift Check"
+            echo ""
+            echo '```'
+            echo "$OUTPUT"
+            echo '```'
+            echo ""
+            if [ $STATUS -ne 0 ] || echo "$OUTPUT" | grep -q "violation(s) found"; then
+              echo "⚠ Drift detected. Migrate to \`config/model-capabilities.ts\` or"
+              echo "add a structured allowlist entry referencing #2200."
+            else
+              echo "✓ No new drift. Allowlisted sites tracked in scripts/model-string-drift-allowlist.ts."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+
   index-check:
     name: Index Freshness Check
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
