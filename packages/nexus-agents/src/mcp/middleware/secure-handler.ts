@@ -265,6 +265,27 @@ function emitToolAudit(
   });
 }
 
+/**
+ * Emits an audit event when a tool handler throws (or returns a rejected
+ * Promise) — closes the audit-trail gap where unexpected exceptions left
+ * no auditor record (security-review fallout from #2191).
+ */
+function emitToolAuditException(
+  auditLogger: IAuditLogger,
+  toolName: string,
+  ctx: RequestContext,
+  durationMs: number
+): void {
+  const actor = actorFromContext(ctx);
+  auditLogger.logToolInvocation({
+    toolName,
+    outcome: 'error',
+    actor,
+    requestId: ctx.requestId,
+    durationMs,
+  });
+}
+
 /** Emits an audit event for a policy denial. */
 function emitPolicyAudit(
   auditLogger: IAuditLogger,
@@ -407,31 +428,54 @@ export function createSecureHandler(
     );
     if (preCheckError) return preCheckError;
 
-    const execStartTime = getTimeProvider().now();
-    try {
-      const result = await executeHandler(
-        handler,
-        sanitizedArgs,
-        { requestContext, logger: requestLogger },
-        requestLogger
-      );
-      sanitizeToolResult(result, requestLogger);
-      if (config.auditLogger) {
-        emitToolAudit(
-          config.auditLogger,
-          config.toolName,
-          requestContext,
-          result,
-          getTimeProvider().now() - execStartTime
-        );
-      }
-      return result;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      requestLogger.error('Tool execution failed', error instanceof Error ? error : undefined);
-      return internalError(message, requestContext.requestId);
-    }
+    return executeAndAudit(handler, sanitizedArgs, requestContext, requestLogger, config);
   };
+}
+
+/**
+ * Executes the wrapped handler with audit emission on both the success and
+ * exception paths. Extracted from `createSecureHandler` to keep that
+ * function within the 50-line budget.
+ */
+async function executeAndAudit(
+  handler: ToolHandler | ContextAwareHandler,
+  sanitizedArgs: unknown,
+  requestContext: RequestContext,
+  requestLogger: ILogger,
+  config: SecureHandlerConfig
+): Promise<ToolResult> {
+  const execStartTime = getTimeProvider().now();
+  try {
+    const result = await executeHandler(
+      handler,
+      sanitizedArgs,
+      { requestContext, logger: requestLogger },
+      requestLogger
+    );
+    sanitizeToolResult(result, requestLogger);
+    if (config.auditLogger) {
+      emitToolAudit(
+        config.auditLogger,
+        config.toolName,
+        requestContext,
+        result,
+        getTimeProvider().now() - execStartTime
+      );
+    }
+    return result;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    requestLogger.error('Tool execution failed', error instanceof Error ? error : undefined);
+    if (config.auditLogger) {
+      emitToolAuditException(
+        config.auditLogger,
+        config.toolName,
+        requestContext,
+        getTimeProvider().now() - execStartTime
+      );
+    }
+    return internalError(message, requestContext.requestId);
+  }
 }
 
 /**

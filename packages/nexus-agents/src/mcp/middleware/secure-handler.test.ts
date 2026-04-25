@@ -1373,5 +1373,53 @@ describe('SecureHandler', () => {
 
       expect(mockAuditLogger.logToolInvocation).not.toHaveBeenCalled();
     });
+
+    // Security review feedback: previously, when a tool handler THREW
+    // (vs returned isError:true), the catch block returned internalError
+    // but never emitted an audit. Auditors saw nothing — the tool
+    // appeared to never have run. Audit-trail gap (#2191 review fallout).
+    it('emits audit event with outcome=error when tool handler throws', async () => {
+      const handler: ToolHandler = () => {
+        throw new Error('boom');
+      };
+
+      const secureHandler = createSecureHandler(handler, {
+        toolName: 'throwing_tool',
+        logger: mockLogger,
+        auditLogger: mockAuditLogger,
+      });
+
+      const result = await secureHandler({});
+
+      // The caller still gets an internal-error response
+      expect(result.isError).toBe(true);
+      // The audit logger must have been called — auditor visibility.
+      expect(mockAuditLogger.logToolInvocation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          toolName: 'throwing_tool',
+          outcome: 'error',
+        })
+      );
+    });
+
+    it('emits audit event with outcome=error when tool returns rejected promise', async () => {
+      const handler: ToolHandler = () => Promise.reject(new Error('async boom'));
+
+      const secureHandler = createSecureHandler(handler, {
+        toolName: 'rejecting_tool',
+        logger: mockLogger,
+        auditLogger: mockAuditLogger,
+      });
+
+      const result = await secureHandler({});
+
+      expect(result.isError).toBe(true);
+      expect(mockAuditLogger.logToolInvocation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          toolName: 'rejecting_tool',
+          outcome: 'error',
+        })
+      );
+    });
   });
 });
