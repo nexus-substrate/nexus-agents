@@ -187,6 +187,24 @@ describe('findCanonicalModel', () => {
     // 'o3' is a codex model, not gemini
     expect(findCanonicalModel('gemini', 'o3')).toBeUndefined();
   });
+
+  // #2200 Child 1: legacy version-suffix names resolve via aliases[]
+  it('finds claude model by legacy alias from aliases[] (claude-opus-4)', () => {
+    const model = findCanonicalModel('claude', 'claude-opus-4');
+    expect(model).toBeDefined();
+    expect(model?.id).toBe('claude-opus');
+  });
+
+  it('finds claude model by legacy alias from aliases[] (claude-haiku-3)', () => {
+    const model = findCanonicalModel('claude', 'claude-haiku-3');
+    expect(model).toBeDefined();
+    expect(model?.id).toBe('claude-haiku');
+  });
+
+  it('does not match alias if cli does not match', () => {
+    // claude-opus-4 is a claude alias, not gemini
+    expect(findCanonicalModel('gemini', 'claude-opus-4')).toBeUndefined();
+  });
 });
 
 describe('buildModelInfo', () => {

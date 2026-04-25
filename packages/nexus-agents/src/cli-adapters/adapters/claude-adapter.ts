@@ -25,65 +25,35 @@ import {
 } from '../../config/model-config-helpers.js';
 
 /**
- * Maps internal model names to Claude CLI aliases.
- * CLI accepts: 'sonnet', 'opus', 'haiku' or full names like 'claude-sonnet-4-6'
- * Built from canonical registry + legacy names for backward compatibility.
+ * Maps internal model names → Claude CLI aliases. Derived entirely from the
+ * canonical registry: every claude entry contributes its `cliAlias` (passthrough),
+ * its `cliModelName`, and every legacy-name in `aliases[]`. Migration of these
+ * legacy strings into the registry happened in #2200 Child 1.
  */
 const MODEL_TO_CLI_ALIAS: Record<string, string> = buildClaudeAliasMap();
 
-/** Builds alias map from canonical registry + legacy versioned names. */
 function buildClaudeAliasMap(): Record<string, string> {
   const map: Record<string, string> = {};
   for (const model of DEFAULT_MODEL_CAPABILITIES.models) {
-    if (model.cliName === 'claude' && model.cliAlias !== undefined) {
-      // Allow direct alias pass-through
-      map[model.cliAlias] = model.cliAlias;
+    if (model.cliName !== 'claude' || model.cliAlias === undefined) continue;
+    const alias = model.cliAlias;
+    map[alias] = alias;
+    if (model.cliModelName !== undefined) map[model.cliModelName] = alias;
+    for (const legacyName of model.aliases ?? []) {
+      map[legacyName] = alias;
     }
   }
-  // Legacy versioned names → short CLI aliases
-  map['claude-sonnet-4'] = 'sonnet';
-  map['claude-sonnet-4-6'] = 'sonnet';
-  map['claude-sonnet-4-5-20250929'] = 'sonnet'; // Legacy compat
-  map['claude-opus-4'] = 'opus';
-  map['claude-opus-4-6'] = 'opus';
-  map['claude-opus-4-5-20251101'] = 'opus';
-  map['claude-haiku-3'] = 'haiku';
-  map['claude-haiku-4-5-20251001'] = 'haiku';
   return map;
 }
 
-/** Legacy fallback values for Claude models not in the canonical registry. */
-const CLAUDE_LEGACY_DEFAULTS = {
-  displayNames: {
-    'claude-opus-4': 'Claude Opus 4',
-    'claude-sonnet-4': 'Claude Sonnet 4',
-    'claude-haiku-3': 'Claude Haiku 3',
-    'claude-opus-4-5-20251101': 'Claude Opus 4.5',
-    opus: 'Claude Opus 4.6',
-    sonnet: 'Claude Sonnet 4.6',
-    haiku: 'Claude Haiku 4.5',
-  } as Readonly<Record<string, string>>,
-  inputCosts: {
-    'claude-opus-4': 15.0,
-    'claude-opus-4-5-20251101': 5.0,
-    'claude-sonnet-4': 3.0,
-    'claude-haiku-3': 0.25,
-    opus: 5.0,
-    sonnet: 3.0,
-    haiku: 1.0,
-  } as Readonly<Record<string, number>>,
-  outputCosts: {
-    'claude-opus-4': 75.0,
-    'claude-opus-4-5-20251101': 25.0,
-    'claude-sonnet-4': 15.0,
-    'claude-haiku-3': 1.25,
-    opus: 25.0,
-    sonnet: 15.0,
-    haiku: 5.0,
-  } as Readonly<Record<string, number>>,
-  inputCost: 5.0,
-  outputCost: 25.0,
-} as const;
+/**
+ * Default cost when an unrecognized model id is passed (pricing matches
+ * current Opus, the strongest tier — conservative over-estimate). Per-model
+ * legacy cost overrides were removed in #2200 Child 1; they're reachable
+ * via the registry now.
+ */
+const UNKNOWN_MODEL_DEFAULT_INPUT_COST = 5.0;
+const UNKNOWN_MODEL_DEFAULT_OUTPUT_COST = 25.0;
 
 /**
  * Claude CLI adapter using subprocess transport.
@@ -102,9 +72,13 @@ export class ClaudeCliAdapter extends SubprocessCliAdapter {
 
   /**
    * Gets Claude model information.
-   * buildModelInfo matches both cliModelName and cliAlias, so a single
-   * call handles 'opus', 'sonnet', 'haiku', and full model names.
-   * Falls back to legacy lookup for unrecognized models.
+   * `buildModelInfo` matches `cliModelName`, `cliAlias`, and `aliases[]` —
+   * a single call handles 'opus', 'sonnet', 'haiku', current model names,
+   * and the legacy `claude-opus-4` / `claude-haiku-3` / etc. entries that
+   * live in the registry's aliases since #2200 Child 1.
+   *
+   * Truly unrecognized models fall through to conservative defaults
+   * (current Opus pricing).
    */
   getModelInfo(): ModelInfo {
     const fromRegistry = buildModelInfo('claude', this.model);
@@ -112,13 +86,11 @@ export class ClaudeCliAdapter extends SubprocessCliAdapter {
 
     return {
       id: this.model,
-      name: CLAUDE_LEGACY_DEFAULTS.displayNames[this.model] ?? this.model,
+      name: this.model,
       contextWindow: 200_000,
       maxOutput: 64_000,
-      costPerMillionInput:
-        CLAUDE_LEGACY_DEFAULTS.inputCosts[this.model] ?? CLAUDE_LEGACY_DEFAULTS.inputCost,
-      costPerMillionOutput:
-        CLAUDE_LEGACY_DEFAULTS.outputCosts[this.model] ?? CLAUDE_LEGACY_DEFAULTS.outputCost,
+      costPerMillionInput: UNKNOWN_MODEL_DEFAULT_INPUT_COST,
+      costPerMillionOutput: UNKNOWN_MODEL_DEFAULT_OUTPUT_COST,
     };
   }
 

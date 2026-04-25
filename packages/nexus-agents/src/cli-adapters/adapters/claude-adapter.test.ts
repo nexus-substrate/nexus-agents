@@ -202,24 +202,28 @@ describe('ClaudeCliAdapter', () => {
       expect(info.costPerMillionOutput).toBe(25.0);
     });
 
-    it('should return correct info for opus model', () => {
+    it('resolves legacy claude-opus-4 alias to current Opus via registry (#2200 Child 1)', () => {
+      // Pre-#2200: returned stale V4 pricing (15/75) from a hardcoded fallback
+      // map. Post-#2200: legacy alias routes to claude-opus registry entry,
+      // returning current Opus 4.6 pricing — which matches what Anthropic
+      // actually charges when the request lands.
       const opusAdapter = new ClaudeCliAdapter({ model: 'claude-opus-4' });
       const info = opusAdapter.getModelInfo();
 
       expect(info.id).toBe('claude-opus-4');
-      expect(info.name).toBe('Claude Opus 4');
-      expect(info.costPerMillionInput).toBe(15.0);
-      expect(info.costPerMillionOutput).toBe(75.0);
+      expect(info.name).toBe('Claude Opus 4.6');
+      expect(info.costPerMillionInput).toBe(5.0);
+      expect(info.costPerMillionOutput).toBe(25.0);
     });
 
-    it('should return correct info for haiku model', () => {
+    it('resolves legacy claude-haiku-3 alias to current Haiku via registry (#2200 Child 1)', () => {
       const haikuAdapter = new ClaudeCliAdapter({ model: 'claude-haiku-3' });
       const info = haikuAdapter.getModelInfo();
 
       expect(info.id).toBe('claude-haiku-3');
-      expect(info.name).toBe('Claude Haiku 3');
-      expect(info.costPerMillionInput).toBe(0.25);
-      expect(info.costPerMillionOutput).toBe(1.25);
+      expect(info.name).toBe('Claude Haiku 4.5');
+      expect(info.costPerMillionInput).toBe(1.0);
+      expect(info.costPerMillionOutput).toBe(5.0);
     });
 
     it('should use default costs for unknown model', () => {
