@@ -359,6 +359,53 @@ describe('deprecation schema fields', () => {
 });
 
 // ---------------------------------------------------------------------------
+// aliases field (epic #2199 Child 1)
+//
+// Optional `aliases: readonly string[]` lets the registry hold the legacy
+// version-suffixed names that adapters currently maintain in their own
+// parallel registries (companion epic #2200). Schema-only addition; no
+// migration of existing aliases happens in this child.
+// ---------------------------------------------------------------------------
+
+describe('aliases schema field (#2199)', () => {
+  it('accepts model without aliases field (backward compatible)', () => {
+    const base = DEFAULT_MODEL_CAPABILITIES.models[0];
+    const result = ModelCapabilitySchema.safeParse(base);
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts model with aliases array of strings', () => {
+    const base = {
+      ...DEFAULT_MODEL_CAPABILITIES.models[0],
+      aliases: ['claude-opus-4', 'claude-opus-4-5-20251101'],
+    };
+    const result = ModelCapabilitySchema.safeParse(base);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.aliases).toEqual(['claude-opus-4', 'claude-opus-4-5-20251101']);
+    }
+  });
+
+  it('accepts model with empty aliases array', () => {
+    const base = { ...DEFAULT_MODEL_CAPABILITIES.models[0], aliases: [] };
+    const result = ModelCapabilitySchema.safeParse(base);
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects model with non-string alias entries', () => {
+    const base = { ...DEFAULT_MODEL_CAPABILITIES.models[0], aliases: ['ok', 42] };
+    const result = ModelCapabilitySchema.safeParse(base);
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects model with empty-string alias', () => {
+    const base = { ...DEFAULT_MODEL_CAPABILITIES.models[0], aliases: ['valid', ''] };
+    const result = ModelCapabilitySchema.safeParse(base);
+    expect(result.success).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Data Integrity (cross-project learning from tsundoku)
 // ---------------------------------------------------------------------------
 
