@@ -156,13 +156,23 @@ export class UnifiedAdapterRegistry {
    * Falls back to default adapter if model not recognized.
    */
   getAdapterForModel(modelPreference: string): IResilientAdapter {
-    const model = DEFAULT_MODEL_CAPABILITIES.models.find(
+    // Prefer exact matches (id / cliAlias / cliModelName) over prefix matches.
+    // For prefix fallback, longest-prefix-wins so a future registry containing
+    // both 'gemini-pro' and 'gemini-pro-experimental' resolves correctly even
+    // though the registry's natural array order isn't sorted by id length.
+    // Defense-in-depth — no current registry has prefix overlaps. (#2192)
+    const exact = DEFAULT_MODEL_CAPABILITIES.models.find(
       (m) =>
         m.id === modelPreference ||
         m.cliAlias === modelPreference ||
-        m.cliModelName === modelPreference ||
-        modelPreference.startsWith(m.id)
+        m.cliModelName === modelPreference
     );
+    const prefix =
+      exact ??
+      [...DEFAULT_MODEL_CAPABILITIES.models]
+        .filter((m) => modelPreference.startsWith(m.id))
+        .sort((a, b) => b.id.length - a.id.length)[0];
+    const model = prefix;
     if (model !== undefined) {
       this.logger.debug('Model resolved to CLI', {
         model: modelPreference,

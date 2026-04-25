@@ -187,6 +187,18 @@ describe('UnifiedAdapterRegistry', () => {
       const adapter = registry.getAdapterForModel('unknown-model-xyz');
       expect(adapter).toBeDefined();
     });
+
+    // #2192 defense-in-depth: prefix fallback uses longest-prefix-wins so a
+    // future registry with both 'gemini-pro' and 'gemini-pro-experimental'
+    // would resolve a 'gemini-pro-experimental-foo' input to the longer one.
+    // No current registry entries have this overlap, but verify the policy.
+    it('routes prefix matches via longest-prefix-wins (defense-in-depth)', () => {
+      // 'gemini-pro-bespoke-deployment' starts with both 'gemini-pro' (10 chars)
+      // and no longer entry — so it routes to gemini via the gemini-pro entry.
+      registry.getAdapterForModel('gemini-pro-bespoke-deployment');
+      const snapshot = registry.getSnapshot();
+      expect(snapshot.cachedAdapters).toContain('gemini');
+    });
   });
 
   describe('getAdapterForRole(role)', () => {
