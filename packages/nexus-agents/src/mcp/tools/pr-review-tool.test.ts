@@ -105,37 +105,73 @@ describe('pr_review tool', () => {
         makeReview('security', 'approve'),
         makeReview('devex', 'approve'),
       ];
-      expect(aggregatePrDecisions(reviews)).toBe('approve');
+      expect(aggregatePrDecisions(reviews)).toEqual({ decision: 'approve', verified: true });
     });
 
-    it('triggers request_changes only when a voter has a VERIFIED finding (#2225)', () => {
+    it('triggers VERIFIED request_changes when a voter has a verified finding (#2225)', () => {
       const reviews = [
         makeReview('architect', 'approve'),
         makeReview('security', 'request_changes', { findings: [VERIFIED_FINDING] }),
         makeReview('devex', 'approve'),
       ];
-      expect(aggregatePrDecisions(reviews)).toBe('request_changes');
+      expect(aggregatePrDecisions(reviews)).toEqual({
+        decision: 'request_changes',
+        verified: true,
+      });
     });
 
-    it('does NOT trigger request_changes when finding is unverified', () => {
-      // The 2026-04-25 audit (#2225) found 100% false-positive rate when the
-      // gate wasn't enforced. Voters who declare request_changes without a
-      // verified finding are demoted — reasoning still surfaces but the merge
-      // isn't blocked.
+    it('does NOT trigger request_changes when ONE voter dissents without verified finding', () => {
+      // Only 1 of 3 voters dissents — below the soft-block threshold of 3.
       const reviews = [
         makeReview('architect', 'approve'),
         makeReview('security', 'request_changes', { findings: [UNVERIFIED_FINDING] }),
         makeReview('devex', 'approve'),
       ];
-      expect(aggregatePrDecisions(reviews)).toBe('abstain');
+      expect(aggregatePrDecisions(reviews)).toEqual({ decision: 'abstain', verified: true });
     });
 
-    it('does NOT trigger request_changes when voter requests changes with NO findings', () => {
+    it('triggers SOFT request_changes when ≥3/5 voters dissent without verified findings (#2250)', () => {
+      // Empirically observed in the #2241 retest: voters reliably flag
+      // diff-readable bugs by majority but don't emit YAML findings. The
+      // soft-block path catches that signal; tagged unverified.
       const reviews = [
-        makeReview('security', 'request_changes', { findings: [] }),
-        makeReview('architect', 'approve'),
+        makeReview('architect', 'request_changes', { findings: [] }),
+        makeReview('security', 'request_changes', { findings: [UNVERIFIED_FINDING] }),
+        makeReview('devex', 'request_changes', { findings: [] }),
+        makeReview('catfish', 'approve'),
+        makeReview('scope_steward', 'approve'),
       ];
-      expect(aggregatePrDecisions(reviews)).toBe('abstain');
+      expect(aggregatePrDecisions(reviews)).toEqual({
+        decision: 'request_changes',
+        verified: false,
+      });
+    });
+
+    it('soft-block requires the threshold of 3 — 2/5 dissent stays abstain', () => {
+      const reviews = [
+        makeReview('architect', 'request_changes'),
+        makeReview('security', 'request_changes'),
+        makeReview('devex', 'approve'),
+        makeReview('catfish', 'approve'),
+        makeReview('scope_steward', 'approve'),
+      ];
+      expect(aggregatePrDecisions(reviews)).toEqual({ decision: 'abstain', verified: true });
+    });
+
+    it('verified blocker beats soft block — even 1 verified finding wins', () => {
+      const reviews = [
+        makeReview('architect', 'request_changes', { findings: [VERIFIED_FINDING] }),
+        makeReview('security', 'approve'),
+        makeReview('devex', 'approve'),
+        makeReview('catfish', 'approve'),
+        makeReview('scope_steward', 'approve'),
+      ];
+      // Even with 4 approves, a single verified finding triggers
+      // verified=true request_changes — the gate's intent is preserved.
+      expect(aggregatePrDecisions(reviews)).toEqual({
+        decision: 'request_changes',
+        verified: true,
+      });
     });
 
     it('triggers request_changes if at least one finding is verified (mixed findings)', () => {
@@ -144,7 +180,10 @@ describe('pr_review tool', () => {
           findings: [UNVERIFIED_FINDING, VERIFIED_FINDING],
         }),
       ];
-      expect(aggregatePrDecisions(reviews)).toBe('request_changes');
+      expect(aggregatePrDecisions(reviews)).toEqual({
+        decision: 'request_changes',
+        verified: true,
+      });
     });
 
     it('ignores findings on error votes', () => {
@@ -155,7 +194,19 @@ describe('pr_review tool', () => {
         }),
         makeReview('architect', 'approve'),
       ];
-      expect(aggregatePrDecisions(reviews)).toBe('approve');
+      expect(aggregatePrDecisions(reviews)).toEqual({ decision: 'approve', verified: true });
+    });
+
+    it('soft-block ignores error votes too', () => {
+      // 3 request_changes but 1 is error → only 2 valid dissenters.
+      const reviews = [
+        makeReview('architect', 'request_changes'),
+        makeReview('security', 'request_changes'),
+        makeReview('devex', 'request_changes', { source: 'error' }),
+        makeReview('catfish', 'approve'),
+        makeReview('scope_steward', 'approve'),
+      ];
+      expect(aggregatePrDecisions(reviews)).toEqual({ decision: 'abstain', verified: true });
     });
 
     it('returns abstain when all voters errored', () => {
@@ -163,16 +214,16 @@ describe('pr_review tool', () => {
         makeReview('architect', 'approve', { source: 'error' }),
         makeReview('security', 'approve', { source: 'error' }),
       ];
-      expect(aggregatePrDecisions(reviews)).toBe('abstain');
+      expect(aggregatePrDecisions(reviews)).toEqual({ decision: 'abstain', verified: true });
     });
 
     it('returns abstain on mixed approve/abstain (no clear approval)', () => {
       const reviews = [makeReview('architect', 'approve'), makeReview('security', 'abstain')];
-      expect(aggregatePrDecisions(reviews)).toBe('abstain');
+      expect(aggregatePrDecisions(reviews)).toEqual({ decision: 'abstain', verified: true });
     });
 
     it('returns abstain on empty input', () => {
-      expect(aggregatePrDecisions([])).toBe('abstain');
+      expect(aggregatePrDecisions([])).toEqual({ decision: 'abstain', verified: true });
     });
   });
 

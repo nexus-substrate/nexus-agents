@@ -101,8 +101,23 @@ export interface PrReviewVote {
   readonly errorMessage?: string;
 }
 
+/** Aggregate decision shape (#2250 Child 7). When `summary` is
+ * `request_changes`, `verified` distinguishes high-confidence
+ * blockers (≥1 verified finding) from majority-dissent soft blocks
+ * (≥3/5 voters request_changes without producing verified findings).
+ * Reviewers should apply the verification gate themselves on
+ * unverified soft blocks. */
+export interface PrReviewAggregate {
+  readonly decision: PrReviewDecision;
+  readonly verified: boolean;
+}
+
 export interface PrReviewResponse {
   readonly summary: PrReviewDecision;
+  /** True when the request_changes / approve outcome was driven by
+   * verified findings or unanimous approval; false when the outcome
+   * is a soft signal (majority dissent without verified findings). */
+  readonly verified: boolean;
   readonly approveCount: number;
   readonly requestChangesCount: number;
   readonly abstainCount: number;
@@ -125,31 +140,57 @@ export function mapVoteDecisionToPrDecision(
   return voteDecision;
 }
 
-/** Aggregates per-voter decisions into a single summary outcome.
+/** Threshold for soft-block aggregation: ≥3 of 5 non-error voters
+ * voting request_changes triggers a soft blocker per #2250 Child 7. */
+const SOFT_BLOCK_REQUEST_CHANGES_THRESHOLD = 3;
+
+/** Aggregates per-voter decisions into a single summary outcome with a
+ * verified/unverified tag (#2250 Child 7).
  *
- * Per #2233 Child 3: `request_changes` only fires when at least one
- * non-error voter declared `request_changes` AND has at least one
- * VERIFIED finding (all 4 gate checks passed with substantive
- * named_assertion). This is the #2225 verification gate enforcement —
- * without it, the 2026-04-25 audit found a 100% false-positive rate.
+ * Tiers, in order:
  *
- * Voters who declare `request_changes` but emit no verified findings
- * are demoted to "informational" — their reasoning still surfaces to
- * the human reviewer but doesn't trigger blocking on its own.
+ * 1. **Verified blocker** (`request_changes`, verified=true) — at least
+ *    one non-error voter declared `request_changes` AND has at least one
+ *    VERIFIED finding (all 4 gate checks passed with substantive
+ *    named_assertion). This is the #2225 verification gate.
+ * 2. **Soft blocker** (`request_changes`, verified=false) — ≥3 of 5
+ *    non-error voters voted `request_changes`, but none produced a
+ *    verified finding. The retest in #2241 showed voters reliably
+ *    flag diff-readable bugs at this rate even without producing the
+ *    YAML structure (#2245 covers why). Tagged unverified so reviewers
+ *    apply the verification gate themselves.
+ * 3. **Approve** (verified=true) — all non-error voters approve.
+ * 4. **Abstain** (verified=true) — anything else; conservative default.
  *
- * - ≥1 verified finding from a non-error request_changes voter → `request_changes`
- * - All non-error votes `approve` (no verified findings) → `approve`
- * - Otherwise → `abstain` (mixed/all-errors/all-unverified-findings)
+ * Why no "AND has any finding" guard on the soft path: the empirical
+ * data in `pr-review-experiment-results-v2.md` showed voters voting
+ * request_changes but emitting 0 findings (verified or otherwise).
+ * Adding the finding requirement would zero this path out and reproduce
+ * the baseline behavior.
  */
-export function aggregatePrDecisions(reviews: readonly PrReviewVote[]): PrReviewDecision {
+export function aggregatePrDecisions(reviews: readonly PrReviewVote[]): PrReviewAggregate {
   const valid = reviews.filter((r) => r.source !== 'error');
-  if (valid.length === 0) return 'abstain';
+  if (valid.length === 0) return { decision: 'abstain', verified: true };
+
+  // Tier 1: verified blocker — ≥1 voter has a verified finding.
   const hasVerifiedBlocker = valid.some(
     (r) => r.decision === 'request_changes' && r.findings.some((f) => f.verified)
   );
-  if (hasVerifiedBlocker) return 'request_changes';
-  if (valid.every((r) => r.decision === 'approve')) return 'approve';
-  return 'abstain';
+  if (hasVerifiedBlocker) return { decision: 'request_changes', verified: true };
+
+  // Tier 2: soft blocker — majority dissent without verified findings.
+  const requestChangesVoters = valid.filter((r) => r.decision === 'request_changes').length;
+  if (requestChangesVoters >= SOFT_BLOCK_REQUEST_CHANGES_THRESHOLD) {
+    return { decision: 'request_changes', verified: false };
+  }
+
+  // Tier 3: unanimous approve.
+  if (valid.every((r) => r.decision === 'approve')) {
+    return { decision: 'approve', verified: true };
+  }
+
+  // Tier 4: ambiguous — abstain.
+  return { decision: 'abstain', verified: true };
 }
 
 // ============================================================================
@@ -245,10 +286,11 @@ async function prReviewHandler(args: unknown, ctx: HandlerContext): Promise<Tool
 
     const reviews = voteResults.map(toPrReviewVote);
     const counts = summarizeReviews(reviews);
-    const summary = aggregatePrDecisions(reviews);
+    const aggregate = aggregatePrDecisions(reviews);
 
     const response: PrReviewResponse = {
-      summary,
+      summary: aggregate.decision,
+      verified: aggregate.verified,
       ...counts,
       reviews,
       totalDurationMs: Date.now() - start,

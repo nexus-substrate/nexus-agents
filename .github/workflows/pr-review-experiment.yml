@@ -116,10 +116,10 @@ jobs:
               source: r.source,
               cli: r.cli,
             }));
-            const summary = aggregatePrDecisions(reviews);
+            const aggregate = aggregatePrDecisions(reviews);
 
-            await fs.writeFile('pr-review-result.json', JSON.stringify({ summary, reviews }, null, 2));
-            console.log('Summary:', summary);
+            await fs.writeFile('pr-review-result.json', JSON.stringify({ summary: aggregate.decision, verified: aggregate.verified, reviews }, null, 2));
+            console.log('Summary:', aggregate.decision, '(verified=' + aggregate.verified + ')');
             console.log('Per-voter:', reviews.map((r) => r.role + '=' + r.decision).join(', '));
           NODE_EOF
           )"
@@ -133,11 +133,19 @@ jobs:
             let body;
             try {
               const result = JSON.parse(fs.readFileSync('pr-review-result.json', 'utf8'));
-              const icon = { approve: '✅', request_changes: '❌', abstain: '➖' }[result.summary] || '❓';
+              // Three icons: ✅ approve, ❌ verified-blocker, ⚠️ soft-block (majority dissent without verified findings — apply gate yourself), ➖ abstain.
+              const isSoftBlock = result.summary === 'request_changes' && result.verified === false;
+              const icon = isSoftBlock
+                ? '⚠️'
+                : ({ approve: '✅', request_changes: '❌', abstain: '➖' }[result.summary] || '❓');
+              const tag = isSoftBlock ? 'REQUEST CHANGES (UNVERIFIED — majority dissent)' : result.summary.toUpperCase();
               const lines = [
                 `## ${icon} PR Review Experiment (#2233)`,
                 '',
-                `**Overall:** ${result.summary.toUpperCase()}`,
+                `**Overall:** ${tag}`,
+                ...(isSoftBlock
+                  ? ['', '> ⚠️ Majority of voters requested changes but none produced a verified finding. Apply the verification gate (`.rules/discovered-issues.md`) before acting on these concerns — they may be false positives.']
+                  : []),
                 '',
                 '| Voter | Decision | Confidence | CLI |',
                 '| --- | --- | --- | --- |',
