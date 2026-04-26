@@ -257,7 +257,7 @@ function buildSuccessResult(
     knownBugCount: pr.knownBugs.length,
     diffSize: diff.length,
     diffTruncated: truncated,
-    summary: aggregatePrDecisions(reviews),
+    summary: aggregatePrDecisions(reviews).decision,
     approveCount: reviews.filter((r) => r.source !== 'error' && r.decision === 'approve').length,
     requestChangesCount: reviews.filter(
       (r) => r.source !== 'error' && r.decision === 'request_changes'
