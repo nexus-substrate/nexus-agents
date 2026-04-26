@@ -20,7 +20,7 @@ nexus-agents makes your AI coding tools work together intelligently. It coordina
 - **Enforces quality** — consensus voting (6 strategies including Bayesian higher-order), QA review loops, security scans with SARIF
 - **Learns over time** — 5 memory backends (session, belief, agentic, adaptive, typed) track what works, feeding routing, planning, and research decisions
 - **Runs a full dev pipeline** — research papers, plan architecture, vote on proposals, decompose into tasks, implement, QA review, ship
-- **Connects everything** — 31 MCP tools, 9 research sources, graph workflows, checkpoint/resume, GitHub/GitLab issue tracking
+- **Connects everything** — 32 MCP tools, 9 research sources, graph workflows, checkpoint/resume, GitHub/GitLab issue tracking
 
 ```
 You: "Review this code for security and performance"
