@@ -1,0 +1,101 @@
+{
+  "curatedAt": "2026-04-26T17:00:00Z",
+  "methodology": "Seed dataset (10 PRs) curated from recent nexus-agents merge history. 'Buggy' = PR that needed follow-up fix commits (pre-merge CI failure on first push, or post-merge fixup PR). 'Clean' = PR that landed without any follow-up fix commits. Curated empirically from this autonomous run plus prior 30-day history. The bar is intentionally low — pre-merge CI failures count as 'buggy' because catching them before merge is what pr_review is for. Expand to 20+ as data accrues; harness handles arbitrary dataset size.",
+  "prs": [
+    {
+      "number": 2228,
+      "title": "feat(consensus): add scope_steward role for build-vs-buy gating (#2185)",
+      "knownBugs": [
+        {
+          "summary": "Missing scope_steward entry in ROLE_VOTE_DISTRIBUTIONS — Type Check failed on first CI push",
+          "fixReference": "4278f2739",
+          "location": "packages/nexus-agents/src/cli/voter-execution.ts:134"
+        }
+      ],
+      "notes": "Original PR added scope_steward to VoterRole union but missed updating Record<VoterRole, ...> distribution map. CI Type Check caught it; fixup needed before merge."
+    },
+    {
+      "number": 2236,
+      "title": "feat(mcp): pr_review tool + opt-in GH workflow (#2233 children 1+2)",
+      "knownBugs": [
+        {
+          "summary": "EXPECTED_TOOL_COUNT pinned to 31; new tool brought count to 32 — index.test.ts assertion failed",
+          "fixReference": "d606a365a",
+          "location": "packages/nexus-agents/src/mcp/tools/index.test.ts:71"
+        },
+        {
+          "summary": "MCP_TOOL_COUNT prose drifted across 5 files (site-data.ts, server.json description, server.json tools[], README.md bullet+ASCII+table, components.md)",
+          "fixReference": "2c3b55f52",
+          "location": "README.md:23"
+        }
+      ],
+      "notes": "Tool addition required updating multiple synced count locations and a hardcoded test pin. Discovered via Docs Content Drift CI gate (#2107)."
+    },
+    {
+      "number": 2237,
+      "title": "docs(2229): cloud provider setup guide for Bedrock / Vertex / Azure",
+      "knownBugs": [
+        {
+          "summary": "New doc not added to docs/README.md canonical index — Canonical Index Check CI gate failed",
+          "fixReference": "8781e438c",
+          "location": "docs/README.md:147"
+        }
+      ],
+      "notes": "Doc added to docs/guides/ but not registered in the index. Caught by canonical-index gate."
+    },
+    {
+      "number": 2231,
+      "title": "docs(claude.md): fix drift, reconcile agent table, extract policy bodies",
+      "knownBugs": [
+        {
+          "summary": "buildAncillaryProbes() exceeded max-lines-per-function (77 > 50) blocking pre-commit lint",
+          "fixReference": "7b23e8b5f",
+          "location": "scripts/inject-governance.ts:539"
+        }
+      ],
+      "notes": "Pre-existing function-too-long violation surfaced when adding new TOOL_DESCRIPTIONS entries pushed file changes through lint-staged. Fixed by extracting per-target probe builders."
+    },
+    {
+      "number": 2191,
+      "title": "fix(security): rewrite base64-detection to eliminate ReDoS",
+      "knownBugs": [
+        {
+          "summary": "Base64 detection regex had catastrophic backtracking (CWE-1333)",
+          "fixReference": "f1742153b",
+          "location": "packages/nexus-agents/src/security/input-sanitizer.ts"
+        }
+      ],
+      "notes": "Original regex was vulnerable to ReDoS. Rewrite uses two-phase detection (length-bounded global match + discriminator)."
+    },
+    {
+      "number": 2235,
+      "title": "fix(research): repair github + semantic_scholar discovery (#2234)",
+      "knownBugs": [],
+      "notes": "Clean: targeted fix with new tests, lint clean, CI green on first push."
+    },
+    {
+      "number": 2238,
+      "title": "feat(2233 child 3): enforce verification gate in pr_review findings",
+      "knownBugs": [],
+      "notes": "Clean: 49/49 tests pass, lint clean, CI green on first push, merged without follow-up."
+    },
+    {
+      "number": 2239,
+      "title": "test(consensus): pin scope_steward × pm correlation behavior (#2227)",
+      "knownBugs": [],
+      "notes": "Clean: pure test additions, 53/53 pass, no follow-up."
+    },
+    {
+      "number": 2226,
+      "title": "docs(governance): add verification gate for code-review subagent findings (#2225)",
+      "knownBugs": [],
+      "notes": "Clean: docs-only governance update, no follow-up fix commits."
+    },
+    {
+      "number": 2217,
+      "title": "docs: sync README, JSDoc, and CONFIGURATION.md after recent PRs",
+      "knownBugs": [],
+      "notes": "Clean: docs sync PR, no follow-up."
+    }
+  ]
+}

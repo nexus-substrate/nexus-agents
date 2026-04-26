@@ -1,0 +1,2 @@
+This directory holds outputs from scripts/pr-review-batch.ts and scripts/pr-review-score.ts.
+Result files are named pr-review-batch-<timestamp>.{jsonl,summary.json,score.json}.
