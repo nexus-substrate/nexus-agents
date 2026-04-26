@@ -305,3 +305,7 @@ The `Dockerfile.sandbox` extends `docker/sandbox-templates:opencode` with nexus-
 **Model not selected by router**: Custom models default to `cliName: 'opencode'`. If OpenCode is unavailable, the router skips opencode models entirely. Check `nexus-agents doctor` for adapter status.
 
 **Wrong model used**: Verify `cliModelName` in `model-capabilities.ts` matches the provider ID in `opencode.json`. The format is `<provider-id>/<model-id>`.
+
+## Related
+
+- [CLOUD_PROVIDERS.md](./CLOUD_PROVIDERS.md) — picking between OpenRouter / LiteLLM / custom-gateway for Bedrock, Vertex, Azure access
