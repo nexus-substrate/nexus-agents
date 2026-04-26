@@ -10,22 +10,30 @@ import { z } from 'zod';
 // Dataset (input — checked into the repo)
 // ============================================================================
 
-/** A single PR in the historical evaluation set. Either has known bugs (with
- * post-merge fix references) or is `clean` (no known bugs). */
+/** A single PR in the historical evaluation set, OR a synthetic test case
+ * with an inline diff. Either has known bugs (with post-merge fix references
+ * for historical PRs, or the bug location for synthetic ones) or is `clean`. */
 export const SamplePrSchema = z.object({
+  /** PR number on the project repo (used to fetch diff via gh api), OR a
+   * synthetic id like `synthetic-001` when paired with `customDiff`. */
   number: z
-    .number()
-    .int()
-    .positive()
-    .describe('PR number on github.com/williamzujkowski/nexus-agents'),
+    .union([z.number().int().positive(), z.string().min(1).max(50)])
+    .describe('PR number, or synthetic ID for customDiff entries'),
   title: z.string().min(1).max(500),
+  /** Optional inline diff. When set, harness uses this instead of fetching
+   * from GitHub — lets us hand-craft test cases with known diff-readable
+   * bugs at controlled locations. */
+  customDiff: z.string().max(50_000).optional(),
+  /** Optional inline description (used with customDiff). */
+  customDescription: z.string().max(5000).optional(),
   /** Empty array = clean PR. Each entry describes a known bug introduced
-   * by this PR (and typically fixed by a follow-up PR/commit). */
+   * by this PR (and typically fixed by a follow-up PR/commit, or, for
+   * synthetic cases, deliberately placed by the test author). */
   knownBugs: z.array(
     z.object({
       summary: z.string().min(1).max(500),
-      /** The fix — PR number, commit SHA, or issue number that reverted/fixed
-       * this bug. At least one required to count as a "known" bug. */
+      /** The fix — PR number, commit SHA, issue number, or 'synthetic' for
+       * hand-crafted test cases. */
       fixReference: z.string().min(1).max(200),
       /** Optional file:line hint where the bug lived, to help score finding
        * matches. */
@@ -52,7 +60,7 @@ export type SampleDataset = z.infer<typeof SampleDatasetSchema>;
 // ============================================================================
 
 export interface BatchPrResult {
-  readonly prNumber: number;
+  readonly prNumber: number | string;
   readonly title: string;
   readonly knownBugCount: number;
   readonly diffSize: number;
@@ -100,7 +108,7 @@ export interface BatchSummary {
 // ============================================================================
 
 export interface PerPrScore {
-  readonly prNumber: number;
+  readonly prNumber: number | string;
   readonly knownBugCount: number;
   readonly toolDecision: 'approve' | 'request_changes' | 'abstain';
   readonly verifiedFindingCount: number;

@@ -1,7 +1,77 @@
 {
-  "curatedAt": "2026-04-26T17:00:00Z",
-  "methodology": "Seed dataset (10 PRs) curated from recent nexus-agents merge history. 'Buggy' = PR that needed follow-up fix commits (pre-merge CI failure on first push, or post-merge fixup PR). 'Clean' = PR that landed without any follow-up fix commits. Curated empirically from this autonomous run plus prior 30-day history. The bar is intentionally low — pre-merge CI failures count as 'buggy' because catching them before merge is what pr_review is for. Expand to 20+ as data accrues; harness handles arbitrary dataset size.",
+  "curatedAt": "2026-04-26T19:00:00Z",
+  "methodology": "Hybrid v2 dataset for #2241 retest. 10 entries: 5 synthetic test cases with hand-crafted diff-readable bugs (each placed at a known location with the bug pattern observable in the diff alone — addresses #2246 dataset-bias finding) + 3 historical PRs from this autonomous run + 2 synthetic clean counterparts. Synthetic entries use the customDiff field so the harness skips the GitHub fetch. Bug patterns chosen to test what a diff-only adversarial reviewer should plausibly catch: ReDoS regex, off-by-one bound, missing await (TOCTOU), null deref on optional, resource leak (event listener). Each synthetic 'CLEAN' case presents a similar-shaped diff WITHOUT the bug to test for false positives.",
   "prs": [
+    {
+      "number": "synthetic-redos",
+      "title": "feat(security): add base64 detection for input sanitizer (synthetic test case)",
+      "customDescription": "Adds a regex pattern that flags base64-encoded payloads in untrusted input.",
+      "customDiff": "diff --git a/packages/nexus-agents/src/security/input-sanitizer.ts b/packages/nexus-agents/src/security/input-sanitizer.ts\nindex 0000001..0000002 100644\n--- a/packages/nexus-agents/src/security/input-sanitizer.ts\n+++ b/packages/nexus-agents/src/security/input-sanitizer.ts\n@@ -94,6 +94,11 @@ const INJECTION_PATTERNS: readonly PatternMatch[] = [\n     flag: 'fake_conversation',\n     pattern: /<(?:assistant|human|user|system)>/i,\n   },\n+  {\n+    flag: 'base64_encoded',\n+    // Lookahead requires at least one base64-discriminating char to skip pure-hex.\n+    pattern: /(?=[A-Za-z0-9+/]*[g-zG-Z+/=])[A-Za-z0-9+/]{40,}={0,2}/,\n+  },\n ];",
+      "knownBugs": [
+        {
+          "summary": "ReDoS via catastrophic backtracking — overlapping character classes in lookahead + quantifier (CWE-1333)",
+          "fixReference": "synthetic (real fix: #2216 / commit f1742153b)",
+          "location": "packages/nexus-agents/src/security/input-sanitizer.ts:99"
+        }
+      ],
+      "notes": "Real-world ReDoS pattern lifted from #2191/#2216 history. Security voter with OWASP context should flag the (?=X*Y)X{n,} structure as a polynomial-backtracking risk."
+    },
+    {
+      "number": "synthetic-off-by-one",
+      "title": "feat(pagination): clamp page size to maxItems (synthetic test case)",
+      "customDescription": "Limits result page size so callers can't request unbounded sets.",
+      "customDiff": "diff --git a/packages/nexus-agents/src/api/pagination.ts b/packages/nexus-agents/src/api/pagination.ts\nindex 0000001..0000002 100644\n--- a/packages/nexus-agents/src/api/pagination.ts\n+++ b/packages/nexus-agents/src/api/pagination.ts\n@@ -10,6 +10,12 @@ export interface PaginatedResult<T> {\n   readonly items: readonly T[];\n   readonly nextCursor: string | undefined;\n }\n+\n+/** Clamp requested page size to [1, maxItems]. */\n+export function clampPageSize(requested: number, maxItems: number): number {\n+  if (requested < 1) return 1;\n+  if (requested > maxItems) return maxItems;\n+  return requested - 1;\n+}",
+      "knownBugs": [
+        {
+          "summary": "Off-by-one in clampPageSize — returns requested-1 in the in-range path; should return requested unchanged",
+          "fixReference": "synthetic",
+          "location": "packages/nexus-agents/src/api/pagination.ts:18"
+        }
+      ],
+      "notes": "Architect or devex voter should flag: function name says 'clamp to range' but returns one-less than the input when in range. Test would assert clampPageSize(50, 100) === 50, this returns 49."
+    },
+    {
+      "number": "synthetic-missing-await",
+      "title": "feat(session): refresh token on each request (synthetic test case)",
+      "customDescription": "Auto-refreshes session token before downstream calls.",
+      "customDiff": "diff --git a/packages/nexus-agents/src/auth/session.ts b/packages/nexus-agents/src/auth/session.ts\nindex 0000001..0000002 100644\n--- a/packages/nexus-agents/src/auth/session.ts\n+++ b/packages/nexus-agents/src/auth/session.ts\n@@ -42,5 +42,11 @@ export class Session {\n     this.token = token;\n   }\n \n+  async refreshAndCall<T>(call: () => Promise<T>): Promise<T> {\n+    this.refreshToken();\n+    return call();\n+  }\n+\n+  private async refreshToken(): Promise<void> {\n+    this.token = await fetchFreshToken(this.userId);\n+  }\n }",
+      "knownBugs": [
+        {
+          "summary": "Missing await on refreshToken — async fire-and-forget, the call() runs with stale token",
+          "fixReference": "synthetic",
+          "location": "packages/nexus-agents/src/auth/session.ts:46"
+        }
+      ],
+      "notes": "Architect or security voter should flag: refreshToken returns Promise<void> but is invoked without await. The call() proceeds before the new token is set; downstream uses the stale token. Failing test: assert that the token was updated when call() runs."
+    },
+    {
+      "number": "synthetic-null-deref",
+      "title": "feat(metrics): track average latency from optional response field (synthetic test case)",
+      "customDescription": "Updates a rolling average from response.timing.latencyMs.",
+      "customDiff": "diff --git a/packages/nexus-agents/src/metrics/latency.ts b/packages/nexus-agents/src/metrics/latency.ts\nindex 0000001..0000002 100644\n--- a/packages/nexus-agents/src/metrics/latency.ts\n+++ b/packages/nexus-agents/src/metrics/latency.ts\n@@ -8,6 +8,11 @@ export interface ApiResponse {\n   readonly status: number;\n   readonly timing?: { readonly latencyMs: number };\n }\n+\n+export function recordLatency(rolling: number[], response: ApiResponse): void {\n+  rolling.push(response.timing.latencyMs);\n+  if (rolling.length > 100) rolling.shift();\n+}",
+      "knownBugs": [
+        {
+          "summary": "Null deref on optional `response.timing` — schema marks timing as optional but code accesses .latencyMs unconditionally",
+          "fixReference": "synthetic",
+          "location": "packages/nexus-agents/src/metrics/latency.ts:13"
+        }
+      ],
+      "notes": "Architect or devex voter should flag: ApiResponse.timing is optional (`?:`), but recordLatency dereferences without a guard. TypeError when response.timing is undefined. Failing test: recordLatency([], { status: 200 }) throws."
+    },
+    {
+      "number": "synthetic-listener-leak",
+      "title": "feat(workers): attach progress listener for streaming jobs (synthetic test case)",
+      "customDescription": "Workers emit 'progress' events; subscribe so callers can show a progress bar.",
+      "customDiff": "diff --git a/packages/nexus-agents/src/workers/progress.ts b/packages/nexus-agents/src/workers/progress.ts\nindex 0000001..0000002 100644\n--- a/packages/nexus-agents/src/workers/progress.ts\n+++ b/packages/nexus-agents/src/workers/progress.ts\n@@ -3,6 +3,15 @@ import { EventEmitter } from 'node:events';\n export async function runWithProgress<T>(\n   worker: EventEmitter,\n   task: () => Promise<T>,\n   onProgress: (pct: number) => void\n ): Promise<T> {\n+  worker.on('progress', onProgress);\n+  try {\n+    return await task();\n+  } catch (err) {\n+    throw err;\n+  }\n+}",
+      "knownBugs": [
+        {
+          "summary": "Listener leak — worker.on('progress', ...) added but never removed; finally/cleanup missing",
+          "fixReference": "synthetic",
+          "location": "packages/nexus-agents/src/workers/progress.ts:8"
+        }
+      ],
+      "notes": "Architect or security voter should flag: long-lived workers (e.g. shared singleton) accumulate listeners across calls; eventually MaxListenersExceededWarning, then memory pressure. Need worker.off('progress', onProgress) in finally. Failing test: 11 sequential runWithProgress calls trigger MaxListeners warning."
+    },
     {
       "number": 2228,
       "title": "feat(consensus): add scope_steward role for build-vs-buy gating (#2185)",
@@ -12,90 +82,35 @@
           "location": "packages/nexus-agents/src/cli/voter-execution.ts:134"
         }
       ],
-      "notes": "Original PR added scope_steward to VoterRole union but missed updating Record<VoterRole, ...> distribution map. CI Type Check caught it; fixup needed before merge."
-    },
-    {
-      "number": 2236,
-      "title": "feat(mcp): pr_review tool + opt-in GH workflow (#2233 children 1+2)",
-      "knownBugs": [
-        {
-          "summary": "EXPECTED_TOOL_COUNT pinned to 31; new tool brought count to 32 — index.test.ts assertion failed",
-          "fixReference": "d606a365a",
-          "location": "packages/nexus-agents/src/mcp/tools/index.test.ts:71"
-        },
-        {
-          "summary": "MCP_TOOL_COUNT prose drifted across 5 files (site-data.ts, server.json description, server.json tools[], README.md bullet+ASCII+table, components.md)",
-          "fixReference": "2c3b55f52",
-          "location": "README.md:23"
-        }
-      ],
-      "notes": "Tool addition required updating multiple synced count locations and a hardcoded test pin. Discovered via Docs Content Drift CI gate (#2107)."
-    },
-    {
-      "number": 2237,
-      "title": "docs(2229): cloud provider setup guide for Bedrock / Vertex / Azure",
-      "knownBugs": [
-        {
-          "summary": "New doc not added to docs/README.md canonical index — Canonical Index Check CI gate failed",
-          "fixReference": "8781e438c",
-          "location": "docs/README.md:147"
-        }
-      ],
-      "notes": "Doc added to docs/guides/ but not registered in the index. Caught by canonical-index gate."
-    },
-    {
-      "number": 2231,
-      "title": "docs(claude.md): fix drift, reconcile agent table, extract policy bodies",
-      "knownBugs": [
-        {
-          "summary": "buildAncillaryProbes() exceeded max-lines-per-function (77 > 50) blocking pre-commit lint",
-          "fixReference": "7b23e8b5f",
-          "location": "scripts/inject-governance.ts:539"
-        }
-      ],
-      "notes": "Pre-existing function-too-long violation surfaced when adding new TOOL_DESCRIPTIONS entries pushed file changes through lint-staged. Fixed by extracting per-target probe builders."
-    },
-    {
-      "number": 2191,
-      "title": "fix(security): rewrite base64-detection to eliminate ReDoS",
-      "knownBugs": [
-        {
-          "summary": "Base64 detection regex had catastrophic backtracking (CWE-1333)",
-          "fixReference": "f1742153b",
-          "location": "packages/nexus-agents/src/security/input-sanitizer.ts"
-        }
-      ],
-      "notes": "Original regex was vulnerable to ReDoS. Rewrite uses two-phase detection (length-bounded global match + discriminator)."
+      "notes": "Historical PR with CI-detectable bug — kept for cross-comparison with synthetic cases. A diff-only reviewer would need to spot the missing entry by reading the union+record relationship; harder than the synthetic cases."
     },
     {
       "number": 2235,
       "title": "fix(research): repair github + semantic_scholar discovery (#2234)",
       "knownBugs": [],
-      "notes": "Clean: targeted fix with new tests, lint clean, CI green on first push."
+      "notes": "Clean: targeted fix with new tests. CI green on first push."
     },
     {
       "number": 2238,
       "title": "feat(2233 child 3): enforce verification gate in pr_review findings",
       "knownBugs": [],
-      "notes": "Clean: 49/49 tests pass, lint clean, CI green on first push, merged without follow-up."
+      "notes": "Clean: 49/49 tests pass on first push."
     },
     {
-      "number": 2239,
-      "title": "test(consensus): pin scope_steward × pm correlation behavior (#2227)",
+      "number": "synthetic-clean-refactor",
+      "title": "refactor(util): extract date-formatter helper (synthetic clean case)",
+      "customDescription": "Pulls inline date formatting into a named helper. No behavior change.",
+      "customDiff": "diff --git a/packages/nexus-agents/src/util/date-format.ts b/packages/nexus-agents/src/util/date-format.ts\nindex 0000001..0000002 100644\n--- a/packages/nexus-agents/src/util/date-format.ts\n+++ b/packages/nexus-agents/src/util/date-format.ts\n@@ -0,0 +1,8 @@\n+/** Formats a Date as ISO date (YYYY-MM-DD) in ET timezone. */\n+export function formatIsoDate(d: Date): string {\n+  return d.toLocaleDateString('en-CA', {\n+    timeZone: 'America/New_York',\n+    year: 'numeric',\n+    month: '2-digit',\n+    day: '2-digit',\n+  });\n+}",
       "knownBugs": [],
-      "notes": "Clean: pure test additions, 53/53 pass, no follow-up."
+      "notes": "Clean refactor: single-purpose helper, named correctly, ET timezone preserved per CLAUDE.md. No bug to find. Tests false-positive risk — voter should NOT flag this."
     },
     {
-      "number": 2226,
-      "title": "docs(governance): add verification gate for code-review subagent findings (#2225)",
+      "number": "synthetic-clean-docs",
+      "title": "docs(api): clarify error codes returned by retry helper (synthetic clean case)",
+      "customDescription": "Adds JSDoc enumerating the error codes the retry helper can return.",
+      "customDiff": "diff --git a/packages/nexus-agents/src/adapters/retry.ts b/packages/nexus-agents/src/adapters/retry.ts\nindex 0000001..0000002 100644\n--- a/packages/nexus-agents/src/adapters/retry.ts\n+++ b/packages/nexus-agents/src/adapters/retry.ts\n@@ -25,6 +25,11 @@ export interface RetryConfig {\n   readonly maxDelayMs: number;\n   readonly jitterFactor: number;\n }\n+\n+/**\n+ * Error codes that withRetry may surface in the Result<T, E> error path:\n+ * - RETRY_EXHAUSTED — all attempts failed; original error wrapped\n+ * - INVALID_CONFIG — config validation failed before any attempt\n+ */",
       "knownBugs": [],
-      "notes": "Clean: docs-only governance update, no follow-up fix commits."
-    },
-    {
-      "number": 2217,
-      "title": "docs: sync README, JSDoc, and CONFIGURATION.md after recent PRs",
-      "knownBugs": [],
-      "notes": "Clean: docs sync PR, no follow-up."
+      "notes": "Clean docs-only change: adds JSDoc above an existing interface. No code change, no behavioral risk. Tests false-positive risk."
     }
   ]
 }

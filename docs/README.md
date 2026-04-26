@@ -107,14 +107,15 @@ Detailed technical documentation:
 
 #### Research
 
-| Document                                                                      | Description                        | Status    |
-| ----------------------------------------------------------------------------- | ---------------------------------- | --------- |
-| [RESEARCH_INDEX.md](./research/RESEARCH_INDEX.md)                             | Research tracking hub              | Canonical |
-| [CONTRIBUTING.md](./research/CONTRIBUTING.md)                                 | Adding research                    | Canonical |
-| [registry/papers.yaml](./research/registry/papers.yaml)                       | Paper metadata                     | Canonical |
-| [registry/techniques.yaml](./research/registry/techniques.yaml)               | Implementation status              | Canonical |
-| [cli-first-adapter-strategy.md](./research/cli-first-adapter-strategy.md)     | CLI-first adapter research         | Canonical |
-| [pr-review-experiment-results.md](./research/pr-review-experiment-results.md) | pr_review #2233 experiment results | Canonical |
+| Document                                                                            | Description                                         | Status    |
+| ----------------------------------------------------------------------------------- | --------------------------------------------------- | --------- |
+| [RESEARCH_INDEX.md](./research/RESEARCH_INDEX.md)                                   | Research tracking hub                               | Canonical |
+| [CONTRIBUTING.md](./research/CONTRIBUTING.md)                                       | Adding research                                     | Canonical |
+| [registry/papers.yaml](./research/registry/papers.yaml)                             | Paper metadata                                      | Canonical |
+| [registry/techniques.yaml](./research/registry/techniques.yaml)                     | Implementation status                               | Canonical |
+| [cli-first-adapter-strategy.md](./research/cli-first-adapter-strategy.md)           | CLI-first adapter research                          | Canonical |
+| [pr-review-experiment-results.md](./research/pr-review-experiment-results.md)       | pr_review #2233 experiment results                  | Canonical |
+| [pr-review-experiment-results-v2.md](./research/pr-review-experiment-results-v2.md) | pr_review retest with #2244 prompts + #2246 dataset | Canonical |
 
 ### Tier 3: Supporting (Reference as Needed)
 
