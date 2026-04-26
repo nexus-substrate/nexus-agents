@@ -197,6 +197,26 @@ async function collectVotesForPr(
   pr: SamplePr,
   simulate: boolean
 ): Promise<{ voteResults: VoteResultLike[]; diff: string; truncated: boolean }> {
+  // Custom-diff path (synthetic test cases): skip GitHub fetch.
+  if (pr.customDiff !== undefined && pr.customDiff !== '') {
+    const truncated = pr.customDiff.length > MAX_DIFF_LENGTH;
+    const diff = truncated
+      ? `${pr.customDiff.slice(0, MAX_DIFF_LENGTH)}\n[...truncated]`
+      : pr.customDiff;
+    const proposal = buildPrReviewProposal({
+      prTitle: pr.title,
+      prDescription: pr.customDescription ?? '',
+      prDiff: diff,
+      simulate,
+    });
+    const voteResults = await collectRealVotes({ roles: PR_REVIEW_ROLES, proposal, simulate });
+    return { voteResults, diff, truncated };
+  }
+
+  // Historical-PR path: fetch from GitHub. Only valid when number is numeric.
+  if (typeof pr.number !== 'number') {
+    throw new Error(`PR ${pr.number}: customDiff required for non-numeric IDs`);
+  }
   const [{ diff, truncated, baseRef, headRef }, meta] = await Promise.all([
     fetchPrDiff(pr.number),
     fetchPrTitleAndDescription(pr.number),
@@ -294,7 +314,9 @@ async function main(): Promise<void> {
   const dataset = await loadDataset(args.datasetPath);
   const filter = args.prsFilter;
   const filteredPrs =
-    filter === undefined ? dataset.prs : dataset.prs.filter((p) => filter.has(p.number));
+    filter === undefined
+      ? dataset.prs
+      : dataset.prs.filter((p) => typeof p.number === 'number' && filter.has(p.number));
   console.log(
     `running ${String(filteredPrs.length)} of ${String(dataset.prs.length)} PRs from dataset (curated ${dataset.curatedAt})`
   );
