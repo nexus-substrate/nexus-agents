@@ -1,0 +1,168 @@
+# PR Review Experiment (#2233)
+#
+# Triggers ONLY when a PR carries the `pr-review-experiment` label. We do NOT
+# auto-run on every PR — Children 4-5 of the epic require validating the
+# multi-voter pattern against a 20-PR sample first, with binary success
+# criteria (≥1 missed-bug catch per 10 PRs, <20% false-positive rate).
+#
+# Until that gate clears, this workflow is opt-in per-PR. Add the
+# `pr-review-experiment` label to fire it; remove the label to disable.
+#
+# Each voter (architect, security, devex, catfish, scope_steward) emits an
+# approve/request_changes/abstain decision with reasoning and file:line
+# citations. Output is posted as a single PR comment.
+#
+# Required secrets: ANTHROPIC_API_KEY (or OPENAI_API_KEY / GOOGLE_AI_API_KEY)
+# for the underlying voter LLM calls.
+
+name: PR Review Experiment
+
+on:
+  pull_request:
+    types: [labeled, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  pr-review:
+    name: Multi-voter PR review
+    if: contains(github.event.pull_request.labels.*.name, 'pr-review-experiment')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm --filter nexus-agents build
+
+      - name: Compute PR diff
+        id: diff
+        run: |
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          # Cap diff at 50k chars (matches MAX_DIFF_LENGTH in pr-review-tool.ts).
+          # Truncating before the tool sees it keeps the failure mode visible
+          # in the workflow logs rather than buried in a Zod error.
+          DIFF=$(git diff "${BASE_SHA}" "${HEAD_SHA}" | head -c 50000)
+          {
+            echo 'diff<<DIFF_EOF'
+            echo "${DIFF}"
+            echo 'DIFF_EOF'
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Run pr_review tool
+        id: review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_DIFF: ${{ steps.diff.outputs.diff }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          # Invoke the pr_review MCP tool via a small node harness. We do this
+          # inline rather than via a CLI subcommand to keep the experiment
+          # self-contained; if/when Children 5-6 promote this past experiment,
+          # we'll add a `nexus-agents pr-review` CLI command.
+          node --input-type=module -e "$(cat <<'NODE_EOF'
+            import { collectRealVotes } from './packages/nexus-agents/dist/index.js';
+            import { buildPrReviewProposal, mapVoteDecisionToPrDecision, aggregatePrDecisions, PR_REVIEW_ROLES } from './packages/nexus-agents/dist/index.js';
+            import * as fs from 'node:fs/promises';
+
+            const input = {
+              prTitle: process.env.PR_TITLE || '(untitled)',
+              prDescription: process.env.PR_BODY || '',
+              prDiff: process.env.PR_DIFF || '',
+              baseRef: process.env.BASE_REF,
+              headRef: process.env.HEAD_REF,
+              simulate: false,
+            };
+
+            const proposal = buildPrReviewProposal(input);
+            const voteResults = await collectRealVotes({
+              roles: PR_REVIEW_ROLES,
+              proposal,
+              simulate: false,
+            });
+
+            const reviews = voteResults.map((r) => ({
+              role: r.role,
+              decision: mapVoteDecisionToPrDecision(r.vote.decision),
+              confidence: r.vote.confidence,
+              reasoning: r.vote.reasoning,
+              source: r.source,
+              cli: r.cli,
+            }));
+            const summary = aggregatePrDecisions(reviews);
+
+            await fs.writeFile('pr-review-result.json', JSON.stringify({ summary, reviews }, null, 2));
+            console.log('Summary:', summary);
+            console.log('Per-voter:', reviews.map((r) => r.role + '=' + r.decision).join(', '));
+          NODE_EOF
+          )"
+
+      - name: Post review summary as PR comment
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let body;
+            try {
+              const result = JSON.parse(fs.readFileSync('pr-review-result.json', 'utf8'));
+              const icon = { approve: '✅', request_changes: '❌', abstain: '➖' }[result.summary] || '❓';
+              const lines = [
+                `## ${icon} PR Review Experiment (#2233)`,
+                '',
+                `**Overall:** ${result.summary.toUpperCase()}`,
+                '',
+                '| Voter | Decision | Confidence | CLI |',
+                '| --- | --- | --- | --- |',
+                ...result.reviews.map(r => `| ${r.role} | ${r.decision} | ${(r.confidence * 100).toFixed(0)}% | ${r.cli || '—'} |`),
+                '',
+                '<details><summary>Reasoning per voter</summary>',
+                '',
+                ...result.reviews.flatMap(r => [
+                  `### ${r.role} — ${r.decision}`,
+                  '',
+                  r.reasoning,
+                  '',
+                ]),
+                '</details>',
+                '',
+                '---',
+                '_Experimental — opt-in per PR via the `pr-review-experiment` label. Findings should be verified before action; see `.rules/discovered-issues.md` for the verification gate. To stop, remove the label._',
+              ];
+              body = lines.join('\n');
+            } catch (e) {
+              body = `## ❓ PR Review Experiment (#2233)\n\nReview failed: ${e.message}\n\nCheck the workflow logs.`;
+            }
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });

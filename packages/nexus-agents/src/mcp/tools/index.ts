@@ -340,6 +340,18 @@ export {
 // Unified pipeline tool (Issue #1736, Phase 3)
 export { registerPipelineTool, PipelineInputSchema, type PipelineInput } from './pipeline-tool.js';
 
+// PR review tool (#2233 — multi-voter consensus on PR diffs)
+export {
+  registerPrReviewTool,
+  PrReviewInputSchema,
+  PR_REVIEW_ROLES,
+  type PrReviewInput,
+  type PrReviewDecision,
+  type PrReviewVote,
+  type PrReviewResponse,
+  type PrReviewDeps,
+} from './pr-review-tool.js';
+
 // Tool annotations and side effects (Issue #993)
 export {
   TOOL_ANNOTATIONS,
@@ -466,6 +478,7 @@ export function registerTools(
       'search_codebase',
       'run_dev_pipeline',
       'run_pipeline',
+      'pr_review',
     ],
     logger,
     rateLimiter,

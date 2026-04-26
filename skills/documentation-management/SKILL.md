@@ -30,6 +30,7 @@ allowed-tools: Read, Edit, Write, Bash, Grep, Glob, Task
 <!-- PIPELINE NOTE: .claude/rules/ moved to .rules/ for harness neutrality (#2121, 2026-04-22). setup-rules.ts now writes to .rules/nexus-agents.md; detectProjectInfo accepts both paths during migration. CLAUDE.md pointers updated. -->
 <!-- PIPELINE NOTE: generate-repo-index.ts now imports cli-command-catalog.ts as single source of truth for CLI commands (#2156, 2026-04-22). Adds drift check warning when dispatch-table entries disagree with the catalog, in either direction. No output-format change. -->
 <!-- PIPELINE NOTE: inject-governance.ts TOOL_DESCRIPTIONS map filled in for query_task_state, run_dev_pipeline, run_pipeline (#2231, 2026-04-26) — those three tools were previously rendering as "{name} tool" placeholders in the CLAUDE.md auto-generated tool table. buildAncillaryProbes() also split into per-target helpers (buildAgentsMdProbes, buildMarketplaceProbes, buildPluginInstallProbes) to clear a max-lines-per-function lint violation; no behavior change. -->
+<!-- PIPELINE NOTE: inject-governance.ts TOOL_DESCRIPTIONS extended for pr_review (#2233, 2026-04-26). pr_review tool exposed via MCP wraps consensus_vote infra to run multi-voter (architect/security/devex/catfish/scope_steward) review on a PR diff; auto-generated tool table now reflects 32 tools (was 31). Workflow .github/workflows/pr-review-experiment.yml is opt-in via the `pr-review-experiment` PR label and posts a review summary as a PR comment. -->
 
 **Full specification:** [docops-spec.md](../../docs/ops/docops-spec.md)
 

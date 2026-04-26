@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-04-25T13:24:51.301Z",
+  "generated": "2026-04-26T15:57:20.363Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.56.0",
   "cli": {
@@ -319,6 +319,10 @@
       {
         "name": "orchestrate",
         "file": "src/mcp/tools/orchestrate.ts"
+      },
+      {
+        "name": "pr_review",
+        "file": "src/mcp/tools/pr-review.ts"
       },
       {
         "name": "query_task_state",

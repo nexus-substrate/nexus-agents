@@ -1,0 +1,271 @@
+/**
+ * nexus-agents/mcp - PR Review Tool (#2233 Child 1)
+ *
+ * Wires the existing consensus voter infrastructure to GitHub PR review.
+ * Reuses `collectRealVotes` from voter-agents.ts; constructs a PR-review-
+ * specific proposal that includes the diff, then maps each voter's
+ * approve/reject/abstain decision into PR review semantics
+ * (approve/request_changes/abstain).
+ *
+ * NOT a full PR-review platform — this is the smallest valuable demonstration
+ * of the multi-voter pattern applied to code review, per the experiment
+ * design in #2233. Children 3-6 (verification gate wiring, sample dataset,
+ * analysis writeup, live PR enablement) are follow-up work.
+ *
+ * @module mcp/tools/pr-review-tool
+ */
+
+import { z } from 'zod';
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { createLogger, formatZodError, getErrorMessage } from '../../core/index.js';
+import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
+import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
+import { toolError, toolSuccess, type BaseMcpToolDeps, type ToolResult } from './tool-result.js';
+import type { VoterRole, AgentVoteResult } from '../../cli/vote-types.js';
+import { collectRealVotes } from '../../cli/voter-agents.js';
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+/** Voter panel for PR review. PM and AI/ML excluded — they're proposal-level
+ * roles, not code-level. The 5 here are the ones with concrete claims about
+ * code (#2233). */
+export const PR_REVIEW_ROLES: readonly VoterRole[] = [
+  'architect',
+  'security',
+  'devex',
+  'catfish',
+  'scope_steward',
+];
+
+/** Hard cap on diff size sent to voters. Diffs above this are truncated with
+ * an explicit notice — the tool stays useful for typical PRs without blowing
+ * the context budget. */
+export const MAX_DIFF_LENGTH = 50_000;
+
+/** Hard cap on PR description. */
+export const MAX_DESCRIPTION_LENGTH = 10_000;
+
+// ============================================================================
+// Types
+// ============================================================================
+
+export const PrReviewInputSchema = z.object({
+  prTitle: z.string().min(1).max(500).describe('PR title'),
+  prDescription: z
+    .string()
+    .max(MAX_DESCRIPTION_LENGTH)
+    .optional()
+    .describe('PR body / description'),
+  prDiff: z
+    .string()
+    .min(1)
+    .max(MAX_DIFF_LENGTH)
+    .describe(`Unified diff text (max ${String(MAX_DIFF_LENGTH)} chars; truncate before calling)`),
+  repoContext: z
+    .string()
+    .max(2000)
+    .optional()
+    .describe('Optional one-paragraph repo context (architecture, conventions)'),
+  baseRef: z.string().max(200).optional().describe('Base branch ref (e.g. main)'),
+  headRef: z.string().max(200).optional().describe('Head branch ref'),
+  simulate: z
+    .boolean()
+    .default(false)
+    .describe('Use simulated voters (testing only; never ship live with this true)'),
+});
+
+export type PrReviewInput = z.infer<typeof PrReviewInputSchema>;
+
+export type PrReviewDecision = 'approve' | 'request_changes' | 'abstain';
+
+export interface PrReviewVote {
+  readonly role: VoterRole;
+  readonly decision: PrReviewDecision;
+  readonly confidence: number;
+  /** Free-form reasoning from the voter; expected to contain file:line citations
+   * per the verification gate (#2225 + #2233 Child 3 will enforce structure). */
+  readonly reasoning: string;
+  readonly source: 'llm' | 'simulation' | 'error';
+  readonly cli?: string | undefined;
+  readonly processingTimeMs: number;
+  readonly errorMessage?: string;
+}
+
+export interface PrReviewResponse {
+  readonly summary: PrReviewDecision;
+  readonly approveCount: number;
+  readonly requestChangesCount: number;
+  readonly abstainCount: number;
+  readonly errorCount: number;
+  readonly reviews: readonly PrReviewVote[];
+  readonly totalDurationMs: number;
+}
+
+export type PrReviewDeps = BaseMcpToolDeps;
+
+// ============================================================================
+// Decision Mapping
+// ============================================================================
+
+/** Maps a voter's approve/reject/abstain to PR review semantics. */
+export function mapVoteDecisionToPrDecision(
+  voteDecision: 'approve' | 'reject' | 'abstain'
+): PrReviewDecision {
+  if (voteDecision === 'reject') return 'request_changes';
+  return voteDecision;
+}
+
+/** Aggregates per-voter decisions into a single summary outcome.
+ * - Any `request_changes` from a non-error vote → overall `request_changes`
+ * - All non-error votes `approve` → overall `approve`
+ * - Otherwise → `abstain` (mixed/all-errors)
+ */
+export function aggregatePrDecisions(reviews: readonly PrReviewVote[]): PrReviewDecision {
+  const valid = reviews.filter((r) => r.source !== 'error');
+  if (valid.length === 0) return 'abstain';
+  if (valid.some((r) => r.decision === 'request_changes')) return 'request_changes';
+  if (valid.every((r) => r.decision === 'approve')) return 'approve';
+  return 'abstain';
+}
+
+// ============================================================================
+// Proposal Construction
+// ============================================================================
+
+/** Builds the proposal text passed to voters. The voters are designed for
+ * yes/no proposals — by framing the diff as "should this PR be merged?" we
+ * get usable output without needing new system prompts (Child 3 will add
+ * those). */
+export function buildPrReviewProposal(input: PrReviewInput): string {
+  const parts: string[] = [];
+  parts.push(`# Pull Request Review\n`);
+  parts.push(`**Title:** ${input.prTitle}\n`);
+
+  if (input.baseRef !== undefined && input.headRef !== undefined) {
+    parts.push(`**Branches:** ${input.headRef} → ${input.baseRef}\n`);
+  }
+  if (input.repoContext !== undefined && input.repoContext !== '') {
+    parts.push(`\n**Repo context:**\n${input.repoContext}\n`);
+  }
+  if (input.prDescription !== undefined && input.prDescription !== '') {
+    parts.push(`\n**Description:**\n${input.prDescription}\n`);
+  }
+
+  parts.push(`\n## Diff\n\n\`\`\`diff\n${input.prDiff}\n\`\`\`\n`);
+  parts.push(`\n## Your task\n`);
+  parts.push(`Review this PR from your role's perspective. Decide: should it be merged as-is?\n`);
+  parts.push(`- **APPROVE** if the diff is correct, complete, and aligned with your role.\n`);
+  parts.push(
+    `- **REJECT** (= "request changes") if there is at least one concrete defect, missing requirement, or violation that justifies blocking the merge.\n`
+  );
+  parts.push(`- **ABSTAIN** if the diff is outside your role's concerns.\n`);
+  parts.push(
+    `\nFor every claim, cite the specific \`path/file.ext:line\` and state what's wrong.\n`
+  );
+  parts.push(
+    `Apply the verification gate (#2225) before claiming a finding: re-read the cited line plus 5 lines either side; trace the call path; name the failing assertion; rule out language non-issues. If any check raises "wait, actually..." — drop the finding.\n`
+  );
+
+  return parts.join('');
+}
+
+// ============================================================================
+// Result Mapping
+// ============================================================================
+
+function toPrReviewVote(result: AgentVoteResult): PrReviewVote {
+  return {
+    role: result.role,
+    decision: mapVoteDecisionToPrDecision(result.vote.decision),
+    confidence: result.vote.confidence,
+    reasoning: result.vote.reasoning,
+    source: result.source,
+    cli: result.cli,
+    processingTimeMs: result.processingTimeMs,
+    ...(result.error !== undefined && { errorMessage: result.error }),
+  };
+}
+
+function summarizeReviews(reviews: readonly PrReviewVote[]): {
+  approveCount: number;
+  requestChangesCount: number;
+  abstainCount: number;
+  errorCount: number;
+} {
+  return {
+    approveCount: reviews.filter((r) => r.source !== 'error' && r.decision === 'approve').length,
+    requestChangesCount: reviews.filter(
+      (r) => r.source !== 'error' && r.decision === 'request_changes'
+    ).length,
+    abstainCount: reviews.filter((r) => r.source !== 'error' && r.decision === 'abstain').length,
+    errorCount: reviews.filter((r) => r.source === 'error').length,
+  };
+}
+
+// ============================================================================
+// Handler
+// ============================================================================
+
+async function prReviewHandler(args: unknown, ctx: HandlerContext): Promise<ToolResult> {
+  const parsed = PrReviewInputSchema.safeParse(args);
+  if (!parsed.success) {
+    return toolError(`Validation error: ${formatZodError(parsed.error)}`);
+  }
+  const input = parsed.data;
+  const start = Date.now();
+
+  try {
+    const proposal = buildPrReviewProposal(input);
+    const voteResults = await collectRealVotes({
+      roles: PR_REVIEW_ROLES,
+      proposal,
+      simulate: input.simulate,
+      logger: ctx.logger,
+    });
+
+    const reviews = voteResults.map(toPrReviewVote);
+    const counts = summarizeReviews(reviews);
+    const summary = aggregatePrDecisions(reviews);
+
+    const response: PrReviewResponse = {
+      summary,
+      ...counts,
+      reviews,
+      totalDurationMs: Date.now() - start,
+    };
+    return toolSuccess(JSON.stringify(response, null, 2));
+  } catch (error) {
+    return toolError(`PR review failed: ${getErrorMessage(error)}`);
+  }
+}
+
+// ============================================================================
+// Registration
+// ============================================================================
+
+/** @category MCP */
+export function registerPrReviewTool(server: McpServer, deps: PrReviewDeps): void {
+  const logger = deps.logger ?? createLogger({ tool: 'pr_review' });
+  const description =
+    'Run multi-voter consensus review on a PR diff (#2233). 5 voters (architect, security, ' +
+    'devex, catfish, scope_steward) each emit approve/request_changes/abstain with reasoning ' +
+    'and citations. Reuses consensus_vote infra; experimental.';
+
+  const secureHandler = createSecureHandler(prReviewHandler, {
+    toolName: 'pr_review',
+    rateLimiter: deps.rateLimiter,
+    logger,
+  });
+
+  const timeoutMs = getToolTimeout('pr_review', deps.security);
+  const wrappedHandler = wrapToolWithTimeout('pr_review', secureHandler, { timeoutMs, logger });
+
+  server.registerTool(
+    'pr_review',
+    { description, inputSchema: PrReviewInputSchema.shape },
+    toSdkCallback(wrappedHandler)
+  );
+  logger.info('Registered pr_review tool');
+}
