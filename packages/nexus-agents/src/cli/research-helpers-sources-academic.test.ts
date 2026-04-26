@@ -69,11 +69,56 @@ describe('discoverSemanticScholar', () => {
     expect(calledUrl).not.toContain('sort=');
   });
 
-  it('should handle HTTP errors', async () => {
+  it('should surface 429 as RATE_LIMIT, not generic HTTP_ERROR (#2234)', async () => {
     mockFetch.mockResolvedValueOnce({ ok: false, status: 429 });
     const result = await discoverSemanticScholar('test', 5);
     expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('RATE_LIMIT');
+  });
+
+  it('should handle non-429 HTTP errors as HTTP_ERROR', async () => {
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 500 });
+    const result = await discoverSemanticScholar('test', 5);
+    expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe('HTTP_ERROR');
+  });
+
+  it('should send x-api-key when SEMANTIC_SCHOLAR_API_KEY is set (#2234)', async () => {
+    const prev = process.env['SEMANTIC_SCHOLAR_API_KEY'];
+    process.env['SEMANTIC_SCHOLAR_API_KEY'] = 'test-key-abc';
+    try {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ data: [] }),
+      });
+      await discoverSemanticScholar('test', 5);
+      const calledOpts = mockFetch.mock.calls[0]?.[1] as { headers?: Record<string, string> };
+      expect(calledOpts?.headers?.['x-api-key']).toBe('test-key-abc');
+    } finally {
+      if (prev === undefined) {
+        delete process.env['SEMANTIC_SCHOLAR_API_KEY'];
+      } else {
+        process.env['SEMANTIC_SCHOLAR_API_KEY'] = prev;
+      }
+    }
+  });
+
+  it('should NOT send x-api-key when SEMANTIC_SCHOLAR_API_KEY is unset (#2234)', async () => {
+    const prev = process.env['SEMANTIC_SCHOLAR_API_KEY'];
+    delete process.env['SEMANTIC_SCHOLAR_API_KEY'];
+    try {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ data: [] }),
+      });
+      await discoverSemanticScholar('test', 5);
+      const calledOpts = mockFetch.mock.calls[0]?.[1] as { headers?: Record<string, string> };
+      expect(calledOpts?.headers?.['x-api-key']).toBeUndefined();
+    } finally {
+      if (prev !== undefined) {
+        process.env['SEMANTIC_SCHOLAR_API_KEY'] = prev;
+      }
+    }
   });
 
   it('should handle network errors', async () => {
