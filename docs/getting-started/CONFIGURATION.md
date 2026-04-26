@@ -197,7 +197,7 @@ All configuration can be overridden with environment variables:
 | `ANTHROPIC_API_KEY`         | Claude API key                                                                                                                                                              |
 | `OPENAI_API_KEY`            | OpenAI API key                                                                                                                                                              |
 | `GOOGLE_AI_API_KEY`         | Google AI (Gemini) API key                                                                                                                                                  |
-| `OPENROUTER_API_KEY`        | OpenRouter API key (for free-model adapters)                                                                                                                                |
+| `OPENROUTER_API_KEY`        | OpenRouter API key (for free-model adapters; also a path to Bedrock/Vertex/Azure — see [CLOUD_PROVIDERS.md](../guides/CLOUD_PROVIDERS.md))                                  |
 | `OLLAMA_HOST`               | Ollama server URL (default: `http://localhost:11434`)                                                                                                                       |
 | `NEXUS_CUSTOM_API_BASE_URL` | Custom OpenAI-compatible gateway base URL                                                                                                                                   |
 | `NEXUS_CUSTOM_API_KEY`      | API key for the custom gateway                                                                                                                                              |
