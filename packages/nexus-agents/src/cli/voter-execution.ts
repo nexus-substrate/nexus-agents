@@ -240,7 +240,12 @@ export async function executeSingleVoteAttempt(
       { role: 'system', content: VOTER_SYSTEM_PROMPTS[role] },
       { role: 'user', content: buildVotePrompt(proposal) },
     ],
-    maxTokens: 500,
+    // 500 was correct for short proposal-style votes but caused mid-string
+    // truncation ("Unterminated string in JSON at position N") in #2241 v3
+    // when voters review code diffs — the JSON envelope + reasoning + YAML
+    // findings block routinely exceed 500 tokens. Bumped to 2000 (#2245);
+    // refine per use case if needed.
+    maxTokens: 2000,
     temperature: 0.3, // Low temperature for consistent evaluations
   };
 
