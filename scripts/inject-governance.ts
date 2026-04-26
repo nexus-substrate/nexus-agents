@@ -130,6 +130,12 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
     'Extract code symbols (functions, classes, types) from source files for analysis.',
   search_codebase:
     'Search the codebase for code patterns, symbols, or text across all source files.',
+  query_task_state:
+    'Read the structured task-state log for a task ID and return the current snapshot. Requires NEXUS_TASK_STATE_ENABLED=1 during the originating orchestrate call.',
+  run_dev_pipeline:
+    'Run the multi-agent development pipeline. Accepts direct task instructions, a plan file, or a spec file. Supports dry-run (plan+vote only).',
+  run_pipeline:
+    'Single unified entry point for all pipeline templates (dev/research/audit/greenfield). Auto-detects template from task content or accepts an explicit override.',
 };
 
 /**
@@ -530,8 +536,7 @@ interface Probe {
   label: string;
 }
 
-function buildAncillaryProbes(counts: AncillaryCounts): Probe[] {
-  const { toolCount: t, skillCount: s, agentCount: a } = counts;
+function buildAgentsMdProbes(t: number, s: number): Probe[] {
   return [
     {
       path: AGENTS_MD_PATH,
@@ -545,6 +550,11 @@ function buildAncillaryProbes(counts: AncillaryCounts): Probe[] {
       expected: t,
       label: 'AGENTS.md MCP tools count',
     },
+  ];
+}
+
+function buildMarketplaceProbes(t: number, s: number, a: number): Probe[] {
+  return [
     {
       path: PLUGIN_JSON_PATH,
       pattern: /(\d+) MCP tools for agent management/,
@@ -569,6 +579,11 @@ function buildAncillaryProbes(counts: AncillaryCounts): Probe[] {
       expected: a,
       label: 'marketplace.json agents count',
     },
+  ];
+}
+
+function buildPluginInstallProbes(t: number, s: number, a: number): Probe[] {
+  return [
     {
       path: PLUGIN_INSTALL_PATH,
       pattern: /- (\d+) MCP tools \(/,
@@ -605,6 +620,15 @@ function buildAncillaryProbes(counts: AncillaryCounts): Probe[] {
       expected: a,
       label: 'PLUGIN_INSTALL /agents count',
     },
+  ];
+}
+
+function buildAncillaryProbes(counts: AncillaryCounts): Probe[] {
+  const { toolCount: t, skillCount: s, agentCount: a } = counts;
+  return [
+    ...buildAgentsMdProbes(t, s),
+    ...buildMarketplaceProbes(t, s, a),
+    ...buildPluginInstallProbes(t, s, a),
   ];
 }
 
