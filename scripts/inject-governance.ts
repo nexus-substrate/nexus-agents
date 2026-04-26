@@ -136,6 +136,8 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
     'Run the multi-agent development pipeline. Accepts direct task instructions, a plan file, or a spec file. Supports dry-run (plan+vote only).',
   run_pipeline:
     'Single unified entry point for all pipeline templates (dev/research/audit/greenfield). Auto-detects template from task content or accepts an explicit override.',
+  pr_review:
+    'Run multi-voter consensus review on a PR diff (#2233). 5 voters (architect, security, devex, catfish, scope_steward) each emit approve/request_changes/abstain with reasoning and citations. Reuses consensus_vote infra; experimental.',
 };
 
 /**
