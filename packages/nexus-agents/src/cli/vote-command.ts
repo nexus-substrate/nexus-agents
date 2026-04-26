@@ -184,9 +184,14 @@ function recordVoteToGitHub(issueNumber: number, result: VotingResult): void {
 async function runVote(options: VoteCommandOptions): Promise<VotingResult> {
   const threshold = THRESHOLD_MAP[options.threshold ?? 'supermajority'] ?? 'supermajority';
   const useQuick = options.quick === true;
+  // Default panel expanded to 7 roles 2026-04-25 — added scope_steward to
+  // catch build-vs-buy blind spots that the 6-role panel demonstrably missed
+  // in the aegis-boot case (#2185). Supermajority threshold is 5/7 ≈ 71%.
+  // QuickMode panel substitutes scope_steward for pm: design + threat model +
+  // existence-justification cover the highest-impact failure modes for fast triage.
   const roles: readonly VoterRole[] = useQuick
-    ? ['architect', 'security', 'pm']
-    : ['architect', 'security', 'devex', 'ai_ml', 'pm', 'catfish'];
+    ? ['architect', 'security', 'scope_steward']
+    : ['architect', 'security', 'devex', 'ai_ml', 'pm', 'catfish', 'scope_steward'];
   const start = getTimeProvider().now();
 
   // Validate and constrain timeout to allowed range (Issue #607)

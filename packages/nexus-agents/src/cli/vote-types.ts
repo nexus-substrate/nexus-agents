@@ -26,8 +26,21 @@ export interface VoteCommandOptions {
 
 /**
  * Voter agent role definitions.
+ *
+ * `scope_steward` (#2185) was added 2026-04-25 to address a build-vs-buy
+ * blind spot in the original 6-role panel: the panel approved a proposal
+ * to build a USB-flasher CLI without flagging that Rufus already solves
+ * the problem. The scope-steward role explicitly checks for existing tools
+ * + biases toward "don't build."
  */
-export type VoterRole = 'architect' | 'security' | 'devex' | 'ai_ml' | 'pm' | 'catfish';
+export type VoterRole =
+  | 'architect'
+  | 'security'
+  | 'devex'
+  | 'ai_ml'
+  | 'pm'
+  | 'catfish'
+  | 'scope_steward';
 
 /**
  * Maps threshold names to consensus algorithms.
@@ -50,6 +63,8 @@ export const VOTER_ROLES: Record<VoterRole, string> = {
   pm: 'Product Manager - evaluates business value, user impact, and resource allocation',
   catfish:
     'Contrarian Analyst - deliberately challenges proposals to prevent agreement bias (arXiv:2505.21503)',
+  scope_steward:
+    'Scope Steward - asks whether to build at all; checks existing tools, biases toward kill-the-feature (#2185)',
 };
 
 /**

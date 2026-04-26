@@ -455,38 +455,56 @@ describe('Threshold mapping', () => {
 });
 
 describe('Voter roles', () => {
-  it('should use 6 roles in normal mode', () => {
-    const normalRoles = ['architect', 'security', 'devex', 'ai_ml', 'pm', 'catfish'];
-    expect(normalRoles).toHaveLength(6);
+  // Default panel expanded to 7 roles 2026-04-25 (#2185) — added scope_steward
+  // to catch build-vs-buy blind spots. QuickMode swaps pm for scope_steward.
+  it('should use 7 roles in normal mode', () => {
+    const normalRoles = [
+      'architect',
+      'security',
+      'devex',
+      'ai_ml',
+      'pm',
+      'catfish',
+      'scope_steward',
+    ];
+    expect(normalRoles).toHaveLength(7);
   });
 
   it('should use 3 roles in quick mode', () => {
-    const quickRoles = ['architect', 'security', 'pm'];
+    const quickRoles = ['architect', 'security', 'scope_steward'];
     expect(quickRoles).toHaveLength(3);
   });
 
   it('should always include architect role', () => {
-    const normalRoles = ['architect', 'security', 'devex', 'ai_ml', 'pm'];
-    const quickRoles = ['architect', 'security', 'pm'];
+    const normalRoles = ['architect', 'security', 'devex', 'ai_ml', 'pm', 'scope_steward'];
+    const quickRoles = ['architect', 'security', 'scope_steward'];
 
     expect(normalRoles).toContain('architect');
     expect(quickRoles).toContain('architect');
   });
 
   it('should always include security role', () => {
-    const normalRoles = ['architect', 'security', 'devex', 'ai_ml', 'pm'];
-    const quickRoles = ['architect', 'security', 'pm'];
+    const normalRoles = ['architect', 'security', 'devex', 'ai_ml', 'pm', 'scope_steward'];
+    const quickRoles = ['architect', 'security', 'scope_steward'];
 
     expect(normalRoles).toContain('security');
     expect(quickRoles).toContain('security');
   });
 
-  it('should always include pm role', () => {
-    const normalRoles = ['architect', 'security', 'devex', 'ai_ml', 'pm'];
-    const quickRoles = ['architect', 'security', 'pm'];
+  it('should always include scope_steward role (#2185)', () => {
+    const normalRoles = ['architect', 'security', 'devex', 'ai_ml', 'pm', 'scope_steward'];
+    const quickRoles = ['architect', 'security', 'scope_steward'];
+
+    expect(normalRoles).toContain('scope_steward');
+    expect(quickRoles).toContain('scope_steward');
+  });
+
+  it('keeps pm in normal mode but not quickMode (#2185)', () => {
+    const normalRoles = ['architect', 'security', 'devex', 'ai_ml', 'pm', 'scope_steward'];
+    const quickRoles = ['architect', 'security', 'scope_steward'];
 
     expect(normalRoles).toContain('pm');
-    expect(quickRoles).toContain('pm');
+    expect(quickRoles).not.toContain('pm');
   });
 });
 
