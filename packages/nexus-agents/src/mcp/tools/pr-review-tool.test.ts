@@ -54,21 +54,52 @@ describe('pr_review tool', () => {
     });
   });
 
-  describe('aggregatePrDecisions', () => {
+  describe('aggregatePrDecisions (#2233 Child 3 — verification gate)', () => {
+    const VERIFIED_FINDING = {
+      summary: 'Real bug',
+      location: 'src/a.ts:10',
+      severity: 'high' as const,
+      claim: 'Concrete failure described here',
+      gate: {
+        reread_cited_line: 'passed' as const,
+        traced_call_path: 'passed' as const,
+        named_assertion: 'A specific assertion that would fail',
+        ruled_out_language_non_issue: 'passed' as const,
+      },
+      verified: true,
+    };
+    const UNVERIFIED_FINDING = {
+      summary: 'Suspicious pattern',
+      location: 'src/b.ts:42',
+      severity: 'medium' as const,
+      claim: 'Could be safer',
+      gate: {
+        reread_cited_line: 'skipped' as const,
+        traced_call_path: 'passed' as const,
+        named_assertion: 'short',
+        ruled_out_language_non_issue: 'passed' as const,
+      },
+      verified: false,
+    };
+
     const makeReview = (
       role: PrReviewVote['role'],
       decision: PrReviewVote['decision'],
-      source: PrReviewVote['source'] = 'llm'
+      opts: {
+        source?: PrReviewVote['source'];
+        findings?: PrReviewVote['findings'];
+      } = {}
     ): PrReviewVote => ({
       role,
       decision,
       confidence: 0.8,
       reasoning: 'test',
-      source,
+      findings: opts.findings ?? [],
+      source: opts.source ?? 'llm',
       processingTimeMs: 100,
     });
 
-    it('should be approve when all valid voters approve', () => {
+    it('approves when all voters approve', () => {
       const reviews = [
         makeReview('architect', 'approve'),
         makeReview('security', 'approve'),
@@ -77,39 +108,70 @@ describe('pr_review tool', () => {
       expect(aggregatePrDecisions(reviews)).toBe('approve');
     });
 
-    it('should be request_changes if any non-error voter requests changes', () => {
+    it('triggers request_changes only when a voter has a VERIFIED finding (#2225)', () => {
       const reviews = [
         makeReview('architect', 'approve'),
-        makeReview('security', 'request_changes'),
+        makeReview('security', 'request_changes', { findings: [VERIFIED_FINDING] }),
         makeReview('devex', 'approve'),
       ];
       expect(aggregatePrDecisions(reviews)).toBe('request_changes');
     });
 
-    it('should ignore error votes when computing summary', () => {
+    it('does NOT trigger request_changes when finding is unverified', () => {
+      // The 2026-04-25 audit (#2225) found 100% false-positive rate when the
+      // gate wasn't enforced. Voters who declare request_changes without a
+      // verified finding are demoted — reasoning still surfaces but the merge
+      // isn't blocked.
       const reviews = [
         makeReview('architect', 'approve'),
-        makeReview('security', 'approve'),
-        makeReview('devex', 'request_changes', 'error'),
-      ];
-      // The error vote's decision is ignored; remaining are all approve.
-      expect(aggregatePrDecisions(reviews)).toBe('approve');
-    });
-
-    it('should be abstain when all voters errored', () => {
-      const reviews = [
-        makeReview('architect', 'approve', 'error'),
-        makeReview('security', 'approve', 'error'),
+        makeReview('security', 'request_changes', { findings: [UNVERIFIED_FINDING] }),
+        makeReview('devex', 'approve'),
       ];
       expect(aggregatePrDecisions(reviews)).toBe('abstain');
     });
 
-    it('should be abstain when mix is approve + abstain (no clear approval)', () => {
+    it('does NOT trigger request_changes when voter requests changes with NO findings', () => {
+      const reviews = [
+        makeReview('security', 'request_changes', { findings: [] }),
+        makeReview('architect', 'approve'),
+      ];
+      expect(aggregatePrDecisions(reviews)).toBe('abstain');
+    });
+
+    it('triggers request_changes if at least one finding is verified (mixed findings)', () => {
+      const reviews = [
+        makeReview('security', 'request_changes', {
+          findings: [UNVERIFIED_FINDING, VERIFIED_FINDING],
+        }),
+      ];
+      expect(aggregatePrDecisions(reviews)).toBe('request_changes');
+    });
+
+    it('ignores findings on error votes', () => {
+      const reviews = [
+        makeReview('security', 'request_changes', {
+          source: 'error',
+          findings: [VERIFIED_FINDING],
+        }),
+        makeReview('architect', 'approve'),
+      ];
+      expect(aggregatePrDecisions(reviews)).toBe('approve');
+    });
+
+    it('returns abstain when all voters errored', () => {
+      const reviews = [
+        makeReview('architect', 'approve', { source: 'error' }),
+        makeReview('security', 'approve', { source: 'error' }),
+      ];
+      expect(aggregatePrDecisions(reviews)).toBe('abstain');
+    });
+
+    it('returns abstain on mixed approve/abstain (no clear approval)', () => {
       const reviews = [makeReview('architect', 'approve'), makeReview('security', 'abstain')];
       expect(aggregatePrDecisions(reviews)).toBe('abstain');
     });
 
-    it('should be abstain on empty input', () => {
+    it('returns abstain on empty input', () => {
       expect(aggregatePrDecisions([])).toBe('abstain');
     });
   });
@@ -138,9 +200,20 @@ describe('pr_review tool', () => {
       expect(out).toContain('verification gate');
     });
 
+    it('should embed the FINDINGS YAML format (#2233 Child 3)', () => {
+      // The proposal text instructs voters to emit a structured findings
+      // block parseable by pr-review-findings.ts.
+      const out = buildPrReviewProposal(baseInput);
+      expect(out).toContain('reread_cited_line');
+      expect(out).toContain('traced_call_path');
+      expect(out).toContain('named_assertion');
+      expect(out).toContain('ruled_out_language_non_issue');
+      expect(out).toContain('```yaml findings');
+    });
+
     it('should explicitly demand citations in path/file.ext:line form', () => {
       const out = buildPrReviewProposal(baseInput);
-      expect(out).toContain('path/file.ext:line');
+      expect(out).toContain('path/file.ext:LINE');
     });
 
     it('should include base/head refs only when both are provided', () => {

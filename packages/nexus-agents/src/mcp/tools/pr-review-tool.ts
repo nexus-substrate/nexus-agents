@@ -23,6 +23,9 @@ import { createSecureHandler, type HandlerContext } from '../middleware/secure-h
 import { toolError, toolSuccess, type BaseMcpToolDeps, type ToolResult } from './tool-result.js';
 import type { VoterRole, AgentVoteResult } from '../../cli/vote-types.js';
 import { collectRealVotes } from '../../cli/voter-agents.js';
+import { FINDINGS_FORMAT_INSTRUCTIONS, parseFindings, type Finding } from './pr-review-findings.js';
+
+export type { Finding, VerificationGate, FindingSeverity } from './pr-review-findings.js';
 
 // ============================================================================
 // Constants
@@ -84,9 +87,14 @@ export interface PrReviewVote {
   readonly role: VoterRole;
   readonly decision: PrReviewDecision;
   readonly confidence: number;
-  /** Free-form reasoning from the voter; expected to contain file:line citations
-   * per the verification gate (#2225 + #2233 Child 3 will enforce structure). */
+  /** Free-form reasoning from the voter — full text including the
+   * findings YAML block (which is also parsed into `findings` below). */
   readonly reasoning: string;
+  /** Structured findings parsed from the voter's reasoning per #2225 +
+   * #2233 Child 3. Each Finding has a verification gate output and a
+   * derived `verified` boolean. Only verified findings can trigger
+   * request_changes — see aggregatePrDecisions. */
+  readonly findings: readonly Finding[];
   readonly source: 'llm' | 'simulation' | 'error';
   readonly cli?: string | undefined;
   readonly processingTimeMs: number;
@@ -118,14 +126,28 @@ export function mapVoteDecisionToPrDecision(
 }
 
 /** Aggregates per-voter decisions into a single summary outcome.
- * - Any `request_changes` from a non-error vote → overall `request_changes`
- * - All non-error votes `approve` → overall `approve`
- * - Otherwise → `abstain` (mixed/all-errors)
+ *
+ * Per #2233 Child 3: `request_changes` only fires when at least one
+ * non-error voter declared `request_changes` AND has at least one
+ * VERIFIED finding (all 4 gate checks passed with substantive
+ * named_assertion). This is the #2225 verification gate enforcement —
+ * without it, the 2026-04-25 audit found a 100% false-positive rate.
+ *
+ * Voters who declare `request_changes` but emit no verified findings
+ * are demoted to "informational" — their reasoning still surfaces to
+ * the human reviewer but doesn't trigger blocking on its own.
+ *
+ * - ≥1 verified finding from a non-error request_changes voter → `request_changes`
+ * - All non-error votes `approve` (no verified findings) → `approve`
+ * - Otherwise → `abstain` (mixed/all-errors/all-unverified-findings)
  */
 export function aggregatePrDecisions(reviews: readonly PrReviewVote[]): PrReviewDecision {
   const valid = reviews.filter((r) => r.source !== 'error');
   if (valid.length === 0) return 'abstain';
-  if (valid.some((r) => r.decision === 'request_changes')) return 'request_changes';
+  const hasVerifiedBlocker = valid.some(
+    (r) => r.decision === 'request_changes' && r.findings.some((f) => f.verified)
+  );
+  if (hasVerifiedBlocker) return 'request_changes';
   if (valid.every((r) => r.decision === 'approve')) return 'approve';
   return 'abstain';
 }
@@ -161,12 +183,7 @@ export function buildPrReviewProposal(input: PrReviewInput): string {
     `- **REJECT** (= "request changes") if there is at least one concrete defect, missing requirement, or violation that justifies blocking the merge.\n`
   );
   parts.push(`- **ABSTAIN** if the diff is outside your role's concerns.\n`);
-  parts.push(
-    `\nFor every claim, cite the specific \`path/file.ext:line\` and state what's wrong.\n`
-  );
-  parts.push(
-    `Apply the verification gate (#2225) before claiming a finding: re-read the cited line plus 5 lines either side; trace the call path; name the failing assertion; rule out language non-issues. If any check raises "wait, actually..." — drop the finding.\n`
-  );
+  parts.push(`\n${FINDINGS_FORMAT_INSTRUCTIONS}\n`);
 
   return parts.join('');
 }
@@ -181,6 +198,7 @@ function toPrReviewVote(result: AgentVoteResult): PrReviewVote {
     decision: mapVoteDecisionToPrDecision(result.vote.decision),
     confidence: result.vote.confidence,
     reasoning: result.vote.reasoning,
+    findings: parseFindings(result.vote.reasoning),
     source: result.source,
     cli: result.cli,
     processingTimeMs: result.processingTimeMs,
