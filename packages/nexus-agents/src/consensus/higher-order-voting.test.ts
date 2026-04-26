@@ -424,6 +424,137 @@ describe('OWVoting', () => {
 
       expect(result.decision).toBe('no_consensus');
     });
+
+    // =========================================================================
+    // #2227: scope_steward × pm correlation regression
+    // -------------------------------------------------------------------------
+    // The 7-role panel (#2185) added scope_steward, which evaluates the same
+    // build-vs-buy / scope axis as pm. When the two co-vote, higher_order MUST
+    // down-weight the redundant signal — otherwise scope_steward + pm acting
+    // in lockstep effectively double-count the product perspective.
+    //
+    // CorrelationTracker is dynamic (no hardcoded fixture), so the empirical
+    // measurement accumulates as live votes accrue. These tests pin the
+    // BEHAVIOR: given a correlation observation, the strategy must respond
+    // correctly regardless of which roles are involved.
+    // =========================================================================
+    describe('#2227: scope_steward × pm correlation behavior', () => {
+      it('down-weights pm when scope_steward × pm correlation is high', () => {
+        // 7-role panel, scope_steward + pm both approve in lockstep with high
+        // correlation. Other roles split. Expectation: at least one of
+        // {pm, scope_steward} appears in downweightedAgents.
+        const votes = createVoteMap([
+          ['architect', 'approve'],
+          ['security', 'reject'],
+          ['devex', 'approve'],
+          ['ai_ml', 'reject'],
+          ['pm', 'approve'],
+          ['catfish', 'reject'],
+          ['scope_steward', 'approve'],
+        ]);
+        const correlationMatrix = createCorrelationMatrix([
+          ['scope_steward', 'pm', 0.9], // The correlated pair this test guards
+          // All other pairs near-independent so we isolate the signal.
+          ['architect', 'security', 0.1],
+          ['architect', 'devex', 0.1],
+          ['architect', 'pm', 0.1],
+          ['architect', 'scope_steward', 0.1],
+          ['security', 'pm', 0.1],
+          ['security', 'scope_steward', 0.1],
+          ['devex', 'pm', 0.1],
+          ['devex', 'scope_steward', 0.1],
+          ['catfish', 'pm', 0.1],
+          ['catfish', 'scope_steward', 0.1],
+          ['ai_ml', 'pm', 0.1],
+          ['ai_ml', 'scope_steward', 0.1],
+        ]);
+
+        const result = voting.aggregateWithCorrelation(votes, correlationMatrix);
+
+        const downweighted = new Set(result.downweightedAgents);
+        expect(downweighted.has('pm') || downweighted.has('scope_steward')).toBe(true);
+      });
+
+      it('does NOT down-weight pm when scope_steward × pm correlation is low', () => {
+        // Same vote pattern, but scope_steward and pm are independent. The
+        // strategy should treat their joint approval as two real signals.
+        const votes = createVoteMap([
+          ['architect', 'approve'],
+          ['security', 'reject'],
+          ['devex', 'approve'],
+          ['ai_ml', 'reject'],
+          ['pm', 'approve'],
+          ['catfish', 'reject'],
+          ['scope_steward', 'approve'],
+        ]);
+        const correlationMatrix = createCorrelationMatrix([
+          ['scope_steward', 'pm', 0.05], // INDEPENDENT
+          ['architect', 'security', 0.1],
+          ['architect', 'devex', 0.1],
+          ['architect', 'pm', 0.1],
+          ['architect', 'scope_steward', 0.1],
+          ['security', 'pm', 0.1],
+          ['security', 'scope_steward', 0.1],
+          ['devex', 'pm', 0.1],
+          ['devex', 'scope_steward', 0.1],
+          ['catfish', 'pm', 0.1],
+          ['catfish', 'scope_steward', 0.1],
+          ['ai_ml', 'pm', 0.1],
+          ['ai_ml', 'scope_steward', 0.1],
+        ]);
+
+        const result = voting.aggregateWithCorrelation(votes, correlationMatrix);
+
+        const downweighted = new Set(result.downweightedAgents);
+        expect(downweighted.has('pm')).toBe(false);
+        expect(downweighted.has('scope_steward')).toBe(false);
+      });
+
+      it('reports lower effectiveVoteCount when scope_steward × pm are correlated', () => {
+        // Direct comparison: same votes, only the scope_steward × pm
+        // correlation differs. The correlated case must produce a strictly
+        // smaller effectiveVoteCount.
+        const votes = createVoteMap([
+          ['architect', 'approve'],
+          ['security', 'approve'],
+          ['devex', 'approve'],
+          ['ai_ml', 'approve'],
+          ['pm', 'approve'],
+          ['catfish', 'approve'],
+          ['scope_steward', 'approve'],
+        ]);
+        const baseCorrelations: Array<[string, string, number]> = [
+          ['architect', 'security', 0.1],
+          ['architect', 'devex', 0.1],
+          ['architect', 'pm', 0.1],
+          ['architect', 'scope_steward', 0.1],
+          ['security', 'pm', 0.1],
+          ['security', 'scope_steward', 0.1],
+          ['devex', 'pm', 0.1],
+          ['devex', 'scope_steward', 0.1],
+          ['catfish', 'pm', 0.1],
+          ['catfish', 'scope_steward', 0.1],
+          ['ai_ml', 'pm', 0.1],
+          ['ai_ml', 'scope_steward', 0.1],
+        ];
+
+        const independentResult = voting.aggregateWithCorrelation(
+          votes,
+          createCorrelationMatrix([...baseCorrelations, ['scope_steward', 'pm', 0.05]])
+        );
+        const correlatedResult = voting.aggregateWithCorrelation(
+          votes,
+          createCorrelationMatrix([...baseCorrelations, ['scope_steward', 'pm', 0.95]])
+        );
+
+        // Correlated case must aggregate strictly less than independent.
+        // The exact delta depends on weight thresholds, so we assert the
+        // monotonic property, not a specific number.
+        expect(correlatedResult.effectiveVoteCount).toBeLessThan(
+          independentResult.effectiveVoteCount
+        );
+      });
+    });
   });
 
   describe('computeISP', () => {
