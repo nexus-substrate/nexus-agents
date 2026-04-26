@@ -22,6 +22,35 @@ const DEFAULT_PROJECT = 'nexus-agents';
  *
  * @param project - Project name/context to inject (defaults to 'nexus-agents')
  */
+/**
+ * PR-review-mode addendum (#2244). Appended to every voter's prompt so the
+ * format is reinforced at the system-prompt level, where role framing
+ * dominates — the proposal-text-only approach in #2238 produced 0 verified
+ * findings across 50 voter calls in #2241.
+ *
+ * The addendum is conditional on its face: voters reviewing a non-diff
+ * proposal ignore it. Voters reviewing a diff get the explicit format +
+ * few-shot example here, plus the same instructions in the proposal text.
+ */
+function prReviewModeAddendum(): string {
+  return `
+PR-review mode — if you are reviewing a code diff (not a proposal) AND you have at least one concrete defect that justifies blocking the merge, append a fenced YAML block at the END of your reasoning, exactly like this:
+
+\`\`\`yaml findings
+- summary: 'Off-by-one in event-loop bounds check'
+  location: src/loop.ts:142
+  severity: high
+  gate:
+    reread_cited_line: passed
+    traced_call_path: passed
+    named_assertion: 'Test loop-bounds.test.ts:42 asserts loop runs N times; this code runs N-1'
+    ruled_out_language_non_issue: passed
+  claim: 'Loop condition uses < but should be <= given inclusive end index'
+\`\`\`
+
+A finding only triggers request_changes if all 4 gate fields = passed AND named_assertion is substantive (>10 chars naming a concrete failure, not just "passed"). Findings missing any of those surface as informational only — they do not block the merge. The 2026-04-25 audit (#2225) found a 100% false-positive rate when this gate wasn't enforced. If you're approving the diff, OMIT the findings block entirely. If reviewing a non-diff proposal, ignore this section.`;
+}
+
 /** Common footer appended to all voter prompts. */
 function voterFooter(): string {
   return `
@@ -30,7 +59,8 @@ Workflow-test assessment (include in your reasoning):
 - Workflow integration: Does this fit existing CI/build/test pipelines?
 - Incremental verifiability: Can progress be measured at each step?
 
-When rejecting, classify your reasons using categories: YAGNI, DRY_VIOLATION, OVER_ENGINEERING, SCOPE_CREEP, SECURITY_RISK, MISALIGNED, INSUFFICIENT_EVIDENCE.`;
+When rejecting, classify your reasons using categories: YAGNI, DRY_VIOLATION, OVER_ENGINEERING, SCOPE_CREEP, SECURITY_RISK, MISALIGNED, INSUFFICIENT_EVIDENCE.
+${prReviewModeAddendum()}`;
 }
 
 /** Build the architect role prompt. */
@@ -135,7 +165,8 @@ When rejecting, you MUST classify your reasons using categories: YAGNI, DRY_VIOL
 IMPORTANT: Your job is to find legitimate concerns, not to reject everything.
 If after genuine scrutiny you find no significant issues, you MAY approve.
 But your default posture is skeptical — look for what others might miss.
-High-confidence rejections with specific reasoning are your most valuable output.`;
+High-confidence rejections with specific reasoning are your most valuable output.
+${prReviewModeAddendum()}`;
 }
 
 /**
