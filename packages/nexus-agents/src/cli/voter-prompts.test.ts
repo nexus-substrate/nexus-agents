@@ -12,7 +12,15 @@ import type { VoterRole } from './vote-types.js';
 
 describe('voter-prompts', () => {
   describe('VOTER_SYSTEM_PROMPTS', () => {
-    const allRoles: VoterRole[] = ['architect', 'security', 'devex', 'ai_ml', 'pm', 'catfish'];
+    const allRoles: VoterRole[] = [
+      'architect',
+      'security',
+      'devex',
+      'ai_ml',
+      'pm',
+      'catfish',
+      'scope_steward',
+    ];
 
     it('should define prompts for all voter roles', () => {
       expect(Object.keys(VOTER_SYSTEM_PROMPTS).sort()).toEqual(allRoles.sort());
@@ -150,6 +158,49 @@ describe('voter-prompts', () => {
       });
     });
 
+    describe('scope_steward prompt (#2185)', () => {
+      const prompt = VOTER_SYSTEM_PROMPTS.scope_steward;
+
+      it('defines the role as gating against build-vs-buy mistakes', () => {
+        expect(prompt).toContain('Scope Steward');
+        expect(prompt).toContain('build-when-buy-would-do');
+      });
+
+      it('cites the originating aegis-boot incident', () => {
+        expect(prompt).toContain('Rufus');
+        expect(prompt).toContain('USB flasher');
+      });
+
+      it('includes all 5 mandatory checks', () => {
+        expect(prompt).toContain('Existing-tool check');
+        expect(prompt).toContain('Build-vs-buy math');
+        expect(prompt).toContain('Mission alignment');
+        expect(prompt).toContain('Kill-the-feature option');
+        expect(prompt).toContain('Sprawl audit');
+      });
+
+      it('biases default toward not shipping', () => {
+        expect(prompt).toContain('Default bias: REJECT');
+        expect(prompt).toContain('this should not be built');
+      });
+
+      it('includes the few-shot Rufus rejection example', () => {
+        // Locks in the concrete pattern the role must learn from.
+        expect(prompt).toContain("REJECT (DON'T-BUILD)");
+        expect(prompt).toContain('100M+ installs');
+      });
+
+      it('still permits approval when build-vs-buy math justifies it', () => {
+        expect(prompt).toContain('You CAN approve');
+      });
+
+      it('classifies rejections with appropriate categories', () => {
+        expect(prompt).toContain('SCOPE_CREEP');
+        expect(prompt).toContain('YAGNI');
+        expect(prompt).toContain('OVER_ENGINEERING');
+      });
+    });
+
     describe('catfish prompt', () => {
       const prompt = VOTER_SYSTEM_PROMPTS.catfish;
 
@@ -239,7 +290,15 @@ describe('voter-prompts', () => {
   });
 
   describe('SIMULATED_VOTE_REASONING', () => {
-    const allRoles: VoterRole[] = ['architect', 'security', 'devex', 'ai_ml', 'pm', 'catfish'];
+    const allRoles: VoterRole[] = [
+      'architect',
+      'security',
+      'devex',
+      'ai_ml',
+      'pm',
+      'catfish',
+      'scope_steward',
+    ];
 
     it('should define reasoning for all voter roles', () => {
       expect(Object.keys(SIMULATED_VOTE_REASONING).sort()).toEqual(allRoles.sort());
