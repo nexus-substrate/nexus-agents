@@ -29,6 +29,7 @@ allowed-tools: Read, Edit, Write, Bash, Grep, Glob, Task
 <!-- PIPELINE NOTE: docs-check.yml docs-content-drift job extended with MCP_TOOL_COUNT cross-check — fails CI when site-data.ts MCP_TOOL_COUNT, server.json tools[], server.json description prose, or README.md prose disagree with the authoritative count in src/mcp/tools/index.ts registerTools() (#2107, 2026-04-22) -->
 <!-- PIPELINE NOTE: .claude/rules/ moved to .rules/ for harness neutrality (#2121, 2026-04-22). setup-rules.ts now writes to .rules/nexus-agents.md; detectProjectInfo accepts both paths during migration. CLAUDE.md pointers updated. -->
 <!-- PIPELINE NOTE: generate-repo-index.ts now imports cli-command-catalog.ts as single source of truth for CLI commands (#2156, 2026-04-22). Adds drift check warning when dispatch-table entries disagree with the catalog, in either direction. No output-format change. -->
+<!-- PIPELINE NOTE: inject-governance.ts TOOL_DESCRIPTIONS map filled in for query_task_state, run_dev_pipeline, run_pipeline (#2231, 2026-04-26) — those three tools were previously rendering as "{name} tool" placeholders in the CLAUDE.md auto-generated tool table. buildAncillaryProbes() also split into per-target helpers (buildAgentsMdProbes, buildMarketplaceProbes, buildPluginInstallProbes) to clear a max-lines-per-function lint violation; no behavior change. -->
 
 **Full specification:** [docops-spec.md](../../docs/ops/docops-spec.md)
 
