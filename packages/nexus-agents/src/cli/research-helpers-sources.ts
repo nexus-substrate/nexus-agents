@@ -21,7 +21,7 @@ import { resolveToken } from '../scm/token-resolver.js';
 const SOURCE_API_TIMEOUT_MS = 30_000;
 
 /** Error codes for source discovery. */
-export type DiscoverErrorCode = 'TIMEOUT' | 'NETWORK' | 'HTTP_ERROR' | 'PARSE_ERROR';
+export type DiscoverErrorCode = 'TIMEOUT' | 'NETWORK' | 'HTTP_ERROR' | 'PARSE_ERROR' | 'RATE_LIMIT';
 
 /** Structured error for discovery failures. */
 export interface DiscoverError {
@@ -99,9 +99,17 @@ export async function fetchSource(
     if (headers !== undefined) fetchInit.headers = headers;
     const response = await fetch(url, fetchInit);
     if (!response.ok) {
+      // Surface rate-limiting separately so callers can distinguish "your key
+      // is missing / quota exhausted" from "the API is broken" (#2234). The
+      // generic HTTP_ERROR message previously masked semantic_scholar's
+      // unauthenticated 429s as opaque failures.
+      const isRateLimit = response.status === 429;
+      const message = isRateLimit
+        ? `${source} rate-limited (HTTP 429) — set ${source.toUpperCase()}_API_KEY or retry later`
+        : `API returned ${String(response.status)}`;
       return {
         ok: false,
-        error: createError('HTTP_ERROR', source, `API returned ${String(response.status)}`),
+        error: createError(isRateLimit ? 'RATE_LIMIT' : 'HTTP_ERROR', source, message),
       };
     }
     return { ok: true, value: response };
@@ -151,7 +159,13 @@ export async function discoverGitHubRepos(
   topic: string,
   maxResults = 10
 ): Promise<Result<DiscoveredSource[], DiscoverError>> {
-  const query = encodeURIComponent(`${topic} language:python OR language:typescript`);
+  // GitHub's search API parses bare `OR` as a top-level operator, which
+  // splits the query into two unrelated clauses and zeroes out matches
+  // when the topic has multiple distinguishing tokens (#2234). Parenthesizing
+  // qualifiers does NOT work either. Best fix: drop the language filter and
+  // let the topic terms drive matching; downstream relevance scoring handles
+  // quality. Confirmed empirically against api.github.com.
+  const query = encodeURIComponent(topic);
   const url = `https://api.github.com/search/repositories?q=${query}&sort=stars&order=desc&per_page=${String(maxResults)}`;
 
   // Use SCM token-resolver for optional auth (Issue #1136)

@@ -109,7 +109,7 @@ describe('discoverGitHubRepos', () => {
     if (!result.ok) expect(result.error.code).toBe('TIMEOUT');
   });
 
-  it('should use OR logic for language filters', async () => {
+  it('should not include language filter (#2234 — bare OR poisoned the search)', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: () => Promise.resolve({ items: [] }),
@@ -117,8 +117,24 @@ describe('discoverGitHubRepos', () => {
     await discoverGitHubRepos('agent orchestration', 5);
     const calledUrl = mockFetch.mock.calls[0]?.[0] as string;
     const decoded = decodeURIComponent(calledUrl);
-    expect(decoded).toContain('language:python OR language:typescript');
-    expect(decoded).not.toContain('language:python language:typescript');
+    // Bare `OR` between qualifiers caused GitHub to interpret the query as a
+    // top-level disjunction and zero out matches when the topic had multiple
+    // distinguishing tokens. The fix drops the language filter entirely;
+    // downstream relevance scoring handles quality.
+    expect(decoded).not.toContain('language:python');
+    expect(decoded).not.toContain('language:typescript');
+    expect(decoded).toContain('agent orchestration');
+  });
+
+  it('should pass topic verbatim into the GitHub search query (#2234)', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ items: [] }),
+    });
+    await discoverGitHubRepos('SWE-agent OpenHands autonomous coding agent', 5);
+    const calledUrl = mockFetch.mock.calls[0]?.[0] as string;
+    const decoded = decodeURIComponent(calledUrl);
+    expect(decoded).toContain('SWE-agent OpenHands autonomous coding agent');
   });
 });
 
@@ -130,8 +146,20 @@ describe('fetchSource', () => {
     expect(result.ok).toBe(true);
   });
 
-  it('should return HTTP_ERROR on non-ok response', async () => {
+  it('should return RATE_LIMIT on 429 with actionable message (#2234)', async () => {
     mockFetch.mockResolvedValueOnce({ ok: false, status: 429 });
+    const result = await fetchSource({ url: 'https://example.com', source: 'semantic_scholar' });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('RATE_LIMIT');
+      expect(result.error.source).toBe('semantic_scholar');
+      // Message must hint at the API-key escape hatch so users aren't stuck.
+      expect(result.error.message).toContain('SEMANTIC_SCHOLAR_API_KEY');
+    }
+  });
+
+  it('should return HTTP_ERROR on non-429 non-ok response', async () => {
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 500 });
     const result = await fetchSource({ url: 'https://example.com', source: 'test' });
     expect(result.ok).toBe(false);
     if (!result.ok) {

@@ -115,10 +115,22 @@ export async function discoverSemanticScholar(
   // Note: sort parameter only works on /paper/search/bulk, not /paper/search
   const url = `https://api.semanticscholar.org/graph/v1/paper/search?query=${query}&limit=${String(maxResults)}&fields=${fields}`;
 
+  // Unauthenticated requests are aggressively rate-limited (HTTP 429) by
+  // semantic_scholar, which surfaced as a 100% failure rate in #2234. Honor
+  // SEMANTIC_SCHOLAR_API_KEY when set so users can opt into the higher quota.
+  const headers: Record<string, string> = {
+    'User-Agent': 'nexus-agents',
+    Accept: 'application/json',
+  };
+  const apiKey = process.env['SEMANTIC_SCHOLAR_API_KEY'];
+  if (apiKey !== undefined && apiKey !== '') {
+    headers['x-api-key'] = apiKey;
+  }
+
   const fetchResult = await fetchSource({
     url,
     source: 'semantic_scholar',
-    headers: { 'User-Agent': 'nexus-agents', Accept: 'application/json' },
+    headers,
   });
   if (!fetchResult.ok) return fetchResult;
 

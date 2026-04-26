@@ -192,16 +192,17 @@ All configuration can be overridden with environment variables:
 
 ### Model Provider Keys
 
-| Variable                    | Description                                                    |
-| --------------------------- | -------------------------------------------------------------- |
-| `ANTHROPIC_API_KEY`         | Claude API key                                                 |
-| `OPENAI_API_KEY`            | OpenAI API key                                                 |
-| `GOOGLE_AI_API_KEY`         | Google AI (Gemini) API key                                     |
-| `OPENROUTER_API_KEY`        | OpenRouter API key (for free-model adapters)                   |
-| `OLLAMA_HOST`               | Ollama server URL (default: `http://localhost:11434`)          |
-| `NEXUS_CUSTOM_API_BASE_URL` | Custom OpenAI-compatible gateway base URL                      |
-| `NEXUS_CUSTOM_API_KEY`      | API key for the custom gateway                                 |
-| `NEXUS_CUSTOM_MODEL`        | Model id for the custom gateway (default: `gpt-4o`, see #2208) |
+| Variable                    | Description                                                                                                                                                                 |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ANTHROPIC_API_KEY`         | Claude API key                                                                                                                                                              |
+| `OPENAI_API_KEY`            | OpenAI API key                                                                                                                                                              |
+| `GOOGLE_AI_API_KEY`         | Google AI (Gemini) API key                                                                                                                                                  |
+| `OPENROUTER_API_KEY`        | OpenRouter API key (for free-model adapters)                                                                                                                                |
+| `OLLAMA_HOST`               | Ollama server URL (default: `http://localhost:11434`)                                                                                                                       |
+| `NEXUS_CUSTOM_API_BASE_URL` | Custom OpenAI-compatible gateway base URL                                                                                                                                   |
+| `NEXUS_CUSTOM_API_KEY`      | API key for the custom gateway                                                                                                                                              |
+| `NEXUS_CUSTOM_MODEL`        | Model id for the custom gateway (default: `gpt-4o`, see #2208)                                                                                                              |
+| `SEMANTIC_SCHOLAR_API_KEY`  | Optional. Lifts research_discover's semantic_scholar source past the unauthenticated 429 ceiling (#2234). Apply at https://www.semanticscholar.org/product/api#api-key-form |
 
 ### Routing Variables
 
