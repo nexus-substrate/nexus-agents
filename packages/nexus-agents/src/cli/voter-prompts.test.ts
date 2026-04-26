@@ -287,6 +287,62 @@ describe('voter-prompts', () => {
         }
       });
     });
+
+    // #2244: PR-review-mode addendum (closes the 0-finding gap from #2241)
+    describe('PR-review YAML findings format (#2244)', () => {
+      it('mentions the YAML findings block in every role prompt', () => {
+        for (const role of allRoles) {
+          expect(VOTER_SYSTEM_PROMPTS[role]).toContain('```yaml findings');
+        }
+      });
+
+      it('shows the 4-gate verification structure in every role prompt', () => {
+        for (const role of allRoles) {
+          const prompt = VOTER_SYSTEM_PROMPTS[role];
+          expect(prompt).toContain('reread_cited_line');
+          expect(prompt).toContain('traced_call_path');
+          expect(prompt).toContain('named_assertion');
+          expect(prompt).toContain('ruled_out_language_non_issue');
+        }
+      });
+
+      it('warns voters about rubber-stamp named_assertion', () => {
+        for (const role of allRoles) {
+          const prompt = VOTER_SYSTEM_PROMPTS[role];
+          expect(prompt).toContain('substantive');
+          expect(prompt).toContain('not just "passed"');
+        }
+      });
+
+      it('cites the verification gate audit (#2225)', () => {
+        for (const role of allRoles) {
+          expect(VOTER_SYSTEM_PROMPTS[role]).toContain('#2225');
+        }
+      });
+
+      it('tells voters to OMIT the block when approving', () => {
+        for (const role of allRoles) {
+          expect(VOTER_SYSTEM_PROMPTS[role]).toContain('OMIT the findings block');
+        }
+      });
+
+      it('explicitly scopes the addendum to PR-review mode (not all proposals)', () => {
+        // The addendum should NOT pollute non-PR-review consensus_vote use.
+        for (const role of allRoles) {
+          expect(VOTER_SYSTEM_PROMPTS[role]).toContain('PR-review mode');
+          expect(VOTER_SYSTEM_PROMPTS[role]).toContain('non-diff proposal');
+        }
+      });
+
+      it('shows a few-shot example with substantive named_assertion', () => {
+        // The example must demonstrate what "substantive" looks like — a
+        // sentence-form failure description, not a single word.
+        for (const role of allRoles) {
+          const prompt = VOTER_SYSTEM_PROMPTS[role];
+          expect(prompt).toContain('Test loop-bounds.test.ts:42');
+        }
+      });
+    });
   });
 
   describe('SIMULATED_VOTE_REASONING', () => {
