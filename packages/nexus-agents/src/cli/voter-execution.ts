@@ -138,6 +138,7 @@ const ROLE_VOTE_DISTRIBUTIONS: Record<VoterRole, [number, number, number]> = {
   ai_ml: [55, 30, 15], // Technical focus
   pm: [55, 25, 20], // Business focus - generally supportive
   catfish: [20, 65, 15], // Deliberately contrarian - challenges proposals (arXiv:2505.21503)
+  scope_steward: [25, 60, 15], // Default-bias toward not shipping (#2185)
 };
 
 /**
