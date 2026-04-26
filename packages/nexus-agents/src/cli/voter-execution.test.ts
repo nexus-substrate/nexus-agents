@@ -412,6 +412,32 @@ describe('voter-execution', () => {
       }
     });
 
+    // Pin the maxTokens to prevent regression to the truncated value (#2245).
+    // The v3 retest showed JSON parse failures at character positions 267 and
+    // 791 — caused by 500-token output cap cutting the JSON envelope mid-string.
+    // Lower bound = 1500 leaves headroom; upper bound prevents accidental
+    // unbounded growth.
+    it('should configure maxTokens large enough to fit JSON envelope + reasoning + YAML findings (#2245)', async () => {
+      const mockResponse: MockCompletionResult = {
+        ok: true,
+        value: {
+          content: [{ type: 'text', text: VALID_VOTE_JSON }],
+          usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
+          stopReason: 'end_turn',
+          model: 'test-model',
+        },
+      };
+      vi.mocked(mockAdapter.complete).mockResolvedValue(mockResponse);
+
+      await executeSingleVoteAttempt('devex', 'Test proposal', mockAdapter, 5000);
+
+      const calls = vi.mocked(mockAdapter.complete).mock.calls;
+      expect(calls.length).toBeGreaterThan(0);
+      const request = calls[0]?.[0] as { maxTokens?: number };
+      expect(request.maxTokens).toBeGreaterThanOrEqual(1500);
+      expect(request.maxTokens).toBeLessThanOrEqual(8000);
+    });
+
     it('should return error on adapter failure', async () => {
       const mockResponse: MockCompletionResult = {
         ok: false,
