@@ -504,3 +504,5 @@ export function modelSupportsAll(
     includesAll(model.specialFeatures, requirements.specialFeatures)
   );
 }
+  /* Bounty contribution */
+}
