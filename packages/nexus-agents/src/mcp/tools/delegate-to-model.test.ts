@@ -313,8 +313,8 @@ describe('delegate_to_model Tool', () => {
     });
 
     it('should have Gemini with expected context windows', () => {
-      expect(MODEL_CAPABILITIES['gemini-pro']!.contextWindow).toBe(1_000_000);
-      expect(MODEL_CAPABILITIES['gemini-flash']!.contextWindow).toBe(1_000_000);
+      expect(MODEL_CAPABILITIES['gemini-pro']!.contextWindow).toBe(1_048_576);
+      expect(MODEL_CAPABILITIES['gemini-flash']!.contextWindow).toBe(1_048_576);
     });
   });
 

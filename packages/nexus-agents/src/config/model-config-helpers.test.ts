@@ -213,7 +213,7 @@ describe('buildModelInfo', () => {
     expect(info).toBeDefined();
     expect(info?.id).toBe('gpt-5.4');
     expect(info?.name).toBe('GPT-5.4');
-    expect(info?.contextWindow).toBe(1_000_000);
+    expect(info?.contextWindow).toBe(1_050_000);
     expect(info?.maxOutput).toBe(128_000);
     expect(info?.costPerMillionInput).toBe(2.5);
     expect(info?.costPerMillionOutput).toBe(15.0);
@@ -224,7 +224,7 @@ describe('buildModelInfo', () => {
     expect(info).toBeDefined();
     expect(info?.id).toBe('gemini-2.5-flash');
     expect(info?.name).toBe('Gemini 2.5 Flash');
-    expect(info?.contextWindow).toBe(1_000_000);
+    expect(info?.contextWindow).toBe(1_048_576);
   });
 
   it('builds model info for claude model via cliAlias', () => {

@@ -257,11 +257,11 @@ describe('findModelsByProvider', () => {
 // ---------------------------------------------------------------------------
 
 describe('findBestModelForOutput', () => {
-  it('returns claude-opus for text (1M context)', () => {
+  it('returns the largest-context text model', () => {
     const result = findBestModelForOutput('text');
     expect(result).toBeDefined();
-    expect(result?.id).toBe('claude-opus');
-    expect(result?.contextWindow).toBe(1_000_000);
+    expect(result?.id).toBe('codex-5.3');
+    expect(result?.contextWindow).toBe(1_050_000);
   });
 
   it('returns undefined for nonexistent modality', () => {

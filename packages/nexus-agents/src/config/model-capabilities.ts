@@ -131,7 +131,7 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       id: 'gemini-3-pro',
       displayName: 'Gemini 3.1 Pro (Preview)',
       provider: 'google',
-      contextWindow: 1_000_000,
+      contextWindow: 1_048_576,
       outputModalities: [
         'text',
         'image_png',
@@ -160,7 +160,7 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       id: 'gemini-pro',
       displayName: 'Gemini 2.5 Pro',
       provider: 'google',
-      contextWindow: 1_000_000,
+      contextWindow: 1_048_576,
       outputModalities: [
         'text',
         'image_png',
@@ -189,7 +189,7 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       id: 'gemini-3-flash',
       displayName: 'Gemini 3 Flash (Preview)',
       provider: 'google',
-      contextWindow: 1_000_000,
+      contextWindow: 1_048_576,
       outputModalities: ['text', 'image_png', 'image_jpeg', 'structured_json', 'code'],
       inputModalities: ['text', 'image', 'audio', 'video', 'pdf', 'code'],
       toolCapabilities: [
@@ -210,7 +210,7 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       id: 'gemini-flash',
       displayName: 'Gemini 2.5 Flash',
       provider: 'google',
-      contextWindow: 1_000_000,
+      contextWindow: 1_048_576,
       outputModalities: ['text', 'image_png', 'image_jpeg', 'structured_json', 'code'],
       inputModalities: ['text', 'image', 'audio', 'video', 'pdf', 'code'],
       toolCapabilities: [
@@ -232,7 +232,7 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       id: 'codex-5.3',
       displayName: 'GPT-5.4',
       provider: 'openai',
-      contextWindow: 1_000_000,
+      contextWindow: 1_050_000,
       outputModalities: ['text', 'structured_json', 'code'],
       inputModalities: ['text', 'image', 'pdf', 'code'],
       toolCapabilities: [
@@ -256,7 +256,7 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       id: 'codex-5.2',
       displayName: 'GPT-5.2-Codex',
       provider: 'openai',
-      contextWindow: 400_000,
+      contextWindow: 272_000,
       outputModalities: ['text', 'structured_json', 'code'],
       inputModalities: ['text', 'image', 'pdf', 'code'],
       toolCapabilities: [
@@ -273,8 +273,8 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
         'No native image/audio/video generation',
         'Network access restricted in sandbox',
       ],
-      notes: 'Best code generation; 400K context; sandboxed execution environment',
-      pricing: { inputPer1M: 2.0, outputPer1M: 8.0 },
+      notes: 'Best code generation; 272K context; sandboxed execution environment',
+      pricing: { inputPer1M: 1.75, outputPer1M: 14.0 },
       qualityScores: { reasoning: 9, codeGeneration: 10, speed: 8, cost: 7 },
       maxOutputTokens: 100_000,
       cliName: 'codex',
