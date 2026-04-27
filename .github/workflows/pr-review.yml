@@ -52,6 +52,28 @@ jobs:
     timeout-minutes: 15
 
     steps:
+      - name: Verify at least one model API key is configured
+        # Without an API key, voters can't actually run — they fall back to
+        # abstain/0% which produces confusing "review" comments. Fail fast
+        # with an actionable message so the maintainer adds a secret.
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          if [ -z "${ANTHROPIC_API_KEY}${OPENAI_API_KEY}${GOOGLE_AI_API_KEY}${OPENROUTER_API_KEY}" ]; then
+            echo "::error::pr_review needs at least one model API key in repo Actions secrets."
+            echo "Add one of: ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_AI_API_KEY, OPENROUTER_API_KEY"
+            echo "Settings → Secrets and variables → Actions → New repository secret."
+            echo ""
+            echo "If you don't want pr_review to run, add the 'skip-pr-review' label to PRs."
+            echo "If you want to disable it entirely, revert the trigger in .github/workflows/pr-review.yml"
+            echo "to require the 'pr-review-experiment' label (see #2242 PR for the previous opt-in shape)."
+            exit 1
+          fi
+          echo "API key configured — proceeding."
+
       - name: Checkout PR head
         uses: actions/checkout@v4
         with:
