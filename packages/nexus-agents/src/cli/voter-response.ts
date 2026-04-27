@@ -66,6 +66,35 @@ export interface ParseVoteOptions {
 // ============================================================================
 
 /**
+ * Pre-verified finding shape — voter emits this; downstream
+ * `isFindingVerified` adds the derived `verified` flag.
+ *
+ * #2245 follow-up: voters previously asked to embed YAML findings inside
+ * the JSON `reasoning` field. That format is lossy across JSON
+ * serialization (backticks/newlines). The v4 retest produced 0 findings
+ * across 9 request_changes voters because the LLM either dropped the
+ * YAML to keep JSON valid, or produced invalid JSON the parser rejected.
+ * Solution: expose findings as a top-level array on the vote response.
+ */
+export const RawFindingSchema = z.object({
+  summary: z.string().min(1).max(500).describe('One-line summary of the issue'),
+  location: z.string().min(1).max(200).describe('path/file.ext:line'),
+  severity: z.enum(['critical', 'high', 'medium', 'low']).default('medium'),
+  gate: z.object({
+    reread_cited_line: z.enum(['passed', 'failed', 'skipped']).default('skipped'),
+    traced_call_path: z.enum(['passed', 'failed', 'skipped']).default('skipped'),
+    named_assertion: z
+      .string()
+      .default('')
+      .describe('Concrete failing assertion — substantive, not a rubber-stamp word'),
+    ruled_out_language_non_issue: z.enum(['passed', 'failed', 'skipped']).default('skipped'),
+  }),
+  claim: z.string().min(1).max(2000).describe('What is wrong and why it justifies blocking'),
+});
+
+export type RawFinding = z.infer<typeof RawFindingSchema>;
+
+/**
  * Zod schema for parsing structured vote responses from LLM.
  */
 export const VoteResponseSchema = z.object({
@@ -88,6 +117,9 @@ export const VoteResponseSchema = z.object({
     )
     .optional()
     .describe('Rejection reason categories when decision is reject'),
+  /** Top-level structured findings for PR-review mode (#2245 v4 follow-up).
+   * Replaces the YAML-in-reasoning encoding that proved lossy. */
+  findings: z.array(RawFindingSchema).optional().describe('Structured findings (PR review only)'),
 });
 
 export type VoteResponse = z.infer<typeof VoteResponseSchema>;
@@ -95,6 +127,46 @@ export type VoteResponse = z.infer<typeof VoteResponseSchema>;
 // ============================================================================
 // Vote Prompt Construction
 // ============================================================================
+
+/** Example responses appended to vote prompts. Kept as a constant to keep
+ * `buildVotePrompt` under the max-lines-per-function lint cap. */
+const VOTE_PROMPT_EXAMPLES = `Example approve response:
+{
+  "decision": "approve",
+  "reasoning": "The proposal aligns with architectural patterns. Testability: high — unit tests can verify each component. Workflow integration: fits existing CI pipeline.",
+  "confidence": 0.85,
+  "conditions": ["Add unit tests before merge"]
+}
+
+Example reject response:
+{
+  "decision": "reject",
+  "reasoning": "This adds speculative abstractions for hypothetical future needs. Testability: unclear — no concrete test plan provided.",
+  "confidence": 0.80,
+  "rejectionCategories": ["YAGNI", "OVER_ENGINEERING"]
+}
+
+Example PR-review request_changes response with structured findings:
+{
+  "decision": "reject",
+  "reasoning": "Off-by-one in clampPageSize and missing null guard on response.timing — both visible in the diff.",
+  "confidence": 0.9,
+  "rejectionCategories": ["INSUFFICIENT_EVIDENCE"],
+  "findings": [
+    {
+      "summary": "Off-by-one in clampPageSize",
+      "location": "packages/nexus-agents/src/api/pagination.ts:18",
+      "severity": "high",
+      "gate": {
+        "reread_cited_line": "passed",
+        "traced_call_path": "passed",
+        "named_assertion": "Test would assert clampPageSize(50, 100) === 50; this returns 49.",
+        "ruled_out_language_non_issue": "passed"
+      },
+      "claim": "Function name says 'clamp to range' but returns requested-1 in the in-range path."
+    }
+  ]
+}`;
 
 /**
  * Constructs the user prompt for vote evaluation.
@@ -118,22 +190,9 @@ Respond with a JSON object containing:
 - confidence: Number between 0 and 1
 - conditions: Optional array of conditions for approval
 - rejectionCategories: Required when rejecting. Array of categories from: YAGNI, DRY_VIOLATION, OVER_ENGINEERING, SCOPE_CREEP, SECURITY_RISK, MISALIGNED, INSUFFICIENT_EVIDENCE
+- findings: PR-REVIEW MODE ONLY. Optional top-level array of structured findings — see "PR-review mode" in the system prompt. OMIT this field entirely when reviewing a non-diff proposal or when approving a diff.
 
-Example approve response:
-{
-  "decision": "approve",
-  "reasoning": "The proposal aligns with architectural patterns. Testability: high — unit tests can verify each component. Workflow integration: fits existing CI pipeline.",
-  "confidence": 0.85,
-  "conditions": ["Add unit tests before merge"]
-}
-
-Example reject response:
-{
-  "decision": "reject",
-  "reasoning": "This adds speculative abstractions for hypothetical future needs. Testability: unclear — no concrete test plan provided.",
-  "confidence": 0.80,
-  "rejectionCategories": ["YAGNI", "OVER_ENGINEERING"]
-}`;
+${VOTE_PROMPT_EXAMPLES}`;
 }
 
 // ============================================================================
@@ -192,6 +251,21 @@ function createFallbackVote(output: string, _role: VoterRole, reason: string): P
   };
 }
 
+/** Maps a validated VoteResponse into a ParsedVote, threading optional fields. */
+function buildParsedVote(data: VoteResponse): ParsedVote {
+  return {
+    decision: data.decision,
+    reasoning: data.reasoning,
+    confidence: data.confidence,
+    ...(data.conditions !== undefined ? { conditions: data.conditions } : {}),
+    ...(data.rejectionCategories !== undefined
+      ? { rejectionCategories: data.rejectionCategories }
+      : {}),
+    ...(data.findings !== undefined ? { findings: data.findings } : {}),
+    source: 'parsed',
+  };
+}
+
 /**
  * Parses vote response from LLM output.
  *
@@ -219,18 +293,7 @@ export function parseVoteResponse(
     const validated = VoteResponseSchema.safeParse(parsed);
 
     if (validated.success) {
-      return {
-        decision: validated.data.decision,
-        reasoning: validated.data.reasoning,
-        confidence: validated.data.confidence,
-        ...(validated.data.conditions !== undefined
-          ? { conditions: validated.data.conditions }
-          : {}),
-        ...(validated.data.rejectionCategories !== undefined
-          ? { rejectionCategories: validated.data.rejectionCategories }
-          : {}),
-        source: 'parsed', // Real vote from LLM
-      };
+      return buildParsedVote(validated.data);
     }
 
     // Validation failed - throw or fallback based on config

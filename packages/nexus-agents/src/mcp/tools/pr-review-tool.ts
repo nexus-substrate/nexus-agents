@@ -23,7 +23,12 @@ import { createSecureHandler, type HandlerContext } from '../middleware/secure-h
 import { toolError, toolSuccess, type BaseMcpToolDeps, type ToolResult } from './tool-result.js';
 import type { VoterRole, AgentVoteResult } from '../../cli/vote-types.js';
 import { collectRealVotes } from '../../cli/voter-agents.js';
-import { FINDINGS_FORMAT_INSTRUCTIONS, parseFindings, type Finding } from './pr-review-findings.js';
+import {
+  FINDINGS_FORMAT_INSTRUCTIONS,
+  isFindingVerified,
+  parseFindings,
+  type Finding,
+} from './pr-review-findings.js';
 
 export type { Finding, VerificationGate, FindingSeverity } from './pr-review-findings.js';
 
@@ -233,13 +238,33 @@ export function buildPrReviewProposal(input: PrReviewInput): string {
 // Result Mapping
 // ============================================================================
 
+/** Resolves findings for a voter result. Preferred path is the top-level
+ * `vote.findings` array (#2245 v4 follow-up — JSON-native, lossless). Falls
+ * back to parsing a YAML block from reasoning text for older voter outputs
+ * that may still emit the legacy format. */
+function resolveFindings(result: AgentVoteResult): readonly Finding[] {
+  const raw = result.vote.findings;
+  if (raw !== undefined && raw.length > 0) {
+    return raw.map((f) => ({
+      summary: f.summary,
+      location: f.location,
+      severity: f.severity,
+      gate: f.gate,
+      claim: f.claim,
+      verified: isFindingVerified(f.gate),
+    }));
+  }
+  // Fallback: legacy YAML-in-reasoning format.
+  return parseFindings(result.vote.reasoning);
+}
+
 function toPrReviewVote(result: AgentVoteResult): PrReviewVote {
   return {
     role: result.role,
     decision: mapVoteDecisionToPrDecision(result.vote.decision),
     confidence: result.vote.confidence,
     reasoning: result.vote.reasoning,
-    findings: parseFindings(result.vote.reasoning),
+    findings: resolveFindings(result),
     source: result.source,
     cli: result.cli,
     processingTimeMs: result.processingTimeMs,

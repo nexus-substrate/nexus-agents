@@ -66,6 +66,25 @@ export type RejectionCategory = z.infer<typeof RejectionCategorySchema>;
 export const REJECTION_CATEGORIES = RejectionCategorySchema.options;
 
 /**
+ * Pre-verified finding emitted by a voter (#2245 v4 follow-up).
+ * Mirrors `cli/voter-response.ts:RawFindingSchema` — kept inline here to
+ * avoid a circular cli→consensus import. Downstream code in mcp/tools
+ * adds the derived `verified` flag based on the gate fields.
+ */
+const FindingShapeSchema = z.object({
+  summary: z.string().min(1).max(500),
+  location: z.string().min(1).max(200),
+  severity: z.enum(['critical', 'high', 'medium', 'low']).default('medium'),
+  gate: z.object({
+    reread_cited_line: z.enum(['passed', 'failed', 'skipped']).default('skipped'),
+    traced_call_path: z.enum(['passed', 'failed', 'skipped']).default('skipped'),
+    named_assertion: z.string().default(''),
+    ruled_out_language_non_issue: z.enum(['passed', 'failed', 'skipped']).default('skipped'),
+  }),
+  claim: z.string().min(1).max(2000),
+});
+
+/**
  * A vote cast by an agent.
  */
 export const VoteSchema = z.object({
@@ -78,6 +97,9 @@ export const VoteSchema = z.object({
     .array(RejectionCategorySchema)
     .optional()
     .describe('Rejection reason categories when decision is reject'),
+  /** Pre-verified PR-review findings (#2245 v4 follow-up). Optional;
+   * populated only when the voter emits the structured top-level array. */
+  findings: z.array(FindingShapeSchema).optional().describe('PR-review findings (pre-verified)'),
   timestamp: z.iso.datetime().optional(),
 });
 export type Vote = z.infer<typeof VoteSchema>;
