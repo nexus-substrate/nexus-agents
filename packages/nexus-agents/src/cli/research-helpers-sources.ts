@@ -86,6 +86,22 @@ interface FetchSourceOptions {
   readonly timeoutMs?: number;
 }
 
+/** Builds a typed error from a non-ok HTTP response.
+ *
+ * Surfaces rate-limiting separately so callers distinguish "your key is
+ * missing / quota exhausted" from "the API is broken" (#2234). GitHub uses
+ * GITHUB_TOKEN (not the *_API_KEY convention) — caught by the v5 pr_review
+ * experiment when devex flagged the message pointing at a non-existent env
+ * var. */
+function buildHttpErrorResult(status: number, source: string): DiscoverError {
+  const isRateLimit = status === 429;
+  const envHint = source === 'github' ? 'GITHUB_TOKEN' : `${source.toUpperCase()}_API_KEY`;
+  const message = isRateLimit
+    ? `${source} rate-limited (HTTP 429) — set ${envHint} or retry later`
+    : `API returned ${String(status)}`;
+  return createError(isRateLimit ? 'RATE_LIMIT' : 'HTTP_ERROR', source, message);
+}
+
 /**
  * Shared fetch-and-error-handle helper for source providers.
  * Centralizes timeout handling, HTTP error detection, and error classification.
@@ -99,18 +115,7 @@ export async function fetchSource(
     if (headers !== undefined) fetchInit.headers = headers;
     const response = await fetch(url, fetchInit);
     if (!response.ok) {
-      // Surface rate-limiting separately so callers can distinguish "your key
-      // is missing / quota exhausted" from "the API is broken" (#2234). The
-      // generic HTTP_ERROR message previously masked semantic_scholar's
-      // unauthenticated 429s as opaque failures.
-      const isRateLimit = response.status === 429;
-      const message = isRateLimit
-        ? `${source} rate-limited (HTTP 429) — set ${source.toUpperCase()}_API_KEY or retry later`
-        : `API returned ${String(response.status)}`;
-      return {
-        ok: false,
-        error: createError(isRateLimit ? 'RATE_LIMIT' : 'HTTP_ERROR', source, message),
-      };
+      return { ok: false, error: buildHttpErrorResult(response.status, source) };
     }
     return { ok: true, value: response };
   } catch (error) {
