@@ -1,8 +1,21 @@
 /**
  * nexus-agents/cli-adapters - Unified CLI Retry Loop
  *
- * Single retry loop used by all CLI adapters (base + Gemini).
- * Supports optional circuit breaker integration.
+ * CLI-specific retry loop used by all CLI adapters (base + Gemini).
+ * Supports optional circuit-breaker integration, returns CliResponse
+ * with retryCount, and maps to FailureCategory for breaker tracking.
+ *
+ * Sibling implementation (see #2230): adapters/retry.ts holds the
+ * generic, type-parameterized `withRetry<T>` for non-CLI use. Don't
+ * reach for that one when you need circuit-breaker coupling; don't
+ * reach for this one from non-CLI code. Math primitives differ
+ * deliberately:
+ *   - this file: 1-indexed attempt, +0..30% jitter, cap-after
+ *   - adapters/retry.ts: 0-indexed attempt, ±jitterFactor, cap-before-jitter
+ *
+ * If you find yourself writing a third retry loop: stop, run
+ * `consensus_vote` with scope_steward in the panel, and pick whichever
+ * of these two fits — don't add a third.
  *
  * (Source: Issue #1596 — Extract shared prompt utils and rate-limit patterns)
  */
