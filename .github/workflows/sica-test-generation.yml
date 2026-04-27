@@ -54,7 +54,15 @@ jobs:
           NODE_OPTIONS: '--max-old-space-size=8192'
         run: |
           echo "📊 Measuring current test coverage..."
-          pnpm test:coverage --reporter=json > coverage-report.json 2>&1 || true
+          # Note: don't pipe to coverage-report.json — that's two failures rolled
+          # into one. (1) `pnpm test:coverage` is `turbo test:coverage`, which
+          # rejects --reporter=json with "Unknown option: 'run'", and (2) the
+          # captured output gets staged for the auto-PR step where lint-staged
+          # runs prettier on *.json files and chokes on the non-JSON content.
+          # Coverage data we actually need is read from coverage-summary.json
+          # below; the captured run output is only useful as debug, so write
+          # it to a non-staged path with a non-JSON extension.
+          pnpm test:coverage > coverage-report.log 2>&1 || true
 
           # Extract coverage metrics
           if [ -f packages/nexus-agents/coverage/coverage-summary.json ]; then
@@ -134,7 +142,9 @@ jobs:
         if: steps.generate.outputs.test_count > 0
         run: |
           echo "✅ Validating generated tests..."
-          pnpm test --run 2>&1 || echo "Some tests may need adjustment"
+          # `pnpm test` is `turbo test`, which already runs vitest in --run
+          # mode; passing --run through to turbo trips "Unknown option: 'run'".
+          pnpm test 2>&1 || echo "Some tests may need adjustment"
 
       - name: Create Pull Request
         if: |
