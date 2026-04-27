@@ -24,6 +24,7 @@ import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { ROOT } from './script-paths.js';
 const CLAUDE_MD_PATH = join(ROOT, 'CLAUDE.md');
+const README_PATH = join(ROOT, 'README.md');
 const TOOLS_INDEX = join(ROOT, 'packages/nexus-agents/src/mcp/tools/index.ts');
 const EXPERT_CONFIG = join(ROOT, 'packages/nexus-agents/src/agents/experts/expert-config.ts');
 const TEMPLATE_TYPES = join(ROOT, 'packages/nexus-agents/src/workflows/template-types.ts');
@@ -46,6 +47,8 @@ const MARKERS = {
   modelListEnd: '<!-- GOVERNANCE:MODEL_LIST:END -->',
   versionStart: '<!-- GOVERNANCE:VERSION:START -->',
   versionEnd: '<!-- GOVERNANCE:VERSION:END -->',
+  readmeToolsStart: '<!-- GOVERNANCE:README_TOOLS:START -->',
+  readmeToolsEnd: '<!-- GOVERNANCE:README_TOOLS:END -->',
 };
 
 // ============================================================================
@@ -138,6 +141,49 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
     'Single unified entry point for all pipeline templates (dev/research/audit/greenfield). Auto-detects template from task content or accepts an explicit override.',
   pr_review:
     'Run multi-voter consensus review on a PR diff (#2233). 5 voters (architect, security, devex, catfish, scope_steward) each emit approve/request_changes/abstain with reasoning and citations. Reuses consensus_vote infra; experimental.',
+};
+
+/**
+ * Short, scannable descriptions for the README MCP tools table. The README
+ * audience is "I'm skimming the surface" — long form belongs in CLAUDE.md.
+ *
+ * Tools missing here fall back to the long `TOOL_DESCRIPTIONS` entry; the
+ * inject script warns so the maintainer can write a short variant in the
+ * same PR that adds the tool.
+ */
+const README_TOOL_DESCRIPTIONS: Record<string, string> = {
+  orchestrate: 'Task orchestration with Orchestrator coordination',
+  create_expert: 'Create a specialized expert agent',
+  execute_expert: 'Execute a task using a created expert',
+  run_workflow: 'Execute a workflow template',
+  delegate_to_model: 'Route task to optimal model',
+  consensus_vote: 'Multi-model consensus voting on proposals',
+  list_experts: 'List available expert types',
+  list_workflows: 'List available workflow templates',
+  research_query: 'Query research registry (status, overlap, stats, search)',
+  research_add: 'Add paper to registry by arXiv ID',
+  research_discover: 'Discover papers/repos from external sources',
+  research_analyze: 'Analyze registry for gaps, trends, coverage',
+  research_catalog_review: 'Review auto-cataloged research references',
+  memory_query: 'Query across all memory backends',
+  memory_stats: 'Memory system statistics dashboard',
+  memory_write: 'Write to typed memory backends',
+  weather_report: 'Multi-CLI performance weather report',
+  issue_triage: 'Triage GitHub issues with trust classification',
+  run_graph_workflow: 'Execute graph-based workflows with checkpointing',
+  execute_spec: 'Execute AI software factory spec pipeline',
+  registry_import: 'Generate draft model registry entry',
+  query_trace: 'Query execution traces for observability',
+  query_task_state: 'Query the structured task-state log for a task ID',
+  repo_analyze: 'Analyze GitHub repository structure',
+  repo_security_plan: 'Generate security scanning pipeline for a repo',
+  research_add_source: 'Add non-paper source (GitHub repo, tool, blog)',
+  research_synthesize: 'Synthesize registry into topic clusters with themes',
+  extract_symbols: 'Extract code symbols from source files for analysis',
+  search_codebase: 'Search codebase for patterns, symbols, or text',
+  run_dev_pipeline: 'Full dev pipeline: research, plan, vote, implement, QA',
+  run_pipeline: 'Execute a pipeline plugin by name with typed input',
+  pr_review: 'Multi-voter PR review with verification gate (experimental)',
 };
 
 /**
@@ -360,6 +406,46 @@ function generateToolIndex(tools: ToolMetadata[]): string {
 }
 
 /**
+ * Generate the README MCP tools table. Uses short descriptions from
+ * `README_TOOL_DESCRIPTIONS`, falling back to the long `TOOL_DESCRIPTIONS`
+ * entry when no short variant exists (with a warning so the maintainer
+ * notices and writes one).
+ */
+function generateReadmeToolTable(tools: ToolMetadata[]): string {
+  const rows = tools.map((t) => {
+    const short = README_TOOL_DESCRIPTIONS[t.name];
+    if (short === undefined) {
+      console.warn(
+        `WARNING: Tool '${t.name}' has no README short description. ` +
+          `Add one to README_TOOL_DESCRIPTIONS in scripts/inject-governance.ts. ` +
+          `Falling back to long description.`
+      );
+    }
+    return { name: t.name, desc: short ?? t.description };
+  });
+
+  const toolCells = rows.map((r) => '`' + r.name + '`');
+  const descCells = rows.map((r) => r.desc);
+  const toolColWidth = Math.max('Tool'.length, ...toolCells.map((c) => c.length));
+  const descColWidth = Math.max('Description'.length, ...descCells.map((c) => c.length));
+
+  const header = `| ${'Tool'.padEnd(toolColWidth)} | ${'Description'.padEnd(descColWidth)} |`;
+  const separator = `| ${'-'.repeat(toolColWidth)} | ${'-'.repeat(descColWidth)} |`;
+
+  const lines = [MARKERS.readmeToolsStart, '', header, separator];
+
+  for (const row of rows) {
+    const paddedName = ('`' + row.name + '`').padEnd(toolColWidth);
+    lines.push(`| ${paddedName} | ${row.desc.padEnd(descColWidth)} |`);
+  }
+
+  lines.push('');
+  lines.push(MARKERS.readmeToolsEnd);
+
+  return lines.join('\n');
+}
+
+/**
  * Generate the supported models list for CLAUDE.md billing mode section.
  */
 function generateModelList(models: ModelMetadata[]): string {
@@ -512,6 +598,7 @@ function checkGovernance(): boolean {
       (console.error('Tool index section not found'), false),
     ancillaryOk,
     versionOk,
+    checkReadmeToolTable(actual.tools),
   ];
 
   const passed = checks.every(Boolean);
@@ -707,6 +794,11 @@ function injectGovernance(): void {
 
   writeFileSync(CLAUDE_MD_PATH, content);
 
+  // Inject README MCP tools table (#2269) — same registry, scannable
+  // descriptions. Soft-skip if README has no markers yet so this script
+  // remains drop-in compatible with older checkouts.
+  injectReadmeToolTable(tools);
+
   // #1837: keep ancillary count surfaces (plugin manifests, AGENTS.md,
   // install docs) aligned with canonical registries.
   const agents = extractAgents();
@@ -728,6 +820,52 @@ function injectGovernance(): void {
   console.log(`  Skills: ${String(skills.length)}`);
   console.log(`  Agents: ${String(agents.length)}`);
   console.log(`  Models: ${String(models.length)}`);
+}
+
+/**
+ * Verify the README MCP tools section is in sync with the canonical
+ * registry (#2269). Returns true if README is absent (soft-skip) OR has
+ * markers AND running the generator would produce no diff. Returns false
+ * (with a structured error) when markers exist but the table is stale —
+ * the maintainer must run `pnpm governance:inject` and commit.
+ */
+function checkReadmeToolTable(tools: ToolMetadata[]): boolean {
+  if (!existsSync(README_PATH)) return true;
+  const content = readFileSync(README_PATH, 'utf-8');
+  if (!content.includes(MARKERS.readmeToolsStart)) return true;
+  const expected = generateReadmeToolTable(tools);
+  const updated = injectSection(
+    content,
+    MARKERS.readmeToolsStart,
+    MARKERS.readmeToolsEnd,
+    expected
+  );
+  if (updated !== content) {
+    console.error('README MCP tools table is stale. Run: pnpm governance:inject');
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Write the README MCP tools table between governance markers (#2269).
+ * Soft-skip when README is missing or markers are absent so this script
+ * remains drop-in compatible with older checkouts that haven't been
+ * marker-prepped yet.
+ */
+function injectReadmeToolTable(tools: ToolMetadata[]): void {
+  if (!existsSync(README_PATH)) {
+    return;
+  }
+  const content = readFileSync(README_PATH, 'utf-8');
+  if (!content.includes(MARKERS.readmeToolsStart)) {
+    return;
+  }
+  const table = generateReadmeToolTable(tools);
+  const updated = injectSection(content, MARKERS.readmeToolsStart, MARKERS.readmeToolsEnd, table);
+  if (updated !== content) {
+    writeFileSync(README_PATH, updated);
+  }
 }
 
 /**
