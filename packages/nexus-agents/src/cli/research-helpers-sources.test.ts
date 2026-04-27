@@ -158,6 +158,19 @@ describe('fetchSource', () => {
     }
   });
 
+  it('should hint GITHUB_TOKEN (not GITHUB_API_KEY) on github 429 — caught by v5 experiment', async () => {
+    // Caught by the pr_review v5 experiment (#2241): GitHub uses GITHUB_TOKEN,
+    // not the *_API_KEY convention other sources use. The original message
+    // pointed users at a non-existent env var.
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 429 });
+    const result = await fetchSource({ url: 'https://example.com', source: 'github' });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toContain('GITHUB_TOKEN');
+      expect(result.error.message).not.toContain('GITHUB_API_KEY');
+    }
+  });
+
   it('should return HTTP_ERROR on non-429 non-ok response', async () => {
     mockFetch.mockResolvedValueOnce({ ok: false, status: 500 });
     const result = await fetchSource({ url: 'https://example.com', source: 'test' });
