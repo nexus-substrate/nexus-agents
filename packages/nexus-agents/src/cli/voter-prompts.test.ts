@@ -288,11 +288,13 @@ describe('voter-prompts', () => {
       });
     });
 
-    // #2244: PR-review-mode addendum (closes the 0-finding gap from #2241)
-    describe('PR-review YAML findings format (#2244)', () => {
-      it('mentions the YAML findings block in every role prompt', () => {
+    // #2244 + v4 #2245-followup: PR-review-mode addendum points voters at
+    // a TOP-LEVEL JSON findings field (was YAML inside reasoning, which
+    // was lossy across JSON serialization — see v4 retest results).
+    describe('PR-review findings format (#2244 + v4 fix)', () => {
+      it('mentions the top-level findings JSON field in every role prompt', () => {
         for (const role of allRoles) {
-          expect(VOTER_SYSTEM_PROMPTS[role]).toContain('```yaml findings');
+          expect(VOTER_SYSTEM_PROMPTS[role]).toContain('"findings"');
         }
       });
 
@@ -310,7 +312,6 @@ describe('voter-prompts', () => {
         for (const role of allRoles) {
           const prompt = VOTER_SYSTEM_PROMPTS[role];
           expect(prompt).toContain('substantive');
-          expect(prompt).toContain('not just "passed"');
         }
       });
 
@@ -320,26 +321,33 @@ describe('voter-prompts', () => {
         }
       });
 
-      it('tells voters to OMIT the block when approving', () => {
+      it('tells voters to OMIT the findings field when approving', () => {
         for (const role of allRoles) {
-          expect(VOTER_SYSTEM_PROMPTS[role]).toContain('OMIT the findings block');
+          expect(VOTER_SYSTEM_PROMPTS[role]).toContain('OMIT the findings field');
         }
       });
 
       it('explicitly scopes the addendum to PR-review mode (not all proposals)', () => {
-        // The addendum should NOT pollute non-PR-review consensus_vote use.
         for (const role of allRoles) {
           expect(VOTER_SYSTEM_PROMPTS[role]).toContain('PR-review mode');
           expect(VOTER_SYSTEM_PROMPTS[role]).toContain('non-diff proposal');
         }
       });
 
-      it('shows a few-shot example with substantive named_assertion', () => {
-        // The example must demonstrate what "substantive" looks like — a
-        // sentence-form failure description, not a single word.
+      it('emphasizes top-level placement (not embedded in reasoning)', () => {
+        // The v4 retest discovered the YAML-inside-reasoning encoding lost
+        // findings due to JSON-string serialization issues. Pin "top-level"
+        // and "NOT inside reasoning" to prevent regression.
         for (const role of allRoles) {
           const prompt = VOTER_SYSTEM_PROMPTS[role];
-          expect(prompt).toContain('Test loop-bounds.test.ts:42');
+          expect(prompt).toContain('top-level');
+          expect(prompt).toContain('NOT inside reasoning');
+        }
+      });
+
+      it('mentions #2245 history note', () => {
+        for (const role of allRoles) {
+          expect(VOTER_SYSTEM_PROMPTS[role]).toContain('#2245');
         }
       });
     });

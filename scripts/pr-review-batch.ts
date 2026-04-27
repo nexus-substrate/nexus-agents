@@ -34,7 +34,11 @@ import {
   aggregatePrDecisions,
   MAX_DIFF_LENGTH,
 } from '../packages/nexus-agents/src/mcp/tools/pr-review-tool.js';
-import { parseFindings } from '../packages/nexus-agents/src/mcp/tools/pr-review-findings.js';
+import {
+  isFindingVerified,
+  parseFindings,
+  type Finding,
+} from '../packages/nexus-agents/src/mcp/tools/pr-review-findings.js';
 import {
   SampleDatasetSchema,
   type SampleDataset,
@@ -150,14 +154,41 @@ interface VoteResultLike {
     decision: 'approve' | 'reject' | 'abstain';
     confidence: number;
     reasoning: string;
+    findings?: ReadonlyArray<{
+      summary: string;
+      location: string;
+      severity: 'critical' | 'high' | 'medium' | 'low';
+      gate: {
+        reread_cited_line: 'passed' | 'failed' | 'skipped';
+        traced_call_path: 'passed' | 'failed' | 'skipped';
+        named_assertion: string;
+        ruled_out_language_non_issue: 'passed' | 'failed' | 'skipped';
+      };
+      claim: string;
+    }>;
   };
   readonly source: 'llm' | 'simulation' | 'error';
   readonly cli?: string | undefined;
   readonly processingTimeMs: number;
 }
 
+function resolveFindingsLike(r: VoteResultLike): readonly Finding[] {
+  const raw = r.vote.findings;
+  if (raw !== undefined && raw.length > 0) {
+    return raw.map((f) => ({
+      summary: f.summary,
+      location: f.location,
+      severity: f.severity,
+      gate: f.gate,
+      claim: f.claim,
+      verified: isFindingVerified(f.gate),
+    }));
+  }
+  return parseFindings(r.vote.reasoning);
+}
+
 function summarizeVoter(r: VoteResultLike): BatchPrResult['voters'][number] {
-  const findings = parseFindings(r.vote.reasoning);
+  const findings = resolveFindingsLike(r);
   return {
     role: r.role,
     decision: mapVoteDecisionToPrDecision(r.vote.decision),
@@ -246,7 +277,7 @@ function buildSuccessResult(
     decision: mapVoteDecisionToPrDecision(r.vote.decision),
     confidence: r.vote.confidence,
     reasoning: r.vote.reasoning,
-    findings: parseFindings(r.vote.reasoning),
+    findings: resolveFindingsLike(r),
     source: r.source,
     cli: r.cli,
     processingTimeMs: r.processingTimeMs,

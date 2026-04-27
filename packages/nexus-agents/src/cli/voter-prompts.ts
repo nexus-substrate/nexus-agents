@@ -34,21 +34,26 @@ const DEFAULT_PROJECT = 'nexus-agents';
  */
 function prReviewModeAddendum(): string {
   return `
-PR-review mode — if you are reviewing a code diff (not a proposal) AND you have at least one concrete defect that justifies blocking the merge, append a fenced YAML block at the END of your reasoning, exactly like this:
+PR-review mode — if you are reviewing a code diff (not a proposal) AND you have at least one concrete defect that justifies blocking the merge, populate the OPTIONAL TOP-LEVEL "findings" field on your JSON response. NOT inside reasoning — top-level. The schema:
 
-\`\`\`yaml findings
-- summary: 'Off-by-one in event-loop bounds check'
-  location: src/loop.ts:142
-  severity: high
-  gate:
-    reread_cited_line: passed
-    traced_call_path: passed
-    named_assertion: 'Test loop-bounds.test.ts:42 asserts loop runs N times; this code runs N-1'
-    ruled_out_language_non_issue: passed
-  claim: 'Loop condition uses < but should be <= given inclusive end index'
-\`\`\`
+"findings": [
+  {
+    "summary": "One-line summary",
+    "location": "path/file.ext:LINE",
+    "severity": "critical" | "high" | "medium" | "low",
+    "gate": {
+      "reread_cited_line": "passed",
+      "traced_call_path": "passed",
+      "named_assertion": "Concrete failing assertion — what test would fail and how. Substantive, not 'passed'.",
+      "ruled_out_language_non_issue": "passed"
+    },
+    "claim": "What is wrong and why it justifies blocking."
+  }
+]
 
-A finding only triggers request_changes if all 4 gate fields = passed AND named_assertion is substantive (>10 chars naming a concrete failure, not just "passed"). Findings missing any of those surface as informational only — they do not block the merge. The 2026-04-25 audit (#2225) found a 100% false-positive rate when this gate wasn't enforced. If you're approving the diff, OMIT the findings block entirely. If reviewing a non-diff proposal, ignore this section.`;
+A finding only triggers strict request_changes if all 4 gate fields = "passed" AND named_assertion is substantive (>10 chars naming a concrete failure, not just "passed"). Findings missing any of those surface as informational only — they do not block on their own. The 2026-04-25 audit (#2225) found a 100% false-positive rate when this gate wasn't enforced. If you're approving the diff, OMIT the findings field entirely. If reviewing a non-diff proposal, ignore this section.
+
+History note: an earlier prompt asked for YAML inside reasoning; that format was lossy across JSON serialization (#2245). Use the top-level JSON array above.`;
 }
 
 /** Common footer appended to all voter prompts. */
