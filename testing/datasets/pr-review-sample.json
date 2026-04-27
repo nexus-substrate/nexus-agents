@@ -1,6 +1,6 @@
 {
-  "curatedAt": "2026-04-26T19:00:00Z",
-  "methodology": "Hybrid v2 dataset for #2241 retest. 10 entries: 5 synthetic test cases with hand-crafted diff-readable bugs (each placed at a known location with the bug pattern observable in the diff alone — addresses #2246 dataset-bias finding) + 3 historical PRs from this autonomous run + 2 synthetic clean counterparts. Synthetic entries use the customDiff field so the harness skips the GitHub fetch. Bug patterns chosen to test what a diff-only adversarial reviewer should plausibly catch: ReDoS regex, off-by-one bound, missing await (TOCTOU), null deref on optional, resource leak (event listener). Each synthetic 'CLEAN' case presents a similar-shaped diff WITHOUT the bug to test for false positives.",
+  "curatedAt": "2026-04-27T00:50:00Z",
+  "methodology": "Hybrid v3 dataset. 10 entries: 5 synthetic test cases with hand-crafted diff-readable bugs (ReDoS, off-by-one, missing await, null deref, resource leak — each at a known file:line) + 3 historical PRs (one with a real bug discovered by the v5 pr_review run itself — see #2235 entry) + 2 synthetic clean counterparts. Synthetic entries use customDiff to skip the GitHub fetch.\n\nThe #2235 entry was originally labeled clean but reclassified after the v5 retest's devex voter caught a real bug (wrong env var name in rate-limit message). Reclassified rather than left as 'false positive' because the finding was correct — the dataset was wrong. Entry now serves as a real-world buggy case alongside the synthetic ones.",
   "prs": [
     {
       "number": "synthetic-redos",
@@ -87,8 +87,14 @@
     {
       "number": 2235,
       "title": "fix(research): repair github + semantic_scholar discovery (#2234)",
-      "knownBugs": [],
-      "notes": "Clean: targeted fix with new tests. CI green on first push."
+      "knownBugs": [
+        {
+          "summary": "Wrong env var name in 429 message — uses GITHUB_API_KEY but GitHub uses GITHUB_TOKEN",
+          "fixReference": "PR #2255 (caught by pr_review v5 — devex voter)",
+          "location": "packages/nexus-agents/src/cli/research-helpers-sources.ts:108"
+        }
+      ],
+      "notes": "Originally labeled clean — re-classified after the v5 retest of pr_review (#2241) flagged a real bug in this PR's diff. The rate-limit message used `${source.toUpperCase()}_API_KEY` for all sources, but GitHub uses GITHUB_TOKEN, not GITHUB_API_KEY. Caught by devex voter, fixed in #2255 with a regression test. This entry now serves as a real-world (not synthetic) buggy case — the kind the tool is designed to catch."
     },
     {
       "number": 2238,
