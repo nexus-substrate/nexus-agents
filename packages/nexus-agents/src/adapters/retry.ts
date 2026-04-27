@@ -1,8 +1,22 @@
 /**
  * nexus-agents/adapters - Retry Logic with Exponential Backoff
  *
- * Provides retry functionality for fallible operations with exponential backoff
- * and jitter to prevent thundering herd problems.
+ * Provides generic, type-parameterized retry functionality for fallible
+ * operations with exponential backoff and jitter to prevent thundering
+ * herd problems. Returns Result<T, RetryExhaustedError> — type-safe error
+ * boundary suitable for cross-layer use.
+ *
+ * Sibling implementation (see #2230): cli-retry-loop.ts holds a CLI-specific
+ * retry loop with built-in circuit-breaker integration, FailureCategory
+ * mapping, and CliResponse return shape. Don't reach for that one from
+ * non-CLI code; don't reach for this one when you need circuit-breaker
+ * coupling. Math primitives differ deliberately:
+ *   - this file: 0-indexed attempt, ±jitterFactor, cap-before-jitter
+ *   - cli-retry-loop.ts: 1-indexed attempt, +0..30% jitter, cap-after
+ *
+ * If you find yourself writing a third retry loop: stop, run
+ * `consensus_vote` with scope_steward in the panel, and pick whichever
+ * of these two fits — don't add a third.
  *
  * (Source: AWS Architecture Blog - Exponential Backoff and Jitter)
  * (Source: Google Cloud API Design Guide - Retry Strategy)
