@@ -93,7 +93,7 @@ describe('CodexMcpAdapter', () => {
       const caps = adapter.capabilities;
 
       expect(caps.reasoning).toBe(10);
-      expect(caps.contextWindow).toBe(1_000_000);
+      expect(caps.contextWindow).toBe(1_050_000);
       expect(caps.codeGeneration).toBe(10);
       expect(caps.speed).toBe(7);
       expect(caps.cost).toBe(5);
@@ -105,7 +105,7 @@ describe('CodexMcpAdapter', () => {
       const info = adapter.getModelInfo();
 
       expect(info.id).toBe(EXPECTED_DEFAULT_ID);
-      expect(info.contextWindow).toBe(1_000_000);
+      expect(info.contextWindow).toBe(1_050_000);
       expect(info.maxOutput).toBe(128_000);
     });
 
