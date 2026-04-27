@@ -1,25 +1,40 @@
-# PR Review Experiment (#2233)
+# Multi-voter PR review (#2233 Child 6)
 #
-# Triggers ONLY when a PR carries the `pr-review-experiment` label. We do NOT
-# auto-run on every PR — Children 4-5 of the epic require validating the
-# multi-voter pattern against a 20-PR sample first, with binary success
-# criteria (≥1 missed-bug catch per 10 PRs, <20% false-positive rate).
-#
-# Until that gate clears, this workflow is opt-in per-PR. Add the
-# `pr-review-experiment` label to fire it; remove the label to disable.
+# Runs on every PR by default. Add the `skip-pr-review` label to opt out
+# (e.g. for trivial typo fixes, dependabot bumps, or cost-sensitive periods).
 #
 # Each voter (architect, security, devex, catfish, scope_steward) emits an
-# approve/request_changes/abstain decision with reasoning and file:line
-# citations. Output is posted as a single PR comment.
+# approve/request_changes/abstain decision with citation-backed findings.
+# Output is posted as a single PR comment.
+#
+# Aggregate decision tiers (per #2251 + #2254):
+#   ❌ verified blocker — ≥1 voter has ≥1 verified finding (4-point gate
+#      passed with substantive named_assertion). Strict block.
+#   ⚠️  soft blocker — ≥3 of 5 non-error voters voted request_changes,
+#      but no verified findings. Reviewers apply the gate themselves.
+#   ✅ approve — all non-error voters approved.
+#   ➖ abstain — anything else.
+#
+# Empirical validation: v5 retest hit 100% bug-catch on diff-readable bugs,
+# caught a real bug in #2235 that no human reviewer noticed. See
+# docs/research/pr-review-experiment-results-v5.md.
 #
 # Required secrets: ANTHROPIC_API_KEY (or OPENAI_API_KEY / GOOGLE_AI_API_KEY)
 # for the underlying voter LLM calls.
+#
+# Cost: ~50 voter LLM calls per PR (~10 messages of subscription quota).
+# If quota becomes a problem, add `skip-pr-review` to high-volume automation
+# PRs (dependabot, etc) or revert this file's trigger to label-gated mode.
+#
+# Rollback: change the `if:` condition below to
+#   contains(github.event.pull_request.labels.*.name, 'pr-review')
+# and rename the label everywhere to revert to opt-in mode.
 
-name: PR Review Experiment
+name: PR Review
 
 on:
   pull_request:
-    types: [labeled, synchronize]
+    types: [opened, synchronize, labeled, unlabeled]
 
 permissions:
   contents: read
@@ -29,7 +44,10 @@ permissions:
 jobs:
   pr-review:
     name: Multi-voter PR review
-    if: contains(github.event.pull_request.labels.*.name, 'pr-review-experiment')
+    # Skip when the opt-out label is present. Runs on every other PR by
+    # default (#2242 Child 6 promotion — empirically validated 100% bug-catch
+    # on the v5 retest dataset).
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-pr-review') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -47,8 +65,8 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 9
+        # Version is read from package.json's packageManager field — passing
+        # `version:` here conflicts with that and fails with ERR_PNPM_BAD_PM_VERSION.
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

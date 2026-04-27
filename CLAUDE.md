@@ -530,7 +530,7 @@ _Auto-generated from source. 32 tools registered._
 
 <!-- GOVERNANCE:VERSION:START -->
 
-_Governance Version: 2026-04-26_
+_Governance Version: 2026-04-27_
 
 <!-- GOVERNANCE:VERSION:END -->
 
