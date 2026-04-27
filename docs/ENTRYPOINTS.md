@@ -328,11 +328,14 @@ nexus-agents hooks stop --check-tasks
 | `memory_write`            | Write a memory entry to a specific backend                         | None (local) | Shared bucket |
 | `registry_import`         | Generate draft model registry entry                                | None (local) | Shared bucket |
 | `query_trace`             | Query execution traces by run ID                                   | None (local) | Shared bucket |
+| `query_task_state`        | Query structured task-state log                                    | None (local) | Shared bucket |
+| `run_pipeline`            | Run a typed pipeline by name with provided inputs                  | None (local) | Shared bucket |
 | `repo_analyze`            | Analyze GitHub repository structure                                | None (local) | Shared bucket |
 | `repo_security_plan`      | Generate security scanning pipeline for a repository               | None (local) | Shared bucket |
 | `extract_symbols`         | Extract code symbols (functions, classes, types) from source files | None (local) | Shared bucket |
 | `search_codebase`         | Search codebase for code patterns, symbols, or text                | None (local) | Shared bucket |
 | `run_dev_pipeline`        | Multi-agent dev pipeline: research→plan→vote→implement→QA→security | Optional     | Shared bucket |
+| `pr_review`               | Multi-voter PR review with verification gate (experimental)        | None (local) | Shared bucket |
 
 **Rate limiting:** All tools share a single token bucket rate limiter (capacity: 100 tokens, refill: 10 tokens/sec). Each tool call consumes one token.
 
