@@ -409,7 +409,7 @@ describe('MockCliAdapter', () => {
 
       expect(info.id).toBe('gemini-3-pro');
       expect(info.name).toBe('Gemini 3.1 Pro (Preview)');
-      expect(info.contextWindow).toBe(1_000_000);
+      expect(info.contextWindow).toBe(1_048_576);
     });
 
     it('should return codex model info', () => {
@@ -419,7 +419,7 @@ describe('MockCliAdapter', () => {
 
       expect(info.id).toBe('codex-5.3');
       expect(info.name).toBe('GPT-5.4');
-      expect(info.contextWindow).toBe(1_000_000);
+      expect(info.contextWindow).toBe(1_050_000);
     });
   });
 
@@ -430,7 +430,7 @@ describe('MockCliAdapter', () => {
 
       expect(claudeCaps.reasoning).toBe(10);
       expect(claudeCaps.contextWindow).toBe(1_000_000);
-      expect(geminiCaps.contextWindow).toBe(1_000_000);
+      expect(geminiCaps.contextWindow).toBe(1_048_576);
     });
   });
 

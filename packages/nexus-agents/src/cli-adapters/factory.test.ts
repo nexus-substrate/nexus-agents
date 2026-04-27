@@ -147,14 +147,14 @@ describe('adapter capabilities', () => {
     const adapter = createCliAdapter({ cli: 'gemini' });
     const caps = adapter.capabilities;
 
-    expect(caps.contextWindow).toBe(1000000);
+    expect(caps.contextWindow).toBe(1_048_576);
   });
 
   it('should have correct capabilities for Codex', () => {
     const adapter = createCliAdapter({ cli: 'codex' });
     const caps = adapter.capabilities;
 
-    expect(caps.contextWindow).toBe(1000000);
+    expect(caps.contextWindow).toBe(1_050_000);
   });
 });
 
@@ -171,7 +171,7 @@ describe('model info', () => {
     const adapter = createCliAdapter({ cli: 'gemini' });
     const info = adapter.getModelInfo();
 
-    expect(info.contextWindow).toBe(1_000_000);
+    expect(info.contextWindow).toBe(1_048_576);
     expect(info.maxOutput).toBe(8192);
   });
 
@@ -179,7 +179,7 @@ describe('model info', () => {
     const adapter = createCliAdapter({ cli: 'codex' });
     const info = adapter.getModelInfo();
 
-    expect(info.contextWindow).toBe(1000000);
+    expect(info.contextWindow).toBe(1_050_000);
     expect(info.maxOutput).toBe(128000);
   });
 

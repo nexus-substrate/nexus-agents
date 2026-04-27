@@ -101,7 +101,7 @@ describe('GeminiCliAdapter', () => {
       const caps = adapter.capabilities;
 
       expect(caps.reasoning).toBe(10);
-      expect(caps.contextWindow).toBe(1_000_000);
+      expect(caps.contextWindow).toBe(1_048_576);
       expect(caps.codeGeneration).toBe(9);
       expect(caps.speed).toBe(8);
       expect(caps.cost).toBe(6);
@@ -114,7 +114,7 @@ describe('GeminiCliAdapter', () => {
 
       expect(info.id).toBe(EXPECTED_DEFAULT_ID);
       expect(info.name).toBeDefined();
-      expect(info.contextWindow).toBe(1_000_000);
+      expect(info.contextWindow).toBe(1_048_576);
       expect(info.maxOutput).toBe(8_192);
     });
 
@@ -146,12 +146,14 @@ describe('GeminiCliAdapter', () => {
   });
 
   describe('context window', () => {
-    it('should return 1M context for all Gemini models', () => {
+    it('should return ≥1M context for all Gemini models', () => {
+      // Known models resolve through the registry (gemini-2.5-pro / -flash → 1_048_576).
+      // Unknown variants (e.g. flash-lite) fall back to GEMINI_LEGACY_DEFAULTS.contextWindow.
       const models = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
 
       for (const model of models) {
         const modelAdapter = new GeminiCliAdapter({ model });
-        expect(modelAdapter.getModelInfo().contextWindow).toBe(1_000_000);
+        expect(modelAdapter.getModelInfo().contextWindow).toBeGreaterThanOrEqual(1_000_000);
       }
     });
   });
