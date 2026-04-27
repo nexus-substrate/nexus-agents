@@ -187,6 +187,10 @@ See [docs/ENTRYPOINTS.md](./docs/ENTRYPOINTS.md) for the complete CLI reference 
 
 When running as an MCP server, the following tools are available:
 
+<!-- Auto-generated below — do not hand-edit between markers. Run `pnpm governance:inject` to update from `packages/nexus-agents/src/mcp/tools/index.ts`. See #2269. -->
+
+<!-- GOVERNANCE:README_TOOLS:START -->
+
 | Tool                      | Description                                                 |
 | ------------------------- | ----------------------------------------------------------- |
 | `orchestrate`             | Task orchestration with Orchestrator coordination           |
@@ -194,14 +198,16 @@ When running as an MCP server, the following tools are available:
 | `execute_expert`          | Execute a task using a created expert                       |
 | `run_workflow`            | Execute a workflow template                                 |
 | `delegate_to_model`       | Route task to optimal model                                 |
-| `consensus_vote`          | Multi-model consensus voting on proposals                   |
 | `list_experts`            | List available expert types                                 |
 | `list_workflows`          | List available workflow templates                           |
+| `consensus_vote`          | Multi-model consensus voting on proposals                   |
 | `research_query`          | Query research registry (status, overlap, stats, search)    |
 | `research_add`            | Add paper to registry by arXiv ID                           |
+| `research_add_source`     | Add non-paper source (GitHub repo, tool, blog)              |
 | `research_discover`       | Discover papers/repos from external sources                 |
 | `research_analyze`        | Analyze registry for gaps, trends, coverage                 |
 | `research_catalog_review` | Review auto-cataloged research references                   |
+| `research_synthesize`     | Synthesize registry into topic clusters with themes         |
 | `memory_query`            | Query across all memory backends                            |
 | `memory_stats`            | Memory system statistics dashboard                          |
 | `memory_write`            | Write to typed memory backends                              |
@@ -214,13 +220,13 @@ When running as an MCP server, the following tools are available:
 | `query_task_state`        | Query the structured task-state log for a task ID           |
 | `repo_analyze`            | Analyze GitHub repository structure                         |
 | `repo_security_plan`      | Generate security scanning pipeline for a repo              |
-| `research_add_source`     | Add non-paper source (GitHub repo, tool, blog)              |
-| `research_synthesize`     | Synthesize registry into topic clusters with themes         |
 | `extract_symbols`         | Extract code symbols from source files for analysis         |
 | `search_codebase`         | Search codebase for patterns, symbols, or text              |
 | `run_dev_pipeline`        | Full dev pipeline: research, plan, vote, implement, QA      |
 | `run_pipeline`            | Execute a pipeline plugin by name with typed input          |
 | `pr_review`               | Multi-voter PR review with verification gate (experimental) |
+
+<!-- GOVERNANCE:README_TOOLS:END -->
 
 ---
 
