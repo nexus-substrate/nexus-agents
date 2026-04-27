@@ -1,11 +1,21 @@
-# Multi-voter PR review (#2233 Child 6)
+# Multi-voter PR review (#2233 Child 6) — DISABLED BY DEFAULT
 #
-# Runs on every PR by default. Add the `skip-pr-review` label to opt out
-# (e.g. for trivial typo fixes, dependabot bumps, or cost-sensitive periods).
+# This workflow is dormant by default because nexus-agents users on Anthropic's
+# subscription plan (Claude Pro/Max) cannot use ANTHROPIC_API_KEY in CI without
+# violating the subscription ToS. The validated rollout path for that auth model
+# is `scripts/pr-review-local.ts` running on the maintainer's machine, where
+# voters route through the local Claude CLI subprocess and consume subscription
+# quota interactively (which is the intended use).
 #
-# Each voter (architect, security, devex, catfish, scope_steward) emits an
-# approve/request_changes/abstain decision with citation-backed findings.
-# Output is posted as a single PR comment.
+# Re-enabling this workflow:
+# To turn this back into "runs on every PR" mode, change the `if:` condition to:
+#   if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-pr-review') }}
+# AND ensure ANTHROPIC_API_KEY (or OPENAI_API_KEY / GOOGLE_AI_API_KEY /
+# OPENROUTER_API_KEY) is set as a repo secret with a real metered API key
+# (NOT a subscription account's session token).
+#
+# Current trigger: only fires when the `pr-review-ci` label is added to a PR.
+# That label doesn't exist by default — adding it is the explicit opt-in.
 #
 # Aggregate decision tiers (per #2251 + #2254):
 #   ❌ verified blocker — ≥1 voter has ≥1 verified finding (4-point gate
@@ -18,23 +28,12 @@
 # Empirical validation: v5 retest hit 100% bug-catch on diff-readable bugs,
 # caught a real bug in #2235 that no human reviewer noticed. See
 # docs/research/pr-review-experiment-results-v5.md.
-#
-# Required secrets: ANTHROPIC_API_KEY (or OPENAI_API_KEY / GOOGLE_AI_API_KEY)
-# for the underlying voter LLM calls.
-#
-# Cost: ~50 voter LLM calls per PR (~10 messages of subscription quota).
-# If quota becomes a problem, add `skip-pr-review` to high-volume automation
-# PRs (dependabot, etc) or revert this file's trigger to label-gated mode.
-#
-# Rollback: change the `if:` condition below to
-#   contains(github.event.pull_request.labels.*.name, 'pr-review')
-# and rename the label everywhere to revert to opt-in mode.
 
 name: PR Review
 
 on:
   pull_request:
-    types: [opened, synchronize, labeled, unlabeled]
+    types: [labeled, synchronize]
 
 permissions:
   contents: read
@@ -44,10 +43,9 @@ permissions:
 jobs:
   pr-review:
     name: Multi-voter PR review
-    # Skip when the opt-out label is present. Runs on every other PR by
-    # default (#2242 Child 6 promotion — empirically validated 100% bug-catch
-    # on the v5 retest dataset).
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-pr-review') }}
+    # OPT-IN: only runs when the `pr-review-ci` label is added.
+    # Default is local-mode via scripts/pr-review-local.ts (subscription auth).
+    if: contains(github.event.pull_request.labels.*.name, 'pr-review-ci')
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
