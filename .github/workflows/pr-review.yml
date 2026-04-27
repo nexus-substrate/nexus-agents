@@ -52,6 +52,28 @@ jobs:
     timeout-minutes: 15
 
     steps:
+      - name: Verify at least one model API key is configured
+        # Without an API key, voters can't actually run — they fall back to
+        # abstain/0% which produces confusing "review" comments. Fail fast
+        # with an actionable message so the maintainer adds a secret.
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          if [ -z "${ANTHROPIC_API_KEY}${OPENAI_API_KEY}${GOOGLE_AI_API_KEY}${OPENROUTER_API_KEY}" ]; then
+            echo "::error::pr_review needs at least one model API key in repo Actions secrets."
+            echo "Add one of: ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_AI_API_KEY, OPENROUTER_API_KEY"
+            echo "Settings → Secrets and variables → Actions → New repository secret."
+            echo ""
+            echo "If you don't want pr_review to run, add the 'skip-pr-review' label to PRs."
+            echo "If you want to disable it entirely, revert the trigger in .github/workflows/pr-review.yml"
+            echo "to require the 'pr-review-experiment' label (see #2242 PR for the previous opt-in shape)."
+            exit 1
+          fi
+          echo "API key configured — proceeding."
+
       - name: Checkout PR head
         uses: actions/checkout@v4
         with:
@@ -136,6 +158,19 @@ jobs:
             }));
             const aggregate = aggregatePrDecisions(reviews);
 
+            // Detect "all voters errored" case — signals a broken setup
+            // (auth failure, network, etc) rather than legitimate abstain.
+            // Fail the job so the maintainer notices instead of silently
+            // posting an unhelpful ABSTAIN comment.
+            const allErrored = reviews.length > 0 && reviews.every((r) => r.source === 'error');
+            if (allErrored) {
+              const firstErr = reviews[0]?.reasoning ?? 'unknown';
+              console.error('All voters errored — likely auth or network failure.');
+              console.error('First voter\\'s error: ' + firstErr.slice(0, 500));
+              await fs.writeFile('pr-review-result.json', JSON.stringify({ summary: aggregate.decision, verified: aggregate.verified, reviews, allErrored: true }, null, 2));
+              process.exit(1);
+            }
+
             await fs.writeFile('pr-review-result.json', JSON.stringify({ summary: aggregate.decision, verified: aggregate.verified, reviews }, null, 2));
             console.log('Summary:', aggregate.decision, '(verified=' + aggregate.verified + ')');
             console.log('Per-voter:', reviews.map((r) => r.role + '=' + r.decision).join(', '));
@@ -158,7 +193,7 @@ jobs:
                 : ({ approve: '✅', request_changes: '❌', abstain: '➖' }[result.summary] || '❓');
               const tag = isSoftBlock ? 'REQUEST CHANGES (UNVERIFIED — majority dissent)' : result.summary.toUpperCase();
               const lines = [
-                `## ${icon} PR Review Experiment (#2233)`,
+                `## ${icon} Multi-voter PR Review`,
                 '',
                 `**Overall:** ${tag}`,
                 ...(isSoftBlock
@@ -180,11 +215,11 @@ jobs:
                 '</details>',
                 '',
                 '---',
-                '_Experimental — opt-in per PR via the `pr-review-experiment` label. Findings should be verified before action; see `.rules/discovered-issues.md` for the verification gate. To stop, remove the label._',
+                '_Findings should be verified before action; see `.rules/discovered-issues.md` for the gate. To opt out of pr_review on a specific PR, add the `skip-pr-review` label._',
               ];
               body = lines.join('\n');
             } catch (e) {
-              body = `## ❓ PR Review Experiment (#2233)\n\nReview failed: ${e.message}\n\nCheck the workflow logs.`;
+              body = `## ❓ Multi-voter PR Review\n\nReview failed: ${e.message}\n\nCheck the workflow logs.`;
             }
             await github.rest.issues.createComment({
               owner: context.repo.owner,
