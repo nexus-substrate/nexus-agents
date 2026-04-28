@@ -9,14 +9,22 @@ import * as os from 'node:os';
 import {
   appendBlocker,
   appendDecision,
+  appendProgressLedgerEntry,
   initTaskState,
   readTaskState,
   reduceLogEntries,
+  reflect,
   resolveBlocker,
   updatePosition,
   updateStage,
+  updateTaskLedger,
 } from './structured-task-state.js';
-import type { StructuredTaskLogEntry, StructuredTaskState } from './structured-task-state-types.js';
+import type {
+  ProgressLedgerEntry,
+  StructuredTaskLogEntry,
+  StructuredTaskState,
+  TaskLedger,
+} from './structured-task-state-types.js';
 
 let tmpDir: string;
 
@@ -219,5 +227,133 @@ describe('malformed log resilience', () => {
     if (r.ok) {
       expect(r.value.decisions.length).toBe(1);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Magentic-One Task Ledger + Progress Ledger (#2278)
+// ---------------------------------------------------------------------------
+
+function makeTaskLedger(updatedAt = '2026-04-28T00:00:00Z'): TaskLedger {
+  return {
+    facts: ['repo uses TypeScript', 'main is clean'],
+    guesses: ['failing test is a flake'],
+    openQuestions: ['does the new code path break under concurrent load?'],
+    updatedAt,
+  };
+}
+
+function makeProgressEntry(overrides: Partial<ProgressLedgerEntry> = {}): ProgressLedgerEntry {
+  return {
+    ts: '2026-04-28T00:01:00Z',
+    step: 'ran the tests',
+    planStillValid: true,
+    stuck: false,
+    suggestedAction: 'continue',
+    rationale: 'tests pass; proceed to PR',
+    ...overrides,
+  };
+}
+
+describe('Magentic-One Task Ledger', () => {
+  it('round-trips through replay', () => {
+    const initial = makeInitialState();
+    initTaskState(initial, tmpDir);
+    const ledger = makeTaskLedger();
+    const r = updateTaskLedger('task-1', ledger, tmpDir);
+    expect(r.ok).toBe(true);
+
+    const read = readTaskState('task-1', tmpDir);
+    expect(read.ok).toBe(true);
+    if (read.ok) {
+      expect(read.value.taskLedger).toEqual(ledger);
+      expect(read.value.updatedAt).toBe('2026-04-28T00:00:00Z');
+    }
+  });
+
+  it('replaces atomically — most recent ledger wins', () => {
+    const initial = makeInitialState();
+    initTaskState(initial, tmpDir);
+    updateTaskLedger('task-1', makeTaskLedger('2026-04-28T00:00:00Z'), tmpDir);
+    const revised: TaskLedger = {
+      facts: ['repo uses TypeScript', 'main is clean', 'concurrent test passes'],
+      guesses: [],
+      openQuestions: [],
+      updatedAt: '2026-04-28T00:05:00Z',
+    };
+    updateTaskLedger('task-1', revised, tmpDir);
+
+    const read = readTaskState('task-1', tmpDir);
+    expect(read.ok).toBe(true);
+    if (read.ok) {
+      expect(read.value.taskLedger).toEqual(revised);
+    }
+  });
+});
+
+describe('Magentic-One Progress Ledger', () => {
+  it('appends entries in order', () => {
+    initTaskState(makeInitialState(), tmpDir);
+    appendProgressLedgerEntry(
+      'task-1',
+      makeProgressEntry({ ts: '2026-04-28T00:01:00Z', step: 'first step' }),
+      tmpDir
+    );
+    appendProgressLedgerEntry(
+      'task-1',
+      makeProgressEntry({
+        ts: '2026-04-28T00:02:00Z',
+        step: 'second step',
+        suggestedAction: 'revise_plan',
+        stuck: true,
+        rationale: 'tests are flaking; replan',
+      }),
+      tmpDir
+    );
+
+    const read = readTaskState('task-1', tmpDir);
+    expect(read.ok).toBe(true);
+    if (read.ok) {
+      expect(read.value.progressLedger?.length).toBe(2);
+      expect(read.value.progressLedger?.[0]?.step).toBe('first step');
+      expect(read.value.progressLedger?.[1]?.suggestedAction).toBe('revise_plan');
+    }
+  });
+});
+
+describe('reflect()', () => {
+  it("returns 'continue' when no progress-ledger entries exist yet", () => {
+    initTaskState(makeInitialState(), tmpDir);
+    const r = reflect('task-1', tmpDir);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value).toBe('continue');
+  });
+
+  it('returns the most recent entry suggested action', () => {
+    initTaskState(makeInitialState(), tmpDir);
+    appendProgressLedgerEntry(
+      'task-1',
+      makeProgressEntry({ ts: '2026-04-28T00:01:00Z', suggestedAction: 'continue' }),
+      tmpDir
+    );
+    appendProgressLedgerEntry(
+      'task-1',
+      makeProgressEntry({
+        ts: '2026-04-28T00:02:00Z',
+        suggestedAction: 'escalate_to_human',
+        stuck: true,
+        rationale: 'three replans without progress',
+      }),
+      tmpDir
+    );
+
+    const r = reflect('task-1', tmpDir);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value).toBe('escalate_to_human');
+  });
+
+  it('errors cleanly when the task log does not exist', () => {
+    const r = reflect('does-not-exist', tmpDir);
+    expect(r.ok).toBe(false);
   });
 });
