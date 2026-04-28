@@ -335,6 +335,12 @@ export {
   type QueryTaskStateDeps,
   type QueryTaskStateInput,
   type QueryTaskStateResponse,
+  // Verify audit chain tool (#2281 follow-up)
+  registerVerifyAuditChainTool,
+  VerifyAuditChainInputSchema,
+  type VerifyAuditChainDeps,
+  type VerifyAuditChainInput,
+  type VerifyAuditChainResponse,
 } from './tools/index.js';
 
 // Gateway — Tiered Orchestration Routing (Issue #888, #892, #893, #894)

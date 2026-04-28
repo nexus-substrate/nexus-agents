@@ -1,6 +1,6 @@
 # Repository Capabilities Index
 
-**Generated:** 2026-04-27T11:46:17.068Z
+**Generated:** 2026-04-28T10:57:51.822Z
 **Package Version:** 2.57.0
 **Generator:** `scripts/generate-repo-index.ts`
 
@@ -61,7 +61,7 @@ Binary: `nexus-agents`
 
 ---
 
-## MCP Tools (32)
+## MCP Tools (33)
 
 | Tool | Source File |
 | ------ | ------------- |
@@ -96,6 +96,7 @@ Binary: `nexus-agents`
 | `run_pipeline` | `src/mcp/tools/run-pipeline.ts` |
 | `run_workflow` | `src/mcp/tools/run-workflow.ts` |
 | `search_codebase` | `src/mcp/tools/search-codebase.ts` |
+| `verify_audit_chain` | `src/mcp/tools/verify-audit-chain.ts` |
 | `weather_report` | `src/mcp/tools/weather-report.ts` |
 
 ---
