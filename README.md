@@ -223,6 +223,7 @@ When running as an MCP server, the following tools are available:
 | `registry_import`         | Generate draft model registry entry                         |
 | `query_trace`             | Query execution traces for observability                    |
 | `query_task_state`        | Query the structured task-state log for a task ID           |
+| `verify_audit_chain`      | Verify hash chain of a FileAuditStorage audit log directory |
 | `repo_analyze`            | Analyze GitHub repository structure                         |
 | `repo_security_plan`      | Generate security scanning pipeline for a repo              |
 | `extract_symbols`         | Extract code symbols from source files for analysis         |

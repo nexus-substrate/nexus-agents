@@ -141,6 +141,8 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
     'Single unified entry point for all pipeline templates (dev/research/audit/greenfield). Auto-detects template from task content or accepts an explicit override.',
   pr_review:
     'Run multi-voter consensus review on a PR diff (#2233). 5 voters (architect, security, devex, catfish, scope_steward) each emit approve/request_changes/abstain with reasoning and citations. Reuses consensus_vote infra; experimental.',
+  verify_audit_chain:
+    'Verify the hash chain of a persisted FileAuditStorage audit log directory (#2281 follow-up). Reads all audit-*.jsonl files, parses events, runs verifyChain() to detect tampering. Returns eventCount, fileCount, and one of three tamper signals (hash_mismatch, previous_hash_mismatch, missing_hash) if detected. Read-only.',
 };
 
 /**
@@ -184,6 +186,7 @@ const README_TOOL_DESCRIPTIONS: Record<string, string> = {
   run_dev_pipeline: 'Full dev pipeline: research, plan, vote, implement, QA',
   run_pipeline: 'Execute a pipeline plugin by name with typed input',
   pr_review: 'Multi-voter PR review with verification gate (experimental)',
+  verify_audit_chain: 'Verify hash chain of a FileAuditStorage audit log directory',
 };
 
 /**

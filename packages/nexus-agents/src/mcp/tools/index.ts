@@ -335,6 +335,15 @@ export {
   type QueryTaskStateResponse,
 } from './query-task-state-tool.js';
 
+// Verify audit chain tool (#2281 follow-up — wraps verifyChain over persisted log files)
+export {
+  registerVerifyAuditChainTool,
+  VerifyAuditChainInputSchema,
+  type VerifyAuditChainDeps,
+  type VerifyAuditChainInput,
+  type VerifyAuditChainResponse,
+} from './verify-audit-chain-tool.js';
+
 // Research pipeline tool (Issue #1711)
 
 // Unified pipeline tool (Issue #1736, Phase 3)
@@ -476,6 +485,7 @@ export function registerTools(
       'registry_import',
       'query_trace',
       'query_task_state',
+      'verify_audit_chain',
       'repo_analyze',
       'repo_security_plan',
       'extract_symbols',

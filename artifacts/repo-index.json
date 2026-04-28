@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-04-27T11:46:17.068Z",
+  "generated": "2026-04-28T10:57:51.822Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.57.0",
   "cli": {
@@ -391,6 +391,10 @@
       {
         "name": "search_codebase",
         "file": "src/mcp/tools/search-codebase.ts"
+      },
+      {
+        "name": "verify_audit_chain",
+        "file": "src/mcp/tools/verify-audit-chain.ts"
       },
       {
         "name": "weather_report",
