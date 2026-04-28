@@ -22,10 +22,13 @@ import { ok, err } from '../core/result.js';
 import { createLogger } from '../core/logger.js';
 import {
   StructuredTaskLogEntrySchema,
+  type ProgressLedgerEntry,
+  type ReflectAction,
   type StructuredTaskLogEntry,
   type StructuredTaskState,
   type TaskBlocker,
   type TaskDecision,
+  type TaskLedger,
   type TaskPosition,
   type TaskStage,
 } from './structured-task-state-types.js';
@@ -146,6 +149,47 @@ export function updatePosition(
 }
 
 /**
+ * Replace the Magentic-One Task Ledger atomically (#2278). The outer loop calls
+ * this when it replans — facts/guesses/openQuestions are revised together so
+ * downstream reflections are reading a consistent set.
+ */
+export function updateTaskLedger(
+  taskId: string,
+  ledger: TaskLedger,
+  customDir?: string
+): Result<void, Error> {
+  return appendLogEntry(taskId, { event: 'task_ledger', ts: ledger.updatedAt, ledger }, customDir);
+}
+
+/**
+ * Append a Magentic-One Progress Ledger entry (#2278). Inner-loop reflection
+ * after a step: was the plan still valid, are we stuck, what to do next.
+ */
+export function appendProgressLedgerEntry(
+  taskId: string,
+  entry: ProgressLedgerEntry,
+  customDir?: string
+): Result<void, Error> {
+  return appendLogEntry(taskId, { event: 'progress_ledger', ts: entry.ts, entry }, customDir);
+}
+
+/**
+ * Read the most recent ProgressLedger entry's suggested action — what
+ * `Orchestrator.reflect()` returns. Returns `'continue'` when no progress-ledger
+ * entries exist yet (default to "no reflection has flagged a problem"), and an
+ * error if the task log itself can't be read.
+ */
+export function reflect(taskId: string, customDir?: string): Result<ReflectAction, Error> {
+  const stateResult = readTaskState(taskId, customDir);
+  if (!stateResult.ok) return err(stateResult.error);
+  const ledger = stateResult.value.progressLedger;
+  if (ledger === undefined || ledger.length === 0) return ok('continue');
+  const last = ledger[ledger.length - 1];
+  if (last === undefined) return ok('continue');
+  return ok(last.suggestedAction);
+}
+
+/**
  * Read the log file and reduce it to the current state snapshot.
  *
  * Returns `err` when the file doesn't exist or no `init` entry is
@@ -258,5 +302,13 @@ function applyLogEntry(
       return { ...state, stage: entry.stage, updatedAt: entry.ts };
     case 'position':
       return { ...state, position: entry.position, updatedAt: entry.ts };
+    case 'task_ledger':
+      return { ...state, taskLedger: entry.ledger, updatedAt: entry.ts };
+    case 'progress_ledger':
+      return {
+        ...state,
+        progressLedger: [...(state.progressLedger ?? []), entry.entry],
+        updatedAt: entry.ts,
+      };
   }
 }

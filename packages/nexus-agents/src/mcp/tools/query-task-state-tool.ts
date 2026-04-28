@@ -71,8 +71,10 @@ export function registerQueryTaskStateTool(server: McpServer, deps: QueryTaskSta
 
   const description =
     'Read the structured state log for a task ID and return the current ' +
-    'snapshot. Structured state is only written when NEXUS_TASK_STATE_ENABLED=1 ' +
-    'was set during the orchestrate invocation.';
+    'snapshot. Includes Magentic-One Task Ledger (facts/guesses/openQuestions) ' +
+    'and Progress Ledger (per-step reflections with suggestedAction) when ' +
+    'orchestrators have written them. Structured state is only written when ' +
+    'NEXUS_TASK_STATE_ENABLED=1 was set during the orchestrate invocation.';
 
   const secureHandler = createSecureHandler(queryTaskStateHandler, {
     toolName: 'query_task_state',
