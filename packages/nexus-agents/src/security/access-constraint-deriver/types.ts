@@ -9,8 +9,20 @@
 
 import { z } from 'zod';
 
-/** Operating modes for the access-constraint-deriver pipeline. */
-export const AccessPolicyModeSchema = z.enum(['off', 'audit', 'enforce']);
+/**
+ * Operating modes for the access-constraint-deriver pipeline.
+ *
+ * - `off`: bypass entirely; no policy enforcement, no audit logging
+ * - `audit` (default in v2.50+): log every violation, block nothing — collects
+ *   telemetry to size the violation rate before flipping to enforce
+ * - `confirm_risky` (#2279): graduated middle tier. Block violations on tools
+ *   classified as risky (write/exec/network); log-and-allow violations on
+ *   read-only tools. The intent is "block the calls a human would want to
+ *   review; let the safe reads through" — graduation path between audit and
+ *   enforce that doesn't break read-heavy workflows
+ * - `enforce`: block every violation, regardless of risk classification
+ */
+export const AccessPolicyModeSchema = z.enum(['off', 'audit', 'confirm_risky', 'enforce']);
 export type AccessPolicyMode = z.infer<typeof AccessPolicyModeSchema>;
 
 /** Source of the derived policy. */
