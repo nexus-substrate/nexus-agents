@@ -1,15 +1,18 @@
 /**
- * Access Constraint Deriver — Policy enforcement (#1977).
+ * Access Constraint Deriver — Policy enforcement (#1977, #2279).
  *
  * Pure function that checks a proposed tool call against a derived policy
  * and returns an AccessDecision. Enforcement depends on the policy's mode:
- * `off` and `audit` never block (audit would log to telemetry — wiring TBD);
- * `enforce` blocks violations.
+ * - `off` and `audit` never block
+ * - `confirm_risky` (#2279) blocks violations on risky tools (write/exec/
+ *   network) and log-and-allows violations on read-only tools
+ * - `enforce` blocks every violation regardless of risk classification
  *
  * @module security/access-constraint-deriver/enforcer
  */
 
 import { isPathDenied, isToolDenied } from './denylist.js';
+import { isRiskyTool } from './tool-risk.js';
 import type { AccessDecision, TaskAccessPolicy } from './types.js';
 
 /**
@@ -55,13 +58,38 @@ export function checkAccess(
 
   if (policy.allowedTools.includes(toolName)) return { decision: 'allow' };
 
-  if (policy.mode === 'audit') {
+  return decideOnViolation(toolName, policy.mode);
+}
+
+/**
+ * Mode-specific behavior when a tool is not in the per-task allowlist.
+ * Extracted so checkAccess stays under the complexity-10 cap.
+ */
+function decideOnViolation(toolName: string, mode: TaskAccessPolicy['mode']): AccessDecision {
+  if (mode === 'audit') {
     return {
       decision: 'log-and-allow',
       warning: `tool "${toolName}" not in derived policy (audit mode)`,
     };
   }
-
+  // confirm_risky: split by tool risk classification (#2279). Read-only
+  // violations are log-and-allow (audit-like); risky violations are denied
+  // with a structured reason that surfaces "would-have-required-approval"
+  // semantics. Operators add the tool to the allowlist after review, or
+  // graduate to `enforce` once the violation rate is acceptable.
+  if (mode === 'confirm_risky') {
+    if (!isRiskyTool(toolName)) {
+      return {
+        decision: 'log-and-allow',
+        warning: `tool "${toolName}" not in derived policy (confirm_risky mode, read-only — would have required human approval, allowed because read-only)`,
+      };
+    }
+    return {
+      decision: 'deny',
+      reason: `tool "${toolName}" not in derived policy (confirm_risky mode, risky — would have required human approval; denied for now, add to allowedTools or run in audit mode to allow)`,
+      matchedRule: 'allowedTools:confirm_risky',
+    };
+  }
   return {
     decision: 'deny',
     reason: `tool "${toolName}" not in derived policy`,
