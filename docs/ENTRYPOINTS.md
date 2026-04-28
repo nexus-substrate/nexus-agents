@@ -328,7 +328,8 @@ nexus-agents hooks stop --check-tasks
 | `memory_write`            | Write a memory entry to a specific backend                         | None (local) | Shared bucket |
 | `registry_import`         | Generate draft model registry entry                                | None (local) | Shared bucket |
 | `query_trace`             | Query execution traces by run ID                                   | None (local) | Shared bucket |
-| `query_task_state`        | Query structured task-state log                                    | None (local) | Shared bucket |
+| `query_task_state`        | Query structured task-state log (incl. Magentic-One ledgers)       | None (local) | Shared bucket |
+| `verify_audit_chain`      | Verify hash chain of a FileAuditStorage audit log directory        | None (local) | Shared bucket |
 | `run_pipeline`            | Run a typed pipeline by name with provided inputs                  | None (local) | Shared bucket |
 | `repo_analyze`            | Analyze GitHub repository structure                                | None (local) | Shared bucket |
 | `repo_security_plan`      | Generate security scanning pipeline for a repository               | None (local) | Shared bucket |
