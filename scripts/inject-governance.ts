@@ -22,6 +22,7 @@
 
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import * as prettier from 'prettier';
 import { ROOT } from './script-paths.js';
 const CLAUDE_MD_PATH = join(ROOT, 'CLAUDE.md');
 const README_PATH = join(ROOT, 'README.md');
@@ -38,6 +39,25 @@ const AGENTS_MD_PATH = join(ROOT, 'AGENTS.md');
 const PLUGIN_JSON_PATH = join(ROOT, '.claude-plugin/plugin.json');
 const MARKETPLACE_JSON_PATH = join(ROOT, '.claude-plugin/marketplace.json');
 const PLUGIN_INSTALL_PATH = join(ROOT, 'docs/getting-started/PLUGIN_INSTALL.md');
+
+/**
+ * Write `content` to `path` after running it through prettier with the
+ * filepath's parser, so the on-disk shape exactly matches what
+ * `lint-staged → prettier --write` produces on commit (#2290).
+ *
+ * Without this, `inject-governance.ts` and the lint-staged hook produce
+ * subtly different padding on markdown tables — one trailing-space
+ * difference is enough to fail the docs-check `Verify injection
+ * idempotency` step on every tool/expert/workflow add.
+ */
+async function writeFormatted(path: string, content: string): Promise<void> {
+  const config = await prettier.resolveConfig(path);
+  const formatted = await prettier.format(content, {
+    ...(config ?? {}),
+    filepath: path,
+  });
+  writeFileSync(path, formatted);
+}
 
 // Markers for governance sections
 const MARKERS = {
@@ -749,7 +769,7 @@ function checkAncillaryCounts(counts: AncillaryCounts): boolean {
 /**
  * Inject all governance sections into CLAUDE.md.
  */
-function injectGovernance(): void {
+async function injectGovernance(): Promise<void> {
   if (!existsSync(CLAUDE_MD_PATH)) {
     console.error('CLAUDE.md not found');
     process.exit(1);
@@ -795,12 +815,12 @@ function injectGovernance(): void {
   const versionSection = generateVersionSection();
   content = injectSection(content, MARKERS.versionStart, MARKERS.versionEnd, versionSection);
 
-  writeFileSync(CLAUDE_MD_PATH, content);
+  await writeFormatted(CLAUDE_MD_PATH, content);
 
   // Inject README MCP tools table (#2269) — same registry, scannable
   // descriptions. Soft-skip if README has no markers yet so this script
   // remains drop-in compatible with older checkouts.
-  injectReadmeToolTable(tools);
+  await injectReadmeToolTable(tools);
 
   // #1837: keep ancillary count surfaces (plugin manifests, AGENTS.md,
   // install docs) aligned with canonical registries.
@@ -856,7 +876,7 @@ function checkReadmeToolTable(tools: ToolMetadata[]): boolean {
  * remains drop-in compatible with older checkouts that haven't been
  * marker-prepped yet.
  */
-function injectReadmeToolTable(tools: ToolMetadata[]): void {
+async function injectReadmeToolTable(tools: ToolMetadata[]): Promise<void> {
   if (!existsSync(README_PATH)) {
     return;
   }
@@ -867,7 +887,7 @@ function injectReadmeToolTable(tools: ToolMetadata[]): void {
   const table = generateReadmeToolTable(tools);
   const updated = injectSection(content, MARKERS.readmeToolsStart, MARKERS.readmeToolsEnd, table);
   if (updated !== content) {
-    writeFileSync(README_PATH, updated);
+    await writeFormatted(README_PATH, updated);
   }
 }
 
@@ -1003,6 +1023,6 @@ switch (command) {
     break;
   case 'inject':
   default:
-    injectGovernance();
+    await injectGovernance();
     break;
 }
