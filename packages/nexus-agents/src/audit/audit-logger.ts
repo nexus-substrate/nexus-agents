@@ -56,6 +56,92 @@ function computeEventHash(event: AuditEvent): string {
 }
 
 // ============================================================================
+// Hash Chain Verification (#2281)
+// ============================================================================
+
+/**
+ * Discriminated result from `verifyChain()`. Either the chain validates cleanly,
+ * or one of three named tampering signals fires at a specific event index.
+ */
+export type ChainVerification =
+  | { ok: true; eventCount: number }
+  | {
+      ok: false;
+      reason: 'hash_mismatch' | 'previous_hash_mismatch' | 'missing_hash';
+      eventIndex: number;
+      eventId: string;
+      detail: string;
+    };
+
+/** Per-event check; null when the event passes. Extracted to keep verifyChain under the complexity cap. */
+function verifyEvent(
+  event: AuditEvent,
+  index: number,
+  priorHash: string | undefined
+): ChainVerification | null {
+  if (event.hash === undefined) {
+    return {
+      ok: false,
+      reason: 'missing_hash',
+      eventIndex: index,
+      eventId: event.id,
+      detail: `event at index ${String(index)} has no hash field but the chain started hashed`,
+    };
+  }
+  if (index > 0 && event.previousHash !== priorHash) {
+    return {
+      ok: false,
+      reason: 'previous_hash_mismatch',
+      eventIndex: index,
+      eventId: event.id,
+      detail: `event at index ${String(index)} previousHash=${event.previousHash ?? '(missing)'} does not match prior event hash=${priorHash ?? '(missing)'}`,
+    };
+  }
+  const recomputed = computeEventHash(event);
+  if (recomputed !== event.hash) {
+    return {
+      ok: false,
+      reason: 'hash_mismatch',
+      eventIndex: index,
+      eventId: event.id,
+      detail: `event at index ${String(index)} stored hash=${event.hash} does not match recomputed=${recomputed}`,
+    };
+  }
+  return null;
+}
+
+/**
+ * Verify a hash-chained sequence of audit events. Walks the array in order and
+ * checks (a) each event's `hash` field matches a recomputation of its content,
+ * (b) each event's `previousHash` matches the prior event's `hash`, and (c) no
+ * event in a hash-chained log is missing its `hash`. Returns the first
+ * detected tampering signal — does NOT continue past the first failure, since
+ * one tamper invalidates everything downstream.
+ *
+ * Backward compat: events written when `enableHashChain: false` carry no `hash`
+ * field. If the FIRST event has no `hash`, the entire batch is treated as
+ * un-chained and verification short-circuits to `{ok: true}`. If hash fields
+ * appear partway through (mixed-mode log), `missing_hash` fires.
+ *
+ * @param events - Sequence of AuditEvent in append order
+ * @returns ChainVerification result
+ */
+export function verifyChain(events: readonly AuditEvent[]): ChainVerification {
+  if (events.length === 0) return { ok: true, eventCount: 0 };
+  if (events[0]?.hash === undefined) return { ok: true, eventCount: events.length };
+
+  let priorHash: string | undefined = undefined;
+  for (let i = 0; i < events.length; i++) {
+    const event = events[i];
+    if (event === undefined) continue;
+    const failure = verifyEvent(event, i, priorHash);
+    if (failure !== null) return failure;
+    priorHash = event.hash;
+  }
+  return { ok: true, eventCount: events.length };
+}
+
+// ============================================================================
 // System Actor (for internal events)
 // ============================================================================
 
