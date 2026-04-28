@@ -8,7 +8,7 @@ related_files: [CODING_STANDARDS.md, docs/ENTRYPOINTS.md]
 
 # Nexus Agents - Claude Code Instructions
 
-**Project:** Intelligent orchestration platform for AI coding tools
+**Project:** Governance substrate for AI coding agents — adversarial review, drift-detected rules, immutable audit, closed-loop telemetry. The agents (Claude/Codex/Gemini/OpenCode, plus Devin/Factory adapters) do the engineering; nexus-agents enforces the rules they have to follow, reviews their work adversarially, and audits everything they touch.
 **Repository:** github.com/williamzujkowski/nexus-agents
 **Owner:** @williamzujkowski
 

@@ -2,6 +2,8 @@
 
 Standalone guidance for AI coding agents (OpenCode, Codex CLI, Cursor, Aider, Cline, Continue, Goose, Claude Code) working in this repo. Self-contained — no required redirect to other files.
 
+**About this project:** Nexus-agents is a _governance substrate_ for AI coding agents — adversarial PR review, drift-detected charter, immutable audit, closed-loop telemetry. The agents you (the reader) belong to are exactly the kind of agent nexus-agents governs. Rules in `.rules/` are enforced by CI gates and PR-review voters, not just suggestions.
+
 > Claude Code users: the legacy entry point at [CLAUDE.md](./CLAUDE.md) is still authoritative for Claude-Code-specific integrations (auto-loaded rules, plugin marketplace). The content below is the harness-neutral subset.
 
 ## Prime directive
