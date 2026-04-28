@@ -248,6 +248,21 @@ Files stored:
 - `outcomes.jsonl` — Append-only JSONL of task outcomes
 - `rules.json` — Atomic JSON snapshot of distilled routing rules
 
+### Security & Governance Variables
+
+| Variable                       | Description                                                                      | Default          |
+| ------------------------------ | -------------------------------------------------------------------------------- | ---------------- |
+| `NEXUS_ACCESS_POLICY_MODE`     | ClawGuard mode: `off` / `audit` / `confirm_risky` / `enforce` (#1977, #2279)     | `audit` (v2.50+) |
+| `NEXUS_TASK_STATE_ENABLED`     | Structured task-state log + Magentic-One ledgers (`0`/`false` to disable, #2278) | enabled (v2.50+) |
+| `NEXUS_CONTEXT_WARN_THRESHOLD` | Per-expert context-warning threshold (0..1]                                      | `0.85`           |
+
+**`NEXUS_ACCESS_POLICY_MODE` graduation path:**
+
+- `off` — bypass entirely; no policy enforcement, no audit logging
+- `audit` (default since v2.50) — log every violation, block nothing. Collects telemetry to size the violation rate before flipping to a stricter mode
+- `confirm_risky` (added v2.58) — graduated middle tier. Block violations on tools classified as risky (write/exec/network); log-and-allow violations on read-only tools. Use this to graduate from `audit` to `enforce` without breaking read-heavy workflows. Risky violations come back with a structured "would have required human approval" reason
+- `enforce` — block every violation, regardless of risk classification
+
 ### Timeout Variables
 
 | Variable                  | Description                    | Default  |
