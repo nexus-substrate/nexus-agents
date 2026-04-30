@@ -365,6 +365,27 @@ export {
   type PrReviewDeps,
 } from './pr-review-tool.js';
 
+// Supply-chain tradeoff panel (#2294 — child of #2293, structured per-axis voting)
+export {
+  registerSupplyChainTradeoffPanelTool,
+  SupplyChainTradeoffPanelInputSchema,
+  DEFAULT_AXES,
+  FULL_PANEL,
+  QUICK_PANEL,
+  buildTradeoffProposal,
+  parseAxisVerdicts,
+  aggregateAxis,
+  aggregatePanel,
+  buildRecommendation,
+  type SupplyChainTradeoffPanelInput,
+  type SupplyChainTradeoffPanelResponse,
+  type SupplyChainTradeoffPanelDeps,
+  type AxisVerdict,
+  type AxisDecision,
+  type PanelDecision,
+  type PanelVote,
+} from './supply-chain-tradeoff-panel.js';
+
 // Tool annotations and side effects (Issue #993)
 export {
   TOOL_ANNOTATIONS,
@@ -493,6 +514,7 @@ export function registerTools(
       'run_dev_pipeline',
       'run_pipeline',
       'pr_review',
+      'supply_chain_tradeoff_panel',
     ],
     logger,
     rateLimiter,
