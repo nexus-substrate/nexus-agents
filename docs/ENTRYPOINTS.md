@@ -86,6 +86,7 @@ Most commonly used commands:
 | `hooks`                | `pre-tool`      | Handle PreToolUse hook events               | any          |
 | `hooks`                | `post-tool`     | Handle PostToolUse hook events              | any          |
 | `hooks`                | `stop`          | Handle Stop hook events                     | any          |
+| `init`                 | `--portable`    | Bootstrap workspace-local `.nexus-agents/`  | any          |
 
 ### Mode Selection
 

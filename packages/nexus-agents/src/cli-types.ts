@@ -70,6 +70,7 @@ export type CliCommand =
   | 'routing-ab'
   | 'memory-eval'
   | 'health'
+  | 'init'
   | 'validate'
   | 'registry';
 
@@ -154,6 +155,9 @@ export interface ParsedCliArgs {
     // Registry command options (#2179)
     json?: boolean;
     source?: string;
+    // init --portable command options (#2305)
+    portable?: boolean;
+    gitignore?: boolean;
   };
   positionals: string[];
 }
@@ -410,64 +414,72 @@ export const PARSE_ARGS_CONFIG = {
     source: {
       type: 'string' as const,
     },
+    // init --portable command options (#2305)
+    portable: {
+      type: 'boolean' as const,
+      default: false,
+    },
+    gitignore: {
+      type: 'boolean' as const,
+      default: false,
+    },
   },
   allowPositionals: true,
   strict: true,
 } as const;
 
+const VALID_COMMANDS: readonly CliCommand[] = [
+  'server',
+  'help',
+  'version',
+  'hello',
+  'config',
+  'expert',
+  'workflow',
+  'doctor',
+  'verify',
+  'review',
+  'routing-audit',
+  'orchestrate',
+  'system-review',
+  'vote',
+  'index',
+  'research',
+  'validation',
+  'learning-metrics',
+  'swe-bench',
+  'atbench',
+  'setup',
+  'hooks',
+  'demo',
+  'sprint',
+  'session',
+  'evaluate',
+  'issue',
+  'fitness-audit',
+  'release-notes',
+  'release-validate',
+  'release-announce',
+  'scaffold',
+  'visualize',
+  'capabilities',
+  'status',
+  'memory-benchmark',
+  'auth',
+  'scenario',
+  'warm-up',
+  'e2e-eval',
+  'routing-ab',
+  'memory-eval',
+  'health',
+  'init',
+  'validate',
+  'registry',
+];
+
 /**
  * Checks if a string is a valid CLI command.
- *
- * @param value - String to check
- * @returns True if the value is a valid command
  */
 export function isValidCommand(value: string): value is CliCommand {
-  const validCommands: CliCommand[] = [
-    'server',
-    'help',
-    'version',
-    'hello',
-    'config',
-    'expert',
-    'workflow',
-    'doctor',
-    'verify',
-    'review',
-    'routing-audit',
-    'orchestrate',
-    'system-review',
-    'vote',
-    'index',
-    'research',
-    'validation',
-    'learning-metrics',
-    'swe-bench',
-    'atbench',
-    'setup',
-    'hooks',
-    'demo',
-    'sprint',
-    'session',
-    'evaluate',
-    'issue',
-    'fitness-audit',
-    'release-notes',
-    'release-validate',
-    'release-announce',
-    'scaffold',
-    'visualize',
-    'capabilities',
-    'status',
-    'memory-benchmark',
-    'auth',
-    'scenario',
-    'warm-up',
-    'e2e-eval',
-    'routing-ab',
-    'memory-eval',
-    'health',
-    'validate',
-    'registry',
-  ];
-  return validCommands.includes(value as CliCommand);
+  return (VALID_COMMANDS as readonly string[]).includes(value);
 }
