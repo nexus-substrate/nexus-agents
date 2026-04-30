@@ -36,6 +36,7 @@ export {
   handleAtbenchCommand,
   handleVerifyCommand,
   handleDoctorCommand,
+  handleInitCommand,
   handleSetupCommand,
   handleSetupCommandAsync,
   handleHelloCommand,
@@ -99,6 +100,7 @@ import {
   handleResearchCommand,
   handleSweBenchCommand,
   handleAtbenchCommand,
+  handleInitCommand,
   handleSetupCommandAsync,
   handleHelloCommand,
   handleHooksCommand,
@@ -188,6 +190,8 @@ const SYNC_COMMAND_HANDLERS: Record<string, ((args: ParsedCliArgs) => void) | un
   status: handleStatusCommand,
   // Issue #1023: Warm-Up Command
   'warm-up': handleWarmUpCommand,
+  // #2305: Init Portable Command
+  init: handleInitCommand,
   'e2e-eval': handleE2EEvalCommand,
   'routing-ab': handleRoutingABCommand,
   'memory-eval': handleMemoryEvalCommand,
