@@ -158,11 +158,10 @@ async function persistMobiMemState(): Promise<void> {
   try {
     const { isPersistenceEnabled } = await import('../config/learning-persistence.js');
     if (!isPersistenceEnabled()) return;
-    const os = await import('node:os');
-    const path = await import('node:path');
+    const { nexusDataPath } = await import('../config/nexus-data-dir.js');
     const { createMobiMem } = await import('../context/mobimem.js');
     const mobimem = createMobiMem();
-    const savePath = path.join(os.homedir(), '.nexus-agents', 'memory', 'mobimem-state.json');
+    const savePath = nexusDataPath('memory', 'mobimem-state.json');
     await mobimem.save(savePath);
   } catch {
     // MobiMem persistence failure must never block pipeline completion

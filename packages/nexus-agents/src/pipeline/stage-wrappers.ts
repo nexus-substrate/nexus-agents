@@ -302,9 +302,9 @@ async function extractSymbolsForTask(task: string): Promise<string | null> {
 async function retrieveAdaptiveMemory(task: string): Promise<string | null> {
   try {
     const { AdaptiveMemoryBackend } = await import('../context/adaptive-memory.js');
-    const os = await import('node:os');
     const path = await import('node:path');
-    const baseDir = path.join(os.homedir(), '.nexus-agents', 'memory');
+    const { nexusDataPath } = await import('../config/nexus-data-dir.js');
+    const baseDir = nexusDataPath('memory');
     const memory = new AdaptiveMemoryBackend({
       dbPath: path.join(baseDir, 'adaptive.db'),
       markdownDir: path.join(baseDir, 'adaptive-md'),

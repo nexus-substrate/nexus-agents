@@ -20,8 +20,8 @@
 
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { homedir } from 'node:os';
+import { dirname } from 'node:path';
+import { nexusDataPath } from '../config/nexus-data-dir.js';
 
 import {
   defaultGeneratedRegistryPath,
@@ -257,8 +257,7 @@ async function refreshCommand(options: RegistryCommandOptions): Promise<Registry
   const artifact = await fetchAndVerify(source, options.fetchImpl ?? fetch);
   if ('text' in artifact) return artifact;
 
-  const dest =
-    options.destPath ?? join(homedir(), '.nexus-agents', 'model-registry.generated.json');
+  const dest = options.destPath ?? nexusDataPath('model-registry.generated.json');
   if (options.dryRun === true) {
     return { text: formatRefreshReport('would write to', source, artifact, dest), exitCode: 0 };
   }
@@ -314,7 +313,7 @@ export function formatRegistryUsage(): string {
     '  nexus-agents registry refresh --source=<url> [--dry-run]',
     '      Download a signed model-registry.generated.json from <url>,',
     '      SHA256-verify against <url>.sha256, and write to:',
-    `      ${join(homedir(), '.nexus-agents', 'model-registry.generated.json')}`,
+    `      ${nexusDataPath('model-registry.generated.json')}`,
     '',
     `Overlay path (T3) is ${defaultOverlayPath()} by default,`,
     `or whatever ${OVERLAY_ENV_VAR} points to. Overlay max size is ${String(OVERLAY_MAX_BYTES)} bytes.`,

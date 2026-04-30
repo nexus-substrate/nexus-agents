@@ -43,6 +43,13 @@ COPY --from=builder /app/packages/nexus-agents/dist /opt/nexus-agents/dist
 COPY --from=builder /app/packages/nexus-agents/package.json /opt/nexus-agents/
 COPY --from=runtime-deps /opt/nexus-agents/node_modules /opt/nexus-agents/node_modules
 
+# Redirect all runtime data (memory, learning, audit, voting, sessions,
+# checkpoints, traces) to the workspace volume so it survives sandbox
+# restarts and stays scoped to the workspace, not the container's $HOME
+# (#2302, child of #2301). Pre-create the dir so first writes don't race.
+ENV NEXUS_DATA_DIR=/workspace/.nexus-agents
+RUN mkdir -p /workspace/.nexus-agents
+
 # Create opencode config with MCP server pointing to nexus-agents
 # OpenCode reads from ~/.config/opencode/opencode.json (global config)
 RUN mkdir -p /home/agent/.config/opencode && \

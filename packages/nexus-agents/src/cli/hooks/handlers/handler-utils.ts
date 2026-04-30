@@ -7,23 +7,25 @@
  * (Source: Issue #413-#415 - Hook handlers implementation)
  */
 
-import { homedir } from 'node:os';
-import { join } from 'node:path';
+import {
+  getNexusDataDir as resolveNexusDataDir,
+  nexusDataPath,
+} from '../../../config/nexus-data-dir.js';
 
 /**
  * Default database path for session storage.
- * Uses ~/.nexus-agents/sessions.db
+ * Resolves to `<NEXUS_DATA_DIR>/sessions.db` (#2302).
  */
 export function getDefaultDbPath(): string {
-  return join(homedir(), '.nexus-agents', 'sessions.db');
+  return nexusDataPath('sessions.db');
 }
 
 /**
- * Gets the nexus-agents data directory path.
- * Creates ~/.nexus-agents if needed.
+ * Gets the nexus-agents data directory path (#2302).
+ * Re-exported for hook handlers; canonical source is `config/nexus-data-dir.ts`.
  */
 export function getNexusDataDir(): string {
-  return join(homedir(), '.nexus-agents');
+  return resolveNexusDataDir();
 }
 
 /**

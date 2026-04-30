@@ -11,8 +11,8 @@
 
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
-import { join, dirname } from 'node:path';
-import { homedir } from 'node:os';
+import { dirname } from 'node:path';
+import { nexusDataPath } from '../../config/nexus-data-dir.js';
 import type { ILogger } from '../../core/index.js';
 import { createLogger } from '../../core/index.js';
 import type { AuthConfig } from '../../config/schemas-security.js';
@@ -49,7 +49,7 @@ export interface AuthHandlerConfig {
 /**
  * Default auth directory relative to home.
  */
-const DEFAULT_AUTH_DIR = '.nexus-agents/auth';
+const DEFAULT_AUTH_SUBDIR = 'auth';
 
 /**
  * Default token file name.
@@ -65,7 +65,7 @@ const TOKEN_LENGTH_BYTES = 32;
  * Gets the default token file path.
  */
 export function getDefaultTokenPath(): string {
-  return join(homedir(), DEFAULT_AUTH_DIR, DEFAULT_TOKEN_FILE);
+  return nexusDataPath(DEFAULT_AUTH_SUBDIR, DEFAULT_TOKEN_FILE);
 }
 
 /**
