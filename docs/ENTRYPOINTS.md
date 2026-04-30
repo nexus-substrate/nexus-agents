@@ -302,41 +302,42 @@ nexus-agents hooks stop --check-tasks
 **Protocol:** Model Context Protocol (2025-11-25)
 **Transport:** JSON-RPC 2.0 over stdio
 
-| Tool                      | Description                                                        | Auth         | Rate Limit    |
-| ------------------------- | ------------------------------------------------------------------ | ------------ | ------------- |
-| `orchestrate`             | Task orchestration with Orchestrator coordination                  | None (local) | Shared bucket |
-| `create_expert`           | Dynamic expert agent creation                                      | None (local) | Shared bucket |
-| `execute_expert`          | Execute a task using a created expert agent                        | None (local) | Shared bucket |
-| `run_workflow`            | Execute workflow template                                          | None (local) | Shared bucket |
-| `delegate_to_model`       | Route task to optimal model                                        | None (local) | Shared bucket |
-| `consensus_vote`          | Multi-model consensus voting on proposals                          | None (local) | Shared bucket |
-| `list_experts`            | List available expert types for discoverability                    | None (local) | Shared bucket |
-| `list_workflows`          | List available workflow templates                                  | None (local) | Shared bucket |
-| `research_query`          | Query research registry (status, overlap, stats, search)           | None (local) | Shared bucket |
-| `research_add`            | Add paper to registry by arXiv ID                                  | None (local) | Shared bucket |
-| `research_discover`       | Discover papers/repos from external sources                        | None (local) | Shared bucket |
-| `research_analyze`        | Analyze registry for gaps, trends, coverage                        | None (local) | Shared bucket |
-| `research_add_source`     | Add non-paper source (repo, tool, blog) with quality scoring       | None (local) | Shared bucket |
-| `research_catalog_review` | Review auto-cataloged research references                          | None (local) | Shared bucket |
-| `research_synthesize`     | Synthesize registry into quality-aware topic clusters              | None (local) | Shared bucket |
-| `memory_query`            | Query across all memory backends with unified results              | None (local) | Shared bucket |
-| `memory_stats`            | Memory system statistics dashboard                                 | None (local) | Shared bucket |
-| `issue_triage`            | Triage GitHub issue using full security pipeline                   | None (local) | Shared bucket |
-| `run_graph_workflow`      | Execute predefined graph workflow with checkpointing               | None (local) | Shared bucket |
-| `weather_report`          | Multi-CLI performance weather report                               | None (local) | Shared bucket |
-| `execute_spec`            | Execute AI software factory spec pipeline                          | None (local) | Shared bucket |
-| `memory_write`            | Write a memory entry to a specific backend                         | None (local) | Shared bucket |
-| `registry_import`         | Generate draft model registry entry                                | None (local) | Shared bucket |
-| `query_trace`             | Query execution traces by run ID                                   | None (local) | Shared bucket |
-| `query_task_state`        | Query structured task-state log (incl. Magentic-One ledgers)       | None (local) | Shared bucket |
-| `verify_audit_chain`      | Verify hash chain of a FileAuditStorage audit log directory        | None (local) | Shared bucket |
-| `run_pipeline`            | Run a typed pipeline by name with provided inputs                  | None (local) | Shared bucket |
-| `repo_analyze`            | Analyze GitHub repository structure                                | None (local) | Shared bucket |
-| `repo_security_plan`      | Generate security scanning pipeline for a repository               | None (local) | Shared bucket |
-| `extract_symbols`         | Extract code symbols (functions, classes, types) from source files | None (local) | Shared bucket |
-| `search_codebase`         | Search codebase for code patterns, symbols, or text                | None (local) | Shared bucket |
-| `run_dev_pipeline`        | Multi-agent dev pipeline: research→plan→vote→implement→QA→security | Optional     | Shared bucket |
-| `pr_review`               | Multi-voter PR review with verification gate (experimental)        | None (local) | Shared bucket |
+| Tool                          | Description                                                        | Auth         | Rate Limit    |
+| ----------------------------- | ------------------------------------------------------------------ | ------------ | ------------- |
+| `orchestrate`                 | Task orchestration with Orchestrator coordination                  | None (local) | Shared bucket |
+| `create_expert`               | Dynamic expert agent creation                                      | None (local) | Shared bucket |
+| `execute_expert`              | Execute a task using a created expert agent                        | None (local) | Shared bucket |
+| `run_workflow`                | Execute workflow template                                          | None (local) | Shared bucket |
+| `delegate_to_model`           | Route task to optimal model                                        | None (local) | Shared bucket |
+| `consensus_vote`              | Multi-model consensus voting on proposals                          | None (local) | Shared bucket |
+| `list_experts`                | List available expert types for discoverability                    | None (local) | Shared bucket |
+| `list_workflows`              | List available workflow templates                                  | None (local) | Shared bucket |
+| `research_query`              | Query research registry (status, overlap, stats, search)           | None (local) | Shared bucket |
+| `research_add`                | Add paper to registry by arXiv ID                                  | None (local) | Shared bucket |
+| `research_discover`           | Discover papers/repos from external sources                        | None (local) | Shared bucket |
+| `research_analyze`            | Analyze registry for gaps, trends, coverage                        | None (local) | Shared bucket |
+| `research_add_source`         | Add non-paper source (repo, tool, blog) with quality scoring       | None (local) | Shared bucket |
+| `research_catalog_review`     | Review auto-cataloged research references                          | None (local) | Shared bucket |
+| `research_synthesize`         | Synthesize registry into quality-aware topic clusters              | None (local) | Shared bucket |
+| `memory_query`                | Query across all memory backends with unified results              | None (local) | Shared bucket |
+| `memory_stats`                | Memory system statistics dashboard                                 | None (local) | Shared bucket |
+| `issue_triage`                | Triage GitHub issue using full security pipeline                   | None (local) | Shared bucket |
+| `run_graph_workflow`          | Execute predefined graph workflow with checkpointing               | None (local) | Shared bucket |
+| `weather_report`              | Multi-CLI performance weather report                               | None (local) | Shared bucket |
+| `execute_spec`                | Execute AI software factory spec pipeline                          | None (local) | Shared bucket |
+| `memory_write`                | Write a memory entry to a specific backend                         | None (local) | Shared bucket |
+| `registry_import`             | Generate draft model registry entry                                | None (local) | Shared bucket |
+| `query_trace`                 | Query execution traces by run ID                                   | None (local) | Shared bucket |
+| `query_task_state`            | Query structured task-state log (incl. Magentic-One ledgers)       | None (local) | Shared bucket |
+| `verify_audit_chain`          | Verify hash chain of a FileAuditStorage audit log directory        | None (local) | Shared bucket |
+| `run_pipeline`                | Run a typed pipeline by name with provided inputs                  | None (local) | Shared bucket |
+| `repo_analyze`                | Analyze GitHub repository structure                                | None (local) | Shared bucket |
+| `repo_security_plan`          | Generate security scanning pipeline for a repository               | None (local) | Shared bucket |
+| `extract_symbols`             | Extract code symbols (functions, classes, types) from source files | None (local) | Shared bucket |
+| `search_codebase`             | Search codebase for code patterns, symbols, or text                | None (local) | Shared bucket |
+| `run_dev_pipeline`            | Multi-agent dev pipeline: research→plan→vote→implement→QA→security | Optional     | Shared bucket |
+| `pr_review`                   | Multi-voter PR review with verification gate (experimental)        | None (local) | Shared bucket |
+| `supply_chain_tradeoff_panel` | Per-axis tradeoff vote for build-vs-buy / supply-chain decisions   | None (local) | Shared bucket |
 
 **Rate limiting:** All tools share a single token bucket rate limiter (capacity: 100 tokens, refill: 10 tokens/sec). Each tool call consumes one token.
 
