@@ -14,7 +14,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import * as os from 'node:os';
+import { nexusDataPath } from '../config/nexus-data-dir.js';
 import type { Result } from '../core/result.js';
 import { ok, err } from '../core/result.js';
 import { createLogger } from '../core/logger.js';
@@ -26,7 +26,7 @@ import { WaveCheckpointEntrySchema } from './wave-checkpoint-types.js';
 const logger = createLogger({ component: 'wave-checkpoint' });
 
 /** Default checkpoint directory under homedir. */
-const CHECKPOINT_DIR = path.join('.nexus-agents', 'checkpoints');
+const CHECKPOINT_SUBDIR = 'checkpoints';
 
 /** File permissions: user read/write only. */
 const FILE_MODE = 0o600;
@@ -45,7 +45,7 @@ function getCheckpointDir(customDir?: string): string {
   if (customDir !== undefined) {
     return path.resolve(customDir);
   }
-  return path.join(os.homedir(), CHECKPOINT_DIR);
+  return nexusDataPath(CHECKPOINT_SUBDIR);
 }
 
 /**

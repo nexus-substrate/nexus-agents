@@ -61,6 +61,7 @@ nexus-agents --help       # Full command list
 | `NEXUS_ACCESS_POLICY_MODE`     | ClawGuard mode: `off` / `audit` / `confirm_risky` / `enforce` | `audit` (v2.50+)              |
 | `NEXUS_TASK_STATE_ENABLED`     | Structured task-state log (`0`/`false` to disable)            | enabled (v2.50+)              |
 | `NEXUS_CONTEXT_WARN_THRESHOLD` | Per-expert context-warning threshold (0..1]                   | `0.85`                        |
+| `NEXUS_DATA_DIR`               | Override runtime data root (memory/audit/voting/sessions/…)   | `~/.nexus-agents` (v2.60+)    |
 
 **Getting started:** [docs/getting-started/INSTALLATION.md](./docs/getting-started/INSTALLATION.md) | **Configuration:** [docs/getting-started/CONFIGURATION.md](./docs/getting-started/CONFIGURATION.md)
 

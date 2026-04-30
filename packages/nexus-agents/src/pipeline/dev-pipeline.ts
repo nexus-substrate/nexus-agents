@@ -18,8 +18,7 @@
  * @module pipeline/dev-pipeline
  */
 
-import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { nexusDataPath } from '../config/nexus-data-dir.js';
 
 import { runQaLoop } from '../orchestration/qa-loop.js';
 
@@ -242,7 +241,7 @@ async function runDevPipelineInner(
 function createTraceWriter(sessionId: string | undefined): TraceWriter | null {
   if (sessionId === undefined) return null;
   try {
-    const tracesDir = join(homedir(), '.nexus-agents', 'traces');
+    const tracesDir = nexusDataPath('traces');
     return new TraceWriter(getPipelineEventBus(), {
       runsDir: tracesDir,
       runId: `pipeline-${sessionId}`,

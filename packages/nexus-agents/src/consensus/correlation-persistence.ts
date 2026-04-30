@@ -12,8 +12,7 @@
  */
 
 import * as fs from 'node:fs';
-import * as path from 'node:path';
-import * as os from 'node:os';
+import { nexusDataPath } from '../config/nexus-data-dir.js';
 import { z } from 'zod';
 import type { Result } from '../core/result.js';
 import { ok, err } from '../core/result.js';
@@ -26,8 +25,8 @@ import { createCorrelationTracker } from './correlation-tracker.js';
 
 const logger: ILogger = createLogger({ component: 'correlation-persistence' });
 
-/** Directory under homedir for voting data */
-const VOTING_DIR = path.join('.nexus-agents', 'voting');
+/** Subdirectory name under the resolved nexus data dir for voting data. */
+const VOTING_SUBDIR = 'voting';
 
 /** Filename for persisted correlation data */
 const CORRELATIONS_FILE = 'correlations.json';
@@ -92,18 +91,17 @@ export type PersistedCorrelationData = z.infer<typeof PersistedCorrelationDataSc
 
 /**
  * Returns the absolute path to the correlation data file.
- *
- * @returns Absolute path to ~/.nexus-agents/voting/correlations.json
+ * Resolves under `$NEXUS_DATA_DIR/voting/correlations.json` (#2302).
  */
 export function getCorrelationDataPath(): string {
-  return path.join(os.homedir(), VOTING_DIR, CORRELATIONS_FILE);
+  return nexusDataPath(VOTING_SUBDIR, CORRELATIONS_FILE);
 }
 
 /**
  * Ensures the voting data directory exists with appropriate permissions.
  */
 function ensureVotingDirectory(): Result<void, Error> {
-  const dirPath = path.join(os.homedir(), VOTING_DIR);
+  const dirPath = nexusDataPath(VOTING_SUBDIR);
   try {
     fs.mkdirSync(dirPath, { recursive: true, mode: DIR_MODE });
     return ok(undefined);

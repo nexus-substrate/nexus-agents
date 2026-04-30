@@ -10,8 +10,7 @@
  */
 
 import * as fs from 'node:fs';
-import * as path from 'node:path';
-import * as os from 'node:os';
+import { nexusDataPath } from '../../config/nexus-data-dir.js';
 import { z } from 'zod';
 import type { ILogger } from '../../core/index.js';
 import { getErrorMessage, createLogger } from '../../core/index.js';
@@ -43,7 +42,7 @@ export interface CatalogedReference {
 // =============================================================================
 
 /** Path to the persistent pending catalog file. */
-const CATALOG_DIR = path.join('.nexus-agents', 'research');
+const CATALOG_SUBDIR = 'research';
 const CATALOG_FILE = 'pending-catalog.json';
 const FILE_MODE = 0o600;
 const DIR_MODE = 0o700;
@@ -64,9 +63,9 @@ const PersistedCatalogSchema = z.object({
   savedAt: z.string(),
 });
 
-/** Returns path to ~/.nexus-agents/research/pending-catalog.json */
+/** Returns path to `<NEXUS_DATA_DIR>/research/pending-catalog.json` (#2302). */
 function getCatalogPath(): string {
-  return path.join(os.homedir(), CATALOG_DIR, CATALOG_FILE);
+  return nexusDataPath(CATALOG_SUBDIR, CATALOG_FILE);
 }
 
 /** Loads pending references from disk. Returns empty array on failure. */
@@ -95,7 +94,7 @@ function loadPersistedCatalog(logger: ILogger): CatalogedReference[] {
 
 /** Saves pending references to disk with atomic write. */
 function savePersistedCatalog(references: readonly CatalogedReference[], logger: ILogger): void {
-  const dirPath = path.join(os.homedir(), CATALOG_DIR);
+  const dirPath = nexusDataPath(CATALOG_SUBDIR);
   const filePath = getCatalogPath();
   const tempPath = `${filePath}.tmp.${String(process.pid)}`;
   try {

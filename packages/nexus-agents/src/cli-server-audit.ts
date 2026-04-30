@@ -7,15 +7,14 @@
  * (Source: Issue #740 Phase 2 - audit logging and security config)
  */
 
-import { join } from 'node:path';
-import { homedir } from 'node:os';
 import type { ILogger } from './core/index.js';
 import { createAuditLogger, type AuditLogger } from './audit/index.js';
 import type { SecurityConfig, AppConfig } from './config/index.js';
+import { nexusDataPath } from './config/nexus-data-dir.js';
 import { createDefaultPolicyFirewall } from './mcp/middleware/index.js';
 
-/** Default audit log directory under ~/.nexus-agents. */
-const DEFAULT_AUDIT_DIR = join(homedir(), '.nexus-agents', 'audit');
+/** Default audit log directory under the resolved nexus data dir (#2302). */
+const DEFAULT_AUDIT_DIR = nexusDataPath('audit');
 
 /**
  * Initializes the audit logger from security configuration.

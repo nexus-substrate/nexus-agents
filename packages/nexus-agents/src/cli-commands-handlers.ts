@@ -43,8 +43,7 @@ import { runE2EEval, formatE2EEvalResult } from './cli/e2e-eval.js';
 import { runRoutingAB, formatABReport } from './cli/routing-ab.js';
 import { runMemoryEval, formatMemoryEvalReport } from './cli/memory-eval.js';
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
-import { homedir } from 'node:os';
+import { getNexusDataDir } from './config/nexus-data-dir.js';
 import { EXIT_CODES, type ParsedCliArgs } from './cli-types.js';
 import { startServer, type OrchestratorModeOptions } from './cli-server.js';
 import {
@@ -143,7 +142,7 @@ function buildOrchestratorOptions(args: ParsedCliArgs): OrchestratorModeOptions 
 function printFirstRunHint(): void {
   const isTTY = process.stderr.isTTY;
   if (!isTTY) return;
-  const dataDir = join(homedir(), '.nexus-agents');
+  const dataDir = getNexusDataDir();
   const hasConfig = existsSync('./nexus-agents.yaml') || existsSync('./nexus-agents.yml');
   if (existsSync(dataDir) || hasConfig) return;
   process.stderr.write(

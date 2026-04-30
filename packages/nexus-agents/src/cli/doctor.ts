@@ -11,8 +11,8 @@
  */
 
 import { existsSync, readFileSync, accessSync, constants as fsConstants } from 'node:fs';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { getNexusDataDir } from '../config/nexus-data-dir.js';
 import { getTimeProvider, getErrorMessage } from '../core/index.js';
 import {
   isPersistenceEnabled,
@@ -486,7 +486,7 @@ export async function checkSqlite(): Promise<SqliteCheck> {
  * pipeline.
  */
 export function checkDataDirectory(): DataDirectoryCheck {
-  const rootPath = join(homedir(), '.nexus-agents');
+  const rootPath = getNexusDataDir();
   const rootExists = existsSync(rootPath);
 
   const subdirectories: DataSubdirStatus[] = DATA_SUBDIRECTORIES.map((name) => {

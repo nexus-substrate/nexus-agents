@@ -9,12 +9,21 @@
  */
 
 import { mkdirSync, existsSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { DATA_SUBDIRECTORIES } from './doctor.js';
+import { getNexusDataDir } from '../config/nexus-data-dir.js';
 
-/** Root data directory path. */
-export const NEXUS_DATA_DIR = join(homedir(), '.nexus-agents');
+/**
+ * Root data directory path.
+ *
+ * Resolves to `$NEXUS_DATA_DIR` when set, else `<homedir>/.nexus-agents`.
+ * See `src/config/nexus-data-dir.ts` for resolution rules (#2302).
+ *
+ * Evaluated at module-import time. Tests that mutate `NEXUS_DATA_DIR`
+ * mid-process should call `resetNexusDataDirCache()` and re-import, or
+ * call `getNexusDataDir()` directly.
+ */
+export const NEXUS_DATA_DIR = getNexusDataDir();
 
 /** Subdirectories requiring restricted permissions (owner-only). */
 const RESTRICTED_DIRS = new Set(['auth']);
