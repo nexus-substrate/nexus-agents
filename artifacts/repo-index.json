@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-04-30T10:24:12.429Z",
+  "generated": "2026-04-30T13:58:09.512Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.59.0",
   "cli": {
@@ -88,6 +88,12 @@
         "name": "index",
         "type": "async",
         "handler": "handleIndexCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
+      {
+        "name": "init",
+        "type": "sync",
+        "handler": "handleInitCommand",
         "file": "src/cli-commands-handlers.ts"
       },
       {

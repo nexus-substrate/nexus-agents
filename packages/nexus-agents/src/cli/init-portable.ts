@@ -163,6 +163,18 @@ function makeResult(opts: {
   };
 }
 
+/** Optionally appends to .gitignore when the option + a sibling .git dir are present. */
+function applyGitignoreOption(
+  target: string,
+  options: InitPortableOptions,
+  dryRun: boolean
+): boolean {
+  if (options.gitignore !== true) return false;
+  const workspaceDir = resolve(target, '..');
+  const portableName = target.slice(workspaceDir.length + 1);
+  return maybeUpdateGitignore(workspaceDir, portableName, dryRun);
+}
+
 /**
  * Bootstraps a workspace-local nexus-agents data directory.
  *
@@ -175,56 +187,26 @@ export function initPortable(options: InitPortableOptions = {}): InitPortableRes
   const dryRun = options.dryRun === true;
   const force = options.force === true;
   const target = resolveTargetPath(options.path);
+  const base = { absolutePath: target, created, alreadyExisted };
 
   try {
     const state = inspectTarget(target);
 
     if (state.isExistingNexusDir && !force) {
       createDataLayout(target, dryRun, created, alreadyExisted);
-      return makeResult({
-        success: true,
-        absolutePath: target,
-        created,
-        alreadyExisted,
-        skipped: true,
-      });
+      return makeResult({ ...base, success: true, skipped: true });
     }
-
     if (state.nonEmpty && !state.isExistingNexusDir && !force) {
-      return makeResult({
-        success: false,
-        absolutePath: target,
-        created,
-        alreadyExisted,
-        error: `target ${target} already exists and is not empty; pass --force to use anyway`,
-      });
+      const error = `target ${target} already exists and is not empty; pass --force to use anyway`;
+      return makeResult({ ...base, success: false, error });
     }
 
     createDataLayout(target, dryRun, created, alreadyExisted);
-
-    let gitignoreUpdated = false;
-    if (options.gitignore === true) {
-      const workspaceDir = resolve(target, '..');
-      const portableName = target.slice(workspaceDir.length + 1);
-      gitignoreUpdated = maybeUpdateGitignore(workspaceDir, portableName, dryRun);
-    }
-
-    return makeResult({
-      success: true,
-      absolutePath: target,
-      created,
-      alreadyExisted,
-      gitignoreUpdated,
-    });
+    const gitignoreUpdated = applyGitignoreOption(target, options, dryRun);
+    return makeResult({ ...base, success: true, gitignoreUpdated });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
-    return makeResult({
-      success: false,
-      absolutePath: target,
-      created,
-      alreadyExisted,
-      error: msg,
-    });
+    return makeResult({ ...base, success: false, error: msg });
   }
 }
 
