@@ -180,6 +180,7 @@ nexus-agents review <pr-url>    # Review a GitHub PR
 nexus-agents expert list        # List available experts
 nexus-agents workflow list      # List workflow templates
 nexus-agents config init        # Generate config file
+nexus-agents init --portable    # Create workspace-local .nexus-agents/ for sandboxes
 nexus-agents fitness-audit      # Run fitness score audit
 nexus-agents research query     # Query research registry
 nexus-agents --help             # Full command list
