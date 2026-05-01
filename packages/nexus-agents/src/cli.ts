@@ -147,10 +147,12 @@ interface ParsedValues {
   // Registry command options (#2179)
   json: boolean;
   source?: string;
-  // init --portable command options (#2305 / #2308)
+  // init --portable command options (#2305 / #2308 / #2311)
   portable: boolean;
   gitignore: boolean;
   'mcp-config': boolean;
+  install: boolean;
+  uninstall: boolean;
 }
 
 /** Builds orchestrate-specific options. */
@@ -338,16 +340,20 @@ function buildOptions(values: ParsedValues): ParsedCliArgs['options'] {
   };
 }
 
-/** Builds init-specific options (#2305 portable/gitignore + #2308 mcp-config). */
+/** Builds init-specific options (#2305 portable/gitignore + #2308 mcp-config + #2311 install/uninstall). */
 function buildInitOptions(values: ParsedValues): {
   portable?: boolean;
   gitignore?: boolean;
   mcpConfig?: boolean;
+  install?: boolean;
+  uninstall?: boolean;
 } {
   return {
     portable: values.portable,
     gitignore: values.gitignore,
     mcpConfig: values['mcp-config'],
+    install: values.install,
+    uninstall: values.uninstall,
   };
 }
 

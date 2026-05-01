@@ -25,6 +25,13 @@ import {
 import { resolve, join, isAbsolute } from 'node:path';
 import { DATA_SUBDIRECTORIES } from './doctor.js';
 import { emitMcpConfig, type EmitMcpConfigResult } from './mcp-config-emitter.js';
+import {
+  installPortable,
+  uninstallPortable,
+  findBinShim,
+  type InstallPortableResult,
+  type UninstallPortableResult,
+} from './portable-installer.js';
 
 /** Default folder name created when the user passes no path. */
 export const DEFAULT_PORTABLE_DIRNAME = '.nexus-agents';
@@ -44,6 +51,10 @@ export interface InitPortableOptions {
   readonly gitignore?: boolean;
   /** Also emit a workspace-local `.mcp.json` pointing at this data dir (#2308). Default false. */
   readonly mcpConfig?: boolean;
+  /** Install nexus-agents into `<dataDir>/cli/` and emit a bin shim (#2311). Default false. */
+  readonly install?: boolean;
+  /** Remove `<dataDir>/cli/` and `<dataDir>/bin/` (#2311). Default false. Mutually exclusive with --install. */
+  readonly uninstall?: boolean;
 }
 
 /** Result of an init-portable invocation. */
@@ -56,6 +67,10 @@ export interface InitPortableResult {
   readonly gitignoreUpdated: boolean;
   /** Set when `--mcp-config` was passed; describes the .mcp.json emission. */
   readonly mcpConfig?: EmitMcpConfigResult;
+  /** Set when `--install` was passed; describes the npm install + bin shim. */
+  readonly install?: InstallPortableResult;
+  /** Set when `--uninstall` was passed; describes the cleanup. */
+  readonly uninstall?: UninstallPortableResult;
   readonly error: string | null;
 }
 
@@ -156,6 +171,8 @@ function makeResult(opts: {
   skipped?: boolean;
   gitignoreUpdated?: boolean;
   mcpConfig?: EmitMcpConfigResult;
+  install?: InstallPortableResult;
+  uninstall?: UninstallPortableResult;
   error?: string | null;
 }): InitPortableResult {
   return {
@@ -166,6 +183,8 @@ function makeResult(opts: {
     skipped: opts.skipped ?? false,
     gitignoreUpdated: opts.gitignoreUpdated ?? false,
     ...(opts.mcpConfig !== undefined ? { mcpConfig: opts.mcpConfig } : {}),
+    ...(opts.install !== undefined ? { install: opts.install } : {}),
+    ...(opts.uninstall !== undefined ? { uninstall: opts.uninstall } : {}),
     error: opts.error ?? null,
   };
 }
@@ -182,7 +201,7 @@ function applyGitignoreOption(
   return maybeUpdateGitignore(workspaceDir, portableName, dryRun);
 }
 
-/** Optionally emits a workspace-local `.mcp.json` (#2308). */
+/** Optionally emits a workspace-local `.mcp.json` (#2308 + #2311 commandPath wiring). */
 function applyMcpConfigOption(
   target: string,
   options: InitPortableOptions,
@@ -190,27 +209,82 @@ function applyMcpConfigOption(
 ): EmitMcpConfigResult | undefined {
   if (options.mcpConfig !== true) return undefined;
   const workspaceDir = resolve(target, '..');
+  const shimPath = findBinShim(target);
   return emitMcpConfig({
     workspaceDir,
     dataDir: target,
+    ...(shimPath !== undefined && { commandPath: shimPath }),
     force: options.force === true,
     dryRun,
   });
 }
 
-/** Builds the success-path result, optionally including the MCP config emission outcome. */
+/** Optionally installs nexus-agents into `<dataDir>/cli/` (#2311). */
+async function applyInstallOption(
+  target: string,
+  options: InitPortableOptions,
+  dryRun: boolean
+): Promise<InstallPortableResult | undefined> {
+  if (options.install !== true) return undefined;
+  return installPortable({ dataDir: target, force: options.force === true, dryRun });
+}
+
+/** Builds the success-path result with optional install + mcp-config + gitignore outcomes. */
 function buildSuccessResult(
   base: { absolutePath: string; created: readonly string[]; alreadyExisted: readonly string[] },
   flags: { skipped?: boolean; gitignoreUpdated?: boolean },
-  mcpConfig: EmitMcpConfigResult | undefined
+  extras: { install?: InstallPortableResult; mcpConfig?: EmitMcpConfigResult }
 ): InitPortableResult {
-  if (mcpConfig === undefined) {
-    return makeResult({ ...base, ...flags, success: true });
+  const installFailed = extras.install !== undefined && !extras.install.success;
+  const mcpFailed = extras.mcpConfig !== undefined && !extras.mcpConfig.success;
+  if (installFailed) {
+    return makeResult({
+      ...base,
+      ...flags,
+      success: false,
+      ...extras,
+      error: extras.install?.error ?? 'install failed',
+    });
   }
-  if (mcpConfig.success) {
-    return makeResult({ ...base, ...flags, success: true, mcpConfig });
+  if (mcpFailed) {
+    return makeResult({
+      ...base,
+      ...flags,
+      success: false,
+      ...extras,
+      error: extras.mcpConfig?.error ?? 'mcp-config emission failed',
+    });
   }
-  return makeResult({ ...base, ...flags, success: false, mcpConfig, error: mcpConfig.error });
+  return makeResult({ ...base, ...flags, success: true, ...extras });
+}
+
+/** Collects optional install + mcp-config side effects, omitting unset keys. */
+async function collectExtras(
+  target: string,
+  options: InitPortableOptions,
+  dryRun: boolean
+): Promise<{ install?: InstallPortableResult; mcpConfig?: EmitMcpConfigResult }> {
+  const extras: { install?: InstallPortableResult; mcpConfig?: EmitMcpConfigResult } = {};
+  const install = await applyInstallOption(target, options, dryRun);
+  if (install !== undefined) extras.install = install;
+  const mcpConfig = applyMcpConfigOption(target, options, dryRun);
+  if (mcpConfig !== undefined) extras.mcpConfig = mcpConfig;
+  return extras;
+}
+
+/** Handles the --uninstall path: removes cli/ and bin/, preserves data subdirs. */
+function handleUninstall(
+  target: string,
+  base: { absolutePath: string; created: readonly string[]; alreadyExisted: readonly string[] },
+  dryRun: boolean
+): InitPortableResult {
+  const uninstall = uninstallPortable({ dataDir: target, dryRun });
+  return makeResult({
+    ...base,
+    success: uninstall.success,
+    uninstall,
+    error: uninstall.error,
+  });
 }
 
 /**
@@ -218,8 +292,12 @@ function buildSuccessResult(
  *
  * Idempotent: re-running on an already-initialized dir is a no-op success.
  * Refuses to create in a non-empty pre-existing directory unless `force=true`.
+ *
+ * Async because `--install` spawns `npm install` (#2311). When neither
+ * `--install` nor `--uninstall` is set, no subprocess is spawned and the
+ * function resolves immediately.
  */
-export function initPortable(options: InitPortableOptions = {}): InitPortableResult {
+export async function initPortable(options: InitPortableOptions = {}): Promise<InitPortableResult> {
   const created: string[] = [];
   const alreadyExisted: string[] = [];
   const dryRun = options.dryRun === true;
@@ -228,15 +306,14 @@ export function initPortable(options: InitPortableOptions = {}): InitPortableRes
   const base = { absolutePath: target, created, alreadyExisted };
 
   try {
+    if (options.uninstall === true) return handleUninstall(target, base, dryRun);
+
     const state = inspectTarget(target);
 
     if (state.isExistingNexusDir && !force) {
       createDataLayout(target, dryRun, created, alreadyExisted);
-      return buildSuccessResult(
-        base,
-        { skipped: true },
-        applyMcpConfigOption(target, options, dryRun)
-      );
+      const extras = await collectExtras(target, options, dryRun);
+      return buildSuccessResult(base, { skipped: true }, extras);
     }
     if (state.nonEmpty && !state.isExistingNexusDir && !force) {
       const error = `target ${target} already exists and is not empty; pass --force to use anyway`;
@@ -245,11 +322,8 @@ export function initPortable(options: InitPortableOptions = {}): InitPortableRes
 
     createDataLayout(target, dryRun, created, alreadyExisted);
     const gitignoreUpdated = applyGitignoreOption(target, options, dryRun);
-    return buildSuccessResult(
-      base,
-      { gitignoreUpdated },
-      applyMcpConfigOption(target, options, dryRun)
-    );
+    const extras = await collectExtras(target, options, dryRun);
+    return buildSuccessResult(base, { gitignoreUpdated }, extras);
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
     return makeResult({ ...base, success: false, error: msg });
@@ -281,10 +355,37 @@ function renderMcpConfigCaveat(mcpConfig: EmitMcpConfigResult | undefined): read
   ];
 }
 
+/** Renders the install section of the post-install message. */
+function renderInstallLines(install: InstallPortableResult): readonly string[] {
+  if (install.skipped) return [`✓ Portable install already present (${install.version})`];
+  return [
+    `✓ Installed nexus-agents@${install.version} → ${install.cliDir}`,
+    `✓ Wrote bin shim → ${install.shim?.shimPath ?? install.binDir + '/nexus-agents'}`,
+  ];
+}
+
+/** Renders the uninstall section of the message. */
+function renderUninstallLines(uninstall: UninstallPortableResult): readonly string[] {
+  const lines: string[] = [];
+  if (uninstall.removed.length === 0 && uninstall.notPresent.length > 0) {
+    lines.push('Nothing to uninstall — cli/ and bin/ were not present.');
+  }
+  for (const r of uninstall.removed) lines.push(`✓ Removed: ${r}`);
+  if (uninstall.removed.length > 0) {
+    lines.push('');
+    lines.push('Note: data subdirs (memory, audit, voting, sessions, …) preserved.');
+    lines.push('To purge data too, remove the parent dir manually.');
+  }
+  return lines;
+}
+
 /** Formats the post-install message printed to the user. */
 export function formatInitPortableMessage(result: InitPortableResult, dryRun: boolean): string {
   if (!result.success) {
     return `init --portable failed: ${result.error ?? 'unknown error'}\n`;
+  }
+  if (result.uninstall !== undefined) {
+    return renderUninstallLines(result.uninstall).join('\n') + '\n';
   }
   if (dryRun) {
     const lines = [
@@ -300,6 +401,7 @@ export function formatInitPortableMessage(result: InitPortableResult, dryRun: bo
       : `✓ Created: ${result.absolutePath}`
   );
   if (result.gitignoreUpdated) lines.push(`✓ Added entry to .gitignore`);
+  if (result.install !== undefined) lines.push(...renderInstallLines(result.install));
   if (result.mcpConfig !== undefined) lines.push(...renderMcpConfigLines(result.mcpConfig));
   lines.push('');
   lines.push('Activate by exporting:');

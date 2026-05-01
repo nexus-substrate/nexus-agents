@@ -1,6 +1,6 @@
 # Repository Capabilities Index
 
-**Generated:** 2026-05-01T03:58:05.903Z
+**Generated:** 2026-05-01T10:36:34.929Z
 **Package Version:** 2.61.0
 **Generator:** `scripts/generate-repo-index.ts`
 
@@ -29,7 +29,7 @@ Binary: `nexus-agents`
 | `hello` | sync | `handleHelloCommand` | `src/cli-commands-handlers.ts` |
 | `hooks` | async | `handleHooksCommand` | `src/cli-commands-handlers.ts` |
 | `index` | async | `handleIndexCommand` | `src/cli-commands-handlers.ts` |
-| `init` | sync | `handleInitCommand` | `src/cli-commands-handlers.ts` |
+| `init` | async | `handleInitCommand` | `src/cli-commands-handlers.ts` |
 | `issue` | sync | `handleIssueCommand` | `src/cli-commands-handlers.ts` |
 | `learning-metrics` | sync | `handleLearningMetricsCommand` | `src/cli-commands-handlers.ts` |
 | `memory-benchmark` | async | `handleMemoryBenchmarkCommand` | `src/cli-commands-handlers.ts` |

@@ -49,6 +49,13 @@ export interface EmitMcpConfigOptions {
   readonly workspaceDir: string;
   /** Absolute path of the workspace's nexus-agents data dir. */
   readonly dataDir: string;
+  /**
+   * Optional absolute path to a portable bin shim. When provided, the
+   * emitted server entry's `command` field uses this path instead of the
+   * bare `nexus-agents` (which depends on PATH). Pairs with
+   * `init --portable --install` (#2311).
+   */
+  readonly commandPath?: string;
   /** Allow replacing a non-matching `nexus-agents` entry. Default false. */
   readonly force?: boolean;
   /** Report what would be done without writing. Default false. */
@@ -69,9 +76,9 @@ export interface EmitMcpConfigResult {
 }
 
 /** Builds the canonical nexus-agents server entry. */
-export function buildNexusServerEntry(dataDir: string): NexusMcpServerEntry {
+export function buildNexusServerEntry(dataDir: string, commandPath?: string): NexusMcpServerEntry {
   return {
-    command: 'nexus-agents',
+    command: commandPath ?? 'nexus-agents',
     args: ['--mode=server'],
     env: { NEXUS_DATA_DIR: dataDir },
   };
@@ -168,7 +175,7 @@ export function emitMcpConfig(options: EmitMcpConfigOptions): EmitMcpConfigResul
   const mcpConfigPath = join(options.workspaceDir, MCP_CONFIG_FILENAME);
   const dryRun = options.dryRun === true;
   const force = options.force === true;
-  const desired = buildNexusServerEntry(options.dataDir);
+  const desired = buildNexusServerEntry(options.dataDir, options.commandPath);
 
   const loaded = loadExistingConfig(mcpConfigPath);
   if (!loaded.ok) return makeFailure(mcpConfigPath, loaded.error);
