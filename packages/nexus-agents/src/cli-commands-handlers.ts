@@ -407,6 +407,7 @@ export function handleInitCommand(args: ParsedCliArgs): void {
     force: args.options.force,
     dryRun: args.options.dryRun,
     gitignore: args.options.gitignore ?? false,
+    mcpConfig: args.options.mcpConfig ?? false,
   });
   process.stdout.write(formatInitPortableMessage(result, args.options.dryRun));
   process.exit(result.success ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);

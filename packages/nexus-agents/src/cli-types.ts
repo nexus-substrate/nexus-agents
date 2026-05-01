@@ -158,6 +158,8 @@ export interface ParsedCliArgs {
     // init --portable command options (#2305)
     portable?: boolean;
     gitignore?: boolean;
+    // init --portable --mcp-config flag (#2308)
+    mcpConfig?: boolean;
   };
   positionals: string[];
 }
@@ -420,6 +422,11 @@ export const PARSE_ARGS_CONFIG = {
       default: false,
     },
     gitignore: {
+      type: 'boolean' as const,
+      default: false,
+    },
+    // init --portable --mcp-config flag (#2308)
+    'mcp-config': {
       type: 'boolean' as const,
       default: false,
     },
