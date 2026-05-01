@@ -10,8 +10,8 @@
  */
 
 import * as fs from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
+import { nexusDataPath } from '../config/nexus-data-dir.js';
 import type { Result } from '../core/result.js';
 import { ok, err } from '../core/result.js';
 import type { ILogger } from '../core/logger.js';
@@ -40,8 +40,10 @@ export type {
 // Constants
 // ============================================================================
 
-/** Directory for belief memory snapshots. */
-const BELIEFS_DIR = path.join(os.homedir(), '.nexus-agents', 'memory', 'beliefs');
+/** Directory for belief memory snapshots. Resolved at call time via getBeliefsDir(). */
+function getBeliefsDir(): string {
+  return nexusDataPath('memory', 'beliefs');
+}
 const MAX_SNAPSHOT_FILES = 10;
 const SNAPSHOT_VERSION = 1;
 
@@ -265,13 +267,13 @@ export function hydrateSnapshot(snapshot: BeliefSnapshot): HydratedBeliefData {
 // ============================================================================
 
 function ensureBeliefsDir(): void {
-  if (!fs.existsSync(BELIEFS_DIR)) fs.mkdirSync(BELIEFS_DIR, { recursive: true });
+  if (!fs.existsSync(getBeliefsDir())) fs.mkdirSync(getBeliefsDir(), { recursive: true });
 }
 
 function getSnapshotFiles(): readonly string[] {
   try {
     return fs
-      .readdirSync(BELIEFS_DIR)
+      .readdirSync(getBeliefsDir())
       .filter((f) => f.startsWith('beliefs-') && f.endsWith('.json'))
       .sort()
       .reverse();
@@ -285,7 +287,7 @@ function enforceRetention(logger: ILogger): void {
     const files = getSnapshotFiles();
     if (files.length <= MAX_SNAPSHOT_FILES) return;
     const toDelete = files.slice(MAX_SNAPSHOT_FILES);
-    for (const file of toDelete) fs.unlinkSync(path.join(BELIEFS_DIR, file));
+    for (const file of toDelete) fs.unlinkSync(path.join(getBeliefsDir(), file));
     logger.debug('Belief snapshot retention enforced', {
       kept: MAX_SNAPSHOT_FILES,
       deleted: toDelete.length,
@@ -304,7 +306,7 @@ export function saveBeliefSnapshot(data: BeliefMemoryData, logger: ILogger): Res
     const snapshot = createSnapshot(data);
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const filename = `beliefs-${timestamp}.json`;
-    const filepath = path.join(BELIEFS_DIR, filename);
+    const filepath = path.join(getBeliefsDir(), filename);
     fs.writeFileSync(filepath, JSON.stringify(snapshot, null, 2), 'utf-8');
     logger.info('Belief memory snapshot saved', { filename, beliefs: snapshot.beliefs.length });
     enforceRetention(logger);
@@ -326,7 +328,7 @@ export function loadBeliefSnapshot(logger: ILogger): Result<HydratedBeliefData |
     }
     for (const file of files.slice(0, 3)) {
       try {
-        const filepath = path.join(BELIEFS_DIR, file);
+        const filepath = path.join(getBeliefsDir(), file);
         const raw = JSON.parse(fs.readFileSync(filepath, 'utf-8')) as unknown;
         const validation = BeliefSnapshotSchema.safeParse(raw);
         if (!validation.success) {

@@ -19,7 +19,7 @@ import { createLogger } from '../core/index.js';
 import type { OutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 import type { DistilledRule, DistillerConfig } from './strategy-distiller-types.js';
 import { StrategyDistiller, registerPersistentDistillerFactory } from './strategy-distiller.js';
-import { ensureLearningDir, RULES_FILE } from '../config/learning-persistence.js';
+import { ensureLearningDir, getRulesFile } from '../config/learning-persistence.js';
 
 // ============================================================================
 // Versioned Schema
@@ -82,7 +82,7 @@ export class PersistentStrategyDistiller extends StrategyDistiller {
     distillerConfig?: Partial<DistillerConfig>
   ) {
     super(outcomeStore, logger, distillerConfig);
-    this.filePath = persistConfig?.filePath ?? RULES_FILE;
+    this.filePath = persistConfig?.filePath ?? getRulesFile();
     this.persistLogger = logger ?? createLogger({ component: 'PersistentStrategyDistiller' });
 
     const dataDir = persistConfig?.dataDir;
