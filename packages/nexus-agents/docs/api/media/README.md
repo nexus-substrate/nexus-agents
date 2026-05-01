@@ -182,6 +182,7 @@ nexus-agents workflow list      # List workflow templates
 nexus-agents config init        # Generate config file
 nexus-agents init --portable    # Create workspace-local .nexus-agents/ for sandboxes
 nexus-agents init --portable --mcp-config  # Also emit .mcp.json wiring Claude Code to it
+nexus-agents init --portable --install --mcp-config  # …and install the binary into the workspace
 nexus-agents fitness-audit      # Run fitness score audit
 nexus-agents research query     # Query research registry
 nexus-agents --help             # Full command list
