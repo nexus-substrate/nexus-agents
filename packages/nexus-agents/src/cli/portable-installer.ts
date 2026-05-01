@@ -137,6 +137,27 @@ function cleanupOnFailure(cliDir: string): void {
   }
 }
 
+/** Common shape for the InstallPortableResult passed between helpers. */
+interface InstallContext {
+  cliDir: string;
+  binDir: string;
+  version: string;
+}
+
+/** Runs the npm install step and returns either undefined on success or a failure result. */
+async function runNpmStep(ctx: InstallContext): Promise<InstallPortableResult | undefined> {
+  try {
+    if (!existsSync(ctx.cliDir)) mkdirSync(ctx.cliDir, { recursive: true });
+    writeInstallManifest(ctx.cliDir, ctx.version);
+    await spawnNpmInstall(ctx.cliDir);
+    return undefined;
+  } catch (error: unknown) {
+    cleanupOnFailure(ctx.cliDir);
+    const msg = error instanceof Error ? error.message : String(error);
+    return { success: false, ...ctx, skipped: false, error: `npm install failed: ${msg}` };
+  }
+}
+
 /** Installs nexus-agents into `<dataDir>/cli/` and writes the bin shim. */
 export async function installPortable(
   options: InstallPortableOptions
@@ -154,51 +175,30 @@ export async function installPortable(
       error: versionResolution.error,
     };
   }
-  const version = versionResolution.value;
+  const ctx: InstallContext = { cliDir, binDir, version: versionResolution.value };
 
   if (isAlreadyInstalled(cliDir) && options.force !== true) {
-    return { success: true, version, cliDir, binDir, skipped: true, error: null };
+    return { success: true, ...ctx, skipped: true, error: null };
   }
-
   if (options.dryRun === true) {
-    return { success: true, version, cliDir, binDir, skipped: false, error: null };
+    return { success: true, ...ctx, skipped: false, error: null };
   }
 
-  try {
-    if (!existsSync(cliDir)) mkdirSync(cliDir, { recursive: true });
-    writeInstallManifest(cliDir, version);
-    await spawnNpmInstall(cliDir);
-  } catch (error: unknown) {
-    cleanupOnFailure(cliDir);
-    const msg = error instanceof Error ? error.message : String(error);
-    return {
-      success: false,
-      version,
-      cliDir,
-      binDir,
-      skipped: false,
-      error: `npm install failed: ${msg}`,
-    };
-  }
+  const npmFailure = await runNpmStep(ctx);
+  if (npmFailure !== undefined) return npmFailure;
 
-  const shim = writeBinShim({
-    binDir,
-    cliEntryPath: join(cliDir, CLI_ENTRY_RELATIVE),
-  });
+  const shim = writeBinShim({ binDir, cliEntryPath: join(cliDir, CLI_ENTRY_RELATIVE) });
   if (!shim.success) {
     cleanupOnFailure(cliDir);
     return {
       success: false,
-      version,
-      cliDir,
-      binDir,
+      ...ctx,
       shim,
       skipped: false,
       error: `bin shim emission failed: ${shim.error ?? 'unknown'}`,
     };
   }
-
-  return { success: true, version, cliDir, binDir, shim, skipped: false, error: null };
+  return { success: true, ...ctx, shim, skipped: false, error: null };
 }
 
 /** Removes `<dataDir>/cli/` and `<dataDir>/bin/`. Preserves data subdirs. */
