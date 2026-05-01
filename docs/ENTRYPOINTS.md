@@ -47,46 +47,47 @@ Most commonly used commands:
 
 **Entry Point:** `nexus-agents [command] [options]`
 
-| Command                | Subcommand      | Description                                 | Mode         |
-| ---------------------- | --------------- | ------------------------------------------- | ------------ |
-| `(default)`            | -               | Start MCP server                            | server       |
-| `--help`               | -               | Display help text                           | any          |
-| `--version`            | -               | Display version                             | any          |
-| `doctor`               | -               | Check CLI health and dependencies           | any          |
-| `config`               | `init`          | Generate starter configuration file         | any          |
-| `expert`               | `list`          | List available experts (built-in + custom)  | any          |
-| `workflow`             | `list`          | List available workflow templates           | any          |
-| `workflow`             | `run <name>`    | Execute a workflow template                 | orchestrator |
-| `server`               | -               | Start MCP server (explicit)                 | server       |
-| `server`               | `--interactive` | Start interactive REPL mode                 | server       |
-| `review`               | `<url>`         | Review a GitHub PR                          | orchestrator |
-| `routing-audit`        | `<task>`        | Debug routing decisions (dry-run)           | any          |
-| `orchestrate`          | `<task>`        | Execute task standalone                     | orchestrator |
-| `system-review`        | -               | Run 5-phase system review                   | any          |
-| `vote`                 | `--proposal`    | Consensus voting with 6 agents              | any          |
-| `research`             | `status`        | Show technique implementation status        | any          |
-| `research`             | `overlap`       | Find overlapping techniques                 | any          |
-| `research`             | `add`           | Add new paper from arXiv                    | any          |
-| `research`             | `discover`      | Discover papers/repos from external sources | any          |
-| `research`             | `review`        | Discover, score, and rank research findings | any          |
-| `research`             | `prioritize`    | Rank actionable techniques by priority      | any          |
-| `verify`               | -               | Quick verification check                    | any          |
-| `review-demo`          | -               | PR review demo with wizard UX               | orchestrator |
-| `validation-dashboard` | -               | A/B testing and validation dashboard        | any          |
-| `swe-bench`            | `run`           | Run SWE-bench evaluation                    | orchestrator |
-| `swe-bench`            | `evaluate`      | Evaluate predictions                        | any          |
-| `swe-bench`            | `status`        | Show evaluation status                      | any          |
-| `setup`                | -               | Configure Claude CLI integration            | any          |
-| `learning-metrics`     | -               | Show learning metrics dashboard             | any          |
-| `index`                | `generate`      | Generate codebase index                     | any          |
-| `index`                | `check`         | Validate index freshness                    | any          |
-| `index`                | `diagram`       | Generate Mermaid dependency diagram         | any          |
-| `hooks`                | `session-start` | Handle SessionStart hook events             | any          |
-| `hooks`                | `session-end`   | Handle SessionEnd hook events               | any          |
-| `hooks`                | `pre-tool`      | Handle PreToolUse hook events               | any          |
-| `hooks`                | `post-tool`     | Handle PostToolUse hook events              | any          |
-| `hooks`                | `stop`          | Handle Stop hook events                     | any          |
-| `init`                 | `--portable`    | Bootstrap workspace-local `.nexus-agents/`  | any          |
+| Command                | Subcommand                | Description                                 | Mode         |
+| ---------------------- | ------------------------- | ------------------------------------------- | ------------ |
+| `(default)`            | -                         | Start MCP server                            | server       |
+| `--help`               | -                         | Display help text                           | any          |
+| `--version`            | -                         | Display version                             | any          |
+| `doctor`               | -                         | Check CLI health and dependencies           | any          |
+| `config`               | `init`                    | Generate starter configuration file         | any          |
+| `expert`               | `list`                    | List available experts (built-in + custom)  | any          |
+| `workflow`             | `list`                    | List available workflow templates           | any          |
+| `workflow`             | `run <name>`              | Execute a workflow template                 | orchestrator |
+| `server`               | -                         | Start MCP server (explicit)                 | server       |
+| `server`               | `--interactive`           | Start interactive REPL mode                 | server       |
+| `review`               | `<url>`                   | Review a GitHub PR                          | orchestrator |
+| `routing-audit`        | `<task>`                  | Debug routing decisions (dry-run)           | any          |
+| `orchestrate`          | `<task>`                  | Execute task standalone                     | orchestrator |
+| `system-review`        | -                         | Run 5-phase system review                   | any          |
+| `vote`                 | `--proposal`              | Consensus voting with 6 agents              | any          |
+| `research`             | `status`                  | Show technique implementation status        | any          |
+| `research`             | `overlap`                 | Find overlapping techniques                 | any          |
+| `research`             | `add`                     | Add new paper from arXiv                    | any          |
+| `research`             | `discover`                | Discover papers/repos from external sources | any          |
+| `research`             | `review`                  | Discover, score, and rank research findings | any          |
+| `research`             | `prioritize`              | Rank actionable techniques by priority      | any          |
+| `verify`               | -                         | Quick verification check                    | any          |
+| `review-demo`          | -                         | PR review demo with wizard UX               | orchestrator |
+| `validation-dashboard` | -                         | A/B testing and validation dashboard        | any          |
+| `swe-bench`            | `run`                     | Run SWE-bench evaluation                    | orchestrator |
+| `swe-bench`            | `evaluate`                | Evaluate predictions                        | any          |
+| `swe-bench`            | `status`                  | Show evaluation status                      | any          |
+| `setup`                | -                         | Configure Claude CLI integration            | any          |
+| `learning-metrics`     | -                         | Show learning metrics dashboard             | any          |
+| `index`                | `generate`                | Generate codebase index                     | any          |
+| `index`                | `check`                   | Validate index freshness                    | any          |
+| `index`                | `diagram`                 | Generate Mermaid dependency diagram         | any          |
+| `hooks`                | `session-start`           | Handle SessionStart hook events             | any          |
+| `hooks`                | `session-end`             | Handle SessionEnd hook events               | any          |
+| `hooks`                | `pre-tool`                | Handle PreToolUse hook events               | any          |
+| `hooks`                | `post-tool`               | Handle PostToolUse hook events              | any          |
+| `hooks`                | `stop`                    | Handle Stop hook events                     | any          |
+| `init`                 | `--portable`              | Bootstrap workspace-local `.nexus-agents/`  | any          |
+| `init`                 | `--portable --mcp-config` | …and emit `.mcp.json` for Claude Code       | any          |
 
 ### Mode Selection
 

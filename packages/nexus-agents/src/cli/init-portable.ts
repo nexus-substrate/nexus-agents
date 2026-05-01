@@ -24,6 +24,7 @@ import {
 } from 'node:fs';
 import { resolve, join, isAbsolute } from 'node:path';
 import { DATA_SUBDIRECTORIES } from './doctor.js';
+import { emitMcpConfig, type EmitMcpConfigResult } from './mcp-config-emitter.js';
 
 /** Default folder name created when the user passes no path. */
 export const DEFAULT_PORTABLE_DIRNAME = '.nexus-agents';
@@ -41,6 +42,8 @@ export interface InitPortableOptions {
   readonly dryRun?: boolean;
   /** Append the data dir to a sibling `.gitignore` (only if `.git` exists). Default false. */
   readonly gitignore?: boolean;
+  /** Also emit a workspace-local `.mcp.json` pointing at this data dir (#2308). Default false. */
+  readonly mcpConfig?: boolean;
 }
 
 /** Result of an init-portable invocation. */
@@ -51,6 +54,8 @@ export interface InitPortableResult {
   readonly alreadyExisted: readonly string[];
   readonly skipped: boolean;
   readonly gitignoreUpdated: boolean;
+  /** Set when `--mcp-config` was passed; describes the .mcp.json emission. */
+  readonly mcpConfig?: EmitMcpConfigResult;
   readonly error: string | null;
 }
 
@@ -150,6 +155,7 @@ function makeResult(opts: {
   alreadyExisted: readonly string[];
   skipped?: boolean;
   gitignoreUpdated?: boolean;
+  mcpConfig?: EmitMcpConfigResult;
   error?: string | null;
 }): InitPortableResult {
   return {
@@ -159,6 +165,7 @@ function makeResult(opts: {
     alreadyExisted: opts.alreadyExisted,
     skipped: opts.skipped ?? false,
     gitignoreUpdated: opts.gitignoreUpdated ?? false,
+    ...(opts.mcpConfig !== undefined ? { mcpConfig: opts.mcpConfig } : {}),
     error: opts.error ?? null,
   };
 }
@@ -173,6 +180,37 @@ function applyGitignoreOption(
   const workspaceDir = resolve(target, '..');
   const portableName = target.slice(workspaceDir.length + 1);
   return maybeUpdateGitignore(workspaceDir, portableName, dryRun);
+}
+
+/** Optionally emits a workspace-local `.mcp.json` (#2308). */
+function applyMcpConfigOption(
+  target: string,
+  options: InitPortableOptions,
+  dryRun: boolean
+): EmitMcpConfigResult | undefined {
+  if (options.mcpConfig !== true) return undefined;
+  const workspaceDir = resolve(target, '..');
+  return emitMcpConfig({
+    workspaceDir,
+    dataDir: target,
+    force: options.force === true,
+    dryRun,
+  });
+}
+
+/** Builds the success-path result, optionally including the MCP config emission outcome. */
+function buildSuccessResult(
+  base: { absolutePath: string; created: readonly string[]; alreadyExisted: readonly string[] },
+  flags: { skipped?: boolean; gitignoreUpdated?: boolean },
+  mcpConfig: EmitMcpConfigResult | undefined
+): InitPortableResult {
+  if (mcpConfig === undefined) {
+    return makeResult({ ...base, ...flags, success: true });
+  }
+  if (mcpConfig.success) {
+    return makeResult({ ...base, ...flags, success: true, mcpConfig });
+  }
+  return makeResult({ ...base, ...flags, success: false, mcpConfig, error: mcpConfig.error });
 }
 
 /**
@@ -194,7 +232,11 @@ export function initPortable(options: InitPortableOptions = {}): InitPortableRes
 
     if (state.isExistingNexusDir && !force) {
       createDataLayout(target, dryRun, created, alreadyExisted);
-      return makeResult({ ...base, success: true, skipped: true });
+      return buildSuccessResult(
+        base,
+        { skipped: true },
+        applyMcpConfigOption(target, options, dryRun)
+      );
     }
     if (state.nonEmpty && !state.isExistingNexusDir && !force) {
       const error = `target ${target} already exists and is not empty; pass --force to use anyway`;
@@ -203,11 +245,40 @@ export function initPortable(options: InitPortableOptions = {}): InitPortableRes
 
     createDataLayout(target, dryRun, created, alreadyExisted);
     const gitignoreUpdated = applyGitignoreOption(target, options, dryRun);
-    return makeResult({ ...base, success: true, gitignoreUpdated });
+    return buildSuccessResult(
+      base,
+      { gitignoreUpdated },
+      applyMcpConfigOption(target, options, dryRun)
+    );
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
     return makeResult({ ...base, success: false, error: msg });
   }
+}
+
+/** Renders the MCP-config section of the post-install message. */
+function renderMcpConfigLines(mcpConfig: EmitMcpConfigResult): readonly string[] {
+  const lines: string[] = [];
+  if (mcpConfig.alreadyMatched) {
+    lines.push(`✓ .mcp.json already up to date: ${mcpConfig.mcpConfigPath}`);
+  } else if (mcpConfig.written) {
+    lines.push(`✓ Wrote MCP config: ${mcpConfig.mcpConfigPath}`);
+  }
+  if (mcpConfig.gitignoreUpdated) {
+    lines.push(`✓ Added .mcp.json to .gitignore (per-machine; do not commit)`);
+  }
+  return lines;
+}
+
+/** Renders the trailing "Note: .mcp.json is per-machine" caveat when the file was written. */
+function renderMcpConfigCaveat(mcpConfig: EmitMcpConfigResult | undefined): readonly string[] {
+  if (mcpConfig?.written !== true) return [];
+  return [
+    '',
+    'Note: .mcp.json contains an absolute path to your local data dir.',
+    'It is per-machine and should NOT be committed — collaborators should',
+    'run `nexus-agents init --portable --mcp-config` themselves.',
+  ];
 }
 
 /** Formats the post-install message printed to the user. */
@@ -215,25 +286,27 @@ export function formatInitPortableMessage(result: InitPortableResult, dryRun: bo
   if (!result.success) {
     return `init --portable failed: ${result.error ?? 'unknown error'}\n`;
   }
-  const lines: string[] = [];
   if (dryRun) {
-    lines.push(`(dry-run) would create ${String(result.created.length)} entries under:`);
-    lines.push(`  ${result.absolutePath}`);
+    const lines = [
+      `(dry-run) would create ${String(result.created.length)} entries under:`,
+      `  ${result.absolutePath}`,
+    ];
     return lines.join('\n') + '\n';
   }
-  if (result.skipped) {
-    lines.push(`✓ Already initialized: ${result.absolutePath}`);
-  } else {
-    lines.push(`✓ Created: ${result.absolutePath}`);
-  }
-  if (result.gitignoreUpdated) {
-    lines.push(`✓ Added entry to .gitignore`);
-  }
+  const lines: string[] = [];
+  lines.push(
+    result.skipped
+      ? `✓ Already initialized: ${result.absolutePath}`
+      : `✓ Created: ${result.absolutePath}`
+  );
+  if (result.gitignoreUpdated) lines.push(`✓ Added entry to .gitignore`);
+  if (result.mcpConfig !== undefined) lines.push(...renderMcpConfigLines(result.mcpConfig));
   lines.push('');
   lines.push('Activate by exporting:');
   lines.push(`  export NEXUS_DATA_DIR=${result.absolutePath}`);
   lines.push('');
   lines.push('Or one-off:');
   lines.push(`  NEXUS_DATA_DIR=${result.absolutePath} nexus-agents <cmd>`);
+  lines.push(...renderMcpConfigCaveat(result.mcpConfig));
   return lines.join('\n') + '\n';
 }
