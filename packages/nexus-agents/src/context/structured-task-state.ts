@@ -16,7 +16,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import * as os from 'node:os';
+import { nexusDataPath } from '../config/nexus-data-dir.js';
 import type { Result } from '../core/result.js';
 import { ok, err } from '../core/result.js';
 import { createLogger } from '../core/logger.js';
@@ -35,15 +35,15 @@ import {
 
 const logger = createLogger({ component: 'structured-task-state' });
 
-/** Default tasks directory under homedir. */
-const TASKS_DIR = path.join('.nexus-agents', 'tasks');
+/** Subdirectory name under the resolved nexus data dir for task-state logs. */
+const TASKS_SUBDIR = 'tasks';
 
 const FILE_MODE = 0o600;
 const DIR_MODE = 0o700;
 
 function getTasksDir(customDir?: string): string {
   if (customDir !== undefined) return path.resolve(customDir);
-  return path.join(os.homedir(), TASKS_DIR);
+  return nexusDataPath(TASKS_SUBDIR);
 }
 
 function getLogPath(taskId: string, customDir?: string): string {

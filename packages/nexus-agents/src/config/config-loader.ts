@@ -11,7 +11,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { resolveInsideRoot } from '../security/safe-path.js';
-import { homedir } from 'node:os';
+import { getNexusDataDir } from './nexus-data-dir.js';
 import * as yaml from 'yaml';
 import { AppConfigSchema, type AppConfig, defaultConfig } from './schemas.js';
 import type { Result } from '../core/index.js';
@@ -117,8 +117,8 @@ function findConfigPath(cwd: string): string | undefined {
     return ymlPath;
   }
 
-  // Check global config directory (~/.nexus-agents/) as fallback (#1265)
-  const globalDir = join(homedir(), '.nexus-agents');
+  // Check global config directory (resolved data dir) as fallback (#1265 + #2316)
+  const globalDir = getNexusDataDir();
   const globalYamlPath = join(globalDir, DEFAULT_CONFIG_FILE);
   if (existsSync(globalYamlPath)) {
     return globalYamlPath;

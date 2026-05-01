@@ -16,9 +16,9 @@ import { getNexusDataDir } from '../config/nexus-data-dir.js';
 import { getTimeProvider, getErrorMessage } from '../core/index.js';
 import {
   isPersistenceEnabled,
-  LEARNING_DIR,
-  OUTCOMES_FILE,
-  RULES_FILE,
+  getLearningDir,
+  getOutcomesFile,
+  getRulesFile,
 } from '../config/learning-persistence.js';
 import { createAllAdapters } from '../cli-adapters/factory.js';
 import type { CliName, HealthStatus, CapacityStatus } from '../cli-adapters/types.js';
@@ -431,9 +431,9 @@ const DISABLED_CHECK: LearningPersistenceCheck = {
 function checkLearningPersistence(): LearningPersistenceCheck {
   if (!isPersistenceEnabled()) return DISABLED_CHECK;
   try {
-    const { exists: dirExists, writable: dirWritable } = checkDirAccess(LEARNING_DIR);
-    const outcomeCount = countJsonlLines(OUTCOMES_FILE);
-    const { count: ruleCount, savedAt: rulesLastSaved } = readRulesMetadata(RULES_FILE);
+    const { exists: dirExists, writable: dirWritable } = checkDirAccess(getLearningDir());
+    const outcomeCount = countJsonlLines(getOutcomesFile());
+    const { count: ruleCount, savedAt: rulesLastSaved } = readRulesMetadata(getRulesFile());
     return {
       enabled: true,
       dirExists,

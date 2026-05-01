@@ -17,7 +17,7 @@ import { TaskOutcomeSchema } from './outcome-types.js';
 import type { TaskOutcome } from './outcome-types.js';
 import { OutcomeStore, registerPersistentOutcomeStoreFactory } from './outcome-store.js';
 import type { OutcomeStoreConfig } from './outcome-store.js';
-import { ensureLearningDir, OUTCOMES_FILE } from '../../config/learning-persistence.js';
+import { ensureLearningDir, getOutcomesFile } from '../../config/learning-persistence.js';
 
 // ============================================================================
 // Configuration
@@ -47,7 +47,7 @@ export class PersistentOutcomeStore extends OutcomeStore {
 
   constructor(config?: PersistentOutcomeStoreConfig, logger?: ILogger) {
     super(config);
-    this.filePath = config?.filePath ?? OUTCOMES_FILE;
+    this.filePath = config?.filePath ?? getOutcomesFile();
     this.logger = logger ?? createLogger({ component: 'PersistentOutcomeStore' });
 
     const dataDir = config?.dataDir;

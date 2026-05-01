@@ -15,7 +15,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import * as os from 'node:os';
+import { nexusDataPath } from '../config/nexus-data-dir.js';
 import type { Result } from '../core/result.js';
 import { ok, err } from '../core/result.js';
 import { createLogger } from '../core/logger.js';
@@ -25,8 +25,8 @@ import { JournalEntrySchema } from './session-journal-types.js';
 
 const logger = createLogger({ component: 'session-journal' });
 
-/** Default sessions directory under homedir. */
-const SESSIONS_DIR = path.join('.nexus-agents', 'sessions');
+/** Subdirectory name under the resolved nexus data dir for sessions. */
+const SESSIONS_SUBDIR = 'sessions';
 
 /** File permissions: user read/write only. */
 const FILE_MODE = 0o600;
@@ -40,7 +40,7 @@ const DIR_MODE = 0o700;
 
 function getSessionsDir(customDir?: string): string {
   if (customDir !== undefined) return path.resolve(customDir);
-  return path.join(os.homedir(), SESSIONS_DIR);
+  return nexusDataPath(SESSIONS_SUBDIR);
 }
 
 function getJournalPath(sessionId: string, customDir?: string): string {

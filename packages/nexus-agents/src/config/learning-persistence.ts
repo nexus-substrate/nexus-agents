@@ -10,29 +10,36 @@
 
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { homedir } from 'node:os';
+import { getNexusDataDir } from './nexus-data-dir.js';
 
 // ============================================================================
-// Constants
+// Path resolution (#2316: must read NEXUS_DATA_DIR at call time, not import)
 // ============================================================================
 
-/** Resolve home directory with fallback for mocked environments. */
-function safeHomedir(): string {
-  try {
-    return homedir() || '/tmp';
-  } catch {
-    return '/tmp';
-  }
+/**
+ * Base directory for learning persistence data. Resolved at call time so
+ * `NEXUS_DATA_DIR` overrides take effect — the const-at-import-time
+ * pattern this replaces was the bug discovered while dogfooding v2.63.0
+ * (#2316). Outcome counts on a fresh portable workspace were leaking
+ * the host home directory's outcome history.
+ */
+export function getLearningDir(): string {
+  return join(getNexusDataDir(), 'learning');
 }
 
-/** Base directory for learning persistence data. */
-export const LEARNING_DIR = join(safeHomedir(), '.nexus-agents', 'learning');
-
 /** JSONL file for persisted task outcomes. */
-export const OUTCOMES_FILE = join(LEARNING_DIR, 'outcomes.jsonl');
+export function getOutcomesFile(): string {
+  return join(getLearningDir(), 'outcomes.jsonl');
+}
 
 /** JSON file for persisted distilled rules. */
-export const RULES_FILE = join(LEARNING_DIR, 'rules.json');
+export function getRulesFile(): string {
+  return join(getLearningDir(), 'rules.json');
+}
+
+// Note: previous LEARNING_DIR / OUTCOMES_FILE / RULES_FILE exports were
+// removed in #2316 — they were evaluated at module import time and ignored
+// `NEXUS_DATA_DIR`. All callers must use the getter functions above.
 
 /** Directory mode: owner-only (rwx------). */
 const DIR_MODE = 0o700;
@@ -56,6 +63,6 @@ export function isPersistenceEnabled(): boolean {
 }
 
 /** Ensure the learning data directory exists. */
-export function ensureLearningDir(dir: string = LEARNING_DIR): void {
-  mkdirSync(dir, { recursive: true, mode: DIR_MODE });
+export function ensureLearningDir(dir?: string): void {
+  mkdirSync(dir ?? getLearningDir(), { recursive: true, mode: DIR_MODE });
 }

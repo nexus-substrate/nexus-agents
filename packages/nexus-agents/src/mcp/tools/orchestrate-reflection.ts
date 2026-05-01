@@ -15,8 +15,7 @@ import type { ContentBlock } from '../../core/types/model.js';
 import { createLogger, getErrorMessage, extractJsonArray } from '../../core/index.js';
 import { isReflectiveMemoryEnabled } from './reflective-retriever.js';
 import { createSessionMemory } from '../../context/session-memory.js';
-import * as os from 'node:os';
-import * as path from 'node:path';
+import { nexusDataPath } from '../../config/nexus-data-dir.js';
 
 const logger = createLogger({ component: 'orchestrate-reflection' });
 
@@ -194,7 +193,7 @@ function writeLearningsToSession(
   if (eligible.length === 0) return 0;
 
   try {
-    const memoryDir = path.join(os.homedir(), '.nexus-agents', 'memory', 'sessions');
+    const memoryDir = nexusDataPath('memory', 'sessions');
     const memory = createSessionMemory(memoryDir);
     const sessionId = `reflection-${String(Date.now())}`;
     const startResult = memory.startSession(sessionId);

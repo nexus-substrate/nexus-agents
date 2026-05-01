@@ -15,9 +15,8 @@
  */
 
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
+import { nexusDataPath } from './nexus-data-dir.js';
 
 import type { ILogger } from '../core/index.js';
 import { createLogger } from '../core/index.js';
@@ -31,11 +30,11 @@ export const OVERLAY_ENV_VAR = 'NEXUS_MODEL_REGISTRY_OVERLAY';
 export const OVERLAY_MAX_BYTES = 1 * 1024 * 1024;
 
 /**
- * Default overlay location: `~/.nexus-agents/models.yaml`. Returns the
+ * Default overlay location: `<NEXUS_DATA_DIR>/models.yaml`. Returns the
  * absolute path without checking if it exists.
  */
 export function defaultOverlayPath(): string {
-  return join(homedir(), '.nexus-agents', 'models.yaml');
+  return nexusDataPath('models.yaml');
 }
 
 /**

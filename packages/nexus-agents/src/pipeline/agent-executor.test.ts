@@ -59,7 +59,7 @@ vi.mock('../context/session-memory.js', () => ({
 }));
 
 vi.mock('../config/learning-persistence.js', () => ({
-  LEARNING_DIR: '/tmp/test-learning',
+  getLearningDir: () => '/tmp/test-learning',
 }));
 
 vi.mock('../context/routing-memory.js', () => ({

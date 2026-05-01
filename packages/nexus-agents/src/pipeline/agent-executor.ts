@@ -94,8 +94,8 @@ async function initPipelineMemory(): Promise<MemoryOps | null> {
   if (cachedMemory !== null) return cachedMemory;
   try {
     const { createSessionMemory } = await import('../context/session-memory.js');
-    const { LEARNING_DIR } = await import('../config/learning-persistence.js');
-    const mem = createSessionMemory(LEARNING_DIR);
+    const { getLearningDir } = await import('../config/learning-persistence.js');
+    const mem = createSessionMemory(getLearningDir());
     mem.startSession(`pipeline-${String(Date.now())}`);
     cachedMemory = {
       recordLearning: (l) => {
@@ -257,8 +257,8 @@ async function getWeatherContext(): Promise<string> {
 async function getMemoryContext(task: string): Promise<string> {
   try {
     const { createSessionMemory } = await import('../context/session-memory.js');
-    const { LEARNING_DIR } = await import('../config/learning-persistence.js');
-    const memory = createSessionMemory(LEARNING_DIR, { maxLearningsInContext: 10 });
+    const { getLearningDir } = await import('../config/learning-persistence.js');
+    const memory = createSessionMemory(getLearningDir(), { maxLearningsInContext: 10 });
     const learnings = memory.searchLearnings(task.slice(0, 200));
     if (learnings.length === 0) return '';
     const lines = learnings
