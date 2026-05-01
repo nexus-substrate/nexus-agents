@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-05-01T04:18:47.208Z",
+  "generated": "2026-05-01T11:19:09.636Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.62.0",
   "cli": {
@@ -92,7 +92,7 @@
       },
       {
         "name": "init",
-        "type": "sync",
+        "type": "async",
         "handler": "handleInitCommand",
         "file": "src/cli-commands-handlers.ts"
       },

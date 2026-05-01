@@ -386,28 +386,40 @@ export async function handleDoctorCommand(args: ParsedCliArgs): Promise<void> {
   process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
 }
 
-/**
- * Handles `nexus-agents init --portable` (#2305).
- *
- * Today only `--portable` is wired. Other shapes of `init` (e.g. an
- * interactive wizard) can hang off the same command without breaking
- * back-compat — refuse with usage message when `--portable` is absent.
- */
-export function handleInitCommand(args: ParsedCliArgs): void {
+/** Validates init flag combinations; exits if a problem is found. */
+function validateInitFlags(args: ParsedCliArgs): void {
   if (args.options.portable !== true) {
     process.stderr.write(
-      'Usage: nexus-agents init --portable [path] [--force] [--dry-run] [--gitignore]\n' +
+      'Usage: nexus-agents init --portable [path] [--force] [--dry-run]\n' +
+        '                            [--gitignore] [--mcp-config]\n' +
+        '                            [--install | --uninstall]\n' +
         'Bootstraps a workspace-local nexus-agents data directory.\n'
     );
     process.exit(EXIT_CODES.INVALID_ARGS);
   }
+  if (args.options.install === true && args.options.uninstall === true) {
+    process.stderr.write('Error: --install and --uninstall are mutually exclusive.\n');
+    process.exit(EXIT_CODES.INVALID_ARGS);
+  }
+}
+
+/**
+ * Handles `nexus-agents init --portable` (#2305 / #2308 / #2311).
+ *
+ * Async because `--install` may spawn `npm install`. When neither
+ * `--install` nor `--uninstall` is set, no subprocess is spawned.
+ */
+export async function handleInitCommand(args: ParsedCliArgs): Promise<void> {
+  validateInitFlags(args);
   const targetPath = args.positionals[1]; // [0] is "init"
-  const result = initPortable({
+  const result = await initPortable({
     ...(targetPath !== undefined && targetPath !== '' ? { path: targetPath } : {}),
     force: args.options.force,
     dryRun: args.options.dryRun,
     gitignore: args.options.gitignore ?? false,
     mcpConfig: args.options.mcpConfig ?? false,
+    install: args.options.install ?? false,
+    uninstall: args.options.uninstall ?? false,
   });
   process.stdout.write(formatInitPortableMessage(result, args.options.dryRun));
   process.exit(result.success ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);

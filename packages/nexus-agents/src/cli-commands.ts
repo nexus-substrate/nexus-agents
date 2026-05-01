@@ -190,8 +190,6 @@ const SYNC_COMMAND_HANDLERS: Record<string, ((args: ParsedCliArgs) => void) | un
   status: handleStatusCommand,
   // Issue #1023: Warm-Up Command
   'warm-up': handleWarmUpCommand,
-  // #2305: Init Portable Command
-  init: handleInitCommand,
   'e2e-eval': handleE2EEvalCommand,
   'routing-ab': handleRoutingABCommand,
   'memory-eval': handleMemoryEvalCommand,
@@ -241,6 +239,8 @@ const ASYNC_COMMAND_HANDLERS: Record<string, ((args: ParsedCliArgs) => Promise<v
     atbench: handleAtbenchCommand,
     hooks: handleHooksCommand,
     setup: handleSetupCommandAsync, // Uses async for interactive wizard support (Issue #425)
+    // #2305 / #2308 / #2311: Init Portable Command (async because --install spawns npm)
+    init: handleInitCommand,
     demo: handleDemoCommand, // Made async for live CLI execution
     // Issue #526: Newly wired async commands
     sprint: handleSprintCommand,
