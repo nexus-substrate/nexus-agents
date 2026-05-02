@@ -11,8 +11,9 @@ import { z } from 'zod';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { getErrorMessage } from '../../core/index.js';
+import { createLogger, getErrorMessage } from '../../core/index.js';
 import { runDevPipeline } from '../../pipeline/dev-pipeline.js';
+import { warnIfSimulatedOutsideTests } from './simulation-guard.js';
 import type { DevPipelineResult } from '../../pipeline/dev-pipeline.js';
 import { createAgentStages, flushPipelineMemory } from '../../pipeline/agent-executor.js';
 import { createTaskTracker, detectBackend } from '../../pipeline/task-tracker.js';
@@ -64,11 +65,14 @@ export const DevPipelineInputSchema = z.object({
     .regex(/^[a-zA-Z0-9_-]+$/)
     .optional()
     .describe('Session ID for checkpoint/resume (crash recovery)'),
-  /** When true, use simulated votes instead of real CLI consensus (for testing). */
+  /**
+   * TESTS ONLY — when true, voters return random decisions. Must not be used as
+   * a fallback when adapters are unavailable; configure an adapter instead. (#2319)
+   */
   simulateVotes: z
     .boolean()
     .default(false)
-    .describe('Use simulated votes (for testing without real CLIs)'),
+    .describe('TESTS ONLY — random output, must not be used for real decisions (#2319)'),
   /** Voting strategy for consensus stages. */
   votingStrategy: z
     .enum([
@@ -186,6 +190,9 @@ export function registerDevPipelineTool(
   // eslint-disable-next-line @typescript-eslint/no-deprecated -- matches existing tool registration pattern
   server.tool('run_dev_pipeline', DevPipelineInputSchema.shape, async (args) => {
     const input = DevPipelineInputSchema.parse(args);
+    if (input.simulateVotes) {
+      warnIfSimulatedOutsideTests('run_dev_pipeline', createLogger({ tool: 'run_dev_pipeline' }));
+    }
 
     try {
       const taskText = resolveTaskInput(input);

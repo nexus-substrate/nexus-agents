@@ -138,26 +138,28 @@ Before implementing features or making architectural decisions: search official 
 
 ## Canonical Paths
 
-| Concern               | Canonical Path               | Location                                         |
-| --------------------- | ---------------------------- | ------------------------------------------------ |
-| **Task Analysis**     | `SharedTaskAnalyzer`         | `src/core/task-analysis/shared-task-analyzer.ts` |
-| **Task Routing**      | `CompositeRouter`            | `src/cli-adapters/composite-router.ts`           |
-| **Consensus Voting**  | `ConsensusEngine`            | `src/consensus/engine.ts`                        |
-| **Voter Roles**       | `VoterRole` + `VOTER_ROLES`  | `src/cli/vote-types.ts`                          |
-| **CLI Adapters**      | `createAllAdapters()`        | `src/cli-adapters/factory.ts`                    |
-| **MCP Tools**         | `registerTools()`            | `src/mcp/tools/index.ts`                         |
-| **Model Registry**    | `DEFAULT_MODEL_CAPABILITIES` | `src/config/model-capabilities.ts`               |
-| **Adapter Registry**  | `UnifiedAdapterRegistry`     | `src/adapters/unified-registry.ts`               |
-| **Adapter Lifecycle** | `ResilientAdapter`           | `src/adapters/resilient-adapter.ts`              |
-| **Graph Workflows**   | `GraphBuilder`               | `src/orchestration/graph/graph-builder.ts`       |
-| **Security Pipeline** | `src/security/`              | `src/security/index.ts`                          |
-| **Workflow Router**   | `createWorkflowRouter`       | `src/orchestration/workflow-router.ts`           |
-| **Pipeline Runner**   | `PipelineRunner`             | `src/pipeline/pipeline-runner.ts`                |
-| **Plugin Registry**   | `PluginRegistry`             | `src/pipeline/plugin-registry.ts`                |
-| **Policy Engine**     | `PolicyEngine`               | `src/pipeline/policy-engine.ts`                  |
-| **Event Bus**         | `EventBus`                   | `src/pipeline/event-bus.ts`                      |
-| **Artifact Store**    | `ArtifactStore`              | `src/pipeline/artifact-store.ts`                 |
-| **Task Contract**     | `TaskContractSchema`         | `src/pipeline/task-contract.ts`                  |
+All paths are validated by `scripts/inject-governance.ts check` — a row that points at a missing file fails CI (#2321).
+
+| Concern               | Canonical Path               | Location                                                               |
+| --------------------- | ---------------------------- | ---------------------------------------------------------------------- |
+| **Task Analysis**     | `SharedTaskAnalyzer`         | `packages/nexus-agents/src/core/task-analysis/shared-task-analyzer.ts` |
+| **Task Routing**      | `CompositeRouter`            | `packages/nexus-agents/src/cli-adapters/composite-router.ts`           |
+| **Consensus Voting**  | `ConsensusEngine`            | `packages/nexus-agents/src/consensus/engine.ts`                        |
+| **Voter Roles**       | `VoterRole` + `VOTER_ROLES`  | `packages/nexus-agents/src/cli/vote-types.ts`                          |
+| **CLI Adapters**      | `createAllAdapters()`        | `packages/nexus-agents/src/cli-adapters/factory.ts`                    |
+| **MCP Tools**         | `registerTools()`            | `packages/nexus-agents/src/mcp/tools/index.ts`                         |
+| **Model Registry**    | `DEFAULT_MODEL_CAPABILITIES` | `packages/nexus-agents/src/config/model-capabilities.ts`               |
+| **Adapter Registry**  | `UnifiedAdapterRegistry`     | `packages/nexus-agents/src/adapters/unified-registry.ts`               |
+| **Adapter Lifecycle** | `ResilientAdapter`           | `packages/nexus-agents/src/adapters/resilient-adapter.ts`              |
+| **Graph Workflows**   | `GraphBuilder`               | `packages/nexus-agents/src/orchestration/graph/graph-builder.ts`       |
+| **Security Pipeline** | `src/security/`              | `packages/nexus-agents/src/security/index.ts`                          |
+| **Workflow Router**   | `createWorkflowRouter`       | `packages/nexus-agents/src/orchestration/workflow-router.ts`           |
+| **Pipeline Runner**   | `PipelineRunner`             | `packages/nexus-agents/src/pipeline/pipeline-runner.ts`                |
+| **Plugin Registry**   | `PluginRegistry`             | `packages/nexus-agents/src/pipeline/plugin-registry.ts`                |
+| **Policy Engine**     | `PolicyEngine`               | `packages/nexus-agents/src/pipeline/policy-engine.ts`                  |
+| **Event Bus**         | `EventBus`                   | `packages/nexus-agents/src/pipeline/event-bus.ts`                      |
+| **Artifact Store**    | `ArtifactStore`              | `packages/nexus-agents/src/pipeline/artifact-store.ts`                 |
+| **Task Contract**     | `TaskContractSchema`         | `packages/nexus-agents/src/pipeline/task-contract.ts`                  |
 
 All task routing goes through: `Task → BudgetRouter → ZeroRouter → PreferenceRouter → TopsisRouter → LinUCB → Selected Model`
 
@@ -221,7 +223,9 @@ Adapter detection is now lazy (first use, not startup) with automatic failover v
 
 When using nexus-agents MCP tools (`orchestrate`, `create_expert`, `execute_expert`): expect timeouts and "No model adapter configured" errors. These tools require external model API keys that may not be available.
 
-**Rule:** If orchestrator or expert tools fail, fall back to manual analysis immediately — do not retry more than once. Use `consensus_vote` with `simulateVotes: true` as a lightweight alternative when live model adapters are unavailable. Summarize what you would have delegated and proceed directly using Claude Code's built-in Task tool for parallel work instead.
+**Rule:** If orchestrator or expert tools fail, fall back to manual analysis immediately — do not retry more than once. Summarize what you would have delegated and proceed directly using Claude Code's built-in Task tool for parallel work instead.
+
+**Do not** reach for `consensus_vote { simulateVotes: true }` as a fallback. Simulated votes return random approve/reject decisions and exist only for unit tests and demos — they will silently corrupt any decision they touch. If no live adapter is available, surface that as the blocker and let the user resolve it.
 
 ---
 
@@ -345,28 +349,36 @@ Strip `<picture>`, `<source>`, `<img>`, XML-like tags (`<system>`, `<human>`, `<
 
 ---
 
+<!-- GOVERNANCE:WORKFLOW_INDEX:START -->
+
 ## Workflows (via Skills)
 
 Detailed workflow steps are in `skills/<name>/SKILL.md` (canonical per Anthropic Agent Skills spec, #1828). Non-Claude agents discover via [`skills/index.yaml`](./skills/index.yaml) referenced from [AGENTS.md](./AGENTS.md).
 
-| Workflow               | Skill                       | Trigger Keywords                                    |
-| ---------------------- | --------------------------- | --------------------------------------------------- |
-| Feature implementation | `implement-feature`         | "implement", "add feature"                          |
-| Bug fix                | `bug-fix`                   | "fix bug", "debug"                                  |
-| Hotfix                 | `hotfix`                    | "hotfix", "emergency fix"                           |
-| Release                | `release`                   | "release", "publish"                                |
-| Code review            | `reviewing-code`            | "review code", "code review"                        |
-| Research + voting      | `research-and-vote`         | "research", "investigate"                           |
-| System review          | `system-review`             | "system review", "project health"                   |
-| Dogfooding issues      | `dogfooding-issues`         | "dogfood", "process issues"                         |
-| Version check          | `version-check`             | "check versions", "version audit"                   |
-| Documentation mgmt     | `documentation-management`  | "doc sync", "documentation"                         |
-| Codex delegation       | `codex-delegator`           | "delegate to codex"                                 |
-| Gemini delegation      | `gemini-delegator`          | "delegate to gemini"                                |
-| Requirements gathering | `requirements-gathering`    | "gather requirements", "user stories"               |
-| UI/UX design           | `ui-ux-design`              | "design system", "UI design", "landing page design" |
-| Infrastructure mgmt    | `infrastructure-management` | "infrastructure", "bare metal", "idrac", "server"   |
-| Security scanning      | `security-scanning`         | "security scan", "codeql", "secret scanning"        |
+| Skill                        | Description                                                                                                                                                                 | Trigger Keywords                                                                                                                                                       |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bug-fix`                    | Fix a bug following project standards.                                                                                                                                      | `fix bug`, `debug`, `fix issue`, `resolve bug`, `fixing defects`                                                                                                       |
+| `codex-delegator`            | Delegate code generation tasks to Codex CLI for optimal performance.                                                                                                        | `delegate to codex`, `route to codex`, `use codex`, `code generation`, `implementing features`                                                                         |
+| `dev-pipeline`               | Multi-agent development pipeline (Orchestrator + workers + consensus vote).                                                                                                 | `build a feature`, `fix a bug with the pipeline`, `run the dev pipeline`, `dev pipeline`, `multi-agent pipeline`, `run pipeline`, `the user asks to "build a feature"` |
+| `documentation-management`   | Operating manual for documentation work in nexus-agents.                                                                                                                    | `update docs`, `add documentation`, `doc pipeline`, `updating docs`                                                                                                    |
+| `dogfooding-issues`          | Process open GitHub issues using the self-development protocol.                                                                                                             | `dogfood`, `work on issues`, `implement issue`, `self-development`, `process issues`, `working on open issues`                                                         |
+| `gemini-delegator`           | Delegate large context and multimodal tasks to Gemini CLI.                                                                                                                  | `delegate to gemini`, `route to gemini`, `use gemini`, `large context`, `analyze image`, `screenshot analysis`, `context exceeds 100k tokens`                          |
+| `hotfix`                     | Apply a hotfix for critical production issues.                                                                                                                              | `hotfix`, `emergency fix`, `critical fix`, `production bug`                                                                                                            |
+| `implement-feature`          | Implement a new feature following project standards.                                                                                                                        | `implement`, `add feature`, `create`, `build`, `adding functionality`                                                                                                  |
+| `infrastructure-management`  | Manage physical server infrastructure, bare metal systems, and OOB management.                                                                                              | `infrastructure`, `bare metal`, `server management`, `idrac`, `hardware check`                                                                                         |
+| `release`                    | Execute a release following project standards.                                                                                                                              | `release`, `publish`, `version bump`, `create release`, `publishing a new version`                                                                                     |
+| `requirements-gathering`     | Extract structured requirements from vague user requests.                                                                                                                   | `requirements`, `user stories`, `what do i need`, `break down this request`, `analyze this feature`                                                                    |
+| `research-and-vote`          | Research a topic using multiple sources and conduct multi-agent voting.                                                                                                     | `research`, `decide`, `vote on`, `consensus`, `making architectural decisions`                                                                                         |
+| `reviewing-code`             | Review code changes following project standards and security guidelines.                                                                                                    | `review code`, `code review`, `check this`, `audit`, `pr review`, `reviewing prs`                                                                                      |
+| `security-advisory-response` | Respond to a reporter-filed GitHub Security Advisory with coordinated disclosure discipline: confidential triage, private-fork patching, simultaneous publish, post-mortem. | `security advisory`, `cve response`, `coordinated disclosure`, `private fork patch`, `someone files a security advisory against this repo`                             |
+| `security-scanning`          | Review and fix security scanning alerts from CodeQL and secret scanning.                                                                                                    | `security scan`, `codeql`, `secret scanning`, `security alerts`                                                                                                        |
+| `system-review`              | Run a system review to check project health.                                                                                                                                | `system review`, `project health`, `review system`, `issues drop below 5`                                                                                              |
+| `ui-ux-design`               | Generate design systems and implement UX/UI for software products using Astro, Svelte, Tailwind CSS, Material Design 3, and OKLCH color system.                             | `design system`, `ui design`, `color palette`, `typography`, `landing page design`, `dashboard design`, `style guide`, `component design`, `frontend`                  |
+| `version-check`              | Check that dependencies are current stable versions and not deprecated.                                                                                                     | `check versions`, `verify dependencies`, `audit packages`                                                                                                              |
+
+_Auto-generated from `skills/index.yaml`. 18 skills._
+
+<!-- GOVERNANCE:WORKFLOW_INDEX:END -->
 
 ---
 
@@ -533,7 +545,7 @@ _Auto-generated from source. 34 tools registered._
 
 <!-- GOVERNANCE:VERSION:START -->
 
-_Governance Version: 2026-05-01_
+_Governance Version: 2026-05-02_
 
 <!-- GOVERNANCE:VERSION:END -->
 

@@ -12,8 +12,9 @@ import { z } from 'zod';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { getErrorMessage } from '../../core/index.js';
+import { createLogger, getErrorMessage } from '../../core/index.js';
 import { runAdaptiveOrchestrator, classifyTask } from '../../pipeline/adaptive-orchestrator.js';
+import { warnIfSimulatedOutsideTests } from './simulation-guard.js';
 import type { AdaptiveOrchestratorResult } from '../../pipeline/adaptive-orchestrator.js';
 import { createAgentStages } from '../../pipeline/agent-executor.js';
 import {
@@ -75,11 +76,11 @@ export const PipelineInputSchema = z.object({
     .describe('Max time per stage in ms (30000-600000). Default: varies by stage complexity'),
   /** Stop after planning/voting (no implementation). */
   dryRun: z.boolean().default(false).describe('Stop after vote stage (no implementation)'),
-  /** Use simulated votes (for testing). */
+  /** TESTS ONLY — random output, must not be used for real decisions. (#2319) */
   simulateVotes: z
     .boolean()
     .default(false)
-    .describe('Use simulated votes (for testing without real CLIs)'),
+    .describe('TESTS ONLY — random output, must not be used for real decisions (#2319)'),
 });
 
 export type PipelineInput = z.infer<typeof PipelineInputSchema>;
@@ -155,6 +156,9 @@ export function registerPipelineTool(
   // eslint-disable-next-line @typescript-eslint/no-deprecated -- matches existing tool registration pattern
   server.tool('run_pipeline', PipelineInputSchema.shape, async (args) => {
     const input = PipelineInputSchema.parse(args);
+    if (input.simulateVotes) {
+      warnIfSimulatedOutsideTests('run_pipeline', createLogger({ tool: 'run_pipeline' }));
+    }
 
     try {
       const task = resolveTask(input.task, input.specFile);

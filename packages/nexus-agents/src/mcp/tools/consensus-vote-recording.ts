@@ -28,7 +28,13 @@ import {
 
 const logger = createLogger({ tool: 'consensus-vote' });
 
-/** Records a successful consensus vote to session memory AND outcome store. Best-effort. */
+/**
+ * Records a successful consensus vote to session memory AND outcome store. Best-effort.
+ *
+ * When every vote is simulated, this is a no-op: simulated votes are random
+ * (#2319) and must not seed the learning store or outcome store, otherwise
+ * test/demo runs poison real routing decisions.
+ */
 export function recordVoteSuccess(
   proposal: string,
   strategy: string,
@@ -36,6 +42,13 @@ export function recordVoteSuccess(
   duration: number,
   votes?: readonly AgentVoteResult[]
 ): void {
+  const allSimulated =
+    votes !== undefined && votes.length > 0 && votes.every((v) => v.source === 'simulation');
+  if (allSimulated) {
+    logger.debug('Skipping memory + outcome recording — all votes simulated');
+    return;
+  }
+
   try {
     const memory = getToolMemory();
     memory.recordTask({
@@ -56,7 +69,9 @@ export function recordVoteSuccess(
     logger.warn('Failed to record vote success to memory', { error: getErrorMessage(error) });
   }
 
-  // Also record to outcome store for adaptive routing feedback (#1551)
+  // Also record to outcome store for adaptive routing feedback (#1551).
+  // recordVoteOutcomes already filters per-vote `source === 'simulation'`,
+  // but we keep the all-simulated guard above to skip the memory writes too.
   if (votes !== undefined) {
     recordVoteOutcomes(votes);
   }

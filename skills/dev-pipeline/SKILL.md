@@ -32,7 +32,7 @@ run_dev_pipeline({
   trackerBackend: "github",                  // or "gitlab" or "json"
   mode: "autonomous",                         // "harness" = stop after decompose, return tasks
   dryRun: false,                             // true = stop after plan+vote
-  simulateVotes: false,                      // true = simulated votes (no real CLIs)
+  simulateVotes: false,                      // TESTS ONLY — random output, never use for real decisions
   sessionId: "my-session-id",                // Enable checkpoint/resume (crash recovery)
   maxVoteIterations: 3,                      // plan→vote loop limit
   maxQaIterations: 3,                        // QA review loop limit
@@ -98,7 +98,7 @@ The tool returns structured JSON:
 
 - Use `dryRun: true` first to review the plan before committing to implementation
 - Use `sessionId` to enable crash recovery — pipeline resumes from last completed stage
-- Use `simulateVotes: true` to test without real CLI adapters
+- `simulateVotes: true` is for unit tests only — its votes are random and must not be used as a fallback when adapters are missing. If no adapter is available, configure one rather than simulating.
 - Provide `repo` to get GitHub issue tracking of every pipeline stage
 - The pipeline uses CompositeRouter for intelligent CLI selection (weather-aware, LinUCB)
 - Each expert gets its system prompt (research, architecture, PM, code, QA)

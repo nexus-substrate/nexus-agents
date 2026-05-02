@@ -103,6 +103,49 @@ describe('consensus-vote-recording', () => {
     expect(approachArg.length).toBeLessThan(100);
   });
 
+  it('recordVoteSuccess skips memory + outcome writes when every vote is simulated (#2319)', async () => {
+    const { recordVoteSuccess } = await import('./consensus-vote-recording.js');
+    const store = getOutcomeStore();
+    const initialSize = store.size;
+    recordVoteSuccess('Demo proposal', 'majority', 'approved', 100, [
+      {
+        role: 'architect',
+        vote: { decision: 'approve', reasoning: 'sim', confidence: 0.5 },
+        source: 'simulation' as const,
+        processingTimeMs: 0,
+      },
+      {
+        role: 'security',
+        vote: { decision: 'approve', reasoning: 'sim', confidence: 0.5 },
+        source: 'simulation' as const,
+        processingTimeMs: 0,
+      },
+    ]);
+    expect(mockRecordTask).not.toHaveBeenCalled();
+    expect(mockRecordLearning).not.toHaveBeenCalled();
+    expect(store.size).toBe(initialSize);
+  });
+
+  it('recordVoteSuccess still records when at least one vote is from an LLM', async () => {
+    const { recordVoteSuccess } = await import('./consensus-vote-recording.js');
+    recordVoteSuccess('Mixed proposal', 'majority', 'approved', 100, [
+      {
+        role: 'architect',
+        vote: { decision: 'approve', reasoning: 'real', confidence: 0.9 },
+        source: 'llm' as const,
+        processingTimeMs: 1000,
+      },
+      {
+        role: 'security',
+        vote: { decision: 'approve', reasoning: 'sim', confidence: 0.5 },
+        source: 'simulation' as const,
+        processingTimeMs: 0,
+      },
+    ]);
+    expect(mockRecordTask).toHaveBeenCalledOnce();
+    expect(mockRecordLearning).toHaveBeenCalledOnce();
+  });
+
   it('recordVoteOutcomes records per-vote outcomes to OutcomeStore', async () => {
     const { recordVoteOutcomes } = await import('./consensus-vote-recording.js');
     const store = getOutcomeStore();
