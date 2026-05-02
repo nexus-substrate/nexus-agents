@@ -4,3 +4,7 @@ docs/reference/capabilities.md
 packages/nexus-agents/docs/api/
 skills/index.yaml
 agents/index.yaml
+
+# Lockfile is managed by pnpm; running prettier on it produces a non-canonical
+# format that diverges from pnpm install's output and breaks CI lockfile checks.
+pnpm-lock.yaml
