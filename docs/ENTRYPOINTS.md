@@ -510,7 +510,11 @@ nexus-agents hooks stop --check-tasks
         "default": false,
         "description": "Use 3 agents instead of 5"
       },
-      "simulateVotes": { "type": "boolean", "default": false, "description": "Use simulated votes" }
+      "simulateVotes": {
+        "type": "boolean",
+        "default": false,
+        "description": "TESTS ONLY — random output, must not be used for real decisions"
+      }
     },
     "required": ["proposal"]
   }

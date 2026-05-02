@@ -300,3 +300,78 @@ describe('inject-governance ancillary counts (#1837)', () => {
     }
   );
 });
+
+// ============================================================================
+// Workflows table generation + Canonical Paths validator (#2317, #2321)
+// ============================================================================
+
+describe('inject-governance workflows + canonical paths (#2317)', () => {
+  it(
+    'generates Workflows table with every skill from skills/index.yaml',
+    () => {
+      runScript('inject');
+      try {
+        const content = readFileSync(CLAUDE_MD, 'utf-8');
+        expect(content).toContain('<!-- GOVERNANCE:WORKFLOW_INDEX:START -->');
+        expect(content).toContain('<!-- GOVERNANCE:WORKFLOW_INDEX:END -->');
+        // dev-pipeline + security-advisory-response were the drifted entries
+        // that motivated this generator (#2317). They MUST appear.
+        expect(content).toContain('`dev-pipeline`');
+        expect(content).toContain('`security-advisory-response`');
+        // Auto-gen footer reflects current skill count.
+        const match = /Auto-generated from `skills\/index\.yaml`\.\s*(\d+)\s*skills\./.exec(
+          content
+        );
+        expect(match).not.toBeNull();
+        const count = parseInt(match![1]!, 10);
+        expect(count).toBeGreaterThanOrEqual(15);
+      } finally {
+        // Restore. inject-governance is idempotent against current source so
+        // re-running inject is fine, but tests should not leave drift.
+        runScript('inject');
+      }
+    },
+    IDEMPOTENCY_TIMEOUT
+  );
+
+  it(
+    'canonical paths validator passes on the current CLAUDE.md',
+    { timeout: SUBPROCESS_TIMEOUT },
+    () => {
+      const output = runScript('check');
+      expect(output).toContain('Governance check passed');
+      expect(output).not.toContain('Canonical Paths drift');
+    }
+  );
+
+  it(
+    'canonical paths validator fails when a row points at a missing file',
+    { timeout: SUBPROCESS_TIMEOUT },
+    () => {
+      const original = readFileSync(CLAUDE_MD, 'utf-8');
+      try {
+        const broken = original.replace(
+          '`packages/nexus-agents/src/consensus/engine.ts`',
+          '`packages/nexus-agents/src/consensus/THIS_FILE_DOES_NOT_EXIST.ts`'
+        );
+        // Sanity: ensure the replace actually found the row.
+        expect(broken).not.toBe(original);
+        writeFileSync(CLAUDE_MD, broken);
+        let stderr = '';
+        let exitCode = 0;
+        try {
+          execSync(`npx tsx ${SCRIPT} check`, { cwd: ROOT, encoding: 'utf-8', timeout: 30000 });
+        } catch (err) {
+          const e = err as { status?: number; stderr?: string; stdout?: string };
+          exitCode = e.status ?? 1;
+          stderr = (e.stderr ?? '') + (e.stdout ?? '');
+        }
+        expect(exitCode).not.toBe(0);
+        expect(stderr).toContain('Canonical Paths drift');
+        expect(stderr).toContain('THIS_FILE_DOES_NOT_EXIST.ts');
+      } finally {
+        writeFileSync(CLAUDE_MD, original);
+      }
+    }
+  );
+});

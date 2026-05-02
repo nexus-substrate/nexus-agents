@@ -40,6 +40,7 @@ import {
   buildResponse,
 } from './consensus-vote-types.js';
 import { recordVoteSuccess, recordVoteError } from './consensus-vote-recording.js';
+import { warnIfSimulatedOutsideTests } from './simulation-guard.js';
 import type {
   VotingStrategy,
   ConsensusVoteInput,
@@ -411,6 +412,7 @@ async function handleConsensusVote(
   args: ConsensusVoteInput
 ): Promise<{ ok: true; value: ConsensusVoteResponse } | { ok: false; error: string }> {
   const logger = deps.logger ?? createLogger({ tool: 'consensus_vote' });
+  if (args.simulateVotes) warnIfSimulatedOutsideTests('consensus_vote', logger);
   try {
     const result = await executeVoting(args, logger);
     const strategy = args.strategy ?? 'simple_majority';
@@ -565,7 +567,11 @@ export function registerConsensusVoteTool(server: McpServer, deps: ConsensusVote
       'Voting strategy: simple_majority (default), supermajority, unanimous, proof_of_learning, or higher_order'
     ),
     quickMode: z.boolean().optional().default(false).describe('Use 3 agents instead of 7'),
-    simulateVotes: z.boolean().optional().default(false).describe('Use simulated votes'),
+    simulateVotes: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe('TESTS ONLY — random output, must not be used for real decisions (#2319)'),
   };
 
   const description =

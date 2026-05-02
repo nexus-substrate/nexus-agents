@@ -54,7 +54,7 @@ export OPENAI_API_KEY=your-key       # For Codex adapter
 export GOOGLE_AI_API_KEY=your-key    # For Gemini adapter
 ```
 
-At least one API key is needed for real model routing. Without keys, tools like `consensus_vote` can use `simulateVotes: true` for testing.
+At least one API key is needed for real model routing. The `simulateVotes: true` option exists on consensus tools for unit tests only — it returns random output and must not be used as a substitute for a configured adapter.
 
 ## Available Tools (30)
 

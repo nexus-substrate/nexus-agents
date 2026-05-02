@@ -68,7 +68,9 @@ export const ConsensusVoteInputSchema = z.object({
     .boolean()
     .optional()
     .default(false)
-    .describe('Use simulated votes instead of LLM execution'),
+    .describe(
+      'TESTS ONLY — when true, voters return random decisions. Output must not be used for real decisions. (#2319)'
+    ),
 });
 
 export type ConsensusVoteInput = z.infer<typeof ConsensusVoteInputSchema>;
