@@ -34,14 +34,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
-        with:
-          toolchain: stable
-
-      - name: Install cargo-sbom
-        run: cargo install cargo-sbom
-
       - uses: ./.github/actions/setup-node
         with:
           registry-url: 'https://registry.npmjs.org'
@@ -62,25 +54,34 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
 
-      - name: Generate SBOM artifacts
-        # cargo-sbom 0.10 output formats: spdx_json_2_3 | cyclone_dx_json_1_6
-        # (not `spdx` / `cyclonedx`); SBOM is written to stdout, not --file.
-        if: steps.changesets.outputs.published == 'true' && hashFiles('crates/iso-parser/Cargo.toml') != ''
+      - name: Generate CycloneDX SBOM
+        # Node-native SBOM via @cyclonedx/cdxgen against pnpm-lock.yaml.
+        # Replaces the prior Rust-only cargo-sbom flow (#1852) which was
+        # gated on a non-existent crates/iso-parser/Cargo.toml and silently
+        # skipped on every release from 2.29.1 onward. cdxgen 12.3+ is run
+        # via npx so we don't need pnpm 10 (cdxgen 12.x's stated minimum).
+        # CycloneDX 1.6 is the current stable spec version.
+        if: steps.changesets.outputs.published == 'true'
         shell: bash
         run: |
           set -euo pipefail
-          cd crates/iso-parser
-          cargo sbom --output-format spdx_json_2_3 > ../../sbom.spdx.json
-          cargo sbom --output-format cyclone_dx_json_1_6 > ../../sbom.cdx.json
-          ls -la ../../sbom.*.json
+          npx -y @cyclonedx/cdxgen@12.3.1 \
+            -t pnpm \
+            --spec-version 1.6 \
+            -o sbom.cdx.json \
+            --no-recurse
+          # Sanity: confirm output is a valid CycloneDX 1.6 doc with components.
+          jq -e '.bomFormat == "CycloneDX" and .specVersion == "1.6" and (.components | length > 0)' \
+            sbom.cdx.json > /dev/null
+          echo "SBOM generated: $(jq '.components | length' sbom.cdx.json) components"
 
-      - name: Upload SBOM artifacts to GitHub Release
+      - name: Upload SBOM to GitHub Release
         # changesets/action creates the GitHub release itself via
         # @changesets/changelog-github; it does NOT expose an `uploadUrl`
-        # output for the legacy actions/upload-release-asset to consume.
-        # Derive the release tag from publishedPackages and use `gh release
-        # upload` which looks up the release by tag. (#1841 follow-up)
-        if: steps.changesets.outputs.published == 'true' && hashFiles('sbom.spdx.json') != ''
+        # output. Derive the release tag from publishedPackages and use
+        # `gh release upload` which looks up the release by tag.
+        # (#1841 follow-up; SPDX dropped — CycloneDX is dominant for npm.)
+        if: steps.changesets.outputs.published == 'true' && hashFiles('sbom.cdx.json') != ''
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PUBLISHED_PACKAGES: ${{ steps.changesets.outputs.publishedPackages }}
@@ -93,16 +94,14 @@ jobs:
             echo "::warning::nexus-agents not in publishedPackages; skipping SBOM upload"
             exit 0
           fi
-          echo "Uploading SBOMs to release tag: $TAG"
-          gh release upload "$TAG" sbom.spdx.json sbom.cdx.json --clobber
+          echo "Uploading SBOM to release tag: $TAG"
+          gh release upload "$TAG" sbom.cdx.json --clobber
 
-      - name: Attest SBOM artifacts
-        if: steps.changesets.outputs.published == 'true' && hashFiles('sbom.spdx.json') != ''
+      - name: Attest SBOM
+        if: steps.changesets.outputs.published == 'true' && hashFiles('sbom.cdx.json') != ''
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
-          subject-path: |
-            sbom.spdx.json
-            sbom.cdx.json
+          subject-path: sbom.cdx.json
 
       - name: Attest npm package
         if: steps.changesets.outputs.published == 'true'
