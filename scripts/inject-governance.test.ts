@@ -375,3 +375,80 @@ describe('inject-governance workflows + canonical paths (#2317)', () => {
     }
   );
 });
+
+// ============================================================================
+// server.json sync (#2326, #2327)
+// ============================================================================
+
+describe('inject-governance server.json sync (#2327)', () => {
+  const SERVER_JSON = join(ROOT, 'packages/nexus-agents/server.json');
+  const PKG_JSON = join(ROOT, 'packages/nexus-agents/package.json');
+
+  it(
+    'inject syncs server.json version to packages/nexus-agents/package.json',
+    { timeout: IDEMPOTENCY_TIMEOUT },
+    () => {
+      runScript('inject');
+      const pkg = JSON.parse(readFileSync(PKG_JSON, 'utf-8')) as { version: string };
+      const server = JSON.parse(readFileSync(SERVER_JSON, 'utf-8')) as {
+        version: string;
+        packages: { version: string }[];
+      };
+      expect(server.version).toBe(pkg.version);
+      for (const entry of server.packages) {
+        expect(entry.version).toBe(pkg.version);
+      }
+    }
+  );
+
+  it('check command fails when server.json version drifts', { timeout: SUBPROCESS_TIMEOUT }, () => {
+    const original = readFileSync(SERVER_JSON, 'utf-8');
+    try {
+      const broken = original.replace(/"version": "[^"]+"/, '"version": "0.0.0-broken"');
+      // Sanity: ensure the replace landed.
+      expect(broken).not.toBe(original);
+      writeFileSync(SERVER_JSON, broken);
+      let combined = '';
+      let exitCode = 0;
+      try {
+        execSync(`npx tsx ${SCRIPT} check`, { cwd: ROOT, encoding: 'utf-8', timeout: 30000 });
+      } catch (err) {
+        const e = err as { status?: number; stderr?: string; stdout?: string };
+        exitCode = e.status ?? 1;
+        combined = (e.stderr ?? '') + (e.stdout ?? '');
+      }
+      expect(exitCode).not.toBe(0);
+      expect(combined).toContain('server.json version');
+      expect(combined).toContain('0.0.0-broken');
+    } finally {
+      writeFileSync(SERVER_JSON, original);
+    }
+  });
+
+  it(
+    'check command fails when server.json description tool count drifts',
+    { timeout: SUBPROCESS_TIMEOUT },
+    () => {
+      const original = readFileSync(SERVER_JSON, 'utf-8');
+      try {
+        const broken = original.replace(/(\d+) MCP tools/, '999 MCP tools');
+        expect(broken).not.toBe(original);
+        writeFileSync(SERVER_JSON, broken);
+        let combined = '';
+        let exitCode = 0;
+        try {
+          execSync(`npx tsx ${SCRIPT} check`, { cwd: ROOT, encoding: 'utf-8', timeout: 30000 });
+        } catch (err) {
+          const e = err as { status?: number; stderr?: string; stdout?: string };
+          exitCode = e.status ?? 1;
+          combined = (e.stderr ?? '') + (e.stdout ?? '');
+        }
+        expect(exitCode).not.toBe(0);
+        expect(combined).toContain('server.json description');
+        expect(combined).toContain('999');
+      } finally {
+        writeFileSync(SERVER_JSON, original);
+      }
+    }
+  );
+});
