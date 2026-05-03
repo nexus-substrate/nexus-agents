@@ -56,22 +56,25 @@ export GOOGLE_AI_API_KEY=your-key    # For Gemini adapter
 
 At least one API key is needed for real model routing. The `simulateVotes: true` option exists on consensus tools for unit tests only — it returns random output and must not be used as a substitute for a configured adapter.
 
-## Available Tools (30)
+## Available Tools
 
-Once connected, these MCP tools are available:
+Once connected, these representative MCP tools are available:
 
 - `orchestrate` — Task orchestration with expert coordination
 - `create_expert` / `execute_expert` — Dynamic expert agent creation and execution
-- `consensus_vote` — Multi-model consensus voting (5 algorithms)
+- `consensus_vote` — Multi-model consensus voting (six aggregation strategies)
 - `delegate_to_model` — Capability-matched task routing
 - `run_dev_pipeline` — Full dev workflow: research, plan, vote, implement, QA, security
 - `research_discover` / `research_analyze` — Academic paper and repo discovery
-- `memory_query` / `memory_write` — Cross-session memory with 8 backends
+- `memory_query` / `memory_write` — Cross-session memory across multiple backends
 - `weather_report` — CLI performance monitoring and routing health
 - `repo_analyze` / `repo_security_plan` — Repository analysis and security planning
 - `search_codebase` / `extract_symbols` — Code intelligence
 - `run_pipeline` — Configurable multi-stage pipeline execution
-- And 15 more (run `nexus-agents --help` for full list)
+- `pr_review` — Multi-voter consensus review on a PR diff
+- `verify_audit_chain` — Verify hash-chain integrity of a persisted audit log
+
+For the canonical, auto-generated list, see [docs/ENTRYPOINTS.md](docs/ENTRYPOINTS.md) or run `nexus-agents --help`.
 
 ## Troubleshooting
 

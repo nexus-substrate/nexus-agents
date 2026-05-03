@@ -40,6 +40,9 @@ const AGENTS_MD_PATH = join(ROOT, 'AGENTS.md');
 const PLUGIN_JSON_PATH = join(ROOT, '.claude-plugin/plugin.json');
 const MARKETPLACE_JSON_PATH = join(ROOT, '.claude-plugin/marketplace.json');
 const PLUGIN_INSTALL_PATH = join(ROOT, 'docs/getting-started/PLUGIN_INSTALL.md');
+// MCP-spec server.json — what the model context protocol registry reads.
+// Drifted to 2.53.0 while package.json was at 2.63.1; see #2326 / #2327.
+const SERVER_JSON_PATH = join(ROOT, 'packages/nexus-agents/server.json');
 
 /**
  * Write `content` to `path` after running it through prettier with the
@@ -786,6 +789,7 @@ function checkGovernance(): boolean {
     versionOk,
     checkReadmeToolTable(actual.tools),
     checkCanonicalPaths(),
+    checkServerJson(actual.tools.length),
   ];
 
   const passed = checks.every(Boolean);
@@ -1049,6 +1053,11 @@ async function injectGovernance(): Promise<void> {
   // drifts from the shipped npm package.
   syncPluginVersion();
 
+  // #2327: sync packages/nexus-agents/server.json — the MCP-spec registry
+  // file — to package.json's version + canonical tool count. Drifted to
+  // 2.53.0 (10 minor versions behind) before this sync was added.
+  syncServerJson(tools.length);
+
   console.log('Governance injected:');
   console.log(`  MCP Tools: ${String(tools.length)}`);
   console.log(`  Expert Types: ${String(experts.length)}`);
@@ -1224,6 +1233,90 @@ function syncPluginVersion(): void {
 
   plugin['version'] = pkgVersion;
   writeFileSync(PLUGIN_JSON_PATH, JSON.stringify(plugin, null, 2) + '\n');
+}
+
+/**
+ * Keep packages/nexus-agents/server.json aligned with package.json (#2327).
+ * The MCP-spec server.json carries TWO version fields (top-level + per-package
+ * entry) and an inline "N MCP tools" count in `description`. All three drift
+ * silently — the file was 10 minor versions behind when this sync was added.
+ */
+interface ServerJsonShape {
+  version?: string;
+  description?: string;
+  packages?: Array<Record<string, unknown>>;
+  [k: string]: unknown;
+}
+
+function syncServerVersionFields(server: ServerJsonShape, pkgVersion: string): boolean {
+  let dirty = false;
+  if (server.version !== pkgVersion) {
+    server.version = pkgVersion;
+    dirty = true;
+  }
+  if (Array.isArray(server.packages)) {
+    for (const pkgEntry of server.packages) {
+      if (pkgEntry['version'] !== pkgVersion) {
+        pkgEntry['version'] = pkgVersion;
+        dirty = true;
+      }
+    }
+  }
+  return dirty;
+}
+
+function syncServerToolCount(server: ServerJsonShape, toolCount: number): boolean {
+  if (typeof server.description !== 'string') return false;
+  const updated = server.description.replace(/(\d+) MCP tools/, `${String(toolCount)} MCP tools`);
+  if (updated === server.description) return false;
+  server.description = updated;
+  return true;
+}
+
+function syncServerJson(toolCount: number): void {
+  if (!existsSync(PACKAGE_JSON_PATH) || !existsSync(SERVER_JSON_PATH)) return;
+  const pkgVersion = (JSON.parse(readFileSync(PACKAGE_JSON_PATH, 'utf-8')) as { version?: string })
+    .version;
+  if (typeof pkgVersion !== 'string' || pkgVersion.length === 0) return;
+
+  const server = JSON.parse(readFileSync(SERVER_JSON_PATH, 'utf-8')) as ServerJsonShape;
+  const versionDirty = syncServerVersionFields(server, pkgVersion);
+  const countDirty = syncServerToolCount(server, toolCount);
+  if (versionDirty || countDirty) {
+    writeFileSync(SERVER_JSON_PATH, JSON.stringify(server, null, 2) + '\n');
+  }
+}
+
+/**
+ * CI drift probe for server.json (#2327). Mirrors checkPluginVersion: fails
+ * when version OR description's tool count is stale. The two `packages[].version`
+ * fields aren't separately probed — they're written by the same syncServerJson
+ * step, so a drift there indicates the sync didn't run, which the top-level
+ * version check already catches.
+ */
+function checkServerJson(toolCount: number): boolean {
+  if (!existsSync(PACKAGE_JSON_PATH) || !existsSync(SERVER_JSON_PATH)) return true;
+  const pkgVersion = (JSON.parse(readFileSync(PACKAGE_JSON_PATH, 'utf-8')) as { version?: string })
+    .version;
+  const server = JSON.parse(readFileSync(SERVER_JSON_PATH, 'utf-8')) as ServerJsonShape;
+
+  let ok = true;
+  if (server.version !== pkgVersion) {
+    console.error(
+      `❌ server.json version: server.json has ${String(server.version)}, package.json has ${String(pkgVersion)}`
+    );
+    ok = false;
+  }
+  if (typeof server.description === 'string') {
+    const match = /(\d+) MCP tools/.exec(server.description);
+    if (match !== null && match[1] !== String(toolCount)) {
+      console.error(
+        `❌ server.json description: claims "${String(match[1])} MCP tools", canonical count is ${String(toolCount)}`
+      );
+      ok = false;
+    }
+  }
+  return ok;
 }
 
 // CLI interface

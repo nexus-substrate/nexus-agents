@@ -16,14 +16,14 @@ Nexus Agents makes your AI coding tools work together intelligently. It coordina
 
 ### Key Capabilities
 
-- **Intelligent Routing** — 9-stage CompositeRouter with LinUCB bandit, TOPSIS multi-criteria, and adaptive bonuses. Learns from outcomes.
-- **Multi-Expert Orchestration** — 9 specialized experts (code, architecture, security, testing, docs, devops, research, PM, UX) coordinated by TechLead/Orchestrator agents
-- **Consensus Voting** — 7 algorithms including higher-order Bayesian aggregation with correlation awareness
+- **Intelligent Routing** — Multi-stage CompositeRouter (TOPSIS, LinUCB bandit, distilled-rule short-circuit, weather-aware penalties). Learns from outcomes.
+- **Multi-Expert Orchestration** — Specialized expert agents (code, architecture, security, testing, docs, devops, research, PM, UX, infrastructure, QA, data-visualization) coordinated by an Orchestrator.
+- **Consensus Voting** — Six aggregation strategies: simple/super-majority, unanimous, higher-order Bayesian, opinion-wise, proof-of-learning.
 - **Development Pipeline** — Research → Plan → Vote → Decompose → Implement → QA → Security. Autonomous, harness, and dry-run modes.
-- **Memory & Learning** — 8 backends (session, belief, adaptive, routing, graph, hybrid, agentic, typed) with cross-session persistence
-- **29 MCP Tools** — Agent management, workflow execution, research, memory, codebase intelligence, repo analysis, consensus, operations
-- **Research System** — 9 discovery sources (arXiv, GitHub, Semantic Scholar, etc) with auto-catalog and synthesis
-- **Security** — Sandboxing, trust classification, SARIF parsing, input sanitization, red team pipeline
+- **Memory & Learning** — Multiple backends (session, belief, adaptive, routing, graph, hybrid, agentic, typed) with cross-session persistence.
+- **MCP Tools** — Agent management, workflow execution, research, memory, codebase intelligence, repo analysis, consensus, operations. See [docs/ENTRYPOINTS.md](https://github.com/williamzujkowski/nexus-agents/blob/main/docs/ENTRYPOINTS.md) for the canonical list.
+- **Research System** — Discovery across arXiv, GitHub, Semantic Scholar, and other sources with auto-catalog and synthesis.
+- **Security** — Sandboxing, trust classification, SARIF parsing, input sanitization, red team pipeline.
 
 ---
 
