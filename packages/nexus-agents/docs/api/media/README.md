@@ -12,22 +12,22 @@
 
 ## Why Nexus Agents?
 
-**Nexus-agents is a governance layer that sits above your AI coding agents** — Claude Code, Codex, Gemini, OpenCode (and, via adapters, Devin / Factory). The agents do the engineering; nexus-agents enforces the rules they have to follow, reviews their work adversarially before it ships, audits everything they touch, and routes the next task based on what actually worked.
+**Nexus-agents is a governance layer that sits above your AI coding agents** — Claude Code, Codex, Gemini, and OpenCode. The agents do the engineering; nexus-agents enforces the rules they have to follow, reviews their work adversarially before it ships, audits everything they touch, and routes the next task based on what actually worked.
 
 **What it gives you:**
 
-- **Adversarial PR review** — `pr_review` runs 5 voter roles (architect, security, devex, catfish, scope_steward) with a 4-point verification gate that catches false positives. Empirically: 100% bug-catch on diff-readable bugs, 0% strict false-positive rate
+- **Adversarial PR review** — `pr_review` runs 5 voter roles (architect, security, devex, catfish, scope_steward) with a 4-point verification gate. On the v5 evaluation set (10 PRs): 100% bug-catch and 50% raw false-positive rate; manual triage reclassified most "FPs" as legitimate findings the dataset had mislabeled. Full numbers: [docs/research/pr-review-experiment-results-v5.md](docs/research/pr-review-experiment-results-v5.md)
 - **Drift-detected charter** — `CLAUDE.md` + `governance:check` + blocking CI gates fail the build when documented rules drift from registered behavior (model registry, MCP tools, expert types, skills)
 - **Immutable audit trail** — every tool call, every voter decision, every routing choice flows through `AuditTrail` with structured logging and (in flight) hash-chained append-only storage
 - **Closed-loop routing** — `OutcomeStore` feeds production telemetry back into LinUCB + TOPSIS scoring so the system actually learns from what shipped vs what regressed
-- **Multi-voter consensus** — 6 strategies (simple/super-majority, unanimous, higher-order Bayesian, opinion-wise, proof-of-learning) for proposals where one agent's word isn't enough
+- **Multi-voter consensus** — `consensus_vote` runs a default 7-role panel (architect, security, devex, ai_ml, pm, catfish, scope_steward; `--quick` uses 3). Six strategies: simple/super-majority, unanimous, higher-order Bayesian, opinion-wise, proof-of-learning
 
 ```
 You:               "Review this PR / orchestrate this task / vote on this proposal"
                     ↓
 nexus-agents:       enforce rules → route → adversarial review → audit → learn from outcome
                     ↓
-Engineering agents: Claude Code · Codex · Gemini · OpenCode · (Devin / Factory adapters)
+Engineering agents: Claude Code · Codex · Gemini · OpenCode
                     ↓
 Code:               actual edits, tests, PRs, issues
 ```
@@ -54,7 +54,7 @@ Code:               actual edits, tests, PRs, issues
   │   Role registry             Multi-voter consensus    │
   │   Immutable audit trail     Closed-loop telemetry    │
   │                                                       │
-  │   34 MCP tools · 9-stage CompositeRouter             │
+  │   34 MCP tools · multi-stage CompositeRouter         │
   └────────────────────────┬────────────────────────────┘
                            │
                            ▼ delegates execution to
@@ -62,7 +62,6 @@ Code:               actual edits, tests, PRs, issues
   │  ENGINEERING AGENTS — what does the actual work      │
   │                                                       │
   │   Claude Code · Codex · Gemini · OpenCode            │
-  │   (Devin / Factory adapters in flight)               │
   └────────────────────────┬────────────────────────────┘
                            │
                            ▼ produces
