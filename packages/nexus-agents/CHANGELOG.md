@@ -1,5 +1,13 @@
 # nexus-agents
 
+## 2.63.4
+
+### Patch Changes
+
+- [#2335](https://github.com/williamzujkowski/nexus-agents/pull/2335) [`c19e950`](https://github.com/williamzujkowski/nexus-agents/commit/c19e9508d97221c92f2c67ec1b256ed4a22c30b4) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - README accuracy: hash-chained audit storage is shipped, not "in flight" ([#2289](https://github.com/williamzujkowski/nexus-agents/issues/2289) follow-up to second-pass audit).
+  - The `verify_audit_chain` MCP tool wraps `verifyChain()` over `FileAuditStorage`, both shipped since 2026-04-29 (PR [#2289](https://github.com/williamzujkowski/nexus-agents/issues/2289)). README's two "(in flight)" qualifiers were stale; now describe the storage as available and point at the verification tool.
+  - Capability table's `pr_review` row was inconsistent with the lead bullet: PR [#2332](https://github.com/williamzujkowski/nexus-agents/issues/2332) added the 50% raw false-positive rate + n=10 + source link to the bullet but missed the table row. Both surfaces now agree.
+
 ## 2.63.3
 
 ### Patch Changes
