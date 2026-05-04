@@ -172,9 +172,12 @@ function extractCLICommands(): CLICommand[] {
 function extractMCPTools(): MCPTool[] {
   const content = fs.readFileSync(MCP_TOOLS_INDEX, 'utf-8');
 
-  // Parse the canonical tools array from the registerTools() return value
-  // Same approach as inject-governance.ts — single source of truth
-  const toolsMatch = content.match(/tools:\s*\[([\s\S]*?)\]/);
+  // Source of truth is the module-level `REGISTERED_TOOL_NAMES` const
+  // (extracted out of `registerTools()` to fit the max-lines-per-function
+  // gate). Fall back to the inline `tools: [...]` shape for older checkouts.
+  const toolsMatch =
+    content.match(/REGISTERED_TOOL_NAMES\s*=\s*\[([\s\S]*?)\]\s*as const/) ??
+    content.match(/tools:\s*\[([\s\S]*?)\]/);
   if (toolsMatch?.[1] === undefined) {
     console.error('Could not parse tools array from MCP tools index');
     return [];

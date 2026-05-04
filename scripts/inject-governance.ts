@@ -254,8 +254,13 @@ function extractMcpTools(): ToolMetadata[] {
 
   const content = readFileSync(TOOLS_INDEX, 'utf-8');
 
-  // Extract the tools array from the return statement
-  const toolsMatch = content.match(/tools:\s*\[([\s\S]*?)\]/);
+  // Extract the tools array. Source of truth is the module-level
+  // `REGISTERED_TOOL_NAMES` const (extracted out of `registerTools()` to fit
+  // the max-lines-per-function gate). Fall back to the inline `tools: [...]`
+  // shape for older checkouts that haven't migrated yet.
+  const toolsMatch =
+    content.match(/REGISTERED_TOOL_NAMES\s*=\s*\[([\s\S]*?)\]\s*as const/) ??
+    content.match(/tools:\s*\[([\s\S]*?)\]/);
   if (toolsMatch?.[1] === undefined) {
     console.error('Could not parse tools array from index.ts');
     return [];
