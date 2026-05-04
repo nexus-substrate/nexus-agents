@@ -167,7 +167,7 @@ describe('ExpertParticipationSchema', () => {
 
   it('should validate all roles', () => {
     const roles = [
-      'tech_lead',
+      'orchestrator',
       'code_expert',
       'architecture_expert',
       'security_expert',

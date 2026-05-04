@@ -14,14 +14,9 @@ export type AgentState = 'idle' | 'thinking' | 'acting' | 'waiting' | 'error';
 
 /**
  * Predefined agent roles.
- *
- * @remarks
- * 'orchestrator' is the preferred name for the coordination agent (Issue #759).
- * 'tech_lead' is retained for backward compatibility but will be deprecated in v3.0.
  */
 export type AgentRole =
-  | 'orchestrator' // Preferred: Coordinates multi-agent workflows (Issue #759)
-  | 'tech_lead' // @deprecated Use 'orchestrator' instead. Retained for backward compatibility.
+  | 'orchestrator' // Coordinates multi-agent workflows (Issue #759)
   | 'code_expert'
   | 'architecture_expert'
   | 'security_expert'
@@ -41,9 +36,8 @@ export type AgentRole =
 
 /**
  * Role type for the orchestration/coordination agent.
- * Includes both 'orchestrator' (preferred) and 'tech_lead' (deprecated).
  */
-export type OrchestratorRole = Extract<AgentRole, 'orchestrator' | 'tech_lead'>;
+export type OrchestratorRole = Extract<AgentRole, 'orchestrator'>;
 
 /**
  * Agent capabilities.

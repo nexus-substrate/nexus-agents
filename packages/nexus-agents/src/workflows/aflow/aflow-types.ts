@@ -293,7 +293,7 @@ export interface ActionSpaceConfig {
  */
 export const DEFAULT_ACTION_SPACE_CONFIG: ActionSpaceConfig = {
   availableAgents: [
-    'tech_lead',
+    'orchestrator',
     'code_expert',
     'security_expert',
     'architecture_expert',

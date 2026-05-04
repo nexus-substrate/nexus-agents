@@ -31,7 +31,7 @@ export const SkillPermissionSchema = z.enum([
  * Zod schema for AgentRole (mirrors core/types/agent.ts).
  */
 export const AgentRoleSchema = z.enum([
-  'tech_lead',
+  'orchestrator',
   'code_expert',
   'architecture_expert',
   'security_expert',

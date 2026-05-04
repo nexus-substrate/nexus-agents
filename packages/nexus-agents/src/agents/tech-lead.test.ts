@@ -108,8 +108,8 @@ describe('Orchestrator', () => {
     it('should initialize with default options', () => {
       const orchestrator = new Orchestrator();
 
-      expect(orchestrator.id).toBe('tech-lead');
-      expect(orchestrator.role).toBe('tech_lead');
+      expect(orchestrator.id).toBe('orchestrator');
+      expect(orchestrator.role).toBe('orchestrator');
       expect(orchestrator.state).toBe('idle');
       expect(orchestrator.capabilities).toContain('task_execution');
       expect(orchestrator.capabilities).toContain('delegation');
@@ -148,10 +148,10 @@ describe('Orchestrator', () => {
       expect(mockLogger).toBeDefined();
     });
 
-    it('should enforce tech_lead role', () => {
+    it('should enforce orchestrator role', () => {
       // Even if we try to pass a different role via options, constructor overrides
       const orchestrator = new Orchestrator();
-      expect(orchestrator.role).toBe('tech_lead');
+      expect(orchestrator.role).toBe('orchestrator');
     });
   });
 
@@ -1069,8 +1069,8 @@ describe('Orchestrator', () => {
       const orchestrator = createOrchestrator();
 
       expect(orchestrator).toBeInstanceOf(Orchestrator);
-      expect(orchestrator.id).toBe('tech-lead');
-      expect(orchestrator.role).toBe('tech_lead');
+      expect(orchestrator.id).toBe('orchestrator');
+      expect(orchestrator.role).toBe('orchestrator');
     });
 
     it('should create Orchestrator with custom options', () => {

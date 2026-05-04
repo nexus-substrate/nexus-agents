@@ -93,7 +93,7 @@ export const ModelPreferenceSchema = z.object({
  * Zod schema for AgentRole enum values.
  */
 const AgentRoleSchema = z.enum([
-  'tech_lead',
+  'orchestrator',
   'code_expert',
   'architecture_expert',
   'security_expert',

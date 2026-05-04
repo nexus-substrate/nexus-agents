@@ -100,7 +100,7 @@ export interface SkillRBAC {
  */
 export const DEFAULT_RBAC: SkillRBAC = {
   allowedRoles: [
-    'tech_lead',
+    'orchestrator',
     'code_expert',
     'architecture_expert',
     'security_expert',

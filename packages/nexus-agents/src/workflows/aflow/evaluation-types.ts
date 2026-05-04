@@ -31,7 +31,7 @@ export const DEFAULT_EVALUATION_WEIGHTS: EvaluationWeights = {
  * Valid agent roles for workflow steps.
  */
 export const VALID_AGENT_ROLES = new Set<string>([
-  'tech_lead',
+  'orchestrator',
   'code_expert',
   'security_expert',
   'architecture_expert',

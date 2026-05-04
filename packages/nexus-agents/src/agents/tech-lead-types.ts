@@ -216,7 +216,6 @@ export const SubTaskSchema = z.object({
   assignedRole: z
     .enum([
       'orchestrator',
-      'tech_lead', // @deprecated - use 'orchestrator'
       'code_expert',
       'architecture_expert',
       'security_expert',
@@ -278,7 +277,6 @@ export const ExpertAssignmentSchema = z.object({
   subtaskId: z.string().min(1),
   expertRole: z.enum([
     'orchestrator',
-    'tech_lead', // @deprecated - use 'orchestrator'
     'code_expert',
     'architecture_expert',
     'security_expert',
@@ -355,7 +353,6 @@ export const OrchestratorOptionsSchema = z.object({
  */
 export const EXPERT_CAPABILITIES: Readonly<Record<AgentRole, readonly string[]>> = {
   orchestrator: ['task_execution', 'delegation', 'collaboration', 'research'],
-  tech_lead: ['task_execution', 'delegation', 'collaboration', 'research'], // @deprecated - same as orchestrator
   code_expert: ['task_execution', 'code_generation', 'code_review', 'tool_use'],
   architecture_expert: ['task_execution', 'research', 'collaboration'],
   security_expert: ['task_execution', 'code_review', 'research'],

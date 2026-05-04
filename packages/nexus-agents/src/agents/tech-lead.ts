@@ -200,8 +200,8 @@ export class Orchestrator extends BaseAgent {
       OrchestratorExtendedOptions & { techLeadOptions?: OrchestratorOptions } = {}
   ) {
     const baseOptions: BaseAgentOptions = {
-      id: options.id ?? 'tech-lead',
-      role: 'tech_lead',
+      id: options.id ?? 'orchestrator',
+      role: 'orchestrator',
       capabilities: options.capabilities ?? [
         'task_execution',
         'delegation',

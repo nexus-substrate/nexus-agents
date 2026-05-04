@@ -181,7 +181,7 @@ inputs:
     description: Configuration object
 steps:
   - id: main_step
-    agent: tech_lead
+    agent: orchestrator
     action: coordinate
     inputs: {}
     parallel: true
@@ -661,7 +661,7 @@ steps:
       - security_check
 
   - id: final_review
-    agent: tech_lead
+    agent: orchestrator
     action: review
     inputs: {}
     dependsOn:

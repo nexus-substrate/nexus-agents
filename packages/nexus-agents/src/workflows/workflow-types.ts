@@ -51,7 +51,6 @@ export type InputDefinitionOutput = z.output<typeof InputDefinitionSchema>;
  */
 export const AgentRoleSchema = z.enum([
   'orchestrator',
-  'tech_lead', // @deprecated - use 'orchestrator'
   'code_expert',
   'architecture_expert',
   'security_expert',

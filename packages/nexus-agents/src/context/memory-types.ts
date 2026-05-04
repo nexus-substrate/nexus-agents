@@ -216,7 +216,6 @@ export interface RelevanceFilterConfig {
 export const DEFAULT_RELEVANCE_CONFIG: RelevanceFilterConfig = {
   roleMemoryTypes: {
     orchestrator: [MemoryType.CORE, MemoryType.EPISODIC, MemoryType.VAULT, MemoryType.BELIEF],
-    tech_lead: [MemoryType.CORE, MemoryType.EPISODIC, MemoryType.VAULT, MemoryType.BELIEF], // @deprecated - same as orchestrator
     code_expert: [MemoryType.PROCEDURAL, MemoryType.RESOURCE, MemoryType.EPISODIC],
     architecture_expert: [
       MemoryType.SEMANTIC,

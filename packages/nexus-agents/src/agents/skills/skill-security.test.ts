@@ -113,7 +113,7 @@ describe('Skill Security - Zod Schemas', () => {
   describe('SkillRBACSchema', () => {
     it('should accept valid RBAC configuration', () => {
       const rbac: SkillRBAC = {
-        allowedRoles: ['tech_lead', 'code_expert'],
+        allowedRoles: ['orchestrator', 'code_expert'],
         requiresAttestation: false,
       };
       expect(SkillRBACSchema.safeParse(rbac).success).toBe(true);
@@ -121,7 +121,7 @@ describe('Skill Security - Zod Schemas', () => {
 
     it('should accept RBAC with denied roles', () => {
       const rbac: SkillRBAC = {
-        allowedRoles: ['tech_lead'],
+        allowedRoles: ['orchestrator'],
         deniedRoles: ['custom'],
         requiresAttestation: true,
       };
@@ -212,16 +212,16 @@ describe('Skill Security - Zod Schemas', () => {
 describe('Skill Security - canExecuteSkill', () => {
   it('should allow execution for roles in allowedRoles', () => {
     const rbac: SkillRBAC = {
-      allowedRoles: ['tech_lead', 'code_expert'],
+      allowedRoles: ['orchestrator', 'code_expert'],
       requiresAttestation: false,
     };
-    expect(canExecuteSkill('tech_lead', rbac)).toBe(true);
+    expect(canExecuteSkill('orchestrator', rbac)).toBe(true);
     expect(canExecuteSkill('code_expert', rbac)).toBe(true);
   });
 
   it('should deny execution for roles not in allowedRoles', () => {
     const rbac: SkillRBAC = {
-      allowedRoles: ['tech_lead'],
+      allowedRoles: ['orchestrator'],
       requiresAttestation: false,
     };
     expect(canExecuteSkill('custom', rbac)).toBe(false);
@@ -229,21 +229,21 @@ describe('Skill Security - canExecuteSkill', () => {
 
   it('should deny execution for roles in deniedRoles even if in allowedRoles', () => {
     const rbac: SkillRBAC = {
-      allowedRoles: ['tech_lead', 'code_expert', 'custom'],
+      allowedRoles: ['orchestrator', 'code_expert', 'custom'],
       deniedRoles: ['custom'],
       requiresAttestation: false,
     };
-    expect(canExecuteSkill('tech_lead', rbac)).toBe(true);
+    expect(canExecuteSkill('orchestrator', rbac)).toBe(true);
     expect(canExecuteSkill('custom', rbac)).toBe(false);
   });
 
   it('should handle empty deniedRoles', () => {
     const rbac: SkillRBAC = {
-      allowedRoles: ['tech_lead'],
+      allowedRoles: ['orchestrator'],
       deniedRoles: [],
       requiresAttestation: false,
     };
-    expect(canExecuteSkill('tech_lead', rbac)).toBe(true);
+    expect(canExecuteSkill('orchestrator', rbac)).toBe(true);
   });
 });
 
@@ -394,7 +394,7 @@ describe('Skill Security - validateCapabilities', () => {
 describe('Skill Security - validateRBAC', () => {
   it('should accept valid RBAC', () => {
     const rbac: SkillRBAC = {
-      allowedRoles: ['tech_lead'],
+      allowedRoles: ['orchestrator'],
       requiresAttestation: false,
     };
     const result = validateRBAC(rbac);
@@ -403,7 +403,7 @@ describe('Skill Security - validateRBAC', () => {
 
   it('should reject RBAC with overlapping allowed and denied roles', () => {
     const rbac: SkillRBAC = {
-      allowedRoles: ['tech_lead', 'code_expert'],
+      allowedRoles: ['orchestrator', 'code_expert'],
       deniedRoles: ['code_expert'],
       requiresAttestation: false,
     };
@@ -424,12 +424,12 @@ describe('Skill Security - validateSkillExecution', () => {
   };
 
   const validRbac: SkillRBAC = {
-    allowedRoles: ['tech_lead', 'code_expert'],
+    allowedRoles: ['orchestrator', 'code_expert'],
     requiresAttestation: false,
   };
 
   it('should allow valid execution', () => {
-    const result = validateSkillExecution('tech_lead', validCapabilities, validRbac, ['read']);
+    const result = validateSkillExecution('orchestrator', validCapabilities, validRbac, ['read']);
     expect(result.ok).toBe(true);
   });
 
@@ -442,7 +442,9 @@ describe('Skill Security - validateSkillExecution', () => {
   });
 
   it('should reject permissions outside boundary', () => {
-    const result = validateSkillExecution('tech_lead', validCapabilities, validRbac, ['network']);
+    const result = validateSkillExecution('orchestrator', validCapabilities, validRbac, [
+      'network',
+    ]);
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.code).toBe('PERMISSION_DENIED');
@@ -455,7 +457,7 @@ describe('Skill Security - validateSkillExecution', () => {
       maxExecutionTime: 30000,
       sandboxed: false,
     };
-    const result = validateSkillExecution('tech_lead', badCapabilities, validRbac, ['spawn']);
+    const result = validateSkillExecution('orchestrator', badCapabilities, validRbac, ['spawn']);
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.code).toBe('SANDBOX_VIOLATION');
