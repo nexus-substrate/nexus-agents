@@ -148,43 +148,49 @@ function selectStageRegistry(
 // Tool Registration
 // ============================================================================
 
+const RUN_PIPELINE_DESCRIPTION =
+  'Single unified entry point for all pipeline templates (dev/research/audit/greenfield). Auto-detects template from task content or accepts an explicit override.';
+
 /** Register the run_pipeline MCP tool. */
 export function registerPipelineTool(
   server: McpServer,
   _deps: { logger: unknown; rateLimiter: unknown }
 ): void {
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- matches existing tool registration pattern
-  server.tool('run_pipeline', PipelineInputSchema.shape, async (args) => {
-    const input = PipelineInputSchema.parse(args);
-    if (input.simulateVotes) {
-      warnIfSimulatedOutsideTests('run_pipeline', createLogger({ tool: 'run_pipeline' }));
+  server.registerTool(
+    'run_pipeline',
+    { description: RUN_PIPELINE_DESCRIPTION, inputSchema: PipelineInputSchema.shape },
+    async (args) => {
+      const input = PipelineInputSchema.parse(args);
+      if (input.simulateVotes) {
+        warnIfSimulatedOutsideTests('run_pipeline', createLogger({ tool: 'run_pipeline' }));
+      }
+
+      try {
+        const task = resolveTask(input.task, input.specFile);
+        const agentStages = createAgentStages({
+          simulateVotes: input.simulateVotes,
+          votingStrategy: input.votingStrategy,
+          quickMode: input.quickMode,
+        });
+        const stages = selectStageRegistry(input.template, task, agentStages);
+
+        const result = await runAdaptiveOrchestrator(task, {
+          stages,
+          templateId: input.template,
+          dryRun: input.dryRun,
+        });
+
+        const structured = buildOutput(result);
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(structured, null, 2) }],
+          structuredContent: structured,
+        };
+      } catch (error: unknown) {
+        return {
+          content: [{ type: 'text' as const, text: `Pipeline error: ${getErrorMessage(error)}` }],
+          isError: true,
+        };
+      }
     }
-
-    try {
-      const task = resolveTask(input.task, input.specFile);
-      const agentStages = createAgentStages({
-        simulateVotes: input.simulateVotes,
-        votingStrategy: input.votingStrategy,
-        quickMode: input.quickMode,
-      });
-      const stages = selectStageRegistry(input.template, task, agentStages);
-
-      const result = await runAdaptiveOrchestrator(task, {
-        stages,
-        templateId: input.template,
-        dryRun: input.dryRun,
-      });
-
-      const structured = buildOutput(result);
-      return {
-        content: [{ type: 'text' as const, text: JSON.stringify(structured, null, 2) }],
-        structuredContent: structured,
-      };
-    } catch (error: unknown) {
-      return {
-        content: [{ type: 'text' as const, text: `Pipeline error: ${getErrorMessage(error)}` }],
-        isError: true,
-      };
-    }
-  });
+  );
 }
