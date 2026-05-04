@@ -13,7 +13,7 @@ import type { IOrchestrator, OrchestratorType } from '../../core/types/orchestra
 import type { WorkflowPattern } from '../../orchestration/workflow-router-types.js';
 import type { IMcpNotifier } from '../mcp-notifier.js';
 import type { BaseMcpToolDeps } from './tool-result.js';
-import type { ExecutionPlan, Expert } from '../../agents/index.js';
+import type { ExecutionPlan } from '../../agents/index.js';
 import { OrchestratorFactory } from '../../orchestration/orchestrator-factory.js';
 
 // ============================================================================
@@ -101,8 +101,8 @@ export const ORCHESTRATE_TOOL_SCHEMA = {
 // ============================================================================
 
 /**
- * @deprecated Use IOrchestrator from core/types/orchestrator.js instead.
- * Will be removed in v3.0. (Issue #595, #759)
+ * Internal task-executor shape used by the SICA orchestrator wrapping cascade.
+ * Not exported on public barrels — consumers should use `IOrchestrator`.
  */
 export interface ITechLead {
   execute(
@@ -110,30 +110,9 @@ export interface ITechLead {
   ): Promise<Result<{ taskId: string; output: unknown; metadata: unknown }, AgentError>>;
 }
 
-/**
- * Preferred alias for ITechLead.
- * @deprecated Use IOrchestrator from core/types/orchestrator.js for new code.
- */
-// eslint-disable-next-line @typescript-eslint/no-deprecated -- Intentional: backward compat alias
-export type IOrchestratorLegacy = ITechLead;
-
-/**
- * @deprecated Not used with unified orchestrator pattern.
- * Will be removed in v3.0. (Issue #595)
- */
-export interface IExpertFactory {
-  createBuiltIn(type: string): Result<Expert, AgentError>;
-}
-
 export interface OrchestrateDeps extends BaseMcpToolDeps {
   /** Pre-configured orchestrator instance (unified interface). */
   orchestrator?: IOrchestrator;
-  /** @deprecated Use orchestrator instead. Will be removed in v3.0. */
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Intentional: deprecated API for backwards compat
-  techLead?: ITechLead;
-  /** @deprecated Not used with unified orchestrator pattern. Will be removed in v3.0. */
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Intentional: deprecated API for backwards compat
-  expertFactory?: IExpertFactory;
   /** Model adapter for fallback orchestration path (Issue #827) */
   modelAdapter?: import('../../core/index.js').IModelAdapter | undefined;
   /** MCP notifier for client-visible logging (Issue #974) */
@@ -182,10 +161,9 @@ export class OrchestrationUnavailableError extends AgentError {
 // ============================================================================
 
 /**
- * @deprecated Use createMockOrchestrator instead. Will be removed in v3.0.
+ * Internal mock task executor used by `createMockOrchestrator`. Not exported.
  */
-// eslint-disable-next-line @typescript-eslint/no-deprecated -- Deprecated export for backwards compatibility
-export function createMockTechLead(): ITechLead {
+function createMockTaskExecutor(): ITechLead {
   return {
     execute(task: Task) {
       const complexity = clamp(Math.floor(task.description.length / 50), 1, 10);
@@ -229,10 +207,9 @@ export function createMockTechLead(): ITechLead {
 
 /** Creates a mock orchestrator for testing (Issue #595). */
 export function createMockOrchestrator(): IOrchestrator {
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Using deprecated for backwards compat
-  const mockTechLead = createMockTechLead();
+  const mockExecutor = createMockTaskExecutor();
   const factory = new OrchestratorFactory({
-    techLead: mockTechLead as { execute: (task: unknown) => Promise<Result<unknown, unknown>> },
+    techLead: mockExecutor as { execute: (task: unknown) => Promise<Result<unknown, unknown>> },
   });
   return factory.create('tech_lead');
 }

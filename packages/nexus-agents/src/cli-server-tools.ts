@@ -48,14 +48,15 @@ import {
   registerSearchCodebaseTool,
   createDefaultDeps,
 } from './mcp/index.js';
-// Import mock directly from source (not public API - used as fallback when no adapter)
-import { createMockTechLead } from './mcp/tools/orchestrate.js';
+import { createMockOrchestrator } from './mcp/tools/orchestrate-types.js';
+import { OrchestratorFactory } from './orchestration/orchestrator-factory.js';
+import type { IOrchestrator } from './core/types/orchestrator.js';
 import { registerDevPipelineTool } from './mcp/tools/dev-pipeline-tool.js';
 import { registerPipelineTool } from './mcp/tools/pipeline-tool.js';
 
 import type { Expert } from './agents/index.js';
 import { createRealWorkflowEngine } from './workflows/index.js';
-import type { IModelAdapter, WorkflowDefinition } from './core/index.js';
+import type { IModelAdapter, Result, WorkflowDefinition } from './core/index.js';
 import { getErrorMessage, NexusError, ErrorCode } from './core/index.js';
 
 import { Orchestrator } from './agents/index.js';
@@ -177,14 +178,20 @@ const MOCK_ORCHESTRATION_ENV = 'NEXUS_ALLOW_MOCK_ORCHESTRATION';
  *
  * @throws {OrchestratorUnavailableError} When no adapter and mock not explicitly requested
  */
-/* eslint-disable @typescript-eslint/no-deprecated -- Intentional: backwards compat, will migrate to IOrchestrator (Issue #595) */
 function createOrchestratorForOrchestration(
   modelAdapter: IModelAdapter | undefined,
   logger: ILogger,
   useMockTechLead?: boolean
-): import('./mcp/tools/orchestrate.js').ITechLead {
+): IOrchestrator {
   if (modelAdapter !== undefined) {
-    return new Orchestrator({ adapter: modelAdapter, logger });
+    const orchestratorAgent = new Orchestrator({ adapter: modelAdapter, logger });
+    const factory = new OrchestratorFactory({
+      logger,
+      techLead: orchestratorAgent as unknown as {
+        execute: (task: unknown) => Promise<Result<unknown, unknown>>;
+      },
+    });
+    return factory.create('tech_lead');
   }
 
   // Issue #554/#540: Check both config option and environment variable
@@ -196,7 +203,7 @@ function createOrchestratorForOrchestration(
     logger.warn(
       `Using mock orchestrator as explicitly configured via ${source} (no real adapter available)`
     );
-    return createMockTechLead();
+    return createMockOrchestrator();
   }
 
   throw new OrchestratorUnavailableError(
@@ -205,7 +212,6 @@ function createOrchestratorForOrchestration(
       'or configure an API key (ANTHROPIC_API_KEY, OPENAI_API_KEY, or GOOGLE_AI_API_KEY).'
   );
 }
-/* eslint-enable @typescript-eslint/no-deprecated */
 
 /** Tool registration context passed to helpers. */
 interface ToolRegistrationContext {
@@ -387,7 +393,7 @@ function registerOrchestrateToolSafe(ctx: ToolRegistrationContext): void {
       ctx.useMockTechLead
     );
     registerOrchestrateTool(ctx.server, {
-      techLead: orchestrator,
+      orchestrator,
       logger: ctx.logger,
       rateLimiter: ctx.rateLimiterFactory.getForTool('orchestrate'),
       security: ctx.securityConfig,

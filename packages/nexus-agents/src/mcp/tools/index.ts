@@ -48,10 +48,6 @@ export {
   type OrchestrateInput,
   type OrchestrateOutput,
   type OrchestrateDeps,
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Intentional: re-export deprecated API for backwards compat
-  type ITechLead,
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Intentional: re-export deprecated API for backwards compat
-  type IExpertFactory as IOrchestrateExpertFactory,
 } from './orchestrate.js';
 
 // Note: createMockOrchestrator is available for testing via direct import from orchestrate.js
