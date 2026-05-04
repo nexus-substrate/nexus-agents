@@ -26,6 +26,7 @@ import {
   type BaseAgentOptions,
 } from './base-agent.js';
 import { SimpleAgent } from './simple-agent.js';
+import { transitionToState } from './base-agent-state-helpers.js';
 import type { IEventBus, TypedEvent } from './collaboration/event-bus-types.js';
 
 /**
@@ -180,8 +181,11 @@ class TestAgent extends BaseAgent {
   }
 
   testSetState(state: 'idle' | 'thinking' | 'acting' | 'waiting' | 'error'): void {
-    // eslint-disable-next-line @typescript-eslint/no-deprecated -- Test helper for deprecated method
-    this.setState(state);
+    transitionToState({
+      stateMachine: this.stateMachine,
+      logger: this.logger,
+      newState: state,
+    });
   }
 }
 
