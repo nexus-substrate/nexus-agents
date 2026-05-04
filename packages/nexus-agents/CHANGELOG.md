@@ -1,5 +1,49 @@
 # nexus-agents
 
+## 2.64.0
+
+### Minor Changes
+
+- [#2358](https://github.com/williamzujkowski/nexus-agents/pull/2358) [`a5a29d9`](https://github.com/williamzujkowski/nexus-agents/commit/a5a29d9caa28874f6acc3d8d9f99b97be0f2627e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - New MCP tool: `survey_oss_landscape` — transient OSS project search ([#2295](https://github.com/williamzujkowski/nexus-agents/issues/2295), child of [#2293](https://github.com/williamzujkowski/nexus-agents/issues/2293)).
+
+  Returns a ranked list of GitHub repositories matching a free-text query, with license (SPDX), last-commit, star-count, language, and one-line description. **Does NOT persist** to the research registry — for one-off engineering decisions like "what tools exist in this space?" or "should we adopt cargo-nextest?". Use `research_add_source` if you want to add an entry to the registry.
+
+  SSRF-safe by construction: the user-supplied input is a search query string, not a URL. Outbound URL is constructed from a fixed base (`https://api.github.com/search/repositories`); an attacker cannot make us fetch arbitrary endpoints.
+
+  v1 is GitHub-only. Codeberg + GitLab providers can be added when there's demand. Authenticated calls (5000 req/hr) are used when `GITHUB_TOKEN` is available; otherwise falls back to the unauthenticated 60 req/hr quota.
+
+  Tool count: 34 → 35.
+
+- [#2363](https://github.com/williamzujkowski/nexus-agents/pull/2363) [`0b94649`](https://github.com/williamzujkowski/nexus-agents/commit/0b946493a5bf600bbe090c66aa6ce9ca3bf9c983) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - New MCP tool: `vendor_publishing_audit` — vendor signing-infra lookup ([#2296](https://github.com/williamzujkowski/nexus-agents/issues/2296), child of [#2293](https://github.com/williamzujkowski/nexus-agents/issues/2293)).
+
+  Given a vendor identifier (`ubuntu`, `debian`, `fedora`), returns the vendor's published-artifact signing infrastructure: GPG key fingerprints, SHA256SUMS URL pattern, signature shape (clearsigned vs detached vs detached-on-iso), release cadence, key rotation notes, and the authoritative vendor doc citation. Static lookup against a curated seed dataset; the vendor doc URL is the single source of truth.
+
+  Use case: aegis-boot's image catalog needs to know HOW to verify each vendor's published images. v1 covers Ubuntu, Debian, Fedora — the seed shape allows additional vendors to land as data-only PRs.
+
+  Tool count: 35 → 36. Auto-sync via `inject-governance.ts` propagated to all 7 surfaces.
+
+- [#2364](https://github.com/williamzujkowski/nexus-agents/pull/2364) [`dbfe6e4`](https://github.com/williamzujkowski/nexus-agents/commit/dbfe6e409168e4a58eb898bd53fc4b0cc0e8b003) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - New MCP tool: `compare_data_feeds` — diff two YAML/JSON feeds along coverage and per-field axes ([#2297](https://github.com/williamzujkowski/nexus-agents/issues/2297), child of [#2293](https://github.com/williamzujkowski/nexus-agents/issues/2293)).
+
+  Given two file paths to YAML or JSON feeds, returns a structured diff: which entries exist in A, B, both (membership diff), plus optional field-level diffs across matched entries. Use case: aegis-boot's catalog cross-checks against upstream feeds (e.g., netboot.xyz/endpoints.yml) to surface "what's new in A?" or "what fields differ between A and B for entries that exist in both?".
+
+  **v1 takes file paths only.** URL-fetch mode is deferred — fetching arbitrary user-supplied URLs needs an SSRF design pass. For now, users `curl` the remote feed to a local file and pass the path. Path traversal is guarded (must be within cwd subtree).
+
+  Tool count: 36 → 37. Auto-sync via `inject-governance.ts` propagated to all 7 surfaces.
+
+### Patch Changes
+
+- [#2362](https://github.com/williamzujkowski/nexus-agents/pull/2362) [`8b09163`](https://github.com/williamzujkowski/nexus-agents/commit/8b09163f0802b8478668a40de9d71dbb1e5f9936) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Auto-sync MCP tool count + tools[] across all release surfaces ([#2295](https://github.com/williamzujkowski/nexus-agents/issues/2295) follow-up).
+
+  Adding a new MCP tool in [#2358](https://github.com/williamzujkowski/nexus-agents/issues/2358) (`survey_oss_landscape`) required manual edits in 7 places — `server.json` (tools[] array + description prose), `website/src/data/site-data.ts` (`MCP_TOOL_COUNT`), `docs/design/components.md` (3 inline mentions), and `README.md` (architecture diagram + capabilities table). The `Docs Content Drift` CI gate ([#2107](https://github.com/williamzujkowski/nexus-agents/issues/2107)) caught the drift but didn't auto-fix.
+
+  Extended `scripts/inject-governance.ts` to write all of these from the authoritative `STANDALONE_TOOLS` list:
+  - `syncServerJson` now writes `tools[]` (was: only version + description count).
+  - New `syncWebsiteToolCount` updates `MCP_TOOL_COUNT` in site-data.ts.
+  - New `syncDesignDocsToolCount` updates the 3 mentions in components.md.
+  - New `syncReadmeToolCount` updates the 2 mentions in README.md.
+
+  Test files (`tool-annotations.test.ts`, `index.test.ts`, `cli-server-tools.test.ts`) keep their hardcoded counts intentionally — they're contract gates that caught the original drift in PR [#2358](https://github.com/williamzujkowski/nexus-agents/issues/2358) and shouldn't become tautologies.
+
 ## 2.63.6
 
 ### Patch Changes
