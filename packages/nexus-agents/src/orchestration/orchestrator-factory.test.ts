@@ -77,7 +77,7 @@ describe('OrchestratorFactory', () => {
     it('returns all canonical orchestrator types', () => {
       const types = factory.listTypes();
       expect(types).toContain('workflow');
-      expect(types).toContain('tech_lead');
+      expect(types).toContain('orchestrator');
       expect(types).toContain('puppeteer');
       expect(types).toHaveLength(3);
     });
@@ -91,9 +91,9 @@ describe('OrchestratorFactory', () => {
     });
 
     it('creates a tech_lead orchestrator', () => {
-      const orchestrator = factory.create('tech_lead');
+      const orchestrator = factory.create('orchestrator');
       expect(orchestrator).toBeDefined();
-      expect(orchestrator.type).toBe('tech_lead');
+      expect(orchestrator.type).toBe('orchestrator');
     });
 
     it('creates a puppeteer orchestrator', () => {
@@ -117,7 +117,7 @@ describe('OrchestratorFactory', () => {
         { logger: mockLogger, techLead: mockTechLead },
         mockEngine
       );
-      const orchestrator = factoryWithTL.create('tech_lead');
+      const orchestrator = factoryWithTL.create('orchestrator');
       expect(orchestrator).toBeDefined();
     });
 
@@ -175,7 +175,7 @@ describe('WorkflowOrchestratorAdapter', () => {
 
     it('rejects non-workflow definitions', async () => {
       const nonWorkflow = {
-        type: 'tech_lead',
+        type: 'orchestrator',
         task: 'test',
       } as unknown as OrchestratorDefinition;
       const result = await adapter.execute(nonWorkflow, {});

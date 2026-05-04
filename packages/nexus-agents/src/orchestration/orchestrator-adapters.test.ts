@@ -94,7 +94,7 @@ describe('OrchestratorAdapter', () => {
   });
 
   it('has type tech_lead and a generated id', () => {
-    expect(adapter.type).toBe('tech_lead');
+    expect(adapter.type).toBe('orchestrator');
     expect(adapter.id).toContain('orchestrator');
   });
 
@@ -106,7 +106,7 @@ describe('OrchestratorAdapter', () => {
     const result = await adapter.execute(makeTaskDef(), {});
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value.orchestratorType).toBe('tech_lead');
+    expect(result.value.orchestratorType).toBe('orchestrator');
     expect(result.value.output).toEqual({});
     expect(result.value.steps).toHaveLength(1);
   });

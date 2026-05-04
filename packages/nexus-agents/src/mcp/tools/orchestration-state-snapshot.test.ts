@@ -14,7 +14,7 @@ function makeRouting(): RoutingInfo {
     pattern: 'sequential',
     reasoning: 'simple workflow',
     confidence: 0.9,
-    orchestratorType: 'tech_lead',
+    orchestratorType: 'orchestrator',
   };
 }
 

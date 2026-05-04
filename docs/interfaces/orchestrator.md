@@ -4,7 +4,7 @@
 
 `IOrchestrator` is the unified interface for all orchestration strategies in the system. It provides a canonical path for coordinating tasks, workflows, and policy-based executions regardless of the underlying implementation. Three implementations exist:
 
-- **TechLead** (`tech_lead`) — LLM-based task decomposition and expert selection
+- **Orchestrator** (`orchestrator`) — LLM-based task decomposition and expert selection
 - **PuppeteerOrchestrator** (`puppeteer`) — Policy-based step execution with learning
 - **WorkflowEngine** (`workflow`) — Static template-based workflow execution
 
@@ -96,7 +96,7 @@ interface IOrchestratorFactory {
 ### OrchestratorType
 
 ```typescript
-type OrchestratorType = 'tech_lead' | 'puppeteer' | 'workflow' | 'custom';
+type OrchestratorType = 'orchestrator' | 'puppeteer' | 'workflow' | 'custom';
 ```
 
 ### OrchestratorDefinition

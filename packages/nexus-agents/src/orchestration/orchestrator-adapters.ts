@@ -103,7 +103,7 @@ const COMPLETED_STATUS: ExecutionStatus = {
  */
 export class OrchestratorAdapter implements IOrchestrator {
   readonly id = generateId('orchestrator');
-  readonly type: OrchestratorType = 'tech_lead';
+  readonly type: OrchestratorType = 'orchestrator';
   private readonly executions = new Map<string, ExecutionStatus>();
   private readonly history: OrchestratorResult[] = [];
   private readonly logger: ILogger;
@@ -146,7 +146,7 @@ export class OrchestratorAdapter implements IOrchestrator {
     );
     const result = createResult(
       execId,
-      'tech_lead',
+      'orchestrator',
       [step],
       output,
       getTimeProvider().now() - start

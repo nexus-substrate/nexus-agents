@@ -207,7 +207,7 @@ function createOrchestratorFromDeps(
     logger,
     techLead: techLead as { execute: (task: unknown) => Promise<Result<unknown, unknown>> },
   });
-  return factory.create(orchestratorType ?? 'tech_lead');
+  return factory.create(orchestratorType ?? 'orchestrator');
 }
 
 function createErrorOptions(

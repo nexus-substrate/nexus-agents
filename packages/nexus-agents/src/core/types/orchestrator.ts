@@ -19,7 +19,7 @@ import type { ExecutionStatus } from './workflow.js';
 /**
  * Orchestration strategy type.
  */
-export type OrchestratorType = 'tech_lead' | 'puppeteer' | 'workflow' | 'custom';
+export type OrchestratorType = 'orchestrator' | 'puppeteer' | 'workflow' | 'custom';
 
 /**
  * Orchestrator execution options.
@@ -134,7 +134,7 @@ export type OrchestratorErrorCode =
  *
  * @example
  * ```typescript
- * const orchestrator: IOrchestrator = factory.create('tech_lead');
+ * const orchestrator: IOrchestrator = factory.create('orchestrator');
  *
  * const result = await orchestrator.execute(
  *   { type: 'task', task: myTask },

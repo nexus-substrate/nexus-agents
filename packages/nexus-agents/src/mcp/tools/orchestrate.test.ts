@@ -341,7 +341,7 @@ describe('createMockOrchestrator', () => {
     if (result.ok) {
       expect(result.value.executionId).toBeDefined();
       expect(result.value.output).toBeDefined();
-      expect(result.value.orchestratorType).toBe('tech_lead');
+      expect(result.value.orchestratorType).toBe('orchestrator');
     }
   });
 
@@ -669,11 +669,11 @@ describe('Workflow Routing Integration (Issue #846)', () => {
   });
 
   it('maps non-puppeteer patterns to tech_lead', () => {
-    expect(mapPatternToOrchestratorType('sequential')).toBe('tech_lead');
-    expect(mapPatternToOrchestratorType('wave')).toBe('tech_lead');
-    expect(mapPatternToOrchestratorType('graph')).toBe('tech_lead');
-    expect(mapPatternToOrchestratorType('consensus')).toBe('tech_lead');
-    expect(mapPatternToOrchestratorType('aflow')).toBe('tech_lead');
+    expect(mapPatternToOrchestratorType('sequential')).toBe('orchestrator');
+    expect(mapPatternToOrchestratorType('wave')).toBe('orchestrator');
+    expect(mapPatternToOrchestratorType('graph')).toBe('orchestrator');
+    expect(mapPatternToOrchestratorType('consensus')).toBe('orchestrator');
+    expect(mapPatternToOrchestratorType('aflow')).toBe('orchestrator');
   });
 
   it('validates output with routing field', () => {
@@ -693,7 +693,7 @@ describe('Workflow Routing Integration (Issue #846)', () => {
         pattern: 'sequential',
         reasoning: 'Simple task — sequential execution',
         confidence: 0.85,
-        orchestratorType: 'tech_lead',
+        orchestratorType: 'orchestrator',
       },
       result: null,
       stepsCompleted: 1,
