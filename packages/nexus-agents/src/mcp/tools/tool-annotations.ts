@@ -204,6 +204,17 @@ export const TOOL_ANNOTATIONS: Readonly<Record<string, ToolSideEffectsEntry>> = 
     },
     sideEffects: [{ category: 'implicit', description: 'Queries the GitHub search API' }],
   },
+  vendor_publishing_audit: {
+    annotations: {
+      title: 'Vendor Publishing Audit',
+      readOnlyHint: true,
+      destructiveHint: false,
+      // Pure static lookup against the in-process seed dataset.
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    sideEffects: [{ category: 'implicit', description: 'Consumes rate limit quota' }],
+  },
   research_analyze: {
     annotations: {
       title: 'Research Analyze',
