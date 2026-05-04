@@ -103,10 +103,6 @@ export {
   type OrchestrateDeps,
   type RoutingInfo,
 } from './orchestrate-types.js';
-// eslint-disable-next-line @typescript-eslint/no-deprecated -- Re-exporting deprecated types for backwards compat
-export type { ITechLead, IExpertFactory } from './orchestrate-types.js';
-// eslint-disable-next-line @typescript-eslint/no-deprecated -- Re-exporting deprecated API for backwards compat
-export { createMockTechLead } from './orchestrate-types.js';
 
 // ============================================================================
 // Task Creation & Output Building
@@ -206,8 +202,7 @@ function createOrchestratorFromDeps(
   orchestratorType?: OrchestratorType
 ): IOrchestrator {
   if (deps.orchestrator !== undefined) return deps.orchestrator;
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Backwards compatibility
-  const techLead = deps.techLead ?? createOrchestratorWithSica(logger, deps.modelAdapter);
+  const techLead = createOrchestratorWithSica(logger, deps.modelAdapter);
   const factory = new OrchestratorFactory({
     logger,
     techLead: techLead as { execute: (task: unknown) => Promise<Result<unknown, unknown>> },

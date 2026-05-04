@@ -13,7 +13,7 @@ import type { Result, ILogger, Task, AgentError, IModelAdapter } from '../../cor
 import { Orchestrator } from '../../agents/index.js';
 import { SicaAgent, createSicaAgent } from '../../agents/self-improving/sica-agent.js';
 import { isSicaEnabled, getSicaConfig } from '../../cli-server-sica.js';
-import type { ITechLead } from './orchestrate.js';
+import type { ITechLead } from './orchestrate-types.js';
 
 /**
  * Creates an orchestrator agent (optionally wrapped with SICA).
@@ -25,7 +25,7 @@ import type { ITechLead } from './orchestrate.js';
  * @param adapter - Optional model adapter for LLM-based analysis (Issue #827)
  * @returns Orchestrator-compatible agent
  */
-// eslint-disable-next-line @typescript-eslint/no-deprecated -- Intentional: backwards compat (Issue #595)
+
 export function createOrchestratorWithSica(logger: ILogger, adapter?: IModelAdapter): ITechLead {
   const orchestrator = new Orchestrator({ logger, ...(adapter !== undefined ? { adapter } : {}) });
 
@@ -72,7 +72,7 @@ export function createOrchestratorWithSica(logger: ILogger, adapter?: IModelAdap
  *
  * Transforms SicaExecutionResult to the shape expected by orchestrate tool.
  */
-// eslint-disable-next-line @typescript-eslint/no-deprecated -- Intentional: backwards compat (Issue #595)
+
 function createSicaOrchestratorAdapter(sicaAgent: SicaAgent, _logger: ILogger): ITechLead {
   return {
     async execute(
@@ -115,7 +115,7 @@ function createSicaOrchestratorAdapter(sicaAgent: SicaAgent, _logger: ILogger): 
  * This is useful for accessing SICA-specific functionality like
  * version management and improvement history.
  */
-// eslint-disable-next-line @typescript-eslint/no-deprecated -- Intentional: backwards compat (Issue #595)
+
 export function getSicaAgentFromOrchestrator(_orchestrator: ITechLead): SicaAgent | undefined {
   // This function exists for future extensibility when we need
   // to access SICA internals from the wrapped agent.
