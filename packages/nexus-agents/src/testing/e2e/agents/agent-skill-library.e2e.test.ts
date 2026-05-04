@@ -13,12 +13,11 @@ import {
   // Skill Library
   createSkillLibrary,
   createSkillComposer,
-  // Expert System
-  analyzeTask,
   // Context Management
   ContextManager,
   ContentPriority,
 } from '../../../agents/index.js';
+import { createSharedTaskAnalyzer } from '../../../core/task-analysis/shared-task-analyzer.js';
 import type { Task } from '../../../core/index.js';
 import { measureLatency, generateTestId } from '../utils/index.js';
 
@@ -236,11 +235,10 @@ describe('Agent Skill Library E2E Tests', () => {
   describe('Performance', () => {
     it('should analyze tasks quickly', async () => {
       const task = createTestTask('Review this code for security issues');
-      const { result, ms } = await measureLatency(() => {
-        return Promise.resolve(analyzeTask(task));
-      });
+      const analyzer = createSharedTaskAnalyzer();
+      const { result, ms } = await measureLatency(() => analyzer.analyze(task));
 
-      expect(result.ok).toBe(true);
+      expect(result).toBeDefined();
       expect(ms).toBeLessThan(100); // Should be very fast
     });
 

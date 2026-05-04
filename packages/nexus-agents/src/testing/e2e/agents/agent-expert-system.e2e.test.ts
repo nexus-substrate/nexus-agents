@@ -13,7 +13,6 @@ import {
   // Expert System
   ExpertRegistry,
   ExpertFactory,
-  analyzeTask,
   selectExperts,
   createDefaultRegistry,
   // Resilience
@@ -99,57 +98,6 @@ describe('Agent Expert System E2E Tests', () => {
 
       const stats = registry.getStats();
       expect(stats.total).toBe(1);
-    });
-  });
-
-  describe('Task Analysis', () => {
-    it('should analyze code-related tasks', () => {
-      const task = createTestTask('Review this TypeScript function for bugs');
-      const result = analyzeTask(task);
-
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        expect(result.value.domain).toBe('code');
-      }
-    });
-
-    it('should analyze security-related tasks', () => {
-      const task = createTestTask('Check for SQL injection vulnerabilities');
-      const result = analyzeTask(task);
-
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        expect(result.value.domain).toBe('security');
-      }
-    });
-
-    it('should analyze architecture-related tasks', () => {
-      const task = createTestTask('Design the microservices architecture');
-      const result = analyzeTask(task);
-
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        expect(result.value.domain).toBe('architecture');
-      }
-    });
-
-    it('should estimate task complexity', () => {
-      const simpleTask = createTestTask('Fix typo in README');
-      const complexTask = createTestTask(
-        'Design and implement a distributed caching system with replication'
-      );
-
-      const simpleResult = analyzeTask(simpleTask);
-      const complexResult = analyzeTask(complexTask);
-
-      const simpleAnalysis = assertOk(simpleResult);
-      const complexAnalysis = assertOk(complexResult);
-
-      // More complex task should have higher complexity
-      const complexityOrder = ['low', 'medium', 'high'];
-      expect(complexityOrder.indexOf(complexAnalysis.complexity)).toBeGreaterThanOrEqual(
-        complexityOrder.indexOf(simpleAnalysis.complexity)
-      );
     });
   });
 

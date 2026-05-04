@@ -16,7 +16,6 @@ import {
   type ExpertDefinition,
   type SelectionOptions,
 } from './expert-selector.js';
-import {} from './task-analyzer.js';
 
 /**
  * Creates a test task with the given description.
