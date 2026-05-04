@@ -30,6 +30,7 @@ import {
   registerResearchSynthesizeTool,
   registerSurveyOssLandscapeTool,
   registerVendorPublishingAuditTool,
+  registerCompareDataFeedsTool,
   registerMemoryQueryTool,
   registerMemoryStatsTool,
   registerMemoryWriteTool,
@@ -145,6 +146,7 @@ export const REGISTERED_TOOLS = [
   'research_catalog_review',
   'survey_oss_landscape',
   'vendor_publishing_audit',
+  'compare_data_feeds',
   'memory_query',
   'memory_stats',
   'memory_write',
@@ -334,6 +336,10 @@ function registerResearchTools(ctx: ToolRegistrationContext): void {
   registerVendorPublishingAuditTool(ctx.server, {
     ...researchDeps,
     rateLimiter: ctx.rateLimiterFactory.getForTool('vendor_publishing_audit'),
+  });
+  registerCompareDataFeedsTool(ctx.server, {
+    ...researchDeps,
+    rateLimiter: ctx.rateLimiterFactory.getForTool('compare_data_feeds'),
   });
 }
 

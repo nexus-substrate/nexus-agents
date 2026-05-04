@@ -154,6 +154,8 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
     'Transient OSS project search via the GitHub search API. Returns a ranked list of repositories with license (SPDX), last-commit, star-count, and one-line description. Does NOT persist to the research registry — for one-off engineering decisions like "what tools exist in this space?".',
   vendor_publishing_audit:
     "Look up a vendor's published-artifact signing infrastructure: GPG key fingerprints, SHA256SUMS URL pattern, signature shape (clearsigned / detached / detached-on-iso), release cadence, key rotation notes, and the vendor doc citation. Static lookup against a curated seed dataset. v1 covers ubuntu, debian, fedora.",
+  compare_data_feeds:
+    'Diff two upstream data feeds (YAML or JSON files) along coverage and per-field axes. Returns which entries exist in A, B, both, plus optional field-level diffs across matched entries. v1 takes file paths only (no URL fetch — that needs an SSRF design pass).',
   memory_query: 'Query across all memory backends with unified results and relevance scoring.',
   memory_stats: 'Get memory system statistics dashboard showing backend availability and metrics.',
   weather_report:
@@ -232,6 +234,7 @@ const README_TOOL_DESCRIPTIONS: Record<string, string> = {
   survey_oss_landscape: 'Transient OSS project search (license, stars, last-commit) via GitHub',
   vendor_publishing_audit:
     "Look up a vendor's signing infrastructure (GPG keys, URL patterns, signature shape)",
+  compare_data_feeds: 'Diff two YAML/JSON feeds: coverage + per-field axes',
   extract_symbols: 'Extract code symbols from source files for analysis',
   search_codebase: 'Search codebase for patterns, symbols, or text',
   run_dev_pipeline: 'Full dev pipeline: research, plan, vote, implement, QA',

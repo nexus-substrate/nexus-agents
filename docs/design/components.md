@@ -20,7 +20,7 @@ _Generated: 2026-02-08_
 | learning      | 14    | 9     | 3     | Outcome feedback, A/B testing                       |
 | orchestration | 33    | 17    | 4     | Graph workflows, spec factory, pattern router       |
 | pipeline      | 20    | 18    | 4     | Task contracts, pipeline runner, event bus, plugins |
-| mcp           | 81    | 71    | 4     | MCP server, 36 tool handlers, gateway               |
+| mcp           | 81    | 71    | 4     | MCP server, 37 tool handlers, gateway               |
 
 **Total: 650 source files, 426 test files**
 
@@ -40,7 +40,7 @@ The foundational module providing types, error handling, and task analysis.
 - **Tracer** (`core/tracer.ts`): OpenTelemetry-compatible tracing with `getTracer()`, `withSpan()`
 - **SharedTaskAnalyzer** (`core/task-analysis/shared-task-analyzer.ts`): Canonical task classification (ADR-0004). Consolidates 5 prior independent analyzers. Outputs: `taskType`, `complexity`, `reasoningType`, `ambiguityScore`, `constraints`, `requiredCapabilities`.
 - **TaskAnalysisResult** extensions (Issue #903): `ambiguityScore` (0-1), `constraints` (time/quality/scope), `requiredCapabilities` (tools + experts).
-- **Capability Gap Detector** (`core/task-analysis/capability-gap-detector.ts`, Issue #906): Cross-checks required capabilities against 36 registered tools and 10 expert roles.
+- **Capability Gap Detector** (`core/task-analysis/capability-gap-detector.ts`, Issue #906): Cross-checks required capabilities against 37 registered tools and 10 expert roles.
 - **Token Estimator** (`core/token-estimator.ts`): Approximate token counting for budget management.
 - **ICompositeRouter** (`core/types/`): Interface for the canonical routing pipeline.
 
@@ -186,7 +186,7 @@ MCP protocol server and tool handlers.
 **Key components:**
 
 - **Server** (`mcp/server.ts`): MCP 2025-11-25 protocol server
-- **Tool Registration** (`mcp/tools/index.ts`): `registerTools()` — 36 tools total
+- **Tool Registration** (`mcp/tools/index.ts`): `registerTools()` — 37 tools total
 - **Gateway** (`mcp/gateway/`, Issue #888): Tier classifier + middleware. Wraps all tool dispatch with classification (DIRECT, ANALYZED, ORCHESTRATED) and logging.
 - **Rate Limiter** (`mcp/rate-limiter.ts`): Single shared bucket (capacity: 100, refill: 10/sec)
 - **Tool handlers**: Each tool in `mcp/tools/*.ts`
