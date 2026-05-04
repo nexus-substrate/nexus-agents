@@ -21,7 +21,12 @@ import {
 } from '../../core/index.js';
 import { normalizeTopicToCanonical } from '../../research/topic-aliases.js';
 import { withToolError } from '../middleware/tool-error-handler.js';
-import { toolError, toolSuccess, type ToolResult, type BaseMcpToolDeps } from './tool-result.js';
+import {
+  toolError,
+  toolSuccessStructured,
+  type ToolResult,
+  type BaseMcpToolDeps,
+} from './tool-result.js';
 
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
@@ -555,7 +560,7 @@ function createResearchDiscoverHandler(deps: ResearchDiscoverDeps) {
     const response = await withToolError('Discovery failed', logger, async () => {
       const result = await executeDiscovery(validationResult.data, logger);
       recordDiscoverySuccess(result.topic, result.newItems, result.sourcesQueried);
-      return toolSuccess(JSON.stringify(result, null, 2));
+      return toolSuccessStructured(result as unknown as Record<string, unknown>);
     });
     const durationMs = Date.now() - startMs;
     if (response.isError === true) {
@@ -622,8 +627,24 @@ export function registerResearchDiscoverTool(server: McpServer, deps: ResearchDi
 
   server.registerTool(
     'research_discover',
-    { description, inputSchema: toolSchema },
+    { description, inputSchema: toolSchema, outputSchema: RESEARCH_DISCOVER_OUTPUT_SCHEMA },
     toSdkCallback(wrappedHandler)
   );
   logger.info('Registered research_discover tool with secure handler and timeout protection');
 }
+
+// Permissive shape — handler returns ResearchDiscoverResponse with topic,
+// sourcesQueried, failedSources, items, totalFound, alreadyInRegistry,
+// newItems, filteredByRelevance (#2340 batch 3). Items vary per source so
+// `items` is array-of-unknown. Hoisted out of the registration fn for the
+// max-lines-per-function gate.
+const RESEARCH_DISCOVER_OUTPUT_SCHEMA = {
+  topic: z.string().optional(),
+  sourcesQueried: z.array(z.string()).optional(),
+  failedSources: z.array(z.string()).optional(),
+  items: z.array(z.unknown()).optional(),
+  totalFound: z.number().optional(),
+  alreadyInRegistry: z.number().optional(),
+  newItems: z.number().optional(),
+  filteredByRelevance: z.number().optional(),
+};

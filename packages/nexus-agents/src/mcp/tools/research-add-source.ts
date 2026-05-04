@@ -24,7 +24,12 @@ import {
 } from '../../cli/research-helpers-sources-io.js';
 import { computeSourceQualityScore } from '../../research/source-quality.js';
 import type { ResearchSource } from '../../indexer/research-index/research-index-base-types.js';
-import { toolError, toolSuccess, type ToolResult, type BaseMcpToolDeps } from './tool-result.js';
+import {
+  toolError,
+  toolSuccessStructured,
+  type ToolResult,
+  type BaseMcpToolDeps,
+} from './tool-result.js';
 import { getToolMemory } from './tool-memory.js';
 
 // =============================================================================
@@ -258,7 +263,7 @@ function createResearchAddSourceHandler(deps: ResearchAddSourceDeps) {
         return toolError(result.message);
       }
 
-      return toolSuccess(JSON.stringify(result, null, 2));
+      return toolSuccessStructured(result as unknown as Record<string, unknown>);
     });
   };
 }
@@ -312,7 +317,21 @@ export function registerResearchAddSourceTool(
 
   server.registerTool(
     'research_add_source',
-    { description, inputSchema: toolSchema },
+    { description, inputSchema: toolSchema, outputSchema: RESEARCH_ADD_SOURCE_OUTPUT_SCHEMA },
     toSdkCallback(wrappedHandler)
   );
 }
+
+// Permissive shape — actual handler returns success+sourceId+name+
+// quality_score+evidence_tier+message+dryRun on success path, error on
+// failure (#2340 batch 3). Hoisted out of the registration fn for the
+// max-lines-per-function gate.
+const RESEARCH_ADD_SOURCE_OUTPUT_SCHEMA = {
+  success: z.boolean(),
+  sourceId: z.string().optional(),
+  name: z.string().optional(),
+  quality_score: z.number().optional(),
+  evidence_tier: z.string().optional(),
+  message: z.string().optional(),
+  dryRun: z.boolean().optional(),
+};

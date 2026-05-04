@@ -17,7 +17,12 @@ import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middlewar
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { synthesizeResearch } from '../../cli/research-helpers-synthesize.js';
 import type { SynthesisResult } from '../../cli/research-helpers-synthesize.js';
-import { toolError, toolSuccess, type ToolResult, type BaseMcpToolDeps } from './tool-result.js';
+import {
+  toolError,
+  toolSuccessStructured,
+  type ToolResult,
+  type BaseMcpToolDeps,
+} from './tool-result.js';
 
 // =============================================================================
 // SCHEMAS
@@ -66,7 +71,7 @@ function createResearchSynthesizeHandler(
       if (!result.ok) {
         return toolError(`Synthesis failed: ${result.error.message}`);
       }
-      return toolSuccess(JSON.stringify(result.value, null, 2));
+      return toolSuccessStructured(result.value as unknown as Record<string, unknown>);
     });
   };
 }
@@ -108,9 +113,19 @@ export function registerResearchSynthesizeTool(
     logger,
   });
 
+  // Permissive shape — handler returns SynthesisResult (clusters, alignment,
+  // cross-cutting themes, etc.); inner shapes vary, model the envelope only
+  // (#2340 batch 3).
+  const outputSchema = {
+    clusters: z.array(z.unknown()).optional(),
+    alignmentSummary: z.unknown().optional(),
+    crossCuttingThemes: z.array(z.unknown()).optional(),
+    generatedAt: z.string().optional(),
+  };
+
   server.registerTool(
     'research_synthesize',
-    { description, inputSchema: toolSchema },
+    { description, inputSchema: toolSchema, outputSchema },
     toSdkCallback(wrappedHandler)
   );
   logger.info('Registered research_synthesize tool');
