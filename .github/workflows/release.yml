@@ -54,6 +54,61 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
 
+      - name: Detect publish-race version skew (#2382)
+        id: fallback-publish
+        # The changesets/action enters one of two modes:
+        # 1. publish — when no pending changesets exist on main → runs `pnpm release`.
+        # 2. PR-update — when changesets exist → updates the release PR.
+        #
+        # If a release PR is merged while OTHER PRs added new changesets to main
+        # in the meantime, the post-merge run finds those new changesets, enters
+        # PR mode, and never publishes the just-bumped version. Result: package.json
+        # gets ahead of npm, and the next release skips the missed minor entirely
+        # (e.g. 2.64.0 → 2.67.0 on 2026-05-04, missing 2.65.0 and 2.66.0).
+        #
+        # This step detects the skew and force-publishes when:
+        #   - changesets/action did NOT publish this run (in PR mode)
+        #   - AND local package.json version > npm latest version
+        #   - AND no .changeset/*.md files remain on the current commit
+        #     (i.e. the version commit landed cleanly; only stragglers from the
+        #     just-merged release PR are gone, but new ones haven't appeared)
+        #
+        # The third condition prevents publishing partial state when changesets
+        # are still pending; in that case the next merge will close the loop.
+        if: steps.changesets.outputs.published != 'true'
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: true
+        run: |
+          set -euo pipefail
+          local_version=$(jq -r '.version' packages/nexus-agents/package.json)
+          published_version=$(npm view nexus-agents version 2>/dev/null || echo "0.0.0")
+
+          # Use sort -V to pick the larger of the two versions.
+          larger=$(printf '%s\n%s\n' "$local_version" "$published_version" | sort -V | tail -1)
+          if [ "$larger" != "$local_version" ] || [ "$local_version" = "$published_version" ]; then
+            echo "Versions in sync ($local_version == $published_version) or local is behind. No fallback publish needed."
+            exit 0
+          fi
+
+          pending_changesets=$(find .changeset -name '*.md' ! -name 'README.md' 2>/dev/null | wc -l)
+          if [ "$pending_changesets" -gt 0 ]; then
+            echo "::warning::package.json is at $local_version but npm has $published_version, AND $pending_changesets changeset(s) are still pending. The next release-PR merge should close the loop. Not force-publishing."
+            exit 0
+          fi
+
+          echo "::warning::Detected publish-race version skew. package.json=$local_version, npm=$published_version, no pending changesets. Force-publishing $local_version."
+          pnpm release
+          # Signal downstream provenance + SBOM steps that we did publish.
+          echo "published=true" >> "$GITHUB_OUTPUT"
+          # Synthesize the publishedPackages output that the changesets/action
+          # step would normally produce, so the SBOM upload step can derive the
+          # release tag in the same way.
+          published_pkgs=$(jq -nc --arg name "nexus-agents" --arg version "$local_version" \
+            '[{name: $name, version: $version}]')
+          echo "publishedPackages=$published_pkgs" >> "$GITHUB_OUTPUT"
+
       - name: Generate CycloneDX SBOM
         # Node-native SBOM via @cyclonedx/cdxgen against pnpm-lock.yaml.
         # Replaces the prior Rust-only cargo-sbom flow (#1852) which was
@@ -61,7 +116,7 @@ jobs:
         # skipped on every release from 2.29.1 onward. cdxgen 12.3+ is run
         # via npx so we don't need pnpm 10 (cdxgen 12.x's stated minimum).
         # CycloneDX 1.6 is the current stable spec version.
-        if: steps.changesets.outputs.published == 'true'
+        if: steps.changesets.outputs.published == 'true' || steps.fallback-publish.outputs.published == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -81,10 +136,12 @@ jobs:
         # output. Derive the release tag from publishedPackages and use
         # `gh release upload` which looks up the release by tag.
         # (#1841 follow-up; SPDX dropped — CycloneDX is dominant for npm.)
-        if: steps.changesets.outputs.published == 'true' && hashFiles('sbom.cdx.json') != ''
+        if: (steps.changesets.outputs.published == 'true' || steps.fallback-publish.outputs.published == 'true') && hashFiles('sbom.cdx.json') != ''
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PUBLISHED_PACKAGES: ${{ steps.changesets.outputs.publishedPackages }}
+          # Prefer changesets/action's output; fall back to the synthesized
+          # output from the race-recovery step.
+          PUBLISHED_PACKAGES: ${{ steps.changesets.outputs.publishedPackages || steps.fallback-publish.outputs.publishedPackages }}
         run: |
           set -euo pipefail
           # publishedPackages is a JSON array: [{"name": "...", "version": "..."}]
@@ -98,13 +155,13 @@ jobs:
           gh release upload "$TAG" sbom.cdx.json --clobber
 
       - name: Attest SBOM
-        if: steps.changesets.outputs.published == 'true' && hashFiles('sbom.cdx.json') != ''
+        if: (steps.changesets.outputs.published == 'true' || steps.fallback-publish.outputs.published == 'true') && hashFiles('sbom.cdx.json') != ''
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
           subject-path: sbom.cdx.json
 
       - name: Attest npm package
-        if: steps.changesets.outputs.published == 'true'
+        if: steps.changesets.outputs.published == 'true' || steps.fallback-publish.outputs.published == 'true'
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
           subject-path: packages/nexus-agents/package.json
