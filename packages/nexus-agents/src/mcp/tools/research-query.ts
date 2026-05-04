@@ -12,7 +12,12 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, formatZodError } from '../../core/index.js';
 import { withToolError } from '../middleware/tool-error-handler.js';
-import { toolError, toolSuccess, type ToolResult, type BaseMcpToolDeps } from './tool-result.js';
+import {
+  toolError,
+  toolSuccessStructured,
+  type ToolResult,
+  type BaseMcpToolDeps,
+} from './tool-result.js';
 
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
@@ -202,7 +207,7 @@ function createResearchQueryHandler(deps: ResearchQueryDeps) {
     const logger = deps.logger ?? createLogger({ tool: 'research_query' });
     return withToolError('Research query failed', logger, async () => {
       const result = await executeQuery(validationResult.data);
-      return toolSuccess(JSON.stringify(result, null, 2));
+      return toolSuccessStructured(result as unknown as Record<string, unknown>);
     });
   };
 }
@@ -250,9 +255,19 @@ export function registerResearchQueryTool(server: McpServer, deps: ResearchQuery
     logger,
   });
 
+  // Envelope schema (#2340). Inner `data` is intentionally `z.unknown()` —
+  // the four action variants (status/overlap/stats/search) return different
+  // shapes; modeling each precisely would require schema-per-action and is
+  // deferred. The envelope still gives MCP clients a stable validation surface.
+  const outputSchema = {
+    action: z.string(),
+    success: z.boolean(),
+    data: z.unknown(),
+  };
+
   server.registerTool(
     'research_query',
-    { description, inputSchema: toolSchema },
+    { description, inputSchema: toolSchema, outputSchema },
     toSdkCallback(wrappedHandler)
   );
   logger.info('Registered research_query tool with secure handler and timeout protection');
