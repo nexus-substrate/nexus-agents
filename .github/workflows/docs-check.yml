@@ -426,9 +426,14 @@ jobs:
           README=README.md
 
           # 1. Authoritative count: lines of the form `    'tool_name',` between
-          #    `tools: [` and the next `]`. Grep is robust to reformatting.
-          src_count=$(awk '/tools: \[/,/\]/' "$TOOLS_SRC" \
+          #    `REGISTERED_TOOL_NAMES = [` (or legacy `tools: [`) and the next `]`.
+          #    Grep is robust to reformatting; awk fallback handles older checkouts.
+          src_count=$(awk '/REGISTERED_TOOL_NAMES\s*=\s*\[/,/\]\s*as const/' "$TOOLS_SRC" \
             | grep -cE "^\s+'[a-z_]+'," || true)
+          if [ "$src_count" -eq 0 ]; then
+            src_count=$(awk '/tools: \[/,/\]/' "$TOOLS_SRC" \
+              | grep -cE "^\s+'[a-z_]+'," || true)
+          fi
           echo "Authoritative tool count (from $TOOLS_SRC): $src_count"
 
           # 2. MCP_TOOL_COUNT constant in site-data.ts
