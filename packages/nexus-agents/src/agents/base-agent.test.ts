@@ -898,8 +898,6 @@ describe('TaskSchema', () => {
       constraints: {
         maxDuration: 5000,
         maxTokens: 1000,
-        outputFormat: 'json',
-        allowedTools: ['read', 'write'],
       },
     };
 

@@ -268,22 +268,3 @@ export interface OrchestrationObserverOptions {
   config?: Partial<OrchestrationObserverConfig> | undefined;
   logger?: ILogger | undefined;
 }
-
-// ============================================================================
-// Backward Compatibility Aliases (deprecated, will be removed in v3.0)
-// ============================================================================
-
-/** @deprecated Use OrchestrationStats instead */
-export type SwarmStats = OrchestrationStats;
-/** @deprecated Use OrchestrationObserverEvent instead */
-export type SwarmObserverEvent = OrchestrationObserverEvent;
-/** @deprecated Use OrchestrationObserverListener instead */
-export type SwarmObserverListener = OrchestrationObserverListener;
-/** @deprecated Use OrchestrationObserverConfig instead */
-export type SwarmObserverConfig = OrchestrationObserverConfig;
-// Backward compat alias — will be removed in v3.0
-export const SwarmObserverConfigSchema = OrchestrationObserverConfigSchema;
-/** @deprecated Use IOrchestrationObserver instead */
-export type ISwarmObserver = IOrchestrationObserver;
-/** @deprecated Use OrchestrationObserverOptions instead */
-export type SwarmObserverOptions = OrchestrationObserverOptions;

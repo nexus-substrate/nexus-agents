@@ -108,11 +108,6 @@ export type {
   CapacityMonitorIntegrationConfig,
 } from './circuit-breaker.js';
 
-// Task Analyzer (Issue #78)
-// eslint-disable-next-line @typescript-eslint/no-deprecated -- Backward compatibility, see Issue #574
-export { analyzeTask, summarizeProfile, TaskProfileSchema } from './task-analyzer.js';
-export type { TaskProfile, TaskType } from './task-analyzer.js';
-
 // Task Router types (Issue #78, #816)
 // TaskRouter class removed in v3.0 — use CompositeRouter (canonical path)
 export { RoutingError, RouterConfigSchema } from './router-types.js';

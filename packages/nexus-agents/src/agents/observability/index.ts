@@ -27,20 +27,6 @@ export {
   type IOrchestrationObserver,
 } from './orchestration-observer-types.js';
 
-// Backward compatibility aliases (deprecated, will be removed in v3.0)
-// These re-exports allow existing code to continue working during migration
-/* eslint-disable @typescript-eslint/no-deprecated */
-export {
-  type SwarmStats,
-  type SwarmObserverEvent,
-  type SwarmObserverListener,
-  type SwarmObserverConfig,
-  type SwarmObserverOptions,
-  type ISwarmObserver,
-  SwarmObserverConfigSchema,
-} from './orchestration-observer-types.js';
-/* eslint-enable @typescript-eslint/no-deprecated */
-
 // Implementation (new names)
 export { OrchestrationObserver, createOrchestrationObserver } from './orchestration-observer.js';
 

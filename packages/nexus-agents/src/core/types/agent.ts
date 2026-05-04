@@ -98,18 +98,6 @@ export interface TaskConstraints {
    * Use model adapter budgets for actual token enforcement.
    */
   maxTokens?: number;
-  /**
-   * Required output format.
-   * @deprecated Not enforced. Will be removed in v3.0.
-   * Use structured output patterns at the prompt level instead.
-   */
-  outputFormat?: 'text' | 'json' | 'markdown';
-  /**
-   * Allowed tools for this task.
-   * @deprecated Not enforced. Will be removed in v3.0.
-   * Use policy firewall rules for tool restrictions instead.
-   */
-  allowedTools?: string[];
 }
 
 /**
