@@ -192,6 +192,18 @@ export const TOOL_ANNOTATIONS: Readonly<Record<string, ToolSideEffectsEntry>> = 
       { category: 'coupling', description: 'Auto-catalogs discovered references' },
     ],
   },
+  survey_oss_landscape: {
+    annotations: {
+      title: 'Survey OSS Landscape',
+      readOnlyHint: true,
+      destructiveHint: false,
+      // Same query may return different results day-to-day as star counts
+      // and last-commit dates evolve; idempotentHint=false matches reality.
+      idempotentHint: false,
+      openWorldHint: true,
+    },
+    sideEffects: [{ category: 'implicit', description: 'Queries the GitHub search API' }],
+  },
   research_analyze: {
     annotations: {
       title: 'Research Analyze',
