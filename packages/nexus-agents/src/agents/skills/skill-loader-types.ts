@@ -195,7 +195,7 @@ export const SkillCategorySchema = z.enum([
  * Zod schema for AgentRole.
  */
 export const AgentRoleLoaderSchema = z.enum([
-  'tech_lead',
+  'orchestrator',
   'code_expert',
   'architecture_expert',
   'security_expert',
@@ -307,7 +307,7 @@ export const DEFAULT_ROLE_MAPPINGS: readonly RoleSkillMapping[] = [
     optionalCategories: ['devops', 'cloud-native', 'observability', 'security'],
   },
   {
-    role: 'tech_lead',
+    role: 'orchestrator',
     requiredCategories: ['general'],
     optionalCategories: [
       'code-generation',

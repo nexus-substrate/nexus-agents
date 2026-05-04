@@ -50,7 +50,7 @@ const sampleWorkflow: WorkflowDefinition = {
     },
     {
       id: 'step2',
-      agent: 'tech_lead',
+      agent: 'orchestrator',
       action: 'review',
       inputs: { result: '${{ steps.step1.output }}' },
       dependsOn: ['step1'],

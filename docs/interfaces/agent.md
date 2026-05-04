@@ -60,8 +60,7 @@ type AgentState = 'idle' | 'thinking' | 'acting' | 'waiting' | 'error';
 
 ```typescript
 type AgentRole =
-  | 'orchestrator' // Preferred: coordinates multi-agent workflows (Issue #759)
-  | 'tech_lead' // @deprecated Use 'orchestrator' instead. Retained for backward compatibility.
+  | 'orchestrator' // Coordinates multi-agent workflows (Issue #759)
   | 'code_expert'
   | 'architecture_expert'
   | 'security_expert'

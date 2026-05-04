@@ -230,7 +230,7 @@ describe('SkillLoader - Role Mapping', () => {
   });
 
   it('should handle tech_lead role with broader access', () => {
-    const result = loader.loadForAgent('agent-1', 'tech_lead');
+    const result = loader.loadForAgent('agent-1', 'orchestrator');
 
     expect(result.ok).toBe(true);
     if (result.ok) {

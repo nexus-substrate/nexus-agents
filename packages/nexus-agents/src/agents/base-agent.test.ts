@@ -217,12 +217,12 @@ describe('BaseAgent', () => {
     it('should initialize with required options', () => {
       const agent = new TestAgent({
         id: 'agent-1',
-        role: 'tech_lead',
+        role: 'orchestrator',
         capabilities: ['task_execution', 'delegation'] as AgentCapability[],
       });
 
       expect(agent.id).toBe('agent-1');
-      expect(agent.role).toBe('tech_lead');
+      expect(agent.role).toBe('orchestrator');
       expect(agent.capabilities).toContain('task_execution');
       expect(agent.capabilities).toContain('delegation');
       expect(agent.state).toBe('idle');
@@ -965,7 +965,7 @@ describe('BaseAgentOptionsSchema', () => {
   it('should validate valid options', () => {
     const options = {
       id: 'agent-1',
-      role: 'tech_lead',
+      role: 'orchestrator',
       capabilities: ['task_execution', 'delegation'],
     };
 
@@ -974,7 +974,7 @@ describe('BaseAgentOptionsSchema', () => {
 
   it('should validate all roles', () => {
     const roles = [
-      'tech_lead',
+      'orchestrator',
       'code_expert',
       'architecture_expert',
       'security_expert',
@@ -998,7 +998,7 @@ describe('BaseAgentOptionsSchema', () => {
     expect(
       BaseAgentOptionsSchema.safeParse({
         id: 'agent-1',
-        role: 'tech_lead',
+        role: 'orchestrator',
         capabilities: [],
         temperature: 0.5,
       }).success
@@ -1007,7 +1007,7 @@ describe('BaseAgentOptionsSchema', () => {
     expect(
       BaseAgentOptionsSchema.safeParse({
         id: 'agent-1',
-        role: 'tech_lead',
+        role: 'orchestrator',
         capabilities: [],
         temperature: 1.5, // Over max
       }).success
@@ -1016,7 +1016,7 @@ describe('BaseAgentOptionsSchema', () => {
     expect(
       BaseAgentOptionsSchema.safeParse({
         id: 'agent-1',
-        role: 'tech_lead',
+        role: 'orchestrator',
         capabilities: [],
         temperature: -0.1, // Under min
       }).success
@@ -1026,7 +1026,7 @@ describe('BaseAgentOptionsSchema', () => {
   it('should reject non-positive maxTokens', () => {
     const options = {
       id: 'agent-1',
-      role: 'tech_lead',
+      role: 'orchestrator',
       capabilities: [],
       maxTokens: 0,
     };

@@ -85,7 +85,7 @@ function createMockWorkflowDefinition(overrides?: Partial<WorkflowDefinition>): 
       },
       {
         id: 'step-2',
-        agent: 'tech_lead',
+        agent: 'orchestrator',
         action: 'summarize',
         inputs: { analysis: '${steps.step-1.output}' },
         dependsOn: ['step-1'],

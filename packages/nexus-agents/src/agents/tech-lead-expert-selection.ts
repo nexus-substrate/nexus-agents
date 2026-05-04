@@ -71,7 +71,7 @@ function scoreExperts(
   expertWeights: Partial<Record<AgentRole, number>>
 ): Record<AgentRole, number> {
   const roles: AgentRole[] = [
-    'tech_lead',
+    'orchestrator',
     'code_expert',
     'architecture_expert',
     'security_expert',

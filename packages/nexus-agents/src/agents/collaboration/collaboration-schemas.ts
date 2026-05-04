@@ -72,7 +72,7 @@ export const CollaborationConfigSchema = z.object({
 export const ExpertParticipationSchema = z.object({
   expertId: z.string().min(1),
   role: z.enum([
-    'tech_lead',
+    'orchestrator',
     'code_expert',
     'architecture_expert',
     'security_expert',
