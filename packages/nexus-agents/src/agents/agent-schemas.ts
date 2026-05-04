@@ -41,13 +41,6 @@ export const TaskSchema = z.object({
         .positive()
         .optional()
         .describe('INFORMATIONAL: Agents can see but not enforced'),
-      /** @deprecated Not enforced. Will be removed in v3.0. */
-      outputFormat: z
-        .enum(['text', 'json', 'markdown'])
-        .optional()
-        .describe('DEPRECATED: Not enforced'),
-      /** @deprecated Not enforced. Will be removed in v3.0. */
-      allowedTools: z.array(z.string()).optional().describe('DEPRECATED: Not enforced'),
     })
     .optional()
     .describe('Task constraints. See TaskConstraints type for enforcement status.'),

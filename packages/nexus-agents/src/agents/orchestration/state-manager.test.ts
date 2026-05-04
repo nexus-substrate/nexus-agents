@@ -368,7 +368,7 @@ describe('estimateTokens', () => {
   let manager: StateManager;
 
   beforeEach(() => {
-    manager = new StateManager({ charsPerToken: 4 });
+    manager = new StateManager();
   });
 
   it('estimates tokens from text length', () => {

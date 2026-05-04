@@ -25,18 +25,12 @@ export interface StateManagerConfig {
   readonly maxContextTokens?: number;
   /** Compression threshold (percentage of max before compressing) */
   readonly compressionThreshold?: number;
-  /**
-   * Characters per token estimate.
-   * @deprecated Use getTokenEstimator() from core instead (Issue #583). This field is ignored.
-   */
-  readonly charsPerToken?: number;
 }
 
 /** Default state manager configuration. */
 export const DEFAULT_STATE_MANAGER_CONFIG: Required<StateManagerConfig> = {
   maxContextTokens: 8000,
   compressionThreshold: 0.8,
-  charsPerToken: 4,
 };
 
 /**
