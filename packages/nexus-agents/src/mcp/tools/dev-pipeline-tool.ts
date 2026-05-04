@@ -113,8 +113,13 @@ export type DevPipelineInput = z.infer<typeof DevPipelineInputSchema>;
 // Input Resolution
 // ============================================================================
 
-/** Resolve task input from direct instructions or file. */
-function resolveTaskInput(input: DevPipelineInput): string {
+/**
+ * Resolve task input from direct instructions or file.
+ *
+ * Async because plan files can be large and the previous synchronous read
+ * blocked libuv for the duration, stalling concurrent MCP requests (#2354).
+ */
+async function resolveTaskInput(input: DevPipelineInput): Promise<string> {
   if (input.task !== undefined && input.task.trim() !== '') {
     return input.task;
   }
@@ -125,10 +130,14 @@ function resolveTaskInput(input: DevPipelineInput): string {
     if (!resolved.startsWith(cwdRoot)) {
       throw new Error(`Path traversal denied: planFile must be within ${cwdRoot}`);
     }
-    if (!fs.existsSync(resolved)) {
-      throw new Error(`Plan file not found: ${resolved}`);
+    try {
+      return await fs.promises.readFile(resolved, 'utf-8');
+    } catch (err: unknown) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new Error(`Plan file not found: ${resolved}`);
+      }
+      throw err;
     }
-    return fs.readFileSync(resolved, 'utf-8');
   }
   throw new Error('Either task or planFile must be provided');
 }
@@ -200,7 +209,7 @@ export function registerDevPipelineTool(
       }
 
       try {
-        const taskText = resolveTaskInput(input);
+        const taskText = await resolveTaskInput(input);
         const stages = await createStages(input);
         const pipelineOptions = {
           ...(input.sessionId !== undefined ? { sessionId: input.sessionId } : {}),
