@@ -1,5 +1,37 @@
 # nexus-agents
 
+## 2.63.5
+
+### Patch Changes
+
+- [#2344](https://github.com/williamzujkowski/nexus-agents/pull/2344) [`cc8f00a`](https://github.com/williamzujkowski/nexus-agents/commit/cc8f00a862f49569a2a9177f7f295885c4efa41e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Fix `BuiltInExpertTypeSchema` missing `'qa'` literal ([#2338](https://github.com/williamzujkowski/nexus-agents/issues/2338)).
+
+  The `BuiltInExpertType` type union (`expert-config.ts:67–80`) declared 12 valid expert types including `qa`, but the corresponding Zod enum schema (`expert-config.ts:159–171`) only listed 11 — `qa` was omitted. `BuiltInExpertTypeSchema.parse('qa')` threw at runtime even though TypeScript accepted it as a valid type. Added `qa` to the enum and a contract test that walks every literal in `BuiltInExpertType` through the schema so this drift is caught at CI time.
+
+- [#2346](https://github.com/williamzujkowski/nexus-agents/pull/2346) [`78b4461`](https://github.com/williamzujkowski/nexus-agents/commit/78b4461116f3828e42913913247dffee91b1488d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Standardize MCP tool registration on `server.registerTool()` ([#2339](https://github.com/williamzujkowski/nexus-agents/issues/2339)).
+
+  `run_dev_pipeline` and `run_pipeline` were the only two of 34 MCP tools still using the older `server.tool(name, schema, handler)` API. The other 32 use `server.registerTool(name, { description, inputSchema, ... }, handler)`. Migrated both so MCP clients see consistent metadata for every tool, and the `eslint-disable @typescript-eslint/no-deprecated` workarounds are gone.
+
+  No client-visible behavior change beyond the tool descriptions now being available in MCP listings (they previously weren't).
+
+- [#2347](https://github.com/williamzujkowski/nexus-agents/pull/2347) [`2710052`](https://github.com/williamzujkowski/nexus-agents/commit/271005229a4036241494081c055e5647e590085c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Fix `DEFAULT_EXPERTS` missing 3 of 12 built-in expert types ([#2341](https://github.com/williamzujkowski/nexus-agents/issues/2341)).
+
+  `BuiltInExpertType` declared 12 valid types (code, architecture, security, documentation, testing, devops, research, pm, ux, infrastructure, qa, data-visualization), but `DEFAULT_EXPERTS` only listed 9. Calls to `createDefaultRegistry()` silently omitted research, qa, and data-visualization experts. Added the three missing entries plus a contract test that walks every `BuiltInExpertType` literal and asserts a matching `DEFAULT_EXPERTS` row exists.
+
+- [#2348](https://github.com/williamzujkowski/nexus-agents/pull/2348) [`cabeed9`](https://github.com/williamzujkowski/nexus-agents/commit/cabeed9c38badf8605c33eadf0fb3927b596552d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Add `findModelsByCli(cliName)` helper to `config/model-capabilities.ts` ([#2342](https://github.com/williamzujkowski/nexus-agents/issues/2342)).
+
+  The audit ([#2337](https://github.com/williamzujkowski/nexus-agents/issues/2337)) flagged `buildClaudeAliasMap()` and `buildOpenCodeAliasMap()` as duplicated. On closer inspection the two builders have meaningfully different value-derivations (claude maps to `cliAlias`; opencode maps to `cliModelName`'s `provider/model` form), so a single shared builder would have forced a bad abstraction at n=2.
+
+  The honest extraction is the **filter step**, which both builders share: "iterate models for a given cliName." This is now `findModelsByCli(cliName)`, mirroring the existing `findModelsByProvider`/`findModelsByOutputModality`/etc. helpers in the same file. Both adapters use it; each retains its CLI-specific value logic.
+
+- [#2349](https://github.com/williamzujkowski/nexus-agents/pull/2349) [`423fd34`](https://github.com/williamzujkowski/nexus-agents/commit/423fd34574d7af9ca80c80ae7e5ca20d6fee728f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Extract `buildBaseTaskContract` shared by `v2-orchestrate` and `v2-delegate` ([#2343](https://github.com/williamzujkowski/nexus-agents/issues/2343)).
+
+  Both V2 MCP entrypoints had near-identical converters: the same id template, same `'approved'` status, same empty-default constraints/capabilities/capability-gaps/artifacts, same timestamps. Only the id-prefix, analysis summary, and metadata differ.
+
+  Extracted the shared scaffolding to `pipeline/task-contract-builders.ts`. Each call site now supplies only the fields that genuinely differ. Adding a new field to `TaskContractSchema` requires updating one place rather than two.
+
+  No behavior change. 32 v2 tests still pass; 7 new builder tests added.
+
 ## 2.63.4
 
 ### Patch Changes
