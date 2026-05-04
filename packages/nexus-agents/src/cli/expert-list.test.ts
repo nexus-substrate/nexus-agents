@@ -27,12 +27,13 @@ describe('expert-list', () => {
   });
 
   describe('runExpertList', () => {
-    it('should return built-in experts', () => {
+    it('should return all 12 built-in experts (#2341)', () => {
       const result = runExpertList();
 
       expect(result.success).toBe(true);
-      expect(result.builtIn.length).toBeGreaterThan(0);
-      expect(result.builtIn.length).toBe(9); // 9 built-in experts (includes infrastructure)
+      // Was 9 pre-#2341; #2341 added research, qa, data-visualization to bring
+      // DEFAULT_EXPERTS in lockstep with the BuiltInExpertType union (12 entries).
+      expect(result.builtIn.length).toBe(12);
     });
 
     it('should return empty custom experts by default', () => {
