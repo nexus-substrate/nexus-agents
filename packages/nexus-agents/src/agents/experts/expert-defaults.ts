@@ -110,4 +110,44 @@ export const DEFAULT_EXPERTS: ExpertDefinition[] = [
     weight: 1.0,
     available: true,
   },
+  // Three entries below were missing pre-#2341 even though `BuiltInExpertType`
+  // listed them. `createDefaultRegistry()` consumers were silently missing
+  // these experts. ExpertTaskDomain ('code'|'security'|'architecture'|
+  // 'documentation'|'testing'|'infrastructure'|'general') doesn't include
+  // research/qa/data-visualization as primary domains, so they map to the
+  // closest fit ('general' / 'testing' / 'general').
+  {
+    id: 'research-expert',
+    role: 'research_expert',
+    name: 'Research Expert',
+    description: 'Specialized in literature review, gap analysis, and technique extraction',
+    capabilities: ['task_execution', 'research', 'collaboration'],
+    primaryDomain: 'general',
+    secondaryDomains: ['documentation'],
+    weight: 0.9,
+    available: true,
+  },
+  {
+    id: 'qa-expert',
+    role: 'qa_expert',
+    name: 'Quality Assurance Expert',
+    description:
+      'Specialized in review against requirements, regression checks, and standards compliance',
+    capabilities: ['task_execution', 'code_review', 'tool_use'],
+    primaryDomain: 'testing',
+    secondaryDomains: ['code', 'security'],
+    weight: 1.0,
+    available: true,
+  },
+  {
+    id: 'data-visualization-expert',
+    role: 'data_visualization_expert',
+    name: 'Data Visualization Expert',
+    description: 'Specialized in chart design, dashboards, and interactive visualizations',
+    capabilities: ['task_execution', 'code_generation', 'collaboration'],
+    primaryDomain: 'general',
+    secondaryDomains: ['documentation', 'code'],
+    weight: 0.9,
+    available: true,
+  },
 ];
