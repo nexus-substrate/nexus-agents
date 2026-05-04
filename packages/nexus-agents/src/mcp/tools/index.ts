@@ -150,6 +150,14 @@ export {
 } from './survey-oss-landscape.js';
 
 export {
+  registerVendorPublishingAuditTool,
+  VendorPublishingAuditInputSchema,
+  type VendorPublishingAuditInput,
+  type VendorPublishingAuditDeps,
+  type VendorPublishingAuditResponse,
+} from './vendor-publishing-audit.js';
+
+export {
   registerResearchDiscoverTool,
   ResearchDiscoverInputSchema,
   type ResearchDiscoverInput,
@@ -468,6 +476,52 @@ export interface ToolRegistrationResult {
  * }
  * ```
  */
+/**
+ * Authoritative list of registered MCP tools, in registration order.
+ *
+ * `inject-governance.ts syncServerJson` reads this list (via the
+ * `extractMcpTools` parser) and writes it to `packages/nexus-agents/server.json`
+ * so the MCP-spec registry stays in lockstep — see PR #2362 for the auto-sync.
+ */
+const REGISTERED_TOOL_NAMES = [
+  'orchestrate',
+  'create_expert',
+  'execute_expert',
+  'run_workflow',
+  'delegate_to_model',
+  'list_experts',
+  'list_workflows',
+  'consensus_vote',
+  'research_query',
+  'research_add',
+  'research_add_source',
+  'research_discover',
+  'research_analyze',
+  'research_catalog_review',
+  'research_synthesize',
+  'survey_oss_landscape',
+  'vendor_publishing_audit',
+  'memory_query',
+  'memory_stats',
+  'memory_write',
+  'weather_report',
+  'issue_triage',
+  'run_graph_workflow',
+  'execute_spec',
+  'registry_import',
+  'query_trace',
+  'query_task_state',
+  'verify_audit_chain',
+  'repo_analyze',
+  'repo_security_plan',
+  'extract_symbols',
+  'search_codebase',
+  'run_dev_pipeline',
+  'run_pipeline',
+  'pr_review',
+  'supply_chain_tradeoff_panel',
+] as const;
+
 export function registerTools(
   server: McpServer,
   options?: ToolRegistrationOptions
@@ -477,56 +531,12 @@ export function registerTools(
 
   logger.info('Tool registration infrastructure initialized');
 
-  // Note: Individual tools are registered separately with their specific dependencies.
-  // The available tools are:
-  // - orchestrate: Task orchestration with Orchestrator agent
-  // - create_expert: Dynamic expert agent creation
-  // - run_workflow: Workflow template execution
-  // - delegate_to_model: Capability-matched task routing (Phase 1 CLI integration)
-  //
-  // Use the exported register functions with appropriate dependencies.
-
-  // Reference server to avoid unused parameter warning
+  // Reference server to avoid unused parameter warning. Individual tools are
+  // registered separately by their domain-specific `register*Tool` functions.
   void server;
 
   return {
-    tools: [
-      'orchestrate',
-      'create_expert',
-      'execute_expert',
-      'run_workflow',
-      'delegate_to_model',
-      'list_experts',
-      'list_workflows',
-      'consensus_vote',
-      'research_query',
-      'research_add',
-      'research_add_source',
-      'research_discover',
-      'research_analyze',
-      'research_catalog_review',
-      'research_synthesize',
-      'survey_oss_landscape',
-      'memory_query',
-      'memory_stats',
-      'memory_write',
-      'weather_report',
-      'issue_triage',
-      'run_graph_workflow',
-      'execute_spec',
-      'registry_import',
-      'query_trace',
-      'query_task_state',
-      'verify_audit_chain',
-      'repo_analyze',
-      'repo_security_plan',
-      'extract_symbols',
-      'search_codebase',
-      'run_dev_pipeline',
-      'run_pipeline',
-      'pr_review',
-      'supply_chain_tradeoff_panel',
-    ],
+    tools: [...REGISTERED_TOOL_NAMES],
     logger,
     rateLimiter,
   };

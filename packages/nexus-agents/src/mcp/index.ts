@@ -231,6 +231,12 @@ export {
   type SurveyOssLandscapeDeps,
   type SurveyOssLandscapeResponse,
   type OssCandidate,
+  // Vendor publishing audit (Issue #2296, child of #2293)
+  registerVendorPublishingAuditTool,
+  VendorPublishingAuditInputSchema,
+  type VendorPublishingAuditInput,
+  type VendorPublishingAuditDeps,
+  type VendorPublishingAuditResponse,
   ResearchAutoCatalog,
   getAutoCatalog,
   type CatalogedReference,

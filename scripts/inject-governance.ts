@@ -152,6 +152,8 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
     'Synthesize the research registry by grouping papers into topic clusters with themes, insights, and implementation opportunities.',
   survey_oss_landscape:
     'Transient OSS project search via the GitHub search API. Returns a ranked list of repositories with license (SPDX), last-commit, star-count, and one-line description. Does NOT persist to the research registry — for one-off engineering decisions like "what tools exist in this space?".',
+  vendor_publishing_audit:
+    "Look up a vendor's published-artifact signing infrastructure: GPG key fingerprints, SHA256SUMS URL pattern, signature shape (clearsigned / detached / detached-on-iso), release cadence, key rotation notes, and the vendor doc citation. Static lookup against a curated seed dataset. v1 covers ubuntu, debian, fedora.",
   memory_query: 'Query across all memory backends with unified results and relevance scoring.',
   memory_stats: 'Get memory system statistics dashboard showing backend availability and metrics.',
   weather_report:
@@ -228,6 +230,8 @@ const README_TOOL_DESCRIPTIONS: Record<string, string> = {
   research_add_source: 'Add non-paper source (GitHub repo, tool, blog)',
   research_synthesize: 'Synthesize registry into topic clusters with themes',
   survey_oss_landscape: 'Transient OSS project search (license, stars, last-commit) via GitHub',
+  vendor_publishing_audit:
+    "Look up a vendor's signing infrastructure (GPG keys, URL patterns, signature shape)",
   extract_symbols: 'Extract code symbols from source files for analysis',
   search_codebase: 'Search codebase for patterns, symbols, or text',
   run_dev_pipeline: 'Full dev pipeline: research, plan, vote, implement, QA',
@@ -250,8 +254,13 @@ function extractMcpTools(): ToolMetadata[] {
 
   const content = readFileSync(TOOLS_INDEX, 'utf-8');
 
-  // Extract the tools array from the return statement
-  const toolsMatch = content.match(/tools:\s*\[([\s\S]*?)\]/);
+  // Extract the tools array. Source of truth is the module-level
+  // `REGISTERED_TOOL_NAMES` const (extracted out of `registerTools()` to fit
+  // the max-lines-per-function gate). Fall back to the inline `tools: [...]`
+  // shape for older checkouts that haven't migrated yet.
+  const toolsMatch =
+    content.match(/REGISTERED_TOOL_NAMES\s*=\s*\[([\s\S]*?)\]\s*as const/) ??
+    content.match(/tools:\s*\[([\s\S]*?)\]/);
   if (toolsMatch?.[1] === undefined) {
     console.error('Could not parse tools array from index.ts');
     return [];

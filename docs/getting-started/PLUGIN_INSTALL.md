@@ -5,7 +5,7 @@
 
 Nexus-agents ships as a Claude Code plugin. Installing it exposes:
 
-- 35 MCP tools (`orchestrate`, `consensus_vote`, `research_*`, `run_*`, etc.)
+- 36 MCP tools (`orchestrate`, `consensus_vote`, `research_*`, `run_*`, etc.)
 - 18 skills (research-and-vote, implement-feature, bug-fix, …)
 - 12 agent mirrors (security, architecture, code, research, testing experts)
 - 2 governance hooks (fitness-gate, secret-scan)
@@ -28,7 +28,7 @@ Claude Code resolves the marketplace from `.claude-plugin/marketplace.json` at t
 
 ## Verify
 
-After install, confirm the 35 MCP tools are reachable:
+After install, confirm the 36 MCP tools are reachable:
 
 ```
 /mcp

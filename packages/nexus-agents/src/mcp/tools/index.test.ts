@@ -68,7 +68,7 @@ import {
   RepoSecurityPlanInputSchema,
 } from './index.js';
 
-const EXPECTED_TOOL_COUNT = 35;
+const EXPECTED_TOOL_COUNT = 36;
 
 const EXPECTED_TOOL_NAMES = [
   'orchestrate',
@@ -87,6 +87,7 @@ const EXPECTED_TOOL_NAMES = [
   'research_catalog_review',
   'research_synthesize',
   'survey_oss_landscape',
+  'vendor_publishing_audit',
   'memory_query',
   'memory_stats',
   'memory_write',

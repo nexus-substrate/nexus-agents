@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-05-04T16:09:33.042Z",
+  "generated": "2026-05-04T17:45:08.171Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.63.6",
   "cli": {
@@ -405,6 +405,10 @@
       {
         "name": "survey_oss_landscape",
         "file": "src/mcp/tools/survey-oss-landscape.ts"
+      },
+      {
+        "name": "vendor_publishing_audit",
+        "file": "src/mcp/tools/vendor-publishing-audit.ts"
       },
       {
         "name": "verify_audit_chain",
