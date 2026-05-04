@@ -236,7 +236,7 @@ describe('Agent Skill Library E2E Tests', () => {
     it('should analyze tasks quickly', async () => {
       const task = createTestTask('Review this code for security issues');
       const analyzer = createSharedTaskAnalyzer();
-      const { result, ms } = await measureLatency(() => analyzer.analyze(task));
+      const { result, ms } = await measureLatency(() => Promise.resolve(analyzer.analyze(task)));
 
       expect(result).toBeDefined();
       expect(ms).toBeLessThan(100); // Should be very fast
