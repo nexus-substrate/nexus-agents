@@ -110,8 +110,13 @@ function buildOutput(result: AdaptiveOrchestratorResult): Record<string, unknown
 // Input Resolution
 // ============================================================================
 
-/** Resolve task text — prepend spec file content if provided. */
-function resolveTask(task: string, specFile: string | undefined): string {
+/**
+ * Resolve task text — prepend spec file content if provided.
+ *
+ * Async because spec files can be large and the previous synchronous read
+ * blocked libuv for the duration, stalling concurrent MCP requests (#2354).
+ */
+async function resolveTask(task: string, specFile: string | undefined): Promise<string> {
   if (specFile === undefined) return task;
   const resolved = path.resolve(specFile);
   // Path traversal guard — restrict to cwd subtree (security audit 2026-04-10)
@@ -119,11 +124,15 @@ function resolveTask(task: string, specFile: string | undefined): string {
   if (!resolved.startsWith(cwdRoot)) {
     throw new Error(`Path traversal denied: specFile must be within ${cwdRoot}`);
   }
-  if (!fs.existsSync(resolved)) {
-    throw new Error(`Spec file not found: ${resolved}`);
+  try {
+    const specContent = await fs.promises.readFile(resolved, 'utf-8');
+    return `${specContent}\n\n---\n\n${task}`;
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      throw new Error(`Spec file not found: ${resolved}`);
+    }
+    throw err;
   }
-  const specContent = fs.readFileSync(resolved, 'utf-8');
-  return `${specContent}\n\n---\n\n${task}`;
 }
 
 /** Select the appropriate stage registry based on template or auto-detection. */
@@ -166,7 +175,7 @@ export function registerPipelineTool(
       }
 
       try {
-        const task = resolveTask(input.task, input.specFile);
+        const task = await resolveTask(input.task, input.specFile);
         const agentStages = createAgentStages({
           simulateVotes: input.simulateVotes,
           votingStrategy: input.votingStrategy,
