@@ -63,6 +63,7 @@
     "research_analyze",
     "research_catalog_review",
     "research_synthesize",
+    "survey_oss_landscape",
     "memory_query",
     "memory_stats",
     "memory_write",
