@@ -129,7 +129,7 @@ describe('buildTimeoutOrchestrationResult (#2104 sub-issue B)', () => {
         pattern: 'sequential',
         reasoning: 'low complexity',
         confidence: 0.85,
-        orchestratorType: 'tech_lead',
+        orchestratorType: 'orchestrator',
       });
 
       const result = buildTimeoutOrchestrationResult('task-1', 5_000, 'reason', snap);
@@ -170,7 +170,7 @@ describe('buildTimeoutOrchestrationResult (#2104 sub-issue B)', () => {
         pattern: 'single',
         reasoning: '',
         confidence: 1.0,
-        orchestratorType: 'tech_lead',
+        orchestratorType: 'orchestrator',
       });
       incrementStepsCompleted(snap);
 

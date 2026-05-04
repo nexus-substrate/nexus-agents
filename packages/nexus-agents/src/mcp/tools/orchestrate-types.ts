@@ -134,7 +134,7 @@ export interface RoutingInfo {
 /** Maps WorkflowPattern to OrchestratorType. */
 export function mapPatternToOrchestratorType(pattern: WorkflowPattern): OrchestratorType {
   if (pattern === 'puppeteer') return 'puppeteer';
-  return 'tech_lead';
+  return 'orchestrator';
 }
 
 // ============================================================================
@@ -211,5 +211,5 @@ export function createMockOrchestrator(): IOrchestrator {
   const factory = new OrchestratorFactory({
     techLead: mockExecutor as { execute: (task: unknown) => Promise<Result<unknown, unknown>> },
   });
-  return factory.create('tech_lead');
+  return factory.create('orchestrator');
 }

@@ -310,7 +310,7 @@ export class OrchestratorFactory implements IOrchestratorFactory {
         }
         return new WorkflowOrchestratorAdapter(this.workflowEngine, this.logger);
 
-      case 'tech_lead': {
+      case 'orchestrator': {
         const adapter = new OrchestratorAdapter(this.logger);
         // Wire orchestrator agent if provided (ADR-0014, Issue #759)
         const agent = this.config.orchestratorAgent ?? this.config.techLead;
@@ -350,7 +350,7 @@ export class OrchestratorFactory implements IOrchestratorFactory {
   listTypes(): OrchestratorType[] {
     // All three canonical orchestrator types are now available
     // per ADR-0002 Phase 2 implementation
-    return ['workflow', 'tech_lead', 'puppeteer'];
+    return ['workflow', 'orchestrator', 'puppeteer'];
   }
 }
 

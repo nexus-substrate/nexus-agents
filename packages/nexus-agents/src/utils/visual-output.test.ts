@@ -215,7 +215,7 @@ describe('visual-output', () => {
   describe('generateOrchestrationSequence', () => {
     const sampleData: OrchestrationVizData = {
       executionId: 'test-exec-001',
-      orchestratorType: 'tech_lead',
+      orchestratorType: 'orchestrator',
       steps: [
         {
           id: 'analyze',
@@ -295,7 +295,7 @@ describe('visual-output', () => {
   describe('generateAsciiDashboard', () => {
     const sampleData: OrchestrationVizData = {
       executionId: 'dash-001',
-      orchestratorType: 'tech_lead',
+      orchestratorType: 'orchestrator',
       steps: [
         {
           id: 'a',
@@ -337,7 +337,7 @@ describe('visual-output', () => {
       const result = generateAsciiDashboard(sampleData);
 
       expect(result).toContain('dash-001');
-      expect(result).toContain('tech_lead');
+      expect(result).toContain('orchestrator');
       expect(result).toContain('10500ms');
     });
 

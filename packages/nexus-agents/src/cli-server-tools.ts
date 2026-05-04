@@ -191,7 +191,7 @@ function createOrchestratorForOrchestration(
         execute: (task: unknown) => Promise<Result<unknown, unknown>>;
       },
     });
-    return factory.create('tech_lead');
+    return factory.create('orchestrator');
   }
 
   // Issue #554/#540: Check both config option and environment variable
