@@ -17,7 +17,12 @@ import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middlewar
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { withToolError } from '../middleware/tool-error-handler.js';
 import { addResearchPaper, paperExists } from '../../cli/research-helpers.js';
-import { toolError, toolSuccess, type ToolResult, type BaseMcpToolDeps } from './tool-result.js';
+import {
+  toolError,
+  toolSuccessStructured,
+  type ToolResult,
+  type BaseMcpToolDeps,
+} from './tool-result.js';
 import { getToolMemory } from './tool-memory.js';
 
 // =============================================================================
@@ -157,7 +162,7 @@ function createResearchAddHandler(deps: ResearchAddDeps) {
         return toolError(result.message);
       }
 
-      return toolSuccess(JSON.stringify(result, null, 2));
+      return toolSuccessStructured(result as unknown as Record<string, unknown>);
     });
   };
 }
@@ -198,9 +203,18 @@ export function registerResearchAddTool(server: McpServer, deps: ResearchAddDeps
     logger,
   });
 
+  // Concrete shape returned by executeResearchAdd (#2340).
+  const outputSchema = {
+    success: z.boolean(),
+    paperId: z.string().optional(),
+    title: z.string().optional(),
+    message: z.string(),
+    dryRun: z.boolean().optional(),
+  };
+
   server.registerTool(
     'research_add',
-    { description, inputSchema: toolSchema },
+    { description, inputSchema: toolSchema, outputSchema },
     toSdkCallback(wrappedHandler)
   );
   logger.info('Registered research_add tool with secure handler and timeout protection');
