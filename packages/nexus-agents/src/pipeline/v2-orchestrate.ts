@@ -13,11 +13,10 @@
  *
  * @module pipeline/v2-orchestrate
  */
-import { randomUUID } from 'node:crypto';
-
 import { createDelegatePipeline, checkPipelinePolicy } from './v2-delegate.js';
 import { PipelineRunner } from './pipeline-runner.js';
 import { getPipelineEventBus } from './event-bus.js';
+import { buildBaseTaskContract } from './task-contract-builders.js';
 
 import type { TaskContract } from './task-contract.js';
 import type { PipelineMetrics } from './v2-delegate.js';
@@ -39,24 +38,15 @@ export interface OrchestrateInputLike {
 
 /** Converts orchestrate input to a TaskContract. */
 export function orchestrateInputToTaskContract(input: OrchestrateInputLike): TaskContract {
-  const now = Date.now();
   const metadata: Record<string, unknown> = { source: 'orchestrate' };
   if (input.context !== undefined) metadata['context'] = input.context;
   if (input.maxIterations !== undefined) metadata['maxIterations'] = input.maxIterations;
-
-  return {
-    id: `orchestrate-${randomUUID().slice(0, 8)}`,
-    description: input.task,
-    status: 'approved',
+  return buildBaseTaskContract({
+    idPrefix: 'orchestrate',
+    task: input.task,
     analysis: { complexity: 'high', taskType: 'orchestration', ambiguityScore: 0.3 },
-    constraints: { scope: [] },
-    requiredCapabilities: { tools: [], experts: [] },
-    capabilityGaps: { available: { tools: [], experts: [] }, gaps: [], allSatisfied: true },
-    artifacts: [],
     metadata,
-    createdAt: now,
-    updatedAt: now,
-  };
+  });
 }
 
 // ============================================================================

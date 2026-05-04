@@ -13,14 +13,13 @@
  *
  * @module pipeline/v2-delegate
  */
-import { randomUUID } from 'node:crypto';
-
 import { createLogger } from '../core/index.js';
 
 import { PipelineRunner } from './pipeline-runner.js';
 import { getPipelineEventBus } from './event-bus.js';
 import { createDefaultPolicyEngine } from './policy-engine.js';
 import { evaluatePolicy, getPolicyMode } from './policy-evaluator.js';
+import { buildBaseTaskContract } from './task-contract-builders.js';
 
 import type { CompiledPipeline } from './pipeline-runner.js';
 import type { TaskContract, PlanContract } from './task-contract.js';
@@ -79,7 +78,6 @@ export interface PipelineMetrics {
  * Input fields are preserved in metadata for downstream pipeline stages.
  */
 export function delegateInputToTaskContract(input: DelegateInputLike): TaskContract {
-  const now = Date.now();
   const metadata: Record<string, unknown> = { source: 'delegate_to_model' };
   if (input.preferred_capability !== undefined) {
     metadata['preferredCapability'] = input.preferred_capability;
@@ -93,27 +91,12 @@ export function delegateInputToTaskContract(input: DelegateInputLike): TaskContr
   if (input.estimate_tokens === true) {
     metadata['estimateTokens'] = true;
   }
-  return {
-    id: `delegate-${randomUUID().slice(0, 8)}`,
-    description: input.task,
-    status: 'approved',
-    analysis: {
-      complexity: 'moderate',
-      taskType: 'routing',
-      ambiguityScore: 0.1,
-    },
-    constraints: { scope: [] },
-    requiredCapabilities: { tools: [], experts: [] },
-    capabilityGaps: {
-      available: { tools: [], experts: [] },
-      gaps: [],
-      allSatisfied: true,
-    },
-    artifacts: [],
+  return buildBaseTaskContract({
+    idPrefix: 'delegate',
+    task: input.task,
+    analysis: { complexity: 'moderate', taskType: 'routing', ambiguityScore: 0.1 },
     metadata,
-    createdAt: now,
-    updatedAt: now,
-  };
+  });
 }
 
 /**
