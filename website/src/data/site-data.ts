@@ -10,7 +10,7 @@
  */
 
 /** MCP tools registered in src/mcp/tools/index.ts registerTools() */
-export const MCP_TOOL_COUNT = 34;
+export const MCP_TOOL_COUNT = 35;
 
 /**
  * Built-in expert types in src/agents/experts/expert-config.ts BUILT_IN_EXPERTS.
