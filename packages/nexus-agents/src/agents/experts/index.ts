@@ -115,16 +115,6 @@ export {
   type RegistryStats,
 } from './expert-registry.js';
 
-// Task analysis
-export {
-  analyzeTask,
-  TaskDomain,
-  TaskComplexity,
-  AnalysisError,
-  TaskAnalysisResultSchema,
-  type TaskAnalysisResult,
-} from './task-analyzer.js';
-
 // Expert selection
 export {
   selectExperts,

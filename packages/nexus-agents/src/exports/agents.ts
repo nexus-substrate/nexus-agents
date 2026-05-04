@@ -82,13 +82,6 @@ export {
   type RegisterOptions as ExpertRegisterOptions,
   type QueryOptions,
   type RegistryStats,
-  // Task analysis
-  analyzeTask,
-  TaskDomain,
-  TaskComplexity,
-  AnalysisError,
-  TaskAnalysisResultSchema,
-  type TaskAnalysisResult,
   // Expert selection
   selectExperts,
   quickSelect,
