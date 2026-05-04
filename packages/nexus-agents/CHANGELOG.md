@@ -1,5 +1,40 @@
 # nexus-agents
 
+## 2.63.6
+
+### Patch Changes
+
+- [#2350](https://github.com/williamzujkowski/nexus-agents/pull/2350) [`0d9a785`](https://github.com/williamzujkowski/nexus-agents/commit/0d9a7859ce0290f878764f711be3c18aa4a69dfb) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Add `outputSchema` to `research_query` + `research_add` MCP tools ([#2340](https://github.com/williamzujkowski/nexus-agents/issues/2340) batch 1).
+
+  Per the audit ([#2337](https://github.com/williamzujkowski/nexus-agents/issues/2337)), 11 MCP tools (research*\*, memory*\*, plus a few others) lacked `outputSchema` while `consensus_vote` already had `CONSENSUS_VOTE_OUTPUT_SCHEMA`. MCP clients that respect output schemas (Claude Desktop, MCP Inspector, structured-pipeline frameworks) couldn't validate response shapes for the unschemaed tools.
+
+  This PR migrates the first two:
+  - `research_query` — envelope schema `{ action: string, success: boolean, data: unknown }`. Inner `data` is `z.unknown()` because the four action variants (status/overlap/stats/search) return different shapes; per-action schemas deferred.
+  - `research_add` — concrete schema `{ success, paperId?, title?, message, dryRun? }` matching `executeResearchAdd`'s actual return type.
+
+  Both handlers switched from `toolSuccess(JSON.stringify(...))` to `toolSuccessStructured(...)` so the SDK has `structuredContent` to validate against the schema.
+
+  Remaining tools tracked in [#2340](https://github.com/williamzujkowski/nexus-agents/issues/2340) for follow-up batches.
+
+- [#2352](https://github.com/williamzujkowski/nexus-agents/pull/2352) [`a05773d`](https://github.com/williamzujkowski/nexus-agents/commit/a05773da819aab35c218cb0f99c2c9f27e6d0327) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Add `outputSchema` to `memory_query` + `memory_stats` + `memory_write` MCP tools ([#2340](https://github.com/williamzujkowski/nexus-agents/issues/2340) batch 2).
+
+  Continues [#2340](https://github.com/williamzujkowski/nexus-agents/issues/2340). Each handler switched from `toolSuccess(JSON.stringify(...))` to `toolSuccessStructured(...)` so the SDK validates `structuredContent` against the schema. Concrete schemas modeled from each handler's actual return shape:
+  - `memory_query` — `{ query, expandedQuery?, results: unknown[], count, source }`
+  - `memory_stats` — `{ backends: { session, belief, typed, mobimem, decay (booleans) }, session, belief, typed (nullable), mobimem (nullable), decay, collectedAt }`
+  - `memory_write` — `{ success, backend, key, deduplicated?, error? }`
+
+- [#2353](https://github.com/williamzujkowski/nexus-agents/pull/2353) [`34ceda6`](https://github.com/williamzujkowski/nexus-agents/commit/34ceda6e003f97f66962835ec6ccf3c7b75568e4) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Add `outputSchema` to remaining 5 research\_\* MCP tools ([#2340](https://github.com/williamzujkowski/nexus-agents/issues/2340) batch 3 — closes the issue).
+
+  Final batch: `research_add_source`, `research_analyze`, `research_catalog_review`, `research_discover`, `research_synthesize`. Each handler switched from `toolSuccess(JSON.stringify(...))` to `toolSuccessStructured(...)` so the SDK validates `structuredContent` against the schema.
+
+  Permissive shapes throughout this batch — the response inner content varies per action/source/cluster, and CI runs hit partial-init paths where some fields are absent. Top-level field names are typed; nested data uses `z.unknown()`.
+
+  After this PR all 11 tools called out in the audit have `outputSchema`. The two remaining unschemaed tools — `weather_report` and `repo_analyze` — were intentionally deferred upstream (per the existing `outputSchema deferred for weather_report due to complex dynamic shape` note).
+
+- [#2355](https://github.com/williamzujkowski/nexus-agents/pull/2355) [`dc81450`](https://github.com/williamzujkowski/nexus-agents/commit/dc814501478df94c4633991e20f8703c7c58596a) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `run_pipeline` and `run_dev_pipeline` no longer block libuv on file reads ([#2354](https://github.com/williamzujkowski/nexus-agents/issues/2354)).
+
+  `resolveTask()` (pipeline-tool.ts) and `resolveTaskInput()` (dev-pipeline-tool.ts) used `fs.readFileSync` inside async MCP request handlers. For multi-megabyte spec/plan files this stalled all in-flight MCP requests for the duration of the read. Both functions are now `async` and use `fs.promises.readFile`. Existing `ENOENT` error message is preserved (caught and rethrown as the same "Spec file not found" / "Plan file not found" string).
+
 ## 2.63.5
 
 ### Patch Changes
