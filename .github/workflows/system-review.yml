@@ -241,6 +241,12 @@ jobs:
       (github.event.inputs.create_issue == 'true' || github.event_name != 'workflow_dispatch')
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # The job uses `gh issue create`; the top-level `permissions: read-all`
+    # blocks that with "Resource not accessible by integration (createIssue)".
+    # Scope the write to this job only.
+    permissions:
+      contents: read
+      issues: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
