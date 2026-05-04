@@ -16,7 +16,12 @@ import { createLogger, formatZodError } from '../../core/index.js';
 import { withToolError } from '../middleware/tool-error-handler.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
-import { toolError, toolSuccess, type ToolResult, type BaseMcpToolDeps } from './tool-result.js';
+import {
+  toolError,
+  toolSuccessStructured,
+  type ToolResult,
+  type BaseMcpToolDeps,
+} from './tool-result.js';
 import { getToolMemory } from './tool-memory.js';
 
 // ============================================================================
@@ -250,7 +255,7 @@ async function memoryWriteHandler(args: unknown, ctx: HandlerContext): Promise<T
     if (!result.success) {
       return toolError(JSON.stringify(result, null, 2));
     }
-    return toolSuccess(JSON.stringify(result, null, 2));
+    return toolSuccessStructured(result as unknown as Record<string, unknown>);
   });
 }
 
@@ -301,9 +306,20 @@ export function registerMemoryWriteTool(server: McpServer, deps: MemoryWriteDeps
   const timeoutMs = getToolTimeout('memory_write', deps.security);
   const wrappedHandler = wrapToolWithTimeout('memory_write', secureHandler, { timeoutMs, logger });
 
+  // Concrete shape: every backend writer returns success+backend+key, with an
+  // optional `deduplicated` flag (belief backend only) and an optional `error`
+  // field on failure paths (#2340 batch 2).
+  const outputSchema = {
+    success: z.boolean(),
+    backend: z.string(),
+    key: z.string(),
+    deduplicated: z.boolean().optional(),
+    error: z.string().optional(),
+  };
+
   server.registerTool(
     'memory_write',
-    { description, inputSchema: toolSchema },
+    { description, inputSchema: toolSchema, outputSchema },
     toSdkCallback(wrappedHandler)
   );
   logger.info('Registered memory_write tool');

@@ -15,7 +15,12 @@ import { createLogger, formatZodError } from '../../core/index.js';
 import { withToolError } from '../middleware/tool-error-handler.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
-import { toolError, toolSuccess, type ToolResult, type BaseMcpToolDeps } from './tool-result.js';
+import {
+  toolError,
+  toolSuccessStructured,
+  type ToolResult,
+  type BaseMcpToolDeps,
+} from './tool-result.js';
 import { getToolMemory } from './tool-memory.js';
 
 // ============================================================================
@@ -177,7 +182,7 @@ async function memoryStatsHandler(args: unknown, ctx: HandlerContext): Promise<T
 
   return withToolError('Memory stats failed', ctx.logger, async () => {
     const result = await collectMemoryStats(validationResult.data, ctx.logger);
-    return toolSuccess(JSON.stringify(result, null, 2));
+    return toolSuccessStructured(result as unknown as Record<string, unknown>);
   });
 }
 
@@ -213,9 +218,22 @@ export function registerMemoryStatsTool(server: McpServer, deps: MemoryStatsDeps
   const timeoutMs = getToolTimeout('memory_stats', deps.security);
   const wrappedHandler = wrapToolWithTimeout('memory_stats', secureHandler, { timeoutMs, logger });
 
+  // Permissive shape from collectMemoryStats (#2340 batch 2). Backend-specific
+  // stats vary by initialization state (some are nullable, some optional in CI
+  // where partial init is the norm); model the envelope, not internal structure.
+  const outputSchema = {
+    backends: z.unknown(),
+    session: z.unknown().optional(),
+    belief: z.unknown().optional(),
+    typed: z.unknown().optional(),
+    mobimem: z.unknown().optional(),
+    decay: z.unknown().optional(),
+    collectedAt: z.string().optional(),
+  };
+
   server.registerTool(
     'memory_stats',
-    { description, inputSchema: toolSchema },
+    { description, inputSchema: toolSchema, outputSchema },
     toSdkCallback(wrappedHandler)
   );
   logger.info('Registered memory_stats tool');
