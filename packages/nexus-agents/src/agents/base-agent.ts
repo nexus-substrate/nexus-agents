@@ -27,7 +27,7 @@ import { TokenBudgetTracker, type ITokenBudgetTracker } from '../context/token-b
 import type { IMemoryBackend } from '../context/memory-backend-types.js';
 import type { ITypedMemory, TypedMemoryEntry } from '../context/memory-types.js';
 import { AgentStateMachine } from './state-machine.js';
-import { performLegacyStateTransition } from './base-agent-state-helpers.js';
+import { transitionToState } from './base-agent-state-helpers.js';
 import { setupStateMachine, initializeInfrastructure } from './base-agent-constructor-helpers.js';
 import { BaseAgentOptionsSchema } from './agent-schemas.js';
 import type { IEventBus } from './collaboration/event-bus-types.js';
@@ -195,16 +195,6 @@ export abstract class BaseAgent implements IAgent {
     };
   }
 
-  /** @deprecated Use stateMachine.transition() directly for new code */
-  protected setState(newState: AgentState): void {
-    // eslint-disable-next-line @typescript-eslint/no-deprecated -- Intentional legacy support
-    performLegacyStateTransition({
-      stateMachine: this.stateMachine,
-      logger: this.logger,
-      newState,
-    });
-  }
-
   async initialize(ctx: AgentContext): Promise<Result<void, AgentError>> {
     const initCtx = buildInitializationContext(this.contextState);
     const result = await performInitialization(initCtx, ctx);
@@ -300,11 +290,17 @@ export abstract class BaseAgent implements IAgent {
     if (!adapterResult.ok) return adapterResult;
     const preCheckResult = await executePreCompletionChecks(ctx);
     if (!preCheckResult.ok) return preCheckResult;
-    // eslint-disable-next-line @typescript-eslint/no-deprecated -- Internal backward compatibility
-    this.setState('acting');
+    transitionToState({
+      stateMachine: this.stateMachine,
+      logger: this.logger,
+      newState: 'acting',
+    });
     const result = await runModelCompletion(ctx, adapterResult.value, request);
-    // eslint-disable-next-line @typescript-eslint/no-deprecated -- Internal backward compatibility
-    this.setState('thinking');
+    transitionToState({
+      stateMachine: this.stateMachine,
+      logger: this.logger,
+      newState: 'thinking',
+    });
     return result;
   }
 

@@ -9,7 +9,7 @@ import type { ILogger, AgentState } from '../core/index.js';
 import type { AgentStateMachine } from './state-machine.js';
 import { mapStatesToEvent } from './state-machine-types.js';
 
-/** Parameters for legacy setState operation. */
+/** Parameters for transitioning to a target state. */
 export interface SetStateParams {
   stateMachine: AgentStateMachine;
   logger: ILogger;
@@ -17,16 +17,20 @@ export interface SetStateParams {
 }
 
 /**
- * Attempts a state transition using the state machine.
- * Maps legacy state names to state machine events for backward compatibility.
- * @deprecated Use stateMachine.transition() directly for new code
+ * Transition the state machine to a target state by deriving the
+ * appropriate event from (current → target). Used by BaseAgent's
+ * internal lifecycle hooks where the call site knows the target
+ * state but not the underlying event name.
+ *
+ * For state machines with explicit event names known at the call
+ * site, prefer `stateMachine.transition(event)` directly.
  */
-export function performLegacyStateTransition(params: SetStateParams): void {
+export function transitionToState(params: SetStateParams): void {
   const { stateMachine, logger, newState } = params;
   const currentState = stateMachine.state;
 
   if (newState === 'error') {
-    stateMachine.forceError({ reason: 'setState called with error' });
+    stateMachine.forceError({ reason: 'transitionToState called with error' });
     return;
   }
 
@@ -42,6 +46,6 @@ export function performLegacyStateTransition(params: SetStateParams): void {
       });
     }
   } else if (currentState !== newState) {
-    logger.debug('Unmapped state change (legacy)', { from: currentState, to: newState });
+    logger.debug('Unmapped state change', { from: currentState, to: newState });
   }
 }
