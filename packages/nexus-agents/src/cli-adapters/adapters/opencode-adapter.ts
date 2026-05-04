@@ -27,7 +27,7 @@ import {
   getCliModelName,
   buildModelInfo,
 } from '../../config/model-config-helpers.js';
-import { DEFAULT_MODEL_CAPABILITIES } from '../../config/model-capabilities.js';
+import { findModelsByCli } from '../../config/model-capabilities.js';
 import { createLogger } from '../../core/index.js';
 
 const logger = createLogger({ component: 'opencode-adapter' });
@@ -44,17 +44,16 @@ const MODEL_TO_CLI_NAME: Record<string, string> = buildOpenCodeAliasMap();
 
 function buildOpenCodeAliasMap(): Record<string, string> {
   const map: Record<string, string> = {};
-  for (const model of DEFAULT_MODEL_CAPABILITIES.models) {
-    if (model.cliName === 'opencode' && model.cliModelName !== undefined) {
-      // Map internal ID → CLI model name
-      map[model.id] = model.cliModelName;
-      // Map CLI alias → CLI model name
-      if (model.cliAlias !== undefined) {
-        map[model.cliAlias] = model.cliModelName;
-      }
-      // Pass through cliModelName itself
-      map[model.cliModelName] = model.cliModelName;
+  for (const model of findModelsByCli('opencode')) {
+    if (model.cliModelName === undefined) continue;
+    // Map internal ID → CLI model name
+    map[model.id] = model.cliModelName;
+    // Map CLI alias → CLI model name
+    if (model.cliAlias !== undefined) {
+      map[model.cliAlias] = model.cliModelName;
     }
+    // Pass through cliModelName itself
+    map[model.cliModelName] = model.cliModelName;
   }
   return map;
 }

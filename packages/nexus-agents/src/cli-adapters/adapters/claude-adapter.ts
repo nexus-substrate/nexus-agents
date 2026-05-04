@@ -17,7 +17,7 @@ import type {
 } from '../types.js';
 import { SubprocessCliAdapter, type CommandConfig } from '../subprocess-adapter.js';
 import { ClaudeResponseParser } from '../parsers/claude-parser.js';
-import { DEFAULT_MODEL_CAPABILITIES } from '../../config/model-capabilities.js';
+import { findModelsByCli } from '../../config/model-capabilities.js';
 import {
   getDefaultModelForCli,
   getCliModelName,
@@ -34,8 +34,8 @@ const MODEL_TO_CLI_ALIAS: Record<string, string> = buildClaudeAliasMap();
 
 function buildClaudeAliasMap(): Record<string, string> {
   const map: Record<string, string> = {};
-  for (const model of DEFAULT_MODEL_CAPABILITIES.models) {
-    if (model.cliName !== 'claude' || model.cliAlias === undefined) continue;
+  for (const model of findModelsByCli('claude')) {
+    if (model.cliAlias === undefined) continue;
     const alias = model.cliAlias;
     map[alias] = alias;
     if (model.cliModelName !== undefined) map[model.cliModelName] = alias;
