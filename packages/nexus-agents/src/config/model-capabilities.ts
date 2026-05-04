@@ -458,6 +458,23 @@ export function findModelsByProvider(
   return matrix.models.filter((m) => m.provider === provider);
 }
 
+/**
+ * Find all models that target a specific CLI (`cliName`).
+ *
+ * Used by adapter alias-map builders so the "iterate models filtered by
+ * cliName" boilerplate lives in one place. Each adapter still owns its own
+ * value-derivation logic — the filters and target shapes differ across CLIs
+ * (claude maps to `cliAlias`, opencode maps to `provider/model` form), so this
+ * helper deliberately stops at the filtering step rather than imposing a
+ * common map shape (#2342).
+ */
+export function findModelsByCli(
+  cliName: ModelCapability['cliName'],
+  matrix: ModelCapabilitiesMatrix = DEFAULT_MODEL_CAPABILITIES
+): ModelCapability[] {
+  return matrix.models.filter((m) => m.cliName === cliName);
+}
+
 /** Find the best model for a required output modality, preferring larger context. */
 export function findBestModelForOutput(
   modality: OutputModality,
