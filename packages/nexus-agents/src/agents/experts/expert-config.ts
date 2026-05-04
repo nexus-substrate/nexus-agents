@@ -155,6 +155,10 @@ export const ExpertConfigSchema = z.object({
 
 /**
  * Zod schema for BuiltInExpertType.
+ *
+ * MUST stay in lockstep with the `BuiltInExpertType` type union above.
+ * Tested by `BuiltInExpertTypeSchema accepts every literal in BuiltInExpertType`
+ * in expert-config.test.ts to prevent drift (#2338).
  */
 export const BuiltInExpertTypeSchema = z.enum([
   'code',
@@ -167,6 +171,7 @@ export const BuiltInExpertTypeSchema = z.enum([
   'pm',
   'ux',
   'infrastructure',
+  'qa',
   'data-visualization',
 ]);
 
