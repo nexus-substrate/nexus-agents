@@ -13,7 +13,12 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
 import { createLogger, formatZodError } from '../../core/index.js';
 import { withToolError } from '../middleware/tool-error-handler.js';
-import { toolError, toolSuccess, type ToolResult, type BaseMcpToolDeps } from './tool-result.js';
+import {
+  toolError,
+  toolSuccessStructured,
+  type ToolResult,
+  type BaseMcpToolDeps,
+} from './tool-result.js';
 
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
@@ -243,7 +248,7 @@ function createCatalogReviewHandler(deps: ResearchCatalogReviewDeps) {
         return toolError(result.message);
       }
 
-      return toolSuccess(JSON.stringify(result, null, 2));
+      return toolSuccessStructured(result as unknown as Record<string, unknown>);
     });
   };
 }
@@ -285,9 +290,18 @@ export function registerResearchCatalogReviewTool(
     logger,
   });
 
+  // Permissive shape — handler returns ResearchCatalogReviewResponse with
+  // action, success, message, optional data (#2340 batch 3).
+  const outputSchema = {
+    action: z.string().optional(),
+    success: z.boolean().optional(),
+    message: z.string().optional(),
+    data: z.unknown().optional(),
+  };
+
   server.registerTool(
     'research_catalog_review',
-    { description, inputSchema: toolSchema },
+    { description, inputSchema: toolSchema, outputSchema },
     toSdkCallback(wrappedHandler)
   );
   logger.info('Registered research_catalog_review tool');

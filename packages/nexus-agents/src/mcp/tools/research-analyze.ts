@@ -12,7 +12,12 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, formatZodError } from '../../core/index.js';
 import { withToolError } from '../middleware/tool-error-handler.js';
-import { toolError, toolSuccess, type ToolResult, type BaseMcpToolDeps } from './tool-result.js';
+import {
+  toolError,
+  toolSuccessStructured,
+  type ToolResult,
+  type BaseMcpToolDeps,
+} from './tool-result.js';
 
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
@@ -396,7 +401,7 @@ function createResearchAnalyzeHandler(deps: ResearchAnalyzeDeps) {
     const logger = deps.logger ?? createLogger({ tool: 'research_analyze' });
     return withToolError('Analysis failed', logger, async () => {
       const result = await executeAnalysis(validationResult.data);
-      return toolSuccess(JSON.stringify(result, null, 2));
+      return toolSuccessStructured(result as unknown as Record<string, unknown>);
     });
   };
 }
@@ -433,9 +438,18 @@ export function registerResearchAnalyzeTool(server: McpServer, deps: ResearchAna
     logger,
   });
 
+  // Permissive shape — handler returns ResearchAnalyzeResponse with focus,
+  // success, analysis (varies per focus), recommendations (#2340 batch 3).
+  const outputSchema = {
+    focus: z.string().optional(),
+    success: z.boolean().optional(),
+    analysis: z.unknown().optional(),
+    recommendations: z.array(z.string()).optional(),
+  };
+
   server.registerTool(
     'research_analyze',
-    { description, inputSchema: toolSchema },
+    { description, inputSchema: toolSchema, outputSchema },
     toSdkCallback(wrappedHandler)
   );
   logger.info('Registered research_analyze tool with secure handler and timeout protection');
