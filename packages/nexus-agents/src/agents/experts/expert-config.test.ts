@@ -170,16 +170,32 @@ describe('ModelPreferenceSchema', () => {
 });
 
 describe('BuiltInExpertTypeSchema', () => {
-  it('should validate all built-in types', () => {
-    const types = ['code', 'architecture', 'security', 'documentation', 'testing'];
+  // Single source of truth for the contract test below. If `BuiltInExpertType`
+  // gains a new member, append it here so the schema-drift test fires when the
+  // Zod enum forgets to mirror it (#2338 caught 'qa' missing from the schema).
+  const ALL_BUILT_IN_TYPES = [
+    'code',
+    'architecture',
+    'security',
+    'documentation',
+    'testing',
+    'devops',
+    'research',
+    'pm',
+    'ux',
+    'infrastructure',
+    'qa',
+    'data-visualization',
+  ] as const;
 
-    for (const type of types) {
+  it('accepts every literal in BuiltInExpertType (#2338 schema-drift gate)', () => {
+    for (const type of ALL_BUILT_IN_TYPES) {
       const result = BuiltInExpertTypeSchema.safeParse(type);
-      expect(result.success).toBe(true);
+      expect(result.success, `BuiltInExpertTypeSchema must accept '${type}'`).toBe(true);
     }
   });
 
-  it('should reject invalid type', () => {
+  it('rejects invalid types', () => {
     const result = BuiltInExpertTypeSchema.safeParse('invalid');
     expect(result.success).toBe(false);
   });
