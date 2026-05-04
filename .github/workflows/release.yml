@@ -55,6 +55,7 @@ jobs:
           NPM_CONFIG_PROVENANCE: true
 
       - name: Detect publish-race version skew (#2382)
+        id: fallback-publish
         # The changesets/action enters one of two modes:
         # 1. publish — when no pending changesets exist on main → runs `pnpm release`.
         # 2. PR-update — when changesets exist → updates the release PR.
@@ -99,6 +100,14 @@ jobs:
 
           echo "::warning::Detected publish-race version skew. package.json=$local_version, npm=$published_version, no pending changesets. Force-publishing $local_version."
           pnpm release
+          # Signal downstream provenance + SBOM steps that we did publish.
+          echo "published=true" >> "$GITHUB_OUTPUT"
+          # Synthesize the publishedPackages output that the changesets/action
+          # step would normally produce, so the SBOM upload step can derive the
+          # release tag in the same way.
+          published_pkgs=$(jq -nc --arg name "nexus-agents" --arg version "$local_version" \
+            '[{name: $name, version: $version}]')
+          echo "publishedPackages=$published_pkgs" >> "$GITHUB_OUTPUT"
 
       - name: Generate CycloneDX SBOM
         # Node-native SBOM via @cyclonedx/cdxgen against pnpm-lock.yaml.
@@ -107,7 +116,7 @@ jobs:
         # skipped on every release from 2.29.1 onward. cdxgen 12.3+ is run
         # via npx so we don't need pnpm 10 (cdxgen 12.x's stated minimum).
         # CycloneDX 1.6 is the current stable spec version.
-        if: steps.changesets.outputs.published == 'true'
+        if: steps.changesets.outputs.published == 'true' || steps.fallback-publish.outputs.published == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -127,10 +136,12 @@ jobs:
         # output. Derive the release tag from publishedPackages and use
         # `gh release upload` which looks up the release by tag.
         # (#1841 follow-up; SPDX dropped — CycloneDX is dominant for npm.)
-        if: steps.changesets.outputs.published == 'true' && hashFiles('sbom.cdx.json') != ''
+        if: (steps.changesets.outputs.published == 'true' || steps.fallback-publish.outputs.published == 'true') && hashFiles('sbom.cdx.json') != ''
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PUBLISHED_PACKAGES: ${{ steps.changesets.outputs.publishedPackages }}
+          # Prefer changesets/action's output; fall back to the synthesized
+          # output from the race-recovery step.
+          PUBLISHED_PACKAGES: ${{ steps.changesets.outputs.publishedPackages || steps.fallback-publish.outputs.publishedPackages }}
         run: |
           set -euo pipefail
           # publishedPackages is a JSON array: [{"name": "...", "version": "..."}]
@@ -144,13 +155,13 @@ jobs:
           gh release upload "$TAG" sbom.cdx.json --clobber
 
       - name: Attest SBOM
-        if: steps.changesets.outputs.published == 'true' && hashFiles('sbom.cdx.json') != ''
+        if: (steps.changesets.outputs.published == 'true' || steps.fallback-publish.outputs.published == 'true') && hashFiles('sbom.cdx.json') != ''
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
           subject-path: sbom.cdx.json
 
       - name: Attest npm package
-        if: steps.changesets.outputs.published == 'true'
+        if: steps.changesets.outputs.published == 'true' || steps.fallback-publish.outputs.published == 'true'
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
           subject-path: packages/nexus-agents/package.json
