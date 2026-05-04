@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- Barrel file for 35 MCP tools; cohesive single-export-surface module */
 /**
  * nexus-agents/mcp - Tools
  *
@@ -138,6 +139,15 @@ export {
   type ResearchAddSourceDeps,
   type ResearchAddSourceResponse,
 } from './research-add-source.js';
+
+export {
+  registerSurveyOssLandscapeTool,
+  SurveyOssLandscapeInputSchema,
+  type SurveyOssLandscapeInput,
+  type SurveyOssLandscapeDeps,
+  type SurveyOssLandscapeResponse,
+  type OssCandidate,
+} from './survey-oss-landscape.js';
 
 export {
   registerResearchDiscoverTool,
@@ -496,6 +506,7 @@ export function registerTools(
       'research_analyze',
       'research_catalog_review',
       'research_synthesize',
+      'survey_oss_landscape',
       'memory_query',
       'memory_stats',
       'memory_write',

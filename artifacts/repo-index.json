@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-05-04T11:18:46.573Z",
+  "generated": "2026-05-04T16:09:33.042Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.63.6",
   "cli": {
@@ -401,6 +401,10 @@
       {
         "name": "supply_chain_tradeoff_panel",
         "file": "src/mcp/tools/supply-chain-tradeoff-panel.ts"
+      },
+      {
+        "name": "survey_oss_landscape",
+        "file": "src/mcp/tools/survey-oss-landscape.ts"
       },
       {
         "name": "verify_audit_chain",

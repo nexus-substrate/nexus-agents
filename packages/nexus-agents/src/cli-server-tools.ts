@@ -28,6 +28,7 @@ import {
   registerResearchAnalyzeTool,
   registerResearchCatalogReviewTool,
   registerResearchSynthesizeTool,
+  registerSurveyOssLandscapeTool,
   registerMemoryQueryTool,
   registerMemoryStatsTool,
   registerMemoryWriteTool,
@@ -141,6 +142,7 @@ export const REGISTERED_TOOLS = [
   'research_discover',
   'research_analyze',
   'research_catalog_review',
+  'survey_oss_landscape',
   'memory_query',
   'memory_stats',
   'memory_write',
@@ -322,6 +324,10 @@ function registerResearchTools(ctx: ToolRegistrationContext): void {
   registerResearchSynthesizeTool(ctx.server, {
     ...researchDeps,
     rateLimiter: ctx.rateLimiterFactory.getForTool('research_synthesize'),
+  });
+  registerSurveyOssLandscapeTool(ctx.server, {
+    ...researchDeps,
+    rateLimiter: ctx.rateLimiterFactory.getForTool('survey_oss_landscape'),
   });
 }
 

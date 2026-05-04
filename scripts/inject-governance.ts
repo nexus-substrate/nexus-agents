@@ -150,6 +150,8 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
   research_catalog_review: 'Review auto-cataloged research references found during tool execution.',
   research_synthesize:
     'Synthesize the research registry by grouping papers into topic clusters with themes, insights, and implementation opportunities.',
+  survey_oss_landscape:
+    'Transient OSS project search via the GitHub search API. Returns a ranked list of repositories with license (SPDX), last-commit, star-count, and one-line description. Does NOT persist to the research registry — for one-off engineering decisions like "what tools exist in this space?".',
   memory_query: 'Query across all memory backends with unified results and relevance scoring.',
   memory_stats: 'Get memory system statistics dashboard showing backend availability and metrics.',
   weather_report:
@@ -225,6 +227,7 @@ const README_TOOL_DESCRIPTIONS: Record<string, string> = {
   repo_security_plan: 'Generate security scanning pipeline for a repo',
   research_add_source: 'Add non-paper source (GitHub repo, tool, blog)',
   research_synthesize: 'Synthesize registry into topic clusters with themes',
+  survey_oss_landscape: 'Transient OSS project search (license, stars, last-commit) via GitHub',
   extract_symbols: 'Extract code symbols from source files for analysis',
   search_codebase: 'Search codebase for patterns, symbols, or text',
   run_dev_pipeline: 'Full dev pipeline: research, plan, vote, implement, QA',

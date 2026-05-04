@@ -68,7 +68,7 @@ import {
   RepoSecurityPlanInputSchema,
 } from './index.js';
 
-const EXPECTED_TOOL_COUNT = 34;
+const EXPECTED_TOOL_COUNT = 35;
 
 const EXPECTED_TOOL_NAMES = [
   'orchestrate',
@@ -86,6 +86,7 @@ const EXPECTED_TOOL_NAMES = [
   'research_analyze',
   'research_catalog_review',
   'research_synthesize',
+  'survey_oss_landscape',
   'memory_query',
   'memory_stats',
   'memory_write',
@@ -109,7 +110,7 @@ const EXPECTED_TOOL_NAMES = [
 
 describe('MCP tools index', () => {
   describe('registerTools', () => {
-    it('returns exactly 22 tool names', () => {
+    it(`returns exactly ${String(EXPECTED_TOOL_COUNT)} tool names`, () => {
       const server = { tool: () => undefined } as never;
       const result = registerTools(server);
       expect(result.tools).toHaveLength(EXPECTED_TOOL_COUNT);

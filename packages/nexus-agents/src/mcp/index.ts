@@ -224,6 +224,13 @@ export {
   type ResearchSynthesizeInput,
   type ResearchSynthesizeDeps,
   type ResearchSynthesizeResponse,
+  // Survey OSS landscape (transient — Issue #2295, child of #2293)
+  registerSurveyOssLandscapeTool,
+  SurveyOssLandscapeInputSchema,
+  type SurveyOssLandscapeInput,
+  type SurveyOssLandscapeDeps,
+  type SurveyOssLandscapeResponse,
+  type OssCandidate,
   ResearchAutoCatalog,
   getAutoCatalog,
   type CatalogedReference,
