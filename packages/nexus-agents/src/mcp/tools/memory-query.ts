@@ -16,7 +16,12 @@ import { withToolError } from '../middleware/tool-error-handler.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { getToolMemory, type UnifiedMemoryResult } from './tool-memory.js';
-import { toolError, toolSuccess, type ToolResult, type BaseMcpToolDeps } from './tool-result.js';
+import {
+  toolError,
+  toolSuccessStructured,
+  type ToolResult,
+  type BaseMcpToolDeps,
+} from './tool-result.js';
 import {
   ReflectiveRetriever,
   ReflectionCache,
@@ -182,7 +187,7 @@ async function memoryQueryHandler(args: unknown, ctx: HandlerContext): Promise<T
 
   return withToolError('Memory query failed', ctx.logger, async () => {
     const result = await executeMemoryQuery(validationResult.data, ctx.logger);
-    return toolSuccess(JSON.stringify(result, null, 2));
+    return toolSuccessStructured(result as unknown as Record<string, unknown>);
   });
 }
 
@@ -229,9 +234,19 @@ export function registerMemoryQueryTool(server: McpServer, deps: MemoryQueryDeps
   const timeoutMs = getToolTimeout('memory_query', deps.security);
   const wrappedHandler = wrapToolWithTimeout('memory_query', secureHandler, { timeoutMs, logger });
 
+  // Concrete shape from executeMemoryQuery (#2340 batch 2). Inner result rows
+  // are dynamic (per-backend shape), so `results` is `z.array(z.unknown())`.
+  const outputSchema = {
+    query: z.string(),
+    expandedQuery: z.string().optional(),
+    results: z.array(z.unknown()),
+    count: z.number(),
+    source: z.string(),
+  };
+
   server.registerTool(
     'memory_query',
-    { description, inputSchema: toolSchema },
+    { description, inputSchema: toolSchema, outputSchema },
     toSdkCallback(wrappedHandler)
   );
   logger.info('Registered memory_query tool');
