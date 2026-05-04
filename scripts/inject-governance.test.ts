@@ -451,4 +451,91 @@ describe('inject-governance server.json sync (#2327)', () => {
       }
     }
   );
+
+  it(
+    'inject writes the canonical tools[] array into server.json',
+    { timeout: IDEMPOTENCY_TIMEOUT },
+    () => {
+      runScript('inject');
+      const server = JSON.parse(readFileSync(SERVER_JSON, 'utf-8')) as { tools: string[] };
+      // Sanity floor: at least 30 tools (snapshot-resilient — the actual count
+      // changes per release and shouldn't be hardcoded here).
+      expect(server.tools.length).toBeGreaterThanOrEqual(30);
+      // The most recent additions must appear (caught the #2295 drift on PR #2358).
+      expect(server.tools).toContain('survey_oss_landscape');
+      expect(server.tools).toContain('supply_chain_tradeoff_panel');
+    }
+  );
+});
+
+// ============================================================================
+// Ancillary count surfaces auto-sync (#2295 follow-up)
+// ============================================================================
+
+describe('inject-governance ancillary count surfaces (#2295 follow-up)', () => {
+  const SITE_DATA = join(ROOT, 'website/src/data/site-data.ts');
+  const COMPONENTS_DOC = join(ROOT, 'docs/design/components.md');
+  const README_FILE = join(ROOT, 'README.md');
+
+  it(
+    'syncs MCP_TOOL_COUNT in website/src/data/site-data.ts',
+    { timeout: IDEMPOTENCY_TIMEOUT },
+    () => {
+      runScript('inject');
+      const content = readFileSync(SITE_DATA, 'utf-8');
+      const match = /MCP_TOOL_COUNT\s*=\s*(\d+)/.exec(content);
+      expect(match).not.toBeNull();
+      const count = parseInt(match![1]!, 10);
+      expect(count).toBeGreaterThanOrEqual(30);
+    }
+  );
+
+  it(
+    'syncs the three "N tool" mentions in docs/design/components.md',
+    { timeout: IDEMPOTENCY_TIMEOUT },
+    () => {
+      runScript('inject');
+      const content = readFileSync(COMPONENTS_DOC, 'utf-8');
+      // Pattern 1: row of mcp module description
+      expect(content).toMatch(/MCP server, \d+ tool handlers, gateway/);
+      // Pattern 2: capability-gap-detector cross-ref
+      expect(content).toMatch(/against \d+ registered tools and \d+ expert roles/);
+      // Pattern 3: tool-registration line
+      expect(content).toMatch(/`registerTools\(\)` — \d+ tools total/);
+    }
+  );
+
+  it('syncs README.md count mentions', { timeout: IDEMPOTENCY_TIMEOUT }, () => {
+    runScript('inject');
+    const content = readFileSync(README_FILE, 'utf-8');
+    // Architecture diagram bottom line: "│   N MCP tools · multi-stage..."
+    expect(content).toMatch(/│\s+\d+ MCP tools · multi-stage CompositeRouter/);
+    // Capabilities table cell: "**N MCP Tools**"
+    expect(content).toMatch(/\*\*\d+ MCP Tools\*\*/);
+  });
+
+  it(
+    'all ancillary surfaces report the SAME tool count after inject',
+    { timeout: IDEMPOTENCY_TIMEOUT },
+    () => {
+      runScript('inject');
+      const siteCount = parseInt(
+        /MCP_TOOL_COUNT\s*=\s*(\d+)/.exec(readFileSync(SITE_DATA, 'utf-8'))?.[1] ?? '0',
+        10
+      );
+      const componentsCount = parseInt(
+        /MCP server, (\d+) tool handlers/.exec(readFileSync(COMPONENTS_DOC, 'utf-8'))?.[1] ?? '0',
+        10
+      );
+      const readmeArchCount = parseInt(
+        /│\s+(\d+) MCP tools · multi-stage CompositeRouter/.exec(
+          readFileSync(README_FILE, 'utf-8')
+        )?.[1] ?? '0',
+        10
+      );
+      expect(siteCount).toBeGreaterThan(0);
+      expect(siteCount).toBe(componentsCount);
+      expect(siteCount).toBe(readmeArchCount);
+    }
+  );
 });

@@ -1056,10 +1056,19 @@ async function injectGovernance(): Promise<void> {
   // drifts from the shipped npm package.
   syncPluginVersion();
 
-  // #2327: sync packages/nexus-agents/server.json — the MCP-spec registry
-  // file — to package.json's version + canonical tool count. Drifted to
-  // 2.53.0 (10 minor versions behind) before this sync was added.
-  syncServerJson(tools.length);
+  // #2327 + #2295 follow-up: sync packages/nexus-agents/server.json — the
+  // MCP-spec registry file — to package.json's version, canonical tool
+  // count, and the full `tools[]` array. The latter previously needed a
+  // manual edit per tool; CI's docs-content-drift gate (#2107) caught it
+  // every release.
+  syncServerJson(tools.map((t) => t.name));
+
+  // #2295 follow-up: sync ancillary count surfaces that the docs-content-
+  // drift gate (#2107) checks but didn't write. Each new tool used to
+  // require manual edits in 5+ places; now they all flow from this script.
+  syncWebsiteToolCount(tools.length);
+  syncDesignDocsToolCount(tools.length);
+  syncReadmeToolCount(tools.length);
 
   console.log('Governance injected:');
   console.log(`  MCP Tools: ${String(tools.length)}`);
@@ -1248,6 +1257,7 @@ interface ServerJsonShape {
   version?: string;
   description?: string;
   packages?: Array<Record<string, unknown>>;
+  tools?: string[];
   [k: string]: unknown;
 }
 
@@ -1276,7 +1286,23 @@ function syncServerToolCount(server: ServerJsonShape, toolCount: number): boolea
   return true;
 }
 
-function syncServerJson(toolCount: number): void {
+/**
+ * Sync the `tools[]` array from the authoritative `STANDALONE_TOOLS` list
+ * (#2295 follow-up). Preserves source order — the registration order in
+ * `mcp/tools/index.ts` is meaningful for help-text and matches consumer
+ * expectations.
+ */
+function syncServerToolList(server: ServerJsonShape, toolNames: readonly string[]): boolean {
+  if (Array.isArray(server.tools)) {
+    const same =
+      server.tools.length === toolNames.length && server.tools.every((t, i) => t === toolNames[i]);
+    if (same) return false;
+  }
+  server.tools = [...toolNames];
+  return true;
+}
+
+function syncServerJson(toolNames: readonly string[]): void {
   if (!existsSync(PACKAGE_JSON_PATH) || !existsSync(SERVER_JSON_PATH)) return;
   const pkgVersion = (JSON.parse(readFileSync(PACKAGE_JSON_PATH, 'utf-8')) as { version?: string })
     .version;
@@ -1284,10 +1310,69 @@ function syncServerJson(toolCount: number): void {
 
   const server = JSON.parse(readFileSync(SERVER_JSON_PATH, 'utf-8')) as ServerJsonShape;
   const versionDirty = syncServerVersionFields(server, pkgVersion);
-  const countDirty = syncServerToolCount(server, toolCount);
-  if (versionDirty || countDirty) {
+  const countDirty = syncServerToolCount(server, toolNames.length);
+  const listDirty = syncServerToolList(server, toolNames);
+  if (versionDirty || countDirty || listDirty) {
     writeFileSync(SERVER_JSON_PATH, JSON.stringify(server, null, 2) + '\n');
   }
+}
+
+const SITE_DATA_PATH = join(ROOT, 'website/src/data/site-data.ts');
+const COMPONENTS_DOC_PATH = join(ROOT, 'docs/design/components.md');
+
+/**
+ * Update the `MCP_TOOL_COUNT = N` constant in the website's site-data.ts
+ * (#2295 follow-up). Soft-skip if the website module isn't checked out.
+ */
+function syncWebsiteToolCount(toolCount: number): void {
+  if (!existsSync(SITE_DATA_PATH)) return;
+  const content = readFileSync(SITE_DATA_PATH, 'utf-8');
+  const updated = content.replace(
+    /(export const MCP_TOOL_COUNT\s*=\s*)\d+(\s*;)/,
+    `$1${String(toolCount)}$2`
+  );
+  if (updated !== content) writeFileSync(SITE_DATA_PATH, updated);
+}
+
+/**
+ * Update the three "N tool" / "N MCP tools" / "N registered tools" inline
+ * mentions in docs/design/components.md (#2295 follow-up). Each was a manual
+ * edit on every tool addition; the docs-content-drift gate (#2107) caught
+ * them at release time.
+ */
+function syncDesignDocsToolCount(toolCount: number): void {
+  if (!existsSync(COMPONENTS_DOC_PATH)) return;
+  const content = readFileSync(COMPONENTS_DOC_PATH, 'utf-8');
+  let updated = content.replace(
+    /(MCP server, )(\d+)( tool handlers, gateway)/,
+    `$1${String(toolCount)}$3`
+  );
+  updated = updated.replace(
+    /(against )(\d+)( registered tools and \d+ expert roles)/,
+    `$1${String(toolCount)}$3`
+  );
+  updated = updated.replace(
+    /(`registerTools\(\)` — )(\d+)( tools total)/,
+    `$1${String(toolCount)}$3`
+  );
+  if (updated !== content) writeFileSync(COMPONENTS_DOC_PATH, updated);
+}
+
+/**
+ * Update the two `N MCP tools` mentions in the root README.md (#2295
+ * follow-up). One in the architecture diagram, one in the capabilities
+ * table. The capabilities-table cell uses a special `**N MCP Tools**`
+ * pattern that won't false-match other prose.
+ */
+function syncReadmeToolCount(toolCount: number): void {
+  if (!existsSync(README_PATH)) return;
+  const content = readFileSync(README_PATH, 'utf-8');
+  let updated = content.replace(
+    /(│\s+)(\d+)( MCP tools · multi-stage CompositeRouter)/,
+    `$1${String(toolCount)}$3`
+  );
+  updated = updated.replace(/(\*\*)(\d+)( MCP Tools\*\*)/, `$1${String(toolCount)}$3`);
+  if (updated !== content) writeFileSync(README_PATH, updated);
 }
 
 /**
