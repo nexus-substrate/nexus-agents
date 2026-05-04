@@ -1,5 +1,36 @@
 # nexus-agents
 
+## 2.65.0
+
+### Minor Changes
+
+- [#2371](https://github.com/williamzujkowski/nexus-agents/pull/2371) [`d614436`](https://github.com/williamzujkowski/nexus-agents/commit/d614436ff0e2e88c93f85a7b1658cea81c986a2a) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **Breaking (TypeScript-typed only)**: Remove the deprecated `'tech_lead'` member from the `AgentRole` union (Batch B of [#2368](https://github.com/williamzujkowski/nexus-agents/issues/2368), completes [#1986](https://github.com/williamzujkowski/nexus-agents/issues/1986) partial).
+
+  The `'tech_lead'` role string has been a documented alias of `'orchestrator'` since [#595](https://github.com/williamzujkowski/nexus-agents/issues/595)/[#759](https://github.com/williamzujkowski/nexus-agents/issues/759) (multi-month bake). It is removed from:
+  - `AgentRole` union in `core/types/agent.ts`
+  - `OrchestratorRole` derived type (now `Extract<AgentRole, 'orchestrator'>`)
+  - All `z.enum` role schemas: `agent-schemas.ts`, `workflows/template-types.ts`, `workflows/workflow-types.ts`, `workflows/aflow/aflow-types.ts`, `workflows/aflow/evaluation-types.ts`, `agents/tech-lead-types.ts` (2 schemas), `agents/collaboration/collaboration-schemas.ts`, `agents/experts/expert-config.ts`, `agents/skills/skill-loader-types.ts`, `agents/skills/skill-security-schemas.ts`
+  - `EXPERT_CAPABILITIES` map (`tech-lead-types.ts`, `experts/expert-types.ts`)
+  - `MEMORY_BY_ROLE` map (`context/memory-types.ts`)
+  - `DEFAULT_RBAC.allowedRoles` (`skills/skill-security-types.ts`)
+  - `DEFAULT_ROLE_SKILLS` (`skills/skill-loader-types.ts`)
+  - `Orchestrator` class — now self-identifies as `role: 'orchestrator'` (was `'tech_lead'`) with default `id: 'orchestrator'`
+
+  **Migration**: replace `'tech_lead'` with `'orchestrator'` everywhere it's used as a role name. Runtime behavior is unchanged — both names mapped to identical capability sets.
+
+  **Out of scope (separate follow-up)**: the unrelated `OrchestratorType = 'tech_lead' | 'workflow' | 'puppeteer' | 'custom'` discriminator union in `core/types/orchestrator.ts` (an orchestrator-implementation discriminator, not an agent role) keeps `'tech_lead'` for now. Will rename in a focused PR.
+
+### Patch Changes
+
+- [#2369](https://github.com/williamzujkowski/nexus-agents/pull/2369) [`524e485`](https://github.com/williamzujkowski/nexus-agents/commit/524e485780b2772c0487036ab3144d3062f8c29e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Remove internal-only `@deprecated` markers (Batch A of [#2368](https://github.com/williamzujkowski/nexus-agents/issues/2368)). No public-API impact at runtime.
+  - `StateManagerConfig.charsPerToken` — already ignored at runtime; consumers should use `getTokenEstimator()` from core.
+  - `TaskConstraints.outputFormat` and `TaskConstraints.allowedTools` — fields existed in both the Zod schema (`agent-schemas.ts`) and the TS interface (`core/types/agent.ts`) but were never enforced. Use prompt-level structured output and policy firewall rules instead.
+  - 6 `Swarm*` type aliases in `agents/observability/orchestration-observer-types.ts` (`SwarmStats`, `SwarmObserverEvent`, `SwarmObserverListener`, `SwarmObserverConfig`, `SwarmObserverOptions`, `ISwarmObserver`) plus the `SwarmObserverConfigSchema` const alias. None were re-exported on the public `src/exports/observability.ts` barrel; canonical `OrchestrationObserver*` names remain.
+  - `cli-adapters/task-analyzer.ts` deprecated module + its keyword constants. Internal-only; not in any public barrel. Use `SharedTaskAnalyzer` from `core/task-analysis/`.
+  - Dead barrel `agents/observability-exports.ts` (no importers anywhere).
+
+  Two known-deferred surfaces stay until Batch A2 / B / C: `BaseAgent.setState` (8 internal callers + state-event mapping helper), and `agents/experts/task-analyzer.ts` (publicly exposed via `analyzeTask` on the agents barrel — handled in the breaking-minor batch).
+
 ## 2.64.0
 
 ### Minor Changes
