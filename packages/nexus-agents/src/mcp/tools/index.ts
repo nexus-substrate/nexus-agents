@@ -158,6 +158,15 @@ export {
 } from './vendor-publishing-audit.js';
 
 export {
+  registerCompareDataFeedsTool,
+  CompareDataFeedsInputSchema,
+  type CompareDataFeedsInput,
+  type CompareDataFeedsDeps,
+  type CompareDataFeedsResponse,
+  type FieldDifference,
+} from './compare-data-feeds.js';
+
+export {
   registerResearchDiscoverTool,
   ResearchDiscoverInputSchema,
   type ResearchDiscoverInput,
@@ -501,6 +510,7 @@ const REGISTERED_TOOL_NAMES = [
   'research_synthesize',
   'survey_oss_landscape',
   'vendor_publishing_audit',
+  'compare_data_feeds',
   'memory_query',
   'memory_stats',
   'memory_write',

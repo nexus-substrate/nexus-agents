@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-05-04T17:45:08.171Z",
+  "generated": "2026-05-04T18:38:25.824Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.63.6",
   "cli": {
@@ -274,6 +274,10 @@
   },
   "mcp": {
     "tools": [
+      {
+        "name": "compare_data_feeds",
+        "file": "src/mcp/tools/compare-data-feeds.ts"
+      },
       {
         "name": "consensus_vote",
         "file": "src/mcp/tools/consensus-vote.ts"

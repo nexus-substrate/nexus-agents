@@ -215,6 +215,17 @@ export const TOOL_ANNOTATIONS: Readonly<Record<string, ToolSideEffectsEntry>> = 
     },
     sideEffects: [{ category: 'implicit', description: 'Consumes rate limit quota' }],
   },
+  compare_data_feeds: {
+    annotations: {
+      title: 'Compare Data Feeds',
+      readOnlyHint: true,
+      destructiveHint: false,
+      // Same input → same output; pure file diff with no external calls.
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    sideEffects: [{ category: 'implicit', description: 'Reads two files from the workspace' }],
+  },
   research_analyze: {
     annotations: {
       title: 'Research Analyze',

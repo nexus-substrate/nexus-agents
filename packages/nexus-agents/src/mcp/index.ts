@@ -237,6 +237,13 @@ export {
   type VendorPublishingAuditInput,
   type VendorPublishingAuditDeps,
   type VendorPublishingAuditResponse,
+  // Compare data feeds (Issue #2297, child of #2293)
+  registerCompareDataFeedsTool,
+  CompareDataFeedsInputSchema,
+  type CompareDataFeedsInput,
+  type CompareDataFeedsDeps,
+  type CompareDataFeedsResponse,
+  type FieldDifference,
   ResearchAutoCatalog,
   getAutoCatalog,
   type CatalogedReference,

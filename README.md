@@ -54,7 +54,7 @@ Code:               actual edits, tests, PRs, issues
   │   Role registry             Multi-voter consensus    │
   │   Immutable audit trail     Closed-loop telemetry    │
   │                                                       │
-  │   36 MCP tools · multi-stage CompositeRouter         │
+  │   37 MCP tools · multi-stage CompositeRouter         │
   └────────────────────────┬────────────────────────────┘
                            │
                            ▼ delegates execution to
@@ -130,7 +130,7 @@ nexus-agents orchestrate "Explain the architecture of this codebase"
 | **Memory & Learning**          | 5 user-facing backends (session, belief, agentic, adaptive, typed). Cross-session persistence feeds routing decisions                                                                                                                                                                       |
 | **Research System**            | 9 discovery sources (arXiv, GitHub, Semantic Scholar, etc). Auto-catalog, quality scoring, synthesis into topic clusters                                                                                                                                                                    |
 | **Graph Workflows**            | DAG-based workflow execution with checkpoint/resume, state reduction, and event hooks                                                                                                                                                                                                       |
-| **36 MCP Tools**               | Agent management, workflow execution, research, memory, codebase intelligence, repo analysis, consensus, operations                                                                                                                                                                         |
+| **37 MCP Tools**               | Agent management, workflow execution, research, memory, codebase intelligence, repo analysis, consensus, operations                                                                                                                                                                         |
 
 ---
 
@@ -218,6 +218,7 @@ When running as an MCP server, the following tools are available:
 | `research_synthesize`         | Synthesize registry into topic clusters with themes                                 |
 | `survey_oss_landscape`        | Transient OSS project search (license, stars, last-commit) via GitHub               |
 | `vendor_publishing_audit`     | Look up a vendor's signing infrastructure (GPG keys, URL patterns, signature shape) |
+| `compare_data_feeds`          | Diff two YAML/JSON feeds: coverage + per-field axes                                 |
 | `memory_query`                | Query across all memory backends                                                    |
 | `memory_stats`                | Memory system statistics dashboard                                                  |
 | `memory_write`                | Write to typed memory backends                                                      |
