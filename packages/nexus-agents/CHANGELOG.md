@@ -1,5 +1,77 @@
 # nexus-agents
 
+## 2.66.0
+
+### Minor Changes
+
+- [#2372](https://github.com/williamzujkowski/nexus-agents/pull/2372) [`6353f24`](https://github.com/williamzujkowski/nexus-agents/commit/6353f247d828e5d02dbcd785d2b22ae89c96f0e7) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **Breaking (TypeScript-typed only)**: Remove deprecated public-barrel types from the MCP entry points (Batch C of [#2368](https://github.com/williamzujkowski/nexus-agents/issues/2368), completes [#1986](https://github.com/williamzujkowski/nexus-agents/issues/1986) partial).
+
+  Removed from `mcp/index.ts` and `mcp/tools/index.ts` public re-exports, and from `OrchestrateDeps`:
+  - `ITechLead` — internal-only now (kept for the SICA adapter cascade); no longer re-exported on public barrels. Use `IOrchestrator` from `core/types/orchestrator.js` instead.
+  - `IOrchestratorLegacy` — pure dead alias of `ITechLead`. Removed.
+  - `IExpertFactory` (the one in `orchestrate-types.ts`) — pure dead interface, only typed an unused field. The unrelated `IExpertFactory` interfaces in `workflows/step-executor.ts` and `mcp/tools/create-expert.ts` are unaffected.
+  - `IOrchestrateExpertFactory` aliased re-export — no longer needed.
+  - `createMockTechLead` — public export removed; the mock task-executor logic is now an inlined private helper inside `createMockOrchestrator`.
+  - `OrchestrateDeps.techLead` field — use `OrchestrateDeps.orchestrator` instead. The internal cli-server-tools.ts callsite now wraps the legacy `Orchestrator` agent class with `OrchestratorFactory.create('tech_lead')` to produce an `IOrchestrator`.
+  - `OrchestrateDeps.expertFactory` field — never used. Removed along with the `IExpertFactory` interface that typed it.
+
+  **Migration**:
+
+  ```diff
+  - import type { ITechLead, IOrchestratorLegacy } from 'nexus-agents';
+  + import type { IOrchestrator } from 'nexus-agents';
+  ```
+
+  ```diff
+  - registerOrchestrateTool(server, { techLead: myOrchestrator });
+  + registerOrchestrateTool(server, { orchestrator: myOrchestrator });
+  ```
+
+  ```diff
+  - import { createMockTechLead } from 'nexus-agents';
+  - const mock = createMockTechLead();
+  + import { createMockOrchestrator } from 'nexus-agents';
+  + const mock = createMockOrchestrator();
+  ```
+
+  Bake duration: deprecated since [#595](https://github.com/williamzujkowski/nexus-agents/issues/595)/[#759](https://github.com/williamzujkowski/nexus-agents/issues/759) — multi-month under the `@deprecated` marker. Runtime semantics are unchanged; the cascade through `OrchestratorFactory.create('tech_lead')` produces identical behavior.
+
+  The `useMockTechLead` config field name and `OrchestratorType = 'tech_lead' | …` discriminator are deliberately preserved for now — separate concerns, separate follow-up PRs.
+
+- [#2378](https://github.com/williamzujkowski/nexus-agents/pull/2378) [`15aa1b8`](https://github.com/williamzujkowski/nexus-agents/commit/15aa1b81476e865ed73c3f2a412952d3f75fe17a) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **Breaking (TypeScript-typed only)**: Remove the deprecated `agents/experts/task-analyzer.ts` module from the public surface ([#2374](https://github.com/williamzujkowski/nexus-agents/issues/2374), follow-up to epic [#2368](https://github.com/williamzujkowski/nexus-agents/issues/2368)).
+
+  Removed exports from `src/agents/index.ts` and `src/exports/agents.ts` (publicly reachable):
+  - `analyzeTask(task) → Result<TaskAnalysisResult, AnalysisError>` — keyword-based heuristic classifier
+  - `TaskDomain` enum (`'code'`, `'architecture'`, `'security'`, `'documentation'`, `'testing'`, `'devops'`)
+  - `TaskComplexity` enum (`'low'`, `'medium'`, `'high'`)
+  - `AnalysisError` class — note: a different `AnalysisError` from `failure-analyzer-types.js` is still exported via `orchestration/index.ts`; the name collision was always present
+  - `TaskAnalysisResult` type
+  - `TaskAnalysisResultSchema` Zod schema
+
+  **Migration**: use `SharedTaskAnalyzer` from `core/task-analysis/` (canonical path per ADR-0004 / Issue [#574](https://github.com/williamzujkowski/nexus-agents/issues/574)). Different output shape — `TaskTypeCategory` enum and `ComplexityLevel` (`'simple' | 'moderate' | 'complex' | 'expert'`) — but the underlying analysis is more capable.
+
+  ```diff
+  - import { analyzeTask } from 'nexus-agents';
+  - const result = analyzeTask(task);
+  - if (result.ok) console.log(result.value.domain);
+  + import { createSharedTaskAnalyzer } from 'nexus-agents';
+  + const analyzer = createSharedTaskAnalyzer();
+  + const analysis = await analyzer.analyze(task);
+  + console.log(analysis.taskType);
+  ```
+
+  The deprecated module had been marked `@deprecated Use SharedTaskAnalyzer` since [#574](https://github.com/williamzujkowski/nexus-agents/issues/574) — multi-month bake. Two e2e tests updated: `agent-expert-system.e2e.test.ts` 'Task Analysis' describe block removed (functionality now covered by SharedTaskAnalyzer's own tests in `core/task-analysis/`); `agent-skill-library.e2e.test.ts` performance test migrated to use `analyzer.analyze()`.
+
+### Patch Changes
+
+- [#2377](https://github.com/williamzujkowski/nexus-agents/pull/2377) [`f2f4336`](https://github.com/williamzujkowski/nexus-agents/commit/f2f433695a540ef6c650b68b94e9e47d822d76b2) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Remove the deprecated `BaseAgent.setState()` method ([#2373](https://github.com/williamzujkowski/nexus-agents/issues/2373), follow-up to [#2368](https://github.com/williamzujkowski/nexus-agents/issues/2368)/[#1986](https://github.com/williamzujkowski/nexus-agents/issues/1986)).
+
+  The protected `setState` method was marked `@deprecated Use stateMachine.transition() directly`. It is removed; callers should use `stateMachine.transition(event)` for known events, or the renamed helper `transitionToState({ stateMachine, logger, newState })` when only the target state is known.
+
+  `base-agent-state-helpers.ts` `performLegacyStateTransition` is renamed to `transitionToState` (drops the deprecation marker, function preserved with the same `mapStatesToEvent` mapping logic). The 2 internal callers in `BaseAgent.complete()` and the test helper are updated accordingly.
+
+  Patch-level break: `setState` was a `protected` method — internal-only. No public consumer impact.
+
 ## 2.65.0
 
 ### Minor Changes
