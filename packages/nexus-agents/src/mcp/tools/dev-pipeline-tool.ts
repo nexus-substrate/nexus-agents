@@ -17,7 +17,7 @@ import { warnIfSimulatedOutsideTests } from './simulation-guard.js';
 import type { DevPipelineResult } from '../../pipeline/dev-pipeline.js';
 import { createAgentStages, flushPipelineMemory } from '../../pipeline/agent-executor.js';
 import { createTaskTracker, detectBackend } from '../../pipeline/task-tracker.js';
-// toolSuccessStructured not used directly — server.tool() expects different return type
+// toolSuccessStructured not used directly — registerTool callback expects a CallToolResult-shaped value
 import type {} from '../../pipeline/task-tracker.js';
 
 // ============================================================================
@@ -182,44 +182,50 @@ function buildStructuredOutput(result: DevPipelineResult): Record<string, unknow
   };
 }
 
+const RUN_DEV_PIPELINE_DESCRIPTION =
+  'Run the multi-agent development pipeline. Accepts direct task instructions, a plan file, or a spec file. Supports dry-run (plan+vote only).';
+
 /** Register the run_dev_pipeline MCP tool. */
 export function registerDevPipelineTool(
   server: McpServer,
   _deps: { logger: unknown; rateLimiter: unknown }
 ): void {
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- matches existing tool registration pattern
-  server.tool('run_dev_pipeline', DevPipelineInputSchema.shape, async (args) => {
-    const input = DevPipelineInputSchema.parse(args);
-    if (input.simulateVotes) {
-      warnIfSimulatedOutsideTests('run_dev_pipeline', createLogger({ tool: 'run_dev_pipeline' }));
-    }
+  server.registerTool(
+    'run_dev_pipeline',
+    { description: RUN_DEV_PIPELINE_DESCRIPTION, inputSchema: DevPipelineInputSchema.shape },
+    async (args) => {
+      const input = DevPipelineInputSchema.parse(args);
+      if (input.simulateVotes) {
+        warnIfSimulatedOutsideTests('run_dev_pipeline', createLogger({ tool: 'run_dev_pipeline' }));
+      }
 
-    try {
-      const taskText = resolveTaskInput(input);
-      const stages = await createStages(input);
-      const pipelineOptions = {
-        ...(input.sessionId !== undefined ? { sessionId: input.sessionId } : {}),
-        ...(input.dryRun ? { dryRun: true } : {}),
-        ...(input.mode === 'harness' ? { mode: 'harness' as const } : {}),
-      };
-      const hasOptions = Object.keys(pipelineOptions).length > 0;
-      const result = await runDevPipeline(
-        taskText,
-        stages,
-        hasOptions ? pipelineOptions : undefined
-      );
-      // Always flush memory session — including dry-run exits (#1716)
-      flushPipelineMemory();
-      const structured = buildStructuredOutput(result);
-      return {
-        content: [{ type: 'text' as const, text: JSON.stringify(structured, null, 2) }],
-        structuredContent: structured,
-      };
-    } catch (error: unknown) {
-      return {
-        content: [{ type: 'text' as const, text: `Pipeline error: ${getErrorMessage(error)}` }],
-        isError: true,
-      };
+      try {
+        const taskText = resolveTaskInput(input);
+        const stages = await createStages(input);
+        const pipelineOptions = {
+          ...(input.sessionId !== undefined ? { sessionId: input.sessionId } : {}),
+          ...(input.dryRun ? { dryRun: true } : {}),
+          ...(input.mode === 'harness' ? { mode: 'harness' as const } : {}),
+        };
+        const hasOptions = Object.keys(pipelineOptions).length > 0;
+        const result = await runDevPipeline(
+          taskText,
+          stages,
+          hasOptions ? pipelineOptions : undefined
+        );
+        // Always flush memory session — including dry-run exits (#1716)
+        flushPipelineMemory();
+        const structured = buildStructuredOutput(result);
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(structured, null, 2) }],
+          structuredContent: structured,
+        };
+      } catch (error: unknown) {
+        return {
+          content: [{ type: 'text' as const, text: `Pipeline error: ${getErrorMessage(error)}` }],
+          isError: true,
+        };
+      }
     }
-  });
+  );
 }
