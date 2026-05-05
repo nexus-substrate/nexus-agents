@@ -13,6 +13,20 @@ skills:
       - fix issue
       - resolve bug
       - fixing defects
+  - name: code-simplification
+    description: |-
+      Reduce nesting, extract names, eliminate redundancy without changing
+      behavior. Apply after features work and tests pass — never as a
+      drive-by during feature work. Triggers on "simplify", "refactor for
+      clarity", "this is hard to read", "code review flagged complexity".
+    path: skills/code-simplification/SKILL.md
+    triggers:
+      - simplify
+      - |-
+        refactor for
+        clarity
+      - this is hard to read
+      - code review flagged complexity
   - name: codex-delegator
     description: |-
       Delegate code generation tasks to Codex CLI for optimal performance.
@@ -26,6 +40,19 @@ skills:
       - use codex
       - code generation
       - implementing features
+  - name: deprecation-and-migration
+    description: |-
+      Plan and execute the removal of deprecated APIs without breaking
+      consumers. Apply when retiring `@deprecated` markers, renaming public
+      surfaces, or version-gating cleanup work. Triggers on "deprecate",
+      "remove deprecated", "migration plan", "breaking change", "v3 cleanup".
+    path: skills/deprecation-and-migration/SKILL.md
+    triggers:
+      - deprecate
+      - remove deprecated
+      - migration plan
+      - breaking change
+      - v3 cleanup
   - name: dev-pipeline
     description: >-
       Multi-agent development pipeline (Orchestrator + workers + consensus vote).
@@ -213,6 +240,21 @@ skills:
       - project health
       - review system
       - issues drop below 5
+  - name: test-driven-development
+    description: |-
+      Write failing tests before implementation. The Red-Green-Refactor cycle is
+      a core nexus-agents discipline (CLAUDE.md prime directive). Use when
+      implementing new logic, fixing bugs (Prove-It Pattern), or modifying
+      existing behavior. Triggers on "TDD", "write a test", "test-first",
+      "red-green-refactor", "fixing a bug" (Prove-It).
+    path: skills/test-driven-development/SKILL.md
+    triggers:
+      - tdd
+      - write a test
+      - test-first
+      - red-green-refactor
+      - fixing a bug
+      - fixing a bug (prove-it)
   - name: ui-ux-design
     description: |-
       Generate design systems and implement UX/UI for software products using
