@@ -3,8 +3,8 @@ name: code-simplification
 description: |
   Reduce nesting, extract names, eliminate redundancy without changing
   behavior. Apply after features work and tests pass — never as a
-  drive-by during feature work. Triggers on "simplify", "refactor for
-  clarity", "this is hard to read", "code review flagged complexity".
+  drive-by during feature work. Triggers on "simplify", "refactor for clarity",
+  "this is hard to read", "code review flagged complexity".
 allowed-tools: Read, Edit, Bash, Grep, Glob
 ---
 

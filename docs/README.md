@@ -164,11 +164,12 @@ Detailed technical documentation:
 
 #### Operational Docs
 
-| Document                                           | Description                    | Status    |
-| -------------------------------------------------- | ------------------------------ | --------- |
-| [docops-spec.md](./ops/docops-spec.md)             | Canonical DocOps pipeline spec | Canonical |
-| [docops-manifest.json](./ops/docops-manifest.json) | DocOps enforcement manifest    | Canonical |
-| [docs-inventory.md](./ops/docs-inventory.md)       | Documentation inventory        | Canonical |
+| Document                                                     | Description                    | Status    |
+| ------------------------------------------------------------ | ------------------------------ | --------- |
+| [docops-spec.md](./ops/docops-spec.md)                       | Canonical DocOps pipeline spec | Canonical |
+| [docops-manifest.json](./ops/docops-manifest.json)           | DocOps enforcement manifest    | Canonical |
+| [docs-inventory.md](./ops/docs-inventory.md)                 | Documentation inventory        | Canonical |
+| [release-changeset-race.md](./ops/release-changeset-race.md) | Publish-race runbook (#2382)   | Canonical |
 
 #### Interfaces
 
