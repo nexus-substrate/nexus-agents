@@ -1,5 +1,55 @@
 # nexus-agents
 
+## 2.70.0
+
+### Minor Changes
+
+- [#2399](https://github.com/williamzujkowski/nexus-agents/pull/2399) [`9e9b5f1`](https://github.com/williamzujkowski/nexus-agents/commit/9e9b5f14f2ab17e3cdd828f64feb25d139c9264e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Tier 1 of epic [#2398](https://github.com/williamzujkowski/nexus-agents/issues/2398) — adopt the five-dimensional self-critique pattern from Apache-2.0-licensed [nexu-io/open-design](https://github.com/nexu-io/open-design) as a new `self-critique` skill.
+
+  This is the **pre-emit gate**: before an agent emits work (code, design, docs, spec, PR description), it silently scores the output 0-10 across 5 task-appropriate dimensions. Worst sustained band < 3 = regression; fix lowest dimension and rescore.
+
+  Distinct from `reviewing-code` (which reviews _others'_ code post-hoc). Self-critique is the _internal_ gate that runs _first_. Both can apply to the same artifact at different lifecycle points.
+
+  **Concrete dimension tables included** (per architect's QA on epic [#2398](https://github.com/williamzujkowski/nexus-agents/issues/2398) — "rubric tables, not vague guidance"):
+  - **Code**: Correctness / Readability / Architecture / Security / Performance
+  - **Design**: Philosophy / Hierarchy / Detail / Functionality / Innovation (Open Design's original)
+  - **Documentation**: Accuracy / Discoverability / Density / Examples / Tone
+  - **Spec/PR/ADR**: Completeness / Testability / Reversibility / Stakeholder-fit / Scope
+  - **Default**: Soundness / Clarity / Coverage / Specificity / Restraint
+
+  **Scoring bands** (universal): 0-4 Broken / 5-6 Functional / 7-8 Strong / 9-10 Exceptional.
+
+  **Scoring discipline rules** ported verbatim from upstream:
+  - Always cite evidence (no "feels inconsistent")
+  - Don't average up (worst sustained band wins)
+  - Don't grade-inflate (7 = strong, not acceptable)
+  - Innovation/Restraint allowed to be low for production work
+  - One dimension can fail without the others
+
+  Wired as cross-link from `reviewing-code` (external counterpart) and `dev-pipeline` (Phase-4 pre-emit gate).
+
+  License: Apache-2.0 attribution in skill source comment. Skill count: 25 → 26.
+
+### Patch Changes
+
+- [#2396](https://github.com/williamzujkowski/nexus-agents/pull/2396) [`41edc26`](https://github.com/williamzujkowski/nexus-agents/commit/41edc2635adb8f56e125a100d320ae158ad5b9b8) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Tier E of epic [#2385](https://github.com/williamzujkowski/nexus-agents/issues/2385) (FINAL TIER) — standardize 17 remaining skills with anti-rationalization tables, red-flags sections, and verification checklists. Closes the epic.
+
+  State of the world before this PR:
+  - 8 of 25 skills had all three sections (the new + Tier-D-pollinated ones)
+  - 17 skills had partial or no coverage
+
+  State after:
+  - All 25 skills have anti-rationalization tables, red-flags lists, and verification-shaped content (named variously: "Verification checklist", "Quality Checklist", "Pre-launch checklist", "Implementation Complete Checklist" — all serve the same gate function)
+
+  Per architect's epic-vote cap (~30 lines per skill), each addition is small and focused. Total ~430 lines added across 17 skill files.
+
+  Skills enhanced:
+  research-and-vote, dev-pipeline, codex-delegator, gemini-delegator, release, security-scanning, security-advisory-response, hotfix, system-review, dogfooding-issues, version-check, infrastructure-management, bug-fix, documentation-management, implement-feature, requirements-gathering, reviewing-code, ui-ux-design.
+
+  Pure-patch — no API change, no behavior change, no new skills (count stays at 25), frontmatter unchanged in all 17 skills.
+
+  This closes epic [#2385](https://github.com/williamzujkowski/nexus-agents/issues/2385). Final state: 18 → 25 skills, +5 reference checklists, +3 subagent personas, 25/25 skills standardized with anti-rationalization + red flags + verification gates.
+
 ## 2.69.0
 
 ### Minor Changes
