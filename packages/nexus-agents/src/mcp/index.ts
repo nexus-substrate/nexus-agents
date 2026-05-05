@@ -267,6 +267,14 @@ export {
   type WeatherReportInput,
   type WeatherReportResponse,
   generateWeatherReport,
+  // Improvement review tool (Issue #2402)
+  registerImprovementReviewTool,
+  type ImprovementReviewDeps,
+  ImprovementReviewInputSchema,
+  type ImprovementReviewInput,
+  type ImprovementReviewResponse,
+  type ImprovementSignal,
+  type SignalCategory,
   // Registry import tool (Issue #889)
   registerRegistryImportTool,
   type RegistryImportDeps,

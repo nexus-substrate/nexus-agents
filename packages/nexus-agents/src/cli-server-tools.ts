@@ -35,6 +35,7 @@ import {
   registerMemoryStatsTool,
   registerMemoryWriteTool,
   registerWeatherReportTool,
+  registerImprovementReviewTool,
   registerRegistryImportTool,
   registerRepoAnalyzeTool,
   registerRepoSecurityPlanTool,
@@ -159,6 +160,7 @@ export const REGISTERED_TOOLS = [
   'query_trace',
   'repo_analyze',
   'repo_security_plan',
+  'improvement_review',
 ] as const;
 
 /**
@@ -575,6 +577,7 @@ const STANDALONE_TOOLS: ReadonlyArray<{
 }> = [
   { name: 'consensus_vote', register: registerConsensusVoteTool },
   { name: 'weather_report', register: registerWeatherReportTool },
+  { name: 'improvement_review', register: registerImprovementReviewTool },
   { name: 'registry_import', register: registerRegistryImportTool },
   { name: 'repo_analyze', register: registerRepoAnalyzeTool },
   { name: 'repo_security_plan', register: registerRepoSecurityPlanTool },

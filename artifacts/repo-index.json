@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-05-05T03:05:21.381Z",
+  "generated": "2026-05-05T05:18:24.580Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.70.0",
   "cli": {
@@ -301,6 +301,10 @@
       {
         "name": "extract_symbols",
         "file": "src/mcp/tools/extract-symbols.ts"
+      },
+      {
+        "name": "improvement_review",
+        "file": "src/mcp/tools/improvement-review.ts"
       },
       {
         "name": "issue_triage",

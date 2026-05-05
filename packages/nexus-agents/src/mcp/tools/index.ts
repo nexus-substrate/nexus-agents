@@ -267,6 +267,17 @@ export {
   type MemoryWriteResponse,
 } from './memory-write.js';
 
+// Improvement review tool (Issue #2402)
+export {
+  registerImprovementReviewTool,
+  type ImprovementReviewDeps,
+  ImprovementReviewInputSchema,
+  type ImprovementReviewInput,
+  type ImprovementReviewResponse,
+  type ImprovementSignal,
+  type SignalCategory,
+} from './improvement-review.js';
+
 // Weather report tool (Issue #865)
 export { registerWeatherReportTool, type WeatherReportDeps } from './weather-report-tool.js';
 export {
@@ -526,6 +537,7 @@ const REGISTERED_TOOL_NAMES = [
   'run_pipeline',
   'pr_review',
   'supply_chain_tradeoff_panel',
+  'improvement_review',
 ] as const;
 
 export function registerTools(

@@ -295,6 +295,24 @@ export const TOOL_ANNOTATIONS: Readonly<Record<string, ToolSideEffectsEntry>> = 
     },
     sideEffects: [{ category: 'implicit', description: 'Consumes rate limit quota' }],
   },
+  improvement_review: {
+    annotations: {
+      title: 'Improvement Review',
+      readOnlyHint: false,
+      destructiveHint: false,
+      // When fileIssues=true, creates GitHub issues — not idempotent.
+      idempotentHint: false,
+      openWorldHint: true,
+    },
+    sideEffects: [
+      { category: 'implicit', description: 'Reads OutcomeStore and runs fitness audit' },
+      {
+        category: 'explicit',
+        description: 'When fileIssues=true, files candidate GitHub issues via gh CLI',
+      },
+      { category: 'implicit', description: 'Consumes rate limit quota' },
+    ],
+  },
   issue_triage: {
     annotations: {
       title: 'Issue Triage',
