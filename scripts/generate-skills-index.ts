@@ -63,23 +63,40 @@ function parseFrontmatter(content: string, filePath: string): SkillFrontmatter {
   return parsed as unknown as SkillFrontmatter;
 }
 
+/**
+ * Normalize a trigger phrase: collapse internal whitespace runs (including
+ * newlines preserved by YAML literal blocks) into single spaces, trim, and
+ * lowercase. Without this, a phrase wrapped across a YAML line boundary
+ * lands in the trigger set with a literal `\n` inside, which then breaks
+ * the markdown table emitted by inject-governance.ts (MD038 + MD056).
+ */
+function normalizeTrigger(s: string): string {
+  return s.replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
 function addQuotedTriggers(description: string, triggers: Set<string>): void {
   for (const m of description.matchAll(/"([^"]+)"/g)) {
-    if (m[1] !== undefined) triggers.add(m[1].toLowerCase());
+    if (m[1] !== undefined) {
+      const normalized = normalizeTrigger(m[1]);
+      if (normalized.length > 0) triggers.add(normalized);
+    }
   }
 }
 
 function addUseWhenTrigger(description: string, triggers: Set<string>): void {
   const match = /use when ([^.]+?)(?:[.,]|$)/i.exec(description)?.[1];
-  if (match !== undefined && match.length > 0) triggers.add(match.trim().toLowerCase());
+  if (match !== undefined && match.length > 0) {
+    const normalized = normalizeTrigger(match);
+    if (normalized.length > 0) triggers.add(normalized);
+  }
 }
 
 function addTriggersOnList(description: string, triggers: Set<string>): void {
   const match = /triggers? on ([^.]+)/i.exec(description)?.[1];
   if (match === undefined || match.length === 0) return;
   for (const t of match.replace(/["']/g, '').split(/,|\bor\b/)) {
-    const trimmed = t.trim().toLowerCase();
-    if (trimmed.length > 0) triggers.add(trimmed);
+    const normalized = normalizeTrigger(t);
+    if (normalized.length > 0) triggers.add(normalized);
   }
 }
 
