@@ -21,17 +21,31 @@ The two surfaces **coexist**. Architect QA on epic #2385 explicitly authorized t
 
 ## Invocation
 
-From a Claude Code session, dispatch via the Agent tool:
+Two paths, depending on the harness:
+
+**Preferred — direct dispatch by name** (Claude Code with `.claude/agents/` discovery enabled, or any harness that resolves `subagent_type` against the local agents directory):
+
+```text
+Agent({
+  subagent_type: "code-reviewer",
+  description: "Review PR #N",
+  prompt: "[your specific review ask]"
+})
+```
+
+The persona's frontmatter `name:` field is the dispatch key. The harness loads the file's body as the system prompt automatically.
+
+**Fallback — `general-purpose` + inline persona** (any harness without agents-directory discovery):
 
 ```text
 Agent({
   subagent_type: "general-purpose",
-  description: "Code review on PR #N",
-  prompt: "[paste the persona prompt as the system context]\n\n[your specific review ask]"
+  description: "Review PR #N",
+  prompt: "[paste the persona file body as system context]\n\n[your specific review ask]"
 })
 ```
 
-Or, where the surface supports `.claude/agents/*` directly (Claude Code with the agents-directory feature enabled), the persona is auto-discoverable.
+Use the fallback only when direct dispatch isn't available — it works everywhere but loses the harness's persona-aware features (e.g., per-agent permission scoping).
 
 ## License
 
