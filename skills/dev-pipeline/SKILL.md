@@ -19,6 +19,48 @@ allowed-tools: Read, Write, Edit, Bash, Grep, Glob, Task
 
 Use this skill when the user asks to build a feature, fix a bug, or implement a plan using the multi-agent development pipeline.
 
+## Spec-driven phasing (gated workflow)
+
+The `run_dev_pipeline` MCP tool implements a 4-phase gated workflow. **Do not advance to the next phase until the current one is validated.**
+
+```text
+SPECIFY ──→ PLAN ──→ TASKS ──→ IMPLEMENT
+   │          │        │          │
+   ▼          ▼        ▼          ▼
+ vote()     vote()   vote()     vote() (per task)
+```
+
+### Phase 1 — Specify
+
+Before producing the spec, **surface assumptions explicitly**:
+
+```text
+ASSUMPTIONS I'M MAKING:
+1. This runs in the existing nexus-agents MCP server (not a new process)
+2. New CLI flag goes through the existing dispatch table (cli-command-catalog.ts)
+3. Storage uses the existing FileAuditStorage path (not a new backend)
+4. Output schema follows the Result<T, E> pattern per CLAUDE.md
+→ Correct me now or I'll proceed with these.
+```
+
+The spec's purpose is to surface misunderstandings _before_ code gets written. Silent assumptions are the most dangerous form of misunderstanding.
+
+### Phase 2 — Plan
+
+Convert the spec into a sequenced plan: which files change, in what order, with what tests. Each step references the canonical path (per CLAUDE.md "Canonical Paths") so future readers can navigate.
+
+### Phase 3 — Tasks
+
+Break the plan into atomic tasks suitable for fan-out. Each task has:
+
+- A clear acceptance criterion (the test that asserts success)
+- A bounded output (no "list all", per `.rules/subagent-coordination.md`)
+- A scope (one directory or one canonical path, not "the codebase")
+
+### Phase 4 — Implement
+
+Dispatch tasks per the orchestration-patterns reference (waves of 3-4, output budgets, status lines). Parent context summarizes each subagent result to 2-3 bullets — never inline raw outputs (see `context-engineering` skill).
+
 ## When to Use
 
 - User says "use the pipeline to build X"

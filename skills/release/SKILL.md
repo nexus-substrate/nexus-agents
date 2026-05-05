@@ -9,7 +9,52 @@ allowed-tools: Read, Edit, Write, Bash, Grep, Glob, Task
 
 # Release Skill
 
-<!-- CANONICAL SOURCE: docs/development/CONTRIBUTION_GUIDE.md -->
+<!--
+  CANONICAL SOURCES:
+  - docs/development/CONTRIBUTION_GUIDE.md
+  - docs/ops/release-changeset-race.md (publish-race runbook from #2382)
+  - skills/deprecation-and-migration (when the release retires deprecated APIs)
+  Adapted patterns from addyosmani/agent-skills (MIT, © 2025 Addy Osmani).
+-->
+
+## Pre-launch checklist (run before tagging)
+
+The `pnpm changeset` workflow handles versioning, but the human-judgment gates below decide whether the release is _ready_. Run all of these:
+
+### Code quality
+
+- [ ] `pnpm lint && pnpm typecheck && pnpm test` — green
+- [ ] `pnpm coverage` — coverage hasn't regressed below the gate (89.66% statements, 93.26% functions per CLAUDE.md)
+- [ ] No `TODO` / `FIXME` / `XXX` comments in production source added in this release that should have been resolved
+- [ ] No `console.log` debugging statements in production code
+- [ ] All `@deprecated` markers added in this release have a clear replacement and migration path (see `deprecation-and-migration` skill)
+
+### Security
+
+- [ ] `pnpm audit` shows no critical/high vulnerabilities (or each is documented + mitigated)
+- [ ] No new secrets, env vars, or credentials added without `.env.example` placeholder + docs
+- [ ] CodeQL alerts at 0 high/critical (see `security-scanning` skill)
+- [ ] `gh api repos/{owner}/{repo}/dependabot/alerts?state=open` returns clean
+
+### Documentation
+
+- [ ] CHANGELOG entry exists for every public-API change (changesets handles this if `pnpm changeset` was run)
+- [ ] Migration recipe in changeset for any breaking change (typed-only or runtime)
+- [ ] `inject-governance.ts` regen ran cleanly (CLAUDE.md skill table, AGENTS.md, marketplace.json all in sync)
+- [ ] No stale `@deprecated` references in `docs/`
+
+### Pipeline health
+
+- [ ] Last 5 release runs on `main` succeeded (`gh run list --workflow=Release --limit 5`)
+- [ ] No release PR currently open (`gh pr list --search "version packages"`) — if one IS open, see "Avoid the publish race" below
+
+### Avoid the publish race
+
+If you're merging a release PR while other PRs add changesets, you'll trigger the version-skip race documented in [release-changeset-race.md](../../docs/ops/release-changeset-race.md). To avoid:
+
+1. Hold non-trivial PR merges while a release PR is open
+2. After merging the release PR, verify within 5 minutes: `npm view nexus-agents version` should match `packages/nexus-agents/package.json`
+3. If it doesn't, the workflow's force-publish fallback (#2383) should kick in on the next push. If still stuck, see the runbook.
 
 ## Pre-Release Checks
 
