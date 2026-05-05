@@ -9,7 +9,12 @@ allowed-tools: Read, Edit, Write, Bash, Grep, Glob, Task
 
 # Bug Fix Skill
 
-<!-- CANONICAL SOURCE: docs/development/CONTRIBUTION_GUIDE.md -->
+<!--
+  CANONICAL SOURCES:
+  - docs/development/CONTRIBUTION_GUIDE.md
+  - skills/test-driven-development (Prove-It Pattern for the failing-test step)
+  - skills/references/testing-patterns.md (pyramid, AAA, naming)
+-->
 
 **Full workflow:** [CONTRIBUTION_GUIDE.md](../../docs/development/CONTRIBUTION_GUIDE.md)
 

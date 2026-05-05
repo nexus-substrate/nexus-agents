@@ -9,6 +9,13 @@ allowed-tools: Read, Edit, Write, Bash, Grep, Glob, Agent
 
 # Security Scanning Skill
 
+<!--
+  CANONICAL SOURCES:
+  - .rules/security.md, .rules/untrusted-input.md
+  - skills/references/security-checklist.md (OWASP Top 10, auth/authz, headers, secrets)
+  - skills/security-advisory-response (when an alert escalates to coordinated disclosure)
+-->
+
 ## Trigger Conditions
 
 Run when ANY occur:

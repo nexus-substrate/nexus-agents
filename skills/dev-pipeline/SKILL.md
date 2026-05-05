@@ -9,6 +9,14 @@ allowed-tools: Read, Write, Edit, Bash, Grep, Glob, Task
 
 # Development Pipeline Skill
 
+<!--
+  CANONICAL SOURCES:
+  - docs/architecture/CONSENSUS_PROTOCOLS.md
+  - .rules/subagent-coordination.md (auto-loaded for fan-out)
+  - skills/references/orchestration-patterns.md (multi-agent coordination, fan-out, retry, deadline propagation)
+  - skills/context-engineering (for parent-context preservation discipline)
+-->
+
 Use this skill when the user asks to build a feature, fix a bug, or implement a plan using the multi-agent development pipeline.
 
 ## When to Use

@@ -14,6 +14,7 @@ allowed-tools: Bash, Read, Glob, Grep, Task
   - docs/architecture/ROUTING_SYSTEM.md
   - packages/nexus-agents/src/mcp/tools/delegate-to-model.ts
   - packages/nexus-agents/src/cli-adapters/adapters/codex-adapter.ts
+  - skills/references/orchestration-patterns.md (multi-agent coordination, retry policies, deadline propagation)
 -->
 
 **Full documentation:**

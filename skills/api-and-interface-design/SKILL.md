@@ -17,6 +17,7 @@ allowed-tools: Read, Edit, Write, Bash, Grep, Glob
   - docs/architecture/UNTRUSTED_INPUT_HARDENING.md
   - CLAUDE.md "Type Safety — Zero `any` Policy"
   - skills/deprecation-and-migration (when evolving existing public APIs)
+  - skills/references/security-checklist.md (input validation, OWASP Top 10)
   Adapted from addyosmani/agent-skills (MIT, © 2025 Addy Osmani).
 -->
 

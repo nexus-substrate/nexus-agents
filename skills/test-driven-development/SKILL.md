@@ -16,6 +16,7 @@ allowed-tools: Read, Edit, Write, Bash, Grep, Glob
   - CLAUDE.md "Development Disciplines → Red/Green TDD" (non-negotiable)
   - .rules/typescript.md
   - docs/development/CONTRIBUTION_GUIDE.md
+  - skills/references/testing-patterns.md (pyramid, AAA, naming, fakes vs mocks)
   Adapted from addyosmani/agent-skills (MIT, © 2025 Addy Osmani).
 -->
 

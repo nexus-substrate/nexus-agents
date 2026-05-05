@@ -11,7 +11,12 @@ allowed-tools: Read, Edit, Write, Bash, Grep, Glob
 
 # Security Advisory Response Skill
 
-<!-- CANONICAL SOURCE: docs/architecture/SECURITY.md -->
+<!--
+  CANONICAL SOURCES:
+  - docs/architecture/SECURITY.md
+  - skills/references/security-checklist.md (OWASP Top 10, mitigation patterns)
+  - skills/security-scanning (the alert-triage counterpart)
+-->
 
 Adapted from `paperclipai/paperclip` `deal-with-security-advisory` skill. Handles the **reporter-filed inbound** path — the _outbound_ path (our own discoveries) is covered by CLAUDE.md's Security Discovery Protocol (`.security-discoveries.jsonl` + draft advisories).
 
