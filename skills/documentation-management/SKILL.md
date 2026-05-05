@@ -298,8 +298,92 @@ For our auto-generated tables (CLAUDE.md MCP tools, `capabilities.md`, `docs/int
 
 ---
 
+## Architecture Decision Records (ADRs)
+
+ADRs capture the _why_ behind significant technical decisions. Code shows _what_ was built; ADRs explain _why this way_ and _what alternatives were rejected_. They're the highest-leverage documentation in the repo for onboarding (humans and agents) and for evaluating future changes.
+
+ADRs live in [`docs/adr/`](../../docs/adr/) with sequential numbering: `0001-foo.md`, `0002-bar.md`, …
+
+### When to write an ADR
+
+- Choosing a framework, library, or major dependency (consensus_vote candidate)
+- Designing a data model or schema
+- Selecting an authentication, voting, or routing strategy
+- Deciding on a public-API shape (REST, MCP tool, CLI command)
+- **Any decision expensive to reverse** — that's the threshold
+
+### ADR template
+
+```markdown
+# ADR-NNNN: <decision in present tense>
+
+## Status
+
+Proposed | Accepted | Superseded by ADR-MMMM | Deprecated
+
+## Date
+
+YYYY-MM-DD
+
+## Context
+
+What problem are we solving? What constraints (technical, organizational, time-bound) apply?
+Cite the issue, vote, or incident that prompted the decision.
+
+## Decision
+
+The chosen approach, in 1-3 sentences.
+
+## Alternatives Considered
+
+Each as its own subsection. Pros, cons, and **why rejected**. Don't skip — the rejected
+alternatives are how future readers understand the trade-off space.
+
+## Consequences
+
+Positive AND negative outcomes. What new constraints does this create?
+What follow-up work falls out of this decision?
+```
+
+### ADR lifecycle
+
+```text
+PROPOSED → ACCEPTED → (SUPERSEDED-BY-NNNN | DEPRECATED)
+```
+
+- **Don't delete old ADRs.** They're historical context. A superseded ADR + its replacement together tell the story of why the system evolved.
+- **When a decision changes, write a new ADR** that references and supersedes the old one. Update the old one's `Status:` line to `Superseded by ADR-NNNN`.
+- ADRs are **immutable after Accepted** in spirit — fix typos, but don't rewrite the substance. New thinking goes in a new ADR.
+
+### When NOT to write an ADR
+
+- Reversible decisions (small refactor choices, naming style nits)
+- Mechanical changes (dependency bump, lockfile update)
+- Decisions already captured in a higher-level doc (`CLAUDE.md`, `.rules/`) — reference, don't duplicate
+
+## Anti-rationalization — Documentation
+
+| Excuse                                      | Counter                                                                                                                                                                         |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| "The code is self-documenting"              | Code says **how**, not **why**. The why-this-not-that lives nowhere if not in an ADR or doc comment.                                                                            |
+| "I'll document it later"                    | Later never comes. The context decays within days; what felt obvious now will be a mystery to next-quarter-you. Document at decision time.                                      |
+| "We'll update the docs in the next release" | Drift compounds. By the next release, the doc says one thing, the code does another, and the audit gate fires (see #2225 audit). Update docs in the same PR as the code change. |
+| "Comments lie, only code is truth"          | Lies-in-comments is a culture problem, not a comments problem. Code can also lie (subtly broken implementations). Both need review.                                             |
+| "Nobody reads the docs anyway"              | Future-you reads them. New contributors (human or agent) read them. The skill-tree of the project depends on them.                                                              |
+| "It's just an internal API"                 | Internal APIs accumulate Hyrum's Law just like public ones (see `api-and-interface-design`). Internal docs prevent internal coupling.                                           |
+
+## Verification — Documentation changes
+
+- [ ] Every public-API change has a documentation update in the same PR
+- [ ] Significant architectural decisions have an ADR (or reference an existing one)
+- [ ] Auto-generated docs regenerated via the pipeline scripts after source changes
+- [ ] Doc additions follow the Tier system (Tier 1 essential / Tier 2 reference / Tier 3 detail)
+- [ ] No drift from canonical sources — `npx tsx scripts/check-docs-indexed.ts` passes
+- [ ] Markdown lint clean: `npx markdownlint 'docs/**/*.md' '*.md'`
+
 ## Related Documents
 
 - **DocOps Spec:** [docs/ops/docops-spec.md](../../docs/ops/docops-spec.md)
 - **Documentation Index:** [docs/README.md](../../docs/README.md)
 - **Inventory:** [docs/ops/docs-inventory.md](../../docs/ops/docs-inventory.md)
+- **ADR directory:** [docs/adr/](../../docs/adr/)
