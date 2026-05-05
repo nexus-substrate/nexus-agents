@@ -153,3 +153,20 @@ When triaging an alert or designing a fix, classify the affected surface against
 | "I'll fix the audit warning later"                 | "Later" + "high-severity advisory" = breach. Audit before merge; downgrade severity only with documented mitigation.            |
 | "We trust this third-party API"                    | Third-party responses are untrusted data per `.rules/untrusted-input.md`. Validate shape AND content.                           |
 | "It's a developer-only path"                       | Privilege boundaries blur. Developer paths get exposed (debug builds shipped, dev creds reused). Lock them down at design time. |
+
+## Red flags
+
+- CodeQL alert flagged but not triaged within the alert SLA
+- Auto-fix applied without a regression test
+- Secret scanning alert dismissed as "not real" without verifying the scan-pattern doesn't match actual production credentials
+- More than 5 auto-fixes in a single session (per the rate limit)
+- Alert about an external dep with no `pnpm audit` cross-check
+
+## Verification checklist
+
+- [ ] Each open CodeQL alert classified (real / test-fixture / false-positive) with reasoning
+- [ ] Real alerts have a regression test paired with the fix
+- [ ] Test fixtures use canonical fakes from `src/testing/test-secrets.ts` (per `.rules/test-secrets.md`)
+- [ ] Secret-scanning alerts: real secrets rotated AND revoked; fixtures dismissed with `used_in_tests`
+- [ ] Boundary classification (Always Do / Ask First / Never Do) recorded for non-trivial fixes
+- [ ] Tracking issue updated with summary

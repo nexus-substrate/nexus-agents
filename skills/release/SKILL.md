@@ -117,3 +117,20 @@ nexus-agents release-notes      # Generate release notes
 nexus-agents release-validate   # Validate release readiness
 nexus-agents release-announce   # Announce release
 ```
+
+## Anti-rationalization — Release
+
+| Excuse                                       | Counter                                                                                                                             |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| "Skip the audit, dependencies are fine"      | `pnpm audit` shows critical/high before they ship. Five seconds of audit prevents a coordinated-disclosure scramble.                |
+| "I'll fix the doc drift in the next release" | Documentation drift compounds. Block release on `inject-governance` and `check-docs-indexed` clean.                                 |
+| "We can roll back if it's bad"               | npm `unpublish` only works <72h, and even then leaves the version "published" in semver caches. Pre-release gates prevent the need. |
+| "The release PR is open, just merge it"      | If other PRs are queued with new changesets, you'll trigger the publish race (#2382). Hold queue until release PR merges.           |
+
+## Red flags
+
+- Release tagged with failing CI on main
+- `pnpm audit` shows critical/high vulnerabilities
+- CHANGELOG entry missing for a public-API change
+- `npm view nexus-agents version` doesn't match `package.json` after release-PR merge (publish race — see release-changeset-race.md)
+- Release PR merged while other changeset-adding PRs are open

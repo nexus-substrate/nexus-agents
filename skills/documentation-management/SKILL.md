@@ -387,3 +387,11 @@ PROPOSED → ACCEPTED → (SUPERSEDED-BY-NNNN | DEPRECATED)
 - **Documentation Index:** [docs/README.md](../../docs/README.md)
 - **Inventory:** [docs/ops/docs-inventory.md](../../docs/ops/docs-inventory.md)
 - **ADR directory:** [docs/adr/](../../docs/adr/)
+
+## Red flags
+
+- Public-API change PR with no doc update in the same diff
+- Architectural decision merged without an ADR
+- Auto-generated doc table broken (`inject-governance.ts check` fails)
+- Stale `@deprecated` references in `docs/` after a removal
+- Doc PR with markdown lint errors (line wraps, table formatting)

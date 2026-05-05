@@ -162,3 +162,20 @@ Sequence: serial bottlenecks first, then parallel-safe waves of 3-4 (per `.rules
 | "We can figure out scope as we go"                            | Scope creep is the most expensive bug. Lock the MVP and the Not Doing list before writing code.                          |
 | "The acceptance criterion is 'when it works'"                 | "Works" is unfalsifiable. The criterion is a test or a user scenario the spec can be measured against.                   |
 | "We don't need to identify dependencies, we'll just hit them" | Hitting dependencies serial costs ~Nx the time vs identified-and-parallelized. Map first, then sequence.                 |
+
+## Red flags
+
+- Requirements doc with no "Not Doing" list
+- User stories without testable acceptance criteria ("works", "is fast", "looks good")
+- Capability mapping skipped — gaps not flagged
+- Dependencies not listed; serial bottlenecks unidentified
+- Spec produced without surfacing assumptions explicitly
+
+## Verification checklist
+
+- [ ] Three sharpening questions asked + answered in the spec
+- [ ] At least 2-3 variations explored before converging
+- [ ] "Not Doing" list explicit and signed off
+- [ ] User stories have testable acceptance criteria
+- [ ] Capabilities mapped to existing tools/workflows; gaps flagged
+- [ ] Dependency graph identified; parallel-safe vs serial labelled

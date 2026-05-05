@@ -224,3 +224,26 @@ Flag any discrepancies between docs and live output. Live system is always autho
 - SBC SD cards wear out — check for read-only filesystem warnings
 - When fixing one system, verify adjacent systems (discovery pattern)
 - Missing ops file dependencies cause **silent failures** — always verify all processes after deploy
+
+## Anti-rationalization — Infrastructure
+
+| Excuse                         | Counter                                                                                                                               |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| "Skip the OOB check, just SSH" | OOB is the source of truth — SSH state can disagree with hardware reality (BMC firmware, fan curves, thermal). Verify both.           |
+| "It's just the homelab"        | Per the UFW + Podman incident (March 2026) — homelab outages cost real time and cascade across services. Apply production discipline. |
+| "I'll restart and see"         | Restart-and-see destroys the diagnostic window. Capture state first (logs, dmesg, OOB sensor data), then restart if the issue allows. |
+
+## Red flags
+
+- Hardware changes pushed without OOB verification
+- Firewall rule added without testing FORWARD chain (per memory note on UFW + Podman)
+- iDRAC/iLO/IPMI credentials in plaintext or non-rotated
+- Boot-time estimate skipped (long-boot R910 surprises if forgotten)
+
+## Verification checklist
+
+- [ ] OOB shows healthy hardware (fan/thermal/PSU)
+- [ ] SSH connectivity verified via the canonical path (jump host if applicable)
+- [ ] `dmesg` and journal captured before any restart
+- [ ] Boot-time estimate documented if hardware change requires a reboot
+- [ ] Post-change: services back up and monitored for the appropriate burn-in window
