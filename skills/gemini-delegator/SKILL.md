@@ -180,3 +180,23 @@ gemini -m gemini-2.5-flash -p "Quick review" --output-format json
 # Cost-sensitive batch
 for f in *.ts; do gemini -p "Review: $(cat $f)" >> reviews.txt; done
 ```
+
+## Anti-rationalization — Gemini delegation
+
+| Excuse                                        | Counter                                                                                                                     |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| "Gemini for everything, it has a big context" | Big context isn't free — output quality varies by task. Use Gemini for >100k context, multimodal, or research-shaped tasks. |
+| "Skip the multimodal check"                   | If the task includes images, Gemini is the canonical CLI. Other CLIs may text-summarize via OCR but lose information.       |
+| "I'll use Gemini even for short code-gen"     | Codex is faster on code. Use Gemini when context size or multimodal forces the choice.                                      |
+
+## Red flags
+
+- Gemini used for short single-file code-gen (Codex is faster)
+- Multimodal task routed to a non-Gemini CLI without explicit reason
+- Context exceeded 1M without verification of token budget
+
+## Verification checklist
+
+- [ ] Task category matches Gemini's strengths (large context, research, multimodal)
+- [ ] Token estimate confirmed within Gemini's context window before dispatch
+- [ ] Outcome recorded for adaptive routing

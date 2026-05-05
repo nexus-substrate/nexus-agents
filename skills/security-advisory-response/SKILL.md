@@ -134,3 +134,30 @@ If step 2 succeeds but step 3 fails, users see the advisory with no fix availabl
 | Heartbeat-scheduled advisory work | We're synchronous — advisory response is human-driven                          |
 | Company-wide advisory board       | Single-repo scope                                                              |
 | Auto-merge-on-publish hook        | We ship via changesets manually; explicit human step is safer for sec releases |
+
+## Anti-rationalization — Coordinated disclosure
+
+| Excuse                                                     | Counter                                                                                                                     |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| "It's low severity, don't bother with the private fork"    | Private-fork discipline applies regardless of severity. Severity informs timeline; the process stays the same.              |
+| "I'll patch in the public repo, it's faster"               | Public branch names + commit messages leak the vuln class. Indexed by scanners within minutes. Always private fork.         |
+| "We can publish before the fix tested in prod"             | The advisory window is when both publish and fix exist. Untested fix + public advisory = scrambling under pressure.         |
+| "Reporter wants quicker disclosure, override our timeline" | Document the request, but the timeline is decided by maintainer + severity. Reporter pressure is an input, not a directive. |
+| "Skip post-mortem, we patched it"                          | The lesson the post-mortem extracts is what prevents the next incident in the same class. Always do it.                     |
+
+## Red flags
+
+- Branch name or commit message describes the vuln class (e.g., `fix/dns-rebinding`)
+- Private-fork patches CI doesn't run on (must verify locally)
+- Advisory published before release is on npm (zero-disclosure-window violation)
+- Reporter contacted on a non-private channel
+- CVE not assigned (`gh api ... .cve_id` empty) at publish time
+
+## Verification checklist
+
+- [ ] Branch + commit names use generic language (no vuln class)
+- [ ] Patch tested locally (`pnpm install --frozen-lockfile && pnpm lint && pnpm typecheck && pnpm test && pnpm build`)
+- [ ] Reporter notified on private advisory thread; review window provided
+- [ ] Advisory + release published in same window (<5 min apart)
+- [ ] CVE assigned and propagated; `npm view nexus-agents version` shows patched version
+- [ ] Post-mortem recorded; class-level mitigation issue filed if applicable

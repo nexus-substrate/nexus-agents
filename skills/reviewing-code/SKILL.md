@@ -137,3 +137,11 @@ If you tag everything Critical, nothing is Critical. Three or more Critical find
 ```
 
 See [CODING_STANDARDS.md](../../CODING_STANDARDS.md) for common issues and patterns.
+
+## Red flags (in addition to the verification gate)
+
+- Review approving without running the local quality gates
+- Critical findings tagged but not blocking the merge
+- Reviewer cited a finding outside the diff scope (drive-by review)
+- Same review pattern repeated across PRs — file an issue for a lint rule or pattern guide instead of flagging each instance
+- Review output without specific `file:line` citations

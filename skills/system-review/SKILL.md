@@ -57,3 +57,26 @@ TZ='America/New_York' date '+%Y-%m-%d'
 gh issue create --title "System Review: $(TZ='America/New_York' date '+%Y-%m-%d')" \
   --label "maintenance" --body "## Findings\n\n[report here]"
 ```
+
+## Anti-rationalization — System review
+
+| Excuse                                             | Counter                                                                                                                                |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| "Skip the review, I just looked at this last week" | A week is enough for new alerts, dep advisories, and CI flakes. Run all phases.                                                        |
+| "No new issues, the review is wasted time"         | The review's value isn't in finding new issues — it's in confirming the system isn't drifting silently. Empty reviews are good signal. |
+| "I'll skip Phase X, it's never useful"             | If a phase is never useful, file an issue to remove it. Don't silently skip — the next reviewer will skip a different phase.           |
+
+## Red flags
+
+- Phase X "passed" with no evidence captured (dates, alert counts, CI status)
+- Stale-issue review missed an issue >90 days old
+- New CodeQL alert appeared but not triaged in the review
+- Review issue created but never closed (review work lingers)
+
+## Verification checklist
+
+- [ ] Each phase ran; outcome recorded in the review issue
+- [ ] Stale-issue check covered all open issues > 90 days
+- [ ] CodeQL/Scorecard/dependabot alert counts captured
+- [ ] CI health check (last 5 runs on main green)
+- [ ] Review issue closed with summary

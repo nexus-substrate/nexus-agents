@@ -155,3 +155,31 @@ The tool returns structured JSON:
 - Vote feedback propagates back to the plan stage for iterative refinement
 - Memory integration: prior learnings seed research, QA outcomes write back to SessionMemory
 - Outcome store + weather report + trend detection inform the plan stage
+
+## Anti-rationalization — Dev pipeline
+
+| Excuse                                               | Counter                                                                                                                               |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| "Skip the spec, just code"                           | The spec catches assumption mismatches before they cost a rewrite. Even a 5-line spec is better than zero.                            |
+| "Skip the vote, I know what's right"                 | The vote isn't agreement-seeking; it's blind-spot detection. Cheap, fast, valuable.                                                   |
+| "We don't need consensus for routine work"           | Correct — use `quickMode` and `simple_majority` for routine. Skip the vote entirely only for trivial fixes.                           |
+| "Just dispatch a giant subagent for the whole thing" | Wave-of-3-4 with bounded outputs (`.rules/subagent-coordination.md`). Giant subagents return giant outputs that flood parent context. |
+| "I'll inline the subagent results into my context"   | Summarize to 2-3 bullets per result; re-read the file if details needed. Inlining destroys parent context budget.                     |
+
+## Red flags
+
+- Pipeline run with `simulateVotes: true` for a non-test path
+- Subagent prompt > 500 words
+- Output budget unstated in subagent prompt
+- More than 4 agents in a single wave without explicit reason
+- Parent context inlining raw subagent results
+- Phase advanced without the gate vote completing
+
+## Verification checklist
+
+- [ ] Each phase gate (SPECIFY / PLAN / TASKS / IMPLEMENT) recorded its vote
+- [ ] Subagent prompts under 500 words; output budget stated; status line required
+- [ ] Wave size ≤ 4 parallel agents; next wave waits for current to finish
+- [ ] Parent summarized each result to 2-3 bullets before continuing
+- [ ] Final implementation passes `pnpm lint && pnpm typecheck && pnpm test`
+- [ ] Discoveries from subagents re-verified by parent before filing (4-point gate per CLAUDE.md)

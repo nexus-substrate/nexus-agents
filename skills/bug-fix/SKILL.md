@@ -105,3 +105,11 @@ Debugging tempts four recurring shortcuts. Each is a trap.
 - [ ] Regression test would have caught the original bug
 - [ ] `pnpm lint && pnpm typecheck && pnpm test` passes
 - [ ] Issue referenced in commit
+
+## Red flags (in addition to the Stop-the-Line protocol)
+
+- Bug fix without a regression test (the test stays as the future guard)
+- Symptom-level patch (caller-side dedupe, view-side filter) when the root cause is upstream
+- Fix that "just retries" without addressing why the failure happened
+- Multiple unrelated changes in the same PR (drive-by refactors)
+- Issue closed before the regression test fails on `main` without the fix

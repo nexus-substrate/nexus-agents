@@ -66,3 +66,27 @@ See [CODING_STANDARDS.md](../../CODING_STANDARDS.md#10-quality-gates):
 - [ ] Coverage ≥ 80%
 - [ ] Registry updated (if technique)
 - [ ] Issue referenced in commit
+
+## Anti-rationalization — Dogfooding
+
+| Excuse                                                   | Counter                                                                                                                              |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| "Pick the easy issue first"                              | Easy + un-implemented is suspicious — usually means the issue isn't actually easy or the spec is wrong. Pick by impact, not by ease. |
+| "Skip the research check"                                | The research registry is where prior thought lives. Skipping it means re-deriving solutions and missing prior decisions.             |
+| "Test coverage 80% is fine"                              | Per CLAUDE.md, the gate is 89.66% / 93.26% (statement / function). Don't ship below the existing floor.                              |
+| "Implementation is partial — flag mark as 'in progress'" | Per implement-feature: don't mark implemented if partial. Either ship the slice or split the issue.                                  |
+
+## Red flags
+
+- Issue closed with PR linked but feature behind a flag
+- Research registry entry not updated to `status: implemented`
+- Test count dropped after the implementation (lost coverage)
+- Issue spawned >5 follow-up issues (scope creep — should have split)
+
+## Verification checklist
+
+- [ ] Research registry checked first
+- [ ] Tests pass at the existing coverage gate (89.66% / 93.26%)
+- [ ] Feature complete (not partial, not flag-gated unless flag is the design)
+- [ ] Research registry status updated to `implemented`
+- [ ] Issue closed with summary linking the PR

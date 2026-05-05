@@ -395,3 +395,21 @@ The composed version is more flexible (omit any sub-component, add new ones), an
 | "We'll polish the spacing in design review" | Spacing inconsistencies are the foundation; design review can't unfound them. Use the design-system spacing scale from line 1.             |
 | "Emoji icons are fine and faster"           | Cross-platform render is unreliable; accessibility is poor. Use the project icon library.                                                  |
 | "It works on my screen"                     | Test the breakpoints. Mobile (≤640px), tablet (640-1024), desktop (≥1024). At least three sizes per change.                                |
+
+## Red flags
+
+- UI shipped without `prefers-reduced-motion` honored
+- Color values in hex/rgb/hsl (must be OKLCH per skill body)
+- Component with > 10 props (configuration explosion — apply composition pattern)
+- Accessibility audit deferred to "next sprint"
+- Touch targets < 44×44 (iOS HIG / WCAG)
+
+## Verification checklist
+
+- [ ] OKLCH for all color values; WCAG 2.1 AA contrast verified
+- [ ] Keyboard nav works without mouse
+- [ ] Focus management correct on dialogs/modals
+- [ ] `prefers-reduced-motion` honored
+- [ ] Touch targets ≥ 44×44
+- [ ] Tested at 3+ breakpoints (mobile / tablet / desktop)
+- [ ] No emoji-as-iconography, no lorem ipsum, no AI-default tells (see "Avoid the AI aesthetic" table)

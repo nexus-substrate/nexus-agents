@@ -211,3 +211,26 @@ nexus-agents routing-audit "task description" --verbose
 # Show bandit learning stats
 nexus-agents routing-audit "task" --bandit-stats
 ```
+
+## Anti-rationalization — Codex delegation
+
+| Excuse                                 | Counter                                                                                                                                   |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| "Codex is fastest, always use it"      | Codex is fastest for code generation. For research/docs, Gemini wins on context; for design, Claude wins. Match the CLI to the task type. |
+| "I'll route everything through Codex"  | Performance floors fire when one CLI is overweighted. Spread load per the routing system (CompositeRouter).                               |
+| "Skip the model probe"                 | Required after init (#1402). Without it, you may try to use a model the CLI doesn't expose.                                               |
+| "Codex failed, retry with same params" | Transient retry already runs (#1531). If it failed twice, the failure is real — fall back to a different CLI per the routing chain.       |
+
+## Red flags
+
+- Direct adapter call bypassing UnifiedAdapterRegistry
+- No timeout set on the codex call
+- Codex used for tasks classified as research/documentation (better routed to Gemini)
+- Repeated rate-limit errors with no failover
+
+## Verification checklist
+
+- [ ] Routing decision made via `CompositeRouter.route()` — no direct adapter instantiation
+- [ ] Timeout set appropriate to task complexity (see CLAUDE.md complexity tier table)
+- [ ] Failure mode tested — fallback CLI fires on rate-limit / connection-error
+- [ ] Outcome recorded for adaptive routing (per CLAUDE.md routing changes)

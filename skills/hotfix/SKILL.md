@@ -57,3 +57,29 @@ allowed-tools: Read, Edit, Write, Bash, Grep, Glob, Task
 npm unpublish nexus-agents@<version>  # Within 72 hours only
 git tag -d v<version> && git push --delete origin v<version>
 ```
+
+## Anti-rationalization — Hotfix
+
+| Excuse                                                 | Counter                                                                                                                                        |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| "Skip tests, it's an emergency"                        | A hotfix without tests becomes the next regression. Add at least the failing-test-then-fix (Prove-It Pattern).                                 |
+| "Bypass the lint gate just this once"                  | Hotfix bypass is the most expensive shortcut: the next change you ship inherits the broken state. Lint stays.                                  |
+| "Skip the PR review, just push"                        | Hotfix PR review can be quick (one trusted reviewer + admin merge), but the second pair of eyes catches the wrong-fix-for-the-symptom mistake. |
+| "Roll forward later, no need for proper rollback plan" | Production users can't wait. Either the hotfix works or there's a rollback plan; "we'll figure it out" is not a plan.                          |
+
+## Red flags
+
+- Hotfix PR with no test
+- Hotfix that touches more than the affected subsystem (drive-by changes)
+- Same hotfix reverted-and-reapplied multiple times (root cause is elsewhere)
+- No incident timeline / post-mortem after the fix lands
+- Branch named with the vuln class if the hotfix is security-shaped (use `security-advisory-response` instead)
+
+## Verification checklist
+
+- [ ] Failing test paired with the fix (Prove-It Pattern)
+- [ ] `pnpm lint && pnpm typecheck && pnpm test` pass before merge
+- [ ] PR scope tight to the affected code; no drive-bys
+- [ ] Rollback plan documented (revert PR + npm unpublish window if applicable)
+- [ ] Incident timeline captured
+- [ ] Post-fix: post-mortem issue filed for class-level mitigation if applicable

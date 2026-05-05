@@ -154,3 +154,11 @@ Larger commits hide bugs, fight `git bisect`, and bloat code review surface. Sma
 | "Splitting this is artificial"                     | Each slice should be end-to-end (vertical, not horizontal). If you can't make a slice end-to-end, the design is too coupled. |
 | "This is faster as one big push"                   | Maybe per-keystroke. Per-PR-merged-to-main, the cycle is faster because debug time grows superlinearly with diff size.       |
 | "I'll commit when tests pass"                      | Tests passing is the floor, not the ceiling. Each slice gets its own commit; tests passing is what makes the commit safe.    |
+
+## Red flags
+
+- Implementation merged with `pnpm test` failing
+- Tests added but coverage dropped (test-quality regression)
+- Feature behind a flag with no documented removal date
+- "Implemented" marked in research registry but feature not actually exercising in production paths
+- Files exceeding the 400-line gate without `eslint-disable` justification
