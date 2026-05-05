@@ -20,6 +20,7 @@ context: fork
   - Issue #1853 (creative vs enforcement mode split)
   - Methodology adapted from github.com/nextlevelbuilder/ui-ux-pro-max-skill
   - Creative-mode direction informed by Claude frontend-design plugin
+  - skills/references/accessibility-checklist.md (WCAG 2.1 AA, ARIA, keyboard nav, focus management)
 -->
 
 ## Two Modes

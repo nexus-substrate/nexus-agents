@@ -14,7 +14,7 @@ allowed-tools: Read, Edit, Bash, Grep, Glob
 <!--
   CANONICAL SOURCES:
   - CLAUDE.md "Prime Directive: correctness > simplicity > performance > cleverness"
-  - skills/references/performance-checklist.md (when adopted; Tier B)
+  - skills/references/performance-checklist.md (Core Web Vitals, bundle size, profiling, common patterns)
   Adapted from addyosmani/agent-skills (MIT, © 2025 Addy Osmani).
 -->
 

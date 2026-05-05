@@ -14,6 +14,7 @@ context: fork
   - docs/architecture/CONSENSUS_PROTOCOLS.md
   - docs/research/CONTRIBUTING.md
   - CLAUDE.md Consensus Voting Protocol
+  - skills/references/orchestration-patterns.md (consensus, fan-out, retry policies)
 -->
 
 **Full documentation:**

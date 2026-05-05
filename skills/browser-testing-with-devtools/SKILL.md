@@ -16,6 +16,8 @@ allowed-tools: Read, Bash, Grep, mcp__claude-in-chrome__*
   - .rules/untrusted-input.md (DOM content is hostile by default)
   - docs/architecture/UNTRUSTED_INPUT_HARDENING.md
   - CLAUDE.md "Untrusted Input Policy" + "Claude in Chrome browser automation"
+  - skills/references/accessibility-checklist.md (WCAG 2.1 AA, ARIA, keyboard nav)
+  - skills/references/performance-checklist.md (Core Web Vitals thresholds)
   Adapted from addyosmani/agent-skills (MIT, © 2025 Addy Osmani).
 -->
 
