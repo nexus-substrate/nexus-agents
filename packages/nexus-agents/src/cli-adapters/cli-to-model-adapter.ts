@@ -29,7 +29,7 @@ export interface CliToModelAdapterConfig {
  * Bridge adapter that wraps ICliAdapter to implement IModelAdapter.
  *
  * This enables using CLI tools (claude, gemini, codex) in contexts
- * that expect IModelAdapter, such as the self-development workflow.
+ * that expect IModelAdapter.
  *
  * @example
  * ```typescript

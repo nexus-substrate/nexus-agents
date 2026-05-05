@@ -62,7 +62,7 @@ export const STANDARD_POLICY: SandboxPolicy = {
 };
 
 /**
- * Development policy - broader permissions for self-development workflow.
+ * Development policy — broader permissions for development-time workflows.
  * Use for: Implementation phases, git operations, PR creation.
  */
 export const DEVELOPMENT_POLICY: SandboxPolicy = {

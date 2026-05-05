@@ -4,7 +4,7 @@
  * Single source of truth for all Source Control Management operations.
  * Replaces the previous dual-path GitHub clients:
  * - dogfooding/github-client.ts (REST API via fetch)
- * - workflows/self-development/github-client.ts (gh CLI wrapper)
+ * - (workflows/self-development/github-client.ts deleted in #2402)
  *
  * @module scm
  * (Source: Issue #1136 — Centralized SCM Provider Module)

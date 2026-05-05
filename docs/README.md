@@ -235,13 +235,9 @@ _No active plan documents. Historical plans have been archived._
 
 #### Workflows
 
-| Document                                                                 | Description                                 |
-| ------------------------------------------------------------------------ | ------------------------------------------- |
-| [SELF_DEVELOPMENT_WORKFLOW.md](./workflows/SELF_DEVELOPMENT_WORKFLOW.md) | Self-development process (hub)              |
-| [self-dev-phases.md](./archive/workflows/self-dev-phases.md)             | Phases 1-6: Analyze → Review (Archived)     |
-| [self-dev-execution.md](./archive/workflows/self-dev-execution.md)       | Phases 6.5-9: Implement → Commit (Archived) |
-| [self-dev-operations.md](./archive/workflows/self-dev-operations.md)     | Error handling, config, runbook (Archived)  |
-| [self-dev-validation.md](./archive/workflows/self-dev-validation.md)     | Validation gates, WIS framework (Archived)  |
+| Document                                                                 | Description                                                  |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------ |
+| [SELF_DEVELOPMENT_WORKFLOW.md](./workflows/SELF_DEVELOPMENT_WORKFLOW.md) | Historical pointer — engine deleted in #2402, see epic notes |
 
 #### Operational
 
