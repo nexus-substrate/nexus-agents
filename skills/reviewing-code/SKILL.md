@@ -17,6 +17,7 @@ allowed-tools: Read, Grep, Glob, Bash, LSP
   - skills/references/security-checklist.md (OWASP Top 10, validation patterns)
   - skills/references/testing-patterns.md (test-quality assessment)
   - .claude/agents/code-reviewer.md (Staff-Engineer narrative-review persona)
+  - skills/self-critique (the pre-emit counterpart — author scores own work before submitting for review)
 -->
 
 ## Five-axis review framework
