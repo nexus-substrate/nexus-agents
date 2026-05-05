@@ -3,7 +3,7 @@
  *
  * Unified GitHub provider using gh CLI. Implements IScmProvider with
  * Result-based error handling. Consolidates the two previous GitHub
- * clients (dogfooding/github-client.ts and workflows/self-development/github-client.ts).
+ * clients (dogfooding/github-client.ts; the self-development one was deleted in #2402).
  *
  * @module scm/github-provider
  * (Source: Issue #1136 — Centralized SCM Provider Module)

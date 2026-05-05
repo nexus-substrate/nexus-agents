@@ -16,7 +16,7 @@ export {
   type ScmComment,
   type CreatePROptions,
   type MergePROptions,
-  type PRStatus as ScmPRStatus, // Renamed: self-development/interfaces.ts exports PRStatus
+  type PRStatus as ScmPRStatus, // Renamed for disambiguation across the SCM surface
   type IssueFilters,
   type IScmProvider,
   // Extended entity types (trait support)
