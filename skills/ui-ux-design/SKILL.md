@@ -344,3 +344,54 @@ Every output MUST satisfy:
 - CSP-compatible patterns (no inline event handlers)
 - Validate form inputs client-side AND server-side
 - No sensitive data in client-side state or URLs
+
+## Avoid the AI aesthetic
+
+LLM-generated UI has recognizable tells. Avoid all of them — they signal low quality and break visual hierarchy.
+
+| AI default                                                  | Why it's a problem                                                           | Production quality                                                               |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Gradient hero backgrounds                                   | Template-driven, no connection to content or brand                           | Content-first layouts that reflect the actual product                            |
+| Lorem ipsum-style copy                                      | Hides layout problems real content would expose (length, wrapping, overflow) | Realistic placeholder content of expected length                                 |
+| Oversized padding everywhere                                | Equal generous padding destroys visual hierarchy and wastes space            | Consistent spacing scale (project's design system)                               |
+| Stock card grids for everything                             | Uniform grids ignore information priority and scanning patterns              | Purpose-driven layouts (lists, dashboards, dense tables — chosen, not defaulted) |
+| Shadow-heavy "elevation" everywhere                         | Competing depth slows rendering on low-end devices and flattens hierarchy    | Subtle or no shadows unless the design system specifies                          |
+| Emoji-as-iconography                                        | Inconsistent platform rendering, accessibility issues                        | Project's icon library (named, not emoji)                                        |
+| "Modern" sans-serif at every weight                         | No type hierarchy; everything looks the same                                 | Project's typography scale with intentional weight choices                       |
+| Generic call-to-action labels ("Get Started", "Learn More") | Don't tell the user what they'll get                                         | Action-specific labels matching the user's actual next step                      |
+
+## Composition over configuration
+
+Prefer composable component primitives over a monolithic component with 30 props.
+
+```tsx
+// Bad: configuration explosion
+<Card
+  title="..."
+  showHeader
+  showFooter
+  variant="bordered"
+  paddingSize="lg"
+  bodyAlignment="center"
+/>
+
+// Good: explicit composition
+<Card>
+  <CardHeader>...</CardHeader>
+  <CardBody>...</CardBody>
+  <CardFooter>...</CardFooter>
+</Card>
+```
+
+The composed version is more flexible (omit any sub-component, add new ones), and consumers see the structure in their own code rather than buried in `Card`'s prop interface. Cross-reference: `api-and-interface-design` skill — discriminated unions over flag fields applies here too.
+
+## Anti-rationalization — Frontend
+
+| Excuse                                      | Counter                                                                                                                                    |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| "The AI aesthetic is fine for now"          | It signals low quality and erodes user trust. Use the project's actual design system from the start.                                       |
+| "I'll add accessibility later"              | "Later" doesn't come. Keyboard nav, ARIA labels, focus management ship in the same PR as the component (see `accessibility-checklist.md`). |
+| "Lorem ipsum is fine for placeholder"       | It hides text-length bugs that show up in production with real content. Use realistic placeholder copy.                                    |
+| "We'll polish the spacing in design review" | Spacing inconsistencies are the foundation; design review can't unfound them. Use the design-system spacing scale from line 1.             |
+| "Emoji icons are fine and faster"           | Cross-platform render is unreliable; accessibility is poor. Use the project icon library.                                                  |
+| "It works on my screen"                     | Test the breakpoints. Mobile (≤640px), tablet (640-1024), desktop (≥1024). At least three sizes per change.                                |

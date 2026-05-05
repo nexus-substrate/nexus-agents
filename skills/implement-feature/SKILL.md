@@ -117,3 +117,40 @@ Before marking ANY technique or feature as "implemented", verify ALL of the foll
 - [ ] PR merged (if applicable)
 
 **Do NOT mark as implemented if:** tests fail, implementation is partial, or feature is behind a flag.
+
+## Thin vertical slices (incremental implementation)
+
+Build the smallest end-to-end working piece first, then expand. Avoid implementing the whole feature in one pass — each slice should leave the system in a working, testable state.
+
+### The increment cycle
+
+```text
+Implement → Test → Verify → Commit → Next slice
+```
+
+For each slice:
+
+1. **Implement** the smallest complete piece of functionality (must be end-to-end, not just one layer)
+2. **Test** — run the test suite (write a new test if none covers this slice — see `test-driven-development` skill)
+3. **Verify** — confirm the slice works (tests pass, build succeeds, manual check if user-facing)
+4. **Commit** — small, focused commit with a clear message
+5. **Next slice** — only after the previous one is verifiable
+
+### The 100-line rule
+
+If you're about to write more than ~100 lines without testing, **stop**. Either:
+
+- Split the work into a smaller slice that fits the cycle, OR
+- Confirm with the user that the larger scope is justified (e.g., a generated stub from a schema)
+
+Larger commits hide bugs, fight `git bisect`, and bloat code review surface. Small commits compound; large commits accumulate risk.
+
+### Anti-rationalization — Incremental implementation
+
+| Excuse                                             | Counter                                                                                                                      |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| "It's all related, makes sense to commit together" | "Related" hides the failure boundary. Atomic commits separate "the failing change" from "everything else."                   |
+| "I'll test it all at the end"                      | The end is when you're already deep into the next problem. The cycle catches issues while you still have context.            |
+| "Splitting this is artificial"                     | Each slice should be end-to-end (vertical, not horizontal). If you can't make a slice end-to-end, the design is too coupled. |
+| "This is faster as one big push"                   | Maybe per-keystroke. Per-PR-merged-to-main, the cycle is faster because debug time grows superlinearly with diff size.       |
+| "I'll commit when tests pass"                      | Tests passing is the floor, not the ceiling. Each slice gets its own commit; tests passing is what makes the commit safe.    |
