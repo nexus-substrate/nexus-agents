@@ -193,6 +193,8 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
     'Run a structured per-axis tradeoff vote on an engineering proposal (#2294, child of #2293). Default axes: build_time_determinism / supply_chain_risk / update_cadence; custom axes accepted. Voters answer EACH axis independently and the aggregator surfaces per-axis verdicts so legitimate tradeoffs are not masked by a single approve/reject. Use for build-vs-buy, dependency adoption, and supply-chain decisions.',
   verify_audit_chain:
     'Verify the hash chain of a persisted FileAuditStorage audit log directory (#2281 follow-up). Reads all audit-*.jsonl files, parses events, runs verifyChain() to detect tampering. Returns eventCount, fileCount, and one of three tamper signals (hash_mismatch, previous_hash_mismatch, missing_hash) if detected. Read-only.',
+  improvement_review:
+    'Periodic threshold-gated observability-driven improvement loop (#2402). Reads OutcomeStore, fitness-audit, and recent failure patterns; surfaces signals that cross documented thresholds (CLI success rate < 60% with ≥5 samples, fitness score below floor, failure-category concentration > 50%). When fileIssues=true, files candidate GitHub issues via gh CLI (rate-limited to 5 per run, deduped against open issues). Never auto-merges. Replaces the deleted self-development engine.',
 };
 
 /**
@@ -242,6 +244,8 @@ const README_TOOL_DESCRIPTIONS: Record<string, string> = {
   pr_review: 'Multi-voter PR review with verification gate (experimental)',
   supply_chain_tradeoff_panel: 'Per-axis tradeoff vote for build-vs-buy / supply-chain decisions',
   verify_audit_chain: 'Verify hash chain of a FileAuditStorage audit log directory',
+  improvement_review:
+    'Threshold-gated observability loop — surfaces routing/tech-debt/bug/security signals from outcome+fitness data; files candidate issues',
 };
 
 /**

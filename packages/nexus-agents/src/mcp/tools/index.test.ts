@@ -31,6 +31,7 @@ import {
   registerMemoryStatsTool,
   registerMemoryWriteTool,
   registerWeatherReportTool,
+  registerImprovementReviewTool,
   registerIssueTriageTool,
   registerRunGraphWorkflowTool,
   registerExecuteSpecTool,
@@ -68,7 +69,7 @@ import {
   RepoSecurityPlanInputSchema,
 } from './index.js';
 
-const EXPECTED_TOOL_COUNT = 37;
+const EXPECTED_TOOL_COUNT = 38;
 
 const EXPECTED_TOOL_NAMES = [
   'orchestrate',
@@ -108,6 +109,7 @@ const EXPECTED_TOOL_NAMES = [
   'run_pipeline',
   'pr_review',
   'supply_chain_tradeoff_panel',
+  'improvement_review',
 ];
 
 describe('MCP tools index', () => {
@@ -159,6 +161,7 @@ describe('MCP tools index', () => {
       ['registerMemoryStatsTool', registerMemoryStatsTool],
       ['registerMemoryWriteTool', registerMemoryWriteTool],
       ['registerWeatherReportTool', registerWeatherReportTool],
+      ['registerImprovementReviewTool', registerImprovementReviewTool],
       ['registerIssueTriageTool', registerIssueTriageTool],
       ['registerRunGraphWorkflowTool', registerRunGraphWorkflowTool],
       ['registerExecuteSpecTool', registerExecuteSpecTool],
@@ -173,10 +176,10 @@ describe('MCP tools index', () => {
       expect(typeof fn).toBe('function');
     });
 
-    it('exports 27 register functions', () => {
+    it('exports 28 register functions', () => {
       // Register functions count differs from tool count because
       // extract_symbols and search_codebase use a different pattern
-      expect(registerFunctions).toHaveLength(27);
+      expect(registerFunctions).toHaveLength(28);
     });
   });
 

@@ -45,6 +45,7 @@ const {
   mockRegisterMemoryStatsTool,
   mockRegisterMemoryWriteTool,
   mockRegisterWeatherReportTool,
+  mockRegisterImprovementReviewTool,
   mockRegisterRegistryImportTool,
   mockRegisterIssueTriageTool,
   mockRegisterRunGraphWorkflowTool,
@@ -96,6 +97,7 @@ const {
   mockRegisterMemoryStatsTool: vi.fn(),
   mockRegisterMemoryWriteTool: vi.fn(),
   mockRegisterWeatherReportTool: vi.fn(),
+  mockRegisterImprovementReviewTool: vi.fn(),
   mockRegisterRegistryImportTool: vi.fn(),
   mockRegisterIssueTriageTool: vi.fn(),
   mockRegisterRunGraphWorkflowTool: vi.fn(),
@@ -161,6 +163,7 @@ vi.mock('./mcp/index.js', () => ({
   registerMemoryStatsTool: mockRegisterMemoryStatsTool,
   registerMemoryWriteTool: mockRegisterMemoryWriteTool,
   registerWeatherReportTool: mockRegisterWeatherReportTool,
+  registerImprovementReviewTool: mockRegisterImprovementReviewTool,
   registerRegistryImportTool: mockRegisterRegistryImportTool,
   registerIssueTriageTool: mockRegisterIssueTriageTool,
   registerRunGraphWorkflowTool: mockRegisterRunGraphWorkflowTool,
@@ -333,8 +336,8 @@ function makeDefaultOptions(overrides: Record<string, unknown> = {}) {
 // ============================================================================
 
 describe('REGISTERED_TOOLS', () => {
-  it('should contain exactly 27 tool names', () => {
-    expect(REGISTERED_TOOLS).toHaveLength(27);
+  it('should contain exactly 28 tool names', () => {
+    expect(REGISTERED_TOOLS).toHaveLength(28);
   });
 
   it('should include all expected tool names', () => {
@@ -366,6 +369,7 @@ describe('REGISTERED_TOOLS', () => {
       'query_trace',
       'repo_analyze',
       'repo_security_plan',
+      'improvement_review',
     ];
     expect([...REGISTERED_TOOLS]).toEqual(expected);
   });
