@@ -67,4 +67,26 @@ describe('skills/index.yaml', () => {
     const withTriggers = index.skills.filter((s) => s.triggers.length > 0);
     expect(withTriggers.length).toBeGreaterThanOrEqual(Math.floor(index.skills.length * 0.8));
   });
+
+  it('no trigger contains internal whitespace beyond single spaces', () => {
+    // Regression guard for #2389: YAML literal-block descriptions wrap at
+    // column 80, which previously caused trigger phrases to contain literal
+    // newlines. Those newlines then propagated into CLAUDE.md's skill table,
+    // breaking it (MD038 + MD056). normalizeTrigger() collapses whitespace
+    // runs into single spaces; this test confirms the contract holds across
+    // the full skill set.
+    const index = loadIndex();
+    for (const entry of index.skills) {
+      for (const trigger of entry.triggers) {
+        expect(
+          trigger,
+          `${entry.name} has a trigger containing a newline: ${JSON.stringify(trigger)}`
+        ).not.toMatch(/[\n\r]/);
+        expect(
+          trigger,
+          `${entry.name} has a trigger with double-space or tab: ${JSON.stringify(trigger)}`
+        ).not.toMatch(/\s{2,}|\t/);
+      }
+    }
+  });
 });
