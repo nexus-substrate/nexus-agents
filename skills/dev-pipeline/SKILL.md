@@ -15,6 +15,7 @@ allowed-tools: Read, Write, Edit, Bash, Grep, Glob, Task
   - .rules/subagent-coordination.md (auto-loaded for fan-out)
   - skills/references/orchestration-patterns.md (multi-agent coordination, fan-out, retry, deadline propagation)
   - skills/context-engineering (for parent-context preservation discipline)
+  - skills/self-critique (Phase-4 IMPLEMENT pre-emit gate — score own output before returning)
 -->
 
 Use this skill when the user asks to build a feature, fix a bug, or implement a plan using the multi-agent development pipeline.

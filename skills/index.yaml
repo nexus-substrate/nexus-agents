@@ -286,6 +286,21 @@ skills:
       - codeql
       - secret scanning
       - security alerts
+  - name: self-critique
+    description: |-
+      Score your own output 0-10 across 5 task-appropriate dimensions before
+      emitting it. Anything below band 3 (5-6 Functional) is a regression —
+      fix and rescore. Use as a pre-emit gate when work is complex enough
+      that grade-inflation is a real risk. Triggers on "self-critique",
+      "score my output", "pre-emit review", "grade my work",
+      "five-dimension critique".
+    path: skills/self-critique/SKILL.md
+    triggers:
+      - self-critique
+      - score my output
+      - pre-emit review
+      - grade my work
+      - five-dimension critique
   - name: system-review
     description: |-
       Run a system review to check project health.

@@ -17,7 +17,19 @@ allowed-tools: Read, Grep, Glob, Bash, LSP
   - skills/references/security-checklist.md (OWASP Top 10, validation patterns)
   - skills/references/testing-patterns.md (test-quality assessment)
   - .claude/agents/code-reviewer.md (Staff-Engineer narrative-review persona)
+  - skills/self-critique (the pre-emit counterpart — author scores own work before submitting for review)
 -->
+
+## Pre-emit vs post-hoc
+
+This skill is the **post-hoc** review gate — evaluating someone else's diff after it lands as a PR. The complementary **pre-emit** gate is `self-critique`, which the author runs on their own work before submitting:
+
+| Skill                   | Reviews                       | When                           |
+| ----------------------- | ----------------------------- | ------------------------------ |
+| `self-critique`         | _Your own_ output             | Before you emit anything       |
+| `reviewing-code` (this) | _Others'_ code (PRs, commits) | After someone else writes code |
+
+Both use the same five-axis framework below. Both can apply to the same artifact at different lifecycle points — author self-critiques before PR; reviewer applies this skill on the resulting diff.
 
 ## Five-axis review framework
 
