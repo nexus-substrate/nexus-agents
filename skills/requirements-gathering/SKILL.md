@@ -115,3 +115,50 @@ Summarize the implementation approach:
 - Planning a new epic or large feature
 - Evaluating whether a request is feasible with current capabilities
 - Bridging between user intent and technical implementation
+
+## Divergent → Convergent thinking
+
+For ambiguous or open-ended requests, run a structured ideation pass before settling on requirements:
+
+### Step 1 — Diverge
+
+Restate the idea in your own words, then ask three sharpening questions:
+
+1. **What problem does this actually solve?** Often the request describes a solution, not the problem.
+2. **Who is harmed if we don't do this?** Identifies the real stakeholder.
+3. **What would success look like at the end of the first hour of use?** Concretizes the acceptance criterion.
+
+Then generate 2-3 variations of the request — different scopes, different users, different mechanisms.
+
+### Step 2 — Converge
+
+For each variation:
+
+- **Cluster** — what assumptions does this share with the others?
+- **Stress-test** — what's the failure mode? What if the assumption is wrong?
+- **Surface hidden constraints** — what is the user assuming we already know? (Tech stack, deadlines, audience, success metrics)
+
+### Step 3 — Sharpen and ship
+
+Produce a one-pager with: Problem statement, Recommended direction, Key assumptions, MVP scope, **Not Doing** list. The Not Doing list is the highest-value section — it makes scope decisions explicit.
+
+## Dependency-graph identification
+
+When the request becomes a multi-task plan, map dependencies before sequencing:
+
+1. **List the tasks.**
+2. **For each task, identify what must exist before it can run** (schemas, APIs, data, other modules, tests, docs).
+3. **Identify parallel-safe tasks** — those with no shared dependencies.
+4. **Identify serial bottlenecks** — single tasks that block many downstream items.
+
+Sequence: serial bottlenecks first, then parallel-safe waves of 3-4 (per `.rules/subagent-coordination.md`), then late-stage integration tasks.
+
+## Anti-rationalization — Requirements
+
+| Excuse                                                        | Counter                                                                                                                  |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| "The user said X, so we build X"                              | Users describe solutions; you need the problem. Restate, ask the three sharpening questions.                             |
+| "This is obvious, no need to write it down"                   | Obvious to whom? Different stakeholders read "obvious" differently. The Not Doing list catches the silent disagreements. |
+| "We can figure out scope as we go"                            | Scope creep is the most expensive bug. Lock the MVP and the Not Doing list before writing code.                          |
+| "The acceptance criterion is 'when it works'"                 | "Works" is unfalsifiable. The criterion is a test or a user scenario the spec can be measured against.                   |
+| "We don't need to identify dependencies, we'll just hit them" | Hitting dependencies serial costs ~Nx the time vs identified-and-parallelized. Map first, then sequence.                 |
