@@ -1,5 +1,86 @@
 # nexus-agents
 
+## 2.69.0
+
+### Minor Changes
+
+- [#2389](https://github.com/williamzujkowski/nexus-agents/pull/2389) [`7da6e4d`](https://github.com/williamzujkowski/nexus-agents/commit/7da6e4d500c3e667fd879448661cf007b58b4521) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Tier A2 of epic [#2385](https://github.com/williamzujkowski/nexus-agents/issues/2385) — adopt 4 more skills from MIT-licensed [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills):
+  - `performance-optimization` — measure-first MIFVG cycle (Measure → Identify → Fix → Verify → Guard) with anti-rationalization for the most common premature-optimization excuses. Cites our existing patterns (Beyoncé Rule, hot-path identification by profile not guess) and references the soon-to-land `performance-checklist.md` reference (Tier B).
+  - `api-and-interface-design` — Hyrum's Law, contract-first, validate-at-boundaries, consistent error semantics, discriminated unions, branded IDs, input/output separation. Cross-references our zero-`any` policy, `.rules/untrusted-input.md`, the `deprecation-and-migration` skill, and our `Result<T,E>` canonical pattern.
+  - `browser-testing-with-devtools` — Chrome DevTools MCP integration with strong security boundaries (DOM/console/network = untrusted, no instruction-following from page content, JS-execution constraints, no credential exfiltration). Per Security voter's epic-vote concern: explicit URL-allowlist + untrusted-DOM handling.
+  - `context-engineering` — six-level context hierarchy (rules → memory → spec → source → live state → conversation), subagent fan-out discipline (3-4 wave, < 500-word prompts, output budget, `## Status` line), confusion-management pattern (surface ambiguity, don't silently choose), inline-planning pattern.
+
+  Skill count: 21 → 25.
+
+  Also patches `scripts/generate-skills-index.ts` to normalize whitespace in extracted trigger phrases — YAML literal-block descriptions wrap at column 80, which previously caused the trigger set to contain literal newlines that then broke CLAUDE.md's skill table (MD038 + MD056). Fixes the root cause that bit PRs [#2386](https://github.com/williamzujkowski/nexus-agents/issues/2386) and would have bit this PR too.
+
+  Format follows the addyosmani template (when-to-trigger / process / anti-rationalization / red flags / verification checklist), adapted to nexus-agents conventions and tooling.
+
+### Patch Changes
+
+- [#2391](https://github.com/williamzujkowski/nexus-agents/pull/2391) [`cb8a0b5`](https://github.com/williamzujkowski/nexus-agents/commit/cb8a0b517efb07ca85c652088ec289052086bc68) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Tier B of epic [#2385](https://github.com/williamzujkowski/nexus-agents/issues/2385) — adopt 5 reference checklists from MIT-licensed [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills) under `skills/references/`. Loaded on-demand by relevant skills via the existing skill-link mechanism (CANONICAL SOURCES header comments).
+
+  References:
+  - `accessibility-checklist.md` — WCAG 2.1 AA, ARIA roles, keyboard navigation, focus management. Loaded by `ui-ux-design`, `browser-testing-with-devtools`.
+  - `performance-checklist.md` — Core Web Vitals (LCP/INP/CLS), bundle size, profiling, common patterns. Loaded by `performance-optimization`.
+  - `security-checklist.md` — OWASP Top 10, auth/authz, input validation, security headers, secrets. Loaded by `security-scanning`, `security-advisory-response`, `api-and-interface-design`.
+  - `testing-patterns.md` — Pyramid, AAA structure, naming, fakes vs mocks, table-driven, fixtures. Loaded by `test-driven-development`, `bug-fix`.
+  - `orchestration-patterns.md` — Multi-agent coordination, fan-out, consensus, retry policies, deadline propagation. Loaded by `dev-pipeline`, `research-and-vote`, `codex-delegator`, `gemini-delegator`.
+
+  Each reference file gets a header comment citing the upstream addyosmani source (MIT, Copyright 2025) and listing the nexus-agents skills that load it. A `skills/references/README.md` indexes the set.
+
+  Eight existing skills updated with reference links in their CANONICAL SOURCES headers (no behavioral change to the skills themselves — purely additive citation). Pure-patch release: no public-API impact.
+
+- [#2392](https://github.com/williamzujkowski/nexus-agents/pull/2392) [`6bced26`](https://github.com/williamzujkowski/nexus-agents/commit/6bced26ccf7f43b938e8b8f2faaa6a39bceb8fc4) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Tier C of epic [#2385](https://github.com/williamzujkowski/nexus-agents/issues/2385) — adopt 3 subagent persona prompts from MIT-licensed [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills) under `.claude/agents/`. **Per architect QA on the epic vote**: adopted as subagent prompt templates only, NOT as new voter roles (the 7-role panel `architect, security, devex, ai_ml, pm, catfish, scope_steward` stays unchanged).
+
+  Personas:
+  - `code-reviewer.md` — Senior Staff-Engineer code-review persona. Five-axis assessment (correctness, readability, architecture, security, performance) with categorized findings (Critical / Important / Suggestion).
+  - `security-auditor.md` — Security audit persona. Vulnerability scan + threat modeling, OWASP-aligned findings, severity classification.
+  - `test-engineer.md` — Test-engineer persona. Coverage assessment, missing edge cases, test-quality review (DAMP / AAA / naming).
+
+  These are **distinct from** the voter-pipeline experts at `agents/*.md` (repo root), which output structured JSON for `ConsensusEngine`. The new personas output human-readable narrative review and are consumed by the Agent tool's `subagent_type` dispatch (or direct invocation where `.claude/agents/` discovery is supported).
+
+  `.claude/agents/README.md` documents the split and the related voter-pipeline counterparts.
+
+  Pure-patch: no public-API impact, no behavior change to ConsensusEngine, no skills/index.yaml change.
+
+- [#2393](https://github.com/williamzujkowski/nexus-agents/pull/2393) [`23c3fff`](https://github.com/williamzujkowski/nexus-agents/commit/23c3fffd674c3b80465731e737680c64aa25921a) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Tier D1 of epic [#2385](https://github.com/williamzujkowski/nexus-agents/issues/2385) — cross-pollinate addyosmani/agent-skills patterns into 2 existing skills:
+
+  **`reviewing-code`** (was 104 → now 137 lines):
+  - Five-axis review framework (Correctness / Readability / Architecture / Security / Performance)
+  - Anti-rationalization table (6 rows: small-change excuse, tests-pass-so-correct, trust-the-author, CI-catches-everything, refactor-differently, author-decides)
+  - Output categorization (Critical / Important / Suggestion) with discipline note ("if everything is Critical, nothing is")
+  - References cross-link to security-checklist and testing-patterns
+  - Cross-link to .claude/agents/code-reviewer.md persona
+
+  **`documentation-management`** (was 305 → now 380 lines):
+  - New ADR section: when to write, full template, lifecycle (PROPOSED → ACCEPTED → SUPERSEDED/DEPRECATED), when NOT to ADR
+  - Anti-rationalization table for documentation (6 rows: code-self-documenting, document-later, next-release, comments-lie, nobody-reads, internal-API-doesn't-need)
+  - New verification checklist for doc changes
+  - Cross-link to docs/adr/ tree
+
+  Both skills retain their existing content unchanged — purely additive cross-pollination. Pure-patch release.
+
+- [#2394](https://github.com/williamzujkowski/nexus-agents/pull/2394) [`6ee3e47`](https://github.com/williamzujkowski/nexus-agents/commit/6ee3e47f4a8bce5d97bee304674ce271caf62837) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Tier D2 of epic [#2385](https://github.com/williamzujkowski/nexus-agents/issues/2385) — cross-pollinate addyosmani/agent-skills patterns into 3 existing skills:
+
+  **`security-scanning`** — adds the Three-Tier Boundary System (Always Do / Ask First / Never Do) for hardening discipline, cross-referenced with our existing `.rules/untrusted-input.md` Tier 1-4 trust system. Adds an anti-rationalization table for security review (6 rows: internal-tool, real-users-later, library-handles-it, fix-audit-later, trust-third-party, dev-only-path).
+
+  **`release`** — adds a comprehensive pre-launch checklist (Code quality / Security / Documentation / Pipeline health) gated before tagging. References `docs/ops/release-changeset-race.md` ([#2382](https://github.com/williamzujkowski/nexus-agents/issues/2382)) for the publish-race avoidance protocol that bit us 2026-05-04. Cross-link to `deprecation-and-migration` skill for releases that retire deprecated APIs.
+
+  **`dev-pipeline`** — adds the spec-driven 4-phase gated workflow (SPECIFY → PLAN → TASKS → IMPLEMENT) with vote() gates between phases. Includes the assumption-surfacing pattern ("ASSUMPTIONS I'M MAKING: …" before producing the spec) which is the highest-leverage discipline from the upstream spec-driven-development skill. Cross-references our `run_dev_pipeline` MCP tool, `.rules/subagent-coordination.md`, and the new `context-engineering` skill.
+
+  All edits purely additive — existing content unchanged. Pure-patch release.
+
+- [#2395](https://github.com/williamzujkowski/nexus-agents/pull/2395) [`938c5ae`](https://github.com/williamzujkowski/nexus-agents/commit/938c5ae95353095c403c9bc3844237bc0ab250ad) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Tier D3 of epic [#2385](https://github.com/williamzujkowski/nexus-agents/issues/2385) — final cross-pollination batch. Enhances 3 existing skills with patterns from addyosmani/agent-skills (MIT, © 2025 Addy Osmani):
+
+  **`requirements-gathering`** — adds Divergent → Convergent thinking (3-step ideation pass: diverge with sharpening questions + 2-3 variations, converge by clustering and stress-testing, sharpen-and-ship with explicit "Not Doing" list). Adds dependency-graph identification for multi-task plans (parallel-safe vs serial bottlenecks). Anti-rationalization table (5 rows: solution-not-problem, obvious-no-need-to-write, scope-as-we-go, "works"-criterion, ignore-dependencies).
+
+  **`implement-feature`** — adds Thin vertical slices methodology (Implement → Test → Verify → Commit → Next slice cycle), the 100-line rule (stop and reconsider before writing more than ~100 lines without testing), anti-rationalization table for incremental implementation (5 rows).
+
+  **`ui-ux-design`** — adds "Avoid the AI aesthetic" table calling out 8 common LLM-generated UI tells (gradient hero, lorem ipsum, oversized padding, stock card grids, shadow-heavy elevation, emoji icons, every-weight sans-serif, generic CTAs) with production-quality alternatives. Adds composition-over-configuration pattern with cross-link to api-and-interface-design. Anti-rationalization table (6 rows).
+
+  All edits purely additive — existing content unchanged. Pure-patch release. Completes Tier D of the epic.
+
 ## 2.68.0
 
 ### Minor Changes
