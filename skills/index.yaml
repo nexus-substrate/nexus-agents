@@ -1,6 +1,35 @@
 schema_version: "1.0"
 generated_by: scripts/generate-skills-index.ts
 skills:
+  - name: api-and-interface-design
+    description: |-
+      Design stable, hard-to-misuse interfaces — REST endpoints, MCP tool
+      schemas, module boundaries, type contracts. Apply when defining new
+      surfaces or evolving public ones. Triggers on "API design", "interface",
+      "schema", "contract", "module boundary", "type design".
+    path: skills/api-and-interface-design/SKILL.md
+    triggers:
+      - api design
+      - interface
+      - schema
+      - contract
+      - module boundary
+      - type design
+  - name: browser-testing-with-devtools
+    description: |-
+      Test UI in real browsers via Chrome DevTools MCP. Apply when debugging
+      rendering issues, console errors, network behavior, performance, or
+      accessibility — anywhere static code analysis can't see runtime state.
+      Triggers on "browser test", "DOM inspect", "console errors",
+      "network trace", "core web vitals in browser", "ui bug repro".
+    path: skills/browser-testing-with-devtools/SKILL.md
+    triggers:
+      - browser test
+      - dom inspect
+      - console errors
+      - network trace
+      - core web vitals in browser
+      - ui bug repro
   - name: bug-fix
     description: |-
       Fix a bug following project standards.
@@ -38,6 +67,20 @@ skills:
       - use codex
       - code generation
       - implementing features
+  - name: context-engineering
+    description: |-
+      Curate what the agent sees, when, and how it's structured. Apply when
+      starting a session, when output quality drifts, when fanning out
+      subagents, or when configuring rules files. Triggers on
+      "context engineering", "rules file", "agent context",
+      "subagent fan-out", "context budget".
+    path: skills/context-engineering/SKILL.md
+    triggers:
+      - context engineering
+      - rules file
+      - agent context
+      - subagent fan-out
+      - context budget
   - name: deprecation-and-migration
     description: |-
       Plan and execute the removal of deprecated APIs without breaking
@@ -146,6 +189,22 @@ skills:
       - server management
       - idrac
       - hardware check
+  - name: performance-optimization
+    description: |-
+      Measure-first optimization for code that has actual evidence of being
+      slow. Apply when performance requirements exist, profiles show
+      bottlenecks, or a change introduced a regression. Triggers on
+      "optimize", "performance", "slow", "profile", "bottleneck",
+      "core web vitals", "regression".
+    path: skills/performance-optimization/SKILL.md
+    triggers:
+      - optimize
+      - performance
+      - slow
+      - profile
+      - bottleneck
+      - core web vitals
+      - regression
   - name: release
     description: |-
       Execute a release following project standards.
