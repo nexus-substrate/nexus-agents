@@ -1,0 +1,40 @@
+{
+  "$schema": "./registry-coverage-manifest.schema.json",
+  "version": "1.0.0",
+  "description": "Registry-coverage manifest. When the source file changes in a way that touches the marker, every peer file MUST also change in the same PR. Hard-fail in CI. See docs/architecture/REGISTRY_COVERAGE.md (#2405).",
+  "registries": [
+    {
+      "name": "DEFAULT_EXPERTS",
+      "source": "packages/nexus-agents/src/agents/experts/expert-defaults.ts",
+      "marker": "export const DEFAULT_EXPERTS",
+      "peer_files": [
+        "packages/nexus-agents/src/agents/experts/expert-config.ts",
+        "packages/nexus-agents/src/mcp/tools/list-experts.ts",
+        "packages/nexus-agents/src/agents/experts/expert-defaults.test.ts"
+      ],
+      "rationale": "Receipts: #2344, #2347 — every entry added requires updating BuiltInExpertTypeSchema, list_experts MCP tool, and the count assertion test."
+    },
+    {
+      "name": "REGISTERED_TOOL_NAMES",
+      "source": "packages/nexus-agents/src/mcp/tools/index.ts",
+      "marker": "REGISTERED_TOOL_NAMES",
+      "peer_files": [
+        "packages/nexus-agents/src/cli-server-tools.ts",
+        "packages/nexus-agents/src/cli-server-tools.test.ts",
+        "packages/nexus-agents/src/mcp/tools/index.test.ts",
+        "packages/nexus-agents/src/mcp/tools/tool-annotations.ts",
+        "packages/nexus-agents/src/mcp/tools/tool-annotations.test.ts",
+        "scripts/inject-governance.ts",
+        "skills/documentation-management/SKILL.md"
+      ],
+      "rationale": "Receipts: #2358 — every new MCP tool requires updating STANDALONE_TOOLS, count tests, annotations, governance script, and SKILL.md PIPELINE NOTE."
+    },
+    {
+      "name": "NEXUS_ENV_VARS",
+      "source": "packages/nexus-agents/src/config/env-schema.ts",
+      "marker": "NEXUS_",
+      "peer_files": ["CLAUDE.md", "docs/getting-started/CONFIGURATION.md"],
+      "rationale": "Receipts: #2315 — env-var rollouts (NEXUS_DATA_DIR) miss callsites and docs. This catches the declaration drift; runtime callsite drift is a separate problem (#2407)."
+    }
+  ]
+}
