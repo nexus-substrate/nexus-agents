@@ -149,6 +149,18 @@ export function isAllowlisted(filePath: string, allowlist: OrphanAllowlist): boo
 // Knip invocation
 // ============================================================================
 
+/** Coerce a parsed knip JSON value into the array shape we expect.
+ *  Knip can emit either a top-level array or an object with `issues` array
+ *  depending on version + reporter mode. Defensively normalize. */
+function normalizeKnipJson(parsed: unknown): readonly KnipIssue[] {
+  if (Array.isArray(parsed)) return parsed as readonly KnipIssue[];
+  if (parsed !== null && typeof parsed === 'object' && 'issues' in parsed) {
+    const inner = parsed.issues;
+    if (Array.isArray(inner)) return inner as readonly KnipIssue[];
+  }
+  return [];
+}
+
 /** Run knip --reporter json and return the parsed array of issues. */
 export function runKnip(cwd: string = REPO_ROOT): readonly KnipIssue[] {
   try {
@@ -158,14 +170,15 @@ export function runKnip(cwd: string = REPO_ROOT): readonly KnipIssue[] {
       maxBuffer: 16 * 1024 * 1024, // knip output can be ~400KB+
       stdio: ['ignore', 'pipe', 'ignore'],
     });
-    return JSON.parse(out) as KnipIssue[];
+    if (out.trim().length === 0) return [];
+    return normalizeKnipJson(JSON.parse(out));
   } catch (error: unknown) {
     // knip exits non-zero when issues exist; that's fine — we still get JSON on stdout.
     if (error !== null && typeof error === 'object' && 'stdout' in error) {
       const stdout = (error as { stdout?: string }).stdout;
       if (typeof stdout === 'string' && stdout.trim().length > 0) {
         try {
-          return JSON.parse(stdout) as KnipIssue[];
+          return normalizeKnipJson(JSON.parse(stdout));
         } catch {
           /* fall through */
         }
