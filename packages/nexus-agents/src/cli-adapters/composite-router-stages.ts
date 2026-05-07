@@ -47,6 +47,7 @@ import {
   type PerformanceFloorEntry,
 } from './composite-router-helpers.js';
 import { getWeatherBonusScores } from './weather-bonus-stage.js';
+import { CATEGORY_CHAIN_OVERRIDES } from './fallback-chains.js';
 import { detectTaskCategory } from '../config/task-specialization.js';
 import { getOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 
@@ -727,6 +728,45 @@ async function applyQualityConstraints(
   return ok({ candidates: qualityResult.eligible, qualityResult });
 }
 
+/**
+ * Filter candidates to those allowed by CATEGORY_CHAIN_OVERRIDES (#2414).
+ *
+ * Without this, CompositeRouter selects the primary CLI purely from learned
+ * LinUCB rewards, ignoring per-category routing overrides like
+ * security_review→codex (#1525) or architecture→gemini (#1518). The
+ * overrides existed in config but only fired on circuit-breaker fallback.
+ *
+ * Behavior:
+ * - If the task category has no override entry, candidates pass through.
+ * - If an override exists, candidates are filtered to only those in the
+ *   override chain (preserving the override's order). LinUCB still selects
+ *   from this filtered set, so adaptive learning continues within the
+ *   override-allowed CLIs.
+ * - If filtering eliminates every candidate (all override CLIs unavailable),
+ *   we fall back to the original candidates rather than failing the route.
+ */
+function applyCategoryOverride(
+  task: CliTask,
+  candidates: CliName[],
+  stagesExecuted: string[]
+): CliName[] {
+  const match = detectTaskCategory(task.content);
+  if (match === null) return candidates;
+  const override = CATEGORY_CHAIN_OVERRIDES[match.category];
+  if (override === undefined) return candidates;
+
+  const candidateSet = new Set(candidates);
+  const filtered = override.filter((cli) => candidateSet.has(cli));
+
+  if (filtered.length === 0) {
+    stagesExecuted.push('category-override:no-eligible');
+    return candidates;
+  }
+
+  stagesExecuted.push('category-override');
+  return filtered;
+}
+
 /** Override LinUCB selection if the chosen CLI is below performance floor (#1790). */
 function applyLinUCBFloorOverride(
   linucbCli: CliName,
@@ -774,6 +814,10 @@ export async function runPipeline(
   const constrained = await applyQualityConstraints(candidates, stagesExecuted, deps);
   if (!constrained.ok) return constrained;
   candidates = constrained.value.candidates;
+
+  // Category override: respect CATEGORY_CHAIN_OVERRIDES before TOPSIS/LinUCB (#2414)
+  candidates = applyCategoryOverride(task, candidates, stagesExecuted);
+
   const stageScores = aggregateStageScores(scoring, task.content);
   const topsisOpts: Parameters<typeof runTopsisStage>[4] = {
     performanceData: getPerformanceDataForCategory(task.content),
