@@ -92,6 +92,7 @@ Detailed technical documentation:
 | [SOFTWARE_FACTORY_REPORT.md](./architecture/SOFTWARE_FACTORY_REPORT.md)           | Factory hardening review       | Canonical |
 | [MULTI_REPO_ORCHESTRATION.md](./architecture/MULTI_REPO_ORCHESTRATION.md)         | Cross-repo task coordination   | Canonical |
 | [dependency-graph.md](./architecture/dependency-graph.md)                         | Module dependency diagram      | Generated |
+| [REGISTRY_COVERAGE.md](./architecture/REGISTRY_COVERAGE.md)                       | Wiring-completeness CI gate    | Canonical |
 
 #### Development
 
