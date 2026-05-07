@@ -89,13 +89,31 @@ function getChangedFiles(): string[] {
 }
 
 /**
- * Get the latest commit message to check for escape hatch.
+ * Get commit messages for the escape-hatch check.
+ *
+ * On GitHub Actions PR events, actions/checkout creates a merge ref so
+ * `git log -1` returns the auto-generated merge-commit subject, not the
+ * developer's commit. We walk the full PR commit range so [skip-docops]
+ * in any commit on the branch is honored. (#2411)
  */
-function getLatestCommitMessage(): string {
+function getCommitMessagesForEscapeHatch(cwd: string = REPO_ROOT): string {
+  const baseRef = process.env['GITHUB_BASE_REF'];
+  if (baseRef !== undefined && baseRef !== '') {
+    try {
+      return execSync(`git log origin/${baseRef}...HEAD --pretty=%B`, {
+        cwd,
+        encoding: 'utf-8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      });
+    } catch {
+      // fall through to HEAD-only
+    }
+  }
   try {
     return execSync('git log -1 --pretty=%B', {
-      cwd: REPO_ROOT,
+      cwd,
       encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'ignore'],
     });
   } catch {
     return '';
@@ -176,8 +194,8 @@ function performCheck(_verbose: boolean): CheckResult {
     return result;
   }
 
-  // Check for escape hatch
-  const commitMessage = getLatestCommitMessage();
+  // Check for escape hatch — walks PR commit range when GITHUB_BASE_REF is set (#2411)
+  const commitMessage = getCommitMessagesForEscapeHatch();
   if (commitMessage.includes('[skip-docops]')) {
     result.escapeHatchUsed = true;
     result.success = true;
@@ -281,4 +299,9 @@ Escape hatch:
   process.exit(success ? 0 : 1);
 }
 
-main();
+export { getCommitMessagesForEscapeHatch };
+
+const invokedDirectly = process.argv[1]?.endsWith('check-docops-skill.ts') === true;
+if (invokedDirectly) {
+  main();
+}
