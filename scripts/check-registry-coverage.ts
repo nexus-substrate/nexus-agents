@@ -25,7 +25,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '..');
 const MANIFEST_PATH = path.join(REPO_ROOT, 'docs/ops/registry-coverage-manifest.json');
@@ -54,17 +54,32 @@ interface Violation {
 // ============================================================================
 
 /**
+ * Validate GITHUB_BASE_REF before passing it to git. Allowlist limits the
+ * value to git-ref-safe characters; even though execFileSync (no shell) makes
+ * command injection impossible by construction, this also rejects malformed
+ * values that would silently fail at the git boundary.
+ */
+function safeBaseRef(): string | null {
+  const raw = process.env['GITHUB_BASE_REF'];
+  if (raw === undefined || raw === '') return null;
+  if (!/^[A-Za-z0-9._/-]+$/.test(raw)) return null;
+  return raw;
+}
+
+/**
  * Get the list of files changed in the current PR (or HEAD~1 fallback).
  * Walks the PR commit range when GITHUB_BASE_REF is set so the diff captures
  * every commit on the branch (lesson from #2411 — actions/checkout's PR-merge
  * ref puts a synthetic merge commit at HEAD).
+ *
+ * Uses execFileSync with argv arrays (no shell) per security review on PR
+ * #2421.
  */
 export function getChangedFiles(cwd: string = REPO_ROOT): string[] {
-  const baseRef = process.env['GITHUB_BASE_REF'];
-  const range =
-    baseRef !== undefined && baseRef !== '' ? `origin/${baseRef}...HEAD` : 'HEAD~1...HEAD';
+  const baseRef = safeBaseRef();
+  const range = baseRef !== null ? `origin/${baseRef}...HEAD` : 'HEAD~1...HEAD';
   try {
-    const out = execSync(`git diff --name-only ${range}`, {
+    const out = execFileSync('git', ['diff', '--name-only', range], {
       cwd,
       encoding: 'utf-8',
       stdio: ['ignore', 'pipe', 'ignore'],
@@ -76,7 +91,7 @@ export function getChangedFiles(cwd: string = REPO_ROOT): string[] {
   } catch {
     // Fall back to staged files (covers local pre-commit usage).
     try {
-      const staged = execSync('git diff --cached --name-only', {
+      const staged = execFileSync('git', ['diff', '--cached', '--name-only'], {
         cwd,
         encoding: 'utf-8',
         stdio: ['ignore', 'pipe', 'ignore'],
@@ -96,11 +111,10 @@ export function getChangedFiles(cwd: string = REPO_ROOT): string[] {
  * Returns the unified diff so the caller can detect marker-line touches.
  */
 export function getFileDiff(filePath: string, cwd: string = REPO_ROOT): string {
-  const baseRef = process.env['GITHUB_BASE_REF'];
-  const range =
-    baseRef !== undefined && baseRef !== '' ? `origin/${baseRef}...HEAD` : 'HEAD~1...HEAD';
+  const baseRef = safeBaseRef();
+  const range = baseRef !== null ? `origin/${baseRef}...HEAD` : 'HEAD~1...HEAD';
   try {
-    return execSync(`git diff ${range} -- "${filePath}"`, {
+    return execFileSync('git', ['diff', range, '--', filePath], {
       cwd,
       encoding: 'utf-8',
       stdio: ['ignore', 'pipe', 'ignore'],
