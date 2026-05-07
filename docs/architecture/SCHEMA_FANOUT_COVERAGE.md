@@ -1,7 +1,7 @@
 ---
 title: Schema-Fan-Out Coverage Check Design
 description: Catch schema-change cascades where one PR ships a schema change and downstream consumers ship broken in follow-up PRs
-tier: tier2
+tier: 2
 keywords: [governance, ci, schema, zod, fanout, coverage]
 ---
 
