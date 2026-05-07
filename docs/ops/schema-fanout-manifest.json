@@ -1,0 +1,39 @@
+{
+  "$schema": "./schema-fanout-manifest.schema.json",
+  "version": "1.0.0",
+  "description": "Schema-fan-out manifest. When a tracked schema's source file changes in a way that touches the schema's marker, at least one consumer test file MUST also change in the same PR. v1 ships warn-only; promote to fail when false-positive rate stabilizes. See docs/architecture/SCHEMA_FANOUT_COVERAGE.md (#2407).",
+  "schemas": [
+    {
+      "name": "PrReviewInputSchema",
+      "source": "packages/nexus-agents/src/mcp/tools/pr-review-tool.ts",
+      "marker": "PrReviewInputSchema",
+      "consumer_tests": [
+        "packages/nexus-agents/src/mcp/tools/pr-review-tool.test.ts",
+        "packages/nexus-agents/src/mcp/tools/pr-review-findings.test.ts"
+      ],
+      "rationale": "Receipts: #2253→#2254→#2255 cascade — voter findings shape changes need consumer test re-validation."
+    },
+    {
+      "name": "TaskOutcomeSchema",
+      "source": "packages/nexus-agents/src/orchestration/outcomes/outcome-types.ts",
+      "marker": "TaskOutcomeSchema",
+      "consumer_tests": [
+        "packages/nexus-agents/src/orchestration/outcomes/outcome-store-persistence.test.ts",
+        "packages/nexus-agents/src/orchestration/outcomes/adaptive-thresholds.test.ts",
+        "packages/nexus-agents/src/mcp/tools/improvement-review.test.ts",
+        "packages/nexus-agents/src/mcp/tools/weather-report.test.ts"
+      ],
+      "rationale": "Receipts: improvement_review (#2402) hit timestamp string vs number coercion during construction. TaskOutcome is consumed by weather-report, improvement-review, fitness-audit, OutcomeStore — every one needs its test re-validated when the shape changes."
+    },
+    {
+      "name": "ImprovementReviewInputSchema",
+      "source": "packages/nexus-agents/src/mcp/tools/improvement-review.ts",
+      "marker": "ImprovementReviewInputSchema",
+      "consumer_tests": [
+        "packages/nexus-agents/src/mcp/tools/improvement-review.test.ts",
+        "packages/nexus-agents/src/mcp/tools/index.test.ts"
+      ],
+      "rationale": "Recent MCP tool (#2402 PR 2). Public MCP contract — schema changes are breaking changes for plugin consumers."
+    }
+  ]
+}
