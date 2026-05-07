@@ -93,6 +93,7 @@ Detailed technical documentation:
 | [MULTI_REPO_ORCHESTRATION.md](./architecture/MULTI_REPO_ORCHESTRATION.md)         | Cross-repo task coordination   | Canonical |
 | [dependency-graph.md](./architecture/dependency-graph.md)                         | Module dependency diagram      | Generated |
 | [REGISTRY_COVERAGE.md](./architecture/REGISTRY_COVERAGE.md)                       | Wiring-completeness CI gate    | Canonical |
+| [SCHEMA_FANOUT_COVERAGE.md](./architecture/SCHEMA_FANOUT_COVERAGE.md)             | Schema-fan-out CI check        | Canonical |
 
 #### Development
 
