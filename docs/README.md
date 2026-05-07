@@ -94,6 +94,7 @@ Detailed technical documentation:
 | [dependency-graph.md](./architecture/dependency-graph.md)                         | Module dependency diagram      | Generated |
 | [REGISTRY_COVERAGE.md](./architecture/REGISTRY_COVERAGE.md)                       | Wiring-completeness CI gate    | Canonical |
 | [SCHEMA_FANOUT_COVERAGE.md](./architecture/SCHEMA_FANOUT_COVERAGE.md)             | Schema-fan-out CI check        | Canonical |
+| [IMPORT_GRAPH_ORPHANS.md](./architecture/IMPORT_GRAPH_ORPHANS.md)                 | Import-graph orphan detection  | Canonical |
 
 #### Development
 
