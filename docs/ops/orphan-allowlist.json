@@ -1,0 +1,28 @@
+{
+  "$schema": "./orphan-allowlist.schema.json",
+  "version": "1.0.0",
+  "description": "Allowlist for the orphan-detection check (#2410). Files matching these patterns or paths are exempted from orphan flagging — typically because they're invoked by name (CLI scripts, migrations) or intentionally not imported (examples, illustrative code).",
+  "patterns": [
+    {
+      "glob": "scripts/**/*.ts",
+      "rationale": "CLI scripts invoked by name from package.json or directly via tsx; not imported by other code."
+    },
+    {
+      "glob": "examples/**",
+      "rationale": "Illustrative code, intentionally not imported."
+    },
+    {
+      "glob": "**/migrations/**",
+      "rationale": "Data migrations invoked by name."
+    },
+    {
+      "glob": "**/*.test.ts",
+      "rationale": "Test files are entry points, not imports."
+    },
+    {
+      "glob": "**/*.config.ts",
+      "rationale": "Tooling config files (tsup, vitest, eslint) loaded by tools, not imported."
+    }
+  ],
+  "specific_files": []
+}
