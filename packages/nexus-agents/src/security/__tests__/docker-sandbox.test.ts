@@ -225,12 +225,16 @@ describe('createSandbox factory', () => {
       const result = await createSandbox({
         mode: 'container',
         fallbackToPolicy: true,
+        // Skip the new Deno fallback (#1898) so the fallback chain reaches policy.
+        fallbackToDeno: false,
       });
 
       expect(result.executor.name).toBe('PolicySandboxExecutor');
       expect(result.actualMode).toBe('policy');
       expect(result.usedFallback).toBe(true);
-      expect(result.warning).toContain('Docker not available');
+      // Updated for #1898 fallback chain — message now reads
+      // "Neither Docker nor Deno available" when both are absent.
+      expect(result.warning).toMatch(/Docker not available|Neither Docker nor Deno/);
     });
 
     it('should throw when Docker not available and no fallback', async () => {
@@ -238,8 +242,9 @@ describe('createSandbox factory', () => {
         createSandbox({
           mode: 'container',
           fallbackToPolicy: false,
+          fallbackToDeno: false,
         })
-      ).rejects.toThrow('Docker is not available');
+      ).rejects.toThrow(/Docker|Deno/);
     });
   });
 

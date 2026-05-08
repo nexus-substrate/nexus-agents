@@ -13,6 +13,7 @@ import {
 } from './sandbox-factory.js';
 import { PolicySandboxExecutor } from './sandbox-executor.js';
 import { DockerSandboxExecutor, isDockerAvailable } from './docker-sandbox-executor.js';
+import { DenoSandboxExecutor, isDenoAvailable } from './deno-sandbox-executor.js';
 
 // ============================================================================
 // Mocks
@@ -25,6 +26,16 @@ vi.mock('./docker-sandbox-executor.js', async () => {
   return {
     ...actual,
     isDockerAvailable: vi.fn(),
+  };
+});
+
+vi.mock('./deno-sandbox-executor.js', async () => {
+  const actual = await vi.importActual<typeof import('./deno-sandbox-executor.js')>(
+    './deno-sandbox-executor.js'
+  );
+  return {
+    ...actual,
+    isDenoAvailable: vi.fn(),
   };
 });
 
@@ -154,16 +165,17 @@ describe('createSandbox - container mode (Docker available)', () => {
 // createSandbox - container mode (Docker unavailable, fallback enabled)
 // ============================================================================
 
-describe('createSandbox - container mode (Docker unavailable, fallback enabled)', () => {
+describe('createSandbox - container mode (Docker unavailable, Deno unavailable, fallback enabled)', () => {
   beforeEach(() => {
     vi.mocked(isDockerAvailable).mockResolvedValue(false);
+    vi.mocked(isDenoAvailable).mockResolvedValue(false);
   });
 
   afterEach(() => {
     vi.clearAllMocks();
   });
 
-  it('falls back to policy mode when Docker unavailable', async () => {
+  it('falls back to policy mode when neither Docker nor Deno available', async () => {
     const result = await createSandbox({
       mode: 'container',
       fallbackToPolicy: true,
@@ -181,7 +193,7 @@ describe('createSandbox - container mode (Docker unavailable, fallback enabled)'
     });
 
     expect(result.warning).toBeDefined();
-    expect(result.warning).toContain('Docker not available');
+    expect(result.warning).toContain('Neither Docker nor Deno');
     expect(result.warning).toContain('policy-based');
   });
 
@@ -211,25 +223,104 @@ describe('createSandbox - container mode (Docker unavailable, fallback enabled)'
 });
 
 // ============================================================================
-// createSandbox - container mode (Docker unavailable, fallback disabled)
+// createSandbox - container mode (Docker unavailable, Deno available) — #1898
 // ============================================================================
 
-describe('createSandbox - container mode (Docker unavailable, fallback disabled)', () => {
+describe('createSandbox - container mode (Docker unavailable, Deno available)', () => {
   beforeEach(() => {
     vi.mocked(isDockerAvailable).mockResolvedValue(false);
+    vi.mocked(isDenoAvailable).mockResolvedValue(true);
   });
 
   afterEach(() => {
     vi.clearAllMocks();
   });
 
-  it('throws error when Docker unavailable and fallback disabled', async () => {
+  it('falls back to deno mode (process-level isolation) when Docker missing', async () => {
+    const result = await createSandbox({ mode: 'container', fallbackToPolicy: true });
+    expect(result.executor).toBeInstanceOf(DenoSandboxExecutor);
+    expect(result.actualMode).toBe('deno');
+    expect(result.usedFallback).toBe(true);
+    expect(result.warning).toContain('Deno permission sandbox');
+  });
+
+  it('respects fallbackToDeno: false (skips Deno, falls to policy)', async () => {
+    const result = await createSandbox({
+      mode: 'container',
+      fallbackToPolicy: true,
+      fallbackToDeno: false,
+    });
+    expect(result.executor).toBeInstanceOf(PolicySandboxExecutor);
+    expect(result.actualMode).toBe('policy');
+  });
+});
+
+// ============================================================================
+// createSandbox - deno mode (#1898)
+// ============================================================================
+
+describe('createSandbox - deno mode (Deno available)', () => {
+  beforeEach(() => {
+    vi.mocked(isDenoAvailable).mockResolvedValue(true);
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('returns DenoSandboxExecutor without fallback', async () => {
+    const result = await createSandbox({ mode: 'deno' });
+    expect(result.executor).toBeInstanceOf(DenoSandboxExecutor);
+    expect(result.actualMode).toBe('deno');
+    expect(result.usedFallback).toBe(false);
+  });
+});
+
+describe('createSandbox - deno mode (Deno unavailable)', () => {
+  beforeEach(() => {
+    vi.mocked(isDenoAvailable).mockResolvedValue(false);
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('falls back to policy mode when fallbackToPolicy is true', async () => {
+    const result = await createSandbox({ mode: 'deno', fallbackToPolicy: true });
+    expect(result.executor).toBeInstanceOf(PolicySandboxExecutor);
+    expect(result.actualMode).toBe('policy');
+    expect(result.usedFallback).toBe(true);
+    expect(result.warning).toContain('Deno not available');
+  });
+
+  it('throws when fallbackToPolicy is false', async () => {
+    await expect(createSandbox({ mode: 'deno', fallbackToPolicy: false })).rejects.toThrow(
+      /Deno is not available/
+    );
+  });
+});
+
+// ============================================================================
+// createSandbox - container mode (Docker unavailable, fallback disabled)
+// ============================================================================
+
+describe('createSandbox - container mode (Docker + Deno unavailable, fallback disabled)', () => {
+  beforeEach(() => {
+    vi.mocked(isDockerAvailable).mockResolvedValue(false);
+    vi.mocked(isDenoAvailable).mockResolvedValue(false);
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('throws error when neither Docker nor Deno available and fallback disabled', async () => {
     await expect(
       createSandbox({
         mode: 'container',
         fallbackToPolicy: false,
       })
-    ).rejects.toThrow('Docker is not available');
+    ).rejects.toThrow(/neither Docker nor Deno/);
   });
 
   it('error message suggests installation or fallback', async () => {
@@ -238,7 +329,7 @@ describe('createSandbox - container mode (Docker unavailable, fallback disabled)
         mode: 'container',
         fallbackToPolicy: false,
       })
-    ).rejects.toThrow(/Install Docker|fallbackToPolicy/);
+    ).rejects.toThrow(/Install Docker|Deno|fallbackToPolicy/);
   });
 });
 
@@ -331,16 +422,17 @@ describe('getRecommendedMode - Docker available', () => {
 // getRecommendedMode - Docker unavailable
 // ============================================================================
 
-describe('getRecommendedMode - Docker unavailable', () => {
+describe('getRecommendedMode - Docker unavailable, Deno unavailable', () => {
   beforeEach(() => {
     vi.mocked(isDockerAvailable).mockResolvedValue(false);
+    vi.mocked(isDenoAvailable).mockResolvedValue(false);
   });
 
   afterEach(() => {
     vi.clearAllMocks();
   });
 
-  it('recommends policy mode when Docker is unavailable', async () => {
+  it('recommends policy mode when neither Docker nor Deno is available', async () => {
     const mode = await getRecommendedMode();
 
     expect(mode).toBe('policy');
@@ -350,6 +442,21 @@ describe('getRecommendedMode - Docker unavailable', () => {
     await getRecommendedMode();
 
     expect(isDockerAvailable).toHaveBeenCalledOnce();
+  });
+});
+
+describe('getRecommendedMode - Docker unavailable, Deno available (#1898)', () => {
+  beforeEach(() => {
+    vi.mocked(isDockerAvailable).mockResolvedValue(false);
+    vi.mocked(isDenoAvailable).mockResolvedValue(true);
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('recommends deno mode when Docker missing but Deno present', async () => {
+    expect(await getRecommendedMode()).toBe('deno');
   });
 });
 
@@ -389,6 +496,7 @@ describe('Integration - complete workflow', () => {
 describe('Edge cases', () => {
   beforeEach(() => {
     vi.mocked(isDockerAvailable).mockResolvedValue(false);
+    vi.mocked(isDenoAvailable).mockResolvedValue(false);
   });
 
   afterEach(() => {
