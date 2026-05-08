@@ -45,9 +45,12 @@ function makeOptions(overrides: Partial<SandboxExecutionOptions> = {}): SandboxE
 }
 
 describe('buildDenoArgs', () => {
-  it('emits eval + flags + JSON-encoded command/args (no shell parsing)', () => {
+  it('emits eval + --no-prompt + flags + JSON-encoded command/args (no shell parsing)', () => {
     const args = buildDenoArgs('echo', ['hello world'], makeOptions());
     expect(args[0]).toBe('eval');
+    // --no-prompt must be present so denied permissions throw rather than
+    // hang on TTY (security review on PR #2427).
+    expect(args).toContain('--no-prompt');
     expect(args).toContain('--allow-run=echo,git');
     // Last arg is the eval script: should reference the JSON-encoded command + args.
     const evalScript = args[args.length - 1];

@@ -236,9 +236,12 @@ export class DenoSandboxExecutor implements ISandboxExecutor {
 // ============================================================================
 
 /**
- * Assemble the `deno run` argv that runs `<command> <args>` under
- * permission flags derived from the policy. Uses Deno's bash-style `--`
- * separator so the target command receives its raw args verbatim.
+ * Assemble the `deno eval` argv that runs `<command> <args>` under
+ * permission flags derived from the policy. Always passes `--no-prompt`
+ * (security review on PR #2427) — without it, Deno suspends and prompts
+ * the user when a permission gate denies an operation. In a CI runner or
+ * autonomous-loop context that hangs the parent process; `--no-prompt`
+ * forces immediate `PermissionDenied` on missing capabilities.
  */
 export function buildDenoArgs(
   command: string,
@@ -250,13 +253,21 @@ export function buildDenoArgs(
   // via Deno.Command, since `deno run` of an arbitrary binary isn't supported.
   // The eval text is small and produces the same exit code as the spawned process.
   const evalScript = buildEvalSpawn(command, args);
-  return ['eval', ...flags, evalScript];
+  return ['eval', '--no-prompt', ...flags, evalScript];
 }
 
 /**
  * Build the small `Deno.Command` invocation that re-spawns the target with
- * its raw args and forwards stdout/stderr/exit. Argument values are JSON-
- * stringified so quoting is safe (no shell parsing).
+ * its raw args and forwards stdout/stderr/exit. Both `command` and `args`
+ * pass through `JSON.stringify` — that produces valid JS string literals
+ * for any input (escapes quotes, backslashes, control chars, U+2028/2029),
+ * and the deserialized values flow into `Deno.Command({ args: [...] })` in
+ * array form, so there's no shell parsing on the deno side. The argv
+ * injection surface is reduced to the SandboxPolicy allowlist gates
+ * (validateCommand + validateArgs) already applied in `validate()`.
+ *
+ * Do not refactor this to a template-string interpolation — that would
+ * reintroduce a shell-style injection class.
  */
 function buildEvalSpawn(command: string, args: readonly string[]): string {
   const argsJson = JSON.stringify(args);
