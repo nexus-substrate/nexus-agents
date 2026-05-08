@@ -14,6 +14,7 @@ import { defaultConfig } from '../config/index.js';
 import { BUILT_IN_EXPERTS } from '../agents/experts/expert-config.js';
 import { colors, symbols } from './ansi-output.js';
 import { checkSqlite, checkDataDirectory, checkApiKeys } from './doctor.js';
+import { probeAllClis } from './cli-auth-probe.js';
 
 /**
  * Verify command options.
@@ -246,27 +247,45 @@ function checkDataDirs(): VerifyCheck {
 
 /**
  * Checks that at least one execution path is configured — either an API key
- * (direct adapter) or a CLI binary pre-authenticated. Without either, the
- * orchestrator has nothing to dispatch to.
+ * (direct adapter) or a CLI that's actually authenticated. Without either,
+ * the orchestrator has nothing to dispatch to.
+ *
+ * #2437: previously only checked env vars, so verify reported "No API keys
+ * configured / degraded" while doctor (post-#2448) correctly reported the
+ * CLI as authed. Both were accurate but disagreed in tone, confusing
+ * operators. Now verify uses the same auth probe doctor uses, so they
+ * align on the available-paths question.
  */
-function checkAdapterAvailability(): VerifyCheck {
+async function checkAdapterAvailability(): Promise<VerifyCheck> {
   const keys = checkApiKeys();
-  const configured = keys.filter((k) => k.configured);
-  if (configured.length > 0) {
+  const configuredKeys = keys.filter((k) => k.configured);
+  const authedClis = (await probeAllClis()).filter((p) => p.state === 'authenticated');
+
+  if (configuredKeys.length > 0 || authedClis.length > 0) {
+    const parts: string[] = [];
+    if (configuredKeys.length > 0) {
+      parts.push(
+        `${String(configuredKeys.length)} API key(s): ${configuredKeys.map((k) => k.name).join(', ')}`
+      );
+    }
+    if (authedClis.length > 0) {
+      parts.push(
+        `${String(authedClis.length)} authed CLI(s): ${authedClis.map((p) => p.cli).join(', ')}`
+      );
+    }
     return {
       name: 'Adapter Availability',
       passed: true,
-      message: `${String(configured.length)} API key(s) configured: ${configured
-        .map((k) => k.name)
-        .join(', ')}`,
+      message: parts.join('; '),
     };
   }
+
   return {
     name: 'Adapter Availability',
     passed: false,
     severity: 'warn',
-    message: 'No API keys configured (ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_AI_API_KEY)',
-    fix: 'Set at least one API key, or install a CLI (claude/gemini/codex/opencode) and run "nexus-agents doctor"',
+    message: 'No API keys and no authed CLIs detected',
+    fix: 'Run "nexus-agents login" to see per-CLI status, then "claude /login" / "codex login" / etc., or set ANTHROPIC_API_KEY / OPENAI_API_KEY / GOOGLE_AI_API_KEY',
   };
 }
 
@@ -284,7 +303,7 @@ export async function runVerify(): Promise<VerifyResult> {
     checkExpertSystem(),
     await checkSqliteAvailability(),
     checkDataDirs(),
-    checkAdapterAvailability(),
+    await checkAdapterAvailability(),
   ];
 
   const allPassed = checks.every((c) => c.passed);
