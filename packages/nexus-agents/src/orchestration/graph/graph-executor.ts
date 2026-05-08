@@ -17,6 +17,7 @@ import { getErrorMessage, ok, err, createLogger, getTimeProvider } from '../../c
 
 import type {
   CompiledGraph,
+  Command,
   GraphState,
   GraphNode,
   GraphEdge,
@@ -28,7 +29,7 @@ import type {
   GraphExecuteOptions,
   StateFieldSchema,
 } from './graph-types.js';
-import { END, isInterrupt, isCommand } from './graph-types.js';
+import { END, isInterrupt, isCommand, ResumeValuesSchema } from './graph-types.js';
 import { createCheckpoint } from './checkpoint-store.js';
 import type { ICheckpointStore } from './checkpoint-types.js';
 import {
@@ -59,7 +60,13 @@ interface ExecutionContext {
   /** Resume values keyed by interrupt id, surfaced to nodes via NodeContext (#1895). */
   resumeValues: Readonly<Record<string, unknown>>;
   /** Set when a node in the current super-step returned an Interrupt (#1895). */
-  pendingInterrupt: { readonly nodeId: string; readonly interrupt: Interrupt } | undefined;
+  pendingInterrupt:
+    | {
+        readonly nodeId: string;
+        readonly interrupt: Interrupt;
+        readonly additional: readonly { readonly nodeId: string; readonly interrupt: Interrupt }[];
+      }
+    | undefined;
 }
 
 /**
@@ -123,25 +130,35 @@ export async function executeGraph(
  * Resume a paused graph execution from a HITL interrupt checkpoint (#1895).
  *
  * Loads the named checkpoint, validates that it carries interrupt metadata,
- * and re-runs the graph starting from the interrupted node. The supplied
- * `resumeValues` map (keyed by interrupt id) is delivered to that node's
- * NodeContext on the run that follows the resume call.
+ * Zod-parses `resumeValues` at the API boundary (#2425), checks idempotency
+ * (#2425), and re-runs the graph starting from the interrupted node. The
+ * supplied `resumeValues` map (keyed by interrupt id) is delivered to that
+ * node's NodeContext on the run that follows the resume call.
  *
  * Errors:
+ *   - checkpointStore not configured
  *   - checkpoint not found
- *   - checkpoint exists but isn't an interrupt checkpoint
+ *   - checkpoint has no interrupt metadata
+ *   - resumeValues fails Zod validation (#2425)
  *   - resumeValues missing the interrupt id this checkpoint is waiting for
+ *   - checkpoint already consumed (#2425)
  */
-export async function resumeFromCheckpoint(
-  graph: CompiledGraph,
+/**
+ * Validate the resume request — checkpoint loadable + valid resumeValues +
+ * matches the interrupt id + not already consumed. Returns either the
+ * validated context or an error.
+ */
+function validateResumeRequest(
+  store: ICheckpointStore,
   checkpointId: string,
-  resumeValues: Readonly<Record<string, unknown>>,
-  options: GraphExecuteOptions
-): Promise<Result<GraphExecutionResult, Error>> {
-  const store: ICheckpointStore | undefined = options.checkpointStore;
-  if (store === undefined) {
-    return err(new Error('resumeFromCheckpoint requires options.checkpointStore'));
-  }
+  resumeValues: unknown
+): Result<
+  {
+    checkpoint: NonNullable<ReturnType<ICheckpointStore['load']>>;
+    values: Record<string, unknown>;
+  },
+  Error
+> {
   const checkpoint = store.load(checkpointId);
   if (checkpoint === undefined) {
     return err(new Error(`Checkpoint not found: ${checkpointId}`));
@@ -152,20 +169,56 @@ export async function resumeFromCheckpoint(
       new Error(`Checkpoint ${checkpointId} has no interrupt metadata; not a paused execution.`)
     );
   }
-  if (!Object.prototype.hasOwnProperty.call(resumeValues, interruptCtx.interruptId)) {
+  if (interruptCtx.consumedAt !== undefined) {
+    return err(
+      new Error(
+        `Checkpoint ${checkpointId} already resumed at ${interruptCtx.consumedAt}; double-resume rejected.`
+      )
+    );
+  }
+  const parsed = ResumeValuesSchema.safeParse(resumeValues);
+  if (!parsed.success) {
+    return err(new Error(`resumeValues failed validation: ${parsed.error.message}`));
+  }
+  if (!Object.prototype.hasOwnProperty.call(parsed.data, interruptCtx.interruptId)) {
     return err(
       new Error(
         `resumeValues missing interrupt id '${interruptCtx.interruptId}' (paused at node '${interruptCtx.nodeId}')`
       )
     );
   }
+  return ok({ checkpoint, values: parsed.data });
+}
+
+export async function resumeFromCheckpoint(
+  graph: CompiledGraph,
+  checkpointId: string,
+  resumeValues: unknown,
+  options: GraphExecuteOptions
+): Promise<Result<GraphExecutionResult, Error>> {
+  const store: ICheckpointStore | undefined = options.checkpointStore;
+  if (store === undefined) {
+    return err(new Error('resumeFromCheckpoint requires options.checkpointStore'));
+  }
+  const validated = validateResumeRequest(store, checkpointId, resumeValues);
+  if (!validated.ok) return validated;
+  const { checkpoint, values } = validated.value;
+  const existing = checkpoint.interrupt;
+  if (existing === undefined) {
+    return err(new Error('unreachable: validateResumeRequest already checked .interrupt'));
+  }
+  // Mark consumed before re-running so a concurrent second call sees it.
+  store.save({
+    ...checkpoint,
+    interrupt: { ...existing, consumedAt: new Date().toISOString() },
+  });
   return executeGraph(
     graph,
     {},
     {
       ...options,
       executionId: checkpoint.executionId,
-      resumeValues,
+      resumeValues: values,
     }
   );
 }
@@ -176,6 +229,36 @@ export async function resumeFromCheckpoint(
  * or undefined when no checkpoint store was configured (interrupts still halt
  * the loop, but resumption is unavailable without persistence). (#1895)
  */
+function buildInterruptCheckpoint(
+  ctx: ExecutionContext,
+  execId: string,
+  pending: NonNullable<ExecutionContext['pendingInterrupt']>
+): ReturnType<typeof createCheckpoint> {
+  const { nodeId, interrupt, additional } = pending;
+  const additionalInterrupts =
+    additional.length > 0
+      ? additional.map((a) => ({
+          nodeId: a.nodeId,
+          interruptId: a.interrupt.id,
+          value: a.interrupt.value,
+        }))
+      : undefined;
+  return createCheckpoint({
+    executionId: execId,
+    stepNumber: ctx.stepsExecuted,
+    state: ctx.state,
+    pendingNodeIds: [nodeId],
+    completedResults: ctx.allResults,
+    interrupt: {
+      nodeId,
+      interruptId: interrupt.id,
+      value: interrupt.value,
+      createdAt: new Date().toISOString(),
+      ...(additionalInterrupts !== undefined ? { additionalInterrupts } : {}),
+    },
+  });
+}
+
 function saveInterruptCheckpoint(
   ctx: ExecutionContext,
   options?: GraphExecuteOptions
@@ -186,24 +269,11 @@ function saveInterruptCheckpoint(
     return undefined;
   }
   const { nodeId, interrupt } = ctx.pendingInterrupt;
-  const checkpoint = createCheckpoint({
-    executionId: execId,
-    stepNumber: ctx.stepsExecuted,
-    state: ctx.state,
-    // Re-run the interrupted node first on resume.
-    pendingNodeIds: [nodeId],
-    completedResults: ctx.allResults,
-    interrupt: {
-      nodeId,
-      interruptId: interrupt.id,
-      value: interrupt.value,
-      createdAt: new Date().toISOString(),
-    },
-  });
+  const checkpoint = buildInterruptCheckpoint(ctx, execId, ctx.pendingInterrupt);
   try {
     store.save(checkpoint);
-  } catch (err: unknown) {
-    const error = err instanceof Error ? err : new Error(String(err));
+  } catch (e: unknown) {
+    const error = e instanceof Error ? e : new Error(String(e));
     logger.warn('Interrupt checkpoint save failed; resume unavailable', {
       executionId: execId,
       nodeId,
@@ -277,12 +347,43 @@ async function executeSuperStep(
   // Resume values are single-shot — clear after the super-step that consumed them. (#1895)
   ctx.resumeValues = {};
 
-  // Halt if any node returned an Interrupt — surfaces upward via ctx.pendingInterrupt.
-  // Multi-interrupt support is Phase 2; v1 records the first one.
-  const interrupted = results.find((r) => r.status === 'interrupted');
-  if (interrupted?.interrupt !== undefined) {
-    ctx.pendingInterrupt = { nodeId: interrupted.nodeId, interrupt: interrupted.interrupt };
-    ctx.runnableIds = [];
+  // Halt on any Interrupt return. The first becomes the primary; any others
+  // in the same super-step are surfaced as `additionalInterrupts` on the
+  // checkpoint so operators don't silently lose human-input requests (#2425).
+  const interrupted = results.filter(
+    (r) => r.status === 'interrupted' && r.interrupt !== undefined
+  );
+  if (interrupted.length > 0) {
+    const primary = interrupted[0];
+    if (primary?.interrupt !== undefined) {
+      const additional = interrupted.slice(1);
+      ctx.pendingInterrupt = {
+        nodeId: primary.nodeId,
+        interrupt: primary.interrupt,
+        additional: additional.map((r) => ({
+          nodeId: r.nodeId,
+          interrupt: r.interrupt as Interrupt,
+        })),
+      };
+      if (additional.length > 0) {
+        logger.warn('Multiple interrupts in one super-step — only primary is honored', {
+          primaryNodeId: primary.nodeId,
+          primaryInterruptId: primary.interrupt.id,
+          additionalCount: additional.length,
+          additionalNodeIds: additional.map((r) => r.nodeId),
+        });
+      }
+      ctx.runnableIds = [];
+      fireSuperStepCallbacks(results, ctx, options);
+      return;
+    }
+  }
+
+  // Honor Command.goto: if a node returned a Command with a goto target,
+  // override the normal edge-resolved next-runnable set. (#2425)
+  const overrides = collectGotoOverrides(graph, results);
+  if (overrides !== undefined) {
+    ctx.runnableIds = overrides;
     fireSuperStepCallbacks(results, ctx, options);
     return;
   }
@@ -290,6 +391,35 @@ async function executeSuperStep(
   const completedIds = results.filter((r) => r.status === 'success').map((r) => r.nodeId);
   ctx.runnableIds = resolveNextNodes(graph, completedIds, ctx.state, ctx);
   fireSuperStepCallbacks(results, ctx, options);
+}
+
+/**
+ * Walk the per-node returns and collect Command.goto targets. Returns the
+ * de-duplicated list of node IDs to redirect to, or undefined when no goto
+ * was issued (normal edge resolution path).
+ *
+ * Logs and skips invalid targets (unknown nodes); does not abort the run.
+ */
+function collectGotoOverrides(
+  graph: CompiledGraph,
+  results: readonly NodeResult[]
+): string[] | undefined {
+  const targets: string[] = [];
+  for (const r of results) {
+    const goto = r.gotoTarget;
+    if (goto === undefined) continue;
+    if (graph.nodes.has(goto)) {
+      targets.push(goto);
+    } else {
+      logger.warn('Command.goto target unknown — ignoring redirect', {
+        nodeId: r.nodeId,
+        target: goto,
+      });
+    }
+  }
+  if (targets.length === 0) return undefined;
+  // De-duplicate while preserving first-seen order.
+  return [...new Set(targets)];
 }
 
 /** Fire onNodeComplete + emit lifecycle events + save checkpoint. */
@@ -487,18 +617,24 @@ function preconditionFailedResult(
 }
 
 /**
- * Reduce a raw NodeReturn into the (stateUpdates, interrupt?) pair the
- * executor cares about. Centralizes Interrupt/Command unwrapping (#1895).
+ * Reduce a raw NodeReturn into the (stateUpdates, interrupt?, gotoTarget?)
+ * triple the executor cares about. Centralizes Interrupt/Command unwrapping
+ * (#1895, #2425).
  */
 function extractNodeOutput(returned: NodeReturn): {
   stateUpdates: Partial<GraphState>;
   interrupt?: Interrupt;
+  gotoTarget?: string;
 } {
   if (isInterrupt(returned)) {
     return { stateUpdates: {}, interrupt: returned };
   }
   if (isCommand(returned)) {
-    return { stateUpdates: returned.update ?? {} };
+    const cmd: Command = returned;
+    return {
+      stateUpdates: cmd.update ?? {},
+      ...(cmd.goto !== undefined ? { gotoTarget: cmd.goto } : {}),
+    };
   }
   return { stateUpdates: returned };
 }
@@ -518,7 +654,7 @@ async function executeWithVerification(args: ExecVerifyArgs): Promise<NodeResult
   const nodeTimeout = node.timeout ?? options?.timeout ?? DEFAULT_TIMEOUT_MS;
   const returned = await withTimeout(node.handler(state, nodeCtx), nodeTimeout);
   const handlerDuration = getTimeProvider().now() - startTime;
-  const { stateUpdates, interrupt } = extractNodeOutput(returned);
+  const { stateUpdates, interrupt, gotoTarget } = extractNodeOutput(returned);
 
   if (interrupt !== undefined) {
     return {
@@ -543,7 +679,13 @@ async function executeWithVerification(args: ExecVerifyArgs): Promise<NodeResult
     };
   }
 
-  return { nodeId, stateUpdates, durationMs: handlerDuration, status: 'success' };
+  return {
+    nodeId,
+    stateUpdates,
+    durationMs: handlerDuration,
+    status: 'success',
+    ...(gotoTarget !== undefined ? { gotoTarget } : {}),
+  };
 }
 
 /** Executes a single node with preconditions, timeout, verification, and error handling. */
