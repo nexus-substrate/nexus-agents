@@ -128,6 +128,38 @@ export const CATEGORY_CHAIN_OVERRIDES: Partial<Record<TaskCategory, FallbackChai
 } as const;
 
 /**
+ * Categories whose `CATEGORY_CHAIN_OVERRIDES` entry is **policy-bearing**, not
+ * just a performance preference.
+ *
+ * For these categories, when every CLI in the override chain is unavailable
+ * (e.g. all rate-limited, all in circuit-open state), `applyCategoryOverride`
+ * fails the route with a `CompositeRoutingError` instead of silently falling
+ * back to the original candidate set. The fallback would otherwise route the
+ * task to a CLI the operator has explicitly excluded for trust / quality-floor
+ * reasons. (#2417)
+ *
+ * Empty by default — operators promote categories case by case via PR review.
+ * This is an intentional governance choice: deciding which categories qualify
+ * as "sensitive" is a policy call that the autonomous loop does not make. The
+ * Round 9 architect/security panel called out exactly this scoping boundary
+ * when #2417 was filed.
+ *
+ * To promote a category: add it to this set and document the rationale in the
+ * commit message + PR description (e.g. "security_review involves trust-tier-3
+ * input that must not flow through claude until #1525 success rate recovers").
+ */
+export const SENSITIVE_CATEGORIES: ReadonlySet<TaskCategory> = new Set();
+
+/**
+ * `true` when this category's CATEGORY_CHAIN_OVERRIDES entry is fail-closed
+ * — i.e. an empty filtered candidate set must abort routing rather than fall
+ * back. See `SENSITIVE_CATEGORIES` for the policy framing.
+ */
+export function isCategoryFailClosed(category: TaskCategory): boolean {
+  return SENSITIVE_CATEGORIES.has(category);
+}
+
+/**
  * Gets the fallback chain for a specific TaskCategory.
  * Returns a category-specific override if available, otherwise falls through
  * to the bucket-level chain via CATEGORY_TO_FALLBACK mapping.

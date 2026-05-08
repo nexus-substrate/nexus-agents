@@ -4,8 +4,10 @@
  * @module cli-adapters/composite-router-stages
  */
 import type { Result } from '../core/index.js';
-import { ok, err } from '../core/index.js';
+import { ok, err, createLogger } from '../core/index.js';
 import type { ILogger } from '../core/index.js';
+
+const logger = createLogger({ component: 'composite-router-stages' });
 import {
   createSharedTaskAnalyzer,
   taskAnalysisResultToTaskProfile,
@@ -47,7 +49,7 @@ import {
   type PerformanceFloorEntry,
 } from './composite-router-helpers.js';
 import { getWeatherBonusScores } from './weather-bonus-stage.js';
-import { CATEGORY_CHAIN_OVERRIDES } from './fallback-chains.js';
+import { CATEGORY_CHAIN_OVERRIDES, isCategoryFailClosed } from './fallback-chains.js';
 import { detectTaskCategory } from '../config/task-specialization.js';
 import { getOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 
@@ -742,29 +744,46 @@ async function applyQualityConstraints(
  *   override chain (preserving the override's order). LinUCB still selects
  *   from this filtered set, so adaptive learning continues within the
  *   override-allowed CLIs.
- * - If filtering eliminates every candidate (all override CLIs unavailable),
- *   we fall back to the original candidates rather than failing the route.
+ * - If filtering eliminates every candidate AND the category is in
+ *   `SENSITIVE_CATEGORIES`, return Result.err so the caller can fail-closed
+ *   instead of silently routing to an excluded CLI (#2417).
+ * - Otherwise (the common, performance-preference case), fall back to the
+ *   original candidates with a `category-override:no-eligible` stage marker.
  */
 function applyCategoryOverride(
   task: CliTask,
   candidates: CliName[],
   stagesExecuted: string[]
-): CliName[] {
+): Result<CliName[], CompositeRoutingError> {
   const match = detectTaskCategory(task.content);
-  if (match === null) return candidates;
+  if (match === null) return ok(candidates);
   const override = CATEGORY_CHAIN_OVERRIDES[match.category];
-  if (override === undefined) return candidates;
+  if (override === undefined) return ok(candidates);
 
   const candidateSet = new Set(candidates);
   const filtered = override.filter((cli) => candidateSet.has(cli));
 
   if (filtered.length === 0) {
+    if (isCategoryFailClosed(match.category)) {
+      stagesExecuted.push('category-override:fail-closed');
+      logger.warn('Category override fail-closed — every override CLI unavailable', {
+        category: match.category,
+        override,
+        availableCandidates: candidates,
+      });
+      return err(
+        new CompositeRoutingError(
+          `category '${match.category}' is fail-closed and every override CLI (${override.join(', ')}) is unavailable; route aborted to prevent silent fallback to excluded CLI`,
+          'category-override'
+        )
+      );
+    }
     stagesExecuted.push('category-override:no-eligible');
-    return candidates;
+    return ok(candidates);
   }
 
   stagesExecuted.push('category-override');
-  return filtered;
+  return ok(filtered);
 }
 
 /** Override LinUCB selection if the chosen CLI is below performance floor (#1790). */
@@ -816,7 +835,10 @@ export async function runPipeline(
   candidates = constrained.value.candidates;
 
   // Category override: respect CATEGORY_CHAIN_OVERRIDES before TOPSIS/LinUCB (#2414)
-  candidates = applyCategoryOverride(task, candidates, stagesExecuted);
+  // Returns err for sensitive categories whose override chain is exhausted (#2417).
+  const overrideResult = applyCategoryOverride(task, candidates, stagesExecuted);
+  if (!overrideResult.ok) return overrideResult;
+  candidates = overrideResult.value;
 
   const stageScores = aggregateStageScores(scoring, task.content);
   const topsisOpts: Parameters<typeof runTopsisStage>[4] = {
