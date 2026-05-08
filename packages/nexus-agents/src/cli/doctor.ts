@@ -25,6 +25,8 @@ import type { CliName, HealthStatus, CapacityStatus } from '../cli-adapters/type
 import { DEFAULT_MODEL_CAPABILITIES } from '../config/model-capabilities.js';
 import { createServer } from '../mcp/server.js';
 import { printDoctorResults } from './doctor-formatting.js';
+import { probeCli } from './cli-auth-probe.js';
+import type { AuthProbeResult } from './cli-auth-probe.js';
 
 /** Required Node.js major version. */
 const REQUIRED_NODE_MAJOR = 22;
@@ -237,13 +239,20 @@ function detectAuthMethod(name: CliName): string {
 
 /**
  * Creates a result from a successful health check.
+ *
+ * Authentication state comes from the auth probe (#2439, #2447), not from
+ * `health.healthy` (which only confirms version compatibility). Without the
+ * probe, doctor falsely reports "Auth: CLI auth ✓" for installed-but-
+ * unauthed CLIs.
  */
 function createHealthyResult(
   name: CliName,
   health: HealthStatus,
+  authProbe: AuthProbeResult,
   capacity?: CapacityStatus
 ): CliCheckResult {
-  const authenticated = health.healthy;
+  const versionOk = health.healthy;
+  const authenticated = versionOk && authProbe.state === 'authenticated';
 
   const result: CliCheckResult = {
     name,
@@ -258,6 +267,14 @@ function createHealthyResult(
   if (health.message !== undefined && health.message !== '') {
     return { ...result, error: health.message };
   }
+  // Surface the probe's reason when needs-login so operators see what to fix.
+  if (!authenticated && authProbe.state === 'needs-login') {
+    return {
+      ...result,
+      error: authProbe.reason,
+      fix: authProbe.fixCommand,
+    };
+  }
   if (!authenticated) {
     return { ...result, fix: getFixCommand(name, 'auth') };
   }
@@ -270,6 +287,10 @@ function createHealthyResult(
 
 /**
  * Runs health check on a single CLI adapter.
+ *
+ * Combines the version-compatibility check from `adapter.healthCheck()` with
+ * the real auth probe from `cli-auth-probe.ts` — see #2439 for why both are
+ * needed (version-OK alone misled doctor into reporting unauthed CLIs as ✓).
  */
 async function checkCli(name: CliName): Promise<CliCheckResult> {
   const adapters = createAllAdapters();
@@ -280,7 +301,7 @@ async function checkCli(name: CliName): Promise<CliCheckResult> {
   }
 
   try {
-    const health: HealthStatus = await adapter.healthCheck();
+    const [health, authProbe] = await Promise.all([adapter.healthCheck(), probeCli(name)]);
     let capacity: CapacityStatus | undefined;
 
     try {
@@ -290,7 +311,7 @@ async function checkCli(name: CliName): Promise<CliCheckResult> {
       void capErr; // Logged at debug via adapter internals
     }
 
-    return createHealthyResult(name, health, capacity);
+    return createHealthyResult(name, health, authProbe, capacity);
   } catch (error) {
     const message = getErrorMessage(error);
     const isNotFound = message.includes('ENOENT') || message.includes('not found');

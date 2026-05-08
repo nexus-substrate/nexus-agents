@@ -31,6 +31,7 @@ COMMANDS:
   hello           Show welcome message and quick start (no API keys needed)
   demo            API-free exploration mode (no API keys needed)
   setup           Configure Claude CLI integration (MCP + CLAUDE.md rules)
+  login           Show per-CLI auth status + login fix instructions
   verify          Quick installation verification (no API keys needed)
   doctor          Check CLI installations and health status
   config          Manage configuration (init, get, set, list, reset, export, import)

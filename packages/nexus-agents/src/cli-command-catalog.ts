@@ -111,6 +111,12 @@ export const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
     audience: 'advanced',
   },
   {
+    command: 'login',
+    description:
+      'Show per-CLI auth status (claude/codex/gemini/opencode) with login fix instructions',
+    audience: 'essential',
+  },
+  {
     command: 'status',
     description: 'At-a-glance project health dashboard',
     audience: 'advanced',

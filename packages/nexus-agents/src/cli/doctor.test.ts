@@ -26,6 +26,18 @@ vi.mock('node:fs', () => ({
   existsSync: vi.fn(() => false),
 }));
 
+// Mock the auth probe — by default, every CLI is authenticated. Individual
+// tests override this when they're testing not-authed paths. (#2447)
+vi.mock('./cli-auth-probe.js', () => ({
+  probeCli: vi.fn((cli: string) =>
+    Promise.resolve({
+      cli,
+      state: 'authenticated' as const,
+      via: 'cli-credentials' as const,
+    })
+  ),
+}));
+
 import { createAllAdapters } from '../cli-adapters/factory.js';
 import { createServer } from '../mcp/server.js';
 import { existsSync } from 'node:fs';
