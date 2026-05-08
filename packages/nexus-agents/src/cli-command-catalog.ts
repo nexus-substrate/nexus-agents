@@ -107,14 +107,14 @@ export const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
   },
   {
     command: 'auth',
-    description: 'Manage MCP authentication tokens (init, show, rotate)',
-    audience: 'advanced',
+    description:
+      'Manage authentication: init/show/rotate MCP tokens; status shows per-CLI auth state',
+    audience: 'essential',
   },
   {
     command: 'login',
-    description:
-      'Show per-CLI auth status (claude/codex/gemini/opencode) with login fix instructions',
-    audience: 'essential',
+    description: '[deprecated alias] Soft alias of "auth status"; renamed in #2449',
+    audience: 'maintainer',
   },
   {
     command: 'status',

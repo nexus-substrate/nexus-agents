@@ -63,7 +63,14 @@ function printNextStepFor(r: AuthProbeResult & { state: 'needs-login' }): void {
   }
 }
 
-export async function handleLoginCommand(_args: ParsedCliArgs): Promise<void> {
+export async function handleLoginCommand(args: ParsedCliArgs): Promise<void> {
+  // Deprecation hint when invoked via the standalone `login` command.
+  // Routing through `auth status` is silent. Issue #2449.
+  if (args.command === 'login') {
+    console.error(
+      "hint: 'nexus-agents login' is now 'nexus-agents auth status' — both work for one minor cycle."
+    );
+  }
   console.log('Nexus Agents — CLI authentication status');
   console.log('=========================================');
   console.log('');

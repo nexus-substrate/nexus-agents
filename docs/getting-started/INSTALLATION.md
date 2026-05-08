@@ -78,7 +78,7 @@ Verify installation:
 ```bash
 nexus-agents doctor        # Checks CLIs, API keys, sqlite, data dirs
 nexus-agents doctor --fix  # Auto-fix missing data dirs and config
-nexus-agents login         # Show per-CLI auth status + login fix instructions
+nexus-agents auth status   # Show per-CLI auth state + login fix instructions
 ```
 
 ### pnpm
