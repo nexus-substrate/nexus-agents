@@ -50,6 +50,23 @@ Install globally for CLI access:
 npm install -g nexus-agents
 ```
 
+> **Linux / macOS without nvm or asdf?** A bare `npm install -g` will fail with
+> `EACCES: permission denied, mkdir '/usr/local/lib/node_modules/...'` because
+> the system npm prefix is not user-writable. **Do not run `sudo npm install -g`**
+> — npm itself recommends against it. Instead, configure a user-local prefix
+> once:
+>
+> ```bash
+> mkdir -p ~/.npm-global
+> npm config set prefix '~/.npm-global'
+> echo 'export PATH=~/.npm-global/bin:$PATH' >> ~/.bashrc   # or ~/.zshrc
+> source ~/.bashrc
+> npm install -g nexus-agents
+> ```
+>
+> If you can't or don't want to change the prefix, use `npx nexus-agents`
+> (see below) — every invocation works without a global install.
+
 After install, you'll see a hint to run setup. Configure everything:
 
 ```bash
@@ -61,6 +78,7 @@ Verify installation:
 ```bash
 nexus-agents doctor        # Checks CLIs, API keys, sqlite, data dirs
 nexus-agents doctor --fix  # Auto-fix missing data dirs and config
+nexus-agents login         # Show per-CLI auth status + login fix instructions
 ```
 
 ### pnpm
