@@ -24,6 +24,7 @@ import type {
 import { BaseCliAdapter } from './base-adapter.js';
 import { sanitizeOutput } from '../security/output-sanitizer.js';
 import { isRateLimitText } from '../adapters/rate-limit-detector.js';
+import { parseCliErrorEnvelope } from './cli-error-envelope.js';
 
 /** Minimum length for plaintext fallback to kick in.
  * Lowered from 100→30 to recover short but valid CLI responses (#1401). */
@@ -454,27 +455,7 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
 
     const text = this.parser.extractResponse(stdout);
     if (text === null) {
-      // Check for rate-limit indicators in raw stdout (#1320)
-      if (isRateLimitText(stdout)) {
-        const snippet = stdout.slice(0, 500).trim();
-        return err(this.createError('RATE_LIMITED', snippet));
-      }
-      // Plaintext fallback: recover responses from CLIs outputting unstructured text (#1401)
-      const plaintext = tryPlaintextFallback(stdout);
-      if (plaintext !== null) {
-        subprocessLogger.debug('Using plaintext fallback for unparseable output');
-        return ok(
-          this.normalizeResponse(plaintext, undefined, {
-            durationMs: getTimeProvider().now() - startTime,
-            raw: stdout,
-          })
-        );
-      }
-      const snippet = stdout.slice(0, 500).trim();
-      const stderrHint = stderr !== '' ? ` [stderr: ${stderr.slice(0, 300).trim()}]` : '';
-      return err(
-        this.createError('PARSE_ERROR', `Failed to parse response: ${snippet}${stderrHint}`)
-      );
+      return this.handleUnparseableOutput(stdout, stderr, startTime);
     }
 
     const usage = this.parser.extractUsage(stdout);
@@ -486,6 +467,48 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
         raw: stdout,
         ...(sessionId !== null && { sessionId }),
       })
+    );
+  }
+
+  /**
+   * Handles the parse-failure branch: when the CLI's structured response
+   * parser returned null. Order of recovery attempts (most-specific first):
+   *   1. Rate-limit text in raw stdout (#1320)
+   *   2. Structured CLI error envelope (#2440)
+   *   3. Plaintext fallback for natural-language output (#1401)
+   *   4. Generic PARSE_ERROR with truncated snippet
+   */
+  private handleUnparseableOutput(
+    stdout: string,
+    stderr: string,
+    startTime: number
+  ): Result<CliResponse, CliError> {
+    if (isRateLimitText(stdout)) {
+      const snippet = stdout.slice(0, 500).trim();
+      return err(this.createError('RATE_LIMITED', snippet));
+    }
+    const envelope = parseCliErrorEnvelope(stdout, this.name);
+    if (envelope !== null) {
+      const msg =
+        envelope.hint !== undefined
+          ? `${envelope.message}\n  → ${envelope.hint}`
+          : envelope.message;
+      return err(this.createError(envelope.code, msg));
+    }
+    const plaintext = tryPlaintextFallback(stdout);
+    if (plaintext !== null) {
+      subprocessLogger.debug('Using plaintext fallback for unparseable output');
+      return ok(
+        this.normalizeResponse(plaintext, undefined, {
+          durationMs: getTimeProvider().now() - startTime,
+          raw: stdout,
+        })
+      );
+    }
+    const snippet = stdout.slice(0, 500).trim();
+    const stderrHint = stderr !== '' ? ` [stderr: ${stderr.slice(0, 300).trim()}]` : '';
+    return err(
+      this.createError('PARSE_ERROR', `Failed to parse response: ${snippet}${stderrHint}`)
     );
   }
 
