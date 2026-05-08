@@ -57,33 +57,86 @@ async function collectVotes(
 
 function printVoteDetails(votes: readonly AgentVoteResult[]): void {
   writeLine(`${colors.cyan}Votes${colors.reset}\n`);
-  for (const { role, vote, source } of votes) {
-    const icon =
-      vote.decision === 'approve'
-        ? colors.green + symbols.check
-        : vote.decision === 'reject'
-          ? colors.red + symbols.cross
-          : colors.yellow + '?';
-    const label = VOTER_ROLES[role].split(' - ')[0] ?? role;
-    const sourceTag = source === 'llm' ? '' : ` ${colors.dim}[sim]${colors.reset}`;
-    writeLine(
-      `  ${icon}${colors.reset} ${label}: ${vote.decision.toUpperCase()} (${formatPercentage(vote.confidence)})${sourceTag}`
-    );
-  }
+  for (const v of votes) writeLine(formatVoteRow(v));
   writeLine('');
 }
 
-function printSummary(result: ConsensusResult, threshold: ConsensusAlgorithm): void {
-  const { voteCounts, approvalPercentage, outcome } = result;
+/**
+ * Pure formatter for a single voter row. Errors render distinct from
+ * simulations so operators don't mistake an auth failure for a successful
+ * (if questionable) vote (#2441). @internal — exported for tests only.
+ */
+export function formatVoteRow(v: AgentVoteResult): string {
+  const label = VOTER_ROLES[v.role].split(' - ')[0] ?? v.role;
+  if (v.source === 'error') {
+    const reason = (v.error ?? 'execution failed').split('\n')[0] ?? 'execution failed';
+    return `  ${colors.red}✗${colors.reset} ${label}: ${colors.red}ERROR${colors.reset} — ${reason}`;
+  }
+  const icon =
+    v.vote.decision === 'approve'
+      ? colors.green + symbols.check
+      : v.vote.decision === 'reject'
+        ? colors.red + symbols.cross
+        : colors.yellow + '?';
+  const tag = v.source === 'simulation' ? ` ${colors.red}[SIMULATED]${colors.reset}` : '';
+  return `  ${icon}${colors.reset} ${label}: ${v.vote.decision.toUpperCase()} (${formatPercentage(v.vote.confidence)})${tag}`;
+}
+
+interface SummaryContext {
+  readonly result: ConsensusResult;
+  readonly votes: readonly AgentVoteResult[];
+  readonly threshold: ConsensusAlgorithm;
+}
+
+function printSummary(ctx: SummaryContext): void {
+  const { result, votes, threshold } = ctx;
+  const { voteCounts, approvalPercentage, outcome, quorumReached } = result;
+  const errored = votes.filter((v) => v.source === 'error').length;
+  const simulated = votes.filter((v) => v.source === 'simulation').length;
+
   writeLine(`${colors.cyan}Summary${colors.reset}\n`);
   writeLine(`  Approve:  ${String(voteCounts.approve)}`);
   writeLine(`  Reject:   ${String(voteCounts.reject)}`);
   writeLine(`  Abstain:  ${String(voteCounts.abstain)}`);
+  if (errored > 0) writeLine(`  ${colors.red}Errored:  ${String(errored)}${colors.reset}`);
   writeLine(`  Approval: ${approvalPercentage.toFixed(1)}%`);
   writeLine(`  Threshold: ${threshold}`);
+
   const outcomeColor =
     outcome === 'approved' ? colors.green : outcome === 'rejected' ? colors.red : colors.yellow;
-  writeLine(`\n${colors.bold}Result: ${outcomeColor}${outcome.toUpperCase()}${colors.reset}\n`);
+  const cause = explainOutcome({ outcome, quorumReached, errored, votes });
+  writeLine(
+    `\n${colors.bold}Result: ${outcomeColor}${outcome.toUpperCase()}${colors.reset}${cause}\n`
+  );
+
+  if (simulated > 0) {
+    // Banner reinforces what individual rows already flagged — visible at a
+    // glance even if the operator skips past the per-voter list.
+    writeLine(
+      `${colors.red}⚠  ${String(simulated)} of ${String(votes.length)} vote(s) were SIMULATED — do not rely on this result for decisions.${colors.reset}\n`
+    );
+  }
+}
+
+export interface OutcomeExplainCtx {
+  readonly outcome: string;
+  readonly quorumReached: boolean;
+  readonly errored: number;
+  readonly votes: readonly AgentVoteResult[];
+}
+
+/** @internal — exported for tests only. */
+export function explainOutcome(ctx: OutcomeExplainCtx): string {
+  if (ctx.outcome !== 'rejected') return '';
+  if (!ctx.quorumReached && ctx.errored > 0) {
+    const total = ctx.votes.length;
+    const survived = total - ctx.errored;
+    return ` ${colors.dim}— quorum not reached (${String(ctx.errored)} of ${String(total)} voter(s) failed; only ${String(survived)} vote(s) recorded)${colors.reset}`;
+  }
+  if (!ctx.quorumReached) {
+    return ` ${colors.dim}— quorum not reached${colors.reset}`;
+  }
+  return '';
 }
 
 function printHashes(votes: readonly AgentVoteResult[]): void {
@@ -292,7 +345,7 @@ export async function voteCommand(options: VoteCommandOptions): Promise<number> 
   try {
     const result = await runVote(options);
     printVoteDetails(result.votes);
-    printSummary(result.result, result.threshold);
+    printSummary({ result: result.result, votes: result.votes, threshold: result.threshold });
     if (options.verbose === true) printHashes(result.votes);
     writeLine(`${colors.dim}Completed in ${String(result.totalTimeMs)}ms${colors.reset}\n`);
 
