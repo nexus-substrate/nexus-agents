@@ -29,6 +29,24 @@ export interface CheckpointInterrupt {
   readonly value: unknown;
   /** ISO timestamp when the interrupt fired. */
   readonly createdAt: string;
+  /**
+   * ISO timestamp when this interrupt was consumed by a successful
+   * resumeFromCheckpoint() call. A second resume against the same checkpoint
+   * is rejected — see #2425 idempotency requirement.
+   */
+  readonly consumedAt?: string;
+  /**
+   * Additional interrupts dropped because they fired in the same super-step
+   * as the primary one (#2425 multi-interrupt observability). Phase 1
+   * silently dropped these; Phase 2 surfaces them so operators can detect
+   * lost human-input requests in the wild. The executor still only honors
+   * the primary interrupt; downstream tooling can fan out from this list.
+   */
+  readonly additionalInterrupts?: readonly {
+    readonly nodeId: string;
+    readonly interruptId: string;
+    readonly value: unknown;
+  }[];
 }
 
 // ============================================================================

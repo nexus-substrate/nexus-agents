@@ -9,6 +9,8 @@
  * (Source: Issue #831 — Graph-based workflow orchestration)
  */
 
+import { z } from 'zod';
+
 import type { Result } from '../../core/index.js';
 import type { ICheckpointStore } from './checkpoint-types.js';
 
@@ -171,6 +173,15 @@ export interface NodeContext {
 export type NodeReturn = Partial<GraphState> | Interrupt | Command;
 
 /**
+ * Schema for `resumeValues` passed to `resumeFromCheckpoint(...)`.
+ * The values are arbitrary user-supplied JSON; we validate that the container
+ * is a plain object and reject things like arrays or null. (#2425, security
+ * voter feedback on PR #2424.)
+ */
+export const ResumeValuesSchema = z.record(z.string(), z.unknown());
+export type ResumeValues = z.infer<typeof ResumeValuesSchema>;
+
+/**
  * Handler function for a graph node. Receives current state and an optional
  * per-run context, returns either:
  *   - `Partial<GraphState>` (legacy, common case) — merged via reducers
@@ -246,6 +257,13 @@ export interface NodeResult {
   readonly error?: string;
   /** Set when the node returned an Interrupt envelope (#1895). */
   readonly interrupt?: Interrupt;
+  /**
+   * Set when the node returned a Command with `goto`. The executor uses this
+   * to redirect the next runnable set instead of resolving outgoing edges.
+   * Validated against the compiled graph; unknown targets are logged + ignored.
+   * (#2425)
+   */
+  readonly gotoTarget?: string;
 }
 
 /**
