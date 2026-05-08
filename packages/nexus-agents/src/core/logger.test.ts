@@ -4,8 +4,15 @@
  * Covers sanitize, sanitizeDeep, createLogger, and secret redaction.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { sanitize, sanitizeDeep, createLogger } from './logger.js';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import {
+  sanitize,
+  sanitizeDeep,
+  createLogger,
+  setGlobalLogLevel,
+  getGlobalLogLevel,
+  type LogLevel,
+} from './logger.js';
 import { FixedTimeProvider, setTimeProvider, resetTimeProvider } from './time-provider.js';
 import {
   FAKE_OPENAI_KEY,
@@ -191,6 +198,54 @@ describe('createLogger', () => {
       expect(stderrSpy).toHaveBeenCalledTimes(1);
     } finally {
       stdoutSpy.mockRestore();
+      stderrSpy.mockRestore();
+    }
+  });
+});
+
+// ============================================================================
+// Issue #2443 — module-level GLOBAL_LEVEL fallback
+// ============================================================================
+
+describe('setGlobalLogLevel (#2443)', () => {
+  let savedLevel: LogLevel;
+
+  beforeEach(() => {
+    savedLevel = getGlobalLogLevel();
+  });
+
+  afterEach(() => {
+    setGlobalLogLevel(savedLevel);
+  });
+
+  it('downgrades existing logger instances that have not been individually setLevel-d', () => {
+    setGlobalLogLevel('info');
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      // Create logger BEFORE setGlobalLogLevel('warn') — proves the global
+      // fallback applies to already-constructed instances.
+      const logger = createLogger({ component: 'global-fallback-test' });
+      setGlobalLogLevel('warn');
+      logger.info('should-be-suppressed-by-global-warn');
+      logger.warn('should-pass-through');
+      expect(stderrSpy).toHaveBeenCalledTimes(1);
+      const written = String(stderrSpy.mock.calls[0]?.[0] ?? '');
+      expect(written).toContain('should-pass-through');
+      expect(written).not.toContain('should-be-suppressed-by-global-warn');
+    } finally {
+      stderrSpy.mockRestore();
+    }
+  });
+
+  it('per-instance setLevel still wins over the global fallback', () => {
+    setGlobalLogLevel('warn');
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      const logger = createLogger({ component: 'per-instance-override-test' });
+      logger.setLevel('debug'); // pin this instance below the global threshold
+      logger.info('should-pass-through-because-instance-pinned-debug');
+      expect(stderrSpy).toHaveBeenCalledTimes(1);
+    } finally {
       stderrSpy.mockRestore();
     }
   });

@@ -9,6 +9,10 @@
  * (Source: Node.js 22.x parseArgs documentation)
  */
 
+// MUST stay the first import: side-effect mutates process.env.NEXUS_LOG_LEVEL
+// before any module loads core/logger.ts. See #2443.
+import './cli/cli-log-bootstrap.js';
+
 import { parseArgs } from 'node:util';
 import { createLogger } from './core/index.js';
 import { detectMode, isValidServerMode } from './cli/index.js';
