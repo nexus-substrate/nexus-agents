@@ -210,22 +210,34 @@ describe('formatVoteRow (#2441)', () => {
   });
 });
 
-describe('explainOutcome (#2441)', () => {
+describe('explainOutcome (#2441 + #2442)', () => {
   const baseVotes: readonly AgentVoteResult[] = [
     makeVoteRow({ role: 'architect', source: 'llm' }),
     makeVoteRow({ role: 'security', source: 'error', error: 'Not logged in' }),
     makeVoteRow({ role: 'scope_steward', source: 'error', error: 'MCP closed' }),
   ];
 
+  function ctx(
+    overrides: Partial<Parameters<typeof explainOutcome>[0]> = {}
+  ): Parameters<typeof explainOutcome>[0] {
+    return {
+      outcome: 'rejected',
+      quorumReached: false,
+      errored: 0,
+      votes: [] as readonly AgentVoteResult[],
+      approvalPercentage: 0,
+      threshold: 'supermajority' as const,
+      ...overrides,
+    };
+  }
+
   it('returns empty string when outcome is approved', () => {
-    expect(
-      explainOutcome({ outcome: 'approved', quorumReached: true, errored: 0, votes: [] })
-    ).toBe('');
+    expect(explainOutcome(ctx({ outcome: 'approved', quorumReached: true }))).toBe('');
   });
 
   it('explains "quorum not reached" with errored-voter count when applicable', () => {
     const explained = stripAnsi(
-      explainOutcome({ outcome: 'rejected', quorumReached: false, errored: 2, votes: baseVotes })
+      explainOutcome(ctx({ quorumReached: false, errored: 2, votes: baseVotes }))
     );
     expect(explained).toContain('quorum not reached');
     expect(explained).toContain('2 of 3 voter(s) failed');
@@ -233,20 +245,31 @@ describe('explainOutcome (#2441)', () => {
   });
 
   it('explains "quorum not reached" without error count when no voters errored', () => {
-    const explained = stripAnsi(
-      explainOutcome({ outcome: 'rejected', quorumReached: false, errored: 0, votes: [] })
-    );
+    const explained = stripAnsi(explainOutcome(ctx({ quorumReached: false, errored: 0 })));
     expect(explained).toContain('quorum not reached');
     expect(explained).not.toContain('voter(s) failed');
   });
 
-  it('returns empty string when rejected with quorum reached (real defeat, not infrastructure)', () => {
-    const explained = explainOutcome({
-      outcome: 'rejected',
-      quorumReached: true,
-      errored: 0,
-      votes: [],
-    });
-    expect(explained).toBe('');
+  it('explains threshold-not-met when quorum reached but rejected (#2442)', () => {
+    // The original report: "Approval: 100% / Result: REJECTED" with no
+    // explanation. After this fix, the result line names the threshold and
+    // the actual approval that fell short of it.
+    const explained = stripAnsi(
+      explainOutcome(
+        ctx({ quorumReached: true, approvalPercentage: 60, threshold: 'supermajority' })
+      )
+    );
+    expect(explained).toContain('supermajority threshold not met');
+    expect(explained).toContain('60.0%');
+    // Must NOT collapse to the empty string the way the pre-#2442 code did.
+    expect(explained.length).toBeGreaterThan(0);
+  });
+
+  it('formats unanimous threshold rejection cleanly', () => {
+    const explained = stripAnsi(
+      explainOutcome(ctx({ quorumReached: true, approvalPercentage: 80, threshold: 'unanimous' }))
+    );
+    expect(explained).toContain('unanimous threshold not met');
+    expect(explained).toContain('80.0%');
   });
 });
