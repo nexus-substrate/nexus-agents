@@ -104,7 +104,14 @@ function printSummary(ctx: SummaryContext): void {
 
   const outcomeColor =
     outcome === 'approved' ? colors.green : outcome === 'rejected' ? colors.red : colors.yellow;
-  const cause = explainOutcome({ outcome, quorumReached, errored, votes });
+  const cause = explainOutcome({
+    outcome,
+    quorumReached,
+    errored,
+    votes,
+    approvalPercentage,
+    threshold,
+  });
   writeLine(
     `\n${colors.bold}Result: ${outcomeColor}${outcome.toUpperCase()}${colors.reset}${cause}\n`
   );
@@ -123,9 +130,22 @@ export interface OutcomeExplainCtx {
   readonly quorumReached: boolean;
   readonly errored: number;
   readonly votes: readonly AgentVoteResult[];
+  readonly approvalPercentage: number;
+  readonly threshold: ConsensusAlgorithm;
 }
 
-/** @internal — exported for tests only. */
+/**
+ * Names the *reason* a vote was rejected so operators don't see e.g.
+ * "Approval: 100% / Result: REJECTED" with no explanation. Issue #2442.
+ *
+ * Three rejection paths the summary now distinguishes:
+ *   1. Quorum failed because voters errored — surfaces the failed count.
+ *   2. Quorum failed for any other reason (panel was too small, voters
+ *      didn't return a decision in time).
+ *   3. Quorum reached but the supermajority/unanimous threshold wasn't met.
+ *
+ * @internal — exported for tests only.
+ */
 export function explainOutcome(ctx: OutcomeExplainCtx): string {
   if (ctx.outcome !== 'rejected') return '';
   if (!ctx.quorumReached && ctx.errored > 0) {
@@ -136,7 +156,8 @@ export function explainOutcome(ctx: OutcomeExplainCtx): string {
   if (!ctx.quorumReached) {
     return ` ${colors.dim}— quorum not reached${colors.reset}`;
   }
-  return '';
+  // Quorum reached but rejected ⇒ approval threshold wasn't met.
+  return ` ${colors.dim}— ${ctx.threshold} threshold not met (got ${ctx.approvalPercentage.toFixed(1)}%)${colors.reset}`;
 }
 
 function printHashes(votes: readonly AgentVoteResult[]): void {
