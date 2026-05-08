@@ -87,11 +87,100 @@ export type GraphState = Record<string, unknown>;
 // Nodes & Edges
 // ============================================================================
 
+// ----------------------------------------------------------------------------
+// HITL primitives (#1895) — additive, semver-minor
+// ----------------------------------------------------------------------------
+
 /**
- * Handler function for a graph node. Receives current state,
- * returns partial state updates.
+ * Marks a deliberate pause in graph execution. Returned (or thrown) by a node
+ * to halt the super-step loop and surface `value` to a human. Resumption is
+ * keyed by `id`: the caller provides `{[id]: resumeValue}` to
+ * `resumeFromCheckpoint(...)`, and the value is delivered to the same node via
+ * its NodeContext on the next run.
+ *
+ * Modeled on langchain-ai/langgraph's Interrupt primitive (#1895).
  */
-export type NodeHandler = (state: Readonly<GraphState>) => Promise<Partial<GraphState>>;
+export interface Interrupt {
+  readonly type: 'interrupt';
+  /** Context shown to the human / written to the checkpoint metadata. */
+  readonly value: unknown;
+  /** Stable identifier — matched by the resume() call to inject the value. */
+  readonly id: string;
+}
+
+/**
+ * Construct an Interrupt value. Helper for ergonomic NodeHandler returns.
+ */
+export function interrupt(id: string, value: unknown): Interrupt {
+  return { type: 'interrupt', id, value };
+}
+
+/**
+ * Type guard — `true` when the candidate is an Interrupt envelope.
+ */
+export function isInterrupt(candidate: unknown): candidate is Interrupt {
+  return (
+    typeof candidate === 'object' &&
+    candidate !== null &&
+    (candidate as { type?: unknown }).type === 'interrupt' &&
+    typeof (candidate as { id?: unknown }).id === 'string'
+  );
+}
+
+/**
+ * Re-entry primitive returned by a NodeHandler. Combines state mutation
+ * (`update`) with optional dynamic redirection (`goto`, Phase 2 — not yet
+ * wired) into a single typed envelope.
+ *
+ * In Phase 1 of #1895, only `update` is honored by the executor. `goto` is
+ * accepted in the type to avoid a breaking change when it lands.
+ */
+export interface Command {
+  readonly type: 'command';
+  /** State mutations to merge via the standard reducer pipeline. */
+  readonly update?: Partial<GraphState>;
+  /** Phase 2 — node ID to redirect to. Currently ignored by the executor. */
+  readonly goto?: string;
+}
+
+/**
+ * Type guard — `true` when the candidate is a Command envelope.
+ */
+export function isCommand(candidate: unknown): candidate is Command {
+  return (
+    typeof candidate === 'object' &&
+    candidate !== null &&
+    (candidate as { type?: unknown }).type === 'command'
+  );
+}
+
+/**
+ * Per-execution context passed to NodeHandler. Currently just delivers values
+ * provided to `resumeFromCheckpoint(...)` — the node sees `{interrupt_id:
+ * resumed_value}` on the run that follows the resume call.
+ */
+export interface NodeContext {
+  /**
+   * Values supplied to the most recent resume() call, keyed by interrupt id.
+   * Empty object when not resuming. Frozen.
+   */
+  readonly resumeValues: Readonly<Record<string, unknown>>;
+}
+
+/** Allowed return shapes for a NodeHandler. */
+export type NodeReturn = Partial<GraphState> | Interrupt | Command;
+
+/**
+ * Handler function for a graph node. Receives current state and an optional
+ * per-run context, returns either:
+ *   - `Partial<GraphState>` (legacy, common case) — merged via reducers
+ *   - `Command` — `update` portion is merged via reducers
+ *   - `Interrupt` — pauses the graph; emits checkpoint with interrupt metadata
+ *
+ * The `ctx` parameter is optional — pre-#1895 handlers that take only `state`
+ * remain valid (additive widening).
+ */
+export type NodeHandler = (state: Readonly<GraphState>, ctx?: NodeContext) => Promise<NodeReturn>;
 
 /**
  * A node in the workflow graph.
@@ -153,8 +242,10 @@ export interface NodeResult {
   readonly nodeId: string;
   readonly stateUpdates: Partial<GraphState>;
   readonly durationMs: number;
-  readonly status: 'success' | 'failed' | 'skipped';
+  readonly status: 'success' | 'failed' | 'skipped' | 'interrupted';
   readonly error?: string;
+  /** Set when the node returned an Interrupt envelope (#1895). */
+  readonly interrupt?: Interrupt;
 }
 
 /**
@@ -165,6 +256,17 @@ export interface GraphExecutionResult {
   readonly nodeResults: readonly NodeResult[];
   readonly totalDurationMs: number;
   readonly stepsExecuted: number;
+  /**
+   * Set when execution paused on an Interrupt return. The checkpoint
+   * referenced here can be passed to `resumeFromCheckpoint(...)` along with a
+   * matching `{[interruptId]: resumeValue}` map. (#1895)
+   */
+  readonly halted?: {
+    readonly checkpointId: string;
+    readonly nodeId: string;
+    readonly interruptId: string;
+    readonly value: unknown;
+  };
 }
 
 /**
@@ -181,6 +283,12 @@ export interface GraphExecuteOptions {
   readonly executionId?: string;
   /** Event listener for streaming observation (Issue #838). */
   readonly onEvent?: (event: GraphEvent) => void;
+  /**
+   * Values supplied for HITL resume. Keyed by Interrupt id; passed to each
+   * NodeHandler via its NodeContext on this run only. Empty when not
+   * resuming. (#1895)
+   */
+  readonly resumeValues?: Readonly<Record<string, unknown>>;
 }
 
 // ============================================================================

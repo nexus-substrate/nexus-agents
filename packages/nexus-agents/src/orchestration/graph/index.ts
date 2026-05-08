@@ -15,6 +15,10 @@ export type {
   StateSchema,
   GraphState,
   NodeHandler,
+  NodeContext,
+  NodeReturn,
+  Interrupt,
+  Command,
   GraphNode,
   GraphEdge,
   CompiledGraph,
@@ -29,7 +33,14 @@ export type {
   NodeHook,
   PreconditionConfig,
 } from './graph-types.js';
-export { START, END, formatCompileError } from './graph-types.js';
+export {
+  START,
+  END,
+  formatCompileError,
+  interrupt,
+  isInterrupt,
+  isCommand,
+} from './graph-types.js';
 
 // Events (Issue #838)
 export {
@@ -44,7 +55,7 @@ export {
 export { GraphBuilder, overwrite, append, customReducer } from './graph-builder.js';
 
 // Executor
-export { executeGraph } from './graph-executor.js';
+export { executeGraph, resumeFromCheckpoint } from './graph-executor.js';
 
 // Hooks (Issue #994 + #997)
 export type { PreconditionResult, PreconditionOutcome, VerificationResult } from './graph-hooks.js';
@@ -55,8 +66,13 @@ export {
   createStateGuard,
 } from './graph-hooks.js';
 
-// Checkpointing (Issue #833)
-export type { Checkpoint, CheckpointSummary, ICheckpointStore } from './checkpoint-types.js';
+// Checkpointing (Issue #833, HITL extension #1895)
+export type {
+  Checkpoint,
+  CheckpointInterrupt,
+  CheckpointSummary,
+  ICheckpointStore,
+} from './checkpoint-types.js';
 export { CHECKPOINT_SCHEMA_VERSION } from './checkpoint-types.js';
 export {
   InMemoryCheckpointStore,

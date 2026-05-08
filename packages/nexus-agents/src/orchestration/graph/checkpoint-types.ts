@@ -12,6 +12,26 @@
 import type { GraphState, NodeResult } from './graph-types.js';
 
 // ============================================================================
+// HITL Interrupt (#1895)
+// ============================================================================
+
+/**
+ * Captures a paused-execution context when a node returns an Interrupt.
+ * Persisted alongside the checkpoint so the resume() caller can read the
+ * value the node surfaced and supply a matching `{[id]: resumeValue}` map.
+ */
+export interface CheckpointInterrupt {
+  /** Node that returned the interrupt — re-runnable as the first step on resume. */
+  readonly nodeId: string;
+  /** Stable interrupt id from the Interrupt envelope. */
+  readonly interruptId: string;
+  /** Value the node surfaced for the human. */
+  readonly value: unknown;
+  /** ISO timestamp when the interrupt fired. */
+  readonly createdAt: string;
+}
+
+// ============================================================================
 // Checkpoint Data
 // ============================================================================
 
@@ -41,6 +61,12 @@ export interface Checkpoint {
   readonly createdAt: string;
   /** Optional metadata for debugging. */
   readonly metadata?: Record<string, unknown> | undefined;
+  /**
+   * If present, the checkpoint was created because a node returned an
+   * Interrupt. The resume API uses this to know which node to re-run and
+   * which interrupt id to match resume values against. (#1895)
+   */
+  readonly interrupt?: CheckpointInterrupt | undefined;
 }
 
 /**

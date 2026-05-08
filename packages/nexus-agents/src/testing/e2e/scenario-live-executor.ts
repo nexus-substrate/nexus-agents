@@ -96,9 +96,13 @@ export function computeBranchCoverage(
 
 /** Convert a NodeResult from graph execution to a StepResult. */
 function nodeResultToStepResult(nr: NodeResult): StepResult {
+  // The HITL 'interrupted' status (#1895) is graph-only; collapse to 'skipped'
+  // for the e2e scenario contract, which models 3 states.
+  const status: 'success' | 'failed' | 'skipped' =
+    nr.status === 'interrupted' ? 'skipped' : nr.status;
   return {
     stepId: nr.nodeId,
-    status: nr.status,
+    status,
     output: JSON.stringify(nr.stateUpdates),
     durationMs: nr.durationMs,
   };

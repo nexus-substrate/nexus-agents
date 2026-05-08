@@ -10,7 +10,12 @@
  */
 
 import { getTimeProvider } from '../../core/index.js';
-import type { Checkpoint, CheckpointSummary, ICheckpointStore } from './checkpoint-types.js';
+import type {
+  Checkpoint,
+  CheckpointInterrupt,
+  CheckpointSummary,
+  ICheckpointStore,
+} from './checkpoint-types.js';
 import { CHECKPOINT_SCHEMA_VERSION } from './checkpoint-types.js';
 import type { GraphState, NodeResult } from './graph-types.js';
 
@@ -136,6 +141,8 @@ export function createCheckpoint(opts: {
   pendingNodeIds: readonly string[];
   completedResults: readonly NodeResult[];
   metadata?: Record<string, unknown>;
+  /** Set when persisting an interrupt-flavored checkpoint (#1895). */
+  interrupt?: CheckpointInterrupt;
 }): Checkpoint {
   return {
     id: `cp-${opts.executionId}-${String(++checkpointCounter)}`,
@@ -147,6 +154,7 @@ export function createCheckpoint(opts: {
     completedResults: [...opts.completedResults],
     createdAt: getTimeProvider().nowIso(),
     metadata: opts.metadata,
+    interrupt: opts.interrupt,
   };
 }
 
