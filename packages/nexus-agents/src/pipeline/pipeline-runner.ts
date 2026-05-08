@@ -242,9 +242,13 @@ function toResult(
 }
 
 function mapNodeStatus(
-  status: 'success' | 'failed' | 'skipped'
+  status: 'success' | 'failed' | 'skipped' | 'interrupted'
 ): 'succeeded' | 'failed' | 'skipped' {
-  return status === 'success' ? 'succeeded' : status;
+  if (status === 'success') return 'succeeded';
+  // Pipeline-runner doesn't model HITL pauses (#1895) yet — surface 'interrupted'
+  // as 'skipped' so downstream pipeline status remains a 3-way enum.
+  if (status === 'interrupted') return 'skipped';
+  return status;
 }
 
 // ============================================================================

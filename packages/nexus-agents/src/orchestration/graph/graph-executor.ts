@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- cohesive super-step + HITL pipeline; splitting hides control flow */
 /**
  * nexus-agents/orchestration - Graph Workflow Executor
  *
@@ -20,12 +21,16 @@ import type {
   GraphNode,
   GraphEdge,
   NodeResult,
+  NodeReturn,
+  NodeContext,
+  Interrupt,
   GraphExecutionResult,
   GraphExecuteOptions,
   StateFieldSchema,
 } from './graph-types.js';
-import { END } from './graph-types.js';
+import { END, isInterrupt, isCommand } from './graph-types.js';
 import { createCheckpoint } from './checkpoint-store.js';
+import type { ICheckpointStore } from './checkpoint-types.js';
 import {
   emitNodeStarted,
   emitNodeResults,
@@ -51,6 +56,10 @@ interface ExecutionContext {
   runnableIds: string[];
   /** Per-edge traversal counts for maxTraversals enforcement. */
   edgeTraversals: Map<string, number>;
+  /** Resume values keyed by interrupt id, surfaced to nodes via NodeContext (#1895). */
+  resumeValues: Readonly<Record<string, unknown>>;
+  /** Set when a node in the current super-step returned an Interrupt (#1895). */
+  pendingInterrupt: { readonly nodeId: string; readonly interrupt: Interrupt } | undefined;
 }
 
 /**
@@ -73,6 +82,8 @@ export async function executeGraph(
     stepsExecuted: 0,
     runnableIds: resolveEntryNodes(graph, initialState),
     edgeTraversals: new Map(),
+    resumeValues: options?.resumeValues ?? {},
+    pendingInterrupt: undefined,
   };
 
   tryResumeFromCheckpoint(ctx, options);
@@ -89,12 +100,129 @@ export async function executeGraph(
 
   emitExecutionComplete(ctx.stepsExecuted, ctx.allResults.length, totalDurationMs, options);
 
+  if (ctx.pendingInterrupt !== undefined) {
+    const halted = saveInterruptCheckpoint(ctx, options);
+    return ok({
+      finalState: ctx.state,
+      nodeResults: ctx.allResults,
+      totalDurationMs,
+      stepsExecuted: ctx.stepsExecuted,
+      ...(halted !== undefined ? { halted } : {}),
+    });
+  }
+
   return ok({
     finalState: ctx.state,
     nodeResults: ctx.allResults,
     totalDurationMs,
     stepsExecuted: ctx.stepsExecuted,
   });
+}
+
+/**
+ * Resume a paused graph execution from a HITL interrupt checkpoint (#1895).
+ *
+ * Loads the named checkpoint, validates that it carries interrupt metadata,
+ * and re-runs the graph starting from the interrupted node. The supplied
+ * `resumeValues` map (keyed by interrupt id) is delivered to that node's
+ * NodeContext on the run that follows the resume call.
+ *
+ * Errors:
+ *   - checkpoint not found
+ *   - checkpoint exists but isn't an interrupt checkpoint
+ *   - resumeValues missing the interrupt id this checkpoint is waiting for
+ */
+export async function resumeFromCheckpoint(
+  graph: CompiledGraph,
+  checkpointId: string,
+  resumeValues: Readonly<Record<string, unknown>>,
+  options: GraphExecuteOptions
+): Promise<Result<GraphExecutionResult, Error>> {
+  const store: ICheckpointStore | undefined = options.checkpointStore;
+  if (store === undefined) {
+    return err(new Error('resumeFromCheckpoint requires options.checkpointStore'));
+  }
+  const checkpoint = store.load(checkpointId);
+  if (checkpoint === undefined) {
+    return err(new Error(`Checkpoint not found: ${checkpointId}`));
+  }
+  const interruptCtx = checkpoint.interrupt;
+  if (interruptCtx === undefined) {
+    return err(
+      new Error(`Checkpoint ${checkpointId} has no interrupt metadata; not a paused execution.`)
+    );
+  }
+  if (!Object.prototype.hasOwnProperty.call(resumeValues, interruptCtx.interruptId)) {
+    return err(
+      new Error(
+        `resumeValues missing interrupt id '${interruptCtx.interruptId}' (paused at node '${interruptCtx.nodeId}')`
+      )
+    );
+  }
+  return executeGraph(
+    graph,
+    {},
+    {
+      ...options,
+      executionId: checkpoint.executionId,
+      resumeValues,
+    }
+  );
+}
+
+/**
+ * Save an interrupt-flavored checkpoint when execution paused on an Interrupt
+ * return. Returns the `halted` summary for inclusion in GraphExecutionResult,
+ * or undefined when no checkpoint store was configured (interrupts still halt
+ * the loop, but resumption is unavailable without persistence). (#1895)
+ */
+function saveInterruptCheckpoint(
+  ctx: ExecutionContext,
+  options?: GraphExecuteOptions
+): GraphExecutionResult['halted'] | undefined {
+  const store = options?.checkpointStore;
+  const execId = options?.executionId;
+  if (store === undefined || execId === undefined || ctx.pendingInterrupt === undefined) {
+    return undefined;
+  }
+  const { nodeId, interrupt } = ctx.pendingInterrupt;
+  const checkpoint = createCheckpoint({
+    executionId: execId,
+    stepNumber: ctx.stepsExecuted,
+    state: ctx.state,
+    // Re-run the interrupted node first on resume.
+    pendingNodeIds: [nodeId],
+    completedResults: ctx.allResults,
+    interrupt: {
+      nodeId,
+      interruptId: interrupt.id,
+      value: interrupt.value,
+      createdAt: new Date().toISOString(),
+    },
+  });
+  try {
+    store.save(checkpoint);
+  } catch (err: unknown) {
+    const error = err instanceof Error ? err : new Error(String(err));
+    logger.warn('Interrupt checkpoint save failed; resume unavailable', {
+      executionId: execId,
+      nodeId,
+      errorMessage: error.message,
+    });
+    return undefined;
+  }
+  logger.info('Graph paused on interrupt — checkpoint saved', {
+    executionId: execId,
+    nodeId,
+    interruptId: interrupt.id,
+    checkpointId: checkpoint.id,
+  });
+  return {
+    checkpointId: checkpoint.id,
+    nodeId,
+    interruptId: interrupt.id,
+    value: interrupt.value,
+  };
 }
 
 /** Checks if the loop should be interrupted early (timeout or abort). */
@@ -123,10 +251,11 @@ async function runSuperStepLoop(
   const timeout = options?.timeout ?? DEFAULT_TIMEOUT_MS;
 
   while (ctx.runnableIds.length > 0 && ctx.stepsExecuted < maxSteps) {
-    const interrupt = checkInterrupt(startTime, timeout, options?.signal);
-    if (interrupt !== undefined) return interrupt as Result<GraphExecutionResult, Error>;
+    const aborted = checkInterrupt(startTime, timeout, options?.signal);
+    if (aborted !== undefined) return aborted as Result<GraphExecutionResult, Error>;
 
     await executeSuperStep(graph, ctx, options);
+    if (ctx.pendingInterrupt !== undefined) return undefined;
   }
 
   return undefined;
@@ -139,14 +268,36 @@ async function executeSuperStep(
   options?: GraphExecuteOptions
 ): Promise<void> {
   emitNodeStarted(ctx, options);
-  const results = await executeNodes(graph, ctx.runnableIds, ctx.state, options);
+  const nodeCtx: NodeContext = { resumeValues: ctx.resumeValues };
+  const results = await executeNodes(graph, ctx.runnableIds, ctx.state, nodeCtx, options);
   ctx.allResults.push(...results);
   ctx.stepsExecuted += results.length;
   ctx.state = mergeNodeResults(graph, ctx.state, results);
 
+  // Resume values are single-shot — clear after the super-step that consumed them. (#1895)
+  ctx.resumeValues = {};
+
+  // Halt if any node returned an Interrupt — surfaces upward via ctx.pendingInterrupt.
+  // Multi-interrupt support is Phase 2; v1 records the first one.
+  const interrupted = results.find((r) => r.status === 'interrupted');
+  if (interrupted?.interrupt !== undefined) {
+    ctx.pendingInterrupt = { nodeId: interrupted.nodeId, interrupt: interrupted.interrupt };
+    ctx.runnableIds = [];
+    fireSuperStepCallbacks(results, ctx, options);
+    return;
+  }
+
   const completedIds = results.filter((r) => r.status === 'success').map((r) => r.nodeId);
   ctx.runnableIds = resolveNextNodes(graph, completedIds, ctx.state, ctx);
+  fireSuperStepCallbacks(results, ctx, options);
+}
 
+/** Fire onNodeComplete + emit lifecycle events + save checkpoint. */
+function fireSuperStepCallbacks(
+  results: readonly NodeResult[],
+  ctx: ExecutionContext,
+  options?: GraphExecuteOptions
+): void {
   for (const result of results) {
     try {
       options?.onNodeComplete?.(result);
@@ -312,9 +463,10 @@ async function executeNodes(
   graph: CompiledGraph,
   nodeIds: readonly string[],
   state: Readonly<GraphState>,
+  nodeCtx: NodeContext,
   options?: GraphExecuteOptions
 ): Promise<NodeResult[]> {
-  const promises = nodeIds.map((id) => executeSingleNode(graph, id, state, options));
+  const promises = nodeIds.map((id) => executeSingleNode(graph, id, state, nodeCtx, options));
   return Promise.all(promises);
 }
 
@@ -334,19 +486,51 @@ function preconditionFailedResult(
   };
 }
 
-/** Executes node handler with verification, returning the NodeResult. */
-async function executeWithVerification(
-  node: GraphNode,
-  nodeId: string,
-  state: Readonly<GraphState>,
-  startTime: number,
-  options?: GraphExecuteOptions
-): Promise<NodeResult> {
-  const nodeTimeout = node.timeout ?? options?.timeout ?? DEFAULT_TIMEOUT_MS;
-  const result = await withTimeout(node.handler(state), nodeTimeout);
-  const handlerDuration = getTimeProvider().now() - startTime;
+/**
+ * Reduce a raw NodeReturn into the (stateUpdates, interrupt?) pair the
+ * executor cares about. Centralizes Interrupt/Command unwrapping (#1895).
+ */
+function extractNodeOutput(returned: NodeReturn): {
+  stateUpdates: Partial<GraphState>;
+  interrupt?: Interrupt;
+} {
+  if (isInterrupt(returned)) {
+    return { stateUpdates: {}, interrupt: returned };
+  }
+  if (isCommand(returned)) {
+    return { stateUpdates: returned.update ?? {} };
+  }
+  return { stateUpdates: returned };
+}
 
-  const mergedState = { ...state, ...result };
+interface ExecVerifyArgs {
+  readonly node: GraphNode;
+  readonly nodeId: string;
+  readonly state: Readonly<GraphState>;
+  readonly startTime: number;
+  readonly nodeCtx: NodeContext;
+  readonly options?: GraphExecuteOptions | undefined;
+}
+
+/** Executes node handler with verification, returning the NodeResult. */
+async function executeWithVerification(args: ExecVerifyArgs): Promise<NodeResult> {
+  const { node, nodeId, state, startTime, nodeCtx, options } = args;
+  const nodeTimeout = node.timeout ?? options?.timeout ?? DEFAULT_TIMEOUT_MS;
+  const returned = await withTimeout(node.handler(state, nodeCtx), nodeTimeout);
+  const handlerDuration = getTimeProvider().now() - startTime;
+  const { stateUpdates, interrupt } = extractNodeOutput(returned);
+
+  if (interrupt !== undefined) {
+    return {
+      nodeId,
+      stateUpdates: {},
+      durationMs: handlerDuration,
+      status: 'interrupted',
+      interrupt,
+    };
+  }
+
+  const mergedState = { ...state, ...stateUpdates };
   const verifyResult = await runVerification(node, mergedState, 0, options);
   if (!verifyResult.passed) {
     logger.warn('Post-step verification failed', { nodeId, error: verifyResult.error });
@@ -359,7 +543,7 @@ async function executeWithVerification(
     };
   }
 
-  return { nodeId, stateUpdates: result, durationMs: handlerDuration, status: 'success' };
+  return { nodeId, stateUpdates, durationMs: handlerDuration, status: 'success' };
 }
 
 /** Executes a single node with preconditions, timeout, verification, and error handling. */
@@ -367,6 +551,7 @@ async function executeSingleNode(
   graph: CompiledGraph,
   nodeId: string,
   state: Readonly<GraphState>,
+  nodeCtx: NodeContext,
   options?: GraphExecuteOptions
 ): Promise<NodeResult> {
   const node: GraphNode | undefined = graph.nodes.get(nodeId);
@@ -387,7 +572,7 @@ async function executeSingleNode(
   }
 
   try {
-    return await executeWithVerification(node, nodeId, state, startTime, options);
+    return await executeWithVerification({ node, nodeId, state, startTime, nodeCtx, options });
   } catch (error: unknown) {
     const message = getErrorMessage(error);
     logger.warn('Node execution failed', { nodeId, error: message });
