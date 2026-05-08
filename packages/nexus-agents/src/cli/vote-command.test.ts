@@ -6,7 +6,8 @@
 import { describe, it, expect } from 'vitest';
 import type { VotingResult } from './vote-types.js';
 import type { ConsensusResult, Vote } from '../consensus/types.js';
-import { formatVoteComment } from './vote-command.js';
+import { formatVoteComment, formatVoteRow, explainOutcome } from './vote-command.js';
+import type { AgentVoteResult } from './voter-agents.js';
 
 function createMockConsensusResult(overrides: Partial<ConsensusResult> = {}): ConsensusResult {
   return {
@@ -148,5 +149,104 @@ describe('formatVoteComment', () => {
     expect(comment).toContain('(ET)');
     // Date format should be MM/DD/YYYY
     expect(comment).toMatch(/\*\*Date:\*\* \d{2}\/\d{2}\/\d{4}/);
+  });
+});
+
+// ============================================================================
+// Issue #2441 — fail-closed UX: errors must NOT render as `[sim]`
+// ============================================================================
+
+function makeVoteRow(overrides: Partial<AgentVoteResult> = {}): AgentVoteResult {
+  return {
+    role: 'architect',
+    vote: { decision: 'approve', reasoning: 'ok', confidence: 0.9 },
+    processingTimeMs: 100,
+    source: 'llm',
+    ...overrides,
+  };
+}
+
+// Strip ANSI escape codes so tests don't depend on the active color theme.
+function stripAnsi(s: string): string {
+  return s.replace(/\[[0-9;]*m/g, '');
+}
+
+describe('formatVoteRow (#2441)', () => {
+  it('renders an LLM vote with no badge', () => {
+    const row = stripAnsi(formatVoteRow(makeVoteRow({ source: 'llm' })));
+    expect(row).not.toContain('[SIMULATED]');
+    expect(row).not.toContain('ERROR');
+    expect(row).toContain('APPROVE');
+  });
+
+  it('renders a simulated vote with the loud red [SIMULATED] badge', () => {
+    const row = stripAnsi(formatVoteRow(makeVoteRow({ source: 'simulation' })));
+    // Loud, capitalized — NOT the old quiet `[sim]`.
+    expect(row).toContain('[SIMULATED]');
+    expect(row).not.toMatch(/\[sim\]/);
+  });
+
+  it('renders an errored vote as ✗ ERROR with the parsed reason — never as [sim]', () => {
+    const row = stripAnsi(formatVoteRow(makeVoteRow({ source: 'error', error: 'Not logged in' })));
+    expect(row).toContain('✗');
+    expect(row).toContain('ERROR');
+    expect(row).toContain('Not logged in');
+    // The whole point of #2441: errors must be visually distinct from simulations.
+    expect(row).not.toContain('[SIMULATED]');
+    expect(row).not.toMatch(/\[sim\]/);
+  });
+
+  it('truncates multi-line error reasons to the first line', () => {
+    const row = stripAnsi(
+      formatVoteRow(makeVoteRow({ source: 'error', error: 'auth failed\nstack trace here' }))
+    );
+    expect(row).toContain('auth failed');
+    expect(row).not.toContain('stack trace');
+  });
+
+  it('falls back to "execution failed" when no error message is attached', () => {
+    const row = stripAnsi(formatVoteRow(makeVoteRow({ source: 'error' })));
+    expect(row).toContain('execution failed');
+  });
+});
+
+describe('explainOutcome (#2441)', () => {
+  const baseVotes: readonly AgentVoteResult[] = [
+    makeVoteRow({ role: 'architect', source: 'llm' }),
+    makeVoteRow({ role: 'security', source: 'error', error: 'Not logged in' }),
+    makeVoteRow({ role: 'scope_steward', source: 'error', error: 'MCP closed' }),
+  ];
+
+  it('returns empty string when outcome is approved', () => {
+    expect(
+      explainOutcome({ outcome: 'approved', quorumReached: true, errored: 0, votes: [] })
+    ).toBe('');
+  });
+
+  it('explains "quorum not reached" with errored-voter count when applicable', () => {
+    const explained = stripAnsi(
+      explainOutcome({ outcome: 'rejected', quorumReached: false, errored: 2, votes: baseVotes })
+    );
+    expect(explained).toContain('quorum not reached');
+    expect(explained).toContain('2 of 3 voter(s) failed');
+    expect(explained).toContain('1 vote(s) recorded');
+  });
+
+  it('explains "quorum not reached" without error count when no voters errored', () => {
+    const explained = stripAnsi(
+      explainOutcome({ outcome: 'rejected', quorumReached: false, errored: 0, votes: [] })
+    );
+    expect(explained).toContain('quorum not reached');
+    expect(explained).not.toContain('voter(s) failed');
+  });
+
+  it('returns empty string when rejected with quorum reached (real defeat, not infrastructure)', () => {
+    const explained = explainOutcome({
+      outcome: 'rejected',
+      quorumReached: true,
+      errored: 0,
+      votes: [],
+    });
+    expect(explained).toBe('');
   });
 });
