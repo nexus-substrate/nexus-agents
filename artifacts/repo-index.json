@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-05-05T05:18:24.580Z",
+  "generated": "2026-05-08T20:12:42.733Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.70.0",
   "cli": {
@@ -106,6 +106,12 @@
         "name": "learning-metrics",
         "type": "sync",
         "handler": "handleLearningMetricsCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
+      {
+        "name": "login",
+        "type": "async",
+        "handler": "handleLoginCommand",
         "file": "src/cli-commands-handlers.ts"
       },
       {
