@@ -509,7 +509,7 @@ interface ExecVerifyArgs {
   readonly state: Readonly<GraphState>;
   readonly startTime: number;
   readonly nodeCtx: NodeContext;
-  readonly options?: GraphExecuteOptions;
+  readonly options?: GraphExecuteOptions | undefined;
 }
 
 /** Executes node handler with verification, returning the NodeResult. */
