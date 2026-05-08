@@ -9,8 +9,18 @@
 
 /**
  * Sandbox execution mode.
+ *
+ * - `none`: no isolation; for development only.
+ * - `policy`: rule-based enforcement with no process isolation. Catches
+ *   policy violations but a misbehaving process can still touch the host.
+ * - `container`: Docker-based OS-level isolation. Strongest, but requires
+ *   Docker on the host.
+ * - `deno`: process-level permission gating via Deno's `--allow-*` flags
+ *   (#1898). Weaker than container — same OS, just process permissions —
+ *   but works without Docker (Mac without Docker Desktop, locked-down CI
+ *   runners). No CPU/memory limits.
  */
-export type SandboxMode = 'none' | 'policy' | 'container';
+export type SandboxMode = 'none' | 'policy' | 'container' | 'deno';
 
 /**
  * Security capability that can be restricted.

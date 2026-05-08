@@ -15,6 +15,11 @@ import {
   isDockerAvailable,
   type DockerSandboxConfig,
 } from './docker-sandbox-executor.js';
+import {
+  DenoSandboxExecutor,
+  isDenoAvailable,
+  type DenoSandboxConfig,
+} from './deno-sandbox-executor.js';
 import { STANDARD_POLICY } from './default-policies.js';
 
 const logger = createLogger({ component: 'sandbox-factory' });
@@ -27,10 +32,20 @@ export interface SandboxFactoryOptions {
   readonly mode: SandboxMode;
   /** Whether to fall back to policy mode if container not available. */
   readonly fallbackToPolicy?: boolean;
+  /**
+   * Whether to fall back to the Deno permission sandbox when Docker is
+   * unavailable (#1898). Inserts Deno between container and policy in the
+   * fallback chain when both `fallbackToDeno` and `fallbackToPolicy` are
+   * true. Default: `true` — Deno gives meaningful process-level isolation
+   * vs policy mode which is enforcement-only.
+   */
+  readonly fallbackToDeno?: boolean;
   /** Policy sandbox configuration. */
   readonly policyConfig?: Partial<SandboxConfig>;
   /** Docker sandbox configuration. */
   readonly dockerConfig?: DockerSandboxConfig;
+  /** Deno sandbox configuration (#1898). */
+  readonly denoConfig?: DenoSandboxConfig;
 }
 
 /**
@@ -53,6 +68,7 @@ export interface SandboxCreationResult {
 const DEFAULT_OPTIONS: SandboxFactoryOptions = {
   mode: 'policy',
   fallbackToPolicy: true,
+  fallbackToDeno: true,
 };
 
 /**
@@ -75,6 +91,9 @@ export async function createSandbox(
 
     case 'container':
       return createContainerMode(opts);
+
+    case 'deno':
+      return createDenoMode(opts);
 
     default: {
       // TypeScript exhaustiveness check
@@ -121,7 +140,8 @@ function createPolicyMode(config?: Partial<SandboxConfig>): SandboxCreationResul
 }
 
 /**
- * Create a container-based executor with optional fallback.
+ * Create a container-based executor with optional fallback chain
+ * Docker → Deno → Policy. Both fallback toggles default to true.
  */
 async function createContainerMode(opts: SandboxFactoryOptions): Promise<SandboxCreationResult> {
   const dockerAvailable = await isDockerAvailable();
@@ -138,9 +158,25 @@ async function createContainerMode(opts: SandboxFactoryOptions): Promise<Sandbox
     };
   }
 
-  // Docker not available
+  // Docker not available — try Deno before falling all the way to policy. (#1898)
+  if (opts.fallbackToDeno !== false) {
+    const denoAvailable = await isDenoAvailable();
+    if (denoAvailable) {
+      logger.warn('Docker not available, falling back to "deno" mode');
+      const executor = new DenoSandboxExecutor(opts.denoConfig);
+      return {
+        executor,
+        actualMode: 'deno',
+        usedFallback: true,
+        warning:
+          'Docker not available. Using Deno permission sandbox (process-level isolation, not container-level).',
+      };
+    }
+  }
+
+  // Neither Docker nor Deno — last resort is policy enforcement.
   if (opts.fallbackToPolicy === true) {
-    logger.warn('Docker not available, falling back to "policy" mode');
+    logger.warn('Docker and Deno unavailable, falling back to "policy" mode');
 
     const executor = new PolicySandboxExecutor(opts.policyConfig);
 
@@ -148,27 +184,65 @@ async function createContainerMode(opts: SandboxFactoryOptions): Promise<Sandbox
       executor,
       actualMode: 'policy',
       usedFallback: true,
-      warning: 'Docker not available. Using policy-based sandbox with limited isolation.',
+      warning:
+        'Neither Docker nor Deno available. Using policy-based sandbox with limited isolation.',
     };
   }
 
   // No fallback allowed, throw error
   throw new Error(
-    'Container sandbox mode requested but Docker is not available. ' +
-      'Install Docker or set fallbackToPolicy: true.'
+    'Container sandbox mode requested but neither Docker nor Deno is available. ' +
+      'Install Docker (for container isolation) or Deno (for process-level isolation), ' +
+      'or set fallbackToPolicy: true.'
+  );
+}
+
+/**
+ * Create a Deno-based executor (#1898). Falls back to policy if Deno is
+ * unavailable AND fallbackToPolicy is true; otherwise throws.
+ */
+async function createDenoMode(opts: SandboxFactoryOptions): Promise<SandboxCreationResult> {
+  const denoAvailable = await isDenoAvailable();
+  if (denoAvailable) {
+    logger.info('Creating sandbox in "deno" mode');
+    const executor = new DenoSandboxExecutor(opts.denoConfig);
+    return {
+      executor,
+      actualMode: 'deno',
+      usedFallback: false,
+    };
+  }
+  if (opts.fallbackToPolicy === true) {
+    logger.warn('Deno not available, falling back to "policy" mode');
+    const executor = new PolicySandboxExecutor(opts.policyConfig);
+    return {
+      executor,
+      actualMode: 'policy',
+      usedFallback: true,
+      warning: 'Deno not available. Using policy-based sandbox with limited isolation.',
+    };
+  }
+  throw new Error(
+    'Deno sandbox mode requested but Deno is not available. ' +
+      'Install Deno (>=2.0) or set fallbackToPolicy: true.'
   );
 }
 
 /**
  * Get the recommended sandbox mode for the current environment.
+ *
+ * Preference order: container > deno > policy. (#1898)
  */
 export async function getRecommendedMode(): Promise<SandboxMode> {
   const dockerAvailable = await isDockerAvailable();
-
   if (dockerAvailable) {
     return 'container';
   }
-
-  logger.info('Docker not available, recommending policy mode');
+  const denoAvailable = await isDenoAvailable();
+  if (denoAvailable) {
+    logger.info('Docker not available; recommending deno mode (process-level isolation)');
+    return 'deno';
+  }
+  logger.info('Neither Docker nor Deno available; recommending policy mode');
   return 'policy';
 }

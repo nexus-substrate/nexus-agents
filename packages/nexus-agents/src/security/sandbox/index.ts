@@ -71,6 +71,11 @@ export {
 } from './docker-sandbox-executor.js';
 export type { DockerSandboxConfig } from './docker-sandbox-executor.js';
 
+// Deno-based executor (#1898)
+export { DenoSandboxExecutor, isDenoAvailable, resetDenoCache } from './deno-sandbox-executor.js';
+export { policyToDenoFlags } from './deno-sandbox-helpers.js';
+export type { DenoSandboxConfig } from './deno-sandbox-executor.js';
+
 // Factory
 export { createSandbox, getRecommendedMode } from './sandbox-factory.js';
 export type { SandboxFactoryOptions, SandboxCreationResult } from './sandbox-factory.js';

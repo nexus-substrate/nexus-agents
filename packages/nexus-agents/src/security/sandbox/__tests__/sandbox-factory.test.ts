@@ -11,6 +11,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createSandbox, getRecommendedMode } from '../sandbox-factory.js';
 import * as dockerHelpers from '../docker-sandbox-helpers.js';
+import * as denoHelpers from '../deno-sandbox-helpers.js';
 
 // Mock Docker availability check
 vi.mock('../docker-sandbox-helpers.js', async () => {
@@ -21,11 +22,24 @@ vi.mock('../docker-sandbox-helpers.js', async () => {
   };
 });
 
+// Mock Deno availability check (#1898)
+vi.mock('../deno-sandbox-helpers.js', async () => {
+  const actual = await vi.importActual('../deno-sandbox-helpers.js');
+  return {
+    ...actual,
+    isDenoAvailable: vi.fn(),
+  };
+});
+
 const mockIsDockerAvailable = vi.mocked(dockerHelpers.isDockerAvailable);
+const mockIsDenoAvailable = vi.mocked(denoHelpers.isDenoAvailable);
 
 describe('Sandbox Factory', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default to Deno unavailable so legacy "Docker unavailable → policy"
+    // tests preserve their assertions. Tests covering Deno set this true.
+    mockIsDenoAvailable.mockResolvedValue(false);
   });
 
   afterEach(() => {
@@ -80,6 +94,7 @@ describe('Sandbox Factory', () => {
 
       it('should fall back to policy when Docker unavailable and fallback enabled', async () => {
         mockIsDockerAvailable.mockResolvedValue(false);
+        // Default beforeEach already sets isDenoAvailable false.
 
         const result = await createSandbox({
           mode: 'container',
@@ -89,7 +104,8 @@ describe('Sandbox Factory', () => {
         expect(result.executor.name).toBe('PolicySandboxExecutor');
         expect(result.actualMode).toBe('policy');
         expect(result.usedFallback).toBe(true);
-        expect(result.warning).toContain('Docker not available');
+        // Updated for #1898: warning now reads "Neither Docker nor Deno available".
+        expect(result.warning).toMatch(/Neither Docker nor Deno|Docker not available/);
       });
 
       it('should throw when Docker unavailable and fallback disabled', async () => {
@@ -100,7 +116,7 @@ describe('Sandbox Factory', () => {
             mode: 'container',
             fallbackToPolicy: false,
           })
-        ).rejects.toThrow('Docker is not available');
+        ).rejects.toThrow(/Docker|Deno/);
       });
 
       it('should pass dockerConfig to executor', async () => {
