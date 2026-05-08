@@ -180,8 +180,6 @@ const SYNC_COMMAND_HANDLERS: Record<string, ((args: ParsedCliArgs) => void) | un
   issue: handleIssueCommand,
   // System Mandate LOOP I: Fitness Audit
   'fitness-audit': handleFitnessAuditCommand,
-  // Issue #739: Auth command
-  auth: handleAuthCommand,
   // Issue #653: Scaffold Command
   scaffold: handleScaffoldCommand,
   // Creative: Visualize Command
@@ -241,8 +239,11 @@ const ASYNC_COMMAND_HANDLERS: Record<string, ((args: ParsedCliArgs) => Promise<v
     atbench: handleAtbenchCommand,
     hooks: handleHooksCommand,
     setup: handleSetupCommandAsync, // Uses async for interactive wizard support (Issue #425)
-    // Issue #2447: nexus-agents login — async because it spawns codex/opencode for status probes
+    // Issue #2447: nexus-agents login — async because it spawns codex/opencode for status probes.
+    // Issue #2449 made `auth status` the canonical name; this remains as a soft alias.
     login: handleLoginCommand,
+    // Issue #739/#2449: auth command (now async — `auth status` routes to login probe)
+    auth: handleAuthCommand,
     // #2305 / #2308 / #2311: Init Portable Command (async because --install spawns npm)
     init: handleInitCommand,
     demo: handleDemoCommand, // Made async for live CLI execution

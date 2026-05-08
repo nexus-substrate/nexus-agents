@@ -16,8 +16,13 @@ import {
 
 /**
  * Auth command subcommands.
+ *
+ * `status` shows per-CLI authentication state (claude/codex/gemini/opencode)
+ * via the shared auth probe (#2449). It is async and handled before the
+ * sync `runAuthCommand` switch — callers should check
+ * `isAsyncAuthSubcommand(sub)` first.
  */
-export type AuthSubcommand = 'init' | 'show' | 'rotate' | 'help';
+export type AuthSubcommand = 'init' | 'show' | 'rotate' | 'help' | 'status';
 
 /**
  * Options for auth command.
@@ -57,7 +62,18 @@ export interface AuthCommandResult {
  * Validates auth subcommand.
  */
 export function isValidAuthSubcommand(value: string | undefined): value is AuthSubcommand {
-  return value === 'init' || value === 'show' || value === 'rotate' || value === 'help';
+  return (
+    value === 'init' ||
+    value === 'show' ||
+    value === 'rotate' ||
+    value === 'help' ||
+    value === 'status'
+  );
+}
+
+/** Subcommands that need async I/O — handled outside `runAuthCommand`. */
+export function isAsyncAuthSubcommand(value: AuthSubcommand): value is 'status' {
+  return value === 'status';
 }
 
 /**
@@ -201,7 +217,7 @@ export function runAuthCommand(options: AuthCommandOptions): AuthCommandResult {
         operation: 'help',
         tokenFile: getDefaultTokenPath(),
         tokenExists: existsSync(getDefaultTokenPath()),
-        error: `Unknown subcommand: ${String(subcommand)}`,
+        error: `Unknown subcommand: ${subcommand}`,
       };
   }
 }
@@ -218,6 +234,7 @@ function formatHelpText(result: AuthCommandResult): string {
     '  init     Generate a new authentication token',
     '  show     Show token status (file location, permissions)',
     '  rotate   Generate a new token, invalidating the old one',
+    '  status   Show per-CLI auth state (claude/codex/gemini/opencode) + login fixes',
     '',
     'OPTIONS:',
     '  --force          Overwrite existing token (for init)',

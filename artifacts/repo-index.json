@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-05-08T20:12:42.733Z",
+  "generated": "2026-05-08T22:19:36.452Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.70.0",
   "cli": {
@@ -14,7 +14,7 @@
       },
       {
         "name": "auth",
-        "type": "sync",
+        "type": "async",
         "handler": "handleAuthCommand",
         "file": "src/cli-commands-handlers.ts"
       },
