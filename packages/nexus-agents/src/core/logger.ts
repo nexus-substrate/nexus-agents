@@ -322,15 +322,48 @@ function writeLog(entry: LogEntry): void {
 }
 
 /**
+ * Module-level fallback level. All loggers that haven't had their own
+ * `setLevel(...)` called read this. Lets `setGlobalLogLevel(...)` quiet
+ * every existing instance at once — needed because by the time a CLI
+ * subcommand handler runs, dozens of module-level `createLogger(...)`
+ * calls have already returned closures holding their own `currentLevel`.
+ * Issue #2443.
+ */
+let GLOBAL_LEVEL: LogLevel = getDefaultLogLevel();
+
+/**
+ * Override the fallback log level for every logger that hasn't been
+ * individually `setLevel`'d. Called by the CLI dispatcher to suppress
+ * info-level init noise during interactive subcommands (#2443).
+ *
+ * Per-instance `setLevel(...)` still wins — call sites that explicitly
+ * raised a logger to debug (e.g. `--verbose` paths) keep that override.
+ */
+export function setGlobalLogLevel(level: LogLevel): void {
+  GLOBAL_LEVEL = level;
+}
+
+/** Read the current global fallback level (for tests / introspection). */
+export function getGlobalLogLevel(): LogLevel {
+  return GLOBAL_LEVEL;
+}
+
+/**
  * Creates a structured logger with configurable format and destination.
  * (Source: Issue #485 - Wire logging.format and logging.destination)
  */
 export function createLogger(baseContext?: LogContext): ILogger {
-  let currentLevel: LogLevel = getDefaultLogLevel();
+  // `undefined` means "follow GLOBAL_LEVEL". Calling `setLevel` pins this
+  // instance to a specific level regardless of GLOBAL_LEVEL changes.
+  let instanceLevel: LogLevel | undefined;
   const context = baseContext ?? {};
 
+  function effectiveLevel(): LogLevel {
+    return instanceLevel ?? GLOBAL_LEVEL;
+  }
+
   function shouldLog(level: LogLevel): boolean {
-    return LEVEL_PRIORITY[level] >= LEVEL_PRIORITY[currentLevel];
+    return LEVEL_PRIORITY[level] >= LEVEL_PRIORITY[effectiveLevel()];
   }
 
   function log(level: LogLevel, msg: string, ctx?: LogContext, e?: Error): void {
@@ -354,7 +387,7 @@ export function createLogger(baseContext?: LogContext): ILogger {
     },
     child: (childCtx): ILogger => createLogger({ ...context, ...childCtx }),
     setLevel: (level): void => {
-      currentLevel = level;
+      instanceLevel = level;
     },
     setFormat: (format): void => {
       globalFormat = format;
