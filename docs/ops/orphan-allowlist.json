@@ -22,6 +22,18 @@
     {
       "glob": "**/*.config.ts",
       "rationale": "Tooling config files (tsup, vitest, eslint) loaded by tools, not imported."
+    },
+    {
+      "glob": "packages/nexus-agents/docs/api/assets/**",
+      "rationale": "TypeDoc-generated HTML assets. Consumed by static HTML, not by JS imports."
+    },
+    {
+      "glob": "**/vitest.config.*.ts",
+      "rationale": "Variant vitest configs (e.g. opencode-e2e) referenced by CI workflows via `--config` flag, not imported."
+    },
+    {
+      "glob": "**/index.ts",
+      "rationale": "Barrel re-export files. Consumed via package-level resolution (`import x from './foo'` resolves to `./foo/index.ts`); knip flags these because nothing imports the barrel directly. Allowlisting reduces noise; intentional dead barrels still get caught by typecheck (unused export detection)."
     }
   ],
   "specific_files": []
