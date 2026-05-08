@@ -120,6 +120,8 @@ import {
 } from './cli-commands-handlers.js';
 // Issue #739: Auth command
 import { handleAuthCommand } from './cli-auth-handler.js';
+// Issue #2447: nexus-agents login — guided per-CLI auth status
+import { handleLoginCommand } from './cli/login-command.js';
 // Issue #637: Release Automation Suite
 import {
   handleReleaseNotesCommand,
@@ -239,6 +241,8 @@ const ASYNC_COMMAND_HANDLERS: Record<string, ((args: ParsedCliArgs) => Promise<v
     atbench: handleAtbenchCommand,
     hooks: handleHooksCommand,
     setup: handleSetupCommandAsync, // Uses async for interactive wizard support (Issue #425)
+    // Issue #2447: nexus-agents login — async because it spawns codex/opencode for status probes
+    login: handleLoginCommand,
     // #2305 / #2308 / #2311: Init Portable Command (async because --install spawns npm)
     init: handleInitCommand,
     demo: handleDemoCommand, // Made async for live CLI execution

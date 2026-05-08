@@ -30,9 +30,34 @@ nvm install 22 && nvm use 22
 
 ## Install
 
+Pick one path:
+
 ```bash
+# Option A — global install (most common). On Linux/macOS without
+# a Node version manager, run the prefix-config snippet below FIRST
+# or you'll hit EACCES on /usr/local.
+npm install -g nexus-agents
+
+# Option B — no install, run via npx (zero config; slower per invocation):
+npx nexus-agents --version
+```
+
+### EACCES on Linux/macOS without nvm/asdf?
+
+`npm`'s default global prefix (`/usr/local`) isn't user-writable. Use a
+user-local prefix once, then re-run the install:
+
+```bash
+mkdir -p ~/.npm-global
+npm config set prefix '~/.npm-global'
+echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> ~/.bashrc
+export PATH="$HOME/.npm-global/bin:$PATH"
 npm install -g nexus-agents
 ```
+
+`sudo npm install -g` is **not** recommended ([npm docs say so](https://docs.npmjs.com/resolving-eacces-permissions-errors-when-installing-packages-globally)) — installs end up root-owned and create permission cascades on every later `npm install`.
+
+If you're using `nvm`/`asdf`/`fnm`, the global prefix is already user-writable; the bare `npm install -g` works.
 
 ---
 
