@@ -157,6 +157,9 @@ interface ParsedValues {
   'mcp-config': boolean;
   install: boolean;
   uninstall: boolean;
+  // init --opencode <path> options (#2504)
+  opencode?: string;
+  validate: boolean;
 }
 
 /** Builds orchestrate-specific options. */
@@ -344,13 +347,15 @@ function buildOptions(values: ParsedValues): ParsedCliArgs['options'] {
   };
 }
 
-/** Builds init-specific options (#2305 portable/gitignore + #2308 mcp-config + #2311 install/uninstall). */
+/** Builds init-specific options (#2305 portable/gitignore + #2308 mcp-config + #2311 install/uninstall + #2504 opencode/validate). */
 function buildInitOptions(values: ParsedValues): {
   portable?: boolean;
   gitignore?: boolean;
   mcpConfig?: boolean;
   install?: boolean;
   uninstall?: boolean;
+  opencode?: string;
+  validate?: boolean;
 } {
   return {
     portable: values.portable,
@@ -358,6 +363,8 @@ function buildInitOptions(values: ParsedValues): {
     mcpConfig: values['mcp-config'],
     install: values.install,
     uninstall: values.uninstall,
+    ...(values.opencode !== undefined && values.opencode !== '' && { opencode: values.opencode }),
+    validate: values.validate,
   };
 }
 
