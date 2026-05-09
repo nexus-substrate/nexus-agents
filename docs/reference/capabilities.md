@@ -1,6 +1,6 @@
 # Repository Capabilities Index
 
-**Generated:** 2026-05-08T22:19:36.452Z
+**Generated:** 2026-05-09T09:12:20.285Z
 **Package Version:** 2.70.0
 **Generator:** `scripts/generate-repo-index.ts`
 
@@ -9,7 +9,7 @@
 
 ---
 
-## CLI Commands (45)
+## CLI Commands (46)
 
 Binary: `nexus-agents`
 
@@ -53,6 +53,7 @@ Binary: `nexus-agents`
 | `status` | sync | `handleStatusCommand` | `src/cli-commands-handlers.ts` |
 | `swe-bench` | async | `handleSweBenchCommand` | `src/cli-commands-handlers.ts` |
 | `system-review` | sync | `handleSystemReviewCommand` | `src/cli-commands-handlers.ts` |
+| `usage` | async | `handleUsageCommand` | `src/cli-commands-handlers.ts` |
 | `validate` | async | `handleValidateCommand` | `src/cli-commands-handlers.ts` |
 | `validation` | sync | `handleValidationCommand` | `src/cli-commands-handlers.ts` |
 | `verify` | async | `handleVerifyCommand` | `src/cli-commands-handlers.ts` |
