@@ -122,6 +122,19 @@ skills:
       - add documentation
       - doc pipeline
       - updating docs
+  - name: docs-mermaid
+    description: |-
+      Generate precise Mermaid diagrams (flowchart, sequence, state, ER, class, gantt, gitGraph)
+      for nexus-agents docs. Cross-references docs-chart (quantitative SVG) and docs-image
+      (illustrative AI-gen) so each visual lane has a clear winner.
+    path: skills/docs-mermaid/SKILL.md
+    triggers:
+      - mermaid
+      - flowchart
+      - sequence diagram
+      - state diagram
+      - diagram this
+      - draw the flow
   - name: dogfooding-issues
     description: |-
       Process open GitHub issues using the self-development protocol.
