@@ -111,6 +111,20 @@ skills:
       - multi-agent pipeline
       - run pipeline
       - the user asks to "build a feature"
+  - name: docs-mermaid
+    description: |-
+      Generate precise diagrams (flowchart, sequence, state, ER, class, gantt,
+      gitGraph) using Mermaid for nexus-agents docs. Use when the user wants
+      to "diagram this", "show how X works", "draw the flow", or asks for a
+      flowchart / sequence / state diagram. Cross-references docs-chart (for
+      quantitative data viz) and docs-image (for illustrative AI-gen) so each
+      visual lane has a clear winner.
+    path: skills/docs-mermaid/SKILL.md
+    triggers:
+      - diagram this
+      - show how x works
+      - draw the flow
+      - the user wants to "diagram this"
   - name: documentation-management
     description: |-
       Operating manual for documentation work in nexus-agents.
@@ -122,19 +136,6 @@ skills:
       - add documentation
       - doc pipeline
       - updating docs
-  - name: docs-mermaid
-    description: |-
-      Generate precise Mermaid diagrams (flowchart, sequence, state, ER, class, gantt, gitGraph)
-      for nexus-agents docs. Cross-references docs-chart (quantitative SVG) and docs-image
-      (illustrative AI-gen) so each visual lane has a clear winner.
-    path: skills/docs-mermaid/SKILL.md
-    triggers:
-      - mermaid
-      - flowchart
-      - sequence diagram
-      - state diagram
-      - diagram this
-      - draw the flow
   - name: dogfooding-issues
     description: |-
       Process open GitHub issues using the self-development protocol.
