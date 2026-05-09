@@ -74,7 +74,8 @@ export type CliCommand =
   | 'validate'
   | 'registry'
   | 'login'
-  | 'usage';
+  | 'usage'
+  | 'improvement-review';
 
 /**
  * Parsed CLI arguments and command.
@@ -444,6 +445,20 @@ export const PARSE_ARGS_CONFIG = {
       type: 'boolean' as const,
       default: false,
     },
+    // improvement-review command options (#2444)
+    'lookback-days': {
+      type: 'string' as const,
+    },
+    'file-issues': {
+      type: 'boolean' as const,
+      default: false,
+    },
+    'min-sample-size': {
+      type: 'string' as const,
+    },
+    'fitness-floor': {
+      type: 'string' as const,
+    },
   },
   allowPositionals: true,
   strict: true,
@@ -498,6 +513,7 @@ const VALID_COMMANDS: readonly CliCommand[] = [
   'registry',
   'login',
   'usage',
+  'improvement-review',
 ];
 
 /**

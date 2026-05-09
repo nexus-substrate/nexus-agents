@@ -124,6 +124,8 @@ import { handleAuthCommand } from './cli-auth-handler.js';
 import { handleLoginCommand } from './cli/login-command.js';
 // Issue #2469: nexus-agents usage — cost / usage / quality dashboard
 import { handleUsageCommand } from './cli/usage-command.js';
+// Issue #2444: nexus-agents improvement-review — observability-driven improvement loop CLI surface
+import { handleImprovementReviewCommand } from './cli/improvement-review-command.js';
 // Issue #637: Release Automation Suite
 import {
   handleReleaseNotesCommand,
@@ -248,6 +250,8 @@ const ASYNC_COMMAND_HANDLERS: Record<string, ((args: ParsedCliArgs) => Promise<v
     auth: handleAuthCommand,
     // Issue #2469: usage command (cost / usage / quality dashboard)
     usage: handleUsageCommand,
+    // Issue #2444: improvement-review command (observability-driven improvement loop)
+    'improvement-review': handleImprovementReviewCommand,
     // #2305 / #2308 / #2311: Init Portable Command (async because --install spawns npm)
     init: handleInitCommand,
     demo: handleDemoCommand, // Made async for live CLI execution
