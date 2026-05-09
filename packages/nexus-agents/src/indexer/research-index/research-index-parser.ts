@@ -41,16 +41,31 @@ import {
 
 /**
  * Read and parse a YAML file.
+ *
+ * #2470: when `defaultIfMissing` is provided and the file doesn't exist, the
+ * caller gets that default back instead of an error. This lets the research-
+ * index commands operate cleanly on a fresh install / sandboxed clone where
+ * the registries haven't been populated yet, without the indexer needing to
+ * import the cli-layer scaffolder (which would create a layering cycle).
+ * The cli/research-helpers-io.ts path still scaffolds files on disk; this
+ * one just doesn't fail loudly when nothing's there.
  */
 function readYamlFile<T>(
   filePath: string,
-  schema: { safeParse: (data: unknown) => { success: boolean; data?: T; error?: unknown } }
+  schema: { safeParse: (data: unknown) => { success: boolean; data?: T; error?: unknown } },
+  defaultIfMissing?: T
 ): Result<T, ResearchIndexParseError> {
   try {
     if (!fs.existsSync(filePath)) {
+      if (defaultIfMissing !== undefined) {
+        return { ok: true, value: defaultIfMissing };
+      }
       return {
         ok: false,
-        error: new ResearchIndexParseError(`File not found: ${filePath}`, filePath),
+        error: new ResearchIndexParseError(
+          `File not found: ${filePath}. Run 'nexus-agents research add ...' to create it.`,
+          filePath
+        ),
       };
     }
 
@@ -93,7 +108,11 @@ export function parsePapersRegistry(
   registryPath: string
 ): Result<readonly ResearchPaperWithId[], ResearchIndexParseError> {
   const filePath = path.join(registryPath, 'papers.yaml');
-  const result = readYamlFile(filePath, PapersRegistrySchema);
+  // #2470: graceful empty default when papers.yaml doesn't exist yet.
+  const result = readYamlFile(filePath, PapersRegistrySchema, {
+    schema_version: '1.0',
+    papers: {},
+  });
 
   if (!result.ok) {
     return result;
@@ -118,7 +137,11 @@ export function parseTechniquesRegistry(
   registryPath: string
 ): Result<readonly ResearchTechniqueWithId[], ResearchIndexParseError> {
   const filePath = path.join(registryPath, 'techniques.yaml');
-  const result = readYamlFile(filePath, TechniquesRegistrySchema);
+  // #2470: graceful empty default when techniques.yaml doesn't exist yet.
+  const result = readYamlFile(filePath, TechniquesRegistrySchema, {
+    schema_version: '1.0',
+    techniques: {},
+  });
 
   if (!result.ok) {
     return result;
@@ -145,7 +168,11 @@ export function parseSourcesRegistry(
   registryPath: string
 ): Result<readonly ResearchSourceWithId[], ResearchIndexParseError> {
   const filePath = path.join(registryPath, 'sources.yaml');
-  const result = readYamlFile(filePath, SourcesRegistrySchema);
+  // #2470: graceful empty default when sources.yaml doesn't exist yet.
+  const result = readYamlFile(filePath, SourcesRegistrySchema, {
+    schema_version: '1.0',
+    sources: {},
+  });
 
   if (!result.ok) {
     return result;

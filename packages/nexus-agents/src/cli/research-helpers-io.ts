@@ -17,6 +17,7 @@ import type { Result } from '../core/index.js';
 import { SecurityError, getErrorMessage } from '../core/index.js';
 import { ParseError } from '../core/types/workflow.js';
 import type { TechniquesRegistry, PapersRegistry } from './research-types.js';
+import { ensureRegistryFile } from './research-scaffold.js';
 
 // =============================================================================
 // CONSTANTS
@@ -90,6 +91,11 @@ export async function loadTechniquesRegistry(
     return pathValidation;
   }
 
+  // #2470: scaffold an empty techniques.yaml on first run so research_*
+  // workflows don't error on a fresh install. No-op when file exists.
+  const ensured = await ensureRegistryFile(root, TECHNIQUES_FILE);
+  if (!ensured.ok) return { ok: false, error: ensured.error };
+
   try {
     const content = await fs.readFile(pathValidation.value, 'utf-8');
     return { ok: true, value: parseYaml(content) as TechniquesRegistry };
@@ -116,6 +122,11 @@ export async function loadPapersRegistry(
   if (!pathValidation.ok) {
     return pathValidation;
   }
+
+  // #2470: scaffold an empty papers.yaml on first run so research_*
+  // workflows don't error on a fresh install. No-op when file exists.
+  const ensured = await ensureRegistryFile(root, PAPERS_FILE);
+  if (!ensured.ok) return { ok: false, error: ensured.error };
 
   try {
     const content = await fs.readFile(pathValidation.value, 'utf-8');
