@@ -112,6 +112,14 @@ function createMockDoctorResult(overrides: Partial<DoctorResult> = {}): DoctorRe
       rootPath: '/home/test/.nexus-agents',
       subdirectories: [],
     },
+    sandbox: {
+      active: false,
+      flavor: undefined,
+      root: undefined,
+      heuristicMatch: 'unknown' as const,
+      mismatch: false,
+      dataDirInsideRepo: false,
+    },
     allHealthy: true,
     timestamp: new Date(),
     ...overrides,
@@ -1059,6 +1067,67 @@ describe('Doctor Command', () => {
       const exitCode = await doctorCommand();
 
       expect(exitCode).toBe(1);
+    });
+  });
+
+  // #2501: sandbox-awareness derivations (dataDirInsideRepo + mismatch)
+  describe('checkSandbox()', () => {
+    let originalSandbox: string | undefined;
+    let originalRoot: string | undefined;
+    let originalDataDir: string | undefined;
+
+    beforeEach(() => {
+      originalSandbox = process.env['NEXUS_SANDBOX'];
+      originalRoot = process.env['NEXUS_SANDBOX_ROOT'];
+      originalDataDir = process.env['NEXUS_DATA_DIR'];
+      delete process.env['NEXUS_SANDBOX'];
+      delete process.env['NEXUS_SANDBOX_ROOT'];
+      delete process.env['NEXUS_DATA_DIR'];
+    });
+
+    afterEach(() => {
+      if (originalSandbox === undefined) delete process.env['NEXUS_SANDBOX'];
+      else process.env['NEXUS_SANDBOX'] = originalSandbox;
+      if (originalRoot === undefined) delete process.env['NEXUS_SANDBOX_ROOT'];
+      else process.env['NEXUS_SANDBOX_ROOT'] = originalRoot;
+      if (originalDataDir === undefined) delete process.env['NEXUS_DATA_DIR'];
+      else process.env['NEXUS_DATA_DIR'] = originalDataDir;
+    });
+
+    it('returns inactive defaults when NEXUS_SANDBOX is unset', async () => {
+      const { checkSandbox } = await import('./doctor.js');
+      const result = checkSandbox();
+      expect(result.active).toBe(false);
+      expect(result.flavor).toBeUndefined();
+      expect(result.dataDirInsideRepo).toBe(false);
+    });
+
+    it('detects dataDirInsideRepo when NEXUS_DATA_DIR is inside a single repo subfolder', async () => {
+      process.env['NEXUS_SANDBOX'] = 'docker-opencode';
+      process.env['NEXUS_SANDBOX_ROOT'] = '/projects';
+      process.env['NEXUS_DATA_DIR'] = '/projects/repo1/.nexus-agents';
+      const { checkSandbox } = await import('./doctor.js');
+      const result = checkSandbox();
+      expect(result.active).toBe(true);
+      expect(result.dataDirInsideRepo).toBe(true);
+    });
+
+    it('does NOT flag dataDirInsideRepo when NEXUS_DATA_DIR is at the multi-repo root', async () => {
+      process.env['NEXUS_SANDBOX'] = 'docker-opencode';
+      process.env['NEXUS_SANDBOX_ROOT'] = '/projects';
+      process.env['NEXUS_DATA_DIR'] = '/projects/.nexus-agents';
+      const { checkSandbox } = await import('./doctor.js');
+      const result = checkSandbox();
+      expect(result.dataDirInsideRepo).toBe(false);
+    });
+
+    it('does NOT flag dataDirInsideRepo when NEXUS_DATA_DIR is outside the sandbox root entirely', async () => {
+      process.env['NEXUS_SANDBOX'] = 'docker-opencode';
+      process.env['NEXUS_SANDBOX_ROOT'] = '/projects';
+      process.env['NEXUS_DATA_DIR'] = '/var/nexus-state';
+      const { checkSandbox } = await import('./doctor.js');
+      const result = checkSandbox();
+      expect(result.dataDirInsideRepo).toBe(false);
     });
   });
 });

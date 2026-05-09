@@ -9,16 +9,26 @@ import { getNexusDataDir, nexusDataPath, resetNexusDataDirCache } from './nexus-
 
 describe('getNexusDataDir', () => {
   let originalEnv: string | undefined;
+  let originalSandbox: string | undefined;
+  let originalSandboxRoot: string | undefined;
 
   beforeEach(() => {
     originalEnv = process.env['NEXUS_DATA_DIR'];
+    originalSandbox = process.env['NEXUS_SANDBOX'];
+    originalSandboxRoot = process.env['NEXUS_SANDBOX_ROOT'];
     delete process.env['NEXUS_DATA_DIR'];
+    delete process.env['NEXUS_SANDBOX'];
+    delete process.env['NEXUS_SANDBOX_ROOT'];
     resetNexusDataDirCache();
   });
 
   afterEach(() => {
     if (originalEnv === undefined) delete process.env['NEXUS_DATA_DIR'];
     else process.env['NEXUS_DATA_DIR'] = originalEnv;
+    if (originalSandbox === undefined) delete process.env['NEXUS_SANDBOX'];
+    else process.env['NEXUS_SANDBOX'] = originalSandbox;
+    if (originalSandboxRoot === undefined) delete process.env['NEXUS_SANDBOX_ROOT'];
+    else process.env['NEXUS_SANDBOX_ROOT'] = originalSandboxRoot;
     resetNexusDataDirCache();
   });
 
@@ -64,6 +74,32 @@ describe('getNexusDataDir', () => {
   it('handles paths with trailing whitespace by trimming', () => {
     process.env['NEXUS_DATA_DIR'] = '  /trimmed  ';
     expect(getNexusDataDir()).toBe('/trimmed');
+  });
+
+  // #2501: sandbox-aware default
+  describe('sandbox-aware default', () => {
+    it('uses NEXUS_SANDBOX_ROOT/.nexus-agents when NEXUS_SANDBOX is set + root provided', () => {
+      process.env['NEXUS_SANDBOX'] = 'docker-opencode';
+      process.env['NEXUS_SANDBOX_ROOT'] = '/projects';
+      expect(getNexusDataDir()).toBe('/projects/.nexus-agents');
+    });
+
+    it('falls back to /.nexus-agents when sandbox active but root unset', () => {
+      process.env['NEXUS_SANDBOX'] = 'docker-opencode';
+      expect(getNexusDataDir()).toBe('/.nexus-agents');
+    });
+
+    it('NEXUS_DATA_DIR overrides the sandbox default (env-var precedence)', () => {
+      process.env['NEXUS_SANDBOX'] = 'docker-opencode';
+      process.env['NEXUS_SANDBOX_ROOT'] = '/projects';
+      process.env['NEXUS_DATA_DIR'] = '/custom/state';
+      expect(getNexusDataDir()).toBe('/custom/state');
+    });
+
+    it('homedir fallback survives when sandbox is inactive', () => {
+      // No NEXUS_SANDBOX, no NEXUS_DATA_DIR — should use homedir.
+      expect(getNexusDataDir()).toBe(join(homedir(), '.nexus-agents'));
+    });
   });
 });
 

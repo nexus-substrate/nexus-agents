@@ -301,6 +301,50 @@ function printDataDirectory(check: DataDirectoryCheck): void {
   }
 }
 
+function printSandboxHeader(check: DoctorResult['sandbox']): void {
+  if (check.active) {
+    writeLine(`${formatStatus(true)} Sandbox flavor: ${check.flavor ?? '(unknown)'}`);
+    writeLine(`  ${colors.dim}NEXUS_SANDBOX_ROOT: ${check.root ?? '(unset)'}${colors.reset}`);
+    return;
+  }
+  writeLine(
+    `${formatStatus(false, true)} Container detected (${check.heuristicMatch ?? 'unknown'}) but ${colors.yellow}NEXUS_SANDBOX is unset${colors.reset}`
+  );
+  writeLine(
+    `  ${colors.dim}Set NEXUS_SANDBOX=<flavor> in the image to opt into sandbox-aware behaviour.${colors.reset}`
+  );
+}
+
+function printSandboxWarnings(check: DoctorResult['sandbox']): void {
+  if (check.mismatch && check.active) {
+    writeLine(
+      `  ${colors.yellow}Mismatch: NEXUS_SANDBOX is set but no container heuristic matched (heuristic=${String(check.heuristicMatch)}).${colors.reset}`
+    );
+  }
+  if (check.dataDirInsideRepo) {
+    writeLine(
+      `  ${colors.yellow}NEXUS_DATA_DIR resolves inside a single repo subfolder of NEXUS_SANDBOX_ROOT — state will be lost when switching repos. Set NEXUS_DATA_DIR at the multi-repo root.${colors.reset}`
+    );
+  }
+}
+
+/**
+ * Prints the sandbox-awareness section (#2501). Section is suppressed when
+ * neither the explicit signal nor the heuristic indicates a sandbox.
+ */
+function printSandbox(check: DoctorResult['sandbox']): void {
+  const heuristicSaysContainer =
+    check.heuristicMatch === 'docker' || check.heuristicMatch === 'podman';
+  if (!check.active && !heuristicSaysContainer) {
+    return;
+  }
+  writeLine(`${colors.cyan}Checking sandbox awareness...${colors.reset}`);
+  writeLine('');
+  printSandboxHeader(check);
+  printSandboxWarnings(check);
+  writeLine('');
+}
+
 /** Prints the summary line with issue count. */
 function printDoctorSummary(result: DoctorResult): void {
   const unhealthyCount = result.clis.filter((c) => !c.installed || !c.authenticated).length;
@@ -365,6 +409,8 @@ export function printDoctorResults(result: DoctorResult): void {
   printSqliteCheck(result.sqliteCheck);
   printDataDirectory(result.dataDirectory);
   writeLine('');
+
+  printSandbox(result.sandbox);
 
   printDoctorSummary(result);
 }

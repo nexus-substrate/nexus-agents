@@ -163,6 +163,14 @@ describe('doctor-formatting', () => {
       rootPath: '/home/test/.nexus-agents',
       subdirectories: [],
     },
+    sandbox: {
+      active: false,
+      flavor: undefined,
+      root: undefined,
+      heuristicMatch: 'unknown' as const,
+      mismatch: false,
+      dataDirInsideRepo: false,
+    },
     timestamp: new Date('2024-01-01T00:00:00Z'),
   });
 
