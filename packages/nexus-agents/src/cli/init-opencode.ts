@@ -27,6 +27,8 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 import { createLogger } from '../core/index.js';
+import { readOpencodeGateway } from '../config/opencode-bridge.js';
+import { discoverModels } from '../adapters/openai-compat-adapter.js';
 
 const logger = createLogger({ component: 'init-opencode' });
 
@@ -204,4 +206,55 @@ export function ensureOpencodeDirExists(path: string): void {
     );
   }
   logger.debug('opencode.json target directory exists', { dir });
+}
+
+/**
+ * --validate flow for `init --opencode` (follow-up to #2504).
+ *
+ * After the merge step writes the file, optionally probe the gateway it
+ * points at. Reuses the same opencode-bridge loader (#2503) that the
+ * runtime uses, so what we validate is exactly what the server will see
+ * at boot.
+ *
+ * Returns:
+ *   - `{ ok: true, models }` when the gateway is reachable and returns ≥1 model
+ *   - `{ ok: false, reason }` for every failure path (config missing,
+ *     probe failed, zero models)
+ *
+ * Caller (cli-commands-handlers) maps to exit codes + stderr / stdout.
+ * The API key never reaches the returned object — only model IDs +
+ * baseURL appear in the success payload.
+ */
+export interface OpencodeValidateResult {
+  readonly ok: boolean;
+  readonly baseURL?: string;
+  readonly models?: readonly string[];
+  readonly reason?: string;
+}
+
+export async function runOpencodeValidate(opencodePath: string): Promise<OpencodeValidateResult> {
+  const config = readOpencodeGateway(opencodePath);
+  if (config === null) {
+    return {
+      ok: false,
+      reason:
+        'opencode.json does not resolve a usable gateway. Check that providers.openai-compat.options.{baseURL, apiKey} are set and that any {env:VAR} interpolation references are exported.',
+    };
+  }
+  const result = await discoverModels({ baseUrl: config.baseURL, apiKey: config.apiKey });
+  if (!result.ok) {
+    return { ok: false, baseURL: config.baseURL, reason: result.error.message };
+  }
+  if (result.value.length === 0) {
+    return {
+      ok: false,
+      baseURL: config.baseURL,
+      reason: 'gateway returned 0 models. Check upstream provider quotas / list filters.',
+    };
+  }
+  return {
+    ok: true,
+    baseURL: config.baseURL,
+    models: result.value.map((m) => m.id),
+  };
 }

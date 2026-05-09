@@ -20,7 +20,19 @@ vi.mock('node:fs', () => ({
   writeFileSync: mockWriteFileSync,
 }));
 
-import { runInitOpencode, buildNexusMcpBlock } from './init-opencode.js';
+const { mockReadOpencodeGateway, mockDiscoverModels } = vi.hoisted(() => ({
+  mockReadOpencodeGateway: vi.fn<(p: string) => unknown>(),
+  mockDiscoverModels: vi.fn<(c: unknown) => Promise<unknown>>(),
+}));
+vi.mock('../config/opencode-bridge.js', () => ({
+  readOpencodeGateway: mockReadOpencodeGateway,
+}));
+vi.mock('../adapters/openai-compat-adapter.js', () => ({
+  discoverModels: mockDiscoverModels,
+}));
+
+import { runInitOpencode, buildNexusMcpBlock, runOpencodeValidate } from './init-opencode.js';
+import { ok, err, ConfigError } from '../core/index.js';
 
 describe('buildNexusMcpBlock', () => {
   it('produces the canonical block with passthrough env vars', () => {
@@ -196,5 +208,70 @@ describe('runInitOpencode', () => {
         cliPath: '/opt/cli.js',
       })
     ).toThrow();
+  });
+});
+
+describe('runOpencodeValidate', () => {
+  beforeEach(() => {
+    mockReadOpencodeGateway.mockReset();
+    mockDiscoverModels.mockReset();
+  });
+
+  it('returns ok when gateway resolves and models are discovered', async () => {
+    mockReadOpencodeGateway.mockReturnValue({
+      baseURL: 'https://gateway.example/v1',
+      apiKey: 'sk-test',
+    });
+    mockDiscoverModels.mockResolvedValue(ok([{ id: 'm1' }, { id: 'm2' }]));
+
+    const result = await runOpencodeValidate('/projects/opencode.json');
+    expect(result.ok).toBe(true);
+    expect(result.baseURL).toBe('https://gateway.example/v1');
+    expect(result.models).toEqual(['m1', 'm2']);
+  });
+
+  it('returns failure when bridge cannot resolve config', async () => {
+    mockReadOpencodeGateway.mockReturnValue(null);
+    const result = await runOpencodeValidate('/projects/opencode.json');
+    expect(result.ok).toBe(false);
+    expect(result.reason).toContain('does not resolve a usable gateway');
+    expect(mockDiscoverModels).not.toHaveBeenCalled();
+  });
+
+  it('returns failure when probe fails', async () => {
+    mockReadOpencodeGateway.mockReturnValue({
+      baseURL: 'https://gateway.example/v1',
+      apiKey: 'sk-test',
+    });
+    mockDiscoverModels.mockResolvedValue(err(new ConfigError('ECONNREFUSED')));
+
+    const result = await runOpencodeValidate('/projects/opencode.json');
+    expect(result.ok).toBe(false);
+    expect(result.reason).toContain('ECONNREFUSED');
+    expect(result.baseURL).toBe('https://gateway.example/v1');
+  });
+
+  it('returns failure when gateway returns 0 models', async () => {
+    mockReadOpencodeGateway.mockReturnValue({
+      baseURL: 'https://gateway.example/v1',
+      apiKey: 'sk-test',
+    });
+    mockDiscoverModels.mockResolvedValue(ok([]));
+
+    const result = await runOpencodeValidate('/projects/opencode.json');
+    expect(result.ok).toBe(false);
+    expect(result.reason).toContain('0 models');
+  });
+
+  it('does not include the API key in the result payload', async () => {
+    mockReadOpencodeGateway.mockReturnValue({
+      baseURL: 'https://gateway.example/v1',
+      apiKey: 'sk-secret-do-not-leak',
+    });
+    mockDiscoverModels.mockResolvedValue(ok([{ id: 'm1' }]));
+
+    const result = await runOpencodeValidate('/projects/opencode.json');
+    const flat = JSON.stringify(result);
+    expect(flat).not.toContain('sk-secret-do-not-leak');
   });
 });
