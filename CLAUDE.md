@@ -481,6 +481,10 @@ Governance rules (voting thresholds, refactor gates, fitness audit, documentatio
 
 **Key numbers:** Fitness target ≥ 90/100. Supermajority for architecture/security. Unanimous for breaking API changes.
 
+## Documentation Quality
+
+The 100-point rubric for technical docs (RFCs, ADRs, architecture docs, blog-style technical posts) is in `.rules/docs-rubric.md` — five categories (Argument Strength, Source/Evidence, Content Quality, Structure, Audience Fit), each dimension tagged `[M]`echanical or `[J]`udgment. Defers to the existing user-level skills (`blog-pre-publish`, `blog-argument-shape`, `blog-llm-tells`, `blog-factcheck`, `blog-overlap`) for prose dimensions; adds technical-doc-specific checks (heading hierarchy, code-block validity, cross-doc consistency, spec/RFC alignment).
+
 ---
 
 ## File References
