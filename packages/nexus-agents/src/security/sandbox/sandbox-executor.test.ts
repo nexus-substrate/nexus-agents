@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-deprecated -- Tests for the
+ * deprecated PolicySandboxExecutor / createSandboxExecutor (#2499). */
 /**
  * Tests for sandbox-executor.ts
  *

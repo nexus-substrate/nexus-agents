@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-deprecated -- Tests for the deprecated sandbox executor surface (#2499). */
 /**
  * Tests for Docker Sandbox Executor and Factory.
  *

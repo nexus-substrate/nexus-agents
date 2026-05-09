@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-deprecated -- Tests for the
+ * deprecated DockerSandboxExecutor (#2499). */
 /**
  * Tests for docker-sandbox-executor.ts
  *

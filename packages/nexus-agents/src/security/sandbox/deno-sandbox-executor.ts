@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-deprecated -- Self-references inside
+ * the deprecated DenoSandboxExecutor class body are unavoidable (#2499). */
 /**
  * nexus-agents/security/sandbox - Deno Sandbox Executor
  *
@@ -98,6 +100,14 @@ function createDenoUnavailableResult(): {
  * not granted by the policy are denied at the process boundary by Deno
  * itself — there is no need for a wrapper script in v1 because we use
  * `--allow-run=<cmd>` and Deno-spawn the target as a subprocess.
+ *
+ * @deprecated [#2499] Unused in production — only `validateCommand` /
+ * `validateArgs` from `cli/sandbox-exec.ts` consume the sandbox layer.
+ * Slated for removal one minor release after the deprecation lands;
+ * see [#2499](https://github.com/williamzujkowski/nexus-agents/issues/2499)
+ * for migration. The product direction (epic [#2500]) is "compatible
+ * with running inside a host-provided sandbox" — not "ship our own
+ * sandbox runtime."
  */
 export class DenoSandboxExecutor implements ISandboxExecutor {
   readonly name = 'DenoSandboxExecutor';

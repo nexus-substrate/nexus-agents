@@ -1,3 +1,6 @@
+/* eslint-disable @typescript-eslint/no-deprecated -- Tests for the
+ * deprecated DenoSandboxExecutor (#2499). Tests stay until the executor
+ * itself is deleted in the follow-up. */
 /**
  * Tests for DenoSandboxExecutor (#1898).
  *

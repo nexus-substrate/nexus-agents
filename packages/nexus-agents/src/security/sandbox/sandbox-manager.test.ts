@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-deprecated -- Tests reference the
+ * deprecated getSandboxExecutor / getSandboxExecutorOrNull (#2499). */
 /**
  * Tests for sandbox-manager.ts
  *

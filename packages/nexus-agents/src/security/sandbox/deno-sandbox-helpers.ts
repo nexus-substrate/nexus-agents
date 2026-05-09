@@ -71,6 +71,9 @@ export function resetDenoCache(): void {
  * Capabilities NOT in the policy produce no flag — Deno defaults to deny.
  *
  * Returns an array of CLI args ready to be passed to `deno run`.
+ *
+ * @deprecated [#2499] Helper for the deprecated `DenoSandboxExecutor`.
+ * Slated for removal alongside the executor.
  */
 export function policyToDenoFlags(policy: SandboxPolicy): string[] {
   const caps = new Set(policy.capabilities);
@@ -134,6 +137,9 @@ function buildAllowEnvFlag(caps: ReadonlySet<string>, policy: SandboxPolicy): st
  * Operators reading `SandboxResult.policyEvaluation.configurationWarnings`
  * see "I asked for X capability but my config didn't enable it" without
  * having to scrape logs.
+ *
+ * @deprecated [#2499] Helper for the deprecated `DenoSandboxExecutor`.
+ * Slated for removal alongside the executor.
  */
 export function collectPolicyConfigurationWarnings(policy: SandboxPolicy): readonly string[] {
   const caps = new Set(policy.capabilities);
