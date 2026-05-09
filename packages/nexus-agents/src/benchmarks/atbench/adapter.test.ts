@@ -5,12 +5,24 @@
  * evaluate (confusion), isPass, summarize (precision/recall/F1).
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ATBenchAdapter, classifyConfusion, scoreTrajectoryStub } from './index.js';
 import type { ATBenchTrajectory } from './types.js';
+
+// #2482: mock the dataset-loader so the HF-fallback test doesn't depend on
+// real network. The previous test relied on the assumption that the HF API
+// is unreachable from the test runner — locally that holds, but in CI the
+// call sometimes succeeded (no rejection) or failed with a message that
+// didn't match the regex, producing a flaky failure that hit four
+// unrelated PRs in one autonomous session before being fixed.
+vi.mock('./dataset-loader.js', () => ({
+  fetchAtbenchFromHf: vi.fn(() =>
+    Promise.resolve({ ok: false, error: new Error('mocked: HF load failed (network unavailable)') })
+  ),
+}));
 
 function makeTrajectory(overrides: Partial<ATBenchTrajectory> = {}): ATBenchTrajectory {
   return {
