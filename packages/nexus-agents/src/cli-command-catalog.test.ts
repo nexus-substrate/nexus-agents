@@ -141,12 +141,16 @@ describe('cli-command-catalog (#2135)', () => {
       expect(commandsBlock).not.toMatch(/^ {4}fitness-audit\b/m);
     });
 
-    it('preserves surrounding USAGE / OPTIONS / SETUP sections in default mode', () => {
+    it('preserves USAGE / OPTIONS / EXAMPLES sections in default mode', () => {
+      // #2446: per-subcommand option blocks (SETUP OPTIONS:, VOTE OPTIONS:, …)
+      // were removed from the static help text — they're surfaced via
+      // `nexus-agents <command> --help` instead. The default --help now
+      // points at that hint instead of inlining the option lists.
       const tiered = renderHelp({ all: false });
       expect(tiered).toContain('USAGE:');
       expect(tiered).toContain('OPTIONS:');
-      expect(tiered).toContain('SETUP OPTIONS:');
       expect(tiered).toContain('EXAMPLES:');
+      expect(tiered).toContain('nexus-agents <command> --help');
     });
 
     it('keeps the full view showing all commands when all=true', () => {
