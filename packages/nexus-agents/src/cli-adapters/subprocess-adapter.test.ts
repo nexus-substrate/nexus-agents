@@ -837,6 +837,67 @@ describe('SubprocessCliAdapter', () => {
         expect(result.value.sessionId).toBe('session-123');
       }
     });
+
+    // #2455 ask 2: integration test that envelope unwrap wins over plaintext
+    // fallback. The 30-char plaintext threshold could otherwise catch error
+    // envelopes whose `result` happens to be short (e.g. "Not logged in"
+    // is 13 chars, so the wrapping JSON is well over 30 chars and the
+    // plaintext fallback would happily return the raw envelope as
+    // "response text" if envelope unwrap weren't checked first.
+    it('envelope unwrap wins over plaintext fallback (#2455 ask 2)', async () => {
+      // Use a parser that always fails so we hit handleUnparseableOutput.
+      class FailingParserAdapter extends TestSubprocessAdapter {
+        protected override readonly parser: ICliResponseParser = {
+          name: 'failing-parser',
+          supportedVersionRange: '>=1.0.0',
+          parse: () => {
+            throw new Error('parse failed');
+          },
+          extractResponse: () => null,
+          extractUsage: () => null,
+          extractSessionId: () => null,
+        };
+      }
+      const failingAdapter = new FailingParserAdapter();
+      failingAdapter.setCommandConfig({ command: 'test', args: [] });
+
+      const task: CliTask = { content: 'test' };
+      const options: Required<ExecutionOptions> = {
+        timeoutMs: 5000,
+        allowRetry: true,
+        maxRetries: 1,
+        trackUsage: true,
+        onProgress: undefined,
+      };
+
+      const { mockChild, stdout } = createMockChildProcess();
+      mockSpawn.mockReturnValue(mockChild);
+
+      const promise = failingAdapter.executeTask(task, options);
+
+      // A Claude error envelope. Both the envelope path AND the plaintext
+      // fallback would accept this: the envelope-shaped JSON is well over
+      // 30 chars so plaintext fallback's heuristic would treat it as a valid
+      // text response and silently swallow the auth failure. The envelope
+      // path runs first and must win.
+      const envelope = JSON.stringify({
+        type: 'result',
+        is_error: true,
+        result: 'Not logged in',
+      });
+      setImmediate(() => {
+        stdout.emit('data', Buffer.from(`${envelope}\n`));
+        mockChild.emit('close', 0);
+      });
+
+      const result = await promise;
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe('NOT_AUTHENTICATED');
+        expect(result.error.message).toContain('Not logged in');
+        expect(result.error.message).toContain('claude /login');
+      }
+    });
   });
 
   describe('handleSubprocessError()', () => {

@@ -82,6 +82,15 @@ const NOT_AUTH_PATTERNS: readonly RegExp[] = [
   /authentication (?:required|expired|failed)/i,
   /invalid (?:api ?key|credentials)/i,
   /unauthorized/i,
+  // #2455 ask 1: catch "API key expired" / "API key revoked" / "API key
+  // missing" — the bare /invalid api key/ pattern misses these. Architects
+  // explicitly ruled OUT `permission denied` (that's authz, not authn —
+  // routing to /login is the wrong fix).
+  /api[- ]?key (?:expired|revoked|missing)/i,
+  // Token expiry/revocation as a standalone signal, not co-occurring with
+  // "unauthorized" — some upstreams emit "Token expired. Please re-auth."
+  // without the unauthorized keyword.
+  /token (?:expired|revoked)/i,
 ];
 
 function classifyMessage(message: string): { code: CliErrorCode; auth: boolean } {

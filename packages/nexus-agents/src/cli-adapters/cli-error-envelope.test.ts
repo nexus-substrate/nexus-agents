@@ -123,4 +123,72 @@ describe('parseCliErrorEnvelope (#2440)', () => {
     const result = parseCliErrorEnvelope(env, 'claude');
     expect(result?.code).toBe('NOT_AUTHENTICATED');
   });
+
+  // #2455 ask 1: widened auth regex set
+  describe('widened NOT_AUTHENTICATED patterns (#2455)', () => {
+    it('matches "API key expired"', () => {
+      const env = JSON.stringify({
+        type: 'result',
+        is_error: true,
+        result: 'API key expired. Generate a new one in the console.',
+      });
+      const result = parseCliErrorEnvelope(env, 'claude');
+      expect(result?.code).toBe('NOT_AUTHENTICATED');
+      expect(result?.hint).toContain('claude /login');
+    });
+
+    it('matches "API key revoked"', () => {
+      const env = JSON.stringify({
+        type: 'result',
+        is_error: true,
+        result: 'API key revoked',
+      });
+      const result = parseCliErrorEnvelope(env, 'codex');
+      expect(result?.code).toBe('NOT_AUTHENTICATED');
+      expect(result?.hint).toContain('codex login');
+    });
+
+    it('matches "API key missing"', () => {
+      const env = JSON.stringify({ error: 'API key missing — set ANTHROPIC_API_KEY' });
+      const result = parseCliErrorEnvelope(env, 'claude');
+      expect(result?.code).toBe('NOT_AUTHENTICATED');
+    });
+
+    it('matches "api-key expired" (hyphenated form)', () => {
+      const env = JSON.stringify({
+        type: 'result',
+        is_error: true,
+        result: 'api-key expired, please re-authenticate',
+      });
+      const result = parseCliErrorEnvelope(env, 'claude');
+      expect(result?.code).toBe('NOT_AUTHENTICATED');
+    });
+
+    it('matches "Token expired" without "unauthorized" keyword', () => {
+      const env = JSON.stringify({
+        type: 'result',
+        is_error: true,
+        result: 'Token expired. Please re-authenticate.',
+      });
+      const result = parseCliErrorEnvelope(env, 'claude');
+      expect(result?.code).toBe('NOT_AUTHENTICATED');
+    });
+
+    it('matches "token revoked"', () => {
+      const env = JSON.stringify({ error: 'token revoked by issuer' });
+      const result = parseCliErrorEnvelope(env, 'codex');
+      expect(result?.code).toBe('NOT_AUTHENTICATED');
+    });
+
+    it('does NOT match "permission denied" (authz, not authn — see #2455 ask 1)', () => {
+      const env = JSON.stringify({
+        type: 'result',
+        is_error: true,
+        result: 'Permission denied: workspace requires admin access',
+      });
+      const result = parseCliErrorEnvelope(env, 'claude');
+      expect(result?.code).toBe('EXECUTION_ERROR');
+      expect(result?.hint).toBeUndefined();
+    });
+  });
 });
