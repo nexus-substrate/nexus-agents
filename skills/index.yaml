@@ -157,6 +157,23 @@ skills:
       - show how x works
       - draw the flow
       - the user wants to "diagram this"
+  - name: docs-review
+    description: |-
+      Score a technical doc (RFC, ADR, README, CLAUDE.md, blog-style post)
+      against the 5-category 100-point rubric in .rules/docs-rubric.md.
+      Read-only audit. Surfaces top issues by severity. Defers to existing
+      user-level skills (blog-llm-tells, blog-factcheck, blog-overlap,
+      blog-argument-shape, blog-pre-publish) for prose-quality dimensions
+      rather than re-deriving them. Use when the user says "review docs",
+      "audit docs", "score this doc", "doc quality", "docs review".
+    path: skills/docs-review/SKILL.md
+    triggers:
+      - review docs
+      - audit docs
+      - score this doc
+      - doc quality
+      - docs review
+      - the user says "review docs"
   - name: documentation-management
     description: |-
       Operating manual for documentation work in nexus-agents.
