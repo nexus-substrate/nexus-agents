@@ -39,8 +39,15 @@ import type {
 
 const TEST_REGISTRY_PATH = 'docs/research/registry';
 
-// Check if real registry exists for integration tests
-const hasRealRegistry = fs.existsSync(path.join(process.cwd(), TEST_REGISTRY_PATH, 'papers.yaml'));
+// Check if real registry exists for integration tests. Inspects content
+// rather than just `existsSync` — #2470 auto-scaffolding can create an
+// empty papers.yaml that would falsely satisfy a presence check, which
+// would then make the real-registry-content assertions below fail.
+const hasRealRegistry = (() => {
+  const papersPath = path.join(process.cwd(), TEST_REGISTRY_PATH, 'papers.yaml');
+  if (!fs.existsSync(papersPath)) return false;
+  return fs.readFileSync(papersPath, 'utf-8').includes('arxiv-');
+})();
 
 // Mock data for unit tests
 const mockPaper: ResearchPaperWithId = {

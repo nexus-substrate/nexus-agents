@@ -23,6 +23,8 @@ describe('ensureRegistryFile (#2470)', () => {
 
   beforeEach(() => {
     tmp = mkdtempSync(join(tmpdir(), 'nexus-scaffold-test-'));
+    // Scaffold only fires when <rootDir>/docs/ already exists; create it.
+    fs.mkdirSync(join(tmp, 'docs'), { recursive: true });
     stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     _resetAnnouncedForTests();
     delete process.env['NEXUS_NO_SCAFFOLD'];
@@ -111,6 +113,22 @@ describe('ensureRegistryFile (#2470)', () => {
     const result = await ensureRegistryFile(tmp, PAPERS_FILE);
     expect(result.ok).toBe(false);
   });
+
+  it('refuses to scaffold when <rootDir>/docs/ does not exist', async () => {
+    // Make a fresh tmp without the docs/ marker.
+    const noDocsTmp = mkdtempSync(join(tmpdir(), 'nexus-no-docs-'));
+    try {
+      const result = await ensureRegistryFile(noDocsTmp, PAPERS_FILE);
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error.message).toContain('docs/ does not exist');
+      expect(result.error.message).toContain("'nexus-agents init'");
+      // No file was written.
+      expect(fs.existsSync(join(noDocsTmp, REGISTRY_PATH, PAPERS_FILE))).toBe(false);
+    } finally {
+      rmSync(noDocsTmp, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('ensureResearchRegistry (#2470)', () => {
@@ -119,6 +137,7 @@ describe('ensureResearchRegistry (#2470)', () => {
 
   beforeEach(() => {
     tmp = mkdtempSync(join(tmpdir(), 'nexus-scaffold-test-'));
+    fs.mkdirSync(join(tmp, 'docs'), { recursive: true });
     stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     _resetAnnouncedForTests();
     delete process.env['NEXUS_NO_SCAFFOLD'];

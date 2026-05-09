@@ -91,10 +91,12 @@ export async function loadTechniquesRegistry(
     return pathValidation;
   }
 
-  // #2470: scaffold an empty techniques.yaml on first run so research_*
+  // #2470: try to scaffold an empty techniques.yaml on first run so research_*
   // workflows don't error on a fresh install. No-op when file exists.
-  const ensured = await ensureRegistryFile(root, TECHNIQUES_FILE);
-  if (!ensured.ok) return { ok: false, error: ensured.error };
+  // When scaffold refuses (e.g. <rootDir>/docs/ doesn't exist, or
+  // NEXUS_NO_SCAFFOLD=1), fall through and let readFile produce the original
+  // ENOENT error — that's the existing contract.
+  await ensureRegistryFile(root, TECHNIQUES_FILE);
 
   try {
     const content = await fs.readFile(pathValidation.value, 'utf-8');
@@ -123,10 +125,10 @@ export async function loadPapersRegistry(
     return pathValidation;
   }
 
-  // #2470: scaffold an empty papers.yaml on first run so research_*
-  // workflows don't error on a fresh install. No-op when file exists.
-  const ensured = await ensureRegistryFile(root, PAPERS_FILE);
-  if (!ensured.ok) return { ok: false, error: ensured.error };
+  // #2470: try to scaffold an empty papers.yaml on first run so research_*
+  // workflows don't error on a fresh install. No-op when file exists; falls
+  // through silently when scaffold refuses (no docs/ root, or NEXUS_NO_SCAFFOLD).
+  await ensureRegistryFile(root, PAPERS_FILE);
 
   try {
     const content = await fs.readFile(pathValidation.value, 'utf-8');

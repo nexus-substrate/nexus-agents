@@ -69,9 +69,15 @@ function emptyTechniquesYaml(): string {
  * Create the registry directory + an empty YAML file if either is missing.
  * Idempotent: existing files are left untouched.
  *
+ * Scaffolds only when `<rootDir>/docs/` already exists. That guard keeps
+ * tests, vitest's package cwd, and random scratch directories from getting
+ * a `docs/research/` subtree implicitly. Operators on a real project root
+ * (which always has `docs/`, either from cloning the repo or running
+ * `nexus-agents init`) still get the auto-create behavior the issue asks for.
+ *
  * Returns the resolved file path on success, or a ParseError when scaffolding
- * is disabled and the file is absent (so the caller can pass the error
- * through unchanged for backwards compat with existing call sites).
+ * is disabled / refused (so the caller can pass the error through unchanged
+ * for backwards compat with existing call sites).
  */
 export async function ensureRegistryFile(
   rootDir: string,
@@ -85,6 +91,19 @@ export async function ensureRegistryFile(
     return err(
       new ParseError(
         `Registry file missing: ${filePath}. Scaffolding disabled (NEXUS_NO_SCAFFOLD=1). Create the file manually or unset the env var.`
+      )
+    );
+  }
+
+  // Refuse to create a docs/ subtree in directories that aren't already
+  // documented project roots. The presence of `<rootDir>/docs/` is the
+  // strong signal we use.
+  if (!existsSync(resolve(rootDir, 'docs'))) {
+    return err(
+      new ParseError(
+        `Registry file missing: ${filePath}. ${rootDir}/docs/ does not exist; ` +
+          `refusing to create a Nexus subtree in a non-documented root. ` +
+          `Run 'nexus-agents init' first, or create ${rootDir}/docs/ manually.`
       )
     );
   }
