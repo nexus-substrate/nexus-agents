@@ -544,11 +544,22 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
         envelope.hint !== undefined
           ? `${envelope.message}\n  → ${envelope.hint}`
           : envelope.message;
+      // #2455 ask 3: at debug level, dump the full sanitized envelope so
+      // operators can recover context without re-running. Sanitized via
+      // output-sanitizer.ts so leaked tokens (some upstreams echo back the
+      // bad token in error responses) don't reach logs.
+      subprocessLogger.debug('CLI error envelope unwrapped', {
+        cli: this.name,
+        code: envelope.code,
+        rawSanitized: sanitizeOutput(stdout),
+      });
       return err(this.createError(envelope.code, msg));
     }
     const plaintext = tryPlaintextFallback(stdout);
     if (plaintext !== null) {
-      subprocessLogger.debug('Using plaintext fallback for unparseable output');
+      subprocessLogger.debug('Using plaintext fallback for unparseable output', {
+        rawSanitized: sanitizeOutput(stdout),
+      });
       return ok(
         this.normalizeResponse(plaintext, undefined, {
           durationMs: getTimeProvider().now() - startTime,
