@@ -108,7 +108,8 @@ RUN cat > /home/nexus/opencode.json <<'OCEOF'
         "NEXUS_SANDBOX": "{env:NEXUS_SANDBOX}",
         "NEXUS_DATA_DIR": "{env:NEXUS_DATA_DIR}",
         "NEXUS_OPENAI_COMPAT_URL": "{env:CUSTOM_API_BASE_URL}",
-        "NEXUS_OPENAI_COMPAT_KEY": "{env:CUSTOM_API_KEY}"
+        "NEXUS_OPENAI_COMPAT_KEY": "{env:CUSTOM_API_KEY}",
+        "NEXUS_OPENCODE_CONFIG": "/home/nexus/opencode.json"
       }
     }
   }
