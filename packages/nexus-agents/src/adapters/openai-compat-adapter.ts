@@ -20,9 +20,16 @@
 
 import OpenAI from 'openai';
 
-import type { Result } from '../core/index.js';
-import { ok, err, ConfigError, getErrorMessage } from '../core/index.js';
+import type {
+  Result,
+  CompletionRequest,
+  CompletionResponse,
+  ModelError,
+  IModelAdapter,
+} from '../core/index.js';
+import { ok, err, ConfigError, getErrorMessage, getTimeProvider } from '../core/index.js';
 import { OpenAIAdapter } from './openai-adapter.js';
+import { recordUsageEvent, computeCostUSD } from '../learning/usage-log.js';
 
 export interface OpenAICompatConfig {
   /** Gateway base URL — must reach `/v1/models` and `/v1/chat/completions`. */
@@ -82,9 +89,13 @@ export async function discoverModels(
 }
 
 /**
- * Create an OpenAIAdapter pointed at the gateway for a specific model ID.
- * Caller is expected to have validated the model ID against the discovery
- * result first; we don't redundantly call /v1/models here per call.
+ * Create an OpenAIAdapter pointed at the gateway for a specific model ID,
+ * wrapped with usage recording so every completion appends a UsageEvent
+ * to the JSONL log consumed by `nexus-agents usage`.
+ *
+ * The wrapper is transparent — same IModelAdapter contract, same fields,
+ * same error handling. Recording is best-effort (telemetry never fails
+ * the user's call).
  *
  * When invoked via MCP, the host harness's model identifier is passed
  * through verbatim — nexus-agents doesn't second-guess what the host is
@@ -93,8 +104,64 @@ export async function discoverModels(
 export function createOpenAICompatAdapter(
   modelId: string,
   config: OpenAICompatConfig
-): OpenAIAdapter {
-  return new OpenAIAdapter({ modelId, apiKey: config.apiKey, baseUrl: config.baseUrl });
+): IModelAdapter {
+  const inner = new OpenAIAdapter({ modelId, apiKey: config.apiKey, baseUrl: config.baseUrl });
+  return withUsageRecording(inner);
+}
+
+/**
+ * Wrap any IModelAdapter so that successful + failed `complete()` calls
+ * append a UsageEvent to the on-disk usage log. Stream calls aren't yet
+ * instrumented (a future PR can add streaming-aware recording).
+ *
+ * The returned object preserves the IModelAdapter contract identically;
+ * downstream code can't tell the difference except that one extra JSONL
+ * line gets written per call.
+ */
+function withUsageRecording(inner: IModelAdapter): IModelAdapter {
+  return {
+    providerId: inner.providerId,
+    modelId: inner.modelId,
+    capabilities: inner.capabilities,
+    countTokens: (text) => inner.countTokens(text),
+    validateConfig: () => inner.validateConfig(),
+    stream: (request) => inner.stream(request),
+    async complete(request: CompletionRequest): Promise<Result<CompletionResponse, ModelError>> {
+      const start = getTimeProvider().now();
+      const result = await inner.complete(request);
+      const latencyMs = getTimeProvider().now() - start;
+      try {
+        if (result.ok) {
+          const u = result.value.usage;
+          recordUsageEvent({
+            timestamp: new Date().toISOString(),
+            modelId: inner.modelId,
+            providerId: inner.providerId,
+            inputTokens: u.inputTokens,
+            outputTokens: u.outputTokens,
+            usdCost: computeCostUSD(inner.modelId, u.inputTokens, u.outputTokens),
+            latencyMs,
+            success: true,
+          });
+        } else {
+          recordUsageEvent({
+            timestamp: new Date().toISOString(),
+            modelId: inner.modelId,
+            providerId: inner.providerId,
+            inputTokens: 0,
+            outputTokens: 0,
+            usdCost: 0,
+            latencyMs,
+            success: false,
+            errorCode: result.error.code,
+          });
+        }
+      } catch {
+        // Telemetry must not break user calls.
+      }
+      return result;
+    },
+  };
 }
 
 /**
@@ -108,7 +175,7 @@ export function createOpenAICompatAdapter(
  * adapter slots.
  */
 export async function buildOpenAICompatAdapters(): Promise<Result<
-  readonly OpenAIAdapter[],
+  readonly IModelAdapter[],
   ConfigError
 > | null> {
   const config = readOpenAICompatEnv();
