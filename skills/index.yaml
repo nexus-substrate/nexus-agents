@@ -111,6 +111,21 @@ skills:
       - multi-agent pipeline
       - run pipeline
       - the user asks to "build a feature"
+  - name: docs-chart
+    description: |-
+      Generate dark-mode-compatible inline SVG charts (bar, donut, line,
+      lollipop, area, radar) for nexus-agents docs from quantitative data —
+      OutcomeStore metrics, fitness scores, CLI success rates, vote pass-rates,
+      weather report data. Use when the user says "chart", "visualize data",
+      "svg chart", "render chart", or asks to compare CLI metrics. Cross-
+      references docs-mermaid (precise diagrams) and docs-image (illustrative).
+    path: skills/docs-chart/SKILL.md
+    triggers:
+      - chart
+      - visualize data
+      - svg chart
+      - render chart
+      - the user says "chart"
   - name: docs-mermaid
     description: |-
       Generate precise diagrams (flowchart, sequence, state, ER, class, gantt,
