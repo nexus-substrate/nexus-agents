@@ -166,6 +166,9 @@ export interface ParsedCliArgs {
     // init --portable --install / --uninstall flags (#2311)
     install?: boolean;
     uninstall?: boolean;
+    // init --opencode <path> flag (#2504)
+    opencode?: string;
+    validate?: boolean;
   };
   positionals: string[];
 }
@@ -458,6 +461,14 @@ export const PARSE_ARGS_CONFIG = {
     },
     'fitness-floor': {
       type: 'string' as const,
+    },
+    // init --opencode <path> flag (#2504)
+    opencode: {
+      type: 'string' as const,
+    },
+    validate: {
+      type: 'boolean' as const,
+      default: false,
     },
   },
   allowPositionals: true,

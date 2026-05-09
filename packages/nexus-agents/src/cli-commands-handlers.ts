@@ -388,13 +388,22 @@ export async function handleDoctorCommand(args: ParsedCliArgs): Promise<void> {
 
 /** Validates init flag combinations; exits if a problem is found. */
 function validateInitFlags(args: ParsedCliArgs): void {
-  if (args.options.portable !== true) {
+  const hasPortable = args.options.portable === true;
+  const hasOpencode = args.options.opencode !== undefined && args.options.opencode !== '';
+  if (!hasPortable && !hasOpencode) {
     process.stderr.write(
       'Usage: nexus-agents init --portable [path] [--force] [--dry-run]\n' +
         '                            [--gitignore] [--mcp-config]\n' +
         '                            [--install | --uninstall]\n' +
-        'Bootstraps a workspace-local nexus-agents data directory.\n'
+        '       nexus-agents init --opencode <path-to-opencode.json>\n' +
+        '                            [--dry-run] [--validate]\n' +
+        'Bootstraps a workspace-local nexus-agents data directory or merges\n' +
+        'the nexus-agents MCP block into an existing opencode.json.\n'
     );
+    process.exit(EXIT_CODES.INVALID_ARGS);
+  }
+  if (hasPortable && hasOpencode) {
+    process.stderr.write('Error: --portable and --opencode are mutually exclusive entry modes.\n');
     process.exit(EXIT_CODES.INVALID_ARGS);
   }
   if (args.options.install === true && args.options.uninstall === true) {
@@ -404,13 +413,18 @@ function validateInitFlags(args: ParsedCliArgs): void {
 }
 
 /**
- * Handles `nexus-agents init --portable` (#2305 / #2308 / #2311).
+ * Handles `nexus-agents init --portable` (#2305 / #2308 / #2311) or
+ * `nexus-agents init --opencode <path>` (#2504).
  *
  * Async because `--install` may spawn `npm install`. When neither
  * `--install` nor `--uninstall` is set, no subprocess is spawned.
  */
 export async function handleInitCommand(args: ParsedCliArgs): Promise<void> {
   validateInitFlags(args);
+  if (args.options.opencode !== undefined && args.options.opencode !== '') {
+    await runInitOpencodeFlow(args);
+    return;
+  }
   const targetPath = args.positionals[1]; // [0] is "init"
   const result = await initPortable({
     ...(targetPath !== undefined && targetPath !== '' ? { path: targetPath } : {}),
@@ -423,6 +437,31 @@ export async function handleInitCommand(args: ParsedCliArgs): Promise<void> {
   });
   process.stdout.write(formatInitPortableMessage(result, args.options.dryRun));
   process.exit(result.success ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
+}
+
+async function runInitOpencodeFlow(args: ParsedCliArgs): Promise<void> {
+  const { runInitOpencode } = await import('./cli/init-opencode.js');
+  const opencodePath = args.options.opencode;
+  if (opencodePath === undefined || opencodePath === '') {
+    process.stderr.write('Error: --opencode requires a path argument.\n');
+    process.exit(EXIT_CODES.INVALID_ARGS);
+  }
+  // The CLI binary path the MCP block will spawn — defaults to the running
+  // binary so the resulting opencode.json points at this install. Operators
+  // can override post-init by hand-editing the file.
+  const cliPath = process.argv[1] ?? 'nexus-agents';
+  const sandboxFlavor = process.env['NEXUS_SANDBOX'];
+  const result = runInitOpencode({
+    path: opencodePath,
+    cliPath,
+    ...(sandboxFlavor !== undefined && sandboxFlavor !== '' && { sandboxFlavor }),
+    dryRun: args.options.dryRun,
+  });
+  process.stdout.write(`init --opencode ${result.action} ${result.path}\n`);
+  if (args.options.dryRun || result.action !== 'unchanged') {
+    process.stdout.write(`${result.diff}\n`);
+  }
+  process.exit(EXIT_CODES.SUCCESS);
 }
 
 /**
