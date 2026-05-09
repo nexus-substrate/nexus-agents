@@ -39,8 +39,15 @@ import type {
 
 const TEST_REGISTRY_PATH = 'docs/research/registry';
 
-// Check if real registry exists for integration tests
-const hasRealRegistry = fs.existsSync(path.join(process.cwd(), TEST_REGISTRY_PATH, 'papers.yaml'));
+// Check if real registry exists for integration tests. Inspects content
+// rather than just `existsSync` — #2470 auto-scaffolding can create an
+// empty papers.yaml that would falsely satisfy a presence check, which
+// would then make the real-registry-content assertions below fail.
+const hasRealRegistry = (() => {
+  const papersPath = path.join(process.cwd(), TEST_REGISTRY_PATH, 'papers.yaml');
+  if (!fs.existsSync(papersPath)) return false;
+  return fs.readFileSync(papersPath, 'utf-8').includes('arxiv-');
+})();
 
 // Mock data for unit tests
 const mockPaper: ResearchPaperWithId = {
@@ -733,34 +740,42 @@ describe('Edge Cases', () => {
 // ============================================================================
 
 describe('Error Handling', () => {
-  describe('parseRegistry', () => {
-    it('should return error for non-existent directory', () => {
+  // #2470 contract change: missing registry files no longer error — they
+  // resolve to empty registries so research_status / research_refresh /
+  // similar inspection commands work cleanly on a fresh install.
+  describe('parseRegistry (missing directory)', () => {
+    it('returns empty registry for non-existent directory (#2470)', () => {
       const result = parseRegistry({ registryPath: '/non/existent/path' });
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.message).toContain('not found');
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.papers).toEqual([]);
+        expect(result.value.techniques).toEqual([]);
+        expect(result.value.sources).toEqual([]);
       }
     });
   });
 
-  describe('parsePapersRegistry', () => {
-    it('should return error for invalid path', () => {
+  describe('parsePapersRegistry (missing file)', () => {
+    it('returns empty papers list for non-existent path (#2470)', () => {
       const result = parsePapersRegistry('/non/existent/path');
-      expect(result.ok).toBe(false);
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.value).toEqual([]);
     });
   });
 
-  describe('parseTechniquesRegistry', () => {
-    it('should return error for invalid path', () => {
+  describe('parseTechniquesRegistry (missing file)', () => {
+    it('returns empty techniques list for non-existent path (#2470)', () => {
       const result = parseTechniquesRegistry('/non/existent/path');
-      expect(result.ok).toBe(false);
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.value).toEqual([]);
     });
   });
 
-  describe('parseSourcesRegistry', () => {
-    it('should return error for invalid path', () => {
+  describe('parseSourcesRegistry (missing file)', () => {
+    it('returns empty sources list for non-existent path (#2470)', () => {
       const result = parseSourcesRegistry('/non/existent/path');
-      expect(result.ok).toBe(false);
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.value).toEqual([]);
     });
   });
 });

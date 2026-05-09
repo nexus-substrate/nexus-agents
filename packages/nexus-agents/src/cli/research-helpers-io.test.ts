@@ -30,6 +30,15 @@ vi.mock('yaml', () => ({
   stringify: vi.fn((obj: unknown) => JSON.stringify(obj)),
 }));
 
+// #2470: scaffold is exercised in research-scaffold.test.ts; stub here so
+// the existing IO tests continue verifying read/parse logic in isolation
+// against unmockable paths like `/test/root`.
+vi.mock('./research-scaffold.js', () => ({
+  ensureRegistryFile: vi.fn(
+    (): Promise<{ ok: true; value: string }> => Promise.resolve({ ok: true, value: '/test/path' })
+  ),
+}));
+
 describe('research-helpers-io', () => {
   beforeEach(() => {
     vi.clearAllMocks();
