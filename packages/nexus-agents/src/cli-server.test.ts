@@ -40,6 +40,14 @@ vi.mock('./core/index.js', () => ({
   createLogger: vi.fn(() => createMockLogger()),
 }));
 
+// #2502: cli-server now imports cli-server-gateway, which transitively pulls
+// in the openai-compat / openai SDK adapter chain. Those need full ./core
+// exports (ModelError etc.) — mock the gateway helper directly so this test
+// stays focused on cli-server's own surface.
+vi.mock('./cli-server-gateway.js', () => ({
+  tryWireGatewayAdapter: vi.fn(() => Promise.resolve(undefined)),
+}));
+
 vi.mock('./version.js', () => ({
   VERSION: '0.0.0-test',
 }));

@@ -105,7 +105,10 @@ RUN cat > /home/nexus/opencode.json <<'OCEOF'
       ],
       "enabled": true,
       "environment": {
-        "NEXUS_ALLOW_MOCK_ORCHESTRATION": "true"
+        "NEXUS_SANDBOX": "{env:NEXUS_SANDBOX}",
+        "NEXUS_DATA_DIR": "{env:NEXUS_DATA_DIR}",
+        "NEXUS_OPENAI_COMPAT_URL": "{env:CUSTOM_API_BASE_URL}",
+        "NEXUS_OPENAI_COMPAT_KEY": "{env:CUSTOM_API_KEY}"
       }
     }
   }
