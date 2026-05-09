@@ -310,13 +310,31 @@ export async function executeWithRetries(
       await delay(delayMs);
     }
 
+    // #2472: per-attempt timing breakdown so investigators can see which
+    // retry succeeded (or which attempt blew the cap). Total vote time
+    // is already captured at the call-site; this fills the per-attempt gap.
+    const attemptStart = Date.now();
     const result = await executeSingleVoteAttempt(role, proposal, adapter, timeoutMs);
+    const attemptMs = Date.now() - attemptStart;
     if (result.ok) {
+      logger.info('Vote attempt timing', {
+        role,
+        attempt: attempt + 1,
+        attemptMs,
+        succeeded: true,
+      });
       return { vote: result.vote, ok: true };
     }
 
     lastError = result.error;
     const rateLimited = isRateLimitError(lastError);
+    logger.info('Vote attempt timing', {
+      role,
+      attempt: attempt + 1,
+      attemptMs,
+      succeeded: false,
+      rateLimited,
+    });
     logger.warn('Vote attempt failed', {
       role,
       attempt: attempt + 1,

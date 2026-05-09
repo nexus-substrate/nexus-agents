@@ -181,6 +181,13 @@ interface BufferState {
   stdoutTruncated: boolean;
   stderrTruncated: boolean;
   resolved: boolean;
+  /**
+   * Wall-clock at first stdout byte (or null if none yet). Used by #2472 to
+   * split total subprocess time into spawn-latency (spawn→first byte) and
+   * streaming (first byte→close), which is the cheapest way to identify
+   * which stage causes stochastic timeouts.
+   */
+  firstByteTime: number | null;
 }
 
 /** Append data to a buffered stream, respecting the 10 MB cap. */
@@ -369,6 +376,7 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
       stderrBytes: 0,
       stdoutTruncated: false,
       stderrTruncated: false,
+      firstByteTime: null,
     };
 
     const resolveOnce = (result: Result<CliResponse, CliError>): void => {
@@ -378,18 +386,7 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
       }
     };
 
-    // stdio: ['pipe', 'pipe', 'pipe'] guarantees non-null streams
-    if (child.stdout !== null) {
-      child.stdout.on('data', (data: Buffer) => {
-        appendBuffered(state, 'stdout', data);
-        onProgress?.();
-      });
-    }
-    if (child.stderr !== null) {
-      child.stderr.on('data', (data: Buffer) => {
-        appendBuffered(state, 'stderr', data);
-      });
-    }
+    this.attachStdoutHandlers(child, state, onProgress);
 
     child.on('error', (error: Error) => {
       resolveOnce(this.handleSubprocessError(error));
@@ -402,10 +399,64 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
 
     child.on('close', (code: number | null) => {
       clearTimeout(timeoutId);
+      this.logTimingBreakdown(state, startTime, code);
       resolveOnce(this.classifyCloseResult(code, state, startTime));
     });
 
     return state;
+  }
+
+  /** Attach stdout/stderr data handlers + capture first-byte time (#2472). */
+  private attachStdoutHandlers(
+    child: ReturnType<typeof spawn>,
+    state: BufferState,
+    onProgress?: () => void
+  ): void {
+    // stdio: ['pipe', 'pipe', 'pipe'] guarantees non-null streams
+    if (child.stdout !== null) {
+      child.stdout.on('data', (data: Buffer) => {
+        if (state.firstByteTime === null && data.length > 0) {
+          state.firstByteTime = getTimeProvider().now();
+        }
+        appendBuffered(state, 'stdout', data);
+        onProgress?.();
+      });
+    }
+    if (child.stderr !== null) {
+      child.stderr.on('data', (data: Buffer) => {
+        appendBuffered(state, 'stderr', data);
+      });
+    }
+  }
+
+  /**
+   * Log spawn-latency vs streaming breakdown at info level (#2472). Emits
+   * one structured event per subprocess invocation, queryable via the
+   * existing trace JSONL infrastructure. The breakdown lets operators
+   * identify whether a slow run was caused by:
+   *   - High spawn-latency: model gateway took its time before producing
+   *     the first token (cold-start, queueing, network jitter).
+   *   - High streaming-time: response body was large or generation slow.
+   *   - Total approaches the timeout cap with no first-byte: hung process.
+   *
+   * Structured fields chosen so existing query_trace tooling can group by
+   * cli + provider + model and surface tail-latency outliers.
+   */
+  private logTimingBreakdown(state: BufferState, startTime: number, code: number | null): void {
+    const now = getTimeProvider().now();
+    const totalMs = now - startTime;
+    const spawnLatencyMs = state.firstByteTime === null ? null : state.firstByteTime - startTime;
+    const streamingMs = state.firstByteTime === null ? null : now - state.firstByteTime;
+    this.logger.info('Subprocess timing', {
+      cli: this.name,
+      totalMs,
+      spawnLatencyMs,
+      streamingMs,
+      sawFirstByte: state.firstByteTime !== null,
+      exitCode: code,
+      stdoutBytes: state.stdoutBytes,
+      stderrBytes: state.stderrBytes,
+    });
   }
 
   /** Classify a subprocess close event into a Result. */
