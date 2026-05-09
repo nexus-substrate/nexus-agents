@@ -126,6 +126,23 @@ skills:
       - svg chart
       - render chart
       - the user says "chart"
+  - name: docs-image
+    description: |-
+      Generate AI illustrations (hero, cover, conceptual, infographic) for
+      nexus-agents docs via the nanobanana-mcp gateway. Use when the user
+      needs a hero image, README cover, or conceptual illustration. NOT for
+      precise architecture diagrams — those redirect to docs-mermaid. NOT
+      for quantitative charts — those redirect to docs-chart. Triggers on
+      "generate image", "blog image", "hero image", "cover image",
+      "illustration".
+    path: skills/docs-image/SKILL.md
+    triggers:
+      - generate image
+      - blog image
+      - hero image
+      - cover image
+      - illustration
+      - the user needs a hero image
   - name: docs-mermaid
     description: |-
       Generate precise diagrams (flowchart, sequence, state, ER, class, gantt,
