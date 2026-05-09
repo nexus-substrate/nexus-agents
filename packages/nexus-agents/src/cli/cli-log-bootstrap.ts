@@ -30,6 +30,7 @@
 
 import { argv, env } from 'node:process';
 import { setGlobalLogLevel } from '../core/logger.js';
+import { applyPortableMode } from '../config/portable-mode.js';
 
 const SERVER_COMMANDS = new Set(['server']);
 const VERBOSE_FLAGS = new Set(['--verbose', '-v', '--debug']);
@@ -68,5 +69,7 @@ export function applyCliLogDefault(args: readonly string[]): void {
   }
 }
 
-// Module-load side effect: cli.ts imports this FIRST.
+// Module-load side effects: cli.ts imports this FIRST so both run before
+// any other module reads NEXUS_DATA_DIR or constructs a logger.
 applyCliLogDefault(argv.slice(2));
+applyPortableMode();
