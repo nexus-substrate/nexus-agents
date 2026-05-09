@@ -73,7 +73,8 @@ export type CliCommand =
   | 'init'
   | 'validate'
   | 'registry'
-  | 'login';
+  | 'login'
+  | 'usage';
 
 /**
  * Parsed CLI arguments and command.
@@ -496,6 +497,7 @@ const VALID_COMMANDS: readonly CliCommand[] = [
   'validate',
   'registry',
   'login',
+  'usage',
 ];
 
 /**

@@ -122,6 +122,8 @@ import {
 import { handleAuthCommand } from './cli-auth-handler.js';
 // Issue #2447: nexus-agents login — guided per-CLI auth status
 import { handleLoginCommand } from './cli/login-command.js';
+// Issue #2469: nexus-agents usage — cost / usage / quality dashboard
+import { handleUsageCommand } from './cli/usage-command.js';
 // Issue #637: Release Automation Suite
 import {
   handleReleaseNotesCommand,
@@ -244,6 +246,8 @@ const ASYNC_COMMAND_HANDLERS: Record<string, ((args: ParsedCliArgs) => Promise<v
     login: handleLoginCommand,
     // Issue #739/#2449: auth command (now async — `auth status` routes to login probe)
     auth: handleAuthCommand,
+    // Issue #2469: usage command (cost / usage / quality dashboard)
+    usage: handleUsageCommand,
     // #2305 / #2308 / #2311: Init Portable Command (async because --install spawns npm)
     init: handleInitCommand,
     demo: handleDemoCommand, // Made async for live CLI execution

@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-05-08T22:19:36.452Z",
+  "generated": "2026-05-09T09:12:20.285Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.70.0",
   "cli": {
@@ -232,6 +232,12 @@
         "name": "system-review",
         "type": "sync",
         "handler": "handleSystemReviewCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
+      {
+        "name": "usage",
+        "type": "async",
+        "handler": "handleUsageCommand",
         "file": "src/cli-commands-handlers.ts"
       },
       {
