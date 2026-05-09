@@ -10,7 +10,13 @@
  * (Source: Issue #422 - Doctor command validations)
  */
 
-import { existsSync, readFileSync, accessSync, constants as fsConstants } from 'node:fs';
+import {
+  existsSync,
+  readFileSync,
+  readdirSync,
+  accessSync,
+  constants as fsConstants,
+} from 'node:fs';
 import { join } from 'node:path';
 import { getNexusDataDir } from '../config/nexus-data-dir.js';
 import { getTimeProvider, getErrorMessage } from '../core/index.js';
@@ -373,6 +379,18 @@ function checkMcpServerReady(): boolean {
 
 /**
  * Builds model registry advisory based on detected CLI availability (#890).
+ *
+ * Staleness threshold (#2445): bumped from 30 → 90 days. The published
+ * npm tarball ships with a registry snapshot that's typically 1-4 weeks
+ * old by the time an operator installs it (normal release cadence). A
+ * 30-day threshold meant fresh installs of recently-published versions
+ * showed `⚠ Model registry is 55 days old` on day one of usage, training
+ * operators to ignore staleness warnings.
+ *
+ * Additionally, if the operator's data directory has no signs of prior
+ * usage (no audit log, no outcome store), suppress the warning entirely
+ * — staleness on first run is a publishing concern, not an operator
+ * concern.
  */
 function buildRegistryAdvisory(cliResults: CliCheckResult[]): RegistryAdvisory {
   const installedClis = new Set(cliResults.filter((c) => c.installed).map((c) => c.name));
@@ -386,11 +404,18 @@ function buildRegistryAdvisory(cliResults: CliCheckResult[]): RegistryAdvisory {
       return { modelId: m.id, displayName: m.displayName, cliName, available, reason };
     });
 
-  // Registry staleness check (#1549)
-  const STALE_THRESHOLD_DAYS = 30;
+  // Registry staleness check (#1549, threshold revised in #2445)
+  const STALE_THRESHOLD_DAYS = 90;
   const updatedAt = new Date(DEFAULT_MODEL_CAPABILITIES.updatedAt);
   const nowMs = getTimeProvider().now();
   const ageDays = Math.floor((nowMs - updatedAt.getTime()) / (1000 * 60 * 60 * 24));
+
+  // First-install detection: if the operator has no prior activity in
+  // their data dir, suppress the staleness warning. There's nothing they
+  // can do about it on day one anyway, and it trains them to ignore
+  // warnings.
+  const isFreshInstall = !hasPriorUsage();
+  const exceedsThreshold = ageDays > STALE_THRESHOLD_DAYS;
 
   return {
     totalModels: models.length,
@@ -398,8 +423,34 @@ function buildRegistryAdvisory(cliResults: CliCheckResult[]): RegistryAdvisory {
     unavailableModels: models.filter((m) => !m.available).length,
     models,
     registryAgeDays: ageDays,
-    registryStale: ageDays > STALE_THRESHOLD_DAYS,
+    registryStale: exceedsThreshold && !isFreshInstall,
   };
+}
+
+/**
+ * Cheap heuristic for "operator has used nexus-agents before": data dir
+ * exists and contains audit / outcome / session evidence. Used to
+ * suppress staleness warnings on day-one of a fresh install (#2445).
+ */
+function hasPriorUsage(): boolean {
+  try {
+    const root = getNexusDataDir();
+    if (!existsSync(root)) return false;
+    // Check for any subdirectory with files. Lazy creation of empty
+    // subdirs by `nexus-agents setup` would falsely register as usage —
+    // hence we look for *files*, not just directories.
+    for (const sub of ['audit', 'learning', 'sessions', 'voting']) {
+      const p = `${root}/${sub}`;
+      try {
+        if (existsSync(p) && readdirSync(p).length > 0) return true;
+      } catch {
+        // ignore — best-effort heuristic
+      }
+    }
+    return false;
+  } catch {
+    return false;
+  }
 }
 
 /** Counts non-empty lines in a JSONL file. Returns 0 if file doesn't exist. */
