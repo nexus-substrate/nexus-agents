@@ -120,7 +120,7 @@ export const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
     command: 'usage',
     description:
       'Cost / usage / quality dashboard from per-call telemetry (#2469). --format=json for scripting.',
-    audience: 'essential',
+    audience: 'advanced',
   },
   {
     command: 'status',
