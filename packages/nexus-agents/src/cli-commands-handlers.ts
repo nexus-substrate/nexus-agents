@@ -461,7 +461,32 @@ async function runInitOpencodeFlow(args: ParsedCliArgs): Promise<void> {
   if (args.options.dryRun || result.action !== 'unchanged') {
     process.stdout.write(`${result.diff}\n`);
   }
+
+  if (args.options.validate === true) {
+    const exitCode = await renderOpencodeValidate(opencodePath);
+    process.exit(exitCode);
+  }
   process.exit(EXIT_CODES.SUCCESS);
+}
+
+/**
+ * Run --validate via the helper in cli/init-opencode and render the
+ * outcome to stdout/stderr. Returns the exit code (0 success, 1 fail).
+ */
+async function renderOpencodeValidate(opencodePath: string): Promise<number> {
+  const { runOpencodeValidate } = await import('./cli/init-opencode.js');
+  const result = await runOpencodeValidate(opencodePath);
+  if (!result.ok) {
+    process.stderr.write(`init --opencode --validate: ${result.reason ?? 'failed'}\n`);
+    return 1;
+  }
+  process.stdout.write(
+    `init --opencode --validate: ${String(result.models?.length ?? 0)} model(s) discovered at ${result.baseURL ?? '(unknown)'}:\n`
+  );
+  for (const id of result.models ?? []) {
+    process.stdout.write(`  - ${id}\n`);
+  }
+  return 0;
 }
 
 /**
