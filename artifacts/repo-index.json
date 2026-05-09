@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-05-09T09:12:20.285Z",
+  "generated": "2026-05-09T14:21:22.405Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.70.0",
   "cli": {
@@ -82,6 +82,12 @@
         "name": "hooks",
         "type": "async",
         "handler": "handleHooksCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
+      {
+        "name": "improvement-review",
+        "type": "async",
+        "handler": "handleImprovementReviewCommand",
         "file": "src/cli-commands-handlers.ts"
       },
       {
