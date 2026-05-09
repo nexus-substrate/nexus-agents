@@ -43,6 +43,7 @@ import {
   type AppConfig,
 } from './config/index.js';
 import { initializeExperts } from './cli-server-experts.js';
+import { tryWireGatewayAdapter } from './cli-server-gateway.js';
 import { initializeSkillLibrary } from './cli-server-skills.js';
 import { initializeSica } from './cli-server-sica.js';
 import { initializeFeedbackIntegration } from './cli-server-feedback.js';
@@ -356,7 +357,13 @@ async function initializeAndRegisterTools(
 
   // Issue #1149: Unified registry — task routing computed at startup, detection lazy
   const adapterRegistry = createAdapterRegistry(logger);
-  const modelAdapter = adapterRegistry.getDefault();
+  // #2502 (epic #2500 child 2): when the OpenAI-compat gateway is configured,
+  // it becomes the default model adapter. In sandbox mode the gateway is the
+  // only available channel to LLMs, so a missing or unreachable gateway is a
+  // hard startup failure (see tryWireGatewayAdapter for the matrix). Outside
+  // sandbox mode it's optional — falls through to the CLI-based default.
+  const gatewayAdapter = await tryWireGatewayAdapter(logger);
+  const modelAdapter = gatewayAdapter ?? adapterRegistry.getDefault();
   const policyVals = getPolicyValues(config);
   const allowedPaths = config.security?.allowedPaths;
   const securityConfig = config.security;

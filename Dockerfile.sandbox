@@ -43,15 +43,27 @@ COPY --from=builder /app/packages/nexus-agents/dist /opt/nexus-agents/dist
 COPY --from=builder /app/packages/nexus-agents/package.json /opt/nexus-agents/
 COPY --from=runtime-deps /opt/nexus-agents/node_modules /opt/nexus-agents/node_modules
 
+# Sandbox awareness (#2501, epic #2500). Tells nexus-agents it's running
+# inside a host-provided sandbox so it adapts boot behaviour: defaults
+# NEXUS_DATA_DIR to the multi-repo root, fail-fast on missing gateway
+# config, suppresses CLI-detection noise.
+ENV NEXUS_SANDBOX=docker-opencode
+
 # Redirect all runtime data (memory, learning, audit, voting, sessions,
-# checkpoints, traces) to the workspace volume so it survives sandbox
-# restarts and stays scoped to the workspace, not the container's $HOME
-# (#2302, child of #2301). Pre-create the dir so first writes don't race.
+# checkpoints, traces) to a workspace-mounted volume so it survives
+# sandbox restarts and stays scoped to the workspace, not the container's
+# $HOME (#2302, child of #2301). Operators override at launch time when
+# they mount a different multi-repo root.
 ENV NEXUS_DATA_DIR=/workspace/.nexus-agents
 RUN mkdir -p /workspace/.nexus-agents
 
 # Create opencode config with MCP server pointing to nexus-agents
 # OpenCode reads from ~/.config/opencode/opencode.json (global config)
+#
+# NEXUS_OPENAI_COMPAT_URL / NEXUS_OPENAI_COMPAT_KEY are NOT baked in here.
+# The host injects them at launch time so the workspace proxy URL + key
+# stay out of the image. nexus-agents fail-fast at boot if they're
+# missing while NEXUS_SANDBOX is set (#2502).
 RUN mkdir -p /home/agent/.config/opencode && \
     cat > /home/agent/.config/opencode/opencode.json <<'OCEOF'
 {
@@ -66,7 +78,10 @@ RUN mkdir -p /home/agent/.config/opencode && \
       ],
       "enabled": true,
       "environment": {
-        "NEXUS_ALLOW_MOCK_ORCHESTRATION": "true"
+        "NEXUS_SANDBOX": "{env:NEXUS_SANDBOX}",
+        "NEXUS_DATA_DIR": "{env:NEXUS_DATA_DIR}",
+        "NEXUS_OPENAI_COMPAT_URL": "{env:NEXUS_OPENAI_COMPAT_URL}",
+        "NEXUS_OPENAI_COMPAT_KEY": "{env:NEXUS_OPENAI_COMPAT_KEY}"
       }
     }
   }
