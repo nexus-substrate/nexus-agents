@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-deprecated -- Self-references inside
+ * the deprecated DockerSandboxExecutor class body are unavoidable (#2499). */
 /**
  * nexus-agents/security/sandbox - Docker Sandbox Executor
  *
@@ -62,6 +64,14 @@ export interface DockerSandboxConfig {
  * - --read-only: Read-only root filesystem
  * - --network=none: No network access (unless explicitly enabled)
  * - Resource limits: Memory and CPU constraints
+ *
+ * @deprecated [#2499] Unused in production — only `validateCommand` /
+ * `validateArgs` from `cli/sandbox-exec.ts` consume the sandbox layer.
+ * Slated for removal one minor release after the deprecation lands;
+ * see [#2499](https://github.com/williamzujkowski/nexus-agents/issues/2499)
+ * for migration. The product direction (epic [#2500]) is "compatible
+ * with running inside a host-provided sandbox" — not "ship our own
+ * sandbox runtime."
  */
 export class DockerSandboxExecutor implements ISandboxExecutor {
   readonly name = 'DockerSandboxExecutor';

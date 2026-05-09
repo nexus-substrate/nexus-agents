@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-deprecated -- Tests for helpers
+ * that support the deprecated DenoSandboxExecutor (#2499). */
 /**
  * Tests for Deno Sandbox Helpers (#1898).
  *

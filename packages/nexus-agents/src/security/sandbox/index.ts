@@ -1,3 +1,8 @@
+/* eslint-disable @typescript-eslint/no-deprecated -- Barrel re-exports for the
+ * deprecated executor surface (#2499). Source-of-truth declarations carry
+ * the @deprecated tag; this file just forwards them so external consumers
+ * can still import. Per project memory rule, do NOT propagate @deprecated
+ * to re-exports. */
 /**
  * nexus-agents/security/sandbox - Module Exports
  *

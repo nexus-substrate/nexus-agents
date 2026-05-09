@@ -119,6 +119,10 @@ export async function initializeSandbox(
  * Throws if sandbox has not been initialized.
  *
  * @returns The global sandbox executor
+ *
+ * @deprecated [#2499] Unused outside the sandbox module. The supported
+ * surface is the validation primitives consumed by `cli/sandbox-exec.ts`.
+ * Slated for removal one minor release after the deprecation lands.
  */
 export function getSandboxExecutor(): ISandboxExecutor {
   if (globalSandbox === null) {
@@ -131,6 +135,8 @@ export function getSandboxExecutor(): ISandboxExecutor {
  * Get the global sandbox executor if initialized.
  *
  * @returns The global sandbox executor or null if not initialized
+ *
+ * @deprecated [#2499] See `getSandboxExecutor` deprecation note.
  */
 export function getSandboxExecutorOrNull(): ISandboxExecutor | null {
   return globalSandbox;

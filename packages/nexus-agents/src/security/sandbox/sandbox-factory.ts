@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-deprecated -- Factory references the
+ * deprecated executor classes (#2499). */
 /**
  * nexus-agents/security/sandbox - Sandbox Factory
  *
