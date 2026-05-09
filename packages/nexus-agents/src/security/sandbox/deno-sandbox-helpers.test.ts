@@ -19,7 +19,12 @@ vi.mock('node:util', () => ({
   promisify: () => mockExecFileAsync,
 }));
 
-import { isDenoAvailable, resetDenoCache, policyToDenoFlags } from './deno-sandbox-helpers.js';
+import {
+  isDenoAvailable,
+  resetDenoCache,
+  policyToDenoFlags,
+  collectPolicyConfigurationWarnings,
+} from './deno-sandbox-helpers.js';
 
 function makePolicy(overrides: Partial<SandboxPolicy> = {}): SandboxPolicy {
   return {
@@ -194,5 +199,79 @@ describe('policyToDenoFlags', () => {
       })
     );
     expect(flags).toEqual(['--allow-read=/tmp']);
+  });
+});
+
+// ============================================================================
+// collectPolicyConfigurationWarnings (#2428 ask 1)
+// ============================================================================
+
+describe('collectPolicyConfigurationWarnings (#2428)', () => {
+  it('returns an empty list for an empty policy', () => {
+    expect(collectPolicyConfigurationWarnings(makePolicy())).toEqual([]);
+  });
+
+  it('returns an empty list when all declared capabilities have allowlists', () => {
+    const warnings = collectPolicyConfigurationWarnings(
+      makePolicy({
+        capabilities: ['process_spawn', 'filesystem_read', 'env_access'],
+        allowedCommands: ['git'],
+        allowedEnvVars: ['HOME'],
+        pathRules: [{ path: '/tmp', access: 'read' }],
+      })
+    );
+    expect(warnings).toEqual([]);
+  });
+
+  it('flags process_spawn with empty allowedCommands', () => {
+    const warnings = collectPolicyConfigurationWarnings(
+      makePolicy({ capabilities: ['process_spawn'], allowedCommands: [] })
+    );
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('process_spawn capability requested');
+    expect(warnings[0]).toContain('allowedCommands is empty');
+  });
+
+  it('flags filesystem_read with no path rules', () => {
+    const warnings = collectPolicyConfigurationWarnings(
+      makePolicy({ capabilities: ['filesystem_read'], pathRules: [] })
+    );
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('filesystem_read');
+  });
+
+  it('flags filesystem_write when only read rules are present', () => {
+    const warnings = collectPolicyConfigurationWarnings(
+      makePolicy({
+        capabilities: ['filesystem_write'],
+        pathRules: [{ path: '/tmp', access: 'read' }],
+      })
+    );
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('filesystem_write');
+  });
+
+  it('flags env_access with empty allowedEnvVars', () => {
+    const warnings = collectPolicyConfigurationWarnings(
+      makePolicy({ capabilities: ['env_access'], allowedEnvVars: [] })
+    );
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('env_access');
+  });
+
+  it('does NOT flag network — coarse on/off has no allowlist gap (#2428 phase 1)', () => {
+    const warnings = collectPolicyConfigurationWarnings(makePolicy({ capabilities: ['network'] }));
+    // Per-host network filtering is Phase 2 (#2428 ask 2); v1 has no
+    // allowlist for `network`, so there's nothing to flag as missing.
+    expect(warnings).toEqual([]);
+  });
+
+  it('returns multiple warnings when multiple capabilities are misconfigured', () => {
+    const warnings = collectPolicyConfigurationWarnings(
+      makePolicy({
+        capabilities: ['process_spawn', 'filesystem_read', 'env_access'],
+      })
+    );
+    expect(warnings).toHaveLength(3);
   });
 });

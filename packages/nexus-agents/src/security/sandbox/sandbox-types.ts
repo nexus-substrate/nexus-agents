@@ -103,6 +103,13 @@ export interface PolicyEvaluation {
   readonly policyId: string;
   /** Violations found. */
   readonly violations: readonly PolicyViolation[];
+  /**
+   * Configuration mismatches the executor surfaces to operators — capabilities
+   * declared in the policy but unenforceable because the corresponding
+   * allowlist is empty (e.g. `process_spawn` set but `allowedCommands: []`).
+   * Source: #2428 ask 1. Not security violations; informational only.
+   */
+  readonly configurationWarnings?: readonly string[];
 }
 
 /**

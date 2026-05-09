@@ -125,6 +125,52 @@ function buildAllowEnvFlag(caps: ReadonlySet<string>, policy: SandboxPolicy): st
 }
 
 /**
+ * Surface configuration mismatches operators can act on (#2428 ask 1):
+ * capabilities declared in `policy.capabilities` but unenforceable because
+ * the corresponding allowlist is empty. These are the same conditions that
+ * `policyToDenoFlags` logs to `logger.warn`, but returned as a structured
+ * array so the SandboxResult can carry them up to the caller.
+ *
+ * Operators reading `SandboxResult.policyEvaluation.configurationWarnings`
+ * see "I asked for X capability but my config didn't enable it" without
+ * having to scrape logs.
+ */
+export function collectPolicyConfigurationWarnings(policy: SandboxPolicy): readonly string[] {
+  const caps = new Set(policy.capabilities);
+  return [
+    ...checkRunWarning(caps, policy),
+    ...checkPathWarning(caps, policy, 'read'),
+    ...checkPathWarning(caps, policy, 'write'),
+    ...checkEnvWarning(caps, policy),
+  ];
+}
+
+function checkRunWarning(caps: ReadonlySet<string>, policy: SandboxPolicy): readonly string[] {
+  if (!caps.has('process_spawn') || policy.allowedCommands.length > 0) return [];
+  return [
+    'process_spawn capability requested but allowedCommands is empty — Deno --allow-run NOT added (would be a wildcard)',
+  ];
+}
+
+function checkPathWarning(
+  caps: ReadonlySet<string>,
+  policy: SandboxPolicy,
+  level: 'read' | 'write'
+): readonly string[] {
+  const cap = level === 'read' ? 'filesystem_read' : 'filesystem_write';
+  if (!caps.has(cap)) return [];
+  if (collectAccessPaths(policy, level).length > 0) return [];
+  return [`${cap} capability requested but no path rules — Deno --allow-${level} NOT added`];
+}
+
+function checkEnvWarning(caps: ReadonlySet<string>, policy: SandboxPolicy): readonly string[] {
+  if (!caps.has('env_access') || policy.allowedEnvVars.length > 0) return [];
+  return [
+    'env_access capability requested but allowedEnvVars is empty — Deno --allow-env NOT added',
+  ];
+}
+
+/**
  * Pull the path-strings out of a policy's pathRules whose access matches
  * the requested level. `'read'` includes `'write'` rules (write implies
  * read in Deno).
