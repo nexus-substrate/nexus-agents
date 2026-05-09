@@ -10,7 +10,7 @@
         "owner": "williamzujkowski",
         "repo": "nexus-agents"
       },
-      "description": "Intelligent orchestration platform for AI coding tools — 38 MCP tools (orchestrate, consensus voting, research, pipelines), 27 skills, 12 expert agents, governance hooks.",
+      "description": "Intelligent orchestration platform for AI coding tools — 38 MCP tools (orchestrate, consensus voting, research, pipelines), 28 skills, 12 expert agents, governance hooks.",
       "keywords": ["orchestration", "mcp", "consensus", "pipelines", "multi-agent"]
     }
   ]

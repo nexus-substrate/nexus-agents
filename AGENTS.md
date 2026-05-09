@@ -52,7 +52,7 @@ Claude Code autoloads these when their keywords match user intent. Other harness
 
 Workflow playbooks live at `skills/<name>/SKILL.md` (canonical per the Anthropic Agent Skills spec, which OpenCode and others are adopting).
 
-- **Discovery for all harnesses:** read [`skills/index.yaml`](./skills/index.yaml) — `{name, description, triggers, path}` for all 27 skills.
+- **Discovery for all harnesses:** read [`skills/index.yaml`](./skills/index.yaml) — `{name, description, triggers, path}` for all 28 skills.
 - When a user request matches a skill's triggers, read the full `SKILL.md` at the listed path and follow its workflow.
 - `skills/index.yaml` is regenerated via `scripts/generate-skills-index.ts` and gated in CI. Never edit it by hand.
 
