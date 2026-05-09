@@ -157,6 +157,12 @@ export const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
     description: 'Generate and manage codebase index',
     audience: 'advanced',
   },
+  {
+    command: 'improvement-review',
+    description:
+      'Observability-driven improvement loop (#2402). Surfaces threshold breaches; --file-issues opt-in.',
+    audience: 'advanced',
+  },
 
   // ── Maintainer (hidden by default) ───────────────────────────────────────
   {

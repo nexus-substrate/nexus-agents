@@ -411,18 +411,24 @@ async function fileSignalsAsIssues(
   return { issuesFiled, issuesSkipped };
 }
 
-async function reviewHandler(args: unknown, ctx: HandlerContext): Promise<ToolResult> {
-  const parsed = ImprovementReviewInputSchema.safeParse(args);
-  if (!parsed.success) {
-    return toolError(`Validation error: ${formatZodError(parsed.error)}`);
-  }
-  const { lookbackDays, fileIssues, minSampleSize, fitnessFloor } = parsed.data;
+/**
+ * Context-free runner exposed for both the MCP handler and the
+ * `nexus-agents improvement-review` CLI subcommand (#2444). Pure dependencies
+ * — pass a logger and an OutcomeStore-query result if you want to inject test
+ * data; defaults read the global store and a no-op logger.
+ */
+export async function runImprovementReview(
+  input: ImprovementReviewInput,
+  deps: { readonly logger?: ReturnType<typeof createLogger> } = {}
+): Promise<ImprovementReviewResponse> {
+  const logger = deps.logger ?? createLogger({ component: 'improvement_review' });
+  const { lookbackDays, fileIssues, minSampleSize, fitnessFloor } = input;
   const now = Date.now();
   const windowLabel = `${String(lookbackDays)}d`;
 
   const allOutcomes = getOutcomeStore().query();
   const windowed = filterByLookback(allOutcomes, lookbackDays, now);
-  const audit = safeFitnessAudit(now, ctx);
+  const audit = safeFitnessAudit(now, { logger } as HandlerContext);
 
   const signals: ImprovementSignal[] = [
     ...detectCliPerformanceFloor(windowed, minSampleSize, windowLabel),
@@ -432,17 +438,24 @@ async function reviewHandler(args: unknown, ctx: HandlerContext): Promise<ToolRe
   signals.sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]);
 
   const { issuesFiled, issuesSkipped } = fileIssues
-    ? await fileSignalsAsIssues(signals, ctx)
+    ? await fileSignalsAsIssues(signals, { logger } as HandlerContext)
     : { issuesFiled: [], issuesSkipped: [] };
 
-  const response: ImprovementReviewResponse = {
+  return {
     window: windowLabel,
     totalOutcomes: windowed.length,
     signals,
     issuesFiled,
     issuesSkipped,
   };
+}
 
+async function reviewHandler(args: unknown, ctx: HandlerContext): Promise<ToolResult> {
+  const parsed = ImprovementReviewInputSchema.safeParse(args);
+  if (!parsed.success) {
+    return toolError(`Validation error: ${formatZodError(parsed.error)}`);
+  }
+  const response = await runImprovementReview(parsed.data, { logger: ctx.logger });
   return toolSuccessStructured(response as unknown as Record<string, unknown>);
 }
 
