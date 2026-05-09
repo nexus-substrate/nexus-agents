@@ -200,13 +200,18 @@ function printRegistryAdvisory(advisory: RegistryAdvisory): void {
       writeLine(`  ${colors.dim}${m.displayName} — ${m.reason}${colors.reset}`);
     }
   }
-  // Registry staleness warning (#1549)
+  // Registry staleness warning (#1549, revised in #2445)
   const ageText = `${String(advisory.registryAgeDays)} days old`;
   if (advisory.registryStale) {
     writeLine(
       `${colors.yellow}${symbols.warn}${colors.reset} Model registry is ${ageText} — may have stale model data`
     );
-    writeLine(`  ${colors.dim}Run: npx tsx scripts/probe-models.ts${colors.reset}`);
+    writeLine(
+      `  ${colors.dim}Update with 'npm update -g nexus-agents' to pick up the latest registry,${colors.reset}`
+    );
+    writeLine(
+      `  ${colors.dim}or run 'nexus-agents registry refresh' to probe currently-installed models.${colors.reset}`
+    );
   } else {
     writeLine(`${formatStatus(true)} Model registry: ${ageText}`);
   }
