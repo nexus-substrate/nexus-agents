@@ -85,16 +85,16 @@ not the prose around it.
 This is the _technical-doc-specific_ category — the part that has no analog in
 the upstream blog rubric.
 
-| Dim                          | Pts | Tag   | How to score                                                                                                                                                                                      |
-| ---------------------------- | --- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Heading hierarchy            | 3   | `[M]` | Exactly one H1; no skips (H2→H4); no H6+.                                                                                                                                                         |
-| Code blocks valid            | 3   | `[M]` | Fenced with language tag; syntax parses; no truncated examples.                                                                                                                                   |
-| Cross-doc consistency        | 4   | `[J]` | Doesn't contradict canonical paths in CLAUDE.md or `.rules/governance.md`. **Defer to `blog-overlap`** if there's an existing doc on the same topic — refine vs. duplicate.                       |
-| Internal links resolve       | 2   | `[M]` | All `./other-doc.md` and `#anchor` references work.                                                                                                                                               |
-| Summary box / TL;DR          | 2   | `[J]` | Long docs (>800 words) have a `Key Takeaways` block in the first screen.                                                                                                                          |
-| Frontmatter on tier-1/2 docs | 1   | `[M]` | If listed in `FRONTMATTER_REQUIRED_FILES` (in `scripts/generate-docs.ts`), validate that `title` / `description` / `tier` / `keywords` are present. Don't reinvent — call the existing `--check`. |
-| Spec / RFC alignment         | 3   | `[J]` | Where the doc cites Anthropic API behavior, governance rules, or RFC fields, the cited fields exist as described.                                                                                 |
-| File size + sprawl           | 2   | `[J]` | Per CLAUDE.md anti-sprawl: doesn't create a parallel `enhanced_*` / `v2_*` doc when an existing canonical doc could be extended.                                                                  |
+| Dim                          | Pts | Tag   | How to score                                                                                                                                                                |
+| ---------------------------- | --- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Heading hierarchy            | 3   | `[M]` | Exactly one H1; no skips (H2→H4); no H6+.                                                                                                                                   |
+| Code blocks valid            | 3   | `[M]` | Fenced with language tag; syntax parses; no truncated examples.                                                                                                             |
+| Cross-doc consistency        | 4   | `[J]` | Doesn't contradict canonical paths in CLAUDE.md or `.rules/governance.md`. **Defer to `blog-overlap`** if there's an existing doc on the same topic — refine vs. duplicate. |
+| Internal links resolve       | 2   | `[M]` | All `./other-doc.md` and `#anchor` references work.                                                                                                                         |
+| Summary box / TL;DR          | 2   | `[J]` | Long docs (>800 words) have a `Key Takeaways` block in the first screen.                                                                                                    |
+| Frontmatter on tier-1/2 docs | 1   | `[M]` | Tier-1/2 docs require `title` / `description` / `tier` / `keywords`. Defer to whichever existing CI gate validates this in the repo at the time of review.                  |
+| Spec / RFC alignment         | 3   | `[J]` | Where the doc cites Anthropic API behavior, governance rules, or RFC fields, the cited fields exist as described.                                                           |
+| File size + sprawl           | 2   | `[J]` | Per CLAUDE.md anti-sprawl: doesn't create a parallel `enhanced_*` / `v2_*` doc when an existing canonical doc could be extended.                                            |
 
 ### 5. Audience Fit — 10 pts
 
