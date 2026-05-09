@@ -27,13 +27,34 @@ export interface CommandCatalogEntry {
 }
 
 /**
+ * Hard cap on the `essential` audience band. Enforced by the `keeps the
+ * essential tier small (<=12) so new users are not overwhelmed` test in
+ * `cli-command-catalog.test.ts`.
+ *
+ * Rationale: the default `nexus-agents --help` lists every `essential` entry
+ * up front. Past 12 it stops feeling curated — new users start scanning,
+ * skipping, and missing the actually-onboarding-critical commands. If you
+ * need a 13th, demote something else to `advanced` first.
+ *
+ * History (#2492): the cap has been tripped silently twice — first by `auth`
+ * (deliberate, deserved promotion), second by `usage` (#2469, not reviewed
+ * against the cap). The CI test catches it; this comment is the contract.
+ */
+export const ESSENTIAL_AUDIENCE_CAP = 12;
+
+/**
  * All top-level commands, in display order within their audience band.
  *
  * Audience rationale:
  * - **essential**: what a new user needs to install, configure, verify, and
- *   run their first task. If this list is >12 we are doing something wrong.
+ *   run their first task. Capped at 12 entries (`ESSENTIAL_AUDIENCE_CAP`) —
+ *   see the cap's docstring for the policy. When proposing a 13th, demote
+ *   an existing entry to `advanced` first.
  * - **advanced**: useful day-to-day but not first-touch (session mgmt,
  *   capability inspection, workflow scaffolding, auth token rotation).
+ *   Telemetry/operator-facing dashboards (e.g. `usage`,
+ *   `improvement-review`) belong here — operators reach for them after
+ *   they've been running tasks, not on first install.
  * - **maintainer**: benchmarks, release tooling, self-audits, deep
  *   observability dashboards, dogfooding helpers.
  * - **internal**: dev/eval loops that aren't part of the product surface

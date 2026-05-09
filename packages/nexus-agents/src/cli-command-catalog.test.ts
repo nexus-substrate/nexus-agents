@@ -9,6 +9,7 @@ import { describe, it, expect } from 'vitest';
 
 import {
   COMMAND_CATALOG,
+  ESSENTIAL_AUDIENCE_CAP,
   filterCatalog,
   groupByAudience,
   renderCommandsSection,
@@ -30,9 +31,12 @@ describe('cli-command-catalog (#2135)', () => {
       }
     });
 
-    it('keeps the essential tier small (<=12) so new users are not overwhelmed', () => {
+    it(`keeps the essential tier small (<=${String(ESSENTIAL_AUDIENCE_CAP)}) so new users are not overwhelmed`, () => {
       const essentialCount = COMMAND_CATALOG.filter((e) => e.audience === 'essential').length;
-      expect(essentialCount).toBeLessThanOrEqual(12);
+      // #2492: when this fails, demote a less-onboarding-critical entry to
+      // `advanced` rather than bumping the cap. See ESSENTIAL_AUDIENCE_CAP's
+      // docstring for the policy.
+      expect(essentialCount).toBeLessThanOrEqual(ESSENTIAL_AUDIENCE_CAP);
     });
   });
 
