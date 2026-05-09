@@ -81,7 +81,8 @@ RUN mkdir -p /home/agent/.config/opencode && \
         "NEXUS_SANDBOX": "{env:NEXUS_SANDBOX}",
         "NEXUS_DATA_DIR": "{env:NEXUS_DATA_DIR}",
         "NEXUS_OPENAI_COMPAT_URL": "{env:NEXUS_OPENAI_COMPAT_URL}",
-        "NEXUS_OPENAI_COMPAT_KEY": "{env:NEXUS_OPENAI_COMPAT_KEY}"
+        "NEXUS_OPENAI_COMPAT_KEY": "{env:NEXUS_OPENAI_COMPAT_KEY}",
+        "NEXUS_OPENCODE_CONFIG": "/home/agent/.config/opencode/opencode.json"
       }
     }
   }

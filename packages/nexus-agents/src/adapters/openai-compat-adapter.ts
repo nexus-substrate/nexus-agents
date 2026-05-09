@@ -7,10 +7,10 @@
  *
  * Source: Issue #2468 (epic #2467 child).
  *
- * Configuration is env-var-driven so operators don't have to thread config
- * through the model registry just to point at a custom gateway:
- *   - NEXUS_OPENAI_COMPAT_URL — base URL (e.g. https://gateway.example/v1)
- *   - NEXUS_OPENAI_COMPAT_KEY — API key for the gateway
+ * Configuration precedence (#2503, child 3 of epic #2500):
+ *   1. NEXUS_OPENAI_COMPAT_URL + NEXUS_OPENAI_COMPAT_KEY env vars (both required)
+ *   2. NEXUS_OPENCODE_CONFIG path → opencode.json → providers.openai-compat
+ *   3. Unconfigured → adapter not built
  *
  * Models are discovered via GET {base}/v1/models at first use. Each model
  * the gateway exposes can be selected by ID; the adapter wraps the existing
@@ -30,6 +30,7 @@ import type {
 import { ok, err, ConfigError, getErrorMessage, getTimeProvider } from '../core/index.js';
 import { OpenAIAdapter } from './openai-adapter.js';
 import { recordUsageEvent, computeCostUSD } from '../learning/usage-log.js';
+import { readOpencodeGateway } from '../config/opencode-bridge.js';
 
 export interface OpenAICompatConfig {
   /** Gateway base URL — must reach `/v1/models` and `/v1/chat/completions`. */
@@ -47,16 +48,36 @@ export interface DiscoveredModel {
 }
 
 /**
- * Read the env-var-driven gateway config. Returns `null` when either var is
- * unset or empty — caller can fall back to other adapter sources without
- * surfacing a hard error.
+ * Read the gateway config with the precedence chain documented in the
+ * module docstring: env vars > opencode.json > unconfigured.
+ *
+ * The env-var path (#2468) wins when both `NEXUS_OPENAI_COMPAT_URL` and
+ * `NEXUS_OPENAI_COMPAT_KEY` are set. Otherwise, when `NEXUS_OPENCODE_CONFIG`
+ * names a path, the opencode.json bridge tries to source the gateway from
+ * `providers.openai-compat.options.{baseURL, apiKey}` (#2503). Returns
+ * `null` when neither path yields a config — caller treats unset gateway
+ * as "no adapter from this source."
  */
 export function readOpenAICompatEnv(): OpenAICompatConfig | null {
-  const baseUrl = process.env['NEXUS_OPENAI_COMPAT_URL']?.trim();
-  const apiKey = process.env['NEXUS_OPENAI_COMPAT_KEY']?.trim();
-  if (baseUrl === undefined || baseUrl === '') return null;
-  if (apiKey === undefined || apiKey === '') return null;
-  return { baseUrl, apiKey };
+  const fromEnv = readGatewayFromEnv();
+  if (fromEnv !== null) return fromEnv;
+  return readGatewayFromOpencode();
+}
+
+function readGatewayFromEnv(): OpenAICompatConfig | null {
+  const envUrl = process.env['NEXUS_OPENAI_COMPAT_URL']?.trim();
+  const envKey = process.env['NEXUS_OPENAI_COMPAT_KEY']?.trim();
+  if (envUrl === undefined || envUrl === '') return null;
+  if (envKey === undefined || envKey === '') return null;
+  return { baseUrl: envUrl, apiKey: envKey };
+}
+
+function readGatewayFromOpencode(): OpenAICompatConfig | null {
+  const opencodePath = process.env['NEXUS_OPENCODE_CONFIG']?.trim();
+  if (opencodePath === undefined || opencodePath === '') return null;
+  const fromFile = readOpencodeGateway(opencodePath);
+  if (fromFile === null) return null;
+  return { baseUrl: fromFile.baseURL, apiKey: fromFile.apiKey };
 }
 
 /**

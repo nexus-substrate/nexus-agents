@@ -23,10 +23,22 @@ vi.mock('openai', () => {
   return { default: MockOpenAI };
 });
 
-describe('readOpenAICompatEnv (#2468)', () => {
+// #2503: stub the opencode-bridge so these tests stay focused on env-var
+// precedence. Per-test overrides via mockReturnValueOnce when needed.
+const { mockReadOpencodeGateway } = vi.hoisted(() => ({
+  mockReadOpencodeGateway: vi.fn<(path: string) => unknown>(),
+}));
+vi.mock('../config/opencode-bridge.js', () => ({
+  readOpencodeGateway: mockReadOpencodeGateway,
+}));
+
+describe('readOpenAICompatEnv (#2468 + #2503)', () => {
   beforeEach(() => {
     delete process.env['NEXUS_OPENAI_COMPAT_URL'];
     delete process.env['NEXUS_OPENAI_COMPAT_KEY'];
+    delete process.env['NEXUS_OPENCODE_CONFIG'];
+    mockReadOpencodeGateway.mockReset();
+    mockReadOpencodeGateway.mockReturnValue(null);
   });
 
   it('returns null when both env vars are unset', () => {
@@ -62,6 +74,63 @@ describe('readOpenAICompatEnv (#2468)', () => {
     const result = readOpenAICompatEnv();
     expect(result?.baseUrl).toBe('https://gateway.example/v1');
     expect(result?.apiKey).toBe('sk-test');
+  });
+
+  // #2503: precedence — env > opencode.json > unconfigured
+  describe('opencode.json precedence (#2503)', () => {
+    it('env vars win over opencode.json when both are configured', () => {
+      process.env['NEXUS_OPENAI_COMPAT_URL'] = 'https://env-gateway/v1';
+      process.env['NEXUS_OPENAI_COMPAT_KEY'] = 'sk-from-env';
+      process.env['NEXUS_OPENCODE_CONFIG'] = '/tmp/opencode.json';
+      mockReadOpencodeGateway.mockReturnValue({
+        baseURL: 'https://file-gateway/v1',
+        apiKey: 'sk-from-file',
+      });
+
+      const result = readOpenAICompatEnv();
+      expect(result?.baseUrl).toBe('https://env-gateway/v1');
+      expect(result?.apiKey).toBe('sk-from-env');
+      expect(mockReadOpencodeGateway).not.toHaveBeenCalled();
+    });
+
+    it('falls back to opencode.json when env vars are unset', () => {
+      process.env['NEXUS_OPENCODE_CONFIG'] = '/tmp/opencode.json';
+      mockReadOpencodeGateway.mockReturnValue({
+        baseURL: 'https://file-gateway/v1',
+        apiKey: 'sk-from-file',
+      });
+
+      const result = readOpenAICompatEnv();
+      expect(result?.baseUrl).toBe('https://file-gateway/v1');
+      expect(result?.apiKey).toBe('sk-from-file');
+      expect(mockReadOpencodeGateway).toHaveBeenCalledWith('/tmp/opencode.json');
+    });
+
+    it('returns null when env unset, opencode path set, but file resolves to null', () => {
+      process.env['NEXUS_OPENCODE_CONFIG'] = '/tmp/opencode.json';
+      mockReadOpencodeGateway.mockReturnValue(null);
+      expect(readOpenAICompatEnv()).toBeNull();
+    });
+
+    it('does not invoke opencode-bridge when NEXUS_OPENCODE_CONFIG is unset', () => {
+      // Both env vars unset, no opencode path either.
+      expect(readOpenAICompatEnv()).toBeNull();
+      expect(mockReadOpencodeGateway).not.toHaveBeenCalled();
+    });
+
+    it('falls back to opencode.json when only one env var is set', () => {
+      // Half-configured env (URL only) — must NOT be treated as configured;
+      // fall through to opencode.json path.
+      process.env['NEXUS_OPENAI_COMPAT_URL'] = 'https://env-gateway/v1';
+      process.env['NEXUS_OPENCODE_CONFIG'] = '/tmp/opencode.json';
+      mockReadOpencodeGateway.mockReturnValue({
+        baseURL: 'https://file-gateway/v1',
+        apiKey: 'sk-from-file',
+      });
+
+      const result = readOpenAICompatEnv();
+      expect(result?.baseUrl).toBe('https://file-gateway/v1');
+    });
   });
 });
 
@@ -146,11 +215,16 @@ describe('createOpenAICompatAdapter (#2468)', () => {
 describe('buildOpenAICompatAdapters (#2468)', () => {
   let originalUrl: string | undefined;
   let originalKey: string | undefined;
+  let originalOpencode: string | undefined;
 
   beforeEach(() => {
     originalUrl = process.env['NEXUS_OPENAI_COMPAT_URL'];
     originalKey = process.env['NEXUS_OPENAI_COMPAT_KEY'];
+    originalOpencode = process.env['NEXUS_OPENCODE_CONFIG'];
+    delete process.env['NEXUS_OPENCODE_CONFIG'];
     mockList.mockReset();
+    mockReadOpencodeGateway.mockReset();
+    mockReadOpencodeGateway.mockReturnValue(null);
   });
 
   afterEach(() => {
@@ -158,6 +232,8 @@ describe('buildOpenAICompatAdapters (#2468)', () => {
     else process.env['NEXUS_OPENAI_COMPAT_URL'] = originalUrl;
     if (originalKey === undefined) delete process.env['NEXUS_OPENAI_COMPAT_KEY'];
     else process.env['NEXUS_OPENAI_COMPAT_KEY'] = originalKey;
+    if (originalOpencode === undefined) delete process.env['NEXUS_OPENCODE_CONFIG'];
+    else process.env['NEXUS_OPENCODE_CONFIG'] = originalOpencode;
   });
 
   it('returns null when env not configured (caller treats as "no source")', async () => {
