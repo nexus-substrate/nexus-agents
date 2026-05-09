@@ -19,6 +19,7 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { getNexusDataDir } from '../config/nexus-data-dir.js';
+import { detectSandbox } from '../config/sandbox-detection.js';
 import { getTimeProvider, getErrorMessage } from '../core/index.js';
 import {
   isPersistenceEnabled,
@@ -163,6 +164,26 @@ export const DATA_SUBDIRECTORIES = [
 ] as const;
 
 /**
+ * Sandbox awareness (#2501, child 1 of epic #2500).
+ *
+ * Reports whether nexus-agents is running inside a host-provided sandbox
+ * (Docker Desktop Sandbox + OpenCode, Codex sandbox, locked-down CI) and
+ * whether the explicit `NEXUS_SANDBOX` signal matches the runtime
+ * heuristic. Mismatches don't block startup but get surfaced here so the
+ * operator can fix the image / launch config.
+ */
+export interface SandboxCheck {
+  readonly active: boolean;
+  readonly flavor: string | undefined;
+  readonly root: string | undefined;
+  readonly heuristicMatch: 'docker' | 'podman' | 'unknown' | null;
+  /** True iff the explicit signal disagrees with the heuristic. */
+  readonly mismatch: boolean;
+  /** True iff `NEXUS_DATA_DIR` resolves inside a single repo subfolder. */
+  readonly dataDirInsideRepo: boolean;
+}
+
+/**
  * Complete doctor check results.
  */
 export interface DoctorResult {
@@ -180,6 +201,8 @@ export interface DoctorResult {
   readonly sqliteCheck: SqliteCheck;
   /** Data directory health (#1249). */
   readonly dataDirectory: DataDirectoryCheck;
+  /** Sandbox detection + heuristic verification (#2501). */
+  readonly sandbox: SandboxCheck;
   readonly allHealthy: boolean;
   readonly timestamp: Date;
 }
@@ -581,6 +604,43 @@ function isWritable(dirPath: string): boolean {
 }
 
 /**
+ * Sandbox awareness check (#2501).
+ *
+ * Cross-references the explicit `NEXUS_SANDBOX` signal against the runtime
+ * heuristic and the resolved data dir. Surfaces mismatches that point at
+ * a misconfigured image (claims docker but no `/.dockerenv`) or a
+ * misconfigured launch (`NEXUS_DATA_DIR` inside a single repo while the
+ * sandbox root spans multiple).
+ */
+export function checkSandbox(): SandboxCheck {
+  const info = detectSandbox();
+  const dataDir = getNexusDataDir();
+  const root = info.root;
+  const dataDirInsideRepo =
+    info.active &&
+    root !== undefined &&
+    dataDir.startsWith(`${root.replace(/\/$/, '')}/`) &&
+    // path segments BETWEEN root and `.nexus-agents/` indicate the data dir
+    // lives in a subfolder rather than at the multi-repo root.
+    dataDir.replace(`${root.replace(/\/$/, '')}/`, '').split('/').length > 1;
+
+  // Mismatch: claimed sandbox but heuristic says not-a-container, or vice versa.
+  const heuristicSaysContainer =
+    info.heuristicMatch === 'docker' || info.heuristicMatch === 'podman';
+  const mismatch =
+    (info.active && info.heuristicMatch === 'unknown') || (!info.active && heuristicSaysContainer);
+
+  return {
+    active: info.active,
+    flavor: info.flavor,
+    root: info.root,
+    heuristicMatch: info.heuristicMatch,
+    mismatch,
+    dataDirInsideRepo,
+  };
+}
+
+/**
  * Runs the complete doctor check.
  */
 export async function runDoctor(): Promise<DoctorResult> {
@@ -600,6 +660,7 @@ export async function runDoctor(): Promise<DoctorResult> {
   const learningPersistence = checkLearningPersistence();
   const sqliteCheck = await checkSqlite();
   const dataDirectory = checkDataDirectory();
+  const sandbox = checkSandbox();
 
   // At least one API key configured or one CLI authenticated
   const hasAuthMethod =
@@ -622,6 +683,7 @@ export async function runDoctor(): Promise<DoctorResult> {
     learningPersistence,
     sqliteCheck,
     dataDirectory,
+    sandbox,
     allHealthy,
     timestamp: new Date(getTimeProvider().now()),
   };

@@ -9,7 +9,11 @@
  *
  * Resolution order (first match wins):
  * 1. `NEXUS_DATA_DIR` env var if set + non-empty (resolved against `cwd`).
- * 2. `<homedir>/.nexus-agents` (zero-breakage fallback).
+ * 2. Sandbox-mode default (#2501): when `NEXUS_SANDBOX` is set, use
+ *    `${NEXUS_SANDBOX_ROOT ?? '/'}/.nexus-agents`. Sandboxed deployments
+ *    typically mount a multi-repo root; state goes there, shared across
+ *    repo subfolders rather than buried inside one.
+ * 3. `<homedir>/.nexus-agents` (zero-breakage fallback for laptop use).
  *
  * No caching, no filesystem walks, no discovery. The contrarian-narrowed
  * scope (#2301 vote) explicitly defers ancestor-walking to a separate
@@ -23,11 +27,17 @@
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 
+import { detectSandbox } from './sandbox-detection.js';
+
 /** Returns the absolute path to the nexus-agents data directory. */
 export function getNexusDataDir(): string {
   const fromEnv = process.env['NEXUS_DATA_DIR']?.trim();
   if (fromEnv !== undefined && fromEnv !== '') {
     return resolve(fromEnv);
+  }
+  const sandbox = detectSandbox();
+  if (sandbox.active) {
+    return resolve(sandbox.root ?? '/', '.nexus-agents');
   }
   return join(homedir(), '.nexus-agents');
 }
