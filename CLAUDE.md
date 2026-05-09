@@ -47,23 +47,28 @@ nexus-agents --help       # Full command list
 **Required:** Node.js 22.x LTS, pnpm 9.x (or npm 10.x)
 **Optional:** Docker (sandbox mode), Claude CLI (MCP mode)
 
-| Variable                       | Required For                                                  | Default                       |
-| ------------------------------ | ------------------------------------------------------------- | ----------------------------- |
-| `ANTHROPIC_API_KEY`            | Claude adapter                                                | None                          |
-| `OPENAI_API_KEY`               | OpenAI adapter                                                | None                          |
-| `GOOGLE_AI_API_KEY`            | Gemini adapter                                                | None                          |
-| `OPENROUTER_API_KEY`           | OpenRouter adapter (free models)                              | None                          |
-| `NEXUS_LOG_LEVEL`              | Logging verbosity                                             | `info`                        |
-| `NEXUS_CONFIG_PATH`            | Custom config path                                            | `./nexus-agents.yaml`         |
-| `NEXUS_AUTH_ENABLED`           | Network auth (not needed for stdio)                           | `true` (auto-generates token) |
-| `NEXUS_BILLING_MODE`           | Model routing cost handling                                   | `plan` (monthly subscription) |
-| `NEXUS_PERSIST_LEARNING`       | Cross-session learning persistence                            | `true`                        |
-| `NEXUS_ACCESS_POLICY_MODE`     | ClawGuard mode: `off` / `audit` / `confirm_risky` / `enforce` | `audit` (v2.50+)              |
-| `NEXUS_TASK_STATE_ENABLED`     | Structured task-state log (`0`/`false` to disable)            | enabled (v2.50+)              |
-| `NEXUS_CONTEXT_WARN_THRESHOLD` | Per-expert context-warning threshold (0..1]                   | `0.85`                        |
-| `NEXUS_DATA_DIR`               | Override runtime data root (memory/audit/voting/sessions/…)   | `~/.nexus-agents` (v2.60+)    |
+| Variable                       | Required For                                                                                               | Default                                                                             |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `ANTHROPIC_API_KEY`            | Claude adapter                                                                                             | None                                                                                |
+| `OPENAI_API_KEY`               | OpenAI adapter                                                                                             | None                                                                                |
+| `GOOGLE_AI_API_KEY`            | Gemini adapter                                                                                             | None                                                                                |
+| `OPENROUTER_API_KEY`           | OpenRouter adapter (free models)                                                                           | None                                                                                |
+| `NEXUS_LOG_LEVEL`              | Logging verbosity                                                                                          | `info`                                                                              |
+| `NEXUS_CONFIG_PATH`            | Custom config path                                                                                         | `./nexus-agents.yaml`                                                               |
+| `NEXUS_AUTH_ENABLED`           | Network auth (not needed for stdio)                                                                        | `true` (auto-generates token)                                                       |
+| `NEXUS_BILLING_MODE`           | Model routing cost handling                                                                                | `plan` (monthly subscription)                                                       |
+| `NEXUS_PERSIST_LEARNING`       | Cross-session learning persistence                                                                         | `true`                                                                              |
+| `NEXUS_ACCESS_POLICY_MODE`     | ClawGuard mode: `off` / `audit` / `confirm_risky` / `enforce`                                              | `audit` (v2.50+)                                                                    |
+| `NEXUS_TASK_STATE_ENABLED`     | Structured task-state log (`0`/`false` to disable)                                                         | enabled (v2.50+)                                                                    |
+| `NEXUS_CONTEXT_WARN_THRESHOLD` | Per-expert context-warning threshold (0..1]                                                                | `0.85`                                                                              |
+| `NEXUS_DATA_DIR`               | Override runtime data root (memory/audit/voting/sessions/…)                                                | `~/.nexus-agents` (v2.60+; sandbox mode → `${NEXUS_SANDBOX_ROOT:-/}/.nexus-agents`) |
+| `NEXUS_SANDBOX`                | Host-provided sandbox flavor (`docker-opencode`, `codex`, …); presence enables sandbox-mode boot behaviour | unset (epic #2500)                                                                  |
+| `NEXUS_SANDBOX_ROOT`           | Multi-repo root the sandbox mounted (e.g. `/projects`)                                                     | unset (epic #2500)                                                                  |
+| `NEXUS_OPENAI_COMPAT_URL`      | OpenAI-compatible gateway base URL (e.g. `https://gateway.example/v1`)                                     | unset (#2468)                                                                       |
+| `NEXUS_OPENAI_COMPAT_KEY`      | API key for the gateway above                                                                              | unset (#2468)                                                                       |
+| `NEXUS_OPENCODE_CONFIG`        | Path to `opencode.json` for gateway-config bridge                                                          | unset (#2503)                                                                       |
 
-**Getting started:** [docs/getting-started/INSTALLATION.md](./docs/getting-started/INSTALLATION.md) | **Configuration:** [docs/getting-started/CONFIGURATION.md](./docs/getting-started/CONFIGURATION.md)
+**Getting started:** [docs/getting-started/INSTALLATION.md](./docs/getting-started/INSTALLATION.md) | **Configuration:** [docs/getting-started/CONFIGURATION.md](./docs/getting-started/CONFIGURATION.md) | **Sandboxed (Docker + OpenCode):** [docs/getting-started/SANDBOXED-USAGE.md](./docs/getting-started/SANDBOXED-USAGE.md)
 
 ---
 
