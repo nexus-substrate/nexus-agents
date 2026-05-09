@@ -43,7 +43,12 @@ import {
   parseExecError,
   truncateOutput,
 } from './docker-sandbox-helpers.js';
-import { isDenoAvailable, policyToDenoFlags, resetDenoCache } from './deno-sandbox-helpers.js';
+import {
+  isDenoAvailable,
+  policyToDenoFlags,
+  resetDenoCache,
+  collectPolicyConfigurationWarnings,
+} from './deno-sandbox-helpers.js';
 
 // Re-export for symmetry with docker-sandbox-executor.
 export { isDenoAvailable, resetDenoCache };
@@ -148,15 +153,23 @@ export class DenoSandboxExecutor implements ISandboxExecutor {
     const argsViolation = validateArgs(args);
     if (argsViolation !== null) violations.push(argsViolation);
 
-    const result: PolicyEvaluation = {
+    // #2428 ask 1: surface "capability declared but unenforceable" mismatches
+    // so operators reading the SandboxResult can detect config gaps without
+    // scraping logs. These aren't security violations (Deno fails closed on
+    // missing flags); they're feedback that the operator's intent diverges
+    // from the deployed config.
+    const configurationWarnings = collectPolicyConfigurationWarnings(policy);
+
+    const base: PolicyEvaluation = {
       allowed: violations.length === 0,
       policyId: policy.id,
       violations,
+      ...(configurationWarnings.length > 0 ? { configurationWarnings } : {}),
     };
     if (violations.length > 0 && violations[0] !== undefined) {
-      return { ...result, reason: violations[0].reason };
+      return { ...base, reason: violations[0].reason };
     }
-    return result;
+    return base;
   }
 
   // --------------------------------------------------------------------------

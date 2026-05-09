@@ -83,6 +83,40 @@ describe('DenoSandboxExecutor.validate', () => {
     expect(result.violations.length).toBeGreaterThan(0);
     expect(result.violations[0]?.type).toBe('command');
   });
+
+  // #2428 ask 1: configurationWarnings surface "capability declared but
+  // unenforceable" mismatches via the SandboxResult, so callers can detect
+  // config gaps without scraping logs.
+  it('surfaces configurationWarnings when policy has unenforceable capabilities', () => {
+    const exec = new DenoSandboxExecutor();
+    // process_spawn declared but allowedCommands kept ['echo','git'] so cmd
+    // validation still passes; pad with filesystem_read + env_access without
+    // their allowlists to trigger two warnings.
+    const result = exec.validate(
+      'echo',
+      [],
+      makeOptions({
+        policy: makePolicy({
+          capabilities: ['process_spawn', 'filesystem_read', 'env_access'],
+          allowedCommands: ['echo'],
+          allowedEnvVars: [],
+          pathRules: [],
+        }),
+      })
+    );
+    expect(result.allowed).toBe(true);
+    expect(result.configurationWarnings).toBeDefined();
+    expect(result.configurationWarnings).toHaveLength(2);
+    expect(result.configurationWarnings?.[0]).toContain('filesystem_read');
+    expect(result.configurationWarnings?.[1]).toContain('env_access');
+  });
+
+  it('omits configurationWarnings field when none apply', () => {
+    const exec = new DenoSandboxExecutor();
+    const result = exec.validate('echo', [], makeOptions());
+    // Default policy has process_spawn + ['echo','git'], no warnings expected.
+    expect(result.configurationWarnings).toBeUndefined();
+  });
 });
 
 describe('DenoSandboxExecutor.execute', () => {
