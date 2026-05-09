@@ -123,50 +123,24 @@ describe('fail-closed pipeline integration (#2417)', () => {
     expect(stages).not.toContain('category-override:fail-closed');
   });
 
-  it('returns CompositeRoutingError when sensitive category exhausts override and SENSITIVE_CATEGORIES has it', async () => {
-    // Patch the SENSITIVE_CATEGORIES set in-place for this test, then restore.
-    // ReadonlySet at the type level is a runtime Set; we mutate to simulate
-    // operator opt-in without re-importing/rebundling.
+  it('with sensitive category set + override overlap, normal routing applies (no err branch)', async () => {
+    // #2430 item 4: this test was previously named "returns CompositeRoutingError
+    // when sensitive category exhausts override" but its assertion is `result.ok
+    // === true` — it lands on the happy path because the candidate list overlaps
+    // the override chain. The genuine err-branch coverage is in the
+    // 'fail-closed branch returns CompositeRoutingError' describe block below.
     const sensitiveSet = SENSITIVE_CATEGORIES as Set<string>;
     sensitiveSet.add('security_review');
     try {
       const task: CliTask = { content: 'Perform a security audit of the login endpoint' };
       const stages: string[] = [];
       const profile = analyzeTaskProfile(task, []);
-      // Provide ONLY a CLI that is NOT in security_review's override chain.
-      // override = [codex, gemini, claude, opencode]; pass nothing in that
-      // intersection. CliName is a closed union — to get an empty filter
-      // result we pass [] which is a degenerate-empty case handled at the
-      // top of runPipeline (returns no-adapters error before override). To
-      // exercise the override-empty path specifically, simulate via the
-      // override having no overlap by passing only a single CLI not in the
-      // chain. Since all 4 CliName values are in the override, we instead
-      // construct the case where only one cliName is passed and it's in the
-      // chain — proving the success path. The failure-path counterpart is
-      // tested at the unit level below via mocking detectTaskCategory; here
-      // we settle for asserting the fail-closed marker fires when the
-      // override happens to be exhausted in synthetic conditions.
-      //
-      // The cleanest assertion: when SENSITIVE_CATEGORIES is set AND we
-      // arrange for the override chain to exclude every present candidate,
-      // runPipeline returns err. We construct that by overriding the
-      // sensitive set to include a category whose override doesn't overlap
-      // with the candidate list. Since CATEGORY_CHAIN_OVERRIDES is a closed
-      // table, we use 'security_review' (which we just promoted) and pass
-      // a candidate set that excludes every CLI in its override. There's
-      // no such valid CliName though, so we use an empty array — runPipeline
-      // returns "no adapters" error at the entry point. That's not the
-      // path we want to exercise.
-      //
-      // Direct approach: invoke runPipeline with a single cliName that IS
-      // in the chain; the override succeeds. Then mutate the override to
-      // a non-overlapping chain via the same mutation pattern.
       const cliNames: CliName[] = ['claude', 'gemini', 'codex', 'opencode'];
       const result = await runPipeline(task, profile, stages, cliNames, makeDeps());
-      // Even with sensitive category set, when overlap exists the route
-      // succeeds. This is the happy path with sensitive categories opted in.
+      // Sensitive set + override overlap → success path, override fires normally.
       expect(result.ok).toBe(true);
       expect(stages).toContain('category-override');
+      expect(stages).not.toContain('category-override:fail-closed');
     } finally {
       sensitiveSet.delete('security_review');
     }
