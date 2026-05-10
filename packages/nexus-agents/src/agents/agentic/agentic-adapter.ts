@@ -173,6 +173,32 @@ export class AgenticAdapter implements IAgenticAdapter {
     }
   }
 
+  /**
+   * If the resolved profile asks for `'ephemeral'` prompt caching,
+   * mark the LAST tool definition with `cache_control: { type:
+   * 'ephemeral' }`. Anthropic interprets this as "cache everything up
+   * to and including the tool definitions"; other providers strip the
+   * unknown field at the canonical-request mapper.
+   *
+   * Last-tool placement is the Anthropic convention: the cache key
+   * is the prefix, so caching the final tool block caches the entire
+   * tools section. Per-turn the system prompt + user prompt + tools
+   * are stable, so the cache hit rate on multi-turn agent runs is
+   * high.
+   */
+  private applyCacheControlIfRequested(tools: readonly ToolDefinition[]): ToolDefinition[] {
+    if (this.profile.promptCaching !== 'ephemeral') return [...tools];
+    if (tools.length === 0) return [];
+    return tools.map((tool, idx) =>
+      idx === tools.length - 1
+        ? ({
+            ...tool,
+            cacheControl: { type: 'ephemeral' },
+          } as ToolDefinition & { cacheControl: { type: 'ephemeral' } })
+        : tool
+    );
+  }
+
   private async doResolveIdentity(): Promise<void> {
     const refined = await resolveModelIdentity(this.model, {
       ...(this.options.modelHints !== undefined && { hints: this.options.modelHints }),
@@ -186,10 +212,12 @@ export class AgenticAdapter implements IAgenticAdapter {
   }
 
   async runAgent(args: RunAgentArgs): Promise<Result<AgentRunResult, AgentError>> {
-    if (args.turnBudget <= 0) {
-      return err(new AgentError(`turnBudget must be > 0, got ${String(args.turnBudget)}`));
-    }
     await this.ensureIdentityResolved();
+    const turnBudget = args.turnBudget ?? this.profile.maxRecommendedTurnBudget;
+    if (turnBudget <= 0) {
+      return err(new AgentError(`turnBudget must be > 0, got ${String(turnBudget)}`));
+    }
+    const resolvedArgs: ResolvedRunAgentArgs = { ...args, turnBudget };
     const state: LoopState = {
       turns: [],
       totalInputTokens: 0,
@@ -198,11 +226,11 @@ export class AgenticAdapter implements IAgenticAdapter {
       messages: [{ role: 'user', content: args.userPrompt }],
     };
 
-    while (state.turns.length < args.turnBudget) {
+    while (state.turns.length < turnBudget) {
       if (args.signal?.aborted === true) {
         return ok(this.buildFromState(state, 'cancelled'));
       }
-      const turnOutcome = await this.runOneTurn(args, state);
+      const turnOutcome = await this.runOneTurn(resolvedArgs, state);
       if (turnOutcome.kind === 'error') return err(turnOutcome.error);
       if (turnOutcome.kind === 'stop') {
         return ok(this.buildFromState(state, turnOutcome.reason));
@@ -218,12 +246,12 @@ export class AgenticAdapter implements IAgenticAdapter {
    * calls → append results. Returns one of three outcomes describing
    * whether the loop continues, stops naturally, or hit a model error.
    */
-  private async runOneTurn(args: RunAgentArgs, state: LoopState): Promise<TurnOutcome> {
+  private async runOneTurn(args: ResolvedRunAgentArgs, state: LoopState): Promise<TurnOutcome> {
     const t0 = Date.now();
     const completion = await this.callModelGated({
       messages: state.messages,
       systemPrompt: args.systemPrompt,
-      tools: [...args.tools] as ToolDefinition[],
+      tools: this.applyCacheControlIfRequested([...args.tools] as ToolDefinition[]),
       ...(args.temperature !== undefined && { temperature: args.temperature }),
       ...(args.maxTokens !== undefined && { maxTokens: args.maxTokens }),
     });
@@ -256,7 +284,7 @@ export class AgenticAdapter implements IAgenticAdapter {
   }
 
   private async processToolCalls(
-    args: RunAgentArgs,
+    args: ResolvedRunAgentArgs,
     state: LoopState,
     toolUses: readonly Extract<ContentBlock, { type: 'tool_use' }>[],
     response: CompletionResponse,
@@ -269,7 +297,7 @@ export class AgenticAdapter implements IAgenticAdapter {
   }
 
   private async processToolCallsSequential(
-    args: RunAgentArgs,
+    args: ResolvedRunAgentArgs,
     state: LoopState,
     toolUses: readonly Extract<ContentBlock, { type: 'tool_use' }>[],
     response: CompletionResponse,
@@ -305,7 +333,7 @@ export class AgenticAdapter implements IAgenticAdapter {
    * to record everything and let the next turn be the budget breaker).
    */
   private async processToolCallsParallel(
-    args: RunAgentArgs,
+    args: ResolvedRunAgentArgs,
     state: LoopState,
     toolUses: readonly Extract<ContentBlock, { type: 'tool_use' }>[],
     response: CompletionResponse,
@@ -393,7 +421,7 @@ export class AgenticAdapter implements IAgenticAdapter {
   }
 
   private async invokeToolAndRecord(
-    args: RunAgentArgs,
+    args: ResolvedRunAgentArgs,
     state: LoopState,
     toolUse: Extract<ContentBlock, { type: 'tool_use' }>,
     response: CompletionResponse,
@@ -494,6 +522,15 @@ export class AgenticAdapter implements IAgenticAdapter {
  * Keeps the public signature clean while each helper updates the
  * pieces it owns.
  */
+/**
+ * `RunAgentArgs` after the adapter has resolved any optional fields
+ * to concrete defaults — most importantly `turnBudget`, which is
+ * optional in the public API but required for the loop.
+ */
+interface ResolvedRunAgentArgs extends RunAgentArgs {
+  readonly turnBudget: number;
+}
+
 interface LoopState {
   turns: AgentTurn[];
   totalInputTokens: number;
