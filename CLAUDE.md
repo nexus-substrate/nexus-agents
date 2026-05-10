@@ -133,7 +133,7 @@ Write like a technically precise engineer. Be direct, honest, and clear. No mark
 - Existing harnesses: [`nexus-eval-swebench`](https://github.com/williamzujkowski/nexus-eval-swebench), [`nexus-eval-atbench`](https://github.com/williamzujkowski/nexus-eval-atbench), [`nexus-eval-swebench-pro`](https://github.com/williamzujkowski/nexus-eval-swebench-pro).
 - Hard-enforced by `.github/workflows/benchmark-extraction-gate.yml` (#2517) — any PR adding files under `packages/nexus-agents/src/swe-bench/` or `packages/nexus-agents/src/benchmarks/atbench/` fails CI with a pointer to the template.
 - API contract at the edge: eval repos peer-dep `nexus-agents` and import only public types (`BenchmarkAdapter`, `IModelAdapter`, `Result`, `runBenchmark`). They do NOT import internals.
-- Memory note: [feedback_harnesses_separate_repos.md](.claude/projects/-home-william-git-nexus-agents/memory/feedback_harnesses_separate_repos.md).
+- Per-agent memory note keyed `feedback_harnesses_separate_repos` records the rationale for the policy (lives outside this repo; recalled by the agent when relevant).
 
 ### Ask vs Assume
 
