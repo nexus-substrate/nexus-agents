@@ -161,6 +161,24 @@ export interface ICliAdapter {
    * Called on shutdown.
    */
   dispose(): Promise<void>;
+
+  /**
+   * (#2540) Optional: list models the underlying CLI installation/runtime
+   * has available. Implementations should cache for ~5 min and throw on
+   * failure so the caller can fall back. Adapters whose CLIs have no
+   * native list surface (claude, codex, gemini) leave this undefined.
+   */
+  listModels?(): Promise<readonly CliModelInfo[]>;
+}
+
+/**
+ * (#2540) One row from a CLI's `models`-listing surface. `id` matches what
+ * the CLI accepts as `--model`. `provider` is split out when the CLI uses
+ * `provider/model` ids (e.g. opencode `anthropic/claude-3-5-sonnet`).
+ */
+export interface CliModelInfo {
+  readonly id: string;
+  readonly provider?: string;
 }
 
 /**
