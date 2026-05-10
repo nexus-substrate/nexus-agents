@@ -365,12 +365,11 @@ interface MergeArgs {
 
 function mergeIdentity(args: MergeArgs): ResolvedModelIdentity {
   const { rawModelId, hints, probe, parsed } = args;
+  const version = pickVersion(hints, parsed);
   return {
     vendor: hints.vendor ?? probe?.vendor ?? parsed.vendor ?? 'unknown',
     family: hints.family ?? parsed.family ?? 'unknown',
-    ...(pickVersion(hints, parsed) !== undefined && {
-      version: pickVersion(hints, parsed),
-    }),
+    ...(version !== undefined && { version }),
     quirks: [...new Set([...(hints.quirks ?? []), ...parsed.quirks])],
     source: pickSource(hints, probe, parsed),
     rawModelId,
