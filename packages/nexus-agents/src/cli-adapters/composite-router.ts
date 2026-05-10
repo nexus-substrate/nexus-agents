@@ -165,6 +165,12 @@ export class CompositeRouter implements ICompositeRouter {
   /** Strategy distiller instance (Issue #999) */
   private strategyDistiller?: StrategyDistiller;
   private readonly cliNames: CliName[];
+  /**
+   * (#2540 PR 7) Optional harness-driven availability gate. When set,
+   * `executeRouting` filters the candidate CLI list to only those with
+   * ≥1 routable model per the cache. See `getCandidateCliNames`.
+   */
+  private readonly availableModelsCache?: import('../config/available-models-cache.js').AvailableModelsCache;
 
   // Statistics tracking
   private totalDecisions = 0;
@@ -200,6 +206,7 @@ export class CompositeRouter implements ICompositeRouter {
       distilledRuleStageConfig,
       metricsCollector,
       orchestrationObserver,
+      availableModelsCache,
       ...baseConfig
     } = config ?? {};
     this.config = CompositeRouterConfigSchema.parse(baseConfig);
@@ -214,6 +221,11 @@ export class CompositeRouter implements ICompositeRouter {
     if (orchestrationObserver !== undefined) {
       this.orchestrationObserver = orchestrationObserver;
       this.logger.debug('OrchestrationObserver wired to CompositeRouter');
+    }
+    // (#2540 PR 7) Wire optional availability cache.
+    if (availableModelsCache !== undefined) {
+      this.availableModelsCache = availableModelsCache;
+      this.logger.debug('AvailableModelsCache wired to CompositeRouter');
     }
     this.initializeCoreRouters(
       adapters,
@@ -513,11 +525,12 @@ export class CompositeRouter implements ICompositeRouter {
     try {
       const taskProfile = analyzeTaskProfile(task, stagesExecuted);
       const deps = this.getStageDependencies();
+      const candidateCliNames = await this.getCandidateCliNames();
       const pipelineResult = await runPipeline(
         task,
         taskProfile,
         stagesExecuted,
-        this.cliNames,
+        candidateCliNames,
         deps
       );
       if (!pipelineResult.ok) {
@@ -536,6 +549,42 @@ export class CompositeRouter implements ICompositeRouter {
     } catch (error: unknown) {
       return this.handleRoutingError(error, stagesExecuted);
     }
+  }
+
+  /**
+   * (#2540 PR 7) Returns the CLI candidate set for the routing pipeline,
+   * filtered by harness-driven availability when the cache is wired.
+   *
+   * Filtering rules:
+   *   - No cache configured → return all registered CLI names (prior behaviour).
+   *   - Cache configured → query getAll(); a CLI is excluded only if the
+   *     cache reports zero models for it. If the cache returns an empty union
+   *     (cold start, all sources failing), fall back to all registered CLIs
+   *     so the router never wedges on a transient cache miss.
+   *   - Errors in the cache do not block routing — log and fall through.
+   */
+  private async getCandidateCliNames(): Promise<CliName[]> {
+    if (this.availableModelsCache === undefined) return this.cliNames;
+    try {
+      const all = await this.availableModelsCache.getAll();
+      if (all.length === 0) return this.cliNames;
+      const sourcesWithModels = new Set(all.map((m) => m.source));
+      const filtered = this.cliNames.filter((name) => sourcesWithModels.has(name));
+      // Guard against fully empty filter — never let the gate wedge routing.
+      return filtered.length > 0 ? filtered : this.cliNames;
+    } catch (e: unknown) {
+      this.logger.warn('AvailableModelsCache query failed; falling back to all CLIs', {
+        error: e instanceof Error ? e.message : String(e),
+      });
+      return this.cliNames;
+    }
+  }
+
+  /** (#2540 PR 7) Public accessor for the wired cache (or undefined). */
+  getAvailableModelsCache():
+    | import('../config/available-models-cache.js').AvailableModelsCache
+    | undefined {
+    return this.availableModelsCache;
   }
 
   private getStageDependencies(): StageDependencies {
