@@ -288,3 +288,14 @@ export type {
   ToolDefinitionFormat,
   PromptCachingMode,
 } from './model-registry.js';
+
+// (#2540 PR 6) Harness-driven cache of currently-available models.
+// `ModelRegistry` answers "how should this model behave"; this cache
+// answers "is this model routable right now". CompositeRouter (PR 7)
+// gates on this cache before scoring.
+export { AvailableModelsCache } from './available-models-cache.js';
+export type {
+  AvailableModelsSource,
+  AvailableModel,
+  AvailableModelsCacheOptions,
+} from './available-models-cache.js';
