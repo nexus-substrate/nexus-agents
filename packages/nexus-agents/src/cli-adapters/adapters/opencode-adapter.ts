@@ -12,6 +12,7 @@ import { execFile } from 'node:child_process';
 import type {
   ICliResponseParser,
   CliTask,
+  CliModelInfo,
   ModelInfo,
   CliName,
   BaseAdapterOptions,
@@ -234,6 +235,26 @@ export class OpenCodeCliAdapter extends SubprocessCliAdapter {
         : task.content;
 
     return { command: 'opencode', args, stdin: content };
+  }
+
+  /**
+   * (#2540) Lists models the local OpenCode installation can route to.
+   * Wraps the existing `probeAvailableModels()` (already 5-min cached)
+   * and reshapes the result into the CliModelInfo schema. Splits
+   * `provider/model` ids when present.
+   */
+  async listModels(): Promise<readonly CliModelInfo[]> {
+    const ids = await probeAvailableModels();
+    const out: CliModelInfo[] = [];
+    for (const raw of ids) {
+      const slash = raw.indexOf('/');
+      if (slash > 0 && slash < raw.length - 1) {
+        out.push({ id: raw, provider: raw.slice(0, slash) });
+      } else {
+        out.push({ id: raw });
+      }
+    }
+    return out;
   }
 }
 

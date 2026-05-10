@@ -587,6 +587,48 @@ describe('OpenCodeCliAdapter', () => {
     });
   });
 
+  describe('listModels (#2540)', () => {
+    it('reshapes the probe output into CliModelInfo rows with provider split', async () => {
+      vi.mocked(execFile).mockImplementation(
+        (_cmd: string, _args: unknown, _opts: unknown, cb: unknown) => {
+          (cb as ExecFileCallback)(
+            null,
+            'opencode/big-pickle\nopencode/gpt-5-nano\nanthropic/claude-haiku-3.5\nbarefoo\n',
+            ''
+          );
+          return undefined as unknown as ReturnType<typeof execFile>;
+        }
+      );
+      const fresh = new OpenCodeCliAdapter();
+      const models = await fresh.listModels();
+      expect(models).toEqual([
+        { id: 'opencode/big-pickle', provider: 'opencode' },
+        { id: 'opencode/gpt-5-nano', provider: 'opencode' },
+        { id: 'anthropic/claude-haiku-3.5', provider: 'anthropic' },
+        { id: 'barefoo' },
+      ]);
+    });
+
+    it('reuses the probe cache across calls', async () => {
+      const probeImpl = vi.fn(
+        (
+          _cmd: string,
+          _args: unknown,
+          _opts: unknown,
+          cb: unknown
+        ): ReturnType<typeof execFile> => {
+          (cb as ExecFileCallback)(null, 'opencode/big-pickle\n', '');
+          return undefined as unknown as ReturnType<typeof execFile>;
+        }
+      );
+      vi.mocked(execFile).mockImplementation(probeImpl);
+      const fresh = new OpenCodeCliAdapter();
+      await fresh.listModels();
+      await fresh.listModels();
+      expect(probeImpl).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('lifecycle', () => {
     it('should initialize successfully', async () => {
       await expect(adapter.initialize()).resolves.not.toThrow();
