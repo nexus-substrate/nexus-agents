@@ -73,8 +73,9 @@ export * from './exports/consensus.js';
 // Observability - Swarm-level observability for multi-agent systems (Issue #351)
 export * from './exports/observability.js';
 
-// SWE-Bench - Evaluation framework for GitHub issue resolution (Issue #257)
-export * from './exports/swe-bench.js';
+// SWE-bench harness extracted to nexus-eval-swebench per the harness-extraction
+// policy (epic #2515, originally #1960). exports/swe-bench.js + the in-tree
+// runtime were removed alongside this commit.
 
 // Benchmarks - BenchmarkAdapter contract + memory/token/consolidation/adapter-latency benchmarks (#1960)
 export * from './exports/benchmarks.js';

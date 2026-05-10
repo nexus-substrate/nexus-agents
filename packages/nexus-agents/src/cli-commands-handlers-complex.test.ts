@@ -32,7 +32,6 @@ vi.mock('./cli/index.js', () => ({
     ['get', 'set', 'list', 'reset', 'export', 'import'].includes(action)
   ),
   orchestrateCommand: vi.fn(() => Promise.resolve(0)),
-  sweBenchCommand: vi.fn(() => Promise.resolve(0)),
 }));
 
 // Mock validators
@@ -51,12 +50,7 @@ import {
   handleSweBenchCommand,
 } from './cli-commands-handlers-complex.js';
 
-import {
-  configInitCommand,
-  configCommand,
-  orchestrateCommand,
-  sweBenchCommand,
-} from './cli/index.js';
+import { configInitCommand, configCommand, orchestrateCommand } from './cli/index.js';
 
 import { printOrchestrateUsage } from './cli-commands-usage.js';
 
@@ -449,148 +443,18 @@ describe('cli-commands-handlers-complex', () => {
     });
   });
 
-  describe('handleSweBenchCommand', () => {
-    it('calls sweBenchCommand with default subcommand run', async () => {
+  describe('handleSweBenchCommand (deprecation shim, #2515)', () => {
+    it('exits with INVALID_ARGS and prints migration message', async () => {
       const args = createArgs({
         command: 'swe-bench',
         positionals: ['swe-bench'],
       });
-
+      const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
       await handleSweBenchCommand(args);
-
-      expect(sweBenchCommand).toHaveBeenCalledWith(expect.arrayContaining(['run']));
-    });
-
-    it('passes subcommand from positionals[1]', async () => {
-      const args = createArgs({
-        command: 'swe-bench',
-        positionals: ['swe-bench', 'status'],
-      });
-
-      await handleSweBenchCommand(args);
-
-      expect(sweBenchCommand).toHaveBeenCalledWith(expect.arrayContaining(['status']));
-    });
-
-    it('passes variant and limit options', async () => {
-      const args = createArgs({
-        command: 'swe-bench',
-        positionals: ['swe-bench', 'run'],
-        options: {
-          help: false,
-          version: false,
-          verbose: false,
-          interactive: false,
-          mode: 'server',
-          force: false,
-          format: 'json',
-          dryRun: false,
-          banditStats: false,
-          setup: false,
-          skipChecks: false,
-          createIssue: false,
-          fix: false,
-          quick: false,
-          resume: false,
-          nonInteractive: false,
-          skipMcp: false,
-          skipRules: false,
-          skipHooks: false,
-          mock: false,
-          variant: 'lite',
-          limit: 10,
-        },
-      });
-
-      await handleSweBenchCommand(args);
-
-      expect(sweBenchCommand).toHaveBeenCalledWith(
-        expect.arrayContaining(['run', '--variant=lite', '--limit=10'])
-      );
-    });
-
-    it('passes resume and verbose flags', async () => {
-      const args = createArgs({
-        command: 'swe-bench',
-        positionals: ['swe-bench', 'run'],
-        options: {
-          help: false,
-          version: false,
-          verbose: true,
-          interactive: false,
-          mode: 'server',
-          force: false,
-          format: 'json',
-          dryRun: false,
-          banditStats: false,
-          setup: false,
-          skipChecks: false,
-          createIssue: false,
-          fix: false,
-          quick: false,
-          resume: true,
-          nonInteractive: false,
-          skipMcp: false,
-          skipRules: false,
-          skipHooks: false,
-          mock: false,
-        },
-      });
-
-      await handleSweBenchCommand(args);
-
-      expect(sweBenchCommand).toHaveBeenCalledWith(
-        expect.arrayContaining(['--resume', '--verbose'])
-      );
-    });
-
-    it('passes multiple instance options', async () => {
-      const args = createArgs({
-        command: 'swe-bench',
-        positionals: ['swe-bench', 'run'],
-        options: {
-          help: false,
-          version: false,
-          verbose: false,
-          interactive: false,
-          mode: 'server',
-          force: false,
-          format: 'json',
-          dryRun: false,
-          banditStats: false,
-          setup: false,
-          skipChecks: false,
-          createIssue: false,
-          fix: false,
-          quick: false,
-          resume: false,
-          nonInteractive: false,
-          skipMcp: false,
-          skipRules: false,
-          skipHooks: false,
-          mock: false,
-          instance: ['django__django-1234', 'flask__flask-5678'],
-        },
-      });
-
-      await handleSweBenchCommand(args);
-
-      expect(sweBenchCommand).toHaveBeenCalledWith(
-        expect.arrayContaining(['--instance=django__django-1234', '--instance=flask__flask-5678'])
-      );
-    });
-
-    it('exits with correct code on success', async () => {
-      vi.mocked(sweBenchCommand).mockResolvedValueOnce(0);
-
-      const args = createArgs({
-        command: 'swe-bench',
-        positionals: ['swe-bench', 'run'],
-      });
-
-      await handleSweBenchCommand(args);
-
-      expect(mockExit).toHaveBeenCalledWith(0); // EXIT_CODES.SUCCESS
+      expect(mockExit).toHaveBeenCalledWith(3); // EXIT_CODES.INVALID_ARGS
+      const written = stderrSpy.mock.calls.map((c) => String(c[0])).join('');
+      expect(written).toContain('nexus-eval-swebench');
+      stderrSpy.mockRestore();
     });
   });
 });

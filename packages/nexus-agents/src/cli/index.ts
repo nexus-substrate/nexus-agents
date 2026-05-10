@@ -299,9 +299,10 @@ export type {
 export { verifyCommand, runVerify, printVerifyResult } from './verify-command.js';
 export type { VerifyOptions, VerifyCheck, VerifyResult } from './verify-command.js';
 
-// SWE-bench Command (Issue #257 - SWE-Bench Evaluation)
-export { sweBenchCommand, parseSweBenchArgs, printSweBenchHelp } from './swe-bench-command.js';
-export type { SWEBenchOptions, SWEBenchCommandResult } from './swe-bench-command.js';
+// SWE-bench command + adapter were extracted to nexus-eval-swebench per
+// the harness-extraction policy (epic #2515). The `nexus-agents swe-bench`
+// subcommand is preserved as a deprecation shim in
+// cli-commands-handlers-complex.ts for one minor release.
 
 // ATBench command + adapter were extracted to nexus-eval-atbench per
 // the harness-extraction policy (epic #2514). The `nexus-agents atbench`

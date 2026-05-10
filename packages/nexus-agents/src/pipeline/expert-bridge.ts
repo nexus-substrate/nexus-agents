@@ -55,7 +55,7 @@ let cachedMcpConfigPath: string | null = null;
 async function getMcpConfigPath(): Promise<string | null> {
   if (cachedMcpConfigPath !== null) return cachedMcpConfigPath;
   try {
-    const { generateMcpConfig } = await import('../swe-bench/mcp-config.js');
+    const { generateMcpConfig } = await import('../cli-adapters/child-mcp-config.js');
     const config = await generateMcpConfig();
     cachedMcpConfigPath = config.configPath;
     return cachedMcpConfigPath;
@@ -82,7 +82,7 @@ let cachedCircuitBreaker: {
  * breaks at compile time instead of silently returning wrong data (#1921).
  */
 function adaptCompositeRouter(
-  compositeRouter: import('../cli-adapters/composite-router.js').ICompositeRouter,
+  compositeRouter: import('../cli-adapters/composite-router.js').ICompositeRouter
 ): RouterLike {
   return {
     async executeTask(task): Promise<{

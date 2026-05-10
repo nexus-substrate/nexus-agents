@@ -238,7 +238,7 @@ export const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
   },
   {
     command: 'swe-bench',
-    description: 'Run SWE-bench evaluation benchmark',
+    description: '[deprecated] Extracted to nexus-eval-swebench (#2515); shim until next minor.',
     audience: 'maintainer',
   },
   {
