@@ -393,6 +393,9 @@ describe('AgenticAdapter', () => {
 
   it('forceProfile bypasses identity-driven lookup', () => {
     const customProfile = {
+      id: 'test-custom-model',
+      vendor: 'unknown' as const,
+      family: 'unknown',
       parallelToolCalls: false,
       promptCaching: 'none' as const,
       toolDefinitionFormat: 'openai' as const,
@@ -400,6 +403,7 @@ describe('AgenticAdapter', () => {
       strictJson: true,
       quirks: [],
       profileId: 'test-custom',
+      source: 'in-tree' as const,
     };
     const adapter = new AgenticAdapter(makeMockModel([{}], 'anthropic', 'claude-opus-4-1'), {
       forceProfile: customProfile,

@@ -42,9 +42,11 @@ import {
   type ResolvedModelIdentity,
 } from '../../config/model-identity.js';
 import {
-  lookupModelProfile,
-  type ModelBehaviorProfile,
-} from '../../config/model-behavior-profile.js';
+  ModelRegistry,
+  deriveEntry,
+  getDefaultRegistry,
+  type ModelEntry,
+} from '../../config/model-registry.js';
 
 import {
   AgentError,
@@ -81,7 +83,13 @@ export interface AgenticAdapterOptions {
    * lookup entirely. Reserved for tests + diagnostic runs; in
    * production prefer `modelHints` so identity stays auditable.
    */
-  readonly forceProfile?: ModelBehaviorProfile;
+  readonly forceProfile?: ModelEntry;
+  /**
+   * Override the registry used for `getEntry` lookups. Defaults to
+   * the lazy global registry. Tests and multi-tenant deployments
+   * inject their own.
+   */
+  readonly registry?: ModelRegistry;
 }
 
 export class AgenticAdapter implements IAgenticAdapter {
@@ -101,9 +109,10 @@ export class AgenticAdapter implements IAgenticAdapter {
 
   private readonly model: IModelAdapter;
   private readonly options: AgenticAdapterOptions;
+  private readonly registry: ModelRegistry;
   private readonly semaphore: Semaphore | null;
   private resolvedIdentity: ResolvedModelIdentity;
-  private profile: ModelBehaviorProfile;
+  private profile: ModelEntry;
   private profileResolutionPromise: Promise<void> | null = null;
 
   constructor(modelAdapter: IModelAdapter, options: AgenticAdapterOptions = {}) {
@@ -116,7 +125,9 @@ export class AgenticAdapter implements IAgenticAdapter {
     // probe (if listModels exists + skipProbe is false) refines it
     // before the first runAgent.
     this.resolvedIdentity = resolveModelIdentitySync(modelAdapter.modelId, options.modelHints);
-    this.profile = options.forceProfile ?? lookupModelProfile(this.resolvedIdentity);
+    this.registry = options.registry ?? getDefaultRegistry();
+    this.profile =
+      options.forceProfile ?? this.registry.getEntry(modelAdapter.modelId, options.modelHints);
     this.adapterStrategy = stampStrategy(this.resolvedIdentity);
 
     if (this.profile.quirks.includes('embedding')) {
@@ -136,7 +147,7 @@ export class AgenticAdapter implements IAgenticAdapter {
    * Read-only accessor for the resolved profile. Mostly used in tests
    * + observability surfaces; production callers shouldn't need this.
    */
-  getProfile(): ModelBehaviorProfile {
+  getProfile(): ModelEntry {
     return this.profile;
   }
 
@@ -205,7 +216,9 @@ export class AgenticAdapter implements IAgenticAdapter {
     // Only upgrade if the probe contributed a more-specific source.
     if (refined.source === 'probe' || refined.source === 'modelHints') {
       this.resolvedIdentity = refined;
-      this.profile = lookupModelProfile(refined);
+      this.profile = this.registry.hasAuthoritative(this.modelId)
+        ? this.registry.getEntry(this.modelId, this.options.modelHints)
+        : deriveEntry(this.modelId, refined);
       this.adapterStrategy = stampStrategy(refined);
     }
   }
