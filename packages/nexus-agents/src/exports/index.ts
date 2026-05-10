@@ -22,7 +22,9 @@ export * from './security.js';
 export * from './consensus.js';
 export * from './observability.js';
 export * from './orchestration.js';
-export * from './swe-bench.js';
+// SWE-bench harness extracted to nexus-eval-swebench per the harness-
+// extraction policy (epic #2515, originally #1960). exports/swe-bench.js
+// was removed alongside the in-tree runtime.
 export * from './benchmarks.js';
 export * from './pipeline.js';
 export * from './scm.js';

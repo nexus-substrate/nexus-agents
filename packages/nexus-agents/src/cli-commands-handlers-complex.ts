@@ -13,7 +13,6 @@ import {
   configCommand,
   isValidConfigAction,
   orchestrateCommand,
-  sweBenchCommand,
 } from './cli/index.js';
 import { EXIT_CODES, type ParsedCliArgs } from './cli-types.js';
 import { isValidOrchestrateModel } from './cli-commands-validators.js';
@@ -152,39 +151,29 @@ export async function handleOrchestrateCommand(args: ParsedCliArgs): Promise<voi
 }
 
 /**
- * Handles the swe-bench command for benchmark evaluation.
- * (Source: Issue #257 - SWE-Bench Evaluation)
+ * Deprecation shim for `nexus-agents swe-bench` (#2515). The SWE-bench
+ * harness was extracted to its own repo per the harness-extraction
+ * policy (epic #2514). Operators should switch to `npx nexus-eval-swebench`.
+ *
+ * Kept for one minor release so automation that hardcodes the subcommand
+ * doesn't silently break — prints the migration command to stderr and
+ * exits non-zero. Slated for removal after the next minor.
  */
-/** Maps parsed CLI options to swe-bench sub-args. */
-function buildSweBenchSubArgs(args: ParsedCliArgs): string[] {
-  const opts = args.options;
-  const subArgs: string[] = [args.positionals[1] ?? 'run'];
-  // Value flags: [optionKey, argName]
-  const valueFlags: [string, string][] = [
-    ['variant', 'variant'],
-    ['limit', 'limit'],
-    ['output', 'output'],
-    ['concurrency', 'concurrency'],
-    ['predictions', 'predictions'],
-    ['cacheLevel', 'cache-level'],
-    ['maxWorkers', 'max-workers'],
-    ['runId', 'run-id'],
-    ['outputDir', 'output-dir'],
-  ];
-  for (const [key, flag] of valueFlags) {
-    const val = opts[key as keyof typeof opts];
-    if (val !== undefined) subArgs.push(`--${flag}=${String(val)}`);
-  }
-  if (opts.resume) subArgs.push('--resume');
-  if (opts.verbose) subArgs.push('--verbose');
-  if (opts.mcp === true) subArgs.push('--mcp');
-  for (const inst of opts.instance ?? []) subArgs.push(`--instance=${inst}`);
-  return subArgs;
-}
-
-export async function handleSweBenchCommand(args: ParsedCliArgs): Promise<void> {
-  const exitCode = await sweBenchCommand(buildSweBenchSubArgs(args));
-  process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
+export async function handleSweBenchCommand(_args: ParsedCliArgs): Promise<void> {
+  process.stderr.write(
+    "The 'nexus-agents swe-bench' subcommand was removed in this release.\n" +
+      'The SWE-bench harness now lives in its own repo per the harness-extraction\n' +
+      'policy (https://github.com/williamzujkowski/nexus-agents/issues/2515).\n' +
+      '\n' +
+      'Migration:\n' +
+      '  npx nexus-eval-swebench [run] [options]\n' +
+      '\n' +
+      "Run 'npx nexus-eval-swebench --help' for the full flag set, or see\n" +
+      '  https://github.com/williamzujkowski/nexus-eval-swebench\n' +
+      'for library-mode usage and the v0.2 clean-room implementation.\n'
+  );
+  await Promise.resolve();
+  process.exit(EXIT_CODES.INVALID_ARGS);
 }
 
 /**

@@ -1,11 +1,14 @@
 /**
- * nexus-agents/swe-bench - MCP Config Generator
+ * nexus-agents/cli-adapters - Child CLI MCP Config Generator
  *
- * Generates MCP server configuration for child Claude CLI sessions.
- * Enables SWE-bench agents to access nexus-agents tools (memory, research).
+ * Generates MCP server configuration for child Claude CLI sessions so
+ * spawned agents can call back into nexus-agents' MCP tools (memory,
+ * research, etc.). Used by `pipeline/expert-bridge.ts` to give expert
+ * agents tool access. Originally lived under `swe-bench/` (#1413);
+ * relocated here in #2515 — the helper is generic CLI-spawn
+ * infrastructure, not benchmark-specific.
  *
- * @module swe-bench/mcp-config
- * (Source: Issue #1413 - MCP tools in SWE-bench CLI sessions)
+ * @module cli-adapters/child-mcp-config
  */
 
 import { writeFile, mkdtemp, rm } from 'node:fs/promises';
