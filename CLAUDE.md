@@ -125,6 +125,16 @@ Write like a technically precise engineer. Be direct, honest, and clear. No mark
 - Extend existing modules over creating parallel implementations
 - Never create `enhanced_*`, `new_*`, `v2_*`, `refactor_*` files
 
+### Harness-Extraction Policy
+
+**Benchmark harnesses MUST live in dedicated `nexus-eval-*` repos**, NOT in this tree. Per epic #2514 (originally #1960, finalised by #2515 + #2516).
+
+- For new benchmarks: scaffold from [`nexus-eval-template`](https://github.com/williamzujkowski/nexus-eval-template). Implement the `BenchmarkAdapter` contract from nexus-agents.
+- Existing harnesses: [`nexus-eval-swebench`](https://github.com/williamzujkowski/nexus-eval-swebench), [`nexus-eval-atbench`](https://github.com/williamzujkowski/nexus-eval-atbench), [`nexus-eval-swebench-pro`](https://github.com/williamzujkowski/nexus-eval-swebench-pro).
+- Hard-enforced by `.github/workflows/benchmark-extraction-gate.yml` (#2517) — any PR adding files under `packages/nexus-agents/src/swe-bench/` or `packages/nexus-agents/src/benchmarks/atbench/` fails CI with a pointer to the template.
+- API contract at the edge: eval repos peer-dep `nexus-agents` and import only public types (`BenchmarkAdapter`, `IModelAdapter`, `Result`, `runBenchmark`). They do NOT import internals.
+- Per-agent memory note keyed `feedback_harnesses_separate_repos` records the rationale for the policy (lives outside this repo; recalled by the agent when relevant).
+
 ### Ask vs Assume
 
 **Always clarify (never assume) for:** deployment env, expected scale, consistency needs, security/PII, breaking changes.
@@ -145,26 +155,27 @@ Before implementing features or making architectural decisions: search official 
 
 All paths are validated by `scripts/inject-governance.ts check` — a row that points at a missing file fails CI (#2321).
 
-| Concern               | Canonical Path               | Location                                                               |
-| --------------------- | ---------------------------- | ---------------------------------------------------------------------- |
-| **Task Analysis**     | `SharedTaskAnalyzer`         | `packages/nexus-agents/src/core/task-analysis/shared-task-analyzer.ts` |
-| **Task Routing**      | `CompositeRouter`            | `packages/nexus-agents/src/cli-adapters/composite-router.ts`           |
-| **Consensus Voting**  | `ConsensusEngine`            | `packages/nexus-agents/src/consensus/engine.ts`                        |
-| **Voter Roles**       | `VoterRole` + `VOTER_ROLES`  | `packages/nexus-agents/src/cli/vote-types.ts`                          |
-| **CLI Adapters**      | `createAllAdapters()`        | `packages/nexus-agents/src/cli-adapters/factory.ts`                    |
-| **MCP Tools**         | `registerTools()`            | `packages/nexus-agents/src/mcp/tools/index.ts`                         |
-| **Model Registry**    | `DEFAULT_MODEL_CAPABILITIES` | `packages/nexus-agents/src/config/model-capabilities.ts`               |
-| **Adapter Registry**  | `UnifiedAdapterRegistry`     | `packages/nexus-agents/src/adapters/unified-registry.ts`               |
-| **Adapter Lifecycle** | `ResilientAdapter`           | `packages/nexus-agents/src/adapters/resilient-adapter.ts`              |
-| **Graph Workflows**   | `GraphBuilder`               | `packages/nexus-agents/src/orchestration/graph/graph-builder.ts`       |
-| **Security Pipeline** | `src/security/`              | `packages/nexus-agents/src/security/index.ts`                          |
-| **Workflow Router**   | `createWorkflowRouter`       | `packages/nexus-agents/src/orchestration/workflow-router.ts`           |
-| **Pipeline Runner**   | `PipelineRunner`             | `packages/nexus-agents/src/pipeline/pipeline-runner.ts`                |
-| **Plugin Registry**   | `PluginRegistry`             | `packages/nexus-agents/src/pipeline/plugin-registry.ts`                |
-| **Policy Engine**     | `PolicyEngine`               | `packages/nexus-agents/src/pipeline/policy-engine.ts`                  |
-| **Event Bus**         | `EventBus`                   | `packages/nexus-agents/src/pipeline/event-bus.ts`                      |
-| **Artifact Store**    | `ArtifactStore`              | `packages/nexus-agents/src/pipeline/artifact-store.ts`                 |
-| **Task Contract**     | `TaskContractSchema`         | `packages/nexus-agents/src/pipeline/task-contract.ts`                  |
+| Concern                 | Canonical Path               | Location                                                               |
+| ----------------------- | ---------------------------- | ---------------------------------------------------------------------- |
+| **Task Analysis**       | `SharedTaskAnalyzer`         | `packages/nexus-agents/src/core/task-analysis/shared-task-analyzer.ts` |
+| **Task Routing**        | `CompositeRouter`            | `packages/nexus-agents/src/cli-adapters/composite-router.ts`           |
+| **Consensus Voting**    | `ConsensusEngine`            | `packages/nexus-agents/src/consensus/engine.ts`                        |
+| **Voter Roles**         | `VoterRole` + `VOTER_ROLES`  | `packages/nexus-agents/src/cli/vote-types.ts`                          |
+| **CLI Adapters**        | `createAllAdapters()`        | `packages/nexus-agents/src/cli-adapters/factory.ts`                    |
+| **MCP Tools**           | `registerTools()`            | `packages/nexus-agents/src/mcp/tools/index.ts`                         |
+| **Model Registry**      | `DEFAULT_MODEL_CAPABILITIES` | `packages/nexus-agents/src/config/model-capabilities.ts`               |
+| **Adapter Registry**    | `UnifiedAdapterRegistry`     | `packages/nexus-agents/src/adapters/unified-registry.ts`               |
+| **Adapter Lifecycle**   | `ResilientAdapter`           | `packages/nexus-agents/src/adapters/resilient-adapter.ts`              |
+| **Graph Workflows**     | `GraphBuilder`               | `packages/nexus-agents/src/orchestration/graph/graph-builder.ts`       |
+| **Security Pipeline**   | `src/security/`              | `packages/nexus-agents/src/security/index.ts`                          |
+| **Workflow Router**     | `createWorkflowRouter`       | `packages/nexus-agents/src/orchestration/workflow-router.ts`           |
+| **Pipeline Runner**     | `PipelineRunner`             | `packages/nexus-agents/src/pipeline/pipeline-runner.ts`                |
+| **Plugin Registry**     | `PluginRegistry`             | `packages/nexus-agents/src/pipeline/plugin-registry.ts`                |
+| **Policy Engine**       | `PolicyEngine`               | `packages/nexus-agents/src/pipeline/policy-engine.ts`                  |
+| **Event Bus**           | `EventBus`                   | `packages/nexus-agents/src/pipeline/event-bus.ts`                      |
+| **Artifact Store**      | `ArtifactStore`              | `packages/nexus-agents/src/pipeline/artifact-store.ts`                 |
+| **Task Contract**       | `TaskContractSchema`         | `packages/nexus-agents/src/pipeline/task-contract.ts`                  |
+| **Benchmark harnesses** | own repo (`nexus-eval-*`)    | NOT in this tree — see Harness-Extraction Policy above + #2514         |
 
 All task routing goes through: `Task → BudgetRouter → ZeroRouter → PreferenceRouter → TopsisRouter → LinUCB → Selected Model`
 
