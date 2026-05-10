@@ -513,4 +513,107 @@ describe('AgenticAdapter', () => {
     if (!result.ok) return;
     expect(result.value.stopReason).toBe('tool-error');
   });
+
+  it('turnBudget defaults to profile.maxRecommendedTurnBudget when omitted', async () => {
+    const adapter = new AgenticAdapter(
+      makeMockModel(
+        [
+          {
+            content: [{ type: 'tool_use', id: 'tu', name: 'lookup', input: {} }] as ContentBlock[],
+            stopReason: 'tool_use',
+          },
+        ],
+        'anthropic',
+        'claude-haiku-4'
+      )
+    );
+    expect(adapter.getProfile().maxRecommendedTurnBudget).toBe(8);
+    const result = await adapter.runAgent({
+      systemPrompt: 's',
+      userPrompt: 'u',
+      tools: TOOLS,
+      onToolCall: () => Promise.resolve({ content: 'ok' }),
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.stopReason).toBe('turn-budget');
+    expect(result.value.turnsUsed).toBe(8);
+  });
+
+  it('explicit turnBudget overrides profile default', async () => {
+    const adapter = new AgenticAdapter(
+      makeMockModel(
+        [
+          {
+            content: [{ type: 'tool_use', id: 'tu', name: 'lookup', input: {} }] as ContentBlock[],
+            stopReason: 'tool_use',
+          },
+        ],
+        'anthropic',
+        'claude-haiku-4'
+      )
+    );
+    const result = await adapter.runAgent({
+      systemPrompt: 's',
+      userPrompt: 'u',
+      tools: TOOLS,
+      turnBudget: 2,
+      onToolCall: () => Promise.resolve({ content: 'ok' }),
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.turnsUsed).toBe(2);
+  });
+
+  it('ephemeral cache marker added to last tool definition for anthropic', async () => {
+    const adapter = new AgenticAdapter(
+      makeMockModel(
+        [{ content: [{ type: 'text', text: 'done' }], stopReason: 'end_turn' }],
+        'anthropic',
+        'claude-sonnet-4-6'
+      )
+    );
+    expect(adapter.getProfile().promptCaching).toBe('ephemeral');
+    await adapter.runAgent({
+      systemPrompt: 's',
+      userPrompt: 'u',
+      tools: [
+        { name: 'a', description: 'a', inputSchema: {} },
+        { name: 'b', description: 'b', inputSchema: {} },
+      ],
+      turnBudget: 1,
+      onToolCall: () => Promise.resolve({ content: '' }),
+    });
+    const completeFn = (adapter as unknown as { model: { complete: ReturnType<typeof vi.fn> } })
+      .model.complete;
+    const firstCall = completeFn.mock.calls[0]?.[0] as {
+      tools: Array<{ name: string; cacheControl?: unknown }>;
+    };
+    expect(firstCall.tools[0]?.cacheControl).toBeUndefined();
+    expect(firstCall.tools[1]?.cacheControl).toEqual({ type: 'ephemeral' });
+  });
+
+  it('no cache marker when profile.promptCaching is none (e.g., openai)', async () => {
+    const adapter = new AgenticAdapter(
+      makeMockModel(
+        [{ content: [{ type: 'text', text: 'done' }], stopReason: 'end_turn' }],
+        'openai',
+        'gpt-4o'
+      )
+    );
+    expect(adapter.getProfile().promptCaching).toBe('none');
+    await adapter.runAgent({
+      systemPrompt: 's',
+      userPrompt: 'u',
+      tools: [{ name: 'a', description: 'a', inputSchema: {} }],
+      turnBudget: 1,
+      onToolCall: () => Promise.resolve({ content: '' }),
+    });
+    const completeFn = (adapter as unknown as { model: { complete: ReturnType<typeof vi.fn> } })
+      .model.complete;
+    const firstCall = completeFn.mock.calls[0]?.[0] as {
+      tools: Array<{ cacheControl?: unknown }>;
+    };
+    expect(firstCall.tools[0]?.cacheControl).toBeUndefined();
+  });
 });

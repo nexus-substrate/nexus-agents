@@ -142,7 +142,12 @@ export interface RunAgentArgs {
   readonly systemPrompt: string;
   readonly userPrompt: string;
   readonly tools: readonly ToolDefinition[];
-  readonly turnBudget: number;
+  /**
+   * Maximum agent turns. When omitted, the adapter uses the resolved
+   * model's `profile.maxRecommendedTurnBudget` (claude-opus = 20,
+   * o-reasoning = 25, claude-haiku / gemini-flash = 8, defaults to 10).
+   */
+  readonly turnBudget?: number;
   readonly onToolCall: (call: ToolCall) => Promise<ToolResult>;
   readonly onTurn?: (turn: AgentTurn) => void;
   readonly signal?: AbortSignal;
