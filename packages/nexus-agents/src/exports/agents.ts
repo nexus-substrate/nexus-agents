@@ -301,6 +301,17 @@ export {
   type WaveExecutionResult,
   type WorkChunk,
   type WaveTaskExecutor,
+  // Agentic adapter (#2529) — multi-turn tool-use loop primitive
+  AgenticAdapter,
+  createAgenticAdapter,
+  type AgenticAdapterOptions,
+  type AgentRunResult,
+  type AgentStopReason,
+  type AgentTurn,
+  type IAgenticAdapter,
+  type RunAgentArgs,
+  type ToolCall as AgenticToolCall,
+  type ToolResult as AgenticToolResult,
 } from '../agents/index.js';
 
 // Skills module exports: agents-skills.ts
