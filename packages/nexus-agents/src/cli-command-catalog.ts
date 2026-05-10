@@ -243,7 +243,7 @@ export const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
   },
   {
     command: 'atbench',
-    description: 'Run ATBench trajectory-safety evaluation',
+    description: '[deprecated] Extracted to nexus-eval-atbench (#2516); shim until next minor.',
     audience: 'maintainer',
   },
   {
