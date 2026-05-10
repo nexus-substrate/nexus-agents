@@ -1,0 +1,182 @@
+/**
+ * Tests for the unified ModelRegistry (#2540).
+ */
+import { describe, it, expect } from 'vitest';
+
+import {
+  ModelRegistry,
+  deriveEntry,
+  getDefaultRegistry,
+  setDefaultRegistry,
+  type ModelEntry,
+} from './model-registry.js';
+import { resolveModelIdentitySync } from './model-identity.js';
+
+const sampleAuthoritative: ModelEntry = {
+  id: 'claude-opus-4-1',
+  aliases: ['anthropic/claude-opus-4-1', 'claude-opus-latest'],
+  vendor: 'anthropic',
+  family: 'claude-opus',
+  version: '4-1',
+  displayName: 'Claude Opus 4.1',
+  contextWindow: 200_000,
+  maxOutputTokens: 16_384,
+  parallelToolCalls: true,
+  promptCaching: 'ephemeral',
+  toolDefinitionFormat: 'anthropic',
+  maxRecommendedTurnBudget: 20,
+  strictJson: true,
+  quirks: [],
+  profileId: 'claude-opus',
+  source: 'in-tree',
+};
+
+describe('ModelRegistry — exact match', () => {
+  it('returns authoritative entry for canonical id', () => {
+    const reg = new ModelRegistry({ inTreeEntries: [sampleAuthoritative] });
+    const entry = reg.getEntry('claude-opus-4-1');
+    expect(entry.source).toBe('in-tree');
+    expect(entry.contextWindow).toBe(200_000);
+  });
+
+  it('returns authoritative entry via alias', () => {
+    const reg = new ModelRegistry({ inTreeEntries: [sampleAuthoritative] });
+    const entry = reg.getEntry('anthropic/claude-opus-4-1');
+    expect(entry.id).toBe('claude-opus-4-1');
+    expect(entry.source).toBe('in-tree');
+  });
+
+  it('hasAuthoritative true for known id, false for unknown', () => {
+    const reg = new ModelRegistry({ inTreeEntries: [sampleAuthoritative] });
+    expect(reg.hasAuthoritative('claude-opus-4-1')).toBe(true);
+    expect(reg.hasAuthoritative('mystery-model')).toBe(false);
+  });
+});
+
+describe('ModelRegistry — derivation', () => {
+  it('derives entry for unknown claude variant via vendor + family chain', () => {
+    const reg = new ModelRegistry();
+    const entry = reg.getEntry('claude-opus-5'); // not in registry
+    expect(entry.source).toBe('derived');
+    expect(entry.vendor).toBe('anthropic');
+    expect(entry.family).toBe('claude-opus');
+    // Family override: claude-opus has 20-turn budget
+    expect(entry.maxRecommendedTurnBudget).toBe(20);
+    expect(entry.profileId).toBe('claude-opus');
+    expect(entry.parallelToolCalls).toBe(true); // anthropic default
+    expect(entry.promptCaching).toBe('ephemeral');
+  });
+
+  it('derives entry for gateway-fronted model via vendor prefix', () => {
+    const reg = new ModelRegistry();
+    const entry = reg.getEntry('meta-llama/llama-3.3-70b-instruct');
+    expect(entry.source).toBe('derived');
+    expect(entry.vendor).toBe('meta');
+    expect(entry.family).toBe('llama-3');
+    // Meta default: sequential tools, 8-turn budget
+    expect(entry.parallelToolCalls).toBe(false);
+    expect(entry.maxRecommendedTurnBudget).toBe(8);
+  });
+
+  it('derives entry with thinking quirk bumping budget 1.5x', () => {
+    const reg = new ModelRegistry();
+    const entry = reg.getEntry('claude-opus-5-thinking');
+    expect(entry.quirks).toContain('thinking');
+    // Base claude-opus = 20 → ceil(20 * 1.5) = 30
+    expect(entry.maxRecommendedTurnBudget).toBe(30);
+  });
+
+  it('derives universal default for fully opaque model', () => {
+    const reg = new ModelRegistry();
+    const entry = reg.getEntry('mystery-7b');
+    expect(entry.source).toBe('derived');
+    expect(entry.vendor).toBe('unknown');
+    expect(entry.profileId).toBe('default');
+    expect(entry.parallelToolCalls).toBe(false);
+    expect(entry.maxRecommendedTurnBudget).toBe(10);
+  });
+});
+
+describe('ModelRegistry — source priority', () => {
+  it('manifest overrides in-tree', () => {
+    const inTree: ModelEntry = { ...sampleAuthoritative, contextWindow: 100_000 };
+    const manifest: ModelEntry = {
+      ...sampleAuthoritative,
+      contextWindow: 999_999,
+      source: 'manifest',
+    };
+    const reg = new ModelRegistry({
+      inTreeEntries: [inTree],
+      manifestEntries: [manifest],
+    });
+    const entry = reg.getEntry('claude-opus-4-1');
+    expect(entry.contextWindow).toBe(999_999);
+    expect(entry.source).toBe('manifest');
+  });
+
+  it('in-tree overrides models.dev', () => {
+    const dev: ModelEntry = {
+      ...sampleAuthoritative,
+      contextWindow: 50_000,
+      source: 'models-dev',
+    };
+    const inTree: ModelEntry = { ...sampleAuthoritative, contextWindow: 200_000 };
+    const reg = new ModelRegistry({
+      modelsDevEntries: [dev],
+      inTreeEntries: [inTree],
+    });
+    const entry = reg.getEntry('claude-opus-4-1');
+    expect(entry.contextWindow).toBe(200_000);
+    expect(entry.source).toBe('in-tree');
+  });
+});
+
+describe('ModelRegistry — hints', () => {
+  it('hints redirect derivation when modelId is opaque', () => {
+    const reg = new ModelRegistry();
+    const entry = reg.getEntry('workspace-prod-1', {
+      vendor: 'anthropic',
+      family: 'claude-opus',
+    });
+    expect(entry.vendor).toBe('anthropic');
+    expect(entry.family).toBe('claude-opus');
+    expect(entry.maxRecommendedTurnBudget).toBe(20);
+  });
+});
+
+describe('deriveEntry helper', () => {
+  it('preserves quirks from identity + vendor+family overrides', () => {
+    const identity = resolveModelIdentitySync('gpt-4o-mini-2024-08');
+    const entry = deriveEntry('gpt-4o-mini-2024-08', identity);
+    expect(entry.vendor).toBe('openai');
+    expect(entry.family).toBe('gpt-4o');
+    expect(entry.quirks).toContain('small');
+    expect(entry.quirks).toContain('dated');
+    // openai default: parallel tools on
+    expect(entry.parallelToolCalls).toBe(true);
+  });
+
+  it('embedding quirk propagates so AgenticAdapter can refuse', () => {
+    const identity = resolveModelIdentitySync('text-embedding-3-large');
+    const entry = deriveEntry('text-embedding-3-large', identity);
+    expect(entry.quirks).toContain('embedding');
+  });
+});
+
+describe('global registry helpers', () => {
+  it('getDefaultRegistry returns the same instance across calls', () => {
+    setDefaultRegistry(undefined); // reset
+    const a = getDefaultRegistry();
+    const b = getDefaultRegistry();
+    expect(a).toBe(b);
+  });
+
+  it('setDefaultRegistry replaces the singleton', () => {
+    const custom = new ModelRegistry({ inTreeEntries: [sampleAuthoritative] });
+    setDefaultRegistry(custom);
+    const fetched = getDefaultRegistry();
+    expect(fetched).toBe(custom);
+    expect(fetched.hasAuthoritative('claude-opus-4-1')).toBe(true);
+    setDefaultRegistry(undefined);
+  });
+});

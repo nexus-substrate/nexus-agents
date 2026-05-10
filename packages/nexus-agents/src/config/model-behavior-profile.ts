@@ -1,4 +1,10 @@
 /**
+ * @deprecated Superseded by `ModelRegistry` in `model-registry.ts` (#2540).
+ * This module will be deleted in PR 2 of #2540 — `lookupModelProfile`
+ * callers migrate to `registry.getEntry(modelId)`. The behaviour fields
+ * have moved into `ModelEntry`; the lookup chain (vendor → family →
+ * default) is preserved inside `deriveEntry`.
+ *
  * Per-model behaviour profiles (#2529).
  *
  * Once `resolveModelIdentity` has classified a served model, this
