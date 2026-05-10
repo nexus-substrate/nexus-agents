@@ -15,6 +15,7 @@ import type {
   Result,
   CompletionRequest,
   CompletionResponse,
+  ModelMetadata,
   StreamChunk,
   TokenUsage,
 } from '../core/index.js';
@@ -364,7 +365,57 @@ export class OpenAIAdapter extends BaseAdapter {
       model: response.model,
     };
   }
+
+  /**
+   * (#2529) List models served by this OpenAI-compatible endpoint.
+   *
+   * Wraps `GET /v1/models`. Result is cached for `LIST_MODELS_TTL_MS`
+   * so identity resolution doesn't round-trip on every adapter.
+   * Concurrent callers share the in-flight promise.
+   *
+   * Throws on non-2xx so the harness-side identity resolver knows to
+   * fall back to modelId parsing — silent empty-list returns would be
+   * indistinguishable from "this gateway has no models", which a
+   * misconfigured endpoint shouldn't be allowed to claim.
+   */
+  async listModels(): Promise<readonly ModelMetadata[]> {
+    const now = Date.now();
+    if (this.modelsCache !== null && now - this.modelsCache.fetchedAt < LIST_MODELS_TTL_MS) {
+      return this.modelsCache.value;
+    }
+    if (this.modelsInFlight !== null) {
+      return this.modelsInFlight;
+    }
+    const inFlight = this.fetchModels();
+    this.modelsInFlight = inFlight;
+    try {
+      const value = await inFlight;
+      this.modelsCache = { value, fetchedAt: Date.now() };
+      return value;
+    } finally {
+      this.modelsInFlight = null;
+    }
+  }
+
+  private modelsCache: { value: readonly ModelMetadata[]; fetchedAt: number } | null = null;
+  private modelsInFlight: Promise<readonly ModelMetadata[]> | null = null;
+
+  private async fetchModels(): Promise<readonly ModelMetadata[]> {
+    const list = await this.client.models.list();
+    return list.data.map((m): ModelMetadata => {
+      const meta: ModelMetadata = { id: m.id };
+      if (typeof m.owned_by === 'string') {
+        return { ...meta, ownedBy: m.owned_by, createdAt: m.created };
+      }
+      if (typeof m.created === 'number') {
+        return { ...meta, createdAt: m.created };
+      }
+      return meta;
+    });
+  }
 }
+
+const LIST_MODELS_TTL_MS = 5 * 60 * 1000;
 
 /**
  * Creates an OpenAIAdapter with the specified configuration.

@@ -15,6 +15,7 @@ export type {
   TokenUsage,
   StopReason,
   StreamChunk,
+  ModelMetadata,
 } from './model.js';
 export { ModelCapability } from './model.js';
 
