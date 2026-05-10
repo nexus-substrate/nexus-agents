@@ -1,0 +1,354 @@
+/**
+ * Tests for `AgenticAdapter`. Mocks `IModelAdapter.complete` via vi.fn
+ * so no real provider API calls happen in CI.
+ */
+import { describe, it, expect, vi } from 'vitest';
+
+import { ok, err, ModelError } from '../../core/index.js';
+import type { CompletionResponse, ContentBlock, IModelAdapter } from '../../core/index.js';
+
+import { AgenticAdapter } from './agentic-adapter.js';
+import { createAgenticAdapter } from './factory.js';
+import type { ToolCall, ToolResult } from './types.js';
+
+function makeMockModel(
+  responses: readonly Partial<CompletionResponse>[],
+  providerId = 'anthropic',
+  modelId = 'claude-mock'
+): IModelAdapter {
+  let callIndex = 0;
+  const complete = vi.fn(() => {
+    const response = responses[callIndex] ?? responses[responses.length - 1];
+    callIndex += 1;
+    return Promise.resolve(
+      ok({
+        content: response?.content ?? [{ type: 'text', text: 'no-op' }],
+        usage: response?.usage ?? { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+        stopReason: response?.stopReason ?? 'end_turn',
+        model: modelId,
+      })
+    );
+  });
+  return {
+    providerId,
+    modelId,
+    capabilities: [],
+    complete: complete,
+    stream: (() => (async function* () {})()) as never,
+    countTokens: () => Promise.resolve(0),
+    validateConfig: () => ({ ok: true as const, value: undefined }),
+  };
+}
+
+const TOOLS = [
+  {
+    name: 'lookup',
+    description: 'look up a thing',
+    inputSchema: { type: 'object', properties: { id: { type: 'string' } } },
+  },
+];
+
+describe('AgenticAdapter', () => {
+  it('agent-stopped: model returns no tool_use → loop ends after one model call', async () => {
+    const model = makeMockModel([
+      { content: [{ type: 'text', text: 'I cannot help.' }], stopReason: 'end_turn' },
+    ]);
+    const adapter = new AgenticAdapter(model);
+    const result = await adapter.runAgent({
+      systemPrompt: 'be helpful',
+      userPrompt: 'q',
+      tools: TOOLS,
+      turnBudget: 5,
+      onToolCall: () => Promise.resolve({ content: '' }),
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.stopReason).toBe('agent-stopped');
+    expect(result.value.turnsUsed).toBe(0);
+    expect(result.value.finalContent).toBe('I cannot help.');
+  });
+
+  it('runs the tool-call loop until model stops', async () => {
+    const model = makeMockModel([
+      // Turn 1: model emits a tool_use
+      {
+        content: [
+          { type: 'tool_use', id: 'tu-1', name: 'lookup', input: { id: 'x' } },
+        ] as ContentBlock[],
+        stopReason: 'tool_use',
+      },
+      // Turn 2: model emits another tool_use after seeing the result
+      {
+        content: [
+          { type: 'tool_use', id: 'tu-2', name: 'lookup', input: { id: 'y' } },
+        ] as ContentBlock[],
+        stopReason: 'tool_use',
+      },
+      // Turn 3: model gives a final text response
+      { content: [{ type: 'text', text: 'done' }], stopReason: 'end_turn' },
+    ]);
+    const adapter = new AgenticAdapter(model);
+    const observedTurns: number[] = [];
+    const result = await adapter.runAgent({
+      systemPrompt: 'be helpful',
+      userPrompt: 'q',
+      tools: TOOLS,
+      turnBudget: 10,
+      onToolCall: (call: ToolCall) =>
+        Promise.resolve({ content: `result for ${String(call.arguments['id'])}` }),
+      onTurn: (t) => observedTurns.push(t.turnIndex),
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.stopReason).toBe('agent-stopped');
+    expect(result.value.turnsUsed).toBe(2);
+    expect(observedTurns).toEqual([0, 1]);
+    expect(result.value.finalContent).toBe('done');
+    expect(result.value.providerId).toBe('anthropic');
+    expect(result.value.adapterStrategy).toBe('native:anthropic');
+    expect(result.value.totalInputTokens).toBe(30); // 3 calls * 10
+    expect(result.value.totalOutputTokens).toBe(15); // 3 calls * 5
+  });
+
+  it('turn-budget: hits the budget before the model stops', async () => {
+    // Endless loop — model keeps emitting tool_use forever.
+    const model = makeMockModel([
+      {
+        content: [{ type: 'tool_use', id: 'tu', name: 'lookup', input: {} }] as ContentBlock[],
+        stopReason: 'tool_use',
+      },
+    ]);
+    const adapter = new AgenticAdapter(model);
+    const result = await adapter.runAgent({
+      systemPrompt: 's',
+      userPrompt: 'u',
+      tools: TOOLS,
+      turnBudget: 3,
+      onToolCall: () => Promise.resolve({ content: 'ok' }),
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.stopReason).toBe('turn-budget');
+    expect(result.value.turnsUsed).toBe(3);
+  });
+
+  it('tool-error: onToolCall throw is captured + loop stops', async () => {
+    const model = makeMockModel([
+      {
+        content: [{ type: 'tool_use', id: 'tu-1', name: 'lookup', input: {} }] as ContentBlock[],
+        stopReason: 'tool_use',
+      },
+    ]);
+    const adapter = new AgenticAdapter(model);
+    const result = await adapter.runAgent({
+      systemPrompt: 's',
+      userPrompt: 'u',
+      tools: TOOLS,
+      turnBudget: 5,
+      onToolCall: () => {
+        throw new Error('database is down');
+      },
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.stopReason).toBe('tool-error');
+    expect(result.value.turns[0]?.toolResult.isError).toBe(true);
+    expect(result.value.turns[0]?.toolResult.content).toContain('database is down');
+  });
+
+  it('cancelled: AbortSignal fires between turns → cancellation captured', async () => {
+    const ac = new AbortController();
+    const model = makeMockModel([
+      {
+        content: [{ type: 'tool_use', id: 'tu-1', name: 'lookup', input: {} }] as ContentBlock[],
+        stopReason: 'tool_use',
+      },
+    ]);
+    const adapter = new AgenticAdapter(model);
+    const result = await adapter.runAgent({
+      systemPrompt: 's',
+      userPrompt: 'u',
+      tools: TOOLS,
+      turnBudget: 5,
+      onToolCall: (): Promise<ToolResult> => {
+        ac.abort();
+        return Promise.resolve({ content: 'ok' });
+      },
+      signal: ac.signal,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.stopReason).toBe('cancelled');
+    expect(result.value.turnsUsed).toBe(1); // one tool call ran before cancel
+  });
+
+  it('returns Result.err when model.complete fails', async () => {
+    const model: IModelAdapter = {
+      providerId: 'anthropic',
+      modelId: 'm',
+      capabilities: [],
+      complete: vi.fn(() => Promise.resolve(err(new ModelError('rate-limited')))),
+      stream: (() => (async function* () {})()) as never,
+      countTokens: () => Promise.resolve(0),
+      validateConfig: () => ({ ok: true as const, value: undefined }),
+    };
+    const adapter = new AgenticAdapter(model);
+    const result = await adapter.runAgent({
+      systemPrompt: 's',
+      userPrompt: 'u',
+      tools: TOOLS,
+      turnBudget: 5,
+      onToolCall: () => Promise.resolve({ content: 'ok' }),
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.message).toContain('Model call failed');
+  });
+
+  it('rejects turnBudget <= 0', async () => {
+    const adapter = new AgenticAdapter(makeMockModel([{}]));
+    const result = await adapter.runAgent({
+      systemPrompt: 's',
+      userPrompt: 'u',
+      tools: TOOLS,
+      turnBudget: 0,
+      onToolCall: () => Promise.resolve({ content: '' }),
+    });
+    expect(result.ok).toBe(false);
+  });
+
+  it('handles multiple tool_use blocks in one assistant turn', async () => {
+    const model = makeMockModel([
+      {
+        content: [
+          { type: 'tool_use', id: 'a', name: 'lookup', input: { id: '1' } },
+          { type: 'tool_use', id: 'b', name: 'lookup', input: { id: '2' } },
+        ] as ContentBlock[],
+        stopReason: 'tool_use',
+      },
+      { content: [{ type: 'text', text: 'done' }], stopReason: 'end_turn' },
+    ]);
+    const adapter = new AgenticAdapter(model);
+    const calls: string[] = [];
+    const result = await adapter.runAgent({
+      systemPrompt: 's',
+      userPrompt: 'u',
+      tools: TOOLS,
+      turnBudget: 10,
+      onToolCall: (call) => {
+        calls.push(call.id);
+        return Promise.resolve({ content: 'ok' });
+      },
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(calls).toEqual(['a', 'b']);
+    expect(result.value.turnsUsed).toBe(2); // both tool calls counted
+    expect(result.value.stopReason).toBe('agent-stopped');
+  });
+
+  it('passes systemPrompt + tools + temperature through to model.complete', async () => {
+    const model = makeMockModel([
+      { content: [{ type: 'text', text: 'done' }], stopReason: 'end_turn' },
+    ]);
+    const adapter = new AgenticAdapter(model);
+    await adapter.runAgent({
+      systemPrompt: 'BE NICE',
+      userPrompt: 'q',
+      tools: TOOLS,
+      turnBudget: 5,
+      onToolCall: () => Promise.resolve({ content: '' }),
+      temperature: 0.7,
+      maxTokens: 1024,
+    });
+    const completeFn = model.complete as unknown as ReturnType<typeof vi.fn>;
+    expect(completeFn).toHaveBeenCalledTimes(1);
+    const firstCall = completeFn.mock.calls[0]?.[0] as {
+      systemPrompt?: string;
+      temperature?: number;
+      maxTokens?: number;
+      tools?: unknown[];
+    };
+    expect(firstCall.systemPrompt).toBe('BE NICE');
+    expect(firstCall.temperature).toBe(0.7);
+    expect(firstCall.maxTokens).toBe(1024);
+    expect(firstCall.tools).toHaveLength(1);
+  });
+
+  it('adapterStrategy: known provider = native:<id>', () => {
+    const adapter = new AgenticAdapter(makeMockModel([{}], 'openai', 'gpt-4o'));
+    expect(adapter.adapterStrategy).toBe('native:openai');
+  });
+
+  it('adapterStrategy: unknown provider = wrapper', () => {
+    const adapter = new AgenticAdapter(makeMockModel([{}], 'custom-vllm', 'mystery'));
+    expect(adapter.adapterStrategy).toBe('wrapper');
+  });
+
+  it('factory createAgenticAdapter delegates to AgenticAdapter', () => {
+    const adapter = createAgenticAdapter(makeMockModel([{}]));
+    expect(adapter.providerId).toBe('anthropic');
+    expect(adapter.modelId).toBe('claude-mock');
+  });
+
+  it('maxConcurrent caps concurrent model calls', async () => {
+    let inFlight = 0;
+    let maxObserved = 0;
+    const model: IModelAdapter = {
+      providerId: 'anthropic',
+      modelId: 'm',
+      capabilities: [],
+      complete: vi.fn(async () => {
+        inFlight += 1;
+        maxObserved = Math.max(maxObserved, inFlight);
+        await new Promise((r) => setTimeout(r, 5));
+        inFlight -= 1;
+        return ok({
+          content: [{ type: 'text', text: 'done' }] as ContentBlock[],
+          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+          stopReason: 'end_turn',
+          model: 'm',
+        });
+      }) as never,
+      stream: (() => (async function* () {})()) as never,
+      countTokens: () => Promise.resolve(0),
+      validateConfig: () => ({ ok: true as const, value: undefined }),
+    };
+    const adapter = new AgenticAdapter(model, { maxConcurrent: 2 });
+    const calls = Array.from({ length: 8 }, () =>
+      adapter.runAgent({
+        systemPrompt: 's',
+        userPrompt: 'u',
+        tools: TOOLS,
+        turnBudget: 1,
+        onToolCall: () => Promise.resolve({ content: '' }),
+      })
+    );
+    await Promise.all(calls);
+    expect(maxObserved).toBeLessThanOrEqual(2);
+  });
+
+  it('records final assistant text after a tool_use round trip', async () => {
+    const model = makeMockModel([
+      {
+        content: [{ type: 'tool_use', id: 'tu-1', name: 'lookup', input: {} }] as ContentBlock[],
+        stopReason: 'tool_use',
+      },
+      {
+        content: [{ type: 'text', text: 'final answer' }] as ContentBlock[],
+        stopReason: 'end_turn',
+      },
+    ]);
+    const adapter = new AgenticAdapter(model);
+    const result = await adapter.runAgent({
+      systemPrompt: 's',
+      userPrompt: 'u',
+      tools: TOOLS,
+      turnBudget: 5,
+      onToolCall: () => Promise.resolve({ content: 'ok' }),
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.finalContent).toBe('final answer');
+  });
+});
