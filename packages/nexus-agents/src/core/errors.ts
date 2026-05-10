@@ -22,6 +22,15 @@ export const ErrorCode = {
   // Model errors
   MODEL_ERROR: 'MODEL_ERROR',
   MODEL_UNAVAILABLE: 'MODEL_UNAVAILABLE',
+  /**
+   * Model is reachable but the requested id no longer exists — typically a
+   * 404 from /v1/chat/completions, an Anthropic `model_not_found` error,
+   * or a vendor "this model has been deprecated" message. Distinct from
+   * MODEL_UNAVAILABLE (transient 502/503 service overload) — this one
+   * means the model is gone, retry won't help, route to a different id.
+   * See `withModelNotFoundFallback` for the retire-and-retry primitive.
+   */
+  MODEL_NOT_FOUND: 'MODEL_NOT_FOUND',
   MODEL_RATE_LIMITED: 'MODEL_RATE_LIMITED',
   MODEL_TIMEOUT: 'MODEL_TIMEOUT',
 

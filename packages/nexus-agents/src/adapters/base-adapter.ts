@@ -376,12 +376,40 @@ export abstract class BaseAdapter implements IModelAdapter {
       return ErrorCode.MODEL_TIMEOUT;
     }
 
+    // Check for model-not-found (#2540 PR 8) — distinct from transient
+    // MODEL_UNAVAILABLE (502/503). 404 + vendor-specific phrases ("model
+    // not found", "deprecated", "no such model") all mean: this id is
+    // gone, retry won't help, route to a different one.
+    if (this.isModelNotFoundError(message, errorObj)) {
+      return ErrorCode.MODEL_NOT_FOUND;
+    }
+
     // Check for model unavailable
     if (this.isUnavailableError(message, errorObj)) {
       return ErrorCode.MODEL_UNAVAILABLE;
     }
 
     return ErrorCode.MODEL_ERROR;
+  }
+
+  /**
+   * (#2540 PR 8) Detect model-retirement errors. Distinct from transient
+   * 502/503: 404 + vendor messages indicating the model id is gone.
+   */
+  private isModelNotFoundError(
+    message: string,
+    errorObj: { status?: number; code?: string }
+  ): boolean {
+    if (errorObj.status === 404) return true;
+    const patterns = [
+      'model not found',
+      'model_not_found',
+      'no such model',
+      'model is deprecated',
+      'model has been deprecated',
+      'model is no longer available',
+    ];
+    return patterns.some((p) => message.includes(p));
   }
 
   /**

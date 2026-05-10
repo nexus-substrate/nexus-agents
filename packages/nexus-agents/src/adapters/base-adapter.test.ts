@@ -407,6 +407,22 @@ describe('BaseAdapter', () => {
       );
     });
 
+    it('should set MODEL_NOT_FOUND for 404 status (#2540 PR 8)', () => {
+      const error = Object.assign(new Error('Not found'), { status: 404 });
+      expect(adapter.testTransformError(error).code).toBe(ErrorCode.MODEL_NOT_FOUND);
+    });
+
+    it.each([
+      'model not found',
+      'model_not_found',
+      'no such model',
+      'model is deprecated',
+      'model has been deprecated',
+      'model is no longer available',
+    ])('should classify "%s" message as MODEL_NOT_FOUND (#2540 PR 8)', (msg) => {
+      expect(adapter.testTransformError(new Error(msg)).code).toBe(ErrorCode.MODEL_NOT_FOUND);
+    });
+
     it('should log the error', () => {
       adapter.testTransformError(new Error('Test error'));
       expect(mockLogger.error).toHaveBeenCalledWith(

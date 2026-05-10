@@ -79,4 +79,11 @@ export {
   PROVIDER_ENV_KEYS as SDK_PROVIDER_ENV_KEYS,
   type SdkAdapterConfig,
   type SdkProviderId,
+  // (#2540 PR 8) Runtime retire-and-retry on MODEL_NOT_FOUND.
+  // Wraps any IModelAdapter so a 404 / "model is deprecated" error
+  // refreshes the AvailableModelsCache and retries through the
+  // closest sibling per the registry.
+  withModelNotFoundFallback,
+  type ModelNotFoundFallbackOptions,
+  type RetirementInfo,
 } from '../adapters/index.js';
