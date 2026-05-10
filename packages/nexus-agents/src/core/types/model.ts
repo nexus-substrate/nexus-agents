@@ -172,4 +172,43 @@ export interface IModelAdapter {
    * @returns Ok if valid, ConfigError if invalid
    */
   validateConfig(): Result<void, ConfigError>;
+
+  /**
+   * (Optional, #2529) List models served by this adapter's endpoint.
+   *
+   * Implemented by adapters facing OpenAI-compatible endpoints (the
+   * upstream OpenAI API, OpenRouter, vLLM, custom gateways, etc.) —
+   * usually wraps `GET /v1/models`. Result is the harness-side identity
+   * resolver's most-trusted signal for "what model is actually being
+   * served behind this adapter."
+   *
+   * Subprocess-CLI adapters (claude / codex / gemini / opencode) leave
+   * this undefined; identity for those falls back to `modelId` parse.
+   *
+   * Implementations should cache the result for ~5 minutes — operators
+   * shouldn't pay round-trip latency on every resolve. Failures
+   * (network error, endpoint unsupported, auth missing) should throw
+   * so the caller can fall back; do NOT silently return an empty list.
+   */
+  listModels?(): Promise<readonly ModelMetadata[]>;
+}
+
+/**
+ * Metadata for one model served by an OpenAI-compatible endpoint
+ * (#2529). Mirrors the shape of `GET /v1/models`. Most fields are
+ * optional because gateways differ in what they expose.
+ */
+export interface ModelMetadata {
+  /** Stable model id — matches what callers pass as `modelId` to `complete`. */
+  readonly id: string;
+  /** Free-form vendor / org tag. Upstream OpenAI: `openai`/`system`. OpenRouter: `anthropic`/`google`/etc. */
+  readonly ownedBy?: string;
+  /** Unix epoch seconds when the model was created (when the gateway reports it). */
+  readonly createdAt?: number;
+  /** Free-form capability strings the gateway exposes — passthrough, no normalisation. */
+  readonly capabilities?: readonly string[];
+  /** Maximum context window in tokens — populated by gateways that report it (OpenRouter does). */
+  readonly contextLength?: number;
+  /** Pricing — passthrough only. Gateway-defined units. */
+  readonly pricing?: { readonly input?: number; readonly output?: number };
 }
