@@ -47,10 +47,14 @@ Full applications built on top of nexus-agents, demonstrating real-world usage p
 
 Standalone benchmark harnesses implementing the `BenchmarkAdapter` contract from nexus-agents ≥2.33.1. Each is a runnable npm package with its own CLI; nexus-agents supplies the orchestrator (`runBenchmark`), types, and reporting surface.
 
-| Repo                                                                           | Benchmark                                                  | Pattern                                                 |
-| ------------------------------------------------------------------------------ | ---------------------------------------------------------- | ------------------------------------------------------- |
-| [nexus-eval-template](https://github.com/williamzujkowski/nexus-eval-template) | Template scaffold — copy via GitHub "Use this template"    | `is_template=true` + topic `nexus-agents-eval-template` |
-| [nexus-eval-swebench](https://github.com/williamzujkowski/nexus-eval-swebench) | SWE-bench Lite / Verified / Full — GitHub issue resolution | Wraps `SWEBenchRunner`; prediction-only MVP             |
+| Repo                                                                                       | Benchmark                                                                                             | Pattern                                                 |
+| ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| [nexus-eval-template](https://github.com/williamzujkowski/nexus-eval-template)             | Template scaffold — copy via GitHub "Use this template"                                               | `is_template=true` + topic `nexus-agents-eval-template` |
+| [nexus-eval-swebench](https://github.com/williamzujkowski/nexus-eval-swebench)             | SWE-bench Lite / Verified / Full — GitHub issue resolution                                            | v0.2 clean-room model-only baseline                     |
+| [nexus-eval-swebench-pro](https://github.com/williamzujkowski/nexus-eval-swebench-pro)     | SWE-bench Pro — 731 multi-language instances (ScaleAI)                                                | v0.2 model-only baseline; Docker-eval = v0.4            |
+| [nexus-eval-aider-polyglot](https://github.com/williamzujkowski/nexus-eval-aider-polyglot) | Aider polyglot — multi-language code edits across 6 langs (Python/JS/TS/Go/Rust/C++)                  | v0.1 model-only baseline; test-based pass/fail = v0.3   |
+| [nexus-eval-livecodebench](https://github.com/williamzujkowski/nexus-eval-livecodebench)   | LiveCodeBench — competitive-programming with deterministic hidden tests (LeetCode/AtCoder/Codeforces) | v0.1 model-only baseline; sandboxed Python = v0.2       |
+| [nexus-eval-atbench](https://github.com/williamzujkowski/nexus-eval-atbench)               | atbench — agent-trajectory safety                                                                     | v0.1 extracted from in-tree                             |
 
 New harnesses land here as they are extracted. To build one, start from the template: `gh repo create yourname/nexus-eval-<bench> --template williamzujkowski/nexus-eval-template --public`.
 
