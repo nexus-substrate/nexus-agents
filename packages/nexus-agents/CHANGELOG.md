@@ -1,5 +1,133 @@
 # nexus-agents
 
+## 2.71.0
+
+### Minor Changes
+
+- [#2404](https://github.com/williamzujkowski/nexus-agents/pull/2404) [`8aeabe8`](https://github.com/williamzujkowski/nexus-agents/commit/8aeabe80d2b0d3546f9a8a4288d54f6e850c1382) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Add `improvement_review` MCP tool (PR 2 of epic [#2402](https://github.com/williamzujkowski/nexus-agents/issues/2402)). Replaces the deleted self-development engine with a focused, threshold-gated observability-driven loop.
+
+  **What it does**: reads existing observability primitives (`OutcomeStore`, `fitness-audit`) and surfaces patterns that cross documented thresholds as candidate signals. When `fileIssues=true`, files candidate GitHub issues via `gh issue create` (rate-limited to 5 per run, deduped against open issues by signal key). Never auto-merges.
+
+  **Detectors**:
+  - `detectCliPerformanceFloor` — CLI × category success rate < 60% with ≥ minSampleSize observations (default 5)
+  - `detectFailureCategoryConcentration` — single failure category > 50% of failures with ≥ 10 failures
+  - `detectFitnessSignals` — fitness score below floor (default 90) AND/OR critical fitness findings
+
+  **Safety**:
+  - `gh issue create` invoked via `execFile` (no shell — safe against command injection from `errorMessage` content)
+  - Dedup query also via `execFile` with literal-phrase search of signal key in body
+  - Rate-limited per run; per-signal-class week-long throttle via the signal-key dedup
+  - Each filed issue includes the signal key in the body for stable cross-run dedup
+
+  **Inputs**: `lookbackDays` (default 7), `fileIssues` (default false → return signals only), `minSampleSize` (default 5), `fitnessFloor` (default 90).
+
+  **Outputs**: `{ window, totalOutcomes, signals[], issuesFiled[], issuesSkipped[] }`.
+
+  Skill count unchanged at 26. MCP tool count: 37 → 38. New file: `src/mcp/tools/improvement-review.ts` (~430 LOC) + `improvement-review.test.ts` (18 unit tests for the threshold detectors). Wired into `mcp/index.ts`, `mcp/tools/index.ts`, `cli-server-tools.ts`, and `tool-annotations.ts`.
+
+  Closes the build half of epic [#2402](https://github.com/williamzujkowski/nexus-agents/issues/2402). Replaces the unwired engine deleted in PR [#2403](https://github.com/williamzujkowski/nexus-agents/issues/2403) (~7,700 LOC). Net code delta: −7,000 LOC.
+
+- [#2511](https://github.com/williamzujkowski/nexus-agents/pull/2511) [`65b7398`](https://github.com/williamzujkowski/nexus-agents/commit/65b73989ce860af5909491f4573d55eb33bbdd86) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Deprecate the unused sandbox executor surface ([#2499](https://github.com/williamzujkowski/nexus-agents/issues/2499)). The OS-level sandbox executors in `packages/nexus-agents/src/security/sandbox/` (`DenoSandboxExecutor`, `DockerSandboxExecutor`, `createSandboxExecutor`, `getSandboxExecutor`/`getSandboxExecutorOrNull`, `policyToDenoFlags`, `collectPolicyConfigurationWarnings`) carry `@deprecated` JSDoc tags pointing at [#2499](https://github.com/williamzujkowski/nexus-agents/issues/2499). **Behaviour is unchanged in this release** — the symbols still work, just emit IDE/lint deprecation warnings.
+
+  The supported sandbox surface remains the validation primitives (`validateCommand`, `validateArgs`, `SandboxPolicy` types, `DEVELOPMENT_POLICY`, `READONLY_POLICY`) consumed by `cli/sandbox-exec.ts` for command-allowlist gating. Those are NOT deprecated.
+
+  **Why**: the executor classes have no production callers. The product direction (epic [#2500](https://github.com/williamzujkowski/nexus-agents/issues/2500)) is "compatible with running inside a host-provided sandbox" (Codex sandbox, Claude Code sandbox, OpenCode's docker template, locked-down CI) — not "ship our own sandbox runtime." Carrying ~600 lines of unreachable executor code makes the module look more capable than it is and tempts new contributors to extend a layer that doesn't run.
+
+  **Migration**: most consumers are internal (this repo) — the deprecated symbols are still exported but should not be the basis of new work. External consumers using `createSandboxExecutor` should plan to migrate to either (a) host-provided sandbox boundaries, or (b) the validation primitives directly.
+
+  **Removal**: tracked separately. After this minor release ships, a follow-up issue will delete the executor classes + their tests in a single PR.
+
+- [#2521](https://github.com/williamzujkowski/nexus-agents/pull/2521) [`2a284d8`](https://github.com/williamzujkowski/nexus-agents/commit/2a284d8fb2183c18f2d01921f4c2d4e271536740) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Extract the SWE-bench harness from `packages/nexus-agents/src/swe-bench/` to its own repo: [`nexus-eval-swebench`](https://github.com/williamzujkowski/nexus-eval-swebench). Per the harness-extraction policy (epic [#2514](https://github.com/williamzujkowski/nexus-agents/issues/2514), originally [#1960](https://github.com/williamzujkowski/nexus-agents/issues/1960)). Closes [#2515](https://github.com/williamzujkowski/nexus-agents/issues/2515).
+
+  **What changed**:
+  - `packages/nexus-agents/src/swe-bench/` (~101 files, ~11,594 LOC of runtime + tests) is **deleted**.
+  - `packages/nexus-agents/src/exports/swe-bench.ts` and the corresponding re-export from `index.ts` are removed — `SWEBenchRunner`, `EvaluationHarness`, `SWEBenchInstance`, `SWEBenchPrediction`, `SWEBenchVariant`, `SWEBenchConfig`, etc. are no longer exported from `nexus-agents`.
+  - `packages/nexus-agents/src/cli/swe-bench-command.ts` is deleted.
+  - The `nexus-agents swe-bench` CLI subcommand is preserved as a **deprecation shim** for one minor release — prints a migration message pointing at `npx nexus-eval-swebench` and exits with code 3 (`INVALID_ARGS`). Removed in the next minor.
+  - `packages/nexus-agents/src/swe-bench/mcp-config.ts` (used by `pipeline/expert-bridge.ts` to spawn child Claude CLI sessions with MCP access) is **relocated** to `packages/nexus-agents/src/cli-adapters/child-mcp-config.ts` — the helper is generic CLI-spawn infrastructure, not benchmark-specific.
+
+  **Migration**:
+
+  ```diff
+  - npx nexus-agents swe-bench --variant lite --limit 5
+  + export OPENAI_API_KEY=sk-...
+  + npx nexus-eval-swebench --variant lite --limit 5
+
+  - import { SWEBenchRunner } from 'nexus-agents';
+  + import { SweBenchAdapter } from 'nexus-eval-swebench';
+  + // wraps the BenchmarkAdapter contract with an IModelAdapter you provide
+  ```
+
+  Note that `nexus-eval-swebench` v0.2 is a **clean-room rewrite** — it does NOT re-export the legacy `SWEBenchRunner` API. The new adapter takes any `IModelAdapter` and produces `SweBenchPrediction` directly. See the [v0.2 README](https://github.com/williamzujkowski/nexus-eval-swebench#readme) for the new shape.
+
+  **Why**: keeps the published nexus-agents bundle lean — the SWE-bench harness was ~11,594 LOC of evaluation-only code that consumers running orchestration / MCP tools never needed at runtime. The harness-extraction policy concentrates benchmark code in dedicated `nexus-eval-*` repos so they can evolve independently. Per discussion in [#2515](https://github.com/williamzujkowski/nexus-agents/issues/2515), no breaking-change concern: the only consumers of the legacy `nexus-agents/swe-bench` exports were the eval repo itself (now self-contained) and the in-tree CLI subcommand (now a shim).
+
+- [#2520](https://github.com/williamzujkowski/nexus-agents/pull/2520) [`c3f1a7e`](https://github.com/williamzujkowski/nexus-agents/commit/c3f1a7ef2ae9a9cb3fb3dab2dbb5b90782edde23) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Extract Atbench (agent-trajectory safety benchmark, originally [#1981](https://github.com/williamzujkowski/nexus-agents/issues/1981)) from `packages/nexus-agents/src/benchmarks/atbench/` to its own repo: [`nexus-eval-atbench`](https://github.com/williamzujkowski/nexus-eval-atbench). Per the harness-extraction policy (epic [#2514](https://github.com/williamzujkowski/nexus-agents/issues/2514), originally [#1960](https://github.com/williamzujkowski/nexus-agents/issues/1960)).
+
+  **Behaviour changes**:
+  - The in-tree `packages/nexus-agents/src/benchmarks/atbench/` directory is **deleted** — `import { ATBenchAdapter } from 'nexus-agents/benchmarks/atbench'` no longer works. Migrate to `import { ATBenchAdapter } from 'nexus-eval-atbench'`.
+  - `packages/nexus-agents/src/cli/atbench-command.ts` is deleted.
+  - The `nexus-agents atbench` CLI subcommand is preserved as a **deprecation shim** for one minor release — it prints a migration message pointing at `npx nexus-eval-atbench` and exits with code 3 (`INVALID_ARGS`). The shim is removed in the next minor.
+
+  **Migration**:
+
+  ```diff
+  - npx nexus-agents atbench --fixture ./fixture.jsonl
+  + npx nexus-eval-atbench --fixture ./fixture.jsonl
+
+  - import { ATBenchAdapter } from 'nexus-agents/benchmarks/atbench';
+  + import { ATBenchAdapter } from 'nexus-eval-atbench';
+  ```
+
+  The eval repo is published at npm as `nexus-eval-atbench` and peer-deps `nexus-agents >= 2.33.1`.
+
+  **Why**: keeps the published nexus-agents bundle lean — atbench was ~1,328 LOC of benchmark-only code that consumers running orchestration / MCP tools never need at runtime. The harness-extraction policy concentrates benchmark code in dedicated `nexus-eval-*` repos so they can evolve independently.
+
+  **No public-API breakage**: atbench was never exposed via `nexus-agents`'s top-level `exports/`, only via the deep import path above. Operators using the CLI subcommand get the shim's migration message; library consumers using the deep import get a build error pointing at the new package.
+
+### Patch Changes
+
+- [#2400](https://github.com/williamzujkowski/nexus-agents/pull/2400) [`cb7e5d0`](https://github.com/williamzujkowski/nexus-agents/commit/cb7e5d0d6ed3c2b4cfc17895855762ca2ad53066) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Tiers 2 + 3 of epic [#2398](https://github.com/williamzujkowski/nexus-agents/issues/2398) — enhance `ui-ux-design` skill with patterns from Apache-2.0-licensed [nexu-io/open-design](https://github.com/nexu-io/open-design):
+
+  **Tier 2 — Brand extraction protocol** (5 steps with explicit safety guards per security voter):
+  1. **Locate** — local repo asset preferred, user-pasted excerpt as fallback, external URL as last resort
+  2. **Safety guards (when fetching URL)** — non-negotiable per security review:
+     - Explicit user confirmation (never auto-fetch)
+     - HTTPS only (reject `http://`, `file://`, `ftp://`, protocol-relative)
+     - Public-IP allowlist (reject RFC 1918 + link-local + CGNAT + IPv6 equivalents — full list inline)
+     - Content-type allowlist (HTML/CSS/SVG/PNG/JPEG/WebP only)
+     - 5 MB size cap, 30 s timeout
+     - Treat fetched content as untrusted per `.rules/untrusted-input.md`
+  3. **Extract tokens** — concrete `grep -hoiE` patterns for hex codes, font families, spacing scale
+  4. **Codify in `brand-spec.md`** — path-traversal guard (cwd subtree only)
+  5. **Vocalize** — read tokens back to user in own words for confirmation before generating code
+
+  **Tier 3 — 9-section DESIGN.md schema** — portable design-system structure adopted from Open Design as the canonical brand-spec format. Sections: Visual theme / Color palette / Typography / Component stylings / Layout / Depth & elevation / Dos and don'ts / Responsive strategy / Agent prompt guide. Cross-tool portable (Open Design, Claude Design, future nexus-agents UI tooling).
+
+  **Tier 2.5 (bundled) — 8-dimension brief input format** — structured brief schema (palette / accent / typography / display / layout / mood / density / exclude) with default-resolution rules and "don't silently default" discipline.
+
+  License: Apache-2.0 attribution in section quotes. Pure-patch — additive only, no API change.
+
+  **Tier 4 (P0/P1/P2 standardization) skipped after audit** — severity language across skills is already domain-appropriate (`critical/high/medium/low` for security per CVSS, `P1/P2` for issue priority). No drift; no convergence needed.
+
+- [#2403](https://github.com/williamzujkowski/nexus-agents/pull/2403) [`bd70f9d`](https://github.com/williamzujkowski/nexus-agents/commit/bd70f9dee8b64940e360b79b92381552c8277de8) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Delete dead `src/workflows/self-development/` engine (PR 1 of epic [#2402](https://github.com/williamzujkowski/nexus-agents/issues/2402)).
+
+  The engine (~7,700 LOC source + tests) was authored before our observability primitives existed (`OutcomeStore`, `weather_report`, `LinUCB`, `fitness-audit`). By the time those landed, no consumer had wired up to invoke its runner — `package.json`, `.github/workflows/`, and CLI dispatch all bypass it. Six months of unwired existence + an in-place replacement (the `improvement_review` MCP tool from PR 2 of [#2402](https://github.com/williamzujkowski/nexus-agents/issues/2402), plus the manual `dogfooding-issues` skill) make this a clean Tier-A internal-only removal per `deprecation-and-migration`.
+
+  Removed:
+  - `src/workflows/self-development/` (58 files: engine, phases, audit-trail, github-client shim, git-client, docker-sandbox, notifications incl. `WebhookNotificationHandler`, etc.)
+  - `scripts/run-self-dev.ts` runner
+  - `workflows/templates/self-development.yaml`
+  - `docs/archive/workflows/self-dev-{phases,execution,operations,validation}.md`
+
+  Updated:
+  - `docs/workflows/SELF_DEVELOPMENT_WORKFLOW.md` rewritten as a historical pointer to epic [#2402](https://github.com/williamzujkowski/nexus-agents/issues/2402)
+  - Stale comments cleaned in `src/scm/{github-provider,index}.ts`, `src/exports/scm.ts`, `src/cli-adapters/cli-to-model-adapter.ts`, `src/security/sandbox/default-policies.ts`, `docs/architecture/UNTRUSTED_INPUT_HARDENING.md`
+
+  Public API: unchanged (the module had zero `src/exports/*` reach).
+
+  Verified locally: `pnpm typecheck` clean, `pnpm lint` clean, `pnpm vitest run`: 25,811 pass / 16 skipped (was 26,386 — 575 tests deleted along with the dead engine).
+
 ## 2.70.0
 
 ### Minor Changes
