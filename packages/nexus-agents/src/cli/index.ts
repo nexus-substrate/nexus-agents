@@ -303,15 +303,10 @@ export type { VerifyOptions, VerifyCheck, VerifyResult } from './verify-command.
 export { sweBenchCommand, parseSweBenchArgs, printSweBenchHelp } from './swe-bench-command.js';
 export type { SWEBenchOptions, SWEBenchCommandResult } from './swe-bench-command.js';
 
-// ATBench Command (Issue #1981 - trajectory safety benchmark)
-export {
-  atbenchCommand,
-  parseAtbenchArgs,
-  printAtbenchHelp,
-  runEvaluation as atbenchRun,
-  runInfo as atbenchInfo,
-} from './atbench-command.js';
-export type { ATBenchOptions, ATBenchCommandResult } from './atbench-command.js';
+// ATBench command + adapter were extracted to nexus-eval-atbench per
+// the harness-extraction policy (epic #2514). The `nexus-agents atbench`
+// subcommand is preserved as a deprecation shim in cli-commands-handlers-complex.ts
+// for one minor release.
 
 // Learning Metrics Dashboard (Issue #284)
 export {

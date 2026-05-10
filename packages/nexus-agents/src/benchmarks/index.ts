@@ -10,8 +10,9 @@
  *  Issue #1981, ATBench trajectory safety)
  */
 
-// ATBench — trajectory safety benchmark (#1981)
-export * from './atbench/index.js';
+// ATBench was extracted to nexus-eval-atbench per the harness-extraction
+// policy (epic #2514). Import from 'nexus-eval-atbench' instead of
+// 'nexus-agents/benchmarks/atbench'.
 
 // Types
 export type {
