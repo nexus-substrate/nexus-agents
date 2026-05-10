@@ -881,4 +881,58 @@ describe('CompositeRouter ZeroRouter integration (Issue #347)', () => {
       expect(executeWasCalled).toBe(true);
     });
   });
+
+  describe('availableModelsCache integration (#2540 PR 7)', () => {
+    it('exposes the wired cache via getAvailableModelsCache()', () => {
+      const cache = makeMockCache(['claude:claude-opus-4-7']);
+      const r = new CompositeRouter(adapters, { availableModelsCache: cache });
+      expect(r.getAvailableModelsCache()).toBe(cache);
+    });
+
+    it('returns undefined when no cache is configured', () => {
+      const r = new CompositeRouter(adapters);
+      expect(r.getAvailableModelsCache()).toBeUndefined();
+    });
+
+    it('falls back to all CLIs when the cache reports zero models', async () => {
+      const cache = makeMockCache([]);
+      const r = new CompositeRouter(adapters, { availableModelsCache: cache });
+      const result = await r.route({ content: 'hello' });
+      expect(result.ok).toBe(true);
+    });
+
+    it('falls back to all CLIs when the filtered set would be empty', async () => {
+      // Cache only knows a CLI we don't have an adapter for.
+      const cache = makeMockCache(['unknown-cli:foo']);
+      const r = new CompositeRouter(adapters, { availableModelsCache: cache });
+      const result = await r.route({ content: 'hello' });
+      expect(result.ok).toBe(true);
+      // Without the empty-filter guard the router would error on selection.
+    });
+
+    it('does not block routing when the cache throws', async () => {
+      const cache = {
+        getAll: vi.fn().mockRejectedValue(new Error('cache offline')),
+      } as unknown as import('../config/available-models-cache.js').AvailableModelsCache;
+      const r = new CompositeRouter(adapters, { availableModelsCache: cache });
+      const result = await r.route({ content: 'hello' });
+      expect(result.ok).toBe(true);
+    });
+  });
 });
+
+/**
+ * Tiny mock for AvailableModelsCache covering only the interface the
+ * router uses. Each entry is `source:id`.
+ */
+function makeMockCache(
+  entries: string[]
+): import('../config/available-models-cache.js').AvailableModelsCache {
+  const all = entries.map((e) => {
+    const [source, id] = e.split(':');
+    return { id: id ?? '', source: source ?? '' };
+  });
+  return {
+    getAll: vi.fn().mockResolvedValue(all),
+  } as unknown as import('../config/available-models-cache.js').AvailableModelsCache;
+}

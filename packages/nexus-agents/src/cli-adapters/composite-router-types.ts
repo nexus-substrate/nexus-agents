@@ -121,6 +121,14 @@ export interface CompositeRouterConfigWithPreference extends CompositeRouterConf
   metricsCollector?: IRoutingMetricsCollector;
   /** Orchestration observer for routing decision tracking (optional) (Issue #587) */
   orchestrationObserver?: IOrchestrationObserver;
+  /**
+   * (#2540 PR 7) Harness-driven cache of currently-routable models.
+   * When set, the router gates its candidate-CLI list on the cache:
+   * a CLI is excluded if the cache has been queried at least once and
+   * reports zero available models for that source. Unset → no gating
+   * (preserves prior behaviour).
+   */
+  availableModelsCache?: import('../config/available-models-cache.js').AvailableModelsCache;
 }
 
 /**
