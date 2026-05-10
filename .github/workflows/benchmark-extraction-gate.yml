@@ -1,0 +1,67 @@
+name: Benchmark Extraction Gate
+
+# Enforces the harness-extraction policy (epic #2514 / #1960):
+# benchmark code MUST live in dedicated nexus-eval-* repos, not under
+# packages/nexus-agents/src/swe-bench/ or
+# packages/nexus-agents/src/benchmarks/<single-bench>/.
+#
+# A cheap shell check on every PR. The deletions in #2515 + #2516 left
+# both directories empty; this gate prevents the next contributor from
+# silently re-adding benchmark code in-tree.
+
+on:
+  pull_request:
+    paths:
+      - 'packages/nexus-agents/src/swe-bench/**'
+      - 'packages/nexus-agents/src/benchmarks/atbench/**'
+      - '.github/workflows/benchmark-extraction-gate.yml'
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  enforce:
+    name: enforce harness-extraction policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Block in-tree benchmark code
+        run: |
+          set -euo pipefail
+
+          # Both directories MUST stay empty. Anything tracked here is a
+          # policy violation per epic #2514 — the harness must live in a
+          # dedicated nexus-eval-* repo.
+          violations=$(git ls-files \
+            'packages/nexus-agents/src/swe-bench/*' \
+            'packages/nexus-agents/src/benchmarks/atbench/*' \
+            2>/dev/null || true)
+
+          if [ -n "$violations" ]; then
+            echo "::error::Harness-extraction policy violation (epic #2514)."
+            echo ""
+            echo "The following files violate the policy — benchmark code must"
+            echo "live in dedicated nexus-eval-* repos, not in-tree:"
+            echo ""
+            echo "$violations" | sed 's/^/  - /'
+            echo ""
+            echo "If you're adding a new benchmark variant, scaffold a new repo:"
+            echo "  gh repo create yourname/nexus-eval-<bench> \\"
+            echo "    --template williamzujkowski/nexus-eval-template \\"
+            echo "    --public"
+            echo ""
+            echo "If you're extending an existing harness, contribute to:"
+            echo "  - https://github.com/williamzujkowski/nexus-eval-swebench"
+            echo "  - https://github.com/williamzujkowski/nexus-eval-atbench"
+            echo "  - https://github.com/williamzujkowski/nexus-eval-swebench-pro"
+            echo ""
+            echo "See: https://github.com/williamzujkowski/nexus-agents/issues/2514"
+            exit 1
+          fi
+
+          echo "✓ No in-tree benchmark code found — harness-extraction policy satisfied."
