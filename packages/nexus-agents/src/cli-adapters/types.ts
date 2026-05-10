@@ -34,6 +34,7 @@ export type {
   ICliAdapter,
   ICliResponseParser,
   VersionRequirements,
+  CliModelInfo,
 } from './types-capability.js';
 
 export { CLI_VERSION_REQUIREMENTS, DEFAULT_CAPABILITIES } from './types-capability.js';

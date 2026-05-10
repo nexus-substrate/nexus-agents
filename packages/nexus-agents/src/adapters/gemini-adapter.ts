@@ -15,6 +15,7 @@ import type {
   Result,
   CompletionRequest,
   CompletionResponse,
+  ModelMetadata,
   StreamChunk,
   ContentBlock,
   TokenUsage,
@@ -359,7 +360,51 @@ export class GeminiAdapter extends BaseAdapter {
       model: this.resolvedModelId,
     };
   }
+
+  /**
+   * (#2540) List Gemini models exposed by the configured API key.
+   * Wraps `client.models.list()` (returns a Pager). 5-min cache,
+   * concurrent-caller promise sharing.
+   */
+  async listModels(): Promise<readonly ModelMetadata[]> {
+    const now = Date.now();
+    if (this.modelsCache !== null && now - this.modelsCache.fetchedAt < GEMINI_LIST_MODELS_TTL_MS) {
+      return this.modelsCache.value;
+    }
+    if (this.modelsInFlight !== null) return this.modelsInFlight;
+    const inFlight = this.fetchModels();
+    this.modelsInFlight = inFlight;
+    try {
+      const value = await inFlight;
+      this.modelsCache = { value, fetchedAt: Date.now() };
+      return value;
+    } finally {
+      this.modelsInFlight = null;
+    }
+  }
+
+  private modelsCache: { value: readonly ModelMetadata[]; fetchedAt: number } | null = null;
+  private modelsInFlight: Promise<readonly ModelMetadata[]> | null = null;
+
+  private async fetchModels(): Promise<readonly ModelMetadata[]> {
+    const pager = await this.client.models.list();
+    const out: ModelMetadata[] = [];
+    for await (const m of pager) {
+      const rawName = typeof m.name === 'string' ? m.name : '';
+      if (rawName === '') continue;
+      const id = rawName.startsWith('models/') ? rawName.slice('models/'.length) : rawName;
+      const caps: string[] = [];
+      if (Array.isArray(m.supportedActions)) {
+        for (const a of m.supportedActions) if (typeof a === 'string') caps.push(a);
+      }
+      const meta: ModelMetadata = { id, ownedBy: 'google' };
+      out.push(caps.length > 0 ? { ...meta, capabilities: caps } : meta);
+    }
+    return out;
+  }
 }
+
+const GEMINI_LIST_MODELS_TTL_MS = 5 * 60 * 1000;
 
 /**
  * Creates a GeminiAdapter with the specified configuration.

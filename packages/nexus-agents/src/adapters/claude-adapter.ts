@@ -15,6 +15,7 @@ import type {
   Result,
   CompletionRequest,
   CompletionResponse,
+  ModelMetadata,
   StreamChunk,
   ContentBlock,
   TokenUsage,
@@ -350,7 +351,52 @@ export class ClaudeAdapter extends BaseAdapter {
         return null;
     }
   }
+
+  /**
+   * (#2540) List models the Anthropic API currently exposes.
+   * Wraps `client.models.list()`. Cached for 5 min, in-flight promise
+   * shared across concurrent callers, throws on non-2xx so the
+   * harness-side identity resolver knows to fall back.
+   */
+  async listModels(): Promise<readonly ModelMetadata[]> {
+    const now = Date.now();
+    if (this.modelsCache !== null && now - this.modelsCache.fetchedAt < CLAUDE_LIST_MODELS_TTL_MS) {
+      return this.modelsCache.value;
+    }
+    if (this.modelsInFlight !== null) return this.modelsInFlight;
+    const inFlight = this.fetchModels();
+    this.modelsInFlight = inFlight;
+    try {
+      const value = await inFlight;
+      this.modelsCache = { value, fetchedAt: Date.now() };
+      return value;
+    } finally {
+      this.modelsInFlight = null;
+    }
+  }
+
+  private modelsCache: { value: readonly ModelMetadata[]; fetchedAt: number } | null = null;
+  private modelsInFlight: Promise<readonly ModelMetadata[]> | null = null;
+
+  private async fetchModels(): Promise<readonly ModelMetadata[]> {
+    const list = await this.client.models.list();
+    const out: ModelMetadata[] = [];
+    for (const m of list.data) {
+      const entry: ModelMetadata = { id: m.id };
+      if (typeof m.created_at === 'string') {
+        const ts = Date.parse(m.created_at);
+        if (!Number.isNaN(ts)) {
+          out.push({ ...entry, ownedBy: 'anthropic', createdAt: Math.floor(ts / 1000) });
+          continue;
+        }
+      }
+      out.push({ ...entry, ownedBy: 'anthropic' });
+    }
+    return out;
+  }
 }
+
+const CLAUDE_LIST_MODELS_TTL_MS = 5 * 60 * 1000;
 
 /**
  * Creates a ClaudeAdapter with the specified configuration.
