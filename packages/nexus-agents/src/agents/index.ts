@@ -293,6 +293,23 @@ export * from './resilience-exports.js';
 // Skill library (Voyager pattern)
 export * from './skills-exports.js';
 
+// Agentic adapter (#2529) — multi-turn tool-use loop primitive for
+// eval-repo v0.3 work and any other consumer that wants to drive an
+// agent loop while owning the toolset.
+export {
+  AgenticAdapter,
+  createAgenticAdapter,
+  AgentError,
+  type AgenticAdapterOptions,
+  type AgentRunResult,
+  type AgentStopReason,
+  type AgentTurn,
+  type IAgenticAdapter,
+  type RunAgentArgs,
+  type ToolCall,
+  type ToolResult,
+} from './agentic/index.js';
+
 // Self-Improving (SICA) exports
 export * from './sica-exports.js';
 
