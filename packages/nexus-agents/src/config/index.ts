@@ -268,3 +268,23 @@ export type {
   ProbeFn,
   FallbackEntry,
 } from './model-availability.js';
+
+// Unified Model Registry (#2540) — single source of truth for per-model
+// metadata (capability + behaviour). Supersedes the split between
+// `model-capabilities.ts` (canonical hardcoded MODEL_IDS) and
+// `model-behavior-profile.ts` (vendor-pattern-matched profiles, now
+// @deprecated and scheduled for removal).
+export {
+  ModelRegistry,
+  deriveEntry,
+  getDefaultRegistry,
+  setDefaultRegistry,
+  DEFAULT_ENTRY,
+} from './model-registry.js';
+export type {
+  ModelEntry,
+  ModelRegistryOptions,
+  EntrySource,
+  ToolDefinitionFormat,
+  PromptCachingMode,
+} from './model-registry.js';

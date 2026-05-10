@@ -165,7 +165,7 @@ const QUIRK_PATTERNS: ReadonlyArray<{ regex: RegExp; quirk: string }> = [
   { regex: /\b(large|xl|big|maxi)\b/, quirk: 'large' },
   { regex: /\bhigh\b/, quirk: 'high-variant' },
   { regex: /\b(\d+)b\b/, quirk: 'sized-suffix' }, // 7b, 70b, 405b
-  { regex: /\b\d{8}\b/, quirk: 'dated' }, // 20240806 etc
+  { regex: /\b(?:\d{8}|\d{4}-\d{2}-\d{2}|\d{4}-\d{2})\b/, quirk: 'dated' }, // 20240806 / 2024-08-06 / 2024-08
 ];
 
 // ============================================================================
