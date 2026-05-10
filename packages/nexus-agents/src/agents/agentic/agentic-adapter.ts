@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- 458 lines, single cohesive class + helpers; under the 600-line governance ceiling. */
 /**
  * `AgenticAdapter` — multi-turn tool-use loop over any `IModelAdapter`.
  *
@@ -34,6 +35,16 @@ import type {
   Result,
   ToolDefinition,
 } from '../../core/index.js';
+import {
+  resolveModelIdentity,
+  resolveModelIdentitySync,
+  type ModelHints,
+  type ResolvedModelIdentity,
+} from '../../config/model-identity.js';
+import {
+  lookupModelProfile,
+  type ModelBehaviorProfile,
+} from '../../config/model-behavior-profile.js';
 
 import {
   AgentError,
@@ -45,9 +56,6 @@ import {
   type ToolResult,
 } from './types.js';
 
-/** Providers we recognise — affects the `adapterStrategy` stamp on results. */
-const KNOWN_NATIVE_PROVIDERS = new Set(['anthropic', 'openai', 'gemini', 'google']);
-
 export interface AgenticAdapterOptions {
   /**
    * Maximum number of concurrent model API calls across all in-flight
@@ -55,33 +63,133 @@ export interface AgenticAdapterOptions {
    * provider rate-limits aggressively.
    */
   readonly maxConcurrent?: number;
+  /**
+   * Per-model identity overrides — gateway-renamed models, custom
+   * deployments, or anything the modelId-string parser can't classify.
+   * Each field is optional; provided fields force, others fall through
+   * to probe / parse.
+   */
+  readonly modelHints?: ModelHints;
+  /**
+   * Skip the `IModelAdapter.listModels()` probe at first `runAgent`.
+   * Useful when the gateway doesn't expose `/v1/models` or when
+   * deterministic startup matters more than identity fidelity.
+   */
+  readonly skipProbe?: boolean;
+  /**
+   * Force a specific behaviour profile, bypassing identity-driven
+   * lookup entirely. Reserved for tests + diagnostic runs; in
+   * production prefer `modelHints` so identity stays auditable.
+   */
+  readonly forceProfile?: ModelBehaviorProfile;
 }
 
 export class AgenticAdapter implements IAgenticAdapter {
   readonly providerId: string;
   readonly modelId: string;
-  readonly adapterStrategy: string;
+  /**
+   * Adapter strategy stamp — composed from the resolved model
+   * identity, NOT the IModelAdapter's providerId. For a custom OpenAI
+   * gateway fronting Claude, this reads `native:anthropic` even though
+   * `IModelAdapter.providerId === 'openai'`.
+   *
+   * Initialised eagerly from the modelId parse (sync); upgraded after
+   * the first `runAgent` if the probe contributes a higher-confidence
+   * vendor signal.
+   */
+  adapterStrategy: string;
 
   private readonly model: IModelAdapter;
+  private readonly options: AgenticAdapterOptions;
   private readonly semaphore: Semaphore | null;
+  private resolvedIdentity: ResolvedModelIdentity;
+  private profile: ModelBehaviorProfile;
+  private profileResolutionPromise: Promise<void> | null = null;
 
   constructor(modelAdapter: IModelAdapter, options: AgenticAdapterOptions = {}) {
     this.model = modelAdapter;
+    this.options = options;
     this.providerId = modelAdapter.providerId;
     this.modelId = modelAdapter.modelId;
-    this.adapterStrategy = KNOWN_NATIVE_PROVIDERS.has(modelAdapter.providerId)
-      ? `native:${modelAdapter.providerId}`
-      : 'wrapper';
+
+    // Sync resolution gets us a sensible starting profile. The async
+    // probe (if listModels exists + skipProbe is false) refines it
+    // before the first runAgent.
+    this.resolvedIdentity = resolveModelIdentitySync(modelAdapter.modelId, options.modelHints);
+    this.profile = options.forceProfile ?? lookupModelProfile(this.resolvedIdentity);
+    this.adapterStrategy = stampStrategy(this.resolvedIdentity);
+
+    if (this.profile.quirks.includes('embedding')) {
+      throw new AgentError(
+        `Refusing to construct AgenticAdapter for an embedding model (${modelAdapter.modelId}). ` +
+          `Agentic loops require a chat-completion model.`
+      );
+    }
+
     this.semaphore =
       options.maxConcurrent !== undefined && options.maxConcurrent > 0
         ? new Semaphore(options.maxConcurrent)
         : null;
   }
 
+  /**
+   * Read-only accessor for the resolved profile. Mostly used in tests
+   * + observability surfaces; production callers shouldn't need this.
+   */
+  getProfile(): ModelBehaviorProfile {
+    return this.profile;
+  }
+
+  /**
+   * Read-only accessor for the resolved identity. After the first
+   * `runAgent` call (if a probe ran), this may differ from what the
+   * sync constructor stored — useful for audit logs.
+   */
+  getResolvedIdentity(): ResolvedModelIdentity {
+    return this.resolvedIdentity;
+  }
+
+  /**
+   * Lazily resolve identity via the async probe + refresh the profile.
+   * Idempotent + concurrent-call-safe (multiple `runAgent`s share the
+   * same in-flight resolution).
+   */
+  private async ensureIdentityResolved(): Promise<void> {
+    if (this.options.forceProfile !== undefined) return; // tests / diagnostic
+    if (this.options.skipProbe === true) return;
+    if (typeof this.model.listModels !== 'function') return;
+    if (this.profileResolutionPromise !== null) {
+      await this.profileResolutionPromise;
+      return;
+    }
+    this.profileResolutionPromise = this.doResolveIdentity();
+    try {
+      await this.profileResolutionPromise;
+    } finally {
+      // Keep the promise resolved/rejected — subsequent calls can
+      // re-await it cheaply, but we've already memoised the result
+      // into `this.profile` so they'll hit the early-return paths
+      // above on the next call.
+    }
+  }
+
+  private async doResolveIdentity(): Promise<void> {
+    const refined = await resolveModelIdentity(this.model, {
+      ...(this.options.modelHints !== undefined && { hints: this.options.modelHints }),
+    });
+    // Only upgrade if the probe contributed a more-specific source.
+    if (refined.source === 'probe' || refined.source === 'modelHints') {
+      this.resolvedIdentity = refined;
+      this.profile = lookupModelProfile(refined);
+      this.adapterStrategy = stampStrategy(refined);
+    }
+  }
+
   async runAgent(args: RunAgentArgs): Promise<Result<AgentRunResult, AgentError>> {
     if (args.turnBudget <= 0) {
       return err(new AgentError(`turnBudget must be > 0, got ${String(args.turnBudget)}`));
     }
+    await this.ensureIdentityResolved();
     const state: LoopState = {
       turns: [],
       totalInputTokens: 0,
@@ -154,6 +262,19 @@ export class AgenticAdapter implements IAgenticAdapter {
     response: CompletionResponse,
     modelLatencyMs: number
   ): Promise<TurnOutcome> {
+    if (this.profile.parallelToolCalls && toolUses.length > 1) {
+      return this.processToolCallsParallel(args, state, toolUses, response, modelLatencyMs);
+    }
+    return this.processToolCallsSequential(args, state, toolUses, response, modelLatencyMs);
+  }
+
+  private async processToolCallsSequential(
+    args: RunAgentArgs,
+    state: LoopState,
+    toolUses: readonly Extract<ContentBlock, { type: 'tool_use' }>[],
+    response: CompletionResponse,
+    modelLatencyMs: number
+  ): Promise<TurnOutcome> {
     const toolResultBlocks: Extract<ContentBlock, { type: 'tool_result' }>[] = [];
     for (const toolUse of toolUses) {
       if (state.turns.length >= args.turnBudget) break;
@@ -167,12 +288,108 @@ export class AgenticAdapter implements IAgenticAdapter {
       if (outcome.kind === 'stop') return outcome;
       toolResultBlocks.push(outcome.toolResultBlock);
     }
-    // Anthropic + OpenAI both expect tool_result blocks batched into a
-    // single follow-up user message after a multi-tool_use assistant turn.
     if (toolResultBlocks.length > 0) {
       state.messages.push({ role: 'user', content: toolResultBlocks });
     }
     return { kind: 'continue' };
+  }
+
+  /**
+   * Profile-driven parallel tool execution. Used when
+   * `profile.parallelToolCalls === true` AND the model emitted >1
+   * tool_use block in a single turn.
+   *
+   * Each tool call still produces its own `AgentTurn`; turn-budget
+   * applies to the post-completion count (we don't pre-cap the
+   * Promise.all because the model already issued all calls — better
+   * to record everything and let the next turn be the budget breaker).
+   */
+  private async processToolCallsParallel(
+    args: RunAgentArgs,
+    state: LoopState,
+    toolUses: readonly Extract<ContentBlock, { type: 'tool_use' }>[],
+    response: CompletionResponse,
+    modelLatencyMs: number
+  ): Promise<TurnOutcome> {
+    // Snapshot the starting turnIndex so concurrent invocations get
+    // sequential indices instead of all stamping the same one.
+    const startIndex = state.turns.length;
+    const promises = toolUses.map((toolUse, offset) =>
+      this.invokeToolForParallel(args, toolUse, response, modelLatencyMs, startIndex + offset)
+    );
+    const outcomes = await Promise.all(promises);
+
+    // Order-stable record + announce.
+    const toolResultBlocks: Extract<ContentBlock, { type: 'tool_result' }>[] = [];
+    for (const outcome of outcomes) {
+      if (outcome.kind === 'stop-tool-error') {
+        state.turns.push(outcome.turn);
+        args.onTurn?.(outcome.turn);
+        return { kind: 'stop', reason: 'tool-error' };
+      }
+      state.turns.push(outcome.turn);
+      args.onTurn?.(outcome.turn);
+      toolResultBlocks.push(outcome.toolResultBlock);
+    }
+    if (toolResultBlocks.length > 0) {
+      state.messages.push({ role: 'user', content: toolResultBlocks });
+    }
+    return { kind: 'continue' };
+  }
+
+  /**
+   * Per-call wrapper used by parallel execution. Returns a captured
+   * outcome (turn + result-block, OR turn + tool-error flag) without
+   * touching shared state — `processToolCallsParallel` reduces the
+   * outcomes deterministically afterwards.
+   */
+  private async invokeToolForParallel(
+    args: RunAgentArgs,
+    toolUse: Extract<ContentBlock, { type: 'tool_use' }>,
+    response: CompletionResponse,
+    modelLatencyMs: number,
+    turnIndex: number
+  ): Promise<ParallelToolOutcome> {
+    const toolCall: ToolCall = {
+      id: toolUse.id,
+      name: toolUse.name,
+      arguments: toolUse.input as Record<string, unknown>,
+    };
+    const tt0 = Date.now();
+    try {
+      const toolResult = await args.onToolCall(toolCall);
+      const turn = buildTurn({
+        turnIndex,
+        toolCall,
+        toolResult,
+        modelLatencyMs,
+        toolLatencyMs: Date.now() - tt0,
+        response,
+      });
+      return {
+        kind: 'recorded',
+        turn,
+        toolResultBlock: {
+          type: 'tool_result',
+          tool_use_id: toolUse.id,
+          content: toolResult.content,
+          ...(toolResult.isError === true && { is_error: true }),
+        },
+      };
+    } catch (caught: unknown) {
+      const turn = buildTurn({
+        turnIndex,
+        toolCall,
+        toolResult: {
+          content: caught instanceof Error ? caught.message : String(caught),
+          isError: true,
+        },
+        modelLatencyMs,
+        toolLatencyMs: Date.now() - tt0,
+        response,
+      });
+      return { kind: 'stop-tool-error', turn };
+    }
   }
 
   private async invokeToolAndRecord(
@@ -296,6 +513,30 @@ type ToolOutcome =
       readonly toolResultBlock: Extract<ContentBlock, { type: 'tool_result' }>;
     }
   | { readonly kind: 'stop'; readonly reason: AgentRunResult['stopReason'] };
+
+/**
+ * Outcome of one parallel tool call. Differs from `ToolOutcome` because
+ * the parallel path captures the `turn` for later ordered recording —
+ * sequential path can record into shared state directly.
+ */
+type ParallelToolOutcome =
+  | {
+      readonly kind: 'recorded';
+      readonly turn: AgentTurn;
+      readonly toolResultBlock: Extract<ContentBlock, { type: 'tool_result' }>;
+    }
+  | { readonly kind: 'stop-tool-error'; readonly turn: AgentTurn };
+
+/**
+ * Compose the `adapterStrategy` stamp from the resolved identity. For
+ * known vendors we record `native:<vendor>`; unknown vendors get
+ * `wrapper`. The source of resolution (`modelHints` / `probe` /
+ * `modelIdParse` / `default`) is not in the strategy string but is
+ * available on `getResolvedIdentity()` for audit logs.
+ */
+function stampStrategy(identity: ResolvedModelIdentity): string {
+  return identity.vendor === 'unknown' ? 'wrapper' : `native:${identity.vendor}`;
+}
 
 interface BuildTurnArgs {
   readonly turnIndex: number;

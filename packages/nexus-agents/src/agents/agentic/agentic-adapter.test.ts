@@ -351,4 +351,166 @@ describe('AgenticAdapter', () => {
     if (!result.ok) return;
     expect(result.value.finalContent).toBe('final answer');
   });
+
+  it('refuses to construct for an embedding model', () => {
+    expect(
+      () => new AgenticAdapter(makeMockModel([{}], 'openai', 'text-embedding-3-large'))
+    ).toThrow(/embedding/);
+  });
+
+  it('exposes the resolved profile via getProfile()', () => {
+    const adapter = new AgenticAdapter(makeMockModel([{}], 'anthropic', 'claude-opus-4-1'));
+    const profile = adapter.getProfile();
+    expect(profile.profileId).toBe('claude-opus');
+    expect(profile.parallelToolCalls).toBe(true);
+    expect(profile.promptCaching).toBe('ephemeral');
+    expect(profile.maxRecommendedTurnBudget).toBe(20);
+  });
+
+  it('exposes the resolved identity via getResolvedIdentity()', () => {
+    const adapter = new AgenticAdapter(makeMockModel([{}], 'openai', 'claude-sonnet-4-6'));
+    // providerId='openai' (gateway) but modelId says claude → vendor=anthropic
+    const identity = adapter.getResolvedIdentity();
+    expect(identity.vendor).toBe('anthropic');
+    expect(identity.family).toBe('claude-sonnet');
+  });
+
+  it('strategy stamp uses resolved vendor, not providerId (gateway scenario)', () => {
+    // Custom OpenAI gateway fronting Claude.
+    const adapter = new AgenticAdapter(
+      makeMockModel([{}], 'openai', 'anthropic/claude-sonnet-4-6')
+    );
+    expect(adapter.adapterStrategy).toBe('native:anthropic');
+  });
+
+  it('modelHints override force a different profile', () => {
+    const adapter = new AgenticAdapter(makeMockModel([{}], 'openai', 'mystery-model'), {
+      modelHints: { vendor: 'anthropic', family: 'claude-opus' },
+    });
+    expect(adapter.getProfile().profileId).toBe('claude-opus');
+    expect(adapter.adapterStrategy).toBe('native:anthropic');
+  });
+
+  it('forceProfile bypasses identity-driven lookup', () => {
+    const customProfile = {
+      parallelToolCalls: false,
+      promptCaching: 'none' as const,
+      toolDefinitionFormat: 'openai' as const,
+      maxRecommendedTurnBudget: 99,
+      strictJson: true,
+      quirks: [],
+      profileId: 'test-custom',
+    };
+    const adapter = new AgenticAdapter(makeMockModel([{}], 'anthropic', 'claude-opus-4-1'), {
+      forceProfile: customProfile,
+    });
+    expect(adapter.getProfile().profileId).toBe('test-custom');
+    expect(adapter.getProfile().maxRecommendedTurnBudget).toBe(99);
+  });
+
+  it('parallel tool calls run via Promise.all when profile says so', async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const adapter = new AgenticAdapter(
+      makeMockModel(
+        [
+          {
+            content: [
+              { type: 'tool_use', id: 'a', name: 'lookup', input: { id: '1' } },
+              { type: 'tool_use', id: 'b', name: 'lookup', input: { id: '2' } },
+              { type: 'tool_use', id: 'c', name: 'lookup', input: { id: '3' } },
+            ] as ContentBlock[],
+            stopReason: 'tool_use',
+          },
+          { content: [{ type: 'text', text: 'done' }], stopReason: 'end_turn' },
+        ],
+        'anthropic',
+        'claude-opus-4-1'
+      )
+    );
+    expect(adapter.getProfile().parallelToolCalls).toBe(true);
+
+    const result = await adapter.runAgent({
+      systemPrompt: 's',
+      userPrompt: 'u',
+      tools: TOOLS,
+      turnBudget: 5,
+      onToolCall: async (): Promise<ToolResult> => {
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise((r) => setTimeout(r, 5));
+        inFlight -= 1;
+        return { content: 'ok' };
+      },
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(maxInFlight).toBeGreaterThanOrEqual(2);
+    expect(result.value.turnsUsed).toBe(3);
+  });
+
+  it('parallel tool execution preserves turn ordering in the trace', async () => {
+    const adapter = new AgenticAdapter(
+      makeMockModel(
+        [
+          {
+            content: [
+              { type: 'tool_use', id: 'first', name: 'lookup', input: {} },
+              { type: 'tool_use', id: 'second', name: 'lookup', input: {} },
+              { type: 'tool_use', id: 'third', name: 'lookup', input: {} },
+            ] as ContentBlock[],
+            stopReason: 'tool_use',
+          },
+          { content: [{ type: 'text', text: 'done' }], stopReason: 'end_turn' },
+        ],
+        'anthropic',
+        'claude-opus-4-1'
+      )
+    );
+    const result = await adapter.runAgent({
+      systemPrompt: 's',
+      userPrompt: 'u',
+      tools: TOOLS,
+      turnBudget: 5,
+      onToolCall: async (call): Promise<ToolResult> => {
+        const delay = call.id === 'third' ? 0 : call.id === 'second' ? 5 : 10;
+        await new Promise((r) => setTimeout(r, delay));
+        return { content: call.id };
+      },
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.turns.map((t) => t.toolCall.id)).toEqual(['first', 'second', 'third']);
+  });
+
+  it('parallel: tool error in any slot stops the loop', async () => {
+    const adapter = new AgenticAdapter(
+      makeMockModel(
+        [
+          {
+            content: [
+              { type: 'tool_use', id: 'a', name: 'lookup', input: {} },
+              { type: 'tool_use', id: 'b', name: 'lookup', input: {} },
+            ] as ContentBlock[],
+            stopReason: 'tool_use',
+          },
+        ],
+        'anthropic',
+        'claude-opus-4-1'
+      )
+    );
+    const result = await adapter.runAgent({
+      systemPrompt: 's',
+      userPrompt: 'u',
+      tools: TOOLS,
+      turnBudget: 5,
+      onToolCall: (call) => {
+        if (call.id === 'b') return Promise.reject(new Error('boom'));
+        return Promise.resolve({ content: 'ok' });
+      },
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.stopReason).toBe('tool-error');
+  });
 });
