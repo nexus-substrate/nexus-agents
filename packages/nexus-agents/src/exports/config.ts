@@ -48,3 +48,23 @@ export {
   type ProbeFn,
   type FallbackEntry,
 } from '../config/index.js';
+
+// (#2540) Unified ModelRegistry + harness-driven AvailableModelsCache.
+// Registry answers "how should this model behave"; cache answers
+// "is this model routable right now". Both are public surface.
+export {
+  ModelRegistry,
+  deriveEntry,
+  getDefaultRegistry,
+  setDefaultRegistry,
+  DEFAULT_ENTRY,
+  AvailableModelsCache,
+  type ModelEntry,
+  type ModelRegistryOptions,
+  type EntrySource,
+  type ToolDefinitionFormat,
+  type PromptCachingMode,
+  type AvailableModelsSource,
+  type AvailableModel,
+  type AvailableModelsCacheOptions,
+} from '../config/index.js';
