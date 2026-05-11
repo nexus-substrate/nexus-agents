@@ -12,7 +12,7 @@ import {
   contextForLogging,
   isRequestContext,
   type RequestContext,
-} from '../request-context.js';
+} from './request-context.js';
 
 describe('RequestContext', () => {
   describe('generateRequestId', () => {
