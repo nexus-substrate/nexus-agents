@@ -16,11 +16,11 @@ import {
   isSandboxInitialized,
   getSandboxMode,
   resetSandboxManager,
-} from '../sandbox-manager.js';
-import * as factory from '../sandbox-factory.js';
+} from './sandbox-manager.js';
+import * as factory from './sandbox-factory.js';
 
 // Mock the sandbox factory
-vi.mock('../sandbox-factory.js', () => ({
+vi.mock('./sandbox-factory.js', () => ({
   createSandbox: vi.fn(),
 }));
 

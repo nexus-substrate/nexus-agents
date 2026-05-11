@@ -18,7 +18,7 @@ import {
   ALLOWED_COMMANDS,
   DENIED_COMMANDS,
   DENIED_ARG_PATTERNS,
-} from '../command-allowlist.js';
+} from './command-allowlist.js';
 
 describe('Command Allowlist', () => {
   describe('validateCommand', () => {

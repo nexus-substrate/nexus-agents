@@ -9,10 +9,10 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { PolicySandboxExecutor, createSandboxExecutor } from '../sandbox-executor.js';
-import { STANDARD_POLICY, RESTRICTIVE_POLICY } from '../default-policies.js';
-import type { SandboxExecutionOptions, SandboxPolicy } from '../sandbox-types.js';
-import { DEFAULT_RESOURCE_LIMITS } from '../sandbox-types.js';
+import { PolicySandboxExecutor, createSandboxExecutor } from './sandbox-executor.js';
+import { STANDARD_POLICY, RESTRICTIVE_POLICY } from './default-policies.js';
+import type { SandboxExecutionOptions, SandboxPolicy } from './sandbox-types.js';
+import { DEFAULT_RESOURCE_LIMITS } from './sandbox-types.js';
 
 // Mock child_process
 vi.mock('node:child_process', () => ({
