@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { NexusError, ValidationError, SecurityError, AgentError } from '../../core/errors.js';
+import { NexusError, ValidationError, SecurityError, AgentError } from './../core/errors.js';
 
 describe('Secrets Sanitization', () => {
   const SENSITIVE_PATTERNS = [
