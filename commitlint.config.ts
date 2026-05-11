@@ -20,6 +20,11 @@ const config: UserConfig = {
     'subject-empty': [2, 'never'],
     // Type must not be empty
     'type-empty': [2, 'never'],
+    // Subject case: still reject "Foo: bar" (sentence-case) and "FOO: BAR"
+    // (upper-case), but allow PascalCase / start-case so subjects can
+    // reference code symbols like `OutcomeStore`, `CompositeRouter`,
+    // `IModelAdapter` without rejection (#2572).
+    'subject-case': [2, 'never', ['sentence-case', 'upper-case']],
     // No max header length — some descriptions need context
     'header-max-length': [1, 'always', 100],
     // Body and footer are optional
