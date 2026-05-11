@@ -137,9 +137,3 @@ export {
 // ============================================================================
 
 export { TOPIC_ALIASES, normalizeTopicToCanonical } from './topic-aliases.js';
-
-// ============================================================================
-// ArxivCrossref Adapter (Fallback Paper Source)
-// ============================================================================
-
-// ArxivCrossrefAdapter and decomposeResearch — pending lint cleanup, not yet exported

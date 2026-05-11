@@ -270,10 +270,9 @@ export type {
 } from './model-availability.js';
 
 // Unified Model Registry (#2540) — single source of truth for per-model
-// metadata (capability + behaviour). Supersedes the split between
-// `model-capabilities.ts` (canonical hardcoded MODEL_IDS) and
-// `model-behavior-profile.ts` (vendor-pattern-matched profiles, now
-// @deprecated and scheduled for removal).
+// metadata (capability + behaviour). Replaces the prior split between
+// `model-capabilities.ts` (still in-tree; migration in #2546) and the
+// deleted `model-behavior-profile.ts`.
 export {
   ModelRegistry,
   deriveEntry,
