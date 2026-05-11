@@ -156,25 +156,17 @@ All agent-executed code runs through the sandbox system.
 
 ### Execution Modes
 
-| Mode        | Description                      | Security Level | Use Case                    |
-| ----------- | -------------------------------- | -------------- | --------------------------- |
-| `none`      | No sandboxing (development only) | None           | Local dev, debugging        |
-| `policy`    | Command allowlist enforcement    | Medium         | Standard operation          |
-| `container` | Full Docker isolation            | High           | Production, untrusted input |
+| Mode                 | Description                                                            | Security Level | Use Case             |
+| -------------------- | ---------------------------------------------------------------------- | -------------- | -------------------- |
+| `none`               | No sandboxing (development only)                                       | None           | Local dev, debugging |
+| `policy`             | Command allowlist enforcement (`PolicySandboxExecutor`)                | Medium         | Standard operation   |
+| `container` / `deno` | Accepted for config back-compat; resolves to `policy` mode after #2551 | (see below)    | (see below)          |
 
-### Docker Security (Container Mode)
+### Real isolation: out-of-process via OpenCode sandbox bootstrap (#2500)
 
-```bash
-docker run \
-  --cap-drop=ALL \           # Drop all Linux capabilities
-  --read-only \              # Read-only root filesystem
-  --network=none \           # No network access
-  --user=node \              # Non-root user
-  --memory=512m \            # Memory limit
-  --cpus=2 \                 # CPU limit
-  --pids-limit=10 \          # Process limit
-  --security-opt=no-new-privileges
-```
+Nexus-agents is **sandbox-compatible, not a sandbox-builder**. The in-process Docker / Deno executors were deleted in [#2551](https://github.com/williamzujkowski/nexus-agents/issues/2551) — they were dead code masquerading as security boundary. For real isolation, set the `NEXUS_SANDBOX` environment variable and run nexus-agents inside an OpenCode-managed Docker sandbox; see [docs/getting-started/SANDBOXED-USAGE.md](../getting-started/SANDBOXED-USAGE.md).
+
+The `container` and `deno` modes are kept in the `SandboxMode` config union so existing config files don't fail validation, but the factory resolves both to `policy` mode at runtime with a warning. New deployments wanting container-level isolation should use the OpenCode bootstrap.
 
 ### Command Classification
 
