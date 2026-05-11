@@ -16,15 +16,20 @@ const logger = createLogger({ component: 'sandbox-manager' });
 
 /**
  * Sandbox manager configuration.
+ *
+ * `dockerImage` and `networkEnabled` are accepted for config-schema
+ * back-compat but are no longer wired to anything — the Docker
+ * executor was deleted in #2551. Real isolation lives in the
+ * out-of-process OpenCode sandbox bootstrap (#2500).
  */
 export interface SandboxManagerConfig {
   /** Sandbox execution mode. */
   readonly mode: SandboxMode;
   /** Fall back to policy mode if container unavailable. */
   readonly fallbackToPolicy: boolean;
-  /** Docker image for container mode. */
+  /** Docker image for container mode. Accepted but ignored post-#2551. */
   readonly dockerImage?: string | undefined;
-  /** Enable network access in container mode. */
+  /** Enable network access in container mode. Accepted but ignored post-#2551. */
   readonly networkEnabled: boolean;
 }
 
@@ -81,15 +86,9 @@ export async function initializeSandbox(
     fallbackToPolicy: finalConfig.fallbackToPolicy,
   });
 
-  const dockerConfig = {
-    networkEnabled: finalConfig.networkEnabled,
-    ...(finalConfig.dockerImage !== undefined && { image: finalConfig.dockerImage }),
-  };
-
   const result = await createSandbox({
     mode: finalConfig.mode,
     fallbackToPolicy: finalConfig.fallbackToPolicy,
-    dockerConfig,
   });
 
   globalSandbox = result.executor;
@@ -114,15 +113,10 @@ export async function initializeSandbox(
 }
 
 /**
- * Get the global sandbox executor.
- *
- * Throws if sandbox has not been initialized.
- *
- * @returns The global sandbox executor
- *
- * @deprecated [#2499] Unused outside the sandbox module. The supported
- * surface is the validation primitives consumed by `cli/sandbox-exec.ts`.
- * Slated for removal one minor release after the deprecation lands.
+ * Get the global sandbox executor. Throws if sandbox has not been
+ * initialized. Since #2551 the only concrete executor is the
+ * `PolicySandboxExecutor`; real isolation is provided out-of-process
+ * by the OpenCode sandbox bootstrap (#2500).
  */
 export function getSandboxExecutor(): ISandboxExecutor {
   if (globalSandbox === null) {
@@ -132,11 +126,7 @@ export function getSandboxExecutor(): ISandboxExecutor {
 }
 
 /**
- * Get the global sandbox executor if initialized.
- *
- * @returns The global sandbox executor or null if not initialized
- *
- * @deprecated [#2499] See `getSandboxExecutor` deprecation note.
+ * Get the global sandbox executor if initialized, or null otherwise.
  */
 export function getSandboxExecutorOrNull(): ISandboxExecutor | null {
   return globalSandbox;

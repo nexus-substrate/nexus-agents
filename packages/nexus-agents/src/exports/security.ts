@@ -1,8 +1,3 @@
-/* eslint-disable @typescript-eslint/no-deprecated -- Public-API barrel
- * re-exports for the deprecated sandbox executor surface (#2499). The
- * source-of-truth declarations carry @deprecated; this file forwards
- * them so external consumers see the deprecation in their own tooling.
- * Per project memory rule, do NOT propagate @deprecated to re-exports. */
 /**
  * Security exports - Sandboxing, safety evaluation, and security components
  * Split from index.ts for file size compliance (Issue #285)
