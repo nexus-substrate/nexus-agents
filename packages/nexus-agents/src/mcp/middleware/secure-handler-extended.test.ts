@@ -9,9 +9,9 @@ import {
   createSecureHandlerFactory,
   type ToolHandler,
   type ContextAwareHandler,
-} from '../secure-handler.js';
-import { createDefaultPolicyFirewall, type IPolicyFirewall } from '../policy.js';
-import { RateLimiter } from '../rate-limiter.js';
+} from './secure-handler.js';
+import { createDefaultPolicyFirewall, type IPolicyFirewall } from './policy.js';
+import { RateLimiter } from './rate-limiter.js';
 
 describe('SecureHandler', () => {
   // Mock handler that returns success

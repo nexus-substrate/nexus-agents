@@ -11,9 +11,9 @@ import {
   createMiddlewareFactory,
   type ContextAwareToolHandler,
   type ToolResult,
-} from '../middleware-chain.js';
-import { createDefaultPolicyFirewall } from '../policy.js';
-import { RateLimiter } from '../rate-limiter.js';
+} from './middleware-chain.js';
+import { createDefaultPolicyFirewall } from './policy.js';
+import { RateLimiter } from './rate-limiter.js';
 
 describe('Middleware Chain', () => {
   const successResult: ToolResult = {

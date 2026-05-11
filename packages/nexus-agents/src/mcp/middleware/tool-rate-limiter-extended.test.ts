@@ -11,8 +11,8 @@ import {
   getGlobalToolRateLimiterFactory,
   setGlobalToolRateLimiterFactory,
   resetGlobalToolRateLimiterFactory,
-} from '../tool-rate-limiter.js';
-import { DEFAULT_TOOL_RATE_LIMITS } from '../../../config/schemas.js';
+} from './tool-rate-limiter.js';
+import { DEFAULT_TOOL_RATE_LIMITS } from './../../config/schemas.js';
 
 describe('ToolRateLimiterFactory', () => {
   beforeEach(() => {
