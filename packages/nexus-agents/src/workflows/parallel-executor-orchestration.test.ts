@@ -6,14 +6,14 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { WorkflowStep, StepResult } from '../../core/index.js';
-import { TaskQueue, createTaskQueue } from '../task-queue.js';
+import type { WorkflowStep, StepResult } from './../core/index.js';
+import { TaskQueue, createTaskQueue } from './task-queue.js';
 import {
   createExecutionPlan,
   validateWorkflowDependencies,
   getExecutionOrder,
   type ExecutionPlan,
-} from '../execution-planner.js';
+} from './execution-planner.js';
 import {
   executeParallel,
   withRetries,
@@ -21,7 +21,7 @@ import {
   getFailedSteps,
   type ExecutionContext,
   type StepExecutor,
-} from '../parallel-executor.js';
+} from './parallel-executor.js';
 
 // --- Test Helpers ---
 
