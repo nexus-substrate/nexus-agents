@@ -14,9 +14,6 @@ export {
   TASK_STATUSES,
   STAGE_TYPES,
   ARTIFACT_TYPES,
-  // Adapter functions
-  analysisToTaskContract,
-  taskContractToToolResponse,
   // Types
   type TaskContract,
   type TaskStatus,
@@ -27,7 +24,6 @@ export {
   type CostEstimate,
   type ArtifactRef,
   type ArtifactType,
-  type TaskToolResponse,
   // Plan compiler
   compilePlan,
   type PlanCompileOptions,

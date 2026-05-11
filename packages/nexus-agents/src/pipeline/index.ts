@@ -28,12 +28,6 @@ export {
   type ArtifactType,
 } from './task-contract.js';
 
-export {
-  analysisToTaskContract,
-  taskContractToToolResponse,
-  type TaskToolResponse,
-} from './v1-adapters.js';
-
 export { compilePlan, type PlanCompileOptions } from './plan-compiler.js';
 
 export {
