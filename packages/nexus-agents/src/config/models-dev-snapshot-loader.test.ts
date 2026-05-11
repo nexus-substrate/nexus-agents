@@ -114,10 +114,17 @@ describe('ModelRegistry default-singleton picks up the snapshot (#2547 4b)', () 
       expect(result.entries.length).toBeGreaterThan(0);
       const first = result.entries[0]!;
       const entry = registry.getEntry(first.id);
-      // Either the snapshot entry won (source: 'models-dev') OR an
-      // in-tree authoritative entry shadowed it (source: 'in-tree').
-      // Both are correct per the resolution chain.
-      expect(['models-dev', 'in-tree']).toContain(entry.source);
+      // The wiring is "proven" when the snapshot's per-version
+      // capability data (contextWindow / pricing) is reflected in the
+      // resolved entry. Three valid sources:
+      //   - 'models-dev': snapshot won, identity didn't resolve.
+      //   - 'in-tree':    an authoritative override shadowed it.
+      //   - 'derived':    snapshot capabilities merged with derived
+      //                   behaviour (identity resolved strongly).
+      expect(['models-dev', 'in-tree', 'derived']).toContain(entry.source);
+      if (entry.source === 'derived' && first.contextWindow !== undefined) {
+        expect(entry.contextWindow).toBe(first.contextWindow);
+      }
     } finally {
       setDefaultRegistry(undefined);
     }
