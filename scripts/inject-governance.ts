@@ -21,6 +21,7 @@
 /* eslint-disable no-console */
 
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
+import { execSync } from 'node:child_process';
 import { join } from 'node:path';
 import * as prettier from 'prettier';
 import { parse as parseYaml } from 'yaml';
@@ -634,17 +635,44 @@ function generateModelList(models: ModelMetadata[]): string {
 
 /**
  * Generate governance version section.
+ *
+ * The stamp is the commit date of the most recently changed canonical
+ * source file (#2571). Using a content-derived date instead of
+ * `new Date()` makes the inject output deterministic — the
+ * "Verify injection idempotency" CI step no longer flips red at the
+ * date rollover on branches that haven't been touched today. The
+ * staleness check in release-validate-helpers.ts:222 keeps working
+ * because the format is unchanged.
  */
+function getGovernanceSourceDate(): string {
+  const sources = [TOOLS_INDEX, EXPERT_CONFIG, TEMPLATE_TYPES, SKILLS_INDEX_PATH, MODEL_CAPS];
+  let latest = '';
+  for (const path of sources) {
+    try {
+      const out = execSync(`git log -1 --format=%cs -- "${path}"`, {
+        encoding: 'utf-8',
+        cwd: ROOT,
+      }).trim();
+      if (out !== '' && out > latest) latest = out;
+    } catch {
+      // Source missing or git unavailable — skip; another source will fill in.
+    }
+  }
+  if (latest === '') {
+    // Fallback (fresh clone, shallow CI, etc.): use today's date in ET.
+    const now = new Date();
+    const etOffset = now.toLocaleString('en-US', { timeZone: 'America/New_York' });
+    const etDate = new Date(etOffset);
+    const y = etDate.getFullYear();
+    const m = String(etDate.getMonth() + 1).padStart(2, '0');
+    const d = String(etDate.getDate()).padStart(2, '0');
+    return `${String(y)}-${m}-${d}`;
+  }
+  return latest;
+}
+
 function generateVersionSection(): string {
-  const now = new Date();
-  const etOffset = now.toLocaleString('en-US', {
-    timeZone: 'America/New_York',
-  });
-  const etDate = new Date(etOffset);
-  const year = etDate.getFullYear();
-  const month = String(etDate.getMonth() + 1).padStart(2, '0');
-  const day = String(etDate.getDate()).padStart(2, '0');
-  const timestamp = `${String(year)}-${month}-${day}`;
+  const timestamp = getGovernanceSourceDate();
 
   return [
     MARKERS.versionStart,
