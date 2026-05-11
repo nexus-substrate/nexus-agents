@@ -15,8 +15,8 @@ import {
   execSandboxed,
   isCommandAllowed,
   type ExecContext,
-} from '../sandbox-exec.js';
-import { DEVELOPMENT_POLICY, RESTRICTIVE_POLICY } from '../../security/sandbox/index.js';
+} from './sandbox-exec.js';
+import { DEVELOPMENT_POLICY, RESTRICTIVE_POLICY } from './../security/sandbox/index.js';
 
 /** Command injection attack vectors. */
 const INJECTION_ATTACKS = [
