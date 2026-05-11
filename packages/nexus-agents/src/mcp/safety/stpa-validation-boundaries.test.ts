@@ -10,14 +10,14 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { validateToolAgainstConstraints } from '../stpa-validation.js';
+import { validateToolAgainstConstraints } from './stpa-validation.js';
 import {
   type ToolDefinition,
   type SafetyConstraint,
   HazardSeverity,
   ConstraintEnforcement,
   ConstraintPriority,
-} from '../stpa-types.js';
+} from './stpa-types.js';
 // ToolCategory may be used in future tests for hazard mapping
 void 0; // Intentionally unused import removed
 
