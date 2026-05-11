@@ -297,6 +297,20 @@ export {
   getDefaultAvailableModelsCache,
   setDefaultAvailableModelsCache,
 } from './available-models-cache.js';
+
+// (#2547 4a) Operator manifest overlay for ModelRegistry. Reads
+// $NEXUS_MODELS_OVERLAY_PATH or $NEXUS_DATA_DIR/models-manifest.yaml
+// and merges entries into the default registry at first construction.
+export {
+  loadManifestOverlay,
+  resolveManifestPath,
+  defaultManifestPath,
+  MANIFEST_ENV_VAR,
+  MANIFEST_MAX_BYTES,
+  ManifestEntrySchema,
+  ManifestSchema,
+} from './manifest-overlay.js';
+export type { ManifestLoadResult, ManifestRejection } from './manifest-overlay.js';
 export type {
   AvailableModelsSource,
   AvailableModel,
