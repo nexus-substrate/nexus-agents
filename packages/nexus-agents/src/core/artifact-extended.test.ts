@@ -11,7 +11,7 @@ import {
   isArtifactOfType,
   deriveArtifact,
   type ArtifactTypeValue,
-} from '../artifact.js';
+} from './artifact.js';
 
 describe('Artifact', () => {
   describe('ArtifactType', () => {
