@@ -7,12 +7,12 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import { AuditLogger } from '../audit-logger.js';
-import { InMemoryAuditStorage, FileAuditStorage } from '../audit-storage.js';
-import type { FileAuditStorageConfig } from '../audit-storage.js';
-import type { AuditEvent, AuditActor, AuditLogConfig } from '../audit-types.js';
-import { AuditError } from '../audit-types.js';
-import { SecurityError } from '../../core/index.js';
+import { AuditLogger } from './audit-logger.js';
+import { InMemoryAuditStorage, FileAuditStorage } from './audit-storage.js';
+import type { FileAuditStorageConfig } from './audit-storage.js';
+import type { AuditEvent, AuditActor, AuditLogConfig } from './audit-types.js';
+import { AuditError } from './audit-types.js';
+import { SecurityError } from '../core/index.js';
 
 // ============================================================================
 // Test Helpers
