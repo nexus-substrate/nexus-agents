@@ -497,27 +497,42 @@ function extractModels(): ModelMetadata[] {
 // ============================================================================
 
 /**
- * Generate the MCP tools reference table.
+ * Generate the MCP tools reference table. CLAUDE.md uses the short
+ * (README-style) descriptions — full descriptions live in
+ * `docs/ENTRYPOINTS.md` and the MCP tool schemas themselves.
  */
 function generateToolIndex(tools: ToolMetadata[]): string {
-  // Dynamically calculate column widths to match Prettier's formatting
-  const toolCells = tools.map((t) => '`' + t.name + '`');
-  const descCells = tools.map((t) => t.description);
+  const rows = tools.map((t) => ({
+    name: t.name,
+    desc: README_TOOL_DESCRIPTIONS[t.name] ?? t.description,
+  }));
+
+  const toolCells = rows.map((r) => '`' + r.name + '`');
+  const descCells = rows.map((r) => r.desc);
   const toolColWidth = Math.max('Tool'.length, ...toolCells.map((c) => c.length));
   const descColWidth = Math.max('Description'.length, ...descCells.map((c) => c.length));
 
   const header = `| ${'Tool'.padEnd(toolColWidth)} | ${'Description'.padEnd(descColWidth)} |`;
   const separator = `| ${'-'.repeat(toolColWidth)} | ${'-'.repeat(descColWidth)} |`;
 
-  const lines = [MARKERS.toolIndexStart, '', '## MCP Tools Reference', '', header, separator];
+  const lines = [
+    MARKERS.toolIndexStart,
+    '',
+    '## MCP Tools Reference',
+    '',
+    'Short summaries below — full schemas and parameter docs are in [docs/ENTRYPOINTS.md](./docs/ENTRYPOINTS.md) and the MCP tool definitions.',
+    '',
+    header,
+    separator,
+  ];
 
-  for (const tool of tools) {
-    const paddedName = ('`' + tool.name + '`').padEnd(toolColWidth);
-    lines.push(`| ${paddedName} | ${tool.description.padEnd(descColWidth)} |`);
+  for (const row of rows) {
+    const paddedName = ('`' + row.name + '`').padEnd(toolColWidth);
+    lines.push(`| ${paddedName} | ${row.desc.padEnd(descColWidth)} |`);
   }
 
   lines.push('');
-  lines.push(`_Auto-generated from source. ${String(tools.length)} tools registered._`);
+  lines.push(`_Auto-generated from source. ${String(rows.length)} tools registered._`);
   lines.push('');
   lines.push(MARKERS.toolIndexEnd);
 
@@ -572,29 +587,24 @@ function generateReadmeToolTable(tools: ToolMetadata[]): string {
  * picks up the change.
  */
 function generateWorkflowIndex(rows: readonly WorkflowRow[]): string {
+  // Trigger keywords live in each skill's SKILL.md frontmatter — the
+  // harness already routes on them, so the CLAUDE.md table only needs
+  // skill name + one-line description. Saves ~30 lines vs the 3-column form.
   const skillCells = rows.map((r) => '`' + r.name + '`');
   const descCells = rows.map((r) => r.description);
-  const triggerCells = rows.map((r) =>
-    r.triggers.length > 0 ? r.triggers.map((t) => '`' + t + '`').join(', ') : '—'
-  );
 
   const skillCol = Math.max('Skill'.length, ...skillCells.map((c) => c.length));
   const descCol = Math.max('Description'.length, ...descCells.map((c) => c.length));
-  const triggerCol = Math.max('Trigger Keywords'.length, ...triggerCells.map((c) => c.length));
 
-  const header =
-    `| ${'Skill'.padEnd(skillCol)} ` +
-    `| ${'Description'.padEnd(descCol)} ` +
-    `| ${'Trigger Keywords'.padEnd(triggerCol)} |`;
-  const separator =
-    `| ${'-'.repeat(skillCol)} ` + `| ${'-'.repeat(descCol)} ` + `| ${'-'.repeat(triggerCol)} |`;
+  const header = `| ${'Skill'.padEnd(skillCol)} | ${'Description'.padEnd(descCol)} |`;
+  const separator = `| ${'-'.repeat(skillCol)} | ${'-'.repeat(descCol)} |`;
 
   const lines = [
     MARKERS.workflowIndexStart,
     '',
     '## Workflows (via Skills)',
     '',
-    'Detailed workflow steps are in `skills/<name>/SKILL.md` (canonical per Anthropic Agent Skills spec, #1828). Non-Claude agents discover via [`skills/index.yaml`](./skills/index.yaml) referenced from [AGENTS.md](./AGENTS.md).',
+    "Each skill's detailed steps and trigger keywords live in `skills/<name>/SKILL.md` (canonical per Anthropic Agent Skills spec, #1828). Non-Claude agents discover via [`skills/index.yaml`](./skills/index.yaml) referenced from [AGENTS.md](./AGENTS.md).",
     '',
     header,
     separator,
@@ -603,8 +613,7 @@ function generateWorkflowIndex(rows: readonly WorkflowRow[]): string {
   for (let i = 0; i < rows.length; i++) {
     const skill = (skillCells[i] ?? '').padEnd(skillCol);
     const desc = (descCells[i] ?? '').padEnd(descCol);
-    const trig = (triggerCells[i] ?? '').padEnd(triggerCol);
-    lines.push(`| ${skill} | ${desc} | ${trig} |`);
+    lines.push(`| ${skill} | ${desc} |`);
   }
 
   lines.push('');

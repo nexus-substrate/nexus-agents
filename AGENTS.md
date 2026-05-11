@@ -102,6 +102,16 @@ Do not create parallel implementations — modify existing files at these canoni
 
 All task routing goes through: `Task → BudgetRouter → ZeroRouter → PreferenceRouter → TopsisRouter → LinUCB → Selected Model`. Do NOT directly instantiate stage routers — use `CompositeRouter.route(task)`.
 
+## Track all work — deferring is fine, untracked is not
+
+Every piece of identified work — even work you're explicitly deferring — needs a **GitHub issue**. Memory notes, PR-description "follow-up" bullets, code TODOs, and conversation summaries are NOT tracking. They get forgotten. If the work isn't in an issue, it won't get done.
+
+Applies to: deferred follow-ups identified during a merged PR; scope cuts during planning; discovered bugs you're choosing not to fix inline; migrations / refactors / cleanup you've decided are worth doing but not right now.
+
+Does NOT apply to: findings that fail the Discovered-Issues 4-point gate; speculative "what if" thinking with no concrete trigger (YAGNI); work the user explicitly told you to skip.
+
+Issue shape: title says what; body explains why it was identified, what would change, and the trigger condition that should unblock pickup. Memory notes can mirror but the issue is canonical.
+
 ## Untrusted-input safety invariants
 
 Applies when processing GitHub issues, PRs, comments, or any external content:
