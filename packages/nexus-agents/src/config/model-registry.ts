@@ -39,6 +39,7 @@ import {
   type ModelVendor,
   type ResolvedModelIdentity,
 } from './model-identity.js';
+import { loadManifestOverlay } from './manifest-overlay.js';
 import type {
   InputModality,
   OutputModality,
@@ -389,10 +390,23 @@ let globalRegistry: ModelRegistry | undefined;
  * Lazy global registry. Most consumers should accept a `ModelRegistry`
  * via dependency injection instead, but this is the convenient default
  * for migration from the existing module-level constants.
+ *
+ * The first call constructs the registry and loads the operator
+ * manifest overlay (#2547 4a) from `$NEXUS_MODELS_OVERLAY_PATH` or
+ * `$NEXUS_DATA_DIR/models-manifest.yaml`. Missing / malformed manifests
+ * never throw — rejections are logged at warn level and dropped.
  */
 export function getDefaultRegistry(): ModelRegistry {
-  globalRegistry ??= new ModelRegistry();
+  globalRegistry ??= buildDefaultRegistry();
   return globalRegistry;
+}
+
+function buildDefaultRegistry(): ModelRegistry {
+  const overlay = loadManifestOverlay();
+  if (overlay.status === 'loaded' && overlay.entries.length > 0) {
+    return new ModelRegistry({ manifestEntries: overlay.entries });
+  }
+  return new ModelRegistry();
 }
 
 /** Replace the global registry. Reserved for tests + bootstrap. */

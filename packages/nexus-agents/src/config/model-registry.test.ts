@@ -179,4 +179,40 @@ describe('global registry helpers', () => {
     expect(fetched.hasAuthoritative('claude-opus-4-1')).toBe(true);
     setDefaultRegistry(undefined);
   });
+
+  it('getDefaultRegistry picks up the operator manifest overlay (#2547 4a)', async () => {
+    // Write a temp manifest and point the env var at it. Reset the
+    // singleton so the first lazy construction reads the overlay.
+    const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const { tmpdir } = await import('node:os');
+
+    setDefaultRegistry(undefined);
+    const dir = mkdtempSync(join(tmpdir(), 'manifest-overlay-rt-'));
+    const path = join(dir, 'models-manifest.yaml');
+    writeFileSync(
+      path,
+      `version: 1
+models:
+  - id: operator-only-model
+    vendor: anthropic
+    family: claude-opus
+    contextWindow: 999999
+`,
+      'utf-8'
+    );
+    const previous = process.env['NEXUS_MODELS_OVERLAY_PATH'];
+    process.env['NEXUS_MODELS_OVERLAY_PATH'] = path;
+    try {
+      const registry = getDefaultRegistry();
+      const entry = registry.getEntry('operator-only-model');
+      expect(entry.source).toBe('manifest');
+      expect(entry.contextWindow).toBe(999999);
+    } finally {
+      if (previous === undefined) delete process.env['NEXUS_MODELS_OVERLAY_PATH'];
+      else process.env['NEXUS_MODELS_OVERLAY_PATH'] = previous;
+      setDefaultRegistry(undefined);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
