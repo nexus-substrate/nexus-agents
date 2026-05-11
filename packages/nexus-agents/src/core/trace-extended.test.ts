@@ -9,7 +9,7 @@ import {
   calculateCost,
   generateTraceId,
   generateSpanId,
-} from '../trace.js';
+} from './trace.js';
 
 describe('trace', () => {
   describe('generateTraceId', () => {

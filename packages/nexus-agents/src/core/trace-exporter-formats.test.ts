@@ -7,7 +7,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import { Tracer } from '../trace.js';
+import { Tracer } from './trace.js';
 import {
   exportTraceToFile,
   exportTraceToString,
@@ -15,7 +15,7 @@ import {
   printTrace,
   generateTraceFilename,
   type ExportedTrace,
-} from '../trace-exporter.js';
+} from './trace-exporter.js';
 
 // =============================================================================
 // Test Setup

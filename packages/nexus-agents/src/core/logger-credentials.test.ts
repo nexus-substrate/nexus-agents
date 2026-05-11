@@ -4,8 +4,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { sanitize, sanitizeDeep } from '../logger.js';
-import { FAKE_OPENAI_KEY, FAKE_BEARER_TOKEN, FAKE_AWS_KEY_ID } from '../../testing/test-secrets.js';
+import { sanitize, sanitizeDeep } from './logger.js';
+import { FAKE_OPENAI_KEY, FAKE_BEARER_TOKEN, FAKE_AWS_KEY_ID } from './../testing/test-secrets.js';
 
 describe('Logger sanitize', () => {
   describe('API keys', () => {
