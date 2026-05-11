@@ -40,6 +40,7 @@ import {
   type ResolvedModelIdentity,
 } from './model-identity.js';
 import { loadManifestOverlay } from './manifest-overlay.js';
+import { loadModelsDevSnapshot } from './models-dev-snapshot-loader.js';
 import type {
   InputModality,
   OutputModality,
@@ -287,13 +288,15 @@ export class ModelRegistry {
    * unknown models get a derived entry with sensible defaults.
    */
   getEntry(modelId: string, hints?: ModelHints): ModelEntry {
-    // 1. Exact match (canonical id or alias)
     const direct = this.lookupExact(modelId);
-    if (direct !== undefined) return direct;
+    if (direct !== undefined && direct.source !== 'models-dev') return direct;
 
-    // 2. Pattern-derived — resolve identity, build derived entry
-    const identity = resolveModelIdentitySync(modelId, hints);
-    return deriveEntry(modelId, identity);
+    const identity = resolveModelIdentitySync(modelId, augmentHints(hints, direct));
+    const derived = deriveEntry(modelId, identity);
+    if (direct !== undefined && identity.vendor !== 'unknown') {
+      return mergeSnapshotWithDerived(direct, derived);
+    }
+    return direct ?? derived;
   }
 
   /**
@@ -332,6 +335,40 @@ export class ModelRegistry {
       }
     }
   }
+}
+
+// When the modelId alone doesn't carry vendor info (e.g.
+// `text-embedding-3-large`), promote the snapshot's vendor/family
+// into resolver hints so identity can resolve and derivation can
+// supply the correct behaviour fields.
+function augmentHints(hints: ModelHints | undefined, direct: ModelEntry | undefined): ModelHints {
+  const h = hints ?? {};
+  if (direct === undefined) return h;
+  const out: { -readonly [K in keyof ModelHints]: ModelHints[K] } = {
+    vendor: h.vendor ?? direct.vendor,
+    family: h.family ?? direct.family,
+  };
+  if (h.version !== undefined) out.version = h.version;
+  if (h.quirks !== undefined) out.quirks = h.quirks;
+  return out;
+}
+
+// Snapshot supplies per-version capability data (contextWindow,
+// pricing, displayName); derived entries carry richer behaviour
+// knowledge (parallelToolCalls, promptCaching, profileId, quirks).
+// Merge so each layer wins where it has the better data.
+function mergeSnapshotWithDerived(snapshot: ModelEntry, derived: ModelEntry): ModelEntry {
+  return {
+    ...snapshot,
+    parallelToolCalls: derived.parallelToolCalls,
+    promptCaching: derived.promptCaching,
+    toolDefinitionFormat: derived.toolDefinitionFormat,
+    maxRecommendedTurnBudget: derived.maxRecommendedTurnBudget,
+    strictJson: derived.strictJson,
+    quirks: derived.quirks,
+    profileId: derived.profileId,
+    source: 'derived',
+  };
 }
 
 // ============================================================================
@@ -403,10 +440,15 @@ export function getDefaultRegistry(): ModelRegistry {
 
 function buildDefaultRegistry(): ModelRegistry {
   const overlay = loadManifestOverlay();
+  const snapshot = loadModelsDevSnapshot();
+  const options: ModelRegistryOptions = {};
   if (overlay.status === 'loaded' && overlay.entries.length > 0) {
-    return new ModelRegistry({ manifestEntries: overlay.entries });
+    (options as { manifestEntries?: readonly ModelEntry[] }).manifestEntries = overlay.entries;
   }
-  return new ModelRegistry();
+  if (snapshot.status === 'loaded' && snapshot.entries.length > 0) {
+    (options as { modelsDevEntries?: readonly ModelEntry[] }).modelsDevEntries = snapshot.entries;
+  }
+  return new ModelRegistry(options);
 }
 
 /** Replace the global registry. Reserved for tests + bootstrap. */
