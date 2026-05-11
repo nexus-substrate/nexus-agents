@@ -400,7 +400,7 @@ _Auto-generated from source. 38 tools registered._
 
 <!-- GOVERNANCE:VERSION:START -->
 
-_Governance Version: 2026-05-11_
+_Governance Version: 2026-05-09_
 
 <!-- GOVERNANCE:VERSION:END -->
 
