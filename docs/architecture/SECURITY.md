@@ -504,26 +504,26 @@ const summary = getSafetyTaxonomySummary();
 
 ## Source Files
 
-| File                                              | Purpose                       |
-| ------------------------------------------------- | ----------------------------- |
-| `src/mcp/middleware/auth-handler.ts`              | Token-based authentication    |
-| `src/mcp/middleware/secure-handler.ts`            | Tool-level security wrapper   |
-| `src/mcp/middleware/request-context.ts`           | Request tracking and auth     |
-| `src/mcp/middleware/rate-limiter.ts`              | Rate limiting                 |
-| `src/security/sandbox/sandbox-manager.ts`         | Sandbox orchestration         |
-| `src/security/sandbox/docker-sandbox-executor.ts` | Container isolation           |
-| `src/security/input-sanitizer.ts`                 | Input validation              |
-| `src/security/output-sanitizer.ts`                | Output sanitization / secrets |
-| `src/security/trust-classifier.ts`                | Trust tier classification     |
-| `src/security/policy-gate.ts`                     | Policy enforcement            |
-| `src/security/corroboration-validator.ts`         | Action corroboration checks   |
-| `src/security/reputation-model.ts`                | Agent reputation scoring      |
-| `src/security/audit-trail.ts`                     | Security logging              |
-| `src/security/firewall/`                          | Firewall pipeline             |
-| `src/security/safety-bench/`                      | SafetyBench evaluation        |
-| `src/security/safety-bench/safety-categories.ts`  | Category taxonomy             |
-| `src/security/safety-bench/safety-enums.ts`       | Risk levels, outcomes         |
-| `src/security/safety-bench/safety-schemas.ts`     | Validation schemas            |
+| File                                             | Purpose                       |
+| ------------------------------------------------ | ----------------------------- |
+| `src/mcp/middleware/auth-handler.ts`             | Token-based authentication    |
+| `src/mcp/middleware/secure-handler.ts`           | Tool-level security wrapper   |
+| `src/mcp/middleware/request-context.ts`          | Request tracking and auth     |
+| `src/mcp/middleware/rate-limiter.ts`             | Rate limiting                 |
+| `src/security/sandbox/sandbox-manager.ts`        | Sandbox orchestration         |
+| `src/security/sandbox/sandbox-executor.ts`       | Policy-based execution        |
+| `src/security/input-sanitizer.ts`                | Input validation              |
+| `src/security/output-sanitizer.ts`               | Output sanitization / secrets |
+| `src/security/trust-classifier.ts`               | Trust tier classification     |
+| `src/security/policy-gate.ts`                    | Policy enforcement            |
+| `src/security/corroboration-validator.ts`        | Action corroboration checks   |
+| `src/security/reputation-model.ts`               | Agent reputation scoring      |
+| `src/security/audit-trail.ts`                    | Security logging              |
+| `src/security/firewall/`                         | Firewall pipeline             |
+| `src/security/safety-bench/`                     | SafetyBench evaluation        |
+| `src/security/safety-bench/safety-categories.ts` | Category taxonomy             |
+| `src/security/safety-bench/safety-enums.ts`      | Risk levels, outcomes         |
+| `src/security/safety-bench/safety-schemas.ts`    | Validation schemas            |
 
 ---
 

@@ -438,7 +438,7 @@ function requiresCitation(type: string): boolean {
 - `src/security/policy-gate.ts` — deterministic rule engine
 - `src/security/corroboration-validator.ts` — source verification
 - `src/security/mutation-gate.ts` — approval queue for state changes
-- Integration with existing GitHub clients (`src/dogfooding/github-client.ts` (workflows/self-development/github-client.ts removed in #2402))
+- Integration with the canonical SCM provider at `src/scm/` (consolidated in #1136; `dogfooding/github-client.ts` migrated and deleted in #2553; `workflows/self-development/github-client.ts` deleted in #2402)
 
 **Failure mode:** Fails closed — mutations without policy gate approval are blocked. Read-only actions still pass through.
 

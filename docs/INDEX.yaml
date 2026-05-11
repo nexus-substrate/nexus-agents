@@ -207,7 +207,6 @@ source_map:
   security: 'packages/nexus-agents/src/security/'
   learning: 'packages/nexus-agents/src/learning/'
   observability: 'packages/nexus-agents/src/observability/'
-  swe_bench: 'packages/nexus-agents/src/swe-bench/'
   testing: 'packages/nexus-agents/src/testing/'
 
 # =============================================================================
