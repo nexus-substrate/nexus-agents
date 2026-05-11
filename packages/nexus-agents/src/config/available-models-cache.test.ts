@@ -126,4 +126,42 @@ describe('AvailableModelsCache (#2540)', () => {
     await Promise.all([a, b]);
     expect(probe).toHaveBeenCalledTimes(1);
   });
+
+  // ============================================================================
+  // Dynamic source registration (#2549)
+  // ============================================================================
+
+  describe('addSource / removeSource (#2549)', () => {
+    it('addSource appends to the union after construction', async () => {
+      const cache = new AvailableModelsCache({ sources: [] });
+      expect(await cache.getAll()).toHaveLength(0);
+
+      cache.addSource(source('anthropic', ['claude-opus-4-7'], 'anthropic'));
+      const all = await cache.getAll();
+      expect(all).toHaveLength(1);
+      expect(all[0]?.id).toBe('claude-opus-4-7');
+    });
+
+    it('addSource is idempotent by name', async () => {
+      const cache = new AvailableModelsCache({ sources: [] });
+      const probe = vi.fn(() => Promise.resolve([{ id: 'gpt-4o' }]));
+      cache.addSource({ name: 'gateway', listModels: probe });
+      cache.addSource({ name: 'gateway', listModels: probe });
+      const all = await cache.getAll();
+      // Single source registered → single probe call after dedup.
+      expect(probe).toHaveBeenCalledTimes(1);
+      expect(all).toHaveLength(1);
+    });
+
+    it('removeSource drops the source from subsequent probes', async () => {
+      const probe = vi.fn(() => Promise.resolve([{ id: 'gpt-4o' }]));
+      const cache = new AvailableModelsCache({
+        sources: [{ name: 'gateway', listModels: probe }],
+      });
+      cache.removeSource('gateway');
+      const all = await cache.getAll();
+      expect(all).toHaveLength(0);
+      expect(probe).not.toHaveBeenCalled();
+    });
+  });
 });

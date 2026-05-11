@@ -292,7 +292,11 @@ export type {
 // `ModelRegistry` answers "how should this model behave"; this cache
 // answers "is this model routable right now". CompositeRouter (PR 7)
 // gates on this cache before scoring.
-export { AvailableModelsCache } from './available-models-cache.js';
+export {
+  AvailableModelsCache,
+  getDefaultAvailableModelsCache,
+  setDefaultAvailableModelsCache,
+} from './available-models-cache.js';
 export type {
   AvailableModelsSource,
   AvailableModel,

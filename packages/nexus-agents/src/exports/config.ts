@@ -59,6 +59,8 @@ export {
   setDefaultRegistry,
   DEFAULT_ENTRY,
   AvailableModelsCache,
+  getDefaultAvailableModelsCache,
+  setDefaultAvailableModelsCache,
   type ModelEntry,
   type ModelRegistryOptions,
   type EntrySource,

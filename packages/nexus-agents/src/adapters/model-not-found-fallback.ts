@@ -36,13 +36,20 @@ import type {
 import { err, ErrorCode, ok, ModelError as ModelErrorClass } from '../core/index.js';
 import { createLogger } from '../core/logger.js';
 import { getDefaultRegistry, type ModelRegistry } from '../config/model-registry.js';
-import type { AvailableModelsCache } from '../config/available-models-cache.js';
+import {
+  type AvailableModelsCache,
+  getDefaultAvailableModelsCache,
+} from '../config/available-models-cache.js';
 
 const logger = createLogger({ component: 'model-not-found-fallback' });
 
 export interface ModelNotFoundFallbackOptions {
-  /** Process-local cache of routable models. Refreshed on a 404. */
-  readonly cache: AvailableModelsCache;
+  /**
+   * Process-local cache of routable models. Refreshed on a 404. Defaults
+   * to `getDefaultAvailableModelsCache()` — passing one explicitly is the
+   * right move for tests and for multi-cache topologies.
+   */
+  readonly cache?: AvailableModelsCache;
   /** Registry used to resolve vendor/family from a model id. Defaults to global. */
   readonly registry?: ModelRegistry;
   /**
@@ -81,9 +88,16 @@ export interface RetirementInfo {
  */
 export function withModelNotFoundFallback(
   inner: IModelAdapter,
-  options: ModelNotFoundFallbackOptions
+  options: ModelNotFoundFallbackOptions = {}
 ): IModelAdapter {
   const registry = options.registry ?? getDefaultRegistry();
+  const cache = options.cache ?? getDefaultAvailableModelsCache();
+  const resolvedOptions: ResolvedOptions = {
+    cache,
+    registry,
+    adapterFactory: options.adapterFactory,
+    onRetirement: options.onRetirement,
+  };
   const wrapped: IModelAdapter = {
     providerId: inner.providerId,
     modelId: inner.modelId,
@@ -91,8 +105,7 @@ export function withModelNotFoundFallback(
     countTokens: (text) => inner.countTokens(text),
     validateConfig: () => inner.validateConfig(),
     stream: (request: CompletionRequest): AsyncIterable<StreamChunk> => inner.stream(request),
-    complete: (request: CompletionRequest) =>
-      completeWithFallback(inner, request, options, registry),
+    complete: (request: CompletionRequest) => completeWithFallback(inner, request, resolvedOptions),
   };
   if (typeof inner.listModels === 'function') {
     const list = inner.listModels.bind(inner);
@@ -101,17 +114,23 @@ export function withModelNotFoundFallback(
   return wrapped;
 }
 
+interface ResolvedOptions {
+  readonly cache: AvailableModelsCache;
+  readonly registry: ModelRegistry;
+  readonly adapterFactory?: ((modelId: string) => IModelAdapter) | undefined;
+  readonly onRetirement?: ((info: RetirementInfo) => void) | undefined;
+}
+
 async function completeWithFallback(
   inner: IModelAdapter,
   request: CompletionRequest,
-  options: ModelNotFoundFallbackOptions,
-  registry: ModelRegistry
+  options: ResolvedOptions
 ): Promise<Result<CompletionResponse, ModelError>> {
   const first = await inner.complete(request);
   if (first.ok) return first;
   if (first.error.code !== ErrorCode.MODEL_NOT_FOUND) return first;
 
-  const fallback = await pickFallback(inner.modelId, options.cache, registry);
+  const fallback = await pickFallback(inner.modelId, options.cache, options.registry);
   if (fallback === null) {
     logger.warn('Model not found and no fallback available', {
       modelId: inner.modelId,
@@ -210,3 +229,48 @@ async function pickFallback(
 
 // Re-export ok for tests that synthesise success results.
 export { ok };
+
+// ============================================================================
+// Resilient-adapter aware wrapper (#2549).
+//
+// `withModelNotFoundFallback` returns an `IModelAdapter` — fine for direct-API
+// adapters that satisfy that surface directly. For `IResilientAdapter` callers
+// who also depend on `getHealth` / `refresh` / `setPreferredCli` / `onFailover`
+// / `dispose`, this helper preserves those methods while routing `complete()`
+// through the fallback path.
+// ============================================================================
+
+/**
+ * Minimal shape of `IResilientAdapter` — duplicated here as a local
+ * type so that `model-not-found-fallback.ts` doesn't acquire a circular
+ * import with `adapters/resilient-adapter-types.ts`. The shape matches
+ * the resilient adapter's extension methods over `IModelAdapter`.
+ */
+export interface ResilientLike extends IModelAdapter {
+  getHealth(): unknown;
+  refresh(): Promise<void>;
+  setPreferredCli(cli: unknown): void;
+  onFailover(cb: (info: unknown) => void): () => void;
+  dispose(): void;
+}
+
+/**
+ * Wrap an `IResilientAdapter` (or anything that satisfies `ResilientLike`)
+ * so its `complete()` path retries on MODEL_NOT_FOUND while its
+ * health/lifecycle methods continue to work unchanged.
+ */
+export function wrapResilientWithFallback<T extends ResilientLike>(
+  inner: T,
+  options: ModelNotFoundFallbackOptions = {}
+): T {
+  const wrapped = withModelNotFoundFallback(inner, options);
+  // Object.assign re-attaches the resilient-specific methods bound to
+  // the original adapter so health/lifecycle behaviour is unchanged.
+  return Object.assign(wrapped, {
+    getHealth: inner.getHealth.bind(inner),
+    refresh: inner.refresh.bind(inner),
+    setPreferredCli: inner.setPreferredCli.bind(inner),
+    onFailover: inner.onFailover.bind(inner),
+    dispose: inner.dispose.bind(inner),
+  }) as unknown as T;
+}

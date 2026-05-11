@@ -319,3 +319,52 @@ describe('global registry singleton', () => {
     expect(mockLogger.warn).not.toHaveBeenCalled();
   });
 });
+
+// ============================================================================
+// MODEL_NOT_FOUND fallback wiring (#2549)
+// ============================================================================
+
+describe('UnifiedAdapterRegistry enableMissingModelFallback (#2549)', () => {
+  afterEach(() => {
+    resetGlobalRegistry();
+  });
+
+  it('returns raw resilient adapters by default (flag off)', () => {
+    const registry = createUnifiedRegistry({ logger: mockLogger });
+    const adapter = registry.getAdapterForCli('claude');
+    // The raw resilient adapter exposes setPreferredCli; sanity-check
+    // that the surface includes it.
+    expect(typeof adapter.setPreferredCli).toBe('function');
+    expect(typeof adapter.complete).toBe('function');
+    expect(typeof adapter.getHealth).toBe('function');
+    registry.dispose();
+  });
+
+  it('wraps adapters with fallback when the flag is enabled', () => {
+    const registry = createUnifiedRegistry({
+      logger: mockLogger,
+      enableMissingModelFallback: true,
+    });
+    const adapter = registry.getAdapterForCli('claude');
+    // Wrapped adapter still implements the resilient surface — the
+    // wrapper preserves health/lifecycle methods via the
+    // `wrapResilientWithFallback` helper.
+    expect(typeof adapter.setPreferredCli).toBe('function');
+    expect(typeof adapter.getHealth).toBe('function');
+    expect(typeof adapter.refresh).toBe('function');
+    expect(typeof adapter.dispose).toBe('function');
+    expect(typeof adapter.complete).toBe('function');
+    registry.dispose();
+  });
+
+  it('caches the wrapped adapter — repeated lookups return the same instance', () => {
+    const registry = createUnifiedRegistry({
+      logger: mockLogger,
+      enableMissingModelFallback: true,
+    });
+    const first = registry.getAdapterForCli('claude');
+    const second = registry.getAdapterForCli('claude');
+    expect(first).toBe(second);
+    registry.dispose();
+  });
+});
