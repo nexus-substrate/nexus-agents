@@ -150,8 +150,6 @@ import {
   TASK_STATUSES,
   STAGE_TYPES,
   ARTIFACT_TYPES,
-  analysisToTaskContract,
-  taskContractToToolResponse,
   compilePlan,
   PipelineRunner,
   PluginManifestSchema,
@@ -387,11 +385,6 @@ describe('Export contracts — pipeline V2 types', () => {
     expect(TASK_STATUSES).toContain('done');
     expect(STAGE_TYPES).toContain('execute');
     expect(ARTIFACT_TYPES).toContain('code');
-  });
-
-  it('exports V1↔V2 adapter functions', () => {
-    expect(typeof analysisToTaskContract).toBe('function');
-    expect(typeof taskContractToToolResponse).toBe('function');
   });
 
   it('exports compilePlan function', () => {
