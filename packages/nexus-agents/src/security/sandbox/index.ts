@@ -1,8 +1,3 @@
-/* eslint-disable @typescript-eslint/no-deprecated -- Barrel re-exports for the
- * deprecated executor surface (#2499). Source-of-truth declarations carry
- * the @deprecated tag; this file just forwards them so external consumers
- * can still import. Per project memory rule, do NOT propagate @deprecated
- * to re-exports. */
 /**
  * nexus-agents/security/sandbox - Module Exports
  *
@@ -64,22 +59,9 @@ export {
   getDefaultPolicyForContext,
 } from './default-policies.js';
 
-// Policy-based executor
+// Policy-based executor (the only in-process executor since #2551;
+// Docker- and Deno-based executors were deleted as unused).
 export { PolicySandboxExecutor, createSandboxExecutor } from './sandbox-executor.js';
-
-// Docker-based executor
-export {
-  DockerSandboxExecutor,
-  createDockerSandboxExecutor,
-  isDockerAvailable,
-  resetDockerCache,
-} from './docker-sandbox-executor.js';
-export type { DockerSandboxConfig } from './docker-sandbox-executor.js';
-
-// Deno-based executor (#1898)
-export { DenoSandboxExecutor, isDenoAvailable, resetDenoCache } from './deno-sandbox-executor.js';
-export { policyToDenoFlags } from './deno-sandbox-helpers.js';
-export type { DenoSandboxConfig } from './deno-sandbox-executor.js';
 
 // Factory
 export { createSandbox, getRecommendedMode } from './sandbox-factory.js';

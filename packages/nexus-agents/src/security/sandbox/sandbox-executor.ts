@@ -377,13 +377,10 @@ export class PolicySandboxExecutor implements ISandboxExecutor {
 /**
  * Create a sandbox executor with optional config.
  *
- * @deprecated [#2499] Unused in production. The sandbox layer's
- * supported surface is the validation primitives (`validateCommand`,
- * `validateArgs`, `SandboxPolicy` types) consumed by
- * `cli/sandbox-exec.ts`. Slated for removal one minor release after
- * the deprecation lands; see
- * [#2499](https://github.com/williamzujkowski/nexus-agents/issues/2499)
- * for context.
+ * Since #2551 this returns the single surviving in-process executor
+ * (`PolicySandboxExecutor`). The Docker/Deno executors were deleted as
+ * unused; real isolation is provided out-of-process by the OpenCode
+ * sandbox bootstrap (#2500).
  */
 export function createSandboxExecutor(config?: Partial<SandboxConfig>): ISandboxExecutor {
   return new PolicySandboxExecutor(config);

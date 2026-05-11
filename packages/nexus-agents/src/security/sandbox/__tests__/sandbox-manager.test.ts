@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-deprecated -- Tests for the deprecated sandbox executor surface (#2499). */
 /**
  * Sandbox Manager Tests
  *
@@ -119,17 +118,21 @@ describe('Sandbox Manager', () => {
       expect(result2.executor).toBe(mockExecutor);
     });
 
-    it('should pass Docker config to factory', async () => {
+    it('passes the requested mode to the factory (container falls back to policy post-#2551)', async () => {
       mockCreateSandbox.mockResolvedValue({
         executor: {
-          name: 'DockerSandboxExecutor',
+          name: 'PolicySandboxExecutor',
           execute: vi.fn(),
           validate: vi.fn(),
         },
-        actualMode: 'container',
-        usedFallback: false,
+        actualMode: 'policy',
+        usedFallback: true,
+        warning: 'Sandbox mode "container" is no longer supported; using "policy" mode.',
       });
 
+      // Operators may still pass dockerImage/networkEnabled in their config
+      // (the schema accepts them for back-compat); the manager ignores them
+      // post-#2551 since the Docker executor was deleted.
       await initializeSandbox({
         mode: 'container',
         dockerImage: 'node:20-alpine',
@@ -139,10 +142,7 @@ describe('Sandbox Manager', () => {
       expect(mockCreateSandbox).toHaveBeenCalledWith(
         expect.objectContaining({
           mode: 'container',
-          dockerConfig: expect.objectContaining({
-            networkEnabled: true,
-            image: 'node:20-alpine',
-          }),
+          fallbackToPolicy: true,
         })
       );
     });
@@ -390,28 +390,6 @@ describe('Sandbox Manager', () => {
       expect(mockCreateSandbox).toHaveBeenCalledWith(
         expect.objectContaining({
           fallbackToPolicy: false,
-        })
-      );
-    });
-
-    it('should use default networkEnabled as false', async () => {
-      mockCreateSandbox.mockResolvedValue({
-        executor: {
-          name: 'DockerSandboxExecutor',
-          execute: vi.fn(),
-          validate: vi.fn(),
-        },
-        actualMode: 'container',
-        usedFallback: false,
-      });
-
-      await initializeSandbox({ mode: 'container' });
-
-      expect(mockCreateSandbox).toHaveBeenCalledWith(
-        expect.objectContaining({
-          dockerConfig: expect.objectContaining({
-            networkEnabled: false,
-          }),
         })
       );
     });

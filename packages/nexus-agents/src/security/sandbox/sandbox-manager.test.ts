@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-deprecated -- Tests reference the
- * deprecated getSandboxExecutor / getSandboxExecutorOrNull (#2499). */
 /**
  * Tests for sandbox-manager.ts
  *
@@ -90,39 +88,35 @@ describe('initializeSandbox', () => {
     expect(sandboxFactory.createSandbox).toHaveBeenCalledWith({
       mode: 'policy',
       fallbackToPolicy: true,
-      dockerConfig: { networkEnabled: false },
     });
     expect(result.executor).toBe(mockExecutor);
     expect(result.actualMode).toBe('policy');
     expect(result.usedFallback).toBe(false);
   });
 
-  it('initializes sandbox with custom config', async () => {
-    const mockExecutor = createMockExecutor('DockerSandboxExecutor');
+  it('forwards the requested mode to the factory', async () => {
+    // Post-#2551 the deprecated Docker/Deno modes resolve to policy
+    // mode inside the factory; the manager still forwards them through.
+    // `dockerImage` / `networkEnabled` are accepted on the config for
+    // back-compat but no longer reach the factory.
+    const mockExecutor = createMockExecutor('PolicySandboxExecutor');
     vi.mocked(sandboxFactory.createSandbox).mockResolvedValue({
       executor: mockExecutor,
-      actualMode: 'container',
-      usedFallback: false,
+      actualMode: 'policy',
+      usedFallback: true,
+      warning: 'Sandbox mode "container" is no longer supported.',
     });
 
-    const config = makeConfig({
-      mode: 'container',
-      dockerImage: 'custom:latest',
-      networkEnabled: true,
-    });
-
-    const result = await initializeSandbox(config);
+    const result = await initializeSandbox(
+      makeConfig({ mode: 'container', dockerImage: 'custom:latest', networkEnabled: true })
+    );
 
     expect(sandboxFactory.createSandbox).toHaveBeenCalledWith({
       mode: 'container',
       fallbackToPolicy: true,
-      dockerConfig: {
-        networkEnabled: true,
-        image: 'custom:latest',
-      },
     });
     expect(result.executor).toBe(mockExecutor);
-    expect(result.actualMode).toBe('container');
+    expect(result.actualMode).toBe('policy');
   });
 
   it('returns existing sandbox on subsequent calls', async () => {
@@ -142,7 +136,7 @@ describe('initializeSandbox', () => {
 
   it('handles fallback with warning', async () => {
     const mockExecutor = createMockExecutor('PolicySandboxExecutor');
-    const warning = 'Docker not available.';
+    const warning = 'Sandbox mode "container" is no longer supported.';
     vi.mocked(sandboxFactory.createSandbox).mockResolvedValue({
       executor: mockExecutor,
       actualMode: 'policy',
@@ -157,7 +151,7 @@ describe('initializeSandbox', () => {
 
   it('preserves warning on subsequent calls', async () => {
     const mockExecutor = createMockExecutor('PolicySandboxExecutor');
-    const warning = 'Docker not available.';
+    const warning = 'Sandbox mode "container" is no longer supported.';
     vi.mocked(sandboxFactory.createSandbox).mockResolvedValue({
       executor: mockExecutor,
       actualMode: 'policy',
@@ -170,27 +164,6 @@ describe('initializeSandbox', () => {
 
     expect(result2.warning).toBe(warning);
     expect(result2.usedFallback).toBe(true);
-  });
-
-  it('omits dockerImage from dockerConfig when undefined', async () => {
-    const mockExecutor = createMockExecutor('PolicySandboxExecutor');
-    vi.mocked(sandboxFactory.createSandbox).mockResolvedValue({
-      executor: mockExecutor,
-      actualMode: 'policy',
-      usedFallback: false,
-    });
-
-    await initializeSandbox({
-      mode: 'policy',
-      dockerImage: undefined,
-      networkEnabled: false,
-    });
-
-    expect(sandboxFactory.createSandbox).toHaveBeenCalledWith({
-      mode: 'policy',
-      fallbackToPolicy: true,
-      dockerConfig: { networkEnabled: false },
-    });
   });
 });
 
