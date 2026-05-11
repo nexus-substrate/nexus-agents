@@ -21,14 +21,14 @@ import * as fsSync from 'node:fs';
 import * as os from 'node:os';
 
 // Import path validation functions from various modules
-import { loadTemplateFile } from '../../workflows/template-loader.js';
-import { SecurityError } from '../../core/index.js';
+import { loadTemplateFile } from './../workflows/template-loader.js';
+import { SecurityError } from './../core/index.js';
 import {
   validateWorkflowPath,
   getAllowedWorkflowDirs,
   isFilePath,
-} from '../../mcp/tools/run-workflow-helpers.js';
-import type { RunWorkflowDeps } from '../../mcp/tools/run-workflow-types.js';
+} from './../mcp/tools/run-workflow-helpers.js';
+import type { RunWorkflowDeps } from './../mcp/tools/run-workflow-types.js';
 
 // ============================================================================
 // Test Constants
@@ -174,7 +174,7 @@ describe('Path Traversal Prevention - Research Helpers IO', () => {
   describe('loadTechniquesRegistry path validation', () => {
     it('should reject rootDir with path traversal patterns', async () => {
       // Import dynamically after mocking
-      const { loadTechniquesRegistry } = await import('../../cli/research-helpers-io.js');
+      const { loadTechniquesRegistry } = await import('../cli/research-helpers-io.js');
 
       for (const maliciousRoot of MALICIOUS_PATHS) {
         const result = await loadTechniquesRegistry(maliciousRoot);
@@ -192,7 +192,7 @@ describe('Path Traversal Prevention - Research Helpers IO', () => {
     });
 
     it('should normalize paths with .. segments', async () => {
-      const { loadTechniquesRegistry } = await import('../../cli/research-helpers-io.js');
+      const { loadTechniquesRegistry } = await import('../cli/research-helpers-io.js');
 
       // Root with parent directory reference gets resolved
       const result = await loadTechniquesRegistry('/test/foo/../root');
@@ -205,7 +205,7 @@ describe('Path Traversal Prevention - Research Helpers IO', () => {
 
   describe('loadPapersRegistry path validation', () => {
     it('should reject rootDir with path traversal patterns', async () => {
-      const { loadPapersRegistry } = await import('../../cli/research-helpers-io.js');
+      const { loadPapersRegistry } = await import('../cli/research-helpers-io.js');
 
       for (const maliciousRoot of MALICIOUS_PATHS) {
         const result = await loadPapersRegistry(maliciousRoot);
@@ -220,7 +220,7 @@ describe('Path Traversal Prevention - Research Helpers IO', () => {
 
   describe('saveTechniquesRegistry path validation', () => {
     it('should reject rootDir with path traversal', async () => {
-      const { saveTechniquesRegistry } = await import('../../cli/research-helpers-io.js');
+      const { saveTechniquesRegistry } = await import('../cli/research-helpers-io.js');
 
       const mockRegistry = {
         schema_version: '1.0',
@@ -271,7 +271,7 @@ describe('Path Traversal Prevention - Custom Expert Loader', () => {
       it(`should reject path traversal via env: ${maliciousPath}`, async () => {
         process.env['NEXUS_CONFIG_PATH'] = maliciousPath;
 
-        const { loadCustomExperts } = await import('../../cli/custom-expert-loader.js');
+        const { loadCustomExperts } = await import('../cli/custom-expert-loader.js');
         const result = loadCustomExperts();
 
         // Should have security error for path traversal
@@ -287,7 +287,7 @@ describe('Path Traversal Prevention - Custom Expert Loader', () => {
       it(`should reject absolute paths that escape cwd: ${absolutePath}`, async () => {
         process.env['NEXUS_CONFIG_PATH'] = absolutePath;
 
-        const { loadCustomExperts } = await import('../../cli/custom-expert-loader.js');
+        const { loadCustomExperts } = await import('../cli/custom-expert-loader.js');
         const result = loadCustomExperts();
 
         // Absolute paths outside cwd should be rejected
@@ -306,7 +306,7 @@ describe('Path Traversal Prevention - Custom Expert Loader', () => {
       // This is NOT a security vulnerability on Linux - the path would just fail to resolve
       process.env['NEXUS_CONFIG_PATH'] = 'C:\\Windows\\System32\\config\\SAM';
 
-      const { loadCustomExperts } = await import('../../cli/custom-expert-loader.js');
+      const { loadCustomExperts } = await import('../cli/custom-expert-loader.js');
       const result = loadCustomExperts();
 
       // On Linux, this is treated as a relative path (within cwd), so no security error
@@ -322,7 +322,7 @@ describe('Path Traversal Prevention - Custom Expert Loader', () => {
       const { existsSync } = await import('node:fs');
       vi.mocked(existsSync).mockReturnValue(true);
 
-      const { loadCustomExperts } = await import('../../cli/custom-expert-loader.js');
+      const { loadCustomExperts } = await import('../cli/custom-expert-loader.js');
       const result = loadCustomExperts();
 
       // Should not have security errors for valid path
@@ -335,7 +335,7 @@ describe('Path Traversal Prevention - Custom Expert Loader', () => {
     it('should allow same-directory path via env', async () => {
       process.env['NEXUS_CONFIG_PATH'] = './nexus-agents.yaml';
 
-      const { loadCustomExperts } = await import('../../cli/custom-expert-loader.js');
+      const { loadCustomExperts } = await import('../cli/custom-expert-loader.js');
       const result = loadCustomExperts();
 
       const securityError = result.errors.find(
@@ -347,7 +347,7 @@ describe('Path Traversal Prevention - Custom Expert Loader', () => {
     it('should include helpful suggestion for path traversal errors', async () => {
       process.env['NEXUS_CONFIG_PATH'] = '../../../etc/passwd';
 
-      const { loadCustomExperts } = await import('../../cli/custom-expert-loader.js');
+      const { loadCustomExperts } = await import('../cli/custom-expert-loader.js');
       const result = loadCustomExperts();
 
       const securityError = result.errors.find((e) => e.field === 'path');

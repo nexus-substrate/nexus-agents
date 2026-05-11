@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { RateLimiter, createDefaultRateLimiter } from '../../mcp/middleware/rate-limiter.js';
+import { RateLimiter, createDefaultRateLimiter } from './../mcp/middleware/rate-limiter.js';
 
 describe('Rate Limiting', () => {
   beforeEach(() => {

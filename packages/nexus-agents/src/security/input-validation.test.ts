@@ -10,10 +10,10 @@
 import { describe, it, expect } from 'vitest';
 
 // Import tool schemas
-import { OrchestrateInputSchema } from '../../mcp/tools/orchestrate.js';
-import { DelegateInputSchema } from '../../mcp/tools/delegate-to-model.js';
-import { CreateExpertInputSchema } from '../../mcp/tools/create-expert.js';
-import { RunWorkflowInputSchema } from '../../mcp/tools/run-workflow.js';
+import { OrchestrateInputSchema } from './../mcp/tools/orchestrate.js';
+import { DelegateInputSchema } from './../mcp/tools/delegate-to-model.js';
+import { CreateExpertInputSchema } from './../mcp/tools/create-expert.js';
+import { RunWorkflowInputSchema } from './../mcp/tools/run-workflow.js';
 
 describe('Input Validation - Zod Schemas', () => {
   describe('OrchestrateInputSchema', () => {
