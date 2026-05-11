@@ -12,7 +12,7 @@ import {
   type StoredReward,
   type ISQLiteDatabase,
   type ISQLiteStatement,
-} from '../index.js';
+} from './index.js';
 
 // In-memory mock database for testing
 class MockStatement<T> implements ISQLiteStatement<T> {
