@@ -40,6 +40,7 @@ import {
   type ResolvedModelIdentity,
 } from './model-identity.js';
 import { loadManifestOverlay } from './manifest-overlay.js';
+import { loadModelsDevSnapshot } from './models-dev-snapshot-loader.js';
 import type {
   InputModality,
   OutputModality,
@@ -403,10 +404,15 @@ export function getDefaultRegistry(): ModelRegistry {
 
 function buildDefaultRegistry(): ModelRegistry {
   const overlay = loadManifestOverlay();
+  const snapshot = loadModelsDevSnapshot();
+  const options: ModelRegistryOptions = {};
   if (overlay.status === 'loaded' && overlay.entries.length > 0) {
-    return new ModelRegistry({ manifestEntries: overlay.entries });
+    (options as { manifestEntries?: readonly ModelEntry[] }).manifestEntries = overlay.entries;
   }
-  return new ModelRegistry();
+  if (snapshot.status === 'loaded' && snapshot.entries.length > 0) {
+    (options as { modelsDevEntries?: readonly ModelEntry[] }).modelsDevEntries = snapshot.entries;
+  }
+  return new ModelRegistry(options);
 }
 
 /** Replace the global registry. Reserved for tests + bootstrap. */
