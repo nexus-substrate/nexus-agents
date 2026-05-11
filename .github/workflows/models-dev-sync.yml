@@ -1,0 +1,86 @@
+name: Models.dev Sync
+
+# Weekly regeneration of packages/nexus-agents/src/config/models-dev-snapshot.json
+# from models.dev. When the snapshot drifts from upstream, opens a PR with the
+# refreshed JSON. The sync script writes deterministic output, so re-running it
+# against unchanged upstream produces no diff (and no PR).
+#
+# Issue: #2589 (follow-up from #2587).
+
+on:
+  schedule:
+    # Mondays 05:23 UTC (off-minute, distinct from registry-refresh on Sundays 04:17).
+    - cron: '23 5 * * 1'
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: 'Run the sync but do not open a PR'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+# Read-only by default; the sync job adds write scopes only where needed.
+permissions: read-all
+
+jobs:
+  sync:
+    name: Refresh models.dev snapshot
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Setup Node + pnpm
+        uses: ./.github/actions/setup-node
+
+      - name: Run sync script
+        run: npx tsx scripts/sync-models-dev.ts
+        working-directory: ${{ github.workspace }}
+
+      - name: Detect snapshot drift
+        id: changed
+        run: |
+          if git diff --quiet packages/nexus-agents/src/config/models-dev-snapshot.json; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            ADDED=$(git diff packages/nexus-agents/src/config/models-dev-snapshot.json | grep -cE '^\+  *"id":' || true)
+            REMOVED=$(git diff packages/nexus-agents/src/config/models-dev-snapshot.json | grep -cE '^-  *"id":' || true)
+            echo "added=$ADDED" >> "$GITHUB_OUTPUT"
+            echo "removed=$REMOVED" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open PR with refreshed snapshot
+        if: steps.changed.outputs.changed == 'true' && inputs['dry-run'] != 'true'
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          branch: automated/models-dev-sync
+          delete-branch: true
+          commit-message: |
+            chore(config): weekly refresh of models-dev-snapshot.json
+
+            Added entries: ${{ steps.changed.outputs.added }}, removed: ${{ steps.changed.outputs.removed }}.
+          title: 'chore(config): weekly refresh of models-dev-snapshot.json'
+          body: |
+            Automated weekly refresh from models.dev (issue #2589).
+
+            - Added entries: ${{ steps.changed.outputs.added }}
+            - Removed entries: ${{ steps.changed.outputs.removed }}
+
+            The sync script is deterministic — re-running it against unchanged upstream produces no diff. This PR exists because upstream changed.
+
+            Review the diff for any model removals you didn't expect, then squash-merge.
+          labels: |
+            automated
+            models-dev-sync
+
+      - name: No-op summary
+        if: steps.changed.outputs.changed == 'false'
+        run: echo "Snapshot already in sync with upstream; no PR opened."
