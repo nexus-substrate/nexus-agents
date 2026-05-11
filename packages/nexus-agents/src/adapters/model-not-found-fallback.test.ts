@@ -326,3 +326,172 @@ describe('wrapResilientWithFallback (#2549)', () => {
     expect(r.error.message).toContain('claude-opus-4-7');
   });
 });
+
+// ============================================================================
+// Streaming retry (#2550)
+// ============================================================================
+
+import type { StreamChunk } from '../core/index.js';
+
+/** Helper: collect all chunks from an AsyncIterable. */
+async function collectStream(stream: AsyncIterable<StreamChunk>): Promise<StreamChunk[]> {
+  const out: StreamChunk[] = [];
+  for await (const chunk of stream) {
+    out.push(chunk);
+  }
+  return out;
+}
+
+/** Fake adapter that yields N text-delta chunks then optionally throws. */
+function streamingFakeAdapter(
+  modelId: string,
+  chunkTexts: readonly string[],
+  throwAfterAll: ModelError | null = null
+): IModelAdapter {
+  return {
+    providerId: 'anthropic',
+    modelId,
+    capabilities: [],
+    complete: () => Promise.resolve(successResponse()),
+    countTokens: () => Promise.resolve(0),
+    validateConfig: () => ok(undefined),
+    // eslint-disable-next-line @typescript-eslint/require-await
+    stream: async function* () {
+      for (let i = 0; i < chunkTexts.length; i++) {
+        const text = chunkTexts[i] ?? '';
+        const chunk: StreamChunk = {
+          type: 'content_block_delta',
+          index: i,
+          delta: { type: 'text_delta', text },
+        };
+        yield chunk;
+      }
+      if (throwAfterAll !== null) {
+        throw throwAfterAll;
+      }
+    },
+  };
+}
+
+describe('withModelNotFoundFallback streaming retry (#2550)', () => {
+  it('passes through a successful stream unchanged', async () => {
+    const inner = streamingFakeAdapter('claude-opus-4-7', ['a', 'b', 'c']);
+    const cache = new AvailableModelsCache({ sources: [] });
+    const wrapped = withModelNotFoundFallback(inner, { cache });
+    const chunks = await collectStream(wrapped.stream(dummyRequest));
+    expect(chunks).toHaveLength(3);
+  });
+
+  it('passes through non-MODEL_NOT_FOUND throws unchanged', async () => {
+    const inner = streamingFakeAdapter(
+      'claude-opus-4-7',
+      [],
+      new ModelError('boom', { code: ErrorCode.MODEL_RATE_LIMITED })
+    );
+    const cache = new AvailableModelsCache({ sources: [] });
+    const wrapped = withModelNotFoundFallback(inner, { cache });
+    await expect(collectStream(wrapped.stream(dummyRequest))).rejects.toThrow('boom');
+  });
+
+  it('on MODEL_NOT_FOUND throw, restarts from the fallback adapter (restart-from-zero)', async () => {
+    const inner = streamingFakeAdapter(
+      'claude-opus-4-6',
+      ['retired-1'],
+      new ModelError('404', { code: ErrorCode.MODEL_NOT_FOUND })
+    );
+    const fallbackAdapterImpl = streamingFakeAdapter('claude-opus-4-7', ['new-1', 'new-2']);
+    const cache = new AvailableModelsCache({
+      sources: [
+        {
+          name: 'anthropic',
+          providerHint: 'anthropic',
+          listModels: () => Promise.resolve([{ id: 'claude-opus-4-7' }]),
+        },
+      ],
+    });
+    const wrapped = withModelNotFoundFallback(inner, {
+      cache,
+      adapterFactory: () => fallbackAdapterImpl,
+    });
+    const chunks = await collectStream(wrapped.stream(dummyRequest));
+    // Consumer sees the retired adapter's 1 chunk AND the fallback's 2
+    // chunks — restart-from-zero replays the fallback from its start
+    // but does NOT drop chunks already yielded.
+    expect(chunks).toHaveLength(3);
+    expect(
+      chunks
+        .filter(
+          (c): c is Extract<StreamChunk, { type: 'content_block_delta' }> =>
+            c.type === 'content_block_delta'
+        )
+        .map((c) => c.delta.text)
+    ).toEqual(['retired-1', 'new-1', 'new-2']);
+  });
+
+  it('re-throws original error enriched with fallback id when no adapterFactory is wired', async () => {
+    const inner = streamingFakeAdapter(
+      'claude-opus-4-6',
+      [],
+      new ModelError('404', { code: ErrorCode.MODEL_NOT_FOUND })
+    );
+    const cache = new AvailableModelsCache({
+      sources: [
+        {
+          name: 'anthropic',
+          providerHint: 'anthropic',
+          listModels: () => Promise.resolve([{ id: 'claude-opus-4-7' }]),
+        },
+      ],
+    });
+    const wrapped = withModelNotFoundFallback(inner, { cache });
+    await expect(collectStream(wrapped.stream(dummyRequest))).rejects.toThrow(
+      /suggested fallback: claude-opus-4-7/
+    );
+  });
+
+  it('invokes onRetirement when stream falls back', async () => {
+    const inner = streamingFakeAdapter(
+      'claude-opus-4-6',
+      [],
+      new ModelError('404', { code: ErrorCode.MODEL_NOT_FOUND })
+    );
+    const fallbackAdapterImpl = streamingFakeAdapter('claude-opus-4-7', ['x']);
+    const cache = new AvailableModelsCache({
+      sources: [
+        {
+          name: 'anthropic',
+          providerHint: 'anthropic',
+          listModels: () => Promise.resolve([{ id: 'claude-opus-4-7' }]),
+        },
+      ],
+    });
+    const onRetirement = vi.fn();
+    const wrapped = withModelNotFoundFallback(inner, {
+      cache,
+      adapterFactory: () => fallbackAdapterImpl,
+      onRetirement,
+    });
+    await collectStream(wrapped.stream(dummyRequest));
+    expect(onRetirement).toHaveBeenCalledWith(
+      expect.objectContaining({
+        retiredModelId: 'claude-opus-4-6',
+        fallbackModelId: 'claude-opus-4-7',
+      })
+    );
+  });
+
+  it('re-throws original when no fallback model is available', async () => {
+    const inner = streamingFakeAdapter(
+      'claude-opus-4-6',
+      [],
+      new ModelError('404', { code: ErrorCode.MODEL_NOT_FOUND })
+    );
+    // Empty cache → no fallback can be picked → original error propagates.
+    const cache = new AvailableModelsCache({ sources: [] });
+    const wrapped = withModelNotFoundFallback(inner, {
+      cache,
+      adapterFactory: () => streamingFakeAdapter('never', []),
+    });
+    await expect(collectStream(wrapped.stream(dummyRequest))).rejects.toThrow('404');
+  });
+});

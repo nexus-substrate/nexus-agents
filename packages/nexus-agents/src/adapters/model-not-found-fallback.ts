@@ -83,8 +83,18 @@ export interface RetirementInfo {
  *     same-family alternative, retry once with `request.model =
  *     <fallback>`. Original error is returned if no fallback found.
  *  3. The wrapper returns the SECOND error if the retry also fails.
- *  4. `stream`, `countTokens`, `validateConfig`, `listModels` are
- *     passthrough.
+ *  4. `stream()` retries via restart-from-zero (#2550): when the inner
+ *     stream throws a `MODEL_NOT_FOUND` ModelError, the wrapper closes
+ *     the failed stream, picks a same-family fallback via the cache +
+ *     registry, builds a new adapter through `adapterFactory`, and
+ *     yields chunks from the fallback stream. The consumer sees a clean
+ *     second stream — partial content already delivered by the first
+ *     stream is NOT replayed; that's a known trade-off (the alternative
+ *     resume-with-reconciliation strategy is heavier and only useful
+ *     for tool-use loops; not implemented per the deliberate scoping in
+ *     #2550). Without `adapterFactory`, the original throw propagates
+ *     unchanged.
+ *  5. `countTokens`, `validateConfig`, `listModels` are passthrough.
  */
 export function withModelNotFoundFallback(
   inner: IModelAdapter,
@@ -104,7 +114,8 @@ export function withModelNotFoundFallback(
     capabilities: inner.capabilities,
     countTokens: (text) => inner.countTokens(text),
     validateConfig: () => inner.validateConfig(),
-    stream: (request: CompletionRequest): AsyncIterable<StreamChunk> => inner.stream(request),
+    stream: (request: CompletionRequest): AsyncIterable<StreamChunk> =>
+      streamWithFallback(inner, request, resolvedOptions),
     complete: (request: CompletionRequest) => completeWithFallback(inner, request, resolvedOptions),
   };
   if (typeof inner.listModels === 'function') {
@@ -175,6 +186,104 @@ async function completeWithFallback(
       cause: retried.error,
     })
   );
+}
+
+/**
+ * Restart-from-zero streaming retry on MODEL_NOT_FOUND (#2550).
+ *
+ * Iterates the inner stream; if it throws a `ModelError` with code
+ * `MODEL_NOT_FOUND`, refreshes the cache, picks a same-family fallback,
+ * builds a new adapter via `adapterFactory`, and yields chunks from
+ * the fallback stream. The consumer sees a clean second stream — any
+ * partial content already delivered by the first stream is NOT
+ * replayed; that's the documented trade-off of restart-from-zero
+ * (alternative resume-with-reconciliation strategy is heavier and
+ * deferred per #2550's scope decision).
+ *
+ * Without `adapterFactory` the original throw propagates unchanged —
+ * the wrapper has no way to construct the retry adapter, so the
+ * consumer can re-route at a higher layer if it wants.
+ */
+async function* streamWithFallback(
+  inner: IModelAdapter,
+  request: CompletionRequest,
+  options: ResolvedOptions
+): AsyncGenerator<StreamChunk> {
+  try {
+    for await (const chunk of inner.stream(request)) {
+      yield chunk;
+    }
+    return;
+  } catch (e: unknown) {
+    if (!isModelNotFoundError(e)) throw e;
+    const fallbackAdapter = await resolveStreamFallback(inner, e, options);
+    // Restart-from-zero: the consumer gets a fresh stream starting from
+    // the first chunk. Any partial chunks the inner stream already
+    // yielded are NOT replayed.
+    for await (const chunk of fallbackAdapter.stream(request)) {
+      yield chunk;
+    }
+  }
+}
+
+/**
+ * Pick a same-family fallback model, run the retirement callback, and
+ * return the constructed fallback adapter. Throws (with appropriate
+ * enrichment) when no factory is wired or no fallback is available.
+ */
+async function resolveStreamFallback(
+  inner: IModelAdapter,
+  cause: unknown,
+  options: ResolvedOptions
+): Promise<IModelAdapter> {
+  const fallback = await pickFallback(inner.modelId, options.cache, options.registry);
+  if (fallback === null) {
+    logger.warn('Stream model not found and no fallback available', {
+      modelId: inner.modelId,
+      providerId: inner.providerId,
+      errorMessage: cause instanceof Error ? cause.message : String(cause),
+    });
+    throw cause;
+  }
+
+  logger.info('Stream retirement detected; restarting with fallback (restart-from-zero)', {
+    retiredModelId: inner.modelId,
+    fallbackModelId: fallback,
+    providerId: inner.providerId,
+  });
+  notifyRetirement(options.onRetirement, {
+    retiredModelId: inner.modelId,
+    fallbackModelId: fallback,
+    providerId: inner.providerId,
+    errorMessage: cause instanceof Error ? cause.message : String(cause),
+  });
+
+  if (options.adapterFactory === undefined) {
+    // No factory wired → can't construct the retry adapter. Re-throw
+    // with the original error enriched so callers at a higher layer
+    // can attempt their own re-routing.
+    const message = `${cause instanceof Error ? cause.message : String(cause)} — suggested fallback: ${fallback}`;
+    const causeErr = cause instanceof Error ? cause : undefined;
+    throw new ModelErrorClass(
+      message,
+      causeErr !== undefined
+        ? { code: ErrorCode.MODEL_NOT_FOUND, cause: causeErr }
+        : { code: ErrorCode.MODEL_NOT_FOUND }
+    );
+  }
+
+  return options.adapterFactory(fallback);
+}
+
+function isModelNotFoundError(e: unknown): boolean {
+  if (e instanceof ModelErrorClass) {
+    return e.code === ErrorCode.MODEL_NOT_FOUND;
+  }
+  // Some adapters throw a plain Error with the code as a string property.
+  if (typeof e === 'object' && e !== null && 'code' in e) {
+    return e.code === ErrorCode.MODEL_NOT_FOUND;
+  }
+  return false;
 }
 
 function notifyRetirement(
