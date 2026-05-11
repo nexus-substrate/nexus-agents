@@ -18,10 +18,10 @@ import {
   DEFAULT_POLICIES,
   getPolicy,
   getDefaultPolicyForContext,
-} from '../default-policies.js';
-import { DEFAULT_RESOURCE_LIMITS } from '../sandbox-types.js';
-import { COMMAND_CATEGORIES, ALLOWED_COMMANDS } from '../command-allowlist.js';
-import { SAFE_ENV_VARS } from '../env-sanitizer.js';
+} from './default-policies.js';
+import { DEFAULT_RESOURCE_LIMITS } from './sandbox-types.js';
+import { COMMAND_CATEGORIES, ALLOWED_COMMANDS } from './command-allowlist.js';
+import { SAFE_ENV_VARS } from './env-sanitizer.js';
 
 describe('Default Policies', () => {
   describe('RESTRICTIVE_POLICY', () => {

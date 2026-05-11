@@ -17,7 +17,7 @@ import {
   SAFE_ENV_VARS,
   DENIED_ENV_PREFIXES,
   DENIED_ENV_PATTERNS,
-} from '../env-sanitizer.js';
+} from './env-sanitizer.js';
 
 describe('Environment Sanitizer', () => {
   describe('sanitizeEnvironment', () => {
