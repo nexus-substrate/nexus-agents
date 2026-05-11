@@ -28,11 +28,14 @@ perf(topsis): cache normalized scores across routing calls
 
 ```
 Update routing           # missing type
-feat: Add Feature        # uppercase subject (warning)
+feat: Foo bar            # sentence-case subject (rejected post-#2572)
+feat: FOO BAR            # upper-case subject (rejected)
 feature(routing): add x  # wrong type (feature → feat)
 ```
 
-**Config:** `commitlint.config.ts` extends `@commitlint/config-conventional`.
+**Subject case allowance** (#2572): PascalCase / start-case is **allowed** in subjects so they can reference code symbols like `OutcomeStore`, `CompositeRouter`, `IModelAdapter`. Only sentence-case (`Foo bar`) and upper-case (`FOO BAR`) are rejected.
+
+**Config:** `commitlint.config.ts` extends `@commitlint/config-conventional` with overrides documented inline.
 
 ## Branch Naming
 
