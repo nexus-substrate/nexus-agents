@@ -153,6 +153,14 @@ jobs:
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          # Limit the PR to the actual generated artifacts so the
+          # workflow's scratch `generate-tests.ts` heredoc and
+          # `coverage-report.log` debug output don't get staged —
+          # lint-staged's ESLint pass rejects the scratch file and
+          # fails the whole PR-creation step. See issue #2591.
+          add-paths: |
+            **/*.sica.test.ts
+            sica-results.json
           commit-message: |
             test: add SICA-generated tests
 
