@@ -82,3 +82,4 @@ cap-citation-pipeline/
 repo-health-report/
 tsundoku/
 .doc-review-cursor
+.claude/scheduled_tasks.lock
