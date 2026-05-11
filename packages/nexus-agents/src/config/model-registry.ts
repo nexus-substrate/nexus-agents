@@ -3,10 +3,10 @@
  *
  * Single source of truth for per-model metadata. Replaces the previous
  * split between:
- *   - `model-capabilities.ts` (canonical hardcoded list, capability +
- *     pricing + quality + context-window data)
+ *   - `model-capabilities.ts` (canonical hardcoded list, still in-tree;
+ *     migration tracked in #2546)
  *   - `model-behavior-profile.ts` (vendor-pattern-matched runtime
- *     behaviour: parallel tool calls, prompt caching, etc.)
+ *     behaviour; file deleted in #2540 PR 2)
  *
  * Each `ModelEntry` carries BOTH capability and behaviour fields. The
  * registry's `getEntry()` always returns something — exact match if
@@ -49,8 +49,8 @@ import type {
 } from './model-capabilities-types.js';
 
 // ============================================================================
-// Per-model behaviour types (carried over from model-behavior-profile.ts —
-// that file is marked @deprecated in PR 2 and deleted in PR 3)
+// Per-model behaviour types — were previously split into model-behavior-profile.ts
+// (deleted in #2540 PR 2 when AgenticAdapter migrated to ModelRegistry).
 // ============================================================================
 
 /**
