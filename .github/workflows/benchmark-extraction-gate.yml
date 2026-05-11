@@ -65,3 +65,62 @@ jobs:
           fi
 
           echo "✓ No in-tree benchmark code found — harness-extraction policy satisfied."
+
+  self-test:
+    # Defense-in-depth (#2564): verify the `enforce` job's matching
+    # logic would actually flag a violation. Both gated directories
+    # have been empty since #2515 / #2516, so the gate never fires
+    # in production — the only signal it works at all comes from
+    # this synthetic-violation test.
+    name: gate self-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Verify gate flags synthetic violations
+        run: |
+          set -euo pipefail
+
+          # Create an isolated git repo seeded with synthetic violations
+          # under both gated paths. We do NOT touch the real working
+          # tree — the test runs in a temp dir so it cannot pollute
+          # `git ls-files` for any subsequent step.
+          tmp=$(mktemp -d)
+          trap 'rm -rf "$tmp"' EXIT
+
+          cd "$tmp"
+          git init --quiet
+          git config user.email "gate-self-test@example.com"
+          git config user.name "gate-self-test"
+
+          mkdir -p packages/nexus-agents/src/swe-bench
+          mkdir -p packages/nexus-agents/src/benchmarks/atbench
+          echo "// synthetic violation" > packages/nexus-agents/src/swe-bench/test.ts
+          echo "// synthetic violation" > packages/nexus-agents/src/benchmarks/atbench/test.ts
+          git add . && git commit --quiet -m "test: seed synthetic violations"
+
+          # Run the EXACT same matching command the `enforce` job runs.
+          # If this returns empty, the gate's path filter is broken.
+          violations=$(git ls-files \
+            'packages/nexus-agents/src/swe-bench/*' \
+            'packages/nexus-agents/src/benchmarks/atbench/*' \
+            2>/dev/null || true)
+
+          if [ -z "$violations" ]; then
+            echo "::error::Gate self-test FAILED — the enforce job's `git ls-files` filter"
+            echo "::error::would not have detected the synthetic violations under"
+            echo "::error::swe-bench/ + benchmarks/atbench/. The gate is broken."
+            exit 1
+          fi
+
+          # Confirm both directories' synthetic files were caught.
+          if ! echo "$violations" | grep -q 'swe-bench/test.ts'; then
+            echo "::error::swe-bench/ path filter no longer matches"
+            exit 1
+          fi
+          if ! echo "$violations" | grep -q 'benchmarks/atbench/test.ts'; then
+            echo "::error::benchmarks/atbench/ path filter no longer matches"
+            exit 1
+          fi
+
+          echo "✓ Gate self-test passed — synthetic violations detected:"
+          echo "$violations" | sed 's/^/    /'
