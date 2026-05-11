@@ -13,13 +13,13 @@ import {
   parseWorkflowJson,
   loadWorkflowFile,
   validateWorkflow,
-} from '../workflow-parser.js';
+} from './workflow-parser.js';
 import {
   buildDependencyGraph,
   validateDependencyGraph,
   getTopologicalOrder,
-} from '../dependency-graph.js';
-import type { WorkflowDefinition } from '../../core/index.js';
+} from './dependency-graph.js';
+import type { WorkflowDefinition } from './../core/index.js';
 
 describe('parseWorkflowYaml', () => {
   it('should parse valid YAML workflow', () => {
