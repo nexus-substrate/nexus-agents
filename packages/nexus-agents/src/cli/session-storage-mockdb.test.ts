@@ -4,14 +4,14 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { SQLiteSessionStorage, createSessionStorage } from '../session-storage.js';
+import { SQLiteSessionStorage, createSessionStorage } from './session-storage.js';
 import type {
   ISQLiteDatabase,
   ISQLiteStatement,
   SessionRow,
   TaskRow,
   SessionSummaryRow,
-} from '../session-storage-types.js';
+} from './session-storage-types.js';
 
 // ============================================================================
 // Mock Helpers (split to reduce complexity)
@@ -283,7 +283,7 @@ describe('SQLiteSessionStorage', () => {
 describe('Session storage helpers', () => {
   describe('generateSessionId', () => {
     it('should generate unique IDs', async () => {
-      const { generateSessionId } = await import('../session-storage-helpers.js');
+      const { generateSessionId } = await import('./session-storage-helpers.js');
       const id1 = generateSessionId();
       const id2 = generateSessionId();
       expect(id1).not.toBe(id2);
@@ -293,7 +293,7 @@ describe('Session storage helpers', () => {
 
   describe('generateTaskId', () => {
     it('should generate unique IDs', async () => {
-      const { generateTaskId } = await import('../session-storage-helpers.js');
+      const { generateTaskId } = await import('./session-storage-helpers.js');
       const id1 = generateTaskId();
       const id2 = generateTaskId();
       expect(id1).not.toBe(id2);
@@ -303,7 +303,7 @@ describe('Session storage helpers', () => {
 
   describe('rowToSession', () => {
     it('should convert row to session', async () => {
-      const { rowToSession } = await import('../session-storage-helpers.js');
+      const { rowToSession } = await import('./session-storage-helpers.js');
       const row = {
         id: 'ses_test',
         created_at: '2026-01-11T12:00:00Z',
