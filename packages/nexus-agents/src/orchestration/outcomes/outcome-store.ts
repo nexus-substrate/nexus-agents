@@ -12,6 +12,7 @@
 import type { TaskOutcome, OutcomeQuery, PerformanceSummary, GroupStats } from './outcome-types.js';
 import { categorizeOutcomeErrorMessage } from './outcome-types.js';
 import { isPersistenceEnabled } from '../../config/learning-persistence.js';
+import { getDefaultRegistry, type ModelRegistry } from '../../config/model-registry.js';
 
 // ============================================================================
 // Constants
@@ -26,7 +27,21 @@ const DEFAULT_MAX_ENTRIES = 10_000;
 
 export interface OutcomeStoreConfig {
   readonly maxEntries?: number;
+  /**
+   * Registry used to resolve vendor/family from `outcome.model` at write
+   * time (#2548). Defaults to the process singleton. Pass an explicit
+   * registry for tests that want deterministic resolution without
+   * touching global state.
+   */
+  readonly registry?: ModelRegistry;
 }
+
+/**
+ * Default minimum sample count before `queryByModelWithFamilyFallback`
+ * broadens to family-level data. Tuned so cold-start siblings inherit
+ * their family's signal until they accumulate ~5 of their own outcomes.
+ */
+export const DEFAULT_FAMILY_FALLBACK_THRESHOLD = 5;
 
 /**
  * Auto-classifies failed outcomes that are missing a failureCategory.
@@ -54,15 +69,36 @@ function hasErrorMessage(o: TaskOutcome): boolean {
 export class OutcomeStore {
   private readonly entries: TaskOutcome[] = [];
   private readonly maxEntries: number;
+  private readonly registry: ModelRegistry;
 
   constructor(config?: OutcomeStoreConfig) {
     this.maxEntries = config?.maxEntries ?? DEFAULT_MAX_ENTRIES;
+    this.registry = config?.registry ?? getDefaultRegistry();
   }
 
-  /** Append a new outcome. Auto-classifies failures missing failureCategory (#1441). */
+  /**
+   * Append a new outcome. Auto-classifies failures missing failureCategory
+   * (#1441) and resolves the outcome's `vendor` / `family` via the
+   * ModelRegistry (#2548) so family-level retrieval can warm-start
+   * siblings after a model retirement.
+   */
   append(outcome: TaskOutcome): void {
-    this.entries.push(autoClassify(outcome));
+    this.entries.push(this.enrich(autoClassify(outcome)));
     this.enforceLimit();
+  }
+
+  /**
+   * Attach `vendor` and `family` to the outcome if they're not already
+   * set. Idempotent — pre-enriched outcomes pass through unchanged.
+   */
+  private enrich(outcome: TaskOutcome): TaskOutcome {
+    if (outcome.vendor !== undefined && outcome.family !== undefined) return outcome;
+    const entry = this.registry.getEntry(outcome.model);
+    return {
+      ...outcome,
+      vendor: outcome.vendor ?? entry.vendor,
+      family: outcome.family ?? entry.family,
+    };
   }
 
   /** Query outcomes with optional filters. */
@@ -70,6 +106,50 @@ export class OutcomeStore {
     if (filter === undefined) return [...this.entries];
     const filtered = applyFilters(this.entries, filter);
     return filter.limit !== undefined ? filtered.slice(-filter.limit) : filtered;
+  }
+
+  /**
+   * Query outcomes for a specific model with a family-level warm-start
+   * fallback (#2548). When the literal `modelId` has fewer than
+   * `threshold` samples in the store, broaden the result to the model's
+   * `{vendor, family}` siblings — siblings within a family share enough
+   * behavior profile that their outcomes are useful priors for cold
+   * starts after a retirement.
+   *
+   * Returns the outcomes and a `scope` flag so callers know whether
+   * they're consuming literal-id data or family-broadened data.
+   */
+  queryByModelWithFamilyFallback(
+    modelId: string,
+    options?: {
+      readonly threshold?: number;
+      readonly extraFilter?: Omit<OutcomeQuery, 'limit'>;
+    }
+  ): {
+    readonly outcomes: readonly TaskOutcome[];
+    readonly scope: 'literal' | 'family' | 'empty';
+    readonly vendor?: string;
+    readonly family?: string;
+  } {
+    const threshold = options?.threshold ?? DEFAULT_FAMILY_FALLBACK_THRESHOLD;
+    const base = options?.extraFilter ?? {};
+    const literal = applyFilters(this.entries, base).filter((o) => o.model === modelId);
+    if (literal.length >= threshold) {
+      const entry = this.registry.getEntry(modelId);
+      return { outcomes: literal, scope: 'literal', vendor: entry.vendor, family: entry.family };
+    }
+    const entry = this.registry.getEntry(modelId);
+    const family = applyFilters(this.entries, base).filter(
+      (o) =>
+        // Cross-vendor transfer is out of scope (#2548) — vendor must match.
+        // Family must match too: an Anthropic claude-opus outcome shouldn't
+        // warm-start an Anthropic claude-haiku query.
+        o.vendor === entry.vendor && o.family === entry.family
+    );
+    if (family.length === 0) {
+      return { outcomes: literal, scope: 'empty', vendor: entry.vendor, family: entry.family };
+    }
+    return { outcomes: family, scope: 'family', vendor: entry.vendor, family: entry.family };
   }
 
   /** Aggregate outcomes into a performance summary. */

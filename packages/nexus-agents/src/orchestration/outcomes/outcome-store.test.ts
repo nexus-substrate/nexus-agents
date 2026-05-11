@@ -123,11 +123,16 @@ describe('OutcomeStore', () => {
     expect(store.query()).toEqual([]);
   });
 
-  it('appends and retrieves outcomes', () => {
+  it('appends and retrieves outcomes (with #2548 vendor/family enrichment)', () => {
     const outcome = makeOutcome();
     store.append(outcome);
     expect(store.size).toBe(1);
-    expect(store.query()).toEqual([outcome]);
+    // Append enriches with vendor/family resolved from the registry
+    // (#2548). Original fields are preserved; vendor/family are added.
+    const retrieved = store.query()[0]!;
+    expect(retrieved).toMatchObject(outcome);
+    expect(typeof retrieved.vendor).toBe('string');
+    expect(typeof retrieved.family).toBe('string');
   });
 
   it('preserves insertion order', () => {
@@ -681,5 +686,94 @@ describe('getOutcomeSummaryText', () => {
     const text = getOutcomeSummaryText(2);
     // Should only show last 2 failures (limit=2 in query)
     expect(text).toContain('err');
+  });
+});
+
+// ============================================================================
+// queryByModelWithFamilyFallback (#2548)
+// ============================================================================
+
+describe('OutcomeStore.queryByModelWithFamilyFallback (#2548)', () => {
+  it('returns literal-scoped outcomes when sample count meets threshold', () => {
+    const store = new OutcomeStore();
+    for (let i = 0; i < 6; i++) {
+      store.append(makeOutcome({ id: `out-${String(i)}`, model: 'claude-opus-4-7' }));
+    }
+    const result = store.queryByModelWithFamilyFallback('claude-opus-4-7', { threshold: 5 });
+    expect(result.scope).toBe('literal');
+    expect(result.outcomes).toHaveLength(6);
+    expect(result.vendor).toBe('anthropic');
+  });
+
+  it('broadens to family-scoped outcomes when literal count is below threshold', () => {
+    const store = new OutcomeStore();
+    // 2 outcomes for the cold model (below threshold of 5)
+    for (let i = 0; i < 2; i++) {
+      store.append(makeOutcome({ id: `out-cold-${String(i)}`, model: 'claude-opus-4-7' }));
+    }
+    // 4 outcomes for a sibling in the same vendor+family
+    for (let i = 0; i < 4; i++) {
+      store.append(makeOutcome({ id: `out-sib-${String(i)}`, model: 'claude-opus-4-6' }));
+    }
+    const result = store.queryByModelWithFamilyFallback('claude-opus-4-7', { threshold: 5 });
+    expect(result.scope).toBe('family');
+    expect(result.outcomes).toHaveLength(6); // 2 cold + 4 siblings, same family
+    expect(result.vendor).toBe('anthropic');
+  });
+
+  it('does not cross vendor boundaries when broadening', () => {
+    const store = new OutcomeStore();
+    // 1 cold outcome for claude
+    store.append(makeOutcome({ id: 'cold', model: 'claude-opus-4-7' }));
+    // 4 outcomes for a DIFFERENT vendor (codex)
+    for (let i = 0; i < 4; i++) {
+      store.append(makeOutcome({ id: `codex-${String(i)}`, cli: 'codex', model: 'gpt-5.4' }));
+    }
+    const result = store.queryByModelWithFamilyFallback('claude-opus-4-7', { threshold: 5 });
+    // Family broadening must NOT pick up the codex outcomes — different vendor.
+    // With only 1 anthropic outcome in the family, the scope is 'family' but
+    // the result set still only contains the 1 anthropic outcome.
+    expect(result.scope).toBe('family');
+    expect(result.outcomes).toHaveLength(1);
+    expect(result.outcomes[0]?.cli).toBe('claude');
+  });
+
+  it('reports `empty` scope when no outcomes match literal OR family', () => {
+    const store = new OutcomeStore();
+    // Single outcome for an unrelated model
+    store.append(makeOutcome({ id: 'other', cli: 'codex', model: 'gpt-5.4' }));
+    const result = store.queryByModelWithFamilyFallback('claude-opus-4-7', { threshold: 5 });
+    expect(result.scope).toBe('empty');
+    expect(result.outcomes).toHaveLength(0);
+  });
+
+  it('respects extraFilter (e.g. category) when broadening', () => {
+    const store = new OutcomeStore();
+    for (let i = 0; i < 3; i++) {
+      store.append(
+        makeOutcome({
+          id: `code-${String(i)}`,
+          model: 'claude-opus-4-7',
+          category: 'code_generation',
+        })
+      );
+    }
+    for (let i = 0; i < 3; i++) {
+      store.append(
+        makeOutcome({
+          id: `arch-${String(i)}`,
+          model: 'claude-opus-4-7',
+          category: 'architecture',
+        })
+      );
+    }
+    const result = store.queryByModelWithFamilyFallback('claude-opus-4-7', {
+      threshold: 10,
+      extraFilter: { category: 'architecture' },
+    });
+    // Below threshold of 10 (only 3 architecture samples), broadens to family
+    // BUT the category filter applies to the family scope too.
+    expect(result.outcomes).toHaveLength(3);
+    expect(result.outcomes.every((o) => o.category === 'architecture')).toBe(true);
   });
 });

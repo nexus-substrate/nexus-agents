@@ -60,6 +60,10 @@ export const TaskOutcomeSchema = z.object({
   routingStage: z.string().max(50).optional(),
   /** Number of retry attempts before this outcome (#1785). */
   retryCount: z.number().int().nonnegative().optional(),
+  /** Vendor resolved from `model` via ModelRegistry at write time (#2548). */
+  vendor: z.string().min(1).max(40).optional(),
+  /** Family resolved from `model` via ModelRegistry at write time (#2548). */
+  family: z.string().min(1).max(80).optional(),
 });
 
 /** Schema for filtering outcomes. */
