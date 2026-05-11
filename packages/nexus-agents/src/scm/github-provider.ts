@@ -2,8 +2,9 @@
  * nexus-agents/scm - GitHub Provider
  *
  * Unified GitHub provider using gh CLI. Implements IScmProvider with
- * Result-based error handling. Consolidates the two previous GitHub
- * clients (dogfooding/github-client.ts; the self-development one was deleted in #2402).
+ * Result-based error handling. Replaced the prior dual-path GitHub
+ * clients (dogfooding/github-client.ts deleted in #2553;
+ * workflows/self-development/github-client.ts deleted in #2402).
  *
  * @module scm/github-provider
  * (Source: Issue #1136 — Centralized SCM Provider Module)

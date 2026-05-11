@@ -47,16 +47,6 @@ export {
   CATEGORY_EMOJI,
 } from './issue-triage-types.js';
 
-// GitHub Client
-export {
-  GitHubClient,
-  GitHubError,
-  parsePRUrl,
-  parseIssueUrl,
-  createGitHubClientFromEnv,
-} from './github-client.js';
-export type { GitHubClientConfig } from './github-client.js';
-
 // PR Reviewer
 export { PRReviewer, createPRReviewer, formatReviewComment } from './pr-reviewer.js';
 
