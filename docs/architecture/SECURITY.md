@@ -156,25 +156,17 @@ All agent-executed code runs through the sandbox system.
 
 ### Execution Modes
 
-| Mode        | Description                      | Security Level | Use Case                    |
-| ----------- | -------------------------------- | -------------- | --------------------------- |
-| `none`      | No sandboxing (development only) | None           | Local dev, debugging        |
-| `policy`    | Command allowlist enforcement    | Medium         | Standard operation          |
-| `container` | Full Docker isolation            | High           | Production, untrusted input |
+| Mode                 | Description                                                            | Security Level | Use Case             |
+| -------------------- | ---------------------------------------------------------------------- | -------------- | -------------------- |
+| `none`               | No sandboxing (development only)                                       | None           | Local dev, debugging |
+| `policy`             | Command allowlist enforcement (`PolicySandboxExecutor`)                | Medium         | Standard operation   |
+| `container` / `deno` | Accepted for config back-compat; resolves to `policy` mode after #2551 | (see below)    | (see below)          |
 
-### Docker Security (Container Mode)
+### Real isolation: out-of-process via OpenCode sandbox bootstrap (#2500)
 
-```bash
-docker run \
-  --cap-drop=ALL \           # Drop all Linux capabilities
-  --read-only \              # Read-only root filesystem
-  --network=none \           # No network access
-  --user=node \              # Non-root user
-  --memory=512m \            # Memory limit
-  --cpus=2 \                 # CPU limit
-  --pids-limit=10 \          # Process limit
-  --security-opt=no-new-privileges
-```
+Nexus-agents is **sandbox-compatible, not a sandbox-builder**. The in-process Docker / Deno executors were deleted in [#2551](https://github.com/williamzujkowski/nexus-agents/issues/2551) — they were dead code masquerading as security boundary. For real isolation, set the `NEXUS_SANDBOX` environment variable and run nexus-agents inside an OpenCode-managed Docker sandbox; see [docs/getting-started/SANDBOXED-USAGE.md](../getting-started/SANDBOXED-USAGE.md).
+
+The `container` and `deno` modes are kept in the `SandboxMode` config union so existing config files don't fail validation, but the factory resolves both to `policy` mode at runtime with a warning. New deployments wanting container-level isolation should use the OpenCode bootstrap.
 
 ### Command Classification
 
@@ -504,26 +496,26 @@ const summary = getSafetyTaxonomySummary();
 
 ## Source Files
 
-| File                                              | Purpose                       |
-| ------------------------------------------------- | ----------------------------- |
-| `src/mcp/middleware/auth-handler.ts`              | Token-based authentication    |
-| `src/mcp/middleware/secure-handler.ts`            | Tool-level security wrapper   |
-| `src/mcp/middleware/request-context.ts`           | Request tracking and auth     |
-| `src/mcp/middleware/rate-limiter.ts`              | Rate limiting                 |
-| `src/security/sandbox/sandbox-manager.ts`         | Sandbox orchestration         |
-| `src/security/sandbox/docker-sandbox-executor.ts` | Container isolation           |
-| `src/security/input-sanitizer.ts`                 | Input validation              |
-| `src/security/output-sanitizer.ts`                | Output sanitization / secrets |
-| `src/security/trust-classifier.ts`                | Trust tier classification     |
-| `src/security/policy-gate.ts`                     | Policy enforcement            |
-| `src/security/corroboration-validator.ts`         | Action corroboration checks   |
-| `src/security/reputation-model.ts`                | Agent reputation scoring      |
-| `src/security/audit-trail.ts`                     | Security logging              |
-| `src/security/firewall/`                          | Firewall pipeline             |
-| `src/security/safety-bench/`                      | SafetyBench evaluation        |
-| `src/security/safety-bench/safety-categories.ts`  | Category taxonomy             |
-| `src/security/safety-bench/safety-enums.ts`       | Risk levels, outcomes         |
-| `src/security/safety-bench/safety-schemas.ts`     | Validation schemas            |
+| File                                             | Purpose                       |
+| ------------------------------------------------ | ----------------------------- |
+| `src/mcp/middleware/auth-handler.ts`             | Token-based authentication    |
+| `src/mcp/middleware/secure-handler.ts`           | Tool-level security wrapper   |
+| `src/mcp/middleware/request-context.ts`          | Request tracking and auth     |
+| `src/mcp/middleware/rate-limiter.ts`             | Rate limiting                 |
+| `src/security/sandbox/sandbox-manager.ts`        | Sandbox orchestration         |
+| `src/security/sandbox/sandbox-executor.ts`       | Policy-based execution        |
+| `src/security/input-sanitizer.ts`                | Input validation              |
+| `src/security/output-sanitizer.ts`               | Output sanitization / secrets |
+| `src/security/trust-classifier.ts`               | Trust tier classification     |
+| `src/security/policy-gate.ts`                    | Policy enforcement            |
+| `src/security/corroboration-validator.ts`        | Action corroboration checks   |
+| `src/security/reputation-model.ts`               | Agent reputation scoring      |
+| `src/security/audit-trail.ts`                    | Security logging              |
+| `src/security/firewall/`                         | Firewall pipeline             |
+| `src/security/safety-bench/`                     | SafetyBench evaluation        |
+| `src/security/safety-bench/safety-categories.ts` | Category taxonomy             |
+| `src/security/safety-bench/safety-enums.ts`      | Risk levels, outcomes         |
+| `src/security/safety-bench/safety-schemas.ts`    | Validation schemas            |
 
 ---
 
