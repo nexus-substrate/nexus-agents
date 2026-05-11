@@ -2,9 +2,9 @@
  * nexus-agents/scm - Centralized SCM Provider Module
  *
  * Single source of truth for all Source Control Management operations.
- * Replaces the previous dual-path GitHub clients:
- * - dogfooding/github-client.ts (REST API via fetch)
- * - (workflows/self-development/github-client.ts deleted in #2402)
+ * Replaced the prior dual-path GitHub clients in two steps:
+ * - workflows/self-development/github-client.ts (deleted in #2402)
+ * - dogfooding/github-client.ts (deleted in #2553, URL parsers lifted here)
  *
  * @module scm
  * (Source: Issue #1136 — Centralized SCM Provider Module)
@@ -56,3 +56,7 @@ export {
 // Factory
 export { createScmProvider, createGitHubProvider } from './factory.js';
 export type { CreateScmProviderConfig } from './factory.js';
+
+// URL parsers (#2553 — lifted from dogfooding/github-client when the
+// dual GitHub-client surface consolidated into scm/).
+export { parsePRUrl, parseIssueUrl } from './url-parsers.js';

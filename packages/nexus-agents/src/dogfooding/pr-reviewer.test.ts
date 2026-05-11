@@ -12,7 +12,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ok, err } from '../core/index.js';
 import { ScmError } from '../scm/types.js';
 import type { ScmPullRequestDetail } from '../scm/types.js';
-import { parsePRUrl } from './github-client.js';
+import { parsePRUrl } from '../scm/url-parsers.js';
 
 // Mock SCM provider traits
 const mockGetPullRequestDetail = vi.fn();

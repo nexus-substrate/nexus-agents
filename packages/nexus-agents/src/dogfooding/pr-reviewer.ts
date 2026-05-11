@@ -26,7 +26,7 @@ import type {
   ReviewCategory,
 } from './pr-review-types.js';
 import { DEFAULT_PR_REVIEW_CONFIG, CATEGORY_DISPLAY_NAMES } from './pr-review-types.js';
-import { parsePRUrl } from './github-client.js';
+import { parsePRUrl } from '../scm/url-parsers.js';
 import { createFullGitHubProvider } from '../scm/github-provider-traits.js';
 import type { FullCapableProvider } from '../scm/types.js';
 import {

@@ -28,7 +28,7 @@ import type { CorroborationResult } from '../security/corroboration-validator.js
 import { assessReputation, ReputationCache } from '../security/reputation-model.js';
 import type { ReputationAssessment, GitHubUserMetadata } from '../security/reputation-model.js';
 import type { AgentAction, SourceCitation } from '../security/action-schema.js';
-import { parseIssueUrl } from './github-client.js';
+import { parseIssueUrl } from '../scm/url-parsers.js';
 import { createFullGitHubProvider } from '../scm/github-provider-traits.js';
 import { categorizeIssue, extractLabelsFromBody } from './issue-triage-helpers.js';
 import type {
