@@ -84,6 +84,8 @@ export {
   // refreshes the AvailableModelsCache and retries through the
   // closest sibling per the registry.
   withModelNotFoundFallback,
+  wrapResilientWithFallback,
   type ModelNotFoundFallbackOptions,
   type RetirementInfo,
+  type ResilientLike,
 } from '../adapters/index.js';

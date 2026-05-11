@@ -1,8 +1,13 @@
 /**
- * Tests for `withModelNotFoundFallback` (#2540 PR 8).
+ * Tests for `withModelNotFoundFallback` (#2540 PR 8) and the
+ * `wrapResilientWithFallback` helper (#2549).
  */
-import { describe, it, expect, vi } from 'vitest';
-import { withModelNotFoundFallback } from './model-not-found-fallback.js';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import {
+  withModelNotFoundFallback,
+  wrapResilientWithFallback,
+  type ResilientLike,
+} from './model-not-found-fallback.js';
 import {
   err,
   ErrorCode,
@@ -13,7 +18,11 @@ import {
   type CompletionResponse,
   type Result,
 } from '../core/index.js';
-import { AvailableModelsCache } from '../config/available-models-cache.js';
+import {
+  AvailableModelsCache,
+  getDefaultAvailableModelsCache,
+  setDefaultAvailableModelsCache,
+} from '../config/available-models-cache.js';
 
 function fakeAdapter(
   modelId: string,
@@ -193,5 +202,127 @@ describe('withModelNotFoundFallback (#2540 PR 8)', () => {
         fallbackModelId: 'claude-opus-4-7',
       })
     );
+  });
+});
+
+// ============================================================================
+// Singleton default cache (#2549)
+// ============================================================================
+
+describe('default AvailableModelsCache singleton (#2549)', () => {
+  afterEach(() => {
+    // Reset the default so test order is irrelevant.
+    setDefaultAvailableModelsCache(null);
+  });
+
+  it('returns the same instance on repeated calls', () => {
+    const a = getDefaultAvailableModelsCache();
+    const b = getDefaultAvailableModelsCache();
+    expect(a).toBe(b);
+  });
+
+  it('honours setDefaultAvailableModelsCache for test injection', () => {
+    const custom = new AvailableModelsCache({
+      sources: [
+        {
+          name: 'anthropic',
+          providerHint: 'anthropic',
+          listModels: () => Promise.resolve([{ id: 'claude-opus-4-7' }]),
+        },
+      ],
+    });
+    setDefaultAvailableModelsCache(custom);
+    expect(getDefaultAvailableModelsCache()).toBe(custom);
+  });
+
+  it('falls back to the default cache when fallback options omit `cache`', async () => {
+    const custom = new AvailableModelsCache({
+      sources: [
+        {
+          name: 'anthropic',
+          providerHint: 'anthropic',
+          listModels: () => Promise.resolve([{ id: 'claude-opus-4-7' }]),
+        },
+      ],
+    });
+    setDefaultAvailableModelsCache(custom);
+
+    const inner = fakeAdapter('claude-opus-4-6', () =>
+      Promise.resolve(err(new ModelError('404', { code: ErrorCode.MODEL_NOT_FOUND })))
+    );
+    const wrapped = withModelNotFoundFallback(inner); // no cache passed
+    const r = await wrapped.complete(dummyRequest);
+    if (r.ok) throw new Error('expected error');
+    expect(r.error.message).toContain('claude-opus-4-7');
+  });
+});
+
+// ============================================================================
+// wrapResilientWithFallback (#2549)
+// ============================================================================
+
+function fakeResilient(
+  modelId: string,
+  complete: (req: CompletionRequest) => Promise<Result<CompletionResponse, ModelError>>
+): ResilientLike {
+  const getHealth = vi.fn(() => ({ status: 'ok' }));
+  const refresh = vi.fn(() => Promise.resolve());
+  const setPreferredCli = vi.fn();
+  const onFailover = vi.fn(() => () => undefined);
+  const dispose = vi.fn();
+  return {
+    providerId: 'anthropic',
+    modelId,
+    capabilities: [],
+    complete,
+    stream: (): AsyncIterable<never> => {
+      throw new Error('not implemented');
+    },
+    countTokens: () => Promise.resolve(0),
+    validateConfig: () => ok(undefined),
+    getHealth,
+    refresh,
+    setPreferredCli,
+    onFailover,
+    dispose,
+  };
+}
+
+describe('wrapResilientWithFallback (#2549)', () => {
+  it('preserves the resilient health/lifecycle methods on the wrapped adapter', () => {
+    const inner = fakeResilient('claude-opus-4-7', () => Promise.resolve(successResponse()));
+    const cache = new AvailableModelsCache({ sources: [] });
+    const wrapped = wrapResilientWithFallback(inner, { cache });
+
+    expect(typeof wrapped.getHealth).toBe('function');
+    expect(typeof wrapped.refresh).toBe('function');
+    expect(typeof wrapped.setPreferredCli).toBe('function');
+    expect(typeof wrapped.onFailover).toBe('function');
+    expect(typeof wrapped.dispose).toBe('function');
+
+    // The wrapped methods forward to the inner adapter.
+    wrapped.dispose();
+    expect((inner.dispose as ReturnType<typeof vi.fn>).mock.calls.length).toBe(1);
+    wrapped.setPreferredCli('claude');
+    expect((inner.setPreferredCli as ReturnType<typeof vi.fn>).mock.calls.length).toBe(1);
+  });
+
+  it('still applies the MODEL_NOT_FOUND retry path through complete()', async () => {
+    const inner = fakeResilient('claude-opus-4-6', () =>
+      Promise.resolve(err(new ModelError('404', { code: ErrorCode.MODEL_NOT_FOUND })))
+    );
+    const cache = new AvailableModelsCache({
+      sources: [
+        {
+          name: 'anthropic',
+          providerHint: 'anthropic',
+          listModels: () => Promise.resolve([{ id: 'claude-opus-4-7' }]),
+        },
+      ],
+    });
+    const wrapped = wrapResilientWithFallback(inner, { cache });
+    const r = await wrapped.complete(dummyRequest);
+    if (r.ok) throw new Error('expected error');
+    expect(r.error.message).toContain('claude-opus-4-7');
   });
 });

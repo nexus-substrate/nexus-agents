@@ -77,14 +77,14 @@ interface SourceState {
 }
 
 export class AvailableModelsCache {
-  private readonly sources: readonly AvailableModelsSource[];
+  private sources: AvailableModelsSource[];
   private readonly ttlMs: number;
   private readonly staleTtlMs: number;
   private readonly now: () => number;
   private readonly states: Map<string, SourceState>;
 
   constructor(options: AvailableModelsCacheOptions) {
-    this.sources = options.sources;
+    this.sources = [...options.sources];
     this.ttlMs = options.ttlMs ?? DEFAULT_TTL_MS;
     this.staleTtlMs = options.staleTtlMs ?? DEFAULT_STALE_TTL_MS;
     this.now = options.now ?? Date.now;
@@ -92,6 +92,27 @@ export class AvailableModelsCache {
     for (const s of this.sources) {
       this.states.set(s.name, { value: null, fetchedAt: 0, inFlight: null });
     }
+  }
+
+  /**
+   * Register a source after construction. Used by adapter factories that
+   * wire themselves into the default cache lazily as they're built.
+   * Duplicate names are ignored (first registration wins, on the
+   * assumption that the same factory might run twice in a test session).
+   */
+  addSource(source: AvailableModelsSource): void {
+    if (this.states.has(source.name)) return;
+    this.sources.push(source);
+    this.states.set(source.name, { value: null, fetchedAt: 0, inFlight: null });
+  }
+
+  /**
+   * Remove a previously-registered source. Used by tests + by factories
+   * that want to drop a probe when an adapter is being disposed.
+   */
+  removeSource(name: string): void {
+    this.sources = this.sources.filter((s) => s.name !== name);
+    this.states.delete(name);
   }
 
   /**
@@ -200,4 +221,33 @@ function normaliseEntry(raw: { id: string }, source: AvailableModelsSource): Ava
     return { id: raw.id, source: source.name, provider: source.providerHint };
   }
   return { id: raw.id, source: source.name };
+}
+
+// ============================================================================
+// Default (process-singleton) instance — used by adapter factories that
+// auto-wire `withModelNotFoundFallback`. Operators that need a different
+// cache (different TTLs, custom sources) can override via
+// `setDefaultAvailableModelsCache` at startup.
+// ============================================================================
+
+let defaultCache: AvailableModelsCache | null = null;
+
+/**
+ * Get (or lazily construct) the process-default cache. Starts with no
+ * sources — adapter factories register themselves via `addSource` on
+ * construction. Until at least one source is added, the cache returns
+ * empty snapshots and `withModelNotFoundFallback` degrades to surfacing
+ * the original error (safe).
+ */
+export function getDefaultAvailableModelsCache(): AvailableModelsCache {
+  defaultCache ??= new AvailableModelsCache({ sources: [] });
+  return defaultCache;
+}
+
+/**
+ * Override the default cache. Useful for tests and for operators that
+ * want a pre-populated cache wired at startup.
+ */
+export function setDefaultAvailableModelsCache(cache: AvailableModelsCache | null): void {
+  defaultCache = cache;
 }

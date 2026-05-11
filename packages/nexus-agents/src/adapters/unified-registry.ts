@@ -21,6 +21,10 @@ import type { ILogger } from '../core/index.js';
 import { createLogger } from '../core/index.js';
 import { createResilientAdapter } from './resilient-adapter.js';
 import type { IResilientAdapter } from './resilient-adapter-types.js';
+import {
+  wrapResilientWithFallback,
+  type ModelNotFoundFallbackOptions,
+} from './model-not-found-fallback.js';
 import type { CliName } from '../cli-adapters/types.js';
 import { TASK_SPECIALIZATION_MATRIX, detectTaskCategory } from '../config/task-specialization.js';
 import type { TaskCategory } from '../config/task-specialization-types.js';
@@ -37,6 +41,26 @@ export interface UnifiedRegistryConfig {
   readonly logger?: ILogger;
   /** Default CLI timeout for subprocess calls (ms) */
   readonly defaultCliTimeoutMs?: number;
+  /**
+   * Auto-wrap every constructed adapter with `withModelNotFoundFallback`
+   * (#2549). When enabled, the registry routes `complete()` through the
+   * fallback path so a `MODEL_NOT_FOUND` error (typically from a vendor
+   * 404 / "model deprecated" message) refreshes the AvailableModelsCache
+   * and retries through the closest same-family alternative.
+   *
+   * Defaults to `false` — operators opt in by wiring up an
+   * `AvailableModelsCache` via `setDefaultAvailableModelsCache()` and
+   * setting this flag. Safe-on-empty: if no cache is provided or the
+   * cache has no sources, the wrap is transparent (no retry happens,
+   * original error surfaces).
+   */
+  readonly enableMissingModelFallback?: boolean;
+  /**
+   * Optional override for the fallback decorator. When omitted, the
+   * decorator uses `getDefaultAvailableModelsCache()` and
+   * `getDefaultRegistry()`.
+   */
+  readonly missingModelFallbackOptions?: ModelNotFoundFallbackOptions;
 }
 
 /** Summary of the pre-computed task routing table. */
@@ -72,6 +96,8 @@ export interface RegistrySnapshot {
 export class UnifiedAdapterRegistry {
   private readonly logger: ILogger;
   private readonly defaultCliTimeoutMs: number | undefined;
+  private readonly enableMissingModelFallback: boolean;
+  private readonly missingModelFallbackOptions: ModelNotFoundFallbackOptions | undefined;
 
   /** Pre-computed task → CLI routing (immutable after construction). */
   private readonly taskRouting: ReadonlyMap<TaskCategory, TaskRoutingEntry>;
@@ -85,11 +111,26 @@ export class UnifiedAdapterRegistry {
   constructor(config?: UnifiedRegistryConfig) {
     this.logger = config?.logger ?? createLogger({ component: 'unified-registry' });
     this.defaultCliTimeoutMs = config?.defaultCliTimeoutMs;
+    this.enableMissingModelFallback = config?.enableMissingModelFallback ?? false;
+    this.missingModelFallbackOptions = config?.missingModelFallbackOptions;
     this.taskRouting = this.buildTaskRouting();
     this.logger.info('UnifiedAdapterRegistry initialized', {
       categories: this.taskRouting.size,
       models: DEFAULT_MODEL_CAPABILITIES.models.length,
+      missingModelFallback: this.enableMissingModelFallback,
     });
+  }
+
+  /**
+   * Apply the MODEL_NOT_FOUND fallback decorator if enabled, otherwise
+   * return the adapter unchanged. The recursion guard from the original
+   * issue is unnecessary here: the decorator's retry path uses the
+   * caller-supplied `adapterFactory`; without one, it surfaces an
+   * enriched error and never re-enters the resilient layer.
+   */
+  private maybeWrap(adapter: IResilientAdapter): IResilientAdapter {
+    if (!this.enableMissingModelFallback) return adapter;
+    return wrapResilientWithFallback(adapter, this.missingModelFallbackOptions);
   }
 
   // --------------------------------------------------------------------------
@@ -138,15 +179,19 @@ export class UnifiedAdapterRegistry {
     const cached = this.cliAdapters.get(cli);
     if (cached !== undefined) return cached;
 
-    const adapter = createResilientAdapter({
+    const raw = createResilientAdapter({
       logger: this.logger,
       preferredCli: cli,
       ...(this.defaultCliTimeoutMs !== undefined && {
         defaultCliTimeoutMs: this.defaultCliTimeoutMs,
       }),
     });
+    const adapter = this.maybeWrap(raw);
     this.cliAdapters.set(cli, adapter);
-    this.logger.info('Created CLI-specific adapter', { cli });
+    this.logger.info('Created CLI-specific adapter', {
+      cli,
+      missingModelFallback: this.enableMissingModelFallback,
+    });
     return adapter;
   }
 
@@ -201,12 +246,13 @@ export class UnifiedAdapterRegistry {
    */
   getDefault(): IResilientAdapter {
     if (this.defaultAdapter !== undefined) return this.defaultAdapter;
-    this.defaultAdapter = createResilientAdapter({
+    const raw = createResilientAdapter({
       logger: this.logger,
       ...(this.defaultCliTimeoutMs !== undefined && {
         defaultCliTimeoutMs: this.defaultCliTimeoutMs,
       }),
     });
+    this.defaultAdapter = this.maybeWrap(raw);
     return this.defaultAdapter;
   }
 
