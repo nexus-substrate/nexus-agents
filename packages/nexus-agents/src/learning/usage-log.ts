@@ -23,7 +23,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from
 import { dirname, join } from 'node:path';
 
 import { getNexusDataDir } from '../config/nexus-data-dir.js';
-import { getModelCapabilities } from '../config/model-capabilities.js';
+import { lookupInTreeCapability } from '../config/model-config-helpers.js';
 
 export interface UsageEvent {
   /** ISO 8601 timestamp of the call. */
@@ -57,7 +57,7 @@ export interface UsageEvent {
  * `config/model-capabilities.ts` to add their pricing.
  */
 export function computeCostUSD(modelId: string, inputTokens: number, outputTokens: number): number {
-  const cap = getModelCapabilities(modelId);
+  const cap = lookupInTreeCapability(modelId);
   if (cap === undefined) return 0;
   const inputPer1M = cap.pricing?.inputPer1M ?? 0;
   const outputPer1M = cap.pricing?.outputPer1M ?? 0;

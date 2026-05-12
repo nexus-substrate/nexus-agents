@@ -25,7 +25,7 @@ import { z } from 'zod';
 
 import type { ILogger } from '../core/index.js';
 import { createLogger } from '../core/index.js';
-import { DEFAULT_MODEL_CAPABILITIES, getModelCapabilities } from './model-capabilities.js';
+import { getInTreeCapabilitiesMatrix } from './model-config-helpers.js';
 import type {
   ModelCapabilitiesMatrix,
   ModelCapability,
@@ -119,7 +119,7 @@ export interface ResolvedCapability {
 // ---------------------------------------------------------------------------
 
 export interface CapabilityDiscoveryConfig {
-  /** T1 canonical registry. Defaults to `DEFAULT_MODEL_CAPABILITIES`. */
+  /** T1 canonical registry. Defaults to the in-tree matrix from the ModelRegistry. */
   readonly canonical?: ModelCapabilitiesMatrix;
   /** T2 bundled generated registry. Pass `null` to force-skip T2. */
   readonly generated?: GeneratedRegistry | null;
@@ -140,7 +140,10 @@ export class CapabilityDiscovery {
   private readonly generatedById: Map<string, GeneratedModelEntry>;
 
   constructor(config: CapabilityDiscoveryConfig = {}) {
-    this.canonical = config.canonical ?? DEFAULT_MODEL_CAPABILITIES;
+    // The helper returns a readonly view; loosen here because
+    // `ModelCapabilitiesMatrix` predates the registry and uses mutable
+    // arrays. Callers in this class only read.
+    this.canonical = config.canonical ?? (getInTreeCapabilitiesMatrix() as ModelCapabilitiesMatrix);
     this.generated = config.generated ?? null;
     this.overlay = config.overlay ?? [];
     this.fallback = config.conservativeDefault ?? LEGACY_200K_DEFAULT;
@@ -192,7 +195,7 @@ export class CapabilityDiscovery {
   }
 
   private lookupCanonical(modelId: string): ModelCapability | undefined {
-    return getModelCapabilities(modelId, this.canonical);
+    return this.canonical.models.find((m) => m.id === modelId);
   }
 
   private lookupGenerated(modelId: string): GeneratedModelEntry | undefined {
