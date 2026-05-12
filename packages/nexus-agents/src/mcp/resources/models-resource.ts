@@ -11,7 +11,7 @@
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
-import { DEFAULT_MODEL_CAPABILITIES } from '../../config/model-capabilities.js';
+import { getInTreeCapabilitiesMatrix } from '../../config/model-config-helpers.js';
 
 /** Resource URI for the models capability matrix. */
 const MODELS_RESOURCE_URI = 'nexus://models';
@@ -26,7 +26,7 @@ const MODELS_RESOURCE_NAME = 'models';
  * public metadata safe for external consumption.
  */
 function buildModelsPayload(): Record<string, unknown> {
-  const { version, updatedAt, models } = DEFAULT_MODEL_CAPABILITIES;
+  const { version, updatedAt, models } = getInTreeCapabilitiesMatrix();
   return {
     version,
     updatedAt,
@@ -55,7 +55,8 @@ function buildModelsPayload(): Record<string, unknown> {
  *
  * Exposes the full model capabilities matrix (13 models) as a
  * read-only JSON resource. Data is sourced from the canonical
- * `DEFAULT_MODEL_CAPABILITIES` registry.
+ * model registry (via `getInTreeCapabilitiesMatrix()` — backed by
+ * the ModelRegistry's in-tree entries, #2546 slice C3).
  *
  * @param server - MCP server instance
  * @param logger - Logger for registration events

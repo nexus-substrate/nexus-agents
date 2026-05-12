@@ -12,15 +12,15 @@ import type { IFeedbackIntegration } from '../../learning/feedback-integration.j
 // Import directly from types to avoid circular dependency with delegate-to-model.ts
 import type { CapabilityProfile, DelegateOutput } from './delegate-to-model-types.js';
 import { MODEL_CAPABILITIES } from './delegate-to-model-types.js';
-import { DEFAULT_MODEL_PER_CLI } from '../../config/model-capabilities.js';
+import { getDefaultModelForCli } from '../../config/model-config-helpers.js';
 import type { CliNameLiteral } from '../../config/model-capabilities-types.js';
 
 /**
  * Maps CLI name to default model ID for output.
- * Derives from {@link DEFAULT_MODEL_PER_CLI} to stay in sync with the model registry.
+ * Registry-backed via {@link getDefaultModelForCli}.
  */
 export function cliNameToModel(cliName: CliNameLiteral): string {
-  return DEFAULT_MODEL_PER_CLI[cliName];
+  return getDefaultModelForCli(cliName);
 }
 
 /**
