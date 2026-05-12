@@ -12,17 +12,17 @@
 import type { ParsedCliArgs } from '../cli-types.js';
 import { EXIT_CODES } from '../cli-types.js';
 import {
-  findModelsByOutputModality,
-  findModelsByInputModality,
-  findModelsByToolCapability,
-  findModelsByFeature,
   OUTPUT_MODALITIES,
   INPUT_MODALITIES,
   TOOL_CAPABILITIES,
   SPECIAL_FEATURES,
-} from '../config/model-capabilities.js';
-import type { ModelCapability } from '../config/model-capabilities.js';
+} from '../config/model-capabilities-types.js';
+import type { ModelCapability } from '../config/model-capabilities-types.js';
 import {
+  findModelsByOutputModality,
+  findModelsByInputModality,
+  findModelsByToolCapability,
+  findModelsByFeature,
   getInTreeCapabilitiesMatrix,
   lookupInTreeCapability,
 } from '../config/model-config-helpers.js';

@@ -27,14 +27,14 @@ describe('extractSymbols', () => {
   });
 
   it('reports significant token savings', async () => {
-    const result = await extractSymbols(resolve(SRC_DIR, 'config/model-capabilities.ts'));
+    const result = await extractSymbols(resolve(SRC_DIR, 'config/model-config-helpers.ts'));
     // model-capabilities.ts is a large file — expect meaningful savings
     expect(result.savingsPercent).toBeGreaterThan(0);
     expect(result.symbols.length).toBeGreaterThan(3);
   });
 
   it('identifies exported vs non-exported symbols', async () => {
-    const result = await extractSymbols(resolve(SRC_DIR, 'config/model-capabilities.ts'));
+    const result = await extractSymbols(resolve(SRC_DIR, 'config/model-config-helpers.ts'));
     const exported = result.symbols.filter((s) => s.exported);
     expect(exported.length).toBeGreaterThan(0);
   });
@@ -45,7 +45,7 @@ describe('extractSymbols', () => {
   });
 
   it('extracts functions, classes, and interfaces', async () => {
-    const result = await extractSymbols(resolve(SRC_DIR, 'config/model-capabilities.ts'));
+    const result = await extractSymbols(resolve(SRC_DIR, 'config/model-config-helpers.ts'));
     const kinds = new Set(result.symbols.map((s) => s.kind));
     // Should have at least functions (the helper functions)
     expect(kinds.has('function') || kinds.has('variable')).toBe(true);
@@ -55,7 +55,7 @@ describe('extractSymbols', () => {
 describe('token savings measurement', () => {
   it('symbol index is dramatically smaller than full file', async () => {
     const files = [
-      'config/model-capabilities.ts',
+      'config/model-config-helpers.ts',
       'cli-adapters/composite-router.ts',
       'consensus/engine.ts',
       'mcp/tools/index.ts',

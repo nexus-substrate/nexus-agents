@@ -15,13 +15,18 @@
  */
 
 import { buildInTreeEntries } from './in-tree-entries.js';
-import { DEFAULT_MODEL_CAPABILITIES, DEFAULT_MODEL_PER_CLI } from './model-capabilities.js';
+import { DEFAULT_MODEL_CAPABILITIES, DEFAULT_MODEL_PER_CLI } from './in-tree-data.js';
 import type {
   ModelId,
   ModelCapability,
   CliNameLiteral,
+  InputModality,
+  OutputModality,
   Pricing,
+  Provider,
   QualityScores,
+  SpecialFeature,
+  ToolCapability,
 } from './model-capabilities-types.js';
 import { getDefaultRegistry, type ModelEntry } from './model-registry.js';
 
@@ -415,4 +420,68 @@ export function buildMockModelInfo(): Record<CliNameLiteral, ModelInfoShape> {
     result[cli] = info;
   }
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// Capability filtering (#2546 slice E) — registry-backed replacements for
+// the legacy `findModelsBy*` helpers that lived in model-capabilities.ts.
+// ---------------------------------------------------------------------------
+
+function inTreeModels(): readonly ModelCapability[] {
+  return buildInTreeEntries().map(entryToCapability);
+}
+
+export function findModelsByOutputModality(modality: OutputModality): ModelCapability[] {
+  return inTreeModels().filter((m) => m.outputModalities.includes(modality));
+}
+
+export function findModelsByInputModality(modality: InputModality): ModelCapability[] {
+  return inTreeModels().filter((m) => m.inputModalities.includes(modality));
+}
+
+export function findModelsByToolCapability(capability: ToolCapability): ModelCapability[] {
+  return inTreeModels().filter((m) => m.toolCapabilities.includes(capability));
+}
+
+export function findModelsByFeature(feature: SpecialFeature): ModelCapability[] {
+  return inTreeModels().filter((m) => m.specialFeatures.includes(feature));
+}
+
+export function findModelsByProvider(provider: Provider): ModelCapability[] {
+  return inTreeModels().filter((m) => m.provider === provider);
+}
+
+export function findBestModelForOutput(modality: OutputModality): ModelCapability | undefined {
+  const candidates = findModelsByOutputModality(modality);
+  if (candidates.length === 0) return undefined;
+  return candidates.sort((a, b) => b.contextWindow - a.contextWindow)[0];
+}
+
+function includesAll<T>(haystack: readonly T[], required: readonly T[] | undefined): boolean {
+  if (required === undefined) return true;
+  return required.every((item) => haystack.includes(item));
+}
+
+export function modelSupportsAll(
+  modelId: ModelId,
+  requirements: {
+    outputModalities?: OutputModality[];
+    inputModalities?: InputModality[];
+    toolCapabilities?: ToolCapability[];
+    specialFeatures?: SpecialFeature[];
+    minContextWindow?: number;
+  }
+): boolean {
+  const model = lookupInTreeCapability(modelId);
+  if (model === undefined) return false;
+  const meetsContext =
+    requirements.minContextWindow === undefined ||
+    model.contextWindow >= requirements.minContextWindow;
+  return (
+    meetsContext &&
+    includesAll(model.outputModalities, requirements.outputModalities) &&
+    includesAll(model.inputModalities, requirements.inputModalities) &&
+    includesAll(model.toolCapabilities, requirements.toolCapabilities) &&
+    includesAll(model.specialFeatures, requirements.specialFeatures)
+  );
 }

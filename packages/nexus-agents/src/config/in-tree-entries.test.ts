@@ -6,7 +6,7 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { DEFAULT_MODEL_CAPABILITIES } from './model-capabilities.js';
+import { DEFAULT_MODEL_CAPABILITIES } from './in-tree-data.js';
 import { buildInTreeEntries } from './in-tree-entries.js';
 import { getDefaultRegistry, setDefaultRegistry } from './model-registry.js';
 

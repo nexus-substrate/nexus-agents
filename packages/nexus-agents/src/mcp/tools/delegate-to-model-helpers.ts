@@ -30,11 +30,11 @@ import {
   MCP_KEYWORDS,
   EXPLORATION_KEYWORDS,
 } from './delegate-to-model-types.js';
-import { modelSupportsAll } from '../../config/model-capabilities.js';
 import {
   getDefaultModelForCli,
   getInTreeCapabilitiesMatrix,
   lookupInTreeCapability,
+  modelSupportsAll,
 } from '../../config/model-config-helpers.js';
 import type { SpecializationMatch } from '../../config/task-specialization-types.js';
 import type { TaskCategory } from '../../config/task-specialization-types.js';

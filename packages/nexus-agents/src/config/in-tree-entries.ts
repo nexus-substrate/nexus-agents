@@ -16,7 +16,7 @@
  * @module config/in-tree-entries
  */
 
-import { DEFAULT_MODEL_CAPABILITIES } from './model-capabilities.js';
+import { DEFAULT_MODEL_CAPABILITIES } from './in-tree-data.js';
 import type { ModelCapability, Provider } from './model-capabilities-types.js';
 import { deriveEntry } from './model-derivation.js';
 import type { ModelEntry } from './model-registry.js';

@@ -103,7 +103,7 @@ describe('extraction quality', () => {
   });
 
   it('symbol text is valid source code', async () => {
-    const result = await extractSymbols(resolve(SRC_DIR, 'config/model-capabilities.ts'));
+    const result = await extractSymbols(resolve(SRC_DIR, 'config/model-config-helpers.ts'));
     for (const symbol of result.symbols) {
       // Symbol text should be non-empty
       expect(symbol.text.length).toBeGreaterThan(0);
@@ -130,7 +130,7 @@ describe('edge cases', () => {
   });
 
   it('handles deeply nested exports', async () => {
-    const result = await extractSymbols(resolve(SRC_DIR, 'config/model-capabilities.ts'));
+    const result = await extractSymbols(resolve(SRC_DIR, 'config/model-config-helpers.ts'));
     // This file has exported functions — verify they're marked as exported
     const exportedFns = result.symbols.filter((s) => s.exported && s.kind === 'function');
     expect(exportedFns.length).toBeGreaterThan(0);
