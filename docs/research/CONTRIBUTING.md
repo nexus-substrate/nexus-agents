@@ -1,6 +1,6 @@
 # Contributing to Research Documentation
 
-**Last Updated:** 2026-03-18 (ET)
+**Last Updated:** 2026-05-12 (ET)
 
 This guide explains how to add new research papers, techniques, and sources to the nexus-agents research tracking system.
 
@@ -441,23 +441,18 @@ The research system is also accessible via MCP tools, enabling programmatic inte
 { "tool": "research_analyze", "arguments": { "action": "gaps" } }
 ```
 
-### CLI Research Workflows
+### Research Workflows (MCP)
 
-The CLI provides end-to-end research workflows:
+Research workflows run via the MCP tools listed above (`research_discover`,
+`research_analyze`, `research_synthesize`, etc.) — there is no `nexus-agents
+research` CLI subcommand. Examples:
 
-```bash
-# Discover → score → rank findings
-nexus-agents research review --topic=orchestration
-
-# Auto-create GitHub issues for high-quality findings
-nexus-agents research review --topic=agents --create-issues
-
-# Show prioritized technique backlog
-nexus-agents research prioritize
-
-# Filter backlog by topic
-nexus-agents research prioritize --topic=consensus
-```
+- Discover → score → rank: invoke `research_discover` with `topic` + `quality_floor`.
+- Auto-file high-quality findings as GitHub issues: chain `research_discover` →
+  `research_catalog_review` (sets `action: 'accept'` per reference) → manual
+  `gh issue create` once you've sanity-checked the accepted items.
+- Prioritised technique backlog: `research_analyze` with `mode: 'gaps'` returns
+  topics where coverage is thin against the implementation map.
 
 ---
 
