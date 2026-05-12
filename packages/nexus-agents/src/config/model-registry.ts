@@ -39,6 +39,7 @@ import {
   type ModelVendor,
   type ResolvedModelIdentity,
 } from './model-identity.js';
+import { buildInTreeEntries } from './in-tree-entries.js';
 import { loadManifestOverlay } from './manifest-overlay.js';
 import { loadModelsDevSnapshot } from './models-dev-snapshot-loader.js';
 import type {
@@ -441,7 +442,8 @@ export function getDefaultRegistry(): ModelRegistry {
 function buildDefaultRegistry(): ModelRegistry {
   const overlay = loadManifestOverlay();
   const snapshot = loadModelsDevSnapshot();
-  const options: ModelRegistryOptions = {};
+  const inTree = buildInTreeEntries();
+  const options: ModelRegistryOptions = { inTreeEntries: inTree };
   if (overlay.status === 'loaded' && overlay.entries.length > 0) {
     (options as { manifestEntries?: readonly ModelEntry[] }).manifestEntries = overlay.entries;
   }
