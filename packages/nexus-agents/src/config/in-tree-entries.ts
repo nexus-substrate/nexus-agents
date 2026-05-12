@@ -59,14 +59,14 @@ function toEntry(model: ModelCapability): ModelEntry {
     ...(allAliases.size > 0 && { aliases: [...allAliases] }),
     displayName: model.displayName,
     contextWindow: model.contextWindow,
-    maxOutputTokens: model.maxOutputTokens,
+    ...(model.maxOutputTokens !== undefined && { maxOutputTokens: model.maxOutputTokens }),
     inputModalities: model.inputModalities,
     outputModalities: model.outputModalities,
     toolCapabilities: model.toolCapabilities,
     specialFeatures: model.specialFeatures,
-    pricing: model.pricing,
-    qualityScores: model.qualityScores,
-    notes: model.notes,
+    ...(model.pricing !== undefined && { pricing: model.pricing }),
+    ...(model.qualityScores !== undefined && { qualityScores: model.qualityScores }),
+    ...(model.notes !== undefined && { notes: model.notes }),
     source: 'in-tree',
   };
 
