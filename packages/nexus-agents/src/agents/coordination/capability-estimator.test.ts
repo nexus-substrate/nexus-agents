@@ -4,7 +4,7 @@
  * Covers model capability estimation, fuzzy matching, ranking by
  * efficiency, saturation threshold, and model registration.
  *
- * Canonical models are derived from model-capabilities.ts (#1149).
+ * Canonical models are derived from config/in-tree-data.ts (#1149).
  */
 
 import { describe, it, expect } from 'vitest';

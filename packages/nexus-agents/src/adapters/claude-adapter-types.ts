@@ -11,8 +11,9 @@ import { getCliModelName } from '../config/model-config-helpers.js';
 /**
  * Supported Claude model identifiers.
  *
- * Derived from `config/model-capabilities.ts` (single source of truth — issue
- * #2186). Do not hardcode model-version strings here; update the registry.
+ * Derived from `config/in-tree-data.ts` via `getCliModelName()` (which reads
+ * the ModelRegistry — see `config/model-registry.ts`). Do not hardcode
+ * model-version strings here; update the registry.
  */
 export const CLAUDE_MODELS = {
   OPUS_4: getCliModelName('claude-opus'),

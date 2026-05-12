@@ -278,8 +278,8 @@ export type {
 
 // Unified Model Registry (#2540) — single source of truth for per-model
 // metadata (capability + behaviour). Replaces the prior split between
-// `model-capabilities.ts` (still in-tree; migration in #2546) and the
-// deleted `model-behavior-profile.ts`.
+// the legacy `model-capabilities.ts` (now `in-tree-data.ts` after #2546
+// slice E) and the deleted `model-behavior-profile.ts`.
 export {
   ModelRegistry,
   deriveEntry,

@@ -122,8 +122,9 @@ export function mapTool(tool: ToolDefinition): Anthropic.Tool {
  * id columns AND the `aliases` array (#2199 Child 5 migration). Unknown
  * ids pass through (e.g., custom Bedrock identifiers).
  *
- * The canonical model strings live in `config/model-capabilities.ts`; this
- * function never holds them directly (issue #2186 Child 1).
+ * The canonical model strings live in `config/in-tree-data.ts` and are
+ * resolved through the ModelRegistry; this function never holds them
+ * directly (issue #2186 Child 1).
  */
 export function resolveModelId(modelId: string): string {
   const registryId = resolveCliAlias(modelId);

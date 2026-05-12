@@ -15,7 +15,7 @@ import { extractSymbols, extractSymbolIndex } from './symbol-extractor.js';
 const SRC_DIR = resolve(import.meta.dirname ?? '.', '..');
 
 describe('extraction accuracy', () => {
-  it('finds ALL exported functions in model-capabilities.ts', async () => {
+  it('finds ALL exported functions in model-config-helpers.ts', async () => {
     const filePath = resolve(SRC_DIR, 'config/model-config-helpers.ts');
     const source = await readFile(filePath, 'utf-8');
     const result = await extractSymbols(filePath);

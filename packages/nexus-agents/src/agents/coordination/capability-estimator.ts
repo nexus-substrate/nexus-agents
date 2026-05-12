@@ -61,10 +61,11 @@ function deriveFromCanonical(): Record<string, BaseCapability> {
 }
 
 /**
- * Known model capabilities — derived from canonical model-capabilities.ts registry.
+ * Known model capabilities — derived from the canonical model registry.
  * Open-source models included for multi-agent scaling comparisons.
  *
- * @see config/model-capabilities.ts — single source of truth for current models
+ * @see config/in-tree-data.ts — single source of truth for current models
+ * @see config/model-config-helpers.ts — `getInTreeCapabilitiesMatrix()`
  */
 const MODEL_CAPABILITIES: Record<string, BaseCapability> = {
   // Canonical models (derived from registry)
