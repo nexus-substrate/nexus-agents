@@ -118,9 +118,7 @@ Detailed technical documentation:
 | [registry/papers.yaml](./research/registry/papers.yaml)                             | Paper metadata                                                          | Canonical |
 | [registry/techniques.yaml](./research/registry/techniques.yaml)                     | Implementation status                                                   | Canonical |
 | [cli-first-adapter-strategy.md](./research/cli-first-adapter-strategy.md)           | CLI-first adapter research                                              | Canonical |
-| [pr-review-experiment-results.md](./research/pr-review-experiment-results.md)       | pr_review #2233 experiment results                                      | Canonical |
-| [pr-review-experiment-results-v2.md](./research/pr-review-experiment-results-v2.md) | pr_review retest with #2244 prompts + #2246 dataset                     | Canonical |
-| [pr-review-experiment-results-v3.md](./research/pr-review-experiment-results-v3.md) | pr_review v3 — soft-block aggregator hits all #2233 criteria            | Canonical |
+| [pr-review-experiment-results.md](./research/pr-review-experiment-results.md)       | pr_review #2233 baseline experiment results                             | Canonical |
 | [pr-review-experiment-results-v5.md](./research/pr-review-experiment-results-v5.md) | pr_review v5 — JSON-native findings; 100% bug-catch + caught a real bug | Canonical |
 
 ### Tier 3: Supporting (Reference as Needed)
