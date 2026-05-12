@@ -18,7 +18,8 @@
 
 import { DEFAULT_MODEL_CAPABILITIES } from './model-capabilities.js';
 import type { ModelCapability, Provider } from './model-capabilities-types.js';
-import { deriveEntry, type ModelEntry } from './model-registry.js';
+import { deriveEntry } from './model-derivation.js';
+import type { ModelEntry } from './model-registry.js';
 import { resolveModelIdentitySync, type ModelVendor } from './model-identity.js';
 
 /**
@@ -43,6 +44,18 @@ function providerToVendor(provider: Provider): ModelVendor {
  * fields come from `deriveEntry()` (so vendor/family defaults apply);
  * capability fields come from the matrix.
  */
+function optionalFields(model: ModelCapability): Partial<ModelEntry> {
+  const out: Partial<{ -readonly [K in keyof ModelEntry]: ModelEntry[K] }> = {};
+  if (model.maxOutputTokens !== undefined) out.maxOutputTokens = model.maxOutputTokens;
+  if (model.pricing !== undefined) out.pricing = model.pricing;
+  if (model.qualityScores !== undefined) out.qualityScores = model.qualityScores;
+  if (model.notes !== undefined) out.notes = model.notes;
+  if (model.cliName !== undefined) out.cliName = model.cliName;
+  if (model.cliAlias !== undefined) out.cliAlias = model.cliAlias;
+  if (model.cliModelName !== undefined) out.cliModelName = model.cliModelName;
+  return out;
+}
+
 function toEntry(model: ModelCapability): ModelEntry {
   const vendorHint = providerToVendor(model.provider);
   const identity = resolveModelIdentitySync(model.id, { vendor: vendorHint });
@@ -53,24 +66,19 @@ function toEntry(model: ModelCapability): ModelEntry {
     allAliases.add(model.cliModelName);
   }
 
-  const entry: ModelEntry = {
+  return {
     ...derived,
     id: model.id,
     ...(allAliases.size > 0 && { aliases: [...allAliases] }),
     displayName: model.displayName,
     contextWindow: model.contextWindow,
-    ...(model.maxOutputTokens !== undefined && { maxOutputTokens: model.maxOutputTokens }),
     inputModalities: model.inputModalities,
     outputModalities: model.outputModalities,
     toolCapabilities: model.toolCapabilities,
     specialFeatures: model.specialFeatures,
-    ...(model.pricing !== undefined && { pricing: model.pricing }),
-    ...(model.qualityScores !== undefined && { qualityScores: model.qualityScores }),
-    ...(model.notes !== undefined && { notes: model.notes }),
+    ...optionalFields(model),
     source: 'in-tree',
   };
-
-  return entry;
 }
 
 /**

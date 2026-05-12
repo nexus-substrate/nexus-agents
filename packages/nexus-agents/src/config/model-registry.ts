@@ -33,14 +33,10 @@
  * @module config/model-registry
  */
 
-import {
-  resolveModelIdentitySync,
-  type ModelHints,
-  type ModelVendor,
-  type ResolvedModelIdentity,
-} from './model-identity.js';
+import { resolveModelIdentitySync, type ModelHints, type ModelVendor } from './model-identity.js';
 import { buildInTreeEntries } from './in-tree-entries.js';
 import { loadManifestOverlay } from './manifest-overlay.js';
+import { DEFAULT_ENTRY, deriveEntry } from './model-derivation.js';
 import { loadModelsDevSnapshot } from './models-dev-snapshot-loader.js';
 import type {
   InputModality,
@@ -122,6 +118,14 @@ export interface ModelEntry {
   readonly qualityScores?: QualityScores;
   readonly notes?: string;
 
+  // ---- CLI routing metadata (in-tree entries only) ----
+  /** Which CLI tool this model belongs to (e.g. 'claude', 'gemini'). */
+  readonly cliName?: string;
+  /** Short alias the CLI accepts (e.g. 'opus' for claude). */
+  readonly cliAlias?: string;
+  /** Vendor model id the CLI passes upstream (e.g. 'claude-opus-4-6'). */
+  readonly cliModelName?: string;
+
   // ---- Behaviour (carried from ModelBehaviorProfile) ----
   readonly parallelToolCalls: boolean;
   readonly promptCaching: PromptCachingMode;
@@ -137,118 +141,10 @@ export interface ModelEntry {
   readonly verifiedAt?: string;
 }
 
-// ============================================================================
-// Defaults
-// ============================================================================
-
-/**
- * Universal fallback. Used when nothing more specific matches —
- * unknown vendor + family + no probe data. Safe defaults.
- */
-export const DEFAULT_ENTRY: Omit<ModelEntry, 'id' | 'vendor' | 'family' | 'profileId' | 'source'> =
-  {
-    parallelToolCalls: false,
-    promptCaching: 'none',
-    toolDefinitionFormat: 'openai',
-    maxRecommendedTurnBudget: 10,
-    strictJson: true,
-    quirks: [],
-  };
-
-/**
- * Per-vendor default behaviour. Used when the vendor is known but
- * no in-tree authoritative entry exists for the specific model.
- *
- * Sparse: only fields that differ from `DEFAULT_ENTRY` are listed.
- */
-type VendorOverride = Partial<Omit<ModelEntry, 'id' | 'vendor' | 'family' | 'source'>>;
-
-const VENDOR_DEFAULTS: Partial<Record<ModelVendor, VendorOverride>> = {
-  anthropic: {
-    profileId: 'anthropic-default',
-    parallelToolCalls: true,
-    promptCaching: 'ephemeral',
-    toolDefinitionFormat: 'anthropic',
-    maxRecommendedTurnBudget: 15,
-  },
-  openai: {
-    profileId: 'openai-default',
-    parallelToolCalls: true,
-    toolDefinitionFormat: 'openai',
-    maxRecommendedTurnBudget: 15,
-  },
-  google: {
-    profileId: 'google-default',
-    parallelToolCalls: true,
-    toolDefinitionFormat: 'gemini',
-    maxRecommendedTurnBudget: 15,
-  },
-  meta: {
-    profileId: 'meta-default',
-    parallelToolCalls: false,
-    toolDefinitionFormat: 'openai',
-    maxRecommendedTurnBudget: 8,
-  },
-  qwen: {
-    profileId: 'qwen-default',
-    parallelToolCalls: false,
-    toolDefinitionFormat: 'openai',
-    maxRecommendedTurnBudget: 8,
-  },
-  nvidia: {
-    profileId: 'nvidia-nemotron-default',
-    parallelToolCalls: false,
-    toolDefinitionFormat: 'openai',
-    maxRecommendedTurnBudget: 8,
-  },
-  mistral: {
-    profileId: 'mistral-default',
-    parallelToolCalls: false,
-    toolDefinitionFormat: 'openai',
-    maxRecommendedTurnBudget: 8,
-  },
-  cohere: {
-    profileId: 'cohere-default',
-    parallelToolCalls: false,
-    toolDefinitionFormat: 'openai',
-    maxRecommendedTurnBudget: 8,
-  },
-  deepseek: {
-    profileId: 'deepseek-default',
-    parallelToolCalls: false,
-    toolDefinitionFormat: 'openai',
-    maxRecommendedTurnBudget: 10,
-  },
-};
-
-interface FamilyOverrideEntry {
-  readonly vendor: ModelVendor;
-  readonly family: string;
-  readonly override: VendorOverride;
-}
-
-const FAMILY_DEFAULTS: readonly FamilyOverrideEntry[] = [
-  {
-    vendor: 'anthropic',
-    family: 'claude-opus',
-    override: { profileId: 'claude-opus', maxRecommendedTurnBudget: 20 },
-  },
-  {
-    vendor: 'anthropic',
-    family: 'claude-haiku',
-    override: { profileId: 'claude-haiku', maxRecommendedTurnBudget: 8 },
-  },
-  {
-    vendor: 'openai',
-    family: 'o-reasoning',
-    override: { profileId: 'openai-o-reasoning', maxRecommendedTurnBudget: 25 },
-  },
-  {
-    vendor: 'google',
-    family: 'gemini-flash',
-    override: { profileId: 'gemini-flash', maxRecommendedTurnBudget: 8 },
-  },
-];
+// Derivation (DEFAULT_ENTRY, VENDOR_DEFAULTS, FAMILY_DEFAULTS, deriveEntry)
+// lives in `./model-derivation.ts` so `in-tree-entries.ts` can import
+// `deriveEntry` without creating a runtime cycle back through this file.
+// We re-export below for backward compatibility with existing call sites.
 
 // ============================================================================
 // Registry
@@ -372,51 +268,9 @@ function mergeSnapshotWithDerived(snapshot: ModelEntry, derived: ModelEntry): Mo
   };
 }
 
-// ============================================================================
-// Derivation — build a ModelEntry from a ResolvedModelIdentity
-// ============================================================================
-
-/**
- * Build an entry from vendor + family + quirks when no authoritative
- * row matches. Source stamped `'derived'`; capability fields left
- * undefined (derived entries don't have measured pricing/quality data).
- */
-export function deriveEntry(modelId: string, identity: ResolvedModelIdentity): ModelEntry {
-  const vendorOverride = VENDOR_DEFAULTS[identity.vendor] ?? {};
-  const familyOverride =
-    FAMILY_DEFAULTS.find((f) => f.vendor === identity.vendor && f.family === identity.family)
-      ?.override ?? {};
-
-  const merged = {
-    ...DEFAULT_ENTRY,
-    profileId: 'default',
-    ...vendorOverride,
-    ...familyOverride,
-  };
-
-  // Apply quirk overlay — `'thinking'` bumps budget 1.5×, `'embedding'`
-  // is propagated for adapter consumers to refuse construction.
-  const quirks = [...new Set([...merged.quirks, ...identity.quirks])];
-  let budget = merged.maxRecommendedTurnBudget;
-  if (identity.quirks.includes('thinking')) {
-    budget = Math.ceil(budget * 1.5);
-  }
-
-  return {
-    id: modelId,
-    vendor: identity.vendor,
-    family: identity.family,
-    ...(identity.version !== undefined && { version: identity.version }),
-    parallelToolCalls: merged.parallelToolCalls,
-    promptCaching: merged.promptCaching,
-    toolDefinitionFormat: merged.toolDefinitionFormat,
-    maxRecommendedTurnBudget: budget,
-    strictJson: merged.strictJson,
-    quirks,
-    profileId: merged.profileId,
-    source: 'derived',
-  };
-}
+// Re-export the derivation surface so existing consumers keep working
+// without needing to update their import paths.
+export { DEFAULT_ENTRY, deriveEntry };
 
 // ============================================================================
 // Convenience — global default registry, populated lazily

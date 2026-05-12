@@ -170,7 +170,16 @@ export function loadManifestOverlay(options?: {
   const logger = options?.logger ?? createLogger({ component: 'manifest-overlay' });
   const path = options?.path ?? resolveManifestPath(options?.env);
 
-  if (!existsSync(path)) {
+  // Defensive: tests sometimes `vi.mock('node:fs', ...)` with a subset
+  // of exports that omits `existsSync`. Treat any throw from the probe
+  // as "no manifest" rather than letting it crash module-load callers.
+  let exists = false;
+  try {
+    exists = existsSync(path);
+  } catch {
+    return { entries: [], rejections: [], path, status: 'missing' };
+  }
+  if (!exists) {
     return { entries: [], rejections: [], path, status: 'missing' };
   }
 
