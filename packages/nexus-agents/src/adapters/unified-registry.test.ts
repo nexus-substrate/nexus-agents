@@ -20,7 +20,7 @@ import {
   resetGlobalRegistry,
 } from './unified-registry.js';
 import { TASK_SPECIALIZATION_MATRIX } from '../config/task-specialization.js';
-import { DEFAULT_MODEL_CAPABILITIES } from '../config/model-capabilities.js';
+import { DEFAULT_MODEL_CAPABILITIES } from '../config/in-tree-data.js';
 
 // Silence logging in tests
 const mockLogger = {

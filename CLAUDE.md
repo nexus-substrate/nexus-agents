@@ -112,7 +112,7 @@ All paths are validated by `scripts/inject-governance.ts check` — a row that p
 | **Voter Roles**         | `VoterRole` + `VOTER_ROLES`                                                                           | `packages/nexus-agents/src/cli/vote-types.ts`                          |
 | **CLI Adapters**        | `createAllAdapters()`                                                                                 | `packages/nexus-agents/src/cli-adapters/factory.ts`                    |
 | **MCP Tools**           | `registerTools()`                                                                                     | `packages/nexus-agents/src/mcp/tools/index.ts`                         |
-| **Model Registry**      | `DEFAULT_MODEL_CAPABILITIES`                                                                          | `packages/nexus-agents/src/config/model-capabilities.ts`               |
+| **Model Registry**      | `ModelRegistry` + `getDefaultRegistry()`                                                              | `packages/nexus-agents/src/config/model-registry.ts`                   |
 | **Adapter Registry**    | `UnifiedAdapterRegistry`                                                                              | `packages/nexus-agents/src/adapters/unified-registry.ts`               |
 | **Adapter Lifecycle**   | `ResilientAdapter`                                                                                    | `packages/nexus-agents/src/adapters/resilient-adapter.ts`              |
 | **Graph Workflows**     | `GraphBuilder`                                                                                        | `packages/nexus-agents/src/orchestration/graph/graph-builder.ts`       |
@@ -127,7 +127,7 @@ All paths are validated by `scripts/inject-governance.ts check` — a row that p
 
 <!-- GOVERNANCE:MODEL_LIST:START -->Supported models: claude-opus, claude-sonnet, claude-haiku, gemini-3-pro, gemini-pro, gemini-3-flash, gemini-flash, codex-5.3, codex-5.2, codex-5.1-mini, opencode-default, opencode-custom-opus, opencode-custom-sonnet, openrouter-nemotron-super, openrouter-qwen-coder.<!-- GOVERNANCE:MODEL_LIST:END -->
 
-**Model registry** (`config/model-capabilities.ts`): single source of truth for pricing, quality, context windows, CLI aliases, defaults. Consumers derive via `config/model-config-helpers.ts` — never hardcode model data elsewhere.
+**Model registry** (`config/model-registry.ts` + `config/in-tree-data.ts`): single source of truth for pricing, quality, context windows, CLI aliases, defaults. Consumers read via `getDefaultRegistry()` or the helper layer in `config/model-config-helpers.ts` — never hardcode model data elsewhere.
 
 **Voter panel:** Default 7 roles (`architect, security, devex, ai_ml, pm, catfish, scope_steward`); `--quick` runs 3 (`architect, security, scope_steward`). Supermajority is 5/7. `scope_steward` (#2185) biases toward not shipping — checks build-vs-buy.
 
@@ -344,7 +344,7 @@ Voting thresholds, refactor gates, fitness audit, documentation governance in `.
 - `packages/nexus-agents/src/core/types/index.ts` — Core type definitions
 - `packages/nexus-agents/src/mcp/` — MCP server and tool implementations
 - `packages/nexus-agents/src/agents/` — Agent framework
-- `packages/nexus-agents/src/config/model-capabilities.ts` — Canonical model registry (pricing, quality, context windows)
+- `packages/nexus-agents/src/config/in-tree-data.ts` — In-tree model data (pricing, quality, context windows); registry source
 - `packages/nexus-agents/src/config/model-config-helpers.ts` — Derived helpers for model metadata consumers
 
 <!-- GOVERNANCE:TOOL_INDEX:START -->
@@ -400,7 +400,7 @@ _Auto-generated from source. 38 tools registered._
 
 <!-- GOVERNANCE:VERSION:START -->
 
-_Governance Version: 2026-05-09_
+_Governance Version: 2026-05-12_
 
 <!-- GOVERNANCE:VERSION:END -->
 

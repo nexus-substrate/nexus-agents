@@ -9,7 +9,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { calculateCost } from './trace-pricing.js';
-import { DEFAULT_MODEL_CAPABILITIES } from '../config/model-capabilities.js';
+import { DEFAULT_MODEL_CAPABILITIES } from '../config/in-tree-data.js';
 
 describe('trace-pricing', () => {
   describe('calculateCost — canonical registry', () => {

@@ -176,18 +176,13 @@ export type {
 export { validateNexusEnv, getKnownNexusVarNames } from './env-schema.js';
 export type { EnvValidationResult, UnknownVar, InvalidVar } from './env-schema.js';
 
-// Model Capabilities Matrix (Issue #683, Epic #682)
+// In-tree model data (renamed from `model-capabilities` in #2546 slice E).
+// Data-only module; consumers should prefer registry helpers in
+// `model-config-helpers.ts` rather than reading these directly.
+export { DEFAULT_MODEL_CAPABILITIES, DEFAULT_MODEL_PER_CLI } from './in-tree-data.js';
+
+// Types, enums, and Zod schemas live next to the data they describe.
 export {
-  DEFAULT_MODEL_CAPABILITIES,
-  DEFAULT_MODEL_PER_CLI,
-  getModelCapabilities,
-  findModelsByOutputModality,
-  findModelsByInputModality,
-  findModelsByToolCapability,
-  findModelsByFeature,
-  findModelsByProvider,
-  findBestModelForOutput,
-  modelSupportsAll,
   ModelCapabilitiesMatrixSchema,
   ModelCapabilitySchema,
   OUTPUT_MODALITIES,
@@ -202,7 +197,7 @@ export {
   DEFAULT_ROUTING_CONFIDENCE,
   QualityScoresSchema,
   PricingSchema,
-} from './model-capabilities.js';
+} from './model-capabilities-types.js';
 
 export type {
   ModelCapabilitiesMatrix,
@@ -216,7 +211,19 @@ export type {
   CliNameLiteral,
   QualityScores,
   Pricing,
-} from './model-capabilities.js';
+} from './model-capabilities-types.js';
+
+// Registry-backed equivalents of the legacy capability helpers
+// (moved here in #2546 slice E when model-capabilities.ts was deleted).
+export {
+  findModelsByOutputModality,
+  findModelsByInputModality,
+  findModelsByToolCapability,
+  findModelsByFeature,
+  findModelsByProvider,
+  findBestModelForOutput,
+  modelSupportsAll,
+} from './model-config-helpers.js';
 
 // Model Config Helpers — derived functions from model registry (Issue #807)
 export {

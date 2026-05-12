@@ -11,7 +11,7 @@ import { GeminiCliAdapter } from './adapters/gemini-adapter.js';
 import { CodexCliAdapter } from './adapters/codex-adapter.js';
 import { CodexMcpAdapter } from './adapters/codex-mcp-adapter.js';
 import { getDefaultModelForCli, getCliModelName } from '../config/model-config-helpers.js';
-import { DEFAULT_MODEL_CAPABILITIES } from '../config/model-capabilities.js';
+import { DEFAULT_MODEL_CAPABILITIES } from '../config/in-tree-data.js';
 import { CLI_NAMES } from '../config/model-capabilities-types.js';
 
 /** Derive the expected default model ID for a CLI from the canonical registry. */

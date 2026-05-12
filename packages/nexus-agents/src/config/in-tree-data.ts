@@ -1,57 +1,28 @@
-/* eslint-disable max-lines -- 436 lines, cohesive model registry data per governance */
 /**
- * nexus-agents/config - Model Capabilities Matrix
+ * nexus-agents/config - In-tree model data
  *
- * Structured capability definitions for all supported AI models.
- * Tracks output/input modalities, tool support, context windows,
- * and special features based on official provider documentation.
+ * Hardcoded model capabilities matrix that feeds the ModelRegistry's
+ * tier-2 (in-tree authoritative) entries via the converter in
+ * `in-tree-entries.ts`. Renamed from `model-capabilities.ts` as the
+ * finale of epic #2546 — the legacy helper surface (find*,
+ * getModelCapabilities, modelSupportsAll) moved to
+ * `model-config-helpers.ts` as registry-backed equivalents; this
+ * file is data-only.
  *
- * @module config/model-capabilities
- * (Source: Issue #683, Epic #682)
+ * Consumers should NOT import from here directly — they should read
+ * via `getDefaultRegistry()` or the helpers in
+ * `model-config-helpers.ts`. The only legitimate direct importers
+ * are `in-tree-entries.ts` (the converter) and the helpers module
+ * itself.
+ *
+ * @module config/in-tree-data
+ * (Source: Issue #683, Epic #682; renamed in #2546 slice E)
  */
 
 import type {
   ModelCapabilitiesMatrix,
-  ModelCapability,
   ModelId,
-  OutputModality,
-  InputModality,
-  ToolCapability,
-  SpecialFeature,
-  Provider,
   CliNameLiteral,
-} from './model-capabilities-types.js';
-
-// Re-export types for consumer convenience
-export type {
-  ModelCapabilitiesMatrix,
-  ModelCapability,
-  ModelId,
-  OutputModality,
-  InputModality,
-  ToolCapability,
-  SpecialFeature,
-  Provider,
-  QualityScores,
-  Pricing,
-  CliNameLiteral,
-} from './model-capabilities-types.js';
-
-export {
-  ModelCapabilitySchema,
-  ModelCapabilitiesMatrixSchema,
-  QualityScoresSchema,
-  PricingSchema,
-  OUTPUT_MODALITIES,
-  INPUT_MODALITIES,
-  TOOL_CAPABILITIES,
-  SPECIAL_FEATURES,
-  PROVIDERS,
-  MODEL_IDS,
-  CLI_NAMES,
-  CliNameSchema,
-  DEFAULT_CLI,
-  DEFAULT_ROUTING_CONFIDENCE,
 } from './model-capabilities-types.js';
 
 // ---------------------------------------------------------------------------
@@ -405,119 +376,3 @@ export const DEFAULT_MODEL_PER_CLI: Record<CliNameLiteral, ModelId> = {
   codex: 'codex-5.3',
   opencode: 'opencode-default',
 };
-
-// ---------------------------------------------------------------------------
-// Query Functions
-// ---------------------------------------------------------------------------
-
-/** Get capabilities for a specific model by ID. */
-export function getModelCapabilities(
-  modelId: string,
-  matrix: ModelCapabilitiesMatrix = DEFAULT_MODEL_CAPABILITIES
-): ModelCapability | undefined {
-  return matrix.models.find((m) => m.id === modelId);
-}
-
-/** Find all models that support a given output modality. */
-export function findModelsByOutputModality(
-  modality: OutputModality,
-  matrix: ModelCapabilitiesMatrix = DEFAULT_MODEL_CAPABILITIES
-): ModelCapability[] {
-  return matrix.models.filter((m) => m.outputModalities.includes(modality));
-}
-
-/** Find all models that support a given input modality. */
-export function findModelsByInputModality(
-  modality: InputModality,
-  matrix: ModelCapabilitiesMatrix = DEFAULT_MODEL_CAPABILITIES
-): ModelCapability[] {
-  return matrix.models.filter((m) => m.inputModalities.includes(modality));
-}
-
-/** Find all models that support a given tool capability. */
-export function findModelsByToolCapability(
-  capability: ToolCapability,
-  matrix: ModelCapabilitiesMatrix = DEFAULT_MODEL_CAPABILITIES
-): ModelCapability[] {
-  return matrix.models.filter((m) => m.toolCapabilities.includes(capability));
-}
-
-/** Find all models that have a given special feature. */
-export function findModelsByFeature(
-  feature: SpecialFeature,
-  matrix: ModelCapabilitiesMatrix = DEFAULT_MODEL_CAPABILITIES
-): ModelCapability[] {
-  return matrix.models.filter((m) => m.specialFeatures.includes(feature));
-}
-
-/** Find all models from a specific provider. */
-export function findModelsByProvider(
-  provider: Provider,
-  matrix: ModelCapabilitiesMatrix = DEFAULT_MODEL_CAPABILITIES
-): ModelCapability[] {
-  return matrix.models.filter((m) => m.provider === provider);
-}
-
-/**
- * Find all models that target a specific CLI (`cliName`).
- *
- * Used by adapter alias-map builders so the "iterate models filtered by
- * cliName" boilerplate lives in one place. Each adapter still owns its own
- * value-derivation logic — the filters and target shapes differ across CLIs
- * (claude maps to `cliAlias`, opencode maps to `provider/model` form), so this
- * helper deliberately stops at the filtering step rather than imposing a
- * common map shape (#2342).
- */
-export function findModelsByCli(
-  cliName: ModelCapability['cliName'],
-  matrix: ModelCapabilitiesMatrix = DEFAULT_MODEL_CAPABILITIES
-): ModelCapability[] {
-  return matrix.models.filter((m) => m.cliName === cliName);
-}
-
-/** Find the best model for a required output modality, preferring larger context. */
-export function findBestModelForOutput(
-  modality: OutputModality,
-  matrix: ModelCapabilitiesMatrix = DEFAULT_MODEL_CAPABILITIES
-): ModelCapability | undefined {
-  const candidates = findModelsByOutputModality(modality, matrix);
-  if (candidates.length === 0) return undefined;
-  return candidates.sort((a, b) => b.contextWindow - a.contextWindow)[0];
-}
-
-/** Check that `haystack` includes every item in `required`. */
-function includesAll<T>(haystack: readonly T[], required: readonly T[] | undefined): boolean {
-  if (required === undefined) return true;
-  return required.every((item) => haystack.includes(item));
-}
-
-/**
- * Check if a model supports all required capabilities.
- * Useful for filtering models before routing.
- */
-export function modelSupportsAll(
-  modelId: ModelId,
-  requirements: {
-    outputModalities?: OutputModality[];
-    inputModalities?: InputModality[];
-    toolCapabilities?: ToolCapability[];
-    specialFeatures?: SpecialFeature[];
-    minContextWindow?: number;
-  },
-  matrix: ModelCapabilitiesMatrix = DEFAULT_MODEL_CAPABILITIES
-): boolean {
-  const model = getModelCapabilities(modelId, matrix);
-  if (model === undefined) return false;
-
-  const meetsContext =
-    requirements.minContextWindow === undefined ||
-    model.contextWindow >= requirements.minContextWindow;
-
-  return (
-    meetsContext &&
-    includesAll(model.outputModalities, requirements.outputModalities) &&
-    includesAll(model.inputModalities, requirements.inputModalities) &&
-    includesAll(model.toolCapabilities, requirements.toolCapabilities) &&
-    includesAll(model.specialFeatures, requirements.specialFeatures)
-  );
-}

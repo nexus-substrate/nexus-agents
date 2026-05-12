@@ -16,7 +16,7 @@ const SRC_DIR = resolve(import.meta.dirname ?? '.', '..');
 
 describe('extraction accuracy', () => {
   it('finds ALL exported functions in model-capabilities.ts', async () => {
-    const filePath = resolve(SRC_DIR, 'config/model-capabilities.ts');
+    const filePath = resolve(SRC_DIR, 'config/model-config-helpers.ts');
     const source = await readFile(filePath, 'utf-8');
     const result = await extractSymbols(filePath);
 
@@ -60,7 +60,7 @@ describe('extraction accuracy', () => {
   });
 
   it('does not produce duplicate symbols', async () => {
-    const filePath = resolve(SRC_DIR, 'config/model-capabilities.ts');
+    const filePath = resolve(SRC_DIR, 'config/model-config-helpers.ts');
     const result = await extractSymbols(filePath);
 
     // Check for duplicates by name+kind+startLine
@@ -75,7 +75,7 @@ describe('extraction accuracy', () => {
   });
 
   it('exported flag matches source code', async () => {
-    const filePath = resolve(SRC_DIR, 'config/model-capabilities.ts');
+    const filePath = resolve(SRC_DIR, 'config/model-config-helpers.ts');
     const result = await extractSymbols(filePath);
 
     for (const symbol of result.symbols) {
@@ -119,7 +119,7 @@ describe('completeness', () => {
 
 describe('reconstruction quality', () => {
   it('symbol text can reconstruct useful context for LLM', async () => {
-    const filePath = resolve(SRC_DIR, 'config/model-capabilities.ts');
+    const filePath = resolve(SRC_DIR, 'config/model-config-helpers.ts');
     const result = await extractSymbols(filePath);
 
     // Find a function with a meaningful name
@@ -134,7 +134,7 @@ describe('reconstruction quality', () => {
   });
 
   it('index format is parseable and useful', async () => {
-    const filePath = resolve(SRC_DIR, 'config/model-capabilities.ts');
+    const filePath = resolve(SRC_DIR, 'config/model-config-helpers.ts');
     const index = await extractSymbolIndex(filePath);
 
     // Index should start with file comment

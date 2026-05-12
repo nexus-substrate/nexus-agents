@@ -11,7 +11,7 @@
 
 import { getTimeProvider } from '../core/index.js';
 import type { ModelId, CliNameLiteral } from './model-capabilities-types.js';
-import { DEFAULT_MODEL_PER_CLI } from './model-capabilities.js';
+import { DEFAULT_MODEL_PER_CLI } from './in-tree-data.js';
 
 // ---------------------------------------------------------------------------
 // Types
