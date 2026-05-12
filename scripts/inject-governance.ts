@@ -33,7 +33,7 @@ const EXPERT_CONFIG = join(ROOT, 'packages/nexus-agents/src/agents/experts/exper
 const TEMPLATE_TYPES = join(ROOT, 'packages/nexus-agents/src/workflows/template-types.ts');
 const SKILLS_DIR = join(ROOT, 'skills');
 const AGENTS_DIR = join(ROOT, 'agents');
-const MODEL_CAPS = join(ROOT, 'packages/nexus-agents/src/config/model-capabilities.ts');
+const MODEL_CAPS = join(ROOT, 'packages/nexus-agents/src/config/in-tree-data.ts');
 const PACKAGE_JSON_PATH = join(ROOT, 'packages/nexus-agents/package.json');
 
 // Additional inject targets for #1837 count-drift prevention.
@@ -457,7 +457,7 @@ function extractAgents(): string[] {
 }
 
 /**
- * Extract model IDs from model-capabilities.ts.
+ * Extract model IDs from in-tree-data.ts.
  * Parses the models array for id, displayName, cliName, and contextWindow.
  */
 interface ModelMetadata {
