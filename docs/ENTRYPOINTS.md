@@ -823,21 +823,146 @@ nexus-agents hooks stop --check-tasks
 }
 ```
 
+#### compare_data_feeds
+
+```json
+{
+  "name": "compare_data_feeds",
+  "description": "Diff two YAML/JSON feeds: coverage (entries only-in-A, only-in-B, in-both) and per-field differences for shared entries",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "feedAPath": {
+        "type": "string",
+        "description": "Filesystem path to feed A (YAML or JSON, auto-detected by extension)"
+      },
+      "feedBPath": { "type": "string", "description": "Filesystem path to feed B" },
+      "keyPath": {
+        "type": "string",
+        "description": "Dotted path to the entry key, e.g. \"id\" or \"name\". Each entry must have this field."
+      },
+      "compareFields": {
+        "type": "array",
+        "items": { "type": "string" },
+        "maxItems": 20,
+        "description": "Optional dotted field paths to compare across matched entries (e.g. [\"license\", \"sha256\"])"
+      }
+    },
+    "required": ["feedAPath", "feedBPath", "keyPath"]
+  }
+}
+```
+
+#### survey_oss_landscape
+
+```json
+{
+  "name": "survey_oss_landscape",
+  "description": "Transient OSS project search via GitHub (license, stars, last-commit). Returns ranked candidates for build-vs-buy decisions",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "Free-text search query, e.g. \"cargo nextest replacement\" or \"OSS SBOM tools\""
+      },
+      "maxResults": {
+        "type": "number",
+        "minimum": 1,
+        "maximum": 50,
+        "default": 10,
+        "description": "Maximum candidates to return (1-50)"
+      },
+      "minStars": {
+        "type": "number",
+        "minimum": 0,
+        "default": 0,
+        "description": "Minimum star count to include (useful for filtering noise)"
+      }
+    },
+    "required": ["query"]
+  }
+}
+```
+
+#### vendor_publishing_audit
+
+```json
+{
+  "name": "vendor_publishing_audit",
+  "description": "Look up a vendor's signing infrastructure (GPG keys, URL patterns, signature shape). Reads from a bundled seed of known vendors",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "vendor": {
+        "type": "string",
+        "description": "Vendor identifier, lowercase. e.g. \"ubuntu\", \"debian\", \"fedora\""
+      }
+    },
+    "required": ["vendor"]
+  }
+}
+```
+
+Response distinguishes `known: true` (full publishing entry) from `known: false` (lists the available vendor ids).
+
+#### improvement_review
+
+```json
+{
+  "name": "improvement_review",
+  "description": "Threshold-gated observability loop. Surfaces routing / tech-debt / bug / security signals from outcome + fitness data; optionally files candidate issues",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "lookbackDays": {
+        "type": "number",
+        "minimum": 1,
+        "maximum": 90,
+        "default": 7,
+        "description": "Lookback window for outcome data, in days"
+      },
+      "fileIssues": {
+        "type": "boolean",
+        "default": false,
+        "description": "When true, file candidate issues via `gh issue create` for crossed thresholds (rate-limited to 5/run, deduped against open issues). When false, return signals only."
+      },
+      "minSampleSize": {
+        "type": "number",
+        "minimum": 1,
+        "maximum": 1000,
+        "default": 5,
+        "description": "Minimum sample size before a CLI/category signal can fire"
+      },
+      "fitnessFloor": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 100,
+        "default": 90,
+        "description": "Minimum fitness score before a fitness signal fires"
+      }
+    }
+  }
+}
+```
+
 ### Built-in Workflow Templates
 
-9 built-in templates are available (source: `src/workflows/template-types.ts`):
+11 built-in templates are available (source: `src/workflows/template-types.ts`):
 
-| Template                 | Category      | Keywords                                            |
-| ------------------------ | ------------- | --------------------------------------------------- |
-| `code-review`            | review        | review, quality, security, analysis, code           |
-| `feature-implementation` | development   | feature, implement, develop, create, build          |
-| `bug-fix`                | development   | bug, fix, debug, error, issue, patch                |
-| `documentation-update`   | documentation | docs, documentation, readme, api, update            |
-| `refactoring`            | development   | refactor, clean, improve, restructure, simplify     |
-| `research-review`        | review        | research, paper, arxiv, discover, catalog, registry |
-| `security-audit`         | review        | security, audit, vulnerability, owasp, scan         |
-| `standards-review`       | review        | standards, lint, typecheck, fitness, compliance     |
-| `test-generation`        | testing       | test, generate, coverage, unit, integration         |
+| Template                 | Category       | Keywords                                                        |
+| ------------------------ | -------------- | --------------------------------------------------------------- |
+| `code-review`            | review         | review, quality, security, analysis, code                       |
+| `docs-audit`             | documentation  | docs, audit, verify, accuracy, drift, documentation, fact-check |
+| `feature-implementation` | development    | feature, implement, develop, create, build                      |
+| `bug-fix`                | development    | bug, fix, debug, error, issue, patch                            |
+| `documentation-update`   | documentation  | docs, documentation, readme, api, update                        |
+| `infrastructure-audit`   | infrastructure | infrastructure, hardware, server, idrac, ipmi, bare-metal       |
+| `refactoring`            | development    | refactor, clean, improve, restructure, simplify                 |
+| `research-review`        | review         | research, paper, arxiv, discover, catalog, registry             |
+| `security-audit`         | review         | security, audit, vulnerability, owasp, scan                     |
+| `standards-review`       | review         | standards, lint, typecheck, fitness, compliance                 |
+| `test-generation`        | testing        | test, generate, coverage, unit, integration                     |
 
 ### Source Files
 
