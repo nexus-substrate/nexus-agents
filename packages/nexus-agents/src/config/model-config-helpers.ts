@@ -15,7 +15,7 @@
  */
 
 import { buildInTreeEntries } from './in-tree-entries.js';
-import { DEFAULT_MODEL_PER_CLI } from './model-capabilities.js';
+import { DEFAULT_MODEL_CAPABILITIES, DEFAULT_MODEL_PER_CLI } from './model-capabilities.js';
 import type {
   ModelId,
   ModelCapability,
@@ -347,6 +347,39 @@ export function buildModelInfo(
  * Build mock model info for each CLI (using default model per CLI).
  * Used by testing/adapters/mock-adapter-helpers.ts to replace MODEL_INFO_BY_NAME.
  */
+/**
+ * Project the registry's in-tree entries back to the legacy
+ * `ModelCapabilitiesMatrix` shape. Lets CLI commands and other
+ * consumers iterate in-tree models via the registry without
+ * importing `DEFAULT_MODEL_CAPABILITIES` directly (#2546 slice C1).
+ *
+ * Matrix-level metadata (`version`, `updatedAt`) is still read
+ * from `DEFAULT_MODEL_CAPABILITIES` because the registry doesn't
+ * carry it — slice E closes that gap when the legacy module is
+ * deleted entirely.
+ */
+export function getInTreeCapabilitiesMatrix(): {
+  readonly version: number;
+  readonly updatedAt: string;
+  readonly models: readonly ModelCapability[];
+} {
+  return {
+    version: DEFAULT_MODEL_CAPABILITIES.version,
+    updatedAt: DEFAULT_MODEL_CAPABILITIES.updatedAt,
+    models: buildInTreeEntries().map(entryToCapability),
+  };
+}
+
+/**
+ * Single-model lookup that mirrors `getModelCapabilities` but reads
+ * via the registry. Returns the legacy `ModelCapability` shape so
+ * call sites that haven't migrated to `ModelEntry` yet still work.
+ */
+export function lookupInTreeCapability(modelId: string): ModelCapability | undefined {
+  const entry = lookupInTree(modelId);
+  return entry !== undefined ? entryToCapability(entry) : undefined;
+}
+
 export function buildMockModelInfo(): Record<CliNameLiteral, ModelInfoShape> {
   const result = {} as Record<CliNameLiteral, ModelInfoShape>;
   const byId = inTreeById();

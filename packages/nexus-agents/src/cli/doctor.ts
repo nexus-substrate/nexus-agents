@@ -29,7 +29,7 @@ import {
 } from '../config/learning-persistence.js';
 import { createAllAdapters } from '../cli-adapters/factory.js';
 import type { CliName, HealthStatus, CapacityStatus } from '../cli-adapters/types.js';
-import { DEFAULT_MODEL_CAPABILITIES } from '../config/model-capabilities.js';
+import { getInTreeCapabilitiesMatrix } from '../config/model-config-helpers.js';
 import { createServer } from '../mcp/server.js';
 import { printDoctorResults } from './doctor-formatting.js';
 import { probeCli } from './cli-auth-probe.js';
@@ -418,7 +418,8 @@ function checkMcpServerReady(): boolean {
 function buildRegistryAdvisory(cliResults: CliCheckResult[]): RegistryAdvisory {
   const installedClis = new Set(cliResults.filter((c) => c.installed).map((c) => c.name));
 
-  const models: ModelAdvisory[] = DEFAULT_MODEL_CAPABILITIES.models
+  const matrix = getInTreeCapabilitiesMatrix();
+  const models: ModelAdvisory[] = matrix.models
     .filter((m) => m.cliName !== undefined)
     .map((m) => {
       const cliName = m.cliName ?? '';
@@ -429,7 +430,7 @@ function buildRegistryAdvisory(cliResults: CliCheckResult[]): RegistryAdvisory {
 
   // Registry staleness check (#1549, threshold revised in #2445)
   const STALE_THRESHOLD_DAYS = 90;
-  const updatedAt = new Date(DEFAULT_MODEL_CAPABILITIES.updatedAt);
+  const updatedAt = new Date(matrix.updatedAt);
   const nowMs = getTimeProvider().now();
   const ageDays = Math.floor((nowMs - updatedAt.getTime()) / (1000 * 60 * 60 * 24));
 

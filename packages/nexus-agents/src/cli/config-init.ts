@@ -11,7 +11,7 @@ import { writeFile, mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { getErrorMessage } from '../core/index.js';
 import { colors } from './ansi-output.js';
-import { DEFAULT_MODEL_CAPABILITIES } from '../config/model-capabilities.js';
+import { getInTreeCapabilitiesMatrix } from '../config/model-config-helpers.js';
 import type { ModelCapability } from '../config/model-capabilities-types.js';
 
 /**
@@ -45,9 +45,9 @@ const DEFAULT_CONFIG_FILE = 'nexus-agents.yaml';
  * hardcoded model IDs (claude-sonnet-4, gpt-4o, o1-pro) that aren't in the
  * registry — config init produced a YAML that immediately failed to route.
  *
- * Now we derive the lists at template-generation time from
- * DEFAULT_MODEL_CAPABILITIES, so updates to the registry flow into
- * `config init` automatically.
+ * Now we derive the lists at template-generation time from the
+ * canonical registry (via `getInTreeCapabilitiesMatrix()`), so
+ * updates to the registry flow into `config init` automatically.
  *
  * Tier picks per provider (limit one per provider per tier to keep the
  * starter YAML readable):
@@ -73,7 +73,7 @@ function qualifiesBalanced(m: ModelCapability): boolean {
 }
 
 function bucketModels(): { fast: string[]; balanced: string[]; powerful: string[] } {
-  const all = DEFAULT_MODEL_CAPABILITIES.models;
+  const all = getInTreeCapabilitiesMatrix().models;
   const seenProvider = new Set<string>();
   const sortedByReasoning = [...all].sort(
     (a, b) => (b.qualityScores?.reasoning ?? 0) - (a.qualityScores?.reasoning ?? 0)
@@ -114,7 +114,7 @@ function pickOnePerProvider(
 
 /** Pick the doc-quality default model: highest-reasoning model overall. */
 function pickDefaultModel(): string {
-  const sorted = [...DEFAULT_MODEL_CAPABILITIES.models].sort(
+  const sorted = [...getInTreeCapabilitiesMatrix().models].sort(
     (a, b) => (b.qualityScores?.reasoning ?? 0) - (a.qualityScores?.reasoning ?? 0)
   );
   // Prefer claude-sonnet over claude-opus as default — opus is overkill for
