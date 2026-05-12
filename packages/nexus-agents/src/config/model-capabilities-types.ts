@@ -85,6 +85,27 @@ export const DEFAULT_CLI: CliNameLiteral = 'claude';
 /** Default confidence score for routing when no task analysis is performed. */
 export const DEFAULT_ROUTING_CONFIDENCE = 0.85;
 
+/**
+ * Canonical model id enum used for narrow `ModelId` typing and as the
+ * argument to `z.enum(MODEL_IDS)` in `ModelCapabilitySchema`.
+ *
+ * This is a hand-maintained narrow tuple rather than a derived view
+ * from `ModelRegistry` because the literal-union type is load-bearing:
+ * — Zod schemas (`ModelCapabilitySchema.id`, `replacedBy`) need a
+ *   closed enum at compile time.
+ * — Many function signatures across `src/` accept `ModelId` and rely
+ *   on the narrowed type for exhaustiveness.
+ *
+ * The runtime invariant — `MODEL_IDS` matches the in-tree registry
+ * entries — is asserted by `model-ids-invariant.test.ts`. If you add
+ * or remove a model in `DEFAULT_MODEL_CAPABILITIES.models`, you must
+ * also update this list (and the test will tell you when they drift).
+ *
+ * Slice E of #2546 will collapse `model-capabilities.ts` itself; at
+ * that point `MODEL_IDS` either moves to `model-config-helpers.ts` or
+ * its consumers are loosened to `string`. This narrow type stays
+ * until then.
+ */
 export const MODEL_IDS = [
   'claude-opus',
   'claude-sonnet',
