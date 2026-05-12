@@ -11,8 +11,9 @@
  *
  * The narrow type can't be auto-derived because TypeScript needs a
  * compile-time literal-tuple for `as const`; deriving from a runtime
- * `.map(e => e.id)` widens to `string[]`. Slice E (#2605) revisits
- * this when `model-capabilities.ts` is deleted.
+ * `.map(e => e.id)` widens to `string[]`. Slice E (#2605) deleted
+ * `model-capabilities.ts` and renamed the data to `in-tree-data.ts`,
+ * but the narrow-type constraint is unchanged.
  *
  * @module config/model-ids-invariant.test
  */

@@ -7,7 +7,7 @@
 
 ## Overview
 
-Research on integrating external CLI tools (Claude CLI, Gemini CLI, Codex CLI, OpenCode) plus OpenRouter-backed free models with nexus-agents for multi-model orchestration. Covers authentication patterns, capability profiles, and MCP integration. The live, canonical model registry (pricing, quality, context windows) lives in [`packages/nexus-agents/src/config/model-capabilities.ts`](../../../../packages/nexus-agents/src/config/model-capabilities.ts) — prefer it over this summary when they disagree.
+Research on integrating external CLI tools (Claude CLI, Gemini CLI, Codex CLI, OpenCode) plus OpenRouter-backed free models with nexus-agents for multi-model orchestration. Covers authentication patterns, capability profiles, and MCP integration. The live, canonical model registry (pricing, quality, context windows) lives in [`packages/nexus-agents/src/config/in-tree-data.ts`](../../../../packages/nexus-agents/src/config/in-tree-data.ts) — prefer it over this summary when they disagree.
 
 ## CLI Comparison
 

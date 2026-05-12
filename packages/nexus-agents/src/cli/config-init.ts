@@ -142,7 +142,7 @@ function renderConfigTemplate(): string {
 # Documentation: https://github.com/williamzujkowski/nexus-agents
 #
 # Model identifiers below are derived from the canonical registry at
-# config/model-capabilities.ts. Update there to change defaults; this
+# config/in-tree-data.ts. Update there to change defaults; this
 # template is regenerated each time config init runs.
 
 # Model configuration

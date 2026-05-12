@@ -213,7 +213,7 @@ enum RequestTier {
 
 ### 9. Model Registry Interface
 
-**Source:** `src/config/model-capabilities.ts`
+**Source:** `src/config/model-registry.ts` (registry class) + `src/config/in-tree-data.ts` (matrix data)
 
 ```typescript
 interface ModelCapability {

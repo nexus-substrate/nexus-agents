@@ -87,18 +87,18 @@ Full tool reference: [docs/ENTRYPOINTS.md](./docs/ENTRYPOINTS.md).
 
 Do not create parallel implementations — modify existing files at these canonical locations. Never create `enhanced_*`, `new_*`, `v2_*`, or `refactor_*` forks; migrate logic to the canonical location and remove the deprecated file.
 
-| Concern           | Canonical path                                                          |
-| ----------------- | ----------------------------------------------------------------------- |
-| Task analysis     | `SharedTaskAnalyzer` — `src/core/task-analysis/shared-task-analyzer.ts` |
-| Task routing      | `CompositeRouter` — `src/cli-adapters/composite-router.ts`              |
-| Consensus voting  | `ConsensusEngine` — `src/consensus/engine.ts`                           |
-| CLI adapters      | `createAllAdapters()` — `src/cli-adapters/factory.ts`                   |
-| MCP tools         | `registerTools()` — `src/mcp/tools/index.ts`                            |
-| Model registry    | `DEFAULT_MODEL_CAPABILITIES` — `src/config/model-capabilities.ts`       |
-| Adapter registry  | `UnifiedAdapterRegistry` — `src/adapters/unified-registry.ts`           |
-| Graph workflows   | `GraphBuilder` — `src/orchestration/graph/graph-builder.ts`             |
-| Pipeline runner   | `PipelineRunner` — `src/pipeline/pipeline-runner.ts`                    |
-| Security pipeline | `src/security/index.ts`                                                 |
+| Concern           | Canonical path                                                                                                 |
+| ----------------- | -------------------------------------------------------------------------------------------------------------- |
+| Task analysis     | `SharedTaskAnalyzer` — `src/core/task-analysis/shared-task-analyzer.ts`                                        |
+| Task routing      | `CompositeRouter` — `src/cli-adapters/composite-router.ts`                                                     |
+| Consensus voting  | `ConsensusEngine` — `src/consensus/engine.ts`                                                                  |
+| CLI adapters      | `createAllAdapters()` — `src/cli-adapters/factory.ts`                                                          |
+| MCP tools         | `registerTools()` — `src/mcp/tools/index.ts`                                                                   |
+| Model registry    | `ModelRegistry` + `getDefaultRegistry()` — `src/config/model-registry.ts` (data: `src/config/in-tree-data.ts`) |
+| Adapter registry  | `UnifiedAdapterRegistry` — `src/adapters/unified-registry.ts`                                                  |
+| Graph workflows   | `GraphBuilder` — `src/orchestration/graph/graph-builder.ts`                                                    |
+| Pipeline runner   | `PipelineRunner` — `src/pipeline/pipeline-runner.ts`                                                           |
+| Security pipeline | `src/security/index.ts`                                                                                        |
 
 All task routing goes through: `Task → BudgetRouter → ZeroRouter → PreferenceRouter → TopsisRouter → LinUCB → Selected Model`. Do NOT directly instantiate stage routers — use `CompositeRouter.route(task)`.
 
