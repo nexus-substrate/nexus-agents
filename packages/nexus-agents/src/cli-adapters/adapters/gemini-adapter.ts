@@ -43,15 +43,13 @@ import {
 import { GEMINI_LEGACY_DEFAULTS, createCircuitOpenError } from './gemini-adapter-helpers.js';
 import { executeCliRetryLoop } from '../cli-retry-loop.js';
 import {
-  DEFAULT_MODEL_PER_CLI,
-  DEFAULT_MODEL_CAPABILITIES,
-} from '../../config/model-capabilities.js';
-import { buildModelInfo } from '../../config/model-config-helpers.js';
+  buildModelInfo,
+  getCliModelName,
+  getDefaultModelForCli,
+} from '../../config/model-config-helpers.js';
 
 /** Derive the CLI model name for the default Gemini model from the canonical registry. */
-const DEFAULT_GEMINI_CLI_MODEL: string =
-  DEFAULT_MODEL_CAPABILITIES.models.find((m) => m.id === DEFAULT_MODEL_PER_CLI.gemini)
-    ?.cliModelName ?? DEFAULT_MODEL_PER_CLI.gemini;
+const DEFAULT_GEMINI_CLI_MODEL: string = getCliModelName(getDefaultModelForCli('gemini'));
 
 /** Configuration for Gemini adapter. Extends BaseAdapterOptions with retry/circuit breaker. */
 export interface GeminiConfig extends BaseAdapterOptions {

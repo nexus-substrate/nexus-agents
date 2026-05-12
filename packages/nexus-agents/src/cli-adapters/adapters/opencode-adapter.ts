@@ -27,8 +27,8 @@ import {
   getDefaultModelForCli,
   getCliModelName,
   buildModelInfo,
+  findInTreeByCli,
 } from '../../config/model-config-helpers.js';
-import { findModelsByCli } from '../../config/model-capabilities.js';
 import { createLogger } from '../../core/index.js';
 
 const logger = createLogger({ component: 'opencode-adapter' });
@@ -45,7 +45,7 @@ const MODEL_TO_CLI_NAME: Record<string, string> = buildOpenCodeAliasMap();
 
 function buildOpenCodeAliasMap(): Record<string, string> {
   const map: Record<string, string> = {};
-  for (const model of findModelsByCli('opencode')) {
+  for (const model of findInTreeByCli('opencode')) {
     if (model.cliModelName === undefined) continue;
     // Map internal ID → CLI model name
     map[model.id] = model.cliModelName;
