@@ -10,7 +10,7 @@
  * (Source: Issue #807, Issue #1149)
  */
 
-import { DEFAULT_MODEL_CAPABILITIES } from '../config/model-capabilities.js';
+import { getInTreeCapabilitiesMatrix } from '../config/model-config-helpers.js';
 
 // =============================================================================
 // Types
@@ -61,10 +61,11 @@ function isPrefixMatch(
  * Matches by: exact (id, cliModelName, cliAlias), then prefix match.
  */
 function lookupCanonicalPricing(model: string): ModelPricing | undefined {
-  for (const m of DEFAULT_MODEL_CAPABILITIES.models) {
+  const models = getInTreeCapabilitiesMatrix().models;
+  for (const m of models) {
     if (isExactMatch(m, model)) return toPricing(m.pricing);
   }
-  for (const m of DEFAULT_MODEL_CAPABILITIES.models) {
+  for (const m of models) {
     if (m.pricing !== undefined && isPrefixMatch(m, model)) return toPricing(m.pricing);
   }
   return undefined;

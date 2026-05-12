@@ -11,7 +11,7 @@
 
 import type { ModelCapability, ScalingTaskType } from './scaling-types.js';
 import { clamp } from '../../utils/math-utils.js';
-import { DEFAULT_MODEL_CAPABILITIES } from '../../config/model-capabilities.js';
+import { getInTreeCapabilitiesMatrix } from '../../config/model-config-helpers.js';
 
 // =============================================================================
 // Capability Data — derived from canonical model registry
@@ -40,7 +40,7 @@ const PROVIDER_AVG_LATENCY: Record<string, number> = {
  */
 function deriveFromCanonical(): Record<string, BaseCapability> {
   const result: Record<string, BaseCapability> = {};
-  for (const m of DEFAULT_MODEL_CAPABILITIES.models) {
+  for (const m of getInTreeCapabilitiesMatrix().models) {
     const q = m.qualityScores;
     if (q === undefined) continue;
     const avgQuality = (q.reasoning + q.codeGeneration) / 2;
