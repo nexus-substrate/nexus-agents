@@ -30,12 +30,12 @@ import {
   MCP_KEYWORDS,
   EXPLORATION_KEYWORDS,
 } from './delegate-to-model-types.js';
+import { modelSupportsAll } from '../../config/model-capabilities.js';
 import {
-  DEFAULT_MODEL_CAPABILITIES,
-  DEFAULT_MODEL_PER_CLI,
-  getModelCapabilities,
-  modelSupportsAll,
-} from '../../config/model-capabilities.js';
+  getDefaultModelForCli,
+  getInTreeCapabilitiesMatrix,
+  lookupInTreeCapability,
+} from '../../config/model-config-helpers.js';
 import type { SpecializationMatch } from '../../config/task-specialization-types.js';
 import type { TaskCategory } from '../../config/task-specialization-types.js';
 import { detectTaskCategory } from '../../config/task-specialization.js';
@@ -124,9 +124,9 @@ export function calcPreferenceScore(
   return bonusMap[pref];
 }
 
-/** Look up the CLI name for a model ID from the capabilities matrix. */
+/** Look up the CLI name for a model ID from the canonical registry. */
 export function getCliForModel(modelId: string): string | undefined {
-  return DEFAULT_MODEL_CAPABILITIES.models.find((m) => m.id === modelId)?.cliName;
+  return lookupInTreeCapability(modelId)?.cliName;
 }
 
 /** Best-effort adaptive bonus lookup. Never throws. */
@@ -263,7 +263,7 @@ export function filterByModality(requirements: TaskRequirements): Set<string> | 
   if (modalReqs === null) return null;
 
   const eligible = new Set<string>();
-  for (const model of DEFAULT_MODEL_CAPABILITIES.models) {
+  for (const model of getInTreeCapabilitiesMatrix().models) {
     if (modelSupportsAll(model.id, modalReqs)) {
       eligible.add(model.id);
     }
@@ -289,7 +289,7 @@ export function scoreAllModels(
     .filter(([name]) => eligible === null || eligible.has(name))
     .filter(([name]) => !availCache.isKnownUnavailable(name as ModelId))
     .map(([name, profile]) => {
-      const cap = getModelCapabilities(name);
+      const cap = lookupInTreeCapability(name);
       const opts: ScoreModelOptions = {
         preferredCapability: pref,
         billingMode,
@@ -346,7 +346,7 @@ export function selectModel(
 
   if (!best) {
     return {
-      model: DEFAULT_MODEL_PER_CLI.claude,
+      model: getDefaultModelForCli('claude'),
       reasoning: 'Default fallback to Claude Opus',
       alternatives: [],
     };

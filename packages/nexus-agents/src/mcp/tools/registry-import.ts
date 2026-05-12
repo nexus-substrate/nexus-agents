@@ -14,7 +14,7 @@ import type {
   Provider,
   CliNameLiteral,
 } from '../../config/model-capabilities-types.js';
-import { DEFAULT_MODEL_CAPABILITIES } from '../../config/model-capabilities.js';
+import { getInTreeCapabilitiesMatrix } from '../../config/model-config-helpers.js';
 import type { RegistryImportInput, RegistryImportResponse } from './registry-import-types.js';
 
 // ============================================================================
@@ -79,7 +79,7 @@ export function generateRegistryEntry(input: RegistryImportInput): RegistryImpor
 
 /** Checks if a model with this provider + modelId already exists. */
 function findExistingEntry(provider: Provider, modelId: string): ModelCapability | undefined {
-  return DEFAULT_MODEL_CAPABILITIES.models.find(
+  return getInTreeCapabilitiesMatrix().models.find(
     (m) => m.provider === provider && m.cliModelName === modelId
   );
 }
