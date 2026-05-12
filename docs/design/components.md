@@ -69,7 +69,7 @@ Single source of truth for all model metadata and application configuration.
 
 **Key components:**
 
-- **Model Registry** (`config/model-capabilities.ts`, Issue #683): `DEFAULT_MODEL_CAPABILITIES` — pricing, quality scores, context windows, max output, CLI aliases for all supported models.
+- **Model Registry** (`config/model-registry.ts` + `config/in-tree-data.ts`, Issues #683 / #2540 / #2546): `ModelRegistry` class + `DEFAULT_MODEL_CAPABILITIES` data — pricing, quality scores, context windows, max output, CLI aliases for all supported models.
 - **Model Helpers** (`config/model-config-helpers.ts`, Issue #807): Derived helpers — `getModelPricing()`, `buildModelInfo()`, `findCanonicalModel()`, `resolveCliAlias()`, `buildTopsisProfiles()`
 - **App Config** (`config/schemas.ts`): Zod-validated `AppConfigSchema` — logging, security, observability, gateway
 - **Defaults** (`config/defaults.ts`): `DEFAULTS` object — centralized timeout, rate-limit, retry, circuit-breaker defaults

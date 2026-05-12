@@ -118,7 +118,7 @@ nexus-agents includes two pre-configured model profiles for custom endpoints:
 | `opencode-custom-opus`   | `custom/claude-opus-4-5`   | reasoning: 10, code: 9, speed: 5 |
 | `opencode-custom-sonnet` | `custom/claude-sonnet-4-5` | reasoning: 9, code: 9, speed: 7  |
 
-These are registered in `config/model-capabilities.ts` with `provider: 'custom-openai'` and `cliName: 'opencode'`.
+These are registered in `config/in-tree-data.ts` with `provider: 'custom-openai'` and `cliName: 'opencode'`.
 
 ## Step 4: Routing
 
@@ -166,7 +166,7 @@ If your gateway uses different model identifiers, two changes are needed:
 }
 ```
 
-**2. nexus-agents registry** (`config/model-capabilities.ts`) — `cliModelName` must match `<provider>/<model-key>`:
+**2. nexus-agents registry** (`config/in-tree-data.ts`) — `cliModelName` must match `<provider>/<model-key>`:
 
 ```typescript
 {
@@ -304,7 +304,7 @@ The `Dockerfile.sandbox` extends `docker/sandbox-templates:opencode` with nexus-
 
 **Model not selected by router**: Custom models default to `cliName: 'opencode'`. If OpenCode is unavailable, the router skips opencode models entirely. Check `nexus-agents doctor` for adapter status.
 
-**Wrong model used**: Verify `cliModelName` in `model-capabilities.ts` matches the provider ID in `opencode.json`. The format is `<provider-id>/<model-id>`.
+**Wrong model used**: Verify `cliModelName` in `in-tree-data.ts` matches the provider ID in `opencode.json`. The format is `<provider-id>/<model-id>`.
 
 ## Related
 
