@@ -57,7 +57,16 @@ export function loadModelsDevSnapshot(options?: {
   const logger = createLogger({ component: 'models-dev-snapshot' });
   const path = options?.path ?? defaultSnapshotPath();
 
-  if (!existsSync(path)) {
+  // Defensive against partial `vi.mock('node:fs', ...)` in tests that
+  // omit `existsSync` — match manifest-overlay's behaviour and treat
+  // any probe failure as "no snapshot."
+  let exists = false;
+  try {
+    exists = existsSync(path);
+  } catch {
+    return { entries: [], path, status: 'missing' };
+  }
+  if (!exists) {
     return { entries: [], path, status: 'missing' };
   }
 

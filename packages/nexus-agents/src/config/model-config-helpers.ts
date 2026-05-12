@@ -1,19 +1,21 @@
 /**
  * nexus-agents/config - Model Config Helpers
  *
- * Derived helper functions that read from the canonical model registry.
+ * Derived helper functions that read from the canonical ModelRegistry.
  * All model metadata consumers should import from here instead of
  * maintaining their own hardcoded tables.
  *
+ * As of #2546 slice B, the internals read from
+ * `getDefaultRegistry().getEntry()` / `.allEntries()` rather than
+ * `DEFAULT_MODEL_CAPABILITIES.models.find()`. Public signatures
+ * unchanged so downstream consumers see no diff.
+ *
  * @module config/model-config-helpers
- * (Source: Issue #807)
+ * (Source: Issue #807; registry migration #2546)
  */
 
-import {
-  DEFAULT_MODEL_CAPABILITIES,
-  DEFAULT_MODEL_PER_CLI,
-  getModelCapabilities,
-} from './model-capabilities.js';
+import { buildInTreeEntries } from './in-tree-entries.js';
+import { DEFAULT_MODEL_PER_CLI } from './model-capabilities.js';
 import type {
   ModelId,
   ModelCapability,
@@ -21,19 +23,54 @@ import type {
   Pricing,
   QualityScores,
 } from './model-capabilities-types.js';
+import { getDefaultRegistry, type ModelEntry } from './model-registry.js';
+
+/**
+ * Average latency estimates per CLI (ms). Returned by a function (not
+ * a top-level const) to dodge TDZ in circular-load scenarios — module
+ * loaders sometimes re-enter `model-config-helpers` mid-evaluation
+ * via the `topsis-types → buildTopsisProfiles` chain, and function
+ * declarations are hoisted while `const` declarations are not.
+ */
+function cliAvgLatency(): Record<CliNameLiteral, number> {
+  return { claude: 800, gemini: 400, codex: 500, opencode: 600 };
+}
 
 // ---------------------------------------------------------------------------
 // Single-Model Lookups
 // ---------------------------------------------------------------------------
 
+/**
+ * Resolve a modelId to an in-tree entry via the global registry.
+ * Returns undefined when no in-tree authoritative entry exists
+ * (e.g. unknown id, gateway model). Routes through `getDefaultRegistry()`
+ * so manifest-overlay + snapshot tiers can still influence runtime
+ * behaviour. Used by single-model lookup helpers.
+ */
+function lookupInTree(modelId: string): ModelEntry | undefined {
+  const entry = getDefaultRegistry().getEntry(modelId);
+  return entry.source === 'in-tree' ? entry : undefined;
+}
+
+/**
+ * Filesystem-free variant: builds an `id → entry` map from the
+ * in-tree converter only. Used by bulk builders that run at
+ * module-load time (e.g. `buildCliCapabilityProfiles`), where we
+ * cannot afford to trigger `getDefaultRegistry()` because that
+ * touches the filesystem (manifest-overlay, snapshot loader).
+ */
+function inTreeById(): Map<string, ModelEntry> {
+  return new Map(buildInTreeEntries().map((e) => [e.id, e] as const));
+}
+
 /** Get pricing for a model, or undefined if not set. */
 export function getModelPricing(modelId: ModelId): Pricing | undefined {
-  return getModelCapabilities(modelId)?.pricing;
+  return lookupInTree(modelId)?.pricing;
 }
 
 /** Get display name for a model. Falls back to the modelId string. */
 export function getModelDisplayName(modelId: ModelId): string {
-  return getModelCapabilities(modelId)?.displayName ?? modelId;
+  return lookupInTree(modelId)?.displayName ?? modelId;
 }
 
 /**
@@ -51,17 +88,17 @@ export function getModelDisplayName(modelId: ModelId): string {
  * should call `CapabilityDiscovery.resolve(id)` directly — #2176.
  */
 export function getModelContextWindow(modelId: ModelId): number {
-  return getModelCapabilities(modelId)?.contextWindow ?? 8_192;
+  return lookupInTree(modelId)?.contextWindow ?? 8_192;
 }
 
 /** Get max output tokens for a model, or undefined if not set. */
 export function getModelMaxOutput(modelId: ModelId): number | undefined {
-  return getModelCapabilities(modelId)?.maxOutputTokens;
+  return lookupInTree(modelId)?.maxOutputTokens;
 }
 
 /** Get quality scores for a model, or undefined if not set. */
 export function getModelQualityScores(modelId: ModelId): QualityScores | undefined {
-  return getModelCapabilities(modelId)?.qualityScores;
+  return lookupInTree(modelId)?.qualityScores;
 }
 
 /** Get the default (strongest) model for a given CLI tool. */
@@ -71,8 +108,8 @@ export function getDefaultModelForCli(cli: CliNameLiteral): ModelId {
 
 /** Get the model name the CLI binary expects (e.g., 'gemini-2.5-pro'). */
 export function getCliModelName(modelId: ModelId): string {
-  const cap = getModelCapabilities(modelId);
-  return cap?.cliModelName ?? cap?.cliAlias ?? modelId;
+  const entry = lookupInTree(modelId);
+  return entry?.cliModelName ?? entry?.cliAlias ?? modelId;
 }
 
 /**
@@ -83,9 +120,14 @@ export function getCliModelName(modelId: ModelId): string {
  *   3. aliases[] membership (legacy version names — #2199 Child 5)
  */
 export function resolveCliAlias(alias: string): ModelId | undefined {
-  return DEFAULT_MODEL_CAPABILITIES.models.find(
-    (m) => m.cliAlias === alias || m.id === alias || (m.aliases?.includes(alias) ?? false)
-  )?.id;
+  const match = getDefaultRegistry()
+    .allEntries()
+    .find(
+      (e) =>
+        e.source === 'in-tree' &&
+        (e.cliAlias === alias || e.id === alias || (e.aliases?.includes(alias) ?? false))
+    );
+  return match?.id as ModelId | undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -110,12 +152,12 @@ interface CapabilityProfileShape {
  */
 export function buildCapabilityProfiles(): Record<string, CapabilityProfileShape> {
   const result: Record<string, CapabilityProfileShape> = {};
-  for (const model of DEFAULT_MODEL_CAPABILITIES.models) {
-    const q = model.qualityScores;
-    if (q !== undefined) {
-      result[model.id] = {
+  for (const entry of buildInTreeEntries()) {
+    const q = entry.qualityScores;
+    if (q !== undefined && entry.contextWindow !== undefined) {
+      result[entry.id] = {
         reasoning: q.reasoning,
-        contextWindow: model.contextWindow,
+        contextWindow: entry.contextWindow,
         codeGeneration: q.codeGeneration,
         speed: q.speed,
         cost: q.cost,
@@ -131,15 +173,16 @@ export function buildCapabilityProfiles(): Record<string, CapabilityProfileShape
  */
 export function buildCliCapabilityProfiles(): Record<CliNameLiteral, CapabilityProfileShape> {
   const result = {} as Record<CliNameLiteral, CapabilityProfileShape>;
+  const byId = inTreeById();
   for (const [cli, modelId] of Object.entries(DEFAULT_MODEL_PER_CLI) as Array<
     [CliNameLiteral, ModelId]
   >) {
-    const model = getModelCapabilities(modelId);
-    const q = model?.qualityScores;
-    if (model !== undefined && q !== undefined) {
+    const entry = byId.get(modelId);
+    const q = entry?.qualityScores;
+    if (entry !== undefined && q !== undefined && entry.contextWindow !== undefined) {
       result[cli] = {
         reasoning: q.reasoning,
-        contextWindow: model.contextWindow,
+        contextWindow: entry.contextWindow,
         codeGeneration: q.codeGeneration,
         speed: q.speed,
         cost: q.cost,
@@ -161,39 +204,33 @@ interface TopsisProfileShape {
   readonly qualityScore: number;
 }
 
-/** Average latency estimates per CLI (ms). */
-const CLI_AVG_LATENCY: Record<CliNameLiteral, number> = {
-  claude: 800,
-  gemini: 400,
-  codex: 500,
-  opencode: 600,
-};
-
 /**
  * Build TOPSIS model profiles for the default model of each CLI.
  * Used by topsis-types.ts to replace DEFAULT_MODEL_PROFILES.
  */
 export function buildTopsisProfiles(): readonly TopsisProfileShape[] {
   const profiles: TopsisProfileShape[] = [];
+  const byId = inTreeById();
   for (const [cli, modelId] of Object.entries(DEFAULT_MODEL_PER_CLI) as Array<
     [CliNameLiteral, ModelId]
   >) {
-    const model = getModelCapabilities(modelId);
-    const q = model?.qualityScores;
-    const p = model?.pricing;
-    if (model === undefined || q === undefined || p === undefined) continue;
+    const entry = byId.get(modelId);
+    const q = entry?.qualityScores;
+    const p = entry?.pricing;
+    if (entry === undefined || q === undefined || p === undefined) continue;
+    if (entry.contextWindow === undefined) continue;
     profiles.push({
       cliName: cli,
       capabilities: {
         reasoning: q.reasoning,
-        contextWindow: model.contextWindow,
+        contextWindow: entry.contextWindow,
         codeGeneration: q.codeGeneration,
         speed: q.speed,
         cost: q.cost,
       },
       costPerMillionInput: p.inputPer1M,
       costPerMillionOutput: p.outputPer1M,
-      averageLatencyMs: CLI_AVG_LATENCY[cli],
+      averageLatencyMs: cliAvgLatency()[cli],
       qualityScore: (q.reasoning + q.codeGeneration) / 2,
     });
   }
@@ -225,19 +262,60 @@ export interface ModelInfoShape {
  *   3. `id` — registry identifier ('gemini-pro', 'claude-opus') (#2200 Child 2)
  *   4. `aliases[]` membership — legacy / version-suffix names that resolve
  *      to this entry (#2200 Child 1)
+ *
+ * Returns the legacy ModelCapability shape for backward compatibility
+ * with adapter consumers; values are pulled from the registry's
+ * authoritative in-tree entries.
  */
 export function findCanonicalModel(
   cli: CliNameLiteral,
   cliModelName: string
 ): ModelCapability | undefined {
-  return DEFAULT_MODEL_CAPABILITIES.models.find(
-    (m) =>
-      m.cliName === cli &&
-      (m.cliModelName === cliModelName ||
-        m.cliAlias === cliModelName ||
-        m.id === cliModelName ||
-        (m.aliases?.includes(cliModelName) ?? false))
-  );
+  const entry = getDefaultRegistry()
+    .allEntries()
+    .find(
+      (e) =>
+        e.source === 'in-tree' &&
+        e.cliName === cli &&
+        (e.cliModelName === cliModelName ||
+          e.cliAlias === cliModelName ||
+          e.id === cliModelName ||
+          (e.aliases?.includes(cliModelName) ?? false))
+    );
+  return entry !== undefined ? entryToCapability(entry) : undefined;
+}
+
+/**
+ * Project a ModelEntry back to the legacy ModelCapability shape for
+ * adapter callers that still expect the old type. New callers should
+ * read fields directly off `ModelEntry`.
+ */
+type Writable<T> = { -readonly [K in keyof T]: T[K] };
+
+function applyOptionalCapabilityFields(entry: ModelEntry, target: Writable<ModelCapability>): void {
+  if (entry.notes !== undefined) target.notes = entry.notes;
+  if (entry.pricing !== undefined) target.pricing = entry.pricing;
+  if (entry.qualityScores !== undefined) target.qualityScores = entry.qualityScores;
+  if (entry.maxOutputTokens !== undefined) target.maxOutputTokens = entry.maxOutputTokens;
+  if (entry.cliName !== undefined) target.cliName = entry.cliName as ModelCapability['cliName'];
+  if (entry.cliAlias !== undefined) target.cliAlias = entry.cliAlias;
+  if (entry.cliModelName !== undefined) target.cliModelName = entry.cliModelName;
+  if (entry.aliases !== undefined) target.aliases = [...entry.aliases];
+}
+
+function entryToCapability(entry: ModelEntry): ModelCapability {
+  const cap: ModelCapability = {
+    id: entry.id as ModelId,
+    displayName: entry.displayName ?? entry.id,
+    provider: (entry.vendor === 'unknown' ? 'openai' : entry.vendor) as ModelCapability['provider'],
+    contextWindow: entry.contextWindow ?? 0,
+    outputModalities: [...(entry.outputModalities ?? ['text'])],
+    inputModalities: [...(entry.inputModalities ?? ['text'])],
+    toolCapabilities: [...(entry.toolCapabilities ?? [])],
+    specialFeatures: [...(entry.specialFeatures ?? [])],
+  };
+  applyOptionalCapabilityFields(entry, cap);
+  return cap;
 }
 
 /**
@@ -271,23 +349,23 @@ export function buildModelInfo(
  */
 export function buildMockModelInfo(): Record<CliNameLiteral, ModelInfoShape> {
   const result = {} as Record<CliNameLiteral, ModelInfoShape>;
+  const byId = inTreeById();
   for (const [cli, modelId] of Object.entries(DEFAULT_MODEL_PER_CLI) as Array<
     [CliNameLiteral, ModelId]
   >) {
-    const model = getModelCapabilities(modelId);
-    if (model === undefined) continue;
+    const entry = byId.get(modelId);
+    if (entry?.contextWindow === undefined) continue;
     const info: ModelInfoShape = {
-      id: model.id,
-      name: model.displayName,
-      contextWindow: model.contextWindow,
+      id: entry.id,
+      name: entry.displayName ?? entry.id,
+      contextWindow: entry.contextWindow,
     };
-    // Only set optional properties when values exist (exactOptionalPropertyTypes)
-    if (model.maxOutputTokens !== undefined) {
-      (info as { maxOutput: number }).maxOutput = model.maxOutputTokens;
+    if (entry.maxOutputTokens !== undefined) {
+      (info as { maxOutput: number }).maxOutput = entry.maxOutputTokens;
     }
-    if (model.pricing !== undefined) {
-      (info as { costPerMillionInput: number }).costPerMillionInput = model.pricing.inputPer1M;
-      (info as { costPerMillionOutput: number }).costPerMillionOutput = model.pricing.outputPer1M;
+    if (entry.pricing !== undefined) {
+      (info as { costPerMillionInput: number }).costPerMillionInput = entry.pricing.inputPer1M;
+      (info as { costPerMillionOutput: number }).costPerMillionOutput = entry.pricing.outputPer1M;
     }
     result[cli] = info;
   }
