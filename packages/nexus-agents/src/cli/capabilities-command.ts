@@ -12,18 +12,20 @@
 import type { ParsedCliArgs } from '../cli-types.js';
 import { EXIT_CODES } from '../cli-types.js';
 import {
-  DEFAULT_MODEL_CAPABILITIES,
   findModelsByOutputModality,
   findModelsByInputModality,
   findModelsByToolCapability,
   findModelsByFeature,
-  getModelCapabilities,
   OUTPUT_MODALITIES,
   INPUT_MODALITIES,
   TOOL_CAPABILITIES,
   SPECIAL_FEATURES,
 } from '../config/model-capabilities.js';
 import type { ModelCapability } from '../config/model-capabilities.js';
+import {
+  getInTreeCapabilitiesMatrix,
+  lookupInTreeCapability,
+} from '../config/model-config-helpers.js';
 
 // ============================================================================
 // Constants
@@ -86,8 +88,9 @@ function fmtContext(tokens: number): string {
 // ============================================================================
 
 function renderListTable(): void {
-  const models = DEFAULT_MODEL_CAPABILITIES.models;
-  const ver = String(DEFAULT_MODEL_CAPABILITIES.version);
+  const matrix = getInTreeCapabilitiesMatrix();
+  const models = matrix.models;
+  const ver = String(matrix.version);
   write(`\n${C.bold}Model Capabilities Matrix${C.reset} (v${ver})\n`);
 
   write(
@@ -112,11 +115,11 @@ function renderListTable(): void {
 }
 
 function renderListJson(): void {
-  write(JSON.stringify(DEFAULT_MODEL_CAPABILITIES, null, 2));
+  write(JSON.stringify(getInTreeCapabilitiesMatrix(), null, 2));
 }
 
 function renderListMarkdown(): void {
-  const models = DEFAULT_MODEL_CAPABILITIES.models;
+  const models = getInTreeCapabilitiesMatrix().models;
   write('# Model Capabilities Matrix\n');
   write('| Model | Provider | Context | Image Out | Audio | MCP | Sandbox | Thinking | Research |');
   write('|-------|----------|---------|-----------|-------|-----|---------|----------|----------|');
@@ -254,11 +257,13 @@ function handleCompare(args: ParsedCliArgs): void {
     write(`${C.red}Usage: nexus-agents capabilities compare <model1> <model2>${C.reset}`);
     process.exit(EXIT_CODES.INVALID_ARGS);
   }
-  const m1 = getModelCapabilities(id1);
-  const m2 = getModelCapabilities(id2);
+  const m1 = lookupInTreeCapability(id1);
+  const m2 = lookupInTreeCapability(id2);
   if (m1 === undefined || m2 === undefined) {
     const missing = m1 === undefined ? id1 : id2;
-    const ids = DEFAULT_MODEL_CAPABILITIES.models.map((m) => m.id).join(', ');
+    const ids = getInTreeCapabilitiesMatrix()
+      .models.map((m) => m.id)
+      .join(', ');
     write(`${C.red}Unknown model: ${missing}${C.reset}`);
     write(`Valid models: ${ids}`);
     process.exit(EXIT_CODES.INVALID_ARGS);
