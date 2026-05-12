@@ -741,7 +741,7 @@ describe('createClaudeAdapter', () => {
 
 describe('CLAUDE_MODELS', () => {
   it('derives current cliModelName from the canonical registry (issue #2186)', () => {
-    // Values now come from config/model-capabilities.ts so they refresh
+    // Values now come from config/in-tree-data.ts so they refresh
     // automatically when the registry is updated, not when this file is edited.
     expect(CLAUDE_MODELS.OPUS_4).toBe('claude-opus-4-6');
     expect(CLAUDE_MODELS.SONNET_4).toBe('claude-sonnet-4-6');

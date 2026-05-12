@@ -12,7 +12,7 @@ import { findCanonicalModel, getCliModelName } from '../config/model-config-help
 /**
  * Supported Gemini model identifiers.
  *
- * Current models (2.5+ and 3.x) derive from `config/model-capabilities.ts`
+ * Current models (2.5+ and 3.x) derive from `config/in-tree-data.ts`
  * (single source of truth — #2200 Child 2). Legacy 1.5 / 2.0 strings remain
  * as constants for backward compat with external consumers; they are not in
  * the canonical registry because Google deprecated those generations

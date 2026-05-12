@@ -10,10 +10,11 @@
  * real filesystem or network.
  *
  * This issue (#2176) only delivers the class + tests. Existing call sites
- * keep using the direct T1 helpers in `model-capabilities.ts` / `model-
- * config-helpers.ts` — those get migrated when #2177 flips the conservative
- * default from the legacy 200 K fall-through to fail-closed 8 K, and when
- * #2178 wires the T3 YAML loader in.
+ * keep using the direct T1 helpers in `model-config-helpers.ts` (the
+ * registry-backed surface that replaced the legacy `model-capabilities.ts`
+ * after #2546 slice E) — those get migrated when #2177 flips the
+ * conservative default from the legacy 200 K fall-through to fail-closed
+ * 8 K, and when #2178 wires the T3 YAML loader in.
  *
  * @module config/capability-discovery
  */

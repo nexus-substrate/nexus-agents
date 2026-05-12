@@ -28,7 +28,7 @@ describe('extractSymbols', () => {
 
   it('reports significant token savings', async () => {
     const result = await extractSymbols(resolve(SRC_DIR, 'config/model-config-helpers.ts'));
-    // model-capabilities.ts is a large file — expect meaningful savings
+    // model-config-helpers.ts is a large file — expect meaningful savings
     expect(result.savingsPercent).toBeGreaterThan(0);
     expect(result.symbols.length).toBeGreaterThan(3);
   });

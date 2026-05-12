@@ -13,11 +13,11 @@ import type { CliError, CliName } from '../types.js';
 
 /**
  * Fallback defaults for Gemini models not in the canonical registry.
- * All current models are in model-capabilities.ts and served by
+ * All current models are in config/in-tree-data.ts and served by
  * buildModelInfo('gemini', model). This provides sensible defaults
  * when an unknown model name is encountered at runtime.
  *
- * @see config/model-capabilities.ts — single source of truth for current models
+ * @see config/in-tree-data.ts — single source of truth for current models
  */
 export const GEMINI_LEGACY_DEFAULTS = {
   displayNames: {} as Readonly<Record<string, string>>,

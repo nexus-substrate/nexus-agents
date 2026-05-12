@@ -97,7 +97,7 @@ describe('computeExpertContextUtilization', () => {
 describe('observeExpertContext', () => {
   it('emits warn log when threshold crossed', () => {
     const logger = makeLogger();
-    // claude-opus has a 1M context window per model-capabilities.ts, so
+    // claude-opus has a 1M context window per config/in-tree-data.ts, so
     // 900k tokens is 90% utilization → above default threshold.
     observeExpertContext(makeObservation({ modelId: 'claude-opus', tokensUsed: 900_000 }), logger);
     expect(logger.warn).toHaveBeenCalledWith(

@@ -170,7 +170,7 @@ describe('resolveModelId', () => {
     expect(resolveModelId('custom-model-id')).toBe('custom-model-id');
   });
 
-  // Issue #2186 Child 1: aliases derive from model-capabilities.ts (single
+  // Issue #2186 Child 1: aliases derive from config/in-tree-data.ts (single
   // source of truth), so the legacy claude-opus-4 / claude-sonnet-4 / claude-haiku-4
   // aliases must resolve to the current registry values, not the May-2025 strings
   // that were hardcoded in claude-adapter-types.ts.

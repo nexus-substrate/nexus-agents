@@ -2,10 +2,10 @@
  * nexus-agents/core - Model Pricing
  *
  * Cost calculation functions using the canonical model registry.
- * All pricing data lives in config/model-capabilities.ts — this module
+ * All pricing data lives in config/in-tree-data.ts — this module
  * provides a convenience function to calculate costs from token usage.
  *
- * @see config/model-capabilities.ts — single source of truth for model pricing
+ * @see config/in-tree-data.ts — single source of truth for model pricing
  * @module core/trace-pricing
  * (Source: Issue #807, Issue #1149)
  */

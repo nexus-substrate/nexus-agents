@@ -3,8 +3,9 @@
  *
  * Single source of truth for per-model metadata. Replaces the previous
  * split between:
- *   - `model-capabilities.ts` (canonical hardcoded list, still in-tree;
- *     migration tracked in #2546)
+ *   - `model-capabilities.ts` (canonical hardcoded list; renamed to
+ *     `in-tree-data.ts` in #2546 slice E, helpers moved here + into
+ *     `model-config-helpers.ts`)
  *   - `model-behavior-profile.ts` (vendor-pattern-matched runtime
  *     behaviour; file deleted in #2540 PR 2)
  *

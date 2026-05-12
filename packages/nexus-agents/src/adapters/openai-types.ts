@@ -4,7 +4,7 @@
  * Type definitions and constants for the OpenAI direct-API SDK adapter.
  *
  * **Architectural boundary (#2200 Child 3):** these constants do NOT live
- * in `config/model-capabilities.ts`. The canonical registry's `cliName`
+ * in `config/in-tree-data.ts`. The canonical registry's `cliName`
  * dimension targets CLI tools (`claude` / `gemini` / `codex` / `opencode`)
  * — there is no `openai` CLI binary. Adding `'openai'` to the CLI_NAMES
  * enum would force a fifth case in 4+ exhaustive switches across the
