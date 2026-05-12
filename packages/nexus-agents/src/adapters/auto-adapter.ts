@@ -22,8 +22,7 @@ import type { CliName } from '../cli-adapters/types.js';
 import type { ICliDetectionCache } from '../cli-adapters/cli-detection-cache.js';
 import { createCliDetectionCache } from '../cli-adapters/cli-detection-cache.js';
 import { CUSTOM_API_DEFAULT_MODEL } from '../config/defaults.js';
-import { getCliModelName } from '../config/model-config-helpers.js';
-import { DEFAULT_MODEL_PER_CLI } from '../config/model-capabilities.js';
+import { getCliModelName, getDefaultModelForCli } from '../config/model-config-helpers.js';
 
 /**
  * Adapter selection priority.
@@ -157,9 +156,9 @@ function resolveApiKeyFromEnv(configKey: string | undefined, envVar: string): st
  */
 function tryApiAdapter(config: AutoAdapterConfig, logger: ILogger): AdapterSelection | null {
   // Derive default model IDs from canonical registry instead of hardcoding
-  const claudeModelId = getCliModelName(DEFAULT_MODEL_PER_CLI['claude']);
-  const codexModelId = getCliModelName(DEFAULT_MODEL_PER_CLI['codex']);
-  const geminiModelId = getCliModelName(DEFAULT_MODEL_PER_CLI['gemini']);
+  const claudeModelId = getCliModelName(getDefaultModelForCli('claude'));
+  const codexModelId = getCliModelName(getDefaultModelForCli('codex'));
+  const geminiModelId = getCliModelName(getDefaultModelForCli('gemini'));
 
   // 1. Anthropic — use native ClaudeAdapter (battle-tested)
   const anthropicKey = resolveApiKeyFromEnv(config.anthropicApiKey, 'ANTHROPIC_API_KEY');

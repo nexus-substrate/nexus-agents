@@ -380,6 +380,18 @@ export function lookupInTreeCapability(modelId: string): ModelCapability | undef
   return entry !== undefined ? entryToCapability(entry) : undefined;
 }
 
+/**
+ * Registry-backed equivalent of `findModelsByCli(cli)`. Iterates
+ * the registry's in-tree entries and returns those whose `cliName`
+ * matches (#2546 slice C2). Used by adapters that previously
+ * imported `findModelsByCli` from `model-capabilities.ts`.
+ */
+export function findInTreeByCli(cliName: CliNameLiteral): ModelCapability[] {
+  return buildInTreeEntries()
+    .filter((e) => e.cliName === cliName)
+    .map(entryToCapability);
+}
+
 export function buildMockModelInfo(): Record<CliNameLiteral, ModelInfoShape> {
   const result = {} as Record<CliNameLiteral, ModelInfoShape>;
   const byId = inTreeById();

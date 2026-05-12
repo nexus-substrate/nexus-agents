@@ -17,11 +17,11 @@ import type {
 } from '../types.js';
 import { SubprocessCliAdapter, type CommandConfig } from '../subprocess-adapter.js';
 import { ClaudeResponseParser } from '../parsers/claude-parser.js';
-import { findModelsByCli } from '../../config/model-capabilities.js';
 import {
   getDefaultModelForCli,
   getCliModelName,
   buildModelInfo,
+  findInTreeByCli,
 } from '../../config/model-config-helpers.js';
 
 /**
@@ -34,7 +34,7 @@ const MODEL_TO_CLI_ALIAS: Record<string, string> = buildClaudeAliasMap();
 
 function buildClaudeAliasMap(): Record<string, string> {
   const map: Record<string, string> = {};
-  for (const model of findModelsByCli('claude')) {
+  for (const model of findInTreeByCli('claude')) {
     if (model.cliAlias === undefined) continue;
     const alias = model.cliAlias;
     map[alias] = alias;

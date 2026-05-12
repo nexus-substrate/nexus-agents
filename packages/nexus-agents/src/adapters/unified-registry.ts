@@ -28,8 +28,12 @@ import {
 import type { CliName } from '../cli-adapters/types.js';
 import { TASK_SPECIALIZATION_MATRIX, detectTaskCategory } from '../config/task-specialization.js';
 import type { TaskCategory } from '../config/task-specialization-types.js';
-import { DEFAULT_MODEL_CAPABILITIES, DEFAULT_MODEL_PER_CLI } from '../config/model-capabilities.js';
+import {
+  getDefaultModelForCli,
+  getInTreeCapabilitiesMatrix,
+} from '../config/model-config-helpers.js';
 import type { CliNameLiteral } from '../config/model-capabilities-types.js';
+import { CLI_NAMES } from '../config/model-capabilities-types.js';
 
 // ============================================================================
 // Types
@@ -116,7 +120,7 @@ export class UnifiedAdapterRegistry {
     this.taskRouting = this.buildTaskRouting();
     this.logger.info('UnifiedAdapterRegistry initialized', {
       categories: this.taskRouting.size,
-      models: DEFAULT_MODEL_CAPABILITIES.models.length,
+      models: getInTreeCapabilitiesMatrix().models.length,
       missingModelFallback: this.enableMissingModelFallback,
     });
   }
@@ -206,7 +210,8 @@ export class UnifiedAdapterRegistry {
     // both 'gemini-pro' and 'gemini-pro-experimental' resolves correctly even
     // though the registry's natural array order isn't sorted by id length.
     // Defense-in-depth — no current registry has prefix overlaps. (#2192)
-    const exact = DEFAULT_MODEL_CAPABILITIES.models.find(
+    const allModels = getInTreeCapabilitiesMatrix().models;
+    const exact = allModels.find(
       (m) =>
         m.id === modelPreference ||
         m.cliAlias === modelPreference ||
@@ -214,7 +219,7 @@ export class UnifiedAdapterRegistry {
     );
     const prefix =
       exact ??
-      [...DEFAULT_MODEL_CAPABILITIES.models]
+      [...allModels]
         .filter((m) => modelPreference.startsWith(m.id))
         .sort((a, b) => b.id.length - a.id.length)[0];
     const model = prefix;
@@ -263,7 +268,7 @@ export class UnifiedAdapterRegistry {
     return {
       taskRouting: [...this.taskRouting.values()],
       cachedAdapters: [...this.cliAdapters.keys()],
-      availableModels: DEFAULT_MODEL_CAPABILITIES.models.length,
+      availableModels: getInTreeCapabilitiesMatrix().models.length,
     };
   }
 
@@ -330,8 +335,8 @@ const ROLE_TO_CATEGORY: Record<string, TaskCategory> = {
 
 /** Resolve the default model name for a CLI from the canonical registry. */
 function resolveDefaultModel(cli: string): string {
-  if (cli in DEFAULT_MODEL_PER_CLI) {
-    return DEFAULT_MODEL_PER_CLI[cli as CliNameLiteral];
+  if ((CLI_NAMES as readonly string[]).includes(cli)) {
+    return getDefaultModelForCli(cli as CliNameLiteral);
   }
   return cli;
 }
