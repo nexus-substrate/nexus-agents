@@ -59,7 +59,13 @@ export function isRateLimitError(message: string): boolean {
   return isRateLimitLikeError(new Error(message));
 }
 
-/** Validates and clamps timeout. Canonical source: `config/timeouts.ts`. */
+/**
+ * Validates and clamps timeout to `[VOTE_TIMEOUTS.minMs, VOTE_TIMEOUTS.maxMs]`.
+ *
+ * **Canonical source:** `config/timeouts.ts`. This re-export exists for
+ * back-compat — new code should import from `../config/timeouts.js`
+ * directly (#2637).
+ */
 export const validateTimeout = _validateTimeout;
 
 // ============================================================================
