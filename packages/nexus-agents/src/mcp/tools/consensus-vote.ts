@@ -450,6 +450,14 @@ async function maybeEscalateContrarian(
   return executeVoting({ ...input, quickMode: false }, logger);
 }
 
+/*
+ * Top-level voting flow: vote collection → error-policy gate → engine +
+ * cascade → contrarian escalation → finalize. Further extraction
+ * obscures control flow more than it helps; helpers already extracted
+ * are applyErrorPolicy, buildPolicyShortCircuitResult,
+ * maybeEscalateContrarian, finalizeVotingResult.
+ */
+// eslint-disable-next-line max-lines-per-function -- see block comment above
 export async function executeVoting(
   input: ConsensusVoteInput,
   logger: ILogger
