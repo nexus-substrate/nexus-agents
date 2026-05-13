@@ -122,11 +122,12 @@ describe('inject-governance inject', () => {
     expect(content).toContain('<!-- GOVERNANCE:VERSION:END -->');
   });
 
-  it('generates tool index table', { timeout: SUBPROCESS_TIMEOUT }, () => {
+  it('generates tool index section', { timeout: SUBPROCESS_TIMEOUT }, () => {
     runScript('inject');
     const content = readFileSync(CLAUDE_MD, 'utf-8');
     expect(content).toContain('## MCP Tools Reference');
-    expect(content).toContain('| Tool');
+    expect(content).toContain('MCP tools registered');
+    expect(content).toContain('docs/ENTRYPOINTS.md');
     expect(content).toContain('`orchestrate`');
     expect(content).toContain('`create_expert`');
     expect(content).toContain('`memory_query`');
