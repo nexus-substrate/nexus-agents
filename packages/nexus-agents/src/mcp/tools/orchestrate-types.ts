@@ -74,6 +74,16 @@ export const OrchestrateOutputSchema = z.object({
      */
     timeoutReason: z.string().optional(),
   }),
+  /**
+   * Aggregate status of worker dispatch when subtasks were dispatched
+   * (#2619 bug 1). `success` = all workers returned; `partial` = some
+   * workers errored or timed out; `failed` = every dispatched worker
+   * errored. Absent when worker dispatch did not run (no decomposition
+   * or feature disabled). When `failed`, the tool result is also
+   * surfaced as an MCP error (`isError: true`) so callers that only
+   * check the outer status see the failure.
+   */
+  workerDispatchStatus: z.enum(['success', 'partial', 'failed']).optional(),
 });
 
 export type OrchestrateOutput = z.infer<typeof OrchestrateOutputSchema>;
