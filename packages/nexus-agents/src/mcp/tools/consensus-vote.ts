@@ -438,7 +438,8 @@ function buildPolicyShortCircuitResult(args: {
 async function maybeEscalateContrarian(
   input: ConsensusVoteInput,
   outcome: 'approved' | 'rejected',
-  logger: ILogger
+  logger: ILogger,
+  opts?: { voteTimeoutMs?: number }
 ): Promise<ExtendedVotingResult | undefined> {
   if (!input.quickMode || outcome !== 'approved' || input.simulateVotes) return undefined;
   const escalation = await runContrarianCheck(input.proposal, logger);
@@ -447,7 +448,7 @@ async function maybeEscalateContrarian(
     reason: escalation.reason,
     confidence: escalation.confidence,
   });
-  return executeVoting({ ...input, quickMode: false }, logger);
+  return executeVoting({ ...input, quickMode: false }, logger, opts);
 }
 
 /*
@@ -460,7 +461,8 @@ async function maybeEscalateContrarian(
 // eslint-disable-next-line max-lines-per-function -- see block comment above
 export async function executeVoting(
   input: ConsensusVoteInput,
-  logger: ILogger
+  logger: ILogger,
+  opts?: { voteTimeoutMs?: number }
 ): Promise<ExtendedVotingResult> {
   const strategy = resolveStrategy(input);
   const algorithm = strategyToAlgorithm(strategy);
@@ -478,6 +480,7 @@ export async function executeVoting(
     roles,
     proposal: input.proposal,
     simulate: input.simulateVotes,
+    ...(opts?.voteTimeoutMs !== undefined && { timeoutMs: opts.voteTimeoutMs }),
   });
 
   // Error-policy gate (#2630): hard floor + fail_closed + reduce_denominator /
@@ -508,7 +511,7 @@ export async function executeVoting(
 
   recordVotesToTracker(votes, voteMap, outcome, logger);
 
-  const escalated = await maybeEscalateContrarian(input, outcome, logger);
+  const escalated = await maybeEscalateContrarian(input, outcome, logger, opts);
   if (escalated !== undefined) return escalated;
 
   return finalizeVotingResult({

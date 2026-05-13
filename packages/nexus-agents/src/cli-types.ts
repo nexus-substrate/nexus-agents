@@ -117,6 +117,8 @@ export interface ParsedCliArgs {
     threshold?: 'majority' | 'supermajority' | 'unanimous';
     quick: boolean;
     timeoutMs?: number;
+    /** #2630 — see `applyErrorPolicy`. */
+    errorPolicy?: 'reduce_denominator' | 'count_as_abstain' | 'fail_closed';
     // SWE-bench command options
     variant?: 'lite' | 'verified' | 'full';
     limit?: number;
@@ -296,6 +298,10 @@ export const PARSE_ARGS_CONFIG = {
     timeout: {
       type: 'string' as const,
       default: '90',
+    },
+    // #2630 — error policy for the vote command.
+    'error-policy': {
+      type: 'string' as const,
     },
     // SWE-bench command options
     variant: {

@@ -66,6 +66,11 @@ const VOTE_HELP: CommandHelpEntry = {
     { flag: '--quick', description: 'Use 3 agents instead of 6 for faster votes' },
     { flag: '--dry-run', description: 'Simulate votes without agent execution' },
     { flag: '--timeout=<seconds>', description: 'Timeout per vote in seconds', defaultValue: '90' },
+    {
+      flag: '--error-policy <p>',
+      description:
+        'How to count errored/timed-out voters: reduce_denominator | count_as_abstain | fail_closed (default: fail_closed for unanimous, reduce_denominator otherwise)',
+    },
     { flag: '--verbose', description: 'Show vote verification hashes' },
   ],
   requiresApiKey: ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GOOGLE_AI_API_KEY'],

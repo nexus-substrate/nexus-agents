@@ -22,6 +22,12 @@ export interface VoteCommandOptions {
   readonly issueNumber?: number;
   /** Timeout per vote in milliseconds (default: 90000 per Issue #607) */
   readonly timeoutMs?: number;
+  /**
+   * How to treat voters that errored or timed out (#2630). When undefined,
+   * the same per-strategy default `executeVoting` uses applies:
+   * `fail_closed` for unanimous, `reduce_denominator` otherwise.
+   */
+  readonly errorPolicy?: 'reduce_denominator' | 'count_as_abstain' | 'fail_closed';
 }
 
 /**
