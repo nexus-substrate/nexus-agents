@@ -812,22 +812,53 @@ async function tryWorkerDispatch(
   }
 }
 
-/** Assemble final orchestrate tool output (Issue #1310). */
-function assembleOrchestrateOutput(
+/**
+ * Compute aggregate worker-dispatch status (#2619 bug 1). Returns
+ * undefined when dispatch did not run (no decomposition / feature
+ * disabled / zero workers planned) so the field is omitted from the
+ * output. `failed` = every dispatched worker errored — caller needs to
+ * see this distinctly from a normal `successCount > 0` partial run.
+ */
+function computeWorkerDispatchStatus(
+  dispatch: { totalWorkers: number; successCount: number } | undefined
+): 'success' | 'partial' | 'failed' | undefined {
+  if (dispatch === undefined || dispatch.totalWorkers === 0) return undefined;
+  if (dispatch.successCount === 0) return 'failed';
+  if (dispatch.successCount === dispatch.totalWorkers) return 'success';
+  return 'partial';
+}
+
+/**
+ * Assemble final orchestrate tool output (Issue #1310).
+ *
+ * When every dispatched worker errored (`workerDispatchStatus === 'failed'`,
+ * see #2619 bug 1) the structured payload is returned via `toolError` so
+ * the MCP-layer `isError` flag flips true. The full JSON (including
+ * `workerDispatch.results[].errorMessage`) remains in the body so callers
+ * can inspect per-worker reasons; the only change is that callers that
+ * only check the outer status no longer silently get an empty success.
+ *
+ * Exported for unit testing only — downstream code should not call this
+ * helper directly.
+ */
+export function assembleOrchestrateOutput(
   orchestrationResult: Record<string, unknown>,
   agentPlan: ReturnType<typeof computeAgentPlan>,
   workerDispatchResult: Awaited<ReturnType<typeof executeWorkerDispatch>> | undefined
 ): ToolResult {
   const hasSynthesis =
     workerDispatchResult?.synthesis !== undefined && workerDispatchResult.synthesis !== '';
+  const workerDispatchStatus = computeWorkerDispatchStatus(workerDispatchResult);
 
   const output = {
     ...orchestrationResult,
     ...(agentPlan !== undefined ? { agentPlan } : {}),
     ...(workerDispatchResult !== undefined ? { workerDispatch: workerDispatchResult } : {}),
     ...(hasSynthesis ? { synthesizedResponse: workerDispatchResult.synthesis } : {}),
+    ...(workerDispatchStatus !== undefined ? { workerDispatchStatus } : {}),
   };
-  return toolSuccess(JSON.stringify(output, null, 2));
+  const body = JSON.stringify(output, null, 2);
+  return workerDispatchStatus === 'failed' ? toolError(body) : toolSuccess(body);
 }
 
 /** Record worker outcomes + fire-and-forget reflection (Issue #1323, #1392). */
