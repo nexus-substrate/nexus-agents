@@ -42,7 +42,9 @@ import {
   VotingStrategySchema,
   ConsensusVoteInputSchema,
   buildResponse,
+  getDefaultErrorPolicy,
 } from './consensus-vote-types.js';
+import { applyErrorPolicy } from './consensus-vote-error-policy.js';
 import { recordVoteSuccess, recordVoteError } from './consensus-vote-recording.js';
 import { warnIfSimulatedOutsideTests } from './simulation-guard.js';
 import type {
@@ -135,6 +137,33 @@ function createEmptyConsensusResult(
   };
 }
 
+/**
+ * Creates a synthetic ConsensusResult for an error-policy short-circuit
+ * (#2630). Reused for both the hard floor (errors > 50%) and `fail_closed`.
+ * Mirrors `createEmptyConsensusResult` but stamps the reason on the
+ * proposal title so downstream `mapOutcomeToDecision` / `buildResponse`
+ * surface a human-readable failure mode.
+ */
+function createPolicyFailedResult(
+  proposal: string,
+  algorithm: ConsensusAlgorithm,
+  reason: string
+): ConsensusResult {
+  const now = new Date().toISOString();
+  return {
+    proposalId: 'error-policy-short-circuit',
+    proposal: { title: `MCP Consensus Vote — ${reason}`, description: proposal, algorithm },
+    outcome: 'rejected',
+    votes: new Map<string, Vote>(),
+    voteCounts: { approve: 0, reject: 0, abstain: 0, total: 0 },
+    approvalPercentage: 0,
+    quorumReached: false,
+    startedAt: now,
+    closedAt: now,
+    durationMs: 0,
+  };
+}
+
 /** Thresholds per algorithm for cascade detection. */
 const CASCADE_THRESHOLDS: Record<string, number> = {
   majority: 0.5,
@@ -174,13 +203,21 @@ function detectEarlyCascade(
   return { decided: false, reason: '' };
 }
 
+/**
+ * Run the consensus engine over already-policy-applied votes.
+ *
+ * Callers MUST pass `engineVotes` produced by `applyErrorPolicy` (#2630)
+ * — under `reduce_denominator` that means errors are already filtered;
+ * under `count_as_abstain` errors have been converted to abstain
+ * decisions but kept in the array. This function does no further
+ * filtering on `source`.
+ */
 async function processVotesThroughEngine(
-  votes: readonly AgentVoteResult[],
+  engineVotes: readonly AgentVoteResult[],
   proposal: string,
   algorithm: ConsensusAlgorithm
 ): Promise<ConsensusResult> {
-  const validVotes = votes.filter((v) => v.source !== 'error');
-  if (validVotes.length === 0) return createEmptyConsensusResult(proposal, algorithm);
+  if (engineVotes.length === 0) return createEmptyConsensusResult(proposal, algorithm);
 
   const engine = createConsensusEngine();
   const engineProposal: Proposal = {
@@ -195,7 +232,7 @@ async function processVotesThroughEngine(
     });
 
   const proposalId = proposalResult.value;
-  for (const { role, vote } of validVotes) await engine.vote(proposalId, role, vote);
+  for (const { role, vote } of engineVotes) await engine.vote(proposalId, role, vote);
 
   const resultRes = await engine.close(proposalId);
   if (!resultRes.ok)
@@ -253,8 +290,17 @@ function recordVotesToTracker(
 }
 
 /** Process votes with cascade detection — extracted for max-lines-per-function (#1765). */
+/**
+ * Run the engine + cascade-detection + higher-order voting against
+ * already-policy-applied votes (#2630).
+ *
+ * Callers MUST pass `engineVotes` produced by `applyErrorPolicy` — no
+ * filtering on `source` happens inside this function. Cascade-detection
+ * counts and the higher-order voteMap are both built directly from
+ * `engineVotes`.
+ */
 async function processVotesWithCascade(
-  votes: readonly AgentVoteResult[],
+  engineVotes: readonly AgentVoteResult[],
   opts: {
     totalRoles: number;
     proposal: string;
@@ -269,9 +315,8 @@ async function processVotesWithCascade(
   outcome: 'approved' | 'rejected';
   cascaded: boolean;
 }> {
-  const validVotes = votes.filter((v) => v.source !== 'error');
-  const approvals = validVotes.filter((v) => v.vote.decision === 'approve').length;
-  const rejections = validVotes.filter((v) => v.vote.decision === 'reject').length;
+  const approvals = engineVotes.filter((v) => v.vote.decision === 'approve').length;
+  const rejections = engineVotes.filter((v) => v.vote.decision === 'reject').length;
   const cascadeInfo = detectEarlyCascade(opts.algorithm, approvals, rejections, opts.totalRoles);
 
   if (cascadeInfo.decided) {
@@ -283,11 +328,9 @@ async function processVotesWithCascade(
     });
   }
 
-  const engineResult = await processVotesThroughEngine(votes, opts.proposal, opts.algorithm);
+  const engineResult = await processVotesThroughEngine(engineVotes, opts.proposal, opts.algorithm);
   const voteMap = new Map<string, Vote>();
-  for (const { role, vote, source } of votes) {
-    if (source !== 'error') voteMap.set(role, vote);
-  }
+  for (const { role, vote } of engineVotes) voteMap.set(role, vote);
 
   const higherOrderResult = cascadeInfo.decided
     ? undefined
@@ -351,6 +394,62 @@ async function runContrarianCheck(
   }
 }
 
+/**
+ * Build a short-circuit result for the error-policy gate (#2630). Called
+ * when the hard floor (>50% errors) trips or `fail_closed` matches.
+ * Logs the warning and returns the synthetic `ExtendedVotingResult` that
+ * `executeVoting` propagates to the response builder.
+ */
+function buildPolicyShortCircuitResult(args: {
+  input: ConsensusVoteInput;
+  strategy: VotingStrategy;
+  algorithm: ConsensusAlgorithm;
+  votes: readonly AgentVoteResult[];
+  errorPolicy: ConsensusVoteInput['errorPolicy'];
+  reason: string;
+  startTime: number;
+  logger: ILogger;
+}): ExtendedVotingResult {
+  args.logger.warn('Consensus vote short-circuited by error policy', {
+    errorPolicy: args.errorPolicy,
+    reason: args.reason,
+  });
+  const totalTimeMs = getTimeProvider().now() - args.startTime;
+  return {
+    proposal: args.input.proposal,
+    threshold: args.algorithm,
+    result: createPolicyFailedResult(args.input.proposal, args.algorithm, args.reason),
+    votes: args.votes,
+    totalTimeMs,
+    simulateVotes: args.input.simulateVotes,
+    strategy: args.strategy,
+  };
+}
+
+/**
+ * Contrarian-escalation gate for `quickMode` approvals (#1799).
+ *
+ * When `quickMode` voted approve, run a single contrarian agent to
+ * catch YAGNI / SECURITY_RISK / SCOPE_CREEP. If it rejects with high
+ * confidence, escalate by re-running `executeVoting` with the full
+ * voter panel. Returns the escalated result, or `undefined` to signal
+ * "no escalation, continue with the quickMode result."
+ */
+async function maybeEscalateContrarian(
+  input: ConsensusVoteInput,
+  outcome: 'approved' | 'rejected',
+  logger: ILogger
+): Promise<ExtendedVotingResult | undefined> {
+  if (!input.quickMode || outcome !== 'approved' || input.simulateVotes) return undefined;
+  const escalation = await runContrarianCheck(input.proposal, logger);
+  if (!escalation.shouldEscalate) return undefined;
+  logger.warn('Contrarian escalation: re-running with full vote', {
+    reason: escalation.reason,
+    confidence: escalation.confidence,
+  });
+  return executeVoting({ ...input, quickMode: false }, logger);
+}
+
 export async function executeVoting(
   input: ConsensusVoteInput,
   logger: ILogger
@@ -359,8 +458,14 @@ export async function executeVoting(
   const algorithm = strategyToAlgorithm(strategy);
   const roles = getVoterRoles(input.quickMode);
   const startTime = getTimeProvider().now();
+  const errorPolicy = input.errorPolicy ?? getDefaultErrorPolicy(strategy);
 
-  logger.info('Starting consensus vote', { strategy, algorithm, roleCount: roles.length });
+  logger.info('Starting consensus vote', {
+    strategy,
+    algorithm,
+    roleCount: roles.length,
+    errorPolicy,
+  });
 
   const votes = await collectRealVotes({
     roles,
@@ -368,9 +473,25 @@ export async function executeVoting(
     simulate: input.simulateVotes,
   });
 
+  // Error-policy gate (#2630): hard floor + fail_closed + reduce_denominator /
+  // count_as_abstain transformation. Engine sees the resulting shape.
+  const policyDecision = applyErrorPolicy(votes, errorPolicy);
+  if (policyDecision.shortCircuit) {
+    return buildPolicyShortCircuitResult({
+      input,
+      strategy,
+      algorithm,
+      votes,
+      errorPolicy,
+      reason: policyDecision.reason ?? 'error policy short-circuit',
+      startTime,
+      logger,
+    });
+  }
+
   // Check for early cascade and process votes (#1765)
   const { engineResult, voteMap, higherOrderResult, outcome, cascaded } =
-    await processVotesWithCascade(votes, {
+    await processVotesWithCascade(policyDecision.engineVotes, {
       totalRoles: roles.length,
       proposal: input.proposal,
       algorithm,
@@ -380,33 +501,53 @@ export async function executeVoting(
 
   recordVotesToTracker(votes, voteMap, outcome, logger);
 
-  // Contrarian check for quickMode approvals (#1799):
-  // When quickMode approves, run a single contrarian agent to catch YAGNI/SECURITY_RISK.
-  // If contrarian rejects with high confidence, escalate to full vote.
-  if (input.quickMode && outcome === 'approved' && !input.simulateVotes) {
-    const escalation = await runContrarianCheck(input.proposal, logger);
-    if (escalation.shouldEscalate) {
-      logger.warn('Contrarian escalation: re-running with full vote', {
-        reason: escalation.reason,
-        confidence: escalation.confidence,
-      });
-      return executeVoting({ ...input, quickMode: false }, logger);
-    }
-  }
+  const escalated = await maybeEscalateContrarian(input, outcome, logger);
+  if (escalated !== undefined) return escalated;
 
-  const totalTimeMs = getTimeProvider().now() - startTime;
-  logger.info('Consensus vote completed', { strategy, outcome, durationMs: totalTimeMs, cascaded });
-
-  const result: ExtendedVotingResult = {
-    proposal: input.proposal,
-    threshold: algorithm,
-    result: engineResult,
-    votes,
-    totalTimeMs,
-    simulateVotes: input.simulateVotes,
+  return finalizeVotingResult({
+    input,
     strategy,
+    algorithm,
+    engineResult,
+    higherOrderResult,
+    votes,
+    outcome,
+    cascaded,
+    startTime,
+    logger,
+  });
+}
+
+/** Build the final `ExtendedVotingResult` once the engine + cascade settle. */
+function finalizeVotingResult(args: {
+  input: ConsensusVoteInput;
+  strategy: VotingStrategy;
+  algorithm: ConsensusAlgorithm;
+  engineResult: ConsensusResult;
+  higherOrderResult: ReturnType<typeof runHigherOrderVoting>;
+  votes: readonly AgentVoteResult[];
+  outcome: 'approved' | 'rejected';
+  cascaded: boolean;
+  startTime: number;
+  logger: ILogger;
+}): ExtendedVotingResult {
+  const totalTimeMs = getTimeProvider().now() - args.startTime;
+  args.logger.info('Consensus vote completed', {
+    strategy: args.strategy,
+    outcome: args.outcome,
+    durationMs: totalTimeMs,
+    cascaded: args.cascaded,
+  });
+  const result: ExtendedVotingResult = {
+    proposal: args.input.proposal,
+    threshold: args.algorithm,
+    result: args.engineResult,
+    votes: args.votes,
+    totalTimeMs,
+    simulateVotes: args.input.simulateVotes,
+    strategy: args.strategy,
   };
-  if (higherOrderResult !== undefined) result.higherOrderResult = higherOrderResult;
+  if (args.higherOrderResult !== undefined) result.higherOrderResult = args.higherOrderResult;
   return result;
 }
 
