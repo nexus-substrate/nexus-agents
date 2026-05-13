@@ -48,6 +48,47 @@ export const VotingStrategySchema = z.enum([
 // Input / Output Schemas
 // ============================================================================
 
+/**
+ * How error-source votes (timed-out or crashed voters) are counted toward
+ * the threshold (#2630).
+ *
+ * - `reduce_denominator` (default for non-strict strategies): errors are
+ *   filtered out before the engine sees votes — denominator = non-error
+ *   votes. Best for operational decisions where you trust the responding
+ *   voters and infrastructure flake should not block the vote.
+ * - `count_as_abstain`: error votes reach the engine as abstain. Behaves
+ *   conservatively — a timed-out voter effectively withholds approval
+ *   relative to the threshold. Use when you can't tell what the error
+ *   voter would have decided and want the math to reflect uncertainty.
+ * - `fail_closed` (default for unanimous / higher_order): any error voids
+ *   the vote. Threshold math is not run. Use for security-critical or
+ *   breaking-change decisions where every voter must be heard.
+ *
+ * Regardless of policy, a hard floor applies: when errors exceed 50% of
+ * total voters, the vote always fails. Catches "all CLIs are down" — a
+ * 2-voter consensus is not a real consensus.
+ */
+export type ErrorPolicy = 'reduce_denominator' | 'count_as_abstain' | 'fail_closed';
+
+export const ErrorPolicySchema = z.enum(['reduce_denominator', 'count_as_abstain', 'fail_closed']);
+
+/**
+ * Fraction of total voters that, if errored, forces the vote to fail
+ * regardless of `errorPolicy`. (#2630 — safety floor.)
+ */
+export const ERROR_FLOOR_FRACTION = 0.5;
+
+/**
+ * Default error policy per voting strategy. Strict strategies (unanimous,
+ * higher_order) default to `fail_closed`; others default to
+ * `reduce_denominator`. Callers can override with the `errorPolicy` input
+ * field.
+ */
+export function getDefaultErrorPolicy(strategy: VotingStrategy): ErrorPolicy {
+  if (strategy === 'unanimous' || strategy === 'higher_order') return 'fail_closed';
+  return 'reduce_denominator';
+}
+
 export const ConsensusVoteInputSchema = z.object({
   proposal: z.string().min(1).max(MAX_PROPOSAL_LENGTH).describe('Proposal text to vote on'),
   threshold: z
@@ -58,6 +99,9 @@ export const ConsensusVoteInputSchema = z.object({
     ),
   strategy: VotingStrategySchema.optional().describe(
     'Voting strategy: simple_majority (default), supermajority, unanimous, proof_of_learning, or higher_order (Bayesian-optimal)'
+  ),
+  errorPolicy: ErrorPolicySchema.optional().describe(
+    'How to treat voters that errored or timed out (#2630). Default: fail_closed for unanimous/higher_order, reduce_denominator otherwise. Regardless of policy, errors > 50% always fails.'
   ),
   quickMode: z
     .boolean()
