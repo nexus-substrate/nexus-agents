@@ -289,6 +289,60 @@ export function toSdkCallback(
 }
 
 /**
+ * MCP SDK client default request timeout. Matches `DEFAULT_REQUEST_TIMEOUT_MSEC`
+ * in `@modelcontextprotocol/sdk` (`shared/protocol.js`). If a tool's
+ * configured server-side budget exceeds this and the client did not send a
+ * `progressToken` (i.e. did not pass `onprogress` to its `request()` call),
+ * the client kills the request at this threshold regardless of what the
+ * server is doing — heartbeats fire but go nowhere.
+ *
+ * (Source: audit on #2619 / #2631 — root cause of "MCP error -32001 at 60010ms")
+ */
+export const MCP_SDK_DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
+
+/**
+ * Like `toSdkCallback`, but emits a one-shot WARN at invocation start when
+ * the configured per-tool budget exceeds the MCP SDK client default AND the
+ * client did not send a `progressToken`. The call is almost certainly going
+ * to die at the client default (~60s) regardless of server-side timeout
+ * config or progress heartbeats — surface that at the moment of invocation
+ * so operators can spot the mismatch in logs without waiting for the
+ * timeout to fire.
+ *
+ * Wrap a long-running tool (`orchestrate`, `consensus_vote`,
+ * `execute_expert`, `run_workflow`) with this instead of plain
+ * `toSdkCallback`. Tools whose budget already fits within
+ * `MCP_SDK_DEFAULT_REQUEST_TIMEOUT_MS` should keep using `toSdkCallback`.
+ *
+ * (Source: audit on #2619 / #2631 — observability for client-timeout mismatch)
+ */
+export function toSdkCallbackWithBudgetCheck(
+  handler: ToolHandler,
+  toolName: string,
+  configuredTimeoutMs: number,
+  logger?: ILogger
+): (args: unknown, extra: unknown) => Promise<SdkToolResult> {
+  const log = logger ?? wrapperLogger;
+  return (args: unknown, extra: unknown) => {
+    const progressCtx = extractProgressContext(extra);
+    const signal = (extra as SdkExtra | undefined)?.signal;
+    if (configuredTimeoutMs > MCP_SDK_DEFAULT_REQUEST_TIMEOUT_MS && progressCtx === undefined) {
+      log.warn(
+        'MCP tool budget exceeds client default and no progressToken received — request likely to be killed by client before server-side deadline',
+        {
+          tool: toolName,
+          configuredTimeoutMs,
+          mcpSdkDefaultMs: MCP_SDK_DEFAULT_REQUEST_TIMEOUT_MS,
+          remediation:
+            'Client should pass `onprogress` and `resetTimeoutOnProgress: true` when calling, or extend `options.timeout`. See docs/architecture/MCP_PROTOCOL.md.',
+        }
+      );
+    }
+    return runWithContexts(handler, args, progressCtx, signal);
+  };
+}
+
+/**
  * Re-export middleware factory for advanced use cases.
  */
 export { createMiddlewareFactory, withMiddleware };

@@ -20,7 +20,11 @@ import {
 } from '../../core/index.js';
 
 import type { WorkflowDefinition, IWorkflowEngine } from '../../core/index.js';
-import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
+import {
+  wrapToolWithTimeout,
+  toSdkCallbackWithBudgetCheck,
+  getToolTimeout,
+} from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { createMcpNotifier, NOOP_NOTIFIER } from '../mcp-notifier.js';
 import type {
@@ -294,7 +298,7 @@ export function registerRunWorkflowTool(server: McpServer, deps: RunWorkflowDeps
         'Execute a workflow template with provided inputs, supporting built-in templates and custom paths',
       inputSchema: toolInputSchema,
     },
-    toSdkCallback(wrappedHandler)
+    toSdkCallbackWithBudgetCheck(wrappedHandler, 'run_workflow', timeoutMs, logger)
   );
   logger.info('Registered run_workflow tool with secure handler and timeout protection');
 }

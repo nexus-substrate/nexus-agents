@@ -36,7 +36,7 @@ import type {
   OrchestratorDefinition,
   OrchestratorType,
 } from '../../core/types/orchestrator.js';
-import { wrapToolWithTimeout, toSdkCallback } from '../middleware/tool-wrapper.js';
+import { wrapToolWithTimeout, toSdkCallbackWithBudgetCheck } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { withDepthGuard } from '../middleware/spawn-depth-guard.js';
 import { toolError, toolSuccess, type ToolResult } from './tool-result.js';
@@ -1049,15 +1049,16 @@ export function registerOrchestrateTool(server: McpServer, deps: OrchestrateDeps
   });
 
   // Canonical source: config/timeouts.ts (Issue #1046)
+  const configuredTimeoutMs = MCP_TIMEOUTS.perTool['orchestrate'] ?? MCP_TIMEOUTS.defaultMs;
   const wrappedHandler = wrapToolWithTimeout('orchestrate', secureHandler, {
-    timeoutMs: MCP_TIMEOUTS.perTool['orchestrate'] ?? MCP_TIMEOUTS.defaultMs,
+    timeoutMs: configuredTimeoutMs,
     logger,
   });
 
   server.registerTool(
     'orchestrate',
     { description, inputSchema: ORCHESTRATE_TOOL_SCHEMA },
-    toSdkCallback(wrappedHandler)
+    toSdkCallbackWithBudgetCheck(wrappedHandler, 'orchestrate', configuredTimeoutMs, logger)
   );
   logger.info('Registered orchestrate tool with secure handler and timeout protection');
 }

@@ -376,6 +376,44 @@ mcp:
 
 ---
 
+## Client Request Timeouts — Long-Running Tools
+
+The MCP TypeScript SDK ships with `DEFAULT_REQUEST_TIMEOUT_MSEC = 60_000` (see [`@modelcontextprotocol/sdk` → `shared/protocol.ts`](https://github.com/modelcontextprotocol/typescript-sdk/blob/main/src/shared/protocol.ts)). That is a **client-side** cap on how long the client will wait for a tool response. If a nexus-agents tool has a configured per-tool budget that exceeds this, the client will kill the request before the server-side deadline can fire.
+
+**Long-running tools** (`orchestrate`, `consensus_vote`, `run_workflow`) have multi-minute budgets configured in `MCP_TIMEOUTS.perTool` (`packages/nexus-agents/src/config/timeouts.ts`). Callers MUST configure their client to:
+
+1. **Pass `options.onprogress`** in the SDK `client.request()` call. The SDK only injects `_meta.progressToken` into the JSON-RPC payload when an `onprogress` handler is supplied (`shared/protocol.ts:643`). Without `progressToken`, the server's `withProgressHeartbeat` emits notifications into a void.
+
+2. **Set `options.resetTimeoutOnProgress: true`**. The SDK only resets the per-request timer when an `notifications/progress` arrives AND this flag is true (`shared/protocol.ts:714`). Default is `false`.
+
+3. **OR raise `options.timeout`** explicitly to the tool's worst-case budget (e.g. `600_000` for `consensus_vote`, `900_000` for `orchestrate`). Sufficient if you don't want streaming progress, but the request will block for that long.
+
+```ts
+// Example: invoking consensus_vote from a custom MCP client
+const result = await client.request(
+  { method: 'tools/call', params: { name: 'consensus_vote', arguments: { ... } } },
+  CallToolResultSchema,
+  {
+    timeout: 600_000,
+    resetTimeoutOnProgress: true,
+    onprogress: (notif) => console.log(`heartbeat #${notif.progress}`),
+  }
+);
+```
+
+### Operator diagnostic
+
+`toSdkCallbackWithBudgetCheck` (`packages/nexus-agents/src/mcp/middleware/tool-wrapper.ts`) emits a WARN at invocation time when a tool's configured budget exceeds the SDK default AND the request arrived without `_meta.progressToken`. The WARN names the tool, the configured budget, and the SDK default — operators can grep server logs to confirm whether a "tool timed out" failure is actually a client-config mismatch rather than a real CLI failure. (Source: audit on #2619 / #2631.)
+
+```
+[warn] MCP tool budget exceeds client default and no progressToken received — request likely to be killed by client before server-side deadline
+  tool=consensus_vote configuredTimeoutMs=600000 mcpSdkDefaultMs=60000
+```
+
+If you see this WARN on every long-running tool call, the client is misconfigured — fix the client, not the server timeout.
+
+---
+
 ## Claude Desktop Integration
 
 ### Setup
