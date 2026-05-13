@@ -19,6 +19,7 @@ import type { IAgent, Task as AgentTask } from '../core/types/agent.js';
 import type { CliName, ICliAdapter } from '../cli-adapters/index.js';
 import type { OrchestrateOptions, PuppeteerOrchestrationResult } from './orchestrate-types.js';
 import { CliAdapterAgent } from './cli-adapter-agent.js';
+import { INTERNAL_TIMEOUTS } from '../config/timeouts.js';
 
 // Re-export for backward compatibility
 export type { PuppeteerOrchestrationResult } from './orchestrate-types.js';
@@ -105,7 +106,7 @@ export function createOrchestrator(
   agents: IAgent[],
   options: OrchestrateOptions
 ): PuppeteerOrchestrator {
-  const config = { maxSteps: options.maxSteps ?? 5, timeoutMs: 300_000 };
+  const config = { maxSteps: options.maxSteps ?? 5, timeoutMs: INTERNAL_TIMEOUTS.puppeteerMs };
 
   return options.learn === true
     ? new PuppeteerOrchestrator({

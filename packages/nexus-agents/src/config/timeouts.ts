@@ -68,6 +68,14 @@ export const VOTE_TIMEOUTS = {
   maxMs: 600_000,
   /** Default max retries per agent. */
   maxRetries: 2,
+  /**
+   * Slack buffer added to the overall wall-clock deadline in
+   * `computeOverallConsensusDeadlineMs` (#1871). Acts as a safety net
+   * above per-vote × (retries+1) + stagger. Centralized so the formula
+   * can be tuned in one place.
+   * (Issue #2636 — was hardcoded `60_000` in voter-agents.ts:93)
+   */
+  overallDeadlineBufferMs: 60_000,
 } as const;
 
 /**
@@ -210,6 +218,25 @@ export const INTERNAL_TIMEOUTS = {
   waveTaskMs: 60_000,
   /** Puppeteer orchestration timeout. */
   puppeteerMs: 300_000,
+  /**
+   * Initial cooldown before a disabled worker role can attempt recovery
+   * (Issue #1458). Used by `worker-dispatcher.ts` circuit-breaker logic.
+   * (Issue #2636 — re-homed from worker-dispatcher.ts:57)
+   */
+  workerRecoveryCooldownMs: 30_000,
+  /**
+   * Maximum cooldown after exponential backoff (Issue #1458). Caps the
+   * worker-dispatcher circuit-breaker backoff so a permanently-broken
+   * role doesn't hold the slot indefinitely.
+   * (Issue #2636 — re-homed from worker-dispatcher.ts:60)
+   */
+  workerMaxCooldownMs: 300_000,
+  /**
+   * Minimum spacing between requests to rate-limited worker roles
+   * (Issue #1458).
+   * (Issue #2636 — re-homed from worker-dispatcher.ts:63)
+   */
+  workerRateLimitSpacingMs: 2_000,
 } as const;
 
 /**
@@ -232,6 +259,14 @@ export const EXPERT_TIMEOUTS = {
   minMs: 30_000,
   /** Maximum allowed expert timeout. */
   maxMs: 900_000,
+  /**
+   * Stricter floor for `execute_expert` specifically — LLM inference takes
+   * 20-90s minimum (#1163, #1330), so this caller-facing floor prevents
+   * configuring a timeout that's guaranteed to fail. The global `minMs`
+   * (30s) remains the absolute floor for non-execute paths.
+   * (Issue #2636 — was hardcoded `EXPERT_TIMEOUT_FLOOR_MS = 120_000` in execute-expert.ts:68)
+   */
+  executeFloorMs: 120_000,
   /** Categories considered complex (longer timeout).
    * Updated: Issue #1675 — devops (avg 54s) and documentation (avg 64s on gemini)
    * regularly exceed the 120s standard CLI timeout. */
