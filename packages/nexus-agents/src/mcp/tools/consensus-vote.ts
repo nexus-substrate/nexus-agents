@@ -466,7 +466,6 @@ export async function executeVoting(
     roleCount: roles.length,
     errorPolicy,
   });
-
   const votes = await collectRealVotes({
     roles,
     proposal: input.proposal,
