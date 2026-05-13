@@ -9,6 +9,7 @@ import {
   isValidExpertListFormat,
   isValidOrchestrateModel,
   isValidThreshold,
+  isValidErrorPolicy,
   isValidIndexSubcommand,
   isValidIndexFormat,
   isValidResearchFormat,
@@ -81,6 +82,36 @@ describe('isValidThreshold', () => {
   it('rejects unknown threshold', () => {
     expect(isValidThreshold('simple')).toBe(false);
     expect(isValidThreshold('')).toBe(false);
+  });
+});
+
+// ============================================================================
+// isValidErrorPolicy (#2630)
+// ============================================================================
+
+describe('isValidErrorPolicy', () => {
+  it('accepts reduce_denominator', () => {
+    expect(isValidErrorPolicy('reduce_denominator')).toBe(true);
+  });
+
+  it('accepts count_as_abstain', () => {
+    expect(isValidErrorPolicy('count_as_abstain')).toBe(true);
+  });
+
+  it('accepts fail_closed', () => {
+    expect(isValidErrorPolicy('fail_closed')).toBe(true);
+  });
+
+  it('rejects unknown policy', () => {
+    expect(isValidErrorPolicy('strict')).toBe(false);
+    expect(isValidErrorPolicy('majority')).toBe(false);
+    expect(isValidErrorPolicy('')).toBe(false);
+  });
+
+  it('rejects mistyped variants', () => {
+    // Easy mistype: kebab-case vs snake_case. Hard-fail rather than coerce.
+    expect(isValidErrorPolicy('reduce-denominator')).toBe(false);
+    expect(isValidErrorPolicy('fail closed')).toBe(false);
   });
 });
 

@@ -17,42 +17,20 @@
  */
 
 import * as crypto from 'node:crypto';
-import { getTimeProvider, formatPercentage, getErrorMessage } from '../core/index.js';
+import { getTimeProvider, formatPercentage, getErrorMessage, createLogger } from '../core/index.js';
 import { safeExecSandboxed } from './sandbox-exec.js';
 import type { VoteCommandOptions, VoterRole, VotingResult, VoteHash } from './vote-types.js';
-import { THRESHOLD_MAP, VOTER_ROLES } from './vote-types.js';
-import type { Vote, ConsensusAlgorithm, ConsensusResult, Proposal } from '../consensus/types.js';
-import { createConsensusEngine } from '../consensus/engine.js';
-import {
-  collectRealVotes,
-  validateTimeout,
-  DEFAULT_VOTE_TIMEOUT_MS,
-  type AgentVoteResult,
-} from './voter-agents.js';
+import { VOTER_ROLES } from './vote-types.js';
+import type { Vote, ConsensusAlgorithm, ConsensusResult } from '../consensus/types.js';
+import { validateTimeout, DEFAULT_VOTE_TIMEOUT_MS, type AgentVoteResult } from './voter-agents.js';
+import { executeVoting } from '../mcp/tools/consensus-vote.js';
+import type { ConsensusVoteInput } from '../mcp/tools/consensus-vote-types.js';
 import { colors, symbols, writeLine } from './ansi-output.js';
 
 function generateVoteHash(role: VoterRole, vote: Vote): VoteHash {
   const data = JSON.stringify({ role, decision: vote.decision, reasoning: vote.reasoning });
   const hash = crypto.createHash('sha256').update(data).digest('hex').slice(0, 16);
   return { role, hash, timestamp: getTimeProvider().nowIso() };
-}
-
-/**
- * Collects votes from voter agents.
- * Uses real LLM execution when not using simulated votes.
- */
-async function collectVotes(
-  proposal: string,
-  roles: readonly VoterRole[],
-  simulateVotes: boolean,
-  timeoutMs?: number
-): Promise<readonly AgentVoteResult[]> {
-  return collectRealVotes({
-    roles,
-    proposal,
-    simulate: simulateVotes,
-    ...(timeoutMs !== undefined && { timeoutMs }),
-  });
 }
 
 function printVoteDetails(votes: readonly AgentVoteResult[]): void {
@@ -255,20 +233,19 @@ function recordVoteToGitHub(issueNumber: number, result: VotingResult): void {
   }
 }
 
+/**
+ * Vote runner. Delegates the actual voting flow to `executeVoting` so the
+ * CLI and MCP paths share the same: error-policy gate (`reduce_denominator`
+ * / `count_as_abstain` / `fail_closed`), >50% hard floor, contrarian
+ * escalation on quickMode approvals, higher_order strategy support, and
+ * outcome recording for adaptive routing. (DRY pass on top of #2630.)
+ *
+ * CLI-specific concerns (timeout clamping + diagnostic line) remain here
+ * because they belong to the operator UX, not the voting flow itself.
+ */
 async function runVote(options: VoteCommandOptions): Promise<VotingResult> {
-  const threshold = THRESHOLD_MAP[options.threshold ?? 'supermajority'] ?? 'supermajority';
-  const useQuick = options.quick === true;
-  // Default panel expanded to 7 roles 2026-04-25 — added scope_steward to
-  // catch build-vs-buy blind spots that the 6-role panel demonstrably missed
-  // in the aegis-boot case (#2185). Supermajority threshold is 5/7 ≈ 71%.
-  // QuickMode panel substitutes scope_steward for pm: design + threat model +
-  // existence-justification cover the highest-impact failure modes for fast triage.
-  const roles: readonly VoterRole[] = useQuick
-    ? ['architect', 'security', 'scope_steward']
-    : ['architect', 'security', 'devex', 'ai_ml', 'pm', 'catfish', 'scope_steward'];
-  const start = getTimeProvider().now();
-
-  // Validate and constrain timeout to allowed range (Issue #607)
+  // Validate and constrain timeout to allowed range (Issue #607). Done at
+  // the CLI boundary so the operator sees the adjustment immediately.
   const requestedTimeoutMs = options.timeoutMs ?? DEFAULT_VOTE_TIMEOUT_MS;
   const { value: timeoutMs, clamped } = validateTimeout(requestedTimeoutMs);
   const timeoutSec = timeoutMs / 1000;
@@ -279,32 +256,33 @@ async function runVote(options: VoteCommandOptions): Promise<VotingResult> {
     );
   }
 
+  const useQuick = options.quick === true;
+  const roleCount = useQuick ? 3 : 7;
   writeLine(
-    `${colors.dim}Collecting votes from ${String(roles.length)} agents (timeout: ${String(timeoutSec)}s each)...${colors.reset}\n`
+    `${colors.dim}Collecting votes from ${String(roleCount)} agents (timeout: ${String(timeoutSec)}s each)...${colors.reset}\n`
   );
-  const votes = await collectVotes(options.proposal, roles, options.dryRun === true, timeoutMs);
-  const validVotes = votes.filter((v) => v.source !== 'error');
-  const engine = createConsensusEngine();
-  const proposal: Proposal = {
-    title: 'CLI Vote',
-    description: options.proposal,
-    algorithm: threshold,
-  };
-  const proposalResult = await engine.propose(proposal);
-  if (!proposalResult.ok) throw new Error(proposalResult.error.message);
-  const proposalId = proposalResult.value;
-  for (const { role, vote } of validVotes) {
-    await engine.vote(proposalId, role, vote);
-  }
-  const resultRes = await engine.close(proposalId);
-  if (!resultRes.ok) throw new Error(resultRes.error.message);
-  return {
+
+  const input: ConsensusVoteInput = {
     proposal: options.proposal,
-    threshold,
-    result: resultRes.value,
-    votes,
-    totalTimeMs: getTimeProvider().now() - start,
+    quickMode: useQuick,
     simulateVotes: options.dryRun === true,
+    ...(options.threshold !== undefined && { threshold: options.threshold }),
+    ...(options.errorPolicy !== undefined && { errorPolicy: options.errorPolicy }),
+  };
+
+  const logger = createLogger({ component: 'cli-vote' });
+  const result = await executeVoting(input, logger, { voteTimeoutMs: timeoutMs });
+
+  // `ExtendedVotingResult` is a superset of `VotingResult` — return the
+  // narrower view since the CLI pretty-printers only consume the base
+  // fields and don't render `strategy` / `higherOrderResult`.
+  return {
+    proposal: result.proposal,
+    threshold: result.threshold,
+    result: result.result,
+    votes: result.votes,
+    totalTimeMs: result.totalTimeMs,
+    simulateVotes: result.simulateVotes,
   };
 }
 

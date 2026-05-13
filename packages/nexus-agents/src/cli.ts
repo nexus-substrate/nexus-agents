@@ -115,6 +115,7 @@ interface ParsedValues {
   threshold?: string;
   quick: boolean;
   timeout?: string;
+  'error-policy'?: string;
   // SWE-bench options
   variant?: string;
   limit?: string;
@@ -190,16 +191,28 @@ function parseThreshold(
   return undefined;
 }
 
+/** Validates errorPolicy option for vote command (#2630). */
+function parseErrorPolicy(
+  value: string | undefined
+): 'reduce_denominator' | 'count_as_abstain' | 'fail_closed' | undefined {
+  if (value === 'reduce_denominator' || value === 'count_as_abstain' || value === 'fail_closed') {
+    return value;
+  }
+  return undefined;
+}
+
 /** Builds vote-specific options. */
 function buildVoteOptions(values: ParsedValues): Record<string, unknown> {
   const threshold = parseThreshold(values.threshold);
   const timeoutSec = parseNumericOption(values.timeout);
   // Convert seconds to milliseconds (CLI uses seconds for readability)
   const timeoutMs = timeoutSec !== undefined ? timeoutSec * 1000 : undefined;
+  const errorPolicy = parseErrorPolicy(values['error-policy']);
   return {
     ...(values.proposal !== undefined && { proposal: values.proposal }),
     ...(threshold !== undefined && { threshold }),
     ...(timeoutMs !== undefined && { timeoutMs }),
+    ...(errorPolicy !== undefined && { errorPolicy }),
   };
 }
 

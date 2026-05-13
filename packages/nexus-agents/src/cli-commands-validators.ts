@@ -35,6 +35,16 @@ export function isValidThreshold(
 }
 
 /**
+ * Validates errorPolicy option for vote command (#2630). Mirrors
+ * `ErrorPolicySchema` in `consensus-vote-types.ts` — keep in sync.
+ */
+export function isValidErrorPolicy(
+  value: string
+): value is 'reduce_denominator' | 'count_as_abstain' | 'fail_closed' {
+  return ['reduce_denominator', 'count_as_abstain', 'fail_closed'].includes(value);
+}
+
+/**
  * Validates index subcommand.
  */
 export function isValidIndexSubcommand(value: string | undefined): value is IndexSubcommand {

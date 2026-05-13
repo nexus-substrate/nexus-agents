@@ -50,6 +50,7 @@ import { startServer, type OrchestratorModeOptions } from './cli-server.js';
 import {
   isValidExpertListFormat,
   isValidThreshold,
+  isValidErrorPolicy,
   isValidIndexSubcommand,
   isValidIndexFormat,
   isValidResearchFormat,
@@ -237,10 +238,14 @@ export async function handleVoteCommand(args: ParsedCliArgs): Promise<void> {
   const threshold = args.options.threshold;
   const validThreshold =
     threshold !== undefined && isValidThreshold(threshold) ? threshold : undefined;
+  const errorPolicy = args.options.errorPolicy;
+  const validErrorPolicy =
+    errorPolicy !== undefined && isValidErrorPolicy(errorPolicy) ? errorPolicy : undefined;
 
   const exitCode = await voteCommand({
     proposal,
     ...(validThreshold !== undefined && { threshold: validThreshold }),
+    ...(validErrorPolicy !== undefined && { errorPolicy: validErrorPolicy }),
     dryRun: args.options.dryRun,
     quick: args.options.quick,
     verbose: args.options.verbose,
