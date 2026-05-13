@@ -1,7 +1,7 @@
 # Nexus Agents Architecture
 
-**Version:** 2.3.0
-**Last Updated:** 2026-02-08 (ET)
+**Version:** 2.72.0
+**Last Updated:** 2026-05-12 (ET)
 **Status:** Current
 
 ---
@@ -126,59 +126,67 @@ nexus-agents/
 ├── packages/
 │   └── nexus-agents/       # Single consolidated package
 │       └── src/
-│           ├── adapters/     # Model adapters + capacity monitor
-│           ├── agents/       # Agent framework, experts, collaboration
-│           ├── api/          # REST API gateway (Fastify-based)
-│           ├── audit/        # SIEM-compatible audit logging
-│           ├── benchmarks/   # Performance benchmarking utilities
-│           ├── cli/          # CLI interface + mode detection
-│           ├── cli-adapters/ # External CLI integrations
-│           ├── config/       # Configuration, validation
-│           ├── consensus/    # Multi-agent consensus engine
-│           ├── context/      # Memory systems
-│           ├── core/         # Shared types, Result<T,E>, errors
-│           ├── dogfooding/   # Self-referential PR review tooling
-│           ├── exports/      # Domain-specific barrel exports
-│           ├── indexer/      # Codebase indexing + diagrams
-│           ├── learning/     # Feedback and learning infrastructure
-│           ├── mcp/          # MCP server, tools
-│           ├── observability/ # Swarm-level metrics + dashboards
-│           ├── research/     # Research index generation/validation
-│           ├── security/     # Sandboxing, isolation, safety-bench
-│           ├── self-eval/    # Code review recommendations
-│           ├── swe-bench/    # SWE-Bench integration + harness
-│           ├── testing/      # Test utilities, mocks, E2E
-│           └── workflows/    # Workflow engine, templates
-└── ARCHITECTURE.md           # This file
+│           ├── adapters/      # Direct-API model adapters (Anthropic, OpenAI, Google, Ollama)
+│           ├── agents/        # Agent framework, experts, collaboration, agentic adapter
+│           ├── audit/         # SIEM-compatible audit logging, hash chain
+│           ├── benchmarks/    # In-tree performance harness (LLM-eval lives in nexus-eval-* repos)
+│           ├── cli/           # CLI interface, commands, mode detection
+│           ├── cli-adapters/  # Subprocess CLI integrations (Claude, Gemini, Codex, OpenCode)
+│           ├── config/        # Configuration loading, ModelRegistry, schemas, validation
+│           ├── consensus/     # Multi-agent consensus engine, voter roles, strategies
+│           ├── context/       # Memory systems, token counting, work balancing
+│           ├── core/          # Types, Result<T,E>, errors, logger, time provider
+│           ├── dogfooding/    # Self-referential review tooling (SCM client moved to scm/)
+│           ├── exports/       # Domain-specific barrel exports (Issue #285)
+│           ├── governance/    # Fitness audit, drift detection, governance rules
+│           ├── indexer/       # Codebase indexing, symbol extraction, diagrams
+│           ├── learning/      # OutcomeStore, feedback infra, strategy distillation
+│           ├── mcp/           # MCP server, tool handlers, resources, middleware
+│           ├── observability/ # Swarm metrics, interaction graphs, dashboards
+│           ├── orchestration/ # Graph workflows, AOrchestra, workflow router, outcomes
+│           ├── pipeline/      # TaskContract, PipelineRunner, plugins, EventBus, PolicyEngine
+│           ├── replay/        # Deterministic replay of execution traces
+│           ├── research/      # Research index generation/validation
+│           ├── scm/           # Source-control client (GitHub) — extracted from dogfooding/
+│           ├── security/      # Hostile-input firewall, trust tiers, ClawGuard, sandbox-compat
+│           ├── self-eval/     # Code review recommendations, component scan
+│           ├── testing/       # Mock adapters, metrics, E2E workflow tests
+│           ├── utils/         # Shared utility helpers
+│           └── workflows/     # Workflow engine, templates, step execution
+└── ARCHITECTURE.md            # This file
 ```
 
 ### Module Responsibilities
 
-| Module          | Responsibility                                | Deep Dive                                                          |
-| --------------- | --------------------------------------------- | ------------------------------------------------------------------ |
-| `adapters`      | Model adapters, capacity monitoring           | -                                                                  |
-| `agents`        | Agent lifecycle, collaboration, context prune | [AGENT_SYSTEM.md](docs/architecture/AGENT_SYSTEM.md)               |
-| `api`           | REST API gateway for non-MCP clients          | -                                                                  |
-| `audit`         | SIEM-compatible audit logging, hash chain     | -                                                                  |
-| `benchmarks`    | Memory backend performance metrics            | -                                                                  |
-| `cli`           | CLI interface, mode detection, commands       | -                                                                  |
-| `cli-adapters`  | External CLI integration, routing             | [ROUTING_SYSTEM.md](docs/architecture/ROUTING_SYSTEM.md)           |
-| `config`        | Configuration loading and validation          | -                                                                  |
-| `consensus`     | Multi-agent voting, weighted decisions        | [CONSENSUS_PROTOCOLS.md](docs/architecture/CONSENSUS_PROTOCOLS.md) |
-| `context`       | Token counting, work balancing, memory        | [MEMORY_SYSTEM.md](docs/architecture/MEMORY_SYSTEM.md)             |
-| `core`          | Types, Result pattern, errors, logger         | -                                                                  |
-| `dogfooding`    | Self-referential PR review tooling            | -                                                                  |
-| `exports`       | Domain-specific barrel exports (Issue #285)   | -                                                                  |
-| `indexer`       | Codebase indexing, diagrams, freshness        | -                                                                  |
-| `learning`      | Feedback collection and learning infra        | -                                                                  |
-| `mcp`           | MCP protocol, tools                           | [MCP_PROTOCOL.md](docs/architecture/MCP_PROTOCOL.md)               |
-| `observability` | Swarm metrics, interaction graphs, dashboards | -                                                                  |
-| `research`      | Research index generation/validation          | -                                                                  |
-| `security`      | Sandboxing, isolation, safety-bench eval      | [SECURITY.md](docs/architecture/SECURITY.md)                       |
-| `self-eval`     | Code review recommendations, component scan   | -                                                                  |
-| `swe-bench`     | SWE-Bench integration and evaluation harness  | -                                                                  |
-| `testing`       | Mock adapters, metrics, E2E workflow tests    | -                                                                  |
-| `workflows`     | Workflow engine, templates, step execution    | -                                                                  |
+| Module          | Responsibility                                                  | Deep Dive                                                          |
+| --------------- | --------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `adapters`      | Direct-API model adapters (Anthropic, OpenAI, Google, Ollama)   | -                                                                  |
+| `agents`        | Agent lifecycle, expert factory, AgenticAdapter, context prune  | [AGENT_SYSTEM.md](docs/architecture/AGENT_SYSTEM.md)               |
+| `audit`         | SIEM-compatible audit logging, hash chain verification          | -                                                                  |
+| `benchmarks`    | In-tree harness (LLM-eval offloaded to nexus-eval-\* repos)     | -                                                                  |
+| `cli`           | CLI interface, commands, doctor, config-init, system-review     | -                                                                  |
+| `cli-adapters`  | Subprocess CLI integrations + routing (Composite/Budget/TOPSIS) | [ROUTING_SYSTEM.md](docs/architecture/ROUTING_SYSTEM.md)           |
+| `config`        | ModelRegistry, AvailableModelsCache, AppConfig, in-tree data    | -                                                                  |
+| `consensus`     | Multi-agent voting, weighted decisions, voter roles             | [CONSENSUS_PROTOCOLS.md](docs/architecture/CONSENSUS_PROTOCOLS.md) |
+| `context`       | Token counting, work balancing, memory backends                 | [MEMORY_SYSTEM.md](docs/architecture/MEMORY_SYSTEM.md)             |
+| `core`          | Types, Result pattern, errors, logger, time provider            | -                                                                  |
+| `dogfooding`    | Self-referential review tooling (SCM client now in scm/)        | -                                                                  |
+| `exports`       | Domain-specific barrel exports (Issue #285)                     | -                                                                  |
+| `governance`    | Fitness audit, drift detection, registry coverage gates         | -                                                                  |
+| `indexer`       | Codebase indexing, symbol extraction, diagrams, freshness       | -                                                                  |
+| `learning`      | OutcomeStore, feedback collection, strategy distillation        | -                                                                  |
+| `mcp`           | MCP protocol, tool handlers, resources, middleware              | [MCP_PROTOCOL.md](docs/architecture/MCP_PROTOCOL.md)               |
+| `observability` | Swarm metrics, interaction graphs, dashboards                   | -                                                                  |
+| `orchestration` | Graph workflows, AOrchestra, workflow router, outcomes          | -                                                                  |
+| `pipeline`      | TaskContract, PipelineRunner, plugins, EventBus, PolicyEngine   | -                                                                  |
+| `replay`        | Deterministic replay of execution traces                        | -                                                                  |
+| `research`      | Research index generation/validation                            | -                                                                  |
+| `scm`           | Source-control client (GitHub) — extracted from dogfooding/     | -                                                                  |
+| `security`      | Hostile-input firewall, trust tiers, ClawGuard, sandbox-compat  | [SECURITY.md](docs/architecture/SECURITY.md)                       |
+| `self-eval`     | Code review recommendations, component scan                     | -                                                                  |
+| `testing`       | Mock adapters, metrics, E2E workflow tests                      | -                                                                  |
+| `utils`         | Shared utility helpers                                          | -                                                                  |
+| `workflows`     | Workflow engine, templates, step execution                      | -                                                                  |
 
 ---
 
@@ -234,6 +242,15 @@ interface IModelAdapter {
   complete(request: CompletionRequest): Promise<Result<CompletionResponse, ModelError>>;
 }
 ```
+
+**Model metadata: `ModelRegistry`** (epic #2540 + #2546, completed 2026-05-12). Per-model behaviour and capability data — pricing, context windows, modalities, parallel-tool-call support, prompt caching, profile defaults — lives in a unified `ModelRegistry` at `config/model-registry.ts`. Consumers query via `getDefaultRegistry().getEntry(modelId, hints?)`; the registry merges four tiers in priority order:
+
+1. Operator manifest overlay (`$NEXUS_MODELS_OVERLAY_PATH`)
+2. In-tree authoritative entries (`config/in-tree-data.ts` via the converter in `in-tree-entries.ts`)
+3. models.dev snapshot (auto-imported by `scripts/sync-models-dev.ts`)
+4. Pattern-derived fallback (vendor + family inferred from modelId)
+
+Runtime availability is a separate concern handled by `AvailableModelsCache`, which probes adapters' `listModels?()` (where supported) and gates routing decisions. The `withModelNotFoundFallback(adapter, ...)` wrapper closes the retire-and-retry loop: on a `MODEL_NOT_FOUND` error, it refreshes the cache, picks a same-vendor/same-family alternative, and retries once via the adapter factory.
 
 ### IWorkflowEngine
 
