@@ -18,11 +18,12 @@ import { createSecureHandler, type HandlerContext } from '../middleware/secure-h
 import { withToolError } from '../middleware/tool-error-handler.js';
 import { addResearchPaper, paperExists } from '../../cli/research-helpers.js';
 import {
-  toolError,
+  toolStructuredError,
   toolSuccessStructured,
   type ToolResult,
   type BaseMcpToolDeps,
 } from './tool-result.js';
+import type { ErrorCategory } from '../error-envelope.js';
 import { getToolMemory } from './tool-memory.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 
@@ -79,6 +80,12 @@ export interface ResearchAddResponse {
   message: string;
   /** Whether this was a dry run */
   dryRun: boolean;
+  /**
+   * Error category when `success` is false (#2649). `business` for a
+   * dedup hit (paper already in registry); absent otherwise — the MCP
+   * handler treats absent as `internal`.
+   */
+  errorCategory?: ErrorCategory;
 }
 
 // =============================================================================
@@ -112,6 +119,7 @@ export async function executeResearchAdd(
       title: '',
       message: `Paper arxiv-${input.arxivId} already exists in registry`,
       dryRun: input.dryRun,
+      errorCategory: 'business',
     };
   }
 
@@ -163,7 +171,10 @@ function createResearchAddHandler(deps: ResearchAddDeps) {
   return async (args: unknown, ctx: HandlerContext): Promise<ToolResult> => {
     const validationResult = ResearchAddInputSchema.safeParse(args);
     if (!validationResult.success) {
-      return toolError(`Validation error: ${formatZodError(validationResult.error)}`);
+      return toolStructuredError({
+        errorCategory: 'validation',
+        message: `Validation error: ${formatZodError(validationResult.error)}`,
+      });
     }
 
     ctx.logger.debug('Adding research paper', { arxivId: validationResult.data.arxivId });
@@ -173,7 +184,10 @@ function createResearchAddHandler(deps: ResearchAddDeps) {
       const result = await executeResearchAdd(validationResult.data, logger);
 
       if (!result.success) {
-        return toolError(result.message);
+        return toolStructuredError({
+          errorCategory: result.errorCategory ?? 'internal',
+          message: result.message,
+        });
       }
 
       return toolSuccessStructured(result as unknown as Record<string, unknown>);

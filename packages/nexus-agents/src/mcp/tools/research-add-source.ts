@@ -25,11 +25,12 @@ import {
 import { computeSourceQualityScore } from '../../research/source-quality.js';
 import type { ResearchSource } from '../../indexer/research-index/research-index-base-types.js';
 import {
-  toolError,
+  toolStructuredError,
   toolSuccessStructured,
   type ToolResult,
   type BaseMcpToolDeps,
 } from './tool-result.js';
+import type { ErrorCategory } from '../error-envelope.js';
 import { getToolMemory } from './tool-memory.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 
@@ -89,6 +90,12 @@ export interface ResearchAddSourceResponse {
   evidence_tier: string;
   message: string;
   dryRun: boolean;
+  /**
+   * Error category when `success` is false (#2649). `business` for a
+   * dedup hit (source already in registry), `internal` for a write
+   * failure; absent otherwise.
+   */
+  errorCategory?: ErrorCategory;
 }
 
 // =============================================================================
@@ -147,6 +154,7 @@ interface ResponseParams {
   qualityScore: number;
   message: string;
   dryRun: boolean;
+  errorCategory?: ErrorCategory;
 }
 
 /** Build a standard response object. */
@@ -159,6 +167,7 @@ function buildResponse(params: ResponseParams): ResearchAddSourceResponse {
     evidence_tier: deriveEvidenceTier(params.qualityScore),
     message: params.message,
     dryRun: params.dryRun,
+    ...(params.errorCategory !== undefined ? { errorCategory: params.errorCategory } : {}),
   };
 }
 
@@ -190,6 +199,7 @@ function prepareSource(input: ResearchAddSourceInput): { entry: SourceEntry; sco
   return { entry, score };
 }
 
+// eslint-disable-next-line max-lines-per-function -- cohesive exists→build→write→record sequence; +2 lines for #2649 errorCategory tags tipped it past 50.
 async function executeResearchAddSource(
   input: ResearchAddSourceInput,
   logger: ILogger
@@ -204,6 +214,7 @@ async function executeResearchAddSource(
       qualityScore: 0,
       message: `Source already exists: ${input.url}`,
       dryRun: input.dryRun,
+      errorCategory: 'business',
     });
   }
 
@@ -228,6 +239,7 @@ async function executeResearchAddSource(
       qualityScore: score,
       message: writeResult.error.message,
       dryRun: false,
+      errorCategory: 'internal',
     });
   }
 
@@ -251,7 +263,10 @@ function createResearchAddSourceHandler(deps: ResearchAddSourceDeps) {
   return async (args: unknown, ctx: HandlerContext): Promise<ToolResult> => {
     const validationResult = ResearchAddSourceInputSchema.safeParse(args);
     if (!validationResult.success) {
-      return toolError(`Validation error: ${formatZodError(validationResult.error)}`);
+      return toolStructuredError({
+        errorCategory: 'validation',
+        message: `Validation error: ${formatZodError(validationResult.error)}`,
+      });
     }
 
     ctx.logger.debug('Adding research source', { url: validationResult.data.url });
@@ -261,7 +276,10 @@ function createResearchAddSourceHandler(deps: ResearchAddSourceDeps) {
       const result = await executeResearchAddSource(validationResult.data, logger);
 
       if (!result.success) {
-        return toolError(result.message);
+        return toolStructuredError({
+          errorCategory: result.errorCategory ?? 'internal',
+          message: result.message,
+        });
       }
 
       return toolSuccessStructured(result as unknown as Record<string, unknown>);

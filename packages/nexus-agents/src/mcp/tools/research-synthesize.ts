@@ -19,7 +19,7 @@ import { synthesizeResearch } from '../../cli/research-helpers-synthesize.js';
 import type { SynthesisResult } from '../../cli/research-helpers-synthesize.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 import {
-  toolError,
+  toolStructuredError,
   toolSuccessStructured,
   type ToolResult,
   type BaseMcpToolDeps,
@@ -63,14 +63,20 @@ function createResearchSynthesizeHandler(
   return async (args: unknown, _ctx: HandlerContext): Promise<ToolResult> => {
     const validationResult = ResearchSynthesizeInputSchema.safeParse(args);
     if (!validationResult.success) {
-      return toolError(`Validation error: ${formatZodError(validationResult.error)}`);
+      return toolStructuredError({
+        errorCategory: 'validation',
+        message: `Validation error: ${formatZodError(validationResult.error)}`,
+      });
     }
 
     const logger = deps.logger ?? createLogger({ tool: 'research_synthesize' });
     return withToolError('Synthesis failed', logger, async () => {
       const result = await synthesizeResearch(validationResult.data.topic);
       if (!result.ok) {
-        return toolError(`Synthesis failed: ${result.error.message}`);
+        return toolStructuredError({
+          errorCategory: 'internal',
+          message: `Synthesis failed: ${result.error.message}`,
+        });
       }
       return toolSuccessStructured(result.value as unknown as Record<string, unknown>);
     });

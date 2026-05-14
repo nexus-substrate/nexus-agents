@@ -37,7 +37,7 @@ import { fetchSource, type DiscoverError } from '../../cli/research-helpers-sour
 import { resolveToken } from '../../scm/token-resolver.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 import {
-  toolError,
+  toolStructuredError,
   toolSuccessStructured,
   type ToolResult,
   type BaseMcpToolDeps,
@@ -267,7 +267,10 @@ function createSurveyHandler(deps: SurveyOssLandscapeDeps) {
   return async (args: unknown, ctx: HandlerContext): Promise<ToolResult> => {
     const validation = SurveyOssLandscapeInputSchema.safeParse(args);
     if (!validation.success) {
-      return toolError(`Validation error: ${formatZodError(validation.error)}`);
+      return toolStructuredError({
+        errorCategory: 'validation',
+        message: `Validation error: ${formatZodError(validation.error)}`,
+      });
     }
     const logger = deps.logger ?? createLogger({ tool: 'survey_oss_landscape' });
     ctx.logger.debug('Surveying OSS landscape', {
