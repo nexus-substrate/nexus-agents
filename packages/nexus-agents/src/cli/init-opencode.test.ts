@@ -31,7 +31,12 @@ vi.mock('../adapters/openai-compat-adapter.js', () => ({
   discoverModels: mockDiscoverModels,
 }));
 
-import { runInitOpencode, buildNexusMcpBlock, runOpencodeValidate } from './init-opencode.js';
+import {
+  runInitOpencode,
+  buildNexusMcpBlock,
+  buildDefaultPermissionBlock,
+  runOpencodeValidate,
+} from './init-opencode.js';
 import { ok, err, ConfigError } from '../core/index.js';
 
 describe('buildNexusMcpBlock', () => {
@@ -61,6 +66,28 @@ describe('buildNexusMcpBlock', () => {
   });
 });
 
+describe('buildDefaultPermissionBlock (#2658)', () => {
+  it('asks for bash and edit, allows skill', () => {
+    const p = buildDefaultPermissionBlock();
+    expect(p['bash']).toBe('ask');
+    expect(p['skill']).toBe('allow');
+    expect(typeof p['edit']).toBe('object');
+  });
+
+  it('hard-denies secrets, keys, and .git in edit — with deny patterns AFTER "*"', () => {
+    const edit = buildDefaultPermissionBlock()['edit'] as Record<string, string>;
+    // OpenCode evaluates last-matching-rule-wins, so the broad `*` must come
+    // first and the deny patterns after, or secrets would resolve to `ask`.
+    const keys = Object.keys(edit);
+    expect(keys[0]).toBe('*');
+    expect(edit['*']).toBe('ask');
+    for (const denied of ['**/.env', '**/.env.*', '**/*.pem', '**/*.key', '**/.git/**']) {
+      expect(edit[denied]).toBe('deny');
+      expect(keys.indexOf(denied)).toBeGreaterThan(0);
+    }
+  });
+});
+
 describe('runInitOpencode', () => {
   beforeEach(() => {
     mockExistsSync.mockReset();
@@ -83,6 +110,42 @@ describe('runInitOpencode', () => {
     expect(parsed['providers']).toBeDefined();
     expect(parsed['mcp']).toBeDefined();
     expect((parsed['mcp'] as Record<string, unknown>)['nexus-agents']).toBeDefined();
+    // #2658 — a new file gets the default permission block.
+    expect(parsed['permission']).toEqual(buildDefaultPermissionBlock());
+  });
+
+  it('adds the default permission block to an existing file that lacks one (#2658)', () => {
+    mockExistsSync.mockReturnValue(true);
+    mockReadFileSync.mockReturnValue(
+      JSON.stringify({ $schema: 'https://opencode.ai/config.json', theme: 'tokyo-night' })
+    );
+    const result = runInitOpencode({
+      path: '/projects/opencode.json',
+      cliPath: '/opt/nexus-agents/dist/cli.js',
+    });
+    expect(result.action).toBe('updated');
+    const written = JSON.parse(mockWriteFileSync.mock.calls[0]?.[1] as string) as Record<
+      string,
+      unknown
+    >;
+    expect(written['permission']).toEqual(buildDefaultPermissionBlock());
+  });
+
+  it('never overwrites an operator-set permission block (#2658)', () => {
+    mockExistsSync.mockReturnValue(true);
+    const operatorPermission = { bash: 'allow', edit: 'allow' };
+    mockReadFileSync.mockReturnValue(
+      JSON.stringify({
+        $schema: 'https://opencode.ai/config.json',
+        permission: operatorPermission,
+      })
+    );
+    runInitOpencode({ path: '/projects/opencode.json', cliPath: '/opt/nexus-agents/dist/cli.js' });
+    const written = JSON.parse(mockWriteFileSync.mock.calls[0]?.[1] as string) as Record<
+      string,
+      unknown
+    >;
+    expect(written['permission']).toEqual(operatorPermission);
   });
 
   it('preserves existing operator-set keys when merging', () => {
