@@ -1,3 +1,8 @@
+---
+paths: ['**/*']
+description: Handoff status markers, scope bounding, output budgets, wave execution, model selection for subagents
+---
+
 # Subagent Coordination Hygiene
 
 Auto-loaded when dispatching subagents (Agent tool, Task tool), and applies to every subagent response. Adapted from the `paperclipai/paperclip` task-workflow + heartbeat-protocol disciplines — the behavioral subset that translates to our synchronous subagent model.

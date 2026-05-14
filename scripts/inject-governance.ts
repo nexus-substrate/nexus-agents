@@ -730,6 +730,48 @@ function extractDocumentedCounts(content: string): RegistrySummary {
 // ============================================================================
 
 /**
+ * Verify that every `.rules/*.md` file has frontmatter with `paths:` and
+ * `description:` fields (Issue #2656, Epic C). Frontmatter is the
+ * cross-adapter primitive that lets Codex / Gemini / OpenCode resolve
+ * rules deterministically — without it, those adapters silently miss
+ * the rule even when its topic applies.
+ *
+ * Frontmatter must:
+ *   1. Open with `---` on line 1.
+ *   2. Contain a `paths:` field (single string or YAML list).
+ *   3. Contain a `description:` field.
+ *   4. Close with a second `---` line.
+ */
+function checkRuleFrontmatter(): boolean {
+  const rulesDir = join(ROOT, '.rules');
+  if (!existsSync(rulesDir)) return true; // Nothing to validate.
+  const failures: string[] = [];
+  for (const entry of readdirSync(rulesDir)) {
+    if (!entry.endsWith('.md')) continue;
+    const path = join(rulesDir, entry);
+    const content = readFileSync(path, 'utf-8');
+    if (!content.startsWith('---\n')) {
+      failures.push(`${entry}: missing opening frontmatter delimiter`);
+      continue;
+    }
+    const second = content.indexOf('\n---\n', 4);
+    if (second === -1) {
+      failures.push(`${entry}: missing closing frontmatter delimiter`);
+      continue;
+    }
+    const block = content.slice(4, second);
+    if (!/^paths:/m.test(block)) failures.push(`${entry}: missing \`paths:\``);
+    if (!/^description:/m.test(block)) failures.push(`${entry}: missing \`description:\``);
+  }
+  if (failures.length > 0) {
+    console.error('.rules/*.md frontmatter drift (#2656):');
+    for (const f of failures) console.error('  - ' + f);
+    return false;
+  }
+  return true;
+}
+
+/**
  * Validate every entry in the CLAUDE.md "Canonical Paths" table resolves on
  * disk (#2317, #2321). The table is intentionally hand-curated — adding or
  * removing a row is a deliberate edit — but a row that points at a missing
@@ -848,6 +890,7 @@ function checkGovernance(): boolean {
     checkReadmeToolTable(actual.tools),
     checkCanonicalPaths(),
     checkAdapterPrecedenceDocs(),
+    checkRuleFrontmatter(),
     checkServerJson(actual.tools.length),
   ];
 

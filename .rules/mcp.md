@@ -1,5 +1,6 @@
 ---
-paths: 'packages/**/mcp/**/*.ts'
+paths: ['packages/**/mcp/**/*.ts']
+description: Adding or modifying MCP tools — schemas, error envelopes, registration
 ---
 
 # MCP Server Rules

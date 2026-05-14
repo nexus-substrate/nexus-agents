@@ -1,5 +1,6 @@
 ---
-paths: '**/*.ts'
+paths: ['**/*.ts', '**/*.tsx']
+description: Auth, secrets, input validation, file-system ops, untrusted-input handling
 ---
 
 # Security Rules

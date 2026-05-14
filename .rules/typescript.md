@@ -1,5 +1,6 @@
 ---
-paths: '**/*.ts'
+paths: ['**/*.ts', '**/*.tsx']
+description: TypeScript type-safety policy, patterns, and ESLint gotchas
 ---
 
 # TypeScript Rules

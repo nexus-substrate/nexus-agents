@@ -1,3 +1,8 @@
+---
+paths: ['**/*']
+description: Protocol for filing GitHub issues for bugs found outside the current task (4-point gate, rate limits)
+---
+
 # Discovered Issues — "See Something, Say Something"
 
 <!-- CANONICAL SOURCE: this file is the canonical body. CLAUDE.md keeps a summary that points here. -->

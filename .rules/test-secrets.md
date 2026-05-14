@@ -1,3 +1,8 @@
+---
+paths: ['**/*.test.ts', '**/*.spec.ts', '**/test/**/*']
+description: Writing tests that involve fake credentials, env-var fixtures, or mock secrets
+---
+
 # Test Secrets Policy
 
 <!-- CANONICAL SOURCE: Issue #1410 -->

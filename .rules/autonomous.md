@@ -1,3 +1,8 @@
+---
+paths: ['**/*']
+description: Backlog priority, tie-break protocol, hard-stop conditions when running in /loop or autonomous mode
+---
+
 # Autonomous Operation Rules
 
 <!-- CANONICAL SOURCE: this file is the canonical body. CLAUDE.md keeps a summary that points here. -->

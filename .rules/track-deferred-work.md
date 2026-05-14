@@ -1,3 +1,8 @@
+---
+paths: ['**/*']
+description: File a GitHub issue for any deferred work — memory notes, PR follow-up bullets, and TODOs are not tracking
+---
+
 # Track All Deferred Work in GitHub Issues
 
 <!-- CANONICAL SOURCE: this file. CLAUDE.md links here. -->

@@ -1,3 +1,8 @@
+---
+paths: ['**/*']
+description: Reach for this when a test, build, or lint just failed
+---
+
 # Debugging & Error-Recovery Rules
 
 Auto-loaded when a test / build / lint fails, or when the user asks for a debug / triage / "why is this broken" investigation. **Full workflow:** [skills/bug-fix/SKILL.md](../../skills/bug-fix/SKILL.md)

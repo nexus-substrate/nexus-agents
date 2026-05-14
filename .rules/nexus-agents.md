@@ -1,3 +1,8 @@
+---
+paths: ['**/*']
+description: Nexus-agents integration basics — MCP server config, env vars, common commands
+---
+
 # Nexus-Agents Integration
 
 This project uses [nexus-agents](https://github.com/williamzujkowski/nexus-agents) v2.3.0 for multi-agent orchestration.
