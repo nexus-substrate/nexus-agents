@@ -266,9 +266,11 @@ describe('MCP tools index', () => {
       expect(result.isError).toBe(true);
     });
 
-    it('does not include structuredContent', () => {
+    it('carries a structured internal error envelope (#2649)', () => {
       const result = toolError('fail');
-      expect(result.structuredContent).toBeUndefined();
+      expect(result.structuredContent).toEqual({
+        error: { errorCategory: 'internal', isRetryable: false, message: 'fail' },
+      });
     });
   });
 });
