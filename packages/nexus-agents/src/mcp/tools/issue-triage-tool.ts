@@ -16,7 +16,12 @@ import {
   getTimeProvider,
   getRandomProvider,
 } from '../../core/index.js';
-import { toolError, toolSuccess, type BaseMcpToolDeps, type ToolResult } from './tool-result.js';
+import {
+  toolStructuredError,
+  toolSuccess,
+  type BaseMcpToolDeps,
+  type ToolResult,
+} from './tool-result.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { IssueTriage } from '../../dogfooding/issue-triage.js';
@@ -103,7 +108,10 @@ function createIssueTriageHandler(_deps: IssueTriageDeps) {
   return async (args: unknown, ctx: HandlerContext): Promise<ToolResult> => {
     const validationResult = IssueTriageInputSchema.safeParse(args);
     if (!validationResult.success) {
-      return toolError(`Validation error: ${formatZodError(validationResult.error)}`);
+      return toolStructuredError({
+        errorCategory: 'validation',
+        message: `Validation error: ${formatZodError(validationResult.error)}`,
+      });
     }
 
     const input = validationResult.data;
@@ -116,7 +124,10 @@ function createIssueTriageHandler(_deps: IssueTriageDeps) {
 
     if (!result.ok) {
       recordTriageOutcome(false, durationMs, result.error.message);
-      return toolError(`Triage failed: ${result.error.message}`);
+      return toolStructuredError({
+        errorCategory: 'internal',
+        message: `Triage failed: ${result.error.message}`,
+      });
     }
 
     recordTriageSuccess(result.value.category, result.value.categoryConfidence, durationMs);

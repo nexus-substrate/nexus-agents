@@ -24,7 +24,7 @@ import { createLogger, formatZodError } from '../../core/index.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import {
-  toolError,
+  toolStructuredError,
   toolSuccessStructured,
   type ToolResult,
   type BaseMcpToolDeps,
@@ -454,7 +454,10 @@ export async function runImprovementReview(
 async function reviewHandler(args: unknown, ctx: HandlerContext): Promise<ToolResult> {
   const parsed = ImprovementReviewInputSchema.safeParse(args);
   if (!parsed.success) {
-    return toolError(`Validation error: ${formatZodError(parsed.error)}`);
+    return toolStructuredError({
+      errorCategory: 'validation',
+      message: `Validation error: ${formatZodError(parsed.error)}`,
+    });
   }
   const response = await runImprovementReview(parsed.data, { logger: ctx.logger });
   return toolSuccessStructured(response as unknown as Record<string, unknown>);

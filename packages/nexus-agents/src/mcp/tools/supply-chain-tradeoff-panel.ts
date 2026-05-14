@@ -21,7 +21,12 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, formatZodError, getErrorMessage } from '../../core/index.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
-import { toolError, toolSuccess, type BaseMcpToolDeps, type ToolResult } from './tool-result.js';
+import {
+  toolStructuredError,
+  toolSuccess,
+  type BaseMcpToolDeps,
+  type ToolResult,
+} from './tool-result.js';
 import type { VoterRole, AgentVoteResult } from '../../cli/vote-types.js';
 import { collectRealVotes } from '../../cli/voter-agents.js';
 import { getToolAnnotations } from '../tool-annotations.js';
@@ -356,7 +361,10 @@ function toPanelVote(result: AgentVoteResult, axes: readonly string[]): PanelVot
 async function tradeoffPanelHandler(args: unknown, ctx: HandlerContext): Promise<ToolResult> {
   const parsed = SupplyChainTradeoffPanelInputSchema.safeParse(args);
   if (!parsed.success) {
-    return toolError(`Validation error: ${formatZodError(parsed.error)}`);
+    return toolStructuredError({
+      errorCategory: 'validation',
+      message: `Validation error: ${formatZodError(parsed.error)}`,
+    });
   }
   const input = parsed.data;
   const axes = input.axes ?? DEFAULT_AXES;
@@ -390,7 +398,10 @@ async function tradeoffPanelHandler(args: unknown, ctx: HandlerContext): Promise
     };
     return toolSuccess(JSON.stringify(response, null, 2));
   } catch (error) {
-    return toolError(`Tradeoff panel failed: ${getErrorMessage(error)}`);
+    return toolStructuredError({
+      errorCategory: 'internal',
+      message: `Tradeoff panel failed: ${getErrorMessage(error)}`,
+    });
   }
 }
 
