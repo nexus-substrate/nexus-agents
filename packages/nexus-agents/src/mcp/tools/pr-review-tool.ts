@@ -20,7 +20,12 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, formatZodError, getErrorMessage } from '../../core/index.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
-import { toolError, toolSuccess, type BaseMcpToolDeps, type ToolResult } from './tool-result.js';
+import {
+  toolStructuredError,
+  toolSuccess,
+  type BaseMcpToolDeps,
+  type ToolResult,
+} from './tool-result.js';
 import type { VoterRole, AgentVoteResult } from '../../cli/vote-types.js';
 import { collectRealVotes } from '../../cli/voter-agents.js';
 import { getToolAnnotations } from '../tool-annotations.js';
@@ -296,7 +301,10 @@ function summarizeReviews(reviews: readonly PrReviewVote[]): {
 async function prReviewHandler(args: unknown, ctx: HandlerContext): Promise<ToolResult> {
   const parsed = PrReviewInputSchema.safeParse(args);
   if (!parsed.success) {
-    return toolError(`Validation error: ${formatZodError(parsed.error)}`);
+    return toolStructuredError({
+      errorCategory: 'validation',
+      message: `Validation error: ${formatZodError(parsed.error)}`,
+    });
   }
   const input = parsed.data;
   const start = Date.now();
@@ -323,7 +331,10 @@ async function prReviewHandler(args: unknown, ctx: HandlerContext): Promise<Tool
     };
     return toolSuccess(JSON.stringify(response, null, 2));
   } catch (error) {
-    return toolError(`PR review failed: ${getErrorMessage(error)}`);
+    return toolStructuredError({
+      errorCategory: 'internal',
+      message: `PR review failed: ${getErrorMessage(error)}`,
+    });
   }
 }
 

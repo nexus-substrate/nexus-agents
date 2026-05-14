@@ -22,7 +22,12 @@ import {
   getToolTimeout,
 } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
-import { toolError, toolSuccess, type ToolResult, type BaseMcpToolDeps } from './tool-result.js';
+import {
+  toolStructuredError,
+  toolSuccess,
+  type ToolResult,
+  type BaseMcpToolDeps,
+} from './tool-result.js';
 import type { ConsensusAlgorithm, Vote, ConsensusResult, Proposal } from '../../consensus/types.js';
 import type { VoterRole, AgentVoteResult } from '../../cli/vote-types.js';
 import { collectRealVotes } from '../../cli/voter-agents.js';
@@ -610,7 +615,10 @@ function createConsensusVoteHandler(deps: ConsensusVoteDeps) {
   return async (args: unknown, ctx: HandlerContext): Promise<ConsensusVoteToolResponse> => {
     const validationResult = ConsensusVoteInputSchema.safeParse(args);
     if (!validationResult.success) {
-      return toolError(`Validation error: ${formatZodError(validationResult.error)}`);
+      return toolStructuredError({
+        errorCategory: 'validation',
+        message: `Validation error: ${formatZodError(validationResult.error)}`,
+      });
     }
 
     const strategy = validationResult.data.strategy ?? 'simple_majority';
@@ -628,7 +636,7 @@ function createConsensusVoteHandler(deps: ConsensusVoteDeps) {
       handleConsensusVote(deps, validationResult.data)
     );
     if (!result.ok) {
-      return toolError(result.error);
+      return toolStructuredError({ errorCategory: 'internal', message: result.error });
     }
 
     for (const vote of result.value.votes) {
