@@ -116,6 +116,9 @@ export function recordVoteOutcomes(votes: readonly AgentVoteResult[]): void {
         durationMs: vote.processingTimeMs,
         timestamp: now,
         source: 'consensus',
+        // #2662 — carry the voter role so the stratified outcome report
+        // can break consensus results down by role.
+        voterRole: vote.role,
         ...(!voteSuccess && vote.error !== undefined
           ? {
               failureCategory: categorizeOutcomeErrorMessage(vote.error),
