@@ -38,6 +38,30 @@ jobs:
         with:
           registry-url: 'https://registry.npmjs.org'
 
+      # Bidirectional skew detection. The `Detect publish-race version skew`
+      # step below recovers the package.json-AHEAD-of-npm direction (a
+      # missed publish). This step catches the INVERSE — npm AHEAD of
+      # package.json — which the 2026-05-14 incident showed can happen when
+      # a publish lands but its "Version Packages" PR is never merged, or
+      # when a manual publish runs from a non-main ref. That state cannot be
+      # auto-recovered (it means a stale version PR needs merging), so fail
+      # loudly here rather than let the release machinery drift further.
+      - name: Detect npm-ahead version skew
+        shell: bash
+        run: |
+          set -euo pipefail
+          local_version=$(jq -r '.version' packages/nexus-agents/package.json)
+          published_version=$(npm view nexus-agents version 2>/dev/null || echo "0.0.0")
+          larger=$(printf '%s\n%s\n' "$local_version" "$published_version" | sort -V | tail -1)
+          if [ "$published_version" != "$local_version" ] && [ "$larger" = "$published_version" ]; then
+            echo "::error::npm-ahead version skew: npm latest is $published_version but" \
+              "packages/nexus-agents/package.json is $local_version. A 'Version Packages'" \
+              "PR is likely unmerged, or a publish ran from a non-main ref. See" \
+              "docs/ops/release-changeset-race.md — merge the open version PR to reconcile."
+            exit 1
+          fi
+          echo "Version sync OK (package.json=$local_version, npm=$published_version)."
+
       - name: Build
         run: pnpm build
 
@@ -176,6 +200,17 @@ jobs:
       contents: read
       id-token: write
     steps:
+      # A manual publish MUST run from `main`. Publishing from any other
+      # ref (e.g. the changeset-release/main branch) desyncs npm from the
+      # repo — exactly the npm-ahead skew the 2026-05-14 incident hit.
+      - name: Guard — main only
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Manual publish must run from 'main' — got '${{ github.ref }}'." \
+            "Publishing from any other ref desyncs npm from the repo." \
+            "Re-run with --ref main."
+          exit 1
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - uses: ./.github/actions/setup-node

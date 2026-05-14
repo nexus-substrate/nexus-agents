@@ -28,6 +28,23 @@ jobs:
       - name: Validate conventional commits
         run: npx commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }} --verbose
 
+  changeset-check:
+    name: Changeset Presence
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 5
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-node
+
+      # A PR that changes shippable source must add a changeset — changeset
+      # debt is the root cause of the release-race incidents (see
+      # docs/ops/release-changeset-race.md).
+      - name: Check changeset presence
+        run: npx tsx scripts/check-changeset.ts ${{ github.event.pull_request.base.sha }}
+
   lint:
     name: Lint
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
@@ -213,15 +230,16 @@ jobs:
   # path (copy-paste from a Rust project) and skipped on every run.
   ci-success:
     name: CI Success
-    needs: [commitlint, lint, typecheck, build, test, fitness-audit]
+    needs: [commitlint, changeset-check, lint, typecheck, build, test, fitness-audit]
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5
     if: always()
     steps:
       - name: Check required jobs
         run: |
-          # commitlint is skipped on push (not a PR) — treat skipped as success
+          # commitlint + changeset-check are skipped on push (not a PR) — treat skipped as success
           if [[ "${{ needs.commitlint.result }}" != "success" && "${{ needs.commitlint.result }}" != "skipped" ]] || \
+             [[ "${{ needs.changeset-check.result }}" != "success" && "${{ needs.changeset-check.result }}" != "skipped" ]] || \
              [[ "${{ needs.lint.result }}" != "success" ]] || \
              [[ "${{ needs.typecheck.result }}" != "success" ]] || \
              [[ "${{ needs.test.result }}" != "success" ]] || \

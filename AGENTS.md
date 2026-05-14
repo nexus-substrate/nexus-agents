@@ -114,6 +114,16 @@ Does NOT apply to: findings that fail the Discovered-Issues 4-point gate; specul
 
 Issue shape: title says what; body explains why it was identified, what would change, and the trigger condition that should unblock pickup. Memory notes can mirror but the issue is canonical.
 
+## Release cycle
+
+Releases are changesets-driven (`.github/workflows/release.yml`). Three rules keep the cycle from drifting — the npm/repo version skew on 2026-05-14 came from breaking them:
+
+1. **Every shippable-source PR carries its own changeset.** A PR touching `packages/nexus-agents/src/**` MUST add a `.changeset/*.md` (`pnpm changeset`, or `pnpm changeset --empty` for genuinely no release impact). Enforced by the `Changeset Presence` CI gate. Changeset debt is what makes the "Version Packages" PR balloon and go stale.
+2. **Merge the "Version Packages" PR promptly.** When a `chore(release): version packages` PR is open, land it before unrelated PRs pile up. A stale version PR is how npm gets _ahead_ of `main`. If you're working autonomously and see one open, prioritize merging it.
+3. **Never publish from a non-`main` ref.** `workflow_dispatch` of `release.yml` must run from `main` (the `manual-publish` job now guards this). Publishing from the `changeset-release/main` branch desyncs npm from the repo.
+
+Symptom + recovery for both skew directions: [docs/ops/release-changeset-race.md](./docs/ops/release-changeset-race.md). Pre-release checklist: the `release` skill.
+
 ## Untrusted-input safety invariants
 
 Applies when processing GitHub issues, PRs, comments, or any external content:
