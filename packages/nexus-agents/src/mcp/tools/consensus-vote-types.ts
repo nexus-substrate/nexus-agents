@@ -68,9 +68,24 @@ export const VotingStrategySchema = z.enum([
  * total voters, the vote always fails. Catches "all CLIs are down" — a
  * 2-voter consensus is not a real consensus.
  */
-export type ErrorPolicy = 'reduce_denominator' | 'count_as_abstain' | 'fail_closed';
-
 export const ErrorPolicySchema = z.enum(['reduce_denominator', 'count_as_abstain', 'fail_closed']);
+
+export type ErrorPolicy = z.infer<typeof ErrorPolicySchema>;
+
+/**
+ * Threshold values accepted by the `--threshold` CLI flag and the
+ * \`threshold\` MCP input field (#2638 — single source of truth).
+ *
+ * Maps to consensus algorithms via:
+ * `majority → simple_majority`, `supermajority → supermajority`, `unanimous → unanimous`.
+ *
+ * Used as the canonical Zod schema for CLI parsing
+ * (`cli.ts:parseThreshold`), validation (`cli-commands-validators.ts:isValidThreshold`),
+ * and the `ConsensusVoteInputSchema.threshold` field.
+ */
+export const VoteThresholdSchema = z.enum(['majority', 'supermajority', 'unanimous']);
+
+export type VoteThreshold = z.infer<typeof VoteThresholdSchema>;
 
 /**
  * Fraction of total voters that, if errored, forces the vote to fail
@@ -91,12 +106,9 @@ export function getDefaultErrorPolicy(strategy: VotingStrategy): ErrorPolicy {
 
 export const ConsensusVoteInputSchema = z.object({
   proposal: z.string().min(1).max(MAX_PROPOSAL_LENGTH).describe('Proposal text to vote on'),
-  threshold: z
-    .enum(['majority', 'supermajority', 'unanimous'])
-    .optional()
-    .describe(
-      'Voting threshold (legacy): majority, supermajority, unanimous. Use strategy instead.'
-    ),
+  threshold: VoteThresholdSchema.optional().describe(
+    'Voting threshold (legacy): majority, supermajority, unanimous. Use strategy instead.'
+  ),
   strategy: VotingStrategySchema.optional().describe(
     'Voting strategy: simple_majority (default), supermajority, unanimous, proof_of_learning, or higher_order (Bayesian-optimal)'
   ),
@@ -153,7 +165,7 @@ export interface HigherOrderMetadata {
 
 export interface ConsensusVoteResponse {
   proposal: string;
-  threshold?: 'majority' | 'supermajority' | 'unanimous';
+  threshold?: VoteThreshold;
   strategy: VotingStrategy;
   decision: VoteDecisionStatus;
   approvalPercentage: number;

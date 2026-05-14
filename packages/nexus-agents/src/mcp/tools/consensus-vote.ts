@@ -40,6 +40,7 @@ import {
 import {
   MAX_PROPOSAL_LENGTH,
   VotingStrategySchema,
+  VoteThresholdSchema,
   ConsensusVoteInputSchema,
   buildResponse,
   getDefaultErrorPolicy,
@@ -686,7 +687,7 @@ export const CONSENSUS_VOTE_OUTPUT_SCHEMA = {
         .optional(),
     })
   ),
-  threshold: z.enum(['majority', 'supermajority', 'unanimous']).optional(),
+  threshold: VoteThresholdSchema.optional(),
   durationMs: z.number(),
   simulateVotes: z.boolean(),
   higherOrderMetadata: z

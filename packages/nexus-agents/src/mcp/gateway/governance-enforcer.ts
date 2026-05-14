@@ -13,9 +13,15 @@
 import type { ILogger } from '../../core/index.js';
 import { createLogger } from '../../core/index.js';
 import { classifyRequestTier, RequestTier, type TierOverrides } from './tier-classifier.js';
+import type { VoteThreshold } from '../tools/consensus-vote-types.js';
 
-/** Voting threshold required by governance policy. */
-export type VotingThreshold = 'majority' | 'supermajority' | 'unanimous';
+/**
+ * Voting threshold required by governance policy.
+ * Alias of `VoteThreshold` from `consensus-vote-types.ts` — kept as a
+ * named local re-export for readability at call sites in this module
+ * (#2638 — single source of truth).
+ */
+export type VotingThreshold = VoteThreshold;
 
 /** Governance domain that triggered Tier 3 promotion. */
 export type GovernanceDomain = 'security' | 'architecture' | 'none';

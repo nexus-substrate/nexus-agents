@@ -10,6 +10,12 @@
 import type { ExpertListFormat, IndexSubcommand } from './cli/index.js';
 import type { CliNameLiteral } from './config/model-capabilities-types.js';
 import { CLI_NAMES } from './config/model-capabilities-types.js';
+import {
+  VoteThresholdSchema,
+  ErrorPolicySchema,
+  type VoteThreshold,
+  type ErrorPolicy,
+} from './mcp/tools/consensus-vote-types.js';
 
 /**
  * Validates and coerces format to ExpertListFormat.
@@ -26,22 +32,19 @@ export function isValidOrchestrateModel(value: string): value is CliNameLiteral 
 }
 
 /**
- * Validates threshold option for vote command.
+ * Validates threshold option for vote command. Uses `VoteThresholdSchema`
+ * as the single source of truth (#2638).
  */
-export function isValidThreshold(
-  value: string
-): value is 'majority' | 'supermajority' | 'unanimous' {
-  return ['majority', 'supermajority', 'unanimous'].includes(value);
+export function isValidThreshold(value: string): value is VoteThreshold {
+  return VoteThresholdSchema.safeParse(value).success;
 }
 
 /**
- * Validates errorPolicy option for vote command (#2630). Mirrors
- * `ErrorPolicySchema` in `consensus-vote-types.ts` — keep in sync.
+ * Validates errorPolicy option for vote command (#2630). Uses
+ * `ErrorPolicySchema` as the single source of truth (#2638).
  */
-export function isValidErrorPolicy(
-  value: string
-): value is 'reduce_denominator' | 'count_as_abstain' | 'fail_closed' {
-  return ['reduce_denominator', 'count_as_abstain', 'fail_closed'].includes(value);
+export function isValidErrorPolicy(value: string): value is ErrorPolicy {
+  return ErrorPolicySchema.safeParse(value).success;
 }
 
 /**

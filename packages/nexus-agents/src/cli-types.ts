@@ -9,6 +9,7 @@
 
 import type { ServerMode } from './cli/index.js';
 import type { CliNameLiteral } from './config/model-capabilities-types.js';
+import type { ErrorPolicy, VoteThreshold } from './mcp/tools/consensus-vote-types.js';
 
 // Re-export help text from extracted module for backward compatibility
 export { HELP_TEXT } from './cli-help-text.js';
@@ -114,11 +115,11 @@ export interface ParsedCliArgs {
     fix: boolean;
     // Vote command options
     proposal?: string;
-    threshold?: 'majority' | 'supermajority' | 'unanimous';
+    threshold?: VoteThreshold;
     quick: boolean;
     timeoutMs?: number;
     /** #2630 — see `applyErrorPolicy`. */
-    errorPolicy?: 'reduce_denominator' | 'count_as_abstain' | 'fail_closed';
+    errorPolicy?: ErrorPolicy;
     // SWE-bench command options
     variant?: 'lite' | 'verified' | 'full';
     limit?: number;

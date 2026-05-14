@@ -7,13 +7,14 @@
  */
 
 import type { ConsensusAlgorithm, Vote, ConsensusResult } from '../consensus/types.js';
+import type { ErrorPolicy, VoteThreshold } from '../mcp/tools/consensus-vote-types.js';
 
 /**
  * Options for the vote command.
  */
 export interface VoteCommandOptions {
   readonly proposal: string;
-  readonly threshold?: 'majority' | 'supermajority' | 'unanimous';
+  readonly threshold?: VoteThreshold;
   /** Use simulated votes instead of LLM execution (maps from --dry-run CLI flag) */
   readonly dryRun?: boolean;
   readonly quick?: boolean;
@@ -27,7 +28,7 @@ export interface VoteCommandOptions {
    * the same per-strategy default `executeVoting` uses applies:
    * `fail_closed` for unanimous, `reduce_denominator` otherwise.
    */
-  readonly errorPolicy?: 'reduce_denominator' | 'count_as_abstain' | 'fail_closed';
+  readonly errorPolicy?: ErrorPolicy;
 }
 
 /**
