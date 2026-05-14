@@ -19,6 +19,7 @@ import { createAgentStages, flushPipelineMemory } from '../../pipeline/agent-exe
 import { createTaskTracker, detectBackend } from '../../pipeline/task-tracker.js';
 // toolSuccessStructured not used directly — registerTool callback expects a CallToolResult-shaped value
 import type {} from '../../pipeline/task-tracker.js';
+import { getToolAnnotations } from '../tool-annotations.js';
 
 // ============================================================================
 // Input Schema
@@ -201,7 +202,11 @@ export function registerDevPipelineTool(
 ): void {
   server.registerTool(
     'run_dev_pipeline',
-    { description: RUN_DEV_PIPELINE_DESCRIPTION, inputSchema: DevPipelineInputSchema.shape },
+    {
+      description: RUN_DEV_PIPELINE_DESCRIPTION,
+      inputSchema: DevPipelineInputSchema.shape,
+      annotations: getToolAnnotations('run_dev_pipeline'),
+    },
     async (args) => {
       const input = DevPipelineInputSchema.parse(args);
       if (input.simulateVotes) {

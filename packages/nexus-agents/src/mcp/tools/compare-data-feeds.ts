@@ -28,6 +28,7 @@ import { createLogger, formatZodError } from '../../core/index.js';
 import { withToolError } from '../middleware/tool-error-handler.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
+import { getToolAnnotations } from '../tool-annotations.js';
 import {
   toolError,
   toolSuccessStructured,
@@ -388,6 +389,8 @@ export function registerCompareDataFeedsTool(server: McpServer, deps: CompareDat
       description: COMPARE_DESCRIPTION,
       inputSchema: CompareDataFeedsInputSchema.shape,
       outputSchema: COMPARE_OUTPUT_SCHEMA,
+
+      annotations: getToolAnnotations('compare_data_feeds'),
     },
     toSdkCallback(wrappedHandler)
   );

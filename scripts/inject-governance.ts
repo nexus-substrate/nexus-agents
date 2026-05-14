@@ -730,6 +730,50 @@ function extractDocumentedCounts(content: string): RegistrySummary {
 // ============================================================================
 
 /**
+ * Verify that every registered MCP tool has an entry in
+ * `TOOL_ANNOTATIONS` (Issue #2648, Epic A). Tools registered without
+ * annotations silently fall back to MCP-spec defaults (destructive,
+ * non-idempotent, open-world), which break Epic B's prerequisite gates
+ * and degrade Claude / Codex / Gemini / OpenCode permission-prompt UX.
+ *
+ * Parses `packages/nexus-agents/src/mcp/tool-annotations.ts` as the
+ * source of truth (regex match on top-level keys of TOOL_ANNOTATIONS),
+ * cross-references against `extractMcpTools()`. Reports missing entries
+ * AND stale entries (in the map but not registered).
+ */
+function checkToolAnnotations(tools: ToolMetadata[]): boolean {
+  const path = join(ROOT, 'packages/nexus-agents/src/mcp/tool-annotations.ts');
+  if (!existsSync(path)) {
+    console.error('Missing src/mcp/tool-annotations.ts (#2648)');
+    return false;
+  }
+  const content = readFileSync(path, 'utf-8');
+  // Extract tool names from the TOOL_ANNOTATIONS object literal. The keys
+  // are bare identifiers (snake_case) followed by `: {`.
+  const annotatedNames = new Set<string>();
+  const keyPattern = /^\s{2}([a-z_]+):\s*\{/gm;
+  let match: RegExpExecArray | null;
+  while ((match = keyPattern.exec(content)) !== null) {
+    if (match[1] !== undefined) annotatedNames.add(match[1]);
+  }
+  const registeredNames = new Set(tools.map((t) => t.name));
+
+  const missing = [...registeredNames].filter((n) => !annotatedNames.has(n));
+  const stale = [...annotatedNames].filter((n) => !registeredNames.has(n));
+  if (missing.length === 0 && stale.length === 0) return true;
+
+  if (missing.length > 0) {
+    console.error('Registered tools missing annotations in TOOL_ANNOTATIONS (#2648):');
+    for (const n of missing) console.error('  - ' + n);
+  }
+  if (stale.length > 0) {
+    console.error('TOOL_ANNOTATIONS entries for tools that are not registered (#2648):');
+    for (const n of stale) console.error('  - ' + n);
+  }
+  return false;
+}
+
+/**
  * Verify that every `.rules/*.md` file has frontmatter with `paths:` and
  * `description:` fields (Issue #2656, Epic C). Frontmatter is the
  * cross-adapter primitive that lets Codex / Gemini / OpenCode resolve
@@ -891,6 +935,7 @@ function checkGovernance(): boolean {
     checkCanonicalPaths(),
     checkAdapterPrecedenceDocs(),
     checkRuleFrontmatter(),
+    checkToolAnnotations(actual.tools),
     checkServerJson(actual.tools.length),
   ];
 

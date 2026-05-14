@@ -17,6 +17,7 @@ import { withToolError } from '../middleware/tool-error-handler.js';
 
 import { wrapToolWithTimeout, toSdkCallback } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
+import { getToolAnnotations } from '../tool-annotations.js';
 import {
   toolError,
   toolSuccessStructured,
@@ -200,7 +201,12 @@ export function registerListWorkflowsTool(server: McpServer, deps: ListWorkflows
 
   server.registerTool(
     'list_workflows',
-    { description, inputSchema: toolSchema, outputSchema },
+    {
+      description,
+      inputSchema: toolSchema,
+      outputSchema,
+      annotations: getToolAnnotations('list_workflows'),
+    },
     toSdkCallback(wrappedHandler)
   );
   logger.info('Registered list_workflows tool with secure handler and timeout protection');

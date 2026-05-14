@@ -34,6 +34,7 @@ import {
   categorizeOutcomeErrorMessage,
 } from '../../orchestration/outcomes/index.js';
 import { DEFAULT_CLI } from '../../config/model-capabilities-types.js';
+import { getToolAnnotations } from '../tool-annotations.js';
 
 // ============================================================================
 // Types & Schema
@@ -258,7 +259,11 @@ export function registerRunGraphWorkflowTool(server: McpServer, deps: RunGraphWo
 
   server.registerTool(
     'run_graph_workflow',
-    { description: GRAPH_WORKFLOW_DESCRIPTION, inputSchema: GRAPH_WORKFLOW_SCHEMA },
+    {
+      description: GRAPH_WORKFLOW_DESCRIPTION,
+      inputSchema: GRAPH_WORKFLOW_SCHEMA,
+      annotations: getToolAnnotations('run_graph_workflow'),
+    },
     toSdkCallback(wrapped)
   );
   logger.info('Registered run_graph_workflow tool');

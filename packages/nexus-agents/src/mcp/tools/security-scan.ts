@@ -61,9 +61,7 @@ function validateTargetPath(target: string): string {
   const resolved = path.resolve(root, target);
   // Require resolved path to be inside cwd (or cwd itself).
   if (resolved !== root && !resolved.startsWith(root + path.sep)) {
-    throw new Error(
-      `Invalid target path: must resolve inside ${root} (got ${resolved})`,
-    );
+    throw new Error(`Invalid target path: must resolve inside ${root} (got ${resolved})`);
   }
   return resolved;
 }

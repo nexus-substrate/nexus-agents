@@ -25,6 +25,7 @@ import { createSecureHandler, type HandlerContext } from '../middleware/secure-h
 import { getAutoCatalog } from './research-auto-catalog.js';
 import { addResearchPaper, paperExists } from '../../cli/research-helpers.js';
 import { createResearchIssue, formatResearchIssueBody } from '../../cli/research-helpers-issues.js';
+import { getToolAnnotations } from '../tool-annotations.js';
 
 // =============================================================================
 // SCHEMAS
@@ -301,7 +302,12 @@ export function registerResearchCatalogReviewTool(
 
   server.registerTool(
     'research_catalog_review',
-    { description, inputSchema: toolSchema, outputSchema },
+    {
+      description,
+      inputSchema: toolSchema,
+      outputSchema,
+      annotations: getToolAnnotations('research_catalog_review'),
+    },
     toSdkCallback(wrappedHandler)
   );
   logger.info('Registered research_catalog_review tool');

@@ -22,6 +22,7 @@ import {
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { loadTechniquesRegistry, loadPapersRegistry } from '../../cli/research-helpers.js';
+import { getToolAnnotations } from '../tool-annotations.js';
 
 // =============================================================================
 // SCHEMAS
@@ -449,7 +450,12 @@ export function registerResearchAnalyzeTool(server: McpServer, deps: ResearchAna
 
   server.registerTool(
     'research_analyze',
-    { description, inputSchema: toolSchema, outputSchema },
+    {
+      description,
+      inputSchema: toolSchema,
+      outputSchema,
+      annotations: getToolAnnotations('research_analyze'),
+    },
     toSdkCallback(wrappedHandler)
   );
   logger.info('Registered research_analyze tool with secure handler and timeout protection');

@@ -16,6 +16,7 @@ import { CodebaseIndex } from '../../indexer/codebase-search.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { toolError, toolSuccess, type BaseMcpToolDeps, type ToolResult } from './tool-result.js';
+import { getToolAnnotations } from '../tool-annotations.js';
 
 // ============================================================================
 // Input Schema
@@ -184,7 +185,7 @@ export function registerSearchCodebaseTool(server: McpServer, deps: SearchCodeba
 
   server.registerTool(
     'search_codebase',
-    { description, inputSchema: toolSchema },
+    { description, inputSchema: toolSchema, annotations: getToolAnnotations('search_codebase') },
     toSdkCallback(wrapped)
   );
   logger.info('Registered search_codebase tool');

@@ -35,6 +35,7 @@ import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middlewar
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { fetchSource, type DiscoverError } from '../../cli/research-helpers-sources.js';
 import { resolveToken } from '../../scm/token-resolver.js';
+import { getToolAnnotations } from '../tool-annotations.js';
 import {
   toolError,
   toolSuccessStructured,
@@ -326,6 +327,8 @@ export function registerSurveyOssLandscapeTool(
       description: SURVEY_DESCRIPTION,
       inputSchema: SurveyOssLandscapeInputSchema.shape,
       outputSchema: SURVEY_OUTPUT_SCHEMA,
+
+      annotations: getToolAnnotations('survey_oss_landscape'),
     },
     toSdkCallback(wrappedHandler)
   );

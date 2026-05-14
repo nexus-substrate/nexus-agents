@@ -25,6 +25,7 @@ import {
 import type { ICliDetectionCache } from '../../cli-adapters/cli-detection-cache.js';
 import { requireAdapterAvailable } from '../middleware/adapter-availability.js';
 import type { IModelAdapter } from '../../core/index.js';
+import { getToolAnnotations } from '../tool-annotations.js';
 import {
   resolveAdapterForModelPreference,
   resolveAdapterForRole,
@@ -329,7 +330,7 @@ export function registerCreateExpertTool(server: McpServer, deps: CreateExpertDe
 
   server.registerTool(
     'create_expert',
-    { description, inputSchema: toolSchema },
+    { description, inputSchema: toolSchema, annotations: getToolAnnotations('create_expert') },
     toSdkCallback(wrappedHandler)
   );
   logger.info('Registered create_expert tool with secure handler and timeout protection');

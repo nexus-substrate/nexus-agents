@@ -27,6 +27,7 @@ import {
   categorizeOutcomeErrorMessage,
 } from '../../orchestration/outcomes/index.js';
 import { DEFAULT_CLI } from '../../config/model-capabilities-types.js';
+import { getToolAnnotations } from '../tool-annotations.js';
 
 // ============================================================================
 // Types
@@ -167,7 +168,7 @@ export function registerIssueTriageTool(server: McpServer, deps: IssueTriageDeps
 
   server.registerTool(
     'issue_triage',
-    { description, inputSchema: toolSchema },
+    { description, inputSchema: toolSchema, annotations: getToolAnnotations('issue_triage') },
     toSdkCallback(wrappedHandler)
   );
   logger.info('Registered issue_triage tool with secure handler and timeout protection');

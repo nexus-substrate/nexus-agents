@@ -23,6 +23,7 @@ import { createSecureHandler, type HandlerContext } from '../middleware/secure-h
 import { toolError, toolSuccess, type BaseMcpToolDeps, type ToolResult } from './tool-result.js';
 import type { VoterRole, AgentVoteResult } from '../../cli/vote-types.js';
 import { collectRealVotes } from '../../cli/voter-agents.js';
+import { getToolAnnotations } from '../tool-annotations.js';
 import {
   FINDINGS_FORMAT_INSTRUCTIONS,
   isFindingVerified,
@@ -349,7 +350,11 @@ export function registerPrReviewTool(server: McpServer, deps: PrReviewDeps): voi
 
   server.registerTool(
     'pr_review',
-    { description, inputSchema: PrReviewInputSchema.shape },
+    {
+      description,
+      inputSchema: PrReviewInputSchema.shape,
+      annotations: getToolAnnotations('pr_review'),
+    },
     toSdkCallback(wrappedHandler)
   );
   logger.info('Registered pr_review tool');

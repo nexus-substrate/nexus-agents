@@ -17,6 +17,7 @@ import { createSecureHandler, type HandlerContext } from '../middleware/secure-h
 import { WeatherReportInputSchema } from './weather-report-types.js';
 import type { WeatherReportResponse, CliWeather, AdaptiveBonus } from './weather-report-types.js';
 import { generateWeatherReport } from './weather-report.js';
+import { getToolAnnotations } from '../tool-annotations.js';
 import {
   toolError,
   toolSuccessStructured,
@@ -134,7 +135,7 @@ export function registerWeatherReportTool(server: McpServer, deps: WeatherReport
   // with 12+ optional fields. structuredContent is still returned for future use.
   server.registerTool(
     'weather_report',
-    { description, inputSchema: toolSchema },
+    { description, inputSchema: toolSchema, annotations: getToolAnnotations('weather_report') },
     toSdkCallback(wrappedHandler)
   );
   logger.info('Registered weather_report tool');

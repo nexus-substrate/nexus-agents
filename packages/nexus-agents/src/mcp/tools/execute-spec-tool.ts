@@ -30,6 +30,7 @@ import {
 } from '../../orchestration/outcomes/index.js';
 import { DEFAULT_CLI } from '../../config/model-capabilities-types.js';
 import { toolError, toolSuccess, type BaseMcpToolDeps, type ToolResult } from './tool-result.js';
+import { getToolAnnotations } from '../tool-annotations.js';
 
 // ============================================================================
 // Types & Schema
@@ -144,7 +145,7 @@ export function registerExecuteSpecTool(server: McpServer, deps: ExecuteSpecDeps
 
   server.registerTool(
     'execute_spec',
-    { description, inputSchema: toolSchema },
+    { description, inputSchema: toolSchema, annotations: getToolAnnotations('execute_spec') },
     toSdkCallback(wrapped)
   );
   logger.info('Registered execute_spec tool');

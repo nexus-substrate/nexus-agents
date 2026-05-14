@@ -193,6 +193,67 @@ type ToolContentBlock =
 
 ---
 
+## Tool Annotation Taxonomy (MCP 2025-11-25)
+
+Every registered MCP tool declares all four annotation hints from the 2025-11-25 spec. Annotations live in a single source of truth — `packages/nexus-agents/src/mcp/tool-annotations.ts` — and each `server.registerTool()` call reads its annotations via `getToolAnnotations(name)`. CI gate `check:tool-annotations` enforces parity between the central map and the registered tools.
+
+Per the MCP spec these are **hints**, not enforcement primitives — clients should never make safety decisions based on annotations received from untrusted servers. nexus-agents uses them for: programmatic prerequisite gates ([#2652](https://github.com/williamzujkowski/nexus-agents/issues/2652)), retry-policy decisions in pipeline runners (only retry tools where `idempotentHint === true`), and permission-prompt UX consistency across harnesses.
+
+| Tool                          | readOnly | destructive | idempotent | openWorld | Why                                                      |
+| ----------------------------- | :------: | :---------: | :--------: | :-------: | -------------------------------------------------------- |
+| `orchestrate`                 |    ❌    |     ❌      |     ❌     |    ✅     | Spawns workers that may write; calls CLIs                |
+| `create_expert`               |    ❌    |     ❌      |     ❌     |    ❌     | Mutates in-memory expert registry                        |
+| `execute_expert`              |    ❌    |     ❌      |     ❌     |    ✅     | Invokes external CLIs; expert may write                  |
+| `run_workflow`                |    ❌    |     ❌      |     ❌     |    ✅     | Steps may write to registry / FS                         |
+| `run_graph_workflow`          |    ❌    |     ❌      |     ❌     |    ✅     | Multi-step graph; checkpointed                           |
+| `run_pipeline`                |    ❌    |     ❌      |     ❌     |    ✅     | Plugin by name; may write                                |
+| `run_dev_pipeline`            |    ❌    |     ❌      |     ❌     |    ✅     | Full research→plan→implement loop                        |
+| `execute_spec`                |    ❌    |     ❌      |     ❌     |    ✅     | AI software factory spec                                 |
+| `consensus_vote`              |    ❌    |     ❌      |     ❌     |    ✅     | Records vote outcome to audit log; calls CLIs            |
+| `supply_chain_tradeoff_panel` |    ❌    |     ❌      |     ❌     |    ✅     | Per-axis vote; records outcome                           |
+| `pr_review`                   |    ❌    |     ❌      |     ❌     |    ✅     | Writes review comments                                   |
+| `delegate_to_model`           |    ✅    |     ❌      |     ✅     |    ❌     | Returns routing recommendation only                      |
+| `list_experts`                |    ✅    |     ❌      |     ✅     |    ❌     | Local registry read                                      |
+| `list_workflows`              |    ✅    |     ❌      |     ✅     |    ❌     | Local registry read                                      |
+| `research_query`              |    ✅    |     ❌      |     ✅     |    ❌     | Reads registry                                           |
+| `research_analyze`            |    ✅    |     ❌      |     ✅     |    ❌     | Reads registry                                           |
+| `research_synthesize`         |    ✅    |     ❌      |     ✅     |    ❌     | Reads registry                                           |
+| `research_discover`           |    ✅    |     ❌      |     ✅     |    ✅     | Calls external APIs (arXiv, GitHub); no registry write   |
+| `research_add`                |    ❌    |     ❌      |     ❌     |    ✅     | Mutates registry; calls arXiv API                        |
+| `research_add_source`         |    ❌    |     ❌      |     ❌     |    ✅     | Mutates registry                                         |
+| `research_catalog_review`     |    ❌    |     ❌      |     ❌     |    ❌     | May approve/dismiss catalog entries                      |
+| `survey_oss_landscape`        |    ✅    |     ❌      |     ✅     |    ✅     | Transient GitHub search; no persistence                  |
+| `vendor_publishing_audit`     |    ✅    |     ❌      |     ✅     |    ❌     | Static lookup against curated seed                       |
+| `compare_data_feeds`          |    ✅    |     ❌      |     ✅     |    ❌     | Local file diff only                                     |
+| `memory_query`                |    ✅    |     ❌      |     ✅     |    ❌     | Reads memory backends                                    |
+| `memory_stats`                |    ✅    |     ❌      |     ✅     |    ❌     | Reads memory stats                                       |
+| `memory_write`                |    ❌    |     ❌      |     ❌     |    ❌     | Writes to memory backend                                 |
+| `weather_report`              |    ✅    |     ❌      |     ✅     |    ❌     | Reads outcome store                                      |
+| `query_trace`                 |    ✅    |     ❌      |     ✅     |    ❌     | Reads trace JSONL files                                  |
+| `query_task_state`            |    ✅    |     ❌      |     ✅     |    ❌     | Reads task-state log                                     |
+| `verify_audit_chain`          |    ✅    |     ❌      |     ✅     |    ❌     | Verifies hash chain; no mutation                         |
+| `improvement_review`          |    ❌    |     ❌      |     ❌     |    ✅     | May file GitHub issues when `fileIssues=true`            |
+| `repo_analyze`                |    ✅    |     ❌      |     ✅     |    ✅     | Reads repo metadata via GitHub API                       |
+| `repo_security_plan`          |    ✅    |     ❌      |     ✅     |    ✅     | Returns plan; doesn't write it                           |
+| `extract_symbols`             |    ✅    |     ❌      |     ✅     |    ❌     | Reads source files                                       |
+| `search_codebase`             |    ✅    |     ❌      |     ✅     |    ❌     | Reads source files                                       |
+| `issue_triage`                |    ❌    |     ❌      |     ❌     |    ✅     | May write GitHub labels/comments when authorized         |
+| `registry_import`             |    ✅    |     ❌      |     ✅     |    ✅     | Generates draft registry entry; validates against vendor |
+
+### Why no tool is `destructiveHint: true`
+
+A `destructiveHint: true` tool can delete or overwrite data without the caller's input. nexus-agents tools are universally additive (writes are creates, not deletes) or return-only — no tool's body calls `rm`, `DELETE FROM`, or equivalent. If a future tool needs `destructiveHint: true` (e.g., a "drop registry entry" tool), it should also wire a prerequisite gate per [#2652](https://github.com/williamzujkowski/nexus-agents/issues/2652).
+
+### Adding a new tool
+
+1. Implement the tool in `packages/nexus-agents/src/mcp/tools/<tool>.ts`.
+2. Add it to `REGISTERED_TOOL_NAMES` in `packages/nexus-agents/src/mcp/tools/index.ts`.
+3. Add its annotations to `TOOL_ANNOTATIONS` in `packages/nexus-agents/src/mcp/tool-annotations.ts`.
+4. Pass `annotations: getToolAnnotations('your_tool_name')` to the `server.registerTool()` config object.
+5. Run `npx tsx scripts/inject-governance.ts check` — `check:tool-annotations` confirms parity.
+
+---
+
 ## Resource Exposure
 
 Dynamic context exposure to Claude:

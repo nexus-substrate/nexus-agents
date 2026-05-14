@@ -48,6 +48,7 @@ import {
 import { applyErrorPolicy } from './consensus-vote-error-policy.js';
 import { recordVoteSuccess, recordVoteError } from './consensus-vote-recording.js';
 import { warnIfSimulatedOutsideTests } from './simulation-guard.js';
+import { getToolAnnotations } from '../tool-annotations.js';
 import type {
   VotingStrategy,
   ConsensusVoteInput,
@@ -750,7 +751,12 @@ export function registerConsensusVoteTool(server: McpServer, deps: ConsensusVote
 
   server.registerTool(
     'consensus_vote',
-    { description, inputSchema: toolSchema, outputSchema: CONSENSUS_VOTE_OUTPUT_SCHEMA },
+    {
+      description,
+      inputSchema: toolSchema,
+      outputSchema: CONSENSUS_VOTE_OUTPUT_SCHEMA,
+      annotations: getToolAnnotations('consensus_vote'),
+    },
     toSdkCallbackWithBudgetCheck(wrappedHandler, 'consensus_vote', timeoutMs, logger)
   );
   logger.info('Registered consensus_vote tool with secure handler and timeout protection');

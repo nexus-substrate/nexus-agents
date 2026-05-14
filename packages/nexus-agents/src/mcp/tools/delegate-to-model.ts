@@ -59,6 +59,7 @@ import {
   auditGovernancePromotion,
 } from '../gateway/governance-enforcer.js';
 import type { GovernanceClassification } from '../gateway/governance-enforcer.js';
+import { getToolAnnotations } from '../tool-annotations.js';
 
 // Re-export types for backward compatibility
 export type {
@@ -318,6 +319,8 @@ export function registerDelegateToModelTool(server: McpServer, deps: DelegateDep
         'Route a task to the optimal model based on capability matching. Returns model recommendation with reasoning.',
       inputSchema: TOOL_SCHEMA,
       outputSchema: DelegateOutputSchema.shape,
+
+      annotations: getToolAnnotations('delegate_to_model'),
     },
     toSdkCallback(wrappedHandler)
   );

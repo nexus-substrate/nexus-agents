@@ -27,6 +27,7 @@ import { createLogger, formatZodError } from '../../core/index.js';
 import { withToolError } from '../middleware/tool-error-handler.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
+import { getToolAnnotations } from '../tool-annotations.js';
 import {
   toolError,
   toolSuccessStructured,
@@ -151,6 +152,8 @@ export function registerVendorPublishingAuditTool(
       description: VENDOR_PUBLISHING_DESCRIPTION,
       inputSchema: VendorPublishingAuditInputSchema.shape,
       outputSchema: VENDOR_PUBLISHING_OUTPUT_SCHEMA,
+
+      annotations: getToolAnnotations('vendor_publishing_audit'),
     },
     toSdkCallback(wrappedHandler)
   );

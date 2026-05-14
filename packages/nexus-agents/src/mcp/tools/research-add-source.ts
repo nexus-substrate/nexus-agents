@@ -31,6 +31,7 @@ import {
   type BaseMcpToolDeps,
 } from './tool-result.js';
 import { getToolMemory } from './tool-memory.js';
+import { getToolAnnotations } from '../tool-annotations.js';
 
 // =============================================================================
 // SCHEMAS
@@ -269,6 +270,7 @@ function createResearchAddSourceHandler(deps: ResearchAddSourceDeps) {
 }
 
 /** @category MCP */
+// eslint-disable-next-line max-lines-per-function -- single cohesive registration: schema + handler + wrapping + register; +4 lines for #2648 annotations tipped past 50.
 export function registerResearchAddSourceTool(
   server: McpServer,
   deps: ResearchAddSourceDeps
@@ -317,7 +319,12 @@ export function registerResearchAddSourceTool(
 
   server.registerTool(
     'research_add_source',
-    { description, inputSchema: toolSchema, outputSchema: RESEARCH_ADD_SOURCE_OUTPUT_SCHEMA },
+    {
+      description,
+      inputSchema: toolSchema,
+      outputSchema: RESEARCH_ADD_SOURCE_OUTPUT_SCHEMA,
+      annotations: getToolAnnotations('research_add_source'),
+    },
     toSdkCallback(wrappedHandler)
   );
 }
