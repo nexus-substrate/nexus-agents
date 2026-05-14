@@ -1,5 +1,49 @@
 # nexus-agents
 
+## 2.76.0
+
+### Minor Changes
+
+- [#2688](https://github.com/williamzujkowski/nexus-agents/pull/2688) [`fb22bf7`](https://github.com/williamzujkowski/nexus-agents/commit/fb22bf718663331111afc2b0f67d04b861baf430) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - OpenCode permission-system parity ([#2658](https://github.com/williamzujkowski/nexus-agents/issues/2658), Epic D).
+
+  `nexus-agents init --opencode` now emits a conservative default `permission` block into `opencode.json` instead of leaving operators on OpenCode's defaults:
+  - `bash` → `ask` (highest-risk surface)
+  - `edit` → `ask` for everything, with `.env*` / `*.pem` / `*.key` / `id_rsa*` / `secrets/**` / `.git/**` **hard-denied**. OpenCode resolves glob maps last-match-wins, so the deny patterns are ordered after the broad `"*"` rule.
+  - `skill` → `allow` (trusted, in-repo, CI-validated content)
+
+  Never overwrites an operator's existing `permission` block (merge-not-overwrite, matching the file's existing pattern). Documented in `.rules/security.md`.
+
+- [#2692](https://github.com/williamzujkowski/nexus-agents/pull/2692) [`b3b7238`](https://github.com/williamzujkowski/nexus-agents/commit/b3b723810b2c68c90ca6b0184b621b4d413f159d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Stratified runtime-outcome report ([#2662](https://github.com/williamzujkowski/nexus-agents/issues/2662), Epic E).
+
+  `fitness-audit` is static source-tree analysis — it never sees runtime data. This adds the **separate** runtime-outcome report (the [#2662](https://github.com/williamzujkowski/nexus-agents/issues/2662) design vote kept the concerns apart): `scripts/stratify-outcomes.ts` reads the OutcomeStore JSONL and breaks task outcomes down per stratum — `adapter` × `task-type` × `voter-role` — because an aggregate success rate hides where failures live (the v1 snapshot shows `architecture` tasks at 21.5% while the aggregate stays high).
+  - `TaskOutcomeSchema` gains an optional `voterRole` field; `recordVoteOutcomes` now threads `vote.role` through, so the voter-role dimension populates as consensus votes accumulate.
+  - The `self-dogfood` workflow — which actually exercises the agents and accumulates OutcomeStore data — uploads a `fitness-stratified.json` artifact. (Per the design vote, this is wired where runtime data exists, not onto the static `fitness-audit` CI job which would see an empty store.)
+  - Novel/uncategorized failures (`generic`/`unknown` failure category) are surfaced separately for triage. v1 snapshot at `docs/research/fitness-stratified-v1.md`.
+
+- [#2693](https://github.com/williamzujkowski/nexus-agents/pull/2693) [`2e6e8fd`](https://github.com/williamzujkowski/nexus-agents/commit/2e6e8fd3663834861d6330ac4218a4b566fdc732) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Source provenance through research synthesis ([#2663](https://github.com/williamzujkowski/nexus-agents/issues/2663), Epic E).
+
+  `research_synthesize` previously dropped source attribution at the merge: `extractPapers` pulled `id`/`title`/`summary`/`keyFindings` but not `url`/`arxiv_id`/`publication_date`, and `keyInsights` was a flat string array — a voter couldn't trace any synthesized claim back to a paper.
+
+  Research scoped this to the single leaking path — `research_catalog_review` is a review-queue manager (no merge) and `pr_review` aggregation already preserves per-finding attribution, so neither is touched.
+  - `SynthesisPaper` carries `sourceUri` + `publicationDate`; `SynthesisPaperRef` carries them into `ClusterSynthesis.papers` (now `{id, title, sourceUri}` refs, not bare titles).
+  - `keyInsights` is now `AttributedInsight[]` — `{insight, sourcePaperIds}`. When two papers assert the same finding, **both** ids survive, so a contradiction is _representable_ rather than silently collapsed into one source's claim.
+  - Structural enforcement, not just a doc rule: `AttributedInsightSchema` (Zod `.min(1)` on `sourcePaperIds`) is parsed at construction — every merged claim is a validated-attributed claim.
+  - New `.rules/research.md` documents the provenance invariants.
+
+### Patch Changes
+
+- [#2689](https://github.com/williamzujkowski/nexus-agents/pull/2689) [`1eb9a06`](https://github.com/williamzujkowski/nexus-agents/commit/1eb9a0642b6cce15ccbb05579e20ce3997b40e20) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Codex subagent-limit awareness ([#2659](https://github.com/williamzujkowski/nexus-agents/issues/2659), Epic D).
+
+  Codex CLI's `~/.codex/config.toml` `[agents]` section defaults to `max_depth = 1` and `max_threads = 6` (the originating issue's `max_thread_depth` key name was wrong — corrected against the Codex config reference).
+
+  Per the [#2659](https://github.com/williamzujkowski/nexus-agents/issues/2659) design vote (Option C), nexus-agents now **warns** at fan-out time when a planned topology would exceed these — it does not write the operator's global config or silently auto-flatten routing. `collectRealVotes` emits a structured warning when more voter roles land on Codex than `max_threads` (the narrow single-CLI-fallback case; the existing round-robin + the `worker-dispatcher` cap-of-3 already keep the common paths within limits). New `src/cli-adapters/codex-limits.ts` exports the defaults + `checkCodexConcurrency` / `checkCodexDepth`; `.rules/subagent-coordination.md` documents the Codex limits.
+
+- [#2690](https://github.com/williamzujkowski/nexus-agents/pull/2690) [`d7e3206`](https://github.com/williamzujkowski/nexus-agents/commit/d7e32064bcce5a4a54dcac6b577cc43cde9c02c1) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Codex Skills cross-vendor compatibility ([#2660](https://github.com/williamzujkowski/nexus-agents/issues/2660), Epic D).
+
+  Research refuted the issue's "translation layer" premise: Codex's Skills primitive (Dec 2025) uses the **same** `SKILL.md` filename and the **same** required frontmatter (`name`, `description`) as the Anthropic Agent Skills spec — the 31 skills are already cross-vendor compatible, and `generate-skills-index.ts` already validates the required fields and is CI-gated. There is nothing to convert and no redundant new gate to add.
+
+  Delivered instead: the `name`/`description` validation in `generate-skills-index.ts` is now documented + test-locked as the cross-vendor contract, and `AGENTS.md` documents Codex's discovery path (`.agents/skills/` or a `[[skills.config]]` entry pointing at `skills/`) so Codex operators get the full catalog.
+
 ## 2.75.1
 
 ### Patch Changes
