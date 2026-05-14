@@ -542,6 +542,52 @@ describe('inject-governance mcp-error-envelope (#2649)', () => {
 });
 
 // ============================================================================
+// Tool-distinctness validator (#2650)
+// ============================================================================
+
+describe('inject-governance tool-distinctness (#2650)', () => {
+  const BASELINE_PATH = join(ROOT, 'docs/ops/tool-distinctness-baseline.json');
+
+  it(
+    'passes when every flagged tool pair is in the baseline',
+    { timeout: SUBPROCESS_TIMEOUT },
+    () => {
+      const output = runScript('check');
+      expect(output).toContain('Governance check passed');
+      expect(output).not.toContain('distinctness');
+    }
+  );
+
+  it(
+    'fails when a flagged pair is dropped from the baseline',
+    { timeout: SUBPROCESS_TIMEOUT },
+    () => {
+      const original = readFileSync(BASELINE_PATH, 'utf-8');
+      try {
+        // Drop the first baseline pair — it then re-surfaces as a NEW
+        // overlapping pair the gate has no record of.
+        const parsed = JSON.parse(original) as { pairs: unknown[] };
+        const dropped = { ...parsed, pairs: parsed.pairs.slice(1) };
+        writeFileSync(BASELINE_PATH, JSON.stringify(dropped, null, 2) + '\n');
+        let stderr = '';
+        let exitCode = 0;
+        try {
+          execSync(`npx tsx ${SCRIPT} check`, { cwd: ROOT, encoding: 'utf-8', timeout: 30000 });
+        } catch (err) {
+          const e = err as { status?: number; stderr?: string; stdout?: string };
+          exitCode = e.status ?? 1;
+          stderr = (e.stderr ?? '') + (e.stdout ?? '');
+        }
+        expect(exitCode).not.toBe(0);
+        expect(stderr).toContain('NEW overlapping pair');
+      } finally {
+        writeFileSync(BASELINE_PATH, original);
+      }
+    }
+  );
+});
+
+// ============================================================================
 // Rule frontmatter validator (#2656)
 // ============================================================================
 
