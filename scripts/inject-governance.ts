@@ -28,6 +28,7 @@ import { parse as parseYaml } from 'yaml';
 import { ROOT } from './script-paths.js';
 import { TOOL_DESCRIPTIONS, README_TOOL_DESCRIPTIONS } from './tool-descriptions-data.js';
 import { loadBaseline, runDistinctnessCheck } from './check-tool-distinctness.js';
+import { scanToolFiles } from './check-tool-output-consistency.js';
 const CLAUDE_MD_PATH = join(ROOT, 'CLAUDE.md');
 const README_PATH = join(ROOT, 'README.md');
 const TOOLS_INDEX = join(ROOT, 'packages/nexus-agents/src/mcp/tools/index.ts');
@@ -852,6 +853,26 @@ function checkToolPrerequisites(): boolean {
   return true;
 }
 
+/**
+ * Verify no MCP tool's OUTPUT surface types a timestamp-named field as a
+ * bare `number` (Issue #2653, Epic B). A preventive lint — #2653's
+ * proposed runtime normalization layer was dropped after research found
+ * no current output heterogeneity; this catches a NEW tool diverging at
+ * source instead. Full logic in `check-tool-output-consistency.ts`.
+ */
+function checkToolOutputConsistency(): boolean {
+  const violations = scanToolFiles();
+  if (violations.length === 0) return true;
+  console.error(
+    'Tool-output consistency: timestamp-named field(s) typed as a bare number (#2653):'
+  );
+  for (const v of violations) {
+    console.error(`  - ${v.file}:${String(v.line)} ${v.field}`);
+  }
+  console.error('  Type timestamps as an ISO-8601 string or a Date — see .rules/hooks.md.');
+  return false;
+}
+
 function checkCanonicalPaths(): boolean {
   if (!existsSync(CLAUDE_MD_PATH)) return false;
   const content = readFileSync(CLAUDE_MD_PATH, 'utf-8');
@@ -956,6 +977,7 @@ function checkGovernance(): boolean {
     checkMcpErrorEnvelope(),
     checkToolDistinctness(),
     checkToolPrerequisites(),
+    checkToolOutputConsistency(),
     checkServerJson(actual.tools.length),
   ];
 
