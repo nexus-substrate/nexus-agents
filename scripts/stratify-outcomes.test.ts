@@ -74,7 +74,7 @@ describe('renderReport', () => {
     const md = renderReport(stratify([{ cli: 'claude', success: true }]));
     expect(md).toContain('# Fitness — Stratified Outcome Report (v1)');
     expect(md).toContain('Total outcomes: **1**');
-    expect(md).toContain('### By voter-role');
+    expect(md).toContain('## By voter-role');
     expect(md).toContain('_No data yet._'); // voter-role table
   });
 });

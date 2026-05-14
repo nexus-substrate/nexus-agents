@@ -9,7 +9,7 @@ Total outcomes: **10034** · novel/uncategorized failures: **5** (surfaced separ
 Strata are sorted worst-success-rate first. `voter-role` is empty until
 consensus votes recorded with the #2662 `voterRole` field accumulate.
 
-### By adapter
+## By adapter
 
 | Stratum  | Outcomes | Success rate |
 | -------- | -------: | -----------: |
@@ -17,7 +17,7 @@ consensus votes recorded with the #2662 `voterRole` field accumulate.
 | `codex`  |      654 |        98.5% |
 | `gemini` |      673 |        99.4% |
 
-### By task-type
+## By task-type
 
 | Stratum           | Outcomes | Success rate |
 | ----------------- | -------: | -----------: |
@@ -32,6 +32,6 @@ consensus votes recorded with the #2662 `voterRole` field accumulate.
 | `documentation`   |        9 |       100.0% |
 | `devops`          |       19 |       100.0% |
 
-### By voter-role
+## By voter-role
 
 _No data yet._
