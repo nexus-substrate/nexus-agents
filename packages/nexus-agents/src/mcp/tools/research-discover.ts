@@ -50,6 +50,7 @@ import {
   categorizeOutcomeErrorMessage,
 } from '../../orchestration/outcomes/index.js';
 import { DEFAULT_CLI } from '../../config/model-capabilities-types.js';
+import { getToolAnnotations } from '../tool-annotations.js';
 
 // =============================================================================
 // CONSTANTS
@@ -600,6 +601,7 @@ function createResearchDiscoverHandler(deps: ResearchDiscoverDeps) {
  * @param server - MCP server instance
  * @param deps - Tool dependencies
  */
+// eslint-disable-next-line max-lines-per-function -- single cohesive registration: schema + handler + wrapping + register; +4 lines for #2648 annotations tipped past 50.
 export function registerResearchDiscoverTool(server: McpServer, deps: ResearchDiscoverDeps): void {
   const logger = deps.logger ?? createLogger({ tool: 'research_discover' });
   const toolSchema = {
@@ -647,7 +649,12 @@ export function registerResearchDiscoverTool(server: McpServer, deps: ResearchDi
 
   server.registerTool(
     'research_discover',
-    { description, inputSchema: toolSchema, outputSchema: RESEARCH_DISCOVER_OUTPUT_SCHEMA },
+    {
+      description,
+      inputSchema: toolSchema,
+      outputSchema: RESEARCH_DISCOVER_OUTPUT_SCHEMA,
+      annotations: getToolAnnotations('research_discover'),
+    },
     toSdkCallback(wrappedHandler)
   );
   logger.info('Registered research_discover tool with secure handler and timeout protection');

@@ -18,6 +18,7 @@ import { createSecureHandler, type HandlerContext } from '../middleware/secure-h
 import { RegistryImportInputSchema } from './registry-import-types.js';
 import { generateRegistryEntry } from './registry-import.js';
 import { toolError, toolSuccess, type BaseMcpToolDeps, type ToolResult } from './tool-result.js';
+import { getToolAnnotations } from '../tool-annotations.js';
 
 // ============================================================================
 // Dependencies
@@ -77,7 +78,7 @@ export function registerRegistryImportTool(server: McpServer, deps: RegistryImpo
 
   server.registerTool(
     'registry_import',
-    { description, inputSchema: toolSchema },
+    { description, inputSchema: toolSchema, annotations: getToolAnnotations('registry_import') },
     toSdkCallback(wrappedHandler)
   );
   logger.info('Registered registry_import tool');

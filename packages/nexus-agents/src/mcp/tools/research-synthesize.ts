@@ -17,6 +17,7 @@ import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middlewar
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { synthesizeResearch } from '../../cli/research-helpers-synthesize.js';
 import type { SynthesisResult } from '../../cli/research-helpers-synthesize.js';
+import { getToolAnnotations } from '../tool-annotations.js';
 import {
   toolError,
   toolSuccessStructured,
@@ -125,7 +126,12 @@ export function registerResearchSynthesizeTool(
 
   server.registerTool(
     'research_synthesize',
-    { description, inputSchema: toolSchema, outputSchema },
+    {
+      description,
+      inputSchema: toolSchema,
+      outputSchema,
+      annotations: getToolAnnotations('research_synthesize'),
+    },
     toSdkCallback(wrappedHandler)
   );
   logger.info('Registered research_synthesize tool');

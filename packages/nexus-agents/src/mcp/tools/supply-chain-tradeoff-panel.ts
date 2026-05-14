@@ -24,6 +24,7 @@ import { createSecureHandler, type HandlerContext } from '../middleware/secure-h
 import { toolError, toolSuccess, type BaseMcpToolDeps, type ToolResult } from './tool-result.js';
 import type { VoterRole, AgentVoteResult } from '../../cli/vote-types.js';
 import { collectRealVotes } from '../../cli/voter-agents.js';
+import { getToolAnnotations } from '../tool-annotations.js';
 
 // ============================================================================
 // Constants
@@ -423,7 +424,11 @@ export function registerSupplyChainTradeoffPanelTool(
 
   server.registerTool(
     'supply_chain_tradeoff_panel',
-    { description, inputSchema: SupplyChainTradeoffPanelInputSchema.shape },
+    {
+      description,
+      inputSchema: SupplyChainTradeoffPanelInputSchema.shape,
+      annotations: getToolAnnotations('supply_chain_tradeoff_panel'),
+    },
     toSdkCallback(wrappedHandler)
   );
   logger.info('Registered supply_chain_tradeoff_panel tool');

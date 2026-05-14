@@ -17,6 +17,7 @@ import { createSecureHandler, type HandlerContext } from '../middleware/secure-h
 import { RepoSecurityPlanInputSchema } from './repo-security-plan-types.js';
 import { generateSecurityPlan } from './repo-security-plan.js';
 import { toolError, toolSuccess, type BaseMcpToolDeps, type ToolResult } from './tool-result.js';
+import { getToolAnnotations } from '../tool-annotations.js';
 
 // ============================================================================
 // Dependencies
@@ -84,7 +85,7 @@ export function registerRepoSecurityPlanTool(server: McpServer, deps: RepoSecuri
 
   server.registerTool(
     'repo_security_plan',
-    { description, inputSchema: toolSchema },
+    { description, inputSchema: toolSchema, annotations: getToolAnnotations('repo_security_plan') },
     toSdkCallback(wrappedHandler)
   );
   logger.info('Registered repo_security_plan tool');

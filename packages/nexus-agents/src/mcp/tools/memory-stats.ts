@@ -22,6 +22,7 @@ import {
   type BaseMcpToolDeps,
 } from './tool-result.js';
 import { getToolMemory } from './tool-memory.js';
+import { getToolAnnotations } from '../tool-annotations.js';
 
 // ============================================================================
 // Schema & Types
@@ -233,7 +234,12 @@ export function registerMemoryStatsTool(server: McpServer, deps: MemoryStatsDeps
 
   server.registerTool(
     'memory_stats',
-    { description, inputSchema: toolSchema, outputSchema },
+    {
+      description,
+      inputSchema: toolSchema,
+      outputSchema,
+      annotations: getToolAnnotations('memory_stats'),
+    },
     toSdkCallback(wrappedHandler)
   );
   logger.info('Registered memory_stats tool');

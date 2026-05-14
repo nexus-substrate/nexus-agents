@@ -31,6 +31,7 @@ import {
 } from './reflective-retriever.js';
 import type { IModelAdapter } from '../../core/index.js';
 import { getGlobalRegistry } from '../../adapters/unified-registry.js';
+import { getToolAnnotations } from '../tool-annotations.js';
 
 // ============================================================================
 // Schema & Types
@@ -246,7 +247,12 @@ export function registerMemoryQueryTool(server: McpServer, deps: MemoryQueryDeps
 
   server.registerTool(
     'memory_query',
-    { description, inputSchema: toolSchema, outputSchema },
+    {
+      description,
+      inputSchema: toolSchema,
+      outputSchema,
+      annotations: getToolAnnotations('memory_query'),
+    },
     toSdkCallback(wrappedHandler)
   );
   logger.info('Registered memory_query tool');

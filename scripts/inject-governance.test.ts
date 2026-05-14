@@ -441,6 +441,57 @@ describe('inject-governance adapter-precedence-docs (#2655)', () => {
 });
 
 // ============================================================================
+// Tool-annotations validator (#2648)
+// ============================================================================
+
+describe('inject-governance tool-annotations (#2648)', () => {
+  const ANNOTATIONS_PATH = join(ROOT, 'packages/nexus-agents/src/mcp/tool-annotations.ts');
+
+  it(
+    'passes when every registered tool has an entry in TOOL_ANNOTATIONS',
+    { timeout: SUBPROCESS_TIMEOUT },
+    () => {
+      const output = runScript('check');
+      expect(output).toContain('Governance check passed');
+      expect(output).not.toContain('Registered tools missing annotations');
+    }
+  );
+
+  it(
+    'fails when a registered tool is missing from TOOL_ANNOTATIONS',
+    { timeout: SUBPROCESS_TIMEOUT },
+    () => {
+      const original = readFileSync(ANNOTATIONS_PATH, 'utf-8');
+      try {
+        // Strip the weather_report entry. The closing `},` is shared style
+        // across entries so a delete-line range works.
+        const broken = original.replace(/^ {2}weather_report: \{[\s\S]*?^ {2}\},\n/m, '');
+        expect(broken).not.toBe(original);
+        writeFileSync(ANNOTATIONS_PATH, broken);
+        let stderr = '';
+        let exitCode = 0;
+        try {
+          execSync(`npx tsx ${SCRIPT} check`, {
+            cwd: ROOT,
+            encoding: 'utf-8',
+            timeout: 30000,
+          });
+        } catch (err) {
+          const e = err as { status?: number; stderr?: string; stdout?: string };
+          exitCode = e.status ?? 1;
+          stderr = (e.stderr ?? '') + (e.stdout ?? '');
+        }
+        expect(exitCode).not.toBe(0);
+        expect(stderr).toContain('missing annotations');
+        expect(stderr).toContain('weather_report');
+      } finally {
+        writeFileSync(ANNOTATIONS_PATH, original);
+      }
+    }
+  );
+});
+
+// ============================================================================
 // Rule frontmatter validator (#2656)
 // ============================================================================
 

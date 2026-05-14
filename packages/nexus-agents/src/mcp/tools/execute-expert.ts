@@ -67,6 +67,7 @@ import { withDepthGuard } from '../middleware/spawn-depth-guard.js';
 import { getHeartbeatMonitor } from '../../agents/heartbeat-monitor.js';
 import { clampTaskTtl, DEFAULT_TASK_TTL_MS } from '../task-store.js';
 import { toolError, toolSuccess, type BaseMcpToolDeps } from './tool-result.js';
+import { getToolAnnotations } from '../tool-annotations.js';
 
 /**
  * Minimum effective timeout for expert tasks — LLM inference takes 20-90s
@@ -731,6 +732,8 @@ export function registerExecuteExpertTool(server: McpServer, deps: ExecuteExpert
       description,
       inputSchema: EXECUTE_EXPERT_TOOL_SCHEMA,
       execution: { taskSupport: 'optional' },
+
+      annotations: getToolAnnotations('execute_expert'),
     },
     createTaskHandler(depsWithNotifier, logger)
   );

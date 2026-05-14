@@ -16,6 +16,7 @@ import { extractSymbols, extractSymbolIndex } from '../../indexer/symbol-extract
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { toolError, toolSuccess, type BaseMcpToolDeps, type ToolResult } from './tool-result.js';
+import { getToolAnnotations } from '../tool-annotations.js';
 
 // ============================================================================
 // Input Schema
@@ -144,7 +145,7 @@ export function registerExtractSymbolsTool(server: McpServer, deps: ExtractSymbo
 
   server.registerTool(
     'extract_symbols',
-    { description, inputSchema: toolSchema },
+    { description, inputSchema: toolSchema, annotations: getToolAnnotations('extract_symbols') },
     toSdkCallback(wrapped)
   );
   logger.info('Registered extract_symbols tool');

@@ -21,6 +21,7 @@ import {
   type ToolResult,
 } from './tool-result.js';
 import { BUILT_IN_EXPERTS, type BuiltInExpertType } from '../../agents/index.js';
+import { getToolAnnotations } from '../tool-annotations.js';
 
 /**
  * Input schema for list_experts tool.
@@ -212,7 +213,12 @@ export function registerListExpertsTool(server: McpServer, deps: ListExpertsDeps
 
   server.registerTool(
     'list_experts',
-    { description, inputSchema: toolSchema, outputSchema },
+    {
+      description,
+      inputSchema: toolSchema,
+      outputSchema,
+      annotations: getToolAnnotations('list_experts'),
+    },
     toSdkCallback(wrappedHandler)
   );
   logger.info('Registered list_experts tool with secure handler and timeout protection');

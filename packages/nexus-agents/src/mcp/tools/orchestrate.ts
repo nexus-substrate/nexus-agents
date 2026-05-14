@@ -89,6 +89,7 @@ import {
 // When disabled, helpers no-op silently.
 import { initTaskState, updateStage, appendBlocker } from '../../context/structured-task-state.js';
 import type { StructuredTaskState } from '../../context/structured-task-state-types.js';
+import { getToolAnnotations } from '../tool-annotations.js';
 
 // Re-export types and values for consumers
 export {
@@ -1057,7 +1058,11 @@ export function registerOrchestrateTool(server: McpServer, deps: OrchestrateDeps
 
   server.registerTool(
     'orchestrate',
-    { description, inputSchema: ORCHESTRATE_TOOL_SCHEMA },
+    {
+      description,
+      inputSchema: ORCHESTRATE_TOOL_SCHEMA,
+      annotations: getToolAnnotations('orchestrate'),
+    },
     toSdkCallbackWithBudgetCheck(wrappedHandler, 'orchestrate', configuredTimeoutMs, logger)
   );
   logger.info('Registered orchestrate tool with secure handler and timeout protection');

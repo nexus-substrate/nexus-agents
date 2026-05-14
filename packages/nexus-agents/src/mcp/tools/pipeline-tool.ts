@@ -23,6 +23,7 @@ import {
   createAuditStageRegistry,
 } from '../../pipeline/stage-wrappers.js';
 import { listTemplateIds } from '../../pipeline/templates.js';
+import { getToolAnnotations } from '../tool-annotations.js';
 
 // ============================================================================
 // Input Schema
@@ -167,7 +168,11 @@ export function registerPipelineTool(
 ): void {
   server.registerTool(
     'run_pipeline',
-    { description: RUN_PIPELINE_DESCRIPTION, inputSchema: PipelineInputSchema.shape },
+    {
+      description: RUN_PIPELINE_DESCRIPTION,
+      inputSchema: PipelineInputSchema.shape,
+      annotations: getToolAnnotations('run_pipeline'),
+    },
     async (args) => {
       const input = PipelineInputSchema.parse(args);
       if (input.simulateVotes) {

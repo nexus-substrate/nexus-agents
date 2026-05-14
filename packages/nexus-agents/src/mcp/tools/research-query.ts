@@ -24,6 +24,7 @@ import { createSecureHandler, type HandlerContext } from '../middleware/secure-h
 import { getResearchStatus, findOverlaps } from '../../cli/research-helpers.js';
 import { parseRegistry } from '../../indexer/research-index/index.js';
 import { generateStatsJson } from '../../indexer/research-index/index.js';
+import { getToolAnnotations } from '../tool-annotations.js';
 
 // =============================================================================
 // SCHEMAS
@@ -267,7 +268,12 @@ export function registerResearchQueryTool(server: McpServer, deps: ResearchQuery
 
   server.registerTool(
     'research_query',
-    { description, inputSchema: toolSchema, outputSchema },
+    {
+      description,
+      inputSchema: toolSchema,
+      outputSchema,
+      annotations: getToolAnnotations('research_query'),
+    },
     toSdkCallback(wrappedHandler)
   );
   logger.info('Registered research_query tool with secure handler and timeout protection');

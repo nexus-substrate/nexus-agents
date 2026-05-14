@@ -45,6 +45,7 @@ import {
   formatValidationErrors,
 } from './run-workflow-helpers.js';
 import { getToolMemory } from './tool-memory.js';
+import { getToolAnnotations } from '../tool-annotations.js';
 
 // Re-export types for backward compatibility
 export type {
@@ -297,6 +298,8 @@ export function registerRunWorkflowTool(server: McpServer, deps: RunWorkflowDeps
       description:
         'Execute a workflow template with provided inputs, supporting built-in templates and custom paths',
       inputSchema: toolInputSchema,
+
+      annotations: getToolAnnotations('run_workflow'),
     },
     toSdkCallbackWithBudgetCheck(wrappedHandler, 'run_workflow', timeoutMs, logger)
   );

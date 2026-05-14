@@ -18,6 +18,7 @@ import { createSecureHandler, type HandlerContext } from '../middleware/secure-h
 import { RepoAnalyzeInputSchema } from './repo-analyze-types.js';
 import { analyzeGitHubRepo } from './repo-analyze.js';
 import { toolError, toolSuccess, type BaseMcpToolDeps, type ToolResult } from './tool-result.js';
+import { getToolAnnotations } from '../tool-annotations.js';
 
 // ============================================================================
 // Dependencies
@@ -78,7 +79,7 @@ export function registerRepoAnalyzeTool(server: McpServer, deps: RepoAnalyzeDeps
 
   server.registerTool(
     'repo_analyze',
-    { description, inputSchema: toolSchema },
+    { description, inputSchema: toolSchema, annotations: getToolAnnotations('repo_analyze') },
     toSdkCallback(wrappedHandler)
   );
   logger.info('Registered repo_analyze tool');

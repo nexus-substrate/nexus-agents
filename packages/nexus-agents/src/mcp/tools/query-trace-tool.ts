@@ -16,6 +16,7 @@ import { DEFAULT_RUNS_DIR } from '../../pipeline/pipeline-runner.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { toolError, toolSuccess, type BaseMcpToolDeps, type ToolResult } from './tool-result.js';
+import { getToolAnnotations } from '../tool-annotations.js';
 
 // ============================================================================
 // Input Schema
@@ -226,7 +227,7 @@ export function registerQueryTraceTool(server: McpServer, deps: QueryTraceDeps):
 
   server.registerTool(
     'query_trace',
-    { description, inputSchema: toolSchema },
+    { description, inputSchema: toolSchema, annotations: getToolAnnotations('query_trace') },
     toSdkCallback(wrappedHandler)
   );
   logger.info('Registered query_trace tool');

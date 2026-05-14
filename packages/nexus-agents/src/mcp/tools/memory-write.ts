@@ -23,6 +23,7 @@ import {
   type BaseMcpToolDeps,
 } from './tool-result.js';
 import { getToolMemory } from './tool-memory.js';
+import { getToolAnnotations } from '../tool-annotations.js';
 
 // ============================================================================
 // Schema & Types
@@ -270,6 +271,7 @@ async function memoryWriteHandler(args: unknown, ctx: HandlerContext): Promise<T
  * @param server - MCP server instance
  * @param deps - Tool dependencies
  */
+// eslint-disable-next-line max-lines-per-function -- single cohesive registration: schema + handler + wrapping + register; +4 lines for #2648 annotations tipped past 50.
 export function registerMemoryWriteTool(server: McpServer, deps: MemoryWriteDeps): void {
   const logger = deps.logger ?? createLogger({ tool: 'memory_write' });
   const toolSchema = {
@@ -319,7 +321,12 @@ export function registerMemoryWriteTool(server: McpServer, deps: MemoryWriteDeps
 
   server.registerTool(
     'memory_write',
-    { description, inputSchema: toolSchema, outputSchema },
+    {
+      description,
+      inputSchema: toolSchema,
+      outputSchema,
+      annotations: getToolAnnotations('memory_write'),
+    },
     toSdkCallback(wrappedHandler)
   );
   logger.info('Registered memory_write tool');

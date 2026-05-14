@@ -32,6 +32,7 @@ import {
 import { getOutcomeStore } from '../../orchestration/outcomes/outcome-store.js';
 import type { TaskOutcome } from '../../orchestration/outcomes/outcome-types.js';
 import { calculateFitnessScore, type FitnessAudit } from '../../governance/fitness-score.js';
+import { getToolAnnotations } from '../tool-annotations.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -520,7 +521,11 @@ export function registerImprovementReviewTool(
   });
   server.registerTool(
     'improvement_review',
-    { description, inputSchema: TOOL_INPUT_SCHEMA },
+    {
+      description,
+      inputSchema: TOOL_INPUT_SCHEMA,
+      annotations: getToolAnnotations('improvement_review'),
+    },
     toSdkCallback(wrappedHandler)
   );
   logger.info('Registered improvement_review tool');

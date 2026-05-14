@@ -16,6 +16,7 @@ import { createSecureHandler, type HandlerContext } from '../middleware/secure-h
 import { toolError, toolSuccess, type BaseMcpToolDeps, type ToolResult } from './tool-result.js';
 import { readTaskState } from '../../context/structured-task-state.js';
 import type { StructuredTaskState } from '../../context/structured-task-state-types.js';
+import { getToolAnnotations } from '../tool-annotations.js';
 
 export const QueryTaskStateInputSchema = z.object({
   taskId: z.string().min(1).max(128).describe('Task ID whose structured state log should be read'),
@@ -90,7 +91,7 @@ export function registerQueryTaskStateTool(server: McpServer, deps: QueryTaskSta
 
   server.registerTool(
     'query_task_state',
-    { description, inputSchema: toolSchema },
+    { description, inputSchema: toolSchema, annotations: getToolAnnotations('query_task_state') },
     toSdkCallback(wrappedHandler)
   );
   logger.info('Registered query_task_state tool');

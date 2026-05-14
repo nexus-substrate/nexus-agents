@@ -24,6 +24,7 @@ import {
   type BaseMcpToolDeps,
 } from './tool-result.js';
 import { getToolMemory } from './tool-memory.js';
+import { getToolAnnotations } from '../tool-annotations.js';
 
 // =============================================================================
 // SCHEMAS
@@ -227,7 +228,12 @@ export function registerResearchAddTool(server: McpServer, deps: ResearchAddDeps
 
   server.registerTool(
     'research_add',
-    { description, inputSchema: toolSchema, outputSchema },
+    {
+      description,
+      inputSchema: toolSchema,
+      outputSchema,
+      annotations: getToolAnnotations('research_add'),
+    },
     toSdkCallback(wrappedHandler)
   );
   logger.info('Registered research_add tool with secure handler and timeout protection');

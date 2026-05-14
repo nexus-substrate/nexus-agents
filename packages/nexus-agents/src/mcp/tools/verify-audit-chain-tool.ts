@@ -26,6 +26,7 @@ import { createSecureHandler, type HandlerContext } from '../middleware/secure-h
 import { toolError, toolSuccess, type BaseMcpToolDeps, type ToolResult } from './tool-result.js';
 import { verifyChain, type ChainVerification } from '../../audit/audit-logger.js';
 import { AuditEventSchema, type AuditEvent } from '../../audit/audit-types.js';
+import { getToolAnnotations } from '../tool-annotations.js';
 
 export const VerifyAuditChainInputSchema = z.object({
   logDir: z
@@ -159,7 +160,7 @@ export function registerVerifyAuditChainTool(server: McpServer, deps: VerifyAudi
 
   server.registerTool(
     'verify_audit_chain',
-    { description, inputSchema: toolSchema },
+    { description, inputSchema: toolSchema, annotations: getToolAnnotations('verify_audit_chain') },
     toSdkCallback(wrappedHandler)
   );
   logger.info('Registered verify_audit_chain tool');
