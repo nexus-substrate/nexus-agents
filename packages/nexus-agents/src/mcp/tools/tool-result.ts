@@ -11,7 +11,12 @@
 import type { ILogger } from '../../core/index.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
-import { defaultRetryable, type ErrorCategory, type ToolErrorEnvelope } from '../error-envelope.js';
+import {
+  defaultRetryable,
+  ERROR_ENVELOPE_META_KEY,
+  type ErrorCategory,
+  type ToolErrorEnvelope,
+} from '../error-envelope.js';
 
 // ============================================================================
 // Base Dependencies
@@ -55,6 +60,12 @@ export interface ToolResult {
   isError?: boolean;
   /** Structured output for SDK outputSchema validation (Issue #1117) */
   structuredContent?: Record<string, unknown>;
+  /**
+   * Out-of-band metadata, never validated against `outputSchema`. The
+   * structured error envelope (#2649) is carried here under
+   * `ERROR_ENVELOPE_META_KEY`.
+   */
+  _meta?: Record<string, unknown>;
 }
 
 // ============================================================================
@@ -112,8 +123,9 @@ export interface ToolStructuredErrorInput {
 
 /**
  * Creates a structured error tool result (#2649). The envelope is carried
- * in `structuredContent.error` so callers can reason about retry-safety
- * and recovery path; `message` is mirrored into `content[].text` for
+ * in `_meta` (under `ERROR_ENVELOPE_META_KEY`) — NOT `structuredContent`,
+ * which the MCP client validates against the tool's `outputSchema` even
+ * on error results. `message` is mirrored into `content[].text` for
  * display.
  *
  * @example
@@ -136,7 +148,7 @@ export function toolStructuredError(input: ToolStructuredErrorInput): ToolResult
   return {
     isError: true,
     content: [{ type: 'text', text: envelope.message }],
-    structuredContent: { error: envelope },
+    _meta: { [ERROR_ENVELOPE_META_KEY]: envelope },
   };
 }
 

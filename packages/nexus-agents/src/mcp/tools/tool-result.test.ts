@@ -28,7 +28,8 @@ describe('tool-result helpers', () => {
       const result: ToolResult = toolError('something failed');
       expect(result.isError).toBe(true);
       expect(result.content).toEqual([{ type: 'text', text: 'something failed' }]);
-      expect(parseToolErrorEnvelope(result.structuredContent)).toEqual({
+      expect(result.structuredContent).toBeUndefined();
+      expect(parseToolErrorEnvelope(result._meta)).toEqual({
         errorCategory: 'internal',
         isRetryable: false,
         message: 'something failed',
@@ -49,7 +50,8 @@ describe('tool-result helpers', () => {
       });
       expect(result.isError).toBe(true);
       expect(result.content).toEqual([{ type: 'text', text: 'rate limited' }]);
-      expect(parseToolErrorEnvelope(result.structuredContent)).toEqual({
+      expect(result.structuredContent).toBeUndefined();
+      expect(parseToolErrorEnvelope(result._meta)).toEqual({
         errorCategory: 'transient',
         isRetryable: true,
         message: 'rate limited',

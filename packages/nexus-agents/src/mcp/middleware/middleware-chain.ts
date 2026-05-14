@@ -36,6 +36,8 @@ export interface ToolResult {
   isError?: boolean;
   /** Structured output for SDK outputSchema validation (Issue #1117) */
   structuredContent?: Record<string, unknown>;
+  /** Out-of-band metadata — carries the #2649 error envelope on errors. */
+  _meta?: Record<string, unknown>;
 }
 
 /**
