@@ -53,6 +53,11 @@ import {
 } from './research-index-command.js';
 import { handleImportCommand } from './research-import-command.js';
 import { executeResearchAdd } from '../mcp/tools/research-add.js';
+import {
+  executeDiscovery,
+  ResearchDiscoverInputSchema,
+  type ResearchDiscoverResponse,
+} from '../mcp/tools/research-discover.js';
 import { createLogger } from '../core/index.js';
 export type {
   ResearchIndexOptions,
@@ -247,22 +252,26 @@ async function queryDiscoverSources(
   return { results, errors };
 }
 
-/** Format discovery results into display string. */
-function formatDiscoverResults(
-  topic: string,
-  items: readonly DiscoveredSource[],
-  errors: readonly string[],
-  maxResults: number
-): string {
+/**
+ * Render a structured `ResearchDiscoverResponse` for terminal output.
+ * Used after delegating to the MCP \`executeDiscovery\` core (#2640 Phase 3).
+ * Surfaces the extra info from the core (filtered counts, registry hits)
+ * that the old CLI rendering didn't have.
+ */
+function renderDiscoverResponse(response: ResearchDiscoverResponse): string {
   const lines: string[] = [];
-  lines.push(`Discovery Results: "${topic}"`);
+  lines.push(`Discovery Results: "${response.topic}"`);
   lines.push('='.repeat(60));
-  lines.push(`Found ${String(items.length)} items`);
+  lines.push(
+    `Found ${String(response.totalFound)} items (${String(response.newItems)} new, ${String(response.alreadyInRegistry)} already in registry, ${String(response.filteredByRelevance)} filtered by relevance)`
+  );
   lines.push('');
-  for (const item of items.slice(0, maxResults)) {
+  for (const item of response.items) {
     lines.push(`  [${item.source}] ${item.title}`);
     lines.push(`    URL: ${item.url}`);
-    lines.push(`    Relevance: ${item.relevance}`);
+    if (item.relevanceScore !== undefined) {
+      lines.push(`    Relevance: ${item.relevanceScore.toFixed(2)}`);
+    }
     if (item.description !== '') {
       const desc =
         item.description.length > 100 ? item.description.slice(0, 97) + '...' : item.description;
@@ -270,14 +279,20 @@ function formatDiscoverResults(
     }
     lines.push('');
   }
-  if (errors.length > 0) {
-    lines.push('Errors:');
-    for (const err of errors) lines.push(`  - ${err}`);
+  if (response.failedSources.length > 0) {
+    lines.push('Failed sources:');
+    for (const src of response.failedSources) lines.push(`  - ${src}`);
   }
   return lines.join('\n');
 }
 
-/** Handle discover subcommand. */
+/**
+ * Handle discover subcommand. Delegates to the MCP tool's `executeDiscovery`
+ * core (#2640 Phase 3) so the CLI picks up the features it was previously
+ * missing: dedup against registry, relevance-threshold filtering, arXiv as
+ * a canonical source, topic normalization, and best-effort outcome
+ * telemetry.
+ */
 async function handleDiscoverCommand(
   args: string[],
   options: Record<string, unknown>
@@ -286,10 +301,21 @@ async function handleDiscoverCommand(
   if (topic === undefined || topic === '') {
     return 'Error: --topic is required for discover command';
   }
-  const source = (optString(options, 'source') as DiscoverSource | undefined) ?? 'all';
-  const maxResults = optNumber(options, 'maxResults') ?? 10;
-  const { results, errors } = await queryDiscoverSources(topic, source, maxResults);
-  return formatDiscoverResults(topic, results, errors, maxResults);
+  // Use Zod parse so defaults (source='all', maxResults=10, relevanceThreshold,
+  // etc.) come from the canonical schema, not from CLI-side duplicate values.
+  const parsed = ResearchDiscoverInputSchema.safeParse({
+    topic,
+    ...(optString(options, 'source') !== undefined && { source: optString(options, 'source') }),
+    ...(optNumber(options, 'maxResults') !== undefined && {
+      maxResults: optNumber(options, 'maxResults'),
+    }),
+  });
+  if (!parsed.success) {
+    return `Error: ${parsed.error.issues.map((i) => i.message).join('; ')}`;
+  }
+  const logger = createLogger({ component: 'cli-research-discover' });
+  const response = await executeDiscovery(parsed.data, logger);
+  return renderDiscoverResponse(response);
 }
 
 // =============================================================================
