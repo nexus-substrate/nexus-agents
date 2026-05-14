@@ -55,7 +55,11 @@ import {
 // threshold (default 85%, overridable via NEXUS_CONTEXT_WARN_THRESHOLD).
 import { observeExpertContext } from './expert-context-observer.js';
 import type { ExpertContextObservation } from './expert-context-observer.js';
-import { getExpertTaskTimeout, HEARTBEAT_TIMEOUTS } from '../../config/timeouts.js';
+import {
+  getExpertTaskTimeout,
+  HEARTBEAT_TIMEOUTS,
+  EXPERT_TIMEOUTS,
+} from '../../config/timeouts.js';
 import type { ICliDetectionCache } from '../../cli-adapters/cli-detection-cache.js';
 import { requireAdapterAvailable } from '../middleware/adapter-availability.js';
 import { getExpertPool } from '../../agents/expert-pool.js';
@@ -64,8 +68,12 @@ import { getHeartbeatMonitor } from '../../agents/heartbeat-monitor.js';
 import { clampTaskTtl, DEFAULT_TASK_TTL_MS } from '../task-store.js';
 import { toolError, toolSuccess, type BaseMcpToolDeps } from './tool-result.js';
 
-/** Minimum effective timeout for expert tasks — LLM inference takes 20-90s minimum. (#1163, #1330) */
-export const EXPERT_TIMEOUT_FLOOR_MS = 120_000;
+/**
+ * Minimum effective timeout for expert tasks — LLM inference takes 20-90s
+ * minimum (#1163, #1330). Re-exported from `EXPERT_TIMEOUTS.executeFloorMs`
+ * for backward compatibility with existing imports (#2636).
+ */
+export const EXPERT_TIMEOUT_FLOOR_MS = EXPERT_TIMEOUTS.executeFloorMs;
 
 /**
  * Input schema for execute_expert tool.
@@ -81,7 +89,7 @@ export const ExecuteExpertInputSchema = z.object({
     .number()
     .int()
     .min(EXPERT_TIMEOUT_FLOOR_MS)
-    .max(900_000)
+    .max(EXPERT_TIMEOUTS.maxMs)
     .optional()
     .describe('Optional timeout in ms (120s-900s). Overrides auto-detected timeout.'),
   previousExpertSummary: z
@@ -551,7 +559,7 @@ const EXECUTE_EXPERT_TOOL_SCHEMA = {
     .number()
     .int()
     .min(EXPERT_TIMEOUT_FLOOR_MS)
-    .max(900_000)
+    .max(EXPERT_TIMEOUTS.maxMs)
     .optional()
     .describe('Optional timeout in ms (120s-900s). Overrides auto-detected timeout.'),
 };

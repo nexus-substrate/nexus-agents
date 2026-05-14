@@ -15,7 +15,7 @@ import type { AgentPlanEntry } from './agent-planner.js';
 import { MAX_WORKERS_PER_WAVE } from './agent-planner.js';
 import { topologicalWaveAssign } from './topological-wave.js';
 import { createLogger, getErrorMessage } from '../../core/index.js';
-import { getExpertTaskTimeout, WORKER_TIMEOUTS } from '../../config/timeouts.js';
+import { getExpertTaskTimeout, WORKER_TIMEOUTS, INTERNAL_TIMEOUTS } from '../../config/timeouts.js';
 import { isRateLimitError } from '../../cli/voter-execution.js';
 import type { IEventBus } from '../../pipeline/event-types.js';
 import { withWatchdog } from './watchdog.js';
@@ -53,14 +53,23 @@ export const DEFAULT_STAGGER_DELAY_MS = 500;
  */
 export const CONSECUTIVE_FAILURE_THRESHOLD = 3;
 
-/** Initial cooldown before a disabled role can attempt recovery (Issue #1458). */
-export const RECOVERY_COOLDOWN_MS = 30_000;
+/**
+ * Initial cooldown before a disabled role can attempt recovery (Issue #1458).
+ * Re-exported from central config for backward compatibility (#2636).
+ */
+export const RECOVERY_COOLDOWN_MS = INTERNAL_TIMEOUTS.workerRecoveryCooldownMs;
 
-/** Maximum cooldown after exponential backoff (5 minutes, Issue #1458). */
-export const MAX_COOLDOWN_MS = 300_000;
+/**
+ * Maximum cooldown after exponential backoff (5 minutes, Issue #1458).
+ * Re-exported from central config for backward compatibility (#2636).
+ */
+export const MAX_COOLDOWN_MS = INTERNAL_TIMEOUTS.workerMaxCooldownMs;
 
-/** Minimum spacing between requests to rate-limited roles (Issue #1458). */
-export const RATE_LIMIT_SPACING_MS = 2_000;
+/**
+ * Minimum spacing between requests to rate-limited roles (Issue #1458).
+ * Re-exported from central config for backward compatibility (#2636).
+ */
+export const RATE_LIMIT_SPACING_MS = INTERNAL_TIMEOUTS.workerRateLimitSpacingMs;
 
 // ============================================================================
 // Types

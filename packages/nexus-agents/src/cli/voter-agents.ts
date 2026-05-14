@@ -80,7 +80,7 @@ import { launchVotesWithOverallDeadline } from './voter-agents-deadline.js';
  * this deadline bounds total wall time and lets partial results return.
  *
  * Formula: worst-case legitimate completion (timeoutMs * (maxRetries+1))
- * plus staggered launch headroom, plus a 60s buffer.
+ * plus staggered launch headroom, plus `VOTE_TIMEOUTS.overallDeadlineBufferMs`.
  */
 export function computeOverallConsensusDeadlineMs(
   timeoutMs: number,
@@ -90,7 +90,7 @@ export function computeOverallConsensusDeadlineMs(
 ): number {
   const perVoteBudget = timeoutMs * (maxRetries + 1);
   const staggerBudget = Math.max(0, roleCount - 1) * interDelayMs;
-  return perVoteBudget + staggerBudget + 60_000;
+  return perVoteBudget + staggerBudget + VOTE_TIMEOUTS.overallDeadlineBufferMs;
 }
 
 // ============================================================================
