@@ -378,6 +378,69 @@ describe('inject-governance workflows + canonical paths (#2317)', () => {
 });
 
 // ============================================================================
+// Adapter precedence docs validator (#2655)
+// ============================================================================
+
+describe('inject-governance adapter-precedence-docs (#2655)', () => {
+  const PRECEDENCE_DOC = join(ROOT, 'docs/guides/RULE_PRECEDENCE.md');
+
+  it(
+    'passes when RULE_PRECEDENCE.md has all four adapter sections',
+    { timeout: SUBPROCESS_TIMEOUT },
+    () => {
+      const output = runScript('check');
+      expect(output).toContain('Governance check passed');
+      expect(output).not.toContain('RULE_PRECEDENCE.md missing');
+    }
+  );
+
+  it('fails when an adapter section header is missing', { timeout: SUBPROCESS_TIMEOUT }, () => {
+    const original = readFileSync(PRECEDENCE_DOC, 'utf-8');
+    try {
+      // Replace the `## OpenCode` section header. Exact-line matching in
+      // the validator means corruption like `## OpenCodeXXX` still trips
+      // the gate even though `includes('## OpenCode')` would have passed.
+      const broken = original.replace(/^## OpenCode$/m, '## OpenCodeXXX');
+      expect(broken).not.toBe(original);
+      writeFileSync(PRECEDENCE_DOC, broken);
+      let stderr = '';
+      let exitCode = 0;
+      try {
+        execSync(`npx tsx ${SCRIPT} check`, { cwd: ROOT, encoding: 'utf-8', timeout: 30000 });
+      } catch (err) {
+        const e = err as { status?: number; stderr?: string; stdout?: string };
+        exitCode = e.status ?? 1;
+        stderr = (e.stderr ?? '') + (e.stdout ?? '');
+      }
+      expect(exitCode).not.toBe(0);
+      expect(stderr).toContain('## OpenCode');
+    } finally {
+      writeFileSync(PRECEDENCE_DOC, original);
+    }
+  });
+
+  it('fails when RULE_PRECEDENCE.md is missing entirely', { timeout: SUBPROCESS_TIMEOUT }, () => {
+    const original = readFileSync(PRECEDENCE_DOC, 'utf-8');
+    try {
+      rmSync(PRECEDENCE_DOC);
+      let stderr = '';
+      let exitCode = 0;
+      try {
+        execSync(`npx tsx ${SCRIPT} check`, { cwd: ROOT, encoding: 'utf-8', timeout: 30000 });
+      } catch (err) {
+        const e = err as { status?: number; stderr?: string; stdout?: string };
+        exitCode = e.status ?? 1;
+        stderr = (e.stderr ?? '') + (e.stdout ?? '');
+      }
+      expect(exitCode).not.toBe(0);
+      expect(stderr).toContain('Missing docs/guides/RULE_PRECEDENCE.md');
+    } finally {
+      writeFileSync(PRECEDENCE_DOC, original);
+    }
+  });
+});
+
+// ============================================================================
 // server.json sync (#2326, #2327)
 // ============================================================================
 
