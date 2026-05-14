@@ -26,6 +26,12 @@ import {
 import { dispatchCommand } from './cli-commands.js';
 import { formatCommandHelp } from './cli-command-help.js';
 import { CLI_NAMES, type CliNameLiteral } from './config/model-capabilities-types.js';
+import {
+  VoteThresholdSchema,
+  ErrorPolicySchema,
+  type VoteThreshold,
+  type ErrorPolicy,
+} from './mcp/tools/consensus-vote-types.js';
 
 // Re-export types and constants for external use
 export { EXIT_CODES, type CliCommand, type ParsedCliArgs } from './cli-types.js';
@@ -181,24 +187,24 @@ function buildOrchestrateOptions(values: ParsedValues): Record<string, unknown> 
   };
 }
 
-/** Validates threshold option for vote command. */
-function parseThreshold(
-  value: string | undefined
-): 'majority' | 'supermajority' | 'unanimous' | undefined {
-  if (value === 'majority' || value === 'supermajority' || value === 'unanimous') {
-    return value;
-  }
-  return undefined;
+/**
+ * Validates threshold option for vote command. Uses `VoteThresholdSchema`
+ * as the single source of truth (#2638).
+ */
+function parseThreshold(value: string | undefined): VoteThreshold | undefined {
+  if (value === undefined) return undefined;
+  const parsed = VoteThresholdSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
 }
 
-/** Validates errorPolicy option for vote command (#2630). */
-function parseErrorPolicy(
-  value: string | undefined
-): 'reduce_denominator' | 'count_as_abstain' | 'fail_closed' | undefined {
-  if (value === 'reduce_denominator' || value === 'count_as_abstain' || value === 'fail_closed') {
-    return value;
-  }
-  return undefined;
+/**
+ * Validates errorPolicy option for vote command (#2630). Uses
+ * `ErrorPolicySchema` as the single source of truth (#2638).
+ */
+function parseErrorPolicy(value: string | undefined): ErrorPolicy | undefined {
+  if (value === undefined) return undefined;
+  const parsed = ErrorPolicySchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
 }
 
 /** Builds vote-specific options. */
