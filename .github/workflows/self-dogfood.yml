@@ -131,6 +131,22 @@ jobs:
             echo "2. Or use \`pnpm review <PR#>\` locally" >> $GITHUB_STEP_SUMMARY
           fi
 
+      # #2662 — the dogfood run exercises the agents and accumulates
+      # OutcomeStore data; stratify it into a JSON artifact for trend
+      # tracking. (fitness-audit is static analysis and never sees this
+      # runtime data — this is the separate runtime-outcome report.)
+      - name: Stratified outcome report
+        if: always()
+        run: npx tsx scripts/stratify-outcomes.ts --json > fitness-stratified.json || echo '{}' > fitness-stratified.json
+
+      - name: Upload stratified outcome report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fitness-stratified
+          path: fitness-stratified.json
+          if-no-files-found: warn
+
   # Job 2: Issue Triage using task classification
   triage-issue:
     name: Triage Issue

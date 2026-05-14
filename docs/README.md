@@ -111,16 +111,17 @@ Detailed technical documentation:
 
 #### Research
 
-| Document                                                                            | Description                                                             | Status    |
-| ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | --------- |
-| [RESEARCH_INDEX.md](./research/RESEARCH_INDEX.md)                                   | Research tracking hub                                                   | Canonical |
-| [CONTRIBUTING.md](./research/CONTRIBUTING.md)                                       | Adding research                                                         | Canonical |
-| [registry/papers.yaml](./research/registry/papers.yaml)                             | Paper metadata                                                          | Canonical |
-| [registry/techniques.yaml](./research/registry/techniques.yaml)                     | Implementation status                                                   | Canonical |
-| [cli-first-adapter-strategy.md](./research/cli-first-adapter-strategy.md)           | CLI-first adapter research                                              | Canonical |
-| [pr-review-experiment-results.md](./research/pr-review-experiment-results.md)       | pr_review #2233 baseline experiment results                             | Canonical |
-| [pr-review-experiment-results-v5.md](./research/pr-review-experiment-results-v5.md) | pr_review v5 — JSON-native findings; 100% bug-catch + caught a real bug | Canonical |
-| [mcp-tool-distinctness-v1.md](./research/mcp-tool-distinctness-v1.md)               | MCP tool-description pairwise similarity report (#2650)                 | Canonical |
+| Document                                                                            | Description                                                                | Status    |
+| ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | --------- |
+| [RESEARCH_INDEX.md](./research/RESEARCH_INDEX.md)                                   | Research tracking hub                                                      | Canonical |
+| [CONTRIBUTING.md](./research/CONTRIBUTING.md)                                       | Adding research                                                            | Canonical |
+| [registry/papers.yaml](./research/registry/papers.yaml)                             | Paper metadata                                                             | Canonical |
+| [registry/techniques.yaml](./research/registry/techniques.yaml)                     | Implementation status                                                      | Canonical |
+| [cli-first-adapter-strategy.md](./research/cli-first-adapter-strategy.md)           | CLI-first adapter research                                                 | Canonical |
+| [pr-review-experiment-results.md](./research/pr-review-experiment-results.md)       | pr_review #2233 baseline experiment results                                | Canonical |
+| [pr-review-experiment-results-v5.md](./research/pr-review-experiment-results-v5.md) | pr_review v5 — JSON-native findings; 100% bug-catch + caught a real bug    | Canonical |
+| [mcp-tool-distinctness-v1.md](./research/mcp-tool-distinctness-v1.md)               | MCP tool-description pairwise similarity report (#2650)                    | Canonical |
+| [fitness-stratified-v1.md](./research/fitness-stratified-v1.md)                     | Stratified runtime-outcome report — per adapter / task-type / role (#2662) | Canonical |
 
 ### Tier 3: Supporting (Reference as Needed)
 

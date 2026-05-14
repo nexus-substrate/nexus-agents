@@ -64,6 +64,12 @@ export const TaskOutcomeSchema = z.object({
   vendor: z.string().min(1).max(40).optional(),
   /** Family resolved from `model` via ModelRegistry at write time (#2548). */
   family: z.string().min(1).max(80).optional(),
+  /**
+   * Voter role for `source: 'consensus'` outcomes (#2662) — `architect`,
+   * `security`, etc. Absent on non-consensus outcomes. Lets the
+   * stratified outcome report break results down by voter role.
+   */
+  voterRole: z.string().min(1).max(40).optional(),
 });
 
 /** Schema for filtering outcomes. */
