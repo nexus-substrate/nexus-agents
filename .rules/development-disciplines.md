@@ -1,3 +1,8 @@
+---
+paths: ['**/*']
+description: Red/Green TDD, YAGNI, DRY — non-negotiable disciplines for any code change
+---
+
 # Development Disciplines — TDD, YAGNI, DRY
 
 <!-- CANONICAL SOURCE: this file. CLAUDE.md links here. -->

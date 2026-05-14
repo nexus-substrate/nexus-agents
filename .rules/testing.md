@@ -1,5 +1,6 @@
 ---
-paths: '**/*.test.ts'
+paths: ['**/*.test.ts', '**/*.spec.ts']
+description: Test layout, Vitest patterns, mock conventions, integration vs unit
 ---
 
 # Testing Rules

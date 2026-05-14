@@ -1,3 +1,8 @@
+---
+paths: ['**/*.md', 'docs/**/*']
+description: 100-point rubric for scoring technical documentation (RFCs, ADRs, READMEs, blog posts)
+---
+
 # Documentation Quality Rubric
 
 <!-- CANONICAL SOURCE: epic #2458 (claude-blog absorption); ships via #2459 -->

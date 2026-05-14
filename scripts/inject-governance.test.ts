@@ -441,6 +441,79 @@ describe('inject-governance adapter-precedence-docs (#2655)', () => {
 });
 
 // ============================================================================
+// Rule frontmatter validator (#2656)
+// ============================================================================
+
+describe('inject-governance rule-frontmatter (#2656)', () => {
+  const RULES_DIR = join(ROOT, '.rules');
+
+  it(
+    'passes when every .rules/*.md has paths + description frontmatter',
+    { timeout: SUBPROCESS_TIMEOUT },
+    () => {
+      const output = runScript('check');
+      expect(output).toContain('Governance check passed');
+      expect(output).not.toContain('frontmatter drift');
+    }
+  );
+
+  it(
+    'fails when a rule file loses its frontmatter delimiter',
+    { timeout: SUBPROCESS_TIMEOUT },
+    () => {
+      const target = join(RULES_DIR, 'typescript.md');
+      const original = readFileSync(target, 'utf-8');
+      try {
+        const stripped = original.replace(/^---\n[\s\S]*?\n---\n/, '');
+        expect(stripped).not.toBe(original);
+        writeFileSync(target, stripped);
+        let stderr = '';
+        let exitCode = 0;
+        try {
+          execSync(`npx tsx ${SCRIPT} check`, { cwd: ROOT, encoding: 'utf-8', timeout: 30000 });
+        } catch (err) {
+          const e = err as { status?: number; stderr?: string; stdout?: string };
+          exitCode = e.status ?? 1;
+          stderr = (e.stderr ?? '') + (e.stdout ?? '');
+        }
+        expect(exitCode).not.toBe(0);
+        expect(stderr).toContain('frontmatter drift');
+        expect(stderr).toContain('typescript.md');
+      } finally {
+        writeFileSync(target, original);
+      }
+    }
+  );
+
+  it(
+    'fails when a rule file is missing its description field',
+    { timeout: SUBPROCESS_TIMEOUT },
+    () => {
+      const target = join(RULES_DIR, 'security.md');
+      const original = readFileSync(target, 'utf-8');
+      try {
+        const stripped = original.replace(/^description:.*\n/m, '');
+        expect(stripped).not.toBe(original);
+        writeFileSync(target, stripped);
+        let stderr = '';
+        let exitCode = 0;
+        try {
+          execSync(`npx tsx ${SCRIPT} check`, { cwd: ROOT, encoding: 'utf-8', timeout: 30000 });
+        } catch (err) {
+          const e = err as { status?: number; stderr?: string; stdout?: string };
+          exitCode = e.status ?? 1;
+          stderr = (e.stderr ?? '') + (e.stdout ?? '');
+        }
+        expect(exitCode).not.toBe(0);
+        expect(stderr).toContain('missing `description:`');
+      } finally {
+        writeFileSync(target, original);
+      }
+    }
+  );
+});
+
+// ============================================================================
 // server.json sync (#2326, #2327)
 // ============================================================================
 

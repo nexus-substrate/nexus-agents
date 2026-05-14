@@ -1,3 +1,8 @@
+---
+paths: ['**/*']
+description: Commits, branches, PRs, merge protocol, GitHub-CLI conventions
+---
+
 # Git & GitHub Rules
 
 <!-- CANONICAL SOURCE: docs/development/CONTRIBUTION_GUIDE.md -->

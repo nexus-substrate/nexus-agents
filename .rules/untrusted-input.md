@@ -1,3 +1,8 @@
+---
+paths: ['**/*']
+description: Trust tiers, typed-action allowlist, sanitization, fail-closed defaults for external input (GitHub issues, PR bodies, comments)
+---
+
 # Untrusted Input Handling Rules
 
 <!-- CANONICAL SOURCE: CLAUDE.md Untrusted Input Policy -->

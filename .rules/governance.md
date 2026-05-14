@@ -1,3 +1,8 @@
+---
+paths: ['**/*']
+description: Voting thresholds, refactor gates, fitness audit, architecture/security supermajority requirements
+---
+
 # Governance Rules
 
 <!-- CANONICAL SOURCE: CLAUDE.md Governance Framework -->
