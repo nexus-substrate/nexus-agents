@@ -739,6 +739,36 @@ function extractDocumentedCounts(content: string): RegistrySummary {
  * heading and the next blank-line-followed `---` separator, and checks that
  * the path in the third backticked column exists from repo root.
  */
+/**
+ * Verify that `docs/guides/RULE_PRECEDENCE.md` exists and contains a
+ * top-level section header for each of the four supported adapters
+ * (Issue #2655, Epic C). The doc is the cross-adapter bridge for rule
+ * loading; if any adapter's section is dropped, operators on that
+ * harness silently miss rules.
+ *
+ * Checks for `## Claude Code`, `## Codex CLI`, `## Gemini CLI`,
+ * `## OpenCode` as discrete header lines — substring matching is too
+ * loose because the body prose mentions every adapter throughout.
+ */
+function checkAdapterPrecedenceDocs(): boolean {
+  const path = join(ROOT, 'docs/guides/RULE_PRECEDENCE.md');
+  if (!existsSync(path)) {
+    console.error('Missing docs/guides/RULE_PRECEDENCE.md (#2655)');
+    return false;
+  }
+  const content = readFileSync(path, 'utf-8');
+  const required = ['## Claude Code', '## Codex CLI', '## Gemini CLI', '## OpenCode'];
+  // Match the header as a full line — `content.includes('## OpenCode')`
+  // would also accept `## OpenCodeXXX`, which defeats the check.
+  const lines = new Set(content.split('\n'));
+  const missing = required.filter((header) => !lines.has(header));
+  if (missing.length > 0) {
+    console.error(`RULE_PRECEDENCE.md missing section header(s): ${missing.join(', ')}`);
+    return false;
+  }
+  return true;
+}
+
 function checkCanonicalPaths(): boolean {
   if (!existsSync(CLAUDE_MD_PATH)) return false;
   const content = readFileSync(CLAUDE_MD_PATH, 'utf-8');
@@ -817,6 +847,7 @@ function checkGovernance(): boolean {
     versionOk,
     checkReadmeToolTable(actual.tools),
     checkCanonicalPaths(),
+    checkAdapterPrecedenceDocs(),
     checkServerJson(actual.tools.length),
   ];
 

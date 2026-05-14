@@ -48,6 +48,8 @@ Load-bearing rules live at `.rules/*.md`. Read the relevant file when its topic 
 
 Claude Code autoloads these when their keywords match user intent. Other harnesses should either (a) read these directly when the topic is relevant, or (b) configure their rule-loading system to scan `.rules/*.md`.
 
+**For Codex / Gemini CLI / OpenCode users:** each adapter resolves rule files differently — Codex follows strict `AGENTS.md` precedence; Gemini reads files listed in `context.fileName`; OpenCode uses `AGENTS.md` with `CLAUDE.md` fallback. See [docs/guides/RULE_PRECEDENCE.md](./docs/guides/RULE_PRECEDENCE.md) for the per-adapter precise reference.
+
 ## Skills
 
 Workflow playbooks live at `skills/<name>/SKILL.md` (canonical per the Anthropic Agent Skills spec, which OpenCode and others are adopting).

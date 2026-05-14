@@ -146,16 +146,17 @@ Detailed technical documentation:
 
 #### Guides
 
-| Document                                                          | Description                                                    |
-| ----------------------------------------------------------------- | -------------------------------------------------------------- |
-| [MCP_INTEGRATION.md](./guides/MCP_INTEGRATION.md)                 | MCP server configuration                                       |
-| [WORKFLOW_TEMPLATES.md](./guides/WORKFLOW_TEMPLATES.md)           | Creating YAML workflows                                        |
-| [CUSTOM_ENDPOINT_SETUP.md](./guides/CUSTOM_ENDPOINT_SETUP.md)     | Custom OpenAI-compatible gateway (direct SDK + OpenCode paths) |
-| [CLOUD_PROVIDERS.md](./guides/CLOUD_PROVIDERS.md)                 | Bedrock/Vertex/Azure via OpenRouter / LiteLLM / custom-gateway |
-| [PR_REVIEW_LOCAL.md](./guides/PR_REVIEW_LOCAL.md)                 | Run pr_review on your machine using subscription CLI auth      |
-| [HARNESS_COMPATIBILITY.md](./guides/HARNESS_COMPATIBILITY.md)     | Wire nexus-agents from OpenCode/Codex/Cursor/Aider/Cline       |
-| [DEBUGGING_OBSERVABILITY.md](./guides/DEBUGGING_OBSERVABILITY.md) | Debug logging, tracing                                         |
-| [Claude Code Observability](./guides/claude-code-observability/)  | Hooks, status line, MCP logging for Claude Code                |
+| Document                                                          | Description                                                        |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------ |
+| [MCP_INTEGRATION.md](./guides/MCP_INTEGRATION.md)                 | MCP server configuration                                           |
+| [WORKFLOW_TEMPLATES.md](./guides/WORKFLOW_TEMPLATES.md)           | Creating YAML workflows                                            |
+| [CUSTOM_ENDPOINT_SETUP.md](./guides/CUSTOM_ENDPOINT_SETUP.md)     | Custom OpenAI-compatible gateway (direct SDK + OpenCode paths)     |
+| [CLOUD_PROVIDERS.md](./guides/CLOUD_PROVIDERS.md)                 | Bedrock/Vertex/Azure via OpenRouter / LiteLLM / custom-gateway     |
+| [PR_REVIEW_LOCAL.md](./guides/PR_REVIEW_LOCAL.md)                 | Run pr_review on your machine using subscription CLI auth          |
+| [HARNESS_COMPATIBILITY.md](./guides/HARNESS_COMPATIBILITY.md)     | Wire nexus-agents from OpenCode/Codex/Cursor/Aider/Cline           |
+| [RULE_PRECEDENCE.md](./guides/RULE_PRECEDENCE.md)                 | Per-adapter rule-loading precedence (Claude/Codex/Gemini/OpenCode) |
+| [DEBUGGING_OBSERVABILITY.md](./guides/DEBUGGING_OBSERVABILITY.md) | Debug logging, tracing                                             |
+| [Claude Code Observability](./guides/claude-code-observability/)  | Hooks, status line, MCP logging for Claude Code                    |
 
 #### Reference
 
