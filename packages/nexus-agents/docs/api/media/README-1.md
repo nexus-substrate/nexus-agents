@@ -162,7 +162,6 @@ packages/nexus-agents/src/
 ├── context/               # Memory management
 ├── consensus/             # Voting protocols
 ├── mcp/                   # MCP server
-├── swe-bench/             # SWE-Bench evaluation harness
 └── observability/         # Metrics, tracing
 ```
 
