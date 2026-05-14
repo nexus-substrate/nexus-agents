@@ -56,7 +56,6 @@ export {
   delay,
   extractTextFromResponse,
   executeSingleVoteAttempt,
-  validateTimeout,
   resolveVoteTimeout,
   type RetryOptions,
   executeWithRetries,
