@@ -125,7 +125,6 @@ export {
   getCliTimeout,
   resolveVoteTimeout,
   resolveEnvTimeout,
-  validateTimeout as validateTimeoutCentral,
 } from './defaults.js';
 
 // ConfigManager (Issue #360)
