@@ -16,6 +16,7 @@ import { createLogger, formatZodError } from '../../core/index.js';
 import { withToolError } from '../middleware/tool-error-handler.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
+import { withPrerequisite } from '../middleware/tool-prerequisites.js';
 import {
   toolStructuredError,
   toolSuccessStructured,
@@ -311,8 +312,9 @@ export function registerMemoryWriteTool(server: McpServer, deps: MemoryWriteDeps
     logger,
   });
 
+  const guardedHandler = withPrerequisite('memory_write', secureHandler);
   const timeoutMs = getToolTimeout('memory_write', deps.security);
-  const wrappedHandler = wrapToolWithTimeout('memory_write', secureHandler, { timeoutMs, logger });
+  const wrappedHandler = wrapToolWithTimeout('memory_write', guardedHandler, { timeoutMs, logger });
 
   // Concrete shape: every backend writer returns success+backend+key, with an
   // optional `deduplicated` flag (belief backend only) and an optional `error`
