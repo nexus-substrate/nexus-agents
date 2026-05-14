@@ -17,7 +17,12 @@ import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middlewar
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { RepoAnalyzeInputSchema } from './repo-analyze-types.js';
 import { analyzeGitHubRepo } from './repo-analyze.js';
-import { toolError, toolSuccess, type BaseMcpToolDeps, type ToolResult } from './tool-result.js';
+import {
+  toolStructuredError,
+  toolSuccess,
+  type BaseMcpToolDeps,
+  type ToolResult,
+} from './tool-result.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 
 // ============================================================================
@@ -33,7 +38,10 @@ export type RepoAnalyzeDeps = BaseMcpToolDeps;
 async function repoAnalyzeHandler(args: unknown, ctx: HandlerContext): Promise<ToolResult> {
   const parsed = RepoAnalyzeInputSchema.safeParse(args);
   if (!parsed.success) {
-    return toolError(`Validation error: ${formatZodError(parsed.error)}`);
+    return toolStructuredError({
+      errorCategory: 'validation',
+      message: `Validation error: ${formatZodError(parsed.error)}`,
+    });
   }
 
   try {

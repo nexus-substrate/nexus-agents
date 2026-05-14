@@ -15,7 +15,12 @@ import { createLogger, formatZodError } from '../../core/index.js';
 import { extractSymbols, extractSymbolIndex } from '../../indexer/symbol-extractor.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
-import { toolError, toolSuccess, type BaseMcpToolDeps, type ToolResult } from './tool-result.js';
+import {
+  toolStructuredError,
+  toolSuccess,
+  type BaseMcpToolDeps,
+  type ToolResult,
+} from './tool-result.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 
 // ============================================================================
@@ -46,10 +51,36 @@ export type ExtractSymbolsDeps = BaseMcpToolDeps;
 // Handler
 // ============================================================================
 
+/** Serialize a full symbol-extraction result to the tool's JSON shape. */
+function buildFullSymbolOutput(result: Awaited<ReturnType<typeof extractSymbols>>): string {
+  return JSON.stringify(
+    {
+      filePath: result.filePath,
+      totalLines: result.totalLines,
+      totalChars: result.totalChars,
+      symbolChars: result.symbolChars,
+      savingsPercent: result.savingsPercent,
+      symbols: result.symbols.map((s) => ({
+        name: s.name,
+        kind: s.kind,
+        startLine: s.startLine,
+        endLine: s.endLine,
+        exported: s.exported,
+        text: s.text,
+      })),
+    },
+    null,
+    2
+  );
+}
+
 async function extractSymbolsHandler(args: unknown, ctx: HandlerContext): Promise<ToolResult> {
   const parsed = ExtractSymbolsInputSchema.safeParse(args);
   if (!parsed.success) {
-    return toolError(`Validation error: ${formatZodError(parsed.error)}`);
+    return toolStructuredError({
+      errorCategory: 'validation',
+      message: `Validation error: ${formatZodError(parsed.error)}`,
+    });
   }
 
   const { filePath, mode } = parsed.data;
@@ -58,33 +89,15 @@ async function extractSymbolsHandler(args: unknown, ctx: HandlerContext): Promis
   // Path traversal guard — restrict to cwd subtree (security audit 2026-04-10)
   const cwdRoot = resolve('.');
   if (!resolvedPath.startsWith(cwdRoot)) {
-    return toolError(`Path traversal denied: path must be within ${cwdRoot}`);
+    return toolStructuredError({
+      errorCategory: 'permission',
+      message: `Path traversal denied: path must be within ${cwdRoot}`,
+    });
   }
 
   try {
     if (mode === 'full') {
-      const result = await extractSymbols(resolvedPath);
-      return toolSuccess(
-        JSON.stringify(
-          {
-            filePath: result.filePath,
-            totalLines: result.totalLines,
-            totalChars: result.totalChars,
-            symbolChars: result.symbolChars,
-            savingsPercent: result.savingsPercent,
-            symbols: result.symbols.map((s) => ({
-              name: s.name,
-              kind: s.kind,
-              startLine: s.startLine,
-              endLine: s.endLine,
-              exported: s.exported,
-              text: s.text,
-            })),
-          },
-          null,
-          2
-        )
-      );
+      return toolSuccess(buildFullSymbolOutput(await extractSymbols(resolvedPath)));
     }
 
     // Default: index mode (minimal tokens)
@@ -96,7 +109,10 @@ async function extractSymbolsHandler(args: unknown, ctx: HandlerContext): Promis
   } catch (caught: unknown) {
     const e = caught instanceof Error ? caught : new Error(String(caught));
     ctx.logger.error('Symbol extraction failed', e);
-    return toolError(`Symbol extraction failed: ${e.message}`);
+    return toolStructuredError({
+      errorCategory: 'internal',
+      message: `Symbol extraction failed: ${e.message}`,
+    });
   }
 }
 

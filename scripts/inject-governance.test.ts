@@ -492,6 +492,56 @@ describe('inject-governance tool-annotations (#2648)', () => {
 });
 
 // ============================================================================
+// MCP error-envelope validator (#2649)
+// ============================================================================
+
+describe('inject-governance mcp-error-envelope (#2649)', () => {
+  const TOOL_PATH = join(ROOT, 'packages/nexus-agents/src/mcp/tools/memory-stats.ts');
+
+  it(
+    'passes when no tool file has a raw `isError: true` literal',
+    { timeout: SUBPROCESS_TIMEOUT },
+    () => {
+      const output = runScript('check');
+      expect(output).toContain('Governance check passed');
+      expect(output).not.toContain('raw `isError: true` literal');
+    }
+  );
+
+  it(
+    'fails when a tool file builds a raw `isError: true` literal',
+    { timeout: SUBPROCESS_TIMEOUT },
+    () => {
+      const original = readFileSync(TOOL_PATH, 'utf-8');
+      try {
+        // Inject a raw error literal the way a pre-#2649 tool would.
+        const broken = original.replace(
+          'export ',
+          'const _raw = { isError: true, content: [] };\nexport ',
+          1
+        );
+        expect(broken).not.toBe(original);
+        writeFileSync(TOOL_PATH, broken);
+        let stderr = '';
+        let exitCode = 0;
+        try {
+          execSync(`npx tsx ${SCRIPT} check`, { cwd: ROOT, encoding: 'utf-8', timeout: 30000 });
+        } catch (err) {
+          const e = err as { status?: number; stderr?: string; stdout?: string };
+          exitCode = e.status ?? 1;
+          stderr = (e.stderr ?? '') + (e.stdout ?? '');
+        }
+        expect(exitCode).not.toBe(0);
+        expect(stderr).toContain('raw `isError: true` literal');
+        expect(stderr).toContain('memory-stats.ts');
+      } finally {
+        writeFileSync(TOOL_PATH, original);
+      }
+    }
+  );
+});
+
+// ============================================================================
 // Rule frontmatter validator (#2656)
 // ============================================================================
 

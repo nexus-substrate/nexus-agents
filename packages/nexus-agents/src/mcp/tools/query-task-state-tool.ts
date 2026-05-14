@@ -13,7 +13,12 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, formatZodError } from '../../core/index.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
-import { toolError, toolSuccess, type BaseMcpToolDeps, type ToolResult } from './tool-result.js';
+import {
+  toolStructuredError,
+  toolSuccess,
+  type BaseMcpToolDeps,
+  type ToolResult,
+} from './tool-result.js';
 import { readTaskState } from '../../context/structured-task-state.js';
 import type { StructuredTaskState } from '../../context/structured-task-state-types.js';
 import { getToolAnnotations } from '../tool-annotations.js';
@@ -36,7 +41,12 @@ export type QueryTaskStateDeps = BaseMcpToolDeps;
 function queryTaskStateHandler(args: unknown, ctx: HandlerContext): Promise<ToolResult> {
   const parsed = QueryTaskStateInputSchema.safeParse(args);
   if (!parsed.success) {
-    return Promise.resolve(toolError(`Validation error: ${formatZodError(parsed.error)}`));
+    return Promise.resolve(
+      toolStructuredError({
+        errorCategory: 'validation',
+        message: `Validation error: ${formatZodError(parsed.error)}`,
+      })
+    );
   }
   const result = readTaskState(parsed.data.taskId);
   if (result.ok) {

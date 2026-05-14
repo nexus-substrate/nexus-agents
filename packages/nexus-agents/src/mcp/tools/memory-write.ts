@@ -17,7 +17,7 @@ import { withToolError } from '../middleware/tool-error-handler.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import {
-  toolError,
+  toolStructuredError,
   toolSuccessStructured,
   type ToolResult,
   type BaseMcpToolDeps,
@@ -248,13 +248,19 @@ async function executeMemoryWrite(
 async function memoryWriteHandler(args: unknown, ctx: HandlerContext): Promise<ToolResult> {
   const validationResult = MemoryWriteInputSchema.safeParse(args);
   if (!validationResult.success) {
-    return toolError(`Validation error: ${formatZodError(validationResult.error)}`);
+    return toolStructuredError({
+      errorCategory: 'validation',
+      message: `Validation error: ${formatZodError(validationResult.error)}`,
+    });
   }
 
   return withToolError('Memory write failed', ctx.logger, async () => {
     const result = await executeMemoryWrite(validationResult.data, ctx.logger);
     if (!result.success) {
-      return toolError(JSON.stringify(result, null, 2));
+      return toolStructuredError({
+        errorCategory: 'internal',
+        message: JSON.stringify(result, null, 2),
+      });
     }
     return toolSuccessStructured(result as unknown as Record<string, unknown>);
   });

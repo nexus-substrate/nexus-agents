@@ -35,7 +35,7 @@ export { isZodError } from '../../core/index.js';
  * server.tool('my_tool', InputSchema.shape, async (args) => {
  *   const result = validateToolInput(InputSchema, args);
  *   if (!result.ok) {
- *     return { isError: true, content: [{ type: 'text', text: result.error.message }] };
+ *     return toolStructuredError({ errorCategory: 'validation', message: result.error.message });
  *   }
  *   const { task, context } = result.value;
  *   // Process validated input...
@@ -112,7 +112,7 @@ export function createValidator<T>(
  *
  *   const validated = validateToolOutput(OutputSchema, result);
  *   if (!validated.ok) {
- *     return { isError: true, content: [{ type: 'text', text: validated.error.message }] };
+ *     return toolStructuredError({ errorCategory: 'internal', message: validated.error.message });
  *   }
  *   return { content: [{ type: 'text', text: JSON.stringify(validated.value) }] };
  * });

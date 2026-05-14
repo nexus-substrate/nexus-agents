@@ -19,6 +19,8 @@ import { createRequestContext, contextForLogging, type RequestContext } from './
 import { createMetricsMiddleware } from './tool-metrics.js';
 import { abortSignalStorage } from '../mcp-notifier.js';
 import { createAccessPolicyChainMiddleware } from '../../security/access-constraint-deriver/chain-adapter.js';
+import { toolStructuredError } from '../tools/tool-result.js';
+import type { ErrorCategory } from '../error-envelope.js';
 
 /**
  * MCP tool result type.
@@ -109,13 +111,14 @@ export type ContextAwareToolHandler = (
 ) => Promise<ToolResult>;
 
 /**
- * Creates an error result with MCP format.
+ * Creates an error result with the structured error envelope (#2649).
+ * Each middleware passes the category that matches its failure mode.
  */
-function errorResult(message: string, requestId: string): ToolResult {
-  return {
-    isError: true,
-    content: [{ type: 'text', text: `${message} (request: ${requestId})` }],
-  };
+function errorResult(category: ErrorCategory, message: string, requestId: string): ToolResult {
+  return toolStructuredError({
+    errorCategory: category,
+    message: `${message} (request: ${requestId})`,
+  });
 }
 
 /**
@@ -128,7 +131,11 @@ function createValidationMiddleware(schema: z.ZodType): Middleware {
       ctx.logger.warn('Validation failed', {
         error: result.error.message,
       });
-      return errorResult(`Validation error: ${result.error.message}`, ctx.requestContext.requestId);
+      return errorResult(
+        'validation',
+        `Validation error: ${result.error.message}`,
+        ctx.requestContext.requestId
+      );
     }
     ctx.validatedArgs = result.value;
     return next(result.value, ctx);
@@ -156,7 +163,11 @@ function createPolicyMiddleware(
         reason: decision.reason,
         ruleName: decision.ruleName,
       });
-      return errorResult(`Policy denied: ${decision.reason}`, ctx.requestContext.requestId);
+      return errorResult(
+        'permission',
+        `Policy denied: ${decision.reason}`,
+        ctx.requestContext.requestId
+      );
     }
     ctx.logger.debug('Policy check passed', { reason: decision.reason });
     return next(args, ctx);
@@ -175,6 +186,7 @@ function createRateLimitMiddleware(limiter: RateLimiter): Middleware {
         nextTokenMs: state.nextTokenMs,
       });
       return errorResult(
+        'transient',
         `Rate limit exceeded. Try again in ${String(state.nextTokenMs)}ms`,
         ctx.requestContext.requestId
       );
@@ -200,7 +212,8 @@ function createTimeoutMiddleware(guard: TimeoutGuard, toolName: string): Middlew
         code: result.error.code,
         timeoutMs: result.error.timeoutMs,
       });
-      return errorResult(result.error.message, ctx.requestContext.requestId);
+      // Timeout — transient, a retry with more headroom may succeed.
+      return errorResult('transient', result.error.message, ctx.requestContext.requestId);
     }
 
     if (result.value.nearTimeout) {
@@ -237,7 +250,7 @@ function createAuditMiddleware(): Middleware {
       ctx.logger.error('Tool execution failed', error instanceof Error ? error : undefined, {
         durationMs,
       });
-      return errorResult(`Internal error: ${message}`, ctx.requestContext.requestId);
+      return errorResult('internal', `Internal error: ${message}`, ctx.requestContext.requestId);
     }
   };
 }

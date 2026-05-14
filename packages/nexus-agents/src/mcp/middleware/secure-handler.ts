@@ -28,7 +28,7 @@ import {
   logSanitizationResult,
   type SanitizeToolInputResult,
 } from './tool-input-sanitizer.js';
-import type { ToolResult } from '../tools/tool-result.js';
+import { toolStructuredError, type ToolResult } from '../tools/tool-result.js';
 
 export type { ToolResult };
 
@@ -88,38 +88,35 @@ export interface HandlerContext {
 export type ContextAwareHandler = (args: unknown, ctx: HandlerContext) => Promise<ToolResult>;
 
 /**
- * Creates a rate limit error response.
+ * Creates a rate limit error response. Rate limits are transient — the
+ * structured envelope marks it retryable (#2649).
  */
 function rateLimitError(nextTokenMs: number): ToolResult {
-  return {
-    isError: true,
-    content: [
-      {
-        type: 'text',
-        text: `Rate limit exceeded. Try again in ${String(nextTokenMs)}ms.`,
-      },
-    ],
-  };
+  return toolStructuredError({
+    errorCategory: 'transient',
+    message: `Rate limit exceeded. Try again in ${String(nextTokenMs)}ms.`,
+  });
 }
 
 /**
- * Creates a policy denial error response.
+ * Creates a policy denial error response — an access-control denial,
+ * categorized `permission` (#2649).
  */
 function policyDeniedError(reason: string, requestId: string): ToolResult {
-  return {
-    isError: true,
-    content: [{ type: 'text', text: `Policy denied: ${reason} (request: ${requestId})` }],
-  };
+  return toolStructuredError({
+    errorCategory: 'permission',
+    message: `Policy denied: ${reason} (request: ${requestId})`,
+  });
 }
 
 /**
- * Creates an internal error response.
+ * Creates an internal error response (#2649).
  */
 function internalError(message: string, requestId: string): ToolResult {
-  return {
-    isError: true,
-    content: [{ type: 'text', text: `Internal error: ${message} (request: ${requestId})` }],
-  };
+  return toolStructuredError({
+    errorCategory: 'internal',
+    message: `Internal error: ${message} (request: ${requestId})`,
+  });
 }
 
 /**
@@ -334,17 +331,14 @@ function checkSecurityTier(
     tier,
     patterns: sanitizeResult.detectedPatterns,
   });
-  return {
-    isError: true,
-    content: [
-      {
-        type: 'text',
-        text:
-          `Input validation failed: detected patterns [${sanitizeResult.detectedPatterns.join(', ')}]. ` +
-          'Remove prompt injection patterns and retry.',
-      },
-    ],
-  };
+  // Security-tier rejection of suspected injection patterns — an
+  // access-control denial, categorized `permission` (#2649).
+  return toolStructuredError({
+    errorCategory: 'permission',
+    message:
+      `Input validation failed: detected patterns [${sanitizeResult.detectedPatterns.join(', ')}]. ` +
+      'Remove prompt injection patterns and retry.',
+  });
 }
 
 /** Pre-execution checks: input size, input sanitization, rate limit, policy. */

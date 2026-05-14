@@ -1055,14 +1055,17 @@ describe('SecureHandler', () => {
 
       const result = await secureHandler({});
 
-      expect(result).toEqual({
-        isError: true,
-        content: [
-          {
-            type: 'text',
-            text: 'Rate limit exceeded. Try again in 1234ms.',
-          },
-        ],
+      // Rate limits carry a transient (retryable) structured envelope (#2649).
+      expect(result.isError).toBe(true);
+      expect(result.content).toEqual([
+        { type: 'text', text: 'Rate limit exceeded. Try again in 1234ms.' },
+      ]);
+      expect(result.structuredContent).toEqual({
+        error: {
+          errorCategory: 'transient',
+          isRetryable: true,
+          message: 'Rate limit exceeded. Try again in 1234ms.',
+        },
       });
     });
 

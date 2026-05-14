@@ -23,7 +23,12 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, formatZodError } from '../../core/index.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
-import { toolError, toolSuccess, type BaseMcpToolDeps, type ToolResult } from './tool-result.js';
+import {
+  toolStructuredError,
+  toolSuccess,
+  type BaseMcpToolDeps,
+  type ToolResult,
+} from './tool-result.js';
 import { verifyChain, type ChainVerification } from '../../audit/audit-logger.js';
 import { AuditEventSchema, type AuditEvent } from '../../audit/audit-types.js';
 import { getToolAnnotations } from '../tool-annotations.js';
@@ -98,7 +103,10 @@ async function loadAuditEvents(
 async function handler(args: unknown, ctx: HandlerContext): Promise<ToolResult> {
   const parsed = VerifyAuditChainInputSchema.safeParse(args);
   if (!parsed.success) {
-    return toolError(`Validation error: ${formatZodError(parsed.error)}`);
+    return toolStructuredError({
+      errorCategory: 'validation',
+      message: `Validation error: ${formatZodError(parsed.error)}`,
+    });
   }
   const resolvedDir = path.resolve(parsed.data.logDir);
 
@@ -107,10 +115,16 @@ async function handler(args: unknown, ctx: HandlerContext): Promise<ToolResult> 
     dirStats = await fs.stat(resolvedDir);
   } catch (cause) {
     const msg = cause instanceof Error ? cause.message : String(cause);
-    return toolError(`Cannot access logDir "${resolvedDir}": ${msg}`);
+    return toolStructuredError({
+      errorCategory: 'validation',
+      message: `Cannot access logDir "${resolvedDir}": ${msg}`,
+    });
   }
   if (!dirStats.isDirectory()) {
-    return toolError(`logDir "${resolvedDir}" is not a directory`);
+    return toolStructuredError({
+      errorCategory: 'validation',
+      message: `logDir "${resolvedDir}" is not a directory`,
+    });
   }
 
   const { events, fileCount } = await loadAuditEvents(resolvedDir, ctx.logger);
