@@ -23,6 +23,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, formatZodError } from '../../core/index.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
+import { withPrerequisite } from '../middleware/tool-prerequisites.js';
 import {
   toolStructuredError,
   toolSuccessStructured,
@@ -517,8 +518,9 @@ export function registerImprovementReviewTool(
     rateLimiter: deps.rateLimiter,
     logger,
   });
+  const guardedHandler = withPrerequisite('improvement_review', secureHandler);
   const timeoutMs = getToolTimeout('improvement_review', deps.security);
-  const wrappedHandler = wrapToolWithTimeout('improvement_review', secureHandler, {
+  const wrappedHandler = wrapToolWithTimeout('improvement_review', guardedHandler, {
     timeoutMs,
     logger,
   });

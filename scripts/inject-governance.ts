@@ -792,6 +792,66 @@ function checkToolDistinctness(): boolean {
   return false;
 }
 
+/** Tool names whose annotation block lacks `readOnlyHint: true`. */
+function extractNonReadOnlyTools(annotationsSrc: string): Set<string> {
+  const names = new Set<string>();
+  const blockPattern = /^ {2}([a-z_]+):\s*\{([\s\S]*?)\n {2}\},/gm;
+  let block: RegExpExecArray | null;
+  while ((block = blockPattern.exec(annotationsSrc)) !== null) {
+    const name = block[1];
+    const body = block[2] ?? '';
+    if (name !== undefined && !/readOnlyHint:\s*true/.test(body)) names.add(name);
+  }
+  return names;
+}
+
+/** Tool names listed in `TOOL_PREREQUISITES` or `NO_PREREQUISITE`. */
+function extractPrerequisiteCoveredTools(prereqSrc: string): Set<string> {
+  const covered = new Set<string>();
+  for (const mapName of ['TOOL_PREREQUISITES', 'NO_PREREQUISITE']) {
+    const start = prereqSrc.indexOf(`export const ${mapName}`);
+    if (start === -1) continue;
+    const open = prereqSrc.indexOf('{', start);
+    const end = prereqSrc.indexOf('\n};', open);
+    const body = prereqSrc.slice(open, end === -1 ? undefined : end);
+    for (const m of body.matchAll(/^ {2}([a-z_]+):/gm)) {
+      if (m[1] !== undefined) covered.add(m[1]);
+    }
+  }
+  return covered;
+}
+
+/**
+ * Verify every non-read-only MCP tool has made a deliberate prerequisite
+ * decision (Issue #2652, Epic B). A tool that mutates state, emits audit
+ * entries, or acts on untrusted input must appear in either
+ * `TOOL_PREREQUISITES` (it declares a call-time predicate) or
+ * `NO_PREREQUISITE` (deliberately ungated, with a reason) in
+ * `src/mcp/middleware/tool-prerequisites.ts` — so a newly added sensitive
+ * tool cannot ship ungated by omission. Read-only tools are exempt.
+ */
+function checkToolPrerequisites(): boolean {
+  const annotationsPath = join(ROOT, 'packages/nexus-agents/src/mcp/tool-annotations.ts');
+  const prereqPath = join(ROOT, 'packages/nexus-agents/src/mcp/middleware/tool-prerequisites.ts');
+  if (!existsSync(annotationsPath) || !existsSync(prereqPath)) {
+    console.error('Missing tool-annotations.ts or tool-prerequisites.ts (#2652)');
+    return false;
+  }
+  const nonReadOnly = extractNonReadOnlyTools(readFileSync(annotationsPath, 'utf-8'));
+  const covered = extractPrerequisiteCoveredTools(readFileSync(prereqPath, 'utf-8'));
+  const missing = [...nonReadOnly].filter((t) => !covered.has(t));
+  if (missing.length > 0) {
+    console.error('Non-read-only MCP tools with no prerequisite decision (#2652):');
+    for (const t of missing) console.error('  - ' + t);
+    console.error(
+      '  Add each to TOOL_PREREQUISITES (declare a predicate) or NO_PREREQUISITE ' +
+        '(with a reason) in src/mcp/middleware/tool-prerequisites.ts.'
+    );
+    return false;
+  }
+  return true;
+}
+
 function checkCanonicalPaths(): boolean {
   if (!existsSync(CLAUDE_MD_PATH)) return false;
   const content = readFileSync(CLAUDE_MD_PATH, 'utf-8');
@@ -895,6 +955,7 @@ function checkGovernance(): boolean {
     checkToolAnnotations(actual.tools),
     checkMcpErrorEnvelope(),
     checkToolDistinctness(),
+    checkToolPrerequisites(),
     checkServerJson(actual.tools.length),
   ];
 

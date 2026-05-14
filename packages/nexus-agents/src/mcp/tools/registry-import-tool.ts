@@ -15,6 +15,7 @@ import { createLogger, formatZodError } from '../../core/index.js';
 import { toolErrorResponse } from '../middleware/tool-error-handler.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
+import { withPrerequisite } from '../middleware/tool-prerequisites.js';
 import { RegistryImportInputSchema } from './registry-import-types.js';
 import { generateRegistryEntry } from './registry-import.js';
 import {
@@ -80,8 +81,9 @@ export function registerRegistryImportTool(server: McpServer, deps: RegistryImpo
     logger,
   });
 
+  const guardedHandler = withPrerequisite('registry_import', secureHandler);
   const timeoutMs = getToolTimeout('registry_import', deps.security);
-  const wrappedHandler = wrapToolWithTimeout('registry_import', secureHandler, {
+  const wrappedHandler = wrapToolWithTimeout('registry_import', guardedHandler, {
     timeoutMs,
     logger,
   });
