@@ -68,6 +68,25 @@ describe('skills/index.yaml', () => {
     expect(withTriggers.length).toBeGreaterThanOrEqual(Math.floor(index.skills.length * 0.8));
   });
 
+  it('every SKILL.md carries the cross-vendor required frontmatter (#2660)', () => {
+    // Codex's Skills primitive uses the same SKILL.md filename + the same
+    // required fields (name, description) as the Anthropic Agent Skills
+    // spec. This locks that cross-vendor contract: every skill file must
+    // parse and declare both, so the catalog stays loadable from Claude
+    // Code AND Codex without a translation layer.
+    const index = loadIndex();
+    for (const entry of index.skills) {
+      const content = readFileSync(join(ROOT, entry.path), 'utf-8');
+      const fm = /^---\n([\s\S]*?)\n---/.exec(content)?.[1];
+      expect(fm, `${entry.path} has no frontmatter`).toBeDefined();
+      const parsed = parseYaml(fm ?? '') as Record<string, unknown>;
+      expect(typeof parsed['name'], `${entry.path} name`).toBe('string');
+      expect(typeof parsed['description'], `${entry.path} description`).toBe('string');
+      expect((parsed['name'] as string).length).toBeGreaterThan(0);
+      expect((parsed['description'] as string).length).toBeGreaterThan(0);
+    }
+  });
+
   it('no trigger contains internal whitespace beyond single spaces', () => {
     // Regression guard for #2389: YAML literal-block descriptions wrap at
     // column 80, which previously caused trigger phrases to contain literal

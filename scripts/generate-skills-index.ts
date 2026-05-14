@@ -10,6 +10,15 @@
  * this index. Other CLI workers (OpenCode, Codex, Gemini CLI, Aider) use
  * the index to decide which skill to load on demand.
  *
+ * Cross-vendor contract (#2660): the `name` + `description` required-field
+ * validation in `parseFrontmatter` below IS the cross-vendor contract.
+ * Codex's Skills primitive uses the same `SKILL.md` filename and the same
+ * required frontmatter as the Anthropic Agent Skills spec, so no
+ * translation layer is needed — but do not weaken that validation; it is
+ * what keeps the 31 skills loadable from both Claude Code and Codex. Codex
+ * discovery is documented in AGENTS.md (`.agents/skills/` or a
+ * `[[skills.config]]` entry pointing at `skills/`).
+ *
  * Usage:
  *   npx tsx scripts/generate-skills-index.ts          # generate
  *   npx tsx scripts/generate-skills-index.ts --check  # CI validation
