@@ -50,15 +50,6 @@ export type VoterRole =
   | 'scope_steward';
 
 /**
- * Maps threshold names to consensus algorithms.
- */
-export const THRESHOLD_MAP: Record<string, ConsensusAlgorithm> = {
-  majority: 'simple_majority',
-  supermajority: 'supermajority',
-  unanimous: 'unanimous',
-};
-
-/**
  * Agent role descriptions for prompt generation.
  */
 export const VOTER_ROLES: Record<VoterRole, string> = {
