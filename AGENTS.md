@@ -32,20 +32,21 @@ Non-negotiable across all building, reviewing, architecture work:
 
 Load-bearing rules live at `.rules/*.md`. Read the relevant file when its topic applies:
 
-| File                                                                   | When to read                                               |
-| ---------------------------------------------------------------------- | ---------------------------------------------------------- |
-| [`.rules/typescript.md`](./.rules/typescript.md)                       | Any TypeScript change — type safety policy, patterns       |
-| [`.rules/testing.md`](./.rules/testing.md)                             | Writing or modifying tests                                 |
-| [`.rules/security.md`](./.rules/security.md)                           | Auth, secrets, input validation, file-system ops           |
-| [`.rules/untrusted-input.md`](./.rules/untrusted-input.md)             | Processing GitHub issues/PRs/comments or external content  |
-| [`.rules/governance.md`](./.rules/governance.md)                       | Architecture, CI, structural changes                       |
-| [`.rules/git.md`](./.rules/git.md)                                     | Commits, branches, PRs                                     |
-| [`.rules/debugging.md`](./.rules/debugging.md)                         | A test/build/lint just failed                              |
-| [`.rules/subagent-coordination.md`](./.rules/subagent-coordination.md) | Dispatching subagents or Task tool calls                   |
-| [`.rules/test-secrets.md`](./.rules/test-secrets.md)                   | Writing tests that involve fake credentials                |
-| [`.rules/mcp.md`](./.rules/mcp.md)                                     | Adding or modifying MCP tools                              |
-| [`.rules/tool-prerequisites.md`](./.rules/tool-prerequisites.md)       | Adding a sensitive MCP tool — call-time prerequisite gates |
-| [`.rules/nexus-agents.md`](./.rules/nexus-agents.md)                   | Nexus-agents integration basics                            |
+| File                                                                   | When to read                                                   |
+| ---------------------------------------------------------------------- | -------------------------------------------------------------- |
+| [`.rules/typescript.md`](./.rules/typescript.md)                       | Any TypeScript change — type safety policy, patterns           |
+| [`.rules/testing.md`](./.rules/testing.md)                             | Writing or modifying tests                                     |
+| [`.rules/security.md`](./.rules/security.md)                           | Auth, secrets, input validation, file-system ops               |
+| [`.rules/untrusted-input.md`](./.rules/untrusted-input.md)             | Processing GitHub issues/PRs/comments or external content      |
+| [`.rules/governance.md`](./.rules/governance.md)                       | Architecture, CI, structural changes                           |
+| [`.rules/git.md`](./.rules/git.md)                                     | Commits, branches, PRs                                         |
+| [`.rules/debugging.md`](./.rules/debugging.md)                         | A test/build/lint just failed                                  |
+| [`.rules/subagent-coordination.md`](./.rules/subagent-coordination.md) | Dispatching subagents or Task tool calls                       |
+| [`.rules/test-secrets.md`](./.rules/test-secrets.md)                   | Writing tests that involve fake credentials                    |
+| [`.rules/mcp.md`](./.rules/mcp.md)                                     | Adding or modifying MCP tools                                  |
+| [`.rules/tool-prerequisites.md`](./.rules/tool-prerequisites.md)       | Adding a sensitive MCP tool — call-time prerequisite gates     |
+| [`.rules/hooks.md`](./.rules/hooks.md)                                 | Hook vs voter-rule vs prompt-rule layering; output consistency |
+| [`.rules/nexus-agents.md`](./.rules/nexus-agents.md)                   | Nexus-agents integration basics                                |
 
 Claude Code autoloads these when their keywords match user intent. Other harnesses should either (a) read these directly when the topic is relevant, or (b) configure their rule-loading system to scan `.rules/*.md`.
 
