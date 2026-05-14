@@ -39,7 +39,7 @@ import type {
 import { wrapToolWithTimeout, toSdkCallbackWithBudgetCheck } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { withDepthGuard } from '../middleware/spawn-depth-guard.js';
-import { toolError, toolSuccess, type ToolResult } from './tool-result.js';
+import { toolStructuredError, toolSuccess, type ToolResult } from './tool-result.js';
 import {
   createMcpNotifier,
   NOOP_NOTIFIER,
@@ -833,8 +833,9 @@ function computeWorkerDispatchStatus(
  * Assemble final orchestrate tool output (Issue #1310).
  *
  * When every dispatched worker errored (`workerDispatchStatus === 'failed'`,
- * see #2619 bug 1) the structured payload is returned via `toolError` so
- * the MCP-layer `isError` flag flips true. The full JSON (including
+ * see #2619 bug 1) the structured payload is returned via
+ * `toolStructuredError` (category `internal`) so the MCP-layer `isError`
+ * flag flips true. The full JSON (including
  * `workerDispatch.results[].errorMessage`) remains in the body so callers
  * can inspect per-worker reasons; the only change is that callers that
  * only check the outer status no longer silently get an empty success.
@@ -859,7 +860,9 @@ export function assembleOrchestrateOutput(
     ...(workerDispatchStatus !== undefined ? { workerDispatchStatus } : {}),
   };
   const body = JSON.stringify(output, null, 2);
-  return workerDispatchStatus === 'failed' ? toolError(body) : toolSuccess(body);
+  return workerDispatchStatus === 'failed'
+    ? toolStructuredError({ errorCategory: 'internal', message: body })
+    : toolSuccess(body);
 }
 
 /** Record worker outcomes + fire-and-forget reflection (Issue #1323, #1392). */
@@ -994,7 +997,10 @@ async function runOrchestratePipeline(params: {
   // Wall-clock safeguard (sub-issue B of #2104): see helper doc.
   const result = await executeOrchestrationWithDeadline({ input, deps, notifier, logger });
   if (!result.ok) {
-    return toolError(`Orchestration error: ${result.error.message}`);
+    return toolStructuredError({
+      errorCategory: 'internal',
+      message: `Orchestration error: ${result.error.message}`,
+    });
   }
   notifier.info('orchestrate', {
     event: 'orchestrate_complete',
@@ -1010,7 +1016,10 @@ function createOrchestrateHandler(deps: OrchestrateDeps) {
     const validated = OrchestrateInputSchema.safeParse(args);
     if (!validated.success) {
       ctx.logger.warn('Invalid orchestrate input', { errors: validated.error.issues });
-      return toolError(`Validation error: ${formatZodError(validated.error)}`);
+      return toolStructuredError({
+        errorCategory: 'validation',
+        message: `Validation error: ${formatZodError(validated.error)}`,
+      });
     }
     // Depth guard: prevent runaway nested orchestration (#1500)
     try {
@@ -1025,7 +1034,7 @@ function createOrchestrateHandler(deps: OrchestrateDeps) {
     } catch (depthError: unknown) {
       const msg = depthError instanceof Error ? depthError.message : String(depthError);
       ctx.logger.warn('Orchestration depth guard triggered', { error: msg });
-      return toolError(`Depth limit: ${msg}`);
+      return toolStructuredError({ errorCategory: 'business', message: `Depth limit: ${msg}` });
     }
   };
 }

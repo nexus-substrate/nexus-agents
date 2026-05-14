@@ -15,7 +15,7 @@ import { createLogger, formatZodError } from '../../core/index.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import {
-  toolError,
+  toolStructuredError,
   toolSuccessStructured,
   type BaseMcpToolDeps,
   type ToolResult,
@@ -152,7 +152,10 @@ function listExpertsHandler(args: unknown, ctx: HandlerContext): Promise<ToolRes
   const validationResult = ListExpertsInputSchema.safeParse(args);
   if (!validationResult.success) {
     return Promise.resolve(
-      toolError(`Validation error: ${formatZodError(validationResult.error)}`)
+      toolStructuredError({
+        errorCategory: 'validation',
+        message: `Validation error: ${formatZodError(validationResult.error)}`,
+      })
     );
   }
 

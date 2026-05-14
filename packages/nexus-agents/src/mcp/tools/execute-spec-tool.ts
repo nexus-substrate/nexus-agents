@@ -29,7 +29,12 @@ import {
   categorizeOutcomeErrorMessage,
 } from '../../orchestration/outcomes/index.js';
 import { DEFAULT_CLI } from '../../config/model-capabilities-types.js';
-import { toolError, toolSuccess, type BaseMcpToolDeps, type ToolResult } from './tool-result.js';
+import {
+  toolStructuredError,
+  toolSuccess,
+  type BaseMcpToolDeps,
+  type ToolResult,
+} from './tool-result.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 
 // ============================================================================
@@ -52,12 +57,18 @@ export type ExecuteSpecDeps = BaseMcpToolDeps;
 function createDryRunResponse(input: ExecuteSpecInput, logger: ILogger): ToolResult {
   const parseResult = parseSpec(input.spec);
   if (!parseResult.ok) {
-    return toolError(`Parse error: ${parseResult.error.message}`);
+    return toolStructuredError({
+      errorCategory: 'validation',
+      message: `Parse error: ${parseResult.error.message}`,
+    });
   }
 
   const dagResult = decomposeSpec(parseResult.value);
   if (!dagResult.ok) {
-    return toolError(`Decompose error: ${dagResult.error.message}`);
+    return toolStructuredError({
+      errorCategory: 'validation',
+      message: `Decompose error: ${dagResult.error.message}`,
+    });
   }
 
   logger.info('Dry run completed', {
@@ -75,7 +86,10 @@ async function createFullResponse(input: ExecuteSpecInput, logger: ILogger): Pro
 
   if (!result.ok) {
     recordSpecOutcome(false, durationMs, result.error.stage);
-    return toolError(`Execution error (${result.error.stage}): ${result.error.message}`);
+    return toolStructuredError({
+      errorCategory: 'internal',
+      message: `Execution error (${result.error.stage}): ${result.error.message}`,
+    });
   }
 
   const analysis = analyzeFailures(result.value);
@@ -107,7 +121,10 @@ export function registerExecuteSpecTool(server: McpServer, deps: ExecuteSpecDeps
   const handler = async (args: unknown, _ctx: HandlerContext): Promise<ToolResult> => {
     const parsed = ExecuteSpecInputSchema.safeParse(args);
     if (!parsed.success) {
-      return toolError(`Invalid input: ${formatZodError(parsed.error)}`);
+      return toolStructuredError({
+        errorCategory: 'validation',
+        message: `Invalid input: ${formatZodError(parsed.error)}`,
+      });
     }
 
     if (parsed.data.dryRun) {

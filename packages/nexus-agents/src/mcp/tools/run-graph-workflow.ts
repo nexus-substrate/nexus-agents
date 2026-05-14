@@ -17,7 +17,12 @@ import {
   getTimeProvider,
   getRandomProvider,
 } from '../../core/index.js';
-import { toolError, toolSuccess, type ToolResult, type BaseMcpToolDeps } from './tool-result.js';
+import {
+  toolStructuredError,
+  toolSuccess,
+  type ToolResult,
+  type BaseMcpToolDeps,
+} from './tool-result.js';
 import { executeGraph } from '../../orchestration/graph/index.js';
 import type { CompiledGraph, GraphEvent, GraphState } from '../../orchestration/graph/index.js';
 import { createCheckpointStore } from '../../orchestration/graph/index.js';
@@ -216,7 +221,10 @@ function createGraphWorkflowHandler(
   return async (args: unknown, _ctx: HandlerContext): Promise<ToolResult> => {
     const parsed = RunGraphWorkflowInputSchema.safeParse(args);
     if (!parsed.success) {
-      return toolError(`Validation error: ${formatZodError(parsed.error)}`);
+      return toolStructuredError({
+        errorCategory: 'validation',
+        message: `Validation error: ${formatZodError(parsed.error)}`,
+      });
     }
     if (parsed.data.workflow === 'list') {
       return toolSuccess(JSON.stringify(getGraphWorkflowList(), null, 2));
@@ -238,7 +246,9 @@ function createGraphWorkflowHandler(
     recordGraphWorkflowResult(result);
 
     const text = JSON.stringify(result, null, 2);
-    return succeeded ? toolSuccess(text) : toolError(text);
+    return succeeded
+      ? toolSuccess(text)
+      : toolStructuredError({ errorCategory: 'internal', message: text });
   };
 }
 

@@ -9,7 +9,7 @@
  */
 
 import { resolve, sep } from 'node:path';
-import { toolError, toolSuccess } from './tool-result.js';
+import { toolError, toolStructuredError, toolSuccess } from './tool-result.js';
 import type { Result } from '../../core/index.js';
 import type { WorkflowDefinition, StepResult } from '../../core/index.js';
 import { WorkflowError, SecurityError } from '../../core/index.js';
@@ -361,7 +361,11 @@ export function successResponse(data: unknown): ToolResponse {
   return toolSuccess(JSON.stringify(data, null, 2));
 }
 
-/** Create an error response. Thin wrapper around canonical toolError. */
+/**
+ * Create an error response. Thin wrapper around canonical `toolError`,
+ * which maps to a non-retryable `internal` envelope (#2649) — callers
+ * with a more specific category should use `toolStructuredError` directly.
+ */
 export function errorResponse(message: string): ToolResponse {
   return toolError(message);
 }
@@ -377,7 +381,10 @@ export function createFailedResult(workflowName: string, errorMessage: string): 
     durationMs: 0,
     error: errorMessage,
   };
-  return toolError(JSON.stringify(result, null, 2));
+  return toolStructuredError({
+    errorCategory: 'internal',
+    message: JSON.stringify(result, null, 2),
+  });
 }
 
 /** Format validation errors into a message */
