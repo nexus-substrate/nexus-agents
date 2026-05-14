@@ -242,9 +242,40 @@ describe('synthesizeResearch', () => {
     const cluster = result.value.clusters[0];
     if (cluster === undefined) return;
     const retrievalFindings = cluster.keyInsights.filter((i) =>
-      i.toLowerCase().includes('retrieval')
+      i.insight.toLowerCase().includes('retrieval')
     );
     expect(retrievalFindings.length).toBe(1);
+    // #2663 — every synthesized insight carries at least one source paper id.
+    for (const insight of cluster.keyInsights) {
+      expect(insight.sourcePaperIds.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('attributes a shared finding to every paper that asserts it (#2663)', async () => {
+    mockLoadPapersRegistry.mockResolvedValue({
+      ok: true,
+      value: makeRegistry({
+        p1: makePaper('1', 'Paper A', ['memory'], ['retrieval'], {
+          key_findings: ['Shared finding about retrieval'],
+        }),
+        p2: makePaper('2', 'Paper B', ['memory'], ['retrieval'], {
+          key_findings: ['Shared finding about retrieval'],
+        }),
+      }),
+    });
+    const result = await synthesizeResearch('memory');
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const cluster = result.value.clusters[0];
+    if (cluster === undefined) return;
+    const shared = cluster.keyInsights.find((i) => i.insight.includes('Shared finding'));
+    // Both papers asserted it — both ids survive into the output, the
+    // structure that makes a contradiction representable rather than collapsed.
+    expect([...(shared?.sourcePaperIds ?? [])].sort()).toEqual(['p1', 'p2']);
+    // Paper refs carry provenance (#2663), not just titles.
+    expect(cluster.papers.find((p) => p.id === 'p1')?.sourceUri).toBe(
+      'https://arxiv.org/abs/test-1'
+    );
   });
 
   it('identifies aligned techniques with implementation status', async () => {

@@ -392,11 +392,14 @@ function formatSynthesisResult(synthesis: SynthesisResult): string {
 /** Format a single cluster section. */
 function formatCluster(cluster: SynthesisResult['clusters'][number], lines: string[]): void {
   lines.push(`## ${cluster.topic} (${String(cluster.paperCount)} papers)`);
-  lines.push(`Papers: ${cluster.papers.join(', ')}`);
+  lines.push(`Papers: ${cluster.papers.map((p) => p.title).join(', ')}`);
   if (cluster.commonThemes.length > 0) lines.push(`Themes: ${cluster.commonThemes.join(', ')}`);
   if (cluster.keyInsights.length > 0) {
     lines.push('Key insights:');
-    for (const insight of cluster.keyInsights.slice(0, 5)) lines.push(`  - ${insight}`);
+    // #2663 — each insight carries its source paper ids.
+    for (const insight of cluster.keyInsights.slice(0, 5)) {
+      lines.push(`  - ${insight.insight} [${insight.sourcePaperIds.join(', ')}]`);
+    }
   }
   if (cluster.implementationOpportunities.length > 0) {
     lines.push(`Opportunities: ${cluster.implementationOpportunities.join(', ')}`);

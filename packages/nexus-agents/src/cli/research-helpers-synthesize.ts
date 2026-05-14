@@ -8,6 +8,7 @@
  * (Source: Issue #1386 — Research Synthesis Pipeline)
  */
 
+import { z } from 'zod';
 import { loadPapersRegistry } from './research-helpers-io.js';
 import type { PapersRegistry } from './research-types.js';
 import type { Result } from '../core/result.js';
@@ -32,7 +33,43 @@ export interface SynthesisPaper {
   readonly techniquesExtracted: readonly string[];
   readonly qualityScore: number;
   readonly evidenceTier: 'high' | 'medium' | 'low';
+  /** Source URI — the paper URL, or `arxiv:<id>` (#2663 provenance). */
+  readonly sourceUri?: string;
+  /** Publication date as recorded in the registry (#2663 provenance). */
+  readonly publicationDate?: string;
 }
+
+/**
+ * A reference to a source paper, carried into synthesis output so a
+ * cluster is traceable back to its inputs (#2663).
+ */
+export interface SynthesisPaperRef {
+  readonly id: string;
+  readonly title: string;
+  readonly sourceUri?: string;
+}
+
+/**
+ * A synthesized insight with its provenance (#2663). `sourcePaperIds` is
+ * never empty — every merged claim is attributed. When two papers assert
+ * the same finding, BOTH ids appear, so a contradiction is *representable*
+ * as multiple attributed sources rather than silently collapsed into one.
+ */
+export interface AttributedInsight {
+  readonly insight: string;
+  readonly sourcePaperIds: readonly string[];
+}
+
+/**
+ * Structural enforcement of the #2663 provenance invariant: every
+ * synthesized insight must carry at least one source paper id. A doc rule
+ * alone is fragile — this Zod schema makes "no unattributed claim" a
+ * validated guarantee, not a hope.
+ */
+export const AttributedInsightSchema = z.object({
+  insight: z.string().min(1),
+  sourcePaperIds: z.array(z.string().min(1)).min(1),
+});
 
 /** A cluster of related papers grouped by topic. */
 export interface PaperCluster {
@@ -61,9 +98,9 @@ export interface QualityDistribution {
 export interface ClusterSynthesis {
   readonly topic: string;
   readonly paperCount: number;
-  readonly papers: readonly string[];
+  readonly papers: readonly SynthesisPaperRef[];
   readonly commonThemes: readonly string[];
-  readonly keyInsights: readonly string[];
+  readonly keyInsights: readonly AttributedInsight[];
   readonly techniques: readonly string[];
   readonly implementationOpportunities: readonly string[];
   readonly gaps: readonly string[];
@@ -184,20 +221,33 @@ function safeArray(value: readonly string[]): string[] {
 }
 
 /** Extract papers from the registry structure. */
+/** Source URI for a paper: prefer the URL, else `arxiv:<id>` (#2663). */
+function paperSourceUri(p: PapersRegistry['papers'][string]): string | undefined {
+  if (typeof p.url === 'string' && p.url.length > 0) return p.url;
+  if (typeof p.arxiv_id === 'string' && p.arxiv_id.length > 0) return `arxiv:${p.arxiv_id}`;
+  return undefined;
+}
+
 function extractPapers(registry: PapersRegistry): SynthesisPaper[] {
-  return Object.entries(registry.papers).map(([id, p]) => ({
-    id,
-    title: p.title,
-    topics: safeArray(p.topics),
-    tags: safeArray(p.tags),
-    summary: p.summary.trim(),
-    keyFindings: safeArray(p.key_findings),
-    relevance: p.relevance,
-    implementationStatus: p.implementation_status,
-    techniquesExtracted: safeArray(p.techniques_extracted),
-    qualityScore: p.quality_score ?? 0,
-    evidenceTier: p.evidence_tier ?? 'low',
-  }));
+  return Object.entries(registry.papers).map(([id, p]) => {
+    const sourceUri = paperSourceUri(p);
+    return {
+      id,
+      title: p.title,
+      topics: safeArray(p.topics),
+      tags: safeArray(p.tags),
+      summary: p.summary.trim(),
+      keyFindings: safeArray(p.key_findings),
+      relevance: p.relevance,
+      implementationStatus: p.implementation_status,
+      techniquesExtracted: safeArray(p.techniques_extracted),
+      qualityScore: p.quality_score ?? 0,
+      evidenceTier: p.evidence_tier ?? 'low',
+      // #2663 — carry provenance from the registry into synthesis.
+      ...(sourceUri !== undefined ? { sourceUri } : {}),
+      ...(typeof p.publication_date === 'string' ? { publicationDate: p.publication_date } : {}),
+    };
+  });
 }
 
 // =============================================================================
@@ -256,7 +306,6 @@ function synthesizeCluster(cluster: PaperCluster): ClusterSynthesis {
   const allTechniques = collectFrequencies(
     cluster.papers.flatMap((p) => [...p.techniquesExtracted])
   );
-  const allFindings = cluster.papers.flatMap((p) => [...p.keyFindings]);
 
   // Common themes: tags that appear in 2+ papers
   const commonThemes = [...allTags.entries()]
@@ -305,9 +354,9 @@ function synthesizeCluster(cluster: PaperCluster): ClusterSynthesis {
   return {
     topic: cluster.topic,
     paperCount: cluster.paperCount,
-    papers: cluster.papers.map((p) => p.title),
+    papers: cluster.papers.map(toPaperRef),
     commonThemes,
-    keyInsights: deduplicateFindings(allFindings).slice(0, 10),
+    keyInsights: attributeFindings(cluster.papers).slice(0, 10),
     techniques,
     implementationOpportunities: uniqueOpportunities,
     gaps,
@@ -411,16 +460,41 @@ function collectFrequencies(items: readonly string[]): Map<string, number> {
   return counts;
 }
 
-/** Deduplicate findings by removing near-identical strings. */
-function deduplicateFindings(findings: readonly string[]): string[] {
-  const seen = new Set<string>();
-  const result: string[] = [];
-  for (const finding of findings) {
-    const normalized = finding.toLowerCase().trim();
-    if (normalized.length === 0) continue;
-    if (seen.has(normalized)) continue;
-    seen.add(normalized);
-    result.push(finding);
+/** Project a source paper to the lean reference carried into output (#2663). */
+function toPaperRef(p: SynthesisPaper): SynthesisPaperRef {
+  return {
+    id: p.id,
+    title: p.title,
+    ...(p.sourceUri !== undefined ? { sourceUri: p.sourceUri } : {}),
+  };
+}
+
+/**
+ * Deduplicate findings across a cluster's papers WHILE preserving
+ * provenance (#2663). Findings are keyed by normalized text; when two
+ * papers assert the same finding, both ids are collected — so a
+ * contradiction is representable as multiple attributed sources rather
+ * than silently collapsed. Every returned insight is validated to carry
+ * at least one source id (`AttributedInsightSchema`).
+ */
+function attributeFindings(papers: readonly SynthesisPaper[]): AttributedInsight[] {
+  const byNormalized = new Map<string, { insight: string; sourcePaperIds: Set<string> }>();
+  for (const paper of papers) {
+    for (const finding of paper.keyFindings) {
+      const normalized = finding.toLowerCase().trim();
+      if (normalized.length === 0) continue;
+      const existing = byNormalized.get(normalized);
+      if (existing !== undefined) {
+        existing.sourcePaperIds.add(paper.id);
+      } else {
+        byNormalized.set(normalized, {
+          insight: finding,
+          sourcePaperIds: new Set([paper.id]),
+        });
+      }
+    }
   }
-  return result;
+  return [...byNormalized.values()].map((e) =>
+    AttributedInsightSchema.parse({ insight: e.insight, sourcePaperIds: [...e.sourcePaperIds] })
+  );
 }
