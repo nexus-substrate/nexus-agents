@@ -45,4 +45,22 @@ function validatePath(userPath: string, root: string): Result<string, Error> {
 }
 ```
 
+## Per-Adapter Permission Posture
+
+Each harness has its own access-control primitive; nexus-agents emits a
+conservative default for the one it scaffolds:
+
+- **OpenCode** — `nexus-agents init --opencode` writes a `permission` block
+  into `opencode.json` (#2658): `bash` → `ask` (highest-risk surface),
+  `edit` → `ask` for everything with `.env*` / `*.pem` / `*.key` / `id_rsa*`
+  / `secrets/**` / `.git/**` **hard-denied** (deny patterns ordered after
+  `"*"` because OpenCode resolves globs last-match-wins), `skill` → `allow`
+  (trusted, in-repo, CI-validated content). Never overwrites an operator's
+  existing `permission` block. See `buildDefaultPermissionBlock()` in
+  `src/cli/init-opencode.ts`.
+- **Claude Code** — `allowedTools` in the harness config; not emitted by
+  nexus-agents scaffolding.
+- **Codex** — `sandbox_mode` in `~/.codex/config.toml`; not emitted by
+  nexus-agents scaffolding.
+
 See [SECURITY.md](../../docs/architecture/SECURITY.md) for sandbox configuration.

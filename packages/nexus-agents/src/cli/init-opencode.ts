@@ -60,7 +60,39 @@ interface OpencodeFile {
   $schema?: string;
   providers?: Record<string, unknown>;
   mcp?: Record<string, unknown>;
+  permission?: Record<string, unknown>;
   [key: string]: unknown;
+}
+
+/**
+ * Conservative default OpenCode `permission` block (#2658). OpenCode
+ * evaluates a glob map with **last-matching-rule-winning**, so the broad
+ * `"*"` rule is listed first and the hard `deny` patterns last.
+ *
+ * - `edit` — everything `ask`s; secrets, keys, and `.git/` are hard-denied
+ *   regardless of operator confirmation. The deny patterns come after
+ *   `"*"` so last-match-wins makes them stick.
+ * - `bash` — `ask` unconditionally. Shell is the highest-risk surface.
+ * - `skill` — `allow`. Skills are trusted, in-repo, CI-validated content.
+ *
+ * Emitted only when the operator has not already set their own
+ * `permission` block — never overwrites operator config.
+ */
+export function buildDefaultPermissionBlock(): Record<string, unknown> {
+  return {
+    edit: {
+      '*': 'ask',
+      '**/.env': 'deny',
+      '**/.env.*': 'deny',
+      '**/*.pem': 'deny',
+      '**/*.key': 'deny',
+      '**/id_rsa*': 'deny',
+      '**/secrets/**': 'deny',
+      '**/.git/**': 'deny',
+    },
+    bash: 'ask',
+    skill: 'allow',
+  };
 }
 
 /**
@@ -137,6 +169,7 @@ function mergeNexusBlock(existing: OpencodeFile | null, opts: InitOpencodeOption
     return {
       $schema: 'https://opencode.ai/config.json',
       providers: { 'openai-compat': stubOpenaiCompatProvider() },
+      permission: buildDefaultPermissionBlock(),
       mcp: { 'nexus-agents': block },
     };
   }
@@ -154,8 +187,13 @@ function mergeNexusBlock(existing: OpencodeFile | null, opts: InitOpencodeOption
     environment: { ...block.environment, ...(existingNexus.environment ?? {}) },
   };
 
+  // Add the default permission block only when the operator has not set
+  // their own — never overwrite an existing `permission` key.
+  const permission = existing.permission ?? buildDefaultPermissionBlock();
+
   return {
     ...existing,
+    permission,
     mcp: { ...existingMcp, 'nexus-agents': mergedBlock },
   };
 }
