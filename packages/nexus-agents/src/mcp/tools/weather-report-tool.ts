@@ -19,7 +19,7 @@ import type { WeatherReportResponse, CliWeather, AdaptiveBonus } from './weather
 import { generateWeatherReport } from './weather-report.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 import {
-  toolError,
+  toolStructuredError,
   toolSuccessStructured,
   type BaseMcpToolDeps,
   type ToolResult,
@@ -65,7 +65,12 @@ function serializeBonus(b: AdaptiveBonus): unknown {
 function weatherReportHandler(args: unknown, ctx: HandlerContext): Promise<ToolResult> {
   const parsed = WeatherReportInputSchema.safeParse(args);
   if (!parsed.success) {
-    return Promise.resolve(toolError(`Validation error: ${formatZodError(parsed.error)}`));
+    return Promise.resolve(
+      toolStructuredError({
+        errorCategory: 'validation',
+        message: `Validation error: ${formatZodError(parsed.error)}`,
+      })
+    );
   }
 
   try {

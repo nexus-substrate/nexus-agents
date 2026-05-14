@@ -16,7 +16,7 @@ import { withToolError } from '../middleware/tool-error-handler.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import {
-  toolError,
+  toolStructuredError,
   toolSuccessStructured,
   type ToolResult,
   type BaseMcpToolDeps,
@@ -178,7 +178,10 @@ async function memoryStatsHandler(args: unknown, ctx: HandlerContext): Promise<T
   // Validate input
   const validationResult = MemoryStatsInputSchema.safeParse(args);
   if (!validationResult.success) {
-    return toolError(`Validation error: ${formatZodError(validationResult.error)}`);
+    return toolStructuredError({
+      errorCategory: 'validation',
+      message: `Validation error: ${formatZodError(validationResult.error)}`,
+    });
   }
 
   return withToolError('Memory stats failed', ctx.logger, async () => {

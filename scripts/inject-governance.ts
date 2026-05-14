@@ -855,6 +855,40 @@ function checkAdapterPrecedenceDocs(): boolean {
   return true;
 }
 
+/**
+ * Verify every MCP tool returns errors through the structured error
+ * envelope (Issue #2649, Epic A) — no tool file may build a raw
+ * `{ isError: true }` literal. After the #2649 migration the only
+ * legitimate `isError: true` literal lives inside `toolStructuredError`
+ * in `tool-result.ts`; every other error return must go through that
+ * helper (or `toolError`, its back-compat alias).
+ *
+ * Scans `src/mcp/tools/**` (excluding `tool-result.ts` and tests). The
+ * match pattern is anchored to start-of-line or an opening `{`/`,` so it
+ * catches object-literal properties but not prose mentions of
+ * `isError: true` inside JSDoc comments.
+ */
+function checkMcpErrorEnvelope(): boolean {
+  const toolsDir = join(ROOT, 'packages/nexus-agents/src/mcp/tools');
+  if (!existsSync(toolsDir)) return true;
+  const rawLiteral = /(?:^|[{,]\s*)isError\s*:\s*true\b/m;
+  const offenders: string[] = [];
+  for (const entry of readdirSync(toolsDir)) {
+    if (!entry.endsWith('.ts')) continue;
+    if (entry.endsWith('.test.ts') || entry === 'tool-result.ts') continue;
+    const content = readFileSync(join(toolsDir, entry), 'utf-8');
+    if (rawLiteral.test(content)) offenders.push(entry);
+  }
+  if (offenders.length > 0) {
+    console.error(
+      'MCP tools with a raw `isError: true` literal — use toolStructuredError (#2649):'
+    );
+    for (const f of offenders) console.error('  - ' + f);
+    return false;
+  }
+  return true;
+}
+
 function checkCanonicalPaths(): boolean {
   if (!existsSync(CLAUDE_MD_PATH)) return false;
   const content = readFileSync(CLAUDE_MD_PATH, 'utf-8');
@@ -936,6 +970,7 @@ function checkGovernance(): boolean {
     checkAdapterPrecedenceDocs(),
     checkRuleFrontmatter(),
     checkToolAnnotations(actual.tools),
+    checkMcpErrorEnvelope(),
     checkServerJson(actual.tools.length),
   ];
 

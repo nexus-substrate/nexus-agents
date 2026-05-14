@@ -9,6 +9,7 @@ import type { OutcomeFailureCategory } from '../orchestration/outcomes/outcome-t
 import {
   ErrorCategorySchema,
   ToolErrorEnvelopeSchema,
+  ERROR_ENVELOPE_META_KEY,
   defaultRetryable,
   coarsenFailureCategory,
   parseToolErrorEnvelope,
@@ -117,9 +118,13 @@ describe('coarsenFailureCategory', () => {
 });
 
 describe('parseToolErrorEnvelope', () => {
-  it('extracts a valid envelope from structuredContent', () => {
+  it('extracts a valid envelope from a result _meta object', () => {
     const envelope = parseToolErrorEnvelope({
-      error: { errorCategory: 'business', isRetryable: false, message: 'dedup hit' },
+      [ERROR_ENVELOPE_META_KEY]: {
+        errorCategory: 'business',
+        isRetryable: false,
+        message: 'dedup hit',
+      },
     });
     expect(envelope).not.toBeNull();
     expect(envelope?.errorCategory).toBe('business');
@@ -131,24 +136,29 @@ describe('parseToolErrorEnvelope', () => {
     expect(parseToolErrorEnvelope(undefined)).toBeNull();
   });
 
-  it('returns null when the error key is missing', () => {
-    expect(parseToolErrorEnvelope({ notError: {} })).toBeNull();
+  it('returns null when the envelope key is missing', () => {
+    expect(parseToolErrorEnvelope({ somethingElse: {} })).toBeNull();
   });
 
-  it('returns null when the error payload is malformed', () => {
-    expect(parseToolErrorEnvelope({ error: { errorCategory: 'nope' } })).toBeNull();
+  it('returns null when the envelope payload is malformed', () => {
+    expect(
+      parseToolErrorEnvelope({ [ERROR_ENVELOPE_META_KEY]: { errorCategory: 'nope' } })
+    ).toBeNull();
   });
 });
 
 describe('toolStructuredError', () => {
-  it('builds an error result with the envelope in structuredContent', () => {
+  it('builds an error result with the envelope in _meta, not structuredContent', () => {
     const result = toolStructuredError({
       errorCategory: 'validation',
       message: 'bad url',
     });
     expect(result.isError).toBe(true);
     expect(result.content[0]?.text).toBe('bad url');
-    const envelope = parseToolErrorEnvelope(result.structuredContent);
+    // The envelope must NOT be in structuredContent — the MCP client
+    // validates that against the tool's outputSchema even on errors.
+    expect(result.structuredContent).toBeUndefined();
+    const envelope = parseToolErrorEnvelope(result._meta);
     expect(envelope).toEqual({
       errorCategory: 'validation',
       isRetryable: false,
@@ -158,7 +168,7 @@ describe('toolStructuredError', () => {
 
   it('derives isRetryable from the category when omitted', () => {
     const result = toolStructuredError({ errorCategory: 'transient', message: 'blip' });
-    expect(parseToolErrorEnvelope(result.structuredContent)?.isRetryable).toBe(true);
+    expect(parseToolErrorEnvelope(result._meta)?.isRetryable).toBe(true);
   });
 
   it('honors an explicit isRetryable override', () => {
@@ -167,7 +177,7 @@ describe('toolStructuredError', () => {
       message: 'flaky downstream',
       isRetryable: true,
     });
-    expect(parseToolErrorEnvelope(result.structuredContent)?.isRetryable).toBe(true);
+    expect(parseToolErrorEnvelope(result._meta)?.isRetryable).toBe(true);
   });
 
   it('includes detail when provided and omits it otherwise', () => {
@@ -176,11 +186,11 @@ describe('toolStructuredError', () => {
       message: 'exists',
       detail: { sourceId: 'abc' },
     });
-    expect(parseToolErrorEnvelope(withDetail.structuredContent)?.detail).toEqual({
+    expect(parseToolErrorEnvelope(withDetail._meta)?.detail).toEqual({
       sourceId: 'abc',
     });
     const withoutDetail = toolStructuredError({ errorCategory: 'business', message: 'exists' });
-    expect(parseToolErrorEnvelope(withoutDetail.structuredContent)?.detail).toBeUndefined();
+    expect(parseToolErrorEnvelope(withoutDetail._meta)?.detail).toBeUndefined();
   });
 });
 
@@ -189,7 +199,8 @@ describe('toolError back-compat alias', () => {
     const result = toolError('something broke');
     expect(result.isError).toBe(true);
     expect(result.content[0]?.text).toBe('something broke');
-    expect(parseToolErrorEnvelope(result.structuredContent)).toEqual({
+    expect(result.structuredContent).toBeUndefined();
+    expect(parseToolErrorEnvelope(result._meta)).toEqual({
       errorCategory: 'internal',
       isRetryable: false,
       message: 'something broke',

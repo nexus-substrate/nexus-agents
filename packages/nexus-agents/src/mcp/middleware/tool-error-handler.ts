@@ -11,7 +11,7 @@
 
 import type { ILogger } from '../../core/index.js';
 import { getErrorMessage } from '../../core/index.js';
-import type { ToolResult } from '../tools/tool-result.js';
+import { toolStructuredError, type ToolResult } from '../tools/tool-result.js';
 
 /** Standard MCP tool response shape. */
 type ToolResponse = ToolResult;
@@ -22,7 +22,7 @@ type ToolResponse = ToolResult;
  * @param prefix - Human-readable error context (e.g., "Memory write failed")
  * @param error - The caught error (unknown type from catch block)
  * @param logger - Optional logger to record the error
- * @returns MCP tool response with isError: true
+ * @returns MCP tool response with a structured `internal` error envelope
  */
 export function toolErrorResponse(prefix: string, error: unknown, logger?: ILogger): ToolResponse {
   const message = getErrorMessage(error);
@@ -30,10 +30,8 @@ export function toolErrorResponse(prefix: string, error: unknown, logger?: ILogg
     const errorObj = error instanceof Error ? error : new Error(message);
     logger.error(prefix, errorObj);
   }
-  return {
-    isError: true,
-    content: [{ type: 'text', text: `${prefix}: ${message}` }],
-  };
+  // A caught, unclassified exception — `internal` by definition (#2649).
+  return toolStructuredError({ errorCategory: 'internal', message: `${prefix}: ${message}` });
 }
 
 /**

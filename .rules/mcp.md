@@ -46,9 +46,12 @@ server.tool(
 
 Every error return (`isError: true`) MUST carry a structured envelope, built
 via `toolStructuredError(...)` from `src/mcp/error-envelope.ts`. The envelope
-lives in `structuredContent.error`; the `message` is mirrored into
-`content[].text` for display. The `check:mcp-error-envelope` CI gate fails any
-tool that returns `isError: true` without a parseable envelope.
+lives in `_meta` under `ERROR_ENVELOPE_META_KEY` (`'nexus-agents/error'`) —
+**not** `structuredContent`, which the MCP client validates against the tool's
+`outputSchema` even on error results. The `message` is mirrored into
+`content[].text` for display. Parse it back with `parseToolErrorEnvelope(result._meta)`.
+The `check:mcp-error-envelope` CI gate fails any tool that builds a raw
+`{ isError: true }` literal instead of going through the helper.
 
 ```typescript
 toolStructuredError({

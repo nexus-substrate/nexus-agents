@@ -24,6 +24,7 @@ import {
 } from '../../pipeline/stage-wrappers.js';
 import { listTemplateIds } from '../../pipeline/templates.js';
 import { getToolAnnotations } from '../tool-annotations.js';
+import { toolStructuredError } from './tool-result.js';
 
 // ============================================================================
 // Input Schema
@@ -200,9 +201,14 @@ export function registerPipelineTool(
           structuredContent: structured,
         };
       } catch (error: unknown) {
+        // Spread into a fresh literal — this callback is registered
+        // directly (no toSdkCallback adapter), so the SDK return type
+        // needs an index signature that the named ToolResult type lacks.
         return {
-          content: [{ type: 'text' as const, text: `Pipeline error: ${getErrorMessage(error)}` }],
-          isError: true,
+          ...toolStructuredError({
+            errorCategory: 'internal',
+            message: `Pipeline error: ${getErrorMessage(error)}`,
+          }),
         };
       }
     }

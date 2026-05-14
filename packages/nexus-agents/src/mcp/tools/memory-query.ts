@@ -17,7 +17,7 @@ import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middlewar
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { getToolMemory, type UnifiedMemoryResult } from './tool-memory.js';
 import {
-  toolError,
+  toolStructuredError,
   toolSuccessStructured,
   type ToolResult,
   type BaseMcpToolDeps,
@@ -183,7 +183,10 @@ async function memoryQueryHandler(args: unknown, ctx: HandlerContext): Promise<T
   // Validate input
   const validationResult = MemoryQueryInputSchema.safeParse(args);
   if (!validationResult.success) {
-    return toolError(`Validation error: ${formatZodError(validationResult.error)}`);
+    return toolStructuredError({
+      errorCategory: 'validation',
+      message: `Validation error: ${formatZodError(validationResult.error)}`,
+    });
   }
 
   return withToolError('Memory query failed', ctx.logger, async () => {

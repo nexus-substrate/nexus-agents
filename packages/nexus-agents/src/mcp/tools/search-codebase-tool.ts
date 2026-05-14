@@ -15,7 +15,12 @@ import { createLogger, formatZodError } from '../../core/index.js';
 import { CodebaseIndex } from '../../indexer/codebase-search.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
-import { toolError, toolSuccess, type BaseMcpToolDeps, type ToolResult } from './tool-result.js';
+import {
+  toolStructuredError,
+  toolSuccess,
+  type BaseMcpToolDeps,
+  type ToolResult,
+} from './tool-result.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 
 // ============================================================================
@@ -92,12 +97,18 @@ function formatListOutput(index: CodebaseIndex): string {
 async function searchCodebaseHandler(args: unknown, ctx: HandlerContext): Promise<ToolResult> {
   const parsed = SearchCodebaseInputSchema.safeParse(args);
   if (!parsed.success) {
-    return toolError(`Validation error: ${formatZodError(parsed.error)}`);
+    return toolStructuredError({
+      errorCategory: 'validation',
+      message: `Validation error: ${formatZodError(parsed.error)}`,
+    });
   }
 
   const { query, directory, limit, mode } = parsed.data;
   const dirResult = resolveSearchDir(directory);
-  if ('error' in dirResult) return toolError(dirResult.error);
+  if ('error' in dirResult) {
+    // resolveSearchDir only fails on a path-traversal denial.
+    return toolStructuredError({ errorCategory: 'permission', message: dirResult.error });
+  }
 
   try {
     const index = await getIndex(dirResult.dir);
@@ -133,7 +144,10 @@ async function searchCodebaseHandler(args: unknown, ctx: HandlerContext): Promis
   } catch (caught: unknown) {
     const e = caught instanceof Error ? caught : new Error(String(caught));
     ctx.logger.error('Codebase search failed', e);
-    return toolError(`Search failed: ${e.message}`);
+    return toolStructuredError({
+      errorCategory: 'internal',
+      message: `Search failed: ${e.message}`,
+    });
   }
 }
 

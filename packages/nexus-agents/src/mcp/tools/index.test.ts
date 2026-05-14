@@ -266,10 +266,13 @@ describe('MCP tools index', () => {
       expect(result.isError).toBe(true);
     });
 
-    it('carries a structured internal error envelope (#2649)', () => {
+    it('carries a structured internal error envelope in _meta (#2649)', () => {
       const result = toolError('fail');
-      expect(result.structuredContent).toEqual({
-        error: { errorCategory: 'internal', isRetryable: false, message: 'fail' },
+      // Envelope lives in _meta, not structuredContent (the MCP client
+      // validates structuredContent against outputSchema even on errors).
+      expect(result.structuredContent).toBeUndefined();
+      expect(result._meta).toEqual({
+        'nexus-agents/error': { errorCategory: 'internal', isRetryable: false, message: 'fail' },
       });
     });
   });

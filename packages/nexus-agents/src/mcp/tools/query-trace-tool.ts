@@ -15,7 +15,12 @@ import { createLogger, formatZodError } from '../../core/index.js';
 import { DEFAULT_RUNS_DIR } from '../../pipeline/pipeline-runner.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
-import { toolError, toolSuccess, type BaseMcpToolDeps, type ToolResult } from './tool-result.js';
+import {
+  toolStructuredError,
+  toolSuccess,
+  type BaseMcpToolDeps,
+  type ToolResult,
+} from './tool-result.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 
 // ============================================================================
@@ -176,7 +181,12 @@ export async function queryTraceFromDisk(
 function queryTraceHandler(args: unknown, ctx: HandlerContext): Promise<ToolResult> {
   const parsed = QueryTraceInputSchema.safeParse(args);
   if (!parsed.success) {
-    return Promise.resolve(toolError(`Validation error: ${formatZodError(parsed.error)}`));
+    return Promise.resolve(
+      toolStructuredError({
+        errorCategory: 'validation',
+        message: `Validation error: ${formatZodError(parsed.error)}`,
+      })
+    );
   }
 
   return queryTraceFromDisk(parsed.data)
@@ -184,7 +194,10 @@ function queryTraceHandler(args: unknown, ctx: HandlerContext): Promise<ToolResu
     .catch((caught: unknown) => {
       const e = caught instanceof Error ? caught : new Error(String(caught));
       ctx.logger.error('Trace query failed', e);
-      return toolError(`Trace query failed: ${e.message}`);
+      return toolStructuredError({
+        errorCategory: 'internal',
+        message: `Trace query failed: ${e.message}`,
+      });
     });
 }
 

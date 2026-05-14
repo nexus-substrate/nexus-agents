@@ -71,6 +71,17 @@ export const ToolErrorEnvelopeSchema = z.object({
 
 export type ToolErrorEnvelope = z.infer<typeof ToolErrorEnvelopeSchema>;
 
+/**
+ * `_meta` key the envelope is carried under on a tool result. It lives in
+ * `_meta` — NOT `structuredContent` — because the MCP client validates
+ * `structuredContent` against the tool's `outputSchema` even on error
+ * results (SDK `client/index.js`: it only guards on presence, not on
+ * `isError`), so an envelope in `structuredContent` breaks every tool
+ * that has an `outputSchema`. `_meta` is the spec's out-of-band metadata
+ * channel and is never schema-validated. Namespaced to avoid collisions.
+ */
+export const ERROR_ENVELOPE_META_KEY = 'nexus-agents/error';
+
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -118,16 +129,16 @@ export function coarsenFailureCategory(category: OutcomeFailureCategory): ErrorC
 }
 
 /**
- * Extract and validate a `ToolErrorEnvelope` from a tool result's
- * `structuredContent`. Returns `null` when the content is absent or does
- * not carry a parseable envelope under the `error` key. Used by the
- * `check:mcp-error-envelope` CI gate and by envelope-aware callers.
+ * Extract and validate a `ToolErrorEnvelope` from a tool result's `_meta`
+ * object. Returns `null` when `_meta` is absent or does not carry a
+ * parseable envelope under {@link ERROR_ENVELOPE_META_KEY}. Used by
+ * envelope-aware callers.
  */
-export function parseToolErrorEnvelope(structuredContent: unknown): ToolErrorEnvelope | null {
-  if (structuredContent === null || typeof structuredContent !== 'object') {
+export function parseToolErrorEnvelope(meta: unknown): ToolErrorEnvelope | null {
+  if (meta === null || typeof meta !== 'object') {
     return null;
   }
-  const candidate = (structuredContent as Record<string, unknown>)['error'];
+  const candidate = (meta as Record<string, unknown>)[ERROR_ENVELOPE_META_KEY];
   const result = ToolErrorEnvelopeSchema.safeParse(candidate);
   return result.success ? result.data : null;
 }

@@ -17,7 +17,12 @@ import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middlewar
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { RegistryImportInputSchema } from './registry-import-types.js';
 import { generateRegistryEntry } from './registry-import.js';
-import { toolError, toolSuccess, type BaseMcpToolDeps, type ToolResult } from './tool-result.js';
+import {
+  toolStructuredError,
+  toolSuccess,
+  type BaseMcpToolDeps,
+  type ToolResult,
+} from './tool-result.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 
 // ============================================================================
@@ -33,7 +38,12 @@ export type RegistryImportDeps = BaseMcpToolDeps;
 function registryImportHandler(args: unknown, ctx: HandlerContext): Promise<ToolResult> {
   const parsed = RegistryImportInputSchema.safeParse(args);
   if (!parsed.success) {
-    return Promise.resolve(toolError(`Validation error: ${formatZodError(parsed.error)}`));
+    return Promise.resolve(
+      toolStructuredError({
+        errorCategory: 'validation',
+        message: `Validation error: ${formatZodError(parsed.error)}`,
+      })
+    );
   }
 
   try {
