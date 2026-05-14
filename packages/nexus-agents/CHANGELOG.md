@@ -1,5 +1,88 @@
 # nexus-agents
 
+## 2.73.0
+
+### Minor Changes
+
+- [#2540](https://github.com/williamzujkowski/nexus-agents/pull/2540) [`dc693bf`](https://github.com/williamzujkowski/nexus-agents/commit/dc693bfad05b950dd108eba928f983ecdb49d252) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Add unified `ModelRegistry` ([#2540](https://github.com/williamzujkowski/nexus-agents/issues/2540) PR 1 of 8). Single source of truth for per-model metadata — combines what was previously split between `model-capabilities.ts` (canonical hardcoded `MODEL_IDS`) and `model-behavior-profile.ts` (vendor-pattern-matched profiles).
+
+  `ModelEntry` carries both capability + behaviour fields. Resolution chain: operator manifest > in-tree authoritative > models.dev snapshot > derived defaults (vendor → family → universal). Always returns something — unknown models get derived entries with sensible defaults so routing decisions don't hard-miss.
+
+  Public API:
+  - `ModelRegistry` class + `getEntry(modelId, hints?)` lookup
+  - `ModelEntry` / `ModelRegistryOptions` / `EntrySource` types
+  - `deriveEntry(modelId, identity)` for consumers building entries from resolved identity
+  - `getDefaultRegistry()` / `setDefaultRegistry()` for the lazy global singleton
+  - `DEFAULT_ENTRY` for the universal fallback shape
+
+  `model-behavior-profile.ts` is `@deprecated` — will be deleted in PR 2 of the [#2540](https://github.com/williamzujkowski/nexus-agents/issues/2540) plan once `AgenticAdapter` migrates to the unified registry. `model-capabilities.ts` callers migrate in PR 3.
+
+  Also extends `model-identity.ts`'s `dated` quirk regex to catch ISO-style date suffixes (`2024-08-06`, `2024-08`) in addition to compact-8-digit formats.
+
+- [#2541](https://github.com/williamzujkowski/nexus-agents/pull/2541) [`d60112f`](https://github.com/williamzujkowski/nexus-agents/commit/d60112fca10dcb4fbf22bb8865d2b1b159ef2356) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Migrate `AgenticAdapter` to the unified `ModelRegistry` ([#2540](https://github.com/williamzujkowski/nexus-agents/issues/2540) PR 2 of 8).
+
+  `AgenticAdapter` now consumes `ModelEntry` from the registry instead of `ModelBehaviorProfile` from the deprecated `model-behavior-profile.ts`. Behaviour is unchanged — the registry's derived-fallback chain matches the prior `lookupModelProfile` semantics field-for-field.
+
+  `AgenticAdapterOptions` gains an optional `registry: ModelRegistry` field for dependency injection (tests + multi-tenant deployments). Default is the lazy global registry.
+
+  `forceProfile` now accepts a `ModelEntry` instead of `ModelBehaviorProfile` — minor breaking change for tests that constructed the profile inline. Tests updated.
+
+  **Deletes** `model-behavior-profile.ts` + its tests. The behaviour fields, defaults, and lookup-with-vendor/family-fallback logic moved into `model-registry.ts` in PR 1. No code paths reference the deleted module.
+
+- [#2542](https://github.com/williamzujkowski/nexus-agents/pull/2542) [`466774c`](https://github.com/williamzujkowski/nexus-agents/commit/466774ca9c2faa8709496d60ef3ad3bd1c2371a1) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `listModels()` across direct-API and CLI adapters ([#2540](https://github.com/williamzujkowski/nexus-agents/issues/2540) PR 5 of 8).
+
+  Anthropic and Google direct-API adapters (`ClaudeAdapter`, `GeminiAdapter`) gain `listModels()` that wraps the SDKs' `client.models.list()` surface — 5-min cache, in-flight promise sharing, throws on probe failure so the harness-side identity resolver can fall back. The OpenCode CLI adapter (`OpenCodeCliAdapter`) gains a `listModels()` that reshapes the existing `opencode models` probe into `CliModelInfo` rows, splitting `provider/model` ids when present.
+
+  `ICliAdapter` gains an optional `listModels?(): Promise<readonly CliModelInfo[]>` slot mirroring the one on `IModelAdapter`. The new `CliModelInfo` type is exported from `cli-adapters/types`. The custom-OpenAI gateway wrapper (`openai-compat-adapter.ts`) now forwards `listModels` from the inner adapter when the inner adapter exposes one — so a multi-vendor gateway (Claude/Gemini/OpenAI/etc behind one base URL) reports its inventory honestly.
+
+  Subprocess CLI adapters whose CLIs have no native list surface (`claude`, `codex`, `gemini`) intentionally leave `listModels` undefined. Identity for those falls back to `modelId` parse via `ModelRegistry`.
+
+- [#2543](https://github.com/williamzujkowski/nexus-agents/pull/2543) [`8298d8a`](https://github.com/williamzujkowski/nexus-agents/commit/8298d8ab47a318019c0335e7575229a5a46f605c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `AvailableModelsCache` — harness-driven view of routable models ([#2540](https://github.com/williamzujkowski/nexus-agents/issues/2540) PR 6 of 8).
+
+  PR 5 added `listModels()` on direct-API and CLI adapters. This PR stitches those probes into one queryable surface so `CompositeRouter` (PR 7) can gate scoring on what's actually routable right now.
+
+  Design invariants:
+  - **Sources are the source of truth.** If a harness drops a model, the registry never decides it's still routable. `ModelRegistry` answers "how should this model behave"; `AvailableModelsCache` answers "is this model routable at all."
+  - **Stale-while-revalidate.** Fresh < 5 min. Stale-but-usable < 25 min (returns cached, kicks background refresh). Beyond → blocks. Defaults configurable per call site.
+  - **Bad sources don't poison the union.** A failing `listModels` logs and is excluded from the next snapshot; remaining sources stay queryable.
+  - **No persistence.** Process-local; operators restart and get a fresh probe.
+
+  API: `new AvailableModelsCache({ sources, ttlMs?, staleTtlMs?, now? })` → `getAll()`, `byProvider(name)`, `has(modelId)`, `refresh()`. Sources adapt themselves to the minimal `AvailableModelsSource` interface (one `listModels()` method) so both `IModelAdapter` and `ICliAdapter` can be wrapped without entangling the cache with either contract.
+
+- [#2544](https://github.com/williamzujkowski/nexus-agents/pull/2544) [`e613cba`](https://github.com/williamzujkowski/nexus-agents/commit/e613cbae223c7dea4774f65b9276f675d458a89e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `CompositeRouter` consumes `AvailableModelsCache` ([#2540](https://github.com/williamzujkowski/nexus-agents/issues/2540) PR 7 of 8).
+
+  `CompositeRouterConfigWithPreference` gains an optional `availableModelsCache` field. When set, the router gates its candidate-CLI list on the cache before running the routing pipeline:
+  - A CLI is excluded only when the cache has been queried at least once and reports zero models for it.
+  - An empty cache union (cold start, all sources failing) falls back to all registered CLIs — the gate never wedges routing on a transient cache miss.
+  - Cache errors do not block routing — they are logged and the router falls through to all registered CLIs.
+
+  `getAvailableModelsCache()` exposes the wired cache (or undefined) for downstream consumers (the runtime model-not-found fallback in PR 8 will use this).
+
+  OutcomeStore wiring deferred to follow-on ([#2540](https://github.com/williamzujkowski/nexus-agents/issues/2540) makes the registry available for OutcomeStore key normalization, but the actual wiring touches more than this PR's scope).
+
+- [#2545](https://github.com/williamzujkowski/nexus-agents/pull/2545) [`1daf9e6`](https://github.com/williamzujkowski/nexus-agents/commit/1daf9e66b0e8d584bc08732e622af8b8191b3210) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `withModelNotFoundFallback` — runtime retire-and-retry primitive ([#2540](https://github.com/williamzujkowski/nexus-agents/issues/2540) PR 8 of 8, completes the epic).
+
+  When a vendor retires a model id (Codex moving to GPT-5.4 while older 5.x releases 404, Anthropic bumping minor versions, etc.), the next request returns 404 / `model_not_found` / "this model is deprecated." This PR closes that gap end-to-end:
+  - **Distinct error code**: `ErrorCode.MODEL_NOT_FOUND`. `BaseAdapter` now classifies HTTP 404 + the standard vendor messages ("model not found", "no such model", "model is deprecated", etc.) under this code, separate from transient `MODEL_UNAVAILABLE` (502/503).
+  - **Wrapper utility**: `withModelNotFoundFallback(adapter, { cache, registry?, adapterFactory?, onRetirement? })`. On a `MODEL_NOT_FOUND`, the wrapper refreshes the `AvailableModelsCache` (PR 6), uses `ModelRegistry` (PR 1) to find the closest same-vendor/same-family alternative from what's now routable, and:
+    - With an `adapterFactory`: builds a fallback adapter and retries the call once. Returns the second error verbatim if the retry fails.
+    - Without a factory: surfaces the original error enriched with the suggested fallback id, so the caller can re-route.
+  - **Single retry by design** — looping risks wedging when a whole family is retired. Caller escalates after one attempt.
+  - **Streams left as passthrough** — streaming retries need partial-result reconciliation that belongs in a follow-up.
+
+  Closes the wiring loop opened by epic [#2540](https://github.com/williamzujkowski/nexus-agents/issues/2540): PR 1 unified the registry, PR 2 migrated AgenticAdapter, PR 5 added `listModels()` across direct-API and CLI adapters, PR 6 stitched those probes into a stale-while-revalidate cache, PR 7 gated `CompositeRouter`'s candidate set on the cache, and PR 8 closes the loop at the call site — when an inflight request hits a retired id, the system observes the retirement, picks a fallback, and keeps moving.
+
+### Patch Changes
+
+- [#2537](https://github.com/williamzujkowski/nexus-agents/pull/2537) [`92b8360`](https://github.com/williamzujkowski/nexus-agents/commit/92b836082a372b7c9cd816501347c4a430a61a35) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Expose `IAgenticAdapter` + factory + types from the package root ([#2536](https://github.com/williamzujkowski/nexus-agents/issues/2536)). The pieces landed in main as part of [#2529](https://github.com/williamzujkowski/nexus-agents/issues/2529)'s PRs but the `exports/agents.ts` re-export wiring was missed, so consumers importing from `'nexus-agents'` couldn't see `createAgenticAdapter`, `AgenticAdapter`, `IAgenticAdapter`, `AgentRunResult`, etc.
+
+  Adds explicit re-exports of:
+  - `AgenticAdapter`, `createAgenticAdapter`
+  - `AgenticAdapterOptions`, `AgentRunResult`, `AgentStopReason`, `AgentTurn`, `IAgenticAdapter`, `RunAgentArgs`
+  - `AgenticToolCall` (= `ToolCall` from agentic), `AgenticToolResult` (= `ToolResult` from agentic) — aliased to avoid collision with the existing MCP `ToolCall` / `ToolResult` shapes
+
+  Eval-repo v0.3 consumers (aider-polyglot / livecodebench / tau-bench) can now import the agentic primitive directly. Patch bump only — no behaviour change, just visibility fix.
+
 ## 2.72.0
 
 ### Minor Changes
