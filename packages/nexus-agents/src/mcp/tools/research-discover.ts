@@ -424,7 +424,22 @@ async function queryAllSources(
 }
 
 /** Runs discovery across selected sources. */
-async function executeDiscovery(
+/**
+ * Discover research items + record telemetry. The single canonical
+ * implementation for both the MCP `research_discover` tool and the CLI
+ * `research discover` subcommand (#2640 Phase 3).
+ *
+ * Combines:
+ *   - Topic normalization to canonical form (#1576 Wave 4)
+ *   - Multi-source fan-out via `queryAllSources` (arxiv + extended providers)
+ *   - Dedup against the registry via `getExistingArxivIds`
+ *   - Relevance-threshold filtering via `filterByRelevance`
+ *   - Outcome telemetry via `recordDiscoverySuccess` (best-effort)
+ *
+ * Callers render the structured `ResearchDiscoverResponse` however suits
+ * their context (MCP → `toolSuccessStructured`, CLI → terminal output).
+ */
+export async function executeDiscovery(
   rawInput: ResearchDiscoverInput,
   logger: ILogger
 ): Promise<ResearchDiscoverResponse> {
@@ -461,7 +476,7 @@ async function executeDiscovery(
     });
   }
 
-  return {
+  const response: ResearchDiscoverResponse = {
     topic: input.topic,
     sourcesQueried: sourcesToQuery,
     failedSources,
@@ -471,6 +486,11 @@ async function executeDiscovery(
     newItems: relevantItems.length,
     filteredByRelevance: filteredOut,
   };
+  // Best-effort session-memory recording (#2640 Phase 3 — was previously
+  // only invoked from the MCP handler; now baked into the core so CLI
+  // delegations get it for free).
+  recordDiscoverySuccess(response.topic, response.newItems, response.sourcesQueried);
+  return response;
 }
 
 // =============================================================================
@@ -559,7 +579,7 @@ function createResearchDiscoverHandler(deps: ResearchDiscoverDeps) {
     const startMs = Date.now();
     const response = await withToolError('Discovery failed', logger, async () => {
       const result = await executeDiscovery(validationResult.data, logger);
-      recordDiscoverySuccess(result.topic, result.newItems, result.sourcesQueried);
+      // recordDiscoverySuccess is now baked into executeDiscovery (#2640).
       return toolSuccessStructured(result as unknown as Record<string, unknown>);
     });
     const durationMs = Date.now() - startMs;
