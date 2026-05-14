@@ -29,7 +29,7 @@ import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middlewar
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 import {
-  toolError,
+  toolStructuredError,
   toolSuccessStructured,
   type ToolResult,
   type BaseMcpToolDeps,
@@ -91,7 +91,10 @@ function createVendorPublishingAuditHandler(deps: VendorPublishingAuditDeps) {
   return async (args: unknown, ctx: HandlerContext): Promise<ToolResult> => {
     const validation = VendorPublishingAuditInputSchema.safeParse(args);
     if (!validation.success) {
-      return toolError(`Validation error: ${formatZodError(validation.error)}`);
+      return toolStructuredError({
+        errorCategory: 'validation',
+        message: `Validation error: ${formatZodError(validation.error)}`,
+      });
     }
     const logger = deps.logger ?? createLogger({ tool: 'vendor_publishing_audit' });
     ctx.logger.debug('Vendor publishing audit', { vendor: validation.data.vendor });

@@ -13,7 +13,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, formatZodError } from '../../core/index.js';
 import { withToolError } from '../middleware/tool-error-handler.js';
 import {
-  toolError,
+  toolStructuredError,
   toolSuccessStructured,
   type ToolResult,
   type BaseMcpToolDeps,
@@ -392,7 +392,10 @@ function createResearchAnalyzeHandler(deps: ResearchAnalyzeDeps) {
   return async (args: unknown, ctx: HandlerContext): Promise<ToolResult> => {
     const validationResult = ResearchAnalyzeInputSchema.safeParse(args);
     if (!validationResult.success) {
-      return toolError(`Validation error: ${formatZodError(validationResult.error)}`);
+      return toolStructuredError({
+        errorCategory: 'validation',
+        message: `Validation error: ${formatZodError(validationResult.error)}`,
+      });
     }
 
     ctx.logger.debug('Analyzing research registry', {

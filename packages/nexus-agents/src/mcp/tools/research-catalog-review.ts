@@ -14,7 +14,7 @@ import type { ILogger } from '../../core/index.js';
 import { createLogger, formatZodError } from '../../core/index.js';
 import { withToolError } from '../middleware/tool-error-handler.js';
 import {
-  toolError,
+  toolStructuredError,
   toolSuccessStructured,
   type ToolResult,
   type BaseMcpToolDeps,
@@ -236,7 +236,10 @@ function createCatalogReviewHandler(deps: ResearchCatalogReviewDeps) {
   return async (args: unknown, ctx: HandlerContext): Promise<ToolResult> => {
     const validationResult = ResearchCatalogReviewInputSchema.safeParse(args);
     if (!validationResult.success) {
-      return toolError(`Validation error: ${formatZodError(validationResult.error)}`);
+      return toolStructuredError({
+        errorCategory: 'validation',
+        message: `Validation error: ${formatZodError(validationResult.error)}`,
+      });
     }
 
     ctx.logger.debug('Catalog review', { action: validationResult.data.action });
@@ -246,7 +249,9 @@ function createCatalogReviewHandler(deps: ResearchCatalogReviewDeps) {
       const result = await executeCatalogReview(validationResult.data, logger);
 
       if (!result.success) {
-        return toolError(result.message);
+        // Every catalog-review failure path is a missing/not-found
+        // identifier — the caller must fix its args.
+        return toolStructuredError({ errorCategory: 'validation', message: result.message });
       }
 
       return toolSuccessStructured(result as unknown as Record<string, unknown>);

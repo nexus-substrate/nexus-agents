@@ -22,7 +22,7 @@ import {
 import { normalizeTopicToCanonical } from '../../research/topic-aliases.js';
 import { withToolError } from '../middleware/tool-error-handler.js';
 import {
-  toolError,
+  toolStructuredError,
   toolSuccessStructured,
   type ToolResult,
   type BaseMcpToolDeps,
@@ -568,7 +568,10 @@ function createResearchDiscoverHandler(deps: ResearchDiscoverDeps) {
   return async (args: unknown, ctx: HandlerContext): Promise<ToolResult> => {
     const validationResult = ResearchDiscoverInputSchema.safeParse(args);
     if (!validationResult.success) {
-      return toolError(`Validation error: ${formatZodError(validationResult.error)}`);
+      return toolStructuredError({
+        errorCategory: 'validation',
+        message: `Validation error: ${formatZodError(validationResult.error)}`,
+      });
     }
 
     ctx.logger.debug('Discovering research', {
