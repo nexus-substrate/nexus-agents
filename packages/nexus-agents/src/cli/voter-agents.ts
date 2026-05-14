@@ -23,6 +23,7 @@ import { createLogger, getTimeProvider, getErrorMessage } from '../core/index.js
 import { getGlobalRegistry } from '../adapters/unified-registry.js';
 import { getAvailableClis } from '../cli-adapters/factory.js';
 import type { CliName } from '../cli-adapters/types.js';
+import { checkCodexConcurrency } from '../cli-adapters/codex-limits.js';
 
 // Re-export prompts for backward compatibility
 export { VOTER_SYSTEM_PROMPTS, SIMULATED_VOTE_REASONING } from './voter-prompts.js';
@@ -214,6 +215,23 @@ function resolveAdapter(
   }
 }
 
+/**
+ * #2659 — warn (don't block) when more voter roles land on Codex than its
+ * default `max_threads`, e.g. a single-CLI fallback with a full panel.
+ */
+function warnIfCodexConcurrencyExceeded(
+  roleAdapters: ReadonlyMap<VoterRole, IModelAdapter>,
+  logger: ILogger
+): void {
+  const codexBound = [...roleAdapters.values()].filter(
+    (a) => (a as { name?: string }).name === 'codex'
+  ).length;
+  const warning = checkCodexConcurrency(codexBound);
+  if (warning !== null) {
+    logger.warn('Codex concurrency limit may be exceeded', { detail: warning });
+  }
+}
+
 /** Assigns a single adapter to all roles (fallback path). */
 function assignUniformAdapter(
   roles: readonly VoterRole[],
@@ -378,6 +396,9 @@ export async function collectRealVotes(
     options.adapter !== undefined
       ? assignUniformAdapter(roles, adapterResult.adapter)
       : await resolveDiverseAdapters(roles, logger, adapterResult.adapter);
+
+  warnIfCodexConcurrencyExceeded(roleAdapters, logger);
+
   const voteOptions = { timeoutMs, maxRetries, allowSimulation: allowSimulation ?? false };
   const interDelay = options.interAgentDelayMs ?? DEFAULT_INTER_AGENT_DELAY_MS;
 

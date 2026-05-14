@@ -107,6 +107,22 @@ When surfacing a blocker per rule 2, redact secrets before writing the status:
 - For missing-file blockers, include the relative path but not absolute paths containing usernames or tokens (`/home/<user>/…` → `~/…`)
 - When unsure whether a string contains a secret, describe the error category (`auth failed`, `connection refused`) rather than pasting the raw message
 
+## Codex subagent limits (#2659)
+
+Codex CLI's `~/.codex/config.toml` `[agents]` section defaults to:
+
+- `max_depth = 1` — nested subagent depth (a subagent spawning a subagent).
+- `max_threads = 6` — concurrent subagent threads.
+
+nexus-agents does **not** write the operator's global `~/.codex/config.toml`, and does **not** silently auto-flatten routing topology. Instead it **warns** at fan-out time when a planned topology would exceed these (`checkCodexConcurrency` / `checkCodexDepth` in `src/cli-adapters/codex-limits.ts`) — the operator stays in control and can raise their own `[agents]` limits.
+
+The existing parallel-dispatch sites are already conservative:
+
+- `worker-dispatcher.ts` caps a wave at `MAX_WORKERS_PER_WAVE = 3` concurrent workers — well under `max_threads`.
+- `collectRealVotes` round-robins voter roles across available CLIs and staggers launches. The warned case is the narrow one: a single-CLI fallback where a full voter panel (7 roles) all lands on Codex, exceeding `max_threads = 6`.
+
+When adding a new parallel-dispatch site that may route to Codex, gate the fan-out count through `checkCodexConcurrency` and surface the warning — don't let it fail silently as a generic Codex error.
+
 ## Adoption
 
 - No CI enforcement (yet). Rules apply by convention and are checked during review.
