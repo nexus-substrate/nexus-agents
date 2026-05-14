@@ -11,6 +11,7 @@
 import type { ILogger } from '../../core/index.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
+import { defaultRetryable, type ErrorCategory, type ToolErrorEnvelope } from '../error-envelope.js';
 
 // ============================================================================
 // Base Dependencies
@@ -99,21 +100,58 @@ export function toolSuccessStructured(data: Record<string, unknown>): ToolResult
 }
 
 /**
- * Creates an error tool result.
- *
- * @param message - The error message
- * @returns A ToolResult with isError set to true
+ * Input for {@link toolStructuredError}. `isRetryable` is optional — when
+ * omitted it is derived from the category via `defaultRetryable()`.
+ */
+export interface ToolStructuredErrorInput {
+  errorCategory: ErrorCategory;
+  message: string;
+  isRetryable?: boolean;
+  detail?: Record<string, unknown>;
+}
+
+/**
+ * Creates a structured error tool result (#2649). The envelope is carried
+ * in `structuredContent.error` so callers can reason about retry-safety
+ * and recovery path; `message` is mirrored into `content[].text` for
+ * display.
  *
  * @example
  * ```typescript
- * if (!input.ok) {
- *   return toolError(`Validation failed: ${input.error}`);
+ * if (!validated.success) {
+ *   return toolStructuredError({
+ *     errorCategory: 'validation',
+ *     message: `Validation error: ${formatZodError(validated.error)}`,
+ *   });
  * }
  * ```
  */
-export function toolError(message: string): ToolResult {
+export function toolStructuredError(input: ToolStructuredErrorInput): ToolResult {
+  const envelope: ToolErrorEnvelope = {
+    errorCategory: input.errorCategory,
+    isRetryable: input.isRetryable ?? defaultRetryable(input.errorCategory),
+    message: input.message,
+    ...(input.detail !== undefined ? { detail: input.detail } : {}),
+  };
   return {
     isError: true,
-    content: [{ type: 'text', text: message }],
+    content: [{ type: 'text', text: envelope.message }],
+    structuredContent: { error: envelope },
   };
+}
+
+/**
+ * Creates an error tool result.
+ *
+ * Back-compat alias for {@link toolStructuredError} — maps to the
+ * conservative `internal` / non-retryable envelope. New code should call
+ * `toolStructuredError` directly with the correct category; this alias
+ * exists so the ~64 legacy call sites keep working during the #2649
+ * migration sweep.
+ *
+ * @param message - The error message
+ * @returns A ToolResult with isError set to true and an `internal` envelope
+ */
+export function toolError(message: string): ToolResult {
+  return toolStructuredError({ errorCategory: 'internal', message });
 }
