@@ -46,7 +46,9 @@ The `pnpm changeset` workflow handles versioning, but the human-judgment gates b
 ### Pipeline health
 
 - [ ] Last 5 release runs on `main` succeeded (`gh run list --workflow=Release --limit 5`)
-- [ ] No release PR currently open (`gh pr list --search "version packages"`) — if one IS open, see "Avoid the publish race" below
+- [ ] No release PR currently open (`gh pr list --search "version packages"`) — if one IS open, merge it FIRST (a stale version PR is how npm gets ahead of `main`); see "Avoid the publish race" below
+- [ ] `npm view nexus-agents version` matches `packages/nexus-agents/package.json` — the `Detect npm-ahead version skew` step in `release.yml` also enforces this, but check before tagging
+- [ ] No changeset debt — every recent shippable-source PR shipped its own changeset (the `Changeset Presence` CI gate enforces this going forward)
 
 ### Avoid the publish race
 
