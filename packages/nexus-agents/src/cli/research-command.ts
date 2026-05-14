@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- Central dispatch for all research subcommands (governance: 400-600 OK if cohesive). */
 /**
  * Research Registry CLI Commands
  *
@@ -19,7 +20,6 @@ import {
   formatStatusResult,
   findOverlaps,
   formatOverlapResult,
-  addResearchPaper,
 } from './research-helpers.js';
 import {
   discoverGitHubRepos,
@@ -52,6 +52,8 @@ import {
   getResearchIndexHelp,
 } from './research-index-command.js';
 import { handleImportCommand } from './research-import-command.js';
+import { executeResearchAdd } from '../mcp/tools/research-add.js';
+import { createLogger } from '../core/index.js';
 export type {
   ResearchIndexOptions,
   ResearchIndexResult,
@@ -169,13 +171,21 @@ async function handleAddCommand(args: string[], options: Record<string, unknown>
   if (arxivId === undefined || arxivId === '') {
     return 'Error: arxiv-id is required for add command';
   }
-  const addOptions: ResearchAddOptions = {
+  // Delegate to the shared core (#2640 Phase 1). The MCP path's
+  // executeResearchAdd includes a dedup check, session-memory
+  // recording on success, and a quality-tier annotation — the CLI
+  // previously bypassed all three by calling addResearchPaper
+  // directly.
+  const topic = optString(options, 'topic');
+  const priority = optString(options, 'priority') as ResearchAddOptions['priority'];
+  const input = {
     arxivId,
-    topic: optString(options, 'topic'),
-    priority: optString(options, 'priority') as ResearchAddOptions['priority'],
     dryRun: optBoolean(options, 'dryRun'),
+    ...(topic !== undefined && { topic }),
+    ...(priority !== undefined && { priority }),
   };
-  const result = await addResearchPaper(addOptions);
+  const logger = createLogger({ component: 'cli-research-add' });
+  const result = await executeResearchAdd(input, logger);
   return result.message;
 }
 

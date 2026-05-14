@@ -84,8 +84,21 @@ export interface ResearchAddResponse {
 // HANDLER
 // =============================================================================
 
-/** Executes the research add operation. */
-async function executeResearchAdd(
+/**
+ * Executes the research add operation.
+ *
+ * Shared core for both the MCP `research_add` tool and the CLI
+ * `research add` subcommand (#2640 Phase 1). Includes:
+ *   - Dedup check via `paperExists`
+ *   - arXiv metadata fetch + registry persist via `addResearchPaper`
+ *   - Session-memory recording on success (best-effort)
+ *   - Quality-tier annotation appended to the message
+ *
+ * Returns a structured `ResearchAddResponse` — callers render it
+ * however suits their context (MCP → `toolSuccessStructured`,
+ * CLI → pretty-printed text).
+ */
+export async function executeResearchAdd(
   input: ResearchAddInput,
   logger: ILogger
 ): Promise<ResearchAddResponse> {
