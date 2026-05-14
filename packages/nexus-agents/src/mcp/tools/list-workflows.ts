@@ -19,7 +19,7 @@ import { wrapToolWithTimeout, toSdkCallback } from '../middleware/tool-wrapper.j
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 import {
-  toolError,
+  toolStructuredError,
   toolSuccessStructured,
   type ToolResult,
   type BaseMcpToolDeps,
@@ -130,7 +130,10 @@ function createListWorkflowsHandler(workflowEngine: IWorkflowEngine) {
     // Validate input
     const validationResult = ListWorkflowsInputSchema.safeParse(args);
     if (!validationResult.success) {
-      return toolError(`Validation error: ${formatZodError(validationResult.error)}`);
+      return toolStructuredError({
+        errorCategory: 'validation',
+        message: `Validation error: ${formatZodError(validationResult.error)}`,
+      });
     }
 
     return withToolError('Failed to list workflows', ctx.logger, async () => {

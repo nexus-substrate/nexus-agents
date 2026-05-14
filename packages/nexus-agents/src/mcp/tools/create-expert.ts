@@ -12,7 +12,12 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger, AgentCapability } from '../../core/index.js';
 import { createLogger, formatZodError } from '../../core/index.js';
-import { toolError, toolSuccess, type ToolResult, type BaseMcpToolDeps } from './tool-result.js';
+import {
+  toolStructuredError,
+  toolSuccess,
+  type ToolResult,
+  type BaseMcpToolDeps,
+} from './tool-result.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
@@ -253,7 +258,10 @@ function createCreateExpertHandler(deps: CreateExpertDeps) {
     // Validate input
     const validationResult = CreateExpertInputSchema.safeParse(args);
     if (!validationResult.success) {
-      return toolError(`Validation error: ${formatZodError(validationResult.error)}`);
+      return toolStructuredError({
+        errorCategory: 'validation',
+        message: `Validation error: ${formatZodError(validationResult.error)}`,
+      });
     }
 
     // Execute tool logic (now async for CLI detection - Issue #747)
@@ -264,7 +272,10 @@ function createCreateExpertHandler(deps: CreateExpertDeps) {
     if (!result.ok) {
       recordExpertError(validationResult.data.role, result.error);
       recordExpertOutcome(validationResult.data.role, false, durationMs, result.error);
-      return toolError(`Failed to create expert: ${result.error}`);
+      return toolStructuredError({
+        errorCategory: 'internal',
+        message: `Failed to create expert: ${result.error}`,
+      });
     }
 
     recordExpertCreated(result.value.role, result.value.expertId);

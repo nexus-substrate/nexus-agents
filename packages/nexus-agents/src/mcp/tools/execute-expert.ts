@@ -66,7 +66,7 @@ import { getExpertPool } from '../../agents/expert-pool.js';
 import { withDepthGuard } from '../middleware/spawn-depth-guard.js';
 import { getHeartbeatMonitor } from '../../agents/heartbeat-monitor.js';
 import { clampTaskTtl, DEFAULT_TASK_TTL_MS } from '../task-store.js';
-import { toolError, toolSuccess, type BaseMcpToolDeps } from './tool-result.js';
+import { toolStructuredError, toolSuccess, type BaseMcpToolDeps } from './tool-result.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 
 /**
@@ -668,7 +668,10 @@ async function runBackgroundExpertTask(opts: BackgroundExpertTaskOpts): Promise<
 
     if (!result.ok) {
       await taskStore.storeTaskResult(taskId, 'failed', {
-        ...toolError(`Failed to execute expert: ${result.error}`),
+        ...toolStructuredError({
+          errorCategory: 'internal',
+          message: `Failed to execute expert: ${result.error}`,
+        }),
       });
       return;
     }
@@ -689,7 +692,10 @@ async function runBackgroundExpertTask(opts: BackgroundExpertTaskOpts): Promise<
     logger.warn('Background expert task failed', { taskId, error: message });
     try {
       await taskStore.storeTaskResult(taskId, 'failed', {
-        ...toolError(`Expert execution error: ${message}`),
+        ...toolStructuredError({
+          errorCategory: 'internal',
+          message: `Expert execution error: ${message}`,
+        }),
       });
     } catch (storeError: unknown) {
       logger.warn('Failed to store task failure result', {
