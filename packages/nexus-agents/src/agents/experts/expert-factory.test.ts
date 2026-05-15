@@ -344,12 +344,15 @@ describe('ExpertFactory', () => {
   });
 
   describe('createAllBuiltIn', () => {
-    it('should create all built-in experts', () => {
+    it('should create one expert per BUILT_IN_EXPERTS key (no drift, #2715)', () => {
       const result = ExpertFactory.createAllBuiltIn();
 
       expect(result.ok).toBe(true);
       if (result.ok) {
-        expect(result.value).toHaveLength(9);
+        // Drift gate: factory output count must match the canonical registry size.
+        // Pre-#2715 the factory hardcoded 9 types while BUILT_IN_EXPERTS had 12,
+        // so `expert list` advertised 12 but only 9 were registered on startup.
+        expect(result.value).toHaveLength(Object.keys(BUILT_IN_EXPERTS).length);
 
         const ids = result.value.map((e) => e.id);
         expect(ids).toContain('code-expert');
@@ -359,6 +362,10 @@ describe('ExpertFactory', () => {
         expect(ids).toContain('security-expert');
         expect(ids).toContain('documentation-expert');
         expect(ids).toContain('testing-expert');
+        // The three that were previously dropped:
+        expect(ids).toContain('infrastructure-expert');
+        expect(ids).toContain('qa-expert');
+        expect(ids).toContain('data-visualization-expert');
       }
     });
 
