@@ -236,8 +236,23 @@ export const AUDIO_OUTPUT_KEYWORDS = [
   'narrate',
 ] as const;
 
-/** Keywords indicating MCP tool needs (Issue #685). */
-export const MCP_KEYWORDS = ['mcp', 'tool use', 'computer use', 'browse', 'interact'] as const;
+/**
+ * Keywords indicating the task explicitly needs MCP tool invocation
+ * (Issue #685). Phrases must be unambiguous — `'interact'` and `'browse'`
+ * (the pre-#2722 entries) false-positive on plain English: a task asking
+ * "how do these components **interact**?" flipped `needsMcp` true and
+ * silently filtered out gemini, then misleadingly reported "prefer gemini"
+ * while picking a non-gemini model. Keep entries explicit MCP / browser-
+ * automation phrases.
+ */
+export const MCP_KEYWORDS = [
+  'mcp',
+  'mcp tool',
+  'tool use',
+  'computer use',
+  'browse the web',
+  'browser automation',
+] as const;
 
 /** Keywords indicating exploration/research tasks (Issue #807). */
 export const EXPLORATION_KEYWORDS = [

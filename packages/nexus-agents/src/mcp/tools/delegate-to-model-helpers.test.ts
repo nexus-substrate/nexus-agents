@@ -98,6 +98,30 @@ describe('analyzeTask', () => {
     expect(result.needsSpeed).toBe(false);
     expect(result.needsCodeGen).toBe(false);
   });
+
+  it('does NOT flip needsMcp on the plain-English word "interact" (#2722)', () => {
+    // Pre-#2722 MCP_KEYWORDS contained 'interact' which matched any prose
+    // using the verb in its English sense. Tasks like the architecture-review
+    // task below silently triggered the MCP filter, dropping gemini even
+    // though the task had nothing to do with MCP.
+    const result = analyzeTask(
+      'Review the architecture: how do voter roles and aggregation interact?'
+    );
+    expect(result.needsMcp).toBe(false);
+  });
+
+  it('does NOT flip needsMcp on "browse the documentation" (#2722)', () => {
+    // 'browse' was equally over-broad; replaced with the more explicit
+    // 'browse the web' / 'browser automation' phrases.
+    const result = analyzeTask('browse the documentation for the X library');
+    expect(result.needsMcp).toBe(false);
+  });
+
+  it('does flip needsMcp on explicit MCP phrases', () => {
+    expect(analyzeTask('Use an mcp tool to do X').needsMcp).toBe(true);
+    expect(analyzeTask('Needs computer use for screenshots').needsMcp).toBe(true);
+    expect(analyzeTask('Browser automation to fill the form').needsMcp).toBe(true);
+  });
 });
 
 // ============================================================================

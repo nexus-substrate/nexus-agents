@@ -173,9 +173,13 @@ describe('createAgentStages — central workflow hub', () => {
       mockGetOutcomeSummaryText.mockReturnValue('');
       mockGenerateWeatherReport.mockReturnValue({
         overall: { totalTasks: 30, successRate: 0.9, avgDurationMs: 2000 },
+        // Real RecommendedMapping shape — `recommendedCli`, not `cli`.
+        // Pre-#2718 the consumer read `m.cli` (which doesn't exist on the
+        // real type) and emitted "category → undefined"; this mock had
+        // propagated the same wrong shape, hiding the bug from tests.
         recommendedMappings: [
-          { category: 'code_generation', cli: 'claude' },
-          { category: 'research', cli: 'gemini' },
+          { category: 'code_generation', recommendedCli: 'claude' },
+          { category: 'research', recommendedCli: 'gemini' },
         ],
       });
       mockExecuteExpert.mockResolvedValue({
@@ -192,6 +196,9 @@ describe('createAgentStages — central workflow hub', () => {
       expect(call[1]).toContain('code_generation');
       expect(call[1]).toContain('claude');
       expect(call[1]).toContain('gemini');
+      // Drift gate: the prompt must NOT contain the literal "undefined"
+      // string the pre-fix consumer was producing.
+      expect(call[1]).not.toContain('→ undefined');
     });
 
     it('handles empty outcome store gracefully', async () => {
