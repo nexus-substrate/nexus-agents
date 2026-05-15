@@ -80,17 +80,30 @@ function detectWorkflowSecurity(
   return found;
 }
 
+/** Root-level config files that imply a security tool is in use. */
+const ROOT_SECURITY_FILES: ReadonlyArray<readonly [readonly string[], string]> = [
+  [['.semgrep.yml', '.semgrep'], 'semgrep'],
+  [['.snyk'], 'snyk'],
+  [['SECURITY.md'], 'security-policy'],
+  [['.grype.yaml'], 'grype'],
+  [['CODEOWNERS'], 'codeowners'],
+  // gitleaks (#2732). Catches `.gitleaks.toml` (canonical) plus legacy
+  // `gitleaks.toml` / `.gitleaksignore` variants. Without this, a repo
+  // carrying `.gitleaks.toml` reported `existingTooling` without gitleaks,
+  // and `repo_security_plan` then showed `secrets: covered: true,
+  // scanners: []` (covered by existing-but-undetected tooling).
+  [['.gitleaks.toml', 'gitleaks.toml', '.gitleaksignore'], 'gitleaks'],
+];
+
 /** Detect security tooling from root files and CI workflow filenames (#1674). */
 export function detectSecurityTooling(
   entries: readonly string[],
   workflowEntries?: readonly string[]
 ): readonly string[] {
   const tools: string[] = [];
-  if (entries.includes('.semgrep.yml') || entries.includes('.semgrep')) tools.push('semgrep');
-  if (entries.includes('.snyk')) tools.push('snyk');
-  if (entries.includes('SECURITY.md')) tools.push('security-policy');
-  if (entries.includes('.grype.yaml')) tools.push('grype');
-  if (entries.includes('CODEOWNERS')) tools.push('codeowners');
+  for (const [files, tool] of ROOT_SECURITY_FILES) {
+    if (files.some((f) => entries.includes(f))) tools.push(tool);
+  }
   if (workflowEntries !== undefined) {
     tools.push(...detectWorkflowSecurity(workflowEntries, tools));
   }
