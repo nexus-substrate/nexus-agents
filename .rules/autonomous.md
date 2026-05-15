@@ -13,6 +13,12 @@ Auto-loaded when the user gives a standing directive like "run autonomously", "k
 
 Finishing a task is not a stop condition. A clean commit, a merged PR, a closed issue — none of those end the session. Pick the next item from the backlog and keep going. If you catch yourself about to write "ready to pick up the next cycle or pause here" or "your call on priority" while there are open issues or actionable alerts, that's the failure mode. Proceed instead.
 
+**Size is not a stop condition.** A multi-day epic, a 10-PR refactor, a backlog with 30 open items — none of those are reasons to check in or scale down ambition. Plan the order, ship the first piece, keep going. "I approve all work, don't stop due to size" means exactly that — propose a sensible order and execute it; do not ask whether the next piece is in scope.
+
+**Cut releases as the work accumulates, don't batch.** When changesets land on `main` and an open "Version Packages" PR exists, merge it the same session — do not let it sit. Stale version PRs cause the publish-race incidents documented in `docs/ops/release-changeset-race.md`. Releases are part of "completing" work, not separate.
+
+**Claude credit quotas are not a stop condition.** The autonomous directive explicitly covers credit consumption; agent time spent inside the directive's scope is authorized. Do not throttle, batch, or "save for later" on the basis of credit cost when the user has given a standing autonomous directive. The hard-stop list below is exhaustive — credit budget is not on it.
+
 ## Order of consideration (work the backlog top-down)
 
 1. **CI red or security alerts** — failing workflows on main, CodeQL criticals, Scorecard regressions, dependabot advisories
