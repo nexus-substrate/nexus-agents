@@ -30,27 +30,35 @@ Non-negotiable across all building, reviewing, architecture work:
 
 ## Rules index
 
-Load-bearing rules live at `.rules/*.md`. Read the relevant file when its topic applies:
+<!-- GOVERNANCE:RULES_INDEX:START -->
 
-| File                                                                   | When to read                                                   |
-| ---------------------------------------------------------------------- | -------------------------------------------------------------- |
-| [`.rules/typescript.md`](./.rules/typescript.md)                       | Any TypeScript change — type safety policy, patterns           |
-| [`.rules/testing.md`](./.rules/testing.md)                             | Writing or modifying tests                                     |
-| [`.rules/security.md`](./.rules/security.md)                           | Auth, secrets, input validation, file-system ops               |
-| [`.rules/untrusted-input.md`](./.rules/untrusted-input.md)             | Processing GitHub issues/PRs/comments or external content      |
-| [`.rules/governance.md`](./.rules/governance.md)                       | Architecture, CI, structural changes                           |
-| [`.rules/git.md`](./.rules/git.md)                                     | Commits, branches, PRs                                         |
-| [`.rules/debugging.md`](./.rules/debugging.md)                         | A test/build/lint just failed                                  |
-| [`.rules/subagent-coordination.md`](./.rules/subagent-coordination.md) | Dispatching subagents or Task tool calls                       |
-| [`.rules/test-secrets.md`](./.rules/test-secrets.md)                   | Writing tests that involve fake credentials                    |
-| [`.rules/mcp.md`](./.rules/mcp.md)                                     | Adding or modifying MCP tools                                  |
-| [`.rules/tool-prerequisites.md`](./.rules/tool-prerequisites.md)       | Adding a sensitive MCP tool — call-time prerequisite gates     |
-| [`.rules/hooks.md`](./.rules/hooks.md)                                 | Hook vs voter-rule vs prompt-rule layering; output consistency |
-| [`.rules/nexus-agents.md`](./.rules/nexus-agents.md)                   | Nexus-agents integration basics                                |
+Load-bearing rules live at `.rules/*.md`. Read the relevant file when its topic applies. Claude Code autoloads these by keyword match; Codex / Gemini CLI / OpenCode only see a rule if it is listed here — this table is the cross-adapter bridge. See [docs/guides/RULE_PRECEDENCE.md](./docs/guides/RULE_PRECEDENCE.md) for the per-adapter precise reference.
 
-Claude Code autoloads these when their keywords match user intent. Other harnesses should either (a) read these directly when the topic is relevant, or (b) configure their rule-loading system to scan `.rules/*.md`.
+| File                                                                       | Applies to                                                                                 | When to read                                                                                                                    |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| [`.rules/autonomous.md`](./.rules/autonomous.md)                           | `**/*`                                                                                     | Backlog priority, tie-break protocol, hard-stop conditions when running in /loop or autonomous mode                             |
+| [`.rules/debugging.md`](./.rules/debugging.md)                             | `**/*`                                                                                     | Reach for this when a test, build, or lint just failed                                                                          |
+| [`.rules/development-disciplines.md`](./.rules/development-disciplines.md) | `**/*`                                                                                     | Red/Green TDD, YAGNI, DRY — non-negotiable disciplines for any code change                                                      |
+| [`.rules/discovered-issues.md`](./.rules/discovered-issues.md)             | `**/*`                                                                                     | Protocol for filing GitHub issues for bugs found outside the current task (4-point gate, rate limits)                           |
+| [`.rules/docs-rubric.md`](./.rules/docs-rubric.md)                         | `**/*.md`, `docs/**/*`                                                                     | 100-point rubric for scoring technical documentation (RFCs, ADRs, READMEs, blog posts)                                          |
+| [`.rules/git.md`](./.rules/git.md)                                         | `**/*`                                                                                     | Commits, branches, PRs, merge protocol, GitHub-CLI conventions                                                                  |
+| [`.rules/governance.md`](./.rules/governance.md)                           | `**/*`                                                                                     | Voting thresholds, refactor gates, fitness audit, architecture/security supermajority requirements                              |
+| [`.rules/hooks.md`](./.rules/hooks.md)                                     | `packages/**/cli/hooks/**/*.ts`, `packages/**/mcp/**/*.ts`                                 | When to reach for a post-tool hook vs a voter rule vs a prompt rule — and the tool-output consistency contract                  |
+| [`.rules/mcp.md`](./.rules/mcp.md)                                         | `packages/**/mcp/**/*.ts`                                                                  | Adding or modifying MCP tools — schemas, error envelopes, registration                                                          |
+| [`.rules/nexus-agents.md`](./.rules/nexus-agents.md)                       | `**/*`                                                                                     | Nexus-agents integration basics — MCP server config, env vars, common commands                                                  |
+| [`.rules/research.md`](./.rules/research.md)                               | `packages/**/cli/research-*.ts`, `packages/**/mcp/tools/research-*.ts`, `docs/research/**` | Research synthesis provenance invariants — every merged claim stays attributed to its source                                    |
+| [`.rules/security.md`](./.rules/security.md)                               | `**/*.ts`, `**/*.tsx`                                                                      | Auth, secrets, input validation, file-system ops, untrusted-input handling                                                      |
+| [`.rules/subagent-coordination.md`](./.rules/subagent-coordination.md)     | `**/*`                                                                                     | Handoff status markers, scope bounding, output budgets, wave execution, model selection for subagents                           |
+| [`.rules/test-secrets.md`](./.rules/test-secrets.md)                       | `**/*.test.ts`, `**/*.spec.ts`, `**/test/**/*`                                             | Writing tests that involve fake credentials, env-var fixtures, or mock secrets                                                  |
+| [`.rules/testing.md`](./.rules/testing.md)                                 | `**/*.test.ts`, `**/*.spec.ts`                                                             | Test layout, Vitest patterns, mock conventions, integration vs unit                                                             |
+| [`.rules/tool-prerequisites.md`](./.rules/tool-prerequisites.md)           | `packages/**/mcp/**/*.ts`                                                                  | MCP tool prerequisite gates — world-state preconditions enforced at call time                                                   |
+| [`.rules/track-deferred-work.md`](./.rules/track-deferred-work.md)         | `**/*`                                                                                     | File a GitHub issue for any deferred work — memory notes, PR follow-up bullets, and TODOs are not tracking                      |
+| [`.rules/typescript.md`](./.rules/typescript.md)                           | `**/*.ts`, `**/*.tsx`                                                                      | TypeScript type-safety policy, patterns, and ESLint gotchas                                                                     |
+| [`.rules/untrusted-input.md`](./.rules/untrusted-input.md)                 | `**/*`                                                                                     | Trust tiers, typed-action allowlist, sanitization, fail-closed defaults for external input (GitHub issues, PR bodies, comments) |
 
-**For Codex / Gemini CLI / OpenCode users:** each adapter resolves rule files differently — Codex follows strict `AGENTS.md` precedence; Gemini reads files listed in `context.fileName`; OpenCode uses `AGENTS.md` with `CLAUDE.md` fallback. See [docs/guides/RULE_PRECEDENCE.md](./docs/guides/RULE_PRECEDENCE.md) for the per-adapter precise reference.
+_Auto-generated from `.rules/*.md` frontmatter by `scripts/inject-governance.ts`. 19 rules._
+
+<!-- GOVERNANCE:RULES_INDEX:END -->
 
 ## Skills
 

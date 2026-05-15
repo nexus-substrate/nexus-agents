@@ -82,9 +82,16 @@ const MARKERS = {
   // canonical (#1828) skill→SKILL.md layout.
   workflowIndexStart: '<!-- GOVERNANCE:WORKFLOW_INDEX:START -->',
   workflowIndexEnd: '<!-- GOVERNANCE:WORKFLOW_INDEX:END -->',
+  // #2657 (Epic C): AGENTS.md "Rules index" table is generated from the
+  // `paths:` + `description:` frontmatter on every `.rules/*.md`. It is the
+  // universal cross-adapter bridge — Codex / Gemini / OpenCode only see a
+  // rule if AGENTS.md references it — so hand-maintaining it drifts.
+  rulesIndexStart: '<!-- GOVERNANCE:RULES_INDEX:START -->',
+  rulesIndexEnd: '<!-- GOVERNANCE:RULES_INDEX:END -->',
 };
 
 const SKILLS_INDEX_PATH = join(SKILLS_DIR, 'index.yaml');
+const RULES_DIR = join(ROOT, '.rules');
 
 // ============================================================================
 // Registry Extraction
@@ -481,6 +488,126 @@ function generateWorkflowIndex(rows: readonly WorkflowRow[]): string {
 function generateModelList(models: ModelMetadata[]): string {
   const ids = models.map((m) => m.id).join(', ');
   return `${MARKERS.modelListStart}Supported models: ${ids}.${MARKERS.modelListEnd}`;
+}
+
+// ============================================================================
+// Rules Index (#2657, Epic C) — AGENTS.md cross-adapter bridge
+// ============================================================================
+
+interface RuleMetadata {
+  /** Basename, e.g. `typescript.md`. */
+  readonly file: string;
+  /** Glob patterns from the `paths:` frontmatter field. */
+  readonly paths: readonly string[];
+  /** The `description:` frontmatter field — the "when to read" hint. */
+  readonly description: string;
+}
+
+/** Normalize a frontmatter `paths:` field (YAML list or scalar) to a string array. */
+function normalizePathsField(raw: unknown): string[] {
+  if (Array.isArray(raw)) return raw.map((p) => String(p));
+  if (typeof raw === 'string') return [raw];
+  return [];
+}
+
+/** Parse one `.rules/*.md` file's frontmatter into RuleMetadata. */
+function parseRuleFile(entry: string): RuleMetadata {
+  const content = readFileSync(join(RULES_DIR, entry), 'utf-8');
+  const match = /^---\n([\s\S]*?)\n---/.exec(content);
+  if (match?.[1] === undefined) {
+    throw new Error(`.rules/${entry}: missing frontmatter (run checkRuleFrontmatter)`);
+  }
+  const fm = parseYaml(match[1]) as Record<string, unknown>;
+  const paths = normalizePathsField(fm['paths']);
+  const description = typeof fm['description'] === 'string' ? fm['description'].trim() : '';
+  if (paths.length === 0 || description === '') {
+    throw new Error(`.rules/${entry}: frontmatter missing \`paths:\` or \`description:\``);
+  }
+  return { file: entry, paths, description };
+}
+
+/**
+ * Scan `.rules/*.md`, parsing the `paths:` + `description:` frontmatter that
+ * `checkRuleFrontmatter` (#2656) already requires. Both fields are consumed
+ * by `generateRulesIndex` — `paths:` is not dead metadata. Sorted by
+ * filename so the generated table is deterministic.
+ */
+function extractRules(): RuleMetadata[] {
+  if (!existsSync(RULES_DIR)) return [];
+  return readdirSync(RULES_DIR)
+    .sort()
+    .filter((entry) => entry.endsWith('.md'))
+    .map(parseRuleFile);
+}
+
+/**
+ * Generate the AGENTS.md "Rules index" table from `.rules/*.md` frontmatter.
+ * Columns are padded to fixed widths so the output is prettier-stable (the
+ * same approach as `generateReadmeToolTable`) — a re-run produces no diff.
+ */
+function generateRulesIndex(rules: readonly RuleMetadata[]): string {
+  const rows = rules.map((r) => ({
+    file: `[\`.rules/${r.file}\`](./.rules/${r.file})`,
+    applies: r.paths.map((p) => '`' + p + '`').join(', '),
+    when: r.description,
+  }));
+
+  const fileW = Math.max('File'.length, ...rows.map((r) => r.file.length));
+  const appliesW = Math.max('Applies to'.length, ...rows.map((r) => r.applies.length));
+  const whenW = Math.max('When to read'.length, ...rows.map((r) => r.when.length));
+
+  const lines = [
+    MARKERS.rulesIndexStart,
+    '',
+    'Load-bearing rules live at `.rules/*.md`. Read the relevant file when its topic applies. Claude Code autoloads these by keyword match; Codex / Gemini CLI / OpenCode only see a rule if it is listed here — this table is the cross-adapter bridge. See [docs/guides/RULE_PRECEDENCE.md](./docs/guides/RULE_PRECEDENCE.md) for the per-adapter precise reference.',
+    '',
+    `| ${'File'.padEnd(fileW)} | ${'Applies to'.padEnd(appliesW)} | ${'When to read'.padEnd(whenW)} |`,
+    `| ${'-'.repeat(fileW)} | ${'-'.repeat(appliesW)} | ${'-'.repeat(whenW)} |`,
+  ];
+  for (const r of rows) {
+    lines.push(
+      `| ${r.file.padEnd(fileW)} | ${r.applies.padEnd(appliesW)} | ${r.when.padEnd(whenW)} |`
+    );
+  }
+  lines.push('');
+  lines.push(
+    `_Auto-generated from \`.rules/*.md\` frontmatter by \`scripts/inject-governance.ts\`. ${String(rules.length)} rules._`,
+    '',
+    MARKERS.rulesIndexEnd
+  );
+  return lines.join('\n');
+}
+
+/**
+ * Inject the Rules index into AGENTS.md (#2657). Soft-skips when AGENTS.md
+ * has no markers yet, so the script stays drop-in compatible with checkouts
+ * that have not been marker-prepped.
+ */
+function injectRulesIndex(content: string, rules: readonly RuleMetadata[]): string {
+  if (rules.length === 0 || !content.includes(MARKERS.rulesIndexStart)) return content;
+  return injectSection(
+    content,
+    MARKERS.rulesIndexStart,
+    MARKERS.rulesIndexEnd,
+    generateRulesIndex(rules)
+  );
+}
+
+/**
+ * Verify the AGENTS.md Rules index is in sync with `.rules/*.md` frontmatter
+ * (#2657). Soft-skip when AGENTS.md is absent or has no markers; otherwise
+ * fail (with a structured error) when regeneration would produce a diff.
+ */
+function checkRulesIndex(): boolean {
+  if (!existsSync(AGENTS_MD_PATH)) return true;
+  const content = readFileSync(AGENTS_MD_PATH, 'utf-8');
+  if (!content.includes(MARKERS.rulesIndexStart)) return true;
+  const updated = injectRulesIndex(content, extractRules());
+  if (updated !== content) {
+    console.error('AGENTS.md Rules index is stale (#2657). Run: pnpm governance:inject');
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -973,6 +1100,7 @@ function checkGovernance(): boolean {
     checkCanonicalPaths(),
     checkAdapterPrecedenceDocs(),
     checkRuleFrontmatter(),
+    checkRulesIndex(),
     checkToolAnnotations(actual.tools),
     checkMcpErrorEnvelope(),
     checkToolDistinctness(),
@@ -1220,6 +1348,10 @@ async function injectGovernance(): Promise<void> {
   // remains drop-in compatible with older checkouts.
   await injectReadmeToolTable(tools);
 
+  // Inject the AGENTS.md Rules index (#2657) from `.rules/*.md` frontmatter —
+  // the cross-adapter bridge. Soft-skip if AGENTS.md has no markers yet.
+  await injectAgentsRulesIndex();
+
   // #1837: keep ancillary count surfaces (plugin manifests, AGENTS.md,
   // install docs) aligned with canonical registries.
   const agents = extractAgents();
@@ -1300,6 +1432,21 @@ async function injectReadmeToolTable(tools: ToolMetadata[]): Promise<void> {
   const updated = injectSection(content, MARKERS.readmeToolsStart, MARKERS.readmeToolsEnd, table);
   if (updated !== content) {
     await writeFormatted(README_PATH, updated);
+  }
+}
+
+/**
+ * Write the AGENTS.md Rules index between governance markers (#2657).
+ * Soft-skip when AGENTS.md is missing or markers are absent so this script
+ * stays drop-in compatible with checkouts that have not been marker-prepped.
+ */
+async function injectAgentsRulesIndex(): Promise<void> {
+  if (!existsSync(AGENTS_MD_PATH)) return;
+  const content = readFileSync(AGENTS_MD_PATH, 'utf-8');
+  if (!content.includes(MARKERS.rulesIndexStart)) return;
+  const updated = injectRulesIndex(content, extractRules());
+  if (updated !== content) {
+    await writeFormatted(AGENTS_MD_PATH, updated);
   }
 }
 
