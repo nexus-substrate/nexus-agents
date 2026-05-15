@@ -137,14 +137,8 @@ describe('delegateInputToTaskContract', () => {
     expect(contract.metadata['billingMode']).toBe('plan');
   });
 
-  it('preserves estimate_tokens flag in metadata', () => {
-    const input: DelegateInputLike = {
-      task: 'Count tokens',
-      estimate_tokens: true,
-    };
-    const contract = delegateInputToTaskContract(input);
-    expect(contract.metadata['estimateTokens']).toBe(true);
-  });
+  // estimate_tokens flag removed (#2723) — was never read downstream;
+  // the test that pinned its propagation is no longer applicable.
 
   it('omits undefined optional fields from metadata', () => {
     const input: DelegateInputLike = { task: 'Simple task' };

@@ -43,7 +43,6 @@ describe('delegate_to_model Tool', () => {
       expect(result.success).toBe(true);
       if (result.success) {
         expect(result.data.task).toBe('Analyze this codebase');
-        expect(result.data.estimate_tokens).toBe(false);
       }
     });
 
@@ -52,7 +51,6 @@ describe('delegate_to_model Tool', () => {
         task: 'Implement a new feature',
         preferred_capability: 'code',
         model_hint: 'claude-sonnet',
-        estimate_tokens: true,
       };
       const result = DelegateInputSchema.safeParse(input);
 
@@ -60,7 +58,6 @@ describe('delegate_to_model Tool', () => {
       if (result.success) {
         expect(result.data.preferred_capability).toBe('code');
         expect(result.data.model_hint).toBe('claude-sonnet');
-        expect(result.data.estimate_tokens).toBe(true);
       }
     });
 
@@ -219,10 +216,7 @@ describe('delegate_to_model Tool', () => {
         needsExploration: false,
       };
 
-      const result = selectModel(
-        { task: 'test', model_hint: 'gemini-flash', estimate_tokens: false },
-        requirements
-      );
+      const result = selectModel({ task: 'test', model_hint: 'gemini-flash' }, requirements);
 
       expect(result.model).toBe('gemini-flash');
       expect(result.reasoning).toContain('explicitly requested');
@@ -242,10 +236,7 @@ describe('delegate_to_model Tool', () => {
         needsExploration: false,
       };
 
-      const result = selectModel(
-        { task: 'complex analysis', estimate_tokens: false },
-        requirements
-      );
+      const result = selectModel({ task: 'complex analysis' }, requirements);
 
       // Top-tier models should be selected for reasoning tasks
       expect([
@@ -273,10 +264,7 @@ describe('delegate_to_model Tool', () => {
         needsExploration: false,
       };
 
-      const result = selectModel(
-        { task: 'implement function', estimate_tokens: false },
-        requirements
-      );
+      const result = selectModel({ task: 'implement function' }, requirements);
 
       expect(result.alternatives.length).toBeLessThanOrEqual(3);
       result.alternatives.forEach((alt) => {

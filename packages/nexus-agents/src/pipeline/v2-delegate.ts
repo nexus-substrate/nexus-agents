@@ -60,7 +60,6 @@ export interface DelegateInputLike {
   readonly preferred_capability?: string | undefined;
   readonly model_hint?: string | undefined;
   readonly billing_mode?: string | undefined;
-  readonly estimate_tokens?: boolean | undefined;
 }
 
 /** Metrics from V2 pipeline execution. */
@@ -88,9 +87,7 @@ export function delegateInputToTaskContract(input: DelegateInputLike): TaskContr
   if (input.billing_mode !== undefined) {
     metadata['billingMode'] = input.billing_mode;
   }
-  if (input.estimate_tokens === true) {
-    metadata['estimateTokens'] = true;
-  }
+  // estimate_tokens flag removed (#2723) — was never read downstream.
   return buildBaseTaskContract({
     idPrefix: 'delegate',
     task: input.task,
