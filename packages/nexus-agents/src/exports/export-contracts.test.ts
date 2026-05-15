@@ -236,7 +236,7 @@ describe('Export contracts — delegate helpers', () => {
   it('exports selectModel', () => {
     expect(typeof selectModel).toBe('function');
     const req = analyzeDelegateTask('analyze code');
-    const result = selectModel({ task: 'analyze code', estimate_tokens: false }, req);
+    const result = selectModel({ task: 'analyze code' }, req);
     expect(typeof result.model).toBe('string');
     expect(typeof result.reasoning).toBe('string');
     expect(Array.isArray(result.alternatives)).toBe(true);
