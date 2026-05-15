@@ -203,15 +203,15 @@ When running as an MCP server, the following tools are available:
 | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | `orchestrate`                 | Task orchestration with Orchestrator coordination                                                                                      |
 | `create_expert`               | Create a specialized expert agent                                                                                                      |
-| `execute_expert`              | Execute a task using a created expert                                                                                                  |
-| `run_workflow`                | Execute a workflow template                                                                                                            |
-| `delegate_to_model`           | Route task to optimal model                                                                                                            |
-| `list_experts`                | List available expert types                                                                                                            |
-| `list_workflows`              | List available workflow templates                                                                                                      |
+| `execute_expert`              | Run a task through a previously-created expert (by expertId)                                                                           |
+| `run_workflow`                | Run a linear workflow template (use `run_graph_workflow` for DAGs)                                                                     |
+| `delegate_to_model`           | Pick the best-fit existing model for a task (no registry change)                                                                       |
+| `list_experts`                | Inventory of expert ROLES for `create_expert`                                                                                          |
+| `list_workflows`              | Inventory of multi-step TEMPLATES for `run_workflow`                                                                                   |
 | `consensus_vote`              | Multi-model consensus voting on proposals                                                                                              |
 | `research_query`              | Query research registry (status, overlap, stats, search)                                                                               |
-| `research_add`                | Add paper to registry by arXiv ID                                                                                                      |
-| `research_add_source`         | Add non-paper source (GitHub repo, tool, blog)                                                                                         |
+| `research_add`                | Add an arXiv PAPER to the registry (for non-paper sources use `research_add_source`)                                                   |
+| `research_add_source`         | Add a NON-PAPER source (repo/tool/blog) — for arXiv papers use `research_add`                                                          |
 | `research_discover`           | Discover papers/repos from external sources                                                                                            |
 | `research_analyze`            | Analyze registry for gaps, trends, coverage                                                                                            |
 | `research_catalog_review`     | Review auto-cataloged research references                                                                                              |
@@ -224,16 +224,16 @@ When running as an MCP server, the following tools are available:
 | `memory_write`                | Write to typed memory backends                                                                                                         |
 | `weather_report`              | Multi-CLI performance weather report                                                                                                   |
 | `issue_triage`                | Triage GitHub issues with trust classification                                                                                         |
-| `run_graph_workflow`          | Execute graph-based workflows with checkpointing                                                                                       |
+| `run_graph_workflow`          | Run a DAG workflow with checkpoint + rollback (linear → `run_workflow`)                                                                |
 | `execute_spec`                | Execute AI software factory spec pipeline                                                                                              |
-| `registry_import`             | Generate draft model registry entry                                                                                                    |
+| `registry_import`             | Draft YAML for a NEW model entry (for picking existing models use `delegate_to_model`)                                                 |
 | `query_trace`                 | Query execution traces for observability                                                                                               |
 | `query_task_state`            | Query the structured task-state log for a task ID                                                                                      |
 | `verify_audit_chain`          | Verify hash chain of a FileAuditStorage audit log directory                                                                            |
 | `repo_analyze`                | Analyze GitHub repository structure                                                                                                    |
 | `repo_security_plan`          | Generate security scanning pipeline for a repo                                                                                         |
-| `extract_symbols`             | Extract code symbols from source files for analysis                                                                                    |
-| `search_codebase`             | Search codebase for patterns, symbols, or text                                                                                         |
+| `extract_symbols`             | Tree-sitter AST symbols from a SINGLE file (functions/classes/types)                                                                   |
+| `search_codebase`             | Cross-file ripgrep search for patterns or text (not an AST parser)                                                                     |
 | `run_dev_pipeline`            | Full dev pipeline: research, plan, vote, implement, QA                                                                                 |
 | `run_pipeline`                | Execute a pipeline plugin by name with typed input                                                                                     |
 | `pr_review`                   | Multi-voter PR review with verification gate (experimental)                                                                            |
