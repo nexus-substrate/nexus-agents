@@ -79,6 +79,16 @@ Seen 2026-05-14: 2.73.0 was published to npm, but its `chore(release): version p
 
 If all three hold, the step runs `pnpm release` to force-publish the local version. Downstream SBOM upload, attest-build-provenance, and CycloneDX steps fire on either `steps.changesets.outputs.published == 'true'` or `steps.fallback-publish.outputs.published == 'true'`, so the recovery path produces the same supply-chain artifacts as the happy path.
 
+### Wrong-branch variant — fallback published from `changeset-release/main` (2026-05-14, #2696)
+
+A second, worse failure mode of that same fallback step. **Symptom:** npm marches forward version-by-version on every changeset-bearing feature merge, but **no git tags and no GitHub Releases** are created — SBOM upload and provenance attestation silently skip too. Seen 2026-05-14: 2.68.0–2.76.0 all reached npm with no tag and no Release; the GitHub Releases list stopped at 2.67.0.
+
+**Root cause.** In PR-update mode, `changesets/action` runs `changeset version` on a `changeset-release/main` branch and **leaves the working tree checked out on that branch** — `package.json` shows the _next_ bumped version and `.changeset/` is already consumed. The `Detect publish-race version skew` step then read `package.json` and `.changeset/` straight from the working tree, so on **every** changeset-bearing feature merge it saw "version ahead of npm, no pending changesets" and force-published the next version — straight off `changeset-release/main`, before the "Version Packages" PR was ever merged. Because the fallback bypasses `changesets/action`, `changeset publish` created the git tag only _locally_ (never pushed) and no GitHub Release was created at all.
+
+**Fix (this doc's companion PR).** The fallback step now runs `git checkout "$GITHUB_SHA"` first, pinning the entire skew check + publish to the triggering `main` commit — it can no longer see the changeset-release branch's state. And when it does legitimately force-publish, it now pushes the git tag and creates the GitHub Release itself (with the version's `CHANGELOG.md` section as notes), restoring the tag + Release + SBOM trail that `changesets/action` would have produced.
+
+**Backfill.** Tags + Releases for the versions published without them are restored separately — see #2696.
+
 ### Manual recovery (if the automatic fallback is somehow disabled)
 
 From `main` with `npm` credentials:
@@ -113,6 +123,7 @@ The race is rare. To minimize the chance of triggering it:
 
 - `#2382` — original ops issue documenting the race.
 - `PR #2383` — workflow fallback implementation.
+- `#2696` — the wrong-branch fallback variant: fallback published off `changeset-release/main`, skipping tags + Releases for 2.68.0–2.76.0.
 - `.github/workflows/release.yml` — the actual workflow definition (skew-detection steps + `manual-publish` guard).
 - `.github/workflows/ci.yml` — the `Changeset Presence` required check.
 - `scripts/check-changeset.ts` — the changeset-presence gate.
