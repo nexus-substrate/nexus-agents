@@ -514,12 +514,17 @@ describe('CodexCliAdapter (Subprocess)', () => {
   });
 
   describe('getCapacity()', () => {
-    it('should return default fallback capacity when tracker uninitialized', async () => {
+    it('should lazy-init the tracker and return real codex defaults (#2714)', async () => {
+      // Pre-#2714 this test asserted the 100k DEFAULT_CAPACITY_FALLBACK
+      // because getCapacity() bailed when tracker was null without ever
+      // initializing it (Issue #1463 framed that as intentional, but
+      // doctor never called initialize() before getCapacity() so the
+      // fallback fired every time and produced fictional "100%" output).
+      // getCapacity() now lazy-inits — assert the real codex defaults.
       const capacity = await adapter.getCapacity();
 
-      // Before initialize(), tracker is null so fallback is used (Issue #1463)
-      expect(capacity.remainingTokens).toBe(100_000);
-      expect(capacity.remainingRequests).toBe(100_000);
+      expect(capacity.remainingTokens).toBe(500_000); // codex DEFAULT_TOKEN_LIMIT
+      expect(capacity.remainingRequests).toBe(500); // codex DEFAULT_REQUEST_LIMIT
       expect(capacity.exhausted).toBe(false);
       expect(capacity.utilizationPercent).toBe(0);
     });

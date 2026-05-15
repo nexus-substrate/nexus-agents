@@ -302,10 +302,12 @@ describe('CodexMcpAdapter', () => {
   });
 
   describe('getCapacity()', () => {
-    it('should return capacity status', async () => {
+    it('should return real codex capacity status (#2714)', async () => {
+      // Pre-#2714 asserted 100k (the DEFAULT_CAPACITY_FALLBACK). Now
+      // lazy-init returns codex's real DEFAULT_TOKEN_LIMIT.
       const capacity = await adapter.getCapacity();
 
-      expect(capacity.remainingTokens).toBe(100_000);
+      expect(capacity.remainingTokens).toBe(500_000); // codex DEFAULT_TOKEN_LIMIT
       expect(capacity.exhausted).toBe(false);
       expect(capacity.utilizationPercent).toBe(0);
     });

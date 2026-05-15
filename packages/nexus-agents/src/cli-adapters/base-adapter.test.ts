@@ -291,11 +291,18 @@ describe('BaseCliAdapter', () => {
   });
 
   describe('getCapacity()', () => {
-    it('should return full capacity by default', async () => {
+    it('should return the real CLI default capacity from the tracker (#2714)', async () => {
+      // Pre-#2714 the assertion read `remainingRequests: 100_000` — the
+      // DEFAULT_CAPACITY_FALLBACK constant that getCapacity() returned ONLY
+      // when the tracker was still null. doctor never called initialize()
+      // before getCapacity(), so the fallback fired every time and the
+      // test was pinning the bug behavior. Now getCapacity() lazy-inits
+      // and the test asserts the real claude defaults from capacity-tracker
+      // (claude: 100k tokens / 50 requests per minute).
       const capacity = await adapter.getCapacity();
 
-      expect(capacity.remainingTokens).toBe(100_000);
-      expect(capacity.remainingRequests).toBe(100_000);
+      expect(capacity.remainingTokens).toBe(100_000); // claude DEFAULT_TOKEN_LIMIT
+      expect(capacity.remainingRequests).toBe(50); // claude DEFAULT_REQUEST_LIMIT
       expect(capacity.utilizationPercent).toBe(0);
       expect(capacity.exhausted).toBe(false);
     });
