@@ -5,6 +5,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { buildPlanFromAnalysis } from './repo-security-plan.js';
+import { FALLBACK_SCANNER_DATA } from './repo-security-plan-fallback.js';
 import type { RepoAnalysis } from './repo-analyze-types.js';
 
 // ============================================================================
@@ -246,5 +247,36 @@ describe('buildPlanFromAnalysis', () => {
 
     const categories = plan.coverage.map((c) => c.category);
     expect(categories).toContain('image-currency');
+  });
+
+  // #2732: drift gate — every scanner that the recommendation flow can surface
+  // must have a github-actions CI snippet, otherwise consumers get null and
+  // can't bootstrap CI. Pre-fix, 4 of the TypeScript recommendations returned
+  // ciSnippet: null because the CI_SNIPPETS map was a manual subset of the
+  // fallback registry.
+  it('every fallback scanner produces a non-null ciSnippet on github-actions', () => {
+    const missingByScanner: string[] = [];
+
+    for (const scanner of FALLBACK_SCANNER_DATA.scanners) {
+      // Pick a language whose recommendations include this scanner so the
+      // plan actually surfaces it. Falls back to TypeScript otherwise — the
+      // wiring goes through the same generateCiSnippet path regardless.
+      const language =
+        Object.entries(FALLBACK_SCANNER_DATA.languageMap).find(([, recs]) =>
+          [...recs.sast, ...recs.sca, ...recs.secrets].includes(scanner.name)
+        )?.[0] ?? 'TypeScript';
+
+      const plan = buildPlanFromAnalysis(
+        makeAnalysis({ language, hasDockerfile: scanner.name.startsWith('grype') }),
+        { repo: 'test/repo' }
+      );
+
+      const rec = plan.recommendations.find((r) => r.name === scanner.name);
+      if (rec?.ciSnippet === null) {
+        missingByScanner.push(scanner.name);
+      }
+    }
+
+    expect(missingByScanner).toEqual([]);
   });
 });
