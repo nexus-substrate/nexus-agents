@@ -1,5 +1,15 @@
 # nexus-agents
 
+## 2.77.8
+
+### Patch Changes
+
+- [#2743](https://github.com/williamzujkowski/nexus-agents/pull/2743) [`2657466`](https://github.com/williamzujkowski/nexus-agents/commit/26574665d430369e143a7fabe63d1b733930c332) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Fix two of three [#2726](https://github.com/williamzujkowski/nexus-agents/issues/2726) workflow CLI UX bugs: \`--format=json\` is now respected, and table descriptions get an ellipsis on overflow instead of truncating mid-word.
+  - **A**: \`nexus-agents workflow list --format=json\` previously parsed the flag but the dispatcher never forwarded it to \`printWorkflowTemplates\`, and the renderer didn't branch on format anyway — so the table form rendered regardless. Both call sites now thread \`format\` through and the renderer emits \`JSON.stringify(templates, null, 2)\` when requested.
+  - **B**: Table descriptions used \`desc.slice(0, 60)\` and clipped mid-word (\`"Documentation audit workflow that systematically verifies do"\`). Now truncates at 59 chars and adds a single ellipsis so the operator knows there's more — they can use \`--format=json\` to get full text.
+
+  The third sub-bug I originally reported (\`workflow run\` only listing one missing input) turned out to be operator error on my part — the \`bug-fix\` template actually has only one required input. Updated the issue.
+
 ## 2.77.7
 
 ### Patch Changes
