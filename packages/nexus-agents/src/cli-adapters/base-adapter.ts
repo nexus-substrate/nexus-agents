@@ -254,20 +254,25 @@ export abstract class BaseCliAdapter implements ICliAdapter {
    * @see Issue #456 - Real API rate limit tracking
    */
   getCapacity(): Promise<CapacityStatus> {
+    // Lazy-init the tracker if no caller has run initialize() yet (#2714).
+    // Pre-fix every doctor invocation tripped this path: doctor calls
+    // adapter.getCapacity() WITHOUT first calling adapter.initialize(),
+    // so each of the four adapters logged a "Capacity tracker uninitialized"
+    // WARN and returned a hardcoded 100k-token fallback. The fallback
+    // surfaced in doctor's output as "Capacity: 100% remaining" — a
+    // fictional reading, not a real one. The tracker is per-process and
+    // idempotent under createCapacityTracker, so initializing on first
+    // read is safe.
     if (this.capacityTracker === null) {
-      this.logger.warn('Capacity tracker uninitialized, returning default fallback', {
-        cli: this.name,
-        fallbackTokens: DEFAULT_CAPACITY_FALLBACK,
-      });
-      return Promise.resolve({
-        remainingTokens: DEFAULT_CAPACITY_FALLBACK,
-        remainingRequests: DEFAULT_CAPACITY_FALLBACK,
-        resetTime: new Date(getTimeProvider().now() + 3600_000),
-        utilizationPercent: 0,
-        exhausted: false,
-      });
+      this.initCapacityTracker();
     }
-    return Promise.resolve(this.capacityTracker.getCapacity());
+    const tracker = this.capacityTracker;
+    if (tracker === null) {
+      // Unreachable in practice — initCapacityTracker assigns the field —
+      // but keep the type-safe path for the impossible case.
+      throw new Error(`Capacity tracker initialization failed for ${this.name}`);
+    }
+    return Promise.resolve(tracker.getCapacity());
   }
 
   /**
