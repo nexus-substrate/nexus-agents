@@ -473,6 +473,27 @@ const result = await client.request(
 
 If you see this WARN on every long-running tool call, the client is misconfigured — fix the client, not the server timeout.
 
+### Correlation-keyed event log (#2703)
+
+The WARN above is also recorded as one JSONL row per mismatch at `$NEXUS_DATA_DIR/mcp-telemetry/timeout-mismatch-events.jsonl`. Each row carries a correlation `eventId` that **also appears in the WARN log entry's context**, so a mismatched call can be joined from server logs to the recorded outcome — not just counted in aggregate.
+
+Schema (one JSON object per line):
+
+| Field                 | Type                   | Notes                                                        |
+| --------------------- | ---------------------- | ------------------------------------------------------------ |
+| `eventId`             | string (UUID)          | Join key against the WARN log entry's `eventId` field        |
+| `toolName`            | string                 | E.g. `consensus_vote`, `orchestrate`                         |
+| `configuredTimeoutMs` | number                 | Server-side budget that triggered the mismatch               |
+| `mcpSdkDefaultMs`     | number                 | `60000` — the SDK client default the budget exceeds          |
+| `startedAt`           | string (ISO 8601)      | When the wrapper fired the WARN                              |
+| `endedAt`             | string (ISO 8601)      | When the call returned or threw                              |
+| `durationMs`          | number                 | `endedAt - startedAt`                                        |
+| `outcome`             | `'success' \| 'error'` | Whether the call's eventual result was `isError: true`       |
+| `errorCategory`       | string (optional)      | From the post-#2649 envelope (`_meta['nexus-agents/error']`) |
+| `errorMessage`        | string (optional)      | First text-content line or thrown error, truncated to 500c   |
+
+This is the data surface for Epic #2631's "when this is worth doing" gate: "of mismatches, what fraction end in `errorCategory: 'timeout'`?" The aggregation belongs in `improvement_review` / a fitness report (out of scope for #2703).
+
 ---
 
 ## Claude Desktop Integration
