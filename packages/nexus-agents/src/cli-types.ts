@@ -22,6 +22,8 @@ export const EXIT_CODES = {
   SERVER_START_FAILED: 1,
   SHUTDOWN_ERROR: 2,
   INVALID_ARGS: 3,
+  /** Subcommand is stubbed / advertised but not implemented (#2727). */
+  NOT_IMPLEMENTED: 4,
 } as const;
 
 /**
