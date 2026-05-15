@@ -88,12 +88,26 @@ export function classifyTraceError(err: unknown): TraceErrorCategory {
   return 'unknown';
 }
 
-/** Sanitize error message: remove file paths and stack traces. */
-function sanitizeErrorMessage(err: unknown): string {
-  if (err instanceof Error) {
-    return err.message.replace(/\/[^\s:]+/g, '<path>');
+/**
+ * Build a clean, deterministic user-facing error message for a trace-query
+ * failure (#2721). The previous `sanitizeErrorMessage` regex stripped paths
+ * starting with `/` but left their relative-root segment exposed, producing
+ * artifacts like `stat 'runs<path>'` that told the user nothing about what
+ * actually went wrong. Synthesize the message from the classified category
+ * instead — same approach as `query_task_state` ("No state log for task: X").
+ */
+function userFacingTraceError(err: unknown, runId: string): string {
+  const category = classifyTraceError(err);
+  switch (category) {
+    case 'not_found':
+      return `No trace file for runId '${runId}'`;
+    case 'permission_error':
+      return `Permission denied reading trace for runId '${runId}'`;
+    case 'parse_error':
+      return `Trace file for runId '${runId}' is malformed (invalid JSONL)`;
+    default:
+      return 'Failed to read trace';
   }
-  return 'An unexpected error occurred';
 }
 
 /** Parse JSONL content into records, skipping malformed lines. */
@@ -157,7 +171,7 @@ export async function queryTraceFromDisk(
     };
   } catch (err: unknown) {
     const category = classifyTraceError(err);
-    const message = sanitizeErrorMessage(err);
+    const message = userFacingTraceError(err, input.runId);
 
     if (category === 'not_found') {
       traceLogger.debug('Trace file not found', { runId: input.runId });

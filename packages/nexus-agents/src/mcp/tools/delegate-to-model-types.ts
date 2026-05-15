@@ -64,11 +64,12 @@ export const DelegateInputSchema = z.object({
     .max(100)
     .optional()
     .describe('Explicit model preference (e.g., claude-opus, gemini-pro)'),
-  estimate_tokens: z
-    .boolean()
-    .optional()
-    .default(false)
-    .describe('If true, return token estimate only without execution'),
+  // estimate_tokens flag removed (#2723). The field was declared in two schemas
+  // (here and in TOOL_SCHEMA below) but never read by any consumer — calling
+  // `delegate_to_model { estimate_tokens: true }` returned the full routing
+  // decision identical to omitting the flag. The output already carries
+  // `estimated_tokens` so the use case the flag advertised is satisfied
+  // without the flag.
   billing_mode: z
     .enum(['plan', 'api'])
     .optional()
@@ -260,6 +261,6 @@ export const TOOL_SCHEMA = {
     .optional()
     .describe('Preferred capability for routing'),
   model_hint: z.string().max(100).optional().describe('Explicit model preference'),
-  estimate_tokens: z.boolean().optional().describe('Return token estimate only'),
+  // estimate_tokens removed (#2723) — see comment above on DelegateInputSchema.
   billing_mode: z.enum(['plan', 'api']).optional().describe('Billing mode for cost handling'),
 };

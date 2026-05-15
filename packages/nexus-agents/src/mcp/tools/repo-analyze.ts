@@ -290,8 +290,11 @@ export function analyzeRepo(
     packageManager: detectPackageManager(topLevelEntries),
     ciProvider,
     securityTooling: secTooling,
+    // Match `Dockerfile`, `Dockerfile.<purpose>` (e.g. `Dockerfile.sandbox`),
+    // and docker-compose variants. Pre-#2730 the check was exact-match only,
+    // so a repo with three legitimate `Dockerfile.*` files reported false.
     hasDockerfile:
-      topLevelEntries.includes('Dockerfile') ||
+      topLevelEntries.some((e) => e === 'Dockerfile' || e.startsWith('Dockerfile.')) ||
       topLevelEntries.includes('docker-compose.yml') ||
       topLevelEntries.includes('docker-compose.yaml'),
     hasHelmCharts:

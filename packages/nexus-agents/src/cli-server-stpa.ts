@@ -32,7 +32,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
         task: { type: 'string', description: 'Task to execute or analyze' },
         preferred_capability: { type: 'string', description: 'Preferred capability for routing' },
         model_hint: { type: 'string', description: 'Explicit model preference' },
-        estimate_tokens: { type: 'boolean', description: 'Return token estimate only' },
+        // estimate_tokens flag removed (#2723) — was never read downstream.
       },
       required: ['task'],
     },

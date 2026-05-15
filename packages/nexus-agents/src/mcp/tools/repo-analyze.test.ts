@@ -483,6 +483,22 @@ describe('analyzeRepo', () => {
     expect(r2.hasDockerfile).toBe(true);
   });
 
+  it('detects Dockerfile.<purpose> variants (#2730)', () => {
+    // The repo this codebase lives in has Dockerfile.npm-verify /
+    // Dockerfile.opencode / Dockerfile.sandbox — the pre-fix exact-match
+    // check reported hasDockerfile: false against the nexus-agents repo.
+    const r1 = analyzeRepo(baseMetadata, ['Dockerfile.sandbox']);
+    expect(r1.hasDockerfile).toBe(true);
+
+    const r2 = analyzeRepo(baseMetadata, ['Dockerfile.dev', 'Dockerfile.prod']);
+    expect(r2.hasDockerfile).toBe(true);
+
+    // Negative: a string that starts with 'Dockerfile' but isn't one
+    // (no dot suffix) should NOT match — e.g. a file literally named 'Dockerfiler'.
+    const r3 = analyzeRepo(baseMetadata, ['Dockerfiler']);
+    expect(r3.hasDockerfile).toBe(false);
+  });
+
   it('detects Helm charts via Chart.yaml', () => {
     const result = analyzeRepo(baseMetadata, ['Chart.yaml']);
     expect(result.hasHelmCharts).toBe(true);

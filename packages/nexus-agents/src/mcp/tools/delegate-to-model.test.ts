@@ -43,7 +43,6 @@ describe('delegate_to_model Tool', () => {
       expect(result.success).toBe(true);
       if (result.success) {
         expect(result.data.task).toBe('Analyze this codebase');
-        expect(result.data.estimate_tokens).toBe(false);
       }
     });
 
@@ -52,7 +51,6 @@ describe('delegate_to_model Tool', () => {
         task: 'Implement a new feature',
         preferred_capability: 'code',
         model_hint: 'claude-sonnet',
-        estimate_tokens: true,
       };
       const result = DelegateInputSchema.safeParse(input);
 
@@ -60,7 +58,6 @@ describe('delegate_to_model Tool', () => {
       if (result.success) {
         expect(result.data.preferred_capability).toBe('code');
         expect(result.data.model_hint).toBe('claude-sonnet');
-        expect(result.data.estimate_tokens).toBe(true);
       }
     });
 
