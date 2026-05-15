@@ -237,9 +237,15 @@ async function getWeatherContext(): Promise<string> {
     const report = generateWeatherReport({ includeAdaptive: true });
     const mappings = 'recommendedMappings' in report ? report.recommendedMappings : [];
     if (!Array.isArray(mappings) || mappings.length === 0) return '';
-    const lines = (mappings as Array<{ category: string; cli: string }>)
-      .map((m) => `  ${m.category} → ${m.cli}`)
-      .join('\n');
+    // Pre-#2718 this read `m.cli` via a wrong `as Array<{cli: string}>`
+    // cast — `RecommendedMapping` has `recommendedCli`, not `cli`, so every
+    // line rendered as "category → undefined". Cast to the real shape from
+    // weather-report-types.ts.
+    const typedMappings = mappings as ReadonlyArray<{
+      readonly category: string;
+      readonly recommendedCli: string;
+    }>;
+    const lines = typedMappings.map((m) => `  ${m.category} → ${m.recommendedCli}`).join('\n');
     return (
       `\n\n## CLI Health (${String(report.overall.totalTasks)} tasks, ` +
       `${String(Math.round(report.overall.successRate * 100))}% success)\n` +
