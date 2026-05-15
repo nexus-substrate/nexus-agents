@@ -14,8 +14,11 @@ on:
         required: false
         default: true
         type: boolean
-  issues:
-    types: [closed]
+  # Note: the `issues: closed` (epic_closed) trigger was REMOVED 2026-05-15
+  # because every epic closure fired a new identical "System Review:
+  # YYYY-MM-DD" issue (#2647 / #2679 / #2687 / #2691 / #2695 / #2700 / #2704
+  # piled up across one session). All metrics were 0; all action items were
+  # vacuous. The weekly cron is the canonical trigger.
 
 permissions: read-all
 
@@ -236,9 +239,27 @@ jobs:
   create-issue:
     name: Create Review Issue
     needs: [check-trigger, run-review]
+    # Gate on actionable signal (#2696 follow-up, 2026-05-15). Previously fired
+    # every run, producing identical zero-finding issues that piled up. Now
+    # only files when at least one phase surfaced something worth a human's
+    # attention: a stale issue, an open vulnerability, or a doc that hasn't
+    # been touched in over a month. Manual `workflow_dispatch` with
+    # `create_issue: true` still files unconditionally.
     if: |
       needs.check-trigger.outputs.should_run == 'true' &&
-      (github.event.inputs.create_issue == 'true' || github.event_name != 'workflow_dispatch')
+      (
+        (github.event_name == 'workflow_dispatch' && github.event.inputs.create_issue == 'true')
+        ||
+        (
+          github.event_name != 'workflow_dispatch' &&
+          (
+            needs.run-review.outputs.issues_stale != '0' ||
+            needs.run-review.outputs.audit_vulns != '0' ||
+            needs.run-review.outputs.docs_claude_age > '30' ||
+            needs.run-review.outputs.docs_arch_age > '30'
+          )
+        )
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 5
     # The job uses `gh issue create`; the top-level `permissions: read-all`
