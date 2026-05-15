@@ -19,6 +19,7 @@ import { OpenCodeCliAdapter } from './adapters/opencode-adapter.js';
 import type { ILogger } from '../core/index.js';
 import type { ICliDetectionCache } from './cli-detection-cache.js';
 import { CliDetectionCache } from './cli-detection-cache.js';
+import { probeCli } from '../cli/cli-auth-probe.js';
 
 /**
  * Configuration for creating a CLI adapter.
@@ -134,14 +135,35 @@ export async function isCliAvailable(cli: CliName, cache?: ICliDetectionCache): 
 
   try {
     const adapter = createCliAdapter({ cli });
-    const health = await adapter.healthCheck();
+    // Pre-#2725 only ran healthCheck() — which confirms the binary exists
+    // and runs but does NOT probe authentication. Result: orchestrate listed
+    // opencode as "Available" when the user wasn't logged in, and the next
+    // call failed with an opaque subprocess error. Auth must agree with the
+    // probe doctor already uses (cli-auth-probe.ts, #2447).
+    const [health, auth] = await Promise.all([adapter.healthCheck(), probeCli(cli)]);
+    const available = health.healthy && auth.state === 'authenticated';
 
-    // Store in cache if provided
+    // Store in cache if provided. Synthesize a degraded health record when
+    // the binary is healthy but auth failed, so downstream consumers see
+    // "unavailable" without losing the version string.
     if (cache !== undefined) {
-      cache.set(cli, CliDetectionCache.fromHealthStatus(health));
+      if (available) {
+        cache.set(cli, CliDetectionCache.fromHealthStatus(health));
+      } else {
+        cache.set(cli, {
+          healthy: false,
+          version: health.version,
+          versionStatus: health.versionStatus,
+          checkedAt: new Date(),
+          message:
+            auth.state === 'authenticated'
+              ? health.message
+              : `auth: ${auth.state}` + ('reason' in auth ? ` (${auth.reason})` : ''),
+        });
+      }
     }
 
-    return health.healthy;
+    return available;
   } catch {
     // Store negative result in cache
     if (cache !== undefined) {

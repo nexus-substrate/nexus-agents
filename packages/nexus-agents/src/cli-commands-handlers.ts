@@ -75,11 +75,31 @@ export {
 } from './cli-commands-handlers-complex.js';
 
 /**
- * Handles unimplemented commands with a coming soon message.
+ * Handles unimplemented CLI subcommands. Writes to stderr (not stdout) so
+ * a shell script piping stdout doesn't silently consume the notice, and
+ * the caller is expected to follow up with `process.exit(EXIT_CODES.NOT_IMPLEMENTED)`.
+ *
+ * Pre-#2727 this wrote to stdout and callers exited with EXIT_CODES.SUCCESS —
+ * automation scripts couldn't tell that nothing happened.
+ *
+ * Where possible we name the equivalent MCP tool the user CAN call today
+ * (e.g. `expert create` → `create_expert` MCP tool), so the message
+ * carries an escape hatch.
  */
+const MCP_EQUIVALENTS: Record<string, string> = {
+  'expert create': 'create_expert',
+  'expert execute': 'execute_expert',
+};
+
 export function handleUnimplementedCommand(command: string): void {
-  process.stdout.write(`The '${command}' command is coming soon.\n`);
-  process.stdout.write('Run "nexus-agents --help" for available options.\n');
+  const equiv = MCP_EQUIVALENTS[command];
+  process.stderr.write(`The '${command}' CLI subcommand is not yet implemented.\n`);
+  if (equiv !== undefined) {
+    process.stderr.write(
+      `Equivalent today: run \`nexus-agents --mode=server\` and call the \`${equiv}\` MCP tool.\n`
+    );
+  }
+  process.stderr.write('Run "nexus-agents --help" for available options.\n');
 }
 
 /**
@@ -92,7 +112,7 @@ export function handleExpertCommand(args: ParsedCliArgs): void {
     process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
   } else {
     handleUnimplementedCommand(`expert ${args.subcommand ?? ''}`);
-    process.exit(EXIT_CODES.SUCCESS);
+    process.exit(EXIT_CODES.NOT_IMPLEMENTED);
   }
 }
 
@@ -120,7 +140,7 @@ export async function handleWorkflowCommand(args: ParsedCliArgs): Promise<void> 
     process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
   } else {
     handleUnimplementedCommand(`workflow ${args.subcommand ?? ''}`);
-    process.exit(EXIT_CODES.SUCCESS);
+    process.exit(EXIT_CODES.NOT_IMPLEMENTED);
   }
 }
 
