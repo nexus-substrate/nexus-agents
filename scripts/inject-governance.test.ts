@@ -441,6 +441,68 @@ describe('inject-governance adapter-precedence-docs (#2655)', () => {
 });
 
 // ============================================================================
+// Rules-index generator + drift gate (#2657)
+// ============================================================================
+
+describe('inject-governance rules-index (#2657)', () => {
+  const AGENTS_MD = join(ROOT, 'AGENTS.md');
+
+  it(
+    'passes when the AGENTS.md Rules index matches .rules/*.md frontmatter',
+    { timeout: SUBPROCESS_TIMEOUT },
+    () => {
+      const output = runScript('check');
+      expect(output).toContain('Governance check passed');
+      expect(output).not.toContain('AGENTS.md Rules index is stale');
+    }
+  );
+
+  it(
+    'generates a Rules index row for every .rules/*.md file',
+    { timeout: SUBPROCESS_TIMEOUT },
+    () => {
+      const content = readFileSync(AGENTS_MD, 'utf-8');
+      const start = content.indexOf('<!-- GOVERNANCE:RULES_INDEX:START -->');
+      const end = content.indexOf('<!-- GOVERNANCE:RULES_INDEX:END -->');
+      expect(start).toBeGreaterThan(-1);
+      expect(end).toBeGreaterThan(start);
+      const section = content.slice(start, end);
+      // Every rule file is linked, and the `paths:` globs surface in the table.
+      expect(section).toContain('[`.rules/typescript.md`](./.rules/typescript.md)');
+      expect(section).toContain('`**/*.ts`, `**/*.tsx`');
+      expect(section).toMatch(/_Auto-generated from `\.rules\/\*\.md` frontmatter.*\d+ rules\._/);
+    }
+  );
+
+  it(
+    'fails when the AGENTS.md Rules index drifts from frontmatter',
+    { timeout: SUBPROCESS_TIMEOUT },
+    () => {
+      const original = readFileSync(AGENTS_MD, 'utf-8');
+      try {
+        // Drop a generated table row — simulates a hand-edit that drops a rule.
+        const broken = original.replace(/\| \[`\.rules\/typescript\.md`\][^\n]*\n/, '');
+        expect(broken).not.toBe(original);
+        writeFileSync(AGENTS_MD, broken);
+        let stderr = '';
+        let exitCode = 0;
+        try {
+          execSync(`npx tsx ${SCRIPT} check`, { cwd: ROOT, encoding: 'utf-8', timeout: 30000 });
+        } catch (err) {
+          const e = err as { status?: number; stderr?: string; stdout?: string };
+          exitCode = e.status ?? 1;
+          stderr = (e.stderr ?? '') + (e.stdout ?? '');
+        }
+        expect(exitCode).not.toBe(0);
+        expect(stderr).toContain('AGENTS.md Rules index is stale');
+      } finally {
+        writeFileSync(AGENTS_MD, original);
+      }
+    }
+  );
+});
+
+// ============================================================================
 // Tool-annotations validator (#2648)
 // ============================================================================
 
