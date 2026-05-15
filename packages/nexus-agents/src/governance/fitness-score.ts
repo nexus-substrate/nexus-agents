@@ -213,6 +213,20 @@ export class FitnessScoreCalculator {
     const findings: FitnessFinding[] = [];
     const dimensions: Record<string, number> = {};
 
+    // #2716 — the audit's existsSync checks look at SRC_ROOT-relative paths
+    // (cli-adapters/composite-router.ts, cli/doctor.ts, etc). When run from
+    // an `npm install -g nexus-agents` copy, SRC_ROOT points at the installed
+    // package's `src/` which only contains workflow templates — not the full
+    // source tree. Result: every existsSync returns false and the audit
+    // emits a parade of fictional "missing" findings against a healthy
+    // source tree. (`npx nexus-agents fitness-audit` from a repo root hits
+    // this path because npx resolves to the GLOBAL bin, not the local
+    // workspace bundle.) Bail with a clear single-finding result instead.
+    const cliAdaptersDir = join(SRC_ROOT, 'cli-adapters');
+    if (!existsSync(cliAdaptersDir)) {
+      return this.notSourceRepoResult(version);
+    }
+
     for (const check of this.checks) {
       this.logger.debug(`Running fitness check: ${check.name}`);
       const result = check.check();
@@ -242,6 +256,42 @@ export class FitnessScoreCalculator {
       score,
       dimensions: typedDimensions,
       findings,
+      timestamp: new Date().toISOString(),
+      version,
+    };
+  }
+
+  /**
+   * Return when the runtime SRC_ROOT doesn't look like the nexus-agents
+   * source tree (#2716). One finding, score 0 — distinct from "the source
+   * tree is broken" because every existsSync would falsely report missing.
+   */
+  private notSourceRepoResult(version: string): FitnessAudit {
+    const finding: FitnessFinding = {
+      dimension: 'governanceIntegration',
+      severity: 'info',
+      description:
+        'fitness-audit must run against the nexus-agents source repo, ' +
+        `but ${SRC_ROOT}/cli-adapters does not exist. You are likely ` +
+        'running the installed npm package via `npx nexus-agents`, which ' +
+        'ships only the bundled dist/. Clone the source repo and run ' +
+        '`node packages/nexus-agents/dist/cli.js fitness-audit` (or invoke ' +
+        '`pnpm fitness-audit` from the workspace root).',
+      pointsDeducted: 0,
+    };
+    return {
+      score: 0,
+      dimensions: {
+        canonicalPaths: 0,
+        explicitBehavior: 0,
+        determinism: 0,
+        observability: 0,
+        configSimplicity: 0,
+        layerSeparation: 0,
+        operatorErgonomics: 0,
+        governanceIntegration: 0,
+      },
+      findings: [finding],
       timestamp: new Date().toISOString(),
       version,
     };
