@@ -6,12 +6,12 @@
     "url": "https://github.com/williamzujkowski/nexus-agents",
     "source": "github"
   },
-  "version": "2.77.9",
+  "version": "2.77.10",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "nexus-agents",
-      "version": "2.77.9",
+      "version": "2.77.10",
       "runtime": "node",
       "runtimeArguments": ["--experimental-vm-modules"],
       "packageArguments": ["--mode=server"],
