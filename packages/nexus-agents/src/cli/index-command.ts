@@ -366,7 +366,18 @@ async function freshnessCommand(options: IndexCommandOptions): Promise<IndexComm
   const result = analyzeFreshness();
 
   const { summary } = result;
-  const hasIssues = summary.stale > 0 || summary.warning > 0;
+
+  // #2720 brainstorm #5: pre-fix `unknown` (every tracked doc unreadable —
+  // typically because the user ran the command outside the nexus-agents
+  // source repo, so `projectRoot = process.cwd()` resolves to a directory
+  // that doesn't contain README.md / ARCHITECTURE.md / etc.) was not
+  // counted in `hasIssues`, so the command exited success with the message
+  // "0 documents are fresh". That's the same surface-vs-state shape as
+  // #2716 (fitness-audit silently passing from outside the repo).
+  // Treat any `unknown` as an issue, and detect "all unknown" as a wrong-
+  // CWD error with actionable hint.
+  const allUnknown = summary.total > 0 && summary.unknown === summary.total;
+  const hasIssues = summary.stale > 0 || summary.warning > 0 || summary.unknown > 0;
 
   // Format output based on requested format
   const output =
@@ -383,11 +394,25 @@ async function freshnessCommand(options: IndexCommandOptions): Promise<IndexComm
     process.stdout.write(output + '\n');
   }
 
+  const wrongCwdHint =
+    'No tracked documents found at the current CWD. ' +
+    '`index freshness` audits the nexus-agents source repo — run it from ' +
+    'the repo root (or pass --project-root once that flag is wired).';
+
+  let message: string;
+  if (allUnknown) {
+    message = `Documentation freshness check: ${wrongCwdHint}`;
+  } else if (hasIssues) {
+    message =
+      `Documentation freshness check: ${String(summary.stale)} stale, ` +
+      `${String(summary.warning)} warnings, ${String(summary.unknown)} unknown`;
+  } else {
+    message = `Documentation freshness check: ${String(summary.fresh)} documents are fresh`;
+  }
+
   return {
     success: !hasIssues,
-    message: hasIssues
-      ? `Documentation freshness check: ${String(summary.stale)} stale, ${String(summary.warning)} warnings`
-      : `Documentation freshness check: ${String(summary.fresh)} documents are fresh`,
+    message,
     data: {
       filesIndexed: summary.total,
     },
