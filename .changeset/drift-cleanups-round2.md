@@ -1,9 +1,0 @@
----
-'nexus-agents': patch
----
-
-Drift cleanups — round 2 of the #2720 umbrella ([#2721](https://github.com/williamzujkowski/nexus-agents/issues/2721), [#2723](https://github.com/williamzujkowski/nexus-agents/issues/2723), [#2730](https://github.com/williamzujkowski/nexus-agents/issues/2730)).
-
-- **#2723 — `delegate_to_model` removes the dead `estimate_tokens` flag.** The field was declared in two schemas (`DelegateInputSchema`, `TOOL_SCHEMA`) plus echoed in `cli-server-stpa.ts` and `v2-delegate.ts`'s `DelegateInputLike` interface, but no consumer read it. Calling `delegate_to_model { estimate_tokens: true }` returned the same response as omitting the flag. Removed from all four sites + the test that pinned its propagation through the v2 pipeline. The `estimated_tokens` output field is unchanged.
-- **#2730 — `repo_analyze.hasDockerfile` matches `Dockerfile.<purpose>`.** The exact-match check missed `Dockerfile.npm-verify`, `Dockerfile.opencode`, `Dockerfile.sandbox` (this repo) and similar multi-target setups elsewhere. Now uses prefix match (`e === 'Dockerfile' || e.startsWith('Dockerfile.')`). Test fixture pins the new positive cases and a negative case (`Dockerfiler` doesn't match). `repo_security_plan`'s container-scanner recommendation will now appear for repos that genuinely have Dockerfiles.
-- **#2721 — `query_trace` emits clean per-category error messages.** The old `sanitizeErrorMessage` regex stripped paths starting with `/` but left relative segments exposed, producing artifacts like `errorMessage: "ENOENT: no such file or directory, stat 'runs<path>'"`. Replaced with `userFacingTraceError(err, runId)` that classifies and synthesizes a deterministic message per category — matching the pattern `query_task_state` already uses (`"No state log for task: …"`). No sanitization needed because we never include filesystem text.
