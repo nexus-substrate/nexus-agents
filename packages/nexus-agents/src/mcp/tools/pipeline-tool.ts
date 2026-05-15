@@ -43,7 +43,7 @@ export const PipelineInputSchema = z.object({
     .max(500)
     .optional()
     .describe('Path to a spec file — content prepended to task for greenfield projects'),
-  /** Override template (dev, research, audit, greenfield). Auto-detected if omitted. */
+  /** Override template — see `listTemplateIds()` for the canonical list (#2728). Auto-detected if omitted. */
   template: z
     .string()
     .max(50)
@@ -159,8 +159,10 @@ function selectStageRegistry(
 // Tool Registration
 // ============================================================================
 
-const RUN_PIPELINE_DESCRIPTION =
-  'Single unified entry point for all pipeline templates (dev/research/audit/greenfield). Auto-detects template from task content or accepts an explicit override.';
+// Templates listed dynamically so a new entry in PIPELINE_TEMPLATES can't
+// drift this description (#2728 — previously hardcoded the pre-`general`
+// 4-template list).
+const RUN_PIPELINE_DESCRIPTION = `Single unified entry point for all pipeline templates (${listTemplateIds().join('/')}). Auto-detects template from task content or accepts an explicit override.`;
 
 /** Register the run_pipeline MCP tool. */
 export function registerPipelineTool(

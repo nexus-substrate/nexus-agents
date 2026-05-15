@@ -104,6 +104,8 @@ export const BaseAgentOptionsSchema = z.object({
     'pm_expert',
     'ux_expert',
     'infrastructure_expert',
+    'qa_expert', // #2715 — was missing from this Zod copy; canonical AgentRole has it
+    'data_visualization_expert', // #2715 — same
     'thinker',
     'worker',
     'verifier',

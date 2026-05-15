@@ -341,17 +341,12 @@ export function createManyExperts(
 export function createAllBuiltInExperts(
   options?: CreateExpertOptions
 ): Result<Expert[], FactoryError> {
-  const types: BuiltInExpertType[] = [
-    'code',
-    'architecture',
-    'security',
-    'documentation',
-    'testing',
-    'devops',
-    'research',
-    'pm',
-    'ux',
-  ];
+  // Derive the type list from BUILT_IN_EXPERTS so adding a new expert in
+  // expert-config.ts can't silently drop it here (#2715). The previous
+  // hardcoded 9-element list was missing infrastructure / qa /
+  // data-visualization — those three were listed by `expert list` but
+  // never registered on CLI startup.
+  const types = Object.keys(BUILT_IN_EXPERTS) as BuiltInExpertType[];
 
   const experts: Expert[] = [];
 
