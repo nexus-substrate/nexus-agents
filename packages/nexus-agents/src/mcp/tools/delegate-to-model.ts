@@ -13,14 +13,7 @@
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import {
-  getErrorMessage,
-  createLogger,
-  formatZodError,
-  getTimeProvider,
-  getRandomProvider,
-  type ILogger,
-} from '../../core/index.js';
+import { getErrorMessage, createLogger, formatZodError, type ILogger } from '../../core/index.js';
 import { DEFAULTS } from '../../config/defaults.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
@@ -42,13 +35,11 @@ import {
   successResultStructured,
   errorResult,
   scoreModel,
-  getCliForModel,
 } from './delegate-to-model-helpers.js';
 import { getToolMemory } from './tool-memory.js';
 import { createMcpNotifier, NOOP_NOTIFIER, type IMcpNotifier } from '../mcp-notifier.js';
-import { getOutcomeStore } from '../../orchestration/outcomes/index.js';
-import { detectTaskCategory } from '../../config/task-specialization.js';
-import type { CliName } from '../../cli-adapters/types-core.js';
+// getOutcomeStore / detectTaskCategory / CliName / getCliForModel / time +
+// random providers were used by the removed recordToOutcomeStore (#2724).
 import {
   delegateInputToTaskContract,
   executeDelegatePipeline,
@@ -83,16 +74,28 @@ export {
 // Memory Recording (Issue #753)
 // ============================================================================
 
-/** Records successful delegation to memory and outcome store. Best-effort. */
+/**
+ * Records a delegation to tool-memory (the "learned pattern" trail).
+ *
+ * Pre-#2724 this ALSO appended a `success: true` row to the OutcomeStore
+ * — but `delegate_to_model` is a recommendation tool, not an execution.
+ * Writing synthetic success outcomes for unexecuted tasks polluted every
+ * downstream routing aggregation (`weather_report.byCategory`,
+ * `recommendedMappings`, LinUCB, TOPSIS, fitness-audit). Audit of
+ * `~/.nexus-agents/learning/outcomes.jsonl` found 3993 source-delegate
+ * rows total — a large fraction were these synthetic positives. Recording
+ * here was removed; the 9 OTHER `source: 'delegate'` writers (orchestrate,
+ * agent-executor, parallel-exploration, …) which record real execution
+ * outcomes are unchanged.
+ */
 function recordDelegation(
   task: string,
   model: string,
   usedRouter: boolean,
-  startMs: number,
-  governance?: GovernanceClassification
+  _startMs: number,
+  _governance?: GovernanceClassification
 ): void {
   recordToMemory(task, model, usedRouter);
-  recordToOutcomeStore(task, model, startMs, governance);
 }
 
 /** Records delegation to tool memory. Best-effort, never throws. */
@@ -115,39 +118,10 @@ function recordToMemory(task: string, model: string, usedRouter: boolean): void 
   }
 }
 
-/** Records delegation outcome. Best-effort, never throws. */
-function recordToOutcomeStore(
-  task: string,
-  model: string,
-  startMs: number,
-  governance?: GovernanceClassification
-): void {
-  try {
-    const cli = getCliForModel(model) as CliName | undefined;
-    if (cli === undefined) return;
-    const match = detectTaskCategory(task);
-    const qualitySignals: string[] = [];
-    if (governance?.promoted === true) {
-      qualitySignals.push(`governance:${governance.domain}`);
-    }
-    getOutcomeStore().append({
-      id: `del-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 8)}`,
-      cli,
-      category: match?.category ?? 'exploration',
-      model,
-      success: true,
-      durationMs: Date.now() - startMs,
-      timestamp: new Date(getTimeProvider().now()).toISOString(),
-      source: 'delegate',
-      ...(qualitySignals.length > 0 ? { qualitySignals } : {}),
-    });
-  } catch (error: unknown) {
-    createLogger({ tool: 'delegate-to-model' }).warn('Failed to record delegation outcome', {
-      error: getErrorMessage(error),
-      model,
-    });
-  }
-}
+// recordToOutcomeStore deleted (#2724) — see comment on recordDelegation
+// above. The function unconditionally wrote `success: true` for every
+// `delegate_to_model` call, polluting the routing feedback loop with
+// synthetic recommendation "wins" for tasks that never executed.
 
 // ============================================================================
 // Governance Classification (#928, Phase 2)
