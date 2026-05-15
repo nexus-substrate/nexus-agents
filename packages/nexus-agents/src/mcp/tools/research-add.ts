@@ -215,8 +215,9 @@ export function registerResearchAddTool(server: McpServer, deps: ResearchAddDeps
   };
 
   const description =
-    'Add an arXiv paper to the research registry. ' +
-    'Fetches metadata from the arXiv API and persists to the registry. ' +
+    'PAPER-only: add an arXiv preprint to the research registry by arXiv ID. ' +
+    'Fetches metadata from arxiv.org and persists to the registry. ' +
+    'For non-paper sources (GitHub repos, tools, blogs) use `research_add_source` instead. ' +
     'Use dryRun=true to preview without saving.';
 
   const secureHandler = createSecureHandler(createResearchAddHandler(deps), {

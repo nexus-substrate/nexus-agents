@@ -23,21 +23,21 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   create_expert:
     'Create a specialized expert agent for code, architecture, security, documentation, testing, devops, research, product management, or UX tasks',
   execute_expert:
-    'Execute a task using a previously created expert agent. Returns the expert analysis including output, confidence, and token usage.',
+    'Run a task through an expert YOU PREVIOUSLY CREATED via `create_expert`. Requires the expertId returned by create_expert; not for ad-hoc execution.',
   run_workflow:
-    'Execute workflow templates with provided inputs, supporting built-in templates and custom paths',
+    'Run a LINEAR (single-path) workflow template by name with typed inputs. For DAG-shaped workflows with branching, checkpoints, or rollback, use `run_graph_workflow` instead.',
   consensus_vote:
     'Execute multi-model consensus voting on a proposal. Uses specialized agent roles to vote with configurable strategies.',
   delegate_to_model:
-    'Route a task to the optimal model based on capability matching. Returns model recommendation with reasoning.',
+    'Pick which existing model should HANDLE a task. Inspects task complexity and returns the best-fit model from the routing registry — does NOT add a new model. Read-only.',
   list_experts:
-    'List available expert types that can be created with create_expert. Returns role names, descriptions, and capabilities.',
+    'Inventory of expert ROLES available to `create_expert` (architect, security, devex, etc.). Use this BEFORE create_expert to pick a role; returns role name, capability summary, default model.',
   list_workflows:
-    'List available workflow templates that can be executed with run_workflow. Returns template names and descriptions.',
+    'Inventory of multi-step TEMPLATES available to `run_workflow` (code-review, security-audit, etc.). Use this BEFORE run_workflow to pick a template; returns template name and required inputs.',
   research_query:
     'Query the research registry for technique status, overlaps, statistics, or text search.',
   research_add:
-    'Add an arXiv paper to the research registry. Fetches metadata from the arXiv API and persists to the registry.',
+    'PAPER-only: add an arXiv preprint to the research registry by arXiv ID. Fetches metadata from arxiv.org. For non-paper sources (GitHub repos, tools, blogs), use `research_add_source` instead.',
   research_discover:
     'Discover new research papers and repositories from external sources. Searches arXiv, GitHub, and other sources.',
   research_analyze:
@@ -57,11 +57,11 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     'Get multi-CLI performance weather report with per-CLI success rates and adaptive routing bonuses.',
   issue_triage: 'Triage GitHub issues with trust classification and typed action recommendations.',
   run_graph_workflow:
-    'Execute graph-based workflow templates with checkpoint and rollback support.',
+    'Run a DAG-shaped workflow with per-node checkpoints and rollback. Use for multi-step pipelines where intermediate state must survive failures. For straight linear templates, use `run_workflow` instead.',
   execute_spec:
     'Execute an AI software factory spec through the full pipeline (parse, decompose, compile, execute, validate).',
   registry_import:
-    'Generate a draft model registry entry for a new AI model. Returns a template with conservative defaults for human review.',
+    'Draft a registry ENTRY YAML for a NEW model so routing can consider it later. Returns the YAML to stdout for human review; does not write the registry. For picking among already-registered models, use `delegate_to_model`.',
   query_trace:
     'Query execution trace JSONL files from disk for a given run ID. Supports filtering by event type and pagination.',
   memory_write:
@@ -71,11 +71,11 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   repo_security_plan:
     'Generate a security scanning pipeline recommendation for a GitHub repository based on detected tech stack.',
   research_add_source:
-    'Add a non-paper source (GitHub repo, tool, blog) to the research registry with auto quality scoring.',
+    'NON-PAPER source: add a GitHub repo / tool / blog URL to the research registry with auto quality-scoring. For arXiv papers, use `research_add` instead.',
   extract_symbols:
-    'Extract code symbols (functions, classes, types) from source files for analysis.',
+    'Parse a SINGLE source file with tree-sitter and return its structural symbols (functions, classes, types). Use when you need the AST shape of one file. Not a cross-file search.',
   search_codebase:
-    'Search the codebase for code patterns, symbols, or text across all source files.',
+    'Cross-file ripgrep-style search over the working directory for code patterns, symbols, or text. Use when you need usages of a symbol across MANY files. Not an AST parser — for single-file structure use `extract_symbols`.',
   query_task_state:
     'Read the structured task-state log for a task ID and return the current snapshot. Requires NEXUS_TASK_STATE_ENABLED=1 during the originating orchestrate call.',
   run_dev_pipeline:
@@ -103,14 +103,15 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
 export const README_TOOL_DESCRIPTIONS: Record<string, string> = {
   orchestrate: 'Task orchestration with Orchestrator coordination',
   create_expert: 'Create a specialized expert agent',
-  execute_expert: 'Execute a task using a created expert',
-  run_workflow: 'Execute a workflow template',
-  delegate_to_model: 'Route task to optimal model',
+  execute_expert: 'Run a task through a previously-created expert (by expertId)',
+  run_workflow: 'Run a linear workflow template (use `run_graph_workflow` for DAGs)',
+  delegate_to_model: 'Pick the best-fit existing model for a task (no registry change)',
   consensus_vote: 'Multi-model consensus voting on proposals',
-  list_experts: 'List available expert types',
-  list_workflows: 'List available workflow templates',
+  list_experts: 'Inventory of expert ROLES for `create_expert`',
+  list_workflows: 'Inventory of multi-step TEMPLATES for `run_workflow`',
   research_query: 'Query research registry (status, overlap, stats, search)',
-  research_add: 'Add paper to registry by arXiv ID',
+  research_add:
+    'Add an arXiv PAPER to the registry (for non-paper sources use `research_add_source`)',
   research_discover: 'Discover papers/repos from external sources',
   research_analyze: 'Analyze registry for gaps, trends, coverage',
   research_catalog_review: 'Review auto-cataloged research references',
@@ -119,21 +120,23 @@ export const README_TOOL_DESCRIPTIONS: Record<string, string> = {
   memory_write: 'Write to typed memory backends',
   weather_report: 'Multi-CLI performance weather report',
   issue_triage: 'Triage GitHub issues with trust classification',
-  run_graph_workflow: 'Execute graph-based workflows with checkpointing',
+  run_graph_workflow: 'Run a DAG workflow with checkpoint + rollback (linear → `run_workflow`)',
   execute_spec: 'Execute AI software factory spec pipeline',
-  registry_import: 'Generate draft model registry entry',
+  registry_import:
+    'Draft YAML for a NEW model entry (for picking existing models use `delegate_to_model`)',
   query_trace: 'Query execution traces for observability',
   query_task_state: 'Query the structured task-state log for a task ID',
   repo_analyze: 'Analyze GitHub repository structure',
   repo_security_plan: 'Generate security scanning pipeline for a repo',
-  research_add_source: 'Add non-paper source (GitHub repo, tool, blog)',
+  research_add_source:
+    'Add a NON-PAPER source (repo/tool/blog) — for arXiv papers use `research_add`',
   research_synthesize: 'Synthesize registry into topic clusters with themes',
   survey_oss_landscape: 'Transient OSS project search (license, stars, last-commit) via GitHub',
   vendor_publishing_audit:
     "Look up a vendor's signing infrastructure (GPG keys, URL patterns, signature shape)",
   compare_data_feeds: 'Diff two YAML/JSON feeds: coverage + per-field axes',
-  extract_symbols: 'Extract code symbols from source files for analysis',
-  search_codebase: 'Search codebase for patterns, symbols, or text',
+  extract_symbols: 'Tree-sitter AST symbols from a SINGLE file (functions/classes/types)',
+  search_codebase: 'Cross-file ripgrep search for patterns or text (not an AST parser)',
   run_dev_pipeline: 'Full dev pipeline: research, plan, vote, implement, QA',
   run_pipeline: 'Execute a pipeline plugin by name with typed input',
   pr_review: 'Multi-voter PR review with verification gate (experimental)',

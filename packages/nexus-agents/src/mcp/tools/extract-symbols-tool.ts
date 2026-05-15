@@ -143,9 +143,10 @@ export function registerExtractSymbolsTool(server: McpServer, deps: ExtractSymbo
   };
 
   const description =
-    'Extract function, class, method, interface, and type definitions ' +
-    'from a TypeScript/JavaScript file. Returns a compact symbol index ' +
-    '(80%+ smaller than reading the full file) for token-efficient code retrieval.';
+    'Parse a SINGLE TypeScript/JavaScript file with tree-sitter and return its structural AST symbols. ' +
+    'Use when you need the structure of one file — function/class/method/interface/type definitions. ' +
+    'Not a cross-file search; for that use `search_codebase`. ' +
+    'Output is 80%+ smaller than reading the full file.';
 
   const secureHandler = createSecureHandler(extractSymbolsHandler, {
     toolName: 'extract_symbols',

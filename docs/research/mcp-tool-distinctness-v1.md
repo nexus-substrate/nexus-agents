@@ -8,47 +8,46 @@ router confuse these tools," not a semantic-similarity measure. Flagged
 pairs need human review; the fix is a rename OR a clearer description,
 decided case-by-case.
 
-Threshold: `0.23` · tolerance: `0.03` · pairs at/above threshold: 8 of 703.
+Threshold: `0.23` · tolerance: `0.03` · pairs at/above threshold: 7 of 703.
 
 ## Flagged pairs (at/above threshold)
 
 | Tool A               | Tool B                | Similarity | Tracked  |
 | -------------------- | --------------------- | ---------- | -------- |
-| `list_experts`       | `list_workflows`      | 0.403      | baseline |
-| `extract_symbols`    | `search_codebase`     | 0.333      | baseline |
-| `run_graph_workflow` | `run_workflow`        | 0.277      | baseline |
-| `list_workflows`     | `run_graph_workflow`  | 0.252      | baseline |
-| `list_workflows`     | `run_workflow`        | 0.239      | baseline |
-| `delegate_to_model`  | `registry_import`     | 0.238      | baseline |
-| `execute_expert`     | `list_experts`        | 0.238      | baseline |
-| `research_add`       | `research_add_source` | 0.236      | baseline |
+| `research_add`       | `research_add_source` | 0.508      | baseline |
+| `run_graph_workflow` | `run_workflow`        | 0.408      | baseline |
+| `extract_symbols`    | `search_codebase`     | 0.382      | baseline |
+| `list_workflows`     | `run_workflow`        | 0.347      | baseline |
+| `execute_expert`     | `list_experts`        | 0.345      | baseline |
+| `research_add`       | `research_discover`   | 0.254      | **NEW**  |
+| `list_workflows`     | `run_graph_workflow`  | 0.251      | baseline |
 
 ## Top 25 ranked pairs
 
-| Tool A               | Tool B                 | Similarity |
-| -------------------- | ---------------------- | ---------- |
-| `list_experts`       | `list_workflows`       | 0.403      |
-| `extract_symbols`    | `search_codebase`      | 0.333      |
-| `run_graph_workflow` | `run_workflow`         | 0.277      |
-| `list_workflows`     | `run_graph_workflow`   | 0.252      |
-| `list_workflows`     | `run_workflow`         | 0.239      |
-| `delegate_to_model`  | `registry_import`      | 0.238      |
-| `execute_expert`     | `list_experts`         | 0.238      |
-| `research_add`       | `research_add_source`  | 0.236      |
-| `research_query`     | `search_codebase`      | 0.212      |
-| `memory_query`       | `memory_write`         | 0.167      |
-| `research_add`       | `research_discover`    | 0.154      |
-| `consensus_vote`     | `pr_review`            | 0.149      |
-| `memory_stats`       | `memory_write`         | 0.149      |
-| `create_expert`      | `list_experts`         | 0.146      |
-| `repo_analyze`       | `repo_security_plan`   | 0.141      |
-| `improvement_review` | `weather_report`       | 0.139      |
-| `compare_data_feeds` | `research_analyze`     | 0.138      |
-| `orchestrate`        | `query_task_state`     | 0.127      |
-| `execute_expert`     | `orchestrate`          | 0.121      |
-| `consensus_vote`     | `delegate_to_model`    | 0.119      |
-| `research_query`     | `survey_oss_landscape` | 0.113      |
-| `create_expert`      | `execute_expert`       | 0.110      |
-| `consensus_vote`     | `registry_import`      | 0.109      |
-| `consensus_vote`     | `run_dev_pipeline`     | 0.106      |
-| `memory_stats`       | `research_query`       | 0.106      |
+| Tool A                | Tool B                | Similarity |
+| --------------------- | --------------------- | ---------- |
+| `research_add`        | `research_add_source` | 0.508      |
+| `run_graph_workflow`  | `run_workflow`        | 0.408      |
+| `extract_symbols`     | `search_codebase`     | 0.382      |
+| `list_workflows`      | `run_workflow`        | 0.347      |
+| `execute_expert`      | `list_experts`        | 0.345      |
+| `research_add`        | `research_discover`   | 0.254      |
+| `list_workflows`      | `run_graph_workflow`  | 0.251      |
+| `list_experts`        | `list_workflows`      | 0.226      |
+| `delegate_to_model`   | `registry_import`     | 0.214      |
+| `extract_symbols`     | `run_dev_pipeline`    | 0.173      |
+| `create_expert`       | `execute_expert`      | 0.172      |
+| `create_expert`       | `list_experts`        | 0.172      |
+| `memory_query`        | `memory_write`        | 0.172      |
+| `list_workflows`      | `run_pipeline`        | 0.165      |
+| `memory_stats`        | `memory_write`        | 0.154      |
+| `research_add_source` | `research_discover`   | 0.150      |
+| `improvement_review`  | `weather_report`      | 0.144      |
+| `consensus_vote`      | `pr_review`           | 0.143      |
+| `compare_data_feeds`  | `research_analyze`    | 0.140      |
+| `execute_expert`      | `orchestrate`         | 0.139      |
+| `delegate_to_model`   | `query_task_state`    | 0.137      |
+| `orchestrate`         | `query_task_state`    | 0.136      |
+| `consensus_vote`      | `execute_spec`        | 0.128      |
+| `repo_analyze`        | `repo_security_plan`  | 0.122      |
+| `consensus_vote`      | `create_expert`       | 0.117      |

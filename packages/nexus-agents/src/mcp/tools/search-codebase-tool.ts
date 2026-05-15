@@ -184,9 +184,11 @@ export function registerSearchCodebaseTool(server: McpServer, deps: SearchCodeba
   };
 
   const description =
-    'Search a codebase for functions, classes, methods, interfaces, and types. ' +
-    'Builds an in-memory symbol index and supports keyword search with relevance scoring. ' +
-    'Modes: search (find symbols), summary (file overview), list (all indexed files).';
+    'Cross-file ripgrep-style search across the working directory. ' +
+    'Builds an in-memory symbol index and ranks matches with relevance scoring. ' +
+    'Use when you need usages of a symbol or pattern across MANY files. ' +
+    'For the AST of a single file, use `extract_symbols` instead. ' +
+    'Modes: search (find by keyword), summary (per-file overview), list (all indexed files).';
 
   const secureHandler = createSecureHandler(searchCodebaseHandler, {
     toolName: 'search_codebase',
