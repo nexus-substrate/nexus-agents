@@ -297,11 +297,14 @@ export async function listWorkflowTemplates(): Promise<TemplateMetadata[]> {
 }
 
 /**
- * Prints available workflow templates.
+ * Prints available workflow templates. Supports `format: 'json'` for
+ * scripting (#2726). Default is the human-readable table.
  */
-export async function printWorkflowTemplates(): Promise<void> {
+export async function printWorkflowTemplates(
+  options: { format?: 'table' | 'json' } = {}
+): Promise<void> {
   const templates = await listWorkflowTemplates();
-  printWorkflowTemplateList(templates);
+  printWorkflowTemplateList(templates, options);
 }
 
 /**

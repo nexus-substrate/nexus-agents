@@ -95,9 +95,20 @@ export function printWorkflowRunResult(
 }
 
 /**
- * Prints available workflow templates.
+ * Group templates by their category field. Helper for the table renderer.
  */
-export function printWorkflowTemplateList(templates: TemplateMetadata[]): void {
+function groupTemplatesByCategory(templates: TemplateMetadata[]): Map<string, TemplateMetadata[]> {
+  const byCategory = new Map<string, TemplateMetadata[]>();
+  for (const template of templates) {
+    const existing = byCategory.get(template.category) ?? [];
+    existing.push(template);
+    byCategory.set(template.category, existing);
+  }
+  return byCategory;
+}
+
+/** Render the category-grouped table (the interactive default). */
+function printWorkflowTemplateTable(templates: TemplateMetadata[]): void {
   writeLine('');
   writeLine(`${colors.bold}Available Workflow Templates:${colors.reset}`);
   writeLine('');
@@ -107,14 +118,7 @@ export function printWorkflowTemplateList(templates: TemplateMetadata[]): void {
     return;
   }
 
-  // Group by category
-  const byCategory = new Map<string, TemplateMetadata[]>();
-  for (const template of templates) {
-    const category = template.category;
-    const existing = byCategory.get(category) ?? [];
-    existing.push(template);
-    byCategory.set(category, existing);
-  }
+  const byCategory = groupTemplatesByCategory(templates);
 
   for (const [category, categoryTemplates] of byCategory) {
     writeLine(`  ${colors.cyan}${category}:${colors.reset}`);
@@ -122,10 +126,31 @@ export function printWorkflowTemplateList(templates: TemplateMetadata[]): void {
       const builtInTag = template.builtIn ? ` ${colors.dim}(built-in)${colors.reset}` : '';
       writeLine(`    • ${template.name}${builtInTag}`);
       if (template.description !== undefined) {
-        const desc = template.description.split('\n')[0] ?? '';
-        writeLine(`      ${colors.dim}${desc.slice(0, 60)}${colors.reset}`);
+        // First line only, with ellipsis on overflow (pre-#2726 B this
+        // truncated mid-word with no indicator). Use `--format=json` to
+        // get full descriptions for scripting.
+        const firstLine = template.description.split('\n')[0] ?? '';
+        const desc = firstLine.length > 60 ? `${firstLine.slice(0, 59)}…` : firstLine;
+        writeLine(`      ${colors.dim}${desc}${colors.reset}`);
       }
     }
     writeLine('');
   }
+}
+
+/**
+ * Prints available workflow templates. Supports `format: 'json'` (#2726 A)
+ * for scripting — the table form (default) is for interactive operators.
+ */
+export function printWorkflowTemplateList(
+  templates: TemplateMetadata[],
+  options: { format?: 'table' | 'json' } = {}
+): void {
+  if (options.format === 'json') {
+    // Stringify to stdout — no colors, no headers, no truncation. Pre-#2726
+    // this flag was silently ignored and the table-only form was emitted.
+    writeLine(JSON.stringify(templates, null, 2));
+    return;
+  }
+  printWorkflowTemplateTable(templates);
 }

@@ -531,7 +531,7 @@ describe('workflow-run-formatters', () => {
       expect(output).not.toContain('(built-in)');
     });
 
-    it('truncates long descriptions at 60 characters', () => {
+    it('truncates long descriptions at 60 chars with ellipsis (#2726 B)', () => {
       const longDescription = 'A'.repeat(100);
       const templates: TemplateMetadata[] = [
         {
@@ -549,9 +549,37 @@ describe('workflow-run-formatters', () => {
       printWorkflowTemplateList(templates);
 
       const output = stdoutWriteSpy.mock.calls.map((call) => String(call[0])).join('');
-      // Description should be truncated to 60 chars
-      expect(output).toContain('A'.repeat(60));
-      expect(output).not.toContain('A'.repeat(61));
+      // Pre-#2726 the renderer .slice(0, 60)'d mid-word with no indicator.
+      // Now: 59 chars + a single Unicode ellipsis = 60 visible chars total,
+      // so the operator knows there's more content (use --format=json for full).
+      expect(output).toContain('A'.repeat(59) + '…');
+      expect(output).not.toContain('A'.repeat(60));
+    });
+
+    it('emits JSON when --format=json is passed (#2726 A)', () => {
+      const templates: TemplateMetadata[] = [
+        {
+          id: 'demo',
+          name: 'demo',
+          version: '1.0.0',
+          description: 'A long description that pre-#2726 would have been truncated',
+          category: 'development',
+          keywords: [],
+          builtIn: true,
+          path: 'templates/demo.yaml',
+        },
+      ];
+
+      printWorkflowTemplateList(templates, { format: 'json' });
+
+      const output = stdoutWriteSpy.mock.calls.map((call) => String(call[0])).join('');
+      // JSON form: no table chrome, no truncation, full description intact.
+      expect(output).not.toContain('Available Workflow Templates');
+      expect(output).toContain('"demo"');
+      expect(output).toContain('A long description that pre-#2726 would have been truncated');
+      const parsed = JSON.parse(output.trim()) as TemplateMetadata[];
+      expect(parsed).toHaveLength(1);
+      expect(parsed[0]?.name).toBe('demo');
     });
 
     it('handles multi-line descriptions by using only first line', () => {

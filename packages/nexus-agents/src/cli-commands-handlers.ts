@@ -121,7 +121,11 @@ export function handleExpertCommand(args: ParsedCliArgs): void {
  */
 export async function handleWorkflowCommand(args: ParsedCliArgs): Promise<void> {
   if (args.subcommand === 'list') {
-    await printWorkflowTemplates();
+    // #2726 A: respect --format=json. Pre-fix the flag parsed but the
+    // dispatcher never forwarded it to printWorkflowTemplates, so the
+    // table form rendered regardless.
+    const format = args.options.format === 'json' ? 'json' : 'table';
+    await printWorkflowTemplates({ format });
     process.exit(EXIT_CODES.SUCCESS);
   } else if (args.subcommand === 'run') {
     // Get workflow name from positionals (workflow run <name>)
