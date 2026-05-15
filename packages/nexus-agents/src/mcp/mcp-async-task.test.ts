@@ -62,7 +62,9 @@ describe('execute_expert async task flow', () => {
     const result = await client.listTools();
     const tool = result.tools.find((t) => t.name === 'execute_expert');
     expect(tool).toBeDefined();
-    expect(tool?.description).toContain('Execute a task');
+    // Description distinguishes from `create_expert` — must mention the
+    // "previously created" framing so an LLM caller routes correctly (#2677).
+    expect(tool?.description).toMatch(/previously[- ]created|expertId|create_expert/i);
   });
 
   it('returns error for nonexistent expert via task flow', async () => {
