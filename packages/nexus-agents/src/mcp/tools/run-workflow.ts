@@ -296,7 +296,7 @@ export function registerRunWorkflowTool(server: McpServer, deps: RunWorkflowDeps
     'run_workflow',
     {
       description:
-        'Execute a workflow template with provided inputs, supporting built-in templates and custom paths',
+        'Run a LINEAR (single-path) workflow template by name with typed inputs. For DAG-shaped workflows with branching, checkpoints, or rollback, use `run_graph_workflow` instead.',
       inputSchema: toolInputSchema,
 
       annotations: getToolAnnotations('run_workflow'),

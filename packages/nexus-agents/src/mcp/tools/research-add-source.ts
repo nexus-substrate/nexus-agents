@@ -318,8 +318,9 @@ export function registerResearchAddSourceTool(
   };
 
   const description =
-    'Add a non-paper source (GitHub repo, tool, blog) to the research registry. ' +
+    'NON-PAPER source: add a GitHub repo / tool / blog URL to the research registry. ' +
     'Auto-computes quality_score from provided quality_signals. ' +
+    'For arXiv papers use `research_add` instead. ' +
     'Use dryRun=true to preview without saving.';
 
   const secureHandler = createSecureHandler(createResearchAddSourceHandler(deps), {

@@ -71,9 +71,10 @@ export function registerRegistryImportTool(server: McpServer, deps: RegistryImpo
   };
 
   const description =
-    'Add an AI model to the registry. Generates a draft ModelCapability entry ' +
-    'with conservative quality scores (5/10) for human review. Use dryRun=true ' +
-    '(default) to preview the entry without saving.';
+    'Draft a registry ENTRY for a NEW model so routing can consider it later. ' +
+    'Generates a ModelCapability YAML with conservative quality scores (5/10) for human review. ' +
+    'For picking among ALREADY-registered models, use `delegate_to_model`. ' +
+    'Use dryRun=true (default) to preview the entry without saving.';
 
   const secureHandler = createSecureHandler(registryImportHandler, {
     toolName: 'registry_import',

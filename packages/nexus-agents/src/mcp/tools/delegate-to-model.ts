@@ -316,7 +316,7 @@ export function registerDelegateToModelTool(server: McpServer, deps: DelegateDep
     'delegate_to_model',
     {
       description:
-        'Route a task to the optimal model based on capability matching. Returns model recommendation with reasoning.',
+        'Pick which EXISTING model should handle a task. Inspects task complexity and returns the best-fit model from the routing registry — does NOT add a new model. Read-only. (For drafting a registry entry for a new model, use `registry_import`.)',
       inputSchema: TOOL_SCHEMA,
       outputSchema: DelegateOutputSchema.shape,
 

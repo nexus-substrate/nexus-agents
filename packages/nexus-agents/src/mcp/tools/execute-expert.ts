@@ -729,7 +729,8 @@ export function registerExecuteExpertTool(server: McpServer, deps: ExecuteExpert
   const depsWithNotifier = { ...deps, notifier };
 
   const description =
-    'Execute a task using a previously created expert agent. ' +
+    'Run a task through an expert YOU PREVIOUSLY CREATED via `create_expert`. ' +
+    'Requires the expertId returned by create_expert; not for ad-hoc execution. ' +
     'Returns the expert analysis including output, confidence, and token usage.';
 
   server.experimental.tasks.registerToolTask(
