@@ -81,14 +81,12 @@ export interface PapersRegistry {
 // =============================================================================
 
 /**
- * Technique implementation status
+ * Technique implementation status. Sourced from `TechniqueStatusSchema`
+ * (the canonical Zod enum) so the CLI surface and the registry schema
+ * can't drift apart (#2720 umbrella, same shape as #2717).
  */
 export type TechniqueStatus =
-  | 'not-started'
-  | 'planned'
-  | 'in-progress'
-  | 'implemented'
-  | 'rejected';
+  import('../indexer/research-index/research-index-base-types.js').TechniqueStatus;
 
 /**
  * Technique priority level
