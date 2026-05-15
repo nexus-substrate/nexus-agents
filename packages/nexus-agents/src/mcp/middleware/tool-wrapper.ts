@@ -8,6 +8,10 @@
  * (Source: Issue #271, CVE-2026-0621 mitigation)
  */
 
+import { randomUUID } from 'node:crypto';
+import { appendFileSync, existsSync, mkdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+
 import type { ILogger } from '../../core/index.js';
 import type { TimeoutConfig, SecurityConfig } from '../../config/schemas.js';
 import type { IPolicyFirewall, ExecutionMode } from './policy.js';
@@ -27,6 +31,7 @@ import {
   type ProgressContext,
 } from '../mcp-notifier.js';
 import { createLogger as createInternalLogger, getErrorMessage } from '../../core/index.js';
+import { getNexusDataDir } from '../../config/nexus-data-dir.js';
 
 /**
  * Default timeout configuration.
@@ -246,6 +251,10 @@ type SdkToolResult = {
   content: Array<{ type: 'text'; text: string }>;
   isError?: boolean;
   structuredContent?: Record<string, unknown>;
+  // Post-#2649: the structured error envelope lives in `_meta` under
+  // `nexus-agents/error` (not in `structuredContent`, which is validated
+  // against `outputSchema` even on error results).
+  _meta?: Record<string, unknown>;
 };
 
 function runWithContexts(
@@ -301,6 +310,147 @@ export function toSdkCallback(
 export const MCP_SDK_DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
 
 /**
+ * Relative path under `$NEXUS_DATA_DIR` for the timeout-mismatch event log.
+ * The #2632 WARN was log-only — useful in tail but not queryable. #2703
+ * records each mismatch event as a JSONL row keyed by a correlation
+ * `eventId` shared with the log entry, so "did mismatch cause this
+ * timeout?" can be answered by joining the warning's eventId against the
+ * recorded outcome — not just counted in aggregate.
+ *
+ * Schema lives at `docs/architecture/MCP_PROTOCOL.md` (Timeout-mismatch
+ * telemetry section).
+ */
+export const TIMEOUT_MISMATCH_TELEMETRY_REL_PATH = 'mcp-telemetry/timeout-mismatch-events.jsonl';
+
+/** A single timeout-mismatch event recorded to the telemetry JSONL. */
+export interface TimeoutMismatchEvent {
+  readonly eventId: string;
+  readonly toolName: string;
+  readonly configuredTimeoutMs: number;
+  readonly mcpSdkDefaultMs: number;
+  readonly startedAt: string;
+  readonly endedAt: string;
+  readonly durationMs: number;
+  readonly outcome: 'success' | 'error';
+  /** From the post-#2649 structured error envelope when present. */
+  readonly errorCategory?: string;
+  readonly errorMessage?: string;
+}
+
+/** Best-effort append — telemetry recording must never fail the user's tool call. */
+function appendTimeoutMismatchEvent(event: TimeoutMismatchEvent): void {
+  try {
+    const path = join(getNexusDataDir(), TIMEOUT_MISMATCH_TELEMETRY_REL_PATH);
+    const dir = dirname(path);
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    appendFileSync(path, JSON.stringify(event) + '\n', 'utf-8');
+  } catch (err) {
+    wrapperLogger.debug('Best-effort timeout-mismatch event recording failed', {
+      error: getErrorMessage(err),
+    });
+  }
+}
+
+/** Pull the post-#2649 errorCategory off an error result's `_meta` envelope. */
+function extractErrorCategoryFromResult(result: SdkToolResult): string | undefined {
+  const envelope = result._meta?.['nexus-agents/error'];
+  if (envelope !== null && typeof envelope === 'object' && 'errorCategory' in envelope) {
+    const cat = (envelope as { errorCategory?: unknown }).errorCategory;
+    if (typeof cat === 'string') return cat;
+  }
+  return undefined;
+}
+
+/** First text-content line of an error result, truncated for logging. */
+function extractErrorMessageFromResult(result: SdkToolResult): string | undefined {
+  const first = result.content[0];
+  if (first?.type === 'text' && typeof first.text === 'string') {
+    return first.text.slice(0, 500);
+  }
+  return undefined;
+}
+
+interface MismatchCallContext {
+  readonly log: ILogger;
+  readonly handler: ToolHandler;
+  readonly args: unknown;
+  readonly progressCtx: ProgressContext | undefined;
+  readonly signal: AbortSignal | undefined;
+  readonly toolName: string;
+  readonly configuredTimeoutMs: number;
+}
+
+interface MismatchOutcome {
+  readonly outcome: 'success' | 'error';
+  readonly errorCategory?: string;
+  readonly errorMessage?: string;
+}
+
+/** Build a complete event record from a finished mismatched call. */
+function buildMismatchEvent(
+  ctx: MismatchCallContext,
+  eventId: string,
+  t0: number,
+  outcome: MismatchOutcome
+): TimeoutMismatchEvent {
+  const t1 = Date.now();
+  return {
+    eventId,
+    toolName: ctx.toolName,
+    configuredTimeoutMs: ctx.configuredTimeoutMs,
+    mcpSdkDefaultMs: MCP_SDK_DEFAULT_REQUEST_TIMEOUT_MS,
+    startedAt: new Date(t0).toISOString(),
+    endedAt: new Date(t1).toISOString(),
+    durationMs: t1 - t0,
+    outcome: outcome.outcome,
+    ...(outcome.errorCategory !== undefined ? { errorCategory: outcome.errorCategory } : {}),
+    ...(outcome.errorMessage !== undefined ? { errorMessage: outcome.errorMessage } : {}),
+  };
+}
+
+/** Classify a tool result into a MismatchOutcome (success or structured error). */
+function classifyResult(result: SdkToolResult): MismatchOutcome {
+  if (result.isError !== true) return { outcome: 'success' };
+  const errorCategory = extractErrorCategoryFromResult(result);
+  const errorMessage = extractErrorMessageFromResult(result);
+  return {
+    outcome: 'error',
+    ...(errorCategory !== undefined ? { errorCategory } : {}),
+    ...(errorMessage !== undefined ? { errorMessage } : {}),
+  };
+}
+
+/** Run a mismatched call, recording its outcome to the JSONL. */
+async function runMismatchedCall(ctx: MismatchCallContext): Promise<SdkToolResult> {
+  const eventId = randomUUID();
+  const t0 = Date.now();
+  ctx.log.warn(
+    'MCP tool budget exceeds client default and no progressToken received — request likely to be killed by client before server-side deadline',
+    {
+      tool: ctx.toolName,
+      eventId,
+      configuredTimeoutMs: ctx.configuredTimeoutMs,
+      mcpSdkDefaultMs: MCP_SDK_DEFAULT_REQUEST_TIMEOUT_MS,
+      remediation:
+        'Client should pass `onprogress` and `resetTimeoutOnProgress: true` when calling, or extend `options.timeout`. See docs/architecture/MCP_PROTOCOL.md.',
+    }
+  );
+  try {
+    const result = await runWithContexts(ctx.handler, ctx.args, ctx.progressCtx, ctx.signal);
+    appendTimeoutMismatchEvent(buildMismatchEvent(ctx, eventId, t0, classifyResult(result)));
+    return result;
+  } catch (err) {
+    appendTimeoutMismatchEvent(
+      buildMismatchEvent(ctx, eventId, t0, {
+        outcome: 'error',
+        errorMessage: getErrorMessage(err).slice(0, 500),
+      })
+    );
+    throw err;
+  }
+}
+
+/**
  * Like `toSdkCallback`, but emits a one-shot WARN at invocation start when
  * the configured per-tool budget exceeds the MCP SDK client default AND the
  * client did not send a `progressToken`. The call is almost certainly going
@@ -314,6 +464,14 @@ export const MCP_SDK_DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
  * `toSdkCallback`. Tools whose budget already fits within
  * `MCP_SDK_DEFAULT_REQUEST_TIMEOUT_MS` should keep using `toSdkCallback`.
  *
+ * Each mismatch is **also recorded** to
+ * `$NEXUS_DATA_DIR/mcp-telemetry/timeout-mismatch-events.jsonl` with a
+ * correlation `eventId` (also surfaced in the WARN log entry) and the
+ * call's eventual outcome (`success` / `error` + post-#2649 errorCategory
+ * if present). This lets the Epic #2631 gate be answered with data —
+ * "of N mismatches, what fraction ended in a timeout?" — not just counted
+ * in aggregate (#2703).
+ *
  * (Source: audit on #2619 / #2631 — observability for client-timeout mismatch)
  */
 export function toSdkCallbackWithBudgetCheck(
@@ -326,19 +484,18 @@ export function toSdkCallbackWithBudgetCheck(
   return (args: unknown, extra: unknown) => {
     const progressCtx = extractProgressContext(extra);
     const signal = (extra as SdkExtra | undefined)?.signal;
-    if (configuredTimeoutMs > MCP_SDK_DEFAULT_REQUEST_TIMEOUT_MS && progressCtx === undefined) {
-      log.warn(
-        'MCP tool budget exceeds client default and no progressToken received — request likely to be killed by client before server-side deadline',
-        {
-          tool: toolName,
-          configuredTimeoutMs,
-          mcpSdkDefaultMs: MCP_SDK_DEFAULT_REQUEST_TIMEOUT_MS,
-          remediation:
-            'Client should pass `onprogress` and `resetTimeoutOnProgress: true` when calling, or extend `options.timeout`. See docs/architecture/MCP_PROTOCOL.md.',
-        }
-      );
-    }
-    return runWithContexts(handler, args, progressCtx, signal);
+    const isMismatch =
+      configuredTimeoutMs > MCP_SDK_DEFAULT_REQUEST_TIMEOUT_MS && progressCtx === undefined;
+    if (!isMismatch) return runWithContexts(handler, args, progressCtx, signal);
+    return runMismatchedCall({
+      log,
+      handler,
+      args,
+      progressCtx,
+      signal,
+      toolName,
+      configuredTimeoutMs,
+    });
   };
 }
 
