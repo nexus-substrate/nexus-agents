@@ -40,9 +40,25 @@ export interface ArxivFetchError {
  * Extracts the first &lt;entry&gt; block from arXiv Atom XML to avoid
  * matching feed-level metadata (e.g., feed title "arXiv Query: ...").
  */
-function extractEntryXml(xml: string): string {
+function extractEntryXml(xml: string): string | null {
   const entryMatch = xml.match(/<entry>([\s\S]*?)<\/entry>/);
-  return entryMatch?.[1] ?? xml;
+  // Pre-#2719 this fell back to returning the full feed XML when no
+  // <entry> tag was present. The feed-level <title> for a no-results
+  // query is literally "arXiv Query: search_query=&id_list=X&start=0&
+  // max_results=10" — which then got persisted as the paper's "title"
+  // and recorded as a belief learning. Return null so the caller surfaces
+  // a genuine "paper not found" instead of inventing one.
+  return entryMatch?.[1] ?? null;
+}
+
+/** Decode the XML entities arXiv encodes in `<title>` / `<summary>` content. */
+function decodeXmlEntities(s: string): string {
+  return s
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'");
 }
 
 /**
@@ -50,6 +66,9 @@ function extractEntryXml(xml: string): string {
  */
 function parseArxivXml(arxivId: string, xml: string): ArxivMetadata | null {
   const entryXml = extractEntryXml(xml);
+  // No <entry> tag → no paper. Return null so the caller treats this as
+  // a fetch miss (#2719) rather than synthesizing data from the feed.
+  if (entryXml === null) return null;
 
   const titleMatch = entryXml.match(/<title>([^<]+)<\/title>/);
   const summaryMatch = entryXml.match(/<summary>([^<]+)<\/summary>/s);
@@ -58,11 +77,13 @@ function parseArxivXml(arxivId: string, xml: string): ArxivMetadata | null {
   const titleContent = titleMatch?.[1];
   if (titleContent === undefined || titleContent === '') return null;
 
+  // Decode XML entities (`&amp;` → `&` etc.) so persisted titles are plain
+  // text. Pre-#2719 a title like "Stats &amp; ML" kept the literal token.
   return {
     id: arxivId,
-    title: titleContent.trim().replace(/\s+/g, ' '),
+    title: decodeXmlEntities(titleContent.trim().replace(/\s+/g, ' ')),
     authors: [], // Would need more complex parsing
-    summary: summaryMatch?.[1]?.trim().replace(/\s+/g, ' ') ?? '',
+    summary: decodeXmlEntities(summaryMatch?.[1]?.trim().replace(/\s+/g, ' ') ?? ''),
     published: publishedMatch?.[1] ?? '',
     updated: '',
     categories: [],
