@@ -26,9 +26,14 @@ export type PaperSource = 'arxiv' | 'conference' | 'journal' | 'preprint';
 export type Relevance = 'high' | 'medium' | 'low';
 
 /**
- * Paper implementation status
+ * Paper implementation status — re-export from the canonical source
+ * (#2717). Pre-fix this was a hand-maintained 4-value union (no `partial`,
+ * `rejected`, or `deferred`), narrower than the Zod schemas it was supposed
+ * to mirror — so the CLI's TypeScript surface rejected values the registry
+ * happily stored.
  */
-export type PaperImplementationStatus = 'not-started' | 'planned' | 'in-progress' | 'implemented';
+export type PaperImplementationStatus =
+  import('../indexer/research-index/research-index-base-types.js').PaperStatus;
 
 /**
  * Research paper entry in papers.yaml

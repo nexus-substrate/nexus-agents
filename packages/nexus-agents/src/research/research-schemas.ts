@@ -87,16 +87,19 @@ export const TechniqueStatusSchema = z.enum([
 export type TechniqueStatus = z.infer<typeof TechniqueStatusSchema>;
 
 /**
- * Paper implementation status.
+ * Paper implementation status — import + re-export from the canonical
+ * source (#2717). Previously this file declared a parallel z.enum that
+ * disagreed with both `indexer/research-index/research-index-base-types.ts`
+ * (the other Zod copy) and `cli/research-types.ts` (the TS type union).
+ * The import binds the name in this module so the schema can be used in
+ * the object below; the re-export keeps existing consumers working.
  */
-export const PaperStatusSchema = z.enum([
-  'implemented',
-  'planned',
-  'partial',
-  'not-started',
-  'rejected',
-]);
-export type PaperStatus = z.infer<typeof PaperStatusSchema>;
+import {
+  PaperStatusSchema as _PaperStatusSchema,
+  type PaperStatus as _PaperStatus,
+} from '../indexer/research-index/research-index-base-types.js';
+export const PaperStatusSchema = _PaperStatusSchema;
+export type PaperStatus = _PaperStatus;
 
 /**
  * Technique priority levels.
