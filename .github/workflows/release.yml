@@ -99,13 +99,29 @@ jobs:
         #
         # The third condition prevents publishing partial state when changesets
         # are still pending; in that case the next merge will close the loop.
+        #
+        # CRITICAL (#2696, 2026-05-14): in PR-update mode the changesets/action
+        # runs `changeset version` on a `changeset-release/main` branch and
+        # LEAVES THE WORKING TREE CHECKED OUT THERE. Reading package.json or
+        # .changeset/ from the working tree would see the NEXT version already
+        # bumped and the changesets already consumed — making this step
+        # force-publish an unreleased version straight off the changeset-release
+        # branch on every changeset-bearing feature merge, with no git tag
+        # pushed and no GitHub Release created (2.68.0–2.76.0 all published this
+        # way). `git checkout "$GITHUB_SHA"` pins the whole step to the
+        # triggering main commit so the skew check only ever reasons about main.
         if: steps.changesets.outputs.published != 'true'
         shell: bash
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          # Pin to the triggering main commit — never trust the working tree,
+          # which changesets/action may have left on changeset-release/main.
+          git checkout --quiet "$GITHUB_SHA"
+
           local_version=$(jq -r '.version' packages/nexus-agents/package.json)
           published_version=$(npm view nexus-agents version 2>/dev/null || echo "0.0.0")
 
@@ -122,8 +138,32 @@ jobs:
             exit 0
           fi
 
-          echo "::warning::Detected publish-race version skew. package.json=$local_version, npm=$published_version, no pending changesets. Force-publishing $local_version."
+          echo "::warning::Detected publish-race version skew. package.json=$local_version, npm=$published_version, no pending changesets. Force-publishing $local_version from main ($GITHUB_SHA)."
           pnpm release
+
+          # `changeset publish` (inside `pnpm release`) creates the git tag
+          # LOCALLY but does not push it, and the GitHub Release is normally the
+          # changesets/action's job — which this fallback bypasses. Without the
+          # next block the tag + Release + SBOM trail is silently lost (#2696:
+          # 2.68.0–2.76.0 reached npm with no git tag and no GitHub Release).
+          TAG="nexus-agents@$local_version"
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            git push origin "refs/tags/$TAG" || echo "::warning::tag $TAG already on origin"
+          else
+            echo "::warning::changeset publish did not create tag $TAG — creating it now"
+            git tag "$TAG" "$GITHUB_SHA"
+            git push origin "refs/tags/$TAG"
+          fi
+          # Release notes = this version's section of the changesets CHANGELOG.
+          notes=$(awk -v v="## $local_version" '
+            $0 == v { f = 1; next } /^## / { f = 0 } f' packages/nexus-agents/CHANGELOG.md)
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "GitHub Release $TAG already exists — leaving it."
+          else
+            gh release create "$TAG" --title "$TAG" \
+              --notes "${notes:-Release $local_version. (CHANGELOG section not found — see packages/nexus-agents/CHANGELOG.md.)}"
+          fi
+
           # Signal downstream provenance + SBOM steps that we did publish.
           echo "published=true" >> "$GITHUB_OUTPUT"
           # Synthesize the publishedPackages output that the changesets/action
