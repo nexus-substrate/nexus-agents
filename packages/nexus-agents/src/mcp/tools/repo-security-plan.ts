@@ -152,6 +152,33 @@ const CI_SNIPPETS: Readonly<Record<string, string>> = {
   'osv-scanner': '- uses: google/osv-scanner-action@v1',
   snyk: '- uses: snyk/actions/node@master # adjust for language',
   shellcheck: '- uses: ludeeus/action-shellcheck@master',
+  // #2732: scanners recommended for TypeScript repos that were missing
+  // snippets, leaving most rows with ciSnippet: null.
+  'eslint-security':
+    '- run: npm install --save-dev eslint-plugin-security && npx eslint --plugin security .',
+  sonarqube:
+    '- uses: sonarsource/sonarqube-scan-action@v3\n  env:\n    SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}',
+  'npm-audit': '- run: npm audit --audit-level=high',
+  trivy:
+    '- uses: aquasecurity/trivy-action@master\n  with:\n    scan-type: fs\n    severity: CRITICAL,HIGH\n    exit-code: 1',
+  trufflehog: '- uses: trufflesecurity/trufflehog@main\n  with:\n    extra_args: --only-verified',
+  cppcheck: '- run: cppcheck --enable=all --error-exitcode=1 .',
+  spotbugs:
+    '- uses: jwgmeligmeyling/spotbugs-github-action@master\n  with:\n    path: target/spotbugsXml.xml',
+  'pip-audit': '- run: pip install pip-audit && pip-audit',
+  'cargo-audit': '- run: cargo install cargo-audit --locked && cargo audit',
+  'bundler-audit': '- run: gem install bundler-audit && bundle-audit check --update',
+  'composer-audit': '- run: composer audit',
+  govulncheck: '- run: go install golang.org/x/vuln/cmd/govulncheck@latest && govulncheck ./...',
+  detekt: '- uses: natiginfo/action-detekt-all@1.23.6',
+  brakeman: '- run: gem install brakeman && brakeman -f json',
+  phpstan: '- run: composer install && vendor/bin/phpstan analyse',
+  tfsec: '- uses: aquasecurity/tfsec-action@v1.0.3',
+  'owasp-dependency-check':
+    '- uses: dependency-check/Dependency-Check_Action@main\n  with:\n    project: ${{ github.event.repository.name }}\n    path: .\n    format: HTML',
+  'owasp-zap':
+    '- uses: zaproxy/action-baseline@v0.12.0\n  with:\n    target: ${{ env.TARGET_URL }}',
+  syft: '- uses: anchore/sbom-action@v0\n  with:\n    path: .\n    format: cyclonedx-json',
 };
 
 function generateCiSnippet(name: string, ci: string | null): string | null {
@@ -192,13 +219,23 @@ interface CategoryRecOptions {
 
 /** Collect recommendations for a single category. */
 function collectCategoryRecs(recs: ScannerRecommendation[], opts: CategoryRecOptions): void {
+  // #2732: at most one `critical` slot per category — the first scanner
+  // picked is the "must run" one, subsequent scanners in the same
+  // category demote to `recommended`. Pre-fix SAST already enforced this
+  // (an inline `isFirst` flag for category === 'sast'); SCA and secrets
+  // skipped the demotion and marked every entry critical, so a TypeScript
+  // plan came back with 3+ critical scanners. `opts.priority` is now the
+  // priority applied to the *primary* slot only; remaining slots are
+  // always `recommended` regardless of what the caller passed.
+  let primarySlotFilled = recs.some((r) => r.category === opts.category);
   for (const name of opts.names) {
     if (recs.length >= opts.ctx.maxScanners) break;
     if (isAlreadyUsed(name, opts.ctx.existing)) continue;
     const entry = findScanner(name, opts.ctx.scanners);
     if (!entry) continue;
     if (opts.ctx.categoryFilter && !opts.ctx.categoryFilter.has(opts.category)) continue;
-    const isFirst = opts.category === 'sast' && recs.length === 0;
+    const priority = primarySlotFilled ? 'recommended' : opts.priority;
+    primarySlotFilled = true;
     recs.push({
       name,
       displayName: entry.displayName,
@@ -206,7 +243,7 @@ function collectCategoryRecs(recs: ScannerRecommendation[], opts: CategoryRecOpt
       license: entry.license,
       pricingModel: entry.pricingModel,
       rationale: opts.rationale(entry),
-      priority: isFirst ? 'critical' : opts.priority,
+      priority,
       ciSnippet: generateCiSnippet(name, opts.ctx.ciProvider),
     });
   }
@@ -223,7 +260,7 @@ function collectLanguageRecs(
     names: langMap.sast,
     category: 'sast',
     rationale: (e) => `${e.displayName} provides SAST for ${lang}`,
-    priority: 'recommended',
+    priority: 'critical',
     ctx,
   });
   collectCategoryRecs(recs, {
