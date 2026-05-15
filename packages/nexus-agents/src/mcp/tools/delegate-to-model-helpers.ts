@@ -209,11 +209,24 @@ export function buildReasons(
   requirements: TaskRequirements,
   pref?: string,
   billingMode: BillingMode = 'api',
-  specialization: SpecializationMatch | null = null
+  specialization: SpecializationMatch | null = null,
+  chosenCli?: string
 ): string[] {
   const reasons = REASON_MAP.filter(([key]) => requirements[key] === true).map(([, desc]) => desc);
-  if (specialization !== null)
-    reasons.push(`${specialization.category} task (prefer ${specialization.primaryCli})`);
+  if (specialization !== null) {
+    // Pre-#2722 this read "architecture task (prefer gemini)" even when
+    // the actual selection was an opencode model (because gemini was
+    // filtered out by needsMcp). The reasoning text now states whether
+    // the preferred CLI was matched, so the explanation doesn't
+    // contradict the recommendation.
+    if (chosenCli !== undefined && specialization.primaryCli !== chosenCli) {
+      reasons.push(
+        `${specialization.category} task (preferred ${specialization.primaryCli}, selected ${chosenCli} after filtering)`
+      );
+    } else {
+      reasons.push(`${specialization.category} task (preferred ${specialization.primaryCli})`);
+    }
+  }
   if (pref !== undefined && pref !== '') reasons.push(`preferred: ${pref}`);
   if (billingMode === 'plan') reasons.push('plan billing (cost ignored)');
   return reasons;
@@ -356,7 +369,8 @@ export function selectModel(
     requirements,
     input.preferred_capability,
     billingMode,
-    specialization
+    specialization,
+    getCliForModel(best.name)
   );
   const reasoning =
     reasons.length > 0
