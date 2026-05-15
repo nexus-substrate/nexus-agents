@@ -497,6 +497,39 @@ src/
 
       expect(mockFs.writeFile).toHaveBeenCalledWith('/tmp/freshness.txt', 'output', 'utf-8');
     });
+
+    // #2720 brainstorm #5: pre-fix all-unknown returned `success: true` with
+    // message "0 documents are fresh" — typically because the user ran the
+    // command outside the nexus-agents source repo. Same surface-vs-state
+    // shape as #2716.
+    it('reports wrong-CWD with actionable hint when all tracked docs unknown', async () => {
+      mockAnalyzeFreshness.mockReturnValue({
+        documents: [],
+        summary: { fresh: 0, warning: 0, stale: 0, total: 7, unknown: 7 },
+        analyzedAt: '2026-01-14T10:00:00Z',
+      });
+      mockFormatFreshnessTable.mockReturnValue('table');
+
+      const result = await indexCommand({ subcommand: 'freshness' });
+
+      expect(result.success).toBe(false);
+      expect(result.message).toContain('No tracked documents found at the current CWD');
+      expect(result.message).toContain('run it from the repo root');
+    });
+
+    it('counts unknown as an issue (no silent success on partial unknown)', async () => {
+      mockAnalyzeFreshness.mockReturnValue({
+        documents: [],
+        summary: { fresh: 3, warning: 0, stale: 0, total: 5, unknown: 2 },
+        analyzedAt: '2026-01-14T10:00:00Z',
+      });
+      mockFormatFreshnessTable.mockReturnValue('table');
+
+      const result = await indexCommand({ subcommand: 'freshness' });
+
+      expect(result.success).toBe(false);
+      expect(result.message).toContain('2 unknown');
+    });
   });
 
   describe('links subcommand', () => {
