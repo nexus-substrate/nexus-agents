@@ -41,7 +41,14 @@ export const TechniqueStatusSchema = z.enum([
 export type TechniqueStatus = z.infer<typeof TechniqueStatusSchema>;
 
 /**
- * Paper implementation status.
+ * Paper implementation status. Canonical source for this enum (#2717).
+ * Other files MUST import this; do not re-declare a parallel z.enum.
+ *
+ * `deferred` is its own state — distinct from `rejected` (won't-do-ever),
+ * `not-started` (haven't-gotten-to-it), and `in-progress` (working-on-it).
+ * Used by papers that the team consciously deferred with a documented
+ * `deferral_rationale` + explicit `Re-open triggers:` block. Pre-#2717 the
+ * 2 papers using it failed strict validation against this schema.
  */
 export const PaperStatusSchema = z.enum([
   'implemented',
@@ -50,6 +57,7 @@ export const PaperStatusSchema = z.enum([
   'in-progress',
   'not-started',
   'rejected',
+  'deferred',
 ]);
 export type PaperStatus = z.infer<typeof PaperStatusSchema>;
 

@@ -50,6 +50,30 @@ import {
  * The cli/research-helpers-io.ts path still scaffolds files on disk; this
  * one just doesn't fail loudly when nothing's there.
  */
+/**
+ * Build a ResearchIndexParseError that surfaces Zod issue details (#2717).
+ * Pre-fix the user-facing message was just `Validation failed for <path>`
+ * even though the Zod result.error carried the issues array.
+ */
+function buildValidationError(filePath: string, validationErr: unknown): ResearchIndexParseError {
+  const zodErr = validationErr as {
+    issues?: ReadonlyArray<{ path: ReadonlyArray<string | number>; message: string }>;
+  };
+  const issues = zodErr.issues ?? [];
+  const issuesPreview = issues
+    .slice(0, 5)
+    .map((i) => `${i.path.slice(0, 4).join('.')}: ${i.message}`)
+    .join('; ');
+  const more = issues.length > 5 ? ` (+${String(issues.length - 5)} more)` : '';
+  return new ResearchIndexParseError(
+    issuesPreview.length > 0
+      ? `Validation failed for ${filePath} — ${issuesPreview}${more}`
+      : `Validation failed for ${filePath}`,
+    filePath,
+    validationErr
+  );
+}
+
 function readYamlFile<T>(
   filePath: string,
   schema: { safeParse: (data: unknown) => { success: boolean; data?: T; error?: unknown } },
@@ -74,14 +98,7 @@ function readYamlFile<T>(
 
     const result = schema.safeParse(parsed);
     if (!result.success) {
-      return {
-        ok: false,
-        error: new ResearchIndexParseError(
-          `Validation failed for ${filePath}`,
-          filePath,
-          result.error
-        ),
-      };
+      return { ok: false, error: buildValidationError(filePath, result.error) };
     }
 
     return { ok: true, value: result.data as T };
