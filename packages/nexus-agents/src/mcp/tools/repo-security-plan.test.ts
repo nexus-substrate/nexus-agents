@@ -249,6 +249,33 @@ describe('buildPlanFromAnalysis', () => {
     expect(categories).toContain('image-currency');
   });
 
+  // #2732: at most one `critical` scanner per category. Pre-fix every SCA
+  // and secrets entry was marked critical, so a TypeScript plan returned
+  // three critical scanners (npm-audit + osv-scanner + gitleaks) — making
+  // the priority signal meaningless.
+  it('emits at most one critical scanner per category', () => {
+    const languages = ['TypeScript', 'Python', 'Go', 'Ruby', 'Java'] as const;
+    for (const language of languages) {
+      const plan = buildPlanFromAnalysis(makeAnalysis({ language }), {
+        repo: 'test/repo',
+      });
+
+      const criticalsByCategory = new Map<string, string[]>();
+      for (const rec of plan.recommendations) {
+        if (rec.priority !== 'critical') continue;
+        const list = criticalsByCategory.get(rec.category) ?? [];
+        list.push(rec.name);
+        criticalsByCategory.set(rec.category, list);
+      }
+
+      for (const [category, names] of criticalsByCategory) {
+        expect(names, `${language}/${category} has >1 critical: ${names.join(', ')}`).toHaveLength(
+          1
+        );
+      }
+    }
+  });
+
   // #2732: drift gate — every scanner that the recommendation flow can surface
   // must have a github-actions CI snippet, otherwise consumers get null and
   // can't bootstrap CI. Pre-fix, 4 of the TypeScript recommendations returned

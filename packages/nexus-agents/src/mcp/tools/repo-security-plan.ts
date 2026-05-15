@@ -219,13 +219,23 @@ interface CategoryRecOptions {
 
 /** Collect recommendations for a single category. */
 function collectCategoryRecs(recs: ScannerRecommendation[], opts: CategoryRecOptions): void {
+  // #2732: at most one `critical` slot per category — the first scanner
+  // picked is the "must run" one, subsequent scanners in the same
+  // category demote to `recommended`. Pre-fix SAST already enforced this
+  // (an inline `isFirst` flag for category === 'sast'); SCA and secrets
+  // skipped the demotion and marked every entry critical, so a TypeScript
+  // plan came back with 3+ critical scanners. `opts.priority` is now the
+  // priority applied to the *primary* slot only; remaining slots are
+  // always `recommended` regardless of what the caller passed.
+  let primarySlotFilled = recs.some((r) => r.category === opts.category);
   for (const name of opts.names) {
     if (recs.length >= opts.ctx.maxScanners) break;
     if (isAlreadyUsed(name, opts.ctx.existing)) continue;
     const entry = findScanner(name, opts.ctx.scanners);
     if (!entry) continue;
     if (opts.ctx.categoryFilter && !opts.ctx.categoryFilter.has(opts.category)) continue;
-    const isFirst = opts.category === 'sast' && recs.length === 0;
+    const priority = primarySlotFilled ? 'recommended' : opts.priority;
+    primarySlotFilled = true;
     recs.push({
       name,
       displayName: entry.displayName,
@@ -233,7 +243,7 @@ function collectCategoryRecs(recs: ScannerRecommendation[], opts: CategoryRecOpt
       license: entry.license,
       pricingModel: entry.pricingModel,
       rationale: opts.rationale(entry),
-      priority: isFirst ? 'critical' : opts.priority,
+      priority,
       ciSnippet: generateCiSnippet(name, opts.ctx.ciProvider),
     });
   }
@@ -250,7 +260,7 @@ function collectLanguageRecs(
     names: langMap.sast,
     category: 'sast',
     rationale: (e) => `${e.displayName} provides SAST for ${lang}`,
-    priority: 'recommended',
+    priority: 'critical',
     ctx,
   });
   collectCategoryRecs(recs, {
