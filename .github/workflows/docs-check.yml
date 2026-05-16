@@ -363,6 +363,22 @@ jobs:
             exit 1
           fi
 
+  # Job 9b: Harness Alignment Drift Gate (#2805 Phase 5)
+  # Fails when any harness discovery file (.cursor/, .windsurf/, .aider.conf.yml,
+  # .continue/, .clinerules/) exists without referencing AGENTS.md. Enforces the
+  # option-B federation invariant: redirects, never duplication.
+  harness-alignment:
+    name: Harness Alignment Drift
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup-node
+
+      - name: Check harness configs redirect to AGENTS.md
+        run: npx tsx scripts/check-harness-alignment.ts
+
   # Job 10: Markdown Linting
   markdown-lint:
     name: Markdown Lint
