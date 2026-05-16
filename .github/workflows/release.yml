@@ -75,7 +75,14 @@ jobs:
           commit: 'chore(release): version packages'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # Auth: npm trusted publishing via OIDC. NPM_TOKEN is no longer
+          # used — the workflow's `id-token: write` permission produces an
+          # OIDC token that npm trusts via the per-package trusted-publisher
+          # configuration on npmjs.com (Settings → Trusted Publishers).
+          # Configured for: nexus-agents, nexus-memory.
+          # NPM_CONFIG_PROVENANCE: true is kept so npm publish auto-signs
+          # the artifact with Sigstore — the same OIDC token covers both
+          # auth and provenance.
           NPM_CONFIG_PROVENANCE: true
 
       - name: Detect publish-race version skew (#2382)
@@ -113,7 +120,9 @@ jobs:
         if: steps.changesets.outputs.published != 'true'
         shell: bash
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # OIDC trusted publishing — same auth path as the changesets/action
+          # step above. `id-token: write` at the job level provides the token;
+          # npm validates via the trusted-publisher config on npmjs.com.
           NPM_CONFIG_PROVENANCE: true
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -272,12 +281,12 @@ jobs:
         if: ${{ inputs.dry_run == true }}
         run: pnpm -r publish --access public --no-git-checks --dry-run
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # OIDC trusted publishing — see the comment on the changesets/action
+          # step above. Manual workflow_dispatch uses the same auth path.
           NPM_CONFIG_PROVENANCE: true
 
       - name: Publish packages
         if: ${{ inputs.dry_run != true }}
         run: pnpm -r publish --access public --no-git-checks
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
