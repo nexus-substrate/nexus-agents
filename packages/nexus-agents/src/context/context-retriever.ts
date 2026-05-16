@@ -35,6 +35,7 @@ import type { ILogger } from '../core/logger.js';
 import { createLogger } from '../core/logger.js';
 import { getToolMemory } from '../mcp/tools/tool-memory.js';
 import { getOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
+import { loadPersistedRules } from '../learning/strategy-distiller-persistence.js';
 
 /**
  * What we know about a task, derived from every shared memory backend.
@@ -99,15 +100,47 @@ export async function getContextForTask(options: ContextRetrieverOptions): Promi
       fetchOutcomes(options.category, logger),
     ]);
 
+  const priorStrategies = fetchPriorStrategies(options.category, limit, logger);
+
   return {
     beliefs,
     similarMemories,
     recentLearnings,
     experiencePatterns,
     outcomes,
-    // priorStrategies stays empty until #2797 wires StrategyDistiller persistence.
-    priorStrategies: [],
+    priorStrategies,
   };
+}
+
+/**
+ * Phase 5 of #2792 — surface distilled routing rules in the unified
+ * context. Reads from the persisted rules file (written by
+ * `PersistentStrategyDistiller`) so consumers see the same learnings the
+ * CompositeRouter applies at decision time, without needing a live
+ * router instance.
+ *
+ * Filters to (a) `status === 'active'` (rules that aren't deprecated or
+ * shadowed), (b) `tainted === false` (security gate — tainted rules
+ * never reach consumers per Phase 5 acceptance), and (c) category
+ * matching the task's category or a global rule.
+ */
+function fetchPriorStrategies(
+  category: TaskCategory,
+  limit: number,
+  logger: ILogger
+): readonly DistilledRule[] {
+  try {
+    const all = loadPersistedRules();
+    return all
+      .filter((r) => r.status === 'active' && !r.tainted)
+      .filter((r) => r.category === category || r.category === '*')
+      .slice(0, limit);
+  } catch (error: unknown) {
+    logger.debug('ContextRetriever: prior-strategies fetch failed', {
+      error: formatError(error),
+    });
+    return [];
+  }
 }
 
 async function fetchBeliefs(

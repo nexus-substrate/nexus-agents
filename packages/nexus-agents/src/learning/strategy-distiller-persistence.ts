@@ -176,3 +176,33 @@ export class PersistentStrategyDistiller extends StrategyDistiller {
 registerPersistentDistillerFactory(
   (outcomeStore, logger) => new PersistentStrategyDistiller(outcomeStore, undefined, logger)
 );
+
+/**
+ * Phase 5 of #2792 — read the persisted distilled rules from disk
+ * without needing a live `StrategyDistiller` instance.
+ *
+ * `ContextRetriever` uses this so `UnifiedContext.priorStrategies`
+ * surfaces the routing learnings the CompositeRouter has already
+ * derived, even when the consumer is in a different process / scope
+ * (e.g. an `orchestrate` invocation that hasn't constructed its own
+ * router yet).
+ *
+ * Returns `[]` when the file is missing, corrupt, or unreadable; never
+ * throws. The caller is responsible for filtering to status / category /
+ * tainted as appropriate — this loader returns the raw rule set so
+ * future consumers can apply their own predicates.
+ */
+export function loadPersistedRules(filePath: string = getRulesFile()): readonly DistilledRule[] {
+  if (!existsSync(filePath)) return [];
+  try {
+    const content = readFileSync(filePath, 'utf-8');
+    const parsed: unknown = JSON.parse(content);
+    const result = RulesSnapshotSchema.safeParse(parsed);
+    if (!result.success) return [];
+    return result.data.rules;
+  } catch {
+    // Disk read / parse failures contribute an empty list — the consumer
+    // contract is "absence means no signal," never an exception.
+    return [];
+  }
+}
