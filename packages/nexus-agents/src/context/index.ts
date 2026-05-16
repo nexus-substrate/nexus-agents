@@ -265,9 +265,12 @@ export {
 } from './context-pressure-types.js';
 
 // ContextRetriever — unified read surface across every shared memory backend.
-// Phase 2 of #2792 (closes #2794).
+// Phase 2 of #2792 (closes #2794). Phase 3 (#2795) adds inferTaskCategory +
+// summarizeContextForPrompt for entry-point wiring.
 export {
   getContextForTask,
+  inferTaskCategory,
+  summarizeContextForPrompt,
   type ContextRetrieverOptions,
   type UnifiedContext,
 } from './context-retriever.js';

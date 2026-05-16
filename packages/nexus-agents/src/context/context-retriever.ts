@@ -192,3 +192,71 @@ function fetchOutcomes(
 function formatError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
+
+/**
+ * Best-effort {@link TaskCategory} inference from free-text task content.
+ * Used by entry-point wiring (Phase 3 / #2795) when the caller doesn't
+ * carry a structured category. Keyword-based; if nothing matches,
+ * returns `'exploration'` (which scopes the outcomes summary to the
+ * broadest historical baseline).
+ *
+ * Intentionally simple — this is a *fallback*, not a classifier. Real
+ * classification happens at routing time via `cli-adapters/task-classifier`.
+ */
+export function inferTaskCategory(task: string): TaskCategory {
+  const t = task.toLowerCase();
+  if (/security|vulnerab|cve|threat|owasp|injection|xss/.test(t)) return 'security_review';
+  if (/architect|design doc|rfc|adr|system design/.test(t)) return 'architecture';
+  if (/test|spec|coverage|vitest|jest|pytest/.test(t)) return 'testing';
+  if (/review|audit|critique|feedback/.test(t)) return 'code_review';
+  if (/docs|documentation|readme|tutorial|guide/.test(t)) return 'documentation';
+  if (/plan|roadmap|epic|sprint|breakdown/.test(t)) return 'planning';
+  if (/research|investigate|explore|survey|analyze/.test(t)) return 'research';
+  if (/deploy| ci |\bcd\b|pipeline|kubernetes|docker|infra|terraform/.test(t)) return 'devops';
+  if (/implement|build|create|add|refactor|fix|bug|feature/.test(t)) return 'code_generation';
+  return 'exploration';
+}
+
+/**
+ * Project a {@link UnifiedContext} into a compact human-readable block
+ * suitable for prepending to a system prompt. Skips empty sections so
+ * the prefix never wastes tokens on \"no signal.\"
+ *
+ * Phase 3 of #2792 — used by `orchestrate` and graph workflow start to
+ * surface accumulated memory at the entry point.
+ */
+export function summarizeContextForPrompt(ctx: UnifiedContext): string {
+  const sections: string[] = [];
+
+  if (ctx.beliefs.length > 0) {
+    const lines = ctx.beliefs
+      .slice(0, 5)
+      .map((b) => `- ${b.subject} ${b.predicate} ${b.object} (confidence: ${b.confidence})`);
+    sections.push(`### Beliefs\n${lines.join('\n')}`);
+  }
+
+  if (ctx.similarMemories.length > 0) {
+    const lines = ctx.similarMemories
+      .slice(0, 3)
+      .map((m) => `- ${m.attributes.contextDescription}`);
+    sections.push(`### Similar prior work\n${lines.join('\n')}`);
+  }
+
+  if (ctx.experiencePatterns.length > 0) {
+    const lines = ctx.experiencePatterns
+      .slice(0, 3)
+      .map(
+        (p) =>
+          `- ${p.taskType}: ${(p.successRate * 100).toFixed(0)}% success over ${String(p.attemptCount)} attempts`
+      );
+    sections.push(`### Observed patterns\n${lines.join('\n')}`);
+  }
+
+  if (ctx.outcomes !== null && ctx.outcomes.totalTasks > 0) {
+    sections.push(
+      `### Outcomes for this category\n- ${String(ctx.outcomes.totalTasks)} prior tasks, ${(ctx.outcomes.successRate * 100).toFixed(0)}% success`
+    );
+  }
+
+  return sections.length === 0 ? '' : `## Prior Context (Nexus Memory)\n${sections.join('\n\n')}`;
+}

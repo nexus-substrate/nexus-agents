@@ -49,6 +49,39 @@ import { GRAPH_TIMEOUTS } from '../../config/timeouts.js';
 const DEFAULT_MAX_STEPS = GRAPH_TIMEOUTS.maxSteps;
 const DEFAULT_TIMEOUT_MS = GRAPH_TIMEOUTS.defaultMs;
 
+/**
+ * Well-known key under which {@link executeGraph} stashes the unified
+ * memory context (Phase 3 of #2792). Node implementations may read
+ * `state[GRAPH_UNIFIED_CONTEXT_KEY]` to access beliefs, similar memories,
+ * recent learnings, observed patterns, and outcomes for the task type
+ * inferred from the graph's initial inputs.
+ */
+export const GRAPH_UNIFIED_CONTEXT_KEY = '__unifiedContext';
+
+async function populateUnifiedContextOnState(state: GraphState): Promise<void> {
+  try {
+    const taskCandidate = state['task'];
+    if (typeof taskCandidate !== 'string' || taskCandidate === '') return;
+
+    const { getContextForTask, inferTaskCategory } =
+      await import('../../context/context-retriever.js');
+    const ctx = await getContextForTask({
+      task: taskCandidate,
+      category: inferTaskCategory(taskCandidate),
+      logger,
+    });
+    state[GRAPH_UNIFIED_CONTEXT_KEY] = ctx;
+    logger.debug('Graph start: unified memory context stashed', {
+      beliefs: ctx.beliefs.length,
+      similarMemories: ctx.similarMemories.length,
+      experiencePatterns: ctx.experiencePatterns.length,
+      outcomesTotal: ctx.outcomes?.totalTasks ?? 0,
+    });
+  } catch (error: unknown) {
+    logger.debug('Graph start: context retrieval failed', { error: getErrorMessage(error) });
+  }
+}
+
 /** Mutable execution context threaded through the super-step loop. */
 interface ExecutionContext {
   state: GraphState;
@@ -83,6 +116,13 @@ export async function executeGraph(
 ): Promise<Result<GraphExecutionResult, Error>> {
   const startTime = getTimeProvider().now();
   const initialState = initializeState(graph, initialInputs);
+
+  // Phase 3 of #2792 — read unified memory context at graph start and stash
+  // under a well-known key so node implementations can consume it without
+  // a second fetch. Best-effort: failure is logged and silently produces
+  // an empty context.
+  await populateUnifiedContextOnState(initialState);
+
   const ctx: ExecutionContext = {
     state: initialState,
     allResults: [],
