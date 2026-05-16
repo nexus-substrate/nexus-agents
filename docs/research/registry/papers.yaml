@@ -5312,3 +5312,39 @@ papers:
     venue_tier: 0
     quality_score: 2
     evidence_tier: low
+  arxiv-2505.12601:
+    title: 'Rethinking Predictive Modeling for LLM Routing: When Simple kNN Beats Complex Learned Routers'
+    authors: []
+    source: arxiv
+    arxiv_id: '2505.12601'
+    url: https://arxiv.org/abs/2505.12601
+    publication_date: 2025-05
+    venue: null
+    topics:
+      - routing
+    tags:
+      - knn
+      - routing
+      - llm
+      - cosine-similarity
+    reviewed_date: 2026-05-16
+    reviewed_in: ''
+    summary: |
+      Demonstrates that a well-tuned k-Nearest Neighbors (kNN) router matches
+      or outperforms state-of-the-art learned routers across diverse tasks.
+      Uses cosine similarity in embedding space for nearest-neighbor lookup.
+      Theoretical lower-sample-complexity argument for kNN when the embedding
+      space has strong locality. Source paper cited by KnnRoutingStage (#2776).
+    key_findings:
+      - kNN router matches learned-router performance with lower sample complexity
+      - Strong locality in embedding spaces favors cosine-similarity retrieval
+      - Theoretical bounds on sample complexity for kNN routing
+    relevance: high
+    techniques_extracted:
+      - knn-routing
+    related_issues:
+      - 2776
+    implementation_status: implemented
+    venue_tier: 0
+    quality_score: 3
+    evidence_tier: low
