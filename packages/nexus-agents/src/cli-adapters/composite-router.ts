@@ -146,6 +146,15 @@ export class CompositeRouter implements ICompositeRouter {
   private linucbBandit?: LinUCBBandit;
   private latencyTracker?: LatencyTracker;
   private routingMemory?: RoutingMemory;
+  /**
+   * Most recently consulted unified memory context (Phase 3 of #2792).
+   * Set on every {@link route} call so tests + telemetry can inspect what
+   * the router saw at decision time. Typed as `unknown` here to avoid
+   * pulling the typed surface into this module's circular-dep zone — the
+   * field is for observability; callers that need typed reads should call
+   * `getContextForTask` directly.
+   */
+  private lastUnifiedContext?: unknown;
   /** Metrics collector for routing observability (Issue #559) */
   private metricsCollector?: IRoutingMetricsCollector;
   /** Orchestration observer for routing decision tracking (Issue #587) */
@@ -394,12 +403,48 @@ export class CompositeRouter implements ICompositeRouter {
   }
 
   async route(task: CliTask): Promise<Result<CompositeRoutingDecision, CompositeRoutingError>> {
+    // Phase 3 of #2792 — read accumulated memory before routing decides.
+    // Fire-and-forget for now: the call exercises the read path so beliefs,
+    // similar memories, recent learnings, and prior outcomes all get loaded
+    // and logged. Subsequent phases plumb the context into the routing
+    // stages as a quality signal.
+    void this.consultUnifiedContext(task);
+
     const result = await this.executeRouting(task, getTimeProvider().now());
     // Emit routing.decision to pipeline event bus for trace persistence (#1687)
     if (result.ok) {
       this.emitRoutingDecision(result.value, task.content);
     }
     return result;
+  }
+
+  /**
+   * Read the unified memory context for this task. Best-effort, never
+   * throws. Sets `this.lastUnifiedContext` so external observers (tests,
+   * telemetry) can inspect what the router consulted at decision time.
+   */
+  private async consultUnifiedContext(task: CliTask): Promise<void> {
+    try {
+      const { getContextForTask, inferTaskCategory } =
+        await import('../context/context-retriever.js');
+      const ctx = await getContextForTask({
+        task: task.content,
+        category: inferTaskCategory(task.content),
+        logger: this.logger,
+      });
+      this.lastUnifiedContext = ctx;
+      this.logger.debug('CompositeRouter: unified memory context', {
+        beliefs: ctx.beliefs.length,
+        similarMemories: ctx.similarMemories.length,
+        recentLearnings: ctx.recentLearnings.length,
+        experiencePatterns: ctx.experiencePatterns.length,
+        outcomesTotal: ctx.outcomes?.totalTasks ?? 0,
+      });
+    } catch (error: unknown) {
+      this.logger.debug('CompositeRouter: context retrieval failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   /**

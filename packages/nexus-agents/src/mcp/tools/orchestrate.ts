@@ -24,6 +24,11 @@ import {
 } from '../../pipeline/v2-orchestrate.js';
 import { resolveV2Config } from '../../pipeline/v2-config.js';
 import {
+  getContextForTask,
+  inferTaskCategory,
+  summarizeContextForPrompt,
+} from '../../context/context-retriever.js';
+import {
   ok,
   err,
   createLogger,
@@ -984,6 +989,13 @@ async function runOrchestratePipeline(params: {
   const v2Config = resolveV2Config();
   if (v2Config.orchestrateEnabled) instrumentV2Orchestrate(input, logger);
 
+  // Phase 3 of #2792 — every entry point reads accumulated memory before
+  // dispatching work. Gated behind NEXUS_CONTEXT_RETRIEVER_INJECT (default
+  // off) for the bake period; the call always runs so the read path is
+  // exercised, but the prompt-augmentation step is opt-in until we measure
+  // the effect on prompt size and downstream behavior.
+  await injectMemoryContextForOrchestrate(input, logger);
+
   const agentPlan = v2Config.aorchestraEnabled ? computeAgentPlan(input.task, logger) : undefined;
   const workerDispatchResult = await tryWorkerDispatch(
     agentPlan,
@@ -1008,6 +1020,46 @@ async function runOrchestratePipeline(params: {
     durationMs: getTimeProvider().now() - startMs,
   });
   return assembleOrchestrateOutput(result.value, agentPlan, workerDispatchResult);
+}
+
+/**
+ * Phase 3 of #2792 — read the unified memory context at the orchestration
+ * entry point so every task starts informed by everything we've learned.
+ * The fetch always runs (so the read path is exercised even when nothing
+ * downstream consumes the result); prompt augmentation is gated behind
+ * `NEXUS_CONTEXT_RETRIEVER_INJECT=1` for the bake period.
+ *
+ * Mutates `input.context` with `priorMemorySummary` when the flag is set
+ * so downstream stages can read it without a second fetch.
+ */
+async function injectMemoryContextForOrchestrate(
+  input: OrchestrateInput,
+  logger: ILogger
+): Promise<void> {
+  try {
+    const ctx = await getContextForTask({
+      task: input.task,
+      category: inferTaskCategory(input.task),
+      logger,
+    });
+    const summary = summarizeContextForPrompt(ctx);
+    logger.debug('orchestrate: unified memory context', {
+      beliefs: ctx.beliefs.length,
+      similarMemories: ctx.similarMemories.length,
+      recentLearnings: ctx.recentLearnings.length,
+      experiencePatterns: ctx.experiencePatterns.length,
+      outcomesTotal: ctx.outcomes?.totalTasks ?? 0,
+      summaryChars: summary.length,
+    });
+    if (process.env['NEXUS_CONTEXT_RETRIEVER_INJECT'] === '1' && summary !== '') {
+      // Stash on input.context for downstream stages.
+      const mutable = input as { context?: Record<string, unknown> };
+      mutable.context = { ...(mutable.context ?? {}), priorMemorySummary: summary };
+    }
+  } catch (error: unknown) {
+    // Never block orchestration on a memory read failure.
+    logger.debug('orchestrate: context retrieval failed', { error: getErrorMessage(error) });
+  }
 }
 
 function createOrchestrateHandler(deps: OrchestrateDeps) {
