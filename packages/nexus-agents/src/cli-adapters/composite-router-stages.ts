@@ -78,7 +78,7 @@ export interface StageDependencies {
   resourceStrategyStage: ResourceStrategyStage | undefined;
   /** Distilled rule stage instance (Issue #999) */
   distilledRuleStage: DistilledRuleStage | undefined;
-  /** KNN routing stage instance (arXiv:2507.05370) */
+  /** KNN routing stage instance (arXiv:2505.12601) */
   knnRoutingStage: KnnRoutingStage | undefined;
 }
 
@@ -377,13 +377,13 @@ export async function runDistilledRuleStage(
   return { scores: new Map(scores), rulesApplied };
 }
 
-/** KNN routing stage result. (arXiv:2507.05370) */
+/** KNN routing stage result. (arXiv:2505.12601) */
 export interface KnnRoutingStageResult {
   scores: Map<CliName, number>;
   hasExperience: boolean;
 }
 
-/** Runs KNN experience-based routing stage. (arXiv:2507.05370) */
+/** Runs KNN experience-based routing stage. (arXiv:2505.12601) */
 export async function runKnnRoutingStage(
   task: CliTask,
   candidates: CliName[],

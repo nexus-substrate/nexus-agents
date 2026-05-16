@@ -6,7 +6,7 @@
  * retrieves similar past tasks and weights by success rate.
  *
  * @module cli-adapters/routing/stages/knn-routing-stage
- * (Source: arXiv:2507.05370 — KNN-based model routing)
+ * (Source: arXiv:2505.12601 — KNN-based model routing)
  */
 
 import type { Result } from '../../../core/result.js';
