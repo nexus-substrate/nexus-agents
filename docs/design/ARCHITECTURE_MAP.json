@@ -69,7 +69,7 @@
         "DEFAULTS"
       ],
       "canonical_paths": {
-        "model_registry": "src/config/model-capabilities.ts",
+        "model_registry": "src/config/in-tree-data.ts",
         "model_helpers": "src/config/model-config-helpers.ts",
         "app_config": "src/config/schemas.ts",
         "defaults": "src/config/defaults.ts"

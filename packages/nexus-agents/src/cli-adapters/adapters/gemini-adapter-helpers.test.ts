@@ -22,7 +22,7 @@ import {
 
 describe('GEMINI_LEGACY_DEFAULTS', () => {
   it('has no per-model overrides (all models in canonical registry)', () => {
-    // All current models are in model-capabilities.ts
+    // All current models are in config/in-tree-data.ts (the canonical registry)
     expect(Object.keys(GEMINI_LEGACY_DEFAULTS.displayNames)).toHaveLength(0);
     expect(Object.keys(GEMINI_LEGACY_DEFAULTS.contextWindows)).toHaveLength(0);
     expect(Object.keys(GEMINI_LEGACY_DEFAULTS.inputCosts)).toHaveLength(0);

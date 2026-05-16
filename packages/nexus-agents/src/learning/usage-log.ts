@@ -12,7 +12,7 @@
  *   2. `loadUsageEvents({...})` — read events for a window, filtered
  *      by model / category.
  *   3. `computeCostUSD(modelId, inputTokens, outputTokens)` — compute
- *      cost from `config/model-capabilities.ts` pricing.
+ *      cost from `config/in-tree-data.ts` pricing via `lookupInTreeCapability`.
  *
  * The `usage` CLI command (cli/usage-command.ts) consumes this for the
  * operator dashboard. Existing OutcomeStore is intentionally untouched
@@ -35,7 +35,7 @@ export interface UsageEvent {
   /** Token counts. */
   readonly inputTokens: number;
   readonly outputTokens: number;
-  /** Cost in USD. Computed at write time from pricing in model-capabilities. */
+  /** Cost in USD. Computed at write time from pricing in `config/in-tree-data.ts`. */
   readonly usdCost: number;
   /** Wall-clock latency in milliseconds. */
   readonly latencyMs: number;
@@ -54,7 +54,7 @@ export interface UsageEvent {
  * Compute cost in USD given a model and token counts. Returns 0 when the
  * model has no pricing data (e.g., free local model, gateway-routed model
  * we don't have rates for). Operators with custom gateways can extend
- * `config/model-capabilities.ts` to add their pricing.
+ * `config/in-tree-data.ts` to add their pricing.
  */
 export function computeCostUSD(modelId: string, inputTokens: number, outputTokens: number): number {
   const cap = lookupInTreeCapability(modelId);

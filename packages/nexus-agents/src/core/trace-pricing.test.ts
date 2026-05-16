@@ -2,7 +2,7 @@
  * Tests for trace-pricing utilities
  *
  * All pricing is derived from the canonical model registry
- * (config/model-capabilities.ts). No legacy model table.
+ * (config/in-tree-data.ts via getDefaultRegistry()). No legacy model table.
  *
  * @module core/trace-pricing.test
  */
