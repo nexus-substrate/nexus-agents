@@ -70,6 +70,15 @@ export const TaskOutcomeSchema = z.object({
    * stratified outcome report break results down by voter role.
    */
   voterRole: z.string().min(1).max(40).optional(),
+  /**
+   * Baseline this outcome forked from (#2697 / Epic F follow-up to #2665).
+   * Set on outcomes recorded inside a fork-then-merge graph branch so
+   * `query({ baselineId: 'B' })` returns every branch outcome forked
+   * from baseline B — letting later analysis compare branches as a
+   * cohort. Free-form string (caller-assigned); typically the parent
+   * node's `executionId` or `taskId`.
+   */
+  baselineId: z.string().min(1).max(64).optional(),
 });
 
 /** Schema for filtering outcomes. */
@@ -83,6 +92,8 @@ export const OutcomeQuerySchema = z.object({
   limit: z.number().int().positive().optional(),
   /** Exclude outcomes with any of these quality signals (#1680). */
   excludeQualitySignals: z.array(z.string()).optional(),
+  /** Restrict to outcomes recorded against a specific baseline (#2697). */
+  baselineId: z.string().min(1).max(64).optional(),
 });
 
 // ============================================================================

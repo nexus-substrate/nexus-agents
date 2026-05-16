@@ -102,8 +102,49 @@ describe('OutcomeQuerySchema', () => {
       failureCategory: 'timeout',
       since: '2026-01-01T00:00:00Z',
       limit: 10,
+      baselineId: 'baseline-abc',
     });
     expect(result.success).toBe(true);
+  });
+
+  // #2697: fork-session branch correlation. Optional + bounded.
+  it('accepts baselineId in a 1-64 char range', () => {
+    expect(OutcomeQuerySchema.safeParse({ baselineId: 'b' }).success).toBe(true);
+    expect(OutcomeQuerySchema.safeParse({ baselineId: 'x'.repeat(64) }).success).toBe(true);
+    expect(OutcomeQuerySchema.safeParse({ baselineId: '' }).success).toBe(false);
+    expect(OutcomeQuerySchema.safeParse({ baselineId: 'x'.repeat(65) }).success).toBe(false);
+  });
+});
+
+describe('TaskOutcomeSchema baselineId (#2697)', () => {
+  function base(): Record<string, unknown> {
+    return {
+      id: 'o-1',
+      cli: 'claude' as const,
+      category: 'code_generation' as const,
+      model: 'claude-sonnet',
+      success: true,
+      durationMs: 100,
+      timestamp: '2026-05-16T00:00:00Z',
+      source: 'delegate' as const,
+    };
+  }
+
+  it('accepts outcomes without a baselineId (backward-compatible)', () => {
+    const r = TaskOutcomeSchema.safeParse(base());
+    expect(r.success).toBe(true);
+  });
+
+  it('accepts outcomes with a baselineId in bounds', () => {
+    const r = TaskOutcomeSchema.safeParse({ ...base(), baselineId: 'fork-root-123' });
+    expect(r.success).toBe(true);
+  });
+
+  it('rejects empty or oversized baselineId', () => {
+    expect(TaskOutcomeSchema.safeParse({ ...base(), baselineId: '' }).success).toBe(false);
+    expect(TaskOutcomeSchema.safeParse({ ...base(), baselineId: 'x'.repeat(65) }).success).toBe(
+      false
+    );
   });
 });
 
@@ -775,5 +816,50 @@ describe('OutcomeStore.queryByModelWithFamilyFallback (#2548)', () => {
     // BUT the category filter applies to the family scope too.
     expect(result.outcomes).toHaveLength(3);
     expect(result.outcomes.every((o) => o.category === 'architecture')).toBe(true);
+  });
+});
+
+// ============================================================================
+// #2697 baselineId filter
+// ============================================================================
+
+describe('OutcomeStore baselineId filter (#2697)', () => {
+  let store: OutcomeStore;
+
+  beforeEach(() => {
+    store = new OutcomeStore();
+  });
+
+  it('round-trips baselineId through append + query', () => {
+    store.append(makeOutcome({ id: 'fork-1', baselineId: 'baseline-a' }));
+    store.append(makeOutcome({ id: 'fork-2', baselineId: 'baseline-a' }));
+    store.append(makeOutcome({ id: 'unrelated' }));
+    const cohort = store.query({ baselineId: 'baseline-a' });
+    expect(cohort).toHaveLength(2);
+    expect(cohort.map((o) => o.id).sort()).toEqual(['fork-1', 'fork-2']);
+  });
+
+  it('omitting baselineId filter returns all outcomes (no narrowing)', () => {
+    store.append(makeOutcome({ id: '1', baselineId: 'b1' }));
+    store.append(makeOutcome({ id: '2' })); // no baselineId
+    expect(store.query({})).toHaveLength(2);
+  });
+
+  it('composes with other filters (cli + baselineId)', () => {
+    store.append(makeOutcome({ id: 'a', cli: 'claude', baselineId: 'B' }));
+    store.append(makeOutcome({ id: 'b', cli: 'gemini', baselineId: 'B' }));
+    store.append(makeOutcome({ id: 'c', cli: 'claude', baselineId: 'C' }));
+    const result = store.query({ cli: 'claude', baselineId: 'B' });
+    expect(result).toHaveLength(1);
+    expect(result[0]?.id).toBe('a');
+  });
+
+  it('baselineId-tagged outcomes survive the JSONL round-trip when persisted', () => {
+    // Persistence path uses TaskOutcomeSchema.safeParse — the new optional
+    // field must round-trip cleanly. (#2697)
+    const recorded = makeOutcome({ id: 'fork', baselineId: 'baseline-xyz' });
+    store.append(recorded);
+    const back = store.query({ baselineId: 'baseline-xyz' });
+    expect(back[0]?.baselineId).toBe('baseline-xyz');
   });
 });
