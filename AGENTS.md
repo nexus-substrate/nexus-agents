@@ -128,6 +128,18 @@ The unified `MemoryRegistry` (Phase 3+) is the discovery + telemetry surface for
 
 Each backend MUST still persist via its existing storage path (no parallel layouts) and SHOULD expose a `count()` (or equivalent) for ad-hoc inspection. Future Phase 7.1+ work can fold them in once a clear cross-process consumer needs them. Until then, treat the `MemoryRegistry` as covering the **shared-singleton subset** of in-tree memory.
 
+### Per-instance → shared-substrate promotion (#2792 Phase 6)
+
+Per-instance backends stay per-instance, but the _signal they produce_ should reach the shared substrate so other agents/tasks benefit. The pattern: when a per-instance backend observes a stabilized signal, it fires an optional promoter callback that writes a `Belief`/outcome/distilled-rule to the shared store.
+
+| Backend                             | Signal                                                                               | Promotion target                                                                                                                      | Wired?                                                                                                                                                                                              |
+| ----------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SkillLibrary`                      | Skill crosses `minSuccessesForPromotion` (default 5 successful executions)           | Belief: `subject="skill:{name}"`, `predicate="is_reliable_for"`, `object="{category}"`                                                | ✅ via `SkillLibraryConfig.skillPromoter`; wired in `cli-server-skills.ts`                                                                                                                          |
+| `SicaVersionManager`                | New version's `successCount / executionCount` exceeds parent's by a sustained margin | Outcome record under category `"sica_evolution"` with `wasRetried: true` semantics — flows through routing's regular outcome pipeline | ⏳ template: add a `versionPromoter` callback in `SicaConfig` mirroring `skillPromoter`; fire from `recordExecution` when the active version's metrics surpass parent's by ≥10% over ≥10 executions |
+| `MemoryState` (agent exec patterns) | Recurring pattern across multiple `{agentId, role}` instances                        | StrategyDistiller candidate rule via `OutcomeStore.append` (the distiller picks it up on next pass)                                   | ⏳ template: extract `MemoryState` pattern summarization into a `memoryStatePromoter` hook; fire from `recordPattern` or equivalent                                                                 |
+
+The "⏳ template" rows describe how to add the bridge when a concrete use case materializes — they follow the same shape as the `SkillLibrary` bridge (optional config field + dynamic-import promoter in the per-singleton wiring point + dedicated test). Implement on demand, not speculatively.
+
 ## Track all work — deferring is fine, untracked is not
 
 Every piece of identified work — even work you're explicitly deferring — needs a **GitHub issue**. Memory notes, PR-description "follow-up" bullets, code TODOs, and conversation summaries are NOT tracking. They get forgotten. If the work isn't in an issue, it won't get done.
