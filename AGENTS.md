@@ -109,11 +109,24 @@ Do not create parallel implementations — modify existing files at these canoni
 | MCP tools         | `registerTools()` — `src/mcp/tools/index.ts`                                                                   |
 | Model registry    | `ModelRegistry` + `getDefaultRegistry()` — `src/config/model-registry.ts` (data: `src/config/in-tree-data.ts`) |
 | Adapter registry  | `UnifiedAdapterRegistry` — `src/adapters/unified-registry.ts`                                                  |
+| Memory registry   | `MemoryRegistry` + `getMemoryRegistry()` — `packages/nexus-memory/src/registry.ts`                             |
 | Graph workflows   | `GraphBuilder` — `src/orchestration/graph/graph-builder.ts`                                                    |
 | Pipeline runner   | `PipelineRunner` — `src/pipeline/pipeline-runner.ts`                                                           |
 | Security pipeline | `src/security/index.ts`                                                                                        |
 
 All task routing goes through: `Task → BudgetRouter → ZeroRouter → PreferenceRouter → TopsisRouter → LinUCB → Selected Model`. Do NOT directly instantiate stage routers — use `CompositeRouter.route(task)`.
+
+### Memory contract scope (#2766)
+
+The unified `MemoryRegistry` (Phase 3+) is the discovery + telemetry surface for memory concept-spaces that have a process-wide singleton. As of Phase 7 (#2773) the following backends are **intentionally per-instance** and out of registry scope:
+
+- **SICA `SicaVersionManager`** — per-agent version history; lives inside each SICA agent instance and disposes with it.
+- **`SkillLibrary`** — per-agent skill set; constructed on demand by skill consumers.
+- **`StrategyDistiller`** — derived rules over OutcomeStore; one instance per learning loop.
+- **`MemoryState` (agent execution patterns)** — per-`{agentId, role}` snapshot owned by the base-agent.
+- **`SharedMemoryStore` (pipeline scratch)** — in-process, scoped to a single pipeline run by design (#2766 Phase 7 acceptance).
+
+Each backend MUST still persist via its existing storage path (no parallel layouts) and SHOULD expose a `count()` (or equivalent) for ad-hoc inspection. Future Phase 7.1+ work can fold them in once a clear cross-process consumer needs them. Until then, treat the `MemoryRegistry` as covering the **shared-singleton subset** of in-tree memory.
 
 ## Track all work — deferring is fine, untracked is not
 
