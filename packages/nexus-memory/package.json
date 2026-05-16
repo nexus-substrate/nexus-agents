@@ -1,0 +1,38 @@
+{
+  "name": "nexus-memory",
+  "version": "0.1.0",
+  "description": "Unified memory subsystem for nexus-agents and nexus-eval-* — IMemoryBackend contract, MemoryRegistry, telemetry, one-shot importer",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "eslint src/"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.9.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "tsup": "^8.5.0",
+    "typescript": "^6.0.3",
+    "vitest": "4.1.5"
+  }
+}
