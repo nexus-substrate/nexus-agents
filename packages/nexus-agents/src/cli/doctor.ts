@@ -34,6 +34,8 @@ import { createServer } from '../mcp/server.js';
 import { printDoctorResults } from './doctor-formatting.js';
 import { probeCli } from './cli-auth-probe.js';
 import type { AuthProbeResult } from './cli-auth-probe.js';
+import { checkHarnessAlignment } from './doctor-harness-alignment.js';
+import type { HarnessAlignmentCheck } from './doctor-harness-alignment.js';
 
 /** Required Node.js major version. */
 const REQUIRED_NODE_MAJOR = 22;
@@ -203,6 +205,8 @@ export interface DoctorResult {
   readonly dataDirectory: DataDirectoryCheck;
   /** Sandbox detection + heuristic verification (#2501). */
   readonly sandbox: SandboxCheck;
+  /** Per-harness config alignment with AGENTS.md federation (#2805). */
+  readonly harnessAlignment: HarnessAlignmentCheck;
   readonly allHealthy: boolean;
   readonly timestamp: Date;
 }
@@ -662,6 +666,7 @@ export async function runDoctor(): Promise<DoctorResult> {
   const sqliteCheck = await checkSqlite();
   const dataDirectory = checkDataDirectory();
   const sandbox = checkSandbox();
+  const harnessAlignment = checkHarnessAlignment();
 
   // At least one API key configured or one CLI authenticated
   const hasAuthMethod =
@@ -685,6 +690,7 @@ export async function runDoctor(): Promise<DoctorResult> {
     sqliteCheck,
     dataDirectory,
     sandbox,
+    harnessAlignment,
     allHealthy,
     timestamp: new Date(getTimeProvider().now()),
   };

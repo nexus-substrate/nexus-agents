@@ -92,6 +92,13 @@ function makeDoctorResult(overrides: Partial<DoctorResult> = {}): DoctorResult {
       mismatch: false,
       dataDirInsideRepo: false,
     },
+    harnessAlignment: {
+      agentsMdExists: true,
+      files: [],
+      alignedCount: 0,
+      driftCount: 0,
+      missingCount: 0,
+    },
     allHealthy: true,
     timestamp: new Date(),
     ...overrides,
