@@ -275,8 +275,23 @@ export function getOutcomeStore(): OutcomeStore {
     } else {
       singletonStore = new OutcomeStore();
     }
+    // Phase 6 of #2766: surface the store on the unified registry for
+    // discovery + telemetry. Fire-and-forget; failure here must never
+    // block routing — the existing `getOutcomeStore()` callers don't
+    // depend on this side effect.
+    void attachOutcomeStoreToRegistry(singletonStore);
   }
   return singletonStore;
+}
+
+async function attachOutcomeStoreToRegistry(store: OutcomeStore): Promise<void> {
+  try {
+    const { getMemoryRegistry } = await import('nexus-memory');
+    const { OutcomeStoreAdapter } = await import('./outcome-store-adapter.js');
+    getMemoryRegistry().attach('outcomes', new OutcomeStoreAdapter(store));
+  } catch {
+    // Already attached or nexus-memory unavailable — silent.
+  }
 }
 
 /** Reset the singleton (for testing). */
