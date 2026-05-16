@@ -44,8 +44,9 @@ export class MemoryRegistry {
 
   constructor(options: MemoryRegistryOptions = {}) {
     if (options.dbPath !== undefined) {
-      this.db = new Database(options.dbPath);
-      this.db.pragma('journal_mode = WAL');
+      const db = new Database(options.dbPath);
+      (db as unknown as { pragma(s: string): void }).pragma('journal_mode = WAL');
+      this.db = db;
     }
   }
 

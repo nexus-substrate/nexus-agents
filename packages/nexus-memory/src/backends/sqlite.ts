@@ -115,8 +115,9 @@ export class SqliteBackend<TKey, TValue> implements IMemoryBackend<TKey, TValue>
       this.db = options.db;
       this.ownsDb = false;
     } else {
-      this.db = new Database(options.dbPath);
-      this.db.pragma('journal_mode = WAL');
+      const db = new Database(options.dbPath);
+      (db as unknown as { pragma(s: string): void }).pragma('journal_mode = WAL');
+      this.db = db;
       this.ownsDb = true;
     }
     if (options.schema !== undefined) {
