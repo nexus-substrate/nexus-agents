@@ -77,6 +77,8 @@ function createMockRun(
 function createMockGet(store: MockStore, sql: string): (...params: unknown[]) => unknown {
   return (...params: unknown[]): unknown => {
     if (sql.includes('COUNT') && sql.includes('memories')) {
+      // Param-less `SELECT COUNT(*) FROM memories` → total row count.
+      if (params.length === 0) return { count: store.memories.size };
       const [key] = params as [string];
       return { count: store.memories.has(key) ? 1 : 0 };
     }
@@ -420,6 +422,20 @@ describe('initialization', () => {
 
   it('initializes with database', () => {
     expect(mockDb.store).toBeDefined();
+  });
+
+  it('count() delegates to base and returns row total', async () => {
+    mockDb.store.memories.set('a', createMockEntry('a', 'first', 'high', new Date()));
+    mockDb.store.memories.set('b', createMockEntry('b', 'second', 'low', new Date()));
+    const result = await backend.count();
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value).toBe(2);
+  });
+
+  it('count() returns 0 on empty store', async () => {
+    const result = await backend.count();
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value).toBe(0);
   });
 });
 

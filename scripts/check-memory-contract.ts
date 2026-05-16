@@ -36,12 +36,14 @@ interface ProbePattern {
 const PROBES: readonly ProbePattern[] = [
   {
     id: 'better-sqlite3-direct',
-    regex: /\bnew\s+Database\s*\(/,
+    // `\b` before `Database` boundary-checks both ends so `new DatabaseAdapter(`
+    // and `new DatabaseHelper(` no longer false-positive.
+    regex: /\bnew\s+Database(?!\w)\s*\(/,
     description: 'Direct `new Database(...)` from better-sqlite3 — use `MemoryRegistry` instead.',
   },
   {
     id: 'mobimem-direct-construct',
-    regex: /\bnew\s+MobiMem\s*\(/,
+    regex: /\bnew\s+MobiMem(?!\w)\s*\(/,
     description: 'Direct `new MobiMem()` — use `getSharedMobiMem()` (#2719 fix).',
   },
   {

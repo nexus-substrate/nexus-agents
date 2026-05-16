@@ -150,6 +150,10 @@ export class AdaptiveMemoryBackend implements IAdaptiveMemory {
     return this.base.prune(olderThan);
   }
 
+  count(): Promise<Result<number, MemoryError>> {
+    return this.base.count();
+  }
+
   // =========================================================================
   // IAdaptiveMemory Methods
   // =========================================================================

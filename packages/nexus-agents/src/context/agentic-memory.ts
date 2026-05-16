@@ -192,6 +192,9 @@ export class AgenticMemoryBackend implements IAgenticMemory {
   prune(olderThan: Date): Promise<Result<number, MemoryError>> {
     return this.base.prune(olderThan);
   }
+  count(): Promise<Result<number, MemoryError>> {
+    return this.base.count();
+  }
 
   // IAgenticMemory Methods
   async storeWithAttributes(

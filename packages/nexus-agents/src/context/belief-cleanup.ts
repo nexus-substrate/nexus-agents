@@ -80,12 +80,16 @@ export function classifyBeliefs(beliefs: readonly Belief[]): readonly BeliefClea
  * `deleteBelief`, and writes a marker file so subsequent runs no-op.
  *
  * Tests inject the callbacks with in-memory stores; production wires
- * them to `HindsightBeliefMemory.list()` + `.remove()` (or the persisted
+ * them to `HindsightBeliefMemory.query()` + `.forget()` (or the persisted
  * snapshot at `<nexusDataDir>/memory/belief-snapshot.json`).
+ *
+ * Callbacks are async-only: every real implementation is async (the
+ * belief store returns `Promise<Result<...>>`), and tests can wrap
+ * sync data with `Promise.resolve`.
  */
 export interface RunBeliefCleanupOptions {
-  readonly loadBeliefs: () => Promise<readonly Belief[]> | readonly Belief[];
-  readonly deleteBelief: (id: string) => Promise<void> | void;
+  readonly loadBeliefs: () => Promise<readonly Belief[]>;
+  readonly deleteBelief: (id: string) => Promise<void>;
   /** Directory to place the `.belief-cleanup-done` marker. */
   readonly markerDir?: string;
   /** Skip the marker check (force re-run). Tests only. */
@@ -109,13 +113,13 @@ export async function runBeliefCleanup(
     };
   }
 
-  const beliefs = await Promise.resolve(options.loadBeliefs());
+  const beliefs = await options.loadBeliefs();
   const decisions = classifyBeliefs(beliefs);
   const polluted = decisions.filter((d) => d.polluted);
   const samples = polluted.slice(0, 3).map((d) => d.belief.subject);
 
   for (const d of polluted) {
-    await Promise.resolve(options.deleteBelief(d.belief.beliefId));
+    await options.deleteBelief(d.belief.beliefId);
   }
 
   mkdirSync(dirname(markerPath), { recursive: true });

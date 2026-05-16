@@ -19,6 +19,7 @@ import {
   runBeliefCleanup,
 } from './belief-cleanup.js';
 import { BeliefConfidence, BeliefSourceType, type Belief } from './belief-core-types.js';
+import { HindsightBeliefMemory } from './belief-memory.js';
 
 function makeBelief(overrides: Partial<Belief> = {}): Belief {
   return {
@@ -98,9 +99,10 @@ describe('runBeliefCleanup', () => {
     ];
     const deleted: string[] = [];
     const result = await runBeliefCleanup({
-      loadBeliefs: () => beliefs,
+      loadBeliefs: () => Promise.resolve(beliefs),
       deleteBelief: (id) => {
         deleted.push(id);
+        return Promise.resolve();
       },
       markerDir,
     });
@@ -112,10 +114,8 @@ describe('runBeliefCleanup', () => {
 
   it('writes a marker file after first run', async () => {
     await runBeliefCleanup({
-      loadBeliefs: () => [],
-      deleteBelief: () => {
-        /* noop */
-      },
+      loadBeliefs: () => Promise.resolve([]),
+      deleteBelief: () => Promise.resolve(),
       markerDir,
     });
     const marker = readBeliefCleanupMarker(markerDir);
@@ -125,14 +125,18 @@ describe('runBeliefCleanup', () => {
 
   it('skips subsequent runs once the marker exists', async () => {
     let calls = 0;
-    const load = (): Belief[] => {
+    const load = (): Promise<readonly Belief[]> => {
       calls++;
-      return [];
+      return Promise.resolve([]);
     };
-    await runBeliefCleanup({ loadBeliefs: load, deleteBelief: () => {}, markerDir });
+    await runBeliefCleanup({
+      loadBeliefs: load,
+      deleteBelief: () => Promise.resolve(),
+      markerDir,
+    });
     const second = await runBeliefCleanup({
       loadBeliefs: load,
-      deleteBelief: () => {},
+      deleteBelief: () => Promise.resolve(),
       markerDir,
     });
     expect(calls).toBe(1);
@@ -140,14 +144,18 @@ describe('runBeliefCleanup', () => {
   });
 
   it('force option overrides the marker', async () => {
-    await runBeliefCleanup({ loadBeliefs: () => [], deleteBelief: () => {}, markerDir });
+    await runBeliefCleanup({
+      loadBeliefs: () => Promise.resolve([]),
+      deleteBelief: () => Promise.resolve(),
+      markerDir,
+    });
     let calls = 0;
     const result = await runBeliefCleanup({
       loadBeliefs: () => {
         calls++;
-        return [];
+        return Promise.resolve([]);
       },
-      deleteBelief: () => {},
+      deleteBelief: () => Promise.resolve(),
       markerDir,
       force: true,
     });
@@ -163,8 +171,8 @@ describe('runBeliefCleanup', () => {
       })
     );
     const result = await runBeliefCleanup({
-      loadBeliefs: () => polluted,
-      deleteBelief: () => {},
+      loadBeliefs: () => Promise.resolve(polluted),
+      deleteBelief: () => Promise.resolve(),
       markerDir,
     });
     expect(result.samples).toHaveLength(3);
@@ -189,6 +197,68 @@ describe('runBeliefCleanup', () => {
   });
 });
 
+describe('runBeliefCleanup against a real HindsightBeliefMemory', () => {
+  let markerDir: string;
+
+  beforeEach(() => {
+    markerDir = mkdtempSync(join(tmpdir(), 'belief-cleanup-integration-'));
+  });
+
+  afterEach(() => {
+    rmSync(markerDir, { recursive: true, force: true });
+  });
+
+  it('removes polluted rows from HindsightBeliefMemory via forget()', async () => {
+    const beliefs = new HindsightBeliefMemory();
+    // Two clean retains + one polluted (the bug shape).
+    await beliefs.retain({
+      subject: 'Real paper title',
+      predicate: 'has_topic',
+      object: 'agents',
+      confidence: BeliefConfidence.MEDIUM,
+      sourceType: BeliefSourceType.OBSERVATION,
+    });
+    await beliefs.retain({
+      subject: 'arXiv Query: search_query=quantum&id_list=&max_results=10',
+      predicate: 'pollution',
+      object: 'feed-fallback bug pre-#2755',
+      confidence: BeliefConfidence.LOW,
+      sourceType: BeliefSourceType.OBSERVATION,
+    });
+    await beliefs.retain({
+      subject: 'Another real one',
+      predicate: 'has_topic',
+      object: 'memory',
+      confidence: BeliefConfidence.HIGH,
+      sourceType: BeliefSourceType.OBSERVATION,
+    });
+
+    const result = await runBeliefCleanup({
+      loadBeliefs: async () => {
+        const q = await beliefs.query({ includeSuperseded: true });
+        return q.ok ? q.value : [];
+      },
+      deleteBelief: async (id) => {
+        await beliefs.forget(id);
+      },
+      markerDir,
+    });
+
+    expect(result.scanned).toBe(3);
+    expect(result.removed).toBe(1);
+    expect(result.kept).toBe(2);
+
+    const remaining = await beliefs.query({ includeSuperseded: true });
+    expect(remaining.ok).toBe(true);
+    if (remaining.ok) {
+      expect(remaining.value).toHaveLength(2);
+      for (const b of remaining.value) {
+        expect(b.subject).not.toMatch(/arXiv Query/i);
+      }
+    }
+  });
+});
+
 describe('readBeliefCleanupMarker', () => {
   it('returns null when marker is absent', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'belief-marker-'));
@@ -199,8 +269,8 @@ describe('readBeliefCleanupMarker', () => {
   it('returns parsed JSON when marker is present', async () => {
     const tmp = mkdtempSync(join(tmpdir(), 'belief-marker-'));
     await runBeliefCleanup({
-      loadBeliefs: () => [],
-      deleteBelief: () => {},
+      loadBeliefs: () => Promise.resolve([]),
+      deleteBelief: () => Promise.resolve(),
       markerDir: tmp,
     });
     const m = readBeliefCleanupMarker(tmp) as Record<string, unknown>;

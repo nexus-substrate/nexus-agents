@@ -1073,6 +1073,38 @@ describe('HindsightBeliefMemory', () => {
       }
     });
   });
+
+  describe('forget', () => {
+    it('removes the belief and reports true', async () => {
+      const { memory } = createTestMemory();
+      const belief = await createTestBelief(memory);
+
+      const result = await memory.forget(belief.beliefId);
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.value).toBe(true);
+
+      const recall = await memory.recall(belief.beliefId);
+      expect(recall.ok).toBe(true);
+      if (recall.ok) expect(recall.value).toBeNull();
+    });
+
+    it('returns false for unknown belief IDs without erroring', async () => {
+      const { memory } = createTestMemory();
+      const result = await memory.forget('does-not-exist');
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.value).toBe(false);
+    });
+
+    it('clears index entries so the belief no longer surfaces via recallBySubject', async () => {
+      const { memory } = createTestMemory();
+      const belief = await createTestBelief(memory);
+
+      await memory.forget(belief.beliefId);
+      const recall = await memory.recallBySubject(belief.subject);
+      expect(recall.ok).toBe(true);
+      if (recall.ok) expect(recall.value).toHaveLength(0);
+    });
+  });
 });
 
 describe('BeliefConfidenceEnum', () => {
