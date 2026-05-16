@@ -17,6 +17,7 @@ import type { CliName } from '../cli-adapters/types.js';
 import { CLI_NAMES } from '../config/model-capabilities-types.js';
 import {
   MobiMem,
+  getSharedMobiMem,
   type ExperienceEntry,
   type ActionStep,
   type ExecutionOutcome,
@@ -176,7 +177,11 @@ export class RoutingMemory implements IRoutingMemory {
   constructor(config?: Partial<RoutingMemoryConfig>, mobimem?: MobiMem) {
     this.config = { ...DEFAULT_ROUTING_MEMORY_CONFIG, ...config };
     this.logger = this.config.logger ?? createLogger({ component: 'RoutingMemory' });
-    this.mobimem = mobimem ?? new MobiMem();
+    // #2719 fix: default to the shared singleton instead of `new MobiMem()`
+    // (which used `:memory:` and lost data on process exit, leaving
+    // KnnRoutingStage with no patterns to retrieve). Callers can still
+    // inject an instance for tests.
+    this.mobimem = mobimem ?? getSharedMobiMem();
 
     this.logger.info('RoutingMemory initialized', {
       minObservations: this.config.minObservations,

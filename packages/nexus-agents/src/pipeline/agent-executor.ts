@@ -146,26 +146,14 @@ function recordMemoryError(error: string, solution: string): void {
   void getPipelineMemoryAsync().then((m) => m?.recordError({ error, solution }));
 }
 
-/** Flush pipeline memory session + persist MobiMem state (#1782). */
+/** Flush pipeline memory session. */
 export function flushPipelineMemory(): void {
   void getPipelineMemoryAsync().then((m) => m?.flush());
-  // Persist MobiMem/RoutingMemory to disk if enabled (#1782)
-  void persistMobiMemState();
-}
-
-/** Save MobiMem state to disk for cross-session learning (#1782). */
-async function persistMobiMemState(): Promise<void> {
-  try {
-    const { isPersistenceEnabled } = await import('../config/learning-persistence.js');
-    if (!isPersistenceEnabled()) return;
-    const { nexusDataPath } = await import('../config/nexus-data-dir.js');
-    const { createMobiMem } = await import('../context/mobimem.js');
-    const mobimem = createMobiMem();
-    const savePath = nexusDataPath('memory', 'mobimem-state.json');
-    await mobimem.save(savePath);
-  } catch {
-    // MobiMem persistence failure must never block pipeline completion
-  }
+  // #2719 / Phase 4: persistence is now handled by MobiMem's SQLite
+  // mirror in mobimem-impl.ts — every `observe`/`recordExecution`/`cache`
+  // call writes through to mobimem.db inline. The old persistMobiMemState
+  // path created a fresh empty MobiMem and saved its stats to JSON, which
+  // didn't actually preserve any data. Removed.
 }
 
 // Cached RoutingMemory — lazy-initialized, one per process

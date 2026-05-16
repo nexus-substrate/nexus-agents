@@ -8,6 +8,8 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import type Database from 'better-sqlite3';
+type DatabaseType = InstanceType<typeof Database>;
 import { getTimeProvider } from '../core/index.js';
 import type {
   IProfileMemory,
@@ -29,6 +31,22 @@ import {
   countUnique,
   computeAverage,
 } from './mobimem-impl-helpers.js';
+import { MobiMemPersistence } from './mobimem-persistence.js';
+
+/**
+ * JSON.stringify drops the `Date` constructor; entries written before a
+ * process restart and reloaded from SQLite come back with `string`
+ * timestamps where the runtime expects `Date`. Re-hydrate the named keys
+ * so downstream `entry.expiresAt < now` style comparisons keep working.
+ */
+function hydrateDates<T>(value: T, dateKeys: readonly (keyof T)[]): T {
+  const out = value as unknown as Record<string, unknown>;
+  for (const key of dateKeys) {
+    const v = out[key as string];
+    if (typeof v === 'string') out[key as string] = new Date(v);
+  }
+  return value;
+}
 
 /**
  * Profile Memory implementation.
@@ -37,9 +55,15 @@ import {
 export class ProfileMemoryImpl implements IProfileMemory {
   private readonly entries: Map<string, ProfileEntry> = new Map();
   private readonly config: MobiMemConfig;
+  private readonly persist: MobiMemPersistence<ProfileEntry>;
 
-  constructor(config: MobiMemConfig) {
+  constructor(config: MobiMemConfig, db: DatabaseType | null = null) {
     this.config = config;
+    this.persist = new MobiMemPersistence<ProfileEntry>({ db, domain: 'mobimem_profile' });
+    // Hydrate from SQLite when active (#2719 fix: process-boundary persistence).
+    for (const [k, v] of this.persist.load()) {
+      this.entries.set(k, hydrateDates<ProfileEntry>(v, ['createdAt', 'updatedAt']));
+    }
   }
 
   observe(
@@ -62,6 +86,7 @@ export class ProfileMemoryImpl implements IProfileMemory {
         updatedAt: now,
       };
       this.entries.set(key, updated);
+      this.persist.upsert(key, updated);
       return updated;
     }
 
@@ -79,6 +104,7 @@ export class ProfileMemoryImpl implements IProfileMemory {
 
     this.enforceLimit(entityId);
     this.entries.set(key, entry);
+    this.persist.upsert(key, entry);
     return entry;
   }
 
@@ -108,6 +134,7 @@ export class ProfileMemoryImpl implements IProfileMemory {
     for (const [key, entry] of this.entries) {
       if (entry.entityId === entityId) {
         this.entries.delete(key);
+        this.persist.delete(key);
         count++;
       }
     }
@@ -133,6 +160,7 @@ export class ProfileMemoryImpl implements IProfileMemory {
       if (toRemove !== undefined) {
         const key = `${entityId}:${toRemove.preferenceKey}`;
         this.entries.delete(key);
+        this.persist.delete(key);
       }
     }
   }
@@ -145,9 +173,14 @@ export class ProfileMemoryImpl implements IProfileMemory {
 export class ExperienceMemoryImpl implements IExperienceMemory {
   private readonly patterns: Map<string, ExperienceEntry> = new Map();
   private readonly config: MobiMemConfig;
+  private readonly persist: MobiMemPersistence<ExperienceEntry>;
 
-  constructor(config: MobiMemConfig) {
+  constructor(config: MobiMemConfig, db: DatabaseType | null = null) {
     this.config = config;
+    this.persist = new MobiMemPersistence<ExperienceEntry>({ db, domain: 'mobimem_experience' });
+    for (const [k, v] of this.persist.load()) {
+      this.patterns.set(k, hydrateDates<ExperienceEntry>(v, ['createdAt', 'lastUsedAt']));
+    }
   }
 
   recordExecution(
@@ -173,6 +206,7 @@ export class ExperienceMemoryImpl implements IExperienceMemory {
         lastUsedAt: now,
       };
       this.patterns.set(patternKey, updated);
+      this.persist.upsert(patternKey, updated);
       return updated;
     }
 
@@ -191,6 +225,7 @@ export class ExperienceMemoryImpl implements IExperienceMemory {
 
     this.enforceLimit(taskType);
     this.patterns.set(patternKey, entry);
+    this.persist.upsert(patternKey, entry);
     return entry;
   }
 
@@ -233,11 +268,13 @@ export class ExperienceMemoryImpl implements IExperienceMemory {
     for (const [key, entry] of this.patterns) {
       if (entry.id === patternId) {
         const metrics = computeUpdatedMetrics(entry.successCount, entry.attemptCount, success);
-        this.patterns.set(key, {
+        const updated: ExperienceEntry = {
           ...entry,
           ...metrics,
           lastUsedAt: new Date(getTimeProvider().now()),
-        });
+        };
+        this.patterns.set(key, updated);
+        this.persist.upsert(key, updated);
         return;
       }
     }
@@ -263,6 +300,7 @@ export class ExperienceMemoryImpl implements IExperienceMemory {
         for (const [key, entry] of this.patterns) {
           if (entry.id === toRemove.id) {
             this.patterns.delete(key);
+            this.persist.delete(key);
             break;
           }
         }
@@ -278,11 +316,19 @@ export class ExperienceMemoryImpl implements IExperienceMemory {
 export class ActionCacheImpl implements IActionCache {
   private readonly entries: Map<string, ActionCacheEntry> = new Map();
   private readonly config: MobiMemConfig;
+  private readonly persist: MobiMemPersistence<ActionCacheEntry>;
   private totalHits = 0;
   private totalRequests = 0;
 
-  constructor(config: MobiMemConfig) {
+  constructor(config: MobiMemConfig, db: DatabaseType | null = null) {
     this.config = config;
+    this.persist = new MobiMemPersistence<ActionCacheEntry>({ db, domain: 'mobimem_action' });
+    for (const [k, v] of this.persist.load()) {
+      this.entries.set(
+        k,
+        hydrateDates<ActionCacheEntry>(v, ['cachedAt', 'lastAccessedAt', 'expiresAt'])
+      );
+    }
   }
 
   cache(input: unknown, result: unknown, durationMs: number): ActionCacheEntry {
@@ -304,6 +350,7 @@ export class ActionCacheImpl implements IActionCache {
 
     this.enforceLimit();
     this.entries.set(inputHash, entry);
+    this.persist.upsert(inputHash, entry);
     return entry;
   }
 
@@ -316,6 +363,7 @@ export class ActionCacheImpl implements IActionCache {
 
     if (entry.expiresAt < new Date(getTimeProvider().now())) {
       this.entries.delete(inputHash);
+      this.persist.delete(inputHash);
       return null;
     }
 
@@ -333,6 +381,7 @@ export class ActionCacheImpl implements IActionCache {
           lastAccessedAt: new Date(getTimeProvider().now()),
         };
         this.entries.set(hash, updated);
+        this.persist.upsert(hash, updated);
         return;
       }
     }
@@ -345,6 +394,7 @@ export class ActionCacheImpl implements IActionCache {
     for (const [hash, entry] of this.entries) {
       if (entry.expiresAt < now) {
         this.entries.delete(hash);
+        this.persist.delete(hash);
         evicted++;
       }
     }
@@ -355,6 +405,7 @@ export class ActionCacheImpl implements IActionCache {
   clear(): number {
     const count = this.entries.size;
     this.entries.clear();
+    this.persist.clear();
     this.totalHits = 0;
     this.totalRequests = 0;
     return count;
@@ -374,6 +425,7 @@ export class ActionCacheImpl implements IActionCache {
     };
   }
 
+  /** Drop one entry to stay under the cache limit. SQLite mirror updated. */
   private enforceLimit(): void {
     if (this.entries.size >= this.config.maxActionCacheEntries) {
       this.evictExpired();
@@ -385,6 +437,7 @@ export class ActionCacheImpl implements IActionCache {
         const toRemove = sorted[0];
         if (toRemove !== undefined) {
           this.entries.delete(toRemove[0]);
+          this.persist.delete(toRemove[0]);
         }
       }
     }

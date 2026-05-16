@@ -41,7 +41,11 @@ import type {
   MemoryType,
 } from '../../context/memory-types.js';
 import type { AgentRole } from '../../core/types/agent.js';
-import { MobiMem } from '../../context/mobimem.js';
+import {
+  MobiMem,
+  getSharedMobiMem,
+  setSharedMobiMemDbPathResolver,
+} from '../../context/mobimem.js';
 import type { MobiMemStats } from '../../context/mobimem-types.js';
 import {
   MemoryPromoter,
@@ -264,13 +268,15 @@ export class ToolMemoryManager {
     }
   }
 
-  /** Initialize MobiMem (Phase 2 #746 - post-deployment learning). */
+  /** Initialize MobiMem (Phase 2 #746 - post-deployment learning).
+   *  #2719: routes through the process-wide singleton so this tool-memory
+   *  instance, RoutingMemory, and any other caller share state. The
+   *  shared singleton uses the same MOBIMEM_DB_PATH this tool used to
+   *  pass directly. */
   private initMobiMem(): void {
     try {
-      this.mobimem = new MobiMem({
-        dbPath: MOBIMEM_DB_PATH,
-        autoEviction: true,
-      });
+      setSharedMobiMemDbPathResolver(() => MOBIMEM_DB_PATH);
+      this.mobimem = getSharedMobiMem();
       this.log.info('MobiMem activated (Phase 2 #746)');
     } catch (error: unknown) {
       this.log.debug('MobiMem init failed', {
