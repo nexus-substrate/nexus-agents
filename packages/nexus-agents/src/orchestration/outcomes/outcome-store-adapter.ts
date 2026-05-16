@@ -46,6 +46,7 @@ export class OutcomeStoreAdapter implements IMemoryBackend<string, TaskOutcome> 
       ...(typeof where.cli === 'string' && { cli: where.cli }),
       ...(typeof where.category === 'string' && { category: where.category }),
       ...(typeof where.success === 'boolean' && { success: where.success }),
+      ...(typeof where.baselineId === 'string' && { baselineId: where.baselineId }),
     });
     const limit = filter?.limit;
     return Promise.resolve(limit !== undefined ? all.slice(0, limit) : all);

@@ -378,6 +378,9 @@ function buildPredicates(filter: OutcomeQuery): Array<(o: TaskOutcome) => boolea
       return !signals.some((s) => excluded.has(s));
     });
   }
+  if (filter.baselineId !== undefined) {
+    preds.push((o) => o.baselineId === filter.baselineId);
+  }
   return preds;
 }
 
