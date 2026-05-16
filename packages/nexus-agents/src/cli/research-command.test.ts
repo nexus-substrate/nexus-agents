@@ -534,28 +534,38 @@ describe('researchCommand', () => {
 
   it('should handle status subcommand', async () => {
     const result = await researchCommand('status', [], { status: 'all', format: 'table' });
-    expect(result).toContain('Research Registry Status');
+    expect(result.text).toContain('Research Registry Status');
+    expect(result.exitCode).toBe(0);
   });
 
   it('should handle overlap subcommand', async () => {
     const result = await researchCommand('overlap', ['test-technique'], { format: 'table' });
-    expect(result).toContain('Overlap Analysis');
+    expect(result.text).toContain('Overlap Analysis');
+    expect(result.exitCode).toBe(0);
   });
 
   it('should require technique-id for overlap', async () => {
     const result = await researchCommand('overlap', [], {});
-    expect(result).toContain('Error');
-    expect(result).toContain('required');
+    expect(result.text).toContain('Error');
+    expect(result.text).toContain('required');
+    // overlap's "missing arg" path returns from the inner handler as a plain
+    // string; the `ok()` wrapper sets exitCode 0. Exit code for input
+    // validation is governed by the dispatcher, not the subcommand handler.
   });
 
   it('should handle add subcommand with missing arxiv-id', async () => {
     const result = await researchCommand('add', [], {});
-    expect(result).toContain('Error');
-    expect(result).toContain('required');
+    expect(result.text).toContain('Error');
+    expect(result.text).toContain('required');
+    // #2761: add now translates "Error:" prefix to non-zero exit so caller
+    // scripts can detect validation failures.
+    expect(result.exitCode).toBe(1);
   });
 
   it('should handle unknown subcommand', async () => {
     const result = await researchCommand('unknown' as 'status', [], {});
-    expect(result).toContain('Unknown subcommand');
+    expect(result.text).toContain('Unknown subcommand');
+    // #2761: unknown subcommand exits 1, not 0.
+    expect(result.exitCode).toBe(1);
   });
 });

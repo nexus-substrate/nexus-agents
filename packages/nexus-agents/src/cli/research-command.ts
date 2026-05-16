@@ -497,28 +497,67 @@ export function isValidResearchSubcommand(value: string | undefined): value is R
 // Re-export index command helpers for CLI integration
 export { researchIndexCommand, parseResearchIndexArgs, getResearchIndexHelp };
 
-/** Handle index subcommand. */
-async function handleIndexCommand(args: string[]): Promise<string> {
+/**
+ * Result shape that lets subcommand handlers return a process exit code
+ * alongside the printable text (#2761). Pre-fix `researchCommand` returned
+ * `Promise<string>` and the dispatcher (`handleResearchCommand`) always
+ * called `process.exit(SUCCESS)` — so `research index check` reporting
+ * "Research index is out of date" exited 0 anyway, silently passing in CI.
+ */
+export interface ResearchCommandResult {
+  readonly text: string;
+  readonly exitCode: number;
+}
+
+/** Wrap a string-returning handler as a `ResearchCommandResult` with exit code 0. */
+function ok(handler: (args: string[], options: Record<string, unknown>) => Promise<string>) {
+  return async (
+    args: string[],
+    options: Record<string, unknown>
+  ): Promise<ResearchCommandResult> => ({
+    text: await handler(args, options),
+    exitCode: 0,
+  });
+}
+
+/** Handle index subcommand. Preserves the underlying `exitCode` so callers can fail CI on stale registries (#2761). */
+async function handleIndexCommand(args: string[]): Promise<ResearchCommandResult> {
   const indexOptions = parseResearchIndexArgs(args);
   const result = await researchIndexCommand(indexOptions);
-  return result.message;
+  return { text: result.message, exitCode: result.exitCode };
+}
+
+/** Handle add subcommand. Forwards the underlying `success` as exit code 0/1. */
+async function handleAddCommandWithExit(
+  args: string[],
+  options: Record<string, unknown>
+): Promise<ResearchCommandResult> {
+  const text = await handleAddCommand(args, options);
+  // `handleAddCommand` returns "Error: ..." prefix on validation failures
+  // and `result.message` on success. Translate the "Error:" prefix to a
+  // non-zero exit so caller scripts can detect failure.
+  const exitCode = text.startsWith('Error:') ? 1 : 0;
+  return { text, exitCode };
 }
 
 /** Subcommand dispatch map to reduce cyclomatic complexity. */
-type SubcommandHandler = (args: string[], options: Record<string, unknown>) => Promise<string>;
+type SubcommandHandler = (
+  args: string[],
+  options: Record<string, unknown>
+) => Promise<ResearchCommandResult>;
 const SUBCOMMAND_HANDLERS: Record<ResearchSubcommand, SubcommandHandler> = {
-  status: handleStatusCommand,
-  overlap: handleOverlapCommand,
-  add: handleAddCommand,
-  stats: (_args, options) => handleStatsCommand(options),
-  refresh: (_args, options) => handleRefreshCommand(options),
-  check: () => handleCheckCommand(),
+  status: ok(handleStatusCommand),
+  overlap: ok(handleOverlapCommand),
+  add: handleAddCommandWithExit,
+  stats: ok((_args, options) => handleStatsCommand(options)),
+  refresh: ok((_args, options) => handleRefreshCommand(options)),
+  check: ok(() => handleCheckCommand()),
   index: (args) => handleIndexCommand(args),
-  discover: handleDiscoverCommand,
-  review: handleReviewCommand,
-  prioritize: handlePrioritizeCommand,
-  synthesize: handleSynthesizeCommand,
-  import: handleImportCommand,
+  discover: ok(handleDiscoverCommand),
+  review: ok(handleReviewCommand),
+  prioritize: ok(handlePrioritizeCommand),
+  synthesize: ok(handleSynthesizeCommand),
+  import: ok(handleImportCommand),
 };
 
 /**
@@ -528,10 +567,13 @@ export async function researchCommand(
   subcommand: ResearchSubcommand,
   args: string[],
   options: Record<string, unknown>
-): Promise<string> {
+): Promise<ResearchCommandResult> {
   const handler = SUBCOMMAND_HANDLERS[subcommand] as SubcommandHandler | undefined;
   if (handler === undefined) {
-    return `Unknown subcommand: ${subcommand}. Available: ${VALID_SUBCOMMANDS.join(', ')}`;
+    return {
+      text: `Unknown subcommand: ${subcommand}. Available: ${VALID_SUBCOMMANDS.join(', ')}`,
+      exitCode: 1,
+    };
   }
   return handler(args, options);
 }
