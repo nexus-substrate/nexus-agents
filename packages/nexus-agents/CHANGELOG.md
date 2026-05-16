@@ -1,5 +1,302 @@
 # nexus-agents
 
+## 2.78.0
+
+### Minor Changes
+
+- [#2790](https://github.com/williamzujkowski/nexus-agents/pull/2790) [`a6e8aba`](https://github.com/williamzujkowski/nexus-agents/commit/a6e8abae9ec83cb8dbe69006b9724037f157b1ce) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **Closes [#2697](https://github.com/williamzujkowski/nexus-agents/issues/2697).** Add optional `baselineId` field to `TaskOutcomeSchema` for fork-session branch correlation.
+
+  Follows the established additive-optional-field pattern (`wasRetried`/`triageAction` [#1506](https://github.com/williamzujkowski/nexus-agents/issues/1506), `routingStage`/`retryCount` [#1785](https://github.com/williamzujkowski/nexus-agents/issues/1785), `vendor`/`family` [#2548](https://github.com/williamzujkowski/nexus-agents/issues/2548), `voterRole` [#2662](https://github.com/williamzujkowski/nexus-agents/issues/2662)) — backward-compatible, no migration.
+  - `TaskOutcomeSchema.baselineId: z.string().min(1).max(64).optional()` — set on outcomes recorded inside a fork-then-merge graph branch. Free-form, caller-assigned (typically the parent node's `executionId` or `taskId`).
+  - `OutcomeQuerySchema.baselineId` filter added — `query({ baselineId: 'B' })` returns every outcome that forked from baseline B as a cohort.
+  - `applyFilters` predicate-builder picks up the new filter.
+  - `OutcomeStoreAdapter.query` (Phase 6 of [#2766](https://github.com/williamzujkowski/nexus-agents/issues/2766)) threads `baselineId` through `where`.
+
+  Closes the correlation gap surfaced by the [#2665](https://github.com/williamzujkowski/nexus-agents/issues/2665) fork-session spike. The orchestration shape already works today via `GraphBuilder`; this PR closes the remaining "let me later compare branches as a cohort" gap so the telemetry is queryable.
+
+  Three test groups added: `OutcomeQuerySchema` length bounds, `TaskOutcomeSchema` accept/reject cases, `OutcomeStore` round-trip + filter composition + JSONL persistence round-trip.
+
+  Part of Epic F ([#2667](https://github.com/williamzujkowski/nexus-agents/issues/2667)). A `fork-comparison` graph template (spike recommendation 2) is intentionally out of scope here — file separately if a concrete tool needs it.
+
+- [#2791](https://github.com/williamzujkowski/nexus-agents/pull/2791) [`bc2a4c8`](https://github.com/williamzujkowski/nexus-agents/commit/bc2a4c80664caeea337f5d4b70824b416b87822e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **Follow-ups to Phases 5, 7, and 9 of epic [#2766](https://github.com/williamzujkowski/nexus-agents/issues/2766)** (memory unification). Closes review findings from the post-merge code review.
+  - **Phase 9 cleanup is now actually invoked.** `runBeliefCleanup` is wired into `ToolMemoryManager`'s constructor and runs once on first startup (marker-file gated). Previously the cleanup logic existed and was fully tested but had zero production callers, so polluted arXiv rows never got removed.
+  - **`memory_stats` reads the unified `MemoryRegistry`.** Adds a `registry` array to the response with one entry per attached domain (`belief`, `agentic`, `adaptive`, `typed`, `mobimem`, `outcomes`). This delivers the Phase 5 architectural goal — discoverability through one canonical fan-out — that the per-backend `is*Available()` calls left undone.
+  - **Real counts on `agentic` + `adaptive`.** Both now expose `count()` (delegating to the shared `HybridMemoryBackend`) and the registry attachments report actual row totals instead of the hardcoded `0` placeholder.
+  - **`HindsightBeliefMemory.forget(id)` is a public API.** Removes a single belief and cleans up index entries; used by the cleanup driver and available for future tooling.
+  - Polish: drift-gate probes use boundary-aware regex (`new Database(?!\w)` etc.) so `new DatabaseAdapter(...)` and `new MobiMemAdapter(...)` no longer false-positive. `RunBeliefCleanupOptions` callbacks are async-only — production wiring always returns promises, and the tighter contract surfaces sync-vs-async confusion at type-check time.
+
+- [#2780](https://github.com/williamzujkowski/nexus-agents/pull/2780) [`e969f55`](https://github.com/williamzujkowski/nexus-agents/commit/e969f55c4fb5fb2e40952b89ce367459232c731e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Scaffold the `nexus-memory` workspace package (Phase 3 of [#2766](https://github.com/williamzujkowski/nexus-agents/issues/2766)). Closes [#2769](https://github.com/williamzujkowski/nexus-agents/issues/2769).
+
+  New package at `packages/nexus-memory/` with:
+  - **`IMemoryBackend<TKey, TValue>` contract** — every concept-space implements `read`, `write`, `query`, `delete`, `stats`, `close`. Async surface; sync `better-sqlite3` inside.
+  - **`MemoryRegistry`** — singleton via `getMemoryRegistry()`, test-injectable via `setMemoryRegistry()`. Backends share one SQLite connection. `createInMemoryMemoryRegistry()` for tests.
+  - **`SqliteBackend`** + **`InMemoryBackend`** — both implement the same contract; the contract test in `backends/contract.test.ts` runs against both with identical assertions.
+  - **Telemetry** — aggregated counters (default) + opt-in full-audit mode via `NEXUS_MEMORY_AUDIT_MODE=audit` (Phase 2 vote ballot 2: C with 6/7 supermajority). `recordMemoryEvent` / `subscribeToMemoryEvents` / `getMemoryEventCounters`. Audit-mode summaries truncated to 120/240 chars (catfish-mitigation: per-event payload capture, not just counters).
+  - **Cold-archive Zod validation** (Phase 2 vote mitigation [#1](https://github.com/williamzujkowski/nexus-agents/issues/1), security dissent) — any backend constructed with `schema` rejects invalid writes via `MemoryValidationError` before they hit storage.
+  - **Importer skeleton** — `registerImporter` / `runImporters` with marker-file gating. Phase 4+ migrations plug in concrete importers (MobiMem JSON, OutcomeStore JSONL, agentic.db, etc.). `backupSourceFile` helper renames source to `.bak.<timestamp>` after a successful import.
+
+  57 tests across 4 files. Contract test ensures both backends behave identically; telemetry tests pin both default-mode and audit-mode behaviors; importer tests cover idempotency + error isolation.
+
+  No nexus-agents migrations yet — that starts in Phase 4 ([#2770](https://github.com/williamzujkowski/nexus-agents/issues/2770)).
+
+- [#2781](https://github.com/williamzujkowski/nexus-agents/pull/2781) [`10cebdd`](https://github.com/williamzujkowski/nexus-agents/commit/10cebdd4053f587684a0410d71b46cafe40c2ab4) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **Closes [#2719](https://github.com/williamzujkowski/nexus-agents/issues/2719)**: MobiMem now persists to SQLite. Phase 4 of [#2766](https://github.com/williamzujkowski/nexus-agents/issues/2766).
+
+  Pre-Phase 4, MobiMem's `dbPath` config was a dead surface — the impl classes used pure `Map<string, Entry>` and `dbPath` was passed in but never opened. The result was a triple-disconnect:
+  1. `routing-memory.ts:179` `new MobiMem()` → in-memory only, died on process exit.
+  2. `pipeline/agent-executor.ts:163` `persistMobiMemState` → saved an empty MobiMem to `mobimem-state.json` (stats only, no data).
+  3. `tool-memory.ts:270` `new MobiMem({ dbPath })` → opened a SQLite file that nobody wrote to.
+
+  KnnRoutingStage (`composite-router.ts:282`) had nothing to retrieve and the opt-in `enableKnnRouting` feature literally couldn't work.
+
+  **Fix:**
+  - New `mobimem-persistence.ts` — tiny synchronous SQLite mirror keyed by domain (`mobimem_profile` / `mobimem_experience` / `mobimem_action`). When MobiMem is constructed with a real `dbPath`, every write to the in-memory Map is mirrored to SQLite; on construction the Map is hydrated from SQLite first.
+  - `mobimem.ts:MobiMem` ctor actually opens `dbPath` (when not `:memory:`) and threads the handle through the three impls.
+  - New `getSharedMobiMem()` singleton — process-wide instance backed by `~/.nexus-agents/memory/mobimem.db`. `RoutingMemory` ctor now defaults to it (was `new MobiMem()`). `tool-memory.ts` routes through it via `setSharedMobiMemDbPathResolver`.
+  - `agent-executor.ts:persistMobiMemState` deleted — SQLite mirror handles persistence inline.
+  - `MobiMem.save()` JSON path deleted — it only persisted stats, not data.
+
+  The architectural goal (`MobiMem` flowing through `nexus-memory`'s `IMemoryBackend`) is deferred to a future Phase 4.1. The async contract on `IMemoryBackend` would require an async ripple across `KnnRoutingStage` / `StrategyDistiller` / `routing-context-store-impl`; this synchronous side-channel closes [#2719](https://github.com/williamzujkowski/nexus-agents/issues/2719) with minimum blast radius and lets the routing pipeline see real cross-session learning today.
+
+  **Tests:**
+  - 6 new persistence regression tests in `mobimem-persistence.test.ts`. Pin the core invariant: writes through one MobiMem instance are visible to a fresh instance opened against the same `dbPath`. Date fields survive the JSON round-trip via `hydrateDates`.
+  - 1094 existing tests pass (40 test files in the broader `context/` + `pipeline/` sweep).
+
+- [#2799](https://github.com/williamzujkowski/nexus-agents/pull/2799) [`acb72b7`](https://github.com/williamzujkowski/nexus-agents/commit/acb72b76549482bdcd1c75ad2dbfdfb1325b5989) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **Closes [#2793](https://github.com/williamzujkowski/nexus-agents/issues/2793). Phase 1 of [#2792](https://github.com/williamzujkowski/nexus-agents/issues/2792) (cross-cutting memory access).**
+
+  `StatsOnlyAdapter.query()` now delegates to the underlying backend's native search instead of returning `[]`. This unblocks the registry-level fan-out that the rest of [#2792](https://github.com/williamzujkowski/nexus-agents/issues/2792) builds on.
+  - `CountableBackend` grows an optional `search(query, limit): Promise<readonly unknown[]>` callback.
+  - `StatsOnlyAdapter.query()` reads the free-text term from the conventional `filter.where.text`, dispatches to `backend.search()`, falls back to `[]` on missing callback / missing text / search failure (the consumer relies on `query()` never throwing).
+  - `tool-memory.ts` attaches each backend's idiomatic search call to its registry entry:
+    - `belief` → `recallBySubject(text, limit)`
+    - `agentic` → `searchAgentic(text, limit)` (A-MEM attribute-rich entries)
+    - `adaptive` → `retrieveByPriority({ query, limit })` (priority-scored)
+    - `typed` → underlying `HybridMemoryBackend.search(query, limit)`
+    - `mobimem` → `experience.findPatterns(query, limit)`
+
+  `OutcomeStoreAdapter.query()` is unchanged — it already supports structured `where` (cli, category, success, baselineId) which is the appropriate API for that domain.
+
+  Verified end-to-end: `scripts/e2e-memory-validation.ts` exercises the new fan-out and confirms `registry.get('belief').query({ where: { text: '...' } })` returns matching beliefs from a real `HindsightBeliefMemory`.
+
+  Next: [#2794](https://github.com/williamzujkowski/nexus-agents/issues/2794) (`ContextRetriever.getContextForTask()`) builds on this.
+
+- [#2800](https://github.com/williamzujkowski/nexus-agents/pull/2800) [`cf9fcd0`](https://github.com/williamzujkowski/nexus-agents/commit/cf9fcd063fe4736064c545f26aabf44e14fb910f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **Closes [#2794](https://github.com/williamzujkowski/nexus-agents/issues/2794). Phase 2 of [#2792](https://github.com/williamzujkowski/nexus-agents/issues/2792) (cross-cutting memory access).**
+
+  Adds `getContextForTask({ task, category, limit? })` — the single function every entry point will call to learn what we already know about a task. Fans out across the shared backends in parallel, tolerates individual backend failures (never throws), and returns a typed `UnifiedContext`.
+
+  ```ts
+  import { getContextForTask } from 'nexus-agents';
+
+  const ctx = await getContextForTask({ task, category: 'code_generation' });
+  // ctx.beliefs            — Belief[] from HindsightBeliefMemory.recallBySubject
+  // ctx.similarMemories    — AgenticMemoryEntry[] from A-MEM searchAgentic
+  // ctx.recentLearnings    — ScoredMemoryEntry[] from adaptive retrieveByPriority
+  // ctx.experiencePatterns — ExperienceEntry[] from MobiMem findPatterns
+  // ctx.outcomes           — PerformanceSummary | null (category-scoped)
+  // ctx.priorStrategies    — DistilledRule[] (empty until [#2797](https://github.com/williamzujkowski/nexus-agents/issues/2797) lands)
+  ```
+
+  **Design choice:** typed singletons over registry fan-out. Phase 1 ([#2793](https://github.com/williamzujkowski/nexus-agents/issues/2793)) made `IMemoryBackend.query()` real, so registry-level `Promise.all(...domains.map(d => d.query(...)))` works — but the result type is `unknown[]` per domain, which loses the typed shapes consumers want. Reaching into `getToolMemory()` and `getOutcomeStore()` directly is cleaner for typed reads. The registry-level fan-out remains the right path for opaque/observability consumers like `memory_stats`.
+
+  New public accessors on `ToolMemoryManager`: `getBeliefMemory()`, `getAgenticMemoryBackend()`, `getAdaptiveMemoryBackend()` — so cross-cutting consumers can perform typed reads without reconstructing backends or routing through MCP tools.
+
+  Phase 3 ([#2795](https://github.com/williamzujkowski/nexus-agents/issues/2795)) wires `getContextForTask` into `CompositeRouter.route`, `orchestrate`, and graph workflow start — that's where the consumer-side benefit shows up.
+
+- [#2802](https://github.com/williamzujkowski/nexus-agents/pull/2802) [`52a7202`](https://github.com/williamzujkowski/nexus-agents/commit/52a7202009d3f5e7f2df5a69c1bfdb72671e39de) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **Closes [#2795](https://github.com/williamzujkowski/nexus-agents/issues/2795). Phase 3 of [#2792](https://github.com/williamzujkowski/nexus-agents/issues/2792) (cross-cutting memory access).**
+
+  Wires `getContextForTask` into three high-leverage entry points so every task starts informed by accumulated memory:
+  - **`CompositeRouter.route`** — consults the unified context before routing; stashes the result on `lastUnifiedContext` for observability. Fire-and-forget for now; later phases plumb the signal into routing stages.
+  - **`orchestrate` MCP tool** — fetches context at the top of `runOrchestratePipeline`, logs the shape. When `NEXUS_CONTEXT_RETRIEVER_INJECT=1`, stashes `priorMemorySummary` on `input.context` for downstream stages.
+  - **`executeGraph`** — fetches context at graph start, stashes the typed `UnifiedContext` under `state[GRAPH_UNIFIED_CONTEXT_KEY]` so node implementations can consume it without a second fetch.
+
+  All three call sites are best-effort: failure to read memory never blocks the work.
+
+  Two new helpers:
+  - `inferTaskCategory(task)` — keyword-based fallback mapper from free-text to `TaskCategory`. Used by the entry-point wiring when the caller doesn't carry a structured category. Returns `'exploration'` when nothing matches.
+  - `summarizeContextForPrompt(ctx)` — compact human-readable rendering for prepending to system prompts. Skips empty sections so the prefix never wastes tokens on "no signal."
+
+  Both exported from `nexus-agents` via `context/index.ts`.
+
+  14 new tests cover the helpers; the wiring is exercised by the existing 569 entry-point tests passing without regression. Phase 5 ([#2797](https://github.com/williamzujkowski/nexus-agents/issues/2797)) populates `priorStrategies`; Phase 6 ([#2798](https://github.com/williamzujkowski/nexus-agents/issues/2798)) feeds more signal into the substrate.
+
+- [#2803](https://github.com/williamzujkowski/nexus-agents/pull/2803) [`2a7f664`](https://github.com/williamzujkowski/nexus-agents/commit/2a7f664f8029bd8a2111cd3fba61accdf1ae111c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **Closes [#2797](https://github.com/williamzujkowski/nexus-agents/issues/2797). Phase 5 of [#2792](https://github.com/williamzujkowski/nexus-agents/issues/2792) (cross-cutting memory access).**
+
+  Populates `UnifiedContext.priorStrategies` by reading the persisted distilled-rules snapshot. The learning loop now closes end-to-end: outcomes → `StrategyDistiller` → `rules.json` → `ContextRetriever.priorStrategies` → every entry point that consults the unified context.
+
+  ### What was already done
+
+  Phase 5 turned out to be much smaller than estimated. The infrastructure was already in place from earlier work:
+  - ✅ `PersistentStrategyDistiller` writes rules to `~/.nexus-agents/learning/rules.json` (atomic write + Zod-validated hydration)
+  - ✅ `DistilledRuleStage` consumes rules in `CompositeRouter` at priority 45 (penalize -5 / boost +5 / avoid -10 score adjustments)
+  - ✅ `StrategyDistiller.getRules('active')` reader exists
+
+  What was missing: nothing read the rules outside of the live `CompositeRouter` instance, so `UnifiedContext.priorStrategies` was hardcoded `[]`.
+
+  ### What this PR adds
+  - **`loadPersistedRules(filePath?): readonly DistilledRule[]`** — process-wide reader for `~/.nexus-agents/learning/rules.json`. No singleton required; consumers in any scope can see the same rules the router applies. Tolerates missing file / corrupt JSON / schema mismatch (returns `[]`, never throws).
+  - **`ContextRetriever.getContextForTask` populates `priorStrategies`** by loading persisted rules and filtering to (a) `status === 'active'`, (b) `tainted === false` (security gate), (c) category matches the task's category or a global rule.
+  - 5 new tests on `loadPersistedRules` + 5 new tests on `priorStrategies` in `ContextRetriever`.
+
+  ### Deferred to follow-ups
+
+  The Phase 5 issue also called for surfacing distilled rules in `weather_report` (observability). That's nice-to-have and not strictly necessary for closing the learning loop — filed implicitly via the issue's open checkboxes if needed.
+
+  Phase 6 ([#2798](https://github.com/williamzujkowski/nexus-agents/issues/2798)) audits per-instance backends for promotion paths into the shared substrate.
+
+- [#2804](https://github.com/williamzujkowski/nexus-agents/pull/2804) [`5ba5874`](https://github.com/williamzujkowski/nexus-agents/commit/5ba5874f4506b08e831e2ce1bd4fec179b2ff1ba) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **Closes [#2798](https://github.com/williamzujkowski/nexus-agents/issues/2798). Phase 6 of [#2792](https://github.com/williamzujkowski/nexus-agents/issues/2792) (cross-cutting memory access).**
+
+  Per-instance memory backends stay per-instance; the **signal they produce** now reaches the shared substrate via promotion bridges.
+
+  ### What ships
+  - **`SkillLibrary` → shared beliefs (wired)**. New optional `SkillLibraryConfig.skillPromoter` callback. When a skill crosses `minSuccessesForPromotion` (default 5 successful executions), the bridge fires once with `{skillId, name, category, successRate, executionCount}`. The production global library in `cli-server-skills.ts` wires this to `getToolMemory().recordBelief('skill:{name}', 'is_reliable_for', '{category}', 'high'|'medium')` so every later `getContextForTask` call sees the learning regardless of which agent ran the skill.
+  - **`SicaVersionManager` and `MemoryState` → documented templates**. AGENTS.md grows a new sub-section (`Per-instance → shared-substrate promotion`) with a table describing the signal/target/wiring shape for each backend. SICA and MemoryState bridges are not wired today — the template shows how to add them when a concrete need materializes (mirror the SkillLibrary pattern: optional config field + dynamic-import promoter in the per-singleton wiring point + dedicated test).
+
+  ### Design choices
+  - **Fire once, not on every event.** Promotion is gated by a "just-crossed-threshold" check using the previous + updated metrics. Re-firing on every subsequent success would flood the belief store.
+  - **Defensive isolation.** Throws and promise rejections from the promoter are caught inside `SkillLibrary.maybePromote` so a broken bridge never breaks local skill bookkeeping.
+  - **Dynamic import in production wiring.** `cli-server-skills.ts` reaches `getToolMemory` via `await import(...)` to avoid a hard module-load circular dep with `mcp/tools/`.
+
+  6 new tests cover: threshold crossing, no-re-fire, no-fire-on-failure, throw isolation, async-rejection isolation, event payload shape.
+
+  This closes the autonomous loop for the full [#2792](https://github.com/williamzujkowski/nexus-agents/issues/2792) epic: outcomes → distilled rules → skill-promoted beliefs → `ContextRetriever` → every entry point.
+
+### Patch Changes
+
+- [#2756](https://github.com/williamzujkowski/nexus-agents/pull/2756) [`d978725`](https://github.com/williamzujkowski/nexus-agents/commit/d978725c6c3da31eb43926c3ae93e9e38b21366e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Pipeline integration tests now pin the `run_pipeline` tool description against `listTemplateIds()` ([#2728](https://github.com/williamzujkowski/nexus-agents/issues/2728)).
+
+  [#2728](https://github.com/williamzujkowski/nexus-agents/issues/2728) caught the case where `PIPELINE_TEMPLATES` registered 5 templates but three static description strings (`pipeline-tool.ts:46` JSDoc, `pipeline-tool.ts:163` MCP tool description, `scripts/tool-descriptions-data.ts:84` CLAUDE.md render) named only the pre-`general` 4: an LLM caller reading the MCP description would never pass `template: 'general'` because the surface said it didn't exist. The three strings were already fixed in earlier commits; this adds the missing acceptance criterion from [#2728](https://github.com/williamzujkowski/nexus-agents/issues/2728) — a test that fails the next time someone adds a template without updating the description.
+
+  Verified the gate fails pre-fix with the expected message `template id(s) missing from description: general`.
+
+- [#2755](https://github.com/williamzujkowski/nexus-agents/pull/2755) [`7c4527c`](https://github.com/williamzujkowski/nexus-agents/commit/7c4527ca156750bc491f8c395cd0646f4e601553) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `repo_security_plan` now emits a GitHub Actions CI snippet for every scanner it can recommend, and caps `critical` priority at one scanner per category ([#2732](https://github.com/williamzujkowski/nexus-agents/issues/2732)).
+
+  **CI snippet coverage.** Pre-fix, the `CI_SNIPPETS` map covered only 11 of the 27 fallback scanners. A TypeScript repo asking for a plan therefore got `ciSnippet: null` for `npm-audit`, `eslint-security`, `sonarqube`, and `trivy` — the recommendations all rendered with a copy-paste-ready snippet missing. Python, Ruby, Go, Java, PHP, Rust, Kotlin, HCL, and shell repos hit the same gap on their language-specific scanners. Added entries for 19 missing scanners (`eslint-security`, `sonarqube`, `npm-audit`, `trivy`, `trufflehog`, `cppcheck`, `spotbugs`, `pip-audit`, `cargo-audit`, `bundler-audit`, `composer-audit`, `govulncheck`, `detekt`, `brakeman`, `phpstan`, `tfsec`, `owasp-dependency-check`, `owasp-zap`, `syft`).
+
+  **Priority noise.** Pre-fix every SCA and secrets entry was marked `critical`, so a TypeScript plan came back with three `critical` scanners (`npm-audit` + `osv-scanner` + `gitleaks`) — the priority signal was meaningless. SAST already used "first scanner → critical, rest → recommended"; now SCA and secrets follow the same rule.
+
+  **Drift gates.** Two regression tests bind the registry: (1) iterates `FALLBACK_SCANNER_DATA.scanners` and fails when any recommendation comes back with `ciSnippet: null` on github-actions, (2) asserts no category has more than one `critical` recommendation across TypeScript/Python/Go/Ruby/Java plans. Both gates verified to fail on pre-fix code.
+
+- [#2762](https://github.com/williamzujkowski/nexus-agents/pull/2762) [`f76b845`](https://github.com/williamzujkowski/nexus-agents/commit/f76b8454614e281539f4b6d28dd2f59748924707) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `system-review` now aborts early with a clear "must run from source repo" error when invoked from a directory that doesn't contain `CLAUDE.md` ([#2760](https://github.com/williamzujkowski/nexus-agents/issues/2760), [#2720](https://github.com/williamzujkowski/nexus-agents/issues/2720) brainstorm item [#5](https://github.com/williamzujkowski/nexus-agents/issues/5)).
+
+  Pre-fix `system-review` from `/tmp` ran all five phases anyway. Every tracked doc came back `unknown` → mapped to `stale` by `mapFreshnessStatus` → 7× `DOC_STALE_PENALTY` deducted, plus typecheck/lint fail penalties. The user saw `Health Score: 35/100` (looks "warning-ish") and the docs all marked stale "(0 days)" — surface said "your repo is unhealthy," state said "I'm running in the wrong directory." Same shape as the closed [#2716](https://github.com/williamzujkowski/nexus-agents/issues/2716) and [#2759](https://github.com/williamzujkowski/nexus-agents/issues/2759).
+
+  The fix mirrors [#2759](https://github.com/williamzujkowski/nexus-agents/issues/2759): a `detectWrongProjectRoot` precondition checked in `systemReviewCommand` before any phase runs. CLAUDE.md is the canonical marker because it's in the repo root but NOT in the npm tarball — so it cleanly distinguishes "source repo" from "anywhere else."
+
+  The dispatcher's exit-code plumbing ([#2761](https://github.com/williamzujkowski/nexus-agents/issues/2761)) propagates `systemReviewCommand`'s return value via `handleSystemReviewCommand` → confirmed `exit: 1` from `/tmp` with this fix; no separate plumbing change needed for this command.
+
+  One regression test pins the wrong-CWD message + early-abort behavior. Verified to fail on pre-fix logic.
+
+- [#2763](https://github.com/williamzujkowski/nexus-agents/pull/2763) [`a67b4a9`](https://github.com/williamzujkowski/nexus-agents/commit/a67b4a9593a78b284363866b9f29c7d3f3f0f9c5) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `nexus-agents research <subcommand>` now propagates exit codes from its subcommand handlers ([#2761](https://github.com/williamzujkowski/nexus-agents/issues/2761)). Pre-fix `handleResearchCommand` always called `process.exit(EXIT_CODES.SUCCESS)` regardless of what the subcommand returned, so:
+  - `research index check` printing "Research index is out of date" exited 0 — silently passing in CI hooks that depended on the exit code.
+  - `research add` with a missing `arxivId` printed "Error: arxiv-id is required" and exited 0.
+  - `research unknown-subcommand` printed "Unknown subcommand: ..." and exited 0.
+
+  The contract is now: subcommand handlers return `ResearchCommandResult { text, exitCode }`; the dispatcher exits with `exitCode` (translated to `EXIT_CODES.SUCCESS` for 0, `EXIT_CODES.SERVER_START_FAILED` for non-zero). Existing string-returning handlers were wrapped via an `ok()` helper that defaults `exitCode` to 0 — no behavior change for the success paths.
+
+  Verified by smoke test: `cd /tmp && nexus-agents research index check; echo $?` now prints `1` (was `0`).
+
+  Caveat: the broader bug class — every dispatcher in `cli-commands-handlers.ts` that calls a command and `process.exit(SUCCESS)` unconditionally — likely affects other commands too (e.g., `run_pipeline`, `validate`, `improvement-review`). Those are tracked under the parent [#2761](https://github.com/williamzujkowski/nexus-agents/issues/2761); this PR fixes `research` first because it had a confirmed user-visible regression.
+
+- [#2783](https://github.com/williamzujkowski/nexus-agents/pull/2783) [`79f10a4`](https://github.com/williamzujkowski/nexus-agents/commit/79f10a43057d008de34a44bc8ad3f5ad2e5a7a19) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **Phase 6 of [#2766](https://github.com/williamzujkowski/nexus-agents/issues/2766)** — OutcomeStore discoverable via the unified MemoryRegistry. Closes [#2771](https://github.com/williamzujkowski/nexus-agents/issues/2771) (minimum-viable scope; full JSONL→SQLite migration filed as Phase 6.1 follow-up).
+
+  `getOutcomeStore()` now attaches the singleton to the unified registry on first call. `getMemoryRegistry().get('outcomes')` returns an `IMemoryBackend` view backed by the existing OutcomeStore — `stats()` reports the live row count and timestamp bounds; `query({ where, limit })` translates to `OutcomeStore.query`. Writes still go through `store.append()` directly (the adapter rejects with an explanatory error).
+
+  The 10+ writer call sites are unchanged — this PR ships the architectural piece (registry discoverability + telemetry-ready) without the JSONL→SQLite blast radius. Phase 6.1 (separate follow-up) does the deeper migration.
+
+  9 new tests in `outcome-store-adapter.test.ts` cover the cli filter, limit, timestamp bounds, and the no-op CRUD semantics.
+
+- [#2782](https://github.com/williamzujkowski/nexus-agents/pull/2782) [`06d5bba`](https://github.com/williamzujkowski/nexus-agents/commit/06d5bba809f02f6d347eba7aa4999e0f6a31ef61) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **Phase 5 of [#2766](https://github.com/williamzujkowski/nexus-agents/issues/2766)** — tool-memory backends now discoverable through the unified `MemoryRegistry`. Closes [#2772](https://github.com/williamzujkowski/nexus-agents/issues/2772) (minimum-viable scope; full storage-migration is filed as Phase 5.1 follow-up).
+
+  Each tool-memory backend (agentic, adaptive, typed, belief, mobimem) is attached to the shared registry via a thin `StatsOnlyAdapter` after its initialization. Callers can now reach every domain via `getMemoryRegistry().get(domain)` for discovery + telemetry, while the underlying CRUD still flows through the existing typed surfaces (`HybridMemoryBackend`, `AgenticMemoryBackend`, etc.).
+
+  Adds:
+  - `MemoryRegistry.attach(domain, backend)` in `nexus-memory` — new entry point for externally-managed backends that own their own storage.
+  - `StatsOnlyAdapter` in `mcp/tools/tool-memory-registry-adapters.ts` — wraps any `{ count(): unknown }` into a contract-compliant `IMemoryBackend`. Tolerates plain `number`, `Promise<number>`, and `Result<number, _>` return shapes.
+  - Wiring in `tool-memory.ts.initAgenticMemory / initAdaptiveMemory / initTypedMemory / initMobiMem` and the BeliefMemory constructor.
+  - 10 regression tests for `StatsOnlyAdapter` (count shapes, no-op CRUD, close delegation).
+
+  Deferred: fully folding each backend's storage into `nexus-memory`'s `SqliteBackend`. That's a substantial refactor (changes the persistence layout under `~/.nexus-agents/memory/`) and warrants its own scoped PR. The registry attachment ships the architectural piece (every backend is contract-compliant and discoverable) without the rewrite blast radius.
+
+- [#2786](https://github.com/williamzujkowski/nexus-agents/pull/2786) [`ce5eae0`](https://github.com/williamzujkowski/nexus-agents/commit/ce5eae05e9c5c93ba31f33a02cafa8ff4e7bac56) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **Phase 7 of [#2766](https://github.com/williamzujkowski/nexus-agents/issues/2766)** — document remaining backends as intentionally per-instance. Closes [#2773](https://github.com/williamzujkowski/nexus-agents/issues/2773) (minimum-viable scope).
+
+  `SICA SicaVersionManager`, `SkillLibrary`, `StrategyDistiller`, `MemoryState` (agent execution patterns), and `SharedMemoryStore` (pipeline scratch) don't have process-wide singletons. They're constructed on-demand per agent/run/instance. Forcing them into a global `MemoryRegistry` would require either (a) tracking N concurrent instances under generated keys or (b) rewriting their lifecycles to be singleton-owned — both of which exceed the architectural value at this stage.
+
+  AGENTS.md `Canonical paths` section now:
+  - Lists `MemoryRegistry` alongside the other canonical registries.
+  - Adds a `Memory contract scope` subsection explicitly documenting the per-instance backends as **out of registry scope by design**, with rationale and the Phase 7.1+ follow-up condition ("once a clear cross-process consumer needs them").
+
+  This closes the architectural piece of [#2773](https://github.com/williamzujkowski/nexus-agents/issues/2773). Phase 7.1 (deferred) would fold these in once there's demonstrated cross-process demand.
+
+- [#2785](https://github.com/williamzujkowski/nexus-agents/pull/2785) [`b8b3525`](https://github.com/williamzujkowski/nexus-agents/commit/b8b35257c90ea19025e7dc56a8ebded7b8f23725) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **Phase 8 of [#2766](https://github.com/williamzujkowski/nexus-agents/issues/2766)** — drift gate enforcing the unified memory contract. Closes [#2774](https://github.com/williamzujkowski/nexus-agents/issues/2774).
+
+  New script `scripts/check-memory-contract.ts` scans `packages/nexus-agents/src/**/*.ts` for direct memory access bypassing the contract:
+
+  | Probe                      | Pattern            | Why it's flagged                                                                                             |
+  | -------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------ |
+  | `better-sqlite3-direct`    | `new Database(`    | Should route through `MemoryRegistry`                                                                        |
+  | `mobimem-direct-construct` | `new MobiMem(`     | Should call `getSharedMobiMem()` ([#2719](https://github.com/williamzujkowski/nexus-agents/issues/2719) fix) |
+  | `outcomes-jsonl-path`      | `'outcomes.jsonl'` | Should call `getOutcomeStore()`                                                                              |
+
+  The gate is baseline-aware (mirrors `check-tool-distinctness.ts`): existing call sites are recorded in `docs/ops/memory-contract-baseline.json`; new offenders fail CI. The baseline starts with 10 existing entries (all known-justified or pre-migration). Future PRs introducing new direct access must either go through the contract OR regenerate the baseline with a documented justification.
+
+  Wired into `pnpm governance:check` via a new `checkMemoryContract()` call in `inject-governance.ts`, so it runs on every CI pass alongside the other governance gates.
+
+  9 regression tests in `scripts/check-memory-contract.test.ts` cover positive + negative classifier cases, baseline filtering, and the JSON read path.
+
+- [#2784](https://github.com/williamzujkowski/nexus-agents/pull/2784) [`adf7be0`](https://github.com/williamzujkowski/nexus-agents/commit/adf7be0e89ae50b15a99e08bd56ce1185c42dfd3) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **Phase 9 of [#2766](https://github.com/williamzujkowski/nexus-agents/issues/2766)** — one-shot cleanup for belief-backend rows polluted by the [#2719](https://github.com/williamzujkowski/nexus-agents/issues/2719)-era arXiv feed-fallback bug. Closes [#2775](https://github.com/williamzujkowski/nexus-agents/issues/2775).
+
+  Pre-[#2755](https://github.com/williamzujkowski/nexus-agents/issues/2755) the `extractEntryXml` helper fell back to the feed-level `<title>` when an arXiv query returned no entries. The feed title for a no-results query is literally `arXiv Query: search_query=...`, which then got persisted as a "belief" with the bogus title as the subject. [#2755](https://github.com/williamzujkowski/nexus-agents/issues/2755) fixed the writer; this PR ships the reader-side cleanup.
+
+  New module `context/belief-cleanup.ts`:
+  - `classifyBelief(belief) → { polluted, matchedPattern? }`: pattern-match on `subject` / `predicate` / `object`.
+  - `runBeliefCleanup({ loadBeliefs, deleteBelief, markerDir, force })`: storage-aware driver. Marker file `.belief-cleanup-done` makes re-runs no-op.
+  - `readBeliefCleanupMarker()`: status display helper.
+
+  Storage callbacks are dependency-injected so production wires them to `HindsightBeliefMemory` and tests can inject in-memory stores.
+
+  13 regression tests cover classifier positive + negative cases (real `arXiv:NNNN.NNNNN` references kept intact), idempotency marker, force re-run, async callbacks, and the samples cap.
+
+- [#2777](https://github.com/williamzujkowski/nexus-agents/pull/2777) [`cbe1a73`](https://github.com/williamzujkowski/nexus-agents/commit/cbe1a73421990f37caa7f16b70d3de4602e956a6) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Correct the arXiv citation for `KnnRoutingStage` ([#2776](https://github.com/williamzujkowski/nexus-agents/issues/2776)). 7 sites cited arXiv:2507.05370, which is a general-relativity paper on Schwarzschild-de Sitter spacetimes — not KNN routing. The intended source is arXiv:2505.12601 — "Rethinking Predictive Modeling for LLM Routing: When Simple kNN Beats Complex Learned Routers" (May 2025) — which matches `KnnRoutingStage`'s actual implementation (cosine similarity over keyword vectors, K-nearest experience patterns, weighted by success rate).
+
+  Discovered during Phase 1 of the memory unification epic ([#2766](https://github.com/williamzujkowski/nexus-agents/issues/2766), [#2767](https://github.com/williamzujkowski/nexus-agents/issues/2767)) when the survey agent fetched arXiv:2507.05370 to verify prior-art citations. Companion PR registers the correct paper in the research registry.
+
+  Pure documentation/citation fix; no behavior change.
+
+- [#2801](https://github.com/williamzujkowski/nexus-agents/pull/2801) [`58ae024`](https://github.com/williamzujkowski/nexus-agents/commit/58ae0249fffcdc1181285f53d75db3dfdc143527) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **Closes [#2796](https://github.com/williamzujkowski/nexus-agents/issues/2796). Phase 4 of [#2792](https://github.com/williamzujkowski/nexus-agents/issues/2792) (cross-cutting memory access).**
+
+  Remove the dead `retrieveAdaptiveMemory` bridge from `pipeline/stage-wrappers.ts`. It was constructing a fresh `AdaptiveMemoryBackend` instance (not the shared one) and looking up `task.slice(0, 50)` as a literal key — writers use UUIDs, so the lookup never matched. Net effect: a false bottom that hid the cross-cutting gap.
+
+  Cross-cutting memory enrichment for the Research stage will return via `getContextForTask` (Phase 2 [#2794](https://github.com/williamzujkowski/nexus-agents/issues/2794)) once Phase 3 ([#2795](https://github.com/williamzujkowski/nexus-agents/issues/2795)) wires it into the pipeline entry points.
+
+- [#2765](https://github.com/williamzujkowski/nexus-agents/pull/2765) [`a7566e5`](https://github.com/williamzujkowski/nexus-agents/commit/a7566e5c8b1ac53fb532f93d9e0eafc269781a1c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Fix CodeQL alert [#217](https://github.com/williamzujkowski/nexus-agents/issues/217) (`js/double-escaping`) in `research-helpers-arxiv.ts`.
+
+  The pre-fix `decodeXmlEntities` chained `.replace(/&amp;/g, '&')` followed by `.replace(/&lt;/g, '<')`. Order-sensitive: input `&amp;lt;` (the XML encoding of literal `&lt;`) became `<` instead of `&lt;`. Replaced with a single-pass regex + entity map so each entity is decoded atomically.
+
+  Two regression tests pin both behaviors: `Paper &amp;lt;tag&amp;gt; Title` now decodes to `Paper &lt;tag&gt; Title` (one pass), and standard single-encoded input (`&amp; Co.`, `&quot;quoted&quot;`) still decodes correctly. Verified to fail on pre-fix logic.
+
+- [#2759](https://github.com/williamzujkowski/nexus-agents/pull/2759) [`3150929`](https://github.com/williamzujkowski/nexus-agents/commit/31509290b888328e516739232ac0b7782606e7d8) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `index freshness` no longer reports `success: true` / "0 documents are fresh" when invoked from outside the nexus-agents source repo ([#2720](https://github.com/williamzujkowski/nexus-agents/issues/2720) brainstorm item [#5](https://github.com/williamzujkowski/nexus-agents/issues/5)).
+
+  Pre-fix `hasIssues = stale > 0 || warning > 0` ignored `summary.unknown`. When run from any directory that doesn't contain the tracked docs (README.md, ARCHITECTURE.md, CLAUDE.md, etc.) — typically because `projectRoot` defaulted to `process.cwd()` — all 7 tracked documents came back `unknown`, `hasIssues` stayed `false`, and the command exited successfully with the misleading message. Same surface-vs-state shape as [#2716](https://github.com/williamzujkowski/nexus-agents/issues/2716) (fitness-audit silently passing from outside the repo).
+
+  The fix: include `summary.unknown` in `hasIssues`, and when _every_ tracked doc is unknown (`unknown === total`) emit a wrong-CWD hint instead of a generic stale/warning summary. Two regression tests pin both behaviors — verified to fail on pre-fix logic with the expected "expected '0 stale...' to contain 'No tracked documents found'" error.
+
+  The dispatcher still translates `success: false` to exit 0 (separate `result.exitCode` plumbing issue, not in scope for this PR); the visible message change is the immediate correctness fix.
+
+- [#2758](https://github.com/williamzujkowski/nexus-agents/pull/2758) [`c2b0066`](https://github.com/williamzujkowski/nexus-agents/commit/c2b00666a428bc91788e18eaeb309381bf9a8ead) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `TechniqueStatus` in `cli/research-types.ts` is now sourced from the canonical Zod enum (`TechniqueStatusSchema` in `research-index-base-types.ts`) instead of a hand-maintained 5-value union ([#2720](https://github.com/williamzujkowski/nexus-agents/issues/2720) umbrella, same shape as the [#2717](https://github.com/williamzujkowski/nexus-agents/issues/2717) `PaperImplementationStatus` fix).
+
+  Pre-fix both definitions named the same 5 values, so the surface and the schema agreed _right now_ — but nothing forced them to agree the next time someone added a value. The union was redundant code that the next contributor could trivially make wrong. The CLI now reads `import('...').TechniqueStatus`, the same single-source pattern `PaperImplementationStatus` uses.
+
+- [#2779](https://github.com/williamzujkowski/nexus-agents/pull/2779) [`f4fc897`](https://github.com/williamzujkowski/nexus-agents/commit/f4fc897e2ea9743e7bb45ffbd864e9544985cdaa) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Wave 5 vestigial-code sweep: 6 stale references to `model-capabilities.ts` (renamed to `in-tree-data.ts` in [#2546](https://github.com/williamzujkowski/nexus-agents/issues/2546) slice E) updated to point at the current canonical surface.
+
+  Waves 3 + 4 ([#2617](https://github.com/williamzujkowski/nexus-agents/issues/2617), [#2618](https://github.com/williamzujkowski/nexus-agents/issues/2618), [#2621](https://github.com/williamzujkowski/nexus-agents/issues/2621), [#2622](https://github.com/williamzujkowski/nexus-agents/issues/2622), [#2624](https://github.com/williamzujkowski/nexus-agents/issues/2624)) scoped their greps to `.md` + `.test.ts` files and to one round of source JSDoc audits. This sweep caught references that slipped through:
+  - `core/trace-pricing.test.ts:5` — module header docstring
+  - `learning/usage-log.ts:15, 38, 57` — 3 sites in JSDoc + interface docs
+  - `cli-adapters/adapters/gemini-adapter-helpers.test.ts:25` — inline comment
+  - `docs/design/ARCHITECTURE_MAP.json:72` — `canonical_paths.model_registry`
+
+  Pure documentation drift; no behavior change. CHANGELOG and `docs/archive/design-v2/` references intentionally left alone (frozen historical context).
+
+  Sweep methodology recorded in `cleanup_waves.md` (memory): cheap 15-min version — 5 parallel greps for sprawl filenames, `@deprecated`, dated TODOs, disabled workflows, recent renames. Found 0 hits on the first 4, real findings on the rename pattern (this fix).
+
 ## 2.77.13
 
 ### Patch Changes
