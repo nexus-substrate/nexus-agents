@@ -104,6 +104,8 @@ function createMockGet(store: MockStore, sql: string): (...params: unknown[]) =>
   // eslint-disable-next-line complexity -- test mock with multiple SQL patterns
   return (...params: unknown[]): unknown => {
     if (sql.includes('COUNT') && sql.includes('memories')) {
+      // Param-less `SELECT COUNT(*) FROM memories` → total row count.
+      if (params.length === 0) return { count: store.memories.size };
       const [key] = params as [string];
       return { count: store.memories.has(key) ? 1 : 0 };
     }
@@ -552,6 +554,36 @@ describe('AgenticMemoryBackend', () => {
 
   afterEach(() => {
     backend.close();
+  });
+
+  describe('count', () => {
+    it('delegates to base and returns row total', async () => {
+      mockDb.store.memories.set('a', {
+        key: 'a',
+        value: '"v1"',
+        metadata: '{}',
+        created_at: Date.now(),
+        accessed_at: Date.now(),
+        expires_at: null,
+      });
+      mockDb.store.memories.set('b', {
+        key: 'b',
+        value: '"v2"',
+        metadata: '{}',
+        created_at: Date.now(),
+        accessed_at: Date.now(),
+        expires_at: null,
+      });
+      const result = await backend.count();
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.value).toBe(2);
+    });
+
+    it('returns 0 on empty store', async () => {
+      const result = await backend.count();
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.value).toBe(0);
+    });
   });
 
   describe('storeWithAttributes', () => {

@@ -88,6 +88,26 @@ describe('scanFile', () => {
     expect(findings[0]?.line).toBe(2);
     expect(findings[1]?.line).toBe(3);
   });
+
+  it('does NOT flag `new DatabaseAdapter(` (boundary-aware probe)', () => {
+    const file = join(tmpDir, 'sibling-class.ts');
+    writeFileSync(
+      file,
+      [
+        'class DatabaseAdapter {}',
+        'class DatabaseHelper {}',
+        'const a = new DatabaseAdapter();',
+        'const b = new DatabaseHelper();',
+      ].join('\n')
+    );
+    expect(scanFile(file)).toHaveLength(0);
+  });
+
+  it('does NOT flag `new MobiMemAdapter(` (boundary-aware probe)', () => {
+    const file = join(tmpDir, 'sibling-mobimem.ts');
+    writeFileSync(file, 'class MobiMemAdapter {}\nconst m = new MobiMemAdapter();\n');
+    expect(scanFile(file)).toHaveLength(0);
+  });
 });
 
 describe('newOffenders', () => {

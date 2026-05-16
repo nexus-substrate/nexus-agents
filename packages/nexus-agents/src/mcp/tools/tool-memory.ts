@@ -27,6 +27,7 @@ import type {
 import { HindsightBeliefMemory } from '../../context/belief-memory.js';
 import { BeliefConfidence, BeliefSourceType } from '../../context/belief-core-types.js';
 import type { Belief } from '../../context/belief-core-types.js';
+import { runBeliefCleanup } from '../../context/belief-cleanup.js';
 import { AgenticMemoryBackend } from '../../context/agentic-memory.js';
 import { AdaptiveMemoryBackend } from '../../context/adaptive-memory.js';
 import type { MemoryMetadata, MemoryImportance } from '../../context/memory-backend-types.js';
@@ -197,6 +198,10 @@ export class ToolMemoryManager {
         return stats.ok ? stats.value.totalBeliefs : 0;
       },
     });
+    // Phase 9 of #2766: drop belief rows polluted by the pre-#2755
+    // arXiv feed-fallback bug. Marker-file gated so subsequent runs
+    // no-op. Best-effort — never block startup on cleanup errors.
+    void this.runBeliefCleanupOnce(beliefs);
 
     // Auto-start session
     const sessionId = `mcp-${String(getTimeProvider().now())}`;
@@ -227,6 +232,34 @@ export class ToolMemoryManager {
     this.initDecayManager();
   }
 
+  /**
+   * Phase 9 of #2766: idempotent one-shot cleanup of belief rows polluted
+   * by the pre-#2755 arXiv feed-fallback bug. Marker-file gated. Best-effort
+   * — failures don't block startup.
+   */
+  private async runBeliefCleanupOnce(beliefs: HindsightBeliefMemory): Promise<void> {
+    try {
+      const result = await runBeliefCleanup({
+        loadBeliefs: async () => {
+          const q = await beliefs.query({ includeSuperseded: true });
+          return q.ok ? q.value : [];
+        },
+        deleteBelief: async (id: string) => {
+          await beliefs.forget(id);
+        },
+      });
+      if (!result.skipped && result.removed > 0) {
+        this.log.info('Belief cleanup removed polluted rows', {
+          scanned: result.scanned,
+          removed: result.removed,
+          samples: result.samples,
+        });
+      }
+    } catch (error: unknown) {
+      this.log.debug('Belief cleanup failed', { error: getErrorMessage(error) });
+    }
+  }
+
   /** Initialize AgenticMemory (Phase 2). */
   private async initAgenticMemory(): Promise<void> {
     try {
@@ -237,10 +270,12 @@ export class ToolMemoryManager {
       const result = await backend.initialize();
       if (result.ok) {
         this.agentic = backend;
-        // Phase 5: AgenticMemoryBackend doesn't expose a direct count()
-        // surface today — `memory_stats` will still surface availability
-        // via the existing path. A Phase 5.1 follow-up wires the count.
-        attachToRegistry('agentic', { count: () => 0 });
+        attachToRegistry('agentic', {
+          count: async () => {
+            const res = await backend.count();
+            return res.ok ? res.value : 0;
+          },
+        });
         this.log.info('AgenticMemory activated (Phase 2)');
       } else {
         this.log.info('AgenticMemory unavailable', { reason: result.error.message });
@@ -262,8 +297,12 @@ export class ToolMemoryManager {
       const result = await backend.initialize();
       if (result.ok) {
         this.adaptive = backend;
-        // Phase 5: same as agentic — count surface deferred to Phase 5.1.
-        attachToRegistry('adaptive', { count: () => 0 });
+        attachToRegistry('adaptive', {
+          count: async () => {
+            const res = await backend.count();
+            return res.ok ? res.value : 0;
+          },
+        });
         this.log.info('AdaptiveMemory activated (Phase 2)');
       } else {
         this.log.info('AdaptiveMemory unavailable', { reason: result.error.message });

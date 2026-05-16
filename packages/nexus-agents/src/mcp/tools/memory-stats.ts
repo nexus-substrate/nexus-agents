@@ -23,6 +23,7 @@ import {
 } from './tool-result.js';
 import { getToolMemory } from './tool-memory.js';
 import { getToolAnnotations } from '../tool-annotations.js';
+import { getMemoryRegistry } from 'nexus-memory';
 
 // ============================================================================
 // Schema & Types
@@ -80,6 +81,21 @@ interface BackendStatus {
 }
 
 /**
+ * Per-domain row from the unified MemoryRegistry (Phase 5 of #2766).
+ * Surfaces every backend that registered itself with `getMemoryRegistry()`
+ * so future consumers can iterate one canonical source instead of the
+ * hand-maintained per-backend fields above.
+ */
+export interface RegistryDomainStats {
+  /** Domain name (e.g., 'belief', 'agentic', 'outcomes'). */
+  domain: string;
+  /** Row count, or null if the backend's stats() rejected. */
+  count: number | null;
+  /** Error message when the backend's stats() rejected. */
+  error: string | null;
+}
+
+/**
  * Response from memory_stats tool.
  */
 export interface MemoryStatsResponse {
@@ -95,6 +111,11 @@ export interface MemoryStatsResponse {
   mobimem: Record<string, unknown> | null;
   /** Decay stats (if available and requested) */
   decay: Record<string, unknown> | null;
+  /**
+   * Per-domain stats from the unified MemoryRegistry (Phase 5 of #2766).
+   * One entry per attached backend; empty when no backend has registered.
+   */
+  registry: readonly RegistryDomainStats[];
   /** Timestamp of stats collection */
   collectedAt: string;
 }
@@ -157,7 +178,8 @@ async function collectMemoryStats(
     decay: toolMemory.isDecayManagerAvailable(),
   };
 
-  logger.debug('Memory stats collected', { backends });
+  const registry = await collectRegistryStats(logger);
+  logger.debug('Memory stats collected', { backends, registryDomains: registry.length });
 
   return {
     backends,
@@ -167,8 +189,34 @@ async function collectMemoryStats(
     mobimem:
       mobimemStats !== undefined ? (mobimemStats as unknown as Record<string, unknown>) : null,
     decay: decayStats,
+    registry,
     collectedAt: new Date().toISOString(),
   };
+}
+
+/**
+ * Iterate every domain registered with the unified MemoryRegistry and
+ * call its `stats()` method. Phase 5 of #2766 attached `belief`, `agentic`,
+ * `adaptive`, `typed`, `mobimem`, and `outcomes`; this is the consumer
+ * side the epic was building toward — one canonical fan-out instead of
+ * the per-backend `toolMemory.is*Available()` calls above.
+ */
+async function collectRegistryStats(logger: ILogger): Promise<readonly RegistryDomainStats[]> {
+  const registry = getMemoryRegistry();
+  const rows: RegistryDomainStats[] = [];
+  for (const domain of registry.domains()) {
+    const backend = registry.get(domain);
+    if (backend === undefined) continue;
+    try {
+      const s = await backend.stats();
+      rows.push({ domain, count: s.count, error: null });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.debug('Registry domain stats failed', { domain, error: message });
+      rows.push({ domain, count: null, error: message });
+    }
+  }
+  return rows;
 }
 
 /**
@@ -232,6 +280,7 @@ export function registerMemoryStatsTool(server: McpServer, deps: MemoryStatsDeps
     typed: z.unknown().optional(),
     mobimem: z.unknown().optional(),
     decay: z.unknown().optional(),
+    registry: z.array(z.unknown()).optional(),
     collectedAt: z.string().optional(),
   };
 

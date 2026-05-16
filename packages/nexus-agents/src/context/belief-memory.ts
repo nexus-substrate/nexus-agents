@@ -335,6 +335,25 @@ export class HindsightBeliefMemory implements IHindsightBeliefMemory {
     );
   }
 
+  /**
+   * Forget a belief by ID. Removes the row and all index entries.
+   * Returns `ok(true)` if the row existed and was removed; `ok(false)`
+   * if it was never present. Used by the Phase 9 cleanup driver to
+   * remove rows polluted by the pre-#2755 arXiv feed-fallback bug.
+   */
+  forget(beliefId: string): Promise<Result<boolean, MemoryError>> {
+    try {
+      const had = this.beliefs.has(beliefId);
+      this.removeBelief(beliefId);
+      return Promise.resolve(ok(had));
+    } catch (error) {
+      const causeError = error instanceof Error ? error : new Error(String(error));
+      return Promise.resolve(
+        err(new MemoryError('Failed to forget belief', { cause: causeError }))
+      );
+    }
+  }
+
   // =========================================================================
   // Persistence (Issue #714 Phase 3)
   // =========================================================================

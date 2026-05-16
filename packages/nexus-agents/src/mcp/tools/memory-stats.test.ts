@@ -39,6 +39,18 @@ vi.mock('./tool-memory.js', () => ({
   }),
 }));
 
+// Mock nexus-memory registry so we can control the per-domain fan-out
+// without instantiating real backends in this test.
+const mockRegistryDomains = vi.fn<() => readonly string[]>();
+const mockRegistryGet = vi.fn<(domain: string) => { stats(): Promise<unknown> } | undefined>();
+
+vi.mock('nexus-memory', () => ({
+  getMemoryRegistry: () => ({
+    domains: mockRegistryDomains,
+    get: mockRegistryGet,
+  }),
+}));
+
 // ============================================================================
 // Schema Tests
 // ============================================================================
@@ -114,6 +126,8 @@ describe('memory-stats', () => {
       mockIsMobiMemAvailable.mockReturnValue(false);
       mockIsDecayManagerAvailable.mockReturnValue(false);
       mockGetBeliefCount.mockReturnValue(0);
+      mockRegistryDomains.mockReturnValue([]);
+      mockRegistryGet.mockReturnValue(undefined);
 
       const mockServer = {
         registerTool: (_name: string, _schema: unknown, handler: SdkCallback) => {
@@ -208,6 +222,75 @@ describe('memory-stats', () => {
       expect(result.isError).toBeUndefined();
       const parsed = JSON.parse(result.content[0]!.text);
       expect(parsed.session.learningsCount).toBe(3);
+    });
+
+    // ========================================================================
+    // Registry fan-out (Phase 5 of #2766 — see memory-stats.ts collectRegistryStats)
+    // ========================================================================
+
+    it('emits an empty registry array when no domain is attached', async () => {
+      mockRegistryDomains.mockReturnValue([]);
+
+      const result = await registeredHandler({}, {});
+
+      const parsed = JSON.parse(result.content[0]!.text);
+      expect(parsed.registry).toEqual([]);
+    });
+
+    it('surfaces counts from every attached registry domain', async () => {
+      mockRegistryDomains.mockReturnValue(['belief', 'agentic', 'outcomes']);
+      mockRegistryGet.mockImplementation((domain) => {
+        const counts: Record<string, number> = { belief: 5, agentic: 12, outcomes: 87 };
+        return {
+          stats: () =>
+            Promise.resolve({
+              domain,
+              count: counts[domain],
+              oldestTimestamp: null,
+              newestTimestamp: null,
+            }),
+        };
+      });
+
+      const result = await registeredHandler({}, {});
+
+      type RegistryRow = { domain: string; count: number | null; error: string | null };
+      type ParsedResponse = { registry: readonly RegistryRow[] };
+      const parsed = JSON.parse(result.content[0]!.text) as ParsedResponse;
+      expect(parsed.registry).toHaveLength(3);
+      const byDomain = new Map<string, { count: number | null; error: string | null }>(
+        parsed.registry.map((r) => [r.domain, { count: r.count, error: r.error }])
+      );
+      expect(byDomain.get('belief')).toEqual({ count: 5, error: null });
+      expect(byDomain.get('agentic')).toEqual({ count: 12, error: null });
+      expect(byDomain.get('outcomes')).toEqual({ count: 87, error: null });
+    });
+
+    it('captures errors from a misbehaving backend without failing other domains', async () => {
+      mockRegistryDomains.mockReturnValue(['belief', 'broken']);
+      mockRegistryGet.mockImplementation((domain) => {
+        if (domain === 'broken') {
+          return { stats: () => Promise.reject(new Error('database unreachable')) };
+        }
+        return {
+          stats: () =>
+            Promise.resolve({ domain, count: 7, oldestTimestamp: null, newestTimestamp: null }),
+        };
+      });
+
+      const result = await registeredHandler({}, {});
+
+      type RegistryRow = { domain: string; count: number | null; error: string | null };
+      type ParsedResponse = { registry: readonly RegistryRow[] };
+      const parsed = JSON.parse(result.content[0]!.text) as ParsedResponse;
+      const broken = parsed.registry.find((r) => r.domain === 'broken');
+      const belief = parsed.registry.find((r) => r.domain === 'belief');
+      expect(broken).toBeDefined();
+      expect(belief).toBeDefined();
+      expect(broken?.count).toBeNull();
+      expect(broken?.error).toBe('database unreachable');
+      expect(belief?.count).toBe(7);
+      expect(belief?.error).toBeNull();
     });
   });
 });
