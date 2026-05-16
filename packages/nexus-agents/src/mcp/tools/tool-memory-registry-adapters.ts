@@ -15,12 +15,39 @@
 
 import type { BackendStats, CliName, IMemoryBackend, QueryFilter, WriteMeta } from 'nexus-memory';
 
+/** Default cap when a consumer omits `limit` in `query()`. */
+const DEFAULT_SEARCH_LIMIT = 10;
+
+/**
+ * Pull the free-text search term out of a {@link QueryFilter}. Returns
+ * `null` when the filter doesn't carry one, so callers can skip the search
+ * dispatch entirely. The convention is `filter.where.text` — see
+ * docs/architecture/memory-context-retrieval.md (Phase 1 of #2792).
+ */
+function extractSearchText(filter?: QueryFilter<unknown>): string | null {
+  const where: unknown = filter?.where;
+  if (where === null || where === undefined || typeof where !== 'object') return null;
+  if (!('text' in where)) return null;
+  const candidate = where.text;
+  return typeof candidate === 'string' && candidate !== '' ? candidate : null;
+}
+
 /** Minimal "count + close" shape every tool-memory backend implements. */
 export interface CountableBackend {
   /** Returns total row count (the heart of `memory_stats`). */
   count(): unknown;
   /** Idempotent close. */
   close?(): Promise<void> | void;
+  /**
+   * Optional native search surface used by {@link StatsOnlyAdapter.query}
+   * (Phase 1 of #2792). When attached from `tool-memory.ts`, each backend
+   * wires this to its idiomatic search call — `recallBySubject` for
+   * beliefs, `searchAgentic` for A-MEM, `retrieveByPriority` for adaptive,
+   * etc. Returns a flat array; the adapter is responsible for unwrapping
+   * Result types and projecting to a useful shape (typically the raw
+   * entry object, since consumers will project further).
+   */
+  search?(query: string, limit: number): Promise<readonly unknown[]>;
 }
 
 /**
@@ -54,8 +81,24 @@ export class StatsOnlyAdapter implements IMemoryBackend<string, unknown> {
     );
   }
 
-  query(_filter?: QueryFilter<unknown>): Promise<readonly unknown[]> {
-    return Promise.resolve([]);
+  /**
+   * Phase 1 of #2792: real query fan-out via the backend's native search.
+   * Honors the free-text convention `filter.where.text`. Without a search
+   * callback on the underlying backend (or without a text term), returns
+   * `[]` — consumers that need full coverage must wire `search()` on every
+   * backend they attach. Search exceptions are swallowed; the registry's
+   * `memory_stats` consumer relies on `query()` never throwing.
+   */
+  async query(filter?: QueryFilter<unknown>): Promise<readonly unknown[]> {
+    if (this.backend.search === undefined) return [];
+    const text = extractSearchText(filter);
+    if (text === null) return [];
+    const limit = filter?.limit ?? DEFAULT_SEARCH_LIMIT;
+    try {
+      return await this.backend.search(text, limit);
+    } catch {
+      return [];
+    }
   }
 
   delete(_key: string): Promise<boolean> {

@@ -59,9 +59,59 @@ describe('StatsOnlyAdapter', () => {
     await expect(adapter.write('k', 'v')).rejects.toThrow(/stats-only/);
   });
 
-  it('query returns empty array', async () => {
+  it('query returns empty array when no search callback is provided', async () => {
     const adapter = new StatsOnlyAdapter('test_query', { count: () => 0 });
     expect(await adapter.query()).toEqual([]);
+  });
+
+  it('query returns empty array when no search text is provided', async () => {
+    const adapter = new StatsOnlyAdapter('test_query_no_text', {
+      count: () => 0,
+      search: () => Promise.resolve(['should not see me']),
+    });
+    expect(await adapter.query()).toEqual([]);
+    expect(await adapter.query({ where: {} })).toEqual([]);
+  });
+
+  it('query delegates to backend.search when where.text is a string', async () => {
+    const seen: Array<{ query: string; limit: number }> = [];
+    const adapter = new StatsOnlyAdapter('test_query_delegate', {
+      count: () => 0,
+      search: (query, limit) => {
+        seen.push({ query, limit });
+        return Promise.resolve([{ id: 1, content: `match for ${query}` }]);
+      },
+    });
+    const result = await adapter.query({
+      where: { text: 'find this' } as unknown as Partial<unknown>,
+      limit: 7,
+    });
+    expect(seen).toEqual([{ query: 'find this', limit: 7 }]);
+    expect(result).toEqual([{ id: 1, content: 'match for find this' }]);
+  });
+
+  it('query honors default limit when filter.limit is absent', async () => {
+    let seenLimit = -1;
+    const adapter = new StatsOnlyAdapter('test_query_default_limit', {
+      count: () => 0,
+      search: (_q, limit) => {
+        seenLimit = limit;
+        return Promise.resolve([]);
+      },
+    });
+    await adapter.query({ where: { text: 'q' } as unknown as Partial<unknown> });
+    expect(seenLimit).toBe(10);
+  });
+
+  it('query returns empty array when backend.search throws', async () => {
+    const adapter = new StatsOnlyAdapter('test_query_throws', {
+      count: () => 0,
+      search: () => Promise.reject(new Error('backend exploded')),
+    });
+    const result = await adapter.query({
+      where: { text: 'anything' } as unknown as Partial<unknown>,
+    });
+    expect(result).toEqual([]);
   });
 
   it('delete returns false', async () => {
@@ -84,5 +134,58 @@ describe('StatsOnlyAdapter', () => {
   it('close is a no-op when the underlying backend lacks close()', async () => {
     const adapter = new StatsOnlyAdapter('test_no_close', { count: () => 0 });
     await expect(adapter.close()).resolves.toBeUndefined();
+  });
+});
+
+describe('registry-level fan-out (#2792 Phase 1)', () => {
+  beforeEach(() => {
+    setMemoryRegistry(createInMemoryMemoryRegistry());
+  });
+
+  afterEach(async () => {
+    await closeMemoryRegistry();
+  });
+
+  it('a consumer can fan out over registry.domains() and get real results per domain', async () => {
+    const { getMemoryRegistry } = await import('nexus-memory');
+    const registry = getMemoryRegistry();
+
+    registry.attach(
+      'domain-a',
+      new StatsOnlyAdapter('domain-a', {
+        count: () => 2,
+        search: (q) => Promise.resolve([`a:${q}:1`, `a:${q}:2`]),
+      })
+    );
+    registry.attach(
+      'domain-b',
+      new StatsOnlyAdapter('domain-b', {
+        count: () => 0,
+        search: (q, limit) => Promise.resolve([{ from: 'b', q, limit }] as readonly unknown[]),
+      })
+    );
+
+    interface DomainRows {
+      domain: string;
+      rows: readonly unknown[];
+    }
+    const fanOut: Array<Promise<DomainRows>> = [];
+    for (const domain of registry.domains()) {
+      const backend = registry.get(domain);
+      if (backend === undefined) continue;
+      fanOut.push(
+        backend
+          .query({
+            where: { text: 'task' } as unknown as Partial<unknown>,
+            limit: 3,
+          })
+          .then((rows) => ({ domain, rows }))
+      );
+    }
+    const results = await Promise.all(fanOut);
+
+    const byDomain = new Map(results.map((r) => [r.domain, r.rows]));
+    expect(byDomain.get('domain-a')).toEqual(['a:task:1', 'a:task:2']);
+    expect(byDomain.get('domain-b')).toEqual([{ from: 'b', q: 'task', limit: 3 }]);
   });
 });

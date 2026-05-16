@@ -124,7 +124,13 @@ let sharedInstance: ToolMemoryManager | null = null;
  * today. Safe to call multiple times — the registry rejects duplicate
  * domains, and that's silently caught so re-init doesn't break.
  */
-function attachToRegistry(domain: string, backend: { count(): unknown }): void {
+function attachToRegistry(
+  domain: string,
+  backend: {
+    count(): unknown;
+    search?(query: string, limit: number): Promise<readonly unknown[]>;
+  }
+): void {
   try {
     getMemoryRegistry().attach(domain, new StatsOnlyAdapter(domain, backend));
   } catch {
@@ -196,6 +202,11 @@ export class ToolMemoryManager {
       count: async () => {
         const stats = await beliefs.getStats();
         return stats.ok ? stats.value.totalBeliefs : 0;
+      },
+      // Phase 1 of #2792 — text search delegates to recallBySubject.
+      search: async (query, limit) => {
+        const res = await beliefs.recallBySubject(query, limit);
+        return res.ok ? res.value : [];
       },
     });
     // Phase 9 of #2766: drop belief rows polluted by the pre-#2755
@@ -275,6 +286,11 @@ export class ToolMemoryManager {
             const res = await backend.count();
             return res.ok ? res.value : 0;
           },
+          // Phase 1 of #2792 — A-MEM text search returns attribute-rich entries.
+          search: async (query, limit) => {
+            const res = await backend.searchAgentic(query, limit);
+            return res.ok ? res.value : [];
+          },
         });
         this.log.info('AgenticMemory activated (Phase 2)');
       } else {
@@ -301,6 +317,11 @@ export class ToolMemoryManager {
           count: async () => {
             const res = await backend.count();
             return res.ok ? res.value : 0;
+          },
+          // Phase 1 of #2792 — adaptive memory returns priority-scored entries.
+          search: async (query, limit) => {
+            const res = await backend.retrieveByPriority({ query, limit });
+            return res.ok ? res.value : [];
           },
         });
         this.log.info('AdaptiveMemory activated (Phase 2)');
@@ -331,6 +352,11 @@ export class ToolMemoryManager {
             const res = await backend.count();
             return res.ok ? res.value : 0;
           },
+          // Phase 1 of #2792 — typed search uses the underlying hybrid backend.
+          search: async (query, limit) => {
+            const res = await backend.search(query, limit);
+            return res.ok ? res.value : [];
+          },
         });
         this.log.info('TypedMemory activated (Phase 1 #746)');
       } else {
@@ -355,6 +381,10 @@ export class ToolMemoryManager {
       const mobimem = this.mobimem;
       attachToRegistry('mobimem', {
         count: () => mobimem.profile.getEntryCount(),
+        // Phase 1 of #2792 — MobiMem exposes patterns by task type. Text
+        // query is interpreted as the task type (best-effort; consumers
+        // can pre-normalize).
+        search: (query, limit) => Promise.resolve(mobimem.experience.findPatterns(query, limit)),
       });
       this.log.info('MobiMem activated (Phase 2 #746)');
     } catch (error: unknown) {
