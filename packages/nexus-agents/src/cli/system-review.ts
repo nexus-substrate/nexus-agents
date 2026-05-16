@@ -257,6 +257,26 @@ function applyFixes(projectRoot: string, result: SystemReviewResult): string[] {
   return fixes;
 }
 
+/**
+ * Returns the wrong-CWD error message when `projectRoot` doesn't contain
+ * the canonical nexus-agents source files, else null (#2760 / #2720 brainstorm
+ * item #5). Pre-fix `system-review` from `/tmp` produced "Health Score: 35/100"
+ * (every doc unknown → mapped to stale → 7× penalty) and exited 0 — same
+ * silent-fail shape as the closed #2716 and #2759.
+ */
+function detectWrongProjectRoot(projectRoot: string): string | null {
+  // CLAUDE.md is in the repo root, README.md in both the repo root and the
+  // npm tarball — checking CLAUDE.md alone catches "user is not in the
+  // source repo" without false-positives for the installed package.
+  const claudeMd = path.join(projectRoot, 'CLAUDE.md');
+  if (fs.existsSync(claudeMd)) return null;
+  return (
+    `system-review must run from the nexus-agents source repo, but ${claudeMd} ` +
+    `does not exist. Clone the repo and re-run from the workspace root (or pass ` +
+    `--project-root once that flag is wired). The installed npm package ships only the bundled dist/.`
+  );
+}
+
 /** Runs the system review. */
 export function runSystemReview(options: SystemReviewOptions = {}): SystemReviewResult {
   const pr = options.projectRoot ?? process.cwd();
@@ -281,6 +301,13 @@ export function runSystemReview(options: SystemReviewOptions = {}): SystemReview
 
 /** Main system-review command. */
 export function systemReviewCommand(options: SystemReviewOptions = {}): number {
+  const pr = options.projectRoot ?? process.cwd();
+  const wrongRootMessage = detectWrongProjectRoot(pr);
+  if (wrongRootMessage !== null) {
+    process.stderr.write(`${formatStatus('fail')} ${wrongRootMessage}\n`);
+    return 1;
+  }
+
   const result = runSystemReview(options);
   printResult(result);
   if (options.createIssue === true) {

@@ -46,8 +46,10 @@ describe('system-review', () => {
     vi.clearAllMocks();
     stdoutWriteSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
 
-    // Default mocks
-    mockExistsSync.mockReturnValue(false);
+    // Default mocks. CLAUDE.md must exist for #2760's wrong-CWD precondition
+    // to pass; phase-1 file existence is overridden per-test via additional
+    // `mockReturnValueOnce`/`mockImplementation` calls.
+    mockExistsSync.mockImplementation((p: fs.PathLike) => String(p).endsWith('CLAUDE.md'));
     mockExecSync.mockReturnValue('');
     mockAnalyzeFreshness.mockReturnValue({
       documents: [],
@@ -431,6 +433,28 @@ describe('system-review', () => {
 
       const output = stdoutWriteSpy.mock.calls.map((c: unknown[]) => c[0]).join('');
       expect(output).toContain('Failed to create issue');
+    });
+
+    // #2760: pre-fix `system-review` from /tmp produced "Health Score: 35/100"
+    // (every doc unknown → mapped to stale → 7× DOC_STALE_PENALTY) and exited
+    // 0 anyway. Now: detect "CLAUDE.md missing from projectRoot" up-front and
+    // return 1 with a clear message before running any phases. Same shape as
+    // the closed #2716 + #2759 fixes.
+    it('returns 1 with wrong-CWD message when CLAUDE.md missing from projectRoot', () => {
+      // Override beforeEach default: pretend no file exists, including CLAUDE.md
+      mockExistsSync.mockReturnValue(false);
+      const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+      const exitCode = systemReviewCommand({ projectRoot: '/tmp' });
+
+      expect(exitCode).toBe(1);
+      const stderr = stderrSpy.mock.calls.map((c: unknown[]) => c[0]).join('');
+      expect(stderr).toContain('system-review must run from the nexus-agents source repo');
+      expect(stderr).toContain('/tmp/CLAUDE.md');
+      // Phase output should NOT have been printed — the precondition aborts early
+      const stdout = stdoutWriteSpy.mock.calls.map((c: unknown[]) => c[0]).join('');
+      expect(stdout).not.toContain('Phase 1: Registry Reconciliation');
+      stderrSpy.mockRestore();
     });
   });
 
