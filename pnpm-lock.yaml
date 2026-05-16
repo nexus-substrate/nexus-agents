@@ -118,9 +118,6 @@ importers:
       jsonc-parser:
         specifier: ^3.3.1
         version: 3.3.1
-      nexus-memory:
-        specifier: workspace:*
-        version: link:../nexus-memory
       ollama:
         specifier: ^0.6.3
         version: 0.6.3
