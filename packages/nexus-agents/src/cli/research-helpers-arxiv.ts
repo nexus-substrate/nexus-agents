@@ -51,14 +51,24 @@ function extractEntryXml(xml: string): string | null {
   return entryMatch?.[1] ?? null;
 }
 
-/** Decode the XML entities arXiv encodes in `<title>` / `<summary>` content. */
+/**
+ * Decode the XML entities arXiv encodes in `<title>` / `<summary>` content.
+ *
+ * Single-pass to avoid the `js/double-escaping` class of bugs CodeQL flagged
+ * as alert #217 — chaining `.replace(/&amp;/g, '&')` followed by
+ * `.replace(/&lt;/g, '<')` double-decodes input like `&amp;lt;` (the XML
+ * encoding of a literal `&lt;`) into `<`. A single regex with a switch
+ * keeps each entity atomic.
+ */
+const XML_ENTITIES: Readonly<Record<string, string>> = {
+  '&amp;': '&',
+  '&lt;': '<',
+  '&gt;': '>',
+  '&quot;': '"',
+  '&apos;': "'",
+};
 function decodeXmlEntities(s: string): string {
-  return s
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'");
+  return s.replace(/&(?:amp|lt|gt|quot|apos);/g, (m) => XML_ENTITIES[m] ?? m);
 }
 
 /**

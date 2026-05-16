@@ -66,6 +66,48 @@ describe('research-helpers-arxiv', () => {
       }
     });
 
+    // CodeQL alert #217 (js/double-escaping): pre-fix the entity decoder
+    // chained `.replace(/&amp;/g, '&')` then `.replace(/&lt;/g, '<')`. Input
+    // `&amp;lt;` (the XML encoding of literal `&lt;`) became `<` instead of
+    // `&lt;`. Single-pass decoder fixes the order-sensitivity.
+    it('does not double-unescape XML entities in title (#217)', async () => {
+      const doubleEncoded = `<?xml version="1.0" encoding="UTF-8"?>
+<feed><entry><title>Paper &amp;lt;tag&amp;gt; Title</title>
+<published>2024-01-15T12:00:00Z</published></entry></feed>`;
+
+      vi.mocked(global.fetch).mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve(doubleEncoded),
+      } as Response);
+
+      const result = await fetchArxivMetadataResult('2401.12345');
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        // After one decode pass: &amp;lt; → &lt; (NOT < ). Single pass
+        // preserves the original literal `&lt;` the source intended.
+        expect(result.value.title).toBe('Paper &lt;tag&gt; Title');
+      }
+    });
+
+    it('decodes single-encoded XML entities in title', async () => {
+      const singleEncoded = `<?xml version="1.0" encoding="UTF-8"?>
+<feed><entry><title>Paper &amp; Co. on &quot;quoted&quot; topics</title>
+<published>2024-01-15T12:00:00Z</published></entry></feed>`;
+
+      vi.mocked(global.fetch).mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve(singleEncoded),
+      } as Response);
+
+      const result = await fetchArxivMetadataResult('2401.12345');
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.title).toBe('Paper & Co. on "quoted" topics');
+      }
+    });
+
     it('should normalize whitespace in title and summary', async () => {
       const xmlWithWhitespace = `<?xml version="1.0" encoding="UTF-8"?>
 <feed>
