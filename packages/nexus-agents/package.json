@@ -71,7 +71,6 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "better-sqlite3": "^12.9.0",
     "jsonc-parser": "^3.3.1",
-    "nexus-memory": "workspace:*",
     "ollama": "^0.6.3",
     "openai": "^6.34.0",
     "semver": "^7.7.4",
@@ -90,6 +89,7 @@
     "@vitest/coverage-v8": "4.1.5",
     "ai": "^6.0.168",
     "fast-check": "^4.7.0",
+    "nexus-memory": "workspace:*",
     "tsup": "^8.5.1",
     "typedoc": "0.28.19",
     "vitest": "4.1.5"
