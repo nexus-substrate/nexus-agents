@@ -96,6 +96,7 @@ Detailed technical documentation:
 | [REGISTRY_COVERAGE.md](./architecture/REGISTRY_COVERAGE.md)                       | Wiring-completeness CI gate    | Canonical |
 | [SCHEMA_FANOUT_COVERAGE.md](./architecture/SCHEMA_FANOUT_COVERAGE.md)             | Schema-fan-out CI check        | Canonical |
 | [IMPORT_GRAPH_ORPHANS.md](./architecture/IMPORT_GRAPH_ORPHANS.md)                 | Import-graph orphan detection  | Canonical |
+| [AGENT_COMPATIBILITY.md](./architecture/AGENT_COMPATIBILITY.md)                   | Per-harness federation matrix  | Canonical |
 
 #### Development
 
