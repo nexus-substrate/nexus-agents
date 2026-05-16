@@ -59,13 +59,14 @@ export function createResearchStageWrapper(stages: DevPipelineStages): IPipeline
     async execute(ctx: PipelineContext): Promise<StageOutput> {
       const start = getTimeProvider().now();
       try {
-        // Inject adaptive memory context (#1781) + codebase context (#1778)
-        const priorContext = await retrieveAdaptiveMemory(ctx.task);
+        // Codebase context (#1778). Adaptive-memory context was previously
+        // injected here (#1781) but the bridge was provably broken — it
+        // used `task.slice(0, 50)` as a literal key against a backend
+        // whose writers use UUIDs, so the lookup never matched. Removed
+        // in #2796; cross-cutting memory enrichment will return via
+        // `getContextForTask` once #2795 (Phase 3 of #2792) lands.
         const codeContext = await searchCodebaseForTask(ctx.task);
         let enrichedTask = ctx.task;
-        if (priorContext !== null) {
-          enrichedTask = `${enrichedTask}\n\n## Prior Context (Adaptive Memory)\n${priorContext}`;
-        }
         if (codeContext !== null && codeContext !== '') {
           enrichedTask = `${enrichedTask}\n\n## Codebase Context\n${codeContext}`;
         }
@@ -295,28 +296,6 @@ async function extractSymbolsForTask(task: string): Promise<string | null> {
     return summaries.length > 0 ? summaries.join('\n') : null;
   } catch {
     return null;
-  }
-}
-
-/** Retrieve relevant prior context from AdaptiveMemory (#1781). */
-async function retrieveAdaptiveMemory(task: string): Promise<string | null> {
-  try {
-    const { AdaptiveMemoryBackend } = await import('../context/adaptive-memory.js');
-    const path = await import('node:path');
-    const { nexusDataPath } = await import('../config/nexus-data-dir.js');
-    const baseDir = nexusDataPath('memory');
-    const memory = new AdaptiveMemoryBackend({
-      dbPath: path.join(baseDir, 'adaptive.db'),
-      markdownDir: path.join(baseDir, 'adaptive-md'),
-    });
-    // Use first 50 chars of task as retrieval key
-    const key = task.slice(0, 50).replace(/\s+/g, '-').toLowerCase();
-    const result = await memory.retrieve(key);
-    if (!result.ok) return null;
-    const value = result.value;
-    return typeof value === 'string' && value.length > 0 ? value : null;
-  } catch {
-    return null; // Adaptive memory not available — continue without
   }
 }
 
