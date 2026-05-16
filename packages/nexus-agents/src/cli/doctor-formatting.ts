@@ -412,5 +412,50 @@ export function printDoctorResults(result: DoctorResult): void {
 
   printSandbox(result.sandbox);
 
+  printHarnessAlignment(result.harnessAlignment);
+
   printDoctorSummary(result);
+}
+
+/**
+ * Prints harness-alignment status (#2805 Phase 3). Shows which harness
+ * config files are present and whether they redirect to AGENTS.md per
+ * the option-B federation contract.
+ */
+function printHarnessAlignment(check: DoctorResult['harnessAlignment']): void {
+  writeLine(`${colors.cyan}Checking agent-harness alignment...${colors.reset}`);
+  writeLine('');
+
+  writeLine(
+    `${formatStatus(check.agentsMdExists)} AGENTS.md: ${check.agentsMdExists ? 'present (federated surface)' : 'MISSING — federation invariant broken'}`
+  );
+
+  for (const f of check.files) {
+    if (!f.exists) {
+      writeLine(`  ${colors.gray}○${colors.reset} ${f.harness}: not present (${f.path})`);
+      continue;
+    }
+    if (f.error !== null) {
+      writeLine(`  ${colors.red}✗${colors.reset} ${f.harness}: ${f.error}`);
+      continue;
+    }
+    if (f.redirectsToAgentsMd) {
+      writeLine(`  ${colors.green}✓${colors.reset} ${f.harness}: aligned (${f.path})`);
+    } else {
+      writeLine(
+        `  ${colors.yellow}⚠${colors.reset} ${f.harness}: drift — ${f.path} exists but does NOT mention AGENTS.md`
+      );
+    }
+  }
+
+  writeLine('');
+  writeLine(
+    `  Summary: ${String(check.alignedCount)} aligned, ${String(check.driftCount)} drift, ${String(check.missingCount)} absent`
+  );
+  if (check.driftCount > 0) {
+    writeLine(
+      `  ${colors.yellow}Drift detected.${colors.reset} Per docs/architecture/AGENT_COMPATIBILITY.md, harness configs must redirect to AGENTS.md — never duplicate content.`
+    );
+  }
+  writeLine('');
 }

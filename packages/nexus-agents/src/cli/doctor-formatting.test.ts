@@ -171,6 +171,13 @@ describe('doctor-formatting', () => {
       mismatch: false,
       dataDirInsideRepo: false,
     },
+    harnessAlignment: {
+      agentsMdExists: true,
+      files: [],
+      alignedCount: 0,
+      driftCount: 0,
+      missingCount: 0,
+    },
     timestamp: new Date('2024-01-01T00:00:00Z'),
   });
 
