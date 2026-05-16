@@ -327,8 +327,13 @@ export async function handleResearchCommand(args: ParsedCliArgs): Promise<void> 
 
   try {
     const result = await researchCommand(subcommand, positionalArgs, options);
-    process.stdout.write(result + '\n');
-    process.exit(EXIT_CODES.SUCCESS);
+    process.stdout.write(result.text + '\n');
+    // #2761: pre-fix the dispatcher always called process.exit(SUCCESS),
+    // dropping the handler's exitCode signal. `research index check`
+    // reporting "Research index is out of date" therefore exited 0 in
+    // CI, silently passing. The contract is now: handler returns
+    // exitCode → process exits with that code.
+    process.exit(result.exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
   } catch (error) {
     const message = getErrorMessage(error);
     process.stdout.write(`Error: ${message}\n`);
