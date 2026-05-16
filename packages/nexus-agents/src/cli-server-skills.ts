@@ -49,6 +49,7 @@ export interface SkillsInitResult {
 function adaptConfigToLibrary(
   config: SkillLibraryConfig
 ): Parameters<typeof createSkillLibrary>[0] {
+  const promoter = createBeliefPromoter();
   return {
     maxSkills: config.maxSkills,
     minSuccessRateForRetention: config.minSuccessRateForRetention,
@@ -56,6 +57,35 @@ function adaptConfigToLibrary(
     enablePruning: config.enablePruning,
     trackExecutionHistory: config.trackExecutionHistory,
     maxHistoryPerSkill: config.maxHistoryPerSkill,
+    ...(promoter !== undefined && { skillPromoter: promoter }),
+  };
+}
+
+/**
+ * Phase 6 of #2792 — the production promoter that turns "this skill has
+ * been reliably successful" signal from the {@link SkillLibrary} into a
+ * persistent belief in the shared substrate. Future entry points calling
+ * `getContextForTask` will see the belief regardless of which agent ran
+ * the original executions.
+ *
+ * Best-effort: the bridge is async (belief writes are async) but the
+ * SkillLibrary catches throws/rejections so a transient memory outage
+ * never breaks skill bookkeeping.
+ */
+function createBeliefPromoter(): NonNullable<
+  Parameters<typeof createSkillLibrary>[0]
+>['skillPromoter'] {
+  return async (event) => {
+    // Dynamic import keeps cli-server-skills free of a hard dep on
+    // mcp/tools (which would create a circular import at module load).
+    const { getToolMemory } = await import('./mcp/tools/tool-memory.js');
+    const tm = getToolMemory();
+    await tm.recordBelief(
+      `skill:${event.name}`,
+      'is_reliable_for',
+      event.category,
+      event.successRate >= 0.8 ? 'high' : 'medium'
+    );
   };
 }
 

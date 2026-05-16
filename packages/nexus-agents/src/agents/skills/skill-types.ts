@@ -277,6 +277,29 @@ export interface InputBinding {
 }
 
 /**
+ * Promotion bridge from a per-instance skill library to the shared
+ * memory substrate (Phase 6 of #2792). Called when a skill has
+ * accumulated enough successful executions to be considered reliable.
+ * The implementation typically writes a belief of the form
+ * `subject = "skill:{name}"`, `predicate = "is_reliable_for"`,
+ * `object = "{category}"` so future `getContextForTask` calls surface
+ * the learning across all agents — not just the one that ran it.
+ *
+ * Best-effort: promoter implementations MUST NOT throw out of this
+ * callback. SkillLibrary catches errors defensively, but cleaner not
+ * to throw in the first place.
+ */
+export interface SkillPromotionEvent {
+  readonly skillId: string;
+  readonly name: string;
+  readonly category: string;
+  readonly successRate: number;
+  readonly executionCount: number;
+}
+
+export type SkillPromoter = (event: SkillPromotionEvent) => void | Promise<void>;
+
+/**
  * Configuration for the skill library.
  */
 export interface SkillLibraryConfig {
@@ -292,6 +315,19 @@ export interface SkillLibraryConfig {
   readonly trackExecutionHistory: boolean;
   /** Maximum execution history entries per skill */
   readonly maxHistoryPerSkill: number;
+  /**
+   * Minimum successful executions before promoting the skill as a
+   * belief into the shared substrate (Phase 6 of #2792). Default 5.
+   * Skills below this threshold are still tracked locally; promotion
+   * only fires once the signal stabilizes.
+   */
+  readonly minSuccessesForPromotion: number;
+  /**
+   * Optional promotion bridge to the shared belief store. When set,
+   * SkillLibrary fires the callback whenever a skill crosses the
+   * `minSuccessesForPromotion` threshold. Default: undefined (no-op).
+   */
+  readonly skillPromoter?: SkillPromoter;
 }
 
 /**
@@ -304,6 +340,7 @@ export const DEFAULT_SKILL_LIBRARY_CONFIG: SkillLibraryConfig = {
   enablePruning: true,
   trackExecutionHistory: true,
   maxHistoryPerSkill: 100,
+  minSuccessesForPromotion: 5,
 };
 
 /**

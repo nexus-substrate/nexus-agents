@@ -294,6 +294,56 @@ export class SkillLibrary {
     this.store.metrics.set(skillId, updated);
 
     this.evaluateRetention(skillId);
+    this.maybePromote(skillId, current, updated);
+  }
+
+  /**
+   * Phase 6 of #2792 — promote a stabilized skill to the shared belief
+   * store so future tasks (executed by other agents) see the signal.
+   *
+   * Fires exactly once per skill, when the successful-execution count
+   * crosses {@link SkillLibraryConfig.minSuccessesForPromotion}. The
+   * `previousMetrics → updatedMetrics` comparison guards against
+   * re-promoting on every subsequent execution.
+   *
+   * Best-effort: a throwing/rejecting promoter is caught here so a
+   * broken promotion bridge never breaks the local skill bookkeeping.
+   */
+  private maybePromote(
+    skillId: string,
+    previousMetrics: { successCount: number },
+    updatedMetrics: { successCount: number; successRate: number; executionCount: number }
+  ): void {
+    if (this.config.skillPromoter === undefined) return;
+    const threshold = this.config.minSuccessesForPromotion;
+    const justCrossed =
+      previousMetrics.successCount < threshold && updatedMetrics.successCount >= threshold;
+    if (!justCrossed) return;
+    const skill = this.store.skills.get(skillId);
+    if (skill === undefined) return;
+
+    try {
+      const maybePromise = this.config.skillPromoter({
+        skillId,
+        name: skill.name,
+        category: skill.category,
+        successRate: updatedMetrics.successRate,
+        executionCount: updatedMetrics.executionCount,
+      });
+      if (maybePromise instanceof Promise) {
+        maybePromise.catch((error: unknown) => {
+          this.logger.debug('Skill promotion rejected', {
+            skillId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
+      }
+    } catch (error: unknown) {
+      this.logger.debug('Skill promotion threw', {
+        skillId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   /**

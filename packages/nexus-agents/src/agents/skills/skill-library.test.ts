@@ -184,6 +184,113 @@ describe('SkillLibrary', () => {
     });
   });
 
+  // ==========================================================================
+  // Phase 6 of #2792 — skill promotion bridge to shared belief store
+  // ==========================================================================
+
+  describe('skill promotion (Phase 6 of #2792)', () => {
+    it('fires the promoter once the success threshold is crossed', () => {
+      const events: Array<{ skillId: string; name: string; category: string }> = [];
+      const promotingLibrary = new SkillLibrary({
+        minSuccessesForPromotion: 3,
+        skillPromoter: (e) => {
+          events.push({ skillId: e.skillId, name: e.name, category: e.category });
+        },
+      });
+      const skill = promotingLibrary.addSkill(sampleSkill);
+
+      promotingLibrary.recordExecution(skill.id, 'success', {});
+      expect(events).toHaveLength(0); // 1 success, threshold is 3
+      promotingLibrary.recordExecution(skill.id, 'success', {});
+      expect(events).toHaveLength(0); // 2 successes, still below
+      promotingLibrary.recordExecution(skill.id, 'success', {});
+      expect(events).toHaveLength(1); // 3 successes — promote
+      expect(events[0]?.name).toBe(skill.name);
+    });
+
+    it('does not re-promote on subsequent successes past the threshold', () => {
+      const events: unknown[] = [];
+      const promotingLibrary = new SkillLibrary({
+        minSuccessesForPromotion: 2,
+        skillPromoter: (e) => {
+          events.push(e);
+        },
+      });
+      const skill = promotingLibrary.addSkill(sampleSkill);
+
+      promotingLibrary.recordExecution(skill.id, 'success', {});
+      promotingLibrary.recordExecution(skill.id, 'success', {});
+      expect(events).toHaveLength(1);
+      promotingLibrary.recordExecution(skill.id, 'success', {});
+      promotingLibrary.recordExecution(skill.id, 'success', {});
+      expect(events).toHaveLength(1);
+    });
+
+    it('does not fire on failures', () => {
+      const events: unknown[] = [];
+      const promotingLibrary = new SkillLibrary({
+        minSuccessesForPromotion: 1,
+        skillPromoter: (e) => {
+          events.push(e);
+        },
+      });
+      const skill = promotingLibrary.addSkill(sampleSkill);
+
+      promotingLibrary.recordExecution(skill.id, 'failure', {}, undefined, 'boom');
+      promotingLibrary.recordExecution(skill.id, 'failure', {}, undefined, 'boom');
+      expect(events).toHaveLength(0);
+    });
+
+    it('catches throws from the promoter without breaking skill bookkeeping', () => {
+      const promotingLibrary = new SkillLibrary({
+        minSuccessesForPromotion: 1,
+        skillPromoter: () => {
+          throw new Error('promotion bridge exploded');
+        },
+      });
+      const skill = promotingLibrary.addSkill(sampleSkill);
+
+      expect(() => {
+        promotingLibrary.recordExecution(skill.id, 'success', {});
+      }).not.toThrow();
+      // Metrics still updated.
+      expect(promotingLibrary.getSkill(skill.id)?.metrics.successCount).toBe(1);
+    });
+
+    it('catches rejections from an async promoter', async () => {
+      const promotingLibrary = new SkillLibrary({
+        minSuccessesForPromotion: 1,
+        skillPromoter: () => Promise.reject(new Error('async fail')),
+      });
+      const skill = promotingLibrary.addSkill(sampleSkill);
+
+      promotingLibrary.recordExecution(skill.id, 'success', {});
+      // Allow the rejected promise's catch handler to settle.
+      await new Promise((r) => setTimeout(r, 5));
+      // No throw → bookkeeping intact.
+      expect(promotingLibrary.getSkill(skill.id)?.metrics.successCount).toBe(1);
+    });
+
+    it('passes successRate and executionCount in the event', () => {
+      const captures: Array<{ successRate: number; executionCount: number }> = [];
+      const promotingLibrary = new SkillLibrary({
+        minSuccessesForPromotion: 2,
+        skillPromoter: (e) => {
+          captures.push({ successRate: e.successRate, executionCount: e.executionCount });
+        },
+      });
+      const skill = promotingLibrary.addSkill(sampleSkill);
+
+      promotingLibrary.recordExecution(skill.id, 'success', {});
+      promotingLibrary.recordExecution(skill.id, 'failure', {}, undefined, 'meh');
+      promotingLibrary.recordExecution(skill.id, 'success', {});
+      // 2 successes out of 3 → 0.667; threshold crossed at this call.
+      expect(captures).toHaveLength(1);
+      expect(captures[0]?.executionCount).toBe(3);
+      expect(captures[0]?.successRate).toBeCloseTo(2 / 3, 2);
+    });
+  });
+
   describe('findRelevantSkills', () => {
     beforeEach(() => {
       library.addSkill(sampleSkill);
