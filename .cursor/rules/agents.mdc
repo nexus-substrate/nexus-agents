@@ -1,0 +1,12 @@
+---
+description: "Federated to AGENTS.md — this repo authors all agent-facing rules in a single canonical surface."
+alwaysApply: true
+---
+
+# Federated to AGENTS.md
+
+This repo follows [option B of #2764](https://github.com/williamzujkowski/nexus-agents/issues/2764) — every harness-specific config file points at [AGENTS.md](../../AGENTS.md), which is the single source of truth for project conventions, rules, and agent guidance.
+
+**For Cursor:** load [AGENTS.md](../../AGENTS.md) as the primary context. The `.rules/` directory next to it holds keyword-scoped rule files indexed by AGENTS.md.
+
+See [docs/architecture/AGENT_COMPATIBILITY.md](../../docs/architecture/AGENT_COMPATIBILITY.md) for the full federation rationale and per-harness compatibility matrix.

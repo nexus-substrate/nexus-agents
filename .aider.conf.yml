@@ -1,0 +1,8 @@
+# Federated to AGENTS.md — see docs/architecture/AGENT_COMPATIBILITY.md.
+# This repo authors all agent-facing rules in AGENTS.md (option B of
+# williamzujkowski/nexus-agents#2764). Aider's `read:` list pulls in the
+# canonical surface plus the Claude-Code complement.
+
+read:
+  - AGENTS.md
+  - CLAUDE.md
