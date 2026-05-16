@@ -803,6 +803,35 @@ export class ToolMemoryManager {
   }
 
   /**
+   * Get the shared {@link HindsightBeliefMemory} singleton.
+   *
+   * Public accessor used by {@link getContextForTask} (Phase 2 of #2792)
+   * so cross-cutting consumers can perform typed reads without
+   * reconstructing a backend or routing through MCP tools.
+   */
+  getBeliefMemory(): HindsightBeliefMemory {
+    return this.beliefs;
+  }
+
+  /**
+   * Get the shared {@link AgenticMemoryBackend} singleton, or `null` if
+   * SQLite init failed and the backend is unavailable. Public accessor
+   * used by {@link getContextForTask} (Phase 2 of #2792).
+   */
+  getAgenticMemoryBackend(): AgenticMemoryBackend | null {
+    return this.agentic;
+  }
+
+  /**
+   * Get the shared {@link AdaptiveMemoryBackend} singleton, or `null` if
+   * SQLite init failed and the backend is unavailable. Public accessor
+   * used by {@link getContextForTask} (Phase 2 of #2792).
+   */
+  getAdaptiveMemoryBackend(): AdaptiveMemoryBackend | null {
+    return this.adaptive;
+  }
+
+  /**
    * Run MobiMem maintenance (eviction and cleanup).
    * Safe to call even if MobiMem is unavailable.
    */

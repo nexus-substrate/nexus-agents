@@ -263,3 +263,11 @@ export {
   type PressureEvent,
   type PressureStats,
 } from './context-pressure-types.js';
+
+// ContextRetriever — unified read surface across every shared memory backend.
+// Phase 2 of #2792 (closes #2794).
+export {
+  getContextForTask,
+  type ContextRetrieverOptions,
+  type UnifiedContext,
+} from './context-retriever.js';
