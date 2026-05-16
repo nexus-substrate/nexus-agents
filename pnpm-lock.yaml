@@ -171,6 +171,9 @@ importers:
       fast-check:
         specifier: ^4.7.0
         version: 4.7.0
+      nexus-memory:
+        specifier: workspace:*
+        version: link:../nexus-memory
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(jiti@2.6.1)(postcss@8.5.14)(typescript@6.0.3)(yaml@2.8.3)

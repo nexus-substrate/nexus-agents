@@ -41,11 +41,13 @@ import type {
   MemoryType,
 } from '../../context/memory-types.js';
 import type { AgentRole } from '../../core/types/agent.js';
+import { getMemoryRegistry } from 'nexus-memory';
 import {
   MobiMem,
   getSharedMobiMem,
   setSharedMobiMemDbPathResolver,
 } from '../../context/mobimem.js';
+import { StatsOnlyAdapter } from './tool-memory-registry-adapters.js';
 import type { MobiMemStats } from '../../context/mobimem-types.js';
 import {
   MemoryPromoter,
@@ -115,6 +117,21 @@ const MARKDOWN_DIR = path.join(MEMORY_BASE, 'markdown');
 let sharedInstance: ToolMemoryManager | null = null;
 
 /**
+ * Phase 5 of #2766. Attach a tool-memory backend to the unified registry
+ * so `memory_stats` and future telemetry consumers can discover it
+ * without the per-backend type-knowledge that `tool-memory.ts` carries
+ * today. Safe to call multiple times — the registry rejects duplicate
+ * domains, and that's silently caught so re-init doesn't break.
+ */
+function attachToRegistry(domain: string, backend: { count(): unknown }): void {
+  try {
+    getMemoryRegistry().attach(domain, new StatsOnlyAdapter(domain, backend));
+  } catch {
+    // Domain already registered — re-init of tool-memory should be a no-op.
+  }
+}
+
+/**
  * Get or create the shared ToolMemoryManager singleton.
  * Automatically starts a session on first access.
  */
@@ -173,6 +190,13 @@ export class ToolMemoryManager {
     });
     this.beliefs = new HindsightBeliefMemory(undefined, this.log);
     this.loadBeliefSnapshotFromDisk();
+    const beliefs = this.beliefs;
+    attachToRegistry('belief', {
+      count: async () => {
+        const stats = await beliefs.getStats();
+        return stats.ok ? stats.value.totalBeliefs : 0;
+      },
+    });
 
     // Auto-start session
     const sessionId = `mcp-${String(getTimeProvider().now())}`;
@@ -213,6 +237,10 @@ export class ToolMemoryManager {
       const result = await backend.initialize();
       if (result.ok) {
         this.agentic = backend;
+        // Phase 5: AgenticMemoryBackend doesn't expose a direct count()
+        // surface today — `memory_stats` will still surface availability
+        // via the existing path. A Phase 5.1 follow-up wires the count.
+        attachToRegistry('agentic', { count: () => 0 });
         this.log.info('AgenticMemory activated (Phase 2)');
       } else {
         this.log.info('AgenticMemory unavailable', { reason: result.error.message });
@@ -234,6 +262,8 @@ export class ToolMemoryManager {
       const result = await backend.initialize();
       if (result.ok) {
         this.adaptive = backend;
+        // Phase 5: same as agentic — count surface deferred to Phase 5.1.
+        attachToRegistry('adaptive', { count: () => 0 });
         this.log.info('AdaptiveMemory activated (Phase 2)');
       } else {
         this.log.info('AdaptiveMemory unavailable', { reason: result.error.message });
@@ -257,6 +287,12 @@ export class ToolMemoryManager {
       if (result.ok) {
         this.typedBackend = backend;
         this.typed = createTypedMemory(backend);
+        attachToRegistry('typed', {
+          count: async () => {
+            const res = await backend.count();
+            return res.ok ? res.value : 0;
+          },
+        });
         this.log.info('TypedMemory activated (Phase 1 #746)');
       } else {
         this.log.info('TypedMemory unavailable', { reason: result.error.message });
@@ -277,6 +313,10 @@ export class ToolMemoryManager {
     try {
       setSharedMobiMemDbPathResolver(() => MOBIMEM_DB_PATH);
       this.mobimem = getSharedMobiMem();
+      const mobimem = this.mobimem;
+      attachToRegistry('mobimem', {
+        count: () => mobimem.profile.getEntryCount(),
+      });
       this.log.info('MobiMem activated (Phase 2 #746)');
     } catch (error: unknown) {
       this.log.debug('MobiMem init failed', {

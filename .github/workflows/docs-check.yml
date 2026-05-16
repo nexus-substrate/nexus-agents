@@ -38,7 +38,11 @@ jobs:
       - uses: ./.github/actions/setup-node
 
       - name: Generate TypeDoc
-        run: pnpm --filter nexus-agents docs
+        run: |
+          # nexus-memory must be built first so TypeDoc can resolve its types
+          # (#2766 Phase 5+ adds nexus-memory as a workspace dep of nexus-agents).
+          pnpm --filter nexus-memory build
+          pnpm --filter nexus-agents docs
 
       - name: Check TypeDoc drift
         run: |

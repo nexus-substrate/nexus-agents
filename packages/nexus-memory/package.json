@@ -3,7 +3,25 @@
   "version": "0.1.0",
   "description": "Unified memory subsystem for nexus-agents and nexus-eval-* — IMemoryBackend contract, MemoryRegistry, telemetry, one-shot importer",
   "license": "MIT",
-  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/williamzujkowski/nexus-agents.git",
+    "directory": "packages/nexus-memory"
+  },
+  "homepage": "https://github.com/williamzujkowski/nexus-agents/tree/main/packages/nexus-memory#readme",
+  "keywords": [
+    "memory",
+    "mcp",
+    "agent",
+    "nexus-agents",
+    "sqlite",
+    "imemorybackend"
+  ],
+  "author": "William Zujkowski",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

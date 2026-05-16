@@ -79,6 +79,32 @@ export class MemoryRegistry {
   }
 
   /**
+   * Attach an externally-managed {@link IMemoryBackend}. Use this when the
+   * backend owns its own storage (e.g., a pre-existing SQLite file under
+   * `~/.nexus-agents/memory/agentic.db`) and you want it discoverable
+   * through the registry without changing its persistence.
+   *
+   * Phase 5–7 of the memory-unification epic use this to bring the
+   * tool-memory backends (`agentic`, `adaptive`, `typed`, `belief`),
+   * OutcomeStore, SICA, skills, etc. under a unified observability
+   * contract without rewriting their internals. Each attached backend
+   * still owns its own `.db` (or JSONL, etc.) until a follow-up migration
+   * folds the storage in fully.
+   */
+  attach<TKey, TValue>(
+    domain: string,
+    backend: IMemoryBackend<TKey, TValue>
+  ): IMemoryBackend<TKey, TValue> {
+    this.assertOpen();
+    if (this.backends.has(domain)) {
+      throw new Error(`nexus-memory: domain "${domain}" already registered`);
+    }
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- See `register`.
+    this.backends.set(domain, backend as IMemoryBackend<unknown, unknown>);
+    return backend;
+  }
+
+  /**
    * Get a previously-registered backend. Returns `undefined` if the
    * domain isn't registered — callers should treat that as "not yet
    * migrated to the unified contract."
