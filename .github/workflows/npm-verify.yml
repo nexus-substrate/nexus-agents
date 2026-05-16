@@ -48,6 +48,10 @@ jobs:
       - name: Build + pack nexus-agents
         run: |
           pnpm install --frozen-lockfile
+          # `nexus-memory` is a workspace dep of `nexus-agents` (#2766 Phase 5+).
+          # Build it first so its dist/index.d.ts exists when tsup resolves
+          # `import { ... } from 'nexus-memory'` in nexus-agents.
+          pnpm --filter nexus-memory build
           pnpm --filter nexus-agents build
           cd packages/nexus-agents
           npm pack --pack-destination "${{ runner.temp }}"
