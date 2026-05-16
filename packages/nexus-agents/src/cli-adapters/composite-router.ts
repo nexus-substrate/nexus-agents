@@ -160,7 +160,7 @@ export class CompositeRouter implements ICompositeRouter {
   private resourceStrategyStage?: ResourceStrategyStage;
   /** Distilled rule stage instance (Issue #999) */
   private distilledRuleStage?: DistilledRuleStage;
-  /** KNN routing stage instance (arXiv:2507.05370) */
+  /** KNN routing stage instance (arXiv:2505.12601) */
   private knnRoutingStage?: KnnRoutingStage;
   /** Strategy distiller instance (Issue #999) */
   private strategyDistiller?: StrategyDistiller;
@@ -607,7 +607,7 @@ export class CompositeRouter implements ICompositeRouter {
       resourceStrategyStage: this.resourceStrategyStage,
       // Issue #999 distilled rule stage
       distilledRuleStage: this.distilledRuleStage,
-      // arXiv:2507.05370 KNN routing
+      // arXiv:2505.12601 KNN routing
       knnRoutingStage: this.knnRoutingStage,
     };
   }
