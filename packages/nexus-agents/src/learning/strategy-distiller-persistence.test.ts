@@ -14,6 +14,7 @@ import { OutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 import {
   PersistentStrategyDistiller,
   RulesSnapshotSchema,
+  loadPersistedRules,
 } from './strategy-distiller-persistence.js';
 import type { RulesSnapshot } from './strategy-distiller-persistence.js';
 import type { DistilledRule } from './strategy-distiller-types.js';
@@ -331,6 +332,42 @@ describe('PersistentStrategyDistiller', () => {
     it('rejects wrong version number', () => {
       const result = RulesSnapshotSchema.safeParse({ version: 2, savedAt: 'now', rules: [] });
       expect(result.success).toBe(false);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // loadPersistedRules — Phase 5 of #2792
+  // --------------------------------------------------------------------------
+
+  describe('loadPersistedRules', () => {
+    it('returns empty when the file does not exist', () => {
+      const missing = join(tmpDir, 'never-written.json');
+      expect(loadPersistedRules(missing)).toEqual([]);
+    });
+
+    it('returns rules from a valid snapshot file', () => {
+      const rules = [makeRule({ id: 'r1' }), makeRule({ id: 'r2', cli: 'gemini' })];
+      writeFileSync(filePath, JSON.stringify(makeSnapshot(rules)));
+      const loaded = loadPersistedRules(filePath);
+      expect(loaded).toHaveLength(2);
+      expect(loaded[0]?.id).toBe('r1');
+      expect(loaded[1]?.cli).toBe('gemini');
+    });
+
+    it('returns empty on corrupt JSON', () => {
+      writeFileSync(filePath, '{not valid');
+      expect(loadPersistedRules(filePath)).toEqual([]);
+    });
+
+    it('returns empty on schema mismatch', () => {
+      writeFileSync(filePath, JSON.stringify({ version: 99, rules: [] }));
+      expect(loadPersistedRules(filePath)).toEqual([]);
+    });
+
+    it('never throws (consumer contract)', () => {
+      // Pass an invalid path that resolves through unwritable directories.
+      expect(() => loadPersistedRules('/proc/self/nope/rules.json')).not.toThrow();
+      expect(loadPersistedRules('/proc/self/nope/rules.json')).toEqual([]);
     });
   });
 });

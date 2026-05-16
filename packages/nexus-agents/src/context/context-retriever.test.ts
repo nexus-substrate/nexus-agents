@@ -9,13 +9,14 @@
  * @module context/context-retriever.test
  */
 
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { closeMemoryRegistry, createInMemoryMemoryRegistry, setMemoryRegistry } from 'nexus-memory';
 import { getContextForTask } from './context-retriever.js';
 import { resetOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
+import type { DistilledRule } from '../learning/strategy-distiller-types.js';
 
 describe('getContextForTask', () => {
   let dataDir: string;
@@ -147,5 +148,109 @@ describe('getContextForTask', () => {
 
     expect(ctx.outcomes?.totalTasks).toBe(1);
     expect(ctx.outcomes?.successRate).toBe(1);
+  });
+
+  // ========================================================================
+  // Phase 5 of #2792 — priorStrategies populated from persisted rules.json
+  // ========================================================================
+
+  function makeRule(overrides: Partial<DistilledRule> = {}): DistilledRule {
+    return {
+      id: 'failure-rate:codex:code_generation',
+      patternType: 'failure-rate',
+      cli: 'codex',
+      category: 'code_generation',
+      action: 'penalize',
+      confidence: 0.85,
+      observationCount: 50,
+      metric: 0.7,
+      status: 'active',
+      createdAt: 1000,
+      updatedAt: 2000,
+      tainted: false,
+      ...overrides,
+    };
+  }
+
+  function writeRulesFile(rules: readonly DistilledRule[]): void {
+    const dir = join(dataDir, 'learning');
+    mkdirSync(dir, { recursive: true });
+    const snapshot = { version: 1, savedAt: new Date().toISOString(), rules };
+    writeFileSync(join(dir, 'rules.json'), JSON.stringify(snapshot));
+  }
+
+  it('priorStrategies surfaces active rules matching the task category', async () => {
+    const { shutdownToolMemory } = await import('../mcp/tools/tool-memory.js');
+    shutdownToolMemory();
+
+    writeRulesFile([
+      makeRule({ id: 'r-match-1', category: 'code_generation' }),
+      makeRule({ id: 'r-match-2', category: 'code_generation', cli: 'gemini', action: 'boost' }),
+      makeRule({ id: 'r-other', category: 'research' }),
+    ]);
+
+    const ctx = await getContextForTask({ task: 'anything', category: 'code_generation' });
+
+    expect(ctx.priorStrategies.length).toBeGreaterThanOrEqual(2);
+    const matchIds = ctx.priorStrategies.map((r) => r.id);
+    expect(matchIds).toContain('r-match-1');
+    expect(matchIds).toContain('r-match-2');
+    expect(matchIds).not.toContain('r-other');
+  });
+
+  it('priorStrategies excludes tainted rules (security gate)', async () => {
+    const { shutdownToolMemory } = await import('../mcp/tools/tool-memory.js');
+    shutdownToolMemory();
+
+    writeRulesFile([
+      makeRule({ id: 'clean', tainted: false }),
+      makeRule({ id: 'tainted', tainted: true }),
+    ]);
+
+    const ctx = await getContextForTask({ task: 'anything', category: 'code_generation' });
+    const ids = ctx.priorStrategies.map((r) => r.id);
+    expect(ids).toContain('clean');
+    expect(ids).not.toContain('tainted');
+  });
+
+  it('priorStrategies excludes non-active rules', async () => {
+    const { shutdownToolMemory } = await import('../mcp/tools/tool-memory.js');
+    shutdownToolMemory();
+
+    writeRulesFile([
+      makeRule({ id: 'active-one', status: 'active' }),
+      makeRule({ id: 'draft-one', status: 'draft' }),
+      makeRule({ id: 'expired-one', status: 'expired' }),
+      makeRule({ id: 'promoted-one', status: 'promoted' }),
+    ]);
+
+    const ctx = await getContextForTask({ task: 'anything', category: 'code_generation' });
+    const ids = ctx.priorStrategies.map((r) => r.id);
+    expect(ids).toEqual(['active-one']);
+  });
+
+  it('priorStrategies returns [] when no rules file exists', async () => {
+    const { shutdownToolMemory } = await import('../mcp/tools/tool-memory.js');
+    shutdownToolMemory();
+
+    const ctx = await getContextForTask({ task: 'anything', category: 'code_generation' });
+    expect(ctx.priorStrategies).toEqual([]);
+  });
+
+  it('priorStrategies honors limit', async () => {
+    const { shutdownToolMemory } = await import('../mcp/tools/tool-memory.js');
+    shutdownToolMemory();
+
+    const many = Array.from({ length: 20 }, (_, i) =>
+      makeRule({ id: `r-${String(i)}`, category: 'code_generation' })
+    );
+    writeRulesFile(many);
+
+    const ctx = await getContextForTask({
+      task: 'anything',
+      category: 'code_generation',
+      limit: 3,
+    });
+    expect(ctx.priorStrategies.length).toBe(3);
   });
 });
