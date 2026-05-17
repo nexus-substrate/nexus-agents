@@ -567,7 +567,11 @@ describe('OpenCodeResponseParser', () => {
       expect(result?.content).toBe('Text field in complete');
     });
 
-    it('should extract error event message (#1402)', () => {
+    it('should capture error event message in errorMessage (#2821, #1402)', () => {
+      // step_start ran, then an error event arrived — no text produced.
+      // Post-#2821: response has content='' (so extractResponse returns null
+      // and subprocess-adapter classifies as EXECUTION_ERROR) and the error
+      // message lives in errorMessage for log/telemetry visibility.
       const raw = createNdjson(
         { type: 'step_start', sessionID: 'ses_123' },
         {
@@ -579,11 +583,12 @@ describe('OpenCodeResponseParser', () => {
 
       const result = parser.parse(raw);
       expect(result).not.toBeNull();
-      expect(result?.content).toContain('Model not found');
+      expect(result?.content).toBe('');
+      expect(result?.errorMessage).toContain('Model not found');
       expect(result?.sessionId).toBe('ses_123');
     });
 
-    it('should handle error event with name-only fallback', () => {
+    it('should expose error name in errorMessage when only name is set (#2821)', () => {
       const raw = createNdjson({
         type: 'error',
         sessionID: 'ses_456',
@@ -592,24 +597,27 @@ describe('OpenCodeResponseParser', () => {
 
       const result = parser.parse(raw);
       expect(result).not.toBeNull();
-      expect(result?.content).toContain('ProviderModelNotFoundError');
+      expect(result?.content).toBe('');
+      expect(result?.errorMessage).toContain('ProviderModelNotFoundError');
     });
 
     it('should handle error event with null error object', () => {
+      // No error.data.message and no error.name → captureErrorMessage returns
+      // early, so errorMessage is never set. The error event still marks
+      // hasStepEvents=true, so handleEmptyContent falls back to the tool-only
+      // marker. Pre-existing behavior — pre-#2821 also returned this.
       const raw = createNdjson({
         type: 'error',
         sessionID: 'ses_789',
       });
 
       const result = parser.parse(raw);
-      // No error.data.message and no error.name → pushErrorContent returns early
-      // Only step_start-like events set hasStepEvents, but error also returns true
-      // from processRealEvent, so hasStepEvents is true → tool-only fallback
       expect(result).not.toBeNull();
       expect(result?.content).toBe('[Tool-only response — no text output]');
+      expect(result?.errorMessage).toBeUndefined();
     });
 
-    it('should handle error event with Unknown error fallback', () => {
+    it('should fall back to "Unknown error" message in errorMessage (#2821)', () => {
       const raw = createNdjson({
         type: 'error',
         sessionID: 'ses_err',
@@ -618,7 +626,41 @@ describe('OpenCodeResponseParser', () => {
 
       const result = parser.parse(raw);
       expect(result).not.toBeNull();
-      expect(result?.content).toContain('Unknown error');
+      expect(result?.content).toBe('');
+      expect(result?.errorMessage).toContain('Unknown error');
+    });
+
+    it('should make extractResponse return null on error-only streams (#2821)', () => {
+      // The whole point of #2821: an error-only stream must surface as
+      // failure to the subprocess-adapter, not as `[OpenCode error: ...]`
+      // content fed to voters/learners.
+      const raw = createNdjson({
+        type: 'error',
+        sessionID: 'ses_e2e',
+        error: { name: 'ProviderModelNotFoundError' },
+      });
+
+      expect(parser.extractResponse(raw)).toBeNull();
+    });
+
+    it('should preserve text content when an error arrives after text (#2821)', () => {
+      // Mixed stream: model produced text, then errored. Pre-#2821 the
+      // response was `Hello![OpenCode error: ...]`. Post-#2821 content is
+      // just the text and the error lives in errorMessage.
+      const raw = createNdjson(
+        { type: 'step_start', sessionID: 'ses_mix' },
+        { type: 'text', sessionID: 'ses_mix', part: { type: 'text', text: 'Hello!' } },
+        {
+          type: 'error',
+          sessionID: 'ses_mix',
+          error: { name: 'StreamInterrupted' },
+        }
+      );
+
+      const result = parser.parse(raw);
+      expect(result?.content).toBe('Hello!');
+      expect(result?.errorMessage).toContain('StreamInterrupted');
+      expect(parser.extractResponse(raw)).toBe('Hello!');
     });
 
     it('should handle plain JSON with camelCase sessionId', () => {
