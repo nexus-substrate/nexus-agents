@@ -54,12 +54,22 @@ export interface OpenCodeCliResponse {
   readonly sessionId?: string;
   readonly content: string;
   readonly usage?: TokenUsage;
+  /**
+   * Concatenated error-event messages emitted during the NDJSON stream.
+   * Set whenever `{"type":"error",...}` events appeared. Independent of
+   * whether `content` is empty — if both are populated the model produced
+   * text and then errored, callers can decide what to do.
+   * #2821: previously error events were folded into `content` (making
+   * failures look like successful responses to consensus voters/routers).
+   */
+  readonly errorMessage?: string;
 }
 
 /** Internal state from processing NDJSON lines. */
 interface NdjsonParseState {
   readonly sessionId: string | undefined;
   readonly contentParts: string[];
+  readonly errorMessages: string[];
   readonly usage: TokenUsage | undefined;
   readonly hasStepEvents: boolean;
   readonly hasAnyRecognizedEvent: boolean;
@@ -82,17 +92,33 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
     const lines = raw.trim().split('\n');
     const state = this.processAllLines(lines);
 
+    const errorMessage =
+      state.errorMessages.length > 0 ? state.errorMessages.join('; ') : undefined;
+
     if (state.contentParts.length === 0) {
+      // #2821: error-only streams must surface as failure. Empty content +
+      // errorMessage set causes extractResponse() to return null, which the
+      // subprocess-adapter then classifies as EXECUTION_ERROR — instead of
+      // wrapping `[OpenCode error: ...]` in ok() and feeding it to voters.
+      if (errorMessage !== undefined) {
+        return this.buildResponse('', state.sessionId, state.usage, errorMessage);
+      }
       return this.handleEmptyContent(raw, lines.length, state);
     }
 
-    return this.buildResponse(state.contentParts.join(''), state.sessionId, state.usage);
+    return this.buildResponse(
+      state.contentParts.join(''),
+      state.sessionId,
+      state.usage,
+      errorMessage
+    );
   }
 
   /** Processes all NDJSON lines and returns aggregated state. */
   private processAllLines(lines: readonly string[]): NdjsonParseState {
     let sessionId: string | undefined;
     const contentParts: string[] = [];
+    const errorMessages: string[] = [];
     let usage: TokenUsage | undefined;
     let hasStepEvents = false;
     let hasAnyRecognizedEvent = false;
@@ -102,7 +128,7 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
       if (line === undefined || line.trim() === '') continue;
       const hadEvent = this.processLine(
         line,
-        contentParts,
+        { contentParts, errorMessages },
         (id) => (sessionId = id),
         (u) => (usage = u),
         idx
@@ -111,7 +137,14 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
       if (hadEvent || this.isRecognizedLegacyEvent(line)) hasAnyRecognizedEvent = true;
     }
 
-    return { sessionId, contentParts, usage, hasStepEvents, hasAnyRecognizedEvent };
+    return {
+      sessionId,
+      contentParts,
+      errorMessages,
+      usage,
+      hasStepEvents,
+      hasAnyRecognizedEvent,
+    };
   }
 
   /** Handles the case where no text content was extracted from NDJSON. */
@@ -142,12 +175,14 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
   private buildResponse(
     content: string,
     sessionId: string | undefined,
-    usage: TokenUsage | undefined
+    usage: TokenUsage | undefined,
+    errorMessage?: string
   ): OpenCodeCliResponse {
     return {
       content,
       ...(sessionId !== undefined && { sessionId }),
       ...(usage !== undefined && { usage }),
+      ...(errorMessage !== undefined && { errorMessage }),
     };
   }
 
@@ -241,7 +276,7 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
    */
   private processLine(
     line: string,
-    contentParts: string[],
+    collectors: { contentParts: string[]; errorMessages: string[] },
     setSessionId: (id: string) => void,
     setUsage: (usage: TokenUsage) => void,
     lineIndex: number
@@ -250,10 +285,10 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
       const record = asRecord(JSON.parse(line) as unknown);
       if (record === null) return false;
 
-      const isReal = this.processRealEvent(record, contentParts, setSessionId, setUsage);
+      const isReal = this.processRealEvent(record, collectors, setSessionId, setUsage);
       if (isReal) return true;
 
-      this.processLegacyEvent(record, contentParts, setSessionId, setUsage);
+      this.processLegacyEvent(record, collectors.contentParts, setSessionId, setUsage);
       return false;
     } catch {
       logger.debug('Skipped malformed NDJSON line', {
@@ -267,7 +302,7 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
   /** Processes real opencode v1.2.x event types. Returns true if handled. */
   private processRealEvent(
     record: Record<string, unknown>,
-    contentParts: string[],
+    collectors: { contentParts: string[]; errorMessages: string[] },
     setSessionId: (id: string) => void,
     setUsage: (usage: TokenUsage) => void
   ): boolean {
@@ -278,7 +313,7 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
         return true;
       case 'text':
         this.handleRealSessionId(record, setSessionId);
-        this.pushRealTextContent(record, contentParts);
+        this.pushRealTextContent(record, collectors.contentParts);
         return true;
       case 'step_finish':
         this.handleRealSessionId(record, setSessionId);
@@ -286,15 +321,20 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
         return true;
       case 'error':
         this.handleRealSessionId(record, setSessionId);
-        this.pushErrorContent(record, contentParts);
+        this.captureErrorMessage(record, collectors.errorMessages);
         return true;
       default:
         return false;
     }
   }
 
-  /** Extracts error message from error event (#1402). */
-  private pushErrorContent(record: Record<string, unknown>, parts: string[]): void {
+  /**
+   * Captures an error-event message for the response's `errorMessage` field
+   * (#2821). Previously this pushed `[OpenCode error: ...]` into `contentParts`,
+   * which made error-only streams look like successful responses to consensus
+   * voters and the routing learner.
+   */
+  private captureErrorMessage(record: Record<string, unknown>, errorMessages: string[]): void {
     const errorObj = asRecord(record.error);
     if (errorObj === null) return;
 
@@ -307,7 +347,7 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
           : 'Unknown error';
 
     logger.warn('OpenCode returned error event', { message });
-    parts.push(`[OpenCode error: ${message}]`);
+    errorMessages.push(message);
   }
 
   /** Processes legacy assumed event types. */
