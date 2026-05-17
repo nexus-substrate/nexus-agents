@@ -8,7 +8,7 @@
   "author": "William Zujkowski",
   "repository": {
     "type": "git",
-    "url": "https://github.com/williamzujkowski/nexus-agents.git"
+    "url": "https://github.com/nexus-substrate/nexus-agents.git"
   },
   "keywords": [
     "mcp",

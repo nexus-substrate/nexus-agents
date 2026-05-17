@@ -16,7 +16,7 @@ import { join, normalize, dirname, extname, resolve } from 'node:path';
 import { readFileSync } from 'node:fs';
 
 const DOCS_PREFIX = '/nexus-agents/docs';
-const GITHUB_BLOB = 'https://github.com/williamzujkowski/nexus-agents/blob/main';
+const GITHUB_BLOB = 'https://github.com/nexus-substrate/nexus-agents/blob/main';
 
 /** Minimal AST node shape for remark mdast. */
 interface AstNode {

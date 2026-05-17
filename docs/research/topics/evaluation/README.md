@@ -26,6 +26,6 @@ None promoted to standalone techniques yet. The single related technique (`agent
 
 - [code-generation/](../code-generation/README.md) — SWE-bench-style functional benchmarks
 - [security/](../security/README.md) — Agent-SafetyBench (safety dimension)
-- Companion repo: [`nexus-eval-swebench`](https://github.com/williamzujkowski/nexus-eval-swebench) — our SWE-bench harness
+- Companion repo: [`nexus-eval-swebench`](https://github.com/nexus-substrate/nexus-eval-swebench) — our SWE-bench harness
 
 > The registry is the authoritative source. This page is a navigational stub.

@@ -163,13 +163,13 @@ export async function handleSweBenchCommand(_args: ParsedCliArgs): Promise<void>
   process.stderr.write(
     "The 'nexus-agents swe-bench' subcommand was removed in this release.\n" +
       'The SWE-bench harness now lives in its own repo per the harness-extraction\n' +
-      'policy (https://github.com/williamzujkowski/nexus-agents/issues/2515).\n' +
+      'policy (https://github.com/nexus-substrate/nexus-agents/issues/2515).\n' +
       '\n' +
       'Migration:\n' +
       '  npx nexus-eval-swebench [run] [options]\n' +
       '\n' +
       "Run 'npx nexus-eval-swebench --help' for the full flag set, or see\n" +
-      '  https://github.com/williamzujkowski/nexus-eval-swebench\n' +
+      '  https://github.com/nexus-substrate/nexus-eval-swebench\n' +
       'for library-mode usage and the v0.2 clean-room implementation.\n'
   );
   await Promise.resolve();
@@ -189,7 +189,7 @@ export async function handleAtbenchCommand(_args: ParsedCliArgs): Promise<void> 
   process.stderr.write(
     "The 'nexus-agents atbench' subcommand was removed in this release.\n" +
       'The Atbench harness now lives in its own repo per the harness-extraction\n' +
-      'policy (https://github.com/williamzujkowski/nexus-agents/issues/2514).\n' +
+      'policy (https://github.com/nexus-substrate/nexus-agents/issues/2514).\n' +
       '\n' +
       'Migration:\n' +
       '  npx nexus-eval-atbench [run] [options]\n' +

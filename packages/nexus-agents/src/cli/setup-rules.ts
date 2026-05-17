@@ -19,7 +19,7 @@ import type { BackupInfo } from './setup-types.js';
 export function generateRulesContent(): string {
   return `# Nexus-Agents Integration
 
-This project uses [nexus-agents](https://github.com/williamzujkowski/nexus-agents) v${VERSION} for multi-agent orchestration.
+This project uses [nexus-agents](https://github.com/nexus-substrate/nexus-agents) v${VERSION} for multi-agent orchestration.
 
 ## MCP Tools Available
 

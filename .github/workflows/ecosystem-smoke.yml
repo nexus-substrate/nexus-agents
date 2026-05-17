@@ -35,7 +35,7 @@ jobs:
           FILTER: ${{ inputs.repo_filter }}
         run: |
           set -euo pipefail
-          repos=$(gh search repos --owner williamzujkowski --topic nexus-agents-test \
+          repos=$(gh search repos --owner ${{ github.repository_owner }} --topic nexus-agents-test \
             --json name --jq '[.[].name]')
           if [[ -n "$FILTER" ]]; then
             repos=$(echo "$repos" | jq --arg f "$FILTER" '[.[] | select(contains($f))]')
@@ -57,7 +57,7 @@ jobs:
       - name: Checkout ${{ matrix.repo }}
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
-          repository: williamzujkowski/${{ matrix.repo }}
+          repository: ${{ github.repository_owner }}/${{ matrix.repo }}
           path: target
           persist-credentials: false
 
@@ -168,7 +168,7 @@ jobs:
               title,
               labels: ['discovered', 'ecosystem-smoke'],
               body: [
-                `Ecosystem smoke test failed for \`williamzujkowski/${repo}\`.`,
+                `Ecosystem smoke test failed for \`${{ github.repository_owner }}/${repo}\`.`,
                 ``,
                 `Run: https://github.com/${{ github.repository }}/actions/runs/${run}`,
                 ``,

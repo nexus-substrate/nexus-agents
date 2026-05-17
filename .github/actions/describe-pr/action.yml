@@ -1,6 +1,6 @@
 name: 'nexus-agents Describe PR'
 description: 'Auto-generate PR descriptions from diff analysis using nexus-agents'
-author: 'williamzujkowski'
+author: 'nexus-substrate'
 
 inputs:
   github-token:

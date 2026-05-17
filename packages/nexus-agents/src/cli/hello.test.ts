@@ -240,7 +240,7 @@ describe('Hello Command', () => {
       printHelloResult(result);
 
       const output = writeSpy.mock.calls.map((c) => c[0]).join('');
-      expect(output).toContain('github.com/williamzujkowski/nexus-agents');
+      expect(output).toContain('github.com/nexus-substrate/nexus-agents');
 
       writeSpy.mockRestore();
     });

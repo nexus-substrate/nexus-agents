@@ -1,6 +1,6 @@
 # Nexus Agents
 
-[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/12365/badge)](https://www.bestpractices.dev/projects/12365) [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/williamzujkowski/nexus-agents/badge)](https://securityscorecards.dev/viewer/?uri=github.com/williamzujkowski/nexus-agents)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/12365/badge)](https://www.bestpractices.dev/projects/12365) [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/nexus-substrate/nexus-agents/badge)](https://securityscorecards.dev/viewer/?uri=github.com/nexus-substrate/nexus-agents)
 
 > Governance substrate for your AI coding agents — adversarial review, drift-detected rules, immutable audit, closed-loop telemetry
 
@@ -278,7 +278,7 @@ nexus-agents config init   # Creates nexus-agents.yaml
 ## Development
 
 ```bash
-git clone https://github.com/williamzujkowski/nexus-agents.git
+git clone https://github.com/nexus-substrate/nexus-agents.git
 cd nexus-agents
 pnpm install
 pnpm build

@@ -1,13 +1,13 @@
 # SWE-Bench Evaluation Harness
 
-> **EXTRACTED** ([#2515](https://github.com/williamzujkowski/nexus-agents/issues/2515)). The SWE-bench harness moved out of nexus-agents into [`nexus-eval-swebench`](https://github.com/williamzujkowski/nexus-eval-swebench) per the harness-extraction policy ([epic #2514](https://github.com/williamzujkowski/nexus-agents/issues/2514), originally [#1960](https://github.com/williamzujkowski/nexus-agents/issues/1960)).
+> **EXTRACTED** ([#2515](https://github.com/nexus-substrate/nexus-agents/issues/2515)). The SWE-bench harness moved out of nexus-agents into [`nexus-eval-swebench`](https://github.com/nexus-substrate/nexus-eval-swebench) per the harness-extraction policy ([epic #2514](https://github.com/nexus-substrate/nexus-agents/issues/2514), originally [#1960](https://github.com/nexus-substrate/nexus-agents/issues/1960)).
 >
-> **For current usage** see the [`nexus-eval-swebench` README](https://github.com/williamzujkowski/nexus-eval-swebench#readme). This document describes the original in-tree implementation; sections about the runtime, CLI subcommand, and module layout are historical.
+> **For current usage** see the [`nexus-eval-swebench` README](https://github.com/nexus-substrate/nexus-eval-swebench#readme). This document describes the original in-tree implementation; sections about the runtime, CLI subcommand, and module layout are historical.
 
 **Original status:** Implemented (replaced by extracted harness 2026-05-09)
 **Original issue:** #257
 **Original module:** `packages/nexus-agents/src/swe-bench/` (deleted)
-**Replaced by:** [nexus-eval-swebench](https://github.com/williamzujkowski/nexus-eval-swebench) v0.2 clean-room rewrite
+**Replaced by:** [nexus-eval-swebench](https://github.com/nexus-substrate/nexus-eval-swebench) v0.2 clean-room rewrite
 
 ---
 

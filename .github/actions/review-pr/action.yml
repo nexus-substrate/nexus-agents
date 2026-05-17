@@ -1,6 +1,6 @@
 name: 'nexus-agents PR Review'
 description: 'Automated PR review using nexus-agents consensus voting and security pipeline'
-author: 'williamzujkowski'
+author: 'nexus-substrate'
 
 inputs:
   github-token:

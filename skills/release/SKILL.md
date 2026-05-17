@@ -89,7 +89,7 @@ Releases are automated via changesets + GitHub Actions:
 
    **IMPORTANT: npm trusted publisher config must match workflow filename.**
    The npmjs.com package settings specify the exact workflow file (`release.yml`),
-   repository (`williamzujkowski/nexus-agents`), and environment. If you rename
+   repository (`nexus-substrate/nexus-agents`), and environment. If you rename
    the workflow file, update the npm trusted publisher config to match or
    publishing will fail with OIDC token rejection.
 

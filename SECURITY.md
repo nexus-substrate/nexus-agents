@@ -14,7 +14,7 @@ We take security seriously. If you discover a security vulnerability, please rep
 ### Security Contact
 
 - **Email**: [williamzujkowski@gmail.com](mailto:williamzujkowski@gmail.com)
-- **GitHub Security Advisory** (preferred): https://github.com/williamzujkowski/nexus-agents/security/advisories/new
+- **GitHub Security Advisory** (preferred): https://github.com/nexus-substrate/nexus-agents/security/advisories/new
 
 ### Do NOT
 

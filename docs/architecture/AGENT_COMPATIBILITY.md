@@ -18,7 +18,7 @@ keywords:
 
 # Agent Harness Compatibility Matrix
 
-This doc surveys the agent-config standards across the agentic-coding harness ecosystem and records how nexus-agents reaches each. **AGENTS.md is the canonical surface** (per [#2805](https://github.com/williamzujkowski/nexus-agents/issues/2805), choosing option B of [#2764](https://github.com/williamzujkowski/nexus-agents/issues/2764)). Every other harness file in this repo is a thin redirect.
+This doc surveys the agent-config standards across the agentic-coding harness ecosystem and records how nexus-agents reaches each. **AGENTS.md is the canonical surface** (per [#2805](https://github.com/nexus-substrate/nexus-agents/issues/2805), choosing option B of [#2764](https://github.com/nexus-substrate/nexus-agents/issues/2764)). Every other harness file in this repo is a thin redirect.
 
 ## Why federate on AGENTS.md
 
@@ -98,5 +98,5 @@ When Phase 2 lands, these become invariants of the repo:
 - [`AGENTS.md`](../../AGENTS.md) — the federated surface
 - [`CLAUDE.md`](../../CLAUDE.md) — Claude Code-specific complement
 - [`skills/index.yaml`](../../skills/index.yaml) — Skill catalog discoverable by spec-aware harnesses
-- [#2805](https://github.com/williamzujkowski/nexus-agents/issues/2805) — tracking epic
-- [#2764](https://github.com/williamzujkowski/nexus-agents/issues/2764) — original epic-meta
+- [#2805](https://github.com/nexus-substrate/nexus-agents/issues/2805) — tracking epic
+- [#2764](https://github.com/nexus-substrate/nexus-agents/issues/2764) — original epic-meta

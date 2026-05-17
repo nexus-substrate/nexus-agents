@@ -229,7 +229,7 @@ ${findingsSection}
 ${statsSection}
 
 ---
-*Reviewed by [nexus-agents](https://github.com/williamzujkowski/nexus-agents) in ${String(result.totalDurationMs)}ms*`;
+*Reviewed by [nexus-agents](https://github.com/nexus-substrate/nexus-agents) in ${String(result.totalDurationMs)}ms*`;
 }
 
 function formatFindingsSection(result: PRReviewResult): string {

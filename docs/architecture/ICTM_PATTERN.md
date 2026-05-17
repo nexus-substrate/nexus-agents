@@ -4,7 +4,7 @@
 **Last Updated:** 2026-04-19 (ET)
 **Status:** Canonical
 **Location:** `docs/architecture/ICTM_PATTERN.md`
-**Issue:** [#756](https://github.com/williamzujkowski/nexus-agents/issues/756) | **Paper:** [arXiv:2602.03786](https://arxiv.org/abs/2602.03786)
+**Issue:** [#756](https://github.com/nexus-substrate/nexus-agents/issues/756) | **Paper:** [arXiv:2602.03786](https://arxiv.org/abs/2602.03786)
 
 > ICTM = **(Instructions, Context, Tools, Model)** — a 4-tuple that fully specifies a sub-agent at creation time, enabling task-adaptive specialization instead of static expert roles.
 

@@ -124,7 +124,7 @@ function buildErrorMessage(): string {
     CLI_AUTH_INSTRUCTIONS +
     '\n\n2. An API key environment variable:\n' +
     keyList +
-    '\n\nSee: https://github.com/williamzujkowski/nexus-agents#prerequisites--environment'
+    '\n\nSee: https://github.com/nexus-substrate/nexus-agents#prerequisites--environment'
   );
 }
 

@@ -120,7 +120,7 @@ Set `NEXUS_PORTABLE_MODE=0` in CI's environment. The opt-out wins over every heu
 
 ### Auto-gitignore isn't happening
 
-It only fires when `<cwd>` is a git repository (has a `.git/` directory). nexus-agents doesn't ancestor-walk for `.git` discovery — see [#2301](https://github.com/williamzujkowski/nexus-agents/issues/2301) for the deferred design pass on safe ancestor walking. If you're in a subdirectory of a git repo, run nexus-agents from the repo root or add `.nexus-agents/` to `.gitignore` manually.
+It only fires when `<cwd>` is a git repository (has a `.git/` directory). nexus-agents doesn't ancestor-walk for `.git` discovery — see [#2301](https://github.com/nexus-substrate/nexus-agents/issues/2301) for the deferred design pass on safe ancestor walking. If you're in a subdirectory of a git repo, run nexus-agents from the repo root or add `.nexus-agents/` to `.gitignore` manually.
 
 ## What's NOT touched by portable mode
 
@@ -145,7 +145,7 @@ Both should complete without errors. The first invocation triggers the `[portabl
 
 The portable-mode flow above covers the "I'm running nexus-agents directly in a sandbox" case. This section covers the more specific scenario where **nexus-agents is loaded as an MCP by OpenCode running inside a Docker sandbox**, with a custom OpenAI-compatible gateway proxying upstream provider keys at the host boundary.
 
-> Source: epic [#2500](https://github.com/williamzujkowski/nexus-agents/issues/2500), shipped across [#2501](https://github.com/williamzujkowski/nexus-agents/issues/2501)–[#2505](https://github.com/williamzujkowski/nexus-agents/issues/2505).
+> Source: epic [#2500](https://github.com/nexus-substrate/nexus-agents/issues/2500), shipped across [#2501](https://github.com/nexus-substrate/nexus-agents/issues/2501)–[#2505](https://github.com/nexus-substrate/nexus-agents/issues/2505).
 
 ### Architecture
 
@@ -190,7 +190,7 @@ The portable-mode flow above covers the "I'm running nexus-agents directly in a 
 docker build -f Dockerfile.sandbox -t nexus-sandbox:latest .
 ```
 
-The image sets `ENV NEXUS_SANDBOX=docker-opencode` so nexus-agents knows it's running inside a host-provided sandbox at startup ([#2501](https://github.com/williamzujkowski/nexus-agents/issues/2501)).
+The image sets `ENV NEXUS_SANDBOX=docker-opencode` so nexus-agents knows it's running inside a host-provided sandbox at startup ([#2501](https://github.com/nexus-substrate/nexus-agents/issues/2501)).
 
 ### Configure the workspace key proxy on the host
 
@@ -250,11 +250,11 @@ docker run --rm -it \
 
 `{env:VAR}` is OpenCode's interpolation syntax — substitution happens when OpenCode reads the file, so values flow through to the MCP environment block at spawn time.
 
-`NEXUS_OPENCODE_CONFIG` is the bridge that lets nexus-agents read the gateway config from `opencode.json` directly ([#2503](https://github.com/williamzujkowski/nexus-agents/issues/2503)). Precedence: `NEXUS_OPENAI_COMPAT_URL/KEY` env vars > opencode.json > unconfigured.
+`NEXUS_OPENCODE_CONFIG` is the bridge that lets nexus-agents read the gateway config from `opencode.json` directly ([#2503](https://github.com/nexus-substrate/nexus-agents/issues/2503)). Precedence: `NEXUS_OPENAI_COMPAT_URL/KEY` env vars > opencode.json > unconfigured.
 
 ### Fail-fast behaviour
 
-When sandbox mode is active and the gateway is misconfigured, nexus-agents fails fast at startup ([#2502](https://github.com/williamzujkowski/nexus-agents/issues/2502)):
+When sandbox mode is active and the gateway is misconfigured, nexus-agents fails fast at startup ([#2502](https://github.com/nexus-substrate/nexus-agents/issues/2502)):
 
 - Missing env vars (and no `NEXUS_OPENCODE_CONFIG`-pointed file with `providers.openai-compat`): exit, error names the missing env vars + this doc.
 - `/v1/models` probe fails: exit, error includes the HTTP failure.
@@ -270,7 +270,7 @@ From inside the running container:
 nexus-agents doctor
 ```
 
-The doctor output now includes a "Sandbox awareness" section ([#2501](https://github.com/williamzujkowski/nexus-agents/issues/2501)) when active. Look for:
+The doctor output now includes a "Sandbox awareness" section ([#2501](https://github.com/nexus-substrate/nexus-agents/issues/2501)) when active. Look for:
 
 - `✓ Sandbox flavor: docker-opencode`
 - `NEXUS_SANDBOX_ROOT: /projects` (your mounted root)
@@ -293,7 +293,7 @@ If you're not using `Dockerfile.sandbox` directly — e.g., you have an existing
 nexus-agents init --opencode /path/to/opencode.json --dry-run
 ```
 
-This shows the proposed merge without writing. Drop `--dry-run` to commit. The merge ([#2504](https://github.com/williamzujkowski/nexus-agents/issues/2504)) preserves every existing key. Re-running is idempotent. Operator overrides like `enabled: false` are preserved across re-runs.
+This shows the proposed merge without writing. Drop `--dry-run` to commit. The merge ([#2504](https://github.com/nexus-substrate/nexus-agents/issues/2504)) preserves every existing key. Re-running is idempotent. Operator overrides like `enabled: false` are preserved across re-runs.
 
 ### OpenCode-specific troubleshooting
 
@@ -301,13 +301,13 @@ This shows the proposed merge without writing. Drop `--dry-run` to commit. The m
 
 **Gateway probe fails** — From inside the container, `curl -H "Authorization: Bearer $NEXUS_OPENAI_COMPAT_KEY" $NEXUS_OPENAI_COMPAT_URL/v1/models`. If that fails, the workspace key proxy isn't reachable from the sandbox network. Check outbound network access to the proxy host and that the proxy is bound to an interface the container can reach.
 
-**"Mock orchestration" warnings appearing post-upgrade** — Older `Dockerfile.sandbox` builds set `NEXUS_ALLOW_MOCK_ORCHESTRATION=true` as a band-aid for the unwired gateway. With the gateway now wired ([#2502](https://github.com/williamzujkowski/nexus-agents/issues/2502)), drop that env var — orchestration uses real LLM calls. Mock-orchestration is heuristic-based and silently produces non-LLM results; leaving it on after the gateway is configured will mask real routing decisions.
+**"Mock orchestration" warnings appearing post-upgrade** — Older `Dockerfile.sandbox` builds set `NEXUS_ALLOW_MOCK_ORCHESTRATION=true` as a band-aid for the unwired gateway. With the gateway now wired ([#2502](https://github.com/nexus-substrate/nexus-agents/issues/2502)), drop that env var — orchestration uses real LLM calls. Mock-orchestration is heuristic-based and silently produces non-LLM results; leaving it on after the gateway is configured will mask real routing decisions.
 
 ## Related
 
 - [Installation](./INSTALLATION.md) — initial install path
 - [Configuration](./CONFIGURATION.md) — env vars, config files, model selection
-- [#2467 epic](https://github.com/williamzujkowski/nexus-agents/issues/2467) — the umbrella for OpenAI-compat gateway support, sandbox-safe operation, and reliability hardening
-- [#2500 epic](https://github.com/williamzujkowski/nexus-agents/issues/2500) — MCP-in-sandbox: full functionality with OpenCode + OpenAI-compat gateway
+- [#2467 epic](https://github.com/nexus-substrate/nexus-agents/issues/2467) — the umbrella for OpenAI-compat gateway support, sandbox-safe operation, and reliability hardening
+- [#2500 epic](https://github.com/nexus-substrate/nexus-agents/issues/2500) — MCP-in-sandbox: full functionality with OpenCode + OpenAI-compat gateway
 - [`Dockerfile.sandbox`](../../Dockerfile.sandbox) — the canonical image for the OpenCode-in-Docker scenario
 - OpenCode's own [`opencode.json` reference](https://opencode.ai/docs/configuration)

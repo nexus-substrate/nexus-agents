@@ -1,7 +1,7 @@
 # Multi-Repo Orchestration Architecture
 
 **Status:** Research (Phase 1)
-**Issue:** [#1076](https://github.com/williamzujkowski/nexus-agents/issues/1076)
+**Issue:** [#1076](https://github.com/nexus-substrate/nexus-agents/issues/1076)
 **ADR:** [0015](../adr/0015-multi-repo-orchestration.md)
 
 ## Problem
@@ -171,6 +171,6 @@ The planner can:
 
 ## References
 
-- Issue: [#1076](https://github.com/williamzujkowski/nexus-agents/issues/1076)
+- Issue: [#1076](https://github.com/nexus-substrate/nexus-agents/issues/1076)
 - ADR: [0015-multi-repo-orchestration](../adr/0015-multi-repo-orchestration.md)
 - Related: `repo_analyze` MCP tool, `repo_security_plan` MCP tool

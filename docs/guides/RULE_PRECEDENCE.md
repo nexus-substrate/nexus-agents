@@ -40,7 +40,7 @@ The columns mean different things per adapter, which is exactly the problem this
 **Implications.**
 
 - A rule that isn't keyword-matched **won't load** even if a relevant code change is being made. The fix in this codebase is to surface keyword cues prominently in the rule's first paragraph.
-- Issue [#2656](https://github.com/williamzujkowski/nexus-agents/issues/2656) added `paths:` + `description:` frontmatter to every `.rules/*.md`, and [#2657](https://github.com/williamzujkowski/nexus-agents/issues/2657) made that frontmatter the single source of truth for the [AGENTS.md](../../AGENTS.md) "Rules index" table — the universal cross-adapter bridge (see [below](#what-rules-autoload-looks-like-across-adapters)). No harness reads `paths:` globs natively; the frontmatter is consumed by `scripts/inject-governance.ts`, which regenerates the AGENTS.md table (and a CI gate fails on drift).
+- Issue [#2656](https://github.com/nexus-substrate/nexus-agents/issues/2656) added `paths:` + `description:` frontmatter to every `.rules/*.md`, and [#2657](https://github.com/nexus-substrate/nexus-agents/issues/2657) made that frontmatter the single source of truth for the [AGENTS.md](../../AGENTS.md) "Rules index" table — the universal cross-adapter bridge (see [below](#what-rules-autoload-looks-like-across-adapters)). No harness reads `paths:` globs natively; the frontmatter is consumed by `scripts/inject-governance.ts`, which regenerates the AGENTS.md table (and a CI gate fails on drift).
 
 **Canonical reference.** Claude Code docs · `code.claude.com/docs/en/best-practices`.
 
@@ -131,7 +131,7 @@ This is why `AGENTS.md` in this repo lists every `.rules/*.md` file with a "When
 | Auto-load on file-path match (glob)          | ❌             | ❌    | ❌                                         | ❌       |
 | Load via explicit reference from `AGENTS.md` | ✅             | ✅    | ✅ if `AGENTS.md` is in `context.fileName` | ✅       |
 
-The third row is the universal path: nexus-agents' `AGENTS.md` "Rules index" table references every `.rules/*.md` file, so all four harnesses see all rules. The first row is Claude-only and best-effort. **The second row is empty by design** — no harness reads `paths:` glob frontmatter natively, and nexus-agents cannot add glob auto-loading without forking the harnesses. Instead, [#2657](https://github.com/williamzujkowski/nexus-agents/issues/2657) makes the third row drift-proof: `scripts/inject-governance.ts` regenerates the AGENTS.md table from `.rules/*.md` `paths:` + `description:` frontmatter, and a CI gate (`checkRulesIndex`) fails the build if the table drifts from the frontmatter. The `paths:` globs surface in the table's "Applies to" column so an operator on any harness can see which files each rule governs.
+The third row is the universal path: nexus-agents' `AGENTS.md` "Rules index" table references every `.rules/*.md` file, so all four harnesses see all rules. The first row is Claude-only and best-effort. **The second row is empty by design** — no harness reads `paths:` glob frontmatter natively, and nexus-agents cannot add glob auto-loading without forking the harnesses. Instead, [#2657](https://github.com/nexus-substrate/nexus-agents/issues/2657) makes the third row drift-proof: `scripts/inject-governance.ts` regenerates the AGENTS.md table from `.rules/*.md` `paths:` + `description:` frontmatter, and a CI gate (`checkRulesIndex`) fails the build if the table drifts from the frontmatter. The `paths:` globs surface in the table's "Applies to" column so an operator on any harness can see which files each rule governs.
 
 ---
 
@@ -151,5 +151,5 @@ For operator setup wiring (where to register MCP servers per harness, where to p
 
 - [AGENTS.md](../../AGENTS.md) — the canonical agent-instructions file. The "Rules index" section makes `.rules/*.md` visible to non-Claude harnesses.
 - [HARNESS_COMPATIBILITY.md](./HARNESS_COMPATIBILITY.md) — MCP-server wiring per harness.
-- [#2656](https://github.com/williamzujkowski/nexus-agents/issues/2656) — `paths:` + `description:` frontmatter on every `.rules/*.md`, plus the `checkRuleFrontmatter` CI gate.
-- [#2657](https://github.com/williamzujkowski/nexus-agents/issues/2657) — Epic C. This doc + #2656, plus the generator that builds the AGENTS.md "Rules index" from the frontmatter and the `checkRulesIndex` drift gate.
+- [#2656](https://github.com/nexus-substrate/nexus-agents/issues/2656) — `paths:` + `description:` frontmatter on every `.rules/*.md`, plus the `checkRuleFrontmatter` CI gate.
+- [#2657](https://github.com/nexus-substrate/nexus-agents/issues/2657) — Epic C. This doc + #2656, plus the generator that builds the AGENTS.md "Rules index" from the frontmatter and the `checkRulesIndex` drift gate.

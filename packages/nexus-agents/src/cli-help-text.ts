@@ -88,7 +88,7 @@ EXAMPLES:
   nexus-agents vote --quick -p "X"  3-agent consensus vote on proposal "X"
   nexus-agents --help --all         Show every command (incl. maintainer tools)
 
-For more information, visit: https://github.com/williamzujkowski/nexus-agents
+For more information, visit: https://github.com/nexus-substrate/nexus-agents
 `.trim();
 
 /**

@@ -80,7 +80,7 @@ The trusted publisher is configured on npmjs.com (npm supports one trusted publi
 
 1. Go to https://www.npmjs.com/package/nexus-agents/access
 2. Under **Trusted Publishers**, configure GitHub Actions:
-   - **Repository owner:** `williamzujkowski`
+   - **Repository owner:** `nexus-substrate`
    - **Repository name:** `nexus-agents`
    - **Workflow filename:** `release.yml`
    - **Environment:** _(leave blank)_

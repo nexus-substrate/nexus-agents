@@ -7,7 +7,7 @@ keywords: [governance, fitness, dead-code, orphans, observability]
 
 # Import-Graph Orphan Detection
 
-> Design doc for issue [#2409](https://github.com/williamzujkowski/nexus-agents/issues/2409). Implementation tracked in [#2410](https://github.com/williamzujkowski/nexus-agents/issues/2410).
+> Design doc for issue [#2409](https://github.com/nexus-substrate/nexus-agents/issues/2409). Implementation tracked in [#2410](https://github.com/nexus-substrate/nexus-agents/issues/2410).
 
 ## Problem
 

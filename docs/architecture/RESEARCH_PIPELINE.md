@@ -1,7 +1,7 @@
 # Research-to-Project Pipeline
 
 **Status:** Canonical
-**Issue:** [#1822](https://github.com/williamzujkowski/nexus-agents/issues/1822) (supersedes closed [#1731](https://github.com/williamzujkowski/nexus-agents/pull/1731))
+**Issue:** [#1822](https://github.com/nexus-substrate/nexus-agents/issues/1822) (supersedes closed [#1731](https://github.com/nexus-substrate/nexus-agents/pull/1731))
 **Module:** `packages/nexus-agents/src/pipeline/research-pipeline.ts`
 **Plugin id:** `nexus:research-pipeline` (registered via `core-plugins.ts`)
 
