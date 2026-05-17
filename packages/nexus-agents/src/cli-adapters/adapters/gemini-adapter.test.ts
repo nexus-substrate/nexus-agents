@@ -246,6 +246,29 @@ describe('GeminiCliAdapter systemPrompt (#1886)', () => {
     expect(cmd.args).not.toContain('--policy');
     expect(cmd.cleanup).toBeUndefined();
   });
+
+  it('cleanup removes parent tempdir, not just file (#2824)', async () => {
+    const adapter = new GeminiCliAdapter();
+    const cmd = (
+      adapter as unknown as { getCommand: (t: unknown) => { args: string[]; cleanup?: () => void } }
+    ).getCommand({ content: 'test prompt', systemPrompt: 'You are strict.' });
+    const policyIdx = cmd.args.indexOf('--policy');
+    const file = cmd.args[policyIdx + 1] as string;
+    const dir = file.replace(/\/policy\.md$/, '');
+
+    // Sanity check pre-cleanup
+    const { existsSync } = await import('node:fs');
+    expect(existsSync(file)).toBe(true);
+    expect(existsSync(dir)).toBe(true);
+
+    if (cmd.cleanup !== undefined) cmd.cleanup();
+
+    // Post-cleanup: both file AND parent tempdir gone. Pre-fix only the
+    // file was unlinked, leaking an empty `nexus-gemini-sysprompt-XXXXXX`
+    // dir on every call.
+    expect(existsSync(file)).toBe(false);
+    expect(existsSync(dir)).toBe(false);
+  });
 });
 
 describe('GeminiCliAdapter resilient parsing', () => {

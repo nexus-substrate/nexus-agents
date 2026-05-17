@@ -350,6 +350,39 @@ describe('CodexCliAdapter (Subprocess)', () => {
       expect(cVal).toMatch(/^model_instructions_file=.+instructions\.md$/);
     });
 
+    it('cleans up tempdir parent after systemPrompt run (#2824 — file + dir, not just file)', async () => {
+      const ndjsonResponse = [
+        JSON.stringify({ type: 'thread.started', thread_id: 'thread-tempdir' }),
+        JSON.stringify({
+          type: 'item.completed',
+          item: { id: 'item-1', type: 'agent_message', text: 'ok' },
+        }),
+        JSON.stringify({ type: 'turn.completed' }),
+      ].join('\n');
+      const mockProcess = createMockProcess(ndjsonResponse);
+      vi.mocked(spawn).mockReturnValue(mockProcess);
+
+      const task: CliTask = {
+        content: 'whatever',
+        systemPrompt: 'You are a strict reviewer.',
+      };
+      await adapter.execute(task);
+
+      // Locate the tempdir from the spawned args, then confirm BOTH the
+      // file AND the parent dir are gone post-cleanup. Pre-fix the file
+      // was unlinked but the empty parent dir was leaked.
+      const args = vi.mocked(spawn).mock.calls.at(-1)?.[1] as string[];
+      const cIdx = args.indexOf('-c');
+      const cVal = args[cIdx + 1] as string;
+      const match = cVal.match(/^model_instructions_file=(.+\/instructions\.md)$/);
+      expect(match).not.toBeNull();
+      const file = match![1] as string;
+      const dir = file.replace(/\/instructions\.md$/, '');
+      const { existsSync } = await import('node:fs');
+      expect(existsSync(file)).toBe(false);
+      expect(existsSync(dir)).toBe(false);
+    });
+
     it('omits -c model_instructions_file when systemPrompt is empty', async () => {
       const ndjsonResponse = [
         JSON.stringify({ type: 'thread.started', thread_id: 'thread-123' }),
