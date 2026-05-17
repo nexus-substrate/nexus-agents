@@ -371,7 +371,12 @@ export class CompositeRouter implements ICompositeRouter {
       if (replayed === 0) {
         const result = runWarmUp(this.logger);
         if (!result.skipped) {
-          const outcomes = getOutcomeStore().query();
+          // Mirror the 30-day path's filter (#2824 bullet) — pre-fix this
+          // cold-start fallback queried with no filter, replaying any
+          // e2e-eval synthetic outcomes that survived from prior test
+          // runs into LinUCB. The 30-day branch above carefully excludes
+          // them; the fallback didn't.
+          const outcomes = getOutcomeStore().query({ excludeQualitySignals: ['e2e-eval'] });
           this.linucbBandit.warmStart(outcomes);
         }
         this.logger.info('LinUCB cold-start seeded from specialization matrix', {
