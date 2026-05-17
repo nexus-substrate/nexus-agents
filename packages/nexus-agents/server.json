@@ -1,9 +1,9 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.williamzujkowski/nexus-agents",
+  "name": "io.github.nexus-substrate/nexus-agents",
   "description": "Intelligent orchestration platform for AI coding tools. Routes tasks to the best model (Claude, Codex, Gemini, OpenCode) using data-driven algorithms (LinUCB, TOPSIS), enforces quality through multi-model consensus voting, and learns from outcomes across sessions. 38 MCP tools, 8 memory backends, full dev pipeline with research/plan/vote/implement/QA stages.",
   "repository": {
-    "url": "https://github.com/williamzujkowski/nexus-agents",
+    "url": "https://github.com/nexus-substrate/nexus-agents",
     "source": "github"
   },
   "version": "2.79.3",

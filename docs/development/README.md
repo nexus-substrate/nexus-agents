@@ -36,7 +36,7 @@ related_files:
 
 ```bash
 # Clone repository
-git clone https://github.com/williamzujkowski/nexus-agents.git
+git clone https://github.com/nexus-substrate/nexus-agents.git
 cd nexus-agents
 
 # Install dependencies

@@ -242,7 +242,7 @@ describe('setup health gate (#2137)', () => {
     expect(output).toContain('Getting started');
     expect(output).toContain('1. nexus-agents hello');
     expect(output).toContain('3. nexus-agents workflow list');
-    expect(output).toContain('Docs: https://github.com/williamzujkowski/nexus-agents');
+    expect(output).toContain('Docs: https://github.com/nexus-substrate/nexus-agents');
     // Default (no MCP wired) → step 2 is the standalone orchestrate hint.
     expect(output).toContain('2. nexus-agents orchestrate');
     expect(output).not.toContain('Use through Claude Code');

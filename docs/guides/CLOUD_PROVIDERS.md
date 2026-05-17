@@ -9,7 +9,7 @@ keywords: [bedrock, vertex, azure, openrouter, litellm, cloud, providers, gatewa
 
 Route nexus-agents through AWS Bedrock, Google Vertex AI, Azure OpenAI, or any of LiteLLM's 2,673 supported models — without nexus-agents shipping any provider-specific adapter code.
 
-> **Why no native Bedrock/Vertex/Azure adapter?** Per the consensus vote on issue [#2182](https://github.com/williamzujkowski/nexus-agents/issues/2182) (6-0 unanimous reject), shipping per-cloud provider plugins is a build-vs-buy mistake — the existing OpenAI-compatible gateway pattern already covers every cloud through one of the three paths below. This guide documents what to use instead.
+> **Why no native Bedrock/Vertex/Azure adapter?** Per the consensus vote on issue [#2182](https://github.com/nexus-substrate/nexus-agents/issues/2182) (6-0 unanimous reject), shipping per-cloud provider plugins is a build-vs-buy mistake — the existing OpenAI-compatible gateway pattern already covers every cloud through one of the three paths below. This guide documents what to use instead.
 
 ## TL;DR — Pick a path
 
@@ -199,4 +199,4 @@ Look for the configured CLI/adapter in the trace output.
 
 - [CUSTOM_ENDPOINT_SETUP.md](./CUSTOM_ENDPOINT_SETUP.md) — full custom-openai env-var reference + SSRF guard rules
 - [CONFIGURATION.md](../getting-started/CONFIGURATION.md) — all environment variables
-- [#2182](https://github.com/williamzujkowski/nexus-agents/issues/2182) — the consensus vote that closed the door on per-cloud-provider plugins; this guide is the project's stated answer to "how do I use Bedrock/Vertex/Azure?"
+- [#2182](https://github.com/nexus-substrate/nexus-agents/issues/2182) — the consensus vote that closed the door on per-cloud-provider plugins; this guide is the project's stated answer to "how do I use Bedrock/Vertex/Azure?"

@@ -5,16 +5,16 @@ Companion repos in the nexus-agents ecosystem, discoverable via GitHub topics.
 ## Quick Find
 
 ```sh
-# Canonical E2E test projects exercising MCP tools
-gh search repos --owner williamzujkowski --topic nexus-agents-test
+# Canonical E2E test projects exercising MCP tools (org)
+gh search repos --owner nexus-substrate --topic nexus-agents-test
 
-# Showcase / demo projects built on nexus-agents
+# Standalone benchmark / evaluation harnesses (org)
+gh search repos --owner nexus-substrate --topic nexus-agents-eval
+
+# Showcase / demo projects built on nexus-agents (personal)
 gh search repos --owner williamzujkowski --topic nexus-agents-demo
 
-# Standalone benchmark / evaluation harnesses
-gh search repos --owner williamzujkowski --topic nexus-agents-eval
-
-# Sibling projects that integrate with nexus-agents
+# Sibling projects that integrate with nexus-agents (personal)
 gh search repos --owner williamzujkowski --topic nexus-agents-companion
 ```
 
@@ -24,7 +24,7 @@ Each exercises a specific subset of the 30 MCP tools end-to-end. Intended as reg
 
 | Repo                                                                         | Tools Under Test                                                                          | Description                                              |
 | ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| [nexus-toolkit](https://github.com/williamzujkowski/nexus-toolkit)           | `orchestrate`, `research_catalog_review`, `registry_import`                               | E2E test suite for the core MCP tools                    |
+| [nexus-toolkit](https://github.com/nexus-substrate/nexus-toolkit)            | `orchestrate`, `research_catalog_review`, `registry_import`                               | E2E test suite for the core MCP tools                    |
 | [model-showdown](https://github.com/williamzujkowski/model-showdown)         | `delegate_to_model`, `create_expert`, `execute_expert`, `consensus_vote`                  | Model comparison pipeline across all 5 voting strategies |
 | [research-to-action](https://github.com/williamzujkowski/research-to-action) | `research_discover`, `research_add`, `research_analyze`, `consensus_vote`, `memory_query` | Research-driven decision pipeline                        |
 | [workflow-runner](https://github.com/williamzujkowski/workflow-runner)       | `list_workflows`, `run_graph_workflow`, `query_trace`                                     | Workflow template E2E exerciser                          |
@@ -47,17 +47,17 @@ Full applications built on top of nexus-agents, demonstrating real-world usage p
 
 Standalone benchmark harnesses implementing the `BenchmarkAdapter` contract from nexus-agents ≥2.33.1. Each is a runnable npm package with its own CLI; nexus-agents supplies the orchestrator (`runBenchmark`), types, and reporting surface.
 
-| Repo                                                                                       | Benchmark                                                                                             | Pattern                                                         |
-| ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| [nexus-eval-template](https://github.com/williamzujkowski/nexus-eval-template)             | Template scaffold — copy via GitHub "Use this template"                                               | `is_template=true` + topic `nexus-agents-eval-template`         |
-| [nexus-eval-swebench](https://github.com/williamzujkowski/nexus-eval-swebench)             | SWE-bench Lite / Verified / Full — GitHub issue resolution                                            | v0.2 clean-room model-only baseline                             |
-| [nexus-eval-swebench-pro](https://github.com/williamzujkowski/nexus-eval-swebench-pro)     | SWE-bench Pro — 731 multi-language instances (ScaleAI)                                                | v0.2 model-only baseline; Docker-eval = v0.4                    |
-| [nexus-eval-aider-polyglot](https://github.com/williamzujkowski/nexus-eval-aider-polyglot) | Aider polyglot — multi-language code edits across 6 langs (Python/JS/TS/Go/Rust/C++)                  | v0.3 — agentic flow (read_file / write_file / run_tests)        |
-| [nexus-eval-livecodebench](https://github.com/williamzujkowski/nexus-eval-livecodebench)   | LiveCodeBench — competitive-programming with deterministic hidden tests (LeetCode/AtCoder/Codeforces) | v0.3 — agentic flow (read_problem / write_solution / run_tests) |
-| [nexus-eval-tau-bench](https://github.com/williamzujkowski/nexus-eval-tau-bench)           | TAU-bench — tool-use customer-service benchmark (airline + retail scenarios)                          | v0.3 — agentic flow (stub env); v0.4 = real grading             |
-| [nexus-eval-atbench](https://github.com/williamzujkowski/nexus-eval-atbench)               | atbench — agent-trajectory safety                                                                     | v0.1 extracted from in-tree                                     |
+| Repo                                                                                      | Benchmark                                                                                             | Pattern                                                         |
+| ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| [nexus-eval-template](https://github.com/nexus-substrate/nexus-eval-template)             | Template scaffold — copy via GitHub "Use this template"                                               | `is_template=true` + topic `nexus-agents-eval-template`         |
+| [nexus-eval-swebench](https://github.com/nexus-substrate/nexus-eval-swebench)             | SWE-bench Lite / Verified / Full — GitHub issue resolution                                            | v0.2 clean-room model-only baseline                             |
+| [nexus-eval-swebench-pro](https://github.com/nexus-substrate/nexus-eval-swebench-pro)     | SWE-bench Pro — 731 multi-language instances (ScaleAI)                                                | v0.2 model-only baseline; Docker-eval = v0.4                    |
+| [nexus-eval-aider-polyglot](https://github.com/nexus-substrate/nexus-eval-aider-polyglot) | Aider polyglot — multi-language code edits across 6 langs (Python/JS/TS/Go/Rust/C++)                  | v0.3 — agentic flow (read_file / write_file / run_tests)        |
+| [nexus-eval-livecodebench](https://github.com/nexus-substrate/nexus-eval-livecodebench)   | LiveCodeBench — competitive-programming with deterministic hidden tests (LeetCode/AtCoder/Codeforces) | v0.3 — agentic flow (read_problem / write_solution / run_tests) |
+| [nexus-eval-tau-bench](https://github.com/nexus-substrate/nexus-eval-tau-bench)           | TAU-bench — tool-use customer-service benchmark (airline + retail scenarios)                          | v0.3 — agentic flow (stub env); v0.4 = real grading             |
+| [nexus-eval-atbench](https://github.com/nexus-substrate/nexus-eval-atbench)               | atbench — agent-trajectory safety                                                                     | v0.1 extracted from in-tree                                     |
 
-New harnesses land here as they are extracted. To build one, start from the template: `gh repo create yourname/nexus-eval-<bench> --template williamzujkowski/nexus-eval-template --public`.
+New harnesses land here as they are extracted. To build one, start from the template: `gh repo create yourname/nexus-eval-<bench> --template nexus-substrate/nexus-eval-template --public`.
 
 ## Companions (`nexus-agents-companion`)
 

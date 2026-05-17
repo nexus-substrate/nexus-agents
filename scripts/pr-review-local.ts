@@ -52,7 +52,7 @@ import {
 
 const execFileP = promisify(execFile);
 
-const REPO_OWNER = 'williamzujkowski';
+const REPO_OWNER = 'nexus-substrate';
 const REPO_NAME = 'nexus-agents';
 const REVIEWED_LABEL = 'pr-reviewed';
 const SKIP_LABEL = 'skip-pr-review';
@@ -138,9 +138,7 @@ async function listOpenPrs(): Promise<readonly OpenPr[]> {
   }));
 }
 
-async function fetchPrDiff(
-  prNumber: number
-): Promise<{
+async function fetchPrDiff(prNumber: number): Promise<{
   diff: string;
   truncated: boolean;
   baseRef: string;

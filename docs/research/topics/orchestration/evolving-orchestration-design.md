@@ -936,7 +936,7 @@ Both systems can coexist:
 
 - [arXiv:2505.19591](https://arxiv.org/abs/2505.19591) - Multi-Agent Collaboration via Evolving Orchestration
 - [GitHub: ChatDev/puppeteer](https://github.com/OpenBMB/ChatDev/tree/puppeteer) - Reference implementation
-- [Issue #335](https://github.com/williamzujkowski/nexus-agents/issues/335) - GitHub tracking issue
+- [Issue #335](https://github.com/nexus-substrate/nexus-agents/issues/335) - GitHub tracking issue
 - [TRINITY (arXiv:2512.04695)](https://arxiv.org/abs/2512.04695) - Related coordination pattern
 - [REINFORCE Algorithm](https://link.springer.com/article/10.1007/BF00992696) - Policy gradient method
 

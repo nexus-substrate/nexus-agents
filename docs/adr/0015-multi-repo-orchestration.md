@@ -8,7 +8,7 @@ Proposed
 
 Complex DevSecOps workflows span multiple repositories. Infrastructure repos deploy before scanning repos target them. Artifacts (URLs, configs) flow between repos. Currently, cross-repo coordination is manual — the parent agent tracks state and passes context between independent orchestrations, losing artifact provenance and observability.
 
-Issue [#1076](https://github.com/williamzujkowski/nexus-agents/issues/1076) tracks the need for first-class multi-repo support.
+Issue [#1076](https://github.com/nexus-substrate/nexus-agents/issues/1076) tracks the need for first-class multi-repo support.
 
 ## Options Considered
 
@@ -70,6 +70,6 @@ Key design choices:
 
 ## References
 
-- Issue: [#1076](https://github.com/williamzujkowski/nexus-agents/issues/1076)
+- Issue: [#1076](https://github.com/nexus-substrate/nexus-agents/issues/1076)
 - Architecture doc: [MULTI_REPO_ORCHESTRATION.md](../architecture/MULTI_REPO_ORCHESTRATION.md)
 - Consensus vote: 6-0 approval (PM, Architect, AI/ML, Security, DevEx, Contrarian)

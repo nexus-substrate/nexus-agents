@@ -44,7 +44,7 @@ gh --version      # Any recent version
 3. **Add upstream remote:**
 
    ```bash
-   git remote add upstream https://github.com/williamzujkowski/nexus-agents.git
+   git remote add upstream https://github.com/nexus-substrate/nexus-agents.git
    ```
 
 4. **Install dependencies:**

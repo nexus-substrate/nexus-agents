@@ -7,7 +7,7 @@ keywords: [governance, ci, registry, wiring, coverage, gate]
 
 # Registry-Coverage CI Gate
 
-> Design doc for issue [#2405](https://github.com/williamzujkowski/nexus-agents/issues/2405). Implementation tracked in [#2406](https://github.com/williamzujkowski/nexus-agents/issues/2406).
+> Design doc for issue [#2405](https://github.com/nexus-substrate/nexus-agents/issues/2405). Implementation tracked in [#2406](https://github.com/nexus-substrate/nexus-agents/issues/2406).
 
 ## Problem
 

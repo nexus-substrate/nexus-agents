@@ -79,7 +79,7 @@ export function buildPermissionsBanner(snippet: string): string {
     'Without these, each MCP tool call will prompt for approval in interactive',
     'mode, or be rejected outright in `dangerously-skip-permissions` mode.',
     '',
-    'Reference: https://github.com/williamzujkowski/nexus-agents/issues/1945',
+    'Reference: https://github.com/nexus-substrate/nexus-agents/issues/1945',
     '',
   ].join('\n');
 }

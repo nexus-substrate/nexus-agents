@@ -9,7 +9,7 @@ related_files: [CODING_STANDARDS.md, docs/ENTRYPOINTS.md]
 # Nexus Agents - Claude Code Instructions
 
 **Project:** Governance substrate for AI coding agents — adversarial review, drift-detected rules, immutable audit, closed-loop telemetry. The agents (Claude/Codex/Gemini/OpenCode) do the engineering; nexus-agents enforces the rules they have to follow, reviews their work adversarially, and audits everything they touch.
-**Repository:** github.com/williamzujkowski/nexus-agents
+**Repository:** github.com/nexus-substrate/nexus-agents
 **Owner:** @williamzujkowski
 
 ---
@@ -93,7 +93,7 @@ Full rationale, "how to apply" guidance, and edge cases in `.rules/development-d
 
 - **Documentation style** — technically precise, direct, honest. State capabilities precisely; admit limitations; provide working examples. No marketing language.
 - **Anti-sprawl** — ONE canonical implementation per concern. Modify existing files, extend existing modules. Never create `enhanced_*`, `new_*`, `v2_*`, `refactor_*` files.
-- **Harness-extraction** — benchmark harnesses live in `nexus-eval-*` repos, NOT in this tree (epic #2514). Scaffold from [`nexus-eval-template`](https://github.com/williamzujkowski/nexus-eval-template); implement the `BenchmarkAdapter` contract. CI gate at `.github/workflows/benchmark-extraction-gate.yml` (#2517).
+- **Harness-extraction** — benchmark harnesses live in `nexus-eval-*` repos, NOT in this tree (epic #2514). Scaffold from [`nexus-eval-template`](https://github.com/nexus-substrate/nexus-eval-template); implement the `BenchmarkAdapter` contract. CI gate at `.github/workflows/benchmark-extraction-gate.yml` (#2517).
 - **Ask vs assume** — clarify (never assume) for deployment env, scale, consistency needs, security/PII, breaking changes. Safe defaults: TS strict, UTF-8, JSON, async/await, DI.
 - **Time authority** — all operations use America/New_York (ET). Verify with `TZ='America/New_York' date` before time-sensitive ops.
 - **Research-first** — search official docs and verify version compatibility before architectural decisions; file a research issue per [docs/research/CONTRIBUTING.md](./docs/research/CONTRIBUTING.md).

@@ -5,10 +5,10 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/williamzujkowski/nexus-agents.git",
+    "url": "git+https://github.com/nexus-substrate/nexus-agents.git",
     "directory": "packages/nexus-memory"
   },
-  "homepage": "https://github.com/williamzujkowski/nexus-agents/tree/main/packages/nexus-memory#readme",
+  "homepage": "https://github.com/nexus-substrate/nexus-agents/tree/main/packages/nexus-memory#readme",
   "keywords": [
     "memory",
     "mcp",

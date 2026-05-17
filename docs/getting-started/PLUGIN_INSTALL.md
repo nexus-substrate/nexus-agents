@@ -1,7 +1,7 @@
 # Installing nexus-agents as a Claude Code plugin
 
 **Status:** Canonical
-**Issue:** [#1826](https://github.com/williamzujkowski/nexus-agents/issues/1826)
+**Issue:** [#1826](https://github.com/nexus-substrate/nexus-agents/issues/1826)
 
 Nexus-agents ships as a Claude Code plugin. Installing it exposes:
 
@@ -20,8 +20,8 @@ Nexus-agents ships as a Claude Code plugin. Installing it exposes:
 The marketplace is self-hosted on this repo. Add it once, then install nexus-agents:
 
 ```
-/plugin marketplace add williamzujkowski/nexus-agents
-/plugin install nexus-agents@williamzujkowski
+/plugin marketplace add nexus-substrate/nexus-agents
+/plugin install nexus-agents@nexus-substrate
 ```
 
 Claude Code resolves the marketplace from `.claude-plugin/marketplace.json` at the repo root and pins the source to the current commit SHA. Updates re-resolve the SHA.
@@ -67,4 +67,4 @@ Cache at `~/.claude/plugins/` is cleared automatically.
 - [AGENTS.md](../../AGENTS.md) — guidance for non-Claude agents
 - [docs/ENTRYPOINTS.md](../ENTRYPOINTS.md) — full CLI/MCP reference
 - [docs/architecture/RESEARCH_PIPELINE.md](../architecture/RESEARCH_PIPELINE.md) — research pipeline component
-- Epic [#1825](https://github.com/williamzujkowski/nexus-agents/issues/1825) — plugin integration
+- Epic [#1825](https://github.com/nexus-substrate/nexus-agents/issues/1825) — plugin integration

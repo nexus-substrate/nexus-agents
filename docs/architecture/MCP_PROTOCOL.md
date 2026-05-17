@@ -197,7 +197,7 @@ type ToolContentBlock =
 
 Every registered MCP tool declares all four annotation hints from the 2025-11-25 spec. Annotations live in a single source of truth — `packages/nexus-agents/src/mcp/tool-annotations.ts` — and each `server.registerTool()` call reads its annotations via `getToolAnnotations(name)`. CI gate `check:tool-annotations` enforces parity between the central map and the registered tools.
 
-Per the MCP spec these are **hints**, not enforcement primitives — clients should never make safety decisions based on annotations received from untrusted servers. nexus-agents uses them for: programmatic prerequisite gates ([#2652](https://github.com/williamzujkowski/nexus-agents/issues/2652)), retry-policy decisions in pipeline runners (only retry tools where `idempotentHint === true`), and permission-prompt UX consistency across harnesses.
+Per the MCP spec these are **hints**, not enforcement primitives — clients should never make safety decisions based on annotations received from untrusted servers. nexus-agents uses them for: programmatic prerequisite gates ([#2652](https://github.com/nexus-substrate/nexus-agents/issues/2652)), retry-policy decisions in pipeline runners (only retry tools where `idempotentHint === true`), and permission-prompt UX consistency across harnesses.
 
 | Tool                          | readOnly | destructive | idempotent | openWorld | Why                                                      |
 | ----------------------------- | :------: | :---------: | :--------: | :-------: | -------------------------------------------------------- |
@@ -242,7 +242,7 @@ Per the MCP spec these are **hints**, not enforcement primitives — clients sho
 
 ### Why no tool is `destructiveHint: true`
 
-A `destructiveHint: true` tool can delete or overwrite data without the caller's input. nexus-agents tools are universally additive (writes are creates, not deletes) or return-only — no tool's body calls `rm`, `DELETE FROM`, or equivalent. If a future tool needs `destructiveHint: true` (e.g., a "drop registry entry" tool), it should also wire a prerequisite gate per [#2652](https://github.com/williamzujkowski/nexus-agents/issues/2652).
+A `destructiveHint: true` tool can delete or overwrite data without the caller's input. nexus-agents tools are universally additive (writes are creates, not deletes) or return-only — no tool's body calls `rm`, `DELETE FROM`, or equivalent. If a future tool needs `destructiveHint: true` (e.g., a "drop registry entry" tool), it should also wire a prerequisite gate per [#2652](https://github.com/nexus-substrate/nexus-agents/issues/2652).
 
 ### Adding a new tool
 

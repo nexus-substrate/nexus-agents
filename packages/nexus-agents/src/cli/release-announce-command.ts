@@ -187,9 +187,9 @@ nexus-agents doctor  # Verify installation
 ## Further Reading
 
 ### Official Resources
-- [GitHub Release](${options.releaseUrl || `https://github.com/williamzujkowski/nexus-agents/releases/tag/v${options.version}`})
-- [Full Changelog](https://github.com/williamzujkowski/nexus-agents/blob/main/CHANGELOG.md)
-- [Documentation](https://github.com/williamzujkowski/nexus-agents)
+- [GitHub Release](${options.releaseUrl || `https://github.com/nexus-substrate/nexus-agents/releases/tag/v${options.version}`})
+- [Full Changelog](https://github.com/nexus-substrate/nexus-agents/blob/main/CHANGELOG.md)
+- [Documentation](https://github.com/nexus-substrate/nexus-agents)
 
 ---
 
@@ -211,7 +211,7 @@ function generateBlueskyPost(options: ReleaseAnnounceOptions): string {
 
   const releaseUrl =
     options.releaseUrl ||
-    `https://github.com/williamzujkowski/nexus-agents/releases/tag/v${options.version}`;
+    `https://github.com/nexus-substrate/nexus-agents/releases/tag/v${options.version}`;
 
   // Build post within character limit
   let post = `🚀 nexus-agents v${options.version} released!\n\n`;

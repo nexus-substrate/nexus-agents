@@ -21,7 +21,7 @@ Nexus Agents makes your AI coding tools work together intelligently. It coordina
 - **Consensus Voting** — Six aggregation strategies: simple/super-majority, unanimous, higher-order Bayesian, opinion-wise, proof-of-learning.
 - **Development Pipeline** — Research → Plan → Vote → Decompose → Implement → QA → Security. Autonomous, harness, and dry-run modes.
 - **Memory & Learning** — Multiple backends (session, belief, adaptive, routing, graph, hybrid, agentic, typed) with cross-session persistence.
-- **MCP Tools** — Agent management, workflow execution, research, memory, codebase intelligence, repo analysis, consensus, operations. See [docs/ENTRYPOINTS.md](https://github.com/williamzujkowski/nexus-agents/blob/main/docs/ENTRYPOINTS.md) for the canonical list.
+- **MCP Tools** — Agent management, workflow execution, research, memory, codebase intelligence, repo analysis, consensus, operations. See [docs/ENTRYPOINTS.md](https://github.com/nexus-substrate/nexus-agents/blob/main/docs/ENTRYPOINTS.md) for the canonical list.
 - **Research System** — Discovery across arXiv, GitHub, Semantic Scholar, and other sources with auto-catalog and synthesis.
 - **Security** — Sandboxing, trust classification, SARIF parsing, input sanitization, red team pipeline.
 
@@ -331,7 +331,7 @@ if (result.ok) {
 
 ```bash
 # Clone the repository
-git clone https://github.com/williamzujkowski/nexus-agents.git
+git clone https://github.com/nexus-substrate/nexus-agents.git
 cd nexus-agents
 
 # Install dependencies

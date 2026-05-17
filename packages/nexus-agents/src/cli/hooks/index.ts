@@ -206,7 +206,7 @@ PROTOCOL:
   - Exit 2: Blocking error (stderr fed to Claude)
   - Exit 1: Non-blocking error (stderr shown in verbose mode)
 
-For more information: https://github.com/williamzujkowski/nexus-agents
+For more information: https://github.com/nexus-substrate/nexus-agents
 `;
   process.stdout.write(help);
 }

@@ -7,7 +7,7 @@ keywords: [governance, ci, schema, zod, fanout, coverage]
 
 # Schema-Fan-Out Coverage Check
 
-> Design doc for issue [#2407](https://github.com/williamzujkowski/nexus-agents/issues/2407). Implementation tracked in [#2408](https://github.com/williamzujkowski/nexus-agents/issues/2408).
+> Design doc for issue [#2407](https://github.com/nexus-substrate/nexus-agents/issues/2407). Implementation tracked in [#2408](https://github.com/nexus-substrate/nexus-agents/issues/2408).
 
 ## Problem
 

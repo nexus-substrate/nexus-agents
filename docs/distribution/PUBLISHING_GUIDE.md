@@ -17,7 +17,7 @@ cd packages/nexus-agents
 mcp-publisher publish
 
 # Verify
-curl "https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.williamzujkowski/nexus-agents"
+curl "https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.nexus-substrate/nexus-agents"
 ```
 
 **Prerequisites:** npm package must be published first (`npm publish --access public`).
@@ -29,7 +29,7 @@ Visit: https://clau.de/plugin-directory-submission
 Fill in:
 
 - **Name:** nexus-agents
-- **Repository:** https://github.com/williamzujkowski/nexus-agents
+- **Repository:** https://github.com/nexus-substrate/nexus-agents
 - **Description:** Intelligent orchestration platform for AI coding tools — routes tasks to the best model, learns from outcomes, and enforces quality through multi-model consensus. 30 MCP tools for agent management, research, memory, consensus voting, codebase intelligence, and a full dev pipeline.
 
 The `.claude-plugin/plugin.json` is already in the repo root.
@@ -39,14 +39,14 @@ The `.claude-plugin/plugin.json` is already in the repo root.
 ```bash
 # Get API key from https://smithery.ai
 # Then publish:
-npx smithery mcp publish "https://github.com/williamzujkowski/nexus-agents" -n nexus-agents
+npx smithery mcp publish "https://github.com/nexus-substrate/nexus-agents" -n nexus-agents
 ```
 
 ## 4. PulseMCP (web submission)
 
 Visit: https://www.pulsemcp.com/use-cases/submit
 
-Fill in the GitHub URL: https://github.com/williamzujkowski/nexus-agents
+Fill in the GitHub URL: https://github.com/nexus-substrate/nexus-agents
 
 ## 5. Glama (web submission)
 
@@ -60,7 +60,7 @@ Fill in:
 
 - **Server Name:** nexus-agents
 - **Short Description:** Intelligent orchestration platform that routes tasks to the best AI model using LinUCB bandits, validates through consensus voting, and learns from outcomes. 30 MCP tools, dev pipeline, 5 memory backends.
-- **Link:** https://github.com/williamzujkowski/nexus-agents
+- **Link:** https://github.com/nexus-substrate/nexus-agents
 - **Category:** Development
 - **Contact Email:** williamzujkowski@gmail.com
 

@@ -83,7 +83,7 @@ export function printHelloResult(result: HelloResult): void {
   }
 
   write(
-    `${colors.dim}Documentation: https://github.com/williamzujkowski/nexus-agents${colors.reset}`
+    `${colors.dim}Documentation: https://github.com/nexus-substrate/nexus-agents${colors.reset}`
   );
   write('');
 }

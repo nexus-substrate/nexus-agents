@@ -52,15 +52,15 @@ jobs:
             echo ""
             echo "If you're adding a new benchmark variant, scaffold a new repo:"
             echo "  gh repo create yourname/nexus-eval-<bench> \\"
-            echo "    --template williamzujkowski/nexus-eval-template \\"
+            echo "    --template ${{ github.repository_owner }}/nexus-eval-template \\"
             echo "    --public"
             echo ""
             echo "If you're extending an existing harness, contribute to:"
-            echo "  - https://github.com/williamzujkowski/nexus-eval-swebench"
-            echo "  - https://github.com/williamzujkowski/nexus-eval-atbench"
-            echo "  - https://github.com/williamzujkowski/nexus-eval-swebench-pro"
+            echo "  - https://github.com/${{ github.repository_owner }}/nexus-eval-swebench"
+            echo "  - https://github.com/${{ github.repository_owner }}/nexus-eval-atbench"
+            echo "  - https://github.com/${{ github.repository_owner }}/nexus-eval-swebench-pro"
             echo ""
-            echo "See: https://github.com/williamzujkowski/nexus-agents/issues/2514"
+            echo "See: https://github.com/${{ github.repository_owner }}/nexus-agents/issues/2514"
             exit 1
           fi
 

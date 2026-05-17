@@ -15,7 +15,7 @@ nexus-agents makes your AI coding tools work together intelligently. It coordina
 ### Awesome List Entry
 
 ```markdown
-- [nexus-agents](https://github.com/williamzujkowski/nexus-agents) - Intelligent orchestration platform that routes tasks to the best AI model (Claude, Codex, Gemini, OpenCode) using LinUCB bandits, validates through consensus voting, and learns from outcomes. 30 tools including dev pipeline, research discovery, memory, and codebase intelligence.
+- [nexus-agents](https://github.com/nexus-substrate/nexus-agents) - Intelligent orchestration platform that routes tasks to the best AI model (Claude, Codex, Gemini, OpenCode) using LinUCB bandits, validates through consensus voting, and learns from outcomes. 30 tools including dev pipeline, research discovery, memory, and codebase intelligence.
 ```
 
 ### Category Tags

@@ -104,7 +104,7 @@ For development or customization:
 
 ```bash
 # Clone the repository
-git clone https://github.com/williamzujkowski/nexus-agents.git
+git clone https://github.com/nexus-substrate/nexus-agents.git
 cd nexus-agents
 
 # Install dependencies
@@ -123,11 +123,11 @@ Run in a container:
 
 ```bash
 # Pull the image
-docker pull ghcr.io/williamzujkowski/nexus-agents:latest
+docker pull ghcr.io/nexus-substrate/nexus-agents:latest
 
 # Run with API key
 docker run -e ANTHROPIC_API_KEY="sk-ant-..." \
-  ghcr.io/williamzujkowski/nexus-agents:latest
+  ghcr.io/nexus-substrate/nexus-agents:latest
 ```
 
 Or build locally:
@@ -375,7 +375,7 @@ version: '3.8'
 
 services:
   nexus-agents:
-    image: ghcr.io/williamzujkowski/nexus-agents:latest
+    image: ghcr.io/nexus-substrate/nexus-agents:latest
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - NEXUS_LOG_LEVEL=debug

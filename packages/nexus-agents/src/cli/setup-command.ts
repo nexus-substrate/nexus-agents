@@ -825,7 +825,7 @@ function printGettingStartedBanner(mcpConfigured: boolean): void {
   writeLine('  3. nexus-agents workflow list     — explore built-in workflows');
 
   writeEmptyLine();
-  writeLine(`  ${colors.dim}Docs: https://github.com/williamzujkowski/nexus-agents${colors.reset}`);
+  writeLine(`  ${colors.dim}Docs: https://github.com/nexus-substrate/nexus-agents${colors.reset}`);
   writeLine(`  ${colors.dim}Harness wiring: docs/guides/HARNESS_COMPATIBILITY.md${colors.reset}`);
 }
 

@@ -16,7 +16,7 @@ related_files:
 # Untrusted Input Hardening Architecture
 
 **Status:** Canonical
-**Epic:** [#818](https://github.com/williamzujkowski/nexus-agents/issues/818)
+**Epic:** [#818](https://github.com/nexus-substrate/nexus-agents/issues/818)
 **Last Updated:** 2026-02-07 (ET)
 
 ---

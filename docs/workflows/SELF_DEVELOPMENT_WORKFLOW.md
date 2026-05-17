@@ -32,7 +32,7 @@ The original engine (~7,700 LOC) was authored before the observability primitive
 
 ## References
 
-- **Epic**: [#2402](https://github.com/williamzujkowski/nexus-agents/issues/2402)
+- **Epic**: [#2402](https://github.com/nexus-substrate/nexus-agents/issues/2402)
 - **Deletion PR**: filed under #2402
 - **`improvement_review` build PR**: filed under #2402
 - **Manual replacement**: `skills/dogfooding-issues/SKILL.md`
