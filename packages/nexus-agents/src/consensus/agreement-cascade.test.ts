@@ -169,6 +169,99 @@ describe('Agreement-based cascading', () => {
     }
   });
 
+  // #2822 regression cases — pre-fix the cascade used `approvals / totalExpected`
+  // as its denominator while strategies use `approve + reject` (abstains
+  // excluded). With abstains present the two diverged.
+  it('respects strategy denominator with abstains in supermajority (#2822)', async () => {
+    // 5-voter supermajority with [approve, abstain, abstain, abstain, pending].
+    // Pre-fix: cascade computed max approval = (1+1)/5 = 0.40 < 0.67 → reject.
+    // Strategy at close (last approves): 2 approve / 0 reject / 3 abstain →
+    // votingVotes = 2 → 2/2 = 1.0 ≥ 0.67 → APPROVE. Different winners.
+    // Post-fix: cascade probes the strategy directly, sees that
+    // best-case (last approves) → approve and worst-case (last rejects) →
+    // reject, so it does NOT cascade — waits for the last voter.
+    const engine = new ConsensusEngine();
+    const result = await engine.propose({
+      title: 'Supermajority + abstains regression',
+      description: 'Cascade math must mirror strategy denominator (excludes abstains)',
+      algorithm: 'supermajority',
+      requiredVoters: ['a1', 'a2', 'a3', 'a4', 'a5'],
+    });
+    if (!result.ok) throw new Error('propose failed');
+    const pid = result.value;
+
+    await engine.vote(pid, 'a1', makeVote('approve'));
+    await engine.vote(pid, 'a2', makeVote('abstain'));
+    await engine.vote(pid, 'a3', makeVote('abstain'));
+    await engine.vote(pid, 'a4', makeVote('abstain'));
+
+    // Should still be pending — outcome hinges on a5
+    let outcome = await engine.getResult(pid);
+    if (!outcome.ok) throw new Error('getResult failed');
+    expect(outcome.value.voteCounts.total).toBe(4); // not closed early
+
+    // Last voter approves → strategy approves (2 approve / 0 reject = 100%)
+    await engine.vote(pid, 'a5', makeVote('approve'));
+    outcome = await engine.getResult(pid);
+    if (!outcome.ok) throw new Error('getResult failed');
+    expect(outcome.value.outcome).toBe('approved');
+  });
+
+  it('cascades early when both extremes yield the same outcome with abstains (#2822)', async () => {
+    // 5-voter simple_majority. After [approve, approve, approve] (with a4, a5
+    // pending) the strategy probes show: best-case (both approve) → 5/5 → approve;
+    // worst-case (both reject) → 3 approve / 2 reject = 3/5 = 60% > 50% → approve.
+    // Both extremes approve → cascade-approve at the 3rd vote. Abstains added
+    // later don't change anything since strategies exclude them from the
+    // denominator. The abstain case is set up to confirm cascade works post-#2822
+    // without the wrong-denominator regression.
+    const engine = new ConsensusEngine();
+    const result = await engine.propose({
+      title: 'Cascade with abstain — both extremes agree',
+      description: 'Strategy probes confirm approval regardless of remaining votes',
+      algorithm: 'simple_majority',
+      requiredVoters: ['a1', 'a2', 'a3', 'a4', 'a5'],
+    });
+    if (!result.ok) throw new Error('propose failed');
+    const pid = result.value;
+
+    await engine.vote(pid, 'a1', makeVote('approve'));
+    await engine.vote(pid, 'a2', makeVote('approve'));
+    await engine.vote(pid, 'a3', makeVote('approve'));
+
+    // Should cascade-approve at vote 3 — both extremes for a4/a5 yield approve
+    const outcome = await engine.getResult(pid);
+    if (!outcome.ok) throw new Error('getResult failed');
+    expect(outcome.value.outcome).toBe('approved');
+    expect(outcome.value.voteCounts.total).toBe(3);
+  });
+
+  it('matches supermajority `>=` boundary semantics (#2822)', async () => {
+    // 3-voter supermajority where the strategy uses `>=` (strategies.ts:158).
+    // Votes: 2 approve + 1 pending. Best-case (last approves): 3/3 = 100% → approve.
+    // Worst-case (last rejects): 2/3 = 66.67% → strategy `>= 0.67` is FALSE
+    // (2/3 ≈ 0.6667, threshold is exactly 0.67) → reject. Different outcomes,
+    // so cascade should NOT fire. Pre-#2822 used strict `>` so could have
+    // disagreed; now we delegate so we get strategy semantics by construction.
+    const engine = new ConsensusEngine();
+    const result = await engine.propose({
+      title: 'Supermajority boundary check',
+      description: 'Cascade decision must match the strategy at the threshold',
+      algorithm: 'supermajority',
+      requiredVoters: ['a1', 'a2', 'a3'],
+    });
+    if (!result.ok) throw new Error('propose failed');
+    const pid = result.value;
+
+    await engine.vote(pid, 'a1', makeVote('approve'));
+    await engine.vote(pid, 'a2', makeVote('approve'));
+
+    // Best/worst disagree at this threshold — must NOT cascade
+    const outcome = await engine.getResult(pid);
+    if (!outcome.ok) throw new Error('getResult failed');
+    expect(outcome.value.voteCounts.total).toBe(2); // still open
+  });
+
   it('does not cascade when no requiredVoters are set', async () => {
     const engine = new ConsensusEngine();
     const result = await engine.propose({

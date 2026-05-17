@@ -80,6 +80,24 @@ interface ProposalCacheEntry {
  * Default proposal cache configuration.
  * Enabled by default to improve determinism (fitness audit recommendation).
  */
+/**
+ * Hypothetical-vote stand-ins used by {@link ConsensusEngine.canCascadeEarly}
+ * to probe the strategy's outcome under best/worst-case pending votes.
+ * The actual `confidence` and `reasoning` fields are never inspected by
+ * `IVotingStrategy.calculateOutcome` (all strategies count by `decision`),
+ * but must satisfy `VoteSchema` (confidence in [0,1], reasoning non-empty).
+ */
+const HYPOTHETICAL_APPROVE: Vote = {
+  decision: 'approve',
+  confidence: 0.5,
+  reasoning: 'hypothetical-cascade-probe',
+};
+const HYPOTHETICAL_REJECT: Vote = {
+  decision: 'reject',
+  confidence: 0.5,
+  reasoning: 'hypothetical-cascade-probe',
+};
+
 const DEFAULT_PROPOSAL_CACHE_CONFIG: ProposalCacheConfig = {
   enabled: true,
   ttlMs: 3600000, // 1 hour
@@ -432,55 +450,53 @@ export class ConsensusEngine implements IConsensusEngine {
 
   /**
    * Agreement-based cascading: close early when outcome is mathematically determined.
-   * If approvals already exceed the threshold even if all remaining voters reject,
-   * or rejections make approval impossible, the proposal can be decided early.
+   *
+   * #2822: the prior implementation computed approval rates against
+   * `totalExpected = requiredVoters.length` and compared against
+   * `VOTING_THRESHOLDS[algorithm]` directly. Every voting strategy
+   * (`SimpleMajorityStrategy`, `SupermajorityStrategy`, `UnanimousStrategy`,
+   * `ProofOfLearningStrategy`) uses `approve + reject` as its denominator —
+   * abstains are explicitly excluded. The two diverged whenever abstains
+   * were present, producing wrong-winner cascades (e.g. 5-voter supermajority
+   * with [approve, abstain, abstain, abstain, pending] cascade-rejected even
+   * though the strategy would approve at close).
+   *
+   * The fix delegates to the strategy itself: build a best-case (all pending
+   * voters approve) and worst-case (all pending voters reject) hypothetical
+   * vote map, call `strategy.calculateOutcome` on each, and cascade only
+   * when both extremes yield the same outcome. This guarantees parity with
+   * the strategy's denominator semantics by construction.
    */
   private canCascadeEarly(state: ProposalState): boolean {
     const required = state.proposal.requiredVoters;
     if (required === undefined || required.length === 0) return false;
+    if (state.votes.size === 0) return false;
 
-    const totalExpected = required.length;
-    const votesCast = state.votes.size;
-    const remaining = totalExpected - votesCast;
-    if (remaining <= 0) return false; // All voted — handled by allRequiredVotersVoted
+    const pending = required.filter((voter) => !state.votes.has(voter));
+    if (pending.length === 0) return false; // All voted — handled by allRequiredVotersVoted
 
-    const threshold = VOTING_THRESHOLDS[state.proposal.algorithm];
+    const strategy = this.strategyFactory.getStrategy(state.proposal.algorithm);
 
-    let approvals = 0;
-    let rejections = 0;
-    for (const vote of state.votes.values()) {
-      if (vote.decision === 'approve') approvals++;
-      else if (vote.decision === 'reject') rejections++;
+    const bestCase = new Map<string, Vote>(state.votes);
+    const worstCase = new Map<string, Vote>(state.votes);
+    for (const voter of pending) {
+      bestCase.set(voter, HYPOTHETICAL_APPROVE);
+      worstCase.set(voter, HYPOTHETICAL_REJECT);
     }
 
-    // Can approve even if all remaining reject?
-    const minApprovalRate = approvals / totalExpected;
-    if (minApprovalRate > threshold) {
-      this.logger.info('Agreement cascade: early approval', {
-        proposalId: state.proposal.id,
-        approvals,
-        totalExpected,
-        threshold,
-        remaining,
-      });
-      return true;
-    }
+    const bestOutcome = strategy.calculateOutcome(bestCase, state.voteWeights);
+    const worstOutcome = strategy.calculateOutcome(worstCase, state.voteWeights);
 
-    // Can never reach threshold even if all remaining approve?
-    const maxPossibleApprovals = approvals + remaining;
-    const maxApprovalRate = maxPossibleApprovals / totalExpected;
-    if (maxApprovalRate < threshold) {
-      this.logger.info('Agreement cascade: early rejection', {
-        proposalId: state.proposal.id,
-        rejections,
-        totalExpected,
-        threshold,
-        remaining,
-      });
-      return true;
-    }
+    if (bestOutcome.approved !== worstOutcome.approved) return false;
 
-    return false;
+    this.logger.info('Agreement cascade: outcome determined', {
+      proposalId: state.proposal.id,
+      outcome: bestOutcome.approved ? 'approve' : 'reject',
+      votesCast: state.votes.size,
+      pending: pending.length,
+      algorithm: state.proposal.algorithm,
+    });
+    return true;
   }
 
   private allRequiredVotersVoted(state: ProposalState): boolean {
