@@ -12,7 +12,7 @@
  * (Source: Issue #389 - Merged enhanced adapter back to canonical)
  */
 
-import { writeFileSync, unlinkSync, mkdtempSync } from 'node:fs';
+import { writeFileSync, rmSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Result, ILogger } from '../../core/index.js';
@@ -229,8 +229,12 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
       writeFileSync(file, task.systemPrompt, { encoding: 'utf8', mode: 0o600 });
       args.push('--policy', file);
       cleanup = (): void => {
+        // Recursive rm so we drop the parent tempdir, not just the file
+        // inside it. Pre-fix every gemini call with a systemPrompt leaked
+        // one empty `/tmp/nexus-gemini-sysprompt-XXXXXX` dir until the OS
+        // reaper ran.
         try {
-          unlinkSync(file);
+          rmSync(dir, { recursive: true, force: true });
         } catch {
           // best-effort; tempdir auto-cleanup will eventually reap it
         }
