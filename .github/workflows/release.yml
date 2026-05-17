@@ -36,6 +36,12 @@ jobs:
 
       - uses: ./.github/actions/setup-node
         with:
+          # Node 24 LTS ships with npm 11.x, which natively supports OIDC
+          # trusted publishing. Node 22 LTS ships npm 10.9.x which silently
+          # emits `E404 'not in this registry'` on OIDC publishes — diagnosed
+          # via nexus-eval-atbench v0.1.0–0.1.3 attempts (#2524). The CI
+          # composite default is 22; the publish path overrides to 24.
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
 
       # Bidirectional skew detection. The `Detect publish-race version skew`
@@ -264,6 +270,8 @@ jobs:
 
       - uses: ./.github/actions/setup-node
         with:
+          # Node 24 — see comment on the publish-job setup-node above (#2524).
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Build all packages
