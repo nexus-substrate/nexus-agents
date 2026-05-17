@@ -18,6 +18,7 @@ import { executeExpert } from './expert-bridge.js';
 import { getOutcomeStore, getOutcomeSummaryText } from '../orchestration/outcomes/outcome-store.js';
 import { detectTrend } from '../orchestration/outcomes/adaptive-thresholds.js';
 import { emitPipelineStageEvent } from './pipeline-observability.js';
+import type { CliNameLiteral } from '../config/model-capabilities-types.js';
 
 const logger = createLogger({ component: 'agent-executor' });
 
@@ -30,28 +31,54 @@ function emitStageEvent(
   emitPipelineStageEvent('dev-pipeline', stage, status, details);
 }
 
-function recordOutcome(
-  taskId: string,
-  category: string,
-  success: boolean,
-  durationMs: number,
-  extra?: { routingStage?: string; retryCount?: number }
-): void {
+/** Options bundle for {@link recordOutcome} (collapses to satisfy max-params). */
+interface RecordOutcomeArgs {
+  taskId: string;
+  category: string;
+  /**
+   * CLI that actually executed the stage. Pre-#2823 this helper hardcoded
+   * `cli: 'claude'`, which was a regression of the bug #1154 fixed elsewhere
+   * and silently corrupted weather-report + LinUCB cold-start warmStart()
+   * with false `claude` credit on every pipeline run.
+   *
+   * When `undefined` (the bridge failed before dispatch — no adapter,
+   * circuit-open, rate-limit cap — or the stage is non-CLI, like local
+   * security scan) we *skip the record* rather than lie. The stage event
+   * is still emitted; only the cli-attributed outcome that would poison
+   * the routing learner is suppressed.
+   */
+  cli: CliNameLiteral | undefined;
+  success: boolean;
+  durationMs: number;
+  routingStage?: string;
+  retryCount?: number;
+}
+
+/** Record a pipeline-stage outcome to the OutcomeStore. See {@link RecordOutcomeArgs}. */
+function recordOutcome(args: RecordOutcomeArgs): void {
+  if (args.cli === undefined) {
+    logger.debug('Skipping outcome record — no cli (bridge failed or non-CLI stage)', {
+      taskId: args.taskId,
+      category: args.category,
+      success: args.success,
+    });
+    return;
+  }
   try {
     getOutcomeStore().append({
-      id: `pipeline-${taskId}-${String(Date.now())}`,
-      cli: 'claude' as const,
-      category: category as 'code_generation',
+      id: `pipeline-${args.taskId}-${String(Date.now())}`,
+      cli: args.cli,
+      category: args.category as 'code_generation',
       model: 'pipeline',
-      success,
-      durationMs,
+      success: args.success,
+      durationMs: args.durationMs,
       timestamp: new Date().toISOString(),
       source: 'delegate' as const,
-      routingStage: extra?.routingStage,
-      retryCount: extra?.retryCount,
+      routingStage: args.routingStage,
+      retryCount: args.retryCount,
     });
   } catch (error) {
-    logger.debug('Failed to record outcome', { taskId, error: String(error) });
+    logger.debug('Failed to record outcome', { taskId: args.taskId, error: String(error) });
   }
 }
 
@@ -304,8 +331,17 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
       const combined = [discover.text, analyze.text].filter(Boolean).join('\n\n');
       const totalMs = discover.durationMs + analyze.durationMs;
       const success = discover.success || analyze.success;
+      // Pick whichever sub-call actually reached a CLI; both should agree
+      // when routing is healthy, but discover.cli wins on tie.
+      const researchCli = discover.cli ?? analyze.cli;
       emitStageEvent('research', success ? 'completed' : 'failed', { durationMs: totalMs });
-      recordOutcome('research', 'research', success, totalMs);
+      recordOutcome({
+        taskId: 'research',
+        category: 'research',
+        cli: researchCli,
+        success,
+        durationMs: totalMs,
+      });
       // Write-back: persist research findings to memory (#1716)
       if (success && combined.length > 50) {
         recordLearning(
@@ -331,7 +367,13 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
       await postProgress(config, 'Plan', feedback !== undefined ? 'Revising...' : 'Planning...');
       const r = await executeExpert('architecture', prompt);
       emitStageEvent('plan', r.success ? 'completed' : 'failed', { durationMs: r.durationMs });
-      recordOutcome('plan', 'architecture', r.success, r.durationMs);
+      recordOutcome({
+        taskId: 'plan',
+        category: 'architecture',
+        cli: r.cli,
+        success: r.success,
+        durationMs: r.durationMs,
+      });
       await postProgress(config, 'Plan', `Done (${r.text.length} chars, ${r.durationMs}ms)`);
       return r.text || prompt;
     },
@@ -367,7 +409,17 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
           .join('\n');
         const ms = getTimeProvider().now() - start;
         emitStageEvent('vote', 'completed', { durationMs: ms });
-        recordOutcome('vote', 'planning', approved, ms);
+        // Vote is itself a consensus result, not a single CLI's output;
+        // skip the cli-attributed record — consensus_vote's executeVoting
+        // already records its own voter-role-stratified outcomes via the
+        // canonical consensus path (#2662).
+        recordOutcome({
+          taskId: 'vote',
+          category: 'planning',
+          cli: undefined,
+          success: approved,
+          durationMs: ms,
+        });
         await postProgress(
           config,
           'Vote',
@@ -380,7 +432,13 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         emitStageEvent('vote', 'failed', { error: msg });
-        recordOutcome('vote', 'planning', false, getTimeProvider().now() - start);
+        recordOutcome({
+          taskId: 'vote',
+          category: 'planning',
+          cli: undefined,
+          success: false,
+          durationMs: getTimeProvider().now() - start,
+        });
         await postProgress(config, 'Vote', `Error (auto-approved): ${msg.slice(0, 200)}`);
         return { kind: 'approved' as const, approvalPercentage: 0 };
       }
@@ -395,7 +453,13 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
       );
       const tasks = parseTasksFromResponse(r.text, plan);
       emitStageEvent('decompose', 'completed', { durationMs: r.durationMs });
-      recordOutcome('decompose', 'planning', r.success, r.durationMs);
+      recordOutcome({
+        taskId: 'decompose',
+        category: 'planning',
+        cli: r.cli,
+        success: r.success,
+        durationMs: r.durationMs,
+      });
       await postProgress(config, 'PM', `${tasks.length} task(s)`);
       return tasks;
     },
@@ -411,7 +475,13 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
       emitStageEvent(`impl-${task.id}`, r.success ? 'completed' : 'failed', {
         durationMs: r.durationMs,
       });
-      recordOutcome(task.id, 'code_generation', r.success, r.durationMs);
+      recordOutcome({
+        taskId: task.id,
+        category: 'code_generation',
+        cli: r.cli,
+        success: r.success,
+        durationMs: r.durationMs,
+      });
       recordRoutingExperience('code_generation', r.success, r.durationMs);
       await postProgress(config, `Code [${task.id}]`, `Done (${r.durationMs}ms)`);
       return r.text || `[Implementation failed: ${r.error}]`;
@@ -428,7 +498,13 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
       emitStageEvent(`qa-${task.id}`, review.verdict === 'pass' ? 'completed' : 'failed', {
         durationMs: r.durationMs,
       });
-      recordOutcome(task.id, 'code_review', review.verdict === 'pass', r.durationMs);
+      recordOutcome({
+        taskId: task.id,
+        category: 'code_review',
+        cli: r.cli,
+        success: review.verdict === 'pass',
+        durationMs: r.durationMs,
+      });
       // Write-back: persist QA outcomes to memory (#1716)
       if (review.verdict === 'pass') {
         recordLearning(`Task "${task.title}" passed QA`, 0.8, 'pipeline-qa');
@@ -452,7 +528,15 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
       const passed = result.verdict !== 'fail';
       const ms = getTimeProvider().now() - start;
       emitStageEvent('security', passed ? 'completed' : 'failed', { durationMs: ms });
-      recordOutcome('security', 'security_review', passed, ms);
+      // security scan is a deterministic local check (no CLI dispatch),
+      // so it has no `cli` to attribute the outcome to. Skip the record.
+      recordOutcome({
+        taskId: 'security',
+        category: 'security_review',
+        cli: undefined,
+        success: passed,
+        durationMs: ms,
+      });
       await postProgress(config, 'Security', passed ? 'Passed' : `BLOCKED: ${result.details}`);
       // Flush pipeline memory session at end of run
       flushPipelineMemory();

@@ -18,7 +18,6 @@ import type { GraphPipelineOptions, GraphPipelineResult } from './graph-pipeline
 import { getTemplate, PIPELINE_TEMPLATES } from './templates.js';
 import type { PipelineTemplate } from './stage-types.js';
 import type { StageRegistry } from './pipeline-graph.js';
-import { getOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 
 const logger = createLogger({ component: 'adaptive-orchestrator' });
 
@@ -356,11 +355,13 @@ export async function runAdaptiveOrchestrator(
     confidence: classification.confidence,
   });
 
-  // Execute via graph pipeline runner
+  // Execute via graph pipeline runner. Per-stage outcomes are recorded by
+  // agent-executor.recordOutcome with the actual CLI that ran each stage.
+  // #2823: removed the pipeline-level recordPipelineOutcome — it duplicated
+  // the per-stage records, fabricated a `cli: 'claude'` for non-CLI data,
+  // hardcoded category as 'code_generation' regardless of classification,
+  // and had no downstream consumer.
   const result = await runGraphPipeline(cleanTask, template, options.stages, options);
-
-  // Record outcome for future routing adjustments
-  recordPipelineOutcome(template.id, classification, result.success);
 
   return { ...result, selectionMethod, taskClassification: classification };
 }
@@ -380,26 +381,4 @@ function resolveTemplate(templateId: string): PipelineTemplate {
 
   // Absolute fallback — should never happen
   return { id: 'dev', name: 'Development', stages: [] };
-}
-
-/** Record pipeline outcome for self-reflection. */
-function recordPipelineOutcome(
-  templateId: string,
-  classification: TaskClassification,
-  success: boolean
-): void {
-  try {
-    getOutcomeStore().append({
-      id: `pipeline-${templateId}-${String(Date.now())}`,
-      cli: 'claude' as const,
-      category: 'code_generation' as const,
-      model: `pipeline-${templateId}`,
-      success,
-      durationMs: 0,
-      timestamp: new Date().toISOString(),
-      source: 'delegate' as const,
-    });
-  } catch {
-    // Non-critical — don't fail pipeline on outcome recording error
-  }
 }

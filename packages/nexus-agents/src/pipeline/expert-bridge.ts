@@ -12,6 +12,21 @@
 import { createLogger, getTimeProvider } from '../core/index.js';
 import type { BuiltInExpertType } from '../agents/experts/expert-config.js';
 import { isRateLimitText } from '../adapters/rate-limit-detector.js';
+import { getCliForModelId } from '../config/model-availability.js';
+import { MODEL_IDS } from '../config/model-capabilities-types.js';
+import type { CliNameLiteral, ModelId } from '../config/model-capabilities-types.js';
+
+/**
+ * Resolves a CLI from a possibly-unknown model string returned by a CLI
+ * response. Returns undefined if the model string isn't in the registry —
+ * caller treats undefined as "don't know which CLI ran" rather than
+ * fabricating a default (#2823).
+ */
+function resolveCliFromModelString(model: string | undefined): CliNameLiteral | undefined {
+  if (model === undefined) return undefined;
+  if (!(MODEL_IDS as readonly string[]).includes(model)) return undefined;
+  return getCliForModelId(model as ModelId);
+}
 
 const logger = createLogger({ component: 'expert-bridge' });
 
@@ -25,6 +40,14 @@ export interface ExpertBridgeResult {
   readonly expertType: BuiltInExpertType;
   readonly durationMs: number;
   readonly error?: string;
+  /**
+   * CLI that actually executed the task, resolved from the underlying
+   * `CliResponse.model` via `getCliForModelId`. Undefined when the bridge
+   * failed before dispatch (no adapters / circuit-open / rate-limit cap).
+   * Callers writing to OutcomeStore should use this rather than hardcoding
+   * a cli — see #2823 (#1154 regression).
+   */
+  readonly cli?: CliNameLiteral;
 }
 
 /**
@@ -39,10 +62,11 @@ export interface ExpertBridgeResult {
  */
 /** Minimal router interface for the bridge. */
 interface RouterLike {
-  executeTask(task: {
-    content: string;
-    options?: Record<string, unknown> | undefined;
-  }): Promise<{ ok: boolean; value: { text: string }; error: { message: string } }>;
+  executeTask(task: { content: string; options?: Record<string, unknown> | undefined }): Promise<{
+    ok: boolean;
+    value: { text: string; cli?: CliNameLiteral };
+    error: { message: string };
+  }>;
 }
 
 // Cached router — lazily initialized, reused across calls within a session
@@ -87,7 +111,7 @@ function adaptCompositeRouter(
   return {
     async executeTask(task): Promise<{
       ok: boolean;
-      value: { text: string };
+      value: { text: string; cli?: CliNameLiteral };
       error: { message: string };
     }> {
       const cliTask: import('../cli-adapters/types.js').CliTask = {
@@ -96,7 +120,19 @@ function adaptCompositeRouter(
       };
       const result = await compositeRouter.executeTask(cliTask);
       if (result.ok) {
-        return { ok: true, value: { text: result.value.text }, error: { message: '' } };
+        // #2823: surface which CLI actually executed so callers writing to
+        // OutcomeStore don't have to hardcode 'claude' (the bug #1154 fixed
+        // and that regressed into the pipeline/ tree). Derive via the
+        // canonical model→cli mapping in the registry — if the underlying
+        // adapter didn't set `model` or the model isn't in the registry,
+        // cli stays undefined and downstream code can skip the record
+        // rather than lie.
+        const cli = resolveCliFromModelString(result.value.model);
+        return {
+          ok: true,
+          value: { text: result.value.text, ...(cli !== undefined && { cli }) },
+          error: { message: '' },
+        };
       }
       return { ok: false, value: { text: '' }, error: { message: result.error.message } };
     },
@@ -153,8 +189,18 @@ async function dispatchWithRateLimitRetry(
     const durationMs = getTimeProvider().now() - start;
 
     if (result.ok) {
-      logger.info('Expert executed successfully', { expertType, durationMs });
-      return { success: true, text: result.value.text, expertType, durationMs };
+      logger.info('Expert executed successfully', {
+        expertType,
+        durationMs,
+        cli: result.value.cli,
+      });
+      return {
+        success: true,
+        text: result.value.text,
+        expertType,
+        durationMs,
+        ...(result.value.cli !== undefined && { cli: result.value.cli }),
+      };
     }
 
     const isRateLimit = isRateLimitText(result.error.message);

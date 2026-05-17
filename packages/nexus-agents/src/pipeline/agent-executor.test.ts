@@ -364,4 +364,98 @@ describe('createAgentStages — central workflow hub', () => {
       expect(mockRecordError).toHaveBeenCalled();
     });
   });
+
+  // #2823: regression coverage. recordOutcome used to hardcode `cli: 'claude'`,
+  // poisoning the OutcomeStore + LinUCB cold-start warmStart on every run.
+  // The threaded `cli` now comes from `r.cli` (executeExpert's resolved CLI);
+  // when undefined (bridge failed before dispatch, or non-CLI stage like
+  // local security scan) the record is skipped rather than fabricated.
+  describe('recordOutcome cli threading (#2823)', () => {
+    it('writes the actual cli from executeExpert, never hardcoded claude', async () => {
+      const appendSpy = vi.fn();
+      mockGetOutcomeStore.mockReturnValue({
+        append: appendSpy,
+        query: vi.fn().mockReturnValue([]),
+      });
+      mockExecuteExpert.mockResolvedValue({
+        success: true,
+        text: 'Plan v1',
+        durationMs: 200,
+        expertType: 'architecture',
+        cli: 'gemini',
+      });
+
+      const stages = createAgentStages();
+      await stages.plan('build feature A', '');
+
+      const planRecord = appendSpy.mock.calls.find(
+        (c: unknown[]) => (c[0] as { id?: string }).id?.startsWith('pipeline-plan-') === true
+      );
+      expect(planRecord).toBeDefined();
+      expect((planRecord![0] as { cli: string }).cli).toBe('gemini');
+    });
+
+    it('skips the record when cli is undefined (bridge failed before dispatch)', async () => {
+      const appendSpy = vi.fn();
+      mockGetOutcomeStore.mockReturnValue({
+        append: appendSpy,
+        query: vi.fn().mockReturnValue([]),
+      });
+      // No `cli` field — bridge failed before any CLI ran (no adapter / circuit-open).
+      mockExecuteExpert.mockResolvedValue({
+        success: false,
+        text: '',
+        durationMs: 5,
+        expertType: 'architecture',
+        error: 'No adapters available',
+      });
+
+      const stages = createAgentStages();
+      await stages.plan('build feature A', '');
+
+      const planRecord = appendSpy.mock.calls.find(
+        (c: unknown[]) => (c[0] as { id?: string }).id?.startsWith('pipeline-plan-') === true
+      );
+      // The whole point of #2823: no append at all, rather than a fabricated
+      // `cli: 'claude'` record polluting routing learner.
+      expect(planRecord).toBeUndefined();
+    });
+
+    it('threads each CLI distinctly across stages (#2823)', async () => {
+      const appendSpy = vi.fn();
+      mockGetOutcomeStore.mockReturnValue({
+        append: appendSpy,
+        query: vi.fn().mockReturnValue([]),
+      });
+      // Decompose returns codex; implement returns claude.
+      mockExecuteExpert
+        .mockResolvedValueOnce({
+          success: true,
+          text: '[{"id":"t1","title":"x","description":"y","assignedTo":"dev"}]',
+          durationMs: 80,
+          expertType: 'pm',
+          cli: 'codex',
+        })
+        .mockResolvedValueOnce({
+          success: true,
+          text: 'implementation done',
+          durationMs: 1200,
+          expertType: 'code',
+          cli: 'claude',
+        });
+
+      const stages = createAgentStages();
+      const tasks = await stages.decompose('plan');
+      await stages.implement(tasks[0]!);
+
+      const decomposeRecord = appendSpy.mock.calls.find(
+        (c: unknown[]) => (c[0] as { id?: string }).id?.startsWith('pipeline-decompose-') === true
+      );
+      const implRecord = appendSpy.mock.calls.find(
+        (c: unknown[]) => (c[0] as { id?: string }).id?.startsWith('pipeline-t1-') === true
+      );
+      expect((decomposeRecord![0] as { cli: string }).cli).toBe('codex');
+      expect((implRecord![0] as { cli: string }).cli).toBe('claude');
+    });
+  });
 });
