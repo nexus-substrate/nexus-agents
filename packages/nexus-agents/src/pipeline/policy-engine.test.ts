@@ -203,7 +203,10 @@ describe('PolicyEngine', () => {
         makeContext({ stageType: 'execute', pipelineState: { trustTier: '3' } })
       );
       expect(result?.allow).toBe(false);
-      expect(result?.escalateTo).toBe('user');
+      // Narrow to the deny variant before asserting escalateTo
+      if (result && !result.allow) {
+        expect(result.escalateTo).toBe('user');
+      }
     });
 
     it('blocks execute stage when trustTier is the string "4"', () => {
