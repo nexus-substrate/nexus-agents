@@ -90,19 +90,15 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
             <span class="wordmark-display">nexus</span><span class="wordmark-mark">·</span><span class="wordmark-display">agents</span>
           </span>
         </a>
-        <div class="masthead-meta">
-          <span class="vol">Vol. 2 · No. 79</span>
-          <span class="dot" aria-hidden="true">·</span>
-          <span class="bin">v2.79.3</span>
-        </div>
         <div class="nav-links" role="navigation">
           <a href="/nexus-agents/docs/getting-started/installation/">Install</a>
           <a href="/nexus-agents/docs/architecture/readme/">Architecture</a>
           <a href="/nexus-agents/docs/guides/mcp_integration/">Integrate</a>
+          <a href="/nexus-agents/docs/readme/">Docs</a>
           <a href="https://github.com/nexus-substrate/nexus-agents" target="_blank" rel="noopener noreferrer" class="nav-source">Source &nearr;</a>
         </div>
       </div>
-      <hr class="rule-thick masthead-rule" />
+      <hr class="masthead-rule" />
     </nav>
 
     <main>
@@ -110,18 +106,18 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
     </main>
 
     <footer class="colophon">
-      <hr class="rule-thick" />
+      <hr class="colophon-rule" />
       <div class="colophon-inner">
         <div class="colophon-left">
-          <p class="colophon-mark"><strong>NEXUS SUBSTRATE</strong> · Governance substrate for AI coding agents.</p>
+          <p class="colophon-mark">Nexus Agents — governance substrate for AI coding agents.</p>
           <p class="colophon-meta">
-            Set in <span class="font-display">Fraunces</span>, <span class="font-body">Source Sans 3</span>, and <span class="font-mono">IBM Plex Mono</span>.
-            MIT licensed. Filed under <a href="https://github.com/nexus-substrate">github.com/nexus-substrate</a>.
+            MIT licensed. Source at <a href="https://github.com/nexus-substrate/nexus-agents">github.com/nexus-substrate/nexus-agents</a>.
+            Maintained by <a href="https://github.com/williamzujkowski">William Zujkowski</a>.
           </p>
         </div>
         <div class="colophon-right">
-          <p class="colophon-label">Issue</p>
-          <p class="colophon-issue">2026-05 · Post-migration</p>
+          <p class="colophon-label">Version</p>
+          <p class="colophon-version">v2.79.3</p>
         </div>
       </div>
     </footer>
@@ -276,13 +272,18 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
   .masthead-inner {
     max-width: 78rem;
     margin: 0 auto;
-    display: grid;
-    grid-template-columns: auto 1fr auto;
+    display: flex;
     align-items: baseline;
+    justify-content: space-between;
     gap: 2rem;
-    padding: 1.4rem 1.5rem 0.8rem;
+    padding: 1.2rem 1.5rem 0.8rem;
   }
-  .masthead-rule { max-width: 78rem; margin: 0 auto; }
+  .masthead-rule {
+    max-width: 78rem;
+    margin: 0 auto;
+    border: 0;
+    border-top: 1px solid var(--rule);
+  }
 
   .wordmark {
     display: inline-flex;
@@ -302,28 +303,13 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
   }
   .wordmark-mark { color: var(--register); margin: 0 0.06em; font-weight: 400; }
 
-  .masthead-meta {
-    justify-self: center;
-    display: flex;
-    gap: 0.6rem;
-    align-items: baseline;
-    font-family: var(--font-mono);
-    font-size: 0.72rem;
-    letter-spacing: 0.08em;
-    color: var(--ink-soft);
-  }
-  .masthead-meta .vol { font-variant: small-caps; letter-spacing: 0.12em; }
-  .masthead-meta .dot { color: var(--register); }
-  .masthead-meta .bin { color: var(--ink-mid); }
-
   .nav-links {
     display: flex;
     align-items: baseline;
     gap: 1.6rem;
     font-family: var(--font-body);
-    font-size: 0.84rem;
-    letter-spacing: 0.04em;
-    font-variant: small-caps;
+    font-size: 0.9rem;
+    font-weight: 500;
   }
   .nav-links a {
     color: var(--ink);
@@ -336,17 +322,17 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
   .nav-links a.nav-source { color: var(--ink-soft); }
 
   @media (max-width: 760px) {
-    .masthead-inner { grid-template-columns: 1fr; gap: 0.6rem; padding-bottom: 1rem; }
-    .masthead-meta { justify-self: start; }
+    .masthead-inner { flex-direction: column; align-items: flex-start; gap: 0.8rem; padding-bottom: 1rem; }
     .nav-links { flex-wrap: wrap; gap: 1.2rem; }
   }
 
   /* ─── Colophon footer ─── */
   .colophon { margin-top: 5rem; background: var(--paper); }
+  .colophon-rule { border: 0; border-top: 1px solid var(--ink); margin: 0; max-width: 78rem; margin-left: auto; margin-right: auto; }
   .colophon-inner {
     max-width: 78rem;
     margin: 0 auto;
-    padding: 2.2rem 1.5rem 3rem;
+    padding: 1.8rem 1.5rem 2.5rem;
     display: grid;
     grid-template-columns: 1fr auto;
     gap: 2rem;
@@ -355,11 +341,10 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
   .colophon-left p { margin: 0; }
   .colophon-mark {
     font-family: var(--font-body);
-    font-size: 0.95rem;
+    font-size: 0.92rem;
     color: var(--ink);
-    margin-bottom: 0.35rem !important;
+    margin-bottom: 0.3rem !important;
   }
-  .colophon-mark strong { letter-spacing: 0.08em; color: var(--ink); }
   .colophon-meta {
     font-family: var(--font-body);
     font-size: 0.84rem;
@@ -367,22 +352,20 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
     line-height: 1.55;
   }
   .colophon-meta a { color: var(--ink); text-decoration: underline; text-decoration-color: var(--register); text-underline-offset: 3px; }
-  .font-display { font-family: var(--font-display); font-style: italic; }
-  .font-body { font-family: var(--font-body); font-weight: 600; }
-  .font-mono { font-family: var(--font-mono); font-size: 0.95em; }
 
   .colophon-right { text-align: right; font-family: var(--font-mono); }
   .colophon-label {
     font-size: 0.7rem;
     text-transform: uppercase;
-    letter-spacing: 0.14em;
-    color: var(--register);
+    letter-spacing: 0.12em;
+    color: var(--ink-soft);
     margin: 0 0 0.2rem !important;
   }
-  .colophon-issue {
-    font-size: 0.82rem;
-    color: var(--ink-mid);
+  .colophon-version {
+    font-size: 0.84rem;
+    color: var(--register);
     margin: 0 !important;
+    font-weight: 500;
   }
 
   @media (max-width: 640px) {

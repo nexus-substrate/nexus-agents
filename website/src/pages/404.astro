@@ -4,21 +4,20 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 
 <BaseLayout title="404 — Not Found" description="The page you requested could not be found." noindex>
   <article class="notfound">
-    <p class="filed">— Filed under: page not located —</p>
     <p class="code">404</p>
     <h1 class="display heading">
-      Nothing on file at <em>this address</em>.
+      Page not found.
     </h1>
     <p class="lede">
-      The link, the slug, or the entire page is gone. Often it's the slug.
-      Try the front page, or read the dossier.
+      The link, the slug, or the page itself is gone. Try the home page,
+      or jump to the documentation.
     </p>
     <div class="links">
       <a href="/nexus-agents/" class="cta-primary">
-        <span class="cta-label">Return to the front page</span>
+        <span class="cta-label">Home</span>
         <span class="cta-arrow" aria-hidden="true">→</span>
       </a>
-      <a href="/nexus-agents/docs/readme/" class="cta-secondary">Read the dossier</a>
+      <a href="/nexus-agents/docs/readme/" class="cta-secondary">Documentation</a>
     </div>
   </article>
 </BaseLayout>
@@ -28,14 +27,6 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     max-width: 38rem;
     margin: 5rem auto 8rem;
     padding: 0 1.5rem;
-  }
-  .filed {
-    font-family: var(--font-mono);
-    font-size: 0.75rem;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--register);
-    margin: 0 0 1.6rem;
   }
   .code {
     font-family: var(--font-display);
@@ -51,10 +42,6 @@ import BaseLayout from '../layouts/BaseLayout.astro';
   .heading {
     margin: 0 0 1.5rem;
     font-size: clamp(1.85rem, 3vw, 2.3rem);
-  }
-  .heading em {
-    font-style: italic;
-    color: var(--register);
   }
   .lede {
     font-family: var(--font-display);
@@ -83,8 +70,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     font-family: var(--font-body);
     font-size: 0.9rem;
     font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
+    letter-spacing: 0.03em;
     transition: background 120ms linear, border-color 120ms linear;
   }
   .cta-primary:hover { background: var(--register); border-color: var(--register); }
