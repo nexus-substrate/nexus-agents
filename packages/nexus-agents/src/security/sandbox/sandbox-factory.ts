@@ -132,7 +132,7 @@ function createDeprecatedModeFallback(
     requestedMode,
     actualMode: 'policy',
     reason:
-      'In-process Docker/Deno executors were deleted in #2551. Use the OpenCode sandbox bootstrap for real isolation (NEXUS_SANDBOX environment variable, see docs/getting-started/SANDBOXED-USAGE.md).',
+      'In-process Docker/Deno executors were deleted in #2551. Use the OpenCode sandbox bootstrap for real isolation (NEXUS_SANDBOX environment variable, see docs/guides/SANDBOXED-USAGE.md).',
   });
 
   const executor = new PolicySandboxExecutor(policyConfig);

@@ -74,7 +74,7 @@ function handleMissingEnv(logger: ILogger, sandboxActive: boolean): void {
     logger.error(
       'Sandbox mode active but NEXUS_OPENAI_COMPAT_URL / NEXUS_OPENAI_COMPAT_KEY are not set. ' +
         'Configure the gateway in your launch env or opencode.json. ' +
-        'See docs/getting-started/SANDBOXED-USAGE.md.',
+        'See docs/guides/SANDBOXED-USAGE.md.',
       new Error('Missing gateway configuration in sandbox mode')
     );
     process.exit(EXIT_CODES.SERVER_START_FAILED);

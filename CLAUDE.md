@@ -56,7 +56,7 @@ Most-used env vars:
 | `NEXUS_ACCESS_POLICY_MODE`                                                          | ClawGuard: `off` / `audit` (default) / `confirm_risky` / `enforce`.      |
 | `NEXUS_SANDBOX` / `NEXUS_SANDBOX_ROOT`                                              | Sandbox mode (epic #2500).                                               |
 
-Full list in [docs/getting-started/CONFIGURATION.md](./docs/getting-started/CONFIGURATION.md). Install: [INSTALLATION.md](./docs/getting-started/INSTALLATION.md). Sandboxed: [SANDBOXED-USAGE.md](./docs/getting-started/SANDBOXED-USAGE.md).
+Full list in [docs/getting-started/CONFIGURATION.md](./docs/getting-started/CONFIGURATION.md). Install: [INSTALLATION.md](./docs/getting-started/INSTALLATION.md). Sandboxed: [SANDBOXED-USAGE.md](./docs/guides/SANDBOXED-USAGE.md).
 
 ---
 
