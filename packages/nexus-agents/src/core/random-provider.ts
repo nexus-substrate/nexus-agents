@@ -8,7 +8,7 @@
  * (Source: System Mandate - Determinism improvement)
  */
 
-import { randomBytes, randomInt as cryptoRandomInt } from 'node:crypto';
+import { randomBytes, randomInt as cryptoRandomInt, randomUUID } from 'node:crypto';
 
 // ============================================================================
 // Types
@@ -123,9 +123,12 @@ export class SystemRandomProvider implements IRandomProvider {
   }
 
   uuid(): string {
-    const hex = (): string => this.randomInt(0, 16).toString(16);
-    const s4 = (): string => hex() + hex() + hex() + hex();
-    return `${s4()}${s4()}-${s4()}-4${hex()}${hex()}${hex()}-${hex()}${hex()}${hex()}${hex()}-${s4()}${s4()}${s4()}`;
+    // Use Node's built-in for the system provider — RFC 4122 v4 compliant
+    // (correct version + variant nibbles) and CSPRNG-backed. The previous
+    // hand-rolled implementation left the variant nibble (first hex of the
+    // 4th group) unconstrained, producing IDs that fail strict v4 parsers.
+    // Audit #2824.
+    return randomUUID();
   }
 }
 
@@ -187,7 +190,11 @@ export class SeededRandomProvider implements IRandomProvider {
   uuid(): string {
     const hex = (): string => this.randomInt(0, 16).toString(16);
     const s4 = (): string => hex() + hex() + hex() + hex();
-    return `${s4()}${s4()}-${s4()}-4${hex()}${hex()}${hex()}-${hex()}${hex()}${hex()}${hex()}-${s4()}${s4()}${s4()}`;
+    // RFC 4122 v4 requires the variant nibble (first hex of the 4th group)
+    // to be one of 8 / 9 / a / b (binary 10xx). Constrain it so determinism
+    // and spec-compliance coexist. Audit #2824.
+    const variantHex = (this.randomInt(0, 4) + 8).toString(16);
+    return `${s4()}${s4()}-${s4()}-4${hex()}${hex()}${hex()}-${variantHex}${hex()}${hex()}${hex()}-${s4()}${s4()}${s4()}`;
   }
 
   /**

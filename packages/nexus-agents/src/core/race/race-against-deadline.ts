@@ -41,10 +41,19 @@ export async function raceAgainstDeadline<T>(
   const startedAt = Date.now();
   let timer: ReturnType<typeof setTimeout> | undefined;
 
-  const timeoutP = new Promise<T>((resolve) => {
+  const timeoutP = new Promise<T>((resolve, reject) => {
     timer = setTimeout(
       () => {
-        resolve(onTimeout(Date.now() - startedAt));
+        // If onTimeout throws (e.g. it returns a Result.err whose constructor
+        // throws, or a caller passes a non-pure callback), the sync throw
+        // happens inside the timer callback and would otherwise crash the
+        // process under strict mode. Reject the timeout promise so
+        // Promise.race surfaces the error to the caller. Audit #2824.
+        try {
+          resolve(onTimeout(Date.now() - startedAt));
+        } catch (err) {
+          reject(err instanceof Error ? err : new Error(String(err)));
+        }
       },
       Math.max(0, deadlineMs)
     );

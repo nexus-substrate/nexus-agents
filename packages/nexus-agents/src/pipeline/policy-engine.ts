@@ -116,7 +116,16 @@ const trustTierRule: PolicyRule = {
   evaluate(context): PolicyDecision {
     const state = context.pipelineState;
     const tierVal = state['trustTier'];
-    const tier = typeof tierVal === 'number' ? tierVal : undefined;
+    // Producers (issue-triage, pr-reviewer, secure-handler) write the trust
+    // tier as a string per trust-types.ts (TrustTier = '1' | '2' | '3' | '4').
+    // The earlier number-only coercion silently inerted this rule. Audit #2824.
+    const numericTier =
+      typeof tierVal === 'number'
+        ? tierVal
+        : typeof tierVal === 'string'
+          ? Number(tierVal)
+          : Number.NaN;
+    const tier = Number.isFinite(numericTier) ? numericTier : undefined;
     if (tier !== undefined && tier >= 3 && context.stageType === 'execute') {
       return {
         allow: false,

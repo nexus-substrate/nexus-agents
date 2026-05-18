@@ -93,4 +93,36 @@ describe('raceAgainstDeadline', () => {
     expect(result.ok).toBe(true);
     expect(result.data).toBe(42);
   });
+
+  // Audit #2824: if onTimeout throws, the previous implementation let the
+  // exception escape the setTimeout callback and crash the process under
+  // strict-mode error handling. Now the throw must reject the promise so
+  // Promise.race surfaces it to the caller.
+  it('rejects the promise when onTimeout throws instead of crashing the process', async () => {
+    const hanging = new Promise<string>(() => {});
+    const boom = (): string => {
+      throw new Error('onTimeout exploded');
+    };
+
+    const resultP = raceAgainstDeadline(hanging, 500, boom);
+    await vi.advanceTimersByTimeAsync(500);
+
+    await expect(resultP).rejects.toThrow('onTimeout exploded');
+  });
+
+  it('wraps non-Error throws from onTimeout so the rejection is always an Error', async () => {
+    const hanging = new Promise<string>(() => {});
+    const nonErrorPayload = 'plain string error';
+    const stringThrow = (): string => {
+      // Cast to bypass `no-throw-literal` — the whole point of this test
+      // is to exercise the non-Error throw path in the production wrap.
+      // eslint-disable-next-line no-throw-literal
+      throw nonErrorPayload as unknown as Error;
+    };
+
+    const resultP = raceAgainstDeadline(hanging, 500, stringThrow);
+    await vi.advanceTimersByTimeAsync(500);
+
+    await expect(resultP).rejects.toThrow('plain string error');
+  });
 });

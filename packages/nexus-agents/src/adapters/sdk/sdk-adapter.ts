@@ -26,6 +26,7 @@ import {
 import { BaseAdapter, AdapterModelError } from '../base-adapter.js';
 import { ErrorCode } from '../../core/index.js';
 import { isRateLimitLikeError } from '../rate-limit-detector.js';
+import { sanitizeOutput } from '../../security/output-sanitizer.js';
 import type { SdkAdapterConfig, SdkProviderId } from './types.js';
 import { PROVIDER_ENV_KEYS, CUSTOM_API_BASE_URL_ENV } from './types.js';
 import { validateCustomApiBaseUrl } from './custom-api-validation.js';
@@ -391,10 +392,14 @@ export class SdkAdapter extends BaseAdapter {
    */
   private toErrorResult(error: unknown, code: ErrorCode): Result<CompletionResponse, ModelError> {
     const message = getErrorMessage(error);
-    const errorObj = error instanceof Error ? error : new Error(message);
+    // Scrub API keys + bearer tokens out of upstream SDK error messages
+    // before they hit logs or the surfaced ModelError. Parity with the
+    // subprocess-adapter path. Audit #2824.
+    const safeMessage = sanitizeOutput(message);
+    const errorObj = error instanceof Error ? error : new Error(safeMessage);
     this.logger.error(`SDK adapter error (${this.sdkProviderId})`, errorObj);
     // AdapterModelError extends ModelError — no cast needed
-    const modelError = new AdapterModelError(`${this.sdkProviderId} SDK error: ${message}`, {
+    const modelError = new AdapterModelError(`${this.sdkProviderId} SDK error: ${safeMessage}`, {
       code,
     });
     return { ok: false, error: modelError };
