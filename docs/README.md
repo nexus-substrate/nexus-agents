@@ -15,11 +15,11 @@ This is the **single source of truth** for all nexus-agents documentation. All d
 
 ## Quick Start by Role
 
-| Role            | Start Here                         | Then Read                                           |
-| --------------- | ---------------------------------- | --------------------------------------------------- |
-| **New User**    | [Quick Start](../QUICK_START.md)   | [Installation](./getting-started/INSTALLATION.md)   |
-| **Contributor** | [Contributing](../CONTRIBUTING.md) | [Development Guide](./development/README.md)        |
-| **Operator**    | [ENTRYPOINTS.md](./ENTRYPOINTS.md) | [Configuration](./getting-started/CONFIGURATION.md) |
+| Role            | Start Here                                         | Then Read                                           |
+| --------------- | -------------------------------------------------- | --------------------------------------------------- |
+| **New User**    | [Your First Task](./getting-started/FIRST_TASK.md) | [Installation](./getting-started/INSTALLATION.md)   |
+| **Contributor** | [Contributing](../CONTRIBUTING.md)                 | [Development Guide](./development/README.md)        |
+| **Operator**    | [ENTRYPOINTS.md](./ENTRYPOINTS.md)                 | [Configuration](./getting-started/CONFIGURATION.md) |
 
 > **AI agents working in this repo** (Claude Code, Cursor, etc.) — see [CLAUDE.md](../CLAUDE.md) for project instructions, governance protocols, and canonical paths. CLAUDE.md is the rule book the agents follow, not a user-facing surface.
 
@@ -56,7 +56,7 @@ These documents define the system and must be kept up-to-date:
 | Document                  | Location                                           | Description                           |
 | ------------------------- | -------------------------------------------------- | ------------------------------------- |
 | **Project Instructions**  | [CLAUDE.md](../CLAUDE.md)                          | Agent behavior, protocols, governance |
-| **Quick Start**           | [QUICK_START.md](../QUICK_START.md)                | 5-minute getting started              |
+| **Your First Task**       | [FIRST_TASK.md](./getting-started/FIRST_TASK.md)   | 5-minute first task (canonical entry) |
 | **README**                | [README.md](../README.md)                          | Project overview                      |
 | **Architecture Overview** | [architecture/README.md](./architecture/README.md) | System design hub                     |
 | **Development Guide**     | [development/README.md](./development/README.md)   | Contributor hub                       |
@@ -69,12 +69,13 @@ Detailed technical documentation:
 
 #### Getting Started
 
-| Document                                                 | Description                                      | Status    |
-| -------------------------------------------------------- | ------------------------------------------------ | --------- |
-| [INSTALLATION.md](./getting-started/INSTALLATION.md)     | Platform installation guide                      | Canonical |
-| [CONFIGURATION.md](./getting-started/CONFIGURATION.md)   | YAML and env configuration                       | Canonical |
-| [PLUGIN_INSTALL.md](./getting-started/PLUGIN_INSTALL.md) | Install nexus-agents as a Claude Code plugin     | Canonical |
-| [SANDBOXED-USAGE.md](./guides/SANDBOXED-USAGE.md)        | Docker / restricted-FS / team-distribution flows | Canonical |
+| Document                                                 | Description                                                           | Status    |
+| -------------------------------------------------------- | --------------------------------------------------------------------- | --------- |
+| [FIRST_TASK.md](./getting-started/FIRST_TASK.md)         | **Start here.** Install → verify → real vote → editor wiring (~5 min) | Canonical |
+| [INSTALLATION.md](./getting-started/INSTALLATION.md)     | Platform installation deep-dive                                       | Canonical |
+| [CONFIGURATION.md](./getting-started/CONFIGURATION.md)   | YAML and env configuration                                            | Canonical |
+| [PLUGIN_INSTALL.md](./getting-started/PLUGIN_INSTALL.md) | Install nexus-agents as a Claude Code plugin                          | Canonical |
+| [SANDBOXED-USAGE.md](./guides/SANDBOXED-USAGE.md)        | Docker / restricted-FS / team-distribution flows                      | Canonical |
 
 #### Architecture
 
