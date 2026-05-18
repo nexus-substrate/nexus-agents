@@ -83,3 +83,6 @@ repo-health-report/
 tsundoku/
 .doc-review-cursor
 .claude/scheduled_tasks.lock
+
+# Ephemeral worktrees from agent runs
+.claude/worktrees/
