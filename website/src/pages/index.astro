@@ -61,41 +61,49 @@ import {
         <span class="terminal-dot" aria-hidden="true"></span>
         <span class="terminal-dot" aria-hidden="true"></span>
         <span class="terminal-dot" aria-hidden="true"></span>
-        <span class="terminal-title">~/work · nexus-agents vote --quick</span>
+        <span class="terminal-title">~/work · nexus-agents vote · 2026-05-17</span>
       </div>
-      <pre class="terminal-body" aria-label="Terminal transcript"><span class="t-prompt">$</span> <span class="t-cmd">nexus-agents vote --quick "Use SQLite over JSON files for the outcome store"</span>
+      <pre class="terminal-body" aria-label="Terminal transcript"><span class="t-prompt">$</span> <span class="t-cmd">nexus-agents vote --proposal "Add a 'nexus-agents tour' interactive</span>
+<span class="t-cmd">    walkthrough command that runs after 'setup'..."</span>
 
 <span class="t-heading">Nexus Agents Consensus Vote</span>
 <span class="t-heading">============================</span>
 
-<span class="t-dim">Collecting votes from 3 agents (timeout: 60s each)...</span>
+<span class="t-dim">Proposal: Add a 'nexus-agents tour' interactive walkthrough command that runs after 'setup'...</span>
 
-<span class="t-dim">Proposal: Use SQLite over JSON files for the outcome store</span>
+<span class="t-dim">Collecting votes from 7 agents (timeout: 300s each)...</span>
 
 <span class="t-section">Votes</span>
 
-  <span class="t-pass">✓</span> Architect:     <span class="t-bold">APPROVE</span> (86%)
-  <span class="t-pass">✓</span> Security:      <span class="t-bold">APPROVE</span> (74%)
-  <span class="t-pass">✓</span> Scope Steward: <span class="t-bold">APPROVE</span> (91%)
+  <span class="t-pass">✓</span> Software Architect:   <span class="t-bold">APPROVE</span> (82%)
+  <span class="t-pass">✓</span> Security Engineer:    <span class="t-bold">APPROVE</span> (90%)
+  <span class="t-pass">✓</span> Developer Experience: <span class="t-bold">APPROVE</span> (88%)
+  <span class="t-fail">✗</span> AI/ML Engineer:       <span class="t-bold-fail">REJECT</span>  (75%)
+  <span class="t-pass">✓</span> Product Manager:      <span class="t-bold">APPROVE</span> (82%)
+  <span class="t-fail">✗</span> Contrarian Analyst:   <span class="t-bold-fail">REJECT</span>  (95%)
+  <span class="t-fail">✗</span> Scope Steward:        <span class="t-bold-fail">ERROR</span>   — MCP error -32001: Request timed out
 
 <span class="t-section">Summary</span>
 
-  Approve:   3
-  Reject:    0
-  Abstain:   0
-  Approval:  100.0%
+  Approve:  4
+  Reject:   2
+  Abstain:  0
+  <span class="t-fail">Errored:  1</span>
+  Approval: 66.7%
   Threshold: simple_majority
 
 <span class="t-bold">Result: <span class="t-decision">APPROVED</span></span>
 
-<span class="t-dim">Completed in 12834ms</span>
+<span class="t-dim">Completed in 188487ms</span>
 </pre>
     </div>
     <p class="terminal-cite">
-      Real output format. Three voter roles deliberate via your local Claude, Codex,
-      and Gemini CLIs — no API keys to set up first. The full reasoning and
-      content-addressed trace are written to <code>~/.nexus-agents/audit/</code>;
-      pretty-printed in the terminal so you can act on the verdict at a glance.
+      Verbatim from a real run on 2026-05-17 (a proposal from the website backlog;
+      the panel said yes 4 to 2). Seven specialised voter roles deliberate via your
+      local Claude, Codex, and Gemini CLIs — no API keys required to start. Pass
+      <code>--record &lt;issue-number&gt;</code> to write the result back to GitHub as a
+      structured comment; pass <code>--verbose</code> to print per-vote verification
+      hashes.
     </p>
   </section>
 
@@ -123,13 +131,13 @@ nexus-agents doctor</code></pre>
       <div class="proof-step">
         <p class="step-label"><span class="step-num">2</span> Run a real consensus vote (no API keys needed)</p>
         <pre data-copy class="code-step"><code>nexus-agents vote --quick \
-  "Use SQLite over JSON files for the outcome store"</code></pre>
+  --proposal "Use SQLite over JSON files for the outcome store"</code></pre>
         <p class="expected">
           <span class="expected-tag">expected</span>
-          The output shown above. Three voter roles deliberate via your local
-          Claude/Codex/Gemini CLIs (whichever you have installed). Vote tally and
-          decision print to the terminal; per-voter reasoning, confidence, and
-          the content-addressed trace go to <code>~/.nexus-agents/audit/</code>.
+          Output in the same shape as the hero transcript above, but with 3 voters
+          instead of 7 (<code>--quick</code>). Roles deliberate via your local
+          Claude/Codex/Gemini CLIs (whichever you have installed). Approval, reject,
+          abstain counts + final decision print to the terminal.
         </p>
       </div>
 
@@ -450,7 +458,9 @@ nexus-agents setup</code></pre>
   .t-heading { color: oklch(0.94 0.01 75); font-weight: 600; }
   .t-section { color: oklch(0.78 0.10 200); font-weight: 600; }
   .t-pass { color: var(--mark); font-weight: 600; }
+  .t-fail { color: oklch(0.72 0.16 25); font-weight: 600; }
   .t-bold { color: oklch(0.94 0.01 75); font-weight: 600; }
+  .t-bold-fail { color: oklch(0.78 0.14 25); font-weight: 600; }
   .t-dim { color: oklch(0.62 0.012 60); }
   .t-decision { color: var(--mark); }
 
