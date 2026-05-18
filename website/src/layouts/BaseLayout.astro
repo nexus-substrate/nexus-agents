@@ -12,7 +12,10 @@ const {
   description = 'Governance substrate for AI coding agents — adversarial review, drift-detected rules, immutable audit, closed-loop telemetry.',
   noindex = false,
 } = Astro.props;
-const siteTitle = title === 'Home' ? 'Nexus Substrate · Nexus Agents' : `${title} — Nexus Agents`;
+const siteTitle =
+  title === 'Home'
+    ? 'Nexus Agents — Governance substrate for AI coding agents'
+    : `${title} — Nexus Agents`;
 const canonicalURL = new URL(Astro.url.pathname, Astro.site);
 ---
 

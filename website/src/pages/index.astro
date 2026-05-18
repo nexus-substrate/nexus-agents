@@ -63,27 +63,39 @@ import {
         <span class="terminal-dot" aria-hidden="true"></span>
         <span class="terminal-title">~/work · nexus-agents vote --quick</span>
       </div>
-      <pre class="terminal-body" aria-label="Terminal transcript"><span class="t-prompt">$</span> <span class="t-cmd">nexus-agents vote --quick \</span>
-    <span class="t-cmd">"Use SQLite over JSON files for the outcome store"</span>
+      <pre class="terminal-body" aria-label="Terminal transcript"><span class="t-prompt">$</span> <span class="t-cmd">nexus-agents vote --quick "Use SQLite over JSON files for the outcome store"</span>
 
-<span class="t-meta">→ panel:</span>    architect, security, scope_steward  <span class="t-dim">(3 voters)</span>
-<span class="t-meta">→ strategy:</span> simple_majority
+<span class="t-heading">Nexus Agents Consensus Vote</span>
+<span class="t-heading">============================</span>
 
-  <span class="t-voter">architect</span>      <span class="t-pass">APPROVE</span>  <span class="t-dim">conf 0.86</span>  <span class="t-reason">"SQLite handles concurrent writes; the JSON</span>
-                                <span class="t-reason">files need locking the OutcomeStore doesn't have."</span>
+<span class="t-dim">Collecting votes from 3 agents (timeout: 60s each)...</span>
 
-  <span class="t-voter">security</span>       <span class="t-pass">APPROVE</span>  <span class="t-dim">conf 0.74</span>  <span class="t-reason">"No new surface area; same on-disk footprint."</span>
+<span class="t-dim">Proposal: Use SQLite over JSON files for the outcome store</span>
 
-  <span class="t-voter">scope_steward</span>  <span class="t-pass">APPROVE</span>  <span class="t-dim">conf 0.91</span>  <span class="t-reason">"Single canonical store. YAGNI passes."</span>
+<span class="t-section">Votes</span>
 
-<span class="t-decision">decision: APPROVED  (3/3)</span>
-<span class="t-dim">→ audit:</span> ~/.nexus-agents/audit/2026-05-17T21:20:14Z-vote.json
+  <span class="t-pass">✓</span> Architect:     <span class="t-bold">APPROVE</span> (86%)
+  <span class="t-pass">✓</span> Security:      <span class="t-bold">APPROVE</span> (74%)
+  <span class="t-pass">✓</span> Scope Steward: <span class="t-bold">APPROVE</span> (91%)
+
+<span class="t-section">Summary</span>
+
+  Approve:   3
+  Reject:    0
+  Abstain:   0
+  Approval:  100.0%
+  Threshold: simple_majority
+
+<span class="t-bold">Result: <span class="t-decision">APPROVED</span></span>
+
+<span class="t-dim">Completed in 12834ms</span>
 </pre>
     </div>
     <p class="terminal-cite">
-      Real output format. Three voter roles deliberate via your local Claude,
-      Codex, and Gemini CLIs — no API keys to set up first. Every vote, reasoning,
-      and confidence score writes to <code>~/.nexus-agents/audit/</code>.
+      Real output format. Three voter roles deliberate via your local Claude, Codex,
+      and Gemini CLIs — no API keys to set up first. The full reasoning and
+      content-addressed trace are written to <code>~/.nexus-agents/audit/</code>;
+      pretty-printed in the terminal so you can act on the verdict at a glance.
     </p>
   </section>
 
@@ -115,8 +127,9 @@ nexus-agents doctor</code></pre>
         <p class="expected">
           <span class="expected-tag">expected</span>
           The output shown above. Three voter roles deliberate via your local
-          Claude/Codex/Gemini CLIs (whichever you have installed). Decision, tally,
-          and per-voter reasoning print, then write to <code>~/.nexus-agents/audit/</code>.
+          Claude/Codex/Gemini CLIs (whichever you have installed). Vote tally and
+          decision print to the terminal; per-voter reasoning, confidence, and
+          the content-addressed trace go to <code>~/.nexus-agents/audit/</code>.
         </p>
       </div>
 
@@ -230,52 +243,74 @@ nexus-agents setup</code></pre>
   <section class="article-section">
     <hr class="section-rule-divider" />
 
-    <div class="article-body">
+    <div class="article-body next-body">
       <h2 class="headline section-headline">Next steps.</h2>
+      <p class="lede section-lede">
+        Action items first; reference last. Pick any one — they don't have to be
+        in order.
+      </p>
 
-      <ol class="dossier">
-        <li class="dossier-item">
-          <a href="/nexus-agents/docs/getting-started/installation/">
-            <p class="dossier-num">01</p>
-            <h3 class="dossier-title">Installation</h3>
-            <p class="dossier-blurb">
-              Five install methods, ranked by use case. Plugin (Claude Code only),
-              npm (everyone else), source (contributors).
-            </p>
-          </a>
-        </li>
-        <li class="dossier-item">
-          <a href="/nexus-agents/docs/guides/mcp_integration/">
-            <p class="dossier-num">02</p>
-            <h3 class="dossier-title">MCP integration</h3>
-            <p class="dossier-blurb">
-              Wire up Claude Code, Cursor, VS Code, or any MCP client. Three steps;
-              fewer if <code>setup</code> already ran.
-            </p>
-          </a>
-        </li>
-        <li class="dossier-item">
-          <a href="/nexus-agents/docs/architecture/readme/">
-            <p class="dossier-num">03</p>
-            <h3 class="dossier-title">Architecture</h3>
-            <p class="dossier-blurb">
-              The full anatomy: composite router, expert factories, consensus
-              engine, audit chain, pipeline phases.
-            </p>
-          </a>
-        </li>
-        <li class="dossier-item">
-          <a href="/nexus-agents/docs/research/research_index/">
-            <p class="dossier-num">04</p>
-            <h3 class="dossier-title">Research registry</h3>
-            <p class="dossier-blurb">
-              {PAPER_COUNT}+ papers across {DISCOVERY_SOURCE_COUNT} sources.
-              Technique alignment, synthesis, evidence behind every routing
-              decision.
-            </p>
-          </a>
-        </li>
-      </ol>
+      <div class="next-grid">
+        <a href="/nexus-agents/docs/entrypoints/" class="next-card">
+          <p class="next-kind">try</p>
+          <h3 class="next-title">Run an orchestration.</h3>
+          <p class="next-blurb">
+            <code>nexus-agents orchestrate "&hellip;"</code> picks the right CLI,
+            spins up the right experts, and writes the trace. The full
+            command + MCP-tool reference.
+          </p>
+        </a>
+
+        <a href="/nexus-agents/docs/guides/mcp_integration/" class="next-card">
+          <p class="next-kind">try</p>
+          <h3 class="next-title">Connect Claude Code, Cursor, or any MCP client.</h3>
+          <p class="next-blurb">
+            Wire {MCP_TOOL_COUNT} tools (orchestrate, vote, research,
+            verify_audit_chain&hellip;) into whatever editor you already use.
+            <code>setup</code> auto-configures most of it.
+          </p>
+        </a>
+
+        <a href="/nexus-agents/docs/workflows/self_development_workflow/" class="next-card">
+          <p class="next-kind">try</p>
+          <h3 class="next-title">Run the full dev pipeline.</h3>
+          <p class="next-blurb">
+            Research → plan → vote → implement → QA, end-to-end on a real change.
+            Three modes: autonomous, harness, dry-run. The workflow nexus-agents
+            uses on itself.
+          </p>
+        </a>
+
+        <a href="/nexus-agents/docs/getting-started/configuration/" class="next-card">
+          <p class="next-kind">configure</p>
+          <h3 class="next-title">Tune routing &amp; experts.</h3>
+          <p class="next-blurb">
+            Model preferences, custom expert personae, consensus thresholds,
+            sandbox modes, ClawGuard policy — what each knob does, and the
+            safe defaults to start from.
+          </p>
+        </a>
+
+        <a href="/nexus-agents/docs/architecture/readme/" class="next-card">
+          <p class="next-kind">read</p>
+          <h3 class="next-title">Architecture deep dive.</h3>
+          <p class="next-blurb">
+            How the composite router decides. How experts are spawned. How
+            consensus votes are aggregated. How the audit chain stays
+            content-addressed. The full anatomy.
+          </p>
+        </a>
+
+        <a href="/nexus-agents/docs/research/research_index/" class="next-card">
+          <p class="next-kind">read</p>
+          <h3 class="next-title">Browse the research registry.</h3>
+          <p class="next-blurb">
+            {PAPER_COUNT}+ tracked papers across {DISCOVERY_SOURCE_COUNT} sources.
+            Technique alignment, synthesis, and the evidence trail behind every
+            routing strategy.
+          </p>
+        </a>
+      </div>
     </div>
   </section>
 </BaseLayout>
@@ -412,12 +447,12 @@ nexus-agents setup</code></pre>
   }
   .t-prompt { color: var(--register); font-weight: 600; }
   .t-cmd { color: oklch(0.92 0.01 75); }
-  .t-meta { color: var(--register-soft); }
-  .t-voter { color: oklch(0.88 0.012 60); font-weight: 500; }
+  .t-heading { color: oklch(0.94 0.01 75); font-weight: 600; }
+  .t-section { color: oklch(0.78 0.10 200); font-weight: 600; }
   .t-pass { color: var(--mark); font-weight: 600; }
+  .t-bold { color: oklch(0.94 0.01 75); font-weight: 600; }
   .t-dim { color: oklch(0.62 0.012 60); }
-  .t-reason { color: oklch(0.78 0.012 75); font-style: italic; }
-  .t-decision { color: var(--register); font-weight: 600; }
+  .t-decision { color: var(--mark); }
 
   .terminal-cite {
     font-family: var(--font-body);
@@ -586,60 +621,69 @@ nexus-agents setup</code></pre>
     background: var(--paper-deep);
   }
 
-  /* ─── Dossier / next steps ─── */
-  .dossier {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    border-top: 1px solid var(--ink);
-  }
-  .dossier-item { border-bottom: 1px solid var(--rule-soft); }
-  .dossier-item:last-child { border-bottom: 1px solid var(--ink); }
-  .dossier-item a {
+  /* ─── Next steps grid ─── */
+  .next-body { max-width: 58rem; }
+  .next-grid {
     display: grid;
-    grid-template-columns: 3rem 1fr;
-    gap: 1rem 1.2rem;
-    padding: 1.4rem 0;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0;
+    border-top: 1px solid var(--ink);
+    border-bottom: 1px solid var(--ink);
+  }
+  .next-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    padding: 1.4rem 1.4rem 1.5rem;
     text-decoration: none;
     color: var(--ink);
+    border-right: 1px solid var(--rule-soft);
+    border-bottom: 1px solid var(--rule-soft);
     transition: background 120ms linear;
   }
-  .dossier-item a:hover { background: var(--paper-deep); }
-  .dossier-num {
+  .next-card:nth-child(2n) { border-right: none; }
+  .next-card:nth-last-child(-n + 2) { border-bottom: none; }
+  .next-card:hover { background: var(--paper-deep); }
+  .next-kind {
     font-family: var(--font-mono);
-    font-size: 0.95rem;
+    font-size: 0.7rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
     color: var(--register);
-    align-self: start;
     margin: 0;
-    padding-top: 0.3rem;
   }
-  .dossier-title {
-    grid-column: 2;
+  .next-title {
     font-family: var(--font-display);
     font-weight: 600;
-    font-size: 1.18rem;
+    font-size: 1.12rem;
+    line-height: 1.25;
     color: var(--ink);
-    margin: 0 0 0.3rem;
+    margin: 0;
     text-decoration: underline;
     text-decoration-color: var(--register);
     text-underline-offset: 3px;
     text-decoration-thickness: 1.5px;
   }
-  .dossier-item a:hover .dossier-title { text-decoration-thickness: 3px; }
-  .dossier-blurb {
-    grid-column: 2;
-    margin: 0;
+  .next-card:hover .next-title { text-decoration-thickness: 3px; }
+  .next-blurb {
+    margin: 0.2rem 0 0;
     font-family: var(--font-body);
-    font-size: 0.94rem;
+    font-size: 0.92rem;
     color: var(--ink-mid);
     line-height: 1.55;
   }
-  .dossier-blurb code {
+  .next-blurb code {
     font-family: var(--font-mono);
     font-size: 0.9em;
     color: var(--ink);
     background: var(--paper-deep);
     padding: 0.04em 0.3em;
+  }
+  @media (max-width: 720px) {
+    .next-grid { grid-template-columns: 1fr; }
+    .next-card { border-right: none !important; }
+    .next-card:not(:last-child) { border-bottom: 1px solid var(--rule-soft) !important; }
+    .next-card:last-child { border-bottom: none !important; }
   }
 
   /* ─── Responsive ─── */
