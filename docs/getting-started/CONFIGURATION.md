@@ -32,7 +32,7 @@ This creates `nexus-agents.yaml` with sensible defaults.
 
 The main configuration file is `nexus-agents.yaml`:
 
-> **Note:** Model names shown below are examples. Use the latest available models from each provider (Anthropic, OpenAI, Google, Ollama). Check provider documentation for current model identifiers.
+> **Note:** Model IDs below come from the in-tree ModelRegistry — they are what nexus-agents recognises out of the box. The full list lives in `packages/nexus-agents/src/config/in-tree-data.ts`; supported IDs include `claude-opus` / `claude-sonnet` / `claude-haiku`, `gemini-3-pro` / `gemini-3-flash`, `codex-5.3` / `codex-5.2` / `codex-5.1-mini`, plus `opencode-*` and `openrouter-*` variants. To use a model outside this set (e.g. an OpenAI-compatible gateway), see the `NEXUS_CUSTOM_MODEL` env var below.
 
 ```yaml
 # nexus-agents.yaml
@@ -40,21 +40,21 @@ The main configuration file is `nexus-agents.yaml`:
 # Model configuration — use latest models from each provider
 models:
   # Default model for general tasks
-  default: claude-sonnet-4-6
+  default: claude-sonnet
 
   # Model tiers for routing
   tiers:
     fast:
-      - claude-haiku-4-5
-      - gpt-4o-mini
+      - claude-haiku
+      - codex-5.1-mini
       - gemini-3-flash
     balanced:
-      - claude-sonnet-4-6
-      - gpt-4o
+      - claude-sonnet
+      - codex-5.2
       - gemini-3-pro
     powerful:
-      - claude-opus-4-6
-      - o1-pro
+      - claude-opus
+      - codex-5.3
       - gemini-3-pro
 
 # Expert configuration
@@ -298,7 +298,7 @@ The default model is used when no specific model is requested:
 
 ```yaml
 models:
-  default: claude-sonnet-4-6
+  default: claude-sonnet
 ```
 
 ### Model Tiers
@@ -309,14 +309,14 @@ Models are organized into tiers for automatic routing:
 models:
   tiers:
     fast:
-      - claude-haiku-4-5 # Quick, simple tasks
-      - gpt-4o-mini
+      - claude-haiku # Quick, simple tasks
+      - codex-5.1-mini
     balanced:
-      - claude-sonnet-4-6 # Most tasks
-      - gpt-4o
+      - claude-sonnet # Most tasks
+      - codex-5.2
     powerful:
-      - claude-opus-4-6 # Complex reasoning
-      - o1-pro
+      - claude-opus # Complex reasoning
+      - codex-5.3
 ```
 
 The router selects the appropriate tier based on task complexity.
@@ -328,10 +328,10 @@ Override settings for specific models:
 ```yaml
 models:
   settings:
-    claude-opus-4-6:
+    claude-opus:
       temperature: 0.7
       maxTokens: 8192
-    gpt-4o:
+    codex-5.3:
       temperature: 0.5
       maxTokens: 4096
 ```
@@ -615,7 +615,7 @@ const result = await startStdioServer({
   version: '1.0.0',
   config: {
     models: {
-      default: 'claude-sonnet-4-6',
+      default: 'claude-sonnet',
     },
     routing: {
       enableLinUCBSelection: true,
@@ -662,7 +662,7 @@ Minimize API costs:
 
 ```yaml
 models:
-  default: claude-haiku-4-5
+  default: claude-haiku
 
 routing:
   budget:
@@ -679,7 +679,7 @@ Maximize output quality:
 
 ```yaml
 models:
-  default: claude-opus-4-6
+  default: claude-opus
 
 routing:
   budget:
@@ -696,7 +696,7 @@ Fast, secure, cost-aware:
 
 ```yaml
 models:
-  default: claude-sonnet-4-6
+  default: claude-sonnet
 
 security:
   sandbox:
