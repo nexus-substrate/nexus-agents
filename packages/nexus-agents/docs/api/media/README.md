@@ -94,17 +94,70 @@ See [docs/getting-started/PLUGIN_INSTALL.md](docs/getting-started/PLUGIN_INSTALL
 nexus-agents doctor
 ```
 
-### 3. Use
+Prints a health table — Node version, configured CLIs (claude / codex / gemini / opencode), API keys missing vs present. Read-only; safe to run any time.
 
-**With Claude Code (recommended):**
+### 3. See what success looks like (60-second smoke task — no API keys needed)
 
 ```bash
-nexus-agents setup   # Auto-configures MCP server
+nexus-agents vote --quick --proposal "Use SQLite over JSON files for the outcome store"
 ```
 
-Then in Claude: `"orchestrate: Review this PR for issues"`
+You should see:
 
-**Standalone CLI:**
+```
+Nexus Agents Consensus Vote
+============================
+
+Collecting votes from 3 agents (timeout: 60s each)...
+
+Proposal: Use SQLite over JSON files for the outcome store
+
+Votes
+
+  ✓ Software Architect: APPROVE (86%)
+  ✓ Security Engineer:  APPROVE (74%)
+  ✓ Scope Steward:      APPROVE (91%)
+
+Summary
+
+  Approve:  3
+  Reject:   0
+  Abstain:  0
+  Approval: 100.0%
+  Threshold: simple_majority
+
+Result: APPROVED
+
+Completed in ~30s
+```
+
+Three voter roles deliberate via whichever local CLIs you have (Claude, Codex, Gemini) — no API keys required. Per-voter reasoning is recorded; the terminal prints the verdict. Mixed outcomes (some approve / some reject) and graceful error handling are demonstrated on the [project site hero](https://nexus-substrate.github.io/nexus-agents/) with a real 7-voter run.
+
+### 4. Wire into your editor
+
+```bash
+nexus-agents setup   # Auto-configures MCP server in Claude Code, Cursor, etc.
+```
+
+Restart your editor. The 38 MCP tools (`orchestrate`, `consensus_vote`, `research_synthesize`, `verify_audit_chain`, …) become available to whatever agent you're already using.
+
+#### What `setup` configures
+
+By default, `setup` writes/updates up to seven things in your environment. Each can be skipped with the corresponding `--skip-*` flag if you don't want it.
+
+| Configured                       | Where written                                        | Opt-out flag      |
+| -------------------------------- | ---------------------------------------------------- | ----------------- |
+| MCP server registration (Claude) | `~/.claude/mcp.json` / Claude Desktop config         | `--skip-mcp`      |
+| Project rules                    | `.cursor/rules/` and/or `.claude/rules/`             | `--skip-rules`    |
+| Session hooks                    | `~/.claude/hooks/` (session-start / pre-tool / etc.) | `--skip-hooks`    |
+| OpenCode MCP config              | `~/.config/opencode/opencode.json`                   | `--skip-opencode` |
+| Gemini MCP config                | `~/.gemini/mcp.json`                                 | `--skip-gemini`   |
+| Codex MCP config                 | `~/.codex/config.toml`                               | `--skip-codex`    |
+| Project config file              | `./nexus-agents.yaml`                                | `--skip-config`   |
+
+Run with `--interactive` (the default) for a per-step confirm flow, or `--no-interactive` to accept all defaults.
+
+### 5. Standalone usage (no editor required)
 
 ```bash
 export ANTHROPIC_API_KEY=your-key
@@ -125,7 +178,7 @@ nexus-agents orchestrate "Explain the architecture of this codebase"
 | **Audit Trail**                | Structured logging for every tool call, voter decision, and routing choice. Hash-chained immutable storage; integrity verifiable via `verify_audit_chain` MCP tool (#2281, #2289)                                                                                                           |
 | **Closed-Loop Telemetry**      | `OutcomeStore` records production results; LinUCB bandit + TOPSIS scoring + adaptive routing bonuses adjust based on what actually worked. No other framework closes this loop                                                                                                              |
 | **Security Pipeline**          | Sandboxing (Docker/policy), trust-tiered input handling, SARIF parsing, red-team patterns, ClawGuard access policies (audit/enforce)                                                                                                                                                        |
-| **Multi-Expert Orchestration** | 12 built-in expert types coordinated by Orchestrator. Roles bind prompt + tools + memory                                                                                                                                                                                                    |
+| **Multi-Expert Orchestration** | 11 built-in expert types coordinated by Orchestrator. Roles bind prompt + tools + memory                                                                                                                                                                                                    |
 | **Development Pipeline**       | Research → Plan → Vote → Decompose → Implement → QA → Security. Three modes: autonomous, harness (caller implements), dry-run                                                                                                                                                               |
 | **Memory & Learning**          | 5 user-facing backends (session, belief, agentic, adaptive, typed). Cross-session persistence feeds routing decisions                                                                                                                                                                       |
 | **Research System**            | 9 discovery sources (arXiv, GitHub, Semantic Scholar, etc). Auto-catalog, quality scoring, synthesis into topic clusters                                                                                                                                                                    |

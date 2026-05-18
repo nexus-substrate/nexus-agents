@@ -1,5 +1,73 @@
 # nexus-agents
 
+## 2.79.4
+
+### Patch Changes
+
+- [#2825](https://github.com/nexus-substrate/nexus-agents/pull/2825) [`71156db`](https://github.com/nexus-substrate/nexus-agents/commit/71156dbcb22b9c27db80a7bccd083f32467d7558) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **Closes [#2821](https://github.com/nexus-substrate/nexus-agents/issues/2821).** fix(adapters/opencode): error events surface as failure, not success
+
+  OpenCode NDJSON `{"type":"error",...}` events (e.g. `ProviderModelNotFoundError`) were folded into the response's `content` string as `[OpenCode error: <msg>]` and returned via `ok()` from the subprocess-adapter. Consensus voters and the routing learner consumed the error marker as the model's reasoning text — polluting votes and adaptive-routing memory.
+
+  The parser now captures error-event messages in a new `errorMessage` field on `OpenCodeCliResponse` (separate from `content`). When a stream produces no text but does carry an error event, `content` stays empty so `extractResponse()` returns null and the subprocess-adapter classifies the call as `EXECUTION_ERROR` — same handling as any other failed CLI call. The error message is preserved in `errorMessage` and the existing `logger.warn('OpenCode returned error event')` log for observability.
+
+  Mixed streams (text arrives, then an error) keep the text in `content` and surface the error in `errorMessage` so callers see both.
+
+  Six new regression tests cover error-only streams, error-after-text streams, the explicit `extractResponse → null` contract, and the previously-passing-but-wrong test cases that codified the bug.
+
+- [#2828](https://github.com/nexus-substrate/nexus-agents/pull/2828) [`37dd078`](https://github.com/nexus-substrate/nexus-agents/commit/37dd0782399318b0201d733d0efe5a98ce42b923) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **Closes [#2822](https://github.com/nexus-substrate/nexus-agents/issues/2822).** fix(consensus): canCascadeEarly uses wrong denominator vs strategy — wrong-winner with abstains
+
+  The agreement-based cascade in `ConsensusEngine.canCascadeEarly` computed approval rates against `totalExpected = requiredVoters.length` and compared against `VOTING_THRESHOLDS[algorithm]` directly. Every voting strategy (`SimpleMajorityStrategy`, `SupermajorityStrategy`, `UnanimousStrategy`, `ProofOfLearningStrategy`) uses `approve + reject` as its denominator — abstains explicitly excluded.
+
+  Pre-fix concrete failure: 5-voter `supermajority` with `[approve, abstain, abstain, abstain, pending]`. Cascade computed max approval = `(1+1)/5 = 0.40 < 0.67` → cascade-reject. Strategy at close (last approves): 2 approve / 0 reject / 3 abstain → 2/2 = 1.0 ≥ 0.67 → APPROVE. Different winners. Cascade also used strict `>` while supermajority/unanimous strategies use `>=`, mismatching at the exact threshold.
+
+  The fix delegates to the strategy itself: build a best-case (all pending voters approve) and worst-case (all pending voters reject) hypothetical vote map, call `strategy.calculateOutcome` on each, and cascade only when both extremes yield the same outcome. This guarantees parity with the strategy's denominator semantics and inequality operator by construction — including correct behavior for `higher_order`/`opinion_wise` (whose `IVotingStrategy.calculateOutcome` falls back to simple-vote aggregation; the Bayesian correlation path is invoked separately and is unaffected).
+
+  Three new regression tests cover (a) supermajority + abstain wrong-winner scenario, (b) cascade-fires-early when both extremes agree (no abstain confusion), (c) supermajority `>=` boundary semantics. All 520 consensus tests pass; typecheck + lint clean.
+
+- [#2827](https://github.com/nexus-substrate/nexus-agents/pull/2827) [`e509f9e`](https://github.com/nexus-substrate/nexus-agents/commit/e509f9edaeca08111f012e65c184b3f216bb2182) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **Closes [#2823](https://github.com/nexus-substrate/nexus-agents/issues/2823).** fix(pipeline): outcome recording hardcodes cli='claude' — regression of [#1154](https://github.com/nexus-substrate/nexus-agents/issues/1154)
+
+  `pipeline/agent-executor.ts` and `pipeline/adaptive-orchestrator.ts` both wrote to `OutcomeStore` with `cli: 'claude' as const` — a regression of the bug [#1154](https://github.com/nexus-substrate/nexus-agents/issues/1154) fixed elsewhere. Every pipeline-executed task (research / plan / vote / decompose / code_gen / review / security) was credited to claude regardless of which CLI actually ran, poisoning weather-report visualizations and the LinUCB cold-start `warmStart()` (composite-router.ts:353/374).
+
+  **Fix:**
+  1. `ExpertBridgeResult` now carries the resolved `cli?: CliNameLiteral`. The expert-bridge derives it from `CliResponse.model` via the canonical `getCliForModelId` registry mapping — guards against unknown model strings rather than fabricating a default.
+  2. `recordOutcome` in `agent-executor.ts` now takes a `RecordOutcomeArgs` options bundle including `cli: CliNameLiteral | undefined`. When `cli` is undefined (bridge failed before dispatch, or non-CLI stage like local security scan / consensus vote), the helper **skips the record** rather than fabricating a wrong attribution. Stage events still emit; only the cli-attributed outcome that would poison the routing learner is suppressed.
+  3. All 9 call sites (research / plan / vote / decompose / implement / qaReview / securityScan) updated. Sub-call stages with multiple expert calls (research) pick whichever sub-call actually reached a CLI.
+  4. `recordPipelineOutcome` in `adaptive-orchestrator.ts` removed entirely — it duplicated the per-stage records, fabricated `cli: 'claude'` for pipeline-level data, hardcoded `category: 'code_generation'` regardless of classification, and had no downstream consumer.
+
+  **Tests:** 3 new regression cases in `agent-executor.test.ts` assert (a) the threaded cli wins over any hardcoded value, (b) `undefined cli` skips the record entirely, (c) different stages can have different cli attributions. All 719 pipeline + parser tests pass; typecheck + lint clean.
+
+- [#2830](https://github.com/nexus-substrate/nexus-agents/pull/2830) [`597ce63`](https://github.com/nexus-substrate/nexus-agents/commit/597ce63e6c9bee268a53cd1fb9de0639295ee851) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **Closes one bullet of [#2824](https://github.com/nexus-substrate/nexus-agents/issues/2824).** fix(routing): cold-start LinUCB warmStart ingests e2e-eval outcomes
+
+  `CompositeRouter.initializeLinucbBandit` has two `getOutcomeStore().query()` paths:
+  - 30-day lookback (composite-router.ts:353) — already filters `excludeQualitySignals: ['e2e-eval']` to keep synthetic test outcomes out of the routing learner
+  - Cold-start fallback (composite-router.ts:374) — pre-fix queried with **no filter**, replaying any e2e-eval outcomes that survived from prior test runs into LinUCB
+
+  The cold-start path activated on fresh checkouts against an existing `nexus-data/` directory, or after restarts where the 30-day window happened to be empty. A handful of e2e-eval rows could measurably skew early routing decisions.
+
+  One-line fix: mirror the 30-day filter on line 374. No new tests — existing 248 composite-router tests still pass.
+
+- [#2829](https://github.com/nexus-substrate/nexus-agents/pull/2829) [`58b69dd`](https://github.com/nexus-substrate/nexus-agents/commit/58b69ddf42032c48e26cd131117de1e945aa9907) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **Closes one bullet of [#2824](https://github.com/nexus-substrate/nexus-agents/issues/2824).** fix(adapters/codex,gemini): cleanup removes the tempdir parent, not just the file
+
+  `CodexCliAdapter.getCommand` and `GeminiCliAdapter.getCommand` created a `mkdtempSync` tempdir per call when a `systemPrompt` was provided, dropped an `instructions.md`/`policy.md` into it, then on cleanup unlinked only the file. The empty `/tmp/nexus-codex-sysprompt-XXXXXX` and `/tmp/nexus-gemini-sysprompt-XXXXXX` parent dirs were leaked, waiting for the OS reaper.
+
+  Long-running MCP daemons and CI workers that fan out many subagent calls accumulated thousands of empty dirs, eventually hitting inode/disk limits. Fix is one-line per adapter: switch `unlinkSync(file)` → `rmSync(dir, { recursive: true, force: true })`.
+
+  Two new regression tests cover the post-cleanup state — both the file AND parent dir must be gone. Pre-fix only the file was unlinked.
+
+- [#2835](https://github.com/nexus-substrate/nexus-agents/pull/2835) [`86ccc72`](https://github.com/nexus-substrate/nexus-agents/commit/86ccc7299d3867aa92f995d6e8a349c33af43715) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **Addresses [#2832](https://github.com/nexus-substrate/nexus-agents/issues/2832) (part of epic [#2831](https://github.com/nexus-substrate/nexus-agents/issues/2831)).** chore(migrate): pre-transfer sweep for nexus-substrate org
+
+  Updates CI workflows, package.json repository fields, MCP server identity (`mcpName` + `server.json`), CLI URLs, docs, and the TypeDoc config to reference the new `nexus-substrate` org. CI workflow owner refs use `${{ github.repository_owner }}` so they follow the repo wherever it lives.
+
+  No behavior changes — this is metadata + string sweep ahead of `gh api -X POST repos/williamzujkowski/nexus-agents/transfer -f new_owner=nexus-substrate`. After transfer, npm trusted publishers for `nexus-agents` and `nexus-memory` need to be reconfigured on npmjs.com under the new repo path.
+
+  Intentional keeps documented in the PR body ([#2835](https://github.com/nexus-substrate/nexus-agents/issues/2835)): personal maintainer @handle, contact email, GitHub Sponsors profile, website deploy URL, design-system refs, security-test fixtures, vulnerability-scanner-registry refs, non-migrating ECOSYSTEM.md links, CHANGELOG history, TypeDoc HTML output.
+
+- [#2855](https://github.com/nexus-substrate/nexus-agents/pull/2855) [`3fab4d4`](https://github.com/nexus-substrate/nexus-agents/commit/3fab4d49978a634c5b2b1467910f7222f75cc295) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **Closes [#2844](https://github.com/nexus-substrate/nexus-agents/issues/2844) and [#2846](https://github.com/nexus-substrate/nexus-agents/issues/2846).** docs: relocate SANDBOXED-USAGE.md to docs/guides/; demote CLAUDE.md from new-user surfaces
+
+  `docs/getting-started/SANDBOXED-USAGE.md` moves to `docs/guides/` (it's ops material, not new-user onboarding). The runtime messages in `cli-server-gateway.ts`, `portable-mode.ts`, and `sandbox-factory.ts` were updated to print the new path so the auto-detected portable-mode banner and the sandbox-factory error message both point to the file's new home.
+
+  No behavior change; only the printed string changed.
+
 ## 2.79.3
 
 ### Patch Changes
