@@ -47,47 +47,57 @@ Most commonly used commands:
 
 **Entry Point:** `nexus-agents [command] [options]`
 
-| Command                | Subcommand                    | Description                                                                                                                                                                             | Mode         |
-| ---------------------- | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
-| `(default)`            | -                             | Start MCP server                                                                                                                                                                        | server       |
-| `--help`               | -                             | Display help text                                                                                                                                                                       | any          |
-| `--version`            | -                             | Display version                                                                                                                                                                         | any          |
-| `doctor`               | -                             | Check CLI health and dependencies                                                                                                                                                       | any          |
-| `config`               | `init`                        | Generate starter configuration file                                                                                                                                                     | any          |
-| `expert`               | `list`                        | List available experts (built-in + custom)                                                                                                                                              | any          |
-| `workflow`             | `list`                        | List available workflow templates                                                                                                                                                       | any          |
-| `workflow`             | `run <name>`                  | Execute a workflow template                                                                                                                                                             | orchestrator |
-| `server`               | -                             | Start MCP server (explicit)                                                                                                                                                             | server       |
-| `server`               | `--interactive`               | Start interactive REPL mode                                                                                                                                                             | server       |
-| `review`               | `<url>`                       | Review a GitHub PR                                                                                                                                                                      | orchestrator |
-| `routing-audit`        | `<task>`                      | Debug routing decisions (dry-run)                                                                                                                                                       | any          |
-| `orchestrate`          | `<task>`                      | Execute task standalone                                                                                                                                                                 | orchestrator |
-| `system-review`        | -                             | Run 5-phase system review                                                                                                                                                               | any          |
-| `vote`                 | `--proposal`                  | Consensus voting with 6 agents                                                                                                                                                          | any          |
-| `research`             | `status`                      | Show technique implementation status                                                                                                                                                    | any          |
-| `research`             | `overlap`                     | Find overlapping techniques                                                                                                                                                             | any          |
-| `research`             | `add`                         | Add new paper from arXiv                                                                                                                                                                | any          |
-| `research`             | `discover`                    | Discover papers/repos from external sources                                                                                                                                             | any          |
-| `research`             | `review`                      | Discover, score, and rank research findings                                                                                                                                             | any          |
-| `research`             | `prioritize`                  | Rank actionable techniques by priority                                                                                                                                                  | any          |
-| `verify`               | -                             | Quick verification check                                                                                                                                                                | any          |
-| `review-demo`          | -                             | PR review demo with wizard UX                                                                                                                                                           | orchestrator |
-| `validation-dashboard` | -                             | A/B testing and validation dashboard                                                                                                                                                    | any          |
-| `swe-bench`            | `run` / `evaluate` / `status` | **Deprecated** — harness extracted to [`nexus-eval-swebench`](https://github.com/nexus-substrate/nexus-eval-swebench) (epic #2514). In-tree commands stub out with a migration message. | any          |
-| `setup`                | -                             | Configure Claude CLI integration                                                                                                                                                        | any          |
-| `learning-metrics`     | -                             | Show learning metrics dashboard                                                                                                                                                         | any          |
-| `index`                | `generate`                    | Generate codebase index                                                                                                                                                                 | any          |
-| `index`                | `check`                       | Validate index freshness                                                                                                                                                                | any          |
-| `index`                | `diagram`                     | Generate Mermaid dependency diagram                                                                                                                                                     | any          |
-| `hooks`                | `session-start`               | Handle SessionStart hook events                                                                                                                                                         | any          |
-| `hooks`                | `session-end`                 | Handle SessionEnd hook events                                                                                                                                                           | any          |
-| `hooks`                | `pre-tool`                    | Handle PreToolUse hook events                                                                                                                                                           | any          |
-| `hooks`                | `post-tool`                   | Handle PostToolUse hook events                                                                                                                                                          | any          |
-| `hooks`                | `stop`                        | Handle Stop hook events                                                                                                                                                                 | any          |
-| `init`                 | `--portable`                  | Bootstrap workspace-local `.nexus-agents/`                                                                                                                                              | any          |
-| `init`                 | `--portable --mcp-config`     | …and emit `.mcp.json` for Claude Code                                                                                                                                                   | any          |
-| `init`                 | `--portable --install`        | …and install nexus-agents into `cli/` + bin shim                                                                                                                                        | any          |
-| `init`                 | `--portable --uninstall`      | Remove portable install (preserves data dir)                                                                                                                                            | any          |
+Commands are grouped by user persona. **Daily use** is what you'll type during a normal session; **setup & inspection** runs at install / config time; **debug & observe** is for when something looks off; **server / internal** is called by hooks, CI, and editor MCP clients — not usually directly.
+
+### Daily use
+
+| Command       | Subcommand                                   | Description                                        | Mode         |
+| ------------- | -------------------------------------------- | -------------------------------------------------- | ------------ |
+| `orchestrate` | `<task>`                                     | Execute a task standalone (routes to the best CLI) | orchestrator |
+| `vote`        | `--proposal "..."`                           | Consensus voting (7 agents; `--quick` runs 3)      | any          |
+| `review`      | `<url>`                                      | Adversarial review of a GitHub PR                  | orchestrator |
+| `workflow`    | `run <name>`                                 | Execute a workflow template                        | orchestrator |
+| `research`    | `add` / `discover` / `review` / `prioritize` | Add papers, discover new ones, rank by impact      | any          |
+
+### Setup & inspection
+
+| Command     | Subcommand                                                    | Description                                                | Mode |
+| ----------- | ------------------------------------------------------------- | ---------------------------------------------------------- | ---- |
+| `doctor`    | -                                                             | Check CLI health and dependencies (read-only)              | any  |
+| `setup`     | `[--skip-mcp\|rules\|hooks\|opencode\|gemini\|codex\|config]` | Configure MCP server + hooks + per-CLI configs in one shot | any  |
+| `config`    | `init`                                                        | Generate a starter `nexus-agents.yaml`                     | any  |
+| `expert`    | `list`                                                        | List available experts (built-in + custom)                 | any  |
+| `workflow`  | `list`                                                        | List available workflow templates                          | any  |
+| `init`      | `--portable [--mcp-config] [--install] [--uninstall]`         | Bootstrap workspace-local `.nexus-agents/` install         | any  |
+| `--help`    | -                                                             | Display help text                                          | any  |
+| `--version` | -                                                             | Display version                                            | any  |
+
+### Debug & observe
+
+| Command                | Subcommand           | Description                                                          | Mode         |
+| ---------------------- | -------------------- | -------------------------------------------------------------------- | ------------ |
+| `routing-audit`        | `<task>`             | Show the routing decision for a task without executing it (dry-run)  | any          |
+| `system-review`        | -                    | Run a 5-phase introspection of the local install                     | any          |
+| `verify`               | -                    | Quick post-install verification                                      | any          |
+| `validation-dashboard` | -                    | A/B testing and validation dashboard                                 | any          |
+| `learning-metrics`     | -                    | Show the learning-metrics dashboard                                  | any          |
+| `research`             | `status` / `overlap` | Inspect technique-implementation status; find overlapping techniques | any          |
+| `review-demo`          | -                    | PR review demo with wizard UX                                        | orchestrator |
+
+### Server & internal (rarely typed directly)
+
+| Command     | Subcommand                                                          | Description                                               | Mode   |
+| ----------- | ------------------------------------------------------------------- | --------------------------------------------------------- | ------ |
+| `(default)` | -                                                                   | Start the MCP server (what editors call)                  | server |
+| `server`    | `[--interactive]`                                                   | Start MCP server explicitly; `--interactive` opens a REPL | server |
+| `hooks`     | `session-start` / `session-end` / `pre-tool` / `post-tool` / `stop` | Handle Claude Code hook events                            | any    |
+| `index`     | `generate` / `check` / `diagram`                                    | Generate / validate codebase index; emit Mermaid graph    | any    |
+
+### Deprecated
+
+| Command     | Description                                                                                                                                                                            |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `swe-bench` | Harness extracted to [`nexus-substrate/nexus-eval-swebench`](https://github.com/nexus-substrate/nexus-eval-swebench) (epic #2514). In-tree commands stub out with a migration message. |
 
 ### Mode Selection
 
