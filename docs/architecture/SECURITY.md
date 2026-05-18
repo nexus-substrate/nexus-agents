@@ -164,7 +164,7 @@ All agent-executed code runs through the sandbox system.
 
 ### Real isolation: out-of-process via OpenCode sandbox bootstrap (#2500)
 
-Nexus-agents is **sandbox-compatible, not a sandbox-builder**. The in-process Docker / Deno executors were deleted in [#2551](https://github.com/nexus-substrate/nexus-agents/issues/2551) — they were dead code masquerading as security boundary. For real isolation, set the `NEXUS_SANDBOX` environment variable and run nexus-agents inside an OpenCode-managed Docker sandbox; see [docs/getting-started/SANDBOXED-USAGE.md](../getting-started/SANDBOXED-USAGE.md).
+Nexus-agents is **sandbox-compatible, not a sandbox-builder**. The in-process Docker / Deno executors were deleted in [#2551](https://github.com/nexus-substrate/nexus-agents/issues/2551) — they were dead code masquerading as security boundary. For real isolation, set the `NEXUS_SANDBOX` environment variable and run nexus-agents inside an OpenCode-managed Docker sandbox; see [docs/guides/SANDBOXED-USAGE.md](../guides/SANDBOXED-USAGE.md).
 
 The `container` and `deno` modes are kept in the `SandboxMode` config union so existing config files don't fail validation, but the factory resolves both to `policy` mode at runtime with a warning. New deployments wanting container-level isolation should use the OpenCode bootstrap.
 

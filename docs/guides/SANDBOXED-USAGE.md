@@ -30,7 +30,7 @@ Inside most container / sandbox environments, **nexus-agents auto-detects and an
 
 ```text
 [portable-mode] Sandbox detected (container-env). Using /work/.nexus-agents for all nexus-agents data.
-                Set NEXUS_PORTABLE_MODE=0 to override; see docs/getting-started/SANDBOXED-USAGE.md
+                Set NEXUS_PORTABLE_MODE=0 to override; see docs/guides/SANDBOXED-USAGE.md
 ```
 
 If you see this on stderr, the auto-detection worked and your nexus-agents data lives in `<cwd>/.nexus-agents/`. No action needed.

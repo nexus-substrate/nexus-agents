@@ -133,7 +133,7 @@ export function applyPortableMode(cwd: string = process.cwd()): void {
   if (result.reason === 'home-unwritable' || result.reason === 'container-env') {
     process.stderr.write(
       `[portable-mode] Sandbox detected (${result.reason}). Using ${result.dataDir} for all nexus-agents data.\n` +
-        `                Set NEXUS_PORTABLE_MODE=0 to override; see docs/getting-started/SANDBOXED-USAGE.md\n`
+        `                Set NEXUS_PORTABLE_MODE=0 to override; see docs/guides/SANDBOXED-USAGE.md\n`
     );
   }
 
