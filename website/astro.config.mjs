@@ -4,7 +4,7 @@ import sitemap from '@astrojs/sitemap';
 import remarkRewriteLinks from './src/plugins/remark-rewrite-links.ts';
 
 export default defineConfig({
-  site: 'https://williamzujkowski.github.io',
+  site: 'https://nexus-substrate.github.io',
   base: '/nexus-agents',
   integrations: [svelte(), sitemap()],
   prefetch: true,

@@ -13,407 +13,694 @@ import {
 } from '../data/site-data';
 ---
 
-<BaseLayout title="Home" description="Intelligent orchestration platform for AI coding tools">
-  <section class="section hero">
-    <div class="hero-content">
-      <p class="label">Open source · MIT · Node 22+</p>
-      <h1 class="display-large">
-        One MCP server.
-        <span class="accent nowrap">Every AI coding tool.</span>
-      </h1>
-      <p class="subtitle">
-        Nexus Agents routes each task to the best model across Claude, Codex, Gemini,
-        and OpenCode — then remembers what worked. Plug it into Claude Code, Cursor, or
-        any MCP client and your agent gets smarter with every run.
+<BaseLayout
+  title="Home"
+  description="Governance substrate for AI coding agents — multi-model consensus, learning-aware routing, content-addressed audit chain. Works across Claude, Codex, Gemini, and OpenCode via MCP."
+>
+  <!-- ─── Hero ─── -->
+  <header class="hero">
+    <p class="hero-eyebrow">
+      <span class="hero-version">v2.79.3</span>
+      <span class="hero-sep" aria-hidden="true">·</span>
+      <span>MIT-licensed</span>
+      <span class="hero-sep" aria-hidden="true">·</span>
+      <span>Node 22+</span>
+      <span class="hero-sep" aria-hidden="true">·</span>
+      <span>Works with Claude · Codex · Gemini · OpenCode</span>
+    </p>
+
+    <h1 class="display hero-headline">
+      Governance for <span class="register-em">AI coding agents</span>.
+    </h1>
+
+    <p class="lede hero-lede">
+      Your agents already write the code. Nexus Agents enforces the rules they
+      follow, reviews their work adversarially via multi-model consensus, and
+      writes everything they touch to a content-addressed audit chain.
+      One MCP server. Every CLI you already have.
+    </p>
+
+    <div class="hero-actions">
+      <a href="#proof" class="cta-primary">
+        <span class="cta-label">Run the 60-second proof</span>
+        <span class="cta-arrow" aria-hidden="true">→</span>
+      </a>
+      <a href="https://github.com/nexus-substrate/nexus-agents" target="_blank" rel="noopener noreferrer" class="cta-secondary">
+        Source on GitHub
+      </a>
+      <a href="/nexus-agents/docs/getting-started/installation/" class="cta-secondary">
+        Installation
+      </a>
+    </div>
+  </header>
+
+  <!-- ─── Signature visual: a real `vote --quick` transcript ─── -->
+  <section class="terminal-section" aria-label="Sample output from the nexus-agents vote command">
+    <div class="terminal">
+      <div class="terminal-chrome">
+        <span class="terminal-dot" aria-hidden="true"></span>
+        <span class="terminal-dot" aria-hidden="true"></span>
+        <span class="terminal-dot" aria-hidden="true"></span>
+        <span class="terminal-title">~/work · nexus-agents vote · 2026-05-17</span>
+      </div>
+      <pre class="terminal-body" aria-label="Terminal transcript"><span class="t-prompt">$</span> <span class="t-cmd">nexus-agents vote --proposal "Add a 'nexus-agents tour' interactive</span>
+<span class="t-cmd">    walkthrough command that runs after 'setup'..."</span>
+
+<span class="t-heading">Nexus Agents Consensus Vote</span>
+<span class="t-heading">============================</span>
+
+<span class="t-dim">Proposal: Add a 'nexus-agents tour' interactive walkthrough command that runs after 'setup'...</span>
+
+<span class="t-dim">Collecting votes from 7 agents (timeout: 300s each)...</span>
+
+<span class="t-section">Votes</span>
+
+  <span class="t-pass">✓</span> Software Architect:   <span class="t-bold">APPROVE</span> (82%)
+  <span class="t-pass">✓</span> Security Engineer:    <span class="t-bold">APPROVE</span> (90%)
+  <span class="t-pass">✓</span> Developer Experience: <span class="t-bold">APPROVE</span> (88%)
+  <span class="t-fail">✗</span> AI/ML Engineer:       <span class="t-bold-fail">REJECT</span>  (75%)
+  <span class="t-pass">✓</span> Product Manager:      <span class="t-bold">APPROVE</span> (82%)
+  <span class="t-fail">✗</span> Contrarian Analyst:   <span class="t-bold-fail">REJECT</span>  (95%)
+  <span class="t-fail">✗</span> Scope Steward:        <span class="t-bold-fail">ERROR</span>   — MCP error -32001: Request timed out
+
+<span class="t-section">Summary</span>
+
+  Approve:  4
+  Reject:   2
+  Abstain:  0
+  <span class="t-fail">Errored:  1</span>
+  Approval: 66.7%
+  Threshold: simple_majority
+
+<span class="t-bold">Result: <span class="t-decision">APPROVED</span></span>
+
+<span class="t-dim">Completed in 188487ms</span>
+</pre>
+    </div>
+    <p class="terminal-cite">
+      Verbatim from a real run on 2026-05-17 (a proposal from the website backlog;
+      the panel said yes 4 to 2). Seven specialised voter roles deliberate via your
+      local Claude, Codex, and Gemini CLIs — no API keys required to start. Pass
+      <code>--record &lt;issue-number&gt;</code> to write the result back to GitHub as a
+      structured comment; pass <code>--verbose</code> to print per-vote verification
+      hashes.
+    </p>
+  </section>
+
+  <!-- ─── The 60-second proof ─── -->
+  <section id="proof" class="article-section">
+    <hr class="section-rule-divider" />
+
+    <div class="article-body">
+      <h2 class="headline section-headline">The 60-second proof.</h2>
+      <p class="lede section-lede">
+        Three commands. No keys to set up just to look. The hard part is later.
       </p>
-      <div class="btn-row">
-        <a href="/nexus-agents/docs/getting-started/installation/" class="btn-primary">
-          Get Started &rarr;
-        </a>
-        <a href="https://github.com/nexus-substrate/nexus-agents" target="_blank" rel="noopener noreferrer" class="btn-outline">
-          View on GitHub &nearr;
-        </a>
-      </div>
-    </div>
-  </section>
 
-  <!-- Stats bar -->
-  <section class="section stats-bar" aria-label="Platform capabilities at a glance">
-    <div class="stat" title="MCP tools exposed to client editors (orchestrate, consensus, research, memory, etc.)">
-      <span class="stat-number">{MCP_TOOL_COUNT}</span>
-      <span class="stat-label">MCP Tools</span>
-    </div>
-    <div class="stat" title="Specialized expert agents spun up on demand — code, security, architecture, testing, and more">
-      <span class="stat-number">{EXPERT_TYPE_COUNT}</span>
-      <span class="stat-label">Expert Types</span>
-    </div>
-    <div class="stat" title="CLI adapters: Claude, Gemini, Codex, Codex-MCP, OpenCode — swap any in without code changes">
-      <span class="stat-number">{CLI_ADAPTER_COUNT}</span>
-      <span class="stat-label">CLI Adapters</span>
-    </div>
-    <div class="stat" title="Memory backends: session, belief, agentic, adaptive, typed, and more — learn across runs">
-      <span class="stat-number">{MEMORY_BACKEND_COUNT}</span>
-      <span class="stat-label">Memory Backends</span>
-    </div>
-    <div class="stat" title="Pipeline stages that pick the best model: budget → capability → preference → TOPSIS → LinUCB → latency">
-      <span class="stat-number">{ROUTING_STAGE_COUNT}</span>
-      <span class="stat-label">Routing Stages</span>
-    </div>
-    <div class="stat" title="Research papers tracked in the on-disk registry — feed the planner with current technique evidence">
-      <span class="stat-number">{PAPER_COUNT}+</span>
-      <span class="stat-label">Papers Tracked</span>
-    </div>
-  </section>
-
-  <section class="section">
-    <h2 class="headline-large">How It Works</h2>
-    <p class="subtitle section-subtitle">
-      Every task flows through analysis, intelligent routing, quality validation, and outcome recording.
-      The system learns from each execution and improves over time.
-    </p>
-    <div class="card-grid">
-      <div class="card">
-        <h3 class="title-large">Intelligent Routing</h3>
-        <p class="card-text">A {ROUTING_STAGE_COUNT}-stage pipeline analyzes your task and picks the best AI model. LinUCB contextual bandits learn from real outcomes — routing gets smarter with every task you run.</p>
-      </div>
-      <div class="card">
-        <h3 class="title-large">Dynamic Expert Creation</h3>
-        <p class="card-text">{EXPERT_TYPE_COUNT} expert types are created on demand based on task analysis. Each gets a specialized system prompt, routed to the best CLI, and coordinated by TechLead and Orchestrator agents.</p>
-      </div>
-      <div class="card">
-        <h3 class="title-large">Consensus Quality Gates</h3>
-        <p class="card-text">{CONSENSUS_ALGORITHM_COUNT} voting algorithms — including higher-order Bayesian aggregation — validate outputs before they ship. Agents vote, disagree, and iterate until quality passes.</p>
-      </div>
-      <div class="card">
-        <h3 class="title-large">Continuous Learning</h3>
-        <p class="card-text">{MEMORY_BACKEND_COUNT} memory backends persist what works across sessions. Outcomes feed routing decisions, failed approaches are avoided, and successful patterns are reinforced automatically.</p>
-      </div>
-      <div class="card">
-        <h3 class="title-large">Development Pipeline</h3>
-        <p class="card-text">Full workflow: research papers, plan architecture, vote on proposals, decompose into tasks, implement in parallel, QA review with iteration, security scan. Three modes: autonomous, harness, and dry-run.</p>
-      </div>
-      <div class="card">
-        <h3 class="title-large">Research Discovery</h3>
-        <p class="card-text">{PAPER_COUNT}+ papers tracked across {DISCOVERY_SOURCE_COUNT} sources (arXiv, GitHub, Semantic Scholar). New discoveries auto-trigger pipeline assessments. Quality scoring and topic synthesis built in.</p>
-      </div>
-    </div>
-  </section>
-
-  <!-- Learning loop visualization -->
-  <section class="section">
-    <h2 class="headline-large">The Learning Loop</h2>
-    <p class="subtitle section-subtitle">
-      This is the core differentiator. Every execution makes the next one better.
-    </p>
-    <div class="mermaid" aria-label="Diagram showing the learning loop: a task is analyzed, routed to an expert, validated by consensus, recorded as an outcome, and that outcome improves routing for the next task.">
-{`flowchart TD
-  task["You give a task"] --> analysis["Task Analysis<br/>picks best model from ${CLI_ADAPTER_COUNT} CLIs"]
-  analysis --> expert["Expert executes<br/>${EXPERT_TYPE_COUNT} specialized types, created on demand"]
-  expert --> consensus["Consensus validates<br/>multi-model voting catches errors"]
-  consensus --> outcome["Outcome recorded<br/>success/failure feeds ${MEMORY_BACKEND_COUNT} memory backends"]
-  outcome -.->|feeds next routing decision| analysis
-  outcome --> better["Next task: routing is smarter,<br/>memory recalls what worked"]
-  classDef primary fill:#6750A4,stroke:#6750A4,color:#ffffff;
-  classDef accent fill:#e8def8,stroke:#6750A4,color:#1c1b1f;
-  class task,better primary;
-  class analysis,expert,consensus,outcome accent;`}
-    </div>
-  </section>
-
-  <section class="section">
-    <h2 class="headline-large">Quick Start</h2>
-    <p class="subtitle">Install and connect to your editor in under 5 minutes.</p>
-    <div class="code-grid">
-      <div>
-        <h3 class="title-large code-step">1. Install</h3>
-        <pre class="code-block"><code># Install globally
-pnpm install -g nexus-agents
-
-# Verify
+      <div class="proof-step">
+        <p class="step-label"><span class="step-num">1</span> Install</p>
+        <pre data-copy class="code-step"><code>npm install -g nexus-agents
 nexus-agents doctor</code></pre>
+        <p class="expected">
+          <span class="expected-tag">expected</span>
+          A health table; rows that need API keys are marked
+          <code>missing</code>. <code>doctor</code> only reads; it never writes.
+        </p>
       </div>
-      <div>
-        <h3 class="title-large code-step">2. Connect to Claude Code</h3>
-        <pre class="code-block"><code># Auto-configure MCP server
-nexus-agents setup
 
-# Or manually: ~/.claude/mcp.json
-{'{'}
-  "mcpServers": {'{'}
-    "nexus-agents": {'{'}
-      "command": "nexus-agents",
-      "args": ["--mode=server"]
-    {'}'}
-  {'}'}
-{'}'}</code></pre>
+      <div class="proof-step">
+        <p class="step-label"><span class="step-num">2</span> Run a real consensus vote (no API keys needed)</p>
+        <pre data-copy class="code-step"><code>nexus-agents vote --quick \
+  --proposal "Use SQLite over JSON files for the outcome store"</code></pre>
+        <p class="expected">
+          <span class="expected-tag">expected</span>
+          Output in the same shape as the hero transcript above, but with 3 voters
+          instead of 7 (<code>--quick</code>). Roles deliberate via your local
+          Claude/Codex/Gemini CLIs (whichever you have installed). Approval, reject,
+          abstain counts + final decision print to the terminal.
+        </p>
       </div>
+
+      <div class="proof-step">
+        <p class="step-label"><span class="step-num">3</span> Attach to your editor</p>
+        <pre data-copy class="code-step"><code># Auto-configure as an MCP server for Claude Code, Cursor, etc.
+nexus-agents setup</code></pre>
+        <p class="expected">
+          <span class="expected-tag">expected</span>
+          The MCP server registers in your editor's config. Restart the editor,
+          and {MCP_TOOL_COUNT} new tools (<code>orchestrate</code>, <code>consensus_vote</code>,
+          <code>research_synthesize</code>, <code>verify_audit_chain</code>, &hellip;) become
+          available to whatever agent you're already using.
+        </p>
+      </div>
+
+      <p class="proof-next">
+        That's the smoke task. Every command above is configurable, but the
+        defaults already work — <code>nexus-agents orchestrate "&hellip;"</code>
+        will pick the right CLI, run the right experts, and write the trace.
+      </p>
     </div>
   </section>
 
-  <section class="section">
-    <h2 class="headline-large">Architecture</h2>
-    <p class="subtitle section-subtitle">
-      Tasks enter through MCP, route through a {ROUTING_STAGE_COUNT}-stage pipeline,
-      execute on the best available CLI, and get validated by consensus before
-      outcomes feed back into the router.
-    </p>
-    <div class="mermaid" aria-label="Nexus Agents architecture: MCP protocol feeds the Orchestrator, which routes through a multi-stage pipeline to one of several CLIs. Consensus, memory, pipeline, and security services run alongside. Outcomes feed back into the router.">
-{`flowchart TD
-  mcp["MCP Protocol<br/>${MCP_TOOL_COUNT} tools · rate-limited · auth"]
-  orch["Orchestrator<br/>task analysis · dynamic experts"]
+  <!-- ─── What's in the box ─── -->
+  <section class="article-section">
+    <hr class="section-rule-divider" />
+
+    <div class="article-body">
+      <h2 class="headline section-headline">What's in the box.</h2>
+
+      <div class="pillars">
+        <article class="pillar">
+          <p class="pillar-tag">consensus</p>
+          <h3 class="pillar-title">Multi-model consensus voting.</h3>
+          <p class="pillar-body">
+            {CONSENSUS_ALGORITHM_COUNT} aggregation strategies — simple majority,
+            supermajority, unanimous, proof-of-learning, higher-order Bayesian.
+            Seven specialised voter roles. Run <code>consensus_vote</code> as an
+            MCP tool, or <code>nexus-agents vote</code> from your shell.
+            Decisions are recorded with per-voter reasoning and confidence.
+          </p>
+        </article>
+
+        <article class="pillar">
+          <p class="pillar-tag">routing</p>
+          <h3 class="pillar-title">Learning-aware routing.</h3>
+          <p class="pillar-body">
+            A {ROUTING_STAGE_COUNT}-stage pipeline (budget → capability →
+            preference → TOPSIS → LinUCB → latency) picks the right CLI from the
+            {CLI_ADAPTER_COUNT} adapters you have installed. Outcomes feed
+            {MEMORY_BACKEND_COUNT} memory backends so tomorrow's routing is
+            informed by today's failures — not by static rules.
+          </p>
+        </article>
+
+        <article class="pillar">
+          <p class="pillar-tag">audit</p>
+          <h3 class="pillar-title">Content-addressed audit chain.</h3>
+          <p class="pillar-body">
+            Every model call, every vote, every research citation lands in a
+            content-addressed log on disk. Replay any decision, identify which
+            agent recommended what, when, with what evidence. Drift detection
+            fires when conventions slip.
+          </p>
+        </article>
+      </div>
+
+      <p class="pillars-cite">
+        Plus {EXPERT_TYPE_COUNT} expert personae, {DISCOVERY_SOURCE_COUNT} research
+        sources, and {PAPER_COUNT}+ tracked papers feeding the planner. The full
+        inventory lives in <a href="/nexus-agents/docs/architecture/readme/">the architecture pages</a>.
+      </p>
+    </div>
+  </section>
+
+  <!-- ─── Architecture ─── -->
+  <section class="article-section">
+    <hr class="section-rule-divider" />
+
+    <div class="article-body">
+      <h2 class="headline section-headline">Architecture, briefly.</h2>
+      <p class="lede section-lede">
+        Tasks enter through MCP, route through the pipeline, execute on whichever
+        CLI scored best, and get validated by consensus before outcomes feed back
+        into the router.
+      </p>
+
+      <div class="mermaid diagram" aria-label="Architecture diagram: MCP protocol feeds the Orchestrator, which routes through a multi-stage pipeline to one of several CLIs. Consensus, memory, and audit run alongside. Outcomes feed back into the router.">
+{`flowchart LR
+  mcp["MCP Protocol<br/>${MCP_TOOL_COUNT} tools"]
+  orch["Orchestrator<br/>task analysis"]
   router["Composite Router · ${ROUTING_STAGE_COUNT} stages<br/>Budget → Capability → Preference<br/>TOPSIS → LinUCB → Latency"]
-  claude["Claude"]
-  gemini["Gemini"]
-  codex["Codex"]
-  codexmcp["Codex-MCP"]
-  opencode["OpenCode"]
+  clis["Claude · Gemini · Codex · OpenCode"]
   outcome[("Outcome Store<br/>feeds back")]
 
-  subgraph services ["Supporting Services"]
-    consensus["Consensus<br/>${CONSENSUS_ALGORITHM_COUNT} algorithms"]
+  subgraph services ["Supporting"]
+    consensus["Consensus<br/>${CONSENSUS_ALGORITHM_COUNT} strategies"]
     memory["Memory<br/>${MEMORY_BACKEND_COUNT} backends"]
-    pipeline["Pipeline<br/>3 modes"]
-    security["Security<br/>sandbox"]
+    audit["Audit chain"]
   end
 
-  mcp --> orch
-  orch --> router
-  router --> claude
-  router --> gemini
-  router --> codex
-  router --> codexmcp
-  router --> opencode
-  claude --> outcome
-  gemini --> outcome
-  codex --> outcome
-  codexmcp --> outcome
-  opencode --> outcome
+  mcp --> orch --> router --> clis --> outcome
   outcome -.->|learns routing| router
-  orch -.-> services
-
-  classDef primary fill:#6750A4,stroke:#6750A4,color:#ffffff;
-  classDef cli fill:#e8def8,stroke:#6750A4,color:#1c1b1f;
-  classDef store fill:#f5eff7,stroke:#6750A4,color:#1c1b1f,stroke-dasharray: 5 3;
-  class mcp,orch,router primary;
-  class claude,gemini,codex,codexmcp,opencode cli;
-  class outcome store;`}
+  orch -.-> services`}
+      </div>
     </div>
   </section>
 
-  <section class="section">
-    <h2 class="headline-large">Documentation</h2>
-    <p class="subtitle section-subtitle">Pick where to start based on what you want to do next.</p>
-    <div class="card-grid cols-4">
-      <a href="/nexus-agents/docs/getting-started/installation/" class="card link-card">
-        <h3 class="title-large">Getting Started</h3>
-        <p class="card-text">Install, configure, and run your first orchestration in under 5 minutes.</p>
-        <span class="card-cta">Read the guide &rarr;</span>
-      </a>
-      <a href="/nexus-agents/docs/guides/mcp_integration/" class="card link-card">
-        <h3 class="title-large">MCP Integration</h3>
-        <p class="card-text">Wire up Claude Code, Cursor, VS Code, or any MCP client in three steps.</p>
-        <span class="card-cta">Connect your editor &rarr;</span>
-      </a>
-      <a href="/nexus-agents/docs/guides/workflow_templates/" class="card link-card">
-        <h3 class="title-large">Dev Pipeline</h3>
-        <p class="card-text">Research, plan, vote, implement, QA — run the whole workflow from one command.</p>
-        <span class="card-cta">Run the pipeline &rarr;</span>
-      </a>
-      <a href="/nexus-agents/docs/research/research_index/" class="card link-card">
-        <h3 class="title-large">Research Registry</h3>
-        <p class="card-text">{PAPER_COUNT}+ papers across {DISCOVERY_SOURCE_COUNT} sources with technique alignment and synthesis.</p>
-        <span class="card-cta">Browse the registry &rarr;</span>
-      </a>
+  <!-- ─── Next steps ─── -->
+  <section class="article-section">
+    <hr class="section-rule-divider" />
+
+    <div class="article-body next-body">
+      <h2 class="headline section-headline">Next steps.</h2>
+      <p class="lede section-lede">
+        Action items first; reference last. Pick any one — they don't have to be
+        in order.
+      </p>
+
+      <div class="next-grid">
+        <a href="/nexus-agents/docs/entrypoints/" class="next-card">
+          <p class="next-kind">try</p>
+          <h3 class="next-title">Run an orchestration.</h3>
+          <p class="next-blurb">
+            <code>nexus-agents orchestrate "&hellip;"</code> picks the right CLI,
+            spins up the right experts, and writes the trace. The full
+            command + MCP-tool reference.
+          </p>
+        </a>
+
+        <a href="/nexus-agents/docs/guides/mcp_integration/" class="next-card">
+          <p class="next-kind">try</p>
+          <h3 class="next-title">Connect Claude Code, Cursor, or any MCP client.</h3>
+          <p class="next-blurb">
+            Wire {MCP_TOOL_COUNT} tools (orchestrate, vote, research,
+            verify_audit_chain&hellip;) into whatever editor you already use.
+            <code>setup</code> auto-configures most of it.
+          </p>
+        </a>
+
+        <a href="/nexus-agents/docs/workflows/self_development_workflow/" class="next-card">
+          <p class="next-kind">try</p>
+          <h3 class="next-title">Run the full dev pipeline.</h3>
+          <p class="next-blurb">
+            Research → plan → vote → implement → QA, end-to-end on a real change.
+            Three modes: autonomous, harness, dry-run. The workflow nexus-agents
+            uses on itself.
+          </p>
+        </a>
+
+        <a href="/nexus-agents/docs/getting-started/configuration/" class="next-card">
+          <p class="next-kind">configure</p>
+          <h3 class="next-title">Tune routing &amp; experts.</h3>
+          <p class="next-blurb">
+            Model preferences, custom expert personae, consensus thresholds,
+            sandbox modes, ClawGuard policy — what each knob does, and the
+            safe defaults to start from.
+          </p>
+        </a>
+
+        <a href="/nexus-agents/docs/architecture/readme/" class="next-card">
+          <p class="next-kind">read</p>
+          <h3 class="next-title">Architecture deep dive.</h3>
+          <p class="next-blurb">
+            How the composite router decides. How experts are spawned. How
+            consensus votes are aggregated. How the audit chain stays
+            content-addressed. The full anatomy.
+          </p>
+        </a>
+
+        <a href="/nexus-agents/docs/research/research_index/" class="next-card">
+          <p class="next-kind">read</p>
+          <h3 class="next-title">Browse the research registry.</h3>
+          <p class="next-blurb">
+            {PAPER_COUNT}+ tracked papers across {DISCOVERY_SOURCE_COUNT} sources.
+            Technique alignment, synthesis, and the evidence trail behind every
+            routing strategy.
+          </p>
+        </a>
+      </div>
     </div>
   </section>
 </BaseLayout>
 
 <style>
-  .section {
-    max-width: 72rem;
-    margin: 0 auto;
-    padding: 4rem 1.5rem;
-  }
-  .hero {
-    padding-top: 5rem;
-    padding-bottom: 2rem;
-  }
-  .hero-content {
-    max-width: 48rem;
+  /* ─── Article scaffolding ─── */
+  .article-section { padding: 4.5rem 0 0; }
+  .article-body { max-width: 44rem; margin: 0 auto; padding: 0 1.5rem; }
+  .section-headline { margin: 0 0 1rem; }
+  .section-lede { margin: 0 0 2rem; }
+  .section-rule-divider {
+    max-width: 78rem;
+    margin: 0 auto 3rem;
+    padding: 0 1.5rem;
+    border: 0;
+    border-top: 1px solid var(--ink);
   }
 
-  .label {
+  /* ─── Hero ─── */
+  .hero {
+    max-width: 60rem;
+    margin: 0 auto;
+    padding: 4.5rem 1.5rem 2rem;
+  }
+  .hero-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+    color: var(--ink-mid);
+    margin: 0 0 1.5rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 0.6rem;
+    align-items: baseline;
+  }
+  .hero-version {
+    color: var(--register);
+    font-weight: 500;
+  }
+  .hero-sep { color: var(--rule); }
+
+  .hero-headline { margin: 0 0 1.5rem; max-width: 22ch; }
+  .register-em {
+    color: var(--register);
+    font-style: italic;
+    font-variation-settings: 'opsz' 144, 'SOFT' 90;
+  }
+
+  .hero-lede {
+    max-width: 42rem;
+    margin: 0 0 2.2rem;
+  }
+
+  .hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1.2rem 1.6rem;
+  }
+  .cta-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.85rem 1.25rem;
+    background: var(--ink);
+    color: var(--paper);
+    text-decoration: none;
+    border: 1px solid var(--ink);
+    font-family: var(--font-body);
+    font-size: 0.9rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    transition: background 120ms linear, color 120ms linear, border-color 120ms linear;
+  }
+  .cta-primary:hover { background: var(--register); border-color: var(--register); }
+  .cta-arrow {
+    font-family: var(--font-mono);
+    transition: transform 200ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  .cta-primary:hover .cta-arrow { transform: translateX(4px); }
+  .cta-secondary {
+    font-family: var(--font-body);
+    font-size: 0.9rem;
+    color: var(--ink);
+    text-decoration: underline;
+    text-decoration-color: var(--register);
+    text-decoration-thickness: 1.5px;
+    text-underline-offset: 4px;
+  }
+  .cta-secondary:hover { text-decoration-thickness: 3px; }
+
+  /* ─── Terminal section ─── */
+  .terminal-section {
+    max-width: 60rem;
+    margin: 2rem auto 0;
+    padding: 0 1.5rem;
+  }
+  .terminal {
+    background: var(--ink);
+    border: 1px solid var(--ink);
+    box-shadow: 0 1px 0 var(--rule), 0 10px 32px -16px oklch(0 0 0 / 0.18);
+  }
+  .terminal-chrome {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.55rem 0.9rem;
+    background: oklch(0.10 0.012 30);
+    border-bottom: 1px solid oklch(0.30 0.015 30);
+  }
+  .terminal-dot {
+    width: 0.65rem;
+    height: 0.65rem;
+    border-radius: 50%;
+    background: oklch(0.35 0.012 30);
+  }
+  .terminal-title {
+    margin-left: 0.6rem;
+    font-family: var(--font-mono);
+    font-size: 0.74rem;
+    color: oklch(0.7 0.01 30);
+    letter-spacing: 0.02em;
+  }
+  .terminal-body {
+    margin: 0;
+    padding: 1.1rem 1.2rem;
+    font-family: var(--font-mono);
+    font-size: 0.84rem;
+    line-height: 1.7;
+    color: var(--paper);
+    overflow-x: auto;
+    white-space: pre;
+    tab-size: 2;
+  }
+  .t-prompt { color: var(--register); font-weight: 600; }
+  .t-cmd { color: oklch(0.92 0.01 75); }
+  .t-heading { color: oklch(0.94 0.01 75); font-weight: 600; }
+  .t-section { color: oklch(0.78 0.10 200); font-weight: 600; }
+  .t-pass { color: var(--mark); font-weight: 600; }
+  .t-fail { color: oklch(0.72 0.16 25); font-weight: 600; }
+  .t-bold { color: oklch(0.94 0.01 75); font-weight: 600; }
+  .t-bold-fail { color: oklch(0.78 0.14 25); font-weight: 600; }
+  .t-dim { color: oklch(0.62 0.012 60); }
+  .t-decision { color: var(--mark); }
+
+  .terminal-cite {
+    font-family: var(--font-body);
+    font-size: 0.875rem;
+    color: var(--ink-mid);
+    line-height: 1.6;
+    margin: 1rem 0 0;
+    max-width: 44rem;
+  }
+  .terminal-cite code {
+    font-family: var(--font-mono);
+    font-size: 0.92em;
+    color: var(--ink);
+    background: var(--paper-deep);
+    padding: 0.05em 0.32em;
+  }
+
+  /* ─── Proof steps ─── */
+  .proof-step { margin: 1.5rem 0 1.8rem; }
+  .step-label {
+    display: flex;
+    align-items: baseline;
+    gap: 0.65rem;
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--ink);
+    margin: 0 0 0.55rem;
+  }
+  .step-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.4rem;
+    height: 1.4rem;
+    border: 1px solid var(--ink);
+    font-family: var(--font-mono);
     font-size: 0.75rem;
     font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--color-primary);
-    margin-bottom: 1rem;
+    color: var(--ink);
+    flex-shrink: 0;
   }
-
-  .display-large {
-    margin-bottom: 1.5rem;
-  }
-
-  .accent { color: var(--color-primary); }
-  .nowrap { white-space: nowrap; }
-  @media (max-width: 640px) {
-    .nowrap { white-space: normal; }
-  }
-
-  .subtitle {
-    font-size: 1.125rem;
-    line-height: 1.75;
-    color: var(--color-on-surface-variant);
-    max-width: 42rem;
-    margin-bottom: 2rem;
-  }
-  .section-subtitle {
-    margin-bottom: 3rem;
-  }
-
-  .headline-large {
-    margin-bottom: 1rem;
-  }
-
-  .title-large {
-    margin-bottom: 0.5rem;
-  }
-
-  .btn-row {
-    display: flex;
-    gap: 1rem;
-    flex-wrap: wrap;
-  }
-
-  .btn-primary {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    border-radius: 9999px;
-    background: var(--color-primary);
-    color: var(--color-on-primary);
-    padding: 0.75rem 1.5rem;
-    font-size: 0.875rem;
-    font-weight: 500;
-    text-decoration: none;
-    transition: box-shadow 200ms;
-  }
-  .btn-primary:hover { box-shadow: 0 4px 12px oklch(0 0 0 / 0.15); }
-
-  .btn-outline {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    border-radius: 9999px;
-    border: 1px solid var(--color-outline-variant);
-    color: var(--color-on-surface);
-    padding: 0.75rem 1.5rem;
-    font-size: 0.875rem;
-    font-weight: 500;
-    text-decoration: none;
-    transition: border-color 200ms, color 200ms;
-  }
-  .btn-outline:hover {
-    border-color: var(--color-primary);
-    color: var(--color-primary);
-  }
-
-  /* Stats bar */
-  .stats-bar {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 2rem;
-    padding-top: 0;
-    padding-bottom: 2rem;
-    border-bottom: 1px solid var(--color-outline-variant);
-  }
-  .stat {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.25rem;
-    cursor: help;
-  }
-  .stat-number {
-    font-size: 1.75rem;
-    font-weight: 700;
-    color: var(--color-primary);
-  }
-  .stat-label {
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--color-on-surface-variant);
-  }
-
-  .card-grid {
-    display: grid;
-    gap: 1.5rem;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  }
-  .card-grid.cols-4 {
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  }
-
-  .card {
-    border: 1px solid var(--color-outline-variant);
-    border-radius: 0.75rem;
-    padding: 1.5rem;
-    background: var(--color-surface-container);
-    transition: border-color 200ms, box-shadow 200ms;
-  }
-  .card:hover {
-    border-color: var(--color-primary);
-    box-shadow: 0 2px 8px oklch(0 0 0 / 0.08);
-  }
-
-  .card-text {
-    font-size: 0.875rem;
-    line-height: 1.625;
-    color: var(--color-on-surface-variant);
-  }
-
-  .link-card {
-    text-decoration: none;
-    cursor: pointer;
-    display: flex;
-    flex-direction: column;
-  }
-  .link-card h3 {
-    color: var(--color-on-surface);
-    transition: color 200ms;
-  }
-  .link-card:hover h3 { color: var(--color-primary); }
-  .card-cta {
-    display: inline-block;
-    margin-top: 1rem;
-    font-size: 0.875rem;
-    font-weight: 500;
-    color: var(--color-primary);
-    transition: transform 200ms;
-  }
-  .link-card:hover .card-cta { transform: translateX(2px); }
-
-  .code-step {
-    margin-bottom: 1rem;
-  }
-
-  .code-grid {
-    display: grid;
-    gap: 2rem;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    margin-top: 2rem;
-  }
-
-  .code-block {
-    border-radius: 0.75rem;
-    background: var(--color-code-surface);
-    color: var(--color-code-on-surface);
-    padding: 1.5rem;
-    font-size: 0.875rem;
+  .code-step,
+  pre.code-step {
+    background: var(--ink);
+    color: var(--paper);
+    font-family: var(--font-mono);
+    font-size: 0.86rem;
+    line-height: 1.65;
+    padding: 0.9rem 1.1rem;
+    margin: 0 0 0.75rem;
     overflow-x: auto;
-    line-height: 1.625;
+    border-left: 3px solid var(--register);
+    position: relative;
+  }
+  .expected {
+    font-family: var(--font-body);
+    font-size: 0.92rem;
+    color: var(--ink-mid);
+    line-height: 1.6;
+    margin: 0;
+    padding-left: 0.7rem;
+    border-left: 1px solid var(--rule);
+  }
+  .expected-tag {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--register);
+    margin-right: 0.5rem;
+    font-weight: 600;
+  }
+  .expected code {
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+    color: var(--ink);
+    background: var(--paper-deep);
+    padding: 0.05em 0.3em;
+  }
+  .proof-next {
+    font-family: var(--font-body);
+    font-size: 0.95rem;
+    color: var(--ink-mid);
+    line-height: 1.6;
+    margin: 1.8rem 0 0;
+    padding: 1rem 0 0;
+    border-top: 1px solid var(--rule);
+  }
+  .proof-next code {
+    font-family: var(--font-mono);
+    font-size: 0.92em;
+    color: var(--ink);
+    background: var(--paper-deep);
+    padding: 0.05em 0.32em;
+  }
+
+  /* ─── Pillars ─── */
+  .pillars {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0;
+    margin: 0 0 1.5rem;
+    border-top: 1px solid var(--ink);
+    border-bottom: 1px solid var(--ink);
+  }
+  .pillar {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.35rem;
+    padding: 1.4rem 0;
+    border-bottom: 1px solid var(--rule-soft);
+  }
+  .pillar:last-child { border-bottom: none; }
+  .pillar-tag {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--register);
+    margin: 0;
+  }
+  .pillar-title {
+    font-family: var(--font-display);
+    font-variation-settings: 'opsz' 36;
+    font-weight: 600;
+    font-size: 1.3rem;
+    line-height: 1.2;
+    color: var(--ink);
+    margin: 0;
+  }
+  .pillar-body {
+    font-family: var(--font-body);
+    font-size: 0.97rem;
+    line-height: 1.6;
+    color: var(--ink-mid);
+    margin: 0.2rem 0 0;
+  }
+  .pillar-body code {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+    color: var(--ink);
+    background: var(--paper-deep);
+    padding: 0.04em 0.32em;
+  }
+  .pillars-cite {
+    font-family: var(--font-body);
+    font-size: 0.9rem;
+    color: var(--ink-soft);
+    margin: 0;
+    line-height: 1.55;
+  }
+  .pillars-cite a {
+    color: var(--ink);
+    text-decoration: underline;
+    text-decoration-color: var(--register);
+    text-underline-offset: 3px;
+  }
+
+  /* ─── Architecture diagram ─── */
+  .diagram {
+    margin-top: 1rem;
+    padding: 1.5rem 1rem;
+    border-top: 1px solid var(--ink);
+    border-bottom: 1px solid var(--ink);
+    background: var(--paper-deep);
+  }
+
+  /* ─── Next steps grid ─── */
+  .next-body { max-width: 58rem; }
+  .next-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0;
+    border-top: 1px solid var(--ink);
+    border-bottom: 1px solid var(--ink);
+  }
+  .next-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    padding: 1.4rem 1.4rem 1.5rem;
+    text-decoration: none;
+    color: var(--ink);
+    border-right: 1px solid var(--rule-soft);
+    border-bottom: 1px solid var(--rule-soft);
+    transition: background 120ms linear;
+  }
+  .next-card:nth-child(2n) { border-right: none; }
+  .next-card:nth-last-child(-n + 2) { border-bottom: none; }
+  .next-card:hover { background: var(--paper-deep); }
+  .next-kind {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--register);
+    margin: 0;
+  }
+  .next-title {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 1.12rem;
+    line-height: 1.25;
+    color: var(--ink);
+    margin: 0;
+    text-decoration: underline;
+    text-decoration-color: var(--register);
+    text-underline-offset: 3px;
+    text-decoration-thickness: 1.5px;
+  }
+  .next-card:hover .next-title { text-decoration-thickness: 3px; }
+  .next-blurb {
+    margin: 0.2rem 0 0;
+    font-family: var(--font-body);
+    font-size: 0.92rem;
+    color: var(--ink-mid);
+    line-height: 1.55;
+  }
+  .next-blurb code {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+    color: var(--ink);
+    background: var(--paper-deep);
+    padding: 0.04em 0.3em;
+  }
+  @media (max-width: 720px) {
+    .next-grid { grid-template-columns: 1fr; }
+    .next-card { border-right: none !important; }
+    .next-card:not(:last-child) { border-bottom: 1px solid var(--rule-soft) !important; }
+    .next-card:last-child { border-bottom: none !important; }
+  }
+
+  /* ─── Responsive ─── */
+  @media (max-width: 640px) {
+    .hero { padding-top: 3rem; }
+    .article-section { padding-top: 3rem; }
+    .dossier-item a { grid-template-columns: 2.4rem 1fr; }
+    .terminal-body { font-size: 0.75rem; }
   }
 </style>
