@@ -11,409 +11,725 @@ import {
   DISCOVERY_SOURCE_COUNT,
   PAPER_COUNT,
 } from '../data/site-data';
+
+// Voter roles — the canonical seven from src/cli/vote-types.ts (VOTER_ROLES).
+// The roll-call is a real artifact of the codebase, not decoration.
+const VOTERS = [
+  { role: 'Architect',     thrust: 'sound, scoped, integration-safe', mark: '✓' },
+  { role: 'Security',      thrust: 'sandbox-respecting, no token leak', mark: '✓' },
+  { role: 'DevEx',         thrust: 'docs match diff, ops legible',       mark: '✓' },
+  { role: 'AI / ML',       thrust: 'routing, learning, eval signal',     mark: '✓' },
+  { role: 'PM',            thrust: 'cost / benefit, single-PR cohesion', mark: '✓' },
+  { role: 'Catfish',       thrust: 'adversarial — name the failure',     mark: '✓' },
+  { role: 'Scope Steward', thrust: 'YAGNI, single canonical impl',       mark: '✓' },
+];
 ---
 
-<BaseLayout title="Home" description="Intelligent orchestration platform for AI coding tools">
-  <section class="section hero">
-    <div class="hero-content">
-      <p class="label">Open source · MIT · Node 22+</p>
-      <h1 class="display-large">
-        One MCP server.
-        <span class="accent nowrap">Every AI coding tool.</span>
-      </h1>
-      <p class="subtitle">
-        Nexus Agents routes each task to the best model across Claude, Codex, Gemini,
-        and OpenCode — then remembers what worked. Plug it into Claude Code, Cursor, or
-        any MCP client and your agent gets smarter with every run.
+<BaseLayout
+  title="Home"
+  description="Governance substrate for AI coding agents — adversarial review across Claude, Codex, Gemini, OpenCode. Drift-detected rules. Immutable audit chain. The substrate AI agents need to be trusted in production."
+>
+  <!-- ─── Folio · the front page ─── -->
+  <article class="folio">
+    <header class="folio-head">
+      <p class="dateline">
+        <span class="dateline-date">2026 · May · 17</span>
+        <span class="dateline-sep">·</span>
+        <span class="dateline-issue">Issue 1 · Vol. 2</span>
+        <span class="dateline-sep">·</span>
+        <span class="dateline-place">filed under nexus-substrate</span>
       </p>
-      <div class="btn-row">
-        <a href="/nexus-agents/docs/getting-started/installation/" class="btn-primary">
-          Get Started &rarr;
+
+      <h1 class="display folio-headline">
+        Governance for <span class="register-em">AI coding<br/>agents.</span>
+      </h1>
+
+      <p class="lede folio-lede">
+        Your agents already write the code.<br/>
+        Nexus Agents writes the rules they have to follow,
+        reviews their work adversarially, and audits everything they touch —
+        across Claude, Codex, Gemini, and OpenCode.
+      </p>
+
+      <div class="folio-actions">
+        <a href="#proof" class="cta-primary">
+          <span class="cta-label">Run the 60-second proof</span>
+          <span class="cta-arrow" aria-hidden="true">→</span>
         </a>
-        <a href="https://github.com/nexus-substrate/nexus-agents" target="_blank" rel="noopener noreferrer" class="btn-outline">
-          View on GitHub &nearr;
+        <a href="https://github.com/nexus-substrate/nexus-agents" target="_blank" rel="noopener noreferrer" class="cta-secondary">
+          Source on GitHub
+        </a>
+        <a href="/nexus-agents/docs/getting-started/installation/" class="cta-secondary">
+          Installation
         </a>
       </div>
-    </div>
-  </section>
+    </header>
 
-  <!-- Stats bar -->
-  <section class="section stats-bar" aria-label="Platform capabilities at a glance">
-    <div class="stat" title="MCP tools exposed to client editors (orchestrate, consensus, research, memory, etc.)">
-      <span class="stat-number">{MCP_TOOL_COUNT}</span>
-      <span class="stat-label">MCP Tools</span>
-    </div>
-    <div class="stat" title="Specialized expert agents spun up on demand — code, security, architecture, testing, and more">
-      <span class="stat-number">{EXPERT_TYPE_COUNT}</span>
-      <span class="stat-label">Expert Types</span>
-    </div>
-    <div class="stat" title="CLI adapters: Claude, Gemini, Codex, Codex-MCP, OpenCode — swap any in without code changes">
-      <span class="stat-number">{CLI_ADAPTER_COUNT}</span>
-      <span class="stat-label">CLI Adapters</span>
-    </div>
-    <div class="stat" title="Memory backends: session, belief, agentic, adaptive, typed, and more — learn across runs">
-      <span class="stat-number">{MEMORY_BACKEND_COUNT}</span>
-      <span class="stat-label">Memory Backends</span>
-    </div>
-    <div class="stat" title="Pipeline stages that pick the best model: budget → capability → preference → TOPSIS → LinUCB → latency">
-      <span class="stat-number">{ROUTING_STAGE_COUNT}</span>
-      <span class="stat-label">Routing Stages</span>
-    </div>
-    <div class="stat" title="Research papers tracked in the on-disk registry — feed the planner with current technique evidence">
-      <span class="stat-number">{PAPER_COUNT}+</span>
-      <span class="stat-label">Papers Tracked</span>
-    </div>
-  </section>
+    <!-- ─── The Consensus Tally — typographic stamp, the visual signature ─── -->
+    <aside class="tally" role="figure" aria-label="A consensus vote roll-call: seven voter roles each marking a proposal as approved, ending with MOTION CARRIED 7 of 7.">
+      <div class="tally-frame">
+        <p class="tally-head">
+          <span class="tally-label">In session</span>
+          <span class="tally-when">— 21:20:14 UTC, motion before the panel —</span>
+        </p>
+        <p class="tally-motion">
+          <em>That this org-migration proposal be adopted and the prep PR<br/>
+          merged forthwith.</em>
+        </p>
+        <hr class="tally-rule" />
+        <ol class="tally-roll">
+          {VOTERS.map(v => (
+            <li class="tally-vote">
+              <span class="tally-name">{v.role}</span>
+              <span class="tally-dots" aria-hidden="true"></span>
+              <span class="tally-thrust">{v.thrust}</span>
+              <span class="tally-mark" aria-label={`${v.role} voted ${v.mark === '✓' ? 'in favour' : 'against'}`}>{v.mark}</span>
+            </li>
+          ))}
+        </ol>
+        <hr class="tally-rule" />
+        <p class="tally-decision">
+          <span class="tally-stamp">Motion carried <em>nem. con.</em> · <strong>7&thinsp;/&thinsp;7</strong></span>
+        </p>
+      </div>
+      <p class="tally-cite">
+        Real format. The <code>consensus_vote</code> MCP tool runs this panel on every architecture-class change.
+        Result, reasoning, and trace go to <code>~/.nexus-agents/audit/</code>.
+      </p>
+    </aside>
+  </article>
 
-  <section class="section">
-    <h2 class="headline-large">How It Works</h2>
-    <p class="subtitle section-subtitle">
-      Every task flows through analysis, intelligent routing, quality validation, and outcome recording.
-      The system learns from each execution and improves over time.
-    </p>
-    <div class="card-grid">
-      <div class="card">
-        <h3 class="title-large">Intelligent Routing</h3>
-        <p class="card-text">A {ROUTING_STAGE_COUNT}-stage pipeline analyzes your task and picks the best AI model. LinUCB contextual bandits learn from real outcomes — routing gets smarter with every task you run.</p>
-      </div>
-      <div class="card">
-        <h3 class="title-large">Dynamic Expert Creation</h3>
-        <p class="card-text">{EXPERT_TYPE_COUNT} expert types are created on demand based on task analysis. Each gets a specialized system prompt, routed to the best CLI, and coordinated by TechLead and Orchestrator agents.</p>
-      </div>
-      <div class="card">
-        <h3 class="title-large">Consensus Quality Gates</h3>
-        <p class="card-text">{CONSENSUS_ALGORITHM_COUNT} voting algorithms — including higher-order Bayesian aggregation — validate outputs before they ship. Agents vote, disagree, and iterate until quality passes.</p>
-      </div>
-      <div class="card">
-        <h3 class="title-large">Continuous Learning</h3>
-        <p class="card-text">{MEMORY_BACKEND_COUNT} memory backends persist what works across sessions. Outcomes feed routing decisions, failed approaches are avoided, and successful patterns are reinforced automatically.</p>
-      </div>
-      <div class="card">
-        <h3 class="title-large">Development Pipeline</h3>
-        <p class="card-text">Full workflow: research papers, plan architecture, vote on proposals, decompose into tasks, implement in parallel, QA review with iteration, security scan. Three modes: autonomous, harness, and dry-run.</p>
-      </div>
-      <div class="card">
-        <h3 class="title-large">Research Discovery</h3>
-        <p class="card-text">{PAPER_COUNT}+ papers tracked across {DISCOVERY_SOURCE_COUNT} sources (arXiv, GitHub, Semantic Scholar). New discoveries auto-trigger pipeline assessments. Quality scoring and topic synthesis built in.</p>
-      </div>
-    </div>
-  </section>
+  <!-- ─── §01 — The 60-second proof ─── -->
+  <section id="proof" class="article-section">
+    <div class="section-rule"><span class="marker">§01 · The 60-second proof</span></div>
 
-  <!-- Learning loop visualization -->
-  <section class="section">
-    <h2 class="headline-large">The Learning Loop</h2>
-    <p class="subtitle section-subtitle">
-      This is the core differentiator. Every execution makes the next one better.
-    </p>
-    <div class="mermaid" aria-label="Diagram showing the learning loop: a task is analyzed, routed to an expert, validated by consensus, recorded as an outcome, and that outcome improves routing for the next task.">
-{`flowchart TD
-  task["You give a task"] --> analysis["Task Analysis<br/>picks best model from ${CLI_ADAPTER_COUNT} CLIs"]
-  analysis --> expert["Expert executes<br/>${EXPERT_TYPE_COUNT} specialized types, created on demand"]
-  expert --> consensus["Consensus validates<br/>multi-model voting catches errors"]
-  consensus --> outcome["Outcome recorded<br/>success/failure feeds ${MEMORY_BACKEND_COUNT} memory backends"]
-  outcome -.->|feeds next routing decision| analysis
-  outcome --> better["Next task: routing is smarter,<br/>memory recalls what worked"]
-  classDef primary fill:#6750A4,stroke:#6750A4,color:#ffffff;
-  classDef accent fill:#e8def8,stroke:#6750A4,color:#1c1b1f;
-  class task,better primary;
-  class analysis,expert,consensus,outcome accent;`}
-    </div>
-  </section>
+    <div class="article-body">
+      <p class="lede section-lede">
+        Three commands. No keys to set up just to look. The hard part is later.
+      </p>
 
-  <section class="section">
-    <h2 class="headline-large">Quick Start</h2>
-    <p class="subtitle">Install and connect to your editor in under 5 minutes.</p>
-    <div class="code-grid">
-      <div>
-        <h3 class="title-large code-step">1. Install</h3>
-        <pre class="code-block"><code># Install globally
-pnpm install -g nexus-agents
-
-# Verify
+      <div class="proof-step">
+        <p class="byline">step one · install</p>
+        <pre data-copy class="code-step"><code>npm install -g nexus-agents
 nexus-agents doctor</code></pre>
+        <p class="expected">
+          <span class="expected-tag">expected</span>
+          A health table; rows that need API keys are marked
+          <code>missing</code>. <code>doctor</code> only reads; it never writes.
+        </p>
       </div>
-      <div>
-        <h3 class="title-large code-step">2. Connect to Claude Code</h3>
-        <pre class="code-block"><code># Auto-configure MCP server
-nexus-agents setup
 
-# Or manually: ~/.claude/mcp.json
-{'{'}
-  "mcpServers": {'{'}
-    "nexus-agents": {'{'}
-      "command": "nexus-agents",
-      "args": ["--mode=server"]
-    {'}'}
-  {'}'}
-{'}'}</code></pre>
+      <div class="proof-step">
+        <p class="byline">step two · run a real consensus vote (no API keys needed)</p>
+        <pre data-copy class="code-step"><code>nexus-agents vote --quick \
+  "Use SQLite over JSON files for the outcome store"</code></pre>
+        <p class="expected">
+          <span class="expected-tag">expected</span>
+          Three voter roles deliberate via your local Claude/Codex/Gemini CLIs
+          (whichever you have installed). The decision, vote tally, and per-voter
+          reasoning all print, then write to <code>~/.nexus-agents/audit/</code>.
+        </p>
       </div>
+
+      <div class="proof-step">
+        <p class="byline">step three · attach to your editor</p>
+        <pre data-copy class="code-step"><code># Auto-configure as an MCP server for Claude Code, Cursor, etc.
+nexus-agents setup</code></pre>
+        <p class="expected">
+          <span class="expected-tag">expected</span>
+          The MCP server registers in your editor's config. Restart the editor,
+          and {MCP_TOOL_COUNT} new tools (orchestrate, consensus_vote,
+          research_synthesize, audit_chain, …) become available to whatever
+          agent you're already using.
+        </p>
+      </div>
+
+      <p class="callout">
+        That's the smoke task. From here, every command is configurable, but the
+        defaults already work — <code>nexus-agents orchestrate "&hellip;"</code>
+        will pick the right CLI, run the right experts, and write the trace.
+      </p>
     </div>
   </section>
 
-  <section class="section">
-    <h2 class="headline-large">Architecture</h2>
-    <p class="subtitle section-subtitle">
-      Tasks enter through MCP, route through a {ROUTING_STAGE_COUNT}-stage pipeline,
-      execute on the best available CLI, and get validated by consensus before
-      outcomes feed back into the router.
-    </p>
-    <div class="mermaid" aria-label="Nexus Agents architecture: MCP protocol feeds the Orchestrator, which routes through a multi-stage pipeline to one of several CLIs. Consensus, memory, pipeline, and security services run alongside. Outcomes feed back into the router.">
-{`flowchart TD
-  mcp["MCP Protocol<br/>${MCP_TOOL_COUNT} tools · rate-limited · auth"]
-  orch["Orchestrator<br/>task analysis · dynamic experts"]
+  <!-- ─── §02 — What you get (three pillars, plainly named) ─── -->
+  <section class="article-section">
+    <div class="section-rule"><span class="marker">§02 · What you get</span></div>
+
+    <div class="article-body">
+      <h2 class="headline section-headline">Three things, named plainly.</h2>
+
+      <div class="pillars">
+        <article class="pillar">
+          <p class="pillar-num">i</p>
+          <h3 class="pillar-title">A panel that votes.</h3>
+          <p class="pillar-body">
+            {CONSENSUS_ALGORITHM_COUNT} aggregation strategies — including a
+            higher-order Bayesian one. Seven specialised voter roles. Decisions
+            are recorded, not vibes. Run <code>consensus_vote</code> as an MCP
+            tool, or <code>nexus-agents vote</code> from your shell. Disagreement
+            is structured.
+          </p>
+        </article>
+
+        <article class="pillar">
+          <p class="pillar-num">ii</p>
+          <h3 class="pillar-title">A router that learns.</h3>
+          <p class="pillar-body">
+            {ROUTING_STAGE_COUNT}-stage pipeline (budget → capability → preference
+            → TOPSIS → LinUCB → latency) picks the right CLI from the
+            {CLI_ADAPTER_COUNT} you have installed. Outcomes feed
+            {MEMORY_BACKEND_COUNT} memory backends; tomorrow's routing is informed
+            by today's failures.
+          </p>
+        </article>
+
+        <article class="pillar">
+          <p class="pillar-num">iii</p>
+          <h3 class="pillar-title">An audit you can subpoena.</h3>
+          <p class="pillar-body">
+            Every model call, every vote, every research citation lands in a
+            content-addressed chain on disk. Replay any decision. Prove which
+            agent recommended what, when, with what evidence. Drift detection
+            screams when conventions slip.
+          </p>
+        </article>
+      </div>
+
+      <p class="byline pillars-cite">
+        Not pictured: {EXPERT_TYPE_COUNT} expert personae, {DISCOVERY_SOURCE_COUNT}
+        research sources, {PAPER_COUNT}+ tracked papers feeding the planner. The
+        full inventory lives in <a href="/nexus-agents/docs/architecture/readme/">the architecture pages</a>.
+      </p>
+    </div>
+  </section>
+
+  <!-- ─── §03 — Architecture, briefly ─── -->
+  <section class="article-section">
+    <div class="section-rule"><span class="marker">§03 · Architecture, briefly</span></div>
+
+    <div class="article-body">
+      <p class="lede section-lede">
+        Tasks arrive through MCP, route through the pipeline, execute on whichever
+        CLI scored best, and get validated by consensus before outcomes feed back
+        into the router. There is no magic; there is bookkeeping.
+      </p>
+
+      <div class="mermaid diagram" aria-label="Architecture diagram: MCP protocol feeds the Orchestrator, which routes through a multi-stage pipeline to one of several CLIs. Consensus, memory, pipeline, and security run alongside. Outcomes feed back into the router.">
+{`flowchart LR
+  mcp["MCP Protocol<br/>${MCP_TOOL_COUNT} tools"]
+  orch["Orchestrator<br/>task analysis"]
   router["Composite Router · ${ROUTING_STAGE_COUNT} stages<br/>Budget → Capability → Preference<br/>TOPSIS → LinUCB → Latency"]
-  claude["Claude"]
-  gemini["Gemini"]
-  codex["Codex"]
-  codexmcp["Codex-MCP"]
-  opencode["OpenCode"]
+  clis["Claude · Gemini · Codex · OpenCode"]
   outcome[("Outcome Store<br/>feeds back")]
 
-  subgraph services ["Supporting Services"]
-    consensus["Consensus<br/>${CONSENSUS_ALGORITHM_COUNT} algorithms"]
+  subgraph services ["Supporting"]
+    consensus["Consensus<br/>${CONSENSUS_ALGORITHM_COUNT} strategies"]
     memory["Memory<br/>${MEMORY_BACKEND_COUNT} backends"]
-    pipeline["Pipeline<br/>3 modes"]
-    security["Security<br/>sandbox"]
+    audit["Audit chain"]
   end
 
-  mcp --> orch
-  orch --> router
-  router --> claude
-  router --> gemini
-  router --> codex
-  router --> codexmcp
-  router --> opencode
-  claude --> outcome
-  gemini --> outcome
-  codex --> outcome
-  codexmcp --> outcome
-  opencode --> outcome
+  mcp --> orch --> router --> clis --> outcome
   outcome -.->|learns routing| router
-  orch -.-> services
-
-  classDef primary fill:#6750A4,stroke:#6750A4,color:#ffffff;
-  classDef cli fill:#e8def8,stroke:#6750A4,color:#1c1b1f;
-  classDef store fill:#f5eff7,stroke:#6750A4,color:#1c1b1f,stroke-dasharray: 5 3;
-  class mcp,orch,router primary;
-  class claude,gemini,codex,codexmcp,opencode cli;
-  class outcome store;`}
+  orch -.-> services`}
+      </div>
     </div>
   </section>
 
-  <section class="section">
-    <h2 class="headline-large">Documentation</h2>
-    <p class="subtitle section-subtitle">Pick where to start based on what you want to do next.</p>
-    <div class="card-grid cols-4">
-      <a href="/nexus-agents/docs/getting-started/installation/" class="card link-card">
-        <h3 class="title-large">Getting Started</h3>
-        <p class="card-text">Install, configure, and run your first orchestration in under 5 minutes.</p>
-        <span class="card-cta">Read the guide &rarr;</span>
-      </a>
-      <a href="/nexus-agents/docs/guides/mcp_integration/" class="card link-card">
-        <h3 class="title-large">MCP Integration</h3>
-        <p class="card-text">Wire up Claude Code, Cursor, VS Code, or any MCP client in three steps.</p>
-        <span class="card-cta">Connect your editor &rarr;</span>
-      </a>
-      <a href="/nexus-agents/docs/guides/workflow_templates/" class="card link-card">
-        <h3 class="title-large">Dev Pipeline</h3>
-        <p class="card-text">Research, plan, vote, implement, QA — run the whole workflow from one command.</p>
-        <span class="card-cta">Run the pipeline &rarr;</span>
-      </a>
-      <a href="/nexus-agents/docs/research/research_index/" class="card link-card">
-        <h3 class="title-large">Research Registry</h3>
-        <p class="card-text">{PAPER_COUNT}+ papers across {DISCOVERY_SOURCE_COUNT} sources with technique alignment and synthesis.</p>
-        <span class="card-cta">Browse the registry &rarr;</span>
-      </a>
+  <!-- ─── §04 — Dossier (next steps) ─── -->
+  <section class="article-section">
+    <div class="section-rule"><span class="marker">§04 · Dossier</span></div>
+
+    <div class="article-body">
+      <h2 class="headline section-headline">Where to go from here.</h2>
+
+      <ol class="dossier">
+        <li class="dossier-item">
+          <a href="/nexus-agents/docs/getting-started/installation/">
+            <p class="dossier-num">01</p>
+            <h3 class="dossier-title">Installation</h3>
+            <p class="dossier-blurb">
+              Five install methods, ranked by use case. Plugin (Claude Code only),
+              npm (everyone else), source (contributors).
+            </p>
+          </a>
+        </li>
+        <li class="dossier-item">
+          <a href="/nexus-agents/docs/guides/mcp_integration/">
+            <p class="dossier-num">02</p>
+            <h3 class="dossier-title">MCP integration</h3>
+            <p class="dossier-blurb">
+              Wire up Claude Code, Cursor, VS Code, or any MCP client. Three steps;
+              fewer if <code>setup</code> already ran.
+            </p>
+          </a>
+        </li>
+        <li class="dossier-item">
+          <a href="/nexus-agents/docs/architecture/readme/">
+            <p class="dossier-num">03</p>
+            <h3 class="dossier-title">Architecture</h3>
+            <p class="dossier-blurb">
+              The full anatomy: composite router, expert factories, consensus
+              engine, audit chain, pipeline phases.
+            </p>
+          </a>
+        </li>
+        <li class="dossier-item">
+          <a href="/nexus-agents/docs/research/research_index/">
+            <p class="dossier-num">04</p>
+            <h3 class="dossier-title">Research registry</h3>
+            <p class="dossier-blurb">
+              {PAPER_COUNT}+ papers across {DISCOVERY_SOURCE_COUNT} sources. Technique
+              alignment, synthesis, evidence behind every routing decision.
+            </p>
+          </a>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ─── §05 — End matter ─── -->
+  <section class="article-section end-matter">
+    <div class="section-rule"><span class="marker">§05 · End matter</span></div>
+    <div class="article-body end-matter-body">
+      <p>
+        Nexus Agents is open source under the MIT license. Maintained by
+        <a href="https://github.com/williamzujkowski">William Zujkowski</a> under the
+        <a href="https://github.com/nexus-substrate">nexus-substrate</a> organisation.
+        Filed bugs, vote tallies, drift detections, and audit chains welcome.
+      </p>
+      <p class="byline">Set in Fraunces, Source Sans 3, and IBM Plex Mono. No tracking cookies. No third-party JavaScript beyond Mermaid (lazy-loaded).</p>
     </div>
   </section>
 </BaseLayout>
 
 <style>
-  .section {
-    max-width: 72rem;
+  /* ─── Article scaffolding ─── */
+  .article-section {
+    padding: 5rem 0 0;
+  }
+  .article-body {
+    max-width: 44rem;
+    margin: 2rem auto 0;
+    padding: 0 1.5rem;
+  }
+  .section-headline {
+    margin: 0 0 1.5rem;
+  }
+  .section-lede {
+    margin: 0 0 2rem;
+  }
+
+  /* ─── Folio (the front page) ─── */
+  .folio {
+    max-width: 78rem;
     margin: 0 auto;
-    padding: 4rem 1.5rem;
+    padding: 3rem 1.5rem 2rem;
+    position: relative;
   }
-  .hero {
-    padding-top: 5rem;
-    padding-bottom: 2rem;
-  }
-  .hero-content {
-    max-width: 48rem;
-  }
-
-  .label {
-    font-size: 0.75rem;
-    font-weight: 600;
+  .folio-head { max-width: 60rem; }
+  .dateline {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    color: var(--ink-mid);
+    margin-bottom: 1.4rem;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--color-primary);
-    margin-bottom: 1rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 0.6rem;
+  }
+  .dateline-sep { color: var(--register); }
+  .dateline-place { color: var(--ink-soft); font-variant: small-caps; letter-spacing: 0.12em; }
+
+  .folio-headline {
+    margin: 0 0 1.5rem;
+  }
+  .register-em {
+    color: var(--register);
+    font-style: italic;
+    font-variation-settings: 'opsz' 144, 'SOFT' 90;
   }
 
-  .display-large {
-    margin-bottom: 1.5rem;
+  .folio-lede {
+    max-width: 38rem;
+    margin: 0 0 2.2rem;
   }
 
-  .accent { color: var(--color-primary); }
-  .nowrap { white-space: nowrap; }
-  @media (max-width: 640px) {
-    .nowrap { white-space: normal; }
+  .folio-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1.2rem 1.6rem;
+  }
+  .cta-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.85rem 1.25rem;
+    background: var(--ink);
+    color: var(--paper);
+    text-decoration: none;
+    border: 1px solid var(--ink);
+    font-family: var(--font-body);
+    font-size: 0.9rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    transition: background 120ms linear, color 120ms linear;
+  }
+  .cta-primary:hover { background: var(--register); border-color: var(--register); }
+  .cta-arrow {
+    font-family: var(--font-mono);
+    transition: transform 200ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  .cta-primary:hover .cta-arrow { transform: translateX(4px); }
+
+  .cta-secondary {
+    font-family: var(--font-body);
+    font-size: 0.9rem;
+    color: var(--ink);
+    text-decoration: underline;
+    text-decoration-color: var(--register);
+    text-decoration-thickness: 1.5px;
+    text-underline-offset: 4px;
+  }
+  .cta-secondary:hover { text-decoration-thickness: 3px; }
+
+  /* ─── The Consensus Tally ─── */
+  .tally {
+    max-width: 36rem;
+    margin: 3.5rem auto 0;
+    padding: 0 1.5rem;
+  }
+  .tally-frame {
+    border: 1px solid var(--ink);
+    border-top-width: 3px;
+    padding: 1.4rem 1.6rem 1.2rem;
+    background: var(--paper-deep);
+    position: relative;
+    box-shadow:
+      0 0 0 4px var(--paper),
+      0 0 0 5px var(--rule);
+  }
+  .tally-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.4rem 0.8rem;
+    margin-bottom: 0.55rem;
+    font-family: var(--font-mono);
+    font-size: 0.74rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-mid);
+  }
+  .tally-label { color: var(--register); font-weight: 600; }
+  .tally-motion {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: 1.0625rem;
+    line-height: 1.45;
+    color: var(--ink);
+    margin: 0 0 0.6rem;
+  }
+  .tally-rule {
+    border: 0;
+    border-top: 1px solid var(--ink);
+    margin: 0.6rem 0;
+  }
+  .tally-roll {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 0.84rem;
+  }
+  .tally-vote {
+    display: grid;
+    grid-template-columns: 8rem 1fr minmax(0, 14rem) 1.2rem;
+    align-items: baseline;
+    gap: 0.6rem;
+    padding: 0.2rem 0;
+    color: var(--ink-mid);
+  }
+  .tally-name {
+    color: var(--ink);
+    font-weight: 500;
+  }
+  .tally-dots {
+    border-bottom: 1px dotted var(--rule);
+    transform: translateY(-0.22em);
+    min-width: 1.5rem;
+  }
+  .tally-thrust {
+    font-family: var(--font-body);
+    font-style: italic;
+    font-size: 0.84rem;
+    color: var(--ink-soft);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: right;
+  }
+  .tally-mark {
+    font-family: var(--font-display);
+    color: var(--mark);
+    font-size: 1.05rem;
+    font-weight: 600;
+    text-align: right;
+  }
+  .tally-decision {
+    text-align: center;
+    margin: 0.55rem 0 0.1rem;
+  }
+  .tally-stamp {
+    display: inline-block;
+    font-family: var(--font-display);
+    font-size: 1.1rem;
+    color: var(--register);
+    font-variant: small-caps;
+    letter-spacing: 0.05em;
+    padding: 0.15rem 0.8rem 0.05rem;
+    border: 1.5px solid var(--register);
+    transform: rotate(-1.2deg);
+    box-shadow: inset 0 0 0 1px var(--paper-deep);
+  }
+  .tally-stamp em { font-style: italic; }
+  .tally-stamp strong { font-weight: 600; }
+
+  .tally-cite {
+    font-family: var(--font-body);
+    font-size: 0.84rem;
+    color: var(--ink-soft);
+    line-height: 1.55;
+    margin: 0.9rem 0 0;
+    padding: 0 0.1rem;
+  }
+  .tally-cite code {
+    font-size: 0.92em;
+    color: var(--ink);
+    background: transparent;
+    padding: 0;
   }
 
-  .subtitle {
-    font-size: 1.125rem;
-    line-height: 1.75;
-    color: var(--color-on-surface-variant);
-    max-width: 42rem;
-    margin-bottom: 2rem;
-  }
-  .section-subtitle {
-    margin-bottom: 3rem;
+  @media (max-width: 600px) {
+    .tally-vote { grid-template-columns: 1fr 1.2rem; gap: 0.3rem 0.6rem; }
+    .tally-dots, .tally-thrust { display: none; }
   }
 
-  .headline-large {
-    margin-bottom: 1rem;
+  /* ─── Proof steps (§01) ─── */
+  .proof-step {
+    margin: 1.6rem 0 2rem;
   }
-
-  .title-large {
+  .proof-step .byline {
+    color: var(--register);
     margin-bottom: 0.5rem;
   }
-
-  .btn-row {
-    display: flex;
-    gap: 1rem;
-    flex-wrap: wrap;
-  }
-
-  .btn-primary {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    border-radius: 9999px;
-    background: var(--color-primary);
-    color: var(--color-on-primary);
-    padding: 0.75rem 1.5rem;
-    font-size: 0.875rem;
-    font-weight: 500;
-    text-decoration: none;
-    transition: box-shadow 200ms;
-  }
-  .btn-primary:hover { box-shadow: 0 4px 12px oklch(0 0 0 / 0.15); }
-
-  .btn-outline {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    border-radius: 9999px;
-    border: 1px solid var(--color-outline-variant);
-    color: var(--color-on-surface);
-    padding: 0.75rem 1.5rem;
-    font-size: 0.875rem;
-    font-weight: 500;
-    text-decoration: none;
-    transition: border-color 200ms, color 200ms;
-  }
-  .btn-outline:hover {
-    border-color: var(--color-primary);
-    color: var(--color-primary);
-  }
-
-  /* Stats bar */
-  .stats-bar {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 2rem;
-    padding-top: 0;
-    padding-bottom: 2rem;
-    border-bottom: 1px solid var(--color-outline-variant);
-  }
-  .stat {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.25rem;
-    cursor: help;
-  }
-  .stat-number {
-    font-size: 1.75rem;
-    font-weight: 700;
-    color: var(--color-primary);
-  }
-  .stat-label {
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--color-on-surface-variant);
-  }
-
-  .card-grid {
-    display: grid;
-    gap: 1.5rem;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  }
-  .card-grid.cols-4 {
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  }
-
-  .card {
-    border: 1px solid var(--color-outline-variant);
-    border-radius: 0.75rem;
-    padding: 1.5rem;
-    background: var(--color-surface-container);
-    transition: border-color 200ms, box-shadow 200ms;
-  }
-  .card:hover {
-    border-color: var(--color-primary);
-    box-shadow: 0 2px 8px oklch(0 0 0 / 0.08);
-  }
-
-  .card-text {
-    font-size: 0.875rem;
-    line-height: 1.625;
-    color: var(--color-on-surface-variant);
-  }
-
-  .link-card {
-    text-decoration: none;
-    cursor: pointer;
-    display: flex;
-    flex-direction: column;
-  }
-  .link-card h3 {
-    color: var(--color-on-surface);
-    transition: color 200ms;
-  }
-  .link-card:hover h3 { color: var(--color-primary); }
-  .card-cta {
-    display: inline-block;
-    margin-top: 1rem;
-    font-size: 0.875rem;
-    font-weight: 500;
-    color: var(--color-primary);
-    transition: transform 200ms;
-  }
-  .link-card:hover .card-cta { transform: translateX(2px); }
-
-  .code-step {
-    margin-bottom: 1rem;
-  }
-
-  .code-grid {
-    display: grid;
-    gap: 2rem;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    margin-top: 2rem;
-  }
-
-  .code-block {
-    border-radius: 0.75rem;
-    background: var(--color-code-surface);
-    color: var(--color-code-on-surface);
-    padding: 1.5rem;
-    font-size: 0.875rem;
+  .code-step,
+  pre.code-step {
+    background: var(--ink);
+    color: var(--paper);
+    font-family: var(--font-mono);
+    font-size: 0.86rem;
+    line-height: 1.65;
+    padding: 0.9rem 1.1rem;
+    margin: 0 0 0.75rem;
     overflow-x: auto;
-    line-height: 1.625;
+    border-left: 3px solid var(--register);
+    position: relative;
+  }
+  .expected {
+    font-family: var(--font-body);
+    font-size: 0.92rem;
+    color: var(--ink-mid);
+    line-height: 1.6;
+    margin: 0;
+    padding-left: 0.6rem;
+    border-left: 1px solid var(--rule);
+  }
+  .expected-tag {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--register);
+    margin-right: 0.6rem;
+    font-weight: 600;
+  }
+  .expected code {
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+    color: var(--ink);
+    background: var(--paper-deep);
+    padding: 0.05em 0.3em;
+  }
+
+  .callout {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: 1.08rem;
+    line-height: 1.55;
+    color: var(--ink-mid);
+    margin: 2rem 0 0;
+    padding: 1rem 0 0;
+    border-top: 1px solid var(--rule);
+  }
+  .callout code {
+    font-family: var(--font-mono);
+    font-style: normal;
+    font-size: 0.9em;
+    color: var(--ink);
+  }
+
+  /* ─── Pillars (§02) ─── */
+  .pillars {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0;
+    margin: 0 0 1.5rem;
+    border-top: 1px solid var(--ink);
+    border-bottom: 1px solid var(--ink);
+  }
+  .pillar {
+    display: grid;
+    grid-template-columns: 3rem 1fr;
+    gap: 1rem 1.2rem;
+    padding: 1.2rem 0;
+    border-bottom: 1px solid var(--rule-soft);
+  }
+  .pillar:last-child { border-bottom: none; }
+  .pillar-num {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: 1.4rem;
+    color: var(--register);
+    margin: 0;
+    line-height: 1;
+    align-self: start;
+    padding-top: 0.2rem;
+  }
+  .pillar-title {
+    font-family: var(--font-display);
+    font-variation-settings: 'opsz' 36;
+    font-weight: 600;
+    font-size: 1.3rem;
+    line-height: 1.2;
+    color: var(--ink);
+    margin: 0 0 0.4rem;
+    grid-column: 2;
+  }
+  .pillar-body {
+    grid-column: 2;
+    font-family: var(--font-body);
+    font-size: 0.97rem;
+    line-height: 1.6;
+    color: var(--ink-mid);
+    margin: 0;
+  }
+  .pillar-body code {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+    color: var(--ink);
+    background: var(--paper-deep);
+    padding: 0.04em 0.32em;
+  }
+  .pillars-cite {
+    margin: 0;
+    color: var(--ink-soft);
+  }
+  .pillars-cite a {
+    color: var(--ink);
+    text-decoration: underline;
+    text-decoration-color: var(--register);
+    text-underline-offset: 3px;
+  }
+
+  /* ─── Architecture diagram (§03) ─── */
+  .diagram {
+    margin-top: 1.5rem;
+    padding: 1.5rem 1rem;
+    border-top: 1px solid var(--ink);
+    border-bottom: 1px solid var(--ink);
+    background: var(--paper-deep);
+  }
+
+  /* ─── Dossier (§04) ─── */
+  .dossier {
+    list-style: none;
+    padding: 0;
+    margin: 1rem 0 0;
+    border-top: 1px solid var(--ink);
+  }
+  .dossier-item { border-bottom: 1px solid var(--rule-soft); }
+  .dossier-item:last-child { border-bottom: 1px solid var(--ink); }
+  .dossier-item a {
+    display: grid;
+    grid-template-columns: 3rem 1fr;
+    gap: 1rem 1.2rem;
+    padding: 1.4rem 0;
+    text-decoration: none;
+    color: var(--ink);
+    transition: background 120ms linear;
+  }
+  .dossier-item a:hover { background: var(--paper-deep); }
+  .dossier-num {
+    font-family: var(--font-mono);
+    font-size: 0.95rem;
+    color: var(--register);
+    align-self: start;
+    margin: 0;
+    padding-top: 0.3rem;
+  }
+  .dossier-title {
+    grid-column: 2;
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 1.18rem;
+    color: var(--ink);
+    margin: 0 0 0.3rem;
+    text-decoration: underline;
+    text-decoration-color: var(--register);
+    text-underline-offset: 3px;
+    text-decoration-thickness: 1.5px;
+  }
+  .dossier-item a:hover .dossier-title { text-decoration-thickness: 3px; }
+  .dossier-blurb {
+    grid-column: 2;
+    margin: 0;
+    font-family: var(--font-body);
+    font-size: 0.94rem;
+    color: var(--ink-mid);
+    line-height: 1.55;
+  }
+  .dossier-blurb code {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+    color: var(--ink);
+    background: var(--paper-deep);
+    padding: 0.04em 0.3em;
+  }
+
+  /* ─── End matter (§05) ─── */
+  .end-matter-body p {
+    font-family: var(--font-body);
+    font-size: 0.92rem;
+    line-height: 1.65;
+    color: var(--ink-mid);
+    margin: 0 0 0.6rem;
+  }
+  .end-matter-body a {
+    color: var(--ink);
+    text-decoration: underline;
+    text-decoration-color: var(--register);
+    text-underline-offset: 3px;
+  }
+
+  /* ─── Responsive ─── */
+  @media (max-width: 640px) {
+    .folio { padding-top: 2rem; }
+    .article-section { padding-top: 3.5rem; }
+    .pillar { grid-template-columns: 2.4rem 1fr; }
+    .dossier-item a { grid-template-columns: 2.4rem 1fr; }
   }
 </style>

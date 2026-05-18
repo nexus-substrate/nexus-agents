@@ -7,8 +7,12 @@ interface Props {
   noindex?: boolean;
 }
 
-const { title, description = 'Intelligent orchestration platform for AI coding tools', noindex = false } = Astro.props;
-const siteTitle = `${title} — Nexus Agents`;
+const {
+  title,
+  description = 'Governance substrate for AI coding agents — adversarial review, drift-detected rules, immutable audit, closed-loop telemetry.',
+  noindex = false,
+} = Astro.props;
+const siteTitle = title === 'Home' ? 'Nexus Substrate · Nexus Agents' : `${title} — Nexus Agents`;
 const canonicalURL = new URL(Astro.url.pathname, Astro.site);
 ---
 
@@ -20,100 +24,114 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
     <meta name="description" content={description} />
     <title>{siteTitle}</title>
 
-    <!-- Canonical URL -->
     <link rel="canonical" href={canonicalURL} />
 
-    <!-- Favicon: 16x16 variant for small sizes (thicker strokes, no opacity tricks to avoid sub-pixel blur) -->
     <link rel="icon" type="image/svg+xml" sizes="16x16" href={`${import.meta.env.BASE_URL}/favicon-16.svg`} />
     <link rel="icon" type="image/svg+xml" sizes="any" href={`${import.meta.env.BASE_URL}/favicon.svg`} />
-    <meta name="theme-color" content="#6750A4" />
+    <meta name="theme-color" content="#902020" />
 
-    <!-- Security headers via meta -->
     <meta http-equiv="X-Content-Type-Options" content="nosniff" />
     <meta name="referrer" content="strict-origin-when-cross-origin" />
 
     {noindex && <meta name="robots" content="noindex, nofollow" />}
 
-    <!-- Open Graph -->
     <meta property="og:title" content={siteTitle} />
     <meta property="og:description" content={description} />
     <meta property="og:type" content="website" />
     <meta property="og:url" content={canonicalURL} />
     <meta property="og:site_name" content="Nexus Agents" />
 
-    <!-- Twitter Card -->
     <meta name="twitter:card" content="summary" />
     <meta name="twitter:title" content={siteTitle} />
     <meta name="twitter:description" content={description} />
 
-    <!-- JSON-LD Structured Data -->
     <script type="application/ld+json" set:html={JSON.stringify({
       "@context": "https://schema.org",
       "@type": "SoftwareApplication",
       "name": "Nexus Agents",
-      "description": "Intelligent orchestration platform for AI coding tools — routes tasks to the best model, learns from outcomes, and enforces quality through multi-model consensus",
+      "description": "Governance substrate for AI coding agents — adversarial review across Claude/Codex/Gemini/OpenCode, drift-detected rules, immutable audit chain, closed-loop telemetry. The substrate AI agents need to be trusted in production.",
       "url": Astro.site?.toString(),
       "applicationCategory": "DeveloperApplication",
       "operatingSystem": "Cross-platform",
       "license": "https://opensource.org/licenses/MIT",
       "author": {
+        "@type": "Organization",
+        "name": "Nexus Substrate",
+        "url": "https://github.com/nexus-substrate"
+      },
+      "creator": {
         "@type": "Person",
         "name": "William Zujkowski",
         "url": "https://github.com/williamzujkowski"
       }
     })} />
 
-    <!-- Fonts (Google Fonts with display=swap) -->
+    <!-- Fonts: Fraunces (display serif, opsz + soft axes), Source Sans 3 (body), IBM Plex Mono (code) -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,300..800,30..100&family=Source+Sans+3:ital,wght@0,400..700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
 
-    <!-- View transitions for instant page navigation -->
     <ClientRouter />
   </head>
   <body>
-    <nav class="site-nav">
-      <div class="nav-inner">
-        <a href="/nexus-agents/" class="nav-logo" aria-label="Nexus Agents home">
-          <svg viewBox="0 0 32 32" fill="none" width="28" height="28" role="img">
-            <title>Nexus Agents</title>
-            <path d="M4 7 L19 16" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
-            <path d="M4 16 L19 16" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" opacity="0.55"/>
-            <path d="M4 25 L19 16" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
-            <path d="M19 16 L28 16" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
-            <circle cx="19" cy="16" r="2.75" fill="currentColor"/>
+    <nav class="masthead" aria-label="Primary">
+      <div class="masthead-inner">
+        <a href="/nexus-agents/" class="wordmark" aria-label="Nexus Agents — home">
+          <svg viewBox="0 0 22 22" width="22" height="22" aria-hidden="true" focusable="false">
+            <rect x="0.5" y="0.5" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1"/>
+            <line x1="0" y1="11" x2="22" y2="11" stroke="currentColor" stroke-width="1"/>
+            <line x1="11" y1="0" x2="11" y2="22" stroke="currentColor" stroke-width="1"/>
+            <circle cx="11" cy="11" r="3.2" fill="currentColor"/>
           </svg>
-          Nexus Agents
+          <span class="wordmark-text">
+            <span class="wordmark-display">nexus</span><span class="wordmark-mark">·</span><span class="wordmark-display">agents</span>
+          </span>
         </a>
-        <div class="nav-links">
-          <a href="/nexus-agents/docs/getting-started/installation/">Docs</a>
+        <div class="masthead-meta">
+          <span class="vol">Vol. 2 · No. 79</span>
+          <span class="dot" aria-hidden="true">·</span>
+          <span class="bin">v2.79.3</span>
+        </div>
+        <div class="nav-links" role="navigation">
+          <a href="/nexus-agents/docs/getting-started/installation/">Install</a>
           <a href="/nexus-agents/docs/architecture/readme/">Architecture</a>
-          <a href="/nexus-agents/docs/guides/mcp_integration/">API</a>
-          <a href="https://github.com/nexus-substrate/nexus-agents" target="_blank" rel="noopener noreferrer">GitHub</a>
+          <a href="/nexus-agents/docs/guides/mcp_integration/">Integrate</a>
+          <a href="https://github.com/nexus-substrate/nexus-agents" target="_blank" rel="noopener noreferrer" class="nav-source">Source &nearr;</a>
         </div>
       </div>
+      <hr class="rule-thick masthead-rule" />
     </nav>
 
     <main>
       <slot />
     </main>
 
-    <footer class="site-footer">
-      <p>Nexus Agents &mdash; Intelligent orchestration platform for AI coding tools</p>
-      <p>MIT License</p>
+    <footer class="colophon">
+      <hr class="rule-thick" />
+      <div class="colophon-inner">
+        <div class="colophon-left">
+          <p class="colophon-mark"><strong>NEXUS SUBSTRATE</strong> · Governance substrate for AI coding agents.</p>
+          <p class="colophon-meta">
+            Set in <span class="font-display">Fraunces</span>, <span class="font-body">Source Sans 3</span>, and <span class="font-mono">IBM Plex Mono</span>.
+            MIT licensed. Filed under <a href="https://github.com/nexus-substrate">github.com/nexus-substrate</a>.
+          </p>
+        </div>
+        <div class="colophon-right">
+          <p class="colophon-label">Issue</p>
+          <p class="colophon-issue">2026-05 · Post-migration</p>
+        </div>
+      </div>
     </footer>
 
-    <!-- Progressive enhancement: copy buttons on code blocks. Runs on every page
-         load AND after Astro view transitions. Graceful no-op if clipboard API
-         is unavailable (older browsers, insecure contexts). -->
+    <!-- Copy buttons -->
     <script is:inline>
       (function () {
         function attach() {
           if (!navigator.clipboard) return;
-          document.querySelectorAll('pre.code-block, pre.astro-code').forEach(function (pre) {
+          document.querySelectorAll('pre.code-block, pre.astro-code, pre[data-copy]').forEach(function (pre) {
             if (pre.dataset.copyAttached === '1') return;
             pre.dataset.copyAttached = '1';
             var btn = document.createElement('button');
@@ -125,7 +143,7 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
               var code = pre.querySelector('code');
               var text = code ? code.textContent : pre.textContent;
               navigator.clipboard.writeText(text || '').then(function () {
-                btn.textContent = 'Copied!';
+                btn.textContent = 'Copied';
                 btn.classList.add('copied');
                 setTimeout(function () {
                   btn.textContent = 'Copy';
@@ -142,43 +160,48 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
       })();
     </script>
 
-    <!-- Mermaid renderer: dynamic import so the ~600KB library never enters
-         the critical path. Re-runs after view transitions. Theme is derived
-         from brand tokens so diagrams match the rest of the site. -->
+    <!-- Mermaid: ink-on-paper theme, derived from the same tokens as the rest of the site -->
     <script>
       import type { MermaidConfig } from 'mermaid';
 
-      // Theme variables derived from brand tokens. The two palettes mirror the
-      // site's light/dark theme: primary purple stays constant, but text
-      // colours, edge-label backgrounds, and cluster tints flip so diagrams
-      // stay legible in either mode. Re-initialized when prefers-color-scheme
-      // changes so users get an immediate, correct render on theme switch.
       const LIGHT_VARS = {
-        primaryColor: '#6750A4',
-        primaryTextColor: '#ffffff',
-        primaryBorderColor: '#6750A4',
-        secondaryColor: '#e8def8',
-        secondaryTextColor: '#1c1b1f',
-        tertiaryColor: '#f5eff7',
-        tertiaryTextColor: '#1c1b1f',
-        lineColor: '#79747e',
-        textColor: '#1c1b1f',
-        mainBkg: '#6750A4',
-        secondBkg: '#e8def8',
+        primaryColor: '#1c1715',          // ink
+        primaryTextColor: '#fbf6ed',       // paper
+        primaryBorderColor: '#1c1715',
+        secondaryColor: '#efe9dc',         // paper-deep
+        secondaryTextColor: '#1c1715',
+        tertiaryColor: '#fbf6ed',
+        tertiaryTextColor: '#1c1715',
+        lineColor: '#1c1715',
+        textColor: '#1c1715',
+        mainBkg: '#1c1715',
+        secondBkg: '#efe9dc',
         background: 'transparent',
-        nodeBorder: '#6750A4',
-        clusterBkg: 'rgba(103, 80, 164, 0.06)',
-        clusterBorder: '#6750A4',
-        defaultLinkColor: '#79747e',
-        edgeLabelBackground: '#f5eff7',
+        nodeBorder: '#1c1715',
+        clusterBkg: 'rgba(144, 32, 32, 0.06)',
+        clusterBorder: '#902020',          // register red
+        defaultLinkColor: '#3d2e26',
+        edgeLabelBackground: '#fbf6ed',
         fontSize: '14px',
       } as const;
 
       const DARK_VARS = {
         ...LIGHT_VARS,
-        lineColor: '#938f99',
-        textColor: '#e6e1e9',
-        edgeLabelBackground: '#211f26',
+        primaryColor: '#e3dcce',
+        primaryTextColor: '#1c1715',
+        primaryBorderColor: '#e3dcce',
+        secondaryColor: '#2c2521',
+        secondaryTextColor: '#e3dcce',
+        tertiaryColor: '#221d1a',
+        tertiaryTextColor: '#e3dcce',
+        lineColor: '#bfb6a4',
+        textColor: '#e3dcce',
+        mainBkg: '#e3dcce',
+        secondBkg: '#2c2521',
+        nodeBorder: '#e3dcce',
+        clusterBorder: '#cf6464',
+        defaultLinkColor: '#a89c8a',
+        edgeLabelBackground: '#221d1a',
       } as const;
 
       function buildTheme(isDark: boolean): MermaidConfig {
@@ -186,9 +209,9 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
           startOnLoad: false,
           theme: 'base',
           securityLevel: 'strict',
-          fontFamily: "'Inter', system-ui, sans-serif",
+          fontFamily: "'Source Sans 3', system-ui, sans-serif",
           themeVariables: isDark ? DARK_VARS : LIGHT_VARS,
-          flowchart: { curve: 'basis', padding: 16, useMaxWidth: true },
+          flowchart: { curve: 'linear', padding: 16, useMaxWidth: true, htmlLabels: true },
         };
       }
 
@@ -196,7 +219,6 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
       function currentIsDark(): boolean {
         return window.matchMedia('(prefers-color-scheme: dark)').matches;
       }
-
       function loadMermaid(): Promise<typeof import('mermaid').default> {
         mermaidPromise ??= import('mermaid').then((m) => {
           m.default.initialize(buildTheme(currentIsDark()));
@@ -204,11 +226,8 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
         });
         return mermaidPromise;
       }
-
       async function renderMermaid(): Promise<void> {
-        const blocks = document.querySelectorAll<HTMLElement>(
-          '.mermaid:not([data-mermaid-rendered])'
-        );
+        const blocks = document.querySelectorAll<HTMLElement>('.mermaid:not([data-mermaid-rendered])');
         if (blocks.length === 0) return;
         const mermaid = await loadMermaid();
         for (const block of blocks) {
@@ -220,31 +239,24 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
             block.innerHTML = svg;
             block.dataset.mermaidRendered = '1';
           } catch (err) {
-            block.innerHTML = `<pre class="code-block" style="color:#f87171;">Diagram render failed: ${String(err)}</pre>`;
+            block.innerHTML = `<pre class="code-block" style="color:#902020;">Diagram render failed: ${String(err)}</pre>`;
           }
         }
       }
-
       function resetAndRender(): void {
-        document
-          .querySelectorAll<HTMLElement>('.mermaid[data-mermaid-rendered]')
-          .forEach((el) => {
-            const source = el.dataset.source;
-            if (source !== undefined) {
-              el.textContent = source;
-              delete el.dataset.mermaidRendered;
-            }
-          });
+        document.querySelectorAll<HTMLElement>('.mermaid[data-mermaid-rendered]').forEach((el) => {
+          const source = el.dataset.source;
+          if (source !== undefined) {
+            el.textContent = source;
+            delete el.dataset.mermaidRendered;
+          }
+        });
         void renderMermaid();
       }
-
       renderMermaid();
       document.addEventListener('astro:page-load', resetAndRender);
-
-      // Re-init theme and re-render when the user switches light/dark at the
-      // OS level so diagram contrast flips without a page reload.
       window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-        mermaidPromise = null; // force re-import + re-initialize
+        mermaidPromise = null;
         resetAndRender();
       });
     </script>
@@ -256,98 +268,158 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
 </style>
 
 <style>
-  body {
-    min-height: 100vh;
-    background: var(--color-surface);
-    color: var(--color-on-surface);
-    font-family: var(--font-sans);
-    -webkit-font-smoothing: antialiased;
-    margin: 0;
+  /* ─── Masthead — sits like a newspaper folio above the article ─── */
+  .masthead {
+    background: var(--paper);
+    position: relative;
   }
-
-  .site-nav {
-    position: sticky;
-    top: 0;
-    z-index: 50;
-    border-bottom: 1px solid var(--color-outline-variant);
-    background: var(--color-surface);
-    backdrop-filter: blur(8px);
-  }
-
-  .nav-inner {
-    max-width: 72rem;
+  .masthead-inner {
+    max-width: 78rem;
     margin: 0 auto;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.75rem 1.5rem;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: baseline;
+    gap: 2rem;
+    padding: 1.4rem 1.5rem 0.8rem;
   }
+  .masthead-rule { max-width: 78rem; margin: 0 auto; }
 
-  .nav-logo {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 1.125rem;
-    font-weight: 600;
-    color: var(--color-primary);
+  .wordmark {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.55rem;
     text-decoration: none;
+    color: var(--ink);
   }
+  .wordmark svg { transform: translateY(2px); color: var(--ink); }
+  .wordmark-text {
+    font-family: var(--font-display);
+    font-variation-settings: 'opsz' 24, 'SOFT' 60;
+    font-weight: 600;
+    font-size: 1.4rem;
+    letter-spacing: -0.015em;
+    line-height: 1;
+  }
+  .wordmark-mark { color: var(--register); margin: 0 0.06em; font-weight: 400; }
+
+  .masthead-meta {
+    justify-self: center;
+    display: flex;
+    gap: 0.6rem;
+    align-items: baseline;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    color: var(--ink-soft);
+  }
+  .masthead-meta .vol { font-variant: small-caps; letter-spacing: 0.12em; }
+  .masthead-meta .dot { color: var(--register); }
+  .masthead-meta .bin { color: var(--ink-mid); }
 
   .nav-links {
     display: flex;
-    align-items: center;
-    gap: 1.5rem;
+    align-items: baseline;
+    gap: 1.6rem;
+    font-family: var(--font-body);
+    font-size: 0.84rem;
+    letter-spacing: 0.04em;
+    font-variant: small-caps;
   }
-
   .nav-links a {
-    font-size: 0.875rem;
-    color: var(--color-on-surface-variant);
+    color: var(--ink);
     text-decoration: none;
-    transition: color 200ms;
+    border-bottom: 1px solid transparent;
+    padding-bottom: 0.2rem;
+    transition: border-color 120ms linear;
   }
-  .nav-links a:hover { color: var(--color-primary); }
+  .nav-links a:hover { border-bottom-color: var(--register); }
+  .nav-links a.nav-source { color: var(--ink-soft); }
 
-  .site-footer {
-    border-top: 1px solid var(--color-outline-variant);
-    margin-top: 6rem;
-    padding: 3rem 1.5rem;
-    text-align: center;
-    font-size: 0.875rem;
-    color: var(--color-on-surface-variant);
+  @media (max-width: 760px) {
+    .masthead-inner { grid-template-columns: 1fr; gap: 0.6rem; padding-bottom: 1rem; }
+    .masthead-meta { justify-self: start; }
+    .nav-links { flex-wrap: wrap; gap: 1.2rem; }
   }
-  .site-footer p { margin: 0.25rem 0; }
+
+  /* ─── Colophon footer ─── */
+  .colophon { margin-top: 5rem; background: var(--paper); }
+  .colophon-inner {
+    max-width: 78rem;
+    margin: 0 auto;
+    padding: 2.2rem 1.5rem 3rem;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 2rem;
+    align-items: end;
+  }
+  .colophon-left p { margin: 0; }
+  .colophon-mark {
+    font-family: var(--font-body);
+    font-size: 0.95rem;
+    color: var(--ink);
+    margin-bottom: 0.35rem !important;
+  }
+  .colophon-mark strong { letter-spacing: 0.08em; color: var(--ink); }
+  .colophon-meta {
+    font-family: var(--font-body);
+    font-size: 0.84rem;
+    color: var(--ink-soft);
+    line-height: 1.55;
+  }
+  .colophon-meta a { color: var(--ink); text-decoration: underline; text-decoration-color: var(--register); text-underline-offset: 3px; }
+  .font-display { font-family: var(--font-display); font-style: italic; }
+  .font-body { font-family: var(--font-body); font-weight: 600; }
+  .font-mono { font-family: var(--font-mono); font-size: 0.95em; }
+
+  .colophon-right { text-align: right; font-family: var(--font-mono); }
+  .colophon-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--register);
+    margin: 0 0 0.2rem !important;
+  }
+  .colophon-issue {
+    font-size: 0.82rem;
+    color: var(--ink-mid);
+    margin: 0 !important;
+  }
+
+  @media (max-width: 640px) {
+    .colophon-inner { grid-template-columns: 1fr; }
+    .colophon-right { text-align: left; }
+  }
 </style>
 
 <style is:global>
-  /* Copy-code button — global so it styles code blocks inside
-     dynamically-rendered markdown pages (docs route). */
+  /* Copy button — minimal, ferric on hover. Used by docs prose + code-block components. */
   .copy-btn {
     position: absolute;
-    top: 0.5rem;
-    right: 0.5rem;
-    padding: 0.25rem 0.75rem;
-    font-size: 0.75rem;
+    top: 0.45rem;
+    right: 0.45rem;
+    padding: 0.18rem 0.6rem;
+    font-size: 0.7rem;
     font-weight: 500;
-    border-radius: 0.375rem;
-    border: 1px solid var(--color-outline-variant);
-    background: var(--color-surface);
-    color: var(--color-on-surface-variant);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    border-radius: 0;
+    border: 1px solid var(--rule);
+    background: var(--paper);
+    color: var(--ink-mid);
     cursor: pointer;
     opacity: 0;
-    transition: opacity 150ms, border-color 150ms, color 150ms;
-    font-family: var(--font-sans);
+    transition: opacity 120ms linear, border-color 120ms, color 120ms;
+    font-family: var(--font-mono);
   }
   pre:hover .copy-btn,
-  .copy-btn:focus-visible {
-    opacity: 1;
-  }
+  .copy-btn:focus-visible { opacity: 1; }
   .copy-btn:hover {
-    border-color: var(--color-primary);
-    color: var(--color-primary);
+    border-color: var(--register);
+    color: var(--register);
   }
   .copy-btn.copied {
-    border-color: var(--color-primary);
-    color: var(--color-primary);
+    border-color: var(--mark);
+    color: var(--mark);
     opacity: 1;
   }
 </style>
