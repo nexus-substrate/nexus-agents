@@ -127,6 +127,9 @@ Detailed technical documentation:
 
 ### Tier 3: Supporting (Reference as Needed)
 
+<details>
+<summary><strong>For maintainers — ADRs, V2 architecture artifacts, design proposals</strong> (expand if you're editing the codebase)</summary>
+
 #### Architecture Decision Records (ADRs)
 
 | ADR                                                      | Title                              | Status     |
@@ -239,6 +242,8 @@ _No active plan documents. Historical plans have been archived._
 | Document                                                                   | Description        | Status   |
 | -------------------------------------------------------------------------- | ------------------ | -------- |
 | [cli-pr-review-workflow.md](./archive/proposals/cli-pr-review-workflow.md) | PR review workflow | Archived |
+
+</details>
 
 #### Workflows
 
