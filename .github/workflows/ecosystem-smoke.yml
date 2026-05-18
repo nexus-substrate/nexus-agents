@@ -2,7 +2,15 @@ name: Ecosystem Smoke
 
 # Weekly smoke-test the nexus-agents-test topic-tagged repos to catch
 # regressions in our public API contract. Discovers target repos via
-# GitHub topic search — no hard-coded list to keep in sync.
+# GitHub topic search across one or more owners.
+#
+# Why multi-owner: the May 2026 org migration moved the core repos
+# (nexus-agents, nexus-toolkit, nexus-eval-*) to nexus-substrate but
+# left the test/demo repos (model-showdown, research-to-action,
+# workflow-runner, routing-oracle, spec-factory, issue-sentinel,
+# memory-bench, pipeline-eval) on the personal account. Searching only
+# `${{ github.repository_owner }}` would return at most one row
+# (nexus-toolkit) and silently degrade this gate. See #2838.
 #
 # On failure, auto-files an issue with the failing repo for triage.
 
@@ -11,10 +19,18 @@ on:
     - cron: '37 7 * * 1' # Mondays 7:37 UTC (off-minute per CLAUDE.md)
   workflow_dispatch:
     inputs:
+      owners:
+        description: 'Comma-separated GitHub owners to scan (defaults cover post-migration split)'
+        required: false
+        default: 'nexus-substrate,williamzujkowski'
       repo_filter:
         description: 'Filter to specific repo (substring match)'
         required: false
         default: ''
+      min_repos:
+        description: 'Sanity floor — fail discover if fewer repos than this resolve (catches silent degradation)'
+        required: false
+        default: '5'
 
 permissions:
   contents: read
@@ -26,38 +42,70 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     outputs:
-      repos: ${{ steps.list.outputs.repos }}
+      targets: ${{ steps.list.outputs.targets }}
     steps:
-      - name: List nexus-agents-test repos
+      - name: List nexus-agents-test repos across owners
         id: list
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OWNERS: ${{ inputs.owners || 'nexus-substrate,williamzujkowski' }}
           FILTER: ${{ inputs.repo_filter }}
+          MIN_REPOS: ${{ inputs.min_repos || '5' }}
         run: |
           set -euo pipefail
-          repos=$(gh search repos --owner ${{ github.repository_owner }} --topic nexus-agents-test \
-            --json name --jq '[.[].name]')
+
+          # Accumulator: array of {owner, name} pairs.
+          targets='[]'
+
+          IFS=',' read -ra OWNER_LIST <<< "$OWNERS"
+          for owner in "${OWNER_LIST[@]}"; do
+            owner=$(echo "$owner" | xargs)  # trim whitespace
+            [[ -z "$owner" ]] && continue
+
+            echo "Searching owner=$owner topic=nexus-agents-test..."
+            owner_repos=$(gh search repos --owner "$owner" --topic nexus-agents-test \
+              --json name --jq '[.[].name]')
+
+            # Merge: append {owner, name} for each result into accumulator.
+            targets=$(jq --argjson acc "$targets" --arg owner "$owner" \
+              '$acc + (. | map({owner: $owner, name: .}))' <<< "$owner_repos")
+          done
+
+          # Optional substring filter on .name (preserves owner).
           if [[ -n "$FILTER" ]]; then
-            repos=$(echo "$repos" | jq --arg f "$FILTER" '[.[] | select(contains($f))]')
+            targets=$(echo "$targets" | jq --arg f "$FILTER" '[.[] | select(.name | contains($f))]')
           fi
-          echo "Repos: $repos"
-          echo "repos=$repos" >> "$GITHUB_OUTPUT"
+
+          count=$(echo "$targets" | jq 'length')
+          echo "Resolved $count target(s):"
+          echo "$targets" | jq -r '.[] | "  \(.owner)/\(.name)"'
+
+          # Sanity floor — if a workflow update silently empties the matrix,
+          # fail loudly here instead of running zero smokes and reporting green.
+          if (( count < MIN_REPOS )); then
+            echo "::error::Resolved $count repo(s), below sanity floor of $MIN_REPOS."
+            echo "::error::Check the owners list (\`$OWNERS\`) and that the nexus-agents-test topic"
+            echo "::error::is still attached to the expected repos. See #2838 for the historical context."
+            exit 1
+          fi
+
+          echo "targets=$targets" >> "$GITHUB_OUTPUT"
 
   smoke:
-    name: Smoke — ${{ matrix.repo }}
+    name: Smoke — ${{ matrix.target.owner }}/${{ matrix.target.name }}
     needs: discover
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    if: ${{ needs.discover.outputs.repos != '[]' }}
+    if: ${{ needs.discover.outputs.targets != '[]' }}
     strategy:
       fail-fast: false
       matrix:
-        repo: ${{ fromJson(needs.discover.outputs.repos) }}
+        target: ${{ fromJson(needs.discover.outputs.targets) }}
     steps:
-      - name: Checkout ${{ matrix.repo }}
+      - name: Checkout ${{ matrix.target.owner }}/${{ matrix.target.name }}
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
-          repository: ${{ github.repository_owner }}/${{ matrix.repo }}
+          repository: ${{ matrix.target.owner }}/${{ matrix.target.name }}
           path: target
           persist-credentials: false
 
@@ -147,9 +195,11 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         with:
           script: |
-            const repo = '${{ matrix.repo }}';
+            const owner = '${{ matrix.target.owner }}';
+            const repo = '${{ matrix.target.name }}';
+            const slug = `${owner}/${repo}`;
             const run = '${{ github.run_id }}';
-            const title = `ecosystem-smoke: ${repo} failed`;
+            const title = `ecosystem-smoke: ${slug} failed`;
             // Dedupe: skip if open issue exists for this repo
             const existing = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
@@ -168,12 +218,12 @@ jobs:
               title,
               labels: ['discovered', 'ecosystem-smoke'],
               body: [
-                `Ecosystem smoke test failed for \`${{ github.repository_owner }}/${repo}\`.`,
+                `Ecosystem smoke test failed for \`${slug}\`.`,
                 ``,
                 `Run: https://github.com/${{ github.repository }}/actions/runs/${run}`,
                 ``,
                 `**Why this matters**: ${repo} is tagged \`nexus-agents-test\` — it exercises our MCP tool contracts. A failure here suggests a regression in the nexus-agents public API.`,
                 ``,
-                `**Next steps**: clone the repo, reproduce locally, decide whether the fix belongs in nexus-agents or the test repo.`,
+                `**Next steps**: clone the repo, reproduce locally, decide whether the fix belongs in nexus-agents or the target repo.`,
               ].join('\n'),
             });
