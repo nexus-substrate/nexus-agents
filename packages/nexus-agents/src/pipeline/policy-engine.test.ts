@@ -188,4 +188,60 @@ describe('PolicyEngine', () => {
       expect(result?.allow).toBe(true);
     });
   });
+
+  // Audit #2824: trustTier producers (issue-triage, pr-reviewer, secure-handler)
+  // write the tier as a string per trust-types.ts (TrustTier = '1' | '2' | '3' |
+  // '4'). The earlier number-only coercion silently inerted the rule for every
+  // real call site. These tests pin the string-acceptance + invalid-input
+  // shape so a future revert can't re-inert the gate.
+  describe('trust-tier rule (string-tier coercion regression)', () => {
+    const trustTierRule = BUILT_IN_RULES.find((r) => r.id === 'trust-tier');
+
+    it('blocks execute stage when trustTier is the string "3"', () => {
+      expect(trustTierRule).toBeDefined();
+      const result = trustTierRule?.evaluate(
+        makeContext({ stageType: 'execute', pipelineState: { trustTier: '3' } })
+      );
+      expect(result?.allow).toBe(false);
+      // Narrow to the deny variant before asserting escalateTo
+      if (result && !result.allow) {
+        expect(result.escalateTo).toBe('user');
+      }
+    });
+
+    it('blocks execute stage when trustTier is the string "4"', () => {
+      const result = trustTierRule?.evaluate(
+        makeContext({ stageType: 'execute', pipelineState: { trustTier: '4' } })
+      );
+      expect(result?.allow).toBe(false);
+    });
+
+    it('allows execute stage when trustTier is the string "1" or "2"', () => {
+      for (const tier of ['1', '2'] as const) {
+        const result = trustTierRule?.evaluate(
+          makeContext({ stageType: 'execute', pipelineState: { trustTier: tier } })
+        );
+        expect(result?.allow).toBe(true);
+      }
+    });
+
+    it('still blocks when trustTier is the number 3 (backward compat)', () => {
+      const result = trustTierRule?.evaluate(
+        makeContext({ stageType: 'execute', pipelineState: { trustTier: 3 } })
+      );
+      expect(result?.allow).toBe(false);
+    });
+
+    it('allows when trustTier is malformed (non-numeric string, object, null)', () => {
+      for (const tier of ['abc', {}, null, undefined] as const) {
+        const result = trustTierRule?.evaluate(
+          makeContext({
+            stageType: 'execute',
+            pipelineState: tier === undefined ? {} : { trustTier: tier },
+          })
+        );
+        expect(result?.allow).toBe(true);
+      }
+    });
+  });
 });

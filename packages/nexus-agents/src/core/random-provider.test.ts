@@ -103,11 +103,13 @@ describe('random-provider', () => {
       expect(provider.shuffle([42])).toEqual([42]);
     });
 
-    it('uuid() returns valid UUID v4 format', () => {
+    it('uuid() returns valid UUID v4 format with correct variant nibble', () => {
       const provider = new SystemRandomProvider();
       const uuid = provider.uuid();
-      // UUID v4 format with version 4 in position 13
-      expect(uuid).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+      // Strict RFC 4122 v4 — version nibble must be 4, variant nibble must
+      // be one of 8/9/a/b. The previous hand-rolled impl left the variant
+      // nibble unconstrained. Audit #2824.
+      expect(uuid).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
     });
 
     it('uuid() generates unique values', () => {
@@ -179,6 +181,19 @@ describe('random-provider', () => {
       const provider2 = new SeededRandomProvider(111);
 
       expect(provider1.shuffle(items)).toEqual(provider2.shuffle(items));
+    });
+
+    it('uuid() returns valid UUID v4 with correct variant nibble', () => {
+      const provider = new SeededRandomProvider(42);
+      // Validate 100 generated UUIDs all satisfy strict RFC 4122 v4 (version
+      // + variant nibbles). Audit #2824 — the seeded provider must hold the
+      // same spec compliance as the system provider.
+      for (let i = 0; i < 100; i++) {
+        const uuid = provider.uuid();
+        expect(uuid).toMatch(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+        );
+      }
     });
 
     it('uuid() is deterministic with seed', () => {

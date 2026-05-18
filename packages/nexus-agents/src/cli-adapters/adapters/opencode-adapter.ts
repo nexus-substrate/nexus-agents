@@ -239,9 +239,10 @@ export class OpenCodeCliAdapter extends SubprocessCliAdapter {
 
   /**
    * (#2540) Lists models the local OpenCode installation can route to.
-   * Wraps the existing `probeAvailableModels()` (already 5-min cached)
-   * and reshapes the result into the CliModelInfo schema. Splits
-   * `provider/model` ids when present.
+   * Wraps the existing `probeAvailableModels()` (cached for the process
+   * lifetime — see `cachedModels` at the top of this file) and reshapes
+   * the result into the CliModelInfo schema. Splits `provider/model` ids
+   * when present.
    */
   async listModels(): Promise<readonly CliModelInfo[]> {
     const ids = await probeAvailableModels();
