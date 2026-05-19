@@ -169,8 +169,13 @@ export function handleExpertFailure(
   });
   const durationSec = Math.round(durationMs / 1000);
   const model = expert.modelId ?? 'default';
+  // The "MCP error -32001: Request timed out" string comes from the client-side
+  // SDK aborting the request, not from our server-side budget. Most MCP clients
+  // default to 60s and don't honor server-side progress extensions, so a 300-900s
+  // server budget is unreachable. Telling the caller to "omit timeoutMs" doesn't
+  // help — that knob is on our side of the transport. See #2631.
   const timeoutHint = errorMsg.includes('timed out')
-    ? ' Hint: omit timeoutMs to use auto-detected timeout (300-600s).'
+    ? ` Hint: client MCP timed out at ${String(durationSec)}s (typically the 60s SDK default). Server budget can be 300-900s but most clients don't honor progress extensions — see #2631. Workaround: use a client with longer default (Claude Desktop, mcp-inspector --timeout) or shorten the task.`
     : '';
   return {
     ok: false,
