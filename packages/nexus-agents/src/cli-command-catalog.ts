@@ -159,6 +159,12 @@ export const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
     audience: 'advanced',
   },
   {
+    command: 'migrate',
+    description:
+      'Relocate homedir state (sessions, checkpoints, traces, runs, audit, pipeline, tasks) into <repo>/.nexus-agents/ for users adopting NEXUS_REPO_PREFERRED=1. Cross-repo state stays homedir. --dry-run for a no-op plan. Epic #2872.',
+    audience: 'advanced',
+  },
+  {
     command: 'review',
     description: 'Review a GitHub PR (dogfooding helper)',
     audience: 'advanced',
