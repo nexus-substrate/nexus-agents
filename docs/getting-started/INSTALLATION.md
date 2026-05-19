@@ -528,6 +528,6 @@ sudo usermod -aG docker $USER
 ## Related Documentation
 
 - [Configuration](./CONFIGURATION.md) - Set up models, experts, and routing
-- [Sandboxed Usage](./SANDBOXED-USAGE.md) - Docker / restricted-FS / team-distribution flows
+- [Sandboxed Usage](../guides/SANDBOXED-USAGE.md) - Docker / restricted-FS / team-distribution flows
 - [Quick Start](../../QUICK_START.md) - Try your first orchestration
 - [CLI Usage](../ENTRYPOINTS.md) - Learn all CLI commands
