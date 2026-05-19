@@ -86,3 +86,4 @@ tsundoku/
 
 # Ephemeral worktrees from agent runs
 .claude/worktrees/
+.nexus-agents/

@@ -20,25 +20,31 @@
  *    `${NEXUS_SANDBOX_ROOT ?? '/'}/.nexus-agents`. Sandboxed deployments
  *    typically mount a multi-repo root; state goes there, shared across
  *    repo subfolders rather than buried inside one.
- * 3. Per-repo subdirs (when `NEXUS_REPO_PREFERRED=1` is set AND
- *    `findRepoRoot(cwd)` succeeds): `<repo-root>/.nexus-agents/<subdir>/`.
- * 4. `<homedir>/.nexus-agents` (default for both categories without
- *    NEXUS_REPO_PREFERRED, and cross-repo state always).
+ * 3. Per-repo subdirs (when `findRepoRoot(cwd)` succeeds AND
+ *    `NEXUS_REPO_PREFERRED` is not explicitly `'0'`):
+ *    `<repo-root>/.nexus-agents/<subdir>/`. Auto-adds `.nexus-agents/`
+ *    to the repo's `.gitignore` on first resolution (fail-closed).
+ * 4. `<homedir>/.nexus-agents` (cross-repo state, plus everything when
+ *    not in a git repo or when `NEXUS_REPO_PREFERRED=0`).
  *
- * `NEXUS_REPO_PREFERRED` defaults OFF in this release — the new tier is
- * opt-in so users with months of homedir state aren't silently orphaned.
- * `nexus-agents migrate` (#2879) is the explicit path to relocate state
- * before flipping the flag. A follow-up minor release will flip the
- * default per the vote ratification.
+ * `NEXUS_REPO_PREFERRED` defaults **ON** as of this release per vote
+ * #2876. Escape hatches preserved:
+ *   - `NEXUS_REPO_PREFERRED=0` — fully opt out (homedir for everything).
+ *   - `NEXUS_DATA_DIR=~/.nexus-agents` — explicit override wins over
+ *     the tier and the categorization both.
+ *   - `nexus-agents migrate` (#2879) — relocate existing homedir state
+ *     into `<repo>/.nexus-agents/` before flipping in production.
  *
  * @module config/nexus-data-dir
  */
 
+import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 import { detectSandbox } from './sandbox-detection.js';
 import { findRepoRoot } from './repo-root-detection.js';
+import { ensureGitignored } from './portable-mode.js';
 
 /**
  * Subdirs scoped to a single repo's work (per the epic #2872 vote).
@@ -86,22 +92,58 @@ export function resetNexusDataDirCache(): void {
 }
 
 /**
+ * Tracks per-process state for the auto-gitignore wiring: we only need
+ * to (a) probe + append to `.gitignore` once per repo, and (b) bail
+ * cleanly if the operator has explicitly silenced the auto-add via
+ * `NEXUS_GITIGNORE_AUTO=0`. Reset in tests via the helper below.
+ */
+const gitignoredRoots = new Set<string>();
+
+/** Test helper — clears the auto-gitignore "already did this" memo. */
+export function _resetGitignoreMemoForTests(): void {
+  gitignoredRoots.clear();
+}
+
+/**
  * Returns the repo-scoped `.nexus-agents/` directory if all of the
- * following hold: `NEXUS_REPO_PREFERRED=1` is set, `NEXUS_DATA_DIR` is
- * NOT explicitly set (explicit override always wins), no sandbox is
- * active, and `findRepoRoot(cwd)` finds an ancestor `.git`.
+ * following hold: `NEXUS_REPO_PREFERRED` is NOT explicitly `'0'` (it
+ * defaults ON as of vote #2876), `NEXUS_DATA_DIR` is not explicitly set
+ * (explicit override always wins), no sandbox is active, and
+ * `findRepoRoot(cwd)` finds an ancestor `.git`.
  *
- * Otherwise returns `null` and callers should fall back to the homedir
- * resolution (i.e. `getNexusDataDir()`).
+ * Side effect: on the first successful resolution per process per repo,
+ * appends `.nexus-agents/` to the repo's `.gitignore` if not already
+ * present. The operator can silence this with `NEXUS_GITIGNORE_AUTO=0`
+ * (e.g. on CI runners with a frozen working tree).
+ *
+ * Returns `null` when any precondition fails; callers fall back to
+ * `getNexusDataDir()` (homedir).
  */
 export function getNexusRepoDir(): string | null {
-  if (process.env['NEXUS_REPO_PREFERRED'] !== '1') return null;
+  if (process.env['NEXUS_REPO_PREFERRED'] === '0') return null;
   const fromEnv = process.env['NEXUS_DATA_DIR']?.trim();
   if (fromEnv !== undefined && fromEnv !== '') return null;
   if (detectSandbox().active) return null;
   const root = findRepoRoot(process.cwd());
   if (root === null) return null;
+  maybeAutoGitignore(root);
   return join(root, '.nexus-agents');
+}
+
+/**
+ * Best-effort fail-closed wiring: once per process per repo, ensure
+ * `.nexus-agents/` is in `<repo>/.gitignore`. Silenced via
+ * `NEXUS_GITIGNORE_AUTO=0`. Failures are non-fatal — the helper logs
+ * to stderr and continues.
+ */
+function maybeAutoGitignore(repoRoot: string): void {
+  if (process.env['NEXUS_GITIGNORE_AUTO'] === '0') return;
+  if (gitignoredRoots.has(repoRoot)) return;
+  gitignoredRoots.add(repoRoot);
+  // Only attempt when the repo root looks real — avoid spamming stderr
+  // from temp-dir test fixtures that race the lifecycle.
+  if (!existsSync(repoRoot)) return;
+  ensureGitignored(repoRoot, '.nexus-agents/');
 }
 
 /**
