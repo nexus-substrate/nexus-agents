@@ -105,16 +105,24 @@ describe('getNexusDataDir', () => {
 
 describe('nexusDataPath', () => {
   let originalEnv: string | undefined;
+  let originalRepoPreferred: string | undefined;
 
   beforeEach(() => {
     originalEnv = process.env['NEXUS_DATA_DIR'];
+    originalRepoPreferred = process.env['NEXUS_REPO_PREFERRED'];
     delete process.env['NEXUS_DATA_DIR'];
+    // This block tests the homedir base — disable the now-default
+    // repo-preferred tier so per-repo subdir names ('audit') still
+    // resolve to homedir. Vote #2876 flipped the default to ON.
+    process.env['NEXUS_REPO_PREFERRED'] = '0';
     resetNexusDataDirCache();
   });
 
   afterEach(() => {
     if (originalEnv === undefined) delete process.env['NEXUS_DATA_DIR'];
     else process.env['NEXUS_DATA_DIR'] = originalEnv;
+    if (originalRepoPreferred === undefined) delete process.env['NEXUS_REPO_PREFERRED'];
+    else process.env['NEXUS_REPO_PREFERRED'] = originalRepoPreferred;
     resetNexusDataDirCache();
   });
 
@@ -139,11 +147,12 @@ describe('nexusDataPath', () => {
 // category split per vote #2876 — per-repo subdirs (sessions, checkpoints,
 // traces, runs, audit, pipeline, tasks) route to <repo>/.nexus-agents/
 // when NEXUS_REPO_PREFERRED=1; cross-repo subdirs always go to homedir.
-describe('NEXUS_REPO_PREFERRED routing (epic #2872, issue #2882)', () => {
+describe('NEXUS_REPO_PREFERRED routing (epic #2872, default-ON via vote #2876)', () => {
   let originalCwd: string;
   let originalNexusDataDir: string | undefined;
   let originalRepoPreferred: string | undefined;
   let originalSandbox: string | undefined;
+  let originalGitignoreAuto: string | undefined;
   let tempRepo: string;
 
   beforeEach(async () => {
@@ -151,14 +160,21 @@ describe('NEXUS_REPO_PREFERRED routing (epic #2872, issue #2882)', () => {
     originalNexusDataDir = process.env['NEXUS_DATA_DIR'];
     originalRepoPreferred = process.env['NEXUS_REPO_PREFERRED'];
     originalSandbox = process.env['NEXUS_SANDBOX'];
+    originalGitignoreAuto = process.env['NEXUS_GITIGNORE_AUTO'];
     delete process.env['NEXUS_DATA_DIR'];
     delete process.env['NEXUS_REPO_PREFERRED'];
     delete process.env['NEXUS_SANDBOX'];
+    // Silence the auto-gitignore side-effect by default — tests that want
+    // to exercise it re-enable per-test.
+    process.env['NEXUS_GITIGNORE_AUTO'] = '0';
 
     const { mkdtempSync, mkdirSync } = await import('node:fs');
     const { tmpdir } = await import('node:os');
     tempRepo = mkdtempSync(join(tmpdir(), 'nexus-repo-preferred-'));
     mkdirSync(join(tempRepo, '.git'));
+
+    const { _resetGitignoreMemoForTests } = await import('./nexus-data-dir.js');
+    _resetGitignoreMemoForTests();
   });
 
   afterEach(async () => {
@@ -169,31 +185,32 @@ describe('NEXUS_REPO_PREFERRED routing (epic #2872, issue #2882)', () => {
     else process.env['NEXUS_REPO_PREFERRED'] = originalRepoPreferred;
     if (originalSandbox === undefined) delete process.env['NEXUS_SANDBOX'];
     else process.env['NEXUS_SANDBOX'] = originalSandbox;
+    if (originalGitignoreAuto === undefined) delete process.env['NEXUS_GITIGNORE_AUTO'];
+    else process.env['NEXUS_GITIGNORE_AUTO'] = originalGitignoreAuto;
     const { rmSync } = await import('node:fs');
     rmSync(tempRepo, { recursive: true, force: true });
   });
 
-  it('returns null from getNexusRepoDir when NEXUS_REPO_PREFERRED is unset', async () => {
+  it('returns <repo>/.nexus-agents from getNexusRepoDir by default (no env set) inside a repo', async () => {
     const { getNexusRepoDir } = await import('./nexus-data-dir.js');
-    process.chdir(tempRepo);
-    expect(getNexusRepoDir()).toBe(null);
-  });
-
-  it('returns <repo>/.nexus-agents from getNexusRepoDir when enabled inside a repo', async () => {
-    const { getNexusRepoDir } = await import('./nexus-data-dir.js');
-    process.env['NEXUS_REPO_PREFERRED'] = '1';
     process.chdir(tempRepo);
     const { realpathSync } = await import('node:fs');
     expect(getNexusRepoDir()).toBe(join(realpathSync(tempRepo), '.nexus-agents'));
   });
 
-  it('returns null when enabled but cwd is not in a repo', async () => {
+  it('returns null when NEXUS_REPO_PREFERRED=0 (explicit opt-out, even inside a repo)', async () => {
+    const { getNexusRepoDir } = await import('./nexus-data-dir.js');
+    process.env['NEXUS_REPO_PREFERRED'] = '0';
+    process.chdir(tempRepo);
+    expect(getNexusRepoDir()).toBe(null);
+  });
+
+  it('returns null when cwd is not in a repo (homedir fallback)', async () => {
     const { getNexusRepoDir } = await import('./nexus-data-dir.js');
     const { mkdtempSync, rmSync } = await import('node:fs');
     const { tmpdir } = await import('node:os');
     const nonRepo = mkdtempSync(join(tmpdir(), 'nexus-no-repo-'));
     try {
-      process.env['NEXUS_REPO_PREFERRED'] = '1';
       process.chdir(nonRepo);
       expect(getNexusRepoDir()).toBe(null);
     } finally {
@@ -202,17 +219,15 @@ describe('NEXUS_REPO_PREFERRED routing (epic #2872, issue #2882)', () => {
     }
   });
 
-  it('NEXUS_DATA_DIR explicit override wins over NEXUS_REPO_PREFERRED', async () => {
+  it('NEXUS_DATA_DIR explicit override wins over the repo-preferred default', async () => {
     const { getNexusRepoDir } = await import('./nexus-data-dir.js');
-    process.env['NEXUS_REPO_PREFERRED'] = '1';
     process.env['NEXUS_DATA_DIR'] = '/tmp/explicit-override';
     process.chdir(tempRepo);
     expect(getNexusRepoDir()).toBe(null);
   });
 
-  it('routes per-repo subdir (sessions) to <repo> when enabled', async () => {
+  it('routes per-repo subdir (sessions) to <repo> by default inside a repo', async () => {
     const { nexusDataPath } = await import('./nexus-data-dir.js');
-    process.env['NEXUS_REPO_PREFERRED'] = '1';
     process.chdir(tempRepo);
     const { realpathSync } = await import('node:fs');
     expect(nexusDataPath('sessions', 'journal-x.jsonl')).toBe(
@@ -220,9 +235,8 @@ describe('NEXUS_REPO_PREFERRED routing (epic #2872, issue #2882)', () => {
     );
   });
 
-  it('routes cross-repo subdir (learning) to homedir even when enabled inside a repo', async () => {
+  it('routes cross-repo subdir (learning) to homedir even by default', async () => {
     const { nexusDataPath } = await import('./nexus-data-dir.js');
-    process.env['NEXUS_REPO_PREFERRED'] = '1';
     process.chdir(tempRepo);
     expect(nexusDataPath('learning', 'outcomes.jsonl')).toBe(
       join(homedir(), '.nexus-agents', 'learning', 'outcomes.jsonl')
@@ -231,7 +245,6 @@ describe('NEXUS_REPO_PREFERRED routing (epic #2872, issue #2882)', () => {
 
   it('routes every cross-repo subdir to homedir (regression guard)', async () => {
     const { nexusDataPath } = await import('./nexus-data-dir.js');
-    process.env['NEXUS_REPO_PREFERRED'] = '1';
     process.chdir(tempRepo);
     for (const subdir of ['learning', 'voting', 'memory', 'weather', 'research', 'auth', 'usage']) {
       expect(nexusDataPath(subdir, 'x.json')).toBe(
@@ -242,7 +255,6 @@ describe('NEXUS_REPO_PREFERRED routing (epic #2872, issue #2882)', () => {
 
   it('routes every per-repo subdir to the repo (regression guard)', async () => {
     const { nexusDataPath } = await import('./nexus-data-dir.js');
-    process.env['NEXUS_REPO_PREFERRED'] = '1';
     process.chdir(tempRepo);
     const { realpathSync } = await import('node:fs');
     const repoBase = join(realpathSync(tempRepo), '.nexus-agents');
@@ -259,17 +271,48 @@ describe('NEXUS_REPO_PREFERRED routing (epic #2872, issue #2882)', () => {
     }
   });
 
-  it('routes per-repo subdir to HOMEDIR when NEXUS_REPO_PREFERRED is unset (backward compat)', async () => {
+  it('routes per-repo subdir to HOMEDIR when NEXUS_REPO_PREFERRED=0 (opt-out)', async () => {
     const { nexusDataPath } = await import('./nexus-data-dir.js');
+    process.env['NEXUS_REPO_PREFERRED'] = '0';
     process.chdir(tempRepo);
     expect(nexusDataPath('sessions', 'foo.jsonl')).toBe(
       join(homedir(), '.nexus-agents', 'sessions', 'foo.jsonl')
     );
   });
 
+  it('auto-appends .nexus-agents/ to <repo>/.gitignore on first resolution', async () => {
+    const { getNexusRepoDir } = await import('./nexus-data-dir.js');
+    const { readFileSync } = await import('node:fs');
+    // Re-enable the auto-gitignore side-effect for this test only.
+    delete process.env['NEXUS_GITIGNORE_AUTO'];
+    process.chdir(tempRepo);
+    expect(getNexusRepoDir()).not.toBe(null);
+    const ignoreContents = readFileSync(join(tempRepo, '.gitignore'), 'utf-8');
+    expect(ignoreContents).toContain('.nexus-agents/');
+  });
+
+  it('honors NEXUS_GITIGNORE_AUTO=0 — does not create .gitignore even when resolving', async () => {
+    const { getNexusRepoDir } = await import('./nexus-data-dir.js');
+    const { existsSync } = await import('node:fs');
+    process.env['NEXUS_GITIGNORE_AUTO'] = '0';
+    process.chdir(tempRepo);
+    expect(getNexusRepoDir()).not.toBe(null);
+    expect(existsSync(join(tempRepo, '.gitignore'))).toBe(false);
+  });
+
+  it('does not duplicate .nexus-agents/ in an existing .gitignore (idempotent)', async () => {
+    const { getNexusRepoDir } = await import('./nexus-data-dir.js');
+    const { writeFileSync, readFileSync } = await import('node:fs');
+    delete process.env['NEXUS_GITIGNORE_AUTO'];
+    writeFileSync(join(tempRepo, '.gitignore'), 'node_modules/\n.nexus-agents/\n', 'utf-8');
+    process.chdir(tempRepo);
+    expect(getNexusRepoDir()).not.toBe(null);
+    const lines = readFileSync(join(tempRepo, '.gitignore'), 'utf-8').split('\n').filter(Boolean);
+    expect(lines.filter((l) => l === '.nexus-agents/')).toHaveLength(1);
+  });
+
   it('nexusSharedPath always returns homedir even for per-repo subdir names', async () => {
     const { nexusSharedPath } = await import('./nexus-data-dir.js');
-    process.env['NEXUS_REPO_PREFERRED'] = '1';
     process.chdir(tempRepo);
     expect(nexusSharedPath('sessions', 'foo.jsonl')).toBe(
       join(homedir(), '.nexus-agents', 'sessions', 'foo.jsonl')
@@ -281,7 +324,6 @@ describe('NEXUS_REPO_PREFERRED routing (epic #2872, issue #2882)', () => {
     const { mkdirSync, realpathSync } = await import('node:fs');
     const deep = join(tempRepo, 'src', 'feature');
     mkdirSync(deep, { recursive: true });
-    process.env['NEXUS_REPO_PREFERRED'] = '1';
     process.chdir(deep);
     expect(nexusDataPath('runs', 'r1.jsonl')).toBe(
       join(realpathSync(tempRepo), '.nexus-agents', 'runs', 'r1.jsonl')

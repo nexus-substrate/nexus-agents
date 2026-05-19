@@ -155,9 +155,11 @@ function isInsideGitRepo(cwd: string): boolean {
 
 /**
  * Append `entry` to `<cwd>/.gitignore` if not already present. Stderr
- * announce on the first append.
+ * announce on the first append. Exported because the repo-preferred
+ * resolver in `nexus-data-dir.ts` reuses the same auto-gitignore behavior
+ * when `<repo>/.nexus-agents/` becomes the active data dir (epic #2872).
  */
-function ensureGitignored(cwd: string, entry: string): void {
+export function ensureGitignored(cwd: string, entry: string): void {
   const path = join(cwd, '.gitignore');
   try {
     const existing = existsSync(path) ? readFileSync(path, 'utf-8') : '';
