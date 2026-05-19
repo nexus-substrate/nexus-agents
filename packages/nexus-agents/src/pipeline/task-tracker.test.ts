@@ -66,4 +66,22 @@ describe('JsonTaskTracker', () => {
 
     fs.rmSync(dir, { recursive: true, force: true });
   });
+
+  // Epic #2872: the JSON tracker default must land under getNexusDataDir(),
+  // not the historical hardcoded '.nexus-pipeline/' at cwd.
+  it('defaults outputDir to getNexusDataDir()/pipeline when not provided', async () => {
+    const tempDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexus-tracker-default-'));
+    const prev = process.env['NEXUS_DATA_DIR'];
+    process.env['NEXUS_DATA_DIR'] = tempDataDir;
+    try {
+      const tracker = createTaskTracker({ backend: 'json' });
+      await tracker.createTask('Default-path test', 'Body');
+      const expected = path.join(tempDataDir, 'pipeline', 'tasks.json');
+      expect(fs.existsSync(expected)).toBe(true);
+    } finally {
+      if (prev === undefined) delete process.env['NEXUS_DATA_DIR'];
+      else process.env['NEXUS_DATA_DIR'] = prev;
+      fs.rmSync(tempDataDir, { recursive: true, force: true });
+    }
+  });
 });

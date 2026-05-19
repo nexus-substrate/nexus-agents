@@ -9,6 +9,7 @@
  */
 
 import { createLogger } from '../core/index.js';
+import { nexusDataPath } from '../config/nexus-data-dir.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
@@ -158,7 +159,9 @@ class JsonTaskTracker implements ITaskTracker {
   private readonly outputPath: string;
 
   constructor(config: TaskTrackerConfig) {
-    const dir = config.outputDir ?? '.nexus-pipeline';
+    // Default lands under getNexusDataDir()/pipeline so the JSON tracker
+    // doesn't sprawl a .nexus-pipeline/ dir at cwd. See epic #2872.
+    const dir = config.outputDir ?? nexusDataPath('pipeline');
     this.outputPath = path.resolve(dir, 'tasks.json');
     fs.mkdirSync(path.dirname(this.outputPath), { recursive: true });
   }
