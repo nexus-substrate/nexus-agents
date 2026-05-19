@@ -305,8 +305,8 @@ This shows the proposed merge without writing. Drop `--dry-run` to commit. The m
 
 ## Related
 
-- [Installation](./INSTALLATION.md) — initial install path
-- [Configuration](./CONFIGURATION.md) — env vars, config files, model selection
+- [Installation](../getting-started/INSTALLATION.md) — initial install path
+- [Configuration](../getting-started/CONFIGURATION.md) — env vars, config files, model selection
 - [#2467 epic](https://github.com/nexus-substrate/nexus-agents/issues/2467) — the umbrella for OpenAI-compat gateway support, sandbox-safe operation, and reliability hardening
 - [#2500 epic](https://github.com/nexus-substrate/nexus-agents/issues/2500) — MCP-in-sandbox: full functionality with OpenCode + OpenAI-compat gateway
 - [`Dockerfile.sandbox`](../../Dockerfile.sandbox) — the canonical image for the OpenCode-in-Docker scenario
