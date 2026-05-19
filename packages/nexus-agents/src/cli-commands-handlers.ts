@@ -169,7 +169,11 @@ function printFirstRunHint(): void {
   const isTTY = process.stderr.isTTY;
   if (!isTTY) return;
   const dataDir = getNexusDataDir();
-  const hasConfig = existsSync('./nexus-agents.yaml') || existsSync('./nexus-agents.yml');
+  const hasConfig =
+    existsSync('./.nexus-agents/nexus-agents.yaml') ||
+    existsSync('./.nexus-agents/nexus-agents.yml') ||
+    existsSync('./nexus-agents.yaml') ||
+    existsSync('./nexus-agents.yml');
   if (existsSync(dataDir) || hasConfig) return;
   process.stderr.write(
     '\n\x1b[36mnexus-agents\x1b[0m: First time? Run \x1b[1mnexus-agents setup\x1b[0m to configure.\n\n'

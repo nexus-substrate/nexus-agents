@@ -172,7 +172,10 @@ export function detectProjectInfo(root: string): ProjectInfo {
     // legacy `.claude/rules/` path so detection doesn't break on repos that
     // haven't migrated yet.
     hasClaudeRules: existsSync(join(root, '.rules')) || existsSync(join(root, '.claude', 'rules')),
-    hasNexusConfig: existsSync(join(root, 'nexus-agents.yaml')),
+    // Check dotdir-scoped location first (epic #2872), then legacy root.
+    hasNexusConfig:
+      existsSync(join(root, '.nexus-agents', 'nexus-agents.yaml')) ||
+      existsSync(join(root, 'nexus-agents.yaml')),
     projectType: detectProjectType(root),
     packageName: packageName ?? basename(root),
   };

@@ -8,12 +8,20 @@
  * (Source: Issue #1252 - Setup auto-generates nexus-agents.yaml)
  */
 
-import { copyFileSync, existsSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { getErrorMessage } from '../core/index.js';
 
 /** Default configuration file name. */
 const DEFAULT_CONFIG_FILE = 'nexus-agents.yaml';
+
+/**
+ * Path setup writes new configs to (epic #2872). The config loader checks
+ * `.nexus-agents/nexus-agents.yaml` ahead of the legacy root-level location,
+ * so writing here is forward-compatible. Existing root-level configs keep
+ * working without action (loader still falls back to them).
+ */
+const DEFAULT_CONFIG_REL_PATH = `.nexus-agents/${DEFAULT_CONFIG_FILE}`;
 
 /** Result of the config generation step. */
 export interface ConfigStepResult {
@@ -55,7 +63,14 @@ export function runConfigInitSync(
   force: boolean,
   dryRun: boolean
 ): ConfigStepResult {
-  const outputPath = resolve(projectRoot, DEFAULT_CONFIG_FILE);
+  // Prefer the dotdir location for new configs. Per #2877: if a legacy
+  // root-level nexus-agents.yaml already exists, keep editing it in place
+  // rather than silently moving the user's config — the migrate command
+  // (#2879) is the explicit way to relocate. New installs land in the dotdir.
+  const legacyPath = resolve(projectRoot, DEFAULT_CONFIG_FILE);
+  const outputPath = existsSync(legacyPath)
+    ? legacyPath
+    : resolve(projectRoot, DEFAULT_CONFIG_REL_PATH);
 
   if (existsSync(outputPath) && !force) {
     return {
@@ -79,6 +94,9 @@ export function runConfigInitSync(
   if ('error' in backup) return backup.error;
 
   try {
+    // Ensure parent dir exists — needed for the new dotdir location since
+    // .nexus-agents/ may not yet exist on a fresh repo.
+    mkdirSync(dirname(outputPath), { recursive: true });
     writeFileSync(outputPath, SETUP_CONFIG_TEMPLATE, 'utf-8');
     const message =
       backup.path !== undefined

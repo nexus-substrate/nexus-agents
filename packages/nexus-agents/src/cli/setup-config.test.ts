@@ -22,14 +22,26 @@ describe('runConfigInitSync (#1252)', () => {
     }
   });
 
-  it('creates nexus-agents.yaml in fresh directory', () => {
+  it('creates .nexus-agents/nexus-agents.yaml in fresh directory (epic #2872)', () => {
     const result = runConfigInitSync(testDir, false, false);
     expect(result.success).toBe(true);
     expect(result.created).toBe(true);
-    expect(existsSync(join(testDir, 'nexus-agents.yaml'))).toBe(true);
-    const content = readFileSync(join(testDir, 'nexus-agents.yaml'), 'utf-8');
+    // Fresh repo → config lands in the dotdir, not at root.
+    const dotdirPath = join(testDir, '.nexus-agents', 'nexus-agents.yaml');
+    expect(existsSync(dotdirPath)).toBe(true);
+    expect(existsSync(join(testDir, 'nexus-agents.yaml'))).toBe(false);
+    const content = readFileSync(dotdirPath, 'utf-8');
     expect(content).toContain('models:');
     expect(content).toContain('experts:');
+  });
+
+  it('edits legacy root-level config in place when one exists (epic #2872)', () => {
+    // Pre-existing root-level file → setup honors it, doesn't silently move.
+    writeFileSync(join(testDir, 'nexus-agents.yaml'), 'legacy: true\n', 'utf-8');
+    const result = runConfigInitSync(testDir, true, false);
+    expect(result.success).toBe(true);
+    expect(result.path).toBe(join(testDir, 'nexus-agents.yaml'));
+    expect(existsSync(join(testDir, '.nexus-agents'))).toBe(false);
   });
 
   it('skips if config already exists', () => {
