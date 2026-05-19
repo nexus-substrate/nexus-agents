@@ -107,6 +107,28 @@ jobs:
         env:
           NODE_OPTIONS: '--max-old-space-size=8192'
 
+      # Epic #2872: catch tests that accidentally leak artifacts into the
+      # working tree. Allow the legitimate outputs (coverage/, dist/, generated
+      # docs) — fail on the sprawl-pattern paths from the audit. Issue #2878.
+      - name: Working-tree clean check (epic #2872)
+        if: always()
+        run: |
+          set -u
+          leaks=$(git status --porcelain --untracked-files=all 2>/dev/null \
+            | awk '{print $2}' \
+            | grep -E '^(runs/|logs/|\.nexus-pipeline/|\.nexus-agents/|predictions\.jsonl$|coverage\.json$|\.test-)' \
+            || true)
+          if [ -n "$leaks" ]; then
+            echo "::error::Tests left sprawl artifacts in the working tree:"
+            echo "$leaks" | sed 's/^/  - /'
+            echo ""
+            echo "Per epic #2872, runtime artifacts must land under getNexusDataDir(),"
+            echo "and test temp dirs must use os.tmpdir() + mkdtempSync() with cleanup."
+            echo "See packages/nexus-agents/src/cli/init-portable.test.ts for the pattern."
+            exit 1
+          fi
+          echo "✓ Working tree clean after tests"
+
       - name: Upload coverage
         uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v5
         if: github.event_name == 'pull_request' && matrix.os == 'ubuntu-latest'
