@@ -134,3 +134,157 @@ describe('nexusDataPath', () => {
     expect(nexusDataPath()).toBe('/var/nexus');
   });
 });
+
+// Epic #2872 / Issue #2882: the gated repo-preferred resolver. State-
+// category split per vote #2876 — per-repo subdirs (sessions, checkpoints,
+// traces, runs, audit, pipeline, tasks) route to <repo>/.nexus-agents/
+// when NEXUS_REPO_PREFERRED=1; cross-repo subdirs always go to homedir.
+describe('NEXUS_REPO_PREFERRED routing (epic #2872, issue #2882)', () => {
+  let originalCwd: string;
+  let originalNexusDataDir: string | undefined;
+  let originalRepoPreferred: string | undefined;
+  let originalSandbox: string | undefined;
+  let tempRepo: string;
+
+  beforeEach(async () => {
+    originalCwd = process.cwd();
+    originalNexusDataDir = process.env['NEXUS_DATA_DIR'];
+    originalRepoPreferred = process.env['NEXUS_REPO_PREFERRED'];
+    originalSandbox = process.env['NEXUS_SANDBOX'];
+    delete process.env['NEXUS_DATA_DIR'];
+    delete process.env['NEXUS_REPO_PREFERRED'];
+    delete process.env['NEXUS_SANDBOX'];
+
+    const { mkdtempSync, mkdirSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    tempRepo = mkdtempSync(join(tmpdir(), 'nexus-repo-preferred-'));
+    mkdirSync(join(tempRepo, '.git'));
+  });
+
+  afterEach(async () => {
+    process.chdir(originalCwd);
+    if (originalNexusDataDir === undefined) delete process.env['NEXUS_DATA_DIR'];
+    else process.env['NEXUS_DATA_DIR'] = originalNexusDataDir;
+    if (originalRepoPreferred === undefined) delete process.env['NEXUS_REPO_PREFERRED'];
+    else process.env['NEXUS_REPO_PREFERRED'] = originalRepoPreferred;
+    if (originalSandbox === undefined) delete process.env['NEXUS_SANDBOX'];
+    else process.env['NEXUS_SANDBOX'] = originalSandbox;
+    const { rmSync } = await import('node:fs');
+    rmSync(tempRepo, { recursive: true, force: true });
+  });
+
+  it('returns null from getNexusRepoDir when NEXUS_REPO_PREFERRED is unset', async () => {
+    const { getNexusRepoDir } = await import('./nexus-data-dir.js');
+    process.chdir(tempRepo);
+    expect(getNexusRepoDir()).toBe(null);
+  });
+
+  it('returns <repo>/.nexus-agents from getNexusRepoDir when enabled inside a repo', async () => {
+    const { getNexusRepoDir } = await import('./nexus-data-dir.js');
+    process.env['NEXUS_REPO_PREFERRED'] = '1';
+    process.chdir(tempRepo);
+    const { realpathSync } = await import('node:fs');
+    expect(getNexusRepoDir()).toBe(join(realpathSync(tempRepo), '.nexus-agents'));
+  });
+
+  it('returns null when enabled but cwd is not in a repo', async () => {
+    const { getNexusRepoDir } = await import('./nexus-data-dir.js');
+    const { mkdtempSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const nonRepo = mkdtempSync(join(tmpdir(), 'nexus-no-repo-'));
+    try {
+      process.env['NEXUS_REPO_PREFERRED'] = '1';
+      process.chdir(nonRepo);
+      expect(getNexusRepoDir()).toBe(null);
+    } finally {
+      process.chdir(originalCwd);
+      rmSync(nonRepo, { recursive: true, force: true });
+    }
+  });
+
+  it('NEXUS_DATA_DIR explicit override wins over NEXUS_REPO_PREFERRED', async () => {
+    const { getNexusRepoDir } = await import('./nexus-data-dir.js');
+    process.env['NEXUS_REPO_PREFERRED'] = '1';
+    process.env['NEXUS_DATA_DIR'] = '/tmp/explicit-override';
+    process.chdir(tempRepo);
+    expect(getNexusRepoDir()).toBe(null);
+  });
+
+  it('routes per-repo subdir (sessions) to <repo> when enabled', async () => {
+    const { nexusDataPath } = await import('./nexus-data-dir.js');
+    process.env['NEXUS_REPO_PREFERRED'] = '1';
+    process.chdir(tempRepo);
+    const { realpathSync } = await import('node:fs');
+    expect(nexusDataPath('sessions', 'journal-x.jsonl')).toBe(
+      join(realpathSync(tempRepo), '.nexus-agents', 'sessions', 'journal-x.jsonl')
+    );
+  });
+
+  it('routes cross-repo subdir (learning) to homedir even when enabled inside a repo', async () => {
+    const { nexusDataPath } = await import('./nexus-data-dir.js');
+    process.env['NEXUS_REPO_PREFERRED'] = '1';
+    process.chdir(tempRepo);
+    expect(nexusDataPath('learning', 'outcomes.jsonl')).toBe(
+      join(homedir(), '.nexus-agents', 'learning', 'outcomes.jsonl')
+    );
+  });
+
+  it('routes every cross-repo subdir to homedir (regression guard)', async () => {
+    const { nexusDataPath } = await import('./nexus-data-dir.js');
+    process.env['NEXUS_REPO_PREFERRED'] = '1';
+    process.chdir(tempRepo);
+    for (const subdir of ['learning', 'voting', 'memory', 'weather', 'research', 'auth', 'usage']) {
+      expect(nexusDataPath(subdir, 'x.json')).toBe(
+        join(homedir(), '.nexus-agents', subdir, 'x.json')
+      );
+    }
+  });
+
+  it('routes every per-repo subdir to the repo (regression guard)', async () => {
+    const { nexusDataPath } = await import('./nexus-data-dir.js');
+    process.env['NEXUS_REPO_PREFERRED'] = '1';
+    process.chdir(tempRepo);
+    const { realpathSync } = await import('node:fs');
+    const repoBase = join(realpathSync(tempRepo), '.nexus-agents');
+    for (const subdir of [
+      'sessions',
+      'checkpoints',
+      'traces',
+      'runs',
+      'audit',
+      'pipeline',
+      'tasks',
+    ]) {
+      expect(nexusDataPath(subdir, 'x.jsonl')).toBe(join(repoBase, subdir, 'x.jsonl'));
+    }
+  });
+
+  it('routes per-repo subdir to HOMEDIR when NEXUS_REPO_PREFERRED is unset (backward compat)', async () => {
+    const { nexusDataPath } = await import('./nexus-data-dir.js');
+    process.chdir(tempRepo);
+    expect(nexusDataPath('sessions', 'foo.jsonl')).toBe(
+      join(homedir(), '.nexus-agents', 'sessions', 'foo.jsonl')
+    );
+  });
+
+  it('nexusSharedPath always returns homedir even for per-repo subdir names', async () => {
+    const { nexusSharedPath } = await import('./nexus-data-dir.js');
+    process.env['NEXUS_REPO_PREFERRED'] = '1';
+    process.chdir(tempRepo);
+    expect(nexusSharedPath('sessions', 'foo.jsonl')).toBe(
+      join(homedir(), '.nexus-agents', 'sessions', 'foo.jsonl')
+    );
+  });
+
+  it('walks upward to find the repo root from a nested cwd', async () => {
+    const { nexusDataPath } = await import('./nexus-data-dir.js');
+    const { mkdirSync, realpathSync } = await import('node:fs');
+    const deep = join(tempRepo, 'src', 'feature');
+    mkdirSync(deep, { recursive: true });
+    process.env['NEXUS_REPO_PREFERRED'] = '1';
+    process.chdir(deep);
+    expect(nexusDataPath('runs', 'r1.jsonl')).toBe(
+      join(realpathSync(tempRepo), '.nexus-agents', 'runs', 'r1.jsonl')
+    );
+  });
+});
