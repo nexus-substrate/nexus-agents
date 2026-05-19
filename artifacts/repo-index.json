@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-05-18T08:56:50.155Z",
+  "generated": "2026-05-19T08:07:05.274Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.79.4",
   "cli": {
@@ -130,6 +130,12 @@
         "name": "memory-eval",
         "type": "sync",
         "handler": "handleMemoryEvalCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
+      {
+        "name": "migrate",
+        "type": "async",
+        "handler": "handleMigrateCommand",
         "file": "src/cli-commands-handlers.ts"
       },
       {
