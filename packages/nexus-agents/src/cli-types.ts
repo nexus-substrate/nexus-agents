@@ -347,7 +347,11 @@ export const PARSE_ARGS_CONFIG = {
     },
     'output-dir': {
       type: 'string' as const,
-      default: './logs/run_evaluation',
+      // No default: the only consumer (handleSweBenchCommand) is a
+      // deprecation shim that ignores it. Live callers should pass an
+      // explicit path or resolve through getNexusDataDir() at use time.
+      // Removed the './logs/run_evaluation' default per epic #2872 to
+      // stop the parser from advertising a sprawl-creating fallback.
     },
     // ATBench command options (#1981)
     fixture: {

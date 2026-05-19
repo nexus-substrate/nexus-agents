@@ -12,7 +12,7 @@ import { join, resolve, sep } from 'node:path';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, formatZodError } from '../../core/index.js';
-import { DEFAULT_RUNS_DIR } from '../../pipeline/pipeline-runner.js';
+import { getDefaultRunsDir } from '../../pipeline/pipeline-runner.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import {
@@ -137,7 +137,7 @@ export async function queryTraceFromDisk(
   input: QueryTraceInput,
   runsDir?: string
 ): Promise<QueryTraceResponse> {
-  const dir = runsDir ?? DEFAULT_RUNS_DIR;
+  const dir = runsDir ?? getDefaultRunsDir();
   const tracePath = join(dir, input.runId, 'trace.jsonl');
 
   // Path traversal guard: resolved path must stay within runs directory.

@@ -32,7 +32,7 @@ export { compilePlan, type PlanCompileOptions } from './plan-compiler.js';
 
 export {
   PipelineRunner,
-  DEFAULT_RUNS_DIR,
+  getDefaultRunsDir,
   type CompiledPipeline,
   type PipelineResult,
   type PipelineExecuteOptions,

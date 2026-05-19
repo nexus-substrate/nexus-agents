@@ -6,8 +6,11 @@
  *
  * @module pipeline/pipeline-runner
  */
+import { join } from 'node:path';
+
 import { executeGraph } from '../orchestration/graph/graph-executor.js';
 import { createLogger } from '../core/index.js';
+import { getNexusDataDir } from '../config/nexus-data-dir.js';
 
 import { compilePlan } from './plan-compiler.js';
 import type { PlanCompileOptions } from './plan-compiler.js';
@@ -54,8 +57,15 @@ export interface StepOutcome {
   readonly error?: string | undefined;
 }
 
-/** Default directory for trace output (shared with query-trace-tool). */
-export const DEFAULT_RUNS_DIR = './runs';
+/**
+ * Default directory for trace output, resolved through `getNexusDataDir()`
+ * so runs land under the centralized data dir instead of sprawling at cwd.
+ * Function rather than const so `NEXUS_DATA_DIR` env changes are honored
+ * at call time (matters for tests that mock the env). See epic #2872.
+ */
+export function getDefaultRunsDir(): string {
+  return join(getNexusDataDir(), 'runs');
+}
 
 /** Pipeline execution options. */
 export interface PipelineExecuteOptions {
@@ -67,7 +77,7 @@ export interface PipelineExecuteOptions {
   readonly continueOnFailure?: boolean;
   /** EventBus for trace persistence. When provided, creates a TraceWriter. */
   readonly eventBus?: IEventBus;
-  /** Override base directory for trace output (default: ./runs). */
+  /** Override base directory for trace output (default: `<getNexusDataDir()>/runs`). */
   readonly runsDir?: string;
 }
 
@@ -265,7 +275,7 @@ function createTraceContext(task: TaskContract, options?: PipelineExecuteOptions
   const writer =
     bus !== undefined
       ? new TraceWriter(bus, {
-          runsDir: options?.runsDir ?? DEFAULT_RUNS_DIR,
+          runsDir: options?.runsDir ?? getDefaultRunsDir(),
           runId: task.id,
         })
       : undefined;

@@ -383,3 +383,43 @@ describe('PipelineRunner.retryFailed', () => {
     }
   });
 });
+
+// Epic #2872: the default runs dir must resolve through getNexusDataDir(),
+// not the historical hardcoded `./runs`, so trace output lands under the
+// centralized data dir instead of sprawling at cwd.
+describe('getDefaultRunsDir', () => {
+  it('resolves under NEXUS_DATA_DIR/runs', async () => {
+    const { getDefaultRunsDir } = await import('./pipeline-runner.js');
+    const tempDataDir = await mkdtemp(join(tmpdir(), 'nexus-runs-default-'));
+    const prev = process.env['NEXUS_DATA_DIR'];
+    process.env['NEXUS_DATA_DIR'] = tempDataDir;
+    try {
+      expect(getDefaultRunsDir()).toBe(join(tempDataDir, 'runs'));
+    } finally {
+      if (prev === undefined) delete process.env['NEXUS_DATA_DIR'];
+      else process.env['NEXUS_DATA_DIR'] = prev;
+      await rm(tempDataDir, { recursive: true, force: true });
+    }
+  });
+
+  it('reads NEXUS_DATA_DIR at call time, not module load time', async () => {
+    const { getDefaultRunsDir } = await import('./pipeline-runner.js');
+    const a = await mkdtemp(join(tmpdir(), 'nexus-runs-a-'));
+    const b = await mkdtemp(join(tmpdir(), 'nexus-runs-b-'));
+    const prev = process.env['NEXUS_DATA_DIR'];
+    try {
+      process.env['NEXUS_DATA_DIR'] = a;
+      const first = getDefaultRunsDir();
+      process.env['NEXUS_DATA_DIR'] = b;
+      const second = getDefaultRunsDir();
+      expect(first).toBe(join(a, 'runs'));
+      expect(second).toBe(join(b, 'runs'));
+      expect(first).not.toBe(second);
+    } finally {
+      if (prev === undefined) delete process.env['NEXUS_DATA_DIR'];
+      else process.env['NEXUS_DATA_DIR'] = prev;
+      await rm(a, { recursive: true, force: true });
+      await rm(b, { recursive: true, force: true });
+    }
+  });
+});
