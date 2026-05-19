@@ -276,4 +276,76 @@ describe('config-loader', () => {
       expect((merged['nested'] as Record<string, unknown>)['y']).toBe('keep');
     });
   });
+
+  // Epic #2872 / Issue #2877: the loader must prefer the dotdir-scoped
+  // config locations over the legacy root-level ones, with the root-level
+  // paths still working as a fallback for backward compatibility.
+  describe('config-file lookup order (issue #2877)', () => {
+    function setupYamlParsed(): void {
+      mockReadFileSync.mockReturnValue('models: {}\n');
+      mockYamlParse.mockReturnValue({ models: {} });
+    }
+
+    it('prefers .nexus-agents/nexus-agents.yaml over root-level nexus-agents.yaml', () => {
+      // Both exist; loader must pick the dotdir one.
+      mockExistsSync.mockImplementation((p) => {
+        const s = String(p);
+        return s.endsWith('.nexus-agents/nexus-agents.yaml') || s.endsWith('/nexus-agents.yaml');
+      });
+      setupYamlParsed();
+
+      const result = loadConfig();
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.configPath).toMatch(/\.nexus-agents[/\\]nexus-agents\.yaml$/);
+      }
+    });
+
+    it('falls back to root-level nexus-agents.yaml when dotdir is absent', () => {
+      mockExistsSync.mockImplementation((p) => {
+        const s = String(p);
+        // Dotdir absent; root present (allow either .yaml or .yml at root)
+        if (s.includes('.nexus-agents/')) return false;
+        return s.endsWith('/nexus-agents.yaml');
+      });
+      setupYamlParsed();
+
+      const result = loadConfig();
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.configPath).toMatch(/\/nexus-agents\.yaml$/);
+        expect(result.value.configPath).not.toMatch(/\.nexus-agents/);
+      }
+    });
+
+    it('falls back to .nexus-agents/nexus-agents.yml (alternate extension) before root', () => {
+      mockExistsSync.mockImplementation((p) => {
+        const s = String(p);
+        // Only the dotdir .yml exists.
+        return s.endsWith('.nexus-agents/nexus-agents.yml');
+      });
+      setupYamlParsed();
+
+      const result = loadConfig();
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.configPath).toMatch(/\.nexus-agents[/\\]nexus-agents\.yml$/);
+      }
+    });
+
+    it('NEXUS_CONFIG_PATH env var still wins over both locations', () => {
+      process.env['NEXUS_CONFIG_PATH'] = 'custom/path/cfg.yaml';
+      mockExistsSync.mockReturnValue(true);
+      setupYamlParsed();
+      try {
+        const result = loadConfig();
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          expect(result.value.configPath).toMatch(/custom\/path\/cfg\.yaml$/);
+        }
+      } finally {
+        delete process.env['NEXUS_CONFIG_PATH'];
+      }
+    });
+  });
 });

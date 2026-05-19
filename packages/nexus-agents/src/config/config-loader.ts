@@ -19,15 +19,25 @@ import { ok, err, formatZodIssuesAsArray } from '../core/index.js';
 import type { ILogger } from '../core/index.js';
 import { createLogger } from '../core/logger.js';
 
-/**
- * Default config file name.
- */
+/** Default config file name. */
 const DEFAULT_CONFIG_FILE = 'nexus-agents.yaml';
 
-/**
- * Alternate config file name.
- */
+/** Alternate config file name. */
 const ALTERNATE_CONFIG_FILE = 'nexus-agents.yml';
+
+/**
+ * Preferred config-file locations, checked in order. Per epic #2872 the
+ * dotdir-scoped variant wins over the root-level legacy locations so new
+ * installs land their config under `.nexus-agents/` instead of cluttering
+ * the repo root. Existing root-level files keep working without action
+ * (backward compat); they're picked up by the fallback tier.
+ */
+const CONFIG_LOOKUP_PATHS: readonly string[] = [
+  `.nexus-agents/${DEFAULT_CONFIG_FILE}`,
+  `.nexus-agents/${ALTERNATE_CONFIG_FILE}`,
+  DEFAULT_CONFIG_FILE,
+  ALTERNATE_CONFIG_FILE,
+];
 
 /**
  * Result of loading configuration.
@@ -105,16 +115,12 @@ function findConfigPath(cwd: string): string | undefined {
     }
   }
 
-  // Check current directory for .yaml
-  const yamlPath = resolve(cwd, DEFAULT_CONFIG_FILE);
-  if (existsSync(yamlPath)) {
-    return yamlPath;
-  }
-
-  // Check current directory for .yml
-  const ymlPath = resolve(cwd, ALTERNATE_CONFIG_FILE);
-  if (existsSync(ymlPath)) {
-    return ymlPath;
+  // Probe each lookup path in order — dotdir wins over root-level legacy.
+  for (const rel of CONFIG_LOOKUP_PATHS) {
+    const abs = resolve(cwd, rel);
+    if (existsSync(abs)) {
+      return abs;
+    }
   }
 
   // Check global config directory (resolved data dir) as fallback (#1265 + #2316)

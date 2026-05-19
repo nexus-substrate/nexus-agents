@@ -43,8 +43,17 @@ const REQUIRED_NODE_MAJOR = 22;
 /** API key environment variable names. */
 const API_KEY_VARS = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GOOGLE_AI_API_KEY'] as const;
 
-/** Configuration file paths to check (in order of priority). */
-const CONFIG_FILE_PATHS = ['./nexus-agents.yaml', './nexus-agents.yml'] as const;
+/**
+ * Configuration file paths to check (in order of priority). Per epic #2872
+ * the dotdir-scoped variants are preferred over the legacy root-level
+ * locations — must match the order in `config-loader.ts:CONFIG_LOOKUP_PATHS`.
+ */
+const CONFIG_FILE_PATHS = [
+  './.nexus-agents/nexus-agents.yaml',
+  './.nexus-agents/nexus-agents.yml',
+  './nexus-agents.yaml',
+  './nexus-agents.yml',
+] as const;
 
 /**
  * Check result for a single CLI.

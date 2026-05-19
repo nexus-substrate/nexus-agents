@@ -34,10 +34,17 @@ export interface ConfigInitResult {
   readonly created: boolean;
 }
 
-/**
- * Default configuration file name.
- */
+/** Default configuration file name. */
 const DEFAULT_CONFIG_FILE = 'nexus-agents.yaml';
+
+/**
+ * Path `config init` writes new configs to (epic #2872). The config loader
+ * checks `.nexus-agents/nexus-agents.yaml` ahead of the legacy root-level
+ * location, so writing here is forward-compatible. If a legacy root-level
+ * config already exists, we keep editing it in place rather than silently
+ * moving the user's file — see `resolveOutputPath()` for the precedence.
+ */
+const DEFAULT_CONFIG_REL_PATH = `.nexus-agents/${DEFAULT_CONFIG_FILE}`;
 
 /**
  * Bucket models into fast / balanced / powerful tiers using the canonical
@@ -264,7 +271,13 @@ function resolveOutputPath(output?: string): string {
   if (output !== undefined && output !== '') {
     return resolve(process.cwd(), output);
   }
-  return resolve(process.cwd(), DEFAULT_CONFIG_FILE);
+  // Honor a pre-existing legacy root-level config — don't silently move it.
+  // New installs land in the dotdir. See epic #2872 / issue #2877.
+  const legacyPath = resolve(process.cwd(), DEFAULT_CONFIG_FILE);
+  if (existsSync(legacyPath)) {
+    return legacyPath;
+  }
+  return resolve(process.cwd(), DEFAULT_CONFIG_REL_PATH);
 }
 
 /**
