@@ -126,6 +126,8 @@ import { handleLoginCommand } from './cli/login-command.js';
 import { handleUsageCommand } from './cli/usage-command.js';
 // Issue #2444: nexus-agents improvement-review — observability-driven improvement loop CLI surface
 import { handleImprovementReviewCommand } from './cli/improvement-review-command.js';
+// Issue #2879 / epic #2872: nexus-agents migrate — relocate homedir state per-repo
+import { handleMigrateCommand } from './cli/migrate-command.js';
 // Issue #637: Release Automation Suite
 import {
   handleReleaseNotesCommand,
@@ -252,6 +254,8 @@ const ASYNC_COMMAND_HANDLERS: Record<string, ((args: ParsedCliArgs) => Promise<v
     usage: handleUsageCommand,
     // Issue #2444: improvement-review command (observability-driven improvement loop)
     'improvement-review': handleImprovementReviewCommand,
+    // Issue #2879 / epic #2872: migrate command (relocate homedir state per-repo)
+    migrate: handleMigrateCommand,
     // #2305 / #2308 / #2311: Init Portable Command (async because --install spawns npm)
     init: handleInitCommand,
     demo: handleDemoCommand, // Made async for live CLI execution
