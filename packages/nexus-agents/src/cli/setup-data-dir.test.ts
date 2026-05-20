@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, existsSync, rmSync } from 'node:fs';
+import { mkdirSync, existsSync, rmSync, mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
 
 // Must hoist the mock so NEXUS_DATA_DIR picks up the mocked homedir at import time
@@ -15,15 +15,30 @@ vi.mock('node:os', async () => {
 
 describe('initDataDirectories (#1249)', () => {
   let dataDirPath: string;
+  let originalRepoPreferred: string | undefined;
+  let originalGitignoreAuto: string | undefined;
 
   beforeEach(async () => {
     // Import after mock is in place
     const os = await import('node:os');
     dataDirPath = os.homedir();
     mkdirSync(dataDirPath, { recursive: true });
+
+    // These tests exercise the homedir-creation path. Disable the
+    // repo-preferred tier so per-repo subdirs (sessions, audit, …) still
+    // resolve under the mocked homedir. The per-repo routing has its
+    // own dedicated test below. Issue #2889 / epic #2887.
+    originalRepoPreferred = process.env['NEXUS_REPO_PREFERRED'];
+    originalGitignoreAuto = process.env['NEXUS_GITIGNORE_AUTO'];
+    process.env['NEXUS_REPO_PREFERRED'] = '0';
+    process.env['NEXUS_GITIGNORE_AUTO'] = '0';
   });
 
   afterEach(() => {
+    if (originalRepoPreferred === undefined) delete process.env['NEXUS_REPO_PREFERRED'];
+    else process.env['NEXUS_REPO_PREFERRED'] = originalRepoPreferred;
+    if (originalGitignoreAuto === undefined) delete process.env['NEXUS_GITIGNORE_AUTO'];
+    else process.env['NEXUS_GITIGNORE_AUTO'] = originalGitignoreAuto;
     if (existsSync(dataDirPath)) {
       rmSync(dataDirPath, { recursive: true, force: true });
     }
@@ -36,7 +51,7 @@ describe('initDataDirectories (#1249)', () => {
     expect(result.created.length).toBeGreaterThan(0);
     expect(result.error).toBeNull();
 
-    // Verify key subdirs exist
+    // Verify key subdirs exist (NEXUS_REPO_PREFERRED=0 → all under homedir)
     const root = join(dataDirPath, '.nexus-agents');
     expect(existsSync(root)).toBe(true);
     expect(existsSync(join(root, 'memory'))).toBe(true);
@@ -68,5 +83,40 @@ describe('initDataDirectories (#1249)', () => {
     const result = initDataDirectories();
     expect(result.rootPath).toBe(NEXUS_DATA_DIR);
     expect(result.rootPath).toContain('.nexus-agents');
+  });
+
+  // Issue #2889: per-repo subdirs (sessions, checkpoints, audit, …) must
+  // land in `<repo>/.nexus-agents/`, NOT homedir, when inside a git repo.
+  // Before the fix, initDataDirectories() did `join(NEXUS_DATA_DIR, subdir)`
+  // which bypassed the per-repo router entirely.
+  it('routes per-repo subdirs to the repo and cross-repo subdirs to homedir', async () => {
+    const originalCwd = process.cwd();
+    const tempRepo = mkdtempSync(join(dataDirPath, '..', 'nexus-setup-repo-'));
+    mkdirSync(join(tempRepo, '.git'), { recursive: true });
+    // Default-ON repo-preferred (the production default since #2886).
+    delete process.env['NEXUS_REPO_PREFERRED'];
+    try {
+      process.chdir(tempRepo);
+      const { initDataDirectories } = await import('./setup-data-dir.js');
+      const result = initDataDirectories();
+      expect(result.success).toBe(true);
+
+      // Per-repo subdirs land in the repo.
+      expect(existsSync(join(tempRepo, '.nexus-agents', 'sessions'))).toBe(true);
+      expect(existsSync(join(tempRepo, '.nexus-agents', 'audit'))).toBe(true);
+      expect(existsSync(join(tempRepo, '.nexus-agents', 'checkpoints'))).toBe(true);
+
+      // Cross-repo subdirs stay in the (mocked) homedir.
+      const home = join(dataDirPath, '.nexus-agents');
+      expect(existsSync(join(home, 'learning'))).toBe(true);
+      expect(existsSync(join(home, 'auth'))).toBe(true);
+      expect(existsSync(join(home, 'research'))).toBe(true);
+
+      // Per-repo subdirs must NOT have been created in homedir.
+      expect(existsSync(join(home, 'sessions'))).toBe(false);
+    } finally {
+      process.chdir(originalCwd);
+      rmSync(tempRepo, { recursive: true, force: true });
+    }
   });
 });

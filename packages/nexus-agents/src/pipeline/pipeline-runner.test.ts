@@ -422,4 +422,35 @@ describe('getDefaultRunsDir', () => {
       await rm(b, { recursive: true, force: true });
     }
   });
+
+  // Issue #2889: getDefaultRunsDir() must route through nexusDataPath()
+  // so `runs` (a per-repo subdir) lands in `<repo>/.nexus-agents/runs/`.
+  // The previous `join(getNexusDataDir(), 'runs')` bypassed the router
+  // and traces went to homedir even with NEXUS_REPO_PREFERRED ON.
+  it('routes to <repo>/.nexus-agents/runs when inside a git repo (no NEXUS_DATA_DIR override)', async () => {
+    const { getDefaultRunsDir } = await import('./pipeline-runner.js');
+    const { realpathSync, mkdirSync } = await import('node:fs');
+    const repo = await mkdtemp(join(tmpdir(), 'nexus-runs-repo-'));
+    mkdirSync(join(repo, '.git'));
+    const originalCwd = process.cwd();
+    const prevDataDir = process.env['NEXUS_DATA_DIR'];
+    const prevRepoPref = process.env['NEXUS_REPO_PREFERRED'];
+    const prevGitignore = process.env['NEXUS_GITIGNORE_AUTO'];
+    delete process.env['NEXUS_DATA_DIR'];
+    delete process.env['NEXUS_REPO_PREFERRED'];
+    process.env['NEXUS_GITIGNORE_AUTO'] = '0';
+    try {
+      process.chdir(repo);
+      expect(getDefaultRunsDir()).toBe(join(realpathSync(repo), '.nexus-agents', 'runs'));
+    } finally {
+      process.chdir(originalCwd);
+      if (prevDataDir === undefined) delete process.env['NEXUS_DATA_DIR'];
+      else process.env['NEXUS_DATA_DIR'] = prevDataDir;
+      if (prevRepoPref === undefined) delete process.env['NEXUS_REPO_PREFERRED'];
+      else process.env['NEXUS_REPO_PREFERRED'] = prevRepoPref;
+      if (prevGitignore === undefined) delete process.env['NEXUS_GITIGNORE_AUTO'];
+      else process.env['NEXUS_GITIGNORE_AUTO'] = prevGitignore;
+      await rm(repo, { recursive: true, force: true });
+    }
+  });
 });
