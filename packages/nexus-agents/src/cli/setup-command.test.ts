@@ -8,8 +8,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { mkdirSync, writeFileSync, existsSync, rmSync, readFileSync } from 'node:fs';
-import { runSetup, printSetupResult, setupCommand } from './setup-command.js';
+import { mkdirSync, mkdtempSync, writeFileSync, existsSync, rmSync, readFileSync } from 'node:fs';
+import {
+  runSetup,
+  printSetupResult,
+  setupCommand,
+  ensureRepoGitignoredAndHint,
+} from './setup-command.js';
 import {
   detectClaudeCli,
   detectMcpConfig,
@@ -739,6 +744,57 @@ describe('Setup Command', () => {
       // Should just have the new nexus-agents hooks
       expect(result.SessionStart).toHaveLength(1);
       expect(result.SessionStart?.[0]?.hooks[0]?.command).toContain('nexus-agents');
+    });
+  });
+
+  // Issue #2891: setup auto-gitignores .nexus-agents/ in the repo so the
+  // user doesn't have to run a workflow first to get the entry.
+  describe('ensureRepoGitignoredAndHint (#2891)', () => {
+    let originalCwd: string;
+    let tempRepo: string;
+
+    beforeEach(() => {
+      originalCwd = process.cwd();
+      tempRepo = mkdtempSync(join(tmpdir(), 'nexus-setup-gitignore-'));
+      mkdirSync(join(tempRepo, '.git'));
+    });
+
+    afterEach(() => {
+      process.chdir(originalCwd);
+      rmSync(tempRepo, { recursive: true, force: true });
+    });
+
+    it('appends .nexus-agents/ to the repo .gitignore', () => {
+      process.chdir(tempRepo);
+      ensureRepoGitignoredAndHint(false);
+      const ignore = readFileSync(join(tempRepo, '.gitignore'), 'utf-8');
+      expect(ignore).toContain('.nexus-agents/');
+    });
+
+    it('is idempotent — does not duplicate an existing entry', () => {
+      writeFileSync(join(tempRepo, '.gitignore'), 'node_modules/\n.nexus-agents/\n', 'utf-8');
+      process.chdir(tempRepo);
+      ensureRepoGitignoredAndHint(false);
+      const lines = readFileSync(join(tempRepo, '.gitignore'), 'utf-8').split('\n').filter(Boolean);
+      expect(lines.filter((l) => l === '.nexus-agents/')).toHaveLength(1);
+    });
+
+    it('does nothing on a dry run', () => {
+      process.chdir(tempRepo);
+      ensureRepoGitignoredAndHint(true);
+      expect(existsSync(join(tempRepo, '.gitignore'))).toBe(false);
+    });
+
+    it('does nothing when not inside a git repo', () => {
+      const nonRepo = mkdtempSync(join(tmpdir(), 'nexus-setup-no-repo-'));
+      try {
+        process.chdir(nonRepo);
+        ensureRepoGitignoredAndHint(false);
+        expect(existsSync(join(nonRepo, '.gitignore'))).toBe(false);
+      } finally {
+        process.chdir(originalCwd);
+        rmSync(nonRepo, { recursive: true, force: true });
+      }
     });
   });
 });

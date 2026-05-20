@@ -45,6 +45,9 @@ import { generatePermissionsSnippet, buildPermissionsBanner } from './setup-perm
 // dirs) inline at the end of setup, with copy-pasteable remediation.
 import { runVerify } from './verify-command.js';
 import { colors, symbols } from './ansi-output.js';
+// #2891: auto-gitignore + first-run layout hint at the end of setup.
+import { ensureGitignored } from '../config/portable-mode.js';
+import { findRepoRoot } from '../config/repo-root-detection.js';
 
 // ============================================================================
 // Output Helpers
@@ -830,6 +833,37 @@ function printGettingStartedBanner(mcpConfigured: boolean): void {
 }
 
 /**
+ * Ensures `.nexus-agents/` is gitignored in the current repo and prints a
+ * first-run hint about the per-repo / cross-repo data layout (#2891).
+ *
+ * Runs once at the end of setup. The auto-gitignore also fires lazily on
+ * the first `getNexusRepoDir()` call, but doing it here means the setup
+ * output explicitly tells the user where state will live — they don't
+ * have to run a workflow first to discover it. Skipped on a dry-run
+ * (nothing was installed) and when not inside a git repo.
+ */
+export function ensureRepoGitignoredAndHint(dryRun: boolean): void {
+  if (dryRun) return;
+  const repoRoot = findRepoRoot(process.cwd());
+  if (repoRoot === null) return;
+
+  ensureGitignored(repoRoot, '.nexus-agents/');
+
+  writeEmptyLine();
+  writeLine(formatHeader('Data layout'));
+  writeLine('─'.repeat(40));
+  writeLine(
+    `  Per-repo state (sessions, traces, runs, audit) → ${colors.dim}.nexus-agents/${colors.reset}`
+  );
+  writeLine(
+    `  Cross-project state (routing memory, model registry) → ${colors.dim}~/.nexus-agents/${colors.reset}`
+  );
+  writeLine(
+    `  ${colors.dim}.nexus-agents/ is gitignored. Run 'nexus-agents doctor' for the full layout.${colors.reset}`
+  );
+}
+
+/**
  * Runs the post-setup health gate (#2137).
  *
  * After setup writes its files, this runs the verify checks and prints a
@@ -937,6 +971,8 @@ async function runInteractiveSetup(options: SetupCommandOptions): Promise<number
   printSetupResult(result, mergedOptions.verbose ?? false);
   const healthOk = await runPostSetupHealthGate(mergedOptions.dryRun ?? false);
   if (result.success && !(mergedOptions.dryRun ?? false)) {
+    // Inside the !dryRun branch — pass false explicitly.
+    ensureRepoGitignoredAndHint(false);
     printGettingStartedBanner(result.mcpConfigured === true);
   }
   return result.success && healthOk ? 0 : 1;
@@ -951,6 +987,8 @@ export async function setupCommandAsync(options: SetupCommandOptions = {}): Prom
   const setupResult = runSetupAndPrint(options);
   const healthOk = await runPostSetupHealthGate(options.dryRun ?? false);
   if (setupResult.exitCode === 0 && !(options.dryRun ?? false)) {
+    // Inside the !dryRun branch — pass false explicitly.
+    ensureRepoGitignoredAndHint(false);
     printGettingStartedBanner(setupResult.mcpConfigured);
   }
   // Hard health failures override a successful setup; warnings don't.
