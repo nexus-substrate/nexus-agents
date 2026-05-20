@@ -4,7 +4,8 @@
  * DRY: reuses ensureCheckpointDir from wave-checkpoint-persistence for
  * directory management and path security. Pipeline-specific JSONL schema.
  *
- * Storage: ~/.nexus-agents/checkpoints/pipeline-{sessionId}.jsonl
+ * Storage: <repo>/.nexus-agents/checkpoints/pipeline-{sessionId}.jsonl
+ * (checkpoints/ is per-repo state — epic #2872)
  *
  * @module pipeline/pipeline-checkpoint
  */

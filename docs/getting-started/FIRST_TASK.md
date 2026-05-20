@@ -124,7 +124,7 @@ Or via the MCP tool (after `setup`):
 In Claude Code: /orchestrate "Explain the architecture of this codebase"
 ```
 
-The 12-stage CompositeRouter picks the right CLI, the right expert persona, and the right model based on task analysis. The trace goes to `~/.nexus-agents/` for later replay.
+The 12-stage CompositeRouter picks the right CLI, the right expert persona, and the right model based on task analysis. The trace goes to `<repo>/.nexus-agents/traces/` for later replay (`traces/` is per-repo state — epic #2872).
 
 ---
 
@@ -137,6 +137,6 @@ The 12-stage CompositeRouter picks the right CLI, the right expert persona, and 
 | Configure model preferences, custom experts, sandbox modes          | [CONFIGURATION.md](./CONFIGURATION.md)                                                 |
 | Wire an editor we don't auto-detect                                 | [../guides/HARNESS_COMPATIBILITY.md](../guides/HARNESS_COMPATIBILITY.md)               |
 | Run the full dev pipeline (research → plan → vote → implement → QA) | [../workflows/SELF_DEVELOPMENT_WORKFLOW.md](../workflows/SELF_DEVELOPMENT_WORKFLOW.md) |
-| Inspect the audit chain                                             | `verify_audit_chain` MCP tool, or the source under `~/.nexus-agents/`                  |
+| Inspect the audit chain                                             | `verify_audit_chain` MCP tool, or the JSONL under `<repo>/.nexus-agents/audit/`        |
 | Browse the research registry                                        | [../research/RESEARCH_INDEX.md](../research/RESEARCH_INDEX.md)                         |
 | See every CLI command + MCP tool                                    | [../ENTRYPOINTS.md](../ENTRYPOINTS.md)                                                 |

@@ -24,6 +24,10 @@ import {
 describe('handler-utils', () => {
   describe('getDefaultDbPath', () => {
     it('should return path in home directory', () => {
+      // `sessions.db` is a top-level FILE — distinct from the per-repo
+      // `sessions/` directory. The epic #2872 router keys on the first
+      // path segment, and `sessions.db` is not in PER_REPO_SUBDIRS, so
+      // it resolves cross-repo (homedir). This is intentional, not a bug.
       const result = getDefaultDbPath();
 
       expect(result).toBe(join(homedir(), '.nexus-agents', 'sessions.db'));

@@ -211,7 +211,8 @@ async function checkSqliteAvailability(): Promise<VerifyCheck> {
 }
 
 /**
- * Checks that the `~/.nexus-agents/` data directories exist and are writable.
+ * Checks that the nexus-agents data directories (per-repo + cross-repo
+ * roots per epic #2872) exist and are writable.
  * `cli-commands.ts::dispatchCommand` initializes them lazily (#1398), so
  * missing dirs are a hard failure (persistence will silently drop writes).
  */

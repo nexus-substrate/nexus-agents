@@ -343,8 +343,9 @@ nexus-agents orchestrate "task" --max-context=50000
 **Solution:**
 
 ```bash
-# Check session storage location
-ls -la ~/.nexus-agents/sessions/
+# Check session storage location (sessions/ is per-repo as of epic #2872;
+# run `nexus-agents doctor` to see the resolved path)
+ls -la ./.nexus-agents/sessions/
 
 # Verify write permissions
 ```

@@ -241,7 +241,7 @@ All configuration can be overridden with environment variables:
 | `NEXUS_REFLECTIVE_MEMORY` | Reflective memory retrieval (`shadow`/`true`/`false`)     | `shadow` |
 | `NEXUS_BILLING_MODE`      | Cost mode (`plan`=strongest model wins, `api`=cost-aware) | `plan`   |
 
-Outcomes and distilled routing rules persist to `~/.nexus-agents/learning/` by default. When persistence is enabled, `routingMemory`, `strategyDistillation`, and `preferenceRouting` also auto-enable (no separate config needed). Opt out with `NEXUS_PERSIST_LEARNING=false`.
+Outcomes and distilled routing rules persist to `~/.nexus-agents/learning/` — this is **cross-repo** state (shared across all your projects) and is not affected by the per-repo data dir (epic #2872). When persistence is enabled, `routingMemory`, `strategyDistillation`, and `preferenceRouting` also auto-enable (no separate config needed). Opt out with `NEXUS_PERSIST_LEARNING=false`.
 
 Files stored:
 
@@ -562,7 +562,7 @@ security:
     enabled: true # Enable authentication
     method: token # 'token' or 'oauth2'
     tokenHeader: Authorization # Header name for bearer token
-    tokenFile: ~/.nexus-agents/auth/server-token # Token file path
+    tokenFile: ~/.nexus-agents/auth/server-token # Token file path (auth/ is cross-repo)
 ```
 
 Generate and manage auth tokens with CLI commands:

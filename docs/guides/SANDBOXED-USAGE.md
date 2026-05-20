@@ -58,12 +58,15 @@ When portable mode triggers, nexus-agents:
 
 ## Forcing the behavior you want
 
-| You want                                     | Set this                        |
-| -------------------------------------------- | ------------------------------- |
-| Specific data directory                      | `NEXUS_DATA_DIR=/some/abs/path` |
-| Force portable mode (always)                 | `NEXUS_PORTABLE_MODE=1`         |
-| Disable auto-detect (use `~/.nexus-agents/`) | `NEXUS_PORTABLE_MODE=0`         |
-| Default (auto-detect)                        | (no env vars)                   |
+| You want                                             | Set this                        |
+| ---------------------------------------------------- | ------------------------------- |
+| One explicit data directory for everything           | `NEXUS_DATA_DIR=/some/abs/path` |
+| All state in `~/.nexus-agents/` (pre-#2872 behavior) | `NEXUS_REPO_PREFERRED=0`        |
+| Force portable mode (always)                         | `NEXUS_PORTABLE_MODE=1`         |
+| Disable portable auto-detect                         | `NEXUS_PORTABLE_MODE=0`         |
+| Default — per-repo split (epic #2872)                | (no env vars)                   |
+
+Default behavior (no env vars): per-repo state lands in `<repo>/.nexus-agents/`, cross-repo state in `~/.nexus-agents/`. If `~` isn't writable (sandbox), cross-repo state falls back to `<repo>/.nexus-agents/` automatically.
 
 ## Common scenarios
 

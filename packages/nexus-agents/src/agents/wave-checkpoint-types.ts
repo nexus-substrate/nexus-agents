@@ -54,7 +54,7 @@ export type WaveCheckpointEntry = z.infer<typeof WaveCheckpointEntrySchema>;
 export interface WaveCheckpointConfig {
   /** Whether checkpointing is enabled. Default: true. */
   readonly enabled: boolean;
-  /** Custom checkpoint directory. Default: ~/.nexus-agents/checkpoints/ */
+  /** Custom checkpoint directory. Default: <repo>/.nexus-agents/checkpoints/ (per-repo, epic #2872). */
   readonly checkpointDir?: string;
 }
 

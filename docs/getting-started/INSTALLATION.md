@@ -282,19 +282,25 @@ Add to `.mcp.json` in your project root (or run `nexus-agents setup` for automat
 
 ## Data Storage
 
-nexus-agents stores runtime data in `~/.nexus-agents/`:
+As of epic #2872, nexus-agents splits runtime data into two roots when run inside a git repo:
 
-| Directory         | Purpose                                                       |
-| ----------------- | ------------------------------------------------------------- |
-| `memory/`         | SQLite databases for agentic, adaptive, typed memory backends |
-| `memory/beliefs/` | Belief memory JSON snapshots                                  |
-| `learning/`       | Cross-session task outcomes and distilled rules               |
-| `sessions/`       | Session journals (JSONL) and sessions.db                      |
-| `audit/`          | JSONL audit logs                                              |
-| `voting/`         | Consensus vote correlation data                               |
-| `auth/`           | REST API auth tokens (owner-only permissions)                 |
+- **Per-repo** state (tied to one codebase's work) → `<repo>/.nexus-agents/` (auto-gitignored)
+- **Cross-repo** state (shared across all your projects) → `~/.nexus-agents/`
 
-Run `nexus-agents setup` to pre-create this structure, or it will be created lazily on first use.
+| Directory          | Scope      | Resolves to             | Purpose                                                       |
+| ------------------ | ---------- | ----------------------- | ------------------------------------------------------------- |
+| `memory/`          | cross-repo | `~/.nexus-agents/`      | SQLite databases for agentic, adaptive, typed memory backends |
+| `memory/beliefs/`  | cross-repo | `~/.nexus-agents/`      | Belief memory JSON snapshots                                  |
+| `learning/`        | cross-repo | `~/.nexus-agents/`      | Cross-session task outcomes and distilled rules               |
+| `voting/`          | cross-repo | `~/.nexus-agents/`      | Consensus vote correlation data                               |
+| `research/`        | cross-repo | `~/.nexus-agents/`      | Research catalog                                              |
+| `auth/`            | cross-repo | `~/.nexus-agents/`      | REST API auth tokens (owner-only permissions)                 |
+| `sessions/`        | per-repo   | `<repo>/.nexus-agents/` | Session journals (JSONL)                                      |
+| `checkpoints/`     | per-repo   | `<repo>/.nexus-agents/` | Wave + pipeline checkpoints                                   |
+| `traces/`, `runs/` | per-repo   | `<repo>/.nexus-agents/` | Pipeline execution traces                                     |
+| `audit/`           | per-repo   | `<repo>/.nexus-agents/` | JSONL audit logs                                              |
+
+Run `nexus-agents setup` to pre-create this structure, or it will be created lazily on first use. `nexus-agents doctor` reports the resolved location of every subdir. Override the whole split with `NEXUS_DATA_DIR=<path>`, or opt out entirely with `NEXUS_REPO_PREFERRED=0` (all state in `~/.nexus-agents/`). In a sandbox without a writable `~`, cross-repo state transparently falls back to `<repo>/.nexus-agents/`.
 
 ### better-sqlite3
 

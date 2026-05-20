@@ -175,7 +175,7 @@ export interface DataSubdirStatus {
   readonly writable: boolean;
 }
 
-/** Standard data subdirectories under ~/.nexus-agents/. */
+/** Standard data subdirectories — resolved per-repo or cross-repo (epic #2872). */
 export const DATA_SUBDIRECTORIES = [
   'memory',
   'memory/beliefs',
