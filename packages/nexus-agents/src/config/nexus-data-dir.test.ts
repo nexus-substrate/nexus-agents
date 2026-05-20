@@ -2,7 +2,7 @@
  * Tests for getNexusDataDir() helper (#2302, child of #2301).
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi, type MockInstance } from 'vitest';
 import { homedir } from 'node:os';
 import { join, resolve, isAbsolute } from 'node:path';
 import { getNexusDataDir, nexusDataPath, resetNexusDataDirCache } from './nexus-data-dir.js';
@@ -328,5 +328,221 @@ describe('NEXUS_REPO_PREFERRED routing (epic #2872, default-ON via vote #2876)',
     expect(nexusDataPath('runs', 'r1.jsonl')).toBe(
       join(realpathSync(tempRepo), '.nexus-agents', 'runs', 'r1.jsonl')
     );
+  });
+});
+
+// Issue #2888 / epic #2887: cross-repo subdirs auto-fall-back to the
+// per-repo `.nexus-agents/` when homedir is physically unreachable. Vote
+// #2876 preserved — normal-machine users see no change.
+describe('sandbox-fallback for cross-repo paths (issue #2888)', () => {
+  let originalCwd: string;
+  let originalNexusDataDir: string | undefined;
+  let originalRepoPreferred: string | undefined;
+  let originalGitignoreAuto: string | undefined;
+  let originalHome: string | undefined;
+  let tempRepo: string;
+  // An unwritable homedir, simulated: `os.homedir()` honors $HOME on POSIX,
+  // so pointing $HOME at a path UNDER a regular file makes
+  // `getNexusDataDir()` resolve somewhere mkdirSync fails fast (ENOTDIR).
+  // Crucially this leaves NEXUS_DATA_DIR unset — setting that would
+  // disable getNexusRepoDir() (explicit override wins) and the fallback
+  // could never find a repo to land in.
+  let unwritableHome: string;
+  let writeSpy: MockInstance;
+  let warningOutput: string[];
+
+  beforeEach(async () => {
+    originalCwd = process.cwd();
+    originalNexusDataDir = process.env['NEXUS_DATA_DIR'];
+    originalRepoPreferred = process.env['NEXUS_REPO_PREFERRED'];
+    originalGitignoreAuto = process.env['NEXUS_GITIGNORE_AUTO'];
+    originalHome = process.env['HOME'];
+    delete process.env['NEXUS_DATA_DIR'];
+    delete process.env['NEXUS_REPO_PREFERRED'];
+    process.env['NEXUS_GITIGNORE_AUTO'] = '0';
+
+    const { mkdtempSync, mkdirSync, writeFileSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    tempRepo = mkdtempSync(join(tmpdir(), 'nexus-fallback-'));
+    mkdirSync(join(tempRepo, '.git'));
+
+    // Hermetic "unwritable homedir": a path UNDER a regular file.
+    // mkdirSync on `<file>/fake-home/.nexus-agents` fails fast with
+    // ENOTDIR — unlike a `/proc/...` path, which hangs at the syscall level.
+    const blockerFile = join(tempRepo, 'blocker-is-a-file');
+    writeFileSync(blockerFile, 'not a directory\n');
+    unwritableHome = join(blockerFile, 'fake-home');
+
+    const { _resetGitignoreMemoForTests, _resetWritabilityMemoForTests } =
+      await import('./nexus-data-dir.js');
+    _resetGitignoreMemoForTests();
+    _resetWritabilityMemoForTests();
+
+    warningOutput = [];
+    // Capture stderr writes. The mock honors the optional drain callback
+    // (process.stderr.write(chunk, cb) / (chunk, enc, cb)) so it can't
+    // stall a caller that waits on the write completing.
+    writeSpy = vi
+      .spyOn(process.stderr, 'write')
+      .mockImplementation((chunk: string | Uint8Array, encodingOrCb?: unknown, cb?: unknown) => {
+        warningOutput.push(String(chunk));
+        const callback = typeof encodingOrCb === 'function' ? encodingOrCb : cb;
+        if (typeof callback === 'function') {
+          (callback as () => void)();
+        }
+        return true;
+      });
+  });
+
+  afterEach(async () => {
+    writeSpy.mockRestore();
+    process.chdir(originalCwd);
+    if (originalNexusDataDir === undefined) delete process.env['NEXUS_DATA_DIR'];
+    else process.env['NEXUS_DATA_DIR'] = originalNexusDataDir;
+    if (originalRepoPreferred === undefined) delete process.env['NEXUS_REPO_PREFERRED'];
+    else process.env['NEXUS_REPO_PREFERRED'] = originalRepoPreferred;
+    if (originalGitignoreAuto === undefined) delete process.env['NEXUS_GITIGNORE_AUTO'];
+    else process.env['NEXUS_GITIGNORE_AUTO'] = originalGitignoreAuto;
+    if (originalHome === undefined) delete process.env['HOME'];
+    else process.env['HOME'] = originalHome;
+    const { rmSync } = await import('node:fs');
+    rmSync(tempRepo, { recursive: true, force: true });
+  });
+
+  it('falls back to per-repo location when homedir base is unwritable and we are in a repo', async () => {
+    process.env['HOME'] = unwritableHome;
+    const { nexusDataPath } = await import('./nexus-data-dir.js');
+    const { realpathSync } = await import('node:fs');
+    process.chdir(tempRepo);
+
+    // 'research' is a cross-repo subdir per vote #2876. With homedir
+    // unwritable, it should land per-repo as a fallback.
+    const path = nexusDataPath('research', 'pending-catalog.json');
+    expect(path).toBe(
+      join(realpathSync(tempRepo), '.nexus-agents', 'research', 'pending-catalog.json')
+    );
+  });
+
+  it('emits a one-time stderr warning on fallback', async () => {
+    process.env['HOME'] = unwritableHome;
+    const { nexusDataPath } = await import('./nexus-data-dir.js');
+    process.chdir(tempRepo);
+
+    nexusDataPath('research', 'a.json');
+    nexusDataPath('research', 'b.json');
+    nexusDataPath('research', 'c.json');
+
+    // Once-per-subdir announce: three resolves, one warning.
+    const fallbackWarnings = warningOutput.filter((w) =>
+      w.includes('homedir ~/.nexus-agents is not writable')
+    );
+    expect(fallbackWarnings).toHaveLength(1);
+    expect(fallbackWarnings[0]).toContain('research');
+  });
+
+  it('does NOT fall back when homedir is writable (normal-machine behavior preserved)', async () => {
+    // No HOME manipulation — homedir is writable, default path applies.
+    const { nexusDataPath } = await import('./nexus-data-dir.js');
+    process.chdir(tempRepo);
+
+    // 'research' should still resolve to homedir on a normal machine.
+    expect(nexusDataPath('research', 'x.json')).toBe(
+      join(homedir(), '.nexus-agents', 'research', 'x.json')
+    );
+  });
+
+  it('does NOT fall back when not in a repo (surfaces the underlying error)', async () => {
+    process.env['HOME'] = unwritableHome;
+    const { nexusDataPath } = await import('./nexus-data-dir.js');
+    const { mkdtempSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const nonRepo = mkdtempSync(join(tmpdir(), 'nexus-no-repo-'));
+    try {
+      process.chdir(nonRepo);
+      // No repo to fall back to → returns the homedir path; the
+      // caller's write will surface the underlying ENOTDIR/EACCES.
+      expect(nexusDataPath('research', 'x.json')).toBe(
+        join(unwritableHome, '.nexus-agents', 'research', 'x.json')
+      );
+    } finally {
+      process.chdir(originalCwd);
+      rmSync(nonRepo, { recursive: true, force: true });
+    }
+  });
+
+  it('per-repo subdirs still route via PER_REPO_SUBDIRS first (fallback is for cross-repo only)', async () => {
+    // Even if homedir is unwritable, sessions/checkpoints/etc go to the
+    // repo path via the PER_REPO_SUBDIRS tier — not via the fallback.
+    process.env['HOME'] = unwritableHome;
+    const { nexusDataPath } = await import('./nexus-data-dir.js');
+    const { realpathSync } = await import('node:fs');
+    process.chdir(tempRepo);
+
+    nexusDataPath('sessions', 'foo.jsonl');
+    // The per-repo tier short-circuits before the writability probe,
+    // so no fallback warning fires for per-repo subdirs.
+    const fallbackWarnings = warningOutput.filter((w) =>
+      w.includes('homedir ~/.nexus-agents is not writable')
+    );
+    expect(fallbackWarnings).toHaveLength(0);
+    expect(nexusDataPath('sessions', 'foo.jsonl')).toBe(
+      join(realpathSync(tempRepo), '.nexus-agents', 'sessions', 'foo.jsonl')
+    );
+  });
+});
+
+// Issue #2890: nexusDataPathEnsure() variant auto-creates parent dirs.
+describe('nexusDataPathEnsure (issue #2890)', () => {
+  let originalCwd: string;
+  let originalNexusDataDir: string | undefined;
+  let originalRepoPreferred: string | undefined;
+  let tempBase: string;
+
+  beforeEach(async () => {
+    originalCwd = process.cwd();
+    originalNexusDataDir = process.env['NEXUS_DATA_DIR'];
+    originalRepoPreferred = process.env['NEXUS_REPO_PREFERRED'];
+    process.env['NEXUS_REPO_PREFERRED'] = '0'; // homedir-only for these tests
+    const { mkdtempSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    tempBase = mkdtempSync(join(tmpdir(), 'nexus-ensure-'));
+    process.env['NEXUS_DATA_DIR'] = tempBase;
+    const { _resetWritabilityMemoForTests } = await import('./nexus-data-dir.js');
+    _resetWritabilityMemoForTests();
+  });
+
+  afterEach(async () => {
+    if (originalNexusDataDir === undefined) delete process.env['NEXUS_DATA_DIR'];
+    else process.env['NEXUS_DATA_DIR'] = originalNexusDataDir;
+    if (originalRepoPreferred === undefined) delete process.env['NEXUS_REPO_PREFERRED'];
+    else process.env['NEXUS_REPO_PREFERRED'] = originalRepoPreferred;
+    process.chdir(originalCwd);
+    const { rmSync } = await import('node:fs');
+    rmSync(tempBase, { recursive: true, force: true });
+  });
+
+  it('creates parent directory when called with a file path', async () => {
+    const { nexusDataPathEnsure } = await import('./nexus-data-dir.js');
+    const { existsSync } = await import('node:fs');
+    const result = nexusDataPathEnsure('learning', 'outcomes.jsonl');
+    expect(result).toBe(join(tempBase, 'learning', 'outcomes.jsonl'));
+    expect(existsSync(join(tempBase, 'learning'))).toBe(true);
+  });
+
+  it('creates the target directory when called with a single segment', async () => {
+    const { nexusDataPathEnsure } = await import('./nexus-data-dir.js');
+    const { existsSync } = await import('node:fs');
+    const result = nexusDataPathEnsure('voting');
+    expect(result).toBe(join(tempBase, 'voting'));
+    expect(existsSync(join(tempBase, 'voting'))).toBe(true);
+  });
+
+  it('is idempotent on existing directories', async () => {
+    const { nexusDataPathEnsure } = await import('./nexus-data-dir.js');
+    expect(() => {
+      nexusDataPathEnsure('weather', 'history.jsonl');
+      nexusDataPathEnsure('weather', 'history.jsonl');
+      nexusDataPathEnsure('weather', 'history.jsonl');
+    }).not.toThrow();
   });
 });
