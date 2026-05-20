@@ -267,37 +267,56 @@ function printSqliteCheck(check: SqliteCheck): void {
   }
 }
 
+/** Prints one scope group of data subdirs with per-subdir resolved paths. */
+function printDataDirGroup(
+  label: string,
+  rootHint: string,
+  subdirs: readonly DataDirectoryCheck['subdirectories'][number][]
+): void {
+  if (subdirs.length === 0) return;
+  const existCount = subdirs.filter((d) => d.exists).length;
+  writeLine(
+    `  ${colors.dim}${label} — ${rootHint} (${String(existCount)}/${String(subdirs.length)})${colors.reset}`
+  );
+  for (const dir of subdirs) {
+    let marker: string;
+    if (!dir.exists) marker = `${colors.dim}·${colors.reset}`;
+    else if (!dir.writable) marker = `${colors.yellow}!${colors.reset}`;
+    else marker = `${colors.green}✓${colors.reset}`;
+    const note = !dir.exists
+      ? ` ${colors.dim}(missing — created on first use)${colors.reset}`
+      : !dir.writable
+        ? ` ${colors.yellow}(not writable)${colors.reset}`
+        : '';
+    writeLine(`    ${marker} ${dir.name}  ${colors.dim}${dir.path}${colors.reset}${note}`);
+  }
+}
+
 /**
- * Prints data directory health check (#1249).
+ * Prints data directory health check (#1249, extended #2892).
+ * Groups subdirs by the epic #2872 state-split so the operator sees
+ * exactly where per-repo vs cross-repo state lives.
  */
 function printDataDirectory(check: DataDirectoryCheck): void {
-  if (check.rootExists) {
-    const existCount = check.subdirectories.filter((d) => d.exists).length;
-    const totalCount = check.subdirectories.length;
-    const allExist = existCount === totalCount;
-    const allWritable = check.subdirectories.every((d) => !d.exists || d.writable);
-    const healthy = allExist && allWritable;
-    writeLine(
-      `${formatStatus(healthy, !healthy)} Data directory: ${check.rootPath} (${String(existCount)}/${String(totalCount)} subdirs)`
-    );
-    if (!allExist) {
-      const missing = check.subdirectories.filter((d) => !d.exists);
-      for (const dir of missing) {
-        writeLine(`  ${colors.dim}Missing: ${dir.name}/${colors.reset}`);
-      }
-      writeLine(`  ${colors.dim}Fix: nexus-agents setup${colors.reset}`);
-    }
-    if (!allWritable) {
-      const readonly_ = check.subdirectories.filter((d) => d.exists && !d.writable);
-      for (const dir of readonly_) {
-        writeLine(`  ${colors.yellow}Not writable: ${dir.name}/${colors.reset}`);
-      }
-    }
+  const allExist = check.subdirectories.every((d) => d.exists);
+  const allWritable = check.subdirectories.every((d) => !d.exists || d.writable);
+  const healthy = check.rootExists && allWritable;
+
+  writeLine(`${formatStatus(healthy, !healthy)} Data directory layout:`);
+
+  const perRepo = check.subdirectories.filter((d) => d.scope === 'per-repo');
+  const crossRepo = check.subdirectories.filter((d) => d.scope === 'cross-repo');
+
+  if (check.repoRoot !== null) {
+    printDataDirGroup('Per-repo', check.repoRoot, perRepo);
   } else {
-    writeLine(
-      `${formatStatus(false, true)} Data directory: ${colors.yellow}Not created${colors.reset}`
-    );
-    writeLine(`  ${colors.dim}Run: nexus-agents setup${colors.reset}`);
+    // Repo-preferred tier inactive — per-repo subdirs also live in homedir.
+    printDataDirGroup('Per-repo (homedir — repo-preferred off)', check.rootPath, perRepo);
+  }
+  printDataDirGroup('Cross-repo', check.rootPath, crossRepo);
+
+  if (!allExist) {
+    writeLine(`  ${colors.dim}Fix: nexus-agents setup${colors.reset}`);
   }
 }
 

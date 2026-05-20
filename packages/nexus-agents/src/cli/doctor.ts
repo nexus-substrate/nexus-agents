@@ -17,8 +17,12 @@ import {
   accessSync,
   constants as fsConstants,
 } from 'node:fs';
-import { join } from 'node:path';
-import { getNexusDataDir } from '../config/nexus-data-dir.js';
+import {
+  getNexusDataDir,
+  getNexusRepoDir,
+  getPerRepoSubdirs,
+  nexusDataPath,
+} from '../config/nexus-data-dir.js';
 import { detectSandbox } from '../config/sandbox-detection.js';
 import { getTimeProvider, getErrorMessage } from '../core/index.js';
 import {
@@ -142,12 +146,19 @@ export interface SqliteCheck {
 }
 
 /**
- * Data directory health check (#1249).
- * Reports status of ~/.nexus-agents/ and its subdirectories.
+ * Data directory health check (#1249, extended #2892).
+ * Reports the resolved location of every data subdirectory — per-repo
+ * subdirs under `<repo>/.nexus-agents/`, cross-repo subdirs under
+ * `~/.nexus-agents/` — so the operator can see where state actually
+ * lives after the epic #2872 state-split.
  */
 export interface DataDirectoryCheck {
+  /** True if the homedir/cross-repo root exists. */
   readonly rootExists: boolean;
+  /** The homedir/cross-repo root path. */
   readonly rootPath: string;
+  /** `<repo>/.nexus-agents` when the repo-preferred tier is active, else null. */
+  readonly repoRoot: string | null;
   readonly subdirectories: readonly DataSubdirStatus[];
 }
 
@@ -156,7 +167,10 @@ export interface DataDirectoryCheck {
  */
 export interface DataSubdirStatus {
   readonly name: string;
+  /** Actual resolved path (per-repo or homedir, per the #2872 split). */
   readonly path: string;
+  /** Which side of the state-split this subdir belongs to. */
+  readonly scope: 'per-repo' | 'cross-repo';
   readonly exists: boolean;
   readonly writable: boolean;
 }
@@ -589,7 +603,11 @@ export async function checkSqlite(): Promise<SqliteCheck> {
 }
 
 /**
- * Checks the ~/.nexus-agents/ data directory health (#1249).
+ * Checks the nexus-agents data directory health (#1249, extended #2892).
+ *
+ * Resolves each subdir through `nexusDataPath()` so the reported path is
+ * the REAL location after the epic #2872 state-split — per-repo subdirs
+ * land in `<repo>/.nexus-agents/`, cross-repo subdirs in `~/.nexus-agents/`.
  *
  * Exported so `verify` (#2136) can reuse it without running the full doctor
  * pipeline.
@@ -597,14 +615,20 @@ export async function checkSqlite(): Promise<SqliteCheck> {
 export function checkDataDirectory(): DataDirectoryCheck {
   const rootPath = getNexusDataDir();
   const rootExists = existsSync(rootPath);
+  const repoRoot = getNexusRepoDir();
+  const perRepoSet = getPerRepoSubdirs();
 
   const subdirectories: DataSubdirStatus[] = DATA_SUBDIRECTORIES.map((name) => {
-    const fullPath = join(rootPath, name);
+    const segments = name.split('/');
+    const fullPath = nexusDataPath(...segments);
     const exists = existsSync(fullPath);
-    return { name, path: fullPath, exists, writable: exists && isWritable(fullPath) };
+    const scope: 'per-repo' | 'cross-repo' = perRepoSet.has(segments[0] ?? '')
+      ? 'per-repo'
+      : 'cross-repo';
+    return { name, path: fullPath, scope, exists, writable: exists && isWritable(fullPath) };
   });
 
-  return { rootExists, rootPath, subdirectories };
+  return { rootExists, rootPath, repoRoot, subdirectories };
 }
 
 /** Checks if a directory is writable by the current user. */

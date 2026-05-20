@@ -110,6 +110,7 @@ function createMockDoctorResult(overrides: Partial<DoctorResult> = {}): DoctorRe
     dataDirectory: {
       rootExists: true,
       rootPath: '/home/test/.nexus-agents',
+      repoRoot: null,
       subdirectories: [],
     },
     sandbox: {

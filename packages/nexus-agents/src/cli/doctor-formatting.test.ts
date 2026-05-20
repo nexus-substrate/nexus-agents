@@ -161,6 +161,7 @@ describe('doctor-formatting', () => {
     dataDirectory: {
       rootExists: true,
       rootPath: '/home/test/.nexus-agents',
+      repoRoot: null,
       subdirectories: [],
     },
     sandbox: {

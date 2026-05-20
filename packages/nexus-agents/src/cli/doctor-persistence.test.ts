@@ -130,4 +130,28 @@ describe('Doctor learning persistence check (Issue #1017)', () => {
     expect(typeof result.dataDirectory.rootPath).toBe('string');
     expect(Array.isArray(result.dataDirectory.subdirectories)).toBe(true);
   });
+
+  // Issue #2892: checkDataDirectory() tags each subdir with its
+  // per-repo / cross-repo scope and resolves the real path.
+  it('checkDataDirectory tags subdir scope and exposes repoRoot (#2892)', async () => {
+    const { checkDataDirectory } = await import('./doctor.js');
+    const check = checkDataDirectory();
+
+    expect(check).toHaveProperty('repoRoot');
+    // repoRoot is either a string (repo-preferred active) or null.
+    expect(check.repoRoot === null || typeof check.repoRoot === 'string').toBe(true);
+
+    // Every subdir is tagged with a valid scope.
+    for (const sub of check.subdirectories) {
+      expect(['per-repo', 'cross-repo']).toContain(sub.scope);
+    }
+
+    // Known per-repo subdirs (sessions, audit) are tagged per-repo;
+    // known cross-repo subdirs (learning, auth) are tagged cross-repo.
+    const byName = new Map(check.subdirectories.map((s) => [s.name, s.scope]));
+    expect(byName.get('sessions')).toBe('per-repo');
+    expect(byName.get('audit')).toBe('per-repo');
+    expect(byName.get('learning')).toBe('cross-repo');
+    expect(byName.get('auth')).toBe('cross-repo');
+  });
 });

@@ -83,7 +83,7 @@ function makeDoctorResult(overrides: Partial<DoctorResult> = {}): DoctorResult {
       error: null,
     },
     sqliteCheck: { available: true, error: null },
-    dataDirectory: { rootExists: true, rootPath: '/tmp', subdirectories: [] },
+    dataDirectory: { rootExists: true, rootPath: '/tmp', repoRoot: null, subdirectories: [] },
     sandbox: {
       active: false,
       flavor: undefined,
