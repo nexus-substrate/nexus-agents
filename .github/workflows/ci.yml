@@ -185,9 +185,12 @@ jobs:
 
       # dist/cli.js is TypeScript-compiled (not bundled) — it imports from
       # node_modules at runtime, so both the build AND the installed deps
-      # must be present in the read-only repo mount.
-      - name: Build nexus-agents
-        run: pnpm --filter nexus-agents build
+      # must be present in the read-only repo mount. Full `pnpm build`
+      # (not --filter nexus-agents) so the nexus-memory workspace dep is
+      # built first — a filtered build fails with "Could not resolve
+      # nexus-memory".
+      - name: Build workspace
+        run: pnpm build
 
       - name: Run consolidation test (normal homedir)
         run: docker compose -f docker-compose.consolidation-test.yml run --rm consolidation-normal
