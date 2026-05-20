@@ -6,11 +6,9 @@
  *
  * @module pipeline/pipeline-runner
  */
-import { join } from 'node:path';
-
 import { executeGraph } from '../orchestration/graph/graph-executor.js';
 import { createLogger } from '../core/index.js';
-import { getNexusDataDir } from '../config/nexus-data-dir.js';
+import { nexusDataPath } from '../config/nexus-data-dir.js';
 
 import { compilePlan } from './plan-compiler.js';
 import type { PlanCompileOptions } from './plan-compiler.js';
@@ -58,13 +56,15 @@ export interface StepOutcome {
 }
 
 /**
- * Default directory for trace output, resolved through `getNexusDataDir()`
- * so runs land under the centralized data dir instead of sprawling at cwd.
- * Function rather than const so `NEXUS_DATA_DIR` env changes are honored
- * at call time (matters for tests that mock the env). See epic #2872.
+ * Default directory for trace output. Resolved through `nexusDataPath()`
+ * — NOT `join(getNexusDataDir(), 'runs')` — because `runs` is a per-repo
+ * subdir: the manual join bypassed the per-repo routing entirely, so
+ * traces landed in homedir even with `NEXUS_REPO_PREFERRED` ON. Issue
+ * #2889. Function rather than const so env changes are honored at call
+ * time (matters for tests that mock the env). See epic #2872 / #2887.
  */
 export function getDefaultRunsDir(): string {
-  return join(getNexusDataDir(), 'runs');
+  return nexusDataPath('runs');
 }
 
 /** Pipeline execution options. */

@@ -9,12 +9,11 @@
  */
 
 import { mkdirSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
 import { DATA_SUBDIRECTORIES } from './doctor.js';
-import { getNexusDataDir } from '../config/nexus-data-dir.js';
+import { getNexusDataDir, nexusDataPath } from '../config/nexus-data-dir.js';
 
 /**
- * Root data directory path.
+ * Homedir/cross-repo root data directory path.
  *
  * Resolves to `$NEXUS_DATA_DIR` when set, else `<homedir>/.nexus-agents`.
  * See `src/config/nexus-data-dir.ts` for resolution rules (#2302).
@@ -22,6 +21,11 @@ import { getNexusDataDir } from '../config/nexus-data-dir.js';
  * Evaluated at module-import time. Tests that mutate `NEXUS_DATA_DIR`
  * mid-process should call `resetNexusDataDirCache()` and re-import, or
  * call `getNexusDataDir()` directly.
+ *
+ * NOTE: this is the cross-repo root ONLY. Per-repo subdirs (sessions,
+ * checkpoints, audit, …) resolve to `<repo>/.nexus-agents/`;
+ * `initDataDirectories()` routes each subdir through `nexusDataPath()`
+ * so the per-repo split from epic #2872 is honored. Issue #2889.
  */
 export const NEXUS_DATA_DIR = getNexusDataDir();
 
@@ -55,7 +59,12 @@ export function initDataDirectories(dryRun: boolean = false): DataDirInitResult 
 
     for (const subdir of DATA_SUBDIRECTORIES) {
       const mode = RESTRICTED_DIRS.has(subdir) ? 0o700 : undefined;
-      ensureDir(join(NEXUS_DATA_DIR, subdir), dryRun, created, alreadyExisted, mode);
+      // Route through nexusDataPath() so per-repo subdirs (sessions,
+      // checkpoints, audit, …) land in `<repo>/.nexus-agents/` and
+      // cross-repo subdirs in homedir. Split on '/' so the routing key
+      // is the true first segment (e.g. 'memory/beliefs' → 'memory').
+      const target = nexusDataPath(...subdir.split('/'));
+      ensureDir(target, dryRun, created, alreadyExisted, mode);
     }
 
     return { success: true, rootPath: NEXUS_DATA_DIR, created, alreadyExisted, error: null };
