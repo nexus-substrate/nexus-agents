@@ -141,7 +141,7 @@ security:
 
   audit:
     enabled: true
-    logDir: ~/.nexus-agents/audit
+    logDir: .nexus-agents/audit # per-repo (epic #2872); cross-repo override: ~/.nexus-agents/audit
     minSeverity: info # info | warning | critical
     enableHashChain: false # Tamper-evident log chain
     maxFileSizeBytes: 10485760
@@ -373,7 +373,7 @@ const REDACT_PATTERNS = [
 
 ## Security Audit Logging
 
-Audit events are written as SIEM-compatible JSON-L to `~/.nexus-agents/audit/` (configurable).
+Audit events are written as SIEM-compatible JSON-L to `<repo>/.nexus-agents/audit/` by default — `audit/` is per-repo state (epic #2872). Configurable via the `audit.logDir` config field or `NEXUS_DATA_DIR`.
 
 ### Event Types
 
@@ -423,7 +423,7 @@ security:
 
   audit:
     enabled: false # Set to true for structured audit logging
-    logDir: ~/.nexus-agents/audit
+    logDir: .nexus-agents/audit # per-repo (epic #2872); cross-repo override: ~/.nexus-agents/audit
     minSeverity: info # info | warning | critical
     enableHashChain: false # Tamper-evident hash chain
     maxFileSizeBytes: 10485760 # 10 MB per log file

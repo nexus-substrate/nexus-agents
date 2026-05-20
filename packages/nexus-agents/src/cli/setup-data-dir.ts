@@ -1,7 +1,8 @@
 /**
  * nexus-agents data directory initialization
  *
- * Pre-creates ~/.nexus-agents/ directory structure with proper permissions.
+ * Pre-creates the nexus-agents data directory structure (per-repo +
+ * cross-repo roots per epic #2872) with proper permissions.
  * Used by `nexus-agents setup` to ensure data directories exist before first use.
  *
  * @module cli/setup-data-dir
@@ -44,7 +45,9 @@ export interface DataDirInitResult {
 }
 
 /**
- * Creates the ~/.nexus-agents/ directory structure.
+ * Creates the nexus-agents data directory structure. Each subdir is
+ * routed through `nexusDataPath()` — per-repo subdirs land in
+ * `<repo>/.nexus-agents/`, cross-repo subdirs in `~/.nexus-agents/`.
  * Sets restrictive permissions (0o700) on auth/ directory.
  *
  * @param dryRun - If true, reports what would be created without creating.

@@ -52,7 +52,8 @@ Most-used env vars:
 | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
 | `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_AI_API_KEY` / `OPENROUTER_API_KEY` | Per-vendor adapter auth.                                                 |
 | `NEXUS_BILLING_MODE`                                                                | `plan` (default) zeroes cost in scoring; `api` keeps cost-aware routing. |
-| `NEXUS_DATA_DIR`                                                                    | Runtime data root (default `~/.nexus-agents`).                           |
+| `NEXUS_DATA_DIR`                                                                    | Explicit runtime data root; overrides the per-repo/cross-repo split.     |
+| `NEXUS_REPO_PREFERRED`                                                              | `0` opts out of the per-repo data dir (epic #2872; default ON).          |
 | `NEXUS_ACCESS_POLICY_MODE`                                                          | ClawGuard: `off` / `audit` (default) / `confirm_risky` / `enforce`.      |
 | `NEXUS_SANDBOX` / `NEXUS_SANDBOX_ROOT`                                              | Sandbox mode (epic #2500).                                               |
 

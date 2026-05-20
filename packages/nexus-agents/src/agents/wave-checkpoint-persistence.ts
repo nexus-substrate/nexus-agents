@@ -4,7 +4,8 @@
  * Persists completed wave results to disk as JSONL after each wave.
  * If the session dies mid-execution, results from finished waves survive.
  *
- * Storage: ~/.nexus-agents/checkpoints/checkpoint-{sessionId}.jsonl
+ * Storage: <repo>/.nexus-agents/checkpoints/checkpoint-{sessionId}.jsonl
+ * (checkpoints/ is per-repo state — epic #2872)
  * Permissions: directory 0o700, files 0o600
  *
  * (Source: Context Exhaustion Prevention - Issue #769 follow-up)
