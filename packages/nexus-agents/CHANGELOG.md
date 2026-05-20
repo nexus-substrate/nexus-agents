@@ -1,5 +1,208 @@
 # nexus-agents
 
+## 2.80.0
+
+### Minor Changes
+
+- [#2886](https://github.com/nexus-substrate/nexus-agents/pull/2886) [`2487c2e`](https://github.com/nexus-substrate/nexus-agents/commit/2487c2e8d65ffd8fbada0287226105151b1f1d03) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **feat(config):** repo-preferred data directory is now the default behavior — runtime artifacts for per-repo work land in `<repo>/.nexus-agents/` automatically. Final piece of epic [#2872](https://github.com/nexus-substrate/nexus-agents/issues/2872) (vote [#2876](https://github.com/nexus-substrate/nexus-agents/issues/2876)).
+
+  When nexus-agents runs inside a git repo, per-repo state (sessions, checkpoints, traces, runs, audit, pipeline, tasks) now lands in `<repo-root>/.nexus-agents/<subdir>/` instead of `~/.nexus-agents/`. Cross-repo state (learning, voting, memory, weather, research, auth, usage) still goes to `~/.nexus-agents/` so the cross-project learning loop from [#1389](https://github.com/nexus-substrate/nexus-agents/issues/1389) / [#1407](https://github.com/nexus-substrate/nexus-agents/issues/1407) stays intact — vote [#2876](https://github.com/nexus-substrate/nexus-agents/issues/2876) made this state-category split a hard condition.
+
+  ## Auto-gitignore
+
+  On first resolution per process per repo, `.nexus-agents/` is auto-appended to `<repo>/.gitignore` (idempotent — won't duplicate). This is the fail-closed behavior required by the security review in vote [#2876](https://github.com/nexus-substrate/nexus-agents/issues/2876).
+
+  ## Escape hatches preserved
+  - `NEXUS_REPO_PREFERRED=0` — fully opt out; behaves like the previous homedir-default release.
+  - `NEXUS_DATA_DIR=~/.nexus-agents` — explicit override wins over the tier AND the categorization both. Users with cross-repo workflows can pin to homedir for everything.
+  - `NEXUS_GITIGNORE_AUTO=0` — silences the auto-gitignore append (useful on CI runners with a frozen working tree).
+
+  ## Migration
+
+  If you have existing state in `~/.nexus-agents/` you want to keep working with, run `nexus-agents migrate` (shipped in the previous release via [#2879](https://github.com/nexus-substrate/nexus-agents/issues/2879)) **before** running any other nexus-agents command in your repo. The migrate command copies per-repo subdirs from homedir → `<repo>/.nexus-agents/` (source untouched, cross-repo subdirs skipped, destination conflicts skipped).
+
+  Users with multi-repo cross-pollination workflows who want to keep the old behavior should add `export NEXUS_DATA_DIR=$HOME/.nexus-agents` to their shell rc.
+
+  Closes the final piece of epic [#2872](https://github.com/nexus-substrate/nexus-agents/issues/2872). After this lands, running `nexus-agents` in a fresh repo produces one new top-level entry — `.nexus-agents/`, auto-gitignored, containing every per-repo runtime artifact. Removing that one directory fully resets the repo's state.
+
+- [#2885](https://github.com/nexus-substrate/nexus-agents/pull/2885) [`7151770`](https://github.com/nexus-substrate/nexus-agents/commit/7151770053ae8cdf4711b973ce6f41e2cd30caa3) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **feat(cli):** `nexus-agents migrate` relocates homedir state into `<repo>/.nexus-agents/` for users adopting the repo-preferred resolver. Closes [#2879](https://github.com/nexus-substrate/nexus-agents/issues/2879) (epic [#2872](https://github.com/nexus-substrate/nexus-agents/issues/2872)).
+
+  Required companion to [#2882](https://github.com/nexus-substrate/nexus-agents/issues/2882) — without this, opting into `NEXUS_REPO_PREFERRED=1` silently orphans users' existing homedir state. Vote [#2876](https://github.com/nexus-substrate/nexus-agents/issues/2876) made this an explicit gate (PM + Catfish dissent: "shipping [#2882](https://github.com/nexus-substrate/nexus-agents/issues/2882) without migrate orphans existing users' homedir state").
+
+  ## Behavior
+
+  ```bash
+  nexus-agents migrate            # copy per-repo state from ~/.nexus-agents to <repo>/.nexus-agents
+  nexus-agents migrate --dry-run  # report the plan without writing
+  nexus-agents migrate --input <path>   # custom source (default: ~/.nexus-agents)
+  nexus-agents migrate --output <path>  # custom target (default: <repo>/.nexus-agents)
+  ```
+
+  Source is never modified (uses `cpSync`, not move). Cross-repo subdirs (`learning`, `voting`, `memory`, `weather`, `research`, `auth`, `usage`) are SKIPPED with an explicit status — they stay homedir-scoped per the [#2882](https://github.com/nexus-substrate/nexus-agents/issues/2882) state-split contract. Target subdirs that already contain state are SKIPPED (no merge, no overwrite). Empty source subdirs are SKIPPED.
+
+  The per-repo allowlist is read from `getPerRepoSubdirs()` (single source of truth in `nexus-data-dir.ts`) so the migration mirror always matches the resolver.
+
+  ## Tests
+
+  11 tests in `migrate-command.test.ts` covering: empty source (no-op), per-repo copy, cross-repo skip, existing-target skip, empty-source skip, dry-run (writes nothing), missing-repo failure, explicit `--to` override outside a repo, mixed source (copies per-repo and skips every cross-repo subdir), and formatter output for success/dry-run/failure states.
+
+- [#2884](https://github.com/nexus-substrate/nexus-agents/pull/2884) [`94cf6ae`](https://github.com/nexus-substrate/nexus-agents/commit/94cf6ae30e1293ca5aa1aba6e21b64bf080c3148) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **feat(config):** opt-in repo-preferred data dir with state-category split (`NEXUS_REPO_PREFERRED=1`). Closes [#2882](https://github.com/nexus-substrate/nexus-agents/issues/2882) (epic [#2872](https://github.com/nexus-substrate/nexus-agents/issues/2872), ratified by vote [#2876](https://github.com/nexus-substrate/nexus-agents/issues/2876)).
+
+  When `NEXUS_REPO_PREFERRED=1` is set and the caller is inside a git repo, runtime state splits across two locations per its sharing semantics:
+
+  | Category       | Subdirs                                                                                        | Location                              |
+  | -------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------- |
+  | **Per-repo**   | `sessions/`, `checkpoints/`, `traces/`, `runs/`, `audit/`, `pipeline/`, `tasks/`               | `<repo-root>/.nexus-agents/<subdir>/` |
+  | **Cross-repo** | `learning/`, `voting/`, `memory/`, `weather/`, `research/`, `auth/`, `usage/`, models manifest | `~/.nexus-agents/<subdir>/`           |
+
+  The split preserves the cross-project learning loop ([#1389](https://github.com/nexus-substrate/nexus-agents/issues/1389) / [#1407](https://github.com/nexus-substrate/nexus-agents/issues/1407)) — outcomes, routing memory, weather, and model registry stay homedir-scoped so routing quality on low-sample repos isn't degraded. Per-repo work goes per-repo. The state-category split was a hard condition surfaced in vote [#2876](https://github.com/nexus-substrate/nexus-agents/issues/2876) by Architect, DevEx, PM, Scope Steward, and Catfish.
+
+  **Behavior is opt-in this release** so users with months of homedir state aren't silently orphaned. The follow-up minor will flip the default to ON after [#2879](https://github.com/nexus-substrate/nexus-agents/issues/2879) (`nexus-agents migrate`) lands.
+
+  Mechanism: new `getNexusRepoDir()` helper detects the ancestor `.git` (walks upward, handles git worktrees where `.git` is a file, stops at filesystem boundaries, realpath defense). `nexusDataPath(subdir, ...)` checks the first segment against the per-repo allowlist and routes accordingly — existing callsites don't need to change. New `nexusSharedPath(...)` helper for code that wants a hard homedir guarantee. New `repo-root-detection.ts` module is testable in isolation.
+
+  Resolution order (final):
+  1. `NEXUS_DATA_DIR` env (explicit override — wins for both categories)
+  2. Sandbox mode (`NEXUS_SANDBOX` — unchanged)
+  3. **NEW:** `NEXUS_REPO_PREFERRED=1` + `.git` ancestor → per-repo for allowlisted subdirs, homedir for everything else
+  4. Homedir fallback for both categories when not opted in
+
+  Tests: 11 new in `nexus-data-dir.test.ts` (env-gated routing, state-split regression guards, walk-upward), 8 new in `repo-root-detection.test.ts` (worktrees, nested repos, symlinks, no-`.git` fallback).
+
+- [#2896](https://github.com/nexus-substrate/nexus-agents/pull/2896) [`e0973a2`](https://github.com/nexus-substrate/nexus-agents/commit/e0973a24efbe08bd3300b94e26586ff6b0e5b0dd) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **feat(config):** sandbox-fallback for cross-repo paths + `nexusDataPathEnsure()` helper. Closes [#2888](https://github.com/nexus-substrate/nexus-agents/issues/2888) + [#2890](https://github.com/nexus-substrate/nexus-agents/issues/2890) (epic [#2887](https://github.com/nexus-substrate/nexus-agents/issues/2887)).
+
+  ## Sandbox-fallback ([#2888](https://github.com/nexus-substrate/nexus-agents/issues/2888))
+
+  Cross-repo subdirs (`research`, `learning`, `memory`, `voting`, `weather`, `auth`, `usage`) now transparently fall back to `<repo>/.nexus-agents/<subdir>/` when `~/.nexus-agents/` is physically unwritable AND we're inside a git repo. Per the user direction at epic [#2887](https://github.com/nexus-substrate/nexus-agents/issues/2887): _"research could be cross repo but we need to be able to support it locally in a repo as well and create the folder if missing — I don't want to override the vote I just want things to work for users running nexus-agents in a sandbox without cross repo access."_
+
+  The fallback fires only when homedir is genuinely unreachable. Normal-machine users see no change — vote [#2876](https://github.com/nexus-substrate/nexus-agents/issues/2876)'s state-split is preserved. A one-time stderr warning per subdir announces the fallback so operators can see what happened without per-call noise.
+
+  If homedir is unwritable AND we're not in a repo, the resolver returns the homedir path anyway — the caller's eventual write surfaces the underlying EACCES, which is the right error to show because the environment is genuinely broken.
+
+  ## `nexusDataPathEnsure()` ([#2890](https://github.com/nexus-substrate/nexus-agents/issues/2890))
+
+  New helper that resolves like `nexusDataPath()` then auto-creates the parent directory. Eliminates the class of "forgot `mkdirSync(dirname(p), { recursive: true })`" bugs that callers were working around individually. `nexusDataPath()` itself stays pure (no syscalls on resolve) — callers that want auto-create opt in explicitly.
+
+  ## Tests
+
+  11 new tests covering: per-repo subdir short-circuits before the writability probe, cross-repo fallback fires only when homedir unwritable + in repo, no fallback when not in a repo (surfaces the underlying error), once-per-subdir announce, `nexusDataPathEnsure` creates parents idempotently.
+
+### Patch Changes
+
+- [#2871](https://github.com/nexus-substrate/nexus-agents/pull/2871) [`18f38db`](https://github.com/nexus-substrate/nexus-agents/commit/18f38db6986560bc42280d868bcdaca259ef1480) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(mcp):** `execute_expert` timeout hint now reflects the client-side SDK abort, not the server-side budget.
+
+  The previous hint told callers to "omit `timeoutMs` to use auto-detected timeout (300-600s)" when the MCP client SDK timed out the request. That advice was misleading because the kill happens client-side (typically 60s SDK default), not at our configured server budget — so omitting `timeoutMs` has no effect on the outcome. The new hint reports the actual measured duration, names the underlying spec-compliance issue (most MCP clients don't honor server-side progress extensions), and gives two real workarounds plus a link to the tracking epic [#2631](https://github.com/nexus-substrate/nexus-agents/issues/2631).
+
+- [#2860](https://github.com/nexus-substrate/nexus-agents/pull/2860) [`8344039`](https://github.com/nexus-substrate/nexus-agents/commit/834403931a899e41fcfe4a9a7f47bd12fabb70cb) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **Addresses [#2824](https://github.com/nexus-substrate/nexus-agents/issues/2824) (Wave A).** fix: trustTier string coercion + race deadline try/catch + UUIDv4 variant nibble + SDK adapter output sanitizer + opencode TTL doc fix
+
+  Five P1/P2 hardening fixes from the 2026-05-16 code-reviewer audit, bundled because each is one-file-disjoint and surgical.
+  - **policy-engine.ts** — `trust-tier` rule now coerces string-typed trustTier (`'3'`, `'4'`) the same as numeric, restoring the "untrusted input cannot trigger execute stages" invariant for every real producer (issue-triage, pr-reviewer, secure-handler). Regression tests added.
+  - **race-against-deadline.ts** — wraps `onTimeout()` invocation in try/catch + reject so a throwing callback can't escape the `setTimeout` and crash the process. Regression tests added.
+  - **random-provider.ts (System)** — switched to `crypto.randomUUID()` for spec-compliant RFC 4122 v4. Existing test tightened to enforce the variant nibble.
+  - **random-provider.ts (Seeded)** — constrained the variant nibble to `8/9/a/b` while preserving determinism. Added 100-sample regression test.
+  - **sdk-adapter.ts** — applies `sanitizeOutput()` to upstream SDK error messages before logging + wrapping, achieving parity with the subprocess-adapter path. Prevents stray API keys / bearer tokens reaching logs.
+  - **opencode-adapter.ts** — corrected stale comment claim that `probeAvailableModels()` is 5-min cached; the cache is actually process-lifetime.
+
+  Audit bullet [#19](https://github.com/nexus-substrate/nexus-agents/issues/19) (firewall-pipeline.ts docstring vs evaluatePolicy) was a false positive — the file contains zero `policy` references — and is being dropped from the epic.
+
+- [#2880](https://github.com/nexus-substrate/nexus-agents/pull/2880) [`5a1522c`](https://github.com/nexus-substrate/nexus-agents/commit/5a1522c85464955dca2aef538fa0ff1f4f1eaa8d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(sprawl):** redirect three hardcoded relative paths so runtime artifacts land under `getNexusDataDir()` instead of sprawling at `cwd`. Closes [#2873](https://github.com/nexus-substrate/nexus-agents/issues/2873), [#2874](https://github.com/nexus-substrate/nexus-agents/issues/2874), [#2875](https://github.com/nexus-substrate/nexus-agents/issues/2875) (epic [#2872](https://github.com/nexus-substrate/nexus-agents/issues/2872)).
+  - **`./runs/` → `getNexusDataDir()/runs/`** (`pipeline-runner.ts`). The previous `DEFAULT_RUNS_DIR = './runs'` const is replaced with `getDefaultRunsDir()` so trace output for every `PipelineRunner` execution lands under the centralized data dir. Function form (not const) so `NEXUS_DATA_DIR` env changes are honored at call time. Was the single biggest sprawl source (1063 entries observed in one example checkout).
+  - **`./.nexus-pipeline/` → `getNexusDataDir()/pipeline/`** (`task-tracker.ts`). The `JsonTaskTracker` JSON-fallback default no longer drops a `.nexus-pipeline/` directory at the repo root.
+  - **`./logs/run_evaluation/` default removed** (`cli-types.ts`). The only consumer of `--output-dir` (`handleSweBenchCommand`) is a deprecation shim that ignores the value, so the default was advertising a sprawl-creating fallback for no reason. Live callers should pass an explicit path or resolve through `getNexusDataDir()` at use time.
+
+  No behavior change for callers that pass `runsDir` / `outputDir` / `--output-dir` explicitly. Tests added covering the new defaults + the call-time env resolution.
+
+- [#2883](https://github.com/nexus-substrate/nexus-agents/pull/2883) [`ee6bacd`](https://github.com/nexus-substrate/nexus-agents/commit/ee6bacd1e012556e74532abcf357fa8f22ac7d31) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **feat(config):** `nexus-agents.yaml` now lives in `.nexus-agents/` by default. Closes [#2877](https://github.com/nexus-substrate/nexus-agents/issues/2877) (epic [#2872](https://github.com/nexus-substrate/nexus-agents/issues/2872)).
+
+  The config-loader checks `.nexus-agents/nexus-agents.yaml` ahead of the legacy root-level location, and `nexus-agents setup` / `nexus-agents config init` write new configs to the dotdir. Existing root-level configs keep working without action — both writers and the loader fall back to them transparently. The migrate command ([#2879](https://github.com/nexus-substrate/nexus-agents/issues/2879)) is the explicit way to relocate.
+
+  Locations checked in order:
+  1. `NEXUS_CONFIG_PATH` env (unchanged)
+  2. **NEW:** `<cwd>/.nexus-agents/nexus-agents.yaml`
+  3. **NEW:** `<cwd>/.nexus-agents/nexus-agents.yml`
+  4. `<cwd>/nexus-agents.yaml` (legacy root, still works)
+  5. `<cwd>/nexus-agents.yml` (legacy root, still works)
+  6. `<getNexusDataDir()>/nexus-agents.yaml` (global fallback, unchanged)
+
+  Touches: `config/config-loader.ts` (lookup), `cli/setup-config.ts` (writer), `cli/config-init.ts` (writer), `cli/doctor.ts` (probe), `cli-commands-handlers.ts` (first-run hint), `cli/setup-environment.ts` (env probe). 4 new tests in `config-loader.test.ts` pin the precedence + NEXUS_CONFIG_PATH dominance.
+
+- [#2881](https://github.com/nexus-substrate/nexus-agents/pull/2881) [`386c837`](https://github.com/nexus-substrate/nexus-agents/commit/386c837f91d7b1f30eb926491fe78172000f49e0) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **ci(sprawl):** working-tree-clean gate after `pnpm test:coverage`. Closes [#2878](https://github.com/nexus-substrate/nexus-agents/issues/2878) (epic [#2872](https://github.com/nexus-substrate/nexus-agents/issues/2872)).
+
+  CI now fails if tests leave files matching the sprawl-pattern paths from the epic-[#2872](https://github.com/nexus-substrate/nexus-agents/issues/2872) audit (`runs/`, `logs/`, `.nexus-pipeline/`, `.nexus-agents/`, `predictions.jsonl`, `coverage.json`, `.test-*`). The check runs unconditionally (`if: always()`) so it catches leaks even when tests pass.
+
+  The audit found the test suite is already clean — every test uses `mkdtempSync(tmpdir(), ...)` with `afterEach` cleanup. This gate locks that discipline in so a future test that writes to `cwd` without cleanup gets caught at PR time rather than discovered later as accumulated sprawl.
+
+- [#2897](https://github.com/nexus-substrate/nexus-agents/pull/2897) [`794c8c7`](https://github.com/nexus-substrate/nexus-agents/commit/794c8c7311faae811729e59ab484a86d1f810313) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(config):** route per-repo subdir writes through `nexusDataPath()` so the epic-[#2872](https://github.com/nexus-substrate/nexus-agents/issues/2872) state-split actually fires. Closes [#2889](https://github.com/nexus-substrate/nexus-agents/issues/2889) (epic [#2887](https://github.com/nexus-substrate/nexus-agents/issues/2887)).
+
+  Two callers joined a per-repo subdir directly under `getNexusDataDir()` instead of going through `nexusDataPath()`. The manual join bypassed the per-repo routing — so the state landed in homedir even with `NEXUS_REPO_PREFERRED` ON, partly defeating the consolidation epic [#2872](https://github.com/nexus-substrate/nexus-agents/issues/2872) shipped.
+  - **`pipeline-runner.ts` — `getDefaultRunsDir()`** did `join(getNexusDataDir(), 'runs')`. `runs` is a per-repo subdir, so pipeline trace output went to `~/.nexus-agents/runs/` instead of `<repo>/.nexus-agents/runs/`. Now `nexusDataPath('runs')`.
+  - **`setup-data-dir.ts` — `initDataDirectories()`** did `join(NEXUS_DATA_DIR, subdir)` for every subdir in `DATA_SUBDIRECTORIES`, pre-creating `sessions/`, `checkpoints/`, `audit/` (all per-repo) in homedir. Now each subdir routes through `nexusDataPath(...subdir.split('/'))` so per-repo subdirs land in `<repo>/.nexus-agents/` and cross-repo subdirs in homedir.
+
+  No behavior change when `NEXUS_DATA_DIR` is explicitly set or `NEXUS_REPO_PREFERRED=0` — both paths still resolve identically. The fix only matters when the repo-preferred default is active, which is where it was silently not working.
+
+  Tests: a per-repo-routing test added to each of `pipeline-runner.test.ts` and `setup-data-dir.test.ts`; existing homedir-path tests fenced with `NEXUS_REPO_PREFERRED=0` to keep testing the homedir branch explicitly.
+
+- [#2898](https://github.com/nexus-substrate/nexus-agents/pull/2898) [`e909447`](https://github.com/nexus-substrate/nexus-agents/commit/e9094479c864a1e07aab20bb4c08a96787b30c8d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **feat(cli):** `nexus-agents setup` auto-gitignores `.nexus-agents/` + prints a data-layout hint. Closes [#2891](https://github.com/nexus-substrate/nexus-agents/issues/2891) (epic [#2887](https://github.com/nexus-substrate/nexus-agents/issues/2887)).
+
+  The auto-gitignore landed in `getNexusRepoDir()` (epic [#2872](https://github.com/nexus-substrate/nexus-agents/issues/2872)) but only fired lazily on the first resolver call — a user who ran `setup` and read its output had no idea where state would live. Setup now, at the end of a successful run:
+  - Calls `ensureGitignored(repoRoot, '.nexus-agents/')` explicitly so the entry is present immediately (idempotent — won't duplicate).
+  - Prints a "Data layout" section explaining per-repo (`.nexus-agents/`) vs cross-project (`~/.nexus-agents/`) state and pointing at `nexus-agents doctor` for the full picture.
+
+  Skipped on `--dry-run` (nothing was installed) and when not inside a git repo. Both the interactive and non-interactive setup paths are covered.
+
+  4 tests in `setup-command.test.ts`: appends the entry, idempotent on an existing entry, no-op on dry-run, no-op outside a repo.
+
+- [#2899](https://github.com/nexus-substrate/nexus-agents/pull/2899) [`b1613fd`](https://github.com/nexus-substrate/nexus-agents/commit/b1613fd6832551534f2ea4386ff042790a2bdfce) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **feat(cli):** `nexus-agents doctor` reports per-subdir data paths grouped by the state-split. Closes [#2892](https://github.com/nexus-substrate/nexus-agents/issues/2892) (epic [#2887](https://github.com/nexus-substrate/nexus-agents/issues/2887)).
+
+  Before, `doctor` reported a single `~/.nexus-agents/` root and `checkDataDirectory()` did `join(getNexusDataDir(), name)` — which (like [#2889](https://github.com/nexus-substrate/nexus-agents/issues/2889)) bypassed the per-repo router, so the _reported_ paths were wrong after the epic [#2872](https://github.com/nexus-substrate/nexus-agents/issues/2872) flip.
+
+  `checkDataDirectory()` now resolves each subdir through `nexusDataPath()` (the real location), tags it `per-repo` or `cross-repo`, and exposes `repoRoot`. The doctor output groups accordingly:
+
+  ```
+  ✓ Data directory layout:
+    Per-repo — /repo/.nexus-agents (5/7)
+      ✓ sessions     /repo/.nexus-agents/sessions
+      ✓ audit        /repo/.nexus-agents/audit
+      · pipeline     /repo/.nexus-agents/pipeline  (missing — created on first use)
+      …
+    Cross-repo — /home/u/.nexus-agents (7/7)
+      ✓ learning     /home/u/.nexus-agents/learning
+      ✓ auth         /home/u/.nexus-agents/auth
+      …
+  ```
+
+  `DataSubdirStatus` gains a `scope` field; `DataDirectoryCheck` gains `repoRoot`. Tests added covering scope tagging + the `repoRoot` field.
+
+- [#2901](https://github.com/nexus-substrate/nexus-agents/pull/2901) [`05bf0e0`](https://github.com/nexus-substrate/nexus-agents/commit/05bf0e0284682ffeb48bee081fe26d3dccb96928) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **docs:** align documentation + source docstrings with the post-[#2872](https://github.com/nexus-substrate/nexus-agents/issues/2872) data-directory split. Closes [#2893](https://github.com/nexus-substrate/nexus-agents/issues/2893) (epic [#2887](https://github.com/nexus-substrate/nexus-agents/issues/2887)).
+
+  After epics [#2872](https://github.com/nexus-substrate/nexus-agents/issues/2872) / [#2887](https://github.com/nexus-substrate/nexus-agents/issues/2887) flipped the default to a per-repo data directory, 15 user-facing doc references and several source docstrings still claimed everything lives under `~/.nexus-agents/`. This corrects them:
+  - **`docs/getting-started/INSTALLATION.md`** — the Data Storage section now has a per-repo / cross-repo scope column and explains the `NEXUS_DATA_DIR` / `NEXUS_REPO_PREFERRED` / sandbox-fallback behavior.
+  - **`docs/guides/SANDBOXED-USAGE.md`** — the "forcing the behavior you want" table updated; `NEXUS_REPO_PREFERRED=0` documented as the pre-[#2872](https://github.com/nexus-substrate/nexus-agents/issues/2872) opt-out.
+  - **`docs/architecture/SECURITY.md`** — audit-log paths corrected to `<repo>/.nexus-agents/audit/` (`audit/` is per-repo); `auth/` paths left as-is (correctly cross-repo).
+  - **`docs/getting-started/CONFIGURATION.md`, `docs/getting-started/FIRST_TASK.md`, `docs/TROUBLESHOOTING.md`, `CLAUDE.md`** — per-repo vs cross-repo paths corrected and contextualized.
+  - **Source docstrings** in `doctor.ts`, `setup-data-dir.ts`, `verify-command.ts`, `pipeline-checkpoint.ts`, `wave-checkpoint-persistence.ts`, `wave-checkpoint-types.ts` — corrected to reflect the split.
+  - **`handler-utils.test.ts`** — added a clarifying comment: `sessions.db` (a top-level file) resolves cross-repo, distinct from the per-repo `sessions/` directory. The test was already correct — the audit's "misleading" flag was a false positive.
+
+  No behavior change — documentation + comments only.
+
+- [#2900](https://github.com/nexus-substrate/nexus-agents/pull/2900) [`e1a44d0`](https://github.com/nexus-substrate/nexus-agents/commit/e1a44d07fa1a199decbf918c7ae19ac9937071c3) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **chore(ci):** `.devcontainer/` for contributor parity + a docker-compose consolidation E2E test. Closes [#2894](https://github.com/nexus-substrate/nexus-agents/issues/2894) + [#2895](https://github.com/nexus-substrate/nexus-agents/issues/2895) (epic [#2887](https://github.com/nexus-substrate/nexus-agents/issues/2887)).
+
+  ## `.devcontainer/devcontainer.json` ([#2894](https://github.com/nexus-substrate/nexus-agents/issues/2894))
+
+  A Node 22 + pnpm 9.15.0 devcontainer pinned to match CI. Contributors get a one-click CI-identical environment; `pnpm install && pnpm test` works with zero manual setup. No change to CI or anyone's existing local workflow.
+
+  ## Consolidation E2E test ([#2895](https://github.com/nexus-substrate/nexus-agents/issues/2895))
+
+  `docker-compose.consolidation-test.yml` + `scripts/consolidation-test.sh` verify the epic-[#2872](https://github.com/nexus-substrate/nexus-agents/issues/2872) directory contract against a real filesystem in a clean container — the bug class unit tests can't catch because they mock `fs`. Two modes:
+  - **normal** — writable homedir. Asserts per-repo subdirs land in `<repo>/.nexus-agents/`, cross-repo subdirs in `$HOME/.nexus-agents/`, `.gitignore` carries the entry, no `runs/`/`logs/`/`.nexus-pipeline/` sprawl, and per-repo subdirs do NOT leak into homedir.
+  - **sandbox** — read-only homedir mount. Asserts cross-repo subdirs fall back to `<repo>/.nexus-agents/` per [#2888](https://github.com/nexus-substrate/nexus-agents/issues/2888).
+
+  Wired as a required `consolidation-test` CI job (gates merge via `ci-success`). No new Dockerfile — uses `node:22` directly.
+
+  ## Bug caught + fixed
+
+  Building the test surfaced a real bug: `initDataDirectories()` created the homedir root up-front and aborted the _whole_ operation on EROFS — so a read-only-homedir sandbox got nothing, never reaching the per-repo subdirs (which ARE writable). Fixed: dropped the explicit root `ensureDir` (recursive mkdir of each subdir creates its parent) and made per-subdir failures non-fatal. This is what makes the [#2888](https://github.com/nexus-substrate/nexus-agents/issues/2888) sandbox-fallback actually usable from `setup`.
+
 ## 2.79.4
 
 ### Patch Changes
