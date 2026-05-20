@@ -171,6 +171,30 @@ jobs:
           name: fitness-report-${{ matrix.os }}
           path: ${{ steps.fitness.outputs.report-path }}
 
+  # Epic #2887 / #2895: end-to-end verification of the directory contract
+  # from epic #2872. Unit tests mock the filesystem; this exercises the
+  # real resolver against two scratch repos in containers — one with a
+  # writable homedir, one with a read-only homedir (the sandbox case).
+  consolidation-test:
+    name: Consolidation E2E
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup-node
+
+      # dist/cli.js is TypeScript-compiled (not bundled) — it imports from
+      # node_modules at runtime, so both the build AND the installed deps
+      # must be present in the read-only repo mount.
+      - name: Build nexus-agents
+        run: pnpm --filter nexus-agents build
+
+      - name: Run consolidation test (normal homedir)
+        run: docker compose -f docker-compose.consolidation-test.yml run --rm consolidation-normal
+
+      - name: Run consolidation test (read-only homedir / sandbox)
+        run: docker compose -f docker-compose.consolidation-test.yml run --rm consolidation-sandbox
+
   model-string-drift:
     name: Model String Drift Check
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
@@ -252,7 +276,8 @@ jobs:
   # path (copy-paste from a Rust project) and skipped on every run.
   ci-success:
     name: CI Success
-    needs: [commitlint, changeset-check, lint, typecheck, build, test, fitness-audit]
+    needs:
+      [commitlint, changeset-check, lint, typecheck, build, test, fitness-audit, consolidation-test]
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5
     if: always()
@@ -266,6 +291,7 @@ jobs:
              [[ "${{ needs.typecheck.result }}" != "success" ]] || \
              [[ "${{ needs.test.result }}" != "success" ]] || \
              [[ "${{ needs.build.result }}" != "success" ]] || \
+             [[ "${{ needs.consolidation-test.result }}" != "success" ]] || \
              [[ "${{ needs.fitness-audit.result }}" != "success" ]]; then
             echo "One or more required jobs failed"
             exit 1

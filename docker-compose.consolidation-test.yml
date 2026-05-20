@@ -1,0 +1,52 @@
+# Consolidation end-to-end test (epic #2887, issue #2895).
+#
+# Verifies the epic-#2872 directory contract holds against a real
+# filesystem in a clean container. Two services exercise the two modes
+# the resolver must handle:
+#
+#   consolidation-normal   — writable homedir. Per-repo state in
+#                            <repo>/.nexus-agents/, cross-repo in $HOME.
+#   consolidation-sandbox  — read-only homedir mount. Cross-repo subdirs
+#                            must fall back to <repo>/.nexus-agents/ (#2888).
+#
+# Usage (CI builds dist/ first):
+#   pnpm --filter nexus-agents build
+#   docker compose -f docker-compose.consolidation-test.yml run --rm consolidation-normal
+#   docker compose -f docker-compose.consolidation-test.yml run --rm consolidation-sandbox
+#
+# No new Dockerfile — uses node:22 directly. The repo (with built dist/
+# and installed node_modules) is mounted read-only; only scratch + the
+# per-mode homedir are writable.
+
+services:
+  consolidation-normal:
+    image: node:22-bookworm-slim@sha256:f3a68cf41a855d227d1b0ab832bed9749469ef38cf4f58182fb8c893bc462383
+    working_dir: /scratch
+    environment:
+      HOME: /test-home
+      NEXUS_LOG_LEVEL: warn
+    volumes:
+      - .:/repo:ro
+      - consolidation-scratch-normal:/scratch
+      - consolidation-home-normal:/test-home
+    command: ['bash', '/repo/scripts/consolidation-test.sh', 'normal']
+
+  consolidation-sandbox:
+    image: node:22-bookworm-slim@sha256:f3a68cf41a855d227d1b0ab832bed9749469ef38cf4f58182fb8c893bc462383
+    working_dir: /scratch
+    environment:
+      HOME: /test-home
+      NEXUS_LOG_LEVEL: warn
+    volumes:
+      - .:/repo:ro
+      - consolidation-scratch-sandbox:/scratch
+      # Homedir mounted READ-ONLY — simulates a sandbox with no writable
+      # $HOME. The resolver must fall back cross-repo subdirs to the repo.
+      - consolidation-home-sandbox:/test-home:ro
+    command: ['bash', '/repo/scripts/consolidation-test.sh', 'sandbox']
+
+volumes:
+  consolidation-scratch-normal:
+  consolidation-scratch-sandbox:
+  consolidation-home-normal:
+  consolidation-home-sandbox:

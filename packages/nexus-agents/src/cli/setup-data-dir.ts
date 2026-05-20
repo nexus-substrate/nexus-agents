@@ -53,25 +53,40 @@ export interface DataDirInitResult {
 export function initDataDirectories(dryRun: boolean = false): DataDirInitResult {
   const created: string[] = [];
   const alreadyExisted: string[] = [];
+  const failures: string[] = [];
 
-  try {
-    ensureDir(NEXUS_DATA_DIR, dryRun, created, alreadyExisted);
-
-    for (const subdir of DATA_SUBDIRECTORIES) {
-      const mode = RESTRICTED_DIRS.has(subdir) ? 0o700 : undefined;
-      // Route through nexusDataPath() so per-repo subdirs (sessions,
-      // checkpoints, audit, …) land in `<repo>/.nexus-agents/` and
-      // cross-repo subdirs in homedir. Split on '/' so the routing key
-      // is the true first segment (e.g. 'memory/beliefs' → 'memory').
-      const target = nexusDataPath(...subdir.split('/'));
+  // No explicit root ensureDir: recursive mkdir of each subdir creates
+  // its parent root. Crucially, NOT creating the homedir root up-front
+  // means a read-only-homedir sandbox doesn't abort here before the
+  // per-repo subdirs (which ARE writable) get a chance. Issue #2895.
+  for (const subdir of DATA_SUBDIRECTORIES) {
+    const mode = RESTRICTED_DIRS.has(subdir) ? 0o700 : undefined;
+    // Route through nexusDataPath() so per-repo subdirs (sessions,
+    // checkpoints, audit, …) land in `<repo>/.nexus-agents/`, cross-repo
+    // subdirs in homedir, and cross-repo subdirs fall back per-repo when
+    // homedir is unwritable (#2888). Split on '/' so the routing key is
+    // the true first segment (e.g. 'memory/beliefs' → 'memory').
+    const target = nexusDataPath(...subdir.split('/'));
+    // Per-subdir failure is non-fatal: one unwritable location must not
+    // abort the others. Genuinely-broken environments surface as a
+    // non-empty `failures` list rather than a thrown exception.
+    try {
       ensureDir(target, dryRun, created, alreadyExisted, mode);
+    } catch (error: unknown) {
+      failures.push(`${target}: ${error instanceof Error ? error.message : String(error)}`);
     }
-
-    return { success: true, rootPath: NEXUS_DATA_DIR, created, alreadyExisted, error: null };
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    return { success: false, rootPath: NEXUS_DATA_DIR, created, alreadyExisted, error: msg };
   }
+
+  if (failures.length > 0) {
+    return {
+      success: false,
+      rootPath: NEXUS_DATA_DIR,
+      created,
+      alreadyExisted,
+      error: `Failed to create ${String(failures.length)} dir(s): ${failures.join('; ')}`,
+    };
+  }
+  return { success: true, rootPath: NEXUS_DATA_DIR, created, alreadyExisted, error: null };
 }
 
 /** Creates a single directory if it doesn't exist, tracking the result. */
