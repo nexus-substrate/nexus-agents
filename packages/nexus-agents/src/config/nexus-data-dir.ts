@@ -24,8 +24,14 @@
  *    `NEXUS_REPO_PREFERRED` is not explicitly `'0'`):
  *    `<repo-root>/.nexus-agents/<subdir>/`. Auto-adds `.nexus-agents/`
  *    to the repo's `.gitignore` on first resolution (fail-closed).
- * 4. `<homedir>/.nexus-agents` (cross-repo state, plus everything when
- *    not in a git repo or when `NEXUS_REPO_PREFERRED=0`).
+ * 4. Cross-repo subdirs when `~/.nexus-agents/` is unwritable AND we're
+ *    in a repo: per-repo fallback at `<repo-root>/.nexus-agents/<subdir>/`
+ *    with one-time stderr announce. Issue #2888 — gives sandbox users
+ *    a working `research/`, `memory/`, etc. without env-var wrangling
+ *    while preserving the vote #2876 default for normal-machine users.
+ * 5. `<homedir>/.nexus-agents` (cross-repo state on normal machines,
+ *    plus everything when not in a git repo or when
+ *    `NEXUS_REPO_PREFERRED=0`).
  *
  * `NEXUS_REPO_PREFERRED` defaults **ON** as of this release per vote
  * #2876. Escape hatches preserved:
@@ -38,9 +44,9 @@
  * @module config/nexus-data-dir
  */
 
-import { existsSync } from 'node:fs';
+import { accessSync, constants as fsConstants, existsSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 
 import { detectSandbox } from './sandbox-detection.js';
 import { findRepoRoot } from './repo-root-detection.js';
@@ -147,21 +153,119 @@ function maybeAutoGitignore(repoRoot: string): void {
 }
 
 /**
+ * Per-process memo: was the homedir base directory found writable on first
+ * probe? Used to short-circuit the sandbox-fallback decision in
+ * `nexusDataPath()` without spending a syscall on every call.
+ */
+let homedirWritable: boolean | undefined;
+
+/** Per-process memo: have we already announced a fallback for this subdir? */
+const announcedFallbacks = new Set<string>();
+
+/** Test helper — clears the homedir-writability + announcement memos. */
+export function _resetWritabilityMemoForTests(): void {
+  homedirWritable = undefined;
+  announcedFallbacks.clear();
+}
+
+/**
+ * Returns true if `getNexusDataDir()` resolves to a writable location. Probed
+ * once per process and memo'd — flips the sandbox-fallback on/off for
+ * cross-repo subdirs. `mkdirSync(recursive: true)` is the safest probe
+ * because it both creates the dir if missing and surfaces ENOENT/EACCES
+ * issues at the same point. Failures here are non-fatal — they just route
+ * cross-repo state to the per-repo fallback (issue #2888).
+ */
+function isHomedirBaseWritable(): boolean {
+  if (homedirWritable !== undefined) return homedirWritable;
+  const base = getNexusDataDir();
+  try {
+    mkdirSync(base, { recursive: true });
+    accessSync(base, fsConstants.W_OK);
+    homedirWritable = true;
+  } catch {
+    homedirWritable = false;
+  }
+  return homedirWritable;
+}
+
+/**
+ * Emit a one-time stderr warning when a cross-repo subdir falls back to
+ * the per-repo location. Operators in sandboxes get a clear signal about
+ * what happened without per-call noise.
+ */
+function announceCrossRepoFallback(subdir: string, repoPath: string): void {
+  if (announcedFallbacks.has(subdir)) return;
+  announcedFallbacks.add(subdir);
+  process.stderr.write(
+    `[nexus] ${subdir}: homedir ~/.nexus-agents is not writable; ` +
+      `using per-repo fallback at ${repoPath}. See docs/guides/SANDBOXED-USAGE.md.\n`
+  );
+}
+
+/**
  * Returns a path joined under the appropriate data directory for the
- * given subdir. If the first segment is in `PER_REPO_SUBDIRS` and
- * `getNexusRepoDir()` succeeds, the per-repo dir is used. Otherwise the
- * standard `getNexusDataDir()` (homedir) is used. Existing callers don't
- * need to change — the routing decision is driven by the first segment.
+ * given subdir.
+ *
+ * Routing decision (first match wins):
+ * 1. **Per-repo subdir + in a repo + `NEXUS_REPO_PREFERRED` not '0'** →
+ *    `<repo>/.nexus-agents/<subdir>/...`. Standard behavior since #2884.
+ * 2. **Cross-repo subdir + homedir unwritable + in a repo** →
+ *    `<repo>/.nexus-agents/<subdir>/...` as a sandbox-friendly fallback
+ *    (issue #2888). Emits a one-time stderr warning per subdir.
+ * 3. **Otherwise** → `<homedir>/.nexus-agents/<subdir>/...`. If homedir
+ *    is also unwritable, the actual write will surface the error.
+ *
+ * Existing callers don't need to change — the routing decision is driven
+ * by the first segment, not by caller-declared intent.
  */
 export function nexusDataPath(...segments: string[]): string {
   const first = segments[0];
+
+  // Tier 1: per-repo subdir + repo-preferred default.
   if (first !== undefined && PER_REPO_SUBDIRS.has(first)) {
     const repoDir = getNexusRepoDir();
     if (repoDir !== null) {
       return join(repoDir, ...segments);
     }
   }
+
+  // Tier 2: cross-repo subdir but homedir isn't reachable. Fall back to
+  // the per-repo location if we're in a repo, so sandbox users get a
+  // working `research/`, `memory/`, etc. without manual env-var setup.
+  // Vote #2876 preserved: this only fires when homedir is physically
+  // unreachable; normal-machine users see no change.
+  if (first !== undefined && !isHomedirBaseWritable()) {
+    const repoDir = getNexusRepoDir();
+    if (repoDir !== null) {
+      const fallbackPath = join(repoDir, ...segments);
+      announceCrossRepoFallback(first, fallbackPath);
+      return fallbackPath;
+    }
+    // No repo to fall back to AND homedir unreachable — return the
+    // homedir path anyway. The caller's eventual write will surface
+    // the underlying EACCES/ENOENT, which is the right error to show
+    // because the environment is genuinely broken at that point.
+  }
+
   return join(getNexusDataDir(), ...segments);
+}
+
+/**
+ * Like `nexusDataPath()` but eagerly creates the parent directory so
+ * callers don't have to remember `mkdirSync(dirname(p), { recursive: true })`
+ * before every write. Issue #2890. Use when the returned path will be
+ * written to immediately; for read-only resolution prefer `nexusDataPath()`.
+ *
+ * If the call resolves to a directory (single segment or no segments),
+ * the target IS the resolved path. If it resolves to a file (multiple
+ * segments), the target is its parent.
+ */
+export function nexusDataPathEnsure(...segments: string[]): string {
+  const resolved = nexusDataPath(...segments);
+  const target = segments.length > 1 ? dirname(resolved) : resolved;
+  mkdirSync(target, { recursive: true });
+  return resolved;
 }
 
 /**
