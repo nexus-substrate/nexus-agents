@@ -3,7 +3,13 @@
  * (Source: Issue #230, Epic #225)
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+vi.mock('./sandbox-exec.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./sandbox-exec.js')>()),
+  safeExecSandboxed: vi.fn(),
+}));
+
 import {
   extractPriority,
   extractIssueType,
@@ -15,8 +21,15 @@ import {
   generateGoals,
   generateProposal,
   generateProposalBody,
+  createSprintIssue,
 } from './sprint-command.js';
-import type { SprintIssue, GitHubIssueRaw, SprintCommandOptions } from './sprint-types.js';
+import { safeExecSandboxed } from './sandbox-exec.js';
+import type {
+  SprintIssue,
+  GitHubIssueRaw,
+  SprintCommandOptions,
+  SprintProposal,
+} from './sprint-types.js';
 
 // ============================================================================
 // Test Fixtures
@@ -211,12 +224,19 @@ describe('sprint-command', () => {
     it('should generate title with duration', () => {
       const title = generateSprintTitle('1 week');
       expect(title).toContain('sprint:');
-      expect(title).toContain('(1 week)');
+      expect(title).toContain('- 1 week');
     });
 
     it('should include date in MM/DD/YYYY format', () => {
       const title = generateSprintTitle('2 weeks');
       expect(title).toMatch(/sprint: \d{2}\/\d{2}\/\d{4}/);
+    });
+
+    it('contains no shell metacharacters — it is passed to gh --title (#2913)', () => {
+      // The title is an inline `gh issue create --title` argument; the sandbox
+      // gate rejects `( ) ; & |` etc. Parentheses around the duration used to
+      // make every sprint-issue creation fail.
+      expect(generateSprintTitle('1 week')).not.toMatch(/[;&|`$()<>]/);
     });
   });
 
@@ -334,7 +354,7 @@ describe('sprint-command', () => {
 
       const proposal = generateProposal(issues, { ...defaultOptions, duration: '2 weeks' });
 
-      expect(proposal.title).toContain('(2 weeks)');
+      expect(proposal.title).toContain('- 2 weeks');
     });
 
     it('should handle empty issues list', () => {
@@ -344,5 +364,51 @@ describe('sprint-command', () => {
       expect(proposal.p2Issues).toHaveLength(0);
       expect(proposal.goals).toContain('Complete prioritized backlog items');
     });
+  });
+});
+
+// #2913 (audit #2824 bullet 10): createSprintIssue embedded the markdown
+// proposal body in the command string as `--body '<body>'`. The body has a
+// markdown table (`|`) and `(effort)` parentheticals, so the sandbox
+// `validateArgs` gate denied it and every sprint epic silently failed to
+// create. The body is now piped via stdin.
+describe('createSprintIssue', () => {
+  const mockExec = vi.mocked(safeExecSandboxed);
+
+  function makeProposal(): SprintProposal {
+    return {
+      title: generateSprintTitle('1 week'),
+      goals: ['Ship the thing'],
+      p1Issues: [],
+      p2Issues: [],
+      p3Issues: [],
+      p4Issues: [],
+      body: '## Goals\n\n| Item | Priority |\n| ---- | -------- |\n- [ ] #1 - thing (small)',
+    };
+  }
+
+  beforeEach(() => {
+    mockExec.mockReset();
+  });
+
+  it('pipes the body via --body-file - stdin, not an inline --body arg', () => {
+    mockExec.mockReturnValue('https://github.com/o/r/issues/42');
+
+    const num = createSprintIssue(makeProposal());
+
+    expect(num).toBe(42);
+    const call = mockExec.mock.calls[0];
+    expect(call?.[0]).toContain('--body-file -');
+    expect(call?.[0]).not.toContain("--body '");
+    expect((call?.[1] as { stdin?: string } | undefined)?.stdin).toContain('| Item | Priority |');
+  });
+
+  it('keeps shell metacharacters out of the command string', () => {
+    mockExec.mockReturnValue('https://github.com/o/r/issues/7');
+
+    createSprintIssue(makeProposal());
+
+    // Title + flags only — the body (with `|`, `(`, `)`) lives in stdin.
+    expect(mockExec.mock.calls[0]?.[0]).not.toMatch(/[|()]/);
   });
 });
