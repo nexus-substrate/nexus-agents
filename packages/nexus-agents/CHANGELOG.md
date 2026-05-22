@@ -1,5 +1,78 @@
 # nexus-agents
 
+## 2.80.1
+
+### Patch Changes
+
+- [#2914](https://github.com/nexus-substrate/nexus-agents/pull/2914) [`4a1b2b2`](https://github.com/nexus-substrate/nexus-agents/commit/4a1b2b240ccf38dbd5552995b3950de6adbef93e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(cli-adapters):** collapse nested retry layers for subprocess CLIs. Part of [#2824](https://github.com/nexus-substrate/nexus-agents/issues/2824) (audit P1).
+
+  Subprocess CLI adapters had two independent retry layers on the same call path: the inner `retryTransient` in `SubprocessCliAdapter` (1 initial + 2 transient retries) and the shared outer `executeCliRetryLoop` (`maxRetries: 1` → 2 attempts). On a persistent transient error (TIMEOUT / RATE_LIMITED / CONNECTION_ERROR) they multiplied — outer × inner = up to **6 subprocess spawns**, and because the inner layer extends the timeout by 1.5× on every TIMEOUT retry, a stuck call could hang ~9–10 minutes before finally failing.
+
+  New `BaseCliAdapter.shouldOuterRetry()` hook decides whether the outer loop may retry. `SubprocessCliAdapter` overrides it to return `false` whenever its own `transientRetry` layer is enabled (the default), making the inner layer the single retry authority. The outer loop still runs once, so circuit-breaker failure recording is unchanged. Applies to the claude/codex/opencode adapters (via `BaseCliAdapter`) and the gemini adapter (via its circuit-breaker-coupled `executeWithRetryTracking`). Non-subprocess adapters are unaffected.
+
+- [#2915](https://github.com/nexus-substrate/nexus-agents/pull/2915) [`ffea2f6`](https://github.com/nexus-substrate/nexus-agents/commit/ffea2f6eaf09942ad71c833ce1041aa3ae142da2) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(mcp):** route `run_pipeline` / `run_dev_pipeline` through the standard secure-handler chain. Part of [#2824](https://github.com/nexus-substrate/nexus-agents/issues/2824) (audit P1).
+
+  Both pipeline tools registered a bare `server.registerTool()` callback, bypassing the `createSecureHandler → wrapToolWithTimeout → toSdkCallback` chain every other MCP tool uses. Consequences: no rate-limiting, no abort-signal or progress-token plumbing (the very tools that need it most, being long-running), and `schema.parse(args)` ran outside any try/catch — so a `ZodError` on bad input surfaced as a raw JSON-RPC `-32603` internal error instead of a structured `validation` envelope.
+
+  Both tools now use the standard chain: input is validated with `safeParse` inside the handler and a bad payload returns a `toolStructuredError({ errorCategory: 'validation' })`. `run_pipeline` and `run_dev_pipeline` are added to `MCP_TIMEOUTS.perTool` at 15 min so the newly-applied `wrapToolWithTimeout` does not kill these multi-stage pipelines at the 60s default.
+
+- [#2917](https://github.com/nexus-substrate/nexus-agents/pull/2917) [`537d52e`](https://github.com/nexus-substrate/nexus-agents/commit/537d52e334f7c3aaf949280dc8c84cc31b5d146c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **refactor(consensus):** extract `evaluateThreshold` — dedup voting-strategy threshold math. Part of [#2824](https://github.com/nexus-substrate/nexus-agents/issues/2824) (audit P2).
+
+  `SimpleMajorityStrategy`, `SupermajorityStrategy` and `ProofOfLearningStrategy` each repeated the same approval-ratio math: `approvalPercentage = (approve / total) * 100` and `approved = approve / total {>|>=} threshold`. The three copies are now a single `evaluateThreshold(approveCount, votingTotal, threshold, inclusive)` helper. `inclusive` selects `>=` (supermajority) vs strict `>` (simple-majority, proof-of-learning). Behavior is unchanged — the 34 existing strategy tests pass.
+
+- [#2910](https://github.com/nexus-substrate/nexus-agents/pull/2910) [`3e32460`](https://github.com/nexus-substrate/nexus-agents/commit/3e32460aa21f38a252463dcaf30e48c060273c97) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(consensus):** guard `ConsensusEngine.vote()` against double quorum expansion. Closes [#2861](https://github.com/nexus-substrate/nexus-agents/issues/2861).
+
+  `vote()` is `async` and `await`s the expansion callback inside `tryExpandQuorum()` — and `tryExpandQuorum()` mutates `state.proposal.requiredVoters` / `expansionRounds` _after_ that await. Two `vote()` calls that both observe a complete quorum across the await gap would each start an expansion: the callback fires twice and the second expansion clobbers the first's voter list (and `expansionRounds` undercounts).
+
+  Fix: a per-proposal `expansionInFlight` flag on `ProposalState`. `vote()` sets it before `await tryExpandQuorum`, clears it in a `finally`, and a concurrent `vote()` that sees it set returns `ok` immediately (its vote is already recorded — the in-flight expansion handles the quorum decision). The flag is per-proposal, so independent proposals never block each other.
+
+  Severity note: the current production caller (`mcp/tools/consensus-vote.ts`) submits votes in a sequential `for await` loop, so the race is **latent** today — but `ConsensusEngine.vote()` is a public `async` method and any concurrent caller would hit it. This hardens the public contract.
+
+  Regression test in `incremental-quorum.test.ts` fires two `vote()` calls racing the final voter and asserts the expansion callback runs exactly once (verified to fail without the guard).
+
+- [#2909](https://github.com/nexus-substrate/nexus-agents/pull/2909) [`45a8207`](https://github.com/nexus-substrate/nexus-agents/commit/45a8207365c71e93f838bb2e37fa01425a8cf26f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix:** two correctness bugs from the [#2824](https://github.com/nexus-substrate/nexus-agents/issues/2824) code-review audit. Closes [#2862](https://github.com/nexus-substrate/nexus-agents/issues/2862) and [#2864](https://github.com/nexus-substrate/nexus-agents/issues/2864).
+
+  **[#2862](https://github.com/nexus-substrate/nexus-agents/issues/2862) — `decomposeTask` crashed on markdown-fenced JSON.** The Orchestrator's `decomposeTask()` called `JSON.parse()` directly on the LLM response. LLMs routinely wrap the JSON array in a ` ```json … ``` ` fence; the fence made `JSON.parse` throw and `decomposeTask` silently fell back to heuristic decomposition — discarding the model's actual plan. It now strips the fence first via the existing `extractCodeBlock()` helper (the same path `parseJson()` already uses).
+
+  **[#2864](https://github.com/nexus-substrate/nexus-agents/issues/2864) — parallel tool calls dropped sibling outcomes on the first error.** `processToolCallsParallel()` used `Promise.all` (a single rejection aborts collection) and its reduction loop `return`ed on the first `stop-tool-error` outcome — so when one tool in a parallel batch failed, the turns from the _other_ tools (which ran fine) were never recorded in history. Now uses `Promise.allSettled` and drains _every_ outcome into `state.turns` before deciding to stop. A rejected promise (an unexpected escape from `invokeToolForParallel`'s own try/catch) is logged and treated as a stop signal without losing the siblings.
+
+  Tests: a markdown-fence decomposition test in `tech-lead.test.ts`, and a mid-batch-error parallel-drain test in `agentic-adapter.test.ts` asserting both tool turns are recorded.
+
+- [#2912](https://github.com/nexus-substrate/nexus-agents/pull/2912) [`40bbca1`](https://github.com/nexus-substrate/nexus-agents/commit/40bbca158e04a5bc06496dab35cd65940bd3096c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(vote):** record vote comments via `gh ... --body-file -` stdin. Closes [#2863](https://github.com/nexus-substrate/nexus-agents/issues/2863) ([#2824](https://github.com/nexus-substrate/nexus-agents/issues/2824) audit bullet 10).
+
+  `recordVoteToGitHub` embedded the markdown comment body directly in the command string as `gh issue comment N --body '<comment>'`. The sandbox `validateArgs` gate rejects any argument containing shell metacharacters (`/[;&|`$()]/`), and every vote comment from `formatVoteComment` contains a markdown table (`|`) plus a `(NN% approval)`parenthetical — so the body token always matched a denied pattern and`safeExecSandboxed`returned`null`. Result: **every** vote comment was silently dropped with "command denied or failed", regardless of the proposal text.
+
+  The body is now piped to `gh` over stdin via `--body-file -`, so it never touches the shell. `escapeForShell` is removed (no longer needed). `SandboxExecOptions` gains an optional `stdin` field, wired into `safeExecSandboxed`/`execSandboxed` as `execSync`'s `input` option.
+
+- [#2911](https://github.com/nexus-substrate/nexus-agents/pull/2911) [`e66dfc8`](https://github.com/nexus-substrate/nexus-agents/commit/e66dfc80727200a58b0a1d250ae755c3d000c189) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **harden(subprocess):** env-var allowlist for spawned CLI subprocesses. Closes [#2865](https://github.com/nexus-substrate/nexus-agents/issues/2865) ([#2824](https://github.com/nexus-substrate/nexus-agents/issues/2824) audit).
+
+  `spawnSubprocess()` passed the entire `process.env` to every spawned CLI (claude / gemini / codex / opencode) — only `CLAUDECODE` was stripped. That leaked cross-vendor secrets: the **gemini** CLI received `ANTHROPIC_API_KEY` and `OPENAI_API_KEY`; the **codex** CLI received `GOOGLE_AI_API_KEY`; every CLI also saw unrelated secrets like `AWS_SECRET_ACCESS_KEY` and `GITHUB_TOKEN`.
+
+  New `cli-adapters/subprocess-env.ts` builds a curated child environment via `buildChildEnv(cliName)`:
+  - **Base infrastructure** every CLI needs — `PATH`, `HOME`, locale (`LANG`, `LC_*`), proxy (`HTTP_PROXY`/…), `NODE_*`, TLS cert vars, `npm_config_*`, and `NEXUS_*` (config + nested-run credentials).
+  - **Only the spawned CLI's own vendor key(s)** — gemini gets the Google keys, codex gets `OPENAI_API_KEY`, claude gets `ANTHROPIC_API_KEY`, opencode (routes to any provider) gets the full set. Cross-vendor keys are dropped.
+
+  `CLAUDECODE` is still never forwarded. Escape hatch: `NEXUS_SUBPROCESS_ENV_ALLOWLIST=0` restores the pre-[#2865](https://github.com/nexus-substrate/nexus-agents/issues/2865) full-passthrough behavior — a field un-break if the allowlist ever drops a var a CLI needs.
+
+  10 tests in `subprocess-env.test.ts` cover per-CLI vendor-key isolation, base-infra passthrough, prefix families, unrelated-secret stripping, `CLAUDECODE` removal, and the escape hatch. The 35 existing `subprocess-adapter` tests still pass.
+
+- [#2906](https://github.com/nexus-substrate/nexus-agents/pull/2906) [`477e90f`](https://github.com/nexus-substrate/nexus-agents/commit/477e90f4738c7f1b37653758c309735331700a53) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(mcp):** harden the stdin-lifecycle monitor so `--mode=server` processes don't leak as zombies. Closes [#2905](https://github.com/nexus-substrate/nexus-agents/issues/2905).
+
+  The [#810](https://github.com/nexus-substrate/nexus-agents/issues/810) fix used a single signal — `process.stdin.once('end')` — to detect parent death. That misses SIGKILLed parents and abrupt pipe death, where `'end'` never cleanly emits. A process sweep found **134 leaked `nexus-agents --mode=server` processes** aged up to 17 days.
+
+  `StdinLifecycleMonitor` now watches three independent signals, firing the shutdown callbacks exactly once whichever arrives first:
+  1. stdin `'end'` — clean parent exit (unchanged).
+  2. stdin `'close'` — the stdin fd closed; covers abrupt death `'end'` misses.
+  3. **ppid change** — polls the parent pid; if it differs from the value captured at `start()`, the original parent died and the process was reparented. This is the catch-all for SIGKILLed parents that the stream events can't see. The poll timer is `unref()`'d so it never keeps the process alive.
+
+  The monitor is constructable with `{ getPpid, ppidPollMs }` overrides so the ppid path is unit-testable without real reparenting. 9 tests cover all three signals, fire-once semantics, throwing-callback isolation, and interval cleanup.
+
+- [#2916](https://github.com/nexus-substrate/nexus-agents/pull/2916) [`c140a61`](https://github.com/nexus-substrate/nexus-agents/commit/c140a612e8247fe7e2d4e4e47b0a4c2cf0b426c3) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(sprint):** create sprint epics via `gh ... --body-file -` stdin. Closes [#2913](https://github.com/nexus-substrate/nexus-agents/issues/2913) ([#2824](https://github.com/nexus-substrate/nexus-agents/issues/2824) audit bullet 10, sprint half).
+
+  `createSprintIssue` embedded the markdown proposal body in the command string as `gh issue create --body '<body>'`. The body has a markdown table (`|`) and `(effort)` parentheticals, so the sandbox `validateArgs` gate denied the argument and `safeExecSandboxed` returned `null` — every sprint epic silently failed to create. The title was also affected: `generateSprintTitle` produced `sprint: MM/DD/YYYY (duration)`, and the `(duration)` parentheses tripped the gate on the inline `--title` argument.
+
+  The body is now piped to `gh` over stdin (`--body-file -`), so it never touches the shell. `generateSprintTitle` uses `sprint: MM/DD/YYYY - duration` (dash, no parentheses) so the title stays a metacharacter-free inline `--title` argument. This completes audit bullet 10 — the `vote-command` half shipped in [#2863](https://github.com/nexus-substrate/nexus-agents/issues/2863).
+
 ## 2.80.0
 
 ### Minor Changes
