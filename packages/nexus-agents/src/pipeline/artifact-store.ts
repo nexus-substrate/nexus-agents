@@ -1,7 +1,7 @@
 /**
  * ArtifactStore — V2 Pipeline Artifact Storage (Issue #912, Phase 4-3)
  *
- * In-memory artifact store with bounded capacity and LRU eviction.
+ * In-memory artifact store with bounded capacity and FIFO eviction.
  * Tracks provenance chains for artifact traceability.
  *
  * @see docs/v2/08-observability-eventing.md
@@ -126,8 +126,15 @@ export interface ArtifactStoreOptions {
 /**
  * In-memory artifact store with bounded capacity.
  *
- * When the store exceeds maxArtifacts, the oldest artifacts
- * are evicted (FIFO). Content size is validated on put().
+ * When the store exceeds maxArtifacts, the oldest artifacts are evicted
+ * (FIFO — insertion order, never reordered on `get()`). Content size is
+ * validated on put().
+ *
+ * This is a bounded in-memory working cache, NOT the durable audit
+ * substrate (#2867): once `maxArtifacts` is reached, old artifacts and
+ * their provenance are dropped. For tamper-evident, retained audit
+ * history use the on-disk Merkle audit log via the `verify_audit_chain`
+ * MCP tool.
  */
 export class ArtifactStore implements IArtifactStore {
   private readonly artifacts = new Map<string, Artifact>();
@@ -175,17 +182,40 @@ export class ArtifactStore implements IArtifactStore {
     return refs;
   }
 
+  /**
+   * Returns the full provenance chain for an artifact — the artifact
+   * itself plus every ancestor transitively reachable via `inputRefs`
+   * (#2867). Iterative DFS; the `visited` set makes it safe against
+   * cycles and diamond/multi-parent DAGs (each artifact appears once).
+   *
+   * Entries are in reachability (start-node-first DFS) order, not
+   * topological order. An ancestor that has been FIFO-evicted from the
+   * store is silently skipped — the chain truncates there rather than
+   * throwing. A missing root returns `[]`.
+   */
   provenance(ref: ArtifactRef): readonly ProvenanceEntry[] {
-    const artifact = this.artifacts.get(ref.id);
-    if (artifact === undefined) return [];
-    return [
-      {
+    const entries: ProvenanceEntry[] = [];
+    const visited = new Set<string>();
+    const stack: string[] = [ref.id];
+
+    while (stack.length > 0) {
+      const id = stack.pop();
+      if (id === undefined || visited.has(id)) continue;
+      visited.add(id);
+
+      const artifact = this.artifacts.get(id);
+      if (artifact === undefined) continue; // FIFO-evicted ancestor — truncate
+
+      entries.push({
         artifactId: artifact.id,
         plugin: artifact.createdBy,
         timestamp: artifact.createdAt,
         inputArtifacts: artifact.inputRefs.map((r) => r.id),
-      },
-    ];
+      });
+      for (const r of artifact.inputRefs) stack.push(r.id);
+    }
+
+    return entries;
   }
 
   // ==========================================================================

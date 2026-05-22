@@ -1,7 +1,7 @@
 /**
  * ArtifactStore tests (Issue #912, Phase 4-3)
  *
- * Tests put, get, query, provenance, bounds, and LRU eviction.
+ * Tests put, get, query, provenance, bounds, and FIFO eviction.
  */
 import { describe, it, expect } from 'vitest';
 
@@ -116,6 +116,57 @@ describe('ArtifactStore', () => {
     it('returns empty for missing artifact', () => {
       const store = new ArtifactStore();
       expect(store.provenance({ id: 'nope', type: 'code' })).toHaveLength(0);
+    });
+
+    it('walks inputRefs transitively (#2867)', () => {
+      const store = new ArtifactStore();
+      store.put(makeArtifact({ id: 'a', inputRefs: [] }));
+      store.put(makeArtifact({ id: 'b', inputRefs: [{ id: 'a', type: 'code' }] }));
+      store.put(makeArtifact({ id: 'c', inputRefs: [{ id: 'b', type: 'code' }] }));
+
+      const chain = store.provenance({ id: 'c', type: 'code' });
+      expect(chain.map((e) => e.artifactId)).toEqual(['c', 'b', 'a']);
+    });
+
+    it('terminates on a cycle without infinite-looping (#2867)', () => {
+      const store = new ArtifactStore();
+      store.put(makeArtifact({ id: 'a', inputRefs: [{ id: 'b', type: 'code' }] }));
+      store.put(makeArtifact({ id: 'b', inputRefs: [{ id: 'a', type: 'code' }] }));
+
+      const chain = store.provenance({ id: 'a', type: 'code' });
+      expect(chain).toHaveLength(2);
+    });
+
+    it('visits a multi-parent diamond DAG node once (#2867)', () => {
+      const store = new ArtifactStore();
+      store.put(makeArtifact({ id: 'a', inputRefs: [] }));
+      store.put(makeArtifact({ id: 'b', inputRefs: [{ id: 'a', type: 'code' }] }));
+      store.put(makeArtifact({ id: 'c', inputRefs: [{ id: 'a', type: 'code' }] }));
+      store.put(
+        makeArtifact({
+          id: 'd',
+          inputRefs: [
+            { id: 'b', type: 'code' },
+            { id: 'c', type: 'code' },
+          ],
+        })
+      );
+
+      const chain = store.provenance({ id: 'd', type: 'code' });
+      // a, b, c, d — `a` exactly once despite two paths to it.
+      expect(chain).toHaveLength(4);
+      expect(chain.filter((e) => e.artifactId === 'a')).toHaveLength(1);
+    });
+
+    it('truncates the chain at a FIFO-evicted ancestor (#2867)', () => {
+      const store = new ArtifactStore({ maxArtifacts: 2 });
+      store.put(makeArtifact({ id: 'a', inputRefs: [] }));
+      store.put(makeArtifact({ id: 'b', inputRefs: [{ id: 'a', type: 'code' }] }));
+      // Putting 'c' evicts 'a' (oldest).
+      store.put(makeArtifact({ id: 'c', inputRefs: [{ id: 'b', type: 'code' }] }));
+
+      const chain = store.provenance({ id: 'c', type: 'code' });
+      expect(chain.map((e) => e.artifactId)).toEqual(['c', 'b']);
     });
   });
 
