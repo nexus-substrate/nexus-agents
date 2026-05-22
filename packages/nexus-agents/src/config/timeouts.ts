@@ -104,6 +104,8 @@ export const MCP_TIMEOUTS = {
     consensus_vote: 600_000, // 10 min — 5-6 agents voting in parallel via Promise.all
     execute_expert: 900_000, // 15 min — complex expert reasoning tasks
     run_workflow: 900_000, // 15 min — multi-step workflow execution
+    run_pipeline: 900_000, // 15 min — multi-stage pipeline orchestration (#2824)
+    run_dev_pipeline: 900_000, // 15 min — multi-agent dev pipeline (#2824)
   } as Readonly<Record<string, number>>,
 } as const;
 
