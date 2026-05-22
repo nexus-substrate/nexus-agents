@@ -156,6 +156,51 @@ describe('AgenticAdapter', () => {
     expect(result.value.turns[0]?.toolResult.content).toContain('database is down');
   });
 
+  it('parallel tools: a mid-batch tool error still drains every sibling turn (#2864)', async () => {
+    // Two tool_use blocks in one turn → the parallel path runs both.
+    // claude-opus-4-1 resolves a profile with parallelToolCalls: true.
+    const model = makeMockModel(
+      [
+        {
+          content: [
+            { type: 'tool_use', id: 'tu-1', name: 'lookup', input: {} },
+            { type: 'tool_use', id: 'tu-2', name: 'lookup', input: {} },
+          ] as ContentBlock[],
+          stopReason: 'tool_use',
+        },
+      ],
+      'anthropic',
+      'claude-opus-4-1'
+    );
+    const adapter = new AgenticAdapter(model);
+    expect(adapter.getProfile().parallelToolCalls).toBe(true);
+
+    const result = await adapter.runAgent({
+      systemPrompt: 's',
+      userPrompt: 'u',
+      tools: TOOLS,
+      turnBudget: 5,
+      onToolCall: (call: ToolCall): Promise<ToolResult> => {
+        // First tool errors, second succeeds. Pre-#2864 the reduction
+        // loop returned on tu-1's stop-tool-error and tu-2's turn was
+        // never recorded.
+        if (call.id === 'tu-1') throw new Error('tu-1 backend down');
+        return Promise.resolve({ content: 'tu-2 ok' });
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.stopReason).toBe('tool-error');
+    // BOTH tool turns drained into history — the sibling was not dropped.
+    expect(result.value.turns).toHaveLength(2);
+    const ids = result.value.turns.map((t) => t.toolCall.id);
+    expect(ids).toContain('tu-1');
+    expect(ids).toContain('tu-2');
+    const tu2 = result.value.turns.find((t) => t.toolCall.id === 'tu-2');
+    expect(tu2?.toolResult.content).toBe('tu-2 ok');
+  });
+
   it('cancelled: AbortSignal fires between turns → cancellation captured', async () => {
     const ac = new AbortController();
     const model = makeMockModel([

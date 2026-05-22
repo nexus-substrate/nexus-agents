@@ -336,7 +336,13 @@ export class Orchestrator extends BaseAgent {
     if (!result.ok) return err(result.error);
 
     try {
-      const parsed = JSON.parse(extractTextContent(result.value.content)) as unknown[];
+      // LLMs frequently wrap the JSON array in a markdown code fence
+      // (```json … ```). Strip it before parsing — same pattern parseJson()
+      // uses. Without this a fenced response throws and silently falls
+      // back to heuristic decomposition. Issue #2862.
+      const rawText = extractTextContent(result.value.content);
+      const fenced = extractCodeBlock(rawText);
+      const parsed = JSON.parse(fenced?.[1] ?? rawText) as unknown[];
       const subtasks = parsed
         .map((item) => SubTaskSchema.safeParse(item))
         .filter((r) => r.success)
