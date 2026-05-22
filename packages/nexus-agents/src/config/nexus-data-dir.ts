@@ -44,7 +44,15 @@
  * @module config/nexus-data-dir
  */
 
-import { accessSync, constants as fsConstants, existsSync, mkdirSync } from 'node:fs';
+import {
+  accessSync,
+  constants as fsConstants,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  renameSync,
+  unlinkSync,
+} from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 
@@ -286,4 +294,71 @@ export function nexusSharedPath(...segments: string[]): string {
  */
 export function getPerRepoSubdirs(): ReadonlySet<string> {
   return PER_REPO_SUBDIRS;
+}
+
+/** Per-process memo — the legacy session-DB relocation runs at most once. */
+let legacySessionsDbMigrated = false;
+
+/** Test helper — clears the session-DB migration "already did this" memo. */
+export function _resetSessionsDbMigrationMemoForTests(): void {
+  legacySessionsDbMigrated = false;
+}
+
+/** SQLite sidecar suffixes that must travel with the main DB file. */
+const SQLITE_SIDECAR_SUFFIXES = ['', '-wal', '-shm', '-journal'] as const;
+
+/**
+ * Resolves the session-database path, performing a one-time relocation
+ * of any pre-#2902 database on the first call per process.
+ *
+ * The session DB is per-repo episodic state and belongs in the
+ * `sessions/` bucket alongside the session journals — vote #2876
+ * categorized `sessions/` as per-repo, and issue #2902 (consensus
+ * 3/3) extended that to the DB. Before #2902 the DB resolved via
+ * `nexusDataPath('sessions.db')`; because `sessions.db` is not a
+ * per-repo first segment, that landed cross-repo at
+ * `~/.nexus-agents/sessions.db`, so a DB started in one repo leaked
+ * into every other repo.
+ *
+ * If a legacy DB exists at the old location and none exists at the
+ * new one, the legacy file (and any SQLite sidecars) is moved so
+ * existing session history is preserved rather than silently
+ * orphaned. The move is best-effort: a failure leaves the legacy DB
+ * untouched for manual recovery and the caller gets a fresh DB at the
+ * new path. `NEXUS_DATA_DIR` / `NEXUS_REPO_PREFERRED` / the
+ * `NEXUS_SESSIONS_DB` override all sit upstream of this resolver.
+ */
+export function sessionsDbPath(): string {
+  const target = nexusDataPath('sessions', 'sessions.db');
+  if (!legacySessionsDbMigrated) {
+    legacySessionsDbMigrated = true;
+    migrateLegacySessionsDb(target);
+  }
+  return target;
+}
+
+/** One-time relocation of a pre-#2902 session DB. Best-effort — see `sessionsDbPath`. */
+function migrateLegacySessionsDb(target: string): void {
+  const legacy = nexusDataPath('sessions.db'); // pre-#2902 resolution
+  if (legacy === target || !existsSync(legacy) || existsSync(target)) return;
+  try {
+    mkdirSync(dirname(target), { recursive: true });
+    for (const suffix of SQLITE_SIDECAR_SUFFIXES) {
+      const from = `${legacy}${suffix}`;
+      if (existsSync(from)) moveFile(from, `${target}${suffix}`);
+    }
+  } catch {
+    // Best-effort — a migration failure must never break session storage.
+  }
+}
+
+/** Moves a file, falling back to copy+unlink across a filesystem boundary. */
+function moveFile(from: string, to: string): void {
+  try {
+    renameSync(from, to);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EXDEV') throw err;
+    copyFileSync(from, to);
+    unlinkSync(from);
+  }
 }

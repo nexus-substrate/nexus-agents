@@ -7,9 +7,10 @@
  * (Source: Issue #417 - CLI hooks test coverage)
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { homedir } from 'node:os';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { mkdtempSync, rmSync } from 'node:fs';
 import {
   getDefaultDbPath,
   getNexusDataDir,
@@ -23,14 +24,19 @@ import {
 
 describe('handler-utils', () => {
   describe('getDefaultDbPath', () => {
-    it('should return path in home directory', () => {
-      // `sessions.db` is a top-level FILE — distinct from the per-repo
-      // `sessions/` directory. The epic #2872 router keys on the first
-      // path segment, and `sessions.db` is not in PER_REPO_SUBDIRS, so
-      // it resolves cross-repo (homedir). This is intentional, not a bug.
-      const result = getDefaultDbPath();
-
-      expect(result).toBe(join(homedir(), '.nexus-agents', 'sessions.db'));
+    it('resolves under the per-repo sessions/ bucket (#2902)', () => {
+      // #2902: the session DB co-locates with the session journals in the
+      // per-repo `sessions/` bucket — `sessions/sessions.db`, not a
+      // top-level sibling. NEXUS_DATA_DIR isolates the resolver (and its
+      // one-time legacy migration) to an empty temp dir for this test.
+      const tmp = mkdtempSync(join(tmpdir(), 'nexus-dbpath-'));
+      vi.stubEnv('NEXUS_DATA_DIR', tmp);
+      try {
+        expect(getDefaultDbPath()).toBe(join(tmp, 'sessions', 'sessions.db'));
+      } finally {
+        vi.unstubAllEnvs();
+        rmSync(tmp, { recursive: true, force: true });
+      }
     });
   });
 
@@ -101,13 +107,18 @@ describe('handler-utils', () => {
 
   describe('getDbPathFromEnv', () => {
     const originalEnv = process.env;
+    let tmp: string;
 
     beforeEach(() => {
-      process.env = { ...originalEnv };
+      // Isolate NEXUS_DATA_DIR so getDefaultDbPath()'s resolver + one-time
+      // legacy migration operate in an empty temp dir, not real ~/.nexus-agents.
+      tmp = mkdtempSync(join(tmpdir(), 'nexus-dbenv-'));
+      process.env = { ...originalEnv, NEXUS_DATA_DIR: tmp };
     });
 
     afterEach(() => {
       process.env = originalEnv;
+      rmSync(tmp, { recursive: true, force: true });
     });
 
     it('should return env value when set', () => {

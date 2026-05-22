@@ -9,15 +9,17 @@
 
 import {
   getNexusDataDir as resolveNexusDataDir,
-  nexusDataPath,
+  sessionsDbPath,
 } from '../../../config/nexus-data-dir.js';
 
 /**
  * Default database path for session storage.
- * Resolves to `<NEXUS_DATA_DIR>/sessions.db` (#2302).
+ *
+ * Resolves to the per-repo `sessions/sessions.db` (#2902) and performs
+ * the one-time legacy-DB relocation — see `sessionsDbPath`.
  */
 export function getDefaultDbPath(): string {
-  return nexusDataPath('sessions.db');
+  return sessionsDbPath();
 }
 
 /**
