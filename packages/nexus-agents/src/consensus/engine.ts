@@ -220,7 +220,23 @@ export class ConsensusEngine implements IConsensusEngine {
 
     // All required voters voted — check for incremental quorum expansion
     if (this.allRequiredVotersVoted(state)) {
-      const expanded = await this.tryExpandQuorum(proposalId, state);
+      // Re-entry guard (#2861): `tryExpandQuorum` awaits its callback and
+      // then mutates `state.proposal.requiredVoters` / `expansionRounds`.
+      // A concurrent `vote()` that also sees `allRequiredVotersVoted`
+      // must NOT start a second expansion — that would invoke the
+      // expansion callback twice and clobber the first expansion's
+      // voter list. This vote is already recorded; return ok and let
+      // the in-flight expansion settle.
+      if (state.expansionInFlight === true) {
+        return Promise.resolve(ok(undefined));
+      }
+      state.expansionInFlight = true;
+      let expanded: boolean;
+      try {
+        expanded = await this.tryExpandQuorum(proposalId, state);
+      } finally {
+        state.expansionInFlight = false;
+      }
       if (!expanded) {
         return this.closeInternal(proposalId).then((r) => (r.ok ? ok(undefined) : err(r.error)));
       }

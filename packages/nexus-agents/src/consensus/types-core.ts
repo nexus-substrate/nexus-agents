@@ -334,6 +334,13 @@ export interface ProposalState {
   timeoutId?: ReturnType<typeof setTimeout>;
   /** Number of incremental quorum expansions applied (Issue #1408). */
   expansionRounds?: number;
+  /**
+   * True while a quorum expansion is awaiting its callback for this
+   * proposal. Concurrent `vote()` calls check this to avoid double-
+   * expanding across the `await` gap (Issue #2861). Per-proposal so
+   * independent proposals never block each other.
+   */
+  expansionInFlight?: boolean;
 }
 
 /**

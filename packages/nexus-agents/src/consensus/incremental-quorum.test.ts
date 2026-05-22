@@ -131,6 +131,56 @@ describe('ConsensusEngine incremental quorum', () => {
     expect(expansionCallback).toHaveBeenCalledWith(pid, 5, 2);
   });
 
+  it('does not double-expand when two vote() calls race the final voter (#2861)', async () => {
+    // vote() is async and awaits the expansion callback between the
+    // allRequiredVotersVoted() check and the requiredVoters mutation.
+    // Two vote() calls that both observe a complete quorum across that
+    // await must not each start an expansion.
+    const expansionCallback = vi.fn<VoterExpansionCallback>(() =>
+      Promise.resolve(['extra-1', 'extra-2'])
+    );
+    const engine = createConsensusEngine({
+      defaultTimeout: 60000,
+      incrementalQuorum: {
+        enabled: true,
+        maxExpansionRounds: 2,
+        votersPerExpansion: 2,
+        confidenceThreshold: 0.6,
+        ambiguityBand: 0.2,
+      },
+    });
+    engine.setVoterExpansionCallback(expansionCallback);
+
+    const result = await engine.propose({
+      title: 'Race proposal',
+      description: 'concurrent final votes',
+      algorithm: 'simple_majority',
+      requiredVoters: ['a1', 'a2', 'a3', 'a4', 'a5'],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const pid = result.value;
+
+    // Four voters in — 2-2 split, ambiguous, quorum not yet complete.
+    await engine.vote(pid, 'a1', makeVote('approve'));
+    await engine.vote(pid, 'a2', makeVote('reject'));
+    await engine.vote(pid, 'a3', makeVote('approve'));
+    await engine.vote(pid, 'a4', makeVote('reject'));
+
+    // Two near-simultaneous submissions for the final voter (a re-vote
+    // racing the expansion). Both run their synchronous prologue while
+    // requiredVoters is still [a1..a5], so both see allRequiredVotersVoted
+    // === true. The re-entry guard must let only ONE start an expansion.
+    await Promise.all([
+      engine.vote(pid, 'a5', makeVote('approve')),
+      engine.vote(pid, 'a5', makeVote('approve')),
+    ]);
+
+    // Exactly one expansion — pre-#2861 this fired twice and the second
+    // expansion clobbered the first's voter list.
+    expect(expansionCallback).toHaveBeenCalledTimes(1);
+  });
+
   it('caps expansion at maxExpansionRounds', async () => {
     let callCount = 0;
     const expansionCallback = vi.fn<VoterExpansionCallback>(() => {
