@@ -3,11 +3,20 @@
  * (Source: Issue #227)
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { VotingResult } from './vote-types.js';
 import type { ConsensusResult, Vote } from '../consensus/types.js';
-import { formatVoteComment, formatVoteRow, explainOutcome } from './vote-command.js';
 import type { AgentVoteResult } from './voter-agents.js';
+
+const { safeExecSandboxedMock } = vi.hoisted(() => ({ safeExecSandboxedMock: vi.fn() }));
+vi.mock('./sandbox-exec.js', () => ({ safeExecSandboxed: safeExecSandboxedMock }));
+
+import {
+  formatVoteComment,
+  formatVoteRow,
+  explainOutcome,
+  recordVoteToGitHub,
+} from './vote-command.js';
 
 function createMockConsensusResult(overrides: Partial<ConsensusResult> = {}): ConsensusResult {
   return {
@@ -271,5 +280,39 @@ describe('explainOutcome (#2441 + #2442)', () => {
     );
     expect(explained).toContain('unanimous threshold not met');
     expect(explained).toContain('80.0%');
+  });
+});
+
+// #2863 (audit #2824 bullet 10): the comment body must be piped to `gh` via
+// stdin, never embedded in the command string — every vote comment contains a
+// markdown table (`|`) and a `(NN% approval)` parenthetical, which the sandbox
+// `validateArgs` gate rejects, silently dropping the comment.
+describe('recordVoteToGitHub', () => {
+  beforeEach(() => {
+    safeExecSandboxedMock.mockReset();
+  });
+
+  it('pipes the comment via --body-file - stdin, not an inline --body arg', () => {
+    safeExecSandboxedMock.mockReturnValue('commented');
+
+    recordVoteToGitHub(42, createMockVotingResult());
+
+    expect(safeExecSandboxedMock).toHaveBeenCalledWith(
+      'gh issue comment 42 --body-file -',
+      expect.objectContaining({
+        context: 'gh',
+        stdin: expect.stringContaining('## Consensus Vote Result') as string,
+      })
+    );
+  });
+
+  it('keeps shell-unsafe characters out of the command string', () => {
+    safeExecSandboxedMock.mockReturnValue('commented');
+
+    recordVoteToGitHub(7, createMockVotingResult());
+
+    const commandString = safeExecSandboxedMock.mock.calls[0]?.[0] as string;
+    // The body (which contains `|`, `(`, `)`) lives in stdin, not the command.
+    expect(commandString).not.toMatch(/[|()]/);
   });
 });

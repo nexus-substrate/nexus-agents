@@ -173,6 +173,59 @@ describe('sandbox-exec', () => {
 
       expect(result).toBe('buffer output');
     });
+
+    it('should pass stdin as the execSync input option (#2863)', () => {
+      vi.mocked(execSync).mockReturnValue('commented');
+
+      safeExecSandboxed('gh issue comment 1 --body-file -', {
+        context: 'gh',
+        stdin: 'multi-line\nbody | with | pipes',
+      });
+
+      expect(execSync).toHaveBeenCalledWith(
+        'gh issue comment 1 --body-file -',
+        expect.objectContaining({ input: 'multi-line\nbody | with | pipes' })
+      );
+    });
+
+    it('should omit the input option when no stdin is given', () => {
+      vi.mocked(execSync).mockReturnValue('ok');
+
+      safeExecSandboxed('git status', { context: 'git' });
+
+      const passedOptions = vi.mocked(execSync).mock.calls[0]?.[1];
+      expect(passedOptions).not.toHaveProperty('input');
+    });
+  });
+
+  // Regression for #2863 (audit #2824 bullet 10): vote-command embedded the
+  // markdown comment body in the command string as `--body '<comment>'`. Every
+  // vote comment contains a markdown table (`|`) and a `(NN% approval)`
+  // parenthetical, so the body token always matched a denied shell pattern and
+  // the comment was silently dropped. The fix pipes the body via stdin.
+  describe('vote-comment recording (#2863)', () => {
+    // A realistic formatVoteComment() body: markdown table + parens.
+    const voteBody = [
+      '## Consensus Vote Result',
+      '| Agent | Decision | Confidence |',
+      '| ----- | -------- | ---------- |',
+      '| Architect | APPROVE | 90% |',
+      '**Summary:** Approve: 4, Reject: 1 (80.0% approval)',
+    ].join('\n');
+
+    it('denies the old --body inline form (proves the bug)', () => {
+      const violation = validateCommandWithPolicy(`gh issue comment 1 --body '${voteBody}'`, {
+        context: 'gh',
+      });
+      expect(violation).not.toBeNull();
+    });
+
+    it('allows the --body-file - stdin form (proves the fix)', () => {
+      const violation = validateCommandWithPolicy('gh issue comment 1 --body-file -', {
+        context: 'gh',
+      });
+      expect(violation).toBeNull();
+    });
   });
 
   describe('execSandboxed', () => {
