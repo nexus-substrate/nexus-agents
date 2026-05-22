@@ -12,7 +12,7 @@ import { z } from 'zod';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { createLogger, getErrorMessage } from '../../core/index.js';
+import { createLogger, getErrorMessage, formatZodError, type ILogger } from '../../core/index.js';
 import { runAdaptiveOrchestrator, classifyTask } from '../../pipeline/adaptive-orchestrator.js';
 import { warnIfSimulatedOutsideTests } from './simulation-guard.js';
 import type { AdaptiveOrchestratorResult } from '../../pipeline/adaptive-orchestrator.js';
@@ -24,7 +24,14 @@ import {
 } from '../../pipeline/stage-wrappers.js';
 import { listTemplateIds } from '../../pipeline/templates.js';
 import { getToolAnnotations } from '../tool-annotations.js';
-import { toolStructuredError } from './tool-result.js';
+import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
+import { createSecureHandler } from '../middleware/secure-handler.js';
+import {
+  toolStructuredError,
+  toolSuccessStructured,
+  type BaseMcpToolDeps,
+  type ToolResult,
+} from './tool-result.js';
 
 // ============================================================================
 // Input Schema
@@ -164,11 +171,63 @@ function selectStageRegistry(
 // 4-template list).
 const RUN_PIPELINE_DESCRIPTION = `Single unified entry point for all pipeline templates (${listTemplateIds().join('/')}). Auto-detects template from task content or accepts an explicit override.`;
 
-/** Register the run_pipeline MCP tool. */
-export function registerPipelineTool(
-  server: McpServer,
-  _deps: { logger: unknown; rateLimiter: unknown }
-): void {
+/** Validates input, runs the adaptive orchestrator, and shapes the result. */
+async function runPipelineHandler(args: unknown, logger: ILogger): Promise<ToolResult> {
+  const parsed = PipelineInputSchema.safeParse(args);
+  if (!parsed.success) {
+    return toolStructuredError({
+      errorCategory: 'validation',
+      message: `Invalid input: ${formatZodError(parsed.error)}`,
+    });
+  }
+  const input = parsed.data;
+  if (input.simulateVotes) {
+    warnIfSimulatedOutsideTests('run_pipeline', logger);
+  }
+
+  try {
+    const task = await resolveTask(input.task, input.specFile);
+    const agentStages = createAgentStages({
+      simulateVotes: input.simulateVotes,
+      votingStrategy: input.votingStrategy,
+      quickMode: input.quickMode,
+    });
+    const stages = selectStageRegistry(input.template, task, agentStages);
+
+    const result = await runAdaptiveOrchestrator(task, {
+      stages,
+      templateId: input.template,
+      dryRun: input.dryRun,
+    });
+
+    return toolSuccessStructured(buildOutput(result));
+  } catch (error: unknown) {
+    return toolStructuredError({
+      errorCategory: 'internal',
+      message: `Pipeline error: ${getErrorMessage(error)}`,
+    });
+  }
+}
+
+/**
+ * Register the run_pipeline MCP tool.
+ *
+ * Routed through the standard `createSecureHandler → wrapToolWithTimeout →
+ * toSdkCallback` chain like every other tool (#2824): the bare-callback
+ * registration it used before had no rate-limiting, no abort-signal /
+ * progress-token plumbing, and surfaced a `ZodError` on bad input as a raw
+ * JSON-RPC `-32603` instead of a structured `validation` envelope.
+ */
+export function registerPipelineTool(server: McpServer, deps: BaseMcpToolDeps): void {
+  const logger = deps.logger ?? createLogger({ tool: 'run_pipeline' });
+  const secureHandler = createSecureHandler((args: unknown) => runPipelineHandler(args, logger), {
+    toolName: 'run_pipeline',
+    rateLimiter: deps.rateLimiter,
+    logger,
+  });
+  const timeoutMs = getToolTimeout('run_pipeline', deps.security);
+  const wrapped = wrapToolWithTimeout('run_pipeline', secureHandler, { timeoutMs, logger });
+
   server.registerTool(
     'run_pipeline',
     {
@@ -176,43 +235,7 @@ export function registerPipelineTool(
       inputSchema: PipelineInputSchema.shape,
       annotations: getToolAnnotations('run_pipeline'),
     },
-    async (args) => {
-      const input = PipelineInputSchema.parse(args);
-      if (input.simulateVotes) {
-        warnIfSimulatedOutsideTests('run_pipeline', createLogger({ tool: 'run_pipeline' }));
-      }
-
-      try {
-        const task = await resolveTask(input.task, input.specFile);
-        const agentStages = createAgentStages({
-          simulateVotes: input.simulateVotes,
-          votingStrategy: input.votingStrategy,
-          quickMode: input.quickMode,
-        });
-        const stages = selectStageRegistry(input.template, task, agentStages);
-
-        const result = await runAdaptiveOrchestrator(task, {
-          stages,
-          templateId: input.template,
-          dryRun: input.dryRun,
-        });
-
-        const structured = buildOutput(result);
-        return {
-          content: [{ type: 'text' as const, text: JSON.stringify(structured, null, 2) }],
-          structuredContent: structured,
-        };
-      } catch (error: unknown) {
-        // Spread into a fresh literal — this callback is registered
-        // directly (no toSdkCallback adapter), so the SDK return type
-        // needs an index signature that the named ToolResult type lacks.
-        return {
-          ...toolStructuredError({
-            errorCategory: 'internal',
-            message: `Pipeline error: ${getErrorMessage(error)}`,
-          }),
-        };
-      }
-    }
+    toSdkCallback(wrapped)
   );
+  logger.info('Registered run_pipeline tool');
 }

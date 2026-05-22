@@ -11,16 +11,21 @@ import { z } from 'zod';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { createLogger, getErrorMessage } from '../../core/index.js';
+import { createLogger, getErrorMessage, formatZodError, type ILogger } from '../../core/index.js';
 import { runDevPipeline } from '../../pipeline/dev-pipeline.js';
 import { warnIfSimulatedOutsideTests } from './simulation-guard.js';
 import type { DevPipelineResult } from '../../pipeline/dev-pipeline.js';
 import { createAgentStages, flushPipelineMemory } from '../../pipeline/agent-executor.js';
 import { createTaskTracker, detectBackend } from '../../pipeline/task-tracker.js';
-// toolSuccessStructured not used directly — registerTool callback expects a CallToolResult-shaped value
-import type {} from '../../pipeline/task-tracker.js';
 import { getToolAnnotations } from '../tool-annotations.js';
-import { toolStructuredError } from './tool-result.js';
+import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
+import { createSecureHandler } from '../middleware/secure-handler.js';
+import {
+  toolStructuredError,
+  toolSuccessStructured,
+  type BaseMcpToolDeps,
+  type ToolResult,
+} from './tool-result.js';
 
 // ============================================================================
 // Input Schema
@@ -196,11 +201,59 @@ function buildStructuredOutput(result: DevPipelineResult): Record<string, unknow
 const RUN_DEV_PIPELINE_DESCRIPTION =
   'Run the multi-agent development pipeline. Accepts direct task instructions, a plan file, or a spec file. Supports dry-run (plan+vote only).';
 
-/** Register the run_dev_pipeline MCP tool. */
-export function registerDevPipelineTool(
-  server: McpServer,
-  _deps: { logger: unknown; rateLimiter: unknown }
-): void {
+/** Validates input, runs the dev pipeline, and shapes the result. */
+async function runDevPipelineHandler(args: unknown, logger: ILogger): Promise<ToolResult> {
+  const parsed = DevPipelineInputSchema.safeParse(args);
+  if (!parsed.success) {
+    return toolStructuredError({
+      errorCategory: 'validation',
+      message: `Invalid input: ${formatZodError(parsed.error)}`,
+    });
+  }
+  const input = parsed.data;
+  if (input.simulateVotes) {
+    warnIfSimulatedOutsideTests('run_dev_pipeline', logger);
+  }
+
+  try {
+    const taskText = await resolveTaskInput(input);
+    const stages = await createStages(input);
+    const pipelineOptions = {
+      ...(input.sessionId !== undefined ? { sessionId: input.sessionId } : {}),
+      ...(input.dryRun ? { dryRun: true } : {}),
+      ...(input.mode === 'harness' ? { mode: 'harness' as const } : {}),
+    };
+    const hasOptions = Object.keys(pipelineOptions).length > 0;
+    const result = await runDevPipeline(taskText, stages, hasOptions ? pipelineOptions : undefined);
+    // Always flush memory session — including dry-run exits (#1716)
+    flushPipelineMemory();
+    return toolSuccessStructured(buildStructuredOutput(result));
+  } catch (error: unknown) {
+    return toolStructuredError({
+      errorCategory: 'internal',
+      message: `Pipeline error: ${getErrorMessage(error)}`,
+    });
+  }
+}
+
+/**
+ * Register the run_dev_pipeline MCP tool.
+ *
+ * Routed through the standard `createSecureHandler → wrapToolWithTimeout →
+ * toSdkCallback` chain like every other tool (#2824): the bare-callback
+ * registration it used before had no rate-limiting, no abort-signal /
+ * progress-token plumbing, and surfaced a `ZodError` on bad input as a raw
+ * JSON-RPC `-32603` instead of a structured `validation` envelope.
+ */
+export function registerDevPipelineTool(server: McpServer, deps: BaseMcpToolDeps): void {
+  const logger = deps.logger ?? createLogger({ tool: 'run_dev_pipeline' });
+  const secureHandler = createSecureHandler(
+    (args: unknown) => runDevPipelineHandler(args, logger),
+    { toolName: 'run_dev_pipeline', rateLimiter: deps.rateLimiter, logger }
+  );
+  const timeoutMs = getToolTimeout('run_dev_pipeline', deps.security);
+  const wrapped = wrapToolWithTimeout('run_dev_pipeline', secureHandler, { timeoutMs, logger });
+
   server.registerTool(
     'run_dev_pipeline',
     {
@@ -208,44 +261,7 @@ export function registerDevPipelineTool(
       inputSchema: DevPipelineInputSchema.shape,
       annotations: getToolAnnotations('run_dev_pipeline'),
     },
-    async (args) => {
-      const input = DevPipelineInputSchema.parse(args);
-      if (input.simulateVotes) {
-        warnIfSimulatedOutsideTests('run_dev_pipeline', createLogger({ tool: 'run_dev_pipeline' }));
-      }
-
-      try {
-        const taskText = await resolveTaskInput(input);
-        const stages = await createStages(input);
-        const pipelineOptions = {
-          ...(input.sessionId !== undefined ? { sessionId: input.sessionId } : {}),
-          ...(input.dryRun ? { dryRun: true } : {}),
-          ...(input.mode === 'harness' ? { mode: 'harness' as const } : {}),
-        };
-        const hasOptions = Object.keys(pipelineOptions).length > 0;
-        const result = await runDevPipeline(
-          taskText,
-          stages,
-          hasOptions ? pipelineOptions : undefined
-        );
-        // Always flush memory session — including dry-run exits (#1716)
-        flushPipelineMemory();
-        const structured = buildStructuredOutput(result);
-        return {
-          content: [{ type: 'text' as const, text: JSON.stringify(structured, null, 2) }],
-          structuredContent: structured,
-        };
-      } catch (error: unknown) {
-        // Spread into a fresh literal — this callback is registered
-        // directly (no toSdkCallback adapter), so the SDK return type
-        // needs an index signature that the named ToolResult type lacks.
-        return {
-          ...toolStructuredError({
-            errorCategory: 'internal',
-            message: `Pipeline error: ${getErrorMessage(error)}`,
-          }),
-        };
-      }
-    }
+    toSdkCallback(wrapped)
   );
+  logger.info('Registered run_dev_pipeline tool');
 }
