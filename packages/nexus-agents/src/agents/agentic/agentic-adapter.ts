@@ -25,7 +25,7 @@
  * @module agents/agentic/agentic-adapter
  */
 
-import { ok, err } from '../../core/index.js';
+import { ok, err, createLogger } from '../../core/index.js';
 import type {
   CompletionRequest,
   CompletionResponse,
@@ -91,6 +91,8 @@ export interface AgenticAdapterOptions {
    */
   readonly registry?: ModelRegistry;
 }
+
+const logger = createLogger({ component: 'AgenticAdapter' });
 
 export class AgenticAdapter implements IAgenticAdapter {
   readonly providerId: string;
@@ -357,24 +359,62 @@ export class AgenticAdapter implements IAgenticAdapter {
     const promises = toolUses.map((toolUse, offset) =>
       this.invokeToolForParallel(args, toolUse, response, modelLatencyMs, startIndex + offset)
     );
-    const outcomes = await Promise.all(promises);
+    // allSettled, not all: a single rejected promise must not abort
+    // collection and lose every sibling tool's outcome (#2864).
+    const settled = await Promise.allSettled(promises);
 
-    // Order-stable record + announce.
+    // Order-stable record + announce. DRAIN every outcome's turn into
+    // history before deciding to stop — a mid-batch tool error must not
+    // drop the sibling tools' turns (#2864). The previous early `return`
+    // on the first stop-tool-error skipped recording the rest.
     const toolResultBlocks: Extract<ContentBlock, { type: 'tool_result' }>[] = [];
-    for (const outcome of outcomes) {
-      if (outcome.kind === 'stop-tool-error') {
-        state.turns.push(outcome.turn);
-        args.onTurn?.(outcome.turn);
-        return { kind: 'stop', reason: 'tool-error' };
+    let stopForToolError = false;
+    for (let i = 0; i < settled.length; i++) {
+      const result = settled[i];
+      if (result === undefined) continue;
+      if (this.drainParallelOutcome(result, toolUses[i], state, args, toolResultBlocks)) {
+        stopForToolError = true;
       }
-      state.turns.push(outcome.turn);
-      args.onTurn?.(outcome.turn);
-      toolResultBlocks.push(outcome.toolResultBlock);
     }
-    if (toolResultBlocks.length > 0) {
+    // Only feed tool results into the next turn when actually continuing —
+    // matches the pre-#2864 behavior (the early return on a tool error
+    // skipped the messages push).
+    if (!stopForToolError && toolResultBlocks.length > 0) {
       state.messages.push({ role: 'user', content: toolResultBlocks });
     }
-    return { kind: 'continue' };
+    return stopForToolError ? { kind: 'stop', reason: 'tool-error' } : { kind: 'continue' };
+  }
+
+  /**
+   * Records one settled parallel-tool outcome into history. Mutates
+   * `state.turns` / `toolResultBlocks` in place and returns `true` when
+   * the outcome signals a tool error (the caller stops *after* draining
+   * every outcome — #2864). Extracted from `processToolCallsParallel`
+   * to keep that method's cyclomatic complexity under the gate.
+   */
+  private drainParallelOutcome(
+    result: PromiseSettledResult<ParallelToolOutcome>,
+    toolUse: Extract<ContentBlock, { type: 'tool_use' }> | undefined,
+    state: LoopState,
+    args: ResolvedRunAgentArgs,
+    toolResultBlocks: Extract<ContentBlock, { type: 'tool_result' }>[]
+  ): boolean {
+    if (result.status === 'rejected') {
+      // invokeToolForParallel catches its own errors — a rejection here
+      // is an unexpected escape (e.g. buildTurn itself throwing). Record
+      // it; do NOT abort the sibling tools.
+      logger.warn('Parallel tool invocation rejected unexpectedly', {
+        toolUseId: toolUse?.id,
+        error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+      });
+      return true;
+    }
+    const outcome = result.value;
+    state.turns.push(outcome.turn);
+    args.onTurn?.(outcome.turn);
+    if (outcome.kind === 'stop-tool-error') return true;
+    toolResultBlocks.push(outcome.toolResultBlock);
+    return false;
   }
 
   /**

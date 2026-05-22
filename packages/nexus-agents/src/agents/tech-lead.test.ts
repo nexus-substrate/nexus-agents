@@ -437,6 +437,52 @@ describe('Orchestrator', () => {
       }
     });
 
+    it('parses LLM output wrapped in a markdown code fence (#2862)', async () => {
+      // LLMs commonly return the JSON array inside ```json … ```.
+      // Pre-#2862 JSON.parse threw on the fence and decomposeTask
+      // silently fell back to heuristic decomposition.
+      const task = createTestTask();
+      const llmSubtask = {
+        id: 'sub-llm-1',
+        parentTaskId: task.id,
+        description: 'LLM-decomposed subtask',
+        expectedOutput: 'a parsed result',
+        dependencies: [],
+        priority: 'high',
+        status: 'pending',
+        complexity: 5,
+        requiredCapabilities: [],
+      };
+      const mockAdapter = createMockAdapter();
+      mockAdapter.completeResult = ok({
+        content: [{ type: 'text', text: '```json\n' + JSON.stringify([llmSubtask]) + '\n```' }],
+        usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
+        stopReason: 'end_turn',
+        model: 'test-model',
+      });
+      const orchestrator = new Orchestrator({ adapter: mockAdapter });
+      const analysis: TaskAnalysis = {
+        taskId: task.id,
+        complexity: 6,
+        taskType: 'implementation',
+        requirements: [],
+        risks: [],
+        needsDecomposition: true,
+        approach: 'Test approach',
+        estimatedEffort: 8,
+      };
+
+      const result = await orchestrator.decomposeTask(task, analysis);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        // The fenced subtask was parsed — NOT the heuristic fallback,
+        // which would synthesize different ids/descriptions.
+        expect(result.value[0]?.id).toBe('sub-llm-1');
+        expect(result.value[0]?.description).toBe('LLM-decomposed subtask');
+      }
+    });
+
     it('should decompose architecture task differently', async () => {
       const orchestrator = new Orchestrator();
       const task = createTestTask({
