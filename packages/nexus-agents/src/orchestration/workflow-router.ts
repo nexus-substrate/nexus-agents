@@ -50,6 +50,15 @@ type RoutingRule = (signals: TaskSignals, analysis: TaskAnalysisResult) => RuleR
  *
  * Analyzes task characteristics and selects the optimal orchestration
  * pattern using a rule-based classification system.
+ *
+ * Scope of `recordOutcome` / `getMetrics` (#2824): the recorded
+ * `PatternOutcome`s live in a buffer owned by this router instance.
+ * `route()` is a deterministic, rule-based classifier — it does NOT
+ * consume recorded outcomes, so there is no per-instance learning to
+ * "lose", and nothing to aggregate across processes. The pair is an
+ * observability surface only. If cross-process pattern metrics are
+ * ever needed, add a dedicated consumer that writes to a shared
+ * `OutcomeStore` rather than widening this router's responsibility.
  */
 export function createWorkflowRouter(options?: {
   readonly logger?: ILogger | undefined;
@@ -76,9 +85,12 @@ export function createWorkflowRouter(options?: {
 export interface IWorkflowRouter {
   /** Routes a task to the optimal workflow pattern. */
   route(signals: TaskSignals, options?: WorkflowRouterOptions): RoutingDecision;
-  /** Records an execution outcome for performance tracking. */
+  /**
+   * Records an execution outcome into this router instance's buffer.
+   * Observability only — `route()` never reads it back (#2824).
+   */
   recordOutcome(outcome: PatternOutcome): void;
-  /** Gets aggregated metrics, optionally filtered by pattern. */
+  /** Aggregates this instance's recorded outcomes, optionally filtered by pattern. */
   getMetrics(pattern?: WorkflowPattern): readonly PatternMetrics[];
 }
 
