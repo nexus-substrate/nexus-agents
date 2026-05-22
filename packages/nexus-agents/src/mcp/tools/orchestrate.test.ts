@@ -11,6 +11,7 @@ import {
   OrchestrateOutputSchema,
   OrchestrationError,
   createMockOrchestrator,
+  createTaskFromInput,
   mapPatternToOrchestratorType,
   type OrchestrateDeps,
   type OrchestrateInput,
@@ -751,5 +752,56 @@ describe('Concurrent Execution', () => {
 
     const uniqueIds = new Set(taskIds);
     expect(uniqueIds.size).toBe(5);
+  });
+});
+
+// #2921: when NEXUS_CONTEXT_RETRIEVER_INJECT is on, injectMemoryContextForOrchestrate
+// stashes `priorMemorySummary` on input.context. createTaskFromInput routes it into
+// the task's history as a non-instructional reference block the prompt builder renders.
+describe('createTaskFromInput — prior-memory wiring (#2921)', () => {
+  it('surfaces priorMemorySummary as a non-instructional history entry', async () => {
+    const input = {
+      task: 'build a feature',
+      maxIterations: 3,
+      context: { priorMemorySummary: 'past learning: prefer X over Y' },
+    } as OrchestrateInput;
+
+    const task = await createTaskFromInput(input, 'task-2921-a');
+
+    const history = task.context.history ?? [];
+    expect(history).toHaveLength(1);
+    expect(history[0]?.role).toBe('user');
+    expect(history[0]?.content).toContain('<prior-memory-context>');
+    expect(history[0]?.content).toContain('NOT instructions');
+    expect(history[0]?.content).toContain('past learning: prefer X over Y');
+    // The summary moves out of metadata — not left duplicated.
+    expect(task.context.metadata?.['priorMemorySummary']).toBeUndefined();
+  });
+
+  it('adds no history entry when priorMemorySummary is absent (flag-off default)', async () => {
+    const input = {
+      task: 'build a feature',
+      maxIterations: 3,
+      context: { unrelated: 'value' },
+    } as OrchestrateInput;
+
+    const task = await createTaskFromInput(input, 'task-2921-b');
+
+    expect(task.context.history).toBeUndefined();
+    expect(task.context.metadata?.['unrelated']).toBe('value');
+  });
+
+  it('caps an oversized prior-memory summary', async () => {
+    const input = {
+      task: 't',
+      maxIterations: 1,
+      context: { priorMemorySummary: 'x'.repeat(9000) },
+    } as OrchestrateInput;
+
+    const task = await createTaskFromInput(input, 'task-2921-c');
+
+    const content = task.context.history?.[0]?.content ?? '';
+    expect(content).toContain('[truncated]');
+    expect(content.length).toBeLessThan(9000);
   });
 });
