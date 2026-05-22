@@ -9,7 +9,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { nexusDataPath } from '../config/nexus-data-dir.js';
+import { sessionsDbPath } from '../config/nexus-data-dir.js';
 import type { Result } from '../core/result.js';
 import { ok, err } from '../core/result.js';
 import type { ILogger } from '../core/logger.js';
@@ -60,9 +60,9 @@ export interface SessionPruneOptions extends SessionCommandOptions {
 // Helpers
 // ============================================================================
 
-/** Get default database path. */
+/** Get default database path — per-repo `sessions/sessions.db` (#2902). */
 export function getDefaultDbPath(): string {
-  return nexusDataPath('sessions.db');
+  return sessionsDbPath();
 }
 
 function ensureDbDirectory(dbPath: string): void {

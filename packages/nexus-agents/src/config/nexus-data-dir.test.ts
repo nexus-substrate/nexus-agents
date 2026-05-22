@@ -546,3 +546,98 @@ describe('nexusDataPathEnsure (issue #2890)', () => {
     }).not.toThrow();
   });
 });
+
+describe('sessionsDbPath (#2902)', () => {
+  let originalEnv: string | undefined;
+  let originalRepoPref: string | undefined;
+  let tmp: string;
+
+  beforeEach(async () => {
+    const { mkdtempSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { _resetSessionsDbMigrationMemoForTests } = await import('./nexus-data-dir.js');
+    originalEnv = process.env['NEXUS_DATA_DIR'];
+    originalRepoPref = process.env['NEXUS_REPO_PREFERRED'];
+    tmp = mkdtempSync(join(tmpdir(), 'nexus-sessdb-'));
+    // NEXUS_DATA_DIR isolates resolution to the temp dir; resetting the
+    // per-process memo lets each test exercise the one-time migration.
+    process.env['NEXUS_DATA_DIR'] = tmp;
+    delete process.env['NEXUS_REPO_PREFERRED'];
+    _resetSessionsDbMigrationMemoForTests();
+  });
+
+  afterEach(async () => {
+    const { rmSync } = await import('node:fs');
+    if (originalEnv === undefined) delete process.env['NEXUS_DATA_DIR'];
+    else process.env['NEXUS_DATA_DIR'] = originalEnv;
+    if (originalRepoPref === undefined) delete process.env['NEXUS_REPO_PREFERRED'];
+    else process.env['NEXUS_REPO_PREFERRED'] = originalRepoPref;
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('resolves the session DB inside the per-repo sessions/ bucket', async () => {
+    const { sessionsDbPath } = await import('./nexus-data-dir.js');
+    expect(sessionsDbPath()).toBe(join(tmp, 'sessions', 'sessions.db'));
+  });
+
+  it('relocates a legacy cross-repo sessions.db to the new path', async () => {
+    const { writeFileSync, existsSync, readFileSync } = await import('node:fs');
+    const { sessionsDbPath } = await import('./nexus-data-dir.js');
+    const legacy = join(tmp, 'sessions.db');
+    writeFileSync(legacy, 'legacy-db-bytes');
+
+    const resolved = sessionsDbPath();
+
+    expect(existsSync(legacy)).toBe(false); // moved, not copied
+    expect(existsSync(resolved)).toBe(true);
+    expect(readFileSync(resolved, 'utf8')).toBe('legacy-db-bytes');
+  });
+
+  it('does not overwrite an existing new-location DB', async () => {
+    const { writeFileSync, existsSync, readFileSync, mkdirSync } = await import('node:fs');
+    const { sessionsDbPath } = await import('./nexus-data-dir.js');
+    const legacy = join(tmp, 'sessions.db');
+    const target = join(tmp, 'sessions', 'sessions.db');
+    writeFileSync(legacy, 'legacy');
+    mkdirSync(join(tmp, 'sessions'), { recursive: true });
+    writeFileSync(target, 'current');
+
+    sessionsDbPath();
+
+    // Guard holds: new DB untouched, legacy left in place for manual recovery.
+    expect(readFileSync(target, 'utf8')).toBe('current');
+    expect(existsSync(legacy)).toBe(true);
+  });
+
+  it('is a no-op when no legacy DB exists', async () => {
+    const { existsSync } = await import('node:fs');
+    const { sessionsDbPath } = await import('./nexus-data-dir.js');
+    sessionsDbPath();
+    expect(existsSync(join(tmp, 'sessions', 'sessions.db'))).toBe(false);
+  });
+
+  it('moves SQLite sidecar files alongside the main DB', async () => {
+    const { writeFileSync, existsSync } = await import('node:fs');
+    const { sessionsDbPath } = await import('./nexus-data-dir.js');
+    writeFileSync(join(tmp, 'sessions.db'), 'db');
+    writeFileSync(join(tmp, 'sessions.db-wal'), 'wal');
+
+    sessionsDbPath();
+
+    expect(existsSync(join(tmp, 'sessions', 'sessions.db'))).toBe(true);
+    expect(existsSync(join(tmp, 'sessions', 'sessions.db-wal'))).toBe(true);
+    expect(existsSync(join(tmp, 'sessions.db-wal'))).toBe(false);
+  });
+
+  it('migrates at most once per process (memoized)', async () => {
+    const { writeFileSync, existsSync } = await import('node:fs');
+    const { sessionsDbPath } = await import('./nexus-data-dir.js');
+    sessionsDbPath(); // first call — memoizes, no legacy present
+
+    // A legacy DB appearing after the memo is set is not picked up.
+    writeFileSync(join(tmp, 'sessions.db'), 'late');
+    sessionsDbPath();
+    expect(existsSync(join(tmp, 'sessions.db'))).toBe(true); // not migrated
+    expect(existsSync(join(tmp, 'sessions', 'sessions.db'))).toBe(false);
+  });
+});
