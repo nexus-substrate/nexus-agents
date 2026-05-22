@@ -160,6 +160,17 @@ export abstract class BaseCliAdapter implements ICliAdapter {
   }
 
   /**
+   * Whether the shared outer retry loop ({@link executeCliRetryLoop}) is
+   * allowed to retry this adapter's failures. The base adapter honors the
+   * caller's `allowRetry`. Subprocess adapters override this to suppress
+   * the outer loop when their own transient-retry layer is active, so the
+   * two layers do not nest into multiplied spawns (#2824).
+   */
+  protected shouldOuterRetry(opts: Required<ExecutionOptions>): boolean {
+    return opts.allowRetry;
+  }
+
+  /**
    * Executes task with retry logic via shared retry loop.
    */
   private async executeWithRetry(
@@ -168,7 +179,7 @@ export abstract class BaseCliAdapter implements ICliAdapter {
   ): Promise<Result<CliResponse, CliError>> {
     const result = await executeCliRetryLoop(() => this.executeTask(task, opts), {
       maxRetries: opts.maxRetries,
-      allowRetry: opts.allowRetry,
+      allowRetry: this.shouldOuterRetry(opts),
       baseDelayMs: 1_000,
       maxDelayMs: 16_000,
       cli: this.name,

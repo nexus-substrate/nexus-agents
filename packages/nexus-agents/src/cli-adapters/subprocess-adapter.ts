@@ -242,6 +242,19 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
   protected readonly transientRetry: TransientRetryConfig = { enabled: true };
 
   /**
+   * The inner {@link retryTransient} layer is the single retry authority
+   * for subprocess CLIs. When it is enabled (the default), the shared
+   * outer retry loop must not also retry: nesting both meant up to 6
+   * subprocess spawns and ~10-minute hangs on a persistent TIMEOUT, since
+   * the inner layer's timeout extension compounds on every outer attempt
+   * (#2824). The outer loop still runs once, so circuit-breaker failure
+   * recording is unaffected.
+   */
+  protected override shouldOuterRetry(opts: Required<ExecutionOptions>): boolean {
+    return opts.allowRetry && !this.transientRetry.enabled;
+  }
+
+  /**
    * Gets CLI command and arguments for execution.
    * If stdin is provided, it will be written to the process stdin.
    */
