@@ -35,6 +35,28 @@ export interface VotingOutcome {
 }
 
 /**
+ * Evaluates an approval ratio against a threshold — the shared math behind
+ * the simple-majority, supermajority and proof-of-learning strategies.
+ *
+ * `inclusive` selects the comparison: `>=` for supermajority (67% passes at
+ * exactly 67%), strict `>` for simple-majority and proof-of-learning (a tie
+ * at the threshold is not enough). Callers apply their own zero-denominator
+ * guard before calling this.
+ */
+function evaluateThreshold(
+  approveCount: number,
+  votingTotal: number,
+  threshold: number,
+  inclusive: boolean
+): { approved: boolean; approvalPercentage: number } {
+  const ratio = approveCount / votingTotal;
+  return {
+    approved: inclusive ? ratio >= threshold : ratio > threshold,
+    approvalPercentage: ratio * 100,
+  };
+}
+
+/**
  * Base voting strategy with common functionality.
  */
 abstract class BaseVotingStrategy implements IVotingStrategy {
@@ -120,8 +142,12 @@ export class SimpleMajorityStrategy extends BaseVotingStrategy {
       };
     }
 
-    const approvalPercentage = (counts.approve / votingVotes) * 100;
-    const approved = counts.approve / votingVotes > threshold;
+    const { approved, approvalPercentage } = evaluateThreshold(
+      counts.approve,
+      votingVotes,
+      threshold,
+      false
+    );
 
     return {
       approved,
@@ -154,8 +180,12 @@ export class SupermajorityStrategy extends BaseVotingStrategy {
       };
     }
 
-    const approvalPercentage = (counts.approve / votingVotes) * 100;
-    const approved = counts.approve / votingVotes >= threshold;
+    const { approved, approvalPercentage } = evaluateThreshold(
+      counts.approve,
+      votingVotes,
+      threshold,
+      true
+    );
 
     return {
       approved,
@@ -242,8 +272,12 @@ export class ProofOfLearningStrategy extends BaseVotingStrategy {
       };
     }
 
-    const approvalPercentage = (weightedCounts.approve / votingWeight) * 100;
-    const approved = weightedCounts.approve / votingWeight > threshold;
+    const { approved, approvalPercentage } = evaluateThreshold(
+      weightedCounts.approve,
+      votingWeight,
+      threshold,
+      false
+    );
 
     return {
       approved,
