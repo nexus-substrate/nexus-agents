@@ -163,13 +163,6 @@ function validateGitHubIssue(issueNumber: number): boolean {
 }
 
 /**
- * Escapes special characters for shell command.
- */
-function escapeForShell(text: string): string {
-  return text.replace(/'/g, "'\\''");
-}
-
-/**
  * Formats vote result as markdown comment.
  */
 export function formatVoteComment(result: VotingResult): string {
@@ -215,15 +208,22 @@ ${voteRows}
 
 /**
  * Records vote result to GitHub issue.
+ *
+ * The comment body is piped to `gh` via stdin (`--body-file -`) rather
+ * than embedded in the command string (#2863). The previous `--body
+ * '<comment>'` form was rejected by the sandbox `validateArgs` gate for
+ * every vote: `formatVoteComment` always emits a markdown table (`|`)
+ * and a `(NN% approval)` parenthetical, both of which match the denied
+ * shell-metacharacter pattern. Piping keeps the body off the shell
+ * entirely — no escaping, no injection surface.
  */
-function recordVoteToGitHub(issueNumber: number, result: VotingResult): void {
+export function recordVoteToGitHub(issueNumber: number, result: VotingResult): void {
   const comment = formatVoteComment(result);
-  const escapedComment = escapeForShell(comment);
 
-  const output = safeExecSandboxed(
-    `gh issue comment ${String(issueNumber)} --body '${escapedComment}'`,
-    { context: 'gh' }
-  );
+  const output = safeExecSandboxed(`gh issue comment ${String(issueNumber)} --body-file -`, {
+    context: 'gh',
+    stdin: comment,
+  });
 
   if (output !== null) {
     writeLine(

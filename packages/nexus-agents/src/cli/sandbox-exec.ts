@@ -36,6 +36,13 @@ export interface SandboxExecOptions {
   readonly context?: ExecContext;
   /** Custom policy (overrides context-based selection). */
   readonly policy?: SandboxPolicy;
+  /**
+   * Data to pipe to the child process's stdin (#2863). Lets callers
+   * pass large or shell-unsafe payloads (e.g. a markdown comment body)
+   * without embedding them in the command string — where chars like
+   * `| ( ) ; &` would be rejected by `validateArgs`.
+   */
+  readonly stdin?: string;
 }
 
 /** Parser state for command string tokenization. */
@@ -167,6 +174,9 @@ export function safeExecSandboxed(
     if (options.cwd !== undefined) {
       execOptions.cwd = options.cwd;
     }
+    if (options.stdin !== undefined) {
+      execOptions.input = options.stdin;
+    }
 
     const result = execSync(commandString, execOptions);
     return typeof result === 'string' ? result.trim() : result.toString('utf-8').trim();
@@ -205,6 +215,9 @@ export function execSandboxed(commandString: string, options: SandboxExecOptions
 
   if (options.cwd !== undefined) {
     execOptions.cwd = options.cwd;
+  }
+  if (options.stdin !== undefined) {
+    execOptions.input = options.stdin;
   }
 
   const result = execSync(commandString, execOptions);
