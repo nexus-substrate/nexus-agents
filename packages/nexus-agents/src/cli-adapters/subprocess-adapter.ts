@@ -22,6 +22,7 @@ import type {
   ICliResponseParser,
 } from './types.js';
 import { BaseCliAdapter } from './base-adapter.js';
+import { buildChildEnv } from './subprocess-env.js';
 import { sanitizeOutput } from '../security/output-sanitizer.js';
 import { isRateLimitText } from '../adapters/rate-limit-detector.js';
 import { parseCliErrorEnvelope } from './cli-error-envelope.js';
@@ -329,9 +330,11 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
         runCleanup();
         resolveOuter(result);
       };
-      // Strip CLAUDECODE env var to allow nested CLI sessions (SWE-bench, etc.)
-      const childEnv = { ...process.env };
-      delete childEnv['CLAUDECODE'];
+      // Curated child env: base infrastructure vars + only this CLI's
+      // own vendor credentials, so cross-vendor API keys don't leak
+      // into the spawned CLI (#2865). Also drops CLAUDECODE — a nested
+      // CLI must not believe it's already inside Claude Code.
+      const childEnv = buildChildEnv(this.name);
 
       const child = spawn(cmdConfig.command, cmdConfig.args, {
         stdio: ['pipe', 'pipe', 'pipe'],
