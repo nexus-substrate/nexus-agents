@@ -1138,3 +1138,67 @@ describe('SubprocessCliAdapter', () => {
     });
   });
 });
+
+/**
+ * Regression for #2824: the inner `retryTransient` layer and the shared
+ * outer `executeCliRetryLoop` used to both retry transient failures. On a
+ * persistent transient error that meant outer-attempts × inner-attempts
+ * subprocess spawns. `shouldOuterRetry` now suppresses the outer loop when
+ * the inner transient layer is active, so the inner layer is the single
+ * retry authority.
+ */
+describe('SubprocessCliAdapter - nested retry layers (#2824)', () => {
+  /** Adapter with the real default `transientRetry.enabled = true`, plus an
+   *  instant `delay` so retry backoff does not slow the test. */
+  class RetryEnabledAdapter extends TestSubprocessAdapter {
+    protected override readonly transientRetry = { enabled: true };
+    protected override delay(): Promise<void> {
+      return Promise.resolve();
+    }
+  }
+
+  /** Makes every spawn emit `close` with the given exit code once the
+   *  adapter has attached its listeners (next microtask). Exit 137 is a
+   *  signal kill → classified CONNECTION_ERROR (transient, retryable). */
+  function spawnAlwaysExits(code: number): void {
+    mockSpawn.mockImplementation(() => {
+      const { mockChild, stdout, stderr } = createMockChildProcess();
+      queueMicrotask(() => {
+        stdout.push(null);
+        stderr.push(null);
+        mockChild.emit('close', code);
+      });
+      return mockChild;
+    });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('does not multiply spawns: a persistent transient error retries only the inner layer', async () => {
+    const adapter = new RetryEnabledAdapter();
+    spawnAlwaysExits(137); // CONNECTION_ERROR every attempt
+
+    const result = await adapter.execute({ content: 'test' });
+
+    expect(result.ok).toBe(false);
+    // Inner retryTransient: 1 initial + MAX_TRANSIENT_RETRIES(2) = 3 spawns.
+    // The outer loop is suppressed (would have made it 6 before #2824).
+    expect(mockSpawn).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not retry a non-transient error at either layer', async () => {
+    const adapter = new RetryEnabledAdapter();
+    mockSpawn.mockImplementation(() => {
+      const { mockChild } = createMockChildProcess();
+      queueMicrotask(() => mockChild.emit('error', new Error('spawn nonexistent ENOENT')));
+      return mockChild;
+    });
+
+    const result = await adapter.execute({ content: 'test' });
+
+    expect(result.ok).toBe(false);
+    expect(mockSpawn).toHaveBeenCalledTimes(1);
+  });
+});

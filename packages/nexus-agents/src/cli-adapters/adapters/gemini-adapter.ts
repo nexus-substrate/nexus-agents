@@ -300,7 +300,7 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
   ): Promise<Result<{ response: CliResponse; retryCount: number }, CliError>> {
     return executeCliRetryLoop(() => this.executeTask(task, options), {
       maxRetries: options.maxRetries,
-      allowRetry: options.allowRetry,
+      allowRetry: this.shouldOuterRetry(options),
       baseDelayMs: this.baseDelayMs,
       maxDelayMs: this.maxDelayMs,
       circuitBreaker: this.circuitBreaker,
