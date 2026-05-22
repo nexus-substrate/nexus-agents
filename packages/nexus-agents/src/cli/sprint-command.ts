@@ -54,7 +54,10 @@ export function generateSprintTitle(duration: string): string {
     month: '2-digit',
     day: '2-digit',
   });
-  return `sprint: ${dateStr} (${duration})`;
+  // Dash, not parentheses, around the duration: this title is passed to
+  // `gh issue create --title` and the sandbox `validateArgs` gate rejects
+  // any argument containing `( )` (#2913 — audit #2824 bullet 10).
+  return `sprint: ${dateStr} - ${duration}`;
 }
 
 /**
@@ -182,15 +185,22 @@ export function generateProposal(
 
 /**
  * Create sprint issue on GitHub.
+ *
+ * The proposal body is piped to `gh` via stdin (`--body-file -`) rather than
+ * embedded in the command string (#2913 — audit #2824 bullet 10). The body is
+ * markdown — tables (`|`) and `(effort)` parentheticals — and the sandbox
+ * `validateArgs` gate rejects any argument containing shell metacharacters, so
+ * the previous `--body '<body>'` form made every sprint-issue creation fail
+ * silently. The title is metacharacter-free by construction (see
+ * `generateSprintTitle`), so it stays an inline `--title` argument.
  */
 export function createSprintIssue(proposal: SprintProposal): number | null {
   try {
     const escapedTitle = proposal.title.replace(/'/g, "'\\''");
-    const escapedBody = proposal.body.replace(/'/g, "'\\''");
 
     const output = safeExecSandboxed(
-      `gh issue create --title '${escapedTitle}' --body '${escapedBody}' --label 'epic'`,
-      { context: 'gh' }
+      `gh issue create --title '${escapedTitle}' --body-file - --label epic`,
+      { context: 'gh', stdin: proposal.body }
     );
 
     if (output === null) {
