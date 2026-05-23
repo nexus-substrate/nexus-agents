@@ -1,6 +1,6 @@
 {
   "name": "nexus-agents",
-  "version": "2.81.2",
+  "version": "2.81.3",
   "description": "Intelligent orchestration platform for AI coding tools — routes tasks to the best model, learns from outcomes, and enforces quality through multi-model consensus",
   "mcpName": "io.github.nexus-substrate/nexus-agents",
   "license": "MIT",
