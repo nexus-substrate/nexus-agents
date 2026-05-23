@@ -17,7 +17,7 @@ import {
 } from '../security/finding-lifecycle.js';
 import type { FindingLifecycleEntry } from '../security/finding-lifecycle.js';
 import { triageFindings } from '../security/finding-triage.js';
-import type { TriageVerdict } from '../security/finding-triage.js';
+import type { TriagedFinding } from '../security/finding-triage.js';
 import { queryOsvBatch } from '../security/osv-lookup.js';
 import type { OsvVulnerability } from '../security/osv-lookup.js';
 import type { SecurityFinding } from '../security/sarif-types.js';
@@ -29,8 +29,8 @@ const logger = createLogger({ component: 'security-gate' });
 let lastScanLifecycle: readonly FindingLifecycleEntry[] = [];
 /** Last OSV vulnerabilities found. */
 let lastOsvVulnerabilities: readonly OsvVulnerability[] = [];
-/** Last triage verdicts. */
-let lastTriageVerdicts: readonly TriageVerdict[] = [];
+/** Last triage verdicts (paired with their finding IDs — see #2933). */
+let lastTriageVerdicts: readonly TriagedFinding[] = [];
 
 /** Get lifecycle entries from the most recent security gate scan. */
 export function getLastScanLifecycle(): readonly FindingLifecycleEntry[] {
@@ -42,8 +42,8 @@ export function getLastOsvVulnerabilities(): readonly OsvVulnerability[] {
   return lastOsvVulnerabilities;
 }
 
-/** Get triage verdicts from the most recent scan. */
-export function getLastTriageVerdicts(): readonly TriageVerdict[] {
+/** Get triage verdicts from the most recent scan (each paired with its finding id, #2933). */
+export function getLastTriageVerdicts(): readonly TriagedFinding[] {
   return lastTriageVerdicts;
 }
 
@@ -132,7 +132,7 @@ async function runTriagePipeline(
     minConfidence: 0.5,
   });
   lastTriageVerdicts = triageResult.triaged;
-  recordTriageLifecycle(sarifResult.findings, triageResult.triaged, lifecycleEntries);
+  recordTriageLifecycle(triageResult.triaged, lifecycleEntries);
 
   // Step 3: OSV dependency check (#1773)
   const osvVulns = await runOsvCheck(targetDir, config.enableOsv ?? true);
@@ -168,18 +168,20 @@ async function runTriagePipeline(
 // Helpers
 // ============================================================================
 
-/** Record triage verdicts in lifecycle tracker (#1775). */
+/**
+ * Record triage verdicts in lifecycle tracker (#1775).
+ *
+ * Pre-#2933 this paired `findings[i]` with `verdicts[i]` positionally — wrong,
+ * because `triageFindings` sorts by severity and may skip parse-failed verdicts,
+ * so position-i in each array refers to different findings. Each TriagedFinding
+ * now carries its own finding object, so the pairing is intrinsic.
+ */
 function recordTriageLifecycle(
-  findings: readonly SecurityFinding[],
-  verdicts: readonly TriageVerdict[],
+  verdicts: readonly TriagedFinding[],
   entries: FindingLifecycleEntry[]
 ): void {
-  for (let i = 0; i < verdicts.length && i < findings.length; i++) {
-    const finding = findings[i];
-    const verdict = verdicts[i];
-    if (finding !== undefined && verdict !== undefined) {
-      recordTriaged(finding, verdict, (entry) => entries.push(entry));
-    }
+  for (const triaged of verdicts) {
+    recordTriaged(triaged.finding, triaged.verdict, (entry) => entries.push(entry));
   }
 }
 
@@ -209,17 +211,25 @@ async function runOsvCheck(targetDir: string, enabled: boolean): Promise<OsvVuln
   }
 }
 
-/** Filter to confirmed blocking findings (triage-aware) (#1770). */
+/**
+ * Filter to confirmed blocking findings (triage-aware) (#1770).
+ *
+ * Verdicts are matched to findings by **id**, not array position — see #2933.
+ * Pre-#2933 the filter used `verdicts[i]` where `i` indexed `blocking` in
+ * original order, but `verdicts` was in severity-sorted-then-truncated order,
+ * so a high-severity finding could get matched against a verdict for a
+ * different (often lower-severity) finding and be silently dropped.
+ */
 function getConfirmedBlockingFindings(
   findings: readonly SecurityFinding[],
-  verdicts: readonly TriageVerdict[]
+  verdicts: readonly TriagedFinding[]
 ): SecurityFinding[] {
   const blocking = findings.filter((f) => BLOCKING_SEVERITIES.has(f.severity));
   if (verdicts.length === 0) return [...blocking]; // No triage — all block (fail-safe)
 
-  // Only block on findings that triage confirmed
-  return blocking.filter((f, i) => {
-    const verdict = verdicts[i];
+  const verdictById = new Map(verdicts.map((t) => [t.finding.id, t.verdict]));
+  return blocking.filter((f) => {
+    const verdict = verdictById.get(f.id);
     return verdict === undefined || verdict.confirmed; // Unknown = confirmed (fail-safe)
   });
 }
