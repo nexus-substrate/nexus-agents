@@ -17,8 +17,18 @@ import { createLogger } from '../core/index.js';
 
 import { PipelineRunner } from './pipeline-runner.js';
 import { getPipelineEventBus } from './event-bus.js';
-import { createDefaultPolicyEngine } from './policy-engine.js';
+import { createDefaultPolicyEngine, type PipelineStateSnapshot } from './policy-engine.js';
 import { evaluatePolicy, getPolicyMode } from './policy-evaluator.js';
+
+/**
+ * Narrows the untyped `task.metadata` bag into the policy engine's typed
+ * snapshot (#2932). Adding a new field here forces the call site that
+ * writes it on `TaskContract.metadata` to keep up.
+ */
+function toPipelineStateSnapshot(metadata: Record<string, unknown>): PipelineStateSnapshot {
+  const trustTier = metadata['trustTier'];
+  return typeof trustTier === 'string' ? { trustTier } : {};
+}
 import { buildBaseTaskContract } from './task-contract-builders.js';
 
 import type { CompiledPipeline } from './pipeline-runner.js';
@@ -148,7 +158,10 @@ export function checkPipelinePolicy(task: TaskContract, stageType: string): Poli
     taskId: task.id,
     stageId: `pre-execution-${stageType}`,
     stageType,
-    pipelineState: task.metadata,
+    // #2932: typed extraction. The untyped `task.metadata` is the producer
+    // surface — we narrow to the policy snapshot here so adding a new rule
+    // forces an explicit producer wire-up at this single chokepoint.
+    pipelineState: toPipelineStateSnapshot(task.metadata),
   };
 
   const result = evaluatePolicy({ engine, mode }, context);

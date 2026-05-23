@@ -142,50 +142,16 @@ describe('PolicyEngine', () => {
   });
 
   describe('built-in rules', () => {
-    it('exports 5 built-in rules', () => {
-      expect(BUILT_IN_RULES).toHaveLength(5);
-    });
-
-    it('bounded-iteration blocks exceeded retries', () => {
-      const rule = BUILT_IN_RULES.find((r) => r.id === 'bounded-iteration');
-      expect(rule).toBeDefined();
-      const ctx = makeContext({
-        pipelineState: { stageAttempts: 5 },
-        stageId: 'retry-stage',
-      });
-      const result = rule?.evaluate(ctx);
-      expect(result?.allow).toBe(false);
-    });
-
-    it('bounded-iteration allows under limit', () => {
-      const rule = BUILT_IN_RULES.find((r) => r.id === 'bounded-iteration');
-      const ctx = makeContext({
-        pipelineState: { stageAttempts: 1 },
-      });
-      const result = rule?.evaluate(ctx);
-      expect(result?.allow).toBe(true);
-    });
-
-    it('cost-budget blocks over budget', () => {
-      const rule = BUILT_IN_RULES.find((r) => r.id === 'cost-budget');
-      expect(rule).toBeDefined();
-      const ctx = makeContext({
-        pipelineState: {
-          costAccumulator: 90,
-          costBudget: 100,
-        },
-      });
-      const result = rule?.evaluate(ctx);
-      expect(result?.allow).toBe(false);
-    });
-
-    it('cost-budget allows when no budget set', () => {
-      const rule = BUILT_IN_RULES.find((r) => r.id === 'cost-budget');
-      const ctx = makeContext({
-        pipelineState: {},
-      });
-      const result = rule?.evaluate(ctx);
-      expect(result?.allow).toBe(true);
+    // #2932: BUILT_IN_RULES was reduced from 5 to 1 — `security-review`,
+    // `bounded-iteration`, `cost-budget`, and `high-risk-approval` each read
+    // a metadata key (`securityReviewRequired`, `stageAttempts`,
+    // `costAccumulator`, `highRisk`) that no producer ever wrote, so every
+    // comparison evaluated against undefined and every rule allowed. They
+    // were aspirational scaffolding, not real gates. Re-add when a producer
+    // subsystem exists.
+    it('exports just the trust-tier rule', () => {
+      expect(BUILT_IN_RULES).toHaveLength(1);
+      expect(BUILT_IN_RULES[0]?.id).toBe('trust-tier');
     });
   });
 
@@ -225,23 +191,22 @@ describe('PolicyEngine', () => {
       }
     });
 
-    it('still blocks when trustTier is the number 3 (backward compat)', () => {
+    it('allows when trustTier is missing (the typed-snapshot default — see #2932)', () => {
+      // The typed PipelineStateSnapshot makes `trustTier?: string` —
+      // upstream extractors (v2-delegate's toPipelineStateSnapshot) drop
+      // non-string producer values, so the rule never sees garbage. When
+      // the field is absent the rule fails open (same as pre-#2932).
       const result = trustTierRule?.evaluate(
-        makeContext({ stageType: 'execute', pipelineState: { trustTier: 3 } })
+        makeContext({ stageType: 'execute', pipelineState: {} })
       );
-      expect(result?.allow).toBe(false);
+      expect(result?.allow).toBe(true);
     });
 
-    it('allows when trustTier is malformed (non-numeric string, object, null)', () => {
-      for (const tier of ['abc', {}, null, undefined] as const) {
-        const result = trustTierRule?.evaluate(
-          makeContext({
-            stageType: 'execute',
-            pipelineState: tier === undefined ? {} : { trustTier: tier },
-          })
-        );
-        expect(result?.allow).toBe(true);
-      }
+    it('allows when trustTier is a non-numeric string', () => {
+      const result = trustTierRule?.evaluate(
+        makeContext({ stageType: 'execute', pipelineState: { trustTier: 'abc' } })
+      );
+      expect(result?.allow).toBe(true);
     });
   });
 });
