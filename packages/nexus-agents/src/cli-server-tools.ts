@@ -660,8 +660,16 @@ export function registerMcpTools(options: RegisterMcpToolsOptions): void {
   const ctx = createToolContext(gatewayOptions, toolInfra, rateLimiterFactory);
   registerToolCategories(ctx);
 
-  // Wire upstream MCP servers from gateway config (#1498)
-  void initUpstreamServers(gatewayConfig, observableServer, logger);
+  // Wire upstream MCP servers from gateway config (#1498). #2960: catch
+  // rejections so an upstream-init failure surfaces in logs instead of
+  // becoming an unhandled rejection (silent in default mode, crash in
+  // --unhandled-rejections=strict).
+  void initUpstreamServers(gatewayConfig, observableServer, logger).catch((error: unknown) => {
+    logger.error(
+      'Upstream MCP init failed',
+      error instanceof Error ? error : new Error(String(error))
+    );
+  });
 
   // Register MCP prompts and resources (Issue #1287, #1288)
   registerPrompts(observableServer, logger);

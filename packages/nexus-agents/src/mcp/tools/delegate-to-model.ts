@@ -156,9 +156,16 @@ function enrichWithGovernance(
 /** Fire-and-forget V2 pipeline instrumentation (Phase A, Issue #920). */
 function instrumentV2Pipeline(input: { task: string }, logger: ILogger): void {
   const tc = delegateInputToTaskContract(input);
-  void executeDelegatePipeline(tc).then((m) => {
-    logger.info('V2 delegate pipeline', { ...m });
-  });
+  // #2960: catch rejections so an instrumentation-path failure logs
+  // instead of becoming an unhandled rejection. Mirrors the sibling
+  // pattern at `mcp/tools/orchestrate.ts:822-826`.
+  void executeDelegatePipeline(tc)
+    .then((m) => {
+      logger.info('V2 delegate pipeline', { ...m });
+    })
+    .catch((error: unknown) => {
+      logger.warn('V2 delegate instrumentation failed', { error: getErrorMessage(error) });
+    });
 }
 
 /** Options for notifyAndRecord. */
