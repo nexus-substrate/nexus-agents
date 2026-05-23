@@ -1,5 +1,15 @@
 # nexus-agents
 
+## 2.81.2
+
+### Patch Changes
+
+- [#2949](https://github.com/nexus-substrate/nexus-agents/pull/2949) [`f7313e0`](https://github.com/nexus-substrate/nexus-agents/commit/f7313e0cef1c045bd07e4ee7bfa41deffa0f6623) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(research):** `PaperEntry` now mirrors `ResearchPaper`'s rigor fields; drops the unsafe cast. Closes [#2943](https://github.com/nexus-substrate/nexus-agents/issues/2943).
+
+  `research-helpers-registry.ts` cast each `PaperEntry` to `ResearchPaper` via `as unknown as ResearchPaper` before scoring — but `PaperEntry` was a strict subset, missing `rigor_tags`, `citation_count`, `has_code`, `code_url`, `quality_notes`, `last_quality_check`. `computeEvidenceTier`'s high-tier branch reads `rigor_tags`, so at runtime `new Set(undefined)` produced an empty set and the path was unreachable for anything flowing through that cast.
+
+  `PaperEntry` now carries the rigor fields as optional. A typed `paperEntryToResearchPaper` helper replaces the cast, copying the readonly arrays to mutable ones (Zod-inferred shape). Behavior is unchanged for arXiv ingest (which still leaves rigor empty), but the high-evidence-tier path is now reachable when a maintainer populates `rigor_tags` on a paper — and the type system enforces it instead of silently stripping the field.
+
 ## 2.81.1
 
 ### Patch Changes
