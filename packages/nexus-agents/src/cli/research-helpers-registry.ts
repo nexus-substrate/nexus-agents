@@ -176,6 +176,46 @@ function createRegistryError(
 }
 
 /**
+ * Convert a `PaperEntry` into the Zod-derived `ResearchPaper` shape expected
+ * by the quality helpers (#2943). PaperEntry now mirrors all of ResearchPaper's
+ * rigor fields, so the conversion is a straightforward typed mapping — no
+ * `as unknown as` required. The readonly array fields are copied to mutable
+ * arrays because ResearchPaper's Zod inference yields mutable types.
+ */
+export function paperEntryToResearchPaper(entry: PaperEntry): ResearchPaper {
+  return {
+    title: entry.title,
+    authors: [...entry.authors],
+    source: entry.source,
+    arxiv_id: entry.arxiv_id,
+    url: entry.url,
+    publication_date: entry.publication_date,
+    venue: entry.venue,
+    topics: [...entry.topics],
+    tags: [...entry.tags],
+    reviewed_date: entry.reviewed_date,
+    reviewed_in: entry.reviewed_in,
+    summary: entry.summary,
+    key_findings: [...entry.key_findings],
+    relevance: entry.relevance,
+    techniques_extracted: [...entry.techniques_extracted],
+    related_issues: [...entry.related_issues],
+    implementation_status: entry.implementation_status,
+    rigor_tags: entry.rigor_tags ? [...entry.rigor_tags] : [],
+    ...(entry.venue_tier !== undefined ? { venue_tier: entry.venue_tier } : {}),
+    ...(entry.quality_score !== undefined ? { quality_score: entry.quality_score } : {}),
+    ...(entry.evidence_tier !== undefined ? { evidence_tier: entry.evidence_tier } : {}),
+    ...(entry.citation_count !== undefined ? { citation_count: entry.citation_count } : {}),
+    ...(entry.has_code !== undefined ? { has_code: entry.has_code } : {}),
+    ...(entry.code_url !== undefined ? { code_url: entry.code_url } : {}),
+    ...(entry.quality_notes !== undefined ? { quality_notes: entry.quality_notes } : {}),
+    ...(entry.last_quality_check !== undefined
+      ? { last_quality_check: entry.last_quality_check }
+      : {}),
+  };
+}
+
+/**
  * Generate a PaperEntry from arXiv metadata.
  *
  * @param metadata - The arXiv paper metadata
@@ -227,7 +267,12 @@ export function generateRegistryEntry(
   // At ingestion: venue=null, no citations, no code — but recency IS available.
   // computeQualityScore handles undefined fields gracefully.
   // Preprint cap (isPreprintOnly) applies automatically via computeQualityScore.
-  const paperForScoring = entry as unknown as ResearchPaper;
+  //
+  // #2943: PaperEntry now mirrors ResearchPaper's optional rigor fields, so
+  // a typed coercion replaces the prior `as unknown as ResearchPaper` cast.
+  // The conversion is read-only on `entry`; we make the array fields mutable
+  // copies because the Zod-derived ResearchPaper infers mutable arrays.
+  const paperForScoring = paperEntryToResearchPaper(entry);
   const qualityScore = computeQualityScore(paperForScoring);
   const evidenceTier = computeEvidenceTier({ ...paperForScoring, quality_score: qualityScore });
 
