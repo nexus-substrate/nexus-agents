@@ -26,12 +26,39 @@ export type PolicyDecision =
       readonly escalateTo?: string;
     };
 
+/**
+ * Typed snapshot of the pipeline state available to policy rules (#2932).
+ *
+ * Listing the fields by name (instead of an untyped `Record<string, unknown>`)
+ * surfaces missing-producer bugs at compile time. The pre-#2932 untyped
+ * shape let `securityReviewRule`, `costBudgetRule`, `highRiskApprovalRule`,
+ * and `boundedIterationRule` read keys that no producer ever wrote — every
+ * comparison evaluated against `undefined`, so every rule allowed. Those
+ * four rules were deleted in the same change; this interface lists only
+ * the fields with a real producer chain.
+ *
+ * Adding a new rule means adding its input field here AND wiring a
+ * producer that writes it onto `TaskContract.metadata` upstream of
+ * `checkPipelinePolicy`.
+ */
+export interface PipelineStateSnapshot {
+  /**
+   * Caller trust tier (`'1'`..`'4'` per `security/trust-types.ts`). Producers
+   * include `trust-classifier`, `input-sanitizer`, `firewall-pipeline`, and
+   * `mcp/middleware/request-context`; threading the value into
+   * `TaskContract.metadata.trustTier` is owner-scoped follow-up work — see
+   * the corresponding issue. When absent, `trustTierRule` allows (the
+   * existing fail-open default for unknown trust).
+   */
+  readonly trustTier?: string;
+}
+
 /** Context provided to policy rules for evaluation. */
 export interface PolicyContext {
   readonly taskId: string;
   readonly stageId: string;
   readonly stageType: string;
-  readonly pipelineState: Readonly<Record<string, unknown>>;
+  readonly pipelineState: PipelineStateSnapshot;
 }
 
 /** A policy rule with priority-ordered evaluation. */
@@ -106,25 +133,31 @@ export class PolicyEngine implements IPolicyEngine {
 // Built-in Rules
 // ============================================================================
 
-const DEFAULT_MAX_ATTEMPTS = 3;
-const COST_WARNING_THRESHOLD = 0.8;
-
-/** Rule 1: Trust tier enforcement. */
+/**
+ * Trust-tier enforcement: untrusted input (tier `'3'` or `'4'`) cannot
+ * trigger `execute`-stage work. The trust tier comes from the caller
+ * context — `trust-classifier`, `input-sanitizer`, `firewall-pipeline`,
+ * `mcp/middleware/request-context` all produce it; threading the value
+ * into `TaskContract.metadata.trustTier` is the producer-side wiring
+ * task (see the #2932 follow-up issue).
+ *
+ * #2860 fixed the pre-existing number-only coercion bug; #2932 typed
+ * the snapshot shape so the missing-producer class can't recur.
+ *
+ * The four sibling rules that used to live here (`security-review`,
+ * `bounded-iteration`, `cost-budget`, `high-risk-approval`) were
+ * deleted in #2932: each read a key — `securityReviewRequired`,
+ * `stageAttempts`, `costAccumulator`, `highRisk` — that no producer
+ * ever wrote, so every comparison evaluated against `undefined` and
+ * every rule allowed. They were aspirational scaffolding, not real
+ * gates. Add them back when a producer subsystem exists.
+ */
 const trustTierRule: PolicyRule = {
   id: 'trust-tier',
   priority: 100,
   evaluate(context): PolicyDecision {
-    const state = context.pipelineState;
-    const tierVal = state['trustTier'];
-    // Producers (issue-triage, pr-reviewer, secure-handler) write the trust
-    // tier as a string per trust-types.ts (TrustTier = '1' | '2' | '3' | '4').
-    // The earlier number-only coercion silently inerted this rule. Audit #2824.
-    const numericTier =
-      typeof tierVal === 'number'
-        ? tierVal
-        : typeof tierVal === 'string'
-          ? Number(tierVal)
-          : Number.NaN;
+    const tierVal = context.pipelineState.trustTier;
+    const numericTier = tierVal === undefined ? Number.NaN : Number(tierVal);
     const tier = Number.isFinite(numericTier) ? numericTier : undefined;
     if (tier !== undefined && tier >= 3 && context.stageType === 'execute') {
       return {
@@ -137,92 +170,8 @@ const trustTierRule: PolicyRule = {
   },
 };
 
-/** Rule 2: Security review gate. */
-const securityReviewRule: PolicyRule = {
-  id: 'security-review',
-  priority: 90,
-  evaluate(context): PolicyDecision {
-    const state = context.pipelineState;
-    const needsReview = state['securityReviewRequired'] === true;
-    const hasReview = state['securityReviewComplete'] === true;
-    if (needsReview && !hasReview && context.stageType === 'execute') {
-      return {
-        allow: false,
-        reason: 'Security review required before implementation',
-      };
-    }
-    return { allow: true };
-  },
-};
-
-/** Rule 3: Bounded iteration. */
-const boundedIterationRule: PolicyRule = {
-  id: 'bounded-iteration',
-  priority: 80,
-  evaluate(context): PolicyDecision {
-    const state = context.pipelineState;
-    const attemptsVal = state['stageAttempts'];
-    const attempts = typeof attemptsVal === 'number' ? attemptsVal : undefined;
-    if (attempts !== undefined && attempts >= DEFAULT_MAX_ATTEMPTS) {
-      return {
-        allow: false,
-        reason: `Stage "${context.stageId}" exceeded max retries`,
-      };
-    }
-    return { allow: true };
-  },
-};
-
-/** Rule 4: Cost budget. */
-const costBudgetRule: PolicyRule = {
-  id: 'cost-budget',
-  priority: 70,
-  evaluate(context): PolicyDecision {
-    const state = context.pipelineState;
-    const spentVal = state['costAccumulator'];
-    const spent = typeof spentVal === 'number' ? spentVal : undefined;
-    const budgetVal = state['costBudget'];
-    const budget = typeof budgetVal === 'number' ? budgetVal : undefined;
-    if (spent !== undefined && budget !== undefined) {
-      if (spent > budget * COST_WARNING_THRESHOLD) {
-        return {
-          allow: false,
-          reason: 'Approaching cost budget limit',
-          escalateTo: 'user',
-        };
-      }
-    }
-    return { allow: true };
-  },
-};
-
-/** Rule 5: High-risk action approval. */
-const highRiskApprovalRule: PolicyRule = {
-  id: 'high-risk-approval',
-  priority: 60,
-  evaluate(context): PolicyDecision {
-    const state = context.pipelineState;
-    const isHighRisk = state['highRisk'] === true;
-    const approved = state['userApproved'] === true;
-    if (isHighRisk && !approved) {
-      return {
-        allow: false,
-        reason: 'High-risk action requires user approval',
-        escalateTo: 'user',
-      };
-    }
-    return { allow: true };
-  },
-};
-
 /** All built-in policy rules. */
-export const BUILT_IN_RULES: readonly PolicyRule[] = [
-  trustTierRule,
-  securityReviewRule,
-  boundedIterationRule,
-  costBudgetRule,
-  highRiskApprovalRule,
-];
+export const BUILT_IN_RULES: readonly PolicyRule[] = [trustTierRule];
 
 /**
  * Creates a PolicyEngine with all built-in rules registered.

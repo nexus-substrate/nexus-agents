@@ -87,7 +87,7 @@ describe('executeOrchestratePipeline — policy enforcement', () => {
   it('blocks when trust tier 3+ with execute stage type', async () => {
     process.env['NEXUS_V2_POLICY_MODE'] = 'block';
     const tc = orchestrateInputToTaskContract({ task: 'test' });
-    const blocked = { ...tc, metadata: { ...tc.metadata, trustTier: 4 } };
+    const blocked = { ...tc, metadata: { ...tc.metadata, trustTier: '4' } };
     const metrics = await executeOrchestratePipeline(blocked);
     expect(metrics.policyBlocked).toBe(true);
     expect(metrics.compiled).toBe(false);
@@ -105,7 +105,7 @@ describe('executeOrchestratePipeline — policy enforcement', () => {
   it('proceeds in warn mode even with violations', async () => {
     process.env['NEXUS_V2_POLICY_MODE'] = 'warn';
     const tc = orchestrateInputToTaskContract({ task: 'test' });
-    const warned = { ...tc, metadata: { ...tc.metadata, trustTier: 3 } };
+    const warned = { ...tc, metadata: { ...tc.metadata, trustTier: '3' } };
     const metrics = await executeOrchestratePipeline(warned);
     expect(metrics.policyBlocked).toBeUndefined();
   });

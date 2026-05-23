@@ -199,9 +199,13 @@ describe('checkPipelinePolicy', () => {
     expect(result.violations).toHaveLength(0);
   });
 
-  it('blocks when trust tier 3+ attempts execute stage', () => {
+  // Trust tiers are written as strings per `security/trust-types.ts`
+  // (TrustTier = '1' | '2' | '3' | '4'); the typed PipelineStateSnapshot
+  // (#2932) enforces this shape via `toPipelineStateSnapshot` which drops
+  // non-string producer values.
+  it("blocks when trustTier is the string '3' on an execute stage", () => {
     process.env['NEXUS_V2_POLICY_MODE'] = 'block';
-    const task = makeTask({ metadata: { trustTier: 3 } });
+    const task = makeTask({ metadata: { trustTier: '3' } });
     const result = checkPipelinePolicy(task, 'execute');
     expect(result.allowed).toBe(false);
     expect(result.violations.length).toBeGreaterThan(0);
@@ -210,29 +214,17 @@ describe('checkPipelinePolicy', () => {
 
   it('warns but allows in warn mode with violations', () => {
     process.env['NEXUS_V2_POLICY_MODE'] = 'warn';
-    const task = makeTask({ metadata: { trustTier: 3 } });
+    const task = makeTask({ metadata: { trustTier: '3' } });
     const result = checkPipelinePolicy(task, 'execute');
     expect(result.allowed).toBe(true);
     expect(result.violations.length).toBeGreaterThan(0);
     expect(result.mode).toBe('warn');
   });
 
-  it('blocks high-risk unapproved tasks', () => {
-    process.env['NEXUS_V2_POLICY_MODE'] = 'block';
-    const task = makeTask({ metadata: { highRisk: true } });
-    const result = checkPipelinePolicy(task, 'execute');
-    expect(result.allowed).toBe(false);
-    const ruleIds = result.violations.map((v) => v.ruleId);
-    expect(ruleIds).toContain('high-risk-approval');
-  });
-
-  it('allows high-risk tasks when user approved', () => {
-    process.env['NEXUS_V2_POLICY_MODE'] = 'block';
-    const task = makeTask({ metadata: { highRisk: true, userApproved: true } });
-    const result = checkPipelinePolicy(task, 'execute');
-    const ruleIds = result.violations.map((v) => v.ruleId);
-    expect(ruleIds).not.toContain('high-risk-approval');
-  });
+  // #2932: the `high-risk-approval` rule was deleted (no producer ever
+  // wrote `highRisk` to task metadata, so the gate was inert). The
+  // pre-#2932 "blocks high-risk unapproved" and "allows when approved"
+  // tests pinned that inert behavior — both removed.
 });
 
 describe('executeDelegatePipeline — policy enforcement', () => {
@@ -246,16 +238,14 @@ describe('executeDelegatePipeline — policy enforcement', () => {
     else delete process.env['NEXUS_V2_MODE'];
   });
 
-  it('blocks and returns violation metrics when policy denies', async () => {
-    process.env['NEXUS_V2_POLICY_MODE'] = 'block';
-    const task = makeTask({ metadata: { highRisk: true } });
-    const metrics = await executeDelegatePipeline(task);
-    expect(metrics.policyBlocked).toBe(true);
-    expect(metrics.compiled).toBe(false);
-    expect(metrics.executed).toBe(false);
-    expect(metrics.policyViolations).toBeDefined();
-    expect(metrics.policyViolations!.length).toBeGreaterThan(0);
-  });
+  // #2932: pre-#2932 this test exercised the `high-risk-approval` rule,
+  // which has been deleted (no producer ever wrote `highRisk`). The
+  // remaining `trust-tier` rule gates on `stageType === 'execute'` only,
+  // but `executeDelegatePipeline` calls `checkPipelinePolicy(task, 'route')`
+  // — different stage. There is no rule today that gates 'route', so
+  // there's no integration path through executeDelegatePipeline that
+  // would block. The block-mode coverage lives in the unit tests above
+  // (`checkPipelinePolicy` with stageType='execute' + trustTier:'3').
 
   it('proceeds normally when policy allows', async () => {
     process.env['NEXUS_V2_POLICY_MODE'] = 'off';
