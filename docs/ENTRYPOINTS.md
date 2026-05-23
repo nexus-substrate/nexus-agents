@@ -368,7 +368,7 @@ nexus-agents hooks stop --check-tasks
     "properties": {
       "task": { "type": "string", "description": "Task description" },
       "context": { "type": "object", "description": "Optional context" },
-      "maxIterations": { "type": "number", "default": 3 }
+      "maxIterations": { "type": "number", "default": 10 }
     },
     "required": ["task"]
   }
