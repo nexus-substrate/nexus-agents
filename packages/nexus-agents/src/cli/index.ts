@@ -437,6 +437,10 @@ export {
 } from './demo-command.js';
 export type { DemoSubcommand, DemoOptions } from './demo-command.js';
 
+// Tour Command (Issue #2851 — interactive zero-API walkthrough)
+export { runTour, interactiveIO, scriptedIO, printTourUsage, TOUR_STEPS } from './tour-command.js';
+export type { TourIO, TourStep, TourOptions } from './tour-command.js';
+
 // Fitness Audit (System Mandate LOOP I - CLI Orchestration Fitness Score)
 export { fitnessAuditCommand } from './fitness-audit.js';
 export type { FitnessAuditOptions } from './fitness-audit.js';

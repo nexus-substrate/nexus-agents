@@ -122,6 +122,12 @@ export const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
 
   // ── Advanced ─────────────────────────────────────────────────────────────
   {
+    command: 'tour',
+    description:
+      'Guided walkthrough of the four headline tools — no API keys, no quota (#2851). --non-interactive runs straight through.',
+    audience: 'advanced',
+  },
+  {
     command: 'session',
     description: 'Manage session persistence (list, show, export, delete)',
     audience: 'advanced',
