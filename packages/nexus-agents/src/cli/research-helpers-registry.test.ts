@@ -9,11 +9,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   generateRegistryEntry,
+  paperEntryToResearchPaper,
   paperExistsInRegistry,
   addPaperToRegistry,
   getCurrentDate,
   type AddPaperOptions,
 } from './research-helpers-registry.js';
+import { computeEvidenceTier } from '../research/research-quality.js';
 import type { ArxivMetadata, PapersRegistry, PaperEntry } from './research-types.js';
 import * as ioHelpers from './research-helpers-io.js';
 import { ParseError } from '../core/types/workflow.js';
@@ -490,5 +492,50 @@ describe('YAML format verification', () => {
         expect(result.value.publication_date).toBe(testCase.expected);
       }
     }
+  });
+});
+
+// #2943: PaperEntry pre-fix had no `rigor_tags` field, so the
+// `as unknown as ResearchPaper` cast hid that the field was missing on the
+// runtime value. `computeEvidenceTier`'s high-tier branch (which reads
+// `rigor_tags`) was unreachable for anything flowing through that cast. The
+// field is now part of PaperEntry and survives the typed conversion.
+describe('paperEntryToResearchPaper (#2943)', () => {
+  const baseEntry: PaperEntry = {
+    title: 'Test',
+    authors: ['A'],
+    source: 'arxiv',
+    arxiv_id: '2501.99999',
+    url: 'https://arxiv.org/abs/2501.99999',
+    publication_date: '2025-01',
+    venue: null,
+    topics: ['t'],
+    tags: ['x'],
+    reviewed_date: '2026-05-23',
+    reviewed_in: '',
+    summary: '',
+    key_findings: [],
+    relevance: 'medium',
+    techniques_extracted: [],
+    related_issues: [],
+    implementation_status: 'not-started',
+  };
+
+  it('preserves rigor_tags so the high-evidence tier becomes reachable', () => {
+    const entry: PaperEntry = {
+      ...baseEntry,
+      rigor_tags: ['peer-reviewed', 'has-code', 'has-baselines'],
+    };
+    const research = paperEntryToResearchPaper(entry);
+
+    expect(research.rigor_tags).toEqual(['peer-reviewed', 'has-code', 'has-baselines']);
+    expect(computeEvidenceTier(research)).toBe('high');
+  });
+
+  it('defaults rigor_tags to [] when the entry omits them (arXiv ingest case)', () => {
+    const research = paperEntryToResearchPaper(baseEntry);
+    expect(research.rigor_tags).toEqual([]);
+    // Without rigor signals AND with a low score, the tier correctly stays low.
+    expect(computeEvidenceTier({ ...research, quality_score: 1 })).toBe('low');
   });
 });

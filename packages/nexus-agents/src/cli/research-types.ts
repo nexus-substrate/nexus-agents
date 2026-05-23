@@ -62,10 +62,27 @@ export interface PaperEntry {
   readonly related_issues: readonly number[];
   readonly implementation_status: PaperImplementationStatus;
 
-  // Quality assessment (Issue #1571)
+  // Quality assessment (#1571 + #2943).
+  // #2943: extended so PaperEntry is a true subset of the Zod-derived
+  // ResearchPaper — the registry pipeline can then drop its unsafe
+  // `as unknown as ResearchPaper` cast. arXiv ingest leaves the rigor
+  // fields undefined; once someone populates them on a paper, the
+  // high-evidence tier branch in `computeEvidenceTier` becomes reachable.
   readonly venue_tier?: number;
   readonly quality_score?: number;
   readonly evidence_tier?: 'high' | 'medium' | 'low';
+  readonly citation_count?: number;
+  readonly has_code?: boolean;
+  readonly code_url?: string;
+  readonly rigor_tags?: readonly (
+    | 'has-code'
+    | 'has-dataset'
+    | 'has-baselines'
+    | 'peer-reviewed'
+    | 'single-model-eval'
+  )[];
+  readonly quality_notes?: string;
+  readonly last_quality_check?: string;
 }
 
 /**
