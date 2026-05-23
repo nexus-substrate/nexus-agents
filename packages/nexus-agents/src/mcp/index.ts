@@ -275,6 +275,9 @@ export {
   type ImprovementReviewResponse,
   type ImprovementSignal,
   type SignalCategory,
+  // Supply-chain tradeoff panel (#2294)
+  registerSupplyChainTradeoffPanelTool,
+  type SupplyChainTradeoffPanelDeps,
   // Registry import tool (Issue #889)
   registerRegistryImportTool,
   type RegistryImportDeps,

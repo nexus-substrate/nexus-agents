@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- Cohesive central registry: per-tool annotation entries grow with REGISTERED_TOOLS (governance: 400-600 OK if cohesive). */
 /**
  * MCP Tool Annotations Registry
  *
@@ -406,6 +407,153 @@ export const TOOL_ANNOTATIONS: Readonly<Record<string, ToolSideEffectsEntry>> = 
         description: 'Fetches repository metadata from GitHub API via gh CLI',
       },
       { category: 'implicit', description: 'Consumes rate limit quota' },
+    ],
+  },
+  research_add_source: {
+    annotations: {
+      title: 'Research Add Source',
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
+    sideEffects: [
+      { category: 'explicit', description: 'Adds a non-paper source to the research registry' },
+      { category: 'coupling', description: 'New entries affect research_discover/research_query' },
+    ],
+  },
+  research_synthesize: {
+    annotations: {
+      title: 'Research Synthesize',
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    sideEffects: [{ category: 'implicit', description: 'Reads research catalog + alignment map' }],
+  },
+  query_task_state: {
+    annotations: {
+      title: 'Query Task State',
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    sideEffects: [
+      { category: 'implicit', description: 'Reads the structured task-state log (#2278)' },
+    ],
+  },
+  verify_audit_chain: {
+    annotations: {
+      title: 'Verify Audit Chain',
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    sideEffects: [
+      {
+        category: 'implicit',
+        description: 'Reads the immutable audit log and verifies the hash chain',
+      },
+    ],
+  },
+  extract_symbols: {
+    annotations: {
+      title: 'Extract Symbols',
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    sideEffects: [{ category: 'implicit', description: 'Reads source files and walks their ASTs' }],
+  },
+  search_codebase: {
+    annotations: {
+      title: 'Search Codebase',
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    sideEffects: [
+      {
+        category: 'implicit',
+        description: 'Reads source files and builds an in-memory symbol index',
+      },
+    ],
+  },
+  run_dev_pipeline: {
+    annotations: {
+      title: 'Run Dev Pipeline',
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
+    sideEffects: [
+      {
+        category: 'explicit',
+        description: 'Executes the V2 dev pipeline (delegates to CLI adapters)',
+      },
+      {
+        category: 'implicit',
+        description: 'Consumes API tokens; persists outcomes and checkpoints',
+      },
+      {
+        category: 'coupling',
+        description: 'Writes routing/learning state consumed by future runs',
+      },
+    ],
+  },
+  run_pipeline: {
+    annotations: {
+      title: 'Run Pipeline',
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
+    sideEffects: [
+      { category: 'explicit', description: 'Executes a generic V2 pipeline TaskContract' },
+      { category: 'implicit', description: 'Consumes API tokens; emits pipeline events' },
+      { category: 'coupling', description: 'Writes policy/audit state consumed by other tools' },
+    ],
+  },
+  pr_review: {
+    annotations: {
+      title: 'PR Review',
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
+    sideEffects: [
+      {
+        category: 'explicit',
+        description: 'Runs multi-voter PR review with verification gate (#2233)',
+      },
+      { category: 'implicit', description: 'Consumes API tokens across voter CLIs' },
+      { category: 'coupling', description: 'Records voter outcomes for weather report' },
+    ],
+  },
+  supply_chain_tradeoff_panel: {
+    annotations: {
+      title: 'Supply-chain Tradeoff Panel',
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
+    sideEffects: [
+      {
+        category: 'explicit',
+        description:
+          'Runs per-axis tradeoff vote (build_time_determinism / supply_chain_risk / update_cadence) (#2294)',
+      },
+      { category: 'implicit', description: 'Consumes API tokens across voter CLIs' },
+      { category: 'coupling', description: 'Records voter outcomes for weather report' },
     ],
   },
 };
