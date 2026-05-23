@@ -36,6 +36,8 @@ import {
   registerMemoryWriteTool,
   registerWeatherReportTool,
   registerImprovementReviewTool,
+  registerPrReviewTool,
+  registerSupplyChainTradeoffPanelTool,
   registerRegistryImportTool,
   registerRepoAnalyzeTool,
   registerRepoSecurityPlanTool,
@@ -143,9 +145,11 @@ export const REGISTERED_TOOLS = [
   'consensus_vote',
   'research_query',
   'research_add',
+  'research_add_source',
   'research_discover',
   'research_analyze',
   'research_catalog_review',
+  'research_synthesize',
   'survey_oss_landscape',
   'vendor_publishing_audit',
   'compare_data_feeds',
@@ -158,9 +162,17 @@ export const REGISTERED_TOOLS = [
   'execute_spec',
   'registry_import',
   'query_trace',
+  'query_task_state',
+  'verify_audit_chain',
+  'extract_symbols',
+  'search_codebase',
+  'run_dev_pipeline',
+  'run_pipeline',
   'repo_analyze',
   'repo_security_plan',
   'improvement_review',
+  'pr_review',
+  'supply_chain_tradeoff_panel',
 ] as const;
 
 /**
@@ -592,6 +604,8 @@ const STANDALONE_TOOLS: ReadonlyArray<{
   { name: 'search_codebase', register: registerSearchCodebaseTool },
   { name: 'run_dev_pipeline', register: registerDevPipelineTool },
   { name: 'run_pipeline', register: registerPipelineTool },
+  { name: 'pr_review', register: registerPrReviewTool },
+  { name: 'supply_chain_tradeoff_panel', register: registerSupplyChainTradeoffPanelTool },
 ];
 
 /** Registers tool categories, skipping those blocked by allowlist. (Issue #740) */

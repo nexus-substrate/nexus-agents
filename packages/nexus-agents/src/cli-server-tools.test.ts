@@ -46,6 +46,8 @@ const {
   mockRegisterMemoryWriteTool,
   mockRegisterWeatherReportTool,
   mockRegisterImprovementReviewTool,
+  mockRegisterPrReviewTool,
+  mockRegisterSupplyChainTradeoffPanelTool,
   mockRegisterRegistryImportTool,
   mockRegisterIssueTriageTool,
   mockRegisterRunGraphWorkflowTool,
@@ -98,6 +100,8 @@ const {
   mockRegisterMemoryWriteTool: vi.fn(),
   mockRegisterWeatherReportTool: vi.fn(),
   mockRegisterImprovementReviewTool: vi.fn(),
+  mockRegisterPrReviewTool: vi.fn(),
+  mockRegisterSupplyChainTradeoffPanelTool: vi.fn(),
   mockRegisterRegistryImportTool: vi.fn(),
   mockRegisterIssueTriageTool: vi.fn(),
   mockRegisterRunGraphWorkflowTool: vi.fn(),
@@ -164,6 +168,8 @@ vi.mock('./mcp/index.js', () => ({
   registerMemoryWriteTool: mockRegisterMemoryWriteTool,
   registerWeatherReportTool: mockRegisterWeatherReportTool,
   registerImprovementReviewTool: mockRegisterImprovementReviewTool,
+  registerPrReviewTool: mockRegisterPrReviewTool,
+  registerSupplyChainTradeoffPanelTool: mockRegisterSupplyChainTradeoffPanelTool,
   registerRegistryImportTool: mockRegisterRegistryImportTool,
   registerIssueTriageTool: mockRegisterIssueTriageTool,
   registerRunGraphWorkflowTool: mockRegisterRunGraphWorkflowTool,
@@ -336,8 +342,8 @@ function makeDefaultOptions(overrides: Record<string, unknown> = {}) {
 // ============================================================================
 
 describe('REGISTERED_TOOLS', () => {
-  it('should contain exactly 28 tool names', () => {
-    expect(REGISTERED_TOOLS).toHaveLength(28);
+  it('should contain exactly 38 tool names', () => {
+    expect(REGISTERED_TOOLS).toHaveLength(38);
   });
 
   it('should include all expected tool names', () => {
@@ -352,9 +358,11 @@ describe('REGISTERED_TOOLS', () => {
       'consensus_vote',
       'research_query',
       'research_add',
+      'research_add_source',
       'research_discover',
       'research_analyze',
       'research_catalog_review',
+      'research_synthesize',
       'survey_oss_landscape',
       'vendor_publishing_audit',
       'compare_data_feeds',
@@ -367,9 +375,17 @@ describe('REGISTERED_TOOLS', () => {
       'execute_spec',
       'registry_import',
       'query_trace',
+      'query_task_state',
+      'verify_audit_chain',
+      'extract_symbols',
+      'search_codebase',
+      'run_dev_pipeline',
+      'run_pipeline',
       'repo_analyze',
       'repo_security_plan',
       'improvement_review',
+      'pr_review',
+      'supply_chain_tradeoff_panel',
     ];
     expect([...REGISTERED_TOOLS]).toEqual(expected);
   });
