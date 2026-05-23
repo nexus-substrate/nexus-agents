@@ -120,13 +120,21 @@ describe('runIterativeConsensus', () => {
     expect(call?.[0].proposal).toHaveLength(100);
   });
 
-  it('auto-approves on vote execution error', async () => {
+  it('fails closed when vote execution throws (#2951 — was auto-approve, inverted the gate)', async () => {
+    // Pre-#2951 this returned { kind: 'approved' } — auto-approving on
+    // infrastructure failure inverts the gate's purpose. A vote that
+    // physically didn't happen is NOT consensus to proceed; the rejected
+    // verdict carries the error message in feedback so the operator sees it.
     mockExecuteVoting.mockRejectedValueOnce(new Error('Timeout'));
 
-    const result = await runIterativeConsensus('Plan', vi.fn());
+    const result = await runIterativeConsensus('Plan', vi.fn(), { maxIterations: 1 });
 
-    expect(result.vote.kind).toBe('approved');
+    expect(result.vote.kind).toBe('rejected');
     expect(result.vote.approvalPercentage).toBe(0);
+    if (result.vote.kind === 'rejected') {
+      expect(result.vote.feedback).toContain('Vote infrastructure failed');
+      expect(result.vote.feedback).toContain('Timeout');
+    }
     expect(result.iterations).toBe(1);
   });
 

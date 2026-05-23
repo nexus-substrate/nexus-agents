@@ -187,9 +187,18 @@ async function executeSingleVote(
     const result = await executeVoting(input, log);
     return parseVotingResult(result);
   } catch (error) {
+    // Pre-#2951 this returned { kind: 'approved', approvalPercentage: 0 } —
+    // auto-approving on infrastructure failure inverts the gate's purpose.
+    // A vote that physically didn't happen is NOT consensus to proceed.
+    // Returning rejected lets runIterativeConsensus count this against
+    // maxIterations and surface the failure to the operator.
     const msg = error instanceof Error ? error.message : String(error);
-    log.warn('Vote execution failed, auto-approving', { error: msg });
-    return { kind: 'approved', approvalPercentage: 0 };
+    log.warn('Vote execution failed, treating as rejected', { error: msg });
+    return {
+      kind: 'rejected',
+      feedback: `Vote infrastructure failed — no consensus produced: ${msg}`,
+      approvalPercentage: 0,
+    };
   }
 }
 
