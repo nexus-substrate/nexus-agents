@@ -156,21 +156,6 @@ workflows:
   # Step timeout
   stepTimeoutMs: 300000 # 5 minutes
 
-# REST API configuration (optional)
-api:
-  enabled: false
-  port: 3000
-  host: 0.0.0.0
-  enableCors: true
-  rateLimitPerMinute: 100
-  apiKeyHeader: X-API-Key
-  apiKeys:
-    - key: 'your-secret-key'
-      name: 'ci-pipeline'
-      scopes:
-        - read
-        - execute
-
 # Logging configuration
 logging:
   level: info # debug, info, warn, error
@@ -184,11 +169,17 @@ All configuration can be overridden with environment variables:
 
 ### Core Variables
 
-| Variable            | Description              | Default               |
-| ------------------- | ------------------------ | --------------------- |
-| `NEXUS_CONFIG_PATH` | Path to config file      | `./nexus-agents.yaml` |
-| `NEXUS_LOG_LEVEL`   | Logging level            | `info`                |
-| `NEXUS_LOG_FORMAT`  | Log format (json/pretty) | `json`                |
+| Variable                         | Description                                                                                                                                   | Default                   |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| `NEXUS_CONFIG_PATH`              | Path to config file                                                                                                                           | `./nexus-agents.yaml`     |
+| `NEXUS_LOG_LEVEL`                | Logging level (`debug` / `info` / `warn` / `error`)                                                                                           | `info`                    |
+| `NEXUS_CONSOLE`                  | Force `console.*` on/off. `0` always off; `1` always on; unset → on for CLI, off for stdio-MCP, on for HTTP-MCP                               | unset                     |
+| `NEXUS_DATA_DIR`                 | Explicit runtime data root. Overrides the per-repo/cross-repo split (#2872)                                                                   | per-repo `.nexus-agents/` |
+| `NEXUS_REPO_PREFERRED`           | `0` opts out of the per-repo data dir (epic #2872)                                                                                            | `1`                       |
+| `NEXUS_PORTABLE_MODE`            | Force portable (sandbox-friendly) data dir. `0` opts out of auto-detect; `1` forces on; unset → heuristic (writable home, container env vars) | unset (heuristic)         |
+| `NEXUS_GITIGNORE_AUTO`           | `0` silences the auto-append of `.nexus-agents/` to the repo's `.gitignore`                                                                   | `1`                       |
+| `NEXUS_NO_SCAFFOLD`              | `1` disables scaffolding of missing `docs/` registry files on read                                                                            | unset                     |
+| `NEXUS_CONTEXT_RETRIEVER_INJECT` | Inject `priorMemorySummary` from `ContextRetriever` into `orchestrate` inputs (#2792, #2921)                                                  | `0`                       |
 
 ### Model Provider Keys
 
@@ -197,30 +188,27 @@ All configuration can be overridden with environment variables:
 | `ANTHROPIC_API_KEY`         | Claude API key                                                                                                                                                              |
 | `OPENAI_API_KEY`            | OpenAI API key                                                                                                                                                              |
 | `GOOGLE_AI_API_KEY`         | Google AI (Gemini) API key                                                                                                                                                  |
+| `GEMINI_API_KEY`            | Alias for `GOOGLE_AI_API_KEY` (checked by the Gemini auth probe when `GOOGLE_AI_API_KEY` is unset)                                                                          |
 | `OPENROUTER_API_KEY`        | OpenRouter API key (for free-model adapters; also a path to Bedrock/Vertex/Azure — see [CLOUD_PROVIDERS.md](../guides/CLOUD_PROVIDERS.md))                                  |
 | `OLLAMA_HOST`               | Ollama server URL (default: `http://localhost:11434`)                                                                                                                       |
 | `NEXUS_CUSTOM_API_BASE_URL` | Custom OpenAI-compatible gateway base URL                                                                                                                                   |
 | `NEXUS_CUSTOM_API_KEY`      | API key for the custom gateway                                                                                                                                              |
 | `NEXUS_CUSTOM_MODEL`        | Model id for the custom gateway (default: `gpt-4o`, see #2208)                                                                                                              |
+| `NEXUS_OPENAI_COMPAT_URL`   | Sandbox-mode OpenAI-compatible gateway URL (epic #2500, child #2503). Wins over `NEXUS_OPENCODE_CONFIG` when paired with `NEXUS_OPENAI_COMPAT_KEY`                          |
+| `NEXUS_OPENAI_COMPAT_KEY`   | API key for the sandbox OpenAI-compat gateway (paired with `NEXUS_OPENAI_COMPAT_URL` — both required)                                                                       |
+| `NEXUS_OPENCODE_CONFIG`     | Path to an `opencode.json` whose `providers.openai-compat.options.{baseURL,apiKey}` configures the OpenAI-compat adapter (fallback when the `_URL`/`_KEY` pair is unset)    |
 | `SEMANTIC_SCHOLAR_API_KEY`  | Optional. Lifts research_discover's semantic_scholar source past the unauthenticated 429 ceiling (#2234). Apply at https://www.semanticscholar.org/product/api#api-key-form |
-
-### Routing Variables
-
-| Variable                | Description          | Default   |
-| ----------------------- | -------------------- | --------- |
-| `NEXUS_BUDGET_TOKENS`   | Session token budget | `1000000` |
-| `NEXUS_BUDGET_COST_USD` | Session cost budget  | `10.0`    |
-| `NEXUS_ROUTING_ALPHA`   | LinUCB exploration   | `1.0`     |
 
 ### Security Variables
 
-| Variable               | Description                                                           | Default  |
-| ---------------------- | --------------------------------------------------------------------- | -------- |
-| `NEXUS_SANDBOX_MODE`   | Sandbox mode                                                          | `policy` |
-| `NEXUS_RATE_LIMIT`     | Requests per minute                                                   | `60`     |
-| `NEXUS_AUTH_ENABLED`   | Enable MCP auth                                                       | `true`   |
-| `NEXUS_AUTH_METHOD`    | Auth method                                                           | `token`  |
-| `NEXUS_DRIFT_ADVISORY` | Model-string drift CI gate: `1`=advisory (warn), `0`=blocking (#2199) | `0`      |
+| Variable               | Description                                                           | Default |
+| ---------------------- | --------------------------------------------------------------------- | ------- |
+| `NEXUS_SANDBOX`        | Sandbox flavor; passed through to subprocess adapters (epic #2500)    | unset   |
+| `NEXUS_SANDBOX_ROOT`   | Sandbox root directory for the sandbox executor                       | unset   |
+| `NEXUS_RATE_LIMIT`     | Requests per minute                                                   | `60`    |
+| `NEXUS_AUTH_ENABLED`   | Enable MCP auth                                                       | `true`  |
+| `NEXUS_AUTH_METHOD`    | Auth method                                                           | `token` |
+| `NEXUS_DRIFT_ADVISORY` | Model-string drift CI gate: `1`=advisory (warn), `0`=blocking (#2199) | `0`     |
 
 ### Orchestration Variables
 
@@ -265,11 +253,11 @@ Files stored:
 
 ### Timeout Variables
 
-| Variable                  | Description                    | Default  |
-| ------------------------- | ------------------------------ | -------- |
-| `NEXUS_VOTE_TIMEOUT_MS`   | Consensus vote timeout (ms)    | `60000`  |
-| `NEXUS_EXPERT_TIMEOUT_MS` | Expert handler timeout (ms)    | `120000` |
-| `NEXUS_WORKER_TIMEOUT_MS` | Worker subprocess timeout (ms) | `60000`  |
+| Variable                  | Description                                                                                                                                                                                                                 | Default                              |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| `NEXUS_VOTE_TIMEOUT_MS`   | Per-vote consensus timeout (ms). Clamped to `[30000, 600000]` (raised to 300s in #1640 — experts averaged 315s on complex proposals)                                                                                        | `300000`                             |
+| `NEXUS_EXPERT_TIMEOUT_MS` | Expert handler timeout (ms). Clamped to `[30000, 900000]`; `execute_expert` floors at `120000`. Picked per-category — complex (architecture/security_review/planning/devops/documentation) override defaults to `complexMs` | `300000` standard / `600000` complex |
+| `NEXUS_WORKER_TIMEOUT_MS` | Worker subprocess timeout (ms)                                                                                                                                                                                              | `60000`                              |
 
 ### Infrastructure Variables
 
@@ -281,14 +269,6 @@ Files stored:
 | `NEXUS_V2_POLICY_MODE`            | Policy enforcement (`off`/`warn`/`block`) | `block` |
 | `NEXUS_DISABLE_SESSIONS`          | Disable session tracking                  | `false` |
 | `NEXUS_DISABLE_METRICS`           | Disable metrics tracking                  | `false` |
-
-### API Variables
-
-| Variable            | Description            | Default |
-| ------------------- | ---------------------- | ------- |
-| `NEXUS_API_ENABLED` | Enable REST API        | `false` |
-| `NEXUS_API_PORT`    | REST API port          | `3000`  |
-| `NEXUS_API_KEY`     | API authentication key | None    |
 
 ## Model Configuration
 
