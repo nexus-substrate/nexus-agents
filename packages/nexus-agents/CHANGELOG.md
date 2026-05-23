@@ -1,5 +1,27 @@
 # nexus-agents
 
+## 2.81.3
+
+### Patch Changes
+
+- [#2958](https://github.com/nexus-substrate/nexus-agents/pull/2958) [`8717dad`](https://github.com/nexus-substrate/nexus-agents/commit/8717dad069554ab5cc20f6189f26d658644c31b4) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(pipeline):** type the policy snapshot, delete 4 inert rules. Closes [#2932](https://github.com/nexus-substrate/nexus-agents/issues/2932) (P1 security partial — see follow-up note).
+
+  The policy engine's `BUILT_IN_RULES` declared 5 gates: `trust-tier`, `security-review`, `bounded-iteration`, `cost-budget`, `high-risk-approval`. Each of the latter 4 read a `pipelineState` key — `securityReviewRequired`, `stageAttempts`, `costAccumulator`, `highRisk` — that **no producer ever wrote**. With the snapshot typed as `Record<string, unknown>`, every comparison evaluated against `undefined` and every rule silently allowed. They were aspirational scaffolding, not real gates.
+
+  This change:
+  - Replaces `PolicyContext.pipelineState: Readonly<Record<string, unknown>>` with a typed `PipelineStateSnapshot` interface listing only fields with a real producer chain. Adding a new rule now requires a corresponding producer wire-up at compile time.
+  - Deletes the 4 inert rules. Re-add them when a producer subsystem exists.
+  - Adds `toPipelineStateSnapshot()` in `v2-delegate.ts` as the single narrowing chokepoint between the untyped `task.metadata` producer surface and the typed snapshot.
+  - The kept `trust-tier` rule's wiring (caller-trust → `task.metadata.trustTier`) is owner-scoped follow-up — the chain runs through MCP middleware `RequestContext` and isn't trivially threaded; tracked in a focused follow-up issue.
+
+  49 tests pass across `policy-engine`, `policy-evaluator`, `v2-delegate`.
+
+- [#2956](https://github.com/nexus-substrate/nexus-agents/pull/2956) [`e2d9347`](https://github.com/nexus-substrate/nexus-agents/commit/e2d93479495e70e3a414d9ba469e25fed4e06cb7) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(pipeline):** `iterative-consensus` fails closed on vote-execution error. Closes [#2951](https://github.com/nexus-substrate/nexus-agents/issues/2951).
+
+  `executeSingleVote` previously caught any exception from the consensus-vote tool (subprocess crash, JSON parse failure, network error, rate limit) and returned `{ kind: 'approved', approvalPercentage: 0 }` — **auto-approving on infrastructure failure inverts the gate's purpose.** The dev pipeline would log "vote approved, proceeding to implement" when zero votes were physically cast.
+
+  Now returns `{ kind: 'rejected', feedback: 'Vote infrastructure failed — no consensus produced: <message>', approvalPercentage: 0 }`. `runIterativeConsensus` counts this against `maxIterations`, the operator sees the failure, and an unverified plan never proceeds because the vote couldn't run.
+
 ## 2.81.2
 
 ### Patch Changes
