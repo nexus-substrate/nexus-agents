@@ -44,12 +44,12 @@ interface ICompositeRouter {
 }
 
 interface CompositeRoutingDecision {
-  readonly cliName: 'claude' | 'gemini' | 'codex';
+  readonly cliName: 'claude' | 'gemini' | 'codex' | 'opencode';
   readonly reason: string;
   readonly confidence: number;
   readonly topsisScore?: number;
   readonly linucbExploration?: number;
-  readonly alternatives: readonly ('claude' | 'gemini' | 'codex')[];
+  readonly alternatives: readonly ('claude' | 'gemini' | 'codex' | 'opencode')[];
   readonly stagesExecuted: readonly string[];
 }
 ```
@@ -126,7 +126,7 @@ interface RoutingDecision {
   readonly decisionTimeMs: number;
 }
 
-type CliName = 'claude' | 'gemini' | 'codex';
+type CliName = 'claude' | 'gemini' | 'codex' | 'opencode';
 type CliTransport = 'mcp' | 'subprocess';
 ```
 
