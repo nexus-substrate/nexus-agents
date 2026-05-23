@@ -29,6 +29,10 @@ import {
   setupCommandAsync,
   helloCommand,
   demoCommand,
+  // Issue #2851: nexus-agents tour
+  runTour,
+  interactiveIO,
+  scriptedIO,
   // Issue #526: Newly wired commands
   sprintCommand,
   sessionCommand,
@@ -629,6 +633,17 @@ export async function handleDemoCommand(args: ParsedCliArgs): Promise<void> {
     mock: args.options.mock,
   };
   const exitCode = await demoCommand(subcommand, additionalArgs, options);
+  process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
+}
+
+/**
+ * Handles the `tour` command — an interactive, zero-API walkthrough of the
+ * four headline tools. Reuses the existing `--non-interactive` option for
+ * the scripted mode. (Source: Issue #2851)
+ */
+export async function handleTourCommand(args: ParsedCliArgs): Promise<void> {
+  const io = args.options.nonInteractive ? scriptedIO() : interactiveIO();
+  const exitCode = await runTour({ nonInteractive: args.options.nonInteractive }, io);
   process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
 }
 

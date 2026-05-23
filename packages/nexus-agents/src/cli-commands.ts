@@ -42,6 +42,7 @@ export {
   handleHelloCommand,
   handleHooksCommand,
   handleDemoCommand,
+  handleTourCommand,
   // Issue #526: Newly wired commands
   handleSprintCommand,
   handleSessionCommand,
@@ -105,6 +106,7 @@ import {
   handleHelloCommand,
   handleHooksCommand,
   handleDemoCommand,
+  handleTourCommand,
   // Issue #526: Newly wired commands
   handleSprintCommand,
   handleSessionCommand,
@@ -259,6 +261,8 @@ const ASYNC_COMMAND_HANDLERS: Record<string, ((args: ParsedCliArgs) => Promise<v
     // #2305 / #2308 / #2311: Init Portable Command (async because --install spawns npm)
     init: handleInitCommand,
     demo: handleDemoCommand, // Made async for live CLI execution
+    // Issue #2851: nexus-agents tour — interactive zero-API walkthrough
+    tour: handleTourCommand,
     // Issue #526: Newly wired async commands
     sprint: handleSprintCommand,
     session: handleSessionCommand,

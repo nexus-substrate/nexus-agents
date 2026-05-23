@@ -79,6 +79,7 @@ export type CliCommand =
   | 'login'
   | 'usage'
   | 'migrate'
+  | 'tour'
   | 'improvement-review';
 
 /**
@@ -540,6 +541,7 @@ const VALID_COMMANDS: readonly CliCommand[] = [
   'usage',
   'improvement-review',
   'migrate',
+  'tour',
 ];
 
 /**
