@@ -26,6 +26,21 @@ export const TriageVerdictSchema = z.object({
 
 export type TriageVerdict = z.infer<typeof TriageVerdictSchema>;
 
+/**
+ * A finding paired with its triage verdict.
+ *
+ * `triageFindings` sorts findings by severity and may skip ones whose LLM
+ * response failed to parse, so the returned list is in a different order —
+ * and possibly shorter — than the input findings. Consumers MUST treat each
+ * entry as a self-contained pair (or look up by `finding.id`); never index
+ * by array position against the original findings (issue #2933 — earlier
+ * positional indexing let high-severity findings silently bypass the gate).
+ */
+export interface TriagedFinding {
+  readonly finding: SecurityFinding;
+  readonly verdict: TriageVerdict;
+}
+
 /** Configuration for triage. */
 export interface TriageConfig {
   maxFindings: number;
@@ -171,17 +186,18 @@ export async function triageFindings(
   findings: SecurityFinding[],
   delegateFn: (prompt: string) => Promise<string>,
   config: TriageConfig = DEFAULT_CONFIG
-): Promise<{ original: SecurityFinding[]; triaged: TriageVerdict[] }> {
+): Promise<{ original: SecurityFinding[]; triaged: TriagedFinding[] }> {
   const sorted = [...findings].sort(
     (a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]
   );
   const toTriaged = sorted.slice(0, config.maxFindings);
 
-  const results: TriageVerdict[] = [];
+  const results: TriagedFinding[] = [];
   for (const finding of toTriaged) {
     const verdict = await triageFinding(finding, delegateFn, config);
     if (verdict !== null) {
-      results.push(verdict);
+      // Pair the verdict with its finding — see TriagedFinding doc (#2933).
+      results.push({ finding, verdict });
     }
   }
 

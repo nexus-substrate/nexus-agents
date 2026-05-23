@@ -9,7 +9,8 @@
 
 import { z } from 'zod';
 import type { SecurityFinding } from './sarif-types.js';
-import type { TriageVerdict } from './finding-triage.js';
+import type { TriageVerdict, TriagedFinding } from './finding-triage.js';
+export type { TriagedFinding } from './finding-triage.js';
 
 // ============================================================================
 // Types
@@ -33,12 +34,6 @@ export interface SeverityConsensusConfig {
 export const DEFAULT_SEVERITY_CONSENSUS_CONFIG: SeverityConsensusConfig = {
   maxFindings: 5,
 };
-
-/** A finding paired with its triage verdict for consensus input. */
-export interface TriagedFinding {
-  readonly finding: SecurityFinding;
-  readonly verdict: TriageVerdict;
-}
 
 /** Function that runs consensus vote and returns approval + percentage. */
 export type ConsensusFn = (proposal: string) => Promise<{
