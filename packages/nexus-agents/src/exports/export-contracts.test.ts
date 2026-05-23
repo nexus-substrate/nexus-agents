@@ -444,9 +444,12 @@ describe('Export contracts — pipeline V2 types', () => {
   it('exports PolicyEngine and built-in rules', () => {
     expect(typeof PolicyEngine).toBe('function');
     expect(typeof createDefaultPolicyEngine).toBe('function');
-    expect(BUILT_IN_RULES).toHaveLength(5);
+    // #2932: was 5; the other 4 rules (security-review, bounded-iteration,
+    // cost-budget, high-risk-approval) read metadata keys no producer wrote
+    // and were deleted. trust-tier is the lone surviving rule.
+    expect(BUILT_IN_RULES).toHaveLength(1);
     const engine = createDefaultPolicyEngine();
-    expect(engine.listRules()).toHaveLength(5);
+    expect(engine.listRules()).toHaveLength(1);
   });
 
   it('exports createFeedbackSubscriber', () => {
