@@ -15,6 +15,7 @@ import type {
   GroupStats,
   TaskOutcome,
 } from '../../orchestration/outcomes/outcome-types.js';
+import { getRandomProvider } from '../../core/index.js';
 import { getOutcomeStore, type OutcomeStore } from '../../orchestration/outcomes/outcome-store.js';
 import { categorizeOutcomeErrorMessage } from '../../orchestration/outcomes/outcome-types.js';
 import type { TaskCategory } from '../../config/task-specialization-types.js';
@@ -235,7 +236,9 @@ export function getAdaptiveBonus(
  */
 export function shouldExplore(config?: Partial<WeatherReportConfig>): boolean {
   const cfg = { ...createDefaultWeatherConfig(), ...config };
-  return Math.random() < cfg.explorationRate;
+  // #2961: use the random-provider so seeded tests can reproduce
+  // exploration decisions. Math.random() makes replay non-deterministic.
+  return getRandomProvider().random() < cfg.explorationRate;
 }
 
 // ============================================================================

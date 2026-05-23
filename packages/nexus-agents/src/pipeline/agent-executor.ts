@@ -65,14 +65,17 @@ function recordOutcome(args: RecordOutcomeArgs): void {
     return;
   }
   try {
+    // #2961: persisted outcome IDs/timestamps must go through the time
+    // provider so replay/snapshot tests can reproduce.
+    const nowMs = getTimeProvider().now();
     getOutcomeStore().append({
-      id: `pipeline-${args.taskId}-${String(Date.now())}`,
+      id: `pipeline-${args.taskId}-${String(nowMs)}`,
       cli: args.cli,
       category: args.category as 'code_generation',
       model: 'pipeline',
       success: args.success,
       durationMs: args.durationMs,
-      timestamp: new Date().toISOString(),
+      timestamp: new Date(nowMs).toISOString(),
       source: 'delegate' as const,
       routingStage: args.routingStage,
       retryCount: args.retryCount,
@@ -123,7 +126,7 @@ async function initPipelineMemory(): Promise<MemoryOps | null> {
     const { createSessionMemory } = await import('../context/session-memory.js');
     const { getLearningDir } = await import('../config/learning-persistence.js');
     const mem = createSessionMemory(getLearningDir());
-    mem.startSession(`pipeline-${String(Date.now())}`);
+    mem.startSession(`pipeline-${String(getTimeProvider().now())}`);
     cachedMemory = {
       recordLearning: (l) => {
         try {

@@ -8,7 +8,7 @@
  * (Source: Issue #379, Issue #154)
  */
 
-import { getTimeProvider } from '../../core/index.js';
+import { getTimeProvider, getRandomProvider } from '../../core/index.js';
 import type { PolicyTrajectoryStep } from './policy-types.js';
 import type {
   ExperienceBufferConfig,
@@ -77,7 +77,7 @@ export class ExperienceBuffer {
 
     const totalReward = this.computeTotalReward(steps);
     const episode: Episode = {
-      id: crypto.randomUUID(),
+      id: getRandomProvider().uuid(),
       sessionId,
       steps: [...steps],
       totalReward,

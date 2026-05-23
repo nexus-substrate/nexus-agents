@@ -22,7 +22,7 @@ import { nexusDataPath } from '../config/nexus-data-dir.js';
 
 import { runQaLoop } from '../orchestration/qa-loop.js';
 
-import { createLogger, withStep } from '../core/index.js';
+import { createLogger, getTimeProvider, withStep } from '../core/index.js';
 import { getPipelineEventBus } from './event-bus.js';
 import {
   saveStageCheckpoint,
@@ -305,7 +305,9 @@ function applyPipelineHindsight(
 ): void {
   if (bm === undefined) return;
   const record: HindsightRecord = {
-    hindsightId: `pipeline-${sessionId ?? 'ephemeral'}-${Date.now().toString(36)}`,
+    // #2961: hindsightId is the persisted belief-store key — must go
+    // through the time provider so replay/snapshot tests reproduce.
+    hindsightId: `pipeline-${sessionId ?? 'ephemeral'}-${getTimeProvider().now().toString(36)}`,
     taskId: sessionId ?? task.slice(0, 40),
     priorBeliefs: [],
     expectedOutcome: 'Pipeline completes with all gates passed',
