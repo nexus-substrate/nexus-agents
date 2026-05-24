@@ -95,11 +95,14 @@ async function executeWorkflow(
   });
 
   const startTime = getTimeProvider().now();
-  const result = await workflowEngine.execute(
-    workflow,
-    inputs,
-    options?.phaseTimeoutMs !== undefined ? { phaseTimeoutMs: options.phaseTimeoutMs } : undefined
-  );
+  // Pass the third arg only when phaseTimeoutMs is set — keeps the
+  // `(workflow, inputs)` call shape for existing tests that
+  // toHaveBeenCalledWith exactly two args (vitest treats explicit
+  // `undefined` as a third arg).
+  const result =
+    options?.phaseTimeoutMs !== undefined
+      ? await workflowEngine.execute(workflow, inputs, { phaseTimeoutMs: options.phaseTimeoutMs })
+      : await workflowEngine.execute(workflow, inputs);
 
   if (!result.ok) {
     logger?.error('Workflow execution failed', result.error, {
