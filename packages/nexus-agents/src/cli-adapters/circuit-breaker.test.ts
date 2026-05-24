@@ -178,6 +178,33 @@ describe('CliCircuitBreaker', () => {
       expect(breaker.getState()).toBe('open');
     });
 
+    // #3026 finding 5: pre-fix, `failureCount` carried over across
+    // half-open→open→half-open recovery cycles. transitionTo('open',…)
+    // only zeroed counts on 'closed', so a flaky pattern grew
+    // `failureCount` monotonically — operator dashboards / alerts
+    // triggered on absolute failure count saw misleading inflation.
+    it('resets failureCount on half-open transition (#3026 finding 5)', async () => {
+      expect(breaker.getState()).toBe('half-open');
+      // After opening + waiting + transitioning to half-open, the
+      // failure count should be 0 — those failures served their
+      // threshold purpose when the circuit opened.
+      expect(breaker.getSnapshot().failureCount).toBe(0);
+
+      // Cycle: half-open → open (one failure trips it back) → half-open.
+      // The failureCount should reset on each half-open re-entry, not
+      // grow monotonically.
+      await breaker.execute(() => Promise.reject(new Error('flake')));
+      expect(breaker.getState()).toBe('open');
+      const afterFirstOpen = breaker.getSnapshot().failureCount;
+
+      vi.advanceTimersByTime(DEFAULT_CIRCUIT_BREAKER_CONFIG.resetTimeoutMs + 1);
+      // Probe via getState() to trigger the timer-based open→half-open
+      // transition. After this, failureCount should be 0 again.
+      expect(breaker.getState()).toBe('half-open');
+      expect(breaker.getSnapshot().failureCount).toBe(0);
+      expect(afterFirstOpen).toBeGreaterThan(0); // sanity: count was non-zero before reset
+    });
+
     it('should reject requests beyond half-open limit', async () => {
       expect(breaker.getState()).toBe('half-open');
 

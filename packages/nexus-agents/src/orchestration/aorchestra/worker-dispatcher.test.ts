@@ -678,6 +678,64 @@ describe('dispatchWorkers', () => {
     }
   });
 
+  // #3026 finding 3: pre-fix, the stagger delay was computed from the
+  // absolute `taskIndex` even though only `maxConcurrency` workers run
+  // in parallel. Tasks beyond that already wait for a slot to free, then
+  // ALSO slept `taskIndex * staggerDelayMs` — for a wave of 5 with
+  // maxConcurrency=2 and 100ms stagger, tasks[4] slept 400ms AFTER
+  // waiting for tasks[0-2] to complete. Now the stagger uses
+  // `taskIndex % maxConcurrency` so it applies within each concurrency
+  // slot without compounding.
+  it('does not compound stagger across concurrency slots (#3026 finding 3)', async () => {
+    const launchOffsets: Array<{ role: string; offsetMs: number }> = [];
+    const startTime = Date.now();
+
+    const trackedExecute: WorkerDispatchOptions['executeWorker'] = vi
+      .fn()
+      .mockImplementation((entry: AgentPlanEntry): Promise<WorkerResult> => {
+        launchOffsets.push({ role: entry.role, offsetMs: Date.now() - startTime });
+        return new Promise((resolve) => {
+          setTimeout(() => {
+            resolve({
+              role: entry.role,
+              subTask: entry.subTask,
+              output: `result from ${entry.role}`,
+              status: 'success' as const,
+              durationMs: 50,
+            });
+          }, 50);
+        });
+      });
+
+    const entries = [
+      makeEntry('code', 1, 1),
+      makeEntry('testing', 1, 2),
+      makeEntry('security', 1, 3),
+      makeEntry('documentation', 1, 4),
+      makeEntry('infrastructure', 1, 5),
+    ];
+
+    await dispatchWorkers(entries, {
+      executeWorker: trackedExecute,
+      maxConcurrency: 2,
+      staggerDelayMs: 100,
+    });
+
+    expect(launchOffsets).toHaveLength(5);
+    // With maxConcurrency=2 and modulo-based stagger:
+    // slot 0 → tasks[0,2,4] sleep 0
+    // slot 1 → tasks[1,3]   sleep 100ms within their slot
+    // Pre-fix (absolute index), tasks[4] would have slept 400ms before
+    // its 50ms work — total elapsed > 450ms. With the fix, tasks[4]
+    // launches as soon as a slot frees (~50ms) + 0ms stagger.
+    const last = launchOffsets[4];
+    expect(last).toBeDefined();
+    if (last !== undefined) {
+      // Generous bound to dodge runner noise — pre-fix would be > 400ms.
+      expect(last.offsetMs).toBeLessThan(300);
+    }
+  });
+
   it('skips stagger delay when staggerDelayMs is 0', async () => {
     const launchOrder: string[] = [];
 

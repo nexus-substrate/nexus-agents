@@ -481,8 +481,20 @@ function createWorkerTask(
         error: 'Role auto-disabled after consecutive failures',
       };
     }
-    // Stagger delay: offset each worker launch to avoid API burst (#1501)
-    const staggerMs = taskIndex * opts.staggerDelayMs;
+    // Stagger delay: offset each worker launch to avoid API burst (#1501).
+    //
+    // #3026 finding 3: pre-fix this multiplied the stagger by the absolute
+    // `taskIndex` even though `executeWithConcurrencyLimit` only runs
+    // `maxConcurrency` workers in parallel — tasks beyond that already
+    // wait naturally for a slot to free, then ALSO slept
+    // `taskIndex * staggerDelayMs`. For a wave of 10 with maxConcurrency=3
+    // and 500ms stagger, tasks[9] slept 4500ms AFTER waiting for tasks[0-6]
+    // to complete, defeating the burst-prevention goal (by the time tasks[9]
+    // ran, the API burst window had long since cleared). Modulo by
+    // `maxConcurrency` so the stagger applies within each concurrency slot
+    // without compounding across them.
+    const staggerSlot = taskIndex % opts.maxConcurrency;
+    const staggerMs = staggerSlot * opts.staggerDelayMs;
     if (staggerMs > 0) {
       await new Promise((resolve) => setTimeout(resolve, staggerMs));
     }

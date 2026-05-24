@@ -109,10 +109,31 @@ export class CapacityTracker {
   private requestCount: number;
   private windowStart: number;
 
+  /**
+   * Timestamps of every recorded request (#3026 finding 4).
+   *
+   * Pre-fix, `requestCount` was a plain counter reset only by the
+   * tumbling-window branch of `pruneOldEntries`. Under continuous
+   * traffic across a window boundary, that branch drops requests that
+   * are still inside the *sliding* window — e.g. with windowMs=60s, a
+   * request at t=59s followed by one at t=61s would tumbling-reset
+   * the counter to 1 even though the t=59s request is still inside
+   * the [1s, 61s] window. The downstream `remainingRequests === 0`
+   * exhaustion check fired prematurely (or too late) depending on
+   * burst patterns.
+   *
+   * Counting via a per-request timestamp array that's pruned the same
+   * way as `usageHistory` keeps the two views consistent. Every
+   * `recordUsage` pushes here; `requestCount` is derived from
+   * `.length` after pruning.
+   */
+  private requestTimestamps: number[];
+
   constructor(config: CapacityTrackerConfig) {
     this.config = config;
     this.usageHistory = [];
     this.requestCount = 0;
+    this.requestTimestamps = [];
     this.windowStart = getTimeProvider().now();
   }
 
@@ -123,7 +144,8 @@ export class CapacityTracker {
     const now = getTimeProvider().now();
     this.pruneOldEntries(now);
 
-    this.requestCount++;
+    this.requestTimestamps.push(now);
+    this.requestCount = this.requestTimestamps.length;
 
     if (usage !== undefined) {
       const tokens = usage.totalTokens ?? usage.inputTokens + usage.outputTokens;
@@ -175,6 +197,7 @@ export class CapacityTracker {
    */
   reset(): void {
     this.usageHistory.length = 0;
+    this.requestTimestamps.length = 0;
     this.requestCount = 0;
     this.windowStart = getTimeProvider().now();
   }
@@ -199,19 +222,34 @@ export class CapacityTracker {
   private pruneOldEntries(now: number): void {
     const cutoff = now - this.config.windowMs;
 
-    // If window has fully elapsed, reset everything
-    if (this.windowStart < cutoff) {
-      this.usageHistory.length = 0;
-      this.requestCount = 0;
-      this.windowStart = now;
-      return;
-    }
-
-    // Remove old entries from history
-    let firstEntry = this.usageHistory[0];
-    while (firstEntry !== undefined && firstEntry.timestamp < cutoff) {
+    // Sliding-window prune (#3026 finding 4):
+    // Pre-fix, this used a "tumbling reset" branch — when `windowStart`
+    // (the time of the FIRST request) was older than the cutoff, the
+    // whole structure was zeroed. Under continuous traffic, that condition
+    // fires whenever the earliest tracked request is older than windowMs
+    // ago — even though more recent requests are still inside the
+    // sliding window. The result was a periodic mass-prune that incorrectly
+    // dropped current-window requests, making `remainingRequests === 0`
+    // fire prematurely (or too late) depending on burst pattern.
+    //
+    // Now both arrays are slide-pruned individually: drop entries with
+    // `timestamp < cutoff`, leave the rest. `windowStart` is rebased to
+    // the earliest remaining entry (used by `resetTime` reporting),
+    // falling back to `now` when both arrays are empty.
+    while (this.usageHistory[0] !== undefined && this.usageHistory[0].timestamp < cutoff) {
       this.usageHistory.shift();
-      firstEntry = this.usageHistory[0];
+    }
+    while (this.requestTimestamps[0] !== undefined && this.requestTimestamps[0] < cutoff) {
+      this.requestTimestamps.shift();
+    }
+    this.requestCount = this.requestTimestamps.length;
+
+    const earliestRequest = this.requestTimestamps[0];
+    const earliestUsage = this.usageHistory[0]?.timestamp;
+    if (earliestRequest === undefined && earliestUsage === undefined) {
+      this.windowStart = now;
+    } else {
+      this.windowStart = Math.min(earliestRequest ?? Infinity, earliestUsage ?? Infinity);
     }
   }
 }
