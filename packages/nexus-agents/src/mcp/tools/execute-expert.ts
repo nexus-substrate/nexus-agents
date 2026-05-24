@@ -278,13 +278,17 @@ function observeExpertContextIfOk(
  */
 async function deriveExpertAccessPolicy(
   task: Task,
-  logger: ILogger | undefined
+  logger: ILogger | undefined,
+  trustTier: string | undefined
 ): Promise<Awaited<ReturnType<typeof deriveAccessPolicy>>> {
   const mode = resolveAccessPolicyMode();
   try {
+    // Closes #2993 (expert path): trustTier was hardcoded to '1' regardless
+    // of caller. Now threaded from secure-handler RequestContext; missing
+    // defaults to '4' so derivation runs at the strictest tier.
     const policy = await deriveAccessPolicy(task.description, {
       mode,
-      trustTier: '1',
+      trustTier: (trustTier ?? '4') as '1' | '2' | '3' | '4',
     });
     if (mode !== 'off') {
       logger?.info('access-policy: derived (expert)', {
@@ -501,7 +505,13 @@ async function runExpertTask(
 
       let result;
       try {
-        const policy = await deriveExpertAccessPolicy(task, deps.logger);
+        // execute-expert runs through MCP's native task handler (not the
+        // ContextAwareHandler chain), so HandlerContext / RequestContext
+        // isn't directly available here. Pass undefined so the deriver
+        // defaults to '4' (untrusted). Proper end-to-end trust-tier
+        // wiring for execute-expert is filed as a follow-up — see #2993
+        // (multi-file half) and the new follow-up issue.
+        const policy = await deriveExpertAccessPolicy(task, deps.logger, undefined);
         result = await withAccessPolicy(policy, () => expert.execute(task));
       } finally {
         clearInterval(heartbeatTimer);

@@ -82,11 +82,20 @@ export interface PipelineMetrics {
   readonly policyViolations?: readonly string[];
 }
 
+/** Optional contract-construction options (#2957). */
+export interface DelegateContractOpts {
+  /** Caller trust tier from RequestContext (`'1'..'4'`). */
+  readonly trustTier?: string;
+}
+
 /**
  * Converts delegate_to_model input into a V2 TaskContract.
  * Input fields are preserved in metadata for downstream pipeline stages.
  */
-export function delegateInputToTaskContract(input: DelegateInputLike): TaskContract {
+export function delegateInputToTaskContract(
+  input: DelegateInputLike,
+  opts: DelegateContractOpts = {}
+): TaskContract {
   const metadata: Record<string, unknown> = { source: 'delegate_to_model' };
   if (input.preferred_capability !== undefined) {
     metadata['preferredCapability'] = input.preferred_capability;
@@ -97,6 +106,11 @@ export function delegateInputToTaskContract(input: DelegateInputLike): TaskContr
   if (input.billing_mode !== undefined) {
     metadata['billingMode'] = input.billing_mode;
   }
+  // Closes #2957: producer-side wiring of caller trust tier. With this in
+  // place the V2 policy-engine's `trust-tier` rule actually gates the V2
+  // delegate pipeline; missing trustTier defaults to '4' (untrusted) in
+  // policy-engine.ts so the gate fails closed.
+  if (opts.trustTier !== undefined) metadata['trustTier'] = opts.trustTier;
   // estimate_tokens flag removed (#2723) — was never read downstream.
   return buildBaseTaskContract({
     idPrefix: 'delegate',

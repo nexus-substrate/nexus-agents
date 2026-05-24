@@ -36,11 +36,25 @@ export interface OrchestrateInputLike {
 // Conversion
 // ============================================================================
 
+/** Optional contract-construction options (#2957). */
+export interface OrchestrateContractOpts {
+  /** Caller trust tier from RequestContext (`'1'..'4'`). */
+  readonly trustTier?: string;
+}
+
 /** Converts orchestrate input to a TaskContract. */
-export function orchestrateInputToTaskContract(input: OrchestrateInputLike): TaskContract {
+export function orchestrateInputToTaskContract(
+  input: OrchestrateInputLike,
+  opts: OrchestrateContractOpts = {}
+): TaskContract {
   const metadata: Record<string, unknown> = { source: 'orchestrate' };
   if (input.context !== undefined) metadata['context'] = input.context;
   if (input.maxIterations !== undefined) metadata['maxIterations'] = input.maxIterations;
+  // Closes #2957: producer-side wiring of caller trust tier so the V2
+  // policy-engine's `trust-tier` rule has the input it needs. Callers
+  // thread `ctx.requestContext.trustTier` here; when omitted the
+  // policy-engine defaults to `'4'` (untrusted) so the gate fails closed.
+  if (opts.trustTier !== undefined) metadata['trustTier'] = opts.trustTier;
   return buildBaseTaskContract({
     idPrefix: 'orchestrate',
     task: input.task,
