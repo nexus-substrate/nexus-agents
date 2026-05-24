@@ -373,13 +373,37 @@ export function wrapResilientWithFallback<T extends ResilientLike>(
   options: ModelNotFoundFallbackOptions = {}
 ): T {
   const wrapped = withModelNotFoundFallback(inner, options);
-  // Object.assign re-attaches the resilient-specific methods bound to
-  // the original adapter so health/lifecycle behaviour is unchanged.
-  return Object.assign(wrapped, {
+  // Closes #2945: pre-fix the `Object.assign(..., {5 methods}) as unknown as T`
+  // pattern silently dropped any methods on a concrete T beyond the 5
+  // explicitly re-attached. A future IResilientAdapter subtype adding
+  // `getMetrics()` would type-check but throw `TypeError: x.getMetrics
+  // is not a function` at runtime. Switched to a Proxy that forwards
+  // unknown property access to `inner`, so methods on T not anticipated
+  // by this wrapper remain transparently available.
+  //
+  // The five explicit bindings are kept so existing health/lifecycle
+  // methods are pre-bound (avoids losing `this` if the caller
+  // destructures), matching the prior semantics for the existing surface.
+  const surface = {
     getHealth: inner.getHealth.bind(inner),
     refresh: inner.refresh.bind(inner),
     setPreferredCli: inner.setPreferredCli.bind(inner),
     onFailover: inner.onFailover.bind(inner),
     dispose: inner.dispose.bind(inner),
+  };
+  const explicit: ResilientLike = Object.assign(wrapped, surface);
+  const innerAsRecord = inner as unknown as Record<PropertyKey, unknown>;
+  return new Proxy(explicit, {
+    get(target, prop, receiver): unknown {
+      if (prop in target) return Reflect.get(target, prop, receiver);
+      // Forward unknown reads to `inner` — covers future methods on T.
+      // Bind functions so call-site `this` is the inner adapter, matching
+      // the explicit-binding behavior above.
+      const innerProp: unknown = innerAsRecord[prop];
+      if (typeof innerProp === 'function') {
+        return (innerProp as (...args: unknown[]) => unknown).bind(inner);
+      }
+      return innerProp;
+    },
   }) as unknown as T;
 }
