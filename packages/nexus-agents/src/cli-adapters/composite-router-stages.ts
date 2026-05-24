@@ -450,7 +450,15 @@ function getPerformanceDataForCategory(taskContent: string): Map<CliName, Perfor
       });
     }
     return result;
-  } catch {
+  } catch (error: unknown) {
+    // Closes #2952 (low): pre-fix the bare `catch {}` silently disabled
+    // the performance-floor penalty on OutcomeStore read failures (DB
+    // lock, schema mismatch). Log at debug — the empty Map fallback is
+    // the right behavior (no data → no penalty) but operators benefit
+    // from a trail when something stops working.
+    logger.debug('Performance-floor outcome-store read failed; skipping penalty', {
+      error: error instanceof Error ? error.message : String(error),
+    });
     return new Map();
   }
 }
@@ -705,7 +713,14 @@ function getWeatherBonusForTask(taskContent: string): Map<CliName, number> {
     const match = detectTaskCategory(taskContent);
     if (match === null) return new Map();
     return getWeatherBonusScores(match.category);
-  } catch {
+  } catch (error: unknown) {
+    // Closes #2952 (low): pre-fix the bare `catch {}` silently disabled
+    // the weather bonus on outcome-store read failures. Log at debug —
+    // empty Map is the correct fallback (no data → no bonus), but a log
+    // trail helps operators see when this silently stops working.
+    logger.debug('Weather bonus outcome-store read failed; skipping bonus', {
+      error: error instanceof Error ? error.message : String(error),
+    });
     return new Map();
   }
 }

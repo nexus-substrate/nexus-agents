@@ -396,7 +396,15 @@ async function runContrarianCheck(
     }
 
     return { shouldEscalate: false, reason: '', confidence };
-  } catch {
+  } catch (error: unknown) {
+    // Closes #2952 (medium): pre-fix the bare `catch {}` swallowed
+    // `executeExpert` failures, JSON parse errors, and expert-bridge
+    // import errors identically — the escalation guardrail silently
+    // disabled itself with no log trail. Log + return the default
+    // "no escalation" envelope so a contrarian-check infrastructure
+    // bug is at least visible in operator logs.
+    const message = error instanceof Error ? error.message : String(error);
+    log.warn('Contrarian check failed; defaulting to no escalation', { error: message });
     return { shouldEscalate: false, reason: '', confidence: 0 };
   }
 }
