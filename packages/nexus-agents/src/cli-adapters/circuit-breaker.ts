@@ -378,110 +378,12 @@ export function mapCliErrorToCategory(errorCode: CliErrorCode): FailureCategory 
   return mapping[errorCode] ?? 'unknown';
 }
 
-/**
- * Creates a circuit breaker registry with metrics logging.
- */
-export function createCircuitBreakerRegistryWithMetrics(
-  logger: { info: (message: string, context?: Record<string, unknown>) => void },
-  config?: Partial<CircuitBreakerConfig>
-): CircuitBreakerRegistry {
-  const registry = new CircuitBreakerRegistry(config);
-
-  registry.addGlobalStateChangeListener((event) => {
-    logger.info('Circuit breaker state change', {
-      cliName: event.cliName,
-      previousState: event.previousState,
-      newState: event.newState,
-      failureCount: event.failureCount,
-      reason: event.reason,
-      timestamp: new Date(event.timestamp).toISOString(),
-    });
-  });
-
-  return registry;
-}
-
-// ============================================================================
-// Capacity Monitor Integration
-// ============================================================================
-
-/**
- * Configuration for capacity monitor integration.
- */
-export interface CapacityMonitorIntegrationConfig {
-  /** Token threshold below which to trip circuit (default: 1000) */
-  readonly criticalTokenThreshold?: number;
-  /** Provider name to CLI name mapping */
-  readonly providerToCliMapping?: Record<string, CliName>;
-}
-
-const DEFAULT_CAPACITY_INTEGRATION_CONFIG: Required<CapacityMonitorIntegrationConfig> = {
-  criticalTokenThreshold: 1000,
-  providerToCliMapping: {
-    anthropic: 'claude',
-    openai: 'codex',
-    google: 'gemini',
-  },
-} as const;
-
-/**
- * Integrates a CapacityMonitor with CircuitBreakerRegistry to trip circuits
- * when provider capacity is critically low.
- *
- * This addresses Issue #543: Wire up onLowCapacity callback.
- *
- * @param monitor - The capacity monitor to integrate
- * @param registry - The circuit breaker registry
- * @param config - Optional configuration
- * @param logger - Optional logger for diagnostics
- * @returns Unsubscribe function to remove the callback
- *
- * @example
- * ```typescript
- * const monitor = createCapacityMonitor();
- * const registry = new CircuitBreakerRegistry();
- *
- * // Wire up capacity signals to circuit breaker
- * const unsubscribe = integrateCapacityMonitorWithCircuitBreaker(
- *   monitor,
- *   registry,
- *   { criticalTokenThreshold: 500 }
- * );
- *
- * // Later: clean up
- * unsubscribe();
- * ```
- */
-export function integrateCapacityMonitorWithCircuitBreaker(
-  monitor: {
-    onLowCapacity: (callback: (provider: string, remaining: number) => void) => () => void;
-  },
-  registry: CircuitBreakerRegistry,
-  config?: CapacityMonitorIntegrationConfig,
-  logger?: { warn: (message: string, context?: Record<string, unknown>) => void }
-): () => void {
-  const mergedConfig = { ...DEFAULT_CAPACITY_INTEGRATION_CONFIG, ...config };
-
-  return monitor.onLowCapacity((provider: string, remaining: number) => {
-    // Map provider name to CLI name
-    const cliName = mergedConfig.providerToCliMapping[provider];
-    if (cliName === undefined) {
-      logger?.warn('Unknown provider for capacity monitoring', { provider, remaining });
-      return;
-    }
-
-    // Trip the circuit if capacity is critically low
-    // Use 'connection' category since exhausted capacity is an availability issue,
-    // not a transient rate limit (which is exempt from circuit breaker counting).
-    if (remaining < mergedConfig.criticalTokenThreshold) {
-      const breaker = registry.getBreaker(cliName);
-      breaker.recordFailure('connection');
-      logger?.warn('Circuit tripped due to low capacity', {
-        provider,
-        cliName,
-        remaining,
-        threshold: mergedConfig.criticalTokenThreshold,
-      });
-    }
-  });
-}
+// `createCircuitBreakerRegistryWithMetrics` and the
+// `Capacity Monitor Integration` section
+// (`integrateCapacityMonitorWithCircuitBreaker` + the
+// `CapacityMonitorIntegrationConfig` interface and its default config)
+// were removed in #3018 — both had only test-file callers in the tree.
+// The `CircuitBreakerRegistry` above is what production adapters use;
+// if metrics-logging or capacity-monitor integration come back as real
+// requirements, reintroduce them alongside the consumer code in the
+// same PR (activation-or-delete YAGNI — same pattern as #2937–#2940).

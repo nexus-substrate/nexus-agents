@@ -87,6 +87,11 @@ export {
 export type { CliAdapterConfig } from './factory.js';
 
 // Circuit Breaker
+// `createCircuitBreakerRegistryWithMetrics` and
+// `integrateCapacityMonitorWithCircuitBreaker` (+ the
+// `CapacityMonitorIntegrationConfig` type) were removed in #3018 — both
+// were exported but had zero non-test callers. The simpler
+// `CircuitBreakerRegistry` below is what production adapters actually use.
 export {
   CliCircuitBreaker,
   CircuitBreakerRegistry,
@@ -94,8 +99,6 @@ export {
   CircuitErrorCode,
   DEFAULT_CIRCUIT_BREAKER_CONFIG,
   mapCliErrorToCategory,
-  createCircuitBreakerRegistryWithMetrics,
-  integrateCapacityMonitorWithCircuitBreaker,
 } from './circuit-breaker.js';
 export type {
   CircuitState,
@@ -105,7 +108,6 @@ export type {
   CircuitStateChangeEvent,
   CircuitStateChangeListener,
   ICircuitBreaker,
-  CapacityMonitorIntegrationConfig,
 } from './circuit-breaker.js';
 
 // Task Router types (Issue #78, #816)
@@ -423,13 +425,11 @@ export {
 } from './unified-routing-types.js';
 export type { RoutingStrategy, UnifiedRoutingDecision } from './unified-routing-types.js';
 
-// Typed Structured Output (Issue #1897)
-export { generateObject } from './generate-object.js';
-export type {
-  GenerateObjectOptions,
-  GenerateObjectResult,
-  GenerateObjectError,
-} from './generate-object.js';
+// Typed Structured Output (Issue #1897) — removed in #3018. `generateObject`
+// was the Zod-schema-driven retry-with-feedback helper, but had zero
+// non-test callers in the tree. If structured output comes back as a
+// production need, reintroduce alongside its consumer (same activation-
+// or-delete YAGNI pattern as #2937 / #2938 / #2939 / #2940).
 
 // Cascade Router Base (Issue #574)
 export { CascadeRouterBase, DEFAULT_CASCADE_BASE_CONFIG } from './cascade-router-base.js';
