@@ -612,7 +612,8 @@ async function executeOrchestration(
   input: OrchestrateInput,
   deps: OrchestrateDeps,
   router?: IWorkflowRouter,
-  snapshot?: OrchestrationStateSnapshot
+  snapshot?: OrchestrationStateSnapshot,
+  trustTier?: string
 ): Promise<Result<OrchestrateOutput, OrchestrationError>> {
   const { workflowRouter, decision, orchestrator, logger } = routeAndPrepare(input, deps, router);
   const taskId = generateTaskId();
@@ -637,7 +638,7 @@ async function executeOrchestration(
   const task = await createTaskFromInput(input, taskId);
   const definition: OrchestratorDefinition = { type: 'task', task };
   const hb = startHeartbeatTracking(`orchestrate-${taskId}`, logger);
-  const policy = await deriveOrchestratePolicy(input.task, deps, logger);
+  const policy = await deriveOrchestratePolicy(input.task, deps, logger, trustTier);
   try {
     return await runOrchestratorWithStateTracking({
       taskId,
@@ -782,13 +783,19 @@ function recordTaskStateBlocker(taskId: string, blocker: string, logger: ILogger
 async function deriveOrchestratePolicy(
   taskText: string,
   deps: OrchestrateDeps,
-  logger: ILogger
+  logger: ILogger,
+  trustTier: string | undefined
 ): Promise<Awaited<ReturnType<typeof deriveAccessPolicy>>> {
   const mode = resolveAccessPolicyMode();
   try {
+    // Closes #2993: pre-fix trustTier was hardcoded to '1' (max trust)
+    // regardless of caller. Now thread it from the request context; if
+    // missing (older test harnesses that don't populate it) default to '4'
+    // so derivation runs at the strictest tier rather than falsely
+    // permissive.
     const opts: Parameters<typeof deriveAccessPolicy>[1] = {
       mode,
-      trustTier: '1',
+      trustTier: (trustTier ?? '4') as '1' | '2' | '3' | '4',
       ...(deps.modelAdapter !== undefined ? { adapter: deps.modelAdapter } : {}),
     };
     const policy = await deriveAccessPolicy(taskText, opts);
@@ -836,9 +843,16 @@ async function deriveOrchestratePolicy(
   }
 }
 
-/** Fire-and-forget V2 pipeline instrumentation (Phase E, Issue #924). */
-function instrumentV2Orchestrate(input: { task: string }, logger: ILogger): void {
-  const tc = orchestrateInputToTaskContract(input);
+/** Fire-and-forget V2 pipeline instrumentation (Phase E, Issue #924).
+ * `trustTier` is threaded in so the V2 policy-engine's `trust-tier` rule
+ * actually gates the pipeline (#2957). Pre-#2957 this defaulted to undefined
+ * which bypassed enforcement. */
+function instrumentV2Orchestrate(
+  input: { task: string },
+  logger: ILogger,
+  trustTier: string | undefined
+): void {
+  const tc = orchestrateInputToTaskContract(input, trustTier !== undefined ? { trustTier } : {});
   void executeOrchestratePipeline(tc)
     .then((m) => {
       logger.info('V2 orchestrate pipeline', { ...m });
@@ -1015,8 +1029,9 @@ async function executeOrchestrationWithDeadline(params: {
   readonly deps: OrchestrateDeps;
   readonly notifier: ReturnType<typeof createMcpNotifier>;
   readonly logger: ILogger;
+  readonly trustTier?: string;
 }): Promise<Result<OrchestrateOutput, OrchestrationError>> {
-  const { input, deps, notifier, logger } = params;
+  const { input, deps, notifier, logger, trustTier } = params;
   const overallDeadlineMs = getMcpSafeDeadlineMs(
     MCP_TIMEOUTS.perTool['orchestrate'] ?? MCP_TIMEOUTS.defaultMs,
     'orchestrate'
@@ -1027,7 +1042,7 @@ async function executeOrchestrationWithDeadline(params: {
   const snapshot = createOrchestrationStateSnapshot(getTimeProvider().now());
   return raceAgainstDeadline(
     withProgressHeartbeat('orchestrate', notifier, () =>
-      executeOrchestration(input, deps, undefined, snapshot)
+      executeOrchestration(input, deps, undefined, snapshot, trustTier)
     ),
     overallDeadlineMs,
     (elapsedMs) => {
@@ -1052,13 +1067,14 @@ async function runOrchestratePipeline(params: {
   readonly deps: OrchestrateDeps;
   readonly notifier: ReturnType<typeof createMcpNotifier>;
   readonly logger: ILogger;
+  readonly trustTier?: string;
 }): Promise<ToolResult> {
-  const { input, deps, notifier, logger } = params;
+  const { input, deps, notifier, logger, trustTier } = params;
   logger.debug('Starting orchestration', { taskLength: input.task.length });
   notifier.info('orchestrate', { event: 'orchestrate_start', taskLength: input.task.length });
   const startMs = getTimeProvider().now();
   const v2Config = resolveV2Config();
-  if (v2Config.orchestrateEnabled) instrumentV2Orchestrate(input, logger);
+  if (v2Config.orchestrateEnabled) instrumentV2Orchestrate(input, logger, trustTier);
 
   // Phase 3 of #2792 — every entry point reads accumulated memory before
   // dispatching work. The fetch always runs; the prompt-augmentation step
@@ -1079,7 +1095,13 @@ async function runOrchestratePipeline(params: {
   recordAndReflect(workerDispatchResult, input.task, deps);
 
   // Wall-clock safeguard (sub-issue B of #2104): see helper doc.
-  const result = await executeOrchestrationWithDeadline({ input, deps, notifier, logger });
+  const result = await executeOrchestrationWithDeadline({
+    input,
+    deps,
+    notifier,
+    logger,
+    ...(trustTier !== undefined ? { trustTier } : {}),
+  });
   if (!result.ok) {
     return toolStructuredError({
       errorCategory: 'internal',
@@ -1156,6 +1178,8 @@ function createOrchestrateHandler(deps: OrchestrateDeps) {
           deps,
           notifier,
           logger: ctx.logger,
+          // Threaded from the secure-handler RequestContext (#2957).
+          trustTier: ctx.requestContext.trustTier,
         })
       );
     } catch (depthError: unknown) {

@@ -191,21 +191,32 @@ describe('PolicyEngine', () => {
       }
     });
 
-    it('allows when trustTier is missing (the typed-snapshot default — see #2932)', () => {
-      // The typed PipelineStateSnapshot makes `trustTier?: string` —
-      // upstream extractors (v2-delegate's toPipelineStateSnapshot) drop
-      // non-string producer values, so the rule never sees garbage. When
-      // the field is absent the rule fails open (same as pre-#2932).
+    it('blocks execute stages when trustTier is missing (#2957/#2994 fail-closed default)', () => {
+      // Pre-#2957 a missing trustTier fell open. With the producer-side
+      // wiring landing in the same PR, callers MUST now set
+      // metadata.trustTier — anything that doesn't is treated as
+      // tier '4' (untrusted) and blocked at execute.
       const result = trustTierRule?.evaluate(
         makeContext({ stageType: 'execute', pipelineState: {} })
       );
-      expect(result?.allow).toBe(true);
+      expect(result?.allow).toBe(false);
+      if (result?.allow === false) {
+        expect(result.reason).toMatch(/Missing or invalid trustTier|untrusted/i);
+      }
     });
 
-    it('allows when trustTier is a non-numeric string', () => {
+    it('blocks execute stages when trustTier is a non-numeric string', () => {
+      // Non-numeric string fails Number.isFinite; defaults to 4 just like missing.
       const result = trustTierRule?.evaluate(
         makeContext({ stageType: 'execute', pipelineState: { trustTier: 'abc' } })
       );
+      expect(result?.allow).toBe(false);
+    });
+
+    it('still allows non-execute stages when trustTier is missing', () => {
+      // The default-to-untrusted only blocks `execute`; planning / analysis
+      // stages continue to allow so the pipeline can reach the boundary.
+      const result = trustTierRule?.evaluate(makeContext({ stageType: 'plan', pipelineState: {} }));
       expect(result?.allow).toBe(true);
     });
   });

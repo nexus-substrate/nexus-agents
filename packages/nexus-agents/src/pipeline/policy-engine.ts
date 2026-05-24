@@ -156,13 +156,27 @@ const trustTierRule: PolicyRule = {
   id: 'trust-tier',
   priority: 100,
   evaluate(context): PolicyDecision {
+    // Closes #2994 (with producer-side wiring from #2957):
+    // pre-fix, a missing or non-numeric pipelineState.trustTier was
+    // tolerated via "tier === undefined → allow", so any V2 pipeline path
+    // whose producer forgot to write trustTier silently bypassed this —
+    // the only built-in policy rule. Now: missing / invalid trustTier
+    // defaults to 4 (untrusted), so the gate fails closed.
+    //
+    // Producers must write `metadata.trustTier` (a TrustTier string
+    // '1'..'4') onto the TaskContract. The two current producers wire it
+    // through `orchestrateInputToTaskContract` and
+    // `delegateInputToTaskContract`'s `opts.trustTier`.
     const tierVal = context.pipelineState.trustTier;
     const numericTier = tierVal === undefined ? Number.NaN : Number(tierVal);
-    const tier = Number.isFinite(numericTier) ? numericTier : undefined;
-    if (tier !== undefined && tier >= 3 && context.stageType === 'execute') {
+    const tier = Number.isFinite(numericTier) ? numericTier : 4;
+    if (tier >= 3 && context.stageType === 'execute') {
       return {
         allow: false,
-        reason: 'Untrusted input cannot trigger execute stages',
+        reason:
+          tierVal === undefined || !Number.isFinite(numericTier)
+            ? `Missing or invalid trustTier on pipeline state; defaulting to untrusted (4). Producer must set TaskContract.metadata.trustTier (#2957).`
+            : 'Untrusted input cannot trigger execute stages',
         escalateTo: 'user',
       };
     }

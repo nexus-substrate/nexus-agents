@@ -153,9 +153,17 @@ function enrichWithGovernance(
   };
 }
 
-/** Fire-and-forget V2 pipeline instrumentation (Phase A, Issue #920). */
-function instrumentV2Pipeline(input: { task: string }, logger: ILogger): void {
-  const tc = delegateInputToTaskContract(input);
+/** Fire-and-forget V2 pipeline instrumentation (Phase A, Issue #920).
+ * `trustTier` threaded in so the V2 policy-engine's `trust-tier` rule
+ * actually gates the delegate pipeline (#2957). Pre-#2957 the V2 delegate
+ * path had zero policy enforcement because the producer never wrote
+ * trustTier into metadata. */
+function instrumentV2Pipeline(
+  input: { task: string },
+  logger: ILogger,
+  trustTier: string | undefined
+): void {
+  const tc = delegateInputToTaskContract(input, trustTier !== undefined ? { trustTier } : {});
   // #2960: catch rejections so an instrumentation-path failure logs
   // instead of becoming an unhandled rejection. Mirrors the sibling
   // pattern at `mcp/tools/orchestrate.ts:822-826`.
@@ -240,7 +248,11 @@ function createDelegateHandler(
     notifier.info('delegate', { event: 'routing_start', taskLength: input.task.length });
     ctx.logger.info('Analyzing task for model routing', { taskLength: input.task.length });
     const governance = classifyDelegateGovernance(input, ctx.logger);
-    if (resolveV2Config().delegateEnabled) instrumentV2Pipeline(input, ctx.logger);
+    if (resolveV2Config().delegateEnabled) {
+      // Thread requestContext.trustTier so the V2 policy-engine actually
+      // gates the pipeline (#2957).
+      instrumentV2Pipeline(input, ctx.logger, ctx.requestContext.trustTier);
+    }
     const baseOpts: NotifyRecordOpts = {
       notifier,
       task: input.task,
