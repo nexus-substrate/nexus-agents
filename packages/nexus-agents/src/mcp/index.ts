@@ -368,6 +368,8 @@ export {
   type VerifyAuditChainDeps,
   type VerifyAuditChainInput,
   type VerifyAuditChainResponse,
+  // Canonical tool-name list — single source of truth (Issue #2935)
+  REGISTERED_TOOL_NAMES,
 } from './tools/index.js';
 
 // Gateway — Tiered Orchestration Routing (Issue #888, #892, #893, #894)

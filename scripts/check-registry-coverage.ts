@@ -124,6 +124,46 @@ export function getFileDiff(filePath: string, cwd: string = REPO_ROOT): string {
   }
 }
 
+/**
+ * Get the OLD content of a file (pre-image of the PR). Used by the
+ * structural-change exemption to compare the marker-array contents
+ * before and after — if they're identical, the marker touch is
+ * cosmetic (export keyword, comment edit, formatting) and the gate
+ * should not fire (#2935).
+ */
+export function getFileAtBase(filePath: string, cwd: string = REPO_ROOT): string | null {
+  const baseRef = safeBaseRef();
+  const ref = baseRef !== null ? `origin/${baseRef}` : 'HEAD~1';
+  try {
+    return execFileSync('git', ['show', `${ref}:${filePath}`], {
+      cwd,
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Extract the list of string-literal entries from the first `<marker> = [ ... ]`
+ * block in `content`. Returns a sorted, de-duplicated list of entries, or `null`
+ * if the marker block can't be parsed.
+ *
+ * Conservative by design: any extraction failure falls back to the line-based
+ * detection rather than incorrectly skipping a real violation.
+ */
+export function extractMarkerEntries(content: string, marker: string): readonly string[] | null {
+  const escaped = marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp(`${escaped}\\s*=\\s*\\[([\\s\\S]*?)\\]`);
+  const match = re.exec(content);
+  const inner = match?.[1];
+  if (inner === undefined) return null;
+  const literals = [...inner.matchAll(/['"]([^'"]+)['"]/g)].map((m) => m[1] ?? '');
+  if (literals.length === 0) return null;
+  return [...new Set(literals)].sort();
+}
+
 // ============================================================================
 // Manifest loading + validation
 // ============================================================================
@@ -166,24 +206,75 @@ export function validateManifest(manifest: RegistryManifest): readonly string[] 
 /**
  * Was the registry's marker block touched by the PR diff?
  *
- * v1 detection is line-based: if any added/removed line in the source-file diff
- * contains the marker token, the registry is "changed." Comment-only touches
- * that mention the marker would false-positive — acceptable for v1; promote to
- * AST-based detection if the noise rate gets high.
+ * Two-stage detection (#2935 hardened the v1 line-based rule):
+ *
+ * 1. **Line check** — if no added/removed diff line contains the marker
+ *    token, the registry is unchanged. Same as v1.
+ * 2. **Structural-equivalence exemption** — if the diff DOES touch the
+ *    marker, extract the array contents from both pre-image and post-image
+ *    of the source file. If the sorted, de-duplicated list of string
+ *    literals is identical, the touch was cosmetic (export keyword,
+ *    comment edit, formatting) — not a real registry change — and the
+ *    gate should not fire. Falls back to line-based detection if either
+ *    extraction fails (conservative: prefer false-positive over
+ *    false-negative for a wiring-completeness gate).
  */
 export function isRegistryChanged(
   registry: RegistryEntry,
   changedFiles: readonly string[],
-  diffOf: (path: string) => string = getFileDiff
+  diffOf: (path: string) => string = getFileDiff,
+  baseOf: (path: string) => string | null = getFileAtBase,
+  currentOf: (path: string) => string | null = readWorkingTree
 ): boolean {
   if (!changedFiles.includes(registry.source)) return false;
-  const diff = diffOf(registry.source);
+  if (!markerLineTouched(diffOf(registry.source), registry.marker)) return false;
+  return !structurallyEquivalent(registry, baseOf, currentOf);
+}
+
+/** Did any added/removed line in the diff contain the marker token? */
+function markerLineTouched(diff: string, marker: string): boolean {
   for (const line of diff.split('\n')) {
-    if ((line.startsWith('+') || line.startsWith('-')) && line.includes(registry.marker)) {
+    if ((line.startsWith('+') || line.startsWith('-')) && line.includes(marker)) {
       return true;
     }
   }
   return false;
+}
+
+/**
+ * Did the marker-array contents survive the diff unchanged? Returns false
+ * (and the caller treats the diff as a real change) if either side fails
+ * to parse — conservative default for a wiring-completeness gate.
+ */
+function structurallyEquivalent(
+  registry: RegistryEntry,
+  baseOf: (path: string) => string | null,
+  currentOf: (path: string) => string | null
+): boolean {
+  const oldContent = baseOf(registry.source);
+  const newContent = currentOf(registry.source);
+  if (oldContent === null || newContent === null) return false;
+  const before = extractMarkerEntries(oldContent, registry.marker);
+  const after = extractMarkerEntries(newContent, registry.marker);
+  if (before === null || after === null) return false;
+  return arraysEqual(before, after);
+}
+
+function arraysEqual(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+/** Read the working-tree copy of a repo-relative path, or null on error. */
+function readWorkingTree(filePath: string): string | null {
+  try {
+    return fs.readFileSync(path.join(REPO_ROOT, filePath), 'utf-8');
+  } catch {
+    return null;
+  }
 }
 
 /** Find peer files declared by the registry that are NOT in the changed-files set. */

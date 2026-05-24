@@ -14,7 +14,12 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 
-import { isRegistryChanged, findMissingPeers, getChangedFiles } from './check-registry-coverage.js';
+import {
+  isRegistryChanged,
+  findMissingPeers,
+  getChangedFiles,
+  extractMarkerEntries,
+} from './check-registry-coverage.js';
 
 // ============================================================================
 // Pure-function tests
@@ -58,6 +63,80 @@ describe('isRegistryChanged', () => {
     ].join('\n');
     const diffOf = (): string => diff;
     expect(isRegistryChanged(registry, ['src/foo.ts'], diffOf)).toBe(false);
+  });
+});
+
+// Structural-equivalence exemption (#2935) — marker line touched but the
+// array entries are identical → cosmetic change (export keyword, comment,
+// formatting) → gate should not fire.
+describe('isRegistryChanged structural-equivalence exemption', () => {
+  const registry = {
+    name: 'TEST_REG',
+    source: 'src/foo.ts',
+    marker: 'TEST_REG',
+    peer_files: ['src/foo-types.ts'],
+    rationale: 'test',
+  };
+
+  // The diff touches the marker line — line-detection alone would fire.
+  const markerTouchDiff = [
+    '--- a/src/foo.ts',
+    '+++ b/src/foo.ts',
+    '@@ -1 +1 @@',
+    '-const TEST_REG = [',
+    '+export const TEST_REG = [',
+  ].join('\n');
+
+  it('exempts when before and after array entries are identical', () => {
+    const oldContent = `const TEST_REG = ['a', 'b', 'c'] as const;`;
+    const newContent = `export const TEST_REG = ['a', 'b', 'c'] as const;`;
+    const diffOf = (): string => markerTouchDiff;
+    const baseOf = (): string => oldContent;
+    const currentOf = (): string => newContent;
+    expect(isRegistryChanged(registry, ['src/foo.ts'], diffOf, baseOf, currentOf)).toBe(false);
+  });
+
+  it('still fires when entries actually changed', () => {
+    const oldContent = `const TEST_REG = ['a', 'b'] as const;`;
+    const newContent = `const TEST_REG = ['a', 'b', 'c'] as const;`;
+    const diffOf = (): string => markerTouchDiff;
+    const baseOf = (): string => oldContent;
+    const currentOf = (): string => newContent;
+    expect(isRegistryChanged(registry, ['src/foo.ts'], diffOf, baseOf, currentOf)).toBe(true);
+  });
+
+  it('falls back to line-based detection when pre-image fetch fails', () => {
+    const diffOf = (): string => markerTouchDiff;
+    const baseOf = (): string | null => null; // simulates `git show` failure
+    const currentOf = (): string => `const TEST_REG = ['a'] as const;`;
+    expect(isRegistryChanged(registry, ['src/foo.ts'], diffOf, baseOf, currentOf)).toBe(true);
+  });
+
+  it('falls back to line-based detection when current-file read fails', () => {
+    const diffOf = (): string => markerTouchDiff;
+    const baseOf = (): string => `const TEST_REG = ['a'] as const;`;
+    const currentOf = (): string | null => null; // simulates fs read failure
+    expect(isRegistryChanged(registry, ['src/foo.ts'], diffOf, baseOf, currentOf)).toBe(true);
+  });
+});
+
+describe('extractMarkerEntries', () => {
+  it('extracts a sorted, de-duplicated list', () => {
+    const content = `const FOO = ['c', 'a', 'b', 'a'] as const;`;
+    expect(extractMarkerEntries(content, 'FOO')).toEqual(['a', 'b', 'c']);
+  });
+
+  it('returns null when marker is absent', () => {
+    expect(extractMarkerEntries('const OTHER = [1, 2];', 'FOO')).toBeNull();
+  });
+
+  it('returns null when the array has no string literals', () => {
+    expect(extractMarkerEntries('const FOO = [1, 2, 3];', 'FOO')).toBeNull();
+  });
+
+  it('handles regex-special characters in the marker', () => {
+    const content = `const FOO_BAR$ = ['x'] as const;`;
+    expect(extractMarkerEntries(content, 'FOO_BAR$')).toEqual(['x']);
   });
 });
 

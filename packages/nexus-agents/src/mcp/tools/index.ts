@@ -498,8 +498,11 @@ export interface ToolRegistrationResult {
  * `inject-governance.ts syncServerJson` reads this list (via the
  * `extractMcpTools` parser) and writes it to `packages/nexus-agents/server.json`
  * so the MCP-spec registry stays in lockstep — see PR #2362 for the auto-sync.
+ *
+ * Exported so `cli-server-tools.ts` can alias it as `REGISTERED_TOOLS`
+ * — kills the duplicate hand-maintained array (Issue #2935).
  */
-const REGISTERED_TOOL_NAMES = [
+export const REGISTERED_TOOL_NAMES = [
   'orchestrate',
   'create_expert',
   'execute_expert',
