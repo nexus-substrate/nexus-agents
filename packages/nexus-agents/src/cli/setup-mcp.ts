@@ -272,23 +272,55 @@ export function areHooksConfigured(): boolean {
 }
 
 /**
- * Reads existing hooks from Claude CLI settings.
- * Returns parsed hooks object or undefined if no hooks exist or parse fails.
+ * Detailed result of reading existing hooks. Distinguishes "no hooks set" from
+ * "the claude CLI returned content we couldn't parse" — they look the same to
+ * `getExistingHooks()` (both undefined) but mean very different things to the
+ * caller. Closes #2975: collapsing both into undefined caused `configureHooks`
+ * to silently overwrite the user's existing hooks when the claude CLI's JSON
+ * shape drifted (regressed #420 on the parse-failure path).
  */
-export function getExistingHooks(): HookSettingsConfig['hooks'] | undefined {
+export type ReadHooksResult =
+  | { kind: 'absent' }
+  | { kind: 'present'; hooks: HookSettingsConfig['hooks'] }
+  | { kind: 'unreadable'; reason: string }
+  | { kind: 'parse_failed'; reason: string; raw: string };
+
+/**
+ * Reads existing hooks from Claude CLI settings with full result detail.
+ * Callers should branch on `kind` before deciding whether to merge or abort.
+ */
+export function readExistingHooks(): ReadHooksResult {
+  let raw: string;
   try {
-    const result = execSync('claude config get hooks', {
+    raw = execSync('claude config get hooks', {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
     });
-    const trimmed = result.trim();
-    if (!trimmed || trimmed === 'null' || trimmed === 'undefined') {
-      return undefined;
-    }
-    return JSON.parse(trimmed) as HookSettingsConfig['hooks'];
-  } catch {
-    return undefined;
+  } catch (error) {
+    return { kind: 'unreadable', reason: getErrorMessage(error) };
   }
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed === 'null' || trimmed === 'undefined') {
+    return { kind: 'absent' };
+  }
+  try {
+    return { kind: 'present', hooks: JSON.parse(trimmed) as HookSettingsConfig['hooks'] };
+  } catch (error) {
+    return { kind: 'parse_failed', reason: getErrorMessage(error), raw: trimmed };
+  }
+}
+
+/**
+ * Reads existing hooks from Claude CLI settings.
+ *
+ * Returns parsed hooks object or undefined if no hooks exist, the CLI call
+ * fails, or the response cannot be parsed. Loses the distinction between
+ * those cases — for the merge-vs-abort decision in `configureHooks` use
+ * `readExistingHooks()` directly. Kept for backward compatibility.
+ */
+export function getExistingHooks(): HookSettingsConfig['hooks'] | undefined {
+  const result = readExistingHooks();
+  return result.kind === 'present' ? result.hooks : undefined;
 }
 
 /**
@@ -359,9 +391,25 @@ export function configureHooks(force: boolean = false): HookConfigResult {
 
   const nexusHookConfig = generateHookConfig();
 
+  // Read existing hooks first to merge (Issue #420). Closes #2975: on
+  // parse_failed we MUST NOT proceed — silently overwriting an unparseable
+  // response is exactly how user hooks got wiped after claude-cli JSON-shape
+  // drifts. Surface the problem so the operator can fix the underlying
+  // condition (or pass --force after backing up their hooks).
+  const existing = readExistingHooks();
+  if (existing.kind === 'parse_failed') {
+    return {
+      success: false,
+      alreadyConfigured: false,
+      message:
+        'Refusing to configure hooks: existing hooks could not be parsed. ' +
+        'Overwriting would wipe your current settings. ' +
+        `Inspect with \`claude config get hooks\` and resolve manually. (parse error: ${existing.reason})`,
+    };
+  }
+  const existingHooks = existing.kind === 'present' ? existing.hooks : undefined;
+
   try {
-    // Read existing hooks first to merge (Issue #420)
-    const existingHooks = getExistingHooks();
     const mergedHooks = mergeHookConfigs(existingHooks, nexusHookConfig.hooks);
 
     // Use claude config set with merged hooks
