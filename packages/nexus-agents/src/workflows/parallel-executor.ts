@@ -281,14 +281,15 @@ async function executeStepInQueue(
 ): Promise<StepResult> {
   try {
     const result = await state.queue.add((signal) => {
-      const combined = new AbortController();
-      signal.addEventListener('abort', () => {
-        combined.abort();
-      });
-      state.abortController.signal.addEventListener('abort', () => {
-        combined.abort();
-      });
-      return executeStepWithTimeout(step, context, stepExecutor, combined.signal);
+      // Closes #2978. Previously we did `addEventListener('abort', ...)` twice
+      // per step on the two long-lived shared signals (queue's and state's),
+      // never removing them. A 50-step plan exceeded Node's default
+      // MaxListeners=10 after step 5 and spammed MaxListenersExceededWarning
+      // to stderr; heap retained a closure per listener until executeParallel
+      // returned. `AbortSignal.any` composes signals natively (Node 20+) and
+      // the resulting signal is GC'd as soon as the step's promise resolves.
+      const combined = AbortSignal.any([signal, state.abortController.signal]);
+      return executeStepWithTimeout(step, context, stepExecutor, combined);
     });
 
     state.results.push(result);
