@@ -177,7 +177,9 @@ describe('saveCorrelationData and loadCorrelationData', () => {
     const loadResult = loadCorrelationData();
     expect(loadResult.ok).toBe(true);
     if (loadResult.ok) {
-      expect(loadResult.value.version).toBe(1);
+      // Schema version bumped to 2 with the #2973 JSONL switch — the wrapper
+      // shape is the load-result envelope, not what's actually on disk.
+      expect(loadResult.value.version).toBe(2);
       expect(loadResult.value.proposals).toHaveLength(1);
       expect(loadResult.value.proposals[0]?.proposalId).toBe('rt-1');
       expect(loadResult.value.proposals[0]?.votes).toHaveLength(2);
@@ -192,19 +194,24 @@ describe('saveCorrelationData and loadCorrelationData', () => {
     }
   });
 
-  it('should handle corrupt JSON gracefully on load', () => {
+  it('should tolerate corrupt legacy correlations.json (skip + warn, return empty)', () => {
+    // Pre-#2973 this returned `err('Corrupt')`. Post-#2973 we tolerate
+    // legacy-file corruption because it's only one of two stores — corrupt
+    // legacy plus missing JSONL surfaces as an empty success envelope so
+    // a single bad file doesn't poison the whole load.
     const votingDir = path.join(testDir, '.nexus-agents', 'voting');
     fs.mkdirSync(votingDir, { recursive: true });
     fs.writeFileSync(path.join(votingDir, 'correlations.json'), '{ invalid json !!', 'utf-8');
 
     const result = loadCorrelationData();
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.error.message).toContain('Corrupt');
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.proposals).toHaveLength(0);
     }
   });
 
-  it('should handle invalid schema gracefully on load', () => {
+  it('should tolerate invalid legacy correlations.json schema', () => {
+    // Same rationale as the corrupt-JSON test above.
     const votingDir = path.join(testDir, '.nexus-agents', 'voting');
     fs.mkdirSync(votingDir, { recursive: true });
     fs.writeFileSync(
@@ -214,9 +221,12 @@ describe('saveCorrelationData and loadCorrelationData', () => {
     );
 
     const result = loadCorrelationData();
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.error.message).toContain('Invalid correlation data schema');
+    // The legacy file is invalid → skipped. JSONL doesn't exist → no data.
+    // The presence of the legacy file means we don't return "not found"
+    // anymore; we return an empty success envelope.
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.proposals).toHaveLength(0);
     }
   });
 
@@ -274,8 +284,11 @@ describe('saveCorrelationData and loadCorrelationData', () => {
       proposals.push(proposal);
     }
 
-    // Save with maxProposals=3
-    saveCorrelationData(proposals, {
+    // Save unconfigured (#2973: writer is fully append-only). FIFO eviction
+    // now applies on load — pass maxProposals there.
+    saveCorrelationData(proposals);
+
+    const loadResult = loadCorrelationData({
       minObservationsForCorrelation: 10,
       correlationThreshold: 0.3,
       correlationMaxAgeMs: 86400000,
@@ -286,12 +299,36 @@ describe('saveCorrelationData and loadCorrelationData', () => {
       maxProposals: 3,
       maxTrackedPairs: 100,
     });
-
-    const loadResult = loadCorrelationData();
     expect(loadResult.ok).toBe(true);
     if (loadResult.ok) {
       // Should keep only the 3 most recent
       expect(loadResult.value.proposals).toHaveLength(3);
+    }
+  });
+
+  it('should preserve all proposals when many saves run concurrently (#2973)', async () => {
+    // Closes the race the JSONL switch is for: pre-#2973, two
+    // saveCorrelationData callers each read-merged-renamed the same
+    // correlations.json, so the second writer's snapshot overwrote the
+    // first's. With JSONL append-only, every saved proposal lands.
+    const proposals = Array.from({ length: 10 }, (_, i) =>
+      createPersistedProposal(
+        `concurrent-${String(i)}`,
+        makeVotesMap([['agent-a', 'approve']]),
+        'approved'
+      )
+    );
+
+    await Promise.all(proposals.map((p) => Promise.resolve(saveCorrelationData([p]))));
+
+    const loadResult = loadCorrelationData();
+    expect(loadResult.ok).toBe(true);
+    if (loadResult.ok) {
+      expect(loadResult.value.proposals).toHaveLength(10);
+      const ids = new Set(loadResult.value.proposals.map((p) => p.proposalId));
+      for (let i = 0; i < 10; i++) {
+        expect(ids.has(`concurrent-${String(i)}`)).toBe(true);
+      }
     }
   });
 
