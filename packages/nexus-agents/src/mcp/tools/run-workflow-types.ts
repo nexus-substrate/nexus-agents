@@ -22,6 +22,22 @@ export const RunWorkflowInputSchema = z.object({
   template: z.string().min(1).describe('Workflow template name (e.g., code-review) or file path'),
   inputs: z.record(z.string(), z.unknown()).describe('Workflow inputs as key-value pairs'),
   dryRun: z.boolean().optional().default(false).describe('Validate workflow without executing'),
+  /**
+   * Per-phase execution timeout in milliseconds (closes #3017). Wins over
+   * both `workflow.timeout` (set in the template YAML) and the engine's
+   * `defaultTimeoutMs`. Use for known-long workflow templates (e.g.,
+   * security-audit over a large repo) where the default phase budget
+   * isn't enough. Bounded to [1s, 30min] to prevent both flapping
+   * cancellations and unbounded hangs that would defeat the
+   * timeout-mismatch telemetry.
+   */
+  timeoutMs: z
+    .number()
+    .int()
+    .min(1000)
+    .max(1_800_000)
+    .optional()
+    .describe('Per-phase execution timeout in ms (overrides workflow.timeout)'),
 });
 
 export type RunWorkflowInput = z.infer<typeof RunWorkflowInputSchema>;
