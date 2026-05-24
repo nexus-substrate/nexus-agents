@@ -222,6 +222,49 @@ describe('WorkflowEngine', () => {
       // Original message preserved verbatim
       expect(result.error.message).toBe("Step 'first' failed: adapter hang");
     });
+
+    // #3017: the run_workflow MCP tool passes an optional `phaseTimeoutMs`
+    // override that should win over both `workflow.timeout` and the
+    // engine's default. Verify it threads down to ExecutionOptions.timeoutMs.
+    it('threads phaseTimeoutMs option down to executePhase ExecutionOptions (#3017)', async () => {
+      const workflow = { ...sampleWorkflow, timeout: 5000 }; // template default 5s
+      mockDeps.createExecutionPlan = vi
+        .fn()
+        .mockReturnValue(ok({ phases: [{ steps: [workflow.steps[0] as WorkflowStep] }] }));
+      const recorded: number[] = [];
+      mockDeps.executePhase = vi.fn().mockImplementation((_steps, _ctx, opts) => {
+        const t = (opts as { timeoutMs?: number }).timeoutMs;
+        if (t !== undefined) recorded.push(t);
+        return Promise.resolve(
+          ok([{ stepId: 'step1', output: 'done', durationMs: 10, status: 'success' }])
+        );
+      });
+
+      await engine.execute(workflow, { input1: 'x' }, { phaseTimeoutMs: 999_999 });
+
+      // Caller override wins over the template's 5000ms.
+      expect(recorded).toEqual([999_999]);
+    });
+
+    it('falls back to workflow.timeout when phaseTimeoutMs is omitted (#3017)', async () => {
+      const workflow = { ...sampleWorkflow, timeout: 5000 };
+      mockDeps.createExecutionPlan = vi
+        .fn()
+        .mockReturnValue(ok({ phases: [{ steps: [workflow.steps[0] as WorkflowStep] }] }));
+      const recorded: number[] = [];
+      mockDeps.executePhase = vi.fn().mockImplementation((_steps, _ctx, opts) => {
+        const t = (opts as { timeoutMs?: number }).timeoutMs;
+        if (t !== undefined) recorded.push(t);
+        return Promise.resolve(
+          ok([{ stepId: 'step1', output: 'done', durationMs: 10, status: 'success' }])
+        );
+      });
+
+      // No `phaseTimeoutMs` — should fall back to workflow.timeout (5000).
+      await engine.execute(workflow, { input1: 'x' });
+
+      expect(recorded).toEqual([5000]);
+    });
   });
 
   describe('getStatus', () => {

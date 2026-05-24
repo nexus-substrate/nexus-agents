@@ -67,10 +67,19 @@ export class WorkflowEngine implements IWorkflowEngine {
     return this.deps.loadWorkflowFile(path);
   }
 
-  /** Execute a workflow with inputs. */
+  /**
+   * Execute a workflow with inputs.
+   *
+   * `options.phaseTimeoutMs` (added in #3017) overrides the per-phase
+   * execution timeout for this run only — wins over both `workflow.timeout`
+   * (set in the template YAML) and the engine's `defaultTimeoutMs`. Used
+   * by the `run_workflow` MCP tool to expose a caller-supplied `timeoutMs`
+   * for known-long templates (e.g. security-audit over a large repo).
+   */
   async execute(
     workflow: WorkflowDefinition,
-    inputs: Record<string, unknown>
+    inputs: Record<string, unknown>,
+    options?: { phaseTimeoutMs?: number }
   ): Promise<Result<WorkflowResult, WorkflowError>> {
     // Validate inputs and create execution plan
     const inputValidation = this.validateInputs(workflow, inputs);
@@ -96,26 +105,31 @@ export class WorkflowEngine implements IWorkflowEngine {
     this.executions.set(initResult.executionId, initResult.execution);
 
     try {
-      return await this.runExecution(
+      return await this.runExecution({
         workflow,
-        planResult.value,
-        initResult.context,
-        initResult.executionId,
-        initResult.startTime
-      );
+        plan: planResult.value,
+        context: initResult.context,
+        executionId: initResult.executionId,
+        startTime: initResult.startTime,
+        ...(options?.phaseTimeoutMs !== undefined
+          ? { phaseTimeoutMs: options.phaseTimeoutMs }
+          : {}),
+      });
     } catch (error) {
       return this.handleExecutionError(error, initResult.executionId, workflow.name);
     }
   }
 
-  private async runExecution(
-    workflow: WorkflowDefinition,
-    plan: ExecutionPlan,
-    context: ExecutionContext,
-    executionId: string,
-    startTime: number
-  ): Promise<Result<WorkflowResult, WorkflowError>> {
-    const stepResults = await this.executePhases(plan, context, workflow);
+  private async runExecution(args: {
+    workflow: WorkflowDefinition;
+    plan: ExecutionPlan;
+    context: ExecutionContext;
+    executionId: string;
+    startTime: number;
+    phaseTimeoutMs?: number;
+  }): Promise<Result<WorkflowResult, WorkflowError>> {
+    const { workflow, plan, context, executionId, startTime, phaseTimeoutMs } = args;
+    const stepResults = await this.executePhases(plan, context, workflow, phaseTimeoutMs);
     if (!stepResults.ok) {
       this.updateExecutionStatus(executionId, {
         state: 'failed',
@@ -262,7 +276,8 @@ export class WorkflowEngine implements IWorkflowEngine {
   private async executePhases(
     plan: ExecutionPlan,
     context: ExecutionContext,
-    workflow: WorkflowDefinition
+    workflow: WorkflowDefinition,
+    phaseTimeoutMs?: number
   ): Promise<Result<StepResult[], WorkflowError>> {
     const allResults: StepResult[] = [];
     const totalSteps = plan.phases.reduce((sum, p) => sum + p.steps.length, 0);
@@ -293,10 +308,12 @@ export class WorkflowEngine implements IWorkflowEngine {
       });
       if (!enforceResult.ok) return enforceResult;
 
+      // #3017: per-call `phaseTimeoutMs` from run_workflow MCP input wins
+      // over both `workflow.timeout` and `this.config.defaultTimeoutMs`.
       const options: ExecutionOptions = {
         maxConcurrency: this.config.maxConcurrency,
         failFast: true,
-        timeoutMs: workflow.timeout ?? this.config.defaultTimeoutMs,
+        timeoutMs: phaseTimeoutMs ?? workflow.timeout ?? this.config.defaultTimeoutMs,
       };
 
       const phaseResult = await this.deps.executePhase(phase.steps, context, options);

@@ -177,11 +177,16 @@ export interface IWorkflowEngine {
    * Execute a workflow with inputs.
    * @param workflow - Workflow definition
    * @param inputs - Input values
+   * @param options - Optional execution overrides. `phaseTimeoutMs` (#3017)
+   *   overrides the per-phase execution timeout for this run only — wins
+   *   over both `workflow.timeout` (set in the template YAML) and the
+   *   engine's `defaultTimeoutMs`.
    * @returns Result with WorkflowResult or WorkflowError
    */
   execute(
     workflow: WorkflowDefinition,
-    inputs: Record<string, unknown>
+    inputs: Record<string, unknown>,
+    options?: { phaseTimeoutMs?: number }
   ): Promise<Result<WorkflowResult, WorkflowError>>;
 
   /**

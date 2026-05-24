@@ -83,17 +83,23 @@ export type { ToolResponse, InputValidationResult } from './run-workflow-helpers
 async function executeWorkflow(
   deps: RunWorkflowDeps,
   workflow: WorkflowDefinition,
-  inputs: Record<string, unknown>
+  inputs: Record<string, unknown>,
+  options?: { phaseTimeoutMs?: number }
 ): Promise<Result<WorkflowToolResult, WorkflowError>> {
   const { workflowEngine, logger } = deps;
 
   logger?.info('Executing workflow', {
     workflowName: workflow.name,
     inputCount: Object.keys(inputs).length,
+    ...(options?.phaseTimeoutMs !== undefined ? { phaseTimeoutMs: options.phaseTimeoutMs } : {}),
   });
 
   const startTime = getTimeProvider().now();
-  const result = await workflowEngine.execute(workflow, inputs);
+  const result = await workflowEngine.execute(
+    workflow,
+    inputs,
+    options?.phaseTimeoutMs !== undefined ? { phaseTimeoutMs: options.phaseTimeoutMs } : undefined
+  );
 
   if (!result.ok) {
     logger?.error('Workflow execution failed', result.error, {
@@ -203,8 +209,13 @@ async function handleRunWorkflow(
   deps: RunWorkflowDeps,
   args: RunWorkflowInput
 ): Promise<ToolResponse> {
-  const { template, inputs, dryRun } = args;
-  deps.logger?.debug('run_workflow called', { template, dryRun, inputKeys: Object.keys(inputs) });
+  const { template, inputs, dryRun, timeoutMs } = args;
+  deps.logger?.debug('run_workflow called', {
+    template,
+    dryRun,
+    inputKeys: Object.keys(inputs),
+    ...(timeoutMs !== undefined ? { timeoutMs } : {}),
+  });
 
   const loadResult = await loadWorkflow(deps, template);
   if (!loadResult.ok) {
@@ -222,7 +233,15 @@ async function handleRunWorkflow(
     return errorResponse(formatValidationErrors(validation));
   }
 
-  const executeResult = await executeWorkflow(deps, workflow, inputs);
+  // #3017: thread the caller-supplied timeoutMs (if any) through to the
+  // workflow engine. Wins over both `workflow.timeout` and the engine's
+  // `defaultTimeoutMs` for known-long templates.
+  const executeResult = await executeWorkflow(
+    deps,
+    workflow,
+    inputs,
+    timeoutMs !== undefined ? { phaseTimeoutMs: timeoutMs } : undefined
+  );
   if (!executeResult.ok) {
     recordWorkflowError(template, executeResult.error.message);
     return buildFailureEnvelope(workflow.name, executeResult.error);
@@ -241,6 +260,14 @@ const toolInputSchema = {
   template: z.string().min(1).describe('Workflow template name (e.g., code-review) or file path'),
   inputs: z.record(z.string().max(100), z.unknown()).describe('Workflow inputs as key-value pairs'),
   dryRun: z.boolean().optional().default(false).describe('Validate workflow without executing'),
+  // #3017
+  timeoutMs: z
+    .number()
+    .int()
+    .min(1000)
+    .max(1_800_000)
+    .optional()
+    .describe('Per-phase execution timeout in ms (overrides workflow.timeout, bound [1s, 30min])'),
 };
 
 /**
