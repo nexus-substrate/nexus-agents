@@ -25,6 +25,18 @@ import { OrchestratorError } from '../core/types/orchestrator.js';
 // Shared utilities per ADR-0013
 import { generateHyphenId } from '../utils/id-utils.js';
 
+/**
+ * Narrow shape of an agent that the OrchestratorAdapter (and the factory
+ * config that wires one in) needs. Narrows the input to `Task` so the
+ * concrete `Orchestrator` instance can be passed without an `as unknown
+ * as` cast (#2944). Keeps the `Result` payload+error wide because the
+ * adapter is intentionally resilient to non-`AgentError` failures
+ * (see orchestrator-adapters.test.ts "fails with non-Error" coverage).
+ */
+export interface OrchestratorAgentLike {
+  execute(task: Task): Promise<Result<unknown, unknown>>;
+}
+
 // Use shared utility for ID generation
 function generateId(prefix: string): string {
   return generateHyphenId(prefix, 6);
@@ -107,13 +119,13 @@ export class OrchestratorAdapter implements IOrchestrator {
   private readonly executions = new Map<string, ExecutionStatus>();
   private readonly history: OrchestratorResult[] = [];
   private readonly logger: ILogger;
-  private agent: { execute: (task: Task) => Promise<Result<unknown, unknown>> } | null = null;
+  private agent: OrchestratorAgentLike | null = null;
 
   constructor(logger?: ILogger) {
     this.logger = logger ?? createLogger({ component: 'OrchestratorAdapter' });
   }
 
-  setOrchestrator(agent: { execute: (task: Task) => Promise<Result<unknown, unknown>> }): void {
+  setOrchestrator(agent: OrchestratorAgentLike): void {
     this.agent = agent;
   }
 

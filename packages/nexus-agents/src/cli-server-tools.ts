@@ -59,7 +59,7 @@ import { registerPipelineTool } from './mcp/tools/pipeline-tool.js';
 
 import type { Expert } from './agents/index.js';
 import { createRealWorkflowEngine } from './workflows/index.js';
-import type { IModelAdapter, Result, WorkflowDefinition } from './core/index.js';
+import type { IModelAdapter, WorkflowDefinition } from './core/index.js';
 import { getErrorMessage, NexusError, ErrorCode } from './core/index.js';
 
 import { Orchestrator } from './agents/index.js';
@@ -168,11 +168,12 @@ function createOrchestratorForOrchestration(
 ): IOrchestrator {
   if (modelAdapter !== undefined) {
     const orchestratorAgent = new Orchestrator({ adapter: modelAdapter, logger });
+    // Cast removed in #2944 — `OrchestratorFactoryConfig.techLead` is now
+    // `OrchestratorAgentLike`, which `Orchestrator.execute(task: Task)`
+    // satisfies directly via Result-covariance.
     const factory = new OrchestratorFactory({
       logger,
-      techLead: orchestratorAgent as unknown as {
-        execute: (task: unknown) => Promise<Result<unknown, unknown>>;
-      },
+      techLead: orchestratorAgent,
     });
     return factory.create('orchestrator');
   }

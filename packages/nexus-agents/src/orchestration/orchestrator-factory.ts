@@ -35,7 +35,11 @@ import {
   createProductionWorkflowEngine,
   type WorkflowEngineFactoryConfig,
 } from '../workflows/workflow-engine-factory.js';
-import { OrchestratorAdapter, PuppeteerAdapter } from './orchestrator-adapters.js';
+import {
+  OrchestratorAdapter,
+  PuppeteerAdapter,
+  type OrchestratorAgentLike,
+} from './orchestrator-adapters.js';
 
 /** Max execution map entries before eviction of completed/cancelled entries. */
 const MAX_EXECUTION_MAP_SIZE = 200;
@@ -259,12 +263,21 @@ export interface OrchestratorFactoryConfig {
   modelAdapter?: IModelAdapter;
   /** Workflow engine config */
   workflowConfig?: WorkflowEngineFactoryConfig;
-  /** Pre-created orchestrator agent instance for orchestrator adapter */
-  techLead?: { execute: (task: unknown) => Promise<Result<unknown, unknown>> };
+  /**
+   * Pre-created orchestrator agent instance for orchestrator adapter.
+   * Narrowed from `(task: unknown)` to `OrchestratorAgentLike` so a real
+   * `Orchestrator` instance can be passed without an `as unknown as` cast
+   * (#2944). Task-input contract matches `OrchestratorAdapter.setOrchestrator`.
+   */
+  techLead?: OrchestratorAgentLike;
   /** Alias for techLead (preferred, Issue #759) */
-  orchestratorAgent?: { execute: (task: unknown) => Promise<Result<unknown, unknown>> };
-  /** Pre-created PuppeteerOrchestrator instance */
-  puppeteerOrchestrator?: { execute: (task: unknown) => Promise<Result<unknown, unknown>> };
+  orchestratorAgent?: OrchestratorAgentLike;
+  /**
+   * Pre-created PuppeteerOrchestrator instance. Input stays `unknown`
+   * because Puppeteer accepts arbitrary policy-shaped tasks, not the
+   * core `Task` type that the regular agent path requires.
+   */
+  puppeteerOrchestrator?: { execute(task: unknown): Promise<Result<unknown, unknown>> };
 }
 
 /**
