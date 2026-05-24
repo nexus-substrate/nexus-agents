@@ -183,6 +183,13 @@ export const AuditLogConfigSchema = z.object({
   enableCompression: z.boolean().optional().default(false),
   flushIntervalMs: z.number().positive().optional().default(1000),
 
+  /**
+   * Maximum in-memory event queue depth before drop-oldest backpressure
+   * engages. Bounds memory under load when storage.write is slow or the flush
+   * timer is overlapping; see #2979.
+   */
+  maxQueueDepth: z.number().positive().optional().default(10_000),
+
   // Filtering
   minSeverity: AuditSeveritySchema.optional().default('info'),
   categories: z.array(AuditCategorySchema).optional(),
