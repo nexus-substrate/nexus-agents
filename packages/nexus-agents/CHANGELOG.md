@@ -1,5 +1,117 @@
 # nexus-agents
 
+## 2.83.2
+
+### Patch Changes
+
+- [#3031](https://github.com/nexus-substrate/nexus-agents/pull/3031) [`99a9285`](https://github.com/nexus-substrate/nexus-agents/commit/99a9285597c23e53a76104293faecfdb11aa4980) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **test(cli):** cover the `login`/`auth status` exit-code truth table (closes [#2953](https://github.com/nexus-substrate/nexus-agents/issues/2953)).
+
+  Pre-fix, `packages/nexus-agents/src/cli/login-command.ts` shipped 142 LOC with zero tests against a 4-cell truth table on `(anyAuthenticated, actionable.length)` at line 86:
+
+  ```ts
+  if (summary.anyAuthenticated || summary.actionable.length === 0) process.exit(0);
+  process.exit(1); // exit 1 only when no CLI authenticated AND a clear next action exists
+  ```
+
+  A refactor flipping `||` to `&&` would have silently broken the script-detection contract documented in [#2447](https://github.com/nexus-substrate/nexus-agents/issues/2447) (the issue that introduced the exit-1 case so CI/setup scripts can detect "no creds at all but a clear next step"). The other 3 truth-table cells all exit 0 — script detection only fires in cell 4.
+
+  The fix:
+  - Exposed the existing internal helpers `orderForDisplay` and `summarize` as `export` (with a JSDoc explicitly marking them as test-surface) so unit tests can exercise pure logic without `console.log` mocking gymnastics.
+  - Added `packages/nexus-agents/src/cli/login-command.test.ts` with **15 tests** covering:
+    - `orderForDisplay` — canonical CLI sort order, identity preservation, single/empty input.
+    - `summarize` — all-authed, all-need-login, mixed, empty, all-not-installed cases including the exact status-line strings.
+    - `handleLoginCommand` exit-code truth table — all 4 cells via a `process.exit` spy that throws to abort the function under test cleanly.
+    - The `login` alias deprecation hint ([#2449](https://github.com/nexus-substrate/nexus-agents/issues/2449)) — fires on `command: 'login'`, suppressed on canonical `auth`.
+
+  No production-code change beyond promoting two functions from file-private to `export`. tsc + eslint clean.
+
+- [#3027](https://github.com/nexus-substrate/nexus-agents/pull/3027) [`5647a35`](https://github.com/nexus-substrate/nexus-agents/commit/5647a35921cb703f835f956076ff47bacbd3344e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(scm):** Zod-validate `gh` CLI JSON at the boundary so schema drift surfaces as `schema mismatch` instead of misleading "Failed to parse JSON" (closes [#2962](https://github.com/nexus-substrate/nexus-agents/issues/2962) site 4).
+
+  `packages/nexus-agents/src/scm/github-provider.ts` had 5 parallel `JSON.parse(result.value) as Gh<X>Json` casts feeding mappers (`mapIssue`, `mapComment`, `mapPRStatus`) that dereferenced nested fields like `raw.labels.map((l) => l.name)` and `raw.author.login`. When `gh` CLI returned the JSON in an unexpected shape (rename, removed nullable, missing nested object), the deref blew up with a TypeError that the surrounding `try/catch` then rewrapped as `Failed to parse <X> JSON: …` — misleading: the JSON parsed fine; the shape mismatched. Operators debugging this chased a parser bug that didn't exist.
+
+  The fix:
+  - Added four `z.object(...)` schemas mirroring each `--json <fields>` projection: `GhIssueJsonSchema`, `GhCommentJsonSchema`, `GhPrJsonSchema`, `GhPrStatusJsonSchema`.
+  - Extracted a `safeParseGhJson<T>(rawJson, schema, label)` helper that does `JSON.parse` → `schema.safeParse` and distinguishes the two failure modes:
+    - `<label>: Failed to parse JSON: …` (gh returned non-JSON — html error page, empty output)
+    - `<label>: schema mismatch — <path>: <message>` (gh returned valid JSON in an unexpected shape, with Zod's path pointing at the broken field)
+  - Replaced all 5 raw casts in `getIssue`, `listIssues`, `createPR`, `getPRStatus`, `listComments`.
+
+  Same Zod-validate-at-the-boundary pattern as [#2932](https://github.com/nexus-substrate/nexus-agents/issues/2932) (policy-engine), [#2943](https://github.com/nexus-substrate/nexus-agents/issues/2943) (PaperEntry), and [#2962](https://github.com/nexus-substrate/nexus-agents/issues/2962) sites 1+3 (repo-analyze + issue-command, already shipped).
+
+  2 regression tests added: schema-drift surfaces the new typed error with the broken-field path; non-JSON output surfaces the parse-failure label distinctly. 15 tests pass (was 13).
+
+- [#3030](https://github.com/nexus-substrate/nexus-agents/pull/3030) [`49f14d5`](https://github.com/nexus-substrate/nexus-agents/commit/49f14d50e0831f2d871ca1f036e011c1d5cae98d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(observability):** subprocess timing logs now carry a `requestId` for correlation (closes [#2963](https://github.com/nexus-substrate/nexus-agents/issues/2963) site 3).
+
+  `subprocess-adapter.ts:logTimingBreakdown` emits `'Subprocess timing'` at `info` level on every subprocess close, with the explicit goal (per JSDoc) of _"group by cli + provider + model and surface tail-latency outliers."_ Pre-fix the log had no per-call correlation key — multiple subprocesses for the same CLI run concurrently in pipelines and consensus votes, so the timing entries for the same CLI couldn't be disambiguated. Identifying which timing row belonged to which `executeTask` call was impossible from the logs alone.
+
+  The fix generates a per-`executeTask` `requestId = generateHyphenId('cli-req', 8)` and threads it through:
+  - `executeTask` → `spawnSubprocess` (initial attempt)
+  - `executeTask` → `retryTransient` → `spawnSubprocess` (every retry uses the same `requestId` so retries-of-the-same-call group together)
+  - `spawnSubprocess` → `setupChildProcessHandlers` (refactored to an opts-object to stay under the 5-param cap) → the `child.on('close')` handler
+  - `logTimingBreakdown(state, startTime, code, requestId)` — emits `requestId` alongside the existing `cli` / `totalMs` / `spawnLatencyMs` / etc.
+
+  `requestId` also appears in the `'Retrying transient error'` debug log so all log lines for a single call (initial attempt + retries + final timing) carry the same correlation key.
+
+  The ID is adapter-internal — it doesn't propagate up to MCP. CliTask's contract is unchanged.
+
+  37 existing tests pass; tsc + eslint clean. Added a `/* eslint-disable max-lines */` to the file header since the threading bumped the line count just past the 400-line cap (the file is one cohesive base-adapter class, governance allows 400-600 for cohesive files).
+
+  Closes [#2963](https://github.com/nexus-substrate/nexus-agents/issues/2963) site 3. (Sites 1, 2, 4 shipped in [#3002](https://github.com/nexus-substrate/nexus-agents/issues/3002).)
+
+- [#3029](https://github.com/nexus-substrate/nexus-agents/pull/3029) [`4422ca4`](https://github.com/nexus-substrate/nexus-agents/commit/4422ca4812b4bf0c45443c84cd52ae9617996cae) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **feat(workflows):** `run_workflow` MCP tool now accepts an optional `timeoutMs` input to override the per-phase execution budget (closes [#3017](https://github.com/nexus-substrate/nexus-agents/issues/3017)).
+
+  Pre-fix, the per-phase execution timeout was always `workflow.timeout` (set in the template YAML) or the engine's `defaultTimeoutMs` — known-long templates like `security-audit` over a large repo couldn't be given a one-off larger budget without editing the template. [#2931](https://github.com/nexus-substrate/nexus-agents/issues/2931) surfaced the need: a 120s default-tripped run was un-debuggable; [#3017](https://github.com/nexus-substrate/nexus-agents/issues/3017) follows up with the ability to extend the budget for legitimately-slow workloads.
+
+  ### Wiring (top to bottom)
+  - **`RunWorkflowInputSchema`** (`mcp/tools/run-workflow-types.ts`): added optional `timeoutMs: z.number().int().min(1000).max(1_800_000)` — bounded to [1s, 30min] to prevent both flapping cancellations and unbounded hangs that would defeat the timeout-mismatch telemetry.
+  - **MCP tool schema** (`mcp/tools/run-workflow.ts`): added `timeoutMs` to the `inputSchema` so the field appears in the tool advertisement.
+  - **`handleRunWorkflow`**: extracts `timeoutMs` from validated args and threads it into `executeWorkflow` as `{ stepTimeoutMs: timeoutMs }` (renamed to `phaseTimeoutMs` internally — see the docstring update on `IWorkflowEngine.execute`).
+  - **`executeWorkflow`**: passes `{ phaseTimeoutMs }` to `workflowEngine.execute()`.
+  - **`IWorkflowEngine.execute`** (`core/types/workflow.ts`): added the optional third `options?: { phaseTimeoutMs?: number }` parameter (documented as winning over both `workflow.timeout` and the engine's `defaultTimeoutMs`).
+  - **`WorkflowEngine.execute` → `runExecution` → `executePhases`**: threads `phaseTimeoutMs` down to the `ExecutionOptions` builder, where it now wins over `workflow.timeout ?? this.config.defaultTimeoutMs`.
+
+  ### Semantic clarification
+
+  This overrides the per-phase **overall** execution timeout — `executeParallel`'s `setupOverallTimeout`. It is NOT a per-step timeout (per-step uses `step.timeout` from the workflow definition, separately). The docstrings and schema descriptions explicitly say "per-phase" to avoid the same confusion that `run_dev_pipeline`'s identically-named-but-dead `timeoutMs` field already creates.
+
+  ### Test coverage
+
+  2 new tests in `workflow-engine.test.ts`:
+  - `threads phaseTimeoutMs option down to executePhase ExecutionOptions` — passing `{ phaseTimeoutMs: 999_999 }` wins over a template with `timeout: 5000`.
+  - `falls back to workflow.timeout when phaseTimeoutMs is omitted` — omitting the option correctly uses `workflow.timeout`.
+
+  26 tests pass (was 24); `tsc + eslint` clean.
+
+  Closes [#3017](https://github.com/nexus-substrate/nexus-agents/issues/3017). [#2931](https://github.com/nexus-substrate/nexus-agents/issues/2931)'s other deferred follow-up ([#3016](https://github.com/nexus-substrate/nexus-agents/issues/3016), first-step adapter hang root cause) is separate.
+
+- [#3028](https://github.com/nexus-substrate/nexus-agents/pull/3028) [`031313e`](https://github.com/nexus-substrate/nexus-agents/commit/031313ea256a2f5ee6e224b252825633b1e1f662) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix:** 3 small isolated bugs surfaced by the deep audit ([#3026](https://github.com/nexus-substrate/nexus-agents/issues/3026) findings 3–5).
+
+  PR 1 of [#3026](https://github.com/nexus-substrate/nexus-agents/issues/3026) — three independent fixes, each < 30 LOC + a regression test, no contract changes.
+
+  ### Finding 5 — circuit breaker `failureCount` grows monotonically across recoveries
+
+  `packages/nexus-agents/src/cli-adapters/circuit-breaker.ts:212-227`. `transitionTo('open',…)` only zeroed failure/success counts when going to `'closed'`. After a `half-open → open → half-open` cycle, `failureCount` carried over — under flaky failure patterns (intermittent rate-limit + recovery), `getSnapshot().failureCount` and `CircuitStateChangeEvent.failureCount` grew without bound across cycles, even though each cycle's failures had already served their threshold purpose. Operator dashboards / alerts triggered on absolute failure count saw misleading inflation. **Fix:** reset `failureCount = 0` on transitions to `'half-open'`.
+
+  ### Finding 4 — capacity tracker over-counts requests; sliding window vs tumbling reset mismatch
+
+  `packages/nexus-agents/src/cli-adapters/capacity-tracker.ts:122-216`. `usageHistory` was slide-pruned (entries older than `now - windowMs` shifted off), but `requestCount` was only reset by the "tumbling" branch (`windowStart < cutoff`), which fires whenever the _earliest_ request is older than `windowMs` — even though more-recent requests are still inside the sliding window. Result: continuous traffic across a window boundary triggered a mass-prune that incorrectly dropped current-window requests, making `remainingRequests === 0` exhaustion fire prematurely (or too late) depending on burst pattern. Upstream routing (`composite-router-helpers.fetchCapacityData`) then re-routed away from a CLI that actually had capacity.
+
+  **Fix:** added a parallel `requestTimestamps: number[]` array that is slide-pruned identically to `usageHistory`; `requestCount` is now derived from `.length` after pruning. Dropped the tumbling-reset branch in `pruneOldEntries` — both arrays now use pure sliding-window semantics. `windowStart` is rebased to the earliest remaining entry (used by `resetTime` reporting), falling back to `now` when both arrays are empty.
+
+  ### Finding 3 — stagger delay compounds with bounded concurrency
+
+  `packages/nexus-agents/src/orchestration/aorchestra/worker-dispatcher.ts:485-488`. The stagger delay applied `taskIndex * staggerDelayMs` (absolute index), but `executeWithConcurrencyLimit` only runs `maxConcurrency` workers in parallel — tasks beyond that already wait naturally for a slot to free, then _additionally_ slept `taskIndex * staggerDelayMs`. For a wave of 10 with `maxConcurrency=3` and 500ms stagger, `tasks[9]` slept 4500ms AFTER waiting for `tasks[0-6]` to complete, defeating the rate-limit-burst-prevention goal (by the time `tasks[9]` ran, the API burst window had long since cleared).
+
+  **Fix:** modulo by `maxConcurrency` so the stagger applies within each concurrency slot without compounding across them.
+
+  ### Test coverage
+
+  3 new regression tests (1 per finding): failureCount reset across recovery cycles, sliding-window request counting across a boundary, stagger non-compounding with `maxConcurrency=2` + 5-task wave. 150 tests pass across the 3 affected test files (was 147).
+
+  ### What's left on [#3026](https://github.com/nexus-substrate/nexus-agents/issues/3026)
+
+  PR 2 will tackle findings 1+2 together — the SIGKILL escalation + AbortSignal threading through `ICliAdapter.execute`. That's a contract change touching all 5 concrete adapters + 3 call sites (parallel-exploration, watchdog, consensus-plan); deserves its own focused review.
+
 ## 2.83.1
 
 ### Patch Changes
