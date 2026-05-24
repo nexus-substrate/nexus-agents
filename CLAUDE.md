@@ -59,6 +59,8 @@ Most-used env vars:
 
 Full list in [docs/getting-started/CONFIGURATION.md](./docs/getting-started/CONFIGURATION.md). Install: [INSTALLATION.md](./docs/getting-started/INSTALLATION.md). Sandboxed: [SANDBOXED-USAGE.md](./docs/guides/SANDBOXED-USAGE.md).
 
+Note: `NEXUS_WORKERS_*` / `NEXUS_WORKFLOW_MAX_PARALLEL` / `NEXUS_TEST_PARALLELISM` / `NEXUS_EVALUATION_MAX_WORKERS` / `NEXUS_EVENTBUS_MAX_HISTORY` / `NEXUS_SWARM_OBSERVER_MAX_EVENTS` were removed in 2.82.0 (#2977 — silent no-ops; consumer wiring never landed).
+
 ---
 
 ## Core Principles
