@@ -139,6 +139,18 @@ function createIssueTriageHandler(_deps: IssueTriageDeps) {
 }
 
 // ============================================================================
+// Testing exports (#2953 — handler-branch coverage)
+// ============================================================================
+
+/** Test-only surface — do not import in production code. */
+export const _testing = {
+  /** Raw handler factory for unit testing the 3 branches (validation
+   *  fail / triage fail / success). Bypasses secure-handler + timeout
+   *  middleware so tests can assert directly on the structured result. */
+  createIssueTriageHandler,
+};
+
+// ============================================================================
 // Registration
 // ============================================================================
 
