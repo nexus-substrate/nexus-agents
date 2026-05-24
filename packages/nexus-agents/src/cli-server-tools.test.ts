@@ -182,6 +182,48 @@ vi.mock('./mcp/index.js', () => ({
   registerRepoAnalyzeTool: mockRegisterRepoAnalyzeTool,
   registerRepoSecurityPlanTool: mockRegisterRepoSecurityPlanTool,
   createDefaultDeps: mockCreateDefaultDeps,
+  // Canonical tool-name list (Issue #2935) — must match the real export so
+  // `cli-server-tools.ts:REGISTERED_TOOLS` alias resolves at module load.
+  REGISTERED_TOOL_NAMES: [
+    'orchestrate',
+    'create_expert',
+    'execute_expert',
+    'run_workflow',
+    'delegate_to_model',
+    'list_experts',
+    'list_workflows',
+    'consensus_vote',
+    'research_query',
+    'research_add',
+    'research_add_source',
+    'research_discover',
+    'research_analyze',
+    'research_catalog_review',
+    'research_synthesize',
+    'survey_oss_landscape',
+    'vendor_publishing_audit',
+    'compare_data_feeds',
+    'memory_query',
+    'memory_stats',
+    'memory_write',
+    'weather_report',
+    'issue_triage',
+    'run_graph_workflow',
+    'execute_spec',
+    'registry_import',
+    'query_trace',
+    'query_task_state',
+    'verify_audit_chain',
+    'repo_analyze',
+    'repo_security_plan',
+    'extract_symbols',
+    'search_codebase',
+    'run_dev_pipeline',
+    'run_pipeline',
+    'pr_review',
+    'supply_chain_tradeoff_panel',
+    'improvement_review',
+  ] as const,
 }));
 
 vi.mock('./mcp/tools/orchestrate.js', () => ({
@@ -387,7 +429,10 @@ describe('REGISTERED_TOOLS', () => {
       'pr_review',
       'supply_chain_tradeoff_panel',
     ];
-    expect([...REGISTERED_TOOLS]).toEqual(expected);
+    // Order-insensitive comparison — REGISTERED_TOOLS is sourced from
+    // `REGISTERED_TOOL_NAMES` in mcp/tools/index.ts (#2935) which uses a
+    // different declaration order than the legacy hand-maintained array.
+    expect([...REGISTERED_TOOLS].sort()).toEqual([...expected].sort());
   });
 
   it('should have no duplicate entries', () => {

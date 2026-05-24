@@ -133,47 +133,16 @@ export interface RegisterMcpToolsOptions {
 
 /**
  * All tools that are registered in the MCP server.
+ *
+ * Aliased from `REGISTERED_TOOL_NAMES` in `mcp/tools/index.ts` — the single
+ * source of truth that `inject-governance.ts` reads via `extractMcpTools` and
+ * syncs to `server.json` (PR #2362). Aliased here to preserve the existing
+ * `REGISTERED_TOOLS` export consumed by `tool-annotations.test.ts` and the
+ * allowlist-status logging in `registerToolCategories` (Issue #2935 closes
+ * the duplicate hand-maintained array).
  */
-export const REGISTERED_TOOLS = [
-  'delegate_to_model',
-  'orchestrate',
-  'create_expert',
-  'execute_expert',
-  'run_workflow',
-  'list_experts',
-  'list_workflows',
-  'consensus_vote',
-  'research_query',
-  'research_add',
-  'research_add_source',
-  'research_discover',
-  'research_analyze',
-  'research_catalog_review',
-  'research_synthesize',
-  'survey_oss_landscape',
-  'vendor_publishing_audit',
-  'compare_data_feeds',
-  'memory_query',
-  'memory_stats',
-  'memory_write',
-  'weather_report',
-  'issue_triage',
-  'run_graph_workflow',
-  'execute_spec',
-  'registry_import',
-  'query_trace',
-  'query_task_state',
-  'verify_audit_chain',
-  'extract_symbols',
-  'search_codebase',
-  'run_dev_pipeline',
-  'run_pipeline',
-  'repo_analyze',
-  'repo_security_plan',
-  'improvement_review',
-  'pr_review',
-  'supply_chain_tradeoff_panel',
-] as const;
+import { REGISTERED_TOOL_NAMES } from './mcp/index.js';
+export const REGISTERED_TOOLS = REGISTERED_TOOL_NAMES;
 
 /**
  * Environment variable to enable mock TechLead orchestration.
