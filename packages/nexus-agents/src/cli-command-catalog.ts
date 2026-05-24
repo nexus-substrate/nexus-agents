@@ -171,6 +171,12 @@ export const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
     audience: 'advanced',
   },
   {
+    command: 'init',
+    description:
+      'Initialize portable nexus-agents config in a repo. Flags: --portable (#2305/#2308/#2311), --install / --uninstall (#2311), --gitignore, --mcp-config, --opencode <path> (#2504), --force, --dry-run.',
+    audience: 'advanced',
+  },
+  {
     command: 'review',
     description: 'Review a GitHub PR (dogfooding helper)',
     audience: 'advanced',
