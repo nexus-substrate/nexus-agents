@@ -119,7 +119,16 @@ function logSensitiveFileAccess(input: PreToolUseInput): void {
   const warning = checkSensitiveFile(filePath);
 
   if (warning !== null) {
-    logger.info('Sensitive file access', { filePath, warning });
+    // Closes #2963 site 2: pre-fix this emitted at `info` (always-on)
+    // with the full path of every .env/.ssh/AWS-cred touch — aggregated
+    // in log services it built a map of where secrets live. Dropped to
+    // `debug`; added `toolUseId` correlation field present in the
+    // sibling `validateBashTool` call.
+    logger.debug('Sensitive file access', {
+      filePath,
+      warning,
+      toolUseId: input.tool_use_id,
+    });
   }
 }
 
