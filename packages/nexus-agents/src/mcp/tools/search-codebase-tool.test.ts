@@ -154,6 +154,86 @@ describe('search-codebase-tool (#2159)', () => {
     });
   });
 
+  describe('index cache: race coalescing + bounded retention (#2970)', () => {
+    it('coalesces concurrent indexing of the same dir into one constructor call', async () => {
+      // Slow the index build so both calls race the inflight promise.
+      mocks.indexInstance.index.mockImplementationOnce(() => new Promise((r) => setTimeout(r, 20)));
+
+      const [r1, r2] = await Promise.all([
+        searchCodebaseHandler({ query: 'foo', directory: './src' }, makeCtx()),
+        searchCodebaseHandler({ query: 'bar', directory: './src' }, makeCtx()),
+      ]);
+
+      expect(r1.isError).toBeFalsy();
+      expect(r2.isError).toBeFalsy();
+      // Without coalescing both callers would each build a fresh index.
+      expect(mocks.ctor).toHaveBeenCalledTimes(1);
+    });
+
+    it('evicts the LRU directory once more than MAX_CACHED_DIRS (3) are in use', async () => {
+      // 4 distinct dirs → 4 builds; the first dir gets evicted.
+      await searchCodebaseHandler({ query: 'q', directory: './a' }, makeCtx());
+      await searchCodebaseHandler({ query: 'q', directory: './b' }, makeCtx());
+      await searchCodebaseHandler({ query: 'q', directory: './c' }, makeCtx());
+      await searchCodebaseHandler({ query: 'q', directory: './d' }, makeCtx());
+      expect(mocks.ctor).toHaveBeenCalledTimes(4);
+
+      // Re-hit './b' — still in cache (it's MRU of the three retained).
+      await searchCodebaseHandler({ query: 'q', directory: './b' }, makeCtx());
+      expect(mocks.ctor).toHaveBeenCalledTimes(4);
+
+      // Re-hit './a' — was evicted → rebuild.
+      await searchCodebaseHandler({ query: 'q', directory: './a' }, makeCtx());
+      expect(mocks.ctor).toHaveBeenCalledTimes(5);
+    });
+
+    it('treats cache hit as LRU refresh: re-hitting an entry promotes it to MRU', async () => {
+      // Fill cache to capacity in order a, b, c. './a' is the oldest.
+      await searchCodebaseHandler({ query: 'q', directory: './a' }, makeCtx());
+      await searchCodebaseHandler({ query: 'q', directory: './b' }, makeCtx());
+      await searchCodebaseHandler({ query: 'q', directory: './c' }, makeCtx());
+      expect(_testing.getCachedDirs()).toEqual([resolve('./a'), resolve('./b'), resolve('./c')]);
+
+      // Re-hit './a' → promote to MRU. Order is now b, c, a.
+      await searchCodebaseHandler({ query: 'q', directory: './a' }, makeCtx());
+      expect(_testing.getCachedDirs()).toEqual([resolve('./b'), resolve('./c'), resolve('./a')]);
+
+      // Add './d' → evicts the LRU ('./b'), not './a'.
+      await searchCodebaseHandler({ query: 'q', directory: './d' }, makeCtx());
+      expect(_testing.getCachedDirs()).toEqual([resolve('./c'), resolve('./a'), resolve('./d')]);
+    });
+
+    it('expires entries past the TTL', async () => {
+      vi.useFakeTimers();
+      try {
+        await searchCodebaseHandler({ query: 'q', directory: './src' }, makeCtx());
+        expect(mocks.ctor).toHaveBeenCalledTimes(1);
+
+        // Just under TTL → cache hit.
+        vi.advanceTimersByTime(15 * 60 * 1000 - 1);
+        await searchCodebaseHandler({ query: 'q', directory: './src' }, makeCtx());
+        expect(mocks.ctor).toHaveBeenCalledTimes(1);
+
+        // Past TTL → rebuild.
+        vi.advanceTimersByTime(2);
+        await searchCodebaseHandler({ query: 'q', directory: './src' }, makeCtx());
+        expect(mocks.ctor).toHaveBeenCalledTimes(2);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('clearIndexCache also clears inflight promises', async () => {
+      mocks.indexInstance.index.mockImplementationOnce(() => new Promise((r) => setTimeout(r, 20)));
+
+      const p1 = searchCodebaseHandler({ query: 'q', directory: './src' }, makeCtx());
+      expect(_testing.getInflightDirs()).toContain(resolve('./src'));
+      clearIndexCache();
+      expect(_testing.getInflightDirs()).toHaveLength(0);
+      await p1;
+    });
+  });
+
   describe('mode dispatch', () => {
     it('search mode: reports zero results cleanly', async () => {
       mocks.indexInstance.search.mockReturnValue([]);
