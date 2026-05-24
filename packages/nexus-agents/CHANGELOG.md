@@ -1,5 +1,175 @@
 # nexus-agents
 
+## 2.83.0
+
+### Minor Changes
+
+- [#2998](https://github.com/nexus-substrate/nexus-agents/pull/2998) [`499d886`](https://github.com/nexus-substrate/nexus-agents/commit/499d8869d950f1422fea6d60ff4a54cae59413d3) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **feat(security):** wire `RequestContext.trustTier` end-to-end into V2 pipelines and access-policy derivation. Closes [#2957](https://github.com/nexus-substrate/nexus-agents/issues/2957), [#2993](https://github.com/nexus-substrate/nexus-agents/issues/2993), [#2994](https://github.com/nexus-substrate/nexus-agents/issues/2994).
+
+  Three coupled security gaps converged on one missing wire — the caller's trust tier never reached the gates that needed it. This PR plumbs the value through:
+
+  ### Producers
+  - `pipeline/v2-orchestrate.ts:orchestrateInputToTaskContract` and `pipeline/v2-delegate.ts:delegateInputToTaskContract` both gained an `opts.trustTier?: string` parameter that, when provided, writes `metadata.trustTier` onto the constructed `TaskContract`. Pre-fix, neither producer wrote this field, so the V2 policy engine's only built-in rule (`trust-tier`) could not gate anything — it silently allowed every execute stage regardless of caller ([#2994](https://github.com/nexus-substrate/nexus-agents/issues/2994)).
+
+  ### Callers
+  - `mcp/tools/orchestrate.ts`: `createOrchestrateHandler` now threads `ctx.requestContext.trustTier` through `runOrchestratePipeline` → `executeOrchestrationWithDeadline` → `executeOrchestration` → `deriveOrchestratePolicy` and into `instrumentV2Orchestrate` → `orchestrateInputToTaskContract`.
+  - `mcp/tools/delegate-to-model.ts`: similar — `createDelegateHandler` passes `ctx.requestContext.trustTier` into `instrumentV2Pipeline` → `delegateInputToTaskContract`.
+  - `mcp/tools/execute-expert.ts`: runs through MCP's native task handler (not the `ContextAwareHandler` chain), so `RequestContext` is not directly available there. `deriveExpertAccessPolicy` now takes the trustTier as an explicit param; the call site currently passes `undefined`, which defaults to `'4'` (untrusted) — defensive default until proper end-to-end wiring lands as a follow-up.
+
+  ### Gates
+  - `mcp/tools/orchestrate.ts:deriveOrchestratePolicy` and `mcp/tools/execute-expert.ts:deriveExpertAccessPolicy`: the hardcoded `trustTier: '1'` ([#2993](https://github.com/nexus-substrate/nexus-agents/issues/2993)) is replaced with the threaded value, defaulting to `'4'` when missing. Pre-fix, every untrusted caller's input was treated as fully trusted by the LLM derivation, which would consistently produce a permissive policy regardless of actual caller risk.
+  - `pipeline/policy-engine.ts:trustTierRule`: missing or non-numeric `pipelineState.trustTier` now defaults to `4` (untrusted) instead of the prior fail-open `undefined → allow`. With producer wiring in place, the only paths that hit the default are buggy producers or test fixtures — both should fail closed.
+
+  ### Tests
+  - `pipeline/policy-engine.test.ts`: updated the two "allows when trustTier is missing/invalid" tests to assert blocks-execute behavior; added "still allows non-execute stages" to confirm the default doesn't break planning paths.
+  - 137 tests pass across the 6 affected test files (policy-engine, v2-orchestrate, v2-delegate, orchestrate, execute-expert, delegate-to-model). `tsc + eslint` clean.
+
+  ### Migration / behavior change
+  - Operators running V2 pipelines (`NEXUS_V2_ORCHESTRATE=true`, `NEXUS_V2_DELEGATE=true`, etc.) previously had no policy enforcement at all (the bug). Post-fix: legitimate callers via `orchestrate` and `delegate_to_model` get their real trust tier and pass through; programmatic callers that bypass `secure-handler` (or test fixtures that don't populate `pipelineState.trustTier`) now block at execute stages. This is the correct new behavior — the rule is finally doing its job.
+  - The hardcoded `trustTier: '1'` removal means LLM-derived access policies may now be more restrictive for the same input under tier `'4'`. This is a real behavioral change but matches the documented intent of the trust-classification system.
+
+  ### Follow-ups
+  - Properly thread `RequestContext` (or equivalent caller info) into `execute-expert`'s background task handler path so its `trustTier` isn't always defaulted to `'4'`.
+  - Audit producers other than orchestrate/delegate (none in current production code paths, but defensive coverage).
+
+### Patch Changes
+
+- [#3008](https://github.com/nexus-substrate/nexus-agents/pull/3008) [`e1cb697`](https://github.com/nexus-substrate/nexus-agents/commit/e1cb697e4ffafe725c07d1c3051035240038ca92) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(cli):** `nexus-agents system-review --create-issue` silently failed on every run.
+
+  `system-review-helpers.ts:createIssue` embedded the markdown review body in the command string as `gh issue create --body '<body>'`. The body has tables (`|`), `coveragePercent.toFixed(1)%` parens, and ET-timestamp parens, so the sandbox `validateArgs` gate (`DENIED_ARG_PATTERNS[0] = /[;&|\`$()]/`) rejected the argument, `safeExecSandboxed`warn-logged and returned null, and the CLI showed neither an issue URL nor a clear error. The GitHub Actions`system-review.yml` workflow bypasses this helper and was unaffected — the broken surface was the local CLI subcommand only.
+
+  Same anti-pattern as [#2863](https://github.com/nexus-substrate/nexus-agents/issues/2863) (vote-command, fixed in [#2912](https://github.com/nexus-substrate/nexus-agents/issues/2912)) and [#2913](https://github.com/nexus-substrate/nexus-agents/issues/2913) (sprint-command, fixed in [#2916](https://github.com/nexus-substrate/nexus-agents/issues/2916)); this site was missed by the audit sweep. Fix: pipe the body via `--body-file -` over stdin. Title is `System Review: ${date}` (YYYY-MM-DD), metacharacter-free by construction. Closes [#2934](https://github.com/nexus-substrate/nexus-agents/issues/2934).
+
+  Regression: 4 new tests in `system-review-helpers.test.ts` mirroring the `createSprintIssue` pattern — assert `--body-file -` is in the command string, `--body '` is not, the markdown body arrives over stdin, and the command string is free of shell metacharacters.
+
+- [#3007](https://github.com/nexus-substrate/nexus-agents/pull/3007) [`38ea720`](https://github.com/nexus-substrate/nexus-agents/commit/38ea7207450d71f30cfa1d62012fdd495a9fa078) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **chore(mcp):** kill the duplicate `REGISTERED_TOOLS` array.
+
+  Before: `cli-server-tools.ts:REGISTERED_TOOLS` and `mcp/tools/index.ts:REGISTERED_TOOL_NAMES` were two hand-maintained 38-entry arrays — both consumed by separate dispatch paths (allowlist log + `extractMcpTools` → `server.json`). Issue [#2935](https://github.com/nexus-substrate/nexus-agents/issues/2935) originally tracked them being out of sync; that drift was independently fixed but the duplication remained, ready to drift again.
+
+  Now: `REGISTERED_TOOL_NAMES` is the single source of truth (exported from `mcp/tools/index.ts`, re-exported through `mcp/index.ts`), and `cli-server-tools.ts` aliases it as `REGISTERED_TOOLS` for backwards compatibility with `tool-annotations.test.ts` and the `registerToolCategories` allowlist-status log. `inject-governance.ts:extractMcpTools` already reads the same canonical const, so server.json sync is unaffected. Closes [#2935](https://github.com/nexus-substrate/nexus-agents/issues/2935).
+
+  **Drive-by — registry-coverage gate hardening ([#2406](https://github.com/nexus-substrate/nexus-agents/issues/2406)).** The v1 line-based detection in `scripts/check-registry-coverage.ts` fires when any added/removed diff line contains the marker token. Adding `export` to the marker const tripped the false-positive class the v1 docstring explicitly called out ("Comment-only touches that mention the marker would false-positive — acceptable for v1; promote to AST-based detection if the noise rate gets high"). Added a structural-equivalence exemption: when the marker line is touched, extract the array contents from the PR pre-image and the working tree and skip the violation if the sorted-deduped lists are identical. Conservative — any extraction failure falls back to v1 line-based detection rather than incorrectly skipping a real wiring miss.
+
+  Test contract change: the cli-server-tools test now compares the two arrays order-insensitively (sort-then-equal). The canonical const declares names in a different order than the legacy duplicate did, and the order has never been semantically meaningful — it's a name list, not a priority list.
+
+- [#3009](https://github.com/nexus-substrate/nexus-agents/pull/3009) [`f1b2a7f`](https://github.com/nexus-substrate/nexus-agents/commit/f1b2a7fc9f7be74c0128d124b676fbcfbaedc5e1) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(catalog):** add `init` to `COMMAND_CATALOG` so it appears in `nexus-agents --help`.
+
+  `init` is a real CLI command — in the `CliCommand` type union, in `VALID_COMMANDS`, and dispatched via `ASYNC_COMMAND_HANDLERS` — but it had no entry in `COMMAND_CATALOG`, so `nexus-agents --help` and `nexus-agents --help --all` both omitted it and the catalog-driven extractors (`repo-index` + `entrypoints.yaml`) under-reported the command surface. Added an `advanced`-audience entry covering the `--portable`/`--install`/`--uninstall`/`--mcp-config`/`--opencode` flag set introduced across [#2305](https://github.com/nexus-substrate/nexus-agents/issues/2305) / [#2308](https://github.com/nexus-substrate/nexus-agents/issues/2308) / [#2311](https://github.com/nexus-substrate/nexus-agents/issues/2311) / [#2504](https://github.com/nexus-substrate/nexus-agents/issues/2504). Closes [#2936](https://github.com/nexus-substrate/nexus-agents/issues/2936).
+
+- [#3012](https://github.com/nexus-substrate/nexus-agents/pull/3012) [`fe9311e`](https://github.com/nexus-substrate/nexus-agents/commit/fe9311ecaf617589b4985a62ee34c25ed505d111) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **cleanup(pipeline):** remove the write-only `SharedMemoryStore` integration with `PipelineContext`.
+
+  Six pipeline stages (`research`, `plan`, `implement` × 2, `analyze`, `scan`) wrote to `ctx.sharedMemory` with comments like _"for downstream stages"_. Tree-wide grep finds zero `.read()` / `.readFromStage()` callers. The `SharedMemoryStore` was instantiated in `graph-pipeline-runner.ts:107` and threaded through `PipelineContext.sharedMemory`, but no consumer ever closed the loop. Same activate-or-delete YAGNI call as [#2921](https://github.com/nexus-substrate/nexus-agents/issues/2921) and [#2938](https://github.com/nexus-substrate/nexus-agents/issues/2938) (`createFeedbackSubscriber` advertised-not-wired).
+
+  **Removed (the dead integration):**
+  - `PipelineContext.sharedMemory` field (stage-types.ts) and the `SHARED_MEMORY` entry from `PIPELINE_STATE_KEYS`.
+  - All 6 `ctx.sharedMemory.write(...)` calls in `stage-wrappers.ts`.
+  - The `extractSymbolsForTask` helper — its only consumer was the now-removed implement-stage write, and the function had no other side effects.
+  - `classifyImplementationTrust` — same story; was solely a sharedMemory writer.
+  - `SharedMemoryStore` instantiation in `pipeline-graph.ts:createNodeHandler` and `graph-pipeline-runner.ts:runGraphPipeline`.
+  - The corresponding test sections in `pipeline-eval-stages.test.ts`, `pipeline-eval.test.ts`, `pipeline-integration.test.ts`, `stage-wrappers.test.ts` that exercised propagation through `PipelineContext.sharedMemory`.
+
+  **Preserved (the standalone utility):**
+  - `SharedMemoryStore` class itself + its `pipeline/index.ts` and `exports/pipeline.ts` exports. It's a small tagged in-memory store that's useful on its own; future cross-stage handoff should route through `PipelineContext.state` with a documented `PIPELINE_STATE_KEYS` entry.
+  - Direct-class coverage in `phase4.test.ts` (17 tests) and `pipeline-eval-edge.test.ts` (44 tests) untouched.
+  - The `Pipeline Eval — SharedMemoryStore Performance` block in `pipeline-eval.test.ts` (now exercises the standalone class only).
+
+  122 tests across the 6 affected test files still pass. Closes [#2937](https://github.com/nexus-substrate/nexus-agents/issues/2937).
+
+- [#3011](https://github.com/nexus-substrate/nexus-agents/pull/3011) [`275bd53`](https://github.com/nexus-substrate/nexus-agents/commit/275bd53a1cef0f185dd9d665b1afd137e99b9c84) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(pipeline):** wire the `createFeedbackSubscriber` bridge so the advertised feedback loop actually runs.
+
+  `feedback-subscriber.ts`'s module docstring claimed it _"closes the feedback loop: execution → events → outcomes → routing"_ — but the only consumers were the unit test and two re-exports. No `PipelineRunner` or graph runner ever subscribed the bridge, so `EventBus` `model.called` / `stage.failed` events never reached `OutcomeStore` via this path.
+
+  Added `startFeedbackSubscriber` / `shutdownFeedbackSubscriber` lifecycle wrappers around the existing `createFeedbackSubscriber` (kept that function intact for test-suite use). Wired into:
+  - `cli-server-tools.ts:initV2PipelineSubsystems` — starts the subscription once on server init, paired with the EventBus bridge wiring.
+  - `cli-server.ts:createShutdownCleanup` — releases the subscription on SIGTERM teardown (same lifecycle slot as `shutdownExpertBridge` from [#2946](https://github.com/nexus-substrate/nexus-agents/issues/2946)).
+
+  Both start and shutdown are idempotent. 4 new regression tests cover: subscription wires correctly, idempotency on repeated start, shutdown releases the subscription, double-shutdown does not throw. Closes [#2938](https://github.com/nexus-substrate/nexus-agents/issues/2938).
+
+- [#3010](https://github.com/nexus-substrate/nexus-agents/pull/3010) [`4ac1ebf`](https://github.com/nexus-substrate/nexus-agents/commit/4ac1ebffdf54e4415800ff4d434f170f992d4529) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **refactor(types):** drop the `as unknown as` cast around `OrchestratorFactoryConfig.techLead`.
+
+  `cli-server-tools.ts:createOrchestratorForOrchestration` cast a real `Orchestrator` instance to `{ execute: (task: unknown) => Promise<Result<unknown, unknown>> }` because `OrchestratorFactoryConfig.techLead` and `orchestratorAgent` had that wide shape. The cast hid two type-safety regressions:
+  - **Input widening to `unknown`** — if any caller ever wired a non-`Task` value into the factory, `BaseAgent.execute` would surface opaque Zod/structural failures from inside the agent instead of a compile-time error.
+  - **Error erasure** — discriminating `AgentError` codes at catch sites was impossible because the surfaced error type was `unknown`.
+
+  Introduced `OrchestratorAgentLike = { execute(task: Task): Promise<Result<unknown, unknown>> }` (exported from `orchestrator-adapters.ts` — the same module that already used this exact shape internally on `OrchestratorAdapter.setOrchestrator`). Used it for both `techLead` and `orchestratorAgent` config fields. `puppeteerOrchestrator` stays `{ execute(task: unknown) => ... }` — Puppeteer takes arbitrary policy-shaped tasks, not the core `Task` type. `Result<TaskResult, AgentError>` → `Result<unknown, unknown>` is sound by covariance; kept the error wide because `orchestrator-adapters.test.ts` covers `err('string-error')` (non-`Error` failures the adapter is intentionally resilient to).
+
+  The cast and the now-unused `Result` import in `cli-server-tools.ts` are gone. Closes [#2944](https://github.com/nexus-substrate/nexus-agents/issues/2944).
+
+- [#3003](https://github.com/nexus-substrate/nexus-agents/pull/3003) [`6e94d42`](https://github.com/nexus-substrate/nexus-agents/commit/6e94d42bd619fc6799c67798d0b6e0ec6a9a3efb) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(adapters):** `withModelNotFoundFallbackResilient` no longer silently drops future methods on `T`. Closes [#2945](https://github.com/nexus-substrate/nexus-agents/issues/2945).
+
+  Pre-fix `Object.assign(wrapped, { 5 bound methods }) as unknown as T` silently dropped any methods on a concrete `T` (e.g. a future `IResilientAdapter` subtype with `getMetrics()`) beyond the 5 explicitly re-attached. The type system claimed they were present; callers hit `TypeError: x.getMetrics is not a function` at runtime.
+
+  Fix: wrap the explicit-binding object in a `Proxy` that forwards unknown property access to `inner`. The five explicit bindings are kept so existing health/lifecycle methods are pre-bound (avoids losing `this` if the caller destructures), matching prior semantics for the existing surface. New methods on `T` are now transparently available without the wrapper needing to know about them.
+
+  19 tests pass against the new implementation; tsc + eslint clean.
+
+- [#2999](https://github.com/nexus-substrate/nexus-agents/pull/2999) [`56ffe89`](https://github.com/nexus-substrate/nexus-agents/commit/56ffe89cb82fada5ffd09674bc4c3ae1439565b0) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(pipeline):** cleanup the cached MCP-config tempdir on shutdown. Closes [#2946](https://github.com/nexus-substrate/nexus-agents/issues/2946).
+
+  `expert-bridge.getMcpConfigPath` cached the path returned by `generateMcpConfig` but threw away the `cleanup` function that came with it, so the parent `mkdtemp` (`<tmpdir>/nexus-mcp-XXXXXX/`) accumulated one entry per daemon lifetime. Per-process not per-call (caching limits the blast radius), but stale tempdirs piled up across `nexus-agents --mode=server` restarts.
+
+  Fix: store the cleanup alongside the cached path; expose `shutdownExpertBridge()`; wire it into `cli-server.ts:createShutdownCleanup` next to `shutdownToolMemory()`. Cleanup is idempotent, never throws (failures log + swallow).
+
+  89 tests pass across the affected test files (cli-server, agent-executor, pipeline-eval-edge, research-trigger); tsc + eslint clean.
+
+- [#3004](https://github.com/nexus-substrate/nexus-agents/pull/3004) [`cc285bc`](https://github.com/nexus-substrate/nexus-agents/commit/cc285bce3108e4d945ffa25c5cc3497346a149cb) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **docs(routing):** update `composite-router` @module + 2 architecture docs to list the actual pipeline stages. Closes [#2947](https://github.com/nexus-substrate/nexus-agents/issues/2947).
+
+  The pre-2026 docstring claimed the pipeline was 5 stages (`Budget → ZeroRouter → Preference → TOPSIS → LinUCB`), pre-dating [#755](https://github.com/nexus-substrate/nexus-agents/issues/755) / [#1350](https://github.com/nexus-substrate/nexus-agents/issues/1350) / [#1686](https://github.com/nexus-substrate/nexus-agents/issues/1686) / [#1790](https://github.com/nexus-substrate/nexus-agents/issues/1790) / [#2414](https://github.com/nexus-substrate/nexus-agents/issues/2414). The real pipeline `composite-router-stages.ts:runPipeline` has ~12 stages, including two that can **short-circuit** routing (`QualityConstraint`, `CategoryOverride`). A maintainer debugging "why was my model rejected?" reading the old 5-stage line would never find them.
+
+  Updated:
+  - `cli-adapters/composite-router.ts` module docstring — full 8-step ordered list with short-circuit notes
+  - `docs/architecture/ROUTING_SYSTEM.md` overview diagram — full pipeline + the same short-circuit callout
+  - `docs/design/components.md` CompositeRouter line — full stage list + link to `ROUTING_SYSTEM.md` for rationale
+
+  Docs-only change; 68 routing tests pass unchanged.
+
+- [#3000](https://github.com/nexus-substrate/nexus-agents/pull/3000) [`5911376`](https://github.com/nexus-substrate/nexus-agents/commit/5911376be41082e94dd034577f9a2d46aade9b6e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix:** four silent `catch {}` sites now log the swallowed error. Closes [#2952](https://github.com/nexus-substrate/nexus-agents/issues/2952).
+
+  Each pre-fix collapsed a real failure mode (subprocess error, DB lock, schema mismatch, import error) into a sentinel value with no log trail — operators saw degraded behavior with no way to diagnose.
+  - `cli-adapters/factory.ts:167` — `isCliAvailable` catch dropped probe exceptions; "unavailable" gave no clue whether the binary was missing, probe timed out, or auth failed. Now the cached `message` field carries the error string. Extracted `cacheHealthCheckFailure` helper to keep the function under the complexity-10 cap.
+  - `mcp/tools/consensus-vote.ts:399` — `runContrarianCheck` catch silently disabled the escalation guardrail on `executeExpert` failure, JSON parse failure, or expert-bridge import error. Now logs at `warn` with the error message; the default "no escalation" envelope is preserved.
+  - `cli-adapters/composite-router-stages.ts:453, 716` — `getPerformanceDataForCategory` and `getWeatherBonusForTask` catches silently disabled the performance-floor penalty and weather bonus on OutcomeStore read failures. Empty-Map fallback is the right behavior (no data → no signal), but now the debug log gives operators a trail when something stops working.
+
+  135 tests pass across the 3 affected test files; tsc + eslint clean.
+
+- [#3006](https://github.com/nexus-substrate/nexus-agents/pull/3006) [`94dad31`](https://github.com/nexus-substrate/nexus-agents/commit/94dad31f99a3a73f11ee224bb406aa899b466a6f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **test:** handler-branch coverage for `issue_triage` (closes [#2953](https://github.com/nexus-substrate/nexus-agents/issues/2953) site 1).
+
+  The `issue_triage` handler closure has three branches whose envelope shape flows into MCP transport, the audit log, and the adaptive-routing OutcomeStore — but `issue-triage-tool.test.ts` covered only the input schema. A refactor that swapped `recordTriageOutcome(false)` and `recordTriageOutcome(true)` would have shipped green and inverted the adaptive routing signal for the `planning` category forever.
+
+  Added `mcp/tools/issue-triage-tool-handler.test.ts` (separate file because it needs a module-level mock of `dogfooding/issue-triage.js` that the sibling test relies on being real) with 3 tests covering:
+  1. Validation failure returns a structured `validation` error envelope and never invokes triage.
+  2. Triage failure returns a structured `internal` error envelope carrying the underlying cause message (asserts the error-path side of `recordTriageOutcome`).
+  3. Success returns a JSON-stringified `TriageResponse` (asserts the success-path side of `recordTriageOutcome`).
+
+  Also exported a `_testing.createIssueTriageHandler` surface from the tool module so the handler is testable without bypassing types — same pattern the sibling tools use (`search-codebase-tool`, etc.).
+
+  9 tests pass across the 2 issue-triage test files (6 schema + 3 handler-branch); tsc + eslint clean.
+
+  The other two [#2953](https://github.com/nexus-substrate/nexus-agents/issues/2953) gaps (login-command exit-code truth-table; the broader "wrapper-only-tested vs branch-tested" sweep) are deferred to a follow-up.
+
+- [#3005](https://github.com/nexus-substrate/nexus-agents/pull/3005) [`0d3ae4f`](https://github.com/nexus-substrate/nexus-agents/commit/0d3ae4f6af229cec76651f58b5effaf6ee1c25a4) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **perf:** three hot-path inefficiencies from [#2955](https://github.com/nexus-substrate/nexus-agents/issues/2955).
+  - **Site 1 — `OutcomeStore.query()` full-array filter per executeTask.** The composite-router calls this inside `computeQualityReward()` on every single executeTask with `{ cli, limit: 20 }`. Pre-fix did `entries.filter(...).slice(-limit)` — a full O(N) scan of all ~10 000 entries even when only 20 matches were needed. At default cap × 30-stage workflow that was ~300 000 unnecessary predicate evaluations per workflow. Added `tailScan(entries, filter, limit)` that walks from the tail backward and stops once `limit` matches accumulate, then reverses for chronological order. Preserves "last N matching" semantics; the limit-undefined path still uses `applyFilters` to keep that surface unchanged.
+  - **Site 2 — `OutcomeStore.queryByModelWithFamilyFallback()` walked entries twice.** Pre-fix called `applyFilters(this.entries, base)` for the literal-id matches, then again for the same-vendor/same-family matches. 2× O(N) for a single-pass partition. Extracted `partitionByLiteralAndFamily` helper that collects both buckets in one walk. Family bucket includes literal-id matches — the family-broadened result remains a superset of literal, matching pre-fix semantics.
+  - **Site 3 (partial) — `tool-wrapper.appendTimeoutMismatchEvent` dir cache.** Pre-fix did `existsSync` on every call to check the telemetry dir. Added an `ensuredDirs` Set so the existsSync runs at most once per dir per process. The full sync→async write conversion is deferred to a follow-up: `tool-wrapper-budget-check.test.ts` reads the JSONL synchronously after `await callback(...)`, and the test contract assumes the write is visible — switching to `fs.promises.appendFile` (fire-and-forget) broke those tests. The cheap part of the perf win lands now; the larger one needs a test-helper that awaits pending writes.
+
+  72 tests pass across `outcome-store.test.ts` (63) and `tool-wrapper-budget-check.test.ts` (9); tsc + eslint clean.
+
+  Site 4 (`RoutingMemory.getPreferences` iterates CLI_NAMES with per-CLI MobiMem lookup per recommendation) deferred — needs a reverse-index keyed by `preferenceKey → CliName[]` populated on `storePreference`, larger scope than this PR is taking.
+
+- [#3001](https://github.com/nexus-substrate/nexus-agents/pull/3001) [`2342066`](https://github.com/nexus-substrate/nexus-agents/commit/23420669835abaa313a8042de6dc48007beeed01) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(validation):** Zod-validate two external-payload boundaries. Partial fix for [#2962](https://github.com/nexus-substrate/nexus-agents/issues/2962) (3 of 4 sites — the 4th was already fixed in [#2990](https://github.com/nexus-substrate/nexus-agents/issues/2990)).
+  - **[#2962](https://github.com/nexus-substrate/nexus-agents/issues/2962) site 1 — `mcp/tools/repo-analyze.ts:426`.** `JSON.parse(metaJson.trim()) as GhRepoMetadata` on `gh api repos/{repoId}` stdout. A GitHub-side schema drift produced a typed-but-mismatched object that either crashed deep in `analyzeRepo` or silently surfaced a wrong field (same shape as [#2943](https://github.com/nexus-substrate/nexus-agents/issues/2943)). Added `GhRepoMetadataSchema` (Zod) and `safeParse`; failures throw with a payload preview instead of corrupting the downstream analysis.
+  - **[#2962](https://github.com/nexus-substrate/nexus-agents/issues/2962) site 3 — `cli/issue-command.ts:37`.** `JSON.parse(output) as { number; title; … }` on `gh issue view`. Any GitHub-schema drift threw `TypeError` inside the outer `catch` and surfaced as the misleading "issue not found." Split error handling: gh-exit failures still return `null`, but malformed JSON or schema mismatches now write a diagnostic line to stderr before returning `null` — operators can see the actual cause.
+  - **[#2962](https://github.com/nexus-substrate/nexus-agents/issues/2962) site 2 — `pipeline/pipeline-checkpoint.ts:157`** was fixed in [#2990](https://github.com/nexus-substrate/nexus-agents/issues/2990) (closes [#2981](https://github.com/nexus-substrate/nexus-agents/issues/2981), same schema-cast pattern). No further action needed.
+  - **[#2962](https://github.com/nexus-substrate/nexus-agents/issues/2962) site 4 — `scm/github-provider.ts:107` + 4 parallel sites** (P2, 5 casts feeding mappers that dereference `raw.labels.map`). **Deferred to a follow-up issue** because it spans 5 call sites with a shared schema set — bigger scope than this PR is taking.
+
+  98 tests pass across the 2 changed files (repo-analyze, issue-command); tsc + eslint clean.
+
+- [#3002](https://github.com/nexus-substrate/nexus-agents/pull/3002) [`2555a75`](https://github.com/nexus-substrate/nexus-agents/commit/2555a759a1b28cbe0a33654f7f92ba8643517a0d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(logging):** three of four hygiene issues from [#2963](https://github.com/nexus-substrate/nexus-agents/issues/2963). Site 3 (subprocess-adapter taskId correlation) deferred — requires `CliTask` shape change.
+  - **Site 1 (MEDIUM) — `cli/hooks/handlers/session-end.ts:134`.** `logger.debug('Session metrics', metrics)` was leaking `metrics.tasks[].task`, which is the raw user-task prompt string. A user pasting `"deploy with API_KEY=sk-…"` would land their key in debug logs. Added `summarizeMetricsForDebug()` that emits only `id`, `status`, `durationMs`, `tokensUsed` per task — the load-bearing observables. Full metrics still written to the operator-requested `--export` file (no behavior change there).
+  - **Site 2 (MEDIUM) — `cli/hooks/handlers/pre-tool.ts:122`.** `logger.info('Sensitive file access', { filePath, warning })` was emitting at always-on `info` for every `Edit`/`Write` touching `.env`/`id_rsa`/AWS-cred paths — aggregated in log services this built a map of where secrets live. Dropped to `debug`; added `toolUseId` correlation field already present in the sibling `validateBashTool` call.
+  - **Site 4 (LOW) — `pipeline/dev-pipeline.ts:567,572,575`.** The plan-iteration loop's "Plan approved" / "Plan rejected, iterating" / "Max vote iterations reached" lines lacked the `sessionId` that's in scope at the caller. Threaded `sessionId` through `runPlanOrResume` → `planVoteLoop` so plan-loop post-mortems can correlate to checkpointed sessions on disk.
+
+  53 tests pass across the 3 affected test files; tsc + eslint clean.
+
 ## 2.82.0
 
 ### Minor Changes
