@@ -11,7 +11,7 @@
 import { resolve } from 'node:path';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { createLogger, formatZodError } from '../../core/index.js';
+import { createLogger, formatZodError, getTimeProvider } from '../../core/index.js';
 import { CodebaseIndex } from '../../indexer/codebase-search.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
@@ -46,21 +46,77 @@ export type SearchCodebaseInput = z.infer<typeof SearchCodebaseInputSchema>;
 export type SearchCodebaseDeps = BaseMcpToolDeps;
 
 // ============================================================================
-// Index Cache (reuse across calls for same directory)
+// Index Cache (closes #2970 — race + unbounded retention)
 // ============================================================================
+//
+// Previously this was a single `cachedIndex` / `cachedDir` pair. Two bugs:
+//
+// 1. Race: two concurrent MCP `search_codebase` calls both missed the cache
+//    and each `await index.index(4)` — a seconds-long tree-walk + AST
+//    extraction over every TS/JS file. The loser's work was thrown away.
+//
+// 2. Unbounded retention with stale results: the index (~50,000 symbols ×
+//    ~200 bytes) was kept for the life of the MCP server with no TTL, no
+//    LRU, no file-watcher invalidation. Memory grew + search results went
+//    stale after the user's first `git pull` / file edit.
+//
+// Replaced with a small LRU+TTL bounded by directory count, plus an inflight
+// map that coalesces concurrent indexing of the same dir.
 
-let cachedIndex: CodebaseIndex | undefined;
-let cachedDir = '';
+/** Max number of indexed directories retained simultaneously. */
+const MAX_CACHED_DIRS = 3;
+/** Cached indexes expire after this many ms; next call re-indexes from disk. */
+const INDEX_TTL_MS = 15 * 60 * 1000;
+
+interface CachedIndexEntry {
+  readonly index: CodebaseIndex;
+  readonly expiresAt: number;
+}
+
+const indexCache = new Map<string, CachedIndexEntry>();
+const inflightIndex = new Map<string, Promise<CodebaseIndex>>();
+
+function getFromCache(dir: string): CodebaseIndex | undefined {
+  const entry = indexCache.get(dir);
+  if (entry === undefined) return undefined;
+  if (entry.expiresAt <= getTimeProvider().now()) {
+    indexCache.delete(dir);
+    return undefined;
+  }
+  // Refresh LRU position: delete then re-insert moves it to MRU.
+  indexCache.delete(dir);
+  indexCache.set(dir, entry);
+  return entry.index;
+}
+
+function putInCache(dir: string, index: CodebaseIndex): void {
+  indexCache.set(dir, { index, expiresAt: getTimeProvider().now() + INDEX_TTL_MS });
+  while (indexCache.size > MAX_CACHED_DIRS) {
+    // Map iteration is insertion order, so the first key is the LRU candidate.
+    const lruKey = indexCache.keys().next().value;
+    if (lruKey === undefined) break;
+    indexCache.delete(lruKey);
+  }
+}
 
 async function getIndex(dir: string): Promise<CodebaseIndex> {
-  if (cachedIndex !== undefined && cachedDir === dir) {
-    return cachedIndex;
-  }
-  const index = new CodebaseIndex(dir);
-  await index.index(4);
-  cachedIndex = index;
-  cachedDir = dir;
-  return index;
+  const cached = getFromCache(dir);
+  if (cached !== undefined) return cached;
+
+  // Coalesce: if another caller is already indexing this dir, await their result.
+  const inflight = inflightIndex.get(dir);
+  if (inflight !== undefined) return inflight;
+
+  const promise = (async (): Promise<CodebaseIndex> => {
+    const index = new CodebaseIndex(dir);
+    await index.index(4);
+    putInCache(dir, index);
+    return index;
+  })().finally(() => {
+    inflightIndex.delete(dir);
+  });
+  inflightIndex.set(dir, promise);
+  return promise;
 }
 
 // ============================================================================
@@ -161,11 +217,15 @@ export const _testing = {
   searchCodebaseHandler,
   /** Exposes the shared dir-validation + resolution logic. */
   resolveSearchDir,
-  /** Clears the module-level index cache so tests can start fresh. */
+  /** Clears the LRU index cache and any inflight promises so tests can start fresh. */
   clearIndexCache: (): void => {
-    cachedIndex = undefined;
-    cachedDir = '';
+    indexCache.clear();
+    inflightIndex.clear();
   },
+  /** Inspect the LRU for tests. */
+  getCachedDirs: (): readonly string[] => [...indexCache.keys()],
+  /** Inspect inflight indexing for tests. */
+  getInflightDirs: (): readonly string[] => [...inflightIndex.keys()],
 };
 
 // ============================================================================
