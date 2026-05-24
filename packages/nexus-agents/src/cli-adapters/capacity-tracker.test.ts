@@ -159,12 +159,45 @@ describe('CapacityTracker', () => {
       let capacity = tracker.getCapacity();
       expect(capacity.remainingTokens).toBe(5000);
 
-      // Advance to t=61s (first entry should be pruned)
+      // Advance to t=61s: the t=0 entry is outside the 60s sliding
+      // window and should be pruned; the t=30s entry (within the
+      // [1s, 61s] window) must remain. Pre-#3026 finding 4 fix, the
+      // tumbling-reset branch incorrectly dropped both — see the
+      // sibling test for the request-count side of the same bug.
       vi.advanceTimersByTime(31000);
 
       capacity = tracker.getCapacity();
-      // After full window reset, should be back to full capacity
-      expect(capacity.remainingTokens).toBe(10000);
+      expect(capacity.remainingTokens).toBe(8000); // 10000 - 2000 from t=30s entry
+    });
+
+    // #3026 finding 4: pre-fix, `requestCount` only reset via the
+    // tumbling-window branch ("windowStart < cutoff"), which dropped
+    // requests that were still inside the *sliding* window. With one
+    // request at t=0 and another at t=61s, the t=0 request should have
+    // pruned out individually (it's outside [1, 61s]), but the
+    // tumbling-reset branch also dropped the t=30s request that should
+    // still count. After the fix, request counting follows the same
+    // sliding-window semantics as token counting.
+    it('counts requests via sliding window, not tumbling reset (#3026 finding 4)', () => {
+      // Burst 5 requests at t=0
+      for (let i = 0; i < 5; i++) {
+        tracker.recordUsage({ inputTokens: 100, outputTokens: 100, totalTokens: 200 });
+      }
+      expect(tracker.getCapacity().remainingRequests).toBe(95);
+
+      // Advance to t=30s, record 3 more requests
+      vi.advanceTimersByTime(30000);
+      for (let i = 0; i < 3; i++) {
+        tracker.recordUsage({ inputTokens: 100, outputTokens: 100, totalTokens: 200 });
+      }
+      // All 8 are still inside the window
+      expect(tracker.getCapacity().remainingRequests).toBe(92);
+
+      // Advance to t=61s — the 5 requests at t=0 are now outside the
+      // 60s window; the 3 requests at t=30s should still count.
+      // Pre-fix, the tumbling-reset branch dropped ALL 8.
+      vi.advanceTimersByTime(31000);
+      expect(tracker.getCapacity().remainingRequests).toBe(97); // 100 - 3
     });
   });
 

@@ -219,6 +219,14 @@ export class CliCircuitBreaker implements ICircuitBreaker {
       this.successCount = 0;
       this.halfOpenRequests = 0;
     } else if (newState === 'half-open') {
+      // #3026 finding 5: pre-fix `failureCount` carried over across
+      // recovery cycles. transitionTo('open',…) only zeroes counts on
+      // 'closed', so a half-open→open→half-open flaky pattern grew
+      // `failureCount` monotonically across cycles. The count served
+      // its threshold purpose when we opened the circuit; resetting on
+      // 'half-open' restores the documented per-cycle semantic that
+      // operator dashboards / alerts read from `getSnapshot()`.
+      this.failureCount = 0;
       this.successCount = 0;
       this.halfOpenRequests = 0;
     }
