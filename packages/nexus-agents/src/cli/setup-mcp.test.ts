@@ -20,6 +20,7 @@ import {
   generateHookConfig,
   areHooksConfigured,
   getExistingHooks,
+  readExistingHooks,
   mergeHookConfigs,
   configureHooks,
   generateHookSnippet,
@@ -461,6 +462,93 @@ describe('getExistingHooks', () => {
     mockedExecSync.mockReturnValue('not-json{{{');
 
     expect(getExistingHooks()).toBeUndefined();
+  });
+});
+
+// ============================================================================
+// readExistingHooks (#2975 — distinguishes parse failure from absence)
+// ============================================================================
+
+describe('readExistingHooks (#2975)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('returns kind=present with parsed hooks for valid JSON', () => {
+    const hookData = { PreToolUse: [{ hooks: [{ type: 'command', command: 'lint' }] }] };
+    mockedExecSync.mockReturnValue(JSON.stringify(hookData));
+
+    const result = readExistingHooks();
+
+    expect(result).toEqual({ kind: 'present', hooks: hookData });
+  });
+
+  it('returns kind=absent for empty/null/undefined CLI output', () => {
+    for (const output of ['', '   \n  ', 'null', 'undefined']) {
+      mockedExecSync.mockReturnValue(output);
+      expect(readExistingHooks()).toEqual({ kind: 'absent' });
+    }
+  });
+
+  it('returns kind=unreadable when the CLI throws', () => {
+    mockedExecSync.mockImplementation(() => {
+      throw new Error('claude CLI not on PATH');
+    });
+
+    const result = readExistingHooks();
+    expect(result.kind).toBe('unreadable');
+    if (result.kind === 'unreadable') {
+      expect(result.reason).toContain('claude CLI not on PATH');
+    }
+  });
+
+  it('returns kind=parse_failed (NOT absent) for malformed JSON', () => {
+    mockedExecSync.mockReturnValue('not-json{{{');
+
+    const result = readExistingHooks();
+    expect(result.kind).toBe('parse_failed');
+    if (result.kind === 'parse_failed') {
+      expect(result.raw).toBe('not-json{{{');
+      expect(result.reason).toMatch(/JSON|parse/i);
+    }
+  });
+});
+
+// ============================================================================
+// configureHooks parse-failure guard (#2975)
+// ============================================================================
+
+describe('configureHooks parse-failure guard (#2975)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedHomedir.mockReturnValue('/mock/home');
+  });
+
+  it('refuses to configure when existing hooks fail to parse — does not call config set', () => {
+    // First execSync = `claude config get hooks` → returns malformed JSON.
+    // areHooksConfigured() also calls execSync; return malformed for any call.
+    mockedExecSync.mockReturnValue('not-json{{{');
+
+    const result = configureHooks(/* force */ true);
+
+    expect(result.success).toBe(false);
+    expect(result.message).toMatch(/Refusing to configure hooks/);
+    expect(result.message).toMatch(/parse error/i);
+    // Critical: never reached the destructive write.
+    expect(mockedExecFileSync).not.toHaveBeenCalled();
+  });
+
+  it('proceeds normally when existing hooks parse cleanly', () => {
+    mockedExecSync.mockReturnValue(JSON.stringify({}));
+
+    const result = configureHooks(true);
+
+    expect(result.success).toBe(true);
+    expect(mockedExecFileSync).toHaveBeenCalledWith(
+      'claude',
+      expect.arrayContaining(['config', 'set', 'hooks']),
+      expect.anything()
+    );
   });
 });
 
