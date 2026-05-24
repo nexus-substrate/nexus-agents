@@ -424,74 +424,29 @@ routing:
 
 ---
 
-## DAAO Difficulty Estimator
+## Difficulty Estimation
 
-VAE-inspired difficulty estimation for tier routing (arXiv:2509.11079).
+Tier-routing difficulty estimation is done by the `ZeroRouter` (see "Source Files" below). The composite-router consumes `decision.difficulty` / `decision.tier` from ZeroRouter for fast/balanced/powerful tier selection.
 
-```typescript
-interface IDAAOEstimator {
-  encode(task: CliTask): EncodedFeatures;
-  estimateDifficulty(task: CliTask): DAAODifficultyEstimate;
-  route(task: CliTask, availableClis?: CliName[]): DAAORoutingDecision;
-  calibrate(outcome: DAAOOutcome): void;
-}
-```
-
-### 8-Dimensional Feature Encoding
-
-| Feature                | Description                      | Range |
-| ---------------------- | -------------------------------- | ----- |
-| `lexicalComplexity`    | Vocabulary richness, word length | 0-1   |
-| `syntacticComplexity`  | Sentence structure, nesting      | 0-1   |
-| `semanticDensity`      | Domain terms, technical concepts | 0-1   |
-| `technicalSpecificity` | API/framework references         | 0-1   |
-| `taskScope`            | Multi-step vs single-step        | 0-1   |
-| `constraintComplexity` | Requirements, edge cases         | 0-1   |
-| `clarity`              | Ambiguity level (inverted)       | 0-1   |
-| `outputComplexity`     | Expected output size/format      | 0-1   |
-
-### Difficulty → Tier Mapping
-
-| Level    | Score Range | Model Tier |
-| -------- | ----------- | ---------- |
-| `easy`   | 0.0 - 0.35  | `fast`     |
-| `medium` | 0.35 - 0.65 | `balanced` |
-| `hard`   | 0.65 - 1.0  | `powerful` |
-
-### Calibration
-
-The estimator learns from outcomes to adjust difficulty bias:
-
-```typescript
-estimator.calibrate({
-  taskId: 'task-123',
-  features: encodedFeatures,
-  estimatedScore: 0.45,
-  actualTier: 'balanced',
-  success: true,
-  qualityScore: 0.82,
-});
-```
+> **History note (#2940):** an alternate `DAAOEstimator` (VAE-inspired, arXiv:2509.11079) was prototyped under Issue #334 and exported from `cli-adapters/index.ts`, but `#334` ended up being implemented via ZeroRouter, not DAAO. The DAAO surface was retired in #2940 — see that issue for the full removal scope. If a true alternate difficulty estimator with different feature weights returns, reintroduce alongside its wiring stage in the same PR.
 
 ---
 
 ## Source Files
 
-| File                                          | Purpose                |
-| --------------------------------------------- | ---------------------- |
-| `src/cli-adapters/composite-router.ts`        | Main routing pipeline  |
-| `src/cli-adapters/budget-router.ts`           | Budget enforcement     |
-| `src/cli-adapters/topsis-router.ts`           | Multi-criteria ranking |
-| `src/cli-adapters/linucb-bandit.ts`           | Contextual bandit      |
-| `src/cli-adapters/daao-estimator.ts`          | Difficulty estimation  |
-| `src/cli-adapters/daao-types.ts`              | DAAO type definitions  |
-| `src/cli-adapters/daao-feature-extraction.ts` | Feature extraction     |
-| `src/cli-adapters/circuit-breaker.ts`         | Fault tolerance        |
-| `src/cli-adapters/cli-detection-cache.ts`     | Health check caching   |
-| `src/context/token-counter.ts`                | Token counting         |
-| `src/adapters/capacity-monitor.ts`            | Rate limit tracking    |
-| `src/learning/feedback-integration.ts`        | Outcome learning       |
-| `src/cli/routing-audit.ts`                    | Debug CLI command      |
+| File                                      | Purpose                |
+| ----------------------------------------- | ---------------------- |
+| `src/cli-adapters/composite-router.ts`    | Main routing pipeline  |
+| `src/cli-adapters/budget-router.ts`       | Budget enforcement     |
+| `src/cli-adapters/topsis-router.ts`       | Multi-criteria ranking |
+| `src/cli-adapters/linucb-bandit.ts`       | Contextual bandit      |
+| `src/cli-adapters/zero-router.ts`         | Difficulty estimation  |
+| `src/cli-adapters/circuit-breaker.ts`     | Fault tolerance        |
+| `src/cli-adapters/cli-detection-cache.ts` | Health check caching   |
+| `src/context/token-counter.ts`            | Token counting         |
+| `src/adapters/capacity-monitor.ts`        | Rate limit tracking    |
+| `src/learning/feedback-integration.ts`    | Outcome learning       |
+| `src/cli/routing-audit.ts`                | Debug CLI command      |
 
 ---
 
@@ -499,7 +454,6 @@ estimator.calibrate({
 
 | Technique             | Paper            | Paper-Reported Metrics (not measured on this system) |
 | --------------------- | ---------------- | ---------------------------------------------------- |
-| DAAO Difficulty       | arXiv:2509.11079 | VAE-based estimation                                 |
 | PILOT Budget Routing  | arXiv:2508.21141 | Budget-constrained routing                           |
 | TOPSIS Multi-Criteria | arXiv:2509.07571 | 31.46% cost reduction (paper benchmark)              |
 | IPR Quality Routing   | arXiv:2509.06274 | 43.9% cost reduction (paper benchmark)               |

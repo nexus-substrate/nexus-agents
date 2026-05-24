@@ -1522,27 +1522,21 @@ techniques:
       - routing
     metrics:
       routing_accuracy: Improved task-model alignment
-    status: implemented
+    status: retired
     priority: P2
     complexity: medium
-    integration_files:
-      - packages/nexus-agents/src/cli-adapters/daao-estimator.ts
-      - packages/nexus-agents/src/cli-adapters/daao-types.ts
-      - packages/nexus-agents/src/cli-adapters/daao-feature-extraction.ts
-      - packages/nexus-agents/src/cli-adapters/daao-estimator.test.ts
+    integration_files: []
     implementation_issue: 334
     related_prs: []
-    notes: 'Implemented as DAAOEstimator class with:
-
-      - 8-dimension feature extraction (lexical, syntactic, semantic, etc.)
-
-      - Difficulty estimation with configurable weights
-
-      - Calibration support for continuous improvement
-
-      - Integration with routing infrastructure
-
-      '
+    notes: "Retired in #2940 (PR landing 2026-05-24). The DAAO source files
+      (daao-estimator.ts, daao-types.ts, daao-feature-extraction.ts + tests)
+      were deleted along with routing-integration.test.ts. Reason: ZeroRouter
+      ended up filling the difficulty-estimation role for #334 (composite
+      router consumes ZeroRouter's decision.difficulty / decision.tier);
+      the DAAO surface had only the unit tests and routing-integration.test.ts
+      as consumers — never reached production routing. If a true alternate
+      VAE-based estimator with different feature weights returns as a real
+      need, reintroduce alongside its wiring stage in the same PR."
     dependencies:
       - pilot-budget-routing
     decision_history:
@@ -1552,6 +1546,12 @@ techniques:
       - date: '2026-01-17'
         decision: Implemented
         rationale: DAAOEstimator with 8-dimension feature extraction
+      - date: '2026-05-24'
+        decision: Retired
+        rationale:
+          ZeroRouter superseded DAAO for the same role; DAAO had no
+          production consumer. Same activation-or-delete YAGNI call as #2937,
+          #2938, #2939, #3018. Closes #2940.
   hindsight-belief-memory:
     name: Hindsight Belief Memory
     description: 'Belief Memory layer for reasoning agents. Maintains and updates

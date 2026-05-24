@@ -286,37 +286,17 @@ export type {
 } from './zero-router-types.js';
 export { DIFFICULTY_DIMENSIONS, DEFAULT_DIFFICULTY_WEIGHTS } from './zero-router-types.js';
 
-// DAAO - Difficulty-Aware Agent Orchestration (Issue #334, arXiv:2509.11079)
-export {
-  DAAOEstimator,
-  createDAAOEstimator,
-  estimateDAAODifficulty,
-  routeByDAAODifficulty,
-  encodeTaskFeatures,
-} from './daao-estimator.js';
-export type { IDAAOEstimator } from './daao-estimator.js';
-export type {
-  DAAOConfig,
-  DAAODifficultyEstimate,
-  DAAORoutingDecision,
-  DAAOOutcome,
-  DAAOCalibrationStats,
-  EncodedFeatures,
-  FeatureDimension,
-  FeatureWeights,
-  DAAOThresholds,
-} from './daao-types.js';
-export {
-  DAAOConfigSchema,
-  DAAOError,
-  FEATURE_DIMENSIONS,
-  DEFAULT_FEATURE_WEIGHTS,
-  DEFAULT_DAAO_THRESHOLDS,
-  DEFAULT_DAAO_CONFIG,
-  DEFAULT_DAAO_TIER_TO_CLIS,
-  EncodedFeaturesSchema,
-  FeatureWeightsSchema,
-} from './daao-types.js';
+// DAAO — Difficulty-Aware Agent Orchestration (arXiv:2509.11079, originally
+// Issue #334) was retired in #2940. The composite-router pipeline uses
+// ZeroRouter's `decision.difficulty` / `decision.tier` for the same role
+// (#334 ended up being implemented via ZeroRouter, not DAAO). The DAAO
+// surface (DAAOEstimator, createDAAOEstimator, estimateDAAODifficulty,
+// routeByDAAODifficulty, encodeTaskFeatures, all types + schemas in
+// daao-types.ts + daao-feature-extraction.ts) had only the unit tests
+// and `routing-integration.test.ts` as consumers. If a true alternate
+// difficulty estimator with different feature weights comes back as a
+// real requirement, reintroduce alongside the wiring stage in the same
+// PR (activation-or-delete YAGNI — pattern from #2937–#3018).
 
 // CLI Circuit Breaker Integration (Issue #359)
 export {
