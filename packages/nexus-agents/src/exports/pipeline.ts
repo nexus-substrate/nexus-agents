@@ -181,21 +181,12 @@ export {
   type AdaptiveOrchestratorResult,
   type TaskClassification,
   type PipelineType,
-  // Incomplete Result (#1737 Phase 4)
-  isIncompleteResult,
-  createIncompleteResult,
-  canPipelineProceed,
-  filterBySeverity,
-  type IncompleteResult,
-  type IncompleteSeverity,
   // Shared Memory — standalone tagged in-memory store. Pipeline integration
   // removed in #2937 (write-only); class kept as a standalone utility.
   SharedMemoryStore,
   type SharedMemoryEntry,
   type SharedMemoryTag,
-  // Dynamic Expert (#1737 Phase 4)
-  DynamicExpertManager,
-  MAX_DYNAMIC_EXPERTS,
-  type DynamicExpertSpec,
-  type DynamicExpert,
+  // #1737 Phase-4 scaffolds removed in #2939 — `IncompleteResult` and
+  // `DynamicExpertManager` were exported but never adopted by any
+  // production path (only test-file instantiations existed).
 } from '../pipeline/index.js';
