@@ -294,9 +294,26 @@ async function deriveExpertAccessPolicy(
     }
     return policy;
   } catch (error) {
-    logger?.warn('access-policy: derivation failed, falling back to off (expert)', {
+    // Fail closed under active enforcement, fail safe under audit/off.
+    // See `orchestrate.ts:deriveOrchestratePolicy` for the full rationale
+    // (#2993). Mirror the behavior here so the two MCP entry points to
+    // policy derivation don't diverge.
+    logger?.warn('access-policy: derivation failed (expert)', {
+      mode,
       error: getErrorMessage(error),
+      failClosed: mode === 'enforce' || mode === 'confirm_risky',
     });
+    if (mode === 'enforce' || mode === 'confirm_risky') {
+      return {
+        allowedTools: [],
+        allowedPathPatterns: [],
+        allowedOperations: [],
+        objectiveHash: 'derivation-failed',
+        derivedAt: getTimeProvider().nowIso(),
+        source: 'bypass',
+        mode,
+      };
+    }
     return {
       allowedTools: '*',
       allowedPathPatterns: [],
@@ -304,7 +321,7 @@ async function deriveExpertAccessPolicy(
       objectiveHash: 'derivation-failed',
       derivedAt: getTimeProvider().nowIso(),
       source: 'bypass',
-      mode: 'off',
+      mode,
     };
   }
 }
