@@ -229,9 +229,11 @@ async function dispatchReviews(
 
 function createTimeout(ms: number, cli: CliName): Promise<never> {
   return new Promise((_, reject) => {
+    // .unref() so a winning fast review doesn't keep the event loop alive waiting
+    // on this ghost timer. Closes #2976.
     setTimeout(() => {
       reject(new Error(`Review timeout after ${String(ms)}ms for ${cli}`));
-    }, ms);
+    }, ms).unref();
   });
 }
 
