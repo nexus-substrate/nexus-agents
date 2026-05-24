@@ -9,7 +9,25 @@
  * (Source: Issue #1074)
  */
 
+import { z } from 'zod';
 import type { RepoAnalyzeInput, RepoAnalysis } from './repo-analyze-types.js';
+
+/**
+ * Zod schema for the `gh api repos/{repoId}` payload (#2962). Pre-fix the
+ * stdout was cast directly via `JSON.parse(...) as GhRepoMetadata`, so any
+ * GitHub-side schema drift went unflagged until `analyzeRepo` dereferenced
+ * a missing field. Now `safeParse` + a structured error surface the drift
+ * with a stdout preview.
+ */
+const GhRepoMetadataSchema = z.object({
+  name: z.string(),
+  full_name: z.string(),
+  description: z.string().nullable(),
+  language: z.string().nullable(),
+  default_branch: z.string(),
+  stargazers_count: z.number(),
+  license: z.object({ spdx_id: z.string() }).nullable(),
+});
 
 // ============================================================================
 // Helpers
@@ -421,12 +439,25 @@ async function fetchRepoData(
     ],
     { timeout: 30_000 }
   );
-  let metadata: GhRepoMetadata;
+  let parsed: unknown;
   try {
-    metadata = JSON.parse(metaJson.trim()) as GhRepoMetadata;
+    parsed = JSON.parse(metaJson.trim());
   } catch {
     throw new Error(`Failed to parse repo metadata for ${repoId}: ${metaJson.slice(0, 200)}`);
   }
+  // Closes #2962 (P1): Zod-validate the parsed JSON instead of casting
+  // blindly. Pre-fix, a GitHub-side schema drift produced a typed-but-
+  // mismatched object that crashed deep in `analyzeRepo` or silently
+  // surfaced a wrong field (e.g., enhanced.license.spdx_id null →
+  // "no license" — same shape as #2943).
+  const validated = GhRepoMetadataSchema.safeParse(parsed);
+  if (!validated.success) {
+    throw new Error(
+      `Repo metadata schema mismatch for ${repoId}: ${validated.error.message} ` +
+        `(payload preview: ${metaJson.slice(0, 200)})`
+    );
+  }
+  const metadata: GhRepoMetadata = validated.data;
   const { stdout: contentsJson } = await exec(
     'gh',
     ['api', `repos/${repoId}/contents`, '--jq', '[.[].name]'],

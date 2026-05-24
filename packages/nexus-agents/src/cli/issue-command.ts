@@ -6,6 +6,7 @@
  * (Source: Issue #229, Epic #225)
  */
 
+import { z } from 'zod';
 import { safeExecSandboxed } from './sandbox-exec.js';
 import type {
   IssueCommandOptions,
@@ -16,6 +17,20 @@ import type {
 import { validateIssueBody, generateTemplateBody, getTemplate } from './issue-templates.js';
 import { colors, symbols, writeLine } from './ansi-output.js';
 
+/**
+ * Schema for `gh issue view --json …` output (#2962). Pre-fix the parsed
+ * JSON was cast directly and any GitHub-schema drift caused a TypeError
+ * inside the try/catch that was rewrapped as "issue not found" — masking
+ * the actual cause.
+ */
+const GhIssueJsonSchema = z.object({
+  number: z.number(),
+  title: z.string(),
+  body: z.string().nullable(),
+  state: z.string(),
+  labels: z.array(z.object({ name: z.string() })),
+});
+
 // ============================================================================
 // GitHub CLI Integration
 // ============================================================================
@@ -24,34 +39,46 @@ import { colors, symbols, writeLine } from './ansi-output.js';
  * Fetch issue from GitHub using gh CLI.
  */
 export function fetchGitHubIssue(issueNumber: number): GitHubIssue | null {
+  let output: string | null;
   try {
-    const output = safeExecSandboxed(
+    output = safeExecSandboxed(
       `gh issue view ${String(issueNumber)} --json number,title,body,state,labels`,
       { context: 'gh' }
     );
-
-    if (output === null) {
-      return null;
-    }
-
-    const data = JSON.parse(output) as {
-      number: number;
-      title: string;
-      body: string | null;
-      state: string;
-      labels: Array<{ name: string }>;
-    };
-
-    return {
-      number: data.number,
-      title: data.title,
-      body: data.body ?? '',
-      state: data.state === 'OPEN' ? 'open' : 'closed',
-      labels: data.labels.map((l) => l.name),
-    };
   } catch {
+    // gh exit non-zero — issue not found, network error, etc.
     return null;
   }
+  if (output === null) return null;
+
+  // #2962 (P2): Zod-validate the gh output. Pre-fix any GitHub schema drift
+  // (e.g., labels shape changes) threw TypeError inside the outer catch and
+  // surfaced as "issue not found" — misleading. Now: parse + safeParse + a
+  // warn log when the payload doesn't match, so the actual cause is visible.
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(output);
+  } catch {
+    // Malformed JSON from gh (unexpected — log via stderr so the operator
+    // sees something useful instead of a silent null).
+    process.stderr.write(`[issue-command] malformed JSON from gh: ${output.slice(0, 200)}\n`);
+    return null;
+  }
+  const result = GhIssueJsonSchema.safeParse(parsed);
+  if (!result.success) {
+    process.stderr.write(
+      `[issue-command] gh issue view schema drift: ${result.error.message} (payload preview: ${output.slice(0, 200)})\n`
+    );
+    return null;
+  }
+  const data = result.data;
+  return {
+    number: data.number,
+    title: data.title,
+    body: data.body ?? '',
+    state: data.state === 'OPEN' ? 'open' : 'closed',
+    labels: data.labels.map((l) => l.name),
+  };
 }
 
 /**
