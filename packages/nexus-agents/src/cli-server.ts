@@ -49,6 +49,7 @@ import { initializeSica } from './cli-server-sica.js';
 import { initializeFeedbackIntegration } from './cli-server-feedback.js';
 import { initializeAuth } from './cli-server-auth.js';
 import { shutdownToolMemory } from './mcp/tools/tool-memory.js';
+import { shutdownExpertBridge } from './pipeline/expert-bridge.js';
 import {
   initializeAuditLogger,
   shutdownAuditLogger,
@@ -228,6 +229,9 @@ function createShutdownCleanup(options: ShutdownCleanupOptions): () => Promise<v
 
     // Persist tool memory session to disk (Issue #690)
     shutdownToolMemory();
+
+    // Cleanup the cached MCP-config tempdir (closes #2946)
+    await shutdownExpertBridge();
 
     const closeResult = await closeServer(server, serverLogger);
     if (!closeResult.ok) {
