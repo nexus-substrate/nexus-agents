@@ -3,9 +3,16 @@
  * @module cli/system-review-helpers.test
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+vi.mock('./sandbox-exec.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./sandbox-exec.js')>()),
+  safeExecSandboxed: vi.fn(),
+}));
+
 import type { SystemReviewResult } from './system-review-types.js';
-import { calculateHealthScore } from './system-review-helpers.js';
+import { calculateHealthScore, createIssue } from './system-review-helpers.js';
+import { safeExecSandboxed } from './sandbox-exec.js';
 
 // ============================================================================
 // Test Helpers
@@ -114,5 +121,61 @@ describe('calculateHealthScore', () => {
     });
     // 100 - 5 (stale doc) - 20 (high vuln) - 15 (typecheck) - 4 (2 stale issues) = 56
     expect(calculateHealthScore(result)).toBe(56);
+  });
+});
+
+// ============================================================================
+// createIssue (#2934 regression)
+// ============================================================================
+
+// #2934 (same pattern as #2912/#2913): createIssue embedded the markdown
+// review body in the command string as `--body '<body>'`. The body has
+// tables (`|`), `(coveragePercent)` parens, and ET-timestamp parens, so the
+// sandbox `validateArgs` gate (`/[;&|`$()]/`) denied it and every
+// `nexus-agents system-review --create-issue` call silently returned null.
+// The body is now piped via stdin.
+describe('createIssue', () => {
+  const mockExec = vi.mocked(safeExecSandboxed);
+
+  beforeEach(() => {
+    mockExec.mockReset();
+  });
+
+  it('pipes the body via --body-file - stdin, not an inline --body arg', () => {
+    mockExec.mockReturnValue('https://github.com/o/r/issues/42');
+
+    const url = createIssue(makeReviewResult());
+
+    expect(url).toBe('https://github.com/o/r/issues/42');
+    const call = mockExec.mock.calls[0];
+    expect(call?.[0]).toContain('--body-file -');
+    expect(call?.[0]).not.toContain("--body '");
+    // Body should arrive over stdin and contain the markdown that the
+    // validateArgs gate would have rejected in the command string.
+    const opts = call?.[1] as { stdin?: string } | undefined;
+    expect(opts?.stdin).toContain('| Status | Count |');
+  });
+
+  it('keeps shell metacharacters out of the command string', () => {
+    mockExec.mockReturnValue('https://github.com/o/r/issues/7');
+
+    createIssue(
+      makeReviewResult({
+        quality: { typecheckPass: true, lintPass: true, coveragePercent: 85.4 },
+      })
+    );
+
+    // Title + flags only — `|`, `(`, `)` from the markdown body live in stdin.
+    expect(mockExec.mock.calls[0]?.[0]).not.toMatch(/[|()]/);
+  });
+
+  it('returns null when the gh exec returns null', () => {
+    mockExec.mockReturnValue(null);
+    expect(createIssue(makeReviewResult())).toBeNull();
+  });
+
+  it('returns null when output has no GitHub URL', () => {
+    mockExec.mockReturnValue('something went wrong');
+    expect(createIssue(makeReviewResult())).toBeNull();
   });
 });
