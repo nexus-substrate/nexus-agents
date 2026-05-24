@@ -162,6 +162,77 @@ describe('RoutingMemory', () => {
       expect(prefs[0]?.model).toBe('claude'); // Higher quality/success
       expect(prefs[0]?.strength).toBeGreaterThan(prefs[1]?.strength ?? 0);
     });
+
+    // #2955 site 4: per-taskType cache + invalidation on storePreference.
+    // Verifies the hot-path optimization preserves the observable contract.
+    it('caches per-taskType results — second read returns same reference (#2955)', () => {
+      const perf: ModelPerformance = {
+        avgQuality: 0.9,
+        successRate: 0.95,
+        avgLatencyMs: 500,
+        avgTokens: 1000,
+        observations: 10,
+      };
+      for (let i = 0; i < 5; i++) routingMemory.storePreference('claude', 'cached-task', perf);
+
+      const first = routingMemory.getPreferences('cached-task');
+      const second = routingMemory.getPreferences('cached-task');
+      expect(second).toBe(first); // identical reference — cache hit
+    });
+
+    it('invalidates the cache when storePreference writes the same taskType (#2955)', () => {
+      const lowPerf: ModelPerformance = {
+        avgQuality: 0.5,
+        successRate: 0.6,
+        avgLatencyMs: 1000,
+        avgTokens: 2000,
+        observations: 10,
+      };
+      const highPerf: ModelPerformance = {
+        avgQuality: 0.95,
+        successRate: 0.98,
+        avgLatencyMs: 100,
+        avgTokens: 500,
+        observations: 10,
+      };
+
+      for (let i = 0; i < 5; i++) routingMemory.storePreference('claude', 'task-a', lowPerf);
+      const beforeUpgrade = routingMemory.getPreferences('task-a');
+      const claudeBefore = beforeUpgrade[0]?.strength;
+      expect(claudeBefore).toBeDefined();
+
+      // Upgrade claude's performance — cache must invalidate so next read
+      // sees the new (higher) strength.
+      for (let i = 0; i < 5; i++) routingMemory.storePreference('claude', 'task-a', highPerf);
+      const afterUpgrade = routingMemory.getPreferences('task-a');
+      expect(afterUpgrade).not.toBe(beforeUpgrade); // different reference — cache rebuilt
+      expect(afterUpgrade[0]?.strength).toBeGreaterThan(claudeBefore ?? 0);
+    });
+
+    it('cache invalidation is scoped to the modified taskType (#2955)', () => {
+      const perf: ModelPerformance = {
+        avgQuality: 0.9,
+        successRate: 0.95,
+        avgLatencyMs: 500,
+        avgTokens: 1000,
+        observations: 10,
+      };
+      for (let i = 0; i < 5; i++) {
+        routingMemory.storePreference('claude', 'task-x', perf);
+        routingMemory.storePreference('gemini', 'task-y', perf);
+      }
+
+      const xBefore = routingMemory.getPreferences('task-x');
+      const yBefore = routingMemory.getPreferences('task-y');
+
+      // Write to task-y only — task-x cache should survive.
+      routingMemory.storePreference('codex', 'task-y', perf);
+
+      const xAfter = routingMemory.getPreferences('task-x');
+      const yAfter = routingMemory.getPreferences('task-y');
+      expect(xAfter).toBe(xBefore); // task-x cache untouched
+      expect(yAfter).not.toBe(yBefore); // task-y cache rebuilt
+    });
   });
 
   describe('recordExperience', () => {
