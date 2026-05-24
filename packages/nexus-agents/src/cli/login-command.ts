@@ -90,7 +90,12 @@ export async function handleLoginCommand(args: ParsedCliArgs): Promise<void> {
   process.exit(EXIT_ERR);
 }
 
-function orderForDisplay(results: readonly AuthProbeResult[]): readonly AuthProbeResult[] {
+/**
+ * Sorts probe results into the canonical CLI display order. Exported so
+ * tests can verify ordering without going through `console.log` mocking
+ * (#2953 — the original file shipped with zero tests).
+ */
+export function orderForDisplay(results: readonly AuthProbeResult[]): readonly AuthProbeResult[] {
   // Stable order matching nexus-agents' canonical CLI list.
   const order: readonly string[] = ['claude', 'gemini', 'codex', 'opencode'];
   return [...results].sort((a, b) => order.indexOf(a.cli) - order.indexOf(b.cli));
@@ -118,13 +123,19 @@ function printRow(r: AuthProbeResult): void {
   console.log(`  ${glyph}  ${display} ${label.padEnd(15)} ${r.reason}`);
 }
 
-interface Summary {
+export interface Summary {
   readonly line: string;
   readonly actionable: readonly string[];
   readonly anyAuthenticated: boolean;
 }
 
-function summarize(results: readonly AuthProbeResult[]): Summary {
+/**
+ * Build the status summary that drives the printed footer + exit code.
+ * Exported for tests (#2953): the consumer at line 86 has a 4-cell truth
+ * table on `(anyAuthenticated, actionable.length)` and zero coverage
+ * pre-fix.
+ */
+export function summarize(results: readonly AuthProbeResult[]): Summary {
   const authed = results.filter((r) => r.state === 'authenticated');
   const needsLogin = results.filter((r) => r.state === 'needs-login');
   const notInstalled = results.filter((r) => r.state === 'not-installed');
