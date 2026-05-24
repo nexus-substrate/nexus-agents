@@ -68,6 +68,8 @@ import { runStpaSafetyAnalysis, StpaSafetyError } from './cli-server-stpa.js';
 import { getPipelinePluginRegistry } from './pipeline/core-plugins.js';
 import { getPipelineEventBus } from './pipeline/event-bus.js';
 import { createEventBusBridge } from './pipeline/event-bus-bridge.js';
+import { startFeedbackSubscriber } from './pipeline/feedback-subscriber.js';
+import { getOutcomeStore } from './orchestration/outcomes/index.js';
 import { createDefaultPolicyEngine } from './pipeline/policy-engine.js';
 import { resolveV2Config } from './pipeline/v2-config.js';
 import { UpstreamClientManager } from './mcp/gateway/upstream-client.js';
@@ -597,11 +599,18 @@ function initV2PipelineSubsystems(logger: ILogger): void {
   const pluginRegistry = getPipelinePluginRegistry();
   const pipelineEventBus = getPipelineEventBus();
   const bridge = createEventBusBridge({ source: pipelineEventBus });
+  // Wire the EventBus → OutcomeStore feedback loop advertised by
+  // `feedback-subscriber.ts`. Pre-#2938 the module existed but nothing
+  // called it, so `model.called` / `stage.failed` events never reached
+  // OutcomeStore via this path. Cleanup runs in
+  // cli-server.ts:createShutdownCleanup via `shutdownFeedbackSubscriber()`.
+  startFeedbackSubscriber(pipelineEventBus, getOutcomeStore());
   const policyEngine = createDefaultPolicyEngine();
   const v2Config = resolveV2Config();
   logger.info('V2 Pipeline OS initialized', {
     plugins: pluginRegistry.listEnabled().length,
     bridged: bridge.forwarded(),
+    feedbackSubscriber: 'active',
     policyRules: policyEngine.listRules().length,
     v2Mode: v2Config.mode,
     policyMode: v2Config.policyMode,

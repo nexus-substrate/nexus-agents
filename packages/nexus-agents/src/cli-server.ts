@@ -50,6 +50,7 @@ import { initializeFeedbackIntegration } from './cli-server-feedback.js';
 import { initializeAuth } from './cli-server-auth.js';
 import { shutdownToolMemory } from './mcp/tools/tool-memory.js';
 import { shutdownExpertBridge } from './pipeline/expert-bridge.js';
+import { shutdownFeedbackSubscriber } from './pipeline/feedback-subscriber.js';
 import {
   initializeAuditLogger,
   shutdownAuditLogger,
@@ -232,6 +233,9 @@ function createShutdownCleanup(options: ShutdownCleanupOptions): () => Promise<v
 
     // Cleanup the cached MCP-config tempdir (closes #2946)
     await shutdownExpertBridge();
+
+    // Release the EventBus → OutcomeStore feedback subscription (closes #2938)
+    shutdownFeedbackSubscriber();
 
     const closeResult = await closeServer(server, serverLogger);
     if (!closeResult.ok) {

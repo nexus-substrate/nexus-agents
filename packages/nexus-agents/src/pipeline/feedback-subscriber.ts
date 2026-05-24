@@ -26,6 +26,10 @@ const VALID_CLIS: ReadonlySet<string> = new Set<string>(CLI_NAMES);
  * Listens for `model.called` and `stage.failed` events and records
  * them as TaskOutcome entries in the OutcomeStore.
  *
+ * Returns an Unsubscribe handle for callers that manage their own
+ * subscription lifecycle (e.g. tests). For the server-wide singleton
+ * subscription, use `startFeedbackSubscriber` / `shutdownFeedbackSubscriber`.
+ *
  * @returns Unsubscribe function to stop the bridge.
  */
 export function createFeedbackSubscriber(bus: IEventBus, store: OutcomeStore): Unsubscribe {
@@ -37,6 +41,46 @@ export function createFeedbackSubscriber(bus: IEventBus, store: OutcomeStore): U
       logger.warn('Feedback subscriber error', { error: msg });
     }
   });
+}
+
+// ============================================================================
+// Server-wide lifecycle (Issue #2938)
+//
+// The "feedback loop: execution → events → outcomes → routing" advertised
+// in the module docstring requires *someone* to subscribe the bridge once
+// at server init and unsubscribe at shutdown. Pre-#2938 nothing wired the
+// subscription so the loop never ran. cli-server-tools.ts now calls
+// startFeedbackSubscriber() inside `initV2PipelineSubsystems`, paired
+// with shutdownFeedbackSubscriber() in cli-server.ts:createShutdownCleanup
+// (same lifecycle slot as `shutdownExpertBridge` from #2946).
+// ============================================================================
+
+let cachedFeedbackUnsubscribe: Unsubscribe | null = null;
+
+/**
+ * Wire the EventBus → OutcomeStore bridge for the process lifetime.
+ *
+ * Idempotent — repeated calls are no-ops, so the test-suite and cli-server
+ * paths can both call it safely. Caller must invoke
+ * `shutdownFeedbackSubscriber()` on server shutdown to release the
+ * subscription.
+ */
+export function startFeedbackSubscriber(bus: IEventBus, store: OutcomeStore): void {
+  if (cachedFeedbackUnsubscribe !== null) return;
+  cachedFeedbackUnsubscribe = createFeedbackSubscriber(bus, store);
+}
+
+/**
+ * Release the server-wide feedback subscription. Idempotent.
+ *
+ * Called from cli-server.ts:createShutdownCleanup so SIGTERM teardown
+ * releases the EventBus listener.
+ */
+export function shutdownFeedbackSubscriber(): void {
+  if (cachedFeedbackUnsubscribe !== null) {
+    cachedFeedbackUnsubscribe();
+    cachedFeedbackUnsubscribe = null;
+  }
 }
 
 // ============================================================================
