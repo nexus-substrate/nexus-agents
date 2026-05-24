@@ -132,7 +132,7 @@ CLI subprocess adapters and the canonical routing pipeline.
 
 - **CLI Adapters**: ClaudeCliAdapter, GeminiCliAdapter, CodexCliAdapter, CodexMcpAdapter — invoke CLI tools as subprocesses
 - **Adapter Factory** (`cli-adapters/factory.ts`): `createAllAdapters()` — detects available CLIs
-- **CompositeRouter** (`cli-adapters/composite-router.ts`, Issue #166): Canonical routing pipeline. Stages: BudgetRouter -> ZeroRouter -> PreferenceRouter -> TopsisRouter -> LinUCB
+- **CompositeRouter** (`cli-adapters/composite-router.ts`, Issue #166): Canonical routing pipeline. Stages: Budget → Scoring (parallel: ConfidenceCascade, CapabilityMatch, KnnRouting, DistilledRule, ResourceStrategy, ZeroRouter, Preference) → QualityConstraint → CategoryOverride → TOPSIS → LinUCB → PerfFloorOverride → Latency. See [ROUTING_SYSTEM.md](../architecture/ROUTING_SYSTEM.md) for the full per-stage rationale; updated in #2947.
 - **Circuit Breaker** (`cli-adapters/circuit-breaker.ts`, Issue #359): Per-adapter circuit breakers with registry
 - **Response Cache** (`cli-adapters/response-cache.ts`, Issue #358): LRU caching for identical requests
 - **Capacity Tracker** (`cli-adapters/capacity-tracker.ts`, Issue #456): Real rate limit tracking

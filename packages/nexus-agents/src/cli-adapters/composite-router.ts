@@ -1,6 +1,28 @@
 /* eslint-disable max-lines */
 /**
- * CompositeRouter: Chains Budget -> ZeroRouter -> Preference -> TOPSIS -> LinUCB.
+ * CompositeRouter — chains the full routing pipeline.
+ *
+ * Stage order (executed by `composite-router-stages.ts:runPipeline`):
+ *   1. Budget — eliminate CLIs that exceed session token/cost budget
+ *   2. Scoring (parallel) — ConfidenceCascade / CapabilityMatch / KnnRouting /
+ *      DistilledRule / ResourceStrategy / ZeroRouter / Preference
+ *   3. QualityConstraint — constraint-first filter; can short-circuit (#1686)
+ *   4. CategoryOverride — `CATEGORY_CHAIN_OVERRIDES` per task category; can
+ *      short-circuit for sensitive categories whose override chain is
+ *      exhausted (#2414, #2417)
+ *   5. TOPSIS — multi-criteria ranking; quality profiles adjusted by stage-2
+ *      scores and penalized by performance-floor data (#1354, #1401)
+ *   6. LinUCB — bandit selection from TOPSIS ranking
+ *   7. PerfFloorOverride — reject LinUCB pick if CLI is below 50% success at
+ *      ≥20 samples; promote TOPSIS top-ranked alternative (#1790)
+ *   8. Latency — record per-CLI latency for the recommended-mapping feedback loop
+ *
+ * The pre-2026 docstring claimed 5 stages (Budget → ZeroRouter → Preference →
+ * TOPSIS → LinUCB), pre-dating #755 / #1350 / #1686 / #1790 / #2414. A
+ * maintainer debugging "why was my model rejected?" reading that line would
+ * never have found the constraint/override stages that actually short-circuit.
+ * Updated in #2947.
+ *
  * @module cli-adapters/composite-router
  * (Source: Issue #166, Epic #164, Issue #347, arXiv:2509.07571)
  */
