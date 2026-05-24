@@ -3,11 +3,17 @@
  *
  * Instrumented tests that measure real pipeline component performance:
  * - Classification accuracy across diverse tasks
- * - SharedMemoryStore propagation and timing
+ * - SharedMemoryStore standalone-class timing (write/read/eviction)
  * - Vote cascade detection logic
  * - Stage wrapper execution timing
  * - Template registry completeness
  * - Cross-template behavior comparison
+ *
+ * Note: pre-#2937 this file also exercised SharedMemoryStore propagation
+ * through PipelineContext.sharedMemory — that integration channel was
+ * removed because no downstream stage ever read it. The class itself is
+ * still a public standalone utility and its direct-use performance
+ * characteristics are still tested below.
  *
  * Run with: pnpm vitest run src/pipeline/pipeline-eval.test.ts
  */
@@ -15,40 +21,14 @@
 import { describe, it, expect, vi } from 'vitest';
 import { classifyTask } from './adaptive-orchestrator.js';
 import { SharedMemoryStore } from './shared-memory.js';
-import {
-  createResearchStageWrapper,
-  createPlanStageWrapper,
-  createImplementStageWrapper,
-  createDevStageRegistry,
-  createAuditStageRegistry,
-} from './stage-wrappers.js';
+import { createDevStageRegistry, createAuditStageRegistry } from './stage-wrappers.js';
 import { PIPELINE_TEMPLATES, getTemplate, listTemplateIds } from './templates.js';
-import { PIPELINE_STATE_KEYS as K } from './stage-types.js';
-import type { PipelineContext } from './stage-types.js';
 import type {
   DevPipelineStages,
   PipelineTask,
   VoteResult,
   QaReviewResult,
 } from './dev-pipeline.js';
-
-// ============================================================================
-// Test Helpers
-// ============================================================================
-
-function makeContext(
-  overrides?: Partial<PipelineContext>,
-  stateOverrides?: Record<string, unknown>
-): PipelineContext {
-  return {
-    executionId: 'eval-test',
-    task: overrides?.task ?? 'Evaluate pipeline performance',
-    templateId: 'dev',
-    state: { [K.TASK]: 'Evaluate pipeline performance', ...stateOverrides },
-    sharedMemory: overrides?.sharedMemory ?? new SharedMemoryStore(),
-    ...overrides,
-  };
-}
 
 function createMockStages(): DevPipelineStages {
   return {
@@ -169,39 +149,10 @@ describe('Pipeline Eval — SharedMemoryStore Performance', () => {
     expect(store.read()[0]?.content as string).toBe('E 5');
   });
 
-  it('propagates across research → plan → implement stages', async () => {
-    const stages = createMockStages();
-    const sharedMemory = new SharedMemoryStore();
-    const ctx = makeContext({ sharedMemory });
-
-    await createResearchStageWrapper(stages).execute(ctx);
-    await createPlanStageWrapper(stages).execute({
-      ...ctx,
-      state: { ...ctx.state, [K.RESEARCH]: 'data' },
-    });
-    await createImplementStageWrapper(stages).execute({
-      ...ctx,
-      state: {
-        ...ctx.state,
-        [K.TASKS]: [
-          {
-            id: 't1',
-            title: 'T',
-            description: 'D',
-            assignedTo: 'coder' as const,
-            status: 'pending' as const,
-          },
-        ],
-      },
-    });
-
-    const all = sharedMemory.read();
-    expect(all.length).toBeGreaterThanOrEqual(3);
-    const sources = [...new Set(all.map((e) => e.sourceStage))];
-    expect(sources).toContain('research');
-    expect(sources).toContain('plan');
-    expect(sources).toContain('implement');
-  });
+  // Cross-stage propagation test removed in #2937. The
+  // PipelineContext.sharedMemory channel was write-only; the stage wrappers
+  // no longer touch SharedMemoryStore. The class itself is still a
+  // standalone utility — direct usage is covered above.
 });
 
 // ============================================================================

@@ -288,7 +288,11 @@ export {
 } from './incomplete-result.js';
 export type { IncompleteResult, IncompleteSeverity } from './incomplete-result.js';
 
-// Shared Memory — cross-stage knowledge propagation (#1737 Phase 4)
+// Shared Memory — standalone in-memory tagged store. Originally threaded
+// through PipelineContext for cross-stage discovery handoff (#1737 Phase 4 /
+// #1764), but the integration was write-only and removed in #2937. The
+// class itself is still useful as a standalone tagged in-memory store, so
+// the export stays for direct consumers.
 export { SharedMemoryStore } from './shared-memory.js';
 export type { SharedMemoryEntry, SharedMemoryTag } from './shared-memory.js';
 

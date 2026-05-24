@@ -9,7 +9,6 @@
  */
 
 import { createLogger, getTimeProvider } from '../core/index.js';
-import { SharedMemoryStore } from './shared-memory.js';
 import { executeGraph } from '../orchestration/graph/graph-executor.js';
 import type { CompiledGraph } from '../orchestration/graph/graph-types.js';
 import { compilePipelineGraph } from './pipeline-graph.js';
@@ -103,12 +102,12 @@ async function executeAndReport(
 
   emitPipelineStageEvent(template.id, 'pipeline', 'started');
 
-  // Create SharedMemoryStore for cross-stage context sharing (#1764)
-  const sharedMemory = new SharedMemoryStore();
-
+  // Pre-#2937 a SharedMemoryStore was threaded through graph state under
+  // PIPELINE_STATE_KEYS.SHARED_MEMORY. Removed because no stage ever
+  // read it — cross-stage handoff flows through `state` only.
   const result = await executeGraph(
     graph,
-    { [K.TASK]: task, [K.SHARED_MEMORY]: sharedMemory },
+    { [K.TASK]: task },
     {
       maxSteps: options?.maxSteps ?? DEFAULT_MAX_STEPS,
     }
