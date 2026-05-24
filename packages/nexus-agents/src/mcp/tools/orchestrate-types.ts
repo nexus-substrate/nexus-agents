@@ -218,8 +218,8 @@ function createMockTaskExecutor(): ITechLead {
 /** Creates a mock orchestrator for testing (Issue #595). */
 export function createMockOrchestrator(): IOrchestrator {
   const mockExecutor = createMockTaskExecutor();
-  const factory = new OrchestratorFactory({
-    techLead: mockExecutor as { execute: (task: unknown) => Promise<Result<unknown, unknown>> },
-  });
+  // Cast no longer needed (#2944) — factory `techLead` is now
+  // `OrchestratorAgentLike`, which `ITechLead` satisfies by covariance.
+  const factory = new OrchestratorFactory({ techLead: mockExecutor });
   return factory.create('orchestrator');
 }
