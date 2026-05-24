@@ -12,6 +12,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { z } from 'zod';
 import { createLogger } from '../core/index.js';
 import { ensureCheckpointDir } from '../agents/wave-checkpoint-persistence.js';
 import type { PipelineTask, DevPipelineResult } from './dev-pipeline.js';
@@ -140,7 +141,53 @@ export function loadCheckpointState(
   }
 }
 
-/** Rebuild pipeline state from JSONL entries. */
+/**
+ * Zod schema for `PipelineCheckpointEntry`. Closes #2981: previously
+ * `rebuildState` did `JSON.parse(line) as PipelineCheckpointEntry`, which
+ * silently accepted any successfully-parsed JSON (`null`, `42`, `{}`,
+ * arbitrary objects). `applyEntry` then read undefined fields and poisoned
+ * the recovered state. Validate every line through this schema and skip
+ * (counting + warning) anything that doesn't match.
+ *
+ * The schema mirrors `PipelineStage` + `PipelineStageData` exactly — keep
+ * in lockstep if either type changes.
+ */
+const PipelineStageSchema = z.enum([
+  'research',
+  'plan',
+  'vote',
+  'decompose',
+  'implement',
+  'security',
+]);
+
+const PipelineStageDataSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('research'), text: z.string() }),
+  z.object({ type: z.literal('plan'), text: z.string(), iterations: z.number() }),
+  z.object({
+    type: z.literal('vote'),
+    approved: z.boolean(),
+    conditional: z.boolean(),
+    conditions: z.array(z.string()).optional(),
+    caveats: z.array(z.string()).optional(),
+    iterations: z.number(),
+  }),
+  // PipelineTask shape is loose at the persistence layer — capture as
+  // `z.unknown()` and trust the downstream consumer's narrower validation.
+  z.object({ type: z.literal('decompose'), tasks: z.array(z.unknown()) }),
+  z.object({ type: z.literal('implement'), tasks: z.array(z.unknown()) }),
+  z.object({ type: z.literal('security'), passed: z.boolean() }),
+]);
+
+const PipelineCheckpointEntrySchema = z.object({
+  sessionId: z.string(),
+  stage: PipelineStageSchema,
+  timestamp: z.string(),
+  data: PipelineStageDataSchema,
+});
+
+/** Rebuild pipeline state from JSONL entries. Skipped malformed lines are
+ *  counted and reported at warn level (closes #2981 — was previously silent). */
 function rebuildState(lines: string[]): PipelineCheckpointState {
   const state: {
     research?: string;
@@ -152,13 +199,36 @@ function rebuildState(lines: string[]): PipelineCheckpointState {
     lastCompletedStage?: PipelineStage;
   } = {};
 
+  let skippedCount = 0;
+  let firstSkipReason: string | undefined;
+
   for (const line of lines) {
+    let parsed: unknown;
     try {
-      const entry = JSON.parse(line) as PipelineCheckpointEntry;
-      applyEntry(state, entry);
-    } catch {
-      // Skip malformed lines
+      parsed = JSON.parse(line);
+    } catch (error) {
+      skippedCount++;
+      firstSkipReason ??= `JSON.parse failed: ${error instanceof Error ? error.message : String(error)}`;
+      continue;
     }
+    const result = PipelineCheckpointEntrySchema.safeParse(parsed);
+    if (!result.success) {
+      skippedCount++;
+      firstSkipReason ??= `schema validation failed: ${result.error.message}`;
+      continue;
+    }
+    // Cast tasks[] back to readonly PipelineTask[] — the schema captured them
+    // as unknown[] because the persistence layer doesn't narrow them.
+    applyEntry(state, result.data as unknown as PipelineCheckpointEntry);
+  }
+
+  if (skippedCount > 0) {
+    logger.warn('Skipped malformed checkpoint lines during state rebuild', {
+      skippedCount,
+      totalLines: lines.length,
+      firstSkipReason,
+      recovered: state.lastCompletedStage,
+    });
   }
 
   return state;
