@@ -2,13 +2,16 @@
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "williamzujkowski",
   "description": "William Zujkowski's Claude Code plugin marketplace — hosts nexus-agents.",
+  "owner": {
+    "name": "William Zujkowski",
+    "url": "https://github.com/williamzujkowski"
+  },
   "plugins": [
     {
       "name": "nexus-agents",
       "source": {
-        "type": "github",
-        "owner": "williamzujkowski",
-        "repo": "nexus-agents"
+        "source": "github",
+        "repo": "williamzujkowski/nexus-agents"
       },
       "description": "Intelligent orchestration platform for AI coding tools — 38 MCP tools (orchestrate, consensus voting, research, pipelines), 31 skills, 12 expert agents, governance hooks.",
       "keywords": ["orchestration", "mcp", "consensus", "pipelines", "multi-agent"]
