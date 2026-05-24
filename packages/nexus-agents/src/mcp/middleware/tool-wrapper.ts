@@ -337,12 +337,29 @@ export interface TimeoutMismatchEvent {
   readonly errorMessage?: string;
 }
 
+/**
+ * Cache the "dir ensured" flag so we don't re-`existsSync` on every call
+ * (closes #2955 site 3, partial). Cached per `dirname(path)` so an
+ * operator changing `NEXUS_DATA_DIR` between calls (test/dev only)
+ * still works after a process restart. The full async-write part of
+ * the perf fix is deferred — `tool-wrapper-budget-check.test.ts` reads
+ * the JSONL synchronously after `await callback(...)` and expects the
+ * write to be visible, so switching to `fs.promises.appendFile` broke
+ * those tests. The dir-cache is the cheaper part of the perf win
+ * (skipping 1 existsSync per call); the appendFileSync vs appendFile
+ * win can ship later behind a test-helper that awaits pending writes.
+ */
+const ensuredDirs = new Set<string>();
+
 /** Best-effort append — telemetry recording must never fail the user's tool call. */
 function appendTimeoutMismatchEvent(event: TimeoutMismatchEvent): void {
   try {
     const path = join(getNexusDataDir(), TIMEOUT_MISMATCH_TELEMETRY_REL_PATH);
     const dir = dirname(path);
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    if (!ensuredDirs.has(dir)) {
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+      ensuredDirs.add(dir);
+    }
     appendFileSync(path, JSON.stringify(event) + '\n', 'utf-8');
   } catch (err) {
     wrapperLogger.debug('Best-effort timeout-mismatch event recording failed', {
