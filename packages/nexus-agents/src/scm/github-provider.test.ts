@@ -71,6 +71,47 @@ describe('GitHubProvider', () => {
         expect(result.error.message).toContain('gh command failed');
       }
     });
+
+    // #2962 site 4 regression: schema-drift surfaces as a typed
+    // `schema mismatch` error with a useful path, not the
+    // pre-fix misleading "Failed to parse JSON" TypeError-rewrap.
+    it('returns schema-mismatch ScmError when gh JSON shape drifts', async () => {
+      mockExecFile.mockResolvedValue({
+        stdout: JSON.stringify({
+          number: 42,
+          title: 'Test issue',
+          body: 'Description',
+          // `labels` and `author` are missing — pre-fix this hit the
+          // `raw.labels.map` deref inside mapIssue and was caught as a
+          // TypeError that got rewrapped as "Failed to parse JSON".
+          createdAt: '2026-01-01T00:00:00Z',
+        }),
+      });
+
+      const result = await provider.getIssue(42);
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.platform).toBe('github');
+        expect(result.error.message).toContain('getIssue: schema mismatch');
+        // The Zod path should call out the missing field.
+        expect(result.error.message).toMatch(/labels|author/);
+      }
+    });
+
+    // #2962 site 4: a truly malformed JSON (gh returned non-JSON) is
+    // distinct from a schema mismatch — different label so debuggers
+    // know which problem to chase.
+    it('returns parse-failure ScmError when gh returns non-JSON', async () => {
+      mockExecFile.mockResolvedValue({ stdout: '<html>404</html>' });
+
+      const result = await provider.getIssue(42);
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.message).toContain('getIssue: Failed to parse JSON');
+      }
+    });
   });
 
   describe('listIssues', () => {
