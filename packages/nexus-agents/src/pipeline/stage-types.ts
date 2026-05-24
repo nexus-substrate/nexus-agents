@@ -19,10 +19,14 @@ export interface PipelineContext {
   readonly task: string;
   /** Pipeline template being executed. */
   readonly templateId: string;
-  /** Accumulated state from prior stages. */
+  /**
+   * Accumulated state from prior stages. The only cross-stage handoff
+   * channel — `sharedMemory` (the #1764 SharedMemoryStore) was removed
+   * in #2937 after being write-only since introduction. If you need
+   * structured cross-stage data, add a well-known key to
+   * `PIPELINE_STATE_KEYS` and write/read through `state`.
+   */
   readonly state: Readonly<Record<string, unknown>>;
-  /** Cross-stage knowledge store for discoveries, decisions, constraints (#1764). */
-  readonly sharedMemory: import('./shared-memory.js').SharedMemoryStore;
 }
 
 /** Result of executing a single pipeline stage. */
@@ -99,5 +103,4 @@ export const PIPELINE_STATE_KEYS = {
   PARSED_SPEC: 'parsedSpec',
   SCAFFOLD_OUTPUT: 'scaffoldOutput',
   COMPLETED: 'completed',
-  SHARED_MEMORY: '__sharedMemory__',
 } as const;

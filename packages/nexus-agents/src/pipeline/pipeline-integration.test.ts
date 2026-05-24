@@ -1,24 +1,20 @@
 /**
  * Pipeline Integration Tests — End-to-end validation of pipeline wiring.
  *
- * Verifies that SharedMemoryStore, vote cascading, input sanitization,
- * trust classification, and codebase intelligence compose correctly
- * across pipeline stages.
+ * Verifies that vote cascading, input sanitization, trust classification,
+ * and codebase intelligence compose correctly across pipeline stages.
+ *
+ * Note: pre-#2937 this file also covered `SharedMemoryStore` propagation
+ * through `PipelineContext.sharedMemory`. That field (and the writes from
+ * every stage) was removed in #2937 because no downstream stage ever read
+ * from the store. The class itself still ships as a standalone utility —
+ * see `phase4.test.ts` for direct-class coverage.
  *
  * (Source: Pipeline Validation Wave — post-Tier 1-3 wiring)
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import {
-  createResearchStageWrapper,
-  createPlanStageWrapper,
-  createImplementStageWrapper,
-  createDevStageRegistry,
-  createAuditStageRegistry,
-} from './stage-wrappers.js';
-import { SharedMemoryStore } from './shared-memory.js';
-import { PIPELINE_STATE_KEYS as K } from './stage-types.js';
-import type { PipelineContext } from './stage-types.js';
+import { createDevStageRegistry, createAuditStageRegistry } from './stage-wrappers.js';
 import type {
   DevPipelineStages,
   PipelineTask,
@@ -31,25 +27,6 @@ import { PIPELINE_TEMPLATES, getTemplate, listTemplateIds } from './templates.js
 // ============================================================================
 // Helpers
 // ============================================================================
-
-function makeContext(
-  overrides?: Partial<PipelineContext>,
-  stateOverrides?: Record<string, unknown>
-): PipelineContext {
-  return {
-    executionId: 'integration-test',
-    task: overrides?.task ?? 'Implement a user authentication module',
-    templateId: 'dev',
-    state: {
-      [K.TASK]: 'Implement a user authentication module',
-      [K.RESEARCH]: 'Prior research on auth patterns',
-      [K.PLAN]: 'Step 1: Create auth service\nStep 2: Add middleware',
-      ...stateOverrides,
-    },
-    sharedMemory: overrides?.sharedMemory ?? new SharedMemoryStore(),
-    ...overrides,
-  };
-}
 
 function createMockStages(): DevPipelineStages {
   return {
@@ -85,82 +62,11 @@ function createMockStages(): DevPipelineStages {
 // Integration Tests
 // ============================================================================
 
-describe('Pipeline Integration — SharedMemoryStore propagation', () => {
-  it('research stage writes discoveries to shared memory', async () => {
-    const stages = createMockStages();
-    const sharedMemory = new SharedMemoryStore();
-    const ctx = makeContext({ sharedMemory });
-
-    const wrapper = createResearchStageWrapper(stages);
-    await wrapper.execute(ctx);
-
-    const discoveries = sharedMemory.read('discovery');
-    expect(discoveries.length).toBeGreaterThanOrEqual(1);
-    expect(discoveries[0]?.sourceStage).toBe('research');
-  });
-
-  it('plan stage writes decisions to shared memory', async () => {
-    const stages = createMockStages();
-    const sharedMemory = new SharedMemoryStore();
-    const ctx = makeContext({ sharedMemory });
-
-    const wrapper = createPlanStageWrapper(stages);
-    await wrapper.execute(ctx);
-
-    const decisions = sharedMemory.read('decision');
-    expect(decisions.length).toBeGreaterThanOrEqual(1);
-    expect(decisions[0]?.sourceStage).toBe('plan');
-  });
-
-  it('implement stage writes trust risk to shared memory', async () => {
-    const stages = createMockStages();
-    const sharedMemory = new SharedMemoryStore();
-    const ctx = makeContext(
-      { sharedMemory },
-      {
-        [K.TASKS]: [
-          {
-            id: 't1',
-            title: 'Task',
-            description: 'Do it',
-            assignedTo: 'coder',
-            status: 'pending' as const,
-          },
-        ],
-      }
-    );
-
-    const wrapper = createImplementStageWrapper(stages);
-    await wrapper.execute(ctx);
-
-    const risks = sharedMemory.read('risk');
-    expect(risks.length).toBeGreaterThanOrEqual(1);
-    const riskData = risks[0]?.content as Record<string, unknown>;
-    expect(riskData['requiresReview']).toBe(true);
-  });
-
-  it('shared memory entries accumulate across stages', async () => {
-    const stages = createMockStages();
-    const sharedMemory = new SharedMemoryStore();
-
-    // Run research
-    const researchCtx = makeContext({ sharedMemory });
-    const research = createResearchStageWrapper(stages);
-    await research.execute(researchCtx);
-
-    // Run plan
-    const planCtx = makeContext({ sharedMemory });
-    const plan = createPlanStageWrapper(stages);
-    await plan.execute(planCtx);
-
-    // Both should be in memory
-    const allEntries = sharedMemory.read();
-    expect(allEntries.length).toBeGreaterThanOrEqual(2);
-    const stages2 = allEntries.map((e) => e.sourceStage);
-    expect(stages2).toContain('research');
-    expect(stages2).toContain('plan');
-  });
-});
+// Pipeline Integration — SharedMemoryStore propagation tests removed in
+// #2937. The propagation channel (PipelineContext.sharedMemory + the writes
+// in every stage wrapper) was dead — nothing ever read it. Direct
+// SharedMemoryStore coverage lives in phase4.test.ts and pipeline-eval*.test.ts;
+// cross-stage data now flows through PipelineContext.state.
 
 describe('Pipeline Integration — Task classification', () => {
   it('review tasks classify as audit', () => {

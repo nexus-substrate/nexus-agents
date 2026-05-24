@@ -1,17 +1,21 @@
 /**
  * Pipeline Eval — Stage Wrapper Failure Modes
  *
- * Verifies SharedMemoryStore integrity and failure contract:
- * - Failed stages do NOT leak entries into shared memory
- * - Successful stages write exactly the expected entry
- * - Stage re-runs accumulate entries (no silent dedup)
- * - Failed stages return success=false and a real error message
+ * Verifies the stage-wrapper failure / success contract:
+ * - Failed stages return success=false with a real error message
+ * - Successful stages return success=true and the right state key
+ * - Failed stages still return the expected `stateKey` (no swapping on failure)
+ *
+ * Note: pre-#2937 this file also verified `SharedMemoryStore` propagation
+ * (every successful stage wrote a discovery/decision entry, and a failed
+ * stage left the store untouched). The propagation channel was removed
+ * because no downstream stage ever read it — see #2937. The class itself
+ * still exists as a standalone utility (covered by `phase4.test.ts`).
  *
  * Run: pnpm vitest run src/pipeline/pipeline-eval-stages.test.ts
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { SharedMemoryStore } from './shared-memory.js';
 import {
   createResearchStageWrapper,
   createPlanStageWrapper,
@@ -27,16 +31,12 @@ import type {
   QaReviewResult,
 } from './dev-pipeline.js';
 
-function ctx(
-  sharedMemory = new SharedMemoryStore(),
-  state: Record<string, unknown> = {}
-): PipelineContext {
+function ctx(state: Record<string, unknown> = {}): PipelineContext {
   return {
     executionId: 'eval',
     task: 'Test task',
     templateId: 'dev',
     state: { [K.TASK]: 'Test task', ...state },
-    sharedMemory,
   };
 }
 
@@ -58,30 +58,26 @@ function stagesWith(overrides: Partial<DevPipelineStages>): DevPipelineStages {
 }
 
 // ============================================================================
-// Failure contract — no shared memory leak on throw
+// Failure contract — success=false, error has the underlying message
 // ============================================================================
 
 describe('Pipeline Eval — Failure Contract', () => {
-  it('research failure leaves shared memory untouched', async () => {
-    const mem = new SharedMemoryStore();
+  it('research failure returns success=false', async () => {
     const stages = stagesWith({
       research: vi.fn<(t: string) => Promise<string>>().mockRejectedValue(new Error('boom')),
     });
-    const res = await createResearchStageWrapper(stages).execute(ctx(mem));
+    const res = await createResearchStageWrapper(stages).execute(ctx());
     expect(res.success).toBe(false);
-    expect(mem.read('discovery')).toEqual([]);
   });
 
-  it('plan failure leaves shared memory untouched', async () => {
-    const mem = new SharedMemoryStore();
+  it('plan failure returns success=false', async () => {
     const stages = stagesWith({
       plan: vi
         .fn<(t: string, r: string, f?: string) => Promise<string>>()
         .mockRejectedValue(new Error('plan fail')),
     });
-    const res = await createPlanStageWrapper(stages).execute(ctx(mem, { [K.RESEARCH]: 'data' }));
+    const res = await createPlanStageWrapper(stages).execute(ctx({ [K.RESEARCH]: 'data' }));
     expect(res.success).toBe(false);
-    expect(mem.read('decision')).toEqual([]);
   });
 
   it('failed stage surfaces error message in error field', async () => {
@@ -97,17 +93,12 @@ describe('Pipeline Eval — Failure Contract', () => {
     expect(String(res.error)).toContain('specific message');
   });
 
-  it('vote failure preserves state of prior stages', async () => {
-    const mem = new SharedMemoryStore();
-    mem.write('plan', 'decision', 'existing-plan');
+  it('vote failure returns success=false without crashing', async () => {
     const stages = stagesWith({
       vote: vi.fn<(p: string) => Promise<VoteResult>>().mockRejectedValue(new Error('vote crash')),
     });
-    const res = await createVoteStageWrapper(stages).execute(ctx(mem, { [K.PLAN]: 'p' }));
+    const res = await createVoteStageWrapper(stages).execute(ctx({ [K.PLAN]: 'p' }));
     expect(res.success).toBe(false);
-    // Prior plan decision still intact
-    expect(mem.read('decision').length).toBe(1);
-    expect(mem.read('decision')[0]?.content).toBe('existing-plan');
   });
 
   it('decompose failure returns empty tasks array via failOutput', async () => {
@@ -116,47 +107,8 @@ describe('Pipeline Eval — Failure Contract', () => {
         .fn<(p: string) => Promise<PipelineTask[]>>()
         .mockRejectedValue(new Error('decompose failed')),
     });
-    const res = await createDecomposeStageWrapper(stages).execute(
-      ctx(undefined, { [K.PLAN]: 'p' })
-    );
+    const res = await createDecomposeStageWrapper(stages).execute(ctx({ [K.PLAN]: 'p' }));
     expect(res.success).toBe(false);
-  });
-});
-
-// ============================================================================
-// Success contract — exactly one entry, right tag, right stage
-// ============================================================================
-
-describe('Pipeline Eval — Success Contract', () => {
-  it('research writes exactly one discovery entry', async () => {
-    const mem = new SharedMemoryStore();
-    await createResearchStageWrapper(stagesWith({})).execute(ctx(mem));
-    const entries = mem.read('discovery');
-    expect(entries.length).toBe(1);
-    expect(entries[0]?.sourceStage).toBe('research');
-  });
-
-  it('plan writes exactly one decision entry', async () => {
-    const mem = new SharedMemoryStore();
-    await createPlanStageWrapper(stagesWith({})).execute(ctx(mem, { [K.RESEARCH]: 'r' }));
-    const entries = mem.read('decision');
-    expect(entries.length).toBe(1);
-    expect(entries[0]?.sourceStage).toBe('plan');
-  });
-
-  it('vote success does NOT write to shared memory (not a discovery)', async () => {
-    const mem = new SharedMemoryStore();
-    await createVoteStageWrapper(stagesWith({})).execute(ctx(mem, { [K.PLAN]: 'p' }));
-    // Vote results live in state, not shared memory — by design
-    expect(mem.read().length).toBe(0);
-  });
-
-  it('re-running research accumulates entries (no silent dedup)', async () => {
-    const mem = new SharedMemoryStore();
-    const wrapper = createResearchStageWrapper(stagesWith({}));
-    await wrapper.execute(ctx(mem));
-    await wrapper.execute(ctx(mem));
-    expect(mem.read('discovery').length).toBe(2);
   });
 });
 
@@ -171,9 +123,7 @@ describe('Pipeline Eval — State Key Contract', () => {
   });
 
   it('plan success writes to K.PLAN', async () => {
-    const res = await createPlanStageWrapper(stagesWith({})).execute(
-      ctx(undefined, { [K.RESEARCH]: 'r' })
-    );
+    const res = await createPlanStageWrapper(stagesWith({})).execute(ctx({ [K.RESEARCH]: 'r' }));
     expect(res.stateKey).toBe(K.PLAN);
   });
 

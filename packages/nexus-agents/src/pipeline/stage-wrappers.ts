@@ -71,8 +71,6 @@ export function createResearchStageWrapper(stages: DevPipelineStages): IPipeline
           enrichedTask = `${enrichedTask}\n\n## Codebase Context\n${codeContext}`;
         }
         const result = await stages.research(enrichedTask);
-        // Write research findings to shared memory for downstream stages (#1764)
-        ctx.sharedMemory.write('research', 'discovery', result);
         return output(K.RESEARCH, result, getTimeProvider().now() - start, true);
       } catch (e) {
         return failOutput(K.RESEARCH, String(e), getTimeProvider().now() - start);
@@ -102,8 +100,6 @@ export function createPlanStageWrapper(stages: DevPipelineStages): IPipelineStag
             ? `${research}\n\n## Prior Art (Research Registry)\n${priorArt}`
             : research;
         const result = await stages.plan(ctx.task, enrichedResearch, feedback);
-        // Write plan decisions to shared memory for downstream stages (#1764)
-        ctx.sharedMemory.write('plan', 'decision', result);
         return output(K.PLAN, result, getTimeProvider().now() - start, true);
       } catch (e) {
         return failOutput(K.PLAN, String(e), getTimeProvider().now() - start);
@@ -164,14 +160,16 @@ export function createImplementStageWrapper(stages: DevPipelineStages): IPipelin
       const start = getTimeProvider().now();
       const tasks = Array.isArray(ctx.state[K.TASKS]) ? (ctx.state[K.TASKS] as PipelineTask[]) : [];
       try {
-        // Inject symbol context before implementation (#1777)
-        const symbolContext = await extractSymbolsForTask(ctx.task);
-        if (symbolContext !== null && symbolContext !== '') {
-          ctx.sharedMemory.write('implement', 'context', symbolContext);
-        }
+        // #1777 symbol-context injection: pre-#2937 the resolved symbol
+        // summaries were written to ctx.sharedMemory for downstream
+        // stages — but no stage ever read them. Both the write and the
+        // upstream `extractSymbolsForTask` resolver are gone now.
         const results = await Promise.all(tasks.map((t) => stages.implement(t)));
-        // Post-implement trust gate: classify generated output trust level (#1784)
-        classifyImplementationTrust(results, ctx);
+        // #1784 post-implement trust gate: pre-#2937 the trust assessment
+        // was written to ctx.sharedMemory for downstream stages — but no
+        // stage ever read it. The classifier (and its dead write) are
+        // gone now. If a real trust-gate consumer lands later, route it
+        // through ctx.state with a documented PIPELINE_STATE_KEYS entry.
         return output(K.IMPLEMENTATIONS, results, getTimeProvider().now() - start, true);
       } catch (e) {
         return failOutput(K.IMPLEMENTATIONS, String(e), getTimeProvider().now() - start);
@@ -272,33 +270,6 @@ async function searchCodebaseForTask(task: string): Promise<string | null> {
   }
 }
 
-/** Extract symbols from files referenced in the task (#1777). */
-async function extractSymbolsForTask(task: string): Promise<string | null> {
-  try {
-    // Look for file paths in the task
-    const fileRefs = task.match(/(?:src|lib|packages)\/[^\s,)]+\.ts/g);
-    if (fileRefs === null || fileRefs.length === 0) return null;
-    const { extractSymbols } = await import('../indexer/symbol-extractor.js');
-    const path = await import('node:path');
-    const summaries: string[] = [];
-    for (const ref of fileRefs.slice(0, 3)) {
-      try {
-        const resolved = path.resolve(ref);
-        const result = await extractSymbols(resolved);
-        const exported = result.symbols.filter((s) => s.exported);
-        if (exported.length > 0) {
-          summaries.push(`${ref}: ${exported.map((s) => `${s.kind} ${s.name}`).join(', ')}`);
-        }
-      } catch {
-        // File not found — skip
-      }
-    }
-    return summaries.length > 0 ? summaries.join('\n') : null;
-  } catch {
-    return null;
-  }
-}
-
 /** Query research registry for techniques relevant to the task (#1783). */
 async function queryResearchRegistry(task: string): Promise<string | null> {
   try {
@@ -316,23 +287,6 @@ async function queryResearchRegistry(task: string): Promise<string | null> {
     return `Relevant themes: ${themes.join(', ')}`;
   } catch {
     return null; // Research registry not available — continue without
-  }
-}
-
-/** Classify trust of generated implementations (#1784). */
-function classifyImplementationTrust(results: unknown[], ctx: PipelineContext): void {
-  try {
-    // Record trust assessment — fire-and-forget, never blocks pipeline
-    const implCount = results.length;
-    const trustLevel = implCount > 0 ? 'semi-trusted' : 'unknown';
-    ctx.sharedMemory.write('implement', 'risk', {
-      trustLevel,
-      source: 'pipeline-agent',
-      requiresReview: true,
-      count: implCount,
-    });
-  } catch {
-    // Trust classification failure must never block the pipeline
   }
 }
 
@@ -395,7 +349,6 @@ export function createAnalyzeStageWrapper(): IPipelineStage {
         const { analyzeGitHubRepo } = await import('../mcp/tools/repo-analyze.js');
         const analysis = await analyzeGitHubRepo({ repo: slug, depth: 'deep' });
         const summary = `Language: ${String(analysis.language)}, Framework: ${String(analysis.framework)}, CI: ${String(analysis.ciProvider)}, Security: ${analysis.securityTooling.join(', ') || 'none'}`;
-        ctx.sharedMemory.write('analyze', 'discovery', { slug, analysis: summary });
         return output(K.RESEARCH, summary, getTimeProvider().now() - start, true);
       } catch (e) {
         return failOutput(K.RESEARCH, String(e), getTimeProvider().now() - start);
@@ -420,7 +373,6 @@ export function createScanStageWrapper(): IPipelineStage {
             .slice(0, 5)
             .map((r) => `${r.priority}: ${r.displayName} (${r.category})`)
             .join('; ');
-          ctx.sharedMemory.write('scan', 'decision', { recommendations: recs });
           return output(K.FINDINGS, recs, getTimeProvider().now() - start, true);
         }
         return output(K.FINDINGS, 'No repository to scan', getTimeProvider().now() - start, true);

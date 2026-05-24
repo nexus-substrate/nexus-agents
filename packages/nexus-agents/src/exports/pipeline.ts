@@ -188,7 +188,8 @@ export {
   filterBySeverity,
   type IncompleteResult,
   type IncompleteSeverity,
-  // Shared Memory (#1737 Phase 4)
+  // Shared Memory — standalone tagged in-memory store. Pipeline integration
+  // removed in #2937 (write-only); class kept as a standalone utility.
   SharedMemoryStore,
   type SharedMemoryEntry,
   type SharedMemoryTag,
