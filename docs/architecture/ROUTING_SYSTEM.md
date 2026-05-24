@@ -21,12 +21,28 @@ related_files:
 
 ## Overview
 
-The routing system intelligently selects the optimal CLI/model for each task through a multi-stage pipeline:
+The routing system intelligently selects the optimal CLI/model for each task through a multi-stage pipeline. The full executed order in `composite-router-stages.ts:runPipeline` is:
 
 ```
-Task → BudgetRouter → ZeroRouter → PreferenceRouter → TopsisRouter → LinUCB → Selected Model
-       (filter)        (fallback)   (preference)        (rank)         (learn)
+Task
+  → Budget                              (filter — eliminate over-budget CLIs)
+  → Scoring (parallel)                  (ConfidenceCascade, CapabilityMatch,
+                                         KnnRouting, DistilledRule,
+                                         ResourceStrategy, ZeroRouter, Preference)
+  → QualityConstraint                   (constraint-first; can short-circuit, #1686)
+  → CategoryOverride                    (CATEGORY_CHAIN_OVERRIDES per category;
+                                         can short-circuit on sensitive cats,
+                                         #2414/#2417)
+  → TOPSIS                              (rank, with stage-score-adjusted profiles
+                                         and performance-floor penalties, #1354/#1401)
+  → LinUCB                              (bandit selection from ranked candidates)
+  → PerfFloorOverride                   (reject LinUCB pick if CLI < 50% success at
+                                         ≥20 samples; promote TOPSIS top, #1790)
+  → Latency                             (record per-CLI latency for feedback loop)
+  → Selected Model
 ```
+
+The simpler legacy "Budget → ZeroRouter → Preference → TOPSIS → LinUCB" 5-stage diagram pre-dated #755/#1350/#2414. The constraint and category-override stages **can short-circuit** routing without ever reaching TOPSIS — omitting them gives the wrong mental model when debugging "why was my model rejected?" (#2947).
 
 Use `CompositeRouter.route(task)` — do NOT directly instantiate stage routers.
 
