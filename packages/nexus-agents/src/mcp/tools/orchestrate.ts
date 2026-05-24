@@ -260,10 +260,9 @@ function createOrchestratorFromDeps(
 ): IOrchestrator {
   if (deps.orchestrator !== undefined) return deps.orchestrator;
   const techLead = createOrchestratorWithSica(logger, deps.modelAdapter);
-  const factory = new OrchestratorFactory({
-    logger,
-    techLead: techLead as { execute: (task: unknown) => Promise<Result<unknown, unknown>> },
-  });
+  // Cast no longer needed (#2944) — factory `techLead` is now
+  // `OrchestratorAgentLike`, which `ITechLead` satisfies by covariance.
+  const factory = new OrchestratorFactory({ logger, techLead });
   return factory.create(orchestratorType ?? 'orchestrator');
 }
 
