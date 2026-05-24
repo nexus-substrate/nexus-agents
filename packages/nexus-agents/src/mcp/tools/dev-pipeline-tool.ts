@@ -132,9 +132,13 @@ async function resolveTaskInput(input: DevPipelineInput): Promise<string> {
   }
   if (input.planFile !== undefined) {
     const resolved = path.resolve(input.planFile);
-    // Path traversal guard — restrict to cwd subtree (security audit 2026-04-10)
+    // Path traversal guard — restrict to cwd subtree (security audit 2026-04-10).
+    // The `+ path.sep` is load-bearing: without it, a sibling directory whose
+    // name starts with the cwd basename (e.g. `/home/u/projEVIL` when cwd is
+    // `/home/u/proj`) bypasses the check. Match the convention in
+    // security/safe-path.ts and query-trace-tool.ts.
     const cwdRoot = path.resolve('.');
-    if (!resolved.startsWith(cwdRoot)) {
+    if (resolved !== cwdRoot && !resolved.startsWith(cwdRoot + path.sep)) {
       throw new Error(`Path traversal denied: planFile must be within ${cwdRoot}`);
     }
     try {

@@ -128,9 +128,12 @@ function buildOutput(result: AdaptiveOrchestratorResult): Record<string, unknown
 async function resolveTask(task: string, specFile: string | undefined): Promise<string> {
   if (specFile === undefined) return task;
   const resolved = path.resolve(specFile);
-  // Path traversal guard — restrict to cwd subtree (security audit 2026-04-10)
+  // Path traversal guard — restrict to cwd subtree. The `+ path.sep` is
+  // load-bearing: a sibling whose name starts with the cwd basename
+  // (`/home/u/projEVIL` for cwd `/home/u/proj`) bypasses a bare startsWith.
+  // Match the convention in security/safe-path.ts.
   const cwdRoot = path.resolve('.');
-  if (!resolved.startsWith(cwdRoot)) {
+  if (resolved !== cwdRoot && !resolved.startsWith(cwdRoot + path.sep)) {
     throw new Error(`Path traversal denied: specFile must be within ${cwdRoot}`);
   }
   try {

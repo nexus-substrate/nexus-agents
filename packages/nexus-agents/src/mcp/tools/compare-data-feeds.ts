@@ -279,8 +279,11 @@ function buildSummary(
 
 function loadFeed(feedPath: string): unknown[] {
   const resolved = path.resolve(feedPath);
+  // Path traversal guard. The `+ path.sep` is load-bearing: a sibling
+  // directory whose name starts with the cwd basename bypasses a bare
+  // startsWith. Match security/safe-path.ts.
   const cwdRoot = path.resolve('.');
-  if (!resolved.startsWith(cwdRoot)) {
+  if (resolved !== cwdRoot && !resolved.startsWith(cwdRoot + path.sep)) {
     throw new Error(`Path traversal denied: ${feedPath} must be within ${cwdRoot}`);
   }
   if (!fs.existsSync(resolved)) {

@@ -458,7 +458,7 @@ async function executeAndAudit(
     }
     return result;
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const rawMessage = error instanceof Error ? error.message : 'Unknown error';
     requestLogger.error('Tool execution failed', error instanceof Error ? error : undefined);
     if (config.auditLogger) {
       emitToolAuditException(
@@ -468,7 +468,13 @@ async function executeAndAudit(
         getTimeProvider().now() - execStartTime
       );
     }
-    return internalError(message, requestContext.requestId);
+    // Closes a secret-leak path: adapter SDKs commonly echo offending
+    // credentials in their error messages (e.g. Anthropic's
+    // AuthenticationError carries `sk-ant-api03-…` substrings; fetch
+    // wrappers can echo Authorization headers). The success branch above
+    // runs sanitizeToolResult; the exception path must too.
+    const sanitized = sanitizeOutput(rawMessage, requestLogger);
+    return internalError(sanitized, requestContext.requestId);
   }
 }
 
