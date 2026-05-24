@@ -1,5 +1,50 @@
 # nexus-agents
 
+## 2.81.4
+
+### Patch Changes
+
+- [#2966](https://github.com/nexus-substrate/nexus-agents/pull/2966) [`6f6c337`](https://github.com/nexus-substrate/nexus-agents/commit/6f6c337606f5e70a11e8ce3a233ec17cb79d699d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **docs(config):** rewrite the env-var contract in `docs/getting-started/CONFIGURATION.md`. Closes [#2954](https://github.com/nexus-substrate/nexus-agents/issues/2954).
+
+  The env-var section had drifted from production. Three classes of bug:
+  - **Default mismatches (operator-impacting).** `NEXUS_VOTE_TIMEOUT_MS` was documented as `60000` but `VOTE_TIMEOUTS.defaultMs` is `300_000` (raised in [#1640](https://github.com/nexus-substrate/nexus-agents/issues/1640) — architecture/security experts averaged 315s). An operator setting "the default" got 1/5 the real budget. `NEXUS_EXPERT_TIMEOUT_MS` was documented as `120000` but the system uses tiered `standardMs=300_000` / `complexMs=600_000` (the `120_000` value is only the `execute_expert`-specific floor).
+  - **Fictional vars (silent no-ops).** Removed 8 entries with zero production references: `NEXUS_API_ENABLED`, `NEXUS_API_KEY`, `NEXUS_API_PORT`, `NEXUS_BUDGET_TOKENS`, `NEXUS_BUDGET_COST_USD`, `NEXUS_ROUTING_ALPHA`, `NEXUS_LOG_FORMAT`, `NEXUS_SANDBOX_MODE` (was a typo for `NEXUS_SANDBOX`). Also removed the matching fictional REST-API YAML block (`api:` config) from the sample `nexus-agents.yaml`.
+  - **Undocumented user-facing vars.** Added 11 real vars: `NEXUS_CONSOLE`, `NEXUS_DATA_DIR`, `NEXUS_REPO_PREFERRED`, `NEXUS_PORTABLE_MODE`, `NEXUS_GITIGNORE_AUTO`, `NEXUS_NO_SCAFFOLD`, `NEXUS_CONTEXT_RETRIEVER_INJECT`, `NEXUS_OPENAI_COMPAT_URL`, `NEXUS_OPENAI_COMPAT_KEY`, `NEXUS_OPENCODE_CONFIG`, plus the `GEMINI_API_KEY` alias for `GOOGLE_AI_API_KEY`. The `NEXUS_OPENAI_COMPAT_*` pair configures an entire adapter route (epic [#2500](https://github.com/nexus-substrate/nexus-agents/issues/2500)); operators had no way to discover it.
+
+  Single-file change. Doc-only — no code/behavior change.
+
+- [#2964](https://github.com/nexus-substrate/nexus-agents/pull/2964) [`3ead04c`](https://github.com/nexus-substrate/nexus-agents/commit/3ead04c90f79d5e15dff3366d663525daa6612b5) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(async):** add `.catch` to two fire-and-forget Promises. Closes [#2960](https://github.com/nexus-substrate/nexus-agents/issues/2960).
+
+  Two `void`-discarded async calls could reject without a handler — silent in default Node mode, crash in `--unhandled-rejections=strict`:
+  - `cli-server-tools.ts:664` `void initUpstreamServers(...)` — upstream MCP server init failure was a silent diagnostic loss.
+  - `mcp/tools/delegate-to-model.ts:159` `void executeDelegatePipeline(...)` — exact pattern of the sibling at `mcp/tools/orchestrate.ts:822-826` but missing the `.catch` the precedent uses.
+
+  Both now `.catch` and log; behavior on success is unchanged. Mirrors the established resilience pattern in the codebase.
+
+- [#2965](https://github.com/nexus-substrate/nexus-agents/pull/2965) [`1f7007a`](https://github.com/nexus-substrate/nexus-agents/commit/1f7007a9722b017142d2e8e77e94400fdcc2ce7d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(determinism):** route 4 ID/random sites through the time/random providers. Closes [#2961](https://github.com/nexus-substrate/nexus-agents/issues/2961).
+
+  Four production sites escape-hatched the `getTimeProvider()` / `getRandomProvider()` abstractions, breaking replay reproducibility + snapshot testing. Audit found 4 real bugs out of ~450 candidate sites — the abstractions are well-adopted; these were the gaps on **persistence keys** (IDs that get written to disk and compared in tests).
+  - `agents/orchestration/experience-buffer.ts:80` — replay-buffer episode `id` was `crypto.randomUUID()` → `getRandomProvider().uuid()`.
+  - `mcp/tools/weather-report.ts:238` — routing exploration gate was `Math.random()` (the only such call in production code) → `getRandomProvider().random()`.
+  - `pipeline/agent-executor.ts:69` + `:126` — persisted outcome-store record ID + memory session ID used raw `Date.now()` → both via `getTimeProvider().now()`.
+  - `pipeline/dev-pipeline.ts:308` — `HindsightRecord.hindsightId` (the persisted belief-store lookup key) used `Date.now().toString(36)` → `getTimeProvider().now().toString(36)`.
+
+  Behavior is unchanged in production (the providers default to real time / `crypto`); tests using seeded providers now get reproducible IDs.
+
+- [#2968](https://github.com/nexus-substrate/nexus-agents/pull/2968) [`8e0221f`](https://github.com/nexus-substrate/nexus-agents/commit/8e0221f02eaef1d5c681021ba18c2e8157bd558a) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(mcp):** register `pr_review` and `supply_chain_tradeoff_panel` MCP tools; sync `REGISTERED_TOOLS` allowlist with the actual STANDALONE_TOOLS table. Closes [#2967](https://github.com/nexus-substrate/nexus-agents/issues/2967).
+
+  Two MCP tools were advertised in `server.json`, `README.md`, `docs/ENTRYPOINTS.md`, and shipped tool-annotations + tool-prerequisites — but never registered with the MCP server. Any client calling `tools/call { name: "pr_review", ... }` or `{ name: "supply_chain_tradeoff_panel", ... }` got `MethodNotFound`. The README v5 evaluation results for `pr_review` (100% bug-catch on 10 PRs) referred to a tool no MCP client could reach.
+
+  Root cause: `mcp/tools/index.ts` `REGISTERED_TOOL_NAMES` (the source `inject-governance.ts` uses to write `server.json`) listed both tools, but the actual registration path in `cli-server-tools.ts` (`STANDALONE_TOOLS` table + `REGISTERED_TOOLS` audit allowlist) had drifted behind. The lockstep promised in the comment at `mcp/tools/index.ts:497-500` was only between `REGISTERED_TOOL_NAMES` and `server.json` — not between what was advertised and what was actually wired.
+
+  Fix:
+  - Added `registerPrReviewTool` + `registerSupplyChainTradeoffPanelTool` to the `STANDALONE_TOOLS` table in `cli-server-tools.ts`.
+  - Re-exported `registerSupplyChainTradeoffPanelTool` from `mcp/index.ts` (the barrel `cli-server-tools.ts` imports from). `registerPrReviewTool` was already re-exported.
+  - Synced `REGISTERED_TOOLS` allowlist (28 → 38 entries) with the actual set registered via `STANDALONE_TOOLS` + category helpers. Adds the 10 names that had drifted: `pr_review`, `supply_chain_tradeoff_panel`, `research_add_source`, `research_synthesize`, `query_task_state`, `verify_audit_chain`, `extract_symbols`, `search_codebase`, `run_dev_pipeline`, `run_pipeline`. This fixes the `logToolRegistration` audit log lying about which tools are blocked when an operator configures `securityConfig.toolAllowlist`.
+  - Updated `cli-server-tools.test.ts` to mock the 2 new register functions and assert `REGISTERED_TOOLS.length === 38` against the new expected list.
+
+  Behavior change: clients can now `tools/list` the 2 tools and call them. No effect on existing tools.
+
 ## 2.81.3
 
 ### Patch Changes
