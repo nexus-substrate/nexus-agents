@@ -174,6 +174,24 @@ export class RoutingMemory implements IRoutingMemory {
   private cacheMisses = 0;
   private recommendationsMade = 0;
 
+  /**
+   * Per-taskType cache of `getPreferences()` results (#2955 site 4).
+   *
+   * Pre-fix, every `getPreferences()` call did N=`CLI_NAMES.length`
+   * MobiMem profile lookups followed by an in-place sort, on every
+   * CompositeRouter `route()` invocation. With `enableRoutingMemory=true`
+   * (default with persistence on), most calls produced empty results
+   * after the N lookups — pure waste on the routing hot path.
+   *
+   * The cache stores the sorted preference array per taskType and is
+   * invalidated by `storePreference(_, taskType, _)` writes. MobiMem
+   * mutations performed by other RoutingMemory instances or prior
+   * sessions are not detected; the cache is only correct within a
+   * single instance's lifetime, which matches CompositeRouter's
+   * usage pattern (singleton per process).
+   */
+  private preferencesCache = new Map<string, readonly ModelPreference[]>();
+
   constructor(config?: Partial<RoutingMemoryConfig>, mobimem?: MobiMem) {
     this.config = { ...DEFAULT_ROUTING_MEMORY_CONFIG, ...config };
     this.logger = this.config.logger ?? createLogger({ component: 'RoutingMemory' });
@@ -201,6 +219,11 @@ export class RoutingMemory implements IRoutingMemory {
       updatedAt: getTimeProvider().nowIso(),
     });
 
+    // #2955 site 4: invalidate the per-taskType preferences cache so the
+    // next getPreferences() call rebuilds with the new observation
+    // included. Cheap O(1) delete; no need to recompute eagerly.
+    this.preferencesCache.delete(taskType);
+
     this.logger.debug('Stored model preference', {
       model,
       taskType,
@@ -210,6 +233,15 @@ export class RoutingMemory implements IRoutingMemory {
   }
 
   getPreferences(taskType: string): readonly ModelPreference[] {
+    // #2955 site 4: cache the sorted preference array per taskType so
+    // subsequent calls skip the N MobiMem lookups + sort. Invalidation
+    // happens in storePreference. On a cache miss, do the original full
+    // CLI_NAMES sweep so MobiMem data written by another RoutingMemory
+    // instance (or a prior session — shared singleton from #2719) is
+    // still observed correctly on first read.
+    const cached = this.preferencesCache.get(taskType);
+    if (cached !== undefined) return cached;
+
     const preferenceKey = `model_preference:${taskType}`;
     const preferences: ModelPreference[] = [];
 
@@ -232,8 +264,11 @@ export class RoutingMemory implements IRoutingMemory {
       }
     }
 
-    // Sort by strength (descending)
-    return preferences.sort((a, b) => b.strength - a.strength);
+    // Sort by strength (descending) and freeze for cache safety.
+    preferences.sort((a, b) => b.strength - a.strength);
+    const result: readonly ModelPreference[] = Object.freeze([...preferences]);
+    this.preferencesCache.set(taskType, result);
+    return result;
   }
 
   recordExperience(
