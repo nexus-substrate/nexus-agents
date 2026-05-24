@@ -164,19 +164,31 @@ export async function isCliAvailable(cli: CliName, cache?: ICliDetectionCache): 
     }
 
     return available;
-  } catch {
-    // Store negative result in cache
-    if (cache !== undefined) {
-      cache.set(cli, {
-        healthy: false,
-        version: 'unknown',
-        versionStatus: 'unsupported',
-        checkedAt: new Date(getTimeProvider().now()),
-        message: 'Health check failed',
-      });
-    }
+  } catch (error: unknown) {
+    // Closes #2952 (medium): pre-fix the bare `catch {}` dropped the error
+    // entirely — operators saw `<cli>: unavailable` with no way to tell
+    // whether the binary was missing, the probe timed out, or some other
+    // failure occurred. Now include the message in the cached entry.
+    cacheHealthCheckFailure(cache, cli, error);
     return false;
   }
+}
+
+/** Records a health-check exception in the cache with the error message preserved. */
+function cacheHealthCheckFailure(
+  cache: ICliDetectionCache | undefined,
+  cli: CliName,
+  error: unknown
+): void {
+  if (cache === undefined) return;
+  const message = error instanceof Error ? error.message : String(error);
+  cache.set(cli, {
+    healthy: false,
+    version: 'unknown',
+    versionStatus: 'unsupported',
+    checkedAt: new Date(getTimeProvider().now()),
+    message: `Health check failed: ${message}`,
+  });
 }
 
 /**
