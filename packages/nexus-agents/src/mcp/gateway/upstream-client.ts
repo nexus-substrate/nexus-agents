@@ -32,6 +32,35 @@ function resolveEnv(env: Record<string, string> | undefined): Record<string, str
   return resolved;
 }
 
+/**
+ * Minimal env baseline forwarded to upstream MCP subprocesses. Closes the
+ * supply-chain leak in the prior `{ ...process.env, ... }` pattern — keys
+ * like ANTHROPIC_API_KEY, OPENAI_API_KEY, GITHUB_TOKEN are no longer handed
+ * to third-party servers the operator wired into the gateway.
+ */
+const UPSTREAM_BASELINE_KEYS = [
+  'PATH',
+  'HOME',
+  'USER',
+  'LANG',
+  'LC_ALL',
+  'LC_CTYPE',
+  'TMPDIR',
+  'TZ',
+  'PWD',
+  'SHELL',
+  'TERM',
+] as const;
+
+function buildUpstreamEnv(configEnv: Record<string, string> | undefined): Record<string, string> {
+  const baseline: Record<string, string> = {};
+  for (const key of UPSTREAM_BASELINE_KEYS) {
+    const value = process.env[key];
+    if (value !== undefined) baseline[key] = value;
+  }
+  return { ...baseline, ...resolveEnv(configEnv) };
+}
+
 /** State of an upstream connection. */
 type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'failed';
 
@@ -60,16 +89,10 @@ export class UpstreamClient {
 
     this.state = 'connecting';
     try {
-      const resolvedEnv = resolveEnv(this.config.env);
-      // Filter out undefined values from process.env for StdioServerParameters compatibility
-      const baseEnv: Record<string, string> = {};
-      for (const [k, v] of Object.entries(process.env)) {
-        if (v !== undefined) baseEnv[k] = v;
-      }
       this.transport = new StdioClientTransport({
         command: this.config.command,
         args: [...this.config.args],
-        env: { ...baseEnv, ...resolvedEnv },
+        env: buildUpstreamEnv(this.config.env),
       });
       this.client = new Client(
         { name: `nexus-upstream-${this.name}`, version: '1.0.0' },

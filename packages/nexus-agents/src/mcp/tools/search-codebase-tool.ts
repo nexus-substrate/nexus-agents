@@ -8,7 +8,7 @@
  * @module mcp/tools/search-codebase-tool
  */
 
-import { resolve } from 'node:path';
+import { resolve, sep } from 'node:path';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, formatZodError, getTimeProvider } from '../../core/index.js';
@@ -126,8 +126,11 @@ async function getIndex(dir: string): Promise<CodebaseIndex> {
 /** Resolve and validate directory against path traversal. */
 function resolveSearchDir(directory: string | undefined): { dir: string } | { error: string } {
   const dir = resolve(directory ?? process.cwd());
+  // The `+ sep` is load-bearing: a sibling directory whose name starts with
+  // the cwd basename (`/home/u/projEVIL` for cwd `/home/u/proj`) bypasses a
+  // bare startsWith. Match security/safe-path.ts.
   const cwdRoot = resolve('.');
-  if (!dir.startsWith(cwdRoot)) {
+  if (dir !== cwdRoot && !dir.startsWith(cwdRoot + sep)) {
     return { error: `Path traversal denied: directory must be within ${cwdRoot}` };
   }
   return { dir };

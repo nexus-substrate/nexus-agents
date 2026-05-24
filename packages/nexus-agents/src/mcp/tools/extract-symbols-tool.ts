@@ -8,7 +8,7 @@
  * @module mcp/tools/extract-symbols-tool
  */
 
-import { resolve } from 'node:path';
+import { resolve, sep } from 'node:path';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, formatZodError } from '../../core/index.js';
@@ -86,9 +86,12 @@ async function extractSymbolsHandler(args: unknown, ctx: HandlerContext): Promis
   const { filePath, mode } = parsed.data;
   const resolvedPath = resolve(filePath);
 
-  // Path traversal guard — restrict to cwd subtree (security audit 2026-04-10)
+  // Path traversal guard — restrict to cwd subtree. The `+ sep` is
+  // load-bearing: a sibling directory whose name starts with the cwd
+  // basename (`/home/u/projEVIL` for cwd `/home/u/proj`) bypasses a bare
+  // startsWith. Match security/safe-path.ts.
   const cwdRoot = resolve('.');
-  if (!resolvedPath.startsWith(cwdRoot)) {
+  if (resolvedPath !== cwdRoot && !resolvedPath.startsWith(cwdRoot + sep)) {
     return toolStructuredError({
       errorCategory: 'permission',
       message: `Path traversal denied: path must be within ${cwdRoot}`,
