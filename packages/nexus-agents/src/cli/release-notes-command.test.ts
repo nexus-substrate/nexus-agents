@@ -23,6 +23,9 @@ const mockCategory: ReleaseNotesCategory = {
 vi.mock('./release-notes-helpers.js', () => ({
   getLatestTag: vi.fn().mockReturnValue('v2.5.0'),
   getCommitsBetween: vi.fn().mockReturnValue(['abc1234 feat: add new feature']),
+  tryGetCommitsBetween: vi
+    .fn()
+    .mockReturnValue({ kind: 'ok', commits: ['abc1234 feat: add new feature'] }),
   parseConventionalCommit: vi.fn().mockReturnValue({
     hash: 'abc1234',
     type: 'feat',
@@ -74,6 +77,7 @@ import {
 import {
   getLatestTag,
   getCommitsBetween,
+  tryGetCommitsBetween,
   parseConventionalCommit,
   groupCommitsByCategory,
   suggestNextVersion,
@@ -85,6 +89,10 @@ import {
 function resetHelperMocks(): void {
   vi.mocked(getLatestTag).mockReturnValue('v2.5.0');
   vi.mocked(getCommitsBetween).mockReturnValue(['abc1234 feat: add new feature']);
+  vi.mocked(tryGetCommitsBetween).mockReturnValue({
+    kind: 'ok',
+    commits: ['abc1234 feat: add new feature'],
+  });
   vi.mocked(parseConventionalCommit).mockReturnValue(mockCommit);
   vi.mocked(groupCommitsByCategory).mockReturnValue([mockCategory]);
   vi.mocked(suggestNextVersion).mockReturnValue('2.6.0');
@@ -109,7 +117,7 @@ describe('runReleaseNotes', () => {
   });
 
   it('should return empty result when no commits found', async () => {
-    vi.mocked(getCommitsBetween).mockReturnValue([]);
+    vi.mocked(tryGetCommitsBetween).mockReturnValue({ kind: 'ok', commits: [] });
 
     const result = await runReleaseNotes();
 
@@ -122,7 +130,7 @@ describe('runReleaseNotes', () => {
   it('should use latest tag as fromRef', async () => {
     await runReleaseNotes();
 
-    expect(getCommitsBetween).toHaveBeenCalledWith('v2.5.0', 'HEAD');
+    expect(tryGetCommitsBetween).toHaveBeenCalledWith('v2.5.0', 'HEAD');
   });
 
   it('should fall back to HEAD~50 when no tag exists', async () => {
@@ -130,13 +138,13 @@ describe('runReleaseNotes', () => {
 
     await runReleaseNotes();
 
-    expect(getCommitsBetween).toHaveBeenCalledWith('HEAD~50', 'HEAD');
+    expect(tryGetCommitsBetween).toHaveBeenCalledWith('HEAD~50', 'HEAD');
   });
 
   it('should use custom from/to references', async () => {
     await runReleaseNotes({ from: 'v1.0.0', to: 'v2.0.0' });
 
-    expect(getCommitsBetween).toHaveBeenCalledWith('v1.0.0', 'v2.0.0');
+    expect(tryGetCommitsBetween).toHaveBeenCalledWith('v1.0.0', 'v2.0.0');
   });
 
   it('should use changelog format by default', async () => {
@@ -277,7 +285,7 @@ describe('releaseNotesCommand', () => {
       options: { from: 'v1.0.0', to: 'v2.0.0' },
     });
 
-    expect(getCommitsBetween).toHaveBeenCalledWith('v1.0.0', 'v2.0.0');
+    expect(tryGetCommitsBetween).toHaveBeenCalledWith('v1.0.0', 'v2.0.0');
   });
 
   it('should default format to changelog', async () => {

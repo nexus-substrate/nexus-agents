@@ -30,6 +30,7 @@ vi.mock('./ansi-output.js', () => ({
 vi.mock('./release-notes-helpers.js', () => ({
   getLatestTag: vi.fn(),
   getCommitsBetween: vi.fn(),
+  tryGetCommitsBetween: vi.fn().mockReturnValue({ kind: 'ok', commits: [] }),
   parseConventionalCommit: vi.fn(),
   groupCommitsByCategory: vi.fn(),
 }));

@@ -24,7 +24,7 @@ import {
 } from './release-notes-types.js';
 import {
   getLatestTag,
-  getCommitsBetween,
+  tryGetCommitsBetween,
   parseConventionalCommit,
   groupCommitsByCategory,
   generateChangelogFormat,
@@ -62,8 +62,37 @@ export async function runReleaseNotes(
     console.log(`${colors.dim}Analyzing commits from ${fromRef} to ${toRef}...${colors.reset}`);
   }
 
-  // Get commits
-  const commitLines = getCommitsBetween(fromRef, toRef);
+  // Get commits. Closes #2980: distinguish "valid range with no commits" from
+  // "git command failed" so a typo'd --from or a missing git binary surfaces
+  // as a failure instead of a "successful" empty release notes file.
+  const commitsResult = tryGetCommitsBetween(fromRef, toRef);
+  if (commitsResult.kind === 'invalid_ref') {
+    return {
+      success: false,
+      content: `Invalid git ref: "${commitsResult.ref}". Refs may only contain [a-zA-Z0-9._\\-/~^].`,
+      version: 'unknown',
+      fromRef,
+      toRef,
+      commitCount: 0,
+      categories: [],
+      usedConsensus: false,
+      durationMs: Date.now() - startTime,
+    };
+  }
+  if (commitsResult.kind === 'git_failed') {
+    return {
+      success: false,
+      content: `git log failed for ${fromRef}..${toRef}: ${commitsResult.reason}`,
+      version: 'unknown',
+      fromRef,
+      toRef,
+      commitCount: 0,
+      categories: [],
+      usedConsensus: false,
+      durationMs: Date.now() - startTime,
+    };
+  }
+  const commitLines = commitsResult.commits;
 
   if (commitLines.length === 0) {
     return {

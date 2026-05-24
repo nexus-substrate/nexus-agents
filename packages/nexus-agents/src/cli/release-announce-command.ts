@@ -28,7 +28,7 @@ import {
 } from './release-announce-types.js';
 import {
   getLatestTag,
-  getCommitsBetween,
+  tryGetCommitsBetween,
   parseConventionalCommit,
   groupCommitsByCategory,
 } from './release-notes-helpers.js';
@@ -87,9 +87,24 @@ function generateBlogPost(options: ReleaseAnnounceOptions): string {
   const highlights = options.highlights || extractHighlightsFromChangelog(options.version);
   const today = new Date().toISOString().split('T')[0] ?? new Date().toISOString().slice(0, 10);
 
-  // Get commit stats
+  // Get commit stats. Closes #2980 (announce-command path): if git fails or
+  // the ref is bad, fall back to an empty stat panel rather than silently
+  // generating a blog post claiming "0 new features." The blog post still
+  // generates because the announce-command's main purpose (creating a
+  // template the operator hand-edits) doesn't depend on commit stats being
+  // populated — but we leave a comment trail so they notice.
   const fromRef = getLatestTag() || 'HEAD~50';
-  const commits = getCommitsBetween(fromRef, 'HEAD');
+  const commitsResult = tryGetCommitsBetween(fromRef, 'HEAD');
+  const commits = commitsResult.kind === 'ok' ? commitsResult.commits : [];
+  if (commitsResult.kind !== 'ok') {
+    const detail =
+      commitsResult.kind === 'invalid_ref'
+        ? `invalid ref: ${commitsResult.ref}`
+        : commitsResult.reason;
+    console.warn(
+      `[release-announce] git log failed for ${fromRef}..HEAD (${detail}); commit stats will be zero.`
+    );
+  }
   const parsedCommits = commits.map((line) => {
     const spaceIndex = line.indexOf(' ');
     return parseConventionalCommit(line.substring(0, spaceIndex), line.substring(spaceIndex + 1));
