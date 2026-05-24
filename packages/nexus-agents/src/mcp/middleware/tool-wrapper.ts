@@ -9,7 +9,8 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { appendFileSync, existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
+import { appendFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
 import type { ILogger } from '../../core/index.js';
@@ -337,18 +338,47 @@ export interface TimeoutMismatchEvent {
   readonly errorMessage?: string;
 }
 
-/** Best-effort append — telemetry recording must never fail the user's tool call. */
+/**
+ * Cache the "dir ensured" flag so we don't re-`existsSync` on every call
+ * (closes #2955 site 3). Cached per `dirname(path)` so an operator
+ * changing `NEXUS_DATA_DIR` between calls (test/dev only) still works.
+ */
+const ensuredDirs = new Set<string>();
+
+/**
+ * Best-effort append — telemetry recording must never fail the user's tool call.
+ *
+ * Closes #2955 site 3: pre-fix this did `existsSync` + `mkdirSync` +
+ * `appendFileSync` on every MCP call to a long-running tool that lacked
+ * `progressToken`. Most MCP clients don't send progress tokens by
+ * default, so this fired on the MCP server's hot path and blocked the
+ * event loop. Switched to async `fs.promises.appendFile` (already
+ * best-effort/swallowed-on-failure, so awaitable-fire-and-forget is fine)
+ * and a per-dir-ensured cache to skip the redundant existsSync.
+ *
+ * Returns `void` to preserve the existing call-site contract; the await
+ * is intentionally not exposed — the function is fire-and-forget by
+ * design and adding back-pressure here would be a behavior change.
+ */
 function appendTimeoutMismatchEvent(event: TimeoutMismatchEvent): void {
-  try {
-    const path = join(getNexusDataDir(), TIMEOUT_MISMATCH_TELEMETRY_REL_PATH);
-    const dir = dirname(path);
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    appendFileSync(path, JSON.stringify(event) + '\n', 'utf-8');
-  } catch (err) {
+  const path = join(getNexusDataDir(), TIMEOUT_MISMATCH_TELEMETRY_REL_PATH);
+  const dir = dirname(path);
+  if (!ensuredDirs.has(dir)) {
+    try {
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+      ensuredDirs.add(dir);
+    } catch (err) {
+      wrapperLogger.debug('Best-effort timeout-mismatch dir-ensure failed', {
+        error: getErrorMessage(err),
+      });
+      return;
+    }
+  }
+  void appendFile(path, JSON.stringify(event) + '\n', 'utf-8').catch((err: unknown) => {
     wrapperLogger.debug('Best-effort timeout-mismatch event recording failed', {
       error: getErrorMessage(err),
     });
-  }
+  });
 }
 
 /** Pull the post-#2649 errorCategory off an error result's `_meta` envelope. */

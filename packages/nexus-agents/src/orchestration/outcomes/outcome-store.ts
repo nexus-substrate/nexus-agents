@@ -104,8 +104,16 @@ export class OutcomeStore {
   /** Query outcomes with optional filters. */
   query(filter?: OutcomeQuery): readonly TaskOutcome[] {
     if (filter === undefined) return [...this.entries];
-    const filtered = applyFilters(this.entries, filter);
-    return filter.limit !== undefined ? filtered.slice(-filter.limit) : filtered;
+    // Closes #2955 site 1: pre-fix this did
+    // `entries.filter(...).slice(-limit)` — a full O(N) scan of all 10k
+    // cap entries even when limit=20. The composite-router calls this
+    // inside computeQualityReward() on every single executeTask, so it's
+    // a hot path. Walk from the tail and stop once `limit` matches
+    // accumulate. Preserves "last N matching" semantics; drops to
+    // O(matches-needed) best-case (recent history is heavily skewed
+    // toward the cli/category being queried).
+    if (filter.limit === undefined) return applyFilters(this.entries, filter);
+    return tailScan(this.entries, filter, filter.limit);
   }
 
   /**
@@ -133,19 +141,16 @@ export class OutcomeStore {
   } {
     const threshold = options?.threshold ?? DEFAULT_FAMILY_FALLBACK_THRESHOLD;
     const base = options?.extraFilter ?? {};
-    const literal = applyFilters(this.entries, base).filter((o) => o.model === modelId);
+    const entry = this.registry.getEntry(modelId);
+    const { literal, family } = partitionByLiteralAndFamily(
+      applyFilters(this.entries, base),
+      modelId,
+      entry.vendor,
+      entry.family
+    );
     if (literal.length >= threshold) {
-      const entry = this.registry.getEntry(modelId);
       return { outcomes: literal, scope: 'literal', vendor: entry.vendor, family: entry.family };
     }
-    const entry = this.registry.getEntry(modelId);
-    const family = applyFilters(this.entries, base).filter(
-      (o) =>
-        // Cross-vendor transfer is out of scope (#2548) — vendor must match.
-        // Family must match too: an Anthropic claude-opus outcome shouldn't
-        // warm-start an Anthropic claude-haiku query.
-        o.vendor === entry.vendor && o.family === entry.family
-    );
     if (family.length === 0) {
       return { outcomes: literal, scope: 'empty', vendor: entry.vendor, family: entry.family };
     }
@@ -387,6 +392,59 @@ function buildPredicates(filter: OutcomeQuery): Array<(o: TaskOutcome) => boolea
 function applyFilters(entries: readonly TaskOutcome[], filter: OutcomeQuery): TaskOutcome[] {
   const preds = buildPredicates(filter);
   return entries.filter((o) => preds.every((p) => p(o)));
+}
+
+/**
+ * Single-pass partition of base-filtered outcomes into literal-id matches
+ * and same-vendor/same-family matches (closes #2955 site 2). The family
+ * bucket INCLUDES literal-id matches so the family-broadened result is a
+ * superset of the literal-id result — matches pre-fix semantics.
+ *
+ * Cross-vendor transfer is out of scope (#2548) — vendor + family must
+ * both match. An Anthropic claude-opus outcome should not warm-start an
+ * Anthropic claude-haiku query.
+ */
+function partitionByLiteralAndFamily(
+  baseFiltered: readonly TaskOutcome[],
+  modelId: string,
+  vendor: string,
+  family: string
+): { literal: TaskOutcome[]; family: TaskOutcome[] } {
+  const literalBucket: TaskOutcome[] = [];
+  const familyBucket: TaskOutcome[] = [];
+  for (const o of baseFiltered) {
+    if (o.vendor !== vendor || o.family !== family) continue;
+    familyBucket.push(o);
+    if (o.model === modelId) literalBucket.push(o);
+  }
+  return { literal: literalBucket, family: familyBucket };
+}
+
+/**
+ * Walk `entries` from the tail backwards, collecting up to `limit` matches,
+ * then return them in chronological order (closes #2955 site 1).
+ *
+ * Equivalent to `applyFilters(entries, filter).slice(-limit)` but avoids
+ * scanning the entire entries array when the recent tail contains enough
+ * matches — which is the common case for the composite-router's hot path.
+ */
+function tailScan(
+  entries: readonly TaskOutcome[],
+  filter: OutcomeQuery,
+  limit: number
+): TaskOutcome[] {
+  if (limit <= 0) return [];
+  const preds = buildPredicates(filter);
+  const collected: TaskOutcome[] = [];
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const o = entries[i];
+    if (o === undefined) continue;
+    if (preds.every((p) => p(o))) {
+      collected.push(o);
+      if (collected.length >= limit) break;
+    }
+  }
+  return collected.reverse();
 }
 
 function groupBy(
