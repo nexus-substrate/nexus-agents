@@ -1,5 +1,131 @@
 # nexus-agents
 
+## 2.83.1
+
+### Patch Changes
+
+- [#3015](https://github.com/nexus-substrate/nexus-agents/pull/3015) [`fcdd62f`](https://github.com/nexus-substrate/nexus-agents/commit/fcdd62ffc88f9d4aefa3be77dbdd50f7ef89e75d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(workflows):** `run_workflow` failure envelope is now queryable — real `executionId` + `durationMs` instead of `'unknown'`/`0`.
+
+  Pre-fix, every timed-out or failed `run_workflow` MCP call returned `{ executionId: 'unknown', durationMs: 0, ... }`. The two values are queried by clients via `query_trace(runId=...)` and weather-report dashboards — so a hung run was effectively un-debuggable from the client side. (See [#2931](https://github.com/nexus-substrate/nexus-agents/issues/2931) for the original repro: 4 of 5 substantive calls hit the 120s step timer with `executionId: 'unknown'`.)
+
+  Root cause was a missing wire between two layers:
+  - `parallel-executor.ts:createStepError` builds a `WorkflowError` with `{ stepId, error }` context — the step's diagnostic, but no run-level id.
+  - `workflow-engine.ts:runExecution` returned that inner error as-is when steps failed, so `executionId` never reached the caller.
+  - `mcp/tools/run-workflow-helpers.ts:createFailedResult` hardcoded `'unknown'` and `0` for both fields.
+
+  The fix:
+  1. **`workflow-engine.ts:runExecution`** now wraps the inner step-failure error to enrich the context with `executionId` + elapsed `durationMs` (preserving the original message + the per-step `stepId` for diagnostic continuity).
+  2. **`createFailedResult`** accepts optional `{ executionId, durationMs }` opts and keeps the legacy sentinels as defaults for backwards compatibility with any other caller.
+  3. **`run-workflow.ts:handleRunWorkflow`** extracts both from the enriched error context via a `buildFailureEnvelope` helper (split out to keep complexity under the 10-cap).
+
+  Out of scope (filed as follow-up for [#2931](https://github.com/nexus-substrate/nexus-agents/issues/2931)): item 1 (root-cause investigation of the first-step adapter hang) and item 4 (per-call `timeoutMs` parameter). Those need a separate PR — this one closes the debuggability gap so the root cause can actually be traced via `query_trace` next time.
+
+  5 regression tests added (1 in `workflow-engine.test.ts` for the enrichment, 4 in `run-workflow-helpers.test.ts` for envelope shape across opt combinations).
+
+- [#3013](https://github.com/nexus-substrate/nexus-agents/pull/3013) [`ebaef6f`](https://github.com/nexus-substrate/nexus-agents/commit/ebaef6f0afebebdd9302730ffa60ed92abcf7da4) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **cleanup(pipeline):** delete the two unwired [#1737](https://github.com/nexus-substrate/nexus-agents/issues/1737) Phase-4 scaffolds.
+
+  `pipeline/incomplete-result.ts` (85 LOC) and `pipeline/dynamic-expert.ts` (123 LOC) were exported in [#1737](https://github.com/nexus-substrate/nexus-agents/issues/1737) Phase 4 as partial-completion plumbing and bounded runtime-expert plumbing respectively. Both were exported on `pipeline/index.ts` and `exports/pipeline.ts` and exercised by `phase4.test.ts` (273 LOC) — but tree-wide grep found zero non-test, non-barrel callers. No stage ever returned an `IncompleteResult`; nothing gated on `canPipelineProceed`; the PM/Orchestrator path that the `DynamicExpertManager` docstring described was never built.
+
+  YAGNI call: adopt or delete. Deleted. Closes [#2939](https://github.com/nexus-substrate/nexus-agents/issues/2939).
+
+  Removed:
+  - `packages/nexus-agents/src/pipeline/incomplete-result.ts` (and exports: `IncompleteResult`, `IncompleteSeverity`, `isIncompleteResult`, `createIncompleteResult`, `canPipelineProceed`, `filterBySeverity`).
+  - `packages/nexus-agents/src/pipeline/dynamic-expert.ts` (and exports: `DynamicExpertManager`, `MAX_DYNAMIC_EXPERTS`, `DynamicExpertSpec`, `DynamicExpert`).
+  - `packages/nexus-agents/src/pipeline/phase4.test.ts` (only tested the two deleted scaffolds).
+  - Re-exports through `pipeline/index.ts` and `exports/pipeline.ts`. `SharedMemoryStore` (the only [#1737](https://github.com/nexus-substrate/nexus-agents/issues/1737) Phase-4 scaffold with actual standalone value) is kept — see the sibling [#2937](https://github.com/nexus-substrate/nexus-agents/issues/2937) cleanup.
+
+  If the use cases come back (typed partial-completion, dynamic runtime experts), reintroduce with both producer AND consumer in the same PR — the lesson [#2937](https://github.com/nexus-substrate/nexus-agents/issues/2937), [#2938](https://github.com/nexus-substrate/nexus-agents/issues/2938), [#2921](https://github.com/nexus-substrate/nexus-agents/issues/2921), and this issue all surface.
+
+- [#3021](https://github.com/nexus-substrate/nexus-agents/pull/3021) [`28252b4`](https://github.com/nexus-substrate/nexus-agents/commit/28252b40ceb8a31623eae6fe02fbabaf60397b2c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **refactor(cli-adapters):** retire the unwired DAAO difficulty estimator (closes [#2940](https://github.com/nexus-substrate/nexus-agents/issues/2940)).
+
+  DAAO (Difficulty-Aware Agent Orchestration, arXiv:2509.11079) was prototyped under Issue [#334](https://github.com/nexus-substrate/nexus-agents/issues/334) and exported from `cli-adapters/index.ts` as `DAAOEstimator` / `createDAAOEstimator` / `estimateDAAODifficulty` / `routeByDAAODifficulty` / `encodeTaskFeatures` plus a full Zod-validated config + 8-dimensional feature surface. But `[#334](https://github.com/nexus-substrate/nexus-agents/issues/334)` ended up implemented via `ZeroRouter` — `composite-router.ts` consumes `decision.difficulty` / `decision.tier` from ZeroRouter for fast/balanced/powerful tier selection, and never touches DAAO. The only non-test consumer was `routing-integration.test.ts`, which existed primarily to compare DAAO against ZeroRouter.
+
+  Continuing the activation-or-delete YAGNI sweep from [#2937](https://github.com/nexus-substrate/nexus-agents/issues/2937), [#2938](https://github.com/nexus-substrate/nexus-agents/issues/2938), [#2939](https://github.com/nexus-substrate/nexus-agents/issues/2939), [#3018](https://github.com/nexus-substrate/nexus-agents/issues/3018).
+
+  ## Removed
+  - `packages/nexus-agents/src/cli-adapters/daao-estimator.ts` (387 LOC)
+  - `packages/nexus-agents/src/cli-adapters/daao-feature-extraction.ts` (386 LOC)
+  - `packages/nexus-agents/src/cli-adapters/daao-types.ts` (274 LOC)
+  - `packages/nexus-agents/src/cli-adapters/daao-estimator.test.ts` (819 LOC)
+  - `packages/nexus-agents/src/cli-adapters/daao-feature-extraction.test.ts` (403 LOC)
+  - `packages/nexus-agents/src/cli-adapters/routing-integration.test.ts` (1010 LOC) — primarily DAAO-vs-ZeroRouter comparison; ZeroRouter has its own dedicated 700-LOC test file (`zero-router.test.ts`) and CompositeRouter has 938 LOC + 7 additional helper test files, so the routing-integration coverage is preserved elsewhere.
+  - All DAAO entries from `cli-adapters/index.ts` (5 values + 9 types + 9 schemas/constants).
+  - DAAO mention in `utils/text-utils.ts` consumers comment.
+
+  ## Doc updates
+  - `docs/architecture/ROUTING_SYSTEM.md`: replaced the "DAAO Difficulty Estimator" section with a "Difficulty Estimation" note pointing at ZeroRouter; updated the Source Files table; removed DAAO from the Research Sources table.
+  - `docs/research/RESEARCH_INDEX.md`: annotated the DAAO row as retired with link to [#2940](https://github.com/nexus-substrate/nexus-agents/issues/2940).
+  - `docs/research/registry/techniques.yaml`: flipped `daao-difficulty-estimation.status` from `implemented` to `retired`, cleared `integration_files`, added a 2026-05-24 retirement decision entry with the ZeroRouter-supersedes rationale.
+
+  ## Test plan
+  - [x] `pnpm tsc --noEmit` clean post-deletion.
+  - [x] `pnpm vitest run src/cli-adapters/composite-router.test.ts src/cli-adapters/zero-router.test.ts` → 125 pass (no regressions from losing routing-integration coverage).
+  - [x] `pnpm eslint` on the 2 touched files clean.
+  - [ ] CI: full matrix, governance + registry-coverage gates.
+
+  ## If DAAO returns
+
+  If a true alternate VAE-based estimator with different feature weights becomes a real production need, reintroduce alongside the wiring stage in `composite-router.ts` (or as an explicit alternate stage with a flag) in the same PR. Producer-without-consumer was what the issue called out as contributor confusion.
+
+- [#3020](https://github.com/nexus-substrate/nexus-agents/pull/3020) [`98ae2ae`](https://github.com/nexus-substrate/nexus-agents/commit/98ae2ae9b17cacb75210c4540d71d4344d9799c4) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(plugin):** marketplace.json now passes `claude plugin validate` (closes [#2983](https://github.com/nexus-substrate/nexus-agents/issues/2983)).
+
+  Two schema violations the validator reported:
+  1. **Missing top-level `owner`** — the schema referenced by the `$schema` URL requires an `owner` object alongside `name`/`description`/`plugins`. Added with `name` + `url` pointing at the maintainer GitHub profile.
+  2. **`plugins[0].source` shape** — pre-fix used the `{ type: 'github', owner: 'williamzujkowski', repo: 'nexus-agents' }` triple. Schema-accepted form is `{ source: 'github', repo: 'williamzujkowski/nexus-agents' }` (single `repo` field with `owner/repo` slug, `source` key instead of `type`).
+
+  Both fixes are mechanical — values are derived from the existing data; no behavior change beyond the validator now passing.
+
+- [#3019](https://github.com/nexus-substrate/nexus-agents/pull/3019) [`2efec78`](https://github.com/nexus-substrate/nexus-agents/commit/2efec78cee1a904c4fc9b5354cafc40ff2776a35) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **refactor(cli-adapters):** delete 3 exported-but-unused symbols (closes [#3018](https://github.com/nexus-substrate/nexus-agents/issues/3018)).
+
+  Continuing the [#2937](https://github.com/nexus-substrate/nexus-agents/issues/2937)/[#2938](https://github.com/nexus-substrate/nexus-agents/issues/2938)/[#2939](https://github.com/nexus-substrate/nexus-agents/issues/2939)/[#2940](https://github.com/nexus-substrate/nexus-agents/issues/2940) activate-or-delete sweep. Three symbols on `cli-adapters/index.ts` had zero non-test, non-barrel callers anywhere in the tree, and none were re-exported through the documented `packages/nexus-agents/src/exports/` public API:
+  - **`generateObject`** (`generate-object.ts`, 244 LOC) — Zod-schema-driven retry-with-feedback structured-output helper. Tested in `generate-object.test.ts` (222 LOC). No production caller.
+  - **`createCircuitBreakerRegistryWithMetrics`** (`circuit-breaker.ts:384`) — a wrapper that added a state-change logging listener to `CircuitBreakerRegistry`. Tested but never wired into the real adapter pipeline.
+  - **`integrateCapacityMonitorWithCircuitBreaker`** (`circuit-breaker.ts:455`) + its `CapacityMonitorIntegrationConfig` interface — bridge that would trip circuits on low-capacity signals (Issue [#543](https://github.com/nexus-substrate/nexus-agents/issues/543)'s "wire up onLowCapacity callback"). The bridge was built; the callback wire-up never landed.
+
+  Removed:
+  - `packages/nexus-agents/src/cli-adapters/generate-object.ts` + its test file (466 LOC total).
+  - The two functions + interface + default-config block (~107 LOC) at the bottom of `circuit-breaker.ts`.
+  - Their test blocks (~261 LOC across two `describe` sections) in `circuit-breaker.test.ts`.
+  - Six entries on `cli-adapters/index.ts` (5 values + 1 type re-export).
+
+  Preserved:
+  - `CircuitBreakerRegistry`, `CliCircuitBreaker`, `CircuitError`, `mapCliErrorToCategory`, `categorizeError`, `DEFAULT_CIRCUIT_BREAKER_CONFIG` — these are the real production circuit-breaker surface and are actively used by adapters. Plus all their tests.
+
+  63 circuit-breaker tests still pass (was 87 — the 24 tests for the two deleted functions are gone). `tsc` + `eslint` clean.
+
+  If structured-output or capacity-monitor integration come back as real requirements, reintroduce them alongside the consumer code in the same PR. The pattern of producer-without-consumer is what [#2937](https://github.com/nexus-substrate/nexus-agents/issues/2937), [#2938](https://github.com/nexus-substrate/nexus-agents/issues/2938), [#2939](https://github.com/nexus-substrate/nexus-agents/issues/2939), and [#2940](https://github.com/nexus-substrate/nexus-agents/issues/2940) all surfaced — adopting that lesson now.
+
+- [#3023](https://github.com/nexus-substrate/nexus-agents/pull/3023) [`6820949`](https://github.com/nexus-substrate/nexus-agents/commit/682094947684cb28c06da5678c77d355dba3fd6a) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **refactor:** delete 2 producer-less surfaces — learning-events + tool-output validation (closes [#3022](https://github.com/nexus-substrate/nexus-agents/issues/3022)).
+
+  Second audit pass after the [#2937](https://github.com/nexus-substrate/nexus-agents/issues/2937)/[#2938](https://github.com/nexus-substrate/nexus-agents/issues/2938)/[#2939](https://github.com/nexus-substrate/nexus-agents/issues/2939)/[#2940](https://github.com/nexus-substrate/nexus-agents/issues/2940)/[#3018](https://github.com/nexus-substrate/nexus-agents/issues/3018) sweep — same activation-or-delete shape, this time in `orchestration/outcomes` and `mcp/middleware`.
+
+  ### 1. `emitThresholdUpdate` + `emitTrendDetected` (Issue [#901](https://github.com/nexus-substrate/nexus-agents/issues/901) Phase 4 scaffolding)
+
+  `packages/nexus-agents/src/orchestration/outcomes/learning-events.ts`. Both emit `learning.threshold_updated` / `learning.trend_detected` EventBus events and were exported through three barrels (`outcomes/index.ts`, `orchestration/index.ts`, `exports/orchestration.ts`). The adaptive-threshold computation in `adaptive-thresholds.ts` computes the threshold updates but never broadcasts them via these helpers — **and nothing in the codebase subscribed for these event types either.** Pure producer-less + subscriber-less scaffolding.
+
+  Removed:
+  - `orchestration/outcomes/learning-events.ts` (69 LOC) + its 143-LOC test file.
+  - `LearningThresholdUpdatedEvent` + `LearningTrendDetectedEvent` interfaces in `pipeline/event-types.ts` + their literal entries in `PIPELINE_EVENT_TYPES` + the union members in the `PipelineEvent` discriminated union.
+  - Re-exports through 3 barrel files.
+  - `'exports learning event emitters'` test in `export-contracts.test.ts`.
+
+  ### 2. `validateToolOutput` + `createOutputValidator` (Issue [#547](https://github.com/nexus-substrate/nexus-agents/issues/547) sibling)
+
+  `packages/nexus-agents/src/mcp/middleware/validation.ts:121, 159`. The output-validation siblings of `validateToolInput` (which IS used everywhere). Exported through `mcp/middleware/index.ts` and tested in `validation.test.ts`, but no MCP tool ever called them — every tool returns its result without schema-validating first.
+
+  Removed:
+  - Both functions from `validation.ts` (~75 LOC).
+  - Both test describes from `validation.test.ts` (~53 LOC across the two blocks).
+  - Re-exports from `mcp/middleware/index.ts`.
+
+  ### Preserved
+  - `validateToolInput` + `createValidator` (Issue [#547](https://github.com/nexus-substrate/nexus-agents/issues/547)'s input-validation half) — actively used by every MCP tool; tests untouched.
+  - `computeAdaptiveThresholds` + `detectTrend` — both have real consumers and stay exported.
+
+  If learning-event broadcasting or per-tool output validation come back as real production requirements, reintroduce alongside the consumer/producer in the same PR — that's the recurring lesson from the entire [#2937](https://github.com/nexus-substrate/nexus-agents/issues/2937)–[#3022](https://github.com/nexus-substrate/nexus-agents/issues/3022) sweep.
+
+  73 affected tests pass (`validation.test.ts` + `export-contracts.test.ts`). `tsc` clean.
+
 ## 2.83.0
 
 ### Minor Changes
