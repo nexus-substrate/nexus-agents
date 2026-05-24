@@ -151,9 +151,8 @@ describe('handleSet', () => {
     expect(r.newValue).toBe(20000);
   });
   it('result key matches full key format', async () => {
-    expect((await handleSet('WORKER_DEFAULTS.maxWorkers', '16')).key).toBe(
-      'WORKER_DEFAULTS.maxWorkers'
-    );
+    // Was WORKER_DEFAULTS.maxWorkers — removed in #2977. Use another valid key.
+    expect((await handleSet('TIMEOUT_DEFAULTS.cliMs', '5000')).key).toBe('TIMEOUT_DEFAULTS.cliMs');
   });
 });
 
