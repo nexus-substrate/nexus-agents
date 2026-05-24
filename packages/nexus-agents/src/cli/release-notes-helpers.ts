@@ -46,20 +46,44 @@ export function getLatestTag(): string | undefined {
  * @returns Array of commit lines
  */
 export function getCommitsBetween(from: string, to = 'HEAD'): string[] {
+  const result = tryGetCommitsBetween(from, to);
+  return result.kind === 'ok' ? result.commits : [];
+}
+
+/**
+ * Result type for `tryGetCommitsBetween` — distinguishes "no commits found"
+ * (an empty but valid range) from "git command failed" (invalid ref, missing
+ * binary, corrupt repo, timeout). Closes #2980: the legacy `getCommitsBetween`
+ * collapsed both into `[]`, which downstream `release-notes-command` mapped to
+ * `{ success: true, content: 'No commits found in range.' }` — producing a
+ * "successful" empty release notes file on a typo'd `--from`.
+ */
+export type CommitsResult =
+  | { kind: 'ok'; commits: string[] }
+  | { kind: 'invalid_ref'; ref: string }
+  | { kind: 'git_failed'; reason: string };
+
+/**
+ * Fetches commits between two git refs, distinguishing absence from failure.
+ * Use this in any path where "no commits" and "couldn't run git" should
+ * behave differently (release notes, release announcements, changelog
+ * generation). Prefer over `getCommitsBetween` in new code.
+ */
+export function tryGetCommitsBetween(from: string, to = 'HEAD'): CommitsResult {
   // Validate git refs to prevent command injection (security audit 2026-04-10)
   const SAFE_REF = /^[a-zA-Z0-9._\-/~^]+$/;
-  if (!SAFE_REF.test(from) || !SAFE_REF.test(to)) {
-    return [];
-  }
+  if (!SAFE_REF.test(from)) return { kind: 'invalid_ref', ref: from };
+  if (!SAFE_REF.test(to)) return { kind: 'invalid_ref', ref: to };
   try {
     const result = execFileSync('git', ['log', `${from}..${to}`, '--oneline', '--format=%h %s'], {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
       timeout: CLI_SUBPROCESS_TIMEOUTS.ghCommandMs,
     }).trim();
-    return result ? result.split('\n').filter(Boolean) : [];
-  } catch {
-    return [];
+    return { kind: 'ok', commits: result ? result.split('\n').filter(Boolean) : [] };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    return { kind: 'git_failed', reason };
   }
 }
 
