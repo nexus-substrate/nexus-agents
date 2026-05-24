@@ -801,9 +801,29 @@ async function deriveOrchestratePolicy(
     }
     return policy;
   } catch (error) {
-    logger.warn('access-policy: derivation failed, falling back to off', {
+    // Fail closed under active enforcement, fail safe under audit/off.
+    // Pre-fix #2993 this fell back to a wildcard `mode: 'off'` policy on
+    // ANY derivation exception — turning a derivation bug into a security
+    // bypass even for operators running `enforce`. Now: preserve the
+    // operator's configured mode; restrict to empty allow-lists when
+    // enforcement is active; keep the permissive policy only when the
+    // operator already opted out (`off`) or accepted log-only (`audit`).
+    logger.warn('access-policy: derivation failed', {
+      mode,
       error: getErrorMessage(error),
+      failClosed: mode === 'enforce' || mode === 'confirm_risky',
     });
+    if (mode === 'enforce' || mode === 'confirm_risky') {
+      return {
+        allowedTools: [],
+        allowedPathPatterns: [],
+        allowedOperations: [],
+        objectiveHash: 'derivation-failed',
+        derivedAt: getTimeProvider().nowIso(),
+        source: 'bypass',
+        mode,
+      };
+    }
     return {
       allowedTools: '*',
       allowedPathPatterns: [],
@@ -811,7 +831,7 @@ async function deriveOrchestratePolicy(
       objectiveHash: 'derivation-failed',
       derivedAt: getTimeProvider().nowIso(),
       source: 'bypass',
-      mode: 'off',
+      mode,
     };
   }
 }
