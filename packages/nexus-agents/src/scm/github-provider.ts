@@ -12,6 +12,7 @@
 
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { z } from 'zod';
 import type { Result } from '../core/index.js';
 import { ok, err, createLogger, getErrorMessage } from '../core/index.js';
 import type {
@@ -36,39 +37,88 @@ const MAX_BUFFER = 10 * 1024 * 1024;
 const GH_TIMEOUT_MS = 30_000;
 
 // ============================================================================
-// gh CLI JSON types (internal)
+// gh CLI JSON schemas (internal — #2962 site 4)
+//
+// Each schema mirrors the `--json <fields>` projection the corresponding
+// gh call asks for. They're applied via `safeParseGhJson` so a gh-schema
+// drift (a renamed field, a missing nullable, a removed nested object)
+// surfaces as a structured ScmError('schema mismatch') instead of the
+// previous TypeError-rewrapped-as-"Failed to parse JSON" — pre-#2962, the
+// JSON parsed fine and the mapper's `raw.labels.map` / `raw.author.login`
+// deref blew up, so debuggers chased a parser bug that didn't exist.
 // ============================================================================
 
-interface GhIssueJson {
-  number: number;
-  title: string;
-  body: string | null;
-  labels: Array<{ name: string }>;
-  author: { login: string };
-  createdAt: string;
-}
+const GhIssueJsonSchema = z.object({
+  number: z.number(),
+  title: z.string(),
+  body: z.string().nullable(),
+  labels: z.array(z.object({ name: z.string() })),
+  author: z.object({ login: z.string() }),
+  createdAt: z.string(),
+});
+type GhIssueJson = z.infer<typeof GhIssueJsonSchema>;
 
-interface GhCommentJson {
-  id: number;
-  body: string;
-  author: { login: string };
-  createdAt: string;
-}
+const GhCommentJsonSchema = z.object({
+  id: z.number(),
+  body: z.string(),
+  author: z.object({ login: z.string() }),
+  createdAt: z.string(),
+});
+type GhCommentJson = z.infer<typeof GhCommentJsonSchema>;
 
-interface GhPrJson {
-  number: number;
-  title: string;
-  body: string | null;
-  url: string;
-  author: { login: string };
-  baseRefName: string;
-  headRefName: string;
-}
+const GhPrJsonSchema = z.object({
+  number: z.number(),
+  title: z.string(),
+  body: z.string().nullable(),
+  url: z.string(),
+  author: z.object({ login: z.string() }),
+  baseRefName: z.string(),
+  headRefName: z.string(),
+});
+// `createPR` consumes the parsed value inline; no GhPrJson alias needed.
 
-interface GhPrStatusJson {
-  mergeable: string;
-  statusCheckRollup: Array<{ state: string }> | null;
-  reviewDecision: string | null;
+const GhPrStatusJsonSchema = z.object({
+  mergeable: z.string(),
+  statusCheckRollup: z.array(z.object({ state: z.string() })).nullable(),
+  reviewDecision: z.string().nullable(),
+});
+type GhPrStatusJson = z.infer<typeof GhPrStatusJsonSchema>;
+
+/**
+ * Parse + Zod-validate gh CLI output. Distinguishes:
+ * - parse failure (gh returned non-JSON or empty) — \`label: Failed to parse JSON\`
+ * - schema mismatch (gh returned valid JSON in an unexpected shape) — \`label: schema mismatch\`
+ * Pre-#2962 both surfaced as the same misleading "Failed to parse" error.
+ */
+function safeParseGhJson<T>(
+  rawJson: string,
+  schema: z.ZodType<T>,
+  label: string
+): Result<T, ScmError> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawJson);
+  } catch (error) {
+    return err(
+      new ScmError(
+        `${label}: Failed to parse JSON: ${getErrorMessage(error)} — preview: ${rawJson.slice(0, 120)}`,
+        'github'
+      )
+    );
+  }
+  const result = schema.safeParse(parsed);
+  if (!result.success) {
+    return err(
+      new ScmError(
+        `${label}: schema mismatch — ${result.error.issues
+          .slice(0, 3)
+          .map((i) => `${i.path.join('.')}: ${i.message}`)
+          .join('; ')} — preview: ${rawJson.slice(0, 120)}`,
+        'github'
+      )
+    );
+  }
+  return ok(result.data);
 }
 
 // ============================================================================
@@ -160,16 +210,9 @@ export class GitHubProvider implements IScmProvider {
     const result = await execGh(args, this.repo);
     if (!result.ok) return result;
 
-    try {
-      return ok(mapIssue(JSON.parse(result.value) as GhIssueJson));
-    } catch (error) {
-      return err(
-        new ScmError(
-          `Failed to parse issue JSON: ${getErrorMessage(error)} — preview: ${result.value.slice(0, 120)}`,
-          'github'
-        )
-      );
-    }
+    const parsed = safeParseGhJson(result.value, GhIssueJsonSchema, 'getIssue');
+    if (!parsed.ok) return parsed;
+    return ok(mapIssue(parsed.value));
   }
 
   async listIssues(filters?: IssueFilters): Promise<Result<readonly ScmIssue[], ScmError>> {
@@ -188,17 +231,9 @@ export class GitHubProvider implements IScmProvider {
     const result = await execGh(args, this.repo);
     if (!result.ok) return result;
 
-    try {
-      const issues = JSON.parse(result.value) as GhIssueJson[];
-      return ok(issues.map(mapIssue));
-    } catch (error) {
-      return err(
-        new ScmError(
-          `Failed to parse issues JSON: ${getErrorMessage(error)} — preview: ${result.value.slice(0, 120)}`,
-          'github'
-        )
-      );
-    }
+    const parsed = safeParseGhJson(result.value, z.array(GhIssueJsonSchema), 'listIssues');
+    if (!parsed.ok) return parsed;
+    return ok(parsed.value.map(mapIssue));
   }
 
   async addLabels(issueNumber: number, labels: readonly string[]): Promise<Result<void, ScmError>> {
@@ -231,25 +266,18 @@ export class GitHubProvider implements IScmProvider {
     const result = await execGh(args, this.repo);
     if (!result.ok) return result;
 
-    try {
-      const raw = JSON.parse(result.value) as GhPrJson;
-      return ok({
-        number: raw.number,
-        title: raw.title,
-        body: raw.body ?? '',
-        author: raw.author.login,
-        base: raw.baseRefName,
-        head: raw.headRefName,
-        url: raw.url,
-      });
-    } catch (error) {
-      return err(
-        new ScmError(
-          `Failed to parse PR JSON: ${getErrorMessage(error)} — preview: ${result.value.slice(0, 120)}`,
-          'github'
-        )
-      );
-    }
+    const parsed = safeParseGhJson(result.value, GhPrJsonSchema, 'createPR');
+    if (!parsed.ok) return parsed;
+    const raw = parsed.value;
+    return ok({
+      number: raw.number,
+      title: raw.title,
+      body: raw.body ?? '',
+      author: raw.author.login,
+      base: raw.baseRefName,
+      head: raw.headRefName,
+      url: raw.url,
+    });
   }
 
   async mergePR(prNumber: number, options?: MergePROptions): Promise<Result<void, ScmError>> {
@@ -274,16 +302,9 @@ export class GitHubProvider implements IScmProvider {
     const result = await execGh(args, this.repo);
     if (!result.ok) return result;
 
-    try {
-      return ok(mapPRStatus(JSON.parse(result.value) as GhPrStatusJson));
-    } catch (error) {
-      return err(
-        new ScmError(
-          `Failed to parse PR status JSON: ${getErrorMessage(error)} — preview: ${result.value.slice(0, 120)}`,
-          'github'
-        )
-      );
-    }
+    const parsed = safeParseGhJson(result.value, GhPrStatusJsonSchema, 'getPRStatus');
+    if (!parsed.ok) return parsed;
+    return ok(mapPRStatus(parsed.value));
   }
 
   async createIssue(
@@ -325,16 +346,8 @@ export class GitHubProvider implements IScmProvider {
     const result = await execGh(args, this.repo);
     if (!result.ok) return result;
 
-    try {
-      const comments = JSON.parse(result.value) as GhCommentJson[];
-      return ok(comments.map(mapComment));
-    } catch (error) {
-      return err(
-        new ScmError(
-          `Failed to parse comments JSON: ${getErrorMessage(error)} — preview: ${result.value.slice(0, 120)}`,
-          'github'
-        )
-      );
-    }
+    const parsed = safeParseGhJson(result.value, z.array(GhCommentJsonSchema), 'listComments');
+    if (!parsed.ok) return parsed;
+    return ok(parsed.value.map(mapComment));
   }
 }
