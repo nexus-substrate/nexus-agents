@@ -186,6 +186,42 @@ describe('WorkflowEngine', () => {
 
       expect(result.ok).toBe(false);
     });
+
+    // #2931: workflow engine must enrich step-failure errors with the
+    // run's executionId and elapsed durationMs so the run-workflow MCP
+    // tool can return a queryable failure envelope instead of the
+    // pre-#2931 `executionId: 'unknown'` / `durationMs: 0` shape.
+    it('enriches step-failure WorkflowError with executionId and durationMs (#2931)', async () => {
+      const workflow = { ...sampleWorkflow };
+      mockDeps.createExecutionPlan = vi
+        .fn()
+        .mockReturnValue(ok({ phases: [{ steps: [workflow.steps[0] as WorkflowStep] }] }));
+      // Inner error from parallel-executor carries stepId in context; the
+      // engine must preserve it AND add executionId + durationMs.
+      mockDeps.executePhase = vi.fn().mockResolvedValue(
+        err(
+          new WorkflowError("Step 'first' failed: adapter hang", {
+            context: { stepId: 'first', error: 'adapter hang' },
+          })
+        )
+      );
+
+      const result = await engine.execute(workflow, { input1: 'test' });
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      const ctx = result.error.context;
+      expect(ctx).toBeDefined();
+      // Original context preserved
+      expect(ctx?.['stepId']).toBe('first');
+      // New #2931 enrichment
+      expect(typeof ctx?.['executionId']).toBe('string');
+      expect(String(ctx?.['executionId']).length).toBeGreaterThan(0);
+      expect(typeof ctx?.['durationMs']).toBe('number');
+      expect(ctx?.['durationMs']).toBeGreaterThanOrEqual(0);
+      // Original message preserved verbatim
+      expect(result.error.message).toBe("Step 'first' failed: adapter hang");
+    });
   });
 
   describe('getStatus', () => {

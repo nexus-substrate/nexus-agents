@@ -174,6 +174,25 @@ function recordWorkflowError(template: string, errorMessage: string): void {
 }
 
 /**
+ * Build the failure envelope, threading `executionId` + `durationMs` from
+ * the engine-enriched WorkflowError context so timed-out runs are
+ * queryable via `query_trace` (#2931). Falls back to the legacy
+ * 'unknown'/0 shape only when an upstream path didn't enrich the error.
+ */
+function buildFailureEnvelope(
+  workflowName: string,
+  error: { message: string; context?: Record<string, unknown> | undefined }
+): ToolResponse {
+  const ctx = error.context;
+  const executionId = typeof ctx?.['executionId'] === 'string' ? ctx['executionId'] : undefined;
+  const durationMs = typeof ctx?.['durationMs'] === 'number' ? ctx['durationMs'] : undefined;
+  return createFailedResult(workflowName, error.message, {
+    ...(executionId !== undefined ? { executionId } : {}),
+    ...(durationMs !== undefined ? { durationMs } : {}),
+  });
+}
+
+/**
  * Handle tool execution and format response.
  *
  * @param deps - Tool dependencies
@@ -206,7 +225,7 @@ async function handleRunWorkflow(
   const executeResult = await executeWorkflow(deps, workflow, inputs);
   if (!executeResult.ok) {
     recordWorkflowError(template, executeResult.error.message);
-    return createFailedResult(workflow.name, executeResult.error.message);
+    return buildFailureEnvelope(workflow.name, executeResult.error);
   }
 
   recordWorkflowSuccess(

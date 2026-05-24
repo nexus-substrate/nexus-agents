@@ -14,6 +14,7 @@ import {
   getAllowedWorkflowDirs,
   validateInputType,
   validateWorkflowInputs,
+  createFailedResult,
 } from './run-workflow-helpers.js';
 import type { WorkflowDefinition } from '../../core/index.js';
 import type { RunWorkflowDeps } from './run-workflow-types.js';
@@ -308,5 +309,52 @@ describe('validateWorkflowInputs', () => {
     const result = validateWorkflowInputs(workflow, { target: 'src/main.ts' });
 
     expect(result.valid).toBe(true);
+  });
+});
+
+// #2931: pre-fix the failure envelope hardcoded `executionId: 'unknown'`
+// and `durationMs: 0`, leaving timed-out runs un-debuggable via
+// `query_trace`. The fix threads real values from the engine's
+// enriched WorkflowError.context.
+describe('createFailedResult (#2931)', () => {
+  function parseEnvelope(resp: ReturnType<typeof createFailedResult>): Record<string, unknown> {
+    const textContent = (resp.content as ReadonlyArray<{ type: string; text: string }>)[0];
+    expect(textContent?.type).toBe('text');
+    return JSON.parse(textContent?.text ?? '{}') as Record<string, unknown>;
+  }
+
+  it('falls back to legacy sentinels when no opts supplied (backwards compat)', () => {
+    const resp = createFailedResult('my-workflow', 'something broke');
+    expect(resp.isError).toBe(true);
+    const body = parseEnvelope(resp);
+    expect(body['executionId']).toBe('unknown');
+    expect(body['durationMs']).toBe(0);
+    expect(body['workflowName']).toBe('my-workflow');
+    expect(body['status']).toBe('failed');
+    expect(body['error']).toBe('something broke');
+  });
+
+  it('uses the supplied executionId + durationMs from the run-workflow path', () => {
+    const resp = createFailedResult('my-workflow', 'step timeout', {
+      executionId: 'wf-abc-123',
+      durationMs: 4523,
+    });
+    const body = parseEnvelope(resp);
+    expect(body['executionId']).toBe('wf-abc-123');
+    expect(body['durationMs']).toBe(4523);
+  });
+
+  it('accepts only executionId (durationMs falls back to 0)', () => {
+    const resp = createFailedResult('w', 'e', { executionId: 'wf-x' });
+    const body = parseEnvelope(resp);
+    expect(body['executionId']).toBe('wf-x');
+    expect(body['durationMs']).toBe(0);
+  });
+
+  it('accepts only durationMs (executionId falls back to "unknown")', () => {
+    const resp = createFailedResult('w', 'e', { durationMs: 100 });
+    const body = parseEnvelope(resp);
+    expect(body['executionId']).toBe('unknown');
+    expect(body['durationMs']).toBe(100);
   });
 });
