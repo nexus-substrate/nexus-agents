@@ -131,11 +131,42 @@ async function exportSessionMetrics(
       await writeFile(exportPath, JSON.stringify(metrics, null, 2));
       logger.info('Metrics exported', { path: exportPath });
     } else {
-      logger.debug('Session metrics', metrics);
+      // Closes #2963 site 1: pre-fix `metrics.tasks[].task` is the raw
+      // user-task prompt. A user pasting `"deploy with API_KEY=sk-…"`
+      // would land their key in debug logs (many ops setups capture
+      // debug in staging/dev). Redact to summary fields only.
+      logger.debug('Session metrics', summarizeMetricsForDebug(metrics));
     }
   } catch (error) {
     logger.error('Failed to export metrics', new Error(getErrorMessage(error)));
   }
+}
+
+/**
+ * Strips potentially sensitive fields from the metrics object for debug
+ * logging (#2963 site 1). The full `metrics` is still written to the
+ * operator-requested export file; this is just for the always-on log
+ * stream.
+ */
+function summarizeMetricsForDebug(metrics: Record<string, unknown>): Record<string, unknown> {
+  const tasks = Array.isArray(metrics['tasks']) ? metrics['tasks'] : [];
+  return {
+    sessionId: metrics['sessionId'],
+    createdAt: metrics['createdAt'],
+    updatedAt: metrics['updatedAt'],
+    status: metrics['status'],
+    taskCount: metrics['taskCount'],
+    tasks: tasks.map((t: unknown) => {
+      const obj = (t ?? {}) as Record<string, unknown>;
+      return {
+        id: obj['id'],
+        status: obj['status'],
+        durationMs: obj['durationMs'],
+        tokensUsed: obj['tokensUsed'],
+        // `task` field deliberately omitted — user prompts may contain secrets.
+      };
+    }),
+  };
 }
 
 /** Builds the metrics export object. */

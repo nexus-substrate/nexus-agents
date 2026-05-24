@@ -378,7 +378,7 @@ async function runPlanningPhase(
   );
   if (sid !== undefined) saveStageCheckpoint(sid, 'research', { type: 'research', text: research });
 
-  const planResult = await runPlanOrResume(prior, task, research, stages);
+  const planResult = await runPlanOrResume(prior, task, research, stages, sid);
   if (sid !== undefined) {
     saveStageCheckpoint(sid, 'plan', {
       type: 'plan',
@@ -470,7 +470,8 @@ async function runPlanOrResume(
   prior: PipelineCheckpointState | null,
   task: string,
   research: string,
-  stages: DevPipelineStages
+  stages: DevPipelineStages,
+  sessionId: string | undefined
 ): Promise<{
   plan: string;
   iterations: number;
@@ -479,7 +480,7 @@ async function runPlanOrResume(
   caveats: readonly string[];
 }> {
   if (prior?.plan !== undefined) {
-    logger.info('Resuming from checkpoint', { stage: 'plan' });
+    logger.info('Resuming from checkpoint', { stage: 'plan', sessionId });
     return {
       plan: prior.plan,
       iterations: prior.voteIterations ?? 0,
@@ -488,7 +489,7 @@ async function runPlanOrResume(
       caveats: prior.voteCaveats ?? [],
     };
   }
-  return planVoteLoop(task, research, stages);
+  return planVoteLoop(task, research, stages, sessionId);
 }
 
 /** Conditional vote metadata for task annotation. */
@@ -542,7 +543,8 @@ function extractConditionalMeta(vote: VoteResult): ConditionalMeta {
 async function planVoteLoop(
   task: string,
   research: string,
-  stages: DevPipelineStages
+  stages: DevPipelineStages,
+  sessionId: string | undefined
 ): Promise<{ plan: string; iterations: number } & ConditionalMeta> {
   let feedback: string | undefined;
   let plan = '';
@@ -564,17 +566,30 @@ async function planVoteLoop(
       }
     );
 
+    // Closes #2963 site 4: include sessionId so plan-loop post-mortems
+    // can correlate to checkpointed sessions on disk. The variable
+    // was already in scope at the caller (#dev-pipeline runDevPipeline);
+    // threaded through runPlanOrResume → planVoteLoop here.
     if (isApproved(vote)) {
       const meta = extractConditionalMeta(vote);
-      logger.info('Plan approved', { iteration: i, approval: vote.approvalPercentage, ...meta });
+      logger.info('Plan approved', {
+        iteration: i,
+        approval: vote.approvalPercentage,
+        sessionId,
+        ...meta,
+      });
       return { plan, iterations: i, ...meta };
     }
 
     feedback = getVoteFeedback(vote);
-    logger.warn('Plan rejected, iterating', { iteration: i, feedback: feedback.slice(0, 200) });
+    logger.warn('Plan rejected, iterating', {
+      iteration: i,
+      feedback: feedback.slice(0, 200),
+      sessionId,
+    });
   }
 
-  logger.warn('Max vote iterations reached, proceeding with last plan');
+  logger.warn('Max vote iterations reached, proceeding with last plan', { sessionId });
   return { plan, iterations: MAX_VOTE_ITERATIONS, conditional: false, conditions: [], caveats: [] };
 }
 
