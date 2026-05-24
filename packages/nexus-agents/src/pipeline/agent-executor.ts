@@ -188,6 +188,11 @@ export function flushPipelineMemory(): void {
 
 // Cached RoutingMemory — lazy-initialized, one per process
 let routingMemoryCache: unknown = null;
+// Coalesces concurrent init under cold-start fan-out (closes #2971). Without this,
+// N concurrent recordRoutingExperience calls each enter the dynamic-import path and
+// each build their own RoutingMemory, leaking handles / double-counting events.
+// Mirrors the memoryInitPromise pattern above (line 120).
+let routingMemoryInitPromise: Promise<unknown> | null = null;
 
 /** Record to RoutingMemory after expert calls (#1716). Fire-and-forget, cached. */
 function recordRoutingExperience(category: string, success: boolean, durationMs: number): void {
@@ -201,17 +206,22 @@ function recordRoutingExperience(category: string, success: boolean, durationMs:
     callRecord(routingMemoryCache);
     return;
   }
-  void import('../context/routing-memory.js')
+  routingMemoryInitPromise ??= import('../context/routing-memory.js')
     .then(({ createRoutingMemory }) => {
-      routingMemoryCache = createRoutingMemory();
-      callRecord(routingMemoryCache);
+      routingMemoryCache ??= createRoutingMemory();
+      return routingMemoryCache;
     })
     .catch((error: unknown) => {
       // Best-effort: routing-memory is optional persistence; log so we
       // can diagnose if it silently stops recording.
+      routingMemoryInitPromise = null; // allow retry on next call
       const msg = error instanceof Error ? error.message : String(error);
       logger.debug('Routing memory init failed; continuing without it', { error: msg });
+      return null;
     });
+  void routingMemoryInitPromise.then((rm) => {
+    if (rm !== null) callRecord(rm);
+  });
 }
 
 // ============================================================================
