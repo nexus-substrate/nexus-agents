@@ -1,5 +1,116 @@
 # nexus-agents
 
+## 2.82.0
+
+### Minor Changes
+
+- [#2992](https://github.com/nexus-substrate/nexus-agents/pull/2992) [`665e660`](https://github.com/nexus-substrate/nexus-agents/commit/665e6601b85fba86a6e0c0869f1b441bafb2f993) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(consensus):** switch correlation persistence to append-only JSONL. Closes [#2973](https://github.com/nexus-substrate/nexus-agents/issues/2973).
+
+  The previous design — read `correlations.json`, merge with the proposals to save, write to a PID-suffixed temp file, then `renameSync` — was race-free **within** a process but unsafe **across** processes. Two processes voting concurrently (e.g., the MCP server and a parallel `nexus-agents vote` CLI) each loaded N entries, each merged their own proposal, each renamed over the same file. The first writer's proposal was silently lost. HOV (Higher-Order Voting) correlation history degraded over time under fan-out load — the Bayesian correlation signal depended on the proposals we were dropping.
+
+  Switched the store to append-only `correlations.jsonl` (one `PersistedProposal` per line). POSIX `O_APPEND` (used implicitly by `appendFileSync`) guarantees atomic writes per line for sizes under `PIPE_BUF` (4 KB Linux, 512 B macOS) — well above what a typical 3-7-voter proposal line takes. Concurrent writers from any number of processes all land their lines. No read-merge-rename cycle on save.
+
+  **Reads** consolidate both stores: legacy `correlations.json` (skipped if corrupt/invalid-schema) plus all JSONL lines, dedup by `proposalId` (later wins per id), FIFO-truncate to `config.maxProposals`. Loaders previously got truncation enforced at save time; now they enforce it themselves on `loadCorrelationData(config)` — pass the config explicitly if you care about the cap (callers that pass nothing get `DEFAULT_HIGHER_ORDER_CONFIG.maxProposals = 5000`, generous enough for any single-session use).
+
+  **Compaction:** added `compactCorrelationData()` that consolidates JSONL + legacy into a fresh deduplicated JSONL and removes the legacy file. Safe to call periodically (e.g., on session shutdown) to bound disk size. Compaction itself is NOT cross-process race-free — serialize it (single compactor per data dir, or guard with a lockfile).
+
+  **Migration:** zero-touch for existing users. The legacy `correlations.json` is read alongside the JSONL on every load; new writes go to JSONL. After `compactCorrelationData()` runs (or after any session that calls it), the legacy file is removed.
+
+  **Schema bumped to version 2** because the wrapper format around `proposals` is now load-time, not on-disk. Tests updated: `PersistedCorrelationData.version === 2` now; corrupt legacy files yield empty-success rather than err-Corrupt (we still warn-log); `maxProposals` truncation tested against the load path.
+
+  23 tests pass including a new concurrent-writer test that exercises the race the JSONL switch is for: 10 parallel `saveCorrelationData([…])` calls and verifies all 10 land. Pre-fix this test would frequently lose proposals to the rename-clobber.
+
+- [#2991](https://github.com/nexus-substrate/nexus-agents/pull/2991) [`dc04968`](https://github.com/nexus-substrate/nexus-agents/commit/dc04968a3e7b17966ed394993b2f89cf4168b36c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **refactor(config):** remove the unused `WORKER_DEFAULTS` category. Closes [#2977](https://github.com/nexus-substrate/nexus-agents/issues/2977).
+
+  The `WORKER_DEFAULTS` category — 8 settings (`maxWorkers`, `poolSize`, `idleTimeoutMs`, `workflowMaxParallel`, `testParallelism`, `evaluationMaxWorkers`, `eventBusMaxHistory`, `swarmObserverMaxEvents`) — was wired into the config-command help text, the env-schema, the config-manager mapping, and the runtime resolver (`getWorkerConfig`), but had **zero production consumers**. Setting any of `NEXUS_WORKERS_MAX` / `NEXUS_WORKERS_POOL_SIZE` / `NEXUS_WORKERS_IDLE_TIMEOUT` / `NEXUS_WORKFLOW_MAX_PARALLEL` / `NEXUS_TEST_PARALLELISM` / `NEXUS_EVALUATION_MAX_WORKERS` / `NEXUS_EVENTBUS_MAX_HISTORY` / `NEXUS_SWARM_OBSERVER_MAX_EVENTS` — or `nexus-agents config set WORKER_DEFAULTS.foo X` — was a silent no-op.
+
+  Silent config rot is worse than missing knobs. Removed the category entirely; can re-add when a concrete consumer exists.
+
+  **Removed surfaces:** `DEFAULTS.WORKER_DEFAULTS`, `getWorkerConfig`, `WorkerDefaults` + `WorkerDefaultsConst` types, `WorkerDefaultsSchema` (Zod), the 7 env-schema entries for `NEXUS_WORKERS_*` + 1 for `NEXUS_EVENTBUS_MAX_HISTORY`, the 8 mappings in `config-manager.ts`, the help-text line in `cli/config-command.ts`, the "Workers" table from `getEnvVarDocumentation`, the test block in `defaults.test.ts`, and 3 cross-cutting tests that referenced `WORKER_DEFAULTS.foo` as a sample key.
+
+  **Migration:** operators setting any removed env var get no warning today (the var was already silent); after this PR the var still has no effect — same behavior. CLI users running `nexus-agents config set WORKER_DEFAULTS.foo X` will get a "key not found" error instead of the previous false success. Test runners reading `DEFAULTS.WORKER_DEFAULTS` need to derive the value elsewhere (most likely from the consumer's own config schema — `WorkflowConfig.maxParallel`, evaluation-harness types, etc.).
+
+  133 tests pass across the 4 affected test files (defaults, config-command-handlers, env-schema, config-command); tsc + eslint clean.
+
+  Marking patch because — despite removing an exported type — the type had no external consumers and the behavior change is "documented knob that did nothing now actually does nothing." Bumped to **minor** out of caution given the type-export removal and the CLI behavior change for `config set WORKER_DEFAULTS.*`.
+
+- [#2996](https://github.com/nexus-substrate/nexus-agents/pull/2996) [`cf3e6b9`](https://github.com/nexus-substrate/nexus-agents/commit/cf3e6b9985631034b2ce213bfbcaea2dcb21cac9) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(security):** access-policy derivation failures now fail closed under active enforcement. Partial fix for [#2993](https://github.com/nexus-substrate/nexus-agents/issues/2993).
+
+  Pre-fix: in both `mcp/tools/orchestrate.ts` (`deriveOrchestratePolicy`) and `mcp/tools/execute-expert.ts` (`deriveExpertAccessPolicy`), the `catch (error)` branch fell back to a wildcard policy with `mode: 'off'`. Any exception in LLM derivation — a transient API failure, a Zod schema drift, an adapter bug — converted to a security bypass. Even operators running `NEXUS_ACCESS_POLICY_MODE=enforce` ended up with `allowedTools: '*'` and `allowedOperations: '*'` enforcement disabled, contradicting their explicit configuration.
+
+  Fix: the fallback now preserves the operator's configured mode in the returned policy and restricts to empty allow-lists (`allowedTools: []`, `allowedOperations: []`, `allowedPathPatterns: []`) when the mode is `confirm_risky` or `enforce`. For `off` and `audit` modes the permissive fallback is preserved (operators in those modes have either opted out entirely or accepted log-only semantics, both of which would be surprised by a sudden block). The warn log now includes `failClosed: boolean` so the operator can correlate.
+
+  68 tests pass across the two changed files. `tsc + eslint` clean.
+
+  **Still open** (the multi-file half of [#2993](https://github.com/nexus-substrate/nexus-agents/issues/2993)): the hardcoded `trustTier: '1'` in the same two functions. Threading `requestContext.trustTier` from `secure-handler` through both tools' deps needs careful audit of the entire call graph — deferred to a follow-up so this fail-closed half ships immediately.
+
+- [#2995](https://github.com/nexus-substrate/nexus-agents/pull/2995) [`7a787e7`](https://github.com/nexus-substrate/nexus-agents/commit/7a787e7eb5e7687edd797e021e7e1f12edf2fe4b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(security):** three MCP-surface hardening fixes from the 2026-05-24 wave-3 audit.
+
+  These are exploitable from untrusted MCP input that operators routinely route through nexus-agents (issue bodies, PR comments, third-party MCP servers wired into the gateway). Marked minor because the secret-redaction change to tool-error responses can clip legitimate strings that happen to match the secret patterns.
+  - **Path traversal — sibling-prefix bypass in 5 MCP tools.** `mcp/tools/dev-pipeline-tool.ts`, `pipeline-tool.ts`, `compare-data-feeds.ts`, `search-codebase-tool.ts`, `extract-symbols-tool.ts` all checked `resolved.startsWith(cwdRoot)` without a trailing separator. From cwd `/home/u/proj`, a caller passing `directory: "../projEVIL/secret.txt"` resolves to `/home/u/projEVIL/secret.txt`, which passes the bare `startsWith` check. Fixed to match the convention in `security/safe-path.ts` and `mcp/tools/query-trace-tool.ts`: `(resolved === cwdRoot || resolved.startsWith(cwdRoot + sep))`.
+  - **Secret leak in tool-error responses.** `mcp/middleware/secure-handler.ts:460-472`: success-branch `ToolResult` went through `sanitizeToolResult` (which redacts AWS keys, Bearer tokens, hex secrets, `password=`/`token=`/`api_key=` patterns), but the `catch (error)` branch returned the raw `error.message` to the MCP client. Adapter SDKs commonly echo offending credentials in their error messages (Anthropic's `AuthenticationError` carries `sk-ant-api03-…` substrings; fetch wrappers echo `Authorization` headers). The exception path now runs the same `sanitizeOutput`.
+  - **Supply-chain env leak in MCP gateway.** `mcp/gateway/upstream-client.ts` previously spread full `process.env` into spawned upstream subprocesses — every API key (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GITHUB_TOKEN`, `OPENROUTER_API_KEY`, etc.) leaked to whatever third-party MCP server the operator wired up, contradicting the schema comment "use `{env:VAR}` references, not plaintext secrets" (`schemas-gateway.ts:37`). Now passes only `UPSTREAM_BASELINE_KEYS` (`PATH`, `HOME`, `USER`, `LANG`, `LC_ALL`, `LC_CTYPE`, `TMPDIR`, `TZ`, `PWD`, `SHELL`, `TERM`) plus the operator's explicit `env` mappings.
+
+  144 tests pass across the 7 affected test files. Two remaining wave-3 findings ([#2993](https://github.com/nexus-substrate/nexus-agents/issues/2993) hardcoded `trustTier=1` + fail-open in orchestrate/execute-expert, [#2994](https://github.com/nexus-substrate/nexus-agents/issues/2994) V2 delegate strips `trustTier`) need multi-file changes and are filed for separate PRs.
+
+### Patch Changes
+
+- [#2986](https://github.com/nexus-substrate/nexus-agents/pull/2986) [`bfdc880`](https://github.com/nexus-substrate/nexus-agents/commit/bfdc8802c4010d73eecc4b63b103f130b6c0afb4) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(mcp):** `search_codebase` no longer races on cold-start, evicts stale indexes, and bounds retention. Closes [#2970](https://github.com/nexus-substrate/nexus-agents/issues/2970).
+
+  The previous module-level `cachedIndex` / `cachedDir` pair had two coupled bugs:
+  1. **Singleton-init race.** Two concurrent MCP `search_codebase` calls both missed the cache and each `await index.index(4)` (a seconds-long tree-walk + AST extraction over every TS/JS file). The loser's work was wasted.
+  2. **Unbounded retention with stale results.** `CodebaseIndex` (~50,000 symbols × ~200 bytes for this repo) was kept for the life of the MCP server with no TTL, no LRU, no file-watcher invalidation. Memory grew + search results went stale after the user's first `git pull` / file edit.
+
+  Fix: replace the pair with a small bounded cache (`MAX_CACHED_DIRS = 3`, `INDEX_TTL_MS = 15 minutes`) plus an `inflightIndex` `Map<dir, Promise<CodebaseIndex>>` that coalesces concurrent indexing of the same directory. LRU eviction uses `Map` insertion order: cache hits delete-then-reinsert the entry, demoting LRU candidates to the head. Mirrors the `PolicyCache` pattern in `security/access-constraint-deriver/cache.ts`. TTL is computed via `getTimeProvider()` so seeded tests reproduce.
+
+  5 new tests cover: race coalescing (one constructor call on two concurrent calls), LRU eviction past 3 dirs, LRU refresh on cache hit, TTL expiry past 15 min, `clearIndexCache()` clearing inflight promises. The 3 existing cache tests ([#2159](https://github.com/nexus-substrate/nexus-agents/issues/2159)) still pass against the new implementation. 24 tests in the file; tsc + eslint clean.
+
+- [#2989](https://github.com/nexus-substrate/nexus-agents/pull/2989) [`7165342`](https://github.com/nexus-substrate/nexus-agents/commit/7165342abe1440ab48fd3bda4d8d8ca004a001be) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(setup):** `configureHooks` no longer silently overwrites user hooks when the claude CLI returns malformed JSON. Closes [#2975](https://github.com/nexus-substrate/nexus-agents/issues/2975).
+
+  `getExistingHooks()` collapsed three distinct outcomes — "no hooks set," "the CLI errored," "the response was malformed" — into `undefined`. Downstream `mergeHookConfigs(undefined, nexus)` returns `nexus` only, and `configureHooks` then called `claude config set hooks` with that as the new total. Net effect: any user with their own `PreToolUse` / `Stop` hooks could lose them all after a claude-cli version bump that changed the JSON shape. The original [#420](https://github.com/nexus-substrate/nexus-agents/issues/420) fix only covered the happy path; this regresses on the parse-failure path.
+
+  Added `readExistingHooks()` that returns a discriminated union `{ kind: 'absent' | 'present' | 'unreadable' | 'parse_failed' }`. `configureHooks` now branches on `kind === 'parse_failed'` and returns a structured error asking the operator to inspect `claude config get hooks` and resolve manually — instead of overwriting. `getExistingHooks()` stays as a thin compat wrapper that maps any non-present to `undefined` so existing callers and tests are unchanged.
+
+  6 new tests: 4 cover the `readExistingHooks` discriminated outcomes; 2 cover the `configureHooks` parse-failure guard (asserts `execFileSync` is NOT called on parse failure — the load-bearing safety invariant). 52 tests in the file pass; tsc + eslint clean.
+
+- [#2987](https://github.com/nexus-substrate/nexus-agents/pull/2987) [`4b8c6ab`](https://github.com/nexus-substrate/nexus-agents/commit/4b8c6ab1e14417eb3d83656dce042f89e1be7d4f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(audit):** flush storage on every timer tick and bound the in-memory queue. Closes [#2979](https://github.com/nexus-substrate/nexus-agents/issues/2979).
+
+  Two coupled bugs in `AuditLogger`/`FileAuditStorage` could indefinitely buffer audit events in memory under sustained load, with disk only catching up at shutdown:
+  1. The flush timer called `flushQueue()` — which drained the in-memory `eventQueue` into `storage.write()` — but never called `storage.flush()`. `FileAuditStorage.write()` only appends to its `writeBuffer` (no disk I/O), so events accumulated until `close()`. As a side-effect, `currentFileSize` was incremented optimistically, triggering phantom rotation that abandoned un-pushed buffer contents.
+  2. `flushQueue()` ran serially via `await` in a for-loop, and the interval kept firing while a flush was already in flight. Overlapping flushes plus no cap on `eventQueue` length meant unbounded memory growth under backpressure.
+
+  Fix:
+  - `audit-logger.ts:startFlushTimer` now calls `this.flush()` (which drains the queue **and** flushes storage) instead of `this.flushQueue()`.
+  - `flush()` coalesces concurrent callers into a single in-flight promise via `inFlightFlush` — overlapping timer ticks or callers wait on the existing drain instead of spawning a parallel one.
+  - `log()` enforces a new `maxQueueDepth` config (default `10_000`) with a drop-oldest policy when the cap is exceeded; a `warn` log fires the first time the cap is hit and once per `1_000` further drops to avoid log spam.
+  - `audit-types.ts:AuditLogConfigSchema` adds `maxQueueDepth: z.number().positive().optional().default(10_000)`.
+  - `cli-server-audit.ts` passes the default explicitly when wiring the production audit logger.
+  - New tests cover all three behaviors: timer-tick storage flush (regression for bug 1), concurrent-flush coalescing, and drop-oldest backpressure.
+
+  Behavior change: existing callers that don't set `maxQueueDepth` get the `10_000`-event cap automatically. Disk writes now happen on every flush interval (default 1s) instead of only at shutdown.
+
+- [#2988](https://github.com/nexus-substrate/nexus-agents/pull/2988) [`c90e7ec`](https://github.com/nexus-substrate/nexus-agents/commit/c90e7ec29e1d9a8ac2d0ab779acd7a64118c16c5) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix:** two more single-file fixes from epic [#2982](https://github.com/nexus-substrate/nexus-agents/issues/2982).
+  - **Closes [#2969](https://github.com/nexus-substrate/nexus-agents/issues/2969)** — `pipeline/expert-bridge.ts:79,143`: `getMcpConfigPath` + `getRouter` cold-start race. `consensus_vote` fans out N=7 callers on cold start; both helpers used the unguarded `if (cached !== null) return; await init(); cached = result` pattern, so each caller ran the full init. `getMcpConfigPath` leaked N-1 mcp-config temp dirs via `mkdtemp` (no cleanup path). `getRouter` ran `createAllAdapters()` N times (N sets of CLI probe subprocesses). Added `mcpConfigInitPromise` and `routerInitPromise` coalescing — same `??=` pattern that the rest of the codebase uses (`scanner-registry-fetcher.ts`, `workflow-engine-factory.ts`, `agent-executor.ts`).
+  - **Closes [#2978](https://github.com/nexus-substrate/nexus-agents/issues/2978)** — `workflows/parallel-executor.ts:282-292`: replaced two manual `addEventListener('abort', ...)` calls per step with `AbortSignal.any([signal, state.abortController.signal])`. The manual approach accumulated 2 listeners per step on two long-lived shared signals, never removing them — a 50-step plan exceeded Node's default `MaxListeners=10` after step 5 and spammed `MaxListenersExceededWarning` to stderr. `AbortSignal.any` (Node 20+) composes signals natively and the resulting signal is GC'd as soon as the step's promise resolves.
+
+  65 tests pass across the test files that exercise these paths (research-trigger, agent-executor, pipeline-eval-edge, parallel-executor). No behavior change in the happy path.
+
+- [#2990](https://github.com/nexus-substrate/nexus-agents/pull/2990) [`a2c2022`](https://github.com/nexus-substrate/nexus-agents/commit/a2c2022d6b67a928e10e937436ea79442bfa0ba6) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix:** two more error-handling fixes from epic [#2982](https://github.com/nexus-substrate/nexus-agents/issues/2982).
+  - **Closes [#2980](https://github.com/nexus-substrate/nexus-agents/issues/2980)** — `cli/release-notes-helpers.ts:48-64`: `getCommitsBetween` collapsed git failures into `[]`, which downstream `release-notes-command` mapped to `{ success: true, content: 'No commits found in range.' }`. Operator running `release-notes --from=v0.5.99` (typo, tag doesn't exist) got a "successful" empty release notes file. CI without git in container generated a blog post claiming "0 changes." Added `tryGetCommitsBetween` returning a `CommitsResult` discriminated union (`'ok' | 'invalid_ref' | 'git_failed'`); legacy `getCommitsBetween` stays as a thin compat wrapper. `release-notes-command` now surfaces ref-validation + git-execution failures explicitly; `release-announce-command` emits a `console.warn` when stats can't be computed so the operator notices before posting.
+  - **Closes [#2981](https://github.com/nexus-substrate/nexus-agents/issues/2981)** — `pipeline/pipeline-checkpoint.ts:144-163`: `rebuildState` did `JSON.parse(line) as PipelineCheckpointEntry` and silently dropped malformed lines via bare `catch {}`. The cast accepted any successfully-parsed JSON (`null`, `42`, `{}`), so `applyEntry` could read undefined fields and poison the recovered state. Added `PipelineCheckpointEntrySchema` (Zod, mirrors the type exactly) and validate every line; skipped lines are counted and reported at `warn` level so corrupt checkpoints surface in operator logs.
+
+  90 tests pass across the affected files (release-notes-helpers, release-notes-command, release-announce-command, pipeline-checkpoint); tsc + eslint clean.
+
+- [#2985](https://github.com/nexus-substrate/nexus-agents/pull/2985) [`409962f`](https://github.com/nexus-substrate/nexus-agents/commit/409962f6dc44c95d54545aa756cb598d4cc82954) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix:** bundle 4 trivial single-file fixes from the 2026-05-23 system-review epic ([#2982](https://github.com/nexus-substrate/nexus-agents/issues/2982)).
+
+  Each fix follows a pattern already established elsewhere in the codebase — none introduces new concepts.
+  - **Closes [#2971](https://github.com/nexus-substrate/nexus-agents/issues/2971)** — `pipeline/agent-executor.ts:190`: `routingMemoryCache` lost-init race. Added `routingMemoryInitPromise` coalescing so concurrent `recordRoutingExperience` calls share one `createRoutingMemory()` instance. Mirrors the `memoryInitPromise ??=` pattern 70 lines above. Without this, N concurrent expert dispatches each built their own `RoutingMemory` and the loser's events landed in an orphaned instance that may leak handles or duplicate-write outcomes.
+  - **Closes [#2972](https://github.com/nexus-substrate/nexus-agents/issues/2972)** — `learning/strategy-distiller-persistence.ts:147`: `saveSnapshot` wrote to a non-PID-suffixed `.tmp` file. Two processes calling `distill()` against the same `rules.json` could race the rename and clobber each other's content. One-token change to match the convention in `consensus/correlation-persistence.ts:184` and `cli/research-auto-catalog.ts:99`.
+  - **Closes [#2974](https://github.com/nexus-substrate/nexus-agents/issues/2974)** — `cli-orchestrator.ts:64-77`: REPL hang on `orchestrateCommand` rejection. The `void (async () => { await ...; rl.prompt() })()` had no `.catch`, so any rejection became an unhandled promise and the prompt never returned. Extracted the body into `executeReplTask` with `try`/`catch`/`finally rl.prompt()` so the prompt always recovers and the user sees a useful error.
+  - **Closes [#2976](https://github.com/nexus-substrate/nexus-agents/issues/2976)** — `agents/collaboration/agent-message-router.ts:333`, `orchestration/parallel-exploration.ts:236`, `orchestration/triangulated-review.ts:232`: the three `Promise.race([cliCall(), createTimeout(...)])` helpers left un-`.unref()`'d `setTimeout` handles. When the CLI call resolved first, the timer kept the event loop alive for up to `perCliTimeoutMs` (commonly 300 s) — so `nexus-agents` CLI commands hung at the end of orchestration subcommands. `.unref()` on each `setTimeout` lets the process exit as soon as the user's work is done.
+
+  91 tests pass across the 5 changed-file tests. No behavior change in the happy path; observable improvement on the cold-start race, multi-process write, REPL recovery, and CLI shutdown latency paths.
+
 ## 2.81.4
 
 ### Patch Changes
