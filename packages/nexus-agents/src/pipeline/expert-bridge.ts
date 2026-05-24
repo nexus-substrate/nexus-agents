@@ -74,6 +74,12 @@ let cachedRouter: RouterLike | null = null;
 
 // Cached MCP config — generated once, reused across expert calls (#1708)
 let cachedMcpConfigPath: string | null = null;
+// Cached cleanup for the cached config's tempdir (closes #2946). Previously
+// the cleanup returned by `generateMcpConfig` was thrown away, so
+// `/tmp/nexus-mcp-XXXXXX/` accumulated one entry per MCP server lifetime.
+// Stored here + invoked by `shutdownExpertBridge()` from the server's
+// graceful-shutdown path.
+let cachedMcpConfigCleanup: (() => Promise<void>) | null = null;
 // Coalesces concurrent init under voter fan-out (closes #2969). consensus_vote
 // fans out N=7 callers on cold start; without this each one ran the full init
 // including a mkdtemp() that the loser N-1 instances never cleaned up.
@@ -87,6 +93,7 @@ async function getMcpConfigPath(): Promise<string | null> {
       const { generateMcpConfig } = await import('../cli-adapters/child-mcp-config.js');
       const config = await generateMcpConfig();
       cachedMcpConfigPath = config.configPath;
+      cachedMcpConfigCleanup = config.cleanup;
       return cachedMcpConfigPath;
     } catch {
       mcpConfigInitPromise = null; // allow retry on next call
@@ -94,6 +101,27 @@ async function getMcpConfigPath(): Promise<string | null> {
     }
   })();
   return mcpConfigInitPromise;
+}
+
+/**
+ * Removes the cached MCP-config tempdir (closes #2946). Invoke from the
+ * server's graceful-shutdown path so stale nexus-mcp-* tempdirs (under
+ * the OS tmpdir, see child-mcp-config.ts) don't accumulate across daemon
+ * restarts. Idempotent; safe to call multiple times. Never throws —
+ * cleanup failures are logged and swallowed.
+ */
+export async function shutdownExpertBridge(): Promise<void> {
+  const cleanup = cachedMcpConfigCleanup;
+  if (cleanup === null) return;
+  cachedMcpConfigCleanup = null;
+  cachedMcpConfigPath = null;
+  mcpConfigInitPromise = null;
+  try {
+    await cleanup();
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.debug('Expert-bridge MCP-config cleanup failed', { error: msg });
+  }
 }
 
 /** Cached circuit breaker for health monitoring (#1766). */
