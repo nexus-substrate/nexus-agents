@@ -354,7 +354,6 @@ ${formatHeader('CATEGORIES')}
   TIMEOUT_DEFAULTS        Timeout settings
   RATE_LIMIT_DEFAULTS     Rate limiting
   RETRY_DEFAULTS          Retry configuration
-  WORKER_DEFAULTS         Worker pool settings
   CIRCUIT_BREAKER_DEFAULTS Circuit breaker settings
   CONTEXT_DEFAULTS        Context/memory settings
   PROVIDER_DEFAULTS       Provider/model settings

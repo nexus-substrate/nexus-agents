@@ -92,19 +92,9 @@ export interface RetryDefaults {
   jitterFactor: number;
 }
 
-/**
- * Mutable type for worker defaults.
- */
-export interface WorkerDefaults {
-  maxWorkers: number;
-  poolSize: number;
-  idleTimeoutMs: number;
-  workflowMaxParallel: number;
-  testParallelism: number;
-  evaluationMaxWorkers: number;
-  eventBusMaxHistory: number;
-  swarmObserverMaxEvents: number;
-}
+// WorkerDefaults interface removed in #2977 — the eight settings had zero
+// production consumers. See config/defaults.ts where WORKER_DEFAULTS was
+// deleted for the full rationale.
 
 /**
  * Mutable type for circuit breaker defaults.
@@ -215,19 +205,8 @@ export const ToolRateLimitConfigSchema = z.object({
   refillIntervalMs: durationMs.describe('Token refill interval'),
 });
 
-/**
- * Schema for WorkerDefaults.
- */
-export const WorkerDefaultsSchema = z.object({
-  maxWorkers: positiveInt.max(32).describe('Maximum worker threads'),
-  poolSize: positiveInt.max(32).describe('Worker pool size'),
-  idleTimeoutMs: durationMs.describe('Worker idle timeout'),
-  workflowMaxParallel: positiveInt.max(10).describe('Max parallel workflow tasks'),
-  testParallelism: positiveInt.max(16).describe('Test parallelism'),
-  evaluationMaxWorkers: positiveInt.max(16).describe('Evaluation worker count'),
-  eventBusMaxHistory: nonNegativeInt.max(10000).describe('Event bus history limit'),
-  swarmObserverMaxEvents: nonNegativeInt.max(10000).describe('Swarm observer event limit'),
-});
+// WorkerDefaultsSchema removed in #2977 — see comment on the deleted
+// WorkerDefaults interface above.
 
 /**
  * Schema for TimeoutDefaults.

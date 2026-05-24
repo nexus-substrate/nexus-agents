@@ -67,13 +67,9 @@ const NexusEnvSchema = z.object({
 
   // --- Workers & Concurrency ---
   NEXUS_MAX_CONCURRENT_EXPERTS: positiveIntStr.optional(),
-  NEXUS_WORKERS_MAX: positiveIntStr.optional(),
-  NEXUS_WORKERS_POOL_SIZE: positiveIntStr.optional(),
-  NEXUS_WORKERS_IDLE_TIMEOUT: positiveIntStr.optional(),
-  NEXUS_WORKFLOW_MAX_PARALLEL: positiveIntStr.optional(),
-  NEXUS_TEST_PARALLELISM: positiveIntStr.optional(),
-  NEXUS_EVALUATION_MAX_WORKERS: positiveIntStr.optional(),
-  NEXUS_SWARM_OBSERVER_MAX_EVENTS: positiveIntStr.optional(),
+  // NEXUS_WORKERS_* + NEXUS_WORKFLOW_MAX_PARALLEL + NEXUS_TEST_PARALLELISM +
+  // NEXUS_EVALUATION_MAX_WORKERS + NEXUS_SWARM_OBSERVER_MAX_EVENTS removed in
+  // #2977 — these had zero production consumers (silent no-ops).
 
   // --- Circuit Breaker ---
   NEXUS_CIRCUIT_BREAKER_THRESHOLD: positiveIntStr.optional(),
@@ -101,7 +97,7 @@ const NexusEnvSchema = z.object({
   NEXUS_PERSIST_LEARNING: boolStr.optional(),
   NEXUS_REFLECTIVE_MEMORY: z.enum(['true', 'false', 'shadow']).optional(),
   NEXUS_EVENTBUS_ENABLED: boolStr.optional(),
-  NEXUS_EVENTBUS_MAX_HISTORY: positiveIntStr.optional(),
+  // NEXUS_EVENTBUS_MAX_HISTORY removed in #2977 — silent no-op (no production reader).
   NEXUS_BILLING_MODE: z.enum(['plan', 'api']).optional(),
   NEXUS_CONFIG_PATH: z.string().optional(),
   NEXUS_ALLOW_MOCK_ORCHESTRATION: boolStr.optional(),

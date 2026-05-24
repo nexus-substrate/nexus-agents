@@ -270,6 +270,20 @@ Files stored:
 | `NEXUS_DISABLE_SESSIONS`          | Disable session tracking                  | `false` |
 | `NEXUS_DISABLE_METRICS`           | Disable metrics tracking                  | `false` |
 
+### Removed in 2.82.0 (#2977)
+
+These 8 env vars were declared but never read by any production code (silent
+no-ops). They have been removed from the env-schema; setting them is now an
+error from `validateNexusEnv`. If you had any of them set, just unset them:
+
+`NEXUS_WORKERS_MAX`, `NEXUS_WORKERS_POOL_SIZE`, `NEXUS_WORKERS_IDLE_TIMEOUT`,
+`NEXUS_WORKFLOW_MAX_PARALLEL`, `NEXUS_TEST_PARALLELISM`,
+`NEXUS_EVALUATION_MAX_WORKERS`, `NEXUS_EVENTBUS_MAX_HISTORY`,
+`NEXUS_SWARM_OBSERVER_MAX_EVENTS`.
+
+The matching `WORKER_DEFAULTS.*` config-set keys are also gone; `config set
+WORKER_DEFAULTS.foo X` now returns "key not found" instead of a false success.
+
 ## Model Configuration
 
 ### Default Model

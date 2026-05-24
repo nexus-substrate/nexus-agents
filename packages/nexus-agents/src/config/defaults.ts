@@ -24,7 +24,6 @@ export type {
   RateLimitDefaults,
   ToolRateLimitConfig,
   RetryDefaults,
-  WorkerDefaults,
   CircuitBreakerDefaults,
 } from './defaults-types.js';
 
@@ -66,7 +65,6 @@ import {
   createGetTimeout,
   createGetRetryConfig,
   createGetRateLimitConfig,
-  createGetWorkerConfig,
   createGetCircuitBreakerConfig,
   createGetToolRateLimit,
   createGetEnvVarDocumentation,
@@ -237,27 +235,13 @@ export const DEFAULTS = {
     logFlushIntervalMs: 5_000,
   },
 
-  /**
-   * Default worker pool sizing.
-   */
-  WORKER_DEFAULTS: {
-    /** Maximum number of workers. */
-    maxWorkers: 8,
-    /** Default worker pool size. */
-    poolSize: 4,
-    /** Worker idle timeout in milliseconds (5 minutes). */
-    idleTimeoutMs: 5 * 60_000,
-    /** Maximum parallel workflow steps. */
-    workflowMaxParallel: 5,
-    /** Test framework parallelism. */
-    testParallelism: 3,
-    /** Evaluation harness max workers. */
-    evaluationMaxWorkers: 8,
-    /** EventBus max history size. */
-    eventBusMaxHistory: 1_000,
-    /** Swarm observer max events. */
-    swarmObserverMaxEvents: 10_000,
-  },
+  // WORKER_DEFAULTS removed in #2977 — the eight settings under this category
+  // (maxWorkers, poolSize, idleTimeoutMs, workflowMaxParallel, testParallelism,
+  // evaluationMaxWorkers, eventBusMaxHistory, swarmObserverMaxEvents) had zero
+  // production consumers. `getWorkerConfig()` was never called from anywhere
+  // in src/, and the matching NEXUS_WORKERS_* env vars were silent no-ops.
+  // Silent config rot is worse than missing knobs; re-add when a concrete
+  // consumer exists.
 
   /**
    * Default circuit breaker settings.
@@ -352,9 +336,6 @@ export type RetryDefaultsConst = typeof DEFAULTS.RETRY_DEFAULTS;
 /** Type for buffer defaults (readonly/const). */
 export type BufferDefaults = typeof DEFAULTS.BUFFER_DEFAULTS;
 
-/** Type for worker defaults (readonly/const). */
-export type WorkerDefaultsConst = typeof DEFAULTS.WORKER_DEFAULTS;
-
 /** Type for circuit breaker defaults (readonly/const). */
 export type CircuitBreakerDefaultsConst = typeof DEFAULTS.CIRCUIT_BREAKER_DEFAULTS;
 
@@ -392,13 +373,6 @@ export const getRetryConfig = createGetRetryConfig(DEFAULTS.RETRY_DEFAULTS);
  * @returns Rate limit configuration
  */
 export const getRateLimitConfig = createGetRateLimitConfig(DEFAULTS.RATE_LIMIT_DEFAULTS);
-
-/**
- * Get worker config with environment override support.
- *
- * @returns Worker configuration
- */
-export const getWorkerConfig = createGetWorkerConfig(DEFAULTS.WORKER_DEFAULTS);
 
 /**
  * Gets the circuit breaker configuration.

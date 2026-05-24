@@ -11,7 +11,6 @@ import {
   getTimeout,
   getRetryConfig,
   getRateLimitConfig,
-  getWorkerConfig,
   getCircuitBreakerConfig,
   getTimeoutProfile,
   getTimeoutForCli,
@@ -31,7 +30,7 @@ describe('DEFAULTS', () => {
       expect(DEFAULTS).toHaveProperty('CLI_RETRY_DEFAULTS');
       expect(DEFAULTS).toHaveProperty('TEST_RETRY_DEFAULTS');
       expect(DEFAULTS).toHaveProperty('BUFFER_DEFAULTS');
-      expect(DEFAULTS).toHaveProperty('WORKER_DEFAULTS');
+      // WORKER_DEFAULTS removed in #2977 (zero production consumers).
       expect(DEFAULTS).toHaveProperty('CIRCUIT_BREAKER_DEFAULTS');
       expect(DEFAULTS).toHaveProperty('CONTEXT_DEFAULTS');
       expect(DEFAULTS).toHaveProperty('PROVIDER_DEFAULTS');
@@ -72,12 +71,7 @@ describe('DEFAULTS', () => {
       expect(DEFAULTS.CIRCUIT_BREAKER_DEFAULTS.halfOpenSuccessThreshold).toBe(2);
     });
 
-    it('should have valid worker values', () => {
-      expect(DEFAULTS.WORKER_DEFAULTS.maxWorkers).toBe(8);
-      expect(DEFAULTS.WORKER_DEFAULTS.workflowMaxParallel).toBe(5);
-      expect(DEFAULTS.WORKER_DEFAULTS.testParallelism).toBe(3);
-      expect(DEFAULTS.WORKER_DEFAULTS.evaluationMaxWorkers).toBe(8);
-    });
+    // worker-values test removed in #2977 along with WORKER_DEFAULTS.
 
     it('should have valid security values', () => {
       expect(DEFAULTS.SECURITY_DEFAULTS.maxSystemPromptLength).toBe(4_000);
@@ -217,37 +211,7 @@ describe('getRateLimitConfig', () => {
   });
 });
 
-describe('getWorkerConfig', () => {
-  const originalEnv = process.env;
-
-  beforeEach(() => {
-    process.env = { ...originalEnv };
-  });
-
-  afterEach(() => {
-    process.env = originalEnv;
-  });
-
-  it('should return default worker config', () => {
-    const config = getWorkerConfig();
-    expect(config.maxWorkers).toBe(8);
-    expect(config.poolSize).toBe(4);
-    expect(config.workflowMaxParallel).toBe(5);
-    expect(config.testParallelism).toBe(3);
-  });
-
-  it('should override maxWorkers with environment variable', () => {
-    process.env['NEXUS_WORKERS_MAX'] = '16';
-    const config = getWorkerConfig();
-    expect(config.maxWorkers).toBe(16);
-  });
-
-  it('should override workflowMaxParallel with environment variable', () => {
-    process.env['NEXUS_WORKFLOW_MAX_PARALLEL'] = '10';
-    const config = getWorkerConfig();
-    expect(config.workflowMaxParallel).toBe(10);
-  });
-});
+// getWorkerConfig tests removed in #2977 along with the function itself.
 
 describe('getCircuitBreakerConfig', () => {
   const originalEnv = process.env;
@@ -363,7 +327,7 @@ describe('getEnvVarDocumentation', () => {
     expect(docs).toContain('NEXUS_TIMEOUT_CLI');
     expect(docs).toContain('NEXUS_RATE_LIMIT_RPM');
     expect(docs).toContain('NEXUS_RETRY_MAX_RETRIES');
-    expect(docs).toContain('NEXUS_WORKERS_MAX');
+    // NEXUS_WORKERS_MAX removed in #2977 (silent no-op).
     expect(docs).toContain('NEXUS_CIRCUIT_BREAKER_THRESHOLD');
   });
 
@@ -417,16 +381,16 @@ describe('backward compatibility', () => {
   });
 
   it('should match existing DEFAULT_TEST_RUNNER_CONFIG values', () => {
-    // These values should match testing/framework/types.ts
-    expect(DEFAULTS.WORKER_DEFAULTS.testParallelism).toBe(3);
+    // These values should match testing/framework/types.ts.
+    // Note: testParallelism was on WORKER_DEFAULTS, removed in #2977.
     expect(DEFAULTS.TIMEOUT_DEFAULTS.testGlobalMs).toBe(600_000);
     expect(DEFAULTS.TEST_RETRY_DEFAULTS.maxRetries).toBe(2);
     expect(DEFAULTS.TEST_RETRY_DEFAULTS.retryFailedTasks).toBe(true);
   });
 
   it('should match existing WorkflowConfigSchema defaults', () => {
-    // These values should match config/schemas.ts WorkflowConfigSchema
-    expect(DEFAULTS.WORKER_DEFAULTS.workflowMaxParallel).toBe(5);
+    // These values should match config/schemas.ts WorkflowConfigSchema.
+    // Note: workflowMaxParallel was on WORKER_DEFAULTS, removed in #2977.
     expect(DEFAULTS.TIMEOUT_DEFAULTS.workflowMs).toBe(300_000);
   });
 
@@ -436,8 +400,6 @@ describe('backward compatibility', () => {
     expect(DEFAULTS.PROVIDER_DEFAULTS.maxRetries).toBe(3);
   });
 
-  it('should match existing evaluation harness defaults', () => {
-    // These values should match swe-bench/evaluation-harness-types.ts
-    expect(DEFAULTS.WORKER_DEFAULTS.evaluationMaxWorkers).toBe(8);
-  });
+  // "evaluation harness defaults" test removed in #2977 (was the only
+  // assertion in the suite and it referenced WORKER_DEFAULTS.evaluationMaxWorkers).
 });

@@ -95,7 +95,7 @@ export {
   getTimeout,
   getRetryConfig,
   getRateLimitConfig,
-  getWorkerConfig,
+  // getWorkerConfig removed in #2977 — see config/defaults.ts.
   getCircuitBreakerConfig,
   // Convenience accessors
   getTimeoutProfile,
@@ -157,8 +157,7 @@ export type {
   RetryDefaults,
   RetryDefaultsConst,
   BufferDefaults,
-  WorkerDefaults,
-  WorkerDefaultsConst,
+  // WorkerDefaults + WorkerDefaultsConst removed in #2977 — see config/defaults.ts.
   CircuitBreakerDefaults,
   CircuitBreakerDefaultsConst,
   ContextDefaults,

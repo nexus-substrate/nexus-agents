@@ -12,7 +12,6 @@ import type {
   RateLimitDefaults,
   RetryDefaults,
   ToolRateLimitConfig,
-  WorkerDefaults,
 } from './defaults-types.js';
 
 // ============================================================================
@@ -106,18 +105,6 @@ interface RetryDefaultsConst {
   readonly jitterFactor: number;
 }
 
-/** Worker defaults type from DEFAULTS object */
-interface WorkerDefaultsConst {
-  readonly maxWorkers: number;
-  readonly poolSize: number;
-  readonly idleTimeoutMs: number;
-  readonly workflowMaxParallel: number;
-  readonly testParallelism: number;
-  readonly evaluationMaxWorkers: number;
-  readonly eventBusMaxHistory: number;
-  readonly swarmObserverMaxEvents: number;
-}
-
 /** Circuit breaker defaults type from DEFAULTS object */
 interface CircuitBreakerDefaultsConst {
   readonly failureThreshold: number;
@@ -183,35 +170,7 @@ export function createGetRateLimitConfig(
   };
 }
 
-/**
- * Creates a worker config getter function bound to the DEFAULTS object.
- */
-export function createGetWorkerConfig(workerDefaults: WorkerDefaultsConst): () => WorkerDefaults {
-  return (): WorkerDefaults => {
-    return {
-      maxWorkers: parseIntEnv('NEXUS_WORKERS_MAX', workerDefaults.maxWorkers),
-      poolSize: parseIntEnv('NEXUS_WORKERS_POOL_SIZE', workerDefaults.poolSize),
-      idleTimeoutMs: parseIntEnv('NEXUS_WORKERS_IDLE_TIMEOUT', workerDefaults.idleTimeoutMs),
-      workflowMaxParallel: parseIntEnv(
-        'NEXUS_WORKFLOW_MAX_PARALLEL',
-        workerDefaults.workflowMaxParallel
-      ),
-      testParallelism: parseIntEnv('NEXUS_TEST_PARALLELISM', workerDefaults.testParallelism),
-      evaluationMaxWorkers: parseIntEnv(
-        'NEXUS_EVALUATION_MAX_WORKERS',
-        workerDefaults.evaluationMaxWorkers
-      ),
-      eventBusMaxHistory: parseIntEnv(
-        'NEXUS_EVENTBUS_MAX_HISTORY',
-        workerDefaults.eventBusMaxHistory
-      ),
-      swarmObserverMaxEvents: parseIntEnv(
-        'NEXUS_SWARM_OBSERVER_MAX_EVENTS',
-        workerDefaults.swarmObserverMaxEvents
-      ),
-    };
-  };
-}
+// createGetWorkerConfig removed in #2977 — see comment in config/defaults.ts.
 
 /**
  * Creates a circuit breaker config getter function bound to the DEFAULTS object.
@@ -252,7 +211,6 @@ interface DefaultsForDocs {
   readonly TIMEOUT_DEFAULTS: TimeoutDefaultsConst;
   readonly RATE_LIMIT_DEFAULTS: RateLimitDefaultsConst;
   readonly RETRY_DEFAULTS: RetryDefaultsConst;
-  readonly WORKER_DEFAULTS: WorkerDefaultsConst;
   readonly CIRCUIT_BREAKER_DEFAULTS: CircuitBreakerDefaultsConst;
 }
 
@@ -267,7 +225,6 @@ export function createGetEnvVarDocumentation(defaults: DefaultsForDocs): () => s
     const t = defaults.TIMEOUT_DEFAULTS;
     const r = defaults.RATE_LIMIT_DEFAULTS;
     const rt = defaults.RETRY_DEFAULTS;
-    const w = defaults.WORKER_DEFAULTS;
     const cb = defaults.CIRCUIT_BREAKER_DEFAULTS;
 
     return `# Environment Variable Overrides
@@ -299,15 +256,6 @@ All defaults can be overridden via environment variables using the NEXUS_ prefix
 | NEXUS_RETRY_BASE_DELAY | ${String(rt.baseDelayMs)} | Base delay (ms) |
 | NEXUS_RETRY_MAX_DELAY | ${String(rt.maxDelayMs)} | Maximum delay (ms) |
 | NEXUS_RETRY_JITTER | ${String(rt.jitterFactor)} | Jitter factor (0-1) |
-
-## Workers
-
-| Variable | Default | Description |
-| -------- | ------- | ----------- |
-| NEXUS_WORKERS_MAX | ${String(w.maxWorkers)} | Maximum workers |
-| NEXUS_WORKERS_POOL_SIZE | ${String(w.poolSize)} | Worker pool size |
-| NEXUS_WORKFLOW_MAX_PARALLEL | ${String(w.workflowMaxParallel)} | Max parallel workflow steps |
-| NEXUS_TEST_PARALLELISM | ${String(w.testParallelism)} | Test parallelism |
 
 ## Circuit Breaker
 
