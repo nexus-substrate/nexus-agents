@@ -4,14 +4,9 @@
  * Common middleware for MCP tool handlers.
  */
 
-// Validation
-export {
-  validateToolInput,
-  validateToolOutput,
-  createValidator,
-  createOutputValidator,
-  isZodError,
-} from './validation.js';
+// Validation. `validateToolOutput` / `createOutputValidator` were removed
+// in #3022 — see validation.ts for the activate-or-delete rationale.
+export { validateToolInput, createValidator, isZodError } from './validation.js';
 
 // Rate limiting
 export {

@@ -7,13 +7,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
-import {
-  validateToolInput,
-  validateToolOutput,
-  createValidator,
-  createOutputValidator,
-  isZodError,
-} from './validation.js';
+import { validateToolInput, createValidator, isZodError } from './validation.js';
 
 describe('validateToolInput', () => {
   const TestSchema = z.object({
@@ -65,47 +59,6 @@ describe('validateToolInput', () => {
   });
 });
 
-describe('validateToolOutput', () => {
-  const OutputSchema = z.object({
-    success: z.boolean(),
-    data: z.string(),
-  });
-
-  it('should return ok for valid output', () => {
-    const result = validateToolOutput(OutputSchema, { success: true, data: 'result' });
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.value).toEqual({ success: true, data: 'result' });
-    }
-  });
-
-  it('should return error for missing required field', () => {
-    const result = validateToolOutput(OutputSchema, { success: true });
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.error.message).toContain('Invalid tool output');
-      expect(result.error.message).toContain('data');
-    }
-  });
-
-  it('should return error for invalid type', () => {
-    const result = validateToolOutput(OutputSchema, { success: 'yes', data: 'result' });
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.error.message).toContain('Invalid tool output');
-    }
-  });
-
-  it('should include output type in error context', () => {
-    const result = validateToolOutput(OutputSchema, null);
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      const context = result.error.context as { outputType?: string };
-      expect(context.outputType).toBe('object'); // null is typeof 'object'
-    }
-  });
-});
-
 describe('createValidator', () => {
   it('should create a reusable validator function', () => {
     const schema = z.object({ id: z.string() });
@@ -115,19 +68,6 @@ describe('createValidator', () => {
     expect(validResult.ok).toBe(true);
 
     const invalidResult = validate({ id: 123 });
-    expect(invalidResult.ok).toBe(false);
-  });
-});
-
-describe('createOutputValidator', () => {
-  it('should create a reusable output validator function', () => {
-    const schema = z.object({ result: z.number() });
-    const validate = createOutputValidator(schema);
-
-    const validResult = validate({ result: 42 });
-    expect(validResult.ok).toBe(true);
-
-    const invalidResult = validate({ result: 'forty-two' });
     expect(invalidResult.ok).toBe(false);
   });
 });

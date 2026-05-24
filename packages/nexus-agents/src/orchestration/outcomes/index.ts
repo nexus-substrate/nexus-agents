@@ -46,5 +46,5 @@ export {
 // Adaptive thresholds — Learning loop (Issue #901, Phase 4)
 export { computeAdaptiveThresholds, detectTrend } from './adaptive-thresholds.js';
 export type { Trend, AdaptiveThresholdResult } from './adaptive-thresholds.js';
-export { emitThresholdUpdate, emitTrendDetected } from './learning-events.js';
-export type { ThresholdUpdateDetail, TrendDetectedDetail } from './learning-events.js';
+// `emitThresholdUpdate` / `emitTrendDetected` (+ detail types) removed
+// in #3022 — never had a producer; nothing subscribed.

@@ -86,78 +86,9 @@ export function createValidator<T>(
   return (args: unknown) => validateToolInput(schema, args);
 }
 
-/**
- * Validates tool output against a Zod schema.
- *
- * This function should be called before returning results from a tool handler
- * to ensure outputs conform to the expected schema.
- *
- * Issue #547: MCP tools were missing output validation, allowing malformed responses.
- *
- * @template T - The expected output type after validation
- * @param schema - The Zod schema to validate against
- * @param output - The output to validate
- * @returns Result containing validated data or a ValidationError
- *
- * @example
- * ```typescript
- * const OutputSchema = z.object({
- *   success: z.boolean(),
- *   data: z.record(z.string(), z.unknown()),
- * });
- *
- * server.tool('my_tool', InputSchema.shape, async (args) => {
- *   // ... process input ...
- *   const result = { success: true, data: processedData };
- *
- *   const validated = validateToolOutput(OutputSchema, result);
- *   if (!validated.ok) {
- *     return toolStructuredError({ errorCategory: 'internal', message: validated.error.message });
- *   }
- *   return { content: [{ type: 'text', text: JSON.stringify(validated.value) }] };
- * });
- * ```
- */
-export function validateToolOutput<T>(
-  schema: ZodType<T>,
-  output: unknown
-): Result<T, ValidationError> {
-  const parsed = schema.safeParse(output);
-
-  if (parsed.success) {
-    return ok(parsed.data);
-  }
-
-  const message = formatZodError(parsed.error);
-  const validationError = new ValidationError(`Invalid tool output: ${message}`, {
-    context: {
-      issues: parsed.error.issues,
-      outputType: typeof output,
-    },
-  });
-
-  return err(validationError);
-}
-
-/**
- * Creates an output validation function bound to a specific schema.
- *
- * Useful for reusing the same schema across multiple tools.
- *
- * @template T - The expected type after validation
- * @param schema - The Zod schema to bind
- * @returns A validation function for the schema
- *
- * @example
- * ```typescript
- * const validateOutput = createOutputValidator(OutputSchema);
- *
- * // Later in tool handlers:
- * const result = validateOutput(output);
- * ```
- */
-export function createOutputValidator<T>(
-  schema: ZodType<T>
-): (output: unknown) => Result<T, ValidationError> {
-  return (output: unknown) => validateToolOutput(schema, output);
-}
+// `validateToolOutput` and `createOutputValidator` (Issue #547 sibling of
+// `validateToolInput` / `createValidator`) removed in #3022 — no MCP tool
+// ever called the output-validation path; every tool returns its result
+// without schema-validating first. If output validation comes back as a
+// real requirement, reintroduce alongside the per-tool wiring in the same
+// PR (activate-or-delete YAGNI — #2937, #2938, #2939, #2940, #3018, #3022).
