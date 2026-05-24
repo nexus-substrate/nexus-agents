@@ -279,15 +279,6 @@ export type {
   PipelineType,
 } from './adaptive-orchestrator.js';
 
-// Incomplete Result — typed partial completion (#1737 Phase 4)
-export {
-  isIncompleteResult,
-  createIncompleteResult,
-  canPipelineProceed,
-  filterBySeverity,
-} from './incomplete-result.js';
-export type { IncompleteResult, IncompleteSeverity } from './incomplete-result.js';
-
 // Shared Memory — standalone in-memory tagged store. Originally threaded
 // through PipelineContext for cross-stage discovery handoff (#1737 Phase 4 /
 // #1764), but the integration was write-only and removed in #2937. The
@@ -296,9 +287,12 @@ export type { IncompleteResult, IncompleteSeverity } from './incomplete-result.j
 export { SharedMemoryStore } from './shared-memory.js';
 export type { SharedMemoryEntry, SharedMemoryTag } from './shared-memory.js';
 
-// Dynamic Expert — bounded runtime expert creation (#1737 Phase 4)
-export { DynamicExpertManager, MAX_DYNAMIC_EXPERTS } from './dynamic-expert.js';
-export type { DynamicExpertSpec, DynamicExpert } from './dynamic-expert.js';
+// #1737 Phase-4 scaffolds removed in #2939: `IncompleteResult` (typed
+// partial-completion result) and `DynamicExpertManager` (bounded runtime
+// expert creation) were both exported but never wired into the
+// orchestrator or any stage. Both shipped with only test-file
+// instantiations; no production code path ever returned an
+// IncompleteResult or constructed a DynamicExpertManager.
 
 // Replay — decision trace comparison (#1688)
 export { parseTraceJsonl, extractDecisions, compareDecisions } from '../replay/replay-executor.js';
