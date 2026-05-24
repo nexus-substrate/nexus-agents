@@ -89,12 +89,7 @@ import { getOutcomeStore, OutcomeStore } from '../index.js';
 // ============================================================================
 // Adaptive thresholds — Learning loop (Issue #901)
 // ============================================================================
-import {
-  computeAdaptiveThresholds,
-  detectTrend,
-  emitThresholdUpdate,
-  emitTrendDetected,
-} from '../index.js';
+import { computeAdaptiveThresholds, detectTrend } from '../index.js';
 
 // ============================================================================
 // Orchestration — spec pipeline (Issue #843)
@@ -516,10 +511,9 @@ describe('Export contracts — adaptive thresholds (Issue #901)', () => {
     expect(typeof detectTrend).toBe('function');
   });
 
-  it('exports learning event emitters', () => {
-    expect(typeof emitThresholdUpdate).toBe('function');
-    expect(typeof emitTrendDetected).toBe('function');
-  });
+  // `exports learning event emitters` test removed in #3022 alongside
+  // emitThresholdUpdate / emitTrendDetected — they had no producer and
+  // nothing subscribed.
 });
 
 describe('Export contracts — model availability', () => {

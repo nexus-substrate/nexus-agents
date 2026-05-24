@@ -190,8 +190,8 @@ export type { OutcomeStoreConfig, PersistentOutcomeStoreConfig } from './outcome
 // Adaptive Thresholds — Learning Loop (Issue #901, Phase 4)
 export { computeAdaptiveThresholds, detectTrend } from './outcomes/index.js';
 export type { Trend, AdaptiveThresholdResult } from './outcomes/index.js';
-export { emitThresholdUpdate, emitTrendDetected } from './outcomes/index.js';
-export type { ThresholdUpdateDetail, TrendDetectedDetail } from './outcomes/index.js';
+// `emitThresholdUpdate` / `emitTrendDetected` removed in #3022 — see
+// outcomes/index.ts for the activate-or-delete rationale.
 
 // Parallel Exploration (Issue #862)
 export { executeParallelExploration } from './parallel-exploration.js';

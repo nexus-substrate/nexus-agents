@@ -185,8 +185,7 @@ export type {
 // Adaptive Thresholds — Learning Loop (Issue #901, Phase 4)
 export { computeAdaptiveThresholds, detectTrend } from '../orchestration/index.js';
 export type { Trend, AdaptiveThresholdResult } from '../orchestration/index.js';
-export { emitThresholdUpdate, emitTrendDetected } from '../orchestration/index.js';
-export type { ThresholdUpdateDetail, TrendDetectedDetail } from '../orchestration/index.js';
+// emit helpers removed in #3022 — no producer, no subscriber.
 
 // Failure Analyzer (Issue #852)
 export { analyzeFailures } from '../orchestration/index.js';

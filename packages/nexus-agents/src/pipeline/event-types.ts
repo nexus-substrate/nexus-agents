@@ -29,8 +29,8 @@ export const PIPELINE_EVENT_TYPES = [
   'artifact.created',
   'model.called',
   'routing.decision',
-  'learning.threshold_updated',
-  'learning.trend_detected',
+  // 'learning.threshold_updated' + 'learning.trend_detected' removed in
+  // #3022 — the emit helpers and event-bus subscribers both never landed.
   'tool.invoked',
   'tool.completed',
   'wave.started',
@@ -167,23 +167,10 @@ interface RoutingDecisionEvent extends BaseEvent {
   readonly decisionPath?: readonly string[];
 }
 
-/** Learning loop events (Issue #901, Phase 4). */
-interface LearningThresholdUpdatedEvent extends BaseEvent {
-  readonly type: 'learning.threshold_updated';
-  readonly cli: string;
-  readonly category: string;
-  readonly oldBaseline: number;
-  readonly newBaseline: number;
-  readonly trend: string;
-}
-
-interface LearningTrendDetectedEvent extends BaseEvent {
-  readonly type: 'learning.trend_detected';
-  readonly cli: string;
-  readonly category: string;
-  readonly trend: string;
-  readonly confidence: number;
-}
+// `LearningThresholdUpdatedEvent` and `LearningTrendDetectedEvent`
+// (Issue #901 Phase 4) were removed in #3022 — the emit helpers
+// (`emitThresholdUpdate`, `emitTrendDetected`) never had a producer and
+// nothing in the codebase subscribed for these event types either.
 
 /** MCP tool lifecycle events (Issue #1186). */
 export interface ToolInvokedEvent extends BaseEvent {
@@ -242,8 +229,6 @@ export type PipelineEvent =
   | ArtifactCreatedEvent
   | ModelCalledEvent
   | RoutingDecisionEvent
-  | LearningThresholdUpdatedEvent
-  | LearningTrendDetectedEvent
   | ToolInvokedEvent
   | ToolCompletedEvent
   | WaveStartedEvent
