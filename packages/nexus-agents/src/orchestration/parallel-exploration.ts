@@ -233,9 +233,11 @@ async function dispatchPartitions(
 /** Creates a timeout promise that rejects after ms. */
 function createTimeout(ms: number, cli: CliName): Promise<never> {
   return new Promise((_, reject) => {
+    // .unref() so a winning fast CLI doesn't keep the event loop alive waiting
+    // on this ghost timer (perCliTimeoutMs can be 300s+). Closes #2976.
     setTimeout(() => {
       reject(new Error(`Timeout after ${String(ms)}ms for ${cli}`));
-    }, ms);
+    }, ms).unref();
   });
 }
 

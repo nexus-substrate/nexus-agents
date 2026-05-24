@@ -37,6 +37,7 @@ function makeConfig(overrides?: Partial<AuditLogConfig>) {
     enableHashChain: false,
     enableCompression: false,
     flushIntervalMs: 1000,
+    maxQueueDepth: 10_000,
     minSeverity: 'info' as const,
     ...overrides,
   };

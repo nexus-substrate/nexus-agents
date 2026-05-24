@@ -43,6 +43,7 @@ export function initializeAuditLogger(
       filePrefix: 'audit',
       enableCompression: false,
       flushIntervalMs: 1000,
+      maxQueueDepth: 10_000,
     },
     undefined,
     logger

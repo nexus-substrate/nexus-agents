@@ -144,7 +144,10 @@ export class PersistentStrategyDistiller extends StrategyDistiller {
       rules: rules as DistilledRule[],
     };
 
-    const tmpPath = this.filePath + '.tmp';
+    // PID-suffixed temp path so two processes saving concurrently don't truncate each
+    // other's temp file mid-renameSync. Matches the convention in correlation-persistence.ts
+    // and research-auto-catalog.ts. Closes #2972.
+    const tmpPath = `${this.filePath}.tmp.${String(process.pid)}`;
     try {
       // Ensure parent directory exists
       ensureLearningDir(dirname(this.filePath));

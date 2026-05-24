@@ -34,6 +34,36 @@ export interface OrchestratorModeOptions {
  * Reads tasks from stdin and processes them one at a time.
  * (Source: Issue #446 - Implement orchestrator mode)
  */
+async function executeReplTask(
+  task: string,
+  options: OrchestratorModeOptions,
+  logger: ReturnType<typeof createLogger>,
+  rl: readline.Interface
+): Promise<void> {
+  // try/catch + finally re-prompt closes #2974: if orchestrateCommand rejects
+  // (adapter init failure, dispose throw, network error) the REPL must still
+  // recover. Without it the rejection became an unhandled promise and the
+  // prompt never returned — REPL hangs silently.
+  try {
+    await orchestrateCommand({
+      task,
+      verbose: options.verbose,
+      format: options.format,
+      model: options.model,
+      dryRun: options.dryRun,
+      maxTokens: options.maxTokens,
+      maxCostUsd: options.maxCostUsd,
+    });
+  } catch (error: unknown) {
+    const err = error instanceof Error ? error : new Error(String(error));
+    logger.error('REPL task failed', err);
+    process.stderr.write(`Error: ${err.message}\n`);
+  } finally {
+    process.stdout.write('\n');
+    rl.prompt();
+  }
+}
+
 function runOrchestratorRepl(
   options: OrchestratorModeOptions,
   logger: ReturnType<typeof createLogger>
@@ -59,22 +89,7 @@ function runOrchestratorRepl(
         rl.prompt();
         return;
       }
-
-      // Execute task asynchronously
-      void (async () => {
-        const orchestrateOptions: OrchestrateOptions = {
-          task,
-          verbose: options.verbose,
-          format: options.format,
-          model: options.model,
-          dryRun: options.dryRun,
-          maxTokens: options.maxTokens,
-          maxCostUsd: options.maxCostUsd,
-        };
-        await orchestrateCommand(orchestrateOptions);
-        process.stdout.write('\n');
-        rl.prompt();
-      })();
+      void executeReplTask(task, options, logger, rl);
     });
 
     rl.on('close', () => {

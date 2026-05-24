@@ -155,17 +155,26 @@ const SYSTEM_ACTOR: AuditActor = {
 // Audit Logger Implementation
 // ============================================================================
 
+/**
+ * One warn() per N dropped events to avoid log spam when the queue cap is
+ * saturated under sustained load. Picked so a 10k/s drop rate emits ~1 warn/s.
+ */
+const DROP_WARN_INTERVAL = 1000;
+
 export class AuditLogger implements IAuditLogger {
   private readonly storage: IAuditStorage;
   private readonly logger: ILogger;
   private readonly enableHashChain: boolean;
   private readonly minSeverity: 'info' | 'warning' | 'critical';
   private readonly categories?: readonly string[] | undefined;
+  private readonly maxQueueDepth: number;
   private lastHash: string | null = null;
   private eventQueue: AuditEvent[] = [];
   private flushTimer: NodeJS.Timeout | null = null;
   private readonly flushIntervalMs: number;
   private closed = false;
+  private inFlightFlush: Promise<void> | null = null;
+  private droppedEventCount = 0;
 
   constructor(config: AuditLogConfig, storage?: IAuditStorage, logger?: ILogger) {
     const validated = AuditLogConfigSchema.safeParse(config);
@@ -181,6 +190,7 @@ export class AuditLogger implements IAuditLogger {
     this.minSeverity = validated.data.minSeverity;
     this.categories = validated.data.categories;
     this.flushIntervalMs = validated.data.flushIntervalMs;
+    this.maxQueueDepth = validated.data.maxQueueDepth;
     this.storage = storage ?? new FileAuditStorage(validated.data, this.logger);
 
     this.startFlushTimer();
@@ -188,8 +198,11 @@ export class AuditLogger implements IAuditLogger {
   }
 
   private startFlushTimer(): void {
+    // NOTE: `flush()` (not `flushQueue()`) — the in-memory queue must drain to
+    // storage AND storage's own buffer must drain to disk on each tick.
+    // See #2979.
     this.flushTimer = setInterval(() => {
-      this.flushQueue().catch((err: unknown) => {
+      this.flush().catch((err: unknown) => {
         this.logger.error('Audit flush failed', err instanceof Error ? err : undefined);
       });
     }, this.flushIntervalMs);
@@ -252,6 +265,24 @@ export class AuditLogger implements IAuditLogger {
 
     const event = this.createEvent(input);
     this.eventQueue.push(event);
+
+    if (this.eventQueue.length > this.maxQueueDepth) {
+      // Drop-oldest: under sustained pressure, recent events are more useful
+      // for correlation than the oldest unflushed ones. See #2979.
+      const dropCount = this.eventQueue.length - this.maxQueueDepth;
+      this.eventQueue.splice(0, dropCount);
+      const priorDropped = this.droppedEventCount;
+      this.droppedEventCount += dropCount;
+      const crossedThreshold =
+        Math.floor(this.droppedEventCount / DROP_WARN_INTERVAL) >
+        Math.floor(priorDropped / DROP_WARN_INTERVAL);
+      if (priorDropped === 0 || crossedThreshold) {
+        this.logger.warn('Audit event queue full; dropping oldest events', {
+          maxQueueDepth: this.maxQueueDepth,
+          totalDropped: this.droppedEventCount,
+        });
+      }
+    }
 
     this.logger.debug('Audit event queued', {
       id: event.id,
@@ -347,18 +378,31 @@ export class AuditLogger implements IAuditLogger {
     });
   }
 
-  private async flushQueue(): Promise<void> {
-    if (this.eventQueue.length === 0) return;
-
-    const events = this.eventQueue.splice(0, this.eventQueue.length);
-    for (const event of events) {
-      await this.storage.write(event);
+  private async drainAndFlushOnce(): Promise<void> {
+    if (this.eventQueue.length > 0) {
+      const events = this.eventQueue.splice(0, this.eventQueue.length);
+      for (const event of events) {
+        await this.storage.write(event);
+      }
     }
+    await this.storage.flush();
   }
 
+  /**
+   * Drain the in-memory queue to storage AND flush the storage's own buffer
+   * to disk. Concurrent calls are coalesced into a single in-flight promise
+   * so an overlapping flush-timer tick cannot spawn parallel drains (see
+   * #2979). A caller arriving while a flush is already running awaits the
+   * existing promise; their newly-queued events, if any, are picked up by
+   * the next flush.
+   */
   async flush(): Promise<void> {
-    await this.flushQueue();
-    await this.storage.flush();
+    if (this.inFlightFlush !== null) return this.inFlightFlush;
+    const drain = this.drainAndFlushOnce().finally(() => {
+      this.inFlightFlush = null;
+    });
+    this.inFlightFlush = drain;
+    return drain;
   }
 
   async close(): Promise<void> {

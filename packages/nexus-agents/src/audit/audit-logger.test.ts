@@ -35,6 +35,7 @@ function makeConfig(overrides?: Partial<AuditLogConfig>) {
     enableHashChain: false,
     enableCompression: false,
     flushIntervalMs: 1000,
+    maxQueueDepth: 10_000,
     minSeverity: 'info' as const,
     ...overrides,
   };
@@ -387,6 +388,82 @@ describe('AuditLogger', () => {
       const l = new AuditLogger(makeConfig({ flushIntervalMs: 100 }), s);
       l.log(ev('test'));
       expect(() => vi.advanceTimersByTime(200)).not.toThrow();
+    });
+  });
+
+  describe('flush timer drains storage buffer (#2979)', () => {
+    it('calls storage.flush() on each interval tick — not just storage.write()', async () => {
+      const l = new AuditLogger(makeConfig({ flushIntervalMs: 100 }), s);
+      l.log(ev('drain-me'));
+      // Advance just past one tick, letting the queued microtasks from the
+      // async timer callback settle without re-firing the timer indefinitely.
+      await vi.advanceTimersByTimeAsync(150);
+      expect(s.write).toHaveBeenCalledTimes(1);
+      expect(s.flush).toHaveBeenCalled();
+    });
+  });
+
+  describe('concurrent flush coalescing (#2979)', () => {
+    it('coalesces concurrent flush() calls into a single in-flight promise', async () => {
+      const resolvers: Array<() => void> = [];
+      s.write.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            resolvers.push(resolve);
+          })
+      );
+      const l = new AuditLogger(makeConfig(), s);
+      l.log(ev('coalesce-1'));
+      l.log(ev('coalesce-2'));
+
+      // Kick off two concurrent flushes while the first storage.write() is in flight.
+      const p1 = l.flush();
+      const p2 = l.flush();
+      // Drain in-flight write, then resolve.
+      expect(resolvers).toHaveLength(1);
+      resolvers[0]?.();
+      await Promise.all([p1, p2]);
+
+      // Both events should have been written exactly once (no double-drain) and
+      // storage.flush should have been called once for the coalesced batch.
+      expect(s.write).toHaveBeenCalledTimes(2);
+      expect(s.flush).toHaveBeenCalledTimes(1);
+    });
+
+    it('serializes a follow-up flush after the in-flight one completes', async () => {
+      const l = new AuditLogger(makeConfig(), s);
+      l.log(ev('first'));
+      await l.flush();
+      l.log(ev('second'));
+      await l.flush();
+      expect(s.write).toHaveBeenCalledTimes(2);
+      expect(s.flush).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('maxQueueDepth backpressure (#2979)', () => {
+    it('drops oldest events when queue exceeds maxQueueDepth', async () => {
+      const l = new AuditLogger(makeConfig({ maxQueueDepth: 3 }), s);
+      l.log(ev('oldest'));
+      l.log(ev('second'));
+      l.log(ev('third'));
+      l.log(ev('fourth')); // should evict 'oldest'
+      l.log(ev('fifth')); // should evict 'second'
+      await l.flush();
+
+      expect(s.write).toHaveBeenCalledTimes(3);
+      const actions = (s.write.mock.calls as unknown[][]).map(
+        (call) => (call[0] as AuditEvent).action
+      );
+      expect(actions).toEqual(['third', 'fourth', 'fifth']);
+    });
+
+    it('uses a sane default maxQueueDepth when not configured', async () => {
+      // The default cap should be well above this small batch.
+      const l = new AuditLogger(makeConfig(), s);
+      for (let i = 0; i < 50; i++) l.log(ev('e' + String(i)));
+      await l.flush();
+      expect(s.write).toHaveBeenCalledTimes(50);
     });
   });
 });

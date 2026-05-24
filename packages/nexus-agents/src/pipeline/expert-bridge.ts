@@ -74,18 +74,26 @@ let cachedRouter: RouterLike | null = null;
 
 // Cached MCP config — generated once, reused across expert calls (#1708)
 let cachedMcpConfigPath: string | null = null;
+// Coalesces concurrent init under voter fan-out (closes #2969). consensus_vote
+// fans out N=7 callers on cold start; without this each one ran the full init
+// including a mkdtemp() that the loser N-1 instances never cleaned up.
+let mcpConfigInitPromise: Promise<string | null> | null = null;
 
 /** Get or create cached MCP config path for expert CLI sessions (#1708). */
 async function getMcpConfigPath(): Promise<string | null> {
   if (cachedMcpConfigPath !== null) return cachedMcpConfigPath;
-  try {
-    const { generateMcpConfig } = await import('../cli-adapters/child-mcp-config.js');
-    const config = await generateMcpConfig();
-    cachedMcpConfigPath = config.configPath;
-    return cachedMcpConfigPath;
-  } catch {
-    return null; // MCP config not available — experts run without tools
-  }
+  mcpConfigInitPromise ??= (async (): Promise<string | null> => {
+    try {
+      const { generateMcpConfig } = await import('../cli-adapters/child-mcp-config.js');
+      const config = await generateMcpConfig();
+      cachedMcpConfigPath = config.configPath;
+      return cachedMcpConfigPath;
+    } catch {
+      mcpConfigInitPromise = null; // allow retry on next call
+      return null; // MCP config not available — experts run without tools
+    }
+  })();
+  return mcpConfigInitPromise;
 }
 
 /** Cached circuit breaker for health monitoring (#1766). */
@@ -139,28 +147,39 @@ function adaptCompositeRouter(
   };
 }
 
+// Coalesces concurrent router init the same way mcpConfigInitPromise does
+// (closes #2969). N=7 voter fan-out previously ran createAllAdapters() N times
+// — N sets of CLI probe subprocesses, all but one discarded.
+let routerInitPromise: Promise<RouterLike | null> | null = null;
+
 /** Get or create a cached CompositeRouter with circuit breaker monitoring. */
 async function getRouter(): Promise<RouterLike | null> {
   if (cachedRouter !== null) return cachedRouter;
-  const { createAllAdapters } = await import('../cli-adapters/factory.js');
-  const { createCompositeRouter } = await import('../cli-adapters/composite-router.js');
-  const adapters = createAllAdapters();
-  if (adapters.size === 0) return null;
-  cachedRouter = adaptCompositeRouter(createCompositeRouter(adapters));
+  routerInitPromise ??= (async (): Promise<RouterLike | null> => {
+    const { createAllAdapters } = await import('../cli-adapters/factory.js');
+    const { createCompositeRouter } = await import('../cli-adapters/composite-router.js');
+    const adapters = createAllAdapters();
+    if (adapters.size === 0) {
+      routerInitPromise = null; // allow retry once adapters become available
+      return null;
+    }
+    cachedRouter = adaptCompositeRouter(createCompositeRouter(adapters));
 
-  // Initialize circuit breaker monitoring (#1766)
-  try {
-    const { createCliCircuitBreakerIntegration } =
-      await import('../cli-adapters/cli-circuit-breaker.js');
-    cachedCircuitBreaker = createCliCircuitBreakerIntegration([...adapters.values()]);
-  } catch (error: unknown) {
-    // Circuit breaker not available — continue without it. Log so we can
-    // notice if initialization silently stops working (#1913 Class B).
-    const msg = error instanceof Error ? error.message : String(error);
-    logger.debug('Circuit breaker init failed; continuing without it', { error: msg });
-  }
+    // Initialize circuit breaker monitoring (#1766)
+    try {
+      const { createCliCircuitBreakerIntegration } =
+        await import('../cli-adapters/cli-circuit-breaker.js');
+      cachedCircuitBreaker = createCliCircuitBreakerIntegration([...adapters.values()]);
+    } catch (error: unknown) {
+      // Circuit breaker not available — continue without it. Log so we can
+      // notice if initialization silently stops working (#1913 Class B).
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.debug('Circuit breaker init failed; continuing without it', { error: msg });
+    }
 
-  return cachedRouter;
+    return cachedRouter;
+  })();
+  return routerInitPromise;
 }
 
 /** Check CLI health before dispatch (#1766). */

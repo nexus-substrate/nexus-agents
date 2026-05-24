@@ -330,9 +330,11 @@ export class AgentMessageRouter implements IAgentMessageRouter {
     targetId: string
   ): Promise<Result<AgentResponse, AgentError>> {
     return new Promise((resolve) => {
+      // .unref() so a winning fast-path doesn't keep the event loop alive waiting
+      // on this ghost timer. Closes #2976.
       setTimeout(() => {
         resolve(err(new AgentError(`Message delivery timeout to agent: ${targetId}`)));
-      }, timeout);
+      }, timeout).unref();
     });
   }
 
