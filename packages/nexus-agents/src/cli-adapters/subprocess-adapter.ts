@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- Cohesive subprocess adapter base class; governance 400-600 OK if cohesive */
 /**
  * nexus-agents/cli-adapters - Subprocess Adapter
  *
@@ -26,6 +27,7 @@ import { buildChildEnv } from './subprocess-env.js';
 import { sanitizeOutput } from '../security/output-sanitizer.js';
 import { isRateLimitText } from '../adapters/rate-limit-detector.js';
 import { parseCliErrorEnvelope } from './cli-error-envelope.js';
+import { generateHyphenId } from '../utils/id-utils.js';
 
 /** Minimum length for plaintext fallback to kick in.
  * Lowered from 100→30 to recover short but valid CLI responses (#1401). */
@@ -270,11 +272,18 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     task: CliTask,
     options: Required<ExecutionOptions>
   ): Promise<Result<CliResponse, CliError>> {
-    const result = await this.spawnSubprocess(task, options);
+    // #2963 site 3: per-execute request ID for log correlation. CliTask
+    // doesn't carry a task-id field; generate one here so every
+    // log-line for this invocation (including the per-retry timing
+    // breakdown emitted by `logTimingBreakdown`) can be grouped by a
+    // single ID. Doesn't propagate up to MCP — it's purely an
+    // adapter-internal correlation key.
+    const requestId = generateHyphenId('cli-req', 8);
+    const result = await this.spawnSubprocess(task, options, requestId);
     if (result.ok || !this.transientRetry.enabled) return result;
     if (!isTransientError(result.error.code)) return result;
 
-    return this.retryTransient(task, options, result, 0);
+    return this.retryTransient(task, options, result, 0, requestId);
   }
 
   /**
@@ -284,7 +293,8 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     task: CliTask,
     options: Required<ExecutionOptions>,
     lastResult: Result<CliResponse, CliError>,
-    attempt: number
+    attempt: number,
+    requestId: string
   ): Promise<Result<CliResponse, CliError>> {
     const isParseError = !lastResult.ok && lastResult.error.code === 'PARSE_ERROR';
     const maxRetries = isParseError ? MAX_PARSE_RETRIES : MAX_TRANSIENT_RETRIES;
@@ -295,6 +305,7 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     const isTimeout = !lastResult.ok && lastResult.error.code === 'TIMEOUT';
     subprocessLogger.debug('Retrying transient error', {
       cli: this.name,
+      requestId,
       attempt: attempt + 1,
       delayMs,
       errorCode: !lastResult.ok ? lastResult.error.code : undefined,
@@ -306,19 +317,27 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     const retryOptions = isTimeout
       ? { ...options, timeoutMs: Math.round(options.timeoutMs * TIMEOUT_RETRY_MULTIPLIER) }
       : options;
-    const result = await this.spawnSubprocess(task, retryOptions);
+    const result = await this.spawnSubprocess(task, retryOptions, requestId);
     if (result.ok) return result;
     if (!isTransientError(result.error.code)) return result;
 
-    return this.retryTransient(task, retryOptions, result, attempt + 1);
+    return this.retryTransient(task, retryOptions, result, attempt + 1, requestId);
   }
 
   /**
    * Spawns a single subprocess execution (no retry).
+   *
+   * `requestId` (#2963 site 3) correlates the timing-breakdown log emitted
+   * on subprocess close back to the parent `executeTask` invocation —
+   * essential when multiple subprocesses for the same CLI run concurrently
+   * (pipelines, votes) and the JSDoc's stated goal ("group by cli + provider
+   * + model and surface tail-latency outliers") requires a way to
+   * disambiguate which timing row belongs to which call.
    */
   private spawnSubprocess(
     task: CliTask,
-    options: Required<ExecutionOptions>
+    options: Required<ExecutionOptions>,
+    requestId: string
   ): Promise<Result<CliResponse, CliError>> {
     const cmdConfig = this.getCommand(task);
     const startTime = getTimeProvider().now();
@@ -355,13 +374,14 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
       });
 
       const onProgress = options.onProgress;
-      const state = this.setupChildProcessHandlers(
+      const state = this.setupChildProcessHandlers({
         child,
         startTime,
-        options.timeoutMs,
+        timeoutMs: options.timeoutMs,
         resolve,
-        onProgress
-      );
+        requestId,
+        ...(onProgress !== undefined ? { onProgress } : {}),
+      });
 
       // Write stdin content if provided and close stdin
       if (cmdConfig.stdin !== undefined) {
@@ -377,13 +397,15 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
   /**
    * Sets up child process event handlers for output collection and error handling.
    */
-  private setupChildProcessHandlers(
-    child: ReturnType<typeof spawn>,
-    startTime: number,
-    timeoutMs: number,
-    resolve: (result: Result<CliResponse, CliError>) => void,
-    onProgress?: () => void
-  ): BufferState {
+  private setupChildProcessHandlers(args: {
+    child: ReturnType<typeof spawn>;
+    startTime: number;
+    timeoutMs: number;
+    resolve: (result: Result<CliResponse, CliError>) => void;
+    requestId: string;
+    onProgress?: () => void;
+  }): BufferState {
+    const { child, startTime, timeoutMs, resolve, requestId, onProgress } = args;
     const state: BufferState = {
       stdout: '',
       stderr: '',
@@ -415,7 +437,7 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
 
     child.on('close', (code: number | null) => {
       clearTimeout(timeoutId);
-      this.logTimingBreakdown(state, startTime, code);
+      this.logTimingBreakdown(state, startTime, code, requestId);
       resolveOnce(this.classifyCloseResult(code, state, startTime));
     });
 
@@ -458,13 +480,19 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
    * Structured fields chosen so existing query_trace tooling can group by
    * cli + provider + model and surface tail-latency outliers.
    */
-  private logTimingBreakdown(state: BufferState, startTime: number, code: number | null): void {
+  private logTimingBreakdown(
+    state: BufferState,
+    startTime: number,
+    code: number | null,
+    requestId: string
+  ): void {
     const now = getTimeProvider().now();
     const totalMs = now - startTime;
     const spawnLatencyMs = state.firstByteTime === null ? null : state.firstByteTime - startTime;
     const streamingMs = state.firstByteTime === null ? null : now - state.firstByteTime;
     this.logger.info('Subprocess timing', {
       cli: this.name,
+      requestId,
       totalMs,
       spawnLatencyMs,
       streamingMs,
