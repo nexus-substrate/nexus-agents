@@ -34,6 +34,7 @@ function createTestConfig(logDir: string): AuditLogConfig {
     minSeverity: 'info',
     enableHashChain: false,
     enableCompression: false,
+    maxQueueDepth: 10_000,
   };
 }
 
@@ -597,6 +598,7 @@ describe('FileAuditStorage Path Traversal Prevention', () => {
           minSeverity: 'info',
           enableHashChain: false,
           enableCompression: false,
+          maxQueueDepth: 10_000,
           allowedRoot,
         };
 
@@ -620,6 +622,7 @@ describe('FileAuditStorage Path Traversal Prevention', () => {
         minSeverity: 'info',
         enableHashChain: false,
         enableCompression: false,
+        maxQueueDepth: 10_000,
         allowedRoot,
       };
 
@@ -643,6 +646,7 @@ describe('FileAuditStorage Path Traversal Prevention', () => {
           minSeverity: 'info',
           enableHashChain: false,
           enableCompression: false,
+          maxQueueDepth: 10_000,
           allowedRoot: tempRoot,
         };
 
@@ -670,6 +674,7 @@ describe('FileAuditStorage Path Traversal Prevention', () => {
           minSeverity: 'info',
           enableHashChain: false,
           enableCompression: false,
+          maxQueueDepth: 10_000,
           allowedRoot: tempRoot,
         };
 
@@ -697,6 +702,7 @@ describe('FileAuditStorage Path Traversal Prevention', () => {
           minSeverity: 'info',
           enableHashChain: false,
           enableCompression: false,
+          maxQueueDepth: 10_000,
         };
 
         expect(() => new FileAuditStorage(config)).toThrow(SecurityError);
@@ -714,6 +720,7 @@ describe('FileAuditStorage Path Traversal Prevention', () => {
           minSeverity: 'info',
           enableHashChain: false,
           enableCompression: false,
+          maxQueueDepth: 10_000,
         };
 
         expect(() => new FileAuditStorage(config)).toThrow(SecurityError);
@@ -733,6 +740,7 @@ describe('FileAuditStorage Path Traversal Prevention', () => {
           minSeverity: 'info',
           enableHashChain: false,
           enableCompression: false,
+          maxQueueDepth: 10_000,
         };
 
         expect(() => new FileAuditStorage(config)).toThrow(SecurityError);
@@ -751,6 +759,7 @@ describe('FileAuditStorage Path Traversal Prevention', () => {
           minSeverity: 'info',
           enableHashChain: false,
           enableCompression: false,
+          maxQueueDepth: 10_000,
         };
 
         const storage = new FileAuditStorage(config);
