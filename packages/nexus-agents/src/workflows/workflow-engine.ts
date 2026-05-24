@@ -121,7 +121,18 @@ export class WorkflowEngine implements IWorkflowEngine {
         state: 'failed',
         error: stepResults.error.message,
       });
-      return stepResults;
+      // #2931: enrich the inner error's context with `executionId` and
+      // `durationMs` so the run-workflow MCP tool can surface a real,
+      // queryable id + elapsed time in the failure envelope instead of
+      // the previous `executionId: "unknown"` / `durationMs: 0` shape.
+      // Preserves the original message + existing context (stepId, etc.)
+      // so parallel-executor's per-step diagnostic stays intact.
+      const elapsedMs = getTimeProvider().now() - startTime;
+      const innerErr = stepResults.error;
+      const enriched = new WorkflowError(innerErr.message, {
+        context: { ...(innerErr.context ?? {}), executionId, durationMs: elapsedMs },
+      });
+      return err(enriched);
     }
     const result: WorkflowResult = {
       executionId,

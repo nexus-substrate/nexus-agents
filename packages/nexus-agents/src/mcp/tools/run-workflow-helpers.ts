@@ -370,15 +370,33 @@ export function errorResponse(message: string): ToolResponse {
   return toolError(message);
 }
 
-/** Create a failed workflow result */
-export function createFailedResult(workflowName: string, errorMessage: string): ToolResponse {
+/**
+ * Create a failed workflow result.
+ *
+ * Pre-#2931 this hardcoded `executionId: 'unknown'` and `durationMs: 0`
+ * because the run-workflow handler never received the underlying engine's
+ * executionId or elapsed time. With #2931 wiring, `workflow-engine.ts:
+ * runExecution` now enriches the inner `WorkflowError.context` with
+ * `executionId` and `durationMs`, and `handleRunWorkflow` extracts those
+ * and threads them here — so failure envelopes are now queryable via
+ * `query_trace(runId=...)` instead of being un-debuggable.
+ *
+ * Both opts default to the pre-#2931 sentinel/zero so the symbol stays
+ * back-compat for the (few) other callers, but the run-workflow path
+ * always supplies real values now.
+ */
+export function createFailedResult(
+  workflowName: string,
+  errorMessage: string,
+  opts: { executionId?: string; durationMs?: number } = {}
+): ToolResponse {
   const result = {
-    executionId: 'unknown',
+    executionId: opts.executionId ?? 'unknown',
     workflowName,
     status: 'failed',
     stepResults: [],
     output: null,
-    durationMs: 0,
+    durationMs: opts.durationMs ?? 0,
     error: errorMessage,
   };
   return toolStructuredError({
