@@ -85,6 +85,16 @@ export interface CliTask {
 }
 
 /**
+ * Internal resolved-options shape — every "default-able" field is
+ * required, but `signal` stays optional because it's a per-call hook,
+ * not a value with a default. Used by adapter internals (subprocess,
+ * codex-mcp) and tests as the "resolved" execution options. Public
+ * callers should keep using `ExecutionOptions` (everything optional).
+ */
+export type ResolvedExecutionOptions = Required<Omit<ExecutionOptions, 'signal'>> &
+  Pick<ExecutionOptions, 'signal'>;
+
+/**
  * Execution options for CLI adapters.
  */
 export interface ExecutionOptions {
@@ -98,6 +108,23 @@ export interface ExecutionOptions {
   readonly trackUsage?: boolean;
   /** Progress callback invoked on subprocess stdout activity (Issue #1087). */
   readonly onProgress?: (() => void) | undefined;
+  /**
+   * Cancellation signal (#3026 finding 2). When the signal aborts, the
+   * adapter must cancel the in-flight execution promptly — for
+   * subprocess adapters that means SIGTERM (with SIGKILL escalation
+   * per #3026 finding 1). Without this, callers that use
+   * `Promise.race([adapter.execute(task), timeout])` for cancellation
+   * leak orphan subprocesses on race-loser: the timeout promise wins
+   * the race but the adapter call keeps running, posting late results
+   * into OutcomeStore + LinUCB state for a task whose decision has
+   * already been recorded.
+   *
+   * Typed as `AbortSignal | undefined` (not `AbortSignal?`) so
+   * `Required<ExecutionOptions>` — used pervasively by adapter
+   * internals + tests as a resolved-options shape — keeps accepting
+   * `signal: undefined` under `exactOptionalPropertyTypes`.
+   */
+  readonly signal?: AbortSignal | undefined;
 }
 
 /**

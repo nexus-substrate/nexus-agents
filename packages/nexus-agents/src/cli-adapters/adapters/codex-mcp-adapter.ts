@@ -19,7 +19,7 @@ import type {
   CliResponse,
   CliError,
   ModelInfo,
-  ExecutionOptions,
+  ResolvedExecutionOptions,
   BaseAdapterOptions,
 } from '../types.js';
 import type { Result } from '../../core/index.js';
@@ -118,7 +118,7 @@ export class CodexMcpAdapter extends BaseCliAdapter {
    */
   async executeTask(
     _task: CliTask,
-    options: Required<ExecutionOptions>
+    options: ResolvedExecutionOptions
   ): Promise<Result<CliResponse, CliError>> {
     const startTime = getTimeProvider().now();
 

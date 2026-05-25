@@ -31,6 +31,7 @@ export type {
   CapabilityProfile,
   CliTask,
   ExecutionOptions,
+  ResolvedExecutionOptions,
   ICliAdapter,
   ICliResponseParser,
   VersionRequirements,

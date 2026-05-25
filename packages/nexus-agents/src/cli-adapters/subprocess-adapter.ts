@@ -9,6 +9,7 @@
  */
 
 import { spawn } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
 
 import type { Result } from '../core/index.js';
 import { ok, err, getTimeProvider, createLogger } from '../core/index.js';
@@ -19,7 +20,7 @@ import type {
   CliResponse,
   CliError,
   CliErrorCode,
-  ExecutionOptions,
+  ResolvedExecutionOptions,
   ICliResponseParser,
 } from './types.js';
 import { BaseCliAdapter } from './base-adapter.js';
@@ -260,7 +261,7 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
    * (#2824). The outer loop still runs once, so circuit-breaker failure
    * recording is unaffected.
    */
-  protected override shouldOuterRetry(opts: Required<ExecutionOptions>): boolean {
+  protected override shouldOuterRetry(opts: ResolvedExecutionOptions): boolean {
     return opts.allowRetry && !this.transientRetry.enabled;
   }
 
@@ -271,6 +272,48 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
   protected abstract getCommand(task: CliTask): CommandConfig;
 
   /**
+   * Invokes the optional cleanup hook supplied by getCommand(). Sync
+   * throws are swallowed (warn-only) and async rejections are caught
+   * so cleanup failures never bubble up and mask the real subprocess
+   * result.
+   */
+  private runSubprocessCleanup(cleanup: CommandConfig['cleanup']): void {
+    if (cleanup === undefined) return;
+    try {
+      const r = cleanup();
+      if (r instanceof Promise) {
+        r.catch((e: unknown) => {
+          this.logger.warn('Subprocess cleanup failed', { error: String(e) });
+        });
+      }
+    } catch (e: unknown) {
+      this.logger.warn('Subprocess cleanup threw', { error: String(e) });
+    }
+  }
+
+  /**
+   * #3026 finding 2: SIGTERM the child when the caller's AbortSignal
+   * aborts mid-execution. Listener auto-detaches on `'close'` so we
+   * don't leak across child lifetimes.
+   */
+  private attachAbortSignal(
+    child: ChildProcess,
+    signal: AbortSignal,
+    resolve: (r: Result<CliResponse, CliError>) => void
+  ): void {
+    const onAbort = (): void => {
+      if (child.exitCode === null && child.signalCode === null) {
+        child.kill('SIGTERM');
+      }
+      resolve(err(this.createError('TIMEOUT', 'Aborted by caller signal')));
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+    child.once('close', () => {
+      signal.removeEventListener('abort', onAbort);
+    });
+  }
+
+  /**
    * Executes a task via subprocess, with optional transient-error retry.
    * When `transientRetry.enabled` is true, transient errors (timeout,
    * rate_limit, connection, parse) are retried with exponential backoff
@@ -278,7 +321,7 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
    */
   async executeTask(
     task: CliTask,
-    options: Required<ExecutionOptions>
+    options: ResolvedExecutionOptions
   ): Promise<Result<CliResponse, CliError>> {
     // #2963 site 3: per-execute request ID for log correlation. CliTask
     // doesn't carry a task-id field; generate one here so every
@@ -299,7 +342,7 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
    */
   private async retryTransient(
     task: CliTask,
-    options: Required<ExecutionOptions>,
+    options: ResolvedExecutionOptions,
     lastResult: Result<CliResponse, CliError>,
     attempt: number,
     requestId: string
@@ -344,30 +387,23 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
    */
   private spawnSubprocess(
     task: CliTask,
-    options: Required<ExecutionOptions>,
+    options: ResolvedExecutionOptions,
     requestId: string
   ): Promise<Result<CliResponse, CliError>> {
     const cmdConfig = this.getCommand(task);
     const startTime = getTimeProvider().now();
 
-    const cleanup = cmdConfig.cleanup;
-    const runCleanup = (): void => {
-      if (cleanup === undefined) return;
-      try {
-        const r = cleanup();
-        if (r instanceof Promise) {
-          r.catch((e: unknown) => {
-            this.logger.warn('Subprocess cleanup failed', { error: String(e) });
-          });
-        }
-      } catch (e: unknown) {
-        this.logger.warn('Subprocess cleanup threw', { error: String(e) });
-      }
-    };
+    // #3026 finding 2: fast-fail if the caller already aborted before we
+    // bothered to spawn. Saves a child process start when an upstream
+    // wave/loop has already moved on.
+    const signal = options.signal;
+    if (signal?.aborted === true) {
+      return Promise.resolve(err(this.createError('TIMEOUT', 'Aborted before spawn')));
+    }
 
     return new Promise((resolveOuter) => {
       const resolve = (result: Result<CliResponse, CliError>): void => {
-        runCleanup();
+        this.runSubprocessCleanup(cmdConfig.cleanup);
         resolveOuter(result);
       };
       // Curated child env: base infrastructure vars + only this CLI's
@@ -390,6 +426,10 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
         requestId,
         ...(onProgress !== undefined ? { onProgress } : {}),
       });
+
+      if (signal !== undefined) {
+        this.attachAbortSignal(child, signal, resolve);
+      }
 
       // Write stdin content if provided and close stdin
       if (cmdConfig.stdin !== undefined) {

@@ -200,10 +200,13 @@ async function dispatchPartitions(
   const promises = selectedClis.map(async ({ cli, adapter }): Promise<PartitionResult> => {
     const startTime = getTimeProvider().now();
     const cliTask = buildCliTask(task, cli, category);
+    // #3026 finding 2: cancel the adapter call when the race timeout
+    // wins so the subprocess doesn't keep running past its decision.
+    const controller = new AbortController();
 
     try {
       const result: Result<CliResponse, CliError> = await Promise.race([
-        adapter.execute(cliTask),
+        adapter.execute(cliTask, { signal: controller.signal }),
         createTimeout(config.perCliTimeoutMs, cli),
       ]);
 
@@ -224,6 +227,8 @@ async function dispatchPartitions(
       const message = getErrorMessage(error);
       logger.warn('CLI partition threw', { cli, error: message });
       return { cli, success: false, output: '', durationMs, error: message };
+    } finally {
+      controller.abort();
     }
   });
 
