@@ -273,6 +273,10 @@ export class GeminiAdapter extends BaseAdapter {
     if (request.tools !== undefined && request.tools.length > 0) {
       config.tools = [{ functionDeclarations: request.tools.map(mapToolToFunctionDeclaration) }];
     }
+    // #3036: forward AbortSignal into @google/genai so withWatchdog
+    // timeouts cancel the in-flight request instead of leaking it past
+    // the Promise.race boundary.
+    if (request.signal !== undefined) config.abortSignal = request.signal;
 
     return config;
   }

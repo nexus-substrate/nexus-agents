@@ -113,7 +113,8 @@ export interface WorkerDispatchOptions {
    */
   readonly executeWorker: (
     entry: AgentPlanEntry,
-    priorWaveResults?: readonly WorkerResult[]
+    priorWaveResults?: readonly WorkerResult[],
+    signal?: AbortSignal
   ) => Promise<WorkerResult>;
   /** Maximum concurrent workers per wave (default: MAX_WORKERS_PER_WAVE = 3) */
   readonly maxConcurrency?: number;
@@ -140,7 +141,8 @@ export interface WorkerDispatchOptions {
    */
   readonly altExecuteWorker?: (
     entry: AgentPlanEntry,
-    priorWaveResults?: readonly WorkerResult[]
+    priorWaveResults?: readonly WorkerResult[],
+    signal?: AbortSignal
   ) => Promise<WorkerResult>;
   /**
    * Optional AbortSignal for cooperative cancellation (#2188).
@@ -666,7 +668,11 @@ interface ExecuteSafeOptions {
   readonly timeoutMs: number;
   readonly enableTriage?: boolean | undefined;
   readonly altExecuteWorker?:
-    | ((e: AgentPlanEntry, prior?: readonly WorkerResult[]) => Promise<WorkerResult>)
+    | ((
+        e: AgentPlanEntry,
+        prior?: readonly WorkerResult[],
+        signal?: AbortSignal
+      ) => Promise<WorkerResult>)
     | undefined;
 }
 
@@ -692,13 +698,19 @@ async function executeSafe(opts: ExecuteSafeOptions): Promise<WorkerResult> {
 /** Single execution attempt. Returns undefined on success (result returned directly), or failed WorkerResult. */
 async function attemptExecution(
   entry: AgentPlanEntry,
-  executeWorker: (e: AgentPlanEntry, prior?: readonly WorkerResult[]) => Promise<WorkerResult>,
+  executeWorker: (
+    e: AgentPlanEntry,
+    prior?: readonly WorkerResult[],
+    signal?: AbortSignal
+  ) => Promise<WorkerResult>,
   priorWaveResults: readonly WorkerResult[] | undefined,
   timeoutMs: number
 ): Promise<WorkerResult> {
   const startMs = Date.now();
   try {
-    return await withWatchdog(entry.role, timeoutMs, () => executeWorker(entry, priorWaveResults));
+    return await withWatchdog(entry.role, timeoutMs, (signal) =>
+      executeWorker(entry, priorWaveResults, signal)
+    );
   } catch (error: unknown) {
     const durationMs = Date.now() - startMs;
     const message = getErrorMessage(error);
@@ -727,7 +739,11 @@ interface TriageRetryOptions {
   readonly priorWaveResults: readonly WorkerResult[] | undefined;
   readonly timeoutMs: number;
   readonly altExecuteWorker?:
-    | ((e: AgentPlanEntry, prior?: readonly WorkerResult[]) => Promise<WorkerResult>)
+    | ((
+        e: AgentPlanEntry,
+        prior?: readonly WorkerResult[],
+        signal?: AbortSignal
+      ) => Promise<WorkerResult>)
     | undefined;
 }
 

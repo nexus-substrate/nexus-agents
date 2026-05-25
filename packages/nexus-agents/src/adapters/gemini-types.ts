@@ -186,6 +186,8 @@ export interface GeminiRequestConfig {
   stopSequences?: string[];
   systemInstruction?: string;
   tools?: Array<{ functionDeclarations: FunctionDeclaration[] }>;
+  /** #3036: cancellation signal forwarded into @google/genai. */
+  abortSignal?: AbortSignal;
 }
 
 /**
