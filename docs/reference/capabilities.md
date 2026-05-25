@@ -1,6 +1,6 @@
 # Repository Capabilities Index
 
-**Generated:** 2026-05-24T22:51:38.908Z
+**Generated:** 2026-05-25T13:18:52.705Z
 **Package Version:** 2.83.2
 **Generator:** `scripts/generate-repo-index.ts`
 
@@ -67,7 +67,7 @@ Binary: `nexus-agents`
 
 ---
 
-## MCP Tools (38)
+## MCP Tools (39)
 
 | Tool | Source File |
 | ------ | ------------- |
@@ -78,6 +78,7 @@ Binary: `nexus-agents`
 | `execute_expert` | `src/mcp/tools/execute-expert.ts` |
 | `execute_spec` | `src/mcp/tools/execute-spec.ts` |
 | `extract_symbols` | `src/mcp/tools/extract-symbols.ts` |
+| `get_job_result` | `src/mcp/tools/get-job-result.ts` |
 | `improvement_review` | `src/mcp/tools/improvement-review.ts` |
 | `issue_triage` | `src/mcp/tools/issue-triage.ts` |
 | `list_experts` | `src/mcp/tools/list-experts.ts` |

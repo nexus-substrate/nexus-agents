@@ -444,6 +444,21 @@ export const TOOL_ANNOTATIONS: Readonly<Record<string, ToolSideEffectsEntry>> = 
       { category: 'implicit', description: 'Reads the structured task-state log (#2278)' },
     ],
   },
+  get_job_result: {
+    annotations: {
+      title: 'Get Job Result',
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    sideEffects: [
+      {
+        category: 'implicit',
+        description: 'Reads the async-mode job-result sidecar (#3042 / epic #2631)',
+      },
+    ],
+  },
   verify_audit_chain: {
     annotations: {
       title: 'Verify Audit Chain',

@@ -292,6 +292,13 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
     idempotentHint: true,
     openWorldHint: false,
   },
+  /** Reads job-result sidecar file for an async-mode dispatch (#3042 / #2631). */
+  get_job_result: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
   /** Verifies hash chain of audit log files. */
   verify_audit_chain: {
     readOnlyHint: true,

@@ -184,6 +184,39 @@ describe('OrchestrateInputSchema', () => {
     }
   });
 
+  // #3042 / epic #2631: async-mode dispatch.
+  it('accepts mode: "async" (#3042)', () => {
+    const result = OrchestrateInputSchema.safeParse({ task: 'long-running task', mode: 'async' });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.mode).toBe('async');
+    }
+  });
+
+  it('accepts mode: "sync" (#3042)', () => {
+    const result = OrchestrateInputSchema.safeParse({ task: 'quick task', mode: 'sync' });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.mode).toBe('sync');
+    }
+  });
+
+  it('leaves mode undefined when omitted — backward-compat invariant (#3042)', () => {
+    const result = OrchestrateInputSchema.safeParse({ task: 'legacy caller' });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      // The handler treats undefined as 'sync', but the SCHEMA itself
+      // doesn't apply a default — that would change the inferred type
+      // and force `mode: 'sync'` on every existing test fixture.
+      expect(result.data.mode).toBeUndefined();
+    }
+  });
+
+  it('rejects unknown mode value (#3042)', () => {
+    const result = OrchestrateInputSchema.safeParse({ task: 'x', mode: 'fire-and-forget' });
+    expect(result.success).toBe(false);
+  });
+
   it('should reject maxIterations below minimum', () => {
     const input = {
       task: 'Valid task',

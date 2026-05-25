@@ -369,6 +369,15 @@ export {
   type QueryTaskStateResponse,
 } from './query-task-state-tool.js';
 
+// Get job result tool (#3042 / epic #2631 — async-mode stage 1)
+export {
+  registerGetJobResultTool,
+  GetJobResultInputSchema,
+  type GetJobResultDeps,
+  type GetJobResultInput,
+  type GetJobResultResponse,
+} from './get-job-result-tool.js';
+
 // Verify audit chain tool (#2281 follow-up — wraps verifyChain over persisted log files)
 export {
   registerVerifyAuditChainTool,
@@ -531,6 +540,7 @@ export const REGISTERED_TOOL_NAMES = [
   'registry_import',
   'query_trace',
   'query_task_state',
+  'get_job_result',
   'verify_audit_chain',
   'repo_analyze',
   'repo_security_plan',

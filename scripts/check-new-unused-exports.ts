@@ -39,8 +39,8 @@
  */
 
 import { execSync } from 'node:child_process';
-import { readFileSync, existsSync } from 'node:fs';
-import { basename } from 'node:path';
+import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
+import { basename, join } from 'node:path';
 
 const SRC_DIR = 'packages/nexus-agents/src';
 const SRC_PATTERN = /^packages\/nexus-agents\/src\/.+\.tsx?$/;
@@ -102,21 +102,62 @@ function safeRead(file: string): string {
 }
 
 /**
- * Build the set of import specifiers that would resolve to `file` from
- * any other file in `SRC_DIR`. Returns a list of search patterns that
- * `ripgrep` can match against import statements.
+ * Build the regex set that recognizes an import-specifier ending in the
+ * given file's basename. The codebase uses ESM imports with `.js`
+ * extensions:
  *
- * The codebase uses ESM-style imports with `.js` extensions:
  *   import { Foo } from './path/to/file.js';
  *   import { Foo } from '../path/to/file.js';
+ *   import type { Bar } from '../path/to/file.js';
  *
- * The simplest portable check: search for the basename (without `.ts`)
- * + `.js` suffix as an import specifier. This is greedy (collisions on
- * `index.js`, `types.js` happen) but the gate is advisory + opt-out-able.
+ * The simplest portable check: match the basename (without `.ts`) +
+ * `.js` suffix as the tail of a quoted import path. Greedy by design —
+ * collisions on common names (`index.js`, `types.js`) are possible
+ * but the gate is advisory + opt-out-able, so a small false-positive
+ * rate is acceptable.
  */
-function importSpecifierPatterns(file: string): string[] {
+function importSpecifierPatterns(file: string): RegExp[] {
   const base = basename(file).replace(/\.tsx?$/, '');
-  return [`from '[^']*/${base}\\.js'`, `from "[^"]*/${base}\\.js"`];
+  // Escape regex metachars in `base` even though file basenames don't
+  // usually contain them — defensive against e.g. `+`-suffixed names.
+  const escaped = base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return [new RegExp(`from\\s+['"][^'"]*\\/${escaped}\\.js['"]`)];
+}
+
+/**
+ * Recursively walk `dir` and return every `.ts` / `.tsx` file path. Pure
+ * Node — no `rg` / `find` shell-out, so the check works identically on
+ * developer machines and CI runners where ripgrep may not be on PATH.
+ */
+function listSourceFiles(dir: string): string[] {
+  const out: string[] = [];
+  try {
+    for (const entry of readdirSync(dir)) {
+      const p = join(dir, entry);
+      let st;
+      try {
+        st = statSync(p);
+      } catch {
+        continue;
+      }
+      if (st.isDirectory()) {
+        if (entry === 'node_modules' || entry.startsWith('.')) continue;
+        out.push(...listSourceFiles(p));
+      } else if (st.isFile() && /\.tsx?$/.test(entry) && !entry.endsWith('.d.ts')) {
+        out.push(p);
+      }
+    }
+  } catch {
+    // Unreadable dir — skip silently; this is an advisory check.
+  }
+  return out;
+}
+
+/** Cache the file list across multiple `findConsumers` calls within one run. */
+let allSourceFilesCache: string[] | undefined;
+function getAllSourceFiles(): string[] {
+  allSourceFilesCache ??= listSourceFiles(SRC_DIR);
+  return allSourceFilesCache;
 }
 
 /**
@@ -124,28 +165,24 @@ function importSpecifierPatterns(file: string): string[] {
  * one import matching `patterns`. Excludes the candidate file itself
  * (so a file importing its own siblings doesn't self-consume) and
  * excludes test files (we want production consumers, not just tests).
+ *
+ * Native Node implementation — replaces the earlier `rg`-based check
+ * that silently degraded to "no consumers found" on CI runners where
+ * ripgrep wasn't on PATH (#3024 regression discovered on PR #3048).
  */
-function findConsumers(file: string, patterns: string[]): string[] {
+function findConsumers(file: string, patterns: RegExp[]): string[] {
   const consumers = new Set<string>();
-  for (const pattern of patterns) {
-    let out: string;
+  for (const candidate of getAllSourceFiles()) {
+    if (candidate === file) continue;
+    if (isTestFile(candidate)) continue;
+    let content: string;
     try {
-      // `--no-messages` swallows binary-file warnings; `--type ts`
-      // restricts to .ts/.tsx; `-l` lists matching paths only.
-      out = execSync(`rg --no-messages --type ts -l ${JSON.stringify(pattern)} ${SRC_DIR}`, {
-        encoding: 'utf-8',
-      });
+      content = readFileSync(candidate, 'utf-8');
     } catch {
-      // rg returns nonzero when no matches found — treat as empty.
       continue;
     }
-    for (const match of out
-      .split('\n')
-      .map((l) => l.trim())
-      .filter(Boolean)) {
-      if (match === file) continue;
-      if (isTestFile(match)) continue;
-      consumers.add(match);
+    if (patterns.some((re) => re.test(content))) {
+      consumers.add(candidate);
     }
   }
   return [...consumers];

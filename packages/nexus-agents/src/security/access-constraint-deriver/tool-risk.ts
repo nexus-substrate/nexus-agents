@@ -47,6 +47,8 @@ export const READ_ONLY_TOOLS: ReadonlySet<string> = new Set([
   'weather_report',
   'query_trace',
   'query_task_state',
+  // Async-mode result polling (#3042 / epic #2631)
+  'get_job_result',
   // Codebase intelligence (read-only over local files)
   'search_codebase',
   'extract_symbols',

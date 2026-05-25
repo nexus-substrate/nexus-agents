@@ -78,6 +78,8 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     'Cross-file ripgrep-style search over the working directory for code patterns, symbols, or text. Use when you need usages of a symbol across MANY files. Not an AST parser — for single-file structure use `extract_symbols`.',
   query_task_state:
     'Read the structured task-state log for a task ID and return the current snapshot. Requires NEXUS_TASK_STATE_ENABLED=1 during the originating orchestrate call.',
+  get_job_result:
+    'Read the result of an async-mode tool invocation by jobId (#3042 / epic #2631). Returns the structured record (status, result | error, timestamps). Poll until status !== "pending". Stage 1 of the async-mode pattern — Stage 2 will fold this into query_task_state once StructuredTaskState gains the result field.',
   run_dev_pipeline:
     'Run the multi-agent development pipeline. Accepts direct task instructions, a plan file, or a spec file. Supports dry-run (plan+vote only).',
   run_pipeline:
@@ -126,6 +128,7 @@ export const README_TOOL_DESCRIPTIONS: Record<string, string> = {
     'Draft YAML for a NEW model entry (for picking existing models use `delegate_to_model`)',
   query_trace: 'Query execution traces for observability',
   query_task_state: 'Query the structured task-state log for a task ID',
+  get_job_result: 'Read result of an async-mode dispatch by jobId (#3042 / #2631)',
   repo_analyze: 'Analyze GitHub repository structure',
   repo_security_plan: 'Generate security scanning pipeline for a repo',
   research_add_source:
