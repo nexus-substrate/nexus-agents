@@ -1,5 +1,11 @@
 ---
-import { ClientRouter } from 'astro:transitions';
+// ClientRouter (Astro View Transitions) removed in #3058 (closes #3051 + #3056).
+// Bisect confirmed it was wedging the Chrome renderer for ≥30s after every
+// internal navigation in both dev mode AND the prod build, regardless of
+// whether the target was a 200 or a 404. Site is 49 static pages — full-page
+// navigation cost is ~50ms, the view-transition aesthetic isn't worth a 30s
+// renderer freeze. Re-introduce only with a verified fix for the renderer
+// contention (ClientRouter + prefetch race against the page's other scripts).
 import { NEXUS_AGENTS_VERSION } from '../data/site-data';
 
 interface Props {
@@ -78,7 +84,6 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
       rel="stylesheet"
     />
 
-    <ClientRouter />
   </head>
   <body>
     <nav class="masthead" aria-label="Primary">
