@@ -174,10 +174,13 @@ async function dispatchPlans(
   const promises = selectedClis.map(async ({ cli, adapter }): Promise<CliPlanPartition> => {
     const startTime = getTimeProvider().now();
     const prompt = buildPlanPrompt(task, cli);
+    // #3026 finding 2: cancel the adapter call when the race timeout
+    // wins so the subprocess doesn't keep running past its decision.
+    const controller = new AbortController();
 
     try {
       const result: Result<CliResponse, CliError> = await Promise.race([
-        adapter.execute({ content: prompt }),
+        adapter.execute({ content: prompt }, { signal: controller.signal }),
         createPlanTimeout(config.perCliTimeoutMs, cli),
       ]);
 
@@ -207,6 +210,8 @@ async function dispatchPlans(
       const message = getErrorMessage(error);
       logger.warn('Plan CLI threw', { cli, error: message });
       return { cli, success: false, plan: null, rawOutput: '', durationMs, error: message };
+    } finally {
+      controller.abort();
     }
   });
 

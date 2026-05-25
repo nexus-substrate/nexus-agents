@@ -25,6 +25,7 @@ import type {
   ModelInfo,
   CliName,
   ExecutionOptions,
+  ResolvedExecutionOptions,
   BaseAdapterOptions,
 } from '../types.js';
 import { SubprocessCliAdapter, type CommandConfig } from '../subprocess-adapter.js';
@@ -259,7 +260,7 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
   private buildExecutionOptions(
     taskContent: string,
     options?: ExecutionOptions
-  ): Required<ExecutionOptions> {
+  ): ResolvedExecutionOptions {
     const complexity = estimateTaskComplexity(taskContent);
     const timeoutMs = options?.timeoutMs ?? getTimeoutForTask(this.name, complexity);
 
@@ -296,7 +297,7 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
 
   private async executeWithRetryTracking(
     task: CliTask,
-    options: Required<ExecutionOptions>
+    options: ResolvedExecutionOptions
   ): Promise<Result<{ response: CliResponse; retryCount: number }, CliError>> {
     return executeCliRetryLoop(() => this.executeTask(task, options), {
       maxRetries: options.maxRetries,

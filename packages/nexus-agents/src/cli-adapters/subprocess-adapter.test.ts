@@ -10,7 +10,7 @@ import { EventEmitter } from 'node:events';
 import type { ChildProcess } from 'node:child_process';
 import { Writable, Readable } from 'node:stream';
 
-import type { CliTask, ExecutionOptions, ICliResponseParser } from './types.js';
+import type { CliTask, ResolvedExecutionOptions, ICliResponseParser } from './types.js';
 import type { CommandConfig } from './subprocess-adapter.js';
 import { SubprocessCliAdapter, SIGKILL_GRACE_MS } from './subprocess-adapter.js';
 
@@ -169,7 +169,7 @@ describe('SubprocessCliAdapter', () => {
     it('should spawn command and return ok result', async () => {
       adapter.setCommandConfig({ command: 'echo', args: ['hello'] });
       const task: CliTask = { content: 'test' };
-      const options: Required<ExecutionOptions> = {
+      const options: ResolvedExecutionOptions = {
         timeoutMs: 5000,
         allowRetry: true,
         maxRetries: 1,
@@ -203,7 +203,7 @@ describe('SubprocessCliAdapter', () => {
     it('should handle multiple stdout chunks', async () => {
       adapter.setCommandConfig({ command: 'cat', args: [] });
       const task: CliTask = { content: 'test' };
-      const options: Required<ExecutionOptions> = {
+      const options: ResolvedExecutionOptions = {
         timeoutMs: 5000,
         allowRetry: true,
         maxRetries: 1,
@@ -235,7 +235,7 @@ describe('SubprocessCliAdapter', () => {
     it('should include durationMs in response', async () => {
       adapter.setCommandConfig({ command: 'echo', args: ['test'] });
       const task: CliTask = { content: 'test' };
-      const options: Required<ExecutionOptions> = {
+      const options: ResolvedExecutionOptions = {
         timeoutMs: 5000,
         allowRetry: true,
         maxRetries: 1,
@@ -273,7 +273,7 @@ describe('SubprocessCliAdapter', () => {
       });
 
       const task: CliTask = { content: 'test' };
-      const options: Required<ExecutionOptions> = {
+      const options: ResolvedExecutionOptions = {
         timeoutMs: 5000,
         allowRetry: true,
         maxRetries: 1,
@@ -304,7 +304,7 @@ describe('SubprocessCliAdapter', () => {
     it('should close stdin even when no stdin content provided', async () => {
       adapter.setCommandConfig({ command: 'echo', args: ['test'] });
       const task: CliTask = { content: 'test' };
-      const options: Required<ExecutionOptions> = {
+      const options: ResolvedExecutionOptions = {
         timeoutMs: 5000,
         allowRetry: true,
         maxRetries: 1,
@@ -336,7 +336,7 @@ describe('SubprocessCliAdapter', () => {
 
       adapter.setCommandConfig({ command: 'sleep', args: ['10'] });
       const task: CliTask = { content: 'test' };
-      const options: Required<ExecutionOptions> = {
+      const options: ResolvedExecutionOptions = {
         timeoutMs: 1000,
         allowRetry: true,
         maxRetries: 1,
@@ -377,7 +377,7 @@ describe('SubprocessCliAdapter', () => {
 
       adapter.setCommandConfig({ command: 'sleep', args: ['10'] });
       const task: CliTask = { content: 'test' };
-      const options: Required<ExecutionOptions> = {
+      const options: ResolvedExecutionOptions = {
         timeoutMs: 1000,
         allowRetry: true,
         maxRetries: 1,
@@ -415,7 +415,7 @@ describe('SubprocessCliAdapter', () => {
 
       adapter.setCommandConfig({ command: 'sleep', args: ['10'] });
       const task: CliTask = { content: 'test' };
-      const options: Required<ExecutionOptions> = {
+      const options: ResolvedExecutionOptions = {
         timeoutMs: 1000,
         allowRetry: true,
         maxRetries: 1,
@@ -450,7 +450,7 @@ describe('SubprocessCliAdapter', () => {
 
       adapter.setCommandConfig({ command: 'echo', args: ['fast'] });
       const task: CliTask = { content: 'test' };
-      const options: Required<ExecutionOptions> = {
+      const options: ResolvedExecutionOptions = {
         timeoutMs: 5000,
         allowRetry: true,
         maxRetries: 1,
@@ -479,11 +479,110 @@ describe('SubprocessCliAdapter', () => {
     });
   });
 
+  // #3026 finding 2: callers that use Promise.race + timeout to bound
+  // adapter calls (parallel-exploration, consensus-plan,
+  // triangulated-review) need a way to cancel the still-running
+  // subprocess when the race timeout wins, otherwise the orphaned
+  // process keeps writing outcomes for a decision that has already
+  // been made.
+  describe('executeTask() - AbortSignal (#3026 finding 2)', () => {
+    it('fast-fails before spawn when signal is already aborted', async () => {
+      adapter.setCommandConfig({ command: 'sleep', args: ['10'] });
+      const task: CliTask = { content: 'test' };
+      const controller = new AbortController();
+      controller.abort();
+
+      const options: ResolvedExecutionOptions = {
+        timeoutMs: 5000,
+        allowRetry: false,
+        maxRetries: 0,
+        trackUsage: true,
+        onProgress: undefined,
+        signal: controller.signal,
+      };
+
+      const result = await adapter.executeTask(task, options);
+
+      expect(mockSpawn).not.toHaveBeenCalled();
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe('TIMEOUT');
+        expect(result.error.message).toContain('Aborted before spawn');
+      }
+    });
+
+    it('SIGTERMs the child when signal aborts mid-execution', async () => {
+      adapter.setCommandConfig({ command: 'sleep', args: ['10'] });
+      const task: CliTask = { content: 'test' };
+      const controller = new AbortController();
+
+      const options: ResolvedExecutionOptions = {
+        timeoutMs: 60_000,
+        allowRetry: false,
+        maxRetries: 0,
+        trackUsage: true,
+        onProgress: undefined,
+        signal: controller.signal,
+      };
+
+      const { mockChild } = createMockChildProcess();
+      mockSpawn.mockReturnValue(mockChild);
+
+      const promise = adapter.executeTask(task, options);
+
+      // Abort after spawn — should SIGTERM the running child.
+      await Promise.resolve();
+      controller.abort();
+
+      const result = await promise;
+
+      expect(mockChild.kill).toHaveBeenCalledWith('SIGTERM');
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe('TIMEOUT');
+        expect(result.error.message).toContain('Aborted by caller signal');
+      }
+    });
+
+    it('does NOT SIGTERM when signal aborts after child already exited', async () => {
+      adapter.setCommandConfig({ command: 'echo', args: ['done'] });
+      const task: CliTask = { content: 'test' };
+      const controller = new AbortController();
+
+      const options: ResolvedExecutionOptions = {
+        timeoutMs: 5000,
+        allowRetry: false,
+        maxRetries: 0,
+        trackUsage: true,
+        onProgress: undefined,
+        signal: controller.signal,
+      };
+
+      const { mockChild, stdout } = createMockChildProcess();
+      mockSpawn.mockReturnValue(mockChild);
+
+      const promise = adapter.executeTask(task, options);
+      setImmediate(() => {
+        stdout.emit('data', Buffer.from('done\n'));
+        (mockChild as unknown as { exitCode: number }).exitCode = 0;
+        mockChild.emit('close', 0);
+      });
+
+      const result = await promise;
+      expect(result.ok).toBe(true);
+
+      // Aborting after the child has already closed must be a no-op:
+      // attachAbortSignal's 'close' listener detaches the abort handler.
+      controller.abort();
+      expect(mockChild.kill).not.toHaveBeenCalled();
+    });
+  });
+
   describe('executeTask() - error handling', () => {
     it('should return NOT_FOUND error for ENOENT', async () => {
       adapter.setCommandConfig({ command: 'nonexistent', args: [] });
       const task: CliTask = { content: 'test' };
-      const options: Required<ExecutionOptions> = {
+      const options: ResolvedExecutionOptions = {
         timeoutMs: 5000,
         allowRetry: true,
         maxRetries: 1,
@@ -512,7 +611,7 @@ describe('SubprocessCliAdapter', () => {
     it('should return EXECUTION_ERROR for non-zero exit with stderr', async () => {
       adapter.setCommandConfig({ command: 'false', args: [] });
       const task: CliTask = { content: 'test' };
-      const options: Required<ExecutionOptions> = {
+      const options: ResolvedExecutionOptions = {
         timeoutMs: 5000,
         allowRetry: true,
         maxRetries: 1,
@@ -544,7 +643,7 @@ describe('SubprocessCliAdapter', () => {
     it('should return EXECUTION_ERROR for non-zero exit without stderr', async () => {
       adapter.setCommandConfig({ command: 'false', args: [] });
       const task: CliTask = { content: 'test' };
-      const options: Required<ExecutionOptions> = {
+      const options: ResolvedExecutionOptions = {
         timeoutMs: 5000,
         allowRetry: true,
         maxRetries: 1,
@@ -586,7 +685,7 @@ describe('SubprocessCliAdapter', () => {
       failingAdapter.setCommandConfig({ command: 'echo', args: ['test'] });
 
       const task: CliTask = { content: 'test' };
-      const options: Required<ExecutionOptions> = {
+      const options: ResolvedExecutionOptions = {
         timeoutMs: 5000,
         allowRetry: true,
         maxRetries: 1,
@@ -631,7 +730,7 @@ describe('SubprocessCliAdapter', () => {
       failingAdapter.setCommandConfig({ command: 'echo', args: ['test'] });
 
       const task: CliTask = { content: 'test' };
-      const options: Required<ExecutionOptions> = {
+      const options: ResolvedExecutionOptions = {
         timeoutMs: 5000,
         allowRetry: true,
         maxRetries: 1,
@@ -676,7 +775,7 @@ describe('SubprocessCliAdapter', () => {
       failingAdapter.setCommandConfig({ command: 'echo', args: ['test'] });
 
       const task: CliTask = { content: 'test' };
-      const options: Required<ExecutionOptions> = {
+      const options: ResolvedExecutionOptions = {
         timeoutMs: 5000,
         allowRetry: true,
         maxRetries: 1,
@@ -706,7 +805,7 @@ describe('SubprocessCliAdapter', () => {
     it('should return EXECUTION_ERROR for non-zero exit with error stderr and partial stdout (#1402)', async () => {
       adapter.setCommandConfig({ command: 'opencode', args: ['run'] });
       const task: CliTask = { content: 'test' };
-      const options: Required<ExecutionOptions> = {
+      const options: ResolvedExecutionOptions = {
         timeoutMs: 5000,
         allowRetry: true,
         maxRetries: 1,
@@ -741,7 +840,7 @@ describe('SubprocessCliAdapter', () => {
     it('should return EXECUTION_ERROR when stderr only', async () => {
       adapter.setCommandConfig({ command: 'test', args: [] });
       const task: CliTask = { content: 'test' };
-      const options: Required<ExecutionOptions> = {
+      const options: ResolvedExecutionOptions = {
         timeoutMs: 5000,
         allowRetry: true,
         maxRetries: 1,
@@ -772,7 +871,7 @@ describe('SubprocessCliAdapter', () => {
     it('should return CONNECTION_ERROR for EADDRINUSE in stderr (#1401)', async () => {
       adapter.setCommandConfig({ command: 'test', args: [] });
       const task: CliTask = { content: 'test' };
-      const options: Required<ExecutionOptions> = {
+      const options: ResolvedExecutionOptions = {
         timeoutMs: 5000,
         allowRetry: true,
         maxRetries: 1,
@@ -801,7 +900,7 @@ describe('SubprocessCliAdapter', () => {
     it('should return CONNECTION_ERROR for "address already in use" in stderr (#1401)', async () => {
       adapter.setCommandConfig({ command: 'test', args: [] });
       const task: CliTask = { content: 'test' };
-      const options: Required<ExecutionOptions> = {
+      const options: ResolvedExecutionOptions = {
         timeoutMs: 5000,
         allowRetry: true,
         maxRetries: 1,
@@ -848,7 +947,7 @@ describe('SubprocessCliAdapter', () => {
       usageAdapter.setCommandConfig({ command: 'echo', args: ['test'] });
 
       const task: CliTask = { content: 'test' };
-      const options: Required<ExecutionOptions> = {
+      const options: ResolvedExecutionOptions = {
         timeoutMs: 5000,
         allowRetry: true,
         maxRetries: 1,
@@ -895,7 +994,7 @@ describe('SubprocessCliAdapter', () => {
       sessionAdapter.setCommandConfig({ command: 'echo', args: ['test'] });
 
       const task: CliTask = { content: 'test' };
-      const options: Required<ExecutionOptions> = {
+      const options: ResolvedExecutionOptions = {
         timeoutMs: 5000,
         allowRetry: true,
         maxRetries: 1,
@@ -945,7 +1044,7 @@ describe('SubprocessCliAdapter', () => {
       failingAdapter.setCommandConfig({ command: 'test', args: [] });
 
       const task: CliTask = { content: 'test' };
-      const options: Required<ExecutionOptions> = {
+      const options: ResolvedExecutionOptions = {
         timeoutMs: 5000,
         allowRetry: true,
         maxRetries: 1,
@@ -987,7 +1086,7 @@ describe('SubprocessCliAdapter', () => {
     it('should return TIMEOUT for ETIMEDOUT error', async () => {
       adapter.setCommandConfig({ command: 'test', args: [] });
       const task: CliTask = { content: 'test' };
-      const options: Required<ExecutionOptions> = {
+      const options: ResolvedExecutionOptions = {
         timeoutMs: 5000,
         allowRetry: true,
         maxRetries: 1,
@@ -1015,7 +1114,7 @@ describe('SubprocessCliAdapter', () => {
     it('should return TIMEOUT for timeout message', async () => {
       adapter.setCommandConfig({ command: 'test', args: [] });
       const task: CliTask = { content: 'test' };
-      const options: Required<ExecutionOptions> = {
+      const options: ResolvedExecutionOptions = {
         timeoutMs: 5000,
         allowRetry: true,
         maxRetries: 1,
@@ -1042,7 +1141,7 @@ describe('SubprocessCliAdapter', () => {
     it('should return EXECUTION_ERROR for generic Error', async () => {
       adapter.setCommandConfig({ command: 'test', args: [] });
       const task: CliTask = { content: 'test' };
-      const options: Required<ExecutionOptions> = {
+      const options: ResolvedExecutionOptions = {
         timeoutMs: 5000,
         allowRetry: true,
         maxRetries: 1,
@@ -1070,7 +1169,7 @@ describe('SubprocessCliAdapter', () => {
     it('should handle non-Error objects', async () => {
       adapter.setCommandConfig({ command: 'test', args: [] });
       const task: CliTask = { content: 'test' };
-      const options: Required<ExecutionOptions> = {
+      const options: ResolvedExecutionOptions = {
         timeoutMs: 5000,
         allowRetry: true,
         maxRetries: 1,
@@ -1101,7 +1200,7 @@ describe('SubprocessCliAdapter', () => {
       adapter.setCommandConfig({ command: 'echo', args: ['test'] });
       const task: CliTask = { content: 'test' };
       const onProgress = vi.fn();
-      const options: Required<ExecutionOptions> = {
+      const options: ResolvedExecutionOptions = {
         timeoutMs: 5000,
         allowRetry: true,
         maxRetries: 1,
@@ -1129,7 +1228,7 @@ describe('SubprocessCliAdapter', () => {
     it('should not throw when onProgress is undefined', async () => {
       adapter.setCommandConfig({ command: 'echo', args: ['test'] });
       const task: CliTask = { content: 'test' };
-      const options: Required<ExecutionOptions> = {
+      const options: ResolvedExecutionOptions = {
         timeoutMs: 5000,
         allowRetry: true,
         maxRetries: 1,

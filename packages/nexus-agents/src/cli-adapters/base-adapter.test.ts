@@ -9,7 +9,7 @@ import type { CliName, CliTransport, CliTask, ModelInfo } from './types.js';
 import { BaseCliAdapter } from './base-adapter.js';
 import type { Result } from '../core/index.js';
 import { ok, err } from '../core/index.js';
-import type { CliResponse, CliError, ExecutionOptions } from './types.js';
+import type { CliResponse, CliError, ResolvedExecutionOptions } from './types.js';
 
 /**
  * Concrete test implementation of BaseCliAdapter
@@ -27,7 +27,7 @@ class TestCliAdapter extends BaseCliAdapter {
 
   executeTask(
     _task: CliTask,
-    _options: Required<ExecutionOptions>
+    _options: ResolvedExecutionOptions
   ): Promise<Result<CliResponse, CliError>> {
     this.executeCalled++;
     if (this.mockResult) {

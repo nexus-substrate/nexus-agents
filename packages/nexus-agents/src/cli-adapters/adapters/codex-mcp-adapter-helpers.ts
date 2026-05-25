@@ -7,7 +7,7 @@
  * (Source: cli-project_plan.md v2.1.0, Issue #90)
  */
 
-import type { ExecutionOptions, CliError, CliName } from '../types.js';
+import type { ResolvedExecutionOptions, CliError, CliName } from '../types.js';
 import { CODEX_MCP_TIMEOUTS } from '../../config/timeouts.js';
 import {
   createCliError as sharedCreateCliError,
@@ -21,7 +21,7 @@ export { CODEX_LEGACY_DEFAULTS } from './codex-adapter-helpers.js';
  * Default execution options for Codex MCP.
  * Timeout and retry values derived from config/timeouts.ts (#1220).
  */
-export const DEFAULT_CODEX_MCP_OPTIONS: Required<ExecutionOptions> = {
+export const DEFAULT_CODEX_MCP_OPTIONS: ResolvedExecutionOptions = {
   timeoutMs: CODEX_MCP_TIMEOUTS.defaultMs,
   allowRetry: true,
   maxRetries: CODEX_MCP_TIMEOUTS.maxRetries,

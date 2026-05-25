@@ -16,7 +16,7 @@ import { EventEmitter } from 'node:events';
 import type { ChildProcess } from 'node:child_process';
 import { Writable, Readable } from 'node:stream';
 
-import type { CliName, CliTask, ExecutionOptions, ICliResponseParser } from './types.js';
+import type { CliName, CliTask, ResolvedExecutionOptions, ICliResponseParser } from './types.js';
 import type { CommandConfig, TransientRetryConfig } from './subprocess-adapter.js';
 import {
   SubprocessCliAdapter,
@@ -157,7 +157,7 @@ class StrictJsonAdapter extends SubprocessCliAdapter {
   }
 }
 
-const DEFAULT_OPTS: Required<ExecutionOptions> = {
+const DEFAULT_OPTS: ResolvedExecutionOptions = {
   timeoutMs: 5000,
   allowRetry: true,
   maxRetries: 1,
@@ -396,7 +396,7 @@ describe('SubprocessCliAdapter transient retry', () => {
   it('should extend timeout by 1.5x when retrying a TIMEOUT error', async () => {
     const adapter = new RetryAdapter();
     const task: CliTask = { content: 'test' };
-    const opts: Required<ExecutionOptions> = { ...DEFAULT_OPTS, timeoutMs: 10000 };
+    const opts: ResolvedExecutionOptions = { ...DEFAULT_OPTS, timeoutMs: 10000 };
 
     const c0 = createMockChildProcess();
     const c1 = createMockChildProcess();

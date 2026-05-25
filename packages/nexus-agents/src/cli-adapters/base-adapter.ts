@@ -32,6 +32,7 @@ import type {
   ModelInfo,
   CapabilityProfile,
   ExecutionOptions,
+  ResolvedExecutionOptions,
   VersionStatus,
   TokenUsage,
 } from './types.js';
@@ -56,7 +57,7 @@ export const DEFAULT_CAPACITY_FALLBACK = 100_000;
  * Timeout reduced from 120s to 60s per Issue #280 to prevent
  * cascading timeouts in multi-agent voting scenarios.
  */
-const DEFAULT_OPTIONS: Required<ExecutionOptions> = {
+const DEFAULT_OPTIONS: ResolvedExecutionOptions = {
   timeoutMs: 60_000, // 1 minute (reduced from 2 minutes per Issue #280)
   allowRetry: true,
   maxRetries: 1, // Reduced from 2 to prevent 3+ minute total wait
@@ -103,7 +104,7 @@ export abstract class BaseCliAdapter implements ICliAdapter {
    */
   abstract executeTask(
     task: CliTask,
-    options: Required<ExecutionOptions>
+    options: ResolvedExecutionOptions
   ): Promise<Result<CliResponse, CliError>>;
 
   /**
@@ -166,7 +167,7 @@ export abstract class BaseCliAdapter implements ICliAdapter {
    * the outer loop when their own transient-retry layer is active, so the
    * two layers do not nest into multiplied spawns (#2824).
    */
-  protected shouldOuterRetry(opts: Required<ExecutionOptions>): boolean {
+  protected shouldOuterRetry(opts: ResolvedExecutionOptions): boolean {
     return opts.allowRetry;
   }
 
@@ -175,7 +176,7 @@ export abstract class BaseCliAdapter implements ICliAdapter {
    */
   private async executeWithRetry(
     task: CliTask,
-    opts: Required<ExecutionOptions>
+    opts: ResolvedExecutionOptions
   ): Promise<Result<CliResponse, CliError>> {
     const result = await executeCliRetryLoop(() => this.executeTask(task, opts), {
       maxRetries: opts.maxRetries,
