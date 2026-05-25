@@ -9,6 +9,18 @@
  * with the codebase (export contract tests catch drift).
  */
 
+import pkg from '../../../packages/nexus-agents/package.json' with { type: 'json' };
+
+/**
+ * Released nexus-agents version, read at build time from
+ * `packages/nexus-agents/package.json`. Rendered in the hero metadata
+ * pill and the footer colophon. Avoids the hardcoded `v2.79.3` lag
+ * that drifted four releases ahead of the website (#3049).
+ *
+ * The `v` prefix is added here so call sites don't have to remember.
+ */
+export const NEXUS_AGENTS_VERSION: string = `v${pkg.version}`;
+
 /** MCP tools registered in src/mcp/tools/index.ts registerTools() */
 export const MCP_TOOL_COUNT = 39;
 
