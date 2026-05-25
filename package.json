@@ -99,7 +99,7 @@
       "ip-address": ">=10.2.0",
       "@isaacs/brace-expansion": ">=5.0.1",
       "markdown-it": ">=14.1.1",
-      "qs": ">=6.14.2",
+      "qs": ">=6.15.2",
       "basic-ftp": ">=5.3.0",
       "defu": ">=6.1.5",
       "smol-toml": ">=1.6.1",
