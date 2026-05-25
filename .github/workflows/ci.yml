@@ -45,6 +45,25 @@ jobs:
       - name: Check changeset presence
         run: npx tsx scripts/check-changeset.ts ${{ github.event.pull_request.base.sha }}
 
+  producer-consumer-check:
+    name: Producer/Consumer Check
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 5
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-node
+
+      # Every NEW .ts file added under packages/nexus-agents/src/ must have
+      # at least one non-test, non-barrel import elsewhere in src/. Catches
+      # the producer-without-consumer dead-code shape (#3024) that drove
+      # the 2026-05-24 YAGNI audit sweep (~5,250 LOC deleted across 7
+      # issues). Opt-out: `// @export-no-consumer-yet — see #<issue>`.
+      - name: Check producer-without-consumer (#3024)
+        run: npx tsx scripts/check-new-unused-exports.ts ${{ github.event.pull_request.base.sha }}
+
   lint:
     name: Lint
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
