@@ -1,5 +1,6 @@
 ---
 import { ClientRouter } from 'astro:transitions';
+import { NEXUS_AGENTS_VERSION } from '../data/site-data';
 
 interface Props {
   title: string;
@@ -120,7 +121,7 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
         </div>
         <div class="colophon-right">
           <p class="colophon-label">Version</p>
-          <p class="colophon-version">v2.79.3</p>
+          <p class="colophon-version">{NEXUS_AGENTS_VERSION}</p>
         </div>
       </div>
     </footer>
