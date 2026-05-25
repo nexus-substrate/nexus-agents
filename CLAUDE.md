@@ -300,7 +300,7 @@ _Auto-generated from source. 39 tools registered._
 
 <!-- GOVERNANCE:VERSION:START -->
 
-_Governance Version: 2026-05-24_
+_Governance Version: 2026-05-25_
 
 <!-- GOVERNANCE:VERSION:END -->
 

@@ -139,7 +139,7 @@ Three voter roles deliberate via whichever local CLIs you have (Claude, Codex, G
 nexus-agents setup   # Auto-configures MCP server in Claude Code, Cursor, etc.
 ```
 
-Restart your editor. The 38 MCP tools (`orchestrate`, `consensus_vote`, `research_synthesize`, `verify_audit_chain`, …) become available to whatever agent you're already using.
+Restart your editor. The 39 MCP tools (`orchestrate`, `consensus_vote`, `research_synthesize`, `verify_audit_chain`, …) become available to whatever agent you're already using.
 
 #### What `setup` configures
 
