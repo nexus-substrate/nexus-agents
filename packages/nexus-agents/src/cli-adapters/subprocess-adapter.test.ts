@@ -12,7 +12,7 @@ import { Writable, Readable } from 'node:stream';
 
 import type { CliTask, ExecutionOptions, ICliResponseParser } from './types.js';
 import type { CommandConfig } from './subprocess-adapter.js';
-import { SubprocessCliAdapter } from './subprocess-adapter.js';
+import { SubprocessCliAdapter, SIGKILL_GRACE_MS } from './subprocess-adapter.js';
 
 // Mock node:child_process
 vi.mock('node:child_process', async (importOriginal) => {
@@ -47,6 +47,13 @@ function createMockChildProcess() {
     stderr,
     kill: vi.fn(),
     pid: 1234,
+    // exitCode/signalCode are read by #3026 finding 1's SIGKILL escalation
+    // path (only fires when both are still null after the SIGTERM grace
+    // period — meaning the child has not exited). Default to null so the
+    // mock matches a still-running child; tests that simulate a child
+    // exiting cleanly should `close` the emitter before the grace timer.
+    exitCode: null as number | null,
+    signalCode: null as string | null,
   }) as unknown as ChildProcess;
 
   return { mockChild, stdin, stdout, stderr };
@@ -358,6 +365,82 @@ describe('SubprocessCliAdapter', () => {
         expect(result.error.code).toBe('TIMEOUT');
         expect(result.error.message).toBe('Execution timed out');
       }
+
+      vi.useRealTimers();
+    });
+
+    // #3026 finding 1: SIGTERM-only timeout could leave zombie subprocesses
+    // when the child ignores SIGTERM. The escalation path fires SIGKILL
+    // after SIGKILL_GRACE_MS if the child still hasn't exited.
+    it('escalates to SIGKILL when child ignores SIGTERM (#3026 finding 1)', async () => {
+      vi.useFakeTimers();
+
+      adapter.setCommandConfig({ command: 'sleep', args: ['10'] });
+      const task: CliTask = { content: 'test' };
+      const options: Required<ExecutionOptions> = {
+        timeoutMs: 1000,
+        allowRetry: true,
+        maxRetries: 1,
+        trackUsage: true,
+        onProgress: undefined,
+      };
+
+      const { mockChild } = createMockChildProcess();
+      mockSpawn.mockReturnValue(mockChild);
+
+      const promise = adapter.executeTask(task, options);
+
+      // Fast-forward past the primary timeout → SIGTERM fires.
+      vi.advanceTimersByTime(1001);
+      expect(mockChild.kill).toHaveBeenCalledWith('SIGTERM');
+      expect(mockChild.kill).toHaveBeenCalledTimes(1);
+
+      // Child ignores SIGTERM (exitCode/signalCode stay null). Fast-forward
+      // past the SIGKILL grace window — SIGKILL should now fire.
+      vi.advanceTimersByTime(SIGKILL_GRACE_MS + 1);
+      expect(mockChild.kill).toHaveBeenCalledWith('SIGKILL');
+      expect(mockChild.kill).toHaveBeenCalledTimes(2);
+
+      // Once the OS force-reaps, the close handler fires.
+      mockChild.emit('close', null);
+      const result = await promise;
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.code).toBe('TIMEOUT');
+
+      vi.useRealTimers();
+    });
+
+    it('does NOT escalate to SIGKILL when child exits cleanly within grace window (#3026 finding 1)', async () => {
+      vi.useFakeTimers();
+
+      adapter.setCommandConfig({ command: 'sleep', args: ['10'] });
+      const task: CliTask = { content: 'test' };
+      const options: Required<ExecutionOptions> = {
+        timeoutMs: 1000,
+        allowRetry: true,
+        maxRetries: 1,
+        trackUsage: true,
+        onProgress: undefined,
+      };
+
+      const { mockChild } = createMockChildProcess();
+      mockSpawn.mockReturnValue(mockChild);
+
+      const promise = adapter.executeTask(task, options);
+      vi.advanceTimersByTime(1001);
+      expect(mockChild.kill).toHaveBeenCalledWith('SIGTERM');
+
+      // Child responds to SIGTERM and exits within the grace window —
+      // the SIGKILL timer fires but the exitCode === null check fails so
+      // no second kill() call happens.
+      (mockChild as unknown as { exitCode: number }).exitCode = 143;
+      mockChild.emit('close', 143);
+      await promise;
+
+      // Advance well past grace; SIGKILL should NOT have been called.
+      vi.advanceTimersByTime(SIGKILL_GRACE_MS * 2);
+      expect(mockChild.kill).toHaveBeenCalledTimes(1);
+      expect(mockChild.kill).not.toHaveBeenCalledWith('SIGKILL');
 
       vi.useRealTimers();
     });

@@ -138,6 +138,14 @@ export const MAX_PARSE_RETRIES = 1;
 export const TIMEOUT_RETRY_MULTIPLIER = 1.5;
 
 /**
+ * Grace period before escalating SIGTERM to SIGKILL on timeout (#3026
+ * finding 1). 5s gives well-behaved children time to flush state and
+ * exit cleanly while bounding zombie-process accumulation when a child
+ * ignores SIGTERM. Exported so tests can assert against the threshold.
+ */
+export const SIGKILL_GRACE_MS = 5_000;
+
+/**
  * Checks whether a CliErrorCode represents a transient failure.
  * Timeout, rate_limit, connection, and parse errors are transient.
  * Parse errors get fewer retries (MAX_PARSE_RETRIES) than others (#1533).
@@ -430,18 +438,62 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
       resolveOnce(this.handleSubprocessError(error));
     });
 
-    const timeoutId = setTimeout(() => {
-      child.kill('SIGTERM');
-      resolveOnce(err(this.createError('TIMEOUT', 'Execution timed out')));
-    }, timeoutMs);
+    const timers = this.scheduleTimeoutWithSigkillEscalation({
+      child,
+      timeoutMs,
+      requestId,
+      resolveOnce,
+    });
 
     child.on('close', (code: number | null) => {
-      clearTimeout(timeoutId);
+      clearTimeout(timers.timeoutId);
+      if (timers.sigkillTimerId !== undefined) clearTimeout(timers.sigkillTimerId);
       this.logTimingBreakdown(state, startTime, code, requestId);
       resolveOnce(this.classifyCloseResult(code, state, startTime));
     });
 
     return state;
+  }
+
+  /**
+   * Schedules the SIGTERM-on-timeout + SIGKILL-on-grace escalation
+   * (#3026 finding 1).
+   *
+   * The primary timer fires SIGTERM and resolves the caller's promise
+   * immediately so it doesn't wait on a hung child. The escalation
+   * timer (`SIGKILL_GRACE_MS` later) checks whether the child actually
+   * exited and force-reaps it with SIGKILL if not — preventing
+   * zombie accumulation when a child ignores SIGTERM (Node CLIs that
+   * install graceful-shutdown handlers can hang on a broken stream).
+   * Both timers are cleared from the `'close'` handler so a child
+   * that exits within the grace window doesn't see the second signal.
+   */
+  private scheduleTimeoutWithSigkillEscalation(opts: {
+    child: ReturnType<typeof spawn>;
+    timeoutMs: number;
+    requestId: string;
+    resolveOnce: (result: Result<CliResponse, CliError>) => void;
+  }): { timeoutId: NodeJS.Timeout; sigkillTimerId: NodeJS.Timeout | undefined } {
+    const { child, timeoutMs, requestId, resolveOnce } = opts;
+    const timers: { timeoutId: NodeJS.Timeout; sigkillTimerId: NodeJS.Timeout | undefined } = {
+      timeoutId: setTimeout(() => {
+        child.kill('SIGTERM');
+        resolveOnce(err(this.createError('TIMEOUT', 'Execution timed out')));
+        timers.sigkillTimerId = setTimeout(() => {
+          if (child.exitCode === null && child.signalCode === null) {
+            this.logger.warn('Child ignored SIGTERM, escalating to SIGKILL', {
+              cli: this.name,
+              requestId,
+              sigkillGraceMs: SIGKILL_GRACE_MS,
+            });
+            child.kill('SIGKILL');
+          }
+        }, SIGKILL_GRACE_MS);
+        timers.sigkillTimerId.unref();
+      }, timeoutMs),
+      sigkillTimerId: undefined,
+    };
+    return timers;
   }
 
   /** Attach stdout/stderr data handlers + capture first-byte time (#2472). */
