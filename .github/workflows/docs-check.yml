@@ -505,6 +505,20 @@ jobs:
           readme_counts=$(grep -oE "[0-9]+ MCP tools" "$README" \
             | grep -oE "^[0-9]+" | sort -u)
 
+          # 6. docs/**.md user-facing prose (#3052). Catches the docs site's
+          #    own README + getting-started + distribution copy that goes to
+          #    marketplace listings. Audit/research/archive docs are excluded
+          #    because they often reference a historical tool count as a
+          #    snapshot, not a current-day fact — updating those would be
+          #    revisionist (e.g. archive/design-v2/* references "21 MCP tools"
+          #    as the pre-#1303 baseline).
+          docs_mentions=$(grep -rEn "[0-9]+ MCP tools" docs/ \
+            --include="*.md" \
+            --exclude-dir=research \
+            --exclude-dir=archive \
+            --exclude-dir=api \
+            2>/dev/null || true)
+
           any_drift=0
           check() {
             local label="$1" actual="$2"
@@ -519,6 +533,17 @@ jobs:
           while IFS= read -r n; do
             [ -n "$n" ] && check "README.md prose '$n MCP tools'" "$n"
           done <<< "$readme_counts"
+          # Each match line is "<file>:<lineno>:<…N MCP tools…>" — extract N
+          # per line and check it; if the same file mentions multiple counts
+          # they each get their own error line so the file:line is reported.
+          if [ -n "$docs_mentions" ]; then
+            while IFS= read -r line; do
+              [ -z "$line" ] && continue
+              file_line=$(echo "$line" | cut -d: -f1-2)
+              n=$(echo "$line" | grep -oE "[0-9]+ MCP tools" | grep -oE "^[0-9]+" | head -1)
+              [ -n "$n" ] && check "$file_line ('$n MCP tools')" "$n"
+            done <<< "$docs_mentions"
+          fi
 
           if [ "$any_drift" -ne 0 ]; then
             echo ""
