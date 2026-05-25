@@ -54,7 +54,7 @@ Code:               actual edits, tests, PRs, issues
   │   Role registry             Multi-voter consensus    │
   │   Immutable audit trail     Closed-loop telemetry    │
   │                                                       │
-  │   38 MCP tools · multi-stage CompositeRouter         │
+  │   39 MCP tools · multi-stage CompositeRouter         │
   └────────────────────────┬────────────────────────────┘
                            │
                            ▼ delegates execution to
@@ -183,7 +183,7 @@ nexus-agents orchestrate "Explain the architecture of this codebase"
 | **Memory & Learning**          | 5 user-facing backends (session, belief, agentic, adaptive, typed). Cross-session persistence feeds routing decisions                                                                                                                                                                       |
 | **Research System**            | 9 discovery sources (arXiv, GitHub, Semantic Scholar, etc). Auto-catalog, quality scoring, synthesis into topic clusters                                                                                                                                                                    |
 | **Graph Workflows**            | DAG-based workflow execution with checkpoint/resume, state reduction, and event hooks                                                                                                                                                                                                       |
-| **38 MCP Tools**               | Agent management, workflow execution, research, memory, codebase intelligence, repo analysis, consensus, operations                                                                                                                                                                         |
+| **39 MCP Tools**               | Agent management, workflow execution, research, memory, codebase intelligence, repo analysis, consensus, operations                                                                                                                                                                         |
 
 ---
 
@@ -282,6 +282,7 @@ When running as an MCP server, the following tools are available:
 | `registry_import`             | Draft YAML for a NEW model entry (for picking existing models use `delegate_to_model`)                                                 |
 | `query_trace`                 | Query execution traces for observability                                                                                               |
 | `query_task_state`            | Query the structured task-state log for a task ID                                                                                      |
+| `get_job_result`              | Read result of an async-mode dispatch by jobId (#3042 / #2631)                                                                         |
 | `verify_audit_chain`          | Verify hash chain of a FileAuditStorage audit log directory                                                                            |
 | `repo_analyze`                | Analyze GitHub repository structure                                                                                                    |
 | `repo_security_plan`          | Generate security scanning pipeline for a repo                                                                                         |

@@ -36,6 +36,23 @@ export const OrchestrateInputSchema = z.object({
     .max(600000)
     .optional()
     .describe('Timeout in milliseconds for orchestration (default: 300000)'),
+  /**
+   * Async-mode dispatch (#3042, Stage 1 of epic #2631). Default `sync` —
+   * backward-compat invariant; existing callers see no behavior change.
+   * `async` returns `{ status: 'pending', jobId }` immediately; caller
+   * polls `get_job_result(jobId)` for the structured payload. Sidesteps
+   * the MCP-SDK 60s client-request timeout that was killing long
+   * orchestrations (#2631 evidence: 28.6% timeout-shaped errors on
+   * `run_workflow` at the gate-firing measurement).
+   *
+   * Kept optional (no `.default()`) so the inferred type doesn't force
+   * `mode: 'sync'` on every existing call site / test fixture. The
+   * handler treats `undefined` as `'sync'`.
+   */
+  mode: z
+    .enum(['sync', 'async'])
+    .optional()
+    .describe('Dispatch mode (default: sync). Use "async" for long-running orchestrations.'),
 });
 
 export type OrchestrateInput = z.infer<typeof OrchestrateInputSchema>;
@@ -104,6 +121,12 @@ export const ORCHESTRATE_TOOL_SCHEMA = {
     .max(600000)
     .optional()
     .describe('Timeout in milliseconds for orchestration (default: 300000)'),
+  mode: z
+    .enum(['sync', 'async'])
+    .optional()
+    .describe(
+      'Dispatch mode (default: sync). "async" returns { jobId } immediately; poll via get_job_result.'
+    ),
 };
 
 // ============================================================================

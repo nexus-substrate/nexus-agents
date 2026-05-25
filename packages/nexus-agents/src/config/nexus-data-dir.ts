@@ -80,6 +80,10 @@ const PER_REPO_SUBDIRS: ReadonlySet<string> = new Set([
   'audit',
   'pipeline',
   'tasks',
+  // Async-mode job results (#3042 / epic #2631). Tied to work happening
+  // in a specific codebase — a job dispatched on repo A shouldn't be
+  // polled-against on repo B, which would happen if jobs/ were homedir-scoped.
+  'jobs',
 ]);
 
 /** Returns the absolute path to the nexus-agents data directory. */

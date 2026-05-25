@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-05-24T22:51:38.908Z",
+  "generated": "2026-05-25T13:18:52.705Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.83.2",
   "cli": {
@@ -331,6 +331,10 @@
       {
         "name": "extract_symbols",
         "file": "src/mcp/tools/extract-symbols.ts"
+      },
+      {
+        "name": "get_job_result",
+        "file": "src/mcp/tools/get-job-result.ts"
       },
       {
         "name": "improvement_review",

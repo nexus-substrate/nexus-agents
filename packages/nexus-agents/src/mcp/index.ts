@@ -362,6 +362,12 @@ export {
   type QueryTaskStateDeps,
   type QueryTaskStateInput,
   type QueryTaskStateResponse,
+  // Get job result tool (#3042 / epic #2631 — async-mode stage 1)
+  registerGetJobResultTool,
+  GetJobResultInputSchema,
+  type GetJobResultDeps,
+  type GetJobResultInput,
+  type GetJobResultResponse,
   // Verify audit chain tool (#2281 follow-up)
   registerVerifyAuditChainTool,
   VerifyAuditChainInputSchema,

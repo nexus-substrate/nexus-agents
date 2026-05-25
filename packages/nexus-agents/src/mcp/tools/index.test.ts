@@ -69,7 +69,7 @@ import {
   RepoSecurityPlanInputSchema,
 } from './index.js';
 
-const EXPECTED_TOOL_COUNT = 38;
+const EXPECTED_TOOL_COUNT = 39;
 
 const EXPECTED_TOOL_NAMES = [
   'orchestrate',
@@ -100,6 +100,7 @@ const EXPECTED_TOOL_NAMES = [
   'registry_import',
   'query_trace',
   'query_task_state',
+  'get_job_result',
   'verify_audit_chain',
   'repo_analyze',
   'repo_security_plan',

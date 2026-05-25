@@ -95,6 +95,9 @@ import {
 import { initTaskState, updateStage, appendBlocker } from '../../context/structured-task-state.js';
 import type { StructuredTaskState } from '../../context/structured-task-state-types.js';
 import { getToolAnnotations } from '../tool-annotations.js';
+// #3042 / epic #2631: async-mode dispatch + sidecar job-result store.
+import { writeJobPending, writeJobComplete, writeJobFailed } from '../jobs/job-result-store.js';
+import { randomUUID } from 'node:crypto';
 
 // Re-export types and values for consumers
 export {
@@ -1169,6 +1172,19 @@ function createOrchestrateHandler(deps: OrchestrateDeps) {
         message: `Validation error: ${formatZodError(validated.error)}`,
       });
     }
+    // #3042 / epic #2631: async-mode dispatch — return immediately with
+    // a jobId and run the pipeline in the background. Sidesteps the
+    // MCP-SDK 60s client-request timeout that was killing long
+    // orchestrations. Caller polls `get_job_result(jobId)`.
+    if (validated.data.mode === 'async') {
+      return dispatchAsyncOrchestrate({
+        input: validated.data,
+        deps,
+        notifier,
+        logger: ctx.logger,
+        trustTier: ctx.requestContext.trustTier,
+      });
+    }
     // Depth guard: prevent runaway nested orchestration (#1500)
     try {
       return await withDepthGuard('orchestrate', () =>
@@ -1187,6 +1203,56 @@ function createOrchestrateHandler(deps: OrchestrateDeps) {
       return toolStructuredError({ errorCategory: 'business', message: `Depth limit: ${msg}` });
     }
   };
+}
+
+/**
+ * Dispatch the orchestration on a background promise, return a
+ * `{ jobId, status: 'pending' }` envelope synchronously. The promise's
+ * eventual result (or failure) is written to the job-result store so a
+ * subsequent `get_job_result(jobId)` returns the payload the sync mode
+ * would have returned inline.
+ *
+ * The background dispatch is fire-and-forget on purpose — async mode
+ * exists precisely because awaiting it would defeat the contract. The
+ * promise's rejection is caught + recorded; nothing escapes unhandled.
+ */
+function dispatchAsyncOrchestrate(params: {
+  readonly input: OrchestrateInput;
+  readonly deps: OrchestrateDeps;
+  readonly notifier: ReturnType<typeof createMcpNotifier>;
+  readonly logger: ILogger;
+  readonly trustTier?: string;
+}): ToolResult {
+  const jobId = `job-orch-${randomUUID()}`;
+  writeJobPending(jobId, 'orchestrate');
+  // Fire-and-forget. The dispatch path runs under the same depth guard
+  // as sync mode so a runaway async orchestration can't bypass #1500.
+  void (async (): Promise<void> => {
+    try {
+      const result = await withDepthGuard('orchestrate', () =>
+        runOrchestratePipeline({
+          input: params.input,
+          deps: params.deps,
+          notifier: params.notifier,
+          logger: params.logger,
+          ...(params.trustTier !== undefined ? { trustTier: params.trustTier } : {}),
+        })
+      );
+      writeJobComplete(jobId, 'orchestrate', result);
+    } catch (err: unknown) {
+      const errObj = err instanceof Error ? err : new Error(String(err));
+      params.logger.error('Async orchestrate dispatch failed', errObj, { jobId });
+      writeJobFailed(jobId, 'orchestrate', errObj.message);
+    }
+  })();
+  return toolSuccess(
+    JSON.stringify({
+      status: 'pending',
+      jobId,
+      pollTool: 'get_job_result',
+      note: 'Poll via get_job_result({ jobId }) until status !== "pending".',
+    })
+  );
 }
 
 /**
