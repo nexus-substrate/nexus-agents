@@ -1,3 +1,10 @@
+---
+title: 'Claude Code Plugin Install'
+description: Install nexus-agents as a Claude Code plugin — exposes 39 MCP tools, 31 skills, 12 agent mirrors, and governance hooks
+tier: 2
+keywords: [plugin, claude-code, installation, marketplace, mcp, getting-started]
+---
+
 # Installing nexus-agents as a Claude Code plugin
 
 **Status:** Canonical
