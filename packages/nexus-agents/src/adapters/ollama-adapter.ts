@@ -36,6 +36,7 @@ import {
 import { BaseAdapter, type BaseAdapterConfig } from './base-adapter.js';
 import { extractRequestSystemPrompt } from './prompt-utils.js';
 import { createStream } from './streaming.js';
+import { raceAbort } from './abort-utils.js';
 
 /** Popular Ollama model identifiers. */
 export const OLLAMA_MODELS = {
@@ -180,7 +181,16 @@ export class OllamaAdapter extends BaseAdapter {
     this.logRequest(request);
     try {
       const params = this.buildRequestParams(request);
-      const response = await this.client.chat({ ...params, stream: false });
+      // #3036: the ollama SDK's `chat()` doesn't accept a per-call
+      // `signal` (its only abort surface is `Ollama.abort()`, which
+      // cancels ALL ongoing streamed requests on the client). Race the
+      // SDK call against the signal so the watchdog timeout stops
+      // awaiting the response. The underlying HTTP request may still
+      // run on the Ollama server, but no late result is consumed —
+      // OutcomeStore and LinUCB don't see ghost attributions for a
+      // decision already discarded.
+      const chatPromise = this.client.chat({ ...params, stream: false });
+      const response = await raceAbort(chatPromise, request.signal);
       const result = this.mapResponse(response);
       this.logResponse(result);
       return ok(result);

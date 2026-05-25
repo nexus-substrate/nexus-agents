@@ -173,12 +173,26 @@ interface AdapterExecutionOptions {
   readonly learnings?: readonly WorkerLearning[];
   readonly priorWaveResults?: readonly WorkerResult[];
   readonly workerStartMs: number;
+  /**
+   * #3036: cancellation signal forwarded into `adapter.complete` so that
+   * when the watchdog timeout wins, the vendor SDK call cancels mid-flight
+   * instead of running to completion and posting a late result.
+   */
+  readonly signal?: AbortSignal | undefined;
 }
 
 /** Execute a worker task on a specific adapter, returning a WorkerResult. */
 async function executeOnAdapter(opts: AdapterExecutionOptions): Promise<WorkerResult> {
-  const { entry, adapter, cliName, taskDescription, learnings, priorWaveResults, workerStartMs } =
-    opts;
+  const {
+    entry,
+    adapter,
+    cliName,
+    taskDescription,
+    learnings,
+    priorWaveResults,
+    workerStartMs,
+    signal,
+  } = opts;
   const prompt = composeWorkerPrompt({
     entry,
     taskDescription,
@@ -189,6 +203,7 @@ async function executeOnAdapter(opts: AdapterExecutionOptions): Promise<WorkerRe
     const result = await adapter.complete({
       messages: [{ role: 'user', content: prompt }],
       maxTokens: WORKER_MAX_TOKENS,
+      ...(signal !== undefined ? { signal } : {}),
     });
     if (!result.ok) {
       return makeErrorResult(entry, workerStartMs, result.error.message, cliName);
@@ -213,10 +228,14 @@ async function executeOnAdapter(opts: AdapterExecutionOptions): Promise<WorkerRe
 
 function createWorkerExecutor(
   config: WorkerExecutorConfig
-): (entry: AgentPlanEntry, priorWaveResults?: readonly WorkerResult[]) => Promise<WorkerResult> {
+): (
+  entry: AgentPlanEntry,
+  priorWaveResults?: readonly WorkerResult[],
+  signal?: AbortSignal
+) => Promise<WorkerResult> {
   const { taskDescription, modelAdapter, logger, learnings, perWorkerRouting } = config;
   const effectiveFallbackCli = modelAdapter.providerId;
-  return async (entry, priorWaveResults): Promise<WorkerResult> => {
+  return async (entry, priorWaveResults, signal): Promise<WorkerResult> => {
     const workerStartMs = getTimeProvider().now();
     const { adapter, cliName } = resolveWorkerAdapter(
       entry,
@@ -233,6 +252,7 @@ function createWorkerExecutor(
       workerStartMs,
       ...(learnings !== undefined ? { learnings } : {}),
       ...(priorWaveResults !== undefined ? { priorWaveResults } : {}),
+      ...(signal !== undefined ? { signal } : {}),
     });
   };
 }
@@ -262,10 +282,14 @@ function resolveAltAdapter(
  */
 function createAltWorkerExecutor(
   config: WorkerExecutorConfig
-): (entry: AgentPlanEntry, priorWaveResults?: readonly WorkerResult[]) => Promise<WorkerResult> {
+): (
+  entry: AgentPlanEntry,
+  priorWaveResults?: readonly WorkerResult[],
+  signal?: AbortSignal
+) => Promise<WorkerResult> {
   const { taskDescription, modelAdapter, logger: log, learnings } = config;
   const primaryCli = modelAdapter.providerId;
-  return async (entry, priorWaveResults): Promise<WorkerResult> => {
+  return async (entry, priorWaveResults, signal): Promise<WorkerResult> => {
     const workerStartMs = getTimeProvider().now();
     const alt = resolveAltAdapter(entry, primaryCli, log);
     if (alt === null) {
@@ -280,6 +304,7 @@ function createAltWorkerExecutor(
       workerStartMs,
       ...(learnings !== undefined ? { learnings } : {}),
       ...(priorWaveResults !== undefined ? { priorWaveResults } : {}),
+      ...(signal !== undefined ? { signal } : {}),
     });
   };
 }

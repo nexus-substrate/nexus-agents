@@ -203,7 +203,15 @@ export class OpenAIAdapter extends BaseAdapter {
    */
   private async executeCompletion(request: CompletionRequest): Promise<CompletionResponse> {
     const params = this.buildRequestParams(request);
-    const response = await this.client.chat.completions.create(params);
+    // #3036: forward AbortSignal into the OpenAI SDK so withWatchdog
+    // timeouts cancel the HTTP request instead of leaking it past the
+    // Promise.race boundary. Branch on signal presence — vitest 4
+    // toHaveBeenCalledWith treats `(params, undefined)` as a distinct
+    // call shape from `(params)`.
+    const response =
+      request.signal !== undefined
+        ? await this.client.chat.completions.create(params, { signal: request.signal })
+        : await this.client.chat.completions.create(params);
     return this.mapResponse(response);
   }
 

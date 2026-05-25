@@ -189,7 +189,16 @@ export class ClaudeAdapter extends BaseAdapter {
    */
   private async executeCompletion(request: CompletionRequest): Promise<CompletionResponse> {
     const params = this.buildRequestParams(request);
-    const response = await this.client.messages.create(params);
+    // #3036: forward AbortSignal into the SDK so withWatchdog timeouts
+    // actually cancel the in-flight HTTP request instead of leaking it
+    // past the Promise.race boundary. Branch on signal presence — vitest
+    // 4 `toHaveBeenCalledWith(params)` treats `(params, undefined)` as
+    // a distinct call shape from `(params)`, so passing the second arg
+    // unconditionally would break every callsite-shape assertion.
+    const response =
+      request.signal !== undefined
+        ? await this.client.messages.create(params, { signal: request.signal })
+        : await this.client.messages.create(params);
 
     return this.mapResponse(response);
   }

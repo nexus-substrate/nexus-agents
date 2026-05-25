@@ -92,6 +92,22 @@ export interface CompletionRequest {
   responseFormat?: ResponseFormat;
   /** Stop sequences */
   stop?: string[];
+  /**
+   * Cancellation signal (#3036). When the signal aborts, the adapter
+   * cancels the in-flight model call. All five concrete adapters
+   * (claude, openai, ollama, gemini, openai-compat) honor this by
+   * passing the signal to their respective vendor SDK.
+   *
+   * Used by `withWatchdog` to cancel race-loser model calls when the
+   * worker-dispatch timeout wins. Without this, the SDK keeps running
+   * after `Promise.race` resolves with the timeout — late results land
+   * in OutcomeStore for a decision already discarded.
+   *
+   * Typed as `AbortSignal | undefined` (not `AbortSignal?`) so adapter
+   * internals that destructure `request` keep working under
+   * `exactOptionalPropertyTypes`.
+   */
+  signal?: AbortSignal | undefined;
 }
 
 /**
