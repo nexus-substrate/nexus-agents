@@ -221,6 +221,47 @@ describe('RunWorkflowInputSchema', () => {
     const result = RunWorkflowInputSchema.safeParse({ template: 'code-review' });
     expect(result.success).toBe(false);
   });
+
+  // #3044 / epic #2631 Stage 3 — async-mode schema additions.
+  it('accepts mode: "async" (#3044)', () => {
+    const result = RunWorkflowInputSchema.safeParse({
+      template: 'code-review',
+      inputs: {},
+      mode: 'async',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.mode).toBe('async');
+  });
+
+  it('accepts mode: "sync" (#3044)', () => {
+    const result = RunWorkflowInputSchema.safeParse({
+      template: 'code-review',
+      inputs: {},
+      mode: 'sync',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.mode).toBe('sync');
+  });
+
+  it('leaves mode undefined when omitted — backward-compat invariant (#3044)', () => {
+    const result = RunWorkflowInputSchema.safeParse({ template: 'code-review', inputs: {} });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      // Handler treats undefined as sync. Schema deliberately omits
+      // .default('sync') so the inferred type stays optional — every
+      // existing fixture / test continues to compile without churn.
+      expect(result.data.mode).toBeUndefined();
+    }
+  });
+
+  it('rejects unknown mode value (#3044)', () => {
+    const result = RunWorkflowInputSchema.safeParse({
+      template: 'code-review',
+      inputs: {},
+      mode: 'fire-and-forget',
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe('registerRunWorkflowTool', () => {

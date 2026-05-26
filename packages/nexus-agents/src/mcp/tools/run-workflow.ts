@@ -46,6 +46,10 @@ import {
 } from './run-workflow-helpers.js';
 import { getToolMemory } from './tool-memory.js';
 import { getToolAnnotations } from '../tool-annotations.js';
+// #3044 / epic #2631 Stage 3 — async-mode dispatch + concurrency cap.
+import { writeJobPending, writeJobComplete, writeJobFailed } from '../jobs/job-result-store.js';
+import { tryAcquire, release, suggestRetryAfterMs } from '../jobs/job-concurrency.js';
+import { randomUUID } from 'node:crypto';
 
 // Re-export types for backward compatibility
 export type {
@@ -271,7 +275,63 @@ const toolInputSchema = {
     .max(1_800_000)
     .optional()
     .describe('Per-phase execution timeout in ms (overrides workflow.timeout, bound [1s, 30min])'),
+  // #3044 / epic #2631 Stage 3
+  mode: z
+    .enum(['sync', 'async'])
+    .optional()
+    .describe(
+      'Dispatch mode (default: sync). "async" returns { jobId } immediately; poll via get_job_result.'
+    ),
 };
+
+/**
+ * Dispatch the workflow on a background promise + return a pending
+ * envelope. Mirrors `dispatchAsyncOrchestrate` in orchestrate.ts (PR
+ * #3048) — same protocol, different runner. Concurrency cap is enforced
+ * via `tryAcquire('run_workflow')`; over-cap returns the `busy`
+ * envelope synchronously so the caller can back off.
+ *
+ * Per-phase `timeoutMs` is preserved into the background dispatch
+ * (the #3017 override still applies in async mode).
+ */
+function dispatchAsyncRunWorkflow(deps: RunWorkflowDeps, args: RunWorkflowInput): ToolResponse {
+  // Concurrency cap. Configurable via NEXUS_JOB_MAX_CONCURRENT_RUN_WORKFLOW.
+  if (!tryAcquire('run_workflow')) {
+    return successResponse({
+      status: 'busy',
+      retryAfterMs: suggestRetryAfterMs('run_workflow'),
+      note: 'Async-mode concurrency cap reached for run_workflow. Retry later or use mode: "sync".',
+    });
+  }
+  const jobId = `job-rw-${randomUUID()}`;
+  writeJobPending(jobId, 'run_workflow');
+  // Fire-and-forget — `handleRunWorkflow` already encapsulates the full
+  // sync execution path including dry-run + validation + recording, so
+  // re-using it here keeps the wrapping minimal. The dispatched
+  // response object is wrapped consistently with the sync mode's
+  // success/error envelope so polling clients consume the same shape.
+  void (async (): Promise<void> => {
+    try {
+      const result = await handleRunWorkflow(deps, args);
+      // handleRunWorkflow returns a tool-response envelope; recording
+      // the whole envelope as the job result preserves the success/error
+      // discriminator + the workflow's stepResults for polling clients.
+      writeJobComplete(jobId, 'run_workflow', result);
+    } catch (err: unknown) {
+      const errObj = err instanceof Error ? err : new Error(String(err));
+      deps.logger?.error('Async run_workflow dispatch failed', errObj, { jobId });
+      writeJobFailed(jobId, 'run_workflow', errObj.message);
+    } finally {
+      release('run_workflow');
+    }
+  })();
+  return successResponse({
+    status: 'pending',
+    jobId,
+    pollTool: 'get_job_result',
+    note: 'Poll via get_job_result({ jobId }) until status !== "pending".',
+  });
+}
 
 /**
  * Creates the core handler logic for run_workflow tool.
@@ -296,9 +356,23 @@ function createRunWorkflowHandler(
     ctx.logger.debug('Running workflow', {
       template: validated.data.template,
       dryRun: validated.data.dryRun,
+      ...(validated.data.mode !== undefined ? { mode: validated.data.mode } : {}),
     });
     notifier.info('run_workflow', { event: 'workflow_start', template: validated.data.template });
     const startMs = getTimeProvider().now();
+
+    // #3044 / epic #2631 Stage 3 — async-mode dispatch. Returns
+    // immediately with a pending envelope or a busy envelope. dryRun
+    // is fast enough to stay synchronous regardless of mode (no point
+    // backgrounding a sub-second validation).
+    if (validated.data.mode === 'async' && !validated.data.dryRun) {
+      const asyncResult = dispatchAsyncRunWorkflow(deps, validated.data);
+      notifier.info('run_workflow', {
+        event: 'workflow_dispatched_async',
+        template: validated.data.template,
+      });
+      return asyncResult;
+    }
 
     const result = await handleRunWorkflow(deps, validated.data);
 

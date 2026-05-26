@@ -38,6 +38,28 @@ export const RunWorkflowInputSchema = z.object({
     .max(1_800_000)
     .optional()
     .describe('Per-phase execution timeout in ms (overrides workflow.timeout)'),
+  /**
+   * Async-mode dispatch (#3044, Stage 3 of epic #2631). Default `sync` —
+   * backward-compat invariant; existing callers see no behavior change.
+   * `async` returns `{ status: 'pending', jobId }` immediately; caller
+   * polls `get_job_result(jobId)` for the structured payload. Sidesteps
+   * the MCP-SDK 60s client-request timeout that's the #2631 root cause
+   * (per #2703 telemetry: run_workflow was the gate-firing tool at
+   * 28.6% timeout-shaped errors).
+   *
+   * Per the #3041 vote's binding staging order this lands AFTER
+   * Stage 1's protocol (#3048) was validated on orchestrate. Concurrency
+   * cap is enforced in-process via NEXUS_JOB_MAX_CONCURRENT_RUN_WORKFLOW;
+   * over-cap returns `{ status: 'busy', retryAfterMs }` synchronously.
+   *
+   * Kept optional (no `.default()`) so the inferred type doesn't force
+   * `mode: 'sync'` on every existing call site / test fixture. The
+   * handler treats `undefined` as `'sync'`.
+   */
+  mode: z
+    .enum(['sync', 'async'])
+    .optional()
+    .describe('Dispatch mode (default: sync). Use "async" for long-running workflows.'),
 });
 
 export type RunWorkflowInput = z.infer<typeof RunWorkflowInputSchema>;
