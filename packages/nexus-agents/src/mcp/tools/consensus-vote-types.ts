@@ -150,6 +150,20 @@ export const ConsensusVoteInputSchema = z.object({
     .describe(
       'Dispatch mode (default: sync). Use "async" for higher-order strategies with 7 voters.'
     ),
+  /**
+   * Idempotency key for async-mode replay-safety (#3042 Stage 1c / epic
+   * #2631). When set: identical (key, inputs) returns the existing job;
+   * same key with different inputs fails closed with
+   * `idempotency_key_collision`. Sync mode ignores this.
+   */
+  idempotencyKey: z
+    .string()
+    .min(1)
+    .max(256)
+    .optional()
+    .describe(
+      'Replay-safe key for async-mode dispatch (#3042 Stage 1c). Same (key, inputs) returns existing jobId.'
+    ),
 });
 
 export type ConsensusVoteInput = z.infer<typeof ConsensusVoteInputSchema>;

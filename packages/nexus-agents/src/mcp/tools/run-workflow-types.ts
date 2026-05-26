@@ -60,6 +60,20 @@ export const RunWorkflowInputSchema = z.object({
     .enum(['sync', 'async'])
     .optional()
     .describe('Dispatch mode (default: sync). Use "async" for long-running workflows.'),
+  /**
+   * Idempotency key for async-mode replay-safety (#3042 Stage 1c / epic
+   * #2631). When set: identical (key, inputs) returns the existing job;
+   * same key with different inputs fails closed with
+   * `idempotency_key_collision`. Sync mode ignores this.
+   */
+  idempotencyKey: z
+    .string()
+    .min(1)
+    .max(256)
+    .optional()
+    .describe(
+      'Replay-safe key for async-mode dispatch (#3042 Stage 1c). Same (key, inputs) returns existing jobId.'
+    ),
 });
 
 export type RunWorkflowInput = z.infer<typeof RunWorkflowInputSchema>;

@@ -98,6 +98,7 @@ import { getToolAnnotations } from '../tool-annotations.js';
 // #3042 / epic #2631: async-mode dispatch + sidecar job-result store.
 import { writeJobPending, writeJobComplete, writeJobFailed } from '../jobs/job-result-store.js';
 import { tryAcquire, release, suggestRetryAfterMs } from '../jobs/job-concurrency.js';
+import { shortCircuitOrFreshJobId, registerIdempotentJob } from '../jobs/job-idempotency.js';
 import { randomUUID } from 'node:crypto';
 
 // Re-export types and values for consumers
@@ -1217,6 +1218,26 @@ function createOrchestrateHandler(deps: OrchestrateDeps) {
  * exists precisely because awaiting it would defeat the contract. The
  * promise's rejection is caught + recorded; nothing escapes unhandled.
  */
+/** Replay envelope for orchestrate idempotency (#3042 Stage 1c). */
+function buildReplayEnvelope(jobId: string): ToolResult {
+  return toolSuccess(
+    JSON.stringify({
+      status: 'replay',
+      jobId,
+      pollTool: 'get_job_result',
+      note: 'Idempotency key matched a prior dispatch — poll get_job_result for current status.',
+    })
+  );
+}
+
+/** Collision envelope for orchestrate idempotency (#3042 Stage 1c). */
+function buildCollisionEnvelope(existingJobId: string): ToolResult {
+  return toolStructuredError({
+    errorCategory: 'validation',
+    message: `Idempotency key already used with different inputs. Existing jobId: ${existingJobId}. Use a fresh key or omit it.`,
+  });
+}
+
 function dispatchAsyncOrchestrate(params: {
   readonly input: OrchestrateInput;
   readonly deps: OrchestrateDeps;
@@ -1224,9 +1245,19 @@ function dispatchAsyncOrchestrate(params: {
   readonly logger: ILogger;
   readonly trustTier?: string;
 }): ToolResult {
-  // #3044: per-tool concurrency cap. If the slot pool is full, return a
-  // busy envelope synchronously rather than queuing — caller decides
-  // when to retry. Configurable via NEXUS_JOB_MAX_CONCURRENT_ORCHESTRATE.
+  // #3042 Stage 1c: resolve idempotency BEFORE acquiring a slot — a replay
+  // or collision must not burn capacity the live caller could use.
+  const idempotency = shortCircuitOrFreshJobId<ToolResult>({
+    tool: 'orchestrate',
+    idempotencyKey: params.input.idempotencyKey,
+    inputs: params.input,
+    freshJobId: () => `job-orch-${randomUUID()}`,
+    replayEnvelope: buildReplayEnvelope,
+    collisionEnvelope: buildCollisionEnvelope,
+  });
+  if (idempotency.kind === 'shortCircuit') return idempotency.value;
+  // #3044: per-tool concurrency cap. Over-cap returns `busy` synchronously
+  // so the caller backs off; configurable via NEXUS_JOB_MAX_CONCURRENT_ORCHESTRATE.
   if (!tryAcquire('orchestrate')) {
     return toolSuccess(
       JSON.stringify({
@@ -1236,30 +1267,9 @@ function dispatchAsyncOrchestrate(params: {
       })
     );
   }
-  const jobId = `job-orch-${randomUUID()}`;
-  writeJobPending(jobId, 'orchestrate');
-  // Fire-and-forget. The dispatch path runs under the same depth guard
-  // as sync mode so a runaway async orchestration can't bypass #1500.
-  void (async (): Promise<void> => {
-    try {
-      const result = await withDepthGuard('orchestrate', () =>
-        runOrchestratePipeline({
-          input: params.input,
-          deps: params.deps,
-          notifier: params.notifier,
-          logger: params.logger,
-          ...(params.trustTier !== undefined ? { trustTier: params.trustTier } : {}),
-        })
-      );
-      writeJobComplete(jobId, 'orchestrate', result);
-    } catch (err: unknown) {
-      const errObj = err instanceof Error ? err : new Error(String(err));
-      params.logger.error('Async orchestrate dispatch failed', errObj, { jobId });
-      writeJobFailed(jobId, 'orchestrate', errObj.message);
-    } finally {
-      release('orchestrate');
-    }
-  })();
+  const jobId = idempotency.jobId;
+  recordPendingAndRegister(jobId, params.input.idempotencyKey, params.input);
+  void runOrchestrateInBackground(jobId, params);
   return toolSuccess(
     JSON.stringify({
       status: 'pending',
@@ -1268,6 +1278,49 @@ function dispatchAsyncOrchestrate(params: {
       note: 'Poll via get_job_result({ jobId }) until status !== "pending".',
     })
   );
+}
+
+/** Write pending record + register idempotency entry (#3042 Stage 1c). */
+function recordPendingAndRegister(jobId: string, key: string | undefined, inputs: unknown): void {
+  writeJobPending(jobId, 'orchestrate');
+  if (key !== undefined && key !== '') {
+    registerIdempotentJob({ tool: 'orchestrate', idempotencyKey: key, inputs, jobId });
+  }
+}
+
+/**
+ * Fire-and-forget background run. Wraps the depth-guarded pipeline with
+ * complete/failed recording + slot release. Extracted from
+ * `dispatchAsyncOrchestrate` so the dispatcher stays under the 50-line cap.
+ */
+async function runOrchestrateInBackground(
+  jobId: string,
+  params: {
+    readonly input: OrchestrateInput;
+    readonly deps: OrchestrateDeps;
+    readonly notifier: ReturnType<typeof createMcpNotifier>;
+    readonly logger: ILogger;
+    readonly trustTier?: string;
+  }
+): Promise<void> {
+  try {
+    const result = await withDepthGuard('orchestrate', () =>
+      runOrchestratePipeline({
+        input: params.input,
+        deps: params.deps,
+        notifier: params.notifier,
+        logger: params.logger,
+        ...(params.trustTier !== undefined ? { trustTier: params.trustTier } : {}),
+      })
+    );
+    writeJobComplete(jobId, 'orchestrate', result);
+  } catch (err: unknown) {
+    const errObj = err instanceof Error ? err : new Error(String(err));
+    params.logger.error('Async orchestrate dispatch failed', errObj, { jobId });
+    writeJobFailed(jobId, 'orchestrate', errObj.message);
+  } finally {
+    release('orchestrate');
+  }
 }
 
 /**
