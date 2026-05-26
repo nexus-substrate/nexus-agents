@@ -8,8 +8,10 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import {
   appendBlocker,
+  appendCancellation,
   appendDecision,
   appendProgressLedgerEntry,
+  appendResult,
   initTaskState,
   readTaskState,
   reduceLogEntries,
@@ -19,11 +21,12 @@ import {
   updateStage,
   updateTaskLedger,
 } from './structured-task-state.js';
-import type {
-  ProgressLedgerEntry,
-  StructuredTaskLogEntry,
-  StructuredTaskState,
-  TaskLedger,
+import {
+  TASK_RESULT_MAX_BYTES,
+  type ProgressLedgerEntry,
+  type StructuredTaskLogEntry,
+  type StructuredTaskState,
+  type TaskLedger,
 } from './structured-task-state-types.js';
 
 let tmpDir: string;
@@ -56,7 +59,10 @@ describe('initTaskState + readTaskState', () => {
     const readR = readTaskState('task-1', tmpDir);
     expect(readR.ok).toBe(true);
     if (readR.ok) {
-      expect(readR.value).toEqual(initial);
+      // #3043: reducer now backfills `version: 0` for old-shape state
+      // logs that didn't carry it. Backward-compat invariant — see
+      // reduceLogEntries in structured-task-state.ts.
+      expect(readR.value).toEqual({ ...initial, version: 0 });
     }
   });
 
@@ -355,5 +361,163 @@ describe('reflect()', () => {
   it('errors cleanly when the task log does not exist', () => {
     const r = reflect('does-not-exist', tmpDir);
     expect(r.ok).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// #3043 / epic #2631 Stage 2 — version / result / cancellation
+// ─────────────────────────────────────────────────────────────────────
+
+/** Test helper — readTaskState + type-guarded version assertion. */
+function expectVersion(taskId: string, expected: number): void {
+  const r = readTaskState(taskId, tmpDir);
+  expect(r.ok).toBe(true);
+  if (r.ok) expect(r.value.version).toBe(expected);
+}
+
+describe('monotonic version (#3043)', () => {
+  it('starts at 0 after init and increments on every non-init event', () => {
+    initTaskState(makeInitialState(), tmpDir);
+    expectVersion('task-1', 0);
+
+    appendDecision(
+      'task-1',
+      { ts: '2026-04-19T00:01:00Z', decision: 'd1', rationale: 'because' },
+      tmpDir
+    );
+    expectVersion('task-1', 1);
+
+    updateStage('task-1', 'executing', '2026-04-19T00:02:00Z', tmpDir);
+    expectVersion('task-1', 2);
+
+    appendBlocker('task-1', { ts: '2026-04-19T00:03:00Z', blocker: 'b1' }, tmpDir);
+    expectVersion('task-1', 3);
+  });
+
+  it('backward-compat: old-shape state log without version reduces to v0', () => {
+    // Simulate a pre-Stage-2 log file: write the init entry directly
+    // with no `version` field on the initial state.
+    const oldShape: StructuredTaskLogEntry[] = [
+      {
+        event: 'init',
+        ts: '2026-04-19T00:00:00Z',
+        state: makeInitialState(), // makeInitialState() doesn't include version
+      },
+    ];
+    const r = reduceLogEntries('task-1', oldShape);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value.version).toBe(0);
+  });
+
+  it('two consecutive non-init events on a v0 base reach v2 (not v1)', () => {
+    // Bug guard: the reducer must increment INSIDE applyLogEntry, not
+    // once at the end of the fold. Two events = +2.
+    initTaskState(makeInitialState(), tmpDir);
+    appendDecision(
+      'task-1',
+      { ts: '2026-04-19T00:01:00Z', decision: 'd1', rationale: 'r1' },
+      tmpDir
+    );
+    appendDecision(
+      'task-1',
+      { ts: '2026-04-19T00:02:00Z', decision: 'd2', rationale: 'r2' },
+      tmpDir
+    );
+    expectVersion('task-1', 2);
+  });
+});
+
+describe('appendResult (#3043)', () => {
+  it('writes the result payload visible after readTaskState', () => {
+    initTaskState(makeInitialState(), tmpDir);
+    const payload = { ok: true, output: 'hello world', durationMs: 42 };
+    appendResult('task-1', payload, '2026-04-19T00:01:00Z', tmpDir);
+    const r = readTaskState('task-1', tmpDir);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.result).toEqual(payload);
+      expect(r.value.version).toBe(1); // result event bumps version
+    }
+  });
+
+  it('truncates over-cap payloads to a typed marker (not silent drop)', () => {
+    initTaskState(makeInitialState(), tmpDir);
+    // Build a payload guaranteed to exceed TASK_RESULT_MAX_BYTES once
+    // JSON-serialized. A string of `max + 1024` 'x's gets ~2 MB on
+    // disk after the JSON quotes — way over the 1 MiB cap.
+    const huge = { huge: 'x'.repeat(TASK_RESULT_MAX_BYTES + 1024) };
+    appendResult('task-1', huge, '2026-04-19T00:01:00Z', tmpDir);
+    const r = readTaskState('task-1', tmpDir);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      const result = r.value.result as {
+        truncated?: boolean;
+        originalBytes?: number;
+        maxBytes?: number;
+        note?: string;
+      };
+      expect(result.truncated).toBe(true);
+      expect(result.originalBytes).toBeGreaterThan(TASK_RESULT_MAX_BYTES);
+      expect(result.maxBytes).toBe(TASK_RESULT_MAX_BYTES);
+    }
+  });
+
+  it('measures bytes after JSON-stringify (not just object size)', () => {
+    initTaskState(makeInitialState(), tmpDir);
+    // A small object with high-byte UTF-8 chars: count is in bytes, not
+    // code units, so 4-byte emoji × 300_000 ≈ 1.2 MB which trips the cap
+    // even though the JS string length is only 300_000.
+    const utf8Heavy = { msg: '😀'.repeat(300_000) };
+    appendResult('task-1', utf8Heavy, '2026-04-19T00:01:00Z', tmpDir);
+    const r = readTaskState('task-1', tmpDir);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      const result = r.value.result as { truncated?: boolean };
+      expect(result.truncated).toBe(true);
+    }
+  });
+
+  it('survives serialization failure cleanly (returns err, no crash)', () => {
+    initTaskState(makeInitialState(), tmpDir);
+    // BigInt isn't JSON-serializable — JSON.stringify throws on it.
+    const r = appendResult('task-1', { n: 1n }, '2026-04-19T00:01:00Z', tmpDir);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error.message).toContain('serialize');
+  });
+});
+
+describe('appendCancellation (#3043)', () => {
+  it('writes the cancellation marker visible after readTaskState', () => {
+    initTaskState(makeInitialState(), tmpDir);
+    appendCancellation(
+      'task-1',
+      { requestedAt: '2026-04-19T00:01:00Z', reason: 'user clicked cancel' },
+      tmpDir
+    );
+    const r = readTaskState('task-1', tmpDir);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.cancellation?.requestedAt).toBe('2026-04-19T00:01:00Z');
+      expect(r.value.cancellation?.reason).toBe('user clicked cancel');
+      expect(r.value.version).toBe(1);
+    }
+  });
+
+  it('append-only: second cancellation does NOT overwrite the first requestedAt', () => {
+    // Defense against a buggy double-cancel rewriting history. Both
+    // events land on disk for audit, but the in-memory state keeps the
+    // first cancellation's timestamp.
+    initTaskState(makeInitialState(), tmpDir);
+    appendCancellation('task-1', { requestedAt: '2026-04-19T00:01:00Z', reason: 'first' }, tmpDir);
+    appendCancellation('task-1', { requestedAt: '2026-04-19T00:02:00Z', reason: 'second' }, tmpDir);
+    const r = readTaskState('task-1', tmpDir);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.cancellation?.requestedAt).toBe('2026-04-19T00:01:00Z');
+      expect(r.value.cancellation?.reason).toBe('first');
+      // Version still bumps even though the in-memory cancellation didn't
+      // change — so a polling client can see the log grew (audit visibility).
+      expect(r.value.version).toBe(2);
+    }
   });
 });
