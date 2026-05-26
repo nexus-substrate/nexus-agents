@@ -475,6 +475,26 @@ export const TOOL_ANNOTATIONS: Readonly<Record<string, ToolSideEffectsEntry>> = 
       },
     ],
   },
+  cancel_job: {
+    annotations: {
+      title: 'Cancel Job',
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    sideEffects: [
+      {
+        category: 'explicit',
+        description: 'Writes cancellation record to the async-mode sidecar (#3042 Stage 1b)',
+      },
+      {
+        category: 'coupling',
+        description:
+          'Triggers AbortSignal unwind in same-process dispatcher (cross-process workers must poll)',
+      },
+    ],
+  },
   verify_audit_chain: {
     annotations: {
       title: 'Verify Audit Chain',

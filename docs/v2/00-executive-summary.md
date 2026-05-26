@@ -6,7 +6,7 @@ _Nexus Agents reviewing Nexus Agents. No marketing. Evidence-backed._
 
 ## What Nexus Agents Is Today
 
-An intelligent orchestration platform for AI coding tools (650+ source files, 900+ test files) that coordinates Claude, Gemini, Codex, and OpenCode CLIs via 40 MCP tools. It routes tasks to the best model using data-driven algorithms (LinUCB bandit, TOPSIS), validates through multi-model consensus, and learns from outcomes across sessions. Users can orchestrate tasks, run consensus votes, execute a full dev pipeline (research→plan→vote→implement→QA), and run graph workflows.
+An intelligent orchestration platform for AI coding tools (650+ source files, 900+ test files) that coordinates Claude, Gemini, Codex, and OpenCode CLIs via 41 MCP tools. It routes tasks to the best model using data-driven algorithms (LinUCB bandit, TOPSIS), validates through multi-model consensus, and learns from outcomes across sessions. Users can orchestrate tasks, run consensus votes, execute a full dev pipeline (research→plan→vote→implement→QA), and run graph workflows.
 
 ## What's Wrong
 

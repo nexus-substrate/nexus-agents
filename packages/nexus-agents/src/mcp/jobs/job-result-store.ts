@@ -136,6 +136,34 @@ export function writeJobFailed(jobId: string, toolName: string, error: string): 
 }
 
 /**
+ * Terminal `cancelled` status — set by `cancel_job` (#3042 Stage 1b).
+ *
+ * Idempotent-by-design at the in-memory state level: if the record is
+ * already `complete` / `failed` / `cancelled`, `cancel_job` reports
+ * `already_complete` / `already_cancelled` to the caller and DOES NOT
+ * overwrite the terminal record (per the #3041 vote Security flag —
+ * cancel-after-complete must not rewrite history).
+ *
+ * The caller (cancel_job tool) checks the current status BEFORE calling
+ * this; this writer trusts the caller and always overwrites. Guarding
+ * here too would duplicate the guard but is cheap insurance — current
+ * design: caller-side guard only.
+ */
+export function writeJobCancelled(jobId: string, toolName: string, reason?: string): void {
+  const record: JobResult = {
+    v: 1,
+    jobId,
+    toolName,
+    status: 'cancelled',
+    createdAt: readJobResult(jobId)?.createdAt ?? new Date().toISOString(),
+    completedAt: new Date().toISOString(),
+    ...(reason !== undefined ? { error: reason } : {}),
+  };
+  writeFileSync(jobResultPath(jobId), JSON.stringify(record, null, 2));
+  logger.debug('Wrote cancelled job record', { jobId, toolName, reason });
+}
+
+/**
  * Read a job-result record. Returns `null` if the jobId is unknown
  * (file doesn't exist) or unreadable (corrupt JSON, schema mismatch).
  *

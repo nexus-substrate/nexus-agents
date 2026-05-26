@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- Public barrel for the mcp/ package; 41 tools' worth of re-exports inherently exceeds the per-file cap. */
 /**
  * nexus-agents/mcp
  *
@@ -374,6 +375,12 @@ export {
   type ListJobsDeps,
   type ListJobsInput,
   type ListJobsResponse,
+  // Cancel job tool (#3042 Stage 1b / epic #2631 — async-mode cancellation)
+  registerCancelJobTool,
+  CancelJobInputSchema,
+  type CancelJobDeps,
+  type CancelJobInput,
+  type CancelJobResponse,
   // Verify audit chain tool (#2281 follow-up)
   registerVerifyAuditChainTool,
   VerifyAuditChainInputSchema,

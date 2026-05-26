@@ -1,6 +1,6 @@
 # Repository Capabilities Index
 
-**Generated:** 2026-05-26T14:52:40.557Z
+**Generated:** 2026-05-26T15:17:29.026Z
 **Package Version:** 2.85.0
 **Generator:** `scripts/generate-repo-index.ts`
 
@@ -67,10 +67,11 @@ Binary: `nexus-agents`
 
 ---
 
-## MCP Tools (40)
+## MCP Tools (41)
 
 | Tool | Source File |
 | ------ | ------------- |
+| `cancel_job` | `src/mcp/tools/cancel-job.ts` |
 | `compare_data_feeds` | `src/mcp/tools/compare-data-feeds.ts` |
 | `consensus_vote` | `src/mcp/tools/consensus-vote.ts` |
 | `create_expert` | `src/mcp/tools/create-expert.ts` |

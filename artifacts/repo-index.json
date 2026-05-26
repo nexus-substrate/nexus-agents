@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-05-26T14:52:40.557Z",
+  "generated": "2026-05-26T15:17:29.026Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.85.0",
   "cli": {
@@ -304,6 +304,10 @@
   },
   "mcp": {
     "tools": [
+      {
+        "name": "cancel_job",
+        "file": "src/mcp/tools/cancel-job.ts"
+      },
       {
         "name": "compare_data_feeds",
         "file": "src/mcp/tools/compare-data-feeds.ts"
