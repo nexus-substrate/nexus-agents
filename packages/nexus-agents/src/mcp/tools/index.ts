@@ -378,6 +378,15 @@ export {
   type GetJobResultResponse,
 } from './get-job-result-tool.js';
 
+// List jobs tool (#3046 / epic #2631 — async-mode stage 5)
+export {
+  registerListJobsTool,
+  ListJobsInputSchema,
+  type ListJobsDeps,
+  type ListJobsInput,
+  type ListJobsResponse,
+} from './list-jobs-tool.js';
+
 // Verify audit chain tool (#2281 follow-up — wraps verifyChain over persisted log files)
 export {
   registerVerifyAuditChainTool,
@@ -541,6 +550,7 @@ export const REGISTERED_TOOL_NAMES = [
   'query_trace',
   'query_task_state',
   'get_job_result',
+  'list_jobs',
   'verify_audit_chain',
   'repo_analyze',
   'repo_security_plan',

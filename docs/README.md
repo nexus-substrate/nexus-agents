@@ -7,7 +7,7 @@ keywords: [documentation, index, reference, navigation, docs]
 
 # Nexus Agents Documentation
 
-**Canonical Documentation Index** | Last Updated: 2026-05-25 (31 skills, 39 MCP tools, 11 expert types, 11 workflow templates)
+**Canonical Documentation Index** | Last Updated: 2026-05-25 (31 skills, 40 MCP tools, 11 expert types, 11 workflow templates)
 
 This is the **single source of truth** for all nexus-agents documentation. All documentation must be indexed here to be considered valid.
 

@@ -54,7 +54,7 @@ Code:               actual edits, tests, PRs, issues
   │   Role registry             Multi-voter consensus    │
   │   Immutable audit trail     Closed-loop telemetry    │
   │                                                       │
-  │   39 MCP tools · multi-stage CompositeRouter         │
+  │   40 MCP tools · multi-stage CompositeRouter         │
   └────────────────────────┬────────────────────────────┘
                            │
                            ▼ delegates execution to
@@ -139,7 +139,7 @@ Three voter roles deliberate via whichever local CLIs you have (Claude, Codex, G
 nexus-agents setup   # Auto-configures MCP server in Claude Code, Cursor, etc.
 ```
 
-Restart your editor. The 39 MCP tools (`orchestrate`, `consensus_vote`, `research_synthesize`, `verify_audit_chain`, …) become available to whatever agent you're already using.
+Restart your editor. The 40 MCP tools (`orchestrate`, `consensus_vote`, `research_synthesize`, `verify_audit_chain`, …) become available to whatever agent you're already using.
 
 #### What `setup` configures
 
@@ -183,7 +183,7 @@ nexus-agents orchestrate "Explain the architecture of this codebase"
 | **Memory & Learning**          | 5 user-facing backends (session, belief, agentic, adaptive, typed). Cross-session persistence feeds routing decisions                                                                                                                                                                       |
 | **Research System**            | 9 discovery sources (arXiv, GitHub, Semantic Scholar, etc). Auto-catalog, quality scoring, synthesis into topic clusters                                                                                                                                                                    |
 | **Graph Workflows**            | DAG-based workflow execution with checkpoint/resume, state reduction, and event hooks                                                                                                                                                                                                       |
-| **39 MCP Tools**               | Agent management, workflow execution, research, memory, codebase intelligence, repo analysis, consensus, operations                                                                                                                                                                         |
+| **40 MCP Tools**               | Agent management, workflow execution, research, memory, codebase intelligence, repo analysis, consensus, operations                                                                                                                                                                         |
 
 ---
 
@@ -283,6 +283,7 @@ When running as an MCP server, the following tools are available:
 | `query_trace`                 | Query execution traces for observability                                                                                               |
 | `query_task_state`            | Query the structured task-state log for a task ID                                                                                      |
 | `get_job_result`              | Read result of an async-mode dispatch by jobId (#3042 / #2631)                                                                         |
+| `list_jobs`                   | List async-mode jobs across all tools — cross-session discovery (#3046 / #2631)                                                        |
 | `verify_audit_chain`          | Verify hash chain of a FileAuditStorage audit log directory                                                                            |
 | `repo_analyze`                | Analyze GitHub repository structure                                                                                                    |
 | `repo_security_plan`          | Generate security scanning pipeline for a repo                                                                                         |

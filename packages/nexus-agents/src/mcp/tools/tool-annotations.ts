@@ -459,6 +459,22 @@ export const TOOL_ANNOTATIONS: Readonly<Record<string, ToolSideEffectsEntry>> = 
       },
     ],
   },
+  list_jobs: {
+    annotations: {
+      title: 'List Jobs',
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    sideEffects: [
+      {
+        category: 'implicit',
+        description:
+          'Lists async-mode job summaries from the sidecar dir (#3046 / epic #2631 Stage 5)',
+      },
+    ],
+  },
   verify_audit_chain: {
     annotations: {
       title: 'Verify Audit Chain',

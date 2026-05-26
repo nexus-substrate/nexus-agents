@@ -299,6 +299,13 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
     idempotentHint: true,
     openWorldHint: false,
   },
+  /** Lists async-mode job summaries from the sidecar dir (#3046 / #2631 Stage 5). */
+  list_jobs: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
   /** Verifies hash chain of audit log files. */
   verify_audit_chain: {
     readOnlyHint: true,

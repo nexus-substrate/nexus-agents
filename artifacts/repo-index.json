@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-05-26T00:27:55.023Z",
+  "generated": "2026-05-26T10:09:17.596Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.84.0",
   "cli": {
@@ -347,6 +347,10 @@
       {
         "name": "list_experts",
         "file": "src/mcp/tools/list-experts.ts"
+      },
+      {
+        "name": "list_jobs",
+        "file": "src/mcp/tools/list-jobs.ts"
       },
       {
         "name": "list_workflows",
