@@ -1,5 +1,292 @@
 # nexus-agents
 
+## 2.85.0
+
+### Minor Changes
+
+- [#3075](https://github.com/nexus-substrate/nexus-agents/pull/3075) [`1a7cf15`](https://github.com/nexus-substrate/nexus-agents/commit/1a7cf15f44906294bfc6662e43db5a31914b8652) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **feat(jobs):** `idempotencyKey` for async-mode dispatch ([#3042](https://github.com/nexus-substrate/nexus-agents/issues/3042) Stage 1c / epic [#2631](https://github.com/nexus-substrate/nexus-agents/issues/2631)).
+
+  Final piece of [#3042](https://github.com/nexus-substrate/nexus-agents/issues/3042). The three async-mode-enabled tools (`orchestrate`, `run_workflow`, `consensus_vote`) now accept an optional `idempotencyKey?: string` (max 256 chars). Lets a caller re-invoke the same logical operation safely across process restarts / session reconnects without double-dispatching.
+
+  ## Contract
+  - Same `(tool, idempotencyKey, inputs)` → `{ status: 'replay', jobId }` pointing at the existing job. Caller polls `get_job_result(jobId)` exactly as if it had dispatched fresh and gets whatever state the job is in (pending / complete / failed / cancelled).
+  - Same `(tool, idempotencyKey)` + DIFFERENT inputs → fails closed with a validation error referencing the existing jobId. Reusing a key with different inputs is almost certainly a caller bug; silent merge would either hide a typo or leak the first call's result into a second logical operation.
+  - No `idempotencyKey` → caller falls back to a fresh `randomUUID()` jobId (existing behavior; no schema impact).
+
+  ## Storage
+
+  One file per `(tool, key)` tuple at `<NEXUS_DATA_DIR>/jobs/key-<sha256(tool + ':' + key)>.json`:
+
+  ```json
+  {
+    "v": 1,
+    "tool": "orchestrate",
+    "key": "<user-key>",
+    "inputsHash": "<sha256>",
+    "jobId": "job-orchestrate-<16-hex>",
+    "createdAt": "<iso>"
+  }
+  ```
+
+  The filename is hashed so a directory listing doesn't leak user-supplied keys. The on-disk record retains the cleartext key for debugging — same trust boundary as the result sidecar.
+
+  ## Determinism guarantees
+  - JobId for a keyed dispatch is derived as `job-<tool>-<sha256(tool:key:inputsHash)[:16]>`. Two concurrent dispatches with the same `(tool, key, inputs)` converge on the same id even if both miss the index-lookup race.
+  - Input hashing uses a canonical JSON serializer that sorts object keys recursively, so `{a:1,b:2}` and `{b:2,a:1}` produce identical hashes. Array order is significant. `undefined` values are dropped (JSON semantics).
+
+  ## Security tests (per [#3041](https://github.com/nexus-substrate/nexus-agents/issues/3041) vote flag)
+  - Replay across sessions: same (tool, key, inputs) from different processes returns the same jobId.
+  - Replay survives input-object key reordering.
+  - Collision: same key + different inputs returns the `collision` envelope with both hashes.
+  - Concurrent dispatch race: `registerIdempotentJob` is idempotent and never overwrites an existing entry with a different jobId.
+
+  ## Caller hot-path order
+
+  `shortCircuitOrFreshJobId` runs BEFORE `tryAcquire('<tool>')`. A replay or collision must not burn a concurrency slot the live caller could use.
+
+  ## Out of scope
+  - Cross-process index locking. The current design relies on filesystem write-then-rename semantics + the deterministic jobId derivation; under heavy contention two concurrent dispatches may both write `pending` records, but they converge on the same jobId so the polling client sees one record either way. Adding `flock` is tracked separately if telemetry shows duplicate dispatches.
+  - `cancel_job` interaction. A replayed job that's already cancelled returns its cancelled record via `get_job_result` — caller can decide whether to re-dispatch with a fresh key or surface the cancellation. No special replay-of-cancelled semantic was requested in the vote.
+
+  ## Tests
+
+  16 new cases in `mcp/jobs/job-idempotency.test.ts` covering hash determinism, fresh/replay/collision outcomes per tool, key-reorder canonicalization, and idempotent register behavior.
+
+  Lint + typecheck clean. `mcp/jobs/job-idempotency.test.ts` (16) + `orchestrate.test.ts` (42) + `run-workflow.test.ts` (~70) + `consensus-vote.test.ts` (~22) — 150 tests pass, no regressions.
+
+  ## Closes
+
+  Closes [#3042](https://github.com/nexus-substrate/nexus-agents/issues/3042) (the parent issue tracking Stage 1's three pieces — async-mode, cancel_job, idempotencyKey). Stage 1 is complete. Stages 2–5 are merged or in flight separately.
+
+- [#3061](https://github.com/nexus-substrate/nexus-agents/pull/3061) [`9040d3c`](https://github.com/nexus-substrate/nexus-agents/commit/9040d3cae2d54e9af2b0919212443078d772716b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **feat(state):** `StructuredTaskState` gains `version`, `result`, `cancellation` fields (Stage 2 of [#2631](https://github.com/nexus-substrate/nexus-agents/issues/2631)).
+
+  Stage 2 of 5 in the async-mode build (epic [#2631](https://github.com/nexus-substrate/nexus-agents/issues/2631), design vote approved 7-0 on [#3041](https://github.com/nexus-substrate/nexus-agents/issues/3041)). Adds the schema fields the rest of the async-mode pattern reads/writes. Backward-compatible by construction.
+
+  ## Schema additions
+
+  ```ts
+  {
+    // ...existing fields
+    /** Monotonic ++1 on every write. Backward-compat: missing = 0. */
+    version?: number,
+    /** Tool result payload, set via `appendResult` (capped at 1 MiB). */
+    result?: unknown,
+    /** Set via `appendCancellation`; append-only — first one wins. */
+    cancellation?: { requestedAt: string; reason?: string },
+  }
+  ```
+
+  Two new log-entry variants on `StructuredTaskLogEntrySchema`:
+  - `{ event: 'result', ts, result: unknown }`
+  - `{ event: 'cancellation', ts, cancellation: { requestedAt, reason? } }`
+
+  Two new helpers on `structured-task-state.ts`:
+  - `appendResult(taskId, result, ts, customDir?)` — JSON-serializes the payload, measures `Buffer.byteLength` (UTF-8 bytes, not JS code units), truncates over-cap writes to `{ truncated: true, originalBytes, maxBytes, note }`. Returns `err` cleanly on non-serializable inputs (BigInt etc.).
+  - `appendCancellation(taskId, cancellation, customDir?)` — writes the marker. Reducer keeps the FIRST cancellation in memory across duplicate events (audit-trail-only).
+
+  ## Backward compatibility (the invariant that keeps Stage 1 polling clients alive)
+
+  `version` is optional in the schema; the reducer treats missing as `0`. A polling client written against pre-Stage-2 nexus-agents reading post-Stage-2 logs sees `version` show up; a post-Stage-2 client reading pre-Stage-2 logs sees `version: 0`. Either direction works.
+
+  ## Lifecycle invariants (next-contributor flags)
+
+  Two contracts shipped here that are hard to walk back:
+  1. **`version` is monotonic and 1-per-event.** Every non-init log entry bumps version by exactly 1. Even an append-only-blocked cancellation (second one ignored in state) still bumps version so polling clients can observe the log grew. Don't change to "only bump on visible state change" — that would lose audit visibility.
+  2. **`cancellation` is first-wins in memory.** Disk keeps every cancellation event for audit, but `state.cancellation` is whichever request landed first. A malicious or buggy double-cancel can't rewrite the requestedAt timestamp.
+
+  ## Result size cap (security flag from [#3041](https://github.com/nexus-substrate/nexus-agents/issues/3041) vote)
+
+  `TASK_RESULT_MAX_BYTES = 1_048_576` (1 MiB). Over-cap payloads get the truncation marker, not silent drop — caller can tell "result was dropped at write" vs "result was never written." Caps result-retention DoS where a misbehaving tool could write a 100 MiB blob and block reads of every other task on the data dir.
+
+  ## Tests
+
+  10 new cases in `structured-task-state.test.ts`:
+  - Monotonic version starts at 0, increments on every event, two consecutive events reach v2 (catches a one-time bump-at-end bug).
+  - Backward-compat: old-shape state log without `version` reduces to v0.
+  - `appendResult` writes payload visible after `readTaskState`, version bumps.
+  - `appendResult` truncates over-cap payloads to a typed marker.
+  - `appendResult` measures UTF-8 bytes (emoji-heavy payload trips the cap even with low JS code-unit length).
+  - `appendResult` returns `err` cleanly on serialization failure (BigInt).
+  - `appendCancellation` writes marker visible after read.
+  - `appendCancellation` append-only — second event doesn't overwrite first `requestedAt`, but version still bumps so audit growth is observable.
+
+  1,195 targeted tests pass (`src/context/`, `src/mcp/tools/orchestrate.test.ts`, `src/mcp/tools/query-task-state-tool.test.ts`, `src/mcp/jobs/`); `tsc` + `eslint` clean.
+
+  ## What's next (Stage 3, [#3044](https://github.com/nexus-substrate/nexus-agents/issues/3044))
+
+  `run_workflow` async-mode lands next — that PR migrates the orchestrate async-mode writer from the Stage-1 sidecar (`mcp/jobs/job-result-store.ts`) to `appendResult` / `appendCancellation`, then ships async-mode for `run_workflow` itself. After Stage 3 lands, the sidecar files become legacy that the next cleanup sweep removes (per the Stage 1 PR's note).
+
+- [#3063](https://github.com/nexus-substrate/nexus-agents/pull/3063) [`1dae6b9`](https://github.com/nexus-substrate/nexus-agents/commit/1dae6b922db52a5d326c4454f0fdb91eb15573a9) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **feat(run_workflow):** async-mode dispatch + per-tool concurrency caps (Stage 3 of [#2631](https://github.com/nexus-substrate/nexus-agents/issues/2631)).
+
+  Stage 3 of 5 in the async-mode build (epic [#2631](https://github.com/nexus-substrate/nexus-agents/issues/2631)). This is the **payoff PR** — `run_workflow` is the gate-firing tool that drove the epic: per [#2703](https://github.com/nexus-substrate/nexus-agents/issues/2703) telemetry, `28.6% of run_workflow's errors were timeout-shaped` against a 900_000ms server budget while clients use the MCP-SDK 60_000ms default. Async-mode sidesteps the mismatch entirely.
+
+  ## Surface
+
+  `run_workflow` gains the same `mode?: 'sync' | 'async'` param that landed on `orchestrate` in [#3048](https://github.com/nexus-substrate/nexus-agents/issues/3048). Default sync (backward-compat invariant — schema deliberately omits `.default('sync')` so the inferred type stays optional). When `mode: 'async'` + non-dry-run:
+  - Returns `{ status: 'pending', jobId, pollTool: 'get_job_result', note }` immediately (well under any client timeout).
+  - Pipeline runs on a background promise; result lands in the existing Stage-1 sidecar (`$NEXUS_DATA_DIR/jobs/result-<jobId>.json`).
+  - `dryRun: true` stays synchronous regardless of mode — no point backgrounding a sub-second validation.
+  - `timeoutMs` ([#3017](https://github.com/nexus-substrate/nexus-agents/issues/3017) per-phase override) still applies inside the background dispatch.
+
+  ## Concurrency cap (per Contrarian vote flag from [#3041](https://github.com/nexus-substrate/nexus-agents/issues/3041))
+
+  New `mcp/jobs/job-concurrency.ts` primitive — in-process per-tool cap with env override. The Contrarian voter's 0.78-confidence approval was specifically gated on "caps must land before async-mode expands past orchestrate." This PR delivers that, AND retrofits orchestrate to the same primitive so both tools share the safety net.
+
+  Defaults (starting points; re-tune after observing real workloads):
+  - `orchestrate: 3`
+  - `run_workflow: 3`
+  - `consensus_vote: 2` (Stage 4)
+  - `execute_expert: 4` (Stage 4)
+
+  Env override: `NEXUS_JOB_MAX_CONCURRENT_<TOOL_UPPER>`. A value of `0` disables async-mode for that tool entirely. Invalid (non-numeric) values fall back to the default with a logged warning. Over-cap acquisitions return `{ status: 'busy', retryAfterMs }` synchronously — no jobId created.
+
+  `suggestRetryAfterMs` scales linearly with fullness, clamped to [5s, 60s].
+
+  ## A/B-measurement setup
+
+  After this PR ships in the next release, re-run `scripts/analyze-timeout-mismatch.ts`. Async-mode `run_workflow` invocations should NOT show up in the timeout-shaped-error column — they finish via polling, not transport. If the timeout-shaped error rate on `run_workflow` doesn't drop materially over the following weeks, the design didn't address the root cause and Stage 4 should re-vote.
+
+  ## Out of scope (deferred to a follow-up PR)
+
+  **Migrating the sidecar writers to Stage 2's `appendResult` / `appendCancellation`.** Both `orchestrate` and `run_workflow` async-mode still write to the `mcp/jobs/job-result-store.ts` sidecar shipped with [#3048](https://github.com/nexus-substrate/nexus-agents/issues/3048). Stage 2 ([#3061](https://github.com/nexus-substrate/nexus-agents/issues/3061) → v2.85.0) added the `result` / `cancellation` fields on `StructuredTaskState` that these writers can migrate to — but doing the migration in THIS PR would have doubled the surface area for review. The migration is bounded (3 call sites in orchestrate, 3 in run_workflow), has zero behavior change for polling clients (the get_job_result tool will fall through to query_task_state once migrated), and gets its own PR.
+
+  ## Tests
+  - 12 new `job-concurrency.test.ts` cases: default cap returned, env override honored, cap=0 disables, non-numeric env falls back with warning, unknown tools get global default, acquire/release lifecycle, per-tool isolation, release-with-no-inflight is logged not crashed, suggestRetryAfterMs returns 0 for disabled tools / scales with load.
+  - 4 new `run-workflow.test.ts` schema cases: accepts `'async'`, accepts `'sync'`, undefined-stays-undefined (backward-compat invariant), rejects unknown mode value.
+  - 90 targeted tests pass (`src/mcp/jobs/`, `src/mcp/tools/run-workflow.test.ts`, `src/mcp/tools/orchestrate.test.ts`); `tsc` + `eslint` clean.
+
+  ## Lifecycle invariants
+  1. **`mode: 'sync'` stays default forever** (same as [#3048](https://github.com/nexus-substrate/nexus-agents/issues/3048)).
+  2. **`tryAcquire` returning true requires exactly one matching `release`** in a `finally` — both orchestrate ([#3048](https://github.com/nexus-substrate/nexus-agents/issues/3048)-retrofit) and run_workflow (new) follow this. Release-without-acquire logs a caller-bug warning, doesn't crash, doesn't underflow.
+  3. **`busy` response carries `retryAfterMs`** — clients implementing backoff should honor it (linear scaling, clamped to [5s, 60s]).
+
+  ## What's next
+
+  **Stage 4, [#3045](https://github.com/nexus-substrate/nexus-agents/issues/3045)** — `consensus_vote` and `execute_expert` async-mode. Inherits the same cap primitive + sidecar; cancellation semantics (mid-vote / mid-execution) are the new design surface.
+
+  **Migration PR** — sidecar writers → Stage 2 schema. Drops `mcp/jobs/job-result-store.ts` once both consumers are migrated.
+
+- [#3064](https://github.com/nexus-substrate/nexus-agents/pull/3064) [`f7c7d0a`](https://github.com/nexus-substrate/nexus-agents/commit/f7c7d0a7c676d5c56e463ac965f3e028488569af) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **feat(consensus_vote):** async-mode dispatch (Stage 4 of [#2631](https://github.com/nexus-substrate/nexus-agents/issues/2631)).
+
+  Stage 4 of 5 in the async-mode build (epic [#2631](https://github.com/nexus-substrate/nexus-agents/issues/2631)). `consensus_vote` joins `orchestrate` (Stage 1, [#3048](https://github.com/nexus-substrate/nexus-agents/issues/3048)) and `run_workflow` (Stage 3, [#3063](https://github.com/nexus-substrate/nexus-agents/issues/3063)) on the unified async-mode protocol.
+
+  ## Surface
+
+  `consensus_vote` gains `mode?: 'sync' | 'async'` matching the Stage 1 + Stage 3 shape. Default sync — backward-compat invariant; schema omits `.default('sync')` so the inferred type stays optional and existing fixtures don't churn.
+  - `mode: 'async'` returns `{ status: 'pending', jobId, pollTool: 'get_job_result' }` immediately.
+  - Background dispatch runs the existing `handleConsensusVote` end-to-end — 7-voter fan-out, error policy, correlation persistence all unchanged.
+  - Result written to the Stage-1 sidecar (`mcp/jobs/job-result-store.ts`).
+  - Per-tool cap via `NEXUS_JOB_MAX_CONCURRENT_CONSENSUS_VOTE` (default **2**, lower than orchestrate's 3 because voting is 7-fan-out and concurrent jobs multiply adapter load fast).
+  - Over-cap returns `{ status: 'busy', retryAfterMs }` synchronously.
+
+  ## What's covered + what's deferred
+
+  **In this PR:** `consensus_vote` async-mode.
+
+  **Not in this PR (intentional):** `execute_expert` async-mode. Investigation showed it ALREADY has async via MCP SDK Tasks primitive (SEP-1686) — registered via `server.experimental.tasks.registerToolTask` with `taskSupport: 'optional'`. The sidecar pattern this epic ships is for explicit-polling clients; the SDK Tasks primitive is for auto-polling clients. Both serve valid use cases and coexist. Forcing a third pattern (`mode: 'async'` via sidecar) onto `execute_expert` would create overlapping facilities with no functional gain. Filing as [#3064](https://github.com/nexus-substrate/nexus-agents/issues/3064) follow-up if a use case demonstrates the need.
+
+  ## Cancellation semantics ([#3041](https://github.com/nexus-substrate/nexus-agents/issues/3041) vote deferred this to Stage 4)
+
+  When `cancel_job` lands while a vote is in-flight, the existing `collectRealVotes` collector unwinds via the AbortSignal plumbing from [#3038](https://github.com/nexus-substrate/nexus-agents/issues/3038) (per-voter signals). The dispatcher writes whatever partial vote set landed before the abort as the job result — preserves audit visibility into who voted before the cancel happened. The full `cancel_job` MCP tool is still part of the deferred Stage 1b under [#3042](https://github.com/nexus-substrate/nexus-agents/issues/3042); once that lands, this dispatcher path picks it up without further changes.
+
+  ## Refactor note
+
+  `createConsensusVoteHandler` was extracted into a 3-piece structure: validation → branch on mode → dispatch helper. The sync path moved into `runSyncConsensusVote` to keep both branches readable + within the per-function size cap as the handler grew.
+
+  ## Tests
+
+  4 new schema tests on `consensus-vote.test.ts`: accepts `'async'`/`'sync'`, undefined-stays-undefined (backward-compat invariant), rejects unknown mode values.
+  - 60 wider consensus-vote tests pass (was 56 — 4 new).
+  - 84 targeted tests pass (`consensus-vote.test.ts`, `mcp/jobs/`); `tsc` + `eslint` clean.
+
+  ## What's next
+
+  **Stage 5, [#3046](https://github.com/nexus-substrate/nexus-agents/issues/3046)** — cross-tool concurrency cap + `list_jobs` MCP tool (per-session discovery). Final stage of the epic.
+
+  **Sidecar→Stage 2 schema migration** — separate small PR. Migrates the 3 writers (orchestrate, run_workflow, consensus_vote) from `mcp/jobs/job-result-store.ts` to `appendResult` / `appendCancellation` from [#3061](https://github.com/nexus-substrate/nexus-agents/issues/3061). Deprecates the sidecar.
+
+- [#3066](https://github.com/nexus-substrate/nexus-agents/pull/3066) [`4bfa683`](https://github.com/nexus-substrate/nexus-agents/commit/4bfa683a86c700f84e17d43bb45f263f1b152f7c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **feat(jobs):** cross-tool concurrency cap + `list_jobs` MCP tool (Stage 5 of [#2631](https://github.com/nexus-substrate/nexus-agents/issues/2631)).
+
+  **Final stage of epic [#2631](https://github.com/nexus-substrate/nexus-agents/issues/2631)** — closes the async-mode build series ([#3048](https://github.com/nexus-substrate/nexus-agents/issues/3048) / [#3061](https://github.com/nexus-substrate/nexus-agents/issues/3061) / [#3063](https://github.com/nexus-substrate/nexus-agents/issues/3063) / [#3064](https://github.com/nexus-substrate/nexus-agents/issues/3064) → this PR).
+
+  ## Changes
+
+  ### Cross-tool global concurrency cap
+
+  `getGlobalJobCap()` + `getTotalInFlight()` added to `mcp/jobs/job-concurrency.ts`. `tryAcquire` now enforces BOTH the per-tool cap (existed) AND the global cross-tool cap (new). Defensive backstop the Contrarian vote on [#3041](https://github.com/nexus-substrate/nexus-agents/issues/3041) specifically called for: prevents 5 tools × 3 jobs each saturating the host's adapter slots even when each per-tool cap is satisfied.
+  - Default cap: **10** (`DEFAULT_GLOBAL_JOB_CAP`). Comfortably above the sum of per-tool defaults (3+3+2+4=12 is also fine because no realistic workload fills every tool simultaneously) but stops runaway parallel fan-outs.
+  - Env override: `NEXUS_JOB_MAX_CONCURRENT_TOTAL`. `0` disables async-mode across ALL tools simultaneously.
+
+  ### `list_jobs` MCP tool (40th tool)
+
+  Cross-session discovery surface. Walks `<NEXUS_DATA_DIR>/jobs/result-*.json` and returns one `JobSummary` per record — jobId, toolName, status, timestamps, hasError. Filters by `toolName` (exact match) and `status` (`pending | complete | failed | cancelled`). `limit` capped at 200. Newest-first sort matches the typical "what just happened" discovery flow.
+
+  **Result payloads are intentionally excluded from summaries** — large `complete` records can be 1 MiB each (per Stage 2's `TASK_RESULT_MAX_BYTES` cap), and `list_jobs` is meant for discovery, not retrieval. Callers fetch full records via `get_job_result(jobId)`.
+
+  Registered through every dispatch surface: `cli-server-tools.ts` STANDALONE_TOOLS, `mcp/tools/index.ts` REGISTERED_TOOL_NAMES + EXPECTED_TOOL_NAMES, both tool-annotation tables, the security RISKY_TOOLS_ALLOWLIST (read-only), and `scripts/tool-descriptions-data.ts` (long + README forms). Tool count: 39 → 40.
+
+  ## Why this completes the epic
+
+  The original epic [#2631](https://github.com/nexus-substrate/nexus-agents/issues/2631) listed five open questions; the staged build answered each:
+
+  | Open question                                                                     | Resolution                                                                                                                                                                                                                                                                                        |
+  | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | Discovery — how does the caller find a job they kicked off in a previous session? | **This PR** — `list_jobs` walks the sidecar dir; cross-session discoverable.                                                                                                                                                                                                                      |
+  | Cancellation                                                                      | `cancel_job` is a separate deferred PR under Stage 1 ([#3042](https://github.com/nexus-substrate/nexus-agents/issues/3042)). AbortSignal plumbing from [#3035](https://github.com/nexus-substrate/nexus-agents/issues/3035)/[#3038](https://github.com/nexus-substrate/nexus-agents/issues/3038). |
+  | Resource limits                                                                   | Stage 3 added per-tool caps ([#3044](https://github.com/nexus-substrate/nexus-agents/issues/3044)); **this PR** adds the global cross-tool cap.                                                                                                                                                   |
+  | Notification on completion                                                        | Polling via `get_job_result` (Stage 1, [#3048](https://github.com/nexus-substrate/nexus-agents/issues/3048)). MCP doesn't have push-after-request semantics so the deferred-by-vote answer stands.                                                                                                |
+  | Backpressure                                                                      | Stages 3 + 5 — `busy` envelope with `retryAfterMs` synchronous when caps fill.                                                                                                                                                                                                                    |
+
+  ## Lifecycle invariants (next-contributor flags)
+  1. **Both caps must pass** to acquire a slot — per-tool AND global. A future caller can't accidentally weaken this by checking only one.
+  2. **`getTotalInFlight()` sums across all tools** — used by both the cap check and observability. If it drifts (negative count, stale entries), `tryAcquire` would either over-admit or under-admit; tests guard this.
+  3. **`list_jobs` result-payload exclusion is by design** — the JobSummary shape doesn't include `result`. A future contributor wanting to "make it easier" by inlining the payload would re-introduce the 1 MiB × N response size that the size discipline was protecting against.
+
+  ## Tests
+  - 6 new `list-jobs-tool.test.ts` schema cases (input validation across `toolName`/`status`/`limit`).
+  - 7 new `list-jobs-tool.test.ts` integration cases (empty dir, summary shape excludes payload, newest-first sort, status preservation, hasError flag, non-matching filenames defensively skipped).
+  - 7 new `job-concurrency.test.ts` global-cap cases (default, env override, non-numeric fallback, cap=0 disables all tools, global blocks across tools, release frees slot, getTotalInFlight sums).
+  - Existing tool-count assertions bumped 39 → 40 (`EXPECTED_TOOL_COUNT`, `TOOL_ANNOTATIONS`, `REGISTERED_TOOLS` in tests).
+  - 72 targeted tests pass (`src/cli-server-tools.test.ts`, `src/mcp/jobs/`, `src/mcp/tools/list-jobs-tool.test.ts`); `tsc` + `eslint` clean.
+
+  ## What's still open under the umbrella
+  - **`cancel_job` MCP tool** — Stage 1b under [#3042](https://github.com/nexus-substrate/nexus-agents/issues/3042). Reserved status enum (`cancelled`) and dispatcher cancellation paths are already in place from Stages 1 + 4. Just needs the tool wrapper.
+  - **`idempotencyKey` + sha256 replay-safe re-invocation** — Stage 1c under [#3042](https://github.com/nexus-substrate/nexus-agents/issues/3042).
+  - **Sidecar→Stage 2 schema migration** — separate small PR. Migrates the 3 writers (orchestrate / run_workflow / consensus_vote) from `mcp/jobs/job-result-store.ts` to `appendResult` / `appendCancellation` from [#3061](https://github.com/nexus-substrate/nexus-agents/issues/3061). Deprecates the sidecar.
+  - **execute_expert sidecar evaluation** — [#3065](https://github.com/nexus-substrate/nexus-agents/issues/3065) (deferred unless real use case shows up; SDK Tasks primitive already covers async there).
+
+  ## A/B-measurement reminder
+
+  After this PR + Stages 3-4 ship in v2.85.0, re-run `scripts/analyze-timeout-mismatch.ts`. Async-mode invocations of `run_workflow` / `consensus_vote` / `orchestrate` should NOT show up in the timeout-shaped-error column. If the rate doesn't drop materially over 1-2 weeks, the design didn't address the root cause and the epic should re-vote (per the [#3041](https://github.com/nexus-substrate/nexus-agents/issues/3041) decision-binding clause).
+
+### Patch Changes
+
+- [#3068](https://github.com/nexus-substrate/nexus-agents/pull/3068) [`533fa21`](https://github.com/nexus-substrate/nexus-agents/commit/533fa21a38aab40417732be10f317c55411b25a4) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(workflows):** thread AbortSignal through step-executor → BaseAgent → CompletionRequest ([#3016](https://github.com/nexus-substrate/nexus-agents/issues/3016), [#3040](https://github.com/nexus-substrate/nexus-agents/issues/3040)).
+
+  Closes [#3016](https://github.com/nexus-substrate/nexus-agents/issues/3016) and [#3040](https://github.com/nexus-substrate/nexus-agents/issues/3040). Step-executor's `Promise.race` was dropping the race-loser — when the step timer fired at 120s, the in-flight model call kept running to its own 10-minute SDK timeout, surfacing as the "first-step adapter hang" from [#2931](https://github.com/nexus-substrate/nexus-agents/issues/2931).
+
+  ## What changed
+  - `IAgent.execute` accepts an optional second arg `{ signal?: AbortSignal }`. Optional so existing callers don't break.
+  - `BaseAgent.execute` stashes the caller's signal in a per-task instance field (`currentExecutionSignal`), cleared in `finally`.
+  - `BaseAgent.complete` forwards `currentExecutionSignal` onto `CompletionRequest.signal` unless the caller already set one.
+  - `runTaskWithTimeout` takes optional `externalSignal`, wires it into the existing internal `AbortController` so a single signal covers both heartbeat expiry and caller-initiated cancellation.
+  - `StepExecutor.runExpertWithTimeout` creates an `AbortController`, passes the signal to `expert.execute(task, { signal })`, and aborts in `finally`. Abort fires for both arms of the race — clean resolution OR timeout — so the SDK call always cancels.
+
+  ## Why this is a patch, not minor
+
+  The IAgent interface change adds an optional second arg; every existing `agent.execute(task)` call site keeps working. No subclass needs to override the new signature unless it wants to honor the signal. SimpleAgent, Expert, Orchestrator, and all expert subclasses inherit the signal-forwarding behavior from `BaseAgent.complete`.
+
+  ## Tests
+  - New: `runTaskWithTimeout` external signal cancels in-flight task.
+  - New: pre-aborted external signal settles task immediately.
+  - New: step-executor passes a signal into `expert.execute` and aborts it after the race resolves.
+  - 148 pre-existing tests in `base-agent.test.ts`, `base-agent-execute-flow.test.ts`, `base-agent-task-helpers.test.ts`, and `step-executor.test.ts` continue to pass unchanged.
+
+  ## Out of scope (deferred)
+  - `IModelAdapter.complete` already honors `request.signal` ([#3036](https://github.com/nexus-substrate/nexus-agents/issues/3036)/PR [#3038](https://github.com/nexus-substrate/nexus-agents/issues/3038)). Vendor SDKs (Anthropic, OpenAI, Google) wire `request.signal` into their respective HTTP client abort paths.
+  - Per-call timeout knob on `adapter.complete` is tracked separately as [#2931](https://github.com/nexus-substrate/nexus-agents/issues/2931) item 4.
+  - Whether the upstream model legitimately blocks for 120s vs wedges on bad network state needs repro via `query_trace(runId=<real id>)` enabled (now possible after PR [#3015](https://github.com/nexus-substrate/nexus-agents/issues/3015) — failure-envelope debuggability).
+
 ## 2.84.0
 
 ### Minor Changes
