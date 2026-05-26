@@ -221,9 +221,13 @@ export interface IAgent {
   /**
    * Execute a task.
    * @param task - Task to execute
+   * @param options - Optional execution options (#3016/#3040).
+   *   `signal` cancels the in-flight model call when the caller's deadline
+   *   wins a race; without it, the SDK keeps running to its own 10-minute
+   *   timeout after the caller has already discarded the result.
    * @returns Result with TaskResult or AgentError
    */
-  execute(task: Task): Promise<Result<TaskResult, AgentError>>;
+  execute(task: Task, options?: { signal?: AbortSignal }): Promise<Result<TaskResult, AgentError>>;
 
   /**
    * Handle an inter-agent message.

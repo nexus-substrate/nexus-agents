@@ -288,9 +288,13 @@ export class StepExecutor {
     timeoutMs: number,
     startTime: number
   ): Promise<Result<StepResult, WorkflowError>> {
+    // Pair Promise.race's external timeout with an AbortSignal so the
+    // race-LOSER (in-flight model call) cancels when the timer wins —
+    // otherwise the SDK keeps running to its own 10-minute timeout (#3016).
+    const controller = new AbortController();
     try {
       const taskResult = await Promise.race([
-        expert.execute(task),
+        expert.execute(task, { signal: controller.signal }),
         createTimeout(timeoutMs, step.id),
       ]);
 
@@ -311,6 +315,10 @@ export class StepExecutor {
       });
     } catch (error) {
       return this.handleExecutionError(error, step, timeoutMs);
+    } finally {
+      // Always abort: settles any in-flight model call regardless of which
+      // arm of the race resolved. Safe to call after a clean resolution.
+      controller.abort();
     }
   }
 
