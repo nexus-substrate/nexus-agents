@@ -368,6 +368,12 @@ export {
   type GetJobResultDeps,
   type GetJobResultInput,
   type GetJobResultResponse,
+  // List jobs tool (#3046 / epic #2631 — async-mode stage 5)
+  registerListJobsTool,
+  ListJobsInputSchema,
+  type ListJobsDeps,
+  type ListJobsInput,
+  type ListJobsResponse,
   // Verify audit chain tool (#2281 follow-up)
   registerVerifyAuditChainTool,
   VerifyAuditChainInputSchema,

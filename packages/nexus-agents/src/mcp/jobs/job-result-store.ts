@@ -27,7 +27,7 @@
  * @module mcp/jobs/job-result-store
  */
 
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 
 import { z } from 'zod';
 
@@ -163,4 +163,65 @@ export function readJobResult(jobId: string): JobResult | null {
     });
     return null;
   }
+}
+
+/**
+ * List job records under `<NEXUS_DATA_DIR>/jobs/` (#3046 Stage 5).
+ *
+ * Returns ALL records sorted by `createdAt` descending (newest first).
+ * Caller filters by `toolName` / `status` via the `list_jobs` MCP tool —
+ * we don't push the filter logic in here because tools change shape but
+ * the store doesn't.
+ *
+ * **The result payloads are intentionally EXCLUDED** from each summary
+ * — large complete-status records can be 1 MiB each (per Stage 2's
+ * TASK_RESULT_MAX_BYTES cap), and `list_jobs` is meant for discovery,
+ * not retrieval. Callers re-fetch full records via `get_job_result(jobId)`.
+ *
+ * Schema-mismatch + unreadable files are silently dropped (logged as
+ * warnings), same policy as `readJobResult`.
+ */
+export interface JobSummary {
+  readonly jobId: string;
+  readonly toolName: string;
+  readonly status: JobResult['status'];
+  readonly createdAt: string;
+  readonly completedAt?: string;
+  /** True iff the record carries an error message (status === 'failed'). */
+  readonly hasError: boolean;
+}
+
+export function listJobs(): JobSummary[] {
+  const dir = nexusDataPath('jobs');
+  if (!existsSync(dir)) return [];
+  let entries: string[];
+  try {
+    entries = readdirSync(dir);
+  } catch (err) {
+    logger.warn('jobs directory unreadable', {
+      dir,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return [];
+  }
+  const summaries: JobSummary[] = [];
+  for (const entry of entries) {
+    const match = /^result-(.+)\.json$/.exec(entry);
+    if (match === null) continue;
+    const jobId = match[1];
+    if (jobId === undefined) continue;
+    const record = readJobResult(jobId);
+    if (record === null) continue;
+    const summary: JobSummary = {
+      jobId: record.jobId,
+      toolName: record.toolName,
+      status: record.status,
+      createdAt: record.createdAt,
+      hasError: record.error !== undefined,
+      ...(record.completedAt !== undefined ? { completedAt: record.completedAt } : {}),
+    };
+    summaries.push(summary);
+  }
+  // Newest first — matches typical "what just happened" discovery flow.
+  return summaries.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }

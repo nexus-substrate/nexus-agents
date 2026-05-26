@@ -290,17 +290,17 @@ Voting thresholds, refactor gates, fitness audit, documentation governance in `.
 
 ## MCP Tools Reference
 
-**39 MCP tools registered.** Full schemas, parameter docs, and one-line summaries in [docs/ENTRYPOINTS.md](./docs/ENTRYPOINTS.md) and the README MCP tools table. Names below; look up the schema before calling.
+**40 MCP tools registered.** Full schemas, parameter docs, and one-line summaries in [docs/ENTRYPOINTS.md](./docs/ENTRYPOINTS.md) and the README MCP tools table. Names below; look up the schema before calling.
 
-`orchestrate`, `create_expert`, `execute_expert`, `run_workflow`, `delegate_to_model`, `list_experts`, `list_workflows`, `consensus_vote`, `research_query`, `research_add`, `research_add_source`, `research_discover`, `research_analyze`, `research_catalog_review`, `research_synthesize`, `survey_oss_landscape`, `vendor_publishing_audit`, `compare_data_feeds`, `memory_query`, `memory_stats`, `memory_write`, `weather_report`, `issue_triage`, `run_graph_workflow`, `execute_spec`, `registry_import`, `query_trace`, `query_task_state`, `get_job_result`, `verify_audit_chain`, `repo_analyze`, `repo_security_plan`, `extract_symbols`, `search_codebase`, `run_dev_pipeline`, `run_pipeline`, `pr_review`, `supply_chain_tradeoff_panel`, `improvement_review`
+`orchestrate`, `create_expert`, `execute_expert`, `run_workflow`, `delegate_to_model`, `list_experts`, `list_workflows`, `consensus_vote`, `research_query`, `research_add`, `research_add_source`, `research_discover`, `research_analyze`, `research_catalog_review`, `research_synthesize`, `survey_oss_landscape`, `vendor_publishing_audit`, `compare_data_feeds`, `memory_query`, `memory_stats`, `memory_write`, `weather_report`, `issue_triage`, `run_graph_workflow`, `execute_spec`, `registry_import`, `query_trace`, `query_task_state`, `get_job_result`, `list_jobs`, `verify_audit_chain`, `repo_analyze`, `repo_security_plan`, `extract_symbols`, `search_codebase`, `run_dev_pipeline`, `run_pipeline`, `pr_review`, `supply_chain_tradeoff_panel`, `improvement_review`
 
-_Auto-generated from source. 39 tools registered._
+_Auto-generated from source. 40 tools registered._
 
 <!-- GOVERNANCE:TOOL_INDEX:END -->
 
 <!-- GOVERNANCE:VERSION:START -->
 
-_Governance Version: 2026-05-25_
+_Governance Version: 2026-05-26_
 
 <!-- GOVERNANCE:VERSION:END -->
 

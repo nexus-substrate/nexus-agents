@@ -5,9 +5,12 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 import {
+  DEFAULT_GLOBAL_JOB_CAP,
   DEFAULT_JOB_CAPS,
+  getGlobalJobCap,
   getInFlight,
   getJobCap,
+  getTotalInFlight,
   release,
   suggestRetryAfterMs,
   tryAcquire,
@@ -24,6 +27,7 @@ afterEach(() => {
   delete process.env['NEXUS_JOB_MAX_CONCURRENT_ORCHESTRATE'];
   delete process.env['NEXUS_JOB_MAX_CONCURRENT_RUN_WORKFLOW'];
   delete process.env['NEXUS_JOB_MAX_CONCURRENT_UNKNOWN_TOOL'];
+  delete process.env['NEXUS_JOB_MAX_CONCURRENT_TOTAL'];
 });
 
 describe('getJobCap', () => {
@@ -88,6 +92,60 @@ describe('tryAcquire + release', () => {
       release('orchestrate');
     }).not.toThrow();
     expect(getInFlight('orchestrate')).toBe(0);
+  });
+});
+
+// #3046 Stage 5 — cross-tool global cap.
+describe('global cap (#3046)', () => {
+  it('returns default when no env override is set', () => {
+    expect(getGlobalJobCap()).toBe(DEFAULT_GLOBAL_JOB_CAP);
+  });
+
+  it('honors NEXUS_JOB_MAX_CONCURRENT_TOTAL env override', () => {
+    process.env['NEXUS_JOB_MAX_CONCURRENT_TOTAL'] = '5';
+    expect(getGlobalJobCap()).toBe(5);
+  });
+
+  it('falls back to default when env var is non-numeric', () => {
+    process.env['NEXUS_JOB_MAX_CONCURRENT_TOTAL'] = 'not-a-number';
+    expect(getGlobalJobCap()).toBe(DEFAULT_GLOBAL_JOB_CAP);
+  });
+
+  it('cap=0 globally disables async-mode across ALL tools', () => {
+    process.env['NEXUS_JOB_MAX_CONCURRENT_TOTAL'] = '0';
+    expect(tryAcquire('orchestrate')).toBe(false);
+    expect(tryAcquire('run_workflow')).toBe(false);
+    expect(tryAcquire('consensus_vote')).toBe(false);
+  });
+
+  it('global cap blocks new acquires even when per-tool slots are available', () => {
+    // Set global cap of 2 — well below any per-tool default. Fill it
+    // with two acquires on orchestrate, then try a third on a different
+    // tool. orchestrate per-tool cap (3) still has room; run_workflow
+    // has its own per-tool cap entirely. But global is full.
+    process.env['NEXUS_JOB_MAX_CONCURRENT_TOTAL'] = '2';
+    expect(tryAcquire('orchestrate')).toBe(true);
+    expect(tryAcquire('orchestrate')).toBe(true);
+    expect(getTotalInFlight()).toBe(2);
+    // Both per-tool caps have room (3 and 3), but global is at 2/2.
+    expect(tryAcquire('run_workflow')).toBe(false);
+    expect(tryAcquire('orchestrate')).toBe(false);
+  });
+
+  it('release() frees a global slot, opening room for another tool', () => {
+    process.env['NEXUS_JOB_MAX_CONCURRENT_TOTAL'] = '2';
+    tryAcquire('orchestrate');
+    tryAcquire('orchestrate');
+    expect(tryAcquire('run_workflow')).toBe(false);
+    release('orchestrate');
+    expect(tryAcquire('run_workflow')).toBe(true);
+  });
+
+  it('getTotalInFlight sums across tools', () => {
+    tryAcquire('orchestrate');
+    tryAcquire('run_workflow');
+    tryAcquire('consensus_vote');
+    expect(getTotalInFlight()).toBe(3);
   });
 });
 

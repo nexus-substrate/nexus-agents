@@ -80,6 +80,8 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     'Read the structured task-state log for a task ID and return the current snapshot. Requires NEXUS_TASK_STATE_ENABLED=1 during the originating orchestrate call.',
   get_job_result:
     'Read the result of an async-mode tool invocation by jobId (#3042 / epic #2631). Returns the structured record (status, result | error, timestamps). Poll until status !== "pending". Stage 1 of the async-mode pattern — Stage 2 will fold this into query_task_state once StructuredTaskState gains the result field.',
+  list_jobs:
+    'List async-mode jobs across all tools (#3046 / epic #2631 Stage 5). Cross-session discovery — returns summaries (jobId/toolName/status/timestamps) sorted newest-first. Optional filters: toolName (exact match), status (pending|complete|failed|cancelled), limit (1-200). Result payloads excluded — fetch full records via get_job_result(jobId).',
   run_dev_pipeline:
     'Run the multi-agent development pipeline. Accepts direct task instructions, a plan file, or a spec file. Supports dry-run (plan+vote only).',
   run_pipeline:
@@ -129,6 +131,7 @@ export const README_TOOL_DESCRIPTIONS: Record<string, string> = {
   query_trace: 'Query execution traces for observability',
   query_task_state: 'Query the structured task-state log for a task ID',
   get_job_result: 'Read result of an async-mode dispatch by jobId (#3042 / #2631)',
+  list_jobs: 'List async-mode jobs across all tools — cross-session discovery (#3046 / #2631)',
   repo_analyze: 'Analyze GitHub repository structure',
   repo_security_plan: 'Generate security scanning pipeline for a repo',
   research_add_source:

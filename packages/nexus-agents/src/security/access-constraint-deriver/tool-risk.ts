@@ -49,6 +49,8 @@ export const READ_ONLY_TOOLS: ReadonlySet<string> = new Set([
   'query_task_state',
   // Async-mode result polling (#3042 / epic #2631)
   'get_job_result',
+  // Async-mode job discovery (#3046 / epic #2631 Stage 5)
+  'list_jobs',
   // Codebase intelligence (read-only over local files)
   'search_codebase',
   'extract_symbols',

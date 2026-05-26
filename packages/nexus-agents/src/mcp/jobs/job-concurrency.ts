@@ -42,13 +42,22 @@ export const DEFAULT_JOB_CAPS: Readonly<Record<string, number>> = {
   execute_expert: 4,
 };
 
-/** Total cross-tool cap (defensive backstop for Stage 5; #3046). */
+/**
+ * Default total cross-tool cap (defensive backstop, #3046 Stage 5).
+ * Per-tool caps prevent a noisy single tool; the global cap prevents
+ * 5 tools × 3 jobs each from saturating the host's adapter slots.
+ *
+ * Env override: `NEXUS_JOB_MAX_CONCURRENT_TOTAL`. Defaults to 10 —
+ * comfortably above the sum of per-tool defaults (3+3+2+4=12 is also
+ * fine because no realistic workload fills every tool simultaneously)
+ * but stops runaway parallel fan-outs.
+ */
 export const DEFAULT_GLOBAL_JOB_CAP = 10;
 
 /** In-flight count per tool. Reset on process restart. */
 const inFlight = new Map<string, number>();
 
-/** Returns the configured cap for a tool — env override beats default. */
+/** Returns the configured per-tool cap — env override beats default. */
 export function getJobCap(toolName: string): number {
   const envKey = `NEXUS_JOB_MAX_CONCURRENT_${toolName.toUpperCase()}`;
   const envValue = process.env[envKey];
@@ -66,6 +75,33 @@ export function getJobCap(toolName: string): number {
   return DEFAULT_JOB_CAPS[toolName] ?? DEFAULT_GLOBAL_JOB_CAP;
 }
 
+/**
+ * Returns the global cross-tool cap (#3046 Stage 5). Env override:
+ * `NEXUS_JOB_MAX_CONCURRENT_TOTAL`. A value of `0` disables async-mode
+ * across ALL tools simultaneously.
+ */
+export function getGlobalJobCap(): number {
+  const envValue = process.env['NEXUS_JOB_MAX_CONCURRENT_TOTAL'];
+  if (envValue !== undefined && envValue !== '') {
+    const parsed = Number(envValue);
+    if (Number.isInteger(parsed) && parsed >= 0) {
+      return parsed;
+    }
+    logger.warn('Invalid env override for global job cap — ignoring', {
+      envKey: 'NEXUS_JOB_MAX_CONCURRENT_TOTAL',
+      envValue,
+    });
+  }
+  return DEFAULT_GLOBAL_JOB_CAP;
+}
+
+/** Sum of in-flight counts across all tools (Stage 5 observability). */
+export function getTotalInFlight(): number {
+  let total = 0;
+  for (const count of inFlight.values()) total += count;
+  return total;
+}
+
 /** Current in-flight count for a tool (testing + observability helper). */
 export function getInFlight(toolName: string): number {
   return inFlight.get(toolName) ?? 0;
@@ -74,8 +110,9 @@ export function getInFlight(toolName: string): number {
 /**
  * Attempt to acquire one slot. Returns `true` on success (caller MUST
  * `release()` exactly once when the job finishes / fails). Returns
- * `false` when the cap is full — caller should respond synchronously
- * with the busy envelope (`{ status: 'busy', retryAfterMs }`).
+ * `false` when EITHER cap is full — per-tool cap OR cross-tool global
+ * cap (#3046 Stage 5). Caller responds synchronously with the busy
+ * envelope (`{ status: 'busy', retryAfterMs }`).
  *
  * Atomicity note: Node.js is single-threaded between awaits, so this
  * read-then-write pattern is safe as long as no `await` interleaves
@@ -87,6 +124,11 @@ export function tryAcquire(toolName: string): boolean {
   if (cap === 0) return false;
   const current = inFlight.get(toolName) ?? 0;
   if (current >= cap) return false;
+  // #3046 Stage 5: global cap check. Prevents 5 tools × 3 jobs each
+  // saturating adapter slots even when each per-tool cap is satisfied.
+  const globalCap = getGlobalJobCap();
+  if (globalCap === 0) return false;
+  if (getTotalInFlight() >= globalCap) return false;
   inFlight.set(toolName, current + 1);
   return true;
 }
