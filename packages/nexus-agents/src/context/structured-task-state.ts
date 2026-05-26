@@ -22,11 +22,13 @@ import { ok, err } from '../core/result.js';
 import { createLogger } from '../core/logger.js';
 import {
   StructuredTaskLogEntrySchema,
+  TASK_RESULT_MAX_BYTES,
   type ProgressLedgerEntry,
   type ReflectAction,
   type StructuredTaskLogEntry,
   type StructuredTaskState,
   type TaskBlocker,
+  type TaskCancellation,
   type TaskDecision,
   type TaskLedger,
   type TaskPosition,
@@ -174,6 +176,72 @@ export function appendProgressLedgerEntry(
 }
 
 /**
+ * Append a tool-result payload (#3043 / epic #2631 Stage 2). Carries the
+ * same shape the synchronous mode would have returned inline. Writers
+ * should `updateStage(taskId, 'complete', ...)` immediately before so a
+ * polling reader observes the terminal stage transition + result together.
+ *
+ * The payload is JSON-serialized to measure size; over-cap writes
+ * (> `TASK_RESULT_MAX_BYTES`) get replaced with a typed truncation
+ * marker. The cap is observable by the caller (the reducer surfaces
+ * `state.result` as the truncation marker rather than the original) so
+ * silent data loss is impossible.
+ */
+export function appendResult(
+  taskId: string,
+  result: unknown,
+  ts: string,
+  customDir?: string
+): Result<void, Error> {
+  let payload: unknown = result;
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(result ?? null);
+  } catch (cause) {
+    const e = cause instanceof Error ? cause : new Error(String(cause));
+    return err(new Error(`Failed to serialize result for task ${taskId}: ${e.message}`));
+  }
+  // Note: `Buffer.byteLength` is the right unit — JSON.stringify length is
+  // UTF-16 code units, not the bytes that hit disk. For ASCII the two
+  // coincide; for non-ASCII / emoji results the byte-count is what bounds
+  // the actual storage cost.
+  const bytes = Buffer.byteLength(serialized, 'utf-8');
+  if (bytes > TASK_RESULT_MAX_BYTES) {
+    payload = {
+      truncated: true,
+      originalBytes: bytes,
+      maxBytes: TASK_RESULT_MAX_BYTES,
+      note: 'Result exceeded TASK_RESULT_MAX_BYTES — original dropped at write time.',
+    };
+    logger.warn('Task result truncated at write', {
+      taskId,
+      bytes,
+      max: TASK_RESULT_MAX_BYTES,
+    });
+  }
+  return appendLogEntry(taskId, { event: 'result', ts, result: payload }, customDir);
+}
+
+/**
+ * Append a cancellation marker (#3043 / epic #2631 Stage 2). Called by
+ * `cancel_job`. The reducer is append-only: if a cancellation already
+ * exists in the log, subsequent cancellation events are kept on disk
+ * (for audit) but DON'T overwrite the original `requestedAt` — so a
+ * malicious or buggy double-cancel can't rewrite history.
+ */
+export function appendCancellation(
+  taskId: string,
+  cancellation: TaskCancellation,
+  customDir?: string
+): Result<void, Error> {
+  return appendLogEntry(
+    taskId,
+    { event: 'cancellation', ts: cancellation.requestedAt, cancellation },
+    customDir
+  );
+}
+
+/**
  * Read the most recent ProgressLedger entry's suggested action — what
  * `Orchestrator.reflect()` returns. Returns `'continue'` when no progress-ledger
  * entries exist yet (default to "no reflection has flagged a problem"), and an
@@ -258,10 +326,13 @@ export function reduceLogEntries(
     );
   }
 
+  // #3043: monotonic version. Pre-Stage-2 logs lack the field; default
+  // to 0 and start counting from there. Each non-init event bumps by 1.
   let state: StructuredTaskState = {
     ...initState,
     decisions: [...initState.decisions],
     blockers: initState.blockers.map((b) => ({ ...b })),
+    version: initState.version ?? 0,
   };
 
   for (const entry of entries) {
@@ -271,44 +342,135 @@ export function reduceLogEntries(
   return ok(state);
 }
 
-function applyLogEntry(
+/** Apply a blockers-related event (#2033). */
+function applyBlockerEvent(
   state: StructuredTaskState,
-  entry: StructuredTaskLogEntry
+  entry: Extract<StructuredTaskLogEntry, { event: 'blocker' | 'blocker_resolved' }>,
+  nextVersion: number
+): StructuredTaskState {
+  if (entry.event === 'blocker') {
+    return {
+      ...state,
+      blockers: [...state.blockers, entry.blocker],
+      updatedAt: entry.ts,
+      version: nextVersion,
+    };
+  }
+  return {
+    ...state,
+    blockers: state.blockers.map((b, i) =>
+      i === entry.blockerIndex ? { ...b, resolved: entry.resolvedAt } : b
+    ),
+    updatedAt: entry.ts,
+    version: nextVersion,
+  };
+}
+
+/** Apply a simple scalar/ledger replacement event (no array merge). */
+function applyReplacementEvent(
+  state: StructuredTaskState,
+  entry: Extract<
+    StructuredTaskLogEntry,
+    { event: 'stage' | 'position' | 'task_ledger' | 'decision' | 'progress_ledger' }
+  >,
+  nextVersion: number
 ): StructuredTaskState {
   switch (entry.event) {
-    case 'init':
-      return state; // init is handled by reduceLogEntries
     case 'decision':
       return {
         ...state,
         decisions: [...state.decisions, entry.decision],
         updatedAt: entry.ts,
-      };
-    case 'blocker':
-      return {
-        ...state,
-        blockers: [...state.blockers, entry.blocker],
-        updatedAt: entry.ts,
-      };
-    case 'blocker_resolved':
-      return {
-        ...state,
-        blockers: state.blockers.map((b, i) =>
-          i === entry.blockerIndex ? { ...b, resolved: entry.resolvedAt } : b
-        ),
-        updatedAt: entry.ts,
+        version: nextVersion,
       };
     case 'stage':
-      return { ...state, stage: entry.stage, updatedAt: entry.ts };
+      return { ...state, stage: entry.stage, updatedAt: entry.ts, version: nextVersion };
     case 'position':
-      return { ...state, position: entry.position, updatedAt: entry.ts };
+      return { ...state, position: entry.position, updatedAt: entry.ts, version: nextVersion };
     case 'task_ledger':
-      return { ...state, taskLedger: entry.ledger, updatedAt: entry.ts };
+      return { ...state, taskLedger: entry.ledger, updatedAt: entry.ts, version: nextVersion };
     case 'progress_ledger':
       return {
         ...state,
         progressLedger: [...(state.progressLedger ?? []), entry.entry],
         updatedAt: entry.ts,
+        version: nextVersion,
       };
   }
+}
+
+/**
+ * Apply a result or cancellation event (#3043 / epic #2631 Stage 2). Result
+ * always assigns; cancellation is append-only (in-memory keeps the FIRST
+ * requestedAt across duplicate events).
+ */
+function applyTerminalEvent(
+  state: StructuredTaskState,
+  entry: Extract<StructuredTaskLogEntry, { event: 'result' | 'cancellation' }>,
+  nextVersion: number
+): StructuredTaskState {
+  if (entry.event === 'result') {
+    return { ...state, result: entry.result, updatedAt: entry.ts, version: nextVersion };
+  }
+  return {
+    ...state,
+    cancellation: state.cancellation ?? entry.cancellation,
+    updatedAt: entry.ts,
+    version: nextVersion,
+  };
+}
+
+/**
+ * Map each event tag to the apply-helper that owns it. Lets `applyLogEntry`
+ * dispatch in one table lookup rather than a 10-case switch — the latter
+ * trips the per-function complexity cap as the event set grows (#3043).
+ */
+const EVENT_CATEGORY: Record<
+  StructuredTaskLogEntry['event'],
+  'init' | 'blocker' | 'replace' | 'terminal'
+> = {
+  init: 'init',
+  blocker: 'blocker',
+  blocker_resolved: 'blocker',
+  decision: 'replace',
+  stage: 'replace',
+  position: 'replace',
+  task_ledger: 'replace',
+  progress_ledger: 'replace',
+  result: 'terminal',
+  cancellation: 'terminal',
+};
+
+function applyLogEntry(
+  state: StructuredTaskState,
+  entry: StructuredTaskLogEntry
+): StructuredTaskState {
+  const category = EVENT_CATEGORY[entry.event];
+  if (category === 'init') return state;
+  // #3043: every non-init event bumps the monotonic version. Calculated
+  // here (not in each branch) so a new event type can't accidentally
+  // forget to bump.
+  const nextVersion = (state.version ?? 0) + 1;
+  if (category === 'blocker') {
+    return applyBlockerEvent(
+      state,
+      entry as Extract<StructuredTaskLogEntry, { event: 'blocker' | 'blocker_resolved' }>,
+      nextVersion
+    );
+  }
+  if (category === 'terminal') {
+    return applyTerminalEvent(
+      state,
+      entry as Extract<StructuredTaskLogEntry, { event: 'result' | 'cancellation' }>,
+      nextVersion
+    );
+  }
+  return applyReplacementEvent(
+    state,
+    entry as Extract<
+      StructuredTaskLogEntry,
+      { event: 'decision' | 'stage' | 'position' | 'task_ledger' | 'progress_ledger' }
+    >,
+    nextVersion
+  );
 }
