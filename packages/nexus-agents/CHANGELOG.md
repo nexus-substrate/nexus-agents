@@ -1,5 +1,159 @@
 # nexus-agents
 
+## 2.84.0
+
+### Minor Changes
+
+- [#3048](https://github.com/nexus-substrate/nexus-agents/pull/3048) [`2a6ac34`](https://github.com/nexus-substrate/nexus-agents/commit/2a6ac341aa7effe060cea04c48844ed768c8717c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **feat(orchestrate): async-mode dispatch + `get_job_result` MCP tool (Stage 1 of [#2631](https://github.com/nexus-substrate/nexus-agents/issues/2631)).**
+
+  First implementation slice of epic [#2631](https://github.com/nexus-substrate/nexus-agents/issues/2631) (job-style invocation for long-running MCP tools). The async-mode design vote — `consensus_vote higher_order`, **approved 7-0 on 2026-05-25** — locked the staging order: orchestrate first, schema additions second, run_workflow third. This PR delivers Stage 1.
+
+  ## What changed
+  - **`orchestrate` tool** gains an optional `mode: 'sync' | 'async'` param. Default behavior is unchanged — every existing sync caller sees zero difference. With `mode: 'async'`, the handler returns `{ status: 'pending', jobId }` immediately and runs the pipeline on a background promise.
+  - **New MCP tool `get_job_result(jobId)`** returns the structured job-result record. Status lifecycle: `pending → complete | failed | cancelled` (cancellation comes in Stage 1b under the same Stage-1 umbrella). On `complete` the record carries the same payload sync mode would have returned inline; on `failed` it carries an error message.
+  - **New `jobs/` subdir** in `nexusDataPath` (added to `PER_REPO_SUBDIRS` — a job dispatched on repo A shouldn't be pollable on repo B). Records serialize to `<NEXUS_DATA_DIR>/jobs/result-<jobId>.json` via a tiny `job-result-store.ts` module. Stage 2 ([#3043](https://github.com/nexus-substrate/nexus-agents/issues/3043)) migrates the result inline to `StructuredTaskState`; sidecar files become legacy that the next cleanup sweep removes.
+  - Tool registered through every dispatch surface: `cli-server-tools.ts` STANDALONE_TOOLS, `mcp/tools/index.ts` REGISTERED_TOOLS + EXPECTED_TOOL_NAMES, both tool-annotation tables, the security `RISKY_TOOLS_ALLOWLIST` (read-only), and `scripts/tool-descriptions-data.ts` (long + README forms). Governance and repo-index regen: tool count moves 38 → 39.
+
+  ## What's deferred to Stage 1b/1c (under [#3042](https://github.com/nexus-substrate/nexus-agents/issues/3042))
+  - `cancel_job(jobId)` MCP tool. Rides on the `AbortSignal` plumbing from [#3035](https://github.com/nexus-substrate/nexus-agents/issues/3035)/[#3038](https://github.com/nexus-substrate/nexus-agents/issues/3038). Lands next; lifecycle states already reserve the `cancelled` enum so this is a non-breaking add.
+  - `idempotencyKey` param + sha256 lookup index. Replay-safe re-invocation returns the existing jobId rather than re-dispatching.
+  - `inlineDeadlineMs` short-circuit (Ilya's design constraint 3): if the work finishes inside the deadline, return the inline result instead of a jobId. Performance polish; not blocking the contract.
+
+  ## Why staged this way
+
+  Per the vote's binding staging order, the polling protocol gets validated end-to-end on a tool that already writes state (`orchestrate` writes `StructuredTaskState` via `recordTaskStateInit` already) BEFORE the gate-firing tool (`run_workflow`, with 28.6% timeout-shaped errors per the [#2703](https://github.com/nexus-substrate/nexus-agents/issues/2703) telemetry) migrates. Schema additions to `StructuredTaskState` (Stage 2, [#3043](https://github.com/nexus-substrate/nexus-agents/issues/3043)) follow once the wire protocol is proven; that's the path that lets us drop the sidecar files entirely.
+
+  ## Lifecycle invariants the next contributor inherits
+
+  From the vote's Scope Steward flag: once shipped, two contracts that can't be relaxed without breaking polling clients:
+  1. **`mode: 'sync'` stays the default forever** — backward-compat invariant. The schema deliberately omits `.default('sync')` so the inferred type stays optional and existing test fixtures don't need to add `mode: 'sync'`; the handler treats `undefined` as `'sync'`.
+  2. **JobResult schema is versioned (`v: 1`)** — readers tolerate future versions by returning `null` (treated as "unknown jobId") so an older nexus-agents process polling against a record written by a newer process doesn't crash.
+
+  ## Tests
+  - 8 new `job-result-store.test.ts` cases: pending/complete/failed lifecycle, createdAt preservation across writeJobComplete, idempotent re-write of pending, future-schema graceful handling, corrupt-JSON graceful handling.
+  - 4 new schema-level cases on `orchestrate.test.ts`: accepts `'async'`/`'sync'`, undefined-stays-undefined (backward-compat invariant), rejects unknown mode value.
+  - `EXPECTED_TOOL_COUNT` and `TOOL_ANNOTATIONS` count bumped 38 → 39 to match the new `get_job_result`.
+
+  136 targeted tests pass; `tsc` + `eslint` clean.
+
+### Patch Changes
+
+- [#3032](https://github.com/nexus-substrate/nexus-agents/pull/3032) [`a01ca0e`](https://github.com/nexus-substrate/nexus-agents/commit/a01ca0ec4107097f1537c4b3d2de0ef9be722724) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **perf(context):** `RoutingMemory.getPreferences` caches per-taskType results (closes [#2955](https://github.com/nexus-substrate/nexus-agents/issues/2955) site 4).
+
+  Pre-fix, every `getPreferences(taskType)` call did N=`CLI_NAMES.length` MobiMem profile lookups followed by an in-place sort, on every `CompositeRouter.route()` invocation. With `enableRoutingMemory=true` (default with persistence on), most calls produced empty results after the N lookups — pure waste on the routing hot path.
+
+  ### Fix
+  - Added `preferencesCache: Map<string, readonly ModelPreference[]>` on `RoutingMemory`.
+  - `getPreferences` returns the cached entry on hit (O(1)); on miss, does the original full `CLI_NAMES` sweep, freezes the sorted result, caches it, and returns. The CLI_NAMES sweep is preserved on cache miss so MobiMem data written by another `RoutingMemory` instance or a prior session (shared singleton from [#2719](https://github.com/nexus-substrate/nexus-agents/issues/2719)) is still observed on first read.
+  - `storePreference` invalidates the per-taskType cache entry (O(1) `Map.delete`) so the next read rebuilds with the new observation included.
+
+  ### Why the cache is safe
+
+  The cache is correct within a single `RoutingMemory` instance's lifetime, which matches `CompositeRouter`'s usage pattern (process-singleton via `getGlobalRegistry()`). Cross-instance writes to the shared MobiMem aren't detected, but in practice no second instance writes to it during normal operation. If that changes, the cache can be invalidated externally by calling `storePreference` with any value, or replaced with a TTL-bounded variant.
+
+  ### Test coverage
+
+  3 new tests (`routing-memory.test.ts`):
+  - Second read returns the **same reference** (cache hit confirmed).
+  - `storePreference` to a cached taskType invalidates and the rebuilt result reflects the new observation (different reference + higher strength).
+  - Cache invalidation is **scoped to the modified taskType** — writing to `task-y` does not invalidate `task-x`'s cache.
+
+  28 tests pass (was 25); `tsc + eslint` clean.
+
+  Closes [#2955](https://github.com/nexus-substrate/nexus-agents/issues/2955) site 4. Sites 1, 2, and 3 (partial) shipped in [#3005](https://github.com/nexus-substrate/nexus-agents/issues/3005).
+
+- [#3039](https://github.com/nexus-substrate/nexus-agents/pull/3039) [`7cbd339`](https://github.com/nexus-substrate/nexus-agents/commit/7cbd339d7ede20bdb691bf96c8ebaa9783703934) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **feat(ci):** add producer-without-consumer detection gate (closes [#3024](https://github.com/nexus-substrate/nexus-agents/issues/3024)).
+
+  The 2026-05-24 audit sweep deleted ~5,250 LOC across 7 issues ([#2937](https://github.com/nexus-substrate/nexus-agents/issues/2937), [#2938](https://github.com/nexus-substrate/nexus-agents/issues/2938), [#2939](https://github.com/nexus-substrate/nexus-agents/issues/2939), [#2940](https://github.com/nexus-substrate/nexus-agents/issues/2940), [#3018](https://github.com/nexus-substrate/nexus-agents/issues/3018), [#3022](https://github.com/nexus-substrate/nexus-agents/issues/3022)) all with the same shape: a producer/utility was built and exported on a public barrel, but the consumer never landed. This adds a PR-time gate so the next sweep doesn't accumulate the same dead-code surface over a quiet six-month window.
+
+  **What the gate checks:**
+
+  Every new `.ts` file added under `packages/nexus-agents/src/**` in a PR must have at least one non-test, non-barrel import elsewhere in `src/`. Implemented as `scripts/check-new-unused-exports.ts`, run as a new `Producer/Consumer Check` job in `.github/workflows/ci.yml`.
+
+  **What it does NOT check (v1 scope):**
+  - New exports added to _existing_ files. Most of the audit-sweep cases were new files; new-export-in-existing-file detection requires an AST diff against the base ref and is meaningful future work.
+  - Type-only usage. The greedy `from '*/name.js'` grep catches both value and type imports without distinguishing.
+
+  **Opt-out:** add `// @export-no-consumer-yet — see #<issue>` to the file. The marker requires a tracking-issue reference so deferred-but-tracked work doesn't bypass the gate untraced — the rule from `.rules/track-deferred-work.md` still applies.
+
+  **Verified end-to-end:** the gate runs on the watchdog PR ([#3038](https://github.com/nexus-substrate/nexus-agents/issues/3038), which adds `src/adapters/abort-utils.ts`) and correctly reports "1 new file(s) have production consumers — OK." 7 unit tests cover the classification logic (test/barrel/declaration skipping).
+
+- [#3034](https://github.com/nexus-substrate/nexus-agents/pull/3034) [`afc51ff`](https://github.com/nexus-substrate/nexus-agents/commit/afc51ffaa51551c39abf0e59475ec200c5010768) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(subprocess):** SIGKILL escalation when child ignores SIGTERM on timeout (closes [#3026](https://github.com/nexus-substrate/nexus-agents/issues/3026) finding 1).
+
+  The subprocess timeout path fired SIGTERM and resolved the parent promise immediately so callers don't wait on a hung child. But if the child ignored SIGTERM — Node CLIs that install graceful-shutdown handlers can hang on a broken stream, or spawn subprocesses of their own that keep stdio open — the `'close'` event never fired and the process accumulated as a zombie. Under sustained timeout pressure (long consensus votes with rate-limited backends), zombie Node CLI processes pile up holding file descriptors, API session tokens, and PIDs — eventually exhausting OS limits in ways operators can't trace back to nexus-agents.
+
+  The fix:
+  - Added `SIGKILL_GRACE_MS = 5_000` constant. Five seconds gives well-behaved children time to flush state and exit cleanly while bounding zombie-process accumulation when the child ignores SIGTERM.
+  - Extracted a `scheduleTimeoutWithSigkillEscalation` helper from `setupChildProcessHandlers` (the latter was at the 50-line cap). The escalation timer fires after the grace window, checks `child.exitCode === null && child.signalCode === null` (still running), and force-reaps with `child.kill('SIGKILL')`. Logs a warn before escalating so operators can correlate the resource cleanup.
+  - The escalation timer is `.unref()`'d so it doesn't keep the Node event loop alive — process shutdown wins over the escalation wait.
+  - Both the primary timeout and the escalation timer are cleared from the `'close'` handler, so a child that exits within the grace window doesn't see the second signal.
+
+  2 regression tests in `subprocess-adapter.test.ts`:
+  - SIGKILL fires after the grace window when child ignores SIGTERM (`exitCode` and `signalCode` both stay `null`).
+  - SIGKILL does NOT fire when the child exits cleanly within the grace window (`exitCode = 143` set on close).
+
+  39 tests pass (was 37); `tsc + eslint` clean.
+
+  [#3026](https://github.com/nexus-substrate/nexus-agents/issues/3026) finding 2 (AbortSignal threading through `ICliAdapter.execute` so race-loser subprocesses get cancelled cleanly) is the larger half of PR 2 — still pending, will land separately as a contract change touching all 5 concrete adapters + 3 call sites.
+
+- [#3035](https://github.com/nexus-substrate/nexus-agents/pull/3035) [`2afb4ce`](https://github.com/nexus-substrate/nexus-agents/commit/2afb4ce944807cb57b5650948f82fa6e1cad03b8) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(cli-adapters):** thread AbortSignal through `ICliAdapter.execute` so race-loser subprocesses get cancelled (closes [#3026](https://github.com/nexus-substrate/nexus-agents/issues/3026) finding 2).
+
+  Callers that bounded adapter latency with `Promise.race([adapter.execute(task), timeout])` had no way to tell the adapter "the timeout won, stop running." When timeout won, `adapter.execute` kept executing — the subprocess kept running to completion, then posted its result into OutcomeStore and LinUCB state for a task whose decision was already recorded. Symptoms: late outcome rows attributing success/failure to the wrong (already-discarded) candidate, LinUCB feature updates from stale CLI calls, and orphan subprocess fan-out under sustained timeout pressure.
+
+  The fix:
+  - Added `signal?: AbortSignal | undefined` to `ExecutionOptions`. Typed as `AbortSignal | undefined` (not `AbortSignal?`) so the pervasive internal `Required<ExecutionOptions>` shape keeps working under `exactOptionalPropertyTypes`.
+  - Added `ResolvedExecutionOptions = Required<Omit<ExecutionOptions, 'signal'>> & Pick<ExecutionOptions, 'signal'>` — the internal resolved-options shape used by adapters and tests. `signal` stays optional because it's a per-call hook, not a defaultable value.
+  - `SubprocessCliAdapter.spawnSubprocess` now:
+    - Fast-fails with `TIMEOUT: Aborted before spawn` if `signal.aborted === true` (saves a child process start when an upstream wave/loop has already moved on).
+    - Attaches an abort listener that SIGTERMs the child mid-execution if `signal` aborts. SIGKILL escalation from [#3026](https://github.com/nexus-substrate/nexus-agents/issues/3026) finding 1 still applies if the child ignores SIGTERM.
+    - Removes the abort listener on `'close'` so it doesn't leak across child lifetimes.
+  - Three orchestration call sites pass `signal: controller.signal` and abort the controller in `finally`:
+    - `orchestration/parallel-exploration.ts` (per-CLI partition timeout)
+    - `orchestration/consensus-plan.ts` (per-CLI plan timeout)
+    - `orchestration/triangulated-review.ts` (per-CLI review timeout)
+
+  Three regression tests in `subprocess-adapter.test.ts`:
+  - `signal.aborted === true` before call → fast-fails without spawning.
+  - Signal aborts mid-execution → SIGTERMs child, returns `TIMEOUT: Aborted by caller signal`.
+  - Signal aborts after child already exited → no SIGTERM (listener detached on `'close'`).
+
+  42 tests pass (was 39); 50 orchestration tests pass; `tsc + eslint` clean.
+
+  `orchestration/aorchestra/watchdog.ts` also races a generic `task: () => Promise<T>` against a timeout, but its callback is opaque to the watchdog so threading AbortSignal through requires a signature change at every caller — tracked as a follow-up.
+
+- [#3038](https://github.com/nexus-substrate/nexus-agents/pull/3038) [`d4ef3f2`](https://github.com/nexus-substrate/nexus-agents/commit/d4ef3f2c1674d1ad1553a404a8b42b38bb7fba87) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(orchestration):** thread AbortSignal through `withWatchdog` so race-loser worker calls get cancelled (closes [#3036](https://github.com/nexus-substrate/nexus-agents/issues/3036)).
+
+  Follow-up to [#3035](https://github.com/nexus-substrate/nexus-agents/issues/3035) (which closed [#3026](https://github.com/nexus-substrate/nexus-agents/issues/3026) finding 2 for the `ICliAdapter.execute` path). The watchdog wraps `worker-dispatcher` calls that go through `IModelAdapter.complete()` — a separate adapter contract from `ICliAdapter`. When the watchdog timeout won the `Promise.race`, the underlying SDK call (Anthropic/OpenAI/Gemini/Ollama HTTP request) kept running to completion. Late results posted into `OutcomeStore` and updated `LinUCB` state for a worker whose decision had already been recorded.
+
+  Changes:
+  - `withWatchdog<T>` callback shape is now `(signal: AbortSignal) => Promise<T>`. The watchdog creates an internal `AbortController`, passes the signal to the task, and calls `controller.abort()` BEFORE rejecting on timeout (so signal listeners fire before the rejection propagates). The `finally` block also aborts so orphan sub-work the task spawned-but-didn't-await sees the cancel.
+  - `CompletionRequest` gains `signal?: AbortSignal | undefined`. Typed as union (not `AbortSignal?`) so adapter internals that destructure `request` keep working under `exactOptionalPropertyTypes`.
+  - `worker-dispatcher` `attemptExecution` threads the signal through `executeWorker(entry, prior, signal)`. `executeWorker` / `altExecuteWorker` signatures extended with optional `signal` third param.
+  - `orchestrate-dispatch` `createWorkerExecutor` / `createAltWorkerExecutor` forward the signal to `executeOnAdapter`, which sets it on `adapter.complete({ messages, signal })`.
+  - Concrete adapter wiring:
+    - **claude**: `client.messages.create(params, { signal })` (Anthropic SDK supports per-call signal).
+    - **openai**: `client.chat.completions.create(params, { signal })`.
+    - **gemini**: forwarded as `config.abortSignal` on `client.models.generateContent` (`@google/genai` per-call signal).
+    - **ollama**: no per-call signal in the SDK (only `Ollama.abort()` which cancels every ongoing request), so the call is wrapped in a new `raceAbort` helper. The HTTP request may still complete server-side, but no late result is awaited — `OutcomeStore` and `LinUCB` don't see ghost attributions.
+    - **openai-compat**: pass-through wrapper around an inner adapter, so signal threading happens at the inner level (no change needed).
+
+  Both the `request.signal !== undefined` branches in claude/openai use explicit if/else to avoid passing `undefined` as a positional second arg — vitest 4 `toHaveBeenCalledWith(params)` treats `(params, undefined)` as a distinct call shape from `(params)`.
+
+  Tests:
+  - 3 new `watchdog.test.ts` cases: timeout aborts the signal before rejecting; the task can observe the abort and stop early; abort still fires in `finally` when the task wins cleanly.
+  - New `abort-utils.test.ts` with 7 cases for the `raceAbort` helper.
+  - All 1,820 tests in `src/adapters/`, `src/orchestration/`, and `src/mcp/tools/orchestrate-dispatch.test.ts` pass.
+
+  `tsc --noEmit` + `eslint` clean.
+
+- [#3037](https://github.com/nexus-substrate/nexus-agents/pull/3037) [`4639b2f`](https://github.com/nexus-substrate/nexus-agents/commit/4639b2f5f3a6ad30bf912f35db0b3a9badfa52dd) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **chore(deps):** bump qs override to ≥6.15.2 to close GHSA-q8mj-m7cp-5q26 (Dependabot alert 102).
+
+  `qs.stringify` with `arrayFormat: 'comma'` and `encodeValuesOnly: true` throws `TypeError` on `null`/`undefined` array elements (CVE-2026-8723, medium-severity DoS). Patched in qs 6.15.2.
+
+  Transitive via `@modelcontextprotocol/sdk` → `express` → `body-parser` → `qs` (and via `express-rate-limit`). The existing `qs: ">=6.14.2"` pnpm override admitted the vulnerable 6.15.1; bumped to `>=6.15.2`. `pnpm install` now resolves every qs site to 6.15.2.
+
+  We don't pass `arrayFormat: 'comma'` + `encodeValuesOnly: true` from this codebase, so the practical impact was bounded — but transitive npm deps can change call patterns silently, and a patch-level pnpm-override bump is cheap.
+
 ## 2.83.2
 
 ### Patch Changes
