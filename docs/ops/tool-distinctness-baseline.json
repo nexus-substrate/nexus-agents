@@ -37,6 +37,11 @@
       "a": "list_workflows",
       "b": "run_graph_workflow",
       "similarity": 0.251
+    },
+    {
+      "a": "get_job_result",
+      "b": "list_jobs",
+      "similarity": 0.392
     }
   ]
 }
