@@ -127,6 +127,29 @@ export const ConsensusVoteInputSchema = z.object({
     .describe(
       'TESTS ONLY — when true, voters return random decisions. Output must not be used for real decisions. (#2319)'
     ),
+  /**
+   * Async-mode dispatch (#3045, Stage 4 of epic #2631). Default `sync` —
+   * backward-compat invariant. `async` returns `{ status: 'pending', jobId }`
+   * immediately; caller polls `get_job_result(jobId)`. Per-tool cap via
+   * `NEXUS_JOB_MAX_CONCURRENT_CONSENSUS_VOTE` (default 2 — voting is
+   * 7-fan-out so concurrent jobs multiply adapter load fast).
+   *
+   * Cancellation semantics (#3041 vote deferred this to Stage 4): when
+   * a polling client calls `cancel_job` mid-vote, the dispatcher aborts
+   * in-flight voters via the AbortSignal plumbing from #3038. The
+   * resulting job result is `{ status: 'cancelled', partialVotes: [...] }`
+   * with whatever voters completed before the abort signal — preserves
+   * audit visibility into who voted before the cancel landed.
+   *
+   * Kept optional (no `.default()`) so the inferred type doesn't force
+   * `mode: 'sync'` on every existing call site / test fixture.
+   */
+  mode: z
+    .enum(['sync', 'async'])
+    .optional()
+    .describe(
+      'Dispatch mode (default: sync). Use "async" for higher-order strategies with 7 voters.'
+    ),
 });
 
 export type ConsensusVoteInput = z.infer<typeof ConsensusVoteInputSchema>;

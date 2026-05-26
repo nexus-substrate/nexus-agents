@@ -97,6 +97,44 @@ describe('ConsensusVoteInputSchema', () => {
 
       expect(result.success).toBe(false);
     });
+
+    // #3045 / epic #2631 Stage 4 — async-mode schema additions.
+    it('accepts mode: "async" (#3045)', () => {
+      const result = ConsensusVoteInputSchema.safeParse({
+        proposal: 'Test proposal',
+        mode: 'async',
+      });
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data.mode).toBe('async');
+    });
+
+    it('accepts mode: "sync" (#3045)', () => {
+      const result = ConsensusVoteInputSchema.safeParse({
+        proposal: 'Test proposal',
+        mode: 'sync',
+      });
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data.mode).toBe('sync');
+    });
+
+    it('leaves mode undefined when omitted — backward-compat invariant (#3045)', () => {
+      const result = ConsensusVoteInputSchema.safeParse({ proposal: 'Test proposal' });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        // Handler treats undefined as sync. Schema omits .default('sync')
+        // so the inferred type stays optional — existing fixtures
+        // continue to compile without churn.
+        expect(result.data.mode).toBeUndefined();
+      }
+    });
+
+    it('rejects unknown mode value (#3045)', () => {
+      const result = ConsensusVoteInputSchema.safeParse({
+        proposal: 'Test proposal',
+        mode: 'queue',
+      });
+      expect(result.success).toBe(false);
+    });
   });
 
   describe('threshold validation', () => {
