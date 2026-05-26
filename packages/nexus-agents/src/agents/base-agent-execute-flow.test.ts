@@ -264,4 +264,45 @@ describe('runTaskWithTimeout', () => {
       expect(result.error.message).toContain('timed out');
     }
   });
+
+  // Regression for #3016/#3040 — caller's external AbortSignal must abort
+  // the in-flight task so model calls cancel when the caller's deadline
+  // wins a race (e.g., the workflow step-executor's 120s step timer).
+  it('cancels via abort when external signal fires', async () => {
+    const task = makeTask();
+    const executeTask = vi.fn().mockReturnValue(new Promise(() => {}));
+    const controller = new AbortController();
+
+    const promise = runTaskWithTimeout(task, 'agent-ext', executeTask, {
+      externalSignal: controller.signal,
+    });
+    // Fire external abort — should propagate into internal controller and
+    // settle the task as cancelled without waiting for the 900s heartbeat cap.
+    controller.abort();
+    await vi.advanceTimersByTimeAsync(0);
+    const result = await promise;
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toContain('cancelled');
+    }
+  });
+
+  it('honors pre-aborted external signal immediately', async () => {
+    const task = makeTask();
+    const executeTask = vi.fn().mockReturnValue(new Promise(() => {}));
+    const controller = new AbortController();
+    controller.abort();
+
+    const promise = runTaskWithTimeout(task, 'agent-pre-abort', executeTask, {
+      externalSignal: controller.signal,
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    const result = await promise;
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toContain('cancelled');
+    }
+  });
 });

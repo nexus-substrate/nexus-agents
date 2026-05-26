@@ -83,16 +83,43 @@ export function setupExecute(ctx: ExecuteFlowContext, task: Task): ExecuteSetupR
 }
 
 /**
+ * Wires an external AbortSignal into the internal controller so a single
+ * abort path covers both heartbeat expiry and caller-initiated cancellation
+ * (#3016/#3040). Returns the listener so it can be removed in `finally`.
+ */
+function wireExternalAbort(
+  externalSignal: AbortSignal | undefined,
+  controller: AbortController
+): (() => void) | undefined {
+  if (externalSignal === undefined) return undefined;
+  if (externalSignal.aborted) {
+    controller.abort();
+    return undefined;
+  }
+  const listener = (): void => {
+    controller.abort();
+  };
+  externalSignal.addEventListener('abort', listener, { once: true });
+  return listener;
+}
+
+/**
  * Runs task with configured timeout and heartbeat-aware cancellation.
  *
  * Phase 2 (Issue #1088): Integrates HeartbeatMonitor for session tracking
  * and AbortController for cooperative cancellation when session expires.
  * The safety-cap timeout in executeWithTimeout remains as a fallback.
+ *
+ * #3016/#3040: Optional `externalSignal` lets a caller (e.g., the workflow
+ * step-executor) cancel the task when its own deadline wins a race. The
+ * caller's signal is forwarded to executeWithTimeout in addition to the
+ * internal heartbeat signal — either firing settles the task.
  */
 export async function runTaskWithTimeout(
   task: Task,
   agentId: string,
-  executeTask: (task: Task) => Promise<Result<TaskResult, AgentError>>
+  executeTask: (task: Task) => Promise<Result<TaskResult, AgentError>>,
+  options?: { externalSignal?: AbortSignal | undefined }
 ): Promise<Result<TaskResult, AgentError>> {
   const maxDuration = task.constraints?.maxDuration ?? HEARTBEAT_TIMEOUTS.absoluteMaxMs;
 
@@ -100,6 +127,11 @@ export async function runTaskWithTimeout(
   const controller = new AbortController();
   const monitor = getHeartbeatMonitor();
   const sessionId = monitor.startSession(agentId);
+
+  // Forward caller's external abort into the internal controller so the
+  // single signal threaded into executeWithTimeout fires for either reason.
+  const externalSignal = options?.externalSignal;
+  const externalAbortListener = wireExternalAbort(externalSignal, controller);
 
   // Periodic health check — log transitions, abort on expiry (Phase 4)
   const healthCheckTimer = setInterval(() => {
@@ -130,6 +162,9 @@ export async function runTaskWithTimeout(
   } finally {
     clearInterval(healthCheckTimer);
     monitor.endSession(sessionId);
+    if (externalSignal !== undefined && externalAbortListener !== undefined) {
+      externalSignal.removeEventListener('abort', externalAbortListener);
+    }
   }
 }
 

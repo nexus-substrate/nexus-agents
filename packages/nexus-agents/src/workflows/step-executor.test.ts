@@ -699,6 +699,55 @@ describe('StepExecutor', () => {
         expect(result.error.message).toContain('cancelled');
       }
     });
+
+    // Regression for #3016/#3040 — step-executor must pass an AbortSignal
+    // into expert.execute and abort it when the race resolves. Without this,
+    // the race-loser (in-flight model call) keeps running to its own
+    // 10-minute SDK timeout after the step timer has fired at 120s.
+    it('passes a signal to expert.execute and aborts it on resolution', async () => {
+      let receivedSignal: AbortSignal | undefined;
+      const captureFactory: IExpertFactory = {
+        createForRole: () => {
+          const expert = createMockExpert({});
+          (expert as unknown as { execute: typeof expert.execute }).execute = vi.fn(
+            (
+              _task: Task,
+              options?: { signal?: AbortSignal }
+            ): Promise<Result<TaskResult, AgentError>> => {
+              receivedSignal = options?.signal;
+              return Promise.resolve(
+                ok({
+                  taskId: 'test-task',
+                  output: { result: 'success' },
+                  metadata: {
+                    durationMs: 1,
+                    tokensUsed: 0,
+                    toolsUsed: [],
+                    model: 'test-model',
+                  },
+                })
+              );
+            }
+          );
+          return ok(expert);
+        },
+      };
+      const captureExecutor = createStepExecutor({ expertFactory: captureFactory });
+      const step: WorkflowStep = {
+        id: 'step1',
+        agent: 'code_expert',
+        action: 'analyze',
+        inputs: {},
+      };
+
+      const result = await captureExecutor.execute(step, context);
+
+      expect(result.ok).toBe(true);
+      expect(receivedSignal).toBeInstanceOf(AbortSignal);
+      // After the race resolves the executor must abort the signal so any
+      // in-flight model call honors it.
+      expect(receivedSignal?.aborted).toBe(true);
+    });
   });
 
   describe('error handling', () => {

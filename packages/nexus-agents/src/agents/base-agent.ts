@@ -118,6 +118,14 @@ export abstract class BaseAgent implements IAgent {
   private readonly memoryConfig: ResolvedMemoryConfig;
   private memoryState: AgentMemoryState | null = null;
   private relevantMemories: readonly TypedMemoryEntry[] = [];
+  /**
+   * AbortSignal set by `execute()` when the caller passes one. `complete()`
+   * forwards it onto `CompletionRequest.signal` so the in-flight model call
+   * cancels when the caller's deadline wins a race (#3016/#3040). Set only
+   * for the duration of one execute() and cleared in finally — the field is
+   * single-task scoped and never crosses tasks.
+   */
+  private currentExecutionSignal: AbortSignal | undefined = undefined;
 
   constructor(options: BaseAgentOptions) {
     const validation = BaseAgentOptionsSchema.safeParse(options);
@@ -208,7 +216,10 @@ export abstract class BaseAgent implements IAgent {
     return ok(undefined);
   }
 
-  async execute(task: Task): Promise<Result<TaskResult, AgentError>> {
+  async execute(
+    task: Task,
+    options?: { signal?: AbortSignal }
+  ): Promise<Result<TaskResult, AgentError>> {
     const execCtx = buildExecuteFlowContext(this.contextState);
     const setup = setupExecute(execCtx, task);
     if (!setup.valid && setup.error !== undefined) return err(setup.error);
@@ -217,8 +228,14 @@ export abstract class BaseAgent implements IAgent {
     this.budgetTracker.startTask(task.id);
     this.logger.info('Executing task', { taskId: task.id, priority: task.priority });
     const taskMemCtx = buildTaskMemoryContext(this.contextState);
+    // Make caller's AbortSignal visible to `complete()` so model calls cancel
+    // when the caller's deadline wins (#3016/#3040). Cleared in finally to
+    // avoid leaking the signal into a later, unrelated execute() call.
+    this.currentExecutionSignal = options?.signal;
     try {
-      const result = await runTaskWithTimeout(task, this.id, (t) => this.executeTask(t));
+      const result = await runTaskWithTimeout(task, this.id, (t) => this.executeTask(t), {
+        externalSignal: options?.signal,
+      });
       if (!result.ok) return handleExecFailure(task, result, execCtx);
       this.memoryState = await finalizeExec(
         task,
@@ -237,6 +254,8 @@ export abstract class BaseAgent implements IAgent {
       );
       this.memoryState = updatedMemoryState;
       return err(agentError);
+    } finally {
+      this.currentExecutionSignal = undefined;
     }
   }
 
@@ -295,7 +314,13 @@ export abstract class BaseAgent implements IAgent {
       logger: this.logger,
       newState: 'acting',
     });
-    const result = await runModelCompletion(ctx, adapterResult.value, request);
+    // Thread caller's AbortSignal into the model call unless the caller
+    // already supplied one on the request (#3016/#3040).
+    const requestWithSignal: CompletionRequest =
+      request.signal === undefined && this.currentExecutionSignal !== undefined
+        ? { ...request, signal: this.currentExecutionSignal }
+        : request;
+    const result = await runModelCompletion(ctx, adapterResult.value, requestWithSignal);
     transitionToState({
       stateMachine: this.stateMachine,
       logger: this.logger,
