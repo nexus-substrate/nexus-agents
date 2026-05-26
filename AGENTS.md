@@ -81,7 +81,7 @@ Twelve expert-role prompts ship at `agents/<name>-expert.md` (security, architec
 
 ## MCP server
 
-Nexus-agents exposes 40 MCP tools via stdio. From any MCP-aware agent:
+Nexus-agents exposes 41 MCP tools via stdio. From any MCP-aware agent:
 
 ```
 npx -y nexus-agents --mode=server

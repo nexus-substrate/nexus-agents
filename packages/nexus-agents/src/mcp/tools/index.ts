@@ -387,6 +387,15 @@ export {
   type ListJobsResponse,
 } from './list-jobs-tool.js';
 
+// Cancel job tool (#3042 Stage 1b / epic #2631 — async-mode cancellation)
+export {
+  registerCancelJobTool,
+  CancelJobInputSchema,
+  type CancelJobDeps,
+  type CancelJobInput,
+  type CancelJobResponse,
+} from './cancel-job-tool.js';
+
 // Verify audit chain tool (#2281 follow-up — wraps verifyChain over persisted log files)
 export {
   registerVerifyAuditChainTool,
@@ -551,6 +560,7 @@ export const REGISTERED_TOOL_NAMES = [
   'query_task_state',
   'get_job_result',
   'list_jobs',
+  'cancel_job',
   'verify_audit_chain',
   'repo_analyze',
   'repo_security_plan',

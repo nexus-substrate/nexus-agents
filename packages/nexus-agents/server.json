@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.nexus-substrate/nexus-agents",
-  "description": "Intelligent orchestration platform for AI coding tools. Routes tasks to the best model (Claude, Codex, Gemini, OpenCode) using data-driven algorithms (LinUCB, TOPSIS), enforces quality through multi-model consensus voting, and learns from outcomes across sessions. 40 MCP tools, 8 memory backends, full dev pipeline with research/plan/vote/implement/QA stages.",
+  "description": "Intelligent orchestration platform for AI coding tools. Routes tasks to the best model (Claude, Codex, Gemini, OpenCode) using data-driven algorithms (LinUCB, TOPSIS), enforces quality through multi-model consensus voting, and learns from outcomes across sessions. 41 MCP tools, 8 memory backends, full dev pipeline with research/plan/vote/implement/QA stages.",
   "repository": {
     "url": "https://github.com/nexus-substrate/nexus-agents",
     "source": "github"
@@ -13,8 +13,12 @@
       "identifier": "nexus-agents",
       "version": "2.85.0",
       "runtime": "node",
-      "runtimeArguments": ["--experimental-vm-modules"],
-      "packageArguments": ["--mode=server"],
+      "runtimeArguments": [
+        "--experimental-vm-modules"
+      ],
+      "packageArguments": [
+        "--mode=server"
+      ],
       "environmentVariables": [
         {
           "name": "ANTHROPIC_API_KEY",
@@ -77,6 +81,7 @@
     "query_task_state",
     "get_job_result",
     "list_jobs",
+    "cancel_job",
     "verify_audit_chain",
     "repo_analyze",
     "repo_security_plan",

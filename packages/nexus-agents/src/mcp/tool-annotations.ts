@@ -306,6 +306,17 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
     idempotentHint: true,
     openWorldHint: false,
   },
+  /** Cancels an in-flight async-mode job (#3042 Stage 1b / #2631). */
+  cancel_job: {
+    // Mutates the sidecar record — NOT read-only.
+    readOnlyHint: false,
+    // Reversibility: cancel writes a new state, but doesn't delete data —
+    // not destructive in the OWASP sense (no irreversible data loss).
+    destructiveHint: false,
+    // Idempotent: repeat cancels are no-ops with explicit outcome envelope.
+    idempotentHint: true,
+    openWorldHint: false,
+  },
   /** Verifies hash chain of audit log files. */
   verify_audit_chain: {
     readOnlyHint: true,
