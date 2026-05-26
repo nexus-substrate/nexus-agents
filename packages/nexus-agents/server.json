@@ -6,19 +6,15 @@
     "url": "https://github.com/nexus-substrate/nexus-agents",
     "source": "github"
   },
-  "version": "2.85.0",
+  "version": "2.86.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "nexus-agents",
-      "version": "2.85.0",
+      "version": "2.86.0",
       "runtime": "node",
-      "runtimeArguments": [
-        "--experimental-vm-modules"
-      ],
-      "packageArguments": [
-        "--mode=server"
-      ],
+      "runtimeArguments": ["--experimental-vm-modules"],
+      "packageArguments": ["--mode=server"],
       "environmentVariables": [
         {
           "name": "ANTHROPIC_API_KEY",
