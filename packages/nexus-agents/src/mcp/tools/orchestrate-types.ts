@@ -53,6 +53,22 @@ export const OrchestrateInputSchema = z.object({
     .enum(['sync', 'async'])
     .optional()
     .describe('Dispatch mode (default: sync). Use "async" for long-running orchestrations.'),
+  /**
+   * Idempotency key for async-mode replay-safety (#3042 Stage 1c / epic
+   * #2631). When set: identical (key, inputs) returns the existing job;
+   * same key with different inputs fails closed with
+   * `idempotency_key_collision`. Without a key, every call gets a fresh
+   * jobId (existing behavior). Sync mode ignores this — sync calls are
+   * synchronous by definition and the caller can dedupe themselves.
+   */
+  idempotencyKey: z
+    .string()
+    .min(1)
+    .max(256)
+    .optional()
+    .describe(
+      'Replay-safe key for async-mode dispatch (#3042 Stage 1c). Same (key, inputs) returns existing jobId; same key + different inputs fails closed.'
+    ),
 });
 
 export type OrchestrateInput = z.infer<typeof OrchestrateInputSchema>;
@@ -126,6 +142,14 @@ export const ORCHESTRATE_TOOL_SCHEMA = {
     .optional()
     .describe(
       'Dispatch mode (default: sync). "async" returns { jobId } immediately; poll via get_job_result.'
+    ),
+  idempotencyKey: z
+    .string()
+    .min(1)
+    .max(256)
+    .optional()
+    .describe(
+      'Replay-safe key for async-mode dispatch (#3042 Stage 1c). Same (key, inputs) returns existing jobId.'
     ),
 };
 

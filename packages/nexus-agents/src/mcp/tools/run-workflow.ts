@@ -48,6 +48,7 @@ import { getToolMemory } from './tool-memory.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 // #3044 / epic #2631 Stage 3 — async-mode dispatch + concurrency cap.
 import { writeJobPending, writeJobComplete, writeJobFailed } from '../jobs/job-result-store.js';
+import { shortCircuitOrFreshJobId, registerIdempotentJob } from '../jobs/job-idempotency.js';
 import { tryAcquire, release, suggestRetryAfterMs } from '../jobs/job-concurrency.js';
 import { randomUUID } from 'node:crypto';
 
@@ -294,7 +295,35 @@ const toolInputSchema = {
  * Per-phase `timeoutMs` is preserved into the background dispatch
  * (the #3017 override still applies in async mode).
  */
+/** Replay envelope for run_workflow idempotency (#3042 Stage 1c). */
+function buildRunWorkflowReplayEnvelope(jobId: string): ToolResponse {
+  return successResponse({
+    status: 'replay',
+    jobId,
+    pollTool: 'get_job_result',
+    note: 'Idempotency key matched a prior dispatch — poll get_job_result for current status.',
+  });
+}
+
+/** Collision envelope for run_workflow idempotency (#3042 Stage 1c). */
+function buildRunWorkflowCollisionEnvelope(existingJobId: string): ToolResponse {
+  return errorResponse(
+    `Idempotency key already used with different inputs. Existing jobId: ${existingJobId}. Use a fresh key or omit it.`
+  );
+}
+
 function dispatchAsyncRunWorkflow(deps: RunWorkflowDeps, args: RunWorkflowInput): ToolResponse {
+  // #3042 Stage 1c: resolve idempotency BEFORE acquiring a slot — see
+  // orchestrate.ts for the full contract.
+  const idempotency = shortCircuitOrFreshJobId<ToolResponse>({
+    tool: 'run_workflow',
+    idempotencyKey: args.idempotencyKey,
+    inputs: args,
+    freshJobId: () => `job-rw-${randomUUID()}`,
+    replayEnvelope: buildRunWorkflowReplayEnvelope,
+    collisionEnvelope: buildRunWorkflowCollisionEnvelope,
+  });
+  if (idempotency.kind === 'shortCircuit') return idempotency.value;
   // Concurrency cap. Configurable via NEXUS_JOB_MAX_CONCURRENT_RUN_WORKFLOW.
   if (!tryAcquire('run_workflow')) {
     return successResponse({
@@ -303,8 +332,16 @@ function dispatchAsyncRunWorkflow(deps: RunWorkflowDeps, args: RunWorkflowInput)
       note: 'Async-mode concurrency cap reached for run_workflow. Retry later or use mode: "sync".',
     });
   }
-  const jobId = `job-rw-${randomUUID()}`;
+  const jobId = idempotency.jobId;
   writeJobPending(jobId, 'run_workflow');
+  if (args.idempotencyKey !== undefined && args.idempotencyKey !== '') {
+    registerIdempotentJob({
+      tool: 'run_workflow',
+      idempotencyKey: args.idempotencyKey,
+      inputs: args,
+      jobId,
+    });
+  }
   // Fire-and-forget — `handleRunWorkflow` already encapsulates the full
   // sync execution path including dry-run + validation + recording, so
   // re-using it here keeps the wrapping minimal. The dispatched
