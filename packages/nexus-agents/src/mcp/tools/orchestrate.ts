@@ -97,6 +97,7 @@ import type { StructuredTaskState } from '../../context/structured-task-state-ty
 import { getToolAnnotations } from '../tool-annotations.js';
 // #3042 / epic #2631: async-mode dispatch + sidecar job-result store.
 import { writeJobPending, writeJobComplete, writeJobFailed } from '../jobs/job-result-store.js';
+import { tryAcquire, release, suggestRetryAfterMs } from '../jobs/job-concurrency.js';
 import { randomUUID } from 'node:crypto';
 
 // Re-export types and values for consumers
@@ -1223,6 +1224,18 @@ function dispatchAsyncOrchestrate(params: {
   readonly logger: ILogger;
   readonly trustTier?: string;
 }): ToolResult {
+  // #3044: per-tool concurrency cap. If the slot pool is full, return a
+  // busy envelope synchronously rather than queuing — caller decides
+  // when to retry. Configurable via NEXUS_JOB_MAX_CONCURRENT_ORCHESTRATE.
+  if (!tryAcquire('orchestrate')) {
+    return toolSuccess(
+      JSON.stringify({
+        status: 'busy',
+        retryAfterMs: suggestRetryAfterMs('orchestrate'),
+        note: 'Async-mode concurrency cap reached for orchestrate. Retry later or use mode: "sync".',
+      })
+    );
+  }
   const jobId = `job-orch-${randomUUID()}`;
   writeJobPending(jobId, 'orchestrate');
   // Fire-and-forget. The dispatch path runs under the same depth guard
@@ -1243,6 +1256,8 @@ function dispatchAsyncOrchestrate(params: {
       const errObj = err instanceof Error ? err : new Error(String(err));
       params.logger.error('Async orchestrate dispatch failed', errObj, { jobId });
       writeJobFailed(jobId, 'orchestrate', errObj.message);
+    } finally {
+      release('orchestrate');
     }
   })();
   return toolSuccess(

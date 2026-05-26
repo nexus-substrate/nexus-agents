@@ -54,6 +54,10 @@ import { applyErrorPolicy } from './consensus-vote-error-policy.js';
 import { recordVoteSuccess, recordVoteError } from './consensus-vote-recording.js';
 import { warnIfSimulatedOutsideTests } from './simulation-guard.js';
 import { getToolAnnotations } from '../tool-annotations.js';
+// #3045 / epic #2631 Stage 4 — async-mode dispatch + concurrency cap.
+import { writeJobPending, writeJobComplete, writeJobFailed } from '../jobs/job-result-store.js';
+import { tryAcquire, release, suggestRetryAfterMs } from '../jobs/job-concurrency.js';
+import { randomUUID } from 'node:crypto';
 import type {
   VotingStrategy,
   ConsensusVoteInput,
@@ -618,6 +622,94 @@ async function handleConsensusVote(
 
 type ConsensusVoteToolResponse = ToolResult;
 
+/**
+ * Dispatch the vote on a background promise + return a pending envelope
+ * (#3045 / epic #2631 Stage 4). Mirrors run_workflow / orchestrate.
+ *
+ * Cancellation semantics: when `cancel_job` lands while the vote is
+ * in-flight, the existing collector unwinds via the AbortSignal plumbing
+ * already in #3038 — `collectRealVotes` honors per-voter signals — and
+ * the dispatcher writes whatever partial vote set landed before the
+ * abort signal as the job result. That preserves audit visibility into
+ * who voted before the cancel happened, instead of throwing away all
+ * the work.
+ *
+ * Concurrency cap is enforced via `tryAcquire('consensus_vote')`
+ * (default 2; voting is 7-fan-out so caps multiply adapter load fast).
+ */
+function dispatchAsyncConsensusVote(
+  deps: ConsensusVoteDeps,
+  args: import('./consensus-vote-types.js').ConsensusVoteInput
+): ConsensusVoteToolResponse {
+  if (!tryAcquire('consensus_vote')) {
+    return toolSuccess(
+      JSON.stringify({
+        status: 'busy',
+        retryAfterMs: suggestRetryAfterMs('consensus_vote'),
+        note: 'Async-mode concurrency cap reached for consensus_vote. Retry later or use mode: "sync".',
+      })
+    );
+  }
+  const jobId = `job-vote-${randomUUID()}`;
+  writeJobPending(jobId, 'consensus_vote');
+  void (async (): Promise<void> => {
+    try {
+      const result = await handleConsensusVote(deps, args);
+      writeJobComplete(jobId, 'consensus_vote', result);
+    } catch (err: unknown) {
+      const errObj = err instanceof Error ? err : new Error(String(err));
+      deps.logger?.error('Async consensus_vote dispatch failed', errObj, { jobId });
+      writeJobFailed(jobId, 'consensus_vote', errObj.message);
+    } finally {
+      release('consensus_vote');
+    }
+  })();
+  return toolSuccess(
+    JSON.stringify({
+      status: 'pending',
+      jobId,
+      pollTool: 'get_job_result',
+      note: 'Poll via get_job_result({ jobId }) until status !== "pending".',
+    })
+  );
+}
+
+/**
+ * Run the synchronous vote path + format the response. Extracted from
+ * the handler so the async-mode branch keeps the per-function size cap
+ * (#3045 added a branch + dispatcher call site to the handler).
+ */
+async function runSyncConsensusVote(
+  deps: ConsensusVoteDeps,
+  notifier: IMcpNotifier,
+  args: import('./consensus-vote-types.js').ConsensusVoteInput
+): Promise<ConsensusVoteToolResponse> {
+  const result = await withProgressHeartbeat('consensus_vote', notifier, () =>
+    handleConsensusVote(deps, args)
+  );
+  if (!result.ok) {
+    return toolStructuredError({ errorCategory: 'internal', message: result.error });
+  }
+  for (const vote of result.value.votes) {
+    notifier.debug('consensus_vote', {
+      event: 'vote_collected',
+      role: vote.role,
+      decision: vote.decision,
+    });
+  }
+  notifier.info('consensus_vote', {
+    event: 'vote_complete',
+    decision: result.value.decision,
+    approvalPercentage: result.value.approvalPercentage,
+    voteCount: result.value.votes.length,
+  });
+  const data = result.value as unknown as Record<string, unknown>;
+  return {
+    ...toolSuccess(JSON.stringify(result.value, null, 2)),
+    structuredContent: data,
+  };
+}
+
 function createConsensusVoteHandler(deps: ConsensusVoteDeps) {
   const notifier = deps.notifier ?? NOOP_NOTIFIER;
   return async (args: unknown, ctx: HandlerContext): Promise<ConsensusVoteToolResponse> => {
@@ -628,43 +720,28 @@ function createConsensusVoteHandler(deps: ConsensusVoteDeps) {
         message: `Validation error: ${formatZodError(validationResult.error)}`,
       });
     }
-
     const strategy = validationResult.data.strategy ?? 'simple_majority';
     ctx.logger.debug('Starting consensus vote', {
       strategy,
       quickMode: validationResult.data.quickMode,
+      ...(validationResult.data.mode !== undefined ? { mode: validationResult.data.mode } : {}),
     });
     notifier.info('consensus_vote', {
       event: 'vote_start',
       proposalLength: validationResult.data.proposal.length,
       strategy,
     });
-
-    const result = await withProgressHeartbeat('consensus_vote', notifier, () =>
-      handleConsensusVote(deps, validationResult.data)
-    );
-    if (!result.ok) {
-      return toolStructuredError({ errorCategory: 'internal', message: result.error });
-    }
-
-    for (const vote of result.value.votes) {
-      notifier.debug('consensus_vote', {
-        event: 'vote_collected',
-        role: vote.role,
-        decision: vote.decision,
+    // #3045 / epic #2631 Stage 4 — async-mode dispatch.
+    if (validationResult.data.mode === 'async') {
+      const asyncResult = dispatchAsyncConsensusVote(deps, validationResult.data);
+      notifier.info('consensus_vote', {
+        event: 'vote_dispatched_async',
+        proposalLength: validationResult.data.proposal.length,
+        strategy,
       });
+      return asyncResult;
     }
-    notifier.info('consensus_vote', {
-      event: 'vote_complete',
-      decision: result.value.decision,
-      approvalPercentage: result.value.approvalPercentage,
-      voteCount: result.value.votes.length,
-    });
-    const data = result.value as unknown as Record<string, unknown>;
-    return {
-      ...toolSuccess(JSON.stringify(result.value, null, 2)),
-      structuredContent: data,
-    };
+    return runSyncConsensusVote(deps, notifier, validationResult.data);
   };
 }
 

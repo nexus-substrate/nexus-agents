@@ -103,6 +103,33 @@ export const ProgressLedgerEntrySchema = z.object({
 export type ProgressLedgerEntry = z.infer<typeof ProgressLedgerEntrySchema>;
 
 /**
+ * Cancellation marker for async-mode tools (#3043 / epic #2631 Stage 2).
+ *
+ * Append-only — once present, the cancellation timestamp can't be
+ * cleared. `cancel_job` writes this; the task's run loop checks it at
+ * safe-point boundaries to abort cleanly.
+ */
+export const TaskCancellationSchema = z.object({
+  requestedAt: z.iso.datetime(),
+  /** Optional human-readable note carried back to the caller. */
+  reason: z.string().max(1000).optional(),
+});
+export type TaskCancellation = z.infer<typeof TaskCancellationSchema>;
+
+/**
+ * Maximum serialized size of a `result` payload, in bytes
+ * (#3043 / epic #2631 Stage 2). Caps result-retention DoS — a
+ * misbehaving tool that wrote a 100 MiB result into the state log
+ * would block reads of every other tool's state on the same data
+ * dir while the reducer parses it. 1 MiB is generous for structured
+ * payloads but bounds the worst case. `appendResult` truncates
+ * over-cap writes to `{ truncated: true, originalBytes }` rather
+ * than dropping them silently — so the caller can tell whether a
+ * missing result was never written vs. dropped at write time.
+ */
+export const TASK_RESULT_MAX_BYTES = 1_048_576;
+
+/**
  * Structured state for a single long-running task.
  *
  * All arrays are append-only during the task's lifetime; a blocker can
@@ -127,6 +154,40 @@ export const StructuredTaskStateSchema = z.object({
    * for the same backward-compat reason as `taskLedger`.
    */
   progressLedger: z.array(ProgressLedgerEntrySchema).optional(),
+  /**
+   * Monotonic version counter (#3043 / epic #2631 Stage 2). Increments by
+   * 1 on every write; polling clients use this to detect "I missed a
+   * transition" and resync rather than silently observe a stale snapshot.
+   *
+   * Optional + defaulting-to-0 in the reducer for backward-compat — old
+   * state logs (pre-Stage-2) don't carry it; the reducer treats their
+   * baseline as v0 and starts counting from there.
+   */
+  version: z.number().int().nonnegative().optional(),
+  /**
+   * Tool result payload (#3043 / epic #2631 Stage 2). Set atomically
+   * via the `result` log event when `stage === 'complete'`. Carries the
+   * same shape the synchronous mode would have returned inline.
+   *
+   * Capped at `TASK_RESULT_MAX_BYTES` at write time; over-cap payloads
+   * are replaced with `{ truncated: true, originalBytes }` so the
+   * cap is observable rather than silent.
+   *
+   * Once Stage 2 (this) ships, Stage 3+ (#3044 / #3045) migrate the
+   * orchestrate / run_workflow / consensus_vote async-mode writers
+   * from the Stage-1 sidecar (`mcp/jobs/job-result-store.ts`) to this
+   * field, then the sidecar files become legacy that the next cleanup
+   * sweep can remove.
+   */
+  result: z.unknown().optional(),
+  /**
+   * Cancellation marker (#3043 / epic #2631 Stage 2). Set by `cancel_job`
+   * — the running tool checks for this at safe-point boundaries (between
+   * steps, between waves) and aborts via the AbortSignal plumbing from
+   * #3035 / #3038. Append-only by construction (the reducer ignores a
+   * second cancellation event).
+   */
+  cancellation: TaskCancellationSchema.optional(),
   updatedAt: z.iso.datetime(),
 });
 export type StructuredTaskState = z.infer<typeof StructuredTaskStateSchema>;
@@ -177,6 +238,23 @@ export const StructuredTaskLogEntrySchema = z.discriminatedUnion('event', [
     event: z.literal('progress_ledger'),
     ts: z.iso.datetime(),
     entry: ProgressLedgerEntrySchema,
+  }),
+  // #3043 / epic #2631 Stage 2 — tool result payload set when stage flips
+  // to 'complete'. Written by appendResult; replayed into state.result.
+  // The payload itself is `unknown` because each tool's result shape is
+  // its own; readers cast after a status check.
+  z.object({
+    event: z.literal('result'),
+    ts: z.iso.datetime(),
+    result: z.unknown(),
+  }),
+  // #3043 / epic #2631 Stage 2 — cancellation marker. Append-only: the
+  // reducer ignores a second cancellation event so a malicious or buggy
+  // double-cancel can't rewrite the requestedAt timestamp.
+  z.object({
+    event: z.literal('cancellation'),
+    ts: z.iso.datetime(),
+    cancellation: TaskCancellationSchema,
   }),
 ]);
 export type StructuredTaskLogEntry = z.infer<typeof StructuredTaskLogEntrySchema>;
