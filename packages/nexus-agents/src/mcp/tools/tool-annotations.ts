@@ -510,6 +510,23 @@ export const TOOL_ANNOTATIONS: Readonly<Record<string, ToolSideEffectsEntry>> = 
       },
     ],
   },
+  ci_health_check: {
+    annotations: {
+      title: 'CI Health Check',
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      // Outbound network to githubstatus.com + GitHub API.
+      openWorldHint: true,
+    },
+    sideEffects: [
+      {
+        category: 'implicit',
+        description:
+          'Fetches GitHub status-page + repo actions/runs to assess CI infrastructure health (#3076)',
+      },
+    ],
+  },
   extract_symbols: {
     annotations: {
       title: 'Extract Symbols',

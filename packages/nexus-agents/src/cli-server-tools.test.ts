@@ -57,6 +57,7 @@ const {
   mockRegisterGetJobResultTool,
   mockRegisterListJobsTool,
   mockRegisterCancelJobTool,
+  mockRegisterCiHealthCheckTool,
   mockRegisterVerifyAuditChainTool,
   mockRegisterExtractSymbolsTool,
   mockRegisterSearchCodebaseTool,
@@ -114,6 +115,7 @@ const {
   mockRegisterGetJobResultTool: vi.fn(),
   mockRegisterListJobsTool: vi.fn(),
   mockRegisterCancelJobTool: vi.fn(),
+  mockRegisterCiHealthCheckTool: vi.fn(),
   mockRegisterVerifyAuditChainTool: vi.fn(),
   mockRegisterExtractSymbolsTool: vi.fn(),
   mockRegisterSearchCodebaseTool: vi.fn(),
@@ -185,6 +187,7 @@ vi.mock('./mcp/index.js', () => ({
   registerGetJobResultTool: mockRegisterGetJobResultTool,
   registerListJobsTool: mockRegisterListJobsTool,
   registerCancelJobTool: mockRegisterCancelJobTool,
+  registerCiHealthCheckTool: mockRegisterCiHealthCheckTool,
   registerVerifyAuditChainTool: mockRegisterVerifyAuditChainTool,
   registerExtractSymbolsTool: mockRegisterExtractSymbolsTool,
   registerSearchCodebaseTool: mockRegisterSearchCodebaseTool,
@@ -225,6 +228,7 @@ vi.mock('./mcp/index.js', () => ({
     'get_job_result',
     'list_jobs',
     'cancel_job',
+    'ci_health_check',
     'verify_audit_chain',
     'repo_analyze',
     'repo_security_plan',
@@ -396,8 +400,8 @@ function makeDefaultOptions(overrides: Record<string, unknown> = {}) {
 // ============================================================================
 
 describe('REGISTERED_TOOLS', () => {
-  it('should contain exactly 41 tool names', () => {
-    expect(REGISTERED_TOOLS).toHaveLength(41);
+  it('should contain exactly 42 tool names', () => {
+    expect(REGISTERED_TOOLS).toHaveLength(42);
   });
 
   it('should include all expected tool names', () => {
@@ -433,6 +437,7 @@ describe('REGISTERED_TOOLS', () => {
       'get_job_result',
       'list_jobs',
       'cancel_job',
+      'ci_health_check',
       'verify_audit_chain',
       'extract_symbols',
       'search_codebase',

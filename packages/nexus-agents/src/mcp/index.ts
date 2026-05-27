@@ -381,6 +381,12 @@ export {
   type CancelJobDeps,
   type CancelJobInput,
   type CancelJobResponse,
+  // CI health check tool (#3076 — agent-readable signal for infra outages)
+  registerCiHealthCheckTool,
+  CiHealthCheckInputSchema,
+  type CiHealthCheckDeps,
+  type CiHealthCheckInput,
+  type CiHealthCheckResponse,
   // Verify audit chain tool (#2281 follow-up)
   registerVerifyAuditChainTool,
   VerifyAuditChainInputSchema,

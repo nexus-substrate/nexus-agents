@@ -84,6 +84,8 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     'List async-mode jobs across all tools (#3046 / epic #2631 Stage 5). Cross-session discovery — returns summaries (jobId/toolName/status/timestamps) sorted newest-first. Optional filters: toolName (exact match), status (pending|complete|failed|cancelled), limit (1-200). Result payloads excluded — fetch full records via get_job_result(jobId).',
   cancel_job:
     'Mark an async-mode job as cancelled (#3042 Stage 1b / epic #2631). Same-process dispatcher unwinds via AbortSignal (#3035/#3038); cross-process workers observe via get_job_result. Idempotent — cancel-after-complete is a no-op (preserves the terminal record); second cancel returns already_cancelled. Returns outcome envelope discriminating cancelled / already_complete / already_cancelled / unknown_job.',
+  ci_health_check:
+    "Diagnostic for CI infrastructure health (#3076). Composes GitHub status-page state (githubstatus.com/api/v2/components.json) + the configured repo's recent workflow-runs activity into one verdict { status: healthy|degraded|outage|unknown, signals }. Pessimistic combination — repo-level wedge downgrades a healthy status page. Use BEFORE long auto-merge waits to skip the wedge cycle when CI is broken org-wide. Read-only, idempotent.",
   run_dev_pipeline:
     'Run the multi-agent development pipeline. Accepts direct task instructions, a plan file, or a spec file. Supports dry-run (plan+vote only).',
   run_pipeline:
@@ -135,6 +137,8 @@ export const README_TOOL_DESCRIPTIONS: Record<string, string> = {
   get_job_result: 'Read result of an async-mode dispatch by jobId (#3042 / #2631)',
   list_jobs: 'List async-mode jobs across all tools — cross-session discovery (#3046 / #2631)',
   cancel_job: 'Mark an async-mode job as cancelled — idempotent (#3042 Stage 1b)',
+  ci_health_check:
+    'CI infrastructure health — composes GitHub status + recent-runs activity (#3076)',
   repo_analyze: 'Analyze GitHub repository structure',
   repo_security_plan: 'Generate security scanning pipeline for a repo',
   research_add_source:

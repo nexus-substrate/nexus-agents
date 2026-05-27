@@ -396,6 +396,15 @@ export {
   type CancelJobResponse,
 } from './cancel-job-tool.js';
 
+// CI health check tool (#3076 — agent-readable signal for CI infrastructure outages)
+export {
+  registerCiHealthCheckTool,
+  CiHealthCheckInputSchema,
+  type CiHealthCheckDeps,
+  type CiHealthCheckInput,
+  type CiHealthCheckResponse,
+} from './ci-health-check-tool.js';
+
 // Verify audit chain tool (#2281 follow-up — wraps verifyChain over persisted log files)
 export {
   registerVerifyAuditChainTool,
@@ -561,6 +570,7 @@ export const REGISTERED_TOOL_NAMES = [
   'get_job_result',
   'list_jobs',
   'cancel_job',
+  'ci_health_check',
   'verify_audit_chain',
   'repo_analyze',
   'repo_security_plan',
