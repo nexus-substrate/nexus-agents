@@ -36,6 +36,40 @@ At every step, file issues for tangential findings rather than sidetracking. "Se
 
 If genuinely unsure which of two or three backlog items to pick, run `consensus_vote` with `quickMode: true, strategy: simple_majority`. The vote result **is** the decision. Do not route ambiguity back to the user as "what do you want me to work on" — the user's autonomous directive already resolved that: whatever the vote picks.
 
+## CI infrastructure outages — wait, don't retrigger (#3076)
+
+When CI fires unexplained / cross-PR failures (codeload 404, status checks not queuing, `workflow_dispatch` HTTP 5xx, `gh pr view ... --json statusCheckRollup` returns empty despite recent push events), **do not retrigger via close+reopen / empty commits / `gh workflow run`** until you've checked health. Retriggering during an infrastructure outage burns cycles for no signal — the failure mode I (and #3076) hit was 90+ min of silent retries before recognizing the outage.
+
+### Diagnose first
+
+Run [`ci_health_check`](../packages/nexus-agents/src/mcp/tools/ci-health-check-tool.ts) (shipped in PR #3078) with the repo:
+
+```ts
+ci_health_check({ repo: 'owner/repo', activityWindowMinutes: 30 });
+```
+
+Or manually:
+
+1. Fetch https://www.githubstatus.com/api/v2/components.json — check the `GitHub Actions` component's `status`. `degraded_performance` / `partial_outage` / `major_outage` means stop.
+2. `gh run list --workflow=ci.yml --limit 10 --json status,createdAt` — if zero runs in the last 30 min despite recent push events, the local queue is wedged.
+
+### When `status === 'outage'`
+
+- Pause the affected PR — do not push more commits, do not retrigger, do not close+reopen.
+- Pivot to non-CI work: docs, planning, design discussion, local-test verification of already-shipped code.
+- File an outage tracking issue (template: `ops: GitHub Actions ... <date>`) so the next agent session has a breadcrumb.
+- Schedule a wakeup ~30 min out. GitHub status-page incidents typically resolve in tens of minutes.
+- When the wakeup fires and `ci_health_check` returns `healthy`, push an empty `chore(ci): kick after recovery` commit to re-trigger the missed workflow events.
+
+### When `status === 'degraded'` (status page healthy + repo wedge)
+
+- Same playbook: don't retrigger; pivot; recheck.
+- If the wedge persists past one wakeup cycle, file an issue against the specific workflow (the repo may have a local config problem the status-page can't see).
+
+### What does NOT change
+
+The hard-stop list below is exhaustive — CI outages are not a hard stop. They're a "work elsewhere and come back" condition, fully covered by the autonomous directive's "keep working" clause.
+
 ## Hard stop conditions (only these)
 
 Genuinely pause and surface to the user ONLY when:
