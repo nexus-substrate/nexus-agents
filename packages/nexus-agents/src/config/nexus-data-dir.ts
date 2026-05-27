@@ -84,6 +84,10 @@ const PER_REPO_SUBDIRS: ReadonlySet<string> = new Set([
   // in a specific codebase — a job dispatched on repo A shouldn't be
   // polled-against on repo B, which would happen if jobs/ were homedir-scoped.
   'jobs',
+  // CI health-check events (#3076 / #3084). Per-repo because outages
+  // reported via `ci_health_check({ repo })` are repo-correlated; a wedge
+  // on repo A's queue does not predict repo B's health.
+  'ci-health',
 ]);
 
 /** Returns the absolute path to the nexus-agents data directory. */

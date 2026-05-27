@@ -40,6 +40,7 @@ import {
   type ToolResult,
 } from './tool-result.js';
 import { getToolAnnotations } from '../tool-annotations.js';
+import { appendCiHealthEvent, eventFromCheck } from './ci-health-log.js';
 
 /** Combined health verdict. `degraded` means partial — operator can still ship with caution. */
 export const CiHealthStatusSchema = z.enum(['healthy', 'degraded', 'outage', 'unknown']);
@@ -244,6 +245,12 @@ async function ciHealthCheckHandler(args: unknown, logger: ILogger): Promise<Too
     checkedAt: new Date().toISOString(),
     signals,
   };
+  // Telemetry append (#3084 / #3076 primitive #4). Best-effort — the log
+  // writer swallows its own failures so the diagnostic surface above is
+  // never blocked by a telemetry write error.
+  appendCiHealthEvent(
+    eventFromCheck({ status: response.status, signals, ...(repo !== undefined ? { repo } : {}) })
+  );
   return toolSuccess(JSON.stringify(response, null, 2));
 }
 
