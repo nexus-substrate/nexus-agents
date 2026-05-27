@@ -87,3 +87,9 @@ tsundoku/
 # Ephemeral worktrees from agent runs
 .claude/worktrees/
 .nexus-agents/
+
+# Per-machine generated research reports (#2893 / 4bf99884dd) — local
+# diagnostic outputs from #2631 telemetry scripts, not project research.
+# Pinned by name so legitimate docs/research/ entries stay tracked.
+docs/research/timeout-mismatch-v1.md
+docs/research/nexus-agents-multi-harness-alignment-audit.md
