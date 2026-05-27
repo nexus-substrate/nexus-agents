@@ -1,5 +1,52 @@
 # nexus-agents
 
+## 2.87.1
+
+### Patch Changes
+
+- [#3082](https://github.com/nexus-substrate/nexus-agents/pull/3082) [`f872e82`](https://github.com/nexus-substrate/nexus-agents/commit/f872e829ca98a6d04ce362e3b29ca15f5c7e1af3) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **docs(rules):** admin-merge clause for CI outages in `.rules/autonomous.md` ([#3076](https://github.com/nexus-substrate/nexus-agents/issues/3076) primitive [#3](https://github.com/nexus-substrate/nexus-agents/issues/3)).
+
+  Follow-up to PR [#3078](https://github.com/nexus-substrate/nexus-agents/issues/3078) (primitive [#1](https://github.com/nexus-substrate/nexus-agents/issues/1), `ci_health_check`) and PR [#3080](https://github.com/nexus-substrate/nexus-agents/issues/3080) (primitive [#2](https://github.com/nexus-substrate/nexus-agents/issues/2), codified wait-pattern). This addition codifies WHEN admin-merge is acceptable during a CI infrastructure outage — five clauses that ALL must hold.
+
+  ## Why
+
+  During the 2026-05-26 outage ([#3070](https://github.com/nexus-substrate/nexus-agents/issues/3070)), I admin-merged 7 PRs once the local quality gates were green and the CI failures were confirmed to be infrastructure-wide (not per-PR). The pattern worked but wasn't codified — the next agent session would have to re-derive when admin-merge is appropriate vs. when to keep waiting. This change makes the bypass conditions explicit so the audit chain stays clean.
+
+  ## What the rule says
+
+  `gh pr merge --admin` is allowed during outages ONLY when all five clauses hold:
+  1. `ci_health_check` returned `outage` or `degraded` AND the failure is confirmed global.
+  2. Local quality gates green on the branch.
+  3. Change is mechanical or well-tested (no untested new features).
+  4. An outage tracking issue exists with a link to the PR.
+  5. PR was waiting >30 min with no progress, OR crosses a release boundary.
+
+  Plus: state the bypass reason in the merge commit body, comment on the outage issue. Audit chain over convenience.
+
+  ## Closes
+
+  Partial close on [#3076](https://github.com/nexus-substrate/nexus-agents/issues/3076) — primitive [#3](https://github.com/nexus-substrate/nexus-agents/issues/3) of 4 shipped. Primitive [#4](https://github.com/nexus-substrate/nexus-agents/issues/4) (outage frequency telemetry via `outcome_store` tagging) remains.
+
+- [#3080](https://github.com/nexus-substrate/nexus-agents/pull/3080) [`cfce278`](https://github.com/nexus-substrate/nexus-agents/commit/cfce2780dd9833085a37058094fa2dee4247c243) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **docs(rules):** codified CI-outage wait-pattern in `.rules/autonomous.md` ([#3076](https://github.com/nexus-substrate/nexus-agents/issues/3076) primitive [#2](https://github.com/nexus-substrate/nexus-agents/issues/2)).
+
+  Follow-up to PR [#3078](https://github.com/nexus-substrate/nexus-agents/issues/3078) (which shipped `ci_health_check` as [#3076](https://github.com/nexus-substrate/nexus-agents/issues/3076) primitive [#1](https://github.com/nexus-substrate/nexus-agents/issues/1)). This change codifies the behavior — when CI fires unexplained / cross-PR failures (status checks not queuing, `workflow_dispatch` HTTP 5xx, codeload 404), the agent should diagnose with `ci_health_check` BEFORE retriggering, and pivot to non-CI work during confirmed outages.
+
+  ## Why
+
+  The failure mode this addresses: during the 2026-05-26 outage ([#3070](https://github.com/nexus-substrate/nexus-agents/issues/3070)), my session spent 90+ min retriggering via close+reopen and empty-commit pushes before recognizing the outage was global — every retrigger was wasted cycles because webhook delivery itself was broken. The user's [#3076](https://github.com/nexus-substrate/nexus-agents/issues/3076) documented the same pattern on a parallel session.
+
+  ## What the rule says
+
+  When CI exhibits outage symptoms:
+  1. **Diagnose first** — `ci_health_check` or manual status-page + recent-runs check.
+  2. **When `status === 'outage'`**: pause the PR (no retriggers), pivot to non-CI work (docs, design, local-test verification), file an outage tracking issue, schedule a 30-min wakeup.
+  3. **When status resolves to `healthy`**: push a `chore(ci): kick after recovery` commit and resume.
+  4. **CI outages are NOT a hard stop** — the autonomous directive's "keep working" clause covers "work elsewhere and come back."
+
+  ## Closes
+
+  Partial close on [#3076](https://github.com/nexus-substrate/nexus-agents/issues/3076) — primitive [#2](https://github.com/nexus-substrate/nexus-agents/issues/2) (codified wait-pattern) shipped. Primitives [#3](https://github.com/nexus-substrate/nexus-agents/issues/3) (CI-down merge clause) and [#4](https://github.com/nexus-substrate/nexus-agents/issues/4) (outage frequency telemetry) remain open.
+
 ## 2.87.0
 
 ### Minor Changes
