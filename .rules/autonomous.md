@@ -70,6 +70,20 @@ Or manually:
 
 The hard-stop list below is exhaustive — CI outages are not a hard stop. They're a "work elsewhere and come back" condition, fully covered by the autonomous directive's "keep working" clause.
 
+## Admin-merge during CI outages (#3076 primitive #3)
+
+`gh pr merge --admin` bypasses the "required CI checks" branch protection. It is the established pattern for this repo's owner work (most squash-merges on `main` were admin-merges by `@williamzujkowski`; PR #3064 is a representative example). During CI infrastructure outages, the agent may admin-merge a PR ONLY when **every** clause holds:
+
+1. **`ci_health_check` returned `'outage'` or `'degraded'`** at PR creation OR the workflow runs cannot complete despite manual retriggers, AND the agent has verified the failure is global / cross-PR (not local to this PR's code).
+2. **Local quality gates green** on the PR's branch — `pnpm typecheck`, `pnpm lint`, `pnpm test` (or the affected-subset), `pnpm governance:check` if governance touched.
+3. **Change is mechanical or well-tested** — bug fix with regression test, version-bump, dep-bump with no API change, docs-only, generated-artifact regen. Multi-PR refactors or new features without test coverage do NOT qualify.
+4. **An outage tracking issue exists** that links the PR (so the bypass has an audit breadcrumb).
+5. **PR was waiting in CI for >30 min** with no progress, OR the wait would cross a release boundary (don't let a release PR sit during the freeze the outage created).
+
+If ANY clause fails, wait it out — auto-merge with the existing required-CI gate is still the default.
+
+When admin-merging, **state the bypass reason** in the merge commit body and add a comment on the outage issue noting which PR was admin-merged and why. The audit chain matters more than the convenience.
+
 ## Hard stop conditions (only these)
 
 Genuinely pause and surface to the user ONLY when:
