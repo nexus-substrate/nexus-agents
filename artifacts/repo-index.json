@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-05-26T16:05:06.036Z",
+  "generated": "2026-05-27T00:31:55.992Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.86.0",
   "cli": {
@@ -307,6 +307,10 @@
       {
         "name": "cancel_job",
         "file": "src/mcp/tools/cancel-job.ts"
+      },
+      {
+        "name": "ci_health_check",
+        "file": "src/mcp/tools/ci-health-check.ts"
       },
       {
         "name": "compare_data_feeds",

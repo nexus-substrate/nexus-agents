@@ -324,6 +324,14 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
     idempotentHint: true,
     openWorldHint: false,
   },
+  /** CI infrastructure health check — composes status-page + recent-runs signals (#3076). */
+  ci_health_check: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    // Hits external services (githubstatus.com + GitHub API) — `openWorldHint`.
+    openWorldHint: true,
+  },
   /** Threshold-gated observability loop; may file GitHub issues when fileIssues=true. */
   improvement_review: {
     readOnlyHint: false,
