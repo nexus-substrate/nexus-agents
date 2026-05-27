@@ -1,5 +1,94 @@
 # nexus-agents
 
+## 2.87.0
+
+### Minor Changes
+
+- [#3078](https://github.com/nexus-substrate/nexus-agents/pull/3078) [`5740047`](https://github.com/nexus-substrate/nexus-agents/commit/5740047cdb682213decc22cbd3f8b8d4dff5fb39) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **feat(mcp):** `ci_health_check` MCP tool — agent-readable signal for CI infrastructure outages ([#3076](https://github.com/nexus-substrate/nexus-agents/issues/3076)).
+
+  Read-only diagnostic for "is CI working right now?" Composes two signals an autonomous agent would otherwise have to derive by grepping failed-CI logs:
+  1. **GitHub status page** (`https://www.githubstatus.com/api/v2/components.json`) — reports per-component health. The `GitHub Actions` component flips to `degraded_performance` / `partial_outage` / `major_outage` during the kind of incident [#3076](https://github.com/nexus-substrate/nexus-agents/issues/3076) describes.
+  2. **Recent-runs activity window** — query the configured repo's `actions/runs` endpoint over a short window (default 30 min, configurable 5-180). When the status page says "operational" but no runs have completed for the repo in that window despite known recent pushes, the local queue is wedged (exactly the failure mode hit on 2026-05-26 — global status was operational but our org's queue was dead for >90 min, per [#3070](https://github.com/nexus-substrate/nexus-agents/issues/3070)).
+
+  ## Surface
+
+  ```ts
+  ci_health_check({
+    repo?: 'owner/name',           // optional — composes the repo-activity signal
+    activityWindowMinutes?: 30,    // 5-180, default 30
+  }) => {
+    status: 'healthy' | 'degraded' | 'outage' | 'unknown',
+    checkedAt: '<iso>',
+    signals: [
+      { source: 'github-status', status, evidence: 'GitHub Actions component reports: operational' },
+      { source: 'repo-activity-window', status, evidence: '14 workflow run(s) in last 30 min on ...' },
+    ],
+  }
+  ```
+
+  ## Combined verdict — pessimistic
+
+  If the status page reports outage, return outage. If the status page is healthy but the local repo has been silent for the activity window, return degraded (operator can still act, but with the warning). Unknown signals are ignored unless every signal is unknown.
+
+  ## Annotations
+  - `readOnlyHint: true` — no state mutated
+  - `idempotentHint: true` — same inputs return the same shape
+  - `openWorldHint: true` — outbound network to githubstatus.com + GitHub API (already accessed by other tools)
+
+  ## Tests
+
+  18 cases in `ci-health-check-tool.test.ts`:
+  - Schema: required-form validation (`owner/repo`), bounds on activity window, optional fields.
+  - Per-signal: status-page operational/degraded/outage/missing-component/fetch-fail.
+  - Combined: pessimistic combination (healthy status + wedged repo → degraded), all-healthy → healthy, runs-outside-window ignored.
+  - Edge: unknown when only the repo signal fails; ISO timestamp shape; validation error envelope for malformed repo.
+
+  ## What this is NOT
+  - **Not a workaround for outages.** It's a _signal_ for the agent to stop wedging on auto-merge waits during an outage, NOT a substitute for CI. When `outage` returns, the right behavior is "pause this PR, work elsewhere, retrigger in 30 min" — exactly the [#3076](https://github.com/nexus-substrate/nexus-agents/issues/3076)-proposed pattern.
+  - **Not telemetry.** Single-shot diagnostic — does not persist to the outcome store. Telemetry primitive ([#3076](https://github.com/nexus-substrate/nexus-agents/issues/3076) ask [#4](https://github.com/nexus-substrate/nexus-agents/issues/4)) is separate work, not included here.
+
+  ## Closes
+
+  Partial close on [#3076](https://github.com/nexus-substrate/nexus-agents/issues/3076) — primitive [#1](https://github.com/nexus-substrate/nexus-agents/issues/1) (`ci_health_check`) shipped. Primitives [#2](https://github.com/nexus-substrate/nexus-agents/issues/2) (codified wait-don't-retrigger pattern), [#3](https://github.com/nexus-substrate/nexus-agents/issues/3) (CI-down merge clause), [#4](https://github.com/nexus-substrate/nexus-agents/issues/4) (outage frequency telemetry) remain open as follow-ups.
+
+### Patch Changes
+
+- [#3079](https://github.com/nexus-substrate/nexus-agents/pull/3079) [`908fcc3`](https://github.com/nexus-substrate/nexus-agents/commit/908fcc367ea84e94e007907ee069c49c1f7a93e2) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **chore(scripts):** `scripts/git-housekeeping.sh` + `pnpm git:cleanup` for [#3062](https://github.com/nexus-substrate/nexus-agents/issues/3062) recurring git-gc warning.
+
+  The recurring `warning: There are too many unreachable loose objects` was firing on every `git commit` / `git push` because:
+  1. Auto-gc bails on prune (objects "too young") and writes `.git/gc.log`.
+  2. While `.git/gc.log` exists, git refuses to retry auto-gc and re-prints the warning on every subsequent invocation.
+  3. Heavy branch churn + TypeDoc HTML regen on every release + changeset deletions keep producing fresh unreachable objects faster than the default 2-week prune window can clear.
+
+  Ships Option C from the [#3062 RCA](https://github.com/nexus-substrate/nexus-agents/issues/3062): tighter per-repo config + script for periodic runs.
+
+  ## What the script does
+  1. **Per-repo gc config** (does NOT touch global): `gc.pruneExpire=7.days.ago`, `gc.reflogExpire=30.days`, `gc.reflogExpireUnreachable=7.days`.
+  2. **Wipes `.git/gc.log`** so auto-gc retries on next invocation.
+  3. **Deletes merged branches** (uses `-d` not `-D`; filters worktree-checked-out branches).
+  4. **Runs `git gc --prune=now`**.
+  5. **Reports `du -sh .git/` before/after**.
+
+  ## Usage
+
+  ```bash
+  pnpm git:cleanup        # apply config + delete merged + prune
+  pnpm git:cleanup:dry    # show what would happen, no changes
+  ./scripts/git-housekeeping.sh --aggressive   # also pass --aggressive to gc
+  ```
+
+  ## Validation on this repo
+
+  Initial run cleared 47 merged branches (including 40+ stale `worktree-agent-*` branches from Claude Code parallel-agent sessions) and shrank `.git/` from 92M to 84M. Repeat runs are idempotent.
+
+  ## Also ships
+  - `.gitignore` entries for `docs/research/timeout-mismatch-v1.md` + `docs/research/nexus-agents-multi-harness-alignment-audit.md` — per-machine telemetry files first removed in commit `4bf99884dd` that keep getting swept in by `git add docs/`. Pinned by name so legitimate `docs/research/` files stay tracked.
+  - New canonical doc at `docs/ops/git-housekeeping.md`.
+
+  ## Closes
+
+  Closes [#3062](https://github.com/nexus-substrate/nexus-agents/issues/3062).
+
 ## 2.86.0
 
 ### Minor Changes
