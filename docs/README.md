@@ -182,6 +182,7 @@ Detailed technical documentation:
 | [docops-manifest.json](./ops/docops-manifest.json)           | DocOps enforcement manifest    | Canonical |
 | [docs-inventory.md](./ops/docs-inventory.md)                 | Documentation inventory        | Canonical |
 | [release-changeset-race.md](./ops/release-changeset-race.md) | Publish-race runbook (#2382)   | Canonical |
+| [git-housekeeping.md](./ops/git-housekeeping.md)             | Git GC cleanup runbook (#3062) | Canonical |
 
 #### Interfaces
 
