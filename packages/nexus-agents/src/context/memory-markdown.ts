@@ -71,6 +71,38 @@ export class MemoryMarkdownHelper {
   }
 
   /**
+   * Delete orphaned Markdown files whose key no longer exists in the store
+   * (#3112). Markdown is only cleaned on the explicit `delete()` path; the
+   * `prune` / `expireAll` / auto-expire paths delete SQLite rows without it,
+   * so the directory grows unbounded. Reconcile by forward-mapping every live
+   * key to its filename and removing any `.md` file not in that set (the
+   * forward map is lossy, but a collision only keeps a file a live key still
+   * needs). Best-effort — never throws. Returns the number of files removed.
+   */
+  reconcile(liveKeys: readonly string[]): number {
+    let removed = 0;
+    try {
+      if (!fs.existsSync(this.markdownDir)) return 0;
+      const expected = new Set(liveKeys.map((k) => this.keyToFilename(k)));
+      for (const file of fs.readdirSync(this.markdownDir)) {
+        if (!file.endsWith('.md') || expected.has(file)) continue;
+        try {
+          fs.unlinkSync(path.join(this.markdownDir, file));
+          removed++;
+        } catch (error) {
+          this.logger.warn('Failed to delete orphaned Markdown file', { file, error });
+        }
+      }
+      if (removed > 0) {
+        this.logger.debug('Reconciled Markdown dir', { removed, live: liveKeys.length });
+      }
+    } catch (error) {
+      this.logger.warn('Markdown reconcile failed', { error });
+    }
+    return removed;
+  }
+
+  /**
    * Convert a memory key to a safe filename.
    */
   private keyToFilename(key: string): string {

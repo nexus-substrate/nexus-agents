@@ -25,6 +25,7 @@ vi.mock('node:fs', async () => {
     existsSync: vi.fn(),
     mkdirSync: vi.fn(),
     unlinkSync: vi.fn(),
+    readdirSync: vi.fn(),
     promises: {
       ...actual.promises,
       writeFile: vi.fn(),
@@ -494,6 +495,40 @@ describe('MemoryMarkdownHelper', () => {
       expect(content).not.toContain('**Tags:**');
       expect(content).not.toContain('**Expires:**');
       expect(content).toContain('simple string');
+    });
+  });
+
+  describe('reconcile (#3112)', () => {
+    it('deletes orphaned .md files, keeps live ones, ignores non-md', () => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.readdirSync).mockReturnValue([
+        'live-key.md',
+        'orphan-key.md',
+        'notes.txt',
+      ] as unknown as ReturnType<typeof fs.readdirSync>);
+
+      const removed = helper.reconcile(['live-key']);
+
+      expect(removed).toBe(1);
+      expect(fs.unlinkSync).toHaveBeenCalledTimes(1);
+      expect(fs.unlinkSync).toHaveBeenCalledWith(path.join(testDir, 'orphan-key.md'));
+      expect(fs.unlinkSync).not.toHaveBeenCalledWith(path.join(testDir, 'live-key.md'));
+    });
+
+    it('deletes nothing when every file maps to a live key', () => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.readdirSync).mockReturnValue(['a.md', 'b.md'] as unknown as ReturnType<
+        typeof fs.readdirSync
+      >);
+
+      expect(helper.reconcile(['a', 'b'])).toBe(0);
+      expect(fs.unlinkSync).not.toHaveBeenCalled();
+    });
+
+    it('returns 0 without reading when the markdown dir is absent', () => {
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+      expect(helper.reconcile(['x'])).toBe(0);
+      expect(fs.readdirSync).not.toHaveBeenCalled();
     });
   });
 });
