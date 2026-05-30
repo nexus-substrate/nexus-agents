@@ -26,7 +26,8 @@ import {
   type BaseMcpToolDeps,
   type ToolResult,
 } from './tool-result.js';
-import { readJobResult, type JobResult } from '../jobs/job-result-store.js';
+import { type JobResult } from '../jobs/job-result-store.js';
+import { resolveJobResult } from '../jobs/task-state-source.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 
 export const GetJobResultInputSchema = z.object({
@@ -58,13 +59,15 @@ function getJobResultHandler(args: unknown): Promise<ToolResult> {
       })
     );
   }
-  const record = readJobResult(parsed.data.jobId);
+  // #3090: dual-read — prefers the Stage-2 task-state log when
+  // NEXUS_JOB_RESULT_SOURCE=task_state, else the Stage-1 sidecar (default).
+  const record = resolveJobResult(parsed.data.jobId);
   if (record === null) {
     const response: GetJobResultResponse = {
       jobId: parsed.data.jobId,
       found: false,
       errorMessage:
-        'Unknown jobId, or the sidecar file is unreadable (corrupt / future schema). ' +
+        'Unknown jobId, or the result source is unreadable (corrupt / future schema). ' +
         'Re-check the jobId returned by the async-mode dispatch.',
     };
     return Promise.resolve(toolSuccess(JSON.stringify(response, null, 2)));

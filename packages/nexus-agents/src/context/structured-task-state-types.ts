@@ -22,6 +22,11 @@ export const TaskStageSchema = z.enum([
   'verifying',
   'complete',
   'blocked',
+  // #3091 / epic #2631: terminal failure stage. Distinct from `blocked`
+  // (recoverable, still in-flight) — `failed` is terminal and maps to the
+  // job-result `failed` status. Added so async-mode writers can record a
+  // failed run in StructuredTaskState instead of the Stage-1 sidecar.
+  'failed',
 ]);
 export type TaskStage = z.infer<typeof TaskStageSchema>;
 
@@ -188,6 +193,15 @@ export const StructuredTaskStateSchema = z.object({
    * second cancellation event).
    */
   cancellation: TaskCancellationSchema.optional(),
+  /**
+   * Creation timestamp (#3090 / epic #2631). Set by the reducer to the
+   * `init` entry's `ts` and never mutated thereafter — `updatedAt` advances
+   * with each write, but `createdAt` is fixed. Job-result readers need the
+   * original creation time; `updatedAt` alone can't supply it once any
+   * transition has been recorded. Optional for backward-compat with
+   * pre-#3090 logs (the reducer backfills it from the init entry).
+   */
+  createdAt: z.iso.datetime().optional(),
   updatedAt: z.iso.datetime(),
 });
 export type StructuredTaskState = z.infer<typeof StructuredTaskStateSchema>;
