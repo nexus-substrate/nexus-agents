@@ -21,7 +21,7 @@
  * @module mcp/tools/ci-health-log
  */
 
-import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 
 import { z } from 'zod';
 
@@ -68,6 +68,71 @@ function logFilePath(): string {
 }
 
 /**
+ * Default on-disk size cap for the log, in bytes (#3089). Bounds the
+ * disk + read cost of an unbounded append loop — `getCiOutageFrequency`
+ * reads the whole file, so growth degrades reads too. Age-based pruning
+ * (`pruneOlderThan`) can't bound a burst of *recent* events within the
+ * retention window; this size cap can. Overridable via
+ * `NEXUS_CI_HEALTH_MAX_BYTES` (ops tuning + test injection).
+ */
+const DEFAULT_CI_HEALTH_MAX_BYTES = 2_097_152; // 2 MiB
+
+function maxLogBytes(): number {
+  const raw = process.env['NEXUS_CI_HEALTH_MAX_BYTES'];
+  if (raw === undefined || raw === '') return DEFAULT_CI_HEALTH_MAX_BYTES;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_CI_HEALTH_MAX_BYTES;
+}
+
+/**
+ * Bound the log to the most recent lines that fit within `maxLogBytes()`
+ * (#3089). Cheap `statSync` pre-check so the O(n) rewrite only runs when
+ * the file actually exceeds the cap — after a rewrite the size drops and
+ * won't re-trigger until it regrows, keeping append amortized-cheap. The
+ * newest line is always retained even if it alone exceeds the cap.
+ * Post-condition: on-disk size <= `maxLogBytes()`, except the degenerate
+ * case of a single retained line larger than the cap.
+ * Best-effort: failures are logged, never thrown.
+ */
+function capLogSize(path: string): void {
+  const max = maxLogBytes();
+  let size: number;
+  try {
+    size = statSync(path).size;
+  } catch {
+    return; // file vanished / unreadable — nothing to cap
+  }
+  if (size <= max) return;
+  try {
+    const lines = readFileSync(path, 'utf-8')
+      .split('\n')
+      .filter((l) => l !== '');
+    const kept: string[] = [];
+    let bytes = 0;
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i] as string;
+      const lineBytes = Buffer.byteLength(`${line}\n`, 'utf-8');
+      // Always keep the newest line; otherwise stop once the cap is hit.
+      if (kept.length > 0 && bytes + lineBytes > max) break;
+      kept.push(line);
+      bytes += lineBytes;
+    }
+    kept.reverse();
+    writeFileSync(path, kept.length > 0 ? `${kept.join('\n')}\n` : '');
+    logger.warn('ci-health log exceeded size cap — dropped oldest events', {
+      maxBytes: max,
+      previousBytes: size,
+      droppedEvents: lines.length - kept.length,
+      keptEvents: kept.length,
+    });
+  } catch (err) {
+    logger.warn('Failed to cap ci-health log size', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+/**
  * Append one event. Best-effort: failures are logged but never thrown —
  * the caller (`ci_health_check`) must not block on telemetry success.
  */
@@ -78,7 +143,11 @@ export function appendCiHealthEvent(event: Omit<CiHealthEvent, 'v' | 'ts'>): voi
     ...event,
   };
   try {
-    appendFileSync(logFilePath(), `${JSON.stringify(record)}\n`);
+    const path = logFilePath();
+    appendFileSync(path, `${JSON.stringify(record)}\n`);
+    // #3089: opportunistically bound growth so an autonomous polling loop
+    // can't grow the log (and thus every read) without limit.
+    capLogSize(path);
   } catch (err) {
     logger.warn('Failed to append ci-health event', {
       error: err instanceof Error ? err.message : String(err),
@@ -103,15 +172,22 @@ function readAllEvents(): CiHealthEvent[] {
     return [];
   }
   const out: CiHealthEvent[] = [];
+  let skipped = 0;
   for (const line of raw.split('\n')) {
     if (line === '') continue;
     try {
       const parsed = CiHealthEventSchema.safeParse(JSON.parse(line) as unknown);
       if (parsed.success) out.push(parsed.data);
+      else skipped++;
     } catch {
-      // Skip malformed lines without logging — pre-existing corruption
-      // shouldn't spam logs on every query.
+      skipped++;
     }
+  }
+  // #3089: surface corruption rather than dropping lines silently. A
+  // partial write or tampered line would otherwise make aggregates
+  // under-count with zero signal to the operator.
+  if (skipped > 0) {
+    logger.warn('ci-health log: skipped malformed lines', { skipped, kept: out.length });
   }
   return out;
 }
