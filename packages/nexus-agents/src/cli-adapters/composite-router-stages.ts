@@ -503,7 +503,17 @@ export function runLinUCBStage(
   const banditContext = taskProfileToBanditContext(taskProfile);
   const selection = deps.linucbBandit.select(banditContext);
   stagesExecuted.push('linucb-selection');
-  return { selectedCli: selection.armName as CliName, ucbScore: selection.ucbScore };
+  const picked = selection.armName as CliName;
+  // #3111: LinUCB.select() ranks over ALL registered arms, ignoring the
+  // already-filtered candidate set. Constrain the pick to topsisRanking so a
+  // fail-closed category override (e.g. security_review → [codex]) or a
+  // quality filter can't be bypassed by a learned preference. recordOutcome
+  // keys the reward update on the *routed* cliName, so falling back to the
+  // TOPSIS-best candidate updates the arm actually used — no learning desync.
+  if (!topsisRanking.includes(picked)) {
+    return { selectedCli: topsisRanking[0], ucbScore: selection.ucbScore };
+  }
+  return { selectedCli: picked, ucbScore: selection.ucbScore };
 }
 
 /** Runs preference routing stage. */
