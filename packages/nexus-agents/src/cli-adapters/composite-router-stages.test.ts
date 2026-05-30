@@ -548,6 +548,23 @@ describe('runLinUCBStage', () => {
     expect(result.ucbScore).toBe(0.85);
     expect(stages).toContain('linucb-selection');
   });
+
+  it('constrains the bandit pick to the candidate set — an excluded CLI is not routed (#3111)', () => {
+    const stages: string[] = [];
+    const profile = analyzeTaskProfile(mockTask, []);
+    // Candidate set narrowed to ['codex'] (e.g. a fail-closed category
+    // override), but the bandit's learned preference is 'claude' (outside it).
+    const constrained: CliName[] = ['codex'];
+    const mockBandit = {
+      select: vi.fn().mockReturnValue({ armName: 'claude', ucbScore: 0.99 }),
+    };
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableLinUCBSelection: true },
+      linucbBandit: mockBandit as unknown as StageDependencies['linucbBandit'],
+    });
+    const result = runLinUCBStage(profile, constrained, stages, deps);
+    expect(result.selectedCli).toBe('codex'); // NOT the excluded 'claude'
+  });
 });
 
 // ============================================================================
@@ -743,23 +760,25 @@ describe('runPipeline', () => {
     }
   });
 
-  it('returns error when LinUCB returns no selection from empty ranking', async () => {
+  it('falls back to a valid candidate when LinUCB picks outside the candidate set (#3111)', async () => {
     const stages: string[] = [];
     const profile = analyzeTaskProfile(mockTask, []);
+    // Only 'claude' is a candidate (e.g. after a quality/category filter), but
+    // the bandit's learned preference is 'gemini' — outside the set. The router
+    // must constrain to the candidate, not route to the excluded CLI, and must
+    // not error (a valid candidate exists).
     const cliNames: CliName[] = ['claude'];
-    // Mock a bandit that returns undefined for selectedCli
     const mockBandit = {
-      select: vi.fn().mockReturnValue({ armName: undefined, ucbScore: undefined }),
+      select: vi.fn().mockReturnValue({ armName: 'gemini', ucbScore: 0.9 }),
     };
     const deps = makeDeps({
       config: { ...makeDeps().config, enableLinUCBSelection: true },
       linucbBandit: mockBandit as unknown as StageDependencies['linucbBandit'],
     });
     const result = await runPipeline(mockTask, profile, stages, cliNames, deps);
-    // LinUCB returned undefined -> "No candidates available" error
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.error.message).toContain('No candidates');
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.selectedCli).toBe('claude'); // constrained, NOT 'gemini'
     }
   });
 
