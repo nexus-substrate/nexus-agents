@@ -242,4 +242,47 @@ describe('ci-health-log', () => {
       expect(r.outages).toBe(1);
     });
   });
+
+  describe('size cap / growth bound (#3089)', () => {
+    const originalMax = process.env['NEXUS_CI_HEALTH_MAX_BYTES'];
+
+    afterEach(() => {
+      if (originalMax === undefined) delete process.env['NEXUS_CI_HEALTH_MAX_BYTES'];
+      else process.env['NEXUS_CI_HEALTH_MAX_BYTES'] = originalMax;
+    });
+
+    function appendFor(repo: string): void {
+      appendCiHealthEvent(
+        eventFromCheck({
+          status: 'healthy',
+          signals: [{ source: 'github-status', status: 'healthy', evidence: 'ok' }],
+          repo,
+        })
+      );
+    }
+
+    it('does not prune while under the cap', () => {
+      // Default 2 MiB cap — a handful of events stays intact.
+      for (let i = 0; i < 5; i++) appendFor(`o/r${String(i)}`);
+      expect(readLog().length).toBe(5);
+    });
+
+    it('bounds the log to the most recent events once the byte cap is exceeded', () => {
+      process.env['NEXUS_CI_HEALTH_MAX_BYTES'] = '600'; // tiny cap for the test
+      for (let i = 0; i < 50; i++) appendFor(`o/r${String(i)}`);
+
+      const records = readLog() as Array<{ repo?: string }>;
+      // Far fewer than 50 retained — growth is bounded, not unbounded.
+      expect(records.length).toBeGreaterThan(0);
+      expect(records.length).toBeLessThan(50);
+      // Newest retained, oldest dropped (tail-retention).
+      expect(records.at(-1)?.repo).toBe('o/r49');
+      expect(records.some((r) => r.repo === 'o/r0')).toBe(false);
+
+      // On-disk size respects the cap (plus at most one always-kept newest line).
+      const path = nexusDataPath('ci-health', 'events.jsonl');
+      const bytes = Buffer.byteLength(readFileSync(path, 'utf-8'), 'utf-8');
+      expect(bytes).toBeLessThanOrEqual(600 + 256);
+    });
+  });
 });
