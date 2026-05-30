@@ -1,5 +1,52 @@
 # nexus-agents
 
+## 2.89.0
+
+### Minor Changes
+
+- [#3094](https://github.com/nexus-substrate/nexus-agents/pull/3094) [`c74eb67`](https://github.com/nexus-substrate/nexus-agents/commit/c74eb67c114cc6781db5724be9e41be6854029b9) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **feat(jobs):** dual-read job results from StructuredTaskState ([#3090](https://github.com/nexus-substrate/nexus-agents/issues/3090), reader half of the [#3069](https://github.com/nexus-substrate/nexus-agents/issues/3069) sidecar→Stage-2 migration).
+
+  `get_job_result` can now resolve an async job's result from the canonical Stage-2 `StructuredTaskState` log instead of the Stage-1 sidecar, via a new `mcp/jobs/task-state-source.ts` adapter. Flag-gated and **OFF by default** (`NEXUS_JOB_RESULT_SOURCE=task_state` to opt in), so production behavior is unchanged until the writer half ([#3091](https://github.com/nexus-substrate/nexus-agents/issues/3091)) makes `jobId === taskId` real — this is the strangler-fig reader step.
+
+  Supporting schema additions (backward-compatible):
+  - `TaskStageSchema` gains a terminal `'failed'` stage (distinct from the recoverable `'blocked'`), so async-mode writers can record a failed run in task-state.
+  - `StructuredTaskState` gains an optional `createdAt`; the reducer backfills it from the `init` entry's ts and never mutates it (job-result readers need the original creation time, which `updatedAt` can't supply once a transition is recorded).
+
+  Mapping contract (consensus-voted under [#3069](https://github.com/nexus-substrate/nexus-agents/issues/3069), documented on [#3090](https://github.com/nexus-substrate/nexus-agents/issues/3090)): `cancellation`→`cancelled`; stage `complete`→`complete`; stage `failed`→`failed`; else `pending`. No behavior change for existing logs; `version` monotonicity preserved.
+
+- [#3095](https://github.com/nexus-substrate/nexus-agents/pull/3095) [`7ce7227`](https://github.com/nexus-substrate/nexus-agents/commit/7ce72273b32f8b071eb48a38a9884baada54fad5) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **feat(orchestrate):** async-mode writes results to StructuredTaskState ([#3091](https://github.com/nexus-substrate/nexus-agents/issues/3091), writer half of the [#3069](https://github.com/nexus-substrate/nexus-agents/issues/3069) sidecar→Stage-2 migration).
+
+  `orchestrate({ mode: 'async' })` now records its result into the canonical Stage-2 task-state log, so `get_job_result` resolves directly from it once `NEXUS_JOB_RESULT_SOURCE=task_state` (default still sidecar — see [#3094](https://github.com/nexus-substrate/nexus-agents/issues/3094)). Completes the reader+writer pair: the dual-read is now activatable end-to-end.
+
+  What changed:
+  - **`jobId === taskId`.** Async dispatch now mints the jobId via the orchestration's own `generateTaskId()` and threads it through the pipeline, so the job's result lands in the task-state log keyed identically. **User-visible:** the async-mode `jobId` format changes from `job-orch-<uuid>` to `orch-<ts>-<rand>`. Callers that treat the jobId as an opaque token (the documented contract) are unaffected; only code that parsed the `job-orch-` prefix would need updating.
+  - **Terminal failures record stage `'failed'`** (the new stage from [#3094](https://github.com/nexus-substrate/nexus-agents/issues/3094)) instead of the recoverable `'blocked'`, at both `executeOrchestration` failure sites. This applies to sync orchestrate too — its task-state log now shows `'failed'` on a hard failure (observability only; nothing gates on the prior `'blocked'`). The blocker entry (carrying the message) is unchanged.
+  - On completion the background run mirrors the result into task-state via `appendResult`; throws escaping the pipeline record a `'failed'` terminal stage so pollers never see a stuck `'pending'`.
+
+  Fast-path (simple) async tasks skip task-state recording and remain resolvable via the sidecar fallback. Deferred: `run_workflow`/`consensus_vote` writers ([#3092](https://github.com/nexus-substrate/nexus-agents/issues/3092)), `list_jobs` dual-read ([#3090](https://github.com/nexus-substrate/nexus-agents/issues/3090)), sidecar deletion ([#3093](https://github.com/nexus-substrate/nexus-agents/issues/3093)).
+
+### Patch Changes
+
+- [#3099](https://github.com/nexus-substrate/nexus-agents/pull/3099) [`1f678b5`](https://github.com/nexus-substrate/nexus-agents/commit/1f678b53374d2a35c2e049334d7fc629d1674bcb) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **feat(skills):** add `pre-push-parity` skill ([#3073](https://github.com/nexus-substrate/nexus-agents/issues/3073)).
+
+  Agents kept discovering CI-only checks one failure at a time — push, wait ~3 min, parse logs, fix, repeat — for gates not in the local quality gate (the [#3073](https://github.com/nexus-substrate/nexus-agents/issues/3073) incident: `ruff format --check` and a `gitleaks` false-positive). CI is a strict superset of any local gate; this skill runs that superset locally first.
+
+  The skill (1) enumerates the repo's CI checks from `.github/workflows/`, (2) runs the locally-runnable subset in CI's order via a fail-fast one-shot (typecheck, lint, test, build, changeset presence, producer/consumer [#3024](https://github.com/nexus-substrate/nexus-agents/issues/3024), model-drift, commitlint, clean-tree, gitleaks), (3) names the checks that _can't_ run locally (CodeQL, Scorecard, Semgrep, Socket, docker consolidation) as residual risk, and (4) prompts writing a `ci-vs-local-gate-*` memory the first time in a repo so the delta isn't rediscovered. Includes the gitleaks test-fixture hygiene tip.
+
+  Brings the registered skill count to 32 (index + governance docs regenerated).
+
+- [#3097](https://github.com/nexus-substrate/nexus-agents/pull/3097) [`a8cd953`](https://github.com/nexus-substrate/nexus-agents/commit/a8cd95300847c69d26438a59d4cda8a8317cae28) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(ci-health):** bound telemetry log growth + surface corrupted lines ([#3089](https://github.com/nexus-substrate/nexus-agents/issues/3089)).
+
+  The CI-health event log (`ci-health-log.ts`, shipped in [#3084](https://github.com/nexus-substrate/nexus-agents/issues/3084)) had two reliability gaps that this fixes:
+  - **Unbounded growth.** `appendCiHealthEvent` runs on every `ci_health_check`, and `getCiOutageFrequency` reads the whole file each call — so an autonomous polling loop grew the log (and every read) without limit. `pruneOlderThan` existed but was never wired, and being age-based it can't bound a burst of _recent_ events anyway. Appends now opportunistically cap the file to the most recent lines that fit within `NEXUS_CI_HEALTH_MAX_BYTES` (default 2 MiB), gated by a cheap `statSync` so the O(n) rewrite only runs when the cap is actually exceeded. Best-effort — telemetry never blocks or throws.
+  - **Silent corruption.** `readAllEvents` dropped unparseable lines with no signal, so a partial write or tampered line made aggregates under-count invisibly. It now logs a `warn` with the skipped-line count.
+
+- [#3098](https://github.com/nexus-substrate/nexus-agents/pull/3098) [`0b5291b`](https://github.com/nexus-substrate/nexus-agents/commit/0b5291b194a61cfbdb062c8443e85c2fde16d42f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **chore(tooling):** `git:cleanup` can now prune squash-merged branches ([#3096](https://github.com/nexus-substrate/nexus-agents/issues/3096)).
+
+  `git branch --merged` can't detect squash-merged branches — a squash merge creates a new commit on main, so the branch's own commits are never ancestors of main and the branch is never seen as merged. With the repo squash-merging every PR, ~64 stale local branches had accumulated that `git:cleanup` reported as "no merged branches."
+
+  New opt-in `--include-squash-merged` mode (npm: `git:cleanup:branches` / `git:cleanup:branches:dry`) asks GitHub for each branch's PR state via `gh`. A branch is force-deleted **only** when it has a MERGED PR, **no** open PR, and its local tip exactly equals the merged PR's head SHA — so no unpushed or extra local commits are ever lost. Dry-run supported; degrades gracefully when `gh` is absent.
+
 ## 2.88.1
 
 ### Patch Changes
