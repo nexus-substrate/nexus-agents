@@ -219,11 +219,11 @@ Full rules — trust-tier definitions, the 6 non-negotiable invariants (comments
 
 ## Workflows (via Skills)
 
-**31 skills registered.** Each skill's detailed steps and trigger keywords live in `skills/<name>/SKILL.md` (Anthropic Agent Skills spec, #1828). Non-Claude agents discover via [`skills/index.yaml`](./skills/index.yaml) referenced from [AGENTS.md](./AGENTS.md).
+**32 skills registered.** Each skill's detailed steps and trigger keywords live in `skills/<name>/SKILL.md` (Anthropic Agent Skills spec, #1828). Non-Claude agents discover via [`skills/index.yaml`](./skills/index.yaml) referenced from [AGENTS.md](./AGENTS.md).
 
-`api-and-interface-design`, `browser-testing-with-devtools`, `bug-fix`, `code-simplification`, `codex-delegator`, `context-engineering`, `deprecation-and-migration`, `dev-pipeline`, `docs-chart`, `docs-image`, `docs-mermaid`, `docs-review`, `docs-rewrite`, `documentation-management`, `dogfooding-issues`, `gemini-delegator`, `hotfix`, `implement-feature`, `infrastructure-management`, `performance-optimization`, `release`, `requirements-gathering`, `research-and-vote`, `reviewing-code`, `security-advisory-response`, `security-scanning`, `self-critique`, `system-review`, `test-driven-development`, `ui-ux-design`, `version-check`
+`api-and-interface-design`, `browser-testing-with-devtools`, `bug-fix`, `code-simplification`, `codex-delegator`, `context-engineering`, `deprecation-and-migration`, `dev-pipeline`, `docs-chart`, `docs-image`, `docs-mermaid`, `docs-review`, `docs-rewrite`, `documentation-management`, `dogfooding-issues`, `gemini-delegator`, `hotfix`, `implement-feature`, `infrastructure-management`, `performance-optimization`, `pre-push-parity`, `release`, `requirements-gathering`, `research-and-vote`, `reviewing-code`, `security-advisory-response`, `security-scanning`, `self-critique`, `system-review`, `test-driven-development`, `ui-ux-design`, `version-check`
 
-_Auto-generated from `skills/index.yaml`. 31 skills._
+_Auto-generated from `skills/index.yaml`. 32 skills._
 
 <!-- GOVERNANCE:WORKFLOW_INDEX:END -->
 

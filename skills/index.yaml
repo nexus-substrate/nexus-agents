@@ -283,6 +283,25 @@ skills:
       - bottleneck
       - core web vitals
       - regression
+  - name: pre-push-parity
+    description: |-
+      Run the CI gates locally before pushing, so failures surface in seconds
+      instead of one CI cycle at a time. Enumerates the checks in
+      .github/workflows/, runs the locally-runnable subset in CI's order, and
+      pins the local-vs-CI delta as a memory the first time you work in a repo.
+      Use before `git push` / opening a PR, or when CI just failed on something
+      your local gate missed.
+      Triggers on "pre-push", "before push", "ci parity", "will ci pass",
+      "local gate", "prepush", "pre-push check".
+    path: skills/pre-push-parity/SKILL.md
+    triggers:
+      - pre-push
+      - before push
+      - ci parity
+      - will ci pass
+      - local gate
+      - prepush
+      - pre-push check
   - name: release
     description: |-
       Execute a release following project standards.
