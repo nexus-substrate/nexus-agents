@@ -343,8 +343,10 @@ skills:
     description: |-
       Review code changes following project standards and security guidelines.
       Checks for lint compliance, type safety, test coverage, and security issues.
-      Use when reviewing PRs, auditing code, or checking implementation quality.
-      Triggers on "review code", "code review", "check this", "audit", "PR review".
+      Use when reviewing PRs, auditing code, checking implementation quality, or
+      running a blind pre-merge review pass before merging your own change.
+      Triggers on "review code", "code review", "check this", "audit", "PR review",
+      "pre-merge review", "blind reviewer", "before merge".
     path: skills/reviewing-code/SKILL.md
     triggers:
       - review code
@@ -352,6 +354,9 @@ skills:
       - check this
       - audit
       - pr review
+      - pre-merge review
+      - blind reviewer
+      - before merge
       - reviewing prs
   - name: security-advisory-response
     description: >-
