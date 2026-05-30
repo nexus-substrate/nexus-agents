@@ -288,12 +288,36 @@ export class HybridMemoryBackend implements IMemoryBackend {
 
   prune(olderThan: Date): Promise<Result<number, MemoryError>> {
     this.ensureInitialized();
-    return Promise.resolve(pruneOldEntries(this.getDatabase(), olderThan, this.logger));
+    const result = pruneOldEntries(this.getDatabase(), olderThan, this.logger);
+    // #3112: prune deletes SQLite rows but not their Markdown sidecars; clean
+    // up orphaned files so the markdown dir stays bounded under decay.
+    if (result.ok && result.value > 0) this.reconcileMarkdown();
+    return Promise.resolve(result);
   }
 
   expireAll(): Promise<Result<number, MemoryError>> {
     this.ensureInitialized();
-    return Promise.resolve(expireAllEntries(this.getDatabase(), this.logger));
+    const result = expireAllEntries(this.getDatabase(), this.logger);
+    if (result.ok && result.value > 0) this.reconcileMarkdown();
+    return Promise.resolve(result);
+  }
+
+  /**
+   * Remove Markdown sidecars whose key no longer exists in SQLite (#3112).
+   * Covers every row-deletion path (prune / expire / auto-expire) uniformly,
+   * not just the explicit `delete()`. Best-effort.
+   */
+  private reconcileMarkdown(): void {
+    try {
+      const rows = this.getDatabase().prepare('SELECT key FROM memories').all() as Array<{
+        key: string;
+      }>;
+      this.markdown.reconcile(rows.map((r) => r.key));
+    } catch (error) {
+      this.logger.warn('Markdown reconcile query failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   delete(key: string): Promise<Result<boolean, MemoryError>> {
