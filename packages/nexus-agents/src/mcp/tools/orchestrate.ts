@@ -92,14 +92,18 @@ import {
 // Structured task state (#2033, integration from #2043). Enabled by
 // default from v2.50+; set NEXUS_TASK_STATE_ENABLED=0 to opt out.
 // When disabled, helpers no-op silently.
-import { initTaskState, updateStage, appendBlocker } from '../../context/structured-task-state.js';
+import {
+  initTaskState,
+  updateStage,
+  appendBlocker,
+  appendResult,
+} from '../../context/structured-task-state.js';
 import type { StructuredTaskState } from '../../context/structured-task-state-types.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 // #3042 / epic #2631: async-mode dispatch + sidecar job-result store.
 import { writeJobPending, writeJobComplete, writeJobFailed } from '../jobs/job-result-store.js';
 import { tryAcquire, release, suggestRetryAfterMs } from '../jobs/job-concurrency.js';
 import { shortCircuitOrFreshJobId, registerIdempotentJob } from '../jobs/job-idempotency.js';
-import { randomUUID } from 'node:crypto';
 
 // Re-export types and values for consumers
 export {
@@ -612,15 +616,24 @@ function handleOrchestratorSuccess(ctx: {
   return ok(output);
 }
 
+interface ExecuteOrchestrationOpts {
+  readonly router?: IWorkflowRouter;
+  readonly snapshot?: OrchestrationStateSnapshot;
+  readonly trustTier?: string;
+  // #3091: async-mode threads a pre-minted taskId so it equals the jobId the
+  // caller polls with (`get_job_result` → task-state). Sync mode omits it and
+  // a fresh id is generated, preserving prior behavior.
+  readonly taskId?: string;
+}
+
 async function executeOrchestration(
   input: OrchestrateInput,
   deps: OrchestrateDeps,
-  router?: IWorkflowRouter,
-  snapshot?: OrchestrationStateSnapshot,
-  trustTier?: string
+  opts: ExecuteOrchestrationOpts = {}
 ): Promise<Result<OrchestrateOutput, OrchestrationError>> {
+  const { router, snapshot, trustTier, taskId: providedTaskId } = opts;
   const { workflowRouter, decision, orchestrator, logger } = routeAndPrepare(input, deps, router);
-  const taskId = generateTaskId();
+  const taskId = providedTaskId ?? generateTaskId();
   const startTime = getTimeProvider().now();
   // Snapshot: routing decision available once routeAndPrepare returns (#2111)
   if (snapshot !== undefined) setRouting(snapshot, buildRoutingInfo(decision));
@@ -657,7 +670,10 @@ async function executeOrchestration(
     });
   } catch (error) {
     recordTaskStateBlocker(taskId, error instanceof Error ? error.message : String(error), logger);
-    recordTaskStateStage(taskId, 'blocked', logger);
+    // #3091: terminal failure → 'failed' (not the recoverable 'blocked'), so
+    // the job-result reader maps it to a terminal `failed` status rather than
+    // leaving pollers waiting on a `pending`.
+    recordTaskStateStage(taskId, 'failed', logger);
     return handleOrchestrationException(error, taskId, input.task, logger);
   } finally {
     hb.cleanup();
@@ -681,7 +697,8 @@ async function runOrchestratorWithStateTracking(params: {
   const result = await withAccessPolicy(policy, () => orchestrator.execute(definition, {}));
   if (!result.ok) {
     recordTaskStateBlocker(taskId, result.error.message, logger);
-    recordTaskStateStage(taskId, 'blocked', logger);
+    // #3091: see executeOrchestration — terminal failure stage is 'failed'.
+    recordTaskStateStage(taskId, 'failed', logger);
     return handleOrchestratorFailure({
       error: result.error,
       taskId,
@@ -771,6 +788,32 @@ function recordTaskStateBlocker(taskId: string, blocker: string, logger: ILogger
       error: result.error.message,
     });
   }
+}
+
+/**
+ * Record the async job's result payload into the Stage-2 task-state log
+ * (#3091). Best-effort + gated, like the other recorders. The terminal
+ * stage was already set by the pipeline; this stores the same payload the
+ * sidecar holds so `get_job_result`'s dual-read returns an identical record.
+ */
+function recordTaskStateResult(taskId: string, result: unknown, logger: ILogger): void {
+  if (!isTaskStateEnabled()) return;
+  const r = appendResult(taskId, result, getTimeProvider().nowIso());
+  if (!r.ok) {
+    logger.warn('task-state: result record failed', { taskId, error: r.error.message });
+  }
+}
+
+/**
+ * Record a terminal failure for an async job (#3091): a blocker carrying the
+ * message + the `'failed'` stage, so the dual-read reader maps it to a
+ * terminal `failed` status. Used by the background wrapper for throws that
+ * escape the pipeline (which otherwise wouldn't have set a terminal stage).
+ */
+function recordTaskStateFailure(taskId: string, message: string, logger: ILogger): void {
+  if (!isTaskStateEnabled()) return;
+  recordTaskStateBlocker(taskId, message, logger);
+  recordTaskStateStage(taskId, 'failed', logger);
 }
 
 /**
@@ -1034,19 +1077,25 @@ async function executeOrchestrationWithDeadline(params: {
   readonly notifier: ReturnType<typeof createMcpNotifier>;
   readonly logger: ILogger;
   readonly trustTier?: string;
+  /** #3091: pre-minted taskId (async mode) so jobId === taskId. */
+  readonly taskId?: string;
 }): Promise<Result<OrchestrateOutput, OrchestrationError>> {
-  const { input, deps, notifier, logger, trustTier } = params;
+  const { input, deps, notifier, logger, trustTier, taskId } = params;
   const overallDeadlineMs = getMcpSafeDeadlineMs(
     MCP_TIMEOUTS.perTool['orchestrate'] ?? MCP_TIMEOUTS.defaultMs,
     'orchestrate'
   );
-  const timeoutTaskId = generateTaskId();
+  const timeoutTaskId = taskId ?? generateTaskId();
   // Shared snapshot: executeOrchestration fills it as sub-steps complete; the
   // timeout handler reads it to produce a richer partial result (#2111).
   const snapshot = createOrchestrationStateSnapshot(getTimeProvider().now());
   return raceAgainstDeadline(
     withProgressHeartbeat('orchestrate', notifier, () =>
-      executeOrchestration(input, deps, undefined, snapshot, trustTier)
+      executeOrchestration(input, deps, {
+        snapshot,
+        ...(trustTier !== undefined ? { trustTier } : {}),
+        ...(taskId !== undefined ? { taskId } : {}),
+      })
     ),
     overallDeadlineMs,
     (elapsedMs) => {
@@ -1072,8 +1121,10 @@ async function runOrchestratePipeline(params: {
   readonly notifier: ReturnType<typeof createMcpNotifier>;
   readonly logger: ILogger;
   readonly trustTier?: string;
+  /** #3091: pre-minted taskId (async mode) so jobId === taskId. */
+  readonly taskId?: string;
 }): Promise<ToolResult> {
-  const { input, deps, notifier, logger, trustTier } = params;
+  const { input, deps, notifier, logger, trustTier, taskId } = params;
   logger.debug('Starting orchestration', { taskLength: input.task.length });
   notifier.info('orchestrate', { event: 'orchestrate_start', taskLength: input.task.length });
   const startMs = getTimeProvider().now();
@@ -1105,6 +1156,7 @@ async function runOrchestratePipeline(params: {
     notifier,
     logger,
     ...(trustTier !== undefined ? { trustTier } : {}),
+    ...(taskId !== undefined ? { taskId } : {}),
   });
   if (!result.ok) {
     return toolStructuredError({
@@ -1251,7 +1303,11 @@ function dispatchAsyncOrchestrate(params: {
     tool: 'orchestrate',
     idempotencyKey: params.input.idempotencyKey,
     inputs: params.input,
-    freshJobId: () => `job-orch-${randomUUID()}`,
+    // #3091: jobId === taskId. The async job's id IS the orchestration's
+    // taskId, so get_job_result(jobId) resolves directly from the task-state
+    // log (orch-<ts>-<rand>) under the Stage-2 reader. Replaces the former
+    // opaque `job-orch-<uuid>` id.
+    freshJobId: () => generateTaskId(),
     replayEnvelope: buildReplayEnvelope,
     collisionEnvelope: buildCollisionEnvelope,
   });
@@ -1293,7 +1349,11 @@ function recordPendingAndRegister(jobId: string, key: string | undefined, inputs
  * complete/failed recording + slot release. Extracted from
  * `dispatchAsyncOrchestrate` so the dispatcher stays under the 50-line cap.
  */
-async function runOrchestrateInBackground(
+/**
+ * @internal Exported for integration tests (#3091) — drives the async
+ * background run deterministically (awaitable) instead of fire-and-forget.
+ */
+export async function runOrchestrateInBackground(
   jobId: string,
   params: {
     readonly input: OrchestrateInput;
@@ -1303,6 +1363,9 @@ async function runOrchestrateInBackground(
     readonly trustTier?: string;
   }
 ): Promise<void> {
+  // #3091: jobId === taskId — thread it into the pipeline so the task-state
+  // log is keyed identically and get_job_result can resolve from it.
+  const taskId = jobId;
   try {
     const result = await withDepthGuard('orchestrate', () =>
       runOrchestratePipeline({
@@ -1310,14 +1373,24 @@ async function runOrchestrateInBackground(
         deps: params.deps,
         notifier: params.notifier,
         logger: params.logger,
+        taskId,
         ...(params.trustTier !== undefined ? { trustTier: params.trustTier } : {}),
       })
     );
     writeJobComplete(jobId, 'orchestrate', result);
+    // #3091: mirror the result payload into the Stage-2 task-state log. The
+    // terminal stage (complete | failed) was set inside the pipeline; this
+    // records the same payload the sidecar stored so the dual-read reader
+    // returns an identical record. Best-effort, gated, never throws.
+    recordTaskStateResult(taskId, result, params.logger);
   } catch (err: unknown) {
     const errObj = err instanceof Error ? err : new Error(String(err));
     params.logger.error('Async orchestrate dispatch failed', errObj, { jobId });
     writeJobFailed(jobId, 'orchestrate', errObj.message);
+    // #3091: a throw escaping the pipeline (e.g. depth-guard) may leave the
+    // task-state log without a terminal stage — record one so the reader
+    // doesn't report a stuck 'pending'.
+    recordTaskStateFailure(taskId, errObj.message, params.logger);
   } finally {
     release('orchestrate');
   }
