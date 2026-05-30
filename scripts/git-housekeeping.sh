@@ -31,6 +31,9 @@
 #   ./scripts/git-housekeeping.sh           # run it
 #   ./scripts/git-housekeeping.sh --dry-run # show what would happen
 #   ./scripts/git-housekeeping.sh --aggressive  # also pass --aggressive to gc
+#   ./scripts/git-housekeeping.sh --include-squash-merged  # also prune
+#                                           # squash-merged branches via gh
+#                                           # (#3096; needs gh + network)
 #
 # Exit codes: 0 success; 1 not in a git repo; 2 unexpected git failure.
 
@@ -38,10 +41,12 @@ set -euo pipefail
 
 DRY_RUN=0
 AGGRESSIVE=0
+SQUASH_MERGED=0
 for arg in "$@"; do
   case "$arg" in
     --dry-run) DRY_RUN=1 ;;
     --aggressive) AGGRESSIVE=1 ;;
+    --include-squash-merged) SQUASH_MERGED=1 ;;
     -h|--help)
       sed -n '2,/^# Exit codes/p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
@@ -120,6 +125,64 @@ else
     echo "$merged" | sed 's/^/    [dry-run] would delete: /'
   else
     echo "$merged" | xargs -n1 git branch -d 2>&1 | sed 's/^/    /'
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# 3b. Delete squash-merged branches (opt-in, gh-backed) — #3096
+# ---------------------------------------------------------------------------
+# `git branch --merged` can't see squash-merged branches: a squash merge
+# creates a NEW commit on main, so the branch's own commits are never
+# ancestors of main and the branch is never detected as merged. This step
+# asks GitHub for each branch's PR state instead. Opt-in (network + gh) via
+# --include-squash-merged. SAFETY: a branch is force-deleted ONLY when it has
+# a MERGED PR, NO open PR, and its local tip exactly equals the merged PR's
+# head SHA (so no unpushed/extra local commits are lost).
+if [ "$SQUASH_MERGED" = 1 ]; then
+  echo "==> Identifying squash-merged branches via GitHub PR state..."
+  if ! command -v gh >/dev/null 2>&1; then
+    echo "    gh CLI not found — skipping squash-merge detection."
+  else
+    candidates=$(git for-each-ref --format='%(refname:short)' refs/heads/ \
+      | grep -vE "^(main|master|${CURRENT_BRANCH})$" || true)
+    if [ -n "$worktree_branches" ]; then
+      candidates=$(echo "$candidates" | grep -vxFf <(echo "$worktree_branches") || true)
+    fi
+    sq_del=0
+    sq_skip=0
+    while IFS= read -r br; do
+      [ -z "$br" ] && continue
+      # One gh call per branch: open-PR count + most-recent merged PR (num + head SHA).
+      info=$(gh pr list --head "$br" --state all \
+        --json number,state,headRefOid \
+        --jq '"\([.[] | select(.state=="OPEN")] | length) \([.[] | select(.state=="MERGED")][0].number // "") \([.[] | select(.state=="MERGED")][0].headRefOid // "")"' \
+        2>/dev/null || true)
+      open_count=$(echo "$info" | awk '{print $1}')
+      pr_num=$(echo "$info" | awk '{print $2}')
+      pr_sha=$(echo "$info" | awk '{print $3}')
+      # No merged PR → leave it (WIP / never-PR'd / abandoned).
+      [ -z "$pr_num" ] && continue
+      if [ "${open_count:-0}" != "0" ]; then
+        echo "    skip $br — has an open PR"
+        sq_skip=$((sq_skip + 1))
+        continue
+      fi
+      local_sha=$(git rev-parse "$br" 2>/dev/null || echo '')
+      if [ "$local_sha" != "$pr_sha" ]; then
+        echo "    skip $br — local tip != merged PR #$pr_num head; has extra/unpushed commits"
+        sq_skip=$((sq_skip + 1))
+        continue
+      fi
+      if [ "$DRY_RUN" = 1 ]; then
+        echo "    [dry-run] would delete: $br (squash-merged via PR #$pr_num)"
+      else
+        if git branch -D "$br" >/dev/null 2>&1; then
+          echo "    deleted: $br (squash-merged via PR #$pr_num)"
+        fi
+      fi
+      sq_del=$((sq_del + 1))
+    done <<< "$candidates"
+    echo "    squash-merged: $sq_del to delete, $sq_skip skipped (open PR / extra commits)"
   fi
 fi
 
