@@ -78,13 +78,30 @@ pnpm typecheck && pnpm lint && pnpm test && pnpm build \
   && npx tsx scripts/check-new-unused-exports.ts origin/main \
   && pnpm check:model-drift \
   && npx commitlint --from origin/main --to HEAD \
-  && test -z "$(git status --porcelain)" && echo "PARITY OK"
+  && test -z "$(git status --porcelain)" \
+  && br="$(git branch --show-current)" && [ -n "$br" ] && [ "$br" != "main" ] && [ "$br" != "master" ] \
+  && echo "PARITY OK ($br)"
 ```
 
 > The pre-commit hook already runs `gitleaks` + lint-staged `eslint --fix` +
 > `prettier`, so a successful commit covers formatting/secrets. This skill adds
 > the gates the hook does **not** cover (typecheck, full test, build, changeset,
 > unused-exports, model-drift, commitlint, clean-tree).
+
+## Branch safety (before push)
+
+The harness can silently switch the working branch mid-session (#3072): a long
+run can end up on `main` carrying another branch's uncommitted edits — risking
+lost work or an accidental push to `main`. Before every push, confirm you are
+on the branch you intend (the one-shot above already gates on this):
+
+```bash
+git branch --show-current   # must be your feature branch — never empty (detached) or main/master
+```
+
+If it is `main`/`master` or empty (detached HEAD), **STOP — do not push.** Find
+your work (`git reflog`, `git stash list`), check out / re-create the intended
+feature branch, then re-run the gates before pushing.
 
 ## Step 3 — Checks you can NOT run locally (residual risk)
 
