@@ -1,5 +1,17 @@
 # nexus-agents
 
+## 2.89.2
+
+### Patch Changes
+
+- [#3113](https://github.com/nexus-substrate/nexus-agents/pull/3113) [`d115a69`](https://github.com/nexus-substrate/nexus-agents/commit/d115a698cc25041ea39b26291b27186d99f93627) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(routing):** constrain LinUCB selection to the candidate set — fail-closed category overrides can no longer be bypassed ([#3111](https://github.com/nexus-substrate/nexus-agents/issues/3111)).
+
+  `runLinUCBStage` returned whatever `LinUCBBandit.select()` picked, but `select()` ranks over **all** registered arms and ignored the already-filtered candidate list (`topsisRanking`). So a fail-closed category override (e.g. `security_review → [codex]`) or a quality filter could be silently defeated when the bandit's learned preference favored an excluded CLI — routing a security task to a CLI the policy had removed. The stage now falls back to the TOPSIS-best candidate when the bandit's pick is not in the candidate set. Learning attribution is unaffected: `recordOutcome` keys the reward update on the routed `cliName`. Found via a proactive security audit.
+
+- [#3115](https://github.com/nexus-substrate/nexus-agents/pull/3115) [`f899665`](https://github.com/nexus-substrate/nexus-agents/commit/f8996658da061c750913ec54b28e2c98ea5514e8) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(memory):** reconcile Markdown sidecars on prune/expire — no more orphaned-file disk growth ([#3112](https://github.com/nexus-substrate/nexus-agents/issues/3112)).
+
+  Only the explicit `delete(key)` path removed a memory's `.md` sidecar; `prune`, `expireAll`, and auto-expire deleted SQLite rows but left the Markdown files behind. With `MemoryDecayManager` running prune on a timer, the markdown dir grew without bound. Added `MemoryMarkdownHelper.reconcile(liveKeys)` (forward-maps every live key to its filename and removes any `.md` not in that set) and call it from the backend's `prune`/`expireAll`, covering every row-deletion path uniformly. Best-effort, never throws. Found via a proactive audit.
+
 ## 2.89.1
 
 ### Patch Changes
