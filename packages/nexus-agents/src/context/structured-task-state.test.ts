@@ -62,7 +62,9 @@ describe('initTaskState + readTaskState', () => {
       // #3043: reducer now backfills `version: 0` for old-shape state
       // logs that didn't carry it. Backward-compat invariant — see
       // reduceLogEntries in structured-task-state.ts.
-      expect(readR.value).toEqual({ ...initial, version: 0 });
+      // #3090: reducer also backfills `createdAt` from the init entry ts
+      // (here == initial.updatedAt, since initTaskState stamps ts=updatedAt).
+      expect(readR.value).toEqual({ ...initial, version: 0, createdAt: initial.updatedAt });
     }
   });
 

@@ -333,6 +333,10 @@ export function reduceLogEntries(
     decisions: [...initState.decisions],
     blockers: initState.blockers.map((b) => ({ ...b })),
     version: initState.version ?? 0,
+    // #3090: createdAt is fixed at the init entry's ts and never advances
+    // (unlike updatedAt). Prefer an explicit createdAt on the init state,
+    // else fall back to the init entry's ts.
+    createdAt: initState.createdAt ?? init.ts,
   };
 
   for (const entry of entries) {
