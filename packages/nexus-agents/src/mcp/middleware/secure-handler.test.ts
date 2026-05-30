@@ -1222,6 +1222,21 @@ describe('SecureHandler', () => {
       expect(result.content[0]?.text).not.toContain('MyS3cretP@ss');
     });
 
+    it('redacts ALL occurrences of a repeated secret pattern, not just the first (#3109)', async () => {
+      // Two AWS-style keys in one output: the non-global regex bug redacted
+      // only the first, leaking the second to the caller.
+      const twoKeys = 'old AKIAIOSFODNN7EXAMPLE rotated to AKIA1234567890ABCDEF now';
+      const handler: ToolHandler = vi.fn(() =>
+        Promise.resolve({ content: [{ type: 'text' as const, text: twoKeys }] })
+      );
+      const secureHandler = createSecureHandler(handler, { toolName: 'multi_secret_tool' });
+      const result = await secureHandler({});
+      const text = result.content[0]?.text ?? '';
+      expect(text).not.toContain('AKIAIOSFODNN7EXAMPLE');
+      expect(text).not.toContain('AKIA1234567890ABCDEF');
+      expect(text.match(/\[REDACTED\]/g)?.length).toBe(2);
+    });
+
     it('should handle slow handler execution', async () => {
       const slowHandler: ToolHandler = vi.fn(async () => {
         await new Promise((resolve) => setTimeout(resolve, 100));

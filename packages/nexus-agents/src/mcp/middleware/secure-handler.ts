@@ -130,29 +130,38 @@ const MAX_INPUT_SIZE_BYTES = 10 * 1024 * 1024;
  * Patterns that indicate leaked secrets in tool output.
  * Each pattern is tested against tool response text.
  */
+// #3109: every pattern is GLOBAL so `replace` redacts ALL matches, not just
+// the first — two secrets of the same shape (e.g. a rotated old+new key) must
+// both be redacted before the result reaches the MCP caller.
 const SECRET_PATTERNS: readonly RegExp[] = [
   // API keys with common prefixes
-  /\b(sk-[a-zA-Z0-9]{20,})\b/,
-  /\b(pk-[a-zA-Z0-9]{20,})\b/,
+  /\b(sk-[a-zA-Z0-9]{20,})\b/g,
+  /\b(pk-[a-zA-Z0-9]{20,})\b/g,
   // AWS-style keys
-  /\b(AKIA[A-Z0-9]{16})\b/,
+  /\b(AKIA[A-Z0-9]{16})\b/g,
   // Bearer tokens in output
-  /Bearer\s+[a-zA-Z0-9_\-.~+/]+=*/,
+  /Bearer\s+[a-zA-Z0-9_\-.~+/]+=*/g,
   // Generic long hex secrets (40+ chars)
-  /\b[0-9a-f]{40,}\b/i,
+  /\b[0-9a-f]{40,}\b/gi,
   // password= or token= in output
-  /(?:password|token|secret|apikey|api_key)\s*[=:]\s*\S{8,}/i,
+  /(?:password|token|secret|apikey|api_key)\s*[=:]\s*\S{8,}/gi,
 ];
 
 /** Redact detected secrets from tool output text. */
 function sanitizeOutput(text: string, logger: ILogger): string {
   let sanitized = text;
   for (const pattern of SECRET_PATTERNS) {
-    if (pattern.test(sanitized)) {
+    // #3109: replace unconditionally — do NOT guard with pattern.test(), which
+    // advances a global regex's lastIndex and makes replace() skip earlier
+    // matches. `String.replace` with a global regex redacts every occurrence
+    // and resets lastIndex to 0 on completion, so the shared pattern stays
+    // safe across calls. Detect a redaction via a before/after compare.
+    const before = sanitized;
+    sanitized = sanitized.replace(pattern, '[REDACTED]');
+    if (sanitized !== before) {
       logger.warn('Potential secret detected in tool output, redacting', {
         pattern: pattern.source.slice(0, 30),
       });
-      sanitized = sanitized.replace(pattern, '[REDACTED]');
     }
   }
   return sanitized;
