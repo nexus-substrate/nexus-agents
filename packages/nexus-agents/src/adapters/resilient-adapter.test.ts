@@ -323,13 +323,19 @@ describe('ResilientAdapter', () => {
   });
 
   describe('stream() when adapter unavailable', () => {
-    it('yields nothing when no adapter detected', async () => {
+    it('throws instead of silently yielding nothing — matches complete() error semantics', async () => {
+      // #3105: a bare `return` made an unavailable adapter look like a clean
+      // empty stream, so streamWithFallback could not tell failure from a
+      // legitimately-empty completion. stream() now errors like complete().
       vi.mocked(createAutoAdapter).mockRejectedValueOnce(new Error('No CLIs'));
-      const chunks: unknown[] = [];
-      for await (const chunk of adapter.stream({ messages: [] })) {
-        chunks.push(chunk);
-      }
-      expect(chunks).toEqual([]);
+      const drain = (async () => {
+        const chunks: unknown[] = [];
+        for await (const chunk of adapter.stream({ messages: [] })) {
+          chunks.push(chunk);
+        }
+        return chunks;
+      })();
+      await expect(drain).rejects.toThrow('No model adapter available');
     });
   });
 

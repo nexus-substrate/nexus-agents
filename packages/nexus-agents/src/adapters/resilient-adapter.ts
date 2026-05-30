@@ -128,7 +128,11 @@ export class ResilientAdapter implements IResilientAdapter {
   async *stream(request: CompletionRequest): AsyncIterable<StreamChunk> {
     const adapter = await this.ensureAdapter();
     if (adapter === undefined) {
-      return;
+      // #3105: error like complete() rather than yielding an empty stream — a
+      // silent-empty stream masks "no adapter available" as a clean empty
+      // completion, so streamWithFallback can't tell failure from a
+      // legitimately-empty result.
+      throw new ModelError('No model adapter available');
     }
     yield* adapter.stream(request);
   }
