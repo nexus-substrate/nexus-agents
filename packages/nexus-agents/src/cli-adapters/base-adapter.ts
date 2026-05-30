@@ -9,7 +9,7 @@
  * (Source: cli-project_plan.md v2.1.0)
  */
 
-import { exec } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import semver from 'semver';
 import { CLI_SUBPROCESS_TIMEOUTS } from '../config/timeouts.js';
@@ -41,7 +41,10 @@ import { getTimeoutForTaskAuto } from './cli-timeout-profiles.js';
 import { CapacityTracker, createCapacityTracker } from './capacity-tracker.js';
 import { executeCliRetryLoop } from './cli-retry-loop.js';
 
-const execAsync = promisify(exec);
+// #3116: execFile (no shell) — `this.name` is a compile-time CliName literal
+// today, but using execFile keeps the adapters' no-shell invariant complete
+// and removes the latent injection foot-gun if `name` ever becomes dynamic.
+const execFileAsync = promisify(execFile);
 
 /**
  * Fallback capacity (in tokens) when capacity tracker is uninitialized.
@@ -245,7 +248,7 @@ export abstract class BaseCliAdapter implements ICliAdapter {
     }
 
     try {
-      const { stdout } = await execAsync(`${this.name} --version`, {
+      const { stdout } = await execFileAsync(this.name, ['--version'], {
         timeout: CLI_SUBPROCESS_TIMEOUTS.spawnMs,
       });
 
