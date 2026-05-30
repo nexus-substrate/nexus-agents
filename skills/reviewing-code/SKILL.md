@@ -3,8 +3,10 @@ name: reviewing-code
 description: |
   Review code changes following project standards and security guidelines.
   Checks for lint compliance, type safety, test coverage, and security issues.
-  Use when reviewing PRs, auditing code, or checking implementation quality.
-  Triggers on "review code", "code review", "check this", "audit", "PR review".
+  Use when reviewing PRs, auditing code, checking implementation quality, or
+  running a blind pre-merge review pass before merging your own change.
+  Triggers on "review code", "code review", "check this", "audit", "PR review",
+  "pre-merge review", "blind reviewer", "before merge".
 allowed-tools: Read, Grep, Glob, Bash, LSP
 ---
 
@@ -80,6 +82,51 @@ pnpm lint && pnpm typecheck && pnpm test
 pnpm test:coverage
 ```
 
+## Pre-merge blind-reviewer pass
+
+For any non-trivial PR, run **one blind review by a fresh subagent** after the
+local gates are green and **before** you merge — including when merging your
+own change. "Blind" = the reviewer gets the diff and the repo, **not** your
+reasoning for writing it; that's what catches the bugs your own mental model is
+blind to. In a 22-PR autonomous session this caught a real, merge-blocking bug
+on **6 of 22 PRs (27%)** that green gates plus author self-review had missed
+(#3074).
+
+**Trigger:** `pnpm lint && pnpm typecheck && pnpm test` green → before `gh pr merge`.
+
+**Mechanism:**
+
+1. Spawn a `code-reviewer` (or `Explore`) subagent scoped to the diff
+   (`git diff --stat <base>` for the file list, then the changed files in full).
+   Give it the intended **contract**, not your implementation rationale.
+2. Have it apply the five-axis framework and the 4-point Verification Gate below
+   (blind ≠ sloppy — it does not get to skip the gate), returning findings
+   tagged **BLOCKER / WARN / NIT**, each with a `file:line` and the observable
+   failure. Bound its output (≤ ~400 words) so it triages rather than dumps.
+3. Map its tags onto this skill's existing categories: **BLOCKER → Critical**
+   (do not merge), **WARN → Important** (fix or file a tracked follow-up before
+   merge), **NIT → Suggestion** (optional).
+4. Confirmed BLOCKERs gate the merge. Fix, re-run gates, re-review the fix.
+
+**Bug-shape classes to prime the reviewer on** — shapes, not a frozen list; the
+specific instance varies by stack. Prime with the class, let the reviewer find
+the instance (a checklist of last session's bugs overfits and misses the next):
+
+- **Accessibility / semantics drift** — label/role/name regression, contrast, or
+  assistive-tech breakage introduced by a component swap.
+- **Test brittleness** — tests coupled to incidental ordering, time, or
+  window-slice boundaries that pass now and flake later.
+- **Redundant / double-emitted output** — the same signal announced twice (logs,
+  UI, telemetry) after a refactor.
+- **Layout / state clobbering** — a change that silently overwrites a sibling's
+  position, style, or state.
+- **Contract drift** — a public surface (API, schema, CLI flag, return shape)
+  changed without its callers/tests updated.
+
+> This pass is the _same rubric_ as the rest of this skill, run by fresh eyes at
+> the merge boundary — not a second taxonomy. Every finding it returns still
+> passes the Verification Gate before it blocks anything.
+
 ## Verification Gate — MANDATORY for every finding
 
 > A 2026-04-25 audit (#2225) found a 100% false-positive rate in
@@ -139,7 +186,7 @@ If you tag everything Critical, nothing is Critical. Three or more Critical find
 
 - [ ] Issue at `file:line`
 
-### Major (Should Fix)
+### Important (Should Fix)
 
 - [ ] Issue
 
