@@ -66,7 +66,7 @@ _Auto-generated from `.rules/*.md` frontmatter by `scripts/inject-governance.ts`
 
 Workflow playbooks live at `skills/<name>/SKILL.md` (canonical per the Anthropic Agent Skills spec, which OpenCode and others are adopting).
 
-- **Discovery for all harnesses:** read [`skills/index.yaml`](./skills/index.yaml) — `{name, description, triggers, path}` for all 31 skills.
+- **Discovery for all harnesses:** read [`skills/index.yaml`](./skills/index.yaml) — `{name, description, triggers, path}` for all 32 skills.
 - When a user request matches a skill's triggers, read the full `SKILL.md` at the listed path and follow its workflow.
 - `skills/index.yaml` is regenerated via `scripts/generate-skills-index.ts` and gated in CI. Never edit it by hand.
 - **Codex Skills (#2660):** Codex's Skills primitive uses the same `SKILL.md` filename + the same required frontmatter (`name`, `description`) as the Anthropic spec — these skills are already cross-vendor compatible, no translation layer needed. Codex discovers skills under `.agents/skills/` or via `[[skills.config]]` path entries in the agent config; point either at this repo's `skills/` directory. The `name`/`description` validation in `generate-skills-index.ts` is the enforced cross-vendor contract.
