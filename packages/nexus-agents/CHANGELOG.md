@@ -1,5 +1,35 @@
 # nexus-agents
 
+## 2.89.1
+
+### Patch Changes
+
+- [#3104](https://github.com/nexus-substrate/nexus-agents/pull/3104) [`ba17cb5`](https://github.com/nexus-substrate/nexus-agents/commit/ba17cb5dc06f4c31f6707a576ab28f4f329ee130) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **docs(guides):** parallel-agent git-worktree isolation guide + reference hooks ([#3060](https://github.com/nexus-substrate/nexus-agents/issues/3060)).
+
+  Adds `docs/guides/PARALLEL_AGENT_WORKTREES.md` documenting how to run multiple Claude Code `general-purpose` agents in parallel against one checkout without git/build/test contention, via `isolation: "worktree"` + custom `WorktreeCreate`/`WorktreeRemove` hooks. Captures the **empirical hook stdin contract** (which is undocumented upstream: the hook receives `session_id`/`cwd`/`name` and must mint the worktree path + base branch itself — it does NOT receive `worktree_path`/`base_branch`/`worktree_name`) and the multi-worktree gotchas (Playwright `reuseExistingServer`, `NODE_ENV` bundle-size skew, inherited test artifacts).
+
+  Ships dry-run-verified reference hooks `scripts/hooks/worktree-create.sh` + `worktree-remove.sh` (bash/git/jq; detached worktrees under `/tmp/claude-worktrees/<session>-<agent>/`, session-prefix teardown, opportunistic age sweep scoped to the worktree root). Indexed in `docs/README.md`. [#3060](https://github.com/nexus-substrate/nexus-agents/issues/3060)'s per-agent-cleanup + random-preview-port suggestions remain tracked there.
+
+- [#3108](https://github.com/nexus-substrate/nexus-agents/pull/3108) [`117c607`](https://github.com/nexus-substrate/nexus-agents/commit/117c607e2ac897ec601754c5b42bd4b540f8c6c7) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **docs(skills):** add a branch-safety guard to the `pre-push-parity` skill ([#3072](https://github.com/nexus-substrate/nexus-agents/issues/3072)).
+
+  The harness can silently switch an agent's working branch mid-session — a long run can end up on `main` carrying another branch's uncommitted edits, risking lost work or an accidental push to `main`. The skill's pre-push one-shot now gates on `git branch --show-current` being a non-empty, non-`main`/`master` branch (`PARITY OK (<branch>)`), and a new "Branch safety" section documents the STOP-and-recover habit. This is the in-repo agent-side mitigation; the underlying harness branch-switch bug ([#3072](https://github.com/nexus-substrate/nexus-agents/issues/3072)) is upstream.
+
+- [#3102](https://github.com/nexus-substrate/nexus-agents/pull/3102) [`5439757`](https://github.com/nexus-substrate/nexus-agents/commit/5439757ef8315898a4c511e94594abe30c5c6fd5) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **feat(skills):** codify the blind pre-merge-review pass in `reviewing-code` ([#3074](https://github.com/nexus-substrate/nexus-agents/issues/3074)).
+
+  Adds a "Pre-merge blind-reviewer pass" section to the existing `reviewing-code` skill (extended, not a new skill — per a 3/3 `consensus_vote` on anti-sprawl): after local gates are green and before merging, spawn a fresh `code-reviewer`/`Explore` subagent on the diff, blind to the author's reasoning, returning BLOCKER/WARN/NIT findings that map onto the skill's existing Critical/Important/Suggestion categories. The pattern caught a real merge-blocking bug on 6 of 22 PRs (27%) in a prior autonomous session.
+
+  The section references the existing five-axis framework + 4-point Verification Gate (no restatement) and primes the reviewer on bug-shape _classes_ (accessibility/semantics drift, test brittleness, double-emitted output, layout/state clobbering, contract drift) rather than a frozen list, to avoid overfitting. Discoverability added via "pre-merge review" / "blind reviewer" / "before merge" trigger keywords. [#3074](https://github.com/nexus-substrate/nexus-agents/issues/3074) proposals [#2](https://github.com/nexus-substrate/nexus-agents/issues/2) (ship-velocity signal) and [#3](https://github.com/nexus-substrate/nexus-agents/issues/3) (failure-mode memory pre-loading) remain tracked in that issue.
+
+- [#3107](https://github.com/nexus-substrate/nexus-agents/pull/3107) [`5add19e`](https://github.com/nexus-substrate/nexus-agents/commit/5add19e4644c40b78a0c296610aa8dd41e3611f7) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(adapters):** `ResilientAdapter.stream()` errors instead of silently yielding empty when no adapter is available ([#3105](https://github.com/nexus-substrate/nexus-agents/issues/3105)).
+
+  `stream()` did a bare `return` when adapter detection produced nothing, emitting a clean empty stream — while the sibling `complete()` returns `err(ModelError('No model adapter available'))` for the same condition. The `streamWithFallback` consumer only falls back on a thrown error, so a silent-empty stream masked "no adapter available" as a legitimately-empty completion. `stream()` now throws `ModelError` to match `complete()`'s contract. (`countTokens()` returning `0` is left as-is: no error channel, and a 0 estimate is benign.)
+
+  Found via a proactive security/QA audit.
+
+- [#3110](https://github.com/nexus-substrate/nexus-agents/pull/3110) [`ee6fceb`](https://github.com/nexus-substrate/nexus-agents/commit/ee6fceb0aaf22f7ac18b7c92c27f4d49595b3369) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(security):** redact ALL secret matches in tool output, not just the first ([#3109](https://github.com/nexus-substrate/nexus-agents/issues/3109)).
+
+  `sanitizeOutput` (secure-handler) used non-global `SECRET_PATTERNS` with a `pattern.test()`-then-`replace()` loop, so `String.replace` substituted only the **first** match per pattern. Tool output (or a thrown error's text) containing two or more secrets of the same shape — e.g. a rotated old+new API key, or two `Bearer` tokens in one stack trace — leaked every secret after the first to the MCP caller. Patterns are now global and the redaction replaces unconditionally (dropping the `test()` guard, which would advance a global regex's `lastIndex` and skip earlier matches). Found via a proactive security audit.
+
 ## 2.89.0
 
 ### Minor Changes
