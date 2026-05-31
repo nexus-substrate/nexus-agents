@@ -12,6 +12,7 @@
 import { z } from 'zod';
 
 import { getTimeProvider } from '../core/index.js';
+import { resolveEnvMode } from './env-mode.js';
 import type { TrustTier, GitHubUserRole, InjectionFlag } from './trust-types.js';
 import { TRUST_TIER_NUMERIC, ROLE_DEFAULT_TRUST } from './trust-types.js';
 
@@ -377,14 +378,20 @@ export type ReputationGatingMode = z.infer<typeof ReputationGatingModeSchema>;
 /** Default when `NEXUS_REPUTATION_GATING` is unset/invalid — audit (telemetry, no block). */
 export const DEFAULT_REPUTATION_GATING_MODE: ReputationGatingMode = 'audit';
 
-/** Resolve the gating mode from the environment (invalid → default, never throws). */
+/**
+ * Resolve the gating mode from the environment (invalid → default + warn, never
+ * throws — #3130). Delegates to the shared `resolveEnvMode` so this flag and
+ * `NEXUS_ACCESS_POLICY_MODE` coerce identically.
+ */
 export function resolveReputationGatingMode(
   env: NodeJS.ProcessEnv = process.env
 ): ReputationGatingMode {
-  const raw = env['NEXUS_REPUTATION_GATING'];
-  if (typeof raw !== 'string' || raw.length === 0) return DEFAULT_REPUTATION_GATING_MODE;
-  const parsed = ReputationGatingModeSchema.safeParse(raw.toLowerCase());
-  return parsed.success ? parsed.data : DEFAULT_REPUTATION_GATING_MODE;
+  return resolveEnvMode(
+    env['NEXUS_REPUTATION_GATING'],
+    ReputationGatingModeSchema,
+    DEFAULT_REPUTATION_GATING_MODE,
+    'NEXUS_REPUTATION_GATING'
+  );
 }
 
 /** Outcome of applying the gating mode to a reputation assessment. */
