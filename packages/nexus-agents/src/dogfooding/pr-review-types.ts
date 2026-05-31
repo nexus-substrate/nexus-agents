@@ -136,6 +136,29 @@ export type ReviewDecision = 'approve' | 'request_changes' | 'comment';
 /**
  * Complete PR review result from multi-agent collaboration.
  */
+/**
+ * Trust + reputation assessment of the PR author, surfaced for observability
+ * (#3123, epic #3118 Phase 5). Mirrors `issue_triage`'s assessment.
+ */
+export interface PRTrustAssessment {
+  /** Classifier trust tier (1-4) from author association. */
+  readonly trustTier: string;
+  /** Author's GitHub role. */
+  readonly userRole: string;
+  /** Whether the author is on the maintainer allowlist. */
+  readonly isAllowlisted: boolean;
+  /** Reputation score (0-100) when reputation is enabled. */
+  readonly reputationScore?: number | undefined;
+  /** Whether the author is flagged as suspicious. */
+  readonly isSuspicious: boolean;
+  /** Tier the policy gate ACTUALLY enforced (== trustTier under audit/off). */
+  readonly enforcedTrustTier?: string | undefined;
+  /** Tier reputation reconciliation computed — what enforce mode WOULD gate on. */
+  readonly reputationReconciledTier?: string | undefined;
+  /** Reputation-gating rollout mode applied: `off` | `audit` | `enforce`. */
+  readonly gatingMode?: string | undefined;
+}
+
 export interface PRReviewResult {
   /** Pull request number */
   readonly prNumber: number;
@@ -161,6 +184,8 @@ export interface PRReviewResult {
   readonly debateRounds: number;
   /** Timestamp of review */
   readonly timestamp: string;
+  /** Author trust + reputation assessment (#3123). */
+  readonly trustAssessment: PRTrustAssessment;
 }
 
 /**
@@ -179,6 +204,8 @@ export interface PRReviewConfig {
   readonly enableInlineComments: boolean;
   /** Whether to run in dry-run mode (no GitHub posting) */
   readonly dryRun: boolean;
+  /** Whether to assess author reputation and gate on it (#3123). */
+  readonly enableReputation: boolean;
   /** GitHub token for API access */
   readonly githubToken?: string | undefined;
   /** Model adapter configuration */
@@ -198,6 +225,7 @@ export const DEFAULT_PR_REVIEW_CONFIG: PRReviewConfig = {
   minSeverity: 'low',
   enableInlineComments: true,
   dryRun: false,
+  enableReputation: true,
   modelConfig: {
     temperature: 0.3,
     maxTokens: 8192,
@@ -225,6 +253,7 @@ export const PRReviewConfigSchema = z.object({
   minSeverity: z.enum(['critical', 'high', 'medium', 'low', 'info']).default('low'),
   enableInlineComments: z.boolean().default(true),
   dryRun: z.boolean().default(false),
+  enableReputation: z.boolean().default(true),
   githubToken: z.string().optional(),
   modelConfig: z
     .object({

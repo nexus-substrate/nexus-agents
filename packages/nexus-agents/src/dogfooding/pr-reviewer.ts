@@ -14,6 +14,12 @@ import { classifyTrust } from '../security/trust-classifier.js';
 import type { ClassifyResult } from '../security/trust-classifier.js';
 import { evaluatePolicy } from '../security/policy-gate.js';
 import type { ActionContext } from '../security/policy-gate.js';
+import {
+  ReputationCache,
+  gateWithReputation,
+  resolveReputationGatingMode,
+} from '../security/reputation-model.js';
+import type { ReputationGateDecision } from '../security/reputation-model.js';
 import { createSecurityExpert } from '../agents/experts/security-expert.js';
 import { createCodeExpert } from '../agents/experts/code-expert.js';
 import { createTestingExpert } from '../agents/experts/testing-expert.js';
@@ -22,6 +28,7 @@ import type {
   PRMetadata,
   PRReviewConfig,
   PRReviewResult,
+  PRTrustAssessment,
   ExpertReviewResult,
   ReviewCategory,
 } from './pr-review-types.js';
@@ -40,6 +47,8 @@ import {
   sumFindings,
   generateSummary,
   createFailedReview,
+  assessPRReputation,
+  buildPRTrustAssessment,
 } from './pr-reviewer-helpers.js';
 
 // Re-export for convenience
@@ -54,11 +63,13 @@ export class PRReviewer {
   private readonly config: PRReviewConfig;
   private readonly observer: SwarmObserver;
   private readonly adapter: IModelAdapter | undefined;
+  private readonly reputationCache: ReputationCache;
 
   constructor(config?: Partial<PRReviewConfig>, adapter?: IModelAdapter) {
     this.config = { ...DEFAULT_PR_REVIEW_CONFIG, ...config };
     this.observer = new SwarmObserver();
     this.adapter = adapter ?? undefined;
+    this.reputationCache = new ReputationCache();
   }
 
   /**
@@ -90,11 +101,16 @@ export class PRReviewer {
       isAllowlisted: trustResult.isAllowlisted,
     });
 
+    // #3123: assess reputation and apply the gating rollout mode (off/audit/
+    // enforce), mirroring issue_triage — closes the PR-path equivalent of the
+    // #828/#3106 dead-end (reputation was classified but never gated here).
+    const { gateDecision, trustAssessment } = this.gatePRAuthor(prMetadata, trustResult);
+
     const expertReviews = await this.runExpertReviews(prMetadata, traceId);
-    const result = this.aggregateReviews(prMetadata, expertReviews, startTime);
+    const result = this.aggregateReviews(prMetadata, expertReviews, startTime, trustAssessment);
 
     if (!this.config.dryRun) {
-      await this.postReviewToGitHub(provider, parseResult.value, result, trustResult);
+      await this.postReviewToGitHub(provider, parseResult.value, result, gateDecision);
     }
 
     logger.info('PR review completed', {
@@ -206,6 +222,36 @@ export class PRReviewer {
       username: pr.author,
       authorAssociation: pr.authorAssociation,
     });
+  }
+
+  /**
+   * Assesses the PR author's reputation and applies the gating rollout mode
+   * (#3123). Returns the gate decision (for the policy gate) and the assessment
+   * surfaced on the result. A suppressed demotion (audit/off) is logged.
+   */
+  private gatePRAuthor(
+    pr: PRMetadata,
+    trustResult: ClassifyResult
+  ): { gateDecision: ReputationGateDecision; trustAssessment: PRTrustAssessment } {
+    const reputation = assessPRReputation(pr, this.reputationCache, this.config.enableReputation);
+    const gateDecision = gateWithReputation(
+      trustResult.trustTier,
+      reputation,
+      resolveReputationGatingMode()
+    );
+    if (gateDecision.demotionSuppressed) {
+      logger.warn('Reputation demotion suppressed by gating mode (would block under enforce)', {
+        prNumber: pr.number,
+        author: pr.author,
+        mode: gateDecision.mode,
+        classifierTier: trustResult.trustTier,
+        reconciledTier: gateDecision.reconciledTier,
+      });
+    }
+    return {
+      gateDecision,
+      trustAssessment: buildPRTrustAssessment(trustResult, reputation, gateDecision),
+    };
   }
 
   /**
@@ -322,7 +368,8 @@ Provide a structured review with:
   private aggregateReviews(
     pr: PRMetadata,
     reviews: ExpertReviewResult[],
-    startTime: number
+    startTime: number,
+    trustAssessment: PRTrustAssessment
   ): PRReviewResult {
     const allFindings = reviews.flatMap((r) => r.findings);
     const decision = determineDecision(reviews, allFindings);
@@ -341,6 +388,7 @@ Provide a structured review with:
       consensusScore,
       debateRounds: 1,
       timestamp: getTimeProvider().nowIso(),
+      trustAssessment,
     };
   }
 
@@ -355,9 +403,9 @@ Provide a structured review with:
     provider: FullCapableProvider,
     pr: { owner: string; repo: string; prNumber: number },
     result: PRReviewResult,
-    trustResult: ClassifyResult
+    gateDecision: ReputationGateDecision
   ): Promise<void> {
-    const policyResult = this.auditReviewAction(trustResult);
+    const policyResult = this.auditReviewAction(gateDecision.enforcedTier);
     if (policyResult.hasRuleOfTwoViolation) {
       logger.warn('Rule of Two: review posting blocked', {
         prNumber: pr.prNumber,
@@ -380,13 +428,16 @@ Provide a structured review with:
     }
   }
 
-  /** Audits review posting against the policy gate for logging. */
-  private auditReviewAction(trustResult: ClassifyResult): {
+  /**
+   * Audits review posting against the policy gate. Gates on the reputation-
+   * reconciled `enforcedTier` (#3123) rather than the raw classifier tier.
+   */
+  private auditReviewAction(enforcedTier: ClassifyResult['trustTier']): {
     hasRuleOfTwoViolation: boolean;
     violations: readonly { rule: string; message: string }[];
   } {
     const context: ActionContext = {
-      inputTrustTier: trustResult.trustTier,
+      inputTrustTier: enforcedTier,
       hasWriteAccess: true,
       hasSecretAccess: true,
     };

@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import type {
   PRMetadata,
   PRReviewResult,
+  PRTrustAssessment,
   ExpertReviewResult,
   ReviewFinding,
   ReviewCategory,
@@ -23,6 +24,64 @@ import {
   SEVERITY_EMOJI,
   DECISION_EMOJI,
 } from './pr-review-types.js';
+import { sanitizeInput } from '../security/input-sanitizer.js';
+import { assessReputation } from '../security/reputation-model.js';
+import type {
+  ReputationCache,
+  ReputationGateDecision,
+  ReputationAssessment,
+  GitHubUserMetadata,
+} from '../security/reputation-model.js';
+import type { ClassifyResult } from '../security/trust-classifier.js';
+
+// =============================================================================
+// Reputation Gating Helpers (#3123, epic #3118 Phase 5)
+// =============================================================================
+
+/**
+ * Assesses the PR author's reputation from the signals available in the PR
+ * event: author association + injection flags from the (sanitized) PR body.
+ * Account-age / contribution signals are NOT fetched here yet — OMITTED, never
+ * fabricated, so the engine skips those signals. Returns undefined when
+ * reputation is disabled.
+ */
+export function assessPRReputation(
+  pr: PRMetadata,
+  cache: ReputationCache,
+  enableReputation: boolean
+): ReputationAssessment | undefined {
+  if (!enableReputation) return undefined;
+  // Only `injectionFlags` is consumed here, and injection detection is
+  // role-independent — the userRole arg ('unknown') and the sanitizer's own
+  // trustTier output are intentionally irrelevant to this call.
+  const sanitizeResult = sanitizeInput(pr.body, 'unknown', pr.author);
+  const metadata: GitHubUserMetadata = {
+    username: pr.author,
+    authorAssociation: pr.authorAssociation,
+    injectionFlags: sanitizeResult.injectionFlags,
+  };
+  return assessReputation(metadata, cache);
+}
+
+/** Builds the observability assessment surfaced on the review result (#3123). */
+export function buildPRTrustAssessment(
+  trustResult: ClassifyResult,
+  reputation: ReputationAssessment | undefined,
+  gateDecision: ReputationGateDecision
+): PRTrustAssessment {
+  // Tier-1 (owner/allowlisted) authors cannot be suspicious.
+  const isTier1 = trustResult.trustTier === '1';
+  return {
+    trustTier: trustResult.trustTier,
+    userRole: trustResult.userRole,
+    isAllowlisted: trustResult.isAllowlisted,
+    reputationScore: reputation?.reputationScore,
+    isSuspicious: isTier1 ? false : (reputation?.isSuspicious ?? false),
+    enforcedTrustTier: gateDecision.enforcedTier,
+    reputationReconciledTier: gateDecision.reconciledTier,
+    gatingMode: gateDecision.mode,
+  };
+}
 
 // =============================================================================
 // Parsing Helpers

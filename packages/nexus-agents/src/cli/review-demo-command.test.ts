@@ -112,6 +112,12 @@ function makeReviewResult(overrides: Partial<PRReviewResult> = {}) {
     consensusScore: 0.95,
     debateRounds: 1,
     timestamp: '2026-01-01T00:00:00Z',
+    trustAssessment: {
+      trustTier: '3',
+      userRole: 'unknown',
+      isAllowlisted: false,
+      isSuspicious: false,
+    },
     ...overrides,
   } satisfies PRReviewResult;
 }
