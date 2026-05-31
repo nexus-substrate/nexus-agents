@@ -211,12 +211,20 @@ export interface ConsensusVoteResponse {
   durationMs: number;
   simulateVotes: boolean;
   higherOrderMetadata?: HigherOrderMetadata;
+  /**
+   * Set when an error policy short-circuited the vote (#2630/#3124). Explains a
+   * `rejected` decision that may coexist with a high `approvalPercentage` — e.g.
+   * `fail_closed: 1 voter(s) errored`. Absent on normally-tallied votes.
+   */
+  policyReason?: string;
 }
 
 /** Extended voting result with optional Higher-Order metadata. */
 export interface ExtendedVotingResult extends VotingResult {
   strategy: VotingStrategy;
   higherOrderResult?: HigherOrderVotingResult;
+  /** Reason an error policy short-circuited the vote (#3124); surfaced on the response. */
+  policyReason?: string;
 }
 
 // ============================================================================
@@ -287,6 +295,10 @@ export function buildResponse(
 
   if (input.threshold !== undefined) {
     response.threshold = input.threshold;
+  }
+
+  if (result.policyReason !== undefined) {
+    response.policyReason = result.policyReason;
   }
 
   if (result.strategy === 'higher_order' && result.higherOrderResult) {

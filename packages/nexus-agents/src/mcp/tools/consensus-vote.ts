@@ -152,23 +152,39 @@ function createEmptyConsensusResult(
 /**
  * Creates a synthetic ConsensusResult for an error-policy short-circuit
  * (#2630). Reused for both the hard floor (errors > 50%) and `fail_closed`.
- * Mirrors `createEmptyConsensusResult` but stamps the reason on the
- * proposal title so downstream `mapOutcomeToDecision` / `buildResponse`
- * surface a human-readable failure mode.
+ * Stamps the reason on the proposal title and, since #3124, reports the TRUE
+ * vote breakdown of the responding (non-error) voters instead of all-zeros —
+ * the outcome stays `rejected` (the policy failed closed), but the counts and
+ * `approvalPercentage` are honest (e.g. 6 approvals + 1 error → approve:6,
+ * 100%) so callers/audit can see the policy short-circuited a real consensus
+ * rather than mistake it for a genuine rejection.
  */
-function createPolicyFailedResult(
+export function createPolicyFailedResult(
   proposal: string,
   algorithm: ConsensusAlgorithm,
-  reason: string
+  reason: string,
+  votes: readonly AgentVoteResult[]
 ): ConsensusResult {
   const now = new Date().toISOString();
+  const voteMap = new Map<string, Vote>();
+  let approve = 0;
+  let reject = 0;
+  let abstain = 0;
+  for (const v of votes) {
+    if (v.source === 'error') continue; // errors surface separately, not as a decision
+    voteMap.set(v.role, v.vote);
+    if (v.vote.decision === 'approve') approve++;
+    else if (v.vote.decision === 'reject') reject++;
+    else abstain++;
+  }
+  const responding = approve + reject + abstain;
   return {
     proposalId: 'error-policy-short-circuit',
     proposal: { title: `MCP Consensus Vote — ${reason}`, description: proposal, algorithm },
     outcome: 'rejected',
-    votes: new Map<string, Vote>(),
-    voteCounts: { approve: 0, reject: 0, abstain: 0, total: 0 },
-    approvalPercentage: 0,
+    votes: voteMap,
+    voteCounts: { approve, reject, abstain, total: responding },
+    approvalPercentage: responding > 0 ? (approve / responding) * 100 : 0,
     quorumReached: false,
     startedAt: now,
     closedAt: now,
@@ -438,11 +454,14 @@ function buildPolicyShortCircuitResult(args: {
   return {
     proposal: args.input.proposal,
     threshold: args.algorithm,
-    result: createPolicyFailedResult(args.input.proposal, args.algorithm, args.reason),
+    result: createPolicyFailedResult(args.input.proposal, args.algorithm, args.reason, args.votes),
     votes: args.votes,
     totalTimeMs,
     simulateVotes: args.input.simulateVotes,
     strategy: args.strategy,
+    // #3124: surface WHY a high-approval result is still 'rejected' so callers
+    // don't mistake a fail-closed policy short-circuit for a genuine rejection.
+    policyReason: args.reason,
   };
 }
 
@@ -855,6 +874,9 @@ export const CONSENSUS_VOTE_OUTPUT_SCHEMA = {
       reasoning: z.string().max(2000),
     })
     .optional(),
+  // #3124: explains a `rejected` decision that coexists with a high
+  // approvalPercentage (an error-policy short-circuit, e.g. fail_closed).
+  policyReason: z.string().max(200).optional(),
 };
 
 /**
