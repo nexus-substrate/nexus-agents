@@ -1,5 +1,21 @@
 # nexus-agents
 
+## 2.91.0
+
+### Minor Changes
+
+- [#3131](https://github.com/nexus-substrate/nexus-agents/pull/3131) [`bde542f`](https://github.com/nexus-substrate/nexus-agents/commit/bde542f020333b13b4185ba8c4da57cf8b3533b8) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(security): NEXUS_REPUTATION_GATING rollout flag for reputation tier gating ([#3122](https://github.com/nexus-substrate/nexus-agents/issues/3122), epic [#3118](https://github.com/nexus-substrate/nexus-agents/issues/3118) Phase 4)
+
+  Reputation-based trust-tier demotion in `issue_triage` now follows the same `off`/`audit`/`enforce` rollout convention as `NEXUS_ACCESS_POLICY_MODE`, defaulting to **`audit`** (compute + log + surface the would-be demotion, but enforce the classifier tier). Operators graduate to `enforce` after the demotion rate is known. `gateWithReputation()` + `resolveReputationGatingMode()` are exported from `reputation-model`; the triage result surfaces `trustAssessment.enforcedTrustTier` (the tier actually gated on), `reputationReconciledTier` (the would-be demotion), and `gatingMode` for telemetry, and a suppressed demotion is logged. The maintainer allowlist (Tier 1) remains the false-positive escape hatch in every mode.
+
+### Patch Changes
+
+- [#3128](https://github.com/nexus-substrate/nexus-agents/pull/3128) [`f148ca4`](https://github.com/nexus-substrate/nexus-agents/commit/f148ca4b1a8a1df0bf9b761ed1bf4f9bfe42933e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(security):** issue-triage reputation uses the author's real account age ([#3121](https://github.com/nexus-substrate/nexus-agents/issues/3121), Phase 3 of epic [#3118](https://github.com/nexus-substrate/nexus-agents/issues/3118)).
+
+  `estimateAccountAge()` was a stub that ignored its argument and always returned `365` — so every author looked like an established account and the `new_account` reputation signal **never fired**, leaving Phase 0's gating unable to act on account age (the same dead-signal class Phase 1 fixed in the firewall).
+
+  `fetchIssueData` now fetches the author's real account creation date via the existing `provider.fetchUserMetadata()` and derives `accountAgeDays`, threaded into `assessAuthorReputation`. Best-effort: on fetch failure or an unparseable date the value is **omitted**, so the engine **skips** the `new_account` signal (per [#3106](https://github.com/nexus-substrate/nexus-agents/issues/3106)'s optional fields) — never fabricated, and triage never blocks on the lookup. The `estimateAccountAge`/`DEFAULT_ACCOUNT_AGE_DAYS` stub is deleted. Tests: `new_account` fires for a recent account, not for an established one, and is omitted on fetch failure.
+
 ## 2.90.0
 
 ### Minor Changes
