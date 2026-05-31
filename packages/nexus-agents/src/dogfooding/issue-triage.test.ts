@@ -11,12 +11,27 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ok, err } from '../core/index.js';
 import { ScmError } from '../scm/types.js';
-import type { ScmIssueDetail, ScmCommentDetail } from '../scm/types.js';
+import type { ScmIssueDetail, ScmCommentDetail, ScmUserMetadata } from '../scm/types.js';
 
 // Mock SCM provider traits
 const mockGetIssueDetail = vi.fn();
 const mockListCommentDetails = vi.fn();
+const mockFetchUserMetadata = vi.fn();
 const mockCreateFullGitHubProvider = vi.fn();
+
+/** Builds ScmUserMetadata; defaults to an established (old) account. */
+function userMeta(overrides: Partial<ScmUserMetadata> = {}): ScmUserMetadata {
+  return {
+    login: 'testuser',
+    name: null,
+    company: null,
+    followers: 0,
+    following: 0,
+    publicRepos: 0,
+    createdAt: '2020-01-01T00:00:00Z',
+    ...overrides,
+  };
+}
 
 vi.mock('../scm/github-provider-traits.js', () => ({
   createFullGitHubProvider: (...args: unknown[]): unknown => mockCreateFullGitHubProvider(...args),
@@ -76,10 +91,11 @@ describe('IssueTriage', () => {
       repo: 'owner/repo',
       getIssueDetail: mockGetIssueDetail,
       listCommentDetails: mockListCommentDetails,
-      fetchUserMetadata: vi.fn(),
+      fetchUserMetadata: mockFetchUserMetadata,
     });
     mockGetIssueDetail.mockResolvedValue(ok(createMockIssueDetail()));
     mockListCommentDetails.mockResolvedValue(ok(createMockCommentDetails()));
+    mockFetchUserMetadata.mockResolvedValue(ok(userMeta())); // established account by default
   });
 
   afterEach(() => {
@@ -154,6 +170,44 @@ describe('IssueTriage', () => {
           .map((a) => a.type);
         expect(withRep).toEqual(without); // identical: reputation changed nothing for T1
       }
+    });
+  });
+
+  describe('account-age reputation via real fetch (#3121)', () => {
+    const URL = 'https://github.com/owner/repo/issues/42';
+
+    async function signals(): Promise<readonly string[]> {
+      const result = await new IssueTriage({ enableReputation: true }).triageIssue(URL);
+      if (!result.ok) throw result.error;
+      return result.value.trustAssessment.suspiciousSignals;
+    }
+
+    it('fires new_account when the fetched account is recent', async () => {
+      mockGetIssueDetail.mockResolvedValue(
+        ok(createMockIssueDetail({ author: 'newbie', authorAssociation: 'NONE' }))
+      );
+      const recent = new Date(Date.now() - 5 * 86_400_000).toISOString();
+      mockFetchUserMetadata.mockResolvedValue(ok(userMeta({ login: 'newbie', createdAt: recent })));
+      expect(await signals()).toContain('new_account');
+    });
+
+    it('does not fire new_account for an established account', async () => {
+      mockGetIssueDetail.mockResolvedValue(
+        ok(createMockIssueDetail({ author: 'veteran', authorAssociation: 'NONE' }))
+      );
+      mockFetchUserMetadata.mockResolvedValue(
+        ok(userMeta({ login: 'veteran', createdAt: '2015-01-01T00:00:00Z' }))
+      );
+      expect(await signals()).not.toContain('new_account');
+    });
+
+    it('omits new_account (no fabrication) when the user-metadata fetch fails', async () => {
+      mockGetIssueDetail.mockResolvedValue(
+        ok(createMockIssueDetail({ author: 'ghost', authorAssociation: 'NONE' }))
+      );
+      mockFetchUserMetadata.mockResolvedValue(err(new ScmError('gh api unavailable', 'github')));
+      // Triage still completes; account-age signal is simply skipped.
+      expect(await signals()).not.toContain('new_account');
     });
   });
 

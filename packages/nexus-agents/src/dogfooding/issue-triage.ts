@@ -34,6 +34,7 @@ import type { ReputationAssessment, GitHubUserMetadata } from '../security/reput
 import type { AgentAction, SourceCitation } from '../security/action-schema.js';
 import { parseIssueUrl } from '../scm/url-parsers.js';
 import { createFullGitHubProvider } from '../scm/github-provider-traits.js';
+import type { ScmUserMetadata } from '../scm/types.js';
 import { categorizeIssue, extractLabelsFromBody } from './issue-triage-helpers.js';
 import type {
   IssueMetadata,
@@ -88,7 +89,7 @@ export class IssueTriage {
     const fetchResult = await this.fetchIssueData(owner, repo, issueNumber);
     if (!fetchResult.ok) return fetchResult;
 
-    const { issue: issueResult, comments } = fetchResult.value;
+    const { issue: issueResult, comments, accountAgeDays } = fetchResult.value;
 
     // Sanitize untrusted content (Issue #828 — input-sanitizer wiring)
     const safeTitle = this.sanitizeContent(issueResult.title, issueResult.author);
@@ -96,7 +97,7 @@ export class IssueTriage {
 
     // Classify trust + assess reputation (Issue #828 — new wiring)
     const trustResult = this.classifyAuthor(issueResult);
-    const reputation = this.assessAuthorReputation(issueResult, comments);
+    const reputation = this.assessAuthorReputation(issueResult, comments, accountAgeDays);
 
     // Generate and validate actions
     const actions = this.generateActions(safeTitle, safeBody, issueResult, trustResult);
@@ -156,15 +157,20 @@ export class IssueTriage {
    */
   private assessAuthorReputation(
     issue: IssueMetadata,
-    comments: readonly IssueComment[]
+    comments: readonly IssueComment[],
+    accountAgeDays: number | undefined
   ): ReputationAssessment | undefined {
     if (!this.config.enableReputation) return undefined;
 
     const sanitizeResult = sanitizeInput(issue.body, 'unknown', issue.author);
 
+    // #3121: accountAgeDays is the author's REAL account age (fetched in
+    // fetchIssueData) or undefined when the lookup failed. When undefined it is
+    // OMITTED so the engine skips the new_account signal (#3106) — never
+    // fabricated. priorContributions/recentCommentCount use real comment data.
     const metadata: GitHubUserMetadata = {
       username: issue.author,
-      accountAgeDays: estimateAccountAge(issue.createdAt),
+      ...(accountAgeDays !== undefined ? { accountAgeDays } : {}),
       priorContributions: countAuthorComments(issue.author, comments),
       recentCommentCount: countRecentComments(issue.author, comments),
       recentCommentWindowMinutes: 10,
@@ -319,7 +325,9 @@ export class IssueTriage {
     owner: string,
     repo: string,
     issueNumber: number
-  ): Promise<Result<{ issue: IssueMetadata; comments: IssueComment[] }, Error>> {
+  ): Promise<
+    Result<{ issue: IssueMetadata; comments: IssueComment[]; accountAgeDays?: number }, Error>
+  > {
     const provider = createFullGitHubProvider(`${owner}/${repo}`);
 
     const detailResult = await provider.getIssueDetail(issueNumber);
@@ -351,29 +359,43 @@ export class IssueTriage {
         }))
       : [];
 
-    return ok({ issue, comments });
+    // #3121: fetch the author's REAL account age (their account creation date,
+    // not the issue date). Best-effort — on failure or an unparseable date we
+    // omit it, so the reputation engine SKIPS the new_account signal (#3106)
+    // rather than fabricating a value. Reputation must not block on this.
+    const accountAgeDays = await this.fetchAccountAgeDays(provider, detail.author);
+
+    return ok(
+      accountAgeDays !== undefined ? { issue, comments, accountAgeDays } : { issue, comments }
+    );
+  }
+
+  /**
+   * Best-effort lookup of a GitHub user's account age in days. Returns
+   * `undefined` if the user-metadata fetch fails or the creation date can't be
+   * parsed (#3121) — callers must treat absence as "unknown", not "benign".
+   */
+  private async fetchAccountAgeDays(
+    provider: { fetchUserMetadata: (u: string) => Promise<Result<ScmUserMetadata, Error>> },
+    username: string
+  ): Promise<number | undefined> {
+    try {
+      const result = await provider.fetchUserMetadata(username);
+      if (!result.ok) return undefined;
+      const createdMs = Date.parse(result.value.createdAt);
+      if (!Number.isFinite(createdMs)) return undefined;
+      return Math.floor((getTimeProvider().now() - createdMs) / 86_400_000);
+    } catch {
+      // Truly best-effort: even an unexpected rejection (token resolution,
+      // transport) must not break triage — fall back to "unknown" age.
+      return undefined;
+    }
   }
 }
 
 // ============================================================================
 // Private Helpers
 // ============================================================================
-
-/**
- * Returns a safe default account age when the actual user creation date
- * is unavailable. The triage pipeline only has issue.createdAt (the date
- * the issue was filed), NOT the user's account creation date. Using the
- * issue date would make recently filed issues appear to come from new
- * accounts, incorrectly triggering the new_account signal.
- *
- * Default: 365 days — assumes an established account unless the GitHub
- * user profile is fetched to provide the real value.
- */
-const DEFAULT_ACCOUNT_AGE_DAYS = 365;
-
-function estimateAccountAge(_createdAt: string): number {
-  return DEFAULT_ACCOUNT_AGE_DAYS;
-}
 
 /** Counts how many comments the author has made on the issue. */
 function countAuthorComments(author: string, comments: readonly IssueComment[]): number {
