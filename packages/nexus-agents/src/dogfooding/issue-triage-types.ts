@@ -177,6 +177,21 @@ export interface TrustAssessment {
   readonly suspiciousSignals: readonly string[];
   /** Whether the author is flagged as suspicious */
   readonly isSuspicious: boolean;
+  /**
+   * Tier the policy gate ACTUALLY enforced (#3122). Equals `trustTier` under
+   * `audit`/`off`; equals `reputationReconciledTier` under `enforce`. This is
+   * the tier `proposedActions[].policyApproved` was decided against.
+   */
+  readonly enforcedTrustTier?: string | undefined;
+  /**
+   * Tier reputation reconciliation computed — what `enforce` mode WOULD gate on
+   * (#3122). May exceed `trustTier` (more restrictive) when reputation demotes.
+   * Under `audit`/`off` this is reported for telemetry but NOT enforced — read
+   * `enforcedTrustTier` for the tier actually in effect.
+   */
+  readonly reputationReconciledTier?: string | undefined;
+  /** Reputation-gating rollout mode applied: `off` | `audit` | `enforce` (#3122). */
+  readonly gatingMode?: string | undefined;
 }
 
 // ============================================================================

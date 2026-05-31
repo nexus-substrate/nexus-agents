@@ -7,7 +7,14 @@
 import { describe, it, expect, vi } from 'vitest';
 
 import type { GitHubUserMetadata, ReputationAssessment } from './reputation-model.js';
-import { assessReputation, ReputationCache, reconcileTrustTier } from './reputation-model.js';
+import {
+  assessReputation,
+  ReputationCache,
+  reconcileTrustTier,
+  resolveReputationGatingMode,
+  gateWithReputation,
+  DEFAULT_REPUTATION_GATING_MODE,
+} from './reputation-model.js';
 import type { TrustTier } from './trust-types.js';
 
 // Helper factory for test metadata
@@ -428,5 +435,73 @@ describe('reconcileTrustTier (#3119)', () => {
   it('reputationScore is advisory — score never moves the tier, only effectiveTrustTier does', () => {
     expect(reconcileTrustTier('3', rep('3', 100))).toBe('3'); // excellent score, still T3
     expect(reconcileTrustTier('2', rep('2', 0))).toBe('2'); // terrible score, no extra demotion
+  });
+});
+
+describe('reputation gating rollout (#3122)', () => {
+  function rep(effectiveTrustTier: TrustTier): ReputationAssessment {
+    return {
+      username: 'u',
+      userRole: 'unknown',
+      suspiciousSignals: [],
+      isSuspicious: false,
+      effectiveTrustTier,
+      reputationScore: 30,
+      reason: 'test',
+      assessedAt: new Date().toISOString(),
+    };
+  }
+
+  describe('resolveReputationGatingMode', () => {
+    it('defaults to audit when unset', () => {
+      expect(resolveReputationGatingMode({})).toBe('audit');
+      expect(DEFAULT_REPUTATION_GATING_MODE).toBe('audit');
+    });
+
+    it('parses off/audit/enforce case-insensitively', () => {
+      expect(resolveReputationGatingMode({ NEXUS_REPUTATION_GATING: 'off' })).toBe('off');
+      expect(resolveReputationGatingMode({ NEXUS_REPUTATION_GATING: 'ENFORCE' })).toBe('enforce');
+      expect(resolveReputationGatingMode({ NEXUS_REPUTATION_GATING: 'Audit' })).toBe('audit');
+    });
+
+    it('coerces an invalid value to the default (never throws — security layer)', () => {
+      expect(resolveReputationGatingMode({ NEXUS_REPUTATION_GATING: 'banana' })).toBe('audit');
+      expect(resolveReputationGatingMode({ NEXUS_REPUTATION_GATING: '' })).toBe('audit');
+    });
+  });
+
+  describe('gateWithReputation', () => {
+    it('enforce applies the demotion — enforced tier is the reconciled (stricter) tier', () => {
+      const d = gateWithReputation('2', rep('3'), 'enforce');
+      expect(d.enforcedTier).toBe('3');
+      expect(d.reconciledTier).toBe('3');
+      expect(d.demotionSuppressed).toBe(false);
+    });
+
+    it('audit reports the would-be demotion but enforces the classifier tier', () => {
+      const d = gateWithReputation('2', rep('3'), 'audit');
+      expect(d.enforcedTier).toBe('2'); // not enforced
+      expect(d.reconciledTier).toBe('3'); // but reported
+      expect(d.demotionSuppressed).toBe(true);
+    });
+
+    it('off skips reputation entirely — reconciled tier equals the classifier tier', () => {
+      const d = gateWithReputation('2', rep('3'), 'off');
+      expect(d.enforcedTier).toBe('2');
+      expect(d.reconciledTier).toBe('2'); // reputation not consulted
+      expect(d.demotionSuppressed).toBe(false);
+    });
+
+    it('Tier-1 / allowlist wins in every mode — never demoted, never suppressed', () => {
+      for (const mode of ['off', 'audit', 'enforce'] as const) {
+        const d = gateWithReputation('1', rep('4'), mode);
+        expect(d.enforcedTier).toBe('1');
+        expect(d.demotionSuppressed).toBe(false);
+      }
+    });
+
+    it('no demotion to suppress when reputation matches the classifier tier', () => {
+      expect(gateWithReputation('2', rep('2'), 'audit').demotionSuppressed).toBe(false);
+    });
   });
 });
