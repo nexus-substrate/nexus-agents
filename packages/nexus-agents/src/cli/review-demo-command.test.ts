@@ -116,6 +116,7 @@ function makeReviewResult(overrides: Partial<PRReviewResult> = {}) {
       trustTier: '3',
       userRole: 'unknown',
       isAllowlisted: false,
+      suspiciousSignals: [],
       isSuspicious: false,
     },
     ...overrides,

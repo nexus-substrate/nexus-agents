@@ -11,7 +11,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ok, err } from '../core/index.js';
 import { ScmError } from '../scm/types.js';
-import type { ScmPullRequestDetail } from '../scm/types.js';
+import type { ScmPullRequestDetail, ScmUserMetadata } from '../scm/types.js';
 import { parsePRUrl } from '../scm/url-parsers.js';
 import type { PRReviewResult } from './pr-review-types.js';
 
@@ -19,6 +19,21 @@ import type { PRReviewResult } from './pr-review-types.js';
 const mockGetPullRequestDetail = vi.fn();
 const mockCreateReview = vi.fn();
 const mockCreateFullGitHubProvider = vi.fn();
+const mockFetchUserMetadata = vi.fn();
+
+/** Builds a mock SCM user metadata record (default: established 2015 account). */
+function userMeta(overrides: Partial<ScmUserMetadata> = {}): ScmUserMetadata {
+  return {
+    login: 'testuser',
+    name: null,
+    company: null,
+    followers: 0,
+    following: 0,
+    publicRepos: 0,
+    createdAt: '2015-01-01T00:00:00Z',
+    ...overrides,
+  };
+}
 
 vi.mock('../scm/github-provider-traits.js', () => ({
   createFullGitHubProvider: (...args: unknown[]): unknown => mockCreateFullGitHubProvider(...args),
@@ -97,10 +112,11 @@ describe('PRReviewer', () => {
       createReview: mockCreateReview,
       getIssueDetail: vi.fn(),
       listCommentDetails: vi.fn(),
-      fetchUserMetadata: vi.fn(),
+      fetchUserMetadata: mockFetchUserMetadata,
     });
     mockGetPullRequestDetail.mockResolvedValue(ok(createMockPRDetail()));
     mockCreateReview.mockResolvedValue(ok(undefined));
+    mockFetchUserMetadata.mockResolvedValue(ok(userMeta())); // established account by default
   });
 
   afterEach(() => {
@@ -185,6 +201,45 @@ describe('PRReviewer', () => {
       expect(v.trustAssessment.reputationScore).toBeUndefined();
       // With reputation off, the gate falls back to the classifier tier.
       expect(v.trustAssessment.enforcedTrustTier).toBe(v.trustAssessment.trustTier);
+    });
+  });
+
+  describe('account-age reputation via real fetch (#3133)', () => {
+    const URL = 'https://github.com/owner/repo/pull/123';
+
+    async function signals(): Promise<readonly string[]> {
+      const { PRReviewer } = await import('./pr-reviewer.js');
+      const r = await new PRReviewer({ dryRun: true, enableReputation: true }).reviewPR(URL);
+      if (!r.ok) throw r.error;
+      return r.value.trustAssessment.suspiciousSignals;
+    }
+
+    it('fires new_account when the fetched author account is recent', async () => {
+      const recent = new Date(Date.now() - 5 * 86_400_000).toISOString();
+      mockGetPullRequestDetail.mockResolvedValue(
+        ok({ ...createMockPRDetail(), author: 'newbie', authorAssociation: 'NONE', body: 'hi' })
+      );
+      mockFetchUserMetadata.mockResolvedValue(ok(userMeta({ login: 'newbie', createdAt: recent })));
+      expect(await signals()).toContain('new_account');
+    });
+
+    it('does not fire new_account for an established account', async () => {
+      mockGetPullRequestDetail.mockResolvedValue(
+        ok({ ...createMockPRDetail(), author: 'veteran', authorAssociation: 'NONE', body: 'hi' })
+      );
+      mockFetchUserMetadata.mockResolvedValue(
+        ok(userMeta({ login: 'veteran', createdAt: '2015-01-01T00:00:00Z' }))
+      );
+      expect(await signals()).not.toContain('new_account');
+    });
+
+    it('omits new_account (no fabrication) when the user-metadata fetch fails', async () => {
+      mockGetPullRequestDetail.mockResolvedValue(
+        ok({ ...createMockPRDetail(), author: 'ghost', authorAssociation: 'NONE', body: 'hi' })
+      );
+      mockFetchUserMetadata.mockResolvedValue(err(new ScmError('gh api unavailable', 'github')));
+      // Review still completes; the account-age signal is simply skipped.
+      expect(await signals()).not.toContain('new_account');
     });
   });
 
