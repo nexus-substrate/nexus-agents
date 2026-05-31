@@ -768,6 +768,12 @@ function createMockPRReviewResult(overrides: Partial<PRReviewResult> = {}): PRRe
     consensusScore: 1,
     debateRounds: 1,
     timestamp: '2026-01-24T12:00:00Z',
+    trustAssessment: {
+      trustTier: '3',
+      userRole: 'unknown',
+      isAllowlisted: false,
+      isSuspicious: false,
+    },
     ...overrides,
   };
 }

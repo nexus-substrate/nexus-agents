@@ -48,6 +48,12 @@ describe('review-command', () => {
     totalDurationMs: 5000,
     debateRounds: 1,
     timestamp: '2026-01-14T10:00:00Z',
+    trustAssessment: {
+      trustTier: '3',
+      userRole: 'unknown',
+      isAllowlisted: false,
+      isSuspicious: false,
+    },
     findingsBySeverity: {
       critical: 0,
       high: 0,
