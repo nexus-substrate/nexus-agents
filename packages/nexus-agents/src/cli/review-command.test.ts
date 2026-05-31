@@ -52,6 +52,7 @@ describe('review-command', () => {
       trustTier: '3',
       userRole: 'unknown',
       isAllowlisted: false,
+      suspiciousSignals: [],
       isSuspicious: false,
     },
     findingsBySeverity: {

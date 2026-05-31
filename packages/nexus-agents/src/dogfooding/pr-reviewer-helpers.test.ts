@@ -772,6 +772,7 @@ function createMockPRReviewResult(overrides: Partial<PRReviewResult> = {}): PRRe
       trustTier: '3',
       userRole: 'unknown',
       isAllowlisted: false,
+      suspiciousSignals: [],
       isSuspicious: false,
     },
     ...overrides,

@@ -14,11 +14,7 @@ import { classifyTrust } from '../security/trust-classifier.js';
 import type { ClassifyResult } from '../security/trust-classifier.js';
 import { evaluatePolicy } from '../security/policy-gate.js';
 import type { ActionContext } from '../security/policy-gate.js';
-import {
-  ReputationCache,
-  gateWithReputation,
-  resolveReputationGatingMode,
-} from '../security/reputation-model.js';
+import { ReputationCache } from '../security/reputation-model.js';
 import type { ReputationGateDecision } from '../security/reputation-model.js';
 import { createSecurityExpert } from '../agents/experts/security-expert.js';
 import { createCodeExpert } from '../agents/experts/code-expert.js';
@@ -29,6 +25,7 @@ import type {
   PRReviewConfig,
   PRReviewResult,
   PRTrustAssessment,
+  PRFetchData,
   ExpertReviewResult,
   ReviewCategory,
 } from './pr-review-types.js';
@@ -47,8 +44,8 @@ import {
   sumFindings,
   generateSummary,
   createFailedReview,
-  assessPRReputation,
-  buildPRTrustAssessment,
+  gatePRAuthor,
+  fetchAccountAgeDays,
 } from './pr-reviewer-helpers.js';
 
 // Re-export for convenience
@@ -89,7 +86,7 @@ export class PRReviewer {
     const fetchResult = await this.fetchPRData(owner, repo, prNumber);
     if (!fetchResult.ok) return fetchResult;
 
-    const { metadata: prMetadata, provider } = fetchResult.value;
+    const { metadata: prMetadata, provider, accountAgeDays } = fetchResult.value;
 
     // Classify PR author trust tier (Issue #828 — defense-in-depth)
     const trustResult = this.classifyPRAuthor(prMetadata);
@@ -104,7 +101,13 @@ export class PRReviewer {
     // #3123: assess reputation and apply the gating rollout mode (off/audit/
     // enforce), mirroring issue_triage — closes the PR-path equivalent of the
     // #828/#3106 dead-end (reputation was classified but never gated here).
-    const { gateDecision, trustAssessment } = this.gatePRAuthor(prMetadata, trustResult);
+    const { gateDecision, trustAssessment } = gatePRAuthor(
+      prMetadata,
+      trustResult,
+      accountAgeDays,
+      this.reputationCache,
+      this.config.enableReputation
+    );
 
     const expertReviews = await this.runExpertReviews(prMetadata, traceId);
     const result = this.aggregateReviews(prMetadata, expertReviews, startTime, trustAssessment);
@@ -222,36 +225,6 @@ export class PRReviewer {
       username: pr.author,
       authorAssociation: pr.authorAssociation,
     });
-  }
-
-  /**
-   * Assesses the PR author's reputation and applies the gating rollout mode
-   * (#3123). Returns the gate decision (for the policy gate) and the assessment
-   * surfaced on the result. A suppressed demotion (audit/off) is logged.
-   */
-  private gatePRAuthor(
-    pr: PRMetadata,
-    trustResult: ClassifyResult
-  ): { gateDecision: ReputationGateDecision; trustAssessment: PRTrustAssessment } {
-    const reputation = assessPRReputation(pr, this.reputationCache, this.config.enableReputation);
-    const gateDecision = gateWithReputation(
-      trustResult.trustTier,
-      reputation,
-      resolveReputationGatingMode()
-    );
-    if (gateDecision.demotionSuppressed) {
-      logger.warn('Reputation demotion suppressed by gating mode (would block under enforce)', {
-        prNumber: pr.number,
-        author: pr.author,
-        mode: gateDecision.mode,
-        classifierTier: trustResult.trustTier,
-        reconciledTier: gateDecision.reconciledTier,
-      });
-    }
-    return {
-      gateDecision,
-      trustAssessment: buildPRTrustAssessment(trustResult, reputation, gateDecision),
-    };
   }
 
   /**
@@ -468,13 +441,19 @@ Provide a structured review with:
     owner: string,
     repo: string,
     prNumber: number
-  ): Promise<Result<{ metadata: PRMetadata; provider: FullCapableProvider }, Error>> {
+  ): Promise<Result<PRFetchData, Error>> {
     const provider = createFullGitHubProvider(`${owner}/${repo}`);
 
     const detailResult = await provider.getPullRequestDetail(prNumber);
     if (!detailResult.ok) return err(detailResult.error);
 
     const detail = detailResult.value;
+    // #3133: best-effort real account age for the new_account reputation signal.
+    // Skip the lookup entirely when reputation is disabled — the value would be
+    // discarded by assessPRReputation's early-return anyway.
+    const accountAgeDays = this.config.enableReputation
+      ? await fetchAccountAgeDays(provider, detail.author)
+      : undefined;
     const metadata: PRMetadata = {
       number: detail.number,
       title: detail.title,
@@ -501,7 +480,11 @@ Provide a structured review with:
       deletions: detail.deletions,
     };
 
-    return ok({ metadata, provider });
+    return ok({
+      metadata,
+      provider,
+      ...(accountAgeDays !== undefined ? { accountAgeDays } : {}),
+    });
   }
 
   /**

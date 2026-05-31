@@ -8,6 +8,9 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import type { Result } from '../core/index.js';
+import { getTimeProvider, createLogger } from '../core/index.js';
+import type { ScmUserMetadata } from '../scm/types.js';
 import type {
   PRMetadata,
   PRReviewResult,
@@ -25,7 +28,11 @@ import {
   DECISION_EMOJI,
 } from './pr-review-types.js';
 import { sanitizeInput } from '../security/input-sanitizer.js';
-import { assessReputation } from '../security/reputation-model.js';
+import {
+  assessReputation,
+  gateWithReputation,
+  resolveReputationGatingMode,
+} from '../security/reputation-model.js';
 import type {
   ReputationCache,
   ReputationGateDecision,
@@ -34,21 +41,46 @@ import type {
 } from '../security/reputation-model.js';
 import type { ClassifyResult } from '../security/trust-classifier.js';
 
+const repLogger = createLogger({ component: 'PRReviewer.reputation' });
+
 // =============================================================================
 // Reputation Gating Helpers (#3123, epic #3118 Phase 5)
 // =============================================================================
 
 /**
+ * Best-effort account-age lookup for a PR author (#3133, Phase-3 equivalent for
+ * the PR path). Returns the author's real account age in days via the provider's
+ * `fetchUserMetadata`, or `undefined` on any failure (err Result, unparseable
+ * `createdAt`, or an unexpected rejection) — never fabricated, never throws, so
+ * the review is never blocked by this lookup.
+ */
+export async function fetchAccountAgeDays(
+  provider: { fetchUserMetadata: (u: string) => Promise<Result<ScmUserMetadata, Error>> },
+  username: string
+): Promise<number | undefined> {
+  try {
+    const result = await provider.fetchUserMetadata(username);
+    if (!result.ok) return undefined;
+    const createdMs = Date.parse(result.value.createdAt);
+    if (!Number.isFinite(createdMs)) return undefined;
+    return Math.floor((getTimeProvider().now() - createdMs) / 86_400_000);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Assesses the PR author's reputation from the signals available in the PR
- * event: author association + injection flags from the (sanitized) PR body.
- * Account-age / contribution signals are NOT fetched here yet — OMITTED, never
- * fabricated, so the engine skips those signals. Returns undefined when
- * reputation is disabled.
+ * event: author association + injection flags from the (sanitized) PR body, plus
+ * the author's real account age when it was fetched (#3133). `accountAgeDays` is
+ * OMITTED when the lookup failed — never fabricated, so the engine skips the
+ * `new_account` signal. Returns undefined when reputation is disabled.
  */
 export function assessPRReputation(
   pr: PRMetadata,
   cache: ReputationCache,
-  enableReputation: boolean
+  enableReputation: boolean,
+  accountAgeDays: number | undefined
 ): ReputationAssessment | undefined {
   if (!enableReputation) return undefined;
   // Only `injectionFlags` is consumed here, and injection detection is
@@ -57,6 +89,7 @@ export function assessPRReputation(
   const sanitizeResult = sanitizeInput(pr.body, 'unknown', pr.author);
   const metadata: GitHubUserMetadata = {
     username: pr.author,
+    ...(accountAgeDays !== undefined ? { accountAgeDays } : {}),
     authorAssociation: pr.authorAssociation,
     injectionFlags: sanitizeResult.injectionFlags,
   };
@@ -76,10 +109,44 @@ export function buildPRTrustAssessment(
     userRole: trustResult.userRole,
     isAllowlisted: trustResult.isAllowlisted,
     reputationScore: reputation?.reputationScore,
+    suspiciousSignals: isTier1 ? [] : (reputation?.suspiciousSignals ?? []),
     isSuspicious: isTier1 ? false : (reputation?.isSuspicious ?? false),
     enforcedTrustTier: gateDecision.enforcedTier,
     reputationReconciledTier: gateDecision.reconciledTier,
     gatingMode: gateDecision.mode,
+  };
+}
+
+/**
+ * Assesses the PR author's reputation and applies the gating rollout mode
+ * (#3123). Returns the gate decision (for the policy gate) and the assessment
+ * surfaced on the result. A suppressed demotion (audit/off) is logged.
+ */
+export function gatePRAuthor(
+  pr: PRMetadata,
+  trustResult: ClassifyResult,
+  accountAgeDays: number | undefined,
+  cache: ReputationCache,
+  enableReputation: boolean
+): { gateDecision: ReputationGateDecision; trustAssessment: PRTrustAssessment } {
+  const reputation = assessPRReputation(pr, cache, enableReputation, accountAgeDays);
+  const gateDecision = gateWithReputation(
+    trustResult.trustTier,
+    reputation,
+    resolveReputationGatingMode()
+  );
+  if (gateDecision.demotionSuppressed) {
+    repLogger.warn('Reputation demotion suppressed by gating mode (would block under enforce)', {
+      prNumber: pr.number,
+      author: pr.author,
+      mode: gateDecision.mode,
+      classifierTier: trustResult.trustTier,
+      reconciledTier: gateDecision.reconciledTier,
+    });
+  }
+  return {
+    gateDecision,
+    trustAssessment: buildPRTrustAssessment(trustResult, reputation, gateDecision),
   };
 }
 

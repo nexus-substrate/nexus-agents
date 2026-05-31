@@ -9,6 +9,7 @@
  */
 
 import { z } from 'zod';
+import type { FullCapableProvider } from '../scm/types.js';
 
 /**
  * Pull request file change information.
@@ -149,6 +150,8 @@ export interface PRTrustAssessment {
   readonly isAllowlisted: boolean;
   /** Reputation score (0-100) when reputation is enabled. */
   readonly reputationScore?: number | undefined;
+  /** Suspicious signals detected (e.g. `new_account`, `injection_patterns_detected`). */
+  readonly suspiciousSignals: readonly string[];
   /** Whether the author is flagged as suspicious. */
   readonly isSuspicious: boolean;
   /** Tier the policy gate ACTUALLY enforced (== trustTier under audit/off). */
@@ -157,6 +160,16 @@ export interface PRTrustAssessment {
   readonly reputationReconciledTier?: string | undefined;
   /** Reputation-gating rollout mode applied: `off` | `audit` | `enforce`. */
   readonly gatingMode?: string | undefined;
+}
+
+/**
+ * Result of fetching PR data plus best-effort author signals (#3133).
+ */
+export interface PRFetchData {
+  readonly metadata: PRMetadata;
+  readonly provider: FullCapableProvider;
+  /** Author's real account age in days, when the lookup succeeded (#3133). */
+  readonly accountAgeDays?: number;
 }
 
 export interface PRReviewResult {
