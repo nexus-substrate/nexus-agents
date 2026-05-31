@@ -314,6 +314,32 @@ export function assessReputation(
   return assessment;
 }
 
+/**
+ * Reconcile a trust-classifier tier with a reputation assessment into the
+ * effective tier to enforce (#3119 / epic #3118). Demotion-only — reputation
+ * can only RAISE the tier number (more restrictive), never lower it.
+ *
+ * Invariants:
+ * - **Allowlist/Tier-1 wins**: a classifier Tier 1 (owner/allowlisted maintainer)
+ *   is authoritative — reputation never demotes it.
+ * - **Absent reputation → classifier tier**: no assessment (stage off / not
+ *   fetched) keeps the classifier/role-default tier — never fabricate a benign
+ *   tier, never escalate on mere absence (fetch-failure ≠ hostile signal).
+ * - **Score is advisory**: only `effectiveTrustTier` participates; the 0–100
+ *   `reputationScore` never moves the gate.
+ */
+export function reconcileTrustTier(
+  classifierTier: TrustTier,
+  reputation: ReputationAssessment | undefined
+): TrustTier {
+  if (classifierTier === '1') return '1';
+  const repTier = reputation?.effectiveTrustTier;
+  if (repTier === undefined) return classifierTier;
+  return TRUST_TIER_NUMERIC[repTier] > TRUST_TIER_NUMERIC[classifierTier]
+    ? repTier
+    : classifierTier;
+}
+
 /** Build a human-readable reason string. */
 function buildReason(
   role: GitHubUserRole,
