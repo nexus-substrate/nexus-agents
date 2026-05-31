@@ -24,10 +24,10 @@ import {
 } from '../audit-trail.js';
 import { sanitizeInput } from '../input-sanitizer.js';
 import type { ReputationAssessment, GitHubUserMetadata } from '../reputation-model.js';
-import { assessReputation, ReputationCache } from '../reputation-model.js';
+import { assessReputation, ReputationCache, reconcileTrustTier } from '../reputation-model.js';
 import type { ClassifyResult } from '../trust-classifier.js';
 import { classifyTrust, mapAuthorAssociation } from '../trust-classifier.js';
-import type { SanitizedInput } from '../trust-types.js';
+import type { SanitizedInput, TrustTier } from '../trust-types.js';
 import { generateATL } from './agent-trust-labels.js';
 import type {
   ATLData,
@@ -49,6 +49,14 @@ export interface FirewallResult {
   readonly sanitized: SanitizedInput;
   readonly trust: ClassifyResult;
   readonly reputation?: ReputationAssessment;
+  /**
+   * The tier consumers should ENFORCE on (#3106): the classifier tier
+   * reconciled with the reputation assessment (demotion-only; Tier-1/allowlist
+   * wins; equals `trust.trustTier` when reputation is absent). Previously the
+   * reputation tier was computed but dropped — `trust.trustTier` alone left
+   * reputation unenforced.
+   */
+  readonly effectiveTrustTier: TrustTier;
   readonly atl: string;
   readonly auditEvents: readonly { readonly id: string; readonly type: string }[];
   readonly durationMs: number;
@@ -107,8 +115,13 @@ export class HostileInputFirewall {
     // Stage 4: Assess reputation (optional)
     const reputation = this.runReputation(meta, sanitized);
 
-    // Stage 5: Generate ATL
-    const atl = this.buildATL(meta, trust, sanitized, reputation);
+    // #3106: reconcile the classifier tier with reputation into the tier
+    // consumers enforce on (demotion-only; Tier-1/allowlist wins; == classifier
+    // tier when reputation absent). Previously the reputation tier was dropped.
+    const effectiveTrustTier = reconcileTrustTier(trust.trustTier, reputation);
+
+    // Stage 5: Generate ATL (labelled with the enforced tier)
+    const atl = this.buildATL(meta, effectiveTrustTier, sanitized, reputation);
 
     // Collect audit events
     const auditEvents = this.auditTrail.query().map((e) => ({ id: e.id, type: e.type }));
@@ -117,6 +130,7 @@ export class HostileInputFirewall {
       sanitized,
       trust,
       ...(reputation !== undefined ? { reputation } : {}),
+      effectiveTrustTier,
       atl,
       auditEvents,
       durationMs: Date.now() - start,
@@ -210,12 +224,15 @@ export class HostileInputFirewall {
   ): ReputationAssessment | undefined {
     if (!this.stages.reputationAssessment) return undefined;
 
+    // #3106: only supply what the firewall actually knows from the event —
+    // author association + injection flags. Account-age / contribution /
+    // recent-comment data is NOT available here (it's fetched at the wiring
+    // layer in a later phase), so it is OMITTED, not fabricated. The engine
+    // skips the account/activity signals when their data is absent; until the
+    // fetch lands, the firewall's reputation reflects injection + authority
+    // signals only — honest rather than always-benign.
     const metadata: GitHubUserMetadata = {
       username: meta.username,
-      accountAgeDays: 365,
-      priorContributions: 0,
-      recentCommentCount: 0,
-      recentCommentWindowMinutes: 60,
       authorAssociation: meta.authorAssociation.toUpperCase(),
       injectionFlags: sanitized.injectionFlags,
     };
@@ -237,12 +254,12 @@ export class HostileInputFirewall {
 
   private buildATL(
     meta: SourceMetadata,
-    trust: ClassifyResult,
+    effectiveTrustTier: TrustTier,
     sanitized: SanitizedInput,
     reputation?: ReputationAssessment
   ): string {
     const data: ATLData = {
-      tier: trust.trustTier,
+      tier: effectiveTrustTier,
       source: meta.sourceType,
       user: meta.username,
       sanitized: sanitized.wasModified,

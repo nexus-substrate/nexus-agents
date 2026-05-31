@@ -36,10 +36,17 @@ export type SuspiciousSignal = z.infer<typeof SuspiciousSignalSchema>;
  */
 export interface GitHubUserMetadata {
   readonly username: string;
-  readonly accountAgeDays: number;
-  readonly priorContributions: number;
-  readonly recentCommentCount: number;
-  readonly recentCommentWindowMinutes: number;
+  /**
+   * Account/activity fields are OPTIONAL (#3106). When a field is absent (the
+   * caller couldn't fetch it — e.g. the firewall before Phase 3 wiring), its
+   * signal is SKIPPED rather than fabricated: an unknown value must never be
+   * treated as benign (the old hardcoded `365`/`0`) nor as hostile. Only the
+   * `authorAssociation` + `injectionFlags` signals fire on absent activity data.
+   */
+  readonly accountAgeDays?: number;
+  readonly priorContributions?: number;
+  readonly recentCommentCount?: number;
+  readonly recentCommentWindowMinutes?: number;
   readonly authorAssociation: string;
   readonly injectionFlags: readonly InjectionFlag[];
 }
@@ -151,46 +158,54 @@ export class ReputationCache {
 // Suspicious Signal Detection
 // ============================================================================
 
-/** Detect all suspicious signals from user metadata. */
+/** Only hostile-tier injection flags count — benign flags like
+ * instruction_pattern ("please remove") must not trip the injection signal. */
+const HOSTILE_INJECTION_FLAGS: readonly InjectionFlag[] = [
+  'system_prompt_manipulation',
+  'fake_conversation',
+  'authority_claim',
+  'hidden_content',
+];
+
+function hasHostileInjection(flags: readonly InjectionFlag[]): boolean {
+  return flags.some((f) => HOSTILE_INJECTION_FLAGS.includes(f));
+}
+
+/** Rapid-comment burst — only when both count and window are known (#3106). */
+function isRapidCommenting(m: GitHubUserMetadata): boolean {
+  return (
+    m.recentCommentCount !== undefined &&
+    m.recentCommentWindowMinutes !== undefined &&
+    m.recentCommentCount > SUSPICIOUS_THRESHOLDS.rapidCommentThreshold &&
+    m.recentCommentWindowMinutes <= SUSPICIOUS_THRESHOLDS.rapidCommentWindowMinutes
+  );
+}
+
+/** Authority claim from a non-maintainer role. */
+function isMismatchedAuthority(m: GitHubUserMetadata): boolean {
+  if (!m.injectionFlags.includes('authority_claim')) return false;
+  const association = m.authorAssociation.toUpperCase();
+  return association !== 'OWNER' && association !== 'MEMBER';
+}
+
+/** Detect all suspicious signals from user metadata. #3106: account/activity
+ * signals are skipped when their data is absent — never fabricated. */
 function detectSuspiciousSignals(metadata: GitHubUserMetadata): SuspiciousSignal[] {
   const signals: SuspiciousSignal[] = [];
+  const { accountAgeDays, priorContributions } = metadata;
 
-  if (metadata.accountAgeDays < SUSPICIOUS_THRESHOLDS.newAccountDays) {
+  if (accountAgeDays !== undefined && accountAgeDays < SUSPICIOUS_THRESHOLDS.newAccountDays) {
     signals.push('new_account');
   }
-
-  if (metadata.priorContributions < SUSPICIOUS_THRESHOLDS.minContributions) {
+  if (
+    priorContributions !== undefined &&
+    priorContributions < SUSPICIOUS_THRESHOLDS.minContributions
+  ) {
     signals.push('no_prior_contributions');
   }
-
-  // Only count hostile-tier injection flags — benign flags like
-  // instruction_pattern (triggered by "please remove") should not
-  // trigger the injection_patterns_detected signal.
-  const hostileInjectionFlags: readonly InjectionFlag[] = [
-    'system_prompt_manipulation',
-    'fake_conversation',
-    'authority_claim',
-    'hidden_content',
-  ];
-  const hasHostileFlags = metadata.injectionFlags.some((f) => hostileInjectionFlags.includes(f));
-  if (hasHostileFlags) {
-    signals.push('injection_patterns_detected');
-  }
-
-  if (
-    metadata.recentCommentCount > SUSPICIOUS_THRESHOLDS.rapidCommentThreshold &&
-    metadata.recentCommentWindowMinutes <= SUSPICIOUS_THRESHOLDS.rapidCommentWindowMinutes
-  ) {
-    signals.push('rapid_comments');
-  }
-
-  // Authority claim from non-maintainer role
-  const hasAuthorityClaim = metadata.injectionFlags.includes('authority_claim');
-  const association = metadata.authorAssociation.toUpperCase();
-  const isAuthoritative = association === 'OWNER' || association === 'MEMBER';
-  if (hasAuthorityClaim && !isAuthoritative) {
-    signals.push('mismatched_authority_claim');
-  }
+  if (hasHostileInjection(metadata.injectionFlags)) signals.push('injection_patterns_detected');
+  if (isRapidCommenting(metadata)) signals.push('rapid_comments');
+  if (isMismatchedAuthority(metadata)) signals.push('mismatched_authority_claim');
 
   return signals;
 }
@@ -214,11 +229,16 @@ function calculateReputationScore(
   };
   score += roleBonus[userRole];
 
-  // Account age bonus (max +10)
-  score += Math.min(metadata.accountAgeDays / DAYS_PER_YEAR_APPROX, 10);
+  // Account age bonus (max +10). #3106: absent → no bonus (avoid NaN; an
+  // unknown account neither earns nor loses the age bonus).
+  if (metadata.accountAgeDays !== undefined) {
+    score += Math.min(metadata.accountAgeDays / DAYS_PER_YEAR_APPROX, 10);
+  }
 
-  // Contribution bonus (max +10)
-  score += Math.min(metadata.priorContributions, 10);
+  // Contribution bonus (max +10). #3106: absent → no bonus.
+  if (metadata.priorContributions !== undefined) {
+    score += Math.min(metadata.priorContributions, 10);
+  }
 
   // Suspicious signal penalties
   const signalPenalty: Record<SuspiciousSignal, number> = {

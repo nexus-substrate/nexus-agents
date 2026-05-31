@@ -365,6 +365,31 @@ describe('ReputationCache', () => {
   });
 });
 
+describe('optional metadata — no fabrication (#3106)', () => {
+  it('skips account/activity signals when their data is absent (no benign fabrication)', () => {
+    const a = assessReputation({
+      username: 'u',
+      authorAssociation: 'CONTRIBUTOR',
+      injectionFlags: [],
+      // accountAgeDays / priorContributions / recentCommentCount omitted (unknown)
+    });
+    expect(a.suspiciousSignals).not.toContain('new_account');
+    expect(a.suspiciousSignals).not.toContain('no_prior_contributions');
+    expect(a.suspiciousSignals).not.toContain('rapid_comments');
+    expect(Number.isFinite(a.reputationScore)).toBe(true); // absent age/contrib must not NaN the score
+  });
+
+  it('still fires injection/authority signals on absent activity data', () => {
+    const a = assessReputation({
+      username: 'u',
+      authorAssociation: 'CONTRIBUTOR',
+      injectionFlags: ['system_prompt_manipulation'],
+    });
+    expect(a.suspiciousSignals).toContain('injection_patterns_detected');
+    expect(a.effectiveTrustTier).toBe('4'); // hostile signal → quarantine, even with no account data
+  });
+});
+
 describe('reconcileTrustTier (#3119)', () => {
   function rep(effectiveTrustTier: TrustTier, reputationScore = 50): ReputationAssessment {
     return {
