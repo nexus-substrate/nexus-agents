@@ -1,5 +1,29 @@
 # nexus-agents
 
+## 2.90.0
+
+### Minor Changes
+
+- [#3125](https://github.com/nexus-substrate/nexus-agents/pull/3125) [`1198d0c`](https://github.com/nexus-substrate/nexus-agents/commit/1198d0c8371ac2483316bf13a7e46aff5bccbce5) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **feat(security):** contributor reputation now GATES issue-triage actions ([#3119](https://github.com/nexus-substrate/nexus-agents/issues/3119), Phase 0 of epic [#3118](https://github.com/nexus-substrate/nexus-agents/issues/3118)).
+
+  `issue_triage` computed a `ReputationAssessment` per issue ([#828](https://github.com/nexus-substrate/nexus-agents/issues/828)) but passed only the trust-classifier tier to the policy gate — so the assessment surfaced in output metadata yet enforced nothing (a live dead end). It now reconciles the gate's input tier via a new `reconcileTrustTier(classifierTier, reputation)`:
+  - **demotion-only** — reputation can only raise the tier (more restrictive), never lower it;
+  - **Tier-1/allowlist wins** — an owner/allowlisted maintainer is never demoted by reputation;
+  - **absent reputation → classifier tier** — no fabrication, no escalation on missing data;
+  - **`reputationScore` stays advisory** — only `effectiveTrustTier` moves the gate.
+
+  Effect: a suspicious author (e.g. injection-flagged content) is demoted and their tier-gated proposed actions (`ProposeLabels`/`DraftReply`) are marked `policyApproved: false`. Live by default (`enableReputation` defaults true); `issue_triage` emits proposals, not auto-actions. A graduated off/audit/enforce rollout flag for higher-stakes wiring lands in Phase 4 ([#3122](https://github.com/nexus-substrate/nexus-agents/issues/3122)). `reconcileTrustTier` is exported for reuse by the firewall ([#3106](https://github.com/nexus-substrate/nexus-agents/issues/3106)) and the Phase 2 consolidation ([#3120](https://github.com/nexus-substrate/nexus-agents/issues/3120)).
+
+### Patch Changes
+
+- [#3127](https://github.com/nexus-substrate/nexus-agents/pull/3127) [`dfc3089`](https://github.com/nexus-substrate/nexus-agents/commit/dfc3089737935e04e9738cce18db22b9958abe22) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **fix(security):** firewall reputation is honest, and its tier is enforced, not dropped ([#3106](https://github.com/nexus-substrate/nexus-agents/issues/3106), Phase 1 of epic [#3118](https://github.com/nexus-substrate/nexus-agents/issues/3118)).
+
+  Two fixes to `HostileInputFirewall`'s reputation stage:
+  1. **No fabrication.** `runReputation` fed the engine hardcoded benign metadata (`accountAgeDays:365`, `priorContributions:0`, `recentCommentCount:0`) — so the account/activity signals were always either off or falsely firing (`no_prior_contributions` tripped on every author). The engine's `GitHubUserMetadata` account/activity fields are now **optional**; absent data **skips** those signals (and their score bonuses, guarded against `NaN`) rather than fabricating a value. The firewall now supplies only what it actually knows from the event — `authorAssociation` + `injectionFlags` — so its reputation reflects injection/authority signals honestly until real fetching lands (Phase 3, [#3121](https://github.com/nexus-substrate/nexus-agents/issues/3121)).
+  2. **Tier enforced, not dropped.** The computed `effectiveTrustTier` was discarded — `FirewallResult`/ATL used only the classifier tier. `FirewallResult` now carries `effectiveTrustTier = reconcileTrustTier(classifierTier, reputation)` (the shared [#3119](https://github.com/nexus-substrate/nexus-agents/issues/3119) helper: demotion-only, Tier-1/allowlist wins, absent→classifier), and the ATL is labelled with it.
+
+  `issue_triage` is unaffected (it always supplies real account data). Tests: engine no-fabrication + no-NaN; firewall demotes on a hostile signal and surfaces/labels the enforced tier; the `no_prior_contributions` fabrication no longer fires for an unknown-activity author.
+
 ## 2.89.2
 
 ### Patch Changes
