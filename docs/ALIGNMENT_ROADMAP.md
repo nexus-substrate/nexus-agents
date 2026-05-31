@@ -8,11 +8,33 @@ related_files: [CHANGELOG.md, architecture/README.md]
 
 # Nexus-Agents Alignment Roadmap
 
-**Goal:** Create the best software development agent swarm possible
-**Assessment Date:** 2026-01-09 (ET) | **Last Updated:** 2026-04-18 (ET)
-**Architecture Decision:** HYBRID APPROVED (5-0 unanimous)
-**Current Version:** v2.33.2 | **Fitness Score:** 98/100 | **SWE-bench Lite:** 65.7% (23/35 Lite subset)
-**Historical Reviews:** [docs/archive/system-reviews-2026-01.md](./archive/system-reviews-2026-01.md)
+**Goal:** A self-tuning governance substrate of composable building blocks — excellent at coding agents today, generalizing toward arbitrary goals — that closes the loop so the system measurably improves itself.
+**Assessment Date:** 2026-01-09 (ET) | **Last Updated:** 2026-05-31 (ET)
+**Architecture Decision:** HYBRID APPROVED (5-0 unanimous); Closed-Loop Direction RATIFIED (7-0 higher_order, 2026-05-31)
+**Current Version:** v2.92.3 | **Historical Reviews:** [docs/archive/system-reviews-2026-01.md](./archive/system-reviews-2026-01.md)
+
+---
+
+## Ratified Closed-Loop Direction (2026-05-31)
+
+A 13-domain full-codebase fan-out review (14 agents) produced one structural finding, consistent across **every** domain: **the autonomous loop is a "C", not an "O".** The PRODUCER half is built and persists faithfully (OutcomeStore, FileAuditStorage, fitness-score, research synthesis, SwarmObserver, self-eval); the CONSUMER/tune half is unwired — signals are produced then printed, filed as issues, or written to stores nothing reads. Several integration bridges (`ensureFeedbackSubscriber`, `onRetirement`, firewall `policyEnforcement` stage, compiled-plan policy gates) **already exist in code but are never invoked** — so closing the loop is **mostly a wiring task, not a build task.**
+
+**Refined mission:** nexus-agents is a governance substrate of composable building blocks — research, planning, voting/consensus, orchestration, QA, security — that compose into pipelines and feed every action into a durable logging substrate. It is built to **close the loop**: outcomes, audits, evaluations, and fitness signals flow back to tune routing, thresholds, and plans, so the system measurably improves itself rather than only reporting on itself. Shipped via npm as documented, exported primitives; excellent at coding-agent governance today and generalizing toward arbitrary goals; scaffolding that lets newer, more capable models operate safely under enforced rules.
+
+**Phased plan** (tracked in epic [#3143](https://github.com/nexus-substrate/nexus-agents/issues/3143); each phase lands behind its own `consensus_vote`):
+
+| Phase | Focus                                                                               | Issue                                                                |
+| ----- | ----------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| P0    | Correctness edges + invoke already-written bridges + scheduled `improvement_review` | [#3144](https://github.com/nexus-substrate/nexus-agents/issues/3144) |
+| P1    | Persistent + injectable OutcomeStore / singletons                                   | [#3145](https://github.com/nexus-substrate/nexus-agents/issues/3145) |
+| P1    | Unify + persist audit/outcome substrate (one TaskOutcome schema)                    | [#3146](https://github.com/nexus-substrate/nexus-agents/issues/3146) |
+| P2    | **SignalBus + bounded Tune stage (keystone)**                                       | [#3147](https://github.com/nexus-substrate/nexus-agents/issues/3147) |
+| P1/P2 | Close the knowledge loop (self-eval→OutcomeStore, research→context)                 | [#3148](https://github.com/nexus-substrate/nexus-agents/issues/3148) |
+| P3    | Publish composition primitives + `COMPOSITION_PATTERNS`                             | [#3149](https://github.com/nexus-substrate/nexus-agents/issues/3149) |
+| P4    | Routing returns `(CLI, model)` + cost-enforcement stage                             | [#3150](https://github.com/nexus-substrate/nexus-agents/issues/3150) |
+| P5    | Fully-autonomous orchestrator (SELECT→…→TUNE→REPEAT)                                | [#3151](https://github.com/nexus-substrate/nexus-agents/issues/3151) |
+
+**Binding conditions from the ratifying vote:** phase-gating is the safeguard (this ratifies _direction_, not the P2/P5 designs); the P2 SignalBus must **extend the existing pipeline `EventBus`, not fork it**, and ship bounded/audited/kill-switched with bounded-effect tests before any auto-action; TaskOutcome unification is a breaking exported-contract change requiring the **unanimous** gate + migration path; "arbitrary goals" stays framing only until a concrete second domain is voted; P3 exports are driven by a real consumer, not shipped speculatively.
 
 ---
 
