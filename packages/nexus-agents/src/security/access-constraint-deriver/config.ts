@@ -13,6 +13,7 @@
  */
 
 import { AccessPolicyModeSchema, type AccessPolicyMode } from './types.js';
+import { resolveEnvMode } from '../env-mode.js';
 
 /** Default mode when the env var is unset. Flipped from `off` → `audit`
  * in v2.50+ to surface telemetry by default. */
@@ -22,13 +23,16 @@ export const DEFAULT_ACCESS_POLICY_MODE: AccessPolicyMode = 'audit';
  * Resolves the current access-policy mode from the environment.
  *
  * Returns `DEFAULT_ACCESS_POLICY_MODE` (currently `audit`) if the env var
- * is unset, empty, or invalid. Invalid values are silently coerced — they
- * are never a fatal startup error, because this is a security layer and
- * production must not fail-closed on a misconfiguration.
+ * is unset, empty, or invalid. Invalid values are coerced (never a fatal
+ * startup error — a security layer must not fail-closed on a misconfiguration),
+ * but a non-empty invalid value now emits a `warn` so the typo is observable
+ * (#3130), via the shared `resolveEnvMode`.
  */
 export function resolveAccessPolicyMode(env: NodeJS.ProcessEnv = process.env): AccessPolicyMode {
-  const raw = env['NEXUS_ACCESS_POLICY_MODE'];
-  if (typeof raw !== 'string' || raw.length === 0) return DEFAULT_ACCESS_POLICY_MODE;
-  const parsed = AccessPolicyModeSchema.safeParse(raw.toLowerCase());
-  return parsed.success ? parsed.data : DEFAULT_ACCESS_POLICY_MODE;
+  return resolveEnvMode(
+    env['NEXUS_ACCESS_POLICY_MODE'],
+    AccessPolicyModeSchema,
+    DEFAULT_ACCESS_POLICY_MODE,
+    'NEXUS_ACCESS_POLICY_MODE'
+  );
 }
