@@ -6,8 +6,9 @@
 
 import { describe, it, expect, vi } from 'vitest';
 
-import type { GitHubUserMetadata } from './reputation-model.js';
-import { assessReputation, ReputationCache } from './reputation-model.js';
+import type { GitHubUserMetadata, ReputationAssessment } from './reputation-model.js';
+import { assessReputation, ReputationCache, reconcileTrustTier } from './reputation-model.js';
+import type { TrustTier } from './trust-types.js';
 
 // Helper factory for test metadata
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
@@ -361,5 +362,46 @@ describe('ReputationCache', () => {
     expect(cache.get('oldest-1')).toBeDefined();
     expect(cache.get('oldest-9')).toBeDefined();
     expect(cache.get('new-entry')).toBeDefined();
+  });
+});
+
+describe('reconcileTrustTier (#3119)', () => {
+  function rep(effectiveTrustTier: TrustTier, reputationScore = 50): ReputationAssessment {
+    return {
+      username: 'u',
+      userRole: 'unknown',
+      suspiciousSignals: [],
+      isSuspicious: false,
+      effectiveTrustTier,
+      reputationScore,
+      reason: 'test',
+      assessedAt: new Date().toISOString(),
+    };
+  }
+
+  it('demotes to the stricter (higher) tier — reputation raises it', () => {
+    expect(reconcileTrustTier('2', rep('3'))).toBe('3');
+  });
+
+  it('never loosens — a stricter classifier tier wins over reputation', () => {
+    expect(reconcileTrustTier('4', rep('3'))).toBe('4');
+  });
+
+  it('no phantom demotion when tiers are equal', () => {
+    expect(reconcileTrustTier('2', rep('2'))).toBe('2');
+  });
+
+  it('Tier-1 / allowlist wins — reputation never demotes it', () => {
+    expect(reconcileTrustTier('1', rep('4'))).toBe('1');
+  });
+
+  it('absent reputation keeps the classifier tier (no fabrication, no escalation)', () => {
+    expect(reconcileTrustTier('2', undefined)).toBe('2');
+    expect(reconcileTrustTier('3', undefined)).toBe('3');
+  });
+
+  it('reputationScore is advisory — score never moves the tier, only effectiveTrustTier does', () => {
+    expect(reconcileTrustTier('3', rep('3', 100))).toBe('3'); // excellent score, still T3
+    expect(reconcileTrustTier('2', rep('2', 0))).toBe('2'); // terrible score, no extra demotion
   });
 });

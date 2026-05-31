@@ -25,7 +25,11 @@ import { evaluatePolicy } from '../security/policy-gate.js';
 import type { ActionContext } from '../security/policy-gate.js';
 import { validateCorroboration } from '../security/corroboration-validator.js';
 import type { CorroborationResult } from '../security/corroboration-validator.js';
-import { assessReputation, ReputationCache } from '../security/reputation-model.js';
+import {
+  assessReputation,
+  ReputationCache,
+  reconcileTrustTier,
+} from '../security/reputation-model.js';
 import type { ReputationAssessment, GitHubUserMetadata } from '../security/reputation-model.js';
 import type { AgentAction, SourceCitation } from '../security/action-schema.js';
 import { parseIssueUrl } from '../scm/url-parsers.js';
@@ -96,7 +100,7 @@ export class IssueTriage {
 
     // Generate and validate actions
     const actions = this.generateActions(safeTitle, safeBody, issueResult, trustResult);
-    const validatedActions = this.validateActions(actions, trustResult);
+    const validatedActions = this.validateActions(actions, trustResult, reputation);
 
     const result = this.buildResult({
       issue: issueResult,
@@ -223,10 +227,15 @@ export class IssueTriage {
    */
   private validateActions(
     actions: readonly AgentAction[],
-    trustResult: ClassifyResult
+    trustResult: ClassifyResult,
+    reputation: ReputationAssessment | undefined
   ): ProposedAction[] {
+    // #3119: reputation now GATES — fold the assessment's effectiveTrustTier
+    // into the policy-gate input tier (demotion-only; Tier-1/allowlist wins;
+    // absent reputation keeps the classifier tier). Previously the assessment
+    // was computed but only surfaced in output metadata, never enforced.
     const context: ActionContext = {
-      inputTrustTier: trustResult.trustTier,
+      inputTrustTier: reconcileTrustTier(trustResult.trustTier, reputation),
       hasWriteAccess: !this.config.dryRun,
       hasSecretAccess: false,
     };
