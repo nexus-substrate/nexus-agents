@@ -9,6 +9,7 @@ import { RateLimiter } from '../middleware/index.js';
 import {
   ConsensusVoteInputSchema,
   CONSENSUS_VOTE_OUTPUT_SCHEMA,
+  createPolicyFailedResult,
   type ConsensusVoteDeps,
   type AgentVoteSummary,
   type ConsensusVoteResponse,
@@ -715,6 +716,111 @@ describe('toAgentVoteSummary (Issue #815)', () => {
 
     expect(summary.rejectionCategories).toBeUndefined();
   });
+});
+
+describe('createPolicyFailedResult honest counts (#3124)', () => {
+  function vr(
+    role: AgentVoteResult['role'],
+    decision: 'approve' | 'reject' | 'abstain',
+    source: AgentVoteResult['source'] = 'llm'
+  ): AgentVoteResult {
+    return {
+      role,
+      vote: { decision, reasoning: 'r', confidence: 0.8 },
+      processingTimeMs: 10,
+      source,
+    };
+  }
+
+  it('reports the TRUE breakdown of responding voters, not all-zeros, when one errors', () => {
+    const votes: AgentVoteResult[] = [
+      vr('architect', 'approve'),
+      vr('security', 'approve'),
+      vr('devex', 'approve'),
+      vr('ai_ml', 'approve'),
+      vr('pm', 'approve'),
+      vr('catfish', 'approve'),
+      vr('scope_steward', 'abstain', 'error'), // timed out
+    ];
+    const result = createPolicyFailedResult('p', 'supermajority', 'fail_closed: 1 errored', votes);
+    // The core #3124 fix: approve is 6, NOT 0.
+    expect(result.voteCounts.approve).toBe(6);
+    expect(result.voteCounts.reject).toBe(0);
+    expect(result.voteCounts.total).toBe(6); // error excluded from the denominator
+    expect(result.approvalPercentage).toBe(100);
+    expect(result.votes.size).toBe(6); // error vote not in the map
+    // The decision still fails closed (policy short-circuit), honestly reported.
+    expect(result.outcome).toBe('rejected');
+  });
+
+  it('computes approvalPercentage over responders only (mixed decisions + >50% errors)', () => {
+    const votes: AgentVoteResult[] = [
+      vr('architect', 'approve'),
+      vr('security', 'approve'),
+      vr('devex', 'approve'),
+      vr('ai_ml', 'reject'),
+      vr('pm', 'abstain', 'error'),
+      vr('catfish', 'abstain', 'error'),
+      vr('scope_steward', 'abstain', 'error'),
+    ];
+    const result = createPolicyFailedResult('p', 'supermajority', 'errors > 50%', votes);
+    expect(result.voteCounts).toMatchObject({ approve: 3, reject: 1, abstain: 0, total: 4 });
+    expect(result.approvalPercentage).toBe(75);
+  });
+
+  it('does not divide by zero when every voter errored', () => {
+    const votes: AgentVoteResult[] = [
+      vr('architect', 'abstain', 'error'),
+      vr('security', 'abstain', 'error'),
+    ];
+    const result = createPolicyFailedResult('p', 'supermajority', 'all errored', votes);
+    expect(result.approvalPercentage).toBe(0);
+    expect(result.voteCounts.total).toBe(0);
+  });
+});
+
+describe('buildResponse surfaces policyReason (#3124)', () => {
+  it('passes policyReason through to the response when set', () => {
+    const base = makeShortCircuitResult();
+    const input = { proposal: 'Test', simulateVotes: false, quickMode: false };
+    const response = buildResponse(input, base);
+    expect(response.policyReason).toBe('fail_closed: 1 voter(s) errored');
+    // honest: 1 approve surfaced, decision still rejected
+    expect(response.voteCounts.approve).toBe(1);
+    expect(response.decision).toBe('rejected');
+  });
+
+  function makeShortCircuitResult(): ExtendedVotingResult {
+    const votes: AgentVoteResult[] = [
+      {
+        role: 'architect',
+        vote: { decision: 'approve', reasoning: 'ok', confidence: 0.9 },
+        processingTimeMs: 50,
+        source: 'llm',
+      },
+      {
+        role: 'security',
+        vote: { decision: 'abstain', reasoning: 'timeout', confidence: 0 },
+        processingTimeMs: 60,
+        source: 'error',
+      },
+    ];
+    return {
+      proposal: 'Test',
+      threshold: 'higher_order',
+      result: createPolicyFailedResult(
+        'Test',
+        'higher_order',
+        'fail_closed: 1 voter(s) errored',
+        votes
+      ),
+      votes,
+      totalTimeMs: 100,
+      simulateVotes: false,
+      strategy: 'higher_order',
+      policyReason: 'fail_closed: 1 voter(s) errored',
+    };
+  }
 });
 
 describe('buildResponse error counting (Issue #815)', () => {
