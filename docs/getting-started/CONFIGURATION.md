@@ -241,6 +241,7 @@ Files stored:
 | Variable                       | Description                                                                      | Default          |
 | ------------------------------ | -------------------------------------------------------------------------------- | ---------------- |
 | `NEXUS_ACCESS_POLICY_MODE`     | ClawGuard mode: `off` / `audit` / `confirm_risky` / `enforce` (#1977, #2279)     | `audit` (v2.50+) |
+| `NEXUS_REPUTATION_GATING`      | Author-reputation tier gating: `off` / `audit` / `enforce` (#3122, epic #3118)   | `audit`          |
 | `NEXUS_TASK_STATE_ENABLED`     | Structured task-state log + Magentic-One ledgers (`0`/`false` to disable, #2278) | enabled (v2.50+) |
 | `NEXUS_CONTEXT_WARN_THRESHOLD` | Per-expert context-warning threshold (0..1]                                      | `0.85`           |
 
@@ -250,6 +251,14 @@ Files stored:
 - `audit` (default since v2.50) — log every violation, block nothing. Collects telemetry to size the violation rate before flipping to a stricter mode
 - `confirm_risky` (added v2.58) — graduated middle tier. Block violations on tools classified as risky (write/exec/network); log-and-allow violations on read-only tools. Use this to graduate from `audit` to `enforce` without breaking read-heavy workflows. Risky violations come back with a structured "would have required human approval" reason
 - `enforce` — block every violation, regardless of risk classification
+
+**`NEXUS_REPUTATION_GATING` graduation path:** mirrors the mode above for author-reputation tier demotion in `issue_triage` (epic #3118).
+
+- `off` — reputation never affects the enforced trust tier
+- `audit` (default) — reputation is computed and the would-be demotion is logged + surfaced (`trustAssessment.effectiveTrustTier`/`gatingMode`), but the **classifier** tier is enforced. Collects telemetry on the demotion rate before enforcing
+- `enforce` — apply the reputation demotion at the policy gate (a suspicious author's tier-gated actions are blocked)
+
+**Escape hatch:** in every mode the maintainer allowlist (Tier 1) is authoritative — reputation can never demote an allowlisted/owner author. To clear a false-positive demotion for a specific user, add them to the allowlist; to disable gating fleet-wide, set `off`.
 
 ### Timeout Variables
 

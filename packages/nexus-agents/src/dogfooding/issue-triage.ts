@@ -28,9 +28,14 @@ import type { CorroborationResult } from '../security/corroboration-validator.js
 import {
   assessReputation,
   ReputationCache,
-  reconcileTrustTier,
+  gateWithReputation,
+  resolveReputationGatingMode,
 } from '../security/reputation-model.js';
-import type { ReputationAssessment, GitHubUserMetadata } from '../security/reputation-model.js';
+import type {
+  ReputationAssessment,
+  GitHubUserMetadata,
+  ReputationGateDecision,
+} from '../security/reputation-model.js';
 import type { AgentAction, SourceCitation } from '../security/action-schema.js';
 import { parseIssueUrl } from '../scm/url-parsers.js';
 import { createFullGitHubProvider } from '../scm/github-provider-traits.js';
@@ -99,15 +104,35 @@ export class IssueTriage {
     const trustResult = this.classifyAuthor(issueResult);
     const reputation = this.assessAuthorReputation(issueResult, comments, accountAgeDays);
 
+    // #3122: apply the reputation-gating rollout mode (off/audit/enforce). The
+    // decision is computed once and used both to gate actions and to surface
+    // observability in the result. Audit mode reports a would-be demotion
+    // without enforcing it; the allowlist (Tier 1) remains the escape hatch.
+    const gateDecision = gateWithReputation(
+      trustResult.trustTier,
+      reputation,
+      resolveReputationGatingMode()
+    );
+    if (gateDecision.demotionSuppressed) {
+      logger.warn('Reputation demotion suppressed by gating mode (would block under enforce)', {
+        issueNumber,
+        author: issueResult.author,
+        mode: gateDecision.mode,
+        classifierTier: trustResult.trustTier,
+        reconciledTier: gateDecision.reconciledTier,
+      });
+    }
+
     // Generate and validate actions
     const actions = this.generateActions(safeTitle, safeBody, issueResult, trustResult);
-    const validatedActions = this.validateActions(actions, trustResult, reputation);
+    const validatedActions = this.validateActions(actions, gateDecision);
 
     const result = this.buildResult({
       issue: issueResult,
       actions: validatedActions,
       trustResult,
       reputation,
+      gateDecision,
       safeContent: { title: safeTitle, body: safeBody },
       startTime,
     });
@@ -233,15 +258,14 @@ export class IssueTriage {
    */
   private validateActions(
     actions: readonly AgentAction[],
-    trustResult: ClassifyResult,
-    reputation: ReputationAssessment | undefined
+    gateDecision: ReputationGateDecision
   ): ProposedAction[] {
-    // #3119: reputation now GATES — fold the assessment's effectiveTrustTier
-    // into the policy-gate input tier (demotion-only; Tier-1/allowlist wins;
-    // absent reputation keeps the classifier tier). Previously the assessment
-    // was computed but only surfaced in output metadata, never enforced.
+    // #3119 + #3122: reputation GATES via the rollout mode. `enforce` uses the
+    // reconciled (possibly demoted) tier; `audit`/`off` enforce the classifier
+    // tier (the suppressed demotion is logged upstream). Demotion-only;
+    // Tier-1/allowlist always wins.
     const context: ActionContext = {
-      inputTrustTier: reconcileTrustTier(trustResult.trustTier, reputation),
+      inputTrustTier: gateDecision.enforcedTier,
       hasWriteAccess: !this.config.dryRun,
       hasSecretAccess: false,
     };
@@ -277,10 +301,11 @@ export class IssueTriage {
     actions: readonly ProposedAction[];
     trustResult: ClassifyResult;
     reputation: ReputationAssessment | undefined;
+    gateDecision: ReputationGateDecision;
     safeContent: { title: string; body: string };
     startTime: number;
   }): IssueTriageResult {
-    const { issue, actions, trustResult, reputation, safeContent, startTime } = opts;
+    const { issue, actions, trustResult, reputation, gateDecision, safeContent, startTime } = opts;
     const [category, confidence] = categorizeIssue(safeContent.title, safeContent.body);
 
     // Tier 1 actors (owner/maintainer) cannot be suspicious — reconcile
@@ -294,6 +319,12 @@ export class IssueTriage {
       reputationScore: reputation?.reputationScore,
       suspiciousSignals: isTier1 ? [] : (reputation?.suspiciousSignals ?? []),
       isSuspicious: isTier1 ? false : (reputation?.isSuspicious ?? false),
+      // #3122: surface both the enforced tier (what the gate used) and the
+      // reconciled tier (what reputation computed) so telemetry can't mistake
+      // a would-be demotion for an enforced one.
+      enforcedTrustTier: gateDecision.enforcedTier,
+      reputationReconciledTier: gateDecision.reconciledTier,
+      gatingMode: gateDecision.mode,
     };
 
     return {

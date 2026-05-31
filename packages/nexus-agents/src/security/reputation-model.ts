@@ -360,6 +360,67 @@ export function reconcileTrustTier(
     : classifierTier;
 }
 
+// ============================================================================
+// Reputation gating rollout (#3122 / epic #3118 Phase 4)
+// ============================================================================
+
+/**
+ * Rollout mode for reputation-based tier gating, mirroring
+ * `NEXUS_ACCESS_POLICY_MODE` (#1977): `off` (no reputation effect), `audit`
+ * (compute + report the would-be demotion but enforce the classifier tier), or
+ * `enforce` (apply the demotion). Default `audit` — surface telemetry without
+ * blocking until the false-positive rate is known, then flip to `enforce`.
+ */
+export const ReputationGatingModeSchema = z.enum(['off', 'audit', 'enforce']);
+export type ReputationGatingMode = z.infer<typeof ReputationGatingModeSchema>;
+
+/** Default when `NEXUS_REPUTATION_GATING` is unset/invalid — audit (telemetry, no block). */
+export const DEFAULT_REPUTATION_GATING_MODE: ReputationGatingMode = 'audit';
+
+/** Resolve the gating mode from the environment (invalid → default, never throws). */
+export function resolveReputationGatingMode(
+  env: NodeJS.ProcessEnv = process.env
+): ReputationGatingMode {
+  const raw = env['NEXUS_REPUTATION_GATING'];
+  if (typeof raw !== 'string' || raw.length === 0) return DEFAULT_REPUTATION_GATING_MODE;
+  const parsed = ReputationGatingModeSchema.safeParse(raw.toLowerCase());
+  return parsed.success ? parsed.data : DEFAULT_REPUTATION_GATING_MODE;
+}
+
+/** Outcome of applying the gating mode to a reputation assessment. */
+export interface ReputationGateDecision {
+  /** Tier to actually enforce at the policy gate. */
+  readonly enforcedTier: TrustTier;
+  /** Tier reputation reconciliation computed (what `enforce` mode WOULD use). */
+  readonly reconciledTier: TrustTier;
+  /** True when reputation would demote but the mode (off/audit) did not enforce it. */
+  readonly demotionSuppressed: boolean;
+  readonly mode: ReputationGatingMode;
+}
+
+/**
+ * Apply the rollout mode to a reputation assessment (#3122). `enforce` gates on
+ * the reconciled (possibly demoted) tier; `audit`/`off` gate on the classifier
+ * tier but report whether a demotion was suppressed (for telemetry). The
+ * Tier-1/allowlist-wins and demotion-only invariants live in `reconcileTrustTier`,
+ * so the allowlist remains the escape hatch in every mode.
+ */
+export function gateWithReputation(
+  classifierTier: TrustTier,
+  reputation: ReputationAssessment | undefined,
+  mode: ReputationGatingMode
+): ReputationGateDecision {
+  const reconciledTier =
+    mode === 'off' ? classifierTier : reconcileTrustTier(classifierTier, reputation);
+  const enforcedTier = mode === 'enforce' ? reconciledTier : classifierTier;
+  return {
+    enforcedTier,
+    reconciledTier,
+    demotionSuppressed: mode !== 'enforce' && reconciledTier !== classifierTier,
+    mode,
+  };
+}
+
 /** Build a human-readable reason string. */
 function buildReason(
   role: GitHubUserRole,
