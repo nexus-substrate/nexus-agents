@@ -1,5 +1,13 @@
 # nexus-agents
 
+## 2.92.0
+
+### Minor Changes
+
+- [#3132](https://github.com/nexus-substrate/nexus-agents/pull/3132) [`96873d6`](https://github.com/nexus-substrate/nexus-agents/commit/96873d6ddad8b542a0bbe80994701605f459f2e7) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(security): gate pr_review posting on author reputation ([#3123](https://github.com/nexus-substrate/nexus-agents/issues/3123), epic [#3118](https://github.com/nexus-substrate/nexus-agents/issues/3118) Phase 5)
+
+  `pr-reviewer` now assesses author reputation and feeds the reputation-reconciled tier into its policy gate, closing the PR-path equivalent of the [#828](https://github.com/nexus-substrate/nexus-agents/issues/828)/[#3106](https://github.com/nexus-substrate/nexus-agents/issues/3106) dead-end (the author was trust-classified but reputation was never gated). Reuses the global `NEXUS_REPUTATION_GATING` rollout flag (`off`/`audit`/`enforce`, default `audit`) and the `gateWithReputation` primitive from Phase 4, so behavior matches `issue_triage`. The review result now surfaces `trustAssessment` (`enforcedTrustTier`, `reputationReconciledTier`, `gatingMode`, `reputationScore`, `isSuspicious`) for observability, controlled by a new `enableReputation` config (default on). Account-age fetch for the PR path is deferred to a follow-up (PR signals used: author association + injection flags; absent signals are omitted, never fabricated). The maintainer allowlist (Tier 1) remains the escape hatch in every mode.
+
 ## 2.91.0
 
 ### Minor Changes
