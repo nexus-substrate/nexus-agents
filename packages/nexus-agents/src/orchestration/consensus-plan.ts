@@ -247,7 +247,9 @@ function parsePlan(text: string): CliPlan | null {
       summary: typeof obj.summary === 'string' ? obj.summary : '',
     };
   } catch (e: unknown) {
-    moduleLogger.warn('Failed to parse CLI plan output as JSON; discarding', { error: String(e) });
+    moduleLogger.warn('Failed to parse CLI plan output as JSON; discarding', {
+      error: getErrorMessage(e),
+    });
     return null;
   }
 }

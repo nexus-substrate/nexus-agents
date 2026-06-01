@@ -85,6 +85,20 @@ describe('Stage Wrappers', () => {
       expect(result.success).toBe(false);
       expect(result.error).toContain('Timeout');
     });
+
+    it('preserves the message when a stage throws a non-Error value (#3176)', async () => {
+      const stages = createMockStages();
+      // A thrown non-Error object previously stringified to "[object Object]",
+      // losing all context. getErrorMessage extracts the real message.
+      vi.mocked(stages.research).mockRejectedValue({ message: 'adapter exploded', code: 'E_BOOM' });
+      const wrapper = createResearchStageWrapper(stages);
+
+      const result = await wrapper.execute(makeContext());
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('adapter exploded');
+      expect(result.error).not.toContain('[object Object]');
+    });
   });
 
   describe('createPlanStageWrapper', () => {

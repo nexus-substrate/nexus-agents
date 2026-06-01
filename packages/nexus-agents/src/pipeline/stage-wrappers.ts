@@ -8,7 +8,7 @@
  * @module pipeline/stage-wrappers
  */
 
-import { getTimeProvider } from '../core/index.js';
+import { getTimeProvider, getErrorMessage } from '../core/index.js';
 import { parseSpec } from '../orchestration/spec-parser.js';
 import type { DevPipelineStages, PipelineTask } from './dev-pipeline.js';
 import { isApproved, getVoteFeedback } from './dev-pipeline.js';
@@ -73,7 +73,7 @@ export function createResearchStageWrapper(stages: DevPipelineStages): IPipeline
         const result = await stages.research(enrichedTask);
         return output(K.RESEARCH, result, getTimeProvider().now() - start, true);
       } catch (e) {
-        return failOutput(K.RESEARCH, String(e), getTimeProvider().now() - start);
+        return failOutput(K.RESEARCH, getErrorMessage(e), getTimeProvider().now() - start);
       }
     },
   };
@@ -102,7 +102,7 @@ export function createPlanStageWrapper(stages: DevPipelineStages): IPipelineStag
         const result = await stages.plan(ctx.task, enrichedResearch, feedback);
         return output(K.PLAN, result, getTimeProvider().now() - start, true);
       } catch (e) {
-        return failOutput(K.PLAN, String(e), getTimeProvider().now() - start);
+        return failOutput(K.PLAN, getErrorMessage(e), getTimeProvider().now() - start);
       }
     },
   };
@@ -127,7 +127,7 @@ export function createVoteStageWrapper(stages: DevPipelineStages): IPipelineStag
           success: isApproved(vote),
         };
       } catch (e) {
-        return failOutput(K.VOTE_RESULT, String(e), getTimeProvider().now() - start);
+        return failOutput(K.VOTE_RESULT, getErrorMessage(e), getTimeProvider().now() - start);
       }
     },
   };
@@ -145,7 +145,7 @@ export function createDecomposeStageWrapper(stages: DevPipelineStages): IPipelin
         const tasks = await stages.decompose(plan);
         return output(K.TASKS, tasks, getTimeProvider().now() - start, true);
       } catch (e) {
-        return failOutput(K.TASKS, String(e), getTimeProvider().now() - start);
+        return failOutput(K.TASKS, getErrorMessage(e), getTimeProvider().now() - start);
       }
     },
   };
@@ -172,7 +172,7 @@ export function createImplementStageWrapper(stages: DevPipelineStages): IPipelin
         // through ctx.state with a documented PIPELINE_STATE_KEYS entry.
         return output(K.IMPLEMENTATIONS, results, getTimeProvider().now() - start, true);
       } catch (e) {
-        return failOutput(K.IMPLEMENTATIONS, String(e), getTimeProvider().now() - start);
+        return failOutput(K.IMPLEMENTATIONS, getErrorMessage(e), getTimeProvider().now() - start);
       }
     },
   };
@@ -194,7 +194,7 @@ export function createQaStageWrapper(stages: DevPipelineStages): IPipelineStage 
         const allPass = reviews.every((r) => r.verdict === 'pass');
         return output(K.QA_ITERATIONS, reviews, getTimeProvider().now() - start, allPass);
       } catch (e) {
-        return failOutput(K.QA_ITERATIONS, String(e), getTimeProvider().now() - start);
+        return failOutput(K.QA_ITERATIONS, getErrorMessage(e), getTimeProvider().now() - start);
       }
     },
   };
@@ -216,7 +216,7 @@ export function createSecurityStageWrapper(stages: DevPipelineStages): IPipeline
           result.passed
         );
       } catch (e) {
-        return failOutput(K.SECURITY_PASSED, String(e), getTimeProvider().now() - start);
+        return failOutput(K.SECURITY_PASSED, getErrorMessage(e), getTimeProvider().now() - start);
       }
     },
   };
@@ -351,7 +351,7 @@ export function createAnalyzeStageWrapper(): IPipelineStage {
         const summary = `Language: ${String(analysis.language)}, Framework: ${String(analysis.framework)}, CI: ${String(analysis.ciProvider)}, Security: ${analysis.securityTooling.join(', ') || 'none'}`;
         return output(K.RESEARCH, summary, getTimeProvider().now() - start, true);
       } catch (e) {
-        return failOutput(K.RESEARCH, String(e), getTimeProvider().now() - start);
+        return failOutput(K.RESEARCH, getErrorMessage(e), getTimeProvider().now() - start);
       }
     },
   };
@@ -377,7 +377,7 @@ export function createScanStageWrapper(): IPipelineStage {
         }
         return output(K.FINDINGS, 'No repository to scan', getTimeProvider().now() - start, true);
       } catch (e) {
-        return failOutput(K.FINDINGS, String(e), getTimeProvider().now() - start);
+        return failOutput(K.FINDINGS, getErrorMessage(e), getTimeProvider().now() - start);
       }
     },
   };
