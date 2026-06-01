@@ -18,7 +18,7 @@ import { createLogger } from '../core/index.js';
 import { PipelineRunner } from './pipeline-runner.js';
 import { getPipelineEventBus } from './event-bus.js';
 import { createDefaultPolicyEngine, type PipelineStateSnapshot } from './policy-engine.js';
-import { evaluatePolicy, getPolicyMode } from './policy-evaluator.js';
+import { evaluatePipelinePolicy, getPolicyMode } from './policy-evaluator.js';
 
 /**
  * Narrows the untyped `task.metadata` bag into the policy engine's typed
@@ -178,7 +178,7 @@ export function checkPipelinePolicy(task: TaskContract, stageType: string): Poli
     pipelineState: toPipelineStateSnapshot(task.metadata),
   };
 
-  const result = evaluatePolicy({ engine, mode }, context);
+  const result = evaluatePipelinePolicy({ engine, mode }, context);
   if (!result.allowed) {
     logger.warn('Pipeline blocked by policy', {
       taskId: task.id,

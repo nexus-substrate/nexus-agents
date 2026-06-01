@@ -65,7 +65,7 @@ export function getPolicyMode(): PolicyMode {
  * In BLOCK mode, violations halt the pipeline.
  * In OFF mode, evaluation is skipped entirely.
  */
-export function evaluatePolicy(
+export function evaluatePipelinePolicy(
   options: PolicyEvaluatorOptions,
   context: PolicyContext
 ): PolicyEvalResult {

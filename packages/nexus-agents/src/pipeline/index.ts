@@ -132,7 +132,7 @@ export {
 } from './event-bus-bridge.js';
 
 export {
-  evaluatePolicy,
+  evaluatePipelinePolicy,
   getPolicyMode,
   type PolicyMode,
   type PolicyEvaluatorOptions,

@@ -97,7 +97,7 @@ export {
   type EventBusBridgeOptions,
   type PipelineBridgeResult,
   // Policy evaluator (Issue #923, Phase D)
-  evaluatePolicy as evaluatePipelinePolicy, // Renamed: mcp.ts exports evaluatePolicy
+  evaluatePipelinePolicy, // distinct from mcp.ts's evaluatePolicy (source fn now explicitly named, #3194)
   getPolicyMode,
   type PolicyMode as PipelinePolicyMode, // Renamed: mcp.ts exports PolicyMode
   type PolicyEvaluatorOptions,
