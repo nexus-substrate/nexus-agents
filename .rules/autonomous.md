@@ -96,6 +96,15 @@ Genuinely pause and surface to the user ONLY when:
 
 For everything else: keep working, summarize progress at end of turn, begin the next item.
 
+## Self-continuation is mandatory — never hand the turn back idle
+
+Ending a turn with "Up next: …" and then **stopping** is itself the failure mode the user is paying to avoid — it forces them to type "continue." Under a standing autonomous directive, a turn must not end in an idle state while the backlog is non-empty. Two ways to keep going:
+
+1. **Chain within the turn.** Finishing one PR/item is not the end of the turn — immediately start the next backlog item (more tool calls) rather than composing a wrap-up. Do many items per turn.
+2. **Self-schedule across turns.** When a turn genuinely must end (context budget, waiting on a tracked background job, or a natural batch boundary), call **`ScheduleWakeup`** with the `<<autonomous-loop-dynamic>>` sentinel so the harness re-invokes you automatically and the loop continues **without the user typing anything**. Pick the delay by the cache-window guidance in the tool (short poll for tracked work, 1200s+ for genuine idle).
+
+The ONLY time you stop without scheduling a wakeup is a genuine **hard-stop condition** above. "Done this turn / Up next" is a progress log, **not** a handoff — pair it with either chained work or a scheduled wakeup.
+
 ## End-of-turn protocol for autonomous mode
 
 Close each turn with a short status block:
@@ -105,4 +114,4 @@ Done this turn: <1-line summary of what shipped>
 Up next: <the specific item being started, with issue/PR #>
 ```
 
-No question marks at the end of turns. No "let me know if you want me to continue." The autonomous directive already authorized continuation.
+No question marks at the end of turns. No "let me know if you want me to continue." No "say continue." The autonomous directive already authorized continuation — keep working or schedule a wakeup; never wait on the user.
