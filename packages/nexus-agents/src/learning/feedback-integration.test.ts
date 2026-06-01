@@ -822,3 +822,63 @@ describe('FeedbackIntegration TTL configuration', () => {
     vi.useRealTimers();
   });
 });
+
+describe('feedback loop integration: outcome → reward → CompositeRouter (#3225)', () => {
+  it('routes a recorded outcome to CompositeRouter.recordOutcome with the computed reward', () => {
+    const router = createMockRouter();
+    const integration = new FeedbackIntegration({ enableAutoFeedback: true });
+    integration.registerCompositeRouter(router);
+
+    const id = integration.recordRoutingDecision(createMockDecision({ cliName: 'gemini' }));
+    integration.recordOutcome({
+      routingDecisionId: id,
+      success: true,
+      qualityScore: 0.9,
+      durationMs: 1200,
+      tokenUsage: 1000,
+    });
+
+    expect(router.recordOutcome).toHaveBeenCalledTimes(1);
+    const [cliName, task, reward] = vi.mocked(router.recordOutcome).mock.calls[0]!;
+    expect(cliName).toBe('gemini');
+    expect(task).toEqual({ content: 'code_implementation' }); // decision.task = taskProfile.taskType
+    expect(typeof reward).toBe('number');
+    expect(reward).toBeGreaterThan(0); // a successful, high-quality outcome → positive reward
+  });
+
+  it('does NOT route to the router when autoFeedback is disabled', () => {
+    const router = createMockRouter();
+    const integration = new FeedbackIntegration({ enableAutoFeedback: false });
+    integration.registerCompositeRouter(router);
+
+    const id = integration.recordRoutingDecision(createMockDecision());
+    integration.recordOutcome({
+      routingDecisionId: id,
+      success: true,
+      qualityScore: 0.9,
+      durationMs: 100,
+      tokenUsage: 500,
+    });
+
+    expect(router.recordOutcome).not.toHaveBeenCalled();
+  });
+
+  it('reward reflects outcome quality — a failure yields a lower reward than a success', () => {
+    const rewardFor = (success: boolean, qualityScore: number): number => {
+      const router = createMockRouter();
+      const integration = new FeedbackIntegration({ enableAutoFeedback: true });
+      integration.registerCompositeRouter(router);
+      const id = integration.recordRoutingDecision(createMockDecision());
+      integration.recordOutcome({
+        routingDecisionId: id,
+        success,
+        qualityScore,
+        durationMs: 500,
+        tokenUsage: 800,
+      });
+      return vi.mocked(router.recordOutcome).mock.calls[0]![2];
+    };
+    // The reward is a meaningful signal, not a constant: success > failure.
+    expect(rewardFor(true, 0.95)).toBeGreaterThan(rewardFor(false, 0.1));
+  });
+});
