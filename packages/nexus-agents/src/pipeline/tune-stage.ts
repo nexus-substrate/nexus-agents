@@ -85,6 +85,9 @@ export function intendedActionFor(event: PipelineEvent): IntendedTuneAction | un
  * `Unsubscribe`. Shadow/dry-run by default — logs intended actions, mutates
  * nothing.
  */
+// @export-no-consumer-yet — see #3147 (consumer core lands ahead of its
+// instantiation; the producers + bootstrap wiring are sequenced AFTER the
+// event-bus unification #3289, per the ratified consolidation program #3288).
 export function createTuneStage(bus: IEventBus, options: TuneStageOptions = {}): Unsubscribe {
   const enabled = options.enabled ?? false;
   const log = options.logger ?? defaultLogger;
