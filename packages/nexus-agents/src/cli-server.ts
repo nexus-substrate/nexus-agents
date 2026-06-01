@@ -51,6 +51,7 @@ import { initializeAuth } from './cli-server-auth.js';
 import { shutdownToolMemory } from './mcp/tools/tool-memory.js';
 import { shutdownExpertBridge } from './pipeline/expert-bridge.js';
 import { shutdownFeedbackSubscriber } from './pipeline/feedback-subscriber.js';
+import { shutdownTuneStage } from './pipeline/tune-stage.js';
 import {
   initializeAuditLogger,
   shutdownAuditLogger,
@@ -236,6 +237,9 @@ function createShutdownCleanup(options: ShutdownCleanupOptions): () => Promise<v
 
     // Release the EventBus → OutcomeStore feedback subscription (closes #2938)
     shutdownFeedbackSubscriber();
+
+    // Release the shadow TuneStage signal subscription (#3147)
+    shutdownTuneStage();
 
     const closeResult = await closeServer(server, serverLogger);
     if (!closeResult.ok) {

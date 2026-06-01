@@ -73,6 +73,7 @@ import { getPipelinePluginRegistry } from './pipeline/core-plugins.js';
 import { getPipelineEventBus } from './pipeline/event-bus.js';
 import { createEventBusBridge } from './pipeline/event-bus-bridge.js';
 import { startFeedbackSubscriber } from './pipeline/feedback-subscriber.js';
+import { startTuneStage } from './pipeline/tune-stage.js';
 import { getOutcomeStore } from './orchestration/outcomes/index.js';
 import { createDefaultPolicyEngine } from './pipeline/policy-engine.js';
 import { resolveV2Config } from './pipeline/v2-config.js';
@@ -614,6 +615,11 @@ function initV2PipelineSubsystems(logger: ILogger): void {
   // OutcomeStore via this path. Cleanup runs in
   // cli-server.ts:createShutdownCleanup via `shutdownFeedbackSubscriber()`.
   startFeedbackSubscriber(pipelineEventBus, getOutcomeStore());
+  // Close the self-tuning loop's consumer side: the shadow TuneStage subscribes
+  // to signal.* events on the same typed bus (#3147; #3289 Option 2). Shadow
+  // mode — logs intended actions, mutates nothing. Paired with
+  // shutdownTuneStage() in cli-server.ts:createShutdownCleanup.
+  startTuneStage(pipelineEventBus);
   const policyEngine = createDefaultPolicyEngine();
   const v2Config = resolveV2Config();
   logger.info('V2 Pipeline OS initialized', {

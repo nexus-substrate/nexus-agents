@@ -52,6 +52,8 @@ import {
 } from './consensus-vote-types.js';
 import { applyErrorPolicy } from './consensus-vote-error-policy.js';
 import { recordVoteSuccess, recordVoteError } from './consensus-vote-recording.js';
+import { emitVoteRejectedSignal } from './consensus-vote-signals.js';
+import { getPipelineEventBus } from '../../pipeline/event-bus.js';
 import { warnIfSimulatedOutsideTests } from './simulation-guard.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 // #3045 / epic #2631 Stage 4 — async-mode dispatch + concurrency cap.
@@ -638,6 +640,9 @@ async function handleConsensusVote(
       result.totalTimeMs,
       result.votes
     );
+    // Close the self-tuning loop: a rejected vote emits signal.vote_rejected
+    // onto the typed pipeline bus for the shadow TuneStage (#3147; #3289 Option 2).
+    emitVoteRejectedSignal(result.result, getPipelineEventBus(), logger);
     return { ok: true, value: buildResponse(args, result) };
   } catch (error) {
     const message = getErrorMessage(error);

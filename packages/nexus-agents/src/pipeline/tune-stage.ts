@@ -85,9 +85,6 @@ export function intendedActionFor(event: PipelineEvent): IntendedTuneAction | un
  * `Unsubscribe`. Shadow/dry-run by default — logs intended actions, mutates
  * nothing.
  */
-// @export-no-consumer-yet — see #3147 (consumer core lands ahead of its
-// instantiation; the producers + bootstrap wiring are sequenced AFTER the
-// event-bus unification #3289, per the ratified consolidation program #3288).
 export function createTuneStage(bus: IEventBus, options: TuneStageOptions = {}): Unsubscribe {
   const enabled = options.enabled ?? false;
   const log = options.logger ?? defaultLogger;
@@ -112,4 +109,31 @@ export function createTuneStage(bus: IEventBus, options: TuneStageOptions = {}):
       log.warn('TuneStage handler error', { error: getErrorMessage(e) });
     }
   });
+}
+
+// ============================================================================
+// Server-wide lifecycle (#3147) — mirrors feedback-subscriber.ts start/shutdown
+//
+// cli-server-tools.ts:initV2PipelineSubsystems calls startTuneStage() at server
+// init, paired with shutdownTuneStage() in cli-server.ts:createShutdownCleanup.
+// ============================================================================
+
+let cachedTuneUnsubscribe: Unsubscribe | null = null;
+
+/**
+ * Wire the shadow TuneStage to the pipeline bus for the process lifetime.
+ * Idempotent — repeated calls are no-ops. Caller must invoke
+ * `shutdownTuneStage()` on server shutdown to release the subscription.
+ */
+export function startTuneStage(bus: IEventBus, options?: TuneStageOptions): void {
+  if (cachedTuneUnsubscribe !== null) return;
+  cachedTuneUnsubscribe = createTuneStage(bus, options);
+}
+
+/** Release the server-wide TuneStage subscription. Idempotent. */
+export function shutdownTuneStage(): void {
+  if (cachedTuneUnsubscribe !== null) {
+    cachedTuneUnsubscribe();
+    cachedTuneUnsubscribe = null;
+  }
 }
