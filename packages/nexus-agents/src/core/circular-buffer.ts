@@ -4,7 +4,7 @@
  * O(1) push and eviction for bounded collections.
  * Used by EventBus history to avoid O(n) array.shift() operations.
  *
- * @module agents/collaboration/circular-buffer
+ * @module core/circular-buffer
  * @see Issue #407
  */
 

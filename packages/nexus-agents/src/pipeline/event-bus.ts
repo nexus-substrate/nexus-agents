@@ -7,7 +7,7 @@
  * @see docs/v2/08-observability-eventing.md
  * @module pipeline/event-bus
  */
-import { getErrorMessage, createLogger } from '../core/index.js';
+import { getErrorMessage, createLogger, CircularBuffer } from '../core/index.js';
 
 import type {
   PipelineEvent,
@@ -51,13 +51,14 @@ interface Subscription {
  * match their filter. Handler errors are caught and logged.
  */
 export class EventBus implements IEventBus {
-  private readonly buffer: PipelineEvent[] = [];
-  private readonly maxBuffer: number;
+  private readonly buffer: CircularBuffer<PipelineEvent>;
   private readonly subs: Subscription[] = [];
   private emitCount = 0;
 
   constructor(options?: EventBusOptions) {
-    this.maxBuffer = options?.maxBufferSize ?? DEFAULT_MAX_BUFFER;
+    // Capacity must be >= 1; the bounded buffer evicts oldest on overflow (O(1)).
+    const maxBuffer = Math.max(1, options?.maxBufferSize ?? DEFAULT_MAX_BUFFER);
+    this.buffer = new CircularBuffer<PipelineEvent>(maxBuffer);
   }
 
   get totalEmitted(): number {
@@ -65,7 +66,7 @@ export class EventBus implements IEventBus {
   }
 
   get bufferSize(): number {
-    return this.buffer.length;
+    return this.buffer.size;
   }
 
   /** Number of active subscriptions (for observability/testing). */
@@ -89,7 +90,7 @@ export class EventBus implements IEventBus {
   }
 
   query(filter: EventFilter, limit?: number): readonly PipelineEvent[] {
-    let results = this.buffer.filter((e) => matchesFilter(e, filter));
+    let results = this.buffer.toArray().filter((e) => matchesFilter(e, filter));
     if (limit !== undefined) {
       results = results.slice(0, limit);
     }
@@ -101,9 +102,7 @@ export class EventBus implements IEventBus {
   // ==========================================================================
 
   private addToBuffer(event: PipelineEvent): void {
-    if (this.buffer.length >= this.maxBuffer) {
-      this.buffer.shift();
-    }
+    // CircularBuffer evicts the oldest event automatically when at capacity.
     this.buffer.push(event);
   }
 
