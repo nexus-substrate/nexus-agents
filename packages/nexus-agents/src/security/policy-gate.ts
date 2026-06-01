@@ -18,6 +18,8 @@ import { isMutatingAction, isReadOnlyAction, requiresCitation } from './action-s
 import type { TrustTier } from './trust-types.js';
 import { TRUST_TIER_NUMERIC } from './trust-types.js';
 import { getRequiredTrustTier, canInfluenceDecisions } from './trust-classifier.js';
+import type { AuditTrail } from './audit-trail.js';
+import { emitPolicyEvent } from './audit-trail.js';
 
 // ============================================================================
 // Types
@@ -193,7 +195,11 @@ function checkSourceTrustTiers(action: AgentAction): Violation | undefined {
  * @param context - The current execution context.
  * @returns PolicyDecision with violations and approval requirements.
  */
-export function evaluatePolicy(action: AgentAction, context: ActionContext): PolicyDecision {
+export function evaluatePolicy(
+  action: AgentAction,
+  context: ActionContext,
+  auditTrail?: AuditTrail
+): PolicyDecision {
   const violations: Violation[] = [];
 
   const checks = [
@@ -214,12 +220,27 @@ export function evaluatePolicy(action: AgentAction, context: ActionContext): Pol
   const hasBlockingViolation = violations.some((v) => v.severity === 'block');
   const needsApproval = !hasBlockingViolation && isMutatingAction(action.type);
 
-  return {
+  const decision: PolicyDecision = {
     allowed: !hasBlockingViolation,
     requiresApproval: needsApproval,
     violations,
     evaluatedAt: new Date().toISOString(),
   };
+
+  // #3191: when an audit trail is supplied, record the decision so policy
+  // outcomes are part of the durable audit record (the gate previously emitted
+  // nothing). Optional — pure callers pass no trail and incur no side effect.
+  if (auditTrail !== undefined) {
+    emitPolicyEvent(auditTrail, {
+      actionType: action.type,
+      allowed: decision.allowed,
+      requiresApproval: decision.requiresApproval,
+      inputTrustTier: context.inputTrustTier,
+      violationRules: violations.map((v) => v.rule),
+    });
+  }
+
+  return decision;
 }
 
 /**

@@ -11,6 +11,7 @@ import { describe, it, expect } from 'vitest';
 import type { SourceCitation } from './action-schema.js';
 import type { ActionContext } from './policy-gate.js';
 import { evaluatePolicy, canProceed } from './policy-gate.js';
+import { createAuditTrail } from './audit-trail.js';
 
 // ============================================================================
 // Test Helpers - Source Citations
@@ -308,5 +309,35 @@ describe('canProceed', () => {
   it('allows safety actions at tier 4', () => {
     expect(canProceed('RequestHumanApproval', '4')).toBe(true);
     expect(canProceed('RefuseAction', '4')).toBe(true);
+  });
+});
+
+describe('evaluatePolicy audit emission (#3191)', () => {
+  it('emits a policy_gate audit event when an audit trail is supplied', () => {
+    const trail = createAuditTrail();
+    const decision = evaluatePolicy(makePropose([maintainerSource]), makeContext('1'), trail);
+    const events = trail.query();
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      type: 'policy_gate',
+      allowed: decision.allowed,
+      requiresApproval: decision.requiresApproval,
+      inputTrustTier: '1',
+    });
+  });
+
+  it('emits nothing and stays pure when no audit trail is supplied', () => {
+    const decision = evaluatePolicy(makeSummarize([repoSource]), makeContext('1'));
+    expect(decision.allowed).toBe(true); // no trail arg → no side effect, same result
+  });
+
+  it('records violation rules in the event for a blocked action', () => {
+    const trail = createAuditTrail();
+    evaluatePolicy(makeSummarize([]), makeContext('1'), trail); // missing citation → block
+    const events = trail.query();
+    expect(events[0]).toMatchObject({ type: 'policy_gate', allowed: false });
+    expect(
+      (events[0] as unknown as { violationRules: readonly string[] }).violationRules
+    ).toContain('REQUIRE_CITATION');
   });
 });
