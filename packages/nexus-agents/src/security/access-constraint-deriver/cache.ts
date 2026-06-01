@@ -12,51 +12,42 @@
  * @module security/access-constraint-deriver/cache
  */
 
-import { getTimeProvider } from '../../core/index.js';
+import { BoundedLRUCache } from '../../core/index.js';
 import type { TaskAccessPolicy } from './types.js';
 
 /** Max number of policies retained in the cache before LRU eviction. */
 const DEFAULT_MAX_ENTRIES = 256;
 
-interface CacheEntry {
-  readonly policy: TaskAccessPolicy;
-  readonly insertedAt: number;
-}
-
+/**
+ * LRU cache of derived access policies, keyed by objectiveHash. A thin wrapper
+ * over the canonical {@link BoundedLRUCache} (#3292) — the same size-bound LRU
+ * semantics previously hand-rolled here (the unused `insertedAt` field was
+ * dropped; this cache has no TTL).
+ */
 export class PolicyCache {
-  private readonly entries = new Map<string, CacheEntry>();
+  private readonly cache: BoundedLRUCache<string, TaskAccessPolicy>;
 
-  constructor(private readonly maxEntries: number = DEFAULT_MAX_ENTRIES) {}
+  constructor(maxEntries: number = DEFAULT_MAX_ENTRIES) {
+    this.cache = new BoundedLRUCache(maxEntries);
+  }
 
   /** Gets a cached policy or undefined. Side effect: bumps LRU position. */
   get(objectiveHash: string): TaskAccessPolicy | undefined {
-    const entry = this.entries.get(objectiveHash);
-    if (entry === undefined) return undefined;
-    // Re-insert to refresh LRU position
-    this.entries.delete(objectiveHash);
-    this.entries.set(objectiveHash, entry);
-    return entry.policy;
+    return this.cache.get(objectiveHash);
   }
 
-  /** Stores a policy. Evicts the oldest entry if at capacity. */
+  /** Stores a policy. Evicts the least-recently-used entry if at capacity. */
   set(objectiveHash: string, policy: TaskAccessPolicy): void {
-    if (this.entries.has(objectiveHash)) {
-      this.entries.delete(objectiveHash);
-    } else if (this.entries.size >= this.maxEntries) {
-      // Map preserves insertion order; the first key is the oldest.
-      const oldest = this.entries.keys().next().value;
-      if (oldest !== undefined) this.entries.delete(oldest);
-    }
-    this.entries.set(objectiveHash, { policy, insertedAt: getTimeProvider().now() });
+    this.cache.set(objectiveHash, policy);
   }
 
   /** Clears all entries. Useful for tests. */
   clear(): void {
-    this.entries.clear();
+    this.cache.clear();
   }
 
   get size(): number {
-    return this.entries.size;
+    return this.cache.size;
   }
 }
 
