@@ -24,6 +24,7 @@ import { ok, err, getErrorMessage } from '../core/index.js';
 import { ParseError } from '../core/types/workflow.js';
 
 import { REGISTRY_PATH, PAPERS_FILE, TECHNIQUES_FILE } from './research-helpers-io.js';
+import { parseBoolEnv } from '../config/defaults-env.js';
 
 /**
  * Names of the registry files this scaffolder knows how to create.
@@ -53,8 +54,7 @@ function announceOnce(path: string, kind: ScaffoldedFile): void {
  * environments that want strict "fail when state is wrong" semantics.
  */
 function scaffoldDisabled(): boolean {
-  const v = process.env['NEXUS_NO_SCAFFOLD'];
-  return v === '1' || v === 'true';
+  return parseBoolEnv('NEXUS_NO_SCAFFOLD', false);
 }
 
 function emptyPapersYaml(): string {

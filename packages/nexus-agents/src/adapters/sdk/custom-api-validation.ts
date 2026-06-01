@@ -16,6 +16,7 @@
 import { isIPv4, isIPv6 } from 'node:net';
 import { ConfigError, ok, err, type Result } from '../../core/index.js';
 import { CUSTOM_API_ALLOW_PRIVATE_ENV } from './types.js';
+import { parseBoolEnv } from '../../config/defaults-env.js';
 
 /**
  * Why a given URL was rejected. Machine-readable so error messages can
@@ -86,8 +87,7 @@ export function validateCustomApiBaseUrl(
 }
 
 function resolveAllowPrivateFromEnv(): boolean {
-  const v = process.env[CUSTOM_API_ALLOW_PRIVATE_ENV];
-  return v === '1' || v === 'true';
+  return parseBoolEnv(CUSTOM_API_ALLOW_PRIVATE_ENV, false);
 }
 
 /**

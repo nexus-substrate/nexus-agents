@@ -11,6 +11,7 @@ import {
   getNexusDataDir as resolveNexusDataDir,
   sessionsDbPath,
 } from '../../../config/nexus-data-dir.js';
+import { parseBoolEnv } from '../../../config/defaults-env.js';
 
 /**
  * Default database path for session storage.
@@ -48,8 +49,7 @@ export const HookEnvVars = {
  * Checks if a feature is disabled via environment variable.
  */
 export function isFeatureDisabled(envVar: string): boolean {
-  const value = process.env[envVar];
-  return value === '1' || value === 'true';
+  return parseBoolEnv(envVar, false);
 }
 
 /**
@@ -63,8 +63,7 @@ export function getDbPathFromEnv(): string {
  * Checks if verbose logging is enabled.
  */
 export function isVerboseLogging(): boolean {
-  const value = process.env[HookEnvVars.NEXUS_HOOK_VERBOSE];
-  return value === '1' || value === 'true';
+  return parseBoolEnv(HookEnvVars.NEXUS_HOOK_VERBOSE, false);
 }
 
 /**
