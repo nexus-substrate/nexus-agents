@@ -33,6 +33,8 @@ import {
 import { getOutcomeStore } from '../../orchestration/outcomes/outcome-store.js';
 import type { TaskOutcome } from '../../orchestration/outcomes/outcome-types.js';
 import { calculateFitnessScore, type FitnessAudit } from '../../governance/fitness-score.js';
+import { getPipelineEventBus } from '../../pipeline/event-bus.js';
+import { emitFitnessDeclinedSignal } from './improvement-review-signals.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 
 const execFileAsync = promisify(execFile);
@@ -438,6 +440,11 @@ export async function runImprovementReview(
     ...detectFitnessSignals(audit, fitnessFloor),
   ];
   signals.sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]);
+
+  // Close the self-tuning loop: a below-floor fitness audit emits
+  // signal.fitness_declined onto the typed pipeline bus for the shadow
+  // TuneStage (#3147; #3289 Option 2 — observability signals route through bus A).
+  emitFitnessDeclinedSignal(audit, fitnessFloor, getPipelineEventBus(), logger);
 
   const { issuesFiled, issuesSkipped } = fileIssues
     ? await fileSignalsAsIssues(signals, { logger } as HandlerContext)
