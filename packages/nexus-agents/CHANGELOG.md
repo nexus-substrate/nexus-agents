@@ -1,5 +1,90 @@
 # nexus-agents
 
+## 2.93.0
+
+### Minor Changes
+
+- [#3307](https://github.com/nexus-substrate/nexus-agents/pull/3307) [`b437454`](https://github.com/nexus-substrate/nexus-agents/commit/b437454ca89bb67662d40b3ffdd76d91cea31718) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(security): durable audit bridge — mirror security decisions to the hash-chained log ([#3291](https://github.com/nexus-substrate/nexus-agents/issues/3291))
+
+  Phase 1 of AuditLogger convergence (epic [#3288](https://github.com/nexus-substrate/nexus-agents/issues/3288) item 3). The security `AuditTrail`
+  was in-memory-only, so trust/policy/reputation/sanitization decisions were lost on
+  exit. Adds `security/audit-bridge.ts` mapping each security `AuditEvent` into the
+  durable `AuditEventInput` schema (`action: security.*`, `source` via category) and
+  a `createDurableAuditSink(auditLogger)`. `AuditTrail` gains an optional durable
+  sink (default-off — zero behavior change); `FirewallConfig.auditLogger` opts a
+  firewall into durable mirroring. Per the [#3291](https://github.com/nexus-substrate/nexus-agents/issues/3291) vote (fold-in over a separate
+  SecurityAuditLogger). Phase 2 threads the logger from server init + retires
+  `AuditTrail.append`.
+
+- [#3301](https://github.com/nexus-substrate/nexus-agents/pull/3301) [`42f94ab`](https://github.com/nexus-substrate/nexus-agents/commit/42f94ab824d63747f6f229a3915fd872507fd763) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(pipeline): shadow-mode TuneStage closes the signal loop (consumer core, [#3147](https://github.com/nexus-substrate/nexus-agents/issues/3147))
+
+  Adds `signal.fitness_declined` / `signal.swarm_unhealthy` / `signal.vote_rejected`
+  to the typed `PipelineEvent` union and a `createTuneStage` consumer that maps each
+  signal to its bounded intended action. Ships dry-run first: it logs the intended
+  action and mutates nothing; `enabled=true` fails closed (no-op) because the
+  human-gated mutation path ([#3147](https://github.com/nexus-substrate/nexus-agents/issues/3147) PR-4) is not implemented and must not reuse the
+  LinUCB real-outcome channel. Producers are wired after the event-bus unification
+  ([#3289](https://github.com/nexus-substrate/nexus-agents/issues/3289)). Unlike the removed [#3022](https://github.com/nexus-substrate/nexus-agents/issues/3022) learning.\* types, these ship WITH their consumer.
+
+- [#3306](https://github.com/nexus-substrate/nexus-agents/pull/3306) [`892c22b`](https://github.com/nexus-substrate/nexus-agents/commit/892c22b8a32c8b661649abdd1d5a3e2ccc8956e3) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(improvement-review): emit signal.fitness_declined to close the tune loop ([#3147](https://github.com/nexus-substrate/nexus-agents/issues/3147))
+
+  Second `signal.*` producer per the [#3289](https://github.com/nexus-substrate/nexus-agents/issues/3289) narrow-merge scope: when the
+  `improvement_review` MCP tool's fitness audit falls below the governance floor,
+  it emits `signal.fitness_declined` (score, floor, worst-offending dimension)
+  onto the typed pipeline bus, where the shadow TuneStage consumes it
+  (`flag_tech_debt`). Emitter lives at the MCP layer (server context, live
+  consumer) to keep `governance/fitness-score` decoupled from the bus
+  (A=observability / B=messaging).
+
+- [#3305](https://github.com/nexus-substrate/nexus-agents/pull/3305) [`9a4de04`](https://github.com/nexus-substrate/nexus-agents/commit/9a4de04b55b5151eb4d620a22339a1ee19432418) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(consensus): close the self-tuning loop for rejected votes ([#3147](https://github.com/nexus-substrate/nexus-agents/issues/3147))
+
+  Wires the first `signal.*` producer onto the typed pipeline bus per the [#3289](https://github.com/nexus-substrate/nexus-agents/issues/3289)
+  narrow-merge scope: when a `consensus_vote` resolves to `rejected`, the MCP
+  handler emits `signal.vote_rejected` (proposalId, approvalPercentage, distinct
+  rejectionRules) via the new `consensus-vote-signals` emitter. The shadow
+  `TuneStage` is now instantiated at server init (`startTuneStage`, paired with
+  `shutdownTuneStage`), so the loop is closed end-to-end in shadow mode (logs the
+  intended `record_rejection` action, mutates nothing). The emitter lives at the
+  MCP layer to keep the consensus engine decoupled from the pipeline bus
+  (A=observability / B=messaging boundary, documented in EVENT_BUS_BOUNDARIES.md).
+
+### Patch Changes
+
+- [#3309](https://github.com/nexus-substrate/nexus-agents/pull/3309) [`2ed6372`](https://github.com/nexus-substrate/nexus-agents/commit/2ed6372f33d204d23078051fc8676add996f237b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - refactor(config): adopt canonical parseBoolEnv in 3 duplicate bool-env parsers ([#3297](https://github.com/nexus-substrate/nexus-agents/issues/3297))
+
+  Three benign flag sites reimplemented `process.env[K] === '1' || === 'true'` inline
+  (research scaffold, two hook-utils flags). They now call the existing canonical
+  `parseBoolEnv(key, false)`, which also makes them case-insensitive (a desirable
+  normalization). Deliberately EXCLUDES the SSRF-guard-bypass flag
+  (`NEXUS_CUSTOM_API_ALLOW_PRIVATE`), which stays strict/case-sensitive so extra
+  case variants can't loosen the security control.
+
+- [#3308](https://github.com/nexus-substrate/nexus-agents/pull/3308) [`73807ce`](https://github.com/nexus-substrate/nexus-agents/commit/73807ceb84db796f8c4438f22750349c6aa4dc1a) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - refactor(core): extract canonical BoundedLRUCache; adopt in PolicyCache ([#3292](https://github.com/nexus-substrate/nexus-agents/issues/3292))
+
+  First step of the cache consolidation (epic [#3288](https://github.com/nexus-substrate/nexus-agents/issues/3288) item 4, scoped by verify-first):
+  adds `core/BoundedLRUCache<K,V>` — the single size-bound LRU implementation that
+  was hand-rolled across several caches — and adopts it behind `PolicyCache`'s
+  existing interface (dropping its unused `insertedAt` field). Behavior-preserving:
+  the existing PolicyCache tests pass unchanged. The TTL-bearing and domain-specific
+  caches stay separate (per the [#3292](https://github.com/nexus-substrate/nexus-agents/issues/3292) scoping).
+
+- [#3303](https://github.com/nexus-substrate/nexus-agents/pull/3303) [`2b82873`](https://github.com/nexus-substrate/nexus-agents/commit/2b828733db3f4463b84d5c49d4270f57405be362) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - refactor(pipeline): adopt shared CircularBuffer in the pipeline EventBus ([#3288](https://github.com/nexus-substrate/nexus-agents/issues/3288))
+
+  The pipeline EventBus stored history in a plain array with O(n) `Array.shift()`
+  eviction, reinventing the O(1) `CircularBuffer` that already existed (and whose
+  own doc cited "EventBus history" as its purpose). Relocates `CircularBuffer` from
+  `agents/collaboration/` to `core/` (its natural shared home; the collaboration
+  barrel keeps a back-compat re-export) and adopts it in the pipeline EventBus.
+  Behavior-preserving: same oldest-first eviction and query order.
+
+- [#3302](https://github.com/nexus-substrate/nexus-agents/pull/3302) [`0a17170`](https://github.com/nexus-substrate/nexus-agents/commit/0a171701a76a06704c00b6922de3837f5b912790) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - refactor(pipeline): name the pipeline policy fn evaluatePipelinePolicy at source ([#3194](https://github.com/nexus-substrate/nexus-agents/issues/3194))
+
+  The pipeline `policy-evaluator` function was named `evaluatePolicy`, colliding with
+  the unrelated MCP-middleware `evaluatePolicy`. The public `exports/pipeline.ts`
+  already aliased it to `evaluatePipelinePolicy` to dodge the clash; this renames the
+  source function so the alias hack is gone and the symbol is unambiguous in-tree.
+  No public API change (the exported name is unchanged).
+
 ## 2.92.5
 
 ### Patch Changes

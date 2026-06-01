@@ -32,6 +32,7 @@ related_files:
 | Input Hardening | This file | [UNTRUSTED_INPUT_HARDENING.md](./UNTRUSTED_INPUT_HARDENING.md) |
 | MCP             | This file | [MCP_PROTOCOL.md](./MCP_PROTOCOL.md)                           |
 | Observability   | This file | [SWARM_OBSERVER_DESIGN.md](./SWARM_OBSERVER_DESIGN.md)         |
+| Event Buses     | This file | [EVENT_BUS_BOUNDARIES.md](./EVENT_BUS_BOUNDARIES.md)           |
 | SWE-Bench       | This file | [SWE_BENCH_HARNESS.md](./SWE_BENCH_HARNESS.md)                 |
 | ICTM Pattern    | This file | [ICTM_PATTERN.md](./ICTM_PATTERN.md)                           |
 | Multi-Repo      | This file | [MULTI_REPO_ORCHESTRATION.md](./MULTI_REPO_ORCHESTRATION.md)   |
