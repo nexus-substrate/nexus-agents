@@ -86,6 +86,9 @@ export function validateCustomApiBaseUrl(
 }
 
 function resolveAllowPrivateFromEnv(): boolean {
+  // Deliberately strict (case-sensitive, not parseBoolEnv): this disables an
+  // SSRF guard, so we don't want extra case variants (e.g. `TRUE`) to loosen
+  // the control. Fail-closed on anything but exact `1`/`true` (#3297).
   const v = process.env[CUSTOM_API_ALLOW_PRIVATE_ENV];
   return v === '1' || v === 'true';
 }
