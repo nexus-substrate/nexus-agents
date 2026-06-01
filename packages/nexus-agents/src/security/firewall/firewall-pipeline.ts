@@ -37,6 +37,11 @@ import type {
   SourceMetadata,
 } from './firewall-types.js';
 import { FirewallConfigSchema } from './firewall-types.js';
+import { checkRuleOfTwo } from '../policy-gate.js';
+import type { Violation } from '../policy-gate.js';
+import { createLogger } from '../../core/index.js';
+
+const logger = createLogger({ component: 'HostileInputFirewall' });
 
 // ============================================================================
 // Firewall Result
@@ -58,6 +63,14 @@ export interface FirewallResult {
    */
   readonly effectiveTrustTier: TrustTier;
   readonly atl: string;
+  /**
+   * Rule-of-Two assessment surfaced by the `policyEnforcement` stage (#3198):
+   * present (with `severity: 'block'`) when the effective tier is untrusted AND
+   * the configured context has both write and secret access. The firewall is a
+   * signal provider — it SURFACES this for the consumer to enforce; it does not
+   * hard-block. `undefined` when the stage is disabled or the rule holds.
+   */
+  readonly ruleOfTwoViolation?: Violation;
   readonly auditEvents: readonly { readonly id: string; readonly type: string }[];
   readonly durationMs: number;
 }
@@ -77,6 +90,7 @@ export class HostileInputFirewall {
   private readonly adapter: FirewallConfig['adapter'];
   private readonly reputationCache: ReputationCache;
   private readonly auditTrail: AuditTrail;
+  private readonly context: { readonly hasWriteAccess: boolean; readonly hasSecretAccess: boolean };
 
   constructor(config: FirewallConfig) {
     const validated = FirewallConfigSchema.parse({
@@ -91,6 +105,7 @@ export class HostileInputFirewall {
     this.adapter = config.adapter;
     this.reputationCache = new ReputationCache();
     this.auditTrail = createAuditTrail();
+    this.context = validated.context;
   }
 
   /**
@@ -123,6 +138,24 @@ export class HostileInputFirewall {
     // Stage 5: Generate ATL (labelled with the enforced tier)
     const atl = this.buildATL(meta, effectiveTrustTier, sanitized, reputation);
 
+    // Stage 6: Rule-of-Two policy enforcement (#3198) — evaluate + surface the
+    // violation during firewall composition (previously the policyEnforcement
+    // stage was declared but never read). Signal only: the consumer enforces.
+    const ruleOfTwoViolation = this.stages.policyEnforcement
+      ? checkRuleOfTwo({
+          inputTrustTier: effectiveTrustTier,
+          hasWriteAccess: this.context.hasWriteAccess,
+          hasSecretAccess: this.context.hasSecretAccess,
+        })
+      : undefined;
+    if (ruleOfTwoViolation !== undefined) {
+      logger.warn('Firewall surfaced a Rule-of-Two violation', {
+        user: meta.username,
+        effectiveTrustTier,
+        rule: ruleOfTwoViolation.rule,
+      });
+    }
+
     // Collect audit events
     const auditEvents = this.auditTrail.query().map((e) => ({ id: e.id, type: e.type }));
 
@@ -132,6 +165,7 @@ export class HostileInputFirewall {
       ...(reputation !== undefined ? { reputation } : {}),
       effectiveTrustTier,
       atl,
+      ...(ruleOfTwoViolation !== undefined ? { ruleOfTwoViolation } : {}),
       auditEvents,
       durationMs: Date.now() - start,
     });

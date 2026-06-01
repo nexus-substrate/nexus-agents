@@ -121,8 +121,11 @@ function checkInfluenceBlock(action: AgentAction, context: ActionContext): Viola
 /**
  * Enforce the Rule of Two: no agent may simultaneously
  * (a) process untrusted input, (b) have write access, AND (c) access secrets.
+ *
+ * Exported (#3198) so the firewall's `policyEnforcement` stage can surface the
+ * same assessment during input composition without duplicating the predicate.
  */
-function checkRuleOfTwo(context: ActionContext): Violation | undefined {
+export function checkRuleOfTwo(context: ActionContext): Violation | undefined {
   const isUntrusted = TRUST_TIER_NUMERIC[context.inputTrustTier] >= 3;
   if (isUntrusted && context.hasWriteAccess && context.hasSecretAccess) {
     return {
