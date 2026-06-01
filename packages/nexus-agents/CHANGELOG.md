@@ -1,5 +1,33 @@
 # nexus-agents
 
+## 2.92.4
+
+### Patch Changes
+
+- [#3272](https://github.com/nexus-substrate/nexus-agents/pull/3272) [`f783208`](https://github.com/nexus-substrate/nexus-agents/commit/f783208655f788d5f4a452abfa6a3166c99aa11d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(consensus): correctness edges on the higher-order voting path ([#3144](https://github.com/nexus-substrate/nexus-agents/issues/3144) P0)
+  - `opinion_wise` now shares `higher_order`'s `fail_closed` default error policy instead of silently diverging to `reduce_denominator` ([#3167](https://github.com/nexus-substrate/nexus-agents/issues/3167)) — it is an alias of higher_order.
+  - `OWVoting.algorithm` is constructor-configurable (defaults to `simple_majority`); `HigherOrderVotingStrategy` sets `opinion_wise` via the constructor so the label is correct whether built directly or via a factory ([#3168](https://github.com/nexus-substrate/nexus-agents/issues/3168)).
+  - Correlation recording no longer drops ALL data on a mixed-source panel — it records the real (LLM) votes and logs the excluded count, instead of leaving the correlation matrix permanently stale when one voter simulated/errored ([#3170](https://github.com/nexus-substrate/nexus-agents/issues/3170)).
+  - Added the missing tests for these paths ([#3171](https://github.com/nexus-substrate/nexus-agents/issues/3171)).
+
+  Investigated and **rejected** [#3172](https://github.com/nexus-substrate/nexus-agents/issues/3172) (a "restore uniform weights when all collapse to the floor" guard): equal downweighting of equally-correlated agents is correct, and the Bayesian weighted-average is invariant under equal scaling, so all-at-floor is not degenerate — restoring uniform would wrongly treat correlated agents as independent (guarded by the existing "all perfectly correlated" test).
+
+- [#3279](https://github.com/nexus-substrate/nexus-agents/pull/3279) [`cd37b07`](https://github.com/nexus-substrate/nexus-agents/commit/cd37b07c9e59d69184ba2179d16eb1e12ed6389c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(pipeline): preserve error context in stage execution ([#3176](https://github.com/nexus-substrate/nexus-agents/issues/3176), [#3144](https://github.com/nexus-substrate/nexus-agents/issues/3144) P0)
+
+  Stage-execution catch blocks used `String(e)`, which mangles non-Error throws to `"[object Object]"` and drops the real message. Replaced with `getErrorMessage(e)` across the 9 stage wrappers (`stage-wrappers.ts`) plus the orchestration CLI-plan-parse and triangulated-review error paths, so a thrown object/string surfaces its actual message in `StageOutput.error` and logs.
+
+- [#3278](https://github.com/nexus-substrate/nexus-agents/pull/3278) [`2a86389`](https://github.com/nexus-substrate/nexus-agents/commit/2a86389698afcc7320e3702a240312088cca117e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(security): policy-gate can emit decisions to an audit trail ([#3191](https://github.com/nexus-substrate/nexus-agents/issues/3191), [#3144](https://github.com/nexus-substrate/nexus-agents/issues/3144) P0)
+
+  `evaluatePolicy` accepts an optional `auditTrail` and, when supplied, emits a `policy_gate` audit event (actionType, allowed, requiresApproval, inputTrustTier, violationRules) via the existing `emitPolicyEvent`. Previously policy decisions left no audit record. Optional + additive — pure callers pass no trail and incur zero side effects; existing call sites are unchanged. Foundation for the durable audit/tune substrate ([#3146](https://github.com/nexus-substrate/nexus-agents/issues/3146)).
+
+- [#3277](https://github.com/nexus-substrate/nexus-agents/pull/3277) [`23d6203`](https://github.com/nexus-substrate/nexus-agents/commit/23d62033247c328b46b960e03de670e3e2d96bff) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(security): firewall policyEnforcement stage surfaces Rule-of-Two ([#3198](https://github.com/nexus-substrate/nexus-agents/issues/3198), [#3144](https://github.com/nexus-substrate/nexus-agents/issues/3144) P0)
+
+  The firewall's `policyEnforcement` stage was declared (default on) but never read — Rule-of-Two was only checked in `policy-gate`, not during firewall composition. `HostileInputFirewall.process()` now evaluates Rule-of-Two against the effective (reputation-reconciled) trust tier + the configured `context` (write/secret access) and **surfaces** a `ruleOfTwoViolation` on `FirewallResult` (signal-only — the firewall is a library; the consumer enforces; no hard block, so no breaking behavior). `checkRuleOfTwo` is exported from `policy-gate` to avoid duplicating the predicate. Tier-1/allowlisted authors are immune.
+
+- [#3275](https://github.com/nexus-substrate/nexus-agents/pull/3275) [`f92f98f`](https://github.com/nexus-substrate/nexus-agents/commit/f92f98fdae2a6cd61b52b1090c02821456968e31) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(adapters): default a logging onRetirement callback when missing-model fallback is enabled ([#3144](https://github.com/nexus-substrate/nexus-agents/issues/3144) P0)
+
+  The model-not-found fallback's `onRetirement` callback was declared but never wired in production, so model retirements were silent. `UnifiedAdapterRegistry` now defaults `onRetirement` to a `logger.warn` when `enableMissingModelFallback` is on (callers can still override it), making retirements observable. Extracted as the exported, testable `withDefaultOnRetirement` helper.
+
 ## 2.92.3
 
 ### Patch Changes
