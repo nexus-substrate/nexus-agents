@@ -13,6 +13,9 @@ export { extractJsonArray, extractJsonObject } from './json-extract.js';
 // Circular Buffer — O(1) bounded collection (Source: Issue #407; relocated to core #3288)
 export { CircularBuffer } from './circular-buffer.js';
 
+// Bounded LRU cache — canonical size-bound LRU (#3292)
+export { BoundedLRUCache } from './bounded-lru-cache.js';
+
 // Step event vocabulary + `withStep` wrapper (#1930 — human console notifications)
 export type {
   StepKind,
