@@ -35,6 +35,12 @@ export const PIPELINE_EVENT_TYPES = [
   'tool.completed',
   'wave.started',
   'wave.completed',
+  // Signal events (#3147 P2 — close the loop). Push-only producers (fitness
+  // audit, swarm health, consensus) emit these; the TuneStage consumes them.
+  // Unlike the #3022 learning.* types, these ship WITH their consumer.
+  'signal.fitness_declined',
+  'signal.swarm_unhealthy',
+  'signal.vote_rejected',
 ] as const;
 
 export type PipelineEventType = (typeof PIPELINE_EVENT_TYPES)[number];
@@ -167,6 +173,34 @@ interface RoutingDecisionEvent extends BaseEvent {
   readonly decisionPath?: readonly string[];
 }
 
+/** Signal events (#3147 P2 — close the loop). Consumed by the TuneStage. */
+interface FitnessDeclinedSignalEvent extends BaseEvent {
+  readonly type: 'signal.fitness_declined';
+  /** Current fitness score (0-100). */
+  readonly score: number;
+  /** Governance floor the score fell below. */
+  readonly floor: number;
+  /** Fitness dimension that declined, when attributable. */
+  readonly dimension?: string;
+}
+
+interface SwarmUnhealthySignalEvent extends BaseEvent {
+  readonly type: 'signal.swarm_unhealthy';
+  /** Agent/CLI whose health degraded. */
+  readonly agentId: string;
+  /** Human-readable degradation reason. */
+  readonly reason: string;
+}
+
+interface VoteRejectedSignalEvent extends BaseEvent {
+  readonly type: 'signal.vote_rejected';
+  readonly proposalId: string;
+  /** Approval percentage of the rejected vote (0-100). */
+  readonly approvalPercentage: number;
+  /** Rejection rule categories surfaced by voters. */
+  readonly rejectionRules?: readonly string[];
+}
+
 // `LearningThresholdUpdatedEvent` and `LearningTrendDetectedEvent`
 // (Issue #901 Phase 4) were removed in #3022 — the emit helpers
 // (`emitThresholdUpdate`, `emitTrendDetected`) never had a producer and
@@ -232,7 +266,10 @@ export type PipelineEvent =
   | ToolInvokedEvent
   | ToolCompletedEvent
   | WaveStartedEvent
-  | WaveCompletedEvent;
+  | WaveCompletedEvent
+  | FitnessDeclinedSignalEvent
+  | SwarmUnhealthySignalEvent
+  | VoteRejectedSignalEvent;
 
 // ============================================================================
 // Event Bus Interface
