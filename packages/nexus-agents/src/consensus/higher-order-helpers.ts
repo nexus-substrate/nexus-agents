@@ -110,6 +110,15 @@ export function computeEffectiveWeights(
     }
   }
 
+  // NOTE (#3172, investigated + rejected): a "restore uniform weights when all
+  // collapse to the floor" guard was considered but is incorrect. When agents
+  // are equally correlated, equal downweighting is the CORRECT behavior (they
+  // are equally redundant), and because the Bayesian aggregate is a weighted
+  // average, scaling all weights equally is invariant — all-at-floor yields the
+  // same posterior as uniform, so it is not degenerate. Restoring uniform would
+  // wrongly treat correlated agents as independent and inflate the effective
+  // vote count (guarded by the "all perfectly correlated" test).
+
   return weights;
 }
 

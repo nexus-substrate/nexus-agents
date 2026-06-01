@@ -16,7 +16,11 @@ import {
   type VoteDecisionStatus,
 } from './consensus-vote.js';
 import { z } from 'zod';
-import { toAgentVoteSummary, buildResponse } from './consensus-vote-types.js';
+import {
+  toAgentVoteSummary,
+  buildResponse,
+  getDefaultErrorPolicy,
+} from './consensus-vote-types.js';
 import type { AgentVoteResult } from '../../cli/vote-types.js';
 import type { ExtendedVotingResult } from './consensus-vote-types.js';
 
@@ -1095,5 +1099,20 @@ describe('CONSENSUS_VOTE_OUTPUT_SCHEMA validation (Issue #1246)', () => {
     const parsed = outputValidator.safeParse(response);
     expect(parsed.success).toBe(true);
     expect(response.threshold).toBe('supermajority');
+  });
+});
+
+describe('getDefaultErrorPolicy (#3167)', () => {
+  it('strict strategies default to fail_closed — incl. opinion_wise (the higher_order alias)', () => {
+    expect(getDefaultErrorPolicy('unanimous')).toBe('fail_closed');
+    expect(getDefaultErrorPolicy('higher_order')).toBe('fail_closed');
+    expect(getDefaultErrorPolicy('opinion_wise')).toBe('fail_closed');
+    // opinion_wise must match its alias rather than silently diverging
+    expect(getDefaultErrorPolicy('opinion_wise')).toBe(getDefaultErrorPolicy('higher_order'));
+  });
+
+  it('non-strict strategies default to reduce_denominator', () => {
+    expect(getDefaultErrorPolicy('simple_majority')).toBe('reduce_denominator');
+    expect(getDefaultErrorPolicy('supermajority')).toBe('reduce_denominator');
   });
 });

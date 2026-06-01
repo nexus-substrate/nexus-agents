@@ -289,24 +289,30 @@ function runHigherOrderVoting(
 
 function recordVotesToTracker(
   votes: readonly AgentVoteResult[],
-  voteMap: Map<string, Vote>,
   outcome: 'approved' | 'rejected',
   logger: ILogger
 ): void {
-  const allVotesReal = votes.every((v) => v.source === 'llm');
-  if (!allVotesReal) {
-    logger.warn('Skipping correlation recording due to non-LLM votes', {
-      count: votes.filter((v) => v.source !== 'llm').length,
+  // #3170: record the REAL (LLM) votes even when the panel is mixed-source,
+  // rather than dropping ALL correlation data because one voter simulated/errored.
+  // Recording the accurate LLM-only subset beats leaving the matrix permanently stale.
+  const llmVotes = votes.filter((v) => v.source === 'llm');
+  if (llmVotes.length < votes.length) {
+    logger.warn('Recording only LLM votes to correlation tracker; excluding non-LLM votes', {
+      recorded: llmVotes.length,
+      excluded: votes.length - llmVotes.length,
     });
-    return;
   }
+  if (llmVotes.length === 0) return; // nothing real to record
+  const llmVoteMap = new Map<string, Vote>();
+  for (const v of llmVotes) llmVoteMap.set(v.role, v.vote);
+
   const tracker = getOrCreateCorrelationTracker();
   const id = `consensus-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 9)}`;
-  tracker.recordProposalVotes(id, voteMap, outcome);
+  tracker.recordProposalVotes(id, llmVoteMap, outcome);
   logger.debug('Recorded votes to tracker', { proposalId: id, outcome });
 
   try {
-    const persisted = createPersistedProposal(id, voteMap, outcome);
+    const persisted = createPersistedProposal(id, llmVoteMap, outcome);
     const saveResult = saveCorrelationData([persisted]);
     if (!saveResult.ok) {
       logger.warn('Failed to persist correlation data', { error: saveResult.error.message });
@@ -539,16 +545,18 @@ export async function executeVoting(
   }
 
   // Check for early cascade and process votes (#1765)
-  const { engineResult, voteMap, higherOrderResult, outcome, cascaded } =
-    await processVotesWithCascade(policyDecision.engineVotes, {
+  const { engineResult, higherOrderResult, outcome, cascaded } = await processVotesWithCascade(
+    policyDecision.engineVotes,
+    {
       totalRoles: roles.length,
       proposal: input.proposal,
       algorithm,
       strategy,
       log: logger,
-    });
+    }
+  );
 
-  recordVotesToTracker(votes, voteMap, outcome, logger);
+  recordVotesToTracker(votes, outcome, logger);
 
   const escalated = await maybeEscalateContrarian(input, outcome, logger, opts);
   if (escalated !== undefined) return escalated;

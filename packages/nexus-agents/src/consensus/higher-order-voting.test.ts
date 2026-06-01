@@ -952,3 +952,18 @@ describe('HigherOrderVotingStrategy', () => {
     expect(outcome.voteCounts.reject).toBe(1);
   });
 });
+
+describe('OWVoting.algorithm label (#3168)', () => {
+  it('defaults to simple_majority when constructed directly', () => {
+    expect(new OWVoting().algorithm).toBe('simple_majority');
+  });
+
+  it('is constructor-configurable', () => {
+    expect(new OWVoting({ algorithm: 'opinion_wise' }).algorithm).toBe('opinion_wise');
+  });
+
+  it('HigherOrderVotingStrategy reports opinion_wise however it is created', () => {
+    expect(new HigherOrderVotingStrategy().algorithm).toBe('opinion_wise');
+    expect(createHigherOrderVotingStrategy().algorithm).toBe('opinion_wise');
+  });
+});

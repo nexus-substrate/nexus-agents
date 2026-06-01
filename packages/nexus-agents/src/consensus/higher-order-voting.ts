@@ -42,6 +42,12 @@ const logger = createLogger({ component: 'higher-order-voting' });
 /** Options for creating OWVoting instance. */
 export interface OWVotingOptions {
   readonly config?: Partial<HigherOrderVotingConfig>;
+  /**
+   * Algorithm label this instance reports (#3168). Defaults to `simple_majority`
+   * for backward compatibility; `HigherOrderVotingStrategy` sets `opinion_wise`.
+   * Keeps the label consistent whether constructed directly or via a factory.
+   */
+  readonly algorithm?: ConsensusAlgorithm;
 }
 
 /**
@@ -49,12 +55,15 @@ export interface OWVotingOptions {
  * Uses Bayesian aggregation with correlation awareness.
  */
 export class OWVoting implements IHigherOrderVoting, IVotingStrategy {
-  readonly algorithm: ConsensusAlgorithm = 'simple_majority';
+  readonly algorithm: ConsensusAlgorithm;
   private readonly config: HigherOrderVotingConfig;
 
   constructor(options: OWVotingOptions = {}) {
     this.config = { ...DEFAULT_HIGHER_ORDER_CONFIG, ...options.config };
-    logger.info('OWVoting initialized', { config: this.config });
+    // #3168: configurable so the label is correct whether built directly or via
+    // a factory; defaults to simple_majority for backward compatibility.
+    this.algorithm = options.algorithm ?? 'simple_majority';
+    logger.info('OWVoting initialized', { config: this.config, algorithm: this.algorithm });
   }
 
   /** IVotingStrategy implementation for integration with ConsensusEngine. */
@@ -251,10 +260,10 @@ export function createOWVoting(options?: OWVotingOptions): IHigherOrderVoting {
  * Wraps OWVoting to provide IVotingStrategy interface.
  */
 export class HigherOrderVotingStrategy extends OWVoting implements IVotingStrategy {
-  override readonly algorithm: ConsensusAlgorithm = 'opinion_wise';
-
   constructor(options: OWVotingOptions = {}) {
-    super(options);
+    // #3168: set the algorithm label via the constructor so it survives
+    // regardless of how the instance is created (no field-override divergence).
+    super({ ...options, algorithm: options.algorithm ?? 'opinion_wise' });
   }
 }
 

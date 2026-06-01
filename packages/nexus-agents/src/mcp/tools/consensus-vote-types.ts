@@ -95,12 +95,14 @@ export const ERROR_FLOOR_FRACTION = 0.5;
 
 /**
  * Default error policy per voting strategy. Strict strategies (unanimous,
- * higher_order) default to `fail_closed`; others default to
- * `reduce_denominator`. Callers can override with the `errorPolicy` input
- * field.
+ * higher_order, and its alias opinion_wise) default to `fail_closed`; others
+ * default to `reduce_denominator`. Callers can override with the `errorPolicy`
+ * input field. (#3167: opinion_wise must match its higher_order alias.)
  */
 export function getDefaultErrorPolicy(strategy: VotingStrategy): ErrorPolicy {
-  if (strategy === 'unanimous' || strategy === 'higher_order') return 'fail_closed';
+  if (strategy === 'unanimous' || strategy === 'higher_order' || strategy === 'opinion_wise') {
+    return 'fail_closed';
+  }
   return 'reduce_denominator';
 }
 
@@ -113,7 +115,7 @@ export const ConsensusVoteInputSchema = z.object({
     'Voting strategy: simple_majority (default), supermajority, unanimous, proof_of_learning, or higher_order (Bayesian-optimal)'
   ),
   errorPolicy: ErrorPolicySchema.optional().describe(
-    'How to treat voters that errored or timed out (#2630). Default: fail_closed for unanimous/higher_order, reduce_denominator otherwise. Regardless of policy, errors > 50% always fails.'
+    'How to treat voters that errored or timed out (#2630). Default: fail_closed for unanimous/higher_order/opinion_wise, reduce_denominator otherwise. Regardless of policy, errors > 50% always fails.'
   ),
   quickMode: z
     .boolean()
