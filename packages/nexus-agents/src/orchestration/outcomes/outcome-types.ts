@@ -79,6 +79,13 @@ export const TaskOutcomeSchema = z.object({
    * node's `executionId` or `taskId`.
    */
   baselineId: z.string().min(1).max(64).optional(),
+  /**
+   * Distributed trace id correlating this outcome across the pipeline (#3146).
+   * Optional + backward-compatible: older JSONL records without it hydrate fine.
+   */
+  traceId: z.string().min(1).max(128).optional(),
+  /** Request id correlating this outcome to its originating invocation (#3146). */
+  requestId: z.string().min(1).max(128).optional(),
 });
 
 /** Schema for filtering outcomes. */

@@ -64,6 +64,26 @@ describe('TaskOutcomeSchema', () => {
     expect(result.success).toBe(false);
   });
 
+  it('accepts optional traceId/requestId correlation fields (#3146)', () => {
+    const result = TaskOutcomeSchema.safeParse(
+      makeOutcome({ traceId: 'trace-abc', requestId: 'req_123' })
+    );
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.traceId).toBe('trace-abc');
+      expect(result.data.requestId).toBe('req_123');
+    }
+  });
+
+  it('stays backward-compatible: records without traceId/requestId still parse (#3146)', () => {
+    const result = TaskOutcomeSchema.safeParse(makeOutcome());
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.traceId).toBeUndefined();
+      expect(result.data.requestId).toBeUndefined();
+    }
+  });
+
   it('rejects invalid cli name', () => {
     const result = TaskOutcomeSchema.safeParse(makeOutcome({ cli: 'invalid' as 'claude' }));
     expect(result.success).toBe(false);
