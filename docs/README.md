@@ -89,6 +89,7 @@ Detailed technical documentation:
 | [CONTEXT_LOAD_BALANCING.md](./architecture/CONTEXT_LOAD_BALANCING.md)             | Claude/Gemini/Codex routing    | Canonical |
 | [SECURITY.md](./architecture/SECURITY.md)                                         | Security model, sandboxing     | Canonical |
 | [MCP_PROTOCOL.md](./architecture/MCP_PROTOCOL.md)                                 | MCP integration details        | Canonical |
+| [EVENT_BUS_BOUNDARIES.md](./architecture/EVENT_BUS_BOUNDARIES.md)                 | Observability vs messaging bus | Canonical |
 | [ORCHESTRATOR_WORKFLOW_ENGINE.md](./architecture/ORCHESTRATOR_WORKFLOW_ENGINE.md) | Orchestrator vs WorkflowEngine | Canonical |
 | [ICTM_PATTERN.md](./architecture/ICTM_PATTERN.md)                                 | Dynamic sub-agent creation     | Canonical |
 | [UNTRUSTED_INPUT_HARDENING.md](./architecture/UNTRUSTED_INPUT_HARDENING.md)       | Input trust & sanitization     | Canonical |
