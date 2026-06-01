@@ -1,5 +1,17 @@
 # nexus-agents
 
+## 2.92.5
+
+### Patch Changes
+
+- [#3281](https://github.com/nexus-substrate/nexus-agents/pull/3281) [`88e14ee`](https://github.com/nexus-substrate/nexus-agents/commit/88e14eea3a4d3f3ba98f2f37cc5217a323938291) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(outcomes): optional traceId/requestId correlation on routing TaskOutcome ([#3146](https://github.com/nexus-substrate/nexus-agents/issues/3146), epic [#3143](https://github.com/nexus-substrate/nexus-agents/issues/3143) P1)
+
+  Adds optional `traceId?`/`requestId?` to the routing `TaskOutcomeSchema` so outcomes can be correlated across the pipeline/audit substrate. Zod-optional and backward-compatible — older JSONL records without the fields hydrate unchanged. First additive PR of the ratified P1 durable-substrate plan; the feedback-side `StoredTaskOutcome` already carries `traceId`.
+
+- [#3284](https://github.com/nexus-substrate/nexus-agents/pull/3284) [`463281d`](https://github.com/nexus-substrate/nexus-agents/commit/463281d28b6e3e9bcbc64c4338320638210a449b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(outcomes): feedback→routing TaskOutcome mapper ([#3146](https://github.com/nexus-substrate/nexus-agents/issues/3146), epic [#3143](https://github.com/nexus-substrate/nexus-agents/issues/3143) P1)
+
+  Adds `feedbackToRoutingOutcome(feedback, context)` (new `learning/feedback-outcome-mapper.ts`) — a one-way, pure mapper converting a feedback-layer `TaskOutcome` into a routing-layer one, so feedback outcomes can be recorded into the routing OutcomeStore for unified analysis. The feedback `traceId` is carried through (lands in the optional routing `traceId` from PR-1/[#3281](https://github.com/nexus-substrate/nexus-agents/issues/3281)), giving cross-layer correlation. The two `TaskOutcome` types stay separately exported (no symbol collapse). Lossy by design: the feedback `qualitySignals`/`qualityScore` have no routing-schema home and are dropped; `errorMessage` is clipped to the schema's 500-char max. Output is schema-valid. Additive — no existing code paths changed.
+
 ## 2.92.4
 
 ### Patch Changes
