@@ -272,7 +272,7 @@ function parseFindings(text: string, cli: CliName): ReviewFinding[] {
   } catch (e: unknown) {
     moduleLogger.warn('Failed to parse CLI review findings as JSON; discarding', {
       cli,
-      error: String(e),
+      error: getErrorMessage(e),
     });
     return [];
   }
