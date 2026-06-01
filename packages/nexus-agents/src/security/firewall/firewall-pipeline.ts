@@ -22,6 +22,7 @@ import {
   MAX_STRIPPED_ELEMENTS_PER_EVENT,
   emitTrustEvent,
 } from '../audit-trail.js';
+import { createDurableAuditSink } from '../audit-bridge.js';
 import { sanitizeInput } from '../input-sanitizer.js';
 import type { ReputationAssessment, GitHubUserMetadata } from '../reputation-model.js';
 import { assessReputation, ReputationCache, reconcileTrustTier } from '../reputation-model.js';
@@ -104,7 +105,11 @@ export class HostileInputFirewall {
     this.maxInputLength = validated.maxInputLength;
     this.adapter = config.adapter;
     this.reputationCache = new ReputationCache();
-    this.auditTrail = createAuditTrail();
+    // Mirror security decisions to the durable, hash-chained audit log when a
+    // logger is provided; otherwise stay in-memory only (#3291).
+    this.auditTrail = createAuditTrail(
+      config.auditLogger !== undefined ? createDurableAuditSink(config.auditLogger) : undefined
+    );
     this.context = validated.context;
   }
 

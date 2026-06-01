@@ -1,0 +1,189 @@
+/**
+ * Security → durable audit bridge (#3291, epic #3288 item 3).
+ *
+ * The security `AuditTrail` (audit-trail.ts) is in-memory-only, so every
+ * trust/policy/reputation/sanitization decision is lost on process exit. The
+ * durable `AuditLogger` (audit/) persists with a tamper-evident hash chain but
+ * lacks these rich security event types. This bridge maps each security
+ * `AuditEvent` (the discriminated union) into a durable `AuditEventInput` and
+ * forwards it to an `IAuditLogger`, so security decisions become durable and
+ * hash-verifiable — satisfying CLAUDE.md's "immutable audit" mandate.
+ *
+ * Per the #3291 confirmation vote (fold-in design): security events are folded
+ * into the durable schema with `category`/`action` distinguishing them
+ * (queryable by `action: 'security.*'`), rather than standing up a parallel
+ * SecurityAuditLogger.
+ *
+ * @module security/audit-bridge
+ */
+
+import { createLogger, getErrorMessage } from '../core/index.js';
+import type { AuditEvent as SecurityAuditEvent, DurableAuditSink } from './audit-trail.js';
+import type {
+  AuditEventInput,
+  AuditActor,
+  AuditOutcome,
+  AuditSeverity,
+  IAuditLogger,
+} from '../audit/audit-types.js';
+
+const logger = createLogger({ component: 'SecurityAuditBridge' });
+
+function systemActor(id: string, name?: string): AuditActor {
+  return name !== undefined ? { type: 'system', id, name } : { type: 'system', id };
+}
+
+function userActor(username: string): AuditActor {
+  return { type: 'user', id: username };
+}
+
+type TrustEvent = Extract<SecurityAuditEvent, { type: 'trust_classification' }>;
+type PolicyEvent = Extract<SecurityAuditEvent, { type: 'policy_gate' }>;
+type CorroborationEvt = Extract<SecurityAuditEvent, { type: 'corroboration' }>;
+type ReputationEvt = Extract<SecurityAuditEvent, { type: 'reputation' }>;
+type SanitizationEvt = Extract<SecurityAuditEvent, { type: 'sanitization' }>;
+type GraphEvt = Extract<SecurityAuditEvent, { type: 'graph_execution' }>;
+
+function mapTrust(e: TrustEvent): AuditEventInput {
+  const severity: AuditSeverity = e.wasDowngraded ? 'warning' : 'info';
+  return {
+    category: 'authorization',
+    severity,
+    outcome: 'success',
+    action: 'security.trust_classification',
+    actor: userActor(e.username),
+    description: e.reason,
+    metadata: {
+      assignedTier: e.assignedTier,
+      userRole: e.userRole,
+      isAllowlisted: e.isAllowlisted,
+      wasDowngraded: e.wasDowngraded,
+      component: e.component,
+    },
+  };
+}
+
+function mapPolicyGate(e: PolicyEvent): AuditEventInput {
+  const outcome: AuditOutcome = e.allowed ? 'success' : 'denied';
+  return {
+    category: 'authorization',
+    severity: e.allowed ? 'info' : 'warning',
+    outcome,
+    action: 'security.policy_gate',
+    actor: systemActor(e.component),
+    policyName: 'security.policy_gate',
+    policyDecision: e.allowed ? 'allow' : 'deny',
+    ...(e.violationRules.length > 0 ? { violationType: e.violationRules.join(',') } : {}),
+    metadata: {
+      actionType: e.actionType,
+      requiresApproval: e.requiresApproval,
+      inputTrustTier: e.inputTrustTier,
+      violationRules: e.violationRules,
+    },
+  };
+}
+
+function mapCorroboration(e: CorroborationEvt): AuditEventInput {
+  return {
+    category: 'security',
+    severity: e.satisfied ? 'info' : 'warning',
+    outcome: e.satisfied ? 'success' : 'denied',
+    action: 'security.corroboration',
+    actor: systemActor(e.component),
+    metadata: {
+      actionType: e.actionType,
+      sourceCount: e.sourceCount,
+      missingRequirements: e.missingRequirements,
+    },
+  };
+}
+
+function mapReputation(e: ReputationEvt): AuditEventInput {
+  return {
+    category: 'security',
+    severity: e.isSuspicious ? 'warning' : 'info',
+    outcome: 'success',
+    action: 'security.reputation',
+    actor: userActor(e.username),
+    metadata: {
+      reputationScore: e.reputationScore,
+      isSuspicious: e.isSuspicious,
+      effectiveTier: e.effectiveTier,
+      signalCount: e.signalCount,
+      component: e.component,
+    },
+  };
+}
+
+function mapSanitization(e: SanitizationEvt): AuditEventInput {
+  return {
+    category: 'security',
+    severity: e.injectionFlagCount > 0 ? 'warning' : 'info',
+    outcome: 'success',
+    action: 'security.sanitization',
+    actor: systemActor(e.component, e.source),
+    metadata: {
+      source: e.source,
+      wasModified: e.wasModified,
+      strippedCount: e.strippedCount,
+      injectionFlagCount: e.injectionFlagCount,
+      strippedElements: e.strippedElements,
+    },
+  };
+}
+
+function mapGraphExecution(e: GraphEvt): AuditEventInput {
+  return {
+    category: 'system',
+    severity: 'info',
+    outcome: 'success',
+    action: 'security.graph_execution',
+    actor: systemActor(e.component),
+    description: e.detail,
+    metadata: {
+      graphEvent: e.graphEvent,
+      ...(e.nodeId !== undefined ? { nodeId: e.nodeId } : {}),
+      stepNumber: e.stepNumber,
+    },
+  };
+}
+
+/**
+ * Map a security `AuditEvent` (discriminated union) to a durable
+ * `AuditEventInput`. Pure — no side effects. The durable logger assigns
+ * id/timestamp/hash, so those are omitted here.
+ */
+export function securityAuditEventToInput(event: SecurityAuditEvent): AuditEventInput {
+  switch (event.type) {
+    case 'trust_classification':
+      return mapTrust(event);
+    case 'policy_gate':
+      return mapPolicyGate(event);
+    case 'corroboration':
+      return mapCorroboration(event);
+    case 'reputation':
+      return mapReputation(event);
+    case 'sanitization':
+      return mapSanitization(event);
+    case 'graph_execution':
+      return mapGraphExecution(event);
+  }
+}
+
+/**
+ * Build a {@link SecurityAuditSink} that maps security events into the durable
+ * schema and writes them through `auditLogger`. Errors are swallowed and logged
+ * — durable mirroring must never break the security pipeline.
+ */
+export function createDurableAuditSink(auditLogger: IAuditLogger): DurableAuditSink {
+  return (event: SecurityAuditEvent) => {
+    try {
+      auditLogger.log(securityAuditEventToInput(event));
+    } catch (error) {
+      logger.warn('Failed to mirror security event to durable audit log', {
+        type: event.type,
+        error: getErrorMessage(error),
+      });
+    }
+  };
+}

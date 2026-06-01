@@ -10,6 +10,7 @@
  */
 
 import { z } from 'zod';
+import type { IAuditLogger } from '../../audit/audit-types.js';
 
 // ============================================================================
 // Source Adapter Interface
@@ -98,6 +99,12 @@ export interface FirewallConfig {
     readonly hasWriteAccess?: boolean;
     readonly hasSecretAccess?: boolean;
   };
+  /**
+   * Optional durable audit logger. When provided, every security decision the
+   * firewall records is mirrored to this persistent, hash-chained store via
+   * the audit bridge (#3291). When absent, decisions are in-memory only.
+   */
+  readonly auditLogger?: IAuditLogger;
 }
 
 // ============================================================================
