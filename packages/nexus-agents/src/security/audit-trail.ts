@@ -134,9 +134,19 @@ export interface AuditQuery {
  * Append-only audit trail for security pipeline decisions.
  * Events are bounded by MAX_EVENTS to prevent unbounded growth.
  */
+/**
+ * Optional durable sink: receives every fully-formed event appended to the
+ * trail, so security decisions can be mirrored to a persistent, hash-chained
+ * store (see security/audit-bridge.ts). Default-off — when absent, the trail
+ * behaves exactly as before (#3291).
+ */
+export type DurableAuditSink = (event: AuditEvent) => void;
+
 export class AuditTrail {
   private events: AuditEvent[] = [];
   private nextId = 1;
+
+  constructor(private readonly durableSink?: DurableAuditSink) {}
 
   /** Appends an event to the trail. Returns the assigned event ID. */
   append(event: Omit<AuditEvent, 'id' | 'timestamp'>): string {
@@ -149,6 +159,17 @@ export class AuditTrail {
 
     this.events.push(fullEvent);
     this.enforceLimit();
+
+    // Mirror to the durable store when wired (#3291). Best-effort: a sink
+    // failure must never break the in-memory security pipeline.
+    if (this.durableSink !== undefined) {
+      try {
+        this.durableSink(fullEvent);
+      } catch {
+        // Sink implementations already swallow+log; this is belt-and-suspenders.
+      }
+    }
+
     return id;
   }
 
@@ -351,7 +372,11 @@ function formatGraphEventDetail(event: {
   }
 }
 
-/** Creates a new AuditTrail instance. */
-export function createAuditTrail(): AuditTrail {
-  return new AuditTrail();
+/**
+ * Creates a new AuditTrail instance. Pass a {@link DurableAuditSink} (e.g. from
+ * `createDurableAuditSink(auditLogger)`) to mirror appended security decisions
+ * to a durable, hash-chained store (#3291). Default: in-memory only.
+ */
+export function createAuditTrail(durableSink?: DurableAuditSink): AuditTrail {
+  return new AuditTrail(durableSink);
 }
