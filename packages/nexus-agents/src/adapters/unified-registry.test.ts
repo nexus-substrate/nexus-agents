@@ -18,7 +18,9 @@ import {
   createUnifiedRegistry,
   getGlobalRegistry,
   resetGlobalRegistry,
+  withDefaultOnRetirement,
 } from './unified-registry.js';
+import type { ILogger } from '../core/index.js';
 import { TASK_SPECIALIZATION_MATRIX } from '../config/task-specialization.js';
 import { DEFAULT_MODEL_CAPABILITIES } from '../config/in-tree-data.js';
 
@@ -366,5 +368,44 @@ describe('UnifiedAdapterRegistry enableMissingModelFallback (#2549)', () => {
     const second = registry.getAdapterForCli('claude');
     expect(first).toBe(second);
     registry.dispose();
+  });
+});
+
+describe('withDefaultOnRetirement — onRetirement dead-bridge wiring', () => {
+  const freshLogger = (): ILogger => ({
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    child: vi.fn().mockReturnThis(),
+    setLevel: vi.fn(),
+  });
+
+  it('returns options unchanged when the fallback is disabled', () => {
+    const opts = {};
+    expect(withDefaultOnRetirement(false, opts, freshLogger())).toBe(opts);
+    expect(withDefaultOnRetirement(false, undefined, freshLogger())).toBeUndefined();
+  });
+
+  it('wires a default logging onRetirement when enabled and none was provided', () => {
+    const logger = freshLogger();
+    const resolved = withDefaultOnRetirement(true, undefined, logger);
+    expect(resolved?.onRetirement).toBeDefined();
+    resolved!.onRetirement!({
+      retiredModelId: 'claude-opus-4-6',
+      fallbackModelId: 'claude-opus',
+    } as never);
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Model retired via not-found fallback',
+      expect.objectContaining({
+        retirement: expect.objectContaining({ retiredModelId: 'claude-opus-4-6' }),
+      })
+    );
+  });
+
+  it('preserves a caller-supplied onRetirement (no override)', () => {
+    const custom = vi.fn();
+    const resolved = withDefaultOnRetirement(true, { onRetirement: custom }, freshLogger());
+    expect(resolved?.onRetirement).toBe(custom);
   });
 });
