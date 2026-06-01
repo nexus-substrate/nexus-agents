@@ -335,3 +335,46 @@ describe('HostileInputFirewall', () => {
     });
   });
 });
+
+describe('policyEnforcement stage — Rule of Two (#3198)', () => {
+  it('surfaces a Rule-of-Two violation for untrusted input with write + secret access', () => {
+    const fw = createFirewall({ context: { hasWriteAccess: true, hasSecretAccess: true } });
+    const result = fw.process(issueInput()); // NONE author → untrusted tier
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(Number(result.value.effectiveTrustTier)).toBeGreaterThanOrEqual(3);
+      expect(result.value.ruleOfTwoViolation?.rule).toBe('RULE_OF_TWO');
+      expect(result.value.ruleOfTwoViolation?.severity).toBe('block');
+    }
+  });
+
+  it('no violation when the context lacks write OR secret access', () => {
+    const fw = createFirewall({ context: { hasWriteAccess: true, hasSecretAccess: false } });
+    const result = fw.process(issueInput());
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.ruleOfTwoViolation).toBeUndefined();
+  });
+
+  it('no violation for an allowlisted (Tier-1) author even with write + secret', () => {
+    const fw = createFirewall({
+      allowlistedMaintainers: ['trusteduser'],
+      context: { hasWriteAccess: true, hasSecretAccess: true },
+    });
+    const result = fw.process(issueInput({ username: 'trusteduser' }));
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.effectiveTrustTier).toBe('1');
+      expect(result.value.ruleOfTwoViolation).toBeUndefined();
+    }
+  });
+
+  it('does not evaluate Rule of Two when the policyEnforcement stage is disabled', () => {
+    const fw = createFirewall({
+      stages: { policyEnforcement: false },
+      context: { hasWriteAccess: true, hasSecretAccess: true },
+    });
+    const result = fw.process(issueInput());
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.ruleOfTwoViolation).toBeUndefined();
+  });
+});
