@@ -293,11 +293,12 @@ Documents at repository root (for discoverability):
 
 Documents kept for historical reference only:
 
-| Document                                                                       | Reason                  | Replacement                 |
-| ------------------------------------------------------------------------------ | ----------------------- | --------------------------- |
-| [archive/REVIEW_2026-01-23.md](./archive/REVIEW_2026-01-23.md)                 | Archived system review  | Current system reviews      |
-| [archive/SECURITY_AUDIT_2026-01-23.md](./archive/SECURITY_AUDIT_2026-01-23.md) | Archived security audit | Current security docs       |
-| [archive/consensus-vote-2026-01-17.md](./archive/consensus-vote-2026-01-17.md) | Archived consensus vote | Current consensus protocols |
+| Document                                                                       | Reason                                    | Replacement                                    |
+| ------------------------------------------------------------------------------ | ----------------------------------------- | ---------------------------------------------- |
+| [archive/REVIEW_2026-01-23.md](./archive/REVIEW_2026-01-23.md)                 | Archived system review                    | Current system reviews                         |
+| [archive/SECURITY_AUDIT_2026-01-23.md](./archive/SECURITY_AUDIT_2026-01-23.md) | Archived security audit                   | Current security docs                          |
+| [archive/consensus-vote-2026-01-17.md](./archive/consensus-vote-2026-01-17.md) | Archived consensus vote                   | Current consensus protocols                    |
+| [archive/system-review-2026-05-31.md](./archive/system-review-2026-05-31.md)   | Full 13-domain system review (epic #3143) | [ALIGNMENT_ROADMAP.md](./ALIGNMENT_ROADMAP.md) |
 
 **Previously Archived/Removed:**
 
