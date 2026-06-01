@@ -10,6 +10,9 @@ export { ok, err, isOk, isErr, map, mapErr, unwrap, unwrapOr } from './result.js
 // Safe JSON substring extraction (ReDoS-safe, O(n))
 export { extractJsonArray, extractJsonObject } from './json-extract.js';
 
+// Circular Buffer — O(1) bounded collection (Source: Issue #407; relocated to core #3288)
+export { CircularBuffer } from './circular-buffer.js';
+
 // Step event vocabulary + `withStep` wrapper (#1930 — human console notifications)
 export type {
   StepKind,

@@ -35,7 +35,7 @@ import {
   countMatchingSubscribers,
 } from './event-bus-helpers.js';
 
-import { CircularBuffer } from './circular-buffer.js';
+import { CircularBuffer } from '../../core/circular-buffer.js';
 
 // Re-export correlation ID helpers for public API
 export { generateCorrelationId, createChildCorrelationId } from './event-bus-helpers.js';
