@@ -97,6 +97,29 @@ export interface RegistrySnapshot {
  * const adapter3 = registry.getDefault();                 // → best available
  * ```
  */
+
+/**
+ * Defaults `onRetirement` to a logging callback when the fallback is enabled, so
+ * model retirements are observable rather than silent (the callback was a
+ * declared-but-unwired bridge — system review). Callers can still override it.
+ * Returns the options unchanged when the fallback is disabled.
+ */
+export function withDefaultOnRetirement(
+  enabled: boolean,
+  options: ModelNotFoundFallbackOptions | undefined,
+  logger: ILogger
+): ModelNotFoundFallbackOptions | undefined {
+  if (!enabled) return options;
+  return {
+    ...options,
+    onRetirement:
+      options?.onRetirement ??
+      ((info): void => {
+        logger.warn('Model retired via not-found fallback', { retirement: info });
+      }),
+  };
+}
+
 export class UnifiedAdapterRegistry {
   private readonly logger: ILogger;
   private readonly defaultCliTimeoutMs: number | undefined;
@@ -116,7 +139,11 @@ export class UnifiedAdapterRegistry {
     this.logger = config?.logger ?? createLogger({ component: 'unified-registry' });
     this.defaultCliTimeoutMs = config?.defaultCliTimeoutMs;
     this.enableMissingModelFallback = config?.enableMissingModelFallback ?? false;
-    this.missingModelFallbackOptions = config?.missingModelFallbackOptions;
+    this.missingModelFallbackOptions = withDefaultOnRetirement(
+      this.enableMissingModelFallback,
+      config?.missingModelFallbackOptions,
+      this.logger
+    );
     this.taskRouting = this.buildTaskRouting();
     this.logger.info('UnifiedAdapterRegistry initialized', {
       categories: this.taskRouting.size,
