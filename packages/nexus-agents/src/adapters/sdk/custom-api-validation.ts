@@ -16,7 +16,6 @@
 import { isIPv4, isIPv6 } from 'node:net';
 import { ConfigError, ok, err, type Result } from '../../core/index.js';
 import { CUSTOM_API_ALLOW_PRIVATE_ENV } from './types.js';
-import { parseBoolEnv } from '../../config/defaults-env.js';
 
 /**
  * Why a given URL was rejected. Machine-readable so error messages can
@@ -87,7 +86,11 @@ export function validateCustomApiBaseUrl(
 }
 
 function resolveAllowPrivateFromEnv(): boolean {
-  return parseBoolEnv(CUSTOM_API_ALLOW_PRIVATE_ENV, false);
+  // Deliberately strict (case-sensitive, not parseBoolEnv): this disables an
+  // SSRF guard, so we don't want extra case variants (e.g. `TRUE`) to loosen
+  // the control. Fail-closed on anything but exact `1`/`true` (#3297).
+  const v = process.env[CUSTOM_API_ALLOW_PRIVATE_ENV];
+  return v === '1' || v === 'true';
 }
 
 /**
