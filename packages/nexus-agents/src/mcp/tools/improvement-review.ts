@@ -16,11 +16,12 @@
  */
 
 import { execFile } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 /* eslint-disable max-lines */
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { createLogger, formatZodError } from '../../core/index.js';
+import { createLogger, formatZodError, getErrorMessage } from '../../core/index.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { withPrerequisite } from '../middleware/tool-prerequisites.js';
@@ -75,6 +76,15 @@ export const ImprovementReviewInputSchema = z.object({
     .optional()
     .default(90)
     .describe('Fitness score below this threshold triggers a tech-debt signal.'),
+  selfEvalReportPath: z
+    .string()
+    .optional()
+    .describe(
+      'Optional path to a self-eval JSON report (from `self-eval --json`). When set, ' +
+        'high-confidence unanimous deprecate/refactor findings are surfaced as tech-debt ' +
+        'signals through the same deduped/rate-limited issue path (#3224). Unreadable/malformed ' +
+        'reports are skipped (no signal). Absent → no self-eval signals.'
+    ),
 });
 
 export type ImprovementReviewInput = z.infer<typeof ImprovementReviewInputSchema>;
@@ -287,6 +297,98 @@ export function detectFitnessSignals(
 }
 
 // ============================================================================
+// Self-eval findings → tech-debt signals (#3224)
+// ============================================================================
+
+/** Minimum confidence for a self-eval finding to surface as a signal. */
+const SELF_EVAL_CONFIDENCE_FLOOR = 0.8;
+
+/**
+ * Minimal, defensive schema for the `self-eval --json` report. We only read the
+ * fields needed to surface a finding; unknown extras are ignored so the parse
+ * tolerates schema drift in the (externally produced) artifact.
+ */
+const SelfEvalReportSchema = z.object({
+  results: z.array(
+    z.object({
+      component: z.string(),
+      finalRecommendation: z.string(),
+      confidence: z.number(),
+      dissent: z.array(z.unknown()).optional().default([]),
+      evidenceQuality: z.number().optional(),
+    })
+  ),
+});
+
+/**
+ * Convert a parsed self-eval report into tech-debt `ImprovementSignal`s.
+ *
+ * Only **actionable, high-confidence, unanimous** findings surface (#3224): a
+ * `deprecate`/`refactor` recommendation with NO dissent and confidence at/above
+ * {@link SELF_EVAL_CONFIDENCE_FLOOR}. This is a pure transform — it surfaces a
+ * human decision point (a candidate issue), never an automatic routing change.
+ */
+export function detectSelfEvalSignals(
+  report: z.infer<typeof SelfEvalReportSchema>,
+  windowLabel: string
+): readonly ImprovementSignal[] {
+  const signals: ImprovementSignal[] = [];
+  for (const r of report.results) {
+    const actionable =
+      r.finalRecommendation === 'deprecate' || r.finalRecommendation === 'refactor';
+    if (!actionable || r.dissent.length > 0 || r.confidence < SELF_EVAL_CONFIDENCE_FLOOR) continue;
+    signals.push({
+      category: 'tech-debt',
+      signalKey: `tech-debt:self-eval:${r.component}:${r.finalRecommendation}`,
+      severity: r.finalRecommendation === 'deprecate' ? 'warning' : 'info',
+      title: `tech-debt: self-eval recommends ${r.finalRecommendation} for ${r.component}`,
+      body: [
+        `All self-eval evaluators agreed (no dissent) on **${r.finalRecommendation}** for \`${r.component}\``,
+        `with confidence ${(r.confidence * 100).toFixed(0)}%${r.evidenceQuality !== undefined ? ` (evidence quality ${(r.evidenceQuality * 100).toFixed(0)}%)` : ''}.`,
+        '',
+        'This is a RECOMMENDATION surfaced for human review — not an automatic change.',
+      ].join('\n'),
+      evidence: {
+        observedValue: r.confidence,
+        threshold: SELF_EVAL_CONFIDENCE_FLOOR,
+        window: windowLabel,
+      },
+    });
+  }
+  return signals;
+}
+
+/**
+ * Read + parse a self-eval JSON report and convert it to signals. Fail-soft:
+ * an unreadable or malformed report yields NO signals (logged at warn) rather
+ * than breaking the review.
+ */
+export async function loadSelfEvalSignals(
+  reportPath: string,
+  windowLabel: string,
+  logger: ReturnType<typeof createLogger>
+): Promise<readonly ImprovementSignal[]> {
+  try {
+    const raw = await readFile(reportPath, 'utf8');
+    const parsed = SelfEvalReportSchema.safeParse(JSON.parse(raw));
+    if (!parsed.success) {
+      logger.warn('Self-eval report ignored — schema mismatch', {
+        reportPath,
+        error: formatZodError(parsed.error),
+      });
+      return [];
+    }
+    return detectSelfEvalSignals(parsed.data, windowLabel);
+  } catch (error) {
+    logger.warn('Self-eval report ignored — unreadable/invalid JSON', {
+      reportPath,
+      error: getErrorMessage(error),
+    });
+    return [];
+  }
+}
+
+// ============================================================================
 // Issue filing (gated, dedup-checked, command-injection-safe)
 // ============================================================================
 
@@ -426,7 +528,7 @@ export async function runImprovementReview(
   deps: { readonly logger?: ReturnType<typeof createLogger> } = {}
 ): Promise<ImprovementReviewResponse> {
   const logger = deps.logger ?? createLogger({ component: 'improvement_review' });
-  const { lookbackDays, fileIssues, minSampleSize, fitnessFloor } = input;
+  const { lookbackDays, fileIssues, minSampleSize, fitnessFloor, selfEvalReportPath } = input;
   const now = Date.now();
   const windowLabel = `${String(lookbackDays)}d`;
 
@@ -434,10 +536,18 @@ export async function runImprovementReview(
   const windowed = filterByLookback(allOutcomes, lookbackDays, now);
   const audit = safeFitnessAudit(now, { logger } as HandlerContext);
 
+  // Surface high-confidence unanimous self-eval findings as tech-debt signals
+  // (#3224) — opt-in via selfEvalReportPath, fail-soft (no path / bad file → none).
+  const selfEvalSignals =
+    selfEvalReportPath !== undefined
+      ? await loadSelfEvalSignals(selfEvalReportPath, windowLabel, logger)
+      : [];
+
   const signals: ImprovementSignal[] = [
     ...detectCliPerformanceFloor(windowed, minSampleSize, windowLabel),
     ...detectFailureCategoryConcentration(windowed, windowLabel),
     ...detectFitnessSignals(audit, fitnessFloor),
+    ...selfEvalSignals,
   ];
   signals.sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]);
 
@@ -512,6 +622,13 @@ const TOOL_INPUT_SCHEMA = {
     .max(100)
     .optional()
     .describe('Fitness score below this threshold triggers a tech-debt signal (default 90).'),
+  selfEvalReportPath: z
+    .string()
+    .optional()
+    .describe(
+      'Optional path to a self-eval JSON report. High-confidence unanimous ' +
+        'deprecate/refactor findings surface as tech-debt signals (#3224).'
+    ),
 };
 
 /** @category MCP */
