@@ -15,7 +15,7 @@
  *   votes. Pragmatic for operational decisions.
  * - `count_as_abstain`: errors reach the engine as abstain. Conservative
  *   — error voter is treated as having withheld approval.
- * - `fail_closed` (default for unanimous / higher_order): any error
+ * - `fail_closed` (default for unanimous only, #3138): any error
  *   short-circuits to vote-void.
  *
  * Hard floor: if errors > `ERROR_FLOOR_FRACTION` of total voters, the

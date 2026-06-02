@@ -94,13 +94,19 @@ export type VoteThreshold = z.infer<typeof VoteThresholdSchema>;
 export const ERROR_FLOOR_FRACTION = 0.5;
 
 /**
- * Default error policy per voting strategy. Strict strategies (unanimous,
- * higher_order, and its alias opinion_wise) default to `fail_closed`; others
- * default to `reduce_denominator`. Callers can override with the `errorPolicy`
- * input field. (#3167: opinion_wise must match its higher_order alias.)
+ * Default error policy per voting strategy.
+ *
+ * Only `unanimous` defaults to `fail_closed`: a missing/errored voter genuinely
+ * breaks the unanimity guarantee, so the vote must void. Every other strategy —
+ * including `higher_order` and its `opinion_wise` alias — defaults to
+ * `reduce_denominator`: Bayesian/weighted aggregation over the *non-error*
+ * voters is well-defined, so a single infra timeout (e.g. one slow voter's
+ * adapter transport, #3304) should NOT fail-close an otherwise-unanimous result
+ * (#3138). The >50% `ERROR_FLOOR_FRACTION` hard floor still voids any vote where
+ * most voters errored. Callers can override via the `errorPolicy` input.
  */
 export function getDefaultErrorPolicy(strategy: VotingStrategy): ErrorPolicy {
-  if (strategy === 'unanimous' || strategy === 'higher_order' || strategy === 'opinion_wise') {
+  if (strategy === 'unanimous') {
     return 'fail_closed';
   }
   return 'reduce_denominator';
@@ -115,7 +121,7 @@ export const ConsensusVoteInputSchema = z.object({
     'Voting strategy: simple_majority (default), supermajority, unanimous, proof_of_learning, or higher_order (Bayesian-optimal)'
   ),
   errorPolicy: ErrorPolicySchema.optional().describe(
-    'How to treat voters that errored or timed out (#2630). Default: fail_closed for unanimous/higher_order/opinion_wise, reduce_denominator otherwise. Regardless of policy, errors > 50% always fails.'
+    'How to treat voters that errored or timed out (#2630). Default: fail_closed for unanimous only; reduce_denominator for all other strategies incl. higher_order/opinion_wise (#3138 — a single infra timeout should not void an otherwise-unanimous vote). Regardless of policy, errors > 50% always fails.'
   ),
   quickMode: z
     .boolean()

@@ -1103,11 +1103,14 @@ describe('CONSENSUS_VOTE_OUTPUT_SCHEMA validation (Issue #1246)', () => {
 });
 
 describe('getDefaultErrorPolicy (#3167)', () => {
-  it('strict strategies default to fail_closed — incl. opinion_wise (the higher_order alias)', () => {
+  it('only unanimous defaults to fail_closed (a missing voter breaks unanimity)', () => {
     expect(getDefaultErrorPolicy('unanimous')).toBe('fail_closed');
-    expect(getDefaultErrorPolicy('higher_order')).toBe('fail_closed');
-    expect(getDefaultErrorPolicy('opinion_wise')).toBe('fail_closed');
-    // opinion_wise must match its alias rather than silently diverging
+  });
+
+  it('higher_order + opinion_wise default to reduce_denominator (#3138 — infra timeout must not void a unanimous vote)', () => {
+    expect(getDefaultErrorPolicy('higher_order')).toBe('reduce_denominator');
+    expect(getDefaultErrorPolicy('opinion_wise')).toBe('reduce_denominator');
+    // opinion_wise must match its higher_order alias rather than silently diverging
     expect(getDefaultErrorPolicy('opinion_wise')).toBe(getDefaultErrorPolicy('higher_order'));
   });
 
