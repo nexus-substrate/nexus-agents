@@ -371,8 +371,14 @@ async function initializeAndRegisterTools(
   logger: ILogger,
   policyFirewall: import('./mcp/middleware/index.js').IPolicyFirewall,
   config: import('./config/index.js').AppConfig,
-  feedbackIntegration?: import('./learning/feedback-integration.js').IFeedbackIntegration
+  deps?: {
+    feedbackIntegration?:
+      | import('./learning/feedback-integration.js').IFeedbackIntegration
+      | undefined;
+    auditLogger?: AuditLogger | null;
+  }
 ): Promise<void> {
+  const { feedbackIntegration, auditLogger } = deps ?? {};
   logger.info('Loading built-in workflow templates');
   const builtInTemplates = await initializeBuiltInTemplates();
   logger.info('Loaded built-in templates', { count: builtInTemplates.size });
@@ -403,6 +409,7 @@ async function initializeAndRegisterTools(
     ...(securityConfig !== undefined && { securityConfig }),
     ...(workflowConfig !== undefined && { workflowConfig }),
     ...(feedbackIntegration !== undefined && { feedbackIntegration }),
+    ...(auditLogger !== null && auditLogger !== undefined && { auditLogger }),
   };
   registerMcpTools(toolsOptions);
 }
@@ -498,13 +505,10 @@ async function initializeSubsystems(
   // auth state is wired into the request pipeline inside initializeAuth.
   initializeAuth(config, serverLogger);
   // Pass FeedbackIntegration to tools for closed-loop learning (Issue #490)
-  await initializeAndRegisterTools(
-    server,
-    serverLogger,
-    policyFirewall,
-    config,
-    feedbackResult.feedbackIntegration
-  );
+  await initializeAndRegisterTools(server, serverLogger, policyFirewall, config, {
+    feedbackIntegration: feedbackResult.feedbackIntegration,
+    auditLogger,
+  });
 
   return { server, serverLogger, observer, eventBusBridge, auditLogger };
 }
