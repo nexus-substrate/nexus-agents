@@ -79,6 +79,7 @@ import {
   startSwarmHealthSignals,
   startFailoverSignals,
 } from './observability/index.js';
+import { startImprovementReviewScheduler } from './mcp/tools/improvement-review-scheduler.js';
 import { getOutcomeStore } from './orchestration/outcomes/index.js';
 import { createDefaultPolicyEngine } from './pipeline/policy-engine.js';
 import { resolveV2Config } from './pipeline/v2-config.js';
@@ -640,6 +641,11 @@ function initV2PipelineSubsystems(
   // carry the exact CliName) from bus B as signal.swarm_unhealthy on bus A
   // (#3321). Paired with shutdownFailoverSignals() in cli-server.ts.
   startFailoverSignals({ pipelineBus: pipelineEventBus });
+  // Scheduled improvement_review (#3229): periodically runs the review so its
+  // signal.fitness_declined fires without manual invocation. Disabled by
+  // default (NEXUS_IMPROVEMENT_REVIEW_INTERVAL_MS); issue-filing is a separate
+  // opt-in. Paired with shutdownImprovementReviewScheduler() in cli-server.ts.
+  startImprovementReviewScheduler();
   const policyEngine = createDefaultPolicyEngine();
   const v2Config = resolveV2Config();
   logger.info('V2 Pipeline OS initialized', {
