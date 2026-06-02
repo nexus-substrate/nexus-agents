@@ -181,6 +181,34 @@ describe('createTuneStage shadow mode (#3147)', () => {
     resetTuneAdjustmentStore();
   });
 
+  it('enforce mode increments the APPLIED counter exactly once per swarm signal (#3323)', () => {
+    resetTuneAdjustmentStore();
+    const bus = new EventBus();
+    createTuneStage(bus, { enabled: true, logger: spyLogger() });
+    bus.emit(swarmSignal);
+
+    const stat = getTuneAdjustmentStore()
+      .demotionStats()
+      .find((s) => s.cli === 'gemini');
+    expect(stat).toMatchObject({ applied: 1, intended: 0 });
+    resetTuneAdjustmentStore();
+  });
+
+  it('shadow mode records an INTENDED demotion for soak telemetry without mutating routing (#3323)', () => {
+    resetTuneAdjustmentStore();
+    const bus = new EventBus();
+    createTuneStage(bus, { logger: spyLogger() }); // shadow (enabled defaults false)
+    bus.emit(swarmSignal);
+
+    const store = getTuneAdjustmentStore();
+    // Routing untouched — still shadow.
+    expect(store.effectiveMultiplier('gemini')).toBe(1.0);
+    // But the intended counter accrued, so a soak can observe it.
+    const stat = store.demotionStats().find((s) => s.cli === 'gemini');
+    expect(stat).toMatchObject({ applied: 0, intended: 1 });
+    resetTuneAdjustmentStore();
+  });
+
   it('disabled (shadow) does NOT mutate routing even on swarm_unhealthy', () => {
     resetTuneAdjustmentStore();
     const bus = new EventBus();

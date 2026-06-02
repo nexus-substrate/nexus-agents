@@ -78,3 +78,57 @@ describe('TuneAdjustmentStore (#3147)', () => {
     expect(store.effectiveMultiplier('gemini')).toBe(1.0);
   });
 });
+
+describe('TuneAdjustmentStore demotion telemetry (#3323)', () => {
+  it('counts applied demotions and survives decay/eviction', () => {
+    const clock = new FixedTimeProvider(0);
+    setTimeProvider(clock);
+    try {
+      const store = new TuneAdjustmentStore();
+      store.demote('gemini', 0.2, 'swarm_unhealthy: a');
+      store.demote('gemini', 0.2, 'swarm_unhealthy: b');
+      // Advance past the decay window so the active adjustment is evicted...
+      clock.advance(TUNE_DECAY_WINDOW_MS + 1);
+      expect(store.effectiveMultiplier('gemini')).toBe(1.0); // adjustment gone
+      // ...but the cumulative stat persists.
+      const stats = store.demotionStats();
+      expect(stats).toHaveLength(1);
+      expect(stats[0]).toMatchObject({ cli: 'gemini', applied: 2, intended: 0 });
+      expect(stats[0]?.lastReason).toBe('swarm_unhealthy: b');
+    } finally {
+      resetTimeProvider();
+    }
+  });
+
+  it('recordIntended counts WITHOUT affecting routing (shadow soak)', () => {
+    const store = new TuneAdjustmentStore();
+    store.recordIntended('codex', 'swarm_unhealthy: would-demote');
+    store.recordIntended('codex', 'swarm_unhealthy: again');
+    // Routing is untouched — the loop is still shadow.
+    expect(store.effectiveMultiplier('codex')).toBe(1.0);
+    expect(store.list()).toHaveLength(0);
+    // But the intended counter accrues for soak observability.
+    const stat = store.demotionStats().find((s) => s.cli === 'codex');
+    expect(stat).toMatchObject({ applied: 0, intended: 2 });
+  });
+
+  it('recordIntended ignores an empty reason (no-op)', () => {
+    const store = new TuneAdjustmentStore();
+    store.recordIntended('gemini', '');
+    expect(store.demotionStats()).toHaveLength(0);
+  });
+
+  it('clear() also resets telemetry', () => {
+    const store = new TuneAdjustmentStore();
+    store.demote('gemini', 0.2, 'x');
+    store.recordIntended('codex', 'y');
+    store.clear();
+    expect(store.demotionStats()).toHaveLength(0);
+  });
+
+  it('caps the retained reason length', () => {
+    const store = new TuneAdjustmentStore();
+    store.recordIntended('gemini', 'r'.repeat(5000));
+    expect(store.demotionStats()[0]?.lastReason.length).toBeLessThanOrEqual(512);
+  });
+});
