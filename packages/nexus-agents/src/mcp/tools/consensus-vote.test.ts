@@ -20,7 +20,9 @@ import {
   toAgentVoteSummary,
   buildResponse,
   getDefaultErrorPolicy,
+  isHigherOrderStrategy,
 } from './consensus-vote-types.js';
+import type { VotingStrategy } from './consensus-vote-types.js';
 import type { AgentVoteResult } from '../../cli/vote-types.js';
 import type { ExtendedVotingResult } from './consensus-vote-types.js';
 
@@ -825,6 +827,64 @@ describe('buildResponse surfaces policyReason (#3124)', () => {
       policyReason: 'fail_closed: 1 voter(s) errored',
     };
   }
+});
+
+describe('opinion_wise is treated as a higher_order alias (#3271)', () => {
+  it('isHigherOrderStrategy: true for higher_order + opinion_wise, false otherwise', () => {
+    expect(isHigherOrderStrategy('higher_order')).toBe(true);
+    expect(isHigherOrderStrategy('opinion_wise')).toBe(true);
+    expect(isHigherOrderStrategy('simple_majority')).toBe(false);
+    expect(isHigherOrderStrategy('unanimous')).toBe(false);
+    expect(isHigherOrderStrategy('proof_of_learning')).toBe(false);
+  });
+
+  function makeResult(strategy: VotingStrategy): ExtendedVotingResult {
+    const votes: AgentVoteResult[] = [
+      {
+        role: 'architect',
+        vote: { decision: 'approve', reasoning: 'ok', confidence: 0.9 },
+        processingTimeMs: 10,
+        source: 'llm',
+      },
+    ];
+    const higherOrderResult = {
+      decision: 'approve',
+      method: 'bayesian',
+      posteriorApproval: 0.8,
+      posteriorRejection: 0.2,
+      effectiveVoteCount: 1,
+      usedCorrelationData: false,
+      improvementOverBaseline: 0.1,
+      downweightedAgents: [],
+      reasoning: 'test',
+    } as unknown as NonNullable<ExtendedVotingResult['higherOrderResult']>;
+    return {
+      proposal: 'Test',
+      threshold: strategy,
+      result: createPolicyFailedResult('Test', strategy, 'x', votes),
+      votes,
+      totalTimeMs: 10,
+      simulateVotes: false,
+      strategy,
+      higherOrderResult,
+    };
+  }
+
+  const input = { proposal: 'Test', simulateVotes: false, quickMode: false };
+
+  it('opinion_wise surfaces higherOrderMetadata (the bug: it was silently skipped)', () => {
+    const r = buildResponse(input, makeResult('opinion_wise'));
+    expect(r.higherOrderMetadata).toBeDefined();
+    expect(r.higherOrderMetadata?.method).toBe('bayesian');
+  });
+
+  it('higher_order still surfaces higherOrderMetadata (regression guard)', () => {
+    expect(buildResponse(input, makeResult('higher_order')).higherOrderMetadata).toBeDefined();
+  });
+
+  it('simple_majority does NOT surface higherOrderMetadata', () => {
+    expect(buildResponse(input, makeResult('simple_majority')).higherOrderMetadata).toBeUndefined();
+  });
 });
 
 describe('buildResponse error counting (Issue #815)', () => {
