@@ -1,5 +1,120 @@
 # nexus-agents
 
+## 2.94.0
+
+### Minor Changes
+
+- [#3310](https://github.com/nexus-substrate/nexus-agents/pull/3310) [`6a1d954`](https://github.com/nexus-substrate/nexus-agents/commit/6a1d954b83b30a83b7c3ec76380516399afbe97f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(consensus): higher_order no longer fail-closes on a single voter error ([#3138](https://github.com/nexus-substrate/nexus-agents/issues/3138), [#3304](https://github.com/nexus-substrate/nexus-agents/issues/3304))
+
+  `getDefaultErrorPolicy` now returns `fail_closed` only for `unanimous` (where a
+  missing voter genuinely breaks the guarantee). `higher_order` and its
+  `opinion_wise` alias default to `reduce_denominator`: Bayesian/weighted
+  aggregation over the non-error voters is well-defined, so one voter's infra
+  timeout (e.g. the slow Security voter's adapter transport) no longer voids an
+  otherwise-unanimous result. The >50% `ERROR_FLOOR_FRACTION` hard floor still
+  voids any vote where most voters errored. Callers can still pass an explicit
+  `errorPolicy` override.
+
+- [#3322](https://github.com/nexus-substrate/nexus-agents/pull/3322) [`6a7bdb6`](https://github.com/nexus-substrate/nexus-agents/commit/6a7bdb6e09c778f78953d212b724b7677cbf175c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(observability): emit signal.swarm_unhealthy from adapter failovers ([#3321](https://github.com/nexus-substrate/nexus-agents/issues/3321))
+
+  Adds a second, higher-reliability `signal.swarm_unhealthy` producer alongside
+  the SwarmObserver-bottleneck poll ([#3223](https://github.com/nexus-substrate/nexus-agents/issues/3223)). `ResilientAdapter` emits
+  `adapter.failover` events on the collaboration bus whose payload carries the
+  exact `CliName` and health state on circuit-breaker trips / failovers. This
+  producer subscribes to that bus and re-emits `signal.swarm_unhealthy` on the
+  typed pipeline bus when an adapter degrades or becomes unavailable — directly
+  CLI-attributable, no `confidentCliSlot` guesswork. A per-CLI cooldown absorbs
+  breaker flapping. `api`-source and healthy events are ignored. The
+  shadow-by-default TuneStage consumes it; under `NEXUS_TUNE_ENFORCE` it applies a
+  bounded, decaying routing demotion. Bus direction is B→A, preserving the
+  observability/messaging boundary.
+
+- [#3318](https://github.com/nexus-substrate/nexus-agents/pull/3318) [`ece910f`](https://github.com/nexus-substrate/nexus-agents/commit/ece910f439d4846b8685330eaa22024fe4ebbb74) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(routing): resolve any model to a CliName slot so api-mode + new models are recorded ([#3317](https://github.com/nexus-substrate/nexus-agents/issues/3317), [#3293](https://github.com/nexus-substrate/nexus-agents/issues/3293))
+
+  `resolveCliFromModelString` returned undefined for any model not in the curated
+  `MODEL_IDS` list, and `recordOutcome` skips an undefined-cli outcome — so a
+  brand-new release (gpt-5.5, claude-4.8) or an API/openrouter model not yet in
+  the registry had its routing outcomes silently dropped, breaking LinUCB learning
+  and tune signals in api-mode. New `resolveCliSlot(model)` resolves known models
+  to their exact slot and falls back to a vendor-derived slot for unknown models
+  (anthropic→claude, openai→codex, google→gemini, others→opencode), so the
+  routing/outcome/tune pipeline records and learns regardless of CLI-vs-API
+  backing or model novelty. Additive — known models keep their exact slot.
+
+- [#3316](https://github.com/nexus-substrate/nexus-agents/pull/3316) [`e00b234`](https://github.com/nexus-substrate/nexus-agents/commit/e00b2348df250964269a691262847452bbca4d66) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(routing): CompositeRouter applies bounded tune demotions ([#3147](https://github.com/nexus-substrate/nexus-agents/issues/3147) keystone step 2)
+
+  The router now reads the TuneAdjustmentStore and folds each demoted CLI's
+  multiplier into TOPSIS stage scoring as an additive penalty (`-(1 - multiplier)
+  - 10`, consistent with the distilled penalize/-5 scale; bounded by the store's
+floor to ≈ -5 max). Gated by `NEXUS_TUNE_ENFORCE` — empty/no-op by default, so
+    zero behavior change until the Tune loop is switched on. Completes the read side
+    of the self-tuning loop; the TuneStage write/enforce path is the next step.
+
+- [#3320](https://github.com/nexus-substrate/nexus-agents/pull/3320) [`736b0b1`](https://github.com/nexus-substrate/nexus-agents/commit/736b0b18a8f8a1b4b35bb6f1a40034f6a1f03b00) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(observability): emit signal.swarm_unhealthy from SwarmObserver health ([#3223](https://github.com/nexus-substrate/nexus-agents/issues/3223))
+
+  Adds the final producer that makes the self-tuning loop fire end-to-end. A
+  server-lifecycle poll reads `SwarmObserver.getHealthMetrics()` and emits
+  `signal.swarm_unhealthy` onto the typed pipeline bus for CLI-attributable
+  severe (high/critical) bottlenecks. The (shadow-by-default) TuneStage consumes
+  it; under `NEXUS_TUNE_ENFORCE` it applies a bounded, decaying routing demotion.
+  Attribution is conservative — a bottleneck only signals when its agentId
+  confidently resolves to a canonical CLI slot (CLI-name literal or curated model
+  id); role names / trace ids are skipped (debug-logged), never mis-attributed to
+  the opencode catch-all. Closes the observability→routing gap ([#3223](https://github.com/nexus-substrate/nexus-agents/issues/3223)): rich swarm
+  health was previously write-only for dashboards.
+
+- [#3315](https://github.com/nexus-substrate/nexus-agents/pull/3315) [`0bd5fcd`](https://github.com/nexus-substrate/nexus-agents/commit/0bd5fcdffbb9914786a26d4f25761ade113c6625) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(core): bounded, time-decaying TuneAdjustmentStore for the self-tuning loop ([#3147](https://github.com/nexus-substrate/nexus-agents/issues/3147))
+
+  Adds the provenance-tagged routing-adjustment channel the closed-loop Tune stage
+  needs — separate from the LinUCB real-outcome channel (per the P2 ratifying-vote
+  dissent). Hard safety bounds: demotion-only (≤1.0), floored (never below 0.5 —
+  a CLI is never zeroed out by tuning), capped per step (≤0.2), and time-decaying
+  linearly back to 1.0 over 30min so a transient blip auto-reverses. The
+  CompositeRouter read (apply the multiplier in TOPSIS scoring) and the TuneStage
+  write (enforce path) land in the immediately-following PRs.
+
+- [#3319](https://github.com/nexus-substrate/nexus-agents/pull/3319) [`e5c2250`](https://github.com/nexus-substrate/nexus-agents/commit/e5c225027982ef4092f563140244e014f91828ce) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(tune): TuneStage applies bounded routing demotions when enforced ([#3147](https://github.com/nexus-substrate/nexus-agents/issues/3147))
+
+  Flips the TuneStage enforce path from a fail-closed no-op to a real bounded
+  mutation: on `signal.swarm_unhealthy` it calls `TuneAdjustmentStore.demote`
+  (demotion-only, floored, capped, time-decaying), audited via a structured log.
+  Gated by `NEXUS_TUNE_ENFORCE` — the SAME flag the router read uses, so the loop
+  is either fully live or fully shadow, never half-wired. Default off (shadow).
+  Non-routing signals (fitness_declined/vote_rejected) stay shadow even when
+  enforced — they belong to issue-filing/review paths, not routing. Closes the
+  self-tuning loop's write side end-to-end (store + router read + this write).
+
+### Patch Changes
+
+- [#3314](https://github.com/nexus-substrate/nexus-agents/pull/3314) [`9b42297`](https://github.com/nexus-substrate/nexus-agents/commit/9b4229791f741734567e8a9da5c1f4abd19f14bb) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - perf(routing): cache the per-CLI quality-reward scan ([#3261](https://github.com/nexus-substrate/nexus-agents/issues/3261))
+
+  `computeQualityReward` ran an O(N) `OutcomeStore.query({cli})` scan on every
+  `executeTask`; with persistence default-on the store grows, so this was a
+  per-task hot-path cost. The per-CLI success rate is now cached with a short TTL
+  (15s) — a smoothed historical signal tolerates that staleness. Adds
+  `resetQualityRewardCache()` for tests. (Verify-first note: persistence itself was
+  already enabled by default — `NEXUS_PERSIST_LEARNING` — so [#3261](https://github.com/nexus-substrate/nexus-agents/issues/3261)'s "no
+  persistence" premise was stale; the real cost was the uncached scan.)
+
+- [`458d639`](https://github.com/nexus-substrate/nexus-agents/commit/458d63983023e35c04cf30225ef8234fbdb67eee) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(consensus): cancel slow voters cleanly across CLI and API adapters ([#3304](https://github.com/nexus-substrate/nexus-agents/issues/3304))
+
+  Generalizes the [#3311](https://github.com/nexus-substrate/nexus-agents/issues/3311) vote-timeout fix to API-backed voters. The voter request
+  now also carries an `AbortSignal.timeout(timeoutMs)`: CLI adapters honor
+  `timeoutMs` (subprocess timeout) and `signal` ([#3026](https://github.com/nexus-substrate/nexus-agents/issues/3026) SIGTERM); API adapters
+  honor `signal` ([#3036](https://github.com/nexus-substrate/nexus-agents/issues/3036), aborts the in-flight SDK call). Previously the API-voter
+  path relied only on the outer `withTimeout` race, which bounded the wait but
+  left the API call running. Now both adapter types cancel at the vote budget —
+  CLI-vs-API parity.
+
+- [#3311](https://github.com/nexus-substrate/nexus-agents/pull/3311) [`421a433`](https://github.com/nexus-substrate/nexus-agents/commit/421a433b174d9c09f586168fec6e746aca911dc1) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(consensus): thread the vote budget into the voter's adapter call ([#3304](https://github.com/nexus-substrate/nexus-agents/issues/3304))
+
+  Adds an optional `timeoutMs` to `CompletionRequest`; `CliToModelAdapter.complete`
+  now uses `request.timeoutMs ?? defaultTimeoutMs`, and the voter passes its
+  per-vote budget (300s). Previously the adapter fell back to its shorter standard
+  CLI timeout (120-180s), which fired first on slow voters (e.g. the Security role
+  on complex proposals) and surfaced as an `MCP -32001` — dropping that voter.
+  Now the slow voter completes within the vote budget and its input is counted.
+
 ## 2.93.0
 
 ### Minor Changes
