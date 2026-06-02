@@ -12,20 +12,20 @@
 import { createLogger, getTimeProvider } from '../core/index.js';
 import type { BuiltInExpertType } from '../agents/experts/expert-config.js';
 import { isRateLimitText } from '../adapters/rate-limit-detector.js';
-import { getCliForModelId } from '../config/model-availability.js';
-import { MODEL_IDS } from '../config/model-capabilities-types.js';
-import type { CliNameLiteral, ModelId } from '../config/model-capabilities-types.js';
+import { resolveCliSlot } from '../config/model-availability.js';
+import type { CliNameLiteral } from '../config/model-capabilities-types.js';
 
 /**
- * Resolves a CLI from a possibly-unknown model string returned by a CLI
- * response. Returns undefined if the model string isn't in the registry —
- * caller treats undefined as "don't know which CLI ran" rather than
- * fabricating a default (#2823).
+ * Resolves a CLI slot from the model string a (CLI or API) adapter returned.
+ * Known models resolve to their exact slot; **unknown** models — new releases
+ * or API/openrouter models not in the curated registry — fall back to the
+ * vendor-derived slot (#3317 / #3293) so the outcome is recorded against a real
+ * slot instead of being dropped with an undefined cli (the api-mode gap).
+ * Returns undefined only when no model is present (the bridge failed before
+ * dispatch — no execution to attribute).
  */
 function resolveCliFromModelString(model: string | undefined): CliNameLiteral | undefined {
-  if (model === undefined) return undefined;
-  if (!(MODEL_IDS as readonly string[]).includes(model)) return undefined;
-  return getCliForModelId(model as ModelId);
+  return resolveCliSlot(model);
 }
 
 const logger = createLogger({ component: 'expert-bridge' });
