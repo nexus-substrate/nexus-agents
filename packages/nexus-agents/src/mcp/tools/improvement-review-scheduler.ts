@@ -46,8 +46,9 @@ let schedulerTimer: ReturnType<typeof setInterval> | undefined;
 /**
  * Start the scheduled `improvement_review` poll. Idempotent — repeated calls are
  * no-ops while active. Disabled (returns immediately) when the resolved interval
- * is non-positive. Caller must invoke `shutdownImprovementReviewScheduler()` on
- * server shutdown to release the timer.
+ * is non-positive. The first run fires after one full interval (not eagerly at
+ * start), so frequent server restarts don't trigger a burst of reviews. Caller
+ * must invoke `shutdownImprovementReviewScheduler()` on server shutdown.
  */
 export function startImprovementReviewScheduler(options?: ImprovementReviewSchedulerOptions): void {
   if (schedulerTimer !== undefined) return;
@@ -56,6 +57,11 @@ export function startImprovementReviewScheduler(options?: ImprovementReviewSched
   if (intervalMs <= 0) return; // disabled by default
   const fileIssues = options?.fileIssues ?? parseBoolEnv(FILE_ISSUES_ENV, false);
 
+  // Parse once at start (fileIssues is fixed for the scheduler's lifetime) — so
+  // a validation throw surfaces at startup, never mid-tick where it could wedge
+  // the `running` guard (#3229 QA).
+  const input = ImprovementReviewInputSchema.parse({ fileIssues });
+
   let running = false; // guard against overlapping runs (the review is async)
   schedulerTimer = setInterval(() => {
     if (running) {
@@ -63,7 +69,6 @@ export function startImprovementReviewScheduler(options?: ImprovementReviewSched
       return;
     }
     running = true;
-    const input = ImprovementReviewInputSchema.parse({ fileIssues });
     runImprovementReview(input, { logger })
       .then((result) => {
         logger.info('Scheduled improvement_review complete', {
