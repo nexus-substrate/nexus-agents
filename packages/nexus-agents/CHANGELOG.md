@@ -1,5 +1,65 @@
 # nexus-agents
 
+## 2.96.0
+
+### Minor Changes
+
+- [#3330](https://github.com/nexus-substrate/nexus-agents/pull/3330) [`7f0caa2`](https://github.com/nexus-substrate/nexus-agents/commit/7f0caa298745c3e74ff4643010257dd7fbf6d5fa) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(tune): enable the self-tuning routing loop by default ([#3323](https://github.com/nexus-substrate/nexus-agents/issues/3323))
+
+  **NOTABLE — behavior change.** `NEXUS_TUNE_ENFORCE` now defaults to **`true`**:
+  routing self-tunes by default. When a CLI's health degrades (SwarmObserver
+  bottleneck or adapter circuit-breaker failover emits `signal.swarm_unhealthy`),
+  the `CompositeRouter` applies a **bounded** demotion to that CLI's candidate
+  score.
+
+  The demotion is strictly safety-bounded so it is self-correcting, never a
+  ratchet: demotion-only (a CLI is slowed, never boosted), floored at `0.5` (never
+  zeroed — a sole-viable CLI is always still selectable), capped at `0.2` per step,
+  and time-decaying linearly back to neutral over 30 minutes. Every demotion is
+  recorded to the immutable audit log (`tune.demote`, verify via
+  `verify_audit_chain`).
+
+  **Opt out** with `NEXUS_TUNE_ENFORCE=false` to restore shadow mode (the loop logs
+  what it _would_ do and records the `intended` counter — visible in
+  `nexus-agents health` → "Self-Tuning Demotions" — but leaves routing untouched).
+
+  Completes epic [#3143](https://github.com/nexus-substrate/nexus-agents/issues/3143) (close the loop) / keystone [#3147](https://github.com/nexus-substrate/nexus-agents/issues/3147).
+
+- [#3331](https://github.com/nexus-substrate/nexus-agents/pull/3331) [`487dc7d`](https://github.com/nexus-substrate/nexus-agents/commit/487dc7d18d4a7babffb47219115bfddbf0657141) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(observability): scheduled improvement_review producer ([#3229](https://github.com/nexus-substrate/nexus-agents/issues/3229))
+
+  Adds an opt-in server-side scheduler that periodically runs `improvement_review`
+  so its `signal.fitness_declined` fires automatically, closing the
+  observability→action gap (a human previously had to invoke the tool by hand).
+  Mirrors the swarm-health-signals lifecycle (idempotent start + paired shutdown,
+  unref'd timer, errors swallowed, concurrency-guarded). **Disabled by default**
+  (`NEXUS_IMPROVEMENT_REVIEW_INTERVAL_MS=0`); a conservative 6h is suggested when
+  opting in. Auto-filing GitHub issues stays a SEPARATE opt-in
+  (`NEXUS_IMPROVEMENT_REVIEW_FILE_ISSUES`, default false) so the timer never spams
+  issues. Analysis-only by default.
+
+- [#3333](https://github.com/nexus-substrate/nexus-agents/pull/3333) [`ee78185`](https://github.com/nexus-substrate/nexus-agents/commit/ee78185d5c5c5b698731c95e6bc6152b8b8202c7) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(observability): surface self-eval findings as improvement_review signals ([#3224](https://github.com/nexus-substrate/nexus-agents/issues/3224))
+
+  Closes the gap where self-evaluation produced recommendations that never drove
+  any action. `improvement_review` gains an opt-in `selfEvalReportPath` input: when
+  set, it reads a `self-eval --json` report and converts **high-confidence,
+  unanimous** `deprecate`/`refactor` findings (confidence ≥ 0.8, no dissent) into
+  `tech-debt` signals that flow through the SAME deduped + rate-limited GitHub-issue
+  path as the other detectors. This is the safe, non-behavioral path: it surfaces a
+  human decision point (a candidate issue), never an automatic routing change.
+  Fail-soft — an absent/unreadable/malformed report yields no signals (logged), and
+  absent input leaves behavior unchanged.
+
+### Patch Changes
+
+- [#3335](https://github.com/nexus-substrate/nexus-agents/pull/3335) [`cdbbe79`](https://github.com/nexus-substrate/nexus-agents/commit/cdbbe79ce12874d2b5e181506b302de7d84c55aa) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - docs: align package metadata + READMEs with the governance-substrate positioning; fix stale counts
+
+  Accuracy/no-exaggeration pass over the publication surfaces:
+  - **package.json**: description reframed from "intelligent orchestration platform" to the actual "governance substrate" positioning (matches the README); added `governance`/`code-review`/`consensus`/`audit`/`codex`/`opencode` keywords; added `homepage` + `bugs`.
+  - **npm README** (`packages/nexus-agents/README.md`): governance-first tagline + overview; corrected "24 MCP tools" → 42 and "10 Expert types" → 12.
+  - **Root README**: removed the unverifiable "No other framework closes this loop" marketing line; documented the now-default bounded self-tuning loop (capped, auto-decaying, opt-out `NEXUS_TUNE_ENFORCE=false`); "11 built-in expert types" → 12.
+  - **consensus_vote schema**: `quickMode` description "3 agents instead of 5" → "instead of the full 7-role panel" (the panel is 7).
+  - **docs/ENTRYPOINTS.md**: `--quick` count fixes (→7); refreshed Last Updated. (Tool-table/YAML completeness tracked in [#3334](https://github.com/nexus-substrate/nexus-agents/issues/3334).)
+
 ## 2.95.0
 
 ### Minor Changes
