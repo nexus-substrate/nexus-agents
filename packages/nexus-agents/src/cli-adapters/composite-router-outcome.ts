@@ -8,6 +8,7 @@ import {
   createLogger,
   createSharedTaskAnalyzer,
   taskAnalysisResultToBanditContext,
+  getTimeProvider,
 } from '../core/index.js';
 import type { CliName, CliTask } from './types.js';
 import type { LinUCBBandit } from './linucb-bandit.js';
@@ -139,11 +140,51 @@ const QUALITY_HISTORY_LIMIT = 20;
 const MAX_LATENCY_MS = 30_000;
 
 /**
+ * TTL for the per-CLI success-rate cache (#3261). `computeQualityReward` runs
+ * on every `executeTask`, and `OutcomeStore.query({cli})` is an O(N) scan over
+ * the (now persistent, growing) store. The success rate is a smoothed historical
+ * signal, so a short TTL trades negligible freshness for avoiding the per-task
+ * scan. New outcomes are reflected within one TTL window.
+ */
+const QUALITY_RATE_CACHE_TTL_MS = 15_000;
+
+interface CachedRate {
+  readonly rate: number;
+  readonly computedAt: number;
+}
+
+const qualityRateCache = new Map<CliName, CachedRate>();
+
+/**
+ * Per-CLI success rate over the recent window, cached with a short TTL to avoid
+ * the O(N) OutcomeStore scan on every task. Returns undefined when there is no
+ * history (caller leaves the base reward unadjusted). (#3261)
+ */
+function getCachedCliSuccessRate(cli: CliName): number | undefined {
+  const now = getTimeProvider().now();
+  const cached = qualityRateCache.get(cli);
+  if (cached !== undefined && now - cached.computedAt < QUALITY_RATE_CACHE_TTL_MS) {
+    return cached.rate;
+  }
+  const recent = getOutcomeStore().query({ cli, limit: QUALITY_HISTORY_LIMIT });
+  if (recent.length === 0) return undefined;
+  const rate = recent.filter((o) => o.success).length / recent.length;
+  qualityRateCache.set(cli, { rate, computedAt: now });
+  return rate;
+}
+
+/** Clears the per-CLI success-rate cache. For tests (#3261). */
+export function resetQualityRewardCache(): void {
+  qualityRateCache.clear();
+}
+
+/**
  * Computes a quality-enriched reward using OutcomeStore history.
  *
  * Instead of binary 1/0 rewards, produces continuous rewards (0.1-0.8)
  * that incorporate historical success rate and latency. This enables
- * LinUCB to learn more nuanced model preferences.
+ * LinUCB to learn more nuanced model preferences. The per-CLI success rate
+ * is cached with a short TTL (#3261) so this stays O(1) on the hot path.
  *
  * @param cli - CLI that executed the task
  * @param success - Whether the task succeeded
@@ -156,9 +197,8 @@ export function computeQualityReward(cli: CliName, success: boolean, durationMs:
   let reward = 0.5;
 
   try {
-    const recent = getOutcomeStore().query({ cli, limit: QUALITY_HISTORY_LIMIT });
-    if (recent.length > 0) {
-      const rate = recent.filter((o) => o.success).length / recent.length;
+    const rate = getCachedCliSuccessRate(cli);
+    if (rate !== undefined) {
       reward += rate * 0.3;
     }
   } catch (error: unknown) {
