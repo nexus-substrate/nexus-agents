@@ -732,11 +732,12 @@ const TUNE_ENFORCE_ENV = 'NEXUS_TUNE_ENFORCE';
  * routing penalty consistent with the stage-score scale (distilled
  * penalize=-5, avoid=-10). A max demotion (multiplier 0.5) maps to ≈ -5; the
  * store guarantees the multiplier never drops below its floor, so the penalty
- * is bounded. Gated by `NEXUS_TUNE_ENFORCE` — empty map (no-op) when disabled.
+ * is bounded. Gated by `NEXUS_TUNE_ENFORCE` (default ON, #3323) — empty map
+ * (no-op) when opted out with `NEXUS_TUNE_ENFORCE=false`.
  */
 export function getTuneAdjustmentScores(candidates: readonly CliName[]): Map<CliName, number> {
   const scores = new Map<CliName, number>();
-  if (!parseBoolEnv(TUNE_ENFORCE_ENV, false)) return scores;
+  if (!parseBoolEnv(TUNE_ENFORCE_ENV, true)) return scores;
   const store = getTuneAdjustmentStore();
   for (const cli of candidates) {
     const multiplier = store.effectiveMultiplier(cli);

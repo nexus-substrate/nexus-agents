@@ -21,9 +21,16 @@ describe('getTuneAdjustmentScores (#3147 step 2)', () => {
     delete process.env['NEXUS_TUNE_ENFORCE'];
   });
 
-  it('is a no-op (empty map) when NEXUS_TUNE_ENFORCE is off — default', () => {
+  it('is a no-op (empty map) when opted out with NEXUS_TUNE_ENFORCE=false', () => {
+    process.env['NEXUS_TUNE_ENFORCE'] = 'false'; // explicit opt-out (default is ON, #3323)
     getTuneAdjustmentStore().demote('gemini', 0.2, 'unhealthy');
     expect(getTuneAdjustmentScores(CANDIDATES).size).toBe(0);
+  });
+
+  it('applies the penalty by DEFAULT now that the loop is enabled (#3323)', () => {
+    // No env set — default is ON.
+    getTuneAdjustmentStore().demote('gemini', 0.2, 'unhealthy'); // multiplier 0.8
+    expect(getTuneAdjustmentScores(CANDIDATES).get('gemini')).toBeCloseTo(-2, 5);
   });
 
   it('applies a bounded negative penalty for a demoted CLI when enforce is on', () => {
