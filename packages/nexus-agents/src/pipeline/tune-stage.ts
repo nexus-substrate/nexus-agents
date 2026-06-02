@@ -34,6 +34,9 @@ const TUNE_ENFORCE_ENV = 'NEXUS_TUNE_ENFORCE';
  */
 const TUNE_ENFORCE_DEMOTION = 0.15;
 
+/** Max length of the reason string written to the immutable audit log (#3323 QA). */
+const AUDIT_REASON_MAX = 512;
+
 /** Signal event types the TuneStage reacts to. */
 export const TUNE_SIGNAL_TYPES = [
   'signal.fitness_declined',
@@ -113,6 +116,13 @@ function auditDemotion(
   log: ILogger
 ): void {
   if (auditLogger === undefined || adjustment === undefined) return;
+  // Bound the reason entering the immutable chain — a producer reason can embed
+  // provider-returned `lastError` text of unbounded length (#3321). Cap it so a
+  // pathological error string can't bloat the append-only audit log (#3323 QA).
+  const reason =
+    adjustment.reason.length > AUDIT_REASON_MAX
+      ? adjustment.reason.slice(0, AUDIT_REASON_MAX)
+      : adjustment.reason;
   try {
     auditLogger.log({
       category: 'configuration',
@@ -125,7 +135,7 @@ function auditDemotion(
         cli: agentId,
         magnitude: TUNE_ENFORCE_DEMOTION,
         multiplier: adjustment.multiplier,
-        reason: adjustment.reason,
+        reason,
         provenance: 'signal.swarm_unhealthy',
         appliedAt: adjustment.appliedAt,
       },

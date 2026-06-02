@@ -143,6 +143,25 @@ describe('createTuneStage shadow mode (#3147)', () => {
     resetTuneAdjustmentStore();
   });
 
+  it('caps an over-long reason entering the audit log (#3323 QA — provider error bloat)', () => {
+    resetTuneAdjustmentStore();
+    const bus = new EventBus();
+    const auditLog = vi.fn();
+    createTuneStage(bus, { enabled: true, auditLogger: { log: auditLog } });
+
+    bus.emit({
+      type: 'signal.swarm_unhealthy',
+      timestamp: 7,
+      agentId: 'codex',
+      reason: 'x'.repeat(5000), // simulate an unbounded provider lastError
+    });
+
+    expect(auditLog).toHaveBeenCalledTimes(1);
+    const record = auditLog.mock.calls[0]?.[0] as { metadata: { reason: string } };
+    expect(record.metadata.reason.length).toBeLessThanOrEqual(512);
+    resetTuneAdjustmentStore();
+  });
+
   it('does NOT write an audit record for non-routing signals or in shadow mode (#3323)', () => {
     resetTuneAdjustmentStore();
     const auditLog = vi.fn();
