@@ -50,10 +50,46 @@ narrow and typed.
 The self-tuning loop routes its signals through bus A as typed events:
 
 - `signal.fitness_declined` — emitted when a fitness score falls below floor.
-- `signal.swarm_unhealthy` — emitted when an agent/CLI's health degrades.
+- `signal.swarm_unhealthy` — emitted when an agent/CLI's health degrades, from
+  two producers: the SwarmObserver bottleneck poll
+  (`observability/swarm-health-signals.ts`, #3223) and adapter circuit-breaker
+  failovers (`observability/failover-signals.ts`, #3321, which carry the exact
+  `CliName`).
 - `signal.vote_rejected` — emitted from the `consensus_vote` MCP handler when a
   vote resolves to `rejected` (see `mcp/tools/consensus-vote-signals.ts`).
 
-The shadow `TuneStage` (`pipeline/tune-stage.ts`) subscribes to these and logs
-the bounded action each implies. It is wired at server init
-(`cli-server-tools.ts`) and released at shutdown (`cli-server.ts`).
+The `TuneStage` (`pipeline/tune-stage.ts`) subscribes to these. It is wired at
+server init (`cli-server-tools.ts`) and released at shutdown (`cli-server.ts`).
+
+## The self-tuning loop (#3143)
+
+The loop closes `signal → tune → route` end-to-end, gated by the single
+`NEXUS_TUNE_ENFORCE` flag (default off):
+
+```
+producers ──signal.swarm_unhealthy──▶ TuneStage ──demote──▶ TuneAdjustmentStore ──penalty──▶ CompositeRouter
+(swarm health,                        (consumer)            (bounded, decaying)             (reads multiplier
+ adapter failover)                                                                           into candidate score)
+```
+
+- **Shadow (default, `NEXUS_TUNE_ENFORCE` unset/false):** the `TuneStage` logs
+  the demotion it _would_ apply and records it to the `intended` counter
+  (`TuneAdjustmentStore.recordIntended` — counter only, **routing untouched**).
+  Observe via `nexus-agents health` → "Self-Tuning Demotions" (`applied` vs
+  `intended` per CLI). Non-routing signals (`fitness_declined`, `vote_rejected`)
+  always stay shadow-logged.
+- **Enforce (`NEXUS_TUNE_ENFORCE=true`):** a `signal.swarm_unhealthy` applies a
+  bounded demotion via `TuneAdjustmentStore.demote`; the `CompositeRouter` reads
+  `effectiveMultiplier` as an additive scoring penalty. The same flag gates both
+  the write and the read, so the loop is **fully live or fully shadow, never
+  half-wired**. Each demotion is appended to the immutable audit log as
+  `tune.demote` (`verify_audit_chain`).
+
+**Bounded-safety invariants** (in `core/tune-adjustment-store.ts`) — the loop is
+self-correcting, never a ratchet: demotion-only (slow a CLI, never boost it);
+floored at `0.5` (never zeroed — a sole-viable CLI stays selectable); capped at
+`0.2` per step; time-decaying linearly back to neutral over 30 minutes (a
+transient blip auto-reverses). This is a **separate** channel from the LinUCB
+real-outcome bandit (per the #3147 ratifying-vote dissent). Operator control is
+the single `NEXUS_TUNE_ENFORCE` flag; see
+[CONFIGURATION.md](../getting-started/CONFIGURATION.md#learning--memory-variables).
