@@ -4,9 +4,17 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import type { ILogger } from '../core/index.js';
+import { getTuneAdjustmentStore, resetTuneAdjustmentStore } from '../core/index.js';
 import { EventBus } from './event-bus.js';
 import type { PipelineEvent } from './event-types.js';
 import { createTuneStage, intendedActionFor } from './tune-stage.js';
+
+const swarmSignal: PipelineEvent = {
+  type: 'signal.swarm_unhealthy',
+  timestamp: 3,
+  agentId: 'gemini',
+  reason: 'repeated timeouts',
+};
 
 function spyLogger(): ILogger {
   return {
@@ -80,16 +88,51 @@ describe('createTuneStage shadow mode (#3147)', () => {
     expect(logger.info).not.toHaveBeenCalled();
   });
 
-  it('enabled=true fails closed (logs no-op, does NOT mutate) — PR-4 not implemented', () => {
+  it('enabled=true applies a bounded routing demotion on swarm_unhealthy (#3147)', () => {
+    resetTuneAdjustmentStore();
+    const bus = new EventBus();
+    const logger = spyLogger();
+    createTuneStage(bus, { logger, enabled: true });
+
+    expect(getTuneAdjustmentStore().effectiveMultiplier('gemini')).toBe(1.0); // baseline
+    bus.emit(swarmSignal);
+
+    // store mutated: gemini demoted (multiplier < 1.0, floored/capped by the store)
+    expect(getTuneAdjustmentStore().effectiveMultiplier('gemini')).toBeLessThan(1.0);
+    expect(logger.info).toHaveBeenCalledWith(
+      'TuneStage (enforce) — applied bounded routing demotion',
+      expect.objectContaining({ agentId: 'gemini', signal: 'signal.swarm_unhealthy' })
+    );
+    resetTuneAdjustmentStore();
+  });
+
+  it('enabled=true does NOT mutate routing for non-routing signals (vote_rejected stays shadow)', () => {
+    resetTuneAdjustmentStore();
     const bus = new EventBus();
     const logger = spyLogger();
     createTuneStage(bus, { logger, enabled: true });
     bus.emit(voteSignal);
-    expect(logger.warn).toHaveBeenCalledWith(
-      'TuneStage enabled but bounded mutation is not implemented yet; no-op',
+    expect(logger.info).toHaveBeenCalledWith(
+      'TuneStage (enforce) — non-routing action, shadow-only',
       expect.objectContaining({ kind: 'record_rejection' })
     );
-    expect(logger.info).not.toHaveBeenCalled();
+    // no routing mutation from a non-routing signal
+    expect(getTuneAdjustmentStore().list()).toHaveLength(0);
+    resetTuneAdjustmentStore();
+  });
+
+  it('disabled (shadow) does NOT mutate routing even on swarm_unhealthy', () => {
+    resetTuneAdjustmentStore();
+    const bus = new EventBus();
+    const logger = spyLogger();
+    createTuneStage(bus, { logger }); // enabled defaults false
+    bus.emit(swarmSignal);
+    expect(getTuneAdjustmentStore().effectiveMultiplier('gemini')).toBe(1.0);
+    expect(logger.info).toHaveBeenCalledWith(
+      'TuneStage (shadow) — intended action',
+      expect.objectContaining({ kind: 'downweight_agent' })
+    );
+    resetTuneAdjustmentStore();
   });
 
   it('unsubscribe stops the stage', () => {
