@@ -180,6 +180,7 @@ All configuration can be overridden with environment variables:
 | `NEXUS_GITIGNORE_AUTO`           | `0` silences the auto-append of `.nexus-agents/` to the repo's `.gitignore`                                                                   | `1`                       |
 | `NEXUS_NO_SCAFFOLD`              | `1` disables scaffolding of missing `docs/` registry files on read                                                                            | unset                     |
 | `NEXUS_CONTEXT_RETRIEVER_INJECT` | Inject `priorMemorySummary` from `ContextRetriever` into `orchestrate` inputs (#2792, #2921)                                                  | `0`                       |
+| `NEXUS_VERSION_CHECK`            | Startup warning if the build lags the latest published version (#3283); one npm-registry call. `0` disables; skips dev + CI                   | `1`                       |
 
 ### Model Provider Keys
 
