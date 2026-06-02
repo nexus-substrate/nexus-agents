@@ -61,6 +61,14 @@ export {
 } from './swarm-health-signals.js';
 export type { SwarmHealthSignalsOptions } from './swarm-health-signals.js';
 
+// Adapter-failover → pipeline-bus signal producer (#3321)
+export {
+  startFailoverSignals,
+  shutdownFailoverSignals,
+  unhealthyCliFrom,
+} from './failover-signals.js';
+export type { FailoverSignalsOptions } from './failover-signals.js';
+
 // Dashboard Types
 export type {
   DashboardFormat,
