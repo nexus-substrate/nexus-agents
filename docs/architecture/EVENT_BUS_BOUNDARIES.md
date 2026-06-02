@@ -64,7 +64,7 @@ server init (`cli-server-tools.ts`) and released at shutdown (`cli-server.ts`).
 ## The self-tuning loop (#3143)
 
 The loop closes `signal → tune → route` end-to-end, gated by the single
-`NEXUS_TUNE_ENFORCE` flag (default **on** since v2.95; opt out with
+`NEXUS_TUNE_ENFORCE` flag (default **on** since v2.96; opt out with
 `NEXUS_TUNE_ENFORCE=false`):
 
 ```
