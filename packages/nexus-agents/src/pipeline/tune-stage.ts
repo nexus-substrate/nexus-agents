@@ -3,12 +3,14 @@
  *
  * Subscribes to the `signal.*` `PipelineEvent`s emitted by push-only producers
  * (fitness audit, swarm health, consensus) and computes the BOUNDED tuning
- * action each signal implies. It ships **shadow/dry-run first**: it only LOGS
- * the intended action and mutates nothing. Actual parameter mutation (e.g.
- * routing downweights) is a separate, human-gated step (#3147 PR-4) and must
- * NOT reuse the LinUCB real-outcome channel (per the ratifying-vote dissent) —
- * it needs a provenance-tagged mechanism, which is why this stage is dry-run
- * only for now.
+ * action each signal implies. **Shadow by default**: it logs the intended
+ * action and mutates nothing. When `NEXUS_TUNE_ENFORCE` is set (#3147), a
+ * `signal.swarm_unhealthy` applies a bounded routing demotion via the
+ * provenance-tagged `TuneAdjustmentStore` (demotion-only, floored, capped,
+ * time-decaying — never the LinUCB real-outcome channel, per the ratifying-vote
+ * dissent) and records a tamper-evident `tune.demote` audit entry (#3323). The
+ * router reads the store behind the same flag, so the loop is fully live or
+ * fully shadow. Non-routing signals (fitness/vote) stay shadow-logged.
  *
  * Mirrors the proven `feedback-subscriber` pattern: a single `subscribe` over
  * a typed filter, errors caught and logged, an `Unsubscribe` returned.
@@ -56,10 +58,11 @@ export interface IntendedTuneAction {
 
 export interface TuneStageOptions {
   /**
-   * When false (default), the stage is in SHADOW/dry-run mode: it logs the
-   * intended action and mutates nothing. `true` is reserved for the
-   * human-gated mutation path (#3147 PR-4), which is not implemented yet — so
-   * enabled mode currently fails closed (logs and no-ops) rather than acting.
+   * When false (default), the stage is in SHADOW mode: it logs the intended
+   * action and mutates nothing. When true, a `signal.swarm_unhealthy` applies a
+   * bounded routing demotion via the `TuneAdjustmentStore` (and audits it);
+   * non-routing signals remain shadow-logged. Defaults from `NEXUS_TUNE_ENFORCE`
+   * in `startTuneStage`; explicit values (tests) override the flag.
    */
   readonly enabled?: boolean;
   /** Injectable logger (defaults to the module logger). */
