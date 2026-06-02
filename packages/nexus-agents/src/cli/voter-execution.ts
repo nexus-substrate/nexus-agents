@@ -253,6 +253,10 @@ export async function executeSingleVoteAttempt(
     // refine per use case if needed.
     maxTokens: 2000,
     temperature: 0.3, // Low temperature for consistent evaluations
+    // Thread the vote's budget into the adapter so its shorter standard CLI
+    // timeout doesn't fire first and surface as an MCP -32001 on slow voters
+    // (e.g. the Security role on complex proposals) (#3304).
+    timeoutMs,
   };
 
   const timeoutResult = await withTimeout(
