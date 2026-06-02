@@ -352,6 +352,10 @@ nexus-agents hooks stop --check-tasks
 | `survey_oss_landscape`        | Transient OSS project search (license, stars, last-commit) via GitHub                                          | None (local) | Shared bucket |
 | `vendor_publishing_audit`     | Look up a vendor's signing infrastructure (GPG keys, URL patterns)                                             | None (local) | Shared bucket |
 | `improvement_review`          | Threshold-gated observability loop — surfaces routing/tech-debt/bug/security signals from outcome+fitness data | None (local) | Shared bucket |
+| `get_job_result`              | Read result of an async-mode dispatch by jobId                                                                 | None (local) | Shared bucket |
+| `list_jobs`                   | List async-mode jobs across all tools — cross-session discovery                                                | None (local) | Shared bucket |
+| `cancel_job`                  | Mark an async-mode job as cancelled (idempotent)                                                               | None (local) | Shared bucket |
+| `ci_health_check`             | CI infrastructure health — GitHub status + recent-runs activity                                                | None (local) | Shared bucket |
 
 **Rate limiting:** All tools share a single token bucket rate limiter (capacity: 100 tokens, refill: 10 tokens/sec). Each tool call consumes one token.
 
