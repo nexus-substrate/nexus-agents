@@ -7,7 +7,7 @@ keywords: [entrypoints, cli, mcp, api, tools, commands, reference]
 
 # Nexus-Agents Entrypoints
 
-**Last Updated:** 2026-05-12 (ET)
+**Last Updated:** 2026-06-02 (ET)
 **Canonical Source:** This document is the single source of truth for all entrypoints.
 **Issue:** #210 (Epic #209)
 
@@ -137,7 +137,7 @@ Options available for all commands:
 | `-p`, `--proposal`  | string  | required   | Proposal text to vote on                            |
 | `-t`, `--threshold` | enum    | `majority` | Threshold: `majority`, `supermajority`, `unanimous` |
 | `--timeout`         | number  | `90`       | Timeout per vote in seconds                         |
-| `--quick`           | boolean | `false`    | Use 3 agents instead of 6                           |
+| `--quick`           | boolean | `false`    | Use 3 agents instead of 7                           |
 | `--dry-run`         | boolean | `false`    | Simulate votes without agent execution              |
 
 #### review
@@ -518,7 +518,7 @@ nexus-agents hooks stop --check-tasks
       "quickMode": {
         "type": "boolean",
         "default": false,
-        "description": "Use 3 agents instead of 5"
+        "description": "Use 3 agents instead of the full 7-role panel"
       },
       "simulateVotes": {
         "type": "boolean",
