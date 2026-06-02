@@ -1,5 +1,44 @@
 # nexus-agents
 
+## 2.95.0
+
+### Minor Changes
+
+- [#3325](https://github.com/nexus-substrate/nexus-agents/pull/3325) [`cc96ef9`](https://github.com/nexus-substrate/nexus-agents/commit/cc96ef95e4c1379d8976506c62eca07e5995f9ed) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(tune): durable audit trail for self-tuning routing demotions ([#3323](https://github.com/nexus-substrate/nexus-agents/issues/3323))
+
+  Each enforced routing demotion now appends a tamper-evident `tune.demote` record
+  to the immutable AuditLogger (category `configuration`, queryable via
+  `verify_audit_chain`), in addition to the structured log. The record carries the
+  CLI, magnitude, resulting multiplier, reason, provenance, and timestamp. The
+  audit sink is optional/injectable (omitted in shadow/unit contexts) and wired
+  from the server through `initV2PipelineSubsystems` → `startTuneStage`. Audit
+  failures never break the tune path. Satisfies a default-on exit criterion for
+  the self-tuning loop ([#3323](https://github.com/nexus-substrate/nexus-agents/issues/3323)): a default-on auto-mutating router must leave an
+  auditable trail.
+
+- [#3328](https://github.com/nexus-substrate/nexus-agents/pull/3328) [`a4467a2`](https://github.com/nexus-substrate/nexus-agents/commit/a4467a2b872ca1e8789113ebf6a62e10fc9c1f4f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(tune): shadow-soak demotion telemetry for the self-tuning loop ([#3323](https://github.com/nexus-substrate/nexus-agents/issues/3323))
+
+  Adds inspectable per-CLI demotion counters to `TuneAdjustmentStore` — `applied`
+  (demotions that biased routing in enforce mode) and `intended` (demotions the
+  loop WOULD have applied while shadow). The new `recordIntended()` increments the
+  shadow counter WITHOUT touching routing, so an operator can observe what enabling
+  the loop would do during a soak while `effectiveMultiplier` stays 1.0. Counters
+  survive decay/eviction (bounded by CLI cardinality; reason capped at 512 chars).
+  TuneStage records intended demotions in shadow mode; the `health` command now
+  surfaces a "Self-Tuning Demotions" section (table + JSON). A default-on exit
+  criterion for [#3323](https://github.com/nexus-substrate/nexus-agents/issues/3323).
+
+### Patch Changes
+
+- [#3329](https://github.com/nexus-substrate/nexus-agents/pull/3329) [`a248429`](https://github.com/nexus-substrate/nexus-agents/commit/a248429411470c28928e99f13cecbe699ca95f9f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - docs(tune): document the self-tuning loop and NEXUS_TUNE_ENFORCE ([#3323](https://github.com/nexus-substrate/nexus-agents/issues/3323))
+
+  Adds a `NEXUS_TUNE_ENFORCE` entry to CONFIGURATION.md (shadow default vs enforce,
+  the bounded-safety invariants, the `health` "Self-Tuning Demotions" telemetry,
+  and the opt-out) and a "The self-tuning loop ([#3143](https://github.com/nexus-substrate/nexus-agents/issues/3143))" architecture section in
+  EVENT_BUS_BOUNDARIES.md (producers → TuneStage → store → router, end-to-end,
+  replacing the stale shadow-only description). The last default-on exit criterion
+  from [#3323](https://github.com/nexus-substrate/nexus-agents/issues/3323).
+
 ## 2.94.0
 
 ### Minor Changes
