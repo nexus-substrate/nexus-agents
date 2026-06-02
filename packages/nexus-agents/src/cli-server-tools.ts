@@ -74,7 +74,11 @@ import { getPipelineEventBus } from './pipeline/event-bus.js';
 import { createEventBusBridge } from './pipeline/event-bus-bridge.js';
 import { startFeedbackSubscriber } from './pipeline/feedback-subscriber.js';
 import { startTuneStage } from './pipeline/tune-stage.js';
-import { getSwarmObserver, startSwarmHealthSignals } from './observability/index.js';
+import {
+  getSwarmObserver,
+  startSwarmHealthSignals,
+  startFailoverSignals,
+} from './observability/index.js';
 import { getOutcomeStore } from './orchestration/outcomes/index.js';
 import { createDefaultPolicyEngine } from './pipeline/policy-engine.js';
 import { resolveV2Config } from './pipeline/v2-config.js';
@@ -626,6 +630,10 @@ function initV2PipelineSubsystems(logger: ILogger): void {
   // (#3223). Paired with shutdownSwarmHealthSignals() in
   // cli-server.ts:createShutdownCleanup.
   startSwarmHealthSignals(getSwarmObserver(), pipelineEventBus);
+  // Second, higher-reliability producer: re-emit adapter.failover events (which
+  // carry the exact CliName) from bus B as signal.swarm_unhealthy on bus A
+  // (#3321). Paired with shutdownFailoverSignals() in cli-server.ts.
+  startFailoverSignals({ pipelineBus: pipelineEventBus });
   const policyEngine = createDefaultPolicyEngine();
   const v2Config = resolveV2Config();
   logger.info('V2 Pipeline OS initialized', {
