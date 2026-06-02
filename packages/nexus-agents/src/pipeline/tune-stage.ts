@@ -16,11 +16,22 @@
  * @module pipeline/tune-stage
  */
 
-import { createLogger, getErrorMessage } from '../core/index.js';
+import { createLogger, getErrorMessage, getTuneAdjustmentStore } from '../core/index.js';
 import type { ILogger } from '../core/index.js';
+import { parseBoolEnv } from '../config/defaults-env.js';
 import type { PipelineEvent, IEventBus, Unsubscribe } from './event-types.js';
 
 const defaultLogger = createLogger({ component: 'TuneStage' });
+
+/** Env flag gating real enforcement (shared with the router read, #3147). */
+const TUNE_ENFORCE_ENV = 'NEXUS_TUNE_ENFORCE';
+
+/**
+ * Demotion magnitude applied per `swarm_unhealthy` signal. Kept under the
+ * store's per-step cap (`TUNE_MAX_STEP`); the store also floors and time-decays
+ * it, so repeated unhealthy signals slow a CLI down gradually and reversibly.
+ */
+const TUNE_ENFORCE_DEMOTION = 0.15;
 
 /** Signal event types the TuneStage reacts to. */
 export const TUNE_SIGNAL_TYPES = [
@@ -93,10 +104,32 @@ export function createTuneStage(bus: IEventBus, options: TuneStageOptions = {}):
       const action = intendedActionFor(event);
       if (action === undefined) return;
       if (enabled) {
-        // #3147 PR-4 (human-gated) not implemented — fail closed, never mutate.
-        log.warn('TuneStage enabled but bounded mutation is not implemented yet; no-op', {
+        if (event.type === 'signal.swarm_unhealthy') {
+          // Bounded auto-enforce (#3147): apply a routing demotion via the
+          // TuneAdjustmentStore, which guarantees demotion-only, floored,
+          // capped, and time-decaying (auto-reversible). The router reads this
+          // (behind the same flag) as a scoring penalty. Audited via this log.
+          const adjustment = getTuneAdjustmentStore().demote(
+            event.agentId,
+            TUNE_ENFORCE_DEMOTION,
+            `swarm_unhealthy: ${event.reason}`
+          );
+          log.info('TuneStage (enforce) — applied bounded routing demotion', {
+            kind: action.kind,
+            signal: action.signal,
+            agentId: event.agentId,
+            reason: event.reason,
+            multiplier: adjustment?.multiplier,
+          });
+          return;
+        }
+        // Other signals' actions (flag_tech_debt / record_rejection) are not
+        // routing mutations — they belong to issue-filing / review paths, not
+        // the TuneAdjustmentStore. Keep shadow-logging until those land.
+        log.info('TuneStage (enforce) — non-routing action, shadow-only', {
           kind: action.kind,
           signal: action.signal,
+          detail: action.detail,
         });
         return;
       }
@@ -127,7 +160,11 @@ let cachedTuneUnsubscribe: Unsubscribe | null = null;
  */
 export function startTuneStage(bus: IEventBus, options?: TuneStageOptions): void {
   if (cachedTuneUnsubscribe !== null) return;
-  cachedTuneUnsubscribe = createTuneStage(bus, options);
+  // Enforcement is gated by the same flag the router read uses, so the loop is
+  // either fully live or fully shadow — never half-wired. Explicit options
+  // (tests) override the flag. Default off → shadow (#3147).
+  const enabled = options?.enabled ?? parseBoolEnv(TUNE_ENFORCE_ENV, false);
+  cachedTuneUnsubscribe = createTuneStage(bus, { ...options, enabled });
 }
 
 /** Release the server-wide TuneStage subscription. Idempotent. */
