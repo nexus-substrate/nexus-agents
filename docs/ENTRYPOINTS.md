@@ -1328,7 +1328,7 @@ cli_commands:
 
 ```yaml
 mcp_tools:
-  rate_limiting: shared token bucket (capacity: 100, refill: 10/sec)
+  rate_limiting: 'shared token bucket (capacity: 100, refill: 10/sec)'
   tools:
     - name: orchestrate
       auth: none
