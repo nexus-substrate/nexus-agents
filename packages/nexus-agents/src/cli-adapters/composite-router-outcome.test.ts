@@ -15,6 +15,7 @@ import {
   recordZeroRouterOutcome,
   hasMinimumPreferenceData,
   computeQualityReward,
+  resetQualityRewardCache,
   type LastRoutedTaskInfo,
   type OutcomeDependencies,
 } from './composite-router-outcome.js';
@@ -338,6 +339,7 @@ describe('composite-router-outcome', () => {
   describe('computeQualityReward (Issue #929)', () => {
     beforeEach(() => {
       resetOutcomeStore();
+      resetQualityRewardCache();
     });
 
     it('returns 0.1 for failure regardless of history', () => {
@@ -378,6 +380,46 @@ describe('composite-router-outcome', () => {
     it('clamps reward to [0, 1] range', () => {
       expect(computeQualityReward('codex', true, 100_000)).toBeGreaterThanOrEqual(0);
       expect(computeQualityReward('codex', true, 0)).toBeLessThanOrEqual(1);
+    });
+
+    it('caches the per-CLI success rate — avoids re-scanning the store every call (#3261)', () => {
+      const store = getOutcomeStore();
+      for (let i = 0; i < 10; i++) {
+        store.append({
+          id: `c-${String(i)}`,
+          cli: 'claude',
+          category: 'code_generation',
+          model: 'claude-opus',
+          success: true,
+          durationMs: 500,
+          timestamp: new Date().toISOString(),
+          source: 'delegate',
+        });
+      }
+      const querySpy = vi.spyOn(store, 'query');
+      computeQualityReward('claude', true, 0); // miss → scans once
+      computeQualityReward('claude', true, 0); // hit → no scan
+      computeQualityReward('claude', true, 0); // hit → no scan
+      expect(querySpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('reset clears the cache so a fresh store is re-scanned (#3261)', () => {
+      const store = getOutcomeStore();
+      store.append({
+        id: 'r-1',
+        cli: 'claude',
+        category: 'code_generation',
+        model: 'claude-opus',
+        success: true,
+        durationMs: 500,
+        timestamp: new Date().toISOString(),
+        source: 'delegate',
+      });
+      const high = computeQualityReward('claude', true, 0); // rate 1.0 → 0.8
+      resetOutcomeStore();
+      resetQualityRewardCache();
+      const base = computeQualityReward('claude', true, 0); // no history → 0.5 base
+      expect(high).toBeGreaterThan(base);
     });
   });
 
