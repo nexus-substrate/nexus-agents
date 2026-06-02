@@ -146,7 +146,7 @@ describe('end-to-end: declined fitness → signal → shadow TuneStage (#3147)',
   it('a below-floor audit emitted on the typed bus is consumed by the wired TuneStage', () => {
     const bus = new EventBus();
     const tuneLogger = spyLogger();
-    startTuneStage(bus, { logger: tuneLogger });
+    startTuneStage(bus, { logger: tuneLogger, enabled: false }); // shadow (default is now enforce, #3323)
 
     emitFitnessDeclinedSignal(audit(62, [finding('determinism', 10)]), 90, bus, spyLogger());
 
