@@ -6,7 +6,11 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createLogger } from '../../core/index.js';
+import {
+  createLogger,
+  getTuneAdjustmentStore,
+  resetTuneAdjustmentStore,
+} from '../../core/index.js';
 import { detectSelfEvalSignals, loadSelfEvalSignals } from './improvement-review.js';
 
 const logger = createLogger({ component: 'test' });
@@ -72,6 +76,16 @@ describe('detectSelfEvalSignals (#3224)', () => {
   it('ignores low-confidence findings (below the 0.8 floor)', () => {
     const signals = detectSelfEvalSignals({ results: [result({ confidence: 0.7 })] }, '7d');
     expect(signals).toHaveLength(0);
+  });
+
+  it('is non-behavioral — surfacing a finding never touches routing (#3224 core guarantee)', () => {
+    resetTuneAdjustmentStore();
+    detectSelfEvalSignals({ results: [result({ finalRecommendation: 'deprecate' })] }, '7d');
+    // The whole point of #3224's safe path: self-eval surfaces a human decision
+    // point (an issue), it must NOT auto-demote any CLI in routing.
+    expect(getTuneAdjustmentStore().demotionStats()).toHaveLength(0);
+    expect(getTuneAdjustmentStore().list()).toHaveLength(0);
+    resetTuneAdjustmentStore();
   });
 });
 

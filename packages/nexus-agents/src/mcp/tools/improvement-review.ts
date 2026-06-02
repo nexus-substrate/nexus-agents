@@ -399,13 +399,17 @@ export async function loadSelfEvalSignals(
  */
 async function existingIssueForSignal(signalKey: string): Promise<string | null> {
   try {
+    // Strip double-quotes from the search term so a quote in the signalKey
+    // (e.g. an oddly-named self-eval component path, #3224) can't break the
+    // `"..." in:body` phrase query and silently defeat dedup → refiling.
+    const searchTerm = signalKey.replace(/"/g, '');
     const { stdout } = await execFileAsync('gh', [
       'issue',
       'list',
       '--state',
       'open',
       '--search',
-      `"${signalKey}" in:body`,
+      `"${searchTerm}" in:body`,
       '--json',
       'number,url',
       '--limit',
