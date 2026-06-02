@@ -39,6 +39,7 @@ import { buildInTreeEntries } from './in-tree-entries.js';
 import { loadManifestOverlay } from './manifest-overlay.js';
 import { DEFAULT_ENTRY, deriveEntry } from './model-derivation.js';
 import { loadModelsDevSnapshot } from './models-dev-snapshot-loader.js';
+import { loadGeneratedRegistryEntries } from './models-generated-loader.js';
 import type {
   InputModality,
   OutputModality,
@@ -75,7 +76,7 @@ export type PromptCachingMode = 'none' | 'ephemeral' | 'aggressive';
  * Where this entry came from. Higher-priority sources override lower
  * ones field-by-field; `derived` is always the fallback floor.
  */
-export type EntrySource = 'in-tree' | 'models-dev' | 'manifest' | 'derived';
+export type EntrySource = 'in-tree' | 'models-dev' | 'manifest' | 'derived' | 'generated';
 
 /**
  * One model's full metadata. Combines what was previously split
@@ -158,6 +159,13 @@ export interface ModelRegistryOptions {
   readonly modelsDevEntries?: readonly ModelEntry[];
   /** Operator manifest entries. Higher priority than in-tree. */
   readonly manifestEntries?: readonly ModelEntry[];
+  /**
+   * Broad generated-catalog (LiteLLM) breadth entries. LOWEST priority —
+   * overwritten by every other tier; provides long-tail coverage so unknown
+   * models resolve to real catalog data instead of a bare derived default
+   * (#3293, preserving the legacy CapabilityDiscovery T2 breadth).
+   */
+  readonly generatedEntries?: readonly ModelEntry[];
 }
 
 /**
@@ -170,6 +178,9 @@ export class ModelRegistry {
 
   constructor(options: ModelRegistryOptions = {}) {
     // Load order: lowest priority first; later sources overwrite.
+    if (options.generatedEntries !== undefined) {
+      this.loadEntries(options.generatedEntries);
+    }
     if (options.modelsDevEntries !== undefined) {
       this.loadEntries(options.modelsDevEntries);
     }
@@ -187,7 +198,12 @@ export class ModelRegistry {
    */
   getEntry(modelId: string, hints?: ModelHints): ModelEntry {
     const direct = this.lookupExact(modelId);
-    if (direct !== undefined && direct.source !== 'models-dev') return direct;
+    // 'models-dev' and 'generated' are catalog breadth tiers: merge their data
+    // with derivation rather than returning blindly (in-tree/manifest are
+    // authoritative and return directly). (#3293)
+    if (direct !== undefined && direct.source !== 'models-dev' && direct.source !== 'generated') {
+      return direct;
+    }
 
     const identity = resolveModelIdentitySync(modelId, augmentHints(hints, direct));
     const derived = deriveEntry(modelId, identity);
@@ -297,6 +313,7 @@ export function getDefaultRegistry(): ModelRegistry {
 function buildDefaultRegistry(): ModelRegistry {
   const overlay = loadManifestOverlay();
   const snapshot = loadModelsDevSnapshot();
+  const generated = loadGeneratedRegistryEntries();
   const inTree = buildInTreeEntries();
   const options: ModelRegistryOptions = { inTreeEntries: inTree };
   if (overlay.status === 'loaded' && overlay.entries.length > 0) {
@@ -304,6 +321,9 @@ function buildDefaultRegistry(): ModelRegistry {
   }
   if (snapshot.status === 'loaded' && snapshot.entries.length > 0) {
     (options as { modelsDevEntries?: readonly ModelEntry[] }).modelsDevEntries = snapshot.entries;
+  }
+  if (generated.status === 'loaded' && generated.entries.length > 0) {
+    (options as { generatedEntries?: readonly ModelEntry[] }).generatedEntries = generated.entries;
   }
   return new ModelRegistry(options);
 }
