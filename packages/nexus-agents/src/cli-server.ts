@@ -56,6 +56,7 @@ import { shutdownToolMemory } from './mcp/tools/tool-memory.js';
 import { shutdownExpertBridge } from './pipeline/expert-bridge.js';
 import { shutdownFeedbackSubscriber } from './pipeline/feedback-subscriber.js';
 import { shutdownTuneStage } from './pipeline/tune-stage.js';
+import { shutdownImprovementReviewScheduler } from './mcp/tools/improvement-review-scheduler.js';
 import {
   initializeAuditLogger,
   shutdownAuditLogger,
@@ -250,6 +251,9 @@ function createShutdownCleanup(options: ShutdownCleanupOptions): () => Promise<v
 
     // Release the adapter-failover signal subscription (#3321)
     shutdownFailoverSignals();
+
+    // Release the scheduled improvement_review timer (#3229)
+    shutdownImprovementReviewScheduler();
 
     const closeResult = await closeServer(server, serverLogger);
     if (!closeResult.ok) {

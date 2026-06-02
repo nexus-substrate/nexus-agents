@@ -221,6 +221,15 @@ All configuration can be overridden with environment variables:
 | `NEXUS_MAX_CONCURRENT_EXPERTS`   | Expert pool semaphore capacity             | `6`     |
 | `NEXUS_ALLOW_MOCK_ORCHESTRATION` | Allow mock orchestration (test/CI only)    | `false` |
 
+**Scheduled `improvement_review` (#3229).** Periodically runs `improvement_review` server-side so its `signal.fitness_declined` fires without manual invocation, feeding the self-tuning loop:
+
+| Variable                               | Description                                                                   | Default   |
+| -------------------------------------- | ----------------------------------------------------------------------------- | --------- |
+| `NEXUS_IMPROVEMENT_REVIEW_INTERVAL_MS` | Poll interval in ms. `0`/unset disables. Suggested opt-in: `21600000` (6h)    | `0` (off) |
+| `NEXUS_IMPROVEMENT_REVIEW_FILE_ISSUES` | Whether the scheduled run files GitHub issues (separate opt-in — avoids spam) | `false`   |
+
+The scheduled run is **analysis-only by default** (emits signals, files no issues); `NEXUS_IMPROVEMENT_REVIEW_FILE_ISSUES=true` is a deliberate, separate opt-in (the tool's 5-issues/run rate-limit + open-issue dedup are backstops, not the primary guard).
+
 ### Learning & Memory Variables
 
 | Variable                  | Description                                               | Default  |
