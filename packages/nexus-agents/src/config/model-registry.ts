@@ -245,6 +245,11 @@ export class ModelRegistry {
       if (entry.aliases !== undefined) {
         for (const alias of entry.aliases) {
           this.byAlias.set(alias, entry.id);
+          // Tiers load lowest-priority first, so a direct `byId` entry under
+          // this alias key can only come from a lower tier (e.g. the generated
+          // breadth catalog). An authoritative alias must win: drop the shadow
+          // so `lookupExact` resolves the alias to its canonical entry (#3293).
+          if (alias !== entry.id) this.byId.delete(alias);
         }
       }
     }

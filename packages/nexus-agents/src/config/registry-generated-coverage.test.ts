@@ -58,6 +58,20 @@ describe('registry breadth coverage (#3293)', () => {
     expect(opus.source).toBe('in-tree');
   });
 
+  it('does NOT shadow an in-tree ALIAS with a colliding generated id (#3293 QA)', () => {
+    // A catalog id can collide with an in-tree alias; the authoritative alias
+    // must win, not the lowest-tier generated direct entry.
+    const aliasedInTree = buildInTreeEntries().filter((e) => (e.aliases?.length ?? 0) > 0);
+    const generatedIds = new Set(generated.entries.map((e) => e.id));
+    for (const e of aliasedInTree) {
+      for (const alias of e.aliases ?? []) {
+        if (generatedIds.has(alias)) {
+          expect(reg.getEntry(alias).source).toBe('in-tree'); // alias wins over generated
+        }
+      }
+    }
+  });
+
   it('still returns a usable derived entry for a completely unknown id (never throws)', () => {
     const unknown = reg.getEntry('totally-made-up-model-xyz');
     expect(unknown.source).toBe('derived');
