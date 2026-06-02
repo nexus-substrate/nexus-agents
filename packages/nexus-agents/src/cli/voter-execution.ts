@@ -257,6 +257,11 @@ export async function executeSingleVoteAttempt(
     // timeout doesn't fire first and surface as an MCP -32001 on slow voters
     // (e.g. the Security role on complex proposals) (#3304).
     timeoutMs,
+    // CLI adapters honor `timeoutMs`; API adapters honor `signal` (#3036). Pass
+    // both so the slow voter is cancelled cleanly at the vote budget regardless
+    // of backing (CLI subprocess SIGTERM'd via #3026, API SDK call aborted) —
+    // CLI-vs-API parity for the vote timeout (#3304).
+    signal: AbortSignal.timeout(timeoutMs),
   };
 
   const timeoutResult = await withTimeout(
