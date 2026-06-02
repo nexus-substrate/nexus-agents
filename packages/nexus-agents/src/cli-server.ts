@@ -24,7 +24,7 @@ import { createLogger, type ILogger } from './core/index.js';
 import { VERSION } from './version.js';
 import { detectMode, type ServerMode, type ModeDetectionResult } from './cli/index.js';
 import { EXIT_CODES } from './cli-types.js';
-import { SwarmObserver } from './observability/index.js';
+import { SwarmObserver, shutdownSwarmHealthSignals } from './observability/index.js';
 import { initializeSandbox, getSandboxMode } from './security/sandbox/index.js';
 import {
   initializeSwarmObserver,
@@ -240,6 +240,9 @@ function createShutdownCleanup(options: ShutdownCleanupOptions): () => Promise<v
 
     // Release the shadow TuneStage signal subscription (#3147)
     shutdownTuneStage();
+
+    // Release the swarm-health signal poll timer (#3223)
+    shutdownSwarmHealthSignals();
 
     const closeResult = await closeServer(server, serverLogger);
     if (!closeResult.ok) {

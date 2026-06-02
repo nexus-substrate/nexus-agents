@@ -52,6 +52,15 @@ export {
   setSwarmObserver,
 } from './swarm-observer.js';
 
+// SwarmObserver → pipeline-bus signal producer (#3223)
+export {
+  emitSwarmUnhealthySignals,
+  confidentCliSlot,
+  startSwarmHealthSignals,
+  shutdownSwarmHealthSignals,
+} from './swarm-health-signals.js';
+export type { SwarmHealthSignalsOptions } from './swarm-health-signals.js';
+
 // Dashboard Types
 export type {
   DashboardFormat,
