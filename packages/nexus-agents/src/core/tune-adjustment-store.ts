@@ -46,8 +46,50 @@ export interface TuneAdjustment {
   readonly reason: string;
 }
 
+/** Max length of a stat's retained reason string (#3323 telemetry). */
+const STAT_REASON_MAX = 512;
+
+/**
+ * Cumulative per-CLI demotion telemetry (#3323) — survives decay/eviction so a
+ * shadow soak can show what the loop is (or WOULD be) doing before the loop is
+ * enabled by default. `applied` counts demotions that actually biased routing
+ * (enforce mode); `intended` counts demotions the loop WOULD have applied while
+ * shadow (enforcement off) — recorded WITHOUT touching routing.
+ */
+export interface TuneDemotionStat {
+  readonly cli: string;
+  readonly applied: number;
+  readonly intended: number;
+  /** Most recent reason recorded (capped to {@link STAT_REASON_MAX}). */
+  readonly lastReason: string;
+  /** Timestamp of the most recent record (applied or intended). */
+  readonly lastAt: number;
+}
+
+interface MutableDemotionStat {
+  cli: string;
+  applied: number;
+  intended: number;
+  lastReason: string;
+  lastAt: number;
+}
+
 export class TuneAdjustmentStore {
   private readonly adjustments = new Map<string, TuneAdjustment>();
+  /** Cumulative telemetry — never evicted (bounded by CLI cardinality). */
+  private readonly stats = new Map<string, MutableDemotionStat>();
+
+  /** Increment a CLI's cumulative demotion counter. Pure telemetry. */
+  private bumpStat(cli: string, kind: 'applied' | 'intended', reason: string): void {
+    let stat = this.stats.get(cli);
+    if (stat === undefined) {
+      stat = { cli, applied: 0, intended: 0, lastReason: '', lastAt: 0 };
+      this.stats.set(cli, stat);
+    }
+    stat[kind] += 1;
+    stat.lastReason = reason.length > STAT_REASON_MAX ? reason.slice(0, STAT_REASON_MAX) : reason;
+    stat.lastAt = getTimeProvider().now();
+  }
 
   /**
    * Apply a bounded demotion to `cli`. `magnitude` is the requested reduction
@@ -67,7 +109,20 @@ export class TuneAdjustmentStore {
       reason,
     };
     this.adjustments.set(cli, adjustment);
+    this.bumpStat(cli, 'applied', reason);
     return adjustment;
+  }
+
+  /**
+   * Record a demotion the loop WOULD have applied, for shadow-soak telemetry
+   * (#3323) — increments the `intended` counter ONLY and does NOT touch the
+   * routing adjustments. Lets an operator observe what enabling the loop would
+   * do (via {@link demotionStats}) while `effectiveMultiplier` stays 1.0 and
+   * routing is untouched. Non-empty `reason` required; otherwise a no-op.
+   */
+  recordIntended(cli: string, reason: string): void {
+    if (reason === '') return;
+    this.bumpStat(cli, 'intended', reason);
   }
 
   /**
@@ -93,9 +148,18 @@ export class TuneAdjustmentStore {
     return [...this.adjustments.values()];
   }
 
-  /** Remove all adjustments. */
+  /**
+   * Cumulative demotion telemetry per CLI (#3323) — survives decay, so a shadow
+   * soak shows how often each CLI is (or would be) demoted. Read-only snapshot.
+   */
+  demotionStats(): readonly TuneDemotionStat[] {
+    return [...this.stats.values()].map((s) => ({ ...s }));
+  }
+
+  /** Remove all adjustments and telemetry. */
   clear(): void {
     this.adjustments.clear();
+    this.stats.clear();
   }
 }
 

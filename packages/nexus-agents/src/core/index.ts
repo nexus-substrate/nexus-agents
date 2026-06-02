@@ -25,6 +25,7 @@ export {
   TUNE_MAX_STEP,
   TUNE_DECAY_WINDOW_MS,
   type TuneAdjustment,
+  type TuneDemotionStat,
 } from './tune-adjustment-store.js';
 
 // Step event vocabulary + `withStep` wrapper (#1930 — human console notifications)

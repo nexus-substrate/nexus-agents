@@ -204,6 +204,12 @@ export function createTuneStage(bus: IEventBus, options: TuneStageOptions = {}):
         });
         return;
       }
+      // Shadow soak telemetry (#3323): record the demotion the loop WOULD have
+      // applied to routing — counter only, no routing effect — so an operator
+      // can observe the loop's would-be behavior before flipping it default-on.
+      if (event.type === 'signal.swarm_unhealthy') {
+        getTuneAdjustmentStore().recordIntended(event.agentId, `swarm_unhealthy: ${event.reason}`);
+      }
       log.info('TuneStage (shadow) — intended action', {
         kind: action.kind,
         signal: action.signal,

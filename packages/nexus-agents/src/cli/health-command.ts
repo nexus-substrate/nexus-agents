@@ -9,6 +9,7 @@
  */
 
 import type { ParsedCliArgs } from '../cli-types.js';
+import { getTuneAdjustmentStore, type TuneDemotionStat } from '../core/index.js';
 import { colors, symbols } from './ansi-output.js';
 import { generateWeatherReport } from '../mcp/tools/weather-report.js';
 import type {
@@ -41,6 +42,8 @@ export interface HealthResult {
   readonly failureBreakdown: readonly FailureBreakdownEntry[];
   readonly cliCount: number;
   readonly cliHealth: readonly CliHealthSummary[];
+  /** Self-tuning loop demotion telemetry (#3323) — applied vs intended per CLI. */
+  readonly tuneAdjustments: readonly TuneDemotionStat[];
   readonly timestamp: string;
 }
 
@@ -61,6 +64,7 @@ export function collectHealth(): HealthResult {
     failureBreakdown: report.failureBreakdown ?? [],
     cliCount: report.cliWeather.length,
     cliHealth: report.cliWeather.map(toCliSummary),
+    tuneAdjustments: getTuneAdjustmentStore().demotionStats(),
     timestamp: new Date().toISOString(),
   };
 }
@@ -185,6 +189,26 @@ function renderTable(health: HealthResult): void {
 
   // Failure breakdown
   renderFailureBreakdown(w, health.failureBreakdown);
+
+  // Self-tuning loop demotion telemetry (#3323)
+  renderTuneAdjustments(w, health.tuneAdjustments);
+}
+
+function renderTuneAdjustments(
+  w: (s: string) => boolean,
+  stats: readonly TuneDemotionStat[]
+): void {
+  if (stats.length === 0) return;
+  const c = colors;
+  w(
+    `  ${c.bold}Self-Tuning Demotions${c.reset} ${c.dim}(applied = enforced, intended = shadow)${c.reset}\n`
+  );
+  for (const stat of stats) {
+    w(
+      `  ${stat.cli.padEnd(10)} applied: ${c.cyan}${String(stat.applied)}${c.reset}  intended: ${c.cyan}${String(stat.intended)}${c.reset}  ${c.dim}${stat.lastReason}${c.reset}\n`
+    );
+  }
+  w('\n');
 }
 
 function renderJson(health: HealthResult): void {
