@@ -22,6 +22,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, type ILogger } from './core/index.js';
 import { VERSION } from './version.js';
+import { warnIfVersionStale } from './cli/version-check.js';
 import { detectMode, type ServerMode, type ModeDetectionResult } from './cli/index.js';
 import { EXIT_CODES } from './cli-types.js';
 import {
@@ -567,6 +568,11 @@ export async function startServer(
 
   const detectionResult = detectMode({ explicitMode: modeWasExplicit ? mode : undefined });
   logStartupInfo(logger, detectionResult, verbose);
+
+  // Surface stale long-lived servers (#3283): best-effort, non-blocking warn if
+  // the running build is behind the latest published version. Fire-and-forget —
+  // never gates startup; fail-soft on offline/CI/dev.
+  void warnIfVersionStale(logger);
 
   // Load and validate configuration (Issue #472)
   const configResult = loadAndLogConfig(logger);
