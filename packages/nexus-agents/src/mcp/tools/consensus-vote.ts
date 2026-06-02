@@ -49,6 +49,7 @@ import {
   ConsensusVoteInputSchema,
   buildResponse,
   getDefaultErrorPolicy,
+  isHigherOrderStrategy,
 } from './consensus-vote-types.js';
 import { applyErrorPolicy } from './consensus-vote-error-policy.js';
 import { recordVoteSuccess, recordVoteError } from './consensus-vote-recording.js';
@@ -277,7 +278,7 @@ function runHigherOrderVoting(
   voteMap: Map<string, Vote>,
   logger: ILogger
 ): HigherOrderVotingResult | undefined {
-  if (strategy !== 'higher_order') return undefined;
+  if (!isHigherOrderStrategy(strategy)) return undefined;
   const hovStrategy = new HigherOrderVotingStrategy();
   const tracker = getOrCreateCorrelationTracker();
   const result = hovStrategy.aggregate(voteMap, tracker);

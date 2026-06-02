@@ -44,6 +44,16 @@ export const VotingStrategySchema = z.enum([
   'opinion_wise',
 ]);
 
+/**
+ * Whether a strategy uses higher-order (Bayesian, correlation-aware) aggregation.
+ * `opinion_wise` is a documented alias of `higher_order` (#333), so both must
+ * take the higher-order path — gating on the literal `'higher_order'` silently
+ * dropped opinion_wise to the plain engine with no higherOrderMetadata (#3271).
+ */
+export function isHigherOrderStrategy(strategy: VotingStrategy): boolean {
+  return strategy === 'higher_order' || strategy === 'opinion_wise';
+}
+
 // ============================================================================
 // Input / Output Schemas
 // ============================================================================
@@ -309,7 +319,7 @@ export function buildResponse(
     response.policyReason = result.policyReason;
   }
 
-  if (result.strategy === 'higher_order' && result.higherOrderResult) {
+  if (isHigherOrderStrategy(result.strategy) && result.higherOrderResult) {
     response.higherOrderMetadata = {
       posteriorApproval: result.higherOrderResult.posteriorApproval,
       posteriorRejection: result.higherOrderResult.posteriorRejection,
