@@ -64,7 +64,8 @@ server init (`cli-server-tools.ts`) and released at shutdown (`cli-server.ts`).
 ## The self-tuning loop (#3143)
 
 The loop closes `signal → tune → route` end-to-end, gated by the single
-`NEXUS_TUNE_ENFORCE` flag (default off):
+`NEXUS_TUNE_ENFORCE` flag (default **on** since v2.96; opt out with
+`NEXUS_TUNE_ENFORCE=false`):
 
 ```
 producers ──signal.swarm_unhealthy──▶ TuneStage ──demote──▶ TuneAdjustmentStore ──penalty──▶ CompositeRouter
@@ -72,18 +73,19 @@ producers ──signal.swarm_unhealthy──▶ TuneStage ──demote──▶ 
  adapter failover)                                                                           into candidate score)
 ```
 
-- **Shadow (default, `NEXUS_TUNE_ENFORCE` unset/false):** the `TuneStage` logs
-  the demotion it _would_ apply and records it to the `intended` counter
+- **Enforce (default, `NEXUS_TUNE_ENFORCE` unset/true):** a
+  `signal.swarm_unhealthy` applies a bounded demotion via
+  `TuneAdjustmentStore.demote`; the `CompositeRouter` reads `effectiveMultiplier`
+  as an additive scoring penalty. The same flag gates both the write and the
+  read, so the loop is **fully live or fully shadow, never half-wired**. Each
+  demotion is appended to the immutable audit log as `tune.demote`
+  (`verify_audit_chain`).
+- **Shadow (opt-out, `NEXUS_TUNE_ENFORCE=false`):** the `TuneStage` logs the
+  demotion it _would_ apply and records it to the `intended` counter
   (`TuneAdjustmentStore.recordIntended` — counter only, **routing untouched**).
   Observe via `nexus-agents health` → "Self-Tuning Demotions" (`applied` vs
   `intended` per CLI). Non-routing signals (`fitness_declined`, `vote_rejected`)
   always stay shadow-logged.
-- **Enforce (`NEXUS_TUNE_ENFORCE=true`):** a `signal.swarm_unhealthy` applies a
-  bounded demotion via `TuneAdjustmentStore.demote`; the `CompositeRouter` reads
-  `effectiveMultiplier` as an additive scoring penalty. The same flag gates both
-  the write and the read, so the loop is **fully live or fully shadow, never
-  half-wired**. Each demotion is appended to the immutable audit log as
-  `tune.demote` (`verify_audit_chain`).
 
 **Bounded-safety invariants** (in `core/tune-adjustment-store.ts`) — the loop is
 self-correcting, never a ratchet: demotion-only (slow a CLI, never boost it);

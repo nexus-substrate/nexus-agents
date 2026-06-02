@@ -237,16 +237,16 @@ The scheduled run is **analysis-only by default** (emits signals, files no issue
 | `NEXUS_PERSIST_LEARNING`  | Cross-session routing persistence                         | `true`   |
 | `NEXUS_REFLECTIVE_MEMORY` | Reflective memory retrieval (`shadow`/`true`/`false`)     | `shadow` |
 | `NEXUS_BILLING_MODE`      | Cost mode (`plan`=strongest model wins, `api`=cost-aware) | `plan`   |
-| `NEXUS_TUNE_ENFORCE`      | Self-tuning loop: apply bounded routing demotions         | `false`  |
+| `NEXUS_TUNE_ENFORCE`      | Self-tuning loop: apply bounded routing demotions         | `true`   |
 
 Outcomes and distilled routing rules persist to `~/.nexus-agents/learning/` — this is **cross-repo** state (shared across all your projects) and is not affected by the per-repo data dir (epic #2872). When persistence is enabled, `routingMemory`, `strategyDistillation`, and `preferenceRouting` also auto-enable (no separate config needed). Opt out with `NEXUS_PERSIST_LEARNING=false`.
 
 **`NEXUS_TUNE_ENFORCE` — the self-tuning routing loop (epic #3143 / #3147).** The loop reacts to health signals (`signal.swarm_unhealthy` from SwarmObserver bottlenecks and adapter circuit-breaker failovers) by **demoting** an unhealthy CLI in routing. The same flag gates both the write (the `TuneStage` applies the demotion) and the read (the `CompositeRouter` folds it into candidate scoring), so the loop is **either fully live or fully shadow — never half-wired**.
 
-- `false` (**shadow**, default) — the loop logs the demotion it _would_ apply and records it to the `intended` counter, but **routing is untouched**. Inspect the would-be behavior with `nexus-agents health` (the "Self-Tuning Demotions" section shows `applied` vs `intended` per CLI). This mirrors the `audit`-mode philosophy of the governance variables below: collect telemetry before flipping.
-- `true` (**enforce**) — a `signal.swarm_unhealthy` applies a **bounded** routing demotion via the provenance-tagged `TuneAdjustmentStore`. Every demotion is recorded to the immutable audit log as a `tune.demote` event (verify with `verify_audit_chain`).
+- `true` (**enforce**, default since v2.96) — a `signal.swarm_unhealthy` applies a **bounded** routing demotion via the provenance-tagged `TuneAdjustmentStore`. Every demotion is recorded to the immutable audit log as a `tune.demote` event (verify with `verify_audit_chain`).
+- `false` (**shadow**, opt-out) — the loop logs the demotion it _would_ apply and records it to the `intended` counter, but **routing is untouched**. Use this to disable auto-tuning fleet-wide, or to observe the would-be behavior first: `nexus-agents health` shows `applied` vs `intended` per CLI under "Self-Tuning Demotions".
 
-The demotion is bounded by hard safety invariants so the loop is self-correcting, never a ratchet: **demotion-only** (a CLI is slowed, never boosted), **floored** at `0.5` (never zeroed out of routing — a sole-viable CLI is always still selectable), **capped** at `0.2` per step, and **time-decaying** linearly back to neutral over 30 minutes (a transient health blip auto-reverses). The channel is separate from the LinUCB real-outcome bandit. See [Self-Tuning Loop](../architecture/EVENT_BUS_BOUNDARIES.md#the-self-tuning-loop-3143).
+The demotion is bounded by hard safety invariants so the loop is self-correcting, never a ratchet: **demotion-only** (a CLI is slowed, never boosted), **floored** at `0.5` (never zeroed out of routing — a sole-viable CLI is always still selectable), **capped** at `0.2` per step, and **time-decaying** linearly back to neutral over 30 minutes (a transient health blip auto-reverses). The channel is separate from the LinUCB real-outcome bandit. **Opt out** with `NEXUS_TUNE_ENFORCE=false`. See [Self-Tuning Loop](../architecture/EVENT_BUS_BOUNDARIES.md#the-self-tuning-loop-3143).
 
 Files stored:
 

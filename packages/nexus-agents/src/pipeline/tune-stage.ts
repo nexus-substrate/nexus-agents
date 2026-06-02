@@ -239,8 +239,9 @@ export function startTuneStage(bus: IEventBus, options?: TuneStageOptions): void
   if (cachedTuneUnsubscribe !== null) return;
   // Enforcement is gated by the same flag the router read uses, so the loop is
   // either fully live or fully shadow — never half-wired. Explicit options
-  // (tests) override the flag. Default off → shadow (#3147).
-  const enabled = options?.enabled ?? parseBoolEnv(TUNE_ENFORCE_ENV, false);
+  // (tests) override the flag. Default ON → enforce (#3323); opt out of the
+  // bounded self-tuning loop with NEXUS_TUNE_ENFORCE=false.
+  const enabled = options?.enabled ?? parseBoolEnv(TUNE_ENFORCE_ENV, true);
   cachedTuneUnsubscribe = createTuneStage(bus, { ...options, enabled });
 }
 

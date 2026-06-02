@@ -139,7 +139,7 @@ describe('end-to-end: rejected vote → signal → shadow TuneStage (#3147 loop 
   it('a rejected vote emitted on the typed bus is consumed by the wired TuneStage in shadow mode', () => {
     const bus = new EventBus();
     const tuneLogger = spyLogger();
-    startTuneStage(bus, { logger: tuneLogger });
+    startTuneStage(bus, { logger: tuneLogger, enabled: false }); // shadow (default is now enforce, #3323)
 
     emitVoteRejectedSignal(makeResult('rejected'), bus, spyLogger());
 

@@ -105,7 +105,7 @@ describe('self-tuning loop end-to-end (#3323)', () => {
   });
 
   it('does NOT change routing when enforce is off (shadow) even after signals', async () => {
-    delete process.env['NEXUS_TUNE_ENFORCE']; // shadow
+    process.env['NEXUS_TUNE_ENFORCE'] = 'false'; // explicit opt-out → shadow (default is ON)
     const router = deterministicRouter(['claude', 'gemini', 'codex']);
     const baseline = await router.route(TASK);
     expect(baseline.ok).toBe(true);
