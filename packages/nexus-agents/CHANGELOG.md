@@ -1,5 +1,58 @@
 # nexus-agents
 
+## 2.97.0
+
+### Minor Changes
+
+- [#3336](https://github.com/nexus-substrate/nexus-agents/pull/3336) [`53c2b58`](https://github.com/nexus-substrate/nexus-agents/commit/53c2b5865a5210a687299f3b5c4d558f8049a646) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(config): connect the 1071-entry generated catalog to ModelRegistry ([#3293](https://github.com/nexus-substrate/nexus-agents/issues/3293))
+
+  Ingests `model-registry.generated.json` (the broad LiteLLM/models.dev catalog,
+  ~1071 entries) into `ModelRegistry` as a LOWEST-priority breadth tier. Each
+  record is converted to a full `ModelEntry` (behavior fields derived from the
+  id's identity, then the catalog's context window / pricing / display name
+  overlaid). In-tree, manifest, and models-dev tiers all still win; the breadth
+  tier only fills the long tail, so unknown/new models resolve to real catalog
+  data instead of a bare derived default.
+
+  This is the non-destructive "connect, don't drop" step toward the
+  CapabilityDiscovery → ModelRegistry consolidation ([#3293](https://github.com/nexus-substrate/nexus-agents/issues/3293)) — it preserves the
+  coverage the legacy T2 tier provided (parity test asserts zero context-window
+  mismatches across all catalog ids). The CapabilityDiscovery removal stays gated
+  behind the binding confirmation vote and remains a follow-up.
+
+- [#3340](https://github.com/nexus-substrate/nexus-agents/pull/3340) [`6bcaf67`](https://github.com/nexus-substrate/nexus-agents/commit/6bcaf67bbd0195c6c0531b2f94201677d8317db6) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(server): warn at startup when running a stale version ([#3283](https://github.com/nexus-substrate/nexus-agents/issues/3283))
+
+  A long-lived MCP server can drift many versions behind the published package and
+  silently serve old code (47 stale `--mode=server` processes pinned at v2.76.0
+  were found in the wild — which is what let an already-fixed `consensus_vote` bug
+  reappear). The server now does a best-effort check at startup and logs a
+  prominent WARN if the running build is behind the latest published version, with
+  the fix command. Fail-soft and non-blocking: any network/timeout/parse failure
+  is swallowed, it never gates startup, and it auto-skips dev builds + CI. One
+  outbound npm-registry call; opt out with `NEXUS_VERSION_CHECK=0`.
+
+### Patch Changes
+
+- [#3342](https://github.com/nexus-substrate/nexus-agents/pull/3342) [`b46d0ef`](https://github.com/nexus-substrate/nexus-agents/commit/b46d0ef2e126643688d1b0636d00ac614b121b7c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - docs: complete both ENTRYPOINTS MCP tool enumerations (38/20 → 42, [#3334](https://github.com/nexus-substrate/nexus-agents/issues/3334))
+
+  `docs/ENTRYPOINTS.md` had two stale tool enumerations: the prose table listed
+  38 of 42 registered tools, and the machine-parseable `mcp_tools:` YAML block only 20. Both now list all 42 (regenerated from `REGISTERED_TOOL_NAMES`), with the
+  prose descriptions matching the README and per-tool `auth` (run_dev_pipeline =
+  optional, rest = none). Automating these via the governance injector (the
+  markers exist but inject-governance doesn't yet target ENTRYPOINTS) + a drift
+  gate remains tracked in [#3334](https://github.com/nexus-substrate/nexus-agents/issues/3334).
+
+- [#3341](https://github.com/nexus-substrate/nexus-agents/pull/3341) [`8d21337`](https://github.com/nexus-substrate/nexus-agents/commit/8d21337b37d5c9068d6344f7e9bb57d0474ce40f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(consensus): opinion_wise now gets higher-order Bayesian aggregation ([#3271](https://github.com/nexus-substrate/nexus-agents/issues/3271))
+
+  `opinion_wise` is documented as an alias of `higher_order`, but the Bayesian/
+  correlation-aware aggregation was gated on the literal `'higher_order'` in two
+  places — so an `opinion_wise` vote silently fell through to the plain engine
+  with no `higherOrderMetadata` in the response. Added a shared
+  `isHigherOrderStrategy()` helper and used it at both the `runHigherOrderVoting`
+  gate and the `higherOrderMetadata` serialization, so `opinion_wise` is a true
+  alias. Tests assert `opinion_wise` produces `higherOrderMetadata` like
+  `higher_order`.
+
 ## 2.96.0
 
 ### Minor Changes
