@@ -2,10 +2,12 @@
 "nexus-agents": patch
 ---
 
-docs: complete the ENTRYPOINTS MCP tools table (38 → 42, #3334)
+docs: complete both ENTRYPOINTS MCP tool enumerations (38/20 → 42, #3334)
 
-The prose tool table in `docs/ENTRYPOINTS.md` was missing four registered tools
-(`get_job_result`, `list_jobs`, `cancel_job`, `ci_health_check`); added them with
-descriptions matching the README, so the human-facing enumeration now lists all
-42. The stale machine-parseable YAML block (still 20/42) and a generator to
-prevent future drift remain tracked in #3334.
+`docs/ENTRYPOINTS.md` had two stale tool enumerations: the prose table listed
+38 of 42 registered tools, and the machine-parseable `mcp_tools:` YAML block only
+20. Both now list all 42 (regenerated from `REGISTERED_TOOL_NAMES`), with the
+prose descriptions matching the README and per-tool `auth` (run_dev_pipeline =
+optional, rest = none). Automating these via the governance injector (the
+markers exist but inject-governance doesn't yet target ENTRYPOINTS) + a drift
+gate remains tracked in #3334.

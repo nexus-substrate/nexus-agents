@@ -1340,15 +1340,17 @@ mcp_tools:
       auth: none
     - name: delegate_to_model
       auth: none
-    - name: consensus_vote
-      auth: none
     - name: list_experts
       auth: none
     - name: list_workflows
       auth: none
+    - name: consensus_vote
+      auth: none
     - name: research_query
       auth: none
     - name: research_add
+      auth: none
+    - name: research_add_source
       auth: none
     - name: research_discover
       auth: none
@@ -1356,19 +1358,61 @@ mcp_tools:
       auth: none
     - name: research_catalog_review
       auth: none
+    - name: research_synthesize
+      auth: none
+    - name: survey_oss_landscape
+      auth: none
+    - name: vendor_publishing_audit
+      auth: none
+    - name: compare_data_feeds
+      auth: none
     - name: memory_query
       auth: none
     - name: memory_stats
+      auth: none
+    - name: memory_write
+      auth: none
+    - name: weather_report
       auth: none
     - name: issue_triage
       auth: none
     - name: run_graph_workflow
       auth: none
-    - name: weather_report
-      auth: none
     - name: execute_spec
       auth: none
     - name: registry_import
+      auth: none
+    - name: query_trace
+      auth: none
+    - name: query_task_state
+      auth: none
+    - name: get_job_result
+      auth: none
+    - name: list_jobs
+      auth: none
+    - name: cancel_job
+      auth: none
+    - name: ci_health_check
+      auth: none
+    - name: verify_audit_chain
+      auth: none
+    - name: repo_analyze
+      auth: none
+    - name: repo_security_plan
+      auth: none
+    - name: extract_symbols
+      auth: none
+    - name: search_codebase
+      auth: none
+    - name: run_dev_pipeline
+      auth: optional
+    - name: run_pipeline
+      auth: none
+    - name: pr_review
+      auth: none
+    - name: supply_chain_tradeoff_panel
+      auth: none
+    - name: improvement_review
       auth: none
 ```
 
