@@ -16,6 +16,17 @@ export { CircularBuffer } from './circular-buffer.js';
 // Bounded LRU cache — canonical size-bound LRU (#3292)
 export { BoundedLRUCache } from './bounded-lru-cache.js';
 
+// Tune adjustment store — bounded/decaying routing-demotion channel (#3147)
+export {
+  TuneAdjustmentStore,
+  getTuneAdjustmentStore,
+  resetTuneAdjustmentStore,
+  TUNE_DEMOTION_FLOOR,
+  TUNE_MAX_STEP,
+  TUNE_DECAY_WINDOW_MS,
+  type TuneAdjustment,
+} from './tune-adjustment-store.js';
+
 // Step event vocabulary + `withStep` wrapper (#1930 — human console notifications)
 export type {
   StepKind,
