@@ -153,7 +153,10 @@ export class TuneAdjustmentStore {
    * soak shows how often each CLI is (or would be) demoted. Read-only snapshot.
    */
   demotionStats(): readonly TuneDemotionStat[] {
-    return [...this.stats.values()].map((s) => ({ ...s }));
+    // Sorted by CLI for deterministic output (stable health table/JSON + tests).
+    return [...this.stats.values()]
+      .map((s) => ({ ...s }))
+      .sort((a, b) => a.cli.localeCompare(b.cli));
   }
 
   /** Remove all adjustments and telemetry. */
