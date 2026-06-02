@@ -80,6 +80,14 @@ export interface CompletionRequest {
   temperature?: number;
   /** Maximum tokens to generate */
   maxTokens?: number;
+  /**
+   * Per-request timeout override in milliseconds. When set, adapters that
+   * support it use this instead of their construction-time default — lets a
+   * long-running caller (e.g. a consensus vote with a 300s budget) prevent the
+   * adapter's shorter standard timeout from firing first (#3304). Adapters that
+   * don't support per-request timeouts ignore it.
+   */
+  timeoutMs?: number;
   /** Tools available for the model */
   tools?: ToolDefinition[];
   /**

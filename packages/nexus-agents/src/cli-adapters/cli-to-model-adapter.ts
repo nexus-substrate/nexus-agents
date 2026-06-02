@@ -138,8 +138,12 @@ export class CliToModelAdapter implements IModelAdapter {
    */
   async complete(request: CompletionRequest): Promise<Result<CompletionResponse, ModelError>> {
     const task = this.toCliTask(request);
+    // Per-request timeout (#3304) takes precedence over the construction-time
+    // default, so a long-budget caller (e.g. a consensus vote) isn't cut off by
+    // the adapter's shorter standard CLI timeout.
+    const effectiveTimeoutMs = request.timeoutMs ?? this.defaultTimeoutMs;
     const opts: ExecutionOptions | undefined =
-      this.defaultTimeoutMs !== undefined ? { timeoutMs: this.defaultTimeoutMs } : undefined;
+      effectiveTimeoutMs !== undefined ? { timeoutMs: effectiveTimeoutMs } : undefined;
     const result = await this.cliAdapter.execute(task, opts);
 
     if (!result.ok) {

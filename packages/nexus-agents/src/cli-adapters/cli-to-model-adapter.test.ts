@@ -93,6 +93,33 @@ describe('CliToModelAdapter.complete', () => {
     expect(cli.execute).toHaveBeenCalledOnce();
   });
 
+  it('uses request.timeoutMs over the construction-time default (#3304)', async () => {
+    const cli = makeMockCliAdapter();
+    const adapter = new CliToModelAdapter(cli, { defaultTimeoutMs: 120_000 });
+
+    await adapter.complete({
+      messages: [{ role: 'user', content: 'Hello' }],
+      timeoutMs: 300_000,
+    });
+
+    const opts = (cli.execute as ReturnType<typeof vi.fn>).mock.calls[0]?.[1] as {
+      timeoutMs?: number;
+    };
+    expect(opts.timeoutMs).toBe(300_000);
+  });
+
+  it('falls back to the default timeout when request.timeoutMs is absent (#3304)', async () => {
+    const cli = makeMockCliAdapter();
+    const adapter = new CliToModelAdapter(cli, { defaultTimeoutMs: 120_000 });
+
+    await adapter.complete({ messages: [{ role: 'user', content: 'Hello' }] });
+
+    const opts = (cli.execute as ReturnType<typeof vi.fn>).mock.calls[0]?.[1] as {
+      timeoutMs?: number;
+    };
+    expect(opts.timeoutMs).toBe(120_000);
+  });
+
   it('converts string messages to CLI task content', async () => {
     const cli = makeMockCliAdapter();
     const adapter = new CliToModelAdapter(cli);
