@@ -127,7 +127,7 @@ export const ConsensusVoteInputSchema = z.object({
     .boolean()
     .optional()
     .default(false)
-    .describe('Use 3 agents instead of 5 for faster execution'),
+    .describe('Use 3 agents instead of the full 7-role panel for faster execution'),
   simulateVotes: z
     .boolean()
     .optional()

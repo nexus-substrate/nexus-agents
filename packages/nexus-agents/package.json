@@ -1,7 +1,7 @@
 {
   "name": "nexus-agents",
   "version": "2.95.0",
-  "description": "Intelligent orchestration platform for AI coding tools — routes tasks to the best model, learns from outcomes, and enforces quality through multi-model consensus",
+  "description": "Governance substrate for AI coding agents — adversarial PR review, drift-detected rules, immutable audit, and closed-loop outcome routing for Claude, Codex, Gemini, and OpenCode",
   "mcpName": "io.github.nexus-substrate/nexus-agents",
   "license": "MIT",
   "type": "module",
@@ -26,6 +26,10 @@
     "type": "git",
     "url": "git+https://github.com/nexus-substrate/nexus-agents.git"
   },
+  "homepage": "https://github.com/nexus-substrate/nexus-agents#readme",
+  "bugs": {
+    "url": "https://github.com/nexus-substrate/nexus-agents/issues"
+  },
   "publishConfig": {
     "access": "public",
     "provenance": true
@@ -36,10 +40,16 @@
     "ai",
     "agents",
     "multi-agent",
+    "governance",
+    "code-review",
+    "consensus",
+    "audit",
     "orchestration",
     "claude",
+    "codex",
     "openai",
     "gemini",
+    "opencode",
     "ollama",
     "llm",
     "workflow"

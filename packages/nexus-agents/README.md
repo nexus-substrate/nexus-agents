@@ -1,6 +1,6 @@
 # Nexus Agents
 
-> The intelligence layer between you and your AI coding tools
+> Governance substrate for your AI coding agents — adversarial review, drift-detected rules, immutable audit, closed-loop telemetry
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D22.0.0-brightgreen)](https://nodejs.org)
@@ -12,7 +12,7 @@
 
 ## Overview
 
-Nexus Agents makes your AI coding tools work together intelligently. It coordinates Claude, Codex, Gemini, and OpenCode — routing each task to the best model using data-driven algorithms (LinUCB bandit, TOPSIS scoring, adaptive bonuses), validating outputs through multi-model consensus voting, and continuously improving through outcome-driven learning. Connect it to any MCP-compatible editor and it handles the rest.
+Nexus Agents is a governance layer that sits above your AI coding agents — Claude, Codex, Gemini, and OpenCode. The agents do the engineering; nexus-agents enforces the rules they follow, reviews their work adversarially before it ships, audits everything they touch, and routes the next task based on what actually worked (LinUCB bandit + TOPSIS scoring fed by an outcome store). It connects to any MCP-compatible editor. Routing is a means to the governance end, not the product.
 
 ### Key Capabilities
 
@@ -155,7 +155,7 @@ steps:
 
 ### MCP Tools
 
-The server exposes 24 MCP tools for integration. Key tools include:
+The server exposes 42 MCP tools for integration. Key tools include:
 
 | Tool                 | Description                                    |
 | -------------------- | ---------------------------------------------- |
@@ -213,7 +213,7 @@ MCP Server (external boundary)
     ↓
 Orchestration Layer (workflows, graph execution, worker dispatch)
     ↓
-Agents Layer (Orchestrator, 10 Expert types)
+Agents Layer (Orchestrator, 12 Expert types)
     ↓
 Adapters Layer (Claude, Gemini, Codex, OpenCode CLIs)
     ↓
