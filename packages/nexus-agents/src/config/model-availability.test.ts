@@ -14,6 +14,7 @@ import {
   getAvailabilityCache,
   resetAvailabilityCache,
   filterAvailableModels,
+  resolveCliSlot,
 } from './model-availability.js';
 import type { ProbeResult } from './model-availability.js';
 import type { ModelId } from './model-capabilities-types.js';
@@ -262,5 +263,30 @@ describe('filterAvailableModels', () => {
     const result = filterAvailableModels(ids, cache);
     expect(result.available).toEqual(['claude-sonnet']);
     expect(result.removed).toHaveLength(2);
+  });
+});
+
+describe('resolveCliSlot (#3317/#3293 — slot for any model, incl. new/API)', () => {
+  it('resolves a known curated model to its exact slot', () => {
+    expect(resolveCliSlot('claude-opus')).toBe(getCliForModelId('claude-opus'));
+    expect(resolveCliSlot('gemini-3-pro')).toBe(getCliForModelId('gemini-3-pro'));
+  });
+
+  it('falls back to the vendor slot for UNKNOWN models (the api-mode/new-release gap)', () => {
+    // brand-new releases not yet in the registry
+    expect(resolveCliSlot('claude-5-ultra')).toBe('claude'); // anthropic → claude
+    expect(resolveCliSlot('gpt-6-turbo')).toBe('codex'); // openai → codex
+    expect(resolveCliSlot('gemini-4-pro')).toBe('gemini'); // google → gemini
+  });
+
+  it('routes non-big-3 / unknown vendors to the opencode catch-all slot', () => {
+    expect(resolveCliSlot('qwen-max-9')).toBe('opencode');
+    expect(resolveCliSlot('deepseek-v9')).toBe('opencode');
+    expect(resolveCliSlot('some-totally-unknown-model')).toBe('opencode');
+  });
+
+  it('returns undefined only when no model is present (no execution to attribute)', () => {
+    expect(resolveCliSlot(undefined)).toBeUndefined();
+    expect(resolveCliSlot('')).toBeUndefined();
   });
 });

@@ -11,7 +11,9 @@
 
 import { getTimeProvider } from '../core/index.js';
 import type { ModelId, CliNameLiteral } from './model-capabilities-types.js';
+import { MODEL_IDS } from './model-capabilities-types.js';
 import { DEFAULT_MODEL_PER_CLI } from './in-tree-data.js';
+import { resolveModelIdentitySync, type ModelVendor } from './model-identity.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -179,6 +181,37 @@ export function getCliForModelId(modelId: ModelId): CliNameLiteral | undefined {
     if (defaultModel === modelId) return cli as CliNameLiteral;
   }
   return undefined;
+}
+
+/**
+ * Vendor → canonical `CliName` slot, for models NOT in the curated registry
+ * (brand-new releases, or API/openrouter models). Keeps the routing/outcome/
+ * tune pipeline keyed on a real slot instead of dropping the outcome (#3317 /
+ * #3293). `opencode` is the multi-model catch-all slot for non-big-3 vendors.
+ */
+const VENDOR_TO_CLI_SLOT: Partial<Record<ModelVendor, CliNameLiteral>> = {
+  anthropic: 'claude',
+  google: 'gemini',
+  openai: 'codex',
+};
+
+/**
+ * Resolve a model string to a canonical `CliName` slot for routing/outcome
+ * recording. Known models resolve to their exact curated slot; **unknown**
+ * models (new releases, API/openrouter models not yet in the registry) fall
+ * back to the vendor-derived slot — so the routing/outcome/tune pipeline still
+ * records and learns instead of silently dropping the outcome with an
+ * undefined cli (#3317 / #3293). Returns undefined only for an absent model
+ * (no execution happened).
+ */
+export function resolveCliSlot(model: string | undefined): CliNameLiteral | undefined {
+  if (model === undefined || model === '') return undefined;
+  if ((MODEL_IDS as readonly string[]).includes(model)) {
+    const exact = getCliForModelId(model as ModelId);
+    if (exact !== undefined) return exact;
+  }
+  const { vendor } = resolveModelIdentitySync(model);
+  return VENDOR_TO_CLI_SLOT[vendor] ?? 'opencode';
 }
 
 // ---------------------------------------------------------------------------
