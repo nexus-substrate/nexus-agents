@@ -23,7 +23,12 @@
 import { createLogger, getErrorMessage } from '../../core/index.js';
 import type { ILogger } from '../../core/index.js';
 import { parseIntEnv, parseBoolEnv } from '../../config/defaults-env.js';
-import { runImprovementReview, ImprovementReviewInputSchema } from './improvement-review.js';
+// NOTE: `improvement-review.js` is imported LAZILY inside the timer (not
+// statically) on purpose — it pulls in a heavy dependency chain (fitness audit,
+// gh issue filing, outcome store). A static import here would drag all of that
+// into `cli-server.ts`'s module graph (this module is wired there for
+// start/shutdown), bloating load and breaking partial-mock test setups. The
+// scheduler is default-off, so the heavy module loads only when actually enabled.
 
 const defaultLogger = createLogger({ component: 'ImprovementReviewScheduler' });
 
@@ -57,31 +62,34 @@ export function startImprovementReviewScheduler(options?: ImprovementReviewSched
   if (intervalMs <= 0) return; // disabled by default
   const fileIssues = options?.fileIssues ?? parseBoolEnv(FILE_ISSUES_ENV, false);
 
-  // Parse once at start (fileIssues is fixed for the scheduler's lifetime) — so
-  // a validation throw surfaces at startup, never mid-tick where it could wedge
-  // the `running` guard (#3229 QA).
-  const input = ImprovementReviewInputSchema.parse({ fileIssues });
-
   let running = false; // guard against overlapping runs (the review is async)
+  // The whole run lives in one async fn so the lazy import, the (cheap) input
+  // parse, and the review all share a single try/finally — a throw anywhere is
+  // caught and `running` is always reset, never wedged (#3229 QA).
+  const runOnce = async (): Promise<void> => {
+    try {
+      const { runImprovementReview, ImprovementReviewInputSchema } =
+        await import('./improvement-review.js');
+      const input = ImprovementReviewInputSchema.parse({ fileIssues });
+      const result = await runImprovementReview(input, { logger });
+      logger.info('Scheduled improvement_review complete', {
+        signals: result.signals.length,
+        issuesFiled: result.issuesFiled.length,
+      });
+    } catch (error: unknown) {
+      logger.warn('Scheduled improvement_review failed', { error: getErrorMessage(error) });
+    } finally {
+      running = false;
+    }
+  };
+
   schedulerTimer = setInterval(() => {
     if (running) {
       logger.debug('Scheduled improvement_review skipped — previous run still in progress');
       return;
     }
     running = true;
-    runImprovementReview(input, { logger })
-      .then((result) => {
-        logger.info('Scheduled improvement_review complete', {
-          signals: result.signals.length,
-          issuesFiled: result.issuesFiled.length,
-        });
-      })
-      .catch((error: unknown) => {
-        logger.warn('Scheduled improvement_review failed', { error: getErrorMessage(error) });
-      })
-      .finally(() => {
-        running = false;
-      });
+    void runOnce();
   }, intervalMs);
   schedulerTimer.unref();
   logger.info('Scheduled improvement_review enabled', { intervalMs, fileIssues });
