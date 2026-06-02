@@ -5,8 +5,8 @@
  */
 
 import type { Content, Part, FunctionDeclaration } from '@google/genai';
-import type { ContentBlock, Message, ToolDefinition, StopReason } from '../core/index.js';
-import { ModelCapability, getTimeProvider, getRandomProvider } from '../core/index.js';
+import type { Message, ToolDefinition, StopReason } from '../core/index.js';
+import { ModelCapability } from '../core/index.js';
 import { findCanonicalModel, getCliModelName } from '../config/model-config-helpers.js';
 
 /**
@@ -79,24 +79,6 @@ export function mapStopReason(finishReason: string | undefined): StopReason {
     default:
       return 'end_turn';
   }
-}
-
-/**
- * Maps Gemini response parts to our ContentBlock type.
- */
-export function mapPartToContentBlock(part: Part): ContentBlock | null {
-  if (part.text !== undefined) {
-    return { type: 'text', text: part.text };
-  }
-  if (part.functionCall !== undefined) {
-    return {
-      type: 'tool_use',
-      id: `tool_${String(getTimeProvider().now())}_${getRandomProvider().random().toString(36).slice(2, 9)}`,
-      name: part.functionCall.name ?? '',
-      input: part.functionCall.args ?? {},
-    };
-  }
-  return null;
 }
 
 /**
