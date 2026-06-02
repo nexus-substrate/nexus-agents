@@ -12,7 +12,9 @@ import {
   createSharedTaskAnalyzer,
   taskAnalysisResultToTaskProfile,
   type TaskProfile,
+  getTuneAdjustmentStore,
 } from '../core/index.js';
+import { parseBoolEnv } from '../config/defaults-env.js';
 import type { CliName, CliTask } from './types.js';
 import type { BudgetRouter } from './budget-router.js';
 import type { TopsisRouter } from './topsis-router.js';
@@ -704,7 +706,8 @@ async function runScoringStages(
 /** Aggregates scores from scoring stages + weather bonuses for TOPSIS. (#1354, #1389) */
 function aggregateStageScores(
   scoring: Awaited<ReturnType<typeof runScoringStages>>,
-  taskContent: string
+  taskContent: string,
+  candidates: readonly CliName[]
 ): Map<CliName, number> {
   const weatherScores = getWeatherBonusForTask(taskContent);
   return mergeScoreMaps(
@@ -713,8 +716,35 @@ function aggregateStageScores(
     scoring.knnResult.scores,
     scoring.distilledResult.scores,
     scoring.resourceResult.scores,
-    weatherScores
+    weatherScores,
+    getTuneAdjustmentScores(candidates)
   );
+}
+
+/**
+ * Env flag (#3147): when enabled, the self-tuning loop's bounded routing
+ * demotions are applied as a scoring penalty here. Default off → no-op.
+ */
+const TUNE_ENFORCE_ENV = 'NEXUS_TUNE_ENFORCE';
+
+/**
+ * Translates the bounded TuneAdjustmentStore multiplier into an additive
+ * routing penalty consistent with the stage-score scale (distilled
+ * penalize=-5, avoid=-10). A max demotion (multiplier 0.5) maps to ≈ -5; the
+ * store guarantees the multiplier never drops below its floor, so the penalty
+ * is bounded. Gated by `NEXUS_TUNE_ENFORCE` — empty map (no-op) when disabled.
+ */
+export function getTuneAdjustmentScores(candidates: readonly CliName[]): Map<CliName, number> {
+  const scores = new Map<CliName, number>();
+  if (!parseBoolEnv(TUNE_ENFORCE_ENV, false)) return scores;
+  const store = getTuneAdjustmentStore();
+  for (const cli of candidates) {
+    const multiplier = store.effectiveMultiplier(cli);
+    if (multiplier < 1.0) {
+      scores.set(cli, -(1.0 - multiplier) * 10);
+    }
+  }
+  return scores;
 }
 
 /** Best-effort weather bonus lookup for a task. */
@@ -865,7 +895,7 @@ export async function runPipeline(
   if (!overrideResult.ok) return overrideResult;
   candidates = overrideResult.value;
 
-  const stageScores = aggregateStageScores(scoring, task.content);
+  const stageScores = aggregateStageScores(scoring, task.content, candidates);
   const topsisOpts: Parameters<typeof runTopsisStage>[4] = {
     performanceData: getPerformanceDataForCategory(task.content),
   };
