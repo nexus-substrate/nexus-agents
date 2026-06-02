@@ -352,6 +352,10 @@ nexus-agents hooks stop --check-tasks
 | `survey_oss_landscape`        | Transient OSS project search (license, stars, last-commit) via GitHub                                          | None (local) | Shared bucket |
 | `vendor_publishing_audit`     | Look up a vendor's signing infrastructure (GPG keys, URL patterns)                                             | None (local) | Shared bucket |
 | `improvement_review`          | Threshold-gated observability loop — surfaces routing/tech-debt/bug/security signals from outcome+fitness data | None (local) | Shared bucket |
+| `get_job_result`              | Read result of an async-mode dispatch by jobId                                                                 | None (local) | Shared bucket |
+| `list_jobs`                   | List async-mode jobs across all tools — cross-session discovery                                                | None (local) | Shared bucket |
+| `cancel_job`                  | Mark an async-mode job as cancelled (idempotent)                                                               | None (local) | Shared bucket |
+| `ci_health_check`             | CI infrastructure health — GitHub status + recent-runs activity                                                | None (local) | Shared bucket |
 
 **Rate limiting:** All tools share a single token bucket rate limiter (capacity: 100 tokens, refill: 10 tokens/sec). Each tool call consumes one token.
 
@@ -1324,7 +1328,7 @@ cli_commands:
 
 ```yaml
 mcp_tools:
-  rate_limiting: shared token bucket (capacity: 100, refill: 10/sec)
+  rate_limiting: 'shared token bucket (capacity: 100, refill: 10/sec)'
   tools:
     - name: orchestrate
       auth: none
@@ -1336,15 +1340,17 @@ mcp_tools:
       auth: none
     - name: delegate_to_model
       auth: none
-    - name: consensus_vote
-      auth: none
     - name: list_experts
       auth: none
     - name: list_workflows
       auth: none
+    - name: consensus_vote
+      auth: none
     - name: research_query
       auth: none
     - name: research_add
+      auth: none
+    - name: research_add_source
       auth: none
     - name: research_discover
       auth: none
@@ -1352,19 +1358,61 @@ mcp_tools:
       auth: none
     - name: research_catalog_review
       auth: none
+    - name: research_synthesize
+      auth: none
+    - name: survey_oss_landscape
+      auth: none
+    - name: vendor_publishing_audit
+      auth: none
+    - name: compare_data_feeds
+      auth: none
     - name: memory_query
       auth: none
     - name: memory_stats
+      auth: none
+    - name: memory_write
+      auth: none
+    - name: weather_report
       auth: none
     - name: issue_triage
       auth: none
     - name: run_graph_workflow
       auth: none
-    - name: weather_report
-      auth: none
     - name: execute_spec
       auth: none
     - name: registry_import
+      auth: none
+    - name: query_trace
+      auth: none
+    - name: query_task_state
+      auth: none
+    - name: get_job_result
+      auth: none
+    - name: list_jobs
+      auth: none
+    - name: cancel_job
+      auth: none
+    - name: ci_health_check
+      auth: none
+    - name: verify_audit_chain
+      auth: none
+    - name: repo_analyze
+      auth: none
+    - name: repo_security_plan
+      auth: none
+    - name: extract_symbols
+      auth: none
+    - name: search_codebase
+      auth: none
+    - name: run_dev_pipeline
+      auth: optional
+    - name: run_pipeline
+      auth: none
+    - name: pr_review
+      auth: none
+    - name: supply_chain_tradeoff_panel
+      auth: none
+    - name: improvement_review
       auth: none
 ```
 
