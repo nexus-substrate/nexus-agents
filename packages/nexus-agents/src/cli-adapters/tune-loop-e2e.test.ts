@@ -67,6 +67,8 @@ describe('self-tuning loop end-to-end (#3323)', () => {
     expect(baseline.ok).toBe(true);
     if (!baseline.ok) return;
     const winner = baseline.value.cliName;
+    // Full score-ordered ranking (best→worst): selected first, then alternatives.
+    const baselineRank = [winner, ...baseline.value.alternatives].indexOf(winner); // 0
 
     // Drive the loop the real way: emit signal.swarm_unhealthy for the winning
     // CLI through the (enabled) TuneStage, which demotes the shared store.
@@ -86,8 +88,20 @@ describe('self-tuning loop end-to-end (#3323)', () => {
     const afterDemotion = await router.route(TASK);
     expect(afterDemotion.ok).toBe(true);
     if (!afterDemotion.ok) return;
-    // The loop changed routing: the demoted CLI is no longer selected.
+    // The loop changed routing: the demoted CLI is no longer selected...
     expect(afterDemotion.value.cliName).not.toBe(winner);
+    // ...and — the stronger causal assertion — the demoted CLI's position in the
+    // score-ordered ranking strictly WORSENED. A weaker `not.toBe(winner)` alone
+    // would also pass if a regression flipped to some other CLI for an unrelated
+    // reason; a worsened rank ties the change directly to the tune penalty.
+    // (Paired with the shadow test below — same store state, enforce off — to
+    // prove causation, not coincidence.) We assert rank-worsened rather than
+    // ranks-LAST because an intrinsically lower-scored peer can still sit below
+    // the penalized CLI.
+    const afterRank = [afterDemotion.value.cliName, ...afterDemotion.value.alternatives].indexOf(
+      winner
+    );
+    expect(afterRank).toBeGreaterThan(baselineRank);
   });
 
   it('does NOT change routing when enforce is off (shadow) even after signals', async () => {
