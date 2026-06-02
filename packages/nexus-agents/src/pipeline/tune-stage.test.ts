@@ -121,6 +121,47 @@ describe('createTuneStage shadow mode (#3147)', () => {
     resetTuneAdjustmentStore();
   });
 
+  it('enabled=true writes a tune.demote audit record when an audit sink is wired (#3323)', () => {
+    resetTuneAdjustmentStore();
+    const bus = new EventBus();
+    const auditLog = vi.fn();
+    const auditLogger = { log: auditLog };
+    createTuneStage(bus, { enabled: true, auditLogger });
+
+    bus.emit(swarmSignal);
+
+    expect(auditLog).toHaveBeenCalledTimes(1);
+    expect(auditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        category: 'configuration',
+        action: 'tune.demote',
+        outcome: 'success',
+        actor: expect.objectContaining({ type: 'system' }),
+        metadata: expect.objectContaining({ cli: 'gemini', provenance: 'signal.swarm_unhealthy' }),
+      })
+    );
+    resetTuneAdjustmentStore();
+  });
+
+  it('does NOT write an audit record for non-routing signals or in shadow mode (#3323)', () => {
+    resetTuneAdjustmentStore();
+    const auditLog = vi.fn();
+    const auditLogger = { log: auditLog };
+
+    // non-routing signal under enforce → no audit
+    const bus1 = new EventBus();
+    createTuneStage(bus1, { enabled: true, auditLogger });
+    bus1.emit(voteSignal);
+    expect(auditLog).not.toHaveBeenCalled();
+
+    // routing signal in shadow (disabled) → no audit
+    const bus2 = new EventBus();
+    createTuneStage(bus2, { enabled: false, auditLogger });
+    bus2.emit(swarmSignal);
+    expect(auditLog).not.toHaveBeenCalled();
+    resetTuneAdjustmentStore();
+  });
+
   it('disabled (shadow) does NOT mutate routing even on swarm_unhealthy', () => {
     resetTuneAdjustmentStore();
     const bus = new EventBus();

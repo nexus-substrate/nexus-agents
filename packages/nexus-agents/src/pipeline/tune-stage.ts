@@ -19,6 +19,7 @@
 import { createLogger, getErrorMessage, getTuneAdjustmentStore } from '../core/index.js';
 import type { ILogger } from '../core/index.js';
 import { parseBoolEnv } from '../config/defaults-env.js';
+import type { IAuditLogger } from '../audit/audit-types.js';
 import type { PipelineEvent, IEventBus, Unsubscribe } from './event-types.js';
 
 const defaultLogger = createLogger({ component: 'TuneStage' });
@@ -60,6 +61,15 @@ export interface TuneStageOptions {
   readonly enabled?: boolean;
   /** Injectable logger (defaults to the module logger). */
   readonly logger?: ILogger;
+  /**
+   * Optional immutable audit sink (#3323). When enforcement applies a routing
+   * demotion, a tamper-evident `tune.demote` record is appended here in addition
+   * to the structured log — required before the loop can be enabled by default.
+   * Omitted in unit tests / shadow contexts that have no audit backend.
+   * Typed as the `log`-only slice of `IAuditLogger` — TuneStage appends records
+   * but never queries/verifies, so it needs nothing more.
+   */
+  readonly auditLogger?: Pick<IAuditLogger, 'log'>;
 }
 
 /**
@@ -92,6 +102,68 @@ export function intendedActionFor(event: PipelineEvent): IntendedTuneAction | un
 }
 
 /**
+ * Append a tamper-evident `tune.demote` audit record for a routing demotion
+ * (#3323). No-op when no sink is wired or no demotion applied. Audit failures
+ * are swallowed and logged — the demotion has already taken effect.
+ */
+function auditDemotion(
+  auditLogger: Pick<IAuditLogger, 'log'> | undefined,
+  agentId: string,
+  adjustment: { multiplier: number; reason: string; appliedAt: number } | undefined,
+  log: ILogger
+): void {
+  if (auditLogger === undefined || adjustment === undefined) return;
+  try {
+    auditLogger.log({
+      category: 'configuration',
+      severity: 'warning',
+      outcome: 'success',
+      action: 'tune.demote',
+      actor: { type: 'system', id: 'tune-stage' },
+      description: `Bounded routing demotion applied to ${agentId} (swarm_unhealthy)`,
+      metadata: {
+        cli: agentId,
+        magnitude: TUNE_ENFORCE_DEMOTION,
+        multiplier: adjustment.multiplier,
+        reason: adjustment.reason,
+        provenance: 'signal.swarm_unhealthy',
+        appliedAt: adjustment.appliedAt,
+      },
+    });
+  } catch (auditError) {
+    log.warn('TuneStage — audit log failed (demotion still applied)', {
+      error: getErrorMessage(auditError),
+    });
+  }
+}
+
+/**
+ * Apply the bounded routing demotion for a `swarm_unhealthy` signal (#3147):
+ * a demotion-only, floored, capped, time-decaying adjustment the router reads
+ * as a scoring penalty, plus structured + durable-audit trails (#3323).
+ */
+function enforceSwarmDemotion(
+  event: Extract<PipelineEvent, { type: 'signal.swarm_unhealthy' }>,
+  action: IntendedTuneAction,
+  auditLogger: Pick<IAuditLogger, 'log'> | undefined,
+  log: ILogger
+): void {
+  const adjustment = getTuneAdjustmentStore().demote(
+    event.agentId,
+    TUNE_ENFORCE_DEMOTION,
+    `swarm_unhealthy: ${event.reason}`
+  );
+  log.info('TuneStage (enforce) — applied bounded routing demotion', {
+    kind: action.kind,
+    signal: action.signal,
+    agentId: event.agentId,
+    reason: event.reason,
+    multiplier: adjustment?.multiplier,
+  });
+  auditDemotion(auditLogger, event.agentId, adjustment, log);
+}
+
+/**
  * Subscribe the TuneStage to the signal events on `bus`. Returns an
  * `Unsubscribe`. Shadow/dry-run by default — logs intended actions, mutates
  * nothing.
@@ -99,28 +171,14 @@ export function intendedActionFor(event: PipelineEvent): IntendedTuneAction | un
 export function createTuneStage(bus: IEventBus, options: TuneStageOptions = {}): Unsubscribe {
   const enabled = options.enabled ?? false;
   const log = options.logger ?? defaultLogger;
+  const auditLogger = options.auditLogger;
   return bus.subscribe({ type: [...TUNE_SIGNAL_TYPES] }, (event) => {
     try {
       const action = intendedActionFor(event);
       if (action === undefined) return;
       if (enabled) {
         if (event.type === 'signal.swarm_unhealthy') {
-          // Bounded auto-enforce (#3147): apply a routing demotion via the
-          // TuneAdjustmentStore, which guarantees demotion-only, floored,
-          // capped, and time-decaying (auto-reversible). The router reads this
-          // (behind the same flag) as a scoring penalty. Audited via this log.
-          const adjustment = getTuneAdjustmentStore().demote(
-            event.agentId,
-            TUNE_ENFORCE_DEMOTION,
-            `swarm_unhealthy: ${event.reason}`
-          );
-          log.info('TuneStage (enforce) — applied bounded routing demotion', {
-            kind: action.kind,
-            signal: action.signal,
-            agentId: event.agentId,
-            reason: event.reason,
-            multiplier: adjustment?.multiplier,
-          });
+          enforceSwarmDemotion(event, action, auditLogger, log);
           return;
         }
         // Other signals' actions (flag_tech_debt / record_rejection) are not

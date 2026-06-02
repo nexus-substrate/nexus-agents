@@ -135,6 +135,8 @@ export interface RegisterMcpToolsOptions {
   workflowConfig?: import('./config/index.js').WorkflowConfig;
   /** FeedbackIntegration for closed-loop learning (Issue #490) */
   feedbackIntegration?: import('./learning/feedback-integration.js').IFeedbackIntegration;
+  /** Immutable audit sink for self-tuning routing mutations (#3323) */
+  auditLogger?: import('./audit/audit-types.js').IAuditLogger;
   /** Enable STPA safety analysis during tool registration (Issue #530) */
   enableStpaSafetyAnalysis?: boolean;
   /** Fail registration if high-severity hazards are found (Issue #530) */
@@ -610,7 +612,10 @@ function registerToolCategories(ctx: ToolRegistrationContext): void {
 }
 
 /** Initializes V2 Pipeline OS subsystems and logs summary. (Phases B-C, Issues #921-#922) */
-function initV2PipelineSubsystems(logger: ILogger): void {
+function initV2PipelineSubsystems(
+  logger: ILogger,
+  auditLogger?: import('./audit/audit-types.js').IAuditLogger
+): void {
   const pluginRegistry = getPipelinePluginRegistry();
   const pipelineEventBus = getPipelineEventBus();
   const bridge = createEventBusBridge({ source: pipelineEventBus });
@@ -623,8 +628,9 @@ function initV2PipelineSubsystems(logger: ILogger): void {
   // Close the self-tuning loop's consumer side: the shadow TuneStage subscribes
   // to signal.* events on the same typed bus (#3147; #3289 Option 2). Shadow
   // mode — logs intended actions, mutates nothing. Paired with
-  // shutdownTuneStage() in cli-server.ts:createShutdownCleanup.
-  startTuneStage(pipelineEventBus);
+  // shutdownTuneStage() in cli-server.ts:createShutdownCleanup. The audit sink
+  // (#3323) records each enforced routing demotion to the immutable log.
+  startTuneStage(pipelineEventBus, auditLogger !== undefined ? { auditLogger } : undefined);
   // Close the loop's final producer: poll SwarmObserver health and emit
   // signal.swarm_unhealthy for CLI-attributable bottlenecks onto the same bus
   // (#3223). Paired with shutdownSwarmHealthSignals() in
@@ -675,7 +681,7 @@ export function registerMcpTools(options: RegisterMcpToolsOptions): void {
   });
   setGlobalToolRateLimiterFactory(rateLimiterFactory);
 
-  initV2PipelineSubsystems(logger);
+  initV2PipelineSubsystems(logger, options.auditLogger);
 
   const gatewayOptions = { ...options, server: observableServer };
   const ctx = createToolContext(gatewayOptions, toolInfra, rateLimiterFactory);
