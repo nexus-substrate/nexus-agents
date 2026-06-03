@@ -6,7 +6,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -186,6 +186,52 @@ describe('registry refresh', () => {
 
     expect(result.exitCode).toBe(1);
     expect(result.text).toMatch(/SHA256 mismatch/);
+  });
+
+  it('rejects a payload whose Content-Length exceeds the cap before reading the body (#3354)', async () => {
+    const source = 'https://example.com/model-registry.json';
+    const fetchImpl = vi.fn(() =>
+      Promise.resolve(
+        new Response('x', {
+          status: 200,
+          headers: { 'content-length': String(6 * 1024 * 1024) },
+        })
+      )
+    ) as unknown as typeof fetch;
+    const dest = join(tempDir, 'too-big.json');
+
+    const result = await registryCommand('refresh', { source, fetchImpl, destPath: dest });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.text).toMatch(/exceeds cap/);
+    expect(existsSync(dest)).toBe(false);
+  });
+
+  it('aborts a stream that exceeds the cap when Content-Length is absent (#3354)', async () => {
+    const source = 'https://example.com/model-registry.json';
+    // 6 × 1 MiB chunks (> 5 MiB cap); a ReadableStream Response carries no
+    // Content-Length, so this exercises the running-cap streaming path.
+    let emitted = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (emitted >= 6) {
+          controller.close();
+          return;
+        }
+        emitted++;
+        controller.enqueue(new Uint8Array(1024 * 1024));
+      },
+    });
+    const fetchImpl = vi.fn(() =>
+      Promise.resolve(new Response(stream, { status: 200 }))
+    ) as unknown as typeof fetch;
+    const dest = join(tempDir, 'streamed-too-big.json');
+
+    const result = await registryCommand('refresh', { source, fetchImpl, destPath: dest });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.text).toMatch(/stream aborted|exceeds cap/);
+    expect(existsSync(dest)).toBe(false);
   });
 
   it('reports fetch failure without writing', async () => {

@@ -305,24 +305,66 @@ interface FetchResult {
   readonly error?: string;
 }
 
+const overCapError = (bytes: number | null): FetchResult => ({
+  ok: false,
+  error:
+    bytes === null
+      ? `payload exceeds cap ${String(MAX_REFRESH_BYTES)} bytes (stream aborted)`
+      : `payload ${String(bytes)} bytes exceeds cap ${String(MAX_REFRESH_BYTES)}`,
+});
+
 async function fetchWithCap(url: string, fetchImpl: typeof fetch): Promise<FetchResult> {
   try {
     const response = await fetchImpl(url, { signal: AbortSignal.timeout(30_000) });
     if (!response.ok) {
       return { ok: false, error: `HTTP ${String(response.status)}` };
     }
-    const body = await response.text();
-    if (body.length > MAX_REFRESH_BYTES) {
-      return {
-        ok: false,
-        error: `payload ${String(body.length)} bytes exceeds cap ${String(MAX_REFRESH_BYTES)}`,
-      };
+
+    // Reject on the declared size before reading a single byte (#3354). A
+    // compromised/typo'd mirror could otherwise stream gigabytes; the old
+    // `response.text()` buffered the whole body before checking the cap and
+    // could exhaust memory first.
+    const declared = Number(response.headers.get('content-length'));
+    if (Number.isFinite(declared) && declared > MAX_REFRESH_BYTES) {
+      return overCapError(declared);
     }
-    return { ok: true, body };
+
+    // No declared length we can trust: stream with a running cap and abort
+    // the moment the accumulated bytes exceed it, so an undeclared or lying
+    // Content-Length can't OOM the process.
+    if (response.body === null) {
+      const body = await response.text();
+      return body.length > MAX_REFRESH_BYTES ? overCapError(body.length) : { ok: true, body };
+    }
+    return await readStreamWithCap(response.body);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     return { ok: false, error: message };
   }
+}
+
+/**
+ * Read a response body stream, aborting the moment the accumulated bytes
+ * exceed {@link MAX_REFRESH_BYTES} (#3354). Keeps a hostile mirror with an
+ * undeclared/lying Content-Length from buffering unbounded data into memory.
+ */
+async function readStreamWithCap(stream: ReadableStream<Uint8Array>): Promise<FetchResult> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let total = 0;
+  let body = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > MAX_REFRESH_BYTES) {
+      await reader.cancel();
+      return overCapError(null);
+    }
+    body += decoder.decode(value, { stream: true });
+  }
+  body += decoder.decode();
+  return { ok: true, body };
 }
 
 // ---------------------------------------------------------------------------
