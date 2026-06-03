@@ -42,6 +42,11 @@
       "a": "get_job_result",
       "b": "list_jobs",
       "similarity": 0.392
+    },
+    {
+      "a": "delegate_to_model",
+      "b": "registry_import",
+      "similarity": 0.23
     }
   ]
 }

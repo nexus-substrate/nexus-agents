@@ -392,6 +392,12 @@ export {
   RunQualityGateInputSchema,
   type RunQualityGateDeps,
   type RunQualityGateInput,
+  // Suggest research tasks tool (#1715 / #1711 — SUGGEST-ONLY)
+  registerSuggestResearchTasksTool,
+  SuggestResearchTasksInputSchema,
+  type SuggestResearchTasksDeps,
+  type SuggestResearchTasksInput,
+  type SuggestResearchTasksResponse,
   // Verify audit chain tool (#2281 follow-up)
   registerVerifyAuditChainTool,
   VerifyAuditChainInputSchema,

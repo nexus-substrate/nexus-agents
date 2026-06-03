@@ -426,6 +426,16 @@ export {
 
 // Research pipeline tool (Issue #1711)
 
+// Suggest research tasks tool (#1715 / #1711 — SUGGEST-ONLY over checkForResearchTriggers)
+export {
+  registerSuggestResearchTasksTool,
+  SuggestResearchTasksInputSchema,
+  SUGGEST_RESEARCH_TASKS_NOTE,
+  type SuggestResearchTasksDeps,
+  type SuggestResearchTasksInput,
+  type SuggestResearchTasksResponse,
+} from './suggest-research-tasks-tool.js';
+
 // Unified pipeline tool (Issue #1736, Phase 3)
 export { registerPipelineTool, PipelineInputSchema, type PipelineInput } from './pipeline-tool.js';
 
@@ -592,6 +602,7 @@ export const REGISTERED_TOOL_NAMES = [
   'supply_chain_tradeoff_panel',
   'improvement_review',
   'run_quality_gate',
+  'suggest_research_tasks',
 ] as const;
 
 export function registerTools(

@@ -104,7 +104,7 @@ That's the smoke task. The verdict prints; the vote tally and per-voter confiden
 nexus-agents setup
 ```
 
-Auto-configures nexus-agents as an MCP server in Claude Code, Cursor, OpenCode, Gemini, and Codex (whichever you have). Restart the editor; the 43 MCP tools (`orchestrate`, `consensus_vote`, `research_synthesize`, `verify_audit_chain`, …) become available to whatever agent you're already using.
+Auto-configures nexus-agents as an MCP server in Claude Code, Cursor, OpenCode, Gemini, and Codex (whichever you have). Restart the editor; the 44 MCP tools (`orchestrate`, `consensus_vote`, `research_synthesize`, `verify_audit_chain`, …) become available to whatever agent you're already using.
 
 `setup` writes/updates up to seven things — each opt-outtable with the corresponding `--skip-*` flag. The full breakdown is in the [project README](../../README.md#what-setup-configures); if you'd rather configure one CLI at a time, run `setup --interactive` (the default).
 
