@@ -1,5 +1,5 @@
 /**
- * Central per-tool MCP annotations (#2648, Epic A).
+ * Central per-tool MCP annotations accessors (#2648, Epic A; consolidated #3358).
  *
  * The MCP 2025-11-25 spec defines four boolean hints clients use to reason
  * about each tool's safety, retry semantics, and permission UX:
@@ -22,399 +22,38 @@
  *
  * The audit (#2648 / docs/research/nexus-agents-multi-harness-alignment-audit.md
  * §6 T14) requires **every** registered tool declare all four hints
- * explicitly — no defaults. This file is the single source of truth; each
- * tool's `registerTool()` call site reads its annotations via
- * `getToolAnnotations(name)`.
+ * explicitly — no defaults.
+ *
+ * **Single source of truth (#3358):** the per-tool annotation DATA lives in
+ * the side-effects superset registry at `./tools/tool-annotations.ts`, where
+ * each entry pairs the MCP hints (`.annotations`) with curated side-effects
+ * metadata (#993). This file is the LIVE ACCESSOR path: each tool's
+ * `registerTool()` call site reads its annotations via `getToolAnnotations(name)`.
+ * Data flows data-file → accessor-file only (no circular import).
  *
  * @module mcp/tool-annotations
  */
 
 import type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
+import { TOOL_ANNOTATIONS as TOOL_SIDE_EFFECTS } from './tools/tool-annotations.js';
 
 /**
- * Per-tool annotations for all 38 registered MCP tools. Adding a new tool
- * requires adding its entry here; `checkToolAnnotations` (governance CI gate)
- * enforces parity with `REGISTERED_TOOL_NAMES` in
- * `packages/nexus-agents/src/mcp/tools/index.ts`.
- */
-export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
-  // ============================================================================
-  // Orchestration & expert lifecycle
-  // ============================================================================
-
-  /** Orchestrator coordinates expert agents; spawns workers that may mutate state. */
-  orchestrate: {
-    readOnlyHint: false,
-    destructiveHint: false,
-    idempotentHint: false,
-    openWorldHint: true,
-  },
-  /** Creates an expert and adds it to the in-memory expert registry. */
-  create_expert: {
-    readOnlyHint: false,
-    destructiveHint: false,
-    idempotentHint: false,
-    openWorldHint: false,
-  },
-  /** Executes a previously created expert; invokes external CLIs. */
-  execute_expert: {
-    readOnlyHint: false,
-    destructiveHint: false,
-    idempotentHint: false,
-    openWorldHint: true,
-  },
-
-  // ============================================================================
-  // Workflow / pipeline execution
-  // ============================================================================
-
-  /** Runs a workflow template; steps may write to the registry or filesystem. */
-  run_workflow: {
-    readOnlyHint: false,
-    destructiveHint: false,
-    idempotentHint: false,
-    openWorldHint: true,
-  },
-  /** Runs a graph-based workflow with checkpointing. */
-  run_graph_workflow: {
-    readOnlyHint: false,
-    destructiveHint: false,
-    idempotentHint: false,
-    openWorldHint: true,
-  },
-  /** Runs a pipeline plugin by name. */
-  run_pipeline: {
-    readOnlyHint: false,
-    destructiveHint: false,
-    idempotentHint: false,
-    openWorldHint: true,
-  },
-  /** Full dev pipeline: research → plan → vote → implement → QA. */
-  run_dev_pipeline: {
-    readOnlyHint: false,
-    destructiveHint: false,
-    idempotentHint: false,
-    openWorldHint: true,
-  },
-  /** Executes an AI-software-factory spec pipeline. */
-  execute_spec: {
-    readOnlyHint: false,
-    destructiveHint: false,
-    idempotentHint: false,
-    openWorldHint: true,
-  },
-
-  // ============================================================================
-  // Voting / decision
-  // ============================================================================
-
-  /** Records vote outcomes to the audit log; doesn't write to repo state. */
-  consensus_vote: {
-    readOnlyHint: false,
-    destructiveHint: false,
-    idempotentHint: false,
-    openWorldHint: true,
-  },
-  /** Per-axis tradeoff vote; records outcome to the store. */
-  supply_chain_tradeoff_panel: {
-    readOnlyHint: false,
-    destructiveHint: false,
-    idempotentHint: false,
-    openWorldHint: true,
-  },
-  /** Multi-voter PR review; may write review comments. */
-  pr_review: {
-    readOnlyHint: false,
-    destructiveHint: false,
-    idempotentHint: false,
-    openWorldHint: true,
-  },
-
-  // ============================================================================
-  // Routing & introspection (read-only)
-  // ============================================================================
-
-  /** Returns a routing recommendation; doesn't execute. */
-  delegate_to_model: {
-    readOnlyHint: true,
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: false,
-  },
-  /** Lists registered expert types. */
-  list_experts: {
-    readOnlyHint: true,
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: false,
-  },
-  /** Lists registered workflow templates. */
-  list_workflows: {
-    readOnlyHint: true,
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: false,
-  },
-
-  // ============================================================================
-  // Research registry — reads
-  // ============================================================================
-
-  /** Queries the research registry. */
-  research_query: {
-    readOnlyHint: true,
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: false,
-  },
-  /** Analyzes registry for gaps, trends, coverage. */
-  research_analyze: {
-    readOnlyHint: true,
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: false,
-  },
-  /** Synthesizes registry into topic clusters. */
-  research_synthesize: {
-    readOnlyHint: true,
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: false,
-  },
-  /** Discovers research items via external APIs; doesn't mutate registry. */
-  research_discover: {
-    readOnlyHint: true,
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: true,
-  },
-
-  // ============================================================================
-  // Research registry — mutations
-  // ============================================================================
-
-  /** Adds an arXiv paper to the registry. Dedup-checked but first call has effects. */
-  research_add: {
-    readOnlyHint: false,
-    destructiveHint: false,
-    idempotentHint: false,
-    openWorldHint: true,
-  },
-  /** Adds a non-paper source to the registry. */
-  research_add_source: {
-    readOnlyHint: false,
-    destructiveHint: false,
-    idempotentHint: false,
-    openWorldHint: true,
-  },
-  /** Reviews auto-cataloged research references; may approve/dismiss. */
-  research_catalog_review: {
-    readOnlyHint: false,
-    destructiveHint: false,
-    idempotentHint: false,
-    openWorldHint: false,
-  },
-
-  // ============================================================================
-  // Transient lookups (no registry persistence)
-  // ============================================================================
-
-  /** Transient OSS search via GitHub API; no persistence. */
-  survey_oss_landscape: {
-    readOnlyHint: true,
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: true,
-  },
-  /** Static lookup against curated vendor seed data. */
-  vendor_publishing_audit: {
-    readOnlyHint: true,
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: false,
-  },
-  /** Diffs two YAML/JSON files; local-only. */
-  compare_data_feeds: {
-    readOnlyHint: true,
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: false,
-  },
-
-  // ============================================================================
-  // Memory
-  // ============================================================================
-
-  /** Reads from memory backends. */
-  memory_query: {
-    readOnlyHint: true,
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: false,
-  },
-  /** Returns memory statistics. */
-  memory_stats: {
-    readOnlyHint: true,
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: false,
-  },
-  /** Writes to a memory backend. */
-  memory_write: {
-    readOnlyHint: false,
-    destructiveHint: false,
-    idempotentHint: false,
-    openWorldHint: false,
-  },
-
-  // ============================================================================
-  // Observability
-  // ============================================================================
-
-  /** Multi-CLI performance weather report; reads outcome store. */
-  weather_report: {
-    readOnlyHint: true,
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: false,
-  },
-  /** Queries execution traces from disk. */
-  query_trace: {
-    readOnlyHint: true,
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: false,
-  },
-  /** Queries structured task-state log. */
-  query_task_state: {
-    readOnlyHint: true,
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: false,
-  },
-  /** Reads job-result sidecar file for an async-mode dispatch (#3042 / #2631). */
-  get_job_result: {
-    readOnlyHint: true,
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: false,
-  },
-  /** Lists async-mode job summaries from the sidecar dir (#3046 / #2631 Stage 5). */
-  list_jobs: {
-    readOnlyHint: true,
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: false,
-  },
-  /** Cancels an in-flight async-mode job (#3042 Stage 1b / #2631). */
-  cancel_job: {
-    // Mutates the sidecar record — NOT read-only.
-    readOnlyHint: false,
-    // Reversibility: cancel writes a new state, but doesn't delete data —
-    // not destructive in the OWASP sense (no irreversible data loss).
-    destructiveHint: false,
-    // Idempotent: repeat cancels are no-ops with explicit outcome envelope.
-    idempotentHint: true,
-    openWorldHint: false,
-  },
-  /** Verifies hash chain of audit log files. */
-  verify_audit_chain: {
-    readOnlyHint: true,
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: false,
-  },
-  /** CI infrastructure health check — composes status-page + recent-runs signals (#3076). */
-  ci_health_check: {
-    readOnlyHint: true,
-    destructiveHint: false,
-    idempotentHint: true,
-    // Hits external services (githubstatus.com + GitHub API) — `openWorldHint`.
-    openWorldHint: true,
-  },
-  /** Threshold-gated observability loop; may file GitHub issues when fileIssues=true. */
-  improvement_review: {
-    readOnlyHint: false,
-    destructiveHint: false,
-    idempotentHint: false,
-    openWorldHint: true,
-  },
-  /** Runs the QA quality gate (typecheck/lint/tests/build/security) over a project dir (#3356). */
-  run_quality_gate: {
-    // Spawns build/test toolchains which can write artifacts — not read-only.
-    readOnlyHint: false,
-    destructiveHint: false,
-    // Re-running the same checks against the same code yields the same verdict.
-    idempotentHint: true,
-    // `security` check can hit OSV; build/test invoke local toolchains — treat as open-world.
-    openWorldHint: true,
-  },
-
-  // ============================================================================
-  // Repository analysis
-  // ============================================================================
-
-  /** Analyzes a GitHub repository structure; doesn't write. */
-  repo_analyze: {
-    readOnlyHint: true,
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: true,
-  },
-  /** Generates a security-scanning pipeline plan; returns plan, doesn't write it. */
-  repo_security_plan: {
-    readOnlyHint: true,
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: true,
-  },
-  /** Extracts code symbols from source files. */
-  extract_symbols: {
-    readOnlyHint: true,
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: false,
-  },
-  /** Searches codebase for patterns or symbols. */
-  search_codebase: {
-    readOnlyHint: true,
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: false,
-  },
-
-  // ============================================================================
-  // Issue triage & registry imports
-  // ============================================================================
-
-  /** Triages a GitHub issue; may write labels/comments when authorized. */
-  issue_triage: {
-    readOnlyHint: false,
-    destructiveHint: false,
-    idempotentHint: false,
-    openWorldHint: true,
-  },
-  /** Generates a draft model-registry entry; doesn't write. */
-  registry_import: {
-    readOnlyHint: true,
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: true,
-  },
-};
-
-/**
- * Look up the annotations for a registered MCP tool. Throws if the tool
- * name isn't in the central map — this enforces "every tool declares its
+ * Look up the MCP annotations for a registered MCP tool. Throws if the tool
+ * name isn't in the central registry — this enforces "every tool declares its
  * hints explicitly" rather than silently falling back to MCP's defaults
  * (which assume destructive + non-idempotent + open-world).
+ *
+ * The data is derived from the side-effects superset registry
+ * (`./tools/tool-annotations.ts`, #993); only the four MCP hint booleans are
+ * returned here — side-effects metadata is reached via that module's
+ * `getSideEffectsByCategory`.
  */
 export function getToolAnnotations(name: string): ToolAnnotations {
-  const a = TOOL_ANNOTATIONS[name];
-  if (a === undefined) {
+  const entry = TOOL_SIDE_EFFECTS[name];
+  if (entry === undefined) {
     throw new Error(
-      `getToolAnnotations: no entry for tool "${name}". Add it to TOOL_ANNOTATIONS in src/mcp/tool-annotations.ts (#2648).`
+      `getToolAnnotations: no entry for tool "${name}". Add it to TOOL_ANNOTATIONS in src/mcp/tools/tool-annotations.ts (#2648/#3358).`
     );
   }
-  return a;
+  return entry.annotations;
 }
