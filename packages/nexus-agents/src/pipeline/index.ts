@@ -279,13 +279,10 @@ export type {
   PipelineType,
 } from './adaptive-orchestrator.js';
 
-// Shared Memory — standalone in-memory tagged store. Originally threaded
-// through PipelineContext for cross-stage discovery handoff (#1737 Phase 4 /
-// #1764), but the integration was write-only and removed in #2937. The
-// class itself is still useful as a standalone tagged in-memory store, so
-// the export stays for direct consumers.
-export { SharedMemoryStore } from './shared-memory.js';
-export type { SharedMemoryEntry, SharedMemoryTag } from './shared-memory.js';
+// Shared Memory — the #1737 Phase-4 / #1764 SharedMemoryStore scaffold was
+// removed (de-integrated to write-only in #2937, deleted in epic #3313).
+// It had zero production consumers; recoverable via git history if
+// cross-stage memory is ever revived.
 
 // #1737 Phase-4 scaffolds removed in #2939: `IncompleteResult` (typed
 // partial-completion result) and `DynamicExpertManager` (bounded runtime
