@@ -32,6 +32,8 @@ import {
   extractTextFromContent,
   createTimeout,
   determineErrorCode,
+  NEXUS_MCP_DEPTH_ENV,
+  nextCodexMcpDepthOrThrow,
 } from './codex-mcp-adapter-helpers.js';
 import {
   getDefaultModelForCli,
@@ -92,11 +94,18 @@ export class CodexMcpAdapter extends BaseCliAdapter {
     this.initCapacityTracker();
     this.logger.debug('Initializing Codex MCP connection');
 
+    // Recursion guard (#3350): refuse to spawn `codex mcp-server` if we're
+    // already nested inside a nexus-spawned codex MCP context, and stamp the
+    // child with the incremented depth so it (and anything it spawns) inherits
+    // the marker. Throws before any spawn when nested — breaking the loop.
+    const childDepth = nextCodexMcpDepthOrThrow();
+
     try {
       this.mcpTransport = new StdioClientTransport({
         command: 'codex',
         args: ['mcp-server'],
         stderr: 'pipe',
+        env: { [NEXUS_MCP_DEPTH_ENV]: childDepth },
       });
 
       this.client = new Client({ name: 'nexus-agents', version: '2.0.0' }, { capabilities: {} });

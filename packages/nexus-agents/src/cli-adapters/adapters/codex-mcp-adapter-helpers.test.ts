@@ -17,6 +17,9 @@ import {
   createCliError,
   determineErrorCode,
   parseVersionFromOutput,
+  readMcpDepth,
+  nextCodexMcpDepthOrThrow,
+  NEXUS_MCP_DEPTH_ENV,
 } from './codex-mcp-adapter-helpers.js';
 
 // ============================================================================
@@ -185,5 +188,37 @@ describe('parseVersionFromOutput', () => {
 
   it('handles whitespace', () => {
     expect(parseVersionFromOutput('  3.1.4  ')).toBe('3.1.4');
+  });
+});
+
+// ============================================================================
+// Recursion guard (#3350)
+// ============================================================================
+
+describe('readMcpDepth', () => {
+  it('returns 0 when the env var is absent', () => {
+    expect(readMcpDepth({})).toBe(0);
+  });
+
+  it('reads a positive depth', () => {
+    expect(readMcpDepth({ [NEXUS_MCP_DEPTH_ENV]: '2' })).toBe(2);
+  });
+
+  it('clamps junk / negative values to 0', () => {
+    expect(readMcpDepth({ [NEXUS_MCP_DEPTH_ENV]: 'nope' })).toBe(0);
+    expect(readMcpDepth({ [NEXUS_MCP_DEPTH_ENV]: '-3' })).toBe(0);
+  });
+});
+
+describe('nextCodexMcpDepthOrThrow', () => {
+  it('allows spawning at top level and returns the incremented depth', () => {
+    expect(nextCodexMcpDepthOrThrow({})).toBe('1');
+  });
+
+  it('throws when already nested (depth > max), citing #3350', () => {
+    expect(() => nextCodexMcpDepthOrThrow({ [NEXUS_MCP_DEPTH_ENV]: '1' })).toThrow(/#3350/);
+    expect(() => nextCodexMcpDepthOrThrow({ [NEXUS_MCP_DEPTH_ENV]: '5' })).toThrow(
+      /recursive codex.*nexus MCP spawn loop/i
+    );
   });
 });

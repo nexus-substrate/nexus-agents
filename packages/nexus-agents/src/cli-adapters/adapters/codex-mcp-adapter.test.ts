@@ -145,6 +145,39 @@ describe('CodexMcpAdapter', () => {
       // Client should only be created once
       expect(Client).toHaveBeenCalledTimes(1);
     });
+
+    describe('recursion guard (#3350)', () => {
+      const prev = process.env.NEXUS_MCP_DEPTH;
+      afterEach(() => {
+        if (prev === undefined) delete process.env.NEXUS_MCP_DEPTH;
+        else process.env.NEXUS_MCP_DEPTH = prev;
+      });
+
+      it('stamps the spawned codex child with NEXUS_MCP_DEPTH=1 at top level', async () => {
+        delete process.env.NEXUS_MCP_DEPTH;
+        await adapter.initialize();
+
+        expect(mocks.mockTransport).toHaveBeenCalledWith(
+          expect.objectContaining({
+            command: 'codex',
+            args: ['mcp-server'],
+            env: { NEXUS_MCP_DEPTH: '1' },
+          })
+        );
+      });
+
+      it('refuses to spawn codex mcp-server when already nested (breaks the loop)', async () => {
+        process.env.NEXUS_MCP_DEPTH = '1';
+        const nested = new CodexMcpAdapter();
+
+        await expect(nested.initialize()).rejects.toThrow(
+          /recursive codex.*nexus MCP spawn loop|#3350/i
+        );
+        // No transport spawned — the cycle is cut before any `codex mcp-server`.
+        expect(mocks.mockTransport).not.toHaveBeenCalled();
+        await nested.dispose();
+      });
+    });
   });
 
   describe('execute()', () => {

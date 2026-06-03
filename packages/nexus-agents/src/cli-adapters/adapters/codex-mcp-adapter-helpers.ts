@@ -29,6 +29,51 @@ export const DEFAULT_CODEX_MCP_OPTIONS: ResolvedExecutionOptions = {
   onProgress: undefined,
 };
 
+// ---------------------------------------------------------------------------
+// Recursion guard for `codex mcp-server` spawning (#3350)
+// ---------------------------------------------------------------------------
+
+/**
+ * Env var stamped on the `codex mcp-server` child nexus spawns, marking how
+ * deep we are in the nexus→codex-mcp spawn nesting. Inherited by anything the
+ * codex MCP server itself spawns (including a nested `nexus-agents
+ * --mode=server` if codex is misconfigured to launch one).
+ */
+export const NEXUS_MCP_DEPTH_ENV = 'NEXUS_MCP_DEPTH';
+
+/**
+ * Highest nesting depth at which nexus will spawn `codex mcp-server`. `0`
+ * means only the top-level nexus process spawns it; any deeper attempt is the
+ * recursive codex↔nexus loop and is refused.
+ */
+export const MAX_CODEX_MCP_SPAWN_DEPTH = 0;
+
+/** Read the current nesting depth from an env bag; clamps missing/junk to 0. */
+export function readMcpDepth(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = Number.parseInt(env[NEXUS_MCP_DEPTH_ENV] ?? '0', 10);
+  return Number.isFinite(raw) && raw > 0 ? raw : 0;
+}
+
+/**
+ * Recursion guard (#3350). Returns the depth string to stamp on the spawned
+ * `codex mcp-server` child, or throws if we are already nested — which would
+ * re-enter the codex↔nexus MCP spawn loop that corrupted the codex OAuth
+ * token (dozens of leaked servers racing the shared refresh-token rotation).
+ */
+export function nextCodexMcpDepthOrThrow(env: NodeJS.ProcessEnv = process.env): string {
+  const depth = readMcpDepth(env);
+  if (depth > MAX_CODEX_MCP_SPAWN_DEPTH) {
+    throw new Error(
+      `Refusing to spawn 'codex mcp-server': already nested inside a ` +
+        `nexus-spawned codex MCP context (${NEXUS_MCP_DEPTH_ENV}=${String(depth)}). ` +
+        `This breaks the recursive codex↔nexus MCP spawn loop (#3350). If you ` +
+        `intentionally configured codex to launch nexus-agents as an MCP ` +
+        `server, remove that '[mcp_servers.nexus-agents]' entry from ~/.codex/config.toml.`
+    );
+  }
+  return String(depth + 1);
+}
+
 /**
  * MCP tool call result structure.
  */
