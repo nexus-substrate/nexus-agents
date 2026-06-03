@@ -151,6 +151,8 @@ export const NO_PREREQUISITE: Record<string, string> = {
     'untrusted-input safety (trust-tier classification, Rule of Two) is internal-handler logic per .rules/untrusted-input.md — not a call-time world-state predicate',
   cancel_job:
     'reads + writes the local sidecar file only; cancel-after-complete is an idempotent no-op (first-wins) so misuse is bounded — no pre-gate needed',
+  run_quality_gate:
+    'stateless QA gate over the given projectDir; a missing toolchain (tsc/eslint/vitest/build) surfaces as a check failure in the verdict, not a call-time world-state precondition — no pre-gate needed',
 };
 
 // ============================================================================

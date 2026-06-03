@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-06-03T10:33:28.851Z",
+  "generated": "2026-06-03T11:07:09.191Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.98.0",
   "cli": {
@@ -443,6 +443,10 @@
       {
         "name": "run_pipeline",
         "file": "src/mcp/tools/run-pipeline.ts"
+      },
+      {
+        "name": "run_quality_gate",
+        "file": "src/mcp/tools/run-quality-gate.ts"
       },
       {
         "name": "run_workflow",

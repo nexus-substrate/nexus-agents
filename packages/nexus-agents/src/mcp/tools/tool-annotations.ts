@@ -314,6 +314,29 @@ export const TOOL_ANNOTATIONS: Readonly<Record<string, ToolSideEffectsEntry>> = 
       { category: 'implicit', description: 'Consumes rate limit quota' },
     ],
   },
+  run_quality_gate: {
+    annotations: {
+      title: 'Run Quality Gate',
+      // Spawns build/test toolchains which can write artifacts — not read-only.
+      readOnlyHint: false,
+      destructiveHint: false,
+      // Same checks against the same code yield the same verdict.
+      idempotentHint: true,
+      // build/test/security invoke local toolchains and may reach the network.
+      openWorldHint: true,
+    },
+    sideEffects: [
+      {
+        category: 'implicit',
+        description:
+          'Spawns local toolchain processes (tsc/eslint/vitest/build) in the target project dir',
+      },
+      {
+        category: 'implicit',
+        description: 'build/test checks may write build artifacts and coverage output to disk',
+      },
+    ],
+  },
   issue_triage: {
     annotations: {
       title: 'Issue Triage',

@@ -31,8 +31,8 @@ describe('tool-annotations', () => {
       }
     });
 
-    it('has exactly 42 tool entries', () => {
-      expect(Object.keys(TOOL_ANNOTATIONS)).toHaveLength(42);
+    it('has exactly 43 tool entries', () => {
+      expect(Object.keys(TOOL_ANNOTATIONS)).toHaveLength(43);
     });
 
     it('every entry has valid annotations shape', () => {

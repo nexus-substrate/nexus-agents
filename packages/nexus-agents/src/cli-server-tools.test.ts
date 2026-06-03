@@ -193,6 +193,7 @@ vi.mock('./mcp/index.js', () => ({
   registerSearchCodebaseTool: mockRegisterSearchCodebaseTool,
   registerRepoAnalyzeTool: mockRegisterRepoAnalyzeTool,
   registerRepoSecurityPlanTool: mockRegisterRepoSecurityPlanTool,
+  registerRunQualityGateTool: vi.fn(),
   createDefaultDeps: mockCreateDefaultDeps,
   // Canonical tool-name list (Issue #2935) — must match the real export so
   // `cli-server-tools.ts:REGISTERED_TOOLS` alias resolves at module load.
@@ -239,6 +240,7 @@ vi.mock('./mcp/index.js', () => ({
     'pr_review',
     'supply_chain_tradeoff_panel',
     'improvement_review',
+    'run_quality_gate',
   ] as const,
 }));
 
@@ -400,8 +402,8 @@ function makeDefaultOptions(overrides: Record<string, unknown> = {}) {
 // ============================================================================
 
 describe('REGISTERED_TOOLS', () => {
-  it('should contain exactly 42 tool names', () => {
-    expect(REGISTERED_TOOLS).toHaveLength(42);
+  it('should contain exactly 43 tool names', () => {
+    expect(REGISTERED_TOOLS).toHaveLength(43);
   });
 
   it('should include all expected tool names', () => {
@@ -448,6 +450,7 @@ describe('REGISTERED_TOOLS', () => {
       'improvement_review',
       'pr_review',
       'supply_chain_tradeoff_panel',
+      'run_quality_gate',
     ];
     // Order-insensitive comparison — REGISTERED_TOOLS is sourced from
     // `REGISTERED_TOOL_NAMES` in mcp/tools/index.ts (#2935) which uses a

@@ -339,6 +339,16 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
     idempotentHint: false,
     openWorldHint: true,
   },
+  /** Runs the QA quality gate (typecheck/lint/tests/build/security) over a project dir (#3356). */
+  run_quality_gate: {
+    // Spawns build/test toolchains which can write artifacts — not read-only.
+    readOnlyHint: false,
+    destructiveHint: false,
+    // Re-running the same checks against the same code yields the same verdict.
+    idempotentHint: true,
+    // `security` check can hit OSV; build/test invoke local toolchains — treat as open-world.
+    openWorldHint: true,
+  },
 
   // ============================================================================
   // Repository analysis

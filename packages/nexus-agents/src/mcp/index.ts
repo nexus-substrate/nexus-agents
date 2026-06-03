@@ -387,6 +387,11 @@ export {
   type CiHealthCheckDeps,
   type CiHealthCheckInput,
   type CiHealthCheckResponse,
+  // Quality gate tool (#3356 — MCP surface over the runQualityGate QA engine)
+  registerRunQualityGateTool,
+  RunQualityGateInputSchema,
+  type RunQualityGateDeps,
+  type RunQualityGateInput,
   // Verify audit chain tool (#2281 follow-up)
   registerVerifyAuditChainTool,
   VerifyAuditChainInputSchema,
