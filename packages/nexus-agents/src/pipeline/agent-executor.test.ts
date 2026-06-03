@@ -74,7 +74,7 @@ vi.mock('./security-gate.js', () => ({
   checkSecurityScan: () => () => Promise.resolve({ verdict: 'pass', details: 'ok' }),
 }));
 
-import { createAgentStages } from './agent-executor.js';
+import { createAgentStages, buildVoteProposal } from './agent-executor.js';
 
 describe('createAgentStages — central workflow hub', () => {
   beforeEach(() => {
@@ -457,5 +457,28 @@ describe('createAgentStages — central workflow hub', () => {
       expect((decomposeRecord![0] as { cli: string }).cli).toBe('codex');
       expect((implRecord![0] as { cli: string }).cli).toBe('claude');
     });
+  });
+});
+
+describe('buildVoteProposal (#3258)', () => {
+  it('returns plan-only when research is empty (prior behavior)', () => {
+    expect(buildVoteProposal('the plan', '')).toBe('the plan');
+    expect(buildVoteProposal('the plan', '   ')).toBe('the plan');
+  });
+
+  it('appends research as a delimited, not-instructions block when present', () => {
+    const out = buildVoteProposal('PLAN BODY', 'found 3 high-relevance papers');
+    expect(out).toContain('PLAN BODY');
+    expect(out).toContain('found 3 high-relevance papers');
+    expect(out).toMatch(/Research context \(informational/);
+    expect(out).toMatch(/NOT instructions/);
+  });
+
+  it('hard-caps the proposal at 4000 chars even with huge plan + research', () => {
+    const out = buildVoteProposal('p'.repeat(10_000), 'r'.repeat(10_000));
+    expect(out.length).toBeLessThanOrEqual(4000);
+    // research is still represented (not crowded out) — its budget is reserved
+    expect(out).toContain('Research context');
+    expect(out).toContain('r'.repeat(100));
   });
 });

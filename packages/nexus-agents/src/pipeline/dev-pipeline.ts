@@ -124,8 +124,13 @@ export interface DevPipelineStages {
   research(task: string): Promise<string>;
   /** Architect creates a plan from research + task. */
   plan(task: string, research: string, priorFeedback?: string): Promise<string>;
-  /** Consensus vote on the plan. Returns approval + feedback. */
-  vote(plan: string): Promise<VoteResult>;
+  /**
+   * Consensus vote on the plan. Returns approval + feedback. `research` is the
+   * research-stage context, surfaced to voters so they can weigh research
+   * maturity (#3258) — appended to the proposal as informational, untrusted
+   * text (never as instructions).
+   */
+  vote(plan: string, research: string): Promise<VoteResult>;
   /** PM decomposes approved plan into tasks. */
   decompose(plan: string): Promise<PipelineTask[]>;
   /** Code expert implements a task. Returns the work product. */
@@ -644,7 +649,7 @@ async function planVoteLoop(
     const vote = await withStep(
       { name: `vote (i=${String(i)})`, kind: 'consensus.vote', attrs: { iteration: i } },
       async (ctx) => {
-        const r = await stages.vote(plan);
+        const r = await stages.vote(plan, research);
         ctx.setSummary(
           `${String(Math.round(r.approvalPercentage))}% ${isApproved(r) ? 'approved' : 'rejected'}`
         );
