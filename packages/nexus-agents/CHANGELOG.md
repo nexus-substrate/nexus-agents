@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 2.101.0
+
+### Minor Changes
+
+- [#3370](https://github.com/nexus-substrate/nexus-agents/pull/3370) [`d0cbc6f`](https://github.com/nexus-substrate/nexus-agents/commit/d0cbc6f08101dd091e8bc6c8c869209a9d9b8853) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The user overlay `~/.nexus-agents/models.yaml` (in ManifestSchema/`ModelEntry` format) now overrides registry model data — below the operator manifest, above in-tree. This consolidates the two overlay loaders onto `manifest-overlay`, which now loads both the user path (`models.yaml`, lower precedence) and the operator path (`models-manifest.yaml`, higher precedence) and merges them into the single `manifest` registry tier (operator wins on id collision). Completes [#3293](https://github.com/nexus-substrate/nexus-agents/issues/3293)'s overlay-consolidation intent and removes the dead `capability-overlay` loader (its old `ModelCapability` format had zero production effect). Both paths are validated with `ManifestSchema` and fail closed on malformed/oversized files. `registry doctor` now reports the user-overlay path/status from the manifest loader. ([#3351](https://github.com/nexus-substrate/nexus-agents/issues/3351))
+
 ## 2.100.2
 
 ### Patch Changes
