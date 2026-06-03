@@ -116,8 +116,10 @@ export function createVoteStageWrapper(stages: DevPipelineStages): IPipelineStag
     async execute(ctx: PipelineContext): Promise<StageOutput> {
       const start = getTimeProvider().now();
       const plan = typeof ctx.state[K.PLAN] === 'string' ? (ctx.state[K.PLAN] as string) : '';
+      const research =
+        typeof ctx.state[K.RESEARCH] === 'string' ? (ctx.state[K.RESEARCH] as string) : '';
       try {
-        const vote = await stages.vote(plan);
+        const vote = await stages.vote(plan, research);
         const ms = getTimeProvider().now() - start;
         const feedback = isApproved(vote) ? '' : getVoteFeedback(vote);
         return {

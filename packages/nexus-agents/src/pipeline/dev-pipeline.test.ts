@@ -56,6 +56,11 @@ describe('runDevPipeline', () => {
     expect(stages.research).toHaveBeenCalledWith('Build feature X');
     expect(stages.implement).toHaveBeenCalledTimes(2);
     expect(stages.qaReview).toHaveBeenCalledTimes(2);
+    // #3258: vote() must receive the research context (not decide blind).
+    expect(stages.vote).toHaveBeenCalledWith(
+      expect.any(String),
+      'Research findings: relevant context gathered'
+    );
   });
 
   it('iterates plan when vote rejects then approves', async () => {
