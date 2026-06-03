@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 2.99.0
+
+### Minor Changes
+
+- [#3357](https://github.com/nexus-substrate/nexus-agents/pull/3357) [`1a53963`](https://github.com/nexus-substrate/nexus-agents/commit/1a539632769130e2e4febf5e6791705efef93e7e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Add the `run_quality_gate` MCP tool ([#3356](https://github.com/nexus-substrate/nexus-agents/issues/3356)) — a callable QA capability that runs a local quality gate (typecheck / lint / tests / build / security) over a project directory and returns a structured pass/fail verdict with per-check details and actionable feedback. It's a thin wrapper over the existing-but-previously-unwired `runQualityGate` engine ([#1684](https://github.com/nexus-substrate/nexus-agents/issues/1684)), reusing the in-tree check factories and `checkSecurityScan` — closing the gap where `run_dev_pipeline`/`run_pipeline` orchestrate and SARIF-scan but never run a local QA gate before declaring work done. Hardened: `projectDir` is validated via `resolveInsideRoot` (path-traversal rejected) and must be an existing directory; check names are a fixed allowlist mapped to fixed commands (no arbitrary shell); output is bounded. Ratified by consensus vote (higher_order, 7/7). Resolves [#3346](https://github.com/nexus-substrate/nexus-agents/issues/3346).
+
 ## 2.98.0
 
 ### Minor Changes
