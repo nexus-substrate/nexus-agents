@@ -3,9 +3,11 @@
  *
  * Two subcommands:
  *
- * - `doctor` — inspect CapabilityDiscovery state: tier counts, overlay /
- *   bundled paths and status, configured conservative default. Surfaces
- *   whatever T3 overlay parse rejections occurred at load. Read-only.
+ * - `doctor` — inspect the ModelRegistry: effective per-source entry counts,
+ *   the bundled generated registry path/status, the user overlay (reported for
+ *   inspection), and the unknown-id fallback contextWindow. Surfaces whatever
+ *   overlay parse rejections occurred at load. Read-only. (#3293 migrated this
+ *   off the deleted CapabilityDiscovery four-tier chain.)
  *
  * - `refresh` — download a signed `model-registry.generated.json` from a
  *   URL, SHA256-verify against a `.sha256` sidecar, write to the user's
@@ -23,12 +25,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { nexusDataPath } from '../config/nexus-data-dir.js';
 
-import {
-  defaultGeneratedRegistryPath,
-  getCapabilityDiscovery,
-  loadBundledGeneratedRegistry,
-  type ResolutionTier,
-} from '../config/capability-discovery.js';
+import { getDefaultRegistry, type EntrySource } from '../config/model-registry.js';
+import { loadGeneratedRegistryEntries } from '../config/models-generated-loader.js';
 import {
   OVERLAY_ENV_VAR,
   OVERLAY_MAX_BYTES,
@@ -77,13 +75,30 @@ export async function registryCommand(
 // doctor
 // ---------------------------------------------------------------------------
 
+/**
+ * ContextWindow returned for an id no registry source resolves. This is the
+ * old `FAIL_CLOSED_DEFAULT.contextWindow` value (#2177), preserved here after
+ * the CapabilityDiscovery four-tier chain was deleted in #3293.
+ */
+const UNKNOWN_MODEL_CONTEXT_WINDOW = 8192;
+
+/** Every registry source, in report order. */
+const ENTRY_SOURCES: readonly EntrySource[] = [
+  'in-tree',
+  'models-dev',
+  'manifest',
+  'derived',
+  'generated',
+];
+
 interface DoctorReport {
-  readonly tierCounts: Record<ResolutionTier, number>;
+  /** Effective per-source counts over `getDefaultRegistry().allEntries()`. */
+  readonly sourceCounts: Record<EntrySource, number>;
+  readonly totalEntries: number;
   readonly bundled: {
     readonly path: string;
-    readonly present: boolean;
-    readonly entryCount: number | null;
-    readonly generatedAt: string | null;
+    readonly status: 'loaded' | 'missing' | 'malformed';
+    readonly entryCount: number;
   };
   readonly overlay: {
     readonly path: string;
@@ -92,9 +107,8 @@ interface DoctorReport {
     readonly rejections: readonly { index: number; id?: string; reason: string }[];
     readonly envOverride: string | undefined;
   };
-  readonly conservativeDefault: {
+  readonly unknownIdFallback: {
     readonly contextWindow: number;
-    readonly maxOutputTokens: number | null;
   };
 }
 
@@ -107,19 +121,36 @@ function doctorCommand(options: RegistryCommandOptions): RegistryCommandResult {
 }
 
 function buildDoctorReport(options: RegistryCommandOptions): DoctorReport {
-  const bundledPath = defaultGeneratedRegistryPath();
-  const bundled = loadBundledGeneratedRegistry(bundledPath);
+  // Effective per-source counts over the fully-merged registry: dedup/override
+  // across tiers has already happened, so `allEntries()` reflects what actually
+  // wins, grouped by the surviving entry's `source`.
+  const entries = getDefaultRegistry().allEntries();
+  const sourceCounts: Record<EntrySource, number> = {
+    'in-tree': 0,
+    'models-dev': 0,
+    manifest: 0,
+    derived: 0,
+    generated: 0,
+  };
+  for (const entry of entries) {
+    sourceCounts[entry.source] += 1;
+  }
+
+  // The bundled generated catalog (long-tail breadth tier) — reported from the
+  // same loader the registry ingests, so the path/status here matches reality.
+  const generated = loadGeneratedRegistryEntries();
+
+  // User overlay is reported for inspection only; the registry consumes the
+  // operator manifest, not this YAML overlay (kept by manifest-overlay.ts).
   const overlay = loadCapabilityOverlay(options.overlayPath ?? process.env);
-  const discovery = getCapabilityDiscovery();
-  const fallback = discovery.getConservativeDefault();
 
   return {
-    tierCounts: discovery.getTierCounts(),
+    sourceCounts,
+    totalEntries: entries.length,
     bundled: {
-      path: bundledPath,
-      present: bundled !== null,
-      entryCount: bundled !== null ? bundled.entryCount : null,
-      generatedAt: bundled !== null ? bundled.generatedAt : null,
+      path: generated.path,
+      status: generated.status,
+      entryCount: generated.entries.length,
     },
     overlay: {
       path: overlay.path,
@@ -132,9 +163,8 @@ function buildDoctorReport(options: RegistryCommandOptions): DoctorReport {
       })),
       envOverride: process.env[OVERLAY_ENV_VAR],
     },
-    conservativeDefault: {
-      contextWindow: fallback.contextWindow,
-      maxOutputTokens: fallback.maxOutputTokens ?? null,
+    unknownIdFallback: {
+      contextWindow: UNKNOWN_MODEL_CONTEXT_WINDOW,
     },
   };
 }
@@ -144,20 +174,18 @@ function formatDoctorReport(r: DoctorReport): string {
   lines.push('nexus-agents registry doctor');
   lines.push('============================');
   lines.push('');
-  lines.push('Tier counts (T3 overlay → T1 canonical → T2 bundled → T4 fallback):');
-  lines.push(`  T3 overlay   : ${String(r.tierCounts.t3)}`);
-  lines.push(`  T1 canonical : ${String(r.tierCounts.t1)}`);
-  lines.push(`  T2 bundled   : ${String(r.tierCounts.t2)}`);
-  lines.push('');
-  lines.push('T2 bundled registry:');
-  lines.push(`  path        : ${r.bundled.path}`);
-  lines.push(`  present     : ${r.bundled.present ? 'yes' : 'no (using T1 + T4 only)'}`);
-  if (r.bundled.present) {
-    lines.push(`  entryCount  : ${String(r.bundled.entryCount ?? '?')}`);
-    lines.push(`  generatedAt : ${r.bundled.generatedAt ?? '?'}`);
+  lines.push(`Registry entries by source (total ${String(r.totalEntries)}):`);
+  for (const source of ENTRY_SOURCES) {
+    lines.push(`  ${source.padEnd(11)}: ${String(r.sourceCounts[source])}`);
   }
   lines.push('');
-  lines.push('T3 user overlay:');
+  lines.push('Bundled generated registry (long-tail breadth tier):');
+  lines.push(`  path        : ${r.bundled.path}`);
+  lines.push(`  status      : ${r.bundled.status}`);
+  lines.push(`  entryCount  : ${String(r.bundled.entryCount)}`);
+  lines.push('');
+  // User overlay reported for inspection; not consumed by the merged registry.
+  lines.push('T3 user overlay (reported for inspection):');
   lines.push(`  path        : ${r.overlay.path}`);
   lines.push(`  status      : ${r.overlay.status}`);
   lines.push(`  entryCount  : ${String(r.overlay.entryCount)}`);
@@ -170,11 +198,8 @@ function formatDoctorReport(r: DoctorReport): string {
     }
   }
   lines.push('');
-  lines.push('T4 conservative default (for unknown ids):');
-  lines.push(`  contextWindow : ${String(r.conservativeDefault.contextWindow)}`);
-  if (r.conservativeDefault.maxOutputTokens !== null) {
-    lines.push(`  maxOutputTokens: ${String(r.conservativeDefault.maxOutputTokens)}`);
-  }
+  lines.push('Unknown-id fallback (id resolves in no source):');
+  lines.push(`  contextWindow : ${String(r.unknownIdFallback.contextWindow)}`);
   return lines.join('\n');
 }
 
@@ -308,7 +333,9 @@ export function formatRegistryUsage(): string {
   return [
     'Usage:',
     '  nexus-agents registry doctor [--json]',
-    '      Inspect the four-tier capability discovery state.',
+    '      Inspect the merged ModelRegistry: per-source entry counts, the',
+    '      bundled generated registry, the user overlay, and the unknown-id',
+    '      fallback contextWindow.',
     '',
     '  nexus-agents registry refresh --source=<url> [--dry-run]',
     '      Download a signed model-registry.generated.json from <url>,',
