@@ -132,6 +132,14 @@ export interface DevPipelineStages {
   implement(task: PipelineTask): Promise<string>;
   /** QA expert reviews implementation. */
   qaReview(task: PipelineTask, implementation: string): Promise<QaReviewResult>;
+  /**
+   * Local QA quality gate (typecheck/lint/tests/build) run before ship (#3356).
+   * Optional: pipelines that don't supply it simply skip the gate. Returns
+   * `passed` plus actionable `feedback` from the underlying `runQualityGate`
+   * engine. Whether a red gate fails the phase is governed by the
+   * `qualityGate` mode in {@link DevPipelineOptions}, not this method.
+   */
+  qualityGate?(): Promise<{ passed: boolean; feedback: string }>;
   /** Security scan. Returns true if passed. */
   securityScan(): Promise<{ passed: boolean; feedback: string }>;
 }
@@ -147,6 +155,16 @@ const MAX_QA_ITERATIONS = 3;
 /** Pipeline execution mode. */
 export type PipelineMode = 'autonomous' | 'harness';
 
+/**
+ * Local quality-gate mode (#3356). Controls the pre-ship typecheck/lint/tests/build gate:
+ * - 'off' (default): the gate is never run. Safe for repos lacking standard scripts.
+ * - 'advisory': the gate runs and its feedback is recorded, but a red gate does
+ *   NOT fail the pipeline.
+ * - 'blocking': a red gate fails the phase, the same way a blocking security
+ *   scan does.
+ */
+export type QualityGateMode = 'off' | 'advisory' | 'blocking';
+
 /** Options for pipeline execution. */
 export interface DevPipelineOptions {
   /** Session ID for checkpoint/resume. Omit for no persistence. */
@@ -159,6 +177,13 @@ export interface DevPipelineOptions {
    * - 'harness': stops after decompose, returns tasks for external implementation
    */
   readonly mode?: PipelineMode | undefined;
+  /**
+   * Local pre-ship quality-gate mode (#3356). Default 'off' so the pipeline
+   * never wedges repos that lack standard build/test scripts. See
+   * {@link QualityGateMode}. Requires `stages.qualityGate` to be supplied;
+   * if the stage is absent the gate is skipped regardless of mode.
+   */
+  readonly qualityGate?: QualityGateMode | undefined;
   /** Optional BeliefMemory for hindsight updates after plan outcomes (#1720). */
   readonly beliefMemory?: IHindsightBeliefMemory | undefined;
 }
@@ -228,8 +253,14 @@ async function runDevPipelineInner(
     return buildHarnessResult(planResult, tasks);
   }
 
-  // Phases 4-5: Implement + Security
-  const result = await runImplSecurityPhase(planResult, tasks, stages, sid);
+  // Phases 4-5: Implement + Quality Gate + Security
+  const result = await runImplSecurityPhase(
+    planResult,
+    tasks,
+    stages,
+    sid,
+    options?.qualityGate ?? 'off'
+  );
 
   // Apply hindsight with actual pipeline outcome (#1720)
   applyPipelineHindsight(bm, task, sid, result);
@@ -418,16 +449,32 @@ function buildHarnessResult(
   };
 }
 
-/** Phases 4-5: Implement/QA + Security with checkpoint support. */
+/** Phases 4-5: Implement/QA + Quality Gate + Security with checkpoint support. */
 async function runImplSecurityPhase(
   planResult: { plan: string; iterations: number },
   tasks: PipelineTask[],
   stages: DevPipelineStages,
-  sid: string | undefined
+  sid: string | undefined,
+  qualityGateMode: QualityGateMode
 ): Promise<DevPipelineResult> {
   const implResult = await implementQaLoop(tasks, stages);
   if (sid !== undefined)
     saveStageCheckpoint(sid, 'implement', { type: 'implement', tasks: implResult.completedTasks });
+
+  // Local pre-ship quality gate (#3356). In 'blocking' mode a red gate fails
+  // the phase before the security scan even runs — same posture as a blocking
+  // security finding. In 'advisory' mode we record feedback but never fail.
+  const qaGate = await runQualityGateStage(stages, qualityGateMode);
+  if (qualityGateMode === 'blocking' && !qaGate.passed) {
+    return {
+      completed: false,
+      plan: planResult.plan,
+      tasks: implResult.completedTasks.length > 0 ? implResult.completedTasks : tasks,
+      voteIterations: planResult.iterations,
+      qaIterations: implResult.totalIterations,
+      securityPassed: false,
+    };
+  }
 
   const security = await withStep(
     { name: 'security-scan', kind: 'pipeline.stage' },
@@ -450,6 +497,45 @@ async function runImplSecurityPhase(
     qaIterations: implResult.totalIterations,
     securityPassed: security.passed,
   };
+}
+
+/** Result of the optional pre-ship quality gate (#3356). */
+interface QualityGateOutcome {
+  readonly passed: boolean;
+  readonly feedback: string;
+}
+
+/**
+ * Run the local quality gate (#3356) when enabled and supplied.
+ *
+ * Skips entirely when mode is 'off' or `stages.qualityGate` is absent — the
+ * gate must never wedge repos that lack standard build/test scripts. Wraps the
+ * call in `withStep` so it participates in the same EventBus/trace plumbing the
+ * security scan uses. In 'advisory' mode a red gate is reported but treated as a
+ * non-blocking outcome by the caller.
+ */
+async function runQualityGateStage(
+  stages: DevPipelineStages,
+  mode: QualityGateMode
+): Promise<QualityGateOutcome> {
+  if (mode === 'off' || stages.qualityGate === undefined) {
+    return { passed: true, feedback: 'Quality gate skipped' };
+  }
+  const runGate = stages.qualityGate.bind(stages);
+  return withStep(
+    { name: 'quality-gate', kind: 'pipeline.stage', attrs: { mode } },
+    async (ctx) => {
+      const r = await runGate();
+      const advisory = mode === 'advisory' && !r.passed;
+      ctx.setSummary(r.passed ? 'passed' : advisory ? 'FAILED (advisory)' : 'FAILED');
+      if (advisory) {
+        logger.warn('Quality gate failed (advisory — not blocking)', {
+          feedback: r.feedback.slice(0, 200),
+        });
+      }
+      return r;
+    }
+  );
 }
 
 /** Run stage or return cached result from checkpoint. */

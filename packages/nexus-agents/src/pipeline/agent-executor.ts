@@ -13,6 +13,7 @@
 import { createLogger, getTimeProvider } from '../core/index.js';
 import type { DevPipelineStages, PipelineTask, QaReviewResult } from './dev-pipeline.js';
 import { checkSecurityScan } from './security-gate.js';
+import { runQualityGate, checkTypeCheck, checkLint, checkTests } from '../security/quality-gate.js';
 import type { ITaskTracker } from './task-tracker.js';
 import { executeExpert } from './expert-bridge.js';
 import { getOutcomeStore, getOutcomeSummaryText } from '../orchestration/outcomes/outcome-store.js';
@@ -529,6 +530,35 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
       }
       await postProgress(config, `QA [${task.id}]`, review.verdict);
       return review;
+    },
+
+    qualityGate: async () => {
+      emitStageEvent('quality-gate', 'started');
+      const start = getTimeProvider().now();
+      const target = config.scanTarget ?? process.cwd();
+      await postProgress(config, 'QualityGate', `Typecheck/lint/tests on ${target}...`);
+      // Reuse the canonical #1684 engine + check factories — no new check logic.
+      const result = await runQualityGate('qa', [
+        checkTypeCheck(target),
+        checkLint(target),
+        checkTests(target),
+      ]);
+      const passed = result.verdict !== 'fail';
+      const ms = getTimeProvider().now() - start;
+      emitStageEvent('quality-gate', passed ? 'completed' : 'failed', { durationMs: ms });
+      recordOutcome({
+        taskId: 'quality-gate',
+        category: 'code_review',
+        cli: undefined,
+        success: passed,
+        durationMs: ms,
+      });
+      await postProgress(
+        config,
+        'QualityGate',
+        passed ? 'Passed' : `Gate failed: ${result.feedback}`
+      );
+      return { passed, feedback: result.feedback };
     },
 
     securityScan: async () => {

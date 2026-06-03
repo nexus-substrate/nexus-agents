@@ -112,6 +112,13 @@ export const DevPipelineInputSchema = z.object({
     .describe(
       "'autonomous': full pipeline. 'harness': stops after decompose, returns tasks for caller to implement."
     ),
+  /** Local pre-ship quality gate (typecheck/lint/tests) mode (#3356). */
+  qualityGate: z
+    .enum(['off', 'advisory', 'blocking'])
+    .default('off')
+    .describe(
+      "Pre-ship local quality gate. 'off' (default): skip. 'advisory': run + record feedback, never fail. 'blocking': a red gate fails the pipeline."
+    ),
 });
 
 export type DevPipelineInput = z.infer<typeof DevPipelineInputSchema>;
@@ -226,6 +233,7 @@ async function runDevPipelineHandler(args: unknown, logger: ILogger): Promise<To
       ...(input.sessionId !== undefined ? { sessionId: input.sessionId } : {}),
       ...(input.dryRun ? { dryRun: true } : {}),
       ...(input.mode === 'harness' ? { mode: 'harness' as const } : {}),
+      ...(input.qualityGate !== 'off' ? { qualityGate: input.qualityGate } : {}),
     };
     const hasOptions = Object.keys(pipelineOptions).length > 0;
     const result = await runDevPipeline(taskText, stages, hasOptions ? pipelineOptions : undefined);
