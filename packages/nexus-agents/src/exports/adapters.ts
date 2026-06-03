@@ -88,4 +88,15 @@ export {
   type ModelNotFoundFallbackOptions,
   type RetirementInfo,
   type ResilientLike,
+  // Unified adapter registry (#1149) — the canonical adapter-access primitive
+  // named in CLAUDE.md's Canonical Paths, now reachable from the public barrel
+  // so operators can build custom routing without reaching into internals
+  // (#3184/#3268).
+  UnifiedAdapterRegistry,
+  createUnifiedRegistry,
+  getGlobalRegistry,
+  resetGlobalRegistry,
+  type UnifiedRegistryConfig,
+  type TaskRoutingEntry,
+  type RegistrySnapshot,
 } from '../adapters/index.js';
