@@ -18,7 +18,10 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 
-import { getCommitMessagesForEscapeHatch } from './check-docops-skill.js';
+import {
+  getCommitMessagesForEscapeHatch,
+  isMechanicalActionBumpDiff,
+} from './check-docops-skill.js';
 
 interface RepoCtx {
   dir: string;
@@ -108,5 +111,59 @@ describe('getCommitMessagesForEscapeHatch (#2411)', () => {
     const out = getCommitMessagesForEscapeHatch(ctx.dir);
 
     expect(out).toContain('[skip-docops]');
+  });
+});
+
+describe('isMechanicalActionBumpDiff (#3363)', () => {
+  it('treats a pure actions/checkout version bump as mechanical', () => {
+    const diff = [
+      'diff --git a/.github/workflows/docs-check.yml b/.github/workflows/docs-check.yml',
+      '--- a/.github/workflows/docs-check.yml',
+      '+++ b/.github/workflows/docs-check.yml',
+      '@@ -10,7 +10,7 @@ jobs:',
+      '       - uses: actions/checkout@aaaaaaa # v6.0.2',
+      '+      - uses: actions/checkout@bbbbbbb # v6.0.3',
+      '-      - uses: actions/checkout@aaaaaaa # v6.0.2',
+    ].join('\n');
+    // Reconstruct a realistic +/- pair (context line above is unchanged).
+    const realistic = [
+      '@@ -10,7 +10,7 @@',
+      '-      - uses: actions/checkout@aaaaaaa # v6.0.2',
+      '+      - uses: actions/checkout@bbbbbbb # v6.0.3',
+    ].join('\n');
+    expect(isMechanicalActionBumpDiff(diff)).toBe(true);
+    expect(isMechanicalActionBumpDiff(realistic)).toBe(true);
+  });
+
+  it('handles multiple action bumps in one file', () => {
+    const diff = [
+      '-      - uses: actions/checkout@aaa # v6.0.2',
+      '+      - uses: actions/checkout@bbb # v6.0.3',
+      '-      - uses: actions/setup-node@ccc # v5.0.0',
+      '+      - uses: actions/setup-node@ddd # v5.0.1',
+    ].join('\n');
+    expect(isMechanicalActionBumpDiff(diff)).toBe(true);
+  });
+
+  it('is NOT mechanical when a non-uses line changes (real pipeline edit)', () => {
+    const diff = [
+      '-      - uses: actions/checkout@aaa # v6.0.2',
+      '+      - uses: actions/checkout@bbb # v6.0.3',
+      '+        with:',
+      '+          fetch-depth: 0',
+    ].join('\n');
+    expect(isMechanicalActionBumpDiff(diff)).toBe(false);
+  });
+
+  it('is NOT mechanical when a run step changes', () => {
+    const diff = [
+      '-          npx tsx scripts/check-docops-skill.ts',
+      '+          npx tsx scripts/check-docops-skill.ts --verbose',
+    ].join('\n');
+    expect(isMechanicalActionBumpDiff(diff)).toBe(false);
+  });
+
+  it('returns false for an empty diff (no detectable change)', () => {
+    expect(isMechanicalActionBumpDiff('')).toBe(false);
   });
 });
