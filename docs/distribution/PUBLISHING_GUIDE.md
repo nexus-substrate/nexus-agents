@@ -30,7 +30,7 @@ Fill in:
 
 - **Name:** nexus-agents
 - **Repository:** https://github.com/nexus-substrate/nexus-agents
-- **Description:** Intelligent orchestration platform for AI coding tools — routes tasks to the best model, learns from outcomes, and enforces quality through multi-model consensus. 43 MCP tools for agent management, research, memory, consensus voting, codebase intelligence, and a full dev pipeline.
+- **Description:** Intelligent orchestration platform for AI coding tools — routes tasks to the best model, learns from outcomes, and enforces quality through multi-model consensus. 44 MCP tools for agent management, research, memory, consensus voting, codebase intelligence, and a full dev pipeline.
 
 The `.claude-plugin/plugin.json` is already in the repo root.
 
@@ -59,7 +59,7 @@ Visit: https://mcpservers.org/submit
 Fill in:
 
 - **Server Name:** nexus-agents
-- **Short Description:** Intelligent orchestration platform that routes tasks to the best AI model using LinUCB bandits, validates through consensus voting, and learns from outcomes. 43 MCP tools, dev pipeline, 8 memory backends.
+- **Short Description:** Intelligent orchestration platform that routes tasks to the best AI model using LinUCB bandits, validates through consensus voting, and learns from outcomes. 44 MCP tools, dev pipeline, 8 memory backends.
 - **Link:** https://github.com/nexus-substrate/nexus-agents
 - **Category:** Development
 - **Contact Email:** williamzujkowski@gmail.com

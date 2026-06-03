@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-06-03T19:46:11.943Z",
+  "generated": "2026-06-03T20:53:47.987Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.101.4",
   "cli": {
@@ -455,6 +455,10 @@
       {
         "name": "search_codebase",
         "file": "src/mcp/tools/search-codebase.ts"
+      },
+      {
+        "name": "suggest_research_tasks",
+        "file": "src/mcp/tools/suggest-research-tasks.ts"
       },
       {
         "name": "supply_chain_tradeoff_panel",

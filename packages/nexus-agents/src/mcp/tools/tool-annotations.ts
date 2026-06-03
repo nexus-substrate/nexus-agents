@@ -629,6 +629,25 @@ export const TOOL_ANNOTATIONS: Readonly<Record<string, ToolSideEffectsEntry>> = 
       { category: 'coupling', description: 'Records voter outcomes for weather report' },
     ],
   },
+  suggest_research_tasks: {
+    annotations: {
+      title: 'Suggest Research Tasks',
+      // SUGGEST-ONLY: discovers/reads via research_discover and returns
+      // candidate tasks. Files nothing, executes nothing, mutates nothing.
+      readOnlyHint: true,
+      destructiveHint: false,
+      // Discovery results vary run-to-run as external sources evolve.
+      idempotentHint: false,
+      // Reaches external research APIs (arXiv/GitHub/etc.) via the engine.
+      openWorldHint: true,
+    },
+    sideEffects: [
+      {
+        category: 'implicit',
+        description: 'Queries research_discover / external research APIs; consumes tokens',
+      },
+    ],
+  },
   supply_chain_tradeoff_panel: {
     annotations: {
       title: 'Supply-chain Tradeoff Panel',

@@ -1,6 +1,6 @@
 # Repository Capabilities Index
 
-**Generated:** 2026-06-03T19:46:11.943Z
+**Generated:** 2026-06-03T20:53:47.987Z
 **Package Version:** 2.101.4
 **Generator:** `scripts/generate-repo-index.ts`
 
@@ -67,7 +67,7 @@ Binary: `nexus-agents`
 
 ---
 
-## MCP Tools (43)
+## MCP Tools (44)
 
 | Tool | Source File |
 | ------ | ------------- |
@@ -109,6 +109,7 @@ Binary: `nexus-agents`
 | `run_quality_gate` | `src/mcp/tools/run-quality-gate.ts` |
 | `run_workflow` | `src/mcp/tools/run-workflow.ts` |
 | `search_codebase` | `src/mcp/tools/search-codebase.ts` |
+| `suggest_research_tasks` | `src/mcp/tools/suggest-research-tasks.ts` |
 | `supply_chain_tradeoff_panel` | `src/mcp/tools/supply-chain-tradeoff-panel.ts` |
 | `survey_oss_landscape` | `src/mcp/tools/survey-oss-landscape.ts` |
 | `vendor_publishing_audit` | `src/mcp/tools/vendor-publishing-audit.ts` |
