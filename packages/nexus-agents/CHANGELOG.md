@@ -1,5 +1,15 @@
 # nexus-agents
 
+## 2.98.0
+
+### Minor Changes
+
+- [#3352](https://github.com/nexus-substrate/nexus-agents/pull/3352) [`efc3756`](https://github.com/nexus-substrate/nexus-agents/commit/efc37566272a9c2db00782b8491c129097efc44f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Complete the CapabilityDiscovery → ModelRegistry consolidation ([#3293](https://github.com/nexus-substrate/nexus-agents/issues/3293)). `ModelRegistry` (`getDefaultRegistry().getEntry`) is now the single model-data resolver. The legacy four-tier `CapabilityDiscovery` resolver — which had no production callers; its `resolve()` chain was dead code — is removed, along with its bundled-registry loader. `registry doctor` now derives its report from the registry: it lists effective entry counts per source (in-tree / models-dev / manifest / generated / derived) and the unknown-id fallback context window, instead of the old T1/T2/T3/T4 tier view. No change to model resolution behavior. The user `models.yaml` overlay is still reported by `doctor` for inspection but, as before, does not yet affect live resolution — wiring it into the registry is tracked in [#3351](https://github.com/nexus-substrate/nexus-agents/issues/3351).
+
+### Patch Changes
+
+- [#3355](https://github.com/nexus-substrate/nexus-agents/pull/3355) [`e48c704`](https://github.com/nexus-substrate/nexus-agents/commit/e48c70401b0bae801bcba4bd59eec5d50e5c2f40) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Add a recursion guard to the Codex MCP adapter ([#3350](https://github.com/nexus-substrate/nexus-agents/issues/3350)). nexus launches `codex mcp-server` as the codex adapter; if codex is configured to launch `nexus-agents --mode=server` as one of its own MCP servers, this forms a recursive spawn loop that leaks dozens of half-initialized servers, all racing the shared codex OAuth refresh-token rotation — which corrupts the on-disk token ("refresh token already used") and degrades consensus votes. The adapter now stamps each spawned `codex mcp-server` child with `NEXUS_MCP_DEPTH` and refuses to spawn when already nested, breaking the cycle after the first level. No effect on normal (non-nested) usage.
+
 ## 2.97.1
 
 ### Patch Changes
