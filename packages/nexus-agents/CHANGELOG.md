@@ -1,5 +1,15 @@
 # nexus-agents
 
+## 2.100.0
+
+### Minor Changes
+
+- [#3360](https://github.com/nexus-substrate/nexus-agents/pull/3360) [`3c6fc94`](https://github.com/nexus-substrate/nexus-agents/commit/3c6fc94f819331115b0c2f3138803e863e379061) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Wire the local QA gate into `run_dev_pipeline` as a pre-ship stage ([#3356](https://github.com/nexus-substrate/nexus-agents/issues/3356) Step 2). A new `qualityGate` option (`'off' | 'advisory' | 'blocking'`, default `'off'`) runs the same `runQualityGate` engine (typecheck/lint/tests) after implement, before the security scan: `advisory` records feedback without failing the pipeline, `blocking` fails the phase on a red gate (same posture as a blocking security finding), and `off` (the default — safe for repos lacking standard build/test scripts) skips it. The stage is a thin caller over the one canonical engine (no new check logic), and is an optional `DevPipelineStages` method so existing consumers are unaffected. Completes the consensus-ratified wiring begun with the `run_quality_gate` MCP tool.
+
+### Patch Changes
+
+- [#3362](https://github.com/nexus-substrate/nexus-agents/pull/3362) [`abc1300`](https://github.com/nexus-substrate/nexus-agents/commit/abc1300bf5ab4da3de143f3def88883f54e85f0c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - When a consensus voter fails because a CLI's stored OAuth token is stale (e.g. codex's "your refresh token was already used. Please log out and sign in again"), the voter's error now includes an actionable remediation — ``Re-authenticate: run `codex login` …`` — instead of surfacing the raw provider error as a silent fail-closed vote ([#3350](https://github.com/nexus-substrate/nexus-agents/issues/3350)). Extends the existing `cli-error-envelope` auth classifier to recognize the refresh-token-rotation error class and reuses its per-CLI login-hint map; vote semantics are unchanged (still an error/abstain vote, just with a clearer message).
+
 ## 2.99.0
 
 ### Minor Changes
