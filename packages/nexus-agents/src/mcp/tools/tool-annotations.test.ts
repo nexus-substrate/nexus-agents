@@ -14,6 +14,10 @@ import {
   type ToolSideEffectsEntry,
 } from './tool-annotations.js';
 import { REGISTERED_TOOLS } from '../../cli-server-tools.js';
+// Live registration accessor (#3358): derives from the side-effects superset
+// above. Imported under an alias to disambiguate from this module's own
+// getToolAnnotations (which returns the full ToolSideEffectsEntry).
+import { getToolAnnotations as getLiveToolAnnotations } from '../tool-annotations.js';
 
 describe('tool-annotations', () => {
   describe('TOOL_ANNOTATIONS registry', () => {
@@ -190,6 +194,28 @@ describe('tool-annotations', () => {
       // delegate_to_model has no explicit side effects
       const effects = getSideEffectsByCategory('delegate_to_model', 'explicit');
       expect(effects).toEqual([]);
+    });
+  });
+
+  describe('live registration accessor (#3358 consolidation)', () => {
+    it('derives the MCP hints from the side-effects superset for every registered tool', () => {
+      for (const toolName of REGISTERED_TOOLS) {
+        const live = getLiveToolAnnotations(toolName);
+        const source = TOOL_ANNOTATIONS[toolName] as ToolSideEffectsEntry;
+        // Must be the exact same object the data registry holds under
+        // `.annotations` — proving a single source of truth, no drift.
+        expect(live, `${toolName} live annotations`).toBe(source.annotations);
+      }
+    });
+
+    it('returns only MCP hints (no sideEffects leak through)', () => {
+      const live = getLiveToolAnnotations('orchestrate') as Record<string, unknown>;
+      expect(live['sideEffects']).toBeUndefined();
+      expect(typeof live['readOnlyHint']).toBe('boolean');
+    });
+
+    it('throws for an unregistered tool (no silent MCP-default fallback)', () => {
+      expect(() => getLiveToolAnnotations('nonexistent_tool')).toThrow(/no entry for tool/);
     });
   });
 

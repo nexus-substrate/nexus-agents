@@ -752,9 +752,13 @@ function extractDocumentedCounts(content: string): RegistrySummary {
  * AND stale entries (in the map but not registered).
  */
 function checkToolAnnotations(tools: ToolMetadata[]): boolean {
-  const path = join(ROOT, 'packages/nexus-agents/src/mcp/tool-annotations.ts');
+  // Single source of truth after #3358: the side-effects superset registry.
+  // Top-level keys (2-space indent, `name: {`) are the per-tool entries;
+  // nested `annotations: {` / `sideEffects: [` are 4-space indented and so
+  // are skipped by the 2-space-anchored key pattern below.
+  const path = join(ROOT, 'packages/nexus-agents/src/mcp/tools/tool-annotations.ts');
   if (!existsSync(path)) {
-    console.error('Missing src/mcp/tool-annotations.ts (#2648)');
+    console.error('Missing src/mcp/tools/tool-annotations.ts (#2648/#3358)');
     return false;
   }
   const content = readFileSync(path, 'utf-8');
