@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 2.101.3
+
+### Patch Changes
+
+- [#3377](https://github.com/nexus-substrate/nexus-agents/pull/3377) [`3128893`](https://github.com/nexus-substrate/nexus-agents/commit/3128893e8a5d8d89b892594faa14956694749eb9) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Export `UnifiedAdapterRegistry` (+ `createUnifiedRegistry`, `getGlobalRegistry`, `resetGlobalRegistry`, and the `UnifiedRegistryConfig`/`TaskRoutingEntry`/`RegistrySnapshot` types) from the public package barrel ([#3184](https://github.com/nexus-substrate/nexus-agents/issues/3184), [#3268](https://github.com/nexus-substrate/nexus-agents/issues/3268)). CLAUDE.md's Canonical Paths names `UnifiedAdapterRegistry` (via `getGlobalRegistry()`) as the canonical way to access adapters, but it was only exported from the internal `adapters/index.ts` — not reachable by package consumers. It's now part of the public API, so operators can build custom routing on the documented primitive without reaching into internals.
+
 ## 2.101.2
 
 ### Patch Changes
