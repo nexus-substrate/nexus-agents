@@ -39,6 +39,7 @@ function createMockStages(overrides?: Partial<DevPipelineStages>): DevPipelineSt
       issues: [],
     } satisfies QaReviewResult),
     securityScan: vi.fn().mockResolvedValue({ passed: true, feedback: 'No findings' }),
+    qualityGate: vi.fn().mockResolvedValue({ passed: true, feedback: 'All checks passed.' }),
     ...overrides,
   };
 }
@@ -188,5 +189,82 @@ describe('runDevPipeline', () => {
     expect(stages.implement).not.toHaveBeenCalled();
     expect(stages.qaReview).not.toHaveBeenCalled();
     expect(stages.securityScan).not.toHaveBeenCalled();
+  });
+});
+
+describe('runDevPipeline — quality gate (#3356)', () => {
+  it("does NOT run the quality gate when mode is 'off' (default)", async () => {
+    const stages = createMockStages();
+    const result = await runDevPipeline('Build feature X', stages);
+
+    expect(stages.qualityGate).not.toHaveBeenCalled();
+    // Off must not affect ship outcome — security still gates as before.
+    expect(result.completed).toBe(true);
+    expect(result.securityPassed).toBe(true);
+  });
+
+  it("does NOT run the quality gate when explicitly 'off'", async () => {
+    const stages = createMockStages({
+      qualityGate: vi.fn().mockResolvedValue({ passed: false, feedback: 'tsc failed' }),
+    });
+    const result = await runDevPipeline('Build feature X', stages, { qualityGate: 'off' });
+
+    expect(stages.qualityGate).not.toHaveBeenCalled();
+    expect(result.completed).toBe(true);
+  });
+
+  it("runs the gate but does NOT fail the pipeline on a red gate in 'advisory' mode", async () => {
+    const stages = createMockStages({
+      qualityGate: vi.fn().mockResolvedValue({ passed: false, feedback: '2 check(s) failed' }),
+    });
+    const result = await runDevPipeline('Build feature X', stages, { qualityGate: 'advisory' });
+
+    expect(stages.qualityGate).toHaveBeenCalledTimes(1);
+    // Advisory: red gate recorded but does not block — security still runs and passes.
+    expect(stages.securityScan).toHaveBeenCalledTimes(1);
+    expect(result.completed).toBe(true);
+    expect(result.securityPassed).toBe(true);
+  });
+
+  it("runs the gate and ships when it passes in 'advisory' mode", async () => {
+    const stages = createMockStages();
+    const result = await runDevPipeline('Build feature X', stages, { qualityGate: 'advisory' });
+
+    expect(stages.qualityGate).toHaveBeenCalledTimes(1);
+    expect(result.completed).toBe(true);
+  });
+
+  it("fails the phase on a red gate in 'blocking' mode and skips security", async () => {
+    const stages = createMockStages({
+      qualityGate: vi.fn().mockResolvedValue({ passed: false, feedback: 'lint failed' }),
+    });
+    const result = await runDevPipeline('Build feature X', stages, { qualityGate: 'blocking' });
+
+    expect(stages.qualityGate).toHaveBeenCalledTimes(1);
+    // Blocking red gate short-circuits before the security scan, like a security block.
+    expect(stages.securityScan).not.toHaveBeenCalled();
+    expect(result.completed).toBe(false);
+    expect(result.securityPassed).toBe(false);
+    // Implementations still happened before the gate.
+    expect(result.tasks).toHaveLength(2);
+  });
+
+  it("proceeds to ship on a green gate in 'blocking' mode", async () => {
+    const stages = createMockStages();
+    const result = await runDevPipeline('Build feature X', stages, { qualityGate: 'blocking' });
+
+    expect(stages.qualityGate).toHaveBeenCalledTimes(1);
+    expect(stages.securityScan).toHaveBeenCalledTimes(1);
+    expect(result.completed).toBe(true);
+  });
+
+  it("skips the gate gracefully when stages.qualityGate is absent even if mode is 'blocking'", async () => {
+    const stages = createMockStages();
+    delete stages.qualityGate;
+    const result = await runDevPipeline('Build feature X', stages, { qualityGate: 'blocking' });
+
+    // No gate supplied → skipped → does not block ship.
+    expect(stages.securityScan).toHaveBeenCalledTimes(1);
+    expect(result.completed).toBe(true);
   });
 });
