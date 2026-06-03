@@ -22,6 +22,7 @@ import type { IModelAdapter, ILogger } from '../core/index.js';
 import { createLogger, getTimeProvider, getErrorMessage } from '../core/index.js';
 import { getGlobalRegistry } from '../adapters/unified-registry.js';
 import { getAvailableClis } from '../cli-adapters/factory.js';
+import { authRemediation } from '../cli-adapters/cli-error-envelope.js';
 import type { CliName } from '../cli-adapters/types.js';
 import { checkCodexConcurrency } from '../cli-adapters/codex-limits.js';
 
@@ -170,7 +171,13 @@ export async function executeAgentVote(
     return createSimulationVoteResult(role, proposal, processingTimeMs, result.error);
   }
 
-  return createErrorVoteResult(role, result.error, processingTimeMs);
+  // #3350: a stale-OAuth failure (e.g. codex "refresh token already used")
+  // surfaces here as a raw fail-closed error with no operator signal. Append a
+  // one-line `<cli> login` remediation when the error is an auth error. Vote
+  // semantics are unchanged — this is still an error (abstain) vote.
+  const remediation = authRemediation(result.error, adapter.providerId);
+  const errorText = remediation === null ? result.error : `${result.error}\n\n${remediation}`;
+  return createErrorVoteResult(role, errorText, processingTimeMs);
 }
 
 // ============================================================================

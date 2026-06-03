@@ -91,6 +91,14 @@ const NOT_AUTH_PATTERNS: readonly RegExp[] = [
   // "unauthorized" — some upstreams emit "Token expired. Please re-auth."
   // without the unauthorized keyword.
   /token (?:expired|revoked)/i,
+  // #3350: OAuth refresh-token rotation. The codex CLI emits "Your access
+  // token could not be refreshed because your refresh token was already used.
+  // Please log out and sign in again." This previously fell through to a raw
+  // fail-closed voter error with no `<cli> login` signal for the operator.
+  /refresh token .*already used/i,
+  /could not be refreshed/i,
+  /log ?out and sign in/i,
+  /sign in again/i,
 ];
 
 function classifyMessage(message: string): { code: CliErrorCode; auth: boolean } {
@@ -98,6 +106,36 @@ function classifyMessage(message: string): { code: CliErrorCode; auth: boolean }
     if (re.test(message)) return { code: 'NOT_AUTHENTICATED', auth: true };
   }
   return { code: 'EXECUTION_ERROR', auth: false };
+}
+
+/**
+ * Resolve a bare CLI name from a possibly-prefixed identifier. `IModelAdapter`
+ * exposes `providerId` as `cli-codex`/`cli-claude` (see `CliToModelAdapter`),
+ * so callers can pass either form. Returns `null` when the name is not a known
+ * CLI — the remediation map can't produce a hint we'd vouch for.
+ */
+function resolveCliName(cliName: string): CliName | null {
+  const bare = cliName.startsWith('cli-') ? cliName.slice('cli-'.length) : cliName;
+  return bare in LOGIN_HINTS ? (bare as CliName) : null;
+}
+
+/**
+ * #3350: one-line operator remediation for a stale-auth voter failure.
+ *
+ * Returns `null` when `message` is not an authentication error (callers leave
+ * the error text untouched), or when `cliName` is not a recognized CLI.
+ * Otherwise returns a single line reusing {@link LOGIN_HINTS}, e.g.
+ *
+ *   Re-authenticate: run `codex login` (the codex CLI's stored OAuth token is stale).
+ *
+ * Reuses {@link classifyMessage} + {@link LOGIN_HINTS} — does not duplicate the
+ * pattern list or the per-CLI command map (DRY).
+ */
+export function authRemediation(message: string, cliName: string): string | null {
+  if (!classifyMessage(message).auth) return null;
+  const cli = resolveCliName(cliName);
+  if (cli === null) return null;
+  return `Re-authenticate: run \`${LOGIN_HINTS[cli]}\` (the ${cli} CLI's stored OAuth token is stale).`;
 }
 
 /**
