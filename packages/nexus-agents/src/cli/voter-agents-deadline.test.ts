@@ -28,6 +28,11 @@ const stubAdapter: IModelAdapter = {
   providerId: 'stub',
 } as unknown as IModelAdapter;
 
+/** A CLI-named adapter — the `.name` field is what carries the CLI identity. */
+function makeCliAdapter(name: string): IModelAdapter {
+  return { modelId: name, providerId: name, name } as unknown as IModelAdapter;
+}
+
 function makeOkVote(role: VoterRole): AgentVoteResult {
   return {
     role,
@@ -94,6 +99,60 @@ describe('launchVotesWithOverallDeadline (Issue #1871)', () => {
 
     expect(results).toHaveLength(2);
     for (const r of results) expect(r.source).toBe('llm');
+  });
+
+  it('serializes votes that share a CLI while running distinct CLIs concurrently (#3348)', async () => {
+    // Two roles on "claude", two on "gemini". Concurrent same-CLI subprocess
+    // calls race the CLI's OAuth refresh-token rotation ("refresh token already
+    // used"). Per-CLI serialization must keep at most one same-CLI call in
+    // flight, while still letting different CLIs overlap (no global serialization).
+    const roles: readonly VoterRole[] = ['architect', 'security', 'devex', 'ai_ml'];
+    const roleAdapters = new Map<VoterRole, IModelAdapter>([
+      ['architect', makeCliAdapter('claude')],
+      ['security', makeCliAdapter('claude')],
+      ['devex', makeCliAdapter('gemini')],
+      ['ai_ml', makeCliAdapter('gemini')],
+    ]);
+
+    const inFlight = new Map<string, number>();
+    const maxByName = new Map<string, number>();
+    let crossCliOverlapSeen = false;
+
+    const voteFn = async (
+      role: VoterRole,
+      _proposal: string,
+      adapter: IModelAdapter
+    ): Promise<AgentVoteResult> => {
+      const name = (adapter as { name?: string }).name ?? 'default';
+      const cur = (inFlight.get(name) ?? 0) + 1;
+      inFlight.set(name, cur);
+      maxByName.set(name, Math.max(maxByName.get(name) ?? 0, cur));
+      const distinctActive = [...inFlight.values()].filter((n) => n > 0).length;
+      if (distinctActive >= 2) crossCliOverlapSeen = true;
+      await new Promise((r) => setTimeout(r, 30));
+      inFlight.set(name, (inFlight.get(name) ?? 1) - 1);
+      return makeOkVote(role);
+    };
+
+    const results = await launchVotesWithOverallDeadline({
+      roles,
+      proposal: 'test',
+      roleAdapters,
+      fallbackAdapter: stubAdapter,
+      logger: silentLogger,
+      voteOptions: { timeoutMs: 1_000, maxRetries: 0, allowSimulation: false },
+      interDelay: 0,
+      overallDeadlineMs: 1_000,
+      voteFn,
+    });
+
+    expect(results).toHaveLength(4);
+    for (const r of results) expect(r.source).toBe('llm');
+    // No concurrent same-CLI calls → no concurrent OAuth refresh.
+    expect(maxByName.get('claude')).toBe(1);
+    expect(maxByName.get('gemini')).toBe(1);
+    // But distinct CLIs still overlap — we did not serialize globally.
+    expect(crossCliOverlapSeen).toBe(true);
   });
 
   it('preserves role order in the returned results', async () => {
