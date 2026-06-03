@@ -5,7 +5,6 @@
  * - Rate-limit pattern parity between expert-bridge and canonical detector
  * - Mixed-signal classification (tasks with dev+security, research+audit overlap)
  * - Template registry integrity (no orphaned stage refs)
- * - Stage error propagation (SharedMemory consistency on failures)
  * - Confidence calibration (keyword count vs confidence monotonicity)
  * - Classification determinism (same input → same output)
  *
@@ -16,7 +15,6 @@ import { describe, it, expect } from 'vitest';
 import { classifyTask } from './adaptive-orchestrator.js';
 import { PIPELINE_TEMPLATES, getTemplate, listTemplateIds } from './templates.js';
 import { createDevStageRegistry, createAuditStageRegistry } from './stage-wrappers.js';
-import { SharedMemoryStore } from './shared-memory.js';
 import { isRateLimitText, RATE_LIMIT_PATTERNS } from '../adapters/rate-limit-detector.js';
 import type { DevPipelineStages } from './dev-pipeline.js';
 import { vi } from 'vitest';
@@ -192,49 +190,6 @@ describe('Pipeline Eval — Confidence Calibration', () => {
     for (const kw of r.keywords) {
       expect('implement a new caching module with tests'.toLowerCase()).toContain(kw);
     }
-  });
-});
-
-// ============================================================================
-// SharedMemoryStore edge cases
-// ============================================================================
-
-describe('Pipeline Eval — SharedMemoryStore Edge Cases', () => {
-  it('handles unicode content without mangling', () => {
-    const store = new SharedMemoryStore();
-    const payload = '日本語 — café — 🚀';
-    store.write('stage', 'discovery', payload);
-    expect(store.read()[0]?.content).toBe(payload);
-  });
-
-  it('preserves chronological order on retrieval', () => {
-    const store = new SharedMemoryStore();
-    for (let i = 0; i < 5; i++) store.write('s', 'discovery', i);
-    const entries = store.read();
-    for (let i = 0; i < 5; i++) expect(entries[i]?.content).toBe(i);
-  });
-
-  it('different tags do not cross-pollinate on filtered read', () => {
-    const store = new SharedMemoryStore();
-    store.write('s', 'discovery', 'd1');
-    store.write('s', 'decision', 'x1');
-    store.write('s', 'risk', 'r1');
-    expect(store.read('discovery').length).toBe(1);
-    expect(store.read('decision').length).toBe(1);
-    expect(store.read('risk').length).toBe(1);
-  });
-
-  it('eviction preserves most recent entries', () => {
-    const store = new SharedMemoryStore(3);
-    for (let i = 0; i < 10; i++) store.write('s', 'discovery', i);
-    const contents = store.read().map((e) => e.content);
-    expect(contents).toEqual([7, 8, 9]);
-  });
-
-  it('summarize truncates long content', () => {
-    const store = new SharedMemoryStore();
-    store.write('s', 'discovery', 'x'.repeat(5000));
-    expect(store.summarize(200).length).toBeLessThanOrEqual(200);
   });
 });
 

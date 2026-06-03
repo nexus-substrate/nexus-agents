@@ -181,11 +181,6 @@ export {
   type AdaptiveOrchestratorResult,
   type TaskClassification,
   type PipelineType,
-  // Shared Memory — standalone tagged in-memory store. Pipeline integration
-  // removed in #2937 (write-only); class kept as a standalone utility.
-  SharedMemoryStore,
-  type SharedMemoryEntry,
-  type SharedMemoryTag,
   // #1737 Phase-4 scaffolds removed in #2939 — `IncompleteResult` and
   // `DynamicExpertManager` were exported but never adopted by any
   // production path (only test-file instantiations existed).

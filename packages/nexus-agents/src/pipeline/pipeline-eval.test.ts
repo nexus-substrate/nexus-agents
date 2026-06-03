@@ -3,7 +3,6 @@
  *
  * Instrumented tests that measure real pipeline component performance:
  * - Classification accuracy across diverse tasks
- * - SharedMemoryStore standalone-class timing (write/read/eviction)
  * - Vote cascade detection logic
  * - Stage wrapper execution timing
  * - Template registry completeness
@@ -11,16 +10,14 @@
  *
  * Note: pre-#2937 this file also exercised SharedMemoryStore propagation
  * through PipelineContext.sharedMemory — that integration channel was
- * removed because no downstream stage ever read it. The class itself is
- * still a public standalone utility and its direct-use performance
- * characteristics are still tested below.
+ * removed because no downstream stage ever read it, and the standalone
+ * class was deleted in epic #3313 (zero production consumers).
  *
  * Run with: pnpm vitest run src/pipeline/pipeline-eval.test.ts
  */
 
 import { describe, it, expect, vi } from 'vitest';
 import { classifyTask } from './adaptive-orchestrator.js';
-import { SharedMemoryStore } from './shared-memory.js';
 import { createDevStageRegistry, createAuditStageRegistry } from './stage-wrappers.js';
 import { PIPELINE_TEMPLATES, getTemplate, listTemplateIds } from './templates.js';
 import type {
@@ -112,47 +109,6 @@ describe('Pipeline Eval — Classification Accuracy', () => {
       expect(performance.now() - start).toBeLessThan(5);
     }
   });
-});
-
-// ============================================================================
-// SharedMemoryStore Performance
-// ============================================================================
-
-describe('Pipeline Eval — SharedMemoryStore Performance', () => {
-  it('writes 100 entries in < 10ms', () => {
-    const store = new SharedMemoryStore();
-    const start = performance.now();
-    for (let i = 0; i < 100; i++) {
-      store.write(`stage-${String(i)}`, 'discovery', `Finding ${String(i)}`);
-    }
-    expect(performance.now() - start).toBeLessThan(10);
-    expect(store.read().length).toBe(100);
-  });
-
-  it('reads by tag in < 1ms', () => {
-    const store = new SharedMemoryStore();
-    for (let i = 0; i < 50; i++) {
-      store.write('research', i % 2 === 0 ? 'discovery' : 'decision', `E ${String(i)}`);
-    }
-    const start = performance.now();
-    const result = store.read('discovery');
-    expect(performance.now() - start).toBeLessThan(1);
-    expect(result.length).toBe(25);
-  });
-
-  it('evicts oldest when at capacity', () => {
-    const store = new SharedMemoryStore(10);
-    for (let i = 0; i < 15; i++) {
-      store.write('s', 'discovery', `E ${String(i)}`);
-    }
-    expect(store.read().length).toBe(10);
-    expect(store.read()[0]?.content as string).toBe('E 5');
-  });
-
-  // Cross-stage propagation test removed in #2937. The
-  // PipelineContext.sharedMemory channel was write-only; the stage wrappers
-  // no longer touch SharedMemoryStore. The class itself is still a
-  // standalone utility — direct usage is covered above.
 });
 
 // ============================================================================

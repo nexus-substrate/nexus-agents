@@ -64,9 +64,9 @@ function createMockStages(): DevPipelineStages {
 
 // Pipeline Integration — SharedMemoryStore propagation tests removed in
 // #2937. The propagation channel (PipelineContext.sharedMemory + the writes
-// in every stage wrapper) was dead — nothing ever read it. Direct
-// SharedMemoryStore coverage lives in phase4.test.ts and pipeline-eval*.test.ts;
-// cross-stage data now flows through PipelineContext.state.
+// in every stage wrapper) was dead — nothing ever read it. The standalone
+// SharedMemoryStore class was later deleted in epic #3313 (zero production
+// consumers); cross-stage data now flows through PipelineContext.state.
 
 describe('Pipeline Integration — Task classification', () => {
   it('review tasks classify as audit', () => {
