@@ -98,6 +98,8 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     'Verify the hash chain of a persisted FileAuditStorage audit log directory (#2281 follow-up). Reads all audit-*.jsonl files, parses events, runs verifyChain() to detect tampering. Returns eventCount, fileCount, and one of three tamper signals (hash_mismatch, previous_hash_mismatch, missing_hash) if detected. Read-only.',
   improvement_review:
     'Periodic threshold-gated observability-driven improvement loop (#2402). Reads OutcomeStore, fitness-audit, and recent failure patterns; surfaces signals that cross documented thresholds (CLI success rate < 60% with ≥5 samples, fitness score below floor, failure-category concentration > 50%). When fileIssues=true, files candidate GitHub issues via gh CLI (rate-limited to 5 per run, deduped against open issues). Never auto-merges. Replaces the deleted self-development engine.',
+  run_quality_gate:
+    "MCP surface over the runQualityGate QA engine (#1684, #3356). Runs an allowlisted set of checks (typecheck | lint | tests | build | security; default ['typecheck','lint','tests']) against a project directory and returns the structured { stage, verdict, checks[], summary, feedback } verdict. projectDir is resolved inside the repo root (path-traversal rejected); check selection is a fixed enum→factory map so no arbitrary command reaches a shell; per-check output is capped at 500 chars. Read-only, idempotent.",
 };
 
 /**
@@ -157,4 +159,6 @@ export const README_TOOL_DESCRIPTIONS: Record<string, string> = {
   verify_audit_chain: 'Verify hash chain of a FileAuditStorage audit log directory',
   improvement_review:
     'Threshold-gated observability loop — surfaces routing/tech-debt/bug/security signals from outcome+fitness data; files candidate issues',
+  run_quality_gate:
+    'Run the QA quality gate (typecheck/lint/tests/build/security) over a project dir; returns structured pass/fail verdict + feedback',
 };

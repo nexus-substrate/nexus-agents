@@ -405,6 +405,16 @@ export {
   type CiHealthCheckResponse,
 } from './ci-health-check-tool.js';
 
+// Quality gate tool (#3356 — MCP surface over the runQualityGate QA engine)
+export {
+  registerRunQualityGateTool,
+  RunQualityGateInputSchema,
+  QualityCheckSchema,
+  type RunQualityGateDeps,
+  type RunQualityGateInput,
+  type QualityCheck,
+} from './quality-gate-tool.js';
+
 // Verify audit chain tool (#2281 follow-up — wraps verifyChain over persisted log files)
 export {
   registerVerifyAuditChainTool,
@@ -581,6 +591,7 @@ export const REGISTERED_TOOL_NAMES = [
   'pr_review',
   'supply_chain_tradeoff_panel',
   'improvement_review',
+  'run_quality_gate',
 ] as const;
 
 export function registerTools(
