@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 2.100.1
+
+### Patch Changes
+
+- [#3364](https://github.com/nexus-substrate/nexus-agents/pull/3364) [`a6dba7d`](https://github.com/nexus-substrate/nexus-agents/commit/a6dba7dbced687378acf6f279eb7a27893d3abec) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `registry refresh` now enforces its 5 MiB download cap via streaming with early abort, instead of buffering the entire body before checking the size ([#3354](https://github.com/nexus-substrate/nexus-agents/issues/3354)). It rejects on an over-cap `Content-Length` before reading a byte, and otherwise reads the body through a running byte counter that cancels the stream the moment the cap is exceeded — so a compromised or mistyped mirror serving a multi-gigabyte (or undeclared-length) body can no longer exhaust process memory before the guard fires.
+
 ## 2.100.0
 
 ### Minor Changes
