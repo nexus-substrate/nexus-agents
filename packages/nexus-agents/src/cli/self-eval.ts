@@ -11,7 +11,9 @@
 import { scanComponents } from '../self-eval/component-scanner.js';
 import { evaluateComponent } from '../self-eval/evaluation-agents.js';
 import { createAggregator, type AggregatedResult } from '../self-eval/aggregation-logic.js';
-import { getTimeProvider, getErrorMessage } from '../core/index.js';
+import { aggregatedResultToOutcome } from '../self-eval/outcome-adapter.js';
+import { getOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
+import { getTimeProvider, getErrorMessage, createLogger } from '../core/index.js';
 import type { ComponentInfo } from '../self-eval/component-scanner.js';
 import type { EvaluationResult } from '../self-eval/evaluation-agents.js';
 import type {
@@ -34,11 +36,42 @@ export type {
 // ============================================================================
 
 /**
+ * Minimal append-only sink for self-eval outcomes. Matches the surface of
+ * `OutcomeStore.append` so tests can inject a mock without constructing a
+ * full store (#3219).
+ */
+export interface OutcomeSink {
+  append(outcome: import('../orchestration/outcomes/outcome-types.js').TaskOutcome): void;
+}
+
+/**
+ * Persist aggregated self-eval results to the OutcomeStore so the
+ * eval -> log -> tune loop closes (#3219, #3235). Each result is mapped via
+ * the #3241 adapter and appended under a stable id (re-runs upsert rather
+ * than pile up). A store failure is logged and skipped — persistence is a
+ * side channel and must never crash the eval run.
+ */
+function persistResults(results: readonly AggregatedResult[], store: OutcomeSink): void {
+  const log = createLogger({ component: 'self-eval' });
+  for (const result of results) {
+    try {
+      store.append(aggregatedResultToOutcome(result));
+    } catch (error) {
+      log.warn('Failed to persist self-eval outcome', {
+        component: result.component,
+        error: getErrorMessage(error),
+      });
+    }
+  }
+}
+
+/**
  * Evaluate all components in a directory.
  */
 async function evaluateDirectory(
   target: string,
-  timeoutMs: number
+  timeoutMs: number,
+  store: OutcomeSink = getOutcomeStore()
 ): Promise<{
   results: readonly AggregatedResult[];
   componentsScanned: number;
@@ -82,6 +115,10 @@ async function evaluateDirectory(
   // Sort by severity (deprecate first, then refactor, review, retain)
   const priority = { deprecate: 0, refactor: 1, review: 2, retain: 3 };
   results.sort((a, b) => priority[a.finalRecommendation] - priority[b.finalRecommendation]);
+
+  // Persist to the OutcomeStore so self-eval feeds improvement_review /
+  // tuning. Guarded so a store failure never crashes the eval (#3219).
+  persistResults(results, store);
 
   return {
     results,
@@ -186,14 +223,18 @@ export function parseOptions(args: readonly string[]): EvaluateOptions {
  * Run the evaluate command.
  * Returns exit code (0 = success, 1 = issues found, 2 = error).
  */
-export async function evaluateCommand(args: readonly string[] = []): Promise<number> {
+export async function evaluateCommand(
+  args: readonly string[] = [],
+  store: OutcomeSink = getOutcomeStore()
+): Promise<number> {
   const options = parseOptions(args);
   const startTime = getTimeProvider().now();
 
   try {
     const { results, componentsScanned, totalLines, timedOut } = await evaluateDirectory(
       options.target,
-      options.timeout
+      options.timeout,
+      store
     );
 
     const summary = calculateSummary(results);

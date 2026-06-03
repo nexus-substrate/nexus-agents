@@ -5,7 +5,8 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { join } from 'node:path';
-import { parseOptions, evaluateCommand } from './self-eval.js';
+import { parseOptions, evaluateCommand, type OutcomeSink } from './self-eval.js';
+import type { TaskOutcome } from '../orchestration/outcomes/outcome-types.js';
 
 /** Absolute path to the package root (resolves CWD ambiguity in Vitest). */
 const PACKAGE_ROOT = join(import.meta.dirname, '..', '..');
@@ -281,6 +282,58 @@ describe('output formatting', () => {
       for (const result of parsed.results) {
         expect(result.isRecommendation).toBe(true);
       }
+    }
+  );
+});
+
+// ============================================================================
+// OutcomeStore Persistence (#3219, #3235, #3241)
+// ============================================================================
+
+describe('outcome persistence', () => {
+  it(
+    'appends one outcome per result to the injected store',
+    { timeout: INTEGRATION_TIMEOUT },
+    async () => {
+      const appended: TaskOutcome[] = [];
+      const store: OutcomeSink = {
+        append: (o) => {
+          appended.push(o);
+        },
+      };
+
+      await evaluateCommand(['--target', SELF_EVAL_TARGET, '--json', '--timeout', '15000'], store);
+
+      // One outcome per result reported in the JSON output.
+      const parsed = JSON.parse(mockStdout.join('')) as { results: unknown[] };
+      expect(appended.length).toBe(parsed.results.length);
+      expect(appended.length).toBeGreaterThan(0);
+      // Every appended outcome is a self-eval-sourced record.
+      for (const outcome of appended) {
+        expect(outcome.id.startsWith('self-eval-')).toBe(true);
+        expect(outcome.source).toBe('manual');
+        expect(outcome.qualitySignals).toContain('self-eval');
+      }
+    }
+  );
+
+  it(
+    'does not crash the eval when the store throws',
+    { timeout: INTEGRATION_TIMEOUT },
+    async () => {
+      const store: OutcomeSink = {
+        append: () => {
+          throw new Error('store unavailable');
+        },
+      };
+
+      const exitCode = await evaluateCommand(
+        ['--target', SELF_EVAL_TARGET, '--timeout', '15000'],
+        store
+      );
+
+      // Eval still completes (0 = pass, 1 = deprecations found).
+      expect([0, 1]).toContain(exitCode);
     }
   );
 });
