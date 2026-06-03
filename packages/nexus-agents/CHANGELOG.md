@@ -1,5 +1,13 @@
 # nexus-agents
 
+## 2.100.2
+
+### Patch Changes
+
+- [#3367](https://github.com/nexus-substrate/nexus-agents/pull/3367) [`720144a`](https://github.com/nexus-substrate/nexus-agents/commit/720144ab21916f02f2f9a53af846ac91489feb5b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Consolidate the two duplicate `TOOL_ANNOTATIONS` registries into one ([#3358](https://github.com/nexus-substrate/nexus-agents/issues/3358)). The MCP-hints registry (`mcp/tool-annotations.ts`) and the side-effects registry (`mcp/tools/tool-annotations.ts`) each required a per-tool entry, and had silently **drifted** on 9 hint values across 7 tools. The side-effects superset is now the single source of truth; `getToolAnnotations`/`getMcpAnnotations` derive from it (same signatures — callers unchanged), and the curated side-effects metadata is preserved. This also corrects several inaccurate live hints, e.g. `registry_import` is now `readOnlyHint: false` (it writes a draft entry) and `issue_triage` is now `readOnlyHint: true` (it only reads/classifies). Adding a new MCP tool now requires exactly one annotation entry instead of two.
+
+- [#3369](https://github.com/nexus-substrate/nexus-agents/pull/3369) [`e22835b`](https://github.com/nexus-substrate/nexus-agents/commit/e22835b465ee7fb52152e4435bc22e429f130aa4) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Remove the unused public `SharedMemoryStore` export (plus the `SharedMemoryEntry` / `SharedMemoryTag` types). It was a [#1737](https://github.com/nexus-substrate/nexus-agents/issues/1737) Phase-4 cross-stage-memory scaffold whose pipeline read-integration was de-integrated to a write-only husk in [#2937](https://github.com/nexus-substrate/nexus-agents/issues/2937) and whose sibling scaffolds were deleted in [#2939](https://github.com/nexus-substrate/nexus-agents/issues/2939). It had zero production consumers — only barrel re-exports and direct-use timing/edge tests instantiated it. Recoverable via git history if cross-stage memory is ever revived (epic [#3313](https://github.com/nexus-substrate/nexus-agents/issues/3313)).
+
 ## 2.100.1
 
 ### Patch Changes
