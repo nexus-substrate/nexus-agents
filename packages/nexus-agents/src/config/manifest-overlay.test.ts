@@ -9,7 +9,14 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-import { loadManifestOverlay, resolveManifestPath, MANIFEST_ENV_VAR } from './manifest-overlay.js';
+import {
+  loadManifestOverlay,
+  loadUserManifestOverlay,
+  resolveManifestPath,
+  resolveUserManifestPath,
+  MANIFEST_ENV_VAR,
+  USER_MANIFEST_ENV_VAR,
+} from './manifest-overlay.js';
 
 let tempDir: string;
 function tempFile(name: string, content: string): string {
@@ -164,5 +171,86 @@ models:
     );
     const result = loadManifestOverlay({ path });
     expect(result.status).toBe('malformed');
+  });
+
+  it('rejects a user overlay larger than the size cap (fails closed, #3351)', () => {
+    // Build a > 1 MB file of valid-ish YAML; the size gate trips before parse.
+    const big = `version: 1\nmodels:\n` + '  # padding\n'.repeat(120_000);
+    const path = tempFile('oversized.yaml', big);
+    const result = loadUserManifestOverlay({ path });
+    expect(result.status).toBe('too-large');
+    expect(result.entries).toEqual([]);
+  });
+
+  it('does not throw on malformed user overlay (fails closed, #3351)', () => {
+    const path = tempFile('bad-user.yaml', 'version: 1\nmodels:\n  - id: foo\n  bad: indent');
+    expect(() => loadUserManifestOverlay({ path })).not.toThrow();
+    expect(loadUserManifestOverlay({ path }).status).toBe('malformed');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// USER + OPERATOR two-path merge (#3351)
+// ---------------------------------------------------------------------------
+
+describe('resolveUserManifestPath', () => {
+  it('honours NEXUS_MODEL_REGISTRY_OVERLAY when set', () => {
+    const env = { [USER_MANIFEST_ENV_VAR]: '/custom/models.yaml' };
+    expect(resolveUserManifestPath(env)).toBe('/custom/models.yaml');
+  });
+
+  it('falls back to <NEXUS_DATA_DIR>/models.yaml otherwise', () => {
+    expect(resolveUserManifestPath({}).endsWith('models.yaml')).toBe(true);
+  });
+});
+
+describe('loadManifestOverlay USER+OPERATOR merge (#3351)', () => {
+  function userEntry(id: string, family: string): string {
+    return `version: 1\nmodels:\n  - id: ${id}\n    vendor: anthropic\n    family: ${family}\n`;
+  }
+
+  it('user-adds-new-model: a user-only id appears in the merged entries', () => {
+    const userPath = tempFile('user.yaml', userEntry('user-only-model', 'claude-opus'));
+    const env = {
+      [USER_MANIFEST_ENV_VAR]: userPath,
+      [MANIFEST_ENV_VAR]: join(tempDir, 'absent-operator.yaml'),
+    };
+    const result = loadManifestOverlay({ env });
+    expect(result.status).toBe('loaded');
+    expect(result.entries.map((e) => e.id)).toContain('user-only-model');
+  });
+
+  it('operator-overrides-user: operator wins on an id collision', () => {
+    const userPath = tempFile('user.yaml', userEntry('shared-id', 'claude-opus'));
+    const operatorPath = tempFile('operator.yaml', userEntry('shared-id', 'claude-sonnet'));
+    const env = {
+      [USER_MANIFEST_ENV_VAR]: userPath,
+      [MANIFEST_ENV_VAR]: operatorPath,
+    };
+    const result = loadManifestOverlay({ env });
+    const shared = result.entries.find((e) => e.id === 'shared-id');
+    expect(shared?.family).toBe('claude-sonnet');
+  });
+
+  it('user entry survives when the operator manifest is absent', () => {
+    const userPath = tempFile('user.yaml', userEntry('only-user', 'claude-opus'));
+    const env = {
+      [USER_MANIFEST_ENV_VAR]: userPath,
+      [MANIFEST_ENV_VAR]: join(tempDir, 'no-operator.yaml'),
+    };
+    const result = loadManifestOverlay({ env });
+    expect(result.entries.find((e) => e.id === 'only-user')?.family).toBe('claude-opus');
+  });
+
+  it('malformed user overlay is skipped while a valid operator manifest still loads', () => {
+    const userPath = tempFile('user.yaml', 'version: 1\nmodels:\n  - id: x\n  bad: indent');
+    const operatorPath = tempFile('operator.yaml', userEntry('op-model', 'claude-opus'));
+    const env = {
+      [USER_MANIFEST_ENV_VAR]: userPath,
+      [MANIFEST_ENV_VAR]: operatorPath,
+    };
+    const result = loadManifestOverlay({ env });
+    expect(result.status).toBe('loaded');
+    expect(result.entries.map((e) => e.id)).toEqual(['op-model']);
   });
 });

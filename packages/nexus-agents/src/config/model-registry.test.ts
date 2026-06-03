@@ -215,4 +215,64 @@ models:
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it('user overlay overrides in-tree and operator manifest overrides user (#3351)', async () => {
+    const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const { tmpdir } = await import('node:os');
+
+    setDefaultRegistry(undefined);
+    const dir = mkdtempSync(join(tmpdir(), 'overlay-precedence-rt-'));
+    const userPath = join(dir, 'models.yaml');
+    const operatorPath = join(dir, 'models-manifest.yaml');
+
+    // User overlay: override an in-tree model + add a user-only model.
+    writeFileSync(
+      userPath,
+      `version: 1
+models:
+  - id: claude-opus
+    vendor: anthropic
+    family: claude-opus
+    contextWindow: 111111
+  - id: user-shared
+    vendor: anthropic
+    family: claude-opus
+    contextWindow: 222222
+`,
+      'utf-8'
+    );
+    // Operator manifest: override the same shared id (operator must win).
+    writeFileSync(
+      operatorPath,
+      `version: 1
+models:
+  - id: user-shared
+    vendor: anthropic
+    family: claude-opus
+    contextWindow: 333333
+`,
+      'utf-8'
+    );
+
+    const prevUser = process.env['NEXUS_MODEL_REGISTRY_OVERLAY'];
+    const prevOp = process.env['NEXUS_MODELS_OVERLAY_PATH'];
+    process.env['NEXUS_MODEL_REGISTRY_OVERLAY'] = userPath;
+    process.env['NEXUS_MODELS_OVERLAY_PATH'] = operatorPath;
+    try {
+      const registry = getDefaultRegistry();
+      // user overlay beats the in-tree claude-opus entry
+      expect(registry.getEntry('claude-opus').contextWindow).toBe(111111);
+      expect(registry.getEntry('claude-opus').source).toBe('manifest');
+      // operator beats user on the shared id
+      expect(registry.getEntry('user-shared').contextWindow).toBe(333333);
+    } finally {
+      if (prevUser === undefined) delete process.env['NEXUS_MODEL_REGISTRY_OVERLAY'];
+      else process.env['NEXUS_MODEL_REGISTRY_OVERLAY'] = prevUser;
+      if (prevOp === undefined) delete process.env['NEXUS_MODELS_OVERLAY_PATH'];
+      else process.env['NEXUS_MODELS_OVERLAY_PATH'] = prevOp;
+      setDefaultRegistry(undefined);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });

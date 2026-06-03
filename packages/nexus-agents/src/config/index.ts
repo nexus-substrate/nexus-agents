@@ -308,9 +308,13 @@ export {
 // and merges entries into the default registry at first construction.
 export {
   loadManifestOverlay,
+  loadUserManifestOverlay,
   resolveManifestPath,
+  resolveUserManifestPath,
   defaultManifestPath,
+  defaultUserManifestPath,
   MANIFEST_ENV_VAR,
+  USER_MANIFEST_ENV_VAR,
   MANIFEST_MAX_BYTES,
   ManifestEntrySchema,
   ManifestSchema,
