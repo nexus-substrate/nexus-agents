@@ -1,5 +1,12 @@
 /**
- * User YAML overlay loader for CapabilityDiscovery's T3 tier (#2178).
+ * User YAML overlay loader for user model overrides (#2178).
+ *
+ * NOTE (#3293): the legacy CapabilityDiscovery resolver that consumed this
+ * overlay was removed. This loader is retained — `registry doctor` reports
+ * the overlay file for inspection, and `manifest-overlay.ts` reuses its
+ * parsing helpers — but the overlay is NOT yet wired into the live
+ * ModelRegistry. Wiring it in (so `models.yaml` actually affects resolution)
+ * is tracked in #3351.
  *
  * Reads user-supplied model capability overrides from a YAML file. Fully
  * optional — missing file, empty file, malformed YAML, and schema-invalid

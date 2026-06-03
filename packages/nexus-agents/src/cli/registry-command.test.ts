@@ -91,20 +91,38 @@ describe('registry doctor', () => {
   it('returns human-readable output by default', async () => {
     const result = await registryCommand('doctor', {});
     expect(result.exitCode).toBe(0);
-    expect(result.text).toMatch(/Tier counts/);
-    expect(result.text).toMatch(/T1 canonical/);
-    expect(result.text).toMatch(/T2 bundled/);
+    // Registry-derived per-source counts section (replaces the old four-tier view).
+    expect(result.text).toMatch(/Registry entries by source/);
+    expect(result.text).toMatch(/in-tree/);
+    expect(result.text).toMatch(/generated/);
+    expect(result.text).toMatch(/Bundled generated registry/);
     expect(result.text).toMatch(/T3 user overlay/);
-    expect(result.text).toMatch(/T4 conservative default/);
+    // Unknown-id fallback line carries the fail-closed 8192 default.
+    expect(result.text).toMatch(/Unknown-id fallback/);
+    expect(result.text).toMatch(/8192/);
   });
 
   it('returns JSON when --json is set', async () => {
     const result = await registryCommand('doctor', { json: true });
     expect(result.exitCode).toBe(0);
-    const parsed = JSON.parse(result.text) as { tierCounts: Record<string, number> };
-    expect(parsed.tierCounts).toBeDefined();
-    expect(typeof parsed.tierCounts['t1']).toBe('number');
-    expect(typeof parsed.tierCounts['t2']).toBe('number');
+    const parsed = JSON.parse(result.text) as {
+      sourceCounts: Record<string, number>;
+      unknownIdFallback: { contextWindow: number };
+    };
+    expect(parsed.sourceCounts).toBeDefined();
+    expect(typeof parsed.sourceCounts['in-tree']).toBe('number');
+    expect(parsed.unknownIdFallback.contextWindow).toBe(8192);
+  });
+
+  it('counts every registry entry across sources', async () => {
+    const result = await registryCommand('doctor', { json: true });
+    const parsed = JSON.parse(result.text) as {
+      sourceCounts: Record<string, number>;
+      totalEntries: number;
+    };
+    const summed = Object.values(parsed.sourceCounts).reduce((a, b) => a + b, 0);
+    expect(summed).toBe(parsed.totalEntries);
+    expect(parsed.totalEntries).toBeGreaterThan(0);
   });
 });
 

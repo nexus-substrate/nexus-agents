@@ -89,8 +89,10 @@ export function getModelDisplayName(modelId: ModelId): string {
  * raw string to ModelId (type-lying), which is the same latent bug the
  * recent codex-5.2 `cliModelName` regression surfaced.
  *
- * Callers that need full tier resolution (T2 bundled, T3 overlay)
- * should call `CapabilityDiscovery.resolve(id)` directly — #2176.
+ * Callers that need full catalog-breadth resolution (models.dev /
+ * generated tiers) should call `getDefaultRegistry().getEntry(id)`
+ * directly — #2176, #3293 (the legacy CapabilityDiscovery resolver was
+ * removed; ModelRegistry is the single resolver).
  */
 export function getModelContextWindow(modelId: ModelId): number {
   return lookupInTree(modelId)?.contextWindow ?? 8_192;
