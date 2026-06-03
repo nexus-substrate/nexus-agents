@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 2.101.2
+
+### Patch Changes
+
+- [#3375](https://github.com/nexus-substrate/nexus-agents/pull/3375) [`44b42c1`](https://github.com/nexus-substrate/nexus-agents/commit/44b42c184ce937f8eaa1c0f60cea7af80357f182) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Restore public-API parity for the MCP barrel (`exports/mcp.ts`, [#3199](https://github.com/nexus-substrate/nexus-agents/issues/3199)): the memory tools' response types (`MemoryQueryResponse`, `MemoryStatsResponse`, `MemoryWriteResponse`) and the async-job + improvement-review tools (`get_job_result` / `list_jobs` / `cancel_job` / `improvement_review` — their `register*Tool`, input schemas, and `*Response`/`*Input`/`*Deps` types) were exported from the internal `mcp/index.ts` but missing from the public package barrel, so embedders had to re-declare them. All are now re-exported. Additive, no behavior change.
+
 ## 2.101.1
 
 ### Patch Changes
