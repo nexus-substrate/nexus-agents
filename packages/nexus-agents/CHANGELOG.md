@@ -1,5 +1,15 @@
 # nexus-agents
 
+## 2.101.4
+
+### Patch Changes
+
+- [#3379](https://github.com/nexus-substrate/nexus-agents/pull/3379) [`254060f`](https://github.com/nexus-substrate/nexus-agents/commit/254060f0a987939c5dad7e3a98a28479a57ed82d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Persist self-eval results to the OutcomeStore so the eval -> log -> tune loop closes.
+
+  `nexus-agents evaluate` now maps each aggregated component evaluation to a `TaskOutcome` (via the new `aggregatedResultToOutcome` adapter) and appends it to `getOutcomeStore()`, so self-eval output feeds `improvement_review` / tuning instead of being discarded. Outcomes use a stable `self-eval-<component-path>` id (re-runs upsert rather than pile up), carry the recommendation in `qualitySignals`, and map `retain` -> `success: true`. Persistence is guarded: a store failure is logged and skipped, never crashing the eval run.
+
+  Closes [#3219](https://github.com/nexus-substrate/nexus-agents/issues/3219), [#3235](https://github.com/nexus-substrate/nexus-agents/issues/3235), [#3241](https://github.com/nexus-substrate/nexus-agents/issues/3241).
+
 ## 2.101.3
 
 ### Patch Changes
