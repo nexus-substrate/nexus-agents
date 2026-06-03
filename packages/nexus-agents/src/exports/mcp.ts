@@ -261,6 +261,10 @@ export {
   registerMemoryWriteTool,
   MemoryWriteInputSchema,
   type MemoryWriteInput,
+  // Memory response types (#3199 — were missing from the public barrel; embedders need these)
+  type MemoryQueryResponse,
+  type MemoryStatsResponse,
+  type MemoryWriteResponse,
   // Weather + query trace tools (Issue #1576 Wave 9)
   registerWeatherReportTool,
   WeatherReportInputSchema,
@@ -271,4 +275,26 @@ export {
   registerRegistryImportTool,
   RegistryImportInputSchema,
   type RegistryImportInput,
+  // Async job tools (#3199 — were entirely missing from the public barrel)
+  registerGetJobResultTool,
+  GetJobResultInputSchema,
+  type GetJobResultDeps,
+  type GetJobResultInput,
+  type GetJobResultResponse,
+  registerListJobsTool,
+  ListJobsInputSchema,
+  type ListJobsDeps,
+  type ListJobsInput,
+  type ListJobsResponse,
+  registerCancelJobTool,
+  CancelJobInputSchema,
+  type CancelJobDeps,
+  type CancelJobInput,
+  type CancelJobResponse,
+  // Improvement review tool (#3199 — was entirely missing from the public barrel)
+  registerImprovementReviewTool,
+  ImprovementReviewInputSchema,
+  type ImprovementReviewDeps,
+  type ImprovementReviewInput,
+  type ImprovementReviewResponse,
 } from '../mcp/index.js';
