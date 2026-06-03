@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseCliErrorEnvelope } from './cli-error-envelope.js';
+import { parseCliErrorEnvelope, authRemediation } from './cli-error-envelope.js';
 
 describe('parseCliErrorEnvelope (#2440)', () => {
   // Real-world example from the round-14 audit report.
@@ -189,6 +189,39 @@ describe('parseCliErrorEnvelope (#2440)', () => {
       const result = parseCliErrorEnvelope(env, 'claude');
       expect(result?.code).toBe('EXECUTION_ERROR');
       expect(result?.hint).toBeUndefined();
+    });
+  });
+
+  // #3350: stale-OAuth refresh-token rotation must classify as auth and yield
+  // a `<cli> login` remediation, not a raw fail-closed error string.
+  describe('stale OAuth refresh-token rotation (#3350)', () => {
+    const refreshTokenMsg =
+      'Your access token could not be refreshed because your refresh token was already used. Please log out and sign in again.';
+
+    it('classifies the codex refresh-token-rotation error as NOT_AUTHENTICATED', () => {
+      const env = JSON.stringify({ error: refreshTokenMsg });
+      const result = parseCliErrorEnvelope(env, 'codex');
+      expect(result?.code).toBe('NOT_AUTHENTICATED');
+      expect(result?.hint).toContain('codex login');
+    });
+
+    it('authRemediation returns a codex-login remediation for the refresh-token error', () => {
+      const remediation = authRemediation(refreshTokenMsg, 'codex');
+      expect(remediation).not.toBeNull();
+      expect(remediation).toContain('codex login');
+    });
+
+    it('authRemediation normalizes a "cli-codex" providerId form', () => {
+      const remediation = authRemediation(refreshTokenMsg, 'cli-codex');
+      expect(remediation).toContain('codex login');
+    });
+
+    it('authRemediation returns null for a benign (non-auth) error', () => {
+      expect(authRemediation('rate limit exceeded', 'codex')).toBeNull();
+    });
+
+    it('authRemediation returns null for an unknown CLI name even on an auth error', () => {
+      expect(authRemediation(refreshTokenMsg, 'totally-unknown-cli')).toBeNull();
     });
   });
 });

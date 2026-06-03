@@ -433,6 +433,51 @@ That's my vote.`;
       expect(result.error).toBe('Persistent failure');
     });
 
+    // #3350: a stale-OAuth voter failure must surface a `<cli> login`
+    // remediation in the error text instead of a raw fail-closed string.
+    it('appends a re-auth remediation when the failure is a stale-OAuth error', async () => {
+      const adapter: IModelAdapter = {
+        ...createMockAdapter({
+          response: {
+            ok: false,
+            error: new Error(
+              'Your access token could not be refreshed because your refresh token was already used. Please log out and sign in again.'
+            ),
+          },
+        }),
+        providerId: 'cli-codex',
+      };
+
+      const result = await executeAgentVote('architect', 'Test proposal', adapter, logger, {
+        timeoutMs: 5000,
+        maxRetries: 0,
+        allowSimulation: false,
+      });
+
+      expect(result.vote.decision).toBe('abstain');
+      expect(result.error).toContain('refresh token was already used');
+      expect(result.error).toContain('codex login');
+    });
+
+    it('leaves a non-auth failure error unchanged (no remediation appended)', async () => {
+      const adapter: IModelAdapter = {
+        ...createMockAdapter({
+          response: { ok: false, error: new Error('rate limit exceeded') },
+        }),
+        providerId: 'cli-codex',
+      };
+
+      const result = await executeAgentVote('architect', 'Test proposal', adapter, logger, {
+        timeoutMs: 5000,
+        maxRetries: 0,
+        allowSimulation: false,
+      });
+
+      expect(result.vote.decision).toBe('abstain');
+      expect(result.error).toBe('rate limit exceeded');
+      expect(result.error).not.toContain('login');
+    });
+
     it('should fall back to simulation only when explicitly allowed', async () => {
       const adapter = createMockAdapter({
         response: { ok: false, error: new Error('Failure') },
