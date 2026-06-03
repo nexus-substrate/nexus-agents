@@ -1,19 +1,36 @@
 /**
- * Operator manifest overlay for the unified `ModelRegistry` (#2547 4a).
+ * Manifest overlay for the unified `ModelRegistry` (#2547 4a, #3351).
  *
- * Reads a YAML or JSON manifest of `ModelEntry` records from disk and
+ * Reads YAML or JSON manifests of `ModelEntry` records from disk and
  * returns them in a shape the `ModelRegistry` can ingest via its
  * `manifestEntries` option. Manifest entries win over in-tree
- * authoritative entries — operators use this to override pricing or
- * capability flags without an npm release, or to declare models the
- * in-tree registry doesn't know about (gateway-fronted variants,
- * vendor pre-releases, etc.).
+ * authoritative entries — used to override pricing or capability flags
+ * without an npm release, or to declare models the in-tree registry
+ * doesn't know about (gateway-fronted variants, vendor pre-releases).
  *
- * Fully optional — missing file, empty file, malformed YAML/JSON, and
- * schema-invalid entries all return the empty overlay with structured
- * rejections instead of throwing. The same robustness contract as the
- * older `capability-overlay.ts` (which targets the legacy
- * `ModelCapability` shape).
+ * TWO paths are merged into the single `manifest` registry tier (#3351):
+ *
+ *   1. USER path — `~/.nexus-agents/models.yaml` (or whatever
+ *      `NEXUS_MODEL_REGISTRY_OVERLAY` points at). Loaded FIRST, lower
+ *      precedence. Lets an individual user override model data without a
+ *      release. As of #3351 this file uses the SAME ManifestSchema /
+ *      `ModelEntry` shape as the operator manifest below — the old
+ *      `ModelCapability` format (handled by the now-deleted
+ *      `capability-overlay.ts`) had zero production effect, so there is
+ *      nothing to migrate.
+ *   2. OPERATOR path — `~/.nexus-agents/models-manifest.yaml` (or
+ *      whatever `NEXUS_MODELS_OVERLAY_PATH` points at). Loaded SECOND,
+ *      higher precedence. On an id collision the operator entry
+ *      overwrites the user entry.
+ *
+ * Net registry precedence (low → high):
+ *   generated < models-dev < in-tree < USER-overlay < OPERATOR-manifest.
+ * The whole manifest tier sits above in-tree; within it, operator beats
+ * user via load order.
+ *
+ * Fully optional and fail-closed — missing file, empty file, malformed
+ * YAML/JSON, schema-invalid entries, and oversized files all degrade to
+ * the empty overlay with structured rejections instead of throwing.
  *
  * @module config/manifest-overlay
  */
@@ -36,29 +53,48 @@ import {
   QualityScoresSchema,
 } from './model-capabilities-types.js';
 
-/** Env var an operator sets to point at a non-default manifest path. */
+/** Env var an operator sets to point at a non-default OPERATOR manifest path. */
 export const MANIFEST_ENV_VAR = 'NEXUS_MODELS_OVERLAY_PATH';
+
+/** Env var a USER sets to point at a non-default user overlay path (#3351). */
+export const USER_MANIFEST_ENV_VAR = 'NEXUS_MODEL_REGISTRY_OVERLAY';
 
 /** Max manifest size accepted (1 MB — far larger than any realistic manifest). */
 export const MANIFEST_MAX_BYTES = 1 * 1024 * 1024;
 
 /**
- * Default manifest location: `<NEXUS_DATA_DIR>/models-manifest.yaml`. Distinct
- * from the legacy `models.yaml` used by `capability-overlay.ts` so operators
- * can run both overlays side-by-side during the #2546 migration window.
+ * Default OPERATOR manifest location: `<NEXUS_DATA_DIR>/models-manifest.yaml`.
  */
 export function defaultManifestPath(): string {
   return nexusDataPath('models-manifest.yaml');
 }
 
 /**
- * Resolve the manifest path. `NEXUS_MODELS_OVERLAY_PATH` wins if set;
+ * Default USER overlay location: `<NEXUS_DATA_DIR>/models.yaml` (#3351).
+ * Lower precedence than the operator manifest; same ManifestSchema shape.
+ */
+export function defaultUserManifestPath(): string {
+  return nexusDataPath('models.yaml');
+}
+
+/**
+ * Resolve the OPERATOR manifest path. `NEXUS_MODELS_OVERLAY_PATH` wins if set;
  * otherwise the default `~/.nexus-agents/models-manifest.yaml`.
  */
 export function resolveManifestPath(env: NodeJS.ProcessEnv = process.env): string {
   const override = env[MANIFEST_ENV_VAR];
   if (override !== undefined && override !== '') return override;
   return defaultManifestPath();
+}
+
+/**
+ * Resolve the USER overlay path. `NEXUS_MODEL_REGISTRY_OVERLAY` wins if set;
+ * otherwise the default `~/.nexus-agents/models.yaml` (#3351).
+ */
+export function resolveUserManifestPath(env: NodeJS.ProcessEnv = process.env): string {
+  const override = env[USER_MANIFEST_ENV_VAR];
+  if (override !== undefined && override !== '') return override;
+  return defaultUserManifestPath();
 }
 
 // ============================================================================
@@ -158,9 +194,15 @@ export const ManifestSchema = z.object({
 // ============================================================================
 
 /**
- * Load + validate the operator manifest. Returns structured results;
- * never throws. The registry consumer is responsible for surfacing
- * `rejections` (logger.warn / audit-log per #2547 DoD).
+ * Load + validate the merged manifest overlay (USER then OPERATOR, #3351).
+ * Returns structured results; never throws. The registry consumer is
+ * responsible for surfacing `rejections` (logger.warn / audit per #2547 DoD).
+ *
+ * When an explicit `path` is given (tests / single-file inspection) only that
+ * file is loaded — single-path behaviour is preserved. With no `path`, both
+ * the user overlay (`~/.nexus-agents/models.yaml`) and the operator manifest
+ * (`~/.nexus-agents/models-manifest.yaml`) are loaded and merged by id, with
+ * the operator entry winning on collision.
  */
 export function loadManifestOverlay(options?: {
   readonly path?: string;
@@ -168,8 +210,62 @@ export function loadManifestOverlay(options?: {
   readonly env?: NodeJS.ProcessEnv;
 }): ManifestLoadResult {
   const logger = options?.logger ?? createLogger({ component: 'manifest-overlay' });
-  const path = options?.path ?? resolveManifestPath(options?.env);
 
+  // Explicit path → single-file load (preserves the original contract).
+  if (options?.path !== undefined) {
+    return loadManifestFile(options.path, logger);
+  }
+
+  // Default → merge USER overlay (lower precedence) under the OPERATOR
+  // manifest (higher precedence). Operator overwrites user on id collision.
+  const userPath = resolveUserManifestPath(options?.env);
+  const operatorPath = resolveManifestPath(options?.env);
+  const user = loadManifestFile(userPath, logger);
+  const operator = loadManifestFile(operatorPath, logger);
+  return mergeOverlays(user, operator);
+}
+
+/**
+ * Merge two overlay results: `lower` first, then `higher`. Entries from
+ * `higher` overwrite same-id entries from `lower`. Status/path/rejections
+ * are reported for the OPERATOR (higher-precedence) result so the registry's
+ * existing `status === 'loaded'` gate behaves unchanged; user-only state is
+ * reported via {@link loadUserManifestOverlay} for the doctor.
+ */
+function mergeOverlays(lower: ManifestLoadResult, higher: ManifestLoadResult): ManifestLoadResult {
+  const byId = new Map<string, ModelEntry>();
+  for (const entry of lower.entries) byId.set(entry.id, entry);
+  for (const entry of higher.entries) byId.set(entry.id, entry);
+  const entries = [...byId.values()];
+  const merged: ManifestLoadResult = {
+    entries,
+    rejections: [...lower.rejections, ...higher.rejections],
+    path: higher.path,
+    status: entries.length > 0 ? 'loaded' : higher.status,
+  };
+  return merged;
+}
+
+/**
+ * Load + validate just the USER overlay (`~/.nexus-agents/models.yaml` or the
+ * `NEXUS_MODEL_REGISTRY_OVERLAY` override). Reported by `registry doctor` for
+ * inspection of the user-path status / entryCount (#3351).
+ */
+export function loadUserManifestOverlay(options?: {
+  readonly path?: string;
+  readonly logger?: ILogger;
+  readonly env?: NodeJS.ProcessEnv;
+}): ManifestLoadResult {
+  const logger = options?.logger ?? createLogger({ component: 'manifest-overlay' });
+  const path = options?.path ?? resolveUserManifestPath(options?.env);
+  return loadManifestFile(path, logger);
+}
+
+/**
+ * Load + validate a single manifest file. Returns structured results;
+ * never throws.
+ */
+function loadManifestFile(path: string, logger: ILogger): ManifestLoadResult {
   // Defensive: tests sometimes `vi.mock('node:fs', ...)` with a subset
   // of exports that omits `existsSync`. Treat any throw from the probe
   // as "no manifest" rather than letting it crash module-load callers.

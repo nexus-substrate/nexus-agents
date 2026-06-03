@@ -21,19 +21,18 @@
  */
 
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { nexusDataPath } from '../config/nexus-data-dir.js';
 
 import { getDefaultRegistry, type EntrySource } from '../config/model-registry.js';
 import { loadGeneratedRegistryEntries } from '../config/models-generated-loader.js';
 import {
-  OVERLAY_ENV_VAR,
-  OVERLAY_MAX_BYTES,
-  defaultOverlayPath,
-  loadCapabilityOverlay,
-  resolveOverlayPath,
-} from '../config/capability-overlay.js';
+  USER_MANIFEST_ENV_VAR,
+  MANIFEST_MAX_BYTES,
+  defaultUserManifestPath,
+  loadUserManifestOverlay,
+} from '../config/manifest-overlay.js';
 
 // ---------------------------------------------------------------------------
 // Dispatch
@@ -140,9 +139,13 @@ function buildDoctorReport(options: RegistryCommandOptions): DoctorReport {
   // same loader the registry ingests, so the path/status here matches reality.
   const generated = loadGeneratedRegistryEntries();
 
-  // User overlay is reported for inspection only; the registry consumes the
-  // operator manifest, not this YAML overlay (kept by manifest-overlay.ts).
-  const overlay = loadCapabilityOverlay(options.overlayPath ?? process.env);
+  // User overlay (`~/.nexus-agents/models.yaml`) status, reported for
+  // inspection. As of #3351 this IS wired into the registry's manifest tier
+  // (below the operator manifest), loaded via the same manifest-overlay loader.
+  const overlay =
+    options.overlayPath !== undefined
+      ? loadUserManifestOverlay({ path: options.overlayPath })
+      : loadUserManifestOverlay();
 
   return {
     sourceCounts,
@@ -161,7 +164,7 @@ function buildDoctorReport(options: RegistryCommandOptions): DoctorReport {
         ...(r.id !== undefined ? { id: r.id } : {}),
         reason: r.reason,
       })),
-      envOverride: process.env[OVERLAY_ENV_VAR],
+      envOverride: process.env[USER_MANIFEST_ENV_VAR],
     },
     unknownIdFallback: {
       contextWindow: UNKNOWN_MODEL_CONTEXT_WINDOW,
@@ -384,12 +387,7 @@ export function formatRegistryUsage(): string {
     '      SHA256-verify against <url>.sha256, and write to:',
     `      ${nexusDataPath('model-registry.generated.json')}`,
     '',
-    `Overlay path (T3) is ${defaultOverlayPath()} by default,`,
-    `or whatever ${OVERLAY_ENV_VAR} points to. Overlay max size is ${String(OVERLAY_MAX_BYTES)} bytes.`,
+    `User overlay path is ${defaultUserManifestPath()} by default,`,
+    `or whatever ${USER_MANIFEST_ENV_VAR} points to. Overlay max size is ${String(MANIFEST_MAX_BYTES)} bytes.`,
   ].join('\n');
 }
-
-// Dummy references to satisfy unused-var lint when destructuring is conditional.
-void existsSync;
-void readFileSync;
-void resolveOverlayPath;
