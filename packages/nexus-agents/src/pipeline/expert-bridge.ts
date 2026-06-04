@@ -48,6 +48,14 @@ export interface ExpertBridgeResult {
    * a cli — see #2823 (#1154 regression).
    */
   readonly cli?: CliNameLiteral;
+  /**
+   * Total tokens (input + output) the underlying CLI/adapter reported for this
+   * call, when available (#3396). Best-effort: `CliResponse.usage` is optional
+   * — CLI-subprocess paths whose `extractUsage` returns null leave this
+   * undefined. Consumers (budget enforcement #3395, model.called attribution
+   * #3387, routing-experience metrics) must tolerate `undefined`.
+   */
+  readonly tokensUsed?: number;
 }
 
 /**
@@ -64,7 +72,7 @@ export interface ExpertBridgeResult {
 interface RouterLike {
   executeTask(task: { content: string; options?: Record<string, unknown> | undefined }): Promise<{
     ok: boolean;
-    value: { text: string; cli?: CliNameLiteral };
+    value: { text: string; cli?: CliNameLiteral; tokensUsed?: number };
     error: { message: string };
   }>;
 }
@@ -141,6 +149,21 @@ let cachedCircuitBreaker: {
  * If CliResponse renames `.text` → `.output` (or similar), this adapter
  * breaks at compile time instead of silently returning wrong data (#1921).
  */
+/**
+ * Total tokens from a best-effort `CliResponse.usage` record (#3396). Prefers
+ * the reported `totalTokens`; falls back to input+output; returns undefined
+ * when no usage was reported (so callers can distinguish "0 tokens" — which
+ * never happens for a real call — from "unknown").
+ */
+export function totalTokensFromUsage(
+  usage: { totalTokens?: number; inputTokens?: number; outputTokens?: number } | undefined
+): number | undefined {
+  if (usage === undefined) return undefined;
+  if (typeof usage.totalTokens === 'number') return usage.totalTokens;
+  const total = (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0);
+  return total > 0 ? total : undefined;
+}
+
 function adaptCompositeRouter(
   compositeRouter: import('../cli-adapters/composite-router.js').ICompositeRouter
 ): RouterLike {
@@ -164,9 +187,18 @@ function adaptCompositeRouter(
         // cli stays undefined and downstream code can skip the record
         // rather than lie.
         const cli = resolveCliFromModelString(result.value.model);
+        // #3396: surface token usage (best-effort) so budget enforcement,
+        // attribution, and routing-experience metrics get real numbers instead
+        // of zeros. `usage` is optional and `totalTokens` may be absent — fall
+        // back to input+output, and leave undefined when no usage was reported.
+        const tokensUsed = totalTokensFromUsage(result.value.usage);
         return {
           ok: true,
-          value: { text: result.value.text, ...(cli !== undefined && { cli }) },
+          value: {
+            text: result.value.text,
+            ...(cli !== undefined && { cli }),
+            ...(tokensUsed !== undefined && { tokensUsed }),
+          },
           error: { message: '' },
         };
       }
@@ -247,6 +279,7 @@ async function dispatchWithRateLimitRetry(
         expertType,
         durationMs,
         ...(result.value.cli !== undefined && { cli: result.value.cli }),
+        ...(result.value.tokensUsed !== undefined && { tokensUsed: result.value.tokensUsed }),
       };
     }
 

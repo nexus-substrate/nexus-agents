@@ -222,8 +222,13 @@ let routingMemoryCache: unknown = null;
 let routingMemoryInitPromise: Promise<unknown> | null = null;
 
 /** Record to RoutingMemory after expert calls (#1716). Fire-and-forget, cached. */
-function recordRoutingExperience(category: string, success: boolean, durationMs: number): void {
-  const metrics = { durationMs, tokensUsed: 0 };
+function recordRoutingExperience(
+  category: string,
+  success: boolean,
+  durationMs: number,
+  tokensUsed = 0
+): void {
+  const metrics = { durationMs, tokensUsed };
   const callRecord = (rm: unknown): void => {
     (
       rm as { recordExperience: (w: string, m: string[], s: boolean, met: typeof metrics) => void }
@@ -522,7 +527,7 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
         success: r.success,
         durationMs: r.durationMs,
       });
-      recordRoutingExperience('code_generation', r.success, r.durationMs);
+      recordRoutingExperience('code_generation', r.success, r.durationMs, r.tokensUsed);
       await postProgress(config, `Code [${task.id}]`, `Done (${r.durationMs}ms)`);
       return r.text || `[Implementation failed: ${r.error}]`;
     },
