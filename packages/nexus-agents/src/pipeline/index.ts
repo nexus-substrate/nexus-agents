@@ -31,6 +31,12 @@ export {
 export { compilePlan, type PlanCompileOptions } from './plan-compiler.js';
 
 export {
+  resolvePipelineDeps,
+  type PipelineDeps,
+  type ResolvedPipelineDeps,
+} from './pipeline-deps.js';
+
+export {
   PipelineRunner,
   getDefaultRunsDir,
   type CompiledPipeline,
