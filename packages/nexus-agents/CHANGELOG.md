@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 2.102.4
+
+### Patch Changes
+
+- [#3392](https://github.com/nexus-substrate/nexus-agents/pull/3392) [`fdeab67`](https://github.com/nexus-substrate/nexus-agents/commit/fdeab67abbd85891f6b0620cdaa0e16ccaa47543) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Extend the security `AuditQuery` interface with post-mortem dimensions ([#3197](https://github.com/nexus-substrate/nexus-agents/issues/3197)): `actionType` (PolicyGate/Corroboration events), `actor` (username on Trust/Reputation events), and `violationRule` (PolicyGate `violationRules` membership). These enable security forensics like "which Tier-3 events tripped RULE_OF_TWO?" and combine with the existing `trustTier`/`type`/time filters. The new filters narrow to events that actually carry the field (events lacking it are excluded). The original ask's `resource` and `policyName` were intentionally dropped — no `AuditEvent` records them, so those filters would be dead config; the policy-rule intent is served by `violationRule`.
+
 ## 2.102.3
 
 ### Patch Changes
