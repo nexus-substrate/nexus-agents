@@ -4,6 +4,19 @@
  * Subscribes to pipeline events and records outcomes automatically.
  * Closes the feedback loop: execution → events → outcomes → routing.
  *
+ * Scope note (#3179): this bridge listens for `stage.failed` only. It used to
+ * also subscribe to `model.called`, but that event has **no producer** anywhere
+ * in the codebase — `ModelCalledEvent` was added to the event vocabulary (#912)
+ * with consumers here and in trace-writer (#952), but the emitter was never
+ * built. So the `model.called` branch was dead (it never fired) and, had a
+ * producer been added, it would have double-counted against the cli-attributed
+ * outcomes that `agent-executor.recordOutcome()` already writes directly. The
+ * 3-0 consensus (#3179) was to drop the dead branch and keep outcome-writing on
+ * the single direct path. Emitting `model.called` with real model/token
+ * attribution (the originally-intended #952 observability) is deferred to a
+ * focused follow-up; it needs adapter-level token plumbing and is built only
+ * if/when query_trace model-call attribution is actually needed.
+ *
  * @see docs/v2/08-observability-eventing.md (Feedback Loop section)
  * @module pipeline/feedback-subscriber
  */
@@ -13,18 +26,15 @@ import type { PipelineEvent, Unsubscribe, IEventBus } from './event-types.js';
 import type { OutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 import type { TaskOutcome } from '../orchestration/outcomes/outcome-types.js';
 import { categorizeOutcomeErrorMessage } from '../orchestration/outcomes/outcome-types.js';
-import { CLI_NAMES, DEFAULT_CLI } from '../config/model-capabilities-types.js';
-import type { CliNameLiteral } from '../config/model-capabilities-types.js';
+import { DEFAULT_CLI } from '../config/model-capabilities-types.js';
 
 const logger = createLogger({ component: 'FeedbackSubscriber' });
-
-const VALID_CLIS: ReadonlySet<string> = new Set<string>(CLI_NAMES);
 
 /**
  * Creates a subscriber that bridges EventBus events to OutcomeStore.
  *
- * Listens for `model.called` and `stage.failed` events and records
- * them as TaskOutcome entries in the OutcomeStore.
+ * Listens for `stage.failed` events and records them as failed TaskOutcome
+ * entries in the OutcomeStore.
  *
  * Returns an Unsubscribe handle for callers that manage their own
  * subscription lifecycle (e.g. tests). For the server-wide singleton
@@ -33,7 +43,7 @@ const VALID_CLIS: ReadonlySet<string> = new Set<string>(CLI_NAMES);
  * @returns Unsubscribe function to stop the bridge.
  */
 export function createFeedbackSubscriber(bus: IEventBus, store: OutcomeStore): Unsubscribe {
-  return bus.subscribe({ type: ['model.called', 'stage.failed'] }, (event) => {
+  return bus.subscribe({ type: ['stage.failed'] }, (event) => {
     try {
       handleEvent(event, store);
     } catch (error: unknown) {
@@ -88,31 +98,9 @@ export function shutdownFeedbackSubscriber(): void {
 // ============================================================================
 
 function handleEvent(event: PipelineEvent, store: OutcomeStore): void {
-  if (event.type === 'model.called') {
-    recordModelCall(event, store);
-  } else if (event.type === 'stage.failed') {
+  if (event.type === 'stage.failed') {
     recordStageFailed(event, store);
   }
-}
-
-function recordModelCall(
-  event: PipelineEvent & { type: 'model.called' },
-  store: OutcomeStore
-): void {
-  const cli = normalizeCli(event.cli);
-  if (cli === undefined) return;
-
-  const outcome: TaskOutcome = {
-    id: `fb-${event.executionId}-${String(event.timestamp)}`,
-    cli,
-    category: 'code_generation',
-    model: event.model,
-    success: true,
-    durationMs: event.durationMs,
-    timestamp: new Date(event.timestamp).toISOString(),
-    source: 'delegate',
-  };
-  store.append(outcome);
 }
 
 function recordStageFailed(
@@ -132,12 +120,4 @@ function recordStageFailed(
     errorMessage: event.error.slice(0, 500),
   };
   store.append(outcome);
-}
-
-function normalizeCli(cli: string): CliNameLiteral | undefined {
-  if (VALID_CLIS.has(cli)) {
-    return cli as CliNameLiteral;
-  }
-  logger.warn('Unknown CLI in event', { cli });
-  return undefined;
 }

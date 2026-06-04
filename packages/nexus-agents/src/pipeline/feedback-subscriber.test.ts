@@ -1,7 +1,9 @@
 /**
- * FeedbackSubscriber tests (Issue #915, Phase 7-1)
+ * FeedbackSubscriber tests (Issue #915, Phase 7-1; #3179 scope cleanup)
  *
- * Tests automatic wiring of EventBus → OutcomeStore.
+ * Tests automatic wiring of EventBus → OutcomeStore. The bridge listens for
+ * `stage.failed` only — the former `model.called` branch was dead (no producer)
+ * and was removed in #3179.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 
@@ -21,6 +23,17 @@ import type { PipelineEvent } from './event-types.js';
 let bus: EventBus;
 let store: OutcomeStore;
 
+/** A representative stage.failed event — the bridge's only live input. */
+function stageFailed(executionId: string, error = 'boom'): PipelineEvent {
+  return {
+    type: 'stage.failed',
+    executionId,
+    stageId: 'analyze',
+    error,
+    timestamp: Date.now(),
+  };
+}
+
 beforeEach(() => {
   resetOutcomeStore();
   bus = new EventBus();
@@ -32,10 +45,24 @@ beforeEach(() => {
 // ============================================================================
 
 describe('createFeedbackSubscriber', () => {
-  it('records model.called events as outcomes', () => {
+  it('records stage.failed events as failed outcomes', () => {
     createFeedbackSubscriber(bus, store);
 
-    const event: PipelineEvent = {
+    bus.emit(stageFailed('exec-2'));
+
+    expect(store.size).toBe(1);
+    const outcomes = store.query({});
+    expect(outcomes[0]?.success).toBe(false);
+    expect(outcomes[0]?.failureCategory).toBeDefined();
+  });
+
+  it('ignores model.called events — that event has no producer (#3179)', () => {
+    // The bridge no longer subscribes to model.called. Even if some future
+    // producer emitted one, outcome-writing stays on agent-executor's direct
+    // recordOutcome path to avoid double-counting.
+    createFeedbackSubscriber(bus, store);
+
+    bus.emit({
       type: 'model.called',
       executionId: 'exec-1',
       cli: 'claude',
@@ -44,32 +71,9 @@ describe('createFeedbackSubscriber', () => {
       tokensOut: 500,
       durationMs: 250,
       timestamp: Date.now(),
-    };
-    bus.emit(event);
+    });
 
-    expect(store.size).toBe(1);
-    const outcomes = store.query({});
-    expect(outcomes[0]?.cli).toBe('claude');
-    expect(outcomes[0]?.model).toBe('claude-sonnet');
-    expect(outcomes[0]?.success).toBe(true);
-    expect(outcomes[0]?.durationMs).toBe(250);
-  });
-
-  it('records stage.failed events as failed outcomes', () => {
-    createFeedbackSubscriber(bus, store);
-
-    const event: PipelineEvent = {
-      type: 'stage.failed',
-      executionId: 'exec-2',
-      stageId: 'analyze',
-      error: 'boom',
-      timestamp: Date.now(),
-    };
-    bus.emit(event);
-
-    expect(store.size).toBe(1);
-    const outcomes = store.query({});
-    expect(outcomes[0]?.success).toBe(false);
+    expect(store.size).toBe(0);
   });
 
   it('ignores unrelated event types', () => {
@@ -87,30 +91,12 @@ describe('createFeedbackSubscriber', () => {
   it('returns unsubscribe function', () => {
     const unsub = createFeedbackSubscriber(bus, store);
 
-    bus.emit({
-      type: 'model.called',
-      executionId: 'exec-1',
-      cli: 'gemini',
-      model: 'gemini-pro',
-      tokensIn: 100,
-      tokensOut: 50,
-      durationMs: 100,
-      timestamp: Date.now(),
-    });
+    bus.emit(stageFailed('exec-1'));
     expect(store.size).toBe(1);
 
     unsub();
 
-    bus.emit({
-      type: 'model.called',
-      executionId: 'exec-2',
-      cli: 'codex',
-      model: 'codex-o3',
-      tokensIn: 100,
-      tokensOut: 50,
-      durationMs: 100,
-      timestamp: Date.now(),
-    });
+    bus.emit(stageFailed('exec-2'));
     expect(store.size).toBe(1);
   });
 
@@ -118,16 +104,7 @@ describe('createFeedbackSubscriber', () => {
     createFeedbackSubscriber(bus, store);
 
     for (let i = 0; i < 5; i++) {
-      bus.emit({
-        type: 'model.called',
-        executionId: `exec-${String(i)}`,
-        cli: 'claude',
-        model: 'claude-sonnet',
-        tokensIn: 100,
-        tokensOut: 50,
-        durationMs: 100,
-        timestamp: Date.now(),
-      });
+      bus.emit(stageFailed(`exec-${String(i)}`));
     }
 
     expect(store.size).toBe(5);
@@ -148,16 +125,7 @@ describe('startFeedbackSubscriber / shutdownFeedbackSubscriber lifecycle', () =>
   it('wires the EventBus → OutcomeStore bridge for the process lifetime', () => {
     startFeedbackSubscriber(bus, store);
 
-    bus.emit({
-      type: 'model.called',
-      executionId: 'exec-lifecycle',
-      cli: 'claude',
-      model: 'claude-sonnet',
-      tokensIn: 100,
-      tokensOut: 50,
-      durationMs: 100,
-      timestamp: Date.now(),
-    });
+    bus.emit(stageFailed('exec-lifecycle'));
 
     expect(store.size).toBe(1);
     shutdownFeedbackSubscriber();
@@ -168,16 +136,7 @@ describe('startFeedbackSubscriber / shutdownFeedbackSubscriber lifecycle', () =>
     startFeedbackSubscriber(bus, store);
     startFeedbackSubscriber(bus, store);
 
-    bus.emit({
-      type: 'model.called',
-      executionId: 'exec-idem',
-      cli: 'gemini',
-      model: 'gemini-pro',
-      tokensIn: 100,
-      tokensOut: 50,
-      durationMs: 100,
-      timestamp: Date.now(),
-    });
+    bus.emit(stageFailed('exec-idem'));
 
     // Subscribed exactly once — the event records exactly one outcome.
     expect(store.size).toBe(1);
@@ -188,16 +147,7 @@ describe('startFeedbackSubscriber / shutdownFeedbackSubscriber lifecycle', () =>
     startFeedbackSubscriber(bus, store);
     shutdownFeedbackSubscriber();
 
-    bus.emit({
-      type: 'model.called',
-      executionId: 'exec-post-shutdown',
-      cli: 'codex',
-      model: 'codex-5.3',
-      tokensIn: 10,
-      tokensOut: 5,
-      durationMs: 20,
-      timestamp: Date.now(),
-    });
+    bus.emit(stageFailed('exec-post-shutdown'));
 
     expect(store.size).toBe(0);
   });
