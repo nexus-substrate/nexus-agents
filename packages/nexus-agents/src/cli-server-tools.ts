@@ -626,9 +626,10 @@ function initV2PipelineSubsystems(
   const bridge = createEventBusBridge({ source: pipelineEventBus });
   // Wire the EventBus → OutcomeStore feedback loop advertised by
   // `feedback-subscriber.ts`. Pre-#2938 the module existed but nothing
-  // called it, so `model.called` / `stage.failed` events never reached
-  // OutcomeStore via this path. Cleanup runs in
-  // cli-server.ts:createShutdownCleanup via `shutdownFeedbackSubscriber()`.
+  // called it, so `stage.failed` events never reached OutcomeStore via this
+  // path. (#3179 dropped the dead `model.called` branch — that event has no
+  // producer.) Cleanup runs in cli-server.ts:createShutdownCleanup via
+  // `shutdownFeedbackSubscriber()`.
   startFeedbackSubscriber(pipelineEventBus, getOutcomeStore());
   // Close the self-tuning loop's consumer side: the shadow TuneStage subscribes
   // to signal.* events on the same typed bus (#3147; #3289 Option 2). Shadow
