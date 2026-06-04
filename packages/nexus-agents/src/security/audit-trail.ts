@@ -117,12 +117,29 @@ export interface GraphExecutionAuditEvent extends AuditEventBase {
   readonly detail: string;
 }
 
-/** Query filter for retrieving audit events. */
+/**
+ * Query filter for retrieving audit events.
+ *
+ * The post-mortem dimensions (#3197) — `actionType`, `actor`, `violationRule`
+ * — NARROW to events that actually carry the field (events lacking it are
+ * excluded), unlike `trustTier`'s legacy keep-non-applicable behavior. Only
+ * dimensions backed by a real event field are offered: `resource` and
+ * `policyName` from the original ask were dropped because no AuditEvent
+ * records them (a filter with no backing field would be dead config); the
+ * policy-rule intent is served by `violationRule` (PolicyGateEvent's
+ * `violationRules`).
+ */
 export interface AuditQuery {
   readonly type?: AuditEvent['type'];
   readonly since?: string;
   readonly until?: string;
   readonly trustTier?: TrustTier;
+  /** Match PolicyGate/Corroboration events by their `actionType`. */
+  readonly actionType?: AgentActionType;
+  /** Match Trust/Reputation events by `username` (the acting/assessed user). */
+  readonly actor?: string;
+  /** Match PolicyGate events whose `violationRules` include this rule name. */
+  readonly violationRule?: string;
   readonly limit?: number;
 }
 
@@ -193,6 +210,18 @@ export class AuditTrail {
       results = filterByTrustTier(results, filter.trustTier);
     }
 
+    if (filter.actionType !== undefined) {
+      results = filterByActionType(results, filter.actionType);
+    }
+
+    if (filter.actor !== undefined) {
+      results = filterByActor(results, filter.actor);
+    }
+
+    if (filter.violationRule !== undefined) {
+      results = filterByViolationRule(results, filter.violationRule);
+    }
+
     const limit = filter.limit ?? results.length;
     return results.slice(-limit);
   }
@@ -236,6 +265,38 @@ function filterByTrustTier(events: readonly AuditEvent[], tier: TrustTier): read
     if (e.type === 'reputation') return e.effectiveTier === tier;
     return true;
   });
+}
+
+/**
+ * Narrow to events carrying the given `actionType` (#3197). Only PolicyGate and
+ * Corroboration events have one; all others are excluded.
+ */
+function filterByActionType(
+  events: readonly AuditEvent[],
+  actionType: AgentActionType
+): readonly AuditEvent[] {
+  return events.filter(
+    (e) => (e.type === 'policy_gate' || e.type === 'corroboration') && e.actionType === actionType
+  );
+}
+
+/**
+ * Narrow to events for the given actor (#3197), matched on `username`. Only
+ * Trust-classification and Reputation events carry a username; others are
+ * excluded so an actor filter never returns unrelated rows.
+ */
+function filterByActor(events: readonly AuditEvent[], actor: string): readonly AuditEvent[] {
+  return events.filter(
+    (e) => (e.type === 'trust_classification' || e.type === 'reputation') && e.username === actor
+  );
+}
+
+/**
+ * Narrow to PolicyGate events whose `violationRules` include the given rule
+ * name (#3197) — the security post-mortem "who tripped rule X" query.
+ */
+function filterByViolationRule(events: readonly AuditEvent[], rule: string): readonly AuditEvent[] {
+  return events.filter((e) => e.type === 'policy_gate' && e.violationRules.includes(rule));
 }
 
 // ============================================================================
