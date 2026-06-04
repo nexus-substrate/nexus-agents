@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 2.102.1
+
+### Patch Changes
+
+- [#3385](https://github.com/nexus-substrate/nexus-agents/pull/3385) [`fd96d46`](https://github.com/nexus-substrate/nexus-agents/commit/fd96d4696ffd66156411ebc7efcf7e16080327ef) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Make the pipeline engine's PluginRegistry dependency explicit ([#3175](https://github.com/nexus-substrate/nexus-agents/issues/3175)). `PipelineRunner.compile()` previously reached for the process-global `getPipelinePluginRegistry()` singleton inline — an implicit dependency. It now resolves through a small, tested seam: the new `resolvePipelineDeps(deps)` + `PipelineDeps` bundle (exported from the pipeline barrel), where an injected `pluginRegistry` wins and an omitted one falls back to the documented global default. Behavior is unchanged when nothing is injected; the seam is the extension point the injectable-OutcomeStore work ([#3145](https://github.com/nexus-substrate/nexus-agents/issues/3145)) builds on. Verified scope note: the EventBus is already injected via `PipelineExecuteOptions.eventBus` (global fallback already centralized in `pipeline-observability.resolveBus`), and the ArtifactStore is unconsumed by the runner — so this pass intentionally covers only the one dependency the engine actually resolved implicitly.
+
 ## 2.102.0
 
 ### Minor Changes
