@@ -15,7 +15,9 @@ import type { DevPipelineStages, PipelineTask, QaReviewResult } from './dev-pipe
 import { checkSecurityScan } from './security-gate.js';
 import { runQualityGate, checkTypeCheck, checkLint, checkTests } from '../security/quality-gate.js';
 import type { ITaskTracker } from './task-tracker.js';
-import { executeExpert } from './expert-bridge.js';
+import { executeExpert, type ExpertBridgeResult } from './expert-bridge.js';
+import { createBudgetGuard, type BudgetGuard, type AgentBudgetConfig } from './budget-guard.js';
+import type { BuiltInExpertType } from '../agents/experts/expert-config.js';
 import { getOutcomeStore, getOutcomeSummaryText } from '../orchestration/outcomes/outcome-store.js';
 import { detectTrend } from '../orchestration/outcomes/adaptive-thresholds.js';
 import { emitPipelineStageEvent } from './pipeline-observability.js';
@@ -130,6 +132,37 @@ export interface AgentExecutorConfig {
   readonly tracker?: ITaskTracker | undefined;
   readonly issueNumber?: number | undefined;
   readonly repo?: string | undefined;
+  /**
+   * Opt-in per-run token budget (#3395). When set, expert calls are metered
+   * through a {@link BudgetGuard}: once cumulative usage crosses the ceiling,
+   * further expert calls short-circuit to a failure result (stopping spend)
+   * rather than aborting mid-pipeline. Absent → no enforcement (default).
+   */
+  readonly budget?: AgentBudgetConfig | undefined;
+}
+
+/**
+ * Run an expert through the per-run budget guard (#3395): skip (and return a
+ * failure result) once the budget is exhausted, otherwise execute and record
+ * the tokens consumed. A no-budget guard makes this a transparent passthrough.
+ */
+export async function runExpert(
+  guard: BudgetGuard,
+  expertType: BuiltInExpertType,
+  prompt: string
+): Promise<ExpertBridgeResult> {
+  if (guard.isExhausted()) {
+    return {
+      success: false,
+      text: '',
+      expertType,
+      durationMs: 0,
+      error: 'Budget exhausted — expert call skipped (#3395)',
+    };
+  }
+  const result = await executeExpert(expertType, prompt);
+  guard.record(result.tokensUsed);
+  return result;
 }
 
 // ============================================================================
@@ -359,17 +392,21 @@ function getTrendContext(): string {
 // ============================================================================
 
 export function createAgentStages(config: AgentExecutorConfig = {}): DevPipelineStages {
+  // Per-run budget guard (#3395). No-op unless config.budget is set.
+  const guard = createBudgetGuard(config.budget);
   return {
     research: async (task) => {
       emitStageEvent('research', 'started');
       await postProgress(config, 'Research', 'Querying memory + research tools...');
       // Seed with prior learnings from memory (#1716)
       const memoryCtx = await getMemoryContext(task);
-      const discover = await executeExpert(
+      const discover = await runExpert(
+        guard,
         'research',
         `Use research_discover to find papers and repos related to:\n\n${task}${memoryCtx}`
       );
-      const analyze = await executeExpert(
+      const analyze = await runExpert(
+        guard,
         'research',
         `Use research_analyze focus=gaps to identify what is missing for:\n\n${task}`
       );
@@ -410,7 +447,7 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
           ? `Revise plan.\n\nFeedback: ${feedback}\n\nTask: ${task}\n\n${contextBlock}`
           : `Create implementation plan for:\n\n${task}\n\n${contextBlock}`;
       await postProgress(config, 'Plan', feedback !== undefined ? 'Revising...' : 'Planning...');
-      const r = await executeExpert('architecture', prompt);
+      const r = await runExpert(guard, 'architecture', prompt);
       emitStageEvent('plan', r.success ? 'completed' : 'failed', { durationMs: r.durationMs });
       recordOutcome({
         taskId: 'plan',
@@ -492,7 +529,8 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
     decompose: async (plan) => {
       emitStageEvent('decompose', 'started');
       await postProgress(config, 'PM', 'PM expert decomposing...');
-      const r = await executeExpert(
+      const r = await runExpert(
+        guard,
         'pm',
         `Decompose into tasks.\nReturn JSON: [{id,title,description,assignedTo}]\n\n${plan}`
       );
@@ -513,7 +551,8 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
       emitStageEvent(`impl-${task.id}`, 'started');
       await postProgress(config, `Code [${task.id}]`, task.title);
       const fb = task.feedback !== undefined ? `\n\nQA feedback: ${task.feedback}` : '';
-      const r = await executeExpert(
+      const r = await runExpert(
+        guard,
         'code',
         `Implement:\n\n${task.title}\n${task.description}${fb}`
       );
@@ -535,7 +574,8 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
     qaReview: async (task, implementation) => {
       emitStageEvent(`qa-${task.id}`, 'started');
       await postProgress(config, `QA [${task.id}]`, 'QA expert reviewing...');
-      const r = await executeExpert(
+      const r = await runExpert(
+        guard,
         'qa',
         `QA:\n\nTask: ${task.title}\n\nImpl:\n${implementation.slice(0, 3000)}\n\nVerdict: PASS/NEEDS_WORK/REJECT`
       );
