@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 2.102.3
+
+### Patch Changes
+
+- [#3390](https://github.com/nexus-substrate/nexus-agents/pull/3390) [`a4920fa`](https://github.com/nexus-substrate/nexus-agents/commit/a4920fa8de42b5fa2d299e1a8830a4119d7981c0) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Remove the dormant `feedbackToRoutingOutcome` mapper and resolve a `TaskOutcome` name collision ([#3146](https://github.com/nexus-substrate/nexus-agents/issues/3146)/[#3226](https://github.com/nexus-substrate/nexus-agents/issues/3226)). The mapper (added in [#3284](https://github.com/nexus-substrate/nexus-agents/issues/3284) as [#3146](https://github.com/nexus-substrate/nexus-agents/issues/3146)'s first step) was never wired — and wiring it would have re-introduced the synthetic-positive pollution that [#2724](https://github.com/nexus-substrate/nexus-agents/issues/2724) deliberately removed: `delegate_to_model` is a recommendation tool, not an execution, so routing recommendation outcomes into the routing OutcomeStore corrupts every downstream aggregation (weather*report, recommendedMappings, LinUCB, TOPSIS, fitness-audit). The routing OutcomeStore must hold only real execution outcomes; the feedback and routing outcome layers are intentionally separate. Removed the footgun mapper + its test. Separately, renamed the unrelated `consensus/types-weighted-voting.ts` `TaskOutcomeSchema`/`TaskOutcome` (a 4-state vote \_status* enum) to `TaskOutcomeStatusSchema`/`TaskOutcomeStatus` to end a 3-way name collision with the canonical outcome _record_ (consensus-internal only; not part of the public barrel).
+
 ## 2.102.2
 
 ### Patch Changes
