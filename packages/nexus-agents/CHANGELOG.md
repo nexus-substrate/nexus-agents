@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 2.102.2
+
+### Patch Changes
+
+- [#3388](https://github.com/nexus-substrate/nexus-agents/pull/3388) [`e1cbbed`](https://github.com/nexus-substrate/nexus-agents/commit/e1cbbed2425c039cf2108d3235d175d6b5963ef1) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Drop the dead `model.called` branch from the EventBus→OutcomeStore feedback subscriber ([#3179](https://github.com/nexus-substrate/nexus-agents/issues/3179)). The bridge now subscribes to `stage.failed` only — its sole event with a producer. `model.called` was in the event vocabulary ([#912](https://github.com/nexus-substrate/nexus-agents/issues/912)) with consumers here and in trace-writer ([#952](https://github.com/nexus-substrate/nexus-agents/issues/952)), but no code ever emitted it, so the branch never fired; had a producer been added it would have double-counted against the cli-attributed outcomes `agent-executor.recordOutcome()` already writes directly. The `ModelCalledEvent` type and trace-writer handler are retained as valid vocabulary. Emitting `model.called` with real model/token attribution (the originally-intended [#952](https://github.com/nexus-substrate/nexus-agents/issues/952) observability) is tracked in [#3387](https://github.com/nexus-substrate/nexus-agents/issues/3387). Also corrects the now-stale "auto-feedback never wired" framing of [#3179](https://github.com/nexus-substrate/nexus-agents/issues/3179) — [#2938](https://github.com/nexus-substrate/nexus-agents/issues/2938) already auto-wires the subscriber at server startup.
+
 ## 2.102.1
 
 ### Patch Changes
