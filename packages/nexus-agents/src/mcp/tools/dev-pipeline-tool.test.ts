@@ -88,6 +88,21 @@ describe('DevPipelineInputSchema', () => {
     });
     expect(parsed.workingDir).toBe('/home/user/project');
   });
+
+  it('accepts an opt-in maxBudgetTokens ceiling (#3395)', () => {
+    const parsed = DevPipelineInputSchema.parse({ task: 'test', maxBudgetTokens: 50_000 });
+    expect(parsed.maxBudgetTokens).toBe(50_000);
+  });
+
+  it('leaves maxBudgetTokens undefined by default (enforcement off)', () => {
+    const parsed = DevPipelineInputSchema.parse({ task: 'test' });
+    expect(parsed.maxBudgetTokens).toBeUndefined();
+  });
+
+  it('rejects a non-positive maxBudgetTokens', () => {
+    expect(() => DevPipelineInputSchema.parse({ task: 'test', maxBudgetTokens: 0 })).toThrow();
+    expect(() => DevPipelineInputSchema.parse({ task: 'test', maxBudgetTokens: -100 })).toThrow();
+  });
 });
 
 // #2824: run_dev_pipeline used to register a bare callback that called

@@ -119,6 +119,15 @@ export const DevPipelineInputSchema = z.object({
     .describe(
       "Pre-ship local quality gate. 'off' (default): skip. 'advisory': run + record feedback, never fail. 'blocking': a red gate fails the pipeline."
     ),
+  /** Opt-in per-run token budget — a safety cap for unattended runs (#3395). */
+  maxBudgetTokens: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe(
+      'Per-run token ceiling (#3395). When set, expert calls stop (returning failures) once cumulative usage crosses it — a hard-stop safety cap for unattended/multi-day runs. Omit to disable (default).'
+    ),
 });
 
 export type DevPipelineInput = z.infer<typeof DevPipelineInputSchema>;
@@ -184,6 +193,10 @@ async function createStages(
     issueNumber: input.issueNumber,
     repo: input.repo,
     tracker,
+    // #3395: thread the opt-in per-run token ceiling through to the budget guard.
+    ...(input.maxBudgetTokens !== undefined && {
+      budget: { maxTokens: input.maxBudgetTokens },
+    }),
   });
 }
 
