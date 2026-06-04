@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 2.102.7
+
+### Patch Changes
+
+- [#3401](https://github.com/nexus-substrate/nexus-agents/pull/3401) [`9b0f4b9`](https://github.com/nexus-substrate/nexus-agents/commit/9b0f4b93ed9e0b4fe033680938a7790de72c4dc2) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Expose the per-run token budget via the `run_dev_pipeline` MCP tool ([#3395](https://github.com/nexus-substrate/nexus-agents/issues/3395) follow-up). A new optional `maxBudgetTokens` input threads through to the dev-pipeline's `BudgetGuard`: when set, expert calls stop once cumulative token usage crosses the ceiling — a hard-stop safety cap for unattended/multi-day runs. Omitted by default (enforcement off). This makes the budget mechanism (shipped in 2.102.6) reachable by MCP clients rather than programmatic-only.
+
 ## 2.102.6
 
 ### Patch Changes
