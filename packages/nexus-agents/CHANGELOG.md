@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 2.102.5
+
+### Patch Changes
+
+- [#3397](https://github.com/nexus-substrate/nexus-agents/pull/3397) [`478c25c`](https://github.com/nexus-substrate/nexus-agents/commit/478c25c119d0448cff632f82ef1ff88aa56073a1) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Propagate adapter token usage through the expert bridge ([#3396](https://github.com/nexus-substrate/nexus-agents/issues/3396)). `CliResponse.usage` was produced upstream (SDK adapters report `TokenUsage`; CLI adapters extract it best-effort) but silently dropped across `expert-bridge.ts`'s result-mapping hops, so `agent-executor` recorded `tokensUsed: 0`. Now `ExpertBridgeResult` carries an optional `tokensUsed` (total tokens, preferring the reported `totalTokens`, falling back to input+output, left undefined when no usage was reported), and the routing-experience metric records the real value instead of zero. This is the shared prerequisite for token-based budget enforcement ([#3395](https://github.com/nexus-substrate/nexus-agents/issues/3395)), `model.called` attribution ([#3387](https://github.com/nexus-substrate/nexus-agents/issues/3387)), and routing-time cost scoring ([#3394](https://github.com/nexus-substrate/nexus-agents/issues/3394)).
+
 ## 2.102.4
 
 ### Patch Changes
