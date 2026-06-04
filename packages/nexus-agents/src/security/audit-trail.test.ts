@@ -220,12 +220,54 @@ describe('AuditTrail', () => {
       expect(limited[1]?.type).toBe('policy_gate');
     });
 
+    // #3197: post-mortem query dimensions — narrow to events that actually
+    // carry the field (unlike trustTier's legacy keep-non-applicable behavior).
+    it('filters by actionType (policy_gate / corroboration only)', () => {
+      const draft = trail.query({ actionType: 'DraftReply' });
+      expect(draft).toHaveLength(1);
+      expect(draft[0]?.type).toBe('policy_gate');
+
+      const propose = trail.query({ actionType: 'ProposeLabels' });
+      expect(propose).toHaveLength(1);
+    });
+
+    it('filters by actor (username on trust / reputation events)', () => {
+      const owner = trail.query({ actor: 'owner' });
+      expect(owner).toHaveLength(1);
+      expect(owner[0]?.type).toBe('trust_classification');
+
+      const stranger = trail.query({ actor: 'stranger' });
+      expect(stranger).toHaveLength(1);
+
+      // An actor that never appears returns nothing — events lacking a
+      // username are excluded, not kept.
+      expect(trail.query({ actor: 'ghost' })).toHaveLength(0);
+    });
+
+    it('filters by violationRule (policy_gate violationRules membership)', () => {
+      const ruleOfTwo = trail.query({ violationRule: 'RULE_OF_TWO' });
+      expect(ruleOfTwo).toHaveLength(1);
+      expect(ruleOfTwo[0]?.type).toBe('policy_gate');
+      if (ruleOfTwo[0]?.type === 'policy_gate') {
+        expect(ruleOfTwo[0].allowed).toBe(false);
+      }
+
+      expect(trail.query({ violationRule: 'NONEXISTENT_RULE' })).toHaveLength(0);
+    });
+
     it('combines filters', () => {
       const result = trail.query({ type: 'policy_gate', trustTier: '3' });
       expect(result).toHaveLength(1);
       if (result[0]?.type === 'policy_gate') {
         expect(result[0].allowed).toBe(false);
       }
+    });
+
+    it('combines new post-mortem filters (Tier-3 actor + violation)', () => {
+      // "which Tier-3 events carry the RULE_OF_TWO violation?"
+      const result = trail.query({ trustTier: '3', violationRule: 'RULE_OF_TWO' });
+      expect(result).toHaveLength(1);
+      expect(result[0]?.type).toBe('policy_gate');
     });
   });
 
