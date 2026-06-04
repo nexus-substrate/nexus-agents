@@ -9,10 +9,13 @@ import { z } from 'zod';
 import type { Vote } from './types-core.js';
 
 /**
- * Task outcome for tracking agent performance.
+ * Task outcome STATUS for tracking agent performance — a 4-state vote status,
+ * NOT an outcome row. Named `*Status` to avoid colliding with the canonical
+ * outcome *record* `TaskOutcome` in orchestration/outcomes (#3146/#3226: the
+ * two were unrelated types that happened to share the name `TaskOutcome`).
  */
-export const TaskOutcomeSchema = z.enum(['success', 'failure', 'partial', 'unknown']);
-export type TaskOutcome = z.infer<typeof TaskOutcomeSchema>;
+export const TaskOutcomeStatusSchema = z.enum(['success', 'failure', 'partial', 'unknown']);
+export type TaskOutcomeStatus = z.infer<typeof TaskOutcomeStatusSchema>;
 
 /**
  * Extended agent performance with Byzantine detection.
@@ -112,7 +115,7 @@ export interface IWeightedVoting {
   calculateWeight(agentId: string): number;
 
   /** Update agent performance based on task outcome */
-  updatePerformance(agentId: string, outcome: TaskOutcome): void;
+  updatePerformance(agentId: string, outcome: TaskOutcomeStatus): void;
 
   /** Run weighted consensus on votes */
   weightedConsensus(votes: ReadonlyMap<string, Vote>): WeightedConsensusResult;

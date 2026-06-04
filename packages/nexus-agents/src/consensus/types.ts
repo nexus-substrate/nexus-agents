@@ -72,8 +72,8 @@ export {
 
 // Weighted Byzantine voting types (Issue #103, CP-WBFT)
 export {
-  TaskOutcomeSchema,
-  type TaskOutcome,
+  TaskOutcomeStatusSchema,
+  type TaskOutcomeStatus,
   type WeightedAgentRecord,
   WeightedAgentRecordSchema,
   type WeightedConsensusResult,

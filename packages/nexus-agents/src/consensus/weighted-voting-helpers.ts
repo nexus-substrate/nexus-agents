@@ -204,7 +204,7 @@ export function calculateCalibratedWeight(
  */
 export function applyOutcomeWeight(
   currentWeight: number,
-  outcome: import('./types.js').TaskOutcome,
+  outcome: import('./types.js').TaskOutcomeStatus,
   decayFactor: number,
   recoveryFactor: number
 ): number {

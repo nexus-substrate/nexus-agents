@@ -15,7 +15,7 @@ import type {
   WeightedAgentRecord,
   WeightedConsensusResult,
   WeightedVotingConfig,
-  TaskOutcome,
+  TaskOutcomeStatus,
   Vote,
 } from './types.js';
 import { DEFAULT_WEIGHTED_VOTING_CONFIG } from './types.js';
@@ -71,7 +71,7 @@ export class WeightedVoting implements IWeightedVoting {
     return record.weight;
   }
 
-  updatePerformance(agentId: string, outcome: TaskOutcome): void {
+  updatePerformance(agentId: string, outcome: TaskOutcomeStatus): void {
     let record = this.records.get(agentId);
     if (record === undefined) {
       this.registerAgent(agentId);
