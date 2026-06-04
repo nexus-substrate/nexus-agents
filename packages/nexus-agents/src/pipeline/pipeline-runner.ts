@@ -13,7 +13,7 @@ import { nexusDataPath } from '../config/nexus-data-dir.js';
 import { compilePlan } from './plan-compiler.js';
 import type { PlanCompileOptions } from './plan-compiler.js';
 import { TraceWriter } from './trace-writer.js';
-import { getPipelinePluginRegistry } from './core-plugins.js';
+import { resolvePipelineDeps } from './pipeline-deps.js';
 
 import type {
   CompiledGraph,
@@ -101,9 +101,10 @@ type ExecuteResult =
 export class PipelineRunner {
   /** Compiles a PlanContract into a CompiledPipeline. */
   compile(plan: PlanContract, options?: PlanCompileOptions): CompileResult {
-    const compileOpts: PlanCompileOptions = {
-      pluginRegistry: options?.pluginRegistry ?? getPipelinePluginRegistry(),
-    };
+    // Resolve deps through the explicit seam (#3175): an injected registry wins,
+    // otherwise the documented global default is used — behavior unchanged.
+    const { pluginRegistry } = resolvePipelineDeps(options);
+    const compileOpts: PlanCompileOptions = { pluginRegistry };
     const graphResult = compilePlan(plan, compileOpts);
     if (!graphResult.ok) {
       return { ok: false, error: graphResult.error };

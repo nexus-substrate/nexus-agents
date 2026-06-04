@@ -27,6 +27,10 @@ export {
   // Plan compiler
   compilePlan,
   type PlanCompileOptions,
+  // Pipeline dependency seam (#3175)
+  resolvePipelineDeps,
+  type PipelineDeps,
+  type ResolvedPipelineDeps,
   // Pipeline runner
   PipelineRunner,
   type CompiledPipeline,
