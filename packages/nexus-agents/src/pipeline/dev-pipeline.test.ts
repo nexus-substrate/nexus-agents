@@ -10,6 +10,61 @@ import type {
   VoteResult,
   QaReviewResult,
 } from './dev-pipeline.js';
+import type { IHindsightBeliefMemory } from '../context/belief-memory-interface.js';
+import type { HindsightRecord } from '../context/belief-hindsight-types.js';
+import { ok, err } from '../core/result.js';
+import { MemoryError } from '../context/memory-backend-types.js';
+
+/**
+ * Build a minimal IHindsightBeliefMemory stub. Only the read methods used by the
+ * plan-stage recall path are wired; everything else throws if touched so a test
+ * that accidentally depends on an unstubbed method fails loudly.
+ */
+function createBeliefMemoryStub(
+  overrides: Partial<IHindsightBeliefMemory>
+): IHindsightBeliefMemory {
+  const notImplemented = (name: string) => (): never => {
+    throw new Error(`belief-memory stub: ${name} not implemented`);
+  };
+  const base = {
+    retain: notImplemented('retain'),
+    retainBatch: notImplemented('retainBatch'),
+    recall: notImplemented('recall'),
+    query: notImplemented('query'),
+    recallBySubject: notImplemented('recallBySubject'),
+    recallCurrent: notImplemented('recallCurrent'),
+    recallHistory: notImplemented('recallHistory'),
+    revise: notImplemented('revise'),
+    supersede: notImplemented('supersede'),
+    applyHindsight: vi.fn().mockResolvedValue(ok([])),
+    reinforce: vi.fn().mockResolvedValue(ok(undefined)),
+    weaken: vi.fn().mockResolvedValue(ok(undefined)),
+    createCounterfactual: notImplemented('createCounterfactual'),
+    validateCounterfactual: notImplemented('validateCounterfactual'),
+    getCounterfactuals: notImplemented('getCounterfactuals'),
+    getUpdateHistory: notImplemented('getUpdateHistory'),
+    getHindsightRecords: vi.fn().mockResolvedValue(ok([])),
+    getStats: notImplemented('getStats'),
+    pruneSuperseded: notImplemented('pruneSuperseded'),
+  } as unknown as IHindsightBeliefMemory;
+  return { ...base, ...overrides };
+}
+
+function makeHindsightRecord(over: Partial<HindsightRecord>): HindsightRecord {
+  return {
+    hindsightId: 'h-1',
+    taskId: 'task',
+    priorBeliefs: [],
+    expectedOutcome: 'Pipeline completes with all gates passed',
+    actualOutcome: 'Incomplete: 3 vote iterations, 0 QA iterations',
+    outcomeMatched: false,
+    correctedBeliefs: [],
+    newBeliefs: [],
+    lessons: ['Pipeline did not complete — review plan approach'],
+    createdAt: new Date('2026-05-01T00:00:00Z'),
+    ...over,
+  };
+}
 
 function createMockStages(overrides?: Partial<DevPipelineStages>): DevPipelineStages {
   return {
@@ -194,6 +249,82 @@ describe('runDevPipeline', () => {
     expect(stages.implement).not.toHaveBeenCalled();
     expect(stages.qaReview).not.toHaveBeenCalled();
     expect(stages.securityScan).not.toHaveBeenCalled();
+  });
+});
+
+describe('runDevPipeline — prior-hindsight recall into plan (#3257)', () => {
+  it('injects formatted prior beliefs into the plan + vote context when beliefMemory recalls records', async () => {
+    const task = 'Build feature X';
+    const records = [
+      makeHindsightRecord({
+        actualOutcome: 'Incomplete: 3 vote iterations, 0 QA iterations',
+        lessons: ['Pipeline did not complete — review plan approach for: Build feature X'],
+      }),
+    ];
+    const getHindsightRecords = vi.fn().mockResolvedValue(ok(records));
+    const beliefMemory = createBeliefMemoryStub({ getHindsightRecords });
+    const stages = createMockStages();
+
+    await runDevPipeline(task, stages, { beliefMemory });
+
+    // The recall is keyed on the task-stable id the write side uses.
+    expect(getHindsightRecords).toHaveBeenCalledWith(task.slice(0, 40));
+
+    // Plan stage receives a clearly-labeled prior-belief block in its research context.
+    const planResearch = vi.mocked(stages.plan).mock.calls[0]?.[1] ?? '';
+    expect(planResearch).toContain('Prior beliefs from past outcomes');
+    expect(planResearch).toContain('review plan approach');
+    // Original research still present.
+    expect(planResearch).toContain('Research findings: relevant context gathered');
+
+    // Vote stage also sees the same context (informed voting).
+    const voteResearch = vi.mocked(stages.vote).mock.calls[0]?.[1] ?? '';
+    expect(voteResearch).toContain('Prior beliefs from past outcomes');
+  });
+
+  it('leaves the plan context unchanged when no beliefMemory is supplied', async () => {
+    const stages = createMockStages();
+    await runDevPipeline('Build feature X', stages);
+
+    const planResearch = vi.mocked(stages.plan).mock.calls[0]?.[1] ?? '';
+    expect(planResearch).toBe('Research findings: relevant context gathered');
+    expect(planResearch).not.toContain('Prior beliefs');
+  });
+
+  it('leaves the plan context unchanged when recall returns no records', async () => {
+    const beliefMemory = createBeliefMemoryStub({
+      getHindsightRecords: vi.fn().mockResolvedValue(ok([])),
+    });
+    const stages = createMockStages();
+    await runDevPipeline('Build feature X', stages, { beliefMemory });
+
+    const planResearch = vi.mocked(stages.plan).mock.calls[0]?.[1] ?? '';
+    expect(planResearch).toBe('Research findings: relevant context gathered');
+  });
+
+  it('is fire-safe: a throwing recall does not break the plan step', async () => {
+    const beliefMemory = createBeliefMemoryStub({
+      getHindsightRecords: vi.fn().mockRejectedValue(new Error('store offline')),
+    });
+    const stages = createMockStages();
+
+    const result = await runDevPipeline('Build feature X', stages, { beliefMemory });
+
+    // Pipeline still completes; plan got the plain research with no belief block.
+    expect(result.completed).toBe(true);
+    const planResearch = vi.mocked(stages.plan).mock.calls[0]?.[1] ?? '';
+    expect(planResearch).toBe('Research findings: relevant context gathered');
+  });
+
+  it('is fire-safe: a recall returning an err Result injects no block', async () => {
+    const beliefMemory = createBeliefMemoryStub({
+      getHindsightRecords: vi.fn().mockResolvedValue(err(new MemoryError('boom'))),
+    });
+    const stages = createMockStages();
+    await runDevPipeline('Build feature X', stages, { beliefMemory });
+
+    const planResearch = vi.mocked(stages.plan).mock.calls[0]?.[1] ?? '';
+    expect(planResearch).toBe('Research findings: relevant context gathered');
   });
 });
 
