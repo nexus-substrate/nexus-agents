@@ -1,5 +1,38 @@
 # nexus-agents
 
+## 2.109.0
+
+### Minor Changes
+
+- [#3436](https://github.com/nexus-substrate/nexus-agents/pull/3436) [`c2d3b1e`](https://github.com/nexus-substrate/nexus-agents/commit/c2d3b1ed435c291898ffde5c5ad1ee3550c5fdb1) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(adapters): native structured output for Gemini + SDK adapters ([#3433](https://github.com/nexus-substrate/nexus-agents/issues/3433) phases 2+3)
+
+  `GeminiAdapter` and `SdkAdapter` now honor `CompletionRequest.responseFormat`
+  instead of ignoring it:
+  - **Gemini** sets `responseMimeType: 'application/json'` (json_object/json_schema)
+    and `responseSchema` (json_schema) on the generation config; the warn-and-ignore
+    is removed.
+  - **SdkAdapter** routes `json_object`/`json_schema` through the Vercel AI SDK
+    `generateObject({schema})` (via `jsonSchema()`), returning the structured object
+    as a JSON text block; `text`/absent stays on `generateText` (unchanged), and
+    streaming remains text-only. The duck-typed `ai` exports + result shape are
+    runtime-validated (clear errors on a missing `generateObject`/`jsonSchema`
+    export; no unsafe casts).
+
+  With Claude (phase 1) this means all three API adapters now produce native
+  structured output — the backend for routing consensus voters off brittle regex
+  extraction (remaining: voter wiring).
+
+- [#3438](https://github.com/nexus-substrate/nexus-agents/pull/3438) [`3b1d074`](https://github.com/nexus-substrate/nexus-agents/commit/3b1d0743c56cad07ecfcdef6e0b374d46253e43c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(consensus): voters request native structured output ([#3433](https://github.com/nexus-substrate/nexus-agents/issues/3433) phase 4)
+
+  `executeSingleVoteAttempt` now sets `responseFormat: {type:'json_schema', schema:
+VOTE_JSON_SCHEMA}` on the vote request, so voters backed by Claude (tool_use),
+  OpenAI/SDK (generateObject), or Gemini (json mode) return a schema-valid vote
+  object natively instead of prose-wrapped JSON — the brittle regex extraction that
+  caused intermittent voter parse failures. Adapters that don't honor
+  responseFormat ignore it and the existing `extractTextFromResponse` +
+  `parseVoteResponse` (regex + Zod) path is the unchanged fallback, so no backend
+  regresses. Completes [#3433](https://github.com/nexus-substrate/nexus-agents/issues/3433) (epic [#3317](https://github.com/nexus-substrate/nexus-agents/issues/3317) finding [#5](https://github.com/nexus-substrate/nexus-agents/issues/5)).
+
 ## 2.108.0
 
 ### Minor Changes
