@@ -13,9 +13,11 @@ import {
   detectCliPerformanceFloor,
   detectFailureCategoryConcentration,
   detectFitnessSignals,
+  detectConsensusRejectionSignals,
 } from './improvement-review.js';
 import type { TaskOutcome } from '../../orchestration/outcomes/outcome-types.js';
 import type { FitnessAudit } from '../../governance/fitness-score.js';
+import type { VoteRejectedSignalEvent } from '../../pipeline/event-types.js';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -261,5 +263,71 @@ describe('detectFitnessSignals', () => {
     );
     expect(criticalFindings).toHaveLength(1);
     expect(criticalFindings[0]?.signalKey).toBe('tech-debt:fitness-critical:layerSeparation');
+  });
+});
+
+// ============================================================================
+// detectConsensusRejectionSignals (#3259)
+// ============================================================================
+
+function rejection(over: Partial<VoteRejectedSignalEvent> = {}): VoteRejectedSignalEvent {
+  return {
+    type: 'signal.vote_rejected',
+    timestamp: NOW,
+    proposalId: over.proposalId ?? `prop-${Math.random().toString(36).slice(2, 8)}`,
+    approvalPercentage: over.approvalPercentage ?? 33,
+    ...over,
+  };
+}
+
+describe('detectConsensusRejectionSignals', () => {
+  it('returns no signals for an empty event list', () => {
+    expect(detectConsensusRejectionSignals([], '7d')).toHaveLength(0);
+  });
+
+  it('does not fire below the recurrence threshold (≥3 rejections sharing a rule)', () => {
+    const events = [
+      rejection({ rejectionRules: ['DRY_VIOLATION'] }),
+      rejection({ rejectionRules: ['DRY_VIOLATION'] }),
+    ];
+    expect(detectConsensusRejectionSignals(events, '7d')).toHaveLength(0);
+  });
+
+  it('fires a consensus signal when one rule recurs across ≥3 rejected plans', () => {
+    const events = [
+      rejection({ rejectionRules: ['OVER_ENGINEERING'] }),
+      rejection({ rejectionRules: ['OVER_ENGINEERING', 'SCOPE_CREEP'] }),
+      rejection({ rejectionRules: ['OVER_ENGINEERING'] }),
+    ];
+    const signals = detectConsensusRejectionSignals(events, '7d');
+    const overEng = signals.find(
+      (s) => s.signalKey === 'consensus:rejection-pattern:OVER_ENGINEERING'
+    );
+    expect(overEng).toBeDefined();
+    expect(overEng?.category).toBe('consensus');
+    expect(overEng?.evidence.samples).toBe(3);
+    // SCOPE_CREEP appeared only once → below threshold → no signal.
+    expect(signals.some((s) => s.signalKey.endsWith('SCOPE_CREEP'))).toBe(false);
+  });
+
+  it('escalates severity from info to warning at 2× the threshold', () => {
+    const six = Array.from({ length: 6 }, () => rejection({ rejectionRules: ['DRY_VIOLATION'] }));
+    const three = Array.from({ length: 3 }, () => rejection({ rejectionRules: ['DRY_VIOLATION'] }));
+    expect(detectConsensusRejectionSignals(six, '7d')[0]?.severity).toBe('warning');
+    expect(detectConsensusRejectionSignals(three, '7d')[0]?.severity).toBe('info');
+  });
+
+  it('ignores events with no rejectionRules (un-categorized rejections)', () => {
+    const events = [rejection({}), rejection({}), rejection({})];
+    expect(detectConsensusRejectionSignals(events, '7d')).toHaveLength(0);
+  });
+
+  it('drops rules outside the ADR-0016 allowlist (defense-in-depth)', () => {
+    // A poisoned/free-form rule that is NOT one of the 7 canonical categories
+    // must never reach a signal (and thus never an issue title/body).
+    const events = Array.from({ length: 4 }, () =>
+      rejection({ rejectionRules: ['NOT_A_REAL_RULE; rm -rf'] })
+    );
+    expect(detectConsensusRejectionSignals(events, '7d')).toHaveLength(0);
   });
 });

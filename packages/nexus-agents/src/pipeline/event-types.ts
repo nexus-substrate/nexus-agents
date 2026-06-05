@@ -192,7 +192,7 @@ interface SwarmUnhealthySignalEvent extends BaseEvent {
   readonly reason: string;
 }
 
-interface VoteRejectedSignalEvent extends BaseEvent {
+export interface VoteRejectedSignalEvent extends BaseEvent {
   readonly type: 'signal.vote_rejected';
   readonly proposalId: string;
   /** Approval percentage of the rejected vote (0-100). */
