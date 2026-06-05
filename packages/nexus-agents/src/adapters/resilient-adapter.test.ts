@@ -640,5 +640,60 @@ describe('ResilientAdapter', () => {
       expect(recordFailureSpy).not.toHaveBeenCalled();
       expect(breaker.getSnapshot().failureCount).toBe(0);
     });
+
+    it('does not double-count a code-less rate-limit MODEL_ERROR (pattern divergence)', async () => {
+      // A MODEL_ERROR whose message is rate-limit-like to `isRateLimitLikeError`
+      // ("quota exceeded") but NOT to `categorizeError` would map to `unknown`
+      // and slip past a category-only guard — double-counting against the
+      // telemetry branch. The guard also checks `isRateLimitLikeError` (#3423).
+      const registry = new CircuitBreakerRegistry();
+      const breaker = registry.getBreaker('claude');
+      const recordFailureSpy = vi.spyOn(breaker, 'recordFailure');
+      const failingAdapter = new ResilientAdapter();
+      failingAdapter.attachCircuitBreakerRegistry(registry);
+
+      const quotaError = new ModelError('quota exceeded for this org', {
+        code: ErrorCode.MODEL_ERROR,
+      });
+      mockComplete.mockReturnValue(Promise.resolve(err(quotaError)));
+      vi.mocked(isRateLimitLikeError).mockReturnValue(true);
+      vi.mocked(toRateLimitError).mockReturnValue({
+        message: 'quota exceeded for this org',
+        retryAfterMs: 30000,
+      } as unknown as ReturnType<typeof toRateLimitError>);
+
+      await failingAdapter.complete({ messages: [] });
+
+      expect(recordFailureSpy).not.toHaveBeenCalled();
+      expect(breaker.getSnapshot().failureCount).toBe(0);
+    });
+
+    it('never leaks a secret carried in error.cause into the logged payload', async () => {
+      // Hardening (#3423 security review): the secret lives in `error.cause`,
+      // not `.message`. The recording path logs only {provider, category}, so a
+      // cause-borne credential must never surface either.
+      const registry = new CircuitBreakerRegistry();
+      const logger = makeLogger();
+      const failingAdapter = new ResilientAdapter({ logger });
+      failingAdapter.attachCircuitBreakerRegistry(registry);
+
+      const causeError = new ModelError('upstream failed', {
+        code: ErrorCode.MODEL_UNAVAILABLE,
+        cause: new Error('auth header Bearer sk-SECRET-cause99'),
+      });
+      mockComplete.mockReturnValue(Promise.resolve(err(causeError)));
+
+      await failingAdapter.complete({ messages: [] });
+
+      const allLogCalls = [
+        ...vi.mocked(logger.warn).mock.calls,
+        ...vi.mocked(logger.info).mock.calls,
+        ...vi.mocked(logger.debug).mock.calls,
+        ...vi.mocked(logger.error).mock.calls,
+      ];
+      for (const call of allLogCalls) {
+        expect(JSON.stringify(call)).not.toContain('sk-SECRET');
+      }
+    });
   });
 });

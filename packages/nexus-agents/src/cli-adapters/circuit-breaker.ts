@@ -412,6 +412,9 @@ export function mapModelErrorToCategory(error: ModelError): FailureCategory {
       return 'rate_limit';
     case ErrorCode.MODEL_UNAVAILABLE:
     case ErrorCode.MODEL_NOT_FOUND:
+      // Intentional reuse of `connection`: there is no dedicated "endpoint gone /
+      // model retired" category, and `connection` is a counted, failover-driving
+      // category — the right behaviour for an unavailable/missing model.
       return 'connection';
     default:
       // MODEL_ERROR and any other code: fall back to message-pattern matching.

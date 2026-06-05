@@ -296,9 +296,14 @@ export class ResilientAdapter implements IResilientAdapter {
     }
 
     const category = mapModelErrorToCategory(error);
-    if (category === 'rate_limit') {
-      // Already accounted for by the rate-limit telemetry branch; skip to avoid
-      // double-counting against the breaker's failure threshold.
+    // Skip rate limits: already accounted for by the rate-limit telemetry branch
+    // (and the breaker counts them by default). Check BOTH the mapped category
+    // AND the telemetry predicate — their rate-limit pattern lists differ
+    // (`isRateLimitLikeError` matches "quota exceeded"/"throttl"/… that
+    // `categorizeError` does not), so a code-less MODEL_ERROR could otherwise
+    // fire the telemetry branch yet fall through to a counted failure here,
+    // double-counting against the threshold (#3423 review).
+    if (category === 'rate_limit' || isRateLimitLikeError(error)) {
       return;
     }
 
