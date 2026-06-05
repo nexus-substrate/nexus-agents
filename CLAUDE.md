@@ -290,17 +290,17 @@ Voting thresholds, refactor gates, fitness audit, documentation governance in `.
 
 ## MCP Tools Reference
 
-**44 MCP tools registered.** Full schemas, parameter docs, and one-line summaries in [docs/ENTRYPOINTS.md](./docs/ENTRYPOINTS.md) and the README MCP tools table. Names below; look up the schema before calling.
+**45 MCP tools registered.** Full schemas, parameter docs, and one-line summaries in [docs/ENTRYPOINTS.md](./docs/ENTRYPOINTS.md) and the README MCP tools table. Names below; look up the schema before calling.
 
-`orchestrate`, `create_expert`, `execute_expert`, `run_workflow`, `delegate_to_model`, `list_experts`, `list_workflows`, `consensus_vote`, `research_query`, `research_add`, `research_add_source`, `research_discover`, `research_analyze`, `research_catalog_review`, `research_synthesize`, `survey_oss_landscape`, `vendor_publishing_audit`, `compare_data_feeds`, `memory_query`, `memory_stats`, `memory_write`, `weather_report`, `issue_triage`, `run_graph_workflow`, `execute_spec`, `registry_import`, `query_trace`, `query_task_state`, `get_job_result`, `list_jobs`, `cancel_job`, `ci_health_check`, `verify_audit_chain`, `repo_analyze`, `repo_security_plan`, `extract_symbols`, `search_codebase`, `run_dev_pipeline`, `run_pipeline`, `pr_review`, `supply_chain_tradeoff_panel`, `improvement_review`, `run_quality_gate`, `suggest_research_tasks`
+`orchestrate`, `create_expert`, `execute_expert`, `run_workflow`, `delegate_to_model`, `list_experts`, `list_workflows`, `consensus_vote`, `research_query`, `research_add`, `research_add_source`, `research_discover`, `research_analyze`, `research_catalog_review`, `research_synthesize`, `survey_oss_landscape`, `vendor_publishing_audit`, `compare_data_feeds`, `memory_query`, `memory_stats`, `memory_write`, `weather_report`, `issue_triage`, `run_graph_workflow`, `execute_spec`, `registry_import`, `query_trace`, `query_task_state`, `get_job_result`, `list_jobs`, `cancel_job`, `ci_health_check`, `verify_audit_chain`, `repo_analyze`, `repo_security_plan`, `extract_symbols`, `search_codebase`, `run_dev_pipeline`, `run_pipeline`, `pr_review`, `supply_chain_tradeoff_panel`, `improvement_review`, `run_quality_gate`, `suggest_research_tasks`, `list_available_models`
 
-_Auto-generated from source. 44 tools registered._
+_Auto-generated from source. 45 tools registered._
 
 <!-- GOVERNANCE:TOOL_INDEX:END -->
 
 <!-- GOVERNANCE:VERSION:START -->
 
-_Governance Version: 2026-06-03_
+_Governance Version: 2026-06-04_
 
 <!-- GOVERNANCE:VERSION:END -->
 

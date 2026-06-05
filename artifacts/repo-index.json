@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-06-05T01:40:31.290Z",
+  "generated": "2026-06-05T02:12:47.794Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.102.8",
   "cli": {
@@ -351,6 +351,10 @@
       {
         "name": "issue_triage",
         "file": "src/mcp/tools/issue-triage.ts"
+      },
+      {
+        "name": "list_available_models",
+        "file": "src/mcp/tools/list-available-models.ts"
       },
       {
         "name": "list_experts",

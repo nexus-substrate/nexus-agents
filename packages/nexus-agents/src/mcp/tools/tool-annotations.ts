@@ -648,6 +648,25 @@ export const TOOL_ANNOTATIONS: Readonly<Record<string, ToolSideEffectsEntry>> = 
       },
     ],
   },
+  list_available_models: {
+    annotations: {
+      title: 'List Available Models',
+      // Probes discovery transports and reports health. Reads only; mutates
+      // nothing and does not change routing.
+      readOnlyHint: true,
+      destructiveHint: false,
+      // Probe results vary as catalogs/CLIs change.
+      idempotentHint: false,
+      // Reaches the OpenRouter API + spawns CLI probes.
+      openWorldHint: true,
+    },
+    sideEffects: [
+      {
+        category: 'implicit',
+        description: 'Fetches the OpenRouter catalog + probes CLI adapters (network/subprocess)',
+      },
+    ],
+  },
   supply_chain_tradeoff_panel: {
     annotations: {
       title: 'Supply-chain Tradeoff Panel',

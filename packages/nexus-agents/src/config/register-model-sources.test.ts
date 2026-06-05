@@ -4,7 +4,11 @@
 import { describe, it, expect, afterEach } from 'vitest';
 
 import { AvailableModelsCache } from './available-models-cache.js';
-import { isDynamicModelsEnabled, registerDefaultModelSources } from './register-model-sources.js';
+import {
+  isDynamicModelsEnabled,
+  registerDefaultModelSources,
+  buildDefaultModelSources,
+} from './register-model-sources.js';
 
 afterEach(() => {
   delete process.env['NEXUS_DYNAMIC_MODELS'];
@@ -54,5 +58,28 @@ describe('registerDefaultModelSources (#3404)', () => {
     registerDefaultModelSources(cache, adapters, { includeOpenRouter: false });
 
     expect(await cache.getAll()).toEqual([]);
+  });
+});
+
+describe('buildDefaultModelSources (#3406)', () => {
+  it('builds an OpenRouter source + a source per listModels-capable adapter', () => {
+    const adapters = new Map<string, unknown>([
+      ['opencode', { listModels: () => Promise.resolve([]) }],
+      ['claude', { listModels: () => Promise.resolve([]) }],
+      ['codex', {}], // skipped
+    ]);
+    const names = buildDefaultModelSources(adapters).map((s) => s.name);
+    expect(names).toContain('openrouter');
+    expect(names).toContain('opencode');
+    expect(names).toContain('claude');
+    expect(names).not.toContain('codex');
+  });
+
+  it('omits the OpenRouter source when includeOpenRouter is false', () => {
+    const names = buildDefaultModelSources(new Map(), { includeOpenRouter: false }).map(
+      (s) => s.name
+    );
+    expect(names).not.toContain('openrouter');
+    expect(names).toEqual([]);
   });
 });
