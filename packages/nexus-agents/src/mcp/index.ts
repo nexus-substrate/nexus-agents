@@ -398,6 +398,13 @@ export {
   type SuggestResearchTasksDeps,
   type SuggestResearchTasksInput,
   type SuggestResearchTasksResponse,
+  // list_available_models tool (#3406 — probe transports + report health)
+  registerListAvailableModelsTool,
+  ListAvailableModelsInputSchema,
+  type ListAvailableModelsDeps,
+  type ListAvailableModelsInput,
+  type ListAvailableModelsResponse,
+  type TransportReport,
   // Verify audit chain tool (#2281 follow-up)
   registerVerifyAuditChainTool,
   VerifyAuditChainInputSchema,

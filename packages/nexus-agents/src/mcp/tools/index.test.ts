@@ -69,7 +69,7 @@ import {
   RepoSecurityPlanInputSchema,
 } from './index.js';
 
-const EXPECTED_TOOL_COUNT = 44;
+const EXPECTED_TOOL_COUNT = 45;
 
 const EXPECTED_TOOL_NAMES = [
   'orchestrate',
@@ -116,6 +116,7 @@ const EXPECTED_TOOL_NAMES = [
   'improvement_review',
   'run_quality_gate',
   'suggest_research_tasks',
+  'list_available_models',
 ];
 
 describe('MCP tools index', () => {

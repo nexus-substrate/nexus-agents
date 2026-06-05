@@ -10,7 +10,7 @@ Intelligent orchestration platform for AI coding tools — routes tasks to the b
 
 ### Medium Description (for directories)
 
-nexus-agents makes your AI coding tools work together intelligently. It coordinates Claude, Codex, Gemini, and OpenCode — routing each task to the best model using data-driven algorithms (LinUCB bandit, TOPSIS scoring), validating outputs through multi-model consensus voting, and continuously improving through outcome-driven learning. 44 MCP tools, 8 memory backends, full dev pipeline with research/plan/vote/implement/QA stages.
+nexus-agents makes your AI coding tools work together intelligently. It coordinates Claude, Codex, Gemini, and OpenCode — routing each task to the best model using data-driven algorithms (LinUCB bandit, TOPSIS scoring), validating outputs through multi-model consensus voting, and continuously improving through outcome-driven learning. 45 MCP tools, 8 memory backends, full dev pipeline with research/plan/vote/implement/QA stages.
 
 ### Awesome List Entry
 

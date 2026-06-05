@@ -71,6 +71,28 @@ export interface RegisterModelSourcesOptions {
 }
 
 /**
+ * Build (but don't register) the default discovery sources: the OpenRouter live
+ * catalog + a CLI-named source per adapter exposing `listModels()`. Used both by
+ * {@link registerDefaultModelSources} and by the `list_available_models` tool to
+ * probe each transport for health (#3406).
+ */
+export function buildDefaultModelSources(
+  adapters: ReadonlyMap<string, unknown>,
+  opts: RegisterModelSourcesOptions = {}
+): AvailableModelsSource[] {
+  const sources: AvailableModelsSource[] = [];
+  if (opts.includeOpenRouter !== false) {
+    sources.push(createOpenRouterModelsSource());
+  }
+  for (const [cliName, adapter] of adapters) {
+    if (hasListModels(adapter)) {
+      sources.push(adapterSource(cliName, adapter));
+    }
+  }
+  return sources;
+}
+
+/**
  * Register the default discovery sources onto `cache`. Idempotent per source
  * name (the cache ignores duplicate names). `adapters` is the CLI→adapter map
  * the router already builds; any adapter exposing `listModels()` becomes a
@@ -82,12 +104,7 @@ export function registerDefaultModelSources(
   adapters: ReadonlyMap<string, unknown>,
   opts: RegisterModelSourcesOptions = {}
 ): void {
-  if (opts.includeOpenRouter !== false) {
-    cache.addSource(createOpenRouterModelsSource());
-  }
-  for (const [cliName, adapter] of adapters) {
-    if (hasListModels(adapter)) {
-      cache.addSource(adapterSource(cliName, adapter));
-    }
+  for (const source of buildDefaultModelSources(adapters, opts)) {
+    cache.addSource(source);
   }
 }

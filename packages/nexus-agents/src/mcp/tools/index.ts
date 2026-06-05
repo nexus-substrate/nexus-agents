@@ -436,6 +436,17 @@ export {
   type SuggestResearchTasksResponse,
 } from './suggest-research-tasks-tool.js';
 
+// list_available_models tool (#3406 — probe discovery transports + report health)
+export {
+  registerListAvailableModelsTool,
+  ListAvailableModelsInputSchema,
+  listAvailableModelsHandler,
+  type ListAvailableModelsDeps,
+  type ListAvailableModelsInput,
+  type ListAvailableModelsResponse,
+  type TransportReport,
+} from './list-available-models-tool.js';
+
 // Unified pipeline tool (Issue #1736, Phase 3)
 export { registerPipelineTool, PipelineInputSchema, type PipelineInput } from './pipeline-tool.js';
 
@@ -603,6 +614,7 @@ export const REGISTERED_TOOL_NAMES = [
   'improvement_review',
   'run_quality_gate',
   'suggest_research_tasks',
+  'list_available_models',
 ] as const;
 
 export function registerTools(
