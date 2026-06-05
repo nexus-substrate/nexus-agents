@@ -507,7 +507,10 @@ describe('inject-governance rules-index (#2657)', () => {
 // ============================================================================
 
 describe('inject-governance tool-annotations (#2648)', () => {
-  const ANNOTATIONS_PATH = join(ROOT, 'packages/nexus-agents/src/mcp/tool-annotations.ts');
+  // #3444/#3358: the TOOL_ANNOTATIONS map lives in the tools/ subdirectory; the
+  // src/mcp/tool-annotations.ts wrapper has no annotation blocks, so mutating it
+  // was a no-op that left this gate-meta-test silently passing.
+  const ANNOTATIONS_PATH = join(ROOT, 'packages/nexus-agents/src/mcp/tools/tool-annotations.ts');
 
   it(
     'passes when every registered tool has an entry in TOOL_ANNOTATIONS',
@@ -672,9 +675,14 @@ describe('inject-governance tool-prerequisites (#2652)', () => {
     () => {
       const original = readFileSync(PREREQ_PATH, 'utf-8');
       try {
-        // Drop the `issue_triage` entry from NO_PREREQUISITE — it then has
-        // no prerequisite decision and must trip the gate.
-        const broken = original.replace(/^ {2}issue_triage:[\s\S]*?',\n/m, '');
+        // Drop the `orchestrate` entry from NO_PREREQUISITE — it then has no
+        // prerequisite decision and must trip the gate. The victim MUST be a
+        // genuinely non-read-only tool with a single-line string entry: the gate
+        // only requires non-read-only tools to declare a prerequisite decision
+        // (#3444 — the prior victim `issue_triage` became readOnlyHint:true, so
+        // dropping it correctly no longer tripped the gate). `orchestrate`
+        // executes tasks (never read-only), so it's a stable choice.
+        const broken = original.replace(/^ {2}orchestrate:[\s\S]*?',\n/m, '');
         expect(broken).not.toBe(original);
         writeFileSync(PREREQ_PATH, broken);
         let stderr = '';
@@ -688,7 +696,7 @@ describe('inject-governance tool-prerequisites (#2652)', () => {
         }
         expect(exitCode).not.toBe(0);
         expect(stderr).toContain('no prerequisite decision');
-        expect(stderr).toContain('issue_triage');
+        expect(stderr).toContain('orchestrate');
       } finally {
         writeFileSync(PREREQ_PATH, original);
       }
