@@ -5,12 +5,12 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { SdkAdapter } from './sdk-adapter.js';
+import { SdkAdapter, extractAiSdkFunctions } from './sdk-adapter.js';
 import type { CompletionRequest } from '../../core/index.js';
-// Mock the AI SDK modules
-// Full `ai` mock factory. The "missing export" tests (#3433) swap in a
-// partial module via vi.doMock + vi.resetModules; restoreAiMock() puts the
-// complete module back so later tests (stream, etc.) keep their mocks.
+// Mock the AI SDK modules. The full `ai` mock stays installed for the whole
+// suite — the "missing export" cases (#3433) are unit-tested directly against
+// `extractAiSdkFunctions` (#3449) rather than swapping the global mock, so no
+// test mutates the module registry.
 const fullAiMock = (): Record<string, unknown> => ({
   generateText: vi.fn(),
   streamText: vi.fn(),
@@ -21,11 +21,6 @@ const fullAiMock = (): Record<string, unknown> => ({
   jsonSchema: vi.fn((schema: unknown) => ({ jsonSchema: schema })),
 });
 vi.mock('ai', () => fullAiMock());
-
-function restoreAiMock(): void {
-  vi.doMock('ai', () => fullAiMock());
-  vi.resetModules();
-}
 
 vi.mock('@ai-sdk/anthropic', () => ({
   createAnthropic: vi.fn(() => (modelId: string) => ({ modelId })),
@@ -303,52 +298,31 @@ describe('SdkAdapter', () => {
       }
     });
 
-    it('throws a clear error when generateObject export is missing (#3433)', async () => {
-      vi.resetModules();
-      vi.doMock('ai', () => ({
-        generateText: vi.fn(),
-        streamText: vi.fn(),
-        jsonSchema: vi.fn((schema: unknown) => ({ jsonSchema: schema })),
-        // generateObject intentionally missing
-      }));
-      const { SdkAdapter: FreshAdapter } = await import('./sdk-adapter.js');
-
-      const adapter = new FreshAdapter({
-        providerId: 'anthropic',
-        modelId: 'claude-sonnet-4-6',
-        apiKey: 'test-key',
-      });
-
-      const result = await adapter.complete(TEST_REQUEST);
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.message).toContain('generateObject');
-      }
-      restoreAiMock();
+    // #3449: the "missing export" cases are unit-tested directly against
+    // `extractAiSdkFunctions` with hand-built partial module objects — NOT via
+    // `vi.doMock('ai')` + `vi.resetModules()`, whose module-registry mutation
+    // leaked across the parallel suite and intermittently red-barred CI.
+    it.each([
+      ['generateText', { streamText: vi.fn(), generateObject: vi.fn(), jsonSchema: vi.fn() }],
+      ['streamText', { generateText: vi.fn(), generateObject: vi.fn(), jsonSchema: vi.fn() }],
+      ['generateObject', { generateText: vi.fn(), streamText: vi.fn(), jsonSchema: vi.fn() }],
+      ['jsonSchema', { generateText: vi.fn(), streamText: vi.fn(), generateObject: vi.fn() }],
+    ])('throws a clear error when the %s export is missing (#3433/#3449)', (missing, partial) => {
+      expect(() => extractAiSdkFunctions(partial as Record<string, unknown>)).toThrow(
+        new RegExp(`missing expected export: '${missing}'`)
+      );
     });
 
-    it('throws a clear error when jsonSchema export is missing (#3433)', async () => {
-      vi.resetModules();
-      vi.doMock('ai', () => ({
+    it('returns the four functions when the module is complete', () => {
+      const mod = {
         generateText: vi.fn(),
         streamText: vi.fn(),
         generateObject: vi.fn(),
-        // jsonSchema intentionally missing
-      }));
-      const { SdkAdapter: FreshAdapter } = await import('./sdk-adapter.js');
-
-      const adapter = new FreshAdapter({
-        providerId: 'anthropic',
-        modelId: 'claude-sonnet-4-6',
-        apiKey: 'test-key',
-      });
-
-      const result = await adapter.complete(TEST_REQUEST);
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.message).toContain('jsonSchema');
-      }
-      restoreAiMock();
+        jsonSchema: vi.fn(),
+      };
+      const fns = extractAiSdkFunctions(mod);
+      expect(fns.generateText).toBe(mod.generateText);
+      expect(fns.jsonSchema).toBe(mod.jsonSchema);
     });
   });
 

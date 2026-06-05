@@ -111,7 +111,13 @@ function extractProviderFactory(
  * The 'ai' package is an optional peer dependency loaded via dynamic import.
  * We validate the shape at runtime to avoid unsafe casts.
  */
-function extractAiSdkFunctions(mod: Record<string, unknown>): AiSdkFunctions {
+/**
+ * Validate that a dynamically-imported `ai` module exposes the functions this
+ * adapter needs; throw a clear, per-export error otherwise. Exported for direct
+ * unit testing (#3449) so the "missing export" cases don't need a global module
+ * mock (`vi.doMock`/`resetModules`), whose state leaked across parallel tests.
+ */
+export function extractAiSdkFunctions(mod: Record<string, unknown>): AiSdkFunctions {
   const generateText = mod['generateText'];
   const streamText = mod['streamText'];
   const generateObject = mod['generateObject'];
