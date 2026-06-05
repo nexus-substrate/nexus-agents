@@ -65,6 +65,11 @@ import { requireAdapterAvailable } from '../middleware/adapter-availability.js';
 import { getExpertPool } from '../../agents/expert-pool.js';
 import { withDepthGuard } from '../middleware/spawn-depth-guard.js';
 import { getHeartbeatMonitor } from '../../agents/heartbeat-monitor.js';
+import {
+  getContextForTask,
+  inferTaskCategory,
+  summarizeContextForPrompt,
+} from '../../context/context-retriever.js';
 import { clampTaskTtl, DEFAULT_TASK_TTL_MS } from '../task-store.js';
 import { toolStructuredError, toolSuccess, type BaseMcpToolDeps } from './tool-result.js';
 import { getToolAnnotations } from '../tool-annotations.js';
@@ -165,10 +170,45 @@ function sanitizeExpertSummary(summary: string): string {
 }
 
 /**
+ * Best-effort accumulated-context prefix for an expert task (#3238 — extends the
+ * #2792 entry-point wiring to execute_expert). Gated behind
+ * `NEXUS_CONTEXT_RETRIEVER_INJECT=1`, matching the orchestrate rollout (#2921):
+ * default-off, no behavior change until the bake-in flips it on. Fail-soft —
+ * any error yields `undefined` and the task runs with no prefix.
+ *
+ * The returned summary is NOT trusted: the underlying memory backends are
+ * writable via the untrusted `memory_write` tool (#3238 review), so `buildTask`
+ * runs it through `sanitizeExpertSummary` before it reaches the prompt, and the
+ * access policy is derived from the prefix-free task so it can't be widened.
+ */
+export async function maybeFetchContextPrefix(
+  task: string,
+  logger: ILogger | undefined
+): Promise<string | undefined> {
+  if (process.env['NEXUS_CONTEXT_RETRIEVER_INJECT'] !== '1') return undefined;
+  try {
+    const ctx = await getContextForTask({
+      task,
+      category: inferTaskCategory(task),
+      ...(logger !== undefined ? { logger } : {}),
+    });
+    const summary = summarizeContextForPrompt(ctx);
+    return summary === '' ? undefined : summary;
+  } catch (error: unknown) {
+    logger?.debug('execute_expert: context retrieval failed — running without prefix', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return undefined;
+  }
+}
+
+/**
  * Builds a task object from the tool input.
  * Zod schema enforces timeoutMs >= EXPERT_TIMEOUT_FLOOR_MS, so no runtime floor needed (#1330).
+ * `contextPrefix` (#3238) is an optional accumulated-memory block prepended ahead
+ * of the task; see {@link maybeFetchContextPrefix}.
  */
-function buildTask(input: ExecuteExpertInput): Task {
+export function buildTask(input: ExecuteExpertInput, contextPrefix?: string): Task {
   const autoTimeout = getExpertTaskTimeout(input.task);
   const timeoutMs = input.timeoutMs ?? autoTimeout;
 
@@ -177,6 +217,15 @@ function buildTask(input: ExecuteExpertInput): Task {
   if (input.previousExpertSummary !== undefined) {
     const sanitized = sanitizeExpertSummary(input.previousExpertSummary);
     description = `[Previous expert context]\n${sanitized}\n\n[Your task]\n${input.task}`;
+  }
+
+  // Prepend accumulated memory context ahead of everything else (#3238).
+  // Sanitized like `previousExpertSummary`: the memory backends are writable by
+  // the untrusted `memory_write` tool, so the prefix is NOT trusted — strip tags
+  // + redact ignore-instruction phrasing (the #3238 security review found this
+  // gap). The policy is derived from the prefix-free description separately.
+  if (contextPrefix !== undefined) {
+    description = `[Prior context]\n${sanitizeExpertSummary(contextPrefix)}\n\n${description}`;
   }
 
   return {
@@ -277,7 +326,7 @@ function observeExpertContextIfOk(
  * bug.
  */
 async function deriveExpertAccessPolicy(
-  task: Task,
+  objective: string,
   logger: ILogger | undefined,
   trustTier: string | undefined
 ): Promise<Awaited<ReturnType<typeof deriveAccessPolicy>>> {
@@ -286,7 +335,9 @@ async function deriveExpertAccessPolicy(
     // Closes #2993 (expert path): trustTier was hardcoded to '1' regardless
     // of caller. Now threaded from secure-handler RequestContext; missing
     // defaults to '4' so derivation runs at the strictest tier.
-    const policy = await deriveAccessPolicy(task.description, {
+    // `objective` is the prefix-free task description (#3238 review): the
+    // informational memory prefix is excluded so it cannot widen the policy.
+    const policy = await deriveAccessPolicy(objective, {
       mode,
       trustTier: (trustTier ?? '4') as '1' | '2' | '3' | '4',
     });
@@ -479,7 +530,11 @@ async function runExpertTask(
   expert: Expert
 ): Promise<ExpertResult> {
   const { expertId } = args;
-  const task = buildTask(args);
+  const contextPrefix = await maybeFetchContextPrefix(args.task, deps.logger);
+  const task = buildTask(args, contextPrefix);
+  // Access policy is derived from the prefix-free description so accumulated
+  // memory context can never widen the derived operations (#3238 review).
+  const policyObjective = buildTask(args).description;
   injectErrorHints(task, expert.role);
 
   // Proactive fallback for degraded experts (#1401)
@@ -511,7 +566,7 @@ async function runExpertTask(
         // defaults to '4' (untrusted). Proper end-to-end trust-tier
         // wiring for execute-expert is filed as a follow-up — see #2993
         // (multi-file half) and the new follow-up issue.
-        const policy = await deriveExpertAccessPolicy(task, deps.logger, undefined);
+        const policy = await deriveExpertAccessPolicy(policyObjective, deps.logger, undefined);
         result = await withAccessPolicy(policy, () => expert.execute(task));
       } finally {
         clearInterval(heartbeatTimer);
