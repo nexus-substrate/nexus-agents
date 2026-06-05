@@ -205,6 +205,39 @@ describe('CompositeRouter', () => {
     });
   });
 
+  // #3394: route-time concrete-model selection (opt-in, default OFF).
+  describe('route-time model selection (#3394)', () => {
+    afterEach(() => {
+      delete process.env['NEXUS_ROUTE_MODEL_SELECTION'];
+    });
+
+    it('omits decision.model when the flag is off (default)', async () => {
+      const task: CliTask = { content: 'Design a microservices architecture' };
+      const result = await router.route(task);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.model).toBeUndefined();
+      }
+    });
+
+    it('populates decision.model from the difficulty tier when enabled', async () => {
+      process.env['NEXUS_ROUTE_MODEL_SELECTION'] = 'true';
+      const task: CliTask = { content: 'Design a microservices architecture' };
+      const result = await router.route(task);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        // When a tier was computed, the resolver returns a concrete model id for
+        // the selected CLI; when no tier, model stays undefined (fail-safe).
+        if (result.value.difficultyTier !== undefined) {
+          expect(typeof result.value.model).toBe('string');
+          expect(result.value.model).not.toBe('');
+        } else {
+          expect(result.value.model).toBeUndefined();
+        }
+      }
+    });
+  });
+
   describe('route with disabled stages', () => {
     it('should skip budget filter when disabled', async () => {
       const noBudgetRouter = new CompositeRouter(adapters, { enableBudgetFilter: false });

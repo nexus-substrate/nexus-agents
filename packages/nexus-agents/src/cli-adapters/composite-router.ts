@@ -104,6 +104,7 @@ import {
   isDynamicModelsEnabled,
   registerDefaultModelSources,
 } from '../config/register-model-sources.js';
+import { resolveModelForTier, isRouteModelSelectionEnabled } from './resolve-model-for-tier.js';
 import {
   recordBanditOutcome,
   recordPreferenceSignal,
@@ -713,9 +714,18 @@ export class CompositeRouter implements ICompositeRouter {
     this.updateStats(params.selectedCli, decisionTimeMs);
     const { confidence, reason, alternatives } = buildDecisionFields({ ...params, decisionTimeMs });
 
+    // #3394: pick a concrete model from the difficulty tier (opt-in, default
+    // OFF). Registry-only + synchronous — no probe on the hot path. Consumers
+    // fall back to getDefaultModelForCli when absent.
+    const model =
+      isRouteModelSelectionEnabled() && params.difficultyTier !== undefined
+        ? resolveModelForTier(params.selectedCli, params.difficultyTier)
+        : undefined;
+
     return ok({
       adapter: selectedAdapter,
       cliName: params.selectedCli,
+      ...(model !== undefined ? { model } : {}),
       confidence,
       reason,
       stagesExecuted: params.stagesExecuted,

@@ -164,6 +164,12 @@ export interface CompositeRoutingDecision {
   readonly adapter: ICliAdapter;
   /** Selected CLI name */
   readonly cliName: CliName;
+  /**
+   * Concrete model selected by difficulty tier (#3394). Present only when
+   * route-time model selection is enabled (NEXUS_ROUTE_MODEL_SELECTION).
+   * Consumers should use `decision.model ?? getDefaultModelForCli(cliName)`.
+   */
+  readonly model?: string | undefined;
   /** Overall confidence in decision (0-1) */
   readonly confidence: number;
   /** Human-readable explanation */
