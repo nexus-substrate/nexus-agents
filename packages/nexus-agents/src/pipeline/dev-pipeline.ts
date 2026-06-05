@@ -237,9 +237,6 @@ async function runDevPipelineInner(
   // Phases 1-2: Research + Plan/Vote
   const { planResult } = await runPlanningPhase(task, stages, sid, prior, bm);
 
-  // Reinforce/weaken beliefs based on vote outcome (#1720)
-  reinforcePlanBeliefs(bm, task, planResult.iterations);
-
   // DRY RUN: stop after plan+vote, return partial result (#1717)
   if (options?.dryRun === true) {
     logger.info('Dry run — stopping after plan+vote');
@@ -299,35 +296,6 @@ async function flushTraceWriter(writer: TraceWriter | null): Promise<void> {
     logger.warn('Failed to flush execution trace', { error: String(error) });
   } finally {
     writer.stop();
-  }
-}
-
-/**
- * Reinforce or weaken beliefs based on plan vote outcome (#1720).
- * First-iteration approval → reinforce. Multiple iterations → weaken.
- * Fire-and-forget — pipeline does not block on belief updates.
- */
-function reinforcePlanBeliefs(
-  bm: IHindsightBeliefMemory | undefined,
-  task: string,
-  iterations: number
-): void {
-  if (bm === undefined) return;
-  const beliefId = `plan-approach:${task.slice(0, 80)}`;
-  // Fire-and-forget: belief memory is optional persistence. Log on failure
-  // so we notice if the belief store silently stops receiving updates.
-  const logBmError = (op: string) => (error: unknown) => {
-    const msg = error instanceof Error ? error.message : String(error);
-    logger.debug(`Belief-memory ${op} failed`, { beliefId, error: msg });
-  };
-  if (iterations <= 1) {
-    void bm
-      .reinforce(beliefId, 'Plan approved on first vote iteration')
-      .catch(logBmError('reinforce'));
-  } else {
-    void bm
-      .weaken(beliefId, `Plan required ${String(iterations)} vote iterations before approval`)
-      .catch(logBmError('weaken'));
   }
 }
 
