@@ -1,5 +1,30 @@
 # nexus-agents
 
+## 2.107.1
+
+### Patch Changes
+
+- [#3430](https://github.com/nexus-substrate/nexus-agents/pull/3430) [`b7a3b7e`](https://github.com/nexus-substrate/nexus-agents/commit/b7a3b7e69b982e5e11ae6262594978b95f882b8c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(routing): collapse api:\* arm keys in model-source registration ([#3425](https://github.com/nexus-substrate/nexus-agents/issues/3425))
+
+  After [#3422](https://github.com/nexus-substrate/nexus-agents/issues/3422), the router's adapter map can be keyed by `api:<vendor>` arm ids.
+  `buildDefaultModelSources`/`registerDefaultModelSources` iterated those keys and
+  would register an availability source under the literal `api:anthropic` name.
+  Harmless today (the candidate filter gates on the display slot), but a future
+  model-source consumer iterating raw keys could see an `api:*` key where a CLI
+  slot is expected. Sources are now named by the display slot
+  (`routingArmDisplaySlot`); the cache de-dups by name, so a CLI slot and its api
+  arm collapse to one slot-named source.
+
+- [#3431](https://github.com/nexus-substrate/nexus-agents/pull/3431) [`b6a90a8`](https://github.com/nexus-substrate/nexus-agents/commit/b6a90a87304ea89c9ba976c68075ca3e0707d22a) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(adapters): retry transient MODEL_UNAVAILABLE + drop empty stream deltas ([#3317](https://github.com/nexus-substrate/nexus-agents/issues/3317) [#7](https://github.com/nexus-substrate/nexus-agents/issues/7)/[#8](https://github.com/nexus-substrate/nexus-agents/issues/8))
+
+  Two small api-mode parity findings from the [#3317](https://github.com/nexus-substrate/nexus-agents/issues/3317) audit:
+  - **[#7](https://github.com/nexus-substrate/nexus-agents/issues/7)** `isRetryableError` now treats `MODEL_UNAVAILABLE` (transient 503/overloaded)
+    as retryable, matching HTTP 503. `MODEL_NOT_FOUND` stays non-retryable (retry
+    won't help).
+  - **[#8](https://github.com/nexus-substrate/nexus-agents/issues/8)** the SDK streaming adapter skips empty-string (`''`) `text_delta` chunks —
+    the AI SDK can emit zero-length keepalive/boundary chunks that are noise for
+    downstream re-assemblers.
+
 ## 2.107.0
 
 ### Minor Changes
