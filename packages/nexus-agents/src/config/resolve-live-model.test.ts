@@ -48,6 +48,18 @@ describe('resolveLiveModelId (#3407)', () => {
     );
   });
 
+  it('does NOT substitute a MORE-specific sibling when the base id is absent', () => {
+    // The adversarial case: openai/gpt-5 isn't offered, only specialized
+    // variants are. Picking gpt-5-codex/gpt-5-pro would be the WRONG model —
+    // omitting (→ CLI default) is safer. Resolution must decline.
+    const live = new Set(['openai/gpt-5-codex', 'openai/gpt-5-pro']);
+    expect(resolveLiveModelId('openai/gpt-5', live)).toBe('openai/gpt-5');
+  });
+
+  it('does not match a partial token (gpt-5 must not resolve to gpt-50)', () => {
+    expect(resolveLiveModelId('openai/gpt-5', new Set(['openai/gpt-50']))).toBe('openai/gpt-5');
+  });
+
   it('is deterministic across input orderings', () => {
     const a = resolveLiveModelId('qwen/qwen3-coder-480b:free', [
       'qwen/qwen3-coder',
