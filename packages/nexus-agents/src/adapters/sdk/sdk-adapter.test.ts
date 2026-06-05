@@ -8,10 +8,24 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SdkAdapter } from './sdk-adapter.js';
 import type { CompletionRequest } from '../../core/index.js';
 // Mock the AI SDK modules
-vi.mock('ai', () => ({
+// Full `ai` mock factory. The "missing export" tests (#3433) swap in a
+// partial module via vi.doMock + vi.resetModules; restoreAiMock() puts the
+// complete module back so later tests (stream, etc.) keep their mocks.
+const fullAiMock = (): Record<string, unknown> => ({
   generateText: vi.fn(),
   streamText: vi.fn(),
-}));
+  generateObject: vi.fn(),
+  // jsonSchema wraps a raw JSON schema; the real helper returns a Schema
+  // object. The adapter only forwards it to generateObject, so a passthrough
+  // that records the input is sufficient for assertions.
+  jsonSchema: vi.fn((schema: unknown) => ({ jsonSchema: schema })),
+});
+vi.mock('ai', () => fullAiMock());
+
+function restoreAiMock(): void {
+  vi.doMock('ai', () => fullAiMock());
+  vi.resetModules();
+}
 
 vi.mock('@ai-sdk/anthropic', () => ({
   createAnthropic: vi.fn(() => (modelId: string) => ({ modelId })),
@@ -178,6 +192,156 @@ describe('SdkAdapter', () => {
       if (result.ok) {
         expect(result.value.stopReason).toBe('max_tokens');
       }
+    });
+
+    it('routes json_schema to generateObject and returns stringified object (#3433)', async () => {
+      const { generateObject, jsonSchema, generateText } = await import('ai');
+      const mockObject = vi.mocked(generateObject);
+      const mockJsonSchema = vi.mocked(jsonSchema);
+      const mockText = vi.mocked(generateText);
+      mockObject.mockResolvedValueOnce({
+        object: { answer: 42 },
+        finishReason: 'stop',
+        usage: { inputTokens: 10, outputTokens: 5 },
+        response: { id: 'resp-1', timestamp: new Date(), modelId: 'claude-sonnet-4-6' },
+      } as unknown as Awaited<ReturnType<typeof generateObject>>);
+
+      const schema = { type: 'object', properties: { answer: { type: 'number' } } };
+      const adapter = new SdkAdapter({
+        providerId: 'anthropic',
+        modelId: 'claude-sonnet-4-6',
+        apiKey: 'test-key',
+      });
+
+      const result = await adapter.complete({
+        ...TEST_REQUEST,
+        responseFormat: { type: 'json_schema', schema },
+      });
+
+      expect(mockObject).toHaveBeenCalledTimes(1);
+      expect(mockText).not.toHaveBeenCalled();
+      expect(mockJsonSchema).toHaveBeenCalledWith(schema);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.content[0]).toEqual({
+          type: 'text',
+          text: JSON.stringify({ answer: 42 }),
+        });
+        expect(result.value.usage.inputTokens).toBe(10);
+        expect(result.value.stopReason).toBe('end_turn');
+        expect(result.value.model).toBe('claude-sonnet-4-6');
+      }
+    });
+
+    it('routes json_object to generateObject with a permissive schema (#3433)', async () => {
+      const { generateObject, jsonSchema } = await import('ai');
+      const mockObject = vi.mocked(generateObject);
+      const mockJsonSchema = vi.mocked(jsonSchema);
+      mockObject.mockResolvedValueOnce({
+        object: { foo: 'bar' },
+        finishReason: 'stop',
+        usage: { inputTokens: 3, outputTokens: 2 },
+        response: { id: 'resp-1', timestamp: new Date(), modelId: 'claude-sonnet-4-6' },
+      } as unknown as Awaited<ReturnType<typeof generateObject>>);
+
+      const adapter = new SdkAdapter({
+        providerId: 'anthropic',
+        modelId: 'claude-sonnet-4-6',
+        apiKey: 'test-key',
+      });
+
+      const result = await adapter.complete({
+        ...TEST_REQUEST,
+        responseFormat: { type: 'json_object' },
+      });
+
+      expect(mockObject).toHaveBeenCalledTimes(1);
+      expect(mockJsonSchema).toHaveBeenCalledWith({ type: 'object' });
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.content[0]).toEqual({
+          type: 'text',
+          text: JSON.stringify({ foo: 'bar' }),
+        });
+      }
+    });
+
+    it('routes text responseFormat to generateText (regression #3433)', async () => {
+      const { generateText, generateObject } = await import('ai');
+      const mockText = vi.mocked(generateText);
+      const mockObject = vi.mocked(generateObject);
+      mockText.mockResolvedValueOnce({
+        text: 'plain text',
+        finishReason: 'stop',
+        usage: { inputTokens: 10, outputTokens: 5 },
+        response: { id: 'resp-1', timestamp: new Date(), modelId: 'claude-sonnet-4-6' },
+      } as unknown as Awaited<ReturnType<typeof generateText>>);
+
+      const adapter = new SdkAdapter({
+        providerId: 'anthropic',
+        modelId: 'claude-sonnet-4-6',
+        apiKey: 'test-key',
+      });
+
+      const result = await adapter.complete({
+        ...TEST_REQUEST,
+        responseFormat: { type: 'text' },
+      });
+
+      expect(mockText).toHaveBeenCalledTimes(1);
+      expect(mockObject).not.toHaveBeenCalled();
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.content[0]).toEqual({ type: 'text', text: 'plain text' });
+      }
+    });
+
+    it('throws a clear error when generateObject export is missing (#3433)', async () => {
+      vi.resetModules();
+      vi.doMock('ai', () => ({
+        generateText: vi.fn(),
+        streamText: vi.fn(),
+        jsonSchema: vi.fn((schema: unknown) => ({ jsonSchema: schema })),
+        // generateObject intentionally missing
+      }));
+      const { SdkAdapter: FreshAdapter } = await import('./sdk-adapter.js');
+
+      const adapter = new FreshAdapter({
+        providerId: 'anthropic',
+        modelId: 'claude-sonnet-4-6',
+        apiKey: 'test-key',
+      });
+
+      const result = await adapter.complete(TEST_REQUEST);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.message).toContain('generateObject');
+      }
+      restoreAiMock();
+    });
+
+    it('throws a clear error when jsonSchema export is missing (#3433)', async () => {
+      vi.resetModules();
+      vi.doMock('ai', () => ({
+        generateText: vi.fn(),
+        streamText: vi.fn(),
+        generateObject: vi.fn(),
+        // jsonSchema intentionally missing
+      }));
+      const { SdkAdapter: FreshAdapter } = await import('./sdk-adapter.js');
+
+      const adapter = new FreshAdapter({
+        providerId: 'anthropic',
+        modelId: 'claude-sonnet-4-6',
+        apiKey: 'test-key',
+      });
+
+      const result = await adapter.complete(TEST_REQUEST);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.message).toContain('jsonSchema');
+      }
+      restoreAiMock();
     });
   });
 
