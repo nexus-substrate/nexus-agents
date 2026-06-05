@@ -335,13 +335,33 @@ export function inferTaskCategory(task: string): TaskCategory {
   return 'exploration';
 }
 
+/** Max chars per interpolated free-text field in a prompt-summary line. */
+const MAX_SUMMARY_FIELD = 200;
+
+/**
+ * Collapse whitespace (including newlines) and cap length for a single backend
+ * value before it is interpolated into a prompt-summary line.
+ *
+ * Defense-in-depth (#3471): every section below renders backend strings into an
+ * LLM system-prompt prefix. Without this, a value containing a newline could
+ * inject extra un-prefixed lines that escape the `- ` data-framing — a weak
+ * prompt-injection vector. Current sources are all T1 repo/internal data so
+ * nothing reachable exploits it today, but collapsing + capping makes the
+ * framing a local guarantee rather than a cross-module trust inference, and
+ * mirrors the hardening already applied to dev-pipeline hindsight recall (#3257).
+ */
+function oneLine(value: string): string {
+  return value.replace(/\s+/g, ' ').trim().slice(0, MAX_SUMMARY_FIELD);
+}
+
 /**
  * Project a {@link UnifiedContext} into a compact human-readable block
  * suitable for prepending to a system prompt. Skips empty sections so
  * the prefix never wastes tokens on \"no signal.\"
  *
  * Phase 3 of #2792 — used by `orchestrate` and graph workflow start to
- * surface accumulated memory at the entry point.
+ * surface accumulated memory at the entry point. Every interpolated free-text
+ * field is passed through {@link oneLine} (#3471).
  */
 export function summarizeContextForPrompt(ctx: UnifiedContext): string {
   const sections: string[] = [];
@@ -349,14 +369,17 @@ export function summarizeContextForPrompt(ctx: UnifiedContext): string {
   if (ctx.beliefs.length > 0) {
     const lines = ctx.beliefs
       .slice(0, 5)
-      .map((b) => `- ${b.subject} ${b.predicate} ${b.object} (confidence: ${b.confidence})`);
+      .map(
+        (b) =>
+          `- ${oneLine(b.subject)} ${oneLine(b.predicate)} ${oneLine(b.object)} (confidence: ${b.confidence})`
+      );
     sections.push(`### Beliefs\n${lines.join('\n')}`);
   }
 
   if (ctx.similarMemories.length > 0) {
     const lines = ctx.similarMemories
       .slice(0, 3)
-      .map((m) => `- ${m.attributes.contextDescription}`);
+      .map((m) => `- ${oneLine(m.attributes.contextDescription)}`);
     sections.push(`### Similar prior work\n${lines.join('\n')}`);
   }
 
@@ -365,7 +388,7 @@ export function summarizeContextForPrompt(ctx: UnifiedContext): string {
       .slice(0, 3)
       .map(
         (p) =>
-          `- ${p.taskType}: ${(p.successRate * 100).toFixed(0)}% success over ${String(p.attemptCount)} attempts`
+          `- ${oneLine(p.taskType)}: ${(p.successRate * 100).toFixed(0)}% success over ${String(p.attemptCount)} attempts`
       );
     sections.push(`### Observed patterns\n${lines.join('\n')}`);
   }
@@ -379,7 +402,7 @@ export function summarizeContextForPrompt(ctx: UnifiedContext): string {
   if (ctx.researchInsights.length > 0) {
     const lines = ctx.researchInsights
       .slice(0, 5)
-      .map((r) => `- ${r.name} (${r.status}) — ${r.topic}`);
+      .map((r) => `- ${oneLine(r.name)} (${oneLine(r.status)}) — ${oneLine(r.topic)}`);
     sections.push(`### Prior research on this topic\n${lines.join('\n')}`);
   }
 
