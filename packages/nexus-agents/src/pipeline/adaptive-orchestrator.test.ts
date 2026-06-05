@@ -172,4 +172,20 @@ describe('runAdaptiveOrchestrator', () => {
     expect(result.templateId).toBe('dev');
     expect(result.success).toBe(true);
   });
+
+  it('falls back to a runnable template when the chosen one needs unimplemented stages (#3487)', async () => {
+    // The `research` template references investigate/synthesize, which the dev
+    // registry does not implement. Instead of hard-failing with "Missing stage
+    // implementations", the orchestrator substitutes a satisfiable template.
+    const stages = createDevStageRegistry(createMockStages());
+
+    const result = await runAdaptiveOrchestrator('Survey the landscape', {
+      stages,
+      templateId: 'research',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.templateId).not.toBe('research');
+    expect(['general', 'dev']).toContain(result.templateId);
+  });
 });

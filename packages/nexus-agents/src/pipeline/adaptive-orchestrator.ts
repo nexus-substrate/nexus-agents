@@ -18,6 +18,7 @@ import type { GraphPipelineOptions, GraphPipelineResult } from './graph-pipeline
 import { getTemplate, PIPELINE_TEMPLATES } from './templates.js';
 import type { PipelineTemplate } from './stage-types.js';
 import type { StageRegistry } from './pipeline-graph.js';
+import { findMissingStages } from './pipeline-graph.js';
 
 const logger = createLogger({ component: 'adaptive-orchestrator' });
 
@@ -345,7 +346,11 @@ export async function runAdaptiveOrchestrator(
   // Template selection: explicit override or auto-detected
   const templateId = options.templateId ?? classification.pipelineType;
   const selectionMethod = options.templateId !== undefined ? 'explicit' : 'auto-detected';
-  const template = resolveTemplate(templateId);
+  // The auto-classified template may reference stages the selected registry
+  // doesn't implement (e.g. the `research` template's investigate/synthesize
+  // are unimplemented). Fall back to a runnable template so the task executes
+  // instead of hard-failing with "Missing stage implementations" (#3487).
+  const template = ensureRunnableTemplate(resolveTemplate(templateId), options.stages);
 
   logger.info('Adaptive orchestrator routing', {
     templateId: template.id,
@@ -381,4 +386,44 @@ function resolveTemplate(templateId: string): PipelineTemplate {
 
   // Absolute fallback — should never happen
   return { id: 'dev', name: 'Development', stages: [] };
+}
+
+/** Preference order for the runnability fallback — most general first (#3487). */
+const RUNNABLE_FALLBACK_TEMPLATES = ['general', 'dev'] as const;
+
+/**
+ * Guarantee the chosen template can actually run against the provided stage
+ * registry. If it references unimplemented stages (e.g. the `research`
+ * template's investigate/synthesize), substitute the first built-in template
+ * the registry fully satisfies (general → dev). Returns the original template
+ * when it's already runnable, or when nothing satisfiable exists (the compile
+ * step then surfaces the actionable "Missing stage implementations" error).
+ */
+function ensureRunnableTemplate(
+  template: PipelineTemplate,
+  stages: StageRegistry
+): PipelineTemplate {
+  const missing = findMissingStages(template, stages);
+  if (missing.length === 0) return template;
+
+  for (const id of RUNNABLE_FALLBACK_TEMPLATES) {
+    const candidate = PIPELINE_TEMPLATES.get(id);
+    if (candidate !== undefined && findMissingStages(candidate, stages).length === 0) {
+      logger.warn('Selected template is not runnable in this registry — falling back', {
+        requested: template.id,
+        missingStages: missing,
+        fallback: id,
+      });
+      return candidate;
+    }
+  }
+
+  logger.warn(
+    'No runnable fallback template for this registry; compile will report missing stages',
+    {
+      requested: template.id,
+      missingStages: missing,
+    }
+  );
+  return template;
 }

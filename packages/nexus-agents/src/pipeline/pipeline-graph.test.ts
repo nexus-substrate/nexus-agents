@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { compilePipelineGraph } from './pipeline-graph.js';
+import { compilePipelineGraph, findMissingStages } from './pipeline-graph.js';
 import type { IPipelineStage, PipelineTemplate, StageOutput } from './stage-types.js';
 import { PIPELINE_STATE_KEYS } from './stage-types.js';
 import {
@@ -131,17 +131,34 @@ describe('compilePipelineGraph', () => {
     expect(result.graph).toBeDefined();
   });
 
-  it('reports missing stage implementations', () => {
+  it('findMissingStages lists template stages absent from the registry (#3487)', () => {
+    // The real failure: the `research` template needs investigate/synthesize,
+    // which the dev registry (research/plan/vote/decompose/implement/qa/security)
+    // doesn't implement.
+    const devRegistry = makeStageRegistry(DEV_PIPELINE_TEMPLATE.stages);
+    const missing = findMissingStages(RESEARCH_PIPELINE_TEMPLATE, devRegistry);
+    expect(missing).toContain('investigate');
+    expect(missing).toContain('synthesize');
+    // And it's empty when the registry satisfies the template.
+    expect(findMissingStages(DEV_PIPELINE_TEMPLATE, devRegistry)).toHaveLength(0);
+  });
+
+  it('reports missing stage implementations with an actionable message (#3487)', () => {
     const template: PipelineTemplate = {
-      id: 'test',
-      name: 'Test',
+      id: 'sample',
+      name: 'Sample',
       stages: ['step1', 'missing_step'],
     };
     const stages = makeStageRegistry(['step1']);
     const result = compilePipelineGraph(template, stages);
 
     expect(result.ok).toBe(false);
+    // Names the template, the missing stage, and the available stages so the
+    // failure reads as "unimplemented stage" not an auth/transport error.
+    expect(result.error).toContain("template 'sample'");
     expect(result.error).toContain('missing_step');
+    expect(result.error).toContain('Available stages: step1');
+    expect(result.error).toContain('Pick a different');
   });
 
   it('compiles the dev pipeline template', () => {
