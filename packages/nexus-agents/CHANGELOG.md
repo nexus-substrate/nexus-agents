@@ -1,5 +1,20 @@
 # nexus-agents
 
+## 2.118.0
+
+### Minor Changes
+
+- [#3495](https://github.com/nexus-substrate/nexus-agents/pull/3495) [`2cd6dbe`](https://github.com/nexus-substrate/nexus-agents/commit/2cd6dbe6bfdd369f7116717741f8b47bbacca7c1) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(pipeline): estimate-relative token budget for run_pipeline ([#3262](https://github.com/nexus-substrate/nexus-agents/issues/3262))
+
+  Activates the existing `BudgetGuard`/`BudgetCircuitBreaker` ([#3395](https://github.com/nexus-substrate/nexus-agents/issues/3395)) with a budget
+  seeded from the task's token estimate, so a `run_pipeline` run that overruns its
+  plan estimate is short-circuited (fail-closed, with an observable
+  `budget_exceeded` event) instead of spending unboundedly. New pure helpers
+  `estimateRelativeBudget` + `resolveBudgetTolerance` (`NEXUS_BUDGET_TOLERANCE`,
+  default 1.5×; token-based so it holds under `NEXUS_BILLING_MODE=plan`). Gated
+  behind `NEXUS_BUDGET_ENFORCE=1` (default-off — no behavior change until enabled);
+  the whole-run estimate is approximated as `perCall × stageCount`.
+
 ## 2.117.3
 
 ### Patch Changes
