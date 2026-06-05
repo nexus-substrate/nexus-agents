@@ -14,9 +14,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { closeMemoryRegistry, createInMemoryMemoryRegistry, setMemoryRegistry } from 'nexus-memory';
-import { getContextForTask } from './context-retriever.js';
+import {
+  getContextForTask,
+  selectRelevantResearch,
+  summarizeContextForPrompt,
+  type UnifiedContext,
+} from './context-retriever.js';
 import { resetOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 import type { DistilledRule } from '../learning/strategy-distiller-types.js';
+import type { TechniqueStatusSummary } from '../cli/research-types.js';
 
 describe('getContextForTask', () => {
   let dataDir: string;
@@ -252,5 +258,91 @@ describe('getContextForTask', () => {
       limit: 3,
     });
     expect(ctx.priorStrategies.length).toBe(3);
+  });
+});
+
+// ============================================================================
+// selectRelevantResearch — research→context relevance filter (#3148)
+// ============================================================================
+
+function makeTechnique(over: Partial<TechniqueStatusSummary>): TechniqueStatusSummary {
+  return {
+    id: over.id ?? 't-1',
+    name: over.name ?? 'Some Technique',
+    status: over.status ?? 'planned',
+    priority: over.priority ?? 'P2',
+    topic: over.topic ?? 'general',
+    implementationIssue: over.implementationIssue ?? null,
+  };
+}
+
+describe('selectRelevantResearch', () => {
+  it('returns empty when there are no techniques', () => {
+    expect(selectRelevantResearch([], 'speculative decoding', 5)).toEqual([]);
+  });
+
+  it('returns empty when the task has no discriminating (≥4-char) tokens', () => {
+    const techs = [makeTechnique({ topic: 'caching' })];
+    expect(selectRelevantResearch(techs, 'a to do it', 5)).toEqual([]);
+  });
+
+  it('matches techniques sharing a word with the task topic/name', () => {
+    const techs = [
+      makeTechnique({ id: 'a', name: 'Speculative Decoding', topic: 'inference' }),
+      makeTechnique({ id: 'b', name: 'Prompt Caching', topic: 'caching' }),
+    ];
+    // "decoding" overlaps the first technique's name; the second shares nothing.
+    const result = selectRelevantResearch(techs, 'add speculative decoding to the runtime', 5);
+    expect(result.map((t) => t.id)).toEqual(['a']);
+  });
+
+  it('respects the limit and preserves registry order', () => {
+    const techs = [
+      makeTechnique({ id: 'a', topic: 'routing' }),
+      makeTechnique({ id: 'b', topic: 'routing' }),
+      makeTechnique({ id: 'c', topic: 'routing' }),
+    ];
+    const result = selectRelevantResearch(techs, 'improve routing decisions', 2);
+    expect(result.map((t) => t.id)).toEqual(['a', 'b']);
+  });
+
+  it('ignores short shared tokens that are too generic to anchor relevance', () => {
+    const techs = [makeTechnique({ id: 'a', name: 'API', topic: 'web' })];
+    // "api"/"web" are <4 chars → no match even though the word appears.
+    expect(selectRelevantResearch(techs, 'design the api for web', 5)).toEqual([]);
+  });
+});
+
+// ============================================================================
+// summarizeContextForPrompt — research section rendering (#3148)
+// ============================================================================
+
+function emptyContext(over: Partial<UnifiedContext> = {}): UnifiedContext {
+  return {
+    beliefs: [],
+    similarMemories: [],
+    recentLearnings: [],
+    experiencePatterns: [],
+    outcomes: null,
+    priorStrategies: [],
+    researchInsights: [],
+    ...over,
+  };
+}
+
+describe('summarizeContextForPrompt — research insights', () => {
+  it('renders a Prior research section with name, status, and topic', () => {
+    const ctx = emptyContext({
+      researchInsights: [
+        makeTechnique({ name: 'Speculative Decoding', status: 'rejected', topic: 'inference' }),
+      ],
+    });
+    const out = summarizeContextForPrompt(ctx);
+    expect(out).toContain('### Prior research on this topic');
+    expect(out).toContain('- Speculative Decoding (rejected) — inference');
+  });
+
+  it('omits the research section entirely when there are no insights', () => {
+    expect(summarizeContextForPrompt(emptyContext())).toBe('');
   });
 });

@@ -36,6 +36,8 @@ import { createLogger } from '../core/logger.js';
 import { getToolMemory } from '../mcp/tools/tool-memory.js';
 import { getOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 import { loadPersistedRules } from '../learning/strategy-distiller-persistence.js';
+import { getResearchStatus } from '../cli/research-helpers.js';
+import type { TechniqueStatusSummary } from '../cli/research-types.js';
 
 /**
  * What we know about a task, derived from every shared memory backend.
@@ -58,6 +60,14 @@ export interface UnifiedContext {
   readonly outcomes: PerformanceSummary | null;
   /** Distilled routing rules — populated once #2797 lands; empty until then. */
   readonly priorStrategies: readonly DistilledRule[];
+  /**
+   * Prior research techniques from the research registry whose topic/name is
+   * relevant to the task (#3148 / #2792 research→context loop). Surfaces what
+   * we have already investigated — and its status (implemented / rejected /
+   * planned) — so planning reuses research instead of re-proposing settled or
+   * already-rejected approaches. Empty when nothing matches or no registry.
+   */
+  readonly researchInsights: readonly TechniqueStatusSummary[];
 }
 
 /** Options accepted by {@link getContextForTask}. */
@@ -91,14 +101,21 @@ export async function getContextForTask(options: ContextRetrieverOptions): Promi
   const limit = options.limit ?? DEFAULT_LIMIT;
   const logger = options.logger ?? createLogger({ component: 'ContextRetriever' });
 
-  const [beliefs, similarMemories, recentLearnings, experiencePatterns, outcomes] =
-    await Promise.all([
-      fetchBeliefs(options.task, limit, logger),
-      fetchSimilarMemories(options.task, limit, logger),
-      fetchRecentLearnings(options.task, limit, logger),
-      fetchExperiencePatterns(options.task, limit, logger),
-      fetchOutcomes(options.category, logger),
-    ]);
+  const [
+    beliefs,
+    similarMemories,
+    recentLearnings,
+    experiencePatterns,
+    outcomes,
+    researchInsights,
+  ] = await Promise.all([
+    fetchBeliefs(options.task, limit, logger),
+    fetchSimilarMemories(options.task, limit, logger),
+    fetchRecentLearnings(options.task, limit, logger),
+    fetchExperiencePatterns(options.task, limit, logger),
+    fetchOutcomes(options.category, logger),
+    fetchResearchInsights(options.task, limit, logger),
+  ]);
 
   const priorStrategies = fetchPriorStrategies(options.category, limit, logger);
 
@@ -109,7 +126,75 @@ export async function getContextForTask(options: ContextRetrieverOptions): Promi
     experiencePatterns,
     outcomes,
     priorStrategies,
+    researchInsights,
   };
+}
+
+/** Tokens shorter than this are too generic to anchor research relevance. */
+const MIN_RELEVANCE_TOKEN = 4;
+
+/**
+ * Pure relevance filter: select research techniques whose `topic` or `name`
+ * shares a meaningful word (≥{@link MIN_RELEVANCE_TOKEN} chars) with the task
+ * text. Order-preserving; returns at most `limit`. Exported for direct unit
+ * testing of the matching logic (the network/registry read is wrapped
+ * separately in {@link fetchResearchInsights}).
+ */
+export function selectRelevantResearch(
+  techniques: readonly TechniqueStatusSummary[],
+  task: string,
+  limit: number
+): readonly TechniqueStatusSummary[] {
+  const taskTokens = tokenize(task);
+  if (taskTokens.size === 0) return [];
+  const matches: TechniqueStatusSummary[] = [];
+  for (const t of techniques) {
+    const fieldTokens = tokenize(`${t.name} ${t.topic}`);
+    let hit = false;
+    for (const tok of fieldTokens) {
+      if (taskTokens.has(tok)) {
+        hit = true;
+        break;
+      }
+    }
+    if (hit) {
+      matches.push(t);
+      if (matches.length >= limit) break;
+    }
+  }
+  return matches;
+}
+
+/** Lowercase word set, keeping only tokens long enough to be discriminating. */
+function tokenize(text: string): Set<string> {
+  const tokens = new Set<string>();
+  for (const raw of text.toLowerCase().split(/[^a-z0-9]+/)) {
+    if (raw.length >= MIN_RELEVANCE_TOKEN) tokens.add(raw);
+  }
+  return tokens;
+}
+
+/**
+ * Read research-registry techniques relevant to the task. Fail-soft: a missing
+ * registry, a failed status read, or any throw yields `[]` so context assembly
+ * never breaks on the research backend. Uses the lightweight status read (not
+ * full synthesis) so it stays cheap enough for the per-task context fan-out.
+ */
+async function fetchResearchInsights(
+  task: string,
+  limit: number,
+  logger: ILogger
+): Promise<readonly TechniqueStatusSummary[]> {
+  try {
+    const result = await getResearchStatus({ status: 'all', format: 'json' });
+    if (!result.success) return [];
+    return selectRelevantResearch(result.techniques, task, limit);
+  } catch (error: unknown) {
+    logger.debug('ContextRetriever: research insights fetch failed', {
+      error: formatError(error),
+    });
+    return [];
+  }
 }
 
 /**
@@ -289,6 +374,13 @@ export function summarizeContextForPrompt(ctx: UnifiedContext): string {
     sections.push(
       `### Outcomes for this category\n- ${String(ctx.outcomes.totalTasks)} prior tasks, ${(ctx.outcomes.successRate * 100).toFixed(0)}% success`
     );
+  }
+
+  if (ctx.researchInsights.length > 0) {
+    const lines = ctx.researchInsights
+      .slice(0, 5)
+      .map((r) => `- ${r.name} (${r.status}) — ${r.topic}`);
+    sections.push(`### Prior research on this topic\n${lines.join('\n')}`);
   }
 
   return sections.length === 0 ? '' : `## Prior Context (Nexus Memory)\n${sections.join('\n\n')}`;
