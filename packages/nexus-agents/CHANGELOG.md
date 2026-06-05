@@ -1,5 +1,22 @@
 # nexus-agents
 
+## 2.114.0
+
+### Minor Changes
+
+- [#3473](https://github.com/nexus-substrate/nexus-agents/pull/3473) [`5b2491f`](https://github.com/nexus-substrate/nexus-agents/commit/5b2491f8d2622ae84c632c15259dc3d7e8b619b6) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(context): surface prior research in UnifiedContext ([#3148](https://github.com/nexus-substrate/nexus-agents/issues/3148))
+
+  Closes the research→context half of the knowledge loop. The research registry
+  accumulated findings, but `ContextRetriever` (the canonical pre-task read used by
+  `orchestrate` and graph workflows) had no field for them, so planners couldn't
+  reuse research. `getContextForTask` now returns `researchInsights` — research
+  techniques whose name/topic is relevant to the task, with their status
+  (implemented / rejected / planned) — and `summarizeContextForPrompt` renders a
+  "Prior research on this topic" block into the planner prompt. The read is
+  fail-soft (missing/failed registry → no insights, context assembly never
+  breaks) and uses the lightweight registry status read, not full synthesis, so
+  it stays cheap on the per-task fan-out.
+
 ## 2.113.0
 
 ### Minor Changes
