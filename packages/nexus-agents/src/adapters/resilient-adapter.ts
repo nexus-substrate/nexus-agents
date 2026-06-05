@@ -40,6 +40,7 @@ import type {
 } from './resilient-adapter-types.js';
 import type { CircuitStateChangeEvent } from '../cli-adapters/circuit-breaker-types.js';
 import type { CircuitBreakerRegistry } from '../cli-adapters/circuit-breaker.js';
+import { mapModelErrorToCategory } from '../cli-adapters/circuit-breaker.js';
 import { getGlobalEventBus } from '../core/event-bus.js';
 
 // ============================================================================
@@ -110,17 +111,20 @@ export class ResilientAdapter implements IResilientAdapter {
       return err(new ModelError('No model adapter available'));
     }
     const result = await adapter.complete(request);
-    if (!result.ok && isRateLimitLikeError(result.error)) {
-      const rlError = toRateLimitError(result.error, adapter.providerId);
-      recordRateLimitEvent({
-        provider: adapter.providerId,
-        timestamp: getTimeProvider().now(),
-        retryAfterMs: rlError.retryAfterMs,
-      });
-      this.logger.warn('Rate limit detected', {
-        provider: adapter.providerId,
-        retryAfterMs: rlError.retryAfterMs,
-      });
+    if (!result.ok) {
+      if (isRateLimitLikeError(result.error)) {
+        const rlError = toRateLimitError(result.error, adapter.providerId);
+        recordRateLimitEvent({
+          provider: adapter.providerId,
+          timestamp: getTimeProvider().now(),
+          retryAfterMs: rlError.retryAfterMs,
+        });
+        this.logger.warn('Rate limit detected', {
+          provider: adapter.providerId,
+          retryAfterMs: rlError.retryAfterMs,
+        });
+      }
+      this.recordBreakerFailure(adapter, result.error);
     }
     return result;
   }
@@ -267,6 +271,50 @@ export class ResilientAdapter implements IResilientAdapter {
     if (isFailover) {
       this.emitFailover();
     }
+  }
+
+  /**
+   * Record a direct-API failure to the circuit breaker so API adapters get the
+   * same degradation/failover learning that CLI subprocess failures get (#3423).
+   *
+   * The breaker key is `currentSelection.name` — distinct from the `api:<vendor>`
+   * arm key used by the ModelToCliAdapter path (#3422), so the two paths never
+   * double-count the same failure.
+   *
+   * Rate-limit failures are deliberately skipped here: they are already recorded
+   * by the `recordRateLimitEvent` telemetry branch in `complete()`, and the
+   * breaker counts rate limits as failures by default
+   * (`countRateLimitsAsFailures`), so recording them again would double-count.
+   *
+   * Security (#3422 constraint): the logged payload carries only `provider` and
+   * `category` — never `error.message`, the request, or the ModelError object,
+   * any of which could embed credentials.
+   */
+  private recordBreakerFailure(adapter: IModelAdapter, error: ModelError): void {
+    if (this.circuitBreakerRegistry === undefined || this.currentSelection === undefined) {
+      return;
+    }
+
+    const category = mapModelErrorToCategory(error);
+    // Skip rate limits: already accounted for by the rate-limit telemetry branch
+    // (and the breaker counts them by default). Check BOTH the mapped category
+    // AND the telemetry predicate — their rate-limit pattern lists differ
+    // (`isRateLimitLikeError` matches "quota exceeded"/"throttl"/… that
+    // `categorizeError` does not), so a code-less MODEL_ERROR could otherwise
+    // fire the telemetry branch yet fall through to a counted failure here,
+    // double-counting against the threshold (#3423 review).
+    if (category === 'rate_limit' || isRateLimitLikeError(error)) {
+      return;
+    }
+
+    this.circuitBreakerRegistry
+      .getBreaker(this.currentSelection.name as CliName)
+      .recordFailure(category);
+
+    this.logger.warn('API failure recorded to circuit breaker', {
+      provider: adapter.providerId,
+      category,
+    });
   }
 
   private handleCircuitStateChange(event: CircuitStateChangeEvent): void {

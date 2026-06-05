@@ -9,9 +9,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AdapterSelection } from './auto-adapter.js';
 import type {} from '../core/types/model.js';
 import { ok, err } from '../core/result.js';
-import { ModelError } from '../core/errors.js';
+import { ModelError, ErrorCode } from '../core/errors.js';
+import type { ILogger } from '../core/index.js';
 import type { CircuitStateChangeEvent } from '../cli-adapters/circuit-breaker-types.js';
-import type { CircuitBreakerRegistry } from '../cli-adapters/circuit-breaker.js';
+import {
+  CircuitBreakerRegistry,
+  DEFAULT_CIRCUIT_BREAKER_CONFIG,
+} from '../cli-adapters/circuit-breaker.js';
 
 // ============================================================================
 // Mocks — vi.mock is hoisted, so use inline factories only
@@ -502,6 +506,194 @@ describe('ResilientAdapter', () => {
     it('is safe to call multiple times', () => {
       adapter.dispose();
       adapter.dispose();
+    });
+  });
+
+  describe('API failure → circuit breaker (#3423)', () => {
+    function makeLogger(): ILogger {
+      const logger: ILogger = {
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        child: vi.fn(() => logger),
+        setLevel: vi.fn(),
+      };
+      return logger;
+    }
+
+    it('opens the breaker after repeated API ModelError failures', async () => {
+      const registry = new CircuitBreakerRegistry();
+      const failingAdapter = new ResilientAdapter();
+      failingAdapter.attachCircuitBreakerRegistry(registry);
+
+      mockComplete.mockReturnValue(
+        Promise.resolve(err(new ModelError('upstream failed', { code: ErrorCode.MODEL_ERROR })))
+      );
+
+      const threshold = DEFAULT_CIRCUIT_BREAKER_CONFIG.failureThreshold;
+      for (let i = 0; i < threshold; i++) {
+        await failingAdapter.complete({ messages: [] });
+      }
+
+      expect(registry.getBreaker('claude').getState()).toBe('open');
+    });
+
+    it('clears the cached adapter and re-detects (failover) once the breaker opens', async () => {
+      const registry = new CircuitBreakerRegistry();
+      const failingAdapter = new ResilientAdapter();
+      failingAdapter.attachCircuitBreakerRegistry(registry);
+
+      const onFailover = vi.fn();
+      failingAdapter.onFailover(onFailover);
+
+      mockComplete.mockReturnValue(
+        Promise.resolve(err(new ModelError('upstream failed', { code: ErrorCode.MODEL_ERROR })))
+      );
+
+      const threshold = DEFAULT_CIRCUIT_BREAKER_CONFIG.failureThreshold;
+      // First call detects the 'claude' adapter; reaching the threshold opens
+      // the breaker, whose open event clears the cached adapter.
+      for (let i = 0; i < threshold; i++) {
+        await failingAdapter.complete({ messages: [] });
+      }
+      expect(createAutoAdapter).toHaveBeenCalledTimes(1);
+      expect(failingAdapter.getHealth()?.state).toBe('degraded');
+
+      // Next call re-detects (failover) — a different adapter name confirms
+      // the failover path fired.
+      vi.mocked(createAutoAdapter).mockResolvedValueOnce(makeSelection('gemini'));
+      mockComplete.mockReturnValueOnce(
+        Promise.resolve(
+          ok({
+            content: [{ type: 'text', text: 'ok' }],
+            usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+            stopReason: 'end_turn',
+            model: 'mock-model',
+          })
+        )
+      );
+      await failingAdapter.complete({ messages: [] });
+
+      expect(createAutoAdapter).toHaveBeenCalledTimes(2);
+      expect(onFailover).toHaveBeenCalledTimes(1);
+      expect(failingAdapter.getHealth()?.failoverCount).toBe(1);
+    });
+
+    it('never leaks credential-bearing error content into the logged payload', async () => {
+      const registry = new CircuitBreakerRegistry();
+      const breaker = registry.getBreaker('claude');
+      const recordFailureSpy = vi.spyOn(breaker, 'recordFailure');
+      const logger = makeLogger();
+      const failingAdapter = new ResilientAdapter({ logger });
+      failingAdapter.attachCircuitBreakerRegistry(registry);
+
+      // Use a code that maps deterministically (MODEL_UNAVAILABLE → connection)
+      // so the secret in the message cannot influence the category.
+      const secretError = new ModelError('failed for key sk-SECRET-deadbeef', {
+        code: ErrorCode.MODEL_UNAVAILABLE,
+      });
+      mockComplete.mockReturnValue(Promise.resolve(err(secretError)));
+
+      await failingAdapter.complete({ messages: [] });
+
+      // recordFailure received only a FailureCategory string, never the error.
+      expect(recordFailureSpy).toHaveBeenCalledTimes(1);
+      expect(recordFailureSpy).toHaveBeenCalledWith('connection');
+      const recordedArg = recordFailureSpy.mock.calls[0]?.[0];
+      expect(typeof recordedArg).toBe('string');
+
+      // No logged call's serialized args contain the secret.
+      const allLogCalls = [
+        ...vi.mocked(logger.warn).mock.calls,
+        ...vi.mocked(logger.info).mock.calls,
+        ...vi.mocked(logger.debug).mock.calls,
+        ...vi.mocked(logger.error).mock.calls,
+      ];
+      for (const call of allLogCalls) {
+        expect(JSON.stringify(call)).not.toContain('sk-SECRET');
+      }
+    });
+
+    it('does not double-count rate-limit failures against the breaker', async () => {
+      const registry = new CircuitBreakerRegistry();
+      const breaker = registry.getBreaker('claude');
+      const recordFailureSpy = vi.spyOn(breaker, 'recordFailure');
+      const failingAdapter = new ResilientAdapter();
+      failingAdapter.attachCircuitBreakerRegistry(registry);
+
+      const rateLimitError = new ModelError('Rate limit exceeded', {
+        code: ErrorCode.MODEL_RATE_LIMITED,
+      });
+      mockComplete.mockReturnValue(Promise.resolve(err(rateLimitError)));
+      vi.mocked(isRateLimitLikeError).mockReturnValue(true);
+      vi.mocked(toRateLimitError).mockReturnValue({
+        message: 'Rate limit exceeded',
+        retryAfterMs: 30000,
+      } as unknown as ReturnType<typeof toRateLimitError>);
+
+      await failingAdapter.complete({ messages: [] });
+
+      // The rate-limit telemetry branch fired...
+      expect(recordRateLimitEvent).toHaveBeenCalledTimes(1);
+      // ...but the breaker path skipped recordFailure to avoid double-count.
+      expect(recordFailureSpy).not.toHaveBeenCalled();
+      expect(breaker.getSnapshot().failureCount).toBe(0);
+    });
+
+    it('does not double-count a code-less rate-limit MODEL_ERROR (pattern divergence)', async () => {
+      // A MODEL_ERROR whose message is rate-limit-like to `isRateLimitLikeError`
+      // ("quota exceeded") but NOT to `categorizeError` would map to `unknown`
+      // and slip past a category-only guard — double-counting against the
+      // telemetry branch. The guard also checks `isRateLimitLikeError` (#3423).
+      const registry = new CircuitBreakerRegistry();
+      const breaker = registry.getBreaker('claude');
+      const recordFailureSpy = vi.spyOn(breaker, 'recordFailure');
+      const failingAdapter = new ResilientAdapter();
+      failingAdapter.attachCircuitBreakerRegistry(registry);
+
+      const quotaError = new ModelError('quota exceeded for this org', {
+        code: ErrorCode.MODEL_ERROR,
+      });
+      mockComplete.mockReturnValue(Promise.resolve(err(quotaError)));
+      vi.mocked(isRateLimitLikeError).mockReturnValue(true);
+      vi.mocked(toRateLimitError).mockReturnValue({
+        message: 'quota exceeded for this org',
+        retryAfterMs: 30000,
+      } as unknown as ReturnType<typeof toRateLimitError>);
+
+      await failingAdapter.complete({ messages: [] });
+
+      expect(recordFailureSpy).not.toHaveBeenCalled();
+      expect(breaker.getSnapshot().failureCount).toBe(0);
+    });
+
+    it('never leaks a secret carried in error.cause into the logged payload', async () => {
+      // Hardening (#3423 security review): the secret lives in `error.cause`,
+      // not `.message`. The recording path logs only {provider, category}, so a
+      // cause-borne credential must never surface either.
+      const registry = new CircuitBreakerRegistry();
+      const logger = makeLogger();
+      const failingAdapter = new ResilientAdapter({ logger });
+      failingAdapter.attachCircuitBreakerRegistry(registry);
+
+      const causeError = new ModelError('upstream failed', {
+        code: ErrorCode.MODEL_UNAVAILABLE,
+        cause: new Error('auth header Bearer sk-SECRET-cause99'),
+      });
+      mockComplete.mockReturnValue(Promise.resolve(err(causeError)));
+
+      await failingAdapter.complete({ messages: [] });
+
+      const allLogCalls = [
+        ...vi.mocked(logger.warn).mock.calls,
+        ...vi.mocked(logger.info).mock.calls,
+        ...vi.mocked(logger.debug).mock.calls,
+        ...vi.mocked(logger.error).mock.calls,
+      ];
+      for (const call of allLogCalls) {
+        expect(JSON.stringify(call)).not.toContain('sk-SECRET');
+      }
     });
   });
 });

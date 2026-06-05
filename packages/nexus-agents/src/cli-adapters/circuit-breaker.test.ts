@@ -12,9 +12,11 @@ import {
   CircuitErrorCode,
   DEFAULT_CIRCUIT_BREAKER_CONFIG,
   mapCliErrorToCategory,
+  mapModelErrorToCategory,
   categorizeError,
   type CircuitStateChangeEvent,
 } from './circuit-breaker.js';
+import { ErrorCode, ModelError } from '../core/errors.js';
 
 describe('CliCircuitBreaker', () => {
   let breaker: CliCircuitBreaker;
@@ -693,6 +695,62 @@ describe('mapCliErrorToCategory', () => {
     expect(mapCliErrorToCategory('EXECUTION_ERROR')).toBe('unknown');
     expect(mapCliErrorToCategory('UNSUPPORTED_VERSION')).toBe('unknown');
     expect(mapCliErrorToCategory('UNKNOWN')).toBe('unknown');
+  });
+});
+
+describe('mapModelErrorToCategory', () => {
+  it('should map MODEL_TIMEOUT to timeout', () => {
+    expect(mapModelErrorToCategory(new ModelError('x', { code: ErrorCode.MODEL_TIMEOUT }))).toBe(
+      'timeout'
+    );
+  });
+
+  it('should map TIMEOUT_ERROR to timeout', () => {
+    expect(mapModelErrorToCategory(new ModelError('x', { code: ErrorCode.TIMEOUT_ERROR }))).toBe(
+      'timeout'
+    );
+  });
+
+  it('should map UNAUTHORIZED to authentication', () => {
+    expect(mapModelErrorToCategory(new ModelError('x', { code: ErrorCode.UNAUTHORIZED }))).toBe(
+      'authentication'
+    );
+  });
+
+  it('should map MODEL_RATE_LIMITED to rate_limit', () => {
+    expect(
+      mapModelErrorToCategory(new ModelError('x', { code: ErrorCode.MODEL_RATE_LIMITED }))
+    ).toBe('rate_limit');
+  });
+
+  it('should map RATE_LIMIT_ERROR to rate_limit', () => {
+    expect(mapModelErrorToCategory(new ModelError('x', { code: ErrorCode.RATE_LIMIT_ERROR }))).toBe(
+      'rate_limit'
+    );
+  });
+
+  it('should map MODEL_UNAVAILABLE to connection', () => {
+    expect(
+      mapModelErrorToCategory(new ModelError('x', { code: ErrorCode.MODEL_UNAVAILABLE }))
+    ).toBe('connection');
+  });
+
+  it('should map MODEL_NOT_FOUND to connection', () => {
+    expect(mapModelErrorToCategory(new ModelError('x', { code: ErrorCode.MODEL_NOT_FOUND }))).toBe(
+      'connection'
+    );
+  });
+
+  it('should map plain MODEL_ERROR to unknown when message is uninformative', () => {
+    expect(mapModelErrorToCategory(new ModelError('something went wrong'))).toBe('unknown');
+  });
+
+  it('should fall back to message-pattern categorization for MODEL_ERROR', () => {
+    // A generic MODEL_ERROR whose message is connection-ish should categorize
+    // as `connection` via the categorizeError fallback, not `unknown`.
+    expect(mapModelErrorToCategory(new ModelError('ECONNREFUSED: connection refused'))).toBe(
+      'connection'
+    );
   });
 });
 
