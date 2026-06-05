@@ -120,6 +120,51 @@ describe('self-tuning loop end-to-end (#3323)', () => {
     if (!after.ok) return;
     expect(after.value.cliName).toBe(winner); // unchanged — enforce gates the read
   });
+
+  it('shadow chain RECORDS the intended demotion but does NOT apply it to routing', async () => {
+    // The same producer→consumer path as the enforce test, but with a SHADOW
+    // TuneStage (enabled:false) and the router read gated off. Proves the
+    // NEXUS_TUNE_ENFORCE gate sits PRECISELY between "record" and "apply": the
+    // loop observes what it WOULD do (intended-counter bumped) while routing,
+    // the effective multiplier, AND the applied-counter all stay untouched.
+    process.env['NEXUS_TUNE_ENFORCE'] = 'false'; // shadow on both sides of the loop
+    const router = deterministicRouter(['claude', 'gemini', 'codex']);
+
+    const baseline = await router.route(TASK);
+    expect(baseline.ok).toBe(true);
+    if (!baseline.ok) return;
+    const winner = baseline.value.cliName;
+    const baselineRank = [winner, ...baseline.value.alternatives].indexOf(winner); // 0
+
+    // Drive the producer signal through a SHADOW TuneStage (enabled:false).
+    const bus = new EventBus();
+    createTuneStage(bus, { enabled: false });
+    const SIGNALS = 8;
+    for (let i = 0; i < SIGNALS; i++) {
+      bus.emit({
+        type: 'signal.swarm_unhealthy',
+        timestamp: i,
+        agentId: winner,
+        reason: 'repeated failures',
+      } satisfies PipelineEvent);
+    }
+
+    const store = getTuneAdjustmentStore();
+    // Loop OBSERVED the would-be demotion: the intended counter is bumped...
+    const stat = store.demotionStats().find((s) => s.cli === winner);
+    expect(stat?.intended).toBe(SIGNALS);
+    // ...but NOTHING was applied — no routing-biasing demotion was written.
+    expect(stat?.applied ?? 0).toBe(0);
+    expect(store.effectiveMultiplier(winner)).toBe(1.0); // store unchanged
+
+    // ...and routing is identical: same winner, same rank. The gate held.
+    const after = await router.route(TASK);
+    expect(after.ok).toBe(true);
+    if (!after.ok) return;
+    expect(after.value.cliName).toBe(winner);
+    const afterRank = [after.value.cliName, ...after.value.alternatives].indexOf(winner);
+    expect(afterRank).toBe(baselineRank); // 0 → 0, unchanged
+  });
 });
 
 describe('floor-safety / never-starve (#3323)', () => {
