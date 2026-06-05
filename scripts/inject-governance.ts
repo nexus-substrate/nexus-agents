@@ -826,6 +826,23 @@ function extractAgnosticBody(): string {
       `AGENTS.md is missing the AGNOSTIC:BODY markers (#3446) — cannot generate CLAUDE.md`
     );
   }
+  // Fail loud on malformed markers rather than emitting an empty/garbage slice
+  // that the drift gate would then "pass" against (silently erasing the agnostic
+  // body — the exact failure this generator must prevent). Reordered (END before
+  // START) → empty slice; duplicated → swallows a marker line (#3446 QA).
+  if (endIdx <= startIdx) {
+    throw new Error(
+      `AGENTS.md AGNOSTIC:BODY:END precedes START (#3446) — markers are reordered/malformed`
+    );
+  }
+  if (
+    content.lastIndexOf(AGNOSTIC_BODY_START) !== startIdx ||
+    content.lastIndexOf(AGNOSTIC_BODY_END) !== endIdx
+  ) {
+    throw new Error(
+      `AGENTS.md has duplicate AGNOSTIC:BODY markers (#3446) — exactly one pair is required`
+    );
+  }
   // Take everything after the start marker line and before the end marker,
   // then trim the surrounding blank lines so the injected block has exactly
   // one blank line of padding (matching the "do not edit" note layout below).
@@ -1329,22 +1346,20 @@ function canonicalPathResolves(candidate: string): boolean {
 }
 
 /**
- * Extract the existence-checkable file path from one canonical-paths table
- * row, or `null` if the row has none (header/separator, or a row that only
- * names a code symbol). The path cell may hold several backticked tokens
- * (e.g. `` `Name` — `src/x.ts` ``); the LAST file-path-shaped token (contains
- * `/` or ends in `.ts`) is the path. Directory markers (trailing `/`) are
- * deliberately not returned — they are not existence-checked.
+ * Extract EVERY existence-checkable file path from one canonical-paths table
+ * row (empty if none — header/separator, or a row that only names a code
+ * symbol). The path cell may hold several backticked tokens (e.g. a row naming
+ * two source files); ALL file-path-shaped tokens (contain `/` or end in `.ts`)
+ * are returned and checked, so a broken path is caught wherever it sits in the
+ * row, not just in the last cell (#3446 QA). Directory markers (trailing `/`)
+ * are deliberately excluded — they are not existence-checked.
  */
-function canonicalPathCandidate(line: string): string | null {
-  if (!line.startsWith('|')) return null;
-  if (/^\|\s*Concern\s*\|/.test(line) || /^\|\s*-+/.test(line)) return null;
-  const pathTokens = [...line.matchAll(/`([^`]+)`/g)]
+function canonicalPathCandidates(line: string): string[] {
+  if (!line.startsWith('|')) return [];
+  if (/^\|\s*Concern\s*\|/.test(line) || /^\|\s*-+/.test(line)) return [];
+  return [...line.matchAll(/`([^`]+)`/g)]
     .map((m) => m[1] ?? '')
-    .filter((t) => t.includes('/') || t.endsWith('.ts'));
-  const candidate = pathTokens.at(-1);
-  if (candidate === undefined || candidate.endsWith('/')) return null;
-  return candidate;
+    .filter((t) => (t.includes('/') || t.endsWith('.ts')) && !t.endsWith('/'));
 }
 
 /**
@@ -1368,8 +1383,9 @@ function checkCanonicalPaths(): boolean {
 
   const failures: string[] = [];
   for (const line of section.split('\n')) {
-    const candidate = canonicalPathCandidate(line);
-    if (candidate !== null && !canonicalPathResolves(candidate)) failures.push(candidate);
+    for (const candidate of canonicalPathCandidates(line)) {
+      if (!canonicalPathResolves(candidate)) failures.push(candidate);
+    }
   }
 
   if (failures.length > 0) {

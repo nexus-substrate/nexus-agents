@@ -607,6 +607,38 @@ describe('inject-governance claude-from-agents (#3446)', () => {
   );
 
   it(
+    'fails LOUD on reordered AGNOSTIC:BODY markers instead of silently erasing the body (#3446 QA)',
+    { timeout: SUBPROCESS_TIMEOUT },
+    () => {
+      const original = readFileSync(AGENTS_MD, 'utf-8');
+      try {
+        // Swap the START/END marker order. A `=== -1`-only guard would slice an
+        // EMPTY body and the drift gate would "pass" against it — silently
+        // wiping CLAUDE.md's agnostic content. The generator must throw instead.
+        const broken = original
+          .replace('<!-- AGNOSTIC:BODY:START -->', '<!-- AGNOSTIC:BODY:TMP -->')
+          .replace('<!-- AGNOSTIC:BODY:END -->', '<!-- AGNOSTIC:BODY:START -->')
+          .replace('<!-- AGNOSTIC:BODY:TMP -->', '<!-- AGNOSTIC:BODY:END -->');
+        expect(broken).not.toBe(original);
+        writeFileSync(AGENTS_MD, broken);
+        let stderr = '';
+        let exitCode = 0;
+        try {
+          execSync(`npx tsx ${SCRIPT} check`, { cwd: ROOT, encoding: 'utf-8', timeout: 30000 });
+        } catch (err) {
+          const e = err as { status?: number; stderr?: string; stdout?: string };
+          exitCode = e.status ?? 1;
+          stderr = (e.stderr ?? '') + (e.stdout ?? '');
+        }
+        expect(exitCode).not.toBe(0);
+        expect(stderr).toMatch(/reordered|malformed/i);
+      } finally {
+        writeFileSync(AGENTS_MD, original);
+      }
+    }
+  );
+
+  it(
     'inject regenerates the CLAUDE.md block from AGENTS.md (idempotent)',
     { timeout: IDEMPOTENCY_TIMEOUT },
     () => {
