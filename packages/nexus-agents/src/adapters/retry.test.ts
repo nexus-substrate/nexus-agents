@@ -246,6 +246,20 @@ describe('retry', () => {
         });
         expect(isRetryableError(error)).toBe(true);
       });
+
+      it('NexusError with MODEL_UNAVAILABLE code (transient 503/overloaded) (#3317 #7)', () => {
+        const error = new NexusError('Model temporarily unavailable', {
+          code: ErrorCode.MODEL_UNAVAILABLE,
+        });
+        expect(isRetryableError(error)).toBe(true);
+      });
+    });
+
+    it('keeps MODEL_NOT_FOUND non-retryable (retry will not help) (#3317 #7)', () => {
+      const error = new NexusError('Model not found', {
+        code: ErrorCode.MODEL_NOT_FOUND,
+      });
+      expect(isRetryableError(error)).toBe(false);
     });
   });
 

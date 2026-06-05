@@ -370,6 +370,10 @@ export class SdkAdapter extends BaseAdapter {
     yield { type: 'content_block_start', index, contentBlock: { type: 'text', text: '' } };
 
     for await (const text of result.textStream) {
+      // #3317 finding #8: skip empty-string deltas — the SDK can emit zero-length
+      // chunks (keepalives/segment boundaries); a `text_delta` with `text: ''` is
+      // noise that downstream re-assemblers must otherwise special-case.
+      if (text === '') continue;
       yield {
         type: 'content_block_delta',
         index,
