@@ -21,6 +21,8 @@
 import { createLogger } from '../core/index.js';
 
 import { createOpenRouterModelsSource } from './openrouter-models-source.js';
+import { routingArmDisplaySlot } from '../cli-adapters/types.js';
+import type { RoutingArmId } from '../cli-adapters/types.js';
 
 import type { AvailableModelsCache, AvailableModelsSource } from './available-models-cache.js';
 
@@ -84,9 +86,14 @@ export function buildDefaultModelSources(
   if (opts.includeOpenRouter !== false) {
     sources.push(createOpenRouterModelsSource());
   }
-  for (const [cliName, adapter] of adapters) {
+  for (const [key, adapter] of adapters) {
     if (hasListModels(adapter)) {
-      sources.push(adapterSource(cliName, adapter));
+      // #3425: the router's adapter map can be keyed by api:* arm ids (#3422).
+      // Register the source under the display CLI slot so no api:* literal leaks
+      // into the model-source registry; the cache de-dups by name, so when both
+      // a CLI slot and its api arm are present the CLI source wins.
+      const slot = routingArmDisplaySlot(key as RoutingArmId);
+      sources.push(adapterSource(slot, adapter));
     }
   }
   return sources;

@@ -82,4 +82,19 @@ describe('buildDefaultModelSources (#3406)', () => {
     expect(names).not.toContain('openrouter');
     expect(names).toEqual([]);
   });
+
+  it('collapses an api:* arm key to its display slot — no api:* leaks into source names (#3425)', () => {
+    // The router's adapter map can be keyed by api:* arm ids (#3422). The source
+    // must be named for the display CLI slot, never the raw arm id.
+    const adapters = new Map<string, unknown>([
+      ['api:anthropic', { listModels: () => Promise.resolve([{ id: 'claude-opus' }]) }],
+      ['api:openai', { listModels: () => Promise.resolve([{ id: 'gpt-5' }]) }],
+    ]);
+    const names = buildDefaultModelSources(adapters, { includeOpenRouter: false }).map(
+      (s) => s.name
+    );
+    expect(names).toContain('claude');
+    expect(names).toContain('codex');
+    expect(names.some((n) => n.startsWith('api:'))).toBe(false);
+  });
 });
