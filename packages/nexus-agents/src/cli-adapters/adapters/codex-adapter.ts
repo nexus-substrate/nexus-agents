@@ -24,6 +24,8 @@ import type {
 } from '../types.js';
 import { SubprocessCliAdapter, type CommandConfig } from '../subprocess-adapter.js';
 import { CodexResponseParser } from '../parsers/codex-parser.js';
+import type { CliModelInfo } from '../types-capability.js';
+import { listModelsForCli } from '../../config/models-dev-by-vendor.js';
 import { CODEX_LEGACY_DEFAULTS } from './codex-adapter-helpers.js';
 import {
   getDefaultModelForCli,
@@ -52,6 +54,11 @@ export class CodexCliAdapter extends SubprocessCliAdapter {
   constructor(options?: BaseAdapterOptions) {
     super(options?.logger);
     this.model = options?.model ?? getCliModelName(getDefaultModelForCli('codex'));
+  }
+
+  /** Key-free model enumeration via the models.dev snapshot (#3405). */
+  listModels(): Promise<readonly CliModelInfo[]> {
+    return Promise.resolve(listModelsForCli(this.name));
   }
 
   /**

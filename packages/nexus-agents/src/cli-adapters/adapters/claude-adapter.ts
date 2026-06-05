@@ -17,6 +17,8 @@ import type {
 } from '../types.js';
 import { SubprocessCliAdapter, type CommandConfig } from '../subprocess-adapter.js';
 import { ClaudeResponseParser } from '../parsers/claude-parser.js';
+import type { CliModelInfo } from '../types-capability.js';
+import { listModelsForCli } from '../../config/models-dev-by-vendor.js';
 import {
   getDefaultModelForCli,
   getCliModelName,
@@ -68,6 +70,15 @@ export class ClaudeCliAdapter extends SubprocessCliAdapter {
   constructor(options?: BaseAdapterOptions) {
     super(options?.logger);
     this.model = options?.model ?? getCliModelName(getDefaultModelForCli('claude'));
+  }
+
+  /**
+   * Key-free model enumeration (#3405): the claude CLI has no list-models
+   * command and its OAuth token can't call /v1/models, so we enumerate the
+   * vendor's models from the models.dev snapshot. Existence only.
+   */
+  listModels(): Promise<readonly CliModelInfo[]> {
+    return Promise.resolve(listModelsForCli(this.name));
   }
 
   /**
