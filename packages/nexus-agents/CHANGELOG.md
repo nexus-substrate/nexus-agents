@@ -1,5 +1,45 @@
 # nexus-agents
 
+## 2.110.0
+
+### Minor Changes
+
+- [#3453](https://github.com/nexus-substrate/nexus-agents/pull/3453) [`e07429d`](https://github.com/nexus-substrate/nexus-agents/commit/e07429dbb83f4f84d21e5806bfd2f241c9d2231d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(tune): durable audit for routing-demotion reversals ([#3323](https://github.com/nexus-substrate/nexus-agents/issues/3323) criterion 1)
+
+  The self-tuning loop's routing mutations are now fully recorded on the immutable
+  `AuditLogger` chain (verifiable via `verify_audit_chain`): the demotion
+  (`tune.demote`, shipped in [#3325](https://github.com/nexus-substrate/nexus-agents/issues/3325)) AND its reversal (`tune.reversal`) when an
+  adjustment decays/expires (`cause: decay_expiry`) or is superseded by a fresh
+  demotion (`cause: superseded`). `TuneAdjustmentStore` gains a state-only
+  `onReversal` hook; `TuneStage` records the audit entry via the existing canonical
+  audit sink, gated identically to the demotion audit (enforce + audit-sink wired;
+  shadow mode records nothing). Best-effort/fail-safe at both the store and stage
+  layers so auditing never throws on the router hot-read path or gates a mutation.
+
+  Satisfies exit-criterion 1 (durable audit) of the tune-loop default-on bar
+  ([#3323](https://github.com/nexus-substrate/nexus-agents/issues/3323)); the other criteria remain open. No defaults changed.
+
+### Patch Changes
+
+- [#3454](https://github.com/nexus-substrate/nexus-agents/pull/3454) [`7463935`](https://github.com/nexus-substrate/nexus-agents/commit/74639353697df950afdbf41e5ee0fe0975f3d2a1) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - test(routing): full-chain shadow assertion for the self-tuning loop ([#3323](https://github.com/nexus-substrate/nexus-agents/issues/3323) criterion 2)
+
+  Strengthens the tune-loop e2e proof (the enforce-on producer→store→router
+  selection-change test already existed, [#3324](https://github.com/nexus-substrate/nexus-agents/issues/3324)): adds the shadow-mode producer-side
+  gate assertion — firing a `signal.swarm_unhealthy` through a SHADOW `TuneStage`
+  records the intended demotion (telemetry `intended++`) but does NOT apply it
+  (`applied=0`, `effectiveMultiplier=1.0`, routing/rank unchanged). Proves the
+  `NEXUS_TUNE_ENFORCE` gate sits exactly between record and apply. Satisfies
+  exit-criterion 2 of [#3323](https://github.com/nexus-substrate/nexus-agents/issues/3323).
+
+- [#3456](https://github.com/nexus-substrate/nexus-agents/pull/3456) [`80072fd`](https://github.com/nexus-substrate/nexus-agents/commit/80072fdf5689f06c47540ee83e8a0dbb7b6954e8) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - docs(tune): correct stale TuneStageOptions JSDoc (loop is default-ON) ([#3323](https://github.com/nexus-substrate/nexus-agents/issues/3323))
+
+  The `TuneStageOptions.enabled` JSDoc still said "When false (default), SHADOW
+  mode", but `startTuneStage` derives the default from `NEXUS_TUNE_ENFORCE` which
+  defaults to `true` (enforce) since v2.96 — production runs the self-tuning loop
+  default-ON. Corrected the comment so a maintainer isn't misled into thinking the
+  loop is shadow-by-default. (CONFIGURATION.md already documents the default-ON
+  behavior + opt-out accurately.)
+
 ## 2.109.4
 
 ### Patch Changes
