@@ -39,6 +39,13 @@ vi.mock('@ai-sdk/google', () => ({
   createGoogleGenerativeAI: vi.fn(() => (modelId: string) => ({ modelId })),
 }));
 
+// DNS-resolve-time SSRF guard (#3426): mock node:dns/promises so the
+// custom-openai resolve check is deterministic and never hits a real resolver.
+const dnsLookupMock = vi.hoisted(() => vi.fn());
+vi.mock('node:dns/promises', () => ({
+  lookup: dnsLookupMock,
+}));
+
 const TEST_REQUEST: CompletionRequest = {
   messages: [
     {
@@ -447,6 +454,120 @@ describe('SdkAdapter', () => {
       });
       const result = adapter.validateConfig();
       expect(result.ok).toBe(true);
+    });
+  });
+
+  describe('custom-openai DNS-resolve-time SSRF guard (#3426)', () => {
+    beforeEach(() => {
+      dnsLookupMock.mockReset();
+    });
+
+    it('rejects when the gateway hostname resolves to a private IP', async () => {
+      dnsLookupMock.mockResolvedValueOnce([{ address: '10.0.0.5', family: 4 }]);
+      const adapter = new SdkAdapter({
+        providerId: 'custom-openai',
+        modelId: 'gpt-4o',
+        apiKey: 'test-key',
+        baseUrl: 'https://gateway.evil.test/v1',
+      });
+
+      const result = await adapter.complete(TEST_REQUEST);
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error.message).toMatch(/SSRF/i);
+      expect(dnsLookupMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('does NOT cache a rejection — a retry re-runs the guard (#3426 QA)', async () => {
+      // First resolution is private (rejected); the flag must stay unset so a
+      // retry re-checks instead of silently skipping the guard.
+      dnsLookupMock.mockResolvedValueOnce([{ address: '10.0.0.5', family: 4 }]);
+      const { generateText } = await import('ai');
+      vi.mocked(generateText).mockResolvedValueOnce({
+        text: 'ok',
+        finishReason: 'stop',
+        usage: { inputTokens: 1, outputTokens: 1 },
+        response: { id: 'r', timestamp: new Date(), modelId: 'gpt-4o' },
+      } as unknown as Awaited<ReturnType<typeof generateText>>);
+
+      const adapter = new SdkAdapter({
+        providerId: 'custom-openai',
+        modelId: 'gpt-4o',
+        apiKey: 'test-key',
+        baseUrl: 'https://gateway.flaky.test/v1',
+      });
+
+      const rejected = await adapter.complete(TEST_REQUEST);
+      expect(rejected.ok).toBe(false);
+
+      // Retry: now resolves public → re-checked (lookup called again) and passes.
+      dnsLookupMock.mockResolvedValueOnce([{ address: '93.184.216.34', family: 4 }]);
+      const retried = await adapter.complete(TEST_REQUEST);
+      expect(retried.ok).toBe(true);
+      expect(dnsLookupMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('allows a gateway hostname that resolves to a public IP', async () => {
+      dnsLookupMock.mockResolvedValueOnce([{ address: '93.184.216.34', family: 4 }]);
+      const { generateText } = await import('ai');
+      vi.mocked(generateText).mockResolvedValueOnce({
+        text: 'ok',
+        finishReason: 'stop',
+        usage: { inputTokens: 1, outputTokens: 1 },
+        response: { id: 'r', timestamp: new Date(), modelId: 'gpt-4o' },
+      } as unknown as Awaited<ReturnType<typeof generateText>>);
+
+      const adapter = new SdkAdapter({
+        providerId: 'custom-openai',
+        modelId: 'gpt-4o',
+        apiKey: 'test-key',
+        baseUrl: 'https://gateway.example.com/v1',
+      });
+
+      const result = await adapter.complete(TEST_REQUEST);
+      expect(result.ok).toBe(true);
+    });
+
+    it('resolves once and caches across multiple requests', async () => {
+      dnsLookupMock.mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
+      const { generateText } = await import('ai');
+      vi.mocked(generateText).mockResolvedValue({
+        text: 'ok',
+        finishReason: 'stop',
+        usage: { inputTokens: 1, outputTokens: 1 },
+        response: { id: 'r', timestamp: new Date(), modelId: 'gpt-4o' },
+      } as unknown as Awaited<ReturnType<typeof generateText>>);
+
+      const adapter = new SdkAdapter({
+        providerId: 'custom-openai',
+        modelId: 'gpt-4o',
+        apiKey: 'test-key',
+        baseUrl: 'https://gateway.example.com/v1',
+      });
+
+      await adapter.complete(TEST_REQUEST);
+      await adapter.complete(TEST_REQUEST);
+      // Cached: hostname resolved exactly once despite two requests.
+      expect(dnsLookupMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('never resolves for non-custom providers', async () => {
+      const { generateText } = await import('ai');
+      vi.mocked(generateText).mockResolvedValueOnce({
+        text: 'ok',
+        finishReason: 'stop',
+        usage: { inputTokens: 1, outputTokens: 1 },
+        response: { id: 'r', timestamp: new Date(), modelId: 'claude-sonnet-4-6' },
+      } as unknown as Awaited<ReturnType<typeof generateText>>);
+
+      const adapter = new SdkAdapter({
+        providerId: 'anthropic',
+        modelId: 'claude-sonnet-4-6',
+        apiKey: 'test-key',
+      });
+
+      await adapter.complete(TEST_REQUEST);
+      expect(dnsLookupMock).not.toHaveBeenCalled();
     });
   });
 });

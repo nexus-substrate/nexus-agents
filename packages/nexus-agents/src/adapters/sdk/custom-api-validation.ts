@@ -14,8 +14,11 @@
  */
 
 import { isIPv4, isIPv6 } from 'node:net';
-import { ConfigError, ok, err, type Result } from '../../core/index.js';
+import { lookup as dnsLookup } from 'node:dns/promises';
+import { ConfigError, ok, err, createLogger, type Result } from '../../core/index.js';
 import { CUSTOM_API_ALLOW_PRIVATE_ENV } from './types.js';
+
+const logger = createLogger({ module: 'custom-api-validation' });
 
 /**
  * Why a given URL was rejected. Machine-readable so error messages can
@@ -99,24 +102,17 @@ function resolveAllowPrivateFromEnv(): boolean {
  *
  * Note: this is a string-level check. It does NOT perform DNS resolution,
  * so a public DNS name that secretly resolves to a private IP will pass.
- * Callers who need that level of defense should add a runtime connect
- * check and validate the socket peer address.
+ * For that level of defense, callers should additionally run
+ * {@link assertCustomApiHostResolvesPublic}, which performs a DNS lookup
+ * and classifies each resolved address with the same range tables below.
  */
 function classifyPrivateHost(hostname: string): RejectionDetail | null {
-  // URL.hostname wraps IPv6 literals in brackets (e.g. "[::1]"); strip them
-  // before the net-module checks, which expect bare forms.
-  const stripped =
-    hostname.startsWith('[') && hostname.endsWith(']') ? hostname.slice(1, -1) : hostname;
-  const normalized = stripped.toLowerCase();
+  const normalized = normalizeHost(hostname);
 
-  // Literal IPv4 loopback or private-range address
-  if (isIPv4(normalized)) {
-    return classifyIPv4(normalized);
-  }
-
-  // Literal IPv6 loopback (::1), link-local (fe80::/10), unique-local (fc00::/7)
-  if (isIPv6(normalized)) {
-    return classifyIPv6(normalized);
+  // Literal IP addresses — classify directly against the range tables.
+  const literal = classifyIpAddress(normalized);
+  if (literal !== 'not_an_ip') {
+    return literal;
   }
 
   // Hostname literals that resolve to loopback without needing DNS
@@ -131,6 +127,130 @@ function classifyPrivateHost(hostname: string): RejectionDetail | null {
     };
   }
 
+  return null;
+}
+
+/**
+ * Strips IPv6 bracket wrapping (URL.hostname yields "[::1]") and lowercases,
+ * giving the bare form the `node:net` checks expect. Shared by the sync and
+ * async guards so the normalization rule lives in one place.
+ */
+function normalizeHost(hostname: string): string {
+  const stripped =
+    hostname.startsWith('[') && hostname.endsWith(']') ? hostname.slice(1, -1) : hostname;
+  return stripped.toLowerCase();
+}
+
+/**
+ * Classifies a single (already normalized, bracket-stripped) address string.
+ * Returns:
+ *  - a {@link RejectionDetail} if it is a private/loopback/link-local/reserved IP,
+ *  - `null` if it is a public IP literal (safe),
+ *  - the sentinel `'not_an_ip'` if the string is not an IP literal at all.
+ *
+ * This is the shared per-address classifier reused by both the sync
+ * string-level guard ({@link classifyPrivateHost}) and the async
+ * DNS-resolve-time guard ({@link assertCustomApiHostResolvesPublic}), so the
+ * IPv4/IPv6 range tables live in exactly one place.
+ */
+function classifyIpAddress(normalized: string): RejectionDetail | null | 'not_an_ip' {
+  if (isIPv4(normalized)) {
+    return classifyIPv4(normalized);
+  }
+  if (isIPv6(normalized)) {
+    return classifyIPv6(normalized);
+  }
+  return 'not_an_ip';
+}
+
+/**
+ * DNS-resolve-time SSRF guard for the custom-openai gateway.
+ *
+ * The sync {@link validateCustomApiBaseUrl} only inspects the hostname as a
+ * string, so a PUBLIC DNS name that resolves to a PRIVATE/loopback/link-local
+ * IP (e.g. an attacker-controlled `gateway.evil.test` pointing at
+ * `169.254.169.254`) slips past it. This function closes that gap: it resolves
+ * the hostname and runs the EXISTING IP classification against every returned
+ * address, failing closed if ANY of them is private.
+ *
+ * Behaviour:
+ *  - `allowPrivate` (opt or env) → bypass, returns `ok` (matches the sync guard).
+ *  - hostname is already an IP literal → no DNS needed; the sync guard already
+ *    classified literals at construction, so return `ok`.
+ *  - otherwise `dns.lookup(hostname, { all: true })` and classify each address.
+ *    If ANY resolves private → `err(ConfigError)`.
+ *  - on a `dns.lookup` THROW (transient/NXDOMAIN/network error) → log debug and
+ *    return `ok`. Failing closed here is too aggressive: it would break legit
+ *    gateways on a flaky resolver, and this is additive defense-in-depth layered
+ *    on top of the sync string guard that already ran at construction. We only
+ *    REJECT on a SUCCESSFUL resolution to a private address.
+ *
+ * Residual risk (TOCTOU): this is RESOLVE-time, not socket-connect-time. A name
+ * that passes here could rebind to a private IP before the actual connect
+ * (DNS rebinding). A full fix needs a custom `fetch` `lookup` hook validating
+ * the peer address at the socket layer — out of scope for this LOW
+ * defense-in-depth pass (#3426).
+ */
+export async function assertCustomApiHostResolvesPublic(
+  hostname: string,
+  opts: { readonly allowPrivate?: boolean } = {}
+): Promise<Result<void, ConfigError>> {
+  const allowPrivate = opts.allowPrivate === true || resolveAllowPrivateFromEnv();
+  if (allowPrivate) {
+    return ok(undefined);
+  }
+
+  const normalized = normalizeHost(hostname);
+
+  // IP literals are already handled by the sync guard at construction; no DNS.
+  if (isIPv4(normalized) || isIPv6(normalized)) {
+    return ok(undefined);
+  }
+
+  // Only `address` is read; the resolver's `family` is intentionally NOT
+  // trusted — `classifyIpAddress` re-derives v4/v6 from the address string, so
+  // a mislabeled family in the lookup result cannot let a private IP slip past.
+  let addresses: ReadonlyArray<{ readonly address: string }>;
+  try {
+    addresses = await dnsLookup(hostname, { all: true });
+  } catch (error) {
+    // Fail OPEN: transient/NXDOMAIN/network errors must not break legit
+    // gateways. The sync string guard already ran; this is additive only.
+    logger.debug('custom-api SSRF resolve check: DNS lookup failed, skipping (fail-open)', {
+      hostname,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return ok(undefined);
+  }
+
+  const rejection = firstPrivateAddress(addresses);
+  if (rejection !== null) {
+    return err(
+      new ConfigError(
+        `Custom API base URL rejected (SSRF resolve guard, reason="${rejection.reason}"): ` +
+          `hostname "${hostname}" resolved to ${rejection.message}. ` +
+          `Set ${CUSTOM_API_ALLOW_PRIVATE_ENV}=1 to bypass if the gateway runs on a trusted internal host.`
+      )
+    );
+  }
+
+  return ok(undefined);
+}
+
+/**
+ * Returns the {@link RejectionDetail} for the first resolved address that
+ * classifies as private/loopback/link-local/reserved, or `null` if every
+ * address is public. Fail-closed: any single private hit trips the guard.
+ */
+function firstPrivateAddress(
+  addresses: ReadonlyArray<{ readonly address: string }>
+): RejectionDetail | null {
+  for (const { address } of addresses) {
+    const rejection = classifyIpAddress(address.toLowerCase());
+    if (rejection !== null && rejection !== 'not_an_ip') {
+      return rejection;
+    }
+  }
   return null;
 }
 

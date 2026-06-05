@@ -30,7 +30,10 @@ import { isRateLimitLikeError } from '../rate-limit-detector.js';
 import { sanitizeOutput } from '../../security/output-sanitizer.js';
 import type { SdkAdapterConfig, SdkProviderId } from './types.js';
 import { PROVIDER_ENV_KEYS, CUSTOM_API_BASE_URL_ENV } from './types.js';
-import { validateCustomApiBaseUrl } from './custom-api-validation.js';
+import {
+  validateCustomApiBaseUrl,
+  assertCustomApiHostResolvesPublic,
+} from './custom-api-validation.js';
 
 /** Minimal AI SDK model interface (duck-typed for optional dependency). */
 interface AiSdkModel {
@@ -231,6 +234,12 @@ export class SdkAdapter extends BaseAdapter {
   private readonly customBaseUrl: string | undefined;
   /** Inflight init promise for coalescing concurrent calls (Issue #1438). */
   private initPromise: Promise<void> | undefined;
+  /**
+   * Cached result of the DNS-resolve-time SSRF check for custom-openai
+   * (#3426). Resolved once on first init so we don't re-resolve the gateway
+   * hostname on every request. `undefined` until the check has run.
+   */
+  private resolveSsrfChecked = false;
 
   constructor(config: SdkAdapterConfig, logger?: ILogger) {
     const apiKey = resolveApiKey(config.providerId, config.apiKey);
@@ -276,6 +285,14 @@ export class SdkAdapter extends BaseAdapter {
       });
     }
 
+    // DNS-resolve-time SSRF guard for custom-openai gateways (#3426). The
+    // construction-time guard is string-level only; this resolves the gateway
+    // hostname and rejects if it points at a private/loopback/link-local IP.
+    // Run BEFORE any model state is set so a rejection leaves the adapter
+    // uninitialized — a retry re-runs the guard rather than skipping it via the
+    // `this.model !== undefined` short-circuit in ensureInitialized().
+    await this.ensureCustomHostResolvesPublic();
+
     // Dynamic import — AI SDK is an optional peer dependency
     const providerModule = await this.loadProvider(apiKey);
     this.model = providerModule.model;
@@ -283,6 +300,32 @@ export class SdkAdapter extends BaseAdapter {
     // AI SDK is an optional peer dependency — validate shape at runtime
     const aiModule = await import('ai');
     this.sdkFunctions = extractAiSdkFunctions(aiModule);
+  }
+
+  /**
+   * For custom-openai only: run the DNS-resolve-time SSRF check exactly once
+   * and throw if the gateway hostname resolves to a private address (#3426).
+   * Cached via `resolveSsrfChecked` so the hostname is not re-resolved on
+   * every request. No-op for non-custom providers (built-in endpoints are
+   * trusted) and when no custom base URL is configured.
+   */
+  private async ensureCustomHostResolvesPublic(): Promise<void> {
+    if (this.resolveSsrfChecked) return;
+    if (this.sdkProviderId !== 'custom-openai' || this.customBaseUrl === undefined) {
+      this.resolveSsrfChecked = true;
+      return;
+    }
+    const hostname = new URL(this.customBaseUrl).hostname;
+    const result = await assertCustomApiHostResolvesPublic(hostname);
+    if (!result.ok) {
+      // Do NOT cache a rejection (#3426 QA): leaving the flag false means a
+      // retry re-runs the guard rather than silently skipping it via the
+      // early-return above. The guard itself fails OPEN on transient resolver
+      // errors, so a flaky-DNS host still proceeds; only a confirmed private
+      // resolution throws here.
+      throw result.error;
+    }
+    this.resolveSsrfChecked = true;
   }
 
   /**
