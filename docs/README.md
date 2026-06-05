@@ -159,6 +159,7 @@ Detailed technical documentation:
 | Document                                                            | Description                                                                                                  |
 | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | [MCP_INTEGRATION.md](./guides/MCP_INTEGRATION.md)                   | MCP server configuration                                                                                     |
+| [COMPOSITION_PATTERNS.md](./guides/COMPOSITION_PATTERNS.md)         | Compose spec pipeline + GraphBuilder + consensus into custom pipelines                                       |
 | [WORKFLOW_TEMPLATES.md](./guides/WORKFLOW_TEMPLATES.md)             | Creating YAML workflows                                                                                      |
 | [CUSTOM_ENDPOINT_SETUP.md](./guides/CUSTOM_ENDPOINT_SETUP.md)       | Custom OpenAI-compatible gateway (direct SDK + OpenCode paths)                                               |
 | [CLOUD_PROVIDERS.md](./guides/CLOUD_PROVIDERS.md)                   | Bedrock/Vertex/Azure via OpenRouter / LiteLLM / custom-gateway                                               |
