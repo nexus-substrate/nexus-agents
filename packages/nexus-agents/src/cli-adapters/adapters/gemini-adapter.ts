@@ -30,6 +30,8 @@ import type {
 } from '../types.js';
 import { SubprocessCliAdapter, type CommandConfig } from '../subprocess-adapter.js';
 import { ResilientGeminiParser } from '../parsers/gemini-parser-resilient.js';
+import type { CliModelInfo } from '../types-capability.js';
+import { listModelsForCli } from '../../config/models-dev-by-vendor.js';
 import {
   getTimeoutForTask,
   estimateTaskComplexity,
@@ -120,6 +122,11 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
     } else {
       this.circuitBreaker = null;
     }
+  }
+
+  /** Key-free model enumeration via the models.dev snapshot (#3405). */
+  listModels(): Promise<readonly CliModelInfo[]> {
+    return Promise.resolve(listModelsForCli(this.name));
   }
 
   /**

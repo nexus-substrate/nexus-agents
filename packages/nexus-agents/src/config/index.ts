@@ -345,3 +345,10 @@ export {
   registerDefaultModelSources,
   type RegisterModelSourcesOptions,
 } from './register-model-sources.js';
+// (#3405) Key-free CLI model enumeration via the models.dev snapshot, by vendor.
+export {
+  listModelsByVendor,
+  listModelsForCli,
+  resetModelsDevByVendorCache,
+  CLI_TO_MODELSDEV_VENDOR,
+} from './models-dev-by-vendor.js';
