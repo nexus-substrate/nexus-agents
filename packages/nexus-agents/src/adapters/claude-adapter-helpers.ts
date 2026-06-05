@@ -11,9 +11,23 @@ import type {
   MessageParam,
   ContentBlock as AnthropicContentBlock,
 } from '@anthropic-ai/sdk/resources/messages';
-import type { ContentBlock, Message, ToolDefinition, StopReason } from '../core/index.js';
+import type {
+  ContentBlock,
+  Message,
+  ToolDefinition,
+  StopReason,
+  CompletionRequest,
+  ResponseFormat,
+} from '../core/index.js';
 import { ModelCapability } from '../core/index.js';
 import { getCliModelName, resolveCliAlias } from '../config/model-config-helpers.js';
+
+/**
+ * Name of the synthetic tool the adapter forces when a caller requests a
+ * structured `responseFormat` (#3433). Anthropic has no native JSON mode, so
+ * we model structured output as a forced `tool_use`.
+ */
+export const RESPOND_TOOL_NAME = 'respond';
 
 /**
  * Maps Anthropic stop reasons to our StopReason type.
@@ -113,6 +127,49 @@ export function mapTool(tool: ToolDefinition): Anthropic.Tool {
     description: tool.description,
     input_schema: tool.inputSchema as Anthropic.Tool.InputSchema,
   };
+}
+
+/**
+ * Whether this request asks the Claude adapter to produce structured output
+ * via a forced `respond` tool_use (#3433). True only when `responseFormat` is
+ * present and not the plain `text` form.
+ */
+export function forcesResponseTool(request: CompletionRequest): boolean {
+  return request.responseFormat !== undefined && request.responseFormat.type !== 'text';
+}
+
+/**
+ * Builds the synthetic `respond` tool for a non-text responseFormat (#3433).
+ * For `json_schema` the caller's schema becomes the tool `input_schema`; for
+ * `json_object` we use a permissive `{ type: 'object' }` schema.
+ */
+export function buildRespondTool(format: ResponseFormat | undefined): Anthropic.Tool {
+  const inputSchema: Record<string, unknown> =
+    format?.type === 'json_schema' ? format.schema : { type: 'object' };
+  return mapTool({
+    name: RESPOND_TOOL_NAME,
+    description:
+      'Return the structured response for this request. Call this tool exactly once with the full answer as its arguments.',
+    inputSchema,
+  });
+}
+
+/**
+ * Maps an Anthropic response body when a forced `respond` tool was requested
+ * (#3433). If the model emitted a `respond` tool_use block, its `.input` is
+ * surfaced as a single JSON `text` block so existing text/JSON parsers keep
+ * working unchanged. Otherwise falls back to the standard block mapping.
+ */
+export function mapResponseWithRespondTool(
+  blocks: readonly AnthropicContentBlock[]
+): ContentBlock[] {
+  const respondBlock = blocks.find(
+    (block) => block.type === 'tool_use' && block.name === RESPOND_TOOL_NAME
+  );
+  if (respondBlock?.type === 'tool_use') {
+    return [{ type: 'text', text: JSON.stringify(respondBlock.input) }];
+  }
+  return blocks.map(mapContentBlock);
 }
 
 /**

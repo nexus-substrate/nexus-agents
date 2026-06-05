@@ -402,6 +402,136 @@ describe('ClaudeAdapter', () => {
     });
   });
 
+  describe('responseFormat — forced tool_use (#3433)', () => {
+    const jsonSchema = {
+      type: 'object',
+      properties: { decision: { type: 'string' } },
+      required: ['decision'],
+    } as const;
+
+    it('forces a respond tool_use for json_schema responseFormat', async () => {
+      mockCreate.mockResolvedValueOnce({
+        content: [{ type: 'text', text: 'unused' }],
+        usage: { input_tokens: 5, output_tokens: 5 },
+        stop_reason: 'end_turn',
+        model: CLAUDE_MODELS.SONNET_4,
+      });
+
+      const adapter = new ClaudeAdapter(validConfig);
+      await adapter.complete({
+        messages: [{ role: 'user', content: 'Vote please' }],
+        responseFormat: { type: 'json_schema', schema: jsonSchema },
+      });
+
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tools: expect.arrayContaining([
+            expect.objectContaining({ name: 'respond', input_schema: jsonSchema }),
+          ]),
+          tool_choice: { type: 'tool', name: 'respond' },
+        })
+      );
+    });
+
+    it('uses a permissive object schema for json_object responseFormat', async () => {
+      mockCreate.mockResolvedValueOnce({
+        content: [{ type: 'text', text: 'unused' }],
+        usage: { input_tokens: 5, output_tokens: 5 },
+        stop_reason: 'end_turn',
+        model: CLAUDE_MODELS.SONNET_4,
+      });
+
+      const adapter = new ClaudeAdapter(validConfig);
+      await adapter.complete({
+        messages: [{ role: 'user', content: 'Give JSON' }],
+        responseFormat: { type: 'json_object' },
+      });
+
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tools: expect.arrayContaining([
+            expect.objectContaining({ name: 'respond', input_schema: { type: 'object' } }),
+          ]),
+          tool_choice: { type: 'tool', name: 'respond' },
+        })
+      );
+    });
+
+    it('surfaces the respond tool_use input as a JSON text block', async () => {
+      const input = { decision: 'approve', confidence: 0.9 };
+      mockCreate.mockResolvedValueOnce({
+        content: [{ type: 'tool_use', id: 't1', name: 'respond', input }],
+        usage: { input_tokens: 5, output_tokens: 5 },
+        stop_reason: 'tool_use',
+        model: CLAUDE_MODELS.SONNET_4,
+      });
+
+      const adapter = new ClaudeAdapter(validConfig);
+      const result = await adapter.complete({
+        messages: [{ role: 'user', content: 'Vote please' }],
+        responseFormat: { type: 'json_schema', schema: jsonSchema },
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.content).toEqual([{ type: 'text', text: JSON.stringify(input) }]);
+      }
+    });
+
+    it('merges the respond tool with caller-supplied tools', async () => {
+      mockCreate.mockResolvedValueOnce({
+        content: [{ type: 'text', text: 'unused' }],
+        usage: { input_tokens: 5, output_tokens: 5 },
+        stop_reason: 'end_turn',
+        model: CLAUDE_MODELS.SONNET_4,
+      });
+
+      const adapter = new ClaudeAdapter(validConfig);
+      await adapter.complete({
+        messages: [{ role: 'user', content: 'Vote please' }],
+        tools: [
+          {
+            name: 'get_weather',
+            description: 'Get weather',
+            inputSchema: { type: 'object', properties: {} },
+          },
+        ],
+        responseFormat: { type: 'json_schema', schema: jsonSchema },
+      });
+
+      const call = mockCreate.mock.calls[0]?.[0] as {
+        tools?: { name: string }[];
+        tool_choice?: unknown;
+      };
+      const names = (call.tools ?? []).map((t) => t.name);
+      expect(names).toContain('get_weather');
+      expect(names).toContain('respond');
+      expect(call.tool_choice).toEqual({ type: 'tool', name: 'respond' });
+    });
+
+    it('does not force tool_use when responseFormat.type is text', async () => {
+      mockCreate.mockResolvedValueOnce({
+        content: [{ type: 'text', text: 'plain' }],
+        usage: { input_tokens: 5, output_tokens: 5 },
+        stop_reason: 'end_turn',
+        model: CLAUDE_MODELS.SONNET_4,
+      });
+
+      const adapter = new ClaudeAdapter(validConfig);
+      await adapter.complete({
+        messages: [{ role: 'user', content: 'Hi' }],
+        responseFormat: { type: 'text' },
+      });
+
+      const call = mockCreate.mock.calls[0]?.[0] as {
+        tools?: unknown;
+        tool_choice?: unknown;
+      };
+      expect(call.tool_choice).toBeUndefined();
+      expect(call.tools).toBeUndefined();
+    });
+  });
+
   describe('stream', () => {
     it('should yield stream chunks', async () => {
       // Create an async generator that simulates streaming

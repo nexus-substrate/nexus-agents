@@ -124,6 +124,115 @@ export const VoteResponseSchema = z.object({
 
 export type VoteResponse = z.infer<typeof VoteResponseSchema>;
 
+/**
+ * Hand-authored JSON Schema mirroring {@link VoteResponseSchema} (#3433).
+ *
+ * Used as the `input_schema` for a forced Claude `tool_use` call so the
+ * ClaudeAdapter can honor `responseFormat: { type: 'json_schema' }` for votes.
+ * `zod-to-json-schema` is intentionally NOT a dependency — this object is the
+ * single source of truth for the JSON-Schema view of a vote response.
+ *
+ * Drift between this and `VoteResponseSchema` is caught by the contract test
+ * in `voter-response.test.ts` (every Zod key must appear here and vice-versa).
+ */
+export const VOTE_JSON_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['decision', 'reasoning', 'confidence'],
+  properties: {
+    decision: {
+      type: 'string',
+      enum: ['approve', 'reject', 'abstain'],
+      description: 'Your vote decision',
+    },
+    reasoning: {
+      type: 'string',
+      minLength: 10,
+      maxLength: 4000,
+      description: 'Explanation for your vote (10-4000 chars)',
+    },
+    confidence: {
+      type: 'number',
+      minimum: 0,
+      maximum: 1,
+      description: 'Confidence level 0-1',
+    },
+    conditions: {
+      type: 'array',
+      items: { type: 'string' },
+      description: 'Optional conditions for approval',
+    },
+    rejectionCategories: {
+      type: 'array',
+      items: {
+        type: 'string',
+        enum: [
+          'YAGNI',
+          'DRY_VIOLATION',
+          'OVER_ENGINEERING',
+          'SCOPE_CREEP',
+          'SECURITY_RISK',
+          'MISALIGNED',
+          'INSUFFICIENT_EVIDENCE',
+        ],
+      },
+      description: 'Rejection reason categories when decision is reject',
+    },
+    findings: {
+      type: 'array',
+      description: 'Structured findings (PR review only)',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['summary', 'location', 'severity', 'gate', 'claim'],
+        properties: {
+          summary: {
+            type: 'string',
+            minLength: 1,
+            maxLength: 500,
+            description: 'One-line summary of the issue',
+          },
+          location: {
+            type: 'string',
+            minLength: 1,
+            maxLength: 200,
+            description: 'path/file.ext:line',
+          },
+          severity: { type: 'string', enum: ['critical', 'high', 'medium', 'low'] },
+          gate: {
+            type: 'object',
+            additionalProperties: false,
+            required: [
+              'reread_cited_line',
+              'traced_call_path',
+              'named_assertion',
+              'ruled_out_language_non_issue',
+            ],
+            properties: {
+              reread_cited_line: { type: 'string', enum: ['passed', 'failed', 'skipped'] },
+              traced_call_path: { type: 'string', enum: ['passed', 'failed', 'skipped'] },
+              named_assertion: {
+                type: 'string',
+                description: 'Concrete failing assertion — substantive, not a rubber-stamp word',
+              },
+              ruled_out_language_non_issue: {
+                type: 'string',
+                enum: ['passed', 'failed', 'skipped'],
+              },
+            },
+          },
+          claim: {
+            type: 'string',
+            minLength: 1,
+            maxLength: 2000,
+            description: 'What is wrong and why it justifies blocking',
+          },
+        },
+      },
+    },
+  },
+};
+
 // ============================================================================
 // Vote Prompt Construction
 // ============================================================================
