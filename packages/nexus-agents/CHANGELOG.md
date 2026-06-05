@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 2.102.8
+
+### Patch Changes
+
+- [#3409](https://github.com/nexus-substrate/nexus-agents/pull/3409) [`d3c3481`](https://github.com/nexus-substrate/nexus-agents/commit/d3c3481d006073fa661fd2e83e2a459d80debb7d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Activate dynamic model discovery — Phase 1 ([#3404](https://github.com/nexus-substrate/nexus-agents/issues/3404), epic [#3403](https://github.com/nexus-substrate/nexus-agents/issues/3403)). The `AvailableModelsCache` + the CLI-level routing pre-filter already existed but the cache had **no sources registered**, so it was always empty and the pre-filter was inert. This adds a live **OpenRouter `/api/v1/models`** catalog source (`createOpenRouterModelsSource` — Zod-validated, size/timeout-bounded, fail-open) and a `registerDefaultModelSources()` helper that also wraps any adapter implementing `listModels()` (opencode + SDK adapters) as a CLI-named cache source. `createCompositeRouter` now attaches the populated global cache when dynamic discovery is enabled. Opt-in via `NEXUS_DYNAMIC_MODELS=true` (default OFF; behavior unchanged until set). Fail-open throughout: a failed probe yields `[]` and an empty cache leaves routing using all CLIs, so discovery can never wedge routing. The 429/5xx execution-time cooldown is tracked as a follow-up.
+
 ## 2.102.7
 
 ### Patch Changes
