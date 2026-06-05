@@ -18,6 +18,7 @@ const {
   mockRecordLearning,
   mockRecordError,
   mockEndSession,
+  mockEmit,
 } = vi.hoisted(() => ({
   mockExecuteExpert: vi.fn(),
   mockGetOutcomeSummaryText: vi.fn(),
@@ -29,6 +30,7 @@ const {
   mockRecordLearning: vi.fn().mockReturnValue({ ok: true, value: undefined }),
   mockRecordError: vi.fn().mockReturnValue({ ok: true, value: undefined }),
   mockEndSession: vi.fn().mockReturnValue({ ok: true, value: {} }),
+  mockEmit: vi.fn(),
 }));
 
 vi.mock('./expert-bridge.js', () => ({
@@ -67,7 +69,7 @@ vi.mock('../context/routing-memory.js', () => ({
 }));
 
 vi.mock('./event-bus.js', () => ({
-  getPipelineEventBus: () => ({ emit: vi.fn() }),
+  getPipelineEventBus: () => ({ emit: mockEmit }),
 }));
 
 vi.mock('./security-gate.js', () => ({
@@ -90,6 +92,7 @@ describe('createAgentStages — central workflow hub', () => {
     mockRecordLearning.mockReset().mockReturnValue({ ok: true, value: undefined });
     mockRecordError.mockReset().mockReturnValue({ ok: true, value: undefined });
     mockEndSession.mockReset().mockReturnValue({ ok: true, value: {} });
+    mockEmit.mockReset();
   });
 
   describe('research stage (#1712)', () => {
@@ -456,6 +459,75 @@ describe('createAgentStages — central workflow hub', () => {
       );
       expect((decomposeRecord![0] as { cli: string }).cli).toBe('codex');
       expect((implRecord![0] as { cli: string }).cli).toBe('claude');
+    });
+  });
+
+  describe('model.called emission (#3387)', () => {
+    /** Find the model.called event among all emitted pipeline events. */
+    function findModelCalled(): Record<string, unknown> | undefined {
+      return mockEmit.mock.calls
+        .map((c: unknown[]) => c[0] as Record<string, unknown>)
+        .find((e) => e['type'] === 'model.called');
+    }
+
+    it('emits model.called with real cli/model/token attribution after a successful call', async () => {
+      mockExecuteExpert.mockResolvedValue({
+        success: true,
+        text: 'Plan v1',
+        durationMs: 200,
+        expertType: 'architecture',
+        cli: 'gemini',
+        model: 'gemini-3-pro',
+        tokensIn: 120,
+        tokensOut: 80,
+      });
+
+      const stages = createAgentStages();
+      await stages.plan('build feature A', '');
+
+      const event = findModelCalled();
+      expect(event).toMatchObject({
+        type: 'model.called',
+        executionId: 'plan',
+        cli: 'gemini',
+        model: 'gemini-3-pro',
+        tokensIn: 120,
+        tokensOut: 80,
+        durationMs: 200,
+      });
+    });
+
+    it('skips emission when token usage is absent (no zeros)', async () => {
+      // CLI-subprocess path whose extractUsage() returned null: cli + model
+      // known, but no tokensIn/tokensOut → skip rather than emit a zero event.
+      mockExecuteExpert.mockResolvedValue({
+        success: true,
+        text: 'Plan v1',
+        durationMs: 200,
+        expertType: 'architecture',
+        cli: 'gemini',
+        model: 'gemini-3-pro',
+      });
+
+      const stages = createAgentStages();
+      await stages.plan('build feature A', '');
+
+      expect(findModelCalled()).toBeUndefined();
+    });
+
+    it('skips emission when the bridge failed before dispatch', async () => {
+      mockExecuteExpert.mockResolvedValue({
+        success: false,
+        text: '',
+        durationMs: 5,
+        expertType: 'architecture',
+        error: 'No adapters available',
+      });
+
+      const stages = createAgentStages();
+      await stages.plan('build feature A', '');
+
+      expect(findModelCalled()).toBeUndefined();
     });
   });
 });

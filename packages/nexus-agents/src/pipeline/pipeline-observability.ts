@@ -39,6 +39,21 @@ export interface StageFailedOptions {
   readonly error: string;
 }
 
+/** Options for emitting a model.called event (#3387). */
+export interface ModelCalledOptions {
+  readonly bus?: IEventBus | undefined;
+  readonly executionId: string;
+  /** CLI slot that executed (e.g. 'claude'). */
+  readonly cli: string;
+  /** Concrete model the adapter reported (e.g. 'claude-opus'). */
+  readonly model: string;
+  readonly tokensIn: number;
+  readonly tokensOut: number;
+  readonly durationMs: number;
+  readonly agentId?: string | undefined;
+  readonly role?: string | undefined;
+}
+
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -89,6 +104,30 @@ export function emitStageFailed(options: StageFailedOptions): void {
     executionId: options.executionId,
     stageId: options.stageId,
     error: options.error,
+  });
+}
+
+/**
+ * Emit a model.called event (#3387) — real per-model-call attribution for
+ * `query_trace` / trace-writer. Callers decide *whether* to emit (only after a
+ * successful call with a known cli/model and real token usage); this helper just
+ * constructs and publishes the typed event. Carries no prompt/response/env data
+ * — attribution metadata only.
+ */
+export function emitModelCalled(options: ModelCalledOptions): void {
+  const bus = resolveBus(options.bus);
+  if (bus === undefined) return;
+  bus.emit({
+    type: 'model.called',
+    timestamp: Date.now(),
+    executionId: options.executionId,
+    cli: options.cli,
+    model: options.model,
+    tokensIn: options.tokensIn,
+    tokensOut: options.tokensOut,
+    durationMs: options.durationMs,
+    ...(options.agentId !== undefined && { agentId: options.agentId }),
+    ...(options.role !== undefined && { role: options.role }),
   });
 }
 

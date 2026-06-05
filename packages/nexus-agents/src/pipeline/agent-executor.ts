@@ -20,7 +20,7 @@ import { createBudgetGuard, type BudgetGuard, type AgentBudgetConfig } from './b
 import type { BuiltInExpertType } from '../agents/experts/expert-config.js';
 import { getOutcomeStore, getOutcomeSummaryText } from '../orchestration/outcomes/outcome-store.js';
 import { detectTrend } from '../orchestration/outcomes/adaptive-thresholds.js';
-import { emitPipelineStageEvent } from './pipeline-observability.js';
+import { emitPipelineStageEvent, emitModelCalled } from './pipeline-observability.js';
 import type { CliNameLiteral } from '../config/model-capabilities-types.js';
 
 const logger = createLogger({ component: 'agent-executor' });
@@ -149,7 +149,8 @@ export interface AgentExecutorConfig {
 export async function runExpert(
   guard: BudgetGuard,
   expertType: BuiltInExpertType,
-  prompt: string
+  prompt: string,
+  executionId?: string
 ): Promise<ExpertBridgeResult> {
   if (guard.isExhausted()) {
     return {
@@ -162,7 +163,33 @@ export async function runExpert(
   }
   const result = await executeExpert(expertType, prompt);
   guard.record(result.tokensUsed);
+  maybeEmitModelCalled(executionId, result);
   return result;
+}
+
+/**
+ * Emit a `model.called` observability event (#3387) for a completed expert call
+ * — but only a *meaningful* one. We require, per the consensus refinements:
+ *  - a successful call (never a partial event on failure),
+ *  - an `executionId` to attribute it to (skip rather than emit an empty id),
+ *  - a known `cli` + `model`, and real token usage (`tokensIn`/`tokensOut`).
+ * When usage is absent (CLI-subprocess paths whose extractUsage returns null) we
+ * skip rather than emit zeros — same "skip, don't lie" rule as recordOutcome.
+ * This is purely additive: OutcomeStore stays the single outcome authority, so
+ * there is no double-counting.
+ */
+function maybeEmitModelCalled(executionId: string | undefined, result: ExpertBridgeResult): void {
+  if (!result.success || executionId === undefined) return;
+  if (result.cli === undefined || result.model === undefined) return;
+  if (result.tokensIn === undefined || result.tokensOut === undefined) return;
+  emitModelCalled({
+    executionId,
+    cli: result.cli,
+    model: result.model,
+    tokensIn: result.tokensIn,
+    tokensOut: result.tokensOut,
+    durationMs: result.durationMs,
+  });
 }
 
 // ============================================================================
@@ -403,12 +430,14 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
       const discover = await runExpert(
         guard,
         'research',
-        `Use research_discover to find papers and repos related to:\n\n${task}${memoryCtx}`
+        `Use research_discover to find papers and repos related to:\n\n${task}${memoryCtx}`,
+        'research'
       );
       const analyze = await runExpert(
         guard,
         'research',
-        `Use research_analyze focus=gaps to identify what is missing for:\n\n${task}`
+        `Use research_analyze focus=gaps to identify what is missing for:\n\n${task}`,
+        'research'
       );
       const combined = [discover.text, analyze.text].filter(Boolean).join('\n\n');
       const totalMs = discover.durationMs + analyze.durationMs;
@@ -447,7 +476,7 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
           ? `Revise plan.\n\nFeedback: ${feedback}\n\nTask: ${task}\n\n${contextBlock}`
           : `Create implementation plan for:\n\n${task}\n\n${contextBlock}`;
       await postProgress(config, 'Plan', feedback !== undefined ? 'Revising...' : 'Planning...');
-      const r = await runExpert(guard, 'architecture', prompt);
+      const r = await runExpert(guard, 'architecture', prompt, 'plan');
       emitStageEvent('plan', r.success ? 'completed' : 'failed', { durationMs: r.durationMs });
       recordOutcome({
         taskId: 'plan',
@@ -532,7 +561,8 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
       const r = await runExpert(
         guard,
         'pm',
-        `Decompose into tasks.\nReturn JSON: [{id,title,description,assignedTo}]\n\n${plan}`
+        `Decompose into tasks.\nReturn JSON: [{id,title,description,assignedTo}]\n\n${plan}`,
+        'decompose'
       );
       const tasks = parseTasksFromResponse(r.text, plan);
       emitStageEvent('decompose', 'completed', { durationMs: r.durationMs });
@@ -554,7 +584,8 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
       const r = await runExpert(
         guard,
         'code',
-        `Implement:\n\n${task.title}\n${task.description}${fb}`
+        `Implement:\n\n${task.title}\n${task.description}${fb}`,
+        task.id
       );
       emitStageEvent(`impl-${task.id}`, r.success ? 'completed' : 'failed', {
         durationMs: r.durationMs,
@@ -577,7 +608,8 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
       const r = await runExpert(
         guard,
         'qa',
-        `QA:\n\nTask: ${task.title}\n\nImpl:\n${implementation.slice(0, 3000)}\n\nVerdict: PASS/NEEDS_WORK/REJECT`
+        `QA:\n\nTask: ${task.title}\n\nImpl:\n${implementation.slice(0, 3000)}\n\nVerdict: PASS/NEEDS_WORK/REJECT`,
+        task.id
       );
       const review = parseQaFromResponse(r.text);
       emitStageEvent(`qa-${task.id}`, review.verdict === 'pass' ? 'completed' : 'failed', {
