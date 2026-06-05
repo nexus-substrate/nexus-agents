@@ -90,9 +90,10 @@ describe('Pipeline Integration — Task classification', () => {
 });
 
 describe('Pipeline Integration — Template registry', () => {
-  it('has 5 templates including general', () => {
-    expect(PIPELINE_TEMPLATES.size).toBe(5);
+  it('has 4 templates including general (research retired in #3488)', () => {
+    expect(PIPELINE_TEMPLATES.size).toBe(4);
     expect(listTemplateIds()).toContain('general');
+    expect(listTemplateIds()).not.toContain('research');
   });
 
   it('all templates have stage arrays', () => {

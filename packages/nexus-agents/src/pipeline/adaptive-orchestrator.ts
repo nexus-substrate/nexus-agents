@@ -375,9 +375,18 @@ export async function runAdaptiveOrchestrator(
 // Helpers
 // ============================================================================
 
-/** Resolve template by ID, falling back to dev. */
+/**
+ * Retired templates aliased to a surviving one (#3488). The `research` template
+ * was unrunnable and removed; research-classified tasks route to `general`
+ * (research → plan → vote → implement → qa → security) per the #3488 vote —
+ * an intentional alias, not an "unknown template" fallback.
+ */
+const RETIRED_TEMPLATE_ALIASES: Readonly<Record<string, string>> = { research: 'general' };
+
+/** Resolve template by ID (honoring retired-template aliases), falling back to dev. */
 function resolveTemplate(templateId: string): PipelineTemplate {
-  const template = getTemplate(templateId);
+  const resolvedId = RETIRED_TEMPLATE_ALIASES[templateId] ?? templateId;
+  const template = getTemplate(resolvedId);
   if (template !== undefined) return template;
 
   logger.warn('Unknown template, falling back to dev', { templateId });

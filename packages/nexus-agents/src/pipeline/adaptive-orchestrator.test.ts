@@ -173,10 +173,10 @@ describe('runAdaptiveOrchestrator', () => {
     expect(result.success).toBe(true);
   });
 
-  it('falls back to a runnable template when the chosen one needs unimplemented stages (#3487)', async () => {
-    // The `research` template references investigate/synthesize, which the dev
-    // registry does not implement. Instead of hard-failing with "Missing stage
-    // implementations", the orchestrator substitutes a satisfiable template.
+  it('routes the retired research template to general (#3488 alias)', async () => {
+    // The `research` template was retired (#3488: unrunnable). It's aliased to
+    // `general` (research → plan → vote → implement → qa → security), so a
+    // research task runs end-to-end instead of hard-failing.
     const stages = createDevStageRegistry(createMockStages());
 
     const result = await runAdaptiveOrchestrator('Survey the landscape', {
@@ -185,7 +185,21 @@ describe('runAdaptiveOrchestrator', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.templateId).not.toBe('research');
+    expect(result.templateId).toBe('general');
+  });
+
+  it('falls back to a runnable template when a template needs unimplemented stages (#3487)', async () => {
+    // Generic safety net: any template referencing stages the registry doesn't
+    // implement is swapped for a satisfiable one rather than hard-failing.
+    const stages = createDevStageRegistry(createMockStages());
+
+    // `audit` (analyze/scan/report) isn't implemented by the dev registry.
+    const result = await runAdaptiveOrchestrator('Review the security posture', {
+      stages,
+      templateId: 'audit',
+    });
+
+    expect(result.success).toBe(true);
     expect(['general', 'dev']).toContain(result.templateId);
   });
 });

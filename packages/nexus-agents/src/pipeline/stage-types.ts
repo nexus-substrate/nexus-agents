@@ -98,8 +98,6 @@ export const PIPELINE_STATE_KEYS = {
   QA_ITERATIONS: 'qaIterations',
   SECURITY_PASSED: 'securityPassed',
   FINDINGS: 'findings',
-  SYNTHESIS: 'synthesis',
-  DELIVERABLES: 'deliverables',
   PARSED_SPEC: 'parsedSpec',
   SCAFFOLD_OUTPUT: 'scaffoldOutput',
   COMPLETED: 'completed',

@@ -22,18 +22,6 @@ export const DEV_PIPELINE_TEMPLATE: PipelineTemplate = {
 };
 
 // ============================================================================
-// Research Pipeline Template
-// ============================================================================
-
-/** Research pipeline: decompose → investigate → synthesize → vote → scaffold. */
-export const RESEARCH_PIPELINE_TEMPLATE: PipelineTemplate = {
-  id: 'research',
-  name: 'Research Pipeline',
-  stages: ['decompose', 'investigate', 'synthesize', 'vote', 'scaffold'],
-  dryRunStopAfter: 'vote',
-};
-
-// ============================================================================
 // Audit Pipeline Template
 // ============================================================================
 
@@ -88,7 +76,12 @@ export const GENERAL_PIPELINE_TEMPLATE: PipelineTemplate = {
 /** All available pipeline templates. */
 export const PIPELINE_TEMPLATES: ReadonlyMap<string, PipelineTemplate> = new Map([
   ['dev', DEV_PIPELINE_TEMPLATE],
-  ['research', RESEARCH_PIPELINE_TEMPLATE],
+  // The `research` template (decompose → investigate → synthesize → vote →
+  // scaffold) was retired in #3488: `investigate`/`synthesize` had no stage
+  // implementation and the order was incoherent, so it could never run.
+  // Research-classified tasks fall back to `general`/`dev` (#3489), which
+  // already cover research → plan → vote. The complete-but-unwired
+  // `runResearchPipeline` subsystem (#1711) is a separate decision — see #3492.
   ['audit', AUDIT_PIPELINE_TEMPLATE],
   ['greenfield', GREENFIELD_PIPELINE_TEMPLATE],
   ['general', GENERAL_PIPELINE_TEMPLATE],
