@@ -1,5 +1,29 @@
 # nexus-agents
 
+## 2.110.1
+
+### Patch Changes
+
+- [#3458](https://github.com/nexus-substrate/nexus-agents/pull/3458) [`422c2b4`](https://github.com/nexus-substrate/nexus-agents/commit/422c2b4407272942f166d94f94a7e4ca123821f8) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - docs(agents): promote agnostic sections into the AGENTS.md superset ([#3446](https://github.com/nexus-substrate/nexus-agents/issues/3446) Phase 1)
+
+  First step of making AGENTS.md the canonical model-agnostic source (mechanism C —
+  generation). Promotes the 5 agnostic-but-CLAUDE-only sections (Default Working
+  Mode, Context Budget, Error-Handling Q Protocol, Self-Check Quality Gate,
+  Autonomous Operation) into AGENTS.md in its harness-neutral voice, and wraps its
+  agnostic body in `<!-- AGNOSTIC:BODY:START/END -->` markers so a later generator
+  can slice it into CLAUDE.md. Additive only — CLAUDE.md is unchanged (de-dup is a
+  later phase); the existing RULES_INDEX injection + count probes are unaffected.
+
+- [#3457](https://github.com/nexus-substrate/nexus-agents/pull/3457) [`b765468`](https://github.com/nexus-substrate/nexus-agents/commit/b765468d6f3db71d4fc7e053ef42687e942fe418) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(tune): audit routing reversals on TuneAdjustmentStore.clear() ([#3452](https://github.com/nexus-substrate/nexus-agents/issues/3452))
+
+  `clear()` dropped all active demotions — a routing-state restore — without
+  emitting `onReversal`, so a bulk clear left no `tune.reversal` audit entry. It now
+  emits a `cleared`-cause reversal for each active adjustment before dropping it, so
+  the "every routing mutation is on the immutable audit chain" invariant
+  ([#3323](https://github.com/nexus-substrate/nexus-agents/issues/3323) criterion 1) holds unconditionally, not just for decay/supersede. `clear()`
+  is currently test-only, so this is hardening against a future production reset
+  path rather than a live gap.
+
 ## 2.110.0
 
 ### Minor Changes
