@@ -1,5 +1,17 @@
 # nexus-agents
 
+## 2.115.1
+
+### Patch Changes
+
+- [#3479](https://github.com/nexus-substrate/nexus-agents/pull/3479) [`9d12375`](https://github.com/nexus-substrate/nexus-agents/commit/9d123754a88dd6475bafa799100dba91e4d5f9a6) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(pipeline): remove the dead `reinforcePlanBeliefs` no-op ([#3465](https://github.com/nexus-substrate/nexus-agents/issues/3465))
+
+  `reinforcePlanBeliefs` ([#1720](https://github.com/nexus-substrate/nexus-agents/issues/1720)) reinforced/weakened a `plan-approach:<task>` belief
+  that was never `retain`ed, so the call had been a silent no-op since it landed.
+  Removed it: the functional plan-learning channel is `HindsightRecord`s (written by
+  `applyPipelineHindsight`, read into plan/vote by [#3257](https://github.com/nexus-substrate/nexus-agents/issues/3257)), making the never-wired,
+  task-specific belief path redundant dead code. No behavior change.
+
 ## 2.115.0
 
 ### Minor Changes
