@@ -35,6 +35,8 @@ import { getOutcomeStore } from '../../orchestration/outcomes/outcome-store.js';
 import type { TaskOutcome } from '../../orchestration/outcomes/outcome-types.js';
 import { calculateFitnessScore, type FitnessAudit } from '../../governance/fitness-score.js';
 import { getPipelineEventBus } from '../../pipeline/event-bus.js';
+import type { VoteRejectedSignalEvent } from '../../pipeline/event-types.js';
+import { REJECTION_CATEGORIES } from '../../consensus/types-core.js';
 import { emitFitnessDeclinedSignal } from './improvement-review-signals.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 
@@ -89,7 +91,7 @@ export const ImprovementReviewInputSchema = z.object({
 
 export type ImprovementReviewInput = z.infer<typeof ImprovementReviewInputSchema>;
 
-export type SignalCategory = 'routing' | 'tech-debt' | 'bug' | 'security';
+export type SignalCategory = 'routing' | 'tech-debt' | 'bug' | 'security' | 'consensus';
 
 export interface ImprovementSignal {
   readonly category: SignalCategory;
@@ -186,6 +188,77 @@ export function detectCliPerformanceFloor(
         window: windowLabel,
         observedValue: rate,
         threshold: 0.6,
+      },
+    });
+  }
+  return signals;
+}
+
+/**
+ * Minimum number of rejected plans citing the same ADR-0016 rule before a
+ * recurring-rejection pattern is worth surfacing. Two is coincidence; three is
+ * a systemic planning gap (mirrors the DRY "third occurrence" rule).
+ */
+const MIN_REJECTION_PATTERN = 3;
+
+/**
+ * Detect recurring consensus-rejection patterns (#3259): a single ADR-0016
+ * rejection rule (`DRY_VIOLATION`, `OVER_ENGINEERING`, `SCOPE_CREEP`, …) cited
+ * across ≥{@link MIN_REJECTION_PATTERN} rejected plans in the window. The
+ * `signal.vote_rejected` events are produced by `consensus_vote` on rejection
+ * (consensus-vote-signals.ts) and buffered on the pipeline event bus; this
+ * detector closes the loop the system review flagged as missing — recurring
+ * rejection for the same reason means the planner keeps making the same class
+ * of mistake, which the next improvement cycle should name explicitly.
+ *
+ * Events with no `rejectionRules` (un-categorized rejections) contribute no
+ * pattern signal — there is nothing actionable to aggregate on.
+ */
+export function detectConsensusRejectionSignals(
+  events: readonly VoteRejectedSignalEvent[],
+  windowLabel: string
+): readonly ImprovementSignal[] {
+  if (events.length === 0) return [];
+
+  // Defense-in-depth allowlist: the only producer (consensus-vote-signals.ts)
+  // sources rules from the Zod-validated ADR-0016 enum, so a free-form/poisoned
+  // rule cannot reach here today. Re-validating against REJECTION_CATEGORIES
+  // makes that safety local — an unexpected rule string never reaches an issue
+  // title/body — instead of relying on cross-file inference (#3259 review).
+  const allowed = new Set<string>(REJECTION_CATEGORIES);
+  const byRule = new Map<string, number>();
+  for (const e of events) {
+    for (const rule of e.rejectionRules ?? []) {
+      if (!allowed.has(rule)) continue;
+      byRule.set(rule, (byRule.get(rule) ?? 0) + 1);
+    }
+  }
+
+  const signals: ImprovementSignal[] = [];
+  for (const [rule, count] of byRule) {
+    if (count < MIN_REJECTION_PATTERN) continue;
+    signals.push({
+      category: 'consensus',
+      signalKey: `consensus:rejection-pattern:${rule}`,
+      severity: count >= MIN_REJECTION_PATTERN * 2 ? 'warning' : 'info',
+      title: `consensus: ${String(count)} plans rejected for \`${rule}\` in ${windowLabel}`,
+      body: [
+        `Recurring consensus-rejection pattern in the ${windowLabel} window.`,
+        '',
+        `- Rejection rule: \`${rule}\` (ADR-0016 category)`,
+        `- Occurrences: ${String(count)} rejected plans`,
+        `- Threshold: ≥${String(MIN_REJECTION_PATTERN)} plans citing the same rule`,
+        '',
+        'The planner keeps producing plans that voters reject for the same reason. ' +
+          'Feed this back into plan generation (e.g. a planning guardrail or a ' +
+          'targeted prompt note) rather than rejecting plan-by-plan. Inspect the ' +
+          'rejected proposals via `query_trace` / the consensus audit chain.',
+      ].join('\n'),
+      evidence: {
+        samples: count,
+        window: windowLabel,
+        observedValue: count,
+        threshold: MIN_REJECTION_PATTERN,
       },
     });
   }
@@ -522,6 +595,28 @@ async function fileSignalsAsIssues(
 }
 
 /**
+ * Read `signal.vote_rejected` events from the pipeline bus's buffered history,
+ * narrowed to the lookback window. Returns `[]` if the bus is empty or every
+ * event predates the window. Fail-soft: never throws into the review run.
+ *
+ * The bus is a per-process module singleton (event-bus.ts), so this only sees
+ * rejections emitted by `consensus_vote` *in the same process* — i.e. a
+ * long-lived MCP server where both tools share the buffer. In separate
+ * CLI invocations the buffer starts empty and this correctly yields no signals
+ * (the loop degrades to "no consensus data" rather than misreporting).
+ */
+function readBufferedVoteRejections(
+  now: number,
+  lookbackDays: number
+): readonly VoteRejectedSignalEvent[] {
+  const cutoff = now - lookbackDays * DAY_MS;
+  return getPipelineEventBus()
+    .query({ type: 'signal.vote_rejected' })
+    .filter((e): e is VoteRejectedSignalEvent => e.type === 'signal.vote_rejected')
+    .filter((e) => e.timestamp >= cutoff);
+}
+
+/**
  * Context-free runner exposed for both the MCP handler and the
  * `nexus-agents improvement-review` CLI subcommand (#2444). Pure dependencies
  * — pass a logger and an OutcomeStore-query result if you want to inject test
@@ -547,10 +642,17 @@ export async function runImprovementReview(
       ? await loadSelfEvalSignals(selfEvalReportPath, windowLabel, logger)
       : [];
 
+  // Recurring consensus-rejection patterns (#3259). `consensus_vote` buffers a
+  // `signal.vote_rejected` event per rejected plan on the pipeline bus; read the
+  // buffered history (not a live subscription — this is a one-shot tool) and
+  // window-filter by event timestamp before aggregating.
+  const rejectionEvents = readBufferedVoteRejections(now, lookbackDays);
+
   const signals: ImprovementSignal[] = [
     ...detectCliPerformanceFloor(windowed, minSampleSize, windowLabel),
     ...detectFailureCategoryConcentration(windowed, windowLabel),
     ...detectFitnessSignals(audit, fitnessFloor),
+    ...detectConsensusRejectionSignals(rejectionEvents, windowLabel),
     ...selfEvalSignals,
   ];
   signals.sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]);
