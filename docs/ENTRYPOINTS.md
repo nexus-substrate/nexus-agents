@@ -1440,6 +1440,7 @@ mcp_tools:
 - **CLAUDE.md** - Quick Reference section links here
 - **README.md** - Installation links here for "full reference"
 - **ARCHITECTURE.md** - Interface Layer section links here
+- **[guides/COMPOSITION_PATTERNS.md](./guides/COMPOSITION_PATTERNS.md)** - Compose `execute_spec` / `GraphBuilder` / consensus into custom pipelines
 
 ---
 
