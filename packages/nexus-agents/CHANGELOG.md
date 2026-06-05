@@ -1,5 +1,29 @@
 # nexus-agents
 
+## 2.109.4
+
+### Patch Changes
+
+- [#3450](https://github.com/nexus-substrate/nexus-agents/pull/3450) [`53e70e8`](https://github.com/nexus-substrate/nexus-agents/commit/53e70e897410acd0b547488b6fac005977d30733) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - test(sdk): de-flake the "missing AI SDK export" cases ([#3449](https://github.com/nexus-substrate/nexus-agents/issues/3449))
+
+  The two `SdkAdapter` "missing generateObject/jsonSchema export" tests used
+  `vi.doMock('ai')` + `vi.resetModules()` to simulate a partial module, which leaked
+  module-registry state across the parallel suite and intermittently failed CI on
+  unrelated PRs. `extractAiSdkFunctions` is now exported and the cases are
+  unit-tested directly with hand-built partial module objects (table-driven via
+  `it.each`) — no global mock mutation, fully hermetic.
+
+- [#3448](https://github.com/nexus-substrate/nexus-agents/pull/3448) [`83f06a7`](https://github.com/nexus-substrate/nexus-agents/commit/83f06a79e832345086376213bb469fa0744568aa) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(docops): restore silently-broken tool-prerequisite coverage gate ([#3444](https://github.com/nexus-substrate/nexus-agents/issues/3444))
+
+  `checkToolPrerequisites` (the [#2652](https://github.com/nexus-substrate/nexus-agents/issues/2652) CI gate ensuring every non-read-only MCP tool
+  declares a deliberate prerequisite decision) read the wrong annotations file after
+  the [#3358](https://github.com/nexus-substrate/nexus-agents/issues/3358) move — `src/mcp/tool-annotations.ts` (a wrapper with no annotation
+  blocks) instead of `src/mcp/tools/tool-annotations.ts` — so its non-read-only set
+  was always empty and the gate could never fail. Point it at the real map; the gate
+  passes on current code (maps were maintained, only enforcement was broken). Two
+  gate-meta-tests with the same stale path are corrected so they actually exercise
+  the gate.
+
 ## 2.109.3
 
 ### Patch Changes
