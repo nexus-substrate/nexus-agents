@@ -12,7 +12,7 @@ import {
   CompositeRouterConfigSchema,
   CompositeRoutingError,
 } from './composite-router.js';
-import type { ICliAdapter, CliTask, CliName } from './types.js';
+import type { ICliAdapter, CliTask, CliName, RoutingArmId } from './types.js';
 import {
   AvailableModelsCache,
   getDefaultAvailableModelsCache,
@@ -323,6 +323,84 @@ describe('CompositeRouter', () => {
         stats.decisionsPerCli.claude + stats.decisionsPerCli.gemini + stats.decisionsPerCli.codex;
       expect(totalPerCli).toBe(3);
     });
+  });
+});
+
+describe('CompositeRouter distinct API routing arms (#3422)', () => {
+  /**
+   * Mock adapter for a routing arm. Its display `name` is always a CLI slot
+   * (api:anthropic's adapter displays as `claude`), matching ModelToCliAdapter;
+   * the DISTINCT arm id lives in the router's adapter-Map key, not here.
+   */
+  function createArmAdapter(): ICliAdapter {
+    return { ...createMockAdapter('claude'), name: 'claude' };
+  }
+
+  function pullCount(stats: ReturnType<CompositeRouter['getStats']>, arm: RoutingArmId): number {
+    return stats.banditStats.find((s) => s.name === arm)?.pullCount ?? 0;
+  }
+
+  it('records an api:* outcome on a DISTINCT bandit arm, leaving the CLI slot untouched', () => {
+    const adapters = new Map<RoutingArmId, ICliAdapter>([
+      ['claude', createArmAdapter()],
+      ['api:anthropic', createArmAdapter()],
+    ]);
+    const router = new CompositeRouter(adapters);
+    const task: CliTask = { content: 'Implement a feature' };
+
+    const before = router.getStats();
+    const claudeBefore = pullCount(before, 'claude');
+    const apiBefore = pullCount(before, 'api:anthropic');
+
+    // Both arms are registered distinctly in the bandit.
+    expect(before.banditStats.map((s) => s.name)).toEqual(
+      expect.arrayContaining(['claude', 'api:anthropic'])
+    );
+
+    router.recordOutcome('api:anthropic', task, 0.9);
+
+    const after = router.getStats();
+    // The api:* arm learned distinctly; the claude CLI arm is unaffected.
+    expect(pullCount(after, 'api:anthropic')).toBe(apiBefore + 1);
+    expect(pullCount(after, 'claude')).toBe(claudeBefore);
+  });
+
+  it('selects an api:* arm end-to-end and returns it as decision.cliName', async () => {
+    // A single registered arm forces the pipeline to select it — proving the
+    // api:* arm survives the full ranking/selection round-trip (TOPSIS ranking +
+    // LinUCB `armName`) as decision.cliName, not just direct recordOutcome.
+    const adapters = new Map<RoutingArmId, ICliAdapter>([['api:anthropic', createArmAdapter()]]);
+    const router = new CompositeRouter(adapters);
+
+    const result = await router.route({ content: 'Implement a feature' });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.cliName).toBe('api:anthropic');
+    }
+    // Stats still collapse to the display slot — no api:* key leaks in.
+    const stats = router.getStats();
+    expect(Object.keys(stats.decisionsPerCli)).not.toContain('api:anthropic');
+    expect(stats.decisionsPerCli.claude).toBe(1);
+  });
+
+  it('keeps decisionsPerCli slot-keyed (no api:* key leaks in)', async () => {
+    const adapters = new Map<RoutingArmId, ICliAdapter>([
+      ['claude', createArmAdapter()],
+      ['api:anthropic', createArmAdapter()],
+    ]);
+    const router = new CompositeRouter(adapters);
+    await router.route({ content: 'Test task' });
+
+    const stats = router.getStats();
+    expect(Object.keys(stats.decisionsPerCli)).not.toContain('api:anthropic');
+    // Exactly one decision recorded, attributed to a CLI slot.
+    const total =
+      stats.decisionsPerCli.claude +
+      stats.decisionsPerCli.gemini +
+      stats.decisionsPerCli.codex +
+      stats.decisionsPerCli.opencode;
+    expect(total).toBe(1);
   });
 });
 

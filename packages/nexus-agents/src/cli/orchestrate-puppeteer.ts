@@ -16,7 +16,8 @@ import {
   type PolicyParameters,
 } from '../agents/orchestration/index.js';
 import type { IAgent, Task as AgentTask } from '../core/types/agent.js';
-import type { CliName, ICliAdapter } from '../cli-adapters/index.js';
+import type { RoutingArmId, ICliAdapter } from '../cli-adapters/index.js';
+import { routingArmDisplaySlot } from '../cli-adapters/index.js';
 import type { OrchestrateOptions, PuppeteerOrchestrationResult } from './orchestrate-types.js';
 import { CliAdapterAgent } from './cli-adapter-agent.js';
 import { INTERNAL_TIMEOUTS } from '../config/timeouts.js';
@@ -62,10 +63,12 @@ export function savePolicyParameters(
 /**
  * Create agents from CLI adapters.
  */
-export function createAgentsFromAdapters(adapters: Map<CliName, ICliAdapter>): IAgent[] {
+export function createAgentsFromAdapters(adapters: Map<RoutingArmId, ICliAdapter>): IAgent[] {
   const agents: IAgent[] = [];
   for (const [name, adapter] of adapters) {
-    agents.push(new CliAdapterAgent(name, adapter));
+    // The puppeteer engine identifies agents by CLI slot; an api:* arm collapses
+    // to its display slot here (no distinct-arm learning in this path) (#3422).
+    agents.push(new CliAdapterAgent(routingArmDisplaySlot(name), adapter));
   }
   return agents;
 }
@@ -166,7 +169,7 @@ export function buildPuppeteerResult(
  */
 export async function executeWithPuppeteer(
   taskContent: string,
-  adapters: Map<CliName, ICliAdapter>,
+  adapters: Map<RoutingArmId, ICliAdapter>,
   options: OrchestrateOptions,
   logger: ILogger
 ): Promise<PuppeteerOrchestrationResult> {

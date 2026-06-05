@@ -16,9 +16,12 @@ import type { IModelAdapter, ILogger } from '../core/index.js';
 import { createLogger } from '../core/index.js';
 import { createCliAdapter, isCliAvailable, getAvailableClis } from '../cli-adapters/factory.js';
 import { createCliToModelAdapter } from '../cli-adapters/cli-to-model-adapter.js';
+import { createModelToCliAdapter } from '../cli-adapters/model-to-cli-adapter.js';
 import { createClaudeAdapter } from './claude-adapter.js';
 import { SdkAdapter } from './sdk/index.js';
-import type { CliName } from '../cli-adapters/types.js';
+import type { CliName, ICliAdapter, ApiVendor, ApiArmId } from '../cli-adapters/types.js';
+import { apiArmId } from '../cli-adapters/types.js';
+import { buildCliCapabilityProfiles } from '../config/model-config-helpers.js';
 import type { ICliDetectionCache } from '../cli-adapters/cli-detection-cache.js';
 import { createCliDetectionCache } from '../cli-adapters/cli-detection-cache.js';
 import { CUSTOM_API_DEFAULT_MODEL } from '../config/defaults.js';
@@ -237,6 +240,125 @@ function tryCustomOpenAiAdapter(logger: ILogger): AdapterSelection | null {
     name: 'custom-openai',
     reason: `Using custom OpenAI-compatible gateway at ${customBaseUrl} (model: ${customModelId})`,
   };
+}
+
+/**
+ * Resolve an API-vendor name to its `{vendor, slot}` pair (#3422). `slot` is the
+ * *attribution* CLI slot (`getModelInfo`, capability profile) — NOT the routing
+ * arm id, which stays distinct (`api:<vendor>`) so CLI and API telemetry never
+ * merge. Exhaustive switch (concrete literals, no index-access undefined).
+ */
+function resolveApiVendor(name: string): { vendor: ApiVendor; slot: CliName } | undefined {
+  switch (name) {
+    case 'anthropic':
+      return { vendor: 'anthropic', slot: 'claude' };
+    case 'openai':
+      return { vendor: 'openai', slot: 'codex' };
+    case 'google':
+      return { vendor: 'google', slot: 'gemini' };
+    case 'custom-openai':
+      return { vendor: 'custom-openai', slot: 'opencode' };
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Wrap an `AdapterSelection{source:'api'}` for insertion into a CompositeRouter's
+ * `Map<RoutingArmId, ICliAdapter>` (#3317 step 1 / #3422). Returns the distinct
+ * routing arm id (`api:<vendor>`) and an `ICliAdapter` view of the IModelAdapter
+ * (via {@link createModelToCliAdapter}). Returns null for CLI selections (the
+ * router already gets those from `createAllAdapters` under their slot key) or an
+ * unrecognized vendor.
+ */
+export function wrapApiSelectionForRouter(
+  selection: AdapterSelection
+): { armId: ApiArmId; adapter: ICliAdapter } | null {
+  if (selection.source !== 'api') return null;
+  const resolved = resolveApiVendor(selection.name);
+  if (resolved === undefined) return null;
+  const adapter = createModelToCliAdapter(selection.adapter, {
+    name: resolved.slot,
+    capabilities: buildCliCapabilityProfiles()[resolved.slot],
+  });
+  return { armId: apiArmId(resolved.vendor), adapter };
+}
+
+/**
+ * Build an `AdapterSelection{source:'api'}` for a single vendor when its key(s)
+ * are present, else null. Reuses the same adapter constructors as
+ * {@link tryApiAdapter} but is key-presence-only and never calls out (#3422).
+ */
+function buildApiSelectionForVendor(vendor: ApiVendor, logger: ILogger): AdapterSelection | null {
+  switch (vendor) {
+    case 'anthropic': {
+      const key = resolveApiKeyFromEnv(undefined, 'ANTHROPIC_API_KEY');
+      if (key === undefined) return null;
+      const modelId = getCliModelName(getDefaultModelForCli('claude'));
+      return {
+        adapter: createClaudeAdapter({ modelId, apiKey: key }),
+        source: 'api',
+        name: 'anthropic',
+        reason: `Using Anthropic API (native adapter, model: ${modelId})`,
+      };
+    }
+    case 'openai': {
+      const key = resolveApiKeyFromEnv(undefined, 'OPENAI_API_KEY');
+      if (key === undefined) return null;
+      const modelId = getCliModelName(getDefaultModelForCli('codex'));
+      return {
+        adapter: new SdkAdapter({ providerId: 'openai', modelId, apiKey: key }),
+        source: 'api',
+        name: 'openai',
+        reason: `Using OpenAI API via AI SDK (model: ${modelId})`,
+      };
+    }
+    case 'google': {
+      const key = resolveApiKeyFromEnv(undefined, 'GOOGLE_AI_API_KEY');
+      if (key === undefined) return null;
+      const modelId = getCliModelName(getDefaultModelForCli('gemini'));
+      return {
+        adapter: new SdkAdapter({ providerId: 'google', modelId, apiKey: key }),
+        source: 'api',
+        name: 'google',
+        reason: `Using Google AI API via AI SDK (model: ${modelId})`,
+      };
+    }
+    case 'custom-openai':
+      return tryCustomOpenAiAdapter(logger);
+    default: {
+      const exhaustive: never = vendor;
+      throw new Error(`Unknown API vendor: ${String(exhaustive)}`);
+    }
+  }
+}
+
+/** API vendors enumerated in routing-arm order (#3422). */
+const API_ROUTING_VENDORS: readonly ApiVendor[] = [
+  'anthropic',
+  'openai',
+  'google',
+  'custom-openai',
+];
+
+/**
+ * Enumerate the direct-API routing arms whose keys are present in the
+ * environment, each wrapped as an `ICliAdapter` keyed by its distinct
+ * `api:<vendor>` arm id (#3422). Key-presence-only and deterministic: a vendor
+ * is included iff its required env var(s) are set; keys are never validated by
+ * calling out. Used by `createAllAdapters` under `NEXUS_BILLING_MODE=api`.
+ */
+export function collectApiRoutingArms(
+  logger: ILogger = defaultLogger
+): Array<{ armId: ApiArmId; adapter: ICliAdapter }> {
+  const arms: Array<{ armId: ApiArmId; adapter: ICliAdapter }> = [];
+  for (const vendor of API_ROUTING_VENDORS) {
+    const selection = buildApiSelectionForVendor(vendor, logger);
+    if (selection === null) continue;
+    const wrapped = wrapApiSelectionForRouter(selection);
+    if (wrapped !== null) arms.push(wrapped);
+  }
+  return arms;
 }
 
 /** Try CLI first, then API as fallback. */

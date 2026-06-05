@@ -23,10 +23,10 @@ import type {
   CliTask,
   CliResponse,
   CliError,
-  CliName,
+  RoutingArmId,
   ICliAdapter,
 } from './types.js';
-import { DEFAULT_CAPABILITIES } from './types.js';
+import { DEFAULT_CAPABILITIES, routingArmDisplaySlot } from './types.js';
 import { estimateTokens, estimateCost } from './budget-utils.js';
 import { generateBudgetWarnings } from './budget-warnings.js';
 import { createBudgetExceededError } from './budget-errors.js';
@@ -60,14 +60,14 @@ const DEFAULT_OPTIONS: Required<BudgetRouterOptions> = {
  * Implements budget-aware routing with session tracking and enforcement.
  */
 export class BudgetRouter implements IBudgetRouter {
-  private readonly adapters: Map<CliName, ICliAdapter>;
+  private readonly adapters: Map<RoutingArmId, ICliAdapter>;
   private readonly options: Required<BudgetRouterOptions>;
   private tokensUsed = 0;
   private costSpentUsd = 0;
   private sessionStartedAt: Date;
   private resetTimer?: ReturnType<typeof setTimeout>;
 
-  constructor(adapters: Map<CliName, ICliAdapter>, options?: BudgetRouterOptions) {
+  constructor(adapters: Map<RoutingArmId, ICliAdapter>, options?: BudgetRouterOptions) {
     this.adapters = adapters;
     this.options = { ...DEFAULT_OPTIONS, ...options };
     this.sessionStartedAt = new Date(getTimeProvider().now());
@@ -323,16 +323,19 @@ export class BudgetRouter implements IBudgetRouter {
     budget: BudgetConstraint,
     estimatedTokens: number
   ): ICliAdapter | null {
-    // Sort adapters by cost efficiency (higher = cheaper)
+    // Sort adapters by cost efficiency (higher = cheaper). Capabilities and
+    // pricing are slot-level (DEFAULT_CAPABILITIES keyed by CliName); an api:*
+    // arm uses its display slot's profile (#3422).
     const sortedAdapters = [...this.adapters].sort((a, b) => {
-      const capA = DEFAULT_CAPABILITIES[a[0]];
-      const capB = DEFAULT_CAPABILITIES[b[0]];
+      const capA = DEFAULT_CAPABILITIES[routingArmDisplaySlot(a[0])];
+      const capB = DEFAULT_CAPABILITIES[routingArmDisplaySlot(b[0])];
       return capB.cost - capA.cost; // Prefer cheaper models
     });
 
     for (const [name, adapter] of sortedAdapters) {
-      const estimatedCost = estimateCost(name, estimatedTokens / 2, estimatedTokens / 2);
-      const caps = DEFAULT_CAPABILITIES[name];
+      const slot = routingArmDisplaySlot(name);
+      const estimatedCost = estimateCost(slot, estimatedTokens / 2, estimatedTokens / 2);
+      const caps = DEFAULT_CAPABILITIES[slot];
 
       // Check if adapter can handle the task within budget
       const withinTokenBudget =
@@ -393,7 +396,7 @@ export class BudgetRouter implements IBudgetRouter {
 
 /** Create a budget router instance. */
 export function createBudgetRouter(
-  adapters: Map<CliName, ICliAdapter>,
+  adapters: Map<RoutingArmId, ICliAdapter>,
   opts?: BudgetRouterOptions
 ): IBudgetRouter {
   return new BudgetRouter(adapters, opts);

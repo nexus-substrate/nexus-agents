@@ -37,7 +37,15 @@ import {
 } from '../core/index.js';
 
 import type { ILogger } from '../core/index.js';
-import type { ICliAdapter, CliName, CliTask, CliResponse, CliError } from './types.js';
+import type {
+  ICliAdapter,
+  CliName,
+  RoutingArmId,
+  CliTask,
+  CliResponse,
+  CliError,
+} from './types.js';
+import { routingArmDisplaySlot } from './types.js';
 import type {
   IOrchestrationObserver,
   RoutingDecision,
@@ -142,7 +150,8 @@ const DEFAULT_TOKEN_ESTIMATE = 1000;
 export interface ICompositeRouter {
   route(task: CliTask): Promise<Result<CompositeRoutingDecision, CompositeRoutingError>>;
   executeTask(task: CliTask): Promise<Result<CliResponse, CliError | CompositeRoutingError>>;
-  recordOutcome(cliName: CliName, task: CliTask, reward: number): void;
+  /** Record a bandit outcome for a distinct routing arm (CLI slot or api:* arm) (#3422). */
+  recordOutcome(cliName: RoutingArmId, task: CliTask, reward: number): void;
   recordPreference(
     query: string,
     strongPreferred: boolean,
@@ -158,15 +167,15 @@ export interface ICompositeRouter {
   getMetricsCollector(): IRoutingMetricsCollector | undefined;
   /** Get the orchestration observer (if configured) (Issue #587) */
   getOrchestrationObserver(): IOrchestrationObserver | undefined;
-  /** Get capacity status for all registered CLIs (Issue #807) */
-  getCapacityDashboard(): Promise<Map<CliName, import('./types.js').CapacityStatus>>;
+  /** Get capacity status for all registered routing arms (Issue #807, #3422) */
+  getCapacityDashboard(): Promise<Map<RoutingArmId, import('./types.js').CapacityStatus>>;
 }
 
 /** CompositeRouter implementation. */
 export class CompositeRouter implements ICompositeRouter {
   private readonly config: CompositeRouterConfig;
   private readonly logger: ILogger;
-  private readonly adapters: Map<CliName, ICliAdapter>;
+  private readonly adapters: Map<RoutingArmId, ICliAdapter>;
   private budgetRouter?: BudgetRouter;
   private zeroRouter?: ZeroRouter;
   private preferenceRouter?: PreferenceRouter;
@@ -201,7 +210,7 @@ export class CompositeRouter implements ICompositeRouter {
   private knnRoutingStage?: KnnRoutingStage;
   /** Strategy distiller instance (Issue #999) */
   private strategyDistiller?: StrategyDistiller;
-  private readonly cliNames: CliName[];
+  private readonly cliNames: RoutingArmId[];
   /**
    * (#2540 PR 7) Optional harness-driven availability gate. When set,
    * `executeRouting` filters the candidate CLI list to only those with
@@ -227,7 +236,7 @@ export class CompositeRouter implements ICompositeRouter {
   private lastTraceId?: string;
 
   constructor(
-    adapters: Map<CliName, ICliAdapter>,
+    adapters: Map<RoutingArmId, ICliAdapter>,
     config?: Partial<CompositeRouterConfigWithPreference>,
     logger?: ILogger
   ) {
@@ -281,7 +290,7 @@ export class CompositeRouter implements ICompositeRouter {
   }
 
   private initializeCoreRouters(
-    adapters: Map<CliName, ICliAdapter>,
+    adapters: Map<RoutingArmId, ICliAdapter>,
     preferenceConfig?: Partial<PreferenceRouterConfig>,
     zeroConfig?: Partial<ZeroRouterConfig>,
     latencyConfig?: Partial<LatencyTrackerConfig>
@@ -294,6 +303,10 @@ export class CompositeRouter implements ICompositeRouter {
       this.preferenceRouter = new PreferenceRouter(preferenceConfig);
     if (this.config.enableTopsisRanking) this.topsisRouter = new TopsisRouter();
     if (this.config.enableLinUCBSelection && this.cliNames.length > 0) {
+      // Arms include distinct api:* arms (#3422). Persisted outcomes/priors are
+      // slot-attributed, so api:* arms start cold and gain no warm-start credit
+      // by design — do NOT collapse the arm names here, that would destroy the
+      // CLI-vs-API distinct learning this migration exists to enable.
       this.linucbBandit = new LinUCBBandit(this.cliNames, { alpha: this.config.linucbAlpha });
       this.warmStartBandit();
     }
@@ -360,7 +373,9 @@ export class CompositeRouter implements ICompositeRouter {
       type: 'routing.decision',
       timestamp: getTimeProvider().now(),
       taskId: taskDescription.slice(0, 100),
-      selectedModel: decision.cliName,
+      // Trace attribution is slot-level; collapse the api:* arm (#3422) so this
+      // sink matches every other telemetry sink (the bandit keeps the arm).
+      selectedModel: routingArmDisplaySlot(decision.cliName),
       reasoning: decision.reason,
       decisionPath: decision.stagesExecuted,
     });
@@ -524,16 +539,22 @@ export class CompositeRouter implements ICompositeRouter {
     success: boolean,
     durationMs: number
   ): void {
+    // The bandit learns the DISTINCT arm; everything slot-level (quality
+    // reward, latency, routing memory, metrics) collapses to the display
+    // slot so CLI and API telemetry stay attributed to the vendor (#3422).
+    const arm = decision.cliName;
+    const slot = routingArmDisplaySlot(arm);
+
     // Record bandit outcome with quality-enriched reward (Issue #929)
-    const reward = computeQualityReward(decision.cliName, success, durationMs);
-    this.recordOutcome(decision.cliName, task, reward);
+    const reward = computeQualityReward(slot, success, durationMs);
+    this.recordOutcome(arm, task, reward);
 
     // Record difficulty outcome for ZeroRouter learning
     this.recordDifficultyOutcome(task, success);
 
     // Record latency for latency-based routing (Issue #361)
     if (this.latencyTracker !== undefined) {
-      this.latencyTracker.record(decision.cliName, durationMs, success);
+      this.latencyTracker.record(slot, durationMs, success);
     }
 
     // Record performance in routing memory for learned routing (Issue #463)
@@ -546,7 +567,7 @@ export class CompositeRouter implements ICompositeRouter {
         avgTokens: task.maxTokens ?? DEFAULT_TOKEN_ESTIMATE,
         observations: 1,
       };
-      this.routingMemory.storePreference(decision.cliName, taskType, performance);
+      this.routingMemory.storePreference(slot, taskType, performance);
     }
 
     // Record outcome to metrics collector (Issue #559)
@@ -554,7 +575,7 @@ export class CompositeRouter implements ICompositeRouter {
       recordOutcomeToMetrics(
         {
           traceId: this.lastTraceId,
-          cliName: decision.cliName,
+          cliName: slot,
           success,
           reward,
           qualityScore: success ? decision.confidence : FAILURE_QUALITY_SCORE,
@@ -565,7 +586,7 @@ export class CompositeRouter implements ICompositeRouter {
     }
 
     this.logger.debug('Auto-recorded feedback', {
-      cli: decision.cliName,
+      cli: arm,
       success,
       durationMs,
       reward,
@@ -641,13 +662,17 @@ export class CompositeRouter implements ICompositeRouter {
    *     so the router never wedges on a transient cache miss.
    *   - Errors in the cache do not block routing — log and fall through.
    */
-  private async getCandidateCliNames(): Promise<CliName[]> {
+  private async getCandidateCliNames(): Promise<RoutingArmId[]> {
     if (this.availableModelsCache === undefined) return this.cliNames;
     try {
       const all = await this.availableModelsCache.getAll();
       if (all.length === 0) return this.cliNames;
       const sourcesWithModels = new Set(all.map((m) => m.source));
-      const filtered = this.cliNames.filter((name) => sourcesWithModels.has(name));
+      // Availability is tracked per CLI source/slot; an api:* arm is gated on
+      // its display slot's source (#3422).
+      const filtered = this.cliNames.filter((name) =>
+        sourcesWithModels.has(routingArmDisplaySlot(name))
+      );
       // Guard against fully empty filter — never let the gate wedge routing.
       return filtered.length > 0 ? filtered : this.cliNames;
     } catch (e: unknown) {
@@ -717,9 +742,11 @@ export class CompositeRouter implements ICompositeRouter {
     // #3394: pick a concrete model from the difficulty tier (opt-in, default
     // OFF). Registry-only + synchronous — no probe on the hot path. Consumers
     // fall back to getDefaultModelForCli when absent.
+    // Concrete model resolution is registry/slot-level; collapse an api:* arm
+    // to its display slot for the lookup (#3422).
     const model =
       isRouteModelSelectionEnabled() && params.difficultyTier !== undefined
-        ? resolveModelForTier(params.selectedCli, params.difficultyTier)
+        ? resolveModelForTier(routingArmDisplaySlot(params.selectedCli), params.difficultyTier)
         : undefined;
 
     return ok({
@@ -743,9 +770,11 @@ export class CompositeRouter implements ICompositeRouter {
     });
   }
 
-  private updateStats(selectedCli: CliName, decisionTimeMs: number): void {
+  private updateStats(selectedCli: RoutingArmId, decisionTimeMs: number): void {
     this.totalDecisions++;
-    this.decisionsPerCli[selectedCli]++;
+    // decisionsPerCli stays slot-keyed; an api:* arm increments its display
+    // slot's counter so no api:* key ever enters the record (#3422).
+    this.decisionsPerCli[routingArmDisplaySlot(selectedCli)]++;
     this.totalDecisionTimeMs += decisionTimeMs;
   }
 
@@ -757,16 +786,18 @@ export class CompositeRouter implements ICompositeRouter {
       return;
     }
 
-    // Convert CompositeRoutingDecision to RoutingDecision for observer
+    // Convert CompositeRoutingDecision to RoutingDecision for observer.
+    // The observer is slot-level; collapse the distinct arm + alternatives to
+    // their display slots (#3422).
     const routingDecision: RoutingDecision = {
       timestamp: new Date().toISOString(),
       taskId: `task-${getRandomProvider().uuid()}`,
       taskDescription:
         task.content.length > 100 ? task.content.substring(0, 100) + '...' : task.content,
-      selectedCli: decision.cliName,
+      selectedCli: routingArmDisplaySlot(decision.cliName),
       confidence: decision.confidence,
       reason: decision.reason,
-      alternatives: decision.alternatives,
+      alternatives: decision.alternatives.map(routingArmDisplaySlot),
       stagesExecuted: decision.stagesExecuted,
       decisionTimeMs: decision.decisionTimeMs,
       withinBudget: decision.withinBudget,
@@ -790,7 +821,7 @@ export class CompositeRouter implements ICompositeRouter {
     return err(new CompositeRoutingError(msg, stage, error instanceof Error ? error : undefined));
   }
 
-  recordOutcome(cliName: CliName, task: CliTask, reward: number): void {
+  recordOutcome(cliName: RoutingArmId, task: CliTask, reward: number): void {
     recordBanditOutcome(cliName, task, reward, this.getOutcomeDependencies());
   }
 
@@ -848,7 +879,7 @@ export class CompositeRouter implements ICompositeRouter {
   /**
    * Get capacity status for all registered CLIs (Issue #807).
    */
-  async getCapacityDashboard(): Promise<Map<CliName, import('./types.js').CapacityStatus>> {
+  async getCapacityDashboard(): Promise<Map<RoutingArmId, import('./types.js').CapacityStatus>> {
     return fetchCapacityData(this.adapters);
   }
 
@@ -885,7 +916,7 @@ export class CompositeRouter implements ICompositeRouter {
 
 /** Creates a CompositeRouter instance. */
 export function createCompositeRouter(
-  adapters: Map<CliName, ICliAdapter>,
+  adapters: Map<RoutingArmId, ICliAdapter>,
   config?: Partial<CompositeRouterConfigWithPreference>,
   logger?: ILogger
 ): ICompositeRouter {

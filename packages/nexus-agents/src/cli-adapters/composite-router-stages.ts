@@ -15,7 +15,8 @@ import {
   getTuneAdjustmentStore,
 } from '../core/index.js';
 import { parseBoolEnv } from '../config/defaults-env.js';
-import type { CliName, CliTask } from './types.js';
+import type { CliName, RoutingArmId, CliTask } from './types.js';
+import { routingArmDisplaySlot } from './types.js';
 import type { BudgetRouter } from './budget-router.js';
 import type { TopsisRouter } from './topsis-router.js';
 import type { LinUCBBandit } from './linucb-bandit.js';
@@ -58,11 +59,34 @@ import { getOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 /** Module-level singleton — SharedTaskAnalyzer is stateless, no need to re-instantiate per call. */
 const sharedAnalyzer = createSharedTaskAnalyzer();
 
+/**
+ * Collapse a routing-arm candidate set to its unique display CLI slots (#3422).
+ * The RoutingContext-based stages (confidence-cascade, capability-match,
+ * quality-constraint, etc.) score/filter at slot granularity, so an api:* arm
+ * is represented by its vendor slot. De-duplicated to avoid double-scoring when
+ * both a CLI slot and its API arm are present.
+ */
+function armsToSlots(candidates: readonly RoutingArmId[]): CliName[] {
+  return [...new Set(candidates.map(routingArmDisplaySlot))];
+}
+
+/**
+ * Filter an arm candidate set down to those whose display slot survived a
+ * slot-level filter (#3422). Preserves the distinct api:* arms.
+ */
+function keepArmsForSlots(
+  candidates: readonly RoutingArmId[],
+  survivingSlots: readonly CliName[]
+): RoutingArmId[] {
+  const slotSet = new Set(survivingSlots);
+  return candidates.filter((arm) => slotSet.has(routingArmDisplaySlot(arm)));
+}
+
 /** Dependencies required for pipeline stage execution. */
 export interface StageDependencies {
   config: CompositeRouterConfigWithPreference;
   logger: ILogger;
-  cliNames: CliName[];
+  cliNames: RoutingArmId[];
   budgetRouter: BudgetRouter | undefined;
   zeroRouter: ZeroRouter | undefined;
   preferenceRouter: PreferenceRouter | undefined;
@@ -86,7 +110,7 @@ export interface StageDependencies {
 
 /** Result from budget stage including rejection tracking. */
 export interface BudgetStageResult {
-  candidates: CliName[];
+  candidates: RoutingArmId[];
   withinBudget: boolean | undefined;
   rejected: boolean;
 }
@@ -102,10 +126,13 @@ export function analyzeTaskProfile(task: CliTask, stagesExecuted: string[]): Tas
 /** Runs budget filtering stage. */
 export function runBudgetStage(
   task: CliTask,
-  candidates: CliName[],
+  candidates: RoutingArmId[],
   stagesExecuted: string[],
   deps: StageDependencies
-): Result<{ candidates: CliName[]; withinBudget: boolean | undefined }, CompositeRoutingError> {
+): Result<
+  { candidates: RoutingArmId[]; withinBudget: boolean | undefined },
+  CompositeRoutingError
+> {
   if (!deps.config.enableBudgetFilter || deps.budgetRouter === undefined) {
     return ok({ candidates, withinBudget: undefined });
   }
@@ -185,7 +212,7 @@ const DEFAULT_CASCADE_RESULT: ConfidenceCascadeStageResult = {
 /** Runs confidence cascade stage. (Issue #755, #1350) */
 export async function runConfidenceCascadeStage(
   task: CliTask,
-  candidates: CliName[],
+  candidates: RoutingArmId[],
   stagesExecuted: string[],
   deps: StageDependencies
 ): Promise<ConfidenceCascadeStageResult> {
@@ -193,7 +220,7 @@ export async function runConfidenceCascadeStage(
     return DEFAULT_CASCADE_RESULT;
   }
 
-  const ctx = createRoutingContext(task.content, candidates);
+  const ctx = createRoutingContext(task.content, armsToSlots(candidates));
   const result = await deps.confidenceCascadeStage.route(ctx);
   stagesExecuted.push('confidence-cascade');
 
@@ -232,7 +259,7 @@ const DEFAULT_CAPABILITY_RESULT: CapabilityMatchStageResult = {
 /** Runs capability match stage. (Issue #755, #1350) */
 export async function runCapabilityMatchStage(
   task: CliTask,
-  candidates: CliName[],
+  candidates: RoutingArmId[],
   stagesExecuted: string[],
   deps: StageDependencies
 ): Promise<CapabilityMatchStageResult> {
@@ -240,7 +267,7 @@ export async function runCapabilityMatchStage(
     return DEFAULT_CAPABILITY_RESULT;
   }
 
-  const ctx = createRoutingContext(task.content, candidates);
+  const ctx = createRoutingContext(task.content, armsToSlots(candidates));
   const result = await deps.capabilityMatchStage.route(ctx);
   stagesExecuted.push('capability-match');
 
@@ -264,14 +291,14 @@ export async function runCapabilityMatchStage(
 
 /** Quality constraint stage result. (Issue #755) */
 export interface QualityConstraintStageResult {
-  eligible: CliName[];
+  eligible: RoutingArmId[];
   filtered: Map<CliName, string>;
   usedFallback: boolean;
 }
 
 /** Runs quality constraint stage. (Issue #755, #1350) */
 export async function runQualityConstraintStage(
-  candidates: CliName[],
+  candidates: RoutingArmId[],
   stagesExecuted: string[],
   deps: StageDependencies
 ): Promise<QualityConstraintStageResult> {
@@ -279,7 +306,9 @@ export async function runQualityConstraintStage(
     return { eligible: candidates, filtered: new Map(), usedFallback: false };
   }
 
-  const ctx = createRoutingContext('', candidates);
+  // Quality constraints are slot-level; collapse to slots for the stage, then
+  // keep the arms whose slot survived (#3422).
+  const ctx = createRoutingContext('', armsToSlots(candidates));
   const result = await deps.qualityConstraintStage.route(ctx);
   stagesExecuted.push('quality-constraint');
 
@@ -298,8 +327,8 @@ export async function runQualityConstraintStage(
     usedFallback,
   });
 
-  // If all candidates filtered, fall back to original set
-  const eligible = remaining.length > 0 ? remaining : candidates;
+  // If all slots filtered, fall back to original set
+  const eligible = remaining.length > 0 ? keepArmsForSlots(candidates, remaining) : candidates;
   return { eligible, filtered, usedFallback: remaining.length === 0 || usedFallback };
 }
 
@@ -320,7 +349,7 @@ const DEFAULT_RESOURCE_RESULT: ResourceStrategyStageResult = {
 /** Runs resource strategy stage. (Issue #998, #1350) */
 export async function runResourceStrategyStage(
   task: CliTask,
-  candidates: CliName[],
+  candidates: RoutingArmId[],
   stagesExecuted: string[],
   deps: StageDependencies
 ): Promise<ResourceStrategyStageResult> {
@@ -328,7 +357,7 @@ export async function runResourceStrategyStage(
     return DEFAULT_RESOURCE_RESULT;
   }
 
-  const ctx = createRoutingContext(task.content, candidates);
+  const ctx = createRoutingContext(task.content, armsToSlots(candidates));
   const result = await deps.resourceStrategyStage.route(ctx);
   stagesExecuted.push('resource-strategy');
 
@@ -354,7 +383,7 @@ export interface DistilledRuleStageResult {
 /** Runs distilled rule stage. (Issue #999, #1350) */
 export async function runDistilledRuleStage(
   task: CliTask,
-  candidates: CliName[],
+  candidates: RoutingArmId[],
   stagesExecuted: string[],
   deps: StageDependencies
 ): Promise<DistilledRuleStageResult> {
@@ -362,7 +391,7 @@ export async function runDistilledRuleStage(
     return { scores: new Map(), rulesApplied: 0 };
   }
 
-  const ctx = createRoutingContext(task.content, candidates);
+  const ctx = createRoutingContext(task.content, armsToSlots(candidates));
   const result = await deps.distilledRuleStage.route(ctx);
   stagesExecuted.push('distilled-rule');
 
@@ -388,7 +417,7 @@ export interface KnnRoutingStageResult {
 /** Runs KNN experience-based routing stage. (arXiv:2505.12601) */
 export async function runKnnRoutingStage(
   task: CliTask,
-  candidates: CliName[],
+  candidates: RoutingArmId[],
   stagesExecuted: string[],
   deps: StageDependencies
 ): Promise<KnnRoutingStageResult> {
@@ -396,7 +425,7 @@ export async function runKnnRoutingStage(
     return { scores: new Map(), hasExperience: false };
   }
 
-  const ctx = createRoutingContext(task.content, candidates);
+  const ctx = createRoutingContext(task.content, armsToSlots(candidates));
   const result = await deps.knnRoutingStage.route(ctx);
   stagesExecuted.push('knn-routing');
 
@@ -416,7 +445,7 @@ export async function runKnnRoutingStage(
 /** Runs ZeroRouter difficulty estimation stage. */
 export function runZeroRouterStage(
   task: CliTask,
-  candidates: CliName[],
+  candidates: RoutingArmId[],
   stagesExecuted: string[],
   deps: StageDependencies
 ): ZeroRouterStageResult {
@@ -470,14 +499,14 @@ function getPerformanceDataForCategory(taskContent: string): Map<CliName, Perfor
  * When performance floor data is available, penalizes underperforming CLIs. (#1401) */
 export function runTopsisStage(
   taskProfile: TaskProfile,
-  candidates: CliName[],
+  candidates: RoutingArmId[],
   stagesExecuted: string[],
   deps: StageDependencies,
   options?: {
     stageScores?: ReadonlyMap<CliName, number>;
     performanceData?: ReadonlyMap<CliName, PerformanceFloorEntry>;
   }
-): { ranking: CliName[]; score: number | undefined } {
+): { ranking: RoutingArmId[]; score: number | undefined } {
   if (!deps.config.enableTopsisRanking || deps.topsisRouter === undefined) {
     return { ranking: candidates, score: undefined };
   }
@@ -495,17 +524,18 @@ export function runTopsisStage(
 /** Runs LinUCB bandit selection stage. */
 export function runLinUCBStage(
   taskProfile: TaskProfile,
-  topsisRanking: CliName[],
+  topsisRanking: RoutingArmId[],
   stagesExecuted: string[],
   deps: StageDependencies
-): { selectedCli: CliName | undefined; ucbScore: number | undefined } {
+): { selectedCli: RoutingArmId | undefined; ucbScore: number | undefined } {
   if (!deps.config.enableLinUCBSelection || deps.linucbBandit === undefined) {
     return { selectedCli: topsisRanking[0], ucbScore: undefined };
   }
   const banditContext = taskProfileToBanditContext(taskProfile);
   const selection = deps.linucbBandit.select(banditContext);
   stagesExecuted.push('linucb-selection');
-  const picked = selection.armName as CliName;
+  // armName is the routing arm id — a CLI slot or a distinct api:* arm (#3422).
+  const picked = selection.armName as RoutingArmId;
   // #3111: LinUCB.select() ranks over ALL registered arms, ignoring the
   // already-filtered candidate set. Constrain the pick to topsisRanking so a
   // fail-closed category override (e.g. security_review → [codex]) or a
@@ -521,7 +551,7 @@ export function runLinUCBStage(
 /** Runs preference routing stage. */
 export function runPreferenceStage(
   task: CliTask,
-  candidates: CliName[],
+  candidates: RoutingArmId[],
   stagesExecuted: string[],
   deps: StageDependencies
 ): PreferenceStageResult {
@@ -553,12 +583,12 @@ export function runPreferenceStage(
 /** Latency scoring stage result. (Issue #361) */
 export interface LatencyStageResult {
   latencyScore: number | undefined;
-  latencyAdjustedRanking: CliName[];
+  latencyAdjustedRanking: RoutingArmId[];
 }
 
 /** Runs latency scoring stage. (Issue #361) */
 export function runLatencyStage(
-  candidates: CliName[],
+  candidates: RoutingArmId[],
   stagesExecuted: string[],
   deps: StageDependencies
 ): LatencyStageResult {
@@ -566,17 +596,21 @@ export function runLatencyStage(
     return { latencyScore: undefined, latencyAdjustedRanking: candidates };
   }
 
-  const scores = deps.latencyTracker.getScores(candidates);
+  // Latency is tracked per slot; collapse arms and let an api:* arm sort by
+  // its display slot's latency score (#3422).
+  const scores = deps.latencyTracker.getScores(armsToSlots(candidates));
   stagesExecuted.push('latency-scoring');
+  const scoreOf = (arm: RoutingArmId): number =>
+    scores.find((s) => s.cli === routingArmDisplaySlot(arm))?.score ?? 0;
 
   // Sort candidates by latency score (higher is better/faster)
-  const sortedCandidates = [...candidates].sort((a, b) => {
-    const scoreA = scores.find((s) => s.cli === a)?.score ?? 0;
-    const scoreB = scores.find((s) => s.cli === b)?.score ?? 0;
-    return scoreB - scoreA;
-  });
+  const sortedCandidates = [...candidates].sort((a, b) => scoreOf(b) - scoreOf(a));
 
-  const topScore = scores.find((s) => s.cli === sortedCandidates[0])?.score;
+  const topArm = sortedCandidates[0];
+  const topScore =
+    topArm !== undefined
+      ? scores.find((s) => s.cli === routingArmDisplaySlot(topArm))?.score
+      : undefined;
 
   deps.logger.debug('Latency scoring applied', {
     scores: scores.map((s) => ({
@@ -602,7 +636,7 @@ export interface RoutingMemoryStageResult {
 /** Runs routing memory stage to get learned recommendation. (Issue #489) */
 export function runRoutingMemoryStage(
   task: CliTask,
-  candidates: CliName[],
+  candidates: RoutingArmId[],
   stagesExecuted: string[],
   deps: StageDependencies
 ): RoutingMemoryStageResult {
@@ -611,10 +645,12 @@ export function runRoutingMemoryStage(
   }
 
   const taskType = inferTaskTypeFromContent(task.content);
+  // Routing memory is a slot-level secondary learner; its recommendation is a
+  // CLI slot, matched against the candidates' display slots (#3422).
   const recommendation = deps.routingMemory.getRecommendation(taskType);
   stagesExecuted.push('routing-memory');
 
-  if (recommendation !== undefined && candidates.includes(recommendation)) {
+  if (recommendation !== undefined && armsToSlots(candidates).includes(recommendation)) {
     deps.logger.debug('Routing memory recommendation', {
       taskType,
       recommended: recommendation,
@@ -666,7 +702,7 @@ function mergeScoreMaps(
 /** Runs scoring stages (priorities 10-55) and returns intermediate results. */
 async function runScoringStages(
   task: CliTask,
-  candidates: CliName[],
+  candidates: RoutingArmId[],
   stagesExecuted: string[],
   deps: StageDependencies
 ): Promise<{
@@ -678,7 +714,7 @@ async function runScoringStages(
   distilledResult: DistilledRuleStageResult;
   prefResult: PreferenceStageResult;
   resourceResult: ResourceStrategyStageResult;
-  candidates: CliName[];
+  candidates: RoutingArmId[];
 }> {
   const cascadeResult = await runConfidenceCascadeStage(task, candidates, stagesExecuted, deps);
   const memoryResult = runRoutingMemoryStage(task, candidates, stagesExecuted, deps);
@@ -707,9 +743,10 @@ async function runScoringStages(
 function aggregateStageScores(
   scoring: Awaited<ReturnType<typeof runScoringStages>>,
   taskContent: string,
-  candidates: readonly CliName[]
+  candidates: readonly RoutingArmId[]
 ): Map<CliName, number> {
   const weatherScores = getWeatherBonusForTask(taskContent);
+  // Tune adjustments are slot-keyed; collapse arms to display slots (#3422).
   return mergeScoreMaps(
     scoring.cascadeResult.scores,
     scoring.capResult.scores,
@@ -717,7 +754,7 @@ function aggregateStageScores(
     scoring.distilledResult.scores,
     scoring.resourceResult.scores,
     weatherScores,
-    getTuneAdjustmentScores(candidates)
+    getTuneAdjustmentScores(armsToSlots([...candidates]))
   );
 }
 
@@ -768,12 +805,12 @@ function getWeatherBonusForTask(taskContent: string): Map<CliName, number> {
 
 /** Apply quality constraints and return filtered candidates or error (#1686). */
 async function applyQualityConstraints(
-  candidates: CliName[],
+  candidates: RoutingArmId[],
   stagesExecuted: string[],
   deps: StageDependencies
 ): Promise<
   Result<
-    { candidates: CliName[]; qualityResult: QualityConstraintStageResult },
+    { candidates: RoutingArmId[]; qualityResult: QualityConstraintStageResult },
     CompositeRoutingError
   >
 > {
@@ -808,16 +845,22 @@ async function applyQualityConstraints(
  */
 function applyCategoryOverride(
   task: CliTask,
-  candidates: CliName[],
+  candidates: RoutingArmId[],
   stagesExecuted: string[]
-): Result<CliName[], CompositeRoutingError> {
+): Result<RoutingArmId[], CompositeRoutingError> {
   const match = detectTaskCategory(task.content);
   if (match === null) return ok(candidates);
   const override = CATEGORY_CHAIN_OVERRIDES[match.category];
   if (override === undefined) return ok(candidates);
 
-  const candidateSet = new Set(candidates);
-  const filtered = override.filter((cli) => candidateSet.has(cli));
+  // Override chains are slot-level (#3422). Keep arms whose display slot is in
+  // the override chain, preserving the chain's slot order (an api:* arm follows
+  // its vendor slot's position).
+  const overrideSet = new Set(override);
+  const orderIndex = (arm: RoutingArmId): number => override.indexOf(routingArmDisplaySlot(arm));
+  const filtered = candidates
+    .filter((arm) => overrideSet.has(routingArmDisplaySlot(arm)))
+    .sort((a, b) => orderIndex(a) - orderIndex(b));
 
   if (filtered.length === 0) {
     if (isCategoryFailClosed(match.category)) {
@@ -844,16 +887,18 @@ function applyCategoryOverride(
 
 /** Override LinUCB selection if the chosen CLI is below performance floor (#1790). */
 function applyLinUCBFloorOverride(
-  linucbCli: CliName,
-  topsisRanking: CliName[],
+  linucbCli: RoutingArmId,
+  topsisRanking: RoutingArmId[],
   opts: {
     perfData?: ReadonlyMap<CliName, PerformanceFloorEntry> | undefined;
     taskType: string;
     stagesExecuted: string[];
   }
-): CliName {
+): RoutingArmId {
   if (opts.perfData === undefined) return linucbCli;
-  const cliPerf = opts.perfData.get(linucbCli);
+  // Performance-floor data is slot-keyed; an api:* arm is judged on its
+  // display slot's success rate (#3422).
+  const cliPerf = opts.perfData.get(routingArmDisplaySlot(linucbCli));
   if (cliPerf === undefined || cliPerf.sampleCount < 20 || cliPerf.successRate >= 0.5) {
     return linucbCli;
   }
@@ -869,10 +914,10 @@ export async function runPipeline(
   task: CliTask,
   taskProfile: TaskProfile,
   stagesExecuted: string[],
-  cliNames: CliName[],
+  cliNames: RoutingArmId[],
   deps: StageDependencies
 ): Promise<Result<PipelineResult, CompositeRoutingError>> {
-  let candidates: CliName[] = [...cliNames];
+  let candidates: RoutingArmId[] = [...cliNames];
   if (candidates.length === 0) {
     return err(new CompositeRoutingError('No CLI adapters available', 'initialization'));
   }
@@ -945,12 +990,12 @@ interface PipelineResultParams {
   qualityResult: QualityConstraintStageResult;
   zeroResult: ZeroRouterStageResult;
   prefResult: PreferenceStageResult;
-  topsisResult: { ranking: CliName[]; score: number | undefined };
+  topsisResult: { ranking: RoutingArmId[]; score: number | undefined };
   linucbResult: { ucbScore: number | undefined };
   latencyResult: LatencyStageResult;
   memoryResult: RoutingMemoryStageResult;
   withinBudget: boolean | undefined;
-  selectedCli: CliName;
+  selectedCli: RoutingArmId;
 }
 
 /** Assemble PipelineResult from stage outputs, including async stage scores. */
@@ -992,10 +1037,10 @@ function buildPipelineResult(p: PipelineResultParams): PipelineResult {
 
 /** Select CLI with optional memory influence. (Issue #489) */
 function selectWithMemoryInfluence(
-  linucbSelection: CliName,
+  linucbSelection: RoutingArmId,
   memoryResult: RoutingMemoryStageResult,
   deps: StageDependencies
-): CliName {
+): RoutingArmId {
   // If routing memory has a high-confidence recommendation, use it.
   // Threshold must exceed the default memoryConfidence (0.8) to prevent
   // routing memory from always overriding LinUCB learning. (#1171)

@@ -18,6 +18,7 @@ import { OutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 import { LinUCBBandit } from './linucb-bandit.js';
 import { computeQualityReward } from './composite-router-outcome.js';
 import type { ICliAdapter, CliName, CliTask } from './types.js';
+import { routingArmDisplaySlot } from './types.js';
 import type { BanditContext } from './budget-router-types.js';
 import type { TaskOutcome } from '../orchestration/outcomes/outcome-types.js';
 
@@ -129,7 +130,7 @@ describe('E2E Pipeline Integration', () => {
       expect(routeResult.ok).toBe(true);
 
       if (routeResult.ok) {
-        const adapter = adapters.get(routeResult.value.cliName);
+        const adapter = adapters.get(routingArmDisplaySlot(routeResult.value.cliName));
         expect(adapter).toBeDefined();
 
         const execResult = await adapter!.execute(task);
@@ -239,7 +240,8 @@ describe('E2E Pipeline Integration', () => {
       expect(routeResult.ok).toBe(true);
       if (!routeResult.ok) return;
 
-      const selectedCli = routeResult.value.cliName;
+      // CLI-only setup: the routed arm collapses to its CLI slot (#3422).
+      const selectedCli = routingArmDisplaySlot(routeResult.value.cliName);
 
       // Step 3: Execute
       const adapter = adapters.get(selectedCli);
@@ -284,7 +286,7 @@ describe('E2E Pipeline Integration', () => {
         if (!routeResult.ok) continue;
 
         // Reward the target CLI, penalize others
-        const selectedCli = routeResult.value.cliName;
+        const selectedCli = routingArmDisplaySlot(routeResult.value.cliName);
         const success = selectedCli === targetCli;
         const reward = computeQualityReward(selectedCli, success, success ? 300 : 5000);
         router.recordOutcome(selectedCli, task, reward);

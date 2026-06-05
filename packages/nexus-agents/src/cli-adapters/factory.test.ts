@@ -4,7 +4,7 @@
  * Verifies factory functions create correct adapter types.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { createCliAdapter, createAllAdapters } from './factory.js';
 import { ClaudeCliAdapter } from './adapters/claude-adapter.js';
 import { GeminiCliAdapter } from './adapters/gemini-adapter.js';
@@ -131,6 +131,49 @@ describe('createAllAdapters', () => {
     const adapters = createAllAdapters(undefined);
 
     expect(adapters.size).toBe(CLI_NAMES.length);
+  });
+
+  // #3422: direct-API adapters become distinct routing arms only in api
+  // billing mode with the vendor key present.
+  describe('API routing arms (#3422)', () => {
+    const prevBilling = process.env['NEXUS_BILLING_MODE'];
+    const prevKey = process.env['ANTHROPIC_API_KEY'];
+
+    afterEach(() => {
+      if (prevBilling === undefined) delete process.env['NEXUS_BILLING_MODE'];
+      else process.env['NEXUS_BILLING_MODE'] = prevBilling;
+      if (prevKey === undefined) delete process.env['ANTHROPIC_API_KEY'];
+      else process.env['ANTHROPIC_API_KEY'] = prevKey;
+    });
+
+    it('includes api:anthropic when NEXUS_BILLING_MODE=api and ANTHROPIC_API_KEY is set', () => {
+      process.env['NEXUS_BILLING_MODE'] = 'api';
+      process.env['ANTHROPIC_API_KEY'] = 'sk-test-key';
+
+      const adapters = createAllAdapters();
+      expect(adapters.has('api:anthropic')).toBe(true);
+      // CLI slots still present alongside the API arm.
+      for (const cli of CLI_NAMES) {
+        expect(adapters.has(cli)).toBe(true);
+      }
+    });
+
+    it('omits api:anthropic in default (plan) mode even with the key set', () => {
+      delete process.env['NEXUS_BILLING_MODE'];
+      process.env['ANTHROPIC_API_KEY'] = 'sk-test-key';
+
+      const adapters = createAllAdapters();
+      expect(adapters.has('api:anthropic')).toBe(false);
+      expect(adapters.size).toBe(CLI_NAMES.length);
+    });
+
+    it('omits api:anthropic in api mode when the key is absent', () => {
+      process.env['NEXUS_BILLING_MODE'] = 'api';
+      delete process.env['ANTHROPIC_API_KEY'];
+
+      const adapters = createAllAdapters();
+      expect(adapters.has('api:anthropic')).toBe(false);
+    });
   });
 });
 
