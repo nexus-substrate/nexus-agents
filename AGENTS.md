@@ -8,6 +8,8 @@ Standalone guidance for AI coding agents (OpenCode, Codex CLI, Cursor, Aider, Cl
 >
 > Claude Code users: the legacy entry point at [CLAUDE.md](./CLAUDE.md) is still authoritative for Claude-Code-specific integrations (auto-loaded rules, plugin marketplace). The content below is the harness-neutral subset.
 
+<!-- AGNOSTIC:BODY:START -->
+
 ## Prime directive
 
 ```
@@ -29,6 +31,48 @@ Non-negotiable across all building, reviewing, architecture work:
 - **YAGNI** — Implement only what's needed right now. No speculative abstractions, unused parameters, "just in case" code.
 - **DRY** — Every piece of knowledge must have a single, unambiguous, authoritative representation. Extract when you see the same logic in three places (two is a coincidence).
 - **Zero `any` policy** — ESLint enforces `@typescript-eslint/no-explicit-any: 'error'`. Use `unknown` + type guards or Zod at boundaries. See `.rules/typescript.md` for the full rule.
+
+## Default working mode
+
+For any **non-trivial** work — three or more steps, architecture, security-sensitive, cross-package, or anything you'd want an audit trail for — default to the full pipeline: **research → vote → plan → epic → child issues → implement**.
+
+1. **Research** — `research_discover` + `research_synthesize` (and/or web search and `grep`) to ground the approach in evidence.
+2. **Vote** — `consensus_vote` (`higher_order` for architecture/security, `simple_majority` for routine). Surface real alternatives — don't rubber-stamp.
+3. **Plan** — write the implementation plan only after the vote resolves. Name the files touched and the order.
+4. **Epic + child issues** — open a tracking epic via `gh issue create`, then 3–5 scoped child issues. Link both ways.
+5. **Implement** — start on the first child issue; update epic checkboxes as each lands.
+
+Skip the pipeline for trivial fixes (single-file bug fix, dep bump, typo, docs tweak), or when the user says "just do it" / "one-shot". Escape hatches: `no vote`, `no issues`, `dry-run`, `just implement`. When ambiguous, lean toward the pipeline and offer the one-shot.
+
+## Context budget
+
+Keep working context lean. Rough token targets per task type: Minimal ~800 / Standard ~2,500 / Research ~1,500 / Full ~6,000. Reference files by path instead of inlining them; summarize multi-step or multi-agent results down to 2–3 bullets before continuing; start a fresh conversation when switching to an unrelated task. If your harness supports delegating exploration to a sub-agent, prefer that over loading whole files into the main context.
+
+## Error handling
+
+**Q Protocol** before any uncertain action. State it explicitly:
+
+```
+DOING:   [action]
+EXPECT:  [outcome]
+IF YES:  [next step]
+IF NO:   [fallback]
+```
+
+After the action, close the loop: `RESULT … MATCHES yes/no … THEREFORE …`.
+
+**On failure:** (1) state what failed with the raw error, (2) state your theory of the cause, (3) propose ONE next action, (4) state the expected outcome, (5) wait for confirmation. Never silently retry, guess past a failure, or continue without addressing it.
+
+## Self-check quality gate
+
+Before completing ANY implementation task:
+
+- [ ] **TDD/YAGNI/DRY verified** — tests written first, no speculative code, no premature duplication-extraction (only at 3+ occurrences).
+- [ ] Names reflect intent; functions do ONE thing; errors handled with timeout/retry where applicable.
+- [ ] Tests cover happy path + edge cases + error cases. No unexplained literal values.
+- [ ] **Wiring complete** — new CLI commands/features registered in all dispatch points (validCommands, type unions, exports, router/switch cases, index barrels).
+- [ ] **Downstream tests updated** — if config values, scoring weights, or model data changed, all dependent assertions identified and updated before running tests.
+- [ ] Discoveries logged — bugs noticed outside scope captured as tracked issues per the Discovered-Issues protocol.
 
 ## Rules index
 
@@ -152,6 +196,16 @@ Does NOT apply to: findings that fail the Discovered-Issues 4-point gate; specul
 
 Issue shape: title says what; body explains why it was identified, what would change, and the trigger condition that should unblock pickup. Memory notes can mirror but the issue is canonical.
 
+## Autonomous operation
+
+When the user gives a standing directive ("run autonomously", "keep working", "work on the backlog", "multi-day OK") or invokes a recurring-loop command, the full rules in [`.rules/autonomous.md`](./.rules/autonomous.md) apply. Key anchors:
+
+- **Never pause to ask "what's next" while the backlog is non-empty.** Finishing a task is not a stop condition.
+- **Work the backlog top-down:** CI red / security alerts → open epics → open bugs → open PRs → CodeQL/Scorecard → stale issues → research queue.
+- **Tie-break via `consensus_vote`, not a user ask.** The vote result is the decision.
+- **Hard stops only for:** cost-gated work, destructive operations beyond the authorized blast radius, blocked-on-external with no other work, a CI failure needing a human design decision, or the same error three or more times (a genuine wedge).
+- **End-of-turn protocol:** close with `Done this turn: …` / `Up next: …`. No question marks.
+
 ## Release cycle
 
 Releases are changesets-driven (`.github/workflows/release.yml`). Three rules keep the cycle from drifting — the npm/repo version skew on 2026-05-14 came from breaking them:
@@ -195,3 +249,5 @@ Overlapping triggers use the strictest threshold (`unanimous > supermajority > m
 - Architecture: [docs/architecture/README.md](./docs/architecture/README.md)
 - Harness wiring snippets: [docs/guides/HARNESS_COMPATIBILITY.md](./docs/guides/HARNESS_COMPATIBILITY.md)
 - Contributing: [docs/development/CONTRIBUTION_GUIDE.md](./docs/development/CONTRIBUTION_GUIDE.md)
+
+<!-- AGNOSTIC:BODY:END -->
