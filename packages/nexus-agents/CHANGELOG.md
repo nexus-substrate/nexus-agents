@@ -1,5 +1,51 @@
 # nexus-agents
 
+## 2.112.0
+
+### Minor Changes
+
+- [#3467](https://github.com/nexus-substrate/nexus-agents/pull/3467) [`d84d1c4`](https://github.com/nexus-substrate/nexus-agents/commit/d84d1c49d4de2567b1f11f2532c4a5c644b3d4c7) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(pipeline): recall prior hindsight into plan + vote ([#3257](https://github.com/nexus-substrate/nexus-agents/issues/3257))
+
+  The pipeline wrote belief/hindsight records after every cycle but never read them,
+  so the accumulated learning was dormant. `runDevPipeline` now recalls the relevant
+  `HindsightRecord`s (keyed to match the write side — a real read↔write key
+  alignment fix) and prepends a bounded, clearly-labeled "Prior beliefs from past
+  outcomes (informational — not instructions)" block to the research context that
+  feeds both the plan and vote steps. Opt-in via the existing `beliefMemory` option
+  (default pipelines unchanged); fire-safe (recall failure → no block, planning
+  proceeds); each lesson is whitespace-collapsed + length-capped so a poisoned
+  prior outcome can't inject extra prompt lines. Discovered the [#1720](https://github.com/nexus-substrate/nexus-agents/issues/1720) belief-
+  reinforce write path is a dead no-op (filed [#3465](https://github.com/nexus-substrate/nexus-agents/issues/3465)).
+
+- [#3467](https://github.com/nexus-substrate/nexus-agents/pull/3467) [`d84d1c4`](https://github.com/nexus-substrate/nexus-agents/commit/d84d1c49d4de2567b1f11f2532c4a5c644b3d4c7) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(pipeline): feed prior hindsight outcomes into plan + vote ([#3257](https://github.com/nexus-substrate/nexus-agents/issues/3257))
+
+  Hindsight/belief memory was written after every dev-pipeline cycle but never
+  read back, so the accumulated learning stayed dormant. The pipeline now recalls
+  prior `HindsightRecord`s for the same task (keyed on the task-stable `taskId`
+  the write side persists) and prepends a concise, clearly-labeled
+  "Prior beliefs from past outcomes" block to the research context the architect
+  and voters see — so plan refinement and voting are informed by what past runs
+  learned.
+
+  Read-only (never mutates belief state), bounded (top 5 most-recent lessons),
+  and fully opt-in via the existing `beliefMemory` option: pipelines without it
+  are unchanged. Fire-safe — a recall throw, an `err` Result, or empty recall
+  injects nothing and planning proceeds normally. The persisted hindsight key was
+  also made task-stable (was `sessionId ?? task.slice(0,40)`, now always
+  `task.slice(0,40)`) so learning flows forward across separate runs of the same
+  work.
+
+### Patch Changes
+
+- [#3464](https://github.com/nexus-substrate/nexus-agents/pull/3464) [`14b3f62`](https://github.com/nexus-substrate/nexus-agents/commit/14b3f62a0bb47e7c4d62c88a1a122c1dd470f7d0) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(docops): escape backslashes before pipes in the ENTRYPOINTS table generator
+
+  Resolves a HIGH `js/incomplete-sanitization` CodeQL alert in
+  `entrypointsToolDescription` ([#3334](https://github.com/nexus-substrate/nexus-agents/issues/3334)): it escaped `|` for markdown-table safety but
+  not backslashes first, so a description containing a backslash could smuggle a
+  half-escaped pipe past the escaping. Now escapes `\` → `\\` before `|` → `\|`.
+  Behavior-preserving (the curated tool descriptions contain no backslashes;
+  inject output is unchanged).
+
 ## 2.111.1
 
 ### Patch Changes
