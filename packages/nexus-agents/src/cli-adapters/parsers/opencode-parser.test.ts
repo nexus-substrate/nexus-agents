@@ -588,6 +588,28 @@ describe('OpenCodeResponseParser', () => {
       expect(result?.sessionId).toBe('ses_123');
     });
 
+    it('extractErrorMessage surfaces an error-only 401 so it can be classified (#3485)', () => {
+      // The reproduction: an upstream 401 produces an error-only NDJSON stream.
+      // extractResponse returns null (no content), but extractErrorMessage now
+      // exposes the message so the adapter classifies NOT_AUTHENTICATED instead
+      // of PARSE_ERROR.
+      const raw = createNdjson({
+        type: 'error',
+        sessionID: 'ses_x',
+        error: {
+          name: 'APIError',
+          data: { message: 'Unauthorized: {"detail":"Not authenticated"}', statusCode: 401 },
+        },
+      });
+      expect(parser.extractResponse(raw)).toBeNull();
+      expect(parser.extractErrorMessage(raw)).toContain('Unauthorized');
+    });
+
+    it('extractErrorMessage returns null for a normal text stream', () => {
+      const raw = createNdjson({ type: 'text', text: 'hello' });
+      expect(parser.extractErrorMessage(raw)).toBeNull();
+    });
+
     it('should expose error name in errorMessage when only name is set (#2821)', () => {
       const raw = createNdjson({
         type: 'error',

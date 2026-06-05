@@ -203,6 +203,18 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
   }
 
   /**
+   * Surfaces the error message from an error-only NDJSON stream (a
+   * `{"type":"error",...}` event with no text content). The subprocess adapter
+   * consumes this when {@link extractResponse} returns `null`, so an upstream
+   * 401 / rate-limit is classified by its message (NOT_AUTHENTICATED /
+   * RATE_LIMITED with a remediation hint) instead of falling through to a
+   * generic PARSE_ERROR.
+   */
+  extractErrorMessage(raw: string): string | null {
+    return this.parse(raw)?.errorMessage ?? null;
+  }
+
+  /**
    * Extracts token usage from response.
    */
   extractUsage(raw: string): TokenUsage | null {

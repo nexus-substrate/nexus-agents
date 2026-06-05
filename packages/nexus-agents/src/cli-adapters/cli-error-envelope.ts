@@ -19,6 +19,7 @@
  */
 
 import type { CliErrorCode, CliName } from './types.js';
+import { isRateLimitText } from '../adapters/rate-limit-detector.js';
 
 /**
  * Result of unwrapping a CLI's structured error envelope. `null` when the
@@ -136,6 +137,29 @@ export function authRemediation(message: string, cliName: string): string | null
   const cli = resolveCliName(cliName);
   if (cli === null) return null;
   return `Re-authenticate: run \`${LOGIN_HINTS[cli]}\` (the ${cli} CLI's stored OAuth token is stale).`;
+}
+
+/**
+ * Classify an error message a CLI's response parser already extracted from an
+ * error-only stream (e.g. OpenCode's NDJSON `{"type":"error",...}` event,
+ * surfaced via `ICliResponseParser.extractErrorMessage`). Unlike
+ * {@link parseCliErrorEnvelope} this takes the *already-unwrapped* message — the
+ * parser did the format-specific extraction — and only classifies it, mirroring
+ * the recovery order in `subprocess-adapter.handleUnparseableOutput`:
+ * rate-limit → auth → generic execution error. `cliName` may be prefixed
+ * (`cli-opencode`) — resolved internally for the remediation hint.
+ */
+export function classifyExtractedError(message: string, cliName: string): ParsedCliError {
+  const trimmed = message.trim();
+  if (isRateLimitText(trimmed)) {
+    return { message: trimmed, code: 'RATE_LIMITED' };
+  }
+  const { code, auth } = classifyMessage(trimmed);
+  if (auth) {
+    const hint = authRemediation(trimmed, cliName);
+    return hint !== null ? { message: trimmed, code, hint } : { message: trimmed, code };
+  }
+  return { message: trimmed, code };
 }
 
 /**
