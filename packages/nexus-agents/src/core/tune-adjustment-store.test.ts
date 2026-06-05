@@ -2,12 +2,13 @@
  * Tests for the bounded, time-decaying TuneAdjustmentStore (#3147, epic #3313).
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   TuneAdjustmentStore,
   TUNE_DEMOTION_FLOOR,
   TUNE_MAX_STEP,
   TUNE_DECAY_WINDOW_MS,
+  type TuneReversal,
 } from './tune-adjustment-store.js';
 import { setTimeProvider, resetTimeProvider, FixedTimeProvider } from './time-provider.js';
 
@@ -130,5 +131,83 @@ describe('TuneAdjustmentStore demotion telemetry (#3323)', () => {
     const store = new TuneAdjustmentStore();
     store.recordIntended('gemini', 'r'.repeat(5000));
     expect(store.demotionStats()[0]?.lastReason.length).toBeLessThanOrEqual(512);
+  });
+});
+
+describe('TuneAdjustmentStore reversal audit hook (#3323)', () => {
+  let clock: FixedTimeProvider;
+
+  beforeEach(() => {
+    clock = new FixedTimeProvider(0);
+    setTimeProvider(clock);
+  });
+  afterEach(() => {
+    resetTimeProvider();
+  });
+
+  it('fires a decay_expiry reversal when a fully-decayed adjustment is evicted', () => {
+    const store = new TuneAdjustmentStore();
+    const reversals: TuneReversal[] = [];
+    store.onReversal((r) => reversals.push(r));
+
+    store.demote('gemini', 0.2, 'swarm_unhealthy: blip'); // multiplier 0.8 at t=0
+    clock.advance(TUNE_DECAY_WINDOW_MS + 1); // past the window → eviction
+    expect(store.effectiveMultiplier('gemini')).toBe(1.0); // restored
+
+    expect(reversals).toHaveLength(1);
+    expect(reversals[0]).toMatchObject({
+      cli: 'gemini',
+      cause: 'decay_expiry',
+      previousMultiplier: 0.8,
+      restoredMultiplier: 1.0,
+      reason: 'swarm_unhealthy: blip',
+    });
+  });
+
+  it('fires a superseded reversal when a fresh demotion overwrites an active one', () => {
+    const store = new TuneAdjustmentStore();
+    const reversals: TuneReversal[] = [];
+    store.onReversal((r) => reversals.push(r));
+
+    store.demote('codex', 0.2, 'first'); // 0.8, active
+    store.demote('codex', 0.2, 'second'); // supersedes → 0.6
+
+    expect(reversals).toHaveLength(1);
+    expect(reversals[0]).toMatchObject({
+      cli: 'codex',
+      cause: 'superseded',
+      reason: 'first',
+    });
+    expect(store.effectiveMultiplier('codex')).toBeCloseTo(0.6, 5);
+  });
+
+  it('does NOT fire a reversal for a first demotion (nothing to reverse)', () => {
+    const store = new TuneAdjustmentStore();
+    const listener = vi.fn();
+    store.onReversal(listener);
+    store.demote('gemini', 0.2, 'only');
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('swallows a throwing reversal listener and never corrupts routing state', () => {
+    const store = new TuneAdjustmentStore();
+    store.onReversal(() => {
+      throw new Error('audit sink down');
+    });
+    store.demote('gemini', 0.2, 'blip');
+    clock.advance(TUNE_DECAY_WINDOW_MS + 1);
+    // The eviction (reversal) still completes despite the throwing sink.
+    expect(() => store.effectiveMultiplier('gemini')).not.toThrow();
+    expect(store.effectiveMultiplier('gemini')).toBe(1.0);
+  });
+
+  it('onReversal(undefined) clears the listener', () => {
+    const store = new TuneAdjustmentStore();
+    const listener = vi.fn();
+    store.onReversal(listener);
+    store.onReversal(undefined);
+    store.demote('gemini', 0.2, 'a');
+    store.demote('gemini', 0.2, 'b'); // would supersede
+    expect(listener).not.toHaveBeenCalled();
   });
 });

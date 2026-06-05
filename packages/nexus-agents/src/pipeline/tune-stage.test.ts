@@ -2,9 +2,11 @@
  * Tests for the shadow-mode TuneStage (#3147, epic #3143 P2).
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import type { ILogger } from '../core/index.js';
 import { getTuneAdjustmentStore, resetTuneAdjustmentStore } from '../core/index.js';
+import { setTimeProvider, resetTimeProvider, FixedTimeProvider } from '../core/time-provider.js';
+import { TUNE_DECAY_WINDOW_MS } from '../core/tune-adjustment-store.js';
 import { EventBus } from './event-bus.js';
 import type { PipelineEvent } from './event-types.js';
 import { createTuneStage, intendedActionFor } from './tune-stage.js';
@@ -230,5 +232,101 @@ describe('createTuneStage shadow mode (#3147)', () => {
     unsub();
     bus.emit(fitnessSignal);
     expect(logger.info).not.toHaveBeenCalled();
+  });
+});
+
+describe('createTuneStage reversal audit (#3323 — durable audit criterion)', () => {
+  afterEach(() => {
+    resetTuneAdjustmentStore();
+    resetTimeProvider();
+    // Drop any registered reversal listener so it can't leak across tests.
+    getTuneAdjustmentStore().onReversal(undefined);
+  });
+
+  it('writes a tune.reversal audit record when an enforced demotion decays/expires', () => {
+    resetTuneAdjustmentStore();
+    const clock = new FixedTimeProvider(0);
+    setTimeProvider(clock);
+    const bus = new EventBus();
+    const auditLog = vi.fn();
+    createTuneStage(bus, { enabled: true, auditLogger: { log: auditLog } });
+
+    bus.emit(swarmSignal); // demote gemini → tune.demote
+    auditLog.mockClear();
+
+    // Advance past the decay window, then read → lazy eviction fires reversal.
+    clock.advance(TUNE_DECAY_WINDOW_MS + 1);
+    expect(getTuneAdjustmentStore().effectiveMultiplier('gemini')).toBe(1.0);
+
+    expect(auditLog).toHaveBeenCalledTimes(1);
+    expect(auditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        category: 'configuration',
+        action: 'tune.reversal',
+        outcome: 'success',
+        actor: expect.objectContaining({ type: 'system' }),
+        metadata: expect.objectContaining({
+          cli: 'gemini',
+          cause: 'decay_expiry',
+          restoredMultiplier: 1.0,
+        }),
+      })
+    );
+  });
+
+  it('writes a tune.reversal audit record when a fresh demotion supersedes an active one', () => {
+    resetTuneAdjustmentStore();
+    const clock = new FixedTimeProvider(0);
+    setTimeProvider(clock);
+    const bus = new EventBus();
+    const auditLog = vi.fn();
+    createTuneStage(bus, { enabled: true, auditLogger: { log: auditLog } });
+
+    bus.emit(swarmSignal); // first demotion (no reversal)
+    bus.emit({ ...swarmSignal, reason: 'more timeouts' }); // supersedes
+
+    const reversalCalls = auditLog.mock.calls.filter(
+      (c) => (c[0] as { action: string }).action === 'tune.reversal'
+    );
+    expect(reversalCalls).toHaveLength(1);
+    expect(reversalCalls[0]?.[0]).toMatchObject({
+      action: 'tune.reversal',
+      metadata: expect.objectContaining({ cli: 'gemini', cause: 'superseded' }),
+    });
+  });
+
+  it('a throwing reversal audit sink does NOT throw out of the mutation path', () => {
+    resetTuneAdjustmentStore();
+    const clock = new FixedTimeProvider(0);
+    setTimeProvider(clock);
+    const bus = new EventBus();
+    const auditLog = vi.fn().mockImplementation(() => {
+      throw new Error('audit backend down');
+    });
+    createTuneStage(bus, { enabled: true, auditLogger: { log: auditLog } });
+
+    expect(() => {
+      bus.emit(swarmSignal);
+    }).not.toThrow(); // demote audit throws internally
+    clock.advance(TUNE_DECAY_WINDOW_MS + 1);
+    // Reading triggers the reversal audit, which throws — must be swallowed.
+    expect(() => getTuneAdjustmentStore().effectiveMultiplier('gemini')).not.toThrow();
+    expect(getTuneAdjustmentStore().effectiveMultiplier('gemini')).toBe(1.0);
+  });
+
+  it('does NOT register a reversal audit listener in shadow mode (no auditLogger or disabled)', () => {
+    resetTuneAdjustmentStore();
+    const clock = new FixedTimeProvider(0);
+    setTimeProvider(clock);
+    const bus = new EventBus();
+    const auditLog = vi.fn();
+    // disabled (shadow) with an audit sink → listener must NOT be registered
+    createTuneStage(bus, { enabled: false, auditLogger: { log: auditLog } });
+
+    // Manually drive a demote+decay on the store; no listener should fire.
+    getTuneAdjustmentStore().demote('gemini', 0.2, 'manual');
+    clock.advance(TUNE_DECAY_WINDOW_MS + 1);
+    getTuneAdjustmentStore().effectiveMultiplier('gemini');
+    expect(auditLog).not.toHaveBeenCalled();
   });
 });
