@@ -1,5 +1,20 @@
 # nexus-agents
 
+## 2.117.0
+
+### Minor Changes
+
+- [#3483](https://github.com/nexus-substrate/nexus-agents/pull/3483) [`7d784d6`](https://github.com/nexus-substrate/nexus-agents/commit/7d784d6e9f747281729b90ffa075f9ad15150163) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(pipeline): wire accumulated context into the run_pipeline research stage ([#2795](https://github.com/nexus-substrate/nexus-agents/issues/2795))
+
+  Closes the long-standing `[#2795](https://github.com/nexus-substrate/nexus-agents/issues/2795)` TODO in `stage-wrappers.ts`: the research stage
+  of the `run_pipeline` MCP tool now prepends accumulated memory context
+  (beliefs, prior research, outcomes) to the task, completing the [#2792](https://github.com/nexus-substrate/nexus-agents/issues/2792) Phase-3
+  entry-point wiring for that path. Adds a shared `getContextPromptPrefix` helper
+  in `context-retriever.ts` that centralizes the `NEXUS_CONTEXT_RETRIEVER_INJECT`
+  rollout gate (default-off) and the fetch→summarize sequence reused by
+  orchestrate / execute_expert / stage-wrappers. Fail-soft and behavior-preserving
+  until the bake-in flips the flag on.
+
 ## 2.116.0
 
 ### Minor Changes
