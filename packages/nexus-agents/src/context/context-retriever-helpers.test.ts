@@ -36,6 +36,7 @@ describe('summarizeContextForPrompt', () => {
     experiencePatterns: [],
     outcomes: null,
     priorStrategies: [],
+    researchInsights: [],
   };
 
   it('returns an empty string when nothing is known', () => {
