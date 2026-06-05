@@ -18,6 +18,7 @@ import {
   getContextForTask,
   selectRelevantResearch,
   summarizeContextForPrompt,
+  getContextPromptPrefix,
   type UnifiedContext,
 } from './context-retriever.js';
 import { resetOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
@@ -372,5 +373,27 @@ describe('summarizeContextForPrompt — research insights', () => {
     // 200-char cap → the rendered topic run is bounded, not 500 chars.
     expect(out).not.toContain('x'.repeat(201));
     expect(out).toContain('x'.repeat(200));
+  });
+});
+
+// ============================================================================
+// getContextPromptPrefix — shared flag-gated entry-point helper (#2795)
+// ============================================================================
+
+describe('getContextPromptPrefix', () => {
+  const prev = process.env['NEXUS_CONTEXT_RETRIEVER_INJECT'];
+  afterEach(() => {
+    if (prev === undefined) delete process.env['NEXUS_CONTEXT_RETRIEVER_INJECT'];
+    else process.env['NEXUS_CONTEXT_RETRIEVER_INJECT'] = prev;
+  });
+
+  it('returns undefined when the rollout flag is unset (default-off)', async () => {
+    delete process.env['NEXUS_CONTEXT_RETRIEVER_INJECT'];
+    expect(await getContextPromptPrefix('any task')).toBeUndefined();
+  });
+
+  it('returns undefined when the flag is a non-1 value', async () => {
+    process.env['NEXUS_CONTEXT_RETRIEVER_INJECT'] = 'true';
+    expect(await getContextPromptPrefix('any task')).toBeUndefined();
   });
 });

@@ -16,6 +16,16 @@ import type { DevPipelineStages, VoteResult, QaReviewResult } from './dev-pipeli
 import type { PipelineContext } from './stage-types.js';
 import { PIPELINE_STATE_KEYS as K } from './stage-types.js';
 
+// #2795: the research stage prepends accumulated context (flag-gated). Mock the
+// helper to `undefined` by default so existing tests are deterministic
+// regardless of env/registry; one test overrides it to assert the prepend.
+const contextPrefixMock = vi.fn<() => Promise<string | undefined>>(() =>
+  Promise.resolve(undefined)
+);
+vi.mock('../context/context-retriever.js', () => ({
+  getContextPromptPrefix: (): Promise<string | undefined> => contextPrefixMock(),
+}));
+
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -98,6 +108,23 @@ describe('Stage Wrappers', () => {
       expect(result.success).toBe(false);
       expect(result.error).toBe('adapter exploded');
       expect(result.error).not.toContain('[object Object]');
+    });
+
+    it('passes the bare task to research when no memory prefix is available (#2795)', async () => {
+      contextPrefixMock.mockResolvedValueOnce(undefined);
+      const stages = createMockStages();
+      await createResearchStageWrapper(stages).execute(makeContext());
+      // Gate off / no signal → research sees the task unprefixed.
+      expect(vi.mocked(stages.research)).toHaveBeenCalledWith('Build feature X');
+    });
+
+    it('prepends the memory prefix ahead of the task when available (#2795)', async () => {
+      contextPrefixMock.mockResolvedValueOnce('## Prior Context (Nexus Memory)\n### Beliefs\n- x');
+      const stages = createMockStages();
+      await createResearchStageWrapper(stages).execute(makeContext());
+      const arg = vi.mocked(stages.research).mock.calls[0]?.[0] ?? '';
+      expect(arg.startsWith('## Prior Context (Nexus Memory)')).toBe(true);
+      expect(arg).toContain('Build feature X');
     });
   });
 

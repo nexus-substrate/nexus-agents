@@ -14,6 +14,7 @@ import type { DevPipelineStages, PipelineTask } from './dev-pipeline.js';
 import { isApproved, getVoteFeedback } from './dev-pipeline.js';
 import type { IPipelineStage, PipelineContext, StageOutput } from './stage-types.js';
 import { PIPELINE_STATE_KEYS as K } from './stage-types.js';
+import { getContextPromptPrefix } from '../context/context-retriever.js';
 
 // ============================================================================
 // Helper
@@ -63,12 +64,17 @@ export function createResearchStageWrapper(stages: DevPipelineStages): IPipeline
         // injected here (#1781) but the bridge was provably broken — it
         // used `task.slice(0, 50)` as a literal key against a backend
         // whose writers use UUIDs, so the lookup never matched. Removed
-        // in #2796; cross-cutting memory enrichment will return via
-        // `getContextForTask` once #2795 (Phase 3 of #2792) lands.
+        // in #2796; cross-cutting memory enrichment returns here via
+        // `getContextPromptPrefix` (#2795, Phase 3 of #2792) — flag-gated
+        // behind NEXUS_CONTEXT_RETRIEVER_INJECT (default-off), fail-soft.
         const codeContext = await searchCodebaseForTask(ctx.task);
         let enrichedTask = ctx.task;
         if (codeContext !== null && codeContext !== '') {
           enrichedTask = `${enrichedTask}\n\n## Codebase Context\n${codeContext}`;
+        }
+        const memoryPrefix = await getContextPromptPrefix(ctx.task);
+        if (memoryPrefix !== undefined) {
+          enrichedTask = `${memoryPrefix}\n\n${enrichedTask}`;
         }
         const result = await stages.research(enrichedTask);
         return output(K.RESEARCH, result, getTimeProvider().now() - start, true);

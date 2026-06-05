@@ -411,3 +411,34 @@ export function summarizeContextForPrompt(ctx: UnifiedContext): string {
 
   return sections.length === 0 ? '' : `## Prior Context (Nexus Memory)\n${sections.join('\n\n')}`;
 }
+
+/** Rollout gate for injecting unified context into entry-point prompts (#2921). */
+const CONTEXT_INJECT_FLAG = 'NEXUS_CONTEXT_RETRIEVER_INJECT';
+
+/**
+ * One-call helper for entry points that want to prepend accumulated context to a
+ * prompt: returns the {@link summarizeContextForPrompt} block for `task`, or
+ * `undefined` when the rollout flag is unset or there is no signal.
+ *
+ * Centralizes the `NEXUS_CONTEXT_RETRIEVER_INJECT` gate (#2921) and the
+ * fetch→summarize sequence so each consumer (orchestrate, execute_expert,
+ * pipeline stage-wrappers …) doesn't re-implement it. Default-off and fail-soft:
+ * any retrieval error yields `undefined`. Callers whose prompt also feeds a
+ * security decision (e.g. an access policy) must still treat the block as
+ * untrusted — the underlying memory backends are writable via `memory_write`.
+ */
+export async function getContextPromptPrefix(
+  task: string,
+  logger?: ILogger
+): Promise<string | undefined> {
+  if (process.env[CONTEXT_INJECT_FLAG] !== '1') return undefined;
+  const log = logger ?? createLogger({ component: 'ContextRetriever' });
+  try {
+    const ctx = await getContextForTask({ task, category: inferTaskCategory(task), logger: log });
+    const summary = summarizeContextForPrompt(ctx);
+    return summary === '' ? undefined : summary;
+  } catch (error: unknown) {
+    log.debug('context prompt prefix failed', { error: formatError(error) });
+    return undefined;
+  }
+}
