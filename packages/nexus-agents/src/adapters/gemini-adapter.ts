@@ -16,6 +16,7 @@ import type {
   CompletionRequest,
   CompletionResponse,
   ModelMetadata,
+  ResponseFormat,
   StreamChunk,
   ContentBlock,
   TokenUsage,
@@ -51,6 +52,24 @@ import { extractRequestSystemPrompt } from './prompt-utils.js';
 
 // Re-export types and constants
 export { GEMINI_MODELS, GEMINI_MODEL_ALIASES, type GeminiAdapterConfig } from './gemini-types.js';
+
+/**
+ * #3433: applies the request's responseFormat to the Gemini generation
+ * config for native structured output. json_object/json_schema set
+ * responseMimeType to 'application/json'; json_schema also forwards the
+ * schema. Gemini returns the JSON as response text, so mapResponse is
+ * unchanged. text/absent leaves the config untouched.
+ */
+function applyResponseFormat(
+  config: GeminiRequestConfig,
+  responseFormat: ResponseFormat | undefined
+): void {
+  if (responseFormat === undefined || responseFormat.type === 'text') return;
+  config.responseMimeType = 'application/json';
+  if (responseFormat.type === 'json_schema') {
+    config.responseSchema = responseFormat.schema;
+  }
+}
 
 /**
  * Gemini/Google AI model adapter.
@@ -278,19 +297,9 @@ export class GeminiAdapter extends BaseAdapter {
     // the Promise.race boundary.
     if (request.signal !== undefined) config.abortSignal = request.signal;
 
-    return config;
-  }
+    applyResponseFormat(config, request.responseFormat);
 
-  /**
-   * Logs warning when responseFormat is used with Gemini (not supported).
-   */
-  private warnIfUnsupportedFormat(request: CompletionRequest): void {
-    if (request.responseFormat !== undefined && request.responseFormat.type !== 'text') {
-      this.logger.warn('responseFormat is not supported by Gemini adapter', {
-        requestedFormat: request.responseFormat.type,
-        suggestion: 'Use tool use or prompt engineering for structured output',
-      });
-    }
+    return config;
   }
 
   /**
@@ -303,8 +312,6 @@ export class GeminiAdapter extends BaseAdapter {
 
     const params: GeminiRequestParams = { model: this.resolvedModelId, contents };
     const config = this.buildGenerationConfig(request);
-
-    this.warnIfUnsupportedFormat(request);
 
     if (Object.keys(config).length > 0) params.config = config;
     return params;

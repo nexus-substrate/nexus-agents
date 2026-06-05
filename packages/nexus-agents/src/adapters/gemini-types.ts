@@ -170,6 +170,17 @@ export interface GeminiRequestConfig {
   tools?: Array<{ functionDeclarations: FunctionDeclaration[] }>;
   /** #3036: cancellation signal forwarded into @google/genai. */
   abortSignal?: AbortSignal;
+  /**
+   * #3433: native structured output. `'application/json'` for
+   * json_object/json_schema response formats; Gemini then returns JSON
+   * as the response text.
+   */
+  responseMimeType?: string;
+  /**
+   * #3433: JSON schema constraining the structured output. Set only for
+   * `json_schema` response formats; forwarded directly to @google/genai.
+   */
+  responseSchema?: Record<string, unknown>;
 }
 
 /**

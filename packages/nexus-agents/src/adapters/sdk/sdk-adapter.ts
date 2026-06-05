@@ -12,6 +12,7 @@ import type {
   CompletionRequest,
   CompletionResponse,
   ContentBlock,
+  ResponseFormat,
   StreamChunk,
   Result,
   ILogger,
@@ -53,10 +54,27 @@ interface StreamTextResult {
   textStream: AsyncIterable<string>;
 }
 
+/** AI SDK generateObject result shape (duck-typed). */
+interface GenerateObjectResult {
+  object: unknown;
+  finishReason: string;
+  usage: {
+    inputTokens: number | undefined;
+    outputTokens: number | undefined;
+    totalTokens: number | undefined;
+  };
+  response: { modelId: string };
+}
+
+/** Opaque schema handle returned by the AI SDK `jsonSchema` helper. */
+type AiSdkSchema = unknown;
+
 /** Function signatures for AI SDK entry points (loaded dynamically). */
 interface AiSdkFunctions {
   generateText: (options: Record<string, unknown>) => Promise<GenerateTextResult>;
   streamText: (options: Record<string, unknown>) => StreamTextResult;
+  generateObject: (options: Record<string, unknown>) => Promise<GenerateObjectResult>;
+  jsonSchema: (schema: Record<string, unknown>) => AiSdkSchema;
 }
 
 /** AI SDK provider factory: creates a provider instance that is callable as a model factory. */
@@ -93,16 +111,48 @@ function extractProviderFactory(
 function extractAiSdkFunctions(mod: Record<string, unknown>): AiSdkFunctions {
   const generateText = mod['generateText'];
   const streamText = mod['streamText'];
+  const generateObject = mod['generateObject'];
+  const jsonSchema = mod['jsonSchema'];
   if (typeof generateText !== 'function') {
     throw new Error("AI SDK module missing expected export: 'generateText'");
   }
   if (typeof streamText !== 'function') {
     throw new Error("AI SDK module missing expected export: 'streamText'");
   }
+  // #3433: structured output routes through generateObject + jsonSchema.
+  if (typeof generateObject !== 'function') {
+    throw new Error("AI SDK module missing expected export: 'generateObject'");
+  }
+  if (typeof jsonSchema !== 'function') {
+    throw new Error("AI SDK module missing expected export: 'jsonSchema'");
+  }
   return {
     generateText: generateText as AiSdkFunctions['generateText'],
     streamText: streamText as AiSdkFunctions['streamText'],
+    generateObject: generateObject as AiSdkFunctions['generateObject'],
+    jsonSchema: jsonSchema as AiSdkFunctions['jsonSchema'],
   };
+}
+
+/**
+ * Runtime-validates the duck-typed `generateObject` result shape (#3433).
+ *
+ * `generateObject` comes from the optional `ai` peer dependency, so its
+ * result is `unknown` to us. We narrow it here rather than casting, so a
+ * shape change in the SDK surfaces as a clear error instead of a silent
+ * `undefined` downstream.
+ */
+function isGenerateObjectResult(value: unknown): value is GenerateObjectResult {
+  if (typeof value !== 'object' || value === null) return false;
+  const record = value as Record<string, unknown>;
+  if (!('object' in record)) return false;
+  if (typeof record['finishReason'] !== 'string') return false;
+  const usage = record['usage'];
+  if (typeof usage !== 'object' || usage === null) return false;
+  const response = record['response'];
+  if (typeof response !== 'object' || response === null) return false;
+  if (typeof (response as Record<string, unknown>)['modelId'] !== 'string') return false;
+  return true;
 }
 
 /**
@@ -311,6 +361,61 @@ export class SdkAdapter extends BaseAdapter {
     return options;
   }
 
+  /**
+   * generateText path (text / absent responseFormat) — unchanged behavior.
+   */
+  private async completeText(
+    sdk: AiSdkFunctions,
+    options: Record<string, unknown>
+  ): Promise<CompletionResponse> {
+    const result = await sdk.generateText(options);
+    return {
+      content: [{ type: 'text', text: result.text }],
+      usage: {
+        inputTokens: result.usage.inputTokens ?? 0,
+        outputTokens: result.usage.outputTokens ?? 0,
+        totalTokens: result.usage.totalTokens ?? 0,
+      },
+      stopReason: mapFinishReason(result.finishReason),
+      model: result.response.modelId,
+    };
+  }
+
+  /**
+   * generateObject path (#3433) — json_object / json_schema responseFormat.
+   *
+   * Uses the AI SDK `jsonSchema` helper to build the schema handle
+   * (permissive `{ type: 'object' }` for json_object), then stringifies the
+   * returned object into a text content block so downstream parsers /
+   * extractTextFromResponse keep working unchanged.
+   */
+  private async completeStructured(
+    sdk: AiSdkFunctions,
+    options: Record<string, unknown>,
+    responseFormat: Exclude<ResponseFormat, { type: 'text' }>
+  ): Promise<CompletionResponse> {
+    const rawSchema: Record<string, unknown> =
+      responseFormat.type === 'json_schema' ? responseFormat.schema : { type: 'object' };
+    const schema = sdk.jsonSchema(rawSchema);
+    const result: unknown = await sdk.generateObject({ ...options, schema });
+    if (!isGenerateObjectResult(result)) {
+      throw new Error(
+        'AI SDK generateObject returned an unexpected result shape ' +
+          '(missing object/usage/finishReason/response.modelId)'
+      );
+    }
+    return {
+      content: [{ type: 'text', text: JSON.stringify(result.object) }],
+      usage: {
+        inputTokens: result.usage.inputTokens ?? 0,
+        outputTokens: result.usage.outputTokens ?? 0,
+        totalTokens: result.usage.totalTokens ?? 0,
+      },
+      stopReason: mapFinishReason(result.finishReason),
+      model: result.response.modelId,
+    };
+  }
+
   async complete(request: CompletionRequest): Promise<Result<CompletionResponse, ModelError>> {
     try {
       await this.ensureInitialized();
@@ -324,18 +429,15 @@ export class SdkAdapter extends BaseAdapter {
         );
       }
       const options = this.buildSdkOptions(request);
-      const result = await sdk.generateText(options);
 
-      const response: CompletionResponse = {
-        content: [{ type: 'text', text: result.text }],
-        usage: {
-          inputTokens: result.usage.inputTokens ?? 0,
-          outputTokens: result.usage.outputTokens ?? 0,
-          totalTokens: result.usage.totalTokens ?? 0,
-        },
-        stopReason: mapFinishReason(result.finishReason),
-        model: result.response.modelId,
-      };
+      // #3433: native structured output. json_object/json_schema route
+      // through generateObject; everything else keeps the generateText path
+      // unchanged.
+      const responseFormat = request.responseFormat;
+      const response =
+        responseFormat !== undefined && responseFormat.type !== 'text'
+          ? await this.completeStructured(sdk, options, responseFormat)
+          : await this.completeText(sdk, options);
 
       this.logResponse(response);
       return ok(response);

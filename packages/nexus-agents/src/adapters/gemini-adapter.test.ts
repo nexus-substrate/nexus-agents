@@ -326,6 +326,98 @@ describe('GeminiAdapter', () => {
       }
     });
 
+    it('should set responseMimeType and responseSchema for json_schema (#3433)', async () => {
+      mockGenerateContent.mockResolvedValueOnce({
+        text: '{"answer":42}',
+        candidates: [{ finishReason: 'STOP' }],
+        usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5, totalTokenCount: 15 },
+      });
+
+      const schema = {
+        type: 'object',
+        properties: { answer: { type: 'number' } },
+        required: ['answer'],
+      };
+      const adapter = new GeminiAdapter(validConfig);
+      await adapter.complete({
+        messages: [{ role: 'user', content: 'Give me the answer' }],
+        responseFormat: { type: 'json_schema', schema },
+        maxTokens: 1024,
+      });
+
+      expect(mockGenerateContent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          config: expect.objectContaining({
+            responseMimeType: 'application/json',
+            responseSchema: schema,
+          }),
+        })
+      );
+    });
+
+    it('should set only responseMimeType for json_object (#3433)', async () => {
+      mockGenerateContent.mockResolvedValueOnce({
+        text: '{"ok":true}',
+        candidates: [{ finishReason: 'STOP' }],
+        usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5, totalTokenCount: 15 },
+      });
+
+      const adapter = new GeminiAdapter(validConfig);
+      await adapter.complete({
+        messages: [{ role: 'user', content: 'Respond in JSON' }],
+        responseFormat: { type: 'json_object' },
+        maxTokens: 1024,
+      });
+
+      const callArg = mockGenerateContent.mock.calls[0]?.[0] as {
+        config?: { responseMimeType?: string; responseSchema?: unknown };
+      };
+      expect(callArg.config?.responseMimeType).toBe('application/json');
+      expect(callArg.config?.responseSchema).toBeUndefined();
+    });
+
+    it('should not emit a warning when responseFormat is structured (#3433)', async () => {
+      mockGenerateContent.mockResolvedValueOnce({
+        text: '{"ok":true}',
+        candidates: [{ finishReason: 'STOP' }],
+        usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5, totalTokenCount: 15 },
+      });
+
+      const adapter = new GeminiAdapter(validConfig);
+      const warnSpy = vi.spyOn(
+        (adapter as unknown as { logger: { warn: (...args: unknown[]) => void } }).logger,
+        'warn'
+      );
+      await adapter.complete({
+        messages: [{ role: 'user', content: 'Respond in JSON' }],
+        responseFormat: { type: 'json_object' },
+        maxTokens: 1024,
+      });
+
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it('should not set response format fields when responseFormat is text/absent (#3433)', async () => {
+      mockGenerateContent.mockResolvedValueOnce({
+        text: 'plain',
+        candidates: [{ finishReason: 'STOP' }],
+        usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5, totalTokenCount: 15 },
+      });
+
+      const adapter = new GeminiAdapter(validConfig);
+      await adapter.complete({
+        messages: [{ role: 'user', content: 'Hi!' }],
+        responseFormat: { type: 'text' },
+        maxTokens: 1024,
+      });
+
+      const callArg = mockGenerateContent.mock.calls[0]?.[0] as {
+        config?: { responseMimeType?: string; responseSchema?: unknown };
+      };
+      expect(callArg.config?.responseMimeType).toBeUndefined();
+      expect(callArg.config?.responseSchema).toBeUndefined();
+    });
+
     it('should return error for API failures', async () => {
       mockGenerateContent.mockRejectedValueOnce(new Error('API rate limit exceeded'));
 
