@@ -64,7 +64,13 @@ export type TuneReversalCause =
 export interface TuneReversal {
   readonly cli: string;
   readonly cause: TuneReversalCause;
-  /** Multiplier the reversed adjustment was holding at reversal time. */
+  /**
+   * Multiplier the reversed adjustment was holding at reversal time. Note the
+   * semantics differ by cause: `decay_expiry` reports the adjustment's *stored*
+   * multiplier (the value it expired from); `superseded` reports the *decayed
+   * effective* value at the moment a fresh demotion overwrote it. Either way
+   * `restoredMultiplier` is the value routing actually returns to.
+   */
   readonly previousMultiplier: number;
   /** Multiplier routing returns to after reversal (1.0 for decay_expiry). */
   readonly restoredMultiplier: number;
