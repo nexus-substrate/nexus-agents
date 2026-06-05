@@ -4,9 +4,12 @@
  * The cache + the CLI-level routing pre-filter (`getCandidateCliNames`) and the
  * 404 fallback already exist, but in production the cache had **no sources**, so
  * it was always empty and the pre-filter was inert. This wires:
- *  - the OpenRouter live catalog (`createOpenRouterModelsSource`), and
+ *  - the OpenRouter live catalog (`createOpenRouterModelsSource`), named
+ *    `openrouter` — it feeds existence checks (`cache.has()`), the 404 fallback,
+ *    and the Phase 2 alias resolver; it does NOT drive the CLI pre-filter (its
+ *    name is not a CLI name), which is intentional, and
  *  - every adapter that implements `listModels()` (opencode + SDK adapters),
- *    named by its CLI so `getCandidateCliNames` can filter on it.
+ *    named by its CLI so `getCandidateCliNames` CAN filter on it.
  *
  * Opt-in: gated by `NEXUS_DYNAMIC_MODELS` (default OFF for the initial ship; the
  * flag flips ON in a follow-up once telemetry + QA confirm it, per the project's

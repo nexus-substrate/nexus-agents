@@ -5,7 +5,7 @@
  * (Source: Issue #166, Epic #164)
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   CompositeRouter,
   createCompositeRouter,
@@ -13,6 +13,11 @@ import {
   CompositeRoutingError,
 } from './composite-router.js';
 import type { ICliAdapter, CliTask, CliName } from './types.js';
+import {
+  AvailableModelsCache,
+  getDefaultAvailableModelsCache,
+  setDefaultAvailableModelsCache,
+} from '../config/available-models-cache.js';
 
 /**
  * Creates a mock CLI adapter for testing.
@@ -299,6 +304,34 @@ describe('createCompositeRouter', () => {
     const adapters = createTestAdapters();
     const router = createCompositeRouter(adapters, { linucbAlpha: 2.0 });
     expect(router.getStats().totalDecisions).toBe(0);
+  });
+
+  // #3404: dynamic-discovery flag gating (the only integration logic in the PR).
+  describe('dynamic discovery flag', () => {
+    afterEach(() => {
+      delete process.env['NEXUS_DYNAMIC_MODELS'];
+      setDefaultAvailableModelsCache(null);
+    });
+
+    it('does NOT attach a cache when the flag is off (default)', () => {
+      const router = createCompositeRouter(createTestAdapters()) as CompositeRouter;
+      expect(router.getAvailableModelsCache()).toBeUndefined();
+    });
+
+    it('attaches the populated global cache when NEXUS_DYNAMIC_MODELS=true', () => {
+      process.env['NEXUS_DYNAMIC_MODELS'] = 'true';
+      const router = createCompositeRouter(createTestAdapters()) as CompositeRouter;
+      expect(router.getAvailableModelsCache()).toBe(getDefaultAvailableModelsCache());
+    });
+
+    it('preserves a caller-supplied cache even when flagged', () => {
+      process.env['NEXUS_DYNAMIC_MODELS'] = 'true';
+      const custom = new AvailableModelsCache({ sources: [] });
+      const router = createCompositeRouter(createTestAdapters(), {
+        availableModelsCache: custom,
+      }) as CompositeRouter;
+      expect(router.getAvailableModelsCache()).toBe(custom);
+    });
   });
 });
 

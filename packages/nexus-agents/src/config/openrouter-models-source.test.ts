@@ -9,6 +9,7 @@ function jsonResponse(body: unknown, ok = true, status = 200): Response {
   return {
     ok,
     status,
+    headers: { get: () => null },
     text: () => Promise.resolve(JSON.stringify(body)),
   } as unknown as Response;
 }
@@ -59,7 +60,21 @@ describe('createOpenRouterModelsSource (#3404)', () => {
       Promise.resolve({
         ok: true,
         status: 200,
+        headers: { get: () => null },
         text: () => Promise.resolve(huge),
+      } as unknown as Response)
+    ) as unknown as typeof fetch;
+    const src = createOpenRouterModelsSource({ fetchImpl });
+    expect(await src.listModels()).toEqual([]);
+  });
+
+  it('rejects (empty) before buffering when Content-Length exceeds the cap', async () => {
+    const fetchImpl = vi.fn(() =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        headers: { get: (h: string) => (h === 'content-length' ? '9000000' : null) },
+        text: () => Promise.reject(new Error('must not buffer')),
       } as unknown as Response)
     ) as unknown as typeof fetch;
     const src = createOpenRouterModelsSource({ fetchImpl });

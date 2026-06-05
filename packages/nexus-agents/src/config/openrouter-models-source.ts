@@ -48,57 +48,79 @@ export interface OpenRouterModelsSourceOptions {
  * Register it on the {@link AvailableModelsCache} (which owns TTL +
  * stale-while-revalidate + single-in-flight coalescing).
  */
+const logger = createLogger({ component: 'openrouter-models-source' });
+
+/** Validate + cap a catalog body. Returns `[]` on oversize or schema failure. */
+function parseCatalog(text: string): readonly { id: string }[] {
+  if (text.length > MAX_BYTES) {
+    logger.warn('OpenRouter catalog exceeds byte cap; ignoring', { bytes: text.length });
+    return [];
+  }
+  const parsed = OpenRouterModelsResponseSchema.safeParse(JSON.parse(text));
+  if (!parsed.success) {
+    logger.warn('OpenRouter catalog failed schema validation; treating as empty', {
+      error: parsed.error.message,
+    });
+    return [];
+  }
+  return parsed.data.data.slice(0, MAX_MODELS).map((m) => ({ id: m.id }));
+}
+
+/** Fetch + validate the catalog. Fail-OPEN: any failure returns `[]`. */
+async function fetchCatalog(
+  url: string,
+  timeoutMs: number,
+  doFetch: typeof fetch
+): Promise<readonly { id: string }[]> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    controller.abort();
+  }, timeoutMs);
+  try {
+    const res = await doFetch(url, {
+      signal: controller.signal,
+      headers: { accept: 'application/json' },
+    });
+    if (!res.ok) {
+      logger.warn('OpenRouter catalog fetch returned non-OK; treating as empty', {
+        status: res.status,
+      });
+      return [];
+    }
+    // Pre-check Content-Length so a hostile/huge body is rejected BEFORE it is
+    // buffered. The text().length check is a backstop for servers that omit or
+    // lie about Content-Length.
+    const declaredLen = res.headers.get('content-length');
+    if (declaredLen !== null && Number(declaredLen) > MAX_BYTES) {
+      logger.warn('OpenRouter catalog Content-Length exceeds byte cap; ignoring', {
+        bytes: declaredLen,
+      });
+      return [];
+    }
+    const ids = parseCatalog(await res.text());
+    logger.debug('OpenRouter catalog loaded', { count: ids.length });
+    return ids;
+  } catch (error: unknown) {
+    // Fail-open: probe failure (network/timeout/parse) → empty list.
+    logger.warn('OpenRouter catalog fetch failed; treating as empty', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export function createOpenRouterModelsSource(
   opts: OpenRouterModelsSourceOptions = {}
 ): AvailableModelsSource {
   const url = opts.url ?? OPENROUTER_MODELS_URL;
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const doFetch = opts.fetchImpl ?? fetch;
-  const logger = createLogger({ component: 'openrouter-models-source' });
 
   return {
     name: 'openrouter',
     providerHint: 'openrouter',
-    async listModels(): Promise<readonly { id: string }[]> {
-      const controller = new AbortController();
-      const timer = setTimeout(() => {
-        controller.abort();
-      }, timeoutMs);
-      try {
-        const res = await doFetch(url, {
-          signal: controller.signal,
-          headers: { accept: 'application/json' },
-        });
-        if (!res.ok) {
-          logger.warn('OpenRouter catalog fetch returned non-OK; treating as empty', {
-            status: res.status,
-          });
-          return [];
-        }
-        const text = await res.text();
-        if (text.length > MAX_BYTES) {
-          logger.warn('OpenRouter catalog exceeds byte cap; ignoring', { bytes: text.length });
-          return [];
-        }
-        const parsed = OpenRouterModelsResponseSchema.safeParse(JSON.parse(text));
-        if (!parsed.success) {
-          logger.warn('OpenRouter catalog failed schema validation; treating as empty', {
-            error: parsed.error.message,
-          });
-          return [];
-        }
-        const ids = parsed.data.data.slice(0, MAX_MODELS).map((m) => ({ id: m.id }));
-        logger.debug('OpenRouter catalog loaded', { count: ids.length });
-        return ids;
-      } catch (error: unknown) {
-        // Fail-open: probe failure (network/timeout/parse) → empty list.
-        logger.warn('OpenRouter catalog fetch failed; treating as empty', {
-          error: error instanceof Error ? error.message : String(error),
-        });
-        return [];
-      } finally {
-        clearTimeout(timer);
-      }
-    },
+    listModels: () => fetchCatalog(url, timeoutMs, doFetch),
   };
 }
