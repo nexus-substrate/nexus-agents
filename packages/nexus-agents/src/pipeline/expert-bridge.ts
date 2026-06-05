@@ -56,6 +56,21 @@ export interface ExpertBridgeResult {
    * #3387, routing-experience metrics) must tolerate `undefined`.
    */
   readonly tokensUsed?: number;
+  /**
+   * Concrete model id the underlying adapter reported (`CliResponse.model`),
+   * when present (#3387). Distinct from {@link cli} (the slot): one CLI can run
+   * several models. Undefined when the adapter didn't report a model or the
+   * bridge failed before dispatch. Required to emit a `model.called` event.
+   */
+  readonly model?: string;
+  /**
+   * Input/output token split from the adapter's `CliResponse.usage` (#3387),
+   * when reported. Best-effort like {@link tokensUsed}; both undefined together
+   * when no usage was available. `tokensIn + tokensOut` reconciles with
+   * `tokensUsed` (single source of truth — both derive from the same record).
+   */
+  readonly tokensIn?: number;
+  readonly tokensOut?: number;
 }
 
 /**
@@ -72,7 +87,14 @@ export interface ExpertBridgeResult {
 interface RouterLike {
   executeTask(task: { content: string; options?: Record<string, unknown> | undefined }): Promise<{
     ok: boolean;
-    value: { text: string; cli?: CliNameLiteral; tokensUsed?: number };
+    value: {
+      text: string;
+      cli?: CliNameLiteral;
+      tokensUsed?: number;
+      model?: string;
+      tokensIn?: number;
+      tokensOut?: number;
+    };
     error: { message: string };
   }>;
 }
@@ -164,13 +186,38 @@ export function totalTokensFromUsage(
   return total > 0 ? total : undefined;
 }
 
+/**
+ * Per-direction token split from a best-effort `CliResponse.usage` record
+ * (#3387). Unlike {@link totalTokensFromUsage} this keeps `tokensIn`/`tokensOut`
+ * separate — the granularity `ModelCalledEvent` requires for attribution.
+ * Returns undefined when no usage was reported or both directions are zero (no
+ * real call), so callers skip emitting a noise event instead of recording
+ * zeros. Reconciles with the total: `tokensIn + tokensOut === totalTokensFromUsage`.
+ */
+export function tokenSplitFromUsage(
+  usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | undefined
+): { tokensIn: number; tokensOut: number } | undefined {
+  if (usage === undefined) return undefined;
+  const tokensIn = usage.inputTokens ?? 0;
+  const tokensOut = usage.outputTokens ?? 0;
+  if (tokensIn + tokensOut === 0) return undefined;
+  return { tokensIn, tokensOut };
+}
+
 function adaptCompositeRouter(
   compositeRouter: import('../cli-adapters/composite-router.js').ICompositeRouter
 ): RouterLike {
   return {
     async executeTask(task): Promise<{
       ok: boolean;
-      value: { text: string; cli?: CliNameLiteral };
+      value: {
+        text: string;
+        cli?: CliNameLiteral;
+        tokensUsed?: number;
+        model?: string;
+        tokensIn?: number;
+        tokensOut?: number;
+      };
       error: { message: string };
     }> {
       const cliTask: import('../cli-adapters/types.js').CliTask = {
@@ -192,12 +239,19 @@ function adaptCompositeRouter(
         // of zeros. `usage` is optional and `totalTokens` may be absent — fall
         // back to input+output, and leave undefined when no usage was reported.
         const tokensUsed = totalTokensFromUsage(result.value.usage);
+        // #3387: also surface the concrete model + per-direction token split so
+        // a meaningful `model.called` event can be emitted. Both derive from the
+        // same CliResponse, so tokensIn+tokensOut reconciles with tokensUsed.
+        const model = result.value.model;
+        const split = tokenSplitFromUsage(result.value.usage);
         return {
           ok: true,
           value: {
             text: result.value.text,
             ...(cli !== undefined && { cli }),
             ...(tokensUsed !== undefined && { tokensUsed }),
+            ...(model !== undefined && { model }),
+            ...(split !== undefined && { tokensIn: split.tokensIn, tokensOut: split.tokensOut }),
           },
           error: { message: '' },
         };
@@ -280,6 +334,9 @@ async function dispatchWithRateLimitRetry(
         durationMs,
         ...(result.value.cli !== undefined && { cli: result.value.cli }),
         ...(result.value.tokensUsed !== undefined && { tokensUsed: result.value.tokensUsed }),
+        ...(result.value.model !== undefined && { model: result.value.model }),
+        ...(result.value.tokensIn !== undefined && { tokensIn: result.value.tokensIn }),
+        ...(result.value.tokensOut !== undefined && { tokensOut: result.value.tokensOut }),
       };
     }
 

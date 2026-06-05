@@ -8,6 +8,7 @@ import {
   emitStageCompleted,
   emitStageFailed,
   emitPipelineStageEvent,
+  emitModelCalled,
 } from './pipeline-observability.js';
 import type { IEventBus } from './event-types.js';
 
@@ -175,6 +176,50 @@ describe('pipeline-observability', () => {
 
       const event = vi.mocked(mockBus.emit).mock.calls[0]?.[0];
       expect(event).toMatchObject({ error: 'Unknown' });
+    });
+  });
+
+  describe('emitModelCalled (#3387)', () => {
+    it('emits a model.called event with full attribution', () => {
+      emitModelCalled({
+        bus: mockBus,
+        executionId: 'plan',
+        cli: 'claude',
+        model: 'claude-opus',
+        tokensIn: 100,
+        tokensOut: 50,
+        durationMs: 1200,
+      });
+
+      expect(mockBus.emit).toHaveBeenCalledOnce();
+      const event = vi.mocked(mockBus.emit).mock.calls[0]?.[0];
+      expect(event).toMatchObject({
+        type: 'model.called',
+        executionId: 'plan',
+        cli: 'claude',
+        model: 'claude-opus',
+        tokensIn: 100,
+        tokensOut: 50,
+        durationMs: 1200,
+      });
+      expect((event as { timestamp: number }).timestamp).toBeTypeOf('number');
+    });
+
+    it('includes optional agentId/role when provided', () => {
+      emitModelCalled({
+        bus: mockBus,
+        executionId: 'vote',
+        cli: 'gemini',
+        model: 'gemini-3-pro',
+        tokensIn: 10,
+        tokensOut: 5,
+        durationMs: 300,
+        agentId: 'agent-7',
+        role: 'security_expert',
+      });
+
+      const event = vi.mocked(mockBus.emit).mock.calls[0]?.[0];
+      expect(event).toMatchObject({ agentId: 'agent-7', role: 'security_expert' });
     });
   });
 });
