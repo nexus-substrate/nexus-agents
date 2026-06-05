@@ -16,6 +16,56 @@ import type { CliNameLiteral } from '../config/model-capabilities-types.js';
 export type CliName = CliNameLiteral;
 
 /**
+ * API-vendor identifiers an `AdapterSelection{source:'api'}` reports (#3422).
+ * Distinct from the four CLI slots: a direct vendor API and the same vendor's
+ * CLI binary have different latency/failure profiles, so they must NOT share a
+ * routing/bandit arm (would pollute the learned model).
+ */
+export type ApiVendor = 'anthropic' | 'openai' | 'google' | 'custom-openai';
+
+/** Prefixed routing arm id for a direct-API adapter, e.g. `api:anthropic` (#3422). */
+export type ApiArmId = `api:${ApiVendor}`;
+
+/**
+ * A LinUCB/routing arm id — either a canonical CLI slot or a distinct API arm
+ * (#3317 step 1 / #3422). Confined to the router/bandit/outcome surface so the
+ * exhaustive `Record<CliName, …>` maps elsewhere stay narrow and untouched.
+ */
+export type RoutingArmId = CliName | ApiArmId;
+
+/** Build the routing arm id for an API vendor. */
+export function apiArmId(vendor: ApiVendor): ApiArmId {
+  return `api:${vendor}`;
+}
+
+/** Narrow a routing arm id to a distinct API arm (vs. a CLI slot). */
+export function isApiArmId(id: RoutingArmId): id is ApiArmId {
+  return id.startsWith('api:');
+}
+
+/**
+ * Map a routing arm id to its display CLI slot (#3422) — identity for CLI
+ * slots, vendor→slot for API arms. Used where a feature is intrinsically
+ * slot-level (e.g. ZeroRouter difficulty calibration) and must collapse the
+ * distinct API arm to its attribution slot. The bandit keeps the distinct arm;
+ * only slot-level surfaces collapse.
+ */
+export function routingArmDisplaySlot(armId: RoutingArmId): CliName {
+  switch (armId) {
+    case 'api:anthropic':
+      return 'claude';
+    case 'api:openai':
+      return 'codex';
+    case 'api:google':
+      return 'gemini';
+    case 'api:custom-openai':
+      return 'opencode';
+    default:
+      return armId;
+  }
+}
+
+/**
  * Transport type for CLI communication.
  * - 'mcp': Uses Model Context Protocol (most stable)
  * - 'subprocess': Spawns CLI process with JSON output

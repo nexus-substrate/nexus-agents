@@ -10,7 +10,8 @@ import {
   taskAnalysisResultToBanditContext,
   getTimeProvider,
 } from '../core/index.js';
-import type { CliName, CliTask } from './types.js';
+import type { CliName, CliTask, RoutingArmId } from './types.js';
+import { routingArmDisplaySlot } from './types.js';
 import type { LinUCBBandit } from './linucb-bandit.js';
 import type { PreferenceRouter } from './preference-router.js';
 import type { IZeroRouter } from './zero-router.js';
@@ -24,23 +25,23 @@ const sharedAnalyzer = createSharedTaskAnalyzer();
 /** Last routed task info for difficulty outcome recording. */
 export interface LastRoutedTaskInfo {
   task: CliTask;
-  selectedCli: CliName;
+  selectedCli: RoutingArmId;
   difficulty: number;
 }
 
 /** Dependencies required for outcome recording. */
 export interface OutcomeDependencies {
   logger: ILogger;
-  cliNames: CliName[];
+  cliNames: RoutingArmId[];
   linucbBandit: LinUCBBandit | undefined;
   preferenceRouter: PreferenceRouter | undefined;
   zeroRouter: IZeroRouter | undefined;
   lastRoutedTask: LastRoutedTaskInfo | undefined;
 }
 
-/** Records a bandit outcome for the given CLI. */
+/** Records a bandit outcome for the given routing arm (CLI slot or api:* arm). */
 export function recordBanditOutcome(
-  cliName: CliName,
+  cliName: RoutingArmId,
   task: CliTask,
   reward: number,
   deps: OutcomeDependencies
@@ -82,7 +83,7 @@ export function recordPreferenceSignal(
 export function getDifficultyInfo(
   task: CliTask,
   deps: OutcomeDependencies
-): { difficulty: number; selectedCli: CliName } {
+): { difficulty: number; selectedCli: RoutingArmId } {
   if (deps.lastRoutedTask?.task.content === task.content) {
     return {
       difficulty: deps.lastRoutedTask.difficulty,
@@ -111,7 +112,9 @@ export function recordZeroRouterOutcome(
   const outcome = buildDifficultyOutcome(
     task.content,
     difficulty,
-    selectedCli,
+    // Difficulty calibration is slot-level; collapse an api:* arm to its
+    // display slot here (the bandit retains the distinct arm). (#3422)
+    routingArmDisplaySlot(selectedCli),
     success,
     qualityScore
   );

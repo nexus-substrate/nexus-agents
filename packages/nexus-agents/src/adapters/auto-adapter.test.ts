@@ -4,8 +4,13 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { AutoAdapterConfig } from './auto-adapter.js';
-import { createAutoAdapter, getAvailableAdapters } from './auto-adapter.js';
+import type { AutoAdapterConfig, AdapterSelection } from './auto-adapter.js';
+import {
+  createAutoAdapter,
+  getAvailableAdapters,
+  wrapApiSelectionForRouter,
+} from './auto-adapter.js';
+import { ok, type IModelAdapter } from '../core/index.js';
 
 // ============================================================================
 // Mocks
@@ -380,5 +385,56 @@ describe('getAvailableAdapters', () => {
     process.env.ANTHROPIC_API_KEY = '';
     const result = await getAvailableAdapters();
     expect(result.hasAnthropicKey).toBe(false);
+  });
+});
+
+describe('wrapApiSelectionForRouter (#3422)', () => {
+  function apiSelection(name: string, modelId = 'claude-opus'): AdapterSelection {
+    const modelAdapter = {
+      providerId: name,
+      modelId,
+      capabilities: [],
+      complete: vi.fn(),
+      stream: vi.fn(),
+      countTokens: vi.fn(),
+      validateConfig: vi.fn().mockReturnValue(ok(undefined)),
+    } as unknown as IModelAdapter;
+    return { adapter: modelAdapter, source: 'api', name, reason: 'test' };
+  }
+
+  it('maps each vendor to a distinct api:<vendor> arm id with its display slot', () => {
+    const cases: ReadonlyArray<[string, string, string]> = [
+      ['anthropic', 'api:anthropic', 'claude'],
+      ['openai', 'api:openai', 'codex'],
+      ['google', 'api:google', 'gemini'],
+      ['custom-openai', 'api:custom-openai', 'opencode'],
+    ];
+    for (const [vendor, armId, slot] of cases) {
+      const wrapped = wrapApiSelectionForRouter(apiSelection(vendor));
+      expect(wrapped?.armId).toBe(armId);
+      // Display name is the attribution slot, NOT the arm id (telemetry stays split).
+      expect(wrapped?.adapter.name).toBe(slot);
+    }
+  });
+
+  it('returns an ICliAdapter whose arm id never collides with a CLI slot', () => {
+    const wrapped = wrapApiSelectionForRouter(apiSelection('anthropic'));
+    // api:anthropic is distinct from the 'claude' CLI slot — separate bandit arms.
+    expect(wrapped?.armId).toBe('api:anthropic');
+    expect(wrapped?.armId).not.toBe('claude');
+  });
+
+  it('returns null for a CLI selection (router gets those from createAllAdapters)', () => {
+    const sel: AdapterSelection = {
+      adapter: apiSelection('anthropic').adapter,
+      source: 'cli',
+      name: 'claude',
+      reason: 'test',
+    };
+    expect(wrapApiSelectionForRouter(sel)).toBeNull();
+  });
+
+  it('returns null for an unrecognized vendor', () => {
+    expect(wrapApiSelectionForRouter(apiSelection('mystery-vendor'))).toBeNull();
   });
 });

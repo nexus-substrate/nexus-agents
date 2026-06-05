@@ -16,9 +16,12 @@ import type { IModelAdapter, ILogger } from '../core/index.js';
 import { createLogger } from '../core/index.js';
 import { createCliAdapter, isCliAvailable, getAvailableClis } from '../cli-adapters/factory.js';
 import { createCliToModelAdapter } from '../cli-adapters/cli-to-model-adapter.js';
+import { createModelToCliAdapter } from '../cli-adapters/model-to-cli-adapter.js';
 import { createClaudeAdapter } from './claude-adapter.js';
 import { SdkAdapter } from './sdk/index.js';
-import type { CliName } from '../cli-adapters/types.js';
+import type { CliName, ICliAdapter, ApiVendor, ApiArmId } from '../cli-adapters/types.js';
+import { apiArmId } from '../cli-adapters/types.js';
+import { buildCliCapabilityProfiles } from '../config/model-config-helpers.js';
 import type { ICliDetectionCache } from '../cli-adapters/cli-detection-cache.js';
 import { createCliDetectionCache } from '../cli-adapters/cli-detection-cache.js';
 import { CUSTOM_API_DEFAULT_MODEL } from '../config/defaults.js';
@@ -237,6 +240,48 @@ function tryCustomOpenAiAdapter(logger: ILogger): AdapterSelection | null {
     name: 'custom-openai',
     reason: `Using custom OpenAI-compatible gateway at ${customBaseUrl} (model: ${customModelId})`,
   };
+}
+
+/**
+ * Resolve an API-vendor name to its `{vendor, slot}` pair (#3422). `slot` is the
+ * *attribution* CLI slot (`getModelInfo`, capability profile) — NOT the routing
+ * arm id, which stays distinct (`api:<vendor>`) so CLI and API telemetry never
+ * merge. Exhaustive switch (concrete literals, no index-access undefined).
+ */
+function resolveApiVendor(name: string): { vendor: ApiVendor; slot: CliName } | undefined {
+  switch (name) {
+    case 'anthropic':
+      return { vendor: 'anthropic', slot: 'claude' };
+    case 'openai':
+      return { vendor: 'openai', slot: 'codex' };
+    case 'google':
+      return { vendor: 'google', slot: 'gemini' };
+    case 'custom-openai':
+      return { vendor: 'custom-openai', slot: 'opencode' };
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Wrap an `AdapterSelection{source:'api'}` for insertion into a CompositeRouter's
+ * `Map<RoutingArmId, ICliAdapter>` (#3317 step 1 / #3422). Returns the distinct
+ * routing arm id (`api:<vendor>`) and an `ICliAdapter` view of the IModelAdapter
+ * (via {@link createModelToCliAdapter}). Returns null for CLI selections (the
+ * router already gets those from `createAllAdapters` under their slot key) or an
+ * unrecognized vendor.
+ */
+export function wrapApiSelectionForRouter(
+  selection: AdapterSelection
+): { armId: ApiArmId; adapter: ICliAdapter } | null {
+  if (selection.source !== 'api') return null;
+  const resolved = resolveApiVendor(selection.name);
+  if (resolved === undefined) return null;
+  const adapter = createModelToCliAdapter(selection.adapter, {
+    name: resolved.slot,
+    capabilities: buildCliCapabilityProfiles()[resolved.slot],
+  });
+  return { armId: apiArmId(resolved.vendor), adapter };
 }
 
 /** Try CLI first, then API as fallback. */
