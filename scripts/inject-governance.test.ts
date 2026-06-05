@@ -981,3 +981,102 @@ describe('inject-governance ancillary count surfaces (#2295 follow-up)', () => {
     }
   );
 });
+
+// ============================================================================
+// ENTRYPOINTS.md MCP-tool enumerations (#3334)
+// ============================================================================
+
+describe('inject-governance ENTRYPOINTS tool enumerations (#3334)', () => {
+  const ENTRYPOINTS = join(ROOT, 'docs/ENTRYPOINTS.md');
+
+  /** Extract the two enumeration surfaces from ENTRYPOINTS.md. */
+  function readSurfaces(): { prose: string; yaml: string } {
+    const content = readFileSync(ENTRYPOINTS, 'utf-8');
+    const proseStart = content.indexOf('<!-- GOVERNANCE:ENTRYPOINTS_TOOLS:START -->');
+    const proseEnd = content.indexOf('<!-- GOVERNANCE:ENTRYPOINTS_TOOLS:END -->');
+    const yamlStart = content.indexOf('<!-- BEGIN:MCP_TOOLS -->');
+    const yamlEnd = content.indexOf('<!-- END:MCP_TOOLS -->');
+    return {
+      prose: content.slice(proseStart, proseEnd),
+      yaml: content.slice(yamlStart, yamlEnd),
+    };
+  }
+
+  /** Registered tool names from REGISTERED_TOOL_NAMES (the source of truth). */
+  function registeredTools(): string[] {
+    const src = readFileSync(join(ROOT, 'packages/nexus-agents/src/mcp/tools/index.ts'), 'utf-8');
+    const m = /REGISTERED_TOOL_NAMES\s*=\s*\[([\s\S]*?)\]\s*as const/.exec(src);
+    expect(m).not.toBeNull();
+    return m![1]!
+      .split('\n')
+      .map((l) => /'([^']+)'/.exec(l)?.[1])
+      .filter((n): n is string => n !== undefined);
+  }
+
+  it(
+    'passes check on the current ENTRYPOINTS.md (no drift)',
+    { timeout: SUBPROCESS_TIMEOUT },
+    () => {
+      const output = runScript('check');
+      expect(output).toContain('Governance check passed');
+      expect(output).not.toContain('ENTRYPOINTS.md MCP tool enumerations are stale');
+    }
+  );
+
+  it(
+    'renders every registered tool exactly once in BOTH surfaces',
+    { timeout: IDEMPOTENCY_TIMEOUT },
+    () => {
+      runScript('inject');
+      try {
+        const { prose, yaml } = readSurfaces();
+        const tools = registeredTools();
+        expect(tools.length).toBeGreaterThanOrEqual(30);
+        // Tool column cells are the leading `| \`<name>\` ` on each row;
+        // a bare backtick match would also catch description cross-references
+        // (e.g. execute_expert's blurb mentions `create_expert`).
+        const proseRows = prose
+          .split('\n')
+          .map((line) => /^\| `([^`]+)` /.exec(line)?.[1])
+          .filter((n): n is string => n !== undefined);
+        for (const name of tools) {
+          const proseHits = proseRows.filter((n) => n === name).length;
+          expect(proseHits, `prose cell for ${name}`).toBe(1);
+          // YAML block: `- name: <tool>` appears exactly once.
+          const yamlHits = yaml.split(`- name: ${name}\n`).length - 1;
+          expect(yamlHits, `yaml entry for ${name}`).toBe(1);
+        }
+        // Footer count equals the registered count.
+        const footer = /(\d+) tools\._/.exec(prose);
+        expect(footer).not.toBeNull();
+        expect(parseInt(footer![1]!, 10)).toBe(tools.length);
+      } finally {
+        runScript('inject');
+      }
+    }
+  );
+
+  it('check fails when an ENTRYPOINTS enumeration drifts', { timeout: SUBPROCESS_TIMEOUT }, () => {
+    const original = readFileSync(ENTRYPOINTS, 'utf-8');
+    try {
+      // Drop a YAML tool entry — simulates a registered tool missing from
+      // the enumeration, which the gate must catch.
+      const broken = original.replace(/ {4}- name: orchestrate\n {6}auth: none\n/, '');
+      expect(broken).not.toBe(original);
+      writeFileSync(ENTRYPOINTS, broken);
+      let combined = '';
+      let exitCode = 0;
+      try {
+        execSync(`npx tsx ${SCRIPT} check`, { cwd: ROOT, encoding: 'utf-8', timeout: 30000 });
+      } catch (err) {
+        const e = err as { status?: number; stderr?: string; stdout?: string };
+        exitCode = e.status ?? 1;
+        combined = (e.stderr ?? '') + (e.stdout ?? '');
+      }
+      expect(exitCode).not.toBe(0);
+      expect(combined).toContain('ENTRYPOINTS.md MCP tool enumerations are stale');
+    } finally {
+      writeFileSync(ENTRYPOINTS, original);
+    }
+  });
+});

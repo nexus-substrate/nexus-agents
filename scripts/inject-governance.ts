@@ -36,6 +36,11 @@ import {
 } from './check-memory-contract.js';
 const CLAUDE_MD_PATH = join(ROOT, 'CLAUDE.md');
 const README_PATH = join(ROOT, 'README.md');
+// #3334: docs/ENTRYPOINTS.md carries TWO MCP-tool enumerations (a prose
+// markdown table + a `BEGIN:MCP_TOOLS` YAML block) that drifted to 42/45
+// while REGISTERED_TOOL_NAMES grew. Both are now generated from the same
+// registry + TOOL_DESCRIPTIONS corpus as the CLAUDE.md / README surfaces.
+const ENTRYPOINTS_PATH = join(ROOT, 'docs/ENTRYPOINTS.md');
 const TOOLS_INDEX = join(ROOT, 'packages/nexus-agents/src/mcp/tools/index.ts');
 const EXPERT_CONFIG = join(ROOT, 'packages/nexus-agents/src/agents/experts/expert-config.ts');
 const TEMPLATE_TYPES = join(ROOT, 'packages/nexus-agents/src/workflows/template-types.ts');
@@ -93,7 +98,27 @@ const MARKERS = {
   // rule if AGENTS.md references it — so hand-maintaining it drifts.
   rulesIndexStart: '<!-- GOVERNANCE:RULES_INDEX:START -->',
   rulesIndexEnd: '<!-- GOVERNANCE:RULES_INDEX:END -->',
+  // #3334: ENTRYPOINTS.md prose tool table. The YAML block keeps its own
+  // pre-existing `BEGIN/END:MCP_TOOLS` markers (see ENTRYPOINTS_YAML_*).
+  entrypointsToolsStart: '<!-- GOVERNANCE:ENTRYPOINTS_TOOLS:START -->',
+  entrypointsToolsEnd: '<!-- GOVERNANCE:ENTRYPOINTS_TOOLS:END -->',
 };
+
+// #3334: the ENTRYPOINTS.md YAML block already shipped with these markers
+// (a different convention from the GOVERNANCE:* family). Reuse them rather
+// than re-marking the block, so the diff stays minimal.
+const ENTRYPOINTS_YAML_START = '<!-- BEGIN:MCP_TOOLS -->';
+const ENTRYPOINTS_YAML_END = '<!-- END:MCP_TOOLS -->';
+
+// #3334: tools whose ENTRYPOINTS auth surface is not the default
+// "None (local)" / `none`. Only `run_dev_pipeline` is currently optional
+// (it can take a GitHub token). Keyed by tool name; the value is the
+// canonical auth label rendered in both the prose table and the YAML block.
+const ENTRYPOINTS_TOOL_AUTH: Record<string, { prose: string; yaml: string }> = {
+  run_dev_pipeline: { prose: 'Optional', yaml: 'optional' },
+};
+
+const ENTRYPOINTS_DEFAULT_AUTH = { prose: 'None (local)', yaml: 'none' } as const;
 
 const SKILLS_INDEX_PATH = join(SKILLS_DIR, 'index.yaml');
 const RULES_DIR = join(ROOT, '.rules');
@@ -453,6 +478,152 @@ function generateReadmeToolTable(tools: ToolMetadata[]): string {
   lines.push(MARKERS.readmeToolsEnd);
 
   return lines.join('\n');
+}
+
+// ============================================================================
+// ENTRYPOINTS.md MCP tool enumerations (#3334)
+// ============================================================================
+
+/** Auth label for a tool in the ENTRYPOINTS surfaces (prose + YAML). */
+function entrypointsAuth(name: string): { prose: string; yaml: string } {
+  return ENTRYPOINTS_TOOL_AUTH[name] ?? ENTRYPOINTS_DEFAULT_AUTH;
+}
+
+/**
+ * One-line ENTRYPOINTS description for a tool. Sourced from the same
+ * `TOOL_DESCRIPTIONS` corpus the CLAUDE.md / README surfaces use, collapsed
+ * to its first sentence so the table cell stays scannable. Throws if a
+ * registered tool has no description — the prose table must never emit a
+ * blank row (#3334). `|` is escaped so a description can't break the markdown
+ * column.
+ */
+function entrypointsToolDescription(t: ToolMetadata): string {
+  const raw = TOOL_DESCRIPTIONS[t.name];
+  if (raw === undefined || raw.trim() === '') {
+    throw new Error(
+      `Tool '${t.name}' is registered but has no TOOL_DESCRIPTIONS entry — ` +
+        `add one in scripts/tool-descriptions-data.ts before generating ENTRYPOINTS (#3334).`
+    );
+  }
+  return firstSentence(raw).replace(/\|/g, '\\|');
+}
+
+/**
+ * Generate the ENTRYPOINTS.md prose MCP tools table (#3334). Four columns —
+ * Tool, Description, Auth, Rate Limit — every registered tool rendered exactly
+ * once. Column padding mirrors `generateReadmeToolTable` so prettier produces
+ * no follow-up diff. Rate Limit is uniform ("Shared bucket") because every
+ * tool shares the single token bucket; Auth comes from `ENTRYPOINTS_TOOL_AUTH`.
+ */
+function generateEntrypointsToolTable(tools: ToolMetadata[]): string {
+  const rows = tools.map((t) => ({
+    name: '`' + t.name + '`',
+    desc: entrypointsToolDescription(t),
+    auth: entrypointsAuth(t.name).prose,
+    rate: 'Shared bucket',
+  }));
+
+  const toolW = Math.max('Tool'.length, ...rows.map((r) => r.name.length));
+  const descW = Math.max('Description'.length, ...rows.map((r) => r.desc.length));
+  const authW = Math.max('Auth'.length, ...rows.map((r) => r.auth.length));
+  const rateW = Math.max('Rate Limit'.length, ...rows.map((r) => r.rate.length));
+
+  const lines = [
+    MARKERS.entrypointsToolsStart,
+    '',
+    `| ${'Tool'.padEnd(toolW)} | ${'Description'.padEnd(descW)} | ${'Auth'.padEnd(authW)} | ${'Rate Limit'.padEnd(rateW)} |`,
+    `| ${'-'.repeat(toolW)} | ${'-'.repeat(descW)} | ${'-'.repeat(authW)} | ${'-'.repeat(rateW)} |`,
+  ];
+  for (const r of rows) {
+    lines.push(
+      `| ${r.name.padEnd(toolW)} | ${r.desc.padEnd(descW)} | ${r.auth.padEnd(authW)} | ${r.rate.padEnd(rateW)} |`
+    );
+  }
+  lines.push('');
+  lines.push(
+    `_Auto-generated from \`REGISTERED_TOOL_NAMES\` + \`TOOL_DESCRIPTIONS\` by \`scripts/inject-governance.ts\`. ${String(tools.length)} tools._`,
+    '',
+    MARKERS.entrypointsToolsEnd
+  );
+  return lines.join('\n');
+}
+
+/**
+ * Generate the ENTRYPOINTS.md `BEGIN:MCP_TOOLS` YAML block (#3334). Preserves
+ * the pre-existing schema (`mcp_tools:` → `rate_limiting:` + `tools:` list of
+ * `{ name, auth }`) so downstream YAML consumers are unaffected; only the
+ * `tools:` list is regenerated, one entry per registered tool.
+ */
+function generateEntrypointsYamlBlock(tools: ToolMetadata[]): string {
+  const lines = [
+    ENTRYPOINTS_YAML_START,
+    '',
+    '```yaml',
+    'mcp_tools:',
+    "  rate_limiting: 'shared token bucket (capacity: 100, refill: 10/sec)'",
+    '  tools:',
+  ];
+  for (const t of tools) {
+    lines.push(`    - name: ${t.name}`);
+    lines.push(`      auth: ${entrypointsAuth(t.name).yaml}`);
+  }
+  lines.push('```', '', ENTRYPOINTS_YAML_END);
+  return lines.join('\n');
+}
+
+/**
+ * Regenerate both ENTRYPOINTS.md enumerations (prose table + YAML block) in
+ * one pass (#3334). The prose table is injected via the GOVERNANCE marker
+ * family; the YAML block reuses its own pre-existing `BEGIN/END:MCP_TOOLS`
+ * markers. Returns the updated content; throws (via the description lookup)
+ * if any registered tool lacks a description.
+ */
+function applyEntrypointsInjections(content: string, tools: ToolMetadata[]): string {
+  let next = injectSection(
+    content,
+    MARKERS.entrypointsToolsStart,
+    MARKERS.entrypointsToolsEnd,
+    generateEntrypointsToolTable(tools)
+  );
+  next = injectSection(
+    next,
+    ENTRYPOINTS_YAML_START,
+    ENTRYPOINTS_YAML_END,
+    generateEntrypointsYamlBlock(tools)
+  );
+  return next;
+}
+
+/**
+ * Write the regenerated ENTRYPOINTS.md enumerations (#3334). Soft-skips when
+ * the file or the prose-table markers are absent, so the script stays drop-in
+ * compatible with older checkouts that haven't been marker-prepped.
+ */
+async function injectEntrypoints(tools: ToolMetadata[]): Promise<void> {
+  if (!existsSync(ENTRYPOINTS_PATH)) return;
+  const content = readFileSync(ENTRYPOINTS_PATH, 'utf-8');
+  if (!content.includes(MARKERS.entrypointsToolsStart)) return;
+  const updated = applyEntrypointsInjections(content, tools);
+  if (updated !== content) await writeFormatted(ENTRYPOINTS_PATH, updated);
+}
+
+/**
+ * Verify both ENTRYPOINTS.md enumerations are in sync with the canonical
+ * registry (#3334). Soft-skip when the file or prose-table markers are absent;
+ * otherwise fail (with a structured error) when regeneration would diff.
+ */
+function checkEntrypoints(tools: ToolMetadata[]): boolean {
+  if (!existsSync(ENTRYPOINTS_PATH)) return true;
+  const content = readFileSync(ENTRYPOINTS_PATH, 'utf-8');
+  if (!content.includes(MARKERS.entrypointsToolsStart)) return true;
+  const updated = applyEntrypointsInjections(content, tools);
+  if (updated !== content) {
+    console.error(
+      'docs/ENTRYPOINTS.md MCP tool enumerations are stale (#3334). Run: pnpm governance:inject'
+    );
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -1133,6 +1304,7 @@ function checkGovernance(): boolean {
     ancillaryOk,
     versionOk,
     checkReadmeToolTable(actual.tools),
+    checkEntrypoints(actual.tools),
     checkCanonicalPaths(),
     checkAdapterPrecedenceDocs(),
     checkRuleFrontmatter(),
@@ -1388,6 +1560,10 @@ async function injectGovernance(): Promise<void> {
   // Inject the AGENTS.md Rules index (#2657) from `.rules/*.md` frontmatter —
   // the cross-adapter bridge. Soft-skip if AGENTS.md has no markers yet.
   await injectAgentsRulesIndex();
+
+  // #3334: regenerate both docs/ENTRYPOINTS.md MCP-tool enumerations (the
+  // prose table and the BEGIN:MCP_TOOLS YAML block) from the same registry.
+  await injectEntrypoints(tools);
 
   // #1837: keep ancillary count surfaces (plugin manifests, AGENTS.md,
   // install docs) aligned with canonical registries.
