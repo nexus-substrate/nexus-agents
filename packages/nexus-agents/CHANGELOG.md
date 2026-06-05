@@ -1,5 +1,18 @@
 # nexus-agents
 
+## 2.111.1
+
+### Patch Changes
+
+- [#3462](https://github.com/nexus-substrate/nexus-agents/pull/3462) [`97b844d`](https://github.com/nexus-substrate/nexus-agents/commit/97b844d7bdcdac89ddf766c2e375d4d7f2f4361d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(harness): add GEMINI.md redirect to AGENTS.md ([#3446](https://github.com/nexus-substrate/nexus-agents/issues/3446) Phase 4)
+
+  Completes the model-agnostic governance refactor: adds a root-level `GEMINI.md`
+  that redirects to AGENTS.md (the Gemini CLI reads `GEMINI.md` natively, or can be
+  pointed at `AGENTS.md` via `context.fileName`), and registers it in the
+  harness-alignment CI gate (`doctor-harness-alignment.ts`) so it can't silently
+  stop referencing AGENTS.md. Updates the AGENT_COMPATIBILITY matrix (Gemini row +
+  notes CLAUDE.md is now generated from AGENTS.md).
+
 ## 2.111.0
 
 ### Minor Changes
