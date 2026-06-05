@@ -365,6 +365,25 @@ describe('CompositeRouter distinct API routing arms (#3422)', () => {
     expect(pullCount(after, 'claude')).toBe(claudeBefore);
   });
 
+  it('selects an api:* arm end-to-end and returns it as decision.cliName', async () => {
+    // A single registered arm forces the pipeline to select it — proving the
+    // api:* arm survives the full ranking/selection round-trip (TOPSIS ranking +
+    // LinUCB `armName`) as decision.cliName, not just direct recordOutcome.
+    const adapters = new Map<RoutingArmId, ICliAdapter>([['api:anthropic', createArmAdapter()]]);
+    const router = new CompositeRouter(adapters);
+
+    const result = await router.route({ content: 'Implement a feature' });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.cliName).toBe('api:anthropic');
+    }
+    // Stats still collapse to the display slot — no api:* key leaks in.
+    const stats = router.getStats();
+    expect(Object.keys(stats.decisionsPerCli)).not.toContain('api:anthropic');
+    expect(stats.decisionsPerCli.claude).toBe(1);
+  });
+
   it('keeps decisionsPerCli slot-keyed (no api:* key leaks in)', async () => {
     const adapters = new Map<RoutingArmId, ICliAdapter>([
       ['claude', createArmAdapter()],

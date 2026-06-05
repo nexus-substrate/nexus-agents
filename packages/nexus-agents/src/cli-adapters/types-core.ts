@@ -38,11 +38,6 @@ export function apiArmId(vendor: ApiVendor): ApiArmId {
   return `api:${vendor}`;
 }
 
-/** Narrow a routing arm id to a distinct API arm (vs. a CLI slot). */
-export function isApiArmId(id: RoutingArmId): id is ApiArmId {
-  return id.startsWith('api:');
-}
-
 /**
  * Map a routing arm id to its display CLI slot (#3422) — identity for CLI
  * slots, vendor→slot for API arms. Used where a feature is intrinsically

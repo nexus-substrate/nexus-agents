@@ -303,6 +303,10 @@ export class CompositeRouter implements ICompositeRouter {
       this.preferenceRouter = new PreferenceRouter(preferenceConfig);
     if (this.config.enableTopsisRanking) this.topsisRouter = new TopsisRouter();
     if (this.config.enableLinUCBSelection && this.cliNames.length > 0) {
+      // Arms include distinct api:* arms (#3422). Persisted outcomes/priors are
+      // slot-attributed, so api:* arms start cold and gain no warm-start credit
+      // by design — do NOT collapse the arm names here, that would destroy the
+      // CLI-vs-API distinct learning this migration exists to enable.
       this.linucbBandit = new LinUCBBandit(this.cliNames, { alpha: this.config.linucbAlpha });
       this.warmStartBandit();
     }
@@ -369,7 +373,9 @@ export class CompositeRouter implements ICompositeRouter {
       type: 'routing.decision',
       timestamp: getTimeProvider().now(),
       taskId: taskDescription.slice(0, 100),
-      selectedModel: decision.cliName,
+      // Trace attribution is slot-level; collapse the api:* arm (#3422) so this
+      // sink matches every other telemetry sink (the bandit keeps the arm).
+      selectedModel: routingArmDisplaySlot(decision.cliName),
       reasoning: decision.reason,
       decisionPath: decision.stagesExecuted,
     });

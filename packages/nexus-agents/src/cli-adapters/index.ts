@@ -33,7 +33,7 @@ export type {
 } from './types.js';
 
 export { CLI_VERSION_REQUIREMENTS, DEFAULT_CAPABILITIES } from './types.js';
-export { apiArmId, isApiArmId, routingArmDisplaySlot } from './types.js';
+export { apiArmId, routingArmDisplaySlot } from './types.js';
 
 // Base adapter
 export { BaseCliAdapter } from './base-adapter.js';

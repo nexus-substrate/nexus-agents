@@ -28,7 +28,7 @@ export type {
 } from './types-core.js';
 
 // Routing arm id helpers (#3422)
-export { apiArmId, isApiArmId, routingArmDisplaySlot } from './types-core.js';
+export { apiArmId, routingArmDisplaySlot } from './types-core.js';
 
 // Capability types
 export type {
