@@ -1,5 +1,18 @@
 # nexus-agents
 
+## 2.109.1
+
+### Patch Changes
+
+- [#3440](https://github.com/nexus-substrate/nexus-agents/pull/3440) [`fbd6a6a`](https://github.com/nexus-substrate/nexus-agents/commit/fbd6a6a30ff422e089ade3ea20f06e2a644b27b7) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - test(routing): lock api:\* arm participation in tier stages ([#3424](https://github.com/nexus-substrate/nexus-agents/issues/3424))
+
+  Verify-before-implement found [#3424](https://github.com/nexus-substrate/nexus-agents/issues/3424) already resolved by the [#3422](https://github.com/nexus-substrate/nexus-agents/issues/3422) migration:
+  `filterByPreferenceTier` and `filterByDifficultyTier` collapse an `api:*` arm to
+  its display slot (`routingArmDisplaySlot`) for tier membership/ordering, so a
+  wrapped API arm inherits its vendor slot's tier and is never dropped. Adds
+  regression tests pinning that behavior (api:anthropic → strong/powerful as
+  claude; api:openai → weak as codex; arms preserved, not filtered out).
+
 ## 2.109.0
 
 ### Minor Changes
