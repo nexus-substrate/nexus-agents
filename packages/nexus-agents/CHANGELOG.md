@@ -1,5 +1,22 @@
 # nexus-agents
 
+## 2.113.0
+
+### Minor Changes
+
+- [#3468](https://github.com/nexus-substrate/nexus-agents/pull/3468) [`d1fb1dc`](https://github.com/nexus-substrate/nexus-agents/commit/d1fb1dc35d4583fcd7bb9c80805c47b872f0b254) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(improvement-review): route recurring vote rejections into improvement signals ([#3259](https://github.com/nexus-substrate/nexus-agents/issues/3259))
+
+  `consensus_vote` buffers a `signal.vote_rejected` event (carrying the ADR-0016
+  `rejectionRules`) on the pipeline bus for every rejected plan, but no consumer
+  read it — rejection reasons stayed local to each proposal. `improvement_review`
+  now reads the buffered rejections (window-filtered, fail-soft) and surfaces a new
+  `consensus`-category signal when a single rule (`DRY_VIOLATION`,
+  `OVER_ENGINEERING`, …) recurs across ≥3 rejected plans, closing the feedback loop
+  the 2026-05-31 system review flagged as missing. Recurring rejection for the same
+  reason is a systemic planning gap, surfaced once instead of plan-by-plan. The
+  recalled rule is re-validated against the canonical ADR-0016 allowlist
+  (defense-in-depth) before it can reach an issue title/body.
+
 ## 2.112.0
 
 ### Minor Changes
