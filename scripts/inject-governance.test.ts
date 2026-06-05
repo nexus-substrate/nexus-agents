@@ -349,15 +349,19 @@ describe('inject-governance workflows + canonical paths (#2317)', () => {
     'canonical paths validator fails when a row points at a missing file',
     { timeout: SUBPROCESS_TIMEOUT },
     () => {
-      const original = readFileSync(CLAUDE_MD, 'utf-8');
+      // #3446: the canonical-paths table is now authored in AGENTS.md (CLAUDE.md
+      // generates its copy from the AGNOSTIC:BODY slice), so the validator reads
+      // AGENTS.md. AGENTS uses the `src/...` shorthand for the nexus-agents pkg.
+      const AGENTS_MD = join(ROOT, 'AGENTS.md');
+      const original = readFileSync(AGENTS_MD, 'utf-8');
       try {
         const broken = original.replace(
-          '`packages/nexus-agents/src/consensus/engine.ts`',
-          '`packages/nexus-agents/src/consensus/THIS_FILE_DOES_NOT_EXIST.ts`'
+          '`src/consensus/engine.ts`',
+          '`src/consensus/THIS_FILE_DOES_NOT_EXIST.ts`'
         );
         // Sanity: ensure the replace actually found the row.
         expect(broken).not.toBe(original);
-        writeFileSync(CLAUDE_MD, broken);
+        writeFileSync(AGENTS_MD, broken);
         let stderr = '';
         let exitCode = 0;
         try {
@@ -371,7 +375,7 @@ describe('inject-governance workflows + canonical paths (#2317)', () => {
         expect(stderr).toContain('Canonical Paths drift');
         expect(stderr).toContain('THIS_FILE_DOES_NOT_EXIST.ts');
       } finally {
-        writeFileSync(CLAUDE_MD, original);
+        writeFileSync(AGENTS_MD, original);
       }
     }
   );
@@ -497,6 +501,126 @@ describe('inject-governance rules-index (#2657)', () => {
         expect(stderr).toContain('AGENTS.md Rules index is stale');
       } finally {
         writeFileSync(AGENTS_MD, original);
+      }
+    }
+  );
+});
+
+// ============================================================================
+// CLAUDE.md generated-from-AGENTS block + drift gate (#3446, Phase 2+3)
+// ============================================================================
+
+describe('inject-governance claude-from-agents (#3446)', () => {
+  const AGENTS_MD = join(ROOT, 'AGENTS.md');
+
+  it(
+    'passes when the CLAUDE.md generated block matches AGENTS.md AGNOSTIC:BODY',
+    { timeout: SUBPROCESS_TIMEOUT },
+    () => {
+      const output = runScript('check');
+      expect(output).toContain('Governance check passed');
+      expect(output).not.toContain('GENERATED:FROM_AGENTS block is stale');
+    }
+  );
+
+  it(
+    'CLAUDE.md generated block carries the agnostic body sliced from AGENTS.md',
+    { timeout: SUBPROCESS_TIMEOUT },
+    () => {
+      const content = readFileSync(CLAUDE_MD, 'utf-8');
+      const start = content.indexOf('<!-- GENERATED:FROM_AGENTS:START -->');
+      const end = content.indexOf('<!-- GENERATED:FROM_AGENTS:END -->');
+      expect(start).toBeGreaterThan(-1);
+      expect(end).toBeGreaterThan(start);
+      const block = content.slice(start, end);
+      // The "do not edit" provenance note must be present.
+      expect(block).toContain('DO NOT EDIT THIS BLOCK BY HAND');
+      expect(block).toContain('#3446');
+      // Agnostic prose that lives ONLY in AGENTS.md AGNOSTIC:BODY must arrive
+      // here verbatim (lowercase AGENTS headings, not the old CLAUDE casing).
+      expect(block).toContain('## Prime directive');
+      expect(block).toContain('## Default working mode');
+      expect(block).toContain('## Untrusted-input safety invariants');
+      expect(block).toContain('## Consensus voting thresholds');
+      // The block must NOT swallow the AGNOSTIC marker lines themselves.
+      expect(block).not.toContain('AGNOSTIC:BODY:START');
+      expect(block).not.toContain('AGNOSTIC:BODY:END');
+    }
+  );
+
+  it(
+    'fails when the CLAUDE.md generated block is hand-edited (drifts from AGENTS.md)',
+    { timeout: SUBPROCESS_TIMEOUT },
+    () => {
+      const original = readFileSync(CLAUDE_MD, 'utf-8');
+      try {
+        // Simulate an editor changing the generated prose in CLAUDE.md instead
+        // of AGENTS.md — the gate must catch it.
+        const broken = original.replace('## Prime directive', '## Prime directive (hand-edited)');
+        expect(broken).not.toBe(original);
+        writeFileSync(CLAUDE_MD, broken);
+        let stderr = '';
+        let exitCode = 0;
+        try {
+          execSync(`npx tsx ${SCRIPT} check`, { cwd: ROOT, encoding: 'utf-8', timeout: 30000 });
+        } catch (err) {
+          const e = err as { status?: number; stderr?: string; stdout?: string };
+          exitCode = e.status ?? 1;
+          stderr = (e.stderr ?? '') + (e.stdout ?? '');
+        }
+        expect(exitCode).not.toBe(0);
+        expect(stderr).toContain('GENERATED:FROM_AGENTS block is stale');
+      } finally {
+        writeFileSync(CLAUDE_MD, original);
+      }
+    }
+  );
+
+  it(
+    'fails when AGENTS.md AGNOSTIC:BODY is edited without re-running inject',
+    { timeout: SUBPROCESS_TIMEOUT },
+    () => {
+      const original = readFileSync(AGENTS_MD, 'utf-8');
+      try {
+        // Edit the agnostic body but do NOT re-inject — CLAUDE.md is now stale.
+        const broken = original.replace(
+          'Clever code is maintenance debt.',
+          'Clever code is maintenance debt. (edited but not injected)'
+        );
+        expect(broken).not.toBe(original);
+        writeFileSync(AGENTS_MD, broken);
+        let stderr = '';
+        let exitCode = 0;
+        try {
+          execSync(`npx tsx ${SCRIPT} check`, { cwd: ROOT, encoding: 'utf-8', timeout: 30000 });
+        } catch (err) {
+          const e = err as { status?: number; stderr?: string; stdout?: string };
+          exitCode = e.status ?? 1;
+          stderr = (e.stderr ?? '') + (e.stdout ?? '');
+        }
+        expect(exitCode).not.toBe(0);
+        expect(stderr).toContain('GENERATED:FROM_AGENTS block is stale');
+      } finally {
+        writeFileSync(AGENTS_MD, original);
+      }
+    }
+  );
+
+  it(
+    'inject regenerates the CLAUDE.md block from AGENTS.md (idempotent)',
+    { timeout: IDEMPOTENCY_TIMEOUT },
+    () => {
+      const original = readFileSync(CLAUDE_MD, 'utf-8');
+      try {
+        runScript('inject');
+        const firstRun = readFileSync(CLAUDE_MD, 'utf-8');
+        runScript('inject');
+        const secondRun = readFileSync(CLAUDE_MD, 'utf-8');
+        expect(firstRun).toBe(secondRun);
+        // The block was populated (not left as the bare empty marker pair).
+        expect(firstRun).toContain('## Prime directive');
+      } finally {
+        writeFileSync(CLAUDE_MD, original);
       }
     }
   );

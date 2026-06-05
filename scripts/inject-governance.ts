@@ -102,7 +102,19 @@ const MARKERS = {
   // pre-existing `BEGIN/END:MCP_TOOLS` markers (see ENTRYPOINTS_YAML_*).
   entrypointsToolsStart: '<!-- GOVERNANCE:ENTRYPOINTS_TOOLS:START -->',
   entrypointsToolsEnd: '<!-- GOVERNANCE:ENTRYPOINTS_TOOLS:END -->',
+  // #3446 (Phase 2+3): CLAUDE.md's agnostic body is GENERATED from AGENTS.md's
+  // `AGNOSTIC:BODY` slice so harness-neutral prose is authored exactly once.
+  // The slice is injected between these markers; everything outside them
+  // (authored header + Claude-specific overlay) stays hand-maintained.
+  claudeAgnosticStart: '<!-- GENERATED:FROM_AGENTS:START -->',
+  claudeAgnosticEnd: '<!-- GENERATED:FROM_AGENTS:END -->',
 };
+
+// #3446: the AGENTS.md agnostic body is delimited by these markers. The text
+// strictly BETWEEN them (exclusive of the marker lines) is the single source
+// of harness-neutral content that re-enters CLAUDE.md via the generated block.
+const AGNOSTIC_BODY_START = '<!-- AGNOSTIC:BODY:START -->';
+const AGNOSTIC_BODY_END = '<!-- AGNOSTIC:BODY:END -->';
 
 // #3334: the ENTRYPOINTS.md YAML block already shipped with these markers
 // (a different convention from the GOVERNANCE:* family). Reuse them rather
@@ -786,6 +798,98 @@ function checkRulesIndex(): boolean {
   return true;
 }
 
+// ============================================================================
+// Claude agnostic block (#3446, Phase 2+3) — CLAUDE.md generated from AGENTS.md
+// ============================================================================
+
+/**
+ * Slice the harness-neutral body out of AGENTS.md: the text strictly BETWEEN
+ * the `AGNOSTIC:BODY:START` / `AGNOSTIC:BODY:END` markers, exclusive of the
+ * marker lines themselves. This slice is the single authoritative source of
+ * agnostic prose — CLAUDE.md re-uses it verbatim via the generated block so no
+ * harness-neutral content is authored twice (#3446).
+ *
+ * Throws if either marker is missing — AGENTS.md is a required source for the
+ * CLAUDE.md generator, so a silent empty slice would erase the agnostic body.
+ */
+function extractAgnosticBody(): string {
+  if (!existsSync(AGENTS_MD_PATH)) {
+    throw new Error(
+      `AGENTS.md not found at ${AGENTS_MD_PATH} — required by the CLAUDE.md generator (#3446)`
+    );
+  }
+  const content = readFileSync(AGENTS_MD_PATH, 'utf-8');
+  const startIdx = content.indexOf(AGNOSTIC_BODY_START);
+  const endIdx = content.indexOf(AGNOSTIC_BODY_END);
+  if (startIdx === -1 || endIdx === -1) {
+    throw new Error(
+      `AGENTS.md is missing the AGNOSTIC:BODY markers (#3446) — cannot generate CLAUDE.md`
+    );
+  }
+  // Take everything after the start marker line and before the end marker,
+  // then trim the surrounding blank lines so the injected block has exactly
+  // one blank line of padding (matching the "do not edit" note layout below).
+  const between = content.slice(startIdx + AGNOSTIC_BODY_START.length, endIdx);
+  return between.replace(/^\n+/, '').replace(/\n+$/, '');
+}
+
+/**
+ * Generate the CLAUDE.md agnostic block (#3446). The block is the AGENTS.md
+ * `AGNOSTIC:BODY` slice wrapped in the `GENERATED:FROM_AGENTS` markers with a
+ * "do not edit by hand" note, so an editor who opens CLAUDE.md knows the prose
+ * is owned by AGENTS.md and gated by `inject-governance.ts check`.
+ */
+function generateClaudeFromAgents(slice: string): string {
+  return [
+    MARKERS.claudeAgnosticStart,
+    '',
+    "<!-- DO NOT EDIT THIS BLOCK BY HAND. It is generated from AGENTS.md's",
+    '     AGNOSTIC:BODY slice by `scripts/inject-governance.ts` and gated in CI.',
+    '     Edit the agnostic prose in AGENTS.md; run `pnpm governance:inject`. (#3446) -->',
+    '',
+    slice,
+    '',
+    MARKERS.claudeAgnosticEnd,
+  ].join('\n');
+}
+
+/**
+ * Inject the generated agnostic block into CLAUDE.md (#3446). Soft-skips when
+ * CLAUDE.md has no `GENERATED:FROM_AGENTS` markers yet, so the script stays
+ * drop-in compatible with checkouts that have not been marker-prepped.
+ */
+function injectClaudeAgnosticBlock(content: string): string {
+  if (!content.includes(MARKERS.claudeAgnosticStart)) return content;
+  return injectSection(
+    content,
+    MARKERS.claudeAgnosticStart,
+    MARKERS.claudeAgnosticEnd,
+    generateClaudeFromAgents(extractAgnosticBody())
+  );
+}
+
+/**
+ * Verify the CLAUDE.md agnostic block is in sync with AGENTS.md's
+ * `AGNOSTIC:BODY` slice (#3446). Soft-skip when CLAUDE.md is absent or has no
+ * markers; otherwise fail (with a structured error) when regeneration would
+ * produce a diff — i.e. someone edited the agnostic prose in CLAUDE.md instead
+ * of AGENTS.md, or edited AGENTS.md without re-running the injector.
+ */
+function checkClaudeAgnosticBlock(): boolean {
+  if (!existsSync(CLAUDE_MD_PATH)) return true;
+  const content = readFileSync(CLAUDE_MD_PATH, 'utf-8');
+  if (!content.includes(MARKERS.claudeAgnosticStart)) return true;
+  const updated = injectClaudeAgnosticBlock(content);
+  if (updated !== content) {
+    console.error(
+      'CLAUDE.md GENERATED:FROM_AGENTS block is stale (#3446) — edit the agnostic ' +
+        'prose in AGENTS.md, then run: pnpm governance:inject'
+    );
+    return false;
+  }
+  return true;
+}
+
 /**
  * Generate governance version section.
  *
@@ -1210,24 +1314,62 @@ function checkMemoryContract(): boolean {
   return false;
 }
 
+/**
+ * Resolve a canonical-paths candidate against the repo. AGENTS.md's table uses
+ * a `src/...` shorthand that means `packages/nexus-agents/src/...`, while
+ * `packages/...` paths are repo-root-relative (#3446). Try repo-root first,
+ * then the nexus-agents package prefix as a fallback for the shorthand.
+ */
+function canonicalPathResolves(candidate: string): boolean {
+  if (existsSync(join(ROOT, candidate))) return true;
+  if (candidate.startsWith('src/')) {
+    return existsSync(join(ROOT, 'packages/nexus-agents', candidate));
+  }
+  return false;
+}
+
+/**
+ * Extract the existence-checkable file path from one canonical-paths table
+ * row, or `null` if the row has none (header/separator, or a row that only
+ * names a code symbol). The path cell may hold several backticked tokens
+ * (e.g. `` `Name` — `src/x.ts` ``); the LAST file-path-shaped token (contains
+ * `/` or ends in `.ts`) is the path. Directory markers (trailing `/`) are
+ * deliberately not returned — they are not existence-checked.
+ */
+function canonicalPathCandidate(line: string): string | null {
+  if (!line.startsWith('|')) return null;
+  if (/^\|\s*Concern\s*\|/.test(line) || /^\|\s*-+/.test(line)) return null;
+  const pathTokens = [...line.matchAll(/`([^`]+)`/g)]
+    .map((m) => m[1] ?? '')
+    .filter((t) => t.includes('/') || t.endsWith('.ts'));
+  const candidate = pathTokens.at(-1);
+  if (candidate === undefined || candidate.endsWith('/')) return null;
+  return candidate;
+}
+
+/**
+ * Validate that every file path in the "## Canonical paths" table resolves on
+ * disk (#2317, #2321, #3446). Repointed at AGENTS.md — the authoritative
+ * source of the canonical-paths table now that CLAUDE.md generates its copy
+ * from AGENTS.md's AGNOSTIC:BODY slice. The AGENTS table is `| Concern |
+ * Canonical path |`; only file paths are existence-checked (see
+ * `canonicalPathCandidate`).
+ */
 function checkCanonicalPaths(): boolean {
-  if (!existsSync(CLAUDE_MD_PATH)) return false;
-  const content = readFileSync(CLAUDE_MD_PATH, 'utf-8');
-  const headerIdx = content.indexOf('## Canonical Paths');
+  if (!existsSync(AGENTS_MD_PATH)) return true;
+  const content = readFileSync(AGENTS_MD_PATH, 'utf-8');
+  const headerIdx = content.search(/^## Canonical paths$/m);
   if (headerIdx === -1) return true;
   const tail = content.slice(headerIdx);
-  const sectionEnd = tail.search(/\n---\n/);
+  // Stop at the first `###` subheading (e.g. "### Memory contract scope") so we
+  // only scan the top-level concern→path table, not the promotion table below.
+  const sectionEnd = tail.search(/\n### /);
   const section = sectionEnd === -1 ? tail : tail.slice(0, sectionEnd);
 
-  const rowPattern = /^\|\s*\*\*[^*]+\*\*\s*\|[^|]*\|\s*`([^`]+)`\s*\|/gm;
   const failures: string[] = [];
-  let match: RegExpExecArray | null;
-  while ((match = rowPattern.exec(section)) !== null) {
-    const candidate = match[1];
-    if (candidate === undefined) continue;
-    if (candidate.endsWith('/')) continue; // directory marker, e.g. `src/security/`
-    const abs = join(ROOT, candidate);
-    if (!existsSync(abs)) failures.push(candidate);
+  for (const line of section.split('\n')) {
+    const candidate = canonicalPathCandidate(line);
+    if (candidate !== null && !canonicalPathResolves(candidate)) failures.push(candidate);
   }
 
   if (failures.length > 0) {
@@ -1309,6 +1451,7 @@ function checkGovernance(): boolean {
     checkReadmeToolTable(actual.tools),
     checkEntrypoints(actual.tools),
     checkCanonicalPaths(),
+    checkClaudeAgnosticBlock(),
     checkAdapterPrecedenceDocs(),
     checkRuleFrontmatter(),
     checkRulesIndex(),
@@ -1521,8 +1664,13 @@ function loadAllRegistries(): GovernanceRegistries {
 }
 
 function applyAllSectionInjections(content: string, r: GovernanceRegistries): string {
-  let next = injectSection(
-    content,
+  // #3446: regenerate the agnostic body FIRST from AGENTS.md's AGNOSTIC:BODY
+  // slice, so the harness-neutral prose stays single-sourced. The remaining
+  // injections target the authored header / Claude-specific overlay markers,
+  // which live in disjoint regions of the file.
+  let next = injectClaudeAgnosticBlock(content);
+  next = injectSection(
+    next,
     MARKERS.toolIndexStart,
     MARKERS.toolIndexEnd,
     generateToolIndex(r.tools)
