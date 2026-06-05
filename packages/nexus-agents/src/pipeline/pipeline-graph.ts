@@ -47,7 +47,15 @@ export function compilePipelineGraph(
 ): PipelineGraphResult {
   const missing = findMissingStages(template, stages);
   if (missing.length > 0) {
-    return { ok: false, error: `Missing stage implementations: ${missing.join(', ')}` };
+    const available = [...stages.keys()].sort().join(', ');
+    return {
+      ok: false,
+      error:
+        `Pipeline template '${template.id}' references stage(s) with no implementation ` +
+        `in the selected registry: ${missing.join(', ')}. ` +
+        `Available stages: ${available || '(none)'}. ` +
+        `Pick a different \`template\` whose stages are all implemented, or implement the missing stage(s).`,
+    };
   }
 
   const builder = new GraphBuilder();
@@ -73,8 +81,15 @@ export function compilePipelineGraph(
 // Helpers
 // ============================================================================
 
-/** Check for stages in template that have no implementation. */
-function findMissingStages(template: PipelineTemplate, stages: StageRegistry): string[] {
+/**
+ * Stage IDs a template references that the registry doesn't implement. Empty
+ * when the registry can run the whole template. Exported so the orchestrator
+ * can pre-check runnability and fall back to a satisfiable template (#3487).
+ */
+export function findMissingStages(
+  template: PipelineTemplate,
+  stages: StageRegistry
+): readonly string[] {
   return template.stages.filter((id) => !stages.has(id));
 }
 
