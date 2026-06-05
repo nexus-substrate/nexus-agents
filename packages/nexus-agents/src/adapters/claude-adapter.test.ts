@@ -478,6 +478,29 @@ describe('ClaudeAdapter', () => {
       }
     });
 
+    it('falls back to text mapping when the model returns no respond tool_use', async () => {
+      // Realistic refusal path: responseFormat requested, but the model replied
+      // with plain text instead of the forced tool. The text must pass through
+      // (the voter's regex/JSON fallback then salvages it) — not throw or drop.
+      mockCreate.mockResolvedValueOnce({
+        content: [{ type: 'text', text: '{"decision":"abstain"}' }],
+        usage: { input_tokens: 5, output_tokens: 5 },
+        stop_reason: 'end_turn',
+        model: CLAUDE_MODELS.SONNET_4,
+      });
+
+      const adapter = new ClaudeAdapter(validConfig);
+      const result = await adapter.complete({
+        messages: [{ role: 'user', content: 'Vote please' }],
+        responseFormat: { type: 'json_schema', schema: jsonSchema },
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.content).toEqual([{ type: 'text', text: '{"decision":"abstain"}' }]);
+      }
+    });
+
     it('merges the respond tool with caller-supplied tools', async () => {
       mockCreate.mockResolvedValueOnce({
         content: [{ type: 'text', text: 'unused' }],

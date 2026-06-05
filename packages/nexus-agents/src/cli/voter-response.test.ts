@@ -3,9 +3,11 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { z } from 'zod';
 import {
   SyntheticVoteError,
   VoteResponseSchema,
+  RawFindingSchema,
   VOTE_JSON_SCHEMA,
   buildVotePrompt,
   extractJsonFromResponse,
@@ -92,6 +94,27 @@ describe('VOTE_JSON_SCHEMA drift contract', () => {
     for (const key of Object.keys(fixture)) {
       expect(propertyKeys.has(key)).toBe(true);
     }
+  });
+
+  // #3433 QA: the top-level check above stops at `findings`; guard the NESTED
+  // RawFindingSchema (findings.items + gate) so a sub-field can't drift silently.
+  it('mirrors the nested RawFindingSchema (findings.items + gate)', () => {
+    const findings = schemaProperties()['findings'];
+    const itemProps = (
+      (findings as { items?: { properties?: unknown } }).items as { properties?: unknown }
+    ).properties;
+    if (typeof itemProps !== 'object' || itemProps === null) {
+      throw new Error('VOTE_JSON_SCHEMA.findings.items.properties missing');
+    }
+    expect(Object.keys(itemProps).sort()).toEqual(Object.keys(RawFindingSchema.shape).sort());
+
+    // Nested `gate` object.
+    const gateShape = (RawFindingSchema.shape.gate as z.ZodObject<z.ZodRawShape>).shape;
+    const gateProps = (itemProps as { gate?: { properties?: unknown } }).gate?.properties;
+    if (typeof gateProps !== 'object' || gateProps === null) {
+      throw new Error('VOTE_JSON_SCHEMA.findings.items.properties.gate.properties missing');
+    }
+    expect(Object.keys(gateProps).sort()).toEqual(Object.keys(gateShape).sort());
   });
 });
 
