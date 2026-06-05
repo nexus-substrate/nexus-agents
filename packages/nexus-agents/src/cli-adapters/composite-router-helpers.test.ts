@@ -11,7 +11,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { TaskProfile } from '../core/index.js';
-import type { CliName, CliTask } from './types.js';
+import type { CliName, CliTask, RoutingArmId } from './types.js';
 import type { TopsisModelProfile } from './topsis-types.js';
 import type {} from './zero-router-types.js';
 import {
@@ -276,6 +276,15 @@ describe('filterByPreferenceTier', () => {
     const result = filterByPreferenceTier(['codex'] as CliName[], 'strong');
     expect(result).toEqual(['codex']);
   });
+
+  it('includes an api:* arm by its display slot tier (#3424)', () => {
+    // api:anthropic collapses to the `claude` slot → eligible for the strong
+    // tier; api:openai collapses to `codex` → weak. The arm id is preserved.
+    expect(filterByPreferenceTier(['api:anthropic', 'api:openai'], 'strong')).toEqual([
+      'api:anthropic',
+    ]);
+    expect(filterByPreferenceTier(['api:anthropic', 'api:openai'], 'weak')).toEqual(['api:openai']);
+  });
 });
 
 // ============================================================================
@@ -539,6 +548,15 @@ describe('filterByDifficultyTier', () => {
     const result = filterByDifficultyTier(candidates, 'fast');
     expect(result).toHaveLength(3);
     expect(new Set(result)).toEqual(new Set(candidates));
+  });
+
+  it('keeps api:* arms and sorts them by display slot (#3424)', () => {
+    // api:anthropic sorts as `claude` → first in the powerful tier; the distinct
+    // arm id is never dropped (the gap #3424 worried about does not exist).
+    const withApi: RoutingArmId[] = ['api:openai', 'api:anthropic'];
+    const result = filterByDifficultyTier(withApi, 'powerful');
+    expect(result[0]).toBe('api:anthropic');
+    expect(new Set(result)).toEqual(new Set(withApi));
   });
 });
 
