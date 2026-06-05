@@ -11,6 +11,8 @@
 import type { Result } from '../core/index.js';
 import { getErrorMessage, err, ok, getTimeProvider } from '../core/index.js';
 
+import { ErrorCode, type ModelError } from '../core/errors.js';
+
 import type { CliName, CliErrorCode } from './types.js';
 import {
   CircuitError,
@@ -384,6 +386,37 @@ export function mapCliErrorToCategory(errorCode: CliErrorCode): FailureCategory 
     CONNECTION_ERROR: 'connection',
   };
   return mapping[errorCode] ?? 'unknown';
+}
+
+/**
+ * Maps a direct-API {@link ModelError} to a circuit-breaker failure category.
+ *
+ * Mirrors {@link mapCliErrorToCategory} for the IModelAdapter layer (#3423):
+ * API failures must drive the same breaker degradation/failover learning that
+ * CLI subprocess failures already get. Maps by the structured `error.code`
+ * first, then falls back to message-pattern categorization via
+ * {@link categorizeError} (which returns `'unknown'` if nothing matches).
+ *
+ * The fallback is what turns a generic `MODEL_ERROR` whose message reads
+ * "connection refused" into a `connection` category instead of `unknown`.
+ */
+export function mapModelErrorToCategory(error: ModelError): FailureCategory {
+  switch (error.code) {
+    case ErrorCode.MODEL_TIMEOUT:
+    case ErrorCode.TIMEOUT_ERROR:
+      return 'timeout';
+    case ErrorCode.UNAUTHORIZED:
+      return 'authentication';
+    case ErrorCode.MODEL_RATE_LIMITED:
+    case ErrorCode.RATE_LIMIT_ERROR:
+      return 'rate_limit';
+    case ErrorCode.MODEL_UNAVAILABLE:
+    case ErrorCode.MODEL_NOT_FOUND:
+      return 'connection';
+    default:
+      // MODEL_ERROR and any other code: fall back to message-pattern matching.
+      return categorizeError(error);
+  }
 }
 
 // `createCircuitBreakerRegistryWithMetrics` and the
