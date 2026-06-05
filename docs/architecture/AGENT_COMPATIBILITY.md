@@ -14,6 +14,7 @@ keywords:
   - opencode
   - claude-code
   - codex-cli
+  - gemini-cli
 ---
 
 # Agent Harness Compatibility Matrix
@@ -31,6 +32,7 @@ AGENTS.md is the convergence point. As of Q2 2026 it has explicit support in:
 - Aider (added in v0.69+)
 - Cline / Roo Code (project-context discovery)
 - Continue (rule sources can point at `AGENTS.md`)
+- Gemini CLI (reads `GEMINI.md`; `context.fileName` can point directly at `AGENTS.md`)
 - Goose (project conventions discovery)
 - OpenCode (`opencode.json` `instructions` can reference `AGENTS.md`)
 
@@ -40,7 +42,8 @@ Maintaining one document with thin shims into each harness gives full coverage f
 
 | Harness                   | Discovery file(s)                                                                 | Discovery scope                                | Loading model                                                                      | Native instruction format                                  |
 | ------------------------- | --------------------------------------------------------------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| **Anthropic Claude Code** | `CLAUDE.md` (primary), `AGENTS.md` (fallback)                                     | Project root + walking up to `$HOME`           | Auto-loaded into every session's system prompt                                     | Markdown with optional `<system-reminder>` tags            |
+| **Anthropic Claude Code** | `CLAUDE.md` (primary — **generated** from `AGENTS.md` + a Claude overlay, #3446)  | Project root + walking up to `$HOME`           | Auto-loaded into every session's system prompt                                     | Markdown with optional `<system-reminder>` tags            |
+| **Google Gemini CLI**     | `GEMINI.md` (redirect), or `context.fileName: AGENTS.md`                          | Project root + global at `~/.gemini/GEMINI.md` | Auto-loaded as context at session start                                            | Markdown                                                   |
 | **OpenAI Codex CLI**      | `AGENTS.md` (canonical, since launch)                                             | Project root + global at `~/.codex/AGENTS.md`  | Auto-loaded at session start                                                       | Markdown                                                   |
 | **Cursor**                | `.cursor/rules/*.mdc`, `.cursorrules` (legacy), `AGENTS.md`                       | Project root                                   | Rule files matched by `globs` + `description`; AGENTS.md loaded as project context | MDC (Cursor's markdown-with-frontmatter) or plain markdown |
 | **Windsurf**              | `.windsurfrules`, `.windsurf/rules/*.md`, `AGENTS.md`                             | Project root                                   | Cascade indexes all rule sources                                                   | Markdown                                                   |
@@ -52,17 +55,17 @@ Maintaining one document with thin shims into each harness gives full coverage f
 
 ## What nexus-agents ships today
 
-| File                                      | Role                                                                   | Status                                                                 |
-| ----------------------------------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `AGENTS.md`                               | Canonical surface; harness-neutral                                     | **Source of truth**                                                    |
-| `CLAUDE.md`                               | Claude Code-specific entry point with plugin/skill integration details | Kept; cross-references AGENTS.md and adds Claude-Code-only sections    |
-| `skills/index.yaml` + `skills/*/SKILL.md` | Anthropic Agent Skills spec (#1828)                                    | Discovered by harnesses that support skills; documented from AGENTS.md |
-| `.rules/*.md`                             | Per-rule files auto-loaded by Claude Code; referenced from AGENTS.md   | Kept; AGENTS.md indexes them                                           |
-| `docs/ENTRYPOINTS.md`                     | CLI + MCP tool reference                                               | Referenced from AGENTS.md                                              |
+| File                                      | Role                                                                   | Status                                                                  |
+| ----------------------------------------- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `AGENTS.md`                               | Canonical surface; harness-neutral                                     | **Source of truth**                                                     |
+| `CLAUDE.md`                               | Claude Code-specific entry point with plugin/skill integration details | **Generated** from AGENTS.md's agnostic body + a Claude overlay (#3446) |
+| `skills/index.yaml` + `skills/*/SKILL.md` | Anthropic Agent Skills spec (#1828)                                    | Discovered by harnesses that support skills; documented from AGENTS.md  |
+| `.rules/*.md`                             | Per-rule files auto-loaded by Claude Code; referenced from AGENTS.md   | Kept; AGENTS.md indexes them                                            |
+| `docs/ENTRYPOINTS.md`                     | CLI + MCP tool reference                                               | Referenced from AGENTS.md                                               |
 
-## What's missing today (Phase 2 of #2805 closes this)
+## Harness redirect shims
 
-These harness files don't exist yet in the repo. Phase 2 adds them as one-line redirects:
+These root/harness-config files exist as one-line redirects to AGENTS.md (added in #2805 Phase 2 + #3446 Phase 4). The `Harness Alignment Drift` CI gate (`scripts/check-harness-alignment.ts`) fails if any present file stops referencing `AGENTS.md`:
 
 | File                        | Harness  | Content shape                                                      |
 | --------------------------- | -------- | ------------------------------------------------------------------ |
@@ -71,6 +74,7 @@ These harness files don't exist yet in the repo. Phase 2 adds them as one-line r
 | `.aider.conf.yml`           | Aider    | `read: [AGENTS.md, CLAUDE.md]`                                     |
 | `.continue/rules/agents.md` | Continue | Markdown redirect                                                  |
 | `.clinerules/agents.md`     | Cline    | Markdown redirect                                                  |
+| `GEMINI.md`                 | Gemini   | Markdown redirect (root-level; Gemini CLI reads it natively)       |
 
 `opencode.json` and Goose `recipe.yaml` are project-config files with broader concerns than just instruction surfacing — those stay out of scope unless we ship an OpenCode/Goose adapter directly.
 

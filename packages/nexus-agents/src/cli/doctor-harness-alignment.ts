@@ -57,6 +57,9 @@ const HARNESS_FILES: ReadonlyArray<{ harness: string; path: string }> = [
   { harness: 'Aider', path: '.aider.conf.yml' },
   { harness: 'Continue', path: '.continue/rules/agents.md' },
   { harness: 'Cline', path: '.clinerules/agents.md' },
+  // Gemini CLI reads a root-level GEMINI.md natively (unlike the .rules/-dir
+  // harnesses); it redirects to AGENTS.md per the federation (#3446 Phase 4).
+  { harness: 'Gemini', path: 'GEMINI.md' },
 ];
 
 /**

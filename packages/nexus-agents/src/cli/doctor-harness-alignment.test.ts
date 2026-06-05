@@ -64,18 +64,19 @@ describe('checkHarnessAlignment', () => {
     expect(check.missingCount).toBeGreaterThanOrEqual(1);
   });
 
-  it('aggregates counts across all 5 known harnesses', () => {
+  it('aggregates counts across all 6 known harnesses', () => {
     writeAt('AGENTS.md', '# AGENTS.md');
     writeAt('.cursor/rules/agents.mdc', 'See AGENTS.md');
     writeAt('.windsurf/rules/agents.md', 'See AGENTS.md');
     writeAt('.aider.conf.yml', 'read: [AGENTS.md]');
     writeAt('.continue/rules/agents.md', 'See AGENTS.md');
     writeAt('.clinerules/agents.md', 'See AGENTS.md');
+    writeAt('GEMINI.md', 'Federated to AGENTS.md'); // #3446 Phase 4
 
     const check = checkHarnessAlignment(root);
 
-    expect(check.files).toHaveLength(5);
-    expect(check.alignedCount).toBe(5);
+    expect(check.files).toHaveLength(6);
+    expect(check.alignedCount).toBe(6);
     expect(check.driftCount).toBe(0);
     expect(check.missingCount).toBe(0);
   });
@@ -83,12 +84,12 @@ describe('checkHarnessAlignment', () => {
   it('handles mixed alignment + drift + missing in one tree', () => {
     writeAt('.cursor/rules/agents.mdc', 'See AGENTS.md'); // aligned
     writeAt('.windsurf/rules/agents.md', 'Some unrelated content'); // drift
-    // Aider, Continue, Cline absent → missing
+    // Aider, Continue, Cline, Gemini absent → missing
 
     const check = checkHarnessAlignment(root);
     expect(check.alignedCount).toBe(1);
     expect(check.driftCount).toBe(1);
-    expect(check.missingCount).toBe(3);
+    expect(check.missingCount).toBe(4);
   });
 
   it('does not throw on unreadable files (filesystem race)', () => {
