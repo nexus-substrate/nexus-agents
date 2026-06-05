@@ -1,5 +1,21 @@
 # nexus-agents
 
+## 2.116.0
+
+### Minor Changes
+
+- [#3481](https://github.com/nexus-substrate/nexus-agents/pull/3481) [`85815c5`](https://github.com/nexus-substrate/nexus-agents/commit/85815c5fcdd0394d22c2730b963896be0f39d5e6) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(mcp): wire accumulated context into execute_expert ([#3238](https://github.com/nexus-substrate/nexus-agents/issues/3238))
+
+  Extends the [#2792](https://github.com/nexus-substrate/nexus-agents/issues/2792) entry-point context wiring to `execute_expert` (previously only
+  routing/orchestrate/graph consumed `getContextForTask`). Gated behind
+  `NEXUS_CONTEXT_RETRIEVER_INJECT=1` — the same default-off rollout flag orchestrate
+  uses — so there is no behavior change until the bake-in flips it on. When enabled,
+  the expert task is prefixed with a sanitized "[Prior context]" block (beliefs,
+  memories, prior research, outcomes). Fail-soft on any retrieval error. The prefix
+  is run through `sanitizeExpertSummary` (the memory backends are writable by the
+  untrusted `memory_write` tool), and the access policy is derived from the
+  prefix-free task so accumulated context can never widen the derived operations.
+
 ## 2.115.1
 
 ### Patch Changes
