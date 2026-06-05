@@ -68,6 +68,8 @@ allowed-tools: Read, Edit, Write, Bash, Grep, Glob, Task
 
 <!-- PIPELINE NOTE: inject-governance.ts now GENERATES CLAUDE.md from AGENTS.md (#3446 Phases 2+3, 2026-06-05). extractAgnosticBody() slices AGENTS.md between AGNOSTIC:BODY:START/END markers; injectClaudeAgnosticBlock() injects that slice into CLAUDE.md between GENERATED:FROM_AGENTS markers; checkClaudeAgnosticBlock() (added to checkGovernance()) fails CI when the block is hand-edited or AGENTS.md was edited without re-inject. AGENTS.md is now the single canonical source for the ~75% harness-neutral guidance (mechanism C, generation — picked over  because it reuses this inject infra + is CI-drift-gated); CLAUDE.md = authored header + GENERATED:FROM_AGENTS block + a Claude-specific overlay (Agent/subagent_type table, plugin skills, the existing GOVERNANCE:* tool/model/version markers). checkCanonicalPaths() repointed from CLAUDE.md to AGENTS.md (its authoritative table now) and canonicalPathCandidates() checks EVERY backticked path in a row (was: last only). extractAgnosticBody fails loud on reordered/duplicate markers so a malformed AGENTS.md can never silently erase CLAUDE.md (#3446 QA). Phase 4 (GEMINI.md redirect) pending. -->
 
+<!-- PIPELINE NOTE: entrypointsToolDescription in inject-governance.ts now escapes backslashes before pipes (\\ then \|), resolving a HIGH js/incomplete-sanitization CodeQL alert from #3334 (2026-06-05). Escaping | for markdown-cell safety without escaping \ first let a backslash-bearing tool description smuggle a half-escaped pipe past the sanitization. Behavior-preserving — the curated TOOL_DESCRIPTIONS corpus has no backslashes, so inject output is unchanged + idempotent. -->
+
 **Full specification:** [docops-spec.md](../../docs/ops/docops-spec.md)
 
 ---

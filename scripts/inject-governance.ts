@@ -506,8 +506,9 @@ function entrypointsAuth(name: string): { prose: string; yaml: string } {
  * `TOOL_DESCRIPTIONS` corpus the CLAUDE.md / README surfaces use, collapsed
  * to its first sentence so the table cell stays scannable. Throws if a
  * registered tool has no description — the prose table must never emit a
- * blank row (#3334). `|` is escaped so a description can't break the markdown
- * column.
+ * blank row (#3334). Backslashes are escaped FIRST, then `|`, so a description
+ * can't break the markdown column or smuggle a half-escaped pipe past the
+ * escaping (CodeQL js/incomplete-sanitization).
  */
 function entrypointsToolDescription(t: ToolMetadata): string {
   const raw = TOOL_DESCRIPTIONS[t.name];
@@ -517,7 +518,7 @@ function entrypointsToolDescription(t: ToolMetadata): string {
         `add one in scripts/tool-descriptions-data.ts before generating ENTRYPOINTS (#3334).`
     );
   }
-  return firstSentence(raw).replace(/\|/g, '\\|');
+  return firstSentence(raw).replace(/\\/g, '\\\\').replace(/\|/g, '\\|');
 }
 
 /**
