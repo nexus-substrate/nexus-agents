@@ -13,7 +13,12 @@ import type { IModelAdapter, CompletionRequest, ILogger } from '../core/index.js
 import { getRandomProvider } from '../core/index.js';
 import { delay, withTimeout } from '../utils/async-utils.js';
 import { VOTER_SYSTEM_PROMPTS, SIMULATED_VOTE_REASONING } from './voter-prompts.js';
-import { buildVotePrompt, parseVoteResponse, SyntheticVoteError } from './voter-response.js';
+import {
+  buildVotePrompt,
+  parseVoteResponse,
+  SyntheticVoteError,
+  VOTE_JSON_SCHEMA,
+} from './voter-response.js';
 
 // Import timeout constants from canonical source (Issue #984)
 import {
@@ -253,6 +258,12 @@ export async function executeSingleVoteAttempt(
     // refine per use case if needed.
     maxTokens: 2000,
     temperature: 0.3, // Low temperature for consistent evaluations
+    // #3433: request native structured output (Claude tool_use / OpenAI+Gemini
+    // json mode) so the vote arrives as a schema-valid JSON object instead of
+    // prose-wrapped JSON. Adapters that don't honor responseFormat ignore it and
+    // the existing extractTextFromResponse + parseVoteResponse regex/Zod path
+    // below is the fallback — no behavior change for those backends.
+    responseFormat: { type: 'json_schema', schema: VOTE_JSON_SCHEMA },
     // Thread the vote's budget into the adapter so its shorter standard CLI
     // timeout doesn't fire first and surface as an MCP -32001 on slow voters
     // (e.g. the Security role on complex proposals) (#3304).

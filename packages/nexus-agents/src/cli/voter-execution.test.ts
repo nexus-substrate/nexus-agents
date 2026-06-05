@@ -438,6 +438,54 @@ describe('voter-execution', () => {
       expect(request.maxTokens).toBeLessThanOrEqual(8000);
     });
 
+    it('requests native structured output via responseFormat=json_schema (#3433)', async () => {
+      const mockResponse: MockCompletionResult = {
+        ok: true,
+        value: {
+          content: [{ type: 'text', text: VALID_VOTE_JSON }],
+          usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
+          stopReason: 'end_turn',
+          model: 'test-model',
+        },
+      };
+      vi.mocked(mockAdapter.complete).mockResolvedValue(mockResponse);
+
+      await executeSingleVoteAttempt('devex', 'Test proposal', mockAdapter, 5000);
+
+      const request = vi.mocked(mockAdapter.complete).mock.calls[0]?.[0] as {
+        responseFormat?: { type?: string; schema?: unknown };
+      };
+      expect(request.responseFormat?.type).toBe('json_schema');
+      expect(request.responseFormat?.schema).toBeDefined();
+    });
+
+    it('still parses a structured-output vote object the same as prose JSON (fallback parity)', async () => {
+      // Whether the vote arrives via native structured output or the regex
+      // fallback, the content is JSON text and parses identically (#3433).
+      const mockResponse: MockCompletionResult = {
+        ok: true,
+        value: {
+          content: [{ type: 'text', text: VALID_VOTE_JSON }],
+          usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
+          stopReason: 'tool_use',
+          model: 'test-model',
+        },
+      };
+      vi.mocked(mockAdapter.complete).mockResolvedValue(mockResponse);
+
+      const result = await executeSingleVoteAttempt(
+        'architect',
+        'Test proposal',
+        mockAdapter,
+        5000
+      );
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.vote.decision).toBe('approve');
+      }
+    });
+
     it('should return error on adapter failure', async () => {
       const mockResponse: MockCompletionResult = {
         ok: false,
