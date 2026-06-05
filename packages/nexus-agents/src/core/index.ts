@@ -26,6 +26,9 @@ export {
   TUNE_DECAY_WINDOW_MS,
   type TuneAdjustment,
   type TuneDemotionStat,
+  type TuneReversal,
+  type TuneReversalCause,
+  type TuneReversalListener,
 } from './tune-adjustment-store.js';
 
 // Step event vocabulary + `withStep` wrapper (#1930 — human console notifications)

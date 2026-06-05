@@ -46,6 +46,42 @@ export interface TuneAdjustment {
   readonly reason: string;
 }
 
+/** Why an active adjustment was reversed (cleared back toward 1.0). */
+export type TuneReversalCause =
+  /** The decay window elapsed; routing restored to 1.0 (auto-reversible blip). */
+  | 'decay_expiry'
+  /** A fresh demotion overwrote the prior active adjustment for this CLI. */
+  | 'superseded';
+
+/**
+ * Notification that an active routing adjustment for `cli` was reversed (#3323).
+ * Emitted when a fully-decayed adjustment is evicted (`decay_expiry`) or when a
+ * new demotion overwrites a still-active one (`superseded`). Carries enough to
+ * reconstruct the routing-state change for the immutable audit chain: the CLI,
+ * the multiplier in effect just before reversal, the value routing is restored
+ * to, and the reason the reversed adjustment carried.
+ */
+export interface TuneReversal {
+  readonly cli: string;
+  readonly cause: TuneReversalCause;
+  /**
+   * Multiplier the reversed adjustment was holding at reversal time. Note the
+   * semantics differ by cause: `decay_expiry` reports the adjustment's *stored*
+   * multiplier (the value it expired from); `superseded` reports the *decayed
+   * effective* value at the moment a fresh demotion overwrote it. Either way
+   * `restoredMultiplier` is the value routing actually returns to.
+   */
+  readonly previousMultiplier: number;
+  /** Multiplier routing returns to after reversal (1.0 for decay_expiry). */
+  readonly restoredMultiplier: number;
+  /** Provenance reason the reversed adjustment carried. */
+  readonly reason: string;
+  readonly reversedAt: number;
+}
+
+/** Listener invoked when an active adjustment is reversed. */
+export type TuneReversalListener = (reversal: TuneReversal) => void;
+
 /** Max length of a stat's retained reason string (#3323 telemetry). */
 const STAT_REASON_MAX = 512;
 
@@ -78,6 +114,34 @@ export class TuneAdjustmentStore {
   private readonly adjustments = new Map<string, TuneAdjustment>();
   /** Cumulative telemetry — never evicted (bounded by CLI cardinality). */
   private readonly stats = new Map<string, MutableDemotionStat>();
+  /**
+   * Optional reversal listener (#3323). The store stays state-only — it does
+   * NOT know about the audit chain. The caller (TuneStage) registers a listener
+   * that appends a `tune.reversal` record to the immutable log, so a routing
+   * restore is durably audited just like the demotion that preceded it. A
+   * throwing listener never corrupts store state (errors are swallowed).
+   */
+  private reversalListener: TuneReversalListener | undefined;
+
+  /**
+   * Register (or clear, with `undefined`) the reversal listener. Replaces any
+   * prior listener — a single sink, mirroring the singleton-store pattern.
+   */
+  onReversal(listener: TuneReversalListener | undefined): void {
+    this.reversalListener = listener;
+  }
+
+  /** Best-effort fire of the reversal listener — a throwing sink is swallowed. */
+  private emitReversal(reversal: TuneReversal): void {
+    if (this.reversalListener === undefined) return;
+    try {
+      this.reversalListener(reversal);
+    } catch {
+      // Auditing is observability, not a gate (#3323): a failed reversal append
+      // must never corrupt routing state or throw out of effectiveMultiplier
+      // (a hot router-read path). The reversal has already taken effect.
+    }
+  }
 
   /** Increment a CLI's cumulative demotion counter. Pure telemetry. */
   private bumpStat(cli: string, kind: 'applied' | 'intended', reason: string): void {
@@ -101,15 +165,29 @@ export class TuneAdjustmentStore {
     if (magnitude <= 0) return undefined;
     const step = Math.min(TUNE_MAX_STEP, magnitude);
     const current = this.effectiveMultiplier(cli);
+    // If a still-active (not-yet-decayed) adjustment exists, the new demotion
+    // supersedes it — audit that reversal before overwriting (#3323).
+    const prior = this.adjustments.get(cli);
     const next = Math.max(TUNE_DEMOTION_FLOOR, current - step);
+    const now = getTimeProvider().now();
     const adjustment: TuneAdjustment = {
       cli,
       multiplier: next,
-      appliedAt: getTimeProvider().now(),
+      appliedAt: now,
       reason,
     };
     this.adjustments.set(cli, adjustment);
     this.bumpStat(cli, 'applied', reason);
+    if (prior !== undefined) {
+      this.emitReversal({
+        cli,
+        cause: 'superseded',
+        previousMultiplier: current,
+        restoredMultiplier: next,
+        reason: prior.reason,
+        reversedAt: now,
+      });
+    }
     return adjustment;
   }
 
@@ -134,9 +212,21 @@ export class TuneAdjustmentStore {
   effectiveMultiplier(cli: string): number {
     const adjustment = this.adjustments.get(cli);
     if (adjustment === undefined) return 1.0;
-    const elapsed = getTimeProvider().now() - adjustment.appliedAt;
+    const now = getTimeProvider().now();
+    const elapsed = now - adjustment.appliedAt;
     if (elapsed >= TUNE_DECAY_WINDOW_MS || elapsed < 0) {
       this.adjustments.delete(cli);
+      // The adjustment has fully decayed — routing is restored to 1.0. Audit
+      // this reversal so the full lifecycle (demote → decay/expiry) is durable
+      // and reconstructable from the immutable chain (#3323).
+      this.emitReversal({
+        cli,
+        cause: 'decay_expiry',
+        previousMultiplier: adjustment.multiplier,
+        restoredMultiplier: 1.0,
+        reason: adjustment.reason,
+        reversedAt: now,
+      });
       return 1.0;
     }
     const decayFraction = elapsed / TUNE_DECAY_WINDOW_MS;

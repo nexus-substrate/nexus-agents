@@ -19,7 +19,7 @@
  */
 
 import { createLogger, getErrorMessage, getTuneAdjustmentStore } from '../core/index.js';
-import type { ILogger } from '../core/index.js';
+import type { ILogger, TuneReversal } from '../core/index.js';
 import { parseBoolEnv } from '../config/defaults-env.js';
 import type { IAuditLogger } from '../audit/audit-types.js';
 import type { PipelineEvent, IEventBus, Unsubscribe } from './event-types.js';
@@ -151,6 +151,47 @@ function auditDemotion(
 }
 
 /**
+ * Append a tamper-evident `tune.reversal` audit record when an active routing
+ * demotion is reversed — either it fully decayed back to 1.0 (`decay_expiry`)
+ * or a fresh demotion superseded it (`superseded`) (#3323). Closes the audit
+ * lifecycle: every routing-state change (demote AND restore) is durable. Audit
+ * failures are swallowed (the reversal already took effect); the store's own
+ * listener guard also swallows, so this is best-effort twice over.
+ */
+function auditReversal(
+  auditLogger: Pick<IAuditLogger, 'log'>,
+  reversal: TuneReversal,
+  log: ILogger
+): void {
+  const reason =
+    reversal.reason.length > AUDIT_REASON_MAX
+      ? reversal.reason.slice(0, AUDIT_REASON_MAX)
+      : reversal.reason;
+  try {
+    auditLogger.log({
+      category: 'configuration',
+      severity: 'info',
+      outcome: 'success',
+      action: 'tune.reversal',
+      actor: { type: 'system', id: 'tune-stage' },
+      description: `Routing demotion reversed for ${reversal.cli} (${reversal.cause}); restored multiplier ${String(reversal.restoredMultiplier)}`,
+      metadata: {
+        cli: reversal.cli,
+        cause: reversal.cause,
+        previousMultiplier: reversal.previousMultiplier,
+        restoredMultiplier: reversal.restoredMultiplier,
+        reason,
+        reversedAt: reversal.reversedAt,
+      },
+    });
+  } catch (auditError) {
+    log.warn('TuneStage — reversal audit log failed (reversal still applied)', {
+      error: getErrorMessage(auditError),
+    });
+  }
+}
+
+/**
  * Apply the bounded routing demotion for a `swarm_unhealthy` signal (#3147):
  * a demotion-only, floored, capped, time-decaying adjustment the router reads
  * as a scoring penalty, plus structured + durable-audit trails (#3323).
@@ -185,7 +226,20 @@ export function createTuneStage(bus: IEventBus, options: TuneStageOptions = {}):
   const enabled = options.enabled ?? false;
   const log = options.logger ?? defaultLogger;
   const auditLogger = options.auditLogger;
-  return bus.subscribe({ type: [...TUNE_SIGNAL_TYPES] }, (event) => {
+
+  // Durable-audit the FULL routing-mutation lifecycle (#3323): a demotion is
+  // audited at apply-time below; its eventual reversal (decay/expiry or
+  // supersede) is audited via a store listener. Register it only under the same
+  // gate as the demotion audit — enforcement on AND an audit sink wired — so a
+  // shadow-mode store (no routing effect) emits nothing. The listener guard in
+  // the store swallows throws, so a bad sink never breaks a router read.
+  if (enabled && auditLogger !== undefined) {
+    getTuneAdjustmentStore().onReversal((reversal) => {
+      auditReversal(auditLogger, reversal, log);
+    });
+  }
+
+  const unsubscribe = bus.subscribe({ type: [...TUNE_SIGNAL_TYPES] }, (event) => {
     try {
       const action = intendedActionFor(event);
       if (action === undefined) return;
@@ -219,6 +273,15 @@ export function createTuneStage(bus: IEventBus, options: TuneStageOptions = {}):
       log.warn('TuneStage handler error', { error: getErrorMessage(e) });
     }
   });
+
+  return () => {
+    unsubscribe();
+    // Release the reversal-audit listener so a later (e.g. shadow) stage doesn't
+    // keep firing audits through a stale logger. Only clear if we registered.
+    if (enabled && auditLogger !== undefined) {
+      getTuneAdjustmentStore().onReversal(undefined);
+    }
+  };
 }
 
 // ============================================================================
