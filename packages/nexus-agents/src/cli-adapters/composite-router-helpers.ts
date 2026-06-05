@@ -9,7 +9,8 @@
 
 import type { Task } from '../core/types/agent.js';
 import { getTimeProvider, type TaskProfile } from '../core/index.js';
-import type { CliName, CliTask, BudgetConstraint } from './types.js';
+import type { CliName, RoutingArmId, CliTask, BudgetConstraint } from './types.js';
+import { routingArmDisplaySlot } from './types.js';
 import type { BanditContext } from './budget-router-types.js';
 import type { TopsisModelProfile, TopsisResult } from './topsis-types.js';
 import {
@@ -77,7 +78,7 @@ export function calculateConfidence(
  * Options for building routing reason.
  */
 export interface BuildReasonOptions {
-  selectedCli: CliName;
+  selectedCli: RoutingArmId;
   stages: string[];
   topsisScore?: number;
   ucbScore?: number;
@@ -106,14 +107,19 @@ export function buildReason(options: BuildReasonOptions): string {
 /**
  * Filters CLI candidates based on preference tier.
  */
-export function filterByPreferenceTier(candidates: CliName[], tier: 'strong' | 'weak'): CliName[] {
+export function filterByPreferenceTier(
+  candidates: RoutingArmId[],
+  tier: 'strong' | 'weak'
+): RoutingArmId[] {
   // Strong models: claude (opus, sonnet)
   // Weak models: gemini (flash), codex
+  // Tier membership is slot-level; collapse an api:* arm to its display slot
+  // (#3422) so a wrapped API arm inherits its vendor slot's tier.
   const strongModels: CliName[] = ['claude'];
   const weakModels: CliName[] = ['gemini', 'codex'];
 
   const preferred = tier === 'strong' ? strongModels : weakModels;
-  const filtered = candidates.filter((c) => preferred.includes(c));
+  const filtered = candidates.filter((c) => preferred.includes(routingArmDisplaySlot(c)));
 
   // Return filtered if any match, otherwise return all candidates
   return filtered.length > 0 ? filtered : candidates;
@@ -134,7 +140,7 @@ export function cliTaskToTask(cliTask: CliTask): Task {
  * Budget filter result.
  */
 export interface BudgetFilterResult {
-  eligible: CliName[];
+  eligible: RoutingArmId[];
   withinBudget: boolean;
 }
 
@@ -143,7 +149,7 @@ export interface BudgetFilterResult {
  */
 export function applyBudgetFilter(
   task: CliTask,
-  candidates: CliName[],
+  candidates: RoutingArmId[],
   budgetRouter: BudgetRouter | undefined,
   config: CompositeRouterConfig
 ): BudgetFilterResult {
@@ -171,7 +177,7 @@ export function applyBudgetFilter(
  * TOPSIS ranking result.
  */
 export interface TopsisRankingResult {
-  ranking: CliName[];
+  ranking: RoutingArmId[];
   topScore: number;
   /** Number of candidates within the tolerance band of the top score. */
   toleranceBandSize?: number;
@@ -311,10 +317,14 @@ export interface TopsisRankingOptions {
 /** Builds adjusted TOPSIS profiles from task, stage scores, and performance data. */
 function buildAdjustedProfiles(
   taskProfile: TaskProfile,
-  candidates: CliName[],
+  candidates: RoutingArmId[],
   options?: TopsisRankingOptions
 ): TopsisModelProfile[] {
-  const profiles = DEFAULT_MODEL_PROFILES.filter((p) => candidates.includes(p.cliName));
+  // TOPSIS profiles are slot-level (DEFAULT_MODEL_PROFILES keyed by CliName).
+  // Collapse arms to their display slot so an api:* arm reuses its vendor
+  // slot's profile (#3422).
+  const candidateSlots = new Set(candidates.map(routingArmDisplaySlot));
+  const profiles = DEFAULT_MODEL_PROFILES.filter((p) => candidateSlots.has(p.cliName));
   let adjusted = profiles.map((p) => adjustProfileForTask(p, taskProfile));
   if (options?.stageScores !== undefined && options.stageScores.size > 0) {
     adjusted = adjustProfileWithStageScores(adjusted, options.stageScores);
@@ -332,7 +342,7 @@ function buildAdjustedProfiles(
  */
 export function applyTopsisRanking(
   taskProfile: TaskProfile,
-  candidates: CliName[],
+  candidates: RoutingArmId[],
   topsisRouter: TopsisRouter | undefined,
   options?: TopsisRankingOptions
 ): TopsisRankingResult {
@@ -345,13 +355,17 @@ export function applyTopsisRanking(
   const adjustedProfiles = buildAdjustedProfiles(taskProfile, candidates, options);
   const result: TopsisResult = router.selectModel({ profiles: adjustedProfiles });
 
+  // Scores are slot-keyed; an api:* candidate inherits its display slot's
+  // closeness score so it ranks alongside its vendor's CLI slot (#3422).
   const scoreMap = new Map(result.scores.map((s) => [s.cliName, s.closenessScore]));
-  const ranking = [...candidates].sort((a, b) => (scoreMap.get(b) ?? 0) - (scoreMap.get(a) ?? 0));
-  const topScore = scoreMap.get(ranking[0] ?? 'claude') ?? 1.0;
+  const scoreOf = (arm: RoutingArmId): number => scoreMap.get(routingArmDisplaySlot(arm)) ?? 0;
+  const ranking = [...candidates].sort((a, b) => scoreOf(b) - scoreOf(a));
+  const topArm = ranking[0];
+  const topScore = topArm !== undefined ? scoreOf(topArm) : 1.0;
 
   // Tolerance band: count how many candidates are within TOLERANCE_BAND_PERCENT of top
   const threshold = topScore * (1 - TOPSIS_TOLERANCE_BAND_PERCENT);
-  const toleranceBandSize = ranking.filter((c) => (scoreMap.get(c) ?? 0) >= threshold).length;
+  const toleranceBandSize = ranking.filter((c) => scoreOf(c) >= threshold).length;
 
   return { ranking, topScore, toleranceBandSize };
 }
@@ -362,13 +376,13 @@ export function applyTopsisRanking(
 export interface PreferenceStageResult {
   preferenceScore: number | undefined;
   preferenceTier: 'strong' | 'weak' | undefined;
-  preferredCandidates: CliName[];
+  preferredCandidates: RoutingArmId[];
 }
 
 /**
  * Default preference stage result when preference routing is disabled.
  */
-export function defaultPreferenceStageResult(candidates: CliName[]): PreferenceStageResult {
+export function defaultPreferenceStageResult(candidates: RoutingArmId[]): PreferenceStageResult {
   return {
     preferenceScore: undefined,
     preferenceTier: undefined,
@@ -382,13 +396,13 @@ export function defaultPreferenceStageResult(candidates: CliName[]): PreferenceS
 export interface ZeroRouterStageResult {
   difficultyEstimate: DifficultyEstimate | undefined;
   difficultyTier: ModelTier | undefined;
-  filteredCandidates: CliName[];
+  filteredCandidates: RoutingArmId[];
 }
 
 /**
  * Default ZeroRouter stage result when ZeroRouter is disabled.
  */
-export function defaultZeroRouterStageResult(candidates: CliName[]): ZeroRouterStageResult {
+export function defaultZeroRouterStageResult(candidates: RoutingArmId[]): ZeroRouterStageResult {
   return {
     difficultyEstimate: undefined,
     difficultyTier: undefined,
@@ -400,7 +414,10 @@ export function defaultZeroRouterStageResult(candidates: CliName[]): ZeroRouterS
  * Maps model tier to preferred CLI order.
  * Fast tier prefers gemini/codex, Powerful tier prefers claude.
  */
-export function filterByDifficultyTier(candidates: CliName[], tier: ModelTier): CliName[] {
+export function filterByDifficultyTier(
+  candidates: RoutingArmId[],
+  tier: ModelTier
+): RoutingArmId[] {
   // Tier mappings aligned with ZeroRouter DEFAULT_TIER_TO_CLIS
   const tierPreferences: Record<ModelTier, CliName[]> = {
     fast: ['gemini', 'codex', 'claude'],
@@ -409,10 +426,11 @@ export function filterByDifficultyTier(candidates: CliName[], tier: ModelTier): 
   };
 
   const preferred = tierPreferences[tier];
-  // Sort candidates by tier preference order
+  // Sort candidates by tier preference order. Tier preference is slot-level;
+  // an api:* arm sorts by its display slot's position (#3422).
   const sortedCandidates = [...candidates].sort((a, b) => {
-    const aIndex = preferred.indexOf(a);
-    const bIndex = preferred.indexOf(b);
+    const aIndex = preferred.indexOf(routingArmDisplaySlot(a));
+    const bIndex = preferred.indexOf(routingArmDisplaySlot(b));
     // If not in preference list, put at end
     const aPos = aIndex === -1 ? preferred.length : aIndex;
     const bPos = bIndex === -1 ? preferred.length : bIndex;
@@ -427,14 +445,16 @@ export function filterByDifficultyTier(candidates: CliName[], tier: ModelTier): 
  */
 export function applyZeroRouterFilter(
   task: CliTask,
-  candidates: CliName[],
+  candidates: RoutingArmId[],
   zeroRouter: IZeroRouter | undefined
 ): ZeroRouterStageResult {
   if (zeroRouter === undefined || candidates.length === 0) {
     return defaultZeroRouterStageResult(candidates);
   }
 
-  const decision = zeroRouter.routeByDifficulty(task, candidates);
+  // Difficulty estimation is slot-level; collapse arms to their display slot
+  // for the ZeroRouter call (we only read difficulty + tier back) (#3422).
+  const decision = zeroRouter.routeByDifficulty(task, candidates.map(routingArmDisplaySlot));
   const difficultyEstimate = decision.difficulty;
   const difficultyTier = decision.tier;
 
@@ -472,9 +492,9 @@ export function buildDifficultyOutcome(
  * Creates the routing decision result object.
  */
 export interface BuildDecisionContext {
-  selectedCli: CliName;
-  candidates: CliName[];
-  topsisRanking: CliName[];
+  selectedCli: RoutingArmId;
+  candidates: RoutingArmId[];
+  topsisRanking: RoutingArmId[];
   stagesExecuted: string[];
   decisionTimeMs: number;
   withinBudget: boolean | undefined;
@@ -493,7 +513,7 @@ export interface BuildDecisionContext {
 export function buildDecisionFields(ctx: BuildDecisionContext): {
   confidence: number;
   reason: string;
-  alternatives: CliName[];
+  alternatives: RoutingArmId[];
 } {
   const confidence = calculateConfidence(ctx.topsisScore, ctx.ucbScore, ctx.candidates.length);
   const reason = buildReason({
@@ -553,9 +573,9 @@ import type { CapacityStatus, ICliAdapter } from './types.js';
  * Returns a map of CLI name to capacity status.
  */
 export async function fetchCapacityData(
-  adapters: Map<CliName, ICliAdapter>
-): Promise<Map<CliName, CapacityStatus>> {
-  const result = new Map<CliName, CapacityStatus>();
+  adapters: Map<RoutingArmId, ICliAdapter>
+): Promise<Map<RoutingArmId, CapacityStatus>> {
+  const result = new Map<RoutingArmId, CapacityStatus>();
   const entries = [...adapters];
   const settled = await Promise.allSettled(entries.map(([, a]) => a.getCapacity()));
   for (const [idx, entry] of entries.entries()) {

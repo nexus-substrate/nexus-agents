@@ -21,6 +21,7 @@ import {
   type CompositeRoutingDecision,
   type CliResponse,
   type CliName,
+  type RoutingArmId,
   type CliTask,
 } from '../cli-adapters/index.js';
 import { getConfig, adaptRoutingConfig } from '../config/index.js';
@@ -87,7 +88,7 @@ async function runWithAdapter(
  */
 async function executeWithRouting(
   task: CliTask,
-  adapters: Map<CliName, ICliAdapter>,
+  adapters: Map<RoutingArmId, ICliAdapter>,
   options: OrchestrateOptions,
   logger: ILogger
 ): Promise<OrchestrationResult> {
@@ -143,7 +144,7 @@ async function executeWithRouting(
 async function executeWithModel(
   task: CliTask,
   model: CliName,
-  adapters: Map<CliName, ICliAdapter>,
+  adapters: Map<RoutingArmId, ICliAdapter>,
   logger: ILogger
 ): Promise<OrchestrationResult> {
   const time = getTimeProvider();

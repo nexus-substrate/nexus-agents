@@ -9,8 +9,9 @@
  * (Source: Issue #165 - CLI detection cache)
  */
 
-import type { ICliAdapter, CliName, CliTransport } from './types.js';
+import type { ICliAdapter, CliName, RoutingArmId, CliTransport } from './types.js';
 import { getTimeProvider } from '../core/index.js';
+import { collectApiRoutingArms } from '../adapters/auto-adapter.js';
 import { ClaudeCliAdapter } from './adapters/claude-adapter.js';
 import { GeminiCliAdapter } from './adapters/gemini-adapter.js';
 import { CodexCliAdapter } from './adapters/codex-adapter.js';
@@ -94,24 +95,38 @@ function createCodexAdapter(
 }
 
 /**
- * Creates all available CLI adapters.
+ * Creates all available routing-arm adapters.
  * Uses MCP transport for Codex by default (preferred).
+ *
+ * The four CLI slots are always registered under their slot key. When
+ * `NEXUS_BILLING_MODE=api`, the direct-API adapters whose keys are present are
+ * ALSO appended as distinct `api:<vendor>` routing arms (#3422) so the router /
+ * bandit can score them separately from the CLI slots. DEFAULT (plan) mode
+ * returns CLIs only — never surprise API spend. Key-presence-only and
+ * deterministic; keys are never validated by calling out.
  *
  * @param logger - Optional shared logger
  * @param codexTransport - Transport for Codex (default: 'mcp')
- * @returns Map of CLI name to adapter
+ * @returns Map of routing arm id to adapter
  */
 export function createAllAdapters(
   logger?: ILogger,
   codexTransport: CliTransport = 'mcp'
-): Map<CliName, ICliAdapter> {
-  const adapters = new Map<CliName, ICliAdapter>();
+): Map<RoutingArmId, ICliAdapter> {
+  const adapters = new Map<RoutingArmId, ICliAdapter>();
   const options = logger !== undefined ? { logger } : undefined;
 
   adapters.set('claude', new ClaudeCliAdapter(options));
   adapters.set('gemini', new GeminiCliAdapter(options));
   adapters.set('codex', createCodexAdapter(codexTransport, options ?? {}));
   adapters.set('opencode', new OpenCodeCliAdapter(options));
+
+  // API arms enter the router only in explicit api billing mode (#3422).
+  if (process.env['NEXUS_BILLING_MODE'] === 'api') {
+    for (const { armId, adapter } of collectApiRoutingArms(logger)) {
+      adapters.set(armId, adapter);
+    }
+  }
 
   return adapters;
 }

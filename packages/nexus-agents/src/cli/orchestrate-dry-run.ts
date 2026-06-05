@@ -11,6 +11,7 @@
 
 import type { CliTask } from '../cli-adapters/index.js';
 import type { CompositeRoutingDecision } from '../cli-adapters/index.js';
+import { routingArmDisplaySlot } from '../cli-adapters/index.js';
 import { createSharedTaskAnalyzer } from '../core/task-analysis/shared-task-analyzer.js';
 import { calculateCost } from '../core/index.js';
 import { getCliModelName, getDefaultModelForCli } from '../config/model-config-helpers.js';
@@ -56,7 +57,8 @@ export function buildDryRunReport(task: CliTask, decision: CompositeRoutingDecis
   const estimatedInputTokens = analyzer.estimateTokens(task.content);
   const estimatedOutputTokens = Math.round(estimatedInputTokens * DEFAULT_OUTPUT_RATIO);
 
-  const modelId = getCliModelName(getDefaultModelForCli(decision.cliName));
+  // Registry model lookup is slot-level; collapse an api:* arm to its slot (#3422).
+  const modelId = getCliModelName(getDefaultModelForCli(routingArmDisplaySlot(decision.cliName)));
   const costUsd = calculateCost(modelId, estimatedInputTokens, estimatedOutputTokens);
   const inputCostUsd = calculateCost(modelId, estimatedInputTokens, 0);
   const outputCostUsd = calculateCost(modelId, 0, estimatedOutputTokens);

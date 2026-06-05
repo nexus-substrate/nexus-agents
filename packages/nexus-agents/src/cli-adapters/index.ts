@@ -27,9 +27,13 @@ export type {
   ICliAdapter,
   ICliResponseParser,
   VersionRequirements,
+  ApiVendor,
+  ApiArmId,
+  RoutingArmId,
 } from './types.js';
 
 export { CLI_VERSION_REQUIREMENTS, DEFAULT_CAPABILITIES } from './types.js';
+export { apiArmId, isApiArmId, routingArmDisplaySlot } from './types.js';
 
 // Base adapter
 export { BaseCliAdapter } from './base-adapter.js';

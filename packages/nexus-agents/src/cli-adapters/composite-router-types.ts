@@ -8,7 +8,7 @@
  */
 
 import { z } from 'zod';
-import type { ICliAdapter, CliName } from './types.js';
+import type { ICliAdapter, CliName, RoutingArmId } from './types.js';
 import type { TaskProfile } from '../core/index.js';
 import type { PreferenceRouterConfig } from './preference-router-types.js';
 import type { ZeroRouterConfig, DifficultyEstimate, ModelTier } from './zero-router-types.js';
@@ -162,8 +162,8 @@ export const DEFAULT_COMPOSITE_CONFIG: CompositeRouterConfig = {
 export interface CompositeRoutingDecision {
   /** Selected CLI adapter */
   readonly adapter: ICliAdapter;
-  /** Selected CLI name */
-  readonly cliName: CliName;
+  /** Selected routing arm — a CLI slot or a distinct `api:*` arm (#3422). */
+  readonly cliName: RoutingArmId;
   /**
    * Concrete model selected by difficulty tier (#3394). Present only when
    * route-time model selection is enabled (NEXUS_ROUTE_MODEL_SELECTION).
@@ -195,7 +195,7 @@ export interface CompositeRoutingDecision {
   /** Latency score (if latency tracking enabled) (Issue #361) */
   readonly latencyScore?: number | undefined;
   /** Alternative adapters in ranked order */
-  readonly alternatives: readonly CliName[];
+  readonly alternatives: readonly RoutingArmId[];
   /** Task analysis used for routing */
   readonly taskProfile: TaskProfile;
 }
@@ -248,19 +248,19 @@ export interface CompositeRouterStats {
  * Internal pipeline result type.
  */
 export interface PipelineResult {
-  candidates: CliName[];
+  candidates: RoutingArmId[];
   withinBudget: boolean | undefined;
   difficultyEstimate: DifficultyEstimate | undefined;
   difficultyTier: ModelTier | undefined;
   preferenceScore: number | undefined;
   preferenceTier: 'strong' | 'weak' | undefined;
-  topsisRanking: CliName[];
+  topsisRanking: RoutingArmId[];
   topsisScore: number | undefined;
-  selectedCli: CliName;
+  selectedCli: RoutingArmId;
   ucbScore: number | undefined;
   latencyScore: number | undefined;
   /** Routing memory recommendation (Issue #489) */
-  memoryRecommendation: CliName | undefined;
+  memoryRecommendation: RoutingArmId | undefined;
   /** Routing memory confidence (Issue #489) */
   memoryConfidence: number | undefined;
   /** Aggregated scores from async routing stages (Issue #1350) */
@@ -282,9 +282,9 @@ export interface PipelineResult {
  */
 export interface BuildDecisionParams {
   taskProfile: TaskProfile;
-  selectedCli: CliName;
-  candidates: CliName[];
-  topsisRanking: CliName[];
+  selectedCli: RoutingArmId;
+  candidates: RoutingArmId[];
+  topsisRanking: RoutingArmId[];
   stagesExecuted: string[];
   startTime: number;
   withinBudget: boolean | undefined;

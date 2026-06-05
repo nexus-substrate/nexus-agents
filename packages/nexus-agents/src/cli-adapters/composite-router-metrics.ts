@@ -11,6 +11,7 @@
 import type { ILogger } from '../core/index.js';
 import { getTimeProvider, getRandomProvider } from '../core/index.js';
 import type { CliName } from './types.js';
+import { routingArmDisplaySlot } from './types.js';
 import type {
   CompositeRoutingDecision,
   IRoutingMetricsCollector,
@@ -50,11 +51,15 @@ export function recordDecisionToMetrics(
 ): void {
   if (deps.metricsCollector === undefined) return;
 
+  // RoutingMetrics is slot-level; collapse the distinct arm (and its
+  // alternatives) to their display slots (#3422).
+  const selectedModel = routingArmDisplaySlot(decision.cliName);
+
   deps.metricsCollector.recordDecision({
     timestamp: getTimeProvider().nowIso(),
     traceId,
-    selectedModel: decision.cliName,
-    alternativeModels: decision.alternatives,
+    selectedModel,
+    alternativeModels: decision.alternatives.map(routingArmDisplaySlot),
     isExploration: decision.ucbScore !== undefined && decision.ucbScore > 0.5,
     taskType: decision.taskProfile.taskType,
     contextTokens: decision.taskProfile.contextRequired,
@@ -63,7 +68,7 @@ export function recordDecisionToMetrics(
 
   deps.logger.debug('Recorded routing decision to metrics', {
     traceId,
-    selectedModel: decision.cliName,
+    selectedModel,
   });
 }
 

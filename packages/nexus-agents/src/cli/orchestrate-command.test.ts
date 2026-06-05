@@ -12,6 +12,17 @@ vi.mock('../cli-adapters/index.js', () => ({
   getAvailableClis: vi.fn(),
   createAllAdapters: vi.fn(),
   createCompositeRouter: vi.fn(),
+  // #3422: orchestrate-dry-run collapses routing arms to display slots; this is
+  // a pure mapping (identity for CLI slots), so a real passthrough is correct.
+  routingArmDisplaySlot: (arm: string): string =>
+    arm.startsWith('api:')
+      ? ({
+          'api:anthropic': 'claude',
+          'api:openai': 'codex',
+          'api:google': 'gemini',
+          'api:custom-openai': 'opencode',
+        }[arm] ?? arm)
+      : arm,
 }));
 
 // Import mocked modules

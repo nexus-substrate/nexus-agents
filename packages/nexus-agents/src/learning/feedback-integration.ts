@@ -12,7 +12,8 @@ import { randomUUID } from 'node:crypto';
 import { createLogger, getTimeProvider } from '../core/index.js';
 import type { ILogger } from '../core/logger.js';
 import type { StepResult } from '../core/types/workflow.js';
-import type { CliName } from '../cli-adapters/types.js';
+import type { RoutingArmId } from '../cli-adapters/types.js';
+import { routingArmDisplaySlot } from '../cli-adapters/types.js';
 import type {
   CompositeRoutingDecision,
   ICompositeRouter,
@@ -149,7 +150,12 @@ function serializeTaskProfile(profile: TaskProfile): Record<string, unknown> {
  * Entry in the decision map with timestamp for TTL eviction.
  */
 interface DecisionEntry {
-  readonly cliName: CliName;
+  /**
+   * The DISTINCT routing arm (CLI slot or api:* arm) — kept un-collapsed so
+   * `compositeRouter.recordOutcome(cliName, …)` updates the right bandit arm
+   * (#3422). Telemetry sinks collapse to the display slot at write time.
+   */
+  readonly cliName: RoutingArmId;
   readonly task: string;
   readonly createdAt: number;
 }
@@ -234,8 +240,9 @@ export class FeedbackIntegration implements IFeedbackIntegration {
         traceId: trace,
         timestamp: getTimeProvider().nowIso(),
         routerType: getDecisiveRouterType(decision),
-        selectedModel: decision.cliName,
-        alternativeModels: decision.alternatives,
+        // Persisted telemetry is slot-level; collapse the distinct arm (#3422).
+        selectedModel: routingArmDisplaySlot(decision.cliName),
+        alternativeModels: decision.alternatives.map(routingArmDisplaySlot),
         confidence: decision.confidence,
         reason: decision.reason,
         taskProfile: serializeTaskProfile(decision.taskProfile),

@@ -14,6 +14,7 @@ import type { CapabilityProfile, DelegateOutput } from './delegate-to-model-type
 import { MODEL_CAPABILITIES } from './delegate-to-model-types.js';
 import { getDefaultModelForCli } from '../../config/model-config-helpers.js';
 import type { CliNameLiteral } from '../../config/model-capabilities-types.js';
+import { routingArmDisplaySlot } from '../../cli-adapters/types.js';
 
 /**
  * Maps CLI name to default model ID for output.
@@ -43,7 +44,9 @@ export function mapCompositeDecisionToOutput(
 ): DelegateOutput {
   // #3394: prefer the route-time tier-selected model when present (opt-in);
   // otherwise fall back to the CLI default. Default-off → decision.model undefined.
-  const modelName = decision.model ?? cliNameToModel(decision.cliName);
+  // Model lookup is registry/slot-level; collapse api:* arms to their display
+  // slot for the default-model resolution (#3422).
+  const modelName = decision.model ?? cliNameToModel(routingArmDisplaySlot(decision.cliName));
   const caps = MODEL_CAPABILITIES[modelName] ?? DEFAULT_CAPABILITIES;
 
   return {
@@ -52,7 +55,7 @@ export function mapCompositeDecisionToOutput(
     capabilities: caps,
     estimated_tokens: estimatedTokens,
     alternatives: decision.alternatives.slice(0, 3).map((alt) => ({
-      model: cliNameToModel(alt),
+      model: cliNameToModel(routingArmDisplaySlot(alt)),
       score: decision.topsisScore ?? 0.7,
       tradeoff: 'alternative option',
     })),
