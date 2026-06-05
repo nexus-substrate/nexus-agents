@@ -65,3 +65,44 @@ export function createBudgetGuard(budget?: AgentBudgetConfig): BudgetGuard {
   });
   return new BudgetGuard(breaker);
 }
+
+/** Default overrun tolerance: allow actual spend up to 1.5× the plan estimate. */
+export const DEFAULT_BUDGET_TOLERANCE = 1.5;
+
+/** Env var overriding the overrun tolerance multiplier (#3262). */
+const BUDGET_TOLERANCE_ENV = 'NEXUS_BUDGET_TOLERANCE';
+
+/**
+ * Resolve the overrun-tolerance multiplier from `NEXUS_BUDGET_TOLERANCE` (#3262).
+ * A multiplier of `t` lets a run spend up to `t ×` its plan estimate before the
+ * budget trips. Falls back to {@link DEFAULT_BUDGET_TOLERANCE} when the env var
+ * is unset, non-numeric/NaN, or below 1 (a sub-1 tolerance would trip below the
+ * estimate itself — never intended) — it is clamped to ≥ 1, never to a NaN.
+ */
+export function resolveBudgetTolerance(): number {
+  const raw = process.env[BUDGET_TOLERANCE_ENV];
+  if (raw === undefined || raw.trim() === '') return DEFAULT_BUDGET_TOLERANCE;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 1) return DEFAULT_BUDGET_TOLERANCE;
+  return parsed;
+}
+
+/**
+ * Build an estimate-relative {@link AgentBudgetConfig} (#3262): cap a run at
+ * `ceil(estimateTokens × tolerance)`. Returns `undefined` — yielding the
+ * existing no-op guard via {@link createBudgetGuard} — when the estimate is
+ * absent or unusable (not finite, or ≤ 0) or the tolerance is unusable
+ * (not finite, or < 1). This is a deliberate FAIL-OPEN: a run with no trustworthy
+ * estimate is left unguarded rather than capped at a garbage ceiling. Callers
+ * should log when they pass an absent/invalid estimate so the no-op is visible.
+ */
+export function estimateRelativeBudget(
+  estimateTokens: number | undefined,
+  tolerance: number = DEFAULT_BUDGET_TOLERANCE
+): AgentBudgetConfig | undefined {
+  if (estimateTokens === undefined || !Number.isFinite(estimateTokens) || estimateTokens <= 0) {
+    return undefined;
+  }
+  if (!Number.isFinite(tolerance) || tolerance < 1) return undefined;
+  return { maxTokens: Math.ceil(estimateTokens * tolerance) };
+}

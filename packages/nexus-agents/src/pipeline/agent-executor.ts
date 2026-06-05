@@ -153,12 +153,25 @@ export async function runExpert(
   executionId?: string
 ): Promise<ExpertBridgeResult> {
   if (guard.isExhausted()) {
+    // Observable escalation (#3262): a budget short-circuit must not be silent.
+    // Emit a pipeline event + structured log so operators can see the run was
+    // capped by its estimate-relative budget rather than failing for another
+    // reason. Still a fail-CLOSED skip (no further token spend).
+    emitPipelineStageEvent('dev-pipeline', 'budget', 'failed', {
+      reason: 'budget_exceeded',
+      expertType,
+      ...(executionId !== undefined ? { executionId } : {}),
+    });
+    logger.warn('Budget exhausted — expert call skipped (#3262/#3395)', {
+      expertType,
+      ...(executionId !== undefined ? { executionId } : {}),
+    });
     return {
       success: false,
       text: '',
       expertType,
       durationMs: 0,
-      error: 'Budget exhausted — expert call skipped (#3395)',
+      error: 'Budget exhausted — expert call skipped (estimate-relative cap, #3262/#3395)',
     };
   }
   const result = await executeExpert(expertType, prompt);
