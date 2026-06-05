@@ -333,3 +333,15 @@ export type {
   AvailableModel,
   AvailableModelsCacheOptions,
 } from './available-models-cache.js';
+
+// (#3404, epic #3403) Dynamic model discovery: the OpenRouter live-catalog
+// source + the registration helper that populates the AvailableModelsCache.
+export {
+  createOpenRouterModelsSource,
+  type OpenRouterModelsSourceOptions,
+} from './openrouter-models-source.js';
+export {
+  isDynamicModelsEnabled,
+  registerDefaultModelSources,
+  type RegisterModelSourcesOptions,
+} from './register-model-sources.js';
