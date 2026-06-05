@@ -111,6 +111,9 @@ describe('OpenCodeCliAdapter', () => {
 
   afterEach(async () => {
     await adapter.dispose();
+    // #3408: the cooldown tests mutate the process-global AvailabilityCache;
+    // reset it suite-wide so no cooled model bleeds into an unrelated test.
+    resetAvailabilityCache();
   });
 
   describe('constructor', () => {
