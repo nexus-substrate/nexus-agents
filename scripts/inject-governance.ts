@@ -1139,7 +1139,10 @@ function extractPrerequisiteCoveredTools(prereqSrc: string): Set<string> {
  * tool cannot ship ungated by omission. Read-only tools are exempt.
  */
 function checkToolPrerequisites(): boolean {
-  const annotationsPath = join(ROOT, 'packages/nexus-agents/src/mcp/tool-annotations.ts');
+  // #3444: the TOOL_ANNOTATIONS map moved to the tools/ subdirectory (#3358);
+  // the wrapper at src/mcp/tool-annotations.ts has no annotation blocks, so
+  // reading it left the non-read-only set EMPTY and silently no-op'd this gate.
+  const annotationsPath = join(ROOT, 'packages/nexus-agents/src/mcp/tools/tool-annotations.ts');
   const prereqPath = join(ROOT, 'packages/nexus-agents/src/mcp/middleware/tool-prerequisites.ts');
   if (!existsSync(annotationsPath) || !existsSync(prereqPath)) {
     console.error('Missing tool-annotations.ts or tool-prerequisites.ts (#2652)');
