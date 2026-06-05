@@ -478,6 +478,35 @@ describe('SdkAdapter', () => {
       expect(dnsLookupMock).toHaveBeenCalledTimes(1);
     });
 
+    it('does NOT cache a rejection — a retry re-runs the guard (#3426 QA)', async () => {
+      // First resolution is private (rejected); the flag must stay unset so a
+      // retry re-checks instead of silently skipping the guard.
+      dnsLookupMock.mockResolvedValueOnce([{ address: '10.0.0.5', family: 4 }]);
+      const { generateText } = await import('ai');
+      vi.mocked(generateText).mockResolvedValueOnce({
+        text: 'ok',
+        finishReason: 'stop',
+        usage: { inputTokens: 1, outputTokens: 1 },
+        response: { id: 'r', timestamp: new Date(), modelId: 'gpt-4o' },
+      } as unknown as Awaited<ReturnType<typeof generateText>>);
+
+      const adapter = new SdkAdapter({
+        providerId: 'custom-openai',
+        modelId: 'gpt-4o',
+        apiKey: 'test-key',
+        baseUrl: 'https://gateway.flaky.test/v1',
+      });
+
+      const rejected = await adapter.complete(TEST_REQUEST);
+      expect(rejected.ok).toBe(false);
+
+      // Retry: now resolves public → re-checked (lookup called again) and passes.
+      dnsLookupMock.mockResolvedValueOnce([{ address: '93.184.216.34', family: 4 }]);
+      const retried = await adapter.complete(TEST_REQUEST);
+      expect(retried.ok).toBe(true);
+      expect(dnsLookupMock).toHaveBeenCalledTimes(2);
+    });
+
     it('allows a gateway hostname that resolves to a public IP', async () => {
       dnsLookupMock.mockResolvedValueOnce([{ address: '93.184.216.34', family: 4 }]);
       const { generateText } = await import('ai');

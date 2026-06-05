@@ -285,6 +285,14 @@ export class SdkAdapter extends BaseAdapter {
       });
     }
 
+    // DNS-resolve-time SSRF guard for custom-openai gateways (#3426). The
+    // construction-time guard is string-level only; this resolves the gateway
+    // hostname and rejects if it points at a private/loopback/link-local IP.
+    // Run BEFORE any model state is set so a rejection leaves the adapter
+    // uninitialized — a retry re-runs the guard rather than skipping it via the
+    // `this.model !== undefined` short-circuit in ensureInitialized().
+    await this.ensureCustomHostResolvesPublic();
+
     // Dynamic import — AI SDK is an optional peer dependency
     const providerModule = await this.loadProvider(apiKey);
     this.model = providerModule.model;
@@ -292,12 +300,6 @@ export class SdkAdapter extends BaseAdapter {
     // AI SDK is an optional peer dependency — validate shape at runtime
     const aiModule = await import('ai');
     this.sdkFunctions = extractAiSdkFunctions(aiModule);
-
-    // DNS-resolve-time SSRF guard for custom-openai gateways (#3426). The
-    // construction-time guard is string-level only; this resolves the gateway
-    // hostname and rejects if it points at a private/loopback/link-local IP.
-    // Runs once (cached) before the first outbound request.
-    await this.ensureCustomHostResolvesPublic();
   }
 
   /**
@@ -315,13 +317,15 @@ export class SdkAdapter extends BaseAdapter {
     }
     const hostname = new URL(this.customBaseUrl).hostname;
     const result = await assertCustomApiHostResolvesPublic(hostname);
-    // Mark checked only after a non-throwing classification so a transient
-    // resolver failure inside the guard (which returns ok) doesn't get cached
-    // as a permanent pass any more eagerly than the guard itself intends.
-    this.resolveSsrfChecked = true;
     if (!result.ok) {
+      // Do NOT cache a rejection (#3426 QA): leaving the flag false means a
+      // retry re-runs the guard rather than silently skipping it via the
+      // early-return above. The guard itself fails OPEN on transient resolver
+      // errors, so a flaky-DNS host still proceeds; only a confirmed private
+      // resolution throws here.
       throw result.error;
     }
+    this.resolveSsrfChecked = true;
   }
 
   /**

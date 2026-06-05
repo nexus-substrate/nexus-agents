@@ -207,6 +207,9 @@ export async function assertCustomApiHostResolvesPublic(
     return ok(undefined);
   }
 
+  // Only `address` is read; the resolver's `family` is intentionally NOT
+  // trusted — `classifyIpAddress` re-derives v4/v6 from the address string, so
+  // a mislabeled family in the lookup result cannot let a private IP slip past.
   let addresses: ReadonlyArray<{ readonly address: string }>;
   try {
     addresses = await dnsLookup(hostname, { all: true });
