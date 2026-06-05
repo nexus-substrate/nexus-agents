@@ -13,6 +13,8 @@ import {
 } from './opencode-adapter.js';
 import type { CliTask } from '../types.js';
 import { getDefaultModelForCli, getCliModelName } from '../../config/model-config-helpers.js';
+import { getAvailabilityCache, resetAvailabilityCache } from '../../config/model-availability.js';
+import type { ModelId } from '../../config/model-capabilities-types.js';
 
 /** Expected default CLI model name, derived from the canonical registry. */
 const EXPECTED_DEFAULT_ID = getCliModelName(getDefaultModelForCli('opencode'));
@@ -109,6 +111,9 @@ describe('OpenCodeCliAdapter', () => {
 
   afterEach(async () => {
     await adapter.dispose();
+    // #3408: the cooldown tests mutate the process-global AvailabilityCache;
+    // reset it suite-wide so no cooled model bleeds into an unrelated test.
+    resetAvailabilityCache();
   });
 
   describe('constructor', () => {
@@ -291,6 +296,68 @@ describe('OpenCodeCliAdapter', () => {
       const args = vi.mocked(spawn).mock.calls[0]?.[1] as string[];
       expect(args).not.toContain('--model');
     });
+
+    it('skips a model in rate-limit cooldown, resolving to a live alternative (#3408)', async () => {
+      process.env['NEXUS_DYNAMIC_MODELS'] = 'true';
+      try {
+        resetAvailabilityCache();
+        vi.mocked(execFile).mockImplementation(
+          (_cmd: string, _args: unknown, _opts: unknown, cb: unknown) => {
+            (cb as ExecFileCallback)(null, 'qwen/qwen3-coder:free\nqwen/qwen3-coder\n', '');
+            return undefined as unknown as ReturnType<typeof execFile>;
+          }
+        );
+        resetOpenCodeModelCache();
+        const adapter = new OpenCodeCliAdapter();
+        await adapter.initialize();
+        // Simulate a prior 429 on the :free variant.
+        getAvailabilityCache().markUnavailable('qwen/qwen3-coder:free' as ModelId, '429');
+        vi.mocked(spawn).mockReturnValue(
+          createMockProcess(
+            [
+              JSON.stringify({ type: 'message.delta', content: 'Done!' }),
+              JSON.stringify({ type: 'session.complete' }),
+            ].join('\n')
+          )
+        );
+        await adapter.execute({ content: 'x', model: 'qwen/qwen3-coder:free' });
+        const args = vi.mocked(spawn).mock.calls[0]?.[1] as string[];
+        // The cooled :free model is skipped; routing falls to the non-cooled base.
+        expect(args).not.toContain('qwen/qwen3-coder:free');
+        expect(args).toContain('qwen/qwen3-coder');
+      } finally {
+        delete process.env['NEXUS_DYNAMIC_MODELS'];
+        resetAvailabilityCache();
+      }
+    });
+
+    it('marks a model in cooldown when execution returns RATE_LIMITED (#3408)', async () => {
+      process.env['NEXUS_DYNAMIC_MODELS'] = 'true';
+      try {
+        resetAvailabilityCache();
+        vi.mocked(execFile).mockImplementation(
+          (_cmd: string, _args: unknown, _opts: unknown, cb: unknown) => {
+            (cb as ExecFileCallback)(null, 'qwen/qwen3-coder:free\n', '');
+            return undefined as unknown as ReturnType<typeof execFile>;
+          }
+        );
+        resetOpenCodeModelCache();
+        const adapter = new OpenCodeCliAdapter();
+        await adapter.initialize();
+        // A rate-limited subprocess result (stderr matches a rate-limit pattern).
+        vi.mocked(spawn).mockReturnValue(
+          createMockProcess('', 'Error: 429 rate limit exceeded', 1)
+        );
+        const res = await adapter.execute({ content: 'x', model: 'qwen/qwen3-coder:free' });
+        expect(res.ok).toBe(false);
+        expect(getAvailabilityCache().isKnownUnavailable('qwen/qwen3-coder:free' as ModelId)).toBe(
+          true
+        );
+      } finally {
+        delete process.env['NEXUS_DYNAMIC_MODELS'];
+        resetAvailabilityCache();
+      }
+    }, 10_000);
 
     it('should resolve internal model names to CLI format (#1402)', async () => {
       const ndjsonResponse = [

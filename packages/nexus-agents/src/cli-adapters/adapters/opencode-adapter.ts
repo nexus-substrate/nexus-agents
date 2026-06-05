@@ -25,6 +25,11 @@ import {
 import { OpenCodeResponseParser } from '../parsers/opencode-parser.js';
 import { resolveLiveModelId } from '../../config/resolve-live-model.js';
 import { isDynamicModelsEnabled } from '../../config/register-model-sources.js';
+import { getAvailabilityCache } from '../../config/model-availability.js';
+import type { ModelId } from '../../config/model-capabilities-types.js';
+import type { Result } from '../../core/index.js';
+import type { CliResponse, CliError } from '../types-core.js';
+import type { ResolvedExecutionOptions } from '../types-capability.js';
 import {
   getDefaultModelForCli,
   getCliModelName,
@@ -186,24 +191,38 @@ export class OpenCodeCliAdapter extends SubprocessCliAdapter {
     return this.availableModels.has(cliModel);
   }
 
-  /** Appends --model if the resolved model is available (#1402, #3407). */
+  /** #3408: true if the model is in rate-limit cooldown (recent 429). Opt-in. */
+  private isCooled(cliModel: string): boolean {
+    return (
+      isDynamicModelsEnabled() && getAvailabilityCache().isKnownUnavailable(cliModel as ModelId)
+    );
+  }
+
+  /** Usable = offered by the OpenCode install AND not in rate-limit cooldown. */
+  private isModelUsable(cliModel: string): boolean {
+    return this.isModelAvailable(cliModel) && !this.isCooled(cliModel);
+  }
+
+  /** Appends --model if the resolved model is usable (#1402, #3407, #3408). */
   private appendModelArg(args: string[], task: CliTask): void {
     const internalModel = task.model ?? this.model;
     let cliModel = resolveOpenCodeModel(internalModel);
 
-    // #3407: if the configured model isn't offered (e.g. the provider renamed
-    // it: qwen3-coder-480b-a35b:free → qwen3-coder:free), resolve it to the
-    // closest live alias from the probed set. Opt-in (NEXUS_DYNAMIC_MODELS) and
-    // fail-open — resolveLiveModelId returns the input unchanged when nothing
-    // qualifies, so behavior is identical when discovery is off or cold.
+    // #3407/#3408: if the resolved model isn't usable — renamed away (#3407) or
+    // in rate-limit cooldown (#3408) — resolve it to the closest USABLE live
+    // model (excluding cooled ones from the candidate set). Opt-in
+    // (NEXUS_DYNAMIC_MODELS) + fail-open: when discovery is off, isCooled is
+    // always false and resolveLiveModelId returns the input unchanged, so
+    // behavior is identical.
     if (
-      !this.isModelAvailable(cliModel) &&
+      !this.isModelUsable(cliModel) &&
       isDynamicModelsEnabled() &&
       this.availableModels !== undefined
     ) {
-      const resolved = resolveLiveModelId(cliModel, this.availableModels);
+      const usable = new Set([...this.availableModels].filter((m) => !this.isCooled(m)));
+      const resolved = resolveLiveModelId(cliModel, usable);
       if (resolved !== cliModel) {
-        logger.debug('Resolved stale model to live alias (#3407)', {
+        logger.debug('Resolved to live/non-cooled model (#3407/#3408)', {
           from: cliModel,
           to: resolved,
         });
@@ -211,14 +230,33 @@ export class OpenCodeCliAdapter extends SubprocessCliAdapter {
       }
     }
 
-    if (this.isModelAvailable(cliModel)) {
+    if (this.isModelUsable(cliModel)) {
       args.push('--model', cliModel);
     } else {
-      logger.debug('Model not available, using OpenCode default', {
+      logger.debug('Model not usable (unavailable or cooled), using OpenCode default', {
         requested: cliModel,
         available: this.availableModels?.size ?? 0,
       });
     }
+  }
+
+  /**
+   * #3408: mark a model in rate-limit cooldown when a call returns RATE_LIMITED,
+   * so subsequent selections skip it until the AvailabilityCache TTL recovers.
+   * Wraps the base executeTask; opt-in + fail-open (no-op when discovery is off).
+   * Advisory: a cooled model is still usable via an explicit, available --model.
+   */
+  override async executeTask(
+    task: CliTask,
+    options: ResolvedExecutionOptions
+  ): Promise<Result<CliResponse, CliError>> {
+    const result = await super.executeTask(task, options);
+    if (isDynamicModelsEnabled() && !result.ok && result.error.code === 'RATE_LIMITED') {
+      const cliModel = resolveOpenCodeModel(task.model ?? this.model);
+      getAvailabilityCache().markUnavailable(cliModel as ModelId, 'rate-limited (429)');
+      logger.debug('Cooldown: marked model rate-limited (#3408)', { model: cliModel });
+    }
+    return result;
   }
 
   /** Appends optional task flags (workDir, variant, thinking). */
