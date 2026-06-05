@@ -99,6 +99,11 @@ import {
   runPipeline,
   type StageDependencies,
 } from './composite-router-stages.js';
+import { getDefaultAvailableModelsCache } from '../config/available-models-cache.js';
+import {
+  isDynamicModelsEnabled,
+  registerDefaultModelSources,
+} from '../config/register-model-sources.js';
 import {
   recordBanditOutcome,
   recordPreferenceSignal,
@@ -871,8 +876,20 @@ export class CompositeRouter implements ICompositeRouter {
 /** Creates a CompositeRouter instance. */
 export function createCompositeRouter(
   adapters: Map<CliName, ICliAdapter>,
-  config?: Partial<CompositeRouterConfig>,
+  config?: Partial<CompositeRouterConfigWithPreference>,
   logger?: ILogger
 ): ICompositeRouter {
-  return new CompositeRouter(adapters, config, logger);
+  // #3404: when dynamic discovery is enabled (opt-in via NEXUS_DYNAMIC_MODELS,
+  // default OFF) and the caller didn't supply a cache, attach the global
+  // AvailableModelsCache with live sources registered, so the existing CLI
+  // pre-filter (getCandidateCliNames) finally has real data. Fail-open by
+  // construction: sources return [] on error and an empty cache leaves
+  // getCandidateCliNames returning all CLIs.
+  let resolved = config;
+  if (isDynamicModelsEnabled() && config?.availableModelsCache === undefined) {
+    const cache = getDefaultAvailableModelsCache();
+    registerDefaultModelSources(cache, adapters);
+    resolved = { ...config, availableModelsCache: cache };
+  }
+  return new CompositeRouter(adapters, resolved, logger);
 }
