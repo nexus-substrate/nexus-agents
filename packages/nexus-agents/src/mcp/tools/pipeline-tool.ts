@@ -17,6 +17,10 @@ import { runAdaptiveOrchestrator, classifyTask } from '../../pipeline/adaptive-o
 import { warnIfSimulatedOutsideTests } from './simulation-guard.js';
 import type { AdaptiveOrchestratorResult } from '../../pipeline/adaptive-orchestrator.js';
 import { createAgentStages } from '../../pipeline/agent-executor.js';
+import type { AgentBudgetConfig } from '../../pipeline/budget-guard.js';
+import { estimateRelativeBudget, resolveBudgetTolerance } from '../../pipeline/budget-guard.js';
+import { getTemplate } from '../../pipeline/templates.js';
+import { createSharedTaskAnalyzer } from '../../core/task-analysis/shared-task-analyzer.js';
 import {
   createDevStageRegistry,
   createGreenfieldStageRegistry,
@@ -147,6 +151,49 @@ async function resolveTask(task: string, specFile: string | undefined): Promise<
   }
 }
 
+/** Typical LLM output:input token ratio (matches `buildDryRunReport`). */
+const OUTPUT_TOKEN_RATIO = 0.6;
+/** Fallback stage count when the effective template can't be resolved. */
+const DEFAULT_STAGE_COUNT = 6;
+
+/**
+ * Estimate-relative per-run token budget (#3262), gated behind
+ * `NEXUS_BUDGET_ENFORCE=1` (default-off — existing runs are byte-for-byte
+ * unchanged). The dry-run estimator is per-CALL, so the whole run is
+ * approximated as `perCallTokens × stageCount` (stages of the effective
+ * template), then capped at `× tolerance` (NEXUS_BUDGET_TOLERANCE, default 1.5).
+ * Token-based — never dollars — so it holds under `NEXUS_BILLING_MODE=plan`.
+ * Returns `undefined` (→ the existing no-op guard) when enforcement is off or no
+ * usable estimate exists; the fail-OPEN no-op is logged so it's never silent.
+ */
+function resolveRunBudget(
+  task: string,
+  templateId: string | undefined,
+  logger: ILogger
+): AgentBudgetConfig | undefined {
+  if (process.env['NEXUS_BUDGET_ENFORCE'] !== '1') return undefined;
+  const effectiveId = templateId ?? classifyTask(task).pipelineType;
+  const template = getTemplate(effectiveId) ?? getTemplate('general');
+  const stageCount = template?.stages.length ?? DEFAULT_STAGE_COUNT;
+  const perCall = Math.round(
+    createSharedTaskAnalyzer().estimateTokens(task) * (1 + OUTPUT_TOKEN_RATIO)
+  );
+  const budget = estimateRelativeBudget(perCall * stageCount, resolveBudgetTolerance());
+  if (budget === undefined) {
+    logger.warn('Budget enforcement on but no usable token estimate — running unguarded (#3262)', {
+      perCall,
+      stageCount,
+    });
+  } else {
+    logger.info('Estimate-relative token budget enforced (#3262)', {
+      template: effectiveId,
+      stageCount,
+      maxTokens: budget.maxTokens,
+    });
+  }
+  return budget;
+}
+
 /** Select the appropriate stage registry based on template or auto-detection. */
 function selectStageRegistry(
   template: string | undefined,
@@ -194,6 +241,7 @@ async function runPipelineHandler(args: unknown, logger: ILogger): Promise<ToolR
       simulateVotes: input.simulateVotes,
       votingStrategy: input.votingStrategy,
       quickMode: input.quickMode,
+      budget: resolveRunBudget(task, input.template, logger),
     });
     const stages = selectStageRegistry(input.template, task, agentStages);
 
