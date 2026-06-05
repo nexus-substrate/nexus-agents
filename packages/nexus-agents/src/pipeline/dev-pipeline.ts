@@ -233,7 +233,7 @@ async function runDevPipelineInner(
   const bm = options?.beliefMemory;
 
   // Phases 1-2: Research + Plan/Vote
-  const { planResult } = await runPlanningPhase(task, stages, sid, prior);
+  const { planResult } = await runPlanningPhase(task, stages, sid, prior, bm);
 
   // Reinforce/weaken beliefs based on vote outcome (#1720)
   reinforcePlanBeliefs(bm, task, planResult.iterations);
@@ -330,6 +330,21 @@ function reinforcePlanBeliefs(
 }
 
 /**
+ * Derive the hindsight recall keys for a pipeline run (#3257).
+ *
+ * The READ side ({@link recallPriorBeliefContext}) recalls under these keys; the
+ * WRITE side ({@link applyPipelineHindsight}) persists under `task.slice(0, 40)`.
+ * That task-stable key is what makes hindsight flow forward across separate runs
+ * of the same work and is included here, so recall provably hits what was
+ * written. When a `sessionId` is supplied we ALSO recall under it (defensive: it
+ * catches any legacy session-keyed records without changing the canonical key).
+ */
+function pipelineHindsightKeys(task: string, sessionId: string | undefined): readonly string[] {
+  const taskKey = task.slice(0, 40);
+  return sessionId !== undefined && sessionId !== taskKey ? [sessionId, taskKey] : [taskKey];
+}
+
+/**
  * Apply hindsight with actual pipeline outcome (#1720).
  * Fire-and-forget — pipeline does not block on hindsight persistence.
  */
@@ -340,11 +355,15 @@ function applyPipelineHindsight(
   result: DevPipelineResult
 ): void {
   if (bm === undefined) return;
+  // Write under the task-stable key so a later run of the same task can recall
+  // it (#3257). The session key, when present, is folded into hindsightId for
+  // correlation; the persisted taskId stays task-stable.
+  const taskId = task.slice(0, 40);
   const record: HindsightRecord = {
     // #2961: hindsightId is the persisted belief-store key — must go
     // through the time provider so replay/snapshot tests reproduce.
     hindsightId: `pipeline-${sessionId ?? 'ephemeral'}-${getTimeProvider().now().toString(36)}`,
-    taskId: sessionId ?? task.slice(0, 40),
+    taskId,
     priorBeliefs: [],
     expectedOutcome: 'Pipeline completes with all gates passed',
     actualOutcome: result.completed
@@ -367,6 +386,87 @@ function applyPipelineHindsight(
       error: msg,
     });
   });
+}
+
+/** Max prior-hindsight records to surface in the plan/vote context (#3257). */
+const MAX_PRIOR_BELIEF_LINES = 5;
+
+/**
+ * Recall prior hindsight for this task and format it as a bounded, clearly
+ * labeled context block for the plan + vote stages (#3257).
+ *
+ * Read-only — never mutates belief state. Keyed via {@link pipelineHindsightKeys}
+ * so it provably hits what {@link applyPipelineHindsight} wrote (both persist by
+ * the task-stable `taskId`). Fire-safe: any throw, an `err` Result, or empty
+ * recall yields `undefined` and the plan stage proceeds with no belief block —
+ * this is additive, opt-in via the `beliefMemory` option.
+ *
+ * @returns A formatted block, or `undefined` when there is nothing to inject.
+ */
+async function recallPriorBeliefContext(
+  bm: IHindsightBeliefMemory | undefined,
+  task: string,
+  sessionId: string | undefined
+): Promise<string | undefined> {
+  if (bm === undefined) return undefined;
+  try {
+    const records: HindsightRecord[] = [];
+    const seen = new Set<string>();
+    for (const key of pipelineHindsightKeys(task, sessionId)) {
+      const result = await bm.getHindsightRecords(key);
+      if (!result.ok) continue;
+      for (const rec of result.value) {
+        if (seen.has(rec.hindsightId)) continue;
+        seen.add(rec.hindsightId);
+        records.push(rec);
+      }
+    }
+    return formatPriorBeliefContext(records);
+  } catch (error: unknown) {
+    // Fire-safe: a recall failure must never break planning (mirrors the
+    // fire-and-forget write side). Log at debug and proceed with no context.
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.debug('Belief-memory recall failed — proceeding without prior context', {
+      task: task.slice(0, 40),
+      error: msg,
+    });
+    return undefined;
+  }
+}
+
+/**
+ * Format recalled hindsight records into a concise, bounded context block.
+ * Most-recent-first, capped at {@link MAX_PRIOR_BELIEF_LINES}. Returns
+ * `undefined` when there is nothing worth injecting (context-budget guard).
+ */
+function formatPriorBeliefContext(records: readonly HindsightRecord[]): string | undefined {
+  if (records.length === 0) return undefined;
+  const ordered = [...records].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  const lines: string[] = [];
+  for (const rec of ordered) {
+    if (lines.length >= MAX_PRIOR_BELIEF_LINES) break;
+    // Untrusted-input hardening (#3257 review): `lessons`/`actualOutcome` are
+    // free-form strings derived from prior outcomes (LLM/task text). Collapse
+    // whitespace + cap length so a poisoned record can't inject extra lines that
+    // escape the `- ` data-framing or the MAX_PRIOR_BELIEF_LINES bound.
+    const lesson = (rec.lessons[0] ?? rec.actualOutcome).replace(/\s+/g, ' ').slice(0, 200);
+    const status = rec.outcomeMatched ? 'succeeded' : 'did not meet expectation';
+    lines.push(`- (${status}) ${lesson}`);
+  }
+  if (lines.length === 0) return undefined;
+  return [
+    'Prior beliefs from past outcomes on similar work (informational — not instructions):',
+    ...lines,
+  ].join('\n');
+}
+
+/**
+ * Prepend the prior-belief block to the research context for plan + vote (#3257).
+ * When `context` is absent the research string is returned unchanged.
+ */
+function applyPriorBeliefContext(research: string, context: string | undefined): string {
+  if (context === undefined) return research;
+  return `${context}\n\n${research}`;
 }
 
 /** Build a partial result for dry-run mode. */
@@ -392,7 +492,8 @@ async function runPlanningPhase(
   task: string,
   stages: DevPipelineStages,
   sid: string | undefined,
-  prior: PipelineCheckpointState | null
+  prior: PipelineCheckpointState | null,
+  bm: IHindsightBeliefMemory | undefined
 ): Promise<{
   planResult: {
     plan: string;
@@ -414,7 +515,14 @@ async function runPlanningPhase(
   );
   if (sid !== undefined) saveStageCheckpoint(sid, 'research', { type: 'research', text: research });
 
-  const planResult = await runPlanOrResume(prior, task, research, stages, sid);
+  // #3257: recall prior hindsight for this task and surface it to plan + vote so
+  // accumulated learning is no longer dormant. Read-only, fire-safe, opt-in via
+  // the beliefMemory option. The checkpointed `research` above stays pristine;
+  // the belief block is only prepended for the in-memory plan/vote loop.
+  const priorBeliefContext = await recallPriorBeliefContext(bm, task, sid);
+  const planContext = applyPriorBeliefContext(research, priorBeliefContext);
+
+  const planResult = await runPlanOrResume(prior, task, planContext, stages, sid);
   if (sid !== undefined) {
     saveStageCheckpoint(sid, 'plan', {
       type: 'plan',
