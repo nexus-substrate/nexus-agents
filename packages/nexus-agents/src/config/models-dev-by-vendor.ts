@@ -39,7 +39,9 @@ function loadEntries(): readonly VendoredId[] {
   if (cached !== null) return cached;
   try {
     const { entries } = loadModelsDevSnapshot();
-    cached = entries.map((e) => ({ id: e.id, vendor: (e as { vendor?: string }).vendor ?? '' }));
+    // `vendor` is a required ModelEntry field; a non-matching/absent value simply
+    // fails the equality filter below, so no defensive fallback is needed.
+    cached = entries.map((e) => ({ id: e.id, vendor: e.vendor }));
   } catch (error: unknown) {
     logger.debug('models.dev snapshot load failed; enumeration empty', {
       error: error instanceof Error ? error.message : String(error),
