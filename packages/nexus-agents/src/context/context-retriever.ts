@@ -114,7 +114,7 @@ export async function getContextForTask(options: ContextRetrieverOptions): Promi
     fetchRecentLearnings(options.task, limit, logger),
     fetchExperiencePatterns(options.task, limit, logger),
     fetchOutcomes(options.category, logger),
-    fetchResearchInsights(options.task, limit, logger),
+    getResearchInsightsForTask(options.task, limit, logger),
   ]);
 
   const priorStrategies = fetchPriorStrategies(options.category, limit, logger);
@@ -138,7 +138,7 @@ const MIN_RELEVANCE_TOKEN = 4;
  * shares a meaningful word (≥{@link MIN_RELEVANCE_TOKEN} chars) with the task
  * text. Order-preserving; returns at most `limit`. Exported for direct unit
  * testing of the matching logic (the network/registry read is wrapped
- * separately in {@link fetchResearchInsights}).
+ * separately in {@link getResearchInsightsForTask}).
  */
 export function selectRelevantResearch(
   techniques: readonly TechniqueStatusSummary[],
@@ -176,23 +176,26 @@ function tokenize(text: string): Set<string> {
 
 /**
  * Read research-registry techniques relevant to the task. Fail-soft: a missing
- * registry, a failed status read, or any throw yields `[]` so context assembly
- * never breaks on the research backend. Uses the lightweight status read (not
- * full synthesis) so it stays cheap enough for the per-task context fan-out.
+ * registry, a failed status read, or any throw yields `[]` so the caller never
+ * breaks on the research backend. Uses the lightweight status read (not full
+ * synthesis) so it stays cheap enough for a per-task call.
+ *
+ * Exported so consumers outside the {@link getContextForTask} fan-out can reuse
+ * the same relevance read — e.g. the dev-pipeline surfacing prior research to
+ * its plan/vote stages (#3472) — without duplicating the fetch+select logic.
  */
-async function fetchResearchInsights(
+export async function getResearchInsightsForTask(
   task: string,
   limit: number,
-  logger: ILogger
+  logger?: ILogger
 ): Promise<readonly TechniqueStatusSummary[]> {
+  const log = logger ?? createLogger({ component: 'ContextRetriever' });
   try {
     const result = await getResearchStatus({ status: 'all', format: 'json' });
     if (!result.success) return [];
     return selectRelevantResearch(result.techniques, task, limit);
   } catch (error: unknown) {
-    logger.debug('ContextRetriever: research insights fetch failed', {
-      error: formatError(error),
-    });
+    log.debug('research insights fetch failed', { error: formatError(error) });
     return [];
   }
 }

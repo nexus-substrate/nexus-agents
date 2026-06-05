@@ -14,6 +14,19 @@ import type { IHindsightBeliefMemory } from '../context/belief-memory-interface.
 import type { HindsightRecord } from '../context/belief-hindsight-types.js';
 import { ok, err } from '../core/result.js';
 import { MemoryError } from '../context/memory-backend-types.js';
+import type { TechniqueStatusSummary } from '../cli/research-types.js';
+
+// #3472: the dev-pipeline now recalls prior research from the registry on every
+// run. Mock it to empty by default so existing assertions (which count `- `
+// lines) stay deterministic regardless of the repo's real techniques.yaml;
+// individual tests override the resolved value.
+const researchInsightsMock = vi.fn<() => Promise<readonly TechniqueStatusSummary[]>>(() =>
+  Promise.resolve([])
+);
+vi.mock('../context/context-retriever.js', () => ({
+  getResearchInsightsForTask: (): Promise<readonly TechniqueStatusSummary[]> =>
+    researchInsightsMock(),
+}));
 
 /**
  * Build a minimal IHindsightBeliefMemory stub. Only the read methods used by the
@@ -326,6 +339,32 @@ describe('runDevPipeline — prior-hindsight recall into plan (#3257)', () => {
     const planResearch = vi.mocked(stages.plan).mock.calls[0]?.[1] ?? '';
     expect(planResearch).toBe('Research findings: relevant context gathered');
     expect(planResearch).not.toContain('Prior beliefs');
+  });
+
+  it('surfaces prior research to plan + vote, sanitized and framed (#3472)', async () => {
+    researchInsightsMock.mockResolvedValueOnce([
+      {
+        id: 't-1',
+        name: 'Speculative\nDecoding',
+        status: 'rejected',
+        priority: 'P2',
+        topic: 'inference',
+        implementationIssue: null,
+      } satisfies TechniqueStatusSummary,
+    ]);
+    const stages = createMockStages();
+
+    await runDevPipeline('Build feature X', stages);
+
+    const planResearch = vi.mocked(stages.plan).mock.calls[0]?.[1] ?? '';
+    expect(planResearch).toContain('Prior research on related topics');
+    // Newline in the name is collapsed — no bare line escapes the `- ` framing.
+    expect(planResearch).toContain('- Speculative Decoding (rejected) — inference');
+    expect(planResearch).not.toMatch(/^Decoding/m);
+    // Original research is preserved, and the vote stage sees the same context.
+    expect(planResearch).toContain('Research findings: relevant context gathered');
+    const voteResearch = vi.mocked(stages.vote).mock.calls[0]?.[1] ?? '';
+    expect(voteResearch).toContain('Prior research on related topics');
   });
 
   it('leaves the plan context unchanged when recall returns no records', async () => {

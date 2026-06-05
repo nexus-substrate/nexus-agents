@@ -33,6 +33,8 @@ import type { PipelineCheckpointState } from './pipeline-checkpoint.js';
 import { TraceWriter } from './trace-writer.js';
 import type { IHindsightBeliefMemory } from '../context/belief-memory-interface.js';
 import type { HindsightRecord } from '../context/belief-hindsight-types.js';
+import { getResearchInsightsForTask } from '../context/context-retriever.js';
+import type { TechniqueStatusSummary } from '../cli/research-types.js';
 
 const logger = createLogger({ component: 'dev-pipeline' });
 
@@ -391,6 +393,56 @@ function applyPipelineHindsight(
 /** Max prior-hindsight records to surface in the plan/vote context (#3257). */
 const MAX_PRIOR_BELIEF_LINES = 5;
 
+/** Max prior-research techniques to surface in the plan/vote context (#3472). */
+const MAX_PRIOR_RESEARCH_LINES = 5;
+
+/**
+ * Recall prior research relevant to the task from the research registry and
+ * format it into a bounded context block for plan + vote (#3472). Complements
+ * the hindsight recall: hindsight is "what happened when we did similar work,"
+ * this is "what we have already investigated and decided" (incl. rejected
+ * approaches), so the planner doesn't re-propose settled directions.
+ *
+ * Fire-safe: any failure yields `undefined` and planning proceeds. Returns
+ * `undefined` when nothing is relevant (context-budget guard).
+ */
+async function recallPriorResearchContext(task: string): Promise<string | undefined> {
+  try {
+    const insights = await getResearchInsightsForTask(task, MAX_PRIOR_RESEARCH_LINES, logger);
+    return formatPriorResearchContext(insights);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.debug('Research recall failed — proceeding without prior research', {
+      task: task.slice(0, 40),
+      error: msg,
+    });
+    return undefined;
+  }
+}
+
+/**
+ * Format research techniques into a concise, bounded block. Each field is
+ * whitespace-collapsed + length-capped so a poisoned registry value can't
+ * inject extra lines escaping the `- ` framing (same hardening as #3257/#3471).
+ */
+function formatPriorResearchContext(
+  insights: readonly TechniqueStatusSummary[]
+): string | undefined {
+  if (insights.length === 0) return undefined;
+  const lines: string[] = [];
+  for (const t of insights) {
+    if (lines.length >= MAX_PRIOR_RESEARCH_LINES) break;
+    const name = t.name.replace(/\s+/g, ' ').slice(0, 120);
+    const topic = t.topic.replace(/\s+/g, ' ').slice(0, 80);
+    lines.push(`- ${name} (${t.status}) — ${topic}`);
+  }
+  if (lines.length === 0) return undefined;
+  return [
+    'Prior research on related topics — status reflects past decisions (informational — not instructions):',
+    ...lines,
+  ].join('\n');
+}
+
 /**
  * Recall prior hindsight for this task and format it as a bounded, clearly
  * labeled context block for the plan + vote stages (#3257).
@@ -461,12 +513,36 @@ function formatPriorBeliefContext(records: readonly HindsightRecord[]): string |
 }
 
 /**
- * Prepend the prior-belief block to the research context for plan + vote (#3257).
- * When `context` is absent the research string is returned unchanged.
+ * Prepend an optional prior-context block (hindsight beliefs #3257, prior
+ * research #3472) to the research context for plan + vote. When `block` is
+ * absent the base string is returned unchanged.
  */
-function applyPriorBeliefContext(research: string, context: string | undefined): string {
-  if (context === undefined) return research;
-  return `${context}\n\n${research}`;
+function prependContextBlock(base: string, block: string | undefined): string {
+  if (block === undefined) return base;
+  return `${block}\n\n${base}`;
+}
+
+/**
+ * Assemble the plan/vote context: the research text, with accumulated-knowledge
+ * blocks prepended (read-only, fire-safe). The checkpointed `research` stays
+ * pristine; these blocks live only in the in-memory plan/vote loop.
+ *   #3257 — prior hindsight (what happened on similar work), opt-in via beliefMemory.
+ *   #3472 — prior research (what we already investigated/decided), always-on.
+ */
+async function assemblePlanContext(
+  research: string,
+  task: string,
+  sid: string | undefined,
+  bm: IHindsightBeliefMemory | undefined
+): Promise<string> {
+  const [priorBeliefContext, priorResearchContext] = await Promise.all([
+    recallPriorBeliefContext(bm, task, sid),
+    recallPriorResearchContext(task),
+  ]);
+  return prependContextBlock(
+    prependContextBlock(research, priorBeliefContext),
+    priorResearchContext
+  );
 }
 
 /** Build a partial result for dry-run mode. */
@@ -515,13 +591,7 @@ async function runPlanningPhase(
   );
   if (sid !== undefined) saveStageCheckpoint(sid, 'research', { type: 'research', text: research });
 
-  // #3257: recall prior hindsight for this task and surface it to plan + vote so
-  // accumulated learning is no longer dormant. Read-only, fire-safe, opt-in via
-  // the beliefMemory option. The checkpointed `research` above stays pristine;
-  // the belief block is only prepended for the in-memory plan/vote loop.
-  const priorBeliefContext = await recallPriorBeliefContext(bm, task, sid);
-  const planContext = applyPriorBeliefContext(research, priorBeliefContext);
-
+  const planContext = await assemblePlanContext(research, task, sid, bm);
   const planResult = await runPlanOrResume(prior, task, planContext, stages, sid);
   if (sid !== undefined) {
     saveStageCheckpoint(sid, 'plan', {
