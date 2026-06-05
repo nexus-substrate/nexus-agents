@@ -445,7 +445,11 @@ function formatPriorBeliefContext(records: readonly HindsightRecord[]): string |
   const lines: string[] = [];
   for (const rec of ordered) {
     if (lines.length >= MAX_PRIOR_BELIEF_LINES) break;
-    const lesson = rec.lessons[0] ?? rec.actualOutcome;
+    // Untrusted-input hardening (#3257 review): `lessons`/`actualOutcome` are
+    // free-form strings derived from prior outcomes (LLM/task text). Collapse
+    // whitespace + cap length so a poisoned record can't inject extra lines that
+    // escape the `- ` data-framing or the MAX_PRIOR_BELIEF_LINES bound.
+    const lesson = (rec.lessons[0] ?? rec.actualOutcome).replace(/\s+/g, ' ').slice(0, 200);
     const status = rec.outcomeMatched ? 'succeeded' : 'did not meet expectation';
     lines.push(`- (${status}) ${lesson}`);
   }
