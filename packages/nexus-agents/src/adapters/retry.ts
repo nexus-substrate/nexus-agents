@@ -250,6 +250,9 @@ export function isRetryableError(error: unknown): boolean {
       ErrorCode.MODEL_TIMEOUT,
       ErrorCode.TIMEOUT_ERROR,
       ErrorCode.RATE_LIMIT_ERROR,
+      // #3317 finding #7: a model temporarily unavailable (503/overloaded) is
+      // transient — retry. (MODEL_NOT_FOUND stays non-retryable: retry won't help.)
+      ErrorCode.MODEL_UNAVAILABLE,
     ];
     return retryableCodes.includes(error.code);
   }

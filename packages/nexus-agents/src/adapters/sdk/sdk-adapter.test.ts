@@ -238,6 +238,40 @@ describe('SdkAdapter', () => {
       });
       expect(chunks[7]).toEqual({ type: 'message_stop' });
     });
+
+    it('skips empty-string deltas (#3317 #8)', async () => {
+      const { streamText } = await import('ai');
+      const mockStream = vi.mocked(streamText);
+
+      // The SDK can emit zero-length chunks (keepalives/segment boundaries).
+      function* fakeTextIterGen(): Generator<string> {
+        yield 'Hello';
+        yield '';
+        yield ' world';
+        yield '';
+      }
+      const iter = fakeTextIterGen();
+      const textStream = Object.assign(new ReadableStream<string>(), {
+        [Symbol.asyncIterator]: () => ({ next: () => Promise.resolve(iter.next()) }),
+      });
+      mockStream.mockReturnValueOnce({ textStream } as unknown as ReturnType<typeof streamText>);
+
+      const adapter = new SdkAdapter({
+        providerId: 'anthropic',
+        modelId: 'claude-sonnet-4-6',
+        apiKey: 'test-key',
+      });
+
+      const deltas: string[] = [];
+      for await (const chunk of adapter.stream(TEST_REQUEST)) {
+        if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
+          deltas.push(chunk.delta.text);
+        }
+      }
+
+      // Only the two non-empty chunks survive; no empty text_delta is emitted.
+      expect(deltas).toEqual(['Hello', ' world']);
+    });
   });
 
   describe('validateConfig', () => {
