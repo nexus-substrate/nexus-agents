@@ -51,7 +51,9 @@ export type TuneReversalCause =
   /** The decay window elapsed; routing restored to 1.0 (auto-reversible blip). */
   | 'decay_expiry'
   /** A fresh demotion overwrote the prior active adjustment for this CLI. */
-  | 'superseded';
+  | 'superseded'
+  /** All adjustments were dropped via {@link TuneAdjustmentStore.clear} (#3452). */
+  | 'cleared';
 
 /**
  * Notification that an active routing adjustment for `cli` was reversed (#3323).
@@ -251,6 +253,22 @@ export class TuneAdjustmentStore {
 
   /** Remove all adjustments and telemetry. */
   clear(): void {
+    // #3452: emit a reversal for each active adjustment BEFORE dropping it, so a
+    // bulk clear (a routing-state restore) is on the immutable audit chain too —
+    // the "every routing mutation is audited" invariant holds unconditionally,
+    // not just for decay/supersede. `effectiveMultiplier` would mutate the map
+    // (lazy eviction), so read the stored multiplier directly here.
+    const now = getTimeProvider().now();
+    for (const adjustment of this.adjustments.values()) {
+      this.emitReversal({
+        cli: adjustment.cli,
+        cause: 'cleared',
+        previousMultiplier: adjustment.multiplier,
+        restoredMultiplier: 1.0,
+        reason: adjustment.reason,
+        reversedAt: now,
+      });
+    }
     this.adjustments.clear();
     this.stats.clear();
   }

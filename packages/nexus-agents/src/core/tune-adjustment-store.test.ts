@@ -189,6 +189,33 @@ describe('TuneAdjustmentStore reversal audit hook (#3323)', () => {
     expect(listener).not.toHaveBeenCalled();
   });
 
+  it('fires a cleared reversal for each active adjustment on clear() (#3452)', () => {
+    const store = new TuneAdjustmentStore();
+    const reversals: TuneReversal[] = [];
+    store.onReversal((r) => reversals.push(r));
+
+    store.demote('claude', 0.2, 'a'); // 0.8 active
+    store.demote('gemini', 0.1, 'b'); // 0.9 active
+    store.clear();
+
+    expect(reversals).toHaveLength(2);
+    expect(reversals.every((r) => r.cause === 'cleared' && r.restoredMultiplier === 1.0)).toBe(
+      true
+    );
+    expect(new Set(reversals.map((r) => r.cli))).toEqual(new Set(['claude', 'gemini']));
+    // Routing actually restored.
+    expect(store.effectiveMultiplier('claude')).toBe(1.0);
+    expect(store.list()).toHaveLength(0);
+  });
+
+  it('clear() with no active adjustments fires nothing', () => {
+    const store = new TuneAdjustmentStore();
+    const listener = vi.fn();
+    store.onReversal(listener);
+    store.clear();
+    expect(listener).not.toHaveBeenCalled();
+  });
+
   it('swallows a throwing reversal listener and never corrupts routing state', () => {
     const store = new TuneAdjustmentStore();
     store.onReversal(() => {
