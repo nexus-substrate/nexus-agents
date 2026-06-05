@@ -1,5 +1,15 @@
 # nexus-agents
 
+## 2.103.0
+
+### Minor Changes
+
+- [#3413](https://github.com/nexus-substrate/nexus-agents/pull/3413) [`0abdcbe`](https://github.com/nexus-substrate/nexus-agents/commit/0abdcbe30661e536b3e77b362ace1396b4f6ca1d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Expose dynamic model discovery to the harness — Phase 1c ([#3406](https://github.com/nexus-substrate/nexus-agents/issues/3406), epic [#3403](https://github.com/nexus-substrate/nexus-agents/issues/3403)). Adds a callable **`list_available_models`** MCP tool that actively probes every discovery transport (OpenRouter live catalog + opencode/claude/codex/gemini CLI adapters) and returns a per-transport health report `{ transport, ok, modelCount, sampleModelIds, error }` — a one-call way to validate the CLIs and APIs are wired and reachable (`includeModelIds` for the full list; `includeOpenRouter` toggles the catalog). Also adds a read-only **`nexus://available-models`** MCP resource surfacing the live discovered set (complements the static `nexus://models`). Both are existence-only — the in-tree registry stays authoritative for pricing/capability, and neither emits key-presence or credential data. Read-only; changes no routing. MCP tool count: 44 → 45.
+
+### Patch Changes
+
+- [#3411](https://github.com/nexus-substrate/nexus-agents/pull/3411) [`1dc5478`](https://github.com/nexus-substrate/nexus-agents/commit/1dc5478e89d21f1d475363cca931f7bca4effc85) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Key-free CLI model enumeration via models.dev — Phase 1b ([#3405](https://github.com/nexus-substrate/nexus-agents/issues/3405), epic [#3403](https://github.com/nexus-substrate/nexus-agents/issues/3403)). The claude/codex/gemini CLI adapters now implement `listModels()`, backed by the committed, CI-refreshed models.dev snapshot filtered by vendor (`anthropic`/`openai`/`google`) — no API key needed (their OAuth tokens can't call the vendor `/v1/models` REST endpoints; only opencode has a native list command). New `config/models-dev-by-vendor.ts` exposes `listModelsForCli(cli)` / `listModelsByVendor(vendor)` (fail-open: a missing/malformed snapshot yields `[]`). With this, `registerDefaultModelSources` ([#3404](https://github.com/nexus-substrate/nexus-agents/issues/3404)) now populates the AvailableModelsCache with all four transports, so the CLI routing pre-filter finally sees real per-CLI model sets. Existence only — the in-tree registry stays authoritative for pricing/capability.
+
 ## 2.102.8
 
 ### Patch Changes
