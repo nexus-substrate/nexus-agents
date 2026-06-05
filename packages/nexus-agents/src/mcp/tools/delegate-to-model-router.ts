@@ -41,7 +41,9 @@ export function mapCompositeDecisionToOutput(
   decision: CompositeRoutingDecision,
   estimatedTokens: number
 ): DelegateOutput {
-  const modelName = cliNameToModel(decision.cliName);
+  // #3394: prefer the route-time tier-selected model when present (opt-in);
+  // otherwise fall back to the CLI default. Default-off → decision.model undefined.
+  const modelName = decision.model ?? cliNameToModel(decision.cliName);
   const caps = MODEL_CAPABILITIES[modelName] ?? DEFAULT_CAPABILITIES;
 
   return {

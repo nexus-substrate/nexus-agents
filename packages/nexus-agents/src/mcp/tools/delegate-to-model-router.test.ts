@@ -78,6 +78,20 @@ describe('mapCompositeDecisionToOutput', () => {
     expect(output.estimated_tokens).toBe(500);
   });
 
+  it('prefers decision.model over the CLI default when present (#3394)', () => {
+    const decision = makeDecision({ model: 'claude-sonnet' });
+    const output = mapCompositeDecisionToOutput(decision, 500);
+
+    expect(output.recommended_model).toBe('claude-sonnet');
+  });
+
+  it('falls back to the CLI default when decision.model is absent (#3394)', () => {
+    const decision = makeDecision();
+    const output = mapCompositeDecisionToOutput(decision, 500);
+
+    expect(output.recommended_model).toBe('claude-opus');
+  });
+
   it('includes capabilities from MODEL_CAPABILITIES', () => {
     const decision = makeDecision();
     const output = mapCompositeDecisionToOutput(decision, 100);

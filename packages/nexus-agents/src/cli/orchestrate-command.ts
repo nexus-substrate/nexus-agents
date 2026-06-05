@@ -53,8 +53,15 @@ async function runWithAdapter(
   startTime: number
 ): Promise<OrchestrationResult> {
   const time = getTimeProvider();
-  logger.info('Executing task...', { model: decision.cliName });
-  const execResult = await decision.adapter.execute(task);
+  // #3394: when route-time model selection chose a concrete model, run with it —
+  // unless the task already pins one. Default-off behaviour: decision.model is
+  // undefined and effectiveTask === task.
+  const effectiveTask =
+    decision.model !== undefined && task.model === undefined
+      ? { ...task, model: decision.model }
+      : task;
+  logger.info('Executing task...', { model: decision.model ?? decision.cliName });
+  const execResult = await decision.adapter.execute(effectiveTask);
 
   if (!execResult.ok) {
     return {
