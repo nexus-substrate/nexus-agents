@@ -14,13 +14,19 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import type { ILogger } from '../../core/index.js';
-import { getDefaultAvailableModelsCache } from '../../config/available-models-cache.js';
+import {
+  getDefaultAvailableModelsCache,
+  type AvailableModelsCache,
+} from '../../config/available-models-cache.js';
 
 const AVAILABLE_MODELS_URI = 'nexus://available-models';
 const AVAILABLE_MODELS_NAME = 'available-models';
 
-async function buildPayload(): Promise<Record<string, unknown>> {
-  const all = await getDefaultAvailableModelsCache().getAll();
+/** Build the resource payload from a cache (default: the global singleton). Exported for tests. */
+export async function buildAvailableModelsPayload(
+  cache: AvailableModelsCache = getDefaultAvailableModelsCache()
+): Promise<Record<string, unknown>> {
+  const all = await cache.getAll();
   const bySource = new Map<string, string[]>();
   for (const m of all) {
     const list = bySource.get(m.source) ?? [];
@@ -50,7 +56,7 @@ export function registerAvailableModelsResource(server: McpServer, logger: ILogg
     },
     async () => {
       logger.debug('Reading available-models resource');
-      const payload = await buildPayload();
+      const payload = await buildAvailableModelsPayload();
       return {
         contents: [
           {

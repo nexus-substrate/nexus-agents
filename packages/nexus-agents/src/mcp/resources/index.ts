@@ -26,8 +26,9 @@ export { registerAvailableModelsResource } from './available-models-resource.js'
 /**
  * Registers all MCP resources with the server.
  *
- * Currently registers 3 resources:
- * - `nexus://models` - AI model capabilities matrix
+ * Currently registers 4 resources:
+ * - `nexus://models` - AI model capabilities matrix (static)
+ * - `nexus://available-models` - live discovered model set per transport (#3406)
  * - `nexus://research/papers` - Research paper registry
  * - `nexus://experts` - Available expert agent roles
  *
@@ -39,10 +40,13 @@ export function registerResources(server: McpServer, logger?: ILogger): void {
 
   log.info('Registering MCP resources');
 
-  registerModelsResource(server, log);
-  registerResearchResource(server, log);
-  registerExpertsResource(server, log);
-  registerAvailableModelsResource(server, log);
+  const registrars = [
+    registerModelsResource,
+    registerResearchResource,
+    registerExpertsResource,
+    registerAvailableModelsResource,
+  ];
+  for (const register of registrars) register(server, log);
 
-  log.info('All MCP resources registered', { count: 3 });
+  log.info('All MCP resources registered', { count: registrars.length });
 }
