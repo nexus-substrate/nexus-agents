@@ -58,11 +58,16 @@ export interface IntendedTuneAction {
 
 export interface TuneStageOptions {
   /**
-   * When false (default), the stage is in SHADOW mode: it logs the intended
-   * action and mutates nothing. When true, a `signal.swarm_unhealthy` applies a
-   * bounded routing demotion via the `TuneAdjustmentStore` (and audits it);
-   * non-routing signals remain shadow-logged. Defaults from `NEXUS_TUNE_ENFORCE`
-   * in `startTuneStage`; explicit values (tests) override the flag.
+   * Whether the stage ENFORCES (mutates routing) or runs in SHADOW (logs the
+   * intended action and mutates nothing). When enforcing, a
+   * `signal.swarm_unhealthy` applies a bounded routing demotion via the
+   * `TuneAdjustmentStore` (and audits it); non-routing signals remain
+   * shadow-logged either way.
+   *
+   * When omitted, `startTuneStage` derives this from `NEXUS_TUNE_ENFORCE`, which
+   * **defaults to `true` (enforce) since v2.96** (#3323) — so production is
+   * default-ON; set `NEXUS_TUNE_ENFORCE=false` to opt into shadow. An explicit
+   * value here (tests) overrides the env flag.
    */
   readonly enabled?: boolean;
   /** Injectable logger (defaults to the module logger). */
