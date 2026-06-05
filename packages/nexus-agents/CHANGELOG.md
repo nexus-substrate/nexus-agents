@@ -1,5 +1,32 @@
 # nexus-agents
 
+## 2.106.0
+
+### Minor Changes
+
+- [#3427](https://github.com/nexus-substrate/nexus-agents/pull/3427) [`e95fd1d`](https://github.com/nexus-substrate/nexus-agents/commit/e95fd1d184c3118e755ee1b299eb90c2eb686e9e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(routing): make API adapters first-class bandit arms ([#3422](https://github.com/nexus-substrate/nexus-agents/issues/3422), epic [#3317](https://github.com/nexus-substrate/nexus-agents/issues/3317))
+
+  Direct-API adapters (Anthropic/OpenAI/Google/custom-OpenAI) are now first-class
+  routing/bandit arms (`api:<vendor>`), scored **distinctly** from the four CLI
+  slots — so the self-tuning loop learns CLI-vs-API performance separately instead
+  of dropping API outcomes (the silent data loss audited in [#3317](https://github.com/nexus-substrate/nexus-agents/issues/3317)).
+  - New `RoutingArmId = CliName | ApiArmId` arm space; a `ModelToCliAdapter` shim
+    bridges `IModelAdapter` into the router's `ICliAdapter` surface; a
+    `wrapApiSelectionForRouter`/`collectApiRoutingArms` factory enumerates
+    key-present vendors.
+  - The ranking/selection pipeline carries the distinct arm end-to-end; only the
+    **bandit outcome** stays distinct, while registry/pricing lookups, telemetry,
+    and secondary learners collapse to the display slot (`routingArmDisplaySlot`).
+    `decisionsPerCli` stays slot-keyed.
+  - Wiring is gated: `createAllAdapters` appends API arms **only** when
+    `NEXUS_BILLING_MODE=api` and the vendor key is present — default plan mode is
+    CLIs-only, no surprise API spend.
+
+  Reviewed: QA (one trace-attribution collapse fixed), security (clean — keys
+  never logged/echoed, SSRF guard intact), cleanup (orphan export removed).
+  Follow-ups: [#3424](https://github.com/nexus-substrate/nexus-agents/issues/3424) (tier-stage participation), [#3425](https://github.com/nexus-substrate/nexus-agents/issues/3425) (model-source key collapse),
+  [#3426](https://github.com/nexus-substrate/nexus-agents/issues/3426) (connect-time SSRF check).
+
 ## 2.105.0
 
 ### Minor Changes
