@@ -3,9 +3,12 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { z } from 'zod';
 import {
   SyntheticVoteError,
   VoteResponseSchema,
+  RawFindingSchema,
+  VOTE_JSON_SCHEMA,
   buildVotePrompt,
   extractJsonFromResponse,
   parseVoteResponse,
@@ -13,6 +16,107 @@ import {
   type ParseVoteOptions,
 } from './voter-response.js';
 import type { VoterRole } from './vote-types.js';
+
+// ============================================================================
+// VOTE_JSON_SCHEMA drift contract (#3433 Phase 0)
+// ============================================================================
+
+/**
+ * Reads the `properties` map of VOTE_JSON_SCHEMA with a type guard so the
+ * contract test never unsafe-casts the hand-authored schema.
+ */
+function schemaProperties(): Record<string, unknown> {
+  const props = (VOTE_JSON_SCHEMA as { properties?: unknown }).properties;
+  if (props === undefined || typeof props !== 'object' || props === null) {
+    throw new Error('VOTE_JSON_SCHEMA.properties is missing or not an object');
+  }
+  return props as Record<string, unknown>;
+}
+
+/** Reads the `required` array of VOTE_JSON_SCHEMA with a type guard. */
+function schemaRequired(): string[] {
+  const required = (VOTE_JSON_SCHEMA as { required?: unknown }).required;
+  if (!Array.isArray(required)) {
+    throw new Error('VOTE_JSON_SCHEMA.required is missing or not an array');
+  }
+  return required.filter((r): r is string => typeof r === 'string');
+}
+
+describe('VOTE_JSON_SCHEMA drift contract', () => {
+  // Zod field names, derived from the schema's shape so adding a Zod field
+  // without updating VOTE_JSON_SCHEMA fails this test.
+  const zodKeys = Object.keys(VoteResponseSchema.shape).sort();
+
+  it('declares an object schema with additionalProperties:false', () => {
+    expect((VOTE_JSON_SCHEMA as { type?: unknown }).type).toBe('object');
+    expect((VOTE_JSON_SCHEMA as { additionalProperties?: unknown }).additionalProperties).toBe(
+      false
+    );
+  });
+
+  it('has exactly the same property keys as the Zod schema', () => {
+    const jsonKeys = Object.keys(schemaProperties()).sort();
+    expect(jsonKeys).toEqual(zodKeys);
+  });
+
+  it('lists every non-optional Zod field as required (and no optional ones)', () => {
+    // Derive which Zod fields are optional by probing safeParse with the
+    // field absent. Required fields are the ones whose omission fails parse.
+    const baseline: Record<string, unknown> = {
+      decision: 'approve',
+      reasoning: 'This is a sufficiently long reasoning string',
+      confidence: 0.8,
+      conditions: ['c'],
+      rejectionCategories: ['YAGNI'],
+      findings: [],
+    };
+    const requiredZodKeys = zodKeys
+      .filter((key) => {
+        const probe = Object.fromEntries(Object.entries(baseline).filter(([k]) => k !== key));
+        return !VoteResponseSchema.safeParse(probe).success;
+      })
+      .sort();
+
+    expect([...schemaRequired()].sort()).toEqual(requiredZodKeys);
+  });
+
+  it('accepts a valid fixture under both the Zod schema and the property keys', () => {
+    const fixture = {
+      decision: 'approve',
+      reasoning: 'This is a sufficiently long reasoning string',
+      confidence: 0.8,
+    };
+
+    const parsed = VoteResponseSchema.safeParse(fixture);
+    expect(parsed.success).toBe(true);
+
+    const propertyKeys = new Set(Object.keys(schemaProperties()));
+    for (const key of Object.keys(fixture)) {
+      expect(propertyKeys.has(key)).toBe(true);
+    }
+  });
+
+  // #3433 QA: the top-level check above stops at `findings`; guard the NESTED
+  // RawFindingSchema (findings.items + gate) so a sub-field can't drift silently.
+  it('mirrors the nested RawFindingSchema (findings.items + gate)', () => {
+    const findings = schemaProperties()['findings'];
+    const itemProps = (
+      (findings as { items?: { properties?: unknown } }).items as { properties?: unknown }
+    ).properties;
+    if (typeof itemProps !== 'object' || itemProps === null) {
+      throw new Error('VOTE_JSON_SCHEMA.findings.items.properties missing');
+    }
+    expect(Object.keys(itemProps).sort()).toEqual(Object.keys(RawFindingSchema.shape).sort());
+
+    // Nested `gate` object.
+    const gateShape = (RawFindingSchema.shape.gate as z.ZodObject<z.ZodRawShape>).shape;
+    const gateProps = (itemProps as { gate?: { properties?: unknown } }).gate?.properties;
+    if (typeof gateProps !== 'object' || gateProps === null) {
+      throw new Error('VOTE_JSON_SCHEMA.findings.items.properties.gate.properties missing');
+    }
+    expect(Object.keys(gateProps).sort()).toEqual(Object.keys(gateShape).sort());
+  });
+});
 
 // ============================================================================
 // SyntheticVoteError Tests

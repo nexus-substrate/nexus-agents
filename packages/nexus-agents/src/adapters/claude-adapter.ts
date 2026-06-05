@@ -37,6 +37,10 @@ import {
   mapTool,
   resolveModelId,
   getModelCapabilities,
+  forcesResponseTool,
+  buildRespondTool,
+  mapResponseWithRespondTool,
+  RESPOND_TOOL_NAME,
 } from './claude-adapter-helpers.js';
 import { extractRequestSystemPrompt } from './prompt-utils.js';
 
@@ -200,7 +204,10 @@ export class ClaudeAdapter extends BaseAdapter {
         ? await this.client.messages.create(params, { signal: request.signal })
         : await this.client.messages.create(params);
 
-    return this.mapResponse(response);
+    // #3433: when we forced a `respond` tool to satisfy a non-text
+    // responseFormat, surface its structured input as a text block so the
+    // caller's JSON parser keeps working unchanged.
+    return this.mapResponse(response, forcesResponseTool(request));
   }
 
   /**
@@ -279,20 +286,26 @@ export class ClaudeAdapter extends BaseAdapter {
       params.tools = request.tools.map(mapTool);
     }
 
-    // Issue #470: Log warning when responseFormat is requested but not supported
-    if (request.responseFormat !== undefined && request.responseFormat.type !== 'text') {
-      this.logger.warn('responseFormat is not supported by Claude adapter', {
-        requestedFormat: request.responseFormat.type,
-        suggestion: 'Use tool use or prompt engineering for structured output',
-      });
+    // #3433: honor responseFormat via a forced `respond` tool_use. Anthropic
+    // has no native JSON mode, so we register a synthetic tool whose
+    // input_schema is the requested schema and force the model to call it.
+    // The caller-supplied tools (above) are preserved — `respond` is merged
+    // in, never clobbered. We only set tool_choice when the caller didn't
+    // already specify their own tool usage intent.
+    if (forcesResponseTool(request)) {
+      const respondTool = buildRespondTool(request.responseFormat);
+      params.tools = [...(params.tools ?? []), respondTool];
+      params.tool_choice = { type: 'tool', name: RESPOND_TOOL_NAME };
     }
   }
 
   /**
    * Maps Anthropic API response to our CompletionResponse format.
    */
-  private mapResponse(response: Anthropic.Message): CompletionResponse {
-    const content: ContentBlock[] = response.content.map(mapContentBlock);
+  private mapResponse(response: Anthropic.Message, surfaceRespondTool = false): CompletionResponse {
+    const content: ContentBlock[] = surfaceRespondTool
+      ? mapResponseWithRespondTool(response.content)
+      : response.content.map(mapContentBlock);
 
     const usage: TokenUsage = {
       inputTokens: response.usage.input_tokens,
