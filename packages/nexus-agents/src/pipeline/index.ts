@@ -256,7 +256,6 @@ export type { PipelineGraphResult, StageRegistry } from './pipeline-graph.js';
 // Pipeline Templates (#1735 Phase 2)
 export {
   DEV_PIPELINE_TEMPLATE,
-  RESEARCH_PIPELINE_TEMPLATE,
   AUDIT_PIPELINE_TEMPLATE,
   GREENFIELD_PIPELINE_TEMPLATE,
   GENERAL_PIPELINE_TEMPLATE,

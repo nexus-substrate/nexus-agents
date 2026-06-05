@@ -130,9 +130,10 @@ describe('Pipeline Eval — Stage Registry', () => {
     }
   });
 
-  it('all 5 templates registered', () => {
-    expect(PIPELINE_TEMPLATES.size).toBe(5);
+  it('all 4 templates registered (research retired in #3488)', () => {
+    expect(PIPELINE_TEMPLATES.size).toBe(4);
     expect(listTemplateIds()).toContain('general');
+    expect(listTemplateIds()).not.toContain('research');
   });
 
   it('general template includes security gate', () => {

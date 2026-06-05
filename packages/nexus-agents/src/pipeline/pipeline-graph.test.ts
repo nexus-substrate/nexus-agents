@@ -8,12 +8,22 @@ import type { IPipelineStage, PipelineTemplate, StageOutput } from './stage-type
 import { PIPELINE_STATE_KEYS } from './stage-types.js';
 import {
   DEV_PIPELINE_TEMPLATE,
-  RESEARCH_PIPELINE_TEMPLATE,
   GREENFIELD_PIPELINE_TEMPLATE,
   PIPELINE_TEMPLATES,
   getTemplate,
   listTemplateIds,
 } from './templates.js';
+
+/**
+ * Stand-in for the retired `research` template (#3488). Kept locally so the
+ * regression test for "registry can't satisfy this template" still exercises a
+ * realistic unimplemented-stage shape without resurrecting the dead template.
+ */
+const UNRUNNABLE_RESEARCH_TEMPLATE: PipelineTemplate = {
+  id: 'research',
+  name: 'Research (retired)',
+  stages: ['decompose', 'investigate', 'synthesize', 'vote', 'scaffold'],
+};
 
 // ============================================================================
 // Helpers
@@ -58,21 +68,14 @@ describe('Pipeline Templates', () => {
     expect(DEV_PIPELINE_TEMPLATE.dryRunStopAfter).toBe('vote');
   });
 
-  it('RESEARCH_PIPELINE_TEMPLATE has 5 stages', () => {
-    expect(RESEARCH_PIPELINE_TEMPLATE.stages).toHaveLength(5);
-    expect(RESEARCH_PIPELINE_TEMPLATE.stages).toEqual([
-      'decompose',
-      'investigate',
-      'synthesize',
-      'vote',
-      'scaffold',
-    ]);
+  it('the retired research template is no longer registered (#3488)', () => {
+    expect(getTemplate('research')).toBeUndefined();
+    expect(listTemplateIds()).not.toContain('research');
   });
 
-  it('PIPELINE_TEMPLATES contains all templates', () => {
-    expect(PIPELINE_TEMPLATES.size).toBe(5);
+  it('PIPELINE_TEMPLATES contains the four runnable templates', () => {
+    expect(PIPELINE_TEMPLATES.size).toBe(4);
     expect(getTemplate('dev')).toBe(DEV_PIPELINE_TEMPLATE);
-    expect(getTemplate('research')).toBe(RESEARCH_PIPELINE_TEMPLATE);
     expect(getTemplate('greenfield')).toBe(GREENFIELD_PIPELINE_TEMPLATE);
     expect(getTemplate('general')).toBeDefined();
     expect(getTemplate('nonexistent')).toBeUndefined();
@@ -81,9 +84,9 @@ describe('Pipeline Templates', () => {
   it('listTemplateIds returns all IDs', () => {
     const ids = listTemplateIds();
     expect(ids).toContain('dev');
-    expect(ids).toContain('research');
     expect(ids).toContain('audit');
     expect(ids).toContain('greenfield');
+    expect(ids).toContain('general');
   });
 });
 
@@ -136,7 +139,7 @@ describe('compilePipelineGraph', () => {
     // which the dev registry (research/plan/vote/decompose/implement/qa/security)
     // doesn't implement.
     const devRegistry = makeStageRegistry(DEV_PIPELINE_TEMPLATE.stages);
-    const missing = findMissingStages(RESEARCH_PIPELINE_TEMPLATE, devRegistry);
+    const missing = findMissingStages(UNRUNNABLE_RESEARCH_TEMPLATE, devRegistry);
     expect(missing).toContain('investigate');
     expect(missing).toContain('synthesize');
     // And it's empty when the registry satisfies the template.
@@ -169,9 +172,9 @@ describe('compilePipelineGraph', () => {
     expect(result.graph).toBeDefined();
   });
 
-  it('compiles the research pipeline template', () => {
-    const stages = makeStageRegistry(RESEARCH_PIPELINE_TEMPLATE.stages);
-    const result = compilePipelineGraph(RESEARCH_PIPELINE_TEMPLATE, stages);
+  it('compiles a 5-stage template when the registry implements every stage', () => {
+    const stages = makeStageRegistry(UNRUNNABLE_RESEARCH_TEMPLATE.stages);
+    const result = compilePipelineGraph(UNRUNNABLE_RESEARCH_TEMPLATE, stages);
 
     expect(result.ok).toBe(true);
     expect(result.graph).toBeDefined();
