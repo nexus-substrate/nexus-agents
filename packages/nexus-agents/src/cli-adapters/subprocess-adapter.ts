@@ -27,7 +27,7 @@ import { BaseCliAdapter } from './base-adapter.js';
 import { buildChildEnv } from './subprocess-env.js';
 import { sanitizeOutput } from '../security/output-sanitizer.js';
 import { isRateLimitText } from '../adapters/rate-limit-detector.js';
-import { parseCliErrorEnvelope } from './cli-error-envelope.js';
+import { parseCliErrorEnvelope, classifyExtractedError } from './cli-error-envelope.js';
 import { generateHyphenId } from '../utils/id-utils.js';
 
 /** Minimum length for plaintext fallback to kick in.
@@ -642,6 +642,11 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
 
     const text = this.parser.extractResponse(stdout);
     if (text === null) {
+      // Error-only stream (e.g. OpenCode NDJSON `{"type":"error"}`): the parser
+      // surfaced an `errorMessage` but no usable content. Classify it before
+      // the generic PARSE_ERROR path, which would mask the real cause.
+      const errorOnly = this.classifyErrorOnlyStream(stdout);
+      if (errorOnly !== null) return errorOnly;
       return this.handleUnparseableOutput(stdout, stderr, startTime);
     }
 
@@ -655,6 +660,26 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
         ...(sessionId !== null && { sessionId }),
       })
     );
+  }
+
+  /**
+   * Classify an error-only stream — one where the parser surfaced an
+   * `errorMessage` but no usable content (so `extractResponse` returned null).
+   * Returns a typed error (NOT_AUTHENTICATED / RATE_LIMITED with a remediation
+   * hint, or EXECUTION_ERROR) so an upstream 401 / 429 isn't masked as
+   * PARSE_ERROR. Returns `null` when the parser exposes no error message (no
+   * `extractErrorMessage`, or empty) — the caller then falls back to the
+   * generic unparseable-output recovery.
+   */
+  private classifyErrorOnlyStream(stdout: string): Result<CliResponse, CliError> | null {
+    const errorMessage = this.parser.extractErrorMessage?.(stdout) ?? null;
+    if (errorMessage === null || errorMessage === '') return null;
+    const classified = classifyExtractedError(errorMessage, this.name);
+    const msg =
+      classified.hint !== undefined
+        ? `${classified.message}\n  → ${classified.hint}`
+        : classified.message;
+    return err(this.createError(classified.code, msg));
   }
 
   /**

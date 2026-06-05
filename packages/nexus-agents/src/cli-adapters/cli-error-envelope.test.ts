@@ -3,7 +3,11 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseCliErrorEnvelope, authRemediation } from './cli-error-envelope.js';
+import {
+  parseCliErrorEnvelope,
+  authRemediation,
+  classifyExtractedError,
+} from './cli-error-envelope.js';
 
 describe('parseCliErrorEnvelope (#2440)', () => {
   // Real-world example from the round-14 audit report.
@@ -222,6 +226,43 @@ describe('parseCliErrorEnvelope (#2440)', () => {
 
     it('authRemediation returns null for an unknown CLI name even on an auth error', () => {
       expect(authRemediation(refreshTokenMsg, 'totally-unknown-cli')).toBeNull();
+    });
+  });
+
+  describe('classifyExtractedError (error-only stream classification)', () => {
+    it('classifies an upstream 401 as NOT_AUTHENTICATED with a login hint', () => {
+      // The exact message an OpenCode error-only NDJSON event surfaces.
+      const result = classifyExtractedError(
+        'Unauthorized: {"detail":"Not authenticated"}',
+        'opencode'
+      );
+      expect(result.code).toBe('NOT_AUTHENTICATED');
+      expect(result.hint).toContain('opencode auth login');
+    });
+
+    it('classifies a rate-limit message as RATE_LIMITED (no auth hint)', () => {
+      const result = classifyExtractedError(
+        '429 Too Many Requests: rate limit exceeded',
+        'opencode'
+      );
+      expect(result.code).toBe('RATE_LIMITED');
+      expect(result.hint).toBeUndefined();
+    });
+
+    it('falls back to EXECUTION_ERROR for an unclassifiable message', () => {
+      const result = classifyExtractedError('the model produced an internal error', 'opencode');
+      expect(result.code).toBe('EXECUTION_ERROR');
+      expect(result.hint).toBeUndefined();
+    });
+
+    it('classifies auth but omits the hint for an unknown CLI name', () => {
+      const result = classifyExtractedError('Unauthorized', 'totally-unknown-cli');
+      expect(result.code).toBe('NOT_AUTHENTICATED');
+      expect(result.hint).toBeUndefined();
+    });
+
+    it('trims surrounding whitespace from the message', () => {
+      expect(classifyExtractedError('  Unauthorized  ', 'opencode').message).toBe('Unauthorized');
     });
   });
 });

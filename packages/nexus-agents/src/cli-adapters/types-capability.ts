@@ -235,6 +235,20 @@ export interface ICliResponseParser<T = unknown> {
   extractResponse(raw: string): string | null;
 
   /**
+   * Extracts an error-only message from a failure stream — when the CLI
+   * surfaced an error event but no usable assistant content (so
+   * {@link extractResponse} returns `null`). Optional: parsers that don't
+   * distinguish error-only streams omit it, and the caller falls back to the
+   * generic unparseable-output recovery. OpenCode's NDJSON `{"type":"error"}`
+   * events are the motivating case — without this the message is misclassified
+   * as PARSE_ERROR instead of NOT_AUTHENTICATED / RATE_LIMITED.
+   *
+   * @param raw - Raw CLI output
+   * @returns The extracted error message, or `null` if none / not applicable
+   */
+  extractErrorMessage?(raw: string): string | null;
+
+  /**
    * Extracts token usage (may not be present).
    *
    * @param raw - Raw CLI output

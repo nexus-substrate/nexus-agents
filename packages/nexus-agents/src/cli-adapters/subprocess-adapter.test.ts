@@ -714,6 +714,51 @@ describe('SubprocessCliAdapter', () => {
       }
     });
 
+    it('classifies an error-only stream by its message instead of PARSE_ERROR (#3485)', async () => {
+      // Repro: an upstream 401 yields an error-only stream — extractResponse
+      // returns null but extractErrorMessage exposes the auth message. The
+      // adapter must classify NOT_AUTHENTICATED (with a login hint), not mask
+      // it as PARSE_ERROR.
+      class ErrorOnlyParserAdapter extends TestSubprocessAdapter {
+        protected override readonly parser: ICliResponseParser = {
+          name: 'error-only-parser',
+          supportedVersionRange: '>=1.0.0',
+          parse: () => null,
+          extractResponse: () => null,
+          extractErrorMessage: () => 'Unauthorized: {"detail":"Not authenticated"}',
+          extractUsage: () => null,
+          extractSessionId: () => null,
+        };
+      }
+
+      const adapter2 = new ErrorOnlyParserAdapter();
+      adapter2.setCommandConfig({ command: 'echo', args: ['test'] });
+      const task: CliTask = { content: 'test' };
+      const options: ResolvedExecutionOptions = {
+        timeoutMs: 5000,
+        allowRetry: false,
+        maxRetries: 0,
+        trackUsage: true,
+        onProgress: undefined,
+      };
+
+      const { mockChild, stdout } = createMockChildProcess();
+      mockSpawn.mockReturnValue(mockChild);
+      const promise = adapter2.executeTask(task, options);
+      setImmediate(() => {
+        stdout.emit('data', Buffer.from('{"type":"error"}\n'));
+        mockChild.emit('close', 0);
+      });
+      const result = await promise;
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe('NOT_AUTHENTICATED');
+        expect(result.error.message).toContain('Not authenticated');
+        expect(result.error.message).not.toContain('Failed to parse response');
+      }
+    });
+
     it('should include stderr hint in PARSE_ERROR when stderr present (#1402)', async () => {
       class FailingParserAdapter extends TestSubprocessAdapter {
         protected override readonly parser: ICliResponseParser = {
