@@ -238,6 +238,60 @@ describe('OpenCodeCliAdapter', () => {
       expect(args).toContain('google/gemini-2.5-flash');
     });
 
+    it('resolves a stale model to its live alias when discovery is on (#3407)', async () => {
+      process.env['NEXUS_DYNAMIC_MODELS'] = 'true';
+      try {
+        vi.mocked(execFile).mockImplementation(
+          (_cmd: string, _args: unknown, _opts: unknown, cb: unknown) => {
+            (cb as ExecFileCallback)(null, 'qwen/qwen3-coder:free\nopencode/big-pickle\n', '');
+            return undefined as unknown as ReturnType<typeof execFile>;
+          }
+        );
+        resetOpenCodeModelCache();
+        const freshAdapter = new OpenCodeCliAdapter();
+        await freshAdapter.initialize();
+        vi.mocked(spawn).mockReturnValue(
+          createMockProcess(
+            [
+              JSON.stringify({ type: 'message.delta', content: 'Done!' }),
+              JSON.stringify({ type: 'session.complete' }),
+            ].join('\n')
+          )
+        );
+        // Stale id (provider renamed it) — should resolve to the live :free id.
+        await freshAdapter.execute({ content: 'x', model: 'qwen/qwen3-coder-480b-a35b:free' });
+        const args = vi.mocked(spawn).mock.calls[0]?.[1] as string[];
+        expect(args).toContain('--model');
+        expect(args).toContain('qwen/qwen3-coder:free');
+      } finally {
+        delete process.env['NEXUS_DYNAMIC_MODELS'];
+      }
+    });
+
+    it('does NOT resolve a stale model when discovery is off (default) — omits --model', async () => {
+      delete process.env['NEXUS_DYNAMIC_MODELS'];
+      vi.mocked(execFile).mockImplementation(
+        (_cmd: string, _args: unknown, _opts: unknown, cb: unknown) => {
+          (cb as ExecFileCallback)(null, 'qwen/qwen3-coder:free\n', '');
+          return undefined as unknown as ReturnType<typeof execFile>;
+        }
+      );
+      resetOpenCodeModelCache();
+      const freshAdapter = new OpenCodeCliAdapter();
+      await freshAdapter.initialize();
+      vi.mocked(spawn).mockReturnValue(
+        createMockProcess(
+          [
+            JSON.stringify({ type: 'message.delta', content: 'Done!' }),
+            JSON.stringify({ type: 'session.complete' }),
+          ].join('\n')
+        )
+      );
+      await freshAdapter.execute({ content: 'x', model: 'qwen/qwen3-coder-480b-a35b:free' });
+      const args = vi.mocked(spawn).mock.calls[0]?.[1] as string[];
+      expect(args).not.toContain('--model');
+    });
+
     it('should resolve internal model names to CLI format (#1402)', async () => {
       const ndjsonResponse = [
         JSON.stringify({ type: 'message.delta', content: 'Done!' }),

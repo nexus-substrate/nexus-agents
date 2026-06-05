@@ -352,3 +352,5 @@ export {
   resetModelsDevByVendorCache,
   CLI_TO_MODELSDEV_VENDOR,
 } from './models-dev-by-vendor.js';
+// (#3407) Logical→live model-id resolution (survives provider renames).
+export { resolveLiveModelId } from './resolve-live-model.js';

@@ -23,6 +23,8 @@ import {
   type TransientRetryConfig,
 } from '../subprocess-adapter.js';
 import { OpenCodeResponseParser } from '../parsers/opencode-parser.js';
+import { resolveLiveModelId } from '../../config/resolve-live-model.js';
+import { isDynamicModelsEnabled } from '../../config/register-model-sources.js';
 import {
   getDefaultModelForCli,
   getCliModelName,
@@ -184,10 +186,30 @@ export class OpenCodeCliAdapter extends SubprocessCliAdapter {
     return this.availableModels.has(cliModel);
   }
 
-  /** Appends --model if the resolved model is available (#1402). */
+  /** Appends --model if the resolved model is available (#1402, #3407). */
   private appendModelArg(args: string[], task: CliTask): void {
     const internalModel = task.model ?? this.model;
-    const cliModel = resolveOpenCodeModel(internalModel);
+    let cliModel = resolveOpenCodeModel(internalModel);
+
+    // #3407: if the configured model isn't offered (e.g. the provider renamed
+    // it: qwen3-coder-480b-a35b:free → qwen3-coder:free), resolve it to the
+    // closest live alias from the probed set. Opt-in (NEXUS_DYNAMIC_MODELS) and
+    // fail-open — resolveLiveModelId returns the input unchanged when nothing
+    // qualifies, so behavior is identical when discovery is off or cold.
+    if (
+      !this.isModelAvailable(cliModel) &&
+      isDynamicModelsEnabled() &&
+      this.availableModels !== undefined
+    ) {
+      const resolved = resolveLiveModelId(cliModel, this.availableModels);
+      if (resolved !== cliModel) {
+        logger.debug('Resolved stale model to live alias (#3407)', {
+          from: cliModel,
+          to: resolved,
+        });
+        cliModel = resolved;
+      }
+    }
 
     if (this.isModelAvailable(cliModel)) {
       args.push('--model', cliModel);
