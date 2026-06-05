@@ -1,6 +1,15 @@
-import { describe, it, expect, afterEach } from 'vitest';
-import { validateCustomApiBaseUrl } from './custom-api-validation.js';
+import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest';
+import {
+  validateCustomApiBaseUrl,
+  assertCustomApiHostResolvesPublic,
+} from './custom-api-validation.js';
 import { CUSTOM_API_ALLOW_PRIVATE_ENV } from './types.js';
+
+// Mock the DNS promises API so resolve-time tests don't hit a real resolver.
+const lookupMock = vi.hoisted(() => vi.fn());
+vi.mock('node:dns/promises', () => ({
+  lookup: lookupMock,
+}));
 
 // Restore the original env var on every teardown so tests that flip
 // NEXUS_CUSTOM_API_ALLOW_PRIVATE don't leak into siblings.
@@ -175,6 +184,115 @@ describe('validateCustomApiBaseUrl', () => {
       process.env[CUSTOM_API_ALLOW_PRIVATE_ENV] = 'yes';
       const result = validateCustomApiBaseUrl('http://localhost/');
       expect(result.ok).toBe(false);
+    });
+  });
+});
+
+describe('assertCustomApiHostResolvesPublic (DNS-resolve-time SSRF guard, #3426)', () => {
+  const originalEnv = process.env[CUSTOM_API_ALLOW_PRIVATE_ENV];
+
+  beforeEach(() => {
+    lookupMock.mockReset();
+  });
+
+  afterEach(() => {
+    if (originalEnv === undefined) {
+      Reflect.deleteProperty(process.env, 'NEXUS_CUSTOM_API_ALLOW_PRIVATE');
+    } else {
+      process.env[CUSTOM_API_ALLOW_PRIVATE_ENV] = originalEnv;
+    }
+  });
+
+  describe('public name resolving to a private IP is rejected', () => {
+    it('rejects a public name that resolves to 10.0.0.5 (RFC 1918)', async () => {
+      lookupMock.mockResolvedValueOnce([{ address: '10.0.0.5', family: 4 }]);
+      const result = await assertCustomApiHostResolvesPublic('gateway.evil.test');
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error.message).toMatch(/private/i);
+      expect(result.error.message).toMatch(/gateway\.evil\.test/);
+    });
+
+    it('rejects a public name that resolves to 127.0.0.1 (loopback)', async () => {
+      lookupMock.mockResolvedValueOnce([{ address: '127.0.0.1', family: 4 }]);
+      const result = await assertCustomApiHostResolvesPublic('localhost-rebind.test');
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error.message).toMatch(/loopback/i);
+    });
+
+    it('rejects a public name that resolves to 169.254.169.254 (AWS IMDS link-local)', async () => {
+      lookupMock.mockResolvedValueOnce([{ address: '169.254.169.254', family: 4 }]);
+      const result = await assertCustomApiHostResolvesPublic('imds.evil.test');
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error.message).toMatch(/link.?local/i);
+    });
+
+    it('rejects a public name that resolves to ::1 (IPv6 loopback)', async () => {
+      lookupMock.mockResolvedValueOnce([{ address: '::1', family: 6 }]);
+      const result = await assertCustomApiHostResolvesPublic('v6-loopback.test');
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error.message).toMatch(/loopback/i);
+    });
+
+    it('rejects if ANY of multiple resolved addresses is private (fail-closed)', async () => {
+      lookupMock.mockResolvedValueOnce([
+        { address: '93.184.216.34', family: 4 }, // public
+        { address: '192.168.1.1', family: 4 }, // private — must trip the guard
+      ]);
+      const result = await assertCustomApiHostResolvesPublic('multi.test');
+      expect(result.ok).toBe(false);
+    });
+  });
+
+  describe('public name resolving to a public IP is allowed', () => {
+    it('accepts a public name that resolves to a public IP', async () => {
+      lookupMock.mockResolvedValueOnce([{ address: '93.184.216.34', family: 4 }]);
+      const result = await assertCustomApiHostResolvesPublic('gateway.example.com');
+      expect(result.ok).toBe(true);
+      expect(lookupMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('IP literals skip DNS (handled by the sync guard at construction)', () => {
+    it('does not call dns.lookup for an IPv4 literal', async () => {
+      const result = await assertCustomApiHostResolvesPublic('93.184.216.34');
+      expect(result.ok).toBe(true);
+      expect(lookupMock).not.toHaveBeenCalled();
+    });
+
+    it('does not call dns.lookup for a bracket-stripped IPv6 literal', async () => {
+      const result = await assertCustomApiHostResolvesPublic('[2606:2800:220:1::1]');
+      expect(result.ok).toBe(true);
+      expect(lookupMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('allowPrivate bypass performs no lookup', () => {
+    it('bypasses (no lookup) when allowPrivate=true is passed', async () => {
+      const result = await assertCustomApiHostResolvesPublic('gateway.evil.test', {
+        allowPrivate: true,
+      });
+      expect(result.ok).toBe(true);
+      expect(lookupMock).not.toHaveBeenCalled();
+    });
+
+    it('bypasses (no lookup) when NEXUS_CUSTOM_API_ALLOW_PRIVATE=1', async () => {
+      process.env[CUSTOM_API_ALLOW_PRIVATE_ENV] = '1';
+      const result = await assertCustomApiHostResolvesPublic('gateway.evil.test');
+      expect(result.ok).toBe(true);
+      expect(lookupMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('fail-open on lookup error (additive defense-in-depth)', () => {
+    it('returns ok when dns.lookup throws (does not break legit gateways)', async () => {
+      lookupMock.mockRejectedValueOnce(new Error('ENOTFOUND transient'));
+      const result = await assertCustomApiHostResolvesPublic('flaky-resolver.example.com');
+      expect(result.ok).toBe(true);
+      expect(lookupMock).toHaveBeenCalledTimes(1);
     });
   });
 });
