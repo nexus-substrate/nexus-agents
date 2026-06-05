@@ -1,5 +1,16 @@
 # nexus-agents
 
+## 2.109.2
+
+### Patch Changes
+
+- [#3442](https://github.com/nexus-substrate/nexus-agents/pull/3442) [`370e23a`](https://github.com/nexus-substrate/nexus-agents/commit/370e23a83dc325d449d6410bbbaca10e631d33e1) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Add a DNS-resolve-time SSRF guard for the custom-openai gateway ([#3426](https://github.com/nexus-substrate/nexus-agents/issues/3426)). A public
+  DNS name that resolves to a private/loopback/link-local/metadata IP is now rejected
+  before the first outbound request, closing the documented gap in the string-level
+  `classifyPrivateHost` check. Fail-open on transient DNS errors; bypassed by
+  `NEXUS_CUSTOM_API_ALLOW_PRIVATE=1`. Resolve-time only — a TOCTOU/DNS-rebinding
+  window remains pending a socket-layer `lookup` hook.
+
 ## 2.109.1
 
 ### Patch Changes
