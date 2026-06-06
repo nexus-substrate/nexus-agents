@@ -30,9 +30,12 @@ export default defineConfig([
       'jsdoc/check-tag-names': 'error',
       'jsdoc/empty-tags': 'error',
       'jsdoc/valid-types': 'error',
-      // WARN: 10 remaining violations (mostly @link-style references); fixed in a
-      // follow-up, then promoted to error.
-      'jsdoc/no-undefined-types': 'warn',
+      // jsdoc/no-undefined-types is intentionally OMITTED: in TypeScript, type
+      // references are import-resolved and already enforced by the compiler
+      // (strictTypeChecked), so the rule is redundant for real accuracy. Its
+      // only signal here was 10 false-positives on legitimate `{@link symbol}`
+      // navigation references (which may point at any symbol, imported or not).
+      // Investigated in the #3518 follow-up — see that PR for the per-site review.
     },
   },
 
