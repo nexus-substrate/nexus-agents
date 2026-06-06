@@ -146,7 +146,7 @@ function ensureVotingDirectory(): Result<void, Error> {
  * read-merge-rename race possible because we never read or rename.
  *
  * @param proposals - Array of proposals with their votes and outcomes to persist
- * @param config - Higher-order voting config (only `maxProposals` is consulted
+ * @param _config - Higher-order voting config (only `maxProposals` is consulted
  *                 on read; this writer is fully append-only)
  * @returns Result indicating success or failure
  */

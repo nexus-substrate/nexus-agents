@@ -67,7 +67,7 @@ export function formatZodIssuesAsArray(error: ZodError): string[] {
 /**
  * Formats Zod issues with "root" as fallback for empty paths.
  *
- * @param error - The Zod error to format
+ * @param issue - The Zod issue to format
  * @returns A formatted string with each issue on its own
  *
  * @example

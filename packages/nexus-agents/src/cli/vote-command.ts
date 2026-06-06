@@ -123,7 +123,8 @@ export interface OutcomeExplainCtx {
  *      didn't return a decision in time).
  *   3. Quorum reached but the supermajority/unanimous threshold wasn't met.
  *
- * @internal — exported for tests only.
+ * Exported for tests only.
+ * @internal
  */
 export function explainOutcome(ctx: OutcomeExplainCtx): string {
   if (ctx.outcome !== 'rejected') return '';
