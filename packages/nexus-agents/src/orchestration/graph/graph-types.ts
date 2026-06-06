@@ -307,6 +307,15 @@ export interface GraphExecuteOptions {
   readonly timeout?: number;
   readonly maxSteps?: number;
   readonly onNodeComplete?: (result: NodeResult) => void;
+  /**
+   * Prior NodeResults to replay instead of re-executing (#3534, selective-retry).
+   * A node with a `success` entry here is skipped — its result (including
+   * `stateUpdates`) is reused so downstream nodes still see the correct state —
+   * while nodes absent here, or present with a non-`success` status, are
+   * re-executed. Lets `retryFailed` re-run only the failed/skipped nodes while
+   * replaying the prior successes.
+   */
+  readonly priorResults?: ReadonlyMap<string, NodeResult>;
   /** Optional checkpoint store for durable execution (Issue #837). */
   readonly checkpointStore?: ICheckpointStore;
   /** Execution ID for checkpoint grouping. Required with checkpointStore. */
