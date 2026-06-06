@@ -22,7 +22,7 @@ import pkg from '../../../packages/nexus-agents/package.json' with { type: 'json
 export const NEXUS_AGENTS_VERSION: string = `v${pkg.version}`;
 
 /** MCP tools registered in src/mcp/tools/index.ts registerTools() */
-export const MCP_TOOL_COUNT = 45;
+export const MCP_TOOL_COUNT = 46;
 
 /**
  * Built-in expert types in src/agents/experts/expert-config.ts BUILT_IN_EXPERTS.

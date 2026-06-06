@@ -215,7 +215,7 @@ Twelve expert-role prompts ship at `agents/<name>-expert.md` (security, architec
 
 ## MCP server
 
-Nexus-agents exposes 45 MCP tools via stdio. From any MCP-aware agent:
+Nexus-agents exposes 46 MCP tools via stdio. From any MCP-aware agent:
 
 ```
 npx -y nexus-agents --mode=server
@@ -461,11 +461,11 @@ Voting thresholds, refactor gates, fitness audit, documentation governance in `.
 
 ## MCP Tools Reference
 
-**45 MCP tools registered.** Full schemas, parameter docs, and one-line summaries in [docs/ENTRYPOINTS.md](./docs/ENTRYPOINTS.md) and the README MCP tools table. Names below; look up the schema before calling.
+**46 MCP tools registered.** Full schemas, parameter docs, and one-line summaries in [docs/ENTRYPOINTS.md](./docs/ENTRYPOINTS.md) and the README MCP tools table. Names below; look up the schema before calling.
 
-`orchestrate`, `create_expert`, `execute_expert`, `run_workflow`, `delegate_to_model`, `list_experts`, `list_workflows`, `consensus_vote`, `research_query`, `research_add`, `research_add_source`, `research_discover`, `research_analyze`, `research_catalog_review`, `research_synthesize`, `survey_oss_landscape`, `vendor_publishing_audit`, `compare_data_feeds`, `memory_query`, `memory_stats`, `memory_write`, `weather_report`, `issue_triage`, `run_graph_workflow`, `execute_spec`, `registry_import`, `query_trace`, `query_task_state`, `get_job_result`, `list_jobs`, `cancel_job`, `ci_health_check`, `verify_audit_chain`, `repo_analyze`, `repo_security_plan`, `extract_symbols`, `search_codebase`, `run_dev_pipeline`, `run_pipeline`, `pr_review`, `supply_chain_tradeoff_panel`, `improvement_review`, `run_quality_gate`, `suggest_research_tasks`, `list_available_models`
+`orchestrate`, `create_expert`, `execute_expert`, `run_workflow`, `delegate_to_model`, `list_experts`, `list_workflows`, `consensus_vote`, `research_query`, `research_add`, `research_add_source`, `research_discover`, `research_analyze`, `research_catalog_review`, `research_synthesize`, `survey_oss_landscape`, `vendor_publishing_audit`, `compare_data_feeds`, `memory_query`, `memory_stats`, `memory_write`, `weather_report`, `issue_triage`, `run_graph_workflow`, `execute_spec`, `registry_import`, `query_trace`, `query_task_state`, `get_job_result`, `list_jobs`, `cancel_job`, `ci_health_check`, `verify_audit_chain`, `repo_analyze`, `repo_security_plan`, `extract_symbols`, `search_codebase`, `run_dev_pipeline`, `run_pipeline`, `pr_review`, `supply_chain_tradeoff_panel`, `improvement_review`, `run_quality_gate`, `suggest_research_tasks`, `list_available_models`, `run`
 
-_Auto-generated from source. 45 tools registered._
+_Auto-generated from source. 46 tools registered._
 
 <!-- GOVERNANCE:TOOL_INDEX:END -->
 

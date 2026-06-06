@@ -398,6 +398,11 @@ export {
   type SuggestResearchTasksDeps,
   type SuggestResearchTasksInput,
   type SuggestResearchTasksResponse,
+  // run tool — unified adaptive entry point (epic #3548)
+  registerRunTool,
+  RunInputSchema,
+  type RunInput,
+  type RunResponse,
   // list_available_models tool (#3406 — probe transports + report health)
   registerListAvailableModelsTool,
   ListAvailableModelsInputSchema,

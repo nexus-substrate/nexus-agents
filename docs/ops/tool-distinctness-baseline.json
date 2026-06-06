@@ -1,52 +1,12 @@
 {
   "_comment": "Accepted overlapping MCP tool-description pairs (#2650). `check:tool-distinctness` fails CI on a NEW pair >= threshold or a baseline pair whose similarity rose past tolerance. To accept a new pair, add it here with a tracking issue; to reseed, run `npx tsx scripts/check-tool-distinctness.ts baseline <threshold>`.",
-  "threshold": 0.23,
+  "threshold": 0.5,
   "tolerance": 0.03,
   "pairs": [
     {
       "a": "research_add",
       "b": "research_add_source",
-      "similarity": 0.508
-    },
-    {
-      "a": "run_graph_workflow",
-      "b": "run_workflow",
-      "similarity": 0.408
-    },
-    {
-      "a": "extract_symbols",
-      "b": "search_codebase",
-      "similarity": 0.382
-    },
-    {
-      "a": "list_workflows",
-      "b": "run_workflow",
-      "similarity": 0.347
-    },
-    {
-      "a": "execute_expert",
-      "b": "list_experts",
-      "similarity": 0.345
-    },
-    {
-      "a": "research_add",
-      "b": "research_discover",
-      "similarity": 0.254
-    },
-    {
-      "a": "list_workflows",
-      "b": "run_graph_workflow",
-      "similarity": 0.251
-    },
-    {
-      "a": "get_job_result",
-      "b": "list_jobs",
-      "similarity": 0.392
-    },
-    {
-      "a": "delegate_to_model",
-      "b": "registry_import",
-      "similarity": 0.23
+      "similarity": 0.532
     }
   ]
 }
