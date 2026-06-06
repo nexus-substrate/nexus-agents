@@ -1,5 +1,18 @@
 # nexus-agents
 
+## 2.120.4
+
+### Patch Changes
+
+- [#3545](https://github.com/nexus-substrate/nexus-agents/pull/3545) [`e00879c`](https://github.com/nexus-substrate/nexus-agents/commit/e00879c3db6f328a6f850696b7b07eb32acc0874) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(research): arXiv discovery OR-joins topic terms + sorts by relevance ([#3543](https://github.com/nexus-substrate/nexus-agents/issues/3543))
+
+  `buildArxivUrl` AND-joined every topic term (`(ti:w1 OR abs:w1) AND (ti:w2 OR abs:w2) …`),
+  requiring all terms to co-occur in one paper — so multi-word topics returned 0 arXiv
+  results. Now OR-joins terms (any may match) and sorts `sortBy=relevance` (so the fetched
+  set is on-topic rather than merely recent); the coverage-based relevance filter ([#3542](https://github.com/nexus-substrate/nexus-agents/issues/3542))
+  refines downstream. Completes the research_discover repair started in [#3542](https://github.com/nexus-substrate/nexus-agents/issues/3542) (the [#3543](https://github.com/nexus-substrate/nexus-agents/issues/3543)
+  arXiv sub-finding split from [#3541](https://github.com/nexus-substrate/nexus-agents/issues/3541)).
+
 ## 2.120.3
 
 ### Patch Changes
