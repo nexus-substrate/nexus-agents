@@ -1,5 +1,19 @@
 # nexus-agents
 
+## 2.120.1
+
+### Patch Changes
+
+- [#3527](https://github.com/nexus-substrate/nexus-agents/pull/3527) [`a789e53`](https://github.com/nexus-substrate/nexus-agents/commit/a789e53762d69894f344fdbcf78b81ab37cc57d9) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(mcp): correct 5 inaccurate tool descriptions (JSDoc audit Phase 2b)
+
+  Removes false/overstated claims from registered MCP tool descriptions (consumer-facing):
+  run_graph_workflow advertised "rollback" (no rollback exists — only checkpoints/events/audit);
+  execute_expert promised "confidence" (not in the response); list_experts promised "default model"
+  (not returned); list_workflows promised "required inputs" (returns name/version/description/category);
+  ci_health_check claimed "idempotent / no state mutated" (appends a local telemetry event per call).
+  Fixed in both the tool files and scripts/tool-descriptions-data.ts (the docs source), and regenerated
+  ENTRYPOINTS/README/capabilities. [#3516](https://github.com/nexus-substrate/nexus-agents/issues/3516) / [#3520](https://github.com/nexus-substrate/nexus-agents/issues/3520).
+
 ## 2.120.0
 
 ### Minor Changes
