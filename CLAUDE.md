@@ -69,6 +69,16 @@ Note: `NEXUS_WORKERS_*` / `NEXUS_WORKFLOW_MAX_PARALLEL` / `NEXUS_TEST_PARALLELIS
      AGNOSTIC:BODY slice by `scripts/inject-governance.ts` and gated in CI.
      Edit the agnostic prose in AGENTS.md; run `pnpm governance:inject`. (#3446) -->
 
+## Mission
+
+Nexus-agents is a **self-improving autonomous engine for an organization's technical work**, built to extend toward its broader functions over time. It runs the engineering lifecycle end to end — form/refine intent → research → plan (agile PM: epics → child issues) → develop (multi-CLI) → adversarial-consensus review → QA + security gates → measure outcomes → self-tune. The **routing/strategy self-improvement loop is wired and default-on** (outcome telemetry → strategy distillation → bounded routing adjustment, enforce-by-default since v2.96). Coding was the deliberate bootstrap: build an engine good enough to extend itself to the remaining functions and keep improving _how_ it works.
+
+**The frontier — closing the capability loop.** The routing-level Darwinian cycle iterates without a human today; the _code/capability_ level does not yet. Improvement and fitness signals are detected and evaluated, but a detected gap does not yet flow research → auto-implementation → evaluation → iterate on its own: SICA self-improves on its own metrics in isolation, research discoveries reach the dev-pipeline plan/vote context but not yet general retrieval, and auto-filing research tasks is deferred (#3382 / #3231 / #3238). Hardening these links — so the engine improves its own _capabilities_, not just its routing — is the highest-leverage near-term work.
+
+**Operating principle — capability bias (bounding YAGNI for this repo).** Build a capability when a **named consumer or loop within the current mission vector or epic will measurably use it**, and it ships with the instrumentation to judge it. "No consumer _yet_" is fine when a near-term loop is named; "no consumer at all" is not. Still refuse genuine waste: duplication (DRY), parallel implementations, abstractions that fight the canonical architecture, and anything that cannot be measured (a selection loop can only optimize what it can evaluate). This **bounds, not repeals, YAGNI**, and takes precedence where the two conflict.
+
+**Extending beyond engineering** (intent-formation at scale, documentation, comms, UX, data) is a north-star that should keep capability-addition _cheap_: favor composing existing components, and apply a per-domain build-vs-buy gate rather than blanket expansion.
+
 ## Prime directive
 
 ```
@@ -87,7 +97,7 @@ Produce software with explicit error handling, observable state changes, no sile
 Non-negotiable across all building, reviewing, architecture work:
 
 - **Red/Green TDD** — Write a failing test first, then the minimum code to pass, then refactor. Never write production code without a corresponding test.
-- **YAGNI** — Implement only what's needed right now. No speculative abstractions, unused parameters, "just in case" code.
+- **YAGNI (bounded by capability-bias — see Mission)** — Implement what a named consumer or near-term mission loop will measurably use; no speculative abstractions, unused parameters, or "just in case" code with no named consumer. For nexus-agents the bar is "a named loop within the current epic/vector will use it, and it's instrumented to measure" — not "build everything that might help." Build ahead of demand only under that bar.
 - **DRY** — Every piece of knowledge must have a single, unambiguous, authoritative representation. Extract when you see the same logic in three places (two is a coincidence).
 - **Zero `any` policy** — ESLint enforces `@typescript-eslint/no-explicit-any: 'error'`. Use `unknown` + type guards or Zod at boundaries. See `.rules/typescript.md` for the full rule.
 
