@@ -122,6 +122,23 @@ export type {
   IRecordingMetaDecisionSink,
 } from './meta-orchestrator.js';
 
+export {
+  createMetaDispatcher,
+  createAuditLogOutcomeSink,
+  createRecordingOutcomeSink,
+  MetaDispatchError,
+} from './meta-dispatcher.js';
+export type {
+  IMetaDispatcher,
+  StrategyExecutor,
+  StrategyExecutorMap,
+  MetaOutcomeRecord,
+  MetaOutcomeSink,
+  IRecordingMetaOutcomeSink,
+  DispatchResult,
+  MetaDispatchErrorCode,
+} from './meta-dispatcher.js';
+
 // Spec Parser (Issue #847)
 export { parseSpec } from './spec-parser.js';
 export type {
