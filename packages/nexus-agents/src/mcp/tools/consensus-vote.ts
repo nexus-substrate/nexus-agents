@@ -81,15 +81,40 @@ export type {
 export { VotingStrategySchema, ConsensusVoteInputSchema } from './consensus-vote-types.js';
 
 // --- Correlation Tracker Singleton ---
+//
+// Lifecycle & memory model (documented per #3169):
+//   * SCOPE: one process-wide, lazily-created instance shared by every
+//     `consensus_vote` call. It accumulates cross-proposal voter agreement so
+//     the higher_order strategy can down-weight correlated (redundant) voters.
+//     One shared tracker is intentional — correlation signal is only useful
+//     pooled across proposals.
+//   * PERSISTENCE: backed by `createPersistentCorrelationTracker()`, which
+//     hydrates from / appends to the on-disk correlation store, so the signal
+//     survives restarts (the in-memory map is a hot cache over that store).
+//   * MEMORY BOUND: NOT unbounded. The underlying `CorrelationTracker` is
+//     FIFO-bounded by `maxProposals` / `maxObservationsPerAgent` (#521) —
+//     oldest proposals are evicted once the cap is hit (eviction is logged at
+//     debug in `correlation-tracker.ts`, so memory pressure is observable).
+//   * RESET: `resetCorrelationTracker()` drops the instance; the next
+//     `getOrCreateCorrelationTracker()` rebuilds it (re-hydrating from disk).
+//     Test-isolation only. There is intentionally no per-milestone "reset
+//     between cycles" coordinator API — eviction already bounds growth, and
+//     clearing history mid-run would discard the signal the strategy needs.
 let persistentCorrelationTracker: ICorrelationTracker | undefined;
 
-/** Gets or creates the persistent CorrelationTracker (Issue #517). */
+/**
+ * Gets or creates the process-wide persistent CorrelationTracker (#517).
+ * See the lifecycle / memory-bound / reset notes above the declaration (#3169).
+ */
 function getOrCreateCorrelationTracker(): ICorrelationTracker {
   persistentCorrelationTracker ??= createPersistentCorrelationTracker();
   return persistentCorrelationTracker;
 }
 
-/** Resets the persistent CorrelationTracker. @internal */
+/**
+ * Drops the singleton so the next {@link getOrCreateCorrelationTracker} rebuilds
+ * it (re-hydrating from the persistent store). Test-isolation only. @internal
+ */
 export function resetCorrelationTracker(): void {
   persistentCorrelationTracker = undefined;
 }
