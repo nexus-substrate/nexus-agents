@@ -28,6 +28,7 @@ import type { IWorkflowRouter } from './workflow-router.js';
 import type { TaskSignals, RoutingDecision, WorkflowPattern } from './workflow-router-types.js';
 import type { TaskAnalysisResult } from '../core/task-analysis/shared-task-analyzer.js';
 import type { CapabilityGapReport } from '../core/task-analysis/capability-gap-detector.js';
+import type { ICapabilityGapLedger } from '../core/task-analysis/capability-gap-ledger.js';
 
 /**
  * Execution strategies the MetaOrchestrator can select. Each maps to an
@@ -394,15 +395,20 @@ function toRecord(
  * @param options.logger - optional logger.
  * @param options.router - optional workflow router (injectable for tests).
  * @param options.sink - optional decision sink (default: audit-log sink).
+ * @param options.gapLedger - optional capability-gap ledger; when provided, each
+ *   decision's capability gaps are recorded for the self-directed build backlog
+ *   (#3555). Default absent — no gap recording, no behavior change.
  */
 export function createMetaOrchestrator(options?: {
   readonly logger?: ILogger | undefined;
   readonly router?: IWorkflowRouter | undefined;
   readonly sink?: MetaDecisionSink | undefined;
+  readonly gapLedger?: ICapabilityGapLedger | undefined;
 }): IMetaOrchestrator {
   const logger = options?.logger ?? createLogger({ component: 'MetaOrchestrator' });
   const router = options?.router ?? createWorkflowRouter({ logger });
   const sink = options?.sink ?? createAuditLogSink(logger);
+  const gapLedger = options?.gapLedger;
 
   return {
     select(input: MetaOrchestratorInput): MetaDecision {
@@ -419,6 +425,12 @@ export function createMetaOrchestrator(options?: {
 
       const timestamp = new Date(getTimeProvider().now()).toISOString();
       sink.record(toRecord(decision, input.goal, forced, timestamp));
+      if (gapLedger !== undefined && decision.capabilityGaps !== undefined) {
+        gapLedger.record(decision.capabilityGaps, {
+          goal: input.goal,
+          decisionId: decision.decisionId,
+        });
+      }
 
       logger.info('MetaOrchestrator strategy selected', {
         decisionId: decision.decisionId,

@@ -51,6 +51,10 @@ export {
   getAvailableExpertCount,
 } from './capability-gap-detector.js';
 
+// Capability gap ledger — aggregates discarded gap reports into a build backlog (#3555)
+export { createCapabilityGapLedger } from './capability-gap-ledger.js';
+export type { ICapabilityGapLedger, GapSummary, GapContext } from './capability-gap-ledger.js';
+
 // Task profile adapter for legacy compatibility (Issue #586)
 export type { TaskProfile, BanditContext } from './task-profile-adapter.js';
 export {
