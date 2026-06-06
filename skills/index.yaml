@@ -215,6 +215,26 @@ skills:
       - self-development
       - process issues
       - working on open issues
+  - name: e2e-validation
+    description: |-
+      Periodically exercise ALL nexus-agents feature families end-to-end against a
+      real task — research → synthesize → vote → plan → dev-pipeline → graph workflow
+      → memory → audit — capturing ACTUAL outputs to validate that fixes, docs, and
+      claims hold in real usage (the things unit tests miss: live voter panels,
+      adapter routing, pipeline stage wiring, audit chains). Use after a release,
+      weekly, when several fixes have landed since the last run, or on demand.
+      Triggers on "e2e validation", "end-to-end validation", "dogfood the loops",
+      "validate end to end", "real usage test", "periodic validation run",
+      "full-loop validation".
+    path: skills/e2e-validation/SKILL.md
+    triggers:
+      - e2e validation
+      - end-to-end validation
+      - dogfood the loops
+      - validate end to end
+      - real usage test
+      - periodic validation run
+      - full-loop validation
   - name: gemini-delegator
     description: |-
       Delegate large context and multimodal tasks to Gemini CLI.
