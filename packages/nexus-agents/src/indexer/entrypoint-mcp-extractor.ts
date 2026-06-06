@@ -82,6 +82,9 @@ function extractZodParameters(schemaObj: Node): ParameterSpec[] {
 /**
  * Extracts MCP tools from the tools directory.
  *
+ * @param project - ts-morph Project providing the parsed source files
+ * @param packageRoot - Absolute path to the package root
+ * @param mcpToolsPath - Path to the MCP tools directory to scan
  * @param warnings - Optional sink for non-fatal diagnostics (e.g. the tools
  *   directory glob matched zero files — a repeat-offender silent-failure
  *   class that shipped the `cli_commands: []` regression for 3 months before

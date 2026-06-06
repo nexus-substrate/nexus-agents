@@ -106,6 +106,8 @@ function addMcpServer(useNpx: boolean, scope: 'user' | 'project' = 'user'): McpC
  * Configures nexus-agents MCP server using Claude CLI.
  *
  * Uses `claude mcp add-json` to register the server.
+ * @param useNpx - Register via `npx -y nexus-agents` instead of a global binary
+ * @param force - Overwrite an existing nexus-agents MCP server entry
  * @param scope - 'user' for global (~/.claude/mcp.json), 'project' for local (.mcp.json)
  */
 export function configureMcpServer(

@@ -68,7 +68,7 @@ export interface PruneResult<T> {
  * All pruning mechanisms in the system should implement this interface
  * to ensure consistent behavior and enable composition.
  *
- * @typeParam T - Type of items being pruned
+ * @template T - Type of items being pruned
  *
  * @example
  * ```typescript

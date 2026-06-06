@@ -335,6 +335,7 @@ export function createFailingAdapter(name: CliName = 'claude'): MockCliAdapter {
 
 /**
  * Creates a mock adapter configured for latency testing.
+ * @param name - CLI name the mock impersonates
  * @param latencyMs - Simulated response latency
  */
 export function createSlowAdapter(name: CliName = 'claude', latencyMs: number): MockCliAdapter {

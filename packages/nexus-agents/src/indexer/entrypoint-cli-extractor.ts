@@ -242,6 +242,10 @@ function buildCommandSpec(
  * `cli-commands.ts` via ts-morph. Option bindings come from
  * `PARSE_ARGS_CONFIG` in `cli-types.ts`.
  *
+ * @param project - ts-morph Project providing the parsed source files
+ * @param packageRoot - Absolute path to the package root
+ * @param cliCommandsPath - Path to `cli-commands.ts` (handler locations)
+ * @param cliTypesPath - Path to `cli-types.ts` (`PARSE_ARGS_CONFIG` bindings)
  * @param warnings - Optional sink for non-fatal diagnostics (#2153).
  */
 export function extractCliCommands(

@@ -1348,10 +1348,10 @@ function recordPendingAndRegister(jobId: string, key: string | undefined, inputs
  * Fire-and-forget background run. Wraps the depth-guarded pipeline with
  * complete/failed recording + slot release. Extracted from
  * `dispatchAsyncOrchestrate` so the dispatcher stays under the 50-line cap.
- */
-/**
- * @internal Exported for integration tests (#3091) — drives the async
- * background run deterministically (awaitable) instead of fire-and-forget.
+ *
+ * Exported for integration tests (#3091) — drives the async background run
+ * deterministically (awaitable) instead of fire-and-forget.
+ * @internal
  */
 export async function runOrchestrateInBackground(
   jobId: string,

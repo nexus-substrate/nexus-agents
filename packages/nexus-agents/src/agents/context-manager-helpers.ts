@@ -199,9 +199,8 @@ export interface BudgetCheckResult {
 /**
  * Check if adding tokens would exceed category budget.
  *
- * @param category - Category to check
- * @param tokenCount - Tokens to add
  * @param currentCategoryTokens - Current tokens in category
+ * @param tokenCount - Tokens to add
  * @param maxTokens - Max context tokens
  * @param budgetAllocation - Budget allocation for category (0-1)
  * @returns Budget check result

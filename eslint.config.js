@@ -18,14 +18,21 @@ export default defineConfig([
     ignores: ['**/*.test.ts', '**/*.spec.ts', '**/test/**', '**/__tests__/**'],
     plugins: { jsdoc },
     rules: {
-      'jsdoc/check-param-names': 'warn',
-      'jsdoc/check-property-names': 'warn',
-      'jsdoc/check-types': 'warn',
+      // ERROR (baseline clean as of #3518): these fire only on existing-but-wrong
+      // JSDoc and are now at zero across non-test source, so they gate going
+      // forward. checkDestructured:false keeps check-param-names focused on
+      // genuine name mismatches rather than demanding a @param line for every
+      // nested destructured property (coverage — a separate decision, #3518).
+      'jsdoc/check-param-names': ['error', { checkDestructured: false }],
+      'jsdoc/check-property-names': 'error',
+      'jsdoc/check-types': 'error',
+      'jsdoc/check-alignment': 'error',
+      'jsdoc/check-tag-names': 'error',
+      'jsdoc/empty-tags': 'error',
+      'jsdoc/valid-types': 'error',
+      // WARN: 10 remaining violations (mostly @link-style references); fixed in a
+      // follow-up, then promoted to error.
       'jsdoc/no-undefined-types': 'warn',
-      'jsdoc/check-alignment': 'warn',
-      'jsdoc/check-tag-names': 'warn',
-      'jsdoc/empty-tags': 'warn',
-      'jsdoc/valid-types': 'warn',
     },
   },
 
