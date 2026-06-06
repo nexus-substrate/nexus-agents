@@ -277,7 +277,7 @@ When running as an MCP server, the following tools are available:
 | `memory_write`                | Write to typed memory backends                                                                                                                                            |
 | `weather_report`              | Multi-CLI performance weather report                                                                                                                                      |
 | `issue_triage`                | Triage GitHub issues with trust classification                                                                                                                            |
-| `run_graph_workflow`          | Run a DAG workflow with checkpoint + rollback (linear → `run_workflow`)                                                                                                   |
+| `run_graph_workflow`          | Run a DAG workflow with per-node checkpoints + audit trail (linear → `run_workflow`)                                                                                      |
 | `execute_spec`                | Execute AI software factory spec pipeline                                                                                                                                 |
 | `registry_import`             | Draft YAML for a NEW model entry (for picking existing models use `delegate_to_model`)                                                                                    |
 | `query_trace`                 | Query execution traces for observability                                                                                                                                  |

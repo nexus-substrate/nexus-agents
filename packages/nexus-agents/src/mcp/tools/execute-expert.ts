@@ -813,7 +813,7 @@ export function registerExecuteExpertTool(server: McpServer, deps: ExecuteExpert
   const description =
     'Run a task through an expert YOU PREVIOUSLY CREATED via `create_expert`. ' +
     'Requires the expertId returned by create_expert; not for ad-hoc execution. ' +
-    'Returns the expert analysis including output, confidence, and token usage.';
+    'Returns the expert analysis including output, status, model used, and token usage.';
 
   server.experimental.tasks.registerToolTask(
     'execute_expert',
