@@ -13,6 +13,7 @@ import { z } from 'zod';
 
 import type { Result } from '../../core/index.js';
 import type { ICheckpointStore } from './checkpoint-types.js';
+import type { ErrorCategory } from '../../mcp/error-envelope.js';
 
 // ============================================================================
 // Node Hooks (Issue #994 + #997)
@@ -255,6 +256,17 @@ export interface NodeResult {
   readonly durationMs: number;
   readonly status: 'success' | 'failed' | 'skipped' | 'interrupted';
   readonly error?: string;
+  /**
+   * Coarse failure category for a `failed` result (#3534, selective-retry).
+   * Classifies the failure so retry logic can gate on it; only set on failure.
+   */
+  readonly errorCategory?: ErrorCategory;
+  /**
+   * Whether re-running this failed node is safe (derived from `errorCategory`;
+   * only `transient` is retry-safe by default, #3534). Selective-retry uses
+   * this to re-run transient failures and leave permanent ones alone.
+   */
+  readonly isRetryable?: boolean;
   /** Set when the node returned an Interrupt envelope (#1895). */
   readonly interrupt?: Interrupt;
   /**

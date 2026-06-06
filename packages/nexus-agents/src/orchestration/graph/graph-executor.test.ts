@@ -34,6 +34,47 @@ describe('executeGraph', () => {
     });
   });
 
+  describe('failure classification for selective-retry (#3534)', () => {
+    it('marks a transient node failure as retryable', async () => {
+      const graph = new GraphBuilder()
+        .addState('value', overwrite(0))
+        .addNode('A', () => Promise.reject(new Error('connection timed out')))
+        .addEdge(START, 'A')
+        .addEdge('A', END)
+        .compile();
+      expect(graph.ok).toBe(true);
+      if (!graph.ok) return;
+
+      const result = await executeGraph(graph.value, {});
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      const a = result.value.nodeResults.find((r) => r.nodeId === 'A');
+      expect(a?.status).toBe('failed');
+      expect(a?.errorCategory).toBe('transient');
+      expect(a?.isRetryable).toBe(true);
+    });
+
+    it('marks a non-transient node failure as not retryable', async () => {
+      const graph = new GraphBuilder()
+        .addState('value', overwrite(0))
+        .addNode('A', () => Promise.reject(new Error('permission denied: forbidden')))
+        .addEdge(START, 'A')
+        .addEdge('A', END)
+        .compile();
+      expect(graph.ok).toBe(true);
+      if (!graph.ok) return;
+
+      const result = await executeGraph(graph.value, {});
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      const a = result.value.nodeResults.find((r) => r.nodeId === 'A');
+      expect(a?.status).toBe('failed');
+      expect(a?.isRetryable).toBe(false);
+    });
+  });
+
   describe('fan-out / fan-in', () => {
     it('executes parallel nodes and merges state', async () => {
       const graph = new GraphBuilder()
