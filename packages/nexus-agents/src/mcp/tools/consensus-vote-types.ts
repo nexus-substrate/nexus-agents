@@ -54,6 +54,41 @@ export function isHigherOrderStrategy(strategy: VotingStrategy): boolean {
   return strategy === 'higher_order' || strategy === 'opinion_wise';
 }
 
+/**
+ * Posterior-approval floor below which a `higher_order` quickMode *approval* is
+ * escalated to the full voter panel (#3174). For Bayesian aggregation the
+ * posterior is a first-class confidence signal: an approval whose posterior sits
+ * near 0.5 means the 3-voter quick panel was barely decisive, which is exactly
+ * the case where the extra voters are worth their cost. Mirrors the bare-constant
+ * style of `CONTRARIAN_ESCALATION_THRESHOLD`. Set above any real posterior to
+ * always escalate, or — since the gate also requires `posterior < floor` — a
+ * floor of `0` disables posterior-based escalation entirely.
+ */
+export const HIGHER_ORDER_ESCALATION_POSTERIOR_FLOOR = 0.65;
+
+/**
+ * Whether a quickMode approval should escalate to the full panel purely on a
+ * borderline Bayesian posterior (#3174). Independent of the contrarian-agent
+ * check — this catches low-confidence higher_order approvals that a clean
+ * outcome string hides. Only fires for higher_order/opinion_wise (the strategies
+ * with a meaningful posterior), on approvals, in quickMode, when the posterior
+ * is known and below the floor.
+ */
+export function shouldEscalateLowPosterior(
+  strategy: VotingStrategy,
+  outcome: 'approved' | 'rejected',
+  quickMode: boolean,
+  posteriorApproval: number | undefined
+): boolean {
+  return (
+    quickMode &&
+    outcome === 'approved' &&
+    isHigherOrderStrategy(strategy) &&
+    posteriorApproval !== undefined &&
+    posteriorApproval < HIGHER_ORDER_ESCALATION_POSTERIOR_FLOOR
+  );
+}
+
 // ============================================================================
 // Input / Output Schemas
 // ============================================================================

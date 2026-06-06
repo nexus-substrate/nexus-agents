@@ -50,6 +50,7 @@ import {
   buildResponse,
   getDefaultErrorPolicy,
   isHigherOrderStrategy,
+  shouldEscalateLowPosterior,
 } from './consensus-vote-types.js';
 import { applyErrorPolicy } from './consensus-vote-error-policy.js';
 import { recordVoteSuccess, recordVoteError } from './consensus-vote-recording.js';
@@ -500,21 +501,37 @@ function buildPolicyShortCircuitResult(args: {
 }
 
 /**
- * Contrarian-escalation gate for `quickMode` approvals (#1799).
+ * Escalation gate for `quickMode` approvals. Two independent triggers, both
+ * re-running `executeVoting` with the full voter panel:
  *
- * When `quickMode` voted approve, run a single contrarian agent to
- * catch YAGNI / SECURITY_RISK / SCOPE_CREEP. If it rejects with high
- * confidence, escalate by re-running `executeVoting` with the full
- * voter panel. Returns the escalated result, or `undefined` to signal
- * "no escalation, continue with the quickMode result."
+ * 1. Posterior-confidence (#3174): for `higher_order`/`opinion_wise`, a borderline
+ *    Bayesian posterior (below `HIGHER_ORDER_ESCALATION_POSTERIOR_FLOOR`) means the
+ *    3-voter quick panel was barely decisive — escalate without spending a
+ *    contrarian call. Checked first so a borderline posterior short-circuits it.
+ * 2. Contrarian agent (#1799): run a single contrarian to catch
+ *    YAGNI / SECURITY_RISK / SCOPE_CREEP; escalate if it rejects with high
+ *    confidence.
+ *
+ * Returns the escalated result, or `undefined` for "no escalation, continue
+ * with the quickMode result."
  */
 async function maybeEscalateContrarian(
   input: ConsensusVoteInput,
   outcome: 'approved' | 'rejected',
+  ctx: { strategy: VotingStrategy; posteriorApproval: number | undefined },
   logger: ILogger,
   opts?: { voteTimeoutMs?: number }
 ): Promise<ExtendedVotingResult | undefined> {
   if (!input.quickMode || outcome !== 'approved' || input.simulateVotes) return undefined;
+
+  if (shouldEscalateLowPosterior(ctx.strategy, outcome, input.quickMode, ctx.posteriorApproval)) {
+    logger.warn('Posterior-confidence escalation: re-running with full vote (#3174)', {
+      strategy: ctx.strategy,
+      posteriorApproval: ctx.posteriorApproval,
+    });
+    return executeVoting({ ...input, quickMode: false }, logger, opts);
+  }
+
   const escalation = await runContrarianCheck(input.proposal, logger);
   if (!escalation.shouldEscalate) return undefined;
   logger.warn('Contrarian escalation: re-running with full vote', {
@@ -586,7 +603,13 @@ export async function executeVoting(
 
   recordVotesToTracker(votes, outcome, logger);
 
-  const escalated = await maybeEscalateContrarian(input, outcome, logger, opts);
+  const escalated = await maybeEscalateContrarian(
+    input,
+    outcome,
+    { strategy, posteriorApproval: higherOrderResult?.posteriorApproval },
+    logger,
+    opts
+  );
   if (escalated !== undefined) return escalated;
 
   return finalizeVotingResult({

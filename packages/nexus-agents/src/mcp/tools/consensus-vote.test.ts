@@ -21,6 +21,8 @@ import {
   buildResponse,
   getDefaultErrorPolicy,
   isHigherOrderStrategy,
+  shouldEscalateLowPosterior,
+  HIGHER_ORDER_ESCALATION_POSTERIOR_FLOOR,
 } from './consensus-vote-types.js';
 import type { VotingStrategy } from './consensus-vote-types.js';
 import type { AgentVoteResult } from '../../cli/vote-types.js';
@@ -827,6 +829,33 @@ describe('buildResponse surfaces policyReason (#3124)', () => {
       policyReason: 'fail_closed: 1 voter(s) errored',
     };
   }
+});
+
+describe('shouldEscalateLowPosterior (#3174)', () => {
+  const floor = HIGHER_ORDER_ESCALATION_POSTERIOR_FLOOR;
+  it('escalates a borderline higher_order quickMode approval', () => {
+    expect(shouldEscalateLowPosterior('higher_order', 'approved', true, floor - 0.05)).toBe(true);
+  });
+  it('treats opinion_wise as a higher_order alias', () => {
+    expect(shouldEscalateLowPosterior('opinion_wise', 'approved', true, floor - 0.1)).toBe(true);
+  });
+  it('does NOT escalate when the posterior is at/above the floor', () => {
+    expect(shouldEscalateLowPosterior('higher_order', 'approved', true, floor)).toBe(false);
+    expect(shouldEscalateLowPosterior('higher_order', 'approved', true, 0.9)).toBe(false);
+  });
+  it('does NOT escalate outside quickMode (full panel already ran)', () => {
+    expect(shouldEscalateLowPosterior('higher_order', 'approved', false, 0.5)).toBe(false);
+  });
+  it('does NOT escalate on a rejection (escalation gate is approvals only)', () => {
+    expect(shouldEscalateLowPosterior('higher_order', 'rejected', true, 0.5)).toBe(false);
+  });
+  it('does NOT escalate for non-higher-order strategies (no Bayesian posterior signal)', () => {
+    expect(shouldEscalateLowPosterior('simple_majority', 'approved', true, 0.5)).toBe(false);
+    expect(shouldEscalateLowPosterior('supermajority', 'approved', true, 0.5)).toBe(false);
+  });
+  it('does NOT escalate when the posterior is unavailable', () => {
+    expect(shouldEscalateLowPosterior('higher_order', 'approved', true, undefined)).toBe(false);
+  });
 });
 
 describe('opinion_wise is treated as a higher_order alias (#3271)', () => {
