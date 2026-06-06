@@ -221,7 +221,12 @@ export class ModelRegistry {
     return this.lookupExact(modelId) !== undefined;
   }
 
-  /** All authoritative entries (in-tree + models.dev + manifest, deduped). */
+  /**
+   * All loaded entries across every tier (generated + models.dev + in-tree +
+   * manifest), deduped by id (later sources overwrite earlier). This is NOT
+   * filtered to authoritative entries — `models-dev`/`generated` are
+   * catalog-breadth tiers; use `hasAuthoritative()` to tell them apart.
+   */
   allEntries(): readonly ModelEntry[] {
     return [...this.byId.values()];
   }
