@@ -1,5 +1,32 @@
 # nexus-agents
 
+## 2.120.0
+
+### Minor Changes
+
+- [#3511](https://github.com/nexus-substrate/nexus-agents/pull/3511) [`975f228`](https://github.com/nexus-substrate/nexus-agents/commit/975f228622e0c8d4a86ae898d658277ca20a3efc) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(consensus): escalate borderline higher_order quickMode approvals to the full panel ([#3174](https://github.com/nexus-substrate/nexus-agents/issues/3174))
+
+  `quickMode` approvals now escalate to the full 7-voter panel when a
+  `higher_order`/`opinion_wise` vote approves with a borderline Bayesian
+  posterior (`posteriorApproval` below `HIGHER_ORDER_ESCALATION_POSTERIOR_FLOOR`,
+  0.65). Previously escalation fired only via the contrarian-agent check, which
+  ignored the posterior — a low-confidence Bayesian approval looked identical to a
+  clean one. The posterior check runs first, so a borderline approval escalates
+  without spending a contrarian call. New pure predicate `shouldEscalateLowPosterior`
+  in `consensus-vote-types.ts` (unit-tested); non-higher-order strategies,
+  rejections, and full-panel votes are unaffected.
+
+### Patch Changes
+
+- [#3508](https://github.com/nexus-substrate/nexus-agents/pull/3508) [`d8b9ae0`](https://github.com/nexus-substrate/nexus-agents/commit/d8b9ae06dd3b75e61141337b54d25e5eccde3f54) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - docs(architecture): add a Composability Model section to the architecture overview
+
+  Documents the three-tier model behind the 45 MCP tools — primitives,
+  coordinators, orchestrators — the data-flow contracts that let one tool's
+  output feed the next, the three composition levels (runtime / YAML /
+  programmatic), and a worked security-audit example traced through four tools.
+  Closes the gap where the architecture overview had Core Components but no
+  explicit composability/tiering model ([#3251](https://github.com/nexus-substrate/nexus-agents/issues/3251)).
+
 ## 2.119.2
 
 ### Patch Changes
