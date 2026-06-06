@@ -25,6 +25,22 @@ This is the **single source of truth** for all nexus-agents documentation. All d
 
 ---
 
+## Pipeline Terminology
+
+The word "pipeline" gets used for several distinct things. This table disambiguates the namespace — read it once and the rest of the docs are unambiguous:
+
+| Term                            | What it is                                                                                                                                    | Example entry point(s)                                                                                   |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| **Research loop**               | Deliberately gather and synthesize evidence before deciding. Discovers papers/repos, clusters findings, surfaces them into planning context.  | `research_discover`, `research_synthesize`, `research_query`                                             |
+| **Consensus loop**              | A multi-agent vote on a proposal/plan (approve/reject with a quorum + strategy). Used as a gate, not a producer.                              | `consensus_vote` · `createConsensusEngine`                                                               |
+| **Dev pipeline**                | The batteries-included build flow: research → plan → **vote** → decompose → implement → QA → security. The common path for "build feature X". | `run_dev_pipeline` · `run_pipeline`                                                                      |
+| **Workflow template**           | A reusable, declarative (YAML) sequence of stages you can run by name — a saved pipeline shape.                                               | `run_workflow` · `list_workflows` ([WORKFLOW_TEMPLATES](./guides/WORKFLOW_TEMPLATES.md))                 |
+| **Composition / orchestration** | Wiring the orthogonal primitives (spec→graph→execute, `GraphBuilder`, consensus) into a **custom** pipeline beyond the built-ins.             | `orchestrate`, `execute_spec`, `GraphBuilder` ([COMPOSITION_PATTERNS](./guides/COMPOSITION_PATTERNS.md)) |
+
+**Mental model:** a _dev pipeline_ and _workflow templates_ are pre-built pipelines you run; _composition_ is how you build a new one from the _research loop_, _consensus loop_, and graph primitives. When a doc says "the full pipeline" (e.g. in CLAUDE.md's working mode) it means the agent's research→vote→plan→implement decision sequence — the same shape as the dev pipeline, applied to its own work.
+
+---
+
 ## Documentation Structure
 
 ```
