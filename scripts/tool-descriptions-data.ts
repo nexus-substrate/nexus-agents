@@ -25,15 +25,15 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   execute_expert:
     'Run a task through an expert YOU PREVIOUSLY CREATED via `create_expert`. Requires the expertId returned by create_expert; not for ad-hoc execution.',
   run_workflow:
-    'Run a LINEAR (single-path) workflow template by name with typed inputs. For DAG-shaped workflows with branching, checkpoints, or rollback, use `run_graph_workflow` instead.',
+    'Run a LINEAR (single-path) workflow template by name with typed inputs. For DAG-shaped workflows with branching or per-node checkpoints, use `run_graph_workflow` instead.',
   consensus_vote:
     'Execute multi-model consensus voting on a proposal. Uses specialized agent roles to vote with configurable strategies.',
   delegate_to_model:
     'Pick which existing model should HANDLE a task. Inspects task complexity and returns the best-fit model from the routing registry — does NOT add a new model. Read-only.',
   list_experts:
-    'Inventory of expert ROLES available to `create_expert` (architect, security, devex, etc.). Use this BEFORE create_expert to pick a role; returns role name, capability summary, default model.',
+    'Inventory of expert ROLES available to `create_expert` (architect, security, devex, etc.). Use this BEFORE create_expert to pick a role; returns role name and capability summary.',
   list_workflows:
-    'Inventory of multi-step TEMPLATES available to `run_workflow` (code-review, security-audit, etc.). Use this BEFORE run_workflow to pick a template; returns template name and required inputs.',
+    'Inventory of multi-step TEMPLATES available to `run_workflow` (code-review, security-audit, etc.). Use this BEFORE run_workflow to pick a template; returns template name, version, description, and category.',
   research_query:
     'Query the research registry for technique status, overlaps, statistics, or text search.',
   research_add:
@@ -57,7 +57,7 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     'Get multi-CLI performance weather report with per-CLI success rates and adaptive routing bonuses.',
   issue_triage: 'Triage GitHub issues with trust classification and typed action recommendations.',
   run_graph_workflow:
-    'Run a DAG-shaped workflow with per-node checkpoints and rollback. Use for multi-step pipelines where intermediate state must survive failures. For straight linear templates, use `run_workflow` instead.',
+    'Run a DAG-shaped workflow with per-node checkpoints, event streaming, and an audit trail. Use for multi-step pipelines where intermediate state must survive failures (checkpoints persist per node for inspection/restart). For straight linear templates, use `run_workflow` instead.',
   execute_spec:
     'Execute an AI software factory spec through the full pipeline (parse, decompose, compile, execute, validate).',
   registry_import:
@@ -85,7 +85,7 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   cancel_job:
     'Mark an async-mode job as cancelled (#3042 Stage 1b / epic #2631). Same-process dispatcher unwinds via AbortSignal (#3035/#3038); cross-process workers observe via get_job_result. Idempotent — cancel-after-complete is a no-op (preserves the terminal record); second cancel returns already_cancelled. Returns outcome envelope discriminating cancelled / already_complete / already_cancelled / unknown_job.',
   ci_health_check:
-    "Diagnostic for CI infrastructure health (#3076). Composes GitHub status-page state (githubstatus.com/api/v2/components.json) + the configured repo's recent workflow-runs activity into one verdict { status: healthy|degraded|outage|unknown, signals }. Pessimistic combination — repo-level wedge downgrades a healthy status page. Use BEFORE long auto-merge waits to skip the wedge cycle when CI is broken org-wide. Read-only, idempotent.",
+    "Diagnostic for CI infrastructure health (#3076). Composes GitHub status-page state (githubstatus.com/api/v2/components.json) + the configured repo's recent workflow-runs activity into one verdict { status: healthy|degraded|outage|unknown, signals }. Pessimistic combination — repo-level wedge downgrades a healthy status page. Use BEFORE long auto-merge waits to skip the wedge cycle when CI is broken org-wide. Reads GitHub state only; appends a local CI-health telemetry event per call (no remote state mutated, not strictly idempotent).",
   run_dev_pipeline:
     'Run the multi-agent development pipeline. Accepts direct task instructions, a plan file, or a spec file. Supports dry-run (plan+vote only).',
   run_pipeline:
@@ -134,7 +134,8 @@ export const README_TOOL_DESCRIPTIONS: Record<string, string> = {
   memory_write: 'Write to typed memory backends',
   weather_report: 'Multi-CLI performance weather report',
   issue_triage: 'Triage GitHub issues with trust classification',
-  run_graph_workflow: 'Run a DAG workflow with checkpoint + rollback (linear → `run_workflow`)',
+  run_graph_workflow:
+    'Run a DAG workflow with per-node checkpoints + audit trail (linear → `run_workflow`)',
   execute_spec: 'Execute AI software factory spec pipeline',
   registry_import:
     'Draft YAML for a NEW model entry (for picking existing models use `delegate_to_model`)',

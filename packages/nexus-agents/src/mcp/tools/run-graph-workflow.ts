@@ -198,7 +198,7 @@ async function handleRunGraphWorkflow(
 // ============================================================================
 
 const GRAPH_WORKFLOW_DESCRIPTION =
-  'Run a DAG-shaped workflow with per-node checkpoints, rollback, event streaming, and audit trail. Use for multi-step pipelines where intermediate state must survive failures. For straight linear templates, use `run_workflow` instead.';
+  'Run a DAG-shaped workflow with per-node checkpoints, event streaming, and an audit trail. Use for multi-step pipelines where intermediate state must survive failures (checkpoints persist per node for inspection/restart). For straight linear templates, use `run_workflow` instead.';
 
 const GRAPH_WORKFLOW_SCHEMA = {
   workflow: z

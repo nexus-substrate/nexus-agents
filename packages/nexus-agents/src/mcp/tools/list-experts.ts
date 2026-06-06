@@ -189,7 +189,7 @@ export function registerListExpertsTool(server: McpServer, deps: ListExpertsDeps
 
   const description =
     'Inventory of expert ROLES available to `create_expert` (architect, security, devex, etc.). ' +
-    'Use this BEFORE create_expert to pick a role; returns role name, capability summary, default model.';
+    'Use this BEFORE create_expert to pick a role; returns role name and capability summary.';
 
   // Wrap handler with secure handler for rate limiting and request context (Issue #531)
   const secureHandler = createSecureHandler(listExpertsHandler, {

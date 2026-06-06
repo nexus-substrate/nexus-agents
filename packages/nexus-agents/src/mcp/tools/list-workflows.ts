@@ -172,7 +172,7 @@ export function registerListWorkflowsTool(server: McpServer, deps: ListWorkflows
 
   const description =
     'Inventory of multi-step TEMPLATES available to `run_workflow` (code-review, security-audit, etc.). ' +
-    'Use this BEFORE run_workflow to pick a template; returns template name, version, description, category, and required inputs.';
+    'Use this BEFORE run_workflow to pick a template; returns template name, version, description, and category.';
 
   // Wrap handler with secure handler for rate limiting and request context (Issue #531)
   const secureHandler = createSecureHandler(createListWorkflowsHandler(deps.workflowEngine), {

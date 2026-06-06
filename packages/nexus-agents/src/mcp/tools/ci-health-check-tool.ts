@@ -21,8 +21,10 @@
  * the local repo has been silent for too long, return degraded (operator
  * can still act, but with the warning).
  *
- * Read-only, idempotent. No state mutated. Network calls go to GitHub
- * status + GitHub API only (both are already accessed by other tools).
+ * Read-only against GitHub/remote — no remote or repo state mutated. Appends a
+ * local CI-health telemetry event per call (observability), so it is NOT
+ * strictly idempotent. Network calls go to GitHub status + GitHub API only
+ * (both are already accessed by other tools).
  *
  * @module mcp/tools/ci-health-check-tool
  */
@@ -259,7 +261,7 @@ const DESCRIPTION =
   'Returns { status: healthy|degraded|outage|unknown, signals } composing ' +
   "GitHub status-page state + the configured repo's recent workflow-runs " +
   'activity. Use BEFORE a long auto-merge wait to skip the wedge cycle ' +
-  'when CI is broken org-wide. Read-only, idempotent, no network state mutated.';
+  'when CI is broken org-wide. Reads GitHub state only; appends a local CI-health telemetry event per call (no remote state mutated).';
 
 /** @category MCP */
 export function registerCiHealthCheckTool(server: McpServer, deps: CiHealthCheckDeps): void {
