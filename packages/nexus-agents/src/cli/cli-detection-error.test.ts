@@ -10,6 +10,8 @@ import { describe, it, expect } from 'vitest';
 import {
   classifyExecError,
   DETECTION_ERROR_MESSAGES,
+  DETECTION_ERROR_SOLUTIONS,
+  detectionRecoveryHint,
   type DetectionError,
 } from './cli-detection-error.js';
 
@@ -67,5 +69,33 @@ describe('classifyExecError (#2152)', () => {
       expect(DETECTION_ERROR_MESSAGES[err]).toBeDefined();
       expect(DETECTION_ERROR_MESSAGES[err].length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('detectionRecoveryHint (#3213)', () => {
+  const all: DetectionError[] = ['not-found', 'timeout', 'permission', 'other'];
+
+  it('has an actionable solution for every detection-error class', () => {
+    for (const err of all) {
+      expect(typeof DETECTION_ERROR_SOLUTIONS[err]).toBe('function');
+      expect(DETECTION_ERROR_SOLUTIONS[err]('opencode').length).toBeGreaterThan(10);
+    }
+  });
+
+  it('embeds the binary name in a runnable command for the permission case', () => {
+    const hint = detectionRecoveryHint('claude', 'permission');
+    expect(hint).toContain('chmod +x');
+    expect(hint).toContain('command -v claude');
+    expect(hint).toContain('TROUBLESHOOTING.md');
+  });
+
+  it('defaults to not-found guidance when the class is undefined', () => {
+    const hint = detectionRecoveryHint('gemini');
+    expect(hint).toContain('Install gemini');
+    expect(hint).toContain('INSTALLATION.md');
+  });
+
+  it('gives a verbose-logs next step for timeout', () => {
+    expect(detectionRecoveryHint('codex', 'timeout')).toContain('--verbose');
   });
 });
