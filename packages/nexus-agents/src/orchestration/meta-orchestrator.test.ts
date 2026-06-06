@@ -18,6 +18,8 @@ import {
 import type { IWorkflowRouter } from './workflow-router.js';
 import type { RoutingDecision, WorkflowPattern } from './workflow-router-types.js';
 import { createSharedTaskAnalyzer } from '../core/task-analysis/shared-task-analyzer.js';
+import { createCapabilityGapLedger } from '../core/task-analysis/capability-gap-ledger.js';
+import type { CapabilityGapReport } from '../core/task-analysis/capability-gap-detector.js';
 
 describe('strategyFromPattern', () => {
   const cases: ReadonlyArray<
@@ -69,6 +71,7 @@ function fakeRouter(
       ...(decision.suggestedQuestions !== undefined
         ? { suggestedQuestions: decision.suggestedQuestions }
         : {}),
+      ...(decision.capabilityGaps !== undefined ? { capabilityGaps: decision.capabilityGaps } : {}),
     }),
     recordOutcome: () => {},
     getMetrics: () => [],
@@ -238,5 +241,31 @@ describe('MetaOrchestrator.select — decision logging (step 2, #3550)', () => {
     expect(sink.getRecords()).toHaveLength(3);
     // Oldest evicted — last goal retained.
     expect(sink.getRecords().at(-1)?.goal).toBe('implement feature 4');
+  });
+});
+
+describe('MetaOrchestrator.select — capability gap ledger wiring (#3555)', () => {
+  const gapReport: CapabilityGapReport = {
+    available: { tools: [], experts: [] },
+    gaps: [{ type: 'tool', name: 'deploy', suggestion: 'use run_graph_workflow' }],
+    allSatisfied: false,
+  };
+
+  it('records the decision capability gaps to an injected ledger', () => {
+    const ledger = createCapabilityGapLedger();
+    const meta = createMetaOrchestrator({
+      router: fakeRouter({ pattern: 'sequential', capabilityGaps: gapReport }),
+      gapLedger: ledger,
+    });
+    meta.select({ goal: 'ship it to prod' });
+    const summary = ledger.summarize();
+    expect(summary).toHaveLength(1);
+    expect(summary[0]).toMatchObject({ type: 'tool', name: 'deploy', count: 1 });
+    expect(summary[0]?.exampleGoals).toContain('ship it to prod');
+  });
+
+  it('does not require a ledger (default absent, no throw)', () => {
+    const meta = createMetaOrchestrator();
+    expect(() => meta.select({ goal: 'implement the feature' })).not.toThrow();
   });
 });
