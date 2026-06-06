@@ -177,12 +177,55 @@ if (outcome.ok) {
 }
 ```
 
-To gate a graph node behind consensus, run the engine inside a node handler and
-branch on the result with `addConditionalEdge`. A higher-level
-`runGraphWithConsensus()` helper that auto-inserts consensus gate nodes is
-tracked in [#3267](https://github.com/nexus-substrate/nexus-agents/issues/3267)
-(it needs a design decision — in-graph gate nodes vs. a post-execution vote —
-plus voter/adapter wiring, so it is intentionally not yet a single call).
+### In-graph consensus gates (#3267)
+
+To gate a graph at an arbitrary point, use the **`createConsensusGateNode`**
+primitive: it runs an injected `ConsensusVoter` on a proposal, writes a typed
+`ConsensusVerdict` (`approved` / `rejected` + feedback) to graph state, and
+**fails closed** (any voter error → `rejected`, never a silent pass-through).
+Branch on the verdict with `addConditionalEdge`:
+
+```ts
+import { GraphBuilder, createConsensusGateNode, runGraphWithConsensus } from 'nexus-agents';
+import type { ConsensusVoter } from 'nexus-agents';
+
+// A voter wraps any decision source — a consensus panel, a single model, or the
+// dev-pipeline's vote stage. It receives only the proposal/context (no secrets).
+const voter: ConsensusVoter = async ({ proposal }) => {
+  const approved = await myPanel.review(proposal);
+  return { outcome: approved ? 'approved' : 'rejected', feedback: approved ? '' : 'needs work' };
+};
+
+// One-shot convenience: run a work node, then gate its output.
+const result = await runGraphWithConsensus({
+  produce: () => Promise.resolve({ proposal: 'the plan to review' }),
+  voter,
+});
+if (result.ok) console.log(result.value.verdict?.outcome); // 'approved' | 'rejected'
+
+// Or insert the gate into a larger graph and branch on the verdict:
+new GraphBuilder()
+  .addState('plan', overwrite(''))
+  .addState('verdict', overwrite(null))
+  .addNode('plan', planHandler)
+  .addNode(
+    'gate',
+    createConsensusGateNode({
+      voter,
+      verdictKey: 'verdict',
+      proposalFrom: (s) => ({ proposal: String(s['plan']) }),
+    })
+  )
+  .addEdge('plan', 'gate')
+  .addConditionalEdge(
+    'gate',
+    (s) => ((s['verdict'] as { outcome: string }).outcome === 'approved' ? 'implement' : END),
+    ['implement', END]
+  );
+```
+
+The dev-pipeline's `vote` stage is built on this same primitive — there is one
+in-graph-consensus implementation, not two.
 
 ---
 

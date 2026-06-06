@@ -79,3 +79,17 @@ export {
   createCheckpoint,
   createCheckpointStore,
 } from './checkpoint-store.js';
+
+// Consensus gate node — in-graph consensus checkpoints (#3267)
+export {
+  runConsensusGate,
+  createConsensusGateNode,
+  runGraphWithConsensus,
+} from './consensus-node.js';
+export type {
+  ConsensusVoter,
+  ConsensusVerdict,
+  ConsensusProposalInput,
+  ConsensusGateNodeOptions,
+  RunGraphWithConsensusOptions,
+} from './consensus-node.js';

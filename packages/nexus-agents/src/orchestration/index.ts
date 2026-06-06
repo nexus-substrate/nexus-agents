@@ -40,6 +40,16 @@ export {
   START,
   END,
   formatCompileError,
+  runConsensusGate,
+  createConsensusGateNode,
+  runGraphWithConsensus,
+} from './graph/index.js';
+export type {
+  ConsensusVoter,
+  ConsensusVerdict,
+  ConsensusProposalInput,
+  ConsensusGateNodeOptions,
+  RunGraphWithConsensusOptions,
 } from './graph/index.js';
 export type {
   StateReducer,
