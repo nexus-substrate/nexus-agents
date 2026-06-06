@@ -45,6 +45,12 @@ export interface PipelineResult {
   readonly error?: string;
   /** Per-step breakdown when continueOnFailure is enabled. */
   readonly stepResults?: readonly StepOutcome[] | undefined;
+  /**
+   * Raw per-node results from the run (#3534). Retained so `retryFailed` can
+   * replay prior successes and re-run only the failed nodes; carries the
+   * `isRetryable` signal used to gate the retry.
+   */
+  readonly nodeResults?: readonly NodeResult[] | undefined;
 }
 
 /** Outcome of a single pipeline step. */
@@ -75,6 +81,11 @@ export interface PipelineExecuteOptions {
   readonly onStageComplete?: (stageId: string) => void;
   /** When true, continue executing independent steps after a failure. */
   readonly continueOnFailure?: boolean;
+  /**
+   * Prior NodeResults to replay (#3534) — succeeded nodes are reused instead of
+   * re-executed. Set by `retryFailed` so a retry re-runs only the failed nodes.
+   */
+  readonly priorResults?: ReadonlyMap<string, NodeResult>;
   /** EventBus for trace persistence. When provided, creates a TraceWriter. */
   readonly eventBus?: IEventBus;
   /**
@@ -153,16 +164,51 @@ export class PipelineRunner {
   }
 
   /**
-   * Retries a previous run that had failed or skipped steps by re-executing the
-   * pipeline with `continueOnFailure` enabled, returning the combined result.
-   * Returns `previousResult` unchanged when it has no `stepResults` or nothing
-   * failed/skipped.
+   * Retries a previous run's failures **selectively** (#3534): prior successful
+   * nodes are replayed (not re-executed) via `priorResults`, so only the failed
+   * nodes and their dependents run again.
    *
-   * NOTE: the underlying graph executor re-runs **all** nodes, not only the
-   * failed ones — selective per-step retry is not yet modeled. The failed/skipped
-   * ids are used only to decide *whether* to retry, not *which* steps run.
+   * Gated on retryability: retries only when at least one *failed* node is
+   * `isRetryable` (transient). If every failure is permanent
+   * (validation/permission/business/internal) it returns `previousResult`
+   * unchanged rather than looping on errors that won't clear.
+   *
+   * Back-compat: a `previousResult` without `nodeResults` (e.g. an older caller)
+   * falls back to the prior whole-pipeline retry gated on `stepResults`.
+   *
+   * NOTE: non-retryable failures that coexist with a retryable one still re-run
+   * (and re-fail) under `continueOnFailure`; pinning them as terminal is a
+   * future refinement.
    */
   async retryFailed(
+    pipeline: CompiledPipeline,
+    previousResult: PipelineResult,
+    task: TaskContract,
+    options?: PipelineExecuteOptions
+  ): Promise<ExecuteResult> {
+    const nodeResults = previousResult.nodeResults;
+    if (nodeResults === undefined) {
+      return this.retryFailedLegacy(pipeline, previousResult, task, options);
+    }
+
+    const anyRetryableFailure = nodeResults.some(
+      (r) => r.status === 'failed' && r.isRetryable === true
+    );
+    if (!anyRetryableFailure) {
+      // Nothing safely retryable — don't loop on permanent failures.
+      return okResult(previousResult);
+    }
+
+    // Replay prior successes; the executor re-runs everything else (the failed
+    // nodes and their dependents).
+    const priorResults = new Map<string, NodeResult>(
+      nodeResults.filter((r) => r.status === 'success').map((r) => [r.nodeId, r])
+    );
+    return this.execute(pipeline, task, { ...options, continueOnFailure: true, priorResults });
+  }
+
+  /** Pre-#3534 whole-pipeline retry, kept for results lacking `nodeResults`. */
+  private async retryFailedLegacy(
     pipeline: CompiledPipeline,
     previousResult: PipelineResult,
     task: TaskContract,
@@ -172,17 +218,10 @@ export class PipelineRunner {
     if (steps === undefined || steps.length === 0) {
       return okResult(previousResult);
     }
-
-    const failedIds = new Set(
-      steps.filter((s) => s.status === 'failed' || s.status === 'skipped').map((s) => s.stepId)
-    );
-
-    if (failedIds.size === 0) {
+    const anyFailed = steps.some((s) => s.status === 'failed' || s.status === 'skipped');
+    if (!anyFailed) {
       return okResult(previousResult);
     }
-
-    // Re-execute the full pipeline with continueOnFailure
-    // The graph executor will re-run all nodes; we report combined results
     return this.execute(pipeline, task, { ...options, continueOnFailure: true });
   }
 }
@@ -199,26 +238,42 @@ function failedResult(startTime: number, error: string): PipelineResult {
   return { success: false, stepsExecuted: 0, durationMs: Date.now() - startTime, error };
 }
 
+/** Builds the per-node-complete callback (extracted to keep buildGraphOptions simple). */
+function makeOnNodeComplete(
+  onStage: ((stageId: string) => void) | undefined,
+  bus: IEventBus | undefined,
+  execId: string
+): (r: NodeResult) => void {
+  return (r) => {
+    onStage?.(r.nodeId);
+    emitStageEvent(bus, execId, r);
+  };
+}
+
+/** Optional GraphExecuteOptions fields, included only when defined (exactOptional-safe). */
+function optionalGraphFields(options?: PipelineExecuteOptions): Partial<GraphExecuteOptions> {
+  const signal = options?.signal;
+  const maxSteps = options?.maxSteps;
+  const priorResults = options?.priorResults;
+  return {
+    ...(signal !== undefined ? { signal } : {}),
+    ...(maxSteps !== undefined ? { maxSteps } : {}),
+    ...(priorResults !== undefined ? { priorResults } : {}),
+  };
+}
+
 function buildGraphOptions(
   pipeline: CompiledPipeline,
   options?: PipelineExecuteOptions
 ): GraphExecuteOptions {
-  const base: GraphExecuteOptions = {
-    timeout: options?.timeout ?? pipeline.plan.timeoutMs,
-  };
-  const signal = options?.signal;
-  const maxSteps = options?.maxSteps;
-  const onStage = options?.onStageComplete;
-  const bus = options?.eventBus;
-  const execId = pipeline.plan.taskId;
   return {
-    ...base,
-    ...(signal !== undefined ? { signal } : {}),
-    ...(maxSteps !== undefined ? { maxSteps } : {}),
-    onNodeComplete: (r) => {
-      onStage?.(r.nodeId);
-      emitStageEvent(bus, execId, r);
-    },
+    timeout: options?.timeout ?? pipeline.plan.timeoutMs,
+    ...optionalGraphFields(options),
+    onNodeComplete: makeOnNodeComplete(
+      options?.onStageComplete,
+      options?.eventBus,
+      pipeline.plan.taskId
+    ),
   };
 }
 
@@ -244,6 +299,7 @@ function toResult(
       stepsExecuted: graphResult.stepsExecuted,
       durationMs,
       error: failedNode?.error ?? 'Stage execution failed',
+      nodeResults: graphResult.nodeResults,
     };
   }
 
@@ -255,6 +311,7 @@ function toResult(
     success: allOk,
     stepsExecuted: graphResult.stepsExecuted,
     durationMs,
+    nodeResults: graphResult.nodeResults,
     ...(continueOnFailure ? { stepResults } : {}),
     ...(!allOk && continueOnFailure
       ? { error: `${String(succeeded)}/${String(total)} steps succeeded` }
