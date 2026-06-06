@@ -107,6 +107,8 @@ export type {
 
 export {
   createMetaOrchestrator,
+  createAuditLogSink,
+  createRecordingSink,
   strategyFromPattern,
   strategyFromPipelineType,
 } from './meta-orchestrator.js';
@@ -115,6 +117,9 @@ export type {
   MetaOrchestratorInput,
   MetaDecision,
   ExecutionStrategy,
+  MetaSelectionRecord,
+  MetaDecisionSink,
+  IRecordingMetaDecisionSink,
 } from './meta-orchestrator.js';
 
 // Spec Parser (Issue #847)
