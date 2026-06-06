@@ -8,6 +8,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   registerTools,
+  REGISTERED_TOOL_NAMES,
   toolSuccess,
   toolSuccessStructured,
   toolError,
@@ -69,7 +70,8 @@ import {
   RepoSecurityPlanInputSchema,
 } from './index.js';
 
-const EXPECTED_TOOL_COUNT = 45;
+// Derived from the canonical list — registering a tool needs no edit here.
+const EXPECTED_TOOL_COUNT = REGISTERED_TOOL_NAMES.length;
 
 const EXPECTED_TOOL_NAMES = [
   'orchestrate',

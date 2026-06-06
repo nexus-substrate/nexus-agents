@@ -406,8 +406,14 @@ function makeDefaultOptions(overrides: Record<string, unknown> = {}) {
 // ============================================================================
 
 describe('REGISTERED_TOOLS', () => {
-  it('should contain exactly 45 tool names', () => {
-    expect(REGISTERED_TOOLS).toHaveLength(45);
+  // REGISTERED_TOOLS is the canonical list, so a count literal would be a
+  // tautology and a maintenance tax. Assert structural invariants instead:
+  // non-empty, unique, no blank names. Count drift is caught where a *parallel*
+  // registry is cross-checked against this length (annotations, index, etc.).
+  it('contains unique, non-empty tool names', () => {
+    expect(REGISTERED_TOOLS.length).toBeGreaterThan(0);
+    expect(new Set(REGISTERED_TOOLS).size).toBe(REGISTERED_TOOLS.length);
+    expect(REGISTERED_TOOLS.every((name) => name.trim().length > 0)).toBe(true);
   });
 
   it('should include all expected tool names', () => {
