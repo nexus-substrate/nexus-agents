@@ -48,7 +48,16 @@ export interface CapabilityGap {
 // Static Registries — kept in sync with canonical sources
 // ============================================================================
 
-/** All 20 registered MCP tools */
+/**
+ * All registered MCP tool names.
+ *
+ * Kept in lockstep with the canonical `REGISTERED_TOOL_NAMES`
+ * (`src/mcp/tools/index.ts`); a drift here produces false capability gaps.
+ * Enforced by the freshness assertions in `capability-gap-detector.test.ts`
+ * (#3553), which import the canonical list and fail if this set falls behind.
+ * Held as a local literal (not a direct import) to keep this hot-path,
+ * low-level analyzer module free of the MCP tool dependency graph.
+ */
 const AVAILABLE_TOOLS: ReadonlySet<string> = new Set([
   'orchestrate',
   'create_expert',
@@ -60,20 +69,49 @@ const AVAILABLE_TOOLS: ReadonlySet<string> = new Set([
   'consensus_vote',
   'research_query',
   'research_add',
+  'research_add_source',
   'research_discover',
   'research_analyze',
   'research_catalog_review',
+  'research_synthesize',
+  'survey_oss_landscape',
+  'vendor_publishing_audit',
+  'compare_data_feeds',
   'memory_query',
   'memory_stats',
+  'memory_write',
   'weather_report',
   'issue_triage',
   'run_graph_workflow',
   'execute_spec',
   'registry_import',
   'query_trace',
+  'query_task_state',
+  'get_job_result',
+  'list_jobs',
+  'cancel_job',
+  'ci_health_check',
+  'verify_audit_chain',
+  'repo_analyze',
+  'repo_security_plan',
+  'extract_symbols',
+  'search_codebase',
+  'run_dev_pipeline',
+  'run_pipeline',
+  'pr_review',
+  'supply_chain_tradeoff_panel',
+  'improvement_review',
+  'run_quality_gate',
+  'suggest_research_tasks',
+  'list_available_models',
 ]);
 
-/** All 10 expert role names */
+/**
+ * All built-in expert role names (`{type}_expert`).
+ *
+ * Kept in lockstep with `BuiltInExpertTypeSchema` (`src/agents/experts/expert-config.ts`);
+ * enforced by the freshness assertions in `capability-gap-detector.test.ts` (#3553).
+ */
 const AVAILABLE_EXPERTS: ReadonlySet<string> = new Set([
   'code_expert',
   'architecture_expert',
@@ -85,6 +123,8 @@ const AVAILABLE_EXPERTS: ReadonlySet<string> = new Set([
   'pm_expert',
   'ux_expert',
   'infrastructure_expert',
+  'qa_expert',
+  'data-visualization_expert',
 ]);
 
 /** Suggestions for common gaps */
