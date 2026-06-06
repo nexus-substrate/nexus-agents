@@ -651,14 +651,16 @@ export class CompositeRouter implements ICompositeRouter {
   }
 
   /**
-   * (#2540 PR 7) Returns the CLI candidate set for the routing pipeline,
-   * filtered by harness-driven availability when the cache is wired.
+   * (#2540 PR 7) Returns the candidate routing-arm set for the routing pipeline
+   * (`RoutingArmId[]` = CLI slots plus any `api:*` arms, #3422), filtered by
+   * harness-driven availability when the cache is wired. (Name retained for
+   * history; the set is routing arms, not only CLIs.)
    *
    * Filtering rules:
-   *   - No cache configured → return all registered CLI names (prior behaviour).
-   *   - Cache configured → query getAll(); a CLI is excluded only if the
+   *   - No cache configured → return all registered arms (prior behaviour).
+   *   - Cache configured → query getAll(); an arm is excluded only if the
    *     cache reports zero models for it. If the cache returns an empty union
-   *     (cold start, all sources failing), fall back to all registered CLIs
+   *     (cold start, all sources failing), fall back to all registered arms
    *     so the router never wedges on a transient cache miss.
    *   - Errors in the cache do not block routing — log and fall through.
    */
@@ -894,7 +896,9 @@ export class CompositeRouter implements ICompositeRouter {
   }
 
   /**
-   * Get capacity status for all registered CLIs (Issue #807).
+   * Get capacity status for all registered routing arms — CLI slots plus any
+   * `api:*` arms (Issue #807, #3422). Matches the `ITaskRouter` interface doc;
+   * the return key is `RoutingArmId` (`CliName | ApiArmId`), not just CLIs.
    */
   async getCapacityDashboard(): Promise<Map<RoutingArmId, import('./types.js').CapacityStatus>> {
     return fetchCapacityData(this.adapters);
