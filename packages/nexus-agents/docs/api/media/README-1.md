@@ -131,6 +131,63 @@ These are **sequential, not parallel**: `CompositeRouter` selects a CLI → CLI 
 
 ---
 
+## Composability Model
+
+The 45 MCP tools are not a flat menu — they form three tiers, and the design intent is that **a higher tier composes lower tiers**. Knowing the tier of a tool tells you whether you call it directly or hand its output to something larger.
+
+### Three tiers
+
+| Tier              | What it does                                                                                   | Examples                                                                                                                                         |
+| ----------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Primitives**    | One job, no internal fan-out. Read/inspect/retrieve a single artifact.                         | `extract_symbols`, `search_codebase`, `research_discover`, `research_query`, `repo_analyze`, `verify_audit_chain`, `memory_query`                |
+| **Coordinators**  | Fan out to several agents/models for **one** decision or synthesis (single round, no looping). | `consensus_vote`, `research_synthesize`, `delegate_to_model`, `execute_expert`, `pr_review`, `repo_security_plan`, `supply_chain_tradeoff_panel` |
+| **Orchestrators** | Chain primitives + coordinators across **multiple stages**, with gates and loops.              | `orchestrate`, `run_dev_pipeline`, `run_pipeline`, `run_graph_workflow`, `run_workflow`, `execute_spec`                                          |
+
+The rule of thumb: a primitive answers a question, a coordinator makes a decision, an orchestrator runs a workflow. An orchestrator's stages are themselves coordinators and primitives — `run_dev_pipeline` internally calls a research primitive, then a `consensus_vote` coordinator, then expert execution, then a security-review gate.
+
+### Data-flow contracts
+
+Composition works because tool outputs are designed to feed specific downstream inputs. The hand-off is almost always a small, human-readable artifact you (or your agent) carry forward — not hidden wiring:
+
+| Producer                              | Artifact                        | Consumer                               |
+| ------------------------------------- | ------------------------------- | -------------------------------------- |
+| `research_discover`                   | entries written to the registry | `research_synthesize` (by topic)       |
+| `research_synthesize`                 | one-line trade-off framing      | `consensus_vote` (proposal text)       |
+| `consensus_vote`                      | **approved** proposal text      | `run_dev_pipeline` (task)              |
+| `repo_analyze`                        | structural map + risk surface   | `repo_security_plan`                   |
+| `extract_symbols` / `search_codebase` | code context                    | `execute_expert` / `delegate_to_model` |
+
+If a producer's output is `rejected` or empty, the contract is to **read the reason and revise**, not to push forward — the per-role feedback from `consensus_vote`, or the empty result from `research_synthesize`, is itself the signal.
+
+### Three ways to compose
+
+The same tiers compose at three levels of formality, in increasing order of reuse:
+
+1. **Runtime (conversational)** — your agent calls tools ad hoc and carries each artifact by hand. Best for one-off, decision-shaped goals. Walkthrough: [COMPOSE_YOUR_FIRST_PIPELINE.md](../getting-started/COMPOSE_YOUR_FIRST_PIPELINE.md).
+2. **YAML (declarative)** — a saved workflow template names the stages and their order once, then re-runs via `run_workflow`. Best for a repeatable chain. See [WORKFLOW_TEMPLATES.md](../guides/WORKFLOW_TEMPLATES.md).
+3. **Programmatic (in code)** — `GraphBuilder` / `PipelineRunner` wire stages with typed contracts, gates, and loops. Best when you need branching, retries, or a consensus gate mid-graph. See [COMPOSITION_PATTERNS.md](../guides/COMPOSITION_PATTERNS.md).
+
+All three target the same tiers; they differ only in where the chain is written down.
+
+### Worked example — a security audit
+
+One concrete goal, traced through four tools across the tiers:
+
+```
+repo_analyze ──▶ repo_security_plan ──▶ consensus_vote ──▶ run_pipeline (audit)
+ (primitive:        (coordinator:          (coordinator:        (orchestrator:
+  structural map)    ranked findings)       gate the plan)       execute the plan)
+```
+
+1. **`repo_analyze`** (primitive) maps the repo and surfaces the risk surface — a structural artifact, no decision made.
+2. **`repo_security_plan`** (coordinator) turns that map into a ranked remediation plan, fanning out to security reasoning for one synthesis pass.
+3. **`consensus_vote`** (coordinator, `supermajority` per the governance thresholds for security work) gates the plan: approved plans proceed, rejected ones return per-role reasons to revise.
+4. **`run_pipeline`** with the `audit` template (orchestrator) executes the approved plan stage by stage, emitting findings into the audit chain you can later `verify_audit_chain` against.
+
+Each arrow is a data-flow contract from the table above; each box is one tier doing exactly its job. That is the whole model: **pick the tier that matches the question, and let outputs flow forward as inputs.**
+
+---
+
 ## Key Design Decisions
 
 ### Hybrid Architecture (ADR-001)
