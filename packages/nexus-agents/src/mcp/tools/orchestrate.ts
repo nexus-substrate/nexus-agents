@@ -55,6 +55,7 @@ import type { ExecutionPlan } from '../../agents/index.js';
 import { createOrchestratorWithSica } from './orchestrate-sica.js';
 import { OrchestratorFactory } from '../../orchestration/orchestrator-factory.js';
 import { createWorkflowRouter, type IWorkflowRouter } from '../../orchestration/workflow-router.js';
+import { recordRoutingGaps } from '../../core/task-analysis/capability-gap-ledger.js';
 import { getToolMemory } from './tool-memory.js';
 import { getAutoCatalog } from './research-auto-catalog.js';
 import { computeAgentPlan } from './orchestrate-aorchestra.js';
@@ -446,6 +447,9 @@ function routeAndPrepare(
   const logger = deps.logger ?? createLogger({ tool: 'orchestrate' });
   const workflowRouter = router ?? createWorkflowRouter({ logger });
   const decision = workflowRouter.route({ description: input.task });
+  // Feed the capability-gap ledger from live routing traffic (#3555): the
+  // decision already computed these gaps; without this they are discarded.
+  recordRoutingGaps(decision, { goal: input.task });
   const orchType = mapPatternToOrchestratorType(decision.pattern);
   logger.info('Workflow pattern selected', {
     pattern: decision.pattern,

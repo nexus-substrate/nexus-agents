@@ -140,3 +140,43 @@ export function createCapabilityGapLedger(maxEntries = DEFAULT_MAX_ENTRIES): ICa
     },
   };
 }
+
+// ============================================================================
+// Process-wide singleton — the shared surface live routing producers feed.
+// Mirrors getOutcomeStore() (orchestration/outcomes/outcome-store.ts).
+// ============================================================================
+
+let singletonLedger: ICapabilityGapLedger | undefined;
+
+/** Returns the process-wide gap ledger, creating it on first use. */
+export function getGapLedger(): ICapabilityGapLedger {
+  singletonLedger ??= createCapabilityGapLedger();
+  return singletonLedger;
+}
+
+/** Replaces the process-wide ledger (tests / custom wiring). */
+export function setGapLedger(ledger: ICapabilityGapLedger): void {
+  singletonLedger = ledger;
+}
+
+/** Clears the process-wide ledger (test isolation). */
+export function resetGapLedger(): void {
+  singletonLedger = undefined;
+}
+
+/**
+ * Records a routing/selection decision's capability gaps to a ledger (the
+ * shared singleton by default). No-op when the decision satisfied every
+ * required capability or carried no gap report — keeps the live call sites a
+ * single guarded line (DRY across orchestrate tool + CLI).
+ */
+export function recordRoutingGaps(
+  source: { readonly capabilityGaps?: CapabilityGapReport | undefined },
+  context: GapContext,
+  ledger: ICapabilityGapLedger = getGapLedger()
+): void {
+  const report = source.capabilityGaps;
+  if (report !== undefined && !report.allSatisfied) {
+    ledger.record(report, context);
+  }
+}
