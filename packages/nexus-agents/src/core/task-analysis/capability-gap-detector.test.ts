@@ -8,6 +8,11 @@ import {
   getAvailableToolCount,
   getAvailableExpertCount,
 } from './capability-gap-detector.js';
+import { REGISTERED_TOOL_NAMES } from '../../mcp/tools/index.js';
+import { BuiltInExpertTypeSchema } from '../../agents/experts/expert-config.js';
+
+/** Canonical expert role names, derived as `{type}_expert` from the type union. */
+const CANONICAL_EXPERT_ROLES = BuiltInExpertTypeSchema.options.map((t) => `${t}_expert`);
 
 // ============================================================================
 // detectCapabilityGaps
@@ -96,64 +101,37 @@ describe('detectCapabilityGaps', () => {
     expect(report.available.experts).toHaveLength(0);
   });
 
-  it('recognizes all 21 MCP tools', () => {
-    const allTools = [
-      'orchestrate',
-      'create_expert',
-      'execute_expert',
-      'run_workflow',
-      'delegate_to_model',
-      'list_experts',
-      'list_workflows',
-      'consensus_vote',
-      'research_query',
-      'research_add',
-      'research_discover',
-      'research_analyze',
-      'research_catalog_review',
-      'memory_query',
-      'memory_stats',
-      'weather_report',
-      'issue_triage',
-      'run_graph_workflow',
-      'execute_spec',
-      'registry_import',
-      'query_trace',
-    ];
-    const report = detectCapabilityGaps({ tools: allTools, experts: [] });
+  it('recognizes a real tool that was previously missing from the registry (#3553)', () => {
+    // `search_codebase` is a registered tool that the stale literal omitted —
+    // it must not be falsely reported as a gap.
+    const report = detectCapabilityGaps({ tools: ['search_codebase', 'pr_review'], experts: [] });
     expect(report.allSatisfied).toBe(true);
-    expect(report.available.tools).toHaveLength(21);
-  });
-
-  it('recognizes all 10 expert roles', () => {
-    const allExperts = [
-      'code_expert',
-      'architecture_expert',
-      'security_expert',
-      'documentation_expert',
-      'testing_expert',
-      'devops_expert',
-      'research_expert',
-      'pm_expert',
-      'ux_expert',
-      'infrastructure_expert',
-    ];
-    const report = detectCapabilityGaps({ tools: [], experts: allExperts });
-    expect(report.allSatisfied).toBe(true);
-    expect(report.available.experts).toHaveLength(10);
+    expect(report.gaps).toHaveLength(0);
   });
 });
 
 // ============================================================================
-// Registry counts
+// Registry freshness — derived from canonical sources, fails on drift (#3553)
 // ============================================================================
 
-describe('registry counts', () => {
-  it('has 21 available tools', () => {
-    expect(getAvailableToolCount()).toBe(21);
+describe('registry freshness vs canonical sources', () => {
+  it('recognizes every registered MCP tool', () => {
+    const report = detectCapabilityGaps({ tools: [...REGISTERED_TOOL_NAMES], experts: [] });
+    expect(report.allSatisfied).toBe(true);
+    expect(report.available.tools).toHaveLength(REGISTERED_TOOL_NAMES.length);
   });
 
-  it('has 10 available experts', () => {
-    expect(getAvailableExpertCount()).toBe(10);
+  it('recognizes every built-in expert role', () => {
+    const report = detectCapabilityGaps({ tools: [], experts: CANONICAL_EXPERT_ROLES });
+    expect(report.allSatisfied).toBe(true);
+    expect(report.available.experts).toHaveLength(CANONICAL_EXPERT_ROLES.length);
+  });
+
+  it('available tool count matches the canonical registry', () => {
+    expect(getAvailableToolCount()).toBe(REGISTERED_TOOL_NAMES.length);
+  });
+
+  it('available expert count matches the canonical expert types', () => {
+    expect(getAvailableExpertCount()).toBe(CANONICAL_EXPERT_ROLES.length);
   });
 });
