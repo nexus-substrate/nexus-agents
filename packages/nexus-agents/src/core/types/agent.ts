@@ -230,9 +230,24 @@ export interface IAgent {
   execute(task: Task, options?: { signal?: AbortSignal }): Promise<Result<TaskResult, AgentError>>;
 
   /**
-   * Handle an inter-agent message.
+   * Handle an inter-agent message and return a response.
+   *
+   * **Delivery semantics (#3222).** This is a *direct, awaited request/response*
+   * call: the caller invokes it and holds the returned promise. It is NOT a
+   * queued or broadcast channel — that is the collaboration event bus
+   * (`agents/collaboration/event-bus.ts`), a fire-and-forget pub/sub with its
+   * own semantics. For this method specifically:
+   * - **Ordering** is the caller's responsibility. Sequential `await`s are
+   *   handled in call order; concurrent calls carry no cross-message ordering
+   *   guarantee.
+   * - **Delivery** is exactly the method invocation — there is **no automatic
+   *   retry or redelivery**. A returned `err(...)` is the caller's signal to
+   *   decide whether to retry; the agent does not re-queue the message.
+   * - **Errors** surface as `Result.err`, not as a throw for expected
+   *   conditions; the caller branches on the `Result`.
+   *
    * @param msg - Message to handle
-   * @returns Result with AgentResponse or AgentError
+   * @returns Result with AgentResponse, or AgentError on failure (not retried)
    */
   handleMessage(msg: AgentMessage): Promise<Result<AgentResponse, AgentError>>;
 
