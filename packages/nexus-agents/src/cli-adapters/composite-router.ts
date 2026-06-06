@@ -666,7 +666,17 @@ export class CompositeRouter implements ICompositeRouter {
     if (this.availableModelsCache === undefined) return this.cliNames;
     try {
       const all = await this.availableModelsCache.getAll();
-      if (all.length === 0) return this.cliNames;
+      if (all.length === 0) {
+        // The cache is wired but reports zero models — cold start, or all
+        // sources unavailable. Fall back to all CLIs so routing never wedges,
+        // but log at INFO so operators who rely on the cache can see the gate
+        // is currently a no-op (#3188).
+        this.logger.info(
+          'AvailableModelsCache returned no models; falling back to all CLIs (cold start or all sources unavailable)',
+          { candidateCount: this.cliNames.length }
+        );
+        return this.cliNames;
+      }
       const sourcesWithModels = new Set(all.map((m) => m.source));
       // Availability is tracked per CLI source/slot; an api:* arm is gated on
       // its display slot's source (#3422).
@@ -674,7 +684,14 @@ export class CompositeRouter implements ICompositeRouter {
         sourcesWithModels.has(routingArmDisplaySlot(name))
       );
       // Guard against fully empty filter — never let the gate wedge routing.
-      return filtered.length > 0 ? filtered : this.cliNames;
+      if (filtered.length === 0) {
+        this.logger.info(
+          'AvailableModelsCache filtered out all CLIs; falling back to all (possible stale/misconfigured cache)',
+          { cacheSources: [...sourcesWithModels], candidateCount: this.cliNames.length }
+        );
+        return this.cliNames;
+      }
+      return filtered;
     } catch (e: unknown) {
       this.logger.warn('AvailableModelsCache query failed; falling back to all CLIs', {
         error: e instanceof Error ? e.message : String(e),

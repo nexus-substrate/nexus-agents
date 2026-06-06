@@ -1038,20 +1038,31 @@ describe('CompositeRouter ZeroRouter integration (Issue #347)', () => {
       expect(r.getAvailableModelsCache()).toBeUndefined();
     });
 
-    it('falls back to all CLIs when the cache reports zero models', async () => {
+    it('falls back to all CLIs (and logs INFO) when the cache reports zero models (#3188)', async () => {
       const cache = makeMockCache([]);
-      const r = new CompositeRouter(adapters, { availableModelsCache: cache });
+      const log = makeSpyLogger();
+      const r = new CompositeRouter(adapters, { availableModelsCache: cache }, log);
       const result = await r.route({ content: 'hello' });
       expect(result.ok).toBe(true);
+      // The silent fallback is now observable.
+      expect(log.info).toHaveBeenCalledWith(
+        expect.stringContaining('returned no models; falling back to all CLIs'),
+        expect.any(Object)
+      );
     });
 
-    it('falls back to all CLIs when the filtered set would be empty', async () => {
+    it('falls back to all CLIs (and logs INFO) when the filtered set would be empty (#3188)', async () => {
       // Cache only knows a CLI we don't have an adapter for.
       const cache = makeMockCache(['unknown-cli:foo']);
-      const r = new CompositeRouter(adapters, { availableModelsCache: cache });
+      const log = makeSpyLogger();
+      const r = new CompositeRouter(adapters, { availableModelsCache: cache }, log);
       const result = await r.route({ content: 'hello' });
       expect(result.ok).toBe(true);
       // Without the empty-filter guard the router would error on selection.
+      expect(log.info).toHaveBeenCalledWith(
+        expect.stringContaining('filtered out all CLIs; falling back to all'),
+        expect.any(Object)
+      );
     });
 
     it('does not block routing when the cache throws', async () => {
@@ -1069,6 +1080,16 @@ describe('CompositeRouter ZeroRouter integration (Issue #347)', () => {
  * Tiny mock for AvailableModelsCache covering only the interface the
  * router uses. Each entry is `source:id`.
  */
+/** Minimal spy logger for asserting on log calls. */
+function makeSpyLogger(): import('../core/index.js').ILogger {
+  return {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  } as unknown as import('../core/index.js').ILogger;
+}
+
 function makeMockCache(
   entries: string[]
 ): import('../config/available-models-cache.js').AvailableModelsCache {
