@@ -460,7 +460,7 @@ _Auto-generated from source. 45 tools registered._
 
 <!-- GOVERNANCE:VERSION:START -->
 
-_Governance Version: 2026-06-04_
+_Governance Version: 2026-06-06_
 
 <!-- GOVERNANCE:VERSION:END -->
 
