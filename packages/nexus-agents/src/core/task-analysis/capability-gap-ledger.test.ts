@@ -2,8 +2,14 @@
  * Tests for the Capability Gap Ledger (#3555).
  */
 
-import { describe, it, expect } from 'vitest';
-import { createCapabilityGapLedger } from './capability-gap-ledger.js';
+import { describe, it, expect, afterEach } from 'vitest';
+import {
+  createCapabilityGapLedger,
+  getGapLedger,
+  setGapLedger,
+  resetGapLedger,
+  recordRoutingGaps,
+} from './capability-gap-ledger.js';
 import type { CapabilityGapReport } from './capability-gap-detector.js';
 
 function report(
@@ -93,5 +99,57 @@ describe('CapabilityGapLedger', () => {
     const names = ledger.summarize().map((s) => s.name);
     expect(names).toContain('gap4'); // newest retained
     expect(names).not.toContain('gap0'); // oldest evicted
+  });
+});
+
+describe('gap ledger singleton', () => {
+  afterEach(() => {
+    resetGapLedger();
+  });
+
+  it('returns the same instance across calls', () => {
+    expect(getGapLedger()).toBe(getGapLedger());
+  });
+
+  it('setGapLedger overrides and resetGapLedger clears', () => {
+    const custom = createCapabilityGapLedger();
+    setGapLedger(custom);
+    expect(getGapLedger()).toBe(custom);
+    resetGapLedger();
+    expect(getGapLedger()).not.toBe(custom);
+  });
+});
+
+describe('recordRoutingGaps', () => {
+  it('records gaps from a decision to the given ledger', () => {
+    const ledger = createCapabilityGapLedger();
+    recordRoutingGaps(
+      { capabilityGaps: report({ type: 'tool', name: 'deploy' }) },
+      { goal: 'ship it' },
+      ledger
+    );
+    expect(ledger.summarize()[0]).toMatchObject({ name: 'deploy', count: 1 });
+    expect(ledger.summarize()[0]?.exampleGoals).toContain('ship it');
+  });
+
+  it('is a no-op when all capabilities are satisfied', () => {
+    const ledger = createCapabilityGapLedger();
+    recordRoutingGaps({ capabilityGaps: report() }, { goal: 'g' }, ledger);
+    expect(ledger.size()).toBe(0);
+  });
+
+  it('is a no-op when no capability gap report is present', () => {
+    const ledger = createCapabilityGapLedger();
+    recordRoutingGaps({}, { goal: 'g' }, ledger);
+    expect(ledger.size()).toBe(0);
+  });
+
+  it('defaults to the shared singleton ledger', () => {
+    resetGapLedger();
+    recordRoutingGaps(
+      { capabilityGaps: report({ type: 'expert', name: 'ml_expert' }) },
+      { goal: 'g' }
+    );
+    expect(getGapLedger().size()).toBe(1);
   });
 });
