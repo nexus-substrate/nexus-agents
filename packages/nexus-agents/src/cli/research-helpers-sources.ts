@@ -222,16 +222,20 @@ interface ArxivQueryOptions {
  * Builds an arXiv API search URL with targeted field queries.
  * Uses ti: (title) and abs: (abstract) instead of all: for better relevance.
  * Optionally adds a submittedDate range filter when sinceDate is provided.
+ *
+ * Exported for testability.
  */
-function buildArxivUrl(opts: ArxivQueryOptions): string {
-  // Use AND-joined keywords for multi-word queries instead of exact phrase matching.
-  // Exact phrases like "multi-agent orchestration consensus voting" rarely appear in papers,
-  // but individual keywords joined with AND return relevant results.
+export function buildArxivUrl(opts: ArxivQueryOptions): string {
+  // OR-join keywords for multi-word queries and let arXiv rank by relevance;
+  // the caller's coverage-based relevance filter (#3542) refines the set.
+  // AND-joining every term required all of them to co-occur in one paper, which
+  // returned 0 results for normal multi-word topics (#3543); and pairing OR with
+  // a date sort would fetch recent-but-off-topic papers, so we sort by relevance.
   const words = opts.topic.split(/\s+/).filter((w) => w.length > 0);
   const topicQuery =
     words.length <= 1
       ? `(ti:${opts.topic} OR abs:${opts.topic})`
-      : `(${words.map((w) => `(ti:${w} OR abs:${w})`).join(' AND ')})`;
+      : `(${words.map((w) => `ti:${w} OR abs:${w}`).join(' OR ')})`;
   let fullQuery = opts.authorFilter !== '' ? `${topicQuery} AND ${opts.authorFilter}` : topicQuery;
 
   // Add date range filter if sinceDate provided (format: YYYYMMDD)
@@ -242,7 +246,7 @@ function buildArxivUrl(opts: ArxivQueryOptions): string {
   }
 
   const encoded = encodeURIComponent(fullQuery);
-  return `https://export.arxiv.org/api/query?search_query=${encoded}&start=0&max_results=${String(opts.maxResults)}&sortBy=submittedDate&sortOrder=descending`;
+  return `https://export.arxiv.org/api/query?search_query=${encoded}&start=0&max_results=${String(opts.maxResults)}&sortBy=relevance&sortOrder=descending`;
 }
 
 /**

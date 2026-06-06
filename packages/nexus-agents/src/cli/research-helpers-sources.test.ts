@@ -15,6 +15,7 @@ import {
   discoverArxiv,
   fetchSource,
   scoreRelevance,
+  buildArxivUrl,
 } from './research-helpers-sources.js';
 
 // Mock global fetch
@@ -257,7 +258,7 @@ describe('discoverArxiv', () => {
     expect(calledUrl).not.toContain('all%3A');
   });
 
-  it('should AND-join multi-word topics for keyword matching', async () => {
+  it('should OR-join multi-word topic terms and sort by relevance (#3543)', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       text: () => Promise.resolve('<feed></feed>'),
@@ -265,11 +266,13 @@ describe('discoverArxiv', () => {
     await discoverArxiv('agent memory consolidation', 5);
     const calledUrl = mockFetch.mock.calls[0]?.[0] as string;
     const decoded = decodeURIComponent(calledUrl);
-    // Multi-word topics use AND-joined keywords (not phrase matching)
-    expect(decoded).toContain('(ti:agent OR abs:agent)');
-    expect(decoded).toContain('(ti:memory OR abs:memory)');
-    expect(decoded).toContain('(ti:consolidation OR abs:consolidation)');
-    expect(decoded).toContain(' AND ');
+    // Multi-word topics OR-join terms (any may match); coverage-based relevance
+    // scoring refines downstream. AND-joining every term returned 0 results (#3543).
+    expect(decoded).toContain('ti:agent OR abs:agent');
+    expect(decoded).toContain('ti:memory OR abs:memory');
+    expect(decoded).toContain('ti:consolidation OR abs:consolidation');
+    expect(decoded).not.toContain(') AND (ti:');
+    expect(decoded).toContain('sortBy=relevance');
   });
 
   it('should not quote single-word topics', async () => {
@@ -369,4 +372,27 @@ describe('arXiv-based providers', () => {
       });
     });
   }
+
+  describe('buildArxivUrl (#3543)', () => {
+    it('OR-joins multi-word topic terms and sorts by relevance', () => {
+      const url = buildArxivUrl({
+        topic: 'self healing software repair agents',
+        authorFilter: '',
+        maxResults: 8,
+      });
+      const q = new URL(url).searchParams.get('search_query') ?? '';
+      expect(q).toContain('ti:self');
+      expect(q).toContain(' OR ');
+      // Regression: AND-joining the topic terms required all to co-occur and
+      // returned 0 results for normal multi-word topics (#3543).
+      expect(q).not.toContain(') AND (ti:');
+      expect(url).toContain('sortBy=relevance');
+    });
+
+    it('keeps a single-word topic as a ti/abs OR query', () => {
+      const url = buildArxivUrl({ topic: 'agents', authorFilter: '', maxResults: 5 });
+      const q = new URL(url).searchParams.get('search_query') ?? '';
+      expect(q).toBe('(ti:agents OR abs:agents)');
+    });
+  });
 });
