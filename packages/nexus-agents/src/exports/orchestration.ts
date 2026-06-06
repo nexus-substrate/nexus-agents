@@ -35,6 +35,16 @@ export {
   START,
   END,
   formatCompileError,
+  runConsensusGate,
+  createConsensusGateNode,
+  runGraphWithConsensus,
+} from '../orchestration/index.js';
+export type {
+  ConsensusVoter,
+  ConsensusVerdict,
+  ConsensusProposalInput,
+  ConsensusGateNodeOptions,
+  RunGraphWithConsensusOptions,
 } from '../orchestration/index.js';
 export type {
   StateReducer,

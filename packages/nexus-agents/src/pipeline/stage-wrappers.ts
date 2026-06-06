@@ -10,11 +10,13 @@
 
 import { getTimeProvider, getErrorMessage } from '../core/index.js';
 import { parseSpec } from '../orchestration/spec-parser.js';
-import type { DevPipelineStages, PipelineTask } from './dev-pipeline.js';
+import type { DevPipelineStages, PipelineTask, VoteResult } from './dev-pipeline.js';
 import { isApproved, getVoteFeedback } from './dev-pipeline.js';
 import type { IPipelineStage, PipelineContext, StageOutput } from './stage-types.js';
 import { PIPELINE_STATE_KEYS as K } from './stage-types.js';
 import { getContextPromptPrefix } from '../context/context-retriever.js';
+import { runConsensusGate } from '../orchestration/graph/consensus-node.js';
+import type { ConsensusVoter } from '../orchestration/graph/consensus-node.js';
 
 // ============================================================================
 // Helper
@@ -116,6 +118,17 @@ export function createPlanStageWrapper(stages: DevPipelineStages): IPipelineStag
 
 /** Vote stage — consensus vote on the plan. */
 export function createVoteStageWrapper(stages: DevPipelineStages): IPipelineStage {
+  // Subsumed onto the shared consensus-gate primitive (#3267): the dev-pipeline
+  // `stages.vote` IS the injected voter; `runConsensusGate` runs it fail-closed.
+  // There is now ONE in-graph-consensus implementation, not two.
+  const voter: ConsensusVoter = async (input) => {
+    const vote = await stages.vote(input.proposal, input.context ?? '');
+    return {
+      outcome: isApproved(vote) ? 'approved' : 'rejected',
+      feedback: isApproved(vote) ? '' : getVoteFeedback(vote),
+      detail: { vote },
+    };
+  };
   return {
     id: 'vote',
     name: 'Vote',
@@ -124,19 +137,18 @@ export function createVoteStageWrapper(stages: DevPipelineStages): IPipelineStag
       const plan = typeof ctx.state[K.PLAN] === 'string' ? (ctx.state[K.PLAN] as string) : '';
       const research =
         typeof ctx.state[K.RESEARCH] === 'string' ? (ctx.state[K.RESEARCH] as string) : '';
-      try {
-        const vote = await stages.vote(plan, research);
-        const ms = getTimeProvider().now() - start;
-        const feedback = isApproved(vote) ? '' : getVoteFeedback(vote);
-        return {
-          stateKey: K.VOTE_RESULT,
-          value: { vote, feedback },
-          durationMs: ms,
-          success: isApproved(vote),
-        };
-      } catch (e) {
-        return failOutput(K.VOTE_RESULT, getErrorMessage(e), getTimeProvider().now() - start);
-      }
+      const verdict = await runConsensusGate(voter, { proposal: plan, context: research });
+      // Preserve the existing VOTE_RESULT shape: `{ vote, feedback }`, success
+      // iff approved. On a voter error the gate fails closed to `rejected` with
+      // the error in `feedback` (vote undefined) — still success=false, so the
+      // pipeline's iterate-on-rejection behavior is unchanged.
+      const vote = verdict.detail?.['vote'] as VoteResult | undefined;
+      return {
+        stateKey: K.VOTE_RESULT,
+        value: { vote, feedback: verdict.feedback },
+        durationMs: getTimeProvider().now() - start,
+        success: verdict.outcome === 'approved',
+      };
     },
   };
 }

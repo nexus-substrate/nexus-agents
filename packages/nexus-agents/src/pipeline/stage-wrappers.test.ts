@@ -186,6 +186,19 @@ describe('Stage Wrappers', () => {
       expect(val.vote.kind).toBe('rejected');
       expect(val.feedback).toBe('Missing tests');
     });
+
+    it('fails closed (success=false, error in feedback) when stages.vote throws (#3267)', async () => {
+      // Subsumed onto runConsensusGate: a thrown voter fails CLOSED to a
+      // rejected verdict — still success=false so the pipeline iterates, with
+      // the error surfaced in feedback rather than dropped.
+      const stages = createMockStages();
+      vi.mocked(stages.vote).mockRejectedValue(new Error('voter adapter offline'));
+      const result = await createVoteStageWrapper(stages).execute(makeContext());
+
+      expect(result.success).toBe(false);
+      const val = result.value as { vote: VoteResult | undefined; feedback: string };
+      expect(val.feedback).toContain('voter adapter offline');
+    });
   });
 
   describe('createDecomposeStageWrapper', () => {
