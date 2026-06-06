@@ -105,6 +105,18 @@ export type {
   PatternMetrics,
 } from './workflow-router-types.js';
 
+export {
+  createMetaOrchestrator,
+  strategyFromPattern,
+  strategyFromPipelineType,
+} from './meta-orchestrator.js';
+export type {
+  IMetaOrchestrator,
+  MetaOrchestratorInput,
+  MetaDecision,
+  ExecutionStrategy,
+} from './meta-orchestrator.js';
+
 // Spec Parser (Issue #847)
 export { parseSpec } from './spec-parser.js';
 export type {
