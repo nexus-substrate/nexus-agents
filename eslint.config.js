@@ -1,8 +1,33 @@
 import { defineConfig, globalIgnores } from 'eslint/config';
 import tseslint from 'typescript-eslint';
+import jsdoc from 'eslint-plugin-jsdoc';
 
 export default defineConfig([
   globalIgnores(['**/dist/**', '**/node_modules/**', '**/coverage/**']),
+
+  // JSDoc accuracy (epic #3516, Phase 1 #3517). WARN-FIRST and accuracy-only:
+  // these `check-*` rules fire only when a JSDoc block EXISTS and is
+  // structurally wrong (param names that don't match the signature, undefined
+  // or malformed types, typo'd tags) — they do NOT require docs on every
+  // symbol. Coverage rules (`require-param`/`require-returns`) are deliberately
+  // deferred (#3518) so this stays an accuracy baseline, not a CI wall. Tests
+  // are excluded — JSDoc accuracy on the shipped/public surface is the target.
+  {
+    name: 'nexus-agents/jsdoc-accuracy',
+    files: ['**/*.ts', '**/*.tsx'],
+    ignores: ['**/*.test.ts', '**/*.spec.ts', '**/test/**', '**/__tests__/**'],
+    plugins: { jsdoc },
+    rules: {
+      'jsdoc/check-param-names': 'warn',
+      'jsdoc/check-property-names': 'warn',
+      'jsdoc/check-types': 'warn',
+      'jsdoc/no-undefined-types': 'warn',
+      'jsdoc/check-alignment': 'warn',
+      'jsdoc/check-tag-names': 'warn',
+      'jsdoc/empty-tags': 'warn',
+      'jsdoc/valid-types': 'warn',
+    },
+  },
 
   // Base TypeScript configuration
   {
