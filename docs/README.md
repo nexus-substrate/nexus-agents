@@ -85,13 +85,14 @@ Detailed technical documentation:
 
 #### Getting Started
 
-| Document                                                 | Description                                                           | Status    |
-| -------------------------------------------------------- | --------------------------------------------------------------------- | --------- |
-| [FIRST_TASK.md](./getting-started/FIRST_TASK.md)         | **Start here.** Install → verify → real vote → editor wiring (~5 min) | Canonical |
-| [INSTALLATION.md](./getting-started/INSTALLATION.md)     | Platform installation deep-dive                                       | Canonical |
-| [CONFIGURATION.md](./getting-started/CONFIGURATION.md)   | YAML and env configuration                                            | Canonical |
-| [PLUGIN_INSTALL.md](./getting-started/PLUGIN_INSTALL.md) | Install nexus-agents as a Claude Code plugin                          | Canonical |
-| [SANDBOXED-USAGE.md](./guides/SANDBOXED-USAGE.md)        | Docker / restricted-FS / team-distribution flows                      | Canonical |
+| Document                                                                           | Description                                                                  | Status    |
+| ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | --------- |
+| [FIRST_TASK.md](./getting-started/FIRST_TASK.md)                                   | **Start here.** Install → verify → real vote → editor wiring (~5 min)        | Canonical |
+| [COMPOSE_YOUR_FIRST_PIPELINE.md](./getting-started/COMPOSE_YOUR_FIRST_PIPELINE.md) | Next step: chain MCP tools (research → vote → build) toward a goal (~15 min) | Canonical |
+| [INSTALLATION.md](./getting-started/INSTALLATION.md)                               | Platform installation deep-dive                                              | Canonical |
+| [CONFIGURATION.md](./getting-started/CONFIGURATION.md)                             | YAML and env configuration                                                   | Canonical |
+| [PLUGIN_INSTALL.md](./getting-started/PLUGIN_INSTALL.md)                           | Install nexus-agents as a Claude Code plugin                                 | Canonical |
+| [SANDBOXED-USAGE.md](./guides/SANDBOXED-USAGE.md)                                  | Docker / restricted-FS / team-distribution flows                             | Canonical |
 
 #### Architecture
 
