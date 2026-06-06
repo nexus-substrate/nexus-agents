@@ -1,5 +1,18 @@
 # nexus-agents
 
+## 2.119.2
+
+### Patch Changes
+
+- [#3504](https://github.com/nexus-substrate/nexus-agents/pull/3504) [`5277377`](https://github.com/nexus-substrate/nexus-agents/commit/5277377d76a089d0e0b0243cbcca99856154f6a8) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(cli): actionable recovery guidance for CLI detection errors ([#3213](https://github.com/nexus-substrate/nexus-agents/issues/3213))
+
+  CLI detection failures now carry a class-specific, runnable recovery step (via
+  `detectionRecoveryHint` / `DETECTION_ERROR_SOLUTIONS`) with a
+  `docs/TROUBLESHOOTING.md` pointer — e.g. permission → `chmod +x "$(command -v
+<cli>)"`, timeout → check PATH for hung mounts / re-run with `--verbose`,
+  not-found → install + PATH guidance. `nexus-agents setup` prints the hint beneath
+  each unavailable CLI's status line instead of just a terse cause phrase.
+
 ## 2.119.1
 
 ### Patch Changes
