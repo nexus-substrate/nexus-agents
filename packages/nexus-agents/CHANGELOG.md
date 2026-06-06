@@ -1,5 +1,21 @@
 # nexus-agents
 
+## 2.119.0
+
+### Minor Changes
+
+- [#3498](https://github.com/nexus-substrate/nexus-agents/pull/3498) [`b6e0730`](https://github.com/nexus-substrate/nexus-agents/commit/b6e07305453506fcf676b2759be000ff0d30b6d2) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(graph): in-graph consensus gate node + `runGraphWithConsensus` ([#3267](https://github.com/nexus-substrate/nexus-agents/issues/3267))
+
+  Adds a reusable in-graph consensus primitive (consensus vote, Option A): an
+  injected `ConsensusVoter` runs at a `createConsensusGateNode`, writes a typed
+  `ConsensusVerdict` to graph state, and **fails closed** (any voter or
+  proposal-extraction error → `rejected`, never a silent pass-through). Branch on
+  the verdict with `addConditionalEdge`, or use the `runGraphWithConsensus`
+  one-shot convenience. The dev-pipeline `vote` stage is refactored to delegate to
+  the same `runConsensusGate` core, so there is a single in-graph-consensus
+  implementation. All exported from the package root; documented in
+  `COMPOSITION_PATTERNS.md`.
+
 ## 2.118.0
 
 ### Minor Changes
