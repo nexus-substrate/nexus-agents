@@ -18,7 +18,8 @@
  * (Source: Issue #3549 — MetaOrchestrator step 1)
  */
 
-import { createLogger } from '../core/index.js';
+import { randomUUID } from 'node:crypto';
+import { createLogger, getTimeProvider } from '../core/index.js';
 import type { ILogger } from '../core/index.js';
 import { classifyTask } from '../pipeline/adaptive-orchestrator.js';
 import type { TaskClassification, PipelineType } from '../pipeline/adaptive-orchestrator.js';
@@ -67,6 +68,12 @@ export interface MetaOrchestratorInput {
  * the decision is observable (and, in later steps, loggable + learnable).
  */
 export interface MetaDecision {
+  /**
+   * Unique id for this selection decision. The join key a later task outcome
+   * references (mirrors `TaskOutcome.routingDecisionId`) so selection can be
+   * correlated with results when learned selection lands (epic #3548 step 3+).
+   */
+  readonly decisionId: string;
   /** The selected execution strategy. */
   readonly strategy: ExecutionStrategy;
   /** Human-readable explanation of why this strategy was selected. */
@@ -95,8 +102,89 @@ export interface MetaDecision {
 
 /** Public interface for the MetaOrchestrator. */
 export interface IMetaOrchestrator {
-  /** Selects an execution strategy for a goal. Pure — no side effects, no execution. */
+  /**
+   * Selects an execution strategy for a goal. Selection itself is deterministic;
+   * as of epic #3548 step 2 it also emits a {@link MetaSelectionRecord} to the
+   * configured {@link MetaDecisionSink} for observability (the substrate learned
+   * selection mines). It does not execute the strategy.
+   */
   select(input: MetaOrchestratorInput): MetaDecision;
+}
+
+/**
+ * An observability record of one selection decision. Distinct from the
+ * model-routing `RoutingDecision` in the learning module — that captures which
+ * *model* a stage router picked; this captures which *strategy* the
+ * MetaOrchestrator picked. Logging it (not the outcome) is step 2's deliverable;
+ * the decision→outcome correlation lands once dispatch wiring exists.
+ */
+export interface MetaSelectionRecord {
+  /** Matches the {@link MetaDecision.decisionId} of the decision it records. */
+  readonly decisionId: string;
+  /** ISO timestamp of the decision. */
+  readonly timestamp: string;
+  /** The goal that was routed. */
+  readonly goal: string;
+  /** The selected strategy. */
+  readonly strategy: ExecutionStrategy;
+  /** Confidence in the selection (0-1). */
+  readonly confidence: number;
+  /** The underlying workflow pattern. */
+  readonly pattern: WorkflowPattern;
+  /** The underlying pipeline template. */
+  readonly pipelineType: PipelineType;
+  /** Alternatives that were considered. */
+  readonly alternatives: readonly ExecutionStrategy[];
+  /** Whether the decision was flagged for a shape-the-work escalation. */
+  readonly needsShaping: boolean;
+  /** Whether the strategy was forced by the caller (vs selected). */
+  readonly forced: boolean;
+}
+
+/** A sink that receives every selection decision for observability. */
+export interface MetaDecisionSink {
+  /** Records one selection decision. Must not throw (observability is best-effort). */
+  record(record: MetaSelectionRecord): void;
+}
+
+/** A {@link MetaDecisionSink} that also exposes its buffered records for inspection. */
+export interface IRecordingMetaDecisionSink extends MetaDecisionSink {
+  /** Returns the buffered records, oldest first. */
+  getRecords(): readonly MetaSelectionRecord[];
+}
+
+/** Default cap for the in-memory recording sink, matching WorkflowRouter's buffer. */
+const DEFAULT_MAX_RECORDS = 200;
+
+/**
+ * Creates a sink that emits each decision as a structured audit log line.
+ * This is the MetaOrchestrator's default sink.
+ */
+export function createAuditLogSink(logger: ILogger): MetaDecisionSink {
+  return {
+    record(record: MetaSelectionRecord): void {
+      logger.info('MetaOrchestrator selection decision', { ...record });
+    },
+  };
+}
+
+/**
+ * Creates an in-memory recording sink with a bounded buffer (oldest evicted).
+ * The queryable observability surface that learned selection (step 3) reads.
+ */
+export function createRecordingSink(maxRecords = DEFAULT_MAX_RECORDS): IRecordingMetaDecisionSink {
+  const records: MetaSelectionRecord[] = [];
+  return {
+    record(record: MetaSelectionRecord): void {
+      records.push(record);
+      if (records.length > maxRecords) {
+        records.splice(0, records.length - maxRecords);
+      }
+    },
+    getRecords(): readonly MetaSelectionRecord[] {
+      return records;
+    },
+  };
 }
 
 /**
@@ -247,7 +335,7 @@ function buildForcedDecision(
   forced: ExecutionStrategy,
   routing: RoutingDecision,
   classification: TaskClassification
-): MetaDecision {
+): Omit<MetaDecision, 'decisionId'> {
   return {
     strategy: forced,
     reasoning: `Strategy forced by caller: ${forced}`,
@@ -261,7 +349,7 @@ function buildForcedDecision(
 function buildSelectedDecision(
   routing: RoutingDecision,
   classification: TaskClassification
-): MetaDecision {
+): Omit<MetaDecision, 'decisionId'> {
   const core = decideStrategy(routing, classification);
   const needsShaping = routing.needsClarification === true;
   return {
@@ -277,19 +365,44 @@ function buildSelectedDecision(
   };
 }
 
+/** Maps a finished decision to its observability record. */
+function toRecord(
+  decision: MetaDecision,
+  goal: string,
+  forced: boolean,
+  timestamp: string
+): MetaSelectionRecord {
+  return {
+    decisionId: decision.decisionId,
+    timestamp,
+    goal,
+    strategy: decision.strategy,
+    confidence: decision.confidence,
+    pattern: decision.pattern,
+    pipelineType: decision.pipelineType,
+    alternatives: decision.alternatives,
+    needsShaping: decision.needsShaping,
+    forced,
+  };
+}
+
 /**
  * Creates a MetaOrchestrator. Selection is deterministic and reuses the
- * existing routing/classification logic rather than duplicating it (DRY).
+ * existing routing/classification logic rather than duplicating it (DRY). Each
+ * selection is emitted to the decision sink for observability (step 2, #3550).
  *
  * @param options.logger - optional logger.
  * @param options.router - optional workflow router (injectable for tests).
+ * @param options.sink - optional decision sink (default: audit-log sink).
  */
 export function createMetaOrchestrator(options?: {
   readonly logger?: ILogger | undefined;
   readonly router?: IWorkflowRouter | undefined;
+  readonly sink?: MetaDecisionSink | undefined;
 }): IMetaOrchestrator {
   const logger = options?.logger ?? createLogger({ component: 'MetaOrchestrator' });
   const router = options?.router ?? createWorkflowRouter({ logger });
+  const sink = options?.sink ?? createAuditLogSink(logger);
 
   return {
     select(input: MetaOrchestratorInput): MetaDecision {
@@ -297,18 +410,24 @@ export function createMetaOrchestrator(options?: {
       const routing = router.route(signals);
       const classification = classifyTask(input.goal);
 
-      const decision =
+      const forced = input.forceStrategy !== undefined;
+      const base =
         input.forceStrategy !== undefined
           ? buildForcedDecision(input.forceStrategy, routing, classification)
           : buildSelectedDecision(routing, classification);
+      const decision: MetaDecision = { ...base, decisionId: randomUUID() };
+
+      const timestamp = new Date(getTimeProvider().now()).toISOString();
+      sink.record(toRecord(decision, input.goal, forced, timestamp));
 
       logger.info('MetaOrchestrator strategy selected', {
+        decisionId: decision.decisionId,
         strategy: decision.strategy,
         confidence: decision.confidence,
         pattern: decision.pattern,
         pipelineType: decision.pipelineType,
         needsShaping: decision.needsShaping,
-        forced: input.forceStrategy !== undefined,
+        forced,
       });
       return decision;
     },

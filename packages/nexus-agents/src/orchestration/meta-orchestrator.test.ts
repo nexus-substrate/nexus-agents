@@ -8,10 +8,12 @@
 import { describe, it, expect } from 'vitest';
 import {
   createMetaOrchestrator,
+  createRecordingSink,
   strategyFromPattern,
   strategyFromPipelineType,
   type ExecutionStrategy,
   type IMetaOrchestrator,
+  type MetaSelectionRecord,
 } from './meta-orchestrator.js';
 import type { IWorkflowRouter } from './workflow-router.js';
 import type { RoutingDecision, WorkflowPattern } from './workflow-router-types.js';
@@ -182,5 +184,59 @@ describe('MetaOrchestrator.select — shaping escalation', () => {
     });
     expect(d.needsShaping).toBe(false);
     expect(d.shapingQuestions).toBeUndefined();
+  });
+});
+
+describe('MetaOrchestrator.select — decision logging (step 2, #3550)', () => {
+  it('emits one record per selection to the configured sink', () => {
+    const sink = createRecordingSink();
+    const meta = createMetaOrchestrator({ sink });
+    meta.select({ goal: 'implement the feature', signals: { dependencyStructure: 'dag' } });
+    meta.select({ goal: 'research and compare alternative approaches and evaluate the landscape' });
+    expect(sink.getRecords()).toHaveLength(2);
+  });
+
+  it('records the decision id, strategy, signals, and forced flag', () => {
+    const sink = createRecordingSink();
+    const meta = createMetaOrchestrator({ sink });
+    const d = meta.select({
+      goal: 'implement the feature',
+      signals: { dependencyStructure: 'dag' },
+    });
+    const rec = sink.getRecords()[0] as MetaSelectionRecord;
+    expect(rec.decisionId).toBe(d.decisionId);
+    expect(rec.strategy).toBe(d.strategy);
+    expect(rec.pattern).toBe(d.pattern);
+    expect(rec.pipelineType).toBe(d.pipelineType);
+    expect(rec.alternatives).toEqual(d.alternatives);
+    expect(rec.needsShaping).toBe(d.needsShaping);
+    expect(rec.forced).toBe(false);
+    expect(rec.goal).toBe('implement the feature');
+    expect(() => new Date(rec.timestamp).toISOString()).not.toThrow();
+  });
+
+  it('flags forced=true in the record when the strategy is forced', () => {
+    const sink = createRecordingSink();
+    const meta = createMetaOrchestrator({ sink });
+    meta.select({ goal: 'anything', forceStrategy: 'spec' });
+    expect(sink.getRecords()[0]?.forced).toBe(true);
+  });
+
+  it('assigns a unique decisionId per selection', () => {
+    const sink = createRecordingSink();
+    const meta = createMetaOrchestrator({ sink });
+    const a = meta.select({ goal: 'implement the feature' });
+    const b = meta.select({ goal: 'implement the feature' });
+    expect(a.decisionId).not.toBe(b.decisionId);
+    expect(a.decisionId).toBeTruthy();
+  });
+
+  it('bounds the recording buffer to its max', () => {
+    const sink = createRecordingSink(3);
+    const meta = createMetaOrchestrator({ sink });
+    for (let i = 0; i < 5; i++) meta.select({ goal: `implement feature ${String(i)}` });
+    expect(sink.getRecords()).toHaveLength(3);
+    // Oldest evicted — last goal retained.
+    expect(sink.getRecords().at(-1)?.goal).toBe('implement feature 4');
   });
 });
