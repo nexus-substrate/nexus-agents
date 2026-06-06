@@ -45,7 +45,12 @@ export class ArchitectureFitEvaluator extends BaseEvaluator {
     this.checkNodeProtocolImports(component, metrics);
 
     const recommendation = this.scoreToRecommendation(score);
-    const confidence = 0.6 + Math.min(0.3, metrics.length * 0.05);
+    // Confidence rubric (mirrors CodeQualityEvaluator.calculateConfidence): more
+    // architectural metrics observed ⇒ higher confidence, capped at +0.3. No
+    // concern penalty — architecture fit is judged on positive signals here.
+    const base = 0.6;
+    const metricBonus = Math.min(0.3, metrics.length * 0.05);
+    const confidence = base + metricBonus;
 
     return this.createResult(component, recommendation, confidence, metrics, concerns);
   }
