@@ -36,7 +36,7 @@ import { runConfigInitSync } from './setup-config.js';
 import { detectOpenCodeCli, configureOpenCode } from './setup-opencode.js';
 import { detectGeminiCli, configureGemini } from './setup-gemini.js';
 import { detectCodexCli, configureCodex } from './setup-codex.js';
-import { formatDetectionMessage } from './cli-detection-error.js';
+import { formatDetectionMessage, detectionRecoveryHint } from './cli-detection-error.js';
 import { VERSION } from '../version.js';
 import { runWizard } from './setup-wizard.js';
 import { generatePermissionsSnippet, buildPermissionsBanner } from './setup-permissions.js';
@@ -445,7 +445,7 @@ function runOpenCodeStep(options: SetupOptions): SetupStep {
     return {
       name: 'OpenCode MCP',
       status: 'skipped',
-      message: formatDetectionMessage('OpenCode CLI', cliInfo.detectionError),
+      message: `${formatDetectionMessage('OpenCode CLI', cliInfo.detectionError)}\n  → ${detectionRecoveryHint('opencode', cliInfo.detectionError)}`,
       durationMs: getTimeProvider().now() - startTime,
     };
   }
@@ -476,7 +476,7 @@ function runGeminiStep(options: SetupOptions): SetupStep {
     return {
       name: 'Gemini MCP',
       status: 'skipped',
-      message: formatDetectionMessage('Gemini CLI', cliInfo.detectionError),
+      message: `${formatDetectionMessage('Gemini CLI', cliInfo.detectionError)}\n  → ${detectionRecoveryHint('gemini', cliInfo.detectionError)}`,
       durationMs: getTimeProvider().now() - startTime,
     };
   }
@@ -532,7 +532,7 @@ function runCodexStep(options: SetupOptions): SetupStep {
     return {
       name: 'Codex MCP',
       status: 'skipped',
-      message: formatDetectionMessage('Codex CLI', cliInfo.detectionError),
+      message: `${formatDetectionMessage('Codex CLI', cliInfo.detectionError)}\n  → ${detectionRecoveryHint('codex', cliInfo.detectionError)}`,
       durationMs: getTimeProvider().now() - startTime,
     };
   }

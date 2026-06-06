@@ -56,6 +56,32 @@ export function formatDetectionMessage(cliName: string, detectionError?: Detecti
 }
 
 /**
+ * Actionable recovery step for each detection-error class (#3213). Each takes
+ * the CLI's **binary** name (e.g. `opencode`, not the display name) so the
+ * suggested command is runnable verbatim. Intended to be shown alongside the
+ * `formatDetectionMessage` line on setup/doctor failures.
+ */
+export const DETECTION_ERROR_SOLUTIONS: Record<DetectionError, (cliBinary: string) => string> = {
+  'not-found': (cli) =>
+    `Install ${cli} and make sure it is on your PATH — see docs/getting-started/INSTALLATION.md.`,
+  permission: (cli) =>
+    `The ${cli} binary is present but not executable. Run: chmod +x "$(command -v ${cli})"`,
+  timeout: (cli) =>
+    `${cli} detection timed out. Check PATH for hung mounts (e.g. NFS); re-run with --verbose to see where detection hangs.`,
+  other: (cli) => `Re-run with --verbose for detailed ${cli} detection logs.`,
+};
+
+/**
+ * One-line actionable recovery hint for a detection error, with a docs pointer.
+ * `cliBinary` is the runnable binary name (e.g. `gemini`); defaults the class to
+ * `not-found` when unclassified.
+ */
+export function detectionRecoveryHint(cliBinary: string, detectionError?: DetectionError): string {
+  const cls: DetectionError = detectionError ?? 'not-found';
+  return `${DETECTION_ERROR_SOLUTIONS[cls](cliBinary)} (more: docs/TROUBLESHOOTING.md)`;
+}
+
+/**
  * Classifies a thrown error from `execFileSync('which'|'where', ...)` or
  * `execFileSync(cli, ['--version'])`.
  *
