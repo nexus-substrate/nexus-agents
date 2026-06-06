@@ -40,8 +40,19 @@ import {
   emitExecutionComplete,
 } from './graph-events.js';
 import { runPreconditions, runVerification } from './graph-hooks.js';
+import { categorizeOutcomeError } from '../outcomes/outcome-types.js';
+import { coarsenFailureCategory, defaultRetryable } from '../../mcp/error-envelope.js';
+import type { ErrorCategory } from '../../mcp/error-envelope.js';
 
 const logger = createLogger({ component: 'GraphExecutor' });
+
+/** Build the retryability fields for a failed NodeResult (#3534). */
+function failureClassification(category: ErrorCategory): {
+  errorCategory: ErrorCategory;
+  isRetryable: boolean;
+} {
+  return { errorCategory: category, isRetryable: defaultRetryable(category) };
+}
 
 // Canonical source: config/timeouts.ts (Issue #1046)
 import { GRAPH_TIMEOUTS } from '../../config/timeouts.js';
@@ -716,6 +727,8 @@ async function executeWithVerification(args: ExecVerifyArgs): Promise<NodeResult
       durationMs: getTimeProvider().now() - startTime,
       status: 'failed',
       error: `Verification failed: ${verifyResult.error ?? 'unknown'}`,
+      // Post-step verification is a domain check — re-running won't change it.
+      ...failureClassification('business'),
     };
   }
 
@@ -744,6 +757,8 @@ async function executeSingleNode(
       durationMs: 0,
       status: 'failed',
       error: `Node '${nodeId}' not found`,
+      // Missing node is a graph-construction bug, not a transient failure.
+      ...failureClassification('internal'),
     };
   }
 
@@ -758,12 +773,16 @@ async function executeSingleNode(
   } catch (error: unknown) {
     const message = getErrorMessage(error);
     logger.warn('Node execution failed', { nodeId, error: message });
+    // Classify the thrown error so selective-retry can gate on it (#3534):
+    // transient (timeout/network/rate-limit) → retryable; others → not.
+    const category = coarsenFailureCategory(categorizeOutcomeError(error));
     return {
       nodeId,
       stateUpdates: {},
       durationMs: getTimeProvider().now() - startTime,
       status: 'failed',
       error: message,
+      ...failureClassification(category),
     };
   }
 }
