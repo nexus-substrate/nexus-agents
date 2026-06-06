@@ -1,5 +1,37 @@
 # nexus-agents
 
+## 2.120.2
+
+### Patch Changes
+
+- [#3537](https://github.com/nexus-substrate/nexus-agents/pull/3537) [`639608f`](https://github.com/nexus-substrate/nexus-agents/commit/639608fafa4a125bfed043e406c91cf748b56730) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(graph): add priorResults replay to executeGraph (selective-retry slice 2)
+
+  `GraphExecuteOptions.priorResults` lets a caller pass prior NodeResults; the
+  executor replays any node with a `success` entry (reusing its stateUpdates so
+  downstream state is faithful) instead of re-executing it, while failed/absent
+  nodes run fresh. Additive/optional — no behavior change without the option.
+  Foundation primitive for `retryFailed` to re-run only failed nodes (slice 3, [#3534](https://github.com/nexus-substrate/nexus-agents/issues/3534)).
+
+- [#3535](https://github.com/nexus-substrate/nexus-agents/pull/3535) [`0b92889`](https://github.com/nexus-substrate/nexus-agents/commit/0b9288905cd19297725539082de52eb895e9a8dc) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(graph): classify failed NodeResults with errorCategory + isRetryable (selective-retry foundation)
+
+  Failed `NodeResult`s now carry an optional `errorCategory` (5-value taxonomy) and
+  derived `isRetryable` (only `transient` is retry-safe by default). The executor
+  classifies thrown node errors via `categorizeOutcomeError` → `coarsenFailureCategory`;
+  node-not-found → internal, post-step verification failure → business (both
+  non-retryable). Additive/optional — no behavior change for existing consumers.
+  This is slice 1 of selective-retry ([#3534](https://github.com/nexus-substrate/nexus-agents/issues/3534)): gives retry logic a safe signal so
+  only transient failures are re-run. Part of [#3531](https://github.com/nexus-substrate/nexus-agents/issues/3531).
+
+- [#3538](https://github.com/nexus-substrate/nexus-agents/pull/3538) [`16e0887`](https://github.com/nexus-substrate/nexus-agents/commit/16e0887601f1b3a5b436347b317e818949265253) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(pipeline): make retryFailed selective + retryability-gated (selective-retry slice 3)
+
+  `PipelineRunner.retryFailed` now replays prior successful nodes (via the slice-2
+  `priorResults` executor option) so only the failed nodes and their dependents
+  re-run, and it only retries when at least one failure is `isRetryable` (transient)
+  — permanent failures (validation/permission/business/internal) no longer trigger
+  a pointless re-run. `PipelineResult` gains optional `nodeResults` (the raw results,
+  carrying the retryability signal). Back-compat: a result without `nodeResults`
+  falls back to the prior whole-pipeline retry. Completes [#3534](https://github.com/nexus-substrate/nexus-agents/issues/3534) ([#3531](https://github.com/nexus-substrate/nexus-agents/issues/3531)).
+
 ## 2.120.1
 
 ### Patch Changes
