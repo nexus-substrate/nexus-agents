@@ -1,5 +1,35 @@
 # nexus-agents
 
+## 2.121.0
+
+### Minor Changes
+
+- [#3561](https://github.com/nexus-substrate/nexus-agents/pull/3561) [`17f2847`](https://github.com/nexus-substrate/nexus-agents/commit/17f2847e468970f4af24ec9e7567ebe3df5c4e51) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(task-analysis): add CapabilityGapLedger — aggregate discarded gap reports into a build backlog
+
+  Adds `createCapabilityGapLedger()`, which aggregates the `CapabilityGapReport`s produced on every routing / MetaOrchestrator decision (currently computed and thrown away) into a frequency-ranked, deduplicated summary of the tools and experts the system keeps wanting but lacks — the substrate for a self-directed build backlog ([#3555](https://github.com/nexus-substrate/nexus-agents/issues/3555)). `record()` ingests a report with optional `{goal, decisionId}` context; `summarize()` returns distinct gaps ranked by observation count (with a bounded sample of example goals); storage is bounded. `createMetaOrchestrator()` gains an optional `gapLedger` injectable that records each decision's gaps when provided (default absent — no behavior change). Later increments aggregate this and feed `suggest_research_tasks`.
+
+- [#3562](https://github.com/nexus-substrate/nexus-agents/pull/3562) [`2065820`](https://github.com/nexus-substrate/nexus-agents/commit/2065820bd4c987f9d6e554e67d7c28244e4dc160) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(orchestration): feed the capability-gap ledger from live routing traffic
+
+  Adds a process-wide `getGapLedger()` singleton (mirroring `getOutcomeStore()`) plus a `recordRoutingGaps()` helper, and wires the live `orchestrate` tool to record the capability gaps its routing decision already computes (`workflow-router.ts` had been discarding them). The gap ledger ([#3555](https://github.com/nexus-substrate/nexus-agents/issues/3555)) now accumulates real signal from production routing traffic — no longer dependent on the (owner-gated) unified entry point — turning recurring "tool/expert needed but missing" gaps into a frequency-ranked, self-directed build backlog. No-op when a decision satisfied every required capability.
+
+- [#3560](https://github.com/nexus-substrate/nexus-agents/pull/3560) [`9ca09e9`](https://github.com/nexus-substrate/nexus-agents/commit/9ca09e998bbec94e6600a5ecdab45cf608c7c395) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(orchestration): add MetaDispatcher with decision-keyed outcome recording
+
+  Adds `createMetaDispatcher()` — executes the strategy a `MetaDecision` selected and records the result as a dedicated `MetaOutcomeRecord` keyed by `decisionId`. The dispatcher takes an injected per-strategy executor map so the orchestration core stays free of the engine/MCP dependency graph (cycle-safe); real engine executors are wired in later by the outward-facing entry point. Strategy-level outcomes get their own record type rather than reusing the orchestration/learning `TaskOutcome` types (both of which require CLI/model fields a strategy spanning many CLIs cannot supply) — joining selection records with these by `decisionId` gives learned selection an uncontaminated dataset. Fails closed: a missing executor or a throwing executor records a failure outcome and rejects with a typed `MetaDispatchError` (never silent). Includes audit-log and in-memory recording outcome sinks.
+
+- [#3554](https://github.com/nexus-substrate/nexus-agents/pull/3554) [`c35b365`](https://github.com/nexus-substrate/nexus-agents/commit/c35b3650c6da25ffa0408dfc22bee455ced01e34) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(orchestration): add MetaOrchestrator selection tier (step 1)
+
+  Introduces `createMetaOrchestrator()` — a thin, deterministic selection tier that, given a goal, picks one `ExecutionStrategy` among the existing specialized pipelines (single-shot / dev-pipeline / pipeline / graph-workflow / orchestrate / consensus / spec / research). It reuses the existing `SharedTaskAnalyzer`, `WorkflowRouter`, and `classifyTask` brains rather than duplicating their logic, and returns a transparent `MetaDecision` (strategy + reasoning + confidence + alternatives + shaping flag + underlying signals) with a `forceStrategy` power-user override. This is the "routing" pattern (select once per task), not a runtime-switching mega-pipeline. Dispatch wiring, decision logging, and learned selection follow in later steps of the epic.
+
+- [#3558](https://github.com/nexus-substrate/nexus-agents/pull/3558) [`42ef02c`](https://github.com/nexus-substrate/nexus-agents/commit/42ef02ce2b67851f06e52724a57ebfe154f9059f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(orchestration): log MetaOrchestrator selection decisions (step 2)
+
+  Every MetaOrchestrator selection now emits a `MetaSelectionRecord` (decision id, goal, chosen strategy, confidence, pattern, pipeline type, alternatives, shaping flag, forced flag, timestamp) to a configurable `MetaDecisionSink`. The default sink writes a structured audit log line; `createRecordingSink()` provides an in-memory bounded buffer for inspection. `MetaDecision` now carries a `decisionId` — the join key a later task outcome references (mirrors `TaskOutcome.routingDecisionId`), the substrate that learned selection (step 3) will mine. Observability only: selection behavior is unchanged. This record type is intentionally distinct from the model-centric `RoutingDecision` in the learning module (strategy selection vs model selection).
+
+### Patch Changes
+
+- [#3557](https://github.com/nexus-substrate/nexus-agents/pull/3557) [`1edb106`](https://github.com/nexus-substrate/nexus-agents/commit/1edb1061cf1ce683333621cf60a3dc0e57588756) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(task-analysis): sync capability-gap-detector registry with canonical sources
+
+  The `capability-gap-detector` static registries had drifted: the tool set listed 21 names (doc-comment claimed "20") against 45 actually registered, and the expert set listed 10 against 12. A task requiring a real-but-unlisted tool/expert (e.g. `search_codebase`, `pr_review`, `qa_expert`) would be falsely reported as a capability gap. This was latent today (the routing path only requires a small fixed subset) but becomes a real defect as required-capability inference expands or as the capability-gap ledger ([#3555](https://github.com/nexus-substrate/nexus-agents/issues/3555)) consumes these reports. Synced both sets to the canonical `REGISTERED_TOOL_NAMES` and `BuiltInExpertTypeSchema`, corrected the misleading doc-comments, and added freshness tests that import the canonical sources and fail CI on future drift.
+
 ## 2.120.4
 
 ### Patch Changes
