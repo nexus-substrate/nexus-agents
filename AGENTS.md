@@ -74,6 +74,26 @@ Before completing ANY implementation task:
 - [ ] **Downstream tests updated** — if config values, scoring weights, or model data changed, all dependent assertions identified and updated before running tests.
 - [ ] Discoveries logged — bugs noticed outside scope captured as tracked issues per the Discovered-Issues protocol.
 
+## Periodic end-to-end validation
+
+Unit tests prove functions; they do **not** prove the real loops work. Validate the
+substrate by **running it** on a cadence — a real end-to-end pass that exercises all
+nexus-agents feature families against a genuine task and compares observed behavior
+to what the code, docs, and recent "fixed" claims assert.
+
+- **Cadence:** after every release, weekly, once ≥3 behavior-affecting fixes have
+  landed since the last run, or on demand when a claim is in doubt.
+- **The loop, for real:** `research_discover`/`research_synthesize` → `consensus_vote`
+  (both `--quick` 3-voter and full 7-voter) → plan → `run_dev_pipeline` (dryRun then
+  real) → `run_pipeline`/`run_graph_workflow` → `memory_write`/`memory_query` →
+  `verify_audit_chain`. Use **live adapters only** — never `simulateVotes`/mocks
+  (#2319); they prove nothing. If no live adapter, record `BLOCKED`, don't fabricate a pass.
+- **Capture actual output** at each step and judge it against the claim. Where reality
+  diverges (a "fixed" bug that reproduces, a dead voter, a missing stage, a doc that
+  lies), file a tracked issue per the Discovered-Issues gate — scrubbing gov/org refs.
+- This catches what unit tests miss: live voter-panel auth, adapter routing, pipeline
+  stage wiring, audit-chain integrity. Full runbook: the `e2e-validation` skill.
+
 ## Rules index
 
 <!-- GOVERNANCE:RULES_INDEX:START -->
@@ -110,7 +130,7 @@ _Auto-generated from `.rules/*.md` frontmatter by `scripts/inject-governance.ts`
 
 Workflow playbooks live at `skills/<name>/SKILL.md` (canonical per the Anthropic Agent Skills spec, which OpenCode and others are adopting).
 
-- **Discovery for all harnesses:** read [`skills/index.yaml`](./skills/index.yaml) — `{name, description, triggers, path}` for all 32 skills.
+- **Discovery for all harnesses:** read [`skills/index.yaml`](./skills/index.yaml) — `{name, description, triggers, path}` for all 33 skills.
 - When a user request matches a skill's triggers, read the full `SKILL.md` at the listed path and follow its workflow.
 - `skills/index.yaml` is regenerated via `scripts/generate-skills-index.ts` and gated in CI. Never edit it by hand.
 - **Codex Skills (#2660):** Codex's Skills primitive uses the same `SKILL.md` filename + the same required frontmatter (`name`, `description`) as the Anthropic spec — these skills are already cross-vendor compatible, no translation layer needed. Codex discovers skills under `.agents/skills/` or via `[[skills.config]]` path entries in the agent config; point either at this repo's `skills/` directory. The `name`/`description` validation in `generate-skills-index.ts` is the enforced cross-vendor contract.
