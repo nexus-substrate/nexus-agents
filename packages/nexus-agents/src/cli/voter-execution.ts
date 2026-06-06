@@ -260,9 +260,18 @@ export async function executeSingleVoteAttempt(
     temperature: 0.3, // Low temperature for consistent evaluations
     // #3433: request native structured output (Claude tool_use / OpenAI+Gemini
     // json mode) so the vote arrives as a schema-valid JSON object instead of
-    // prose-wrapped JSON. Adapters that don't honor responseFormat ignore it and
-    // the existing extractTextFromResponse + parseVoteResponse regex/Zod path
-    // below is the fallback — no behavior change for those backends.
+    // prose-wrapped JSON. When an adapter DOES honor it, the
+    // extractTextFromResponse + parseVoteResponse regex/Zod path below still
+    // accepts the result, so it's also the fallback for prose-returning backends.
+    //
+    // CAVEAT (#3497): not every backend "silently ignores" an unsupported
+    // responseFormat. OpenRouter implements `json_schema` via provider tool-use,
+    // so a role routed to a provider without tool-use returns a hard
+    // 404 "No endpoints found that support tool use" rather than ignoring the
+    // field. Those voters then error → abstain (the panel degrades to the
+    // succeeding voters). The real fix — gate `responseFormat` on a model
+    // structured-output capability, or retry-without-it on that 404 — is tracked
+    // in #3497; this comment no longer claims a universal "no behavior change".
     responseFormat: { type: 'json_schema', schema: VOTE_JSON_SCHEMA },
     // Thread the vote's budget into the adapter so its shorter standard CLI
     // timeout doesn't fire first and surface as an MCP -32001 on slow voters
