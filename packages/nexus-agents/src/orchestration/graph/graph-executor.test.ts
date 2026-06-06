@@ -73,6 +73,44 @@ describe('executeGraph', () => {
       expect(a?.status).toBe('failed');
       expect(a?.isRetryable).toBe(false);
     });
+
+    it('replays a prior successful node instead of re-executing it (slice 2)', async () => {
+      let aRuns = 0;
+      const build = (): ReturnType<GraphBuilder['compile']> =>
+        new GraphBuilder()
+          .addState('value', overwrite(0))
+          .addNode('A', () => {
+            aRuns += 1;
+            return Promise.resolve({ value: 1 });
+          })
+          .addNode('B', (state) => Promise.resolve({ value: (state['value'] as number) + 10 }))
+          .addEdge(START, 'A')
+          .addEdge('A', 'B')
+          .addEdge('B', END)
+          .compile();
+
+      const g1 = build();
+      expect(g1.ok).toBe(true);
+      if (!g1.ok) return;
+      const r1 = await executeGraph(g1.value, {});
+      expect(r1.ok).toBe(true);
+      if (!r1.ok) return;
+      expect(aRuns).toBe(1);
+      const aResult = r1.value.nodeResults.find((r) => r.nodeId === 'A');
+      expect(aResult?.status).toBe('success');
+
+      // Re-run, replaying A via priorResults: A's handler must NOT run again,
+      // but its stateUpdates must seed so B still produces the same final state.
+      const g2 = build();
+      expect(g2.ok).toBe(true);
+      if (!g2.ok) return;
+      const prior = new Map(aResult !== undefined ? [['A', aResult]] : []);
+      const r2 = await executeGraph(g2.value, {}, { priorResults: prior });
+      expect(r2.ok).toBe(true);
+      if (!r2.ok) return;
+      expect(aRuns).toBe(1); // replayed, not re-executed
+      expect(r2.value.finalState['value']).toBe(11); // seeded A + ran B
+    });
   });
 
   describe('fan-out / fan-in', () => {

@@ -749,6 +749,16 @@ async function executeSingleNode(
   nodeCtx: NodeContext,
   options?: GraphExecuteOptions
 ): Promise<NodeResult> {
+  // Selective-retry (#3534): replay a prior successful result instead of
+  // re-executing, so a retry re-runs only the failed/new nodes. Only `success`
+  // is replayed — failed/skipped/interrupted prior results fall through to a
+  // fresh run.
+  const prior = options?.priorResults?.get(nodeId);
+  if (prior?.status === 'success') {
+    logger.debug('Replaying prior successful node result', { nodeId });
+    return prior;
+  }
+
   const node: GraphNode | undefined = graph.nodes.get(nodeId);
   if (node === undefined) {
     return {
