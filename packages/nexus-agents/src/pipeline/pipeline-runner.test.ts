@@ -9,6 +9,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { PipelineRunner } from './pipeline-runner.js';
+import type { PipelineResult } from './pipeline-runner.js';
+import type { NodeResult } from '../orchestration/graph/graph-types.js';
 import { EventBus } from './event-bus.js';
 import type { PlanContract, StageSpec, TaskContract } from './task-contract.js';
 
@@ -452,5 +454,40 @@ describe('getDefaultRunsDir', () => {
       else process.env['NEXUS_GITIGNORE_AUTO'] = prevGitignore;
       await rm(repo, { recursive: true, force: true });
     }
+  });
+
+  describe('retryFailed selective + retryability-gated (#3534)', () => {
+    it('does not retry when every failure is non-retryable', async () => {
+      const runner = new PipelineRunner();
+      const compiled = runner.compile(makePlan());
+      expect(compiled.ok).toBe(true);
+      if (!compiled.ok) return;
+
+      const nodeResults: NodeResult[] = [
+        { nodeId: 'a', stateUpdates: {}, durationMs: 1, status: 'success' },
+        {
+          nodeId: 'b',
+          stateUpdates: {},
+          durationMs: 1,
+          status: 'failed',
+          error: 'invalid input',
+          errorCategory: 'validation',
+          isRetryable: false,
+        },
+      ];
+      const previousResult: PipelineResult = {
+        success: false,
+        stepsExecuted: 2,
+        durationMs: 2,
+        error: 'invalid input',
+        nodeResults,
+      };
+
+      const result = await runner.retryFailed(compiled.value, previousResult, makeTask());
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      // No retryable failure → returns the previous result unchanged (no re-run).
+      expect(result.value).toBe(previousResult);
+    });
   });
 });
