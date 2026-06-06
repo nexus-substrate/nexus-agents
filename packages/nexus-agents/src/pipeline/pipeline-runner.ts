@@ -77,7 +77,11 @@ export interface PipelineExecuteOptions {
   readonly continueOnFailure?: boolean;
   /** EventBus for trace persistence. When provided, creates a TraceWriter. */
   readonly eventBus?: IEventBus;
-  /** Override base directory for trace output (default: `<getNexusDataDir()>/runs`). */
+  /**
+   * Override base directory for trace output. Default: `getDefaultRunsDir()`,
+   * i.e. `nexusDataPath('runs')` — per-repo aware. NOT `getNexusDataDir()/runs`,
+   * which bypassed per-repo routing (#2889).
+   */
   readonly runsDir?: string;
 }
 
@@ -149,8 +153,14 @@ export class PipelineRunner {
   }
 
   /**
-   * Re-executes only the failed/skipped steps from a previous result.
-   * Requires the original pipeline and a result with stepResults.
+   * Retries a previous run that had failed or skipped steps by re-executing the
+   * pipeline with `continueOnFailure` enabled, returning the combined result.
+   * Returns `previousResult` unchanged when it has no `stepResults` or nothing
+   * failed/skipped.
+   *
+   * NOTE: the underlying graph executor re-runs **all** nodes, not only the
+   * failed ones — selective per-step retry is not yet modeled. The failed/skipped
+   * ids are used only to decide *whether* to retry, not *which* steps run.
    */
   async retryFailed(
     pipeline: CompiledPipeline,
