@@ -30,7 +30,9 @@ export enum RequestTier {
 export type TierOverrides = Record<string, RequestTier>;
 
 /**
- * Default tier assignment for all 20 registered MCP tools.
+ * Default tier assignment for registered MCP tools. This is an intentional
+ * subset/override map (not every tool needs an explicit tier); the Phase 2
+ * consistency test (#3565) asserts no-orphan-keys against REGISTERED_TOOL_NAMES.
  * Tier 1: read-only, no model invocation needed.
  * Tier 2: requires model selection or expert creation.
  * Tier 3: requires full orchestration, decomposition, or consensus.
