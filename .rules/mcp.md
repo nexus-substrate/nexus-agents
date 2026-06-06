@@ -87,6 +87,31 @@ projection from the 11-value taxonomy to the 5-value one — never the reverse.
 **`detail` is not output-sanitized.** Never put secrets, credentials,
 absolute filesystem paths, or raw `Error`/response objects in `detail`.
 
+### Tool-to-tool composition (#3201)
+
+There are two distinct composition boundaries — pick by **where the caller runs**, not by convenience:
+
+- **In-process (one tool's handler needs another concern's logic):** call the
+  canonical **domain engine** directly — `ConsensusEngine`, `PipelineRunner`,
+  `CompositeRouter`, `Orchestrator` — exactly as the Canonical Paths table
+  mandates. Do **not** re-invoke a peer MCP tool's handler to get at its logic;
+  the MCP wrapper is a transport/validation shell, and routing it back through
+  `_meta`-envelope parsing in-process is strictly more coupling, not less.
+  `consensus-vote.ts` calling `ConsensusEngine` is correct by design, not the
+  coupling smell it can look like from the outside.
+- **Cross-tool (an agent or the autonomous loop chains tools at the MCP
+  boundary):** the consumer only ever sees the `ToolResult`. On `isError`,
+  `parseToolErrorEnvelope(result._meta)` and branch on the result: retry only
+  when `isRetryable` (i.e. category `transient`); on `validation` fix the args
+  and re-call; on `permission`/`business`/`internal` stop and surface — never
+  blind-retry. This is the only supported way for tool output to feed tool
+  input, and it is exactly why the envelope is "caller-facing" above.
+
+Rule of thumb: **engines compose inside the package; envelopes compose across
+the tool boundary.** If you find a tool importing `pipeline/` or `agents/`
+internals that are _not_ a canonical engine, that is the real coupling to fix —
+route it through the engine, not through a peer tool.
+
 `toolError(msg)` remains as a back-compat alias mapping to a non-retryable
 `internal` envelope — acceptable for the legacy migration sweep, but new code
 should call `toolStructuredError` with the correct category.
