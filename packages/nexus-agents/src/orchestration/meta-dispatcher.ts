@@ -155,6 +155,24 @@ interface DispatchDeps {
   readonly logger: ILogger;
 }
 
+/** Records one outcome to the sink, computing duration from the start timestamp. */
+function recordOutcome(
+  deps: DispatchDeps,
+  decision: MetaDecision,
+  start: number,
+  success: boolean,
+  failureReason?: string
+): void {
+  deps.outcomeSink.recordOutcome({
+    decisionId: decision.decisionId,
+    timestamp: new Date(getTimeProvider().now()).toISOString(),
+    strategy: decision.strategy,
+    success,
+    durationMs: Math.max(0, getTimeProvider().now() - start),
+    ...(failureReason !== undefined ? { failureReason } : {}),
+  });
+}
+
 /** Executes one decision and records its outcome. See {@link IMetaDispatcher.dispatch}. */
 async function dispatchDecision(
   decision: MetaDecision,
@@ -163,21 +181,11 @@ async function dispatchDecision(
 ): Promise<DispatchResult> {
   const { strategy, decisionId } = decision;
   const start = getTimeProvider().now();
-  const record = (success: boolean, failureReason?: string): void => {
-    deps.outcomeSink.recordOutcome({
-      decisionId,
-      timestamp: new Date(getTimeProvider().now()).toISOString(),
-      strategy,
-      success,
-      durationMs: Math.max(0, getTimeProvider().now() - start),
-      ...(failureReason !== undefined ? { failureReason } : {}),
-    });
-  };
 
   const executor = deps.executors[strategy];
   if (executor === undefined) {
     const reason = `No executor registered for strategy "${strategy}"`;
-    record(false, reason);
+    recordOutcome(deps, decision, start, false, reason);
     deps.logger.error('MetaDispatcher dispatch failed', undefined, {
       decisionId,
       strategy,
@@ -188,7 +196,7 @@ async function dispatchDecision(
 
   try {
     const result = await executor(decision, input);
-    record(true);
+    recordOutcome(deps, decision, start, true);
     return {
       decisionId,
       strategy,
@@ -197,7 +205,7 @@ async function dispatchDecision(
     };
   } catch (err) {
     const reason = errorMessage(err);
-    record(false, reason);
+    recordOutcome(deps, decision, start, false, reason);
     deps.logger.error(
       'MetaDispatcher strategy executor threw',
       err instanceof Error ? err : undefined,
