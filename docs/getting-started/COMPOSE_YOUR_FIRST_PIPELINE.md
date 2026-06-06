@@ -9,7 +9,7 @@ keywords: [getting-started, tutorial, mcp, pipeline, compose, research, consensu
 
 **~15 minutes, hands-on.** [FIRST_TASK.md](./FIRST_TASK.md) gets you a single working tool in 5 minutes. This guide is the next step: **chaining several MCP tools into one decision-to-implementation flow**, and — the part newcomers miss — **how the output of one tool becomes the input to the next**.
 
-> Prerequisites: nexus-agents wired into your editor as an MCP server (see [FIRST_TASK.md §4](./FIRST_TASK.md)) so the 45 MCP tools are available to your agent. You drive each step in natural language; your agent calls the tool. The JSON blocks below show what it calls under the hood so you can see the data flow.
+> Prerequisites: nexus-agents wired into your editor as an MCP server (see [FIRST_TASK.md §4](./FIRST_TASK.md)) so the 46 MCP tools are available to your agent. You drive each step in natural language; your agent calls the tool. The JSON blocks below show what it calls under the hood so you can see the data flow.
 >
 > New to the words "pipeline", "consensus loop", "dev pipeline"? Read the [Pipeline Terminology table](../README.md#pipeline-terminology) first — this guide uses them precisely.
 
