@@ -59,6 +59,19 @@ describe('computeRelevanceScore', () => {
     expect(score).toBeGreaterThan(0.5);
   });
 
+  it('keeps clearly-relevant items above threshold for long/compound topics (#3541)', () => {
+    const item = makeItem(
+      'Self-Healing Software Agents for Automated Code Remediation',
+      'A human-in-the-loop system for safe automated remediation with blast-radius control.'
+    );
+    const topic =
+      'autonomous self-healing software agents: safe automated code remediation, human-in-the-loop gating, blast-radius control';
+    const score = computeRelevanceScore(item, topic);
+    // Regression: the old `weightedMatches / (keywords.length * 3)` drove every
+    // result below the 0.3 default for long topics, filtering them all out.
+    expect(score).toBeGreaterThanOrEqual(0.3);
+  });
+
   it('should return 0 when no keywords match title or description', () => {
     const item = makeItem('Quantum Computing Algorithms', 'Novel approaches to qubit entanglement');
 

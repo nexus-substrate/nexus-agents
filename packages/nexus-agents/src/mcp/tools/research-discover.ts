@@ -288,29 +288,38 @@ async function discoverFromExtendedSource(
  * Exported for testability.
  */
 export function computeRelevanceScore(item: DiscoveredItem, topic: string): number {
-  const keywords = topic
-    .toLowerCase()
-    .split(/[\s,;+\-/]+/)
-    .filter((w) => w.length >= 3);
+  // Distinct keywords ≥3 chars. Dedupe so a repeated word doesn't skew the denominator.
+  const keywords = [
+    ...new Set(
+      topic
+        .toLowerCase()
+        .split(/[\s,;+\-/]+/)
+        .filter((w) => w.length >= 3)
+    ),
+  ];
 
   if (keywords.length === 0) return 1.0; // No keywords to filter against
 
   const titleLower = item.title.toLowerCase();
   const descLower = item.description.toLowerCase();
 
-  let titleMatches = 0;
-  let descMatches = 0;
+  let matched = 0; // keyword present in title OR description
+  let titleHits = 0; // keyword present in title
 
   for (const keyword of keywords) {
-    if (titleLower.includes(keyword)) titleMatches++;
-    if (descLower.includes(keyword)) descMatches++;
+    const inTitle = titleLower.includes(keyword);
+    if (inTitle || descLower.includes(keyword)) matched++;
+    if (inTitle) titleHits++;
   }
 
-  // Title matches worth 2x, description matches worth 1x
-  const weightedMatches = titleMatches * 2 + descMatches;
-  const maxPossible = keywords.length * 3; // 2 (title) + 1 (desc) per keyword
-
-  return Math.min(1.0, weightedMatches / maxPossible);
+  // Score by COVERAGE — the fraction of distinct topic keywords present — rather
+  // than the old `weightedMatches / (keywords.length * 3)`, which required every
+  // keyword in both title AND description and so drove every item below
+  // threshold for long/compound topics (#3541). Title hits get a bounded bonus
+  // so title matches still outrank description-only matches.
+  const coverage = matched / keywords.length;
+  const titleFraction = titleHits / keywords.length;
+  return Math.min(1.0, coverage * 0.8 + titleFraction * 0.2);
 }
 
 /** Scores and filters items by relevance, returning sorted results. Exported for testability. */
