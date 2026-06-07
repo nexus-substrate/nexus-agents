@@ -13,7 +13,12 @@
 import { createLogger } from '../core/index.js';
 
 import { resolveV2Config } from './v2-config.js';
-import type { PolicyEngine, PolicyDecision, PolicyContext } from './policy-engine.js';
+import type {
+  IPolicyEngine,
+  PolicyDecision,
+  PolicyContext,
+  PipelineStateSnapshot,
+} from './policy-engine.js';
 import type { IEventBus, PipelineEvent } from './event-types.js';
 
 const logger = createLogger({ component: 'PolicyEvaluator' });
@@ -27,7 +32,8 @@ export type PolicyMode = 'off' | 'warn' | 'block';
 
 /** Options for PolicyEvaluator. */
 export interface PolicyEvaluatorOptions {
-  readonly engine: PolicyEngine;
+  /** Only `listRules()` is consumed, so the interface — not the class — suffices. */
+  readonly engine: IPolicyEngine;
   readonly eventBus?: IEventBus;
   readonly mode?: PolicyMode;
 }
@@ -44,6 +50,118 @@ export interface PolicyViolation {
   readonly ruleId: string;
   readonly reason: string;
   readonly escalateTo?: string;
+}
+
+// ============================================================================
+// Stage-boundary gate enforcement (#3177)
+// ============================================================================
+
+/**
+ * Dedicated error thrown when a policy gate denies a stage boundary in BLOCK
+ * mode. Distinct from a generic `Error` so retry/telemetry can recognize a
+ * policy denial: it is non-retryable (a re-run with the same inputs will fail
+ * identically) and carries the offending gate id + the violations that fired.
+ *
+ * The executor catches this in `executeSingleNode`; the failure category
+ * coarsens to `permission`, which `defaultRetryable` marks non-retryable —
+ * so a policy block halts even under `continueOnFailure` (#3177 condition 3).
+ */
+export class PolicyBlockedError extends Error {
+  readonly gateId: string;
+  readonly violations: readonly PolicyViolation[];
+
+  constructor(gateId: string, violations: readonly PolicyViolation[]) {
+    const summary = violations.map((v) => v.ruleId).join(', ');
+    super(`Policy gate '${gateId}' blocked stage boundary (rules: ${summary || 'none'})`);
+    this.name = 'PolicyBlockedError';
+    this.gateId = gateId;
+    this.violations = violations;
+  }
+}
+
+/**
+ * Policy-enforcement bundle threaded to a compiled gate node (#3177).
+ *
+ * When attached to `PlanCompileOptions`, each policy gate node evaluates
+ * `evaluatePipelinePolicy` at runtime instead of being a no-op pass. When
+ * absent, gates stay no-op passes (back-compat).
+ */
+export interface GatePolicyEnforcement {
+  /** Engine whose rules are evaluated at the gate boundary. */
+  readonly engine: IPolicyEngine;
+  /**
+   * Snapshot of pipeline state available to policy rules (carries `trustTier`).
+   * Captured at compile time from the TaskContract metadata by the caller.
+   */
+  readonly pipelineState: PipelineStateSnapshot;
+  /** Optional event bus; policy.evaluated events are emitted on violations. */
+  readonly eventBus?: IEventBus;
+  /**
+   * Effective enforcement mode for gate nodes. WARN by default (#3177
+   * condition 1): a gate with no explicit mode does NOT halt, so a stage
+   * lacking trust metadata is not blocked out of the box. Block is opt-in.
+   */
+  readonly mode?: PolicyMode;
+}
+
+/** Identifies the gate boundary being enforced. */
+export interface GateEnforceTarget {
+  readonly gateId: string;
+  readonly taskId: string;
+  /** Type of the stage the gate guards (its `beforeStage`). */
+  readonly stageType: string;
+}
+
+/**
+ * Resolves the enforcement mode for a gate node. WARN by default (#3177
+ * condition 1) — NOT `block`, even though the V2 umbrella `getPolicyMode()`
+ * defaults to `block` in full mode. Block is opt-in via `NEXUS_POLICY_GATE_MODE`
+ * (or an explicit per-gate `mode`). This keeps legitimate stages from halting
+ * on missing trust metadata out of the box.
+ */
+export function getGateEnforcementMode(): PolicyMode {
+  const env = process.env['NEXUS_POLICY_GATE_MODE'];
+  if (env === 'off' || env === 'warn' || env === 'block') return env;
+  return 'warn';
+}
+
+/**
+ * Evaluates policy at a gate boundary and enforces the verdict (#3177).
+ *
+ * - OFF mode: skips evaluation entirely (no `listRules` call).
+ * - WARN mode (default): evaluates, emits/logs violations, but does NOT throw.
+ * - BLOCK mode + `!allowed`: throws {@link PolicyBlockedError}.
+ *
+ * `escalate` is treated as `block` (fail-closed) — there is no grounded
+ * gate-boundary HITL approval path that feeds a verdict back into policy
+ * re-evaluation today (#3177 condition 4 follow-up).
+ */
+export function enforceGatePolicy(
+  enforcement: GatePolicyEnforcement,
+  target: GateEnforceTarget
+): PolicyEvalResult {
+  const mode = enforcement.mode ?? getGateEnforcementMode();
+
+  const result = evaluatePipelinePolicy(
+    {
+      engine: enforcement.engine,
+      mode,
+      ...(enforcement.eventBus !== undefined ? { eventBus: enforcement.eventBus } : {}),
+    },
+    {
+      taskId: target.taskId,
+      stageId: target.gateId,
+      stageType: target.stageType,
+      pipelineState: enforcement.pipelineState,
+    }
+  );
+
+  // Only throw when the mode resolves to `block` AND the verdict denies
+  // (#3177 condition 2). In `warn`/`off` modes execution continues.
+  if (mode === 'block' && !result.allowed) {
+    throw new PolicyBlockedError(target.gateId, result.violations);
+  }
+  return result;
 }
 
 // ============================================================================

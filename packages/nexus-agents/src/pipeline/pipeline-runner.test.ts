@@ -12,7 +12,8 @@ import { PipelineRunner } from './pipeline-runner.js';
 import type { PipelineResult } from './pipeline-runner.js';
 import type { NodeResult } from '../orchestration/graph/graph-types.js';
 import { EventBus } from './event-bus.js';
-import type { PlanContract, StageSpec, TaskContract } from './task-contract.js';
+import { createDefaultPolicyEngine } from './policy-engine.js';
+import type { PlanContract, StageSpec, TaskContract, PolicyGateSpec } from './task-contract.js';
 
 // ============================================================================
 // Fixtures
@@ -489,5 +490,65 @@ describe('getDefaultRunsDir', () => {
       // No retryable failure → returns the previous result unchanged (no re-run).
       expect(result.value).toBe(previousResult);
     });
+  });
+});
+
+// ============================================================================
+// Policy gate enforcement halts even under continueOnFailure (#3177, condition 3)
+// ============================================================================
+
+const TRUST_GATE: PolicyGateSpec = {
+  id: 'gate-trust',
+  afterStage: 'analyze',
+  beforeStage: 'execute',
+  rules: ['trust-tier'],
+  onFail: 'block',
+};
+
+function makeGatedPlan(): PlanContract {
+  return makePlan({
+    stages: [
+      makeStage({ id: 'analyze', type: 'analyze' }),
+      makeStage({ id: 'execute', type: 'execute', dependencies: ['analyze'] }),
+    ],
+    policyGates: [TRUST_GATE],
+  });
+}
+
+describe('PipelineRunner policy block (#3177)', () => {
+  it('(g) policy block halts even under continueOnFailure', async () => {
+    const runner = new PipelineRunner();
+    const compiled = runner.compile(makeGatedPlan(), {
+      policyEnforcement: {
+        engine: createDefaultPolicyEngine(),
+        mode: 'block',
+        pipelineState: {}, // missing trust → untrusted → blocked
+      },
+    });
+    expect(compiled.ok).toBe(true);
+    if (!compiled.ok) return;
+
+    const result = await runner.execute(compiled.value, makeTask(), {
+      continueOnFailure: true,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // A policy block is non-retryable and must halt the pipeline even though
+    // continueOnFailure is enabled.
+    expect(result.value.success).toBe(false);
+    const executeStep = result.value.stepResults?.find((s) => s.stepId === 'execute');
+    expect(executeStep).toBeUndefined();
+  });
+
+  it('(a) runner throw-to-halt: a policy-blocked gate fails the run by default-off (no enforcement)', async () => {
+    // Without policyEnforcement, the gate stays a no-op pass (back-compat).
+    const runner = new PipelineRunner();
+    const compiled = runner.compile(makeGatedPlan());
+    expect(compiled.ok).toBe(true);
+    if (!compiled.ok) return;
+    const result = await runner.execute(compiled.value, makeTask());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.success).toBe(true);
   });
 });
