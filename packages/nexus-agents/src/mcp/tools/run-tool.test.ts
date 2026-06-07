@@ -5,11 +5,17 @@
 import { describe, it, expect } from 'vitest';
 import {
   routeGoal,
+  executeGoal,
   RunInputSchema,
   STRATEGY_ENTRYPOINT_TOOL,
   type RunResponse,
 } from './run-tool.js';
 import type { ExecutionStrategy } from '../../orchestration/meta-orchestrator.js';
+import {
+  createRecordingOutcomeSink,
+  MetaDispatchError,
+  type StrategyExecutorMap,
+} from '../../orchestration/meta-dispatcher.js';
 
 const ALL_STRATEGIES: ExecutionStrategy[] = [
   'single-shot',
@@ -66,5 +72,62 @@ describe('RunInputSchema', () => {
 
   it('rejects an unknown forceStrategy', () => {
     expect(RunInputSchema.safeParse({ goal: 'g', forceStrategy: 'nonsense' }).success).toBe(false);
+  });
+
+  it('accepts the execute flag', () => {
+    expect(RunInputSchema.safeParse({ goal: 'g', execute: true }).success).toBe(true);
+  });
+});
+
+describe('executeGoal (run increment B, #3575)', () => {
+  it('dispatches the selected strategy to its executor and records an outcome', async () => {
+    const sink = createRecordingOutcomeSink();
+    const executors: StrategyExecutorMap = {
+      'dev-pipeline': () => Promise.resolve({ completed: true }),
+    };
+    const res = await executeGoal(
+      { goal: 'implement the feature', forceStrategy: 'dev-pipeline', execute: true },
+      { executors, outcomeSink: sink }
+    );
+    expect(res.executed).toBe(true);
+    expect(res.strategy).toBe('dev-pipeline');
+    expect(res.result).toEqual({ completed: true });
+    expect(res.decisionId).toBeTruthy();
+    const outcomes = sink.getOutcomes();
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes[0]?.success).toBe(true);
+    expect(outcomes[0]?.decisionId).toBe(res.decisionId);
+  });
+
+  it('fails closed for a strategy with no wired executor (records failure)', async () => {
+    const sink = createRecordingOutcomeSink();
+    await executeGoal(
+      { goal: 'decide A or B', forceStrategy: 'consensus', execute: true },
+      { executors: {}, outcomeSink: sink }
+    ).then(
+      () => expect.fail('should have thrown'),
+      (err: unknown) => {
+        expect(err).toBeInstanceOf(MetaDispatchError);
+        expect((err as MetaDispatchError).code).toBe('no_executor');
+      }
+    );
+    expect(sink.getOutcomes()[0]?.success).toBe(false);
+  });
+
+  it('propagates an executor failure as MetaDispatchError (recorded)', async () => {
+    const sink = createRecordingOutcomeSink();
+    const executors: StrategyExecutorMap = {
+      'dev-pipeline': () => Promise.reject(new Error('pipeline blew up')),
+    };
+    await executeGoal(
+      { goal: 'implement the feature', forceStrategy: 'dev-pipeline', execute: true },
+      { executors, outcomeSink: sink }
+    ).then(
+      () => expect.fail('should have thrown'),
+      (err: unknown) => {
+        expect((err as MetaDispatchError).code).toBe('executor_failed');
+      }
+    );
+    expect(sink.getOutcomes()[0]?.failureReason).toContain('pipeline blew up');
   });
 });

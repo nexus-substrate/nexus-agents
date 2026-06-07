@@ -200,6 +200,18 @@ async function createStages(
   });
 }
 
+/**
+ * Run the dev pipeline for a plain goal string with default (real, non-simulated)
+ * settings. The strategy executor the unified `run` entry point dispatches to for
+ * the `dev-pipeline` strategy (#3575). Wires real agents via {@link createStages};
+ * never simulates votes (schema default `simulateVotes: false`).
+ */
+export async function runDevPipelineForGoal(goal: string): Promise<DevPipelineResult> {
+  const input = DevPipelineInputSchema.parse({ task: goal });
+  const stages = await createStages(input);
+  return runDevPipeline(goal, stages);
+}
+
 // ============================================================================
 // Tool Registration
 // ============================================================================
