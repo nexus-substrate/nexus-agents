@@ -1,5 +1,18 @@
 # nexus-agents
 
+## 2.125.19
+
+### Patch Changes
+
+- [#3666](https://github.com/nexus-substrate/nexus-agents/pull/3666) [`f9b73f9`](https://github.com/nexus-substrate/nexus-agents/commit/f9b73f9b65cdd8f47788687eb1021fda3c9d9054) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(capability-loop): consensus vote adapter for auto-remediation ([#3648](https://github.com/nexus-substrate/nexus-agents/issues/3648))
+
+  `makeVoteAdapter` is the `AutoRemediationDeps.vote` implementation — it runs a
+  REAL consensus vote (live voters, `simulateVotes` hard-forced false per [#2319](https://github.com/nexus-substrate/nexus-agents/issues/2319)) at
+  the priority-required algorithm via the canonical `executeVoting` path, mapping
+  the result to `{ approved, approvalPercentage }`. The voter proposal is the strict
+  typed plan rendering ([#3613](https://github.com/nexus-substrate/nexus-agents/issues/3613)). `buildVoteInput` (exported, tested) guarantees
+  no-simulation + correct strategy; the runner is injectable for unit tests.
+
 ## 2.125.18
 
 ### Patch Changes
