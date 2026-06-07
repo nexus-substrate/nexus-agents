@@ -38,6 +38,8 @@ import { getPipelineEventBus } from '../../pipeline/event-bus.js';
 import type { VoteRejectedSignalEvent } from '../../pipeline/event-types.js';
 import { REJECTION_CATEGORIES } from '../../consensus/types-core.js';
 import { emitFitnessDeclinedSignal } from './improvement-review-signals.js';
+import { improvementSignalsToTasks } from './improvement-remediation.js';
+import type { PipelineTask } from '../../pipeline/dev-pipeline.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 
 const execFileAsync = promisify(execFile);
@@ -116,6 +118,12 @@ export interface ImprovementReviewResponse {
   readonly window: string;
   readonly totalOutcomes: number;
   readonly signals: readonly ImprovementSignal[];
+  /**
+   * Remediation tasks derived from {@link signals} (#3540 capability-loop
+   * increment 1) — SUGGEST-ONLY: structured tasks for a reviewer to consider
+   * routing through the dev-pipeline. Nothing here is executed or auto-invoked.
+   */
+  readonly remediationTasks: readonly PipelineTask[];
   readonly issuesFiled: readonly { readonly signalKey: string; readonly issueUrl: string }[];
   readonly issuesSkipped: readonly { readonly signalKey: string; readonly reason: string }[];
 }
@@ -670,6 +678,9 @@ export async function runImprovementReview(
     window: windowLabel,
     totalOutcomes: windowed.length,
     signals,
+    // #3540 increment 1: surface remediation tasks derived from the signals
+    // (suggest-only — composes existing detection, no auto-invocation).
+    remediationTasks: improvementSignalsToTasks(signals),
     issuesFiled,
     issuesSkipped,
   };

@@ -33,6 +33,7 @@ const emptyResponse: ImprovementReviewResponse = {
   window: '7d',
   totalOutcomes: 0,
   signals: [],
+  remediationTasks: [],
   issuesFiled: [],
   issuesSkipped: [],
 };
