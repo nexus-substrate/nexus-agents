@@ -34,7 +34,6 @@
 
 import type { ILogger } from '../../core/index.js';
 import type { ImprovementSignal } from './improvement-review.js';
-import { isSecuritySignal } from './improvement-remediation-shadow.js';
 import { RemediationGuard, getRemediationGuard } from './improvement-remediation-guard.js';
 import {
   evaluateEnforceReadiness,
@@ -45,8 +44,16 @@ import {
 import {
   CapabilityLedger,
   parseRemediationPlan,
+  renderPlanAsResearch,
   type RemediationPlan,
 } from './improvement-remediation-capability.js';
+import {
+  classifySignalPriority,
+  consensusFor,
+  type ConsensusRequirement,
+  type RemediationPriority,
+} from './remediation-priority.js';
+import type { ConsensusAlgorithm } from '../../consensus/types-core.js';
 
 /** The three enforcement modes. */
 export type AutoRemediateMode = 'off' | 'audit' | 'enforce';
@@ -109,6 +116,24 @@ export interface AutoRemediationDeps {
    * auto-merges. `ledger` is in the IMPLEMENT phase (write+secrets, no untrusted).
    */
   implement(plan: RemediationPlan, ledger: CapabilityLedger): Promise<RemediationPrResult>;
+  /**
+   * Run consensus on a remediation proposal at the priority-required algorithm
+   * (#3653) — this REPLACES the old security/human gate. The real impl wraps
+   * `consensus_vote` with live voters; voter input must be sanitized (the plan is
+   * a strict typed artifact, #3613).
+   */
+  vote(input: { proposal: string; algorithm: ConsensusAlgorithm }): Promise<{
+    approved: boolean;
+    approvalPercentage: number;
+  }>;
+  /**
+   * Optional audit-mode dry-run, required for p0 before a real PR (#3653). Runs
+   * the pipeline plan-only with no writes; must return ok before IMPLEMENT.
+   */
+  dryRun?(
+    plan: RemediationPlan,
+    ledger: CapabilityLedger
+  ): Promise<{ ok: boolean; detail: string }>;
   /** Record the remediation outcome seed for later Goodhart-resistant assessment (#3616). */
   recordOutcome?(plan: RemediationPlan, pr: RemediationPrResult): void;
   /** Per-step audit emission. */
@@ -223,13 +248,17 @@ async function admitAndExecute(
       });
       continue;
     }
-    const admit = admitSignal(signal, guard, now);
-    if (admit !== null) {
-      skipped.push({ signalKey: signal.signalKey, reason: admit });
-      deps.audit({ step: 'skip', signalKey: signal.signalKey, detail: admit });
+    const admission = admitSignal(signal, guard, now);
+    if (!admission.admit) {
+      skipped.push({ signalKey: signal.signalKey, reason: admission.reason });
+      deps.audit({ step: 'skip', signalKey: signal.signalKey, detail: admission.reason });
       continue;
     }
-    const outcome = await executeOne(signal, deps, mode, guard, now);
+    const outcome = await executeOne(signal, deps, mode, {
+      guard,
+      now,
+      requirement: admission.requirement,
+    });
     if (outcome.error !== undefined) {
       skipped.push({ signalKey: signal.signalKey, reason: outcome.error });
       continue;
@@ -241,29 +270,81 @@ async function admitAndExecute(
   return { mode, considered: signals.length, skipped, plans, remediated };
 }
 
-/** Fail-closed admission: security → human-gate; runaway guard. Returns a skip reason or null. */
-function admitSignal(
-  signal: ImprovementSignal,
-  guard: RemediationGuard,
-  now: number
-): string | null {
-  if (isSecuritySignal(signal)) return 'security-related — human-gated (never auto-remediated)';
+/** Outcome of admission: admitted (with its priority + consensus requirement) or skipped. */
+type Admission =
+  | {
+      readonly admit: true;
+      readonly priority: RemediationPriority;
+      readonly requirement: ConsensusRequirement;
+    }
+  | { readonly admit: false; readonly reason: string };
+
+/**
+ * Fail-closed admission (#3653): classify priority (security is always p0,
+ * fail-closed), drop p4 (file-only — never auto-remediated), then the runaway
+ * guard. The security HUMAN gate is gone — security now requires a p0 unanimous
+ * consensus vote downstream, per the ratified posture.
+ */
+function admitSignal(signal: ImprovementSignal, guard: RemediationGuard, now: number): Admission {
+  const priority = classifySignalPriority(signal);
+  const requirement = consensusFor(priority);
+  if (!requirement.autoRemediate) {
+    return { admit: false, reason: `${priority} — file-only (no auto-remediation)` };
+  }
   const decision = guard.canRemediate(signal.signalKey, now);
-  if (!decision.allowed) return `runaway guard: ${decision.detail}`;
+  if (!decision.allowed) return { admit: false, reason: `runaway guard: ${decision.detail}` };
+  return { admit: true, priority, requirement };
+}
+
+/**
+ * Consensus gate (#3653): run the priority-required vote on the plan; for p0 also
+ * require a green dry-run. Returns a skip reason, or null to proceed. Fail-closed:
+ * a rejected vote, a p0 with no dry-run capability, or a failed dry-run all skip.
+ */
+async function consensusGate(
+  signal: ImprovementSignal,
+  plan: RemediationPlan,
+  requirement: ConsensusRequirement,
+  ledger: CapabilityLedger,
+  deps: AutoRemediationDeps
+): Promise<string | null> {
+  const algorithm = requirement.algorithm;
+  if (algorithm === undefined) return 'no consensus algorithm for tier'; // p4 — shouldn't reach here
+  const proposal = `Auto-remediation for '${signal.signalKey}'.\n\n${renderPlanAsResearch(plan)}`;
+  const vote = await deps.vote({ proposal, algorithm });
+  deps.audit({
+    step: 'vote',
+    signalKey: signal.signalKey,
+    detail: `${algorithm}: ${vote.approved ? 'approved' : 'rejected'} (${String(Math.round(vote.approvalPercentage))}%)`,
+  });
+  if (!vote.approved) {
+    return `consensus ${algorithm} not reached (${String(Math.round(vote.approvalPercentage))}%) — left as an issue`;
+  }
+  if (requirement.requiresDryRun) {
+    if (deps.dryRun === undefined) return 'p0 requires a dry-run capability (fail-closed)';
+    const dry = await deps.dryRun(plan, ledger);
+    deps.audit({
+      step: 'dry-run',
+      signalKey: signal.signalKey,
+      detail: dry.ok ? 'ok' : dry.detail,
+    });
+    if (!dry.ok) return `p0 dry-run failed: ${dry.detail}`;
+  }
   return null;
 }
 
 /**
- * Execute the phase machine for one admitted signal. RESEARCH always runs;
- * IMPLEMENT runs only in enforce mode (audit stops after the plan — zero writes).
+ * Execute the phase machine for one admitted signal. RESEARCH always runs, then
+ * the consensus gate (#3653). In audit the vote is observed but IMPLEMENT is
+ * skipped (zero writes); enforce proceeds to the write phase only on approval.
  */
 async function executeOne(
   signal: ImprovementSignal,
   deps: AutoRemediationDeps,
   mode: AutoRemediateMode,
-  guard: RemediationGuard,
-  now: number
+  ctx: { guard: RemediationGuard; now: number; requirement: ConsensusRequirement }
 ): Promise<{ pr?: RemediationPrResult; error?: string }> {
+  const { guard, now, requirement } = ctx;
   const ledger = new CapabilityLedger();
   ledger.enterPhase('research');
   let plan: RemediationPlan;
@@ -280,7 +361,11 @@ async function executeOne(
     detail: `${String(plan.steps.length)} steps`,
   });
 
-  if (mode === 'audit') return {}; // stop before IMPLEMENT — no writes.
+  // Consensus gate replaces the human gate (#3653) — observed in audit too.
+  const blocked = await consensusGate(signal, plan, requirement, ledger, deps);
+  if (blocked !== null) return { error: blocked };
+
+  if (mode === 'audit') return {}; // approved in shadow, but stop before IMPLEMENT — no writes.
 
   // enforce: physically move to the write phase (untrusted-input now denied by the
   // ledger; the dev-pipeline's untrustedInputGuard fail-closes any fresh read, #3643).
