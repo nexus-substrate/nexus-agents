@@ -10,6 +10,7 @@
 
 import { z } from 'zod';
 import type { FullCapableProvider } from '../scm/types.js';
+import { FINDING_SEVERITY_LEVELS } from '../security/sarif-types.js';
 
 /**
  * Pull request file change information.
@@ -70,7 +71,7 @@ export interface PRMetadata {
 /**
  * Review severity levels.
  */
-export type ReviewSeverity = 'critical' | 'high' | 'medium' | 'low' | 'info';
+export type ReviewSeverity = (typeof FINDING_SEVERITY_LEVELS)[number];
 
 /**
  * Review category for organizing findings.
@@ -263,7 +264,7 @@ export const PRReviewConfigSchema = z.object({
     .default(['security', 'code_quality', 'testing']),
   maxDebateRounds: z.number().int().min(1).max(10).default(3),
   consensusThreshold: z.number().min(0).max(1).default(0.7),
-  minSeverity: z.enum(['critical', 'high', 'medium', 'low', 'info']).default('low'),
+  minSeverity: z.enum(FINDING_SEVERITY_LEVELS).default('low'),
   enableInlineComments: z.boolean().default(true),
   dryRun: z.boolean().default(false),
   enableReputation: z.boolean().default(true),
@@ -277,15 +278,14 @@ export const PRReviewConfigSchema = z.object({
 });
 
 /**
- * Severity order for comparison.
+ * Severity order for comparison. INVERTED vs sarif-types' SEVERITY_ORDER by
+ * design (higher = more severe here, for descending sort); only the KEY SET is
+ * shared. Derived from the canonical {@link FINDING_SEVERITY_LEVELS} so the keys
+ * can't drift (#3570): critical→5 … info→1.
  */
-export const SEVERITY_ORDER: Record<ReviewSeverity, number> = {
-  critical: 5,
-  high: 4,
-  medium: 3,
-  low: 2,
-  info: 1,
-};
+export const SEVERITY_ORDER: Record<ReviewSeverity, number> = Object.fromEntries(
+  FINDING_SEVERITY_LEVELS.map((level, index) => [level, FINDING_SEVERITY_LEVELS.length - index])
+) as Record<ReviewSeverity, number>;
 
 /**
  * Category display names.

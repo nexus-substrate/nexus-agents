@@ -13,13 +13,14 @@
  */
 
 import { z } from 'zod';
+import { FINDING_SEVERITY_LEVELS } from '../../security/sarif-types.js';
 import type { BuiltInExpertType } from '../experts/expert-config.js';
 
 /**
  * Security audit finding schema.
  */
 export const SecurityFindingSchema = z.object({
-  severity: z.enum(['critical', 'high', 'medium', 'low', 'info']),
+  severity: z.enum(FINDING_SEVERITY_LEVELS),
   title: z.string(),
   location: z.string().optional(),
   description: z.string(),
@@ -43,7 +44,7 @@ export const SecurityAuditOutputSchema = z.object({
  */
 export const CodeReviewItemSchema = z.object({
   category: z.enum(['bug', 'security', 'performance', 'style', 'suggestion']),
-  severity: z.enum(['critical', 'high', 'medium', 'low', 'info']),
+  severity: z.enum(FINDING_SEVERITY_LEVELS),
   file: z.string().optional(),
   line: z.number().optional(),
   description: z.string(),

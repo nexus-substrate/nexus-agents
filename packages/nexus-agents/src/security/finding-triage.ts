@@ -9,6 +9,7 @@
 
 import { z } from 'zod';
 import type { SecurityFinding } from './sarif-types.js';
+import { FINDING_SEVERITY_LEVELS } from './sarif-types.js';
 import { SEVERITY_ORDER } from './sarif-types.js';
 import { readFileSync } from 'node:fs';
 import { resolveInsideRoot } from './safe-path.js';
@@ -21,7 +22,7 @@ export const TriageVerdictSchema = z.object({
   confirmed: z.boolean(),
   confidence: z.number().min(0).max(1),
   reasoning: z.string().max(1000),
-  suggestedSeverity: z.enum(['critical', 'high', 'medium', 'low', 'info']),
+  suggestedSeverity: z.enum(FINDING_SEVERITY_LEVELS),
 });
 
 export type TriageVerdict = z.infer<typeof TriageVerdictSchema>;

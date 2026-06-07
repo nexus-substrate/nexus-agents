@@ -15,8 +15,17 @@ import { z } from 'zod';
 // Unified Security Finding Schema
 // ============================================================================
 
+/**
+ * Canonical 5-value finding-severity vocabulary (CVSS-aligned), most→least
+ * severe. THE single source of truth — every 5-value finding-severity zod enum
+ * (severity-consensus, finding-triage, agents/output-schemas, expert-types
+ * VulnerabilitySeverity) and both SEVERITY_ORDER maps derive from this (#3570).
+ * Tuple order is authoritative: SEVERITY_ORDER below maps it to ascending ranks.
+ */
+export const FINDING_SEVERITY_LEVELS = ['critical', 'high', 'medium', 'low', 'info'] as const;
+
 /** Severity levels aligned with CVSS and common scanner output. */
-export const FindingSeveritySchema = z.enum(['critical', 'high', 'medium', 'low', 'info']);
+export const FindingSeveritySchema = z.enum(FINDING_SEVERITY_LEVELS);
 export type FindingSeverity = z.infer<typeof FindingSeveritySchema>;
 
 /** A normalized security finding from any SARIF-compatible scanner. */
@@ -73,11 +82,10 @@ export const SARIF_LEVEL_MAP: Readonly<Record<string, FindingSeverity>> = {
   none: 'info',
 };
 
-/** Severity order for sorting (lower = more severe). */
-export const SEVERITY_ORDER: Readonly<Record<FindingSeverity, number>> = {
-  critical: 0,
-  high: 1,
-  medium: 2,
-  low: 3,
-  info: 4,
-};
+/**
+ * Severity order for sorting (lower = more severe). Derived from the canonical
+ * tuple so it can never drift from {@link FINDING_SEVERITY_LEVELS} (#3570).
+ */
+export const SEVERITY_ORDER: Readonly<Record<FindingSeverity, number>> = Object.fromEntries(
+  FINDING_SEVERITY_LEVELS.map((level, index) => [level, index])
+) as Record<FindingSeverity, number>;
