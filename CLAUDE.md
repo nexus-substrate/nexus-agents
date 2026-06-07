@@ -280,11 +280,13 @@ The "⏳ template" rows describe how to add the bridge when a concrete use case 
 
 Every piece of identified work — even work you're explicitly deferring — needs a **GitHub issue**. Memory notes, PR-description "follow-up" bullets, code TODOs, and conversation summaries are NOT tracking. They get forgotten. If the work isn't in an issue, it won't get done.
 
-Applies to: deferred follow-ups identified during a merged PR; scope cuts during planning; discovered bugs you're choosing not to fix inline; migrations / refactors / cleanup you've decided are worth doing but not right now.
+Applies to: deferred follow-ups identified during a merged PR; scope cuts during planning; discovered bugs you're choosing not to fix inline; migrations / refactors / cleanup you've decided are worth doing but not right now; **and — the most-forgotten case — dependency-blocked / sequenced work** ("do this once X lands", "increment B after increment A merges", "wait until the entry point feeds real data"). File blocked work the moment you name it, **not when the blocker clears** — waiting to file is exactly how it gets dropped. Record the blocking dependency and the unblock trigger in the body, and link it (e.g. "blocked by #N").
 
 Does NOT apply to: findings that fail the Discovered-Issues 4-point gate; speculative "what if" thinking with no concrete trigger (YAGNI); work the user explicitly told you to skip.
 
 Issue shape: title says what; body explains why it was identified, what would change, and the trigger condition that should unblock pickup. Memory notes can mirror but the issue is canonical.
+
+**Close the loop on unblock.** When you complete or merge a deliverable, search for work that was blocked on it (`gh issue list --search "#<id>"`, or the epic's child list) and pick up or re-prioritize whatever the completion just unblocked. The unblock trigger recorded in each blocked issue is the handoff — a finished dependency should _surface_ its dependents, not rely on you remembering them. A multi-step epic is only "tracked" if every step (including the not-yet-startable ones) has its own issue, not just a prose mention in the epic body.
 
 ## Autonomous operation
 
