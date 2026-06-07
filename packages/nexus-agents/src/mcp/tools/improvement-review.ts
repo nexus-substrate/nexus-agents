@@ -21,7 +21,7 @@ import { promisify } from 'node:util';
 /* eslint-disable max-lines */
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { createLogger, formatZodError, getErrorMessage } from '../../core/index.js';
+import { createLogger, formatZodError, getErrorMessage, type ILogger } from '../../core/index.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { withPrerequisite } from '../middleware/tool-prerequisites.js';
@@ -39,6 +39,7 @@ import type { VoteRejectedSignalEvent } from '../../pipeline/event-types.js';
 import { REJECTION_CATEGORIES } from '../../consensus/types-core.js';
 import { emitFitnessDeclinedSignal } from './improvement-review-signals.js';
 import { improvementSignalsToTasks } from './improvement-remediation.js';
+import { recordRemediationShadow } from './improvement-remediation-shadow.js';
 import type { PipelineTask } from '../../pipeline/dev-pipeline.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 
@@ -670,6 +671,10 @@ export async function runImprovementReview(
   // TuneStage (#3147; #3289 Option 2 — observability signals route through bus A).
   emitFitnessDeclinedSignal(audit, fitnessFloor, getPipelineEventBus(), logger);
 
+  // Shadow-mode auto-remediation selector (#3540 inc.2a / #3611): record the
+  // would-auto-remediate decision per signal. Logs only — executes nothing.
+  shadowRecordRemediations(signals, logger);
+
   const { issuesFiled, issuesSkipped } = fileIssues
     ? await fileSignalsAsIssues(signals, { logger } as HandlerContext)
     : { issuesFiled: [], issuesSkipped: [] };
@@ -684,6 +689,27 @@ export async function runImprovementReview(
     issuesFiled,
     issuesSkipped,
   };
+}
+
+/**
+ * Best-effort shadow logging of would-auto-remediate decisions (#3611). Never
+ * throws — observability must not break the review tool.
+ */
+function shadowRecordRemediations(signals: readonly ImprovementSignal[], logger: ILogger): void {
+  try {
+    const shadow = recordRemediationShadow(signals);
+    if (shadow.length === 0) return;
+    const wouldRemediate = shadow.filter((r) => r.wouldAutoRemediate).length;
+    logger.info('Auto-remediation shadow recorded (#3611 — nothing executed)', {
+      signals: shadow.length,
+      wouldAutoRemediate: wouldRemediate,
+      humanGated: shadow.length - wouldRemediate,
+    });
+  } catch (err) {
+    logger.warn('Auto-remediation shadow logging failed (non-fatal)', {
+      error: getErrorMessage(err),
+    });
+  }
 }
 
 async function reviewHandler(args: unknown, ctx: HandlerContext): Promise<ToolResult> {
