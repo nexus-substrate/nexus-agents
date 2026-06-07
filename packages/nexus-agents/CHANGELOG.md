@@ -1,5 +1,25 @@
 # nexus-agents
 
+## 2.125.10
+
+### Patch Changes
+
+- [#3645](https://github.com/nexus-substrate/nexus-agents/pull/3645) [`c005f67`](https://github.com/nexus-substrate/nexus-agents/commit/c005f67d1f27c8629c1b1b99399ad1e30162012b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(capability-loop): fail-closed untrusted-input boundary in the dev-pipeline ([#3643](https://github.com/nexus-substrate/nexus-agents/issues/3643))
+
+  Closes the Rule-of-Two hole the [#3618](https://github.com/nexus-substrate/nexus-agents/issues/3618) capstone vote surfaced: running the
+  dev-pipeline inside the IMPLEMENT phase (write+secrets) would let its research
+  stage perform a fresh untrusted read, coinciding all three legs. The dev-pipeline
+  now takes two opt-in `DevPipelineOptions` (default behavior unchanged):
+  - `untrustedInputGuard` — called at the RESEARCH chokepoint (the untrusted-read
+    site); the enforce path wires it to `CapabilityLedger.assertCapability('untrusted-input')`
+    so a fresh read in the IMPLEMENT phase throws `RuleOfTwoViolation` (fail-closed);
+  - `researchOverride` — runs the pipeline plan-only from the typed RemediationPlan
+    with no untrusted read.
+
+  Glue helpers `untrustedInputGuardFor(ledger)` and `renderPlanAsResearch(plan)`
+  connect the [#3613](https://github.com/nexus-substrate/nexus-agents/issues/3613) ledger to these hooks. Ship-blocking test: an IMPLEMENT-phase
+  ledger fail-closes a dev-pipeline untrusted read. Unblocks [#3618](https://github.com/nexus-substrate/nexus-agents/issues/3618).
+
 ## 2.125.9
 
 ### Patch Changes
