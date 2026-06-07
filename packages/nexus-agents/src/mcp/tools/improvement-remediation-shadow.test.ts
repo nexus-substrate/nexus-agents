@@ -10,6 +10,7 @@ import {
   createRemediationShadowSink,
   summarizeRemediationShadow,
   getRemediationShadowSink,
+  isSecuritySignal,
   type RemediationShadowRecord,
 } from './improvement-remediation-shadow.js';
 import type { ImprovementSignal, SignalCategory } from './improvement-review.js';
@@ -38,6 +39,60 @@ describe('evaluateRemediationShadow', () => {
     const rec = evaluateRemediationShadow(signal({ category: 'security', signalKey: 'sec-1' }));
     expect(rec.wouldAutoRemediate).toBe(false);
     expect(rec.reason).toMatch(/security-category — always human-gated/);
+  });
+
+  // #3615: fail-closed — a security issue mislabeled by a detector (category !==
+  // 'security') must STILL be human-gated if its text reveals it's security.
+  it('fail-closes a mis-categorized security signal (keyword match → human-gate)', () => {
+    const rec = evaluateRemediationShadow(
+      signal({
+        category: 'bug', // detector got the category wrong
+        signalKey: 'bug:failure-concentration:auth',
+        title: 'bug: 70% of failures share category `authentication`',
+        body: 'A possible credentials/injection vulnerability surfaced.',
+      })
+    );
+    expect(rec.wouldAutoRemediate).toBe(false);
+    expect(rec.reason).toMatch(/security-related \(keyword match/);
+  });
+
+  it('does NOT gate a genuinely non-security signal', () => {
+    const rec = evaluateRemediationShadow(
+      signal({
+        category: 'routing',
+        signalKey: 'routing:cli-floor:codex:documentation',
+        title: 'routing: codex model-quality success 30% on documentation',
+        body: 'Observed model-quality performance floor breach.',
+      })
+    );
+    expect(rec.wouldAutoRemediate).toBe(true);
+  });
+});
+
+describe('isSecuritySignal (fail-closed classifier #3615)', () => {
+  it('true for declared security category', () => {
+    expect(isSecuritySignal(signal({ category: 'security' }))).toBe(true);
+  });
+
+  it('true when a security keyword appears in any field, despite non-security category', () => {
+    expect(isSecuritySignal(signal({ category: 'bug', title: 'XSS in render path' }))).toBe(true);
+    expect(isSecuritySignal(signal({ category: 'tech-debt', body: 'leaks credentials' }))).toBe(
+      true
+    );
+    expect(isSecuritySignal(signal({ category: 'routing', signalKey: 'auth-floor' }))).toBe(true);
+  });
+
+  it('false for a clearly non-security signal', () => {
+    expect(
+      isSecuritySignal(
+        signal({
+          category: 'routing',
+          signalKey: 'routing:cli-floor:x',
+          title: 'slow docs',
+          body: 'latency',
+        })
+      )
+    ).toBe(false);
   });
 });
 
