@@ -81,7 +81,9 @@ export const PIPELINE_TEMPLATES: ReadonlyMap<string, PipelineTemplate> = new Map
   // implementation and the order was incoherent, so it could never run.
   // Research-classified tasks fall back to `general`/`dev` (#3489), which
   // already cover research → plan → vote. The complete-but-unwired
-  // `runResearchPipeline` subsystem (#1711) is a separate decision — see #3492.
+  // `runResearchPipeline` subsystem (#1711) was removed as dead lineage in
+  // #3492 (consensus_vote 5/0) — superseded by these templates + the
+  // MetaOrchestrator `research` strategy routing to `run_pipeline`.
   ['audit', AUDIT_PIPELINE_TEMPLATE],
   ['greenfield', GREENFIELD_PIPELINE_TEMPLATE],
   ['general', GENERAL_PIPELINE_TEMPLATE],
