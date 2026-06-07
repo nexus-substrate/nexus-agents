@@ -26,6 +26,11 @@
  * @module mcp/tools/improvement-remediation-guard
  */
 
+// @export-no-consumer-yet — see #3618
+// This guard is one of the hard-blocker safety primitives the enforce capstone
+// (#3618) is explicitly "blocked by"; it is consumed there once all of
+// inc.2b–inc.2g have landed. Built ahead deliberately (named near-term consumer).
+
 /** Tuning for {@link RemediationGuard}. All durations in milliseconds. */
 export interface RemediationGuardConfig {
   /** Minimum time before the same signalKey may be attempted again (idempotency). */
