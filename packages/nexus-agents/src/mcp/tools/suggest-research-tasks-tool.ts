@@ -20,7 +20,7 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
-import { createLogger, formatZodError, type ILogger } from '../../core/index.js';
+import { createLogger, formatZodError, getErrorMessage, type ILogger } from '../../core/index.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler } from '../middleware/secure-handler.js';
 import {
@@ -44,6 +44,34 @@ import type { PipelineTask } from '../../pipeline/dev-pipeline.js';
 export const SUGGEST_RESEARCH_TASKS_NOTE =
   'Suggestions derived from external research (untrusted); review before acting — ' +
   'nothing was executed or filed.';
+
+/**
+ * Internal budget for the research-discovery path (#3606). Kept well under the
+ * MCP tool-wrapper timeout so a slow/failing research call returns PARTIAL
+ * results (the synchronous gap candidates) rather than timing out the whole tool.
+ */
+const RESEARCH_BUDGET_MS = 20_000;
+
+/** Sentinel returned by {@link withResearchBudget} when the budget elapses. */
+const RESEARCH_TIMED_OUT = Symbol('research-budget-exceeded');
+
+/** Races a promise against the research budget; resolves to the sentinel on timeout. */
+async function withResearchBudget<T>(
+  p: Promise<T>,
+  ms: number
+): Promise<T | typeof RESEARCH_TIMED_OUT> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const budget = new Promise<typeof RESEARCH_TIMED_OUT>((resolve) => {
+    timer = setTimeout(() => {
+      resolve(RESEARCH_TIMED_OUT);
+    }, ms);
+  });
+  try {
+    return await Promise.race([p, budget]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
 
 export const SuggestResearchTasksInputSchema = z.object({
   topic: z.string().optional().describe('Topic filter passed to research_discover. Optional.'),
@@ -77,6 +105,11 @@ export interface SuggestResearchTasksResponse {
   readonly gapCandidates: readonly PipelineTask[];
   readonly count: number;
   readonly note: string;
+  /**
+   * True when the research-discovery path exceeded its internal budget (#3606)
+   * and `candidates` is therefore empty; `gapCandidates` are still returned.
+   */
+  readonly researchTimedOut?: boolean;
 }
 
 export type SuggestResearchTasksDeps = BaseMcpToolDeps;
@@ -101,13 +134,9 @@ async function suggestResearchTasksHandler(args: unknown, logger: ILogger): Prom
     });
   }
 
-  // The engine enforces threshold/max/topic/dedup guardrails and returns []
-  // when the research expert is unavailable (graceful degradation). It builds
-  // task objects in memory only — no GitHub / execution side effects.
-  const candidates = await checkForResearchTriggers(toTriggerConfig(parsed.data));
-
   // Capability-gap-driven suggestions from the in-process ledger (#3576) — the
   // human-gated front of "gap → MetaOrchestrator". Synchronous, side-effect-free.
+  // Computed FIRST so the slow research path can never block it (#3606).
   const existingTaskIds =
     parsed.data.existingTaskIds !== undefined ? new Set(parsed.data.existingTaskIds) : undefined;
   const gapCandidates = checkForCapabilityGapTriggers({
@@ -115,9 +144,32 @@ async function suggestResearchTasksHandler(args: unknown, logger: ILogger): Prom
     ...(existingTaskIds !== undefined ? { existingTaskIds } : {}),
   });
 
+  // Research candidates hit external APIs (arXiv/GitHub/…) and can be slow. Bound
+  // them with an internal budget well under the MCP wrapper timeout so a slow or
+  // failing research path returns PARTIAL results (the gap candidates) instead of
+  // timing out the whole tool and losing them too (#3606). The engine already
+  // returns [] when the research expert is unavailable; this also covers latency.
+  const research = await withResearchBudget(
+    checkForResearchTriggers(toTriggerConfig(parsed.data)).catch((err: unknown) => {
+      logger.warn('Research trigger failed; returning gap candidates only', {
+        error: getErrorMessage(err),
+      });
+      return [] as readonly PipelineTask[];
+    }),
+    RESEARCH_BUDGET_MS
+  );
+  const researchTimedOut = research === RESEARCH_TIMED_OUT;
+  const candidates = researchTimedOut ? [] : research;
+  if (researchTimedOut) {
+    logger.warn('Research discovery exceeded budget; returning gap candidates only (#3606)', {
+      budgetMs: RESEARCH_BUDGET_MS,
+    });
+  }
+
   logger.info('Suggested research tasks', {
     count: candidates.length,
     gapCount: gapCandidates.length,
+    researchTimedOut,
   });
 
   const response: SuggestResearchTasksResponse = {
@@ -125,6 +177,7 @@ async function suggestResearchTasksHandler(args: unknown, logger: ILogger): Prom
     gapCandidates,
     count: candidates.length + gapCandidates.length,
     note: SUGGEST_RESEARCH_TASKS_NOTE,
+    ...(researchTimedOut ? { researchTimedOut: true } : {}),
   };
   return toolSuccess(JSON.stringify(response, null, 2));
 }
