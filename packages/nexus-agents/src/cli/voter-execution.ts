@@ -240,76 +240,89 @@ export function extractTextFromResponse(content: unknown): string {
  * This ensures we only get real LLM votes, not synthetic fallbacks.
  * (Source: Issue #512 - Fail-safe voting)
  */
+/**
+ * Builds the vote completion request. `withResponseFormat` toggles the native
+ * structured-output ask (#3433): on for the first attempt, off for the #3497
+ * retry against backends that route `json_schema` through provider tool-use.
+ * The `parseVoteResponse` regex/Zod path below accepts prose-wrapped JSON, so
+ * omitting `responseFormat` is safe — it just loses the schema-enforced shape.
+ */
+function buildVoteRequest(
+  role: VoterRole,
+  proposal: string,
+  timeoutMs: number,
+  withResponseFormat: boolean
+): CompletionRequest {
+  const base: CompletionRequest = {
+    messages: [
+      { role: 'system', content: VOTER_SYSTEM_PROMPTS[role] },
+      { role: 'user', content: buildVotePrompt(proposal) },
+    ],
+    // 2000 (#2245): JSON envelope + reasoning + YAML findings exceed the old 500.
+    maxTokens: 2000,
+    temperature: 0.3, // Low temperature for consistent evaluations
+    // Thread the vote budget so the CLI timeout doesn't fire first (#3304); pass
+    // signal too for CLI-vs-API cancellation parity (#3036/#3304).
+    timeoutMs,
+    signal: AbortSignal.timeout(timeoutMs),
+  };
+  return withResponseFormat
+    ? { ...base, responseFormat: { type: 'json_schema', schema: VOTE_JSON_SCHEMA } }
+    : base;
+}
+
+/**
+ * #3497: some backends don't silently ignore an unsupported `responseFormat`.
+ * OpenRouter implements `json_schema` via provider tool-use, so a role routed to
+ * a provider without tool-use returns a hard 404 "No endpoints found that
+ * support tool use" instead of ignoring the field — silently shrinking the panel
+ * (observed on devex/catfish). Detect it so the caller retries without it.
+ */
+function isStructuredOutputUnsupported(errorMessage: string): boolean {
+  return /support tool use/i.test(errorMessage);
+}
+
+/** One completion attempt: build → complete (timeout-bounded) → extract text. */
+async function runVoteCompletion(
+  role: VoterRole,
+  proposal: string,
+  adapter: IModelAdapter,
+  timeoutMs: number,
+  withResponseFormat: boolean
+): Promise<{ ok: true; output: string } | { ok: false; error: string }> {
+  const request = buildVoteRequest(role, proposal, timeoutMs, withResponseFormat);
+  const timeoutResult = await withTimeout(
+    adapter.complete(request),
+    timeoutMs,
+    `Vote timeout after ${String(timeoutMs)}ms for role: ${role}`
+  );
+  if (!timeoutResult.ok) return { ok: false, error: timeoutResult.error };
+  const response = timeoutResult.value;
+  if (!response.ok) return { ok: false, error: response.error.message };
+  return { ok: true, output: extractTextFromResponse(response.value.content) };
+}
+
 export async function executeSingleVoteAttempt(
   role: VoterRole,
   proposal: string,
   adapter: IModelAdapter,
   timeoutMs: number
 ): Promise<{ ok: true; vote: Vote; output: string } | { ok: false; error: string }> {
-  const request: CompletionRequest = {
-    messages: [
-      { role: 'system', content: VOTER_SYSTEM_PROMPTS[role] },
-      { role: 'user', content: buildVotePrompt(proposal) },
-    ],
-    // 500 was correct for short proposal-style votes but caused mid-string
-    // truncation ("Unterminated string in JSON at position N") in #2241 v3
-    // when voters review code diffs — the JSON envelope + reasoning + YAML
-    // findings block routinely exceed 500 tokens. Bumped to 2000 (#2245);
-    // refine per use case if needed.
-    maxTokens: 2000,
-    temperature: 0.3, // Low temperature for consistent evaluations
-    // #3433: request native structured output (Claude tool_use / OpenAI+Gemini
-    // json mode) so the vote arrives as a schema-valid JSON object instead of
-    // prose-wrapped JSON. When an adapter DOES honor it, the
-    // extractTextFromResponse + parseVoteResponse regex/Zod path below still
-    // accepts the result, so it's also the fallback for prose-returning backends.
-    //
-    // CAVEAT (#3497): not every backend "silently ignores" an unsupported
-    // responseFormat. OpenRouter implements `json_schema` via provider tool-use,
-    // so a role routed to a provider without tool-use returns a hard
-    // 404 "No endpoints found that support tool use" rather than ignoring the
-    // field. Those voters then error → abstain (the panel degrades to the
-    // succeeding voters). The real fix — gate `responseFormat` on a model
-    // structured-output capability, or retry-without-it on that 404 — is tracked
-    // in #3497; this comment no longer claims a universal "no behavior change".
-    responseFormat: { type: 'json_schema', schema: VOTE_JSON_SCHEMA },
-    // Thread the vote's budget into the adapter so its shorter standard CLI
-    // timeout doesn't fire first and surface as an MCP -32001 on slow voters
-    // (e.g. the Security role on complex proposals) (#3304).
-    timeoutMs,
-    // CLI adapters honor `timeoutMs`; API adapters honor `signal` (#3036). Pass
-    // both so the slow voter is cancelled cleanly at the vote budget regardless
-    // of backing (CLI subprocess SIGTERM'd via #3026, API SDK call aborted) —
-    // CLI-vs-API parity for the vote timeout (#3304).
-    signal: AbortSignal.timeout(timeoutMs),
-  };
-
-  const timeoutResult = await withTimeout(
-    adapter.complete(request),
-    timeoutMs,
-    `Vote timeout after ${String(timeoutMs)}ms for role: ${role}`
-  );
-
-  if (!timeoutResult.ok) {
-    return { ok: false, error: timeoutResult.error };
+  let completion = await runVoteCompletion(role, proposal, adapter, timeoutMs, true);
+  // #3497: retry once WITHOUT responseFormat when the backend rejects the
+  // tool-use-backed structured-output ask, so the panel keeps full strength.
+  if (!completion.ok && isStructuredOutputUnsupported(completion.error)) {
+    completion = await runVoteCompletion(role, proposal, adapter, timeoutMs, false);
   }
-
-  const response = timeoutResult.value;
-
-  if (!response.ok) {
-    return { ok: false, error: response.error.message };
-  }
-
-  const output = extractTextFromResponse(response.value.content);
+  if (!completion.ok) return { ok: false, error: completion.error };
 
   try {
-    // parseVoteResponse throws SyntheticVoteError by default if parsing fails
-    // This ensures we only accept real LLM votes, not synthetic fallbacks
-    const vote = parseVoteResponse(output, role);
-    return { ok: true, vote, output };
+    // parseVoteResponse throws SyntheticVoteError if parsing fails — we only
+    // accept real LLM votes, not synthetic fallbacks.
+    const vote = parseVoteResponse(completion.output, role);
+    return { ok: true, vote, output: completion.output };
   } catch (error) {
     if (error instanceof SyntheticVoteError) {
-      // Parsing failed - return error to trigger retry
       return { ok: false, error: `Vote parsing failed: ${error.message}` };
     }
     throw error; // Re-throw unexpected errors

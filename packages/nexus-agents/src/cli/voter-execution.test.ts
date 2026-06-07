@@ -459,6 +459,47 @@ describe('voter-execution', () => {
       expect(request.responseFormat?.schema).toBeDefined();
     });
 
+    it('retries WITHOUT responseFormat on a tool-use-unsupported 404 and succeeds (#3497)', async () => {
+      const toolUse404: MockCompletionResult = {
+        ok: false,
+        error: new ModelError('No endpoints found that support tool use. Try disabling "bash".'),
+      };
+      const success: MockCompletionResult = {
+        ok: true,
+        value: {
+          content: [{ type: 'text', text: VALID_VOTE_JSON }],
+          usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
+          stopReason: 'end_turn',
+          model: 'test-model',
+        },
+      };
+      vi.mocked(mockAdapter.complete)
+        .mockResolvedValueOnce(toolUse404)
+        .mockResolvedValueOnce(success);
+
+      const result = await executeSingleVoteAttempt('devex', 'Test proposal', mockAdapter, 5000);
+
+      expect(result.ok).toBe(true);
+      const calls = vi.mocked(mockAdapter.complete).mock.calls;
+      expect(calls).toHaveLength(2);
+      // First attempt asks for structured output; the retry omits it.
+      expect((calls[0]?.[0] as { responseFormat?: unknown }).responseFormat).toBeDefined();
+      expect((calls[1]?.[0] as { responseFormat?: unknown }).responseFormat).toBeUndefined();
+    });
+
+    it('does NOT retry on a non-tool-use error (#3497)', async () => {
+      const genericError: MockCompletionResult = {
+        ok: false,
+        error: new ModelError('Rate limit exceeded (429)'),
+      };
+      vi.mocked(mockAdapter.complete).mockResolvedValue(genericError);
+
+      const result = await executeSingleVoteAttempt('catfish', 'Test proposal', mockAdapter, 5000);
+
+      expect(result.ok).toBe(false);
+      expect(vi.mocked(mockAdapter.complete).mock.calls).toHaveLength(1);
+    });
+
     it('still parses a structured-output vote object the same as prose JSON (fallback parity)', async () => {
       // Whether the vote arrives via native structured output or the regex
       // fallback, the content is JSON text and parses identically (#3433).
