@@ -15,6 +15,7 @@ import {
 } from './v2-delegate.js';
 import type { DelegateInputLike } from './v2-delegate.js';
 import type { TaskContract } from './task-contract.js';
+import type { IPolicyEngine } from './policy-engine.js';
 
 // ============================================================================
 // Fixtures
@@ -253,5 +254,153 @@ describe('executeDelegatePipeline — policy enforcement', () => {
     const metrics = await executeDelegatePipeline(contract);
     expect(metrics.policyBlocked).toBeUndefined();
     expect(metrics.compiled).toBe(true);
+  });
+});
+
+// ============================================================================
+// Activation: stage-boundary policy enforcement in production (#3703)
+// ============================================================================
+
+describe('createDelegatePipeline — policy gate activation (#3703)', () => {
+  const savedGateMode = process.env['NEXUS_POLICY_GATE_MODE'];
+
+  afterEach(() => {
+    if (savedGateMode !== undefined) process.env['NEXUS_POLICY_GATE_MODE'] = savedGateMode;
+    else delete process.env['NEXUS_POLICY_GATE_MODE'];
+  });
+
+  it('(a) produces a plan with a non-empty policy gate guarding the route stage', () => {
+    const result = createDelegatePipeline(makeTask());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.plan.policyGates.length).toBeGreaterThan(0);
+    const gate = result.value.plan.policyGates[0]!;
+    expect(gate.beforeStage).toBe('route-model');
+    expect(gate.rules.length).toBeGreaterThan(0);
+    // The gate node is compiled into the graph (not a dangling spec).
+    expect(result.value.graph.nodes.has(gate.id)).toBe(true);
+  });
+
+  it('(a) the compiled gate runs in default WARN mode (gate node executes, passes)', async () => {
+    delete process.env['NEXUS_POLICY_GATE_MODE']; // default warn
+    const pipeline = createDelegatePipeline(makeTask());
+    expect(pipeline.ok).toBe(true);
+    if (!pipeline.ok) return;
+    const { PipelineRunner } = await import('./pipeline-runner.js');
+    const result = await new PipelineRunner().execute(pipeline.value, makeTask());
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.success).toBe(true);
+  });
+
+  it('(b) WARN mode never throws + emits a policy event even when a rule denies', async () => {
+    // Inject an always-denying engine through the enforcement bundle and run the
+    // compiled gate in warn mode. WARN must NOT throw and MUST emit one event.
+    const { compilePlan } = await import('./plan-compiler.js');
+    const { executeGraph } = await import('../orchestration/graph/graph-executor.js');
+    const { EventBus } = await import('./event-bus.js');
+    const { buildDelegatePlan, buildWarnPolicyEnforcement } = await import('./v2-delegate.js');
+
+    const bus = new EventBus();
+    const denyDecision = { allow: false as const, reason: 'denied for test' };
+    const denyEngine: IPolicyEngine = {
+      registerRule: () => {},
+      evaluate: () => denyDecision,
+      listRules: () => [{ id: 'always-deny', priority: 0, evaluate: () => denyDecision }],
+    };
+    const plan = buildDelegatePlan(makeTask());
+    const compiled = compilePlan(plan, {
+      policyEnforcement: buildWarnPolicyEnforcement(makeTask(), {
+        engine: denyEngine,
+        eventBus: bus,
+      }),
+    });
+    expect(compiled.ok).toBe(true);
+    if (!compiled.ok) return;
+    const result = await executeGraph(compiled.value, {}, { timeout: 5000 });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // Gate did NOT halt the pipeline (warn) — route stage still ran.
+    const stageNode = result.value.nodeResults.find((r) => r.nodeId === 'route-model');
+    expect(stageNode?.status).toBe('success');
+    // Exactly one event per denying rule per gate run — bounded, non-flooding.
+    const policyEvents = bus.query({}).filter((e) => e.type === 'policy.evaluated');
+    expect(policyEvents).toHaveLength(1);
+  });
+
+  it('(d) BLOCK mode (opt-in) still throws on a denying rule (regression of #3177)', async () => {
+    const { enforceGatePolicy, PolicyBlockedError } = await import('./policy-evaluator.js');
+    const { buildWarnPolicyEnforcement } = await import('./v2-delegate.js');
+    const denyDecision = { allow: false as const, reason: 'denied' };
+    const denyEngine: IPolicyEngine = {
+      registerRule: () => {},
+      evaluate: () => denyDecision,
+      listRules: () => [{ id: 'always-deny', priority: 0, evaluate: () => denyDecision }],
+    };
+    const bundle = {
+      ...buildWarnPolicyEnforcement(makeTask(), { engine: denyEngine }),
+      mode: 'block' as const,
+    };
+    expect(() =>
+      enforceGatePolicy(bundle, { gateId: 'g', taskId: 't', stageType: 'route' })
+    ).toThrow(PolicyBlockedError);
+  });
+});
+
+// ============================================================================
+// Blast-radius: a non-v2-delegate compilePlan caller is UNAFFECTED (#3703)
+// ============================================================================
+
+describe('blast radius — compilePlan default unchanged (#3703)', () => {
+  it('(c) compilePlan without policyEnforcement → gate node is a no-op pass', async () => {
+    const { compilePlan } = await import('./plan-compiler.js');
+    const { executeGraph } = await import('../orchestration/graph/graph-executor.js');
+
+    // A gated plan compiled with NO policyEnforcement (the shared default for
+    // every non-v2-delegate caller). The gate must stay a no-op pass — it does
+    // not call the evaluator, emit events, or throw.
+    const plan = {
+      taskId: 'other-caller',
+      stages: [
+        {
+          id: 'analyze',
+          type: 'analyze' as const,
+          pluginId: 'nexus:x',
+          inputArtifacts: [],
+          outputArtifacts: [],
+          dependencies: [],
+          config: {},
+        },
+        {
+          id: 'execute',
+          type: 'execute' as const,
+          pluginId: 'nexus:y',
+          inputArtifacts: [],
+          outputArtifacts: [],
+          dependencies: ['analyze'],
+          config: {},
+        },
+      ],
+      policyGates: [
+        {
+          id: 'g1',
+          afterStage: 'analyze',
+          beforeStage: 'execute',
+          rules: ['trust-tier'],
+          onFail: 'warn' as const,
+        },
+      ],
+      estimatedCost: { totalTokensIn: 0, totalTokensOut: 0, estimatedCostUsd: 0, modelCalls: 0 },
+      approvalRequired: false,
+      maxIterations: 1,
+      timeoutMs: 30_000,
+    };
+    const compiled = compilePlan(plan); // <-- no policyEnforcement
+    expect(compiled.ok).toBe(true);
+    if (!compiled.ok) return;
+    const result = await executeGraph(compiled.value, {}, { timeout: 5000 });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const gate = result.value.nodeResults.find((r) => r.nodeId === 'g1');
+    expect(gate?.status).toBe('success'); // no-op pass, did not throw/evaluate
   });
 });

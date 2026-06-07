@@ -182,7 +182,8 @@ function addGateNodes(
 ): void {
   // Map each stage id to its type so a gate can report the type of the stage
   // it guards (its `beforeStage`) to the policy rules (the trust-tier rule
-  // only blocks `execute`-type stages).
+  // only blocks `execute`-type stages). An entry gate (`afterStage === START`)
+  // guards a no-dependency stage and still reports that stage's real type.
   const stageTypeById = new Map(plan.stages.map((s) => [s.id, s.type]));
   for (const gate of gates) {
     const stageType = stageTypeById.get(gate.beforeStage) ?? 'gate';
@@ -196,7 +197,8 @@ function addGateNodes(
  * Logic:
  * 1. If a gate exists afterStage→beforeStage, insert gate node between
  * 2. Otherwise, add direct dependency edge
- * 3. Stages with no dependencies get START→stage edges
+ * 3. Stages with no dependencies get START→stage edges — or START→gate→stage
+ *    when an entry gate (`afterStage === START`) guards that stage (#3703)
  * 4. Stages with no dependents get stage→END edges
  */
 function addEdges(
@@ -228,10 +230,20 @@ function addEdges(
     }
   }
 
-  // Stages with no dependencies → START edges
+  // Stages with no dependencies → START edges. An entry gate keyed
+  // `START→stage` (#3703) is interposed so the boundary is policy-evaluated
+  // before the entry stage runs; otherwise a direct START→stage edge.
   for (const stage of stages) {
     if (stage.dependencies.length === 0) {
-      builder.addEdge(START, stage.id);
+      const gateKey = `${START}→${stage.id}`;
+      const gate = gateMap.get(gateKey);
+      if (gate !== undefined) {
+        builder.addEdge(START, gate.id);
+        builder.addEdge(gate.id, stage.id);
+        gateMap.delete(gateKey); // consumed
+      } else {
+        builder.addEdge(START, stage.id);
+      }
     }
   }
 

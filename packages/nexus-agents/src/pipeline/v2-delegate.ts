@@ -18,7 +18,12 @@ import { createLogger } from '../core/index.js';
 import { PipelineRunner } from './pipeline-runner.js';
 import { getPipelineEventBus } from './event-bus.js';
 import { createDefaultPolicyEngine, type PipelineStateSnapshot } from './policy-engine.js';
-import { evaluatePipelinePolicy, getPolicyMode } from './policy-evaluator.js';
+import {
+  evaluatePipelinePolicy,
+  getPolicyMode,
+  getGateEnforcementMode,
+} from './policy-evaluator.js';
+import { START } from '../orchestration/graph/graph-types.js';
 
 /**
  * Narrows the untyped `task.metadata` bag into the policy engine's typed
@@ -32,9 +37,14 @@ function toPipelineStateSnapshot(metadata: Record<string, unknown>): PipelineSta
 import { buildBaseTaskContract } from './task-contract-builders.js';
 
 import type { CompiledPipeline } from './pipeline-runner.js';
-import type { TaskContract, PlanContract } from './task-contract.js';
-import type { PolicyContext } from './policy-engine.js';
-import type { PolicyEvalResult, PolicyViolation } from './policy-evaluator.js';
+import type { TaskContract, PlanContract, PolicyGateSpec } from './task-contract.js';
+import type { IPolicyEngine, PolicyContext } from './policy-engine.js';
+import type {
+  GatePolicyEnforcement,
+  PolicyEvalResult,
+  PolicyViolation,
+} from './policy-evaluator.js';
+import type { IEventBus } from './event-types.js';
 
 const logger = createLogger({ component: 'V2Delegate' });
 
@@ -50,14 +60,44 @@ type DelegatePipelineResult =
 /**
  * Creates a compiled V2 pipeline for delegate_to_model from a TaskContract.
  *
- * The pipeline has a single 'route' stage that selects the optimal model.
- * This is intentionally minimal — the routing logic lives in the stage
- * handler (placeholder here, real handler injected by the MCP tool).
+ * The pipeline has a single 'route' stage guarded by an entry policy gate.
+ * Routing logic lives in the stage handler (placeholder here, real handler
+ * injected by the MCP tool).
+ *
+ * Activation (#3703): the compile call now supplies a **default-WARN**
+ * `policyEnforcement` bundle, so the entry gate evaluates real policy at the
+ * stage boundary in production. WARN mode never throws and never blocks — it
+ * only logs + emits `policy.evaluated` events on a violation, generating the
+ * autonomy-soak evidence #3653 needs. This is scoped to v2-delegate's own
+ * compile call: the shared `compilePlan` default (no enforcement) is
+ * unchanged, so every other `compilePlan` caller is unaffected.
  */
 export function createDelegatePipeline(task: TaskContract): DelegatePipelineResult {
-  const plan = buildPlan(task);
+  const plan = buildDelegatePlan(task);
   const runner = new PipelineRunner();
-  return runner.compile(plan);
+  return runner.compile(plan, { policyEnforcement: buildWarnPolicyEnforcement(task) });
+}
+
+/**
+ * Builds the default-WARN policy-enforcement bundle for the v2-delegate entry
+ * gate (#3703). The mode resolves via `getGateEnforcementMode()` (warn by
+ * default; block/off opt-in via `NEXUS_POLICY_GATE_MODE`), so this is safe to
+ * activate in production — warn never throws.
+ *
+ * `overrides` exists for tests (inject a denying engine / capture events); the
+ * production call passes none, getting the default engine + the shared pipeline
+ * event bus.
+ */
+export function buildWarnPolicyEnforcement(
+  task: TaskContract,
+  overrides: { engine?: IPolicyEngine; eventBus?: IEventBus } = {}
+): GatePolicyEnforcement {
+  return {
+    engine: overrides.engine ?? createDefaultPolicyEngine(),
+    pipelineState: toPipelineStateSnapshot(task.metadata),
+    eventBus: overrides.eventBus ?? getPipelineEventBus(),
+    mode: getGateEnforcementMode(),
+  };
 }
 
 // ============================================================================
@@ -208,15 +248,37 @@ function formatViolation(v: PolicyViolation): string {
 }
 
 // ============================================================================
-// Internal
+// Plan construction
 // ============================================================================
 
-function buildPlan(task: TaskContract): PlanContract {
+/** Id of the entry stage the policy gate guards. */
+const ROUTE_STAGE_ID = 'route-model';
+
+/**
+ * Entry gate for the v2-delegate pipeline (#3703). Sits on the START boundary
+ * before the route stage so policy is evaluated before any routing work runs.
+ * `onFail: 'warn'` documents intent — the effective runtime mode is resolved by
+ * the enforcement bundle (warn by default; block opt-in via env).
+ */
+const ENTRY_GATE: PolicyGateSpec = {
+  id: 'gate-delegate-entry',
+  afterStage: START,
+  beforeStage: ROUTE_STAGE_ID,
+  rules: ['trust-tier'],
+  onFail: 'warn',
+};
+
+/**
+ * Builds the v2-delegate PlanContract: a single route stage guarded by the
+ * entry policy gate. Exported so the activation path and tests share one
+ * canonical plan shape (#3703).
+ */
+export function buildDelegatePlan(task: TaskContract): PlanContract {
   return {
     taskId: task.id,
     stages: [
       {
-        id: 'route-model',
+        id: ROUTE_STAGE_ID,
         type: 'route',
         pluginId: 'nexus:model-router',
         inputArtifacts: [],
@@ -228,7 +290,7 @@ function buildPlan(task: TaskContract): PlanContract {
         },
       },
     ],
-    policyGates: [],
+    policyGates: [ENTRY_GATE],
     estimatedCost: {
       totalTokensIn: 0,
       totalTokensOut: 0,
