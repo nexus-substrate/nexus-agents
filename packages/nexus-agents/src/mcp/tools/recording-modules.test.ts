@@ -310,6 +310,42 @@ describe('execute-expert-recording', () => {
     expect(last?.failureCategory).toBe('timeout');
   });
 
+  it('attributes cli/vendor from the executed model via the registry (#3624)', async () => {
+    const { recordExpertOutcome } = await import('./execute-expert-recording.js');
+    const { getDefaultModelForCli } = await import('../../config/model-config-helpers.js');
+    const store = getOutcomeStore();
+    const model = getDefaultModelForCli('claude');
+
+    recordExpertOutcome({ task: 'Review code', success: true, durationMs: 100, model });
+
+    const last = store.query().at(-1);
+    expect(last?.cli).toBe('claude'); // resolved from model, not a content heuristic
+    expect(last?.model).toBe(model);
+    expect(last?.vendor).toBeDefined(); // auto-enriched from model by OutcomeStore
+  });
+
+  it('records unknown cli/model when the model is absent/unresolvable (#3624)', async () => {
+    const { recordExpertOutcome } = await import('./execute-expert-recording.js');
+    const store = getOutcomeStore();
+
+    recordExpertOutcome({ task: 'x', success: false, durationMs: 1, failureCategory: 'parse' });
+
+    const last = store.query().at(-1);
+    expect(last?.cli).toBe('unknown'); // not fabricated onto a real CLI
+    expect(last?.model).toBe('unknown');
+  });
+
+  it('treats the legacy "expert" placeholder model as unknown (#3624)', async () => {
+    const { recordExpertOutcome } = await import('./execute-expert-recording.js');
+    const store = getOutcomeStore();
+
+    recordExpertOutcome({ task: 'x', success: true, durationMs: 50, model: 'expert' });
+
+    const last = store.query().at(-1);
+    expect(last?.cli).toBe('unknown');
+    expect(last?.model).toBe('unknown');
+  });
+
   it('recordExpertSuccess records task and learning', async () => {
     const { recordExpertSuccess } = await import('./execute-expert-recording.js');
     recordExpertSuccess('exp-456', 'code_expert', 3000);

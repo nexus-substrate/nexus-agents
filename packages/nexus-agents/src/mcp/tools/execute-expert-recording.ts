@@ -21,7 +21,9 @@ import {
 } from '../../orchestration/outcomes/index.js';
 import { detectTaskCategory } from '../../config/task-specialization.js';
 import type { TaskCategory } from '../../config/task-specialization-types.js';
-import { DEFAULT_CLI } from '../../config/model-capabilities-types.js';
+import { CliNameSchema } from '../../config/model-capabilities-types.js';
+import { getDefaultRegistry } from '../../config/model-registry.js';
+import type { OutcomeCli } from '../../orchestration/outcomes/outcome-types.js';
 import { getToolMemory } from './tool-memory.js';
 import { getAutoCatalog } from './research-auto-catalog.js';
 import type { ILogger } from '../../core/index.js';
@@ -62,15 +64,44 @@ function resolveExpertCategory(opts: ExpertOutcomeOpts): TaskCategory {
   return detectTaskCategory(opts.task)?.category ?? 'exploration';
 }
 
-/** Records expert execution outcome to OutcomeStore. Best-effort. */
+/** Models that are placeholders, not real resolvable model ids (#3624). */
+const UNATTRIBUTED_MODELS: ReadonlySet<string> = new Set([
+  '',
+  'expert',
+  'unknown',
+  'heuristic',
+  'default',
+]);
+
+/**
+ * Resolve the real executing CLI from the EXECUTED model via the registry
+ * (#3624), instead of guessing it from task content. Returns the explicit
+ * 'unknown' sentinel when the model is a placeholder or maps to no known CLI —
+ * never a fabricated real CLI (which would skew that CLI's quality stats).
+ */
+function resolveExpertCli(model: string | undefined): OutcomeCli {
+  if (model === undefined || UNATTRIBUTED_MODELS.has(model)) return 'unknown';
+  const cliName = getDefaultRegistry().getEntry(model).cliName;
+  const parsed = cliName !== undefined ? CliNameSchema.safeParse(cliName) : undefined;
+  return parsed?.success === true ? parsed.data : 'unknown';
+}
+
+/**
+ * Records expert execution outcome to OutcomeStore. Best-effort.
+ * Attribution (#3624): cli is resolved from the EXECUTED model via the registry
+ * (vendor/family are auto-resolved from `model` by OutcomeStore.enrich); an
+ * unresolvable model records cli='unknown'/model='unknown' rather than a
+ * fabricated CLI, so it can't skew a real CLI's performance-floor signal.
+ */
 export function recordExpertOutcome(opts: ExpertOutcomeOpts): void {
   try {
-    const match = detectTaskCategory(opts.task);
+    const model =
+      opts.model !== undefined && !UNATTRIBUTED_MODELS.has(opts.model) ? opts.model : 'unknown';
     getOutcomeStore().append({
       id: `exp-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 8)}`,
-      cli: match?.primaryCli ?? DEFAULT_CLI,
+      cli: resolveExpertCli(opts.model),
       category: resolveExpertCategory(opts),
-      model: opts.model ?? 'expert',
+      model,
       success: opts.success,
       durationMs: opts.durationMs,
       timestamp: new Date(getTimeProvider().now()).toISOString(),
