@@ -186,10 +186,25 @@ interface QualityBucket {
   infra: number;
 }
 
+/**
+ * Models/clis that don't identify a real executor (#3624) — outcomes with these
+ * can't be attributed to a CLI's quality, so they're excluded from the floor
+ * (else the skew just moves from a real CLI onto an `unknown`/placeholder one).
+ */
+const UNATTRIBUTED_VALUES: ReadonlySet<string> = new Set([
+  '',
+  'unknown',
+  'expert',
+  'heuristic',
+  'default',
+]);
+
 /** Bucket outcomes by cli×category, separating infra failures from quality ones. */
 function accumulateQualityBuckets(outcomes: readonly TaskOutcome[]): Map<string, QualityBucket> {
   const buckets = new Map<string, QualityBucket>();
   for (const o of outcomes) {
+    // Skip outcomes that can't attribute a real executing CLI (#3624).
+    if (UNATTRIBUTED_VALUES.has(o.cli) || UNATTRIBUTED_VALUES.has(o.model)) continue;
     const key = `${o.cli}::${o.category}`;
     const b = buckets.get(key) ?? { cli: o.cli, category: o.category, ok: 0, total: 0, infra: 0 };
     if (!o.success && INFRA_FAILURE_CATEGORIES.has(o.failureCategory ?? '')) {

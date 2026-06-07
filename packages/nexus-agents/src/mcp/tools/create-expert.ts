@@ -35,11 +35,7 @@ import {
   resolveAdapterForModelPreference,
   resolveAdapterForRole,
 } from './create-expert-routing.js';
-import {
-  recordExpertCreated,
-  recordExpertError,
-  recordExpertOutcome,
-} from './create-expert-recording.js';
+import { recordExpertCreated, recordExpertError } from './create-expert-recording.js';
 
 /**
  * Input schema for create_expert tool.
@@ -265,13 +261,11 @@ function createCreateExpertHandler(deps: CreateExpertDeps) {
     }
 
     // Execute tool logic (now async for CLI detection - Issue #747)
-    const startMs = Date.now();
     const result = await handleCreateExpert(deps, validationResult.data);
-    const durationMs = Date.now() - startMs;
 
     if (!result.ok) {
       recordExpertError(validationResult.data.role, result.error);
-      recordExpertOutcome(validationResult.data.role, false, durationMs, result.error);
+      // #3624: creation is not a model execution — no OutcomeStore row.
       return toolStructuredError({
         errorCategory: 'internal',
         message: `Failed to create expert: ${result.error}`,
@@ -279,7 +273,6 @@ function createCreateExpertHandler(deps: CreateExpertDeps) {
     }
 
     recordExpertCreated(result.value.role, result.value.expertId);
-    recordExpertOutcome(result.value.role, true, durationMs);
 
     ctx.logger.info('Expert created', {
       expertId: result.value.expertId,

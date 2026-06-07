@@ -138,6 +138,18 @@ describe('detectCliPerformanceFloor', () => {
     expect(criticalSignals[0]?.severity).toBe('critical');
   });
 
+  it('excludes unattributed-model outcomes from the floor (#3624)', () => {
+    // 8 outcomes all failing, but model='expert' (placeholder — can't attribute a
+    // real executing CLI). The floor must not fire on fabricated attribution.
+    const outcomes: TaskOutcome[] = [];
+    for (let i = 0; i < 8; i++) {
+      outcomes.push(
+        outcome({ cli: 'claude', category: 'security_review', success: false, model: 'expert' })
+      );
+    }
+    expect(detectCliPerformanceFloor(outcomes, 5, '30d')).toHaveLength(0);
+  });
+
   it('excludes infra/transport failures from the quality rate (#3620)', () => {
     // 3 successes + 7 infra failures (adapter_unavailable/parse). Raw rate = 30%
     // (would fire critical), but quality rate = 3/3 = 100% → no signal.

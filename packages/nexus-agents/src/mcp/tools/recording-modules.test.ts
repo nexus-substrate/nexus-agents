@@ -252,55 +252,16 @@ describe('create-expert-recording', () => {
     );
   });
 
-  it('recordExpertOutcome records to OutcomeStore', async () => {
-    const { recordExpertOutcome } = await import('./create-expert-recording.js');
-    const store = getOutcomeStore();
-    const initialSize = store.size;
-
-    recordExpertOutcome('testing_expert', true, 500);
-    expect(store.size).toBe(initialSize + 1);
-
-    const entries = store.query();
-    const last = entries[entries.length - 1];
-    expect(last?.success).toBe(true);
-    expect(last?.durationMs).toBe(500);
-    expect(last?.category).toBe('testing');
-  });
-
-  it('recordExpertOutcome maps role to correct category (#1402)', async () => {
-    const { recordExpertOutcome } = await import('./create-expert-recording.js');
-    const store = getOutcomeStore();
-
-    recordExpertOutcome('security_expert', true, 100);
-    const entries = store.query();
-    const last = entries[entries.length - 1];
-    expect(last?.category).toBe('security_review');
-  });
-
-  it('recordExpertOutcome records failures', async () => {
-    const { recordExpertOutcome } = await import('./create-expert-recording.js');
-    const store = getOutcomeStore();
-    const initialSize = store.size;
-
-    recordExpertOutcome('arch_expert', false, 0);
-    expect(store.size).toBe(initialSize + 1);
-
-    const entries = store.query();
-    const last = entries[entries.length - 1];
-    expect(last?.success).toBe(false);
-  });
-
-  it('recordExpertOutcome captures errorMessage on failure (#1516)', async () => {
-    const { recordExpertOutcome } = await import('./create-expert-recording.js');
-    const store = getOutcomeStore();
-
-    recordExpertOutcome('security_expert', false, 100, 'Model adapter unavailable');
-
-    const entries = store.query();
-    const last = entries[entries.length - 1];
-    expect(last?.success).toBe(false);
-    expect(last?.errorMessage).toBe('Model adapter unavailable');
-    expect(last?.failureCategory).toBeDefined();
+  // #3624: expert CREATION is no longer recorded to the OutcomeStore (it isn't a
+  // model execution; the fabricated cli/model rows polluted per-cli×category
+  // quality stats — consensus_vote DROP). The create-expert recordExpertOutcome
+  // function was removed; creation telemetry stays in session memory only.
+  it('create-expert-recording no longer exports recordExpertOutcome (#3624 DROP)', async () => {
+    const mod = await import('./create-expert-recording.js');
+    expect((mod as Record<string, unknown>).recordExpertOutcome).toBeUndefined();
+    // The session-memory recorders remain.
+    expect(typeof mod.recordExpertCreated).toBe('function');
+    expect(typeof mod.recordExpertError).toBe('function');
   });
 });
 
