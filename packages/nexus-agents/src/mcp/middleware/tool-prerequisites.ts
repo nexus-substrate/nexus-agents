@@ -140,6 +140,8 @@ export const NO_PREREQUISITE: Record<string, string> = {
   run_dev_pipeline: 'pipeline execution is self-contained; stage tools carry their own gates',
   execute_spec: 'spec execution is self-contained; stage tools carry their own gates',
   consensus_vote: 'voter-CLI availability is handled by per-voter fallback, not a pre-gate',
+  ci_health_check:
+    'reads upstream CI status + appends a telemetry event (#3530); no world-state precondition to gate',
   supply_chain_tradeoff_panel: 'wraps consensus_vote; same per-voter fallback applies',
   pr_review: 'wraps consensus_vote; same per-voter fallback applies',
   research_add:
