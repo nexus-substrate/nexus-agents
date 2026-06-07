@@ -1,6 +1,6 @@
 {
   "name": "nexus-agents",
-  "version": "2.123.1",
+  "version": "2.123.2",
   "description": "Governance substrate for AI coding agents — adversarial PR review, drift-detected rules, immutable audit, and closed-loop outcome routing for Claude, Codex, Gemini, and OpenCode",
   "mcpName": "io.github.nexus-substrate/nexus-agents",
   "license": "MIT",
