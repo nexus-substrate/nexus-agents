@@ -1,5 +1,20 @@
 # nexus-agents
 
+## 2.125.4
+
+### Patch Changes
+
+- [#3632](https://github.com/nexus-substrate/nexus-agents/pull/3632) [`cc8812c`](https://github.com/nexus-substrate/nexus-agents/commit/cc8812c88616fb2a61f244cf736198bc1c6515a5) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - safety(capability-loop): fail-closed security classification for auto-remediation ([#3615](https://github.com/nexus-substrate/nexus-agents/issues/3615))
+
+  Condition 4 of the [#3540](https://github.com/nexus-substrate/nexus-agents/issues/3540) auto-invoke gate. The hard exclusion "security signals
+  are always human-gated" only holds if classification is correct — a security
+  issue mislabeled by a detector (e.g. as `bug` or `routing`) would silently bypass
+  the gate. `evaluateRemediationShadow` now treats a signal as security if EITHER
+  its declared category is `security` OR any keyword from the canonical
+  `SECURITY_KEYWORDS` appears in its key/title/body (uncertain → security →
+  human-gated). Exposed as `isSecuritySignal` for the future enforce path ([#3618](https://github.com/nexus-substrate/nexus-agents/issues/3618))
+  to reuse, so shadow and enforce decide identically.
+
 ## 2.125.3
 
 ### Patch Changes
