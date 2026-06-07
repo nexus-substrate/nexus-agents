@@ -1,5 +1,21 @@
 # nexus-agents
 
+## 2.123.4
+
+### Patch Changes
+
+- [#3604](https://github.com/nexus-substrate/nexus-agents/pull/3604) [`92e184a`](https://github.com/nexus-substrate/nexus-agents/commit/92e184ad2e59adca051e9ddcd40a9c3714beddd1) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(consensus): restore full voter panel + warn on degradation ([#3587](https://github.com/nexus-substrate/nexus-agents/issues/3587))
+
+  Two fixes for silent panel shrinkage. (1) Root cause: a voter round-robined onto
+  a diverse CLI backed by an OpenRouter model without tool-use hard-fails ("no
+  endpoints that support tool use") and the responseFormat retry can't help (the
+  CLI sends bash tools regardless) — so that voter silently dropped. The voter
+  launcher now retries once on the known-good fallback adapter when a diverse
+  adapter fails (non-deadline), keeping the panel at full strength while preserving
+  CLI diversity when it works. (2) Observability ([#3587](https://github.com/nexus-substrate/nexus-agents/issues/3587) scope): the consensus
+  response now carries a `panelWarning` when some-but-not-all voters errored, so a
+  degraded panel is visible rather than passing silently on the survivors.
+
 ## 2.123.3
 
 ### Patch Changes
