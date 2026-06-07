@@ -23,6 +23,8 @@ import {
 import type { ILogger } from '../core/index.js';
 import { TASK_SPECIALIZATION_MATRIX } from '../config/task-specialization.js';
 import { DEFAULT_MODEL_CAPABILITIES } from '../config/in-tree-data.js';
+import * as modelConfigHelpers from '../config/model-config-helpers.js';
+import type { ModelId } from '../config/model-capabilities-types.js';
 
 // Silence logging in tests
 const mockLogger = {
@@ -407,5 +409,54 @@ describe('withDefaultOnRetirement — onRetirement dead-bridge wiring', () => {
     const custom = vi.fn();
     const resolved = withDefaultOnRetirement(true, { onRetirement: custom }, freshLogger());
     expect(resolved?.onRetirement).toBe(custom);
+  });
+});
+
+// ============================================================================
+// #3185 — routing is re-resolved on read; no construction-time freeze.
+// ============================================================================
+
+describe('UnifiedAdapterRegistry — routing re-resolves on read (#3185)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    resetGlobalRegistry();
+  });
+
+  it('getRouting reflects a post-construction default-model change (no stale cache)', () => {
+    const spy = vi
+      .spyOn(modelConfigHelpers, 'getDefaultModelForCli')
+      .mockReturnValue('claude-opus');
+    const registry = createUnifiedRegistry({ logger: mockLogger });
+
+    // 'planning' routes to claude → primaryModel resolved via the helper.
+    const before = registry.getRouting('planning');
+    expect(before?.primaryModel).toBe('claude-opus');
+
+    // Simulate a registry/overlay update that changes the resolved default.
+    spy.mockReturnValue('claude-opus-overlay' as ModelId);
+
+    // The SAME instance must reflect the change — proving no construction-time
+    // freeze of the routing table.
+    const after = registry.getRouting('planning');
+    expect(after?.primaryModel).toBe('claude-opus-overlay');
+    registry.dispose();
+  });
+
+  it('getSnapshot re-reads routing on each call', () => {
+    const spy = vi
+      .spyOn(modelConfigHelpers, 'getDefaultModelForCli')
+      .mockReturnValue('claude-opus');
+    const registry = createUnifiedRegistry({ logger: mockLogger });
+
+    const planningBefore = registry
+      .getSnapshot()
+      .taskRouting.find((r) => r.category === 'planning');
+    expect(planningBefore?.primaryModel).toBe('claude-opus');
+
+    spy.mockReturnValue('claude-opus-overlay' as ModelId);
+
+    const planningAfter = registry.getSnapshot().taskRouting.find((r) => r.category === 'planning');
+    expect(planningAfter?.primaryModel).toBe('claude-opus-overlay');
+    registry.dispose();
   });
 });

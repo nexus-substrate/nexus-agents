@@ -126,9 +126,6 @@ export class UnifiedAdapterRegistry {
   private readonly enableMissingModelFallback: boolean;
   private readonly missingModelFallbackOptions: ModelNotFoundFallbackOptions | undefined;
 
-  /** Pre-computed task → CLI routing (immutable after construction). */
-  private readonly taskRouting: ReadonlyMap<TaskCategory, TaskRoutingEntry>;
-
   /** Per-CLI adapter cache — max 3 entries (claude/gemini/codex). */
   private readonly cliAdapters = new Map<CliName, IResilientAdapter>();
 
@@ -144,9 +141,8 @@ export class UnifiedAdapterRegistry {
       config?.missingModelFallbackOptions,
       this.logger
     );
-    this.taskRouting = this.buildTaskRouting();
     this.logger.info('UnifiedAdapterRegistry initialized', {
-      categories: this.taskRouting.size,
+      categories: TASK_SPECIALIZATION_MATRIX.length,
       models: getInTreeCapabilitiesMatrix().models.length,
       missingModelFallback: this.enableMissingModelFallback,
     });
@@ -174,11 +170,12 @@ export class UnifiedAdapterRegistry {
   }
 
   /**
-   * Get adapter for a task category. Uses pre-computed routing.
-   * Falls back to default adapter if category unknown.
+   * Get adapter for a task category. Routing is re-resolved on every read
+   * (#3185) so a post-startup overlay/registry update propagates without a
+   * restart. Falls back to default adapter if category unknown.
    */
   getAdapter(category: TaskCategory): IResilientAdapter {
-    const routing = this.taskRouting.get(category);
+    const routing = this.getRouting(category);
     if (routing === undefined) {
       this.logger.warn('Unknown task category, using default', { category });
       return this.getDefault();
@@ -289,21 +286,30 @@ export class UnifiedAdapterRegistry {
   }
 
   /**
-   * Get snapshot of registry state for observability/debugging.
+   * Get snapshot of registry state for observability/debugging. Routing is
+   * re-resolved on read (#3185) so the snapshot reflects the live registry.
    */
   getSnapshot(): RegistrySnapshot {
     return {
-      taskRouting: [...this.taskRouting.values()],
+      taskRouting: TASK_SPECIALIZATION_MATRIX.map((spec) => this.resolveRouting(spec)),
       cachedAdapters: [...this.cliAdapters.keys()],
       availableModels: getInTreeCapabilitiesMatrix().models.length,
     };
   }
 
   /**
-   * Get the pre-computed routing for a specific category.
+   * Resolve the routing for a specific category.
+   *
+   * Computed on every read (#3185) rather than cached at construction, so a
+   * post-startup model-registry / overlay update (e.g. a default-model change
+   * surfaced via `getDefaultModelForCli`) propagates to routing decisions
+   * without a process restart. The matrix is ~10 categories — the per-read
+   * resolution cost is negligible.
    */
   getRouting(category: TaskCategory): TaskRoutingEntry | undefined {
-    return this.taskRouting.get(category);
+    const spec = TASK_SPECIALIZATION_MATRIX.find((s) => s.category === category);
+    if (spec === undefined) return undefined;
+    return this.resolveRouting(spec);
   }
 
   /**
@@ -323,18 +329,17 @@ export class UnifiedAdapterRegistry {
   // Private
   // --------------------------------------------------------------------------
 
-  private buildTaskRouting(): ReadonlyMap<TaskCategory, TaskRoutingEntry> {
-    const routing = new Map<TaskCategory, TaskRoutingEntry>();
-    for (const spec of TASK_SPECIALIZATION_MATRIX) {
-      const primaryModel = resolveDefaultModel(spec.primaryCli);
-      routing.set(spec.category, {
-        category: spec.category,
-        primaryCli: spec.primaryCli,
-        secondaryCli: spec.secondaryCli,
-        primaryModel,
-      });
-    }
-    return routing;
+  /**
+   * Resolve one specialization-matrix row into a routing entry, re-reading the
+   * primary model from the (overlay-aware) model registry each call (#3185).
+   */
+  private resolveRouting(spec: (typeof TASK_SPECIALIZATION_MATRIX)[number]): TaskRoutingEntry {
+    return {
+      category: spec.category,
+      primaryCli: spec.primaryCli,
+      secondaryCli: spec.secondaryCli,
+      primaryModel: resolveDefaultModel(spec.primaryCli),
+    };
   }
 }
 

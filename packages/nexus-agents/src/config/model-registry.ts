@@ -320,6 +320,19 @@ export function getDefaultRegistry(): ModelRegistry {
   return globalRegistry;
 }
 
+/**
+ * Return the global registry ONLY if it has already been constructed; never
+ * triggers lazy construction (#3185). Used by the early-bootstrap-sensitive
+ * `getDefaultModelForCli` path so a module-load-time caller does NOT force the
+ * filesystem-touching overlay load — that is the TDZ / re-entrancy hazard the
+ * `inTreeById()` filesystem-free builders were created to dodge
+ * (model-config-helpers.ts ~L60-69). Once any consumer has built the registry
+ * (or after `reloadDefaultRegistry`), overlay-aware resolution kicks in.
+ */
+export function peekDefaultRegistry(): ModelRegistry | undefined {
+  return globalRegistry;
+}
+
 function buildDefaultRegistry(): ModelRegistry {
   const overlay = loadManifestOverlay();
   const snapshot = loadModelsDevSnapshot();
@@ -341,4 +354,36 @@ function buildDefaultRegistry(): ModelRegistry {
 /** Replace the global registry. Reserved for tests + bootstrap. */
 export function setDefaultRegistry(registry: ModelRegistry | undefined): void {
   globalRegistry = registry;
+}
+
+/**
+ * Hot-reload the global model registry WITHOUT a process restart (#3185).
+ *
+ * Re-runs {@link buildDefaultRegistry} — which re-reads the operator/user
+ * manifest overlays, the models.dev snapshot, and the generated catalog from
+ * disk — and reassigns the singleton, so overlay edits made after startup
+ * (e.g. an updated `NEXUS_MODELS_OVERLAY_PATH`) propagate to every consumer
+ * that reads through `getDefaultRegistry()`.
+ *
+ * ATOMIC DUAL-SINGLETON RESET (vote condition 2): the model registry and the
+ * `UnifiedAdapterRegistry` are two independent singletons; the latter resolves
+ * routing through the former. Refreshing only the model registry would leave
+ * the adapter registry's cached default-model strings stale. This is the ONE
+ * reload entry point — it resets BOTH together so there is never a state where
+ * one is fresh and the other stale. The adapter-registry reset is a dynamic
+ * import to avoid a static import cycle
+ * (unified-registry → model-config-helpers → model-registry).
+ *
+ * The overlay loader is fail-closed (never throws on a missing / malformed
+ * manifest — vote condition 3); a bad re-read degrades to the in-tree floor
+ * rather than throwing, exactly as first construction does.
+ */
+export async function reloadDefaultRegistry(): Promise<ModelRegistry> {
+  globalRegistry = buildDefaultRegistry();
+  // Reset the adapter-registry singleton so its routing (re-resolved on read
+  // since #3185) and any cached adapters pick up the new model registry.
+  // Dynamic import breaks the static cycle.
+  const { resetGlobalRegistry } = await import('../adapters/unified-registry.js');
+  resetGlobalRegistry();
+  return globalRegistry;
 }
