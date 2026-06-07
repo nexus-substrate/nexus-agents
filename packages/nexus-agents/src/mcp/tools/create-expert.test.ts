@@ -4,7 +4,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { ILogger } from '../../core/index.js';
-import { Expert, type BuiltInExpertType } from '../../agents/index.js';
+import { Expert, BuiltInExpertTypeSchema, type BuiltInExpertType } from '../../agents/index.js';
 import { RateLimiter } from '../middleware/index.js';
 import {
   CreateExpertInputSchema,
@@ -360,7 +360,7 @@ describe('getAvailableRoles', () => {
     expect(roles).toContain('infrastructure_expert');
     expect(roles).toContain('data_visualization_expert');
     expect(roles).toContain('qa_expert');
-    expect(roles).toHaveLength(12);
+    expect(roles).toHaveLength(BuiltInExpertTypeSchema.options.length);
   });
 });
 
