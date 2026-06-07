@@ -138,6 +138,70 @@ describe('detectCliPerformanceFloor', () => {
     expect(criticalSignals[0]?.severity).toBe('critical');
   });
 
+  it('excludes infra/transport failures from the quality rate (#3620)', () => {
+    // 3 successes + 7 infra failures (adapter_unavailable/parse). Raw rate = 30%
+    // (would fire critical), but quality rate = 3/3 = 100% → no signal.
+    const outcomes: TaskOutcome[] = [];
+    for (let i = 0; i < 3; i++) {
+      outcomes.push(outcome({ cli: 'claude', category: 'security_review', success: true }));
+    }
+    for (let i = 0; i < 4; i++) {
+      outcomes.push(
+        outcome({
+          cli: 'claude',
+          category: 'security_review',
+          success: false,
+          failureCategory: 'adapter_unavailable',
+        })
+      );
+    }
+    for (let i = 0; i < 3; i++) {
+      outcomes.push(
+        outcome({
+          cli: 'claude',
+          category: 'security_review',
+          success: false,
+          failureCategory: 'parse',
+        })
+      );
+    }
+    expect(detectCliPerformanceFloor(outcomes, 5, '30d')).toHaveLength(0);
+  });
+
+  it('still fires on genuine model-quality failures, excluding only infra (#3620)', () => {
+    // 2 successes + 6 execution (quality) failures + 4 adapter_unavailable (infra).
+    // Quality rate = 2/8 = 25% (< 40% → critical); infra excluded but noted.
+    const outcomes: TaskOutcome[] = [];
+    for (let i = 0; i < 2; i++) {
+      outcomes.push(outcome({ cli: 'codex', category: 'code_review', success: true }));
+    }
+    for (let i = 0; i < 6; i++) {
+      outcomes.push(
+        outcome({
+          cli: 'codex',
+          category: 'code_review',
+          success: false,
+          failureCategory: 'execution',
+        })
+      );
+    }
+    for (let i = 0; i < 4; i++) {
+      outcomes.push(
+        outcome({
+          cli: 'codex',
+          category: 'code_review',
+          success: false,
+          failureCategory: 'rate_limit',
+        })
+      );
+    }
+    const signals = detectCliPerformanceFloor(outcomes, 5, '30d');
+    expect(signals).toHaveLength(1);
+    expect(signals[0]?.severity).toBe('critical');
+    expect(signals[0]?.evidence.observedValue).toBeCloseTo(0.25, 5);
+    expect(signals[0]?.body).toContain('4 infra/transport failures excluded');
+  });
+
   it('separates by CLI × category buckets', () => {
     const outcomes: TaskOutcome[] = [];
     // claude on architecture: 0% success, 5 samples

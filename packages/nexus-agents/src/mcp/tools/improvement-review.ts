@@ -152,53 +152,98 @@ export function filterByLookback(
 }
 
 /**
- * Detect CLI × category pairs whose success rate has fallen below the
- * performance floor with at least minSamples observations.
- *
- * Threshold: success rate < 60% AND samples >= minSamples.
+ * Infrastructure/transport failure categories — NOT model reasoning quality
+ * (#3620). These are excluded from the CLI performance-floor so the routing
+ * signal measures whether the MODEL does the task, not whether the adapter was
+ * reachable. Adapter outages / empty responses still surface separately via
+ * {@link detectFailureCategoryConcentration}, so excluding them here doesn't hide
+ * them — it just stops them being mislabeled as a CLI quality regression.
  */
+const INFRA_FAILURE_CATEGORIES: ReadonlySet<string> = new Set([
+  'timeout',
+  'authentication',
+  'rate_limit',
+  'connection',
+  'adapter_unavailable',
+  'parse',
+]);
+
+/**
+ * Detect CLI × category pairs whose MODEL-QUALITY success rate has fallen below
+ * the performance floor with at least minSamples observations.
+ *
+ * Threshold: quality success rate < 60% AND quality-samples >= minSamples.
+ * Infra/transport failures (adapter_unavailable, parse/empty-response, auth,
+ * rate-limit, timeout, connection) are excluded from the rate (#3620) — they are
+ * availability problems, not model quality, and surface via the failure-category
+ * concentration detector instead.
+ */
+interface QualityBucket {
+  cli: string;
+  category: string;
+  ok: number;
+  total: number;
+  infra: number;
+}
+
+/** Bucket outcomes by cli×category, separating infra failures from quality ones. */
+function accumulateQualityBuckets(outcomes: readonly TaskOutcome[]): Map<string, QualityBucket> {
+  const buckets = new Map<string, QualityBucket>();
+  for (const o of outcomes) {
+    const key = `${o.cli}::${o.category}`;
+    const b = buckets.get(key) ?? { cli: o.cli, category: o.category, ok: 0, total: 0, infra: 0 };
+    if (!o.success && INFRA_FAILURE_CATEGORIES.has(o.failureCategory ?? '')) {
+      b.infra += 1; // infra/transport failure — excluded from the quality rate
+    } else {
+      b.total += 1;
+      if (o.success) b.ok += 1;
+    }
+    buckets.set(key, b);
+  }
+  return buckets;
+}
+
+/** Build a performance-floor signal for a below-floor quality bucket. */
+function floorSignalFromBucket(
+  b: QualityBucket,
+  minSamples: number,
+  windowLabel: string
+): ImprovementSignal {
+  const rate = b.ok / b.total;
+  const ratePct = Math.round(rate * 100);
+  const infraNote =
+    b.infra > 0
+      ? ` (${String(b.infra)} infra/transport failures excluded — see failure-concentration signals)`
+      : '';
+  return {
+    category: 'routing',
+    signalKey: `routing:cli-floor:${b.cli}:${b.category}`,
+    severity: rate < 0.4 ? 'critical' : 'warning',
+    title: `routing: ${b.cli} model-quality success ${String(ratePct)}% on ${b.category} (${windowLabel})`,
+    body: [
+      `Observed model-quality performance floor breach in the ${windowLabel} window.`,
+      '',
+      `- CLI: \`${b.cli}\``,
+      `- Category: \`${b.category}\``,
+      `- Quality success rate: ${String(ratePct)}% (${String(b.ok)}/${String(b.total)})${infraNote}`,
+      `- Threshold: 60% with ≥${String(minSamples)} quality samples`,
+      '',
+      'Quality failures only (infra/transport excluded). Consider routing this category away from this CLI, or investigating the failure pattern via `weather_report` and the OutcomeStore.',
+    ].join('\n'),
+    evidence: { samples: b.total, window: windowLabel, observedValue: rate, threshold: 0.6 },
+  };
+}
+
 export function detectCliPerformanceFloor(
   outcomes: readonly TaskOutcome[],
   minSamples: number,
   windowLabel: string
 ): readonly ImprovementSignal[] {
-  const buckets = new Map<string, { cli: string; category: string; ok: number; total: number }>();
-  for (const o of outcomes) {
-    const key = `${o.cli}::${o.category}`;
-    const bucket = buckets.get(key) ?? { cli: o.cli, category: o.category, ok: 0, total: 0 };
-    bucket.total += 1;
-    if (o.success) bucket.ok += 1;
-    buckets.set(key, bucket);
-  }
-
   const signals: ImprovementSignal[] = [];
-  for (const b of buckets.values()) {
+  for (const b of accumulateQualityBuckets(outcomes).values()) {
     if (b.total < minSamples) continue;
-    const rate = b.ok / b.total;
-    if (rate >= 0.6) continue;
-    const ratePct = Math.round(rate * 100);
-    signals.push({
-      category: 'routing',
-      signalKey: `routing:cli-floor:${b.cli}:${b.category}`,
-      severity: rate < 0.4 ? 'critical' : 'warning',
-      title: `routing: ${b.cli} success rate ${String(ratePct)}% on ${b.category} (${windowLabel})`,
-      body: [
-        `Observed performance floor breach in the ${windowLabel} window.`,
-        '',
-        `- CLI: \`${b.cli}\``,
-        `- Category: \`${b.category}\``,
-        `- Success rate: ${String(ratePct)}% (${String(b.ok)}/${String(b.total)})`,
-        `- Threshold: 60% with ≥${String(minSamples)} samples`,
-        '',
-        'Consider routing this category away from this CLI, or investigating the failure pattern via `weather_report` and the OutcomeStore.',
-      ].join('\n'),
-      evidence: {
-        samples: b.total,
-        window: windowLabel,
-        observedValue: rate,
-        threshold: 0.6,
-      },
-    });
+    if (b.ok / b.total >= 0.6) continue;
+    signals.push(floorSignalFromBucket(b, minSamples, windowLabel));
   }
   return signals;
 }
