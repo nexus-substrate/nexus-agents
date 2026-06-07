@@ -1,5 +1,19 @@
 # nexus-agents
 
+## 2.125.27
+
+### Patch Changes
+
+- [#3701](https://github.com/nexus-substrate/nexus-agents/pull/3701) [`b0b4a4d`](https://github.com/nexus-substrate/nexus-agents/commit/b0b4a4d06f1535bd43950372d1bde35a073cd682) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - orchestration: make graph-start context retrieval observable ([#3180](https://github.com/nexus-substrate/nexus-agents/issues/3180))
+
+  When `getContextForTask` fails during graph-start context population, the
+  executor no longer swallows it at debug. It now logs a `warn`, emits an
+  aggregatable `context_unavailable` graph event (sanitized message only — no
+  stack/paths/secrets), and continues with empty context (best-effort contract
+  preserved). `executionId` is threaded into `getContextForTask` for correlation,
+  and the inferred task category is surfaced. Scope is the graph boundary only;
+  the other `getContextForTask` call sites are tracked in [#3699](https://github.com/nexus-substrate/nexus-agents/issues/3699).
+
 ## 2.125.26
 
 ### Patch Changes
