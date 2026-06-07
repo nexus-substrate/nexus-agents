@@ -370,6 +370,10 @@ export function detectFitnessSignals(
   fitnessFloor: number
 ): readonly ImprovementSignal[] {
   const signals: ImprovementSignal[] = [];
+  // #3621: a non-auditable result (e.g. run from the global npm install) has a
+  // meaningless score of 0 — it is "could not audit", not "fitness is low". Do
+  // not emit a spurious below-floor tech-debt signal for it.
+  if (audit.auditable === false) return signals;
   if (audit.score < fitnessFloor) signals.push(buildFloorSignal(audit, fitnessFloor));
   for (const finding of audit.findings) {
     if (finding.severity === 'critical') signals.push(buildCriticalFindingSignal(finding));

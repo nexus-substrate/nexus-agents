@@ -131,6 +131,15 @@ export interface FitnessAudit {
   readonly timestamp: string;
   /** Version/commit reference */
   readonly version: string;
+  /**
+   * Whether the audit actually ran against the nexus-agents source tree (#3621).
+   * `false` is the "could not audit from here" sentinel (e.g. run from the global
+   * npm install, where the bundled `src/` lacks `cli-adapters/`): the score is a
+   * meaningless 0, NOT a real low-fitness result. Consumers (e.g.
+   * improvement_review) MUST NOT treat a `false` audit's score as a signal.
+   * Absent/`true` → a genuine audit.
+   */
+  readonly auditable?: boolean;
 }
 
 /**
@@ -258,6 +267,7 @@ export class FitnessScoreCalculator {
       findings,
       timestamp: new Date().toISOString(),
       version,
+      auditable: true,
     };
   }
 
@@ -294,6 +304,7 @@ export class FitnessScoreCalculator {
       findings: [finding],
       timestamp: new Date().toISOString(),
       version,
+      auditable: false,
     };
   }
 

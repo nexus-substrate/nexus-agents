@@ -217,6 +217,7 @@ describe('detectFitnessSignals', () => {
       findings: overrides.findings ?? [],
       timestamp: overrides.timestamp ?? new Date(NOW).toISOString(),
       version: overrides.version ?? 'test',
+      ...(overrides.auditable !== undefined ? { auditable: overrides.auditable } : {}),
     };
   }
 
@@ -237,6 +238,25 @@ describe('detectFitnessSignals', () => {
     const signals = detectFitnessSignals(audit, 90);
     const floorSig = signals.find((s) => s.signalKey === 'tech-debt:fitness-below-floor');
     expect(floorSig?.severity).toBe('critical');
+  });
+
+  // #3621: the not-source-repo sentinel (auditable:false, score 0) is "could not
+  // audit", not "fitness is low" — it must NOT emit a spurious below-floor signal.
+  it('does NOT fire for a non-auditable result even at score 0', () => {
+    const audit = makeAudit({
+      score: 0,
+      auditable: false,
+      findings: [
+        {
+          dimension: 'governanceIntegration',
+          severity: 'info',
+          description: 'not source repo',
+          pointsDeducted: 0,
+        },
+      ],
+    });
+    const signals = detectFitnessSignals(audit, 90);
+    expect(signals).toEqual([]);
   });
 
   it('fires per-finding for each critical finding', () => {
