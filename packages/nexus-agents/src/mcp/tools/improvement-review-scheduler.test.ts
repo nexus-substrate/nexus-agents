@@ -47,6 +47,7 @@ describe('improvement-review-scheduler (#3229)', () => {
       window: '7d',
       totalOutcomes: 0,
       signals: [],
+      remediationTasks: [],
       issuesFiled: [],
       issuesSkipped: [],
     });
@@ -67,6 +68,7 @@ describe('improvement-review-scheduler (#3229)', () => {
       window: '7d',
       totalOutcomes: 0,
       signals: [],
+      remediationTasks: [],
       issuesFiled: [],
       issuesSkipped: [],
     });
@@ -86,6 +88,7 @@ describe('improvement-review-scheduler (#3229)', () => {
               window: '7d',
               totalOutcomes: 0,
               signals: [],
+              remediationTasks: [],
               issuesFiled: [],
               issuesSkipped: [],
             });
@@ -109,6 +112,7 @@ describe('improvement-review-scheduler (#3229)', () => {
       window: '7d',
       totalOutcomes: 0,
       signals: [],
+      remediationTasks: [],
       issuesFiled: [],
       issuesSkipped: [],
     });
