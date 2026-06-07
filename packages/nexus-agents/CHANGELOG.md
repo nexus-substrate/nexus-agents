@@ -1,5 +1,21 @@
 # nexus-agents
 
+## 2.123.0
+
+### Minor Changes
+
+- [#3594](https://github.com/nexus-substrate/nexus-agents/pull/3594) [`7dbaa1c`](https://github.com/nexus-substrate/nexus-agents/commit/7dbaa1ce0f28f92010ed28cb6daaed65c153a35e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(orchestration): shadow-logged learned strategy selection ([#3551](https://github.com/nexus-substrate/nexus-agents/issues/3551))
+
+  MetaOrchestrator step 3 of epic [#3548](https://github.com/nexus-substrate/nexus-agents/issues/3548). Adds a learned selector that, given the
+  same task signals as the rule-based selection, predicts an `ExecutionStrategy`
+  and logs its would-be choice alongside the executed rule-based choice — SHADOW
+  MODE only; the learned choice is never acted on (that is step 4 / [#3552](https://github.com/nexus-substrate/nexus-agents/issues/3552)). It
+  reuses the existing `LinUCBBandit` (arms = strategies) rather than forking a
+  second learning stack, and exposes `summarizeShadowAgreement()` as the
+  would-select-vs-selected comparison surface (overall + per task class) for
+  offline policy evaluation. Shadow logging is wired default-on into the `run`
+  entry point via process-scoped singletons; the executed path is unchanged.
+
 ## 2.122.0
 
 ### Minor Changes
