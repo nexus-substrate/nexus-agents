@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-06-07T21:10:42.685Z",
+  "generated": "2026-06-07T21:36:52.384Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.125.20",
   "cli": {
@@ -16,6 +16,12 @@
         "name": "auth",
         "type": "async",
         "handler": "handleAuthCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
+      {
+        "name": "auto-remediate",
+        "type": "async",
+        "handler": "handleAutoRemediateCommand",
         "file": "src/cli-commands-handlers.ts"
       },
       {
