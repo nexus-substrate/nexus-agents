@@ -193,6 +193,23 @@ export interface DevPipelineOptions {
   readonly qualityGate?: QualityGateMode | undefined;
   /** Optional BeliefMemory for hindsight updates after plan outcomes (#1720). */
   readonly beliefMemory?: IHindsightBeliefMemory | undefined;
+  /**
+   * Fail-closed guard invoked at the RESEARCH stage — the untrusted-read
+   * chokepoint (#3643). The auto-remediation enforce path (#3618) wires this to
+   * `CapabilityLedger.assertCapability('untrusted-input')`, so running the
+   * untrusted research stage inside the write+secrets IMPLEMENT phase throws
+   * (Rule-of-Two). Not called when {@link researchOverride} is set (no untrusted
+   * read happens). Default: undefined (no guard — normal pipeline behavior).
+   */
+  readonly untrustedInputGuard?: (() => void) | undefined;
+  /**
+   * Pre-seeded research text (#3643). When set, the RESEARCH stage uses this
+   * instead of calling `stages.research()` — so the IMPLEMENT phase can run the
+   * pipeline plan-only (from the typed RemediationPlan) with NO fresh untrusted
+   * read, while {@link untrustedInputGuard} still fail-closes any code path that
+   * forgets to seed it.
+   */
+  readonly researchOverride?: string | undefined;
 }
 
 /**
@@ -235,7 +252,7 @@ async function runDevPipelineInner(
   const bm = options?.beliefMemory;
 
   // Phases 1-2: Research + Plan/Vote
-  const { planResult } = await runPlanningPhase(task, stages, sid, prior, bm);
+  const { planResult } = await runPlanningPhase(task, stages, prior, options);
 
   // DRY RUN: stop after plan+vote, return partial result (#1717)
   if (options?.dryRun === true) {
@@ -532,12 +549,41 @@ function buildDryRunResult(planResult: {
 }
 
 /** Phases 1-2: Research + Plan/Vote with checkpoint support. */
+/**
+ * Resolve the RESEARCH stage output (#3643). When `researchOverride` is set, use
+ * it plan-only (no untrusted read). Otherwise the `untrustedInputGuard` is the
+ * fail-closed chokepoint: it runs immediately before the untrusted research
+ * stage, so an active IMPLEMENT-phase ledger throws rather than read.
+ */
+async function resolveResearch(
+  prior: PipelineCheckpointState | null,
+  task: string,
+  stages: DevPipelineStages,
+  options: DevPipelineOptions | undefined
+): Promise<string> {
+  return runOrResume(prior, 'research', () =>
+    withStep(
+      { name: 'research', kind: 'pipeline.stage', attrs: { task: task.slice(0, 100) } },
+      async (ctx) => {
+        const override = options?.researchOverride;
+        if (override !== undefined) {
+          ctx.setSummary(`override: ${String(override.length)} chars`);
+          return override;
+        }
+        options?.untrustedInputGuard?.();
+        const r = await stages.research(task);
+        ctx.setSummary(`${String(r.length)} chars`);
+        return r;
+      }
+    )
+  );
+}
+
 async function runPlanningPhase(
   task: string,
   stages: DevPipelineStages,
-  sid: string | undefined,
   prior: PipelineCheckpointState | null,
-  bm: IHindsightBeliefMemory | undefined
+  options: DevPipelineOptions | undefined
 ): Promise<{
   planResult: {
     plan: string;
@@ -547,16 +593,9 @@ async function runPlanningPhase(
     caveats: readonly string[];
   };
 }> {
-  const research = await runOrResume(prior, 'research', () =>
-    withStep(
-      { name: 'research', kind: 'pipeline.stage', attrs: { task: task.slice(0, 100) } },
-      async (ctx) => {
-        const r = await stages.research(task);
-        ctx.setSummary(`${String(r.length)} chars`);
-        return r;
-      }
-    )
-  );
+  const sid = options?.sessionId;
+  const bm = options?.beliefMemory;
+  const research = await resolveResearch(prior, task, stages, options);
   if (sid !== undefined) saveStageCheckpoint(sid, 'research', { type: 'research', text: research });
 
   const planContext = await assemblePlanContext(research, task, sid, bm);
