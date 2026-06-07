@@ -39,6 +39,7 @@ import {
   type MetaDecision,
   type MetaOrchestratorInput,
 } from '../../orchestration/meta-orchestrator.js';
+import { getShadowSelector, getShadowSink } from '../../orchestration/meta-shadow-selector.js';
 import {
   createMetaDispatcher,
   MetaDispatchError,
@@ -144,7 +145,14 @@ function toMetaInput(
 
 /** Selects a strategy for a goal via the MetaOrchestrator. */
 function selectDecision(input: RunInput, logger?: ILogger): MetaDecision {
-  const meta = createMetaOrchestrator(logger !== undefined ? { logger } : undefined);
+  // Shadow-mode learned selection (#3551): the process-scoped selector + sink
+  // log a would-be learned choice alongside the executed rule-based choice.
+  // Never alters what runs; builds the comparison surface for offline eval.
+  const meta = createMetaOrchestrator({
+    ...(logger !== undefined ? { logger } : {}),
+    shadowSelector: getShadowSelector(),
+    shadowSink: getShadowSink(),
+  });
   return meta.select(toMetaInput(input));
 }
 
