@@ -1,5 +1,19 @@
 # nexus-agents
 
+## 2.125.13
+
+### Patch Changes
+
+- [#3654](https://github.com/nexus-substrate/nexus-agents/pull/3654) [`3a71e62`](https://github.com/nexus-substrate/nexus-agents/commit/3a71e628970fb25e03915c0ba3090f5b8907b1e8) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(capability-loop): priority→consensus-rigor policy for autonomous remediation ([#3653](https://github.com/nexus-substrate/nexus-agents/issues/3653))
+
+  The pure policy core of the owner-directed, consensus-ratified (7/7) on-by-default
+  autonomy work: classify every signal/gap into p0–p4 (security is always p0,
+  fail-closed) and map each tier to the consensus rigor required before
+  auto-remediation — p0 unanimous + mandatory dry-run, p1 supermajority, p2
+  higher_order, p3 simple_majority, p4 file-only. Single authoritative mapping
+  (maps to canonical ConsensusAlgorithm values); consumed next by the p0–p4
+  auto-filer and the enforce orchestrator's consensus gating.
+
 ## 2.125.12
 
 ### Patch Changes
