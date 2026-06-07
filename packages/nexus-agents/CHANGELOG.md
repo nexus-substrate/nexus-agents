@@ -1,5 +1,28 @@
 # nexus-agents
 
+## 2.125.16
+
+### Patch Changes
+
+- [#3660](https://github.com/nexus-substrate/nexus-agents/pull/3660) [`32ba2ae`](https://github.com/nexus-substrate/nexus-agents/commit/32ba2ae9b99869ee9f04885210205ed5515a8dd8) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(capability-loop): protected-path / self-modification guard ([#3653](https://github.com/nexus-substrate/nexus-agents/issues/3653))
+
+  The loop may never autonomously weaken its own safety rails or touch
+  auth/secrets/access-control/CI (consensus-vote condition 2). Two layers:
+  `isProtectedPath`/`planTouchesProtectedPath` let the enforce path proactively
+  refuse a plan that declares a protected target (the loop's own remediation/
+  consensus/review modules, .rules, security/auth/secrets, CI workflows), and
+  CODEOWNERS is extended to require human review on consensus/ and .rules/ (on top
+  of the existing security/pipeline/mcp/workflows coverage) — the hard merge-time
+  attestation.
+
+- [#3659](https://github.com/nexus-substrate/nexus-agents/pull/3659) [`bf8b15e`](https://github.com/nexus-substrate/nexus-agents/commit/bf8b15e7b17d180ee289d2929e3720852e74f37e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(capability-loop): circuit-breaker for autonomous remediation ([#3653](https://github.com/nexus-substrate/nexus-agents/issues/3653))
+
+  A `RemediationCircuitBreaker` that trips to off after K consecutive rejected/failed
+  remediations (default 3); a success resets the streak but does NOT un-trip — only
+  `reset()` (wired to a consensus re-vote) does. Bounds _sustained wrongness_ that
+  the rate cap + runaway guard don't catch. Pure/in-memory singleton; the enforce
+  entry point consults `isTripped()` to auto-revert to off and files a p1 on trip.
+
 ## 2.125.15
 
 ### Patch Changes
