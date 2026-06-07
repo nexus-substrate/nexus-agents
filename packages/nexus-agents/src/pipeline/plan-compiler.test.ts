@@ -15,6 +15,7 @@ import {
 } from './policy-evaluator.js';
 import { EventBus } from './event-bus.js';
 import { executeGraph } from '../orchestration/graph/graph-executor.js';
+import { START } from '../orchestration/graph/graph-types.js';
 import type { GraphExecutionResult } from '../orchestration/graph/graph-types.js';
 import type { Result } from '../core/index.js';
 import type { PlanContract, StageSpec, PolicyGateSpec } from './task-contract.js';
@@ -352,5 +353,61 @@ describe('policy gate enforcement (#3177)', () => {
     expect(gateNode?.status).toBe('success'); // did NOT throw / halt
     const executeNode = result.value.nodeResults.find((r) => r.nodeId === 'execute');
     expect(executeNode?.status).toBe('success');
+  });
+});
+
+// ============================================================================
+// START-boundary gate interposition (#3703)
+// ============================================================================
+
+/** Gate guarding a single no-dependency entry stage at the START boundary. */
+const ENTRY_GATE: PolicyGateSpec = {
+  id: 'gate-entry',
+  afterStage: START,
+  beforeStage: 'route-model',
+  rules: ['trust-tier'],
+  onFail: 'warn',
+};
+
+/** Single-stage plan with an entry gate at START → route-model (#3703). */
+function makeEntryGatedPlan(): PlanContract {
+  return makePlan({
+    taskId: 'task-entry',
+    stages: [makeStage({ id: 'route-model', type: 'route', dependencies: [] })],
+    policyGates: [ENTRY_GATE],
+  });
+}
+
+describe('START-boundary gate interposition (#3703)', () => {
+  it('interposes an entry gate on the START edge of a no-dependency stage', async () => {
+    const plan = makeEntryGatedPlan();
+    const compiled = compilePlan(plan, {
+      policyEnforcement: enforcement({ mode: 'warn', pipelineState: {} }),
+    });
+    expect(compiled.ok).toBe(true);
+    if (!compiled.ok) return;
+    // The gate node exists and is reachable (START → gate → route-model).
+    expect(compiled.value.nodes.has('gate-entry')).toBe(true);
+    const result = await executeGraph(compiled.value, {}, { timeout: 5000 });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const gateNode = result.value.nodeResults.find((r) => r.nodeId === 'gate-entry');
+    expect(gateNode?.status).toBe('success');
+    const stageNode = result.value.nodeResults.find((r) => r.nodeId === 'route-model');
+    expect(stageNode?.status).toBe('success');
+  });
+
+  it('entry gate runs BEFORE the stage it guards', async () => {
+    const plan = makeEntryGatedPlan();
+    const compiled = compilePlan(plan, {
+      policyEnforcement: enforcement({ mode: 'warn', pipelineState: {} }),
+    });
+    expect(compiled.ok).toBe(true);
+    if (!compiled.ok) return;
+    const result = await executeGraph(compiled.value, {}, { timeout: 5000 });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const order = result.value.nodeResults.map((r) => r.nodeId);
+    expect(order.indexOf('gate-entry')).toBeLessThan(order.indexOf('route-model'));
   });
 });
