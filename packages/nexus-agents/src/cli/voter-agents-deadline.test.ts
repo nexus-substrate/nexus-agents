@@ -180,4 +180,81 @@ describe('launchVotesWithOverallDeadline (Issue #1871)', () => {
 
     expect(results.map((r) => r.role)).toEqual([...roles]);
   });
+
+  it('retries on the fallback adapter when a diverse adapter hard-fails (#3587)', async () => {
+    // architect lands on a bad CLI (OpenRouter tool-use 404 class); the
+    // fallback CLI is healthy. The voter must end up with a real vote.
+    const roleAdapters = new Map<VoterRole, IModelAdapter>([
+      ['architect', makeCliAdapter('badcli')],
+    ]);
+    const seen: string[] = [];
+    const voteFn = (
+      role: VoterRole,
+      _p: string,
+      adapter: IModelAdapter
+    ): Promise<AgentVoteResult> => {
+      const name = (adapter as { name?: string }).name ?? adapter.providerId;
+      seen.push(name);
+      if (name === 'badcli') {
+        return Promise.resolve({
+          role,
+          error: 'No endpoints found that support tool use',
+          processingTimeMs: 5,
+          source: 'error',
+          cli: name,
+        } as AgentVoteResult);
+      }
+      return Promise.resolve(makeOkVote(role));
+    };
+
+    const results = await launchVotesWithOverallDeadline({
+      roles: ['architect'],
+      proposal: 'test',
+      roleAdapters,
+      fallbackAdapter: makeCliAdapter('goodcli'),
+      logger: silentLogger,
+      voteOptions: { timeoutMs: 1_000, maxRetries: 0, allowSimulation: false },
+      interDelay: 0,
+      overallDeadlineMs: 1_000,
+      voteFn,
+    });
+
+    expect(results[0]?.source).toBe('llm'); // recovered via fallback
+    expect(seen).toEqual(['badcli', 'goodcli']); // tried diverse, then fallback
+  });
+
+  it('does not retry when the failing adapter IS the fallback (no loop)', async () => {
+    // architect uses the fallback directly; a failure must not re-invoke it.
+    const fallback = makeCliAdapter('only');
+    const seen: string[] = [];
+    const voteFn = (
+      role: VoterRole,
+      _p: string,
+      adapter: IModelAdapter
+    ): Promise<AgentVoteResult> => {
+      seen.push((adapter as { name?: string }).name ?? adapter.providerId);
+      return Promise.resolve({
+        role,
+        error: 'No endpoints found that support tool use',
+        processingTimeMs: 5,
+        source: 'error',
+        cli: 'only',
+      } as AgentVoteResult);
+    };
+
+    const results = await launchVotesWithOverallDeadline({
+      roles: ['architect'],
+      proposal: 'test',
+      roleAdapters: new Map([['architect', fallback]]),
+      fallbackAdapter: fallback,
+      logger: silentLogger,
+      voteOptions: { timeoutMs: 1_000, maxRetries: 0, allowSimulation: false },
+      interDelay: 0,
+      overallDeadlineMs: 1_000,
+      voteFn,
+    });
+
+    expect(results[0]?.source).toBe('error');
+    expect(seen).toEqual(['only']); // exactly one attempt — no fallback loop
+  });
 });

@@ -270,6 +270,13 @@ export interface ConsensusVoteResponse {
    * `fail_closed: 1 voter(s) errored`. Absent on normally-tallied votes.
    */
   policyReason?: string;
+  /**
+   * Set when the panel was DEGRADED (#3587): some voters errored, so the
+   * decision rests on fewer than the requested number of voters. Surfaces a
+   * silently-shrunk panel so the result isn't read as a full-strength consensus.
+   * Absent when every requested voter returned a real vote.
+   */
+  panelWarning?: string;
 }
 
 /** Extended voting result with optional Higher-Order metadata. */
@@ -314,6 +321,20 @@ export function mapOutcomeToDecision(outcome: string): VoteDecisionStatus {
   }
 }
 
+/**
+ * #3587: partial panel degradation — some (but not all) voters errored, so the
+ * decision rests on fewer voters than requested. Returns a warning string, or
+ * undefined when the panel is full or entirely errored (the latter is already a
+ * structured error elsewhere).
+ */
+function panelDegradationWarning(errorCount: number, total: number): string | undefined {
+  if (errorCount <= 0 || errorCount >= total) return undefined;
+  return (
+    `Panel degraded: ${String(errorCount)} of ${String(total)} voters errored; ` +
+    `decision rests on ${String(total - errorCount)} voter(s).`
+  );
+}
+
 /** Builds the response from voting result. */
 export function buildResponse(
   input: ConsensusVoteInput,
@@ -354,18 +375,28 @@ export function buildResponse(
     response.policyReason = result.policyReason;
   }
 
+  const panelWarning = panelDegradationWarning(errorCount, result.votes.length);
+  if (panelWarning !== undefined) {
+    response.panelWarning = panelWarning;
+  }
+
   if (isHigherOrderStrategy(result.strategy) && result.higherOrderResult) {
-    response.higherOrderMetadata = {
-      posteriorApproval: result.higherOrderResult.posteriorApproval,
-      posteriorRejection: result.higherOrderResult.posteriorRejection,
-      effectiveVoteCount: result.higherOrderResult.effectiveVoteCount,
-      method: result.higherOrderResult.method,
-      usedCorrelationData: result.higherOrderResult.usedCorrelationData,
-      improvementOverBaseline: result.higherOrderResult.improvementOverBaseline,
-      downweightedAgents: result.higherOrderResult.downweightedAgents,
-      reasoning: result.higherOrderResult.reasoning,
-    };
+    response.higherOrderMetadata = toHigherOrderMetadata(result.higherOrderResult);
   }
 
   return response;
+}
+
+/** Maps a HigherOrderVotingResult to the response's metadata shape. */
+function toHigherOrderMetadata(r: HigherOrderVotingResult): HigherOrderMetadata {
+  return {
+    posteriorApproval: r.posteriorApproval,
+    posteriorRejection: r.posteriorRejection,
+    effectiveVoteCount: r.effectiveVoteCount,
+    method: r.method,
+    usedCorrelationData: r.usedCorrelationData,
+    improvementOverBaseline: r.improvementOverBaseline,
+    downweightedAgents: r.downweightedAgents,
+    reasoning: r.reasoning,
+  };
 }

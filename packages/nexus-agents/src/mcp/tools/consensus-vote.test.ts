@@ -991,6 +991,52 @@ describe('buildResponse error counting (Issue #815)', () => {
     expect(response.votes[0]!.error).toBe(false);
   });
 
+  it('surfaces a panelWarning on partial panel degradation (#3587)', () => {
+    const votes: AgentVoteResult[] = [
+      {
+        role: 'architect',
+        vote: { decision: 'approve', reasoning: 'ok', confidence: 0.9 },
+        processingTimeMs: 50,
+        source: 'llm',
+      },
+      {
+        role: 'security',
+        vote: { decision: 'approve', reasoning: 'ok', confidence: 0.8 },
+        processingTimeMs: 60,
+        source: 'llm',
+      },
+      {
+        role: 'devex',
+        vote: { decision: 'abstain', reasoning: 'err', confidence: 0 },
+        processingTimeMs: 10,
+        source: 'error',
+      },
+    ];
+    const input = { proposal: 'Test', simulateVotes: false, quickMode: false };
+    const response = buildResponse(input, makeVotingResult(votes));
+    expect(response.panelWarning).toMatch(/Panel degraded: 1 of 3 voters errored/);
+  });
+
+  it('omits panelWarning when every voter returns a real vote', () => {
+    const votes: AgentVoteResult[] = [
+      {
+        role: 'architect',
+        vote: { decision: 'approve', reasoning: 'ok', confidence: 0.9 },
+        processingTimeMs: 50,
+        source: 'llm',
+      },
+      {
+        role: 'security',
+        vote: { decision: 'approve', reasoning: 'ok', confidence: 0.8 },
+        processingTimeMs: 60,
+        source: 'llm',
+      },
+    ];
+    const input = { proposal: 'Test', simulateVotes: false, quickMode: false };
+    const response = buildResponse(input, makeVotingResult(votes));
+    expect(response.panelWarning).toBeUndefined();
+  });
+
   it('should report all errors when every vote errored', () => {
     const votes: AgentVoteResult[] = [
       {
