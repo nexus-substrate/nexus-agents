@@ -35,6 +35,8 @@ import {
   getCliModelName,
   buildModelInfo,
   findInTreeByCli,
+  FALLBACK_CONTEXT_WINDOW,
+  FALLBACK_MAX_OUTPUT,
 } from '../../config/model-config-helpers.js';
 import { createLogger } from '../../core/index.js';
 
@@ -168,8 +170,9 @@ export class OpenCodeCliAdapter extends SubprocessCliAdapter {
     return {
       id: this.model,
       name: `OpenCode (${this.model})`,
-      contextWindow: 200_000,
-      maxOutput: 64_000,
+      contextWindow: FALLBACK_CONTEXT_WINDOW,
+      maxOutput: FALLBACK_MAX_OUTPUT,
+      // OpenCode pricing fallback is adapter-specific (not the Claude 5/25).
       costPerMillionInput: 3.0,
       costPerMillionOutput: 15.0,
     };

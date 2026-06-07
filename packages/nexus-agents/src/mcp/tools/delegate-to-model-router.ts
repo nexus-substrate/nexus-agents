@@ -12,7 +12,10 @@ import type { IFeedbackIntegration } from '../../learning/feedback-integration.j
 // Import directly from types to avoid circular dependency with delegate-to-model.ts
 import type { CapabilityProfile, DelegateOutput } from './delegate-to-model-types.js';
 import { MODEL_CAPABILITIES } from './delegate-to-model-types.js';
-import { getDefaultModelForCli } from '../../config/model-config-helpers.js';
+import {
+  getDefaultModelForCli,
+  FALLBACK_CONTEXT_WINDOW,
+} from '../../config/model-config-helpers.js';
 import type { CliNameLiteral } from '../../config/model-capabilities-types.js';
 import { routingArmDisplaySlot } from '../../cli-adapters/types.js';
 
@@ -29,7 +32,7 @@ export function cliNameToModel(cliName: CliNameLiteral): string {
  */
 const DEFAULT_CAPABILITIES: CapabilityProfile = {
   reasoning: 8,
-  contextWindow: 200_000,
+  contextWindow: FALLBACK_CONTEXT_WINDOW,
   codeGeneration: 8,
   speed: 7,
   cost: 6,

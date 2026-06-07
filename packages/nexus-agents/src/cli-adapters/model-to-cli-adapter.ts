@@ -19,6 +19,7 @@ import type {
   CompletionResponse,
 } from '../core/index.js';
 import { ok, err, ModelError } from '../core/index.js';
+import { FALLBACK_CONTEXT_WINDOW } from '../config/model-config-helpers.js';
 import { isRateLimitText } from '../adapters/rate-limit-detector.js';
 import type {
   ICliAdapter,
@@ -53,7 +54,7 @@ export interface ModelToCliAdapterConfig {
 }
 
 /** Default context window when the model adapter exposes no capability hint. */
-const DEFAULT_CONTEXT_WINDOW = 200_000;
+const DEFAULT_CONTEXT_WINDOW = FALLBACK_CONTEXT_WINDOW;
 
 /** Neutral mid capability profile used when the caller supplies none. */
 const NEUTRAL_CAPABILITIES: CapabilityProfile = {
