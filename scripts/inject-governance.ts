@@ -42,6 +42,9 @@ const README_PATH = join(ROOT, 'README.md');
 // registry + TOOL_DESCRIPTIONS corpus as the CLAUDE.md / README surfaces.
 const ENTRYPOINTS_PATH = join(ROOT, 'docs/ENTRYPOINTS.md');
 const TOOLS_INDEX = join(ROOT, 'packages/nexus-agents/src/mcp/tools/index.ts');
+// #3566: the canonical tool-name list is now the leaf `TOOL_MANIFEST` array;
+// `REGISTERED_TOOL_NAMES` is a derived re-export, so the parser reads the manifest.
+const TOOL_MANIFEST_FILE = join(ROOT, 'packages/nexus-agents/src/mcp/tools/tool-manifest.ts');
 const EXPERT_CONFIG = join(ROOT, 'packages/nexus-agents/src/agents/experts/expert-config.ts');
 const TEMPLATE_TYPES = join(ROOT, 'packages/nexus-agents/src/workflows/template-types.ts');
 const SKILLS_DIR = join(ROOT, 'skills');
@@ -182,22 +185,27 @@ interface WorkflowRow {
  * matches against curated descriptions.
  */
 function extractMcpTools(): ToolMetadata[] {
-  if (!existsSync(TOOLS_INDEX)) {
-    console.error('MCP tools index not found: ' + TOOLS_INDEX);
+  // #3566: source of truth is the leaf `TOOL_MANIFEST` array in tool-manifest.ts.
+  // Fall back to tools/index.ts (`REGISTERED_TOOL_NAMES`) for pre-#3566 checkouts.
+  const manifestExists = existsSync(TOOL_MANIFEST_FILE);
+  const sourceFile = manifestExists ? TOOL_MANIFEST_FILE : TOOLS_INDEX;
+  if (!existsSync(sourceFile)) {
+    console.error('MCP tool manifest/index not found: ' + sourceFile);
     return [];
   }
 
-  const content = readFileSync(TOOLS_INDEX, 'utf-8');
+  const content = readFileSync(sourceFile, 'utf-8');
 
-  // Extract the tools array. Source of truth is the module-level
-  // `REGISTERED_TOOL_NAMES` const (extracted out of `registerTools()` to fit
-  // the max-lines-per-function gate). Fall back to the inline `tools: [...]`
-  // shape for older checkouts that haven't migrated yet.
+  // Extract the tools array. Source of truth is the module-level `TOOL_MANIFEST`
+  // const (or, pre-#3566, `REGISTERED_TOOL_NAMES`); both are literal `[...] as
+  // const` arrays of `'name'` strings. Fall back to the inline `tools: [...]`
+  // shape for very old checkouts.
   const toolsMatch =
+    content.match(/TOOL_MANIFEST\s*=\s*\[([\s\S]*?)\]\s*as const/) ??
     content.match(/REGISTERED_TOOL_NAMES\s*=\s*\[([\s\S]*?)\]\s*as const/) ??
     content.match(/tools:\s*\[([\s\S]*?)\]/);
   if (toolsMatch?.[1] === undefined) {
-    console.error('Could not parse tools array from index.ts');
+    console.error('Could not parse tools array from ' + sourceFile);
     return [];
   }
 

@@ -27,7 +27,11 @@ import { catalogForExtractors } from '../packages/nexus-agents/src/cli-command-c
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '..');
 const CLI_COMMANDS_FILE = path.join(REPO_ROOT, 'packages/nexus-agents/src/cli-commands.ts');
-const MCP_TOOLS_INDEX = path.join(REPO_ROOT, 'packages/nexus-agents/src/mcp/tools/index.ts');
+// #3566: canonical tool-name list is the leaf TOOL_MANIFEST array.
+const MCP_TOOLS_INDEX = path.join(
+  REPO_ROOT,
+  'packages/nexus-agents/src/mcp/tools/tool-manifest.ts'
+);
 const WORKFLOWS_DIR = path.join(REPO_ROOT, 'packages/nexus-agents/src/workflows/templates');
 const PACKAGE_JSON = path.join(REPO_ROOT, 'packages/nexus-agents/package.json');
 
@@ -176,10 +180,11 @@ function extractMCPTools(): MCPTool[] {
   // (extracted out of `registerTools()` to fit the max-lines-per-function
   // gate). Fall back to the inline `tools: [...]` shape for older checkouts.
   const toolsMatch =
+    content.match(/TOOL_MANIFEST\s*=\s*\[([\s\S]*?)\]\s*as const/) ??
     content.match(/REGISTERED_TOOL_NAMES\s*=\s*\[([\s\S]*?)\]\s*as const/) ??
     content.match(/tools:\s*\[([\s\S]*?)\]/);
   if (toolsMatch?.[1] === undefined) {
-    console.error('Could not parse tools array from MCP tools index');
+    console.error('Could not parse tools array from MCP tool manifest');
     return [];
   }
 

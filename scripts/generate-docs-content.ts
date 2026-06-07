@@ -25,7 +25,8 @@ import { join } from 'node:path';
 import { ROOT, SRC_ROOT, DOCS_ROOT } from './script-paths.js';
 
 const CHECK_MODE = process.argv.includes('--check');
-const TOOLS_INDEX = join(SRC_ROOT, 'mcp/tools/index.ts');
+// #3566: canonical tool-name list is the leaf TOOL_MANIFEST array.
+const TOOLS_INDEX = join(SRC_ROOT, 'mcp/tools/tool-manifest.ts');
 const TEMPLATE_TYPES = join(SRC_ROOT, 'workflows/template-types.ts');
 const AGENT_TYPES = join(SRC_ROOT, 'core/types/agent.ts');
 const ADR_DIR = join(DOCS_ROOT, 'adr');
@@ -48,10 +49,10 @@ const drifts: DriftReport[] = [];
  */
 function extractMcpToolCount(): number {
   const src = readFileSync(TOOLS_INDEX, 'utf-8');
-  // Source of truth is the module-level `REGISTERED_TOOL_NAMES` const
-  // (extracted out of `registerTools()` to fit the max-lines-per-function
-  // gate). Fall back to the inline `tools: [...]` shape for older checkouts.
+  // Source of truth is the leaf `TOOL_MANIFEST` const (#3566); fall back to the
+  // pre-#3566 `REGISTERED_TOOL_NAMES` and legacy `tools: [...]` shapes.
   const arrayMatch =
+    src.match(/TOOL_MANIFEST\s*=\s*\[([\s\S]*?)\]\s*as const/) ??
     src.match(/REGISTERED_TOOL_NAMES\s*=\s*\[([\s\S]*?)\]\s*as const/) ??
     src.match(/tools:\s*\[([\s\S]*?)\]/);
   if (!arrayMatch) return 0;

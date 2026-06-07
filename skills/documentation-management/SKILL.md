@@ -70,6 +70,8 @@ allowed-tools: Read, Edit, Write, Bash, Grep, Glob, Task
 
 <!-- PIPELINE NOTE: entrypointsToolDescription in inject-governance.ts now escapes backslashes before pipes (\\ then \|), resolving a HIGH js/incomplete-sanitization CodeQL alert from #3334 (2026-06-05). Escaping | for markdown-cell safety without escaping \ first let a backslash-bearing tool description smuggle a half-escaped pipe past the sanitization. Behavior-preserving — the curated TOOL_DESCRIPTIONS corpus has no backslashes, so inject output is unchanged + idempotent. -->
 
+<!-- PIPELINE NOTE: the canonical MCP tool-name list is now the leaf `TOOL_MANIFEST` array in src/mcp/tools/tool-manifest.ts (#3566, 2026-06-07). `REGISTERED_TOOL_NAMES` is a derived re-export; capability-gap-detector's AVAILABLE_TOOLS derives from the manifest (was a hand-copy + freshness test). ALL four tool-list parsers were retargeted to match `TOOL_MANIFEST = [...]` first (REGISTERED_TOOL_NAMES + legacy `tools:` kept as fallbacks): inject-governance.ts extractMcpTools(), generate-docs-content.ts extractMcpToolCount(), generate-repo-index.ts extractMCPTools(), and the docs-check.yml MCP_TOOL_COUNT awk guard. The registry-coverage manifest's REGISTERED_TOOL_NAMES entry repointed source→tool-manifest.ts/marker→TOOL_MANIFEST and gained a `moved_from` affordance so the structural-equivalence exemption recognizes a no-op registry relocation (new check-registry-coverage.ts feature). Annotation-data fold (#3597) + AST parser upgrade (#3596) are follow-ups. -->
+
 **Full specification:** [docops-spec.md](../../docs/ops/docops-spec.md)
 
 ---
