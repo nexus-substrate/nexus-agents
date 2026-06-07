@@ -469,7 +469,8 @@ describe('Export contracts — pipeline V2 types', () => {
 
   it('exports CORE_PLUGINS (Issue #921)', () => {
     expect(Array.isArray(CORE_PLUGINS)).toBe(true);
-    expect(CORE_PLUGINS.length).toBe(4);
+    // 3 after removing the orphan RESEARCH_PIPELINE_PLUGIN (#3492).
+    expect(CORE_PLUGINS.length).toBe(3);
   });
 
   it('exports registerCorePlugins (Issue #921)', () => {
