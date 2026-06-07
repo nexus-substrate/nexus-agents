@@ -215,6 +215,8 @@ Twelve expert-role prompts ship at `agents/<name>-expert.md` (security, architec
 
 ## MCP server
 
+**Default entry point: `run`.** Give it a goal and the MetaOrchestrator selects the right strategy automatically (and, with `execute: true`, runs it). Reach for `run` first instead of hand-picking a pipeline tool. The specialized tools (`run_dev_pipeline`, `run_pipeline`, `run_graph_workflow`, `orchestrate`, `execute_spec`, `consensus_vote`, `delegate_to_model`) remain fully available as advanced **force-strategy** paths for when you want to pin a specific one.
+
 Nexus-agents exposes 46 MCP tools via stdio. From any MCP-aware agent:
 
 ```
