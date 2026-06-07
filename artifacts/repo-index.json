@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-06-06T22:43:41.612Z",
+  "generated": "2026-06-06T23:31:35.279Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.121.0",
   "cli": {
@@ -435,6 +435,10 @@
       {
         "name": "research_synthesize",
         "file": "src/mcp/tools/research-synthesize.ts"
+      },
+      {
+        "name": "run",
+        "file": "src/mcp/tools/run.ts"
       },
       {
         "name": "run_dev_pipeline",

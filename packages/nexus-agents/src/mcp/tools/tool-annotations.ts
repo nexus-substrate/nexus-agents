@@ -56,6 +56,18 @@ export interface ToolSideEffectsEntry {
  * One entry per registered MCP tool.
  */
 export const TOOL_ANNOTATIONS: Readonly<Record<string, ToolSideEffectsEntry>> = {
+  run: {
+    annotations: {
+      title: 'Run (Adaptive Entry Point)',
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    sideEffects: [
+      { category: 'implicit', description: 'Records a routing decision for observability' },
+    ],
+  },
   delegate_to_model: {
     annotations: {
       title: 'Delegate to Model',

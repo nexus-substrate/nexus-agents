@@ -54,7 +54,7 @@ Code:               actual edits, tests, PRs, issues
   │   Role registry             Multi-voter consensus    │
   │   Immutable audit trail     Closed-loop telemetry    │
   │                                                       │
-  │   45 MCP tools · multi-stage CompositeRouter         │
+  │   46 MCP tools · multi-stage CompositeRouter         │
   └────────────────────────┬────────────────────────────┘
                            │
                            ▼ delegates execution to
@@ -139,7 +139,7 @@ Three voter roles deliberate via whichever local CLIs you have (Claude, Codex, G
 nexus-agents setup   # Auto-configures MCP server in Claude Code, Cursor, etc.
 ```
 
-Restart your editor. The 45 MCP tools (`orchestrate`, `consensus_vote`, `research_synthesize`, `verify_audit_chain`, …) become available to whatever agent you're already using.
+Restart your editor. The 46 MCP tools (`orchestrate`, `consensus_vote`, `research_synthesize`, `verify_audit_chain`, …) become available to whatever agent you're already using.
 
 #### What `setup` configures
 
@@ -183,7 +183,7 @@ nexus-agents orchestrate "Explain the architecture of this codebase"
 | **Memory & Learning**          | 5 user-facing backends (session, belief, agentic, adaptive, typed). Cross-session persistence feeds routing decisions                                                                                                                                                                       |
 | **Research System**            | 9 discovery sources (arXiv, GitHub, Semantic Scholar, etc). Auto-catalog, quality scoring, synthesis into topic clusters                                                                                                                                                                    |
 | **Graph Workflows**            | DAG-based workflow execution with checkpoint/resume, state reduction, and event hooks                                                                                                                                                                                                       |
-| **45 MCP Tools**               | Agent management, workflow execution, research, memory, codebase intelligence, repo analysis, consensus, operations                                                                                                                                                                         |
+| **46 MCP Tools**               | Agent management, workflow execution, research, memory, codebase intelligence, repo analysis, consensus, operations                                                                                                                                                                         |
 
 ---
 
@@ -299,6 +299,7 @@ When running as an MCP server, the following tools are available:
 | `run_quality_gate`            | Run the QA quality gate (typecheck/lint/tests/build/security) over a project dir; returns structured pass/fail verdict + feedback                                         |
 | `suggest_research_tasks`      | SUGGEST-ONLY: candidate pipeline tasks from research_discover findings for review — files/executes nothing (#1715)                                                        |
 | `list_available_models`       | Probe all model-discovery transports (OpenRouter API + opencode/claude/codex/gemini CLIs) and report per-transport health — validates the CLIs/APIs are reachable (#3406) |
+| `run`                         | Default entry point — give a goal, MetaOrchestrator picks the strategy and returns the routing decision + recommendedTool (read-only; #3548)                              |
 
 <!-- GOVERNANCE:README_TOOLS:END -->
 

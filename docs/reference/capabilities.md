@@ -1,6 +1,6 @@
 # Repository Capabilities Index
 
-**Generated:** 2026-06-06T22:43:41.612Z
+**Generated:** 2026-06-06T23:31:35.279Z
 **Package Version:** 2.121.0
 **Generator:** `scripts/generate-repo-index.ts`
 
@@ -67,7 +67,7 @@ Binary: `nexus-agents`
 
 ---
 
-## MCP Tools (45)
+## MCP Tools (46)
 
 | Tool | Source File |
 | ------ | ------------- |
@@ -104,6 +104,7 @@ Binary: `nexus-agents`
 | `research_discover` | `src/mcp/tools/research-discover.ts` |
 | `research_query` | `src/mcp/tools/research-query.ts` |
 | `research_synthesize` | `src/mcp/tools/research-synthesize.ts` |
+| `run` | `src/mcp/tools/run.ts` |
 | `run_dev_pipeline` | `src/mcp/tools/run-dev-pipeline.ts` |
 | `run_graph_workflow` | `src/mcp/tools/run-graph-workflow.ts` |
 | `run_pipeline` | `src/mcp/tools/run-pipeline.ts` |

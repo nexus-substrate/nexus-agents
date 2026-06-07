@@ -196,6 +196,7 @@ vi.mock('./mcp/index.js', () => ({
   registerRunQualityGateTool: vi.fn(),
   registerSuggestResearchTasksTool: vi.fn(),
   registerListAvailableModelsTool: vi.fn(),
+  registerRunTool: vi.fn(),
   createDefaultDeps: mockCreateDefaultDeps,
   // Canonical tool-name list (Issue #2935) — must match the real export so
   // `cli-server-tools.ts:REGISTERED_TOOLS` alias resolves at module load.

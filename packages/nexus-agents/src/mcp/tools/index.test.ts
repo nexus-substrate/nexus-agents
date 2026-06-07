@@ -119,6 +119,7 @@ const EXPECTED_TOOL_NAMES = [
   'run_quality_gate',
   'suggest_research_tasks',
   'list_available_models',
+  'run',
 ];
 
 describe('MCP tools index', () => {

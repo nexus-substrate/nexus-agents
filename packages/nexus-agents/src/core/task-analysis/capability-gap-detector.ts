@@ -104,6 +104,7 @@ const AVAILABLE_TOOLS: ReadonlySet<string> = new Set([
   'run_quality_gate',
   'suggest_research_tasks',
   'list_available_models',
+  'run',
 ]);
 
 /**

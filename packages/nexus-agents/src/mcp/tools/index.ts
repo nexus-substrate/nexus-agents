@@ -436,6 +436,16 @@ export {
   type SuggestResearchTasksResponse,
 } from './suggest-research-tasks-tool.js';
 
+// run tool — unified adaptive entry point (epic #3548)
+export {
+  registerRunTool,
+  routeGoal,
+  RunInputSchema,
+  STRATEGY_ENTRYPOINT_TOOL,
+  type RunInput,
+  type RunResponse,
+} from './run-tool.js';
+
 // list_available_models tool (#3406 — probe discovery transports + report health)
 export {
   registerListAvailableModelsTool,
@@ -615,6 +625,7 @@ export const REGISTERED_TOOL_NAMES = [
   'run_quality_gate',
   'suggest_research_tasks',
   'list_available_models',
+  'run',
 ] as const;
 
 export function registerTools(
