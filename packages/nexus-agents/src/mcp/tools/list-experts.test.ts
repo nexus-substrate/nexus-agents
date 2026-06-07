@@ -8,6 +8,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { registerListExpertsTool, type ListExpertsDeps } from './list-experts.js';
 import { RateLimiter } from '../middleware/rate-limiter.js';
+import { BuiltInExpertTypeSchema } from '../../agents/index.js';
+
+/** Canonical built-in expert count — derive so adding an expert needs no edit here. */
+const EXPERT_COUNT = BuiltInExpertTypeSchema.options.length;
 
 // Mock McpServer
 interface MockServer {
@@ -90,7 +94,7 @@ describe('list_experts tool', () => {
 
       expect(parsed.count).toBeGreaterThan(0);
       expect(parsed.experts).toBeInstanceOf(Array);
-      expect(parsed.experts.length).toBe(12); // 10 built-in experts
+      expect(parsed.experts.length).toBe(EXPERT_COUNT);
 
       // Check structure
       const expert = parsed.experts[0];
@@ -135,7 +139,7 @@ describe('list_experts tool', () => {
       const result = await handler({ format: 'names' });
       const parsed = JSON.parse(result.content[0]?.text ?? '{}');
 
-      expect(parsed.experts.length).toBe(12);
+      expect(parsed.experts.length).toBe(EXPERT_COUNT);
       const expert = parsed.experts[0];
       expect(expert.role).toBeDefined();
       expect(expert.name).toBeDefined();

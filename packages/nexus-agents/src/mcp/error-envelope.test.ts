@@ -6,6 +6,7 @@
 
 import { describe, it, expect } from 'vitest';
 import type { OutcomeFailureCategory } from '../orchestration/outcomes/outcome-types.js';
+import { OutcomeFailureCategorySchema } from '../orchestration/outcomes/outcome-types.js';
 import {
   ErrorCategorySchema,
   ToolErrorEnvelopeSchema,
@@ -110,10 +111,11 @@ describe('coarsenFailureCategory', () => {
     }
   });
 
-  it('covers all 11 OutcomeFailureCategory values', () => {
-    // Guards against the map silently going stale if a 12th routing
-    // category is added without extending FAILURE_CATEGORY_COARSENING.
-    expect(cases).toHaveLength(11);
+  it('covers every OutcomeFailureCategory value', () => {
+    // Guards against the coarsening map silently going stale when a routing
+    // category is added without extending FAILURE_CATEGORY_COARSENING. Count
+    // derived from the canonical enum so the guard auto-targets the real total.
+    expect(cases).toHaveLength(OutcomeFailureCategorySchema.options.length);
   });
 });
 

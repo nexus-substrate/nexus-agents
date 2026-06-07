@@ -10,8 +10,12 @@ import type { EvaluationTask, TaskCategory, TaskDifficulty } from './task-types.
 import type { CliName } from '../types.js';
 
 describe('EVALUATION_TASKS', () => {
-  it('should contain exactly 15 tasks', () => {
-    expect(EVALUATION_TASKS).toHaveLength(15);
+  it('contains unique, non-empty task ids', () => {
+    // EVALUATION_TASKS is the canonical list, so a count literal would be a
+    // tautology + a maintenance tax. Assert structural invariants; consumer
+    // tests below cross-check registry output against EVALUATION_TASKS.length.
+    expect(EVALUATION_TASKS.length).toBeGreaterThan(0);
+    expect(new Set(EVALUATION_TASKS.map((t) => t.id)).size).toBe(EVALUATION_TASKS.length);
   });
 
   it('should have unique task IDs', () => {
@@ -20,8 +24,8 @@ describe('EVALUATION_TASKS', () => {
     expect(uniqueIds.size).toBe(ids.length);
   });
 
-  it('should have sequential task IDs from task-001 to task-015', () => {
-    for (let i = 0; i < 15; i++) {
+  it('should have sequential task IDs (task-001, task-002, …)', () => {
+    for (let i = 0; i < EVALUATION_TASKS.length; i++) {
       const expectedId = `task-${String(i + 1).padStart(3, '0')}`;
       expect(EVALUATION_TASKS[i]?.id).toBe(expectedId);
     }
@@ -132,7 +136,7 @@ describe('TaskRegistry', () => {
 
   describe('constructor', () => {
     it('should initialize with default tasks', () => {
-      expect(registry.getTaskCount()).toBe(15);
+      expect(registry.getTaskCount()).toBe(EVALUATION_TASKS.length);
     });
 
     it('should accept custom tasks', () => {
@@ -174,7 +178,7 @@ describe('TaskRegistry', () => {
   describe('getAllTasks', () => {
     it('should return all tasks', () => {
       const tasks = registry.getAllTasks();
-      expect(tasks).toHaveLength(15);
+      expect(tasks).toHaveLength(EVALUATION_TASKS.length);
     });
 
     it('should return a frozen array', () => {
@@ -358,7 +362,7 @@ describe('TaskRegistry', () => {
 
     it('should return all tasks for empty tags array', () => {
       const tasks = registry.getTasksByTags([]);
-      expect(tasks).toHaveLength(15);
+      expect(tasks).toHaveLength(EVALUATION_TASKS.length);
     });
   });
 
@@ -372,7 +376,7 @@ describe('TaskRegistry', () => {
         expect(count).toBeGreaterThan(0);
         total += count;
       }
-      expect(total).toBe(15);
+      expect(total).toBe(EVALUATION_TASKS.length);
     });
   });
 
@@ -386,13 +390,13 @@ describe('TaskRegistry', () => {
         expect(count).toBeGreaterThan(0);
         total += count;
       }
-      expect(total).toBe(15);
+      expect(total).toBe(EVALUATION_TASKS.length);
     });
   });
 
   describe('getTaskCount', () => {
     it('should return 15 for default registry', () => {
-      expect(registry.getTaskCount()).toBe(15);
+      expect(registry.getTaskCount()).toBe(EVALUATION_TASKS.length);
     });
   });
 });
@@ -501,7 +505,9 @@ describe('CLI Distribution', () => {
     expect(geminiTasks.length).toBeGreaterThan(0);
 
     // Total should be 15
-    expect(claudeTasks.length + codexTasks.length + geminiTasks.length).toBe(15);
+    expect(claudeTasks.length + codexTasks.length + geminiTasks.length).toBe(
+      EVALUATION_TASKS.length
+    );
   });
 
   it('should have each CLI able to handle multiple tasks', () => {

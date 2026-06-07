@@ -7,6 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { runExpertList, printExpertListResult, expertListCommand } from './expert-list.js';
+import { BuiltInExpertTypeSchema } from '../agents/index.js';
 
 describe('expert-list', () => {
   let stdoutWriteMock: ReturnType<typeof vi.fn>;
@@ -31,9 +32,9 @@ describe('expert-list', () => {
       const result = runExpertList();
 
       expect(result.success).toBe(true);
-      // Was 9 pre-#2341; #2341 added research, qa, data-visualization to bring
-      // DEFAULT_EXPERTS in lockstep with the BuiltInExpertType union (12 entries).
-      expect(result.builtIn.length).toBe(12);
+      // DEFAULT_EXPERTS stays in lockstep with the BuiltInExpertType union;
+      // derive the count so adding an expert needs no edit here (#3569).
+      expect(result.builtIn.length).toBe(BuiltInExpertTypeSchema.options.length);
     });
 
     it('should return empty custom experts by default', () => {

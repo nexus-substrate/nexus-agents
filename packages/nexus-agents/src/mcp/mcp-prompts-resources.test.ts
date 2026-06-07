@@ -12,6 +12,10 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
 import { createServer, connectTransport } from './server.js';
 import { registerPrompts } from './prompts/index.js';
+import { BuiltInExpertTypeSchema } from '../agents/index.js';
+
+/** Canonical built-in expert count — derive so adding an expert needs no edit here. */
+const EXPERT_COUNT = BuiltInExpertTypeSchema.options.length;
 import { registerResources } from './resources/index.js';
 import { registerTools } from './tools/index.js';
 
@@ -214,8 +218,8 @@ describe('resources/read - experts', () => {
       expertCount: number;
       experts: Array<{ role: string; name: string }>;
     };
-    expect(data.expertCount).toBe(12);
-    expect(data.experts.length).toBe(12);
+    expect(data.expertCount).toBe(EXPERT_COUNT);
+    expect(data.experts.length).toBe(EXPERT_COUNT);
   });
 
   it('includes expected expert roles', async () => {

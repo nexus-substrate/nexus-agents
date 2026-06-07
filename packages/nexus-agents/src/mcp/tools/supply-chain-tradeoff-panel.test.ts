@@ -20,7 +20,7 @@ import {
   type AxisVerdict,
   type PanelVote,
 } from './supply-chain-tradeoff-panel.js';
-import type { VoterRole } from '../../cli/vote-types.js';
+import { VOTER_ROLES, type VoterRole } from '../../cli/vote-types.js';
 
 describe('supply_chain_tradeoff_panel', () => {
   describe('DEFAULT_AXES', () => {
@@ -34,8 +34,8 @@ describe('supply_chain_tradeoff_panel', () => {
   });
 
   describe('panels', () => {
-    it('full panel has 7 voters including scope_steward', () => {
-      expect(FULL_PANEL).toHaveLength(7);
+    it('full panel covers every voter role including scope_steward', () => {
+      expect(FULL_PANEL).toHaveLength(Object.keys(VOTER_ROLES).length);
       expect(new Set(FULL_PANEL).has('scope_steward')).toBe(true);
     });
 
