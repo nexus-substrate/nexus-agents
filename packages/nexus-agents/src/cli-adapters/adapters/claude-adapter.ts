@@ -24,6 +24,8 @@ import {
   getCliModelName,
   buildModelInfo,
   findInTreeByCli,
+  FALLBACK_CONTEXT_WINDOW,
+  FALLBACK_MAX_OUTPUT,
 } from '../../config/model-config-helpers.js';
 
 /**
@@ -98,8 +100,8 @@ export class ClaudeCliAdapter extends SubprocessCliAdapter {
     return {
       id: this.model,
       name: this.model,
-      contextWindow: 200_000,
-      maxOutput: 64_000,
+      contextWindow: FALLBACK_CONTEXT_WINDOW,
+      maxOutput: FALLBACK_MAX_OUTPUT,
       costPerMillionInput: UNKNOWN_MODEL_DEFAULT_INPUT_COST,
       costPerMillionOutput: UNKNOWN_MODEL_DEFAULT_OUTPUT_COST,
     };

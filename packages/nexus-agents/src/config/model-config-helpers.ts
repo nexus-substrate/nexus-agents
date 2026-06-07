@@ -95,8 +95,25 @@ export function getModelDisplayName(modelId: ModelId): string {
  * removed; ModelRegistry is the single resolver).
  */
 export function getModelContextWindow(modelId: ModelId): number {
+  // 8_192 is the CONSERVATIVE default for a *truly unknown* model id (generic
+  // catalog lookup miss). This is intentionally distinct from
+  // FALLBACK_CONTEXT_WINDOW below (200_000), which CLI adapters use when an
+  // unknown model is known to be a Claude-class CLI model — #3571 verified the
+  // two are context-appropriate and must NOT be reconciled to one value.
   return lookupInTree(modelId)?.contextWindow ?? 8_192;
 }
+
+/**
+ * Fallback context window for an unknown model that a CLI adapter (Claude /
+ * OpenCode) or a capability profile assumes is Claude-class. Single source
+ * (#3571) — referenced wherever an unknown-model spec previously hardcoded
+ * `200_000`. Distinct from the conservative 8_192 generic default in
+ * {@link getModelContextWindow}; see that note for the rationale.
+ */
+export const FALLBACK_CONTEXT_WINDOW = 200_000;
+
+/** Fallback max-output tokens for an unknown CLI model (#3571 single source). */
+export const FALLBACK_MAX_OUTPUT = 64_000;
 
 /** Get max output tokens for a model, or undefined if not set. */
 export function getModelMaxOutput(modelId: ModelId): number | undefined {
