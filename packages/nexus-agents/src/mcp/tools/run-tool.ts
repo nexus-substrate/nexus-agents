@@ -12,9 +12,9 @@
  * concrete strategy tool to invoke. With `execute:true` it dispatches the
  * selected strategy through the MetaDispatcher to a real engine executor and
  * returns the result (increment B; wired so far: dev-pipeline, pipeline,
- * research — others fail closed with a typed error). Executors live here, at
- * the MCP-tool layer, and
- * are injected into the dispatcher so the orchestration core stays cycle-free.
+ * research, consensus — others fail closed with a typed error). Executors live
+ * here at the MCP-tool layer and are injected into the dispatcher so the
+ * orchestration core stays cycle-free.
  *
  * @module mcp/tools/run-tool
  * (Source: epic #3548 — unified adaptive MetaOrchestrator entry point)
@@ -47,6 +47,7 @@ import {
 } from '../../orchestration/meta-dispatcher.js';
 import { runDevPipelineForGoal } from './dev-pipeline-tool.js';
 import { runPipelineForGoal } from './pipeline-tool.js';
+import { runConsensusForGoal } from './consensus-vote.js';
 
 /**
  * The concrete MCP tool / engine each strategy routes to. Used to tell the
@@ -169,16 +170,21 @@ export function routeGoal(input: RunInput, logger?: ILogger): RunResponse {
 }
 
 /**
- * Strategies wired for inline execution (increment B). Others fail closed.
- * `graph-workflow` is intentionally NOT wired: graph workflows are pre-defined
- * templates (threat_model, code_analysis, …), not a goal-only call — there is no
- * generic "goal → graph" entry to dispatch to.
+ * Strategies wired for inline execution (increment B). Others fail closed with
+ * a typed error, by design:
+ * - `graph-workflow`: graph workflows are pre-defined templates (threat_model,
+ *   code_analysis, …), not a goal-only call — no generic "goal → graph" entry.
+ * - `spec`: `execute_spec` needs a markdown spec document, not a plain goal.
+ * - `orchestrate`: needs an OrchestratorFactory + heavy deps the tool layer
+ *   doesn't carry; use the `orchestrate` tool directly.
+ * - `single-shot`: `delegate_to_model` recommends a model, it doesn't execute.
  */
 const DEFAULT_EXECUTORS: StrategyExecutorMap = {
   'dev-pipeline': (_decision, metaInput: MetaOrchestratorInput) =>
     runDevPipelineForGoal(metaInput.goal),
   pipeline: (_decision, metaInput: MetaOrchestratorInput) => runPipelineForGoal(metaInput.goal),
   research: (_decision, metaInput: MetaOrchestratorInput) => runPipelineForGoal(metaInput.goal),
+  consensus: (_decision, metaInput: MetaOrchestratorInput) => runConsensusForGoal(metaInput.goal),
 };
 
 /** Result of an inline `execute: true` run. */
@@ -262,7 +268,7 @@ const DESCRIPTION =
   '(single-shot / dev-pipeline / pipeline / graph-workflow / orchestrate / consensus / ' +
   'spec / research) via the MetaOrchestrator. Default (execute:false) is read-only — ' +
   'returns the routing decision + recommendedTool. With execute:true it runs the selected ' +
-  'strategy inline (currently wired: dev-pipeline, pipeline, research; others fail closed ' +
+  'strategy inline (currently wired: dev-pipeline, pipeline, research, consensus; others fail closed ' +
   'with a typed error) and returns the engine result, recording the outcome. Use forceStrategy to override. ' +
   'Prefer this over choosing a pipeline tool by hand — the specialized tools remain ' +
   'available as advanced force-strategy paths.';

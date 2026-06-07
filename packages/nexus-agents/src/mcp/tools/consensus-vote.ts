@@ -626,6 +626,19 @@ export async function executeVoting(
   });
 }
 
+/**
+ * Run a consensus vote with a plain goal as the proposal, default settings
+ * (real voters, default strategy). The strategy executor the unified `run`
+ * entry point dispatches to for the `consensus` strategy (#3575). Non-simulated.
+ */
+export async function runConsensusForGoal(
+  goal: string,
+  logger: ILogger = createLogger({ tool: 'consensus_vote' })
+): Promise<ExtendedVotingResult> {
+  // Parse through the schema so defaults (quickMode, simulateVotes:false) apply.
+  return executeVoting(ConsensusVoteInputSchema.parse({ proposal: goal }), logger);
+}
+
 /** Build the final `ExtendedVotingResult` once the engine + cascade settle. */
 function finalizeVotingResult(args: {
   input: ConsensusVoteInput;
