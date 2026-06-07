@@ -1,5 +1,24 @@
 # nexus-agents
 
+## 2.125.7
+
+### Patch Changes
+
+- [#3638](https://github.com/nexus-substrate/nexus-agents/pull/3638) [`1b49ccb`](https://github.com/nexus-substrate/nexus-agents/commit/1b49ccb79f3d9e9948c2e12a6bf7537e5adbb826) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(capability-loop): Goodhart-resistant outcome feedback for remediations ([#3616](https://github.com/nexus-substrate/nexus-agents/issues/3616))
+
+  Condition 5 + the outcome-feedback increment of the [#3540](https://github.com/nexus-substrate/nexus-agents/issues/3540) auto-invoke gate.
+  `assessRemediationOutcome` defines what counts as a successful remediation for the
+  Darwinian selection loop, resistant to the obvious gaming:
+
+  success ≡ PR merged BY A HUMAN AND fitness recovered by ≥ minFitnessDelta
+  within the attribution window.
+
+  "PR opened"/unmerged and bot/auto-merges never count as success. Confidence is
+  `pending` (don't record) until the window elapses, `low` when confounded by
+  concurrent merges/CI noise, `high` otherwise. Pure logic; the enforce path
+  ([#3618](https://github.com/nexus-substrate/nexus-agents/issues/3618)) supplies the inputs and records the recordable outcomes to the
+  OutcomeStore so the loop selects on measured results.
+
 ## 2.125.6
 
 ### Patch Changes
