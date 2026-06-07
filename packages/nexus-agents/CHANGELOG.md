@@ -1,5 +1,20 @@
 # nexus-agents
 
+## 2.125.24
+
+### Patch Changes
+
+- [#3682](https://github.com/nexus-substrate/nexus-agents/pull/3682) [`1e3d5f4`](https://github.com/nexus-substrate/nexus-agents/commit/1e3d5f475aba61b0487b5ad87456970b8bea72f4) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(capability-loop): Option B proposal-PR implement adapter ([#3669](https://github.com/nexus-substrate/nexus-agents/issues/3669))
+
+  The v1 `AutoRemediationDeps.implement` (per the [#3648](https://github.com/nexus-substrate/nexus-agents/issues/3648) vote, B→soak→A): commits the
+  consensus-approved typed plan as a reviewable `remediation-plans/<slug>.md` doc on
+  an `auto-remediation/<slug>` branch and opens a DRAFT PR — never auto-merged, no
+  autonomous code edits. Safety: the doc is **secret-scanned before any push**
+  ([#3669](https://github.com/nexus-substrate/nexus-agents/issues/3669) fail-closed), all writes happen in an **isolated git worktree** removed in
+  `finally`, and it asserts the IMPLEMENT-phase repo-write capability (fail-closed
+  out of phase). Orchestration is injectable + unit-tested; real git/gh impls
+  (`makeGitWorktreeOps`, `makeGhPrCreator`) ship for the enforce path (owner-gated).
+
 ## 2.125.23
 
 ### Patch Changes
