@@ -140,10 +140,15 @@ export {
 export {
   evaluatePipelinePolicy,
   getPolicyMode,
+  enforceGatePolicy,
+  getGateEnforcementMode,
+  PolicyBlockedError,
   type PolicyMode,
   type PolicyEvaluatorOptions,
   type PolicyEvalResult,
   type PolicyViolation,
+  type GatePolicyEnforcement,
+  type GateEnforceTarget,
 } from './policy-evaluator.js';
 
 export { orchestrateInputToTaskContract, executeOrchestratePipeline } from './v2-orchestrate.js';

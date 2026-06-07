@@ -46,6 +46,16 @@ import type { ErrorCategory } from '../../mcp/error-envelope.js';
 
 const logger = createLogger({ component: 'GraphExecutor' });
 
+/**
+ * Structural guard for a `PolicyBlockedError` thrown by a policy gate node
+ * (#3177). Name-based rather than `instanceof` to avoid a layering cycle:
+ * `pipeline/*` (where the error class lives) already imports from
+ * `orchestration/graph`, so importing the class back here would be circular.
+ */
+function isPolicyBlockedError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'PolicyBlockedError';
+}
+
 /** Build the retryability fields for a failed NodeResult (#3534). */
 function failureClassification(category: ErrorCategory): {
   errorCategory: ErrorCategory;
@@ -741,6 +751,37 @@ async function executeWithVerification(args: ExecVerifyArgs): Promise<NodeResult
   };
 }
 
+/**
+ * Builds a `failed` NodeResult from a thrown error. A policy gate denial
+ * (#3177) is a terminal `permission` failure flagged `policyBlocked` so the
+ * runner halts even under continueOnFailure; all other errors are classified
+ * via the routing taxonomy so selective-retry can gate on retryability (#3534).
+ */
+function failedNodeResult(nodeId: string, error: unknown, startTime: number): NodeResult {
+  const message = getErrorMessage(error);
+  logger.warn('Node execution failed', { nodeId, error: message });
+  if (isPolicyBlockedError(error)) {
+    return {
+      nodeId,
+      stateUpdates: {},
+      durationMs: getTimeProvider().now() - startTime,
+      status: 'failed',
+      error: message,
+      policyBlocked: true,
+      ...failureClassification('permission'),
+    };
+  }
+  const category = coarsenFailureCategory(categorizeOutcomeError(error));
+  return {
+    nodeId,
+    stateUpdates: {},
+    durationMs: getTimeProvider().now() - startTime,
+    status: 'failed',
+    error: message,
+    ...failureClassification(category),
+  };
+}
+
 /** Executes a single node with preconditions, timeout, verification, and error handling. */
 async function executeSingleNode(
   graph: CompiledGraph,
@@ -781,19 +822,7 @@ async function executeSingleNode(
   try {
     return await executeWithVerification({ node, nodeId, state, startTime, nodeCtx, options });
   } catch (error: unknown) {
-    const message = getErrorMessage(error);
-    logger.warn('Node execution failed', { nodeId, error: message });
-    // Classify the thrown error so selective-retry can gate on it (#3534):
-    // transient (timeout/network/rate-limit) → retryable; others → not.
-    const category = coarsenFailureCategory(categorizeOutcomeError(error));
-    return {
-      nodeId,
-      stateUpdates: {},
-      durationMs: getTimeProvider().now() - startTime,
-      status: 'failed',
-      error: message,
-      ...failureClassification(category),
-    };
+    return failedNodeResult(nodeId, error, startTime);
   }
 }
 

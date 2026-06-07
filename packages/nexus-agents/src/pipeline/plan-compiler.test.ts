@@ -7,7 +7,18 @@ import { describe, it, expect } from 'vitest';
 
 import { compilePlan } from './plan-compiler.js';
 import { createCorePluginRegistry } from './core-plugins.js';
-import type { PlanContract, StageSpec } from './task-contract.js';
+import { createDefaultPolicyEngine } from './policy-engine.js';
+import {
+  PolicyBlockedError,
+  enforceGatePolicy,
+  type GatePolicyEnforcement,
+} from './policy-evaluator.js';
+import { EventBus } from './event-bus.js';
+import { executeGraph } from '../orchestration/graph/graph-executor.js';
+import type { GraphExecutionResult } from '../orchestration/graph/graph-types.js';
+import type { Result } from '../core/index.js';
+import type { PlanContract, StageSpec, PolicyGateSpec } from './task-contract.js';
+import type { PipelineStateSnapshot } from './policy-engine.js';
 
 // ============================================================================
 // Fixtures
@@ -168,5 +179,178 @@ describe('compilePlan', () => {
     });
     const result = compilePlan(plan, { pluginRegistry: registry });
     expect(result.ok).toBe(true);
+  });
+});
+
+// ============================================================================
+// Policy Gate Enforcement Tests (#3177)
+// ============================================================================
+
+const TRUST_GATE: PolicyGateSpec = {
+  id: 'gate-trust',
+  afterStage: 'analyze',
+  beforeStage: 'execute',
+  rules: ['trust-tier'],
+  onFail: 'block',
+};
+
+/** Plan with an analyze→[gate]→execute(execute-type) shape. */
+function makeGatedPlan(): PlanContract {
+  return makePlan({
+    stages: [
+      makeStage({ id: 'analyze', type: 'analyze' }),
+      makeStage({ id: 'execute', type: 'execute', dependencies: ['analyze'] }),
+    ],
+    policyGates: [TRUST_GATE],
+  });
+}
+
+function enforcement(
+  overrides: Partial<GatePolicyEnforcement> & { pipelineState?: PipelineStateSnapshot }
+): GatePolicyEnforcement {
+  return {
+    engine: createDefaultPolicyEngine(),
+    pipelineState: {},
+    ...overrides,
+  };
+}
+
+async function runGatedPlan(opts: {
+  mode?: 'off' | 'warn' | 'block';
+  pipelineState: PipelineStateSnapshot;
+}): Promise<Result<GraphExecutionResult, Error>> {
+  const plan = makeGatedPlan();
+  const compiled = compilePlan(plan, {
+    policyEnforcement: enforcement({
+      ...(opts.mode !== undefined ? { mode: opts.mode } : {}),
+      pipelineState: opts.pipelineState,
+    }),
+  });
+  if (!compiled.ok) throw new Error(`compile failed: ${compiled.error}`);
+  return executeGraph(compiled.value, {}, { timeout: 5000 });
+}
+
+describe('policy gate enforcement (#3177)', () => {
+  it('(a) throw-to-halt: a gate handler that throws → node marked failed', async () => {
+    // Pins the executor contract: a thrown error inside a node handler must
+    // surface as a failed NodeResult, so a future refactor cannot silently
+    // disable gate enforcement.
+    const plan = makeGatedPlan();
+    const compiled = compilePlan(plan, {
+      policyEnforcement: enforcement({
+        mode: 'block',
+        pipelineState: {}, // missing trust → untrusted → blocked
+      }),
+    });
+    expect(compiled.ok).toBe(true);
+    if (!compiled.ok) return;
+    const result = await executeGraph(compiled.value, {}, { timeout: 5000 });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const gateNode = result.value.nodeResults.find((r) => r.nodeId === 'gate-trust');
+    expect(gateNode?.status).toBe('failed');
+  });
+
+  it('(b) block mode + untrusted → throws PolicyBlockedError → halts', async () => {
+    const result = await runGatedPlan({ mode: 'block', pipelineState: {} });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const gateNode = result.value.nodeResults.find((r) => r.nodeId === 'gate-trust');
+    expect(gateNode?.status).toBe('failed');
+    // execute stage downstream of the gate must NOT have run.
+    const executeNode = result.value.nodeResults.find((r) => r.nodeId === 'execute');
+    expect(executeNode).toBeUndefined();
+  });
+
+  it('(b) PolicyBlockedError carries gate id + violations', () => {
+    const engine = createDefaultPolicyEngine();
+    let thrown: unknown;
+    try {
+      // Direct unit: evaluate then enforce.
+      enforceGatePolicy(
+        { engine, mode: 'block', pipelineState: {} },
+        { gateId: 'gate-trust', taskId: 't', stageType: 'execute' }
+      );
+    } catch (e: unknown) {
+      thrown = e;
+    }
+    expect(thrown).toBeInstanceOf(PolicyBlockedError);
+    if (thrown instanceof PolicyBlockedError) {
+      expect(thrown.gateId).toBe('gate-trust');
+      expect(thrown.violations.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('(c) block mode + trusted (tier 1) → gate passes, execute runs', async () => {
+    const result = await runGatedPlan({ mode: 'block', pipelineState: { trustTier: '1' } });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const gateNode = result.value.nodeResults.find((r) => r.nodeId === 'gate-trust');
+    expect(gateNode?.status).toBe('success');
+    const executeNode = result.value.nodeResults.find((r) => r.nodeId === 'execute');
+    expect(executeNode?.status).toBe('success');
+  });
+
+  it('(d) warn mode → continues, gate marked warned, violation event emitted', async () => {
+    const bus = new EventBus();
+    const plan = makeGatedPlan();
+    const compiled = compilePlan(plan, {
+      policyEnforcement: enforcement({
+        mode: 'warn',
+        pipelineState: {}, // untrusted, but warn mode → no halt
+        eventBus: bus,
+      }),
+    });
+    expect(compiled.ok).toBe(true);
+    if (!compiled.ok) return;
+    const result = await executeGraph(compiled.value, {}, { timeout: 5000 });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const gateNode = result.value.nodeResults.find((r) => r.nodeId === 'gate-trust');
+    expect(gateNode?.status).toBe('success'); // continues
+    const executeNode = result.value.nodeResults.find((r) => r.nodeId === 'execute');
+    expect(executeNode?.status).toBe('success');
+    const events = bus.query({}).map((e) => e.type);
+    expect(events).toContain('policy.evaluated');
+  });
+
+  it('(e) off mode → evaluator not called (gate passes regardless of trust)', async () => {
+    let evaluated = false;
+    const engine = createDefaultPolicyEngine();
+    const wrapped = {
+      registerRule: engine.registerRule.bind(engine),
+      evaluate: engine.evaluate.bind(engine),
+      listRules: () => {
+        evaluated = true;
+        return engine.listRules();
+      },
+    };
+    const plan = makeGatedPlan();
+    const compiled = compilePlan(plan, {
+      policyEnforcement: { engine: wrapped, mode: 'off', pipelineState: {} },
+    });
+    expect(compiled.ok).toBe(true);
+    if (!compiled.ok) return;
+    const result = await executeGraph(compiled.value, {}, { timeout: 5000 });
+    expect(result.ok).toBe(true);
+    expect(evaluated).toBe(false);
+  });
+
+  it('(f) default mode (no explicit setting) + missing trust → does NOT throw', async () => {
+    // Condition 1: warn-by-default. A stage with no trust metadata must not
+    // halt out of the box.
+    const plan = makeGatedPlan();
+    const compiled = compilePlan(plan, {
+      policyEnforcement: { engine: createDefaultPolicyEngine(), pipelineState: {} }, // no `mode`
+    });
+    expect(compiled.ok).toBe(true);
+    if (!compiled.ok) return;
+    const result = await executeGraph(compiled.value, {}, { timeout: 5000 });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const gateNode = result.value.nodeResults.find((r) => r.nodeId === 'gate-trust');
+    expect(gateNode?.status).toBe('success'); // did NOT throw / halt
+    const executeNode = result.value.nodeResults.find((r) => r.nodeId === 'execute');
+    expect(executeNode?.status).toBe('success');
   });
 });

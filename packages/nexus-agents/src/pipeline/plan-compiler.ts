@@ -14,6 +14,8 @@ import { formatCompileError } from '../orchestration/graph/graph-types.js';
 import type { CompiledGraph, GraphState } from '../orchestration/graph/graph-types.js';
 import type { PlanContract, StageSpec, PolicyGateSpec } from './task-contract.js';
 import type { IPluginRegistry } from './plugin-types.js';
+import { enforceGatePolicy } from './policy-evaluator.js';
+import type { GatePolicyEnforcement } from './policy-evaluator.js';
 
 /** Result of plan compilation. */
 type CompileResult =
@@ -25,6 +27,13 @@ export interface PlanCompileOptions {
   /** Plugin registry for resolving stage handlers. When provided, stages with
    *  a registered pluginId will use the plugin's execute() method. */
   readonly pluginRegistry?: IPluginRegistry;
+  /**
+   * Policy enforcement for gate nodes (#3177). When provided, each policy gate
+   * node evaluates `evaluatePipelinePolicy` at runtime — denying (in BLOCK
+   * mode) by throwing `PolicyBlockedError`, which halts the pipeline. When
+   * absent, gate nodes remain no-op passes (back-compat).
+   */
+  readonly policyEnforcement?: GatePolicyEnforcement;
 }
 
 // ============================================================================
@@ -61,7 +70,7 @@ export function compilePlan(plan: PlanContract, options?: PlanCompileOptions): C
   const builder = new GraphBuilder();
   addPipelineState(builder);
   addStageNodes(builder, plan.stages, options?.pluginRegistry);
-  addGateNodes(builder, plan.policyGates);
+  addGateNodes(builder, plan.policyGates, plan, options?.policyEnforcement);
   addEdges(builder, plan.stages, plan.policyGates);
 
   const result = builder.compile();
@@ -114,15 +123,43 @@ function createStageHandler(
     });
 }
 
-/** Creates a handler for a policy gate node. */
+/**
+ * Creates a handler for a policy gate node (#3177).
+ *
+ * When `enforcement` is provided, the gate evaluates policy at the stage
+ * boundary via `enforceGatePolicy`:
+ *  - BLOCK mode + denial → throws `PolicyBlockedError` (the executor marks the
+ *    node `failed`, which halts the pipeline — non-retryable, so it halts even
+ *    under `continueOnFailure`).
+ *  - WARN mode → continues; the gate is recorded `warned` and a policy.evaluated
+ *    event is emitted by the evaluator.
+ *  - OFF mode → evaluation skipped.
+ *
+ * When `enforcement` is absent the gate stays a no-op pass (back-compat).
+ */
 function createGateHandler(
-  gate: PolicyGateSpec
+  gate: PolicyGateSpec,
+  taskId: string,
+  stageType: string,
+  enforcement?: GatePolicyEnforcement
 ): (state: Readonly<GraphState>) => Promise<Partial<GraphState>> {
-  return (_state: Readonly<GraphState>) =>
-    Promise.resolve({
+  if (enforcement === undefined) {
+    return (_state: Readonly<GraphState>) =>
+      Promise.resolve({
+        currentStage: gate.id,
+        stageResults: [{ gateId: gate.id, status: 'passed' }],
+      });
+  }
+  return (_state: Readonly<GraphState>) => {
+    // enforceGatePolicy throws PolicyBlockedError on block+denial; the executor
+    // catches it and marks the node failed. WARN/OFF return a verdict instead.
+    const verdict = enforceGatePolicy(enforcement, { gateId: gate.id, taskId, stageType });
+    const status = verdict.allowed ? 'passed' : 'warned';
+    return Promise.resolve({
       currentStage: gate.id,
-      stageResults: [{ gateId: gate.id, status: 'passed' }],
+      stageResults: [{ gateId: gate.id, status }],
     });
+  };
 }
 
 /** Adds stage nodes to the graph builder. */
@@ -137,9 +174,19 @@ function addStageNodes(
 }
 
 /** Adds policy gate nodes to the graph builder. */
-function addGateNodes(builder: GraphBuilder, gates: readonly PolicyGateSpec[]): void {
+function addGateNodes(
+  builder: GraphBuilder,
+  gates: readonly PolicyGateSpec[],
+  plan: PlanContract,
+  enforcement?: GatePolicyEnforcement
+): void {
+  // Map each stage id to its type so a gate can report the type of the stage
+  // it guards (its `beforeStage`) to the policy rules (the trust-tier rule
+  // only blocks `execute`-type stages).
+  const stageTypeById = new Map(plan.stages.map((s) => [s.id, s.type]));
   for (const gate of gates) {
-    builder.addNode(gate.id, createGateHandler(gate));
+    const stageType = stageTypeById.get(gate.beforeStage) ?? 'gate';
+    builder.addNode(gate.id, createGateHandler(gate, plan.taskId, stageType, enforcement));
   }
 }
 

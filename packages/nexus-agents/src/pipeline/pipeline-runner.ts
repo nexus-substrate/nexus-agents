@@ -119,7 +119,14 @@ export class PipelineRunner {
     // Resolve deps through the explicit seam (#3175): an injected registry wins,
     // otherwise the documented global default is used — behavior unchanged.
     const { pluginRegistry } = resolvePipelineDeps(options);
-    const compileOpts: PlanCompileOptions = { pluginRegistry };
+    const compileOpts: PlanCompileOptions = {
+      pluginRegistry,
+      // Thread stage-boundary policy enforcement through to the gate handlers
+      // (#3177). Unset → gates remain no-op passes (back-compat).
+      ...(options?.policyEnforcement !== undefined
+        ? { policyEnforcement: options.policyEnforcement }
+        : {}),
+    };
     const graphResult = compilePlan(plan, compileOpts);
     if (!graphResult.ok) {
       return { ok: false, error: graphResult.error };
@@ -284,6 +291,9 @@ function toResult(
 ): PipelineResult {
   const durationMs = Date.now() - startTime;
   const hasFailure = graphResult.nodeResults.some((r) => r.status === 'failed');
+  // A policy gate denial (#3177 condition 3) is terminal and non-retryable: it
+  // halts the pipeline even in continue-mode, unlike an ordinary failed node.
+  const policyBlockedNode = graphResult.nodeResults.find((r) => r.policyBlocked === true);
 
   const stepResults: StepOutcome[] = graphResult.nodeResults.map((r) => ({
     stepId: r.nodeId,
@@ -291,6 +301,10 @@ function toResult(
     durationMs: r.durationMs,
     ...(r.error !== undefined ? { error: r.error } : {}),
   }));
+
+  if (policyBlockedNode !== undefined) {
+    return policyBlockedResult(graphResult, durationMs, continueOnFailure, stepResults);
+  }
 
   if (hasFailure && !continueOnFailure) {
     const failedNode = graphResult.nodeResults.find((r) => r.status === 'failed');
@@ -316,6 +330,28 @@ function toResult(
     ...(!allOk && continueOnFailure
       ? { error: `${String(succeeded)}/${String(total)} steps succeeded` }
       : {}),
+  };
+}
+
+/**
+ * Builds the halt result for a policy-blocked pipeline (#3177 condition 3).
+ * A policy denial halts even under continueOnFailure; `stepResults` is still
+ * surfaced in continue-mode so callers see the per-step breakdown.
+ */
+function policyBlockedResult(
+  graphResult: GraphExecutionResult,
+  durationMs: number,
+  continueOnFailure: boolean,
+  stepResults: readonly StepOutcome[]
+): PipelineResult {
+  const blocked = graphResult.nodeResults.find((r) => r.policyBlocked === true);
+  return {
+    success: false,
+    stepsExecuted: graphResult.stepsExecuted,
+    durationMs,
+    error: blocked?.error ?? 'Policy gate blocked the pipeline',
+    nodeResults: graphResult.nodeResults,
+    ...(continueOnFailure ? { stepResults } : {}),
   };
 }
 

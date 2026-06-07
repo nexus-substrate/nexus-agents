@@ -267,6 +267,13 @@ export interface NodeResult {
    * this to re-run transient failures and leave permanent ones alone.
    */
   readonly isRetryable?: boolean;
+  /**
+   * Set when the node failed because a policy gate denied the stage boundary
+   * (#3177). A policy block is terminal and non-retryable: it halts the
+   * pipeline even under `continueOnFailure` (unlike an ordinary failed node,
+   * which continue-mode tolerates).
+   */
+  readonly policyBlocked?: boolean;
   /** Set when the node returned an Interrupt envelope (#1895). */
   readonly interrupt?: Interrupt;
   /**
