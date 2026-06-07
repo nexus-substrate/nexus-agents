@@ -247,6 +247,8 @@ nexus-agents research review --topic=orchestration                  # Discover, 
 nexus-agents research review --topic=agents --create-issues         # Auto-create GitHub issues
 nexus-agents research prioritize                                    # Show priority backlog
 nexus-agents research prioritize --topic=consensus                  # Filter by topic
+nexus-agents research autofile --dry-run                            # Preview auto-filing research + gap candidates
+nexus-agents research autofile --topic=agents --max=3               # File candidates as issues (safeguarded, #3382)
 
 # Quick verification
 nexus-agents verify

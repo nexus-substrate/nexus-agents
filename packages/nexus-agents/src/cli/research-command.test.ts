@@ -13,6 +13,30 @@ vi.mock('node:fs/promises', () => ({
   access: vi.fn(),
 }));
 
+// Mock the candidate producers so the autofile subcommand is deterministic.
+vi.mock('../pipeline/research-trigger.js', () => ({
+  checkForResearchTriggers: vi.fn(() =>
+    Promise.resolve([
+      {
+        id: 'r1',
+        title: 'Research candidate',
+        description: 'd',
+        assignedTo: 'researcher',
+        status: 'pending',
+      },
+    ])
+  ),
+  checkForCapabilityGapTriggers: vi.fn(() => [
+    {
+      id: 'g1',
+      title: 'Gap candidate',
+      description: 'd',
+      assignedTo: 'researcher',
+      status: 'pending',
+    },
+  ]),
+}));
+
 import * as fs from 'node:fs/promises';
 import {
   toStatusSummary,
@@ -567,5 +591,17 @@ describe('researchCommand', () => {
     expect(result.text).toContain('Unknown subcommand');
     // #2761: unknown subcommand exits 1, not 0.
     expect(result.exitCode).toBe(1);
+  });
+
+  // #3382 — autofile subcommand wires research + gap candidates into the
+  // safeguarded auto-file path. Dry-run exercises the full wiring without gh.
+  it('autofile dry-run reports research + gap candidates without filing', async () => {
+    const result = await researchCommand('autofile', [], { dryRun: true });
+    expect(result.exitCode).toBe(0);
+    expect(result.text).toContain('autofile (dry-run)');
+    expect(result.text).toContain('2 candidate(s)');
+    expect(result.text).toContain('2 filed');
+    expect(result.text).toContain('r1');
+    expect(result.text).toContain('g1');
   });
 });

@@ -52,6 +52,11 @@ import {
   getResearchIndexHelp,
 } from './research-index-command.js';
 import { handleImportCommand } from './research-import-command.js';
+import { autoFileSuggestions } from './auto-file-suggestions.js';
+import {
+  checkForResearchTriggers,
+  checkForCapabilityGapTriggers,
+} from '../pipeline/research-trigger.js';
 import { executeResearchAdd } from '../mcp/tools/research-add.js';
 import {
   executeDiscovery,
@@ -455,6 +460,51 @@ function formatAlignmentSummary(
 }
 
 // =============================================================================
+// AUTOFILE HANDLER (Issue #3382)
+// =============================================================================
+
+/**
+ * Handle autofile subcommand: gather research + capability-gap candidates and
+ * file them as GitHub issues under hard safeguards (#3382). This is the
+ * default-ON "enable" surface for the suggest-only → auto-file path — running
+ * the command files by default. `--dry-run` runs every safeguard and reports
+ * what would be filed without touching GitHub.
+ *
+ * Separate from the consensus-ratified read-only `suggest_research_tasks` MCP
+ * tool by design: that surface stays suggest-only; this CLI command is the
+ * explicit, human-invoked write path the owner approved.
+ */
+async function handleAutofileCommand(
+  args: string[],
+  options: Record<string, unknown>
+): Promise<string> {
+  const topic = args[0] ?? optString(options, 'topic');
+  const maxPerRun = optNumber(options, 'max');
+  const dryRun = optBoolean(options, 'dryRun') || optBoolean(options, 'dry-run');
+
+  const researchCandidates = await checkForResearchTriggers(topic !== undefined ? { topic } : {});
+  const gapCandidates = checkForCapabilityGapTriggers({});
+  const candidates = [...researchCandidates, ...gapCandidates];
+
+  if (candidates.length === 0) {
+    return 'autofile: no research or capability-gap candidates to file.';
+  }
+
+  const result = await autoFileSuggestions(candidates, {
+    dryRun,
+    ...(maxPerRun !== undefined ? { maxPerRun } : {}),
+  });
+
+  const lines: string[] = [
+    `autofile${dryRun ? ' (dry-run)' : ''}: ${String(candidates.length)} candidate(s) — ` +
+      `${String(result.filed.length)} filed, ${String(result.skipped.length)} skipped.`,
+  ];
+  for (const f of result.filed) lines.push(`  filed   ${f.id} → ${f.url}`);
+  for (const s of result.skipped) lines.push(`  skipped ${s.id} (${s.reason})`);
+  return lines.join('\n');
+}
+
+// =============================================================================
 // MAIN COMMAND HANDLER
 // =============================================================================
 
@@ -471,7 +521,8 @@ export type ResearchSubcommand =
   | 'review'
   | 'prioritize'
   | 'synthesize'
-  | 'import';
+  | 'import'
+  | 'autofile';
 
 /** All valid subcommand names. */
 const VALID_SUBCOMMANDS = [
@@ -487,6 +538,7 @@ const VALID_SUBCOMMANDS = [
   'prioritize',
   'synthesize',
   'import',
+  'autofile',
 ] as const;
 
 /** Validates that a subcommand is valid. */
@@ -558,6 +610,7 @@ const SUBCOMMAND_HANDLERS: Record<ResearchSubcommand, SubcommandHandler> = {
   prioritize: ok(handlePrioritizeCommand),
   synthesize: ok(handleSynthesizeCommand),
   import: ok(handleImportCommand),
+  autofile: ok(handleAutofileCommand),
 };
 
 /**
