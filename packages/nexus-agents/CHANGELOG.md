@@ -1,5 +1,19 @@
 # nexus-agents
 
+## 2.125.17
+
+### Patch Changes
+
+- [#3663](https://github.com/nexus-substrate/nexus-agents/pull/3663) [`08dc7f4`](https://github.com/nexus-substrate/nexus-agents/commit/08dc7f43cc9bf0e5a0794eacf385a8863b57facf) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(capability-loop): wire circuit-breaker + protected-paths into the enforce orchestrator ([#3653](https://github.com/nexus-substrate/nexus-agents/issues/3653))
+
+  Activates two built safeguards inside runAutoRemediation: a tripped
+  RemediationCircuitBreaker aborts the run (auto-revert to off until a re-vote
+  resets it), and genuine remediation outcomes (PR opened = success; rejected vote
+  / failed dry-run = failure) are recorded so sustained wrongness trips it. The
+  self-modification guard now refuses, fail-closed, any plan whose declared targets
+  hit a protected path (the loop's own rails / consensus / .rules / CI / security /
+  auth / secrets) — a correct decline, neutral for the breaker.
+
 ## 2.125.16
 
 ### Patch Changes
