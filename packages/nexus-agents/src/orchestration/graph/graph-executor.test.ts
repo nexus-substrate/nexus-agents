@@ -4,9 +4,9 @@
  * (Source: Issue #831 — Graph-based workflow orchestration)
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { GraphBuilder, overwrite, append, customReducer, START, END } from './graph-builder.js';
-import { executeGraph } from './graph-executor.js';
+import { executeGraph, GRAPH_UNIFIED_CONTEXT_KEY } from './graph-executor.js';
 import { InMemoryCheckpointStore } from './checkpoint-store.js';
 import type { GraphState, NodeResult, GraphEvent } from './graph-types.js';
 
@@ -835,3 +835,164 @@ describe('maxTraversals (Issue #910, E2-4)', () => {
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 const noop = () => Promise.resolve({});
+
+// ---------------------------------------------------------------------------
+// Unified-context observability at graph start (#3180)
+// ---------------------------------------------------------------------------
+
+const EMPTY_UNIFIED_CONTEXT = {
+  beliefs: [],
+  similarMemories: [],
+  recentLearnings: [],
+  experiencePatterns: [],
+  outcomes: null,
+  priorStrategies: [],
+  researchInsights: [],
+};
+
+// Controllable mock for the dynamically imported context-retriever. The real
+// inferTaskCategory is preserved so category-inference assertions exercise
+// production logic; only getContextForTask is swapped.
+const getContextForTaskMock = vi.fn();
+vi.mock('../../context/context-retriever.js', async (importActual) => {
+  const actual = await importActual<typeof import('../../context/context-retriever.js')>();
+  return {
+    ...actual,
+    getContextForTask: (...args: unknown[]): unknown => getContextForTaskMock(...args),
+  };
+});
+
+describe('graph-start context observability (#3180)', () => {
+  beforeEach(() => {
+    getContextForTaskMock.mockReset();
+    getContextForTaskMock.mockResolvedValue(EMPTY_UNIFIED_CONTEXT);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+  const singleNodeGraph = () =>
+    new GraphBuilder()
+      .addState('value', overwrite(0))
+      .addNode('A', () => Promise.resolve({ value: 1 }))
+      .addEdge(START, 'A')
+      .addEdge('A', END)
+      .compile();
+
+  it('(a) retrieval throw → warn + exactly one sanitized context_unavailable event, graph still completes', async () => {
+    getContextForTaskMock.mockRejectedValue(new Error('backend exploded'));
+    // The structured logger writes to a stdout/stderr stream, not console.warn.
+    const writes: string[] = [];
+    const stdoutSpy = vi
+      .spyOn(process.stdout, 'write')
+      .mockImplementation((chunk: string | Uint8Array): boolean => {
+        writes.push(String(chunk));
+        return true;
+      });
+    const stderrSpy = vi
+      .spyOn(process.stderr, 'write')
+      .mockImplementation((chunk: string | Uint8Array): boolean => {
+        writes.push(String(chunk));
+        return true;
+      });
+
+    const graph = singleNodeGraph();
+    expect(graph.ok).toBe(true);
+    if (!graph.ok) return;
+
+    const events: GraphEvent[] = [];
+    // 'fix this security bug' → inferTaskCategory → 'security_review'
+    const result = await executeGraph(
+      graph.value,
+      { task: 'fix this security bug' },
+      { onEvent: (e) => events.push(e), executionId: 'exec-3180' }
+    );
+
+    // Graph still COMPLETES with empty context (best-effort contract).
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.finalState['value']).toBe(1);
+    expect(result.value.finalState[GRAPH_UNIFIED_CONTEXT_KEY]).toBeUndefined();
+
+    // Exactly ONE context_unavailable event with correct fields.
+    const ctxEvents = events.filter((e) => e.type === 'context_unavailable');
+    expect(ctxEvents).toHaveLength(1);
+    const evt = ctxEvents[0];
+    if (evt?.type !== 'context_unavailable') throw new Error('unreachable');
+    expect(evt.category).toBe('security_review');
+    expect(evt.executionId).toBe('exec-3180');
+    expect(evt.error).toBe('backend exploded');
+    // Sanitized: no stack trace leaked into the payload.
+    expect(evt.error).not.toContain('at ');
+    expect(typeof evt.timestamp).toBe('number');
+
+    // A WARN was logged (level + the warn message text appear in the output).
+    const logged = writes.join('');
+    expect(logged).toContain('warn');
+    expect(logged).toContain('context retrieval failed');
+    stdoutSpy.mockRestore();
+    stderrSpy.mockRestore();
+  });
+
+  it('(b) success path → executionId is threaded into getContextForTask options', async () => {
+    const graph = singleNodeGraph();
+    expect(graph.ok).toBe(true);
+    if (!graph.ok) return;
+
+    const result = await executeGraph(
+      graph.value,
+      { task: 'add a new feature' },
+      { executionId: 'exec-success' }
+    );
+    expect(result.ok).toBe(true);
+
+    expect(getContextForTaskMock).toHaveBeenCalledTimes(1);
+    const arg = getContextForTaskMock.mock.calls[0]?.[0] as {
+      task: string;
+      category: string;
+      executionId?: string;
+    };
+    expect(arg.task).toBe('add a new feature');
+    expect(arg.executionId).toBe('exec-success');
+    // 'add a new feature' → code_generation
+    expect(arg.category).toBe('code_generation');
+  });
+
+  it('(c) absent/empty task → early return: no retrieval, no event', async () => {
+    const graph = singleNodeGraph();
+    expect(graph.ok).toBe(true);
+    if (!graph.ok) return;
+
+    const events: GraphEvent[] = [];
+    // No 'task' key in inputs at all.
+    const result = await executeGraph(graph.value, {}, { onEvent: (e) => events.push(e) });
+    expect(result.ok).toBe(true);
+
+    expect(getContextForTaskMock).not.toHaveBeenCalled();
+    expect(events.some((e) => e.type === 'context_unavailable')).toBe(false);
+  });
+
+  it('(d) per-backend partial failure that overall resolves → no event', async () => {
+    // getContextForTask never throws on a single-backend failure — it returns a
+    // (possibly empty) UnifiedContext. Model that: resolve normally → no event.
+    getContextForTaskMock.mockResolvedValue(EMPTY_UNIFIED_CONTEXT);
+
+    const graph = singleNodeGraph();
+    expect(graph.ok).toBe(true);
+    if (!graph.ok) return;
+
+    const events: GraphEvent[] = [];
+    const result = await executeGraph(
+      graph.value,
+      { task: 'investigate something' },
+      { onEvent: (e) => events.push(e) }
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(events.some((e) => e.type === 'context_unavailable')).toBe(false);
+    // Empty context was still stashed on success.
+    expect(result.value.finalState[GRAPH_UNIFIED_CONTEXT_KEY]).toEqual(EMPTY_UNIFIED_CONTEXT);
+  });
+});

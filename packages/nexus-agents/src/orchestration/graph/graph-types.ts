@@ -408,7 +408,35 @@ export type GraphEvent =
       readonly error: string;
       readonly stepNumber: number;
       readonly timestamp: number;
-    };
+    }
+  | ContextUnavailableEvent;
+
+/**
+ * Emitted when unified-memory context retrieval fails at graph start (#3180).
+ *
+ * Best-effort enrichment is preserved — the graph still runs with empty
+ * context — but the failure is now observable instead of swallowed: a
+ * `warn` log plus this event flow through the standard `onEvent`/EventBus
+ * path so a readiness/counter consumer can aggregate context-availability.
+ *
+ * Defined as a single named shape (not inlined) so the three remaining
+ * `getContextForTask` call sites (execute-expert, orchestrate,
+ * composite-router; follow-up #3699) become pure call-site wiring against
+ * one authoritative event contract (DRY).
+ *
+ * `error` carries ONLY a sanitized message (`getErrorMessage`) — never a
+ * stack trace, file-system path, prompt, secret, or token.
+ */
+export type ContextUnavailableEvent = {
+  readonly type: 'context_unavailable';
+  /** Inferred task category whose context could not be retrieved. */
+  readonly category: string;
+  /** Sanitized failure message — message string only, no stack/paths/secrets. */
+  readonly error: string;
+  /** Correlation id when the execution was given one. */
+  readonly executionId?: string;
+  readonly timestamp: number;
+};
 
 // ============================================================================
 // Builder Error
