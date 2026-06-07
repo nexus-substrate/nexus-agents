@@ -325,6 +325,23 @@ jobs:
           GITHUB_BASE_REF: ${{ github.base_ref }}
         run: npx tsx scripts/check-registry-coverage.ts --verbose
 
+  # Job 8c2: MCP description-drift gate (#3528) — runtime registerTool description
+  # must agree with the TOOL_DESCRIPTIONS doc-table source.
+  mcp-description-drift:
+    name: MCP Description Drift
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 10
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-node
+
+      - name: Check MCP tool description drift
+        run: npx tsx scripts/check-mcp-description-drift.ts --verbose
+
   # Job 8d: Orphan Detection (#2410) — audit-only v1
   orphan-detection:
     name: Orphan Detection
