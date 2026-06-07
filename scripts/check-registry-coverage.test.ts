@@ -120,6 +120,36 @@ describe('isRegistryChanged structural-equivalence exemption', () => {
   });
 });
 
+describe('isRegistryChanged moved_from relocation exemption (#3566)', () => {
+  // Registry relocated: list moved from old.ts (marker OLD_REG) to new.ts
+  // (marker NEW_REG), contents unchanged. The new source has no base.
+  const registry = {
+    name: 'RELOCATED',
+    source: 'src/new.ts',
+    marker: 'NEW_REG',
+    peer_files: ['src/peer.ts'],
+    rationale: 'test',
+    moved_from: 'src/old.ts',
+    moved_from_marker: 'OLD_REG',
+  };
+  const diffOf = (): string =>
+    ['--- /dev/null', '+++ b/src/new.ts', '@@ -0,0 +1 @@', '+export const NEW_REG = ['].join('\n');
+
+  it('exempts a no-op relocation (same entries under the old marker at base)', () => {
+    const baseOf = (p: string): string | null =>
+      p === 'src/old.ts' ? `const OLD_REG = ['a', 'b', 'c'] as const;` : null; // new.ts absent at base
+    const currentOf = (): string => `export const NEW_REG = ['a', 'b', 'c'] as const;`;
+    expect(isRegistryChanged(registry, ['src/new.ts'], diffOf, baseOf, currentOf)).toBe(false);
+  });
+
+  it('still fires when the relocation also changed entries', () => {
+    const baseOf = (p: string): string | null =>
+      p === 'src/old.ts' ? `const OLD_REG = ['a', 'b'] as const;` : null;
+    const currentOf = (): string => `export const NEW_REG = ['a', 'b', 'c'] as const;`;
+    expect(isRegistryChanged(registry, ['src/new.ts'], diffOf, baseOf, currentOf)).toBe(true);
+  });
+});
+
 describe('extractMarkerEntries', () => {
   it('extracts a sorted, de-duplicated list', () => {
     const content = `const FOO = ['c', 'a', 'b', 'a'] as const;`;
