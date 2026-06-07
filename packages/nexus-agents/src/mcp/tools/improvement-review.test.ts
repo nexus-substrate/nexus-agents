@@ -14,7 +14,9 @@ import {
   detectFailureCategoryConcentration,
   detectFitnessSignals,
   detectConsensusRejectionSignals,
+  issueLabelsForSignal,
 } from './improvement-review.js';
+import type { ImprovementSignal } from './improvement-review.js';
 import type { TaskOutcome } from '../../orchestration/outcomes/outcome-types.js';
 import type { FitnessAudit } from '../../governance/fitness-score.js';
 import type { VoteRejectedSignalEvent } from '../../pipeline/event-types.js';
@@ -425,5 +427,48 @@ describe('detectConsensusRejectionSignals', () => {
       rejection({ rejectionRules: ['NOT_A_REAL_RULE; rm -rf'] })
     );
     expect(detectConsensusRejectionSignals(events, '7d')).toHaveLength(0);
+  });
+});
+
+// ============================================================================
+// issueLabelsForSignal — p0–p4 priority labeling on auto-filed issues (#3653)
+// ============================================================================
+
+describe('issueLabelsForSignal', () => {
+  function sig(over: Partial<ImprovementSignal> = {}): ImprovementSignal {
+    return {
+      category: 'routing',
+      signalKey: 'routing:cli-floor:codex:docs',
+      severity: 'warning',
+      title: 'routing: codex 30% on docs',
+      body: 'floor breach',
+      evidence: {},
+      ...over,
+    };
+  }
+
+  it('labels a security signal p0 + security', () => {
+    expect(issueLabelsForSignal(sig({ category: 'security', signalKey: 'sec-1' }))).toEqual([
+      'p0',
+      'security',
+    ]);
+  });
+
+  it('labels a keyword-detected security signal p0 (fail-closed), keeping its category', () => {
+    expect(
+      issueLabelsForSignal(sig({ category: 'bug', title: 'auth bypass / injection' }))
+    ).toEqual(['p0', 'bug']);
+  });
+
+  it('labels a critical non-security signal p0', () => {
+    expect(issueLabelsForSignal(sig({ severity: 'critical' }))).toEqual(['p0', 'routing']);
+  });
+
+  it('labels warning → p2 and info → p3', () => {
+    expect(issueLabelsForSignal(sig({ severity: 'warning' }))).toEqual(['p2', 'routing']);
+    expect(issueLabelsForSignal(sig({ severity: 'info', category: 'tech-debt' }))).toEqual([
+      'p3',
+      'tech-debt',
+    ]);
   });
 });
