@@ -1,5 +1,18 @@
 # nexus-agents
 
+## 2.125.22
+
+### Patch Changes
+
+- [#3678](https://github.com/nexus-substrate/nexus-agents/pull/3678) [`36a9f83`](https://github.com/nexus-substrate/nexus-agents/commit/36a9f83a5dbcb81cbb689af90c557ffeca3e7e50) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(capability-loop): `nexus-agents auto-remediate` command — start the soak ([#3671](https://github.com/nexus-substrate/nexus-agents/issues/3671))
+
+  The user-facing surface for the auto-remediation cycle. Reads
+  `NEXUS_AUTO_REMEDIATE` (off default | audit | enforce) and runs one
+  `runAutoRemediationCycle`. OFF unless explicitly enabled; `audit` produces the
+  vote/plan soak data with zero writes; `enforce` stays structurally unavailable
+  until the Option B implement adapter ([#3669](https://github.com/nexus-substrate/nexus-agents/issues/3669)). `--format json` for machine output.
+  Maintainer-tier command; never auto-merges. Completes [#3671](https://github.com/nexus-substrate/nexus-agents/issues/3671).
+
 ## 2.125.21
 
 ### Patch Changes
