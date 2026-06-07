@@ -20,6 +20,11 @@ import type { RoutingDecision, WorkflowPattern } from './workflow-router-types.j
 import { createSharedTaskAnalyzer } from '../core/task-analysis/shared-task-analyzer.js';
 import { createCapabilityGapLedger } from '../core/task-analysis/capability-gap-ledger.js';
 import type { CapabilityGapReport } from '../core/task-analysis/capability-gap-detector.js';
+import {
+  createLearnedStrategySelector,
+  createRecordingShadowSink,
+  SHADOW_STRATEGY_ARMS,
+} from './meta-shadow-selector.js';
 
 describe('strategyFromPattern', () => {
   const cases: ReadonlyArray<
@@ -267,5 +272,50 @@ describe('MetaOrchestrator.select — capability gap ledger wiring (#3555)', () 
   it('does not require a ledger (default absent, no throw)', () => {
     const meta = createMetaOrchestrator();
     expect(() => meta.select({ goal: 'implement the feature' })).not.toThrow();
+  });
+});
+
+describe('MetaOrchestrator.select — shadow-mode learned selection (#3551)', () => {
+  it('logs a shadow comparison without changing the executed decision', () => {
+    const shadowSink = createRecordingShadowSink();
+    const meta = createMetaOrchestrator({
+      shadowSelector: createLearnedStrategySelector(),
+      shadowSink,
+    });
+    const d = meta.select({
+      goal: 'should we adopt approach A or B',
+      signals: { requiresConsensus: true },
+    });
+    // Executed path is the rule-based choice, unchanged by shadow logging.
+    expect(d.strategy).toBe('consensus');
+
+    const records = shadowSink.getRecords();
+    expect(records).toHaveLength(1);
+    const rec = records[0];
+    expect(rec?.decisionId).toBe(d.decisionId);
+    expect(rec?.ruleStrategy).toBe('consensus');
+    expect(SHADOW_STRATEGY_ARMS).toContain(rec?.learnedStrategy);
+    expect(rec?.agree).toBe(rec?.learnedStrategy === 'consensus');
+    expect(rec?.taskClass).toBe(d.analysis.taskType);
+  });
+
+  it('does not log when only one of selector/sink is provided', () => {
+    const shadowSink = createRecordingShadowSink();
+    const meta = createMetaOrchestrator({ shadowSink }); // no selector
+    meta.select({ goal: 'implement the feature' });
+    expect(shadowSink.getRecords()).toHaveLength(0);
+  });
+
+  it('swallows a shadow-selector failure (selection still succeeds)', () => {
+    const shadowSink = createRecordingShadowSink();
+    const throwingSelector = {
+      predict: () => {
+        throw new Error('boom');
+      },
+      recordOutcome: () => {},
+    };
+    const meta = createMetaOrchestrator({ shadowSelector: throwingSelector, shadowSink });
+    expect(() => meta.select({ goal: 'implement the feature' })).not.toThrow();
+    expect(shadowSink.getRecords()).toHaveLength(0);
   });
 });

@@ -19,8 +19,9 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { createLogger, getTimeProvider } from '../core/index.js';
+import { createLogger, getTimeProvider, getErrorMessage } from '../core/index.js';
 import type { ILogger } from '../core/index.js';
+import type { ILearnedStrategySelector, MetaShadowSink } from './meta-shadow-selector.js';
 import { classifyTask } from '../pipeline/adaptive-orchestrator.js';
 import type { TaskClassification, PipelineType } from '../pipeline/adaptive-orchestrator.js';
 import { createWorkflowRouter } from './workflow-router.js';
@@ -399,16 +400,54 @@ function toRecord(
  *   decision's capability gaps are recorded for the self-directed build backlog
  *   (#3555). Default absent — no gap recording, no behavior change.
  */
+/**
+ * Computes the learned would-be strategy and logs it alongside the rule-based
+ * decision (#3551). Shadow only — never alters the executed decision. Best-effort:
+ * a selector/sink failure is logged and swallowed so selection never breaks.
+ */
+function recordShadow(
+  shadowSelector: ILearnedStrategySelector,
+  shadowSink: MetaShadowSink,
+  decision: MetaDecision,
+  timestamp: string,
+  logger: ILogger
+): void {
+  try {
+    const learned = shadowSelector.predict(decision);
+    shadowSink.record({
+      decisionId: decision.decisionId,
+      timestamp,
+      ruleStrategy: decision.strategy,
+      learnedStrategy: learned.strategy,
+      agree: learned.strategy === decision.strategy,
+      taskClass: decision.analysis.taskType,
+      learnedScore: learned.score,
+    });
+  } catch (err) {
+    logger.warn('Shadow selection failed (non-fatal)', { error: getErrorMessage(err) });
+  }
+}
+
 export function createMetaOrchestrator(options?: {
   readonly logger?: ILogger | undefined;
   readonly router?: IWorkflowRouter | undefined;
   readonly sink?: MetaDecisionSink | undefined;
   readonly gapLedger?: ICapabilityGapLedger | undefined;
+  /**
+   * Optional learned selector (#3551). When provided WITH a shadowSink, its
+   * would-be strategy is computed and logged alongside the rule-based choice —
+   * SHADOW MODE: the learned choice is never executed. Default absent.
+   */
+  readonly shadowSelector?: ILearnedStrategySelector | undefined;
+  /** Sink for shadow comparisons; required for shadow logging to run. */
+  readonly shadowSink?: MetaShadowSink | undefined;
 }): IMetaOrchestrator {
   const logger = options?.logger ?? createLogger({ component: 'MetaOrchestrator' });
   const router = options?.router ?? createWorkflowRouter({ logger });
   const sink = options?.sink ?? createAuditLogSink(logger);
   const gapLedger = options?.gapLedger;
+  const shadowSelector = options?.shadowSelector;
+  const shadowSink = options?.shadowSink;
 
   return {
     select(input: MetaOrchestratorInput): MetaDecision {
@@ -425,6 +464,9 @@ export function createMetaOrchestrator(options?: {
 
       const timestamp = new Date(getTimeProvider().now()).toISOString();
       sink.record(toRecord(decision, input.goal, forced, timestamp));
+      if (shadowSelector !== undefined && shadowSink !== undefined) {
+        recordShadow(shadowSelector, shadowSink, decision, timestamp, logger);
+      }
       if (gapLedger !== undefined && decision.capabilityGaps !== undefined) {
         gapLedger.record(decision.capabilityGaps, {
           goal: input.goal,
