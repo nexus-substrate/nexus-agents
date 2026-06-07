@@ -1,5 +1,19 @@
 # nexus-agents
 
+## 2.125.20
+
+### Patch Changes
+
+- [#3672](https://github.com/nexus-substrate/nexus-agents/pull/3672) [`ab1c044`](https://github.com/nexus-substrate/nexus-agents/commit/ab1c0444a12ff97306ccbd4ccdcb3b8f09a813a0) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(capability-loop): auto-remediation deps assembly — audit-ready ([#3671](https://github.com/nexus-substrate/nexus-agents/issues/3671))
+
+  `buildAutoRemediationDeps` wires the merged adapters (deterministic research,
+  live-voter vote, atomic lease, audit logging) into a single AutoRemediationDeps
+  for runAutoRemediation. AUDIT-READY now: an audit run executes research →
+  consensus vote and stops before IMPLEMENT, producing the soak data the readiness
+  gate needs — using only merged pieces. ENFORCE stays fail-closed: `implement` is
+  a stub until the Option B proposal-PR adapter ([#3669](https://github.com/nexus-substrate/nexus-agents/issues/3669)), the lease is null without
+  a configured repo/sha, and readiness defaults to not-ready.
+
 ## 2.125.19
 
 ### Patch Changes
