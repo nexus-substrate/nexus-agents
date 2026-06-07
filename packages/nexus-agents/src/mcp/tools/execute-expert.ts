@@ -483,10 +483,24 @@ interface ClassifyExpertResultOpts {
   logger: ILogger | undefined;
 }
 
+/**
+ * The model id to attribute the outcome to (#3624): prefer the model the
+ * adapter ACTUALLY executed (ground truth from result metadata) over the
+ * configured preference. On failure there's no executed model — fall back to
+ * the configured preference (and ultimately 'unknown' at the recorder).
+ */
+function resolveExecutedModelId(
+  result: ClassifyExpertResultOpts['result'],
+  expert: Expert
+): string | undefined {
+  const executed = result.ok ? result.value.metadata.model : undefined;
+  return executed ?? expert.expertConfig.modelPreference?.modelId;
+}
+
 /** Classifies expert execution result, with rate-limit fallback (#1532). */
 async function classifyExpertResult(opts: ClassifyExpertResultOpts): Promise<ExpertResult> {
   const { result, expert, task, args, durationMs, logger } = opts;
-  const modelId = expert.expertConfig.modelPreference?.modelId;
+  const modelId = resolveExecutedModelId(result, expert);
   const info = {
     expertId: args.expertId,
     role: expert.role,

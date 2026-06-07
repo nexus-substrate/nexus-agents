@@ -39,10 +39,20 @@ export const OutcomeFailureCategorySchema = z.enum([
   'unknown',
 ]);
 
+/**
+ * CLI attribution for an outcome. Widened beyond {@link CliNameSchema} to allow
+ * an explicit `'unknown'` (#3624) — for outcomes (e.g. expert executions) whose
+ * real executing CLI can't be resolved from the model. `'unknown'` is excluded
+ * from CLI-quality signals (detectCliPerformanceFloor) so it can't skew a real
+ * CLI, but is retained for category/failure analysis rather than fabricated.
+ */
+export const OutcomeCliSchema = z.union([CliNameSchema, z.literal('unknown')]);
+export type OutcomeCli = z.infer<typeof OutcomeCliSchema>;
+
 /** Schema for a single recorded task outcome. */
 export const TaskOutcomeSchema = z.object({
   id: z.string().min(1),
-  cli: CliNameSchema,
+  cli: OutcomeCliSchema,
   category: TaskCategorySchema,
   model: z.string().min(1),
   success: z.boolean(),
@@ -90,7 +100,7 @@ export const TaskOutcomeSchema = z.object({
 
 /** Schema for filtering outcomes. */
 export const OutcomeQuerySchema = z.object({
-  cli: CliNameSchema.optional(),
+  cli: OutcomeCliSchema.optional(),
   category: TaskCategorySchema.optional(),
   source: OutcomeSourceSchema.optional(),
   success: z.boolean().optional(),
