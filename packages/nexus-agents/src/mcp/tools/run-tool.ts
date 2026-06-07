@@ -8,10 +8,12 @@
  * `run_graph_workflow`, `orchestrate`, …) remain available as advanced
  * "force-this-strategy" paths.
  *
- * Increment A (this module) is read-only: it returns the routing decision plus
- * the concrete strategy tool to invoke (a dispatch plan). Inline execution
- * (`execute: true` driving the MetaDispatcher with real engine executors) lands
- * in increment B.
+ * Default (execute:false) is read-only: returns the routing decision plus the
+ * concrete strategy tool to invoke. With `execute:true` it dispatches the
+ * selected strategy through the MetaDispatcher to a real engine executor and
+ * returns the result (increment B; wired so far: dev-pipeline — others fail
+ * closed with a typed error). Executors live here, at the MCP-tool layer, and
+ * are injected into the dispatcher so the orchestration core stays cycle-free.
  *
  * @module mcp/tools/run-tool
  * (Source: epic #3548 — unified adaptive MetaOrchestrator entry point)
@@ -33,7 +35,16 @@ import { getMcpAnnotations } from './tool-annotations.js';
 import {
   createMetaOrchestrator,
   type ExecutionStrategy,
+  type MetaDecision,
+  type MetaOrchestratorInput,
 } from '../../orchestration/meta-orchestrator.js';
+import {
+  createMetaDispatcher,
+  MetaDispatchError,
+  type StrategyExecutorMap,
+  type MetaOutcomeSink,
+} from '../../orchestration/meta-dispatcher.js';
+import { runDevPipelineForGoal } from './dev-pipeline-tool.js';
 
 /**
  * The concrete MCP tool / engine each strategy routes to. Used to tell the
@@ -81,6 +92,13 @@ export const RunInputSchema = z.object({
     .optional()
     .describe('Hint: the dependency structure of the work.'),
   isNovel: z.boolean().optional().describe('Hint: this kind of task has not been seen before.'),
+  execute: z
+    .boolean()
+    .optional()
+    .describe(
+      'When true, actually run the selected strategy (if an executor is wired) and return ' +
+        'its result; otherwise return the routing decision only (default false, read-only).'
+    ),
 });
 
 export type RunInput = z.infer<typeof RunInputSchema>;
@@ -121,13 +139,18 @@ function toMetaInput(
   };
 }
 
+/** Selects a strategy for a goal via the MetaOrchestrator. */
+function selectDecision(input: RunInput, logger?: ILogger): MetaDecision {
+  const meta = createMetaOrchestrator(logger !== undefined ? { logger } : undefined);
+  return meta.select(toMetaInput(input));
+}
+
 /**
- * Core routing logic: select a strategy for a goal and build the dispatch plan.
- * Pure aside from the MetaOrchestrator's decision logging. Exported for testing.
+ * Core routing logic: select a strategy for a goal and build the dispatch plan
+ * (read-only — no execution). Exported for testing.
  */
 export function routeGoal(input: RunInput, logger?: ILogger): RunResponse {
-  const meta = createMetaOrchestrator(logger !== undefined ? { logger } : undefined);
-  const decision = meta.select(toMetaInput(input));
+  const decision = selectDecision(input, logger);
   return {
     strategy: decision.strategy,
     reasoning: decision.reasoning,
@@ -143,15 +166,77 @@ export function routeGoal(input: RunInput, logger?: ILogger): RunResponse {
   };
 }
 
-function runHandler(args: unknown, logger: ILogger): Promise<ToolResult> {
+/** Strategies wired for inline execution (increment B). Others fail closed. */
+const DEFAULT_EXECUTORS: StrategyExecutorMap = {
+  'dev-pipeline': (_decision, metaInput: MetaOrchestratorInput) =>
+    runDevPipelineForGoal(metaInput.goal),
+};
+
+/** Result of an inline `execute: true` run. */
+export interface RunExecuteResponse {
+  readonly strategy: ExecutionStrategy;
+  readonly decisionId: string;
+  readonly reasoning: string;
+  readonly executed: true;
+  readonly durationMs: number;
+  readonly result: unknown;
+}
+
+/**
+ * Select a strategy and execute it via the MetaDispatcher. Resolves with the
+ * engine result; rejects with {@link MetaDispatchError} for strategies without a
+ * wired executor (fail closed). Executors are injectable for testing.
+ */
+export async function executeGoal(
+  input: RunInput,
+  opts: {
+    readonly logger?: ILogger | undefined;
+    readonly executors?: StrategyExecutorMap | undefined;
+    readonly outcomeSink?: MetaOutcomeSink | undefined;
+  } = {}
+): Promise<RunExecuteResponse> {
+  const decision = selectDecision(input, opts.logger);
+  const dispatcher = createMetaDispatcher({
+    executors: opts.executors ?? DEFAULT_EXECUTORS,
+    ...(opts.logger !== undefined ? { logger: opts.logger } : {}),
+    ...(opts.outcomeSink !== undefined ? { outcomeSink: opts.outcomeSink } : {}),
+  });
+  const dispatch = await dispatcher.dispatch(decision, toMetaInput(input));
+  return {
+    strategy: dispatch.strategy,
+    decisionId: dispatch.decisionId,
+    reasoning: decision.reasoning,
+    executed: true,
+    durationMs: dispatch.durationMs,
+    result: dispatch.result,
+  };
+}
+
+async function runHandler(args: unknown, logger: ILogger): Promise<ToolResult> {
   const parsed = RunInputSchema.safeParse(args);
   if (!parsed.success) {
-    return Promise.resolve(
-      toolStructuredError({
-        errorCategory: 'validation',
-        message: `Validation error: ${formatZodError(parsed.error)}`,
-      })
-    );
+    return toolStructuredError({
+      errorCategory: 'validation',
+      message: `Validation error: ${formatZodError(parsed.error)}`,
+    });
+  }
+
+  if (parsed.data.execute === true) {
+    try {
+      const exec = await executeGoal(parsed.data, { logger });
+      logger.info('run: executed goal', {
+        decisionId: exec.decisionId,
+        strategy: exec.strategy,
+        durationMs: exec.durationMs,
+      });
+      return toolSuccess(JSON.stringify(exec, null, 2));
+    } catch (err) {
+      const noExecutor = err instanceof MetaDispatchError && err.code === 'no_executor';
+      return toolStructuredError({
+        errorCategory: noExecutor ? 'business' : 'internal',
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   const response = routeGoal(parsed.data, logger);
@@ -160,16 +245,18 @@ function runHandler(args: unknown, logger: ILogger): Promise<ToolResult> {
     strategy: response.strategy,
     recommendedTool: response.recommendedTool,
   });
-  return Promise.resolve(toolSuccess(JSON.stringify(response, null, 2)));
+  return toolSuccess(JSON.stringify(response, null, 2));
 }
 
 const DESCRIPTION =
   'DEFAULT ENTRY POINT: give a goal and nexus-agents picks the right strategy ' +
   '(single-shot / dev-pipeline / pipeline / graph-workflow / orchestrate / consensus / ' +
-  'spec / research) via the MetaOrchestrator and returns the routing decision plus the ' +
-  'recommendedTool to run it. Read-only in this release (returns a decision, executes ' +
-  'nothing). Use forceStrategy to override. Prefer this over choosing a pipeline tool ' +
-  'by hand — the specialized tools remain available as advanced force-strategy paths.';
+  'spec / research) via the MetaOrchestrator. Default (execute:false) is read-only — ' +
+  'returns the routing decision + recommendedTool. With execute:true it runs the selected ' +
+  'strategy inline (currently wired: dev-pipeline; others fail closed with a typed error) ' +
+  'and returns the engine result, recording the outcome. Use forceStrategy to override. ' +
+  'Prefer this over choosing a pipeline tool by hand — the specialized tools remain ' +
+  'available as advanced force-strategy paths.';
 
 /** @category MCP */
 export function registerRunTool(server: McpServer, deps: BaseMcpToolDeps): void {
