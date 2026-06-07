@@ -13,6 +13,7 @@ import {
   type AcquiredLease,
 } from './improvement-remediation-enforce.js';
 import { RemediationGuard } from './improvement-remediation-guard.js';
+import { RemediationCircuitBreaker } from './remediation-circuit-breaker.js';
 import type { ImprovementSignal } from './improvement-review.js';
 import type { EnforceReadinessEvidence } from './improvement-enforce-readiness.js';
 import type { RemediationPlan } from './improvement-remediation-capability.js';
@@ -189,6 +190,58 @@ describe('runAutoRemediation — enforce', () => {
     await runAutoRemediation([signal({ severity: 'warning' })], deps, enf());
     expect(deps.vote).toHaveBeenCalledWith(expect.objectContaining({ algorithm: 'higher_order' }));
     expect(deps.dryRun).not.toHaveBeenCalled(); // dry-run is p0-only
+  });
+
+  it('a tripped circuit-breaker aborts the run (#3653)', async () => {
+    const { deps } = makeDeps();
+    const breaker = new RemediationCircuitBreaker({ threshold: 1 });
+    breaker.recordFailure(); // tripped
+    const r = await runAutoRemediation([signal()], deps, {
+      mode: 'enforce',
+      now: 0,
+      guard: new RemediationGuard(),
+      breaker,
+    });
+    expect(r.aborted).toMatch(/circuit breaker tripped/);
+    expect(deps.research).not.toHaveBeenCalled();
+  });
+
+  it('records a rejected vote as a breaker failure (sustained-wrongness tracking)', async () => {
+    const { deps } = makeDeps({
+      vote: vi.fn(async () => Promise.resolve({ approved: false, approvalPercentage: 10 })),
+    });
+    const breaker = new RemediationCircuitBreaker({ threshold: 3 });
+    await runAutoRemediation([signal()], deps, {
+      mode: 'enforce',
+      now: 0,
+      guard: new RemediationGuard(),
+      breaker,
+    });
+    expect(breaker.state().consecutiveFailures).toBe(1);
+  });
+
+  it('refuses to auto-remediate a plan that targets a protected path (self-mod guard)', async () => {
+    const { deps } = makeDeps({
+      research: vi.fn(async (s: ImprovementSignal) =>
+        Promise.resolve({
+          signalKey: s.signalKey,
+          category: s.category,
+          summary: 'touch the rails',
+          steps: [{ kind: 'refactor', description: 'edit', targetPath: 'src/consensus/engine.ts' }],
+        })
+      ),
+    });
+    const breaker = new RemediationCircuitBreaker({ threshold: 3 });
+    const r = await runAutoRemediation([signal()], deps, {
+      mode: 'enforce',
+      now: 0,
+      guard: new RemediationGuard(),
+      breaker,
+    });
+    expect(r.skipped[0]?.reason).toMatch(/protected path/);
+    expect(deps.implement).not.toHaveBeenCalled();
+    expect(deps.vote).not.toHaveBeenCalled(); // blocked before the vote
+    expect(breaker.state().consecutiveFailures).toBe(0); // a correct decline is neutral
   });
 
   it('skips a signal blocked by the runaway guard', async () => {

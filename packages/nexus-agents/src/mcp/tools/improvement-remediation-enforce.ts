@@ -53,6 +53,11 @@ import {
   type ConsensusRequirement,
   type RemediationPriority,
 } from './remediation-priority.js';
+import {
+  RemediationCircuitBreaker,
+  getRemediationCircuitBreaker,
+} from './remediation-circuit-breaker.js';
+import { planTouchesProtectedPath } from './remediation-protected-paths.js';
 import type { ConsensusAlgorithm } from '../../consensus/types-core.js';
 
 /** The three enforcement modes. */
@@ -149,6 +154,8 @@ export interface AutoRemediationConfig {
   readonly maxPerRun?: number;
   /** Runaway guard (default: process singleton). */
   readonly guard?: RemediationGuard;
+  /** Circuit-breaker (default: process singleton) — auto-off after sustained failures (#3653). */
+  readonly breaker?: RemediationCircuitBreaker;
   /** Readiness criteria (default: conservative). */
   readonly readinessConfig?: EnforceReadinessConfig;
   /** Clock for guard timing (tests). */
@@ -211,6 +218,15 @@ async function checkEnforceGates(
   deps: AutoRemediationDeps,
   config: AutoRemediationConfig
 ): Promise<{ abort?: string; lease: AcquiredLease | null }> {
+  // Circuit-breaker (#3653): if tripped by sustained prior failures, refuse to
+  // run — auto-revert to off until a consensus re-vote resets it.
+  const breaker = config.breaker ?? getRemediationCircuitBreaker();
+  if (breaker.isTripped()) {
+    return {
+      abort: 'circuit breaker tripped (sustained failures) — re-vote required to re-enable',
+      lease: null,
+    };
+  }
   const evidence = await deps.readinessEvidence();
   const readiness = evaluateEnforceReadiness(
     evidence,
@@ -234,6 +250,7 @@ async function admitAndExecute(
   mode: AutoRemediateMode
 ): Promise<AutoRemediationResult> {
   const guard = config.guard ?? getRemediationGuard();
+  const breaker = config.breaker ?? getRemediationCircuitBreaker();
   const now = config.now ?? 0;
   const maxPerRun = config.maxPerRun ?? MAX_PER_RUN_DEFAULT;
   const skipped: Array<{ signalKey: string; reason: string }> = [];
@@ -248,26 +265,46 @@ async function admitAndExecute(
       });
       continue;
     }
-    const admission = admitSignal(signal, guard, now);
-    if (!admission.admit) {
-      skipped.push({ signalKey: signal.signalKey, reason: admission.reason });
-      deps.audit({ step: 'skip', signalKey: signal.signalKey, detail: admission.reason });
-      continue;
-    }
-    const outcome = await executeOne(signal, deps, mode, {
-      guard,
-      now,
-      requirement: admission.requirement,
-    });
-    if (outcome.error !== undefined) {
-      skipped.push({ signalKey: signal.signalKey, reason: outcome.error });
+    const o = await processSignal(signal, deps, mode, { guard, breaker, now });
+    if (o.kind === 'skip') {
+      skipped.push({ signalKey: signal.signalKey, reason: o.reason });
       continue;
     }
     plans.push({ signalKey: signal.signalKey });
-    if (outcome.pr !== undefined) remediated.push({ signalKey: signal.signalKey, ...outcome.pr });
+    if (o.kind === 'remediated') remediated.push({ signalKey: signal.signalKey, ...o.pr });
   }
 
   return { mode, considered: signals.length, skipped, plans, remediated };
+}
+
+type SignalOutcome =
+  | { readonly kind: 'skip'; readonly reason: string }
+  | { readonly kind: 'plan' }
+  | { readonly kind: 'remediated'; readonly pr: RemediationPrResult };
+
+/** Admit + execute one signal, recording the breaker result (enforce). */
+async function processSignal(
+  signal: ImprovementSignal,
+  deps: AutoRemediationDeps,
+  mode: AutoRemediateMode,
+  ctx: { guard: RemediationGuard; breaker: RemediationCircuitBreaker; now: number }
+): Promise<SignalOutcome> {
+  const admission = admitSignal(signal, ctx.guard, ctx.now);
+  if (!admission.admit) {
+    deps.audit({ step: 'skip', signalKey: signal.signalKey, detail: admission.reason });
+    return { kind: 'skip', reason: admission.reason };
+  }
+  const outcome = await executeOne(signal, deps, mode, {
+    guard: ctx.guard,
+    now: ctx.now,
+    requirement: admission.requirement,
+  });
+  // Record genuine remediation outcomes to the breaker (enforce only); neutral
+  // skips (protected-path, research-fail) carry no `result` and don't count.
+  if (mode === 'enforce' && outcome.result !== undefined) ctx.breaker.record(outcome.result);
+  if (outcome.error !== undefined) return { kind: 'skip', reason: outcome.error };
+  if (outcome.pr !== undefined) return { kind: 'remediated', pr: outcome.pr };
+  return { kind: 'plan' };
 }
 
 /** Outcome of admission: admitted (with its priority + consensus requirement) or skipped. */
@@ -343,7 +380,7 @@ async function executeOne(
   deps: AutoRemediationDeps,
   mode: AutoRemediateMode,
   ctx: { guard: RemediationGuard; now: number; requirement: ConsensusRequirement }
-): Promise<{ pr?: RemediationPrResult; error?: string }> {
+): Promise<{ pr?: RemediationPrResult; error?: string; result?: 'success' | 'failure' }> {
   const { guard, now, requirement } = ctx;
   const ledger = new CapabilityLedger();
   ledger.enterPhase('research');
@@ -353,7 +390,7 @@ async function executeOne(
   } catch (err: unknown) {
     const reason = `research/plan failed: ${err instanceof Error ? err.message : String(err)}`;
     deps.audit({ step: 'research-failed', signalKey: signal.signalKey, detail: reason });
-    return { error: reason };
+    return { error: reason }; // neutral for the breaker (transient/adapter, not sustained wrongness)
   }
   deps.audit({
     step: 'plan',
@@ -361,9 +398,18 @@ async function executeOne(
     detail: `${String(plan.steps.length)} steps`,
   });
 
+  // Self-modification guard (#3653): never autonomously touch the loop's own
+  // rails / auth / secrets / CI — leave for a human (neutral for the breaker).
+  const protectedPaths = planTouchesProtectedPath(plan);
+  if (protectedPaths.protected) {
+    const reason = `protected path(s) ${protectedPaths.paths.join(', ')} — human attestation required`;
+    deps.audit({ step: 'protected-path', signalKey: signal.signalKey, detail: reason });
+    return { error: reason };
+  }
+
   // Consensus gate replaces the human gate (#3653) — observed in audit too.
   const blocked = await consensusGate(signal, plan, requirement, ledger, deps);
-  if (blocked !== null) return { error: blocked };
+  if (blocked !== null) return { error: blocked, result: 'failure' }; // rejected/dry-run-failed
 
   if (mode === 'audit') return {}; // approved in shadow, but stop before IMPLEMENT — no writes.
 
@@ -374,5 +420,5 @@ async function executeOne(
   guard.recordAttempt(signal.signalKey, now);
   deps.recordOutcome?.(plan, pr);
   deps.audit({ step: 'pr-opened', signalKey: signal.signalKey, detail: pr.prUrl });
-  return { pr };
+  return { pr, result: 'success' };
 }
