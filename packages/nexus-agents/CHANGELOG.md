@@ -1,5 +1,21 @@
 # nexus-agents
 
+## 2.125.12
+
+### Patch Changes
+
+- [#3651](https://github.com/nexus-substrate/nexus-agents/pull/3651) [`0bd8c8b`](https://github.com/nexus-substrate/nexus-agents/commit/0bd8c8bf9ab7560205ccbcda78293bcbdd94022b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(capability-loop): atomic single-flight lease for auto-remediation ([#3648](https://github.com/nexus-substrate/nexus-agents/issues/3648))
+
+  The [#3618](https://github.com/nexus-substrate/nexus-agents/issues/3618) capstone vote's one hard concurrency requirement, implemented:
+  `makeGitRefLeaseAcquirer` acquires the auto-remediation lease via an ATOMIC
+  GitHub git-refs create (`POST .../git/refs`, 422 if it already exists) — the
+  create IS the acquisition, so there is no TOCTOU check-then-act window and
+  exactly one of two concurrent CI runners wins. Fail-closed: 422 OR any transport
+  error → null (not acquired) → the orchestrator aborts rather than risk a
+  double-run. Release deletes the ref (best-effort; stale-lock cleanup is [#3646](https://github.com/nexus-substrate/nexus-agents/issues/3646)).
+  The `gh` exec is injected, so it's fully unit-tested without network. Part of the
+  [#3648](https://github.com/nexus-substrate/nexus-agents/issues/3648) enforce-path wiring; consumed by the entry point still to land.
+
 ## 2.125.11
 
 ### Patch Changes
