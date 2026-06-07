@@ -221,6 +221,22 @@ function selectStageRegistry(
 // 4-template list).
 const RUN_PIPELINE_DESCRIPTION = `Single unified entry point for all pipeline templates (${listTemplateIds().join('/')}). Auto-detects template from task content or accepts an explicit override.`;
 
+/**
+ * Run the adaptive pipeline for a plain goal string with default settings
+ * (auto-detected template, non-simulated). The strategy executor the unified
+ * `run` entry point dispatches to for the `pipeline` and `research` strategies
+ * (#3575). Mirrors {@link runPipelineHandler} minus arg parsing.
+ */
+export async function runPipelineForGoal(
+  goal: string,
+  logger: ILogger = createLogger({ tool: 'run_pipeline' })
+): Promise<AdaptiveOrchestratorResult> {
+  const budget = resolveRunBudget(goal, undefined, logger);
+  const agentStages = createAgentStages(budget !== undefined ? { budget } : {});
+  const stages = selectStageRegistry(undefined, goal, agentStages);
+  return runAdaptiveOrchestrator(goal, { stages });
+}
+
 /** Validates input, runs the adaptive orchestrator, and shapes the result. */
 async function runPipelineHandler(args: unknown, logger: ILogger): Promise<ToolResult> {
   const parsed = PipelineInputSchema.safeParse(args);
