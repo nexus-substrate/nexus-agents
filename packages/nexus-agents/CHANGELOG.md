@@ -1,5 +1,24 @@
 # nexus-agents
 
+## 2.125.5
+
+### Patch Changes
+
+- [#3634](https://github.com/nexus-substrate/nexus-agents/pull/3634) [`b60f002`](https://github.com/nexus-substrate/nexus-agents/commit/b60f002c8cf0f79bf93a5119f04a1a0fe8f58237) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(capability-loop): runaway-loop guard for auto-remediation ([#3617](https://github.com/nexus-substrate/nexus-agents/issues/3617))
+
+  Condition 6 of the [#3540](https://github.com/nexus-substrate/nexus-agents/issues/3540) auto-invoke gate. A `RemediationGuard` that prevents the
+  recursive self-trigger loop (an auto-PR perturbs fitness → emits a new signal →
+  triggers another remediation → …) by bounding three axes, fail-closed:
+  - **idempotency + cooldown** — the same `signalKey` can't re-trigger within
+    `cooldownMs` (default 6h), breaking the common same-signal re-fire;
+  - **depth/generation** — a remediation chain is capped at `maxGenerations`
+    (default 1), bounding cascades across different signals;
+  - **rate cap** — ≤ `maxPerWindow` (default 5, mirrors MAX_ISSUES_PER_RUN) per
+    `windowMs` (default 24h).
+
+  Pure + in-memory + bounded; nothing executes. The enforce path ([#3618](https://github.com/nexus-substrate/nexus-agents/issues/3618)) consults
+  it before routing any remediation to the dev-pipeline.
+
 ## 2.125.4
 
 ### Patch Changes
