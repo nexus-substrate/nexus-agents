@@ -36,6 +36,17 @@ interface RegistryEntry {
   readonly marker: string;
   readonly peer_files: readonly string[];
   readonly rationale: string;
+  /**
+   * Registry relocation (#3566): when the marker list MOVED here from another
+   * file, the structural-equivalence exemption can't compare against this
+   * source's base (it didn't exist at base). If set, the exemption compares the
+   * current list against the marker list at the BASE of `moved_from` instead, so
+   * a pure no-op relocation doesn't falsely demand peer-file updates. Only used
+   * while `source` is absent at base (i.e. the relocation PR itself).
+   */
+  readonly moved_from?: string;
+  /** Marker name at the `moved_from` location, if it differed (default: `marker`). */
+  readonly moved_from_marker?: string;
 }
 
 interface RegistryManifest {
@@ -251,10 +262,21 @@ function structurallyEquivalent(
   baseOf: (path: string) => string | null,
   currentOf: (path: string) => string | null
 ): boolean {
-  const oldContent = baseOf(registry.source);
   const newContent = currentOf(registry.source);
-  if (oldContent === null || newContent === null) return false;
-  const before = extractMarkerEntries(oldContent, registry.marker);
+  if (newContent === null) return false;
+
+  // Normal case: compare against this source's base. Relocation case (#3566):
+  // if the source didn't exist at base, compare against the base of the file the
+  // list moved from, using its pre-move marker name.
+  let oldContent = baseOf(registry.source);
+  let oldMarker = registry.marker;
+  if (oldContent === null && registry.moved_from !== undefined) {
+    oldContent = baseOf(registry.moved_from);
+    oldMarker = registry.moved_from_marker ?? registry.marker;
+  }
+  if (oldContent === null) return false;
+
+  const before = extractMarkerEntries(oldContent, oldMarker);
   const after = extractMarkerEntries(newContent, registry.marker);
   if (before === null || after === null) return false;
   return arraysEqual(before, after);

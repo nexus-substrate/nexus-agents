@@ -12,12 +12,12 @@
         "packages/nexus-agents/src/mcp/tools/list-experts.ts",
         "packages/nexus-agents/src/agents/experts/expert-defaults.test.ts"
       ],
-      "rationale": "Receipts: #2344, #2347 — every entry added requires updating BuiltInExpertTypeSchema, list_experts MCP tool, and the count assertion test."
+      "rationale": "Receipts: #2344, #2347 \u2014 every entry added requires updating BuiltInExpertTypeSchema, list_experts MCP tool, and the count assertion test."
     },
     {
       "name": "REGISTERED_TOOL_NAMES",
-      "source": "packages/nexus-agents/src/mcp/tools/index.ts",
-      "marker": "REGISTERED_TOOL_NAMES",
+      "source": "packages/nexus-agents/src/mcp/tools/tool-manifest.ts",
+      "marker": "TOOL_MANIFEST",
       "peer_files": [
         "packages/nexus-agents/src/cli-server-tools.ts",
         "packages/nexus-agents/src/cli-server-tools.test.ts",
@@ -27,14 +27,16 @@
         "scripts/inject-governance.ts",
         "skills/documentation-management/SKILL.md"
       ],
-      "rationale": "Receipts: #2358 — every new MCP tool requires updating STANDALONE_TOOLS, count tests, annotations, governance script, and SKILL.md PIPELINE NOTE."
+      "rationale": "Receipts: #2358 \u2014 every new MCP tool requires updating STANDALONE_TOOLS, count tests, annotations, governance script, and SKILL.md PIPELINE NOTE.",
+      "moved_from": "packages/nexus-agents/src/mcp/tools/index.ts",
+      "moved_from_marker": "REGISTERED_TOOL_NAMES"
     },
     {
       "name": "NEXUS_ENV_VARS",
       "source": "packages/nexus-agents/src/config/env-schema.ts",
       "marker": "NEXUS_",
       "peer_files": ["CLAUDE.md", "docs/getting-started/CONFIGURATION.md"],
-      "rationale": "Receipts: #2315 — env-var rollouts (NEXUS_DATA_DIR) miss callsites and docs. This catches the declaration drift; runtime callsite drift is a separate problem (#2407)."
+      "rationale": "Receipts: #2315 \u2014 env-var rollouts (NEXUS_DATA_DIR) miss callsites and docs. This catches the declaration drift; runtime callsite drift is a separate problem (#2407)."
     }
   ]
 }
