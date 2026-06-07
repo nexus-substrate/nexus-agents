@@ -246,7 +246,7 @@ See [docs/ENTRYPOINTS.md](./docs/ENTRYPOINTS.md) for the complete CLI reference 
 
 ## MCP Tools
 
-When running as an MCP server, the following tools are available:
+When running as an MCP server, the following tools are available. **Start with `run`** — the default entry point: give it a goal and the MetaOrchestrator picks (and, with `execute: true`, runs) the right strategy. The other pipeline tools are advanced force-strategy paths for pinning a specific one.
 
 <!-- Auto-generated below — do not hand-edit between markers. Run `pnpm governance:inject` to update from `packages/nexus-agents/src/mcp/tools/index.ts`. See #2269. -->
 
