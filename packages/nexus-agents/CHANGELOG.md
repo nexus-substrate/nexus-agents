@@ -1,5 +1,21 @@
 # nexus-agents
 
+## 2.124.0
+
+### Minor Changes
+
+- [#3609](https://github.com/nexus-substrate/nexus-agents/pull/3609) [`f06929b`](https://github.com/nexus-substrate/nexus-agents/commit/f06929b88796127a40888c776e5210125799a1a6) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(capability-loop): improvement-signal → remediation-task bridge ([#3540](https://github.com/nexus-substrate/nexus-agents/issues/3540) inc.1)
+
+  First, safe increment of the capability loop ([#3540](https://github.com/nexus-substrate/nexus-agents/issues/3540)): a pure
+  `improvementSignalsToTasks()` mapper turns the observability signals
+  `improvement_review` already detects (fitness decline, CLI-floor, failure-category
+  concentration, consensus rejection, self-eval) into structured remediation
+  PipelineTasks, surfaced on the `improvement_review` response as `remediationTasks`.
+  SUGGEST-ONLY by construction — a pure mapping that executes nothing, files
+  nothing, and auto-invokes no pipeline; a reviewer decides whether to route a task
+  through the dev-pipeline. The safety-critical auto-invoke gate is a deliberately
+  separate, owner-gated later increment.
+
 ## 2.123.5
 
 ### Patch Changes
