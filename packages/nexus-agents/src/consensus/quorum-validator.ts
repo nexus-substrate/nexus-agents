@@ -10,6 +10,7 @@
 
 import { createLogger, formatPercentage, type ILogger } from '../core/index.js';
 import type { ConsensusAlgorithm, Vote, VoteCounts, WeightedVoteCounts } from './types-core.js';
+import { SUPERMAJORITY_THRESHOLD } from './types-core.js';
 
 // ============================================================================
 // Types
@@ -130,12 +131,13 @@ export const DEFAULT_QUORUM_THRESHOLDS: Readonly<
   Record<ConsensusAlgorithm | 'weighted_byzantine', number>
 > = {
   simple_majority: 0.5,
-  supermajority: 0.67,
+  supermajority: SUPERMAJORITY_THRESHOLD,
   unanimous: 1.0,
   proof_of_learning: 0.5,
   opinion_wise: 0.5,
   higher_order: 0.5,
-  weighted_byzantine: 0.67,
+  // Byzantine fault tolerance also requires 2/3 — the same supermajority.
+  weighted_byzantine: SUPERMAJORITY_THRESHOLD,
 };
 
 const DEFAULT_MIN_TRUST = 0.3;

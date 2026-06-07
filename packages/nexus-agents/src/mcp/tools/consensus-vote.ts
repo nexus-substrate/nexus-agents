@@ -29,6 +29,7 @@ import {
   type BaseMcpToolDeps,
 } from './tool-result.js';
 import type { ConsensusAlgorithm, Vote, ConsensusResult, Proposal } from '../../consensus/types.js';
+import { SUPERMAJORITY_THRESHOLD } from '../../consensus/types-core.js';
 import type { VoterRole, AgentVoteResult } from '../../cli/vote-types.js';
 import { collectRealVotes } from '../../cli/voter-agents.js';
 import { createConsensusEngine } from '../../consensus/engine.js';
@@ -224,7 +225,7 @@ export function createPolicyFailedResult(
 /** Thresholds per algorithm for cascade detection. */
 const CASCADE_THRESHOLDS: Record<string, number> = {
   majority: 0.5,
-  supermajority: 0.67,
+  supermajority: SUPERMAJORITY_THRESHOLD,
   unanimous: 1.0,
 };
 

@@ -7,6 +7,7 @@
 
 import { z } from 'zod';
 import type { Vote } from './types-core.js';
+import { SUPERMAJORITY_THRESHOLD } from './types-core.js';
 
 /**
  * Voting round phases.
@@ -93,7 +94,7 @@ export const VotingProtocolConfigSchema = z.object({
   committeeSize: z.number().int().min(2).max(7).default(3),
   maxRounds: z.number().int().min(1).max(5).default(3),
   roundTimeoutMs: z.number().int().positive().default(60000),
-  agreementThreshold: z.number().min(0.5).max(1).default(0.67),
+  agreementThreshold: z.number().min(0.5).max(1).default(SUPERMAJORITY_THRESHOLD),
   enableAntiSycophancy: z.boolean().default(true),
   sycophancyThreshold: z.number().min(0).max(1).default(0.8),
 });
@@ -102,7 +103,8 @@ export const DEFAULT_VOTING_PROTOCOL_CONFIG: VotingProtocolConfig = {
   committeeSize: 3,
   maxRounds: 3,
   roundTimeoutMs: 60000,
-  agreementThreshold: 0.67,
+  // Default agreement level IS the supermajority (2/3) — single source (#3571).
+  agreementThreshold: SUPERMAJORITY_THRESHOLD,
   enableAntiSycophancy: true,
   sycophancyThreshold: 0.8,
 };

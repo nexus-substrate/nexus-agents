@@ -7,6 +7,7 @@
 
 import { z } from 'zod';
 import type { Vote } from './types-core.js';
+import { SUPERMAJORITY_THRESHOLD } from './types-core.js';
 
 /**
  * Task outcome STATUS for tracking agent performance — a 4-state vote status,
@@ -92,7 +93,7 @@ export const WeightedVotingConfigSchema = z.object({
   minTrustScore: z.number().min(0).max(1).default(0.3),
   byzantineFlagThreshold: z.number().int().positive().default(3),
   initialWeight: z.number().min(0).max(1).default(0.5),
-  quorumThreshold: z.number().min(0.5).max(1).default(0.67),
+  quorumThreshold: z.number().min(0.5).max(1).default(SUPERMAJORITY_THRESHOLD),
 });
 
 export const DEFAULT_WEIGHTED_VOTING_CONFIG: WeightedVotingConfig = {
@@ -103,7 +104,8 @@ export const DEFAULT_WEIGHTED_VOTING_CONFIG: WeightedVotingConfig = {
   minTrustScore: 0.3,
   byzantineFlagThreshold: 3,
   initialWeight: 0.5,
-  quorumThreshold: 0.67,
+  // Default quorum IS the supermajority (2/3) — single source (#3571).
+  quorumThreshold: SUPERMAJORITY_THRESHOLD,
 };
 
 /**
