@@ -183,6 +183,24 @@ describe('registerSuggestResearchTasksTool — handler', () => {
     expect(result.isError).toBe(true);
     expect(mockCheckForResearchTriggers).not.toHaveBeenCalled();
   });
+
+  // #3606: the slow/failing research path must not block the fast gap path.
+  it('still returns gap candidates when the research path throws', async () => {
+    mockCheckForResearchTriggers.mockRejectedValueOnce(new Error('research_discover exploded'));
+    const gapTask: PipelineTask = {
+      id: 'gap-some-tool',
+      title: 'Build some_tool',
+      description: 'Recurring capability gap.',
+      assignedTo: 'researcher',
+      status: 'pending',
+    };
+    mockCheckForCapabilityGapTriggers.mockReturnValueOnce([gapTask]);
+
+    const res = await callHandler({});
+    expect(res.candidates).toEqual([]); // research failed → empty, not a crash
+    expect(res.gapCandidates).toEqual([gapTask]); // gap path still delivered
+    expect(res.count).toBe(1);
+  });
 });
 
 describe('registerSuggestResearchTasksTool — registration', () => {
