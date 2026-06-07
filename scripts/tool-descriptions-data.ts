@@ -63,7 +63,7 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   registry_import:
     'Draft a registry ENTRY YAML for a NEW model so routing can consider it later. Returns the YAML to stdout for human review; does not write the registry. For picking among already-registered models, use `delegate_to_model`.',
   query_trace:
-    'Query execution trace JSONL files from disk for a given run ID. Supports filtering by event type and pagination.',
+    'Query execution traces by run ID (reads the trace JSONL files from disk). Returns agent and model attribution for pipeline runs — decision paths, error taxonomy, and timing data — with filtering by event type and pagination.',
   memory_write:
     'Write a memory entry to a specific backend. Supports session, belief, agentic, adaptive, and typed backends.',
   repo_analyze:
