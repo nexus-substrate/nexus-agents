@@ -30,14 +30,25 @@ describe('buildAutoRemediationDeps', () => {
     expect(() => parseRemediationPlan(raw)).not.toThrow();
   });
 
-  it('implement is fail-closed until the Option B adapter lands (#3669)', async () => {
-    const deps = buildAutoRemediationDeps();
+  it('implement is fail-closed when repo/repoRoot are not configured (#3669)', async () => {
+    const deps = buildAutoRemediationDeps(); // no repoRoot
     await expect(
       deps.implement(
         parseRemediationPlan(await deps.research(signal(), new CapabilityLedger())),
         new CapabilityLedger()
       )
-    ).rejects.toThrow(/not wired yet/);
+    ).rejects.toThrow(/not wired/);
+  });
+
+  it('wires the Option B proposal-PR adapter when repo + repoRoot are configured', async () => {
+    const deps = buildAutoRemediationDeps({ repo: 'o/n', repoRoot: '/repo', sha: 'abc' });
+    // It's no longer the rejecting stub — calling would attempt real git, so just
+    // assert the fail-closed stub message is gone (a real adapter is wired).
+    const ledger = new CapabilityLedger();
+    ledger.enterPhase('research'); // wrong phase → the real adapter fail-closes on capability
+    await expect(
+      deps.implement(parseRemediationPlan(await deps.research(signal(), ledger)), ledger)
+    ).rejects.toThrow(/capability|not permitted/);
   });
 
   it('lease is null (fail-closed) without a configured repo/sha', async () => {

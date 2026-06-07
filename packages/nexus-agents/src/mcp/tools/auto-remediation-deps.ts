@@ -20,14 +20,23 @@ import type { AutoRemediationDeps } from './improvement-remediation-enforce.js';
 import { buildRemediationPlanFromSignal } from './remediation-research.js';
 import { makeVoteAdapter, type VoteRunner } from './remediation-vote-adapter.js';
 import { makeGitRefLeaseAcquirer } from './auto-remediation-lease.js';
+import {
+  makeProposalPrImplementAdapter,
+  makeGitWorktreeOps,
+  makeGhPrCreator,
+} from './remediation-proposal-pr.js';
 import type { EnforceReadinessEvidence } from './improvement-enforce-readiness.js';
 
 /** Options for assembling the deps. */
 export interface AutoRemediationDepsOptions {
-  /** `owner/name` repo slug — required for the lease (and, later, PRs). */
+  /** `owner/name` repo slug — required for the lease + PRs. */
   readonly repo?: string;
   /** Commit SHA the lease ref points at. */
   readonly sha?: string;
+  /** Live checkout root — required to wire the Option B proposal-PR implement adapter. */
+  readonly repoRoot?: string;
+  /** Base branch for proposal PRs (default 'main'). */
+  readonly baseBranch?: string;
   /** Supplies readiness evidence (enforce gate). Default: not-ready (enforce blocked). */
   readonly readiness?: () => Promise<EnforceReadinessEvidence>;
   /** Inject a vote runner (tests); default is the real live-voter path. */
@@ -59,18 +68,30 @@ export function buildAutoRemediationDeps(
         // lease, so enforce must not proceed. (Audit never calls this.)
         async (): Promise<null> => Promise.resolve(null);
 
+  // Option B proposal-PR adapter — wired only when a live checkout (repoRoot) AND
+  // repo slug are configured. Otherwise enforce stays fail-closed (rejecting stub).
+  const implement: AutoRemediationDeps['implement'] =
+    opts.repoRoot !== undefined && opts.repo !== undefined
+      ? makeProposalPrImplementAdapter({
+          ops: makeGitWorktreeOps(opts.repoRoot),
+          pr: makeGhPrCreator(),
+          ...(opts.baseBranch !== undefined ? { baseBranch: opts.baseBranch } : {}),
+          logger,
+        })
+      : (): Promise<never> =>
+          Promise.reject(
+            new Error(
+              'auto-remediation implement not wired — set repo + repoRoot to enable Option B (#3669)'
+            )
+          );
+
   return {
     research: (signal) => Promise.resolve(buildRemediationPlanFromSignal(signal)),
     vote: makeVoteAdapter(opts.voteRunner, logger),
     acquireLease,
     readinessEvidence:
       opts.readiness ?? ((): Promise<EnforceReadinessEvidence> => Promise.resolve(NOT_READY)),
-    implement: (): Promise<never> =>
-      Promise.reject(
-        new Error(
-          'auto-remediation implement adapter not wired yet (Option B, #3669) — enforce unavailable'
-        )
-      ),
+    implement,
     audit: (event): void => {
       logger.info(`[auto-remediation] ${event.step}`, {
         ...(event.signalKey !== undefined ? { signalKey: event.signalKey } : {}),
