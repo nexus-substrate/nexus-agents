@@ -45,6 +45,23 @@ export interface LaunchVotesInput {
 
 const DEADLINE_MESSAGE = 'overall consensus deadline exceeded';
 
+/**
+ * Should a failed vote be retried on the fallback adapter? Only when the diverse
+ * adapter produced a genuine error (not the overall-deadline filler, which means
+ * there's no time left) AND it wasn't already the fallback (#3587).
+ */
+function shouldRetryOnFallback(
+  result: AgentVoteResult,
+  used: IModelAdapter,
+  fallback: IModelAdapter
+): boolean {
+  return (
+    result.source === 'error' &&
+    result.error !== DEADLINE_MESSAGE &&
+    adapterCliKey(used) !== adapterCliKey(fallback)
+  );
+}
+
 /** Stable per-CLI key for an adapter; CLI adapters carry the CLI name. */
 function adapterCliKey(adapter: IModelAdapter): string {
   return (adapter as { name?: string }).name ?? adapter.providerId;
@@ -114,21 +131,36 @@ export async function launchVotesWithOverallDeadline(
   const startedAt = Date.now();
   const serialize = createKeyedSerializer();
 
-  const wrapped = roles.map(async (role, i) => {
-    if (i > 0 && interDelay > 0) await delay(interDelay);
-    const adapter = roleAdapters.get(role) ?? fallbackAdapter;
+  // One serialized, deadline-bounded vote attempt on a specific adapter.
+  const voteOnAdapter = (role: VoterRole, adapter: IModelAdapter): Promise<AgentVoteResult> =>
     // Serialize per CLI so concurrent same-CLI calls don't race that CLI's
     // OAuth refresh (#3348). The deadline is measured when the vote actually
     // starts, so a queued role still gets a correct remaining budget.
-    return serialize(adapterCliKey(adapter), () => {
-      const elapsed = Date.now() - startedAt;
-      const remaining = Math.max(1, overallDeadlineMs - elapsed);
+    serialize(adapterCliKey(adapter), () => {
+      const remaining = Math.max(1, overallDeadlineMs - (Date.now() - startedAt));
       return raceWithDeadline(
         voteFn(role, proposal, adapter, logger, voteOptions),
         role,
         remaining
       );
     });
+
+  const wrapped = roles.map(async (role, i): Promise<AgentVoteResult> => {
+    if (i > 0 && interDelay > 0) await delay(interDelay);
+    const adapter = roleAdapters.get(role) ?? fallbackAdapter;
+    const primary = await voteOnAdapter(role, adapter);
+    // #3587: a voter routed to a diverse CLI that hard-fails (e.g. an OpenRouter
+    // model without tool-use → "no endpoints that support tool use", which the
+    // responseFormat retry can't fix) would silently shrink the panel. Retry
+    // once on the known-good fallback adapter so one bad CLI can't drop a voter.
+    if (!shouldRetryOnFallback(primary, adapter, fallbackAdapter)) return primary;
+    logger.warn('Voter failed on diverse adapter; retrying on fallback (#3587)', {
+      role,
+      failedCli: adapterCliKey(adapter),
+      fallbackCli: adapterCliKey(fallbackAdapter),
+      error: primary.error,
+    });
+    return voteOnAdapter(role, fallbackAdapter);
   });
 
   const results = await Promise.all(wrapped);
