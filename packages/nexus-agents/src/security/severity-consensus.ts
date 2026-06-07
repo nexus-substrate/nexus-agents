@@ -9,6 +9,7 @@
 
 import { z } from 'zod';
 import type { SecurityFinding } from './sarif-types.js';
+import { FINDING_SEVERITY_LEVELS } from './sarif-types.js';
 import type { TriageVerdict, TriagedFinding } from './finding-triage.js';
 export type { TriagedFinding } from './finding-triage.js';
 
@@ -17,8 +18,8 @@ export type { TriagedFinding } from './finding-triage.js';
 // ============================================================================
 
 export const SeverityVerdictSchema = z.object({
-  originalSeverity: z.enum(['critical', 'high', 'medium', 'low', 'info']),
-  consensusSeverity: z.enum(['critical', 'high', 'medium', 'low', 'info']),
+  originalSeverity: z.enum(FINDING_SEVERITY_LEVELS),
+  consensusSeverity: z.enum(FINDING_SEVERITY_LEVELS),
   approved: z.boolean(),
   approvalPercentage: z.number().min(0).max(100),
   reasoning: z.string().max(500),

@@ -6,6 +6,7 @@
  */
 
 import { z } from 'zod';
+import { FINDING_SEVERITY_LEVELS } from '../../security/sarif-types.js';
 import type { AgentCapability, AgentRole } from '../../core/index.js';
 
 // Re-export base types for backward compatibility
@@ -258,7 +259,7 @@ export const ExpertOutputSchema = z.object({
 /**
  * Vulnerability severity schema.
  */
-export const VulnerabilitySeveritySchema = z.enum(['critical', 'high', 'medium', 'low', 'info']);
+export const VulnerabilitySeveritySchema = z.enum(FINDING_SEVERITY_LEVELS);
 
 /**
  * Vulnerability schema.
