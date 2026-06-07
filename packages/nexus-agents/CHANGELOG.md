@@ -1,5 +1,22 @@
 # nexus-agents
 
+## 2.123.3
+
+### Patch Changes
+
+- [#3602](https://github.com/nexus-substrate/nexus-agents/pull/3602) [`5771d45`](https://github.com/nexus-substrate/nexus-agents/commit/5771d4542236c69d11b0665b92367e079c42eb66) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(ci): MCP tool description-drift gate ([#3528](https://github.com/nexus-substrate/nexus-agents/issues/3528))
+
+  Adds `scripts/check-mcp-description-drift.ts` (wired into docs-check CI): for each
+  tool in TOOL_MANIFEST it statically extracts the runtime `registerTool`
+  description from the tool source and compares it to the `TOOL_DESCRIPTIONS`
+  doc-table source via an overlap-coefficient similarity threshold — catching the
+  [#3527](https://github.com/nexus-substrate/nexus-agents/issues/3527) class where the two long-form sources silently disagree about a tool's
+  behavior. Per the consensus_vote (Option B): static/deterministic parsing (no
+  eval), FAIL-LOUD on any unparseable runtime description (never silently skip),
+  and a similarity metric that tolerates intentional emphasis differences. The
+  deliberate short-form `README_TOOL_DESCRIPTIONS` is out of scope. Aligns the one
+  pre-existing drift (`query_trace`) so the gate passes clean at 46/46 tools.
+
 ## 2.123.2
 
 ### Patch Changes
