@@ -54,7 +54,7 @@ Code:               actual edits, tests, PRs, issues
   │   Role registry             Multi-voter consensus    │
   │   Immutable audit trail     Closed-loop telemetry    │
   │                                                       │
-  │   45 MCP tools · multi-stage CompositeRouter         │
+  │   46 MCP tools · multi-stage CompositeRouter         │
   └────────────────────────┬────────────────────────────┘
                            │
                            ▼ delegates execution to
@@ -139,7 +139,7 @@ Three voter roles deliberate via whichever local CLIs you have (Claude, Codex, G
 nexus-agents setup   # Auto-configures MCP server in Claude Code, Cursor, etc.
 ```
 
-Restart your editor. The 45 MCP tools (`orchestrate`, `consensus_vote`, `research_synthesize`, `verify_audit_chain`, …) become available to whatever agent you're already using.
+Restart your editor. The 46 MCP tools (`orchestrate`, `consensus_vote`, `research_synthesize`, `verify_audit_chain`, …) become available to whatever agent you're already using.
 
 #### What `setup` configures
 
@@ -183,7 +183,7 @@ nexus-agents orchestrate "Explain the architecture of this codebase"
 | **Memory & Learning**          | 5 user-facing backends (session, belief, agentic, adaptive, typed). Cross-session persistence feeds routing decisions                                                                                                                                                                       |
 | **Research System**            | 9 discovery sources (arXiv, GitHub, Semantic Scholar, etc). Auto-catalog, quality scoring, synthesis into topic clusters                                                                                                                                                                    |
 | **Graph Workflows**            | DAG-based workflow execution with checkpoint/resume, state reduction, and event hooks                                                                                                                                                                                                       |
-| **45 MCP Tools**               | Agent management, workflow execution, research, memory, codebase intelligence, repo analysis, consensus, operations                                                                                                                                                                         |
+| **46 MCP Tools**               | Agent management, workflow execution, research, memory, codebase intelligence, repo analysis, consensus, operations                                                                                                                                                                         |
 
 ---
 
@@ -246,59 +246,60 @@ See [docs/ENTRYPOINTS.md](./docs/ENTRYPOINTS.md) for the complete CLI reference 
 
 ## MCP Tools
 
-When running as an MCP server, the following tools are available:
+When running as an MCP server, the following tools are available. **Start with `run`** — the default entry point: give it a goal and the MetaOrchestrator picks (and, with `execute: true`, runs) the right strategy. The other pipeline tools are advanced force-strategy paths for pinning a specific one.
 
 <!-- Auto-generated below — do not hand-edit between markers. Run `pnpm governance:inject` to update from `packages/nexus-agents/src/mcp/tools/index.ts`. See #2269. -->
 
 <!-- GOVERNANCE:README_TOOLS:START -->
 
-| Tool                          | Description                                                                                                                                                               |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `orchestrate`                 | Task orchestration with Orchestrator coordination                                                                                                                         |
-| `create_expert`               | Create a specialized expert agent                                                                                                                                         |
-| `execute_expert`              | Run a task through a previously-created expert (by expertId)                                                                                                              |
-| `run_workflow`                | Run a linear workflow template (use `run_graph_workflow` for DAGs)                                                                                                        |
-| `delegate_to_model`           | Pick the best-fit existing model for a task (no registry change)                                                                                                          |
-| `list_experts`                | Inventory of expert ROLES for `create_expert`                                                                                                                             |
-| `list_workflows`              | Inventory of multi-step TEMPLATES for `run_workflow`                                                                                                                      |
-| `consensus_vote`              | Multi-model consensus voting on proposals                                                                                                                                 |
-| `research_query`              | Query research registry (status, overlap, stats, search)                                                                                                                  |
-| `research_add`                | Add an arXiv PAPER to the registry (for non-paper sources use `research_add_source`)                                                                                      |
-| `research_add_source`         | Add a NON-PAPER source (repo/tool/blog) — for arXiv papers use `research_add`                                                                                             |
-| `research_discover`           | Discover papers/repos from external sources                                                                                                                               |
-| `research_analyze`            | Analyze registry for gaps, trends, coverage                                                                                                                               |
-| `research_catalog_review`     | Review auto-cataloged research references                                                                                                                                 |
-| `research_synthesize`         | Synthesize registry into topic clusters with themes                                                                                                                       |
-| `survey_oss_landscape`        | Transient OSS project search (license, stars, last-commit) via GitHub                                                                                                     |
-| `vendor_publishing_audit`     | Look up a vendor's signing infrastructure (GPG keys, URL patterns, signature shape)                                                                                       |
-| `compare_data_feeds`          | Diff two YAML/JSON feeds: coverage + per-field axes                                                                                                                       |
-| `memory_query`                | Query across all memory backends                                                                                                                                          |
-| `memory_stats`                | Memory system statistics dashboard                                                                                                                                        |
-| `memory_write`                | Write to typed memory backends                                                                                                                                            |
-| `weather_report`              | Multi-CLI performance weather report                                                                                                                                      |
-| `issue_triage`                | Triage GitHub issues with trust classification                                                                                                                            |
-| `run_graph_workflow`          | Run a DAG workflow with per-node checkpoints + audit trail (linear → `run_workflow`)                                                                                      |
-| `execute_spec`                | Execute AI software factory spec pipeline                                                                                                                                 |
-| `registry_import`             | Draft YAML for a NEW model entry (for picking existing models use `delegate_to_model`)                                                                                    |
-| `query_trace`                 | Query execution traces for observability                                                                                                                                  |
-| `query_task_state`            | Query the structured task-state log for a task ID                                                                                                                         |
-| `get_job_result`              | Read result of an async-mode dispatch by jobId (#3042 / #2631)                                                                                                            |
-| `list_jobs`                   | List async-mode jobs across all tools — cross-session discovery (#3046 / #2631)                                                                                           |
-| `cancel_job`                  | Mark an async-mode job as cancelled — idempotent (#3042 Stage 1b)                                                                                                         |
-| `ci_health_check`             | CI infrastructure health — composes GitHub status + recent-runs activity (#3076)                                                                                          |
-| `verify_audit_chain`          | Verify hash chain of a FileAuditStorage audit log directory                                                                                                               |
-| `repo_analyze`                | Analyze GitHub repository structure                                                                                                                                       |
-| `repo_security_plan`          | Generate security scanning pipeline for a repo                                                                                                                            |
-| `extract_symbols`             | Tree-sitter AST symbols from a SINGLE file (functions/classes/types)                                                                                                      |
-| `search_codebase`             | Cross-file ripgrep search for patterns or text (not an AST parser)                                                                                                        |
-| `run_dev_pipeline`            | Full dev pipeline: research, plan, vote, implement, QA                                                                                                                    |
-| `run_pipeline`                | Execute a pipeline plugin by name with typed input                                                                                                                        |
-| `pr_review`                   | Multi-voter PR review with verification gate (experimental)                                                                                                               |
-| `supply_chain_tradeoff_panel` | Per-axis tradeoff vote for build-vs-buy / supply-chain decisions                                                                                                          |
-| `improvement_review`          | Threshold-gated observability loop — surfaces routing/tech-debt/bug/security signals from outcome+fitness data; files candidate issues                                    |
-| `run_quality_gate`            | Run the QA quality gate (typecheck/lint/tests/build/security) over a project dir; returns structured pass/fail verdict + feedback                                         |
-| `suggest_research_tasks`      | SUGGEST-ONLY: candidate pipeline tasks from research_discover findings for review — files/executes nothing (#1715)                                                        |
-| `list_available_models`       | Probe all model-discovery transports (OpenRouter API + opencode/claude/codex/gemini CLIs) and report per-transport health — validates the CLIs/APIs are reachable (#3406) |
+| Tool                          | Description                                                                                                                                                                                                              |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `orchestrate`                 | Task orchestration with Orchestrator coordination                                                                                                                                                                        |
+| `create_expert`               | Create a specialized expert agent                                                                                                                                                                                        |
+| `execute_expert`              | Run a task through a previously-created expert (by expertId)                                                                                                                                                             |
+| `run_workflow`                | Run a linear workflow template (use `run_graph_workflow` for DAGs)                                                                                                                                                       |
+| `delegate_to_model`           | Pick the best-fit existing model for a task (no registry change)                                                                                                                                                         |
+| `list_experts`                | Inventory of expert ROLES for `create_expert`                                                                                                                                                                            |
+| `list_workflows`              | Inventory of multi-step TEMPLATES for `run_workflow`                                                                                                                                                                     |
+| `consensus_vote`              | Multi-model consensus voting on proposals                                                                                                                                                                                |
+| `research_query`              | Query research registry (status, overlap, stats, search)                                                                                                                                                                 |
+| `research_add`                | Add an arXiv PAPER to the registry (for non-paper sources use `research_add_source`)                                                                                                                                     |
+| `research_add_source`         | Add a NON-PAPER source (repo/tool/blog) — for arXiv papers use `research_add`                                                                                                                                            |
+| `research_discover`           | Discover papers/repos from external sources                                                                                                                                                                              |
+| `research_analyze`            | Analyze registry for gaps, trends, coverage                                                                                                                                                                              |
+| `research_catalog_review`     | Review auto-cataloged research references                                                                                                                                                                                |
+| `research_synthesize`         | Synthesize registry into topic clusters with themes                                                                                                                                                                      |
+| `survey_oss_landscape`        | Transient OSS project search (license, stars, last-commit) via GitHub                                                                                                                                                    |
+| `vendor_publishing_audit`     | Look up a vendor's signing infrastructure (GPG keys, URL patterns, signature shape)                                                                                                                                      |
+| `compare_data_feeds`          | Diff two YAML/JSON feeds: coverage + per-field axes                                                                                                                                                                      |
+| `memory_query`                | Query across all memory backends                                                                                                                                                                                         |
+| `memory_stats`                | Memory system statistics dashboard                                                                                                                                                                                       |
+| `memory_write`                | Write to typed memory backends                                                                                                                                                                                           |
+| `weather_report`              | Multi-CLI performance weather report                                                                                                                                                                                     |
+| `issue_triage`                | Triage GitHub issues with trust classification                                                                                                                                                                           |
+| `run_graph_workflow`          | Run a DAG workflow with per-node checkpoints + audit trail (linear → `run_workflow`)                                                                                                                                     |
+| `execute_spec`                | Execute AI software factory spec pipeline                                                                                                                                                                                |
+| `registry_import`             | Draft YAML for a NEW model entry (for picking existing models use `delegate_to_model`)                                                                                                                                   |
+| `query_trace`                 | Query execution traces for observability                                                                                                                                                                                 |
+| `query_task_state`            | Query the structured task-state log for a task ID                                                                                                                                                                        |
+| `get_job_result`              | Read result of an async-mode dispatch by jobId (#3042 / #2631)                                                                                                                                                           |
+| `list_jobs`                   | List async-mode jobs across all tools — cross-session discovery (#3046 / #2631)                                                                                                                                          |
+| `cancel_job`                  | Mark an async-mode job as cancelled — idempotent (#3042 Stage 1b)                                                                                                                                                        |
+| `ci_health_check`             | CI infrastructure health — composes GitHub status + recent-runs activity (#3076)                                                                                                                                         |
+| `verify_audit_chain`          | Verify hash chain of a FileAuditStorage audit log directory                                                                                                                                                              |
+| `repo_analyze`                | Analyze GitHub repository structure                                                                                                                                                                                      |
+| `repo_security_plan`          | Generate security scanning pipeline for a repo                                                                                                                                                                           |
+| `extract_symbols`             | Tree-sitter AST symbols from a SINGLE file (functions/classes/types)                                                                                                                                                     |
+| `search_codebase`             | Cross-file ripgrep search for patterns or text (not an AST parser)                                                                                                                                                       |
+| `run_dev_pipeline`            | Full dev pipeline: research, plan, vote, implement, QA                                                                                                                                                                   |
+| `run_pipeline`                | Execute a pipeline plugin by name with typed input                                                                                                                                                                       |
+| `pr_review`                   | Multi-voter PR review with verification gate (experimental)                                                                                                                                                              |
+| `supply_chain_tradeoff_panel` | Per-axis tradeoff vote for build-vs-buy / supply-chain decisions                                                                                                                                                         |
+| `improvement_review`          | Threshold-gated observability loop — surfaces routing/tech-debt/bug/security signals from outcome+fitness data; files candidate issues                                                                                   |
+| `run_quality_gate`            | Run the QA quality gate (typecheck/lint/tests/build/security) over a project dir; returns structured pass/fail verdict + feedback                                                                                        |
+| `suggest_research_tasks`      | SUGGEST-ONLY: candidate pipeline tasks from research_discover findings for review — files/executes nothing (#1715)                                                                                                       |
+| `list_available_models`       | Probe all model-discovery transports (OpenRouter API + opencode/claude/codex/gemini CLIs) and report per-transport health — validates the CLIs/APIs are reachable (#3406)                                                |
+| `run`                         | Default entry point — give a goal, MetaOrchestrator picks the strategy; returns the routing decision (execute:false, read-only) or runs it inline (execute:true; dev-pipeline+pipeline+research+consensus wired) (#3548) |
 
 <!-- GOVERNANCE:README_TOOLS:END -->
 
