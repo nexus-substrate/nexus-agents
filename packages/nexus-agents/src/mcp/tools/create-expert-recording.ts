@@ -8,20 +8,8 @@
  * (Source: Issue #1174 — Add observability to dark MCP tools)
  */
 
-import {
-  createLogger,
-  getErrorMessage,
-  getTimeProvider,
-  getRandomProvider,
-} from '../../core/index.js';
+import { createLogger, getErrorMessage } from '../../core/index.js';
 import { getToolMemory } from './tool-memory.js';
-import {
-  getOutcomeStore,
-  categorizeOutcomeErrorMessage,
-} from '../../orchestration/outcomes/index.js';
-import { DEFAULT_CLI } from '../../config/model-capabilities-types.js';
-import type { TaskCategory } from '../../config/task-specialization-types.js';
-import { ROLE_TO_TASK_CATEGORY } from './create-expert-routing.js';
 
 const logger = createLogger({ tool: 'create-expert' });
 
@@ -59,38 +47,9 @@ export function recordExpertError(role: string, errorMessage: string): void {
   }
 }
 
-/** Resolves expert role to task category for accurate outcome attribution. */
-function resolveCategory(role: string): TaskCategory {
-  return ROLE_TO_TASK_CATEGORY[role] ?? 'code_generation';
-}
-
-/** Records expert creation outcome for adaptive routing. */
-export function recordExpertOutcome(
-  role: string,
-  success: boolean,
-  durationMs: number,
-  error?: string
-): void {
-  try {
-    const store = getOutcomeStore();
-    const errorMsg = error ?? 'expert creation failed';
-    store.append({
-      id: `expert-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 8)}`,
-      cli: DEFAULT_CLI,
-      category: resolveCategory(role),
-      model: 'expert',
-      success,
-      durationMs,
-      timestamp: new Date().toISOString(),
-      source: 'manual',
-      ...(!success
-        ? {
-            failureCategory: categorizeOutcomeErrorMessage(errorMsg),
-            errorMessage: errorMsg.slice(0, 500),
-          }
-        : {}),
-    });
-  } catch (error: unknown) {
-    logger.debug('Best-effort expert outcome recording failed', { error: getErrorMessage(error) });
-  }
-}
+// #3624: expert CREATION is not a model execution, so it is NO LONGER recorded
+// to the OutcomeStore (it polluted per-cli×category model-quality stats with
+// fabricated cli=DEFAULT_CLI/model='expert' rows — consensus_vote DROP, 7/7).
+// Creation telemetry still lives in session memory via recordExpertCreated /
+// recordExpertError above; if creation reliability needs metrics, use a
+// dedicated counter, not the model-execution OutcomeStore.
