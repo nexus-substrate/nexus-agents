@@ -202,6 +202,12 @@ export const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
       'Observability-driven improvement loop (#2402). Surfaces threshold breaches; --file-issues opt-in.',
     audience: 'advanced',
   },
+  {
+    command: 'auto-remediate',
+    description:
+      'Run one auto-remediation cycle (#3540). OFF unless NEXUS_AUTO_REMEDIATE=audit|enforce; never auto-merges.',
+    audience: 'maintainer',
+  },
 
   // ── Maintainer (hidden by default) ───────────────────────────────────────
   {
