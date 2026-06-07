@@ -9,11 +9,13 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockCheckForResearchTriggers } = vi.hoisted(() => ({
+const { mockCheckForResearchTriggers, mockCheckForCapabilityGapTriggers } = vi.hoisted(() => ({
   mockCheckForResearchTriggers: vi.fn(),
+  mockCheckForCapabilityGapTriggers: vi.fn((): unknown[] => []),
 }));
 vi.mock('../../pipeline/research-trigger.js', () => ({
   checkForResearchTriggers: mockCheckForResearchTriggers,
+  checkForCapabilityGapTriggers: mockCheckForCapabilityGapTriggers,
 }));
 
 import {
@@ -134,6 +136,19 @@ describe('registerSuggestResearchTasksTool — handler', () => {
     expect(config.qualityThreshold).toBeUndefined();
     expect(config.maxTriggers).toBeUndefined();
     expect(config.existingTaskIds).toBeUndefined();
+  });
+
+  it('includes capability-gap candidates and folds them into the count (#3576)', async () => {
+    const gapTask: PipelineTask = {
+      ...SAMPLE_TASK,
+      id: 'gap-tool-deploy',
+      title: 'Build capability: tool "deploy"',
+    };
+    mockCheckForCapabilityGapTriggers.mockReturnValueOnce([gapTask]);
+    const res = await callHandler({});
+    expect(res.gapCandidates).toEqual([gapTask]);
+    expect(res.candidates).toEqual([SAMPLE_TASK]);
+    expect(res.count).toBe(2); // 1 research + 1 gap
   });
 
   it('returns the engine candidates with count and the untrusted-data note', async () => {
