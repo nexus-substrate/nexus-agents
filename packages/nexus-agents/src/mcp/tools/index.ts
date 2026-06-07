@@ -13,6 +13,7 @@ import type { ILogger } from '../../core/index.js';
 
 import { createMcpLogger } from '../middleware/logging.js';
 import { RateLimiter, createDefaultRateLimiter } from '../middleware/rate-limiter.js';
+import { TOOL_MANIFEST, type RegisteredToolName } from './tool-manifest.js';
 
 // Tool implementations
 export {
@@ -572,61 +573,14 @@ export interface ToolRegistrationResult {
 /**
  * Authoritative list of registered MCP tools, in registration order.
  *
- * `inject-governance.ts syncServerJson` reads this list (via the
- * `extractMcpTools` parser) and writes it to `packages/nexus-agents/server.json`
- * so the MCP-spec registry stays in lockstep — see PR #2362 for the auto-sync.
- *
- * Exported so `cli-server-tools.ts` can alias it as `REGISTERED_TOOLS`
- * — kills the duplicate hand-maintained array (Issue #2935).
+ * Derived from the canonical {@link TOOL_MANIFEST} (single source of truth,
+ * #3566) and re-exported under this historical name so existing importers
+ * (`cli-server-tools.ts`, `mcp/index.ts`, `tier-classifier.ts`) keep working.
+ * `inject-governance.ts` now parses `tool-manifest.ts` directly.
  */
-export const REGISTERED_TOOL_NAMES = [
-  'orchestrate',
-  'create_expert',
-  'execute_expert',
-  'run_workflow',
-  'delegate_to_model',
-  'list_experts',
-  'list_workflows',
-  'consensus_vote',
-  'research_query',
-  'research_add',
-  'research_add_source',
-  'research_discover',
-  'research_analyze',
-  'research_catalog_review',
-  'research_synthesize',
-  'survey_oss_landscape',
-  'vendor_publishing_audit',
-  'compare_data_feeds',
-  'memory_query',
-  'memory_stats',
-  'memory_write',
-  'weather_report',
-  'issue_triage',
-  'run_graph_workflow',
-  'execute_spec',
-  'registry_import',
-  'query_trace',
-  'query_task_state',
-  'get_job_result',
-  'list_jobs',
-  'cancel_job',
-  'ci_health_check',
-  'verify_audit_chain',
-  'repo_analyze',
-  'repo_security_plan',
-  'extract_symbols',
-  'search_codebase',
-  'run_dev_pipeline',
-  'run_pipeline',
-  'pr_review',
-  'supply_chain_tradeoff_panel',
-  'improvement_review',
-  'run_quality_gate',
-  'suggest_research_tasks',
-  'list_available_models',
-  'run',
-] as const;
+export { TOOL_MANIFEST };
+export type { RegisteredToolName };
+export const REGISTERED_TOOL_NAMES = TOOL_MANIFEST;
 
 export function registerTools(
   server: McpServer,

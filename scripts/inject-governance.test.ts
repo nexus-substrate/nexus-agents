@@ -1166,10 +1166,13 @@ describe('inject-governance ENTRYPOINTS tool enumerations (#3334)', () => {
     };
   }
 
-  /** Registered tool names from REGISTERED_TOOL_NAMES (the source of truth). */
+  /** Registered tool names from the canonical TOOL_MANIFEST (source of truth, #3566). */
   function registeredTools(): string[] {
-    const src = readFileSync(join(ROOT, 'packages/nexus-agents/src/mcp/tools/index.ts'), 'utf-8');
-    const m = /REGISTERED_TOOL_NAMES\s*=\s*\[([\s\S]*?)\]\s*as const/.exec(src);
+    const src = readFileSync(
+      join(ROOT, 'packages/nexus-agents/src/mcp/tools/tool-manifest.ts'),
+      'utf-8'
+    );
+    const m = /TOOL_MANIFEST\s*=\s*\[([\s\S]*?)\]\s*as const/.exec(src);
     expect(m).not.toBeNull();
     return m![1]!
       .split('\n')
