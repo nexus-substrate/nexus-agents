@@ -547,10 +547,14 @@ export const TOOL_ANNOTATIONS: Readonly<Record<string, ToolSideEffectsEntry>> = 
   },
   ci_health_check: {
     annotations: {
+      // #3530: NOT read-only / idempotent — every call appends a CI-health
+      // telemetry event (appendCiHealthEvent in ci-health-check-tool.ts), which
+      // both writes local state and accumulates per call. The check itself only
+      // reads upstream, but the per-call telemetry append is a real side effect.
       title: 'CI Health Check',
-      readOnlyHint: true,
+      readOnlyHint: false,
       destructiveHint: false,
-      idempotentHint: true,
+      idempotentHint: false,
       // Outbound network to githubstatus.com + GitHub API.
       openWorldHint: true,
     },
@@ -559,6 +563,10 @@ export const TOOL_ANNOTATIONS: Readonly<Record<string, ToolSideEffectsEntry>> = 
         category: 'implicit',
         description:
           'Fetches GitHub status-page + repo actions/runs to assess CI infrastructure health (#3076)',
+      },
+      {
+        category: 'implicit',
+        description: 'Appends a local CI-health telemetry event per call for observability (#3530)',
       },
     ],
   },
