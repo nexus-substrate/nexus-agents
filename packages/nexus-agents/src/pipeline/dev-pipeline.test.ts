@@ -480,3 +480,98 @@ describe('runDevPipeline — quality gate (#3356)', () => {
     expect(result.completed).toBe(true);
   });
 });
+
+// ============================================================================
+// #3643 — fail-closed untrusted-input boundary for the IMPLEMENT phase.
+// ============================================================================
+
+describe('runDevPipeline — untrusted-input boundary (#3643)', () => {
+  it('calls the guard before research; a throwing guard aborts and never reads untrusted input', async () => {
+    const stages = createMockStages();
+    const guard = vi.fn(() => {
+      throw new Error('untrusted-input denied in this phase');
+    });
+
+    await expect(
+      runDevPipeline('Remediate X', stages, { untrustedInputGuard: guard })
+    ).rejects.toThrow(/untrusted-input denied/);
+
+    expect(guard).toHaveBeenCalledTimes(1);
+    expect(stages.research).not.toHaveBeenCalled(); // fail-closed: no untrusted read
+  });
+
+  it('researchOverride runs plan-only — research stage is never called, guard not tripped', async () => {
+    const stages = createMockStages();
+    const guard = vi.fn();
+
+    const result = await runDevPipeline('Remediate X', stages, {
+      researchOverride: 'Plan-only research seeded from the typed RemediationPlan.',
+      untrustedInputGuard: guard,
+    });
+
+    expect(stages.research).not.toHaveBeenCalled(); // no fresh untrusted read
+    expect(guard).not.toHaveBeenCalled(); // override path skips the chokepoint
+    expect(result.completed).toBe(true);
+  });
+
+  it('does not affect normal runs (no guard, no override)', async () => {
+    const stages = createMockStages();
+    const result = await runDevPipeline('Build feature X', stages);
+    expect(stages.research).toHaveBeenCalledTimes(1);
+    expect(result.completed).toBe(true);
+  });
+});
+
+describe('runDevPipeline — CapabilityLedger integration (#3643 ship-blocking)', () => {
+  it('IMPLEMENT-phase ledger fail-closes a fresh untrusted read in the dev-pipeline', async () => {
+    const { CapabilityLedger, untrustedInputGuardFor, RuleOfTwoViolation } =
+      await import('../mcp/tools/improvement-remediation-capability.js');
+    const ledger = new CapabilityLedger();
+    ledger.enterPhase('implement'); // write+secrets, NO untrusted-input
+    const stages = createMockStages();
+
+    await expect(
+      runDevPipeline('Remediate X', stages, {
+        untrustedInputGuard: untrustedInputGuardFor(ledger),
+      })
+    ).rejects.toBeInstanceOf(RuleOfTwoViolation);
+    expect(stages.research).not.toHaveBeenCalled();
+  });
+
+  it('IMPLEMENT phase runs plan-only via renderPlanAsResearch with no untrusted read', async () => {
+    const { CapabilityLedger, untrustedInputGuardFor, renderPlanAsResearch, parseRemediationPlan } =
+      await import('../mcp/tools/improvement-remediation-capability.js');
+    const ledger = new CapabilityLedger();
+    ledger.enterPhase('implement');
+    const plan = parseRemediationPlan({
+      signalKey: 'tech-debt:fitness-below-floor',
+      category: 'tech-debt',
+      summary: 'Restore the regressed dimension.',
+      steps: [{ kind: 'add-test', description: 'cover the regressed path' }],
+    });
+    const stages = createMockStages();
+
+    const result = await runDevPipeline('Remediate X', stages, {
+      researchOverride: renderPlanAsResearch(plan),
+      untrustedInputGuard: untrustedInputGuardFor(ledger),
+    });
+
+    expect(stages.research).not.toHaveBeenCalled();
+    expect(result.completed).toBe(true);
+  });
+
+  it('RESEARCH-phase ledger permits the untrusted read', async () => {
+    const { CapabilityLedger, untrustedInputGuardFor } =
+      await import('../mcp/tools/improvement-remediation-capability.js');
+    const ledger = new CapabilityLedger();
+    ledger.enterPhase('research'); // untrusted-input + secrets granted
+    const stages = createMockStages();
+
+    const result = await runDevPipeline('Diagnose X', stages, {
+      untrustedInputGuard: untrustedInputGuardFor(ledger),
+    });
+
+    expect(stages.research).toHaveBeenCalledTimes(1);
+    expect(result.completed).toBe(true);
+  });
+});

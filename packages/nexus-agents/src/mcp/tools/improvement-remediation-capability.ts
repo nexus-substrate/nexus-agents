@@ -174,3 +174,36 @@ export function parseRemediationPlan(raw: unknown): RemediationPlan {
   }
   return result.data;
 }
+
+// ============================================================================
+// Dev-pipeline boundary glue (#3643) — wires the ledger + plan into the
+// dev-pipeline's untrusted-input chokepoint hooks (DevPipelineOptions).
+// ============================================================================
+
+/**
+ * Build the dev-pipeline `untrustedInputGuard` from a ledger (#3643). When the
+ * IMPLEMENT-phase ledger is active (no untrusted-input grant), invoking the
+ * returned guard at the research chokepoint throws {@link RuleOfTwoViolation} —
+ * fail-closed, so a fresh untrusted read inside IMPLEMENT cannot proceed.
+ */
+export function untrustedInputGuardFor(ledger: CapabilityLedger): () => void {
+  return () => {
+    ledger.assertCapability('untrusted-input');
+  };
+}
+
+/**
+ * Render a typed {@link RemediationPlan} as plan-only research text (#3643), so
+ * the IMPLEMENT phase can run the dev-pipeline from the plan with NO fresh
+ * untrusted read (passed as `DevPipelineOptions.researchOverride`). All content
+ * is inert plan data — never re-fetched.
+ */
+export function renderPlanAsResearch(plan: RemediationPlan): string {
+  const steps = plan.steps
+    .map((s, i) => {
+      const target = s.targetPath !== undefined ? ` (target: ${s.targetPath})` : '';
+      return `${String(i + 1)}. [${s.kind}] ${s.description}${target}`;
+    })
+    .join('\n');
+  return `Remediation plan for signal '${plan.signalKey}' (category: ${plan.category}).\n\n${plan.summary}\n\nSteps:\n${steps}`;
+}

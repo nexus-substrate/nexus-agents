@@ -13,6 +13,8 @@ import {
   assertPhaseCapabilitiesSound,
   parseRemediationPlan,
   RemediationPlanSchema,
+  untrustedInputGuardFor,
+  renderPlanAsResearch,
   type RemediationPlan,
 } from './improvement-remediation-capability.js';
 
@@ -112,5 +114,37 @@ describe('RemediationPlanSchema (strict boundary artifact)', () => {
   it('rejects unknown keys inside a step', () => {
     const bad = { ...valid, steps: [{ kind: 'fix-bug', description: 'x', patch: 'diff…' }] };
     expect(() => parseRemediationPlan(bad)).toThrow(RuleOfTwoViolation);
+  });
+});
+
+describe('dev-pipeline boundary glue (#3643)', () => {
+  const plan: RemediationPlan = {
+    signalKey: 'routing:cli-floor:codex:docs',
+    category: 'routing',
+    summary: 'Route docs away from the underperforming CLI.',
+    steps: [
+      {
+        kind: 'adjust-routing',
+        description: 'lower codex weight for docs',
+        targetPath: 'src/x.ts',
+      },
+      { kind: 'add-test', description: 'assert routing change' },
+    ],
+  };
+
+  it('untrustedInputGuardFor throws in IMPLEMENT, passes in RESEARCH', () => {
+    const led = new CapabilityLedger();
+    led.enterPhase('implement');
+    expect(untrustedInputGuardFor(led)).toThrow(RuleOfTwoViolation);
+    led.enterPhase('research');
+    expect(untrustedInputGuardFor(led)).not.toThrow();
+  });
+
+  it('renderPlanAsResearch produces inert text containing the plan content', () => {
+    const text = renderPlanAsResearch(plan);
+    expect(text).toContain(plan.signalKey);
+    expect(text).toContain(plan.summary);
+    expect(text).toContain('[adjust-routing]');
+    expect(text).toContain('target: src/x.ts');
   });
 });
