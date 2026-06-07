@@ -37,6 +37,19 @@ vi.mock('../pipeline/research-trigger.js', () => ({
   ]),
 }));
 
+// Mock the auto-file helper so the handler test is hermetic (does not touch
+// `gh`). The helper's safeguards are covered in auto-file-suggestions.test.ts.
+const autoFileSuggestionsMock = vi.fn(
+  (tasks: ReadonlyArray<{ id: string }>): Promise<unknown> =>
+    Promise.resolve({
+      filed: tasks.map((t) => ({ id: t.id, url: '(dry-run)' })),
+      skipped: [],
+    })
+);
+vi.mock('./auto-file-suggestions.js', () => ({
+  autoFileSuggestions: (tasks: ReadonlyArray<{ id: string }>) => autoFileSuggestionsMock(tasks),
+}));
+
 import * as fs from 'node:fs/promises';
 import {
   toStatusSummary,
@@ -595,9 +608,13 @@ describe('researchCommand', () => {
 
   // #3382 — autofile subcommand wires research + gap candidates into the
   // safeguarded auto-file path. Dry-run exercises the full wiring without gh.
-  it('autofile dry-run reports research + gap candidates without filing', async () => {
+  it('autofile dry-run passes research + gap candidates to the safeguarded helper', async () => {
+    autoFileSuggestionsMock.mockClear();
     const result = await researchCommand('autofile', [], { dryRun: true });
     expect(result.exitCode).toBe(0);
+    // Handler gathered both candidate sources and handed them to the helper.
+    const passed = autoFileSuggestionsMock.mock.calls[0]?.[0] ?? [];
+    expect(passed.map((t) => t.id)).toEqual(['r1', 'g1']);
     expect(result.text).toContain('autofile (dry-run)');
     expect(result.text).toContain('2 candidate(s)');
     expect(result.text).toContain('2 filed');
