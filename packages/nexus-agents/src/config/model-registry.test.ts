@@ -7,10 +7,13 @@ import {
   ModelRegistry,
   deriveEntry,
   getDefaultRegistry,
+  peekDefaultRegistry,
+  reloadDefaultRegistry,
   setDefaultRegistry,
   type ModelEntry,
 } from './model-registry.js';
 import { resolveModelIdentitySync } from './model-identity.js';
+import { getDefaultModelForCli, getInTreeCapabilitiesMatrix } from './model-config-helpers.js';
 
 const sampleAuthoritative: ModelEntry = {
   id: 'claude-opus-4-1',
@@ -274,5 +277,128 @@ models:
       setDefaultRegistry(undefined);
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+// ============================================================================
+// #3185 — hot-reload of the model registry without a process restart.
+// ============================================================================
+
+describe('peekDefaultRegistry (#3185)', () => {
+  it('returns undefined before construction and never constructs the singleton', () => {
+    setDefaultRegistry(undefined);
+    expect(peekDefaultRegistry()).toBeUndefined();
+    // Still undefined — peek must NOT have triggered lazy construction.
+    expect(peekDefaultRegistry()).toBeUndefined();
+  });
+
+  it('returns the live singleton once getDefaultRegistry has built it', () => {
+    setDefaultRegistry(undefined);
+    const built = getDefaultRegistry();
+    expect(peekDefaultRegistry()).toBe(built);
+    setDefaultRegistry(undefined);
+  });
+});
+
+describe('getDefaultModelForCli — early-bootstrap fallback (#3185 condition 1)', () => {
+  it('returns the static default id with NO registry constructed (no recursion)', () => {
+    setDefaultRegistry(undefined);
+    // peekDefaultRegistry() is undefined here, so the static fallback fires.
+    expect(getDefaultModelForCli('claude')).toBe('claude-opus');
+    // And it must NOT have constructed the registry as a side effect.
+    expect(peekDefaultRegistry()).toBeUndefined();
+  });
+});
+
+describe('reloadDefaultRegistry — overlay propagation without restart (#3185)', () => {
+  it('propagates a post-startup overlay edit to getInTreeCapabilitiesMatrix + getDefaultModelForCli', async () => {
+    const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const { tmpdir } = await import('node:os');
+
+    setDefaultRegistry(undefined);
+    // Build the registry with NO overlay first — baseline contextWindow.
+    const baseline = getInTreeCapabilitiesMatrix().models.find((m) => m.id === 'claude-opus');
+    expect(baseline).toBeDefined();
+    expect(baseline?.contextWindow).not.toBe(123456);
+
+    const dir = mkdtempSync(join(tmpdir(), 'reload-overlay-'));
+    const path = join(dir, 'models-manifest.yaml');
+    writeFileSync(
+      path,
+      `version: 1
+models:
+  - id: claude-opus
+    vendor: anthropic
+    family: claude-opus
+    cliName: claude
+    contextWindow: 123456
+`,
+      'utf-8'
+    );
+    const previous = process.env['NEXUS_MODELS_OVERLAY_PATH'];
+    process.env['NEXUS_MODELS_OVERLAY_PATH'] = path;
+    try {
+      // Reload WITHOUT a process restart — overlay must now win.
+      await reloadDefaultRegistry();
+      const after = getInTreeCapabilitiesMatrix().models.find((m) => m.id === 'claude-opus');
+      expect(after?.contextWindow).toBe(123456);
+      // getDefaultModelForCli still resolves to the canonical id, now via the
+      // overlay-bearing registry (it exists post-reload).
+      expect(getDefaultModelForCli('claude')).toBe('claude-opus');
+      expect(peekDefaultRegistry()).toBeDefined();
+    } finally {
+      if (previous === undefined) delete process.env['NEXUS_MODELS_OVERLAY_PATH'];
+      else process.env['NEXUS_MODELS_OVERLAY_PATH'] = previous;
+      setDefaultRegistry(undefined);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('never throws on a malformed overlay during re-read (condition 3)', async () => {
+    const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const { tmpdir } = await import('node:os');
+
+    setDefaultRegistry(undefined);
+    const dir = mkdtempSync(join(tmpdir(), 'reload-malformed-'));
+    const path = join(dir, 'models-manifest.yaml');
+    writeFileSync(path, ':\n  - not: [valid: yaml: at all', 'utf-8');
+    const previous = process.env['NEXUS_MODELS_OVERLAY_PATH'];
+    process.env['NEXUS_MODELS_OVERLAY_PATH'] = path;
+    try {
+      // Must degrade to the in-tree floor, not throw.
+      await expect(reloadDefaultRegistry()).resolves.toBeDefined();
+      // In-tree entries still resolve.
+      expect(getDefaultModelForCli('claude')).toBe('claude-opus');
+    } finally {
+      if (previous === undefined) delete process.env['NEXUS_MODELS_OVERLAY_PATH'];
+      else process.env['NEXUS_MODELS_OVERLAY_PATH'] = previous;
+      setDefaultRegistry(undefined);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('reloadDefaultRegistry — atomic dual-singleton reset (#3185 condition 2)', () => {
+  it('resets BOTH the model registry and the UnifiedAdapterRegistry together', async () => {
+    const { getGlobalRegistry } = await import('../adapters/unified-registry.js');
+
+    setDefaultRegistry(undefined);
+    // Construct both singletons.
+    const modelBefore = getDefaultRegistry();
+    const adapterBefore = getGlobalRegistry();
+
+    await reloadDefaultRegistry();
+
+    const modelAfter = getDefaultRegistry();
+    const adapterAfter = getGlobalRegistry();
+
+    // Both must be fresh instances — no state where one is stale + one fresh.
+    expect(modelAfter).not.toBe(modelBefore);
+    expect(adapterAfter).not.toBe(adapterBefore);
+
+    adapterAfter.dispose();
+    setDefaultRegistry(undefined);
   });
 });

@@ -25,7 +25,11 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { nexusDataPath } from '../config/nexus-data-dir.js';
 
-import { getDefaultRegistry, type EntrySource } from '../config/model-registry.js';
+import {
+  getDefaultRegistry,
+  reloadDefaultRegistry,
+  type EntrySource,
+} from '../config/model-registry.js';
 import { loadGeneratedRegistryEntries } from '../config/models-generated-loader.js';
 import {
   USER_MANIFEST_ENV_VAR,
@@ -292,11 +296,16 @@ async function refreshCommand(options: RegistryCommandOptions): Promise<Registry
 
   mkdirSync(dirname(dest), { recursive: true });
   writeFileSync(dest, artifact.body, 'utf-8');
+  // Hot-reload the in-process model registry + adapter routing so the refresh
+  // takes effect immediately, without a restart (#3185). Re-reads the overlay
+  // (fail-closed) and atomically resets both singletons.
+  await reloadDefaultRegistry();
   return {
     text: formatRefreshReport('wrote to', source, artifact, dest, [
       '',
-      'The refreshed file takes precedence over the bundled registry on the next',
-      'run. Restart any running CLI / MCP server for the change to take effect.',
+      'The in-process model registry and adapter routing were hot-reloaded — the',
+      'refresh is live now in THIS process (#3185). Other already-running CLI / MCP',
+      'server processes still need a restart (or their own refresh) to pick it up.',
     ]),
     exitCode: 0,
   };

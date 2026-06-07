@@ -28,7 +28,7 @@ import type {
   SpecialFeature,
   ToolCapability,
 } from './model-capabilities-types.js';
-import { getDefaultRegistry, type ModelEntry } from './model-registry.js';
+import { getDefaultRegistry, peekDefaultRegistry, type ModelEntry } from './model-registry.js';
 
 /**
  * Average latency estimates per CLI (ms). Returned by a function (not
@@ -125,9 +125,29 @@ export function getModelQualityScores(modelId: ModelId): QualityScores | undefin
   return lookupInTree(modelId)?.qualityScores;
 }
 
-/** Get the default (strongest) model for a given CLI tool. */
+/**
+ * Get the default (strongest) model for a given CLI tool.
+ *
+ * The per-CLI default *policy* (which model id is strongest) lives in the
+ * static `DEFAULT_MODEL_PER_CLI` map. As of #3185 the resolved id is routed
+ * through the overlay-bearing default registry so an operator overlay that
+ * renames / re-aliases the default model is honored at runtime without a
+ * process restart — the returned canonical id reflects the live registry.
+ *
+ * EARLY-BOOTSTRAP GUARD (vote condition 1): we read via `peekDefaultRegistry()`
+ * which returns the singleton ONLY if it already exists and NEVER constructs
+ * it. Module-load-time callers (e.g. gemini-adapter's top-level
+ * `DEFAULT_GEMINI_CLI_MODEL` const) therefore get the static id without forcing
+ * the filesystem-touching overlay load — dodging the TDZ / re-entrancy hazard
+ * documented for the `inTreeById()` builders above. After any consumer has
+ * built the registry (or after `reloadDefaultRegistry`), overlay-aware
+ * resolution applies. Never recurses, never throws at bootstrap.
+ */
 export function getDefaultModelForCli(cli: CliNameLiteral): ModelId {
-  return DEFAULT_MODEL_PER_CLI[cli];
+  const staticDefault = DEFAULT_MODEL_PER_CLI[cli];
+  const registry = peekDefaultRegistry();
+  if (registry === undefined) return staticDefault;
+  return registry.getEntry(staticDefault).id as ModelId;
 }
 
 /** Get the model name the CLI binary expects (e.g., 'gemini-2.5-pro'). */
@@ -381,16 +401,28 @@ export function buildModelInfo(
  * from `DEFAULT_MODEL_CAPABILITIES` because the registry doesn't
  * carry it — slice E closes that gap when the legacy module is
  * deleted entirely.
+ *
+ * OVERLAY-AWARE (#3185): when the default registry has already been
+ * constructed, each in-tree id is re-resolved through it so operator/user
+ * manifest overrides (pricing, contextWindow, etc.) are reflected without a
+ * process restart. Before the singleton exists (early bootstrap) it falls back
+ * to the static in-tree converter via `peekDefaultRegistry()` — never forcing
+ * the filesystem-touching overlay load.
  */
 export function getInTreeCapabilitiesMatrix(): {
   readonly version: number;
   readonly updatedAt: string;
   readonly models: readonly ModelCapability[];
 } {
+  const registry = peekDefaultRegistry();
+  const models =
+    registry === undefined
+      ? buildInTreeEntries().map(entryToCapability)
+      : buildInTreeEntries().map((e) => entryToCapability(registry.getEntry(e.id)));
   return {
     version: DEFAULT_MODEL_CAPABILITIES.version,
     updatedAt: DEFAULT_MODEL_CAPABILITIES.updatedAt,
-    models: buildInTreeEntries().map(entryToCapability),
+    models,
   };
 }
 
