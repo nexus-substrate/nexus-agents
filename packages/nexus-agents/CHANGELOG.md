@@ -1,5 +1,25 @@
 # nexus-agents
 
+## 2.123.1
+
+### Patch Changes
+
+- [#3598](https://github.com/nexus-substrate/nexus-agents/pull/3598) [`4044964`](https://github.com/nexus-substrate/nexus-agents/commit/4044964482cd20d1956bca423cf97b64c55dba23) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - refactor(mcp): single TOOL_MANIFEST as the canonical tool-name source ([#3566](https://github.com/nexus-substrate/nexus-agents/issues/3566))
+
+  Introduces `mcp/tools/tool-manifest.ts` — a pure-data leaf module whose
+  `TOOL_MANIFEST` array is the single source of truth for which MCP tools exist
+  and their registration order. `REGISTERED_TOOL_NAMES` is now a derived
+  re-export, the capability-gap detector's `AVAILABLE_TOOLS` derives directly from
+  the manifest (replacing a 46-line hand-maintained copy that was kept in lockstep
+  by a freshness test), and `scripts/inject-governance.ts` parses the manifest.
+  Because the manifest imports nothing, core modules can derive from it without
+  pulling in the MCP tool dependency graph — no import cycle. Parity tests assert
+  `REGISTERED_TOOL_NAMES`, `TOOL_ANNOTATIONS` keys, and the gap-detector list all
+  match the manifest, so adding/removing a tool is a one-array edit.
+
+  Annotation-data folding (so `TOOL_ANNOTATIONS` also derives) and the AST-parser
+  upgrade are tracked as follow-ups.
+
 ## 2.123.0
 
 ### Minor Changes
