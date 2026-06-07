@@ -12,7 +12,18 @@ vi.mock('./expert-bridge.js', () => ({
   executeExpert: mockExecuteExpert,
 }));
 
-import { checkForResearchTriggers } from './research-trigger.js';
+import { checkForResearchTriggers, checkForCapabilityGapTriggers } from './research-trigger.js';
+import { createCapabilityGapLedger } from '../core/task-analysis/capability-gap-ledger.js';
+import type { CapabilityGapReport } from '../core/task-analysis/capability-gap-detector.js';
+
+/** Build a gap report with a single tool gap for ledger seeding. */
+function toolGap(name: string): CapabilityGapReport {
+  return {
+    available: { tools: [], experts: [] },
+    gaps: [{ type: 'tool', name, suggestion: 'use run_graph_workflow' }],
+    allSatisfied: false,
+  };
+}
 
 describe('checkForResearchTriggers', () => {
   beforeEach(() => {
@@ -126,5 +137,50 @@ describe('checkForResearchTriggers', () => {
     mockExecuteExpert.mockRejectedValue(new Error('Network error'));
     const tasks = await checkForResearchTriggers();
     expect(tasks).toEqual([]);
+  });
+});
+
+describe('checkForCapabilityGapTriggers (#3576)', () => {
+  it('suggests a task for a gap that recurs at/above the threshold', () => {
+    const ledger = createCapabilityGapLedger();
+    for (let i = 0; i < 3; i++)
+      ledger.record(toolGap('deploy'), { goal: `ship build ${String(i)}` });
+    const tasks = checkForCapabilityGapTriggers({ ledger });
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]?.id).toBe('gap-tool-deploy');
+    expect(tasks[0]?.title).toContain('deploy');
+    expect(tasks[0]?.description).toContain('3x');
+    expect(tasks[0]?.status).toBe('pending');
+  });
+
+  it('ignores gaps below minOccurrences', () => {
+    const ledger = createCapabilityGapLedger();
+    ledger.record(toolGap('deploy'));
+    ledger.record(toolGap('deploy'));
+    expect(checkForCapabilityGapTriggers({ ledger, minOccurrences: 3 })).toEqual([]);
+  });
+
+  it('dedups against existingTaskIds', () => {
+    const ledger = createCapabilityGapLedger();
+    for (let i = 0; i < 3; i++) ledger.record(toolGap('deploy'));
+    const tasks = checkForCapabilityGapTriggers({
+      ledger,
+      existingTaskIds: new Set(['gap-tool-deploy']),
+    });
+    expect(tasks).toEqual([]);
+  });
+
+  it('caps at maxTriggers (most frequent first)', () => {
+    const ledger = createCapabilityGapLedger();
+    for (let i = 0; i < 5; i++) ledger.record(toolGap('deploy'));
+    for (let i = 0; i < 4; i++) ledger.record(toolGap('scan'));
+    for (let i = 0; i < 3; i++) ledger.record(toolGap('lint'));
+    const tasks = checkForCapabilityGapTriggers({ ledger, maxTriggers: 2 });
+    expect(tasks).toHaveLength(2);
+    expect(tasks.map((t) => t.id)).toEqual(['gap-tool-deploy', 'gap-tool-scan']);
+  });
+
+  it('returns empty for an empty ledger', () => {
+    expect(checkForCapabilityGapTriggers({ ledger: createCapabilityGapLedger() })).toEqual([]);
   });
 });
