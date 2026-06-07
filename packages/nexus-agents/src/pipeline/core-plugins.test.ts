@@ -23,7 +23,7 @@ import { PluginRegistry } from './plugin-registry.js';
 
 describe('core plugin manifests', () => {
   it('defines exactly 3 core plugins', () => {
-    expect(CORE_PLUGINS).toHaveLength(4);
+    expect(CORE_PLUGINS).toHaveLength(3);
   });
 
   it('task-analyzer handles analyze stages', () => {
@@ -72,7 +72,7 @@ describe('registerCorePlugins', () => {
   it('registers all core plugins into a new registry', () => {
     const registry = new PluginRegistry();
     const result = registerCorePlugins(registry);
-    expect(result.registered).toBe(4);
+    expect(result.registered).toBe(3);
     expect(result.failed).toBe(0);
     expect(result.errors).toHaveLength(0);
   });
@@ -95,12 +95,12 @@ describe('registerCorePlugins', () => {
     const registry = new PluginRegistry();
     registerCorePlugins(registry);
     const enabled = registry.listEnabled();
-    expect(enabled).toHaveLength(4);
+    expect(enabled).toHaveLength(3);
   });
 
   it('creates default registry when no argument provided', () => {
     const result = registerCorePlugins();
-    expect(result.registered).toBe(4);
+    expect(result.registered).toBe(3);
   });
 });
 
@@ -112,7 +112,7 @@ describe('createCorePluginRegistry', () => {
   it('returns a frozen registry with 3 plugins', () => {
     const registry = createCorePluginRegistry();
     expect(registry.frozen).toBe(true);
-    expect(registry.listEnabled()).toHaveLength(4);
+    expect(registry.listEnabled()).toHaveLength(3);
   });
 
   it('startup overhead is under 500ms', () => {
@@ -140,7 +140,7 @@ describe('getPipelinePluginRegistry', () => {
     resetPipelinePluginRegistry();
     const registry = getPipelinePluginRegistry();
     expect(registry.frozen).toBe(true);
-    expect(registry.listEnabled()).toHaveLength(4);
+    expect(registry.listEnabled()).toHaveLength(3);
   });
 
   it('returns a new instance after reset', () => {
