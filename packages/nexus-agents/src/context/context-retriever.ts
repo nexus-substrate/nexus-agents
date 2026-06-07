@@ -80,6 +80,13 @@ export interface ContextRetrieverOptions {
   readonly limit?: number;
   /** Optional logger override. */
   readonly logger?: ILogger;
+  /**
+   * Optional correlation id for the calling execution (#3180). When present it
+   * is bound to a child logger so every per-backend log line for this retrieval
+   * carries the same `executionId`, making a failure traceable back to its
+   * graph run. Backward-compatible: the four existing callers omit it.
+   */
+  readonly executionId?: string;
 }
 
 /** Sensible default — small enough to embed in a prompt, large enough to be useful. */
@@ -99,7 +106,12 @@ const DEFAULT_LIMIT = 5;
  */
 export async function getContextForTask(options: ContextRetrieverOptions): Promise<UnifiedContext> {
   const limit = options.limit ?? DEFAULT_LIMIT;
-  const logger = options.logger ?? createLogger({ component: 'ContextRetriever' });
+  const baseLogger = options.logger ?? createLogger({ component: 'ContextRetriever' });
+  // Bind the correlation id to every per-backend log line for this retrieval (#3180).
+  const logger =
+    options.executionId !== undefined
+      ? baseLogger.child({ executionId: options.executionId })
+      : baseLogger;
 
   const [
     beliefs,

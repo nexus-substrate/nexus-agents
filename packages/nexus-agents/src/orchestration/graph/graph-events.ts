@@ -11,6 +11,16 @@
 import { getTimeProvider } from '../../core/index.js';
 import type { NodeResult, GraphExecuteOptions } from './graph-types.js';
 
+/** Fields for a {@link emitContextUnavailable} call (#3180). */
+interface ContextUnavailableArgs {
+  /** Inferred task category whose context retrieval failed. */
+  readonly category: string;
+  /** Sanitized failure message — message string only (caller must sanitize). */
+  readonly error: string;
+  /** Correlation id when the execution carries one. */
+  readonly executionId?: string;
+}
+
 /** Minimal context needed for event emission. */
 interface StepContext {
   readonly stepsExecuted: number;
@@ -93,6 +103,27 @@ export function emitStepCompleted(
     type: 'step_completed',
     stepNumber: ctx.stepsExecuted,
     nodesExecuted,
+    timestamp: getTimeProvider().now(),
+  });
+}
+
+/**
+ * Emits a `context_unavailable` event when unified-context retrieval failed at
+ * graph start (#3180). Guards on `options?.onEvent` like the other emitters, so
+ * it is a no-op when no listener is attached. The caller is responsible for
+ * passing an already-sanitized `error` (message string only).
+ */
+export function emitContextUnavailable(
+  args: ContextUnavailableArgs,
+  options?: GraphExecuteOptions
+): void {
+  const emit = options?.onEvent;
+  if (emit === undefined) return;
+  emit({
+    type: 'context_unavailable',
+    category: args.category,
+    error: args.error,
+    ...(args.executionId !== undefined ? { executionId: args.executionId } : {}),
     timestamp: getTimeProvider().now(),
   });
 }

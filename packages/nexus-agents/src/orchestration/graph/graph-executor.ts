@@ -38,6 +38,7 @@ import {
   emitStateUpdated,
   emitStepCompleted,
   emitExecutionComplete,
+  emitContextUnavailable,
 } from './graph-events.js';
 import { runPreconditions, runVerification } from './graph-hooks.js';
 import { categorizeOutcomeError } from '../outcomes/outcome-types.js';
@@ -79,27 +80,49 @@ const DEFAULT_TIMEOUT_MS = GRAPH_TIMEOUTS.defaultMs;
  */
 export const GRAPH_UNIFIED_CONTEXT_KEY = '__unifiedContext';
 
-async function populateUnifiedContextOnState(state: GraphState): Promise<void> {
-  try {
-    const taskCandidate = state['task'];
-    if (typeof taskCandidate !== 'string' || taskCandidate === '') return;
+/** Optional `{ executionId }` fragment, omitted when no correlation id. */
+function execIdFields(executionId?: string): { executionId?: string } {
+  return executionId !== undefined ? { executionId } : {};
+}
 
-    const { getContextForTask, inferTaskCategory } =
-      await import('../../context/context-retriever.js');
-    const ctx = await getContextForTask({
-      task: taskCandidate,
-      category: inferTaskCategory(taskCandidate),
-      logger,
-    });
+async function populateUnifiedContextOnState(
+  state: GraphState,
+  options?: GraphExecuteOptions
+): Promise<void> {
+  const taskCandidate = state['task'];
+  if (typeof taskCandidate !== 'string' || taskCandidate === '') return;
+
+  const { getContextForTask, inferTaskCategory } =
+    await import('../../context/context-retriever.js');
+  // Capture the inferred category up front so the failure path can report it.
+  const category = inferTaskCategory(taskCandidate);
+  const executionId = options?.executionId;
+  const execFields = execIdFields(executionId);
+
+  try {
+    const ctx = await getContextForTask({ task: taskCandidate, category, logger, ...execFields });
     state[GRAPH_UNIFIED_CONTEXT_KEY] = ctx;
     logger.debug('Graph start: unified memory context stashed', {
+      category,
+      ...execFields,
       beliefs: ctx.beliefs.length,
       similarMemories: ctx.similarMemories.length,
       experiencePatterns: ctx.experiencePatterns.length,
       outcomesTotal: ctx.outcomes?.totalTasks ?? 0,
     });
   } catch (error: unknown) {
-    logger.debug('Graph start: context retrieval failed', { error: getErrorMessage(error) });
+    // Best-effort contract preserved: the graph still runs with empty context.
+    // But the failure is now observable (#3180) — a warn log plus an
+    // aggregatable `context_unavailable` event through the EventBus/onEvent
+    // path — instead of a swallowed debug line. `getErrorMessage` yields a
+    // sanitized message string only (no stack/paths/secrets).
+    const message = getErrorMessage(error);
+    logger.warn('Graph start: context retrieval failed; continuing with empty context', {
+      category,
+      ...execFields,
+      error: message,
+    });
+    emitContextUnavailable({ category, error: message, ...execFields }, options);
   }
 }
 
@@ -142,7 +165,7 @@ export async function executeGraph(
   // under a well-known key so node implementations can consume it without
   // a second fetch. Best-effort: failure is logged and silently produces
   // an empty context.
-  await populateUnifiedContextOnState(initialState);
+  await populateUnifiedContextOnState(initialState, options);
 
   const ctx: ExecutionContext = {
     state: initialState,

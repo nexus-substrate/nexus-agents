@@ -291,7 +291,31 @@ function toEventSummary(event: GraphEvent): GraphEventSummary {
   return { type: event.type, detail: formatDetail(event) };
 }
 
+type HookEvent = Extract<GraphEvent, { type: 'hook_started' | 'hook_completed' | 'hook_failed' }>;
+
+/** Type guard for the three hook lifecycle events. */
+function isHookEvent(event: GraphEvent): event is HookEvent {
+  return (
+    event.type === 'hook_started' || event.type === 'hook_completed' || event.type === 'hook_failed'
+  );
+}
+
+/** Detail string for the three hook lifecycle events (split out for complexity). */
+function formatHookDetail(event: HookEvent): string {
+  const where = `${event.hookPhase}: ${event.hookName} on ${event.nodeId}`;
+  switch (event.type) {
+    case 'hook_started':
+      return where;
+    case 'hook_completed':
+      return `${where} in ${String(event.durationMs)}ms`;
+    case 'hook_failed':
+      return `${where}: ${event.error}`;
+  }
+}
+
 function formatDetail(event: GraphEvent): string {
+  // Hook events are dispatched out-of-switch to keep complexity within budget.
+  if (isHookEvent(event)) return formatHookDetail(event);
   switch (event.type) {
     case 'node_started':
       return `Starting ${event.nodeId}`;
@@ -305,12 +329,8 @@ function formatDetail(event: GraphEvent): string {
       return `${String(event.totalSteps)} steps, ${String(event.durationMs)}ms`;
     case 'state_updated':
       return event.updatedKeys.join(', ');
-    case 'hook_started':
-      return `${event.hookPhase}: ${event.hookName} on ${event.nodeId}`;
-    case 'hook_completed':
-      return `${event.hookPhase}: ${event.hookName} on ${event.nodeId} in ${String(event.durationMs)}ms`;
-    case 'hook_failed':
-      return `${event.hookPhase}: ${event.hookName} on ${event.nodeId}: ${event.error}`;
+    case 'context_unavailable':
+      return `Context unavailable for category '${event.category}': ${event.error}`;
   }
 }
 
