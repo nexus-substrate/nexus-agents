@@ -16,6 +16,13 @@
 # MCP server and tool registration
 /packages/nexus-agents/src/mcp/ @williamzujkowski
 
+# Consensus / voter configuration — the loop's own judge (#3653 self-mod guard)
+/packages/nexus-agents/src/consensus/ @williamzujkowski
+
+# Governance rules — Rule-of-Two, untrusted-input, etc. (#3653 self-mod guard)
+/.rules/ @williamzujkowski
+
 # Project governance
 /CLAUDE.md @williamzujkowski
+/AGENTS.md @williamzujkowski
 /CODEOWNERS @williamzujkowski
