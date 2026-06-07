@@ -66,6 +66,8 @@ function makeDeps(over: Partial<AutoRemediationDeps> = {}): {
     implement: vi.fn(async (plan: RemediationPlan) =>
       Promise.resolve({ branch: `auto-remediation/${plan.signalKey}`, prUrl: 'https://pr/1' })
     ),
+    vote: vi.fn(async () => Promise.resolve({ approved: true, approvalPercentage: 100 })),
+    dryRun: vi.fn(async () => Promise.resolve({ ok: true, detail: 'green' })),
     audit: vi.fn(),
     ...over,
   };
@@ -148,27 +150,45 @@ describe('runAutoRemediation — enforce', () => {
     expect(deps.research).not.toHaveBeenCalled();
   });
 
-  it('human-gates a security signal (never auto-remediated)', async () => {
+  it('security signal → p0: requires a UNANIMOUS vote + dry-run, then remediates (#3653)', async () => {
     const { deps } = makeDeps();
     const r = await runAutoRemediation(
       [signal({ category: 'security', signalKey: 'sec-1' })],
       deps,
       enf()
     );
+    expect(r.remediated).toHaveLength(1);
+    expect(deps.vote).toHaveBeenCalledWith(expect.objectContaining({ algorithm: 'unanimous' }));
+    expect(deps.dryRun).toHaveBeenCalledTimes(1); // p0 dry-run gate
+  });
+
+  it('a rejected consensus vote leaves the signal as an issue (no remediation)', async () => {
+    const { deps } = makeDeps({
+      vote: vi.fn(async () => Promise.resolve({ approved: false, approvalPercentage: 40 })),
+    });
+    const r = await runAutoRemediation([signal()], deps, enf());
     expect(r.remediated).toEqual([]);
-    expect(r.skipped[0]?.reason).toMatch(/human-gated/);
+    expect(r.skipped[0]?.reason).toMatch(/consensus .* not reached/);
     expect(deps.implement).not.toHaveBeenCalled();
   });
 
-  it('human-gates a mis-categorized security signal via keyword (fail-closed #3615)', async () => {
+  it('p0 fail-closes when no dry-run capability is available', async () => {
     const { deps } = makeDeps();
+    delete (deps as { dryRun?: unknown }).dryRun; // no dry-run capability
     const r = await runAutoRemediation(
-      [signal({ category: 'bug', signalKey: 'bug:auth-x', title: 'authentication bypass' })],
+      [signal({ category: 'security', signalKey: 'sec-2' })],
       deps,
       enf()
     );
-    expect(r.skipped[0]?.reason).toMatch(/human-gated/);
+    expect(r.skipped[0]?.reason).toMatch(/dry-run/);
     expect(deps.implement).not.toHaveBeenCalled();
+  });
+
+  it('a non-security warning signal uses the p2 higher_order algorithm', async () => {
+    const { deps } = makeDeps();
+    await runAutoRemediation([signal({ severity: 'warning' })], deps, enf());
+    expect(deps.vote).toHaveBeenCalledWith(expect.objectContaining({ algorithm: 'higher_order' }));
+    expect(deps.dryRun).not.toHaveBeenCalled(); // dry-run is p0-only
   });
 
   it('skips a signal blocked by the runaway guard', async () => {
