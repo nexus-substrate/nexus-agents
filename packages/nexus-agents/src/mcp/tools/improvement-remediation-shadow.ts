@@ -22,6 +22,24 @@
 import { getTimeProvider } from '../../core/index.js';
 import type { ImprovementSignal } from './improvement-review.js';
 import { remediationTaskId } from './improvement-remediation.js';
+import { SECURITY_KEYWORDS } from '../gateway/gateway-keywords.js';
+
+/**
+ * Fail-closed security classification (#3540 inc.2e / #3615). The hard
+ * exclusion "security signals are always human-gated" only holds if
+ * classification is correct — a security issue mislabeled by a detector (e.g. as
+ * `bug` or `routing`) would otherwise silently bypass the gate. So we treat a
+ * signal as security if EITHER its declared category is `security` OR any
+ * security keyword appears in its key/title/body. Uncertain → security →
+ * human-gated. This is intentionally over-inclusive (false positives only cost a
+ * human review; a false negative auto-remediates a security issue unreviewed),
+ * and is reused by the future enforce path (#3618) so both decide identically.
+ */
+export function isSecuritySignal(signal: ImprovementSignal): boolean {
+  if (signal.category === 'security') return true;
+  const haystack = `${signal.signalKey}\n${signal.title}\n${signal.body}`.toLowerCase();
+  return SECURITY_KEYWORDS.some((kw) => haystack.includes(kw));
+}
 
 /** One shadow decision: would the gate auto-route this remediation? (Logged only.) */
 export interface RemediationShadowRecord {
@@ -45,7 +63,9 @@ export interface RemediationShadowRecord {
  * would-remediate=true (no execution happens regardless).
  */
 export function evaluateRemediationShadow(signal: ImprovementSignal): RemediationShadowRecord {
-  const isSecurity = signal.category === 'security';
+  // Fail-closed (#3615): category==='security' OR any security keyword → gate.
+  const isSecurity = isSecuritySignal(signal);
+  const gatedByKeyword = isSecurity && signal.category !== 'security';
   return {
     timestamp: new Date(getTimeProvider().now()).toISOString(),
     signalKey: signal.signalKey,
@@ -53,9 +73,11 @@ export function evaluateRemediationShadow(signal: ImprovementSignal): Remediatio
     category: signal.category,
     severity: signal.severity,
     wouldAutoRemediate: !isSecurity,
-    reason: isSecurity
-      ? 'security-category — always human-gated, never auto-remediated'
-      : 'shadow: would route to the dev-pipeline for remediation (not executed)',
+    reason: gatedByKeyword
+      ? `security-related (keyword match, declared category '${signal.category}') — fail-closed human-gated`
+      : isSecurity
+        ? 'security-category — always human-gated, never auto-remediated'
+        : 'shadow: would route to the dev-pipeline for remediation (not executed)',
   };
 }
 
