@@ -1,5 +1,19 @@
 # nexus-agents
 
+## 2.125.39
+
+### Patch Changes
+
+- [#3744](https://github.com/nexus-substrate/nexus-agents/pull/3744) [`4f37136`](https://github.com/nexus-substrate/nexus-agents/commit/4f371369a8cbc05196e10a8bba4dcf77312b3774) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - refactor(timeouts): sweep scattered literal timeouts into the central operation-class authority ([#3736](https://github.com/nexus-substrate/nexus-agents/issues/3736))
+
+  Follow-on to [#3734](https://github.com/nexus-substrate/nexus-agents/issues/3734). Moves the remaining local literal timeouts off hardcoded
+  values and onto central named constants derived from the operation-class
+  taxonomy in `config/timeouts.ts`. Punitive LLM-guarding shorts (30s/60s on AFlow
+  node evaluation, self-eval, and workflow mutation) are raised to the non-punitive
+  `single-llm` class guard (300s); scattered network/CLI literals are centralized
+  to `network-fetch` (120s), the existing v2-delegate/gh-command constants, and a
+  new `SEARCH_TREE_MAX_TIME_MS`. No new punitive values introduced.
+
 ## 2.125.38
 
 ### Patch Changes
