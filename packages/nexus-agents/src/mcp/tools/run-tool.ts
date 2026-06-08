@@ -39,12 +39,18 @@ import {
   type MetaDecision,
   type MetaOrchestratorInput,
 } from '../../orchestration/meta-orchestrator.js';
-import { getShadowSelector, getShadowSink } from '../../orchestration/meta-shadow-selector.js';
+import {
+  getShadowSelector,
+  getShadowSink,
+  persistMetaOutcome,
+} from '../../orchestration/meta-shadow-selector.js';
+import { isPersistenceEnabled } from '../../config/learning-persistence.js';
 import {
   createMetaDispatcher,
   MetaDispatchError,
   type StrategyExecutorMap,
   type MetaOutcomeSink,
+  type MetaOutcomeObserver,
 } from '../../orchestration/meta-dispatcher.js';
 import { runDevPipelineForGoal } from './dev-pipeline-tool.js';
 import { runPipelineForGoal } from './pipeline-tool.js';
@@ -210,19 +216,54 @@ export interface RunExecuteResponse {
  * engine result; rejects with {@link MetaDispatchError} for strategies without a
  * wired executor (fail closed). Executors are injectable for testing.
  */
+/**
+ * Whether to feed live dispatch outcomes into the shadow selector + persist them
+ * (#3593). Gated behind BOTH `NEXUS_META_SHADOW_TRAIN=1` (default OFF) AND
+ * learning persistence being enabled. Stays SHADOW: training never alters what
+ * runs and never feeds the enforce path (#3552) — it only moves the selector
+ * whose choice is logged for offline comparison.
+ */
+export function isShadowTrainEnabled(): boolean {
+  return process.env['NEXUS_META_SHADOW_TRAIN'] === '1' && isPersistenceEnabled();
+}
+
+/**
+ * Builds the train edge: on each dispatch outcome (success OR failure), update
+ * the process-scoped shadow selector and append a sanitized record to disk.
+ * Returns undefined when training is disabled — no selector update, no write.
+ */
+function buildShadowTrainObserver(logger?: ILogger): MetaOutcomeObserver | undefined {
+  if (!isShadowTrainEnabled()) return undefined;
+  return (record, decision) => {
+    getShadowSelector().recordOutcome(decision.strategy, decision, record.success);
+    persistMetaOutcome(decision.strategy, decision, record.success);
+    if (logger !== undefined) {
+      logger.debug('meta-shadow-train: recorded outcome', {
+        decisionId: decision.decisionId,
+        strategy: decision.strategy,
+        success: record.success,
+        armStats: getShadowSelector().stats(),
+      });
+    }
+  };
+}
+
 export async function executeGoal(
   input: RunInput,
   opts: {
     readonly logger?: ILogger | undefined;
     readonly executors?: StrategyExecutorMap | undefined;
     readonly outcomeSink?: MetaOutcomeSink | undefined;
+    readonly onOutcome?: MetaOutcomeObserver | undefined;
   } = {}
 ): Promise<RunExecuteResponse> {
   const decision = selectDecision(input, opts.logger);
+  const onOutcome = opts.onOutcome ?? buildShadowTrainObserver(opts.logger);
   const dispatcher = createMetaDispatcher({
     executors: opts.executors ?? DEFAULT_EXECUTORS,
     ...(opts.logger !== undefined ? { logger: opts.logger } : {}),
     ...(opts.outcomeSink !== undefined ? { outcomeSink: opts.outcomeSink } : {}),
+    ...(onOutcome !== undefined ? { onOutcome } : {}),
   });
   const dispatch = await dispatcher.dispatch(decision, toMetaInput(input));
   return {

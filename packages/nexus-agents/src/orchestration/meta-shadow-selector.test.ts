@@ -4,7 +4,10 @@
  * the bounded recording sink, and the offline agreement summary.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   SHADOW_STRATEGY_ARMS,
   createLearnedStrategySelector,
@@ -13,8 +16,12 @@ import {
   summarizeShadowAgreement,
   getShadowSelector,
   getShadowSink,
+  persistMetaOutcome,
+  hydrateShadowSelector,
+  META_OUTCOME_SCHEMA_VERSION,
   type MetaShadowRecord,
 } from './meta-shadow-selector.js';
+import { getMetaOutcomesFile } from '../config/learning-persistence.js';
 import type { MetaDecision, ExecutionStrategy } from './meta-orchestrator.js';
 import type { TaskAnalysisResult } from '../core/task-analysis/shared-task-analyzer.js';
 
@@ -175,5 +182,119 @@ describe('process-scoped singletons', () => {
   it('return stable instances', () => {
     expect(getShadowSelector()).toBe(getShadowSelector());
     expect(getShadowSink()).toBe(getShadowSink());
+  });
+});
+
+describe('selector.stats() — bandit-movement telemetry (#3593)', () => {
+  it('exposes per-arm pull counts and reward means that change after recordOutcome', () => {
+    const selector = createLearnedStrategySelector();
+    const before = selector.stats();
+    expect(before.length).toBe(SHADOW_STRATEGY_ARMS.length);
+    expect(before.every((s) => s.pulls === 0)).toBe(true);
+
+    const d = decision({ analysis: analysis({ taskType: 'code_implementation' }) });
+    selector.recordOutcome('consensus', d, true);
+    selector.recordOutcome('consensus', d, true);
+    selector.recordOutcome('pipeline', d, false);
+
+    const after = selector.stats();
+    const consensus = after.find((s) => s.strategy === 'consensus');
+    const pipeline = after.find((s) => s.strategy === 'pipeline');
+    expect(consensus?.pulls).toBe(2);
+    expect(pipeline?.pulls).toBe(1);
+    // success-only would collapse to ~equal means; success+failure must differ.
+    expect(consensus?.rewardMean).toBeGreaterThan(pipeline?.rewardMean ?? 1);
+  });
+});
+
+describe('shadow-selector persistence (#3593)', () => {
+  let dir: string;
+  let prevDataDir: string | undefined;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'meta-shadow-'));
+    prevDataDir = process.env['NEXUS_DATA_DIR'];
+    process.env['NEXUS_DATA_DIR'] = dir;
+  });
+
+  afterEach(() => {
+    if (prevDataDir === undefined) delete process.env['NEXUS_DATA_DIR'];
+    else process.env['NEXUS_DATA_DIR'] = prevDataDir;
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('persists a versioned record containing only feature values', () => {
+    const distinctive = 'TOP-SECRET-PROMPT-TEXT-do-not-leak-xyzzy';
+    const d = decision({
+      reasoning: distinctive,
+      analysis: analysis({ taskType: 'code_implementation', complexityScore: 0.7 }),
+    });
+    persistMetaOutcome('consensus', d, true);
+
+    const file = getMetaOutcomesFile();
+    expect(existsSync(file)).toBe(true);
+    const content = readFileSync(file, 'utf-8');
+    // SECURITY: no free-text task content in the serialized line.
+    expect(content).not.toContain(distinctive);
+    expect(content).not.toContain('reasoning');
+
+    const parsed = JSON.parse(content.trim()) as Record<string, unknown>;
+    expect(parsed['schema']).toBe(META_OUTCOME_SCHEMA_VERSION);
+    expect(parsed['strategy']).toBe('consensus');
+    expect(parsed['success']).toBe(true);
+    expect(parsed['context']).toMatchObject({ taskComplexity: 0.7, isCodeTask: 1 });
+  });
+
+  it('hydrates a selector from persisted outcomes (round-trip shifts stats)', () => {
+    const d = decision({ analysis: analysis({ taskType: 'code_implementation' }) });
+    for (let i = 0; i < 5; i++) persistMetaOutcome('consensus', d, true);
+    persistMetaOutcome('pipeline', d, false);
+
+    const selector = createLearnedStrategySelector();
+    const replayed = hydrateShadowSelector(selector);
+    expect(replayed).toBe(6);
+    const consensus = selector.stats().find((s) => s.strategy === 'consensus');
+    expect(consensus?.pulls).toBe(5);
+  });
+
+  it('tolerates corrupt lines during hydration (skips, no throw)', () => {
+    const d = decision();
+    persistMetaOutcome('pipeline', d, true);
+    const file = getMetaOutcomesFile();
+    writeFileSync(file, readFileSync(file, 'utf-8') + 'not-json\n{"broken":\n', 'utf-8');
+
+    const selector = createLearnedStrategySelector();
+    let replayed = 0;
+    expect(() => {
+      replayed = hydrateShadowSelector(selector);
+    }).not.toThrow();
+    expect(replayed).toBe(1);
+  });
+
+  it('filters records older than the 30-day lookback window', () => {
+    // Seed via the real path so the learning dir exists, then overwrite.
+    persistMetaOutcome('pipeline', decision(), true);
+    const file = getMetaOutcomesFile();
+    const old = new Date(Date.now() - 40 * 24 * 60 * 60 * 1000).toISOString();
+    const recent = new Date().toISOString();
+    const ctx = toBanditContext(decision());
+    const line = (ts: string): string =>
+      JSON.stringify({
+        schema: META_OUTCOME_SCHEMA_VERSION,
+        timestamp: ts,
+        strategy: 'pipeline',
+        success: true,
+        context: ctx,
+      });
+    writeFileSync(file, `${line(old)}\n${line(recent)}\n`, 'utf-8');
+
+    const selector = createLearnedStrategySelector();
+    const replayed = hydrateShadowSelector(selector);
+    expect(replayed).toBe(1);
+  });
+
+  it('hydrate is a no-op when the file does not exist', () => {
+    const selector = createLearnedStrategySelector();
+    expect(hydrateShadowSelector(selector)).toBe(0);
   });
 });

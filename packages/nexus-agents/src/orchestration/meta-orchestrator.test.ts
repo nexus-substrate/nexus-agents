@@ -313,6 +313,7 @@ describe('MetaOrchestrator.select — shadow-mode learned selection (#3551)', ()
         throw new Error('boom');
       },
       recordOutcome: () => {},
+      stats: () => [],
     };
     const meta = createMetaOrchestrator({ shadowSelector: throwingSelector, shadowSink });
     expect(() => meta.select({ goal: 'implement the feature' })).not.toThrow();

@@ -2,10 +2,14 @@
  * Tests for the `run` unified entry point tool (epic #3548, increment A).
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { mkdtempSync, rmSync, existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   routeGoal,
   executeGoal,
+  isShadowTrainEnabled,
   RunInputSchema,
   STRATEGY_ENTRYPOINT_TOOL,
   type RunResponse,
@@ -16,6 +20,7 @@ import {
   MetaDispatchError,
   type StrategyExecutorMap,
 } from '../../orchestration/meta-dispatcher.js';
+import { getMetaOutcomesFile } from '../../config/learning-persistence.js';
 
 const ALL_STRATEGIES: ExecutionStrategy[] = [
   'single-shot',
@@ -129,5 +134,63 @@ describe('executeGoal (run increment B, #3575)', () => {
       }
     );
     expect(sink.getOutcomes()[0]?.failureReason).toContain('pipeline blew up');
+  });
+});
+
+describe('shadow-train gating (NEXUS_META_SHADOW_TRAIN, #3593)', () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'run-shadow-'));
+    vi.stubEnv('NEXUS_DATA_DIR', dir);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('is OFF by default (flag unset) — isShadowTrainEnabled() false', () => {
+    vi.stubEnv('NEXUS_META_SHADOW_TRAIN', '');
+    expect(isShadowTrainEnabled()).toBe(false);
+  });
+
+  it('flag-off: a dispatch writes NO meta-outcomes file', async () => {
+    vi.stubEnv('NEXUS_META_SHADOW_TRAIN', '');
+    const executors: StrategyExecutorMap = {
+      'dev-pipeline': () => Promise.resolve({ completed: true }),
+    };
+    await executeGoal(
+      { goal: 'implement the feature', forceStrategy: 'dev-pipeline', execute: true },
+      { executors }
+    );
+    expect(existsSync(getMetaOutcomesFile())).toBe(false);
+  });
+
+  it('flag-on: a dispatch persists a sanitized meta-outcome line', async () => {
+    vi.stubEnv('NEXUS_META_SHADOW_TRAIN', '1');
+    expect(isShadowTrainEnabled()).toBe(true);
+    const executors: StrategyExecutorMap = {
+      'dev-pipeline': () => Promise.resolve({ completed: true }),
+    };
+    await executeGoal(
+      { goal: 'implement the feature', forceStrategy: 'dev-pipeline', execute: true },
+      { executors }
+    );
+    expect(existsSync(getMetaOutcomesFile())).toBe(true);
+  });
+
+  it('flag-on but persistence disabled: no write (both gates required)', async () => {
+    vi.stubEnv('NEXUS_META_SHADOW_TRAIN', '1');
+    vi.stubEnv('NEXUS_PERSIST_LEARNING', 'false');
+    expect(isShadowTrainEnabled()).toBe(false);
+    const executors: StrategyExecutorMap = {
+      'dev-pipeline': () => Promise.resolve({ completed: true }),
+    };
+    await executeGoal(
+      { goal: 'implement the feature', forceStrategy: 'dev-pipeline', execute: true },
+      { executors }
+    );
+    expect(existsSync(getMetaOutcomesFile())).toBe(false);
   });
 });

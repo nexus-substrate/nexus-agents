@@ -48,17 +48,18 @@ nexus-agents --help       # Full command list
 
 Most-used env vars:
 
-| Variable                                                                            | Purpose                                                                  |
-| ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_AI_API_KEY` / `OPENROUTER_API_KEY` | Per-vendor adapter auth.                                                 |
-| `NEXUS_BILLING_MODE`                                                                | `plan` (default) zeroes cost in scoring; `api` keeps cost-aware routing. |
-| `NEXUS_DATA_DIR`                                                                    | Explicit runtime data root; overrides the per-repo/cross-repo split.     |
-| `NEXUS_REPO_PREFERRED`                                                              | `0` opts out of the per-repo data dir (epic #2872; default ON).          |
-| `NEXUS_ACCESS_POLICY_MODE`                                                          | ClawGuard: `off` / `audit` (default) / `confirm_risky` / `enforce`.      |
-| `NEXUS_SANDBOX` / `NEXUS_SANDBOX_ROOT`                                              | Sandbox mode (epic #2500).                                               |
-| `NEXUS_AUTO_REMEDIATE`                                                              | Autonomous remediation: `off` (default) / `audit` / `enforce` (#3653).   |
-| `NEXUS_POLICY_GATE_MODE`                                                            | Stage-boundary policy gate: `off` / `warn` (default) / `block` (#3177).  |
-| `NEXUS_CONTEXT_RANKED`                                                              | `1` renders the unified cross-ranked memory prefix; default off (#3236). |
+| Variable                                                                            | Purpose                                                                        |
+| ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_AI_API_KEY` / `OPENROUTER_API_KEY` | Per-vendor adapter auth.                                                       |
+| `NEXUS_BILLING_MODE`                                                                | `plan` (default) zeroes cost in scoring; `api` keeps cost-aware routing.       |
+| `NEXUS_DATA_DIR`                                                                    | Explicit runtime data root; overrides the per-repo/cross-repo split.           |
+| `NEXUS_REPO_PREFERRED`                                                              | `0` opts out of the per-repo data dir (epic #2872; default ON).                |
+| `NEXUS_ACCESS_POLICY_MODE`                                                          | ClawGuard: `off` / `audit` (default) / `confirm_risky` / `enforce`.            |
+| `NEXUS_SANDBOX` / `NEXUS_SANDBOX_ROOT`                                              | Sandbox mode (epic #2500).                                                     |
+| `NEXUS_AUTO_REMEDIATE`                                                              | Autonomous remediation: `off` (default) / `audit` / `enforce` (#3653).         |
+| `NEXUS_POLICY_GATE_MODE`                                                            | Stage-boundary policy gate: `off` / `warn` (default) / `block` (#3177).        |
+| `NEXUS_CONTEXT_RANKED`                                                              | `1` renders the unified cross-ranked memory prefix; default off (#3236).       |
+| `NEXUS_META_SHADOW_TRAIN`                                                           | `1` trains+persists the MetaOrchestrator shadow selector; default off (#3593). |
 
 Full list in [docs/getting-started/CONFIGURATION.md](./docs/getting-started/CONFIGURATION.md). Install: [INSTALLATION.md](./docs/getting-started/INSTALLATION.md). Sandboxed: [SANDBOXED-USAGE.md](./docs/guides/SANDBOXED-USAGE.md).
 

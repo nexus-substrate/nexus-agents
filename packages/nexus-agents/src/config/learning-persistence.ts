@@ -37,6 +37,16 @@ export function getRulesFile(): string {
   return join(getLearningDir(), 'rules.json');
 }
 
+/**
+ * JSONL file for the MetaOrchestrator shadow selector's training outcomes
+ * (#3593). Stores ONLY numeric/categorical bandit-feature values + a boolean
+ * success flag — never raw task text. Lets the shadow selector learn across
+ * processes by replaying past outcomes on construction.
+ */
+export function getMetaOutcomesFile(): string {
+  return join(getLearningDir(), 'meta-outcomes.jsonl');
+}
+
 // Note: previous LEARNING_DIR / OUTCOMES_FILE / RULES_FILE exports were
 // removed in #2316 — they were evaluated at module import time and ignored
 // `NEXUS_DATA_DIR`. All callers must use the getter functions above.

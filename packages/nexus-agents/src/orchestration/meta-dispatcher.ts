@@ -149,10 +149,21 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/**
+ * Optional outcome observer invoked after every dispatch (success OR failure),
+ * with the {@link MetaOutcomeRecord} and the {@link MetaDecision} that produced
+ * it in scope. The dispatcher stays selector-agnostic: the caller (the `run`
+ * entry point) is the only place that knows about the shadow selector, so it
+ * wires the train edge here. Must not throw — errors are caught and logged
+ * (observability is best-effort, exactly like {@link MetaOutcomeSink}). (#3593)
+ */
+export type MetaOutcomeObserver = (record: MetaOutcomeRecord, decision: MetaDecision) => void;
+
 interface DispatchDeps {
   readonly executors: StrategyExecutorMap;
   readonly outcomeSink: MetaOutcomeSink;
   readonly logger: ILogger;
+  readonly onOutcome?: MetaOutcomeObserver | undefined;
 }
 
 /** Records one outcome to the sink, computing duration from the start timestamp. */
@@ -163,14 +174,25 @@ function recordOutcome(
   success: boolean,
   failureReason?: string
 ): void {
-  deps.outcomeSink.recordOutcome({
+  const record: MetaOutcomeRecord = {
     decisionId: decision.decisionId,
     timestamp: new Date(getTimeProvider().now()).toISOString(),
     strategy: decision.strategy,
     success,
     durationMs: Math.max(0, getTimeProvider().now() - start),
     ...(failureReason !== undefined ? { failureReason } : {}),
-  });
+  };
+  deps.outcomeSink.recordOutcome(record);
+  if (deps.onOutcome !== undefined) {
+    try {
+      deps.onOutcome(record, decision);
+    } catch (err) {
+      deps.logger.warn('MetaDispatcher onOutcome observer threw (ignored)', {
+        decisionId: decision.decisionId,
+        error: errorMessage(err),
+      });
+    }
+  }
 }
 
 /** Executes one decision and records its outcome. See {@link IMetaDispatcher.dispatch}. */
@@ -225,15 +247,24 @@ async function dispatchDecision(
  * @param options.executors - per-strategy executor map (injected; required).
  * @param options.outcomeSink - outcome sink (default: audit-log sink).
  * @param options.logger - optional logger.
+ * @param options.onOutcome - optional observer fired with (record, decision)
+ *   after every dispatch; the train edge to the shadow selector is wired here
+ *   by the caller (the dispatcher itself stays selector-agnostic). (#3593)
  */
 export function createMetaDispatcher(options: {
   readonly executors: StrategyExecutorMap;
   readonly outcomeSink?: MetaOutcomeSink | undefined;
   readonly logger?: ILogger | undefined;
+  readonly onOutcome?: MetaOutcomeObserver | undefined;
 }): IMetaDispatcher {
   const logger = options.logger ?? createLogger({ component: 'MetaDispatcher' });
   const outcomeSink = options.outcomeSink ?? createAuditLogOutcomeSink(logger);
-  const deps: DispatchDeps = { executors: options.executors, outcomeSink, logger };
+  const deps: DispatchDeps = {
+    executors: options.executors,
+    outcomeSink,
+    logger,
+    onOutcome: options.onOutcome,
+  };
 
   return {
     dispatch(decision: MetaDecision, input: MetaOrchestratorInput): Promise<DispatchResult> {
