@@ -57,6 +57,8 @@ export interface SecretScanResult {
  * Scan text (e.g. a unified diff or a file's contents) for secrets. Fail-closed:
  * the caller treats `clean === false` as "do not push". Findings report the
  * pattern name + line only — never the secret value.
+ *
+ * @remarks Fail-closed: any single pattern match flips `clean` to `false`.
  */
 export function scanForSecrets(text: string): SecretScanResult {
   const findings: SecretFinding[] = [];
