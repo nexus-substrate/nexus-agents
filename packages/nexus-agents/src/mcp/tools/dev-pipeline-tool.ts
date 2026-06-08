@@ -10,6 +10,7 @@
 import { z } from 'zod';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, getErrorMessage, formatZodError, type ILogger } from '../../core/index.js';
 import { runDevPipeline } from '../../pipeline/dev-pipeline.js';
@@ -27,6 +28,19 @@ import {
   type BaseMcpToolDeps,
   type ToolResult,
 } from './tool-result.js';
+// #3726 / epic #2631: async-mode dispatch via the shared `runAsJob` helper.
+import { runAsJob, defaultReplayEnvelope, defaultCollisionEnvelope } from '../jobs/run-as-job.js';
+import { resolveIdempotency, registerIdempotentJob } from '../jobs/job-idempotency.js';
+
+/**
+ * Discoverability hint (#3726) prepended to sync run_dev_pipeline error/timeout
+ * envelopes. A real autonomous run can exceed the 900s MCP request timeout;
+ * async mode is the durable escape hatch.
+ */
+const DEV_PIPELINE_ASYNC_HINT =
+  'A full run_dev_pipeline run can exceed the 900s synchronous MCP timeout. ' +
+  "Retry with `dispatch: 'async'` to get a jobId immediately, then poll " +
+  'get_job_result({ jobId }) for the result.';
 
 // ============================================================================
 // Input Schema
@@ -112,6 +126,20 @@ export const DevPipelineInputSchema = z.object({
     .default('autonomous')
     .describe(
       "'autonomous': full pipeline. 'harness': stops after decompose, returns tasks for caller to implement."
+    ),
+  /**
+   * Dispatch mode (#3726). `sync` (default) runs the pipeline inline and
+   * returns the result — but a real autonomous run can exceed the 900s MCP
+   * request timeout. `async` returns a `{ status: 'pending', jobId }`
+   * envelope immediately and runs the pipeline in the background; poll
+   * `get_job_result({ jobId })` for the result. Ignored when `dryRun` is
+   * true (plan+vote completes fast, so dry runs always stay sync).
+   */
+  dispatch: z
+    .enum(['sync', 'async'])
+    .default('sync')
+    .describe(
+      "Dispatch mode (#3726). 'sync' (default): run inline. 'async': return a jobId immediately + run in background (poll get_job_result). Ignored for dryRun."
     ),
   /** Local pre-ship quality gate (typecheck/lint/tests) mode (#3356). */
   qualityGate: z
@@ -286,6 +314,24 @@ function buildPipelineOptions(
   };
 }
 
+/**
+ * Run the pipeline body + shape the structured success envelope. The
+ * sync handler awaits this inline; the async dispatcher backgrounds it via
+ * {@link runAsJob}. `taskText` + `stages` + `pipelineOptions` are resolved by
+ * the sync prelude in {@link runDevPipelineHandler} so only the (long) pipeline
+ * body runs in the background (#3726).
+ */
+async function executeDevPipelineBody(
+  taskText: string,
+  stages: Awaited<ReturnType<typeof createStages>>,
+  pipelineOptions: DevPipelineOptions | undefined
+): Promise<ToolResult> {
+  const result = await runDevPipeline(taskText, stages, pipelineOptions);
+  // Always flush memory session — including dry-run exits (#1716)
+  flushPipelineMemory();
+  return toolSuccessStructured(buildStructuredOutput(result));
+}
+
 async function runDevPipelineHandler(
   args: unknown,
   logger: ILogger,
@@ -305,20 +351,93 @@ async function runDevPipelineHandler(
   }
 
   try {
+    // Sync prelude — fast: input resolution + stage wiring + option build.
+    // Only the pipeline BODY backgrounds in async mode (#3726).
     const taskText = await resolveTaskInput(input);
     const stages = await createStages(input);
     const pipelineOptions = buildPipelineOptions(input, trustTier, auditLogger);
     const hasOptions = Object.keys(pipelineOptions).length > 0;
-    const result = await runDevPipeline(taskText, stages, hasOptions ? pipelineOptions : undefined);
-    // Always flush memory session — including dry-run exits (#1716)
-    flushPipelineMemory();
-    return toolSuccessStructured(buildStructuredOutput(result));
+    const resolvedOptions = hasOptions ? pipelineOptions : undefined;
+
+    // #3726: async dispatch for real (non-dryRun) runs — a full pipeline can
+    // exceed the 900s MCP request timeout. dryRun ALWAYS stays sync (plan+vote
+    // completes fast). Returns `{ status: 'pending', jobId }` immediately.
+    if (input.dispatch === 'async' && !input.dryRun) {
+      return dispatchAsyncDevPipeline(input, taskText, stages, resolvedOptions, logger);
+    }
+
+    return await executeDevPipelineBody(taskText, stages, resolvedOptions);
   } catch (error: unknown) {
+    // #3726 discoverability: a sync run that times out (or otherwise fails
+    // mid-pipeline) should point the caller at async mode — the durable fix
+    // for runs that exceed the 900s request timeout.
     return toolStructuredError({
       errorCategory: 'internal',
-      message: `Pipeline error: ${getErrorMessage(error)}`,
+      message: `${DEV_PIPELINE_ASYNC_HINT} Pipeline error: ${getErrorMessage(error)}`,
     });
   }
+}
+
+/**
+ * Async-mode dispatcher (#3726). jobId === sessionId ONLY when the caller
+ * explicitly supplies one (enables task-state resume); otherwise a fresh
+ * `dp-<uuid>` is minted. A reused sessionId surfaces via the EXISTING
+ * idempotency envelope (replay/collision) — it NEVER silently returns another
+ * run's data. The background runner writes the result to the SIDECAR
+ * regardless of jobId (the Stage-2 task-state reader is flag-gated off by
+ * default), so `get_job_result({ jobId })` always resolves.
+ *
+ * Why the manual idempotency pre-check (vs `runAsJob`'s built-in key path):
+ * the shared helper's keyed path derives an opaque `job-<tool>-<hash>` jobId,
+ * but #3726 needs the jobId to BE the sessionId so a resumed run polls the
+ * same key. So we resolve idempotency here with the jobId PINNED to the
+ * sessionId, then dispatch through `runAsJob` keyless (freshJobId === the
+ * sessionId, used verbatim).
+ */
+function dispatchAsyncDevPipeline(
+  input: DevPipelineInput,
+  taskText: string,
+  stages: Awaited<ReturnType<typeof createStages>>,
+  pipelineOptions: DevPipelineOptions | undefined,
+  logger: ILogger
+): ToolResult {
+  const run = (): Promise<ToolResult> => executeDevPipelineBody(taskText, stages, pipelineOptions);
+
+  // No sessionId → mint a fresh dp-<uuid>; no idempotency surface to track.
+  if (input.sessionId === undefined) {
+    return runAsJob<DevPipelineInput, ToolResult>({
+      toolName: 'run_dev_pipeline',
+      input,
+      freshJobId: () => `dp-${randomUUID()}`,
+      run,
+      logger,
+    });
+  }
+
+  // sessionId provided → jobId === sessionId, with collision-surfacing.
+  const sessionId = input.sessionId;
+  const resolution = resolveIdempotency('run_dev_pipeline', sessionId, input, () => sessionId);
+  if (resolution.kind === 'replay') {
+    return defaultReplayEnvelope(resolution.jobId);
+  }
+  if (resolution.kind === 'collision') {
+    return defaultCollisionEnvelope(resolution.existingJobId);
+  }
+  // Fresh dispatch: pin the index entry to jobId === sessionId so a rerun
+  // replays/collides against it, then dispatch keyless on that jobId.
+  registerIdempotentJob({
+    tool: 'run_dev_pipeline',
+    idempotencyKey: sessionId,
+    inputs: input,
+    jobId: sessionId,
+  });
+  return runAsJob<DevPipelineInput, ToolResult>({
+    toolName: 'run_dev_pipeline',
+    input,
+    freshJobId: () => sessionId,
+    run,
+    logger,
+  });
 }
 
 /**

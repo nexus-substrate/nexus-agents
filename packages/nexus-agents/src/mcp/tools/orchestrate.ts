@@ -101,10 +101,15 @@ import {
 } from '../../context/structured-task-state.js';
 import type { StructuredTaskState } from '../../context/structured-task-state-types.js';
 import { getToolAnnotations } from '../tool-annotations.js';
-// #3042 / epic #2631: async-mode dispatch + sidecar job-result store.
-import { writeJobPending, writeJobComplete, writeJobFailed } from '../jobs/job-result-store.js';
-import { tryAcquire, release, suggestRetryAfterMs } from '../jobs/job-concurrency.js';
-import { shortCircuitOrFreshJobId, registerIdempotentJob } from '../jobs/job-idempotency.js';
+// #3042 / epic #2631: async-mode dispatch via the shared `runAsJob` helper
+// (#3729). Orchestrate keeps its own freshJobId (jobId === taskId) + replay/
+// collision envelopes; the dispatcher sequence itself is now shared.
+import {
+  runAsJob,
+  runJobInBackground,
+  defaultPendingEnvelope,
+  defaultBusyEnvelope,
+} from '../jobs/run-as-job.js';
 
 // Re-export types and values for consumers
 export {
@@ -1301,63 +1306,43 @@ function dispatchAsyncOrchestrate(params: {
   readonly logger: ILogger;
   readonly trustTier?: string;
 }): ToolResult {
-  // #3042 Stage 1c: resolve idempotency BEFORE acquiring a slot — a replay
-  // or collision must not burn capacity the live caller could use.
-  const idempotency = shortCircuitOrFreshJobId<ToolResult>({
-    tool: 'orchestrate',
+  // #3729: the shared `runAsJob` dispatcher performs the EXACT sequence this
+  // hand-rolled function used to (idempotency → busy-on-cap → pending +
+  // register → detached run with complete/failed + release-in-finally →
+  // pending envelope). Orchestrate's only diffs are the freshJobId (jobId ===
+  // taskId so get_job_result resolves from the task-state log) and the `run`
+  // fn, which additionally mirrors the result/failure into the Stage-2
+  // task-state log (#3091).
+  return runAsJob<OrchestrateInput, ToolResult>({
+    toolName: 'orchestrate',
+    input: params.input,
     idempotencyKey: params.input.idempotencyKey,
-    inputs: params.input,
     // #3091: jobId === taskId. The async job's id IS the orchestration's
     // taskId, so get_job_result(jobId) resolves directly from the task-state
-    // log (orch-<ts>-<rand>) under the Stage-2 reader. Replaces the former
-    // opaque `job-orch-<uuid>` id.
+    // log (orch-<ts>-<rand>) under the Stage-2 reader.
     freshJobId: () => generateTaskId(),
-    replayEnvelope: buildReplayEnvelope,
-    collisionEnvelope: buildCollisionEnvelope,
+    run: (jobId) => runOrchestratePipelineAsJob(jobId, params),
+    toEnvelope: {
+      pending: defaultPendingEnvelope,
+      busy: defaultBusyEnvelope,
+      replay: buildReplayEnvelope,
+      collision: buildCollisionEnvelope,
+    },
+    logger: params.logger,
   });
-  if (idempotency.kind === 'shortCircuit') return idempotency.value;
-  // #3044: per-tool concurrency cap. Over-cap returns `busy` synchronously
-  // so the caller backs off; configurable via NEXUS_JOB_MAX_CONCURRENT_ORCHESTRATE.
-  if (!tryAcquire('orchestrate')) {
-    return toolSuccess(
-      JSON.stringify({
-        status: 'busy',
-        retryAfterMs: suggestRetryAfterMs('orchestrate'),
-        note: 'Async-mode concurrency cap reached for orchestrate. Retry later or use mode: "sync".',
-      })
-    );
-  }
-  const jobId = idempotency.jobId;
-  recordPendingAndRegister(jobId, params.input.idempotencyKey, params.input);
-  void runOrchestrateInBackground(jobId, params);
-  return toolSuccess(
-    JSON.stringify({
-      status: 'pending',
-      jobId,
-      pollTool: 'get_job_result',
-      note: 'Poll via get_job_result({ jobId }) until status !== "pending".',
-    })
-  );
-}
-
-/** Write pending record + register idempotency entry (#3042 Stage 1c). */
-function recordPendingAndRegister(jobId: string, key: string | undefined, inputs: unknown): void {
-  writeJobPending(jobId, 'orchestrate');
-  if (key !== undefined && key !== '') {
-    registerIdempotentJob({ tool: 'orchestrate', idempotencyKey: key, inputs, jobId });
-  }
 }
 
 /**
- * Fire-and-forget background run. Wraps the depth-guarded pipeline with
- * complete/failed recording + slot release. Extracted from
- * `dispatchAsyncOrchestrate` so the dispatcher stays under the 50-line cap.
+ * The orchestrate-specific background work passed to {@link runAsJob}. Runs
+ * the depth-guarded pipeline keyed on `jobId === taskId`, mirrors the result
+ * into the Stage-2 task-state log on success, records a terminal failure
+ * stage on throw, then rethrows so `runAsJob` writes the `failed` job record.
  *
- * Exported for integration tests (#3091) — drives the async background run
- * deterministically (awaitable) instead of fire-and-forget.
+ * Exported (awaitable) for integration tests (#3091) — drives the async
+ * background run deterministically instead of fire-and-forget.
  * @internal
  */
-export async function runOrchestrateInBackground(
+export async function runOrchestratePipelineAsJob(
   jobId: string,
   params: {
     readonly input: OrchestrateInput;
@@ -1366,7 +1351,7 @@ export async function runOrchestrateInBackground(
     readonly logger: ILogger;
     readonly trustTier?: string;
   }
-): Promise<void> {
+): Promise<ToolResult> {
   // #3091: jobId === taskId — thread it into the pipeline so the task-state
   // log is keyed identically and get_job_result can resolve from it.
   const taskId = jobId;
@@ -1381,23 +1366,46 @@ export async function runOrchestrateInBackground(
         ...(params.trustTier !== undefined ? { trustTier: params.trustTier } : {}),
       })
     );
-    writeJobComplete(jobId, 'orchestrate', result);
-    // #3091: mirror the result payload into the Stage-2 task-state log. The
-    // terminal stage (complete | failed) was set inside the pipeline; this
-    // records the same payload the sidecar stored so the dual-read reader
-    // returns an identical record. Best-effort, gated, never throws.
+    // #3091: mirror the result payload into the Stage-2 task-state log so the
+    // dual-read reader returns an identical record. Best-effort, never throws.
     recordTaskStateResult(taskId, result, params.logger);
+    return result;
   } catch (err: unknown) {
     const errObj = err instanceof Error ? err : new Error(String(err));
-    params.logger.error('Async orchestrate dispatch failed', errObj, { jobId });
-    writeJobFailed(jobId, 'orchestrate', errObj.message);
     // #3091: a throw escaping the pipeline (e.g. depth-guard) may leave the
     // task-state log without a terminal stage — record one so the reader
-    // doesn't report a stuck 'pending'.
+    // doesn't report a stuck 'pending'. runAsJob writes the `failed` job
+    // record from the rethrown error.
     recordTaskStateFailure(taskId, errObj.message, params.logger);
-  } finally {
-    release('orchestrate');
+    throw errObj;
   }
+}
+
+/**
+ * Awaitable background-run wrapper that drives the shared {@link runJobInBackground}
+ * with orchestrate's `run` — i.e. it runs the pipeline (mirroring task-state),
+ * writes the terminal sidecar job record (complete/failed), and releases the
+ * slot, exactly as the live async dispatch does. Exported for the #3091
+ * integration tests so the fire-and-forget run is deterministic.
+ * @internal
+ */
+export async function runOrchestrateInBackground(
+  jobId: string,
+  params: {
+    readonly input: OrchestrateInput;
+    readonly deps: OrchestrateDeps;
+    readonly notifier: ReturnType<typeof createMcpNotifier>;
+    readonly logger: ILogger;
+    readonly trustTier?: string;
+  }
+): Promise<void> {
+  await runJobInBackground(jobId, {
+    toolName: 'orchestrate',
+    input: params.input,
+    freshJobId: () => jobId,
+    run: (id) => runOrchestratePipelineAsJob(id, params),
+    logger: params.logger,
+  });
 }
 
 /**

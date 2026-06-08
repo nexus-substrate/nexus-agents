@@ -38,6 +38,10 @@ const TOOL_NAME_BY_PREFIX: Readonly<Record<string, string>> = {
   orch: 'orchestrate',
   rwf: 'run_workflow',
   cv: 'consensus_vote',
+  // #3726: run_dev_pipeline async jobs mint `dp-<uuid>` ids (or reuse the
+  // caller's sessionId — which has no fixed prefix, so the dual-read reader
+  // resolves those from the sidecar via toolName recorded at writeJobPending).
+  dp: 'run_dev_pipeline',
 };
 
 /** Derive the toolName from a jobId/taskId prefix. */

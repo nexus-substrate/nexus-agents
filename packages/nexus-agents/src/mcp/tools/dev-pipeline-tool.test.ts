@@ -2,7 +2,10 @@
  * run_dev_pipeline MCP Tool Tests (#1684)
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 // Pass-through the secure-handler / timeout chain so the registered callback
 // is the bare handler — lets the tests invoke it directly (#2824).
@@ -39,6 +42,9 @@ vi.mock('../../pipeline/dev-pipeline.js', async (importOriginal) => {
 });
 
 import { DevPipelineInputSchema, registerDevPipelineTool } from './dev-pipeline-tool.js';
+import { readJobResult } from '../jobs/job-result-store.js';
+import { _resetForTests as resetJobConcurrency } from '../jobs/job-concurrency.js';
+import { resetNexusDataDirCache } from '../../config/nexus-data-dir.js';
 
 interface HandlerCtx {
   requestContext: { trustTier: string };
@@ -137,6 +143,113 @@ describe('DevPipelineInputSchema', () => {
   it('rejects a non-positive maxBudgetTokens', () => {
     expect(() => DevPipelineInputSchema.parse({ task: 'test', maxBudgetTokens: 0 })).toThrow();
     expect(() => DevPipelineInputSchema.parse({ task: 'test', maxBudgetTokens: -100 })).toThrow();
+  });
+
+  it('defaults dispatch to sync and accepts async (#3726)', () => {
+    expect(DevPipelineInputSchema.parse({ task: 'test' }).dispatch).toBe('sync');
+    expect(DevPipelineInputSchema.parse({ task: 'test', dispatch: 'async' }).dispatch).toBe(
+      'async'
+    );
+    expect(() => DevPipelineInputSchema.parse({ task: 'test', dispatch: 'bogus' })).toThrow();
+  });
+});
+
+// #3726: async dispatch mode. A real run can exceed the 900s MCP request
+// timeout, so `dispatch: 'async'` returns a jobId immediately and runs the
+// pipeline in the background (poll get_job_result).
+describe('run_dev_pipeline async dispatch (#3726)', () => {
+  let tmpDir: string;
+  const originalDataDir = process.env['NEXUS_DATA_DIR'];
+
+  /** Parse the JSON envelope out of a captured tool result. */
+  function envelope(result: CapturedToolResult): Record<string, unknown> {
+    return JSON.parse(result.content[0]!.text) as Record<string, unknown>;
+  }
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'nexus-dp-async-'));
+    process.env['NEXUS_DATA_DIR'] = tmpDir;
+    resetNexusDataDirCache();
+    resetJobConcurrency();
+    runDevPipelineMock.mockClear();
+  });
+
+  afterEach(() => {
+    if (originalDataDir === undefined) delete process.env['NEXUS_DATA_DIR'];
+    else process.env['NEXUS_DATA_DIR'] = originalDataDir;
+    resetNexusDataDirCache();
+    resetJobConcurrency();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("returns { status: 'pending', jobId } and mints a dp-<uuid> id without a sessionId", async () => {
+    const handler = captureHandler();
+    const result = await handler({ task: 'Build feature X', dispatch: 'async' }, STDIO_CTX);
+    const env = envelope(result);
+    expect(env['status']).toBe('pending');
+    expect(typeof env['jobId']).toBe('string');
+    expect(env['jobId'] as string).toMatch(/^dp-/);
+    expect(env['pollTool']).toBe('get_job_result');
+  });
+
+  it('uses the sessionId verbatim as the jobId when one is provided', async () => {
+    const handler = captureHandler();
+    const result = await handler(
+      { task: 'Build feature X', dispatch: 'async', sessionId: 'my-session-1' },
+      STDIO_CTX
+    );
+    expect(envelope(result)['jobId']).toBe('my-session-1');
+  });
+
+  it('dryRun ALWAYS stays sync even when dispatch is async', async () => {
+    const handler = captureHandler();
+    const result = await handler(
+      { task: 'Build feature X', dispatch: 'async', dryRun: true },
+      STDIO_CTX
+    );
+    // Sync path runs the (mocked) pipeline inline and returns a structured
+    // result, NOT a pending envelope.
+    expect(envelope(result)['status']).toBeUndefined();
+    expect(runDevPipelineMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('records the pipeline result to the sidecar when the background run completes', async () => {
+    const handler = captureHandler();
+    const result = await handler(
+      { task: 'Build feature X', dispatch: 'async', sessionId: 'sess-complete' },
+      STDIO_CTX
+    );
+    expect(envelope(result)['jobId']).toBe('sess-complete');
+    // The background run is fire-and-forget; let the microtask queue drain.
+    await new Promise((r) => setImmediate(r));
+    const record = readJobResult('sess-complete');
+    expect(record?.status).toBe('complete');
+  });
+
+  it('surfaces an idempotency collision when a sessionId is reused with different inputs', async () => {
+    const handler = captureHandler();
+    const first = await handler(
+      { task: 'First task', dispatch: 'async', sessionId: 'collide-1' },
+      STDIO_CTX
+    );
+    expect(envelope(first)['status']).toBe('pending');
+    // Reusing the sessionId with a DIFFERENT task must NOT silently return the
+    // first run's data — it surfaces the existing idempotency collision envelope.
+    const second = await handler(
+      { task: 'DIFFERENT task', dispatch: 'async', sessionId: 'collide-1' },
+      STDIO_CTX
+    );
+    expect(second.isError).toBe(true);
+    expect(second.content[0]?.text).toContain('Idempotency key already used');
+  });
+
+  it('sync errors carry the async-mode discoverability hint (#3726)', async () => {
+    runDevPipelineMock.mockRejectedValueOnce(new Error('stage exploded'));
+    const handler = captureHandler();
+    const result = await handler({ task: 'Build feature X' }, STDIO_CTX);
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toContain("dispatch: 'async'");
+    expect(result.content[0]?.text).toContain('get_job_result');
   });
 });
 

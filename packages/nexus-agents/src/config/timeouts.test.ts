@@ -91,6 +91,22 @@ describe('Centralized Timeout Configuration', () => {
       expect(MCP_TIMEOUTS.perTool['run_workflow']).toBe(900_000);
     });
 
+    it('grants the 60s-wrapper long-running tools a 900s cap (#3729 interim)', () => {
+      // These wrap their own multi-LLM/pipeline work but lacked a perTool
+      // override, so the 60s defaultMs killed them at 60s before async lands.
+      expect(MCP_TIMEOUTS.perTool['pr_review']).toBe(900_000);
+      expect(MCP_TIMEOUTS.perTool['supply_chain_tradeoff_panel']).toBe(900_000);
+      expect(MCP_TIMEOUTS.perTool['execute_spec']).toBe(900_000);
+      expect(MCP_TIMEOUTS.perTool['run']).toBe(900_000);
+    });
+
+    it('exposes a run_dev_pipeline async-mode timeout hint (#3726)', () => {
+      const hint = MCP_TIMEOUTS.perToolTimeoutHint['run_dev_pipeline'];
+      expect(hint).toBeDefined();
+      expect(hint).toContain("dispatch: 'async'");
+      expect(hint).toContain('get_job_result');
+    });
+
     it('exposes a safety buffer for internal deadlines', () => {
       expect(MCP_TIMEOUTS.perToolSafetyBufferMs).toBeGreaterThan(0);
       // Must be much smaller than the smallest per-tool cap so clamping

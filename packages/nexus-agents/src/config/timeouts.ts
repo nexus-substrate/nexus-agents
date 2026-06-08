@@ -106,7 +106,27 @@ export const MCP_TIMEOUTS = {
     run_workflow: 900_000, // 15 min — multi-step workflow execution
     run_pipeline: 900_000, // 15 min — multi-stage pipeline orchestration (#2824)
     run_dev_pipeline: 900_000, // 15 min — multi-agent dev pipeline (#2824)
+    // #3729 interim mitigation: these long-running tools (multi-LLM voters /
+    // pipeline / spec executors) wrap their own work but were never granted a
+    // perTool override, so the 60s `defaultMs` killed them at 60s. Bump to the
+    // 900s ceiling until durable async migration lands (#3730-3732). nexus-agents
+    // uses stdio MCP transport (no proxy/LB), so the 900s interim is safe.
+    pr_review: 900_000, // 15 min — 5-7 LLM review voters in parallel
+    supply_chain_tradeoff_panel: 900_000, // 15 min — multi-voter supply-chain panel
+    execute_spec: 900_000, // 15 min — multi-stage spec execution
+    run: 900_000, // 15 min — MetaOrchestrator dispatch w/ execute:true
   } as Readonly<Record<string, number>>,
+  /**
+   * Per-tool discoverability hint (#3726) appended to the timeout error
+   * message. Lets a SYNC long-running tool that hits its perTool ceiling tell
+   * the caller how to escape it — e.g. retry in async job-mode. Generic so
+   * every async-migrated tool (#3729 children) can register one; absent →
+   * no hint appended.
+   */
+  perToolTimeoutHint: {
+    run_dev_pipeline:
+      "Retry with `dispatch: 'async'` to get a jobId immediately, then poll get_job_result({ jobId }).",
+  } as Readonly<Record<string, string>>,
 } as const;
 
 /**
