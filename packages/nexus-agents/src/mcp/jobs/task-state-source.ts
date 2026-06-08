@@ -42,6 +42,8 @@ const TOOL_NAME_BY_PREFIX: Readonly<Record<string, string>> = {
   // caller's sessionId — which has no fixed prefix, so the dual-read reader
   // resolves those from the sidecar via toolName recorded at writeJobPending).
   dp: 'run_dev_pipeline',
+  // #3730: run_pipeline async jobs mint `rp-<uuid>` ids (no sessionId surface).
+  rp: 'run_pipeline',
 };
 
 /** Derive the toolName from a jobId/taskId prefix. */

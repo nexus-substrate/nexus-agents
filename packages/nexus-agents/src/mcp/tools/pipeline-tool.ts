@@ -11,6 +11,7 @@
 import { z } from 'zod';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, getErrorMessage, formatZodError, type ILogger } from '../../core/index.js';
 import { runAdaptiveOrchestrator, classifyTask } from '../../pipeline/adaptive-orchestrator.js';
@@ -36,6 +37,18 @@ import {
   type BaseMcpToolDeps,
   type ToolResult,
 } from './tool-result.js';
+// #3730 / epic #2631: async-mode dispatch via the shared `runAsJob` helper.
+import { runAsJob } from '../jobs/run-as-job.js';
+
+/**
+ * Discoverability hint (#3730) appended to sync run_pipeline error/timeout
+ * envelopes. A real multi-stage adaptive run can exceed the 900s MCP request
+ * timeout; async mode is the durable escape hatch.
+ */
+const PIPELINE_ASYNC_HINT =
+  'A full run_pipeline run can exceed the synchronous MCP request timeout. ' +
+  "Retry with `dispatch: 'async'` to get a jobId immediately, then poll " +
+  'get_job_result({ jobId }) for the result.';
 
 // ============================================================================
 // Input Schema
@@ -89,6 +102,20 @@ export const PipelineInputSchema = z.object({
     .describe('Max time per stage in ms (30000-600000). Default: varies by stage complexity'),
   /** Stop after planning/voting (no implementation). */
   dryRun: z.boolean().default(false).describe('Stop after vote stage (no implementation)'),
+  /**
+   * Dispatch mode (#3730). `sync` (default) runs the pipeline inline and
+   * returns the result — but a real multi-stage adaptive run can exceed the
+   * 900s MCP request timeout. `async` returns a `{ status: 'pending', jobId }`
+   * envelope immediately and runs the pipeline in the background; poll
+   * `get_job_result({ jobId })` for the result. Ignored when `dryRun` is true
+   * (plan+vote completes fast, so dry runs always stay sync).
+   */
+  dispatch: z
+    .enum(['sync', 'async'])
+    .default('sync')
+    .describe(
+      "Dispatch mode (#3730). 'sync' (default): run inline. 'async': return a jobId immediately + run in background (poll get_job_result). Ignored for dryRun."
+    ),
   /** TESTS ONLY — random output, must not be used for real decisions. (#2319) */
   simulateVotes: z
     .boolean()
@@ -237,6 +264,27 @@ export async function runPipelineForGoal(
   return runAdaptiveOrchestrator(goal, { stages });
 }
 
+/**
+ * Run the adaptive-orchestrator body + shape the structured success envelope.
+ * The sync handler awaits this inline; the async dispatcher backgrounds it via
+ * {@link runAsJob}. `task` + `stages` are resolved by the sync prelude in
+ * {@link runPipelineHandler} so only the (long) orchestrator body runs in the
+ * background (#3730).
+ */
+async function executePipelineBody(
+  task: string,
+  stages: ReturnType<typeof selectStageRegistry>,
+  templateId: string | undefined,
+  dryRun: boolean
+): Promise<ToolResult> {
+  const result = await runAdaptiveOrchestrator(task, {
+    stages,
+    templateId,
+    dryRun,
+  });
+  return toolSuccessStructured(buildOutput(result));
+}
+
 /** Validates input, runs the adaptive orchestrator, and shapes the result. */
 async function runPipelineHandler(args: unknown, logger: ILogger): Promise<ToolResult> {
   const parsed = PipelineInputSchema.safeParse(args);
@@ -252,6 +300,8 @@ async function runPipelineHandler(args: unknown, logger: ILogger): Promise<ToolR
   }
 
   try {
+    // Sync prelude — fast: input resolution + stage wiring. Only the
+    // orchestrator BODY backgrounds in async mode (#3730).
     const task = await resolveTask(input.task, input.specFile);
     const agentStages = createAgentStages({
       simulateVotes: input.simulateVotes,
@@ -261,17 +311,29 @@ async function runPipelineHandler(args: unknown, logger: ILogger): Promise<ToolR
     });
     const stages = selectStageRegistry(input.template, task, agentStages);
 
-    const result = await runAdaptiveOrchestrator(task, {
-      stages,
-      templateId: input.template,
-      dryRun: input.dryRun,
-    });
+    // #3730: async dispatch for real (non-dryRun) runs — a full adaptive
+    // pipeline can exceed the 900s MCP request timeout. dryRun ALWAYS stays
+    // sync (plan+vote completes fast). run_pipeline has no sessionId, so a
+    // fresh `rp-<uuid>` jobId is always minted (no idempotency surface).
+    // Returns `{ status: 'pending', jobId }` immediately.
+    if (input.dispatch === 'async' && !input.dryRun) {
+      return runAsJob<PipelineInput, ToolResult>({
+        toolName: 'run_pipeline',
+        input,
+        freshJobId: () => `rp-${randomUUID()}`,
+        run: () => executePipelineBody(task, stages, input.template, input.dryRun),
+        logger,
+      });
+    }
 
-    return toolSuccessStructured(buildOutput(result));
+    return await executePipelineBody(task, stages, input.template, input.dryRun);
   } catch (error: unknown) {
+    // #3730 discoverability: a sync run that times out (or otherwise fails
+    // mid-pipeline) should point the caller at async mode — the durable fix
+    // for runs that exceed the request timeout.
     return toolStructuredError({
       errorCategory: 'internal',
-      message: `Pipeline error: ${getErrorMessage(error)}`,
+      message: `${PIPELINE_ASYNC_HINT} Pipeline error: ${getErrorMessage(error)}`,
     });
   }
 }

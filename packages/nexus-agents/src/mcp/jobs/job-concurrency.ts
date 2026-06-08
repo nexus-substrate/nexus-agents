@@ -44,6 +44,9 @@ export const DEFAULT_JOB_CAPS: Readonly<Record<string, number>> = {
   // decompose→implement→qa→security, each a live LLM call). Cap low — 2
   // concurrent real runs already saturate adapter slots on most hosts.
   run_dev_pipeline: 2,
+  // #3730: run_pipeline is a multi-stage adaptive orchestrator with per-stage
+  // experts (live LLM calls). Same shape as run_dev_pipeline — cap low at 2.
+  run_pipeline: 2,
 };
 
 /**

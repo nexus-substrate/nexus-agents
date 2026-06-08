@@ -2,7 +2,10 @@
  * run_pipeline MCP Tool Tests (#1736)
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 // Pass-through the secure-handler / timeout chain so the registered callback
 // is the bare handler — lets the tests invoke it directly (#2824).
@@ -15,7 +18,29 @@ vi.mock('../middleware/secure-handler.js', () => ({
   createSecureHandler: (fn: unknown) => fn,
 }));
 
+// #3730: stub the adaptive orchestrator so the async background run resolves
+// fast and deterministically (no live adapters in unit tests).
+const ORCHESTRATOR_RESULT = {
+  success: true,
+  templateId: 'general',
+  selectionMethod: 'auto',
+  taskClassification: { pipelineType: 'general' },
+  stepsExecuted: 1,
+  durationMs: 1,
+};
+const runAdaptiveOrchestratorMock = vi.fn(() => Promise.resolve(ORCHESTRATOR_RESULT));
+vi.mock('../../pipeline/adaptive-orchestrator.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../pipeline/adaptive-orchestrator.js')>();
+  return {
+    ...actual,
+    runAdaptiveOrchestrator: () => runAdaptiveOrchestratorMock(),
+  };
+});
+
 import { PipelineInputSchema, registerPipelineTool } from './pipeline-tool.js';
+import { readJobResult } from '../jobs/job-result-store.js';
+import { _resetForTests as resetJobConcurrency } from '../jobs/job-concurrency.js';
+import { resetNexusDataDirCache } from '../../config/nexus-data-dir.js';
 
 describe('PipelineInputSchema', () => {
   it('accepts a valid task with defaults', () => {
@@ -45,6 +70,14 @@ describe('PipelineInputSchema', () => {
     expect(parsed.template).toBe('audit');
     expect(parsed.dryRun).toBe(true);
   });
+
+  it('defaults dispatch to sync and accepts async (#3730)', () => {
+    expect(PipelineInputSchema.parse({ task: 'valid task' }).dispatch).toBe('sync');
+    expect(PipelineInputSchema.parse({ task: 'valid task', dispatch: 'async' }).dispatch).toBe(
+      'async'
+    );
+    expect(() => PipelineInputSchema.parse({ task: 'valid task', dispatch: 'bogus' })).toThrow();
+  });
 });
 
 interface CapturedToolResult {
@@ -69,6 +102,64 @@ function captureHandler(): (args: unknown) => Promise<CapturedToolResult> {
   if (captured === undefined) throw new Error('handler not registered');
   return captured;
 }
+
+// #3730: async dispatch mode. A real run can exceed the 900s MCP request
+// timeout, so `dispatch: 'async'` returns a jobId immediately and runs the
+// pipeline in the background (poll get_job_result). run_pipeline has no
+// sessionId, so a fresh `rp-<uuid>` jobId is always minted (no idempotency
+// surface).
+describe('run_pipeline async dispatch (#3730)', () => {
+  let tmpDir: string;
+  const originalDataDir = process.env['NEXUS_DATA_DIR'];
+
+  /** Parse the JSON envelope out of a captured tool result. */
+  function envelope(result: CapturedToolResult): Record<string, unknown> {
+    return JSON.parse(result.content[0]!.text) as Record<string, unknown>;
+  }
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'nexus-rp-async-'));
+    process.env['NEXUS_DATA_DIR'] = tmpDir;
+    resetNexusDataDirCache();
+    resetJobConcurrency();
+    runAdaptiveOrchestratorMock.mockClear();
+  });
+
+  afterEach(() => {
+    if (originalDataDir === undefined) delete process.env['NEXUS_DATA_DIR'];
+    else process.env['NEXUS_DATA_DIR'] = originalDataDir;
+    resetNexusDataDirCache();
+    resetJobConcurrency();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("returns { status: 'pending', jobId } and mints an rp-<uuid> id", async () => {
+    const handler = captureHandler();
+    const result = await handler({ task: 'Build feature X', dispatch: 'async' });
+    const env = envelope(result);
+    expect(env['status']).toBe('pending');
+    expect(typeof env['jobId']).toBe('string');
+    expect(env['jobId'] as string).toMatch(/^rp-/);
+    expect(env['pollTool']).toBe('get_job_result');
+  });
+
+  it('runs the pipeline inline (sync) by default — no pending envelope', async () => {
+    const handler = captureHandler();
+    const result = await handler({ task: 'Build feature X' });
+    expect(envelope(result)['status']).toBeUndefined();
+    expect(runAdaptiveOrchestratorMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('records the pipeline result to the sidecar when the background run completes', async () => {
+    const handler = captureHandler();
+    const result = await handler({ task: 'Build feature X', dispatch: 'async' });
+    const jobId = envelope(result)['jobId'] as string;
+    // The background run is fire-and-forget; let the microtask queue drain.
+    await new Promise((r) => setImmediate(r));
+    const record = readJobResult(jobId);
+    expect(record?.status).toBe('complete');
+  });
+});
 
 // #2824: run_pipeline used to register a bare callback that called
 // `schema.parse(args)` outside any try/catch — a ZodError on bad input
