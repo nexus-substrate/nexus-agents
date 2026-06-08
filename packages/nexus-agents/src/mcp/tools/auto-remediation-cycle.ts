@@ -12,9 +12,6 @@
  * @module mcp/tools/auto-remediation-cycle
  */
 
-// @export-no-consumer-yet — see #3671
-// Invoked by the CLI/MCP/scheduled surface; the thin registration follows.
-
 import { createLogger, type ILogger } from '../../core/index.js';
 import type { ImprovementSignal } from './improvement-review.js';
 import { runImprovementReview, ImprovementReviewInputSchema } from './improvement-review.js';

@@ -27,10 +27,6 @@
  * @module mcp/tools/improvement-enforce-readiness
  */
 
-// @export-no-consumer-yet — see #3618
-// The enforce capstone (#3618) is explicitly "blocked by" this exit criterion and
-// consumes it to gate enforcement. Built ahead deliberately (named consumer).
-
 /** Tuning for {@link evaluateEnforceReadiness}. */
 export interface EnforceReadinessConfig {
   /** Minimum shadow would-remediate decisions before enforce can be considered. */

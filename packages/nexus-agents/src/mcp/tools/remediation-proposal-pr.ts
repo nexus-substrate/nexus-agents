@@ -15,10 +15,6 @@
  * @module mcp/tools/remediation-proposal-pr
  */
 
-// @export-no-consumer-yet — see #3648
-// Wired as AutoRemediationDeps.implement by the enforce entry point once Option B
-// is enabled (still owner-gated by NEXUS_AUTO_REMEDIATE=enforce + readiness).
-
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { writeFile, mkdir } from 'node:fs/promises';

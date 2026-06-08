@@ -14,9 +14,6 @@
  * @module mcp/tools/diff-secret-scan
  */
 
-// @export-no-consumer-yet — see #3669
-// The Option B / Option A implement adapters call scanForSecrets before push.
-
 /** A known secret shape. */
 interface SecretPattern {
   readonly name: string;

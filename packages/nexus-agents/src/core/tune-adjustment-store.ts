@@ -25,9 +25,6 @@
  * @module core/tune-adjustment-store
  */
 
-// @export-no-consumer-yet — see #3147 (keystone step 1: the bounded adjustment
-// mechanism lands first; the CompositeRouter read + TuneStage write are the
-// immediately-following PRs, careful about TOPSIS scoring blast radius).
 import { getTimeProvider } from './time-provider.js';
 
 /** Lowest multiplier tuning can drive a CLI to — never zeroes it out. */

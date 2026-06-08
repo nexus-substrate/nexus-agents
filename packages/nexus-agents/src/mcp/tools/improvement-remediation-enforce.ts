@@ -25,13 +25,6 @@
  * @module mcp/tools/improvement-remediation-enforce
  */
 
-// @export-no-consumer-yet — see #3648
-// This ships the ratified, fully-tested orchestrator (pure control flow). The
-// real side-effecting AutoRemediationDeps adapters (git-ref lease, the
-// #3643-guarded dev-pipeline `implement` + GitHub PR, research diagnosis,
-// audit-chain) + the entry point that calls runAutoRemediation are the wiring
-// increment #3648. Enforce stays owner-gated regardless.
-
 import type { ILogger } from '../../core/index.js';
 import type { ImprovementSignal } from './improvement-review.js';
 import { RemediationGuard, getRemediationGuard } from './improvement-remediation-guard.js';

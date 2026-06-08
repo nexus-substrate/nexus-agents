@@ -17,9 +17,6 @@
  * @module mcp/tools/remediation-research
  */
 
-// @export-no-consumer-yet — see #3648
-// Wired into AutoRemediationDeps.research by the enforce entry point (#3648).
-
 import type { ImprovementSignal, SignalCategory } from './improvement-review.js';
 import type {
   RemediationPlan,

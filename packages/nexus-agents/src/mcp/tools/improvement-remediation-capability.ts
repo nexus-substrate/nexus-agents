@@ -30,10 +30,6 @@
 
 import { z } from 'zod';
 
-// @export-no-consumer-yet — see #3618
-// These boundary primitives are consumed by the enforce capstone (#3618), which
-// is explicitly "blocked by" this increment. Built ahead for that named consumer.
-
 /** The three Rule-of-Two legs. No single phase may hold all three. */
 export type Capability = 'untrusted-input' | 'repo-write' | 'secrets';
 

@@ -18,10 +18,6 @@
  * @module mcp/tools/remediation-protected-paths
  */
 
-// @export-no-consumer-yet — see #3648
-// The enforce entry point (#3648) calls planTouchesProtectedPath before IMPLEMENT
-// to refuse self-modifying/secret-touching remediations. Built ahead for it.
-
 import type { RemediationPlan } from './improvement-remediation-capability.js';
 
 /**
