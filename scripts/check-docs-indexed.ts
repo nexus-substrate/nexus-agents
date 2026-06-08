@@ -36,6 +36,7 @@ const EXCLUDED_DIRS = [
   '.generated',
   '_legacy',
   'api', // TypeDoc generated
+  'reference/tools', // Generated MCP tool reference (#3687) — entry page reference/tools/index.md is indexed
   'node_modules',
   'research/topics', // Deep research files - referenced from topic READMEs
 ];

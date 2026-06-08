@@ -39,6 +39,8 @@
     "spell:all": "cspell '**/*.{md,ts,tsx}' --config cspell.json",
     "governance:inject": "npx tsx scripts/inject-governance.ts inject",
     "governance:check": "npx tsx scripts/inject-governance.ts check",
+    "docs:tools": "npx tsx scripts/generate-tool-reference.ts",
+    "docs:tools:check": "npx tsx scripts/generate-tool-reference.ts --check",
     "typecheck": "turbo typecheck",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
