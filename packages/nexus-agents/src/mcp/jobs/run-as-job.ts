@@ -24,6 +24,74 @@ import { toolSuccess, toolStructuredError, type ToolResult } from '../tools/tool
 import { writeJobComplete, writeJobFailed, writeJobPending } from './job-result-store.js';
 import { registerIdempotentJob, shortCircuitOrFreshJobId } from './job-idempotency.js';
 import { release, suggestRetryAfterMs, tryAcquire } from './job-concurrency.js';
+import { resolveClassGuardMs } from '../../config/timeouts.js';
+
+/**
+ * Async-job-body runaway-guard (#3734). A backgrounded job body has NO MCP
+ * request timeout (that is the point of async mode), so without a ceiling a
+ * wedged `run` would hold its concurrency slot and pending record forever.
+ * The `async-job-body` operation class (3600s, honoring NEXUS_TIMEOUT_MULTIPLIER
+ * + the per-class override) bounds it. On expiry the job is recorded as failed
+ * with `runaway guard exceeded` and the slot is released by the existing
+ * `finally`. This is a runaway-guard, not an SLA — 1h is generous.
+ */
+export const ASYNC_JOB_BODY_GUARD_CLASS = 'async-job-body' as const;
+
+/**
+ * Fraction of the async-job-body guard at which a near-timeout WARN is emitted
+ * before the guard fires. Lower than the generic 0.8 so operators see a wedged
+ * long-running job well before the (very high) ceiling trips.
+ */
+export const ASYNC_JOB_BODY_NEAR_TIMEOUT_THRESHOLD = 0.5;
+
+/** Sentinel rejection used to distinguish a guard expiry from a body failure. */
+const ASYNC_JOB_BODY_RUNAWAY_MESSAGE = 'runaway guard exceeded';
+
+interface GuardHandles {
+  /** Resolves only when the guard window elapses (never resolves on clear). */
+  readonly expired: Promise<never>;
+  /** Cancels the guard + near-timeout timers. */
+  readonly clear: () => void;
+}
+
+/**
+ * Builds a guard that rejects with the runaway sentinel after `guardMs`, and
+ * emits a one-shot near-timeout WARN at {@link ASYNC_JOB_BODY_NEAR_TIMEOUT_THRESHOLD}.
+ */
+function makeAsyncBodyGuard(
+  jobId: string,
+  toolName: string,
+  guardMs: number,
+  logger: ILogger | undefined
+): GuardHandles {
+  let guardTimer: ReturnType<typeof setTimeout> | undefined;
+  let warnTimer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<never>((_resolve, reject) => {
+    warnTimer = setTimeout(
+      () => {
+        logger?.warn(`Async ${toolName} job approaching runaway guard`, {
+          jobId,
+          guardMs,
+          thresholdFraction: ASYNC_JOB_BODY_NEAR_TIMEOUT_THRESHOLD,
+        });
+      },
+      Math.floor(guardMs * ASYNC_JOB_BODY_NEAR_TIMEOUT_THRESHOLD)
+    );
+    guardTimer = setTimeout(() => {
+      reject(new Error(ASYNC_JOB_BODY_RUNAWAY_MESSAGE));
+    }, guardMs);
+    // Don't keep the event loop alive solely for these timers.
+    guardTimer.unref();
+    warnTimer.unref();
+  });
+  return {
+    expired,
+    clear: () => {
+      if (guardTimer !== undefined) clearTimeout(guardTimer);
+      if (warnTimer !== undefined) clearTimeout(warnTimer);
+    },
+  };
+}
 
 /**
  * Per-tool envelope builders. Every async dispatcher returns the same five
@@ -194,14 +262,20 @@ export async function runJobInBackground<I, R, E>(
   jobId: string,
   params: RunAsJobParams<I, R, E>
 ): Promise<void> {
+  const guardMs = resolveClassGuardMs(ASYNC_JOB_BODY_GUARD_CLASS);
+  const guard = makeAsyncBodyGuard(jobId, params.toolName, guardMs, params.logger);
   try {
-    const result = await params.run(jobId, params.input);
+    // Race the body against the runaway-guard. On guard expiry the guard
+    // rejects with the sentinel → recorded as failed below. On body settle the
+    // guard is cleared so it can never fire afterward.
+    const result = await Promise.race([params.run(jobId, params.input), guard.expired]);
     writeJobComplete(jobId, params.toolName, result);
   } catch (err: unknown) {
     const errObj = err instanceof Error ? err : new Error(String(err));
     params.logger?.error(`Async ${params.toolName} dispatch failed`, errObj, { jobId });
     writeJobFailed(jobId, params.toolName, errObj.message);
   } finally {
+    guard.clear();
     release(params.toolName);
   }
 }

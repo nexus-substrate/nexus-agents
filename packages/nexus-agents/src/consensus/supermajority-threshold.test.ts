@@ -17,6 +17,7 @@ import {
   DEFAULT_WEIGHTED_VOTING_CONFIG,
   WeightedVotingConfigSchema,
 } from './types-weighted-voting.js';
+import { OPERATION_CLASSES } from '../config/timeouts.js';
 
 describe('SUPERMAJORITY_THRESHOLD centralization (#3571)', () => {
   it('pins the governance value at 2/3', () => {
@@ -40,5 +41,17 @@ describe('SUPERMAJORITY_THRESHOLD centralization (#3571)', () => {
   it('weighted-voting quorum default (object + Zod) resolves to the constant', () => {
     expect(DEFAULT_WEIGHTED_VOTING_CONFIG.quorumThreshold).toBe(SUPERMAJORITY_THRESHOLD);
     expect(WeightedVotingConfigSchema.parse({}).quorumThreshold).toBe(SUPERMAJORITY_THRESHOLD);
+  });
+});
+
+describe('voting-round timeout derives from the central authority (#3734)', () => {
+  // The voting round guards a parallel MULTI-LLM panel; its default must derive
+  // from the multi-llm-panel runaway-guard (900s), NOT the old accidental 60s.
+  it('object + Zod default both resolve to the multi-llm-panel guard, not 60s', () => {
+    const expected = OPERATION_CLASSES['multi-llm-panel'].guardMs;
+    expect(expected).toBe(900_000);
+    expect(DEFAULT_VOTING_PROTOCOL_CONFIG.roundTimeoutMs).toBe(expected);
+    expect(VotingProtocolConfigSchema.parse({}).roundTimeoutMs).toBe(expected);
+    expect(DEFAULT_VOTING_PROTOCOL_CONFIG.roundTimeoutMs).not.toBe(60_000);
   });
 });
