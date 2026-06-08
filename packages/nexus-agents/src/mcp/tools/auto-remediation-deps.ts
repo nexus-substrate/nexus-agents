@@ -12,9 +12,6 @@
  * @module mcp/tools/auto-remediation-deps
  */
 
-// @export-no-consumer-yet — see #3671
-// The CLI/MCP entry point (#3671) calls buildAutoRemediationDeps + runAutoRemediation.
-
 import { createLogger, type ILogger } from '../../core/index.js';
 import type { AutoRemediationDeps } from './improvement-remediation-enforce.js';
 import { buildRemediationPlanFromSignal } from './remediation-research.js';

@@ -17,10 +17,6 @@
  * @module mcp/tools/remediation-circuit-breaker
  */
 
-// @export-no-consumer-yet — see #3648
-// Consulted by the enforce entry point (#3648): abort if tripped, record each
-// remediation's result, and reset only after a re-vote. Built ahead for it.
-
 /** Tuning for the breaker. */
 export interface CircuitBreakerConfig {
   /** Consecutive failures before the breaker trips to off. */

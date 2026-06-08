@@ -14,10 +14,6 @@
  * @module mcp/tools/remediation-priority
  */
 
-// @export-no-consumer-yet — see #3653
-// The p0–p4 auto-filer (labels) and the enforce orchestrator (consensus gating)
-// consume this policy next; it is the shared authoritative mapping built first.
-
 import type { ConsensusAlgorithm } from '../../consensus/types-core.js';
 import type { ImprovementSignal } from './improvement-review.js';
 import { isSecuritySignal } from './improvement-remediation-shadow.js';

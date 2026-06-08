@@ -43,8 +43,10 @@ function makeState(overrides: Partial<StructuredTaskState> = {}): StructuredTask
 describe('toolNameFromJobId', () => {
   it('maps known prefixes', () => {
     expect(toolNameFromJobId('orch-1-a')).toBe('orchestrate');
-    expect(toolNameFromJobId('rwf-1-a')).toBe('run_workflow');
-    expect(toolNameFromJobId('cv-1-a')).toBe('consensus_vote');
+    // run_workflow / consensus_vote mint two-segment `job-rw-…` / `job-vote-…`
+    // ids; they must stay distinct despite sharing the `job` first segment.
+    expect(toolNameFromJobId('job-rw-abc123')).toBe('run_workflow');
+    expect(toolNameFromJobId('job-vote-abc123')).toBe('consensus_vote');
     expect(toolNameFromJobId('dp-abc123')).toBe('run_dev_pipeline');
     expect(toolNameFromJobId('rp-abc123')).toBe('run_pipeline');
     expect(toolNameFromJobId('pr-abc123')).toBe('pr_review');

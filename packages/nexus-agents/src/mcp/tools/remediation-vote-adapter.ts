@@ -13,9 +13,6 @@
  * @module mcp/tools/remediation-vote-adapter
  */
 
-// @export-no-consumer-yet — see #3648
-// Wired into AutoRemediationDeps.vote by the enforce entry point (#3648).
-
 import { createLogger, type ILogger } from '../../core/index.js';
 import type { ConsensusAlgorithm } from '../../consensus/types-core.js';
 import { executeVoting, ConsensusVoteInputSchema } from './consensus-vote.js';

@@ -30,14 +30,22 @@ import { readJobResult } from './job-result-store.js';
 const logger = createLogger({ component: 'task-state-source' });
 
 /**
- * jobId-prefix → toolName. Async-mode writers mint task ids as
- * `<prefix>-<ts>-<rand>` (e.g. orchestrate's `generateTaskId` → `orch-…`).
- * Extended as each writer migrates (#3091, #3092). Unknown → `'unknown'`.
+ * jobId-prefix → toolName. Async-mode writers mint task ids two ways:
+ * - orchestrate's `generateTaskId` → `orch-<ts>-<rand>` (single-segment prefix);
+ * - the `runAsJob` writers → `<prefix>-<uuid>`, where some prefixes are
+ *   themselves two-segment (`job-rw-…`, `job-vote-…`). Both forms are matched by
+ *   {@link toolNameFromJobId}, which tries the two-segment prefix before the
+ *   single-segment one so `job-rw-…` resolves to `run_workflow` rather than
+ *   colliding on `job`. Extended as each writer migrates (#3091, #3092).
+ * Unknown → `'unknown'`.
  */
 const TOOL_NAME_BY_PREFIX: Readonly<Record<string, string>> = {
   orch: 'orchestrate',
-  rwf: 'run_workflow',
-  cv: 'consensus_vote',
+  // run_workflow mints `job-rw-<uuid>`; consensus_vote mints `job-vote-<uuid>`.
+  // Both share the `job` first segment, so they are keyed (and matched) on the
+  // two-segment prefix to stay distinct.
+  'job-rw': 'run_workflow',
+  'job-vote': 'consensus_vote',
   // #3726: run_dev_pipeline async jobs mint `dp-<uuid>` ids (or reuse the
   // caller's sessionId — which has no fixed prefix, so the dual-read reader
   // resolves those from the sidecar via toolName recorded at writeJobPending).
@@ -58,6 +66,13 @@ const TOOL_NAME_BY_PREFIX: Readonly<Record<string, string>> = {
 
 /** Derive the toolName from a jobId/taskId prefix. */
 export function toolNameFromJobId(jobId: string): string {
+  const [first, second] = jobId.split('-');
+  // Try the two-segment prefix first (e.g. `job-rw`, `job-vote`) so distinct
+  // tools that share a leading segment don't collide, then the single segment.
+  if (first !== undefined && second !== undefined) {
+    const byTwo = TOOL_NAME_BY_PREFIX[`${first}-${second}`];
+    if (byTwo !== undefined) return byTwo;
+  }
   const dash = jobId.indexOf('-');
   const prefix = dash === -1 ? jobId : jobId.slice(0, dash);
   return TOOL_NAME_BY_PREFIX[prefix] ?? 'unknown';

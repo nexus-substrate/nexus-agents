@@ -19,10 +19,6 @@
  * @module mcp/tools/auto-remediation-lease
  */
 
-// @export-no-consumer-yet — see #3648
-// Wired into AutoRemediationDeps.acquireLease by the enforce entry point (the
-// remaining #3648 increment). Built first as the most-scrutinized condition.
-
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { ILogger } from '../../core/index.js';

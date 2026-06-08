@@ -16,10 +16,6 @@
  * @module mcp/tools/auto-remediation-branch
  */
 
-// @export-no-consumer-yet — see #3618
-// The enforce capstone (#3618) creates remediation branches with this convention;
-// built ahead for that named consumer. CI workflows already gate on the literal.
-
 /** Canonical prefix for branches the auto-remediation enforce path creates. */
 export const AUTO_REMEDIATION_BRANCH_PREFIX = 'auto-remediation/';
 
