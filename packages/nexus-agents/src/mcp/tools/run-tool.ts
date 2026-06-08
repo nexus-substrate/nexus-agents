@@ -25,7 +25,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import { createLogger, formatZodError, type ILogger } from '../../core/index.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
-import { createSecureHandler } from '../middleware/secure-handler.js';
+import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import {
   toolStructuredError,
   toolSuccess,
@@ -193,13 +193,24 @@ export function routeGoal(input: RunInput, logger?: ILogger): RunResponse {
  *   doesn't carry; use the `orchestrate` tool directly.
  * - `single-shot`: `delegate_to_model` recommends a model, it doesn't execute.
  */
-const DEFAULT_EXECUTORS: StrategyExecutorMap = {
-  'dev-pipeline': (_decision, metaInput: MetaOrchestratorInput) =>
-    runDevPipelineForGoal(metaInput.goal),
-  pipeline: (_decision, metaInput: MetaOrchestratorInput) => runPipelineForGoal(metaInput.goal),
-  research: (_decision, metaInput: MetaOrchestratorInput) => runPipelineForGoal(metaInput.goal),
-  consensus: (_decision, metaInput: MetaOrchestratorInput) => runConsensusForGoal(metaInput.goal),
-};
+/**
+ * Build the default inline executors, threading the caller's content-provenance
+ * `trustTier` into the dev-pipeline executor (#3712). This closes the run-path
+ * hole: `run` carries a real `RequestContext` AND runs a real research stage on
+ * a possibly-untrusted goal, so the dev-pipeline's consensus→execute seam MUST
+ * see the CALLER's real tier — never a hardcoded trusted '1'. `undefined` (no
+ * tier threaded) leaves the seam to fail-close to untrusted (tier 4). Only the
+ * dev-pipeline executor consumes the tier; the others don't reach that seam.
+ */
+export function buildDefaultExecutors(trustTier?: string): StrategyExecutorMap {
+  return {
+    'dev-pipeline': (_decision, metaInput: MetaOrchestratorInput) =>
+      runDevPipelineForGoal(metaInput.goal, trustTier),
+    pipeline: (_decision, metaInput: MetaOrchestratorInput) => runPipelineForGoal(metaInput.goal),
+    research: (_decision, metaInput: MetaOrchestratorInput) => runPipelineForGoal(metaInput.goal),
+    consensus: (_decision, metaInput: MetaOrchestratorInput) => runConsensusForGoal(metaInput.goal),
+  };
+}
 
 /** Result of an inline `execute: true` run. */
 export interface RunExecuteResponse {
@@ -255,12 +266,18 @@ export async function executeGoal(
     readonly executors?: StrategyExecutorMap | undefined;
     readonly outcomeSink?: MetaOutcomeSink | undefined;
     readonly onOutcome?: MetaOutcomeObserver | undefined;
+    /**
+     * Caller's content-provenance trust tier (#3712), threaded into the default
+     * dev-pipeline executor so the consensus→execute seam sees the real tier
+     * instead of fail-closing. Ignored when `executors` is supplied explicitly.
+     */
+    readonly trustTier?: string | undefined;
   } = {}
 ): Promise<RunExecuteResponse> {
   const decision = selectDecision(input, opts.logger);
   const onOutcome = opts.onOutcome ?? buildShadowTrainObserver(opts.logger);
   const dispatcher = createMetaDispatcher({
-    executors: opts.executors ?? DEFAULT_EXECUTORS,
+    executors: opts.executors ?? buildDefaultExecutors(opts.trustTier),
     ...(opts.logger !== undefined ? { logger: opts.logger } : {}),
     ...(opts.outcomeSink !== undefined ? { outcomeSink: opts.outcomeSink } : {}),
     ...(onOutcome !== undefined ? { onOutcome } : {}),
@@ -276,7 +293,7 @@ export async function executeGoal(
   };
 }
 
-async function runHandler(args: unknown, logger: ILogger): Promise<ToolResult> {
+async function runHandler(args: unknown, logger: ILogger, trustTier?: string): Promise<ToolResult> {
   const parsed = RunInputSchema.safeParse(args);
   if (!parsed.success) {
     return toolStructuredError({
@@ -287,7 +304,13 @@ async function runHandler(args: unknown, logger: ILogger): Promise<ToolResult> {
 
   if (parsed.data.execute === true) {
     try {
-      const exec = await executeGoal(parsed.data, { logger });
+      // #3712: thread the caller's real RequestContext.trustTier into the
+      // dev-pipeline executor's consensus→execute seam. undefined ⇒ seam
+      // fail-closes to untrusted (4); never infer trust from absence.
+      const exec = await executeGoal(parsed.data, {
+        logger,
+        ...(trustTier !== undefined ? { trustTier } : {}),
+      });
       logger.info('run: executed goal', {
         decisionId: exec.decisionId,
         strategy: exec.strategy,
@@ -326,11 +349,18 @@ const DESCRIPTION =
 export function registerRunTool(server: McpServer, deps: BaseMcpToolDeps): void {
   const logger = deps.logger ?? createLogger({ tool: 'run' });
 
-  const secureHandler = createSecureHandler((args: unknown) => runHandler(args, logger), {
-    toolName: 'run',
-    rateLimiter: deps.rateLimiter,
-    logger,
-  });
+  // 2-arg context-aware form (mirrors delegate-to-model.ts / run_dev_pipeline):
+  // thread the caller's real RequestContext.trustTier so the run→dev-pipeline
+  // consensus→execute seam sees the real tier (#3712) — this closes the hole
+  // where a possibly-untrusted goal ran a real research stage with no tier.
+  const secureHandler = createSecureHandler(
+    (args: unknown, ctx: HandlerContext) => runHandler(args, logger, ctx.requestContext.trustTier),
+    {
+      toolName: 'run',
+      rateLimiter: deps.rateLimiter,
+      logger,
+    }
+  );
 
   const timeoutMs = getToolTimeout('run', deps.security);
   const wrappedHandler = wrapToolWithTimeout('run', secureHandler, { timeoutMs, logger });

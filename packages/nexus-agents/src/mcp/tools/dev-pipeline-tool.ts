@@ -19,7 +19,7 @@ import { createAgentStages, flushPipelineMemory } from '../../pipeline/agent-exe
 import { createTaskTracker, detectBackend } from '../../pipeline/task-tracker.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
-import { createSecureHandler } from '../middleware/secure-handler.js';
+import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import {
   toolStructuredError,
   toolSuccessStructured,
@@ -206,10 +206,18 @@ async function createStages(
  * the `dev-pipeline` strategy (#3575). Wires real agents via {@link createStages};
  * never simulates votes (schema default `simulateVotes: false`).
  */
-export async function runDevPipelineForGoal(goal: string): Promise<DevPipelineResult> {
+export async function runDevPipelineForGoal(
+  goal: string,
+  trustTier?: string
+): Promise<DevPipelineResult> {
   const input = DevPipelineInputSchema.parse({ task: goal });
   const stages = await createStages(input);
-  return runDevPipeline(goal, stages);
+  // #3712: thread the caller's real content-provenance trust tier into the
+  // consensus→execute policy snapshot. Undefined ⇒ seam fail-closes to tier 4
+  // (never infer trust from absence). The `run` entry point passes the caller's
+  // real RequestContext.trustTier here — closing the run-path hole where a
+  // possibly-untrusted goal ran a real research stage with an absent tier.
+  return runDevPipeline(goal, stages, trustTier !== undefined ? { trustTier } : undefined);
 }
 
 // ============================================================================
@@ -237,8 +245,19 @@ function buildStructuredOutput(result: DevPipelineResult): Record<string, unknow
 const RUN_DEV_PIPELINE_DESCRIPTION =
   'Run the multi-agent development pipeline. Accepts direct task instructions, a plan file, or a spec file. Supports dry-run (plan+vote only).';
 
-/** Validates input, runs the dev pipeline, and shapes the result. */
-async function runDevPipelineHandler(args: unknown, logger: ILogger): Promise<ToolResult> {
+/**
+ * Validates input, runs the dev pipeline, and shapes the result.
+ *
+ * `trustTier` is the caller's real content-provenance tier, threaded from
+ * `RequestContext.trustTier` by the registered 2-arg handler (#3712). When
+ * undefined (no caller context), the consensus→execute seam fail-closes to
+ * untrusted (tier 4) — absence is never treated as trusted.
+ */
+async function runDevPipelineHandler(
+  args: unknown,
+  logger: ILogger,
+  trustTier?: string
+): Promise<ToolResult> {
   const parsed = DevPipelineInputSchema.safeParse(args);
   if (!parsed.success) {
     return toolStructuredError({
@@ -259,6 +278,7 @@ async function runDevPipelineHandler(args: unknown, logger: ILogger): Promise<To
       ...(input.dryRun ? { dryRun: true } : {}),
       ...(input.mode === 'harness' ? { mode: 'harness' as const } : {}),
       ...(input.qualityGate !== 'off' ? { qualityGate: input.qualityGate } : {}),
+      ...(trustTier !== undefined ? { trustTier } : {}),
     };
     const hasOptions = Object.keys(pipelineOptions).length > 0;
     const result = await runDevPipeline(taskText, stages, hasOptions ? pipelineOptions : undefined);
@@ -284,8 +304,14 @@ async function runDevPipelineHandler(args: unknown, logger: ILogger): Promise<To
  */
 export function registerDevPipelineTool(server: McpServer, deps: BaseMcpToolDeps): void {
   const logger = deps.logger ?? createLogger({ tool: 'run_dev_pipeline' });
+  // 2-arg context-aware form (mirrors delegate-to-model.ts): thread the caller's
+  // real RequestContext.trustTier into the consensus→execute policy snapshot
+  // (#3712). createSecureHandler always supplies a HandlerContext with a derived
+  // trustTier; the handler still fail-closes (tier 4) if a tier never reaches
+  // the runDevPipeline seam.
   const secureHandler = createSecureHandler(
-    (args: unknown) => runDevPipelineHandler(args, logger),
+    (args: unknown, ctx: HandlerContext) =>
+      runDevPipelineHandler(args, logger, ctx.requestContext.trustTier),
     { toolName: 'run_dev_pipeline', rateLimiter: deps.rateLimiter, logger }
   );
   const timeoutMs = getToolTimeout('run_dev_pipeline', deps.security);

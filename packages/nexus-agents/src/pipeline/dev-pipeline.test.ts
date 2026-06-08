@@ -708,3 +708,43 @@ describe('runDevPipeline — consensus→execute policy gate (#3704)', () => {
     }
   });
 });
+
+describe('runDevPipeline — trustTier threading into the policy snapshot (#3712)', () => {
+  afterEach(() => {
+    delete process.env['NEXUS_POLICY_GATE_MODE'];
+  });
+
+  it('absent trustTier (undefined) under block mode → THROWS (fail-closed, tier 4)', async () => {
+    process.env['NEXUS_POLICY_GATE_MODE'] = 'block';
+    const stages = createMockStages();
+    // No trustTier option → seam behaves as before (#3704): untrusted default.
+    await expect(runDevPipeline('Build feature X', stages)).rejects.toBeInstanceOf(
+      PolicyBlockedError
+    );
+    expect(stages.decompose).not.toHaveBeenCalled();
+  });
+
+  it("trusted trustTier '1' under block mode → COMPLETES (rule allows tier 1)", async () => {
+    process.env['NEXUS_POLICY_GATE_MODE'] = 'block';
+    const stages = createMockStages();
+    const result = await runDevPipeline('Build feature X', stages, { trustTier: '1' });
+    expect(stages.decompose).toHaveBeenCalledTimes(1);
+    expect(result.completed).toBe(true);
+  });
+
+  it("untrusted trustTier '3' under block mode → THROWS (rule blocks tier>=3 on execute)", async () => {
+    process.env['NEXUS_POLICY_GATE_MODE'] = 'block';
+    const stages = createMockStages();
+    await expect(
+      runDevPipeline('Build feature X', stages, { trustTier: '3' })
+    ).rejects.toBeInstanceOf(PolicyBlockedError);
+    expect(stages.decompose).not.toHaveBeenCalled();
+  });
+
+  it("trusted trustTier '1' under WARN default → completes without halting", async () => {
+    const stages = createMockStages();
+    const result = await runDevPipeline('Build feature X', stages, { trustTier: '1' });
+    expect(stages.decompose).toHaveBeenCalledTimes(1);
+    expect(result.completed).toBe(true);
+  });
+});

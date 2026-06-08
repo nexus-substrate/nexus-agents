@@ -217,6 +217,18 @@ export interface DevPipelineOptions {
    * forgets to seed it.
    */
   readonly researchOverride?: string | undefined;
+  /**
+   * Content-provenance trust tier ('1'–'4') threaded into the consensus→execute
+   * policy snapshot (#3712). Trust here is about the PROVENANCE of the content
+   * that reached this run (the goal/research), not the caller's identity. The MCP
+   * `run_dev_pipeline` handler and the `run` entry point thread the caller's real
+   * `RequestContext.trustTier`; the auto-remediation IMPLEMENT path may pass `'1'`
+   * only because #3643's typed RemediationPlan + CapabilityLedger confine
+   * untrusted input upstream. **When undefined the seam behaves as before
+   * (#3704): the engine defaults the missing tier to untrusted (4), fail-closed.**
+   * Absence anywhere = untrusted; never infer a trusted tier from missing context.
+   */
+  readonly trustTier?: string | undefined;
 }
 
 /**
@@ -272,7 +284,7 @@ async function runDevPipelineInner(
   // here — this seam closes that gap. Reuses evaluatePipelinePolicy (no 4th
   // evaluator); emits policy.evaluated BEFORE any throw so blocked runs are
   // audited. WARN by default (block opt-in via NEXUS_POLICY_GATE_MODE).
-  enforceConsensusExecutePolicy(sid);
+  enforceConsensusExecutePolicy(sid, options?.trustTier);
 
   // Phase 3: Decompose
   const tasks = await runOrResumeDecompose(prior, planResult.plan, stages, {
@@ -321,12 +333,18 @@ async function runDevPipelineInner(
  * (#3704 cond. 1).
  *
  * Mode resolves via `getGateEnforcementMode()`: WARN by default, block/off
- * opt-in via `NEXUS_POLICY_GATE_MODE`. trustTier is absent from dev-pipeline
- * metadata, so the engine defaults the missing tier to untrusted (fail-closed);
- * under WARN that logs + continues (cond. 3), under block it throws
+ * opt-in via `NEXUS_POLICY_GATE_MODE`. The `trustTier` is the content-provenance
+ * tier threaded from the caller (#3712) — the MCP handler and `run` entry point
+ * pass the real `RequestContext.trustTier`. **When undefined (no caller threaded
+ * a tier), the snapshot stays empty, so the engine defaults the missing tier to
+ * untrusted (4), fail-closed** — never infer a trusted tier from absence. Under
+ * WARN a violation logs + continues (cond. 3); under block it throws
  * {@link PolicyBlockedError} and aborts the run (cond. 2).
  */
-function enforceConsensusExecutePolicy(sessionId: string | undefined): void {
+function enforceConsensusExecutePolicy(
+  sessionId: string | undefined,
+  trustTier: string | undefined
+): void {
   const mode = getGateEnforcementMode();
   if (mode === 'off') return;
 
@@ -334,9 +352,10 @@ function enforceConsensusExecutePolicy(sessionId: string | undefined): void {
     taskId: sessionId ?? 'dev-pipeline',
     stageId: 'consensus-to-execute',
     stageType: 'execute',
-    // No trustTier in dev-pipeline metadata → engine defaults missing tier to
-    // untrusted (fail-closed). Safe under WARN (the default); block is opt-in.
-    pipelineState: {},
+    // Inline narrowing of the threaded tier into the typed snapshot (#3712):
+    // only a real string tier populates it; undefined keeps the snapshot empty
+    // so the engine fail-closes to untrusted (4). Absence = untrusted.
+    pipelineState: typeof trustTier === 'string' ? { trustTier } : {},
   };
 
   // evaluatePipelinePolicy emits policy.evaluated on the shared bus BEFORE it

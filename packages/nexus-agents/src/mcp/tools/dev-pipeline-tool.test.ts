@@ -2,7 +2,7 @@
  * run_dev_pipeline MCP Tool Tests (#1684)
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Pass-through the secure-handler / timeout chain so the registered callback
 // is the bare handler — lets the tests invoke it directly (#2824).
@@ -15,21 +15,56 @@ vi.mock('../middleware/secure-handler.js', () => ({
   createSecureHandler: (fn: unknown) => fn,
 }));
 
+// #3712: capture the options (esp. trustTier) handed to runDevPipeline so we can
+// assert the consensus→execute snapshot is fed the caller's real trust tier.
+const PIPELINE_RESULT = {
+  completed: true,
+  plan: 'plan',
+  tasks: [],
+  voteIterations: 1,
+  qaIterations: 1,
+  securityPassed: true,
+};
+const runDevPipelineMock = vi.fn(
+  (_task: string, _stages: unknown, _options?: { trustTier?: string }) =>
+    Promise.resolve(PIPELINE_RESULT)
+);
+vi.mock('../../pipeline/dev-pipeline.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../pipeline/dev-pipeline.js')>();
+  return {
+    ...actual,
+    runDevPipeline: (task: string, stages: unknown, options?: { trustTier?: string }) =>
+      runDevPipelineMock(task, stages, options),
+  };
+});
+
 import { DevPipelineInputSchema, registerDevPipelineTool } from './dev-pipeline-tool.js';
+
+interface HandlerCtx {
+  requestContext: { trustTier: string };
+}
+type CtxHandler = (args: unknown, ctx: HandlerCtx) => Promise<CapturedToolResult>;
 
 interface CapturedToolResult {
   isError?: boolean;
   content: Array<{ type: string; text: string }>;
 }
 
-/** Registers the tool against a mock server and returns the captured callback. */
-function captureHandler(): (args: unknown) => Promise<CapturedToolResult> {
-  let captured: ((args: unknown) => Promise<CapturedToolResult>) | undefined;
+/** A stdio-tier (trusted) context, the production default for a local CLI caller. */
+const STDIO_CTX: HandlerCtx = { requestContext: { trustTier: '1' } };
+
+/**
+ * Registers the tool against a mock server and returns the captured callback.
+ * The secure-handler is mocked to identity (top of file), so the captured value
+ * is the bare 2-arg `(args, ctx)` handler — tests must pass a HandlerCtx (#3712).
+ */
+function captureHandler(): CtxHandler {
+  let captured: CtxHandler | undefined;
   let registeredName: string | undefined;
   const mockServer = {
     registerTool: (name: string, _schema: unknown, handler: unknown) => {
       registeredName = name;
-      captured = handler as (args: unknown) => Promise<CapturedToolResult>;
+      captured = handler as CtxHandler;
     },
   };
   registerDevPipelineTool(mockServer as never, {
@@ -118,8 +153,25 @@ describe('registerDevPipelineTool', () => {
   it('returns a structured validation error for invalid input, not a thrown ZodError', async () => {
     const handler = captureHandler();
     // task must be a string; maxVoteIterations max is 5 — both invalid here.
-    const result = await handler({ task: 12345, maxVoteIterations: 99 });
+    const result = await handler({ task: 12345, maxVoteIterations: 99 }, STDIO_CTX);
     expect(result.isError).toBe(true);
     expect(result.content[0]?.text).toContain('Invalid input');
+  });
+});
+
+describe('registerDevPipelineTool — trustTier threading (#3712)', () => {
+  beforeEach(() => runDevPipelineMock.mockClear());
+
+  it('threads the real RequestContext.trustTier into runDevPipeline options', async () => {
+    const handler = captureHandler();
+    await handler({ task: 'Build feature X' }, { requestContext: { trustTier: '1' } });
+    expect(runDevPipelineMock).toHaveBeenCalledTimes(1);
+    expect(runDevPipelineMock.mock.calls[0]?.[2]?.trustTier).toBe('1');
+  });
+
+  it("forwards an untrusted tier '3' unchanged (not silently downgraded to trusted)", async () => {
+    const handler = captureHandler();
+    await handler({ task: 'Build feature X' }, { requestContext: { trustTier: '3' } });
+    expect(runDevPipelineMock.mock.calls[0]?.[2]?.trustTier).toBe('3');
   });
 });
