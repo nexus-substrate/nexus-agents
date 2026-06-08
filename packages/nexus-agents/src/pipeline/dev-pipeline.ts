@@ -24,6 +24,13 @@ import { runQaLoop } from '../orchestration/qa-loop.js';
 
 import { createLogger, getTimeProvider, withStep } from '../core/index.js';
 import { getPipelineEventBus } from './event-bus.js';
+import { createDefaultPolicyEngine } from './policy-engine.js';
+import type { PolicyContext } from './policy-engine.js';
+import {
+  evaluatePipelinePolicy,
+  getGateEnforcementMode,
+  PolicyBlockedError,
+} from './policy-evaluator.js';
 import {
   saveStageCheckpoint,
   loadCheckpointState,
@@ -260,6 +267,13 @@ async function runDevPipelineInner(
     return buildDryRunResult(planResult);
   }
 
+  // CONSENSUS → EXECUTE policy gate (#3704). The legacy dev-pipeline does not
+  // run through the graph PipelineRunner, so the #3177 graph gates never fire
+  // here — this seam closes that gap. Reuses evaluatePipelinePolicy (no 4th
+  // evaluator); emits policy.evaluated BEFORE any throw so blocked runs are
+  // audited. WARN by default (block opt-in via NEXUS_POLICY_GATE_MODE).
+  enforceConsensusExecutePolicy(sid);
+
   // Phase 3: Decompose
   const tasks = await runOrResumeDecompose(prior, planResult.plan, stages, {
     conditional: planResult.conditional,
@@ -287,6 +301,56 @@ async function runDevPipelineInner(
   applyPipelineHindsight(bm, task, sid, result);
 
   return result;
+}
+
+/**
+ * Enforces policy at the consensus→execute seam (#3704).
+ *
+ * Sits after the approved plan-vote loop (and the dryRun short-circuit) and
+ * before decompose, so a plan that passed consensus is still policy-checked
+ * before any execution work begins. This closes the legacy dev-pipeline gap:
+ * unlike the graph path (#3177 gates), `runDevPipeline` orchestrates via the
+ * `stages` callbacks and never instantiates the graph PipelineRunner — so a
+ * dev-pipeline run only ever traverses THIS seam, not the graph gates. The two
+ * paths are disjoint, so no double-evaluation guard is needed (#3704 cond. 4).
+ *
+ * Reuses the #3177 evaluator (`evaluatePipelinePolicy`) rather than forking a
+ * new one. The evaluator emits `policy.evaluated` events on the shared pipeline
+ * event bus BEFORE returning, so the emit happens BEFORE the block-mode throw
+ * below — blocked runs (the ones we most want audited) are never silently lost
+ * (#3704 cond. 1).
+ *
+ * Mode resolves via `getGateEnforcementMode()`: WARN by default, block/off
+ * opt-in via `NEXUS_POLICY_GATE_MODE`. trustTier is absent from dev-pipeline
+ * metadata, so the engine defaults the missing tier to untrusted (fail-closed);
+ * under WARN that logs + continues (cond. 3), under block it throws
+ * {@link PolicyBlockedError} and aborts the run (cond. 2).
+ */
+function enforceConsensusExecutePolicy(sessionId: string | undefined): void {
+  const mode = getGateEnforcementMode();
+  if (mode === 'off') return;
+
+  const context: PolicyContext = {
+    taskId: sessionId ?? 'dev-pipeline',
+    stageId: 'consensus-to-execute',
+    stageType: 'execute',
+    // No trustTier in dev-pipeline metadata → engine defaults missing tier to
+    // untrusted (fail-closed). Safe under WARN (the default); block is opt-in.
+    pipelineState: {},
+  };
+
+  // evaluatePipelinePolicy emits policy.evaluated on the shared bus BEFORE it
+  // returns — so the emit precedes the throw below (#3704 cond. 1).
+  const result = evaluatePipelinePolicy(
+    { engine: createDefaultPolicyEngine(), mode, eventBus: getPipelineEventBus() },
+    context
+  );
+
+  // Decision 1 = THROW (not the graceful completed:false path) so a policy
+  // denial aborts the run, consistent with the graph gate path (#3704 cond. 2).
+  if (mode === 'block' && !result.allowed) {
+    throw new PolicyBlockedError(context.stageId, result.violations);
+  }
 }
 
 /** Create a TraceWriter when sessionId is available (#1719). */
