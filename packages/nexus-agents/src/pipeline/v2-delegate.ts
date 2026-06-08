@@ -14,6 +14,7 @@
  * @module pipeline/v2-delegate
  */
 import { createLogger } from '../core/index.js';
+import { API_TIMEOUTS } from '../config/timeouts.js';
 
 import { PipelineRunner } from './pipeline-runner.js';
 import { getPipelineEventBus } from './event-bus.js';
@@ -299,6 +300,7 @@ export function buildDelegatePlan(task: TaskContract): PlanContract {
     },
     approvalRequired: false,
     maxIterations: 1,
-    timeoutMs: 30_000,
+    // Centralized to the existing named v2-delegate guard (#3736); same 30s value.
+    timeoutMs: API_TIMEOUTS.v2DelegateMs,
   };
 }

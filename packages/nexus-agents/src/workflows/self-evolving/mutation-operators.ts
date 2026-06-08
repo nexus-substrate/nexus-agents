@@ -11,6 +11,7 @@
 import type { WorkflowDefinition, WorkflowStep } from '../../core/index.js';
 import { getRandomProvider } from '../../core/index.js';
 import { clamp } from '../../utils/math-utils.js';
+import { SINGLE_LLM_EVAL_TIMEOUT_MS } from '../../config/timeouts.js';
 import type {
   WorkflowMutation,
   TimeoutAdjustment,
@@ -22,9 +23,11 @@ import type {
 import { findReorderableSteps, findParallelizableSteps } from './sew-types.js';
 
 /**
- * Default timeout value when step has none defined.
+ * Default timeout value when step has none defined. Runaway-guard for an LLM
+ * mutation evaluation (#3736): was a punitive 30s literal; raised to the central
+ * single-llm class guard (300s).
  */
-const DEFAULT_TIMEOUT_MS = 30000;
+const DEFAULT_TIMEOUT_MS = SINGLE_LLM_EVAL_TIMEOUT_MS;
 
 /**
  * Default retry count when step has none defined.

@@ -10,6 +10,7 @@
 
 import { z } from 'zod';
 import type { StepResult } from '../core/index.js';
+import { SEARCH_TREE_MAX_TIME_MS } from '../config/timeouts.js';
 
 /**
  * Verification result from the acceptance criterion.
@@ -141,7 +142,7 @@ export interface LattsConfig {
 export const DEFAULT_LATTS_CONFIG: LattsConfig = {
   maxAttemptsPerStep: 5,
   maxTotalAttempts: 20,
-  maxTimeMs: 300000, // 5 minutes
+  maxTimeMs: SEARCH_TREE_MAX_TIME_MS, // central single-llm guard (300s, #3736)
   acceptanceThreshold: 0.7,
   qualityThreshold: 0.6,
   allowBacktrack: true,
@@ -155,7 +156,7 @@ export const DEFAULT_LATTS_CONFIG: LattsConfig = {
 export const LattsConfigSchema = z.object({
   maxAttemptsPerStep: z.number().int().positive().default(5),
   maxTotalAttempts: z.number().int().positive().default(20),
-  maxTimeMs: z.number().int().positive().default(300000),
+  maxTimeMs: z.number().int().positive().default(SEARCH_TREE_MAX_TIME_MS),
   acceptanceThreshold: z.number().min(0).max(1).default(0.7),
   qualityThreshold: z.number().min(0).max(1).default(0.6),
   allowBacktrack: z.boolean().default(true),

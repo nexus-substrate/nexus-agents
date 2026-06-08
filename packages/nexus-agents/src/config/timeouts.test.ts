@@ -39,6 +39,9 @@ import {
   resolveToolClassGuardMs,
   resolveTimeoutMultiplier,
   classOverrideEnvVar,
+  SINGLE_LLM_EVAL_TIMEOUT_MS,
+  NETWORK_FETCH_TIMEOUT_MS,
+  SEARCH_TREE_MAX_TIME_MS,
   type OperationClassName,
 } from './timeouts.js';
 import { TOOL_MANIFEST } from '../mcp/tools/tool-manifest.js';
@@ -512,6 +515,23 @@ describe('Centralized Timeout Configuration', () => {
     it('defaults unclassified tools to single-llm (300s), not the punitive 60s', () => {
       expect(DEFAULT_OPERATION_CLASS).toBe('single-llm');
       expect(OPERATION_CLASSES[DEFAULT_OPERATION_CLASS].guardMs).toBe(300_000);
+    });
+  });
+
+  describe('named central constants for non-MCP callers (#3736)', () => {
+    it('derives each constant from the operation-class taxonomy (no local literals)', () => {
+      expect(SINGLE_LLM_EVAL_TIMEOUT_MS).toBe(OPERATION_CLASSES['single-llm'].guardMs);
+      expect(NETWORK_FETCH_TIMEOUT_MS).toBe(OPERATION_CLASSES['network-fetch'].guardMs);
+      expect(SEARCH_TREE_MAX_TIME_MS).toBe(OPERATION_CLASSES['single-llm'].guardMs);
+    });
+
+    it('keeps every constant generous (>= its class minimum, non-punitive)', () => {
+      // single-llm guards LLM round-trips: must comfortably exceed the old
+      // punitive 30s/60s literals the sweep replaced.
+      expect(SINGLE_LLM_EVAL_TIMEOUT_MS).toBeGreaterThanOrEqual(300_000);
+      // network-fetch must exceed the old tight 10s/30s HTTP literals.
+      expect(NETWORK_FETCH_TIMEOUT_MS).toBeGreaterThanOrEqual(120_000);
+      expect(SEARCH_TREE_MAX_TIME_MS).toBeGreaterThanOrEqual(300_000);
     });
   });
 

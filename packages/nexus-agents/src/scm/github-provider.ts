@@ -26,6 +26,7 @@ import type {
   IssueFilters,
 } from './types.js';
 import { ScmError } from './types.js';
+import { CLI_SUBPROCESS_TIMEOUTS } from '../config/timeouts.js';
 
 const execFileAsync = promisify(execFile);
 const logger = createLogger({ component: 'GitHubProvider' });
@@ -33,8 +34,9 @@ const logger = createLogger({ component: 'GitHubProvider' });
 /** Max buffer for gh CLI output (10MB). */
 const MAX_BUFFER = 10 * 1024 * 1024;
 
-/** gh CLI timeout in ms. */
-const GH_TIMEOUT_MS = 30_000;
+/** gh CLI subprocess runaway-guard. Centralized to the canonical gh-command
+ * timeout in the central authority (#3736); same 30s value. */
+const GH_TIMEOUT_MS = CLI_SUBPROCESS_TIMEOUTS.ghCommandMs;
 
 // ============================================================================
 // gh CLI JSON schemas (internal — #2962 site 4)

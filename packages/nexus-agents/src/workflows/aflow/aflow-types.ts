@@ -10,6 +10,7 @@
 
 import { z } from 'zod';
 import type { WorkflowDefinition, WorkflowStep, AgentRole } from '../../core/index.js';
+import { SINGLE_LLM_EVAL_TIMEOUT_MS } from '../../config/timeouts.js';
 
 /**
  * Action types that can be taken during workflow construction.
@@ -153,7 +154,9 @@ export const DEFAULT_AFLOW_CONFIG: AFlowConfig = {
   acceptanceThreshold: 0.7,
   maxSteps: 20,
   minSteps: 2,
-  evaluationTimeoutMs: 30000,
+  // Runaway-guard for a single LLM node evaluation (#3736): was a punitive 30s
+  // literal; raised to the central single-llm class guard (300s).
+  evaluationTimeoutMs: SINGLE_LLM_EVAL_TIMEOUT_MS,
   enableEarlyTermination: true,
   earlyTerminationThreshold: 0.9,
   temperature: 1.0,
@@ -171,7 +174,7 @@ export const AFlowConfigSchema = z.object({
   acceptanceThreshold: z.number().min(0).max(1).default(0.7),
   maxSteps: z.number().int().positive().default(20),
   minSteps: z.number().int().positive().default(2),
-  evaluationTimeoutMs: z.number().int().positive().default(30000),
+  evaluationTimeoutMs: z.number().int().positive().default(SINGLE_LLM_EVAL_TIMEOUT_MS),
   enableEarlyTermination: z.boolean().default(true),
   earlyTerminationThreshold: z.number().min(0).max(1).default(0.9),
   temperature: z.number().positive().default(1.0),
@@ -300,7 +303,9 @@ export const DEFAULT_ACTION_SPACE_CONFIG: ActionSpaceConfig = {
     'testing_expert',
   ],
   availableActions: ['analyze', 'implement', 'review', 'test', 'document'],
-  defaultTimeout: 60000,
+  // Default per-step runaway-guard for newly generated steps (#3736): was a
+  // punitive 60s literal; raised to the central single-llm class guard (300s).
+  defaultTimeout: SINGLE_LLM_EVAL_TIMEOUT_MS,
   defaultRetries: 2,
   maxDependenciesPerStep: 5,
 };

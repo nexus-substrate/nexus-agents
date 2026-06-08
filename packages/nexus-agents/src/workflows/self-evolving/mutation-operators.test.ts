@@ -95,8 +95,9 @@ describe('Mutation Operators', () => {
       const result = adjustTimeout(workflow, 'step1', 2.0);
 
       expect(result).not.toBeNull();
-      expect(result!.mutation.originalValue).toBe(30000); // DEFAULT_TIMEOUT_MS
-      expect(result!.mutation.newValue).toBe(60000);
+      // DEFAULT_TIMEOUT_MS centralized to the single-llm class guard (300s, #3736).
+      expect(result!.mutation.originalValue).toBe(300000);
+      expect(result!.mutation.newValue).toBe(600000); // clamped to MAX_TIMEOUT_MS
     });
 
     it('should clamp timeout to minimum 1000ms', () => {
