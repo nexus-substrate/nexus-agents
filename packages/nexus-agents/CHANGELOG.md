@@ -1,5 +1,39 @@
 # nexus-agents
 
+## 2.125.29
+
+### Patch Changes
+
+- [#3711](https://github.com/nexus-substrate/nexus-agents/pull/3711) [`d1a0166`](https://github.com/nexus-substrate/nexus-agents/commit/d1a0166d3397f182862811e1afd8d88a51fc5287) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Enforce policy at the consensus→execute seam in the legacy dev-pipeline ([#3704](https://github.com/nexus-substrate/nexus-agents/issues/3704)).
+
+  `runDevPipeline` orchestrates via stage callbacks and never traverses the graph
+  PipelineRunner, so the [#3177](https://github.com/nexus-substrate/nexus-agents/issues/3177) graph gates never fired for it — leaving the
+  consensus→execute boundary unguarded. A policy check now runs after the approved
+  plan-vote loop (and the dry-run short-circuit) and before decompose, reusing the
+  existing `evaluatePipelinePolicy` evaluator (no new evaluator path). Mode resolves
+  via `getGateEnforcementMode()` (WARN by default; block/off opt-in via
+  `NEXUS_POLICY_GATE_MODE`). `policy.evaluated` is emitted on the shared pipeline
+  event bus before any block-mode `PolicyBlockedError` throw, so blocked runs are
+  audited. WARN logs and continues; block throws and aborts the run.
+
+- [#3706](https://github.com/nexus-substrate/nexus-agents/pull/3706) [`4a60fc5`](https://github.com/nexus-substrate/nexus-agents/commit/4a60fc5131f2dbb150b38c0ba7aa71af93b1a259) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - orchestration: make graph-start context retrieval observable ([#3180](https://github.com/nexus-substrate/nexus-agents/issues/3180))
+
+  When `getContextForTask` fails during graph-start context population, the
+  executor no longer swallows it at debug. It now logs a `warn`, emits an
+  aggregatable `context_unavailable` graph event (sanitized message only — no
+  stack/paths/secrets), and continues with empty context (best-effort contract
+  preserved). `executionId` is threaded into `getContextForTask` for correlation,
+  and the inferred task category is surfaced. Scope is the graph boundary only;
+  the other `getContextForTask` call sites are tracked in [#3699](https://github.com/nexus-substrate/nexus-agents/issues/3699).
+
+- [#3706](https://github.com/nexus-substrate/nexus-agents/pull/3706) [`4a60fc5`](https://github.com/nexus-substrate/nexus-agents/commit/4a60fc5131f2dbb150b38c0ba7aa71af93b1a259) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Propagate model-registry / overlay updates to routing without a process restart ([#3185](https://github.com/nexus-substrate/nexus-agents/issues/3185)).
+
+  Two freezes are closed:
+  - `UnifiedAdapterRegistry` no longer caches its task→CLI routing at construction. Routing is re-resolved on every `getRouting` / `getAdapter` / `getSnapshot` read (~10 categories — negligible cost), so a post-startup registry/overlay change takes effect immediately.
+  - `getDefaultModelForCli` and `getInTreeCapabilitiesMatrix` now resolve through the overlay-bearing default registry (via a non-constructing `peekDefaultRegistry()` guard) instead of the frozen in-tree constants, so operator/user manifest overrides participate at runtime. A static fallback preserves the early-bootstrap path (no recursion, no forced filesystem read at module load).
+
+  Adds `reloadDefaultRegistry()` — the single hot-reload entry point. It re-reads the manifest overlays (fail-closed; never throws on a malformed manifest) and atomically resets BOTH the model-registry singleton and the `UnifiedAdapterRegistry`, so there is never a state where one is fresh and the other stale. Wired into `registry refresh`, which now hot-reloads in-process and updates its message accordingly.
+
 ## 2.125.28
 
 ### Patch Changes
