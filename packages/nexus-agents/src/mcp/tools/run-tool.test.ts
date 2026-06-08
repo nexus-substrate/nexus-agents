@@ -6,9 +6,28 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+// #3712: capture the trustTier handed to runDevPipelineForGoal through the
+// run → dev-pipeline executor path (the "hole" — a real RequestContext that ran
+// a real research stage on a possibly-untrusted goal with an absent tier).
+const runDevPipelineForGoalMock = vi.fn((_goal: string, _trustTier?: string) =>
+  Promise.resolve({
+    completed: true,
+    plan: 'plan',
+    tasks: [],
+    voteIterations: 1,
+    qaIterations: 1,
+    securityPassed: true,
+  })
+);
+vi.mock('./dev-pipeline-tool.js', () => ({
+  runDevPipelineForGoal: (goal: string, trustTier?: string) =>
+    runDevPipelineForGoalMock(goal, trustTier),
+}));
+
 import {
   routeGoal,
   executeGoal,
+  buildDefaultExecutors,
   isShadowTrainEnabled,
   RunInputSchema,
   STRATEGY_ENTRYPOINT_TOOL,
@@ -134,6 +153,49 @@ describe('executeGoal (run increment B, #3575)', () => {
       }
     );
     expect(sink.getOutcomes()[0]?.failureReason).toContain('pipeline blew up');
+  });
+});
+
+describe('run-path trustTier threading (#3712) — the run→dev-pipeline hole', () => {
+  beforeEach(() => runDevPipelineForGoalMock.mockClear());
+
+  it("preserves a tier-'3' caller through run→runDevPipelineForGoal (NOT downgraded to '1')", async () => {
+    await executeGoal(
+      { goal: 'implement the feature', forceStrategy: 'dev-pipeline', execute: true },
+      { trustTier: '3' }
+    );
+    expect(runDevPipelineForGoalMock).toHaveBeenCalledTimes(1);
+    expect(runDevPipelineForGoalMock.mock.calls[0]?.[1]).toBe('3');
+  });
+
+  it("threads a trusted tier-'1' caller through unchanged", async () => {
+    await executeGoal(
+      { goal: 'implement the feature', forceStrategy: 'dev-pipeline', execute: true },
+      { trustTier: '1' }
+    );
+    expect(runDevPipelineForGoalMock.mock.calls[0]?.[1]).toBe('1');
+  });
+
+  it('resolves to undefined tier when no caller tier is supplied (seam fail-closes to 4)', async () => {
+    await executeGoal({
+      goal: 'implement the feature',
+      forceStrategy: 'dev-pipeline',
+      execute: true,
+    });
+    expect(runDevPipelineForGoalMock.mock.calls[0]?.[1]).toBeUndefined();
+  });
+
+  it('regression: an untrusted-origin goal resolves to tier>=3 (not silently trusted)', async () => {
+    // A goal arriving over an unauthenticated transport derives tier '3'; the run
+    // path MUST carry that through so the consensus→execute seam sees untrusted.
+    const executors = buildDefaultExecutors('3');
+    await executeGoal(
+      { goal: 'untrusted external goal text', forceStrategy: 'dev-pipeline', execute: true },
+      { executors }
+    );
+    const threaded = runDevPipelineForGoalMock.mock.calls[0]?.[1];
+    expect(threaded).toBeDefined();
+    expect(Number(threaded)).toBeGreaterThanOrEqual(3);
   });
 });
 
