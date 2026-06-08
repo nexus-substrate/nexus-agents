@@ -69,6 +69,7 @@
     "typecheck": "tsc --noEmit",
     "docs": "typedoc",
     "docs:watch": "typedoc --watch",
+    "docs:api:md": "typedoc --options typedoc.markdown.json",
     "postinstall": "node scripts/postinstall.js || true",
     "prepublishOnly": "pnpm run build"
   },
@@ -102,6 +103,8 @@
     "nexus-memory": "workspace:*",
     "tsup": "^8.5.1",
     "typedoc": "0.28.19",
+    "typedoc-plugin-frontmatter": "1.3.1",
+    "typedoc-plugin-markdown": "4.12.0",
     "vitest": "4.1.8"
   },
   "peerDependencies": {

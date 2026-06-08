@@ -1,0 +1,26 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": ["src/core/result.ts"],
+  "tsconfig": "tsconfig.docs.json",
+  "exclude": ["**/*.test.ts", "**/*.spec.ts", "**/*.fuzz.test.ts"],
+  "out": "../../docs/api",
+  "name": "nexus-agents API",
+  "plugin": [
+    "typedoc-plugin-markdown",
+    "typedoc-plugin-frontmatter",
+    "./scripts/typedoc-astro-title.mjs"
+  ],
+  "excludePrivate": true,
+  "excludeInternal": true,
+  "readme": "none",
+  "githubPages": false,
+  "hideBreadcrumbs": true,
+  "hidePageHeader": true,
+  "useCodeBlocks": true,
+  "expandObjects": true,
+  "outputFileStrategy": "modules",
+  "entryFileName": "index",
+  "frontmatterGlobals": {
+    "tier": 2
+  }
+}
