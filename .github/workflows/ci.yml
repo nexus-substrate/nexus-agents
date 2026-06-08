@@ -149,7 +149,7 @@ jobs:
           echo "✓ Working tree clean after tests"
 
       - name: Upload coverage
-        uses: codecov/codecov-action@e79a6962e0d4c0c17b229090214935d2e33f8354 # v5
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v5
         # #3614: don't expose CODECOV_TOKEN to auto-remediation bot branches
         # (secret-less CI for the auto-PR path). Prefix kept in sync with
         # AUTO_REMEDIATION_BRANCH_PREFIX in src/mcp/tools/auto-remediation-branch.ts.
