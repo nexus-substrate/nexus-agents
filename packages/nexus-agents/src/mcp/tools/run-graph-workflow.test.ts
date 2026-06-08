@@ -4,13 +4,19 @@
  * (Source: Issue #840 — Expose graph workflows via MCP tool)
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   RunGraphWorkflowInputSchema,
   registerRunGraphWorkflowTool,
   type RunGraphWorkflowResponse,
 } from './run-graph-workflow.js';
 import { RateLimiter } from '../middleware/index.js';
+import { readJobResult } from '../jobs/job-result-store.js';
+import { _resetForTests as resetJobConcurrency } from '../jobs/job-concurrency.js';
+import { resetNexusDataDirCache } from '../../config/nexus-data-dir.js';
 
 // ============================================================================
 // Test Helpers
@@ -268,6 +274,81 @@ describe('pipeline workflow', () => {
     const result = parseResponse(response);
     const stepEvents = result.events.filter((e) => e.type === 'step_completed');
     expect(stepEvents.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+// ============================================================================
+// Async dispatch (#3732)
+// ============================================================================
+
+describe('RunGraphWorkflowInputSchema dispatch (#3732)', () => {
+  it('defaults dispatch to sync and accepts async', () => {
+    expect(RunGraphWorkflowInputSchema.parse({ workflow: 'echo' }).dispatch).toBe('sync');
+    expect(
+      RunGraphWorkflowInputSchema.parse({ workflow: 'echo', dispatch: 'async' }).dispatch
+    ).toBe('async');
+    expect(() => RunGraphWorkflowInputSchema.parse({ workflow: 'echo', dispatch: 'x' })).toThrow();
+  });
+});
+
+// #3732: `dispatch: 'async'` returns a jobId immediately and runs the graph
+// workflow (up to ~100 expert nodes) in the background (poll get_job_result).
+// run_graph_workflow has no sessionId, so a fresh `gw-<uuid>` jobId is minted.
+describe('run_graph_workflow async dispatch (#3732)', () => {
+  let tmpDir: string;
+  const originalDataDir = process.env['NEXUS_DATA_DIR'];
+
+  function envelope(response: ToolResponse): Record<string, unknown> {
+    return JSON.parse(response.content[0]?.text ?? '{}') as Record<string, unknown>;
+  }
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'nexus-gw-async-'));
+    process.env['NEXUS_DATA_DIR'] = tmpDir;
+    resetNexusDataDirCache();
+    resetJobConcurrency();
+  });
+
+  afterEach(() => {
+    if (originalDataDir === undefined) delete process.env['NEXUS_DATA_DIR'];
+    else process.env['NEXUS_DATA_DIR'] = originalDataDir;
+    resetNexusDataDirCache();
+    resetJobConcurrency();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("returns { status: 'pending', jobId } and mints a gw-<uuid> id", async () => {
+    const handler = registerAndGetHandler();
+    const response = await handler({
+      workflow: 'echo',
+      inputs: { input: 'hi' },
+      dispatch: 'async',
+    });
+    const env = envelope(response);
+    expect(env['status']).toBe('pending');
+    expect(typeof env['jobId']).toBe('string');
+    expect(env['jobId'] as string).toMatch(/^gw-/);
+    expect(env['pollTool']).toBe('get_job_result');
+  });
+
+  it('runs inline (sync) by default — no pending envelope', async () => {
+    const handler = registerAndGetHandler();
+    const response = await handler({ workflow: 'echo', inputs: { input: 'hi' } });
+    expect(envelope(response)['status']).toBe('completed');
+  });
+
+  it('records the result to the sidecar when the background run completes', async () => {
+    const handler = registerAndGetHandler();
+    const response = await handler({
+      workflow: 'echo',
+      inputs: { input: 'hi' },
+      dispatch: 'async',
+    });
+    const jobId = envelope(response)['jobId'] as string;
+    // The background run is fire-and-forget; let the microtask queue drain.
+    await new Promise((r) => setImmediate(r));
+    const record = readJobResult(jobId);
+    expect(record?.status).toBe('complete');
   });
 });
 

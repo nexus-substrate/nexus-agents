@@ -53,6 +53,15 @@ export const DEFAULT_JOB_CAPS: Readonly<Record<string, number>> = {
   // #3731: supply_chain_tradeoff_panel fans out to up to 7 live LLM voters in
   // parallel. Same heavy multi-llm-panel shape as consensus_vote — cap low at 2.
   supply_chain_tradeoff_panel: 2,
+  // #3732: execute_spec runs a full spec DAG pipeline (parse→decompose→compile
+  // →execute→validate→analyze, live multi-agent execution). Heavy — cap low at 2.
+  execute_spec: 2,
+  // #3732: run_graph_workflow runs up to ~100 expert nodes with checkpoints.
+  // Heavy multi-node pipeline — cap low at 2.
+  run_graph_workflow: 2,
+  // #3732: run (execute:true) dispatches the heaviest engines (dev-pipeline/
+  // pipeline) via the MetaDispatcher. Same heavy-pipeline shape — cap low at 2.
+  run: 2,
 };
 
 /**

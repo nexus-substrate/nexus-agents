@@ -24,15 +24,36 @@ vi.mock('./dev-pipeline-tool.js', () => ({
     runDevPipelineForGoalMock(goal, trustTier),
 }));
 
+// #3732: pass-through the secure-handler / timeout chain so the registered
+// callback is the bare handler — lets the async-dispatch tests invoke it
+// directly. createSecureHandler injects a minimal ctx (the run handler reads
+// ctx.requestContext.trustTier). Only the new handler-capture tests use this;
+// the existing routeGoal/executeGoal tests call those functions directly.
+vi.mock('../middleware/tool-wrapper.js', () => ({
+  wrapToolWithTimeout: (_name: string, fn: unknown) => fn,
+  toSdkCallback: (fn: unknown) => fn,
+  getToolTimeout: () => 900_000,
+}));
+vi.mock('../middleware/secure-handler.js', () => ({
+  createSecureHandler:
+    (fn: (args: unknown, ctx: { requestContext: { trustTier?: string } }) => unknown) =>
+    (args: unknown) =>
+      fn(args, { requestContext: {} }),
+}));
+
 import {
   routeGoal,
   executeGoal,
   buildDefaultExecutors,
   isShadowTrainEnabled,
+  registerRunTool,
   RunInputSchema,
   STRATEGY_ENTRYPOINT_TOOL,
   type RunResponse,
 } from './run-tool.js';
+import { readJobResult } from '../jobs/job-result-store.js';
+import { _resetForTests as resetJobConcurrency } from '../jobs/job-concurrency.js';
+import { resetNexusDataDirCache } from '../../config/nexus-data-dir.js';
 import type { ExecutionStrategy } from '../../orchestration/meta-orchestrator.js';
 import {
   createRecordingOutcomeSink,
@@ -100,6 +121,12 @@ describe('RunInputSchema', () => {
 
   it('accepts the execute flag', () => {
     expect(RunInputSchema.safeParse({ goal: 'g', execute: true }).success).toBe(true);
+  });
+
+  it('accepts dispatch: async and rejects unknown values (#3732)', () => {
+    expect(RunInputSchema.safeParse({ goal: 'g', dispatch: 'async' }).success).toBe(true);
+    expect(RunInputSchema.safeParse({ goal: 'g', dispatch: 'sync' }).success).toBe(true);
+    expect(RunInputSchema.safeParse({ goal: 'g', dispatch: 'bogus' }).success).toBe(false);
   });
 });
 
@@ -254,5 +281,108 @@ describe('shadow-train gating (NEXUS_META_SHADOW_TRAIN, #3593)', () => {
       { executors }
     );
     expect(existsSync(getMetaOutcomesFile())).toBe(false);
+  });
+});
+
+// #3732: `run` with execute:true dispatches the heaviest engines (dev-pipeline/
+// pipeline), which can exceed the MCP request timeout even with the 1800s class
+// guard (#3734). `dispatch: 'async'` returns a jobId immediately and runs the
+// dispatch in the background (poll get_job_result). `run` has no sessionId, so a
+// fresh `rn-<uuid>` jobId is always minted.
+describe('run async dispatch (execute:true, #3732)', () => {
+  let tmpDir: string;
+  const originalDataDir = process.env['NEXUS_DATA_DIR'];
+
+  interface CapturedToolResult {
+    isError?: boolean;
+    content: Array<{ type: string; text: string }>;
+  }
+
+  /** Registers the tool against a mock server and returns the captured callback. */
+  function captureHandler(): (args: unknown) => Promise<CapturedToolResult> {
+    let captured: ((args: unknown) => Promise<CapturedToolResult>) | undefined;
+    let registeredName: string | undefined;
+    const mockServer = {
+      registerTool: (name: string, _schema: unknown, handler: unknown) => {
+        registeredName = name;
+        captured = handler as (args: unknown) => Promise<CapturedToolResult>;
+      },
+    };
+    registerRunTool(mockServer as never, {
+      rateLimiter: { tryConsume: () => ({ allowed: true, remaining: 99 }) } as never,
+    });
+    expect(registeredName).toBe('run');
+    if (captured === undefined) throw new Error('handler not registered');
+    return captured;
+  }
+
+  function envelope(result: CapturedToolResult): Record<string, unknown> {
+    return JSON.parse(result.content[0]!.text) as Record<string, unknown>;
+  }
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'nexus-rn-async-'));
+    process.env['NEXUS_DATA_DIR'] = tmpDir;
+    resetNexusDataDirCache();
+    resetJobConcurrency();
+    runDevPipelineForGoalMock.mockClear();
+  });
+
+  afterEach(() => {
+    if (originalDataDir === undefined) delete process.env['NEXUS_DATA_DIR'];
+    else process.env['NEXUS_DATA_DIR'] = originalDataDir;
+    resetNexusDataDirCache();
+    resetJobConcurrency();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("returns { status: 'pending', jobId } and mints an rn-<uuid> id", async () => {
+    const handler = captureHandler();
+    const result = await handler({
+      goal: 'implement the feature',
+      forceStrategy: 'dev-pipeline',
+      execute: true,
+      dispatch: 'async',
+    });
+    const env = envelope(result);
+    expect(env['status']).toBe('pending');
+    expect(typeof env['jobId']).toBe('string');
+    expect(env['jobId'] as string).toMatch(/^rn-/);
+    expect(env['pollTool']).toBe('get_job_result');
+  });
+
+  it('runs inline (sync) by default — returns the executed result, no pending envelope', async () => {
+    const handler = captureHandler();
+    const result = await handler({
+      goal: 'implement the feature',
+      forceStrategy: 'dev-pipeline',
+      execute: true,
+    });
+    const env = envelope(result);
+    expect(env['status']).toBeUndefined();
+    expect(env['executed']).toBe(true);
+  });
+
+  it('read-only routing (execute:false) ignores dispatch and stays sync', async () => {
+    const handler = captureHandler();
+    const result = await handler({ goal: 'implement the feature', dispatch: 'async' });
+    const env = envelope(result);
+    expect(env['status']).toBeUndefined();
+    expect(env['recommendedTool']).toBeTruthy();
+  });
+
+  it('records the result to the sidecar when the background dispatch completes', async () => {
+    const handler = captureHandler();
+    const result = await handler({
+      goal: 'implement the feature',
+      forceStrategy: 'dev-pipeline',
+      execute: true,
+      dispatch: 'async',
+    });
+    const jobId = envelope(result)['jobId'] as string;
+    // The background run is fire-and-forget; let the microtask queue drain.
+    await new Promise((r) => setImmediate(r));
+    const record = readJobResult(jobId);
+    expect(record?.status).toBe('complete');
   });
 });
