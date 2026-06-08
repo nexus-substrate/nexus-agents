@@ -56,11 +56,31 @@ export interface TrustClassificationEvent extends AuditEventBase {
 /** Policy gate evaluation result. */
 export interface PolicyGateEvent extends AuditEventBase {
   readonly type: 'policy_gate';
-  readonly actionType: AgentActionType;
+  /**
+   * The agent action evaluated, for the security policy-gate path
+   * (security/policy-gate.ts). Optional because the PIPELINE policy path
+   * (pipeline/policy-evaluator.ts → #3710) records stage-boundary policy
+   * decisions that have no `AgentAction` — they carry {@link stageType} +
+   * {@link mode} + {@link ruleIds} instead. Security emitters always set it.
+   */
+  readonly actionType?: AgentActionType;
   readonly allowed: boolean;
   readonly requiresApproval: boolean;
   readonly inputTrustTier: TrustTier;
   readonly violationRules: readonly string[];
+  /**
+   * Pipeline-policy fields (#3710). Carried for the dev-pipeline
+   * consensus→execute seam so the DURABLE record can distinguish soak (`warn`)
+   * from enforce (`block`) and which rules/stage fired — without these the
+   * persisted event is useless to the tune/readiness loop. Absent for the
+   * security policy-gate path.
+   */
+  /** Enforcement mode the decision was made under: `warn` (soak) or `block` (enforce). */
+  readonly mode?: 'off' | 'warn' | 'block';
+  /** IDs of the policy rules that fired (mirrors `violationRules` for the pipeline path). */
+  readonly ruleIds?: readonly string[];
+  /** Type of the stage the gate guarded (e.g. `execute`). */
+  readonly stageType?: string;
 }
 
 /** Corroboration validation result. */
@@ -327,6 +347,24 @@ export function emitPolicyEvent(
   return trail.append({
     type: 'policy_gate',
     component: 'policy-gate',
+    ...data,
+  });
+}
+
+/**
+ * Records a PIPELINE-policy gate decision (#3710) — the dev-pipeline
+ * consensus→execute seam. Distinct from {@link emitPolicyEvent} (the security
+ * policy-gate path with an `AgentAction`): this carries `mode`/`ruleIds`/
+ * `stageType` so the durable record distinguishes soak(warn) from enforce(block)
+ * and is usable by the tune/readiness loop. ONE append per call.
+ */
+export function emitPipelinePolicyEvent(
+  trail: AuditTrail,
+  data: Omit<PolicyGateEvent, 'id' | 'timestamp' | 'type' | 'component' | 'actionType'>
+): string {
+  return trail.append({
+    type: 'policy_gate',
+    component: 'pipeline-policy-evaluator',
     ...data,
   });
 }

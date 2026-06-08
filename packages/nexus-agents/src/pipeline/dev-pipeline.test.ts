@@ -17,6 +17,9 @@ import type { HindsightRecord } from '../context/belief-hindsight-types.js';
 import { ok, err } from '../core/result.js';
 import { MemoryError } from '../context/memory-backend-types.js';
 import type { TechniqueStatusSummary } from '../cli/research-types.js';
+import { AuditLogger, verifyChain } from '../audit/audit-logger.js';
+import { InMemoryAuditStorage } from '../audit/audit-storage.js';
+import type { AuditLogConfig } from '../audit/audit-types.js';
 
 // #3472: the dev-pipeline now recalls prior research from the registry on every
 // run. Mock it to empty by default so existing assertions (which count `- `
@@ -746,5 +749,91 @@ describe('runDevPipeline — trustTier threading into the policy snapshot (#3712
     const result = await runDevPipeline('Build feature X', stages, { trustTier: '1' });
     expect(stages.decompose).toHaveBeenCalledTimes(1);
     expect(result.completed).toBe(true);
+  });
+});
+
+// ============================================================================
+// Durable policy-audit persistence (#3710)
+// ============================================================================
+
+describe('runDevPipeline — durable policy-audit persistence (#3710)', () => {
+  function hashChainConfig(): AuditLogConfig {
+    return {
+      logDir: '/tmp/nexus-audit-3710', // unused by InMemoryAuditStorage
+      filePrefix: 'test',
+      maxFileSizeBytes: 1024,
+      maxFiles: 3,
+      flushIntervalMs: 100,
+      minSeverity: 'info',
+      enableHashChain: true,
+      enableCompression: false,
+      maxQueueDepth: 10_000,
+    };
+  }
+
+  afterEach(() => {
+    delete process.env['NEXUS_POLICY_GATE_MODE'];
+  });
+
+  it('warn-mode violation → a verifiable hash-chain entry (verifyChain passes)', async () => {
+    process.env['NEXUS_POLICY_GATE_MODE'] = 'warn';
+    const storage = new InMemoryAuditStorage();
+    const auditLogger = new AuditLogger(hashChainConfig(), storage);
+    const stages = createMockStages();
+
+    // Missing trustTier → trust-tier rule denies the execute stage (warn: continues).
+    const result = await runDevPipeline('Build feature X', stages, { auditLogger });
+    await auditLogger.flush();
+
+    expect(result.completed).toBe(true);
+    const events = storage.getAll();
+    const policyGate = events.filter((e) => e.action === 'security.policy_gate');
+    // Exactly one durable policy_gate record persisted, with mode/ruleIds/stageType.
+    expect(policyGate).toHaveLength(1);
+    expect(policyGate[0]!.metadata?.['mode']).toBe('warn');
+    expect(policyGate[0]!.metadata?.['ruleIds']).toEqual(['trust-tier']);
+    expect(policyGate[0]!.metadata?.['stageType']).toBe('execute');
+    // The persisted chain verifies.
+    expect(verifyChain(events).ok).toBe(true);
+
+    await auditLogger.close();
+  });
+
+  it('serialized appends: parallel runs sharing one logger keep verifyChain passing', async () => {
+    process.env['NEXUS_POLICY_GATE_MODE'] = 'warn';
+    const storage = new InMemoryAuditStorage();
+    const auditLogger = new AuditLogger(hashChainConfig(), storage);
+
+    // Six concurrent dev-pipeline runs share the single logger. Each fires one
+    // warn-mode violation → one durable append. The hash chain must stay valid.
+    await Promise.all(
+      Array.from({ length: 6 }, (_, i) =>
+        runDevPipeline(`Build feature ${String(i)}`, createMockStages(), { auditLogger })
+      )
+    );
+    await auditLogger.flush();
+
+    const events = storage.getAll();
+    const policyGate = events.filter((e) => e.action === 'security.policy_gate');
+    expect(policyGate).toHaveLength(6); // one per run, no drops or dupes
+    expect(verifyChain(events).ok).toBe(true);
+
+    await auditLogger.close();
+  });
+
+  it('no auditLogger: still emits policy.evaluated on the bus (TraceWriter back-compat)', async () => {
+    process.env['NEXUS_POLICY_GATE_MODE'] = 'warn';
+    const events: string[] = [];
+    const off = getPipelineEventBus().subscribe({ type: 'policy.evaluated' }, (e) => {
+      if (e.type === 'policy.evaluated') events.push(e.gateId);
+    });
+    try {
+      // No auditLogger threaded → pure-CLI path. Bus emit is unchanged.
+      const result = await runDevPipeline('Build feature X', createMockStages());
+      expect(result.completed).toBe(true);
+      expect(events.some((g) => g.startsWith('consensus-to-execute:'))).toBe(true);
+    } finally {
+      off();
+    }
   });
 });

@@ -239,6 +239,12 @@ interface ToolRegistrationContext {
   workflowConfig?: import('./config/index.js').WorkflowConfig;
   /** Tool allowlist from security config (Issue #740) */
   toolAllowlist?: Set<string>;
+  /**
+   * Durable, hash-chained audit logger (#3710). Threaded so `run_dev_pipeline`'s
+   * consensus→execute policy gate persists `policy.evaluated` decisions to the
+   * shared store. Optional — absent on the pure-CLI path.
+   */
+  auditLogger?: import('./audit/audit-types.js').IAuditLogger;
 }
 
 /**
@@ -474,6 +480,7 @@ function copyOptionalProps(opts: RegisterMcpToolsOptions): Partial<ToolRegistrat
   if (opts.securityConfig !== undefined) result.securityConfig = opts.securityConfig;
   if (opts.workflowConfig !== undefined) result.workflowConfig = opts.workflowConfig;
   if (opts.feedbackIntegration !== undefined) result.feedbackIntegration = opts.feedbackIntegration;
+  if (opts.auditLogger !== undefined) result.auditLogger = opts.auditLogger;
   return result;
 }
 
@@ -563,11 +570,17 @@ function buildStandardDeps(
   logger: ILogger;
   rateLimiter: ReturnType<ReturnType<typeof createToolRateLimiterFactory>['getForTool']>;
   security?: import('./config/index.js').SecurityConfig;
+  auditLogger?: import('./audit/audit-types.js').IAuditLogger;
 } {
   return {
     logger: ctx.logger,
     rateLimiter: ctx.rateLimiterFactory.getForTool(toolName),
     ...(ctx.securityConfig !== undefined && { security: ctx.securityConfig }),
+    // #3710: only run_dev_pipeline consumes the durable auditLogger — thread it
+    // so its consensus→execute policy gate persists decisions to the shared chain.
+    ...(toolName === 'run_dev_pipeline' && ctx.auditLogger !== undefined
+      ? { auditLogger: ctx.auditLogger }
+      : {}),
   };
 }
 
