@@ -9,6 +9,7 @@
  */
 
 import { z } from 'zod';
+import { randomUUID } from 'node:crypto';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
 import {
@@ -36,6 +37,8 @@ import {
   type ToolResult,
 } from './tool-result.js';
 import { getToolAnnotations } from '../tool-annotations.js';
+// #3732 / epic #2631: async-mode dispatch via the shared `runAsJob` helper.
+import { runAsJob } from '../jobs/run-as-job.js';
 
 // ============================================================================
 // Types & Schema
@@ -44,6 +47,20 @@ import { getToolAnnotations } from '../tool-annotations.js';
 export const ExecuteSpecInputSchema = z.object({
   spec: z.string().min(1).max(50_000).describe('Markdown specification to execute'),
   dryRun: z.boolean().optional().default(false).describe('Parse and decompose only'),
+  /**
+   * Dispatch mode (#3732). `sync` (default) runs the full DAG pipeline inline
+   * and returns the result — but a real parse→decompose→compile→execute→
+   * validate→analyze run can exceed the MCP request timeout. `async` returns a
+   * `{ status: 'pending', jobId }` envelope immediately and runs in the
+   * background; poll `get_job_result({ jobId })` for the result. Ignored when
+   * `dryRun` is true (parse+decompose completes fast, so dry runs stay sync).
+   */
+  dispatch: z
+    .enum(['sync', 'async'])
+    .default('sync')
+    .describe(
+      "Dispatch mode (#3732). 'sync' (default): run inline. 'async': return a jobId immediately + run in background (poll get_job_result). Ignored for dryRun."
+    ),
 });
 
 export type ExecuteSpecInput = z.infer<typeof ExecuteSpecInputSchema>;
@@ -114,11 +131,11 @@ async function createFullResponse(input: ExecuteSpecInput, logger: ILogger): Pro
 // Registration
 // ============================================================================
 
-/** Registers the execute_spec tool with an MCP server. @category MCP */
-export function registerExecuteSpecTool(server: McpServer, deps: ExecuteSpecDeps): void {
-  const logger = deps.logger ?? createLogger({ tool: 'execute_spec' });
-
-  const handler = async (args: unknown, _ctx: HandlerContext): Promise<ToolResult> => {
+/** Creates the execute_spec handler — parse, dryRun short-circuit, async dispatch. */
+function createExecuteSpecHandler(
+  logger: ILogger
+): (args: unknown, ctx: HandlerContext) => Promise<ToolResult> {
+  return async (args: unknown, _ctx: HandlerContext): Promise<ToolResult> => {
     const parsed = ExecuteSpecInputSchema.safeParse(args);
     if (!parsed.success) {
       return toolStructuredError({
@@ -127,12 +144,34 @@ export function registerExecuteSpecTool(server: McpServer, deps: ExecuteSpecDeps
       });
     }
 
-    if (parsed.data.dryRun) {
-      return createDryRunResponse(parsed.data, logger);
+    const input = parsed.data;
+    if (input.dryRun) {
+      return createDryRunResponse(input, logger);
     }
 
-    return createFullResponse(parsed.data, logger);
+    // #3732: async dispatch for real (non-dryRun) runs — a full spec DAG
+    // pipeline can exceed the MCP request timeout. execute_spec has no
+    // sessionId, so a fresh `es-<uuid>` jobId is always minted (no idempotency
+    // surface). Returns `{ status: 'pending', jobId }` immediately.
+    if (input.dispatch === 'async') {
+      return runAsJob<ExecuteSpecInput, ToolResult>({
+        toolName: 'execute_spec',
+        input,
+        freshJobId: () => `es-${randomUUID()}`,
+        run: () => createFullResponse(input, logger),
+        logger,
+      });
+    }
+
+    return createFullResponse(input, logger);
   };
+}
+
+/** Registers the execute_spec tool with an MCP server. @category MCP */
+export function registerExecuteSpecTool(server: McpServer, deps: ExecuteSpecDeps): void {
+  const logger = deps.logger ?? createLogger({ tool: 'execute_spec' });
+
+  const handler = createExecuteSpecHandler(logger);
 
   const secureHandler = createSecureHandler(handler, {
     toolName: 'execute_spec',
@@ -153,6 +192,12 @@ export function registerExecuteSpecTool(server: McpServer, deps: ExecuteSpecDeps
           'Must contain "## Requirements" and "## Acceptance Criteria" sections.'
       ),
     dryRun: z.boolean().optional().describe('Parse and decompose only (no execution)'),
+    dispatch: z
+      .enum(['sync', 'async'])
+      .optional()
+      .describe(
+        "Dispatch mode (#3732). 'sync' (default): run inline. 'async': return a jobId immediately + run in background (poll get_job_result). Ignored for dryRun."
+      ),
   };
 
   const description =

@@ -21,6 +21,7 @@
  */
 
 import { z } from 'zod';
+import { randomUUID } from 'node:crypto';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import { createLogger, formatZodError, type ILogger } from '../../core/index.js';
@@ -55,6 +56,8 @@ import {
 import { runDevPipelineForGoal } from './dev-pipeline-tool.js';
 import { runPipelineForGoal } from './pipeline-tool.js';
 import { runConsensusForGoal } from './consensus-vote.js';
+// #3732 / epic #2631: async-mode dispatch via the shared `runAsJob` helper.
+import { runAsJob } from '../jobs/run-as-job.js';
 
 /**
  * The concrete MCP tool / engine each strategy routes to. Used to tell the
@@ -108,6 +111,20 @@ export const RunInputSchema = z.object({
     .describe(
       'When true, actually run the selected strategy (if an executor is wired) and return ' +
         'its result; otherwise return the routing decision only (default false, read-only).'
+    ),
+  /**
+   * Dispatch mode (#3732). Only meaningful with `execute: true` — `run`
+   * dispatches the heaviest engines (dev-pipeline/pipeline), which can exceed
+   * the MCP request timeout even with the 1800s class guard (#3734). `sync`
+   * (default) runs inline; `async` returns a `{ status: 'pending', jobId }`
+   * envelope immediately and runs in the background; poll
+   * `get_job_result({ jobId })`. Ignored for read-only routing (execute:false).
+   */
+  dispatch: z
+    .enum(['sync', 'async'])
+    .optional()
+    .describe(
+      "Dispatch mode (#3732). 'sync' (default): run inline. 'async' (only with execute:true): return a jobId immediately + run in background (poll get_job_result)."
     ),
 });
 
@@ -293,6 +310,41 @@ export async function executeGoal(
   };
 }
 
+/**
+ * Run the `execute: true` body — dispatch the selected strategy via the
+ * MetaDispatcher and shape the `ToolResult`. The sync path awaits this inline;
+ * the async dispatcher backgrounds it via {@link runAsJob} (#3732). Catches the
+ * dispatch error here so a backgrounded failure records the same structured
+ * envelope a sync caller would have seen.
+ */
+async function executeRunBody(
+  input: RunInput,
+  logger: ILogger,
+  trustTier?: string
+): Promise<ToolResult> {
+  try {
+    // #3712: thread the caller's real RequestContext.trustTier into the
+    // dev-pipeline executor's consensus→execute seam. undefined ⇒ seam
+    // fail-closes to untrusted (4); never infer trust from absence.
+    const exec = await executeGoal(input, {
+      logger,
+      ...(trustTier !== undefined ? { trustTier } : {}),
+    });
+    logger.info('run: executed goal', {
+      decisionId: exec.decisionId,
+      strategy: exec.strategy,
+      durationMs: exec.durationMs,
+    });
+    return toolSuccess(JSON.stringify(exec, null, 2));
+  } catch (err) {
+    const noExecutor = err instanceof MetaDispatchError && err.code === 'no_executor';
+    return toolStructuredError({
+      errorCategory: noExecutor ? 'business' : 'internal',
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 async function runHandler(args: unknown, logger: ILogger, trustTier?: string): Promise<ToolResult> {
   const parsed = RunInputSchema.safeParse(args);
   if (!parsed.success) {
@@ -303,27 +355,22 @@ async function runHandler(args: unknown, logger: ILogger, trustTier?: string): P
   }
 
   if (parsed.data.execute === true) {
-    try {
-      // #3712: thread the caller's real RequestContext.trustTier into the
-      // dev-pipeline executor's consensus→execute seam. undefined ⇒ seam
-      // fail-closes to untrusted (4); never infer trust from absence.
-      const exec = await executeGoal(parsed.data, {
+    const input = parsed.data;
+    // #3732: async dispatch — `run` with execute:true routes to the heaviest
+    // engines (dev-pipeline/pipeline), which can exceed the MCP request timeout
+    // even with the 1800s class guard (#3734). `run` has no sessionId, so a
+    // fresh `rn-<uuid>` jobId is always minted (no idempotency surface).
+    // Returns `{ status: 'pending', jobId }` immediately.
+    if (input.dispatch === 'async') {
+      return runAsJob<RunInput, ToolResult>({
+        toolName: 'run',
+        input,
+        freshJobId: () => `rn-${randomUUID()}`,
+        run: () => executeRunBody(input, logger, trustTier),
         logger,
-        ...(trustTier !== undefined ? { trustTier } : {}),
-      });
-      logger.info('run: executed goal', {
-        decisionId: exec.decisionId,
-        strategy: exec.strategy,
-        durationMs: exec.durationMs,
-      });
-      return toolSuccess(JSON.stringify(exec, null, 2));
-    } catch (err) {
-      const noExecutor = err instanceof MetaDispatchError && err.code === 'no_executor';
-      return toolStructuredError({
-        errorCategory: noExecutor ? 'business' : 'internal',
-        message: err instanceof Error ? err.message : String(err),
       });
     }
+    return executeRunBody(input, logger, trustTier);
   }
 
   const response = routeGoal(parsed.data, logger);

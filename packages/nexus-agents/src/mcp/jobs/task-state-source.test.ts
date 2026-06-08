@@ -49,6 +49,9 @@ describe('toolNameFromJobId', () => {
     expect(toolNameFromJobId('rp-abc123')).toBe('run_pipeline');
     expect(toolNameFromJobId('pr-abc123')).toBe('pr_review');
     expect(toolNameFromJobId('sc-abc123')).toBe('supply_chain_tradeoff_panel');
+    expect(toolNameFromJobId('es-abc123')).toBe('execute_spec');
+    expect(toolNameFromJobId('gw-abc123')).toBe('run_graph_workflow');
+    expect(toolNameFromJobId('rn-abc123')).toBe('run');
   });
   it('returns "unknown" for unrecognized or prefix-less ids', () => {
     expect(toolNameFromJobId('weird-1-a')).toBe('unknown');

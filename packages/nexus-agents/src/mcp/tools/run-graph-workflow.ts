@@ -9,6 +9,7 @@
  */
 
 import { z } from 'zod';
+import { randomUUID } from 'node:crypto';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
 import {
@@ -40,6 +41,8 @@ import {
 } from '../../orchestration/outcomes/index.js';
 import { DEFAULT_CLI } from '../../config/model-capabilities-types.js';
 import { getToolAnnotations } from '../tool-annotations.js';
+// #3732 / epic #2631: async-mode dispatch via the shared `runAsJob` helper.
+import { runAsJob } from '../jobs/run-as-job.js';
 
 // ============================================================================
 // Types & Schema
@@ -62,6 +65,20 @@ export const RunGraphWorkflowInputSchema = z.object({
     .optional()
     .default(false)
     .describe('Enable audit trail event logging'),
+  /**
+   * Dispatch mode (#3732). `sync` (default) runs the graph workflow inline and
+   * returns the result — but a workflow of up to ~100 expert nodes can exceed
+   * the MCP request timeout. `async` returns a `{ status: 'pending', jobId }`
+   * envelope immediately and runs in the background; poll
+   * `get_job_result({ jobId })` for the result. Ignored for the `list` sentinel.
+   */
+  dispatch: z
+    .enum(['sync', 'async'])
+    .optional()
+    .default('sync')
+    .describe(
+      "Dispatch mode (#3732). 'sync' (default): run inline. 'async': return a jobId immediately + run in background (poll get_job_result)."
+    ),
 });
 
 export type RunGraphWorkflowInput = z.infer<typeof RunGraphWorkflowInputSchema>;
@@ -211,7 +228,42 @@ const GRAPH_WORKFLOW_SCHEMA = {
   inputs: z.record(z.string(), z.unknown()).optional().describe('Input values for the workflow'),
   enableCheckpointing: z.boolean().optional().describe('Enable checkpoint saving'),
   enableAuditTrail: z.boolean().optional().describe('Enable audit trail logging'),
+  dispatch: z
+    .enum(['sync', 'async'])
+    .optional()
+    .describe(
+      "Dispatch mode (#3732). 'sync' (default): run inline. 'async': return a jobId immediately + run in background (poll get_job_result)."
+    ),
 };
+
+/**
+ * Run the graph workflow body + shape the structured envelope. The sync handler
+ * awaits this inline; the async dispatcher backgrounds it via {@link runAsJob}
+ * (#3732). Records the outcome + fires the completion notification as a side
+ * effect so both dispatch paths report identically.
+ */
+async function executeGraphWorkflowBody(
+  input: RunGraphWorkflowInput,
+  logger: ILogger,
+  notifier: IMcpNotifier
+): Promise<ToolResult> {
+  const result = await handleRunGraphWorkflow(input, logger);
+  const succeeded = result.status === 'completed';
+  notifier.info('run_graph_workflow', {
+    event: succeeded ? 'graph_workflow_complete' : 'graph_workflow_failed',
+    workflow: result.workflow,
+    nodeCount: result.nodesExecuted,
+    durationMs: result.durationMs,
+  });
+
+  // Record to memory and outcome store (Issue #1174)
+  recordGraphWorkflowResult(result);
+
+  const text = JSON.stringify(result, null, 2);
+  return succeeded
+    ? toolSuccess(text)
+    : toolStructuredError({ errorCategory: 'internal', message: text });
+}
 
 /** Creates the handler for run_graph_workflow tool. */
 function createGraphWorkflowHandler(
@@ -226,29 +278,30 @@ function createGraphWorkflowHandler(
         message: `Validation error: ${formatZodError(parsed.error)}`,
       });
     }
-    if (parsed.data.workflow === 'list') {
+    const input = parsed.data;
+    if (input.workflow === 'list') {
       return toolSuccess(JSON.stringify(getGraphWorkflowList(), null, 2));
     }
     notifier.info('run_graph_workflow', {
       event: 'graph_workflow_start',
-      workflow: parsed.data.workflow,
-    });
-    const result = await handleRunGraphWorkflow(parsed.data, logger);
-    const succeeded = result.status === 'completed';
-    notifier.info('run_graph_workflow', {
-      event: succeeded ? 'graph_workflow_complete' : 'graph_workflow_failed',
-      workflow: result.workflow,
-      nodeCount: result.nodesExecuted,
-      durationMs: result.durationMs,
+      workflow: input.workflow,
     });
 
-    // Record to memory and outcome store (Issue #1174)
-    recordGraphWorkflowResult(result);
+    // #3732: async dispatch — a workflow of up to ~100 expert nodes can exceed
+    // the MCP request timeout. run_graph_workflow has no sessionId, so a fresh
+    // `gw-<uuid>` jobId is always minted (no idempotency surface). Returns
+    // `{ status: 'pending', jobId }` immediately.
+    if (input.dispatch === 'async') {
+      return runAsJob<RunGraphWorkflowInput, ToolResult>({
+        toolName: 'run_graph_workflow',
+        input,
+        freshJobId: () => `gw-${randomUUID()}`,
+        run: () => executeGraphWorkflowBody(input, logger, notifier),
+        logger,
+      });
+    }
 
-    const text = JSON.stringify(result, null, 2);
-    return succeeded
-      ? toolSuccess(text)
-      : toolStructuredError({ errorCategory: 'internal', message: text });
+    return executeGraphWorkflowBody(input, logger, notifier);
   };
 }
 
