@@ -78,15 +78,240 @@ export const VOTE_TIMEOUTS = {
   overallDeadlineBufferMs: 60_000,
 } as const;
 
+// ============================================================================
+// Central Operation-Class Timeout Authority (#3734)
+// ============================================================================
+//
+// PRINCIPLE: timeouts are RUNAWAY-GUARDS, not SLAs. Every class guard is a
+// generous upper bound that only genuinely-stuck/runaway work should hit — it
+// is NOT a deadline tuned to the median legitimate runtime. The historical 60s
+// MCP default was accidental and punitive; multi-LLM / pipeline tools that
+// legitimately run for minutes were being killed at 60s (#3726/#3729 audit).
+//
+// Each MCP tool maps to exactly one class via TOOL_CLASS; getToolTimeout
+// (mcp/middleware/tool-wrapper.ts) resolves the class guard. Central tunability
+// is via NEXUS_TIMEOUT_MULTIPLIER (scales every class) and the per-class
+// NEXUS_TIMEOUT_CLASS_<CLASS>_MS overrides.
+
+/** Operation classes, ordered loosest→tightest by typical work shape. */
+export type OperationClassName =
+  | 'interactive'
+  | 'single-llm'
+  | 'multi-llm-panel'
+  | 'pipeline'
+  | 'network-fetch'
+  | 'async-job-body';
+
+/** A single operation-class runaway-guard definition. */
+export interface OperationClass {
+  /** Generous upper-bound guard in milliseconds (runaway-guard, not SLA). */
+  readonly guardMs: number;
+  /** Human-readable class name (matches the {@link OperationClassName} key). */
+  readonly name: OperationClassName;
+}
+
+/**
+ * Operation-class runaway-guards. These are deliberately HIGH — they exist to
+ * stop a wedged process, never to enforce a latency budget.
+ *
+ * - `interactive` (60s): fast local tools (memory/query/list/get) — a human
+ *   waits on these, so a tight guard is acceptable.
+ * - `single-llm` (300s): one model round-trip (single expert / delegate) AND
+ *   CPU-heavy local tools (extract_symbols / search_codebase) that can exceed
+ *   60s on a large repo. This is the DEFAULT for unclassified tools.
+ * - `multi-llm-panel` (900s): N voters / reviewers in parallel.
+ * - `pipeline` (1800s): multi-stage orchestration / spec / graph execution.
+ * - `network-fetch` (120s): external discovery / catalog / repo fetches.
+ * - `async-job-body` (3600s): the body of a backgrounded job, which has no
+ *   request timeout but still needs a ceiling so a runaway job is reaped.
+ */
+export const OPERATION_CLASSES = {
+  interactive: { guardMs: 60_000, name: 'interactive' },
+  'single-llm': { guardMs: 300_000, name: 'single-llm' },
+  'multi-llm-panel': { guardMs: 900_000, name: 'multi-llm-panel' },
+  pipeline: { guardMs: 1_800_000, name: 'pipeline' },
+  'network-fetch': { guardMs: 120_000, name: 'network-fetch' },
+  'async-job-body': { guardMs: 3_600_000, name: 'async-job-body' },
+} as const satisfies Record<OperationClassName, OperationClass>;
+
+/**
+ * The class an unclassified MCP tool falls back to. Resolves to the
+ * `single-llm` guard (300s) — the non-punitive replacement for the historical
+ * 60s default. A tool should NEVER ride this silently: a force-classify test
+ * asserts every registered tool appears in {@link TOOL_CLASS}.
+ */
+export const DEFAULT_OPERATION_CLASS: OperationClassName = 'single-llm';
+
+/**
+ * Classification of EVERY registered MCP tool into an operation class.
+ * Keyed by tool name (the `TOOL_MANIFEST` set — 46 tools). A failing test in
+ * `config/timeouts.test.ts` asserts full coverage so no tool silently rides
+ * {@link DEFAULT_OPERATION_CLASS}.
+ *
+ * Classification is by behavior, not by name:
+ * - multi-voter panels → `multi-llm-panel`
+ * - multi-stage pipelines / orchestration → `pipeline`
+ * - single expert / delegate / CPU-heavy local → `single-llm`
+ * - external network fetches → `network-fetch`
+ * - fast local reads/writes → `interactive`
+ *
+ * `execute_expert` is `multi-llm-panel` (not `single-llm`): it historically
+ * carried a 900s budget for deep multi-turn reasoning, so the tighter
+ * single-llm guard would be a regression — keep its generous guard.
+ */
+export const TOOL_CLASS = {
+  // --- pipelines / multi-stage orchestration (1800s) ---
+  orchestrate: 'pipeline',
+  run: 'pipeline',
+  run_workflow: 'pipeline',
+  run_graph_workflow: 'pipeline',
+  run_pipeline: 'pipeline',
+  run_dev_pipeline: 'pipeline',
+  execute_spec: 'pipeline',
+  // --- multi-LLM panels (900s) ---
+  consensus_vote: 'multi-llm-panel',
+  pr_review: 'multi-llm-panel',
+  supply_chain_tradeoff_panel: 'multi-llm-panel',
+  execute_expert: 'multi-llm-panel',
+  improvement_review: 'multi-llm-panel',
+  // --- single-LLM / single-expert (300s) ---
+  create_expert: 'single-llm',
+  delegate_to_model: 'single-llm',
+  issue_triage: 'single-llm',
+  research_analyze: 'single-llm',
+  research_synthesize: 'single-llm',
+  research_catalog_review: 'single-llm',
+  suggest_research_tasks: 'single-llm',
+  run_quality_gate: 'single-llm',
+  // --- CPU-heavy local (300s — can exceed 60s on a big repo) ---
+  extract_symbols: 'single-llm',
+  search_codebase: 'single-llm',
+  // --- external network fetches (120s) ---
+  research_discover: 'network-fetch',
+  research_add_source: 'network-fetch',
+  survey_oss_landscape: 'network-fetch',
+  vendor_publishing_audit: 'network-fetch',
+  compare_data_feeds: 'network-fetch',
+  repo_analyze: 'network-fetch',
+  repo_security_plan: 'network-fetch',
+  ci_health_check: 'network-fetch',
+  weather_report: 'network-fetch',
+  // --- fast local reads/writes (60s interactive) ---
+  list_experts: 'interactive',
+  list_workflows: 'interactive',
+  list_jobs: 'interactive',
+  list_available_models: 'interactive',
+  get_job_result: 'interactive',
+  cancel_job: 'interactive',
+  query_trace: 'interactive',
+  query_task_state: 'interactive',
+  verify_audit_chain: 'interactive',
+  registry_import: 'interactive',
+  research_query: 'interactive',
+  research_add: 'interactive',
+  memory_query: 'interactive',
+  memory_stats: 'interactive',
+  memory_write: 'interactive',
+} as const satisfies Record<string, OperationClassName>;
+
+/** Env-var name for the global timeout multiplier. */
+export const TIMEOUT_MULTIPLIER_ENV_VAR = 'NEXUS_TIMEOUT_MULTIPLIER';
+
+/** Multiplier clamp bounds — keep operators from disabling or ballooning guards. */
+export const TIMEOUT_MULTIPLIER_MIN = 0.25;
+export const TIMEOUT_MULTIPLIER_MAX = 10;
+
+/** Per-class clamp bounds for the env-override base, before the multiplier. */
+const CLASS_OVERRIDE_MIN_MS = 1_000;
+const CLASS_OVERRIDE_MAX_MS = 7_200_000;
+
+/**
+ * Resolves the global timeout multiplier from `NEXUS_TIMEOUT_MULTIPLIER`,
+ * clamped to [{@link TIMEOUT_MULTIPLIER_MIN}, {@link TIMEOUT_MULTIPLIER_MAX}].
+ * A missing/invalid value yields 1 (no scaling).
+ */
+export function resolveTimeoutMultiplier(): number {
+  const raw = process.env[TIMEOUT_MULTIPLIER_ENV_VAR];
+  if (raw === undefined) return 1;
+  const parsed = Number(raw);
+  if (Number.isNaN(parsed) || parsed <= 0) return 1;
+  return Math.min(Math.max(parsed, TIMEOUT_MULTIPLIER_MIN), TIMEOUT_MULTIPLIER_MAX);
+}
+
+/** The per-class env-override variable name for a given class. */
+export function classOverrideEnvVar(cls: OperationClassName): string {
+  return `NEXUS_TIMEOUT_CLASS_${cls.replace(/-/g, '_').toUpperCase()}_MS`;
+}
+
+/**
+ * Resolves the runaway-guard for an operation class.
+ *
+ * `resolve = clamp(envClassOverride ?? base, classMin, classMax) * multiplier`,
+ * re-clamped to `MCP_TIMEOUTS.maxMs` so no class can silently exceed the MCP
+ * wrapper ceiling.
+ *
+ * @param cls - The operation class to resolve.
+ * @returns The resolved guard in milliseconds.
+ */
+export function resolveClassGuardMs(cls: OperationClassName): number {
+  const base: number = OPERATION_CLASSES[cls].guardMs;
+  const envRaw = process.env[classOverrideEnvVar(cls)];
+  let chosen = base;
+  if (envRaw !== undefined) {
+    const parsed = Number(envRaw);
+    if (!Number.isNaN(parsed) && parsed > 0) chosen = parsed;
+  }
+  const clampedBase = Math.min(Math.max(chosen, CLASS_OVERRIDE_MIN_MS), CLASS_OVERRIDE_MAX_MS);
+  const scaled = Math.round(clampedBase * resolveTimeoutMultiplier());
+  return Math.min(scaled, MCP_TIMEOUTS.maxMs);
+}
+
+/**
+ * Resolves the runaway-guard for a specific tool via its {@link TOOL_CLASS}
+ * classification, falling back to {@link DEFAULT_OPERATION_CLASS}. Honors the
+ * multiplier + per-class env overrides through {@link resolveClassGuardMs}.
+ */
+export function resolveToolClassGuardMs(toolName: string): number {
+  const cls: OperationClassName =
+    (TOOL_CLASS as Record<string, OperationClassName>)[toolName] ?? DEFAULT_OPERATION_CLASS;
+  return resolveClassGuardMs(cls);
+}
+
+/**
+ * Generated per-tool timeout view (#3734). Replaces the hand-maintained
+ * `perTool` literal table with a class-derived map. Built from {@link TOOL_CLASS}
+ * so existing readers (`MCP_TIMEOUTS.perTool['orchestrate']`) keep working — the
+ * additive step never SHORTENS a previously-overridden tool's budget (the 10
+ * tools bumped in #3733/#3729 all map to classes ≥ their prior literal). Uses
+ * static class guards (no env multiplier) so it stays a pure compile-time view;
+ * runtime resolution that honors the multiplier goes through
+ * {@link resolveToolClassGuardMs}.
+ */
+function generatePerToolView(): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [tool, cls] of Object.entries(TOOL_CLASS)) {
+    out[tool] = OPERATION_CLASSES[cls].guardMs;
+  }
+  return out;
+}
+
 /**
  * MCP tool handler timeouts.
  * Used by the tool middleware wrapper (CVE-2026-0621 mitigation).
  */
 export const MCP_TIMEOUTS = {
-  /** Default timeout for MCP tool handlers. */
-  defaultMs: 60_000,
-  /** Maximum allowed MCP tool timeout. */
-  maxMs: 900_000,
+  /**
+   * Default timeout for MCP tool handlers. Raised 60_000 → 300_000 (#3734):
+   * the 60s default was accidental + punitive. Resolves to the `single-llm`
+   * class guard ({@link DEFAULT_OPERATION_CLASS}).
+   */
+  defaultMs: 300_000,
+  /**
+   * Maximum allowed MCP tool timeout. Raised 900_000 → 3_600_000 (#3734) so the
+   * `pipeline` (1800s) and `async-job-body` (3600s) classes are not silently
+   * clamped below their declared guard.
+   */
+  maxMs: 3_600_000,
   /**
    * Safety buffer between an internal wall-clock deadline (e.g. the consensus
    * overall deadline) and when the outer `wrapToolWithTimeout` middleware
@@ -98,24 +323,14 @@ export const MCP_TIMEOUTS = {
    * (Source: Issue #2104 — MCP wrapper aborts before internal deadline)
    */
   perToolSafetyBufferMs: 10_000,
-  /** Per-tool timeout overrides for long-running tools. */
-  perTool: {
-    orchestrate: 900_000, // 15 min — multi-step agent orchestration
-    consensus_vote: 600_000, // 10 min — 5-6 agents voting in parallel via Promise.all
-    execute_expert: 900_000, // 15 min — complex expert reasoning tasks
-    run_workflow: 900_000, // 15 min — multi-step workflow execution
-    run_pipeline: 900_000, // 15 min — multi-stage pipeline orchestration (#2824)
-    run_dev_pipeline: 900_000, // 15 min — multi-agent dev pipeline (#2824)
-    // #3729 interim mitigation: these long-running tools (multi-LLM voters /
-    // pipeline / spec executors) wrap their own work but were never granted a
-    // perTool override, so the 60s `defaultMs` killed them at 60s. Bump to the
-    // 900s ceiling until durable async migration lands (#3730-3732). nexus-agents
-    // uses stdio MCP transport (no proxy/LB), so the 900s interim is safe.
-    pr_review: 900_000, // 15 min — 5-7 LLM review voters in parallel
-    supply_chain_tradeoff_panel: 900_000, // 15 min — multi-voter supply-chain panel
-    execute_spec: 900_000, // 15 min — multi-stage spec execution
-    run: 900_000, // 15 min — MetaOrchestrator dispatch w/ execute:true
-  } as Readonly<Record<string, number>>,
+  /**
+   * Per-tool timeout overrides. GENERATED from {@link TOOL_CLASS} (#3734) — no
+   * longer a hand-maintained literal. Kept as a static view so existing readers
+   * (`MCP_TIMEOUTS.perTool['orchestrate']`) keep working unchanged. Runtime
+   * resolution that honors the env multiplier/overrides uses
+   * {@link resolveToolClassGuardMs} instead.
+   */
+  perTool: generatePerToolView() as Readonly<Record<string, number>>,
   /**
    * Per-tool discoverability hint (#3726) appended to the timeout error
    * message. Lets a SYNC long-running tool that hits its perTool ceiling tell

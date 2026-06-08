@@ -24,7 +24,7 @@ import {
   type ContextAwareToolHandler,
   type MiddlewareChainConfig,
 } from './middleware-chain.js';
-import { MCP_TIMEOUTS } from '../../config/timeouts.js';
+import { MCP_TIMEOUTS, resolveToolClassGuardMs } from '../../config/timeouts.js';
 import {
   progressContextStorage,
   abortSignalStorage,
@@ -53,32 +53,36 @@ export const DEFAULT_TOOL_TIMEOUTS: Record<string, number> = {
 };
 
 /**
- * Resolves the timeout for a specific tool.
- * Priority: explicit override > security config perToolTimeout > DEFAULT_TOOL_TIMEOUTS > global default.
- * (Issue #657 - Per-tool timeout configuration)
+ * Resolves the timeout for a specific tool — the central resolution chokepoint
+ * (#3734). Lookup chain:
+ *   1. explicit override (caller-supplied),
+ *   2. security config `perToolTimeout`,
+ *   3. the operation-class runaway-guard for the tool's {@link TOOL_CLASS}
+ *      classification (or {@link DEFAULT_OPERATION_CLASS} = 300s if unclassified),
+ *      honoring `NEXUS_TIMEOUT_MULTIPLIER` + per-class env overrides.
+ *
+ * The class-guard step replaces the old `DEFAULT_TOOL_TIMEOUTS` literal lookup
+ * AND the punitive 60s global default — every tool now gets a generous
+ * non-punitive runaway-guard.
+ * (Issue #657 — per-tool timeout; #3734 — central class authority)
  */
 export function getToolTimeout(
   toolName: string,
   security?: SecurityConfig,
   explicitMs?: number
 ): number {
-  // Explicit override takes highest priority
+  // Explicit override takes highest priority.
   if (explicitMs !== undefined) {
     return explicitMs;
   }
-  // Check security config per-tool overrides
+  // Security config per-tool overrides still win over the class default.
   const perToolConfig = security?.timeout?.perToolTimeout;
   const perToolMs = perToolConfig?.[toolName];
   if (perToolMs !== undefined) {
     return perToolMs;
   }
-  // Check built-in per-tool defaults
-  const builtInDefault = DEFAULT_TOOL_TIMEOUTS[toolName];
-  if (builtInDefault !== undefined) {
-    return builtInDefault;
-  }
-  // Fall back to global default
-  return security?.timeout?.defaultTimeoutMs ?? DEFAULT_TIMEOUT_CONFIG.defaultTimeoutMs;
+  // Class-derived runaway-guard (multiplier + per-class env overrides applied).
+  return resolveToolClassGuardMs(toolName);
 }
 
 /**

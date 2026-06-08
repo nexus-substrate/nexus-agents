@@ -288,6 +288,31 @@ Files stored:
 | `NEXUS_EXPERT_TIMEOUT_MS` | Expert handler timeout (ms). Clamped to `[30000, 900000]`; `execute_expert` floors at `120000`. Picked per-category — complex (architecture/security_review/planning/devops/documentation) override defaults to `complexMs` | `300000` standard / `600000` complex |
 | `NEXUS_WORKER_TIMEOUT_MS` | Worker subprocess timeout (ms)                                                                                                                                                                                              | `60000`                              |
 
+#### Central timeout authority (#3734)
+
+Timeouts are **runaway-guards, not SLAs** — each MCP tool maps to an operation class with a generous upper bound (the historical 60s MCP default was accidental + punitive). The class an unclassified tool falls back to is `single-llm` (300s).
+
+| Class             | Guard (default) | Covers                                                        |
+| ----------------- | --------------- | ------------------------------------------------------------- |
+| `interactive`     | `60000`         | fast local reads/writes (memory/query/list/get)               |
+| `single-llm`      | `300000`        | one expert/delegate call; CPU-heavy local (extract/search)    |
+| `multi-llm-panel` | `900000`        | parallel voters/reviewers (consensus_vote, pr_review, …)      |
+| `pipeline`        | `1800000`       | multi-stage orchestration (run, orchestrate, run_pipeline, …) |
+| `network-fetch`   | `120000`        | external discovery/catalog/repo fetches                       |
+| `async-job-body`  | `3600000`       | the body of a backgrounded job (no request timeout)           |
+
+| Variable                                 | Description                                                                                | Default   |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------ | --------- |
+| `NEXUS_TIMEOUT_MULTIPLIER`               | Float scaling EVERY class guard. Clamped `[0.25, 10]`. `2` doubles every guard.            | `1`       |
+| `NEXUS_TIMEOUT_CLASS_INTERACTIVE_MS`     | Override the `interactive` class guard (ms). Clamped `[1000, 7200000]`, then × multiplier. | `60000`   |
+| `NEXUS_TIMEOUT_CLASS_SINGLE_LLM_MS`      | Override the `single-llm` class guard (ms).                                                | `300000`  |
+| `NEXUS_TIMEOUT_CLASS_MULTI_LLM_PANEL_MS` | Override the `multi-llm-panel` class guard (ms).                                           | `900000`  |
+| `NEXUS_TIMEOUT_CLASS_PIPELINE_MS`        | Override the `pipeline` class guard (ms).                                                  | `1800000` |
+| `NEXUS_TIMEOUT_CLASS_NETWORK_FETCH_MS`   | Override the `network-fetch` class guard (ms).                                             | `120000`  |
+| `NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS`  | Override the `async-job-body` class guard (ms).                                            | `3600000` |
+
+Resolution: `clamp(envClassOverride ?? base, 1000, 7200000) * multiplier`, re-clamped to `MCP_TIMEOUTS.maxMs` (`3600000`). Explicit per-call and `security.perToolTimeout` overrides still win over the class guard.
+
 ### Infrastructure Variables
 
 | Variable                          | Description                                                   | Default   |

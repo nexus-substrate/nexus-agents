@@ -51,6 +51,18 @@ const NexusEnvSchema = z.object({
   NEXUS_EXPERT_TIMEOUT_MS: positiveIntStr.optional(),
   NEXUS_WORKER_TIMEOUT_MS: positiveIntStr.optional(),
 
+  // --- Central timeout authority (#3734) ---
+  // Global scale applied to every operation-class runaway-guard (clamped 0.25–10).
+  NEXUS_TIMEOUT_MULTIPLIER: floatStr.optional(),
+  // Per-operation-class guard overrides (ms). One per OperationClassName; env-schema
+  // can't match dynamic names, so the six are registered explicitly.
+  NEXUS_TIMEOUT_CLASS_INTERACTIVE_MS: positiveIntStr.optional(),
+  NEXUS_TIMEOUT_CLASS_SINGLE_LLM_MS: positiveIntStr.optional(),
+  NEXUS_TIMEOUT_CLASS_MULTI_LLM_PANEL_MS: positiveIntStr.optional(),
+  NEXUS_TIMEOUT_CLASS_PIPELINE_MS: positiveIntStr.optional(),
+  NEXUS_TIMEOUT_CLASS_NETWORK_FETCH_MS: positiveIntStr.optional(),
+  NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS: positiveIntStr.optional(),
+
   // --- Retry ---
   NEXUS_RETRY_MAX_RETRIES: positiveIntStr.optional(),
   NEXUS_RETRY_BASE_DELAY: positiveIntStr.optional(),

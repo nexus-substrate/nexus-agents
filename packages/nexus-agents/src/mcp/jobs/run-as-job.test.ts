@@ -2,7 +2,7 @@
  * Tests for the shared async-job dispatcher `runAsJob` (#3729 / epic #2631).
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -169,5 +169,68 @@ describe('runAsJob', () => {
     expect(result.content[0]!.text).toContain('Idempotency key already used');
     expect(getInFlight('orchestrate')).toBe(0);
     expect(nexusDataPath('jobs')).toContain(tmpDir);
+  });
+
+  // ==========================================================================
+  // async-job-body runaway-guard (#3734)
+  // ==========================================================================
+
+  describe('async-job-body runaway-guard (#3734)', () => {
+    afterEach(() => {
+      delete process.env['NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS'];
+      vi.useRealTimers();
+    });
+
+    it('does NOT apply a request timeout to the backgrounded body — pending returns immediately', () => {
+      // The dispatch returns synchronously while the body runs forever; no
+      // request timeout governs the body (that is the whole point of async mode).
+      const result = runAsJob<DummyInput, { ok: true }>({
+        toolName: 'orchestrate',
+        input: { task: 'long' },
+        freshJobId: () => 'job-async-body-1',
+        run: () => new Promise(() => {}), // never resolves
+      });
+      const env = parseEnvelope(result);
+      expect(env['status']).toBe('pending');
+      // The job is still pending (not failed) right after dispatch.
+      expect(readJobResult('job-async-body-1')?.status).toBe('pending');
+    });
+
+    it('fires the internal async-body guard → writeJobFailed("runaway guard exceeded") + releases', async () => {
+      // Shrink the async-job-body guard so the test is fast; use fake timers to
+      // drive it deterministically.
+      process.env['NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS'] = '1000';
+      vi.useFakeTimers();
+      const warn = vi.fn();
+      const logger = {
+        warn,
+        error: vi.fn(),
+        info: vi.fn(),
+        debug: vi.fn(),
+      } as unknown as import('../../core/index.js').ILogger;
+      const params = {
+        toolName: 'orchestrate',
+        input: { task: 'wedged' } as DummyInput,
+        freshJobId: () => 'job-runaway-1',
+        run: () => new Promise<{ ok: true }>(() => {}), // never resolves → guard wins
+        logger,
+      };
+      // Dispatch acquires the slot + writes pending.
+      runAsJob<DummyInput, { ok: true }>({ ...params, run: () => new Promise(() => {}) });
+      // Drive the background runner; advance past the (clamped) guard window.
+      const bg = runJobInBackground('job-runaway-1', params);
+      await vi.advanceTimersByTimeAsync(1_500);
+      await bg;
+      const record = readJobResult('job-runaway-1');
+      expect(record?.status).toBe('failed');
+      expect(record?.error).toBe('runaway guard exceeded');
+      // TELEMETRY: a near-timeout WARN must fire (at 0.5) BEFORE the guard.
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('approaching runaway guard'),
+        expect.objectContaining({ jobId: 'job-runaway-1' })
+      );
+      // The finally must still release the slot even on guard expiry.
+      expect(getInFlight('orchestrate')).toBe(0);
+    });
   });
 });

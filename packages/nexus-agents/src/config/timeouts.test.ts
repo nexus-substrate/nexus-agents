@@ -32,7 +32,16 @@ import {
   resolveVoteTimeout,
   resolveEnvTimeout,
   validateTimeout,
+  OPERATION_CLASSES,
+  TOOL_CLASS,
+  DEFAULT_OPERATION_CLASS,
+  resolveClassGuardMs,
+  resolveToolClassGuardMs,
+  resolveTimeoutMultiplier,
+  classOverrideEnvVar,
+  type OperationClassName,
 } from './timeouts.js';
+import { TOOL_MANIFEST } from '../mcp/tools/tool-manifest.js';
 
 describe('Centralized Timeout Configuration', () => {
   describe('CLI_TIMEOUTS', () => {
@@ -79,25 +88,28 @@ describe('Centralized Timeout Configuration', () => {
   });
 
   describe('MCP_TIMEOUTS', () => {
-    it('has correct defaults', () => {
-      expect(MCP_TIMEOUTS.defaultMs).toBe(60_000);
-      expect(MCP_TIMEOUTS.maxMs).toBe(900_000);
+    it('has non-punitive class-derived defaults (#3734)', () => {
+      // Default flipped 60s → 300s (single-llm guard); max raised 900s → 3600s
+      // so pipeline/async-body classes are not silently clamped.
+      expect(MCP_TIMEOUTS.defaultMs).toBe(300_000);
+      expect(MCP_TIMEOUTS.maxMs).toBe(3_600_000);
     });
 
-    it('has per-tool overrides for long-running tools', () => {
-      expect(MCP_TIMEOUTS.perTool['orchestrate']).toBe(900_000);
-      expect(MCP_TIMEOUTS.perTool['consensus_vote']).toBe(600_000);
+    it('has class-derived per-tool guards for long-running tools (#3734)', () => {
+      // orchestrate/run_workflow → pipeline (1800s); consensus_vote/execute_expert
+      // → multi-llm-panel (900s).
+      expect(MCP_TIMEOUTS.perTool['orchestrate']).toBe(1_800_000);
+      expect(MCP_TIMEOUTS.perTool['consensus_vote']).toBe(900_000);
       expect(MCP_TIMEOUTS.perTool['execute_expert']).toBe(900_000);
-      expect(MCP_TIMEOUTS.perTool['run_workflow']).toBe(900_000);
+      expect(MCP_TIMEOUTS.perTool['run_workflow']).toBe(1_800_000);
     });
 
-    it('grants the 60s-wrapper long-running tools a 900s cap (#3729 interim)', () => {
-      // These wrap their own multi-LLM/pipeline work but lacked a perTool
-      // override, so the 60s defaultMs killed them at 60s before async lands.
+    it('grants the 60s-wrapper long-running tools a class guard (#3734)', () => {
+      // pr_review/supply_chain → multi-llm-panel (900s); execute_spec/run → pipeline.
       expect(MCP_TIMEOUTS.perTool['pr_review']).toBe(900_000);
       expect(MCP_TIMEOUTS.perTool['supply_chain_tradeoff_panel']).toBe(900_000);
-      expect(MCP_TIMEOUTS.perTool['execute_spec']).toBe(900_000);
-      expect(MCP_TIMEOUTS.perTool['run']).toBe(900_000);
+      expect(MCP_TIMEOUTS.perTool['execute_spec']).toBe(1_800_000);
+      expect(MCP_TIMEOUTS.perTool['run']).toBe(1_800_000);
     });
 
     it('exposes a run_dev_pipeline async-mode timeout hint (#3726)', () => {
@@ -109,17 +121,17 @@ describe('Centralized Timeout Configuration', () => {
 
     it('exposes a safety buffer for internal deadlines', () => {
       expect(MCP_TIMEOUTS.perToolSafetyBufferMs).toBeGreaterThan(0);
-      // Must be much smaller than the smallest per-tool cap so clamping
-      // never swallows the whole timeout.
+      // Must be smaller than the smallest per-tool cap (interactive 60s) so
+      // clamping never swallows the whole timeout.
       const smallestPerTool = Math.min(...Object.values(MCP_TIMEOUTS.perTool));
-      expect(MCP_TIMEOUTS.perToolSafetyBufferMs).toBeLessThan(smallestPerTool / 10);
+      expect(MCP_TIMEOUTS.perToolSafetyBufferMs).toBeLessThan(smallestPerTool / 5);
     });
   });
 
   describe('getMcpSafeDeadlineMs()', () => {
     it('clamps a computed deadline larger than the MCP wrapper minus buffer', () => {
-      // consensus_vote cap is 600_000; buffer is 10_000 → safe cap 590_000.
-      // computed 970_000 (the pre-fix default) → clamped to 590_000.
+      // consensus_vote cap is 900_000 (multi-llm-panel); buffer 10_000 → safe
+      // cap 890_000. computed 970_000 → clamped to 890_000.
       const computed = 970_000;
       const result = getMcpSafeDeadlineMs(computed, 'consensus_vote');
       expect(result).toBe(
@@ -128,16 +140,17 @@ describe('Centralized Timeout Configuration', () => {
       expect(result).toBeLessThan(MCP_TIMEOUTS.perTool['consensus_vote']!);
     });
 
-    it('leaves a computed deadline smaller than the safe cap unchanged', () => {
-      // A fast call with a short computed deadline must not be inflated.
-      const computed = 120_000; // 2 min
-      expect(getMcpSafeDeadlineMs(computed, 'consensus_vote')).toBe(120_000);
+    it('leaves a computed deadline between the floor and the safe cap unchanged', () => {
+      // A call with a computed deadline above the floor (defaultMs/2 = 150_000)
+      // and below the safe cap must not be inflated or clamped.
+      const computed = 200_000;
+      expect(getMcpSafeDeadlineMs(computed, 'consensus_vote')).toBe(200_000);
     });
 
     it('falls back to the default MCP timeout for unknown tool names', () => {
-      // Unknown tool: safe cap = defaultMs (60_000) - buffer (10_000) = 50_000.
+      // Unknown tool: safe cap = defaultMs (300_000) - buffer (10_000) = 290_000.
       const computed = 900_000;
-      expect(getMcpSafeDeadlineMs(computed, 'not_a_real_tool')).toBe(50_000);
+      expect(getMcpSafeDeadlineMs(computed, 'not_a_real_tool')).toBe(290_000);
     });
 
     it('floors the return value so tools remain minimally useful', () => {
@@ -479,6 +492,143 @@ describe('Centralized Timeout Configuration', () => {
       } finally {
         delete process.env.NEXUS_WORKER_TIMEOUT_MS;
       }
+    });
+  });
+
+  // ==========================================================================
+  // Central operation-class timeout authority (#3734)
+  // ==========================================================================
+
+  describe('OPERATION_CLASSES taxonomy (#3734)', () => {
+    it('defines the six runaway-guard classes with the approved guards', () => {
+      expect(OPERATION_CLASSES.interactive.guardMs).toBe(60_000);
+      expect(OPERATION_CLASSES['single-llm'].guardMs).toBe(300_000);
+      expect(OPERATION_CLASSES['multi-llm-panel'].guardMs).toBe(900_000);
+      expect(OPERATION_CLASSES.pipeline.guardMs).toBe(1_800_000);
+      expect(OPERATION_CLASSES['network-fetch'].guardMs).toBe(120_000);
+      expect(OPERATION_CLASSES['async-job-body'].guardMs).toBe(3_600_000);
+    });
+
+    it('defaults unclassified tools to single-llm (300s), not the punitive 60s', () => {
+      expect(DEFAULT_OPERATION_CLASS).toBe('single-llm');
+      expect(OPERATION_CLASSES[DEFAULT_OPERATION_CLASS].guardMs).toBe(300_000);
+    });
+  });
+
+  describe('TOOL_CLASS coverage (FORCE-CLASSIFY, #3734)', () => {
+    // MANDATORY (vote condition): EVERY registered tool must be classified so
+    // no tool silently rides the 300s default. This is a FAILING assertion, not
+    // a warn — a new tool added to TOOL_MANIFEST without a TOOL_CLASS entry
+    // turns this red.
+    it('classifies every registered MCP tool', () => {
+      const unclassified = TOOL_MANIFEST.filter(
+        (t) => !(t in (TOOL_CLASS as Record<string, OperationClassName>))
+      );
+      expect(unclassified).toEqual([]);
+    });
+
+    it('classifies CPU-heavy local tools above interactive (60s) — they can exceed it', () => {
+      expect((TOOL_CLASS as Record<string, OperationClassName>)['extract_symbols']).toBe(
+        'single-llm'
+      );
+      expect((TOOL_CLASS as Record<string, OperationClassName>)['search_codebase']).toBe(
+        'single-llm'
+      );
+    });
+
+    it('every TOOL_CLASS value is a known operation class', () => {
+      for (const cls of Object.values(TOOL_CLASS)) {
+        expect(OPERATION_CLASSES).toHaveProperty(cls);
+      }
+    });
+  });
+
+  describe('generated MCP_TIMEOUTS.perTool byte-compat (#3734)', () => {
+    // GOLDEN (vote condition): the additive generated view must not REGRESS any
+    // of the 10 tools that previously carried an explicit perTool override —
+    // every one resolves to a class guard >= its prior literal (proves the
+    // additive step is a no-op / improvement for existing readers).
+    const PRIOR_LITERALS: Record<string, number> = {
+      orchestrate: 900_000,
+      consensus_vote: 600_000,
+      execute_expert: 900_000,
+      run_workflow: 900_000,
+      run_pipeline: 900_000,
+      run_dev_pipeline: 900_000,
+      pr_review: 900_000,
+      supply_chain_tradeoff_panel: 900_000,
+      execute_spec: 900_000,
+      run: 900_000,
+    };
+
+    it('never shortens a previously-overridden tool budget', () => {
+      for (const [tool, prior] of Object.entries(PRIOR_LITERALS)) {
+        expect(MCP_TIMEOUTS.perTool[tool]).toBeGreaterThanOrEqual(prior);
+      }
+    });
+
+    it('matches the documented class-derived values exactly', () => {
+      // pipeline tools → 1.8M; multi-llm-panel tools → 900k.
+      expect(MCP_TIMEOUTS.perTool['orchestrate']).toBe(1_800_000);
+      expect(MCP_TIMEOUTS.perTool['run_pipeline']).toBe(1_800_000);
+      expect(MCP_TIMEOUTS.perTool['run_dev_pipeline']).toBe(1_800_000);
+      expect(MCP_TIMEOUTS.perTool['consensus_vote']).toBe(900_000);
+      expect(MCP_TIMEOUTS.perTool['pr_review']).toBe(900_000);
+    });
+  });
+
+  describe('class-guard resolution (#3734)', () => {
+    const ENV_KEYS = [
+      'NEXUS_TIMEOUT_MULTIPLIER',
+      'NEXUS_TIMEOUT_CLASS_PIPELINE_MS',
+      'NEXUS_TIMEOUT_CLASS_MULTI_LLM_PANEL_MS',
+    ];
+    beforeEach(() => {
+      for (const k of ENV_KEYS) Reflect.deleteProperty(process.env, k);
+    });
+    afterEach(() => {
+      for (const k of ENV_KEYS) Reflect.deleteProperty(process.env, k);
+    });
+
+    it('returns the base class guard with no env overrides', () => {
+      expect(resolveClassGuardMs('multi-llm-panel')).toBe(900_000);
+      expect(resolveToolClassGuardMs('consensus_vote')).toBe(900_000);
+    });
+
+    it('falls back to the default class for an unknown tool', () => {
+      expect(resolveToolClassGuardMs('not_a_real_tool')).toBe(300_000);
+    });
+
+    it('scales every class guard by NEXUS_TIMEOUT_MULTIPLIER', () => {
+      process.env['NEXUS_TIMEOUT_MULTIPLIER'] = '2';
+      expect(resolveTimeoutMultiplier()).toBe(2);
+      // multi-llm-panel 900k * 2 = 1.8M (under maxMs 3.6M).
+      expect(resolveClassGuardMs('multi-llm-panel')).toBe(1_800_000);
+    });
+
+    it('clamps the multiplier to [0.25, 10]', () => {
+      process.env['NEXUS_TIMEOUT_MULTIPLIER'] = '100';
+      expect(resolveTimeoutMultiplier()).toBe(10);
+      process.env['NEXUS_TIMEOUT_MULTIPLIER'] = '0.01';
+      expect(resolveTimeoutMultiplier()).toBe(0.25);
+    });
+
+    it('re-clamps a scaled guard to MCP_TIMEOUTS.maxMs (3.6M)', () => {
+      process.env['NEXUS_TIMEOUT_MULTIPLIER'] = '10';
+      // pipeline 1.8M * 10 = 18M → clamped to maxMs 3.6M.
+      expect(resolveClassGuardMs('pipeline')).toBe(MCP_TIMEOUTS.maxMs);
+    });
+
+    it('honors a per-class env override', () => {
+      expect(classOverrideEnvVar('pipeline')).toBe('NEXUS_TIMEOUT_CLASS_PIPELINE_MS');
+      process.env['NEXUS_TIMEOUT_CLASS_PIPELINE_MS'] = '600000';
+      expect(resolveClassGuardMs('pipeline')).toBe(600_000);
+    });
+
+    it('applies the multiplier AFTER the per-class override', () => {
+      process.env['NEXUS_TIMEOUT_CLASS_MULTI_LLM_PANEL_MS'] = '400000';
+      process.env['NEXUS_TIMEOUT_MULTIPLIER'] = '2';
+      expect(resolveClassGuardMs('multi-llm-panel')).toBe(800_000);
     });
   });
 });

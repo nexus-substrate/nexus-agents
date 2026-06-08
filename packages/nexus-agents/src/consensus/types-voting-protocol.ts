@@ -8,6 +8,14 @@
 import { z } from 'zod';
 import type { Vote } from './types-core.js';
 import { SUPERMAJORITY_THRESHOLD } from './types-core.js';
+import { OPERATION_CLASSES } from '../config/timeouts.js';
+
+/**
+ * Default per-round voting timeout (#3734). A voting round guards a parallel
+ * MULTI-LLM panel, so it derives from the central `multi-llm-panel` runaway-guard
+ * (900s) — not the old accidental 60s, which killed legitimate slow voters.
+ */
+const VOTING_ROUND_DEFAULT_TIMEOUT_MS = OPERATION_CLASSES['multi-llm-panel'].guardMs;
 
 /**
  * Voting round phases.
@@ -80,7 +88,7 @@ export interface VotingProtocolConfig {
   committeeSize: number;
   /** Maximum rounds before forcing decision (default: 3) */
   maxRounds: number;
-  /** Timeout per round in milliseconds (default: 60000) */
+  /** Timeout per round in milliseconds (default: multi-llm-panel guard, 900000) */
   roundTimeoutMs: number;
   /** Minimum agreement threshold (default: 0.67) */
   agreementThreshold: number;
@@ -93,7 +101,7 @@ export interface VotingProtocolConfig {
 export const VotingProtocolConfigSchema = z.object({
   committeeSize: z.number().int().min(2).max(7).default(3),
   maxRounds: z.number().int().min(1).max(5).default(3),
-  roundTimeoutMs: z.number().int().positive().default(60000),
+  roundTimeoutMs: z.number().int().positive().default(VOTING_ROUND_DEFAULT_TIMEOUT_MS),
   agreementThreshold: z.number().min(0.5).max(1).default(SUPERMAJORITY_THRESHOLD),
   enableAntiSycophancy: z.boolean().default(true),
   sycophancyThreshold: z.number().min(0).max(1).default(0.8),
@@ -102,7 +110,7 @@ export const VotingProtocolConfigSchema = z.object({
 export const DEFAULT_VOTING_PROTOCOL_CONFIG: VotingProtocolConfig = {
   committeeSize: 3,
   maxRounds: 3,
-  roundTimeoutMs: 60000,
+  roundTimeoutMs: VOTING_ROUND_DEFAULT_TIMEOUT_MS,
   // Default agreement level IS the supermajority (2/3) — single source (#3571).
   agreementThreshold: SUPERMAJORITY_THRESHOLD,
   enableAntiSycophancy: true,

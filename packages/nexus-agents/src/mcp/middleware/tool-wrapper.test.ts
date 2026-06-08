@@ -13,6 +13,7 @@ import {
   wrapToolWithTimeout,
   toSdkCallback,
   DEFAULT_TIMEOUT_CONFIG,
+  getToolTimeout,
 } from './tool-wrapper.js';
 import { progressContextStorage, abortSignalStorage } from '../mcp-notifier.js';
 import type { SecurityConfig } from '../../config/schemas.js';
@@ -27,11 +28,45 @@ describe('tool-wrapper', () => {
   });
 
   describe('DEFAULT_TIMEOUT_CONFIG', () => {
-    it('should have sensible defaults', () => {
-      expect(DEFAULT_TIMEOUT_CONFIG.defaultTimeoutMs).toBe(60_000);
-      expect(DEFAULT_TIMEOUT_CONFIG.maxTimeoutMs).toBe(900_000);
+    it('should have non-punitive class-derived defaults (#3734)', () => {
+      expect(DEFAULT_TIMEOUT_CONFIG.defaultTimeoutMs).toBe(300_000);
+      expect(DEFAULT_TIMEOUT_CONFIG.maxTimeoutMs).toBe(3_600_000);
       expect(DEFAULT_TIMEOUT_CONFIG.enableLogging).toBe(true);
       expect(DEFAULT_TIMEOUT_CONFIG.uriValidation).toBe(true);
+    });
+  });
+
+  describe('getToolTimeout precedence (#3734)', () => {
+    const ENV = ['NEXUS_TIMEOUT_MULTIPLIER', 'NEXUS_TIMEOUT_CLASS_MULTI_LLM_PANEL_MS'];
+    beforeEach(() => {
+      for (const k of ENV) Reflect.deleteProperty(process.env, k);
+    });
+    afterEach(() => {
+      for (const k of ENV) Reflect.deleteProperty(process.env, k);
+    });
+
+    it('resolves the operation-class guard for a classified tool', () => {
+      // consensus_vote → multi-llm-panel (900s).
+      expect(getToolTimeout('consensus_vote')).toBe(900_000);
+      // unclassified → single-llm default (300s), not the punitive 60s.
+      expect(getToolTimeout('totally_unknown_tool')).toBe(300_000);
+    });
+
+    it('explicit override beats everything', () => {
+      expect(getToolTimeout('consensus_vote', undefined, 42_000)).toBe(42_000);
+    });
+
+    it('security perToolTimeout beats the class guard', () => {
+      const security = {
+        timeout: { perToolTimeout: { consensus_vote: 123_000 } },
+      } as unknown as SecurityConfig;
+      expect(getToolTimeout('consensus_vote', security)).toBe(123_000);
+    });
+
+    it('honors the multiplier + per-class env override', () => {
+      process.env['NEXUS_TIMEOUT_CLASS_MULTI_LLM_PANEL_MS'] = '400000';
+      process.env['NEXUS_TIMEOUT_MULTIPLIER'] = '2';
+      expect(getToolTimeout('consensus_vote')).toBe(800_000);
     });
   });
 
