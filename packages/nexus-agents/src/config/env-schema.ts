@@ -111,6 +111,8 @@ const NexusEnvSchema = z.object({
   NEXUS_MODELS_OVERLAY_PATH: z.string().optional(),
   // Render the unified cross-ranked memory prefix instead of per-backend sections (#3236); off by default.
   NEXUS_CONTEXT_RANKED: z.enum(['0', '1']).optional(),
+  // Feed live dispatch outcomes into the MetaOrchestrator shadow selector + persist them (#3593); off by default.
+  NEXUS_META_SHADOW_TRAIN: z.enum(['0', '1']).optional(),
 
   // --- Hooks & Sessions ---
   NEXUS_HOOK_VERBOSE: boolStr.optional(),

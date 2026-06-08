@@ -112,3 +112,68 @@ describe('MetaDispatcher.dispatch', () => {
     expect(sink.getOutcomes()).toHaveLength(2);
   });
 });
+
+describe('MetaDispatcher onOutcome callback (#3593)', () => {
+  it('fires onOutcome with (record, decision) on a successful dispatch', async () => {
+    const decision = decisionFor('implement the feature', { dependencyStructure: 'dag' });
+    const executors: StrategyExecutorMap = { [decision.strategy]: () => Promise.resolve('ok') };
+    const seen: Array<{ success: boolean; decisionId: string }> = [];
+    const dispatcher = createMetaDispatcher({
+      executors,
+      onOutcome: (record, d) => {
+        seen.push({ success: record.success, decisionId: d.decisionId });
+        expect(record.decisionId).toBe(d.decisionId);
+        expect(record.strategy).toBe(d.strategy);
+      },
+    });
+
+    await dispatcher.dispatch(decision, { goal: 'implement the feature' });
+    expect(seen).toEqual([{ success: true, decisionId: decision.decisionId }]);
+  });
+
+  it('fires onOutcome with success=false when the executor throws', async () => {
+    const decision = decisionFor('implement the feature', { dependencyStructure: 'dag' });
+    const executors: StrategyExecutorMap = {
+      [decision.strategy]: () => Promise.reject(new Error('boom')),
+    };
+    let captured: { success: boolean; decisionId: string } | undefined;
+    const dispatcher = createMetaDispatcher({
+      executors,
+      onOutcome: (record, d) => {
+        captured = { success: record.success, decisionId: d.decisionId };
+      },
+    });
+
+    await dispatcher.dispatch(decision, { goal: 'implement the feature' }).catch(() => undefined);
+    expect(captured).toEqual({ success: false, decisionId: decision.decisionId });
+  });
+
+  it('fires onOutcome with success=false when no executor is registered', async () => {
+    const decision = decisionFor('implement the feature', { dependencyStructure: 'dag' });
+    let captured: boolean | undefined;
+    const dispatcher = createMetaDispatcher({
+      executors: {},
+      onOutcome: (record) => {
+        captured = record.success;
+      },
+    });
+
+    await dispatcher.dispatch(decision, { goal: 'implement the feature' }).catch(() => undefined);
+    expect(captured).toBe(false);
+  });
+
+  it('swallows errors thrown by onOutcome (observability is best-effort)', async () => {
+    const decision = decisionFor('implement the feature', { dependencyStructure: 'dag' });
+    const executors: StrategyExecutorMap = { [decision.strategy]: () => Promise.resolve('ok') };
+    const dispatcher = createMetaDispatcher({
+      executors,
+      onOutcome: () => {
+        throw new Error('callback exploded');
+      },
+    });
+
+    await expect(
+      dispatcher.dispatch(decision, { goal: 'implement the feature' })
+    ).resolves.toMatchObject({ strategy: decision.strategy });
+  });
+});

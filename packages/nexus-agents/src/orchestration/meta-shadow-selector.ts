@@ -21,8 +21,13 @@
  * (Source: Issue #3551 — MetaOrchestrator step 3)
  */
 
+import { appendFileSync, existsSync, readFileSync } from 'node:fs';
+import { z } from 'zod';
+
 import { LinUCBBandit } from '../cli-adapters/linucb-bandit.js';
 import type { BanditContext } from '../cli-adapters/budget-router-types.js';
+import { createLogger, getErrorMessage } from '../core/index.js';
+import { ensureLearningDir, getMetaOutcomesFile } from '../config/learning-persistence.js';
 import type { ExecutionStrategy, MetaDecision } from './meta-orchestrator.js';
 
 /** The strategies the learned selector chooses among — the bandit's arms. */
@@ -95,12 +100,26 @@ export function createRecordingShadowSink(
   };
 }
 
+/**
+ * Per-arm learning telemetry (#3593). Exposes whether the bandit is actually
+ * moving: pull counts + reward mean per strategy. With a success-only signal the
+ * reward means would collapse to ~SUCCESS_REWARD for every arm (learning
+ * nothing); surfacing pulls + mean makes that observable.
+ */
+export interface ShadowArmStat {
+  readonly strategy: string;
+  readonly pulls: number;
+  readonly rewardMean: number;
+}
+
 /** The learned selector: predict a strategy + learn from outcomes. */
 export interface ILearnedStrategySelector {
   /** Predict the best strategy for a decision's signals (shadow — not executed). */
   predict(decision: MetaDecision): { strategy: ExecutionStrategy; score: number };
   /** Train: record whether `strategy` succeeded for a decision's context. */
   recordOutcome(strategy: ExecutionStrategy, decision: MetaDecision, success: boolean): void;
+  /** Per-arm pull counts + reward means — bandit-movement telemetry (#3593). */
+  stats(): readonly ShadowArmStat[];
 }
 
 /** Clamps a value to [0, 1]; NaN → 0. */
@@ -128,9 +147,29 @@ export function toBanditContext(decision: MetaDecision): BanditContext {
   };
 }
 
+/**
+ * A learned selector that also lets the persistence layer replay a stored
+ * {@link BanditContext} directly (without a full MetaDecision), used by
+ * {@link hydrateShadowSelector}. Kept internal to the module.
+ */
+interface IHydratableSelector extends ILearnedStrategySelector {
+  /** Replay one persisted outcome from its raw feature context (#3593). */
+  recordFromContext(strategy: ExecutionStrategy, context: BanditContext, success: boolean): void;
+}
+
 /** Creates a learned strategy selector backed by a fresh LinUCB bandit. */
 export function createLearnedStrategySelector(): ILearnedStrategySelector {
+  return createHydratableSelector();
+}
+
+/** Internal factory exposing the hydration hook. */
+function createHydratableSelector(): IHydratableSelector {
   const bandit = new LinUCBBandit(SHADOW_STRATEGY_ARMS);
+  const apply = (strategy: ExecutionStrategy, context: BanditContext, success: boolean): void => {
+    const idx = SHADOW_STRATEGY_ARMS.indexOf(strategy);
+    if (idx < 0) return;
+    bandit.update(idx, context, success ? SUCCESS_REWARD : FAILURE_REWARD);
+  };
   return {
     predict(decision: MetaDecision): { strategy: ExecutionStrategy; score: number } {
       const { armName, ucbScore } = bandit.select(toBanditContext(decision));
@@ -140,9 +179,17 @@ export function createLearnedStrategySelector(): ILearnedStrategySelector {
       return { strategy, score: ucbScore };
     },
     recordOutcome(strategy: ExecutionStrategy, decision: MetaDecision, success: boolean): void {
-      const idx = SHADOW_STRATEGY_ARMS.indexOf(strategy);
-      if (idx < 0) return;
-      bandit.update(idx, toBanditContext(decision), success ? SUCCESS_REWARD : FAILURE_REWARD);
+      apply(strategy, toBanditContext(decision), success);
+    },
+    recordFromContext(strategy: ExecutionStrategy, context: BanditContext, success: boolean): void {
+      apply(strategy, context, success);
+    },
+    stats(): readonly ShadowArmStat[] {
+      return bandit.getStats().map((s) => ({
+        strategy: s.name,
+        pulls: s.pullCount,
+        rewardMean: s.avgReward,
+      }));
     },
   };
 }
@@ -189,12 +236,136 @@ export function summarizeShadowAgreement(
   };
 }
 
+// ============================================================================
+// Cross-process persistence (#3593)
+// ============================================================================
+
+/**
+ * Schema version for persisted meta-outcome lines. Bump on any breaking change
+ * to the on-disk shape so old/new lines can be told apart and filtered.
+ */
+export const META_OUTCOME_SCHEMA_VERSION = 1;
+
+/** Lookback window for replaying persisted outcomes on hydration. */
+const HYDRATE_LOOKBACK_DAYS = 30;
+const HYDRATE_LOOKBACK_MS = HYDRATE_LOOKBACK_DAYS * 24 * 60 * 60 * 1000;
+
+/**
+ * The bandit-feature context, validated at the persistence boundary. SECURITY
+ * INVARIANT (#3593): a persisted line carries ONLY these numeric features +
+ * strategy + success — never raw task text, prompts, or paths.
+ */
+const PersistedContextSchema = z.object({
+  taskComplexity: z.number(),
+  contextLengthNormalized: z.number(),
+  isCodeTask: z.number(),
+  isReasoningTask: z.number(),
+  budgetUtilization: z.number(),
+  timePressure: z.number(),
+});
+
+/** One persisted training outcome — feature values only, no free text. */
+const PersistedMetaOutcomeSchema = z.object({
+  schema: z.literal(META_OUTCOME_SCHEMA_VERSION),
+  timestamp: z.string(),
+  strategy: z.enum(SHADOW_STRATEGY_ARMS as unknown as [string, ...string[]]),
+  success: z.boolean(),
+  context: PersistedContextSchema,
+});
+
+type PersistedMetaOutcome = z.infer<typeof PersistedMetaOutcomeSchema>;
+
+const persistLogger = createLogger({ component: 'MetaShadowSelector' });
+
+/**
+ * Append one training outcome to the meta-outcomes JSONL file (#3593). Writes
+ * ONLY the sanitized bandit-feature context ({@link toBanditContext}) — the raw
+ * MetaDecision (goal/reasoning/analysis text) is NEVER serialized. Best-effort:
+ * a write failure is logged, not thrown (matches the outcome-store pattern).
+ */
+export function persistMetaOutcome(
+  strategy: ExecutionStrategy,
+  decision: MetaDecision,
+  success: boolean
+): void {
+  const record: PersistedMetaOutcome = {
+    schema: META_OUTCOME_SCHEMA_VERSION,
+    timestamp: new Date().toISOString(),
+    strategy,
+    success,
+    context: toBanditContext(decision),
+  };
+  try {
+    ensureLearningDir();
+    appendFileSync(getMetaOutcomesFile(), JSON.stringify(record) + '\n', 'utf-8');
+  } catch (err) {
+    persistLogger.warn('Failed to persist meta-outcome (ignored)', {
+      error: getErrorMessage(err),
+    });
+  }
+}
+
+/**
+ * Replay persisted outcomes into a selector on construction (#3593). Mirrors the
+ * warmStart/PersistentOutcomeStore pattern: corrupt lines are skipped (never
+ * throw), and only records within the {@link HYDRATE_LOOKBACK_DAYS} window are
+ * replayed. Returns the number of outcomes replayed.
+ */
+export function hydrateShadowSelector(selector: ILearnedStrategySelector): number {
+  const hydratable = selector as IHydratableSelector;
+  if (typeof hydratable.recordFromContext !== 'function') return 0;
+
+  const file = getMetaOutcomesFile();
+  if (!existsSync(file)) return 0;
+
+  let replayed = 0;
+  try {
+    const cutoff = Date.now() - HYDRATE_LOOKBACK_MS;
+    const lines = readFileSync(file, 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim().length > 0);
+    for (const line of lines) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(line);
+      } catch {
+        continue; // corrupt line — skip
+      }
+      const result = PersistedMetaOutcomeSchema.safeParse(parsed);
+      if (!result.success) continue;
+      const ts = Date.parse(result.data.timestamp);
+      if (Number.isNaN(ts) || ts < cutoff) continue;
+      hydratable.recordFromContext(
+        result.data.strategy as ExecutionStrategy,
+        result.data.context,
+        result.data.success
+      );
+      replayed++;
+    }
+  } catch (err) {
+    persistLogger.warn('Failed to hydrate shadow selector from disk (ignored)', {
+      error: getErrorMessage(err),
+    });
+  }
+  return replayed;
+}
+
 let singletonSelector: ILearnedStrategySelector | undefined;
 let singletonSink: IRecordingMetaShadowSink | undefined;
 
-/** Process-scoped learned selector — accumulates across `run` calls. */
+/**
+ * Process-scoped learned selector — accumulates across `run` calls. Hydrates
+ * once from persisted outcomes on first construction (#3593) so shadow
+ * agreement reflects accumulated learning, not a cold start.
+ */
 export function getShadowSelector(): ILearnedStrategySelector {
-  singletonSelector ??= createLearnedStrategySelector();
+  if (singletonSelector === undefined) {
+    singletonSelector = createLearnedStrategySelector();
+    const replayed = hydrateShadowSelector(singletonSelector);
+    if (replayed > 0) {
+      persistLogger.info('Hydrated shadow selector from persisted outcomes', { replayed });
+    }
+  }
   return singletonSelector;
 }
 

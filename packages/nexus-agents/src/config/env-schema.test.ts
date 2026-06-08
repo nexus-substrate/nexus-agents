@@ -44,6 +44,19 @@ describe('env-schema', () => {
       expect(result.invalidVars.map((v) => v.name)).toContain('NEXUS_CONTEXT_RANKED');
     });
 
+    it('recognizes NEXUS_META_SHADOW_TRAIN (#3593)', () => {
+      vi.stubEnv('NEXUS_META_SHADOW_TRAIN', '1');
+      const result = validateNexusEnv();
+      expect(result.unknownVars).toHaveLength(0);
+      expect(result.invalidVars).toHaveLength(0);
+    });
+
+    it('rejects an invalid NEXUS_META_SHADOW_TRAIN value (#3593)', () => {
+      vi.stubEnv('NEXUS_META_SHADOW_TRAIN', 'on');
+      const result = validateNexusEnv();
+      expect(result.invalidVars.map((v) => v.name)).toContain('NEXUS_META_SHADOW_TRAIN');
+    });
+
     it('rejects invalid NEXUS_AUTO_REMEDIATE / NEXUS_POLICY_GATE_MODE values (#3713)', () => {
       vi.stubEnv('NEXUS_AUTO_REMEDIATE', 'bogus');
       vi.stubEnv('NEXUS_POLICY_GATE_MODE', 'nope');
