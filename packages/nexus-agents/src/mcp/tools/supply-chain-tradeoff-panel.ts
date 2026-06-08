@@ -17,8 +17,9 @@
  */
 
 import { z } from 'zod';
+import { randomUUID } from 'node:crypto';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { createLogger, formatZodError, getErrorMessage } from '../../core/index.js';
+import { createLogger, formatZodError, getErrorMessage, type ILogger } from '../../core/index.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import {
@@ -30,6 +31,8 @@ import {
 import type { VoterRole, AgentVoteResult } from '../../cli/vote-types.js';
 import { collectRealVotes } from '../../cli/voter-agents.js';
 import { getToolAnnotations } from '../tool-annotations.js';
+// #3731 / epic #2631: async-mode dispatch via the shared `runAsJob` helper.
+import { runAsJob } from '../jobs/run-as-job.js';
 
 // ============================================================================
 // Constants
@@ -50,6 +53,17 @@ export const MAX_AXIS_NAME_LENGTH = 64;
 export const MAX_PROPOSAL_LENGTH = 4000;
 /** Hard cap on optional context text. */
 export const MAX_CONTEXT_LENGTH = 4000;
+
+/**
+ * Discoverability hint (#3731) appended to sync supply_chain_tradeoff_panel
+ * error/timeout envelopes. The 7-voter panel runs live LLM calls in parallel
+ * and can exceed even the interim 900s per-tool cap; async mode is the durable
+ * escape hatch.
+ */
+const TRADEOFF_PANEL_ASYNC_HINT =
+  'A supply_chain_tradeoff_panel run fans out to up to 7 live LLM voters and can ' +
+  "exceed the synchronous MCP request timeout. Retry with `dispatch: 'async'` to " +
+  'get a jobId immediately, then poll get_job_result({ jobId }) for the result.';
 
 /** 7-role default panel (matches consensus_vote's default). */
 export const FULL_PANEL: readonly VoterRole[] = [
@@ -96,6 +110,19 @@ export const SupplyChainTradeoffPanelInputSchema = z.object({
     .default(false)
     .describe('Use 3 voters (architect, security, scope_steward) instead of 7'),
   simulate: z.boolean().optional().default(false).describe('Use simulated voters (testing only)'),
+  /**
+   * Dispatch mode (#3731). `sync` (default) runs the panel inline and returns
+   * the result — but a live fan-out (up to 7 voters) can exceed the MCP request
+   * timeout. `async` returns a `{ status: 'pending', jobId }` envelope
+   * immediately and runs the panel in the background; poll
+   * `get_job_result({ jobId })` for the result.
+   */
+  dispatch: z
+    .enum(['sync', 'async'])
+    .default('sync')
+    .describe(
+      "Dispatch mode (#3731). 'sync' (default): run inline. 'async': return a jobId immediately + run the panel in background (poll get_job_result)."
+    ),
 });
 
 export type SupplyChainTradeoffPanelInput = z.infer<typeof SupplyChainTradeoffPanelInputSchema>;
@@ -149,7 +176,9 @@ export type SupplyChainTradeoffPanelDeps = BaseMcpToolDeps;
  * emit a JSON block with per-axis verdicts so the aggregator can reason
  * per-axis instead of mashing everything into a single approve/reject.
  */
-export function buildTradeoffProposal(input: SupplyChainTradeoffPanelInput): string {
+export function buildTradeoffProposal(
+  input: Pick<SupplyChainTradeoffPanelInput, 'proposal' | 'axes' | 'context'>
+): string {
   const axes = input.axes ?? DEFAULT_AXES;
   const parts: string[] = [];
   parts.push(`# Supply-Chain Tradeoff Review\n\n`);
@@ -358,6 +387,47 @@ function toPanelVote(result: AgentVoteResult, axes: readonly string[]): PanelVot
 // Handler
 // ============================================================================
 
+/**
+ * Run the voter panel + shape the response. The sync handler awaits this
+ * inline; the async dispatcher backgrounds it via {@link runAsJob} (#3731).
+ * `collectRealVotes` is the long pole (live LLM fan-out), so the whole body
+ * is what backgrounds.
+ */
+async function executeTradeoffPanelBody(
+  input: SupplyChainTradeoffPanelInput,
+  logger: ILogger
+): Promise<ToolResult> {
+  const axes = input.axes ?? DEFAULT_AXES;
+  const roles = input.quickMode ? QUICK_PANEL : FULL_PANEL;
+  const start = Date.now();
+
+  const proposal = buildTradeoffProposal(input);
+  const voteResults = await collectRealVotes({
+    roles,
+    proposal,
+    simulate: input.simulate,
+    logger,
+  });
+
+  const votes = voteResults.map((r) => toPanelVote(r, axes));
+  const axisVerdicts = axes.map((a) => aggregateAxis(a, votes));
+  const decision = aggregatePanel(axisVerdicts);
+  const recommendation = buildRecommendation(decision, axisVerdicts);
+  const voterErrors = votes.filter((v) => v.source === 'error').length;
+
+  const response: SupplyChainTradeoffPanelResponse = {
+    proposal: input.proposal,
+    axes,
+    decision,
+    axisVerdicts,
+    recommendation,
+    votes,
+    voterErrors,
+    durationMs: Date.now() - start,
+  };
+  return toolSuccess(JSON.stringify(response, null, 2));
+}
+
 async function tradeoffPanelHandler(args: unknown, ctx: HandlerContext): Promise<ToolResult> {
   const parsed = SupplyChainTradeoffPanelInputSchema.safeParse(args);
   if (!parsed.success) {
@@ -367,40 +437,28 @@ async function tradeoffPanelHandler(args: unknown, ctx: HandlerContext): Promise
     });
   }
   const input = parsed.data;
-  const axes = input.axes ?? DEFAULT_AXES;
-  const roles = input.quickMode ? QUICK_PANEL : FULL_PANEL;
-  const start = Date.now();
 
   try {
-    const proposal = buildTradeoffProposal(input);
-    const voteResults = await collectRealVotes({
-      roles,
-      proposal,
-      simulate: input.simulate,
-      logger: ctx.logger,
-    });
-
-    const votes = voteResults.map((r) => toPanelVote(r, axes));
-    const axisVerdicts = axes.map((a) => aggregateAxis(a, votes));
-    const decision = aggregatePanel(axisVerdicts);
-    const recommendation = buildRecommendation(decision, axisVerdicts);
-    const voterErrors = votes.filter((v) => v.source === 'error').length;
-
-    const response: SupplyChainTradeoffPanelResponse = {
-      proposal: input.proposal,
-      axes,
-      decision,
-      axisVerdicts,
-      recommendation,
-      votes,
-      voterErrors,
-      durationMs: Date.now() - start,
-    };
-    return toolSuccess(JSON.stringify(response, null, 2));
+    // #3731: async dispatch — the up-to-7-voter live fan-out can exceed the MCP
+    // request timeout. This tool has no sessionId, so a fresh `sc-<uuid>` jobId
+    // is always minted (no idempotency surface). Returns a pending envelope.
+    if (input.dispatch === 'async') {
+      return runAsJob<SupplyChainTradeoffPanelInput, ToolResult>({
+        toolName: 'supply_chain_tradeoff_panel',
+        input,
+        freshJobId: () => `sc-${randomUUID()}`,
+        run: () => executeTradeoffPanelBody(input, ctx.logger),
+        logger: ctx.logger,
+      });
+    }
+    return await executeTradeoffPanelBody(input, ctx.logger);
   } catch (error) {
+    // #3731 discoverability: a sync run that times out (or otherwise fails)
+    // should point the caller at async mode — the durable fix for runs that
+    // exceed the request timeout.
     return toolStructuredError({
       errorCategory: 'internal',
-      message: `Tradeoff panel failed: ${getErrorMessage(error)}`,
+      message: `${TRADEOFF_PANEL_ASYNC_HINT} Tradeoff panel failed: ${getErrorMessage(error)}`,
     });
   }
 }

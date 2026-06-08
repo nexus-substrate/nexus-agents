@@ -46,6 +46,16 @@ describe('getJobCap', () => {
     expect(getJobCap('run_pipeline')).toBe(2);
   });
 
+  it('caps pr_review at 2 concurrent runs (#3731)', () => {
+    expect(DEFAULT_JOB_CAPS['pr_review']).toBe(2);
+    expect(getJobCap('pr_review')).toBe(2);
+  });
+
+  it('caps supply_chain_tradeoff_panel at 2 concurrent runs (#3731)', () => {
+    expect(DEFAULT_JOB_CAPS['supply_chain_tradeoff_panel']).toBe(2);
+    expect(getJobCap('supply_chain_tradeoff_panel')).toBe(2);
+  });
+
   it('honors NEXUS_JOB_MAX_CONCURRENT_<TOOL> env override', () => {
     process.env['NEXUS_JOB_MAX_CONCURRENT_ORCHESTRATE'] = '7';
     expect(getJobCap('orchestrate')).toBe(7);

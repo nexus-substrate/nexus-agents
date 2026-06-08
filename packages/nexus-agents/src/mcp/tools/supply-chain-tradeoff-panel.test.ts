@@ -6,7 +6,23 @@
  * via the existing consensus-vote integration suite.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+// #3731: pass-through the secure-handler / timeout chain so the registered
+// callback is the bare `(args, ctx)` handler — lets the async-dispatch tests
+// invoke it directly.
+vi.mock('../middleware/tool-wrapper.js', () => ({
+  wrapToolWithTimeout: (_name: string, fn: unknown) => fn,
+  toSdkCallback: (fn: unknown) => fn,
+  getToolTimeout: () => 900_000,
+}));
+vi.mock('../middleware/secure-handler.js', () => ({
+  createSecureHandler: (fn: unknown) => fn,
+}));
+
 import {
   DEFAULT_AXES,
   FULL_PANEL,
@@ -17,10 +33,15 @@ import {
   aggregateAxis,
   aggregatePanel,
   buildRecommendation,
+  registerSupplyChainTradeoffPanelTool,
   type AxisVerdict,
   type PanelVote,
 } from './supply-chain-tradeoff-panel.js';
 import { VOTER_ROLES, type VoterRole } from '../../cli/vote-types.js';
+import { readJobResult } from '../jobs/job-result-store.js';
+import { _resetForTests as resetJobConcurrency } from '../jobs/job-concurrency.js';
+import { resetNexusDataDirCache } from '../../config/nexus-data-dir.js';
+import { createLogger } from '../../core/index.js';
 
 describe('supply_chain_tradeoff_panel', () => {
   describe('DEFAULT_AXES', () => {
@@ -70,15 +91,21 @@ describe('supply_chain_tradeoff_panel', () => {
         SupplyChainTradeoffPanelInputSchema.parse({ proposal: 'p', axes: [''] })
       ).toThrow();
     });
+
+    it('defaults dispatch to sync and accepts async (#3731)', () => {
+      expect(SupplyChainTradeoffPanelInputSchema.parse({ proposal: 'p' }).dispatch).toBe('sync');
+      expect(
+        SupplyChainTradeoffPanelInputSchema.parse({ proposal: 'p', dispatch: 'async' }).dispatch
+      ).toBe('async');
+      expect(() =>
+        SupplyChainTradeoffPanelInputSchema.parse({ proposal: 'p', dispatch: 'bogus' })
+      ).toThrow();
+    });
   });
 
   describe('buildTradeoffProposal', () => {
     it('includes the proposal text and default axes', () => {
-      const out = buildTradeoffProposal({
-        proposal: 'Adopt cargo-nextest?',
-        quickMode: false,
-        simulate: false,
-      });
+      const out = buildTradeoffProposal({ proposal: 'Adopt cargo-nextest?' });
       expect(out).toContain('Adopt cargo-nextest?');
       for (const axis of DEFAULT_AXES) expect(out).toContain(axis);
     });
@@ -87,8 +114,6 @@ describe('supply_chain_tradeoff_panel', () => {
       const out = buildTradeoffProposal({
         proposal: 'p',
         context: 'Repo currently uses cargo test; CI runs are 8 minutes.',
-        quickMode: false,
-        simulate: false,
       });
       expect(out).toContain('Repo currently uses cargo test');
     });
@@ -97,8 +122,6 @@ describe('supply_chain_tradeoff_panel', () => {
       const out = buildTradeoffProposal({
         proposal: 'p',
         axes: ['license_compatibility', 'maintainer_burden'],
-        quickMode: false,
-        simulate: false,
       });
       expect(out).toContain('license_compatibility');
       expect(out).toContain('maintainer_burden');
@@ -106,7 +129,7 @@ describe('supply_chain_tradeoff_panel', () => {
     });
 
     it('includes JSON output instructions', () => {
-      const out = buildTradeoffProposal({ proposal: 'p', quickMode: false, simulate: false });
+      const out = buildTradeoffProposal({ proposal: 'p' });
       expect(out).toContain('```json');
       expect(out).toContain('"axes"');
     });
@@ -333,5 +356,101 @@ describe('supply_chain_tradeoff_panel', () => {
       expect(out).toContain('b');
       expect(out.toLowerCase()).toContain('mixed');
     });
+  });
+});
+
+// #3731: async dispatch mode. The up-to-7-voter live fan-out can exceed the MCP
+// request timeout, so `dispatch: 'async'` returns a jobId immediately and runs
+// the panel in the background (poll get_job_result). This tool has no sessionId,
+// so a fresh `sc-<uuid>` jobId is always minted (no idempotency surface).
+interface HandlerCtx {
+  logger: ReturnType<typeof createLogger>;
+}
+type CtxHandler = (args: unknown, ctx: HandlerCtx) => Promise<CapturedToolResult>;
+
+interface CapturedToolResult {
+  isError?: boolean;
+  content: Array<{ type: string; text: string }>;
+}
+
+const TEST_CTX: HandlerCtx = { logger: createLogger({ tool: 'supply_chain_tradeoff_panel.test' }) };
+
+/** Registers the tool against a mock server and returns the captured callback. */
+function captureHandler(): CtxHandler {
+  let captured: CtxHandler | undefined;
+  let registeredName: string | undefined;
+  const mockServer = {
+    registerTool: (name: string, _schema: unknown, handler: unknown) => {
+      registeredName = name;
+      captured = handler as CtxHandler;
+    },
+  };
+  registerSupplyChainTradeoffPanelTool(mockServer as never, {
+    rateLimiter: { tryConsume: () => ({ allowed: true, remaining: 99 }) } as never,
+  });
+  expect(registeredName).toBe('supply_chain_tradeoff_panel');
+  if (captured === undefined) throw new Error('handler not registered');
+  return captured;
+}
+
+describe('supply_chain_tradeoff_panel async dispatch (#3731)', () => {
+  let tmpDir: string;
+  const originalDataDir = process.env['NEXUS_DATA_DIR'];
+
+  function envelope(result: CapturedToolResult): Record<string, unknown> {
+    return JSON.parse(result.content[0]!.text) as Record<string, unknown>;
+  }
+
+  // simulate:true + quickMode keeps the panel body fast + deterministic.
+  const ASYNC_ARGS = {
+    proposal: 'Should we adopt dep X?',
+    simulate: true,
+    quickMode: true,
+    dispatch: 'async',
+  } as const;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'nexus-sc-async-'));
+    process.env['NEXUS_DATA_DIR'] = tmpDir;
+    resetNexusDataDirCache();
+    resetJobConcurrency();
+  });
+
+  afterEach(() => {
+    if (originalDataDir === undefined) delete process.env['NEXUS_DATA_DIR'];
+    else process.env['NEXUS_DATA_DIR'] = originalDataDir;
+    resetNexusDataDirCache();
+    resetJobConcurrency();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("returns { status: 'pending', jobId } and mints an sc-<uuid> id", async () => {
+    const handler = captureHandler();
+    const env = envelope(await handler(ASYNC_ARGS, TEST_CTX));
+    expect(env['status']).toBe('pending');
+    expect(typeof env['jobId']).toBe('string');
+    expect(env['jobId'] as string).toMatch(/^sc-/);
+    expect(env['pollTool']).toBe('get_job_result');
+  });
+
+  it('runs the panel inline (sync) by default — no pending envelope', async () => {
+    const handler = captureHandler();
+    const env = envelope(
+      await handler(
+        { proposal: 'Should we adopt dep X?', simulate: true, quickMode: true },
+        TEST_CTX
+      )
+    );
+    expect(env['status']).toBeUndefined();
+    expect(env['decision']).toBeDefined();
+  });
+
+  it('records the panel result so get_job_result resolves when the background run completes', async () => {
+    const handler = captureHandler();
+    const jobId = envelope(await handler(ASYNC_ARGS, TEST_CTX))['jobId'] as string;
+    // The background run is fire-and-forget; let the microtask queue drain.
+    await new Promise((r) => setImmediate(r));
+    const record = readJobResult(jobId);
+    expect(record?.status).toBe('complete');
   });
 });

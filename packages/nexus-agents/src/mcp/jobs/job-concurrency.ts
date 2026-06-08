@@ -47,6 +47,12 @@ export const DEFAULT_JOB_CAPS: Readonly<Record<string, number>> = {
   // #3730: run_pipeline is a multi-stage adaptive orchestrator with per-stage
   // experts (live LLM calls). Same shape as run_dev_pipeline — cap low at 2.
   run_pipeline: 2,
+  // #3731: pr_review fans out to 5 live LLM voters in parallel. Same heavy
+  // multi-llm-panel shape as consensus_vote — cap low at 2.
+  pr_review: 2,
+  // #3731: supply_chain_tradeoff_panel fans out to up to 7 live LLM voters in
+  // parallel. Same heavy multi-llm-panel shape as consensus_vote — cap low at 2.
+  supply_chain_tradeoff_panel: 2,
 };
 
 /**

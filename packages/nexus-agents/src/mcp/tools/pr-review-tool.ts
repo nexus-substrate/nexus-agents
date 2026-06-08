@@ -16,8 +16,9 @@
  */
 
 import { z } from 'zod';
+import { randomUUID } from 'node:crypto';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { createLogger, formatZodError, getErrorMessage } from '../../core/index.js';
+import { createLogger, formatZodError, getErrorMessage, type ILogger } from '../../core/index.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import {
@@ -29,6 +30,8 @@ import {
 import type { VoterRole, AgentVoteResult } from '../../cli/vote-types.js';
 import { collectRealVotes } from '../../cli/voter-agents.js';
 import { getToolAnnotations } from '../tool-annotations.js';
+// #3731 / epic #2631: async-mode dispatch via the shared `runAsJob` helper.
+import { runAsJob } from '../jobs/run-as-job.js';
 import {
   FINDINGS_FORMAT_INSTRUCTIONS,
   isFindingVerified,
@@ -61,6 +64,16 @@ export const MAX_DIFF_LENGTH = 50_000;
 /** Hard cap on PR description. */
 export const MAX_DESCRIPTION_LENGTH = 10_000;
 
+/**
+ * Discoverability hint (#3731) appended to sync pr_review error/timeout
+ * envelopes. The 5-voter panel runs live LLM calls in parallel and can exceed
+ * even the interim 900s per-tool cap; async mode is the durable escape hatch.
+ */
+const PR_REVIEW_ASYNC_HINT =
+  'A pr_review run fans out to 5 live LLM voters and can exceed the synchronous ' +
+  "MCP request timeout. Retry with `dispatch: 'async'` to get a jobId immediately, " +
+  'then poll get_job_result({ jobId }) for the result.';
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -88,6 +101,19 @@ export const PrReviewInputSchema = z.object({
     .boolean()
     .default(false)
     .describe('Use simulated voters (testing only; never ship live with this true)'),
+  /**
+   * Dispatch mode (#3731). `sync` (default) runs the 5-voter panel inline and
+   * returns the result — but a live fan-out can exceed the MCP request timeout.
+   * `async` returns a `{ status: 'pending', jobId }` envelope immediately and
+   * runs the panel in the background; poll `get_job_result({ jobId })` for the
+   * result.
+   */
+  dispatch: z
+    .enum(['sync', 'async'])
+    .default('sync')
+    .describe(
+      "Dispatch mode (#3731). 'sync' (default): run inline. 'async': return a jobId immediately + run the panel in background (poll get_job_result)."
+    ),
 });
 
 export type PrReviewInput = z.infer<typeof PrReviewInputSchema>;
@@ -212,7 +238,12 @@ export function aggregatePrDecisions(reviews: readonly PrReviewVote[]): PrReview
  * yes/no proposals — by framing the diff as "should this PR be merged?" we
  * get usable output without needing new system prompts (Child 3 will add
  * those). */
-export function buildPrReviewProposal(input: PrReviewInput): string {
+export function buildPrReviewProposal(
+  input: Pick<
+    PrReviewInput,
+    'prTitle' | 'prDescription' | 'prDiff' | 'repoContext' | 'baseRef' | 'headRef'
+  >
+): string {
   const parts: string[] = [];
   parts.push(`# Pull Request Review\n`);
   parts.push(`**Title:** ${input.prTitle}\n`);
@@ -298,6 +329,36 @@ function summarizeReviews(reviews: readonly PrReviewVote[]): {
 // Handler
 // ============================================================================
 
+/**
+ * Run the 5-voter panel + shape the response. The sync handler awaits this
+ * inline; the async dispatcher backgrounds it via {@link runAsJob} (#3731).
+ * `collectRealVotes` is the long pole (live LLM fan-out), so the whole body
+ * is what backgrounds.
+ */
+async function executePrReviewBody(input: PrReviewInput, logger: ILogger): Promise<ToolResult> {
+  const start = Date.now();
+  const proposal = buildPrReviewProposal(input);
+  const voteResults = await collectRealVotes({
+    roles: PR_REVIEW_ROLES,
+    proposal,
+    simulate: input.simulate,
+    logger,
+  });
+
+  const reviews = voteResults.map(toPrReviewVote);
+  const counts = summarizeReviews(reviews);
+  const aggregate = aggregatePrDecisions(reviews);
+
+  const response: PrReviewResponse = {
+    summary: aggregate.decision,
+    verified: aggregate.verified,
+    ...counts,
+    reviews,
+    totalDurationMs: Date.now() - start,
+  };
+  return toolSuccess(JSON.stringify(response, null, 2));
+}
+
 async function prReviewHandler(args: unknown, ctx: HandlerContext): Promise<ToolResult> {
   const parsed = PrReviewInputSchema.safeParse(args);
   if (!parsed.success) {
@@ -307,33 +368,28 @@ async function prReviewHandler(args: unknown, ctx: HandlerContext): Promise<Tool
     });
   }
   const input = parsed.data;
-  const start = Date.now();
 
   try {
-    const proposal = buildPrReviewProposal(input);
-    const voteResults = await collectRealVotes({
-      roles: PR_REVIEW_ROLES,
-      proposal,
-      simulate: input.simulate,
-      logger: ctx.logger,
-    });
-
-    const reviews = voteResults.map(toPrReviewVote);
-    const counts = summarizeReviews(reviews);
-    const aggregate = aggregatePrDecisions(reviews);
-
-    const response: PrReviewResponse = {
-      summary: aggregate.decision,
-      verified: aggregate.verified,
-      ...counts,
-      reviews,
-      totalDurationMs: Date.now() - start,
-    };
-    return toolSuccess(JSON.stringify(response, null, 2));
+    // #3731: async dispatch — the 5-voter live fan-out can exceed the MCP
+    // request timeout. pr_review has no sessionId, so a fresh `pr-<uuid>` jobId
+    // is always minted (no idempotency surface). Returns a pending envelope.
+    if (input.dispatch === 'async') {
+      return runAsJob<PrReviewInput, ToolResult>({
+        toolName: 'pr_review',
+        input,
+        freshJobId: () => `pr-${randomUUID()}`,
+        run: () => executePrReviewBody(input, ctx.logger),
+        logger: ctx.logger,
+      });
+    }
+    return await executePrReviewBody(input, ctx.logger);
   } catch (error) {
+    // #3731 discoverability: a sync run that times out (or otherwise fails)
+    // should point the caller at async mode — the durable fix for runs that
+    // exceed the request timeout.
     return toolStructuredError({
       errorCategory: 'internal',
-      message: `PR review failed: ${getErrorMessage(error)}`,
+      message: `${PR_REVIEW_ASYNC_HINT} PR review failed: ${getErrorMessage(error)}`,
     });
   }
 }
