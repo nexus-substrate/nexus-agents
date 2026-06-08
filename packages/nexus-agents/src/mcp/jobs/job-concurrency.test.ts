@@ -41,6 +41,11 @@ describe('getJobCap', () => {
     expect(getJobCap('run_dev_pipeline')).toBe(2);
   });
 
+  it('caps run_pipeline at 2 concurrent runs (#3730)', () => {
+    expect(DEFAULT_JOB_CAPS['run_pipeline']).toBe(2);
+    expect(getJobCap('run_pipeline')).toBe(2);
+  });
+
   it('honors NEXUS_JOB_MAX_CONCURRENT_<TOOL> env override', () => {
     process.env['NEXUS_JOB_MAX_CONCURRENT_ORCHESTRATE'] = '7';
     expect(getJobCap('orchestrate')).toBe(7);
