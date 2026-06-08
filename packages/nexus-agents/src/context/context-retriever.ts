@@ -38,6 +38,11 @@ import { getOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 import { loadPersistedRules } from '../learning/strategy-distiller-persistence.js';
 import { getResearchStatus } from '../cli/research-helpers.js';
 import type { TechniqueStatusSummary } from '../cli/research-types.js';
+import {
+  rankMemories,
+  topRankedWithinBudget,
+  type RankedMemoryItem,
+} from './context-retriever-helpers.js';
 
 /**
  * What we know about a task, derived from every shared memory backend.
@@ -68,6 +73,16 @@ export interface UnifiedContext {
    * already-rejected approaches. Empty when nothing matches or no registry.
    */
   readonly researchInsights: readonly TechniqueStatusSummary[];
+  /**
+   * All non-aggregate backend items lexically cross-ranked into one comparable,
+   * sorted list (#3236). The seven lists above are per-backend and on
+   * incomparable scales; this is the single "globally-best signal first" view a
+   * voter/planning step can read without comparing across backends itself. The
+   * aggregate `outcomes` summary is excluded (it is a rollup, not a per-item
+   * memory). Additive — the existing lists are unchanged; this is derived from
+   * them by {@link rankMemories}.
+   */
+  readonly rankedMemories: readonly RankedMemoryItem[];
 }
 
 /** Options accepted by {@link getContextForTask}. */
@@ -131,7 +146,7 @@ export async function getContextForTask(options: ContextRetrieverOptions): Promi
 
   const priorStrategies = fetchPriorStrategies(options.category, limit, logger);
 
-  return {
+  const base = {
     beliefs,
     similarMemories,
     recentLearnings,
@@ -140,6 +155,10 @@ export async function getContextForTask(options: ContextRetrieverOptions): Promi
     priorStrategies,
     researchInsights,
   };
+
+  // Derive the cross-ranked view from the seven per-backend lists (#3236). Pure
+  // + fail-soft, so this never affects the lists above or throws.
+  return { ...base, rankedMemories: rankMemories({ ...base, rankedMemories: [] }, options.task) };
 }
 
 /** Tokens shorter than this are too generic to anchor research relevance. */
@@ -377,8 +396,17 @@ function oneLine(value: string): string {
  * Phase 3 of #2792 — used by `orchestrate` and graph workflow start to
  * surface accumulated memory at the entry point. Every interpolated free-text
  * field is passed through {@link oneLine} (#3471).
+ *
+ * When `NEXUS_CONTEXT_RANKED=1` (#3236), the per-backend sections are replaced
+ * by a single globally-cross-ranked "Most relevant prior context" block drawn
+ * from {@link UnifiedContext.rankedMemories} within a token budget. Flag-off
+ * output is byte-identical to the legacy per-section rendering.
  */
 export function summarizeContextForPrompt(ctx: UnifiedContext): string {
+  if (process.env[CONTEXT_RANKED_FLAG] === '1') {
+    return summarizeRankedContext(ctx);
+  }
+
   const sections: string[] = [];
 
   if (ctx.beliefs.length > 0) {
@@ -422,6 +450,54 @@ export function summarizeContextForPrompt(ctx: UnifiedContext): string {
   }
 
   return sections.length === 0 ? '' : `## Prior Context (Nexus Memory)\n${sections.join('\n\n')}`;
+}
+
+/** Rollout gate for the unified cross-ranked prefix rendering (#3236). Default off. */
+const CONTEXT_RANKED_FLAG = 'NEXUS_CONTEXT_RANKED';
+
+/** Token budget for the ranked prefix block (#3236). Small enough to stay cheap in a system prompt. */
+const RANKED_PREFIX_TOKEN_BUDGET = 400;
+
+/** Human label per cross-ranked source for the rendered prefix line. */
+const RANKED_SOURCE_LABEL: Readonly<Record<RankedMemoryItem['source'], string>> = {
+  belief: 'belief',
+  agentic: 'prior work',
+  adaptive: 'learning',
+  experience: 'pattern',
+  strategy: 'strategy',
+  research: 'research',
+};
+
+/**
+ * Ranked-mode rendering (#3236): collapse the per-backend sections into one
+ * globally-best-first block. Reuses {@link rankMemories} (already applied at
+ * retrieval, re-derived here so direct callers of this pure function get the
+ * same view) and {@link topRankedWithinBudget} for truncation. Every rendered
+ * field still flows through {@link oneLine} — the same sanitization the legacy
+ * path applies (#3236 vote condition 3; memory backends are untrusted).
+ */
+function summarizeRankedContext(ctx: UnifiedContext): string {
+  const ranked =
+    ctx.rankedMemories.length > 0 ? ctx.rankedMemories : rankMemories(ctx, deriveRankTask(ctx));
+  const top = topRankedWithinBudget(ranked, RANKED_PREFIX_TOKEN_BUDGET);
+  if (top.length === 0) return '';
+  const lines = top.map(
+    (r) =>
+      `- [${RANKED_SOURCE_LABEL[r.source]}] ${oneLine(r.text)} (relevance: ${r.relevanceScore.toFixed(2)})`
+  );
+  return `## Prior Context (Nexus Memory)\n### Most relevant prior context\n${lines.join('\n')}`;
+}
+
+/**
+ * When `summarizeContextForPrompt` is called directly (not via the retriever),
+ * `rankedMemories` may be empty even though the per-backend lists are populated.
+ * Derive a task string from the highest-signal backend text so a direct call can
+ * still rank. Empty when nothing is present.
+ */
+function deriveRankTask(ctx: UnifiedContext): string {
+  const first = ctx.beliefs[0];
+  if (first !== undefined) return `${first.subject} ${first.predicate} ${first.object}`;
+  return ctx.similarMemories[0]?.attributes.contextDescription ?? '';
 }
 
 /** Rollout gate for injecting unified context into entry-point prompts (#2921). */

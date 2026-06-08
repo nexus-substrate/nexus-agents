@@ -274,3 +274,13 @@ export {
   type ContextRetrieverOptions,
   type UnifiedContext,
 } from './context-retriever.js';
+
+// Unified memory cross-ranker (#3236) — collapses the per-backend lists in
+// UnifiedContext into one comparable, sorted RankedMemoryItem[].
+export {
+  rankMemories,
+  topRankedWithinBudget,
+  type RankedMemoryItem,
+  type RankedMemorySource,
+  type RankMemoriesOptions,
+} from './context-retriever-helpers.js';

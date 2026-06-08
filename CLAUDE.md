@@ -58,6 +58,7 @@ Most-used env vars:
 | `NEXUS_SANDBOX` / `NEXUS_SANDBOX_ROOT`                                              | Sandbox mode (epic #2500).                                               |
 | `NEXUS_AUTO_REMEDIATE`                                                              | Autonomous remediation: `off` (default) / `audit` / `enforce` (#3653).   |
 | `NEXUS_POLICY_GATE_MODE`                                                            | Stage-boundary policy gate: `off` / `warn` (default) / `block` (#3177).  |
+| `NEXUS_CONTEXT_RANKED`                                                              | `1` renders the unified cross-ranked memory prefix; default off (#3236). |
 
 Full list in [docs/getting-started/CONFIGURATION.md](./docs/getting-started/CONFIGURATION.md). Install: [INSTALLATION.md](./docs/getting-started/INSTALLATION.md). Sandboxed: [SANDBOXED-USAGE.md](./docs/guides/SANDBOXED-USAGE.md).
 
