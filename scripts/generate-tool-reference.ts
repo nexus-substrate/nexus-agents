@@ -384,10 +384,18 @@ interface OutFile {
   readonly content: string;
 }
 
+/** Tool names are identifiers; reject anything that could escape OUT_DIR (path-injection guard). */
+const SAFE_TOOL_NAME = /^[a-z0-9_]+$/;
+
 function buildOutputs(): OutFile[] {
   const docs = collectToolDocs();
   const out: OutFile[] = [{ path: join(OUT_DIR, 'index.md'), content: renderIndexPage(docs) }];
   for (const doc of docs) {
+    // Sanitize the data-derived filename: doc.name comes from parsed source, so
+    // assert it's a plain identifier before using it in a filesystem path.
+    if (!SAFE_TOOL_NAME.test(doc.name)) {
+      throw new Error(`unsafe tool name for file path: ${JSON.stringify(doc.name)}`);
+    }
     out.push({ path: join(OUT_DIR, `${doc.name}.md`), content: renderToolPage(doc) });
   }
   return out;
