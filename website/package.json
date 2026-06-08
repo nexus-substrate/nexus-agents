@@ -14,9 +14,9 @@
     "@astrojs/check": "^0.9.9",
     "@astrojs/sitemap": "^3.7.3",
     "@astrojs/svelte": "~8.1.2",
-    "astro": "~6.4.3",
+    "astro": "~6.4.4",
     "mermaid": "^11.15.0",
-    "svelte": "^5.56.1",
+    "svelte": "^5.56.3",
     "typescript": "^5.9.3"
   }
 }
