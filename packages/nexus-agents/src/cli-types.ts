@@ -80,7 +80,8 @@ export type CliCommand =
   | 'usage'
   | 'migrate'
   | 'tour'
-  | 'improvement-review';
+  | 'improvement-review'
+  | 'auto-remediate';
 
 /**
  * Parsed CLI arguments and command.
@@ -542,6 +543,7 @@ const VALID_COMMANDS: readonly CliCommand[] = [
   'improvement-review',
   'migrate',
   'tour',
+  'auto-remediate',
 ];
 
 /**

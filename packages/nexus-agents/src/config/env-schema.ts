@@ -102,6 +102,14 @@ const NexusEnvSchema = z.object({
   NEXUS_CONFIG_PATH: z.string().optional(),
   NEXUS_ALLOW_MOCK_ORCHESTRATION: boolStr.optional(),
 
+  // --- Autonomous remediation & policy (#3540 / #3653) ---
+  // Drives the auto-remediation cycle (resolveAutoRemediateMode); off by default.
+  NEXUS_AUTO_REMEDIATE: z.enum(['off', 'audit', 'enforce']).optional(),
+  // Stage-boundary policy gate enforcement mode (getGateEnforcementMode); warn by default.
+  NEXUS_POLICY_GATE_MODE: z.enum(['off', 'warn', 'block']).optional(),
+  // Path to a model-registry overlay manifest (buildDefaultRegistry / #3185 hot-reload).
+  NEXUS_MODELS_OVERLAY_PATH: z.string().optional(),
+
   // --- Hooks & Sessions ---
   NEXUS_HOOK_VERBOSE: boolStr.optional(),
   NEXUS_SESSIONS_DB: z.string().optional(),

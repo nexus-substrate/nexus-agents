@@ -16,12 +16,30 @@ import {
   catalogForExtractors,
 } from './cli-command-catalog.js';
 import { renderHelp, HELP_TEXT } from './cli-help-text.js';
+import { isValidCommand } from './cli-types.js';
 
 describe('cli-command-catalog (#2135)', () => {
   describe('COMMAND_CATALOG invariants', () => {
     it('has no duplicate command names', () => {
       const names = COMMAND_CATALOG.map((e) => e.command);
       expect(new Set(names).size).toBe(names.length);
+    });
+
+    // Regression for #3713: `auto-remediate` shipped in the catalog + the
+    // dispatch table but NOT in cli-types VALID_COMMANDS, so isValidCommand()
+    // returned false and the CLI silently fell through to starting the MCP
+    // server. Every real command MUST be a valid CliCommand or it won't route.
+    it('every catalog command (except the pseudo "(default)") is a valid CliCommand', () => {
+      const missing = COMMAND_CATALOG.map((e) => e.command)
+        .filter((c) => c !== '(default)')
+        .filter((c) => !isValidCommand(c));
+      expect(missing, `in catalog but missing from VALID_COMMANDS: ${missing.join(', ')}`).toEqual(
+        []
+      );
+    });
+
+    it('auto-remediate is a routable command (#3713)', () => {
+      expect(isValidCommand('auto-remediate')).toBe(true);
     });
 
     it('tags every entry with a valid audience', () => {
