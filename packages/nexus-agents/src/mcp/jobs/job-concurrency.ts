@@ -40,6 +40,10 @@ export const DEFAULT_JOB_CAPS: Readonly<Record<string, number>> = {
   run_workflow: 3,
   consensus_vote: 2,
   execute_expert: 4,
+  // #3726: run_dev_pipeline is a heavy multi-agent pipeline (plan→vote→
+  // decompose→implement→qa→security, each a live LLM call). Cap low — 2
+  // concurrent real runs already saturate adapter slots on most hosts.
+  run_dev_pipeline: 2,
 };
 
 /**

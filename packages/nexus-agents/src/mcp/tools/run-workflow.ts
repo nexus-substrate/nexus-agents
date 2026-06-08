@@ -46,10 +46,9 @@ import {
 } from './run-workflow-helpers.js';
 import { getToolMemory } from './tool-memory.js';
 import { getToolAnnotations } from '../tool-annotations.js';
-// #3044 / epic #2631 Stage 3 — async-mode dispatch + concurrency cap.
-import { writeJobPending, writeJobComplete, writeJobFailed } from '../jobs/job-result-store.js';
-import { shortCircuitOrFreshJobId, registerIdempotentJob } from '../jobs/job-idempotency.js';
-import { tryAcquire, release, suggestRetryAfterMs } from '../jobs/job-concurrency.js';
+// #3044 / epic #2631 Stage 3 — async-mode dispatch via the shared `runAsJob`
+// helper (#3729).
+import { runAsJob } from '../jobs/run-as-job.js';
 import { randomUUID } from 'node:crypto';
 
 // Re-export types for backward compatibility
@@ -313,60 +312,39 @@ function buildRunWorkflowCollisionEnvelope(existingJobId: string): ToolResponse 
 }
 
 function dispatchAsyncRunWorkflow(deps: RunWorkflowDeps, args: RunWorkflowInput): ToolResponse {
-  // #3042 Stage 1c: resolve idempotency BEFORE acquiring a slot — see
-  // orchestrate.ts for the full contract.
-  const idempotency = shortCircuitOrFreshJobId<ToolResponse>({
-    tool: 'run_workflow',
+  // #3729: dispatch via the shared `runAsJob` helper — the exact sequence this
+  // function used to inline (idempotency → busy-on-cap → pending + register →
+  // detached run with complete/failed + release-in-finally → pending
+  // envelope). run_workflow's only diffs are the freshJobId and the
+  // `ToolResponse`-shaped envelopes (structurally identical to ToolResult but
+  // built via successResponse/errorResponse for the workflow path).
+  return runAsJob<RunWorkflowInput, ToolResponse, ToolResponse>({
+    toolName: 'run_workflow',
+    input: args,
     idempotencyKey: args.idempotencyKey,
-    inputs: args,
     freshJobId: () => `job-rw-${randomUUID()}`,
-    replayEnvelope: buildRunWorkflowReplayEnvelope,
-    collisionEnvelope: buildRunWorkflowCollisionEnvelope,
-  });
-  if (idempotency.kind === 'shortCircuit') return idempotency.value;
-  // Concurrency cap. Configurable via NEXUS_JOB_MAX_CONCURRENT_RUN_WORKFLOW.
-  if (!tryAcquire('run_workflow')) {
-    return successResponse({
-      status: 'busy',
-      retryAfterMs: suggestRetryAfterMs('run_workflow'),
-      note: 'Async-mode concurrency cap reached for run_workflow. Retry later or use mode: "sync".',
-    });
-  }
-  const jobId = idempotency.jobId;
-  writeJobPending(jobId, 'run_workflow');
-  if (args.idempotencyKey !== undefined && args.idempotencyKey !== '') {
-    registerIdempotentJob({
-      tool: 'run_workflow',
-      idempotencyKey: args.idempotencyKey,
-      inputs: args,
-      jobId,
-    });
-  }
-  // Fire-and-forget — `handleRunWorkflow` already encapsulates the full
-  // sync execution path including dry-run + validation + recording, so
-  // re-using it here keeps the wrapping minimal. The dispatched
-  // response object is wrapped consistently with the sync mode's
-  // success/error envelope so polling clients consume the same shape.
-  void (async (): Promise<void> => {
-    try {
-      const result = await handleRunWorkflow(deps, args);
-      // handleRunWorkflow returns a tool-response envelope; recording
-      // the whole envelope as the job result preserves the success/error
-      // discriminator + the workflow's stepResults for polling clients.
-      writeJobComplete(jobId, 'run_workflow', result);
-    } catch (err: unknown) {
-      const errObj = err instanceof Error ? err : new Error(String(err));
-      deps.logger?.error('Async run_workflow dispatch failed', errObj, { jobId });
-      writeJobFailed(jobId, 'run_workflow', errObj.message);
-    } finally {
-      release('run_workflow');
-    }
-  })();
-  return successResponse({
-    status: 'pending',
-    jobId,
-    pollTool: 'get_job_result',
-    note: 'Poll via get_job_result({ jobId }) until status !== "pending".',
+    // `handleRunWorkflow` already encapsulates the full sync path (dry-run +
+    // validation + recording); recording its whole envelope as the job result
+    // preserves the success/error discriminator + stepResults for polling.
+    run: (_jobId, input) => handleRunWorkflow(deps, input),
+    toEnvelope: {
+      pending: (jobId) =>
+        successResponse({
+          status: 'pending',
+          jobId,
+          pollTool: 'get_job_result',
+          note: 'Poll via get_job_result({ jobId }) until status !== "pending".',
+        }),
+      busy: (retryAfterMs) =>
+        successResponse({
+          status: 'busy',
+          retryAfterMs,
+          note: 'Async-mode concurrency cap reached for run_workflow. Retry later or use mode: "sync".',
+        }),
+      replay: buildRunWorkflowReplayEnvelope,
+      collision: buildRunWorkflowCollisionEnvelope,
+    },
+    ...(deps.logger !== undefined ? { logger: deps.logger } : {}),
   });
 }
 

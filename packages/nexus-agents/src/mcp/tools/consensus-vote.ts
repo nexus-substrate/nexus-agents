@@ -60,9 +60,9 @@ import { getPipelineEventBus } from '../../pipeline/event-bus.js';
 import { warnIfSimulatedOutsideTests } from './simulation-guard.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 // #3045 / epic #2631 Stage 4 — async-mode dispatch + concurrency cap.
-import { writeJobPending, writeJobComplete, writeJobFailed } from '../jobs/job-result-store.js';
-import { shortCircuitOrFreshJobId, registerIdempotentJob } from '../jobs/job-idempotency.js';
-import { tryAcquire, release, suggestRetryAfterMs } from '../jobs/job-concurrency.js';
+// #3045 / epic #2631 Stage 4 — async-mode dispatch via the shared `runAsJob`
+// helper (#3729).
+import { runAsJob } from '../jobs/run-as-job.js';
 import { randomUUID } from 'node:crypto';
 import type {
   VotingStrategy,
@@ -733,99 +733,25 @@ type ConsensusVoteToolResponse = ToolResult;
  * Concurrency cap is enforced via `tryAcquire('consensus_vote')`
  * (default 2; voting is 7-fan-out so caps multiply adapter load fast).
  */
-/** Replay envelope for consensus_vote idempotency (#3042 Stage 1c). */
-function buildConsensusVoteReplayEnvelope(jobId: string): ConsensusVoteToolResponse {
-  return toolSuccess(
-    JSON.stringify({
-      status: 'replay',
-      jobId,
-      pollTool: 'get_job_result',
-      note: 'Idempotency key matched a prior dispatch — poll get_job_result for current status.',
-    })
-  );
-}
-
-/** Collision envelope for consensus_vote idempotency (#3042 Stage 1c). */
-function buildConsensusVoteCollisionEnvelope(existingJobId: string): ConsensusVoteToolResponse {
-  return toolStructuredError({
-    errorCategory: 'validation',
-    message: `Idempotency key already used with different inputs. Existing jobId: ${existingJobId}. Use a fresh key or omit it.`,
-  });
-}
-
 function dispatchAsyncConsensusVote(
   deps: ConsensusVoteDeps,
   args: import('./consensus-vote-types.js').ConsensusVoteInput
 ): ConsensusVoteToolResponse {
-  // #3042 Stage 1c: resolve idempotency BEFORE acquiring a slot — see
-  // orchestrate.ts for the full contract.
-  const idempotency = shortCircuitOrFreshJobId<ConsensusVoteToolResponse>({
-    tool: 'consensus_vote',
+  // #3729: dispatch via the shared `runAsJob` helper — the exact sequence this
+  // function used to inline. consensus_vote's only diff is the freshJobId; its
+  // pending/busy/replay/collision envelopes are byte-for-byte the helper's
+  // ToolResult defaults, so no per-tool `toEnvelope` is needed.
+  return runAsJob<
+    import('./consensus-vote-types.js').ConsensusVoteInput,
+    Awaited<ReturnType<typeof handleConsensusVote>>
+  >({
+    toolName: 'consensus_vote',
+    input: args,
     idempotencyKey: args.idempotencyKey,
-    inputs: args,
     freshJobId: () => `job-vote-${randomUUID()}`,
-    replayEnvelope: buildConsensusVoteReplayEnvelope,
-    collisionEnvelope: buildConsensusVoteCollisionEnvelope,
+    run: (_jobId, input) => handleConsensusVote(deps, input),
+    ...(deps.logger !== undefined ? { logger: deps.logger } : {}),
   });
-  if (idempotency.kind === 'shortCircuit') return idempotency.value;
-  if (!tryAcquire('consensus_vote')) {
-    return toolSuccess(
-      JSON.stringify({
-        status: 'busy',
-        retryAfterMs: suggestRetryAfterMs('consensus_vote'),
-        note: 'Async-mode concurrency cap reached for consensus_vote. Retry later or use mode: "sync".',
-      })
-    );
-  }
-  const jobId = idempotency.jobId;
-  recordConsensusVotePending(jobId, args);
-  void runConsensusVoteInBackground(jobId, deps, args);
-  return toolSuccess(
-    JSON.stringify({
-      status: 'pending',
-      jobId,
-      pollTool: 'get_job_result',
-      note: 'Poll via get_job_result({ jobId }) until status !== "pending".',
-    })
-  );
-}
-
-/** Pending record + idempotency registration for consensus_vote (#3042 Stage 1c). */
-function recordConsensusVotePending(
-  jobId: string,
-  args: import('./consensus-vote-types.js').ConsensusVoteInput
-): void {
-  writeJobPending(jobId, 'consensus_vote');
-  if (args.idempotencyKey !== undefined && args.idempotencyKey !== '') {
-    registerIdempotentJob({
-      tool: 'consensus_vote',
-      idempotencyKey: args.idempotencyKey,
-      inputs: args,
-      jobId,
-    });
-  }
-}
-
-/**
- * Fire-and-forget consensus_vote background run. Wraps `handleConsensusVote`
- * with complete/failed recording + slot release. Extracted so dispatcher
- * stays under the 50-line cap.
- */
-async function runConsensusVoteInBackground(
-  jobId: string,
-  deps: ConsensusVoteDeps,
-  args: import('./consensus-vote-types.js').ConsensusVoteInput
-): Promise<void> {
-  try {
-    const result = await handleConsensusVote(deps, args);
-    writeJobComplete(jobId, 'consensus_vote', result);
-  } catch (err: unknown) {
-    const errObj = err instanceof Error ? err : new Error(String(err));
-    deps.logger?.error('Async consensus_vote dispatch failed', errObj, { jobId });
-    writeJobFailed(jobId, 'consensus_vote', errObj.message);
-  } finally {
-    release('consensus_vote');
-  }
 }
 
 /**

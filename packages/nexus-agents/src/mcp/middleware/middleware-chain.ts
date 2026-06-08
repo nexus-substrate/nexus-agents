@@ -15,6 +15,7 @@ import { validateToolInput } from './validation.js';
 import { RateLimiter, type RateLimiterConfig } from './rate-limiter.js';
 import { type IPolicyFirewall, type ExecutionMode, createPolicyContext } from './policy.js';
 import { TimeoutGuard, type TimeoutGuardConfig } from './timeout-guard.js';
+import { MCP_TIMEOUTS } from '../../config/timeouts.js';
 import { createRequestContext, contextForLogging, type RequestContext } from './request-context.js';
 import { createMetricsMiddleware } from './tool-metrics.js';
 import { abortSignalStorage } from '../mcp-notifier.js';
@@ -214,8 +215,13 @@ function createTimeoutMiddleware(guard: TimeoutGuard, toolName: string): Middlew
         code: result.error.code,
         timeoutMs: result.error.timeoutMs,
       });
+      // #3726 discoverability: append the per-tool hint (e.g. "retry in async
+      // job-mode") so a sync long-running tool that hits its ceiling tells the
+      // caller how to escape it. Absent hint → message unchanged.
+      const hint = MCP_TIMEOUTS.perToolTimeoutHint[toolName];
+      const message = hint !== undefined ? `${result.error.message} ${hint}` : result.error.message;
       // Timeout — transient, a retry with more headroom may succeed.
-      return errorResult('transient', result.error.message, ctx.requestContext.requestId);
+      return errorResult('transient', message, ctx.requestContext.requestId);
     }
 
     if (result.value.nearTimeout) {

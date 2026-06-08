@@ -45,6 +45,7 @@ describe('toolNameFromJobId', () => {
     expect(toolNameFromJobId('orch-1-a')).toBe('orchestrate');
     expect(toolNameFromJobId('rwf-1-a')).toBe('run_workflow');
     expect(toolNameFromJobId('cv-1-a')).toBe('consensus_vote');
+    expect(toolNameFromJobId('dp-abc123')).toBe('run_dev_pipeline');
   });
   it('returns "unknown" for unrecognized or prefix-less ids', () => {
     expect(toolNameFromJobId('weird-1-a')).toBe('unknown');
