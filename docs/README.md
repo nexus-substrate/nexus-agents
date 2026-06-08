@@ -190,10 +190,11 @@ Detailed technical documentation:
 
 #### Reference
 
-| Document                                       | Description                       | Status    |
-| ---------------------------------------------- | --------------------------------- | --------- |
-| [capabilities.md](./reference/capabilities.md) | CLI/MCP/Workflow capability index | Generated |
-| [skills-index.md](./skills-index.md)           | LLM context loading index         | Canonical |
+| Document                                         | Description                                              | Status    |
+| ------------------------------------------------ | -------------------------------------------------------- | --------- |
+| [capabilities.md](./reference/capabilities.md)   | CLI/MCP/Workflow capability index                        | Generated |
+| [MCP tool reference](./reference/tools/index.md) | Per-tool MCP reference (name, description, input schema) | Generated |
+| [skills-index.md](./skills-index.md)             | LLM context loading index                                | Canonical |
 
 #### Operational Docs
 

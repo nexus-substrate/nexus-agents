@@ -1,6 +1,7 @@
 # Generated files (managed by scripts, not prettier)
 website/src/content/docs/
 docs/reference/capabilities.md
+docs/reference/tools/
 packages/nexus-agents/docs/api/
 skills/index.yaml
 agents/index.yaml

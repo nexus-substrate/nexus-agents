@@ -10,7 +10,8 @@
     "scripts/check-docs-indexed.ts",
     ".github/workflows/docs-check.yml",
     ".github/workflows/link-check.yml",
-    "docs/ops/docops-spec.md"
+    "docs/ops/docops-spec.md",
+    "scripts/generate-tool-reference.ts"
   ],
   "skill_file": "skills/documentation-management/SKILL.md",
   "canonical_index": "docs/README.md",

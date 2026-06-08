@@ -22,6 +22,9 @@ exclude_path = [
   ".pnpm-store",
   "packages/nexus-agents/src/**/*.test.ts",
   "packages/nexus-agents/docs/api",
+  # Generated per-tool MCP reference (#3687) — internal links regenerate with the
+  # tool set; not hand-curated, so excluded (mirrors docs/api).
+  "docs/reference/tools",
   "logs",
   # Archived docs have stale cross-references to pre-archive paths;
   # not worth maintaining link accuracy in frozen historical documents.
