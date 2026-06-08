@@ -22,6 +22,25 @@ describe('env-schema', () => {
       expect(result.invalidVars).toHaveLength(0);
     });
 
+    it('recognizes the autonomous-remediation + policy + overlay vars (#3713)', () => {
+      vi.stubEnv('NEXUS_AUTO_REMEDIATE', 'audit');
+      vi.stubEnv('NEXUS_POLICY_GATE_MODE', 'warn');
+      vi.stubEnv('NEXUS_MODELS_OVERLAY_PATH', '/tmp/overlay.yaml');
+      const result = validateNexusEnv();
+      expect(result.unknownVars).toHaveLength(0);
+      expect(result.invalidVars).toHaveLength(0);
+    });
+
+    it('rejects invalid NEXUS_AUTO_REMEDIATE / NEXUS_POLICY_GATE_MODE values (#3713)', () => {
+      vi.stubEnv('NEXUS_AUTO_REMEDIATE', 'bogus');
+      vi.stubEnv('NEXUS_POLICY_GATE_MODE', 'nope');
+      const result = validateNexusEnv();
+      expect(result.invalidVars.map((v) => v.name).sort()).toEqual([
+        'NEXUS_AUTO_REMEDIATE',
+        'NEXUS_POLICY_GATE_MODE',
+      ]);
+    });
+
     it('returns no warnings when no NEXUS_* vars are set', () => {
       // Clear all NEXUS_* vars via stubEnv
       for (const key of Object.keys(process.env)) {
