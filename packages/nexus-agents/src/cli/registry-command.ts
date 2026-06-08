@@ -24,6 +24,7 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { nexusDataPath } from '../config/nexus-data-dir.js';
+import { NETWORK_FETCH_TIMEOUT_MS } from '../config/timeouts.js';
 
 import {
   getDefaultRegistry,
@@ -327,7 +328,9 @@ const overCapError = (bytes: number | null): FetchResult => ({
 
 async function fetchWithCap(url: string, fetchImpl: typeof fetch): Promise<FetchResult> {
   try {
-    const response = await fetchImpl(url, { signal: AbortSignal.timeout(30_000) });
+    const response = await fetchImpl(url, {
+      signal: AbortSignal.timeout(NETWORK_FETCH_TIMEOUT_MS),
+    });
     if (!response.ok) {
       return { ok: false, error: `HTTP ${String(response.status)}` };
     }

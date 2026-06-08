@@ -214,6 +214,41 @@ export const TOOL_CLASS = {
   memory_write: 'interactive',
 } as const satisfies Record<string, OperationClassName>;
 
+/**
+ * Named central constants for non-MCP-tool callers that need a class guard but
+ * do not flow through {@link TOOL_CLASS} (workflows, self-eval, network fetches).
+ * Each derives from {@link OPERATION_CLASSES} so the operation-class taxonomy
+ * (#3734) stays the single source of truth — no local literals.
+ *
+ * PRINCIPLE (#3734): these are non-punitive RUNAWAY-GUARDS. The old AFlow /
+ * self-eval / mutation literals (30s/60s guarding an LLM evaluation) were
+ * punitive and have been raised to the `single-llm` class guard (300s). Network
+ * fetch literals (30s/10s) ride the `network-fetch` guard (120s).
+ * (Source: Issue #3736 — sweep scattered literal timeouts into the authority)
+ */
+
+/**
+ * Runaway-guard for a single LLM evaluation / mutation / self-eval round-trip.
+ * Resolves to the `single-llm` class guard (300s). Replaces the punitive
+ * 30s/60s literals in aflow / self-eval / mutation-operators.
+ */
+export const SINGLE_LLM_EVAL_TIMEOUT_MS = OPERATION_CLASSES['single-llm'].guardMs;
+
+/**
+ * Runaway-guard for an outbound HTTP fetch (registry/plan-compiler/github/osv/
+ * v2-delegate). Resolves to the `network-fetch` class guard (120s) — generous
+ * for any real fetch, replacing the scattered 30s/10s `AbortSignal.timeout`
+ * literals.
+ */
+export const NETWORK_FETCH_TIMEOUT_MS = OPERATION_CLASSES['network-fetch'].guardMs;
+
+/**
+ * Generous upper bound for a multi-step search tree (LATTS) run. Resolves to the
+ * `single-llm` class guard (300s) — the prior 5-minute literal happened to match
+ * the class guard exactly, so this is pure centralization.
+ */
+export const SEARCH_TREE_MAX_TIME_MS = OPERATION_CLASSES['single-llm'].guardMs;
+
 /** Env-var name for the global timeout multiplier. */
 export const TIMEOUT_MULTIPLIER_ENV_VAR = 'NEXUS_TIMEOUT_MULTIPLIER';
 

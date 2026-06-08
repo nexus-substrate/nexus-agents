@@ -353,7 +353,16 @@ describe('evaluateCompleteness', () => {
 
 describe('calculateTimeoutScore', () => {
   it('returns 1 for reasonable timeout', () => {
-    const score = calculateTimeoutScore(makeWorkflow(), makeTask());
+    // Steps carry explicit modest per-step timeouts; the COST_MODEL fallback
+    // default was centralized up to the single-llm class guard (300s, #3736),
+    // so a timeout-less 2-step workflow now exceeds the 300s default budget.
+    const wf = makeWorkflow({
+      steps: [
+        { id: 'step1', agent: 'code_expert', action: 'Implement', inputs: {}, timeout: 60000 },
+        { id: 'step2', agent: 'testing_expert', action: 'Test', inputs: {}, timeout: 60000 },
+      ],
+    });
+    const score = calculateTimeoutScore(wf, makeTask());
     expect(score).toBeGreaterThan(0);
   });
 

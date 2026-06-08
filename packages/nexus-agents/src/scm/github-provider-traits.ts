@@ -22,6 +22,7 @@ import type {
 } from './types.js';
 import { ScmError } from './types.js';
 import { GitHubProvider } from './github-provider.js';
+import { CLI_SUBPROCESS_TIMEOUTS } from '../config/timeouts.js';
 
 const logger = createLogger({ component: 'GitHubProviderTraits' });
 
@@ -144,7 +145,7 @@ async function execGhApi(endpoint: string, method?: string): Promise<Result<stri
   try {
     const { stdout } = await exec('gh', args, {
       maxBuffer: 10 * 1024 * 1024,
-      timeout: 30_000,
+      timeout: CLI_SUBPROCESS_TIMEOUTS.ghCommandMs,
       ...(env !== undefined ? { env } : {}),
     });
     return ok(stdout.trim());
@@ -265,7 +266,7 @@ export class GitHubReviewer implements IScmReviewer {
           '-f',
           `event=${eventMap[decision]}`,
         ],
-        { maxBuffer: 10 * 1024 * 1024, timeout: 30_000 }
+        { maxBuffer: 10 * 1024 * 1024, timeout: CLI_SUBPROCESS_TIMEOUTS.ghCommandMs }
       );
       return ok(undefined);
     } catch (error) {

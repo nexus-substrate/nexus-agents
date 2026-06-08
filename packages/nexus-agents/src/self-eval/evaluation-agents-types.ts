@@ -8,6 +8,7 @@
  */
 
 import type { ILogger } from '../core/index.js';
+import { SINGLE_LLM_EVAL_TIMEOUT_MS } from '../config/timeouts.js';
 
 // ============================================================================
 // Result Types
@@ -111,6 +112,8 @@ export const DEFAULT_THRESHOLDS: Required<EvaluationThresholds> = {
 } as const;
 
 /**
- * Default timeout in milliseconds.
+ * Default timeout in milliseconds. Runaway-guard for a single component's
+ * LLM-backed evaluation (#3736): was a punitive 30s literal; raised to the
+ * central single-llm class guard (300s).
  */
-export const DEFAULT_TIMEOUT_MS = 30_000;
+export const DEFAULT_TIMEOUT_MS = SINGLE_LLM_EVAL_TIMEOUT_MS;

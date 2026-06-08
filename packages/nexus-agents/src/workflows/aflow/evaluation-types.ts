@@ -7,6 +7,8 @@
  * (Source: Issue #329, arXiv:2410.10762)
  */
 
+import { SINGLE_LLM_EVAL_TIMEOUT_MS } from '../../config/timeouts.js';
+
 /**
  * Weights for evaluation components.
  */
@@ -61,5 +63,8 @@ export const COST_MODEL = {
   baseCostPerStep: 100,
   costPerRetry: 50,
   costPerTimeoutMs: 0.001,
-  defaultTimeoutMs: 60000,
+  // Assumed default LLM-step runaway-guard used for cost/score estimation when a
+  // step declares no explicit timeout (#3736): was a punitive 60s literal;
+  // centralized to the single-llm class guard (300s).
+  defaultTimeoutMs: SINGLE_LLM_EVAL_TIMEOUT_MS,
 } as const;

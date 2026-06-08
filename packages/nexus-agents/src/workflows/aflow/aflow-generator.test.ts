@@ -20,6 +20,7 @@ import { ActionSpace, createActionSpace } from './action-space.js';
 import { WorkflowEvaluator, createWorkflowEvaluator } from './evaluation.js';
 import type { TaskSpecification, WorkflowAction } from './aflow-types.js';
 import { DEFAULT_AFLOW_CONFIG, AFlowConfigSchema } from './aflow-types.js';
+import { SINGLE_LLM_EVAL_TIMEOUT_MS } from '../../config/timeouts.js';
 
 // ============================================================================
 // Test Helpers
@@ -78,6 +79,15 @@ describe('AFlow Types', () => {
 
       expect(config.maxIterations).toBe(DEFAULT_AFLOW_CONFIG.maxIterations);
       expect(config.explorationConstant).toBeCloseTo(Math.SQRT2);
+    });
+
+    it('uses the central single-llm class guard for evaluation timeout (#3736, non-punitive)', () => {
+      // Was a punitive 30s literal guarding an LLM node evaluation; now derives
+      // from the central single-llm class guard (300s).
+      expect(DEFAULT_AFLOW_CONFIG.evaluationTimeoutMs).toBe(SINGLE_LLM_EVAL_TIMEOUT_MS);
+      expect(DEFAULT_AFLOW_CONFIG.evaluationTimeoutMs).toBe(300_000);
+      const parsed = AFlowConfigSchema.parse({});
+      expect(parsed.evaluationTimeoutMs).toBe(SINGLE_LLM_EVAL_TIMEOUT_MS);
     });
 
     it('should reject invalid values', () => {

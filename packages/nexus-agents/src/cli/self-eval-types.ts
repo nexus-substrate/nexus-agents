@@ -8,6 +8,7 @@
  */
 
 import type { AggregatedResult } from '../self-eval/aggregation-logic.js';
+import { INTERNAL_TIMEOUTS } from '../config/timeouts.js';
 
 // ============================================================================
 // CLI Options
@@ -70,8 +71,9 @@ export interface EvaluationSummary {
 // Constants
 // ============================================================================
 
-/** Default timeout in milliseconds (2 minutes) */
-export const DEFAULT_TIMEOUT_MS = 120_000;
+/** Default overall self-eval wall budget. Centralized to the canonical
+ * self-eval timeout in the central authority (#3736); same 120s value. */
+export const DEFAULT_TIMEOUT_MS = INTERNAL_TIMEOUTS.selfEvalMs;
 
 /** Default target directory */
 export const DEFAULT_TARGET = 'src/adapters/';

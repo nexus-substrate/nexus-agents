@@ -9,11 +9,14 @@
 
 import { z } from 'zod';
 import { createLogger } from '../core/index.js';
+import { NETWORK_FETCH_TIMEOUT_MS } from '../config/timeouts.js';
 
 const logger = createLogger({ component: 'osv-lookup' });
 
 const OSV_API_URL = 'https://api.osv.dev/v1/query';
-const DEFAULT_TIMEOUT_MS = 10_000;
+// Runaway-guard for the OSV.dev HTTP query (#3736): was a 10s literal — too
+// tight for a real fetch; centralized to the network-fetch class guard (120s).
+const DEFAULT_TIMEOUT_MS = NETWORK_FETCH_TIMEOUT_MS;
 
 // ============================================================================
 // Types

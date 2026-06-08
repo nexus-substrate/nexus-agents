@@ -22,6 +22,7 @@ import type {
   EvaluationSummary,
 } from './self-eval-types.js';
 import { DEFAULT_TIMEOUT_MS, DEFAULT_TARGET, colors } from './self-eval-types.js';
+import { SINGLE_LLM_EVAL_TIMEOUT_MS } from '../config/timeouts.js';
 import { printSummaryMode, printVerboseMode, printJsonMode } from './self-eval-format.js';
 
 // Re-export types for backward compatibility
@@ -135,7 +136,10 @@ async function evaluateComponentWithTimeout(
   component: ComponentInfo,
   remainingMs: number
 ): Promise<readonly EvaluationResult[]> {
-  const componentTimeout = Math.min(remainingMs, 30_000); // Max 30s per component
+  // Per-component runaway-guard (#3736): was a punitive 30s cap on a single
+  // component's LLM evaluation; raised to the central single-llm class guard
+  // (300s). The overall remainingMs wall budget still bounds the run.
+  const componentTimeout = Math.min(remainingMs, SINGLE_LLM_EVAL_TIMEOUT_MS);
 
   try {
     const result = await Promise.race([
@@ -194,7 +198,7 @@ export function parseOptions(args: readonly string[]): EvaluateOptions {
   let target = DEFAULT_TARGET;
   let verbose = false;
   let json = false;
-  let timeout = DEFAULT_TIMEOUT_MS;
+  let timeout: number = DEFAULT_TIMEOUT_MS;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];

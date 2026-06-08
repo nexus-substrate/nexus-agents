@@ -16,6 +16,7 @@ import type { PlanContract, StageSpec, PolicyGateSpec } from './task-contract.js
 import type { IPluginRegistry } from './plugin-types.js';
 import { enforceGatePolicy } from './policy-evaluator.js';
 import type { GatePolicyEnforcement } from './policy-evaluator.js';
+import { NETWORK_FETCH_TIMEOUT_MS } from '../config/timeouts.js';
 
 /** Result of plan compilation. */
 type CompileResult =
@@ -104,7 +105,11 @@ function createStageHandler(
   const plugin = registry?.resolve(stage.pluginId);
   if (plugin !== undefined) {
     return async (_state: Readonly<GraphState>) => {
-      const ctx = { signal: AbortSignal.timeout(30_000), task: {} as never, config: stage.config };
+      const ctx = {
+        signal: AbortSignal.timeout(NETWORK_FETCH_TIMEOUT_MS),
+        task: {} as never,
+        config: stage.config,
+      };
       const result = await plugin.execute(stage, ctx);
       return {
         currentStage: stage.id,
