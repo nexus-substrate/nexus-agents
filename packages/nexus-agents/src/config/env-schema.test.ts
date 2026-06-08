@@ -31,6 +31,19 @@ describe('env-schema', () => {
       expect(result.invalidVars).toHaveLength(0);
     });
 
+    it('recognizes NEXUS_CONTEXT_RANKED (#3236)', () => {
+      vi.stubEnv('NEXUS_CONTEXT_RANKED', '1');
+      const result = validateNexusEnv();
+      expect(result.unknownVars).toHaveLength(0);
+      expect(result.invalidVars).toHaveLength(0);
+    });
+
+    it('rejects an invalid NEXUS_CONTEXT_RANKED value (#3236)', () => {
+      vi.stubEnv('NEXUS_CONTEXT_RANKED', 'yes');
+      const result = validateNexusEnv();
+      expect(result.invalidVars.map((v) => v.name)).toContain('NEXUS_CONTEXT_RANKED');
+    });
+
     it('rejects invalid NEXUS_AUTO_REMEDIATE / NEXUS_POLICY_GATE_MODE values (#3713)', () => {
       vi.stubEnv('NEXUS_AUTO_REMEDIATE', 'bogus');
       vi.stubEnv('NEXUS_POLICY_GATE_MODE', 'nope');

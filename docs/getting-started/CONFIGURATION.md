@@ -169,18 +169,19 @@ All configuration can be overridden with environment variables:
 
 ### Core Variables
 
-| Variable                         | Description                                                                                                                                   | Default                   |
-| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
-| `NEXUS_CONFIG_PATH`              | Path to config file                                                                                                                           | `./nexus-agents.yaml`     |
-| `NEXUS_LOG_LEVEL`                | Logging level (`debug` / `info` / `warn` / `error`)                                                                                           | `info`                    |
-| `NEXUS_CONSOLE`                  | Force `console.*` on/off. `0` always off; `1` always on; unset → on for CLI, off for stdio-MCP, on for HTTP-MCP                               | unset                     |
-| `NEXUS_DATA_DIR`                 | Explicit runtime data root. Overrides the per-repo/cross-repo split (#2872)                                                                   | per-repo `.nexus-agents/` |
-| `NEXUS_REPO_PREFERRED`           | `0` opts out of the per-repo data dir (epic #2872)                                                                                            | `1`                       |
-| `NEXUS_PORTABLE_MODE`            | Force portable (sandbox-friendly) data dir. `0` opts out of auto-detect; `1` forces on; unset → heuristic (writable home, container env vars) | unset (heuristic)         |
-| `NEXUS_GITIGNORE_AUTO`           | `0` silences the auto-append of `.nexus-agents/` to the repo's `.gitignore`                                                                   | `1`                       |
-| `NEXUS_NO_SCAFFOLD`              | `1` disables scaffolding of missing `docs/` registry files on read                                                                            | unset                     |
-| `NEXUS_CONTEXT_RETRIEVER_INJECT` | Inject `priorMemorySummary` from `ContextRetriever` into `orchestrate` inputs (#2792, #2921)                                                  | `0`                       |
-| `NEXUS_VERSION_CHECK`            | Startup warning if the build lags the latest published version (#3283); one npm-registry call. `0` disables; skips dev + CI                   | `1`                       |
+| Variable                         | Description                                                                                                                                      | Default                   |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------- |
+| `NEXUS_CONFIG_PATH`              | Path to config file                                                                                                                              | `./nexus-agents.yaml`     |
+| `NEXUS_LOG_LEVEL`                | Logging level (`debug` / `info` / `warn` / `error`)                                                                                              | `info`                    |
+| `NEXUS_CONSOLE`                  | Force `console.*` on/off. `0` always off; `1` always on; unset → on for CLI, off for stdio-MCP, on for HTTP-MCP                                  | unset                     |
+| `NEXUS_DATA_DIR`                 | Explicit runtime data root. Overrides the per-repo/cross-repo split (#2872)                                                                      | per-repo `.nexus-agents/` |
+| `NEXUS_REPO_PREFERRED`           | `0` opts out of the per-repo data dir (epic #2872)                                                                                               | `1`                       |
+| `NEXUS_PORTABLE_MODE`            | Force portable (sandbox-friendly) data dir. `0` opts out of auto-detect; `1` forces on; unset → heuristic (writable home, container env vars)    | unset (heuristic)         |
+| `NEXUS_GITIGNORE_AUTO`           | `0` silences the auto-append of `.nexus-agents/` to the repo's `.gitignore`                                                                      | `1`                       |
+| `NEXUS_NO_SCAFFOLD`              | `1` disables scaffolding of missing `docs/` registry files on read                                                                               | unset                     |
+| `NEXUS_CONTEXT_RETRIEVER_INJECT` | Inject `priorMemorySummary` from `ContextRetriever` into `orchestrate` inputs (#2792, #2921)                                                     | `0`                       |
+| `NEXUS_CONTEXT_RANKED`           | `1` renders the unified cross-ranked memory prefix (`rankedMemories`) instead of per-backend sections; flag-off output is byte-identical (#3236) | `0`                       |
+| `NEXUS_VERSION_CHECK`            | Startup warning if the build lags the latest published version (#3283); one npm-registry call. `0` disables; skips dev + CI                      | `1`                       |
 
 ### Model Provider Keys
 
