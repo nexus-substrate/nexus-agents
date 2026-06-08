@@ -1,5 +1,17 @@
 # nexus-agents
 
+## 2.125.36
+
+### Patch Changes
+
+- [#3738](https://github.com/nexus-substrate/nexus-agents/pull/3738) [`e799257`](https://github.com/nexus-substrate/nexus-agents/commit/e799257d6ea256d9b358e224abba3ae7c89ca990) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - pipeline: `run_pipeline` gains async job-mode ([#3730](https://github.com/nexus-substrate/nexus-agents/issues/3730)). A new `dispatch: 'async'`
+  input returns `{ status: 'pending', jobId }` immediately and runs the multi-stage
+  adaptive orchestrator in the background via the shared `runAsJob` helper; poll
+  `get_job_result({ jobId })` for the result. `dispatch: 'sync'` (default) is
+  byte-identical to prior behavior; `dryRun` always stays sync. async jobs mint an
+  `rp-<uuid>` jobId (run_pipeline has no sessionId surface) and are capped at 2
+  concurrent runs. Mirrors the `run_dev_pipeline` migration ([#3726](https://github.com/nexus-substrate/nexus-agents/issues/3726)).
+
 ## 2.125.35
 
 ### Patch Changes
