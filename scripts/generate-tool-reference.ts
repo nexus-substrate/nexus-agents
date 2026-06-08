@@ -313,6 +313,15 @@ function yamlQuote(s: string): string {
   return `'${s.replace(/'/g, "''")}'`;
 }
 
+/**
+ * Escape a string for a single Markdown table cell. The escape character `\`
+ * is escaped FIRST (so existing backslashes can't form spurious escapes), then
+ * the cell delimiter `|`, then newlines are flattened (they'd break the row).
+ */
+function escapeCell(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
+}
+
 function renderToolPage(doc: ToolDoc): string {
   const lines: string[] = [];
   lines.push('---');
@@ -337,9 +346,9 @@ function renderToolPage(doc: ToolDoc): string {
     lines.push('| Parameter | Type | Required | Description |');
     lines.push('| --------- | ---- | -------- | ----------- |');
     for (const p of doc.params) {
-      const desc = p.description.replace(/\|/g, '\\|') || '—';
+      const desc = escapeCell(p.description) || '—';
       lines.push(
-        `| \`${p.name}\` | ${p.type.replace(/\|/g, '\\|')} | ${p.required ? 'yes' : 'no'} | ${desc} |`
+        `| \`${p.name}\` | ${escapeCell(p.type)} | ${p.required ? 'yes' : 'no'} | ${desc} |`
       );
     }
   }
@@ -370,7 +379,7 @@ function renderIndexPage(docs: ToolDoc[]): string {
   lines.push('| Tool | Summary |');
   lines.push('| ---- | ------- |');
   for (const doc of docs) {
-    const summary = doc.short.replace(/\|/g, '\\|');
+    const summary = escapeCell(doc.short);
     lines.push(`| [\`${doc.name}\`](./${doc.name}.md) | ${summary} |`);
   }
   lines.push('');
