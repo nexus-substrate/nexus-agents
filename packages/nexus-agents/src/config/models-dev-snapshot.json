@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "fetchedAt": "2026-06-01",
+  "fetchedAt": "2026-06-08",
   "sourceUrl": "https://models.dev/api.json",
   "entries": [
     {
@@ -1171,6 +1171,30 @@
       "pricing": {
         "inputPer1M": 2.5,
         "outputPer1M": 7.5
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
+      "id": "qwen3.7-plus",
+      "vendor": "qwen",
+      "family": "qwen",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-qwen",
+      "source": "models-dev",
+      "displayName": "Qwen3.7 Plus",
+      "verifiedAt": "2026-06-04",
+      "contextWindow": 1000000,
+      "maxOutputTokens": 16384,
+      "inputModalities": ["text", "image", "video"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 0.5,
+        "outputPer1M": 3
       },
       "toolCapabilities": ["function-calling"]
     },
@@ -2351,6 +2375,29 @@
       "toolCapabilities": ["function-calling"]
     },
     {
+      "id": "gemini-3-pro-image-preview",
+      "vendor": "google",
+      "family": "gemini-pro",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-google",
+      "source": "models-dev",
+      "displayName": "Nano Banana Pro",
+      "verifiedAt": "2025-11-20",
+      "contextWindow": 131072,
+      "maxOutputTokens": 32768,
+      "inputModalities": ["text", "image"],
+      "outputModalities": ["text", "image"],
+      "pricing": {
+        "inputPer1M": 2,
+        "outputPer1M": 120
+      }
+    },
+    {
       "id": "gemini-3-pro-preview",
       "vendor": "google",
       "family": "gemini-pro",
@@ -3133,6 +3180,29 @@
       "toolCapabilities": ["function-calling"]
     },
     {
+      "id": "gemini-2.5-flash-tts",
+      "vendor": "google",
+      "family": "gemini-flash",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-google",
+      "source": "models-dev",
+      "displayName": "Gemini 2.5 Flash TTS",
+      "verifiedAt": "2025-12-10",
+      "contextWindow": 32768,
+      "maxOutputTokens": 16384,
+      "inputModalities": ["text"],
+      "outputModalities": ["audio"],
+      "pricing": {
+        "inputPer1M": 0.5,
+        "outputPer1M": 10
+      }
+    },
+    {
       "id": "gemini-2.5-pro",
       "vendor": "google",
       "family": "gemini-pro",
@@ -3155,6 +3225,29 @@
         "outputPer1M": 10
       },
       "toolCapabilities": ["function-calling"]
+    },
+    {
+      "id": "gemini-2.5-pro-tts",
+      "vendor": "google",
+      "family": "gemini-pro",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-google",
+      "source": "models-dev",
+      "displayName": "Gemini 2.5 Pro TTS",
+      "verifiedAt": "2025-12-10",
+      "contextWindow": 32768,
+      "maxOutputTokens": 16384,
+      "inputModalities": ["text"],
+      "outputModalities": ["audio"],
+      "pricing": {
+        "inputPer1M": 1,
+        "outputPer1M": 20
+      }
     },
     {
       "id": "gemini-3-flash-preview",
@@ -3636,6 +3729,30 @@
       "toolCapabilities": ["function-calling"]
     },
     {
+      "id": "devstral-latest",
+      "vendor": "mistral",
+      "family": "devstral",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-mistral",
+      "source": "models-dev",
+      "displayName": "Devstral 2",
+      "verifiedAt": "2025-12-09",
+      "contextWindow": 262144,
+      "maxOutputTokens": 262144,
+      "inputModalities": ["text"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 0.4,
+        "outputPer1M": 2
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
       "id": "devstral-medium-2507",
       "vendor": "mistral",
       "family": "devstral",
@@ -4031,14 +4148,14 @@
       "profileId": "models-dev-mistral",
       "source": "models-dev",
       "displayName": "Mistral Medium (latest)",
-      "verifiedAt": "2026-04-29",
+      "verifiedAt": "2025-08-12",
       "contextWindow": 262144,
       "maxOutputTokens": 262144,
       "inputModalities": ["text", "image"],
       "outputModalities": ["text"],
       "pricing": {
-        "inputPer1M": 1.5,
-        "outputPer1M": 7.5
+        "inputPer1M": 0.4,
+        "outputPer1M": 2
       },
       "toolCapabilities": ["function-calling"]
     },
@@ -4159,6 +4276,30 @@
       "pricing": {
         "inputPer1M": 0.25,
         "outputPer1M": 0.25
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
+      "id": "open-mistral-nemo",
+      "vendor": "mistral",
+      "family": "mistral-nemo",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-mistral",
+      "source": "models-dev",
+      "displayName": "Open Mistral Nemo",
+      "verifiedAt": "2024-07-01",
+      "contextWindow": 128000,
+      "maxOutputTokens": 128000,
+      "inputModalities": ["text"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 0.15,
+        "outputPer1M": 0.15
       },
       "toolCapabilities": ["function-calling"]
     },
@@ -5136,7 +5277,7 @@
     {
       "id": "mistralai/mistral-nemotron",
       "vendor": "nvidia",
-      "family": "mistralai/mistral-nemotron",
+      "family": "nemotron",
       "parallelToolCalls": false,
       "promptCaching": "none",
       "toolDefinitionFormat": "openai",
@@ -5463,7 +5604,7 @@
     {
       "id": "nvidia/llama-3_1-nemotron-safety-guard-8b-v3",
       "vendor": "nvidia",
-      "family": "nvidia/llama-3_1-nemotron-safety-guard-8b-v3",
+      "family": "nemotron",
       "parallelToolCalls": false,
       "promptCaching": "none",
       "toolDefinitionFormat": "openai",
@@ -5557,7 +5698,7 @@
     {
       "id": "nvidia/llama-nemotron-embed-vl-1b-v2",
       "vendor": "nvidia",
-      "family": "nvidia/llama-nemotron-embed-vl-1b-v2",
+      "family": "nemotron",
       "parallelToolCalls": false,
       "promptCaching": "none",
       "toolDefinitionFormat": "openai",
@@ -5580,7 +5721,7 @@
     {
       "id": "nvidia/llama-nemotron-rerank-vl-1b-v2",
       "vendor": "nvidia",
-      "family": "nvidia/llama-nemotron-rerank-vl-1b-v2",
+      "family": "nemotron",
       "parallelToolCalls": false,
       "promptCaching": "none",
       "toolDefinitionFormat": "openai",
@@ -5626,7 +5767,7 @@
     {
       "id": "nvidia/nemotron-3-content-safety",
       "vendor": "nvidia",
-      "family": "nvidia/nemotron-3-content-safety",
+      "family": "nemotron",
       "parallelToolCalls": false,
       "promptCaching": "none",
       "toolDefinitionFormat": "openai",
@@ -5721,7 +5862,7 @@
     {
       "id": "nvidia/nemotron-content-safety-reasoning-4b",
       "vendor": "nvidia",
-      "family": "nvidia/nemotron-content-safety-reasoning-4b",
+      "family": "nemotron",
       "parallelToolCalls": false,
       "promptCaching": "none",
       "toolDefinitionFormat": "openai",
@@ -5744,7 +5885,7 @@
     {
       "id": "nvidia/nemotron-mini-4b-instruct",
       "vendor": "nvidia",
-      "family": "nvidia/nemotron-mini-4b-instruct",
+      "family": "nemotron",
       "parallelToolCalls": false,
       "promptCaching": "none",
       "toolDefinitionFormat": "openai",
@@ -5768,7 +5909,7 @@
     {
       "id": "nvidia/nemotron-voicechat",
       "vendor": "nvidia",
-      "family": "nvidia/nemotron-voicechat",
+      "family": "nemotron",
       "parallelToolCalls": false,
       "promptCaching": "none",
       "toolDefinitionFormat": "openai",
