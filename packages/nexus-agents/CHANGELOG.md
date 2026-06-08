@@ -1,5 +1,21 @@
 # nexus-agents
 
+## 2.125.37
+
+### Patch Changes
+
+- [#3740](https://github.com/nexus-substrate/nexus-agents/pull/3740) [`bd1cf80`](https://github.com/nexus-substrate/nexus-agents/commit/bd1cf8033ceb5c7913b0d1c00418522e9b3a98ed) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(mcp): add async job-mode dispatch to pr_review + supply_chain_tradeoff_panel ([#3731](https://github.com/nexus-substrate/nexus-agents/issues/3731))
+
+  Both tools run 5-7 live LLM voters via `collectRealVotes` (same shape as the
+  already-async `consensus_vote`), and previously could exceed even the interim
+  900s per-tool cap. They now accept `dispatch: 'async'`, mirroring `consensus_vote`:
+  the sync (default) path is byte-identical, while `dispatch: 'async'` routes the
+  panel body through the shared `runAsJob` helper and returns
+  `{ status: 'pending', jobId }` immediately (mint `pr-<uuid>` / `sc-<uuid>`,
+  no sessionId/idempotency surface). Poll `get_job_result({ jobId })` for the
+  result. Sync error/timeout envelopes now carry an async-retry hint. Adds both
+  tools to `DEFAULT_JOB_CAPS` (cap 2 each) and the jobId-prefix → toolName map.
+
 ## 2.125.36
 
 ### Patch Changes
