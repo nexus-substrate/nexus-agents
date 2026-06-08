@@ -2,8 +2,10 @@
  * Multi-Agent Development Pipeline Tests (#1684)
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { runDevPipeline } from './dev-pipeline.js';
+import { getPipelineEventBus } from './event-bus.js';
+import { PolicyBlockedError } from './policy-evaluator.js';
 import type {
   DevPipelineStages,
   PipelineTask,
@@ -573,5 +575,136 @@ describe('runDevPipeline — CapabilityLedger integration (#3643 ship-blocking)'
 
     expect(stages.research).toHaveBeenCalledTimes(1);
     expect(result.completed).toBe(true);
+  });
+});
+
+// ============================================================================
+// Consensus → execute policy gate (#3704)
+// ============================================================================
+
+describe('runDevPipeline — consensus→execute policy gate (#3704)', () => {
+  /** Captures policy.evaluated gate ids emitted on the shared pipeline bus. */
+  function capturePolicyEvents(): { events: string[]; off: () => void } {
+    const events: string[] = [];
+    const off = getPipelineEventBus().subscribe({ type: 'policy.evaluated' }, (e) => {
+      if (e.type === 'policy.evaluated') events.push(e.gateId);
+    });
+    return { events, off };
+  }
+
+  afterEach(() => {
+    delete process.env['NEXUS_POLICY_GATE_MODE'];
+  });
+
+  it('(a) WARN default + missing-trustTier violation: emits policy.evaluated then PROCEEDS to decompose', async () => {
+    // No NEXUS_POLICY_GATE_MODE → defaults to WARN. The default engine's
+    // trust-tier rule denies an execute stage with no trustTier (fail-closed).
+    const cap = capturePolicyEvents();
+    const stages = createMockStages();
+    try {
+      const result = await runDevPipeline('Build feature X', stages);
+      // Execution proceeds despite the violation (WARN never halts).
+      expect(stages.decompose).toHaveBeenCalledTimes(1);
+      expect(result.completed).toBe(true);
+      // The violation was emitted for audit.
+      expect(cap.events.some((g) => g.startsWith('consensus-to-execute:'))).toBe(true);
+    } finally {
+      cap.off();
+    }
+  });
+
+  it('(b) block mode + untrusted: emits policy.evaluated, then THROWS PolicyBlockedError; decompose NOT called', async () => {
+    process.env['NEXUS_POLICY_GATE_MODE'] = 'block';
+    const cap = capturePolicyEvents();
+    const stages = createMockStages();
+    try {
+      await expect(runDevPipeline('Build feature X', stages)).rejects.toBeInstanceOf(
+        PolicyBlockedError
+      );
+      expect(stages.decompose).not.toHaveBeenCalled();
+      expect(cap.events.some((g) => g.startsWith('consensus-to-execute:'))).toBe(true);
+    } finally {
+      cap.off();
+    }
+  });
+
+  it('(e) emit-before-throw: in block mode the policy.evaluated event is captured BEFORE the throw is observed', async () => {
+    process.env['NEXUS_POLICY_GATE_MODE'] = 'block';
+    const stages = createMockStages();
+    // Record whether the audit event had already been emitted at the instant
+    // the PolicyBlockedError surfaces. If emit ran AFTER the throw, this would
+    // be false — the assertion pins the ordering, not just eventual presence.
+    let emittedBeforeThrow = false;
+    const off = getPipelineEventBus().subscribe({ type: 'policy.evaluated' }, () => {
+      emittedBeforeThrow = true;
+    });
+    try {
+      await runDevPipeline('Build feature X', stages);
+      throw new Error('expected PolicyBlockedError');
+    } catch (e: unknown) {
+      expect(e).toBeInstanceOf(PolicyBlockedError);
+      expect(emittedBeforeThrow).toBe(true);
+    } finally {
+      off();
+    }
+  });
+
+  it('(c) off mode: skips evaluation entirely — no policy.evaluated, proceeds', async () => {
+    process.env['NEXUS_POLICY_GATE_MODE'] = 'off';
+    const cap = capturePolicyEvents();
+    const stages = createMockStages();
+    try {
+      const result = await runDevPipeline('Build feature X', stages);
+      expect(stages.decompose).toHaveBeenCalledTimes(1);
+      expect(result.completed).toBe(true);
+      expect(cap.events).toHaveLength(0);
+    } finally {
+      cap.off();
+    }
+  });
+
+  it('(d) clean plan (no violations): proceeds to decompose, no policy.evaluated emitted', async () => {
+    // Stub the default engine to one with no denying rules so the verdict is a
+    // genuine allow (the built-in trust-tier rule always denies a tier-less
+    // execute stage, so an empty rule set models a clean plan).
+    const mod = await import('./policy-engine.js');
+    const spy = vi.spyOn(mod, 'createDefaultPolicyEngine').mockReturnValue(new mod.PolicyEngine());
+    const cap = capturePolicyEvents();
+    const stages = createMockStages();
+    try {
+      const result = await runDevPipeline('Build feature X', stages);
+      expect(stages.decompose).toHaveBeenCalledTimes(1);
+      expect(result.completed).toBe(true);
+      expect(cap.events).toHaveLength(0);
+    } finally {
+      cap.off();
+      spy.mockRestore();
+    }
+  });
+
+  it('(f) missing-trustTier under WARN continues (does NOT halt)', async () => {
+    // Explicit WARN — the gate evaluates, the trust-tier rule denies (no
+    // trustTier in dev-pipeline metadata), yet the run completes.
+    process.env['NEXUS_POLICY_GATE_MODE'] = 'warn';
+    const stages = createMockStages();
+    const result = await runDevPipeline('Build feature X', stages);
+    expect(stages.decompose).toHaveBeenCalledTimes(1);
+    expect(result.completed).toBe(true);
+  });
+
+  it('(g) dry run short-circuits BEFORE the gate (no policy.evaluated)', async () => {
+    // The gate sits after the dryRun short-circuit, so a dry run never evaluates
+    // policy and never reaches decompose.
+    process.env['NEXUS_POLICY_GATE_MODE'] = 'block';
+    const cap = capturePolicyEvents();
+    const stages = createMockStages();
+    try {
+      const result = await runDevPipeline('Build feature X', stages, { dryRun: true });
+      expect(stages.decompose).not.toHaveBeenCalled();
+      expect(result.completed).toBe(false);
+      expect(cap.events).toHaveLength(0);
+    } finally {
+      cap.off();
+    }
   });
 });
