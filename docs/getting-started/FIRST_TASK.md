@@ -130,14 +130,14 @@ The 12-stage CompositeRouter picks the right CLI, the right expert persona, and 
 
 ## Where to go next
 
-| Want to …                                                           | Read                                                                                   |
-| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| **Chain tools into a goal** (research → vote → build)               | [COMPOSE_YOUR_FIRST_PIPELINE.md](./COMPOSE_YOUR_FIRST_PIPELINE.md)                     |
-| Understand the consensus voting strategies                          | [CONSENSUS_PROTOCOLS.md](../architecture/CONSENSUS_PROTOCOLS.md)                       |
-| Understand the routing pipeline                                     | [ROUTING_SYSTEM.md](../architecture/ROUTING_SYSTEM.md)                                 |
-| Configure model preferences, custom experts, sandbox modes          | [CONFIGURATION.md](./CONFIGURATION.md)                                                 |
-| Wire an editor we don't auto-detect                                 | [../guides/HARNESS_COMPATIBILITY.md](../guides/HARNESS_COMPATIBILITY.md)               |
-| Run the full dev pipeline (research → plan → vote → implement → QA) | [../workflows/SELF_DEVELOPMENT_WORKFLOW.md](../workflows/SELF_DEVELOPMENT_WORKFLOW.md) |
-| Inspect the audit chain                                             | `verify_audit_chain` MCP tool, or the JSONL under `<repo>/.nexus-agents/audit/`        |
-| Browse the research registry                                        | [../research/RESEARCH_INDEX.md](../research/RESEARCH_INDEX.md)                         |
-| See every CLI command + MCP tool                                    | [../ENTRYPOINTS.md](../ENTRYPOINTS.md)                                                 |
+| Want to …                                                           | Read                                                                            |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| **Chain tools into a goal** (research → vote → build)               | [COMPOSE_YOUR_FIRST_PIPELINE.md](./COMPOSE_YOUR_FIRST_PIPELINE.md)              |
+| Understand the consensus voting strategies                          | [CONSENSUS_PROTOCOLS.md](../architecture/CONSENSUS_PROTOCOLS.md)                |
+| Understand the routing pipeline                                     | [ROUTING_SYSTEM.md](../architecture/ROUTING_SYSTEM.md)                          |
+| Configure model preferences, custom experts, sandbox modes          | [CONFIGURATION.md](./CONFIGURATION.md)                                          |
+| Wire an editor we don't auto-detect                                 | [../guides/HARNESS_COMPATIBILITY.md](../guides/HARNESS_COMPATIBILITY.md)        |
+| Run the full dev pipeline (research → plan → vote → implement → QA) | `run_dev_pipeline` MCP tool — see [../ENTRYPOINTS.md](../ENTRYPOINTS.md)        |
+| Inspect the audit chain                                             | `verify_audit_chain` MCP tool, or the JSONL under `<repo>/.nexus-agents/audit/` |
+| Browse the research registry                                        | [../research/RESEARCH_INDEX.md](../research/RESEARCH_INDEX.md)                  |
+| See every CLI command + MCP tool                                    | [../ENTRYPOINTS.md](../ENTRYPOINTS.md)                                          |
