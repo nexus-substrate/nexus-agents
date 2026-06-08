@@ -38,6 +38,10 @@ import {
 } from './pipeline-checkpoint.js';
 import type { PipelineCheckpointState } from './pipeline-checkpoint.js';
 import { TraceWriter } from './trace-writer.js';
+import { createAuditTrail } from '../security/audit-trail.js';
+import type { AuditTrail } from '../security/audit-trail.js';
+import { createDurableAuditSink } from '../security/audit-bridge.js';
+import type { IAuditLogger } from '../audit/audit-types.js';
 import type { IHindsightBeliefMemory } from '../context/belief-memory-interface.js';
 import type { HindsightRecord } from '../context/belief-hindsight-types.js';
 import { getResearchInsightsForTask } from '../context/context-retriever.js';
@@ -229,6 +233,16 @@ export interface DevPipelineOptions {
    * Absence anywhere = untrusted; never infer a trusted tier from missing context.
    */
   readonly trustTier?: string | undefined;
+  /**
+   * Durable, hash-chained audit logger (#3710). When supplied (the MCP server
+   * threads its single startup `auditLogger`), the consensus→execute policy gate
+   * ALSO persists each `policy.evaluated` decision to the immutable store —
+   * carrying mode/ruleIds/stageType — so warn-mode soak evidence survives process
+   * exit and feeds the tune/readiness loop. MUST be the server's single instance,
+   * not a competing FileAuditStorage (shared hash chain). When undefined (pure-CLI
+   * path), behavior is unchanged — the in-memory bus emit is the only sink.
+   */
+  readonly auditLogger?: IAuditLogger | undefined;
 }
 
 /**
@@ -268,7 +282,7 @@ async function runDevPipelineInner(
   sid: string | undefined,
   prior: PipelineCheckpointState | null
 ): Promise<DevPipelineResult> {
-  const bm = options?.beliefMemory;
+  const { beliefMemory: bm, auditLogger, trustTier } = options ?? {};
 
   // Phases 1-2: Research + Plan/Vote
   const { planResult } = await runPlanningPhase(task, stages, prior, options);
@@ -284,7 +298,7 @@ async function runDevPipelineInner(
   // here — this seam closes that gap. Reuses evaluatePipelinePolicy (no 4th
   // evaluator); emits policy.evaluated BEFORE any throw so blocked runs are
   // audited. WARN by default (block opt-in via NEXUS_POLICY_GATE_MODE).
-  enforceConsensusExecutePolicy(sid, options?.trustTier);
+  enforceConsensusExecutePolicy(sid, trustTier, auditLogger);
 
   // Phase 3: Decompose
   const tasks = await runOrResumeDecompose(prior, planResult.plan, stages, {
@@ -343,10 +357,15 @@ async function runDevPipelineInner(
  */
 function enforceConsensusExecutePolicy(
   sessionId: string | undefined,
-  trustTier: string | undefined
+  trustTier: string | undefined,
+  auditLogger: IAuditLogger | undefined
 ): void {
   const mode = getGateEnforcementMode();
   if (mode === 'off') return;
+
+  // Build the durable trail ONCE for this gate evaluation (#3710), wrapping the
+  // server's single auditLogger. Undefined when none is threaded (pure-CLI path).
+  const auditTrail = buildPolicyAuditTrail(auditLogger);
 
   const context: PolicyContext = {
     taskId: sessionId ?? 'dev-pipeline',
@@ -359,9 +378,16 @@ function enforceConsensusExecutePolicy(
   };
 
   // evaluatePipelinePolicy emits policy.evaluated on the shared bus BEFORE it
-  // returns — so the emit precedes the throw below (#3704 cond. 1).
+  // returns — so the emit precedes the throw below (#3704 cond. 1). When a
+  // durable trail is wired (#3710), it ALSO appends one hash-chained
+  // policy_gate record per violation (dual-emit) carrying mode/ruleIds/stageType.
   const result = evaluatePipelinePolicy(
-    { engine: createDefaultPolicyEngine(), mode, eventBus: getPipelineEventBus() },
+    {
+      engine: createDefaultPolicyEngine(),
+      mode,
+      eventBus: getPipelineEventBus(),
+      ...(auditTrail !== undefined ? { auditTrail } : {}),
+    },
     context
   );
 
@@ -370,6 +396,23 @@ function enforceConsensusExecutePolicy(
   if (mode === 'block' && !result.allowed) {
     throw new PolicyBlockedError(context.stageId, result.violations);
   }
+}
+
+/**
+ * Build the durable policy AuditTrail ONCE per run (#3710). Wraps the SERVER's
+ * single `auditLogger` in a durable sink so the consensus→execute gate's
+ * `policy.evaluated` decisions are persisted to the shared hash chain — NOT a
+ * competing FileAuditStorage (chain integrity). Returns undefined when no logger
+ * is threaded (pure-CLI path), so that path stays byte-identical to before.
+ *
+ * Serialization (#3710 condition 2): the returned trail's `append` calls
+ * `auditLogger.log()` synchronously (no await between hash assignment and queue
+ * push), so concurrent dev-pipeline runs sharing one logger serialize their
+ * chain writes on the single-threaded event loop — `verifyChain()` stays valid.
+ */
+function buildPolicyAuditTrail(auditLogger: IAuditLogger | undefined): AuditTrail | undefined {
+  if (auditLogger === undefined) return undefined;
+  return createAuditTrail(createDurableAuditSink(auditLogger));
 }
 
 /** Create a TraceWriter when sessionId is available (#1719). */

@@ -14,7 +14,8 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, getErrorMessage, formatZodError, type ILogger } from '../../core/index.js';
 import { runDevPipeline } from '../../pipeline/dev-pipeline.js';
 import { warnIfSimulatedOutsideTests } from './simulation-guard.js';
-import type { DevPipelineResult } from '../../pipeline/dev-pipeline.js';
+import type { DevPipelineResult, DevPipelineOptions } from '../../pipeline/dev-pipeline.js';
+import type { IAuditLogger } from '../../audit/audit-types.js';
 import { createAgentStages, flushPipelineMemory } from '../../pipeline/agent-executor.js';
 import { createTaskTracker, detectBackend } from '../../pipeline/task-tracker.js';
 import { getToolAnnotations } from '../tool-annotations.js';
@@ -131,6 +132,16 @@ export const DevPipelineInputSchema = z.object({
 });
 
 export type DevPipelineInput = z.infer<typeof DevPipelineInputSchema>;
+
+/**
+ * Deps for `run_dev_pipeline`. Extends the base with the server's single durable
+ * `auditLogger` (#3710) so the pipeline's consensus→execute policy gate can
+ * persist `policy.evaluated` decisions to the shared hash chain. Optional — when
+ * absent (pure-CLI path) the pipeline behaves exactly as before (no durability).
+ */
+export interface DevPipelineToolDeps extends BaseMcpToolDeps {
+  readonly auditLogger?: IAuditLogger | undefined;
+}
 
 // ============================================================================
 // Input Resolution
@@ -253,10 +264,33 @@ const RUN_DEV_PIPELINE_DESCRIPTION =
  * undefined (no caller context), the consensus→execute seam fail-closes to
  * untrusted (tier 4) — absence is never treated as trusted.
  */
+/**
+ * Build the {@link DevPipelineOptions} from validated input plus the threaded
+ * caller context. Extracted so the handler stays under the complexity cap. The
+ * `auditLogger` (#3710) is included only when the server threaded one.
+ */
+function buildPipelineOptions(
+  input: DevPipelineInput,
+  trustTier: string | undefined,
+  auditLogger: IAuditLogger | undefined
+): DevPipelineOptions {
+  return {
+    ...(input.sessionId !== undefined ? { sessionId: input.sessionId } : {}),
+    ...(input.dryRun ? { dryRun: true } : {}),
+    ...(input.mode === 'harness' ? { mode: 'harness' as const } : {}),
+    ...(input.qualityGate !== 'off' ? { qualityGate: input.qualityGate } : {}),
+    ...(trustTier !== undefined ? { trustTier } : {}),
+    // #3710: thread the server's durable audit logger so the consensus→execute
+    // policy gate persists decisions to the shared hash chain.
+    ...(auditLogger !== undefined ? { auditLogger } : {}),
+  };
+}
+
 async function runDevPipelineHandler(
   args: unknown,
   logger: ILogger,
-  trustTier?: string
+  trustTier?: string,
+  auditLogger?: IAuditLogger
 ): Promise<ToolResult> {
   const parsed = DevPipelineInputSchema.safeParse(args);
   if (!parsed.success) {
@@ -273,13 +307,7 @@ async function runDevPipelineHandler(
   try {
     const taskText = await resolveTaskInput(input);
     const stages = await createStages(input);
-    const pipelineOptions = {
-      ...(input.sessionId !== undefined ? { sessionId: input.sessionId } : {}),
-      ...(input.dryRun ? { dryRun: true } : {}),
-      ...(input.mode === 'harness' ? { mode: 'harness' as const } : {}),
-      ...(input.qualityGate !== 'off' ? { qualityGate: input.qualityGate } : {}),
-      ...(trustTier !== undefined ? { trustTier } : {}),
-    };
+    const pipelineOptions = buildPipelineOptions(input, trustTier, auditLogger);
     const hasOptions = Object.keys(pipelineOptions).length > 0;
     const result = await runDevPipeline(taskText, stages, hasOptions ? pipelineOptions : undefined);
     // Always flush memory session — including dry-run exits (#1716)
@@ -302,16 +330,17 @@ async function runDevPipelineHandler(
  * progress-token plumbing, and surfaced a `ZodError` on bad input as a raw
  * JSON-RPC `-32603` instead of a structured `validation` envelope.
  */
-export function registerDevPipelineTool(server: McpServer, deps: BaseMcpToolDeps): void {
+export function registerDevPipelineTool(server: McpServer, deps: DevPipelineToolDeps): void {
   const logger = deps.logger ?? createLogger({ tool: 'run_dev_pipeline' });
   // 2-arg context-aware form (mirrors delegate-to-model.ts): thread the caller's
   // real RequestContext.trustTier into the consensus→execute policy snapshot
   // (#3712). createSecureHandler always supplies a HandlerContext with a derived
   // trustTier; the handler still fail-closes (tier 4) if a tier never reaches
-  // the runDevPipeline seam.
+  // the runDevPipeline seam. The server's durable auditLogger (#3710) is threaded
+  // so the gate persists policy decisions to the shared hash chain.
   const secureHandler = createSecureHandler(
     (args: unknown, ctx: HandlerContext) =>
-      runDevPipelineHandler(args, logger, ctx.requestContext.trustTier),
+      runDevPipelineHandler(args, logger, ctx.requestContext.trustTier, deps.auditLogger),
     { toolName: 'run_dev_pipeline', rateLimiter: deps.rateLimiter, logger }
   );
   const timeoutMs = getToolTimeout('run_dev_pipeline', deps.security);

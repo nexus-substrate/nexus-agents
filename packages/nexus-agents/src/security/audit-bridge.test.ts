@@ -85,6 +85,38 @@ describe('securityAuditEventToInput (#3291)', () => {
     expect(input.severity).toBe('warning');
   });
 
+  it('round-trips pipeline-policy mode/ruleIds/stageType into the durable metadata (#3710)', () => {
+    const pipelinePolicy = {
+      ...base,
+      type: 'policy_gate' as const,
+      component: 'pipeline-policy-evaluator',
+      // No actionType — pipeline path is stage-driven, not AgentAction-driven.
+      allowed: true,
+      requiresApproval: false,
+      inputTrustTier: '4' as const,
+      violationRules: ['trust-tier'],
+      mode: 'warn' as const,
+      ruleIds: ['trust-tier'],
+      stageType: 'execute',
+    };
+    const input = securityAuditEventToInput(pipelinePolicy);
+    // The soak/enforce signal + rules + stage survive the mapping.
+    expect(input.metadata?.['mode']).toBe('warn');
+    expect(input.metadata?.['ruleIds']).toEqual(['trust-tier']);
+    expect(input.metadata?.['stageType']).toBe('execute');
+    // No actionType key when the source event has none.
+    expect(input.metadata && 'actionType' in input.metadata).toBe(false);
+    // Still schema-valid.
+    expect(AuditEventInputSchema.safeParse(input).success).toBe(true);
+  });
+
+  it('security policy_gate path keeps its actionType and omits the pipeline fields', () => {
+    const input = securityAuditEventToInput(samples.policy_gate);
+    expect(input.metadata?.['actionType']).toBe('GeneratePatchPlan');
+    expect(input.metadata && 'mode' in input.metadata).toBe(false);
+    expect(input.metadata && 'stageType' in input.metadata).toBe(false);
+  });
+
   it('flags a downgraded trust classification as a warning', () => {
     expect(securityAuditEventToInput(samples.trust_classification).severity).toBe('warning');
   });

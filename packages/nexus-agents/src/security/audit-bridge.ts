@@ -65,6 +65,10 @@ function mapTrust(e: TrustEvent): AuditEventInput {
 
 function mapPolicyGate(e: PolicyEvent): AuditEventInput {
   const outcome: AuditOutcome = e.allowed ? 'success' : 'denied';
+  // #3710: the pipeline-policy path carries `mode`/`ruleIds`/`stageType` and no
+  // `actionType`; these MUST round-trip into the durable metadata so the
+  // persisted record distinguishes soak(warn) from enforce(block). The security
+  // path leaves them undefined and keeps its `actionType`-keyed shape.
   return {
     category: 'authorization',
     severity: e.allowed ? 'info' : 'warning',
@@ -75,10 +79,13 @@ function mapPolicyGate(e: PolicyEvent): AuditEventInput {
     policyDecision: e.allowed ? 'allow' : 'deny',
     ...(e.violationRules.length > 0 ? { violationType: e.violationRules.join(',') } : {}),
     metadata: {
-      actionType: e.actionType,
+      ...(e.actionType !== undefined ? { actionType: e.actionType } : {}),
       requiresApproval: e.requiresApproval,
       inputTrustTier: e.inputTrustTier,
       violationRules: e.violationRules,
+      ...(e.mode !== undefined ? { mode: e.mode } : {}),
+      ...(e.ruleIds !== undefined ? { ruleIds: e.ruleIds } : {}),
+      ...(e.stageType !== undefined ? { stageType: e.stageType } : {}),
     },
   };
 }

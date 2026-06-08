@@ -87,6 +87,34 @@ producers ──signal.swarm_unhealthy──▶ TuneStage ──demote──▶ 
   `intended` per CLI). Non-routing signals (`fitness_declined`, `vote_rejected`)
   always stay shadow-logged.
 
+## Pipeline policy audit: two records, one canonical source (#3710)
+
+The dev-pipeline consensus→execute policy gate
+(`pipeline/policy-evaluator.ts → evaluatePipelinePolicy`) **dual-emits** each
+`policy.evaluated` decision:
+
+| Sink                           | Path                                                                      | Lifetime                                            | Role                                                                                    |
+| ------------------------------ | ------------------------------------------------------------------------- | --------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| **Bus A (observability)**      | `IEventBus.emit` → `TraceWriter` → per-run `trace.jsonl`                  | Per-run, bounded ring buffer, dropped on no session | **Observability only.** Replay/debug a single run.                                      |
+| **Durable hash-chained audit** | `AuditTrail` → `createDurableAuditSink(auditLogger)` → `FileAuditStorage` | Immutable, process-spanning, `verify_audit_chain`   | **Canonical source** for tune/readiness aggregation (soak-vs-enforce evidence — #3653). |
+
+The durable `policy_gate` record carries `mode` (`warn`=soak vs `block`=enforce),
+`ruleIds`, and `stageType` in its metadata — exactly what the tune/readiness
+loop needs to distinguish soak evidence from enforced denials. The bus
+`policy.evaluated` event does **not** carry these and is per-run.
+
+**Aggregation rule:** sum durable `policy_gate` records **only**. The two
+records are intentional (back-compat for existing TraceWriter consumers + a
+durable sink that survives process exit) — **never sum `trace.jsonl` together
+with the durable log**, or every decision is double-counted. The durable log is
+authoritative; `trace.jsonl` is for single-run observability.
+
+The durable sink is wired only when the MCP server threads its single startup
+`auditLogger` (one `AuditTrail` built per run wrapping it, so all runs share the
+one hash chain — appends serialize on the single-threaded event loop). The
+pure-CLI path threads no logger, so it keeps only the bus emit (behavior
+unchanged).
+
 **Bounded-safety invariants** (in `core/tune-adjustment-store.ts`) — the loop is
 self-correcting, never a ratchet: demotion-only (slow a CLI, never boost it);
 floored at `0.5` (never zeroed — a sole-viable CLI stays selectable); capped at

@@ -20,6 +20,8 @@ import type {
   PipelineStateSnapshot,
 } from './policy-engine.js';
 import type { IEventBus, PipelineEvent } from './event-types.js';
+import type { AuditTrail } from '../security/audit-trail.js';
+import { emitPipelinePolicyEvent } from '../security/audit-trail.js';
 
 const logger = createLogger({ component: 'PolicyEvaluator' });
 
@@ -36,6 +38,14 @@ export interface PolicyEvaluatorOptions {
   readonly engine: IPolicyEngine;
   readonly eventBus?: IEventBus;
   readonly mode?: PolicyMode;
+  /**
+   * Optional DURABLE audit trail (#3710). When present, each violation is ALSO
+   * appended to the hash-chained store (dual-emit) carrying mode/ruleIds/
+   * stageType — so soak(warn)-vs-enforce(block) evidence survives process exit
+   * for the tune/readiness loop. The in-memory `eventBus` emit is unchanged
+   * (back-compat). When absent, behavior is byte-identical to before.
+   */
+  readonly auditTrail?: AuditTrail;
 }
 
 /** Result of a policy evaluation at a stage boundary. */
@@ -97,6 +107,12 @@ export interface GatePolicyEnforcement {
   /** Optional event bus; policy.evaluated events are emitted on violations. */
   readonly eventBus?: IEventBus;
   /**
+   * Optional DURABLE audit trail (#3710) — forwarded to
+   * {@link evaluatePipelinePolicy} so gate decisions are persisted to the
+   * hash-chained store in addition to the in-memory bus.
+   */
+  readonly auditTrail?: AuditTrail;
+  /**
    * Effective enforcement mode for gate nodes. WARN by default (#3177
    * condition 1): a gate with no explicit mode does NOT halt, so a stage
    * lacking trust metadata is not blocked out of the box. Block is opt-in.
@@ -147,6 +163,7 @@ export function enforceGatePolicy(
       engine: enforcement.engine,
       mode,
       ...(enforcement.eventBus !== undefined ? { eventBus: enforcement.eventBus } : {}),
+      ...(enforcement.auditTrail !== undefined ? { auditTrail: enforcement.auditTrail } : {}),
     },
     {
       taskId: target.taskId,
@@ -225,7 +242,12 @@ export function evaluatePipelinePolicy(
   }
 
   if (violations.length > 0) {
+    // Dual-emit (#3710): the in-memory bus emit is KEPT untouched (back-compat,
+    // TraceWriter-consumed). When a durable trail is wired, ALSO append one
+    // hash-chained record per violation carrying mode/ruleIds/stageType — the
+    // canonical source for tune/readiness aggregation that survives process exit.
     emitPolicyEvents(options.eventBus, context, violations);
+    emitDurablePolicyEvents(options.auditTrail, context, violations, mode);
     logViolations(context, violations, mode);
   }
 
@@ -253,6 +275,40 @@ function emitPolicyEvents(
       decision: 'deny',
     };
     eventBus.emit(event);
+  }
+}
+
+/**
+ * Appends ONE durable `policy_gate` record per violation (#3710 condition 3 —
+ * count parity with the bus emit above). Each record carries `mode` (warn/block,
+ * the soak-vs-enforce signal), `ruleIds`, and `stageType` so the persisted event
+ * round-trips the data the tune/readiness loop needs (#3710 condition 1). No-op
+ * when no trail is wired — the no-sink path stays byte-identical (condition 4).
+ *
+ * `allowed` reflects the run-level verdict the violation produced: in `warn`
+ * execution continues (allowed=true), in `block` the gate denies (allowed=false).
+ */
+function emitDurablePolicyEvents(
+  auditTrail: AuditTrail | undefined,
+  context: PolicyContext,
+  violations: readonly PolicyViolation[],
+  mode: PolicyMode
+): void {
+  if (auditTrail === undefined) return;
+  const allowed = mode === 'warn';
+  for (const v of violations) {
+    emitPipelinePolicyEvent(auditTrail, {
+      allowed,
+      requiresApproval: false,
+      // Pipeline policy is provenance/stage-driven, not user-driven; the snapshot
+      // tier (if any) lives in PolicyContext but no single tier identifies the
+      // gate decision, so the durable record uses the fail-closed default.
+      inputTrustTier: '4',
+      violationRules: [v.ruleId],
+      mode,
+      ruleIds: [v.ruleId],
+      stageType: context.stageType,
+    });
   }
 }
 
