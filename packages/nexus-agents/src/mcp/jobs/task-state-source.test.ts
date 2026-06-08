@@ -47,6 +47,8 @@ describe('toolNameFromJobId', () => {
     expect(toolNameFromJobId('cv-1-a')).toBe('consensus_vote');
     expect(toolNameFromJobId('dp-abc123')).toBe('run_dev_pipeline');
     expect(toolNameFromJobId('rp-abc123')).toBe('run_pipeline');
+    expect(toolNameFromJobId('pr-abc123')).toBe('pr_review');
+    expect(toolNameFromJobId('sc-abc123')).toBe('supply_chain_tradeoff_panel');
   });
   it('returns "unknown" for unrecognized or prefix-less ids', () => {
     expect(toolNameFromJobId('weird-1-a')).toBe('unknown');

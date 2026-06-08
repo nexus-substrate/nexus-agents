@@ -8,15 +8,36 @@
  * @module mcp/tools/pr-review-tool.test
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+// #3731: pass-through the secure-handler / timeout chain so the registered
+// callback is the bare `(args, ctx)` handler — lets the async-dispatch tests
+// invoke it directly.
+vi.mock('../middleware/tool-wrapper.js', () => ({
+  wrapToolWithTimeout: (_name: string, fn: unknown) => fn,
+  toSdkCallback: (fn: unknown) => fn,
+  getToolTimeout: () => 900_000,
+}));
+vi.mock('../middleware/secure-handler.js', () => ({
+  createSecureHandler: (fn: unknown) => fn,
+}));
+
 import {
   PR_REVIEW_ROLES,
   PrReviewInputSchema,
   aggregatePrDecisions,
   buildPrReviewProposal,
   mapVoteDecisionToPrDecision,
+  registerPrReviewTool,
   type PrReviewVote,
 } from './pr-review-tool.js';
+import { readJobResult } from '../jobs/job-result-store.js';
+import { _resetForTests as resetJobConcurrency } from '../jobs/job-concurrency.js';
+import { resetNexusDataDirCache } from '../../config/nexus-data-dir.js';
+import { createLogger } from '../../core/index.js';
 
 describe('pr_review tool', () => {
   describe('PR_REVIEW_ROLES', () => {
@@ -339,5 +360,101 @@ describe('pr_review tool', () => {
       const r = PrReviewInputSchema.safeParse({ prTitle: 'x', prDiff: 'y' });
       expect(r.success).toBe(true);
     });
+
+    it('defaults dispatch to sync and accepts async (#3731)', () => {
+      expect(PrReviewInputSchema.parse({ prTitle: 'x', prDiff: 'y' }).dispatch).toBe('sync');
+      expect(
+        PrReviewInputSchema.parse({ prTitle: 'x', prDiff: 'y', dispatch: 'async' }).dispatch
+      ).toBe('async');
+      expect(() =>
+        PrReviewInputSchema.parse({ prTitle: 'x', prDiff: 'y', dispatch: 'bogus' })
+      ).toThrow();
+    });
+  });
+});
+
+// #3731: async dispatch mode. The 5-voter live fan-out can exceed the MCP
+// request timeout, so `dispatch: 'async'` returns a jobId immediately and runs
+// the panel in the background (poll get_job_result). pr_review has no sessionId,
+// so a fresh `pr-<uuid>` jobId is always minted (no idempotency surface).
+interface HandlerCtx {
+  logger: ReturnType<typeof createLogger>;
+}
+type CtxHandler = (args: unknown, ctx: HandlerCtx) => Promise<CapturedToolResult>;
+
+interface CapturedToolResult {
+  isError?: boolean;
+  content: Array<{ type: string; text: string }>;
+}
+
+const TEST_CTX: HandlerCtx = { logger: createLogger({ tool: 'pr_review.test' }) };
+
+/** Registers the tool against a mock server and returns the captured callback. */
+function captureHandler(): CtxHandler {
+  let captured: CtxHandler | undefined;
+  let registeredName: string | undefined;
+  const mockServer = {
+    registerTool: (name: string, _schema: unknown, handler: unknown) => {
+      registeredName = name;
+      captured = handler as CtxHandler;
+    },
+  };
+  registerPrReviewTool(mockServer as never, {
+    rateLimiter: { tryConsume: () => ({ allowed: true, remaining: 99 }) } as never,
+  });
+  expect(registeredName).toBe('pr_review');
+  if (captured === undefined) throw new Error('handler not registered');
+  return captured;
+}
+
+describe('pr_review async dispatch (#3731)', () => {
+  let tmpDir: string;
+  const originalDataDir = process.env['NEXUS_DATA_DIR'];
+
+  function envelope(result: CapturedToolResult): Record<string, unknown> {
+    return JSON.parse(result.content[0]!.text) as Record<string, unknown>;
+  }
+
+  // simulate:true keeps the panel body fast + deterministic (no live adapters).
+  const ASYNC_ARGS = { prTitle: 'x', prDiff: 'y', simulate: true, dispatch: 'async' } as const;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'nexus-pr-async-'));
+    process.env['NEXUS_DATA_DIR'] = tmpDir;
+    resetNexusDataDirCache();
+    resetJobConcurrency();
+  });
+
+  afterEach(() => {
+    if (originalDataDir === undefined) delete process.env['NEXUS_DATA_DIR'];
+    else process.env['NEXUS_DATA_DIR'] = originalDataDir;
+    resetNexusDataDirCache();
+    resetJobConcurrency();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("returns { status: 'pending', jobId } and mints a pr-<uuid> id", async () => {
+    const handler = captureHandler();
+    const env = envelope(await handler(ASYNC_ARGS, TEST_CTX));
+    expect(env['status']).toBe('pending');
+    expect(typeof env['jobId']).toBe('string');
+    expect(env['jobId'] as string).toMatch(/^pr-/);
+    expect(env['pollTool']).toBe('get_job_result');
+  });
+
+  it('runs the panel inline (sync) by default — no pending envelope', async () => {
+    const handler = captureHandler();
+    const env = envelope(await handler({ prTitle: 'x', prDiff: 'y', simulate: true }, TEST_CTX));
+    expect(env['status']).toBeUndefined();
+    expect(env['summary']).toBeDefined();
+  });
+
+  it('records the panel result so get_job_result resolves when the background run completes', async () => {
+    const handler = captureHandler();
+    const jobId = envelope(await handler(ASYNC_ARGS, TEST_CTX))['jobId'] as string;
+    // The background run is fire-and-forget; let the microtask queue drain.
+    await new Promise((r) => setImmediate(r));
+    const record = readJobResult(jobId);
+    expect(record?.status).toBe('complete');
   });
 });

@@ -44,6 +44,10 @@ const TOOL_NAME_BY_PREFIX: Readonly<Record<string, string>> = {
   dp: 'run_dev_pipeline',
   // #3730: run_pipeline async jobs mint `rp-<uuid>` ids (no sessionId surface).
   rp: 'run_pipeline',
+  // #3731: pr_review async jobs mint `pr-<uuid>` ids (no sessionId surface).
+  pr: 'pr_review',
+  // #3731: supply_chain_tradeoff_panel async jobs mint `sc-<uuid>` ids.
+  sc: 'supply_chain_tradeoff_panel',
 };
 
 /** Derive the toolName from a jobId/taskId prefix. */
