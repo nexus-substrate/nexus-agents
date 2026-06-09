@@ -28,6 +28,35 @@ describe('scanForSecrets', () => {
     }
   });
 
+  it('catches newer OpenAI key prefixes that the classic sk- pattern misses (#3752)', () => {
+    // The classic `sk-[A-Za-z0-9]{32,}` class breaks at the hyphen in these prefixes.
+    const cases: Array<[string, string]> = [
+      ['sk-proj-' + 'a'.repeat(40), 'openai-key'],
+      ['sk-svcacct-' + 'b'.repeat(40), 'openai-key'],
+      ['sk-admin-' + 'c'.repeat(40), 'openai-key'],
+      // bodies legitimately contain - and _ (base64url); must still match
+      ['sk-proj-' + 'aB1_-'.repeat(10), 'openai-key'],
+    ];
+    for (const [text, expected] of cases) {
+      const r = scanForSecrets(text);
+      expect(r.clean, `should flag: ${text}`).toBe(false);
+      expect(r.findings.map((f) => f.pattern)).toContain(expected);
+    }
+  });
+
+  it('catches base64 credential values with = padding (#3752)', () => {
+    // base64 of a 16-byte value ends in '==' — the generic class omitted '='.
+    const r = scanForSecrets('const token = "YWJjZGVmZ2hpamtsbW5vcA=="');
+    expect(r.clean).toBe(false);
+    expect(r.findings.map((f) => f.pattern)).toContain('generic-credential-assignment');
+  });
+
+  it('still ignores ordinary hyphenated prose after the prefix widening (#3752)', () => {
+    // Guard against the widened openai pattern over-matching short / non-key strings.
+    expect(scanForSecrets('use the sk- prefix for OpenAI keys in docs').clean).toBe(true);
+    expect(scanForSecrets('the well-documented multi-step build-and-test flow').clean).toBe(true);
+  });
+
   it('reports the line number, never the secret value', () => {
     const r = scanForSecrets(`line one\nAKIAIOSFODNN7EXAMPLE\nline three`);
     expect(r.findings[0]?.line).toBe(2);
