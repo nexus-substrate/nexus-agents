@@ -27,7 +27,10 @@ import { z } from 'zod';
 
 import { createLogger } from '../../core/index.js';
 import { nexusDataPathEnsure } from '../../config/nexus-data-dir.js';
-import { CiHealthStatusSchema, type CiHealthSignal } from './ci-health-check-tool.js';
+// #3756: import the shared schema/types from the leaf, NOT ci-health-check-tool —
+// that import edge (combined with the tool importing this module's appenders) was
+// the cycle that left CiHealthStatusSchema in the TDZ under tsx ESM evaluation.
+import { CiHealthStatusSchema, type CiHealthSignal } from './ci-health-types.js';
 
 const logger = createLogger({ component: 'ci-health-log' });
 
