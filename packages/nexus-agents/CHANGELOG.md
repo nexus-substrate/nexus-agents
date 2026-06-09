@@ -1,5 +1,18 @@
 # nexus-agents
 
+## 2.127.1
+
+### Patch Changes
+
+- [#3776](https://github.com/nexus-substrate/nexus-agents/pull/3776) [`ed0b6ee`](https://github.com/nexus-substrate/nexus-agents/commit/ed0b6eed3d452f809628b00a58cb1989605db636) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(capability-loop): derive readiness evaluator/owner deterministically by reviewedAt
+
+  The auto-remediation soundness-review summary ([#3765](https://github.com/nexus-substrate/nexus-agents/issues/3765)) selected the named
+  evaluator/owner from the last-appended record rather than the most recent by
+  `reviewedAt`, so hydrate/append order could shift the named-evaluator the
+  enforce readiness gate reads. Now selected by max `reviewedAt`. Adds a
+  regression test for the attribution + exact-boundary (0.8/0.9, `>=`) readiness
+  tests. Surfaced by the [#3770](https://github.com/nexus-substrate/nexus-agents/issues/3770) adversarial security/QA review.
+
 ## 2.127.0
 
 ### Minor Changes
