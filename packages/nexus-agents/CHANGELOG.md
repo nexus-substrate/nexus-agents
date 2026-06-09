@@ -1,5 +1,19 @@
 # nexus-agents
 
+## 2.127.0
+
+### Minor Changes
+
+- [#3774](https://github.com/nexus-substrate/nexus-agents/pull/3774) [`d4e05b6`](https://github.com/nexus-substrate/nexus-agents/commit/d4e05b673f942ae6e2cf15a5c6bc3c4bfd943316) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Wire the enforce-decision-gate readiness evidence chain ([#3765](https://github.com/nexus-substrate/nexus-agents/issues/3765), [#3764](https://github.com/nexus-substrate/nexus-agents/issues/3764) — part of [#3653](https://github.com/nexus-substrate/nexus-agents/issues/3653)/[#3540](https://github.com/nexus-substrate/nexus-agents/issues/3540)).
+  - [#3765](https://github.com/nexus-substrate/nexus-agents/issues/3765): durable soundness-review surface — a `JsonlStore`-backed review-record store
+    (secret-scrubbed `note`), a `summarizeRemediationReviews` aggregate, and a new
+    `nexus-agents remediation-review` CLI command (`list` pending soak selections,
+    `mark <soakRef> --evaluator <name> --sound|--unsound`, `sign-off --owner <name>`).
+  - [#3764](https://github.com/nexus-substrate/nexus-agents/issues/3764): `buildEnforceReadinessEvidence` collector that builds `EnforceReadinessEvidence`
+    from the durable soak ([#3762](https://github.com/nexus-substrate/nexus-agents/issues/3762)) + review summaries, now wired as the `readiness` provider
+    in `buildAutoRemediationDeps` — replacing the hardcoded `NOT_READY`. Fail-closed:
+    missing/zero data keeps enforce blocked; audit mode never consults readiness.
+
 ## 2.126.0
 
 ### Minor Changes
