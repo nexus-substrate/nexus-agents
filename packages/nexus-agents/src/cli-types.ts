@@ -81,7 +81,8 @@ export type CliCommand =
   | 'migrate'
   | 'tour'
   | 'improvement-review'
-  | 'auto-remediate';
+  | 'auto-remediate'
+  | 'remediation-review';
 
 /**
  * Parsed CLI arguments and command.
@@ -177,6 +178,12 @@ export interface ParsedCliArgs {
     // init --opencode <path> flag (#2504)
     opencode?: string;
     validate?: boolean;
+    // remediation-review command options (#3765)
+    evaluator?: string;
+    owner?: string;
+    note?: string;
+    sound?: boolean;
+    unsound?: boolean;
   };
   positionals: string[];
 }
@@ -486,6 +493,24 @@ export const PARSE_ARGS_CONFIG = {
       type: 'boolean' as const,
       default: false,
     },
+    // remediation-review command options (#3765)
+    evaluator: {
+      type: 'string' as const,
+    },
+    owner: {
+      type: 'string' as const,
+    },
+    note: {
+      type: 'string' as const,
+    },
+    sound: {
+      type: 'boolean' as const,
+      default: false,
+    },
+    unsound: {
+      type: 'boolean' as const,
+      default: false,
+    },
   },
   allowPositionals: true,
   strict: true,
@@ -544,6 +569,7 @@ const VALID_COMMANDS: readonly CliCommand[] = [
   'migrate',
   'tour',
   'auto-remediate',
+  'remediation-review',
 ];
 
 /**
