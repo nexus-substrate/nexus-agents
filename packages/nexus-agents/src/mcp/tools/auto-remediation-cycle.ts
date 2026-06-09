@@ -16,6 +16,13 @@ import { createLogger, type ILogger } from '../../core/index.js';
 import type { ImprovementSignal } from './improvement-review.js';
 import { runImprovementReview, ImprovementReviewInputSchema } from './improvement-review.js';
 import { buildAutoRemediationDeps } from './auto-remediation-deps.js';
+import { classifySignalPriority } from './remediation-priority.js';
+import {
+  createRemediationSoakCollector,
+  type RemediationSoakCollector,
+  type SoakSignalMeta,
+  type IRecordingRemediationSoakSink,
+} from './improvement-remediation-shadow.js';
 import {
   runAutoRemediation,
   resolveAutoRemediateMode,
@@ -42,6 +49,8 @@ export interface AutoRemediationCycleConfig {
 export interface AutoRemediationCycleInject {
   readonly collectSignals?: () => Promise<readonly ImprovementSignal[]>;
   readonly deps?: AutoRemediationDeps;
+  /** Inject an isolated durable soak sink (tests honor a temp NEXUS_DATA_DIR). */
+  readonly soakSink?: IRecordingRemediationSoakSink;
 }
 
 function offResult(): AutoRemediationResult {
@@ -67,7 +76,54 @@ export async function runAutoRemediationCycle(
   const signals = await collectCycleSignals(inject, config, logger);
   const deps = resolveCycleDeps(inject, config, logger);
   logger.info(`auto-remediation cycle: ${mode} over ${String(signals.length)} signals`);
+
+  // AUDIT mode: capture durable soak evidence (#3762). Wrap the deps' audit
+  // callback so every per-step event ALSO feeds the soak collector, then flush
+  // the per-signal verdicts to the durable JSONL sink at the end of the run.
+  if (mode === 'audit') {
+    const collector = buildSoakCollector(signals, inject);
+    const soakDeps = withSoakAudit(deps, collector);
+    try {
+      return await runAutoRemediation(signals, soakDeps, { mode });
+    } finally {
+      collector.flush();
+    }
+  }
+
   return runAutoRemediation(signals, deps, { mode });
+}
+
+/** Build a soak collector with per-signal metadata derived from the cycle's signals. */
+function buildSoakCollector(
+  signals: readonly ImprovementSignal[],
+  inject: AutoRemediationCycleInject
+): RemediationSoakCollector {
+  const meta = new Map<string, SoakSignalMeta>();
+  for (const s of signals) {
+    meta.set(s.signalKey, {
+      category: s.category,
+      priority: classifySignalPriority(s),
+      severity: s.severity,
+    });
+  }
+  const metaFor = (key: string): SoakSignalMeta | undefined => meta.get(key);
+  return inject.soakSink !== undefined
+    ? createRemediationSoakCollector(metaFor, inject.soakSink)
+    : createRemediationSoakCollector(metaFor);
+}
+
+/** Return a deps clone whose `audit` ALSO feeds the soak collector. */
+function withSoakAudit(
+  deps: AutoRemediationDeps,
+  collector: RemediationSoakCollector
+): AutoRemediationDeps {
+  return {
+    ...deps,
+    audit: (event): void => {
+      deps.audit(event);
+      collector.observe(event);
+    },
+  };
 }
 
 /** Collect signals via the injected source, or the real improvement_review aggregator. */
