@@ -51,6 +51,23 @@ describe('evaluateEnforceReadiness', () => {
     expect(r.blockers).toContain('soundness');
   });
 
+  it('is ready at EXACTLY the threshold rates (>= boundary — catches an off-by-one flip)', () => {
+    // judged 20/25 = exactly 0.80; sound 18/20 = exactly 0.90; volume 25 ≥ 20.
+    // A `>=`→`>` regression on the gate that authorizes autonomous writes would
+    // flip this to not-ready.
+    const r = evaluateEnforceReadiness(
+      readyEvidence({ shadowSelections: 25, judgedSelections: 20, judgedSound: 18 })
+    );
+    expect(r.ready).toBe(true);
+  });
+
+  it('is ready at EXACTLY the minimum volume (>= boundary)', () => {
+    const r = evaluateEnforceReadiness(
+      readyEvidence({ shadowSelections: 20, judgedSelections: 20, judgedSound: 20 })
+    );
+    expect(r.ready).toBe(true);
+  });
+
   it('soundness fails closed when there are zero reviews (no divide-by-zero pass)', () => {
     const r = evaluateEnforceReadiness(
       readyEvidence({ shadowSelections: 25, judgedSelections: 0, judgedSound: 0 })

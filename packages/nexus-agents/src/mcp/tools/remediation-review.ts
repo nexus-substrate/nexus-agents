@@ -153,15 +153,25 @@ export function summarizeRemediationReviews(
   for (const r of records) latest.set(r.soakRef, r);
 
   let judgedSound = 0;
-  let evaluator: string | undefined;
-  let owner: string | undefined;
-  for (const r of records) {
-    // evaluator/owner track append order so the most recent sign-off wins.
-    evaluator = r.evaluator;
-    if (r.owner !== undefined) owner = r.owner;
-  }
   for (const r of latest.values()) {
     if (r.sound) judgedSound++;
+  }
+  // evaluator/owner = the attestation from the most RECENT review by reviewedAt,
+  // selected deterministically (not by append/hydrate position) so the
+  // named-evaluator/owner the enforce gate reads can't shift with file order.
+  let evaluator: string | undefined;
+  let owner: string | undefined;
+  let evaluatorAt = '';
+  let ownerAt = '';
+  for (const r of records) {
+    if (r.reviewedAt >= evaluatorAt) {
+      evaluator = r.evaluator;
+      evaluatorAt = r.reviewedAt;
+    }
+    if (r.owner !== undefined && r.reviewedAt >= ownerAt) {
+      owner = r.owner;
+      ownerAt = r.reviewedAt;
+    }
   }
   return {
     judgedSelections: latest.size,
