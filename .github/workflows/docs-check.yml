@@ -11,6 +11,7 @@ on:
       - 'docs/**'
       - 'scripts/inject-governance.ts'
       - 'scripts/generate-docs-content.ts'
+      - 'scripts/generate-tool-reference.ts'
       - 'CLAUDE.md'
       - 'skills/**'
       - '.github/workflows/docs-check.yml'
@@ -278,6 +279,30 @@ jobs:
           else
             echo "::error::Repository capability index is out of date"
             echo "Run 'npx tsx scripts/generate-repo-index.ts' and commit the changes"
+            exit 1
+          fi
+
+  # Job 6b: Tool-Reference Drift (#3689) — the generated per-tool MCP reference
+  # (docs/reference/tools/, from scripts/generate-tool-reference.ts, #3687) must
+  # be current. Mirrors the repo-index/governance --check gates: regenerate in
+  # memory and fail if the committed output differs.
+  tool-reference-drift:
+    name: Tool Reference Drift
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: ./.github/actions/setup-node
+
+      - name: Check generated tool reference
+        run: |
+          npx tsx scripts/generate-tool-reference.ts --check
+          if [ $? -eq 0 ]; then
+            echo "✅ Generated tool reference is up to date"
+          else
+            echo "::error::Generated tool reference is out of date"
+            echo "Run 'pnpm docs:tools' and commit the changes"
             exit 1
           fi
 
