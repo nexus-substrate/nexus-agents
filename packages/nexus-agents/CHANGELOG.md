@@ -1,5 +1,13 @@
 # nexus-agents
 
+## 2.128.1
+
+### Patch Changes
+
+- [#3791](https://github.com/nexus-substrate/nexus-agents/pull/3791) [`2c5941d`](https://github.com/nexus-substrate/nexus-agents/commit/2c5941daeb3f712490b49203e6f9005155c48cbe) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - security(capability-loop): the pre-push diff-secret-scan now catches newer OpenAI key prefixes (`sk-proj-`/`sk-svcacct-`/`sk-admin-`, whose hyphen broke the classic `sk-[A-Za-z0-9]{32,}` class) and base64 credential values with `=` padding (the generic-credential value class omitted `=`). This scanner is the fail-closed pre-push gate that must be solid before Option A ([#3670](https://github.com/nexus-substrate/nexus-agents/issues/3670)) pushes attacker-influenceable diffs. ([#3752](https://github.com/nexus-substrate/nexus-agents/issues/3752))
+
+- [#3789](https://github.com/nexus-substrate/nexus-agents/pull/3789) [`ce95d59`](https://github.com/nexus-substrate/nexus-agents/commit/ce95d598c40696320eb68f56cd137af7ca3e102a) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - docs(capability-loop): reconcile stale '[#3669](https://github.com/nexus-substrate/nexus-agents/issues/3669) not landed / fail-closed stub' comments in the auto-remediation deps/cycle/CLI headers ([#3768](https://github.com/nexus-substrate/nexus-agents/issues/3768)). The Option B proposal-PR implement adapter landed ([#3669](https://github.com/nexus-substrate/nexus-agents/issues/3669)) and is wired in `buildAutoRemediationDeps`; the comments now state the real enforce-gating: the cycle entry point deliberately withholds `repoRoot`, so `implement` stays a fail-closed rejecting stub and enforce is structurally unreachable until [#3769](https://github.com/nexus-substrate/nexus-agents/issues/3769) Step 2 threads operator-supplied repoRoot (gated on a passing readiness verdict + the [#3770](https://github.com/nexus-substrate/nexus-agents/issues/3770) provenance re-audit). Comment-only; no behavior change.
+
 ## 2.128.0
 
 ### Minor Changes
