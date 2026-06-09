@@ -302,9 +302,15 @@ function recordRoutingExperience(
   category: string,
   success: boolean,
   durationMs: number,
-  tokensUsed = 0
+  tokensUsed = 0,
+  researchMaturity?: number
 ): void {
-  const metrics = { durationMs, tokensUsed };
+  const metrics = {
+    durationMs,
+    tokensUsed,
+    // #3234: record the run's research-maturity (RECORD + measure; #3815 gates use).
+    ...(researchMaturity !== undefined ? { researchMaturity } : {}),
+  };
   const callRecord = (rm: unknown): void => {
     (
       rm as { recordExperience: (w: string, m: string[], s: boolean, met: typeof metrics) => void }
@@ -625,7 +631,13 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
         success: r.success,
         durationMs: r.durationMs,
       });
-      recordRoutingExperience('code_generation', r.success, r.durationMs, r.tokensUsed);
+      recordRoutingExperience(
+        'code_generation',
+        r.success,
+        r.durationMs,
+        r.tokensUsed,
+        task.researchMaturity
+      );
       await postProgress(config, `Code [${task.id}]`, `Done (${r.durationMs}ms)`);
       return r.text || `[Implementation failed: ${r.error}]`;
     },

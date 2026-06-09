@@ -21,7 +21,11 @@
 import { nexusDataPath } from '../config/nexus-data-dir.js';
 
 import { runQaLoop } from '../orchestration/qa-loop.js';
-import { type ResearchContext, researchContextFromText } from './research-context.js';
+import {
+  type ResearchContext,
+  researchContextFromText,
+  deriveResearchMaturity,
+} from './research-context.js';
 
 import { createLogger, getTimeProvider, withStep } from '../core/index.js';
 import { getPipelineEventBus } from './event-bus.js';
@@ -71,6 +75,12 @@ export interface PipelineTask {
   readonly conditions?: readonly string[] | undefined;
   /** Caveats/warnings associated with the task (from conditional_go vote). */
   readonly caveats?: readonly string[] | undefined;
+  /**
+   * #3234: deterministic research-maturity `[0,1]` of the run that produced this
+   * task, attached after decompose. RECORDED on the routing outcome and measured
+   * (the gated live-routing use is #3815). Absent → treated as no-research (0).
+   */
+  readonly researchMaturity?: number | undefined;
 }
 
 /** Vote result from consensus — discriminated union with conditional approval support. */
@@ -290,7 +300,7 @@ async function runDevPipelineInner(
   const { beliefMemory: bm, auditLogger, trustTier } = options ?? {};
 
   // Phases 1-2: Research + Plan/Vote
-  const { planResult } = await runPlanningPhase(task, stages, prior, options);
+  const { planResult, researchMaturity } = await runPlanningPhase(task, stages, prior, options);
 
   // DRY RUN: stop after plan+vote, return partial result (#1717)
   if (options?.dryRun === true) {
@@ -310,6 +320,7 @@ async function runDevPipelineInner(
     conditional: planResult.conditional,
     conditions: planResult.conditions,
     caveats: planResult.caveats,
+    researchMaturity,
   });
   if (sid !== undefined) saveStageCheckpoint(sid, 'decompose', { type: 'decompose', tasks });
 
@@ -726,10 +737,16 @@ async function runPlanningPhase(
     conditions: readonly string[];
     caveats: readonly string[];
   };
+  /** #3234: research-maturity of this run, attached to decomposed tasks. */
+  researchMaturity: number;
 }> {
   const sid = options?.sessionId;
   const bm = options?.beliefMemory;
   const research = await resolveResearch(prior, task, stages, options);
+  // #3234: a deterministic research-maturity score (RECORD + measure; see #3815
+  // for the gated live-routing use). Fresh-run scoped — a resumed run has empty
+  // metadata → 0, degrading cleanly.
+  const researchMaturity = deriveResearchMaturity(research.metadata);
   // #3234: persist text only (unchanged checkpoint shape — metadata is fresh-run
   // scoped and not resumable). plan/vote consume the text via research.text.
   if (sid !== undefined) {
@@ -753,7 +770,7 @@ async function runPlanningPhase(
       iterations: planResult.iterations,
     });
   }
-  return { planResult };
+  return { planResult, researchMaturity };
 }
 
 /** Build result for harness mode — tasks returned for external implementation. */
@@ -898,6 +915,8 @@ interface ConditionalMeta {
   readonly conditional: boolean;
   readonly conditions: readonly string[];
   readonly caveats: readonly string[];
+  /** #3234: research-maturity of the run, attached to each fresh task. */
+  readonly researchMaturity?: number | undefined;
 }
 
 /** Run decompose or return from checkpoint. */
@@ -916,14 +935,14 @@ async function runOrResumeDecompose(
     ctx.setSummary(`${String(r.length)} tasks`);
     return r;
   });
-  if (meta.conditional && tasks.length > 0) {
-    return tasks.map((t) => ({
-      ...t,
-      conditions: meta.conditions,
-      caveats: meta.caveats,
-    }));
-  }
-  return tasks;
+  // #3234: attach research-maturity to every FRESH task (the resume path above
+  // returns prior.tasks untouched, preserving the original maturity). Conditional
+  // fields are added only on a conditional_go vote, as before.
+  return tasks.map((t) => ({
+    ...t,
+    ...(meta.conditional ? { conditions: meta.conditions, caveats: meta.caveats } : {}),
+    ...(meta.researchMaturity !== undefined ? { researchMaturity: meta.researchMaturity } : {}),
+  }));
 }
 
 /** Extract conditional metadata from an approved vote. */
@@ -1016,6 +1035,8 @@ async function implementSingleTask(
           assignedTo: task.assignedTo,
           status: 'rejected',
           feedback,
+          // #3234: preserve research-maturity across the rejection reconstruction.
+          researchMaturity: task.researchMaturity,
         };
       }
       return stages.implement(currentTask);
@@ -1034,6 +1055,8 @@ async function implementSingleTask(
     status: qaResult.approved ? 'done' : 'rejected',
     implementation: qaResult.output,
     feedback: qaResult.feedback,
+    // #3234: preserve research-maturity through to the final task.
+    researchMaturity: task.researchMaturity,
   };
   return { iterations: qaResult.iterations, task: finalTask };
 }

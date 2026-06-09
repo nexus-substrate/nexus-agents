@@ -91,6 +91,13 @@ export interface ExecutionOutcome {
   readonly totalDurationMs: number;
   /** Total tokens used */
   readonly tokensUsed: number;
+  /**
+   * #3234: deterministic research-maturity `[0,1]` of the run that produced this
+   * outcome (RECORD + measure). Absent when no research context was threaded.
+   * The measurement surface buckets outcomes by this; live routing use is gated
+   * on a measured success-rate lift (#3815).
+   */
+  readonly researchMaturity?: number;
 }
 
 /**

@@ -12,6 +12,9 @@ import { describe, it, expect } from 'vitest';
 import {
   buildResearchContext,
   renderResearchText,
+  deriveResearchMaturity,
+  researchMaturityBucket,
+  RESEARCH_MATURITY_SATURATION,
   MAX_RENDERED_ITEMS,
   type ResearchContextMetadata,
 } from './research-context.js';
@@ -166,5 +169,41 @@ describe('buildResearchContext (#3372)', () => {
       qualitySignals: { totalFound: 1, newItems: 1, alreadyInRegistry: 0 },
     };
     expect(renderResearchText(meta, 't')).toBe(renderResearchText(meta, 't'));
+  });
+});
+
+describe('deriveResearchMaturity (#3234)', () => {
+  const meta = (totalFound: number): ResearchContextMetadata => ({
+    discoveredItems: [],
+    recommendations: [],
+    qualitySignals: { totalFound, newItems: 0, alreadyInRegistry: 0 },
+  });
+
+  it('is 0 when no research ran (absent-research baseline)', () => {
+    expect(deriveResearchMaturity(meta(0))).toBe(0);
+    expect(deriveResearchMaturity(meta(-1))).toBe(0);
+  });
+
+  it('grows with totalFound and saturates at 1.0', () => {
+    expect(deriveResearchMaturity(meta(1))).toBeCloseTo(1 / RESEARCH_MATURITY_SATURATION);
+    expect(deriveResearchMaturity(meta(RESEARCH_MATURITY_SATURATION))).toBe(1);
+    expect(deriveResearchMaturity(meta(RESEARCH_MATURITY_SATURATION * 3))).toBe(1);
+  });
+
+  it('is deterministic + bounded to [0,1]', () => {
+    for (const n of [0, 1, 4, 8, 100]) {
+      const v = deriveResearchMaturity(meta(n));
+      expect(v).toBe(deriveResearchMaturity(meta(n)));
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('buckets the score none/low/high for the measurement surface', () => {
+    expect(researchMaturityBucket(0)).toBe('none');
+    expect(researchMaturityBucket(0.2)).toBe('low');
+    expect(researchMaturityBucket(0.49)).toBe('low');
+    expect(researchMaturityBucket(0.5)).toBe('high');
+    expect(researchMaturityBucket(1)).toBe('high');
   });
 });
