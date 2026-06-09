@@ -31,6 +31,12 @@ const config: UserConfig = {
     'body-max-line-length': [0] as const,
     'footer-max-line-length': [0] as const,
   },
+  // #3761: Dependabot keeps a capital 'Bump' in its subject even with the
+  // configured `chore(deps)`/`chore(ci)` prefix (.github/dependabot.yml), which
+  // `subject-case` (no sentence-case) rejects — blocking EVERY dep-bump PR's
+  // Commit Messages gate. Exempt those bot-authored commits rather than weaken the
+  // rule for humans. Matches `<prefix>: Bump <pkg> from <a> to <b>`.
+  ignores: [(message: string): boolean => /^chore\((?:deps|deps-dev|ci)\): Bump /.test(message)],
 };
 
 export default config;
