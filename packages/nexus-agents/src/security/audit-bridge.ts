@@ -63,12 +63,30 @@ function mapTrust(e: TrustEvent): AuditEventInput {
   };
 }
 
+/**
+ * Optional pipeline-policy metadata fields, absent on the security path. Extracted
+ * so {@link mapPolicyGate} stays under the complexity cap. `actionType`/`mode`/
+ * `ruleIds`/`stageType` are the #3710 round-trip fields; `recordKind`/
+ * `violationCount` are #3727 (the summary/violation discriminator + per-evaluation
+ * count the durable would-block rate needs).
+ */
+function pipelinePolicyMetadata(e: PolicyEvent): Record<string, unknown> {
+  return {
+    ...(e.actionType !== undefined ? { actionType: e.actionType } : {}),
+    ...(e.mode !== undefined ? { mode: e.mode } : {}),
+    ...(e.ruleIds !== undefined ? { ruleIds: e.ruleIds } : {}),
+    ...(e.stageType !== undefined ? { stageType: e.stageType } : {}),
+    ...(e.recordKind !== undefined ? { recordKind: e.recordKind } : {}),
+    ...(e.violationCount !== undefined ? { violationCount: e.violationCount } : {}),
+  };
+}
+
 function mapPolicyGate(e: PolicyEvent): AuditEventInput {
   const outcome: AuditOutcome = e.allowed ? 'success' : 'denied';
-  // #3710: the pipeline-policy path carries `mode`/`ruleIds`/`stageType` and no
-  // `actionType`; these MUST round-trip into the durable metadata so the
-  // persisted record distinguishes soak(warn) from enforce(block). The security
-  // path leaves them undefined and keeps its `actionType`-keyed shape.
+  // #3710/#3727: the pipeline-policy path carries mode/ruleIds/stageType +
+  // recordKind/violationCount and no actionType; these MUST round-trip into the
+  // durable metadata (see pipelinePolicyMetadata). The security path leaves them
+  // undefined and keeps its actionType-keyed shape.
   return {
     category: 'authorization',
     severity: e.allowed ? 'info' : 'warning',
@@ -79,13 +97,10 @@ function mapPolicyGate(e: PolicyEvent): AuditEventInput {
     policyDecision: e.allowed ? 'allow' : 'deny',
     ...(e.violationRules.length > 0 ? { violationType: e.violationRules.join(',') } : {}),
     metadata: {
-      ...(e.actionType !== undefined ? { actionType: e.actionType } : {}),
       requiresApproval: e.requiresApproval,
       inputTrustTier: e.inputTrustTier,
       violationRules: e.violationRules,
-      ...(e.mode !== undefined ? { mode: e.mode } : {}),
-      ...(e.ruleIds !== undefined ? { ruleIds: e.ruleIds } : {}),
-      ...(e.stageType !== undefined ? { stageType: e.stageType } : {}),
+      ...pipelinePolicyMetadata(e),
     },
   };
 }

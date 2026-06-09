@@ -9,7 +9,7 @@ import { PolicyEngine } from './policy-engine.js';
 import { EventBus } from './event-bus.js';
 import { evaluatePipelinePolicy, getPolicyMode } from './policy-evaluator.js';
 import type { PolicyContext, PolicyRule } from './policy-engine.js';
-import { createAuditTrail } from '../security/audit-trail.js';
+import { createAuditTrail, computePolicyWouldBlockRate } from '../security/audit-trail.js';
 import { securityAuditEventToInput } from '../security/audit-bridge.js';
 import type { AuditEvent as SecurityAuditEvent } from '../security/audit-trail.js';
 
@@ -215,9 +215,13 @@ describe('evaluatePipelinePolicy — durable dual-emit (#3710)', () => {
 
     // Bus emit unchanged (back-compat).
     expect(eventBus.query({ type: 'policy.evaluated' })).toHaveLength(1);
-    // Durable sink also received exactly one policy_gate event.
-    expect(events).toHaveLength(1);
+    // Durable sink: the per-violation record (#3710) + the #3727 summary record.
+    const violationRecs = events.filter(
+      (e) => e.type === 'policy_gate' && e.recordKind === 'violation'
+    );
+    expect(violationRecs).toHaveLength(1);
     expect(events[0]!.type).toBe('policy_gate');
+    expect(events).toHaveLength(2); // 1 violation + 1 summary (#3727)
   });
 
   it('mode/ruleIds/stageType ROUND-TRIP into the persisted durable AuditEvent (warn)', () => {
@@ -264,8 +268,16 @@ describe('evaluatePipelinePolicy — durable dual-emit (#3710)', () => {
 
     const busCount = eventBus.query({ type: 'policy.evaluated' }).length;
     expect(busCount).toBe(3);
-    expect(events).toHaveLength(3); // exactly one durable record per violation
-    expect(trail.size).toBe(3); // no duplicate appends
+    // #3710 parity is now scoped to the per-violation records (recordKind).
+    const violationRecs = events.filter(
+      (e) => e.type === 'policy_gate' && e.recordKind === 'violation'
+    );
+    expect(violationRecs).toHaveLength(3); // exactly one durable record per violation
+    const summaryRecs = events.filter(
+      (e) => e.type === 'policy_gate' && e.recordKind === 'summary'
+    );
+    expect(summaryRecs).toHaveLength(1); // #3727: one per-evaluation summary
+    expect(trail.size).toBe(4); // 3 violations + 1 summary; no duplicate appends
   });
 
   it('no-sink path is byte-identical: omitting auditTrail produces no durable side effect', () => {
@@ -281,16 +293,95 @@ describe('evaluatePipelinePolicy — durable dual-emit (#3710)', () => {
 
     // Returned result is identical regardless of the sink.
     expect(noTrail).toEqual(withTrail);
-    // The no-sink run produced no durable events at all.
-    expect(events).toHaveLength(1); // only the with-trail run appended
+    // The no-sink run produced no durable events at all; the with-trail run
+    // appended 1 violation + 1 summary (#3727).
+    expect(events).toHaveLength(2); // only the with-trail run appended
   });
 
-  it('no violations: durable trail receives nothing', () => {
+  it('no violations: durable trail receives ONE summary record (#3727 denominator), no violation records', () => {
     engine.registerRule(createPassingRule('ok'));
     const { trail, events } = captureTrail();
     evaluatePipelinePolicy({ engine, eventBus, mode: 'warn', auditTrail: trail }, ctx);
-    expect(events).toHaveLength(0);
-    expect(trail.size).toBe(0);
+    // #3727: a CLEAN evaluation now writes exactly one per-evaluation SUMMARY
+    // record (the denominator) where it previously wrote nothing.
+    expect(events).toHaveLength(1);
+    const rec = events[0]!;
+    if (rec.type !== 'policy_gate') throw new Error('unreachable');
+    expect(rec.recordKind).toBe('summary');
+    expect(rec.violationCount).toBe(0);
+    expect(rec.allowed).toBe(true);
+    expect(trail.size).toBe(1);
+  });
+});
+
+describe('evaluatePipelinePolicy — per-evaluation summary + would-block rate (#3727)', () => {
+  const ctx = createContext({ stageType: 'execute', stageId: 'consensus-to-execute' });
+
+  function captureTrail(): {
+    trail: ReturnType<typeof createAuditTrail>;
+    events: SecurityAuditEvent[];
+  } {
+    const events: SecurityAuditEvent[] = [];
+    const trail = createAuditTrail((e) => events.push(e));
+    return { trail, events };
+  }
+
+  it('an N-violation evaluation writes N violation records + 1 summary(violationCount=N)', () => {
+    const engine = new PolicyEngine();
+    engine.registerRule(createBlockingRule('a'));
+    engine.registerRule(createBlockingRule('b'));
+    const { trail, events } = captureTrail();
+
+    evaluatePipelinePolicy(
+      { engine, eventBus: new EventBus(), mode: 'warn', auditTrail: trail },
+      ctx
+    );
+
+    const violations = events.filter(
+      (e) => e.type === 'policy_gate' && e.recordKind === 'violation'
+    );
+    const summaries = events.filter((e) => e.type === 'policy_gate' && e.recordKind === 'summary');
+    expect(violations).toHaveLength(2); // #3710 parity preserved
+    expect(summaries).toHaveLength(1);
+    const summary = summaries[0]!;
+    if (summary.type !== 'policy_gate') throw new Error('unreachable');
+    expect(summary.violationCount).toBe(2);
+    expect(summary.allowed).toBe(true); // warn mode continues
+    // The discriminator + count MUST round-trip into the PERSISTED durable record
+    // (the readiness gate reads persisted records, not in-memory events).
+    const durable = securityAuditEventToInput(summary);
+    expect(durable.metadata?.['recordKind']).toBe('summary');
+    expect(durable.metadata?.['violationCount']).toBe(2);
+  });
+
+  it('computePolicyWouldBlockRate counts the denominator from summary records only', () => {
+    const { trail, events } = captureTrail();
+    // Two clean evaluations + one with a violation.
+    const clean = new PolicyEngine();
+    clean.registerRule(createPassingRule('ok'));
+    evaluatePipelinePolicy(
+      { engine: clean, eventBus: new EventBus(), mode: 'warn', auditTrail: trail },
+      ctx
+    );
+    evaluatePipelinePolicy(
+      { engine: clean, eventBus: new EventBus(), mode: 'warn', auditTrail: trail },
+      ctx
+    );
+    const blocking = new PolicyEngine();
+    blocking.registerRule(createBlockingRule('x'));
+    evaluatePipelinePolicy(
+      { engine: blocking, eventBus: new EventBus(), mode: 'warn', auditTrail: trail },
+      ctx
+    );
+
+    const rate = computePolicyWouldBlockRate(events);
+    expect(rate.evaluations).toBe(3); // 3 summary records (the denominator) — NOT the violation record
+    expect(rate.wouldBlock).toBe(1); // one evaluation had a violation
+    expect(rate.rate).toBeCloseTo(1 / 3);
+  });
+
+  it('rate is 0 with no evaluations (no spurious signal)', () => {
+    expect(computePolicyWouldBlockRate([])).toEqual({ evaluations: 0, wouldBlock: 0, rate: 0 });
   });
 });
 
