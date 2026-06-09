@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 2.128.5
+
+### Patch Changes
+
+- [#3800](https://github.com/nexus-substrate/nexus-agents/pull/3800) [`e756f26`](https://github.com/nexus-substrate/nexus-agents/commit/e756f2630dcfd98a1ed21cceed68c90224d77b4b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(list_jobs): dual-read from the Stage-2 task-state log ([#3693](https://github.com/nexus-substrate/nexus-agents/issues/3693)). Completes the reader half of the sidecar→Stage-2 job-result migration (epic [#2631](https://github.com/nexus-substrate/nexus-agents/issues/2631)) — `get_job_result` already dual-reads ([#3094](https://github.com/nexus-substrate/nexus-agents/issues/3094)); now `list_jobs` does too. With `NEXUS_JOB_RESULT_SOURCE=task_state` it unions the task-state log with the sidecar (deduped by jobId, task-state preferred, newest-first), so no job is lost while the writer half is still partial; default (unset) stays sidecar-only and unchanged. Adds `listTaskStateIds` (task-state enumerator), `listJobsFromTaskState`/`resolveJobList` (mirroring `resolveJobResult`), a shared `toJobSummary` projection, and registers the previously-undocumented `NEXUS_JOB_RESULT_SOURCE` toggle in the env schema. Unblocks writer retirement ([#3092](https://github.com/nexus-substrate/nexus-agents/issues/3092)/[#3093](https://github.com/nexus-substrate/nexus-agents/issues/3093)).
+
 ## 2.128.4
 
 ### Patch Changes
