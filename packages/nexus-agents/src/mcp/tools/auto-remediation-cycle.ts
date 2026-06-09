@@ -3,11 +3,12 @@
  *
  * One cycle: collect the improvement_review signals → assemble deps → run the
  * env-gated {@link runAutoRemediation}. This is the surface a CLI command / MCP
- * tool / scheduled job calls. OFF-BY-DEFAULT: with `NEXUS_AUTO_REMEDIATE` unset
- * it short-circuits before even collecting signals. In `audit` it produces the
- * vote/plan SOAK data with zero writes (the deps' implement is fail-closed until
- * #3669); `enforce` is structurally unavailable until the Option B adapter +
- * real readiness evidence are wired.
+ * tool / scheduled job calls. AUDIT-BY-DEFAULT since #3769: with
+ * `NEXUS_AUTO_REMEDIATE` unset it runs `audit` — producing the vote/plan SOAK
+ * data with zero writes — so periodic local runs accumulate readiness evidence.
+ * Explicit `off` short-circuits before collecting signals. `enforce` is opt-in
+ * and structurally unavailable until repo/repoRoot + a passing readiness verdict
+ * are wired (#3769 Step 2).
  *
  * @module mcp/tools/auto-remediation-cycle
  */

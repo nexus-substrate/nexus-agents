@@ -115,7 +115,8 @@ const NexusEnvSchema = z.object({
   NEXUS_ALLOW_MOCK_ORCHESTRATION: boolStr.optional(),
 
   // --- Autonomous remediation & policy (#3540 / #3653) ---
-  // Drives the auto-remediation cycle (resolveAutoRemediateMode); off by default.
+  // Drives the auto-remediation cycle (resolveAutoRemediateMode); default audit
+  // (zero-write soak, #3769) when unset, explicit `off` disables.
   NEXUS_AUTO_REMEDIATE: z.enum(['off', 'audit', 'enforce']).optional(),
   // Stage-boundary policy gate enforcement mode (getGateEnforcementMode); warn by default.
   NEXUS_POLICY_GATE_MODE: z.enum(['off', 'warn', 'block']).optional(),
