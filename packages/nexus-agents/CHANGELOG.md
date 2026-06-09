@@ -1,5 +1,19 @@
 # nexus-agents
 
+## 2.127.4
+
+### Patch Changes
+
+- [#3782](https://github.com/nexus-substrate/nexus-agents/pull/3782) [`6949e0f`](https://github.com/nexus-substrate/nexus-agents/commit/6949e0f35a52e3a080b1f90c9b02ab125c629a31) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - ci(capability-loop): explicit Rule-of-Two secret gating on auto-remediation branches ([#3778](https://github.com/nexus-substrate/nexus-agents/issues/3778))
+
+  Add the explicit `auto-remediation/` prefix guard to the two secret-bearing
+  PR-triggered workflows that lacked it — self-dogfood (model-driven review;
+  previously relied only on draft-status) and link-check (the plan doc is
+  markdown, matching its path filter, and the job carries GITHUB_TOKEN). Plus a
+  regression test asserting all four secret PR-workflows (ci, pr-review,
+  self-dogfood, link-check) carry the guard, so a new secret workflow can't
+  silently expose secrets to bot-branch content. Surfaced by the [#3770](https://github.com/nexus-substrate/nexus-agents/issues/3770) review.
+
 ## 2.127.3
 
 ### Patch Changes
