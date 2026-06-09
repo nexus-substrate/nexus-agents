@@ -1,5 +1,24 @@
 # nexus-agents
 
+## 2.127.2
+
+### Patch Changes
+
+- [#3781](https://github.com/nexus-substrate/nexus-agents/pull/3781) [`1307f19`](https://github.com/nexus-substrate/nexus-agents/commit/1307f19c918b257fbd9946a52f1fe2dd36539e1f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - test(capability-loop): end-to-end enforce-path integration test against a throwaway repo ([#3777](https://github.com/nexus-substrate/nexus-agents/issues/3777))
+
+  Adds the integration-layer coverage the [#3770](https://github.com/nexus-substrate/nexus-agents/issues/3770) security/QA review flagged as a blocker
+  for the [#3769](https://github.com/nexus-substrate/nexus-agents/issues/3769) enforce flip. The unit tests beside each module cover the orchestrator
+  control flow and adapters against fakes; this test drives the REAL deps-assembly and the
+  REAL git worktree/commit/push chain against a throwaway local repo with a local bare
+  remote (no GitHub), asserting: (1) buildAutoRemediationDeps wires the real proposal-PR
+  implement + real git-ref lease when repo/repoRoot are present and stays fail-closed
+  (rejecting stub + null lease) when absent; (2) the real worktree chain commits and pushes
+  ONLY the one plan doc to `auto-remediation/<slug>` and removes the worktree in `finally`;
+  (3) the real git-ref lease RELEASE (ref DELETE) still fires when implement rejects mid-run
+  (no stale lock, [#3646](https://github.com/nexus-substrate/nexus-agents/issues/3646)); (4) the audit soak-wrap is NOT applied to the enforce branch.
+  Only the smallest external seams are faked (the `gh` runner + PrCreator); no live GitHub
+  calls and no `simulateVotes`.
+
 ## 2.127.1
 
 ### Patch Changes
