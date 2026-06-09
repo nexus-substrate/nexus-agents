@@ -167,6 +167,12 @@ interface ParsedValues {
   // init --opencode <path> options (#2504)
   opencode?: string;
   validate: boolean;
+  // remediation-review command options (#3765)
+  evaluator?: string;
+  owner?: string;
+  note?: string;
+  sound: boolean;
+  unsound: boolean;
 }
 
 /** Builds orchestrate-specific options. */
@@ -353,6 +359,12 @@ function buildOptions(values: ParsedValues): ParsedCliArgs['options'] {
     mock: values.mock,
     deep: values.deep,
     json: values.json,
+    // remediation-review command options (#3765)
+    sound: values.sound,
+    unsound: values.unsound,
+    ...(values.evaluator !== undefined && { evaluator: values.evaluator }),
+    ...(values.owner !== undefined && { owner: values.owner }),
+    ...(values.note !== undefined && { note: values.note }),
     ...(values.source !== undefined && { source: values.source }),
     ...(values.output !== undefined && { output: values.output }),
     ...(values.input !== undefined && { input: values.input }),

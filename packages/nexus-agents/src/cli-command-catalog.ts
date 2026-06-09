@@ -208,6 +208,12 @@ export const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
       'Run one auto-remediation cycle (#3540). OFF unless NEXUS_AUTO_REMEDIATE=audit|enforce; never auto-merges.',
     audience: 'maintainer',
   },
+  {
+    command: 'remediation-review',
+    description:
+      'Soundness-review audit-mode selections (#3765): list pending · mark --evaluator --sound|--unsound · sign-off --owner.',
+    audience: 'maintainer',
+  },
 
   // ── Maintainer (hidden by default) ───────────────────────────────────────
   {

@@ -4,12 +4,28 @@
  * not-ready readiness, null lease when unconfigured).
  */
 
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { describe, it, expect, vi } from 'vitest';
 import { buildAutoRemediationDeps } from './auto-remediation-deps.js';
 import { runAutoRemediation } from './improvement-remediation-enforce.js';
 import { RemediationGuard } from './improvement-remediation-guard.js';
 import { parseRemediationPlan, CapabilityLedger } from './improvement-remediation-capability.js';
 import type { ImprovementSignal } from './improvement-review.js';
+import {
+  createRemediationSoakSink,
+  getRemediationSoakFile,
+  _resetRemediationSoakSinkForTests,
+  type RemediationSoakRecord,
+} from './improvement-remediation-shadow.js';
+import {
+  createRemediationReviewStore,
+  getRemediationReviewFile,
+  _resetRemediationReviewStoreForTests,
+  soakRefOf,
+} from './remediation-review.js';
 
 function signal(over: Partial<ImprovementSignal> = {}): ImprovementSignal {
   return {
@@ -56,10 +72,85 @@ describe('buildAutoRemediationDeps', () => {
     expect(await deps.acquireLease('auto-remediation')).toBeNull();
   });
 
-  it('readiness defaults to not-ready (enforce blocked until evidence is wired)', async () => {
-    const deps = buildAutoRemediationDeps();
-    const ev = await deps.readinessEvidence();
-    expect(ev.shadowSelections).toBe(0);
+  it('readiness is fail-closed (not-ready) when no soak/review data exists', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'deps-empty-'));
+    const prev = process.env['NEXUS_DATA_DIR'];
+    process.env['NEXUS_DATA_DIR'] = dir;
+    _resetRemediationSoakSinkForTests();
+    _resetRemediationReviewStoreForTests();
+    try {
+      const deps = buildAutoRemediationDeps();
+      const ev = await deps.readinessEvidence();
+      expect(ev.shadowSelections).toBe(0);
+      expect(ev.judgedSelections).toBe(0);
+      expect(ev.evaluator).toBeUndefined();
+    } finally {
+      if (prev === undefined) delete process.env['NEXUS_DATA_DIR'];
+      else process.env['NEXUS_DATA_DIR'] = prev;
+      _resetRemediationSoakSinkForTests();
+      _resetRemediationReviewStoreForTests();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('readiness provider returns REAL evidence built from the durable soak + review stores (#3764)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'deps-real-'));
+    const prev = process.env['NEXUS_DATA_DIR'];
+    process.env['NEXUS_DATA_DIR'] = dir;
+    _resetRemediationSoakSinkForTests();
+    _resetRemediationReviewStoreForTests();
+    try {
+      const soakSink = createRemediationSoakSink(getRemediationSoakFile());
+      const soakRecord: RemediationSoakRecord = {
+        timestamp: '2026-06-08T00:00:00.000Z',
+        signalKey: 'routing:floor:codex',
+        category: 'routing',
+        priority: 'p2',
+        severity: 'warning',
+        planStepCount: 3,
+        reason: 'plan produced',
+      };
+      soakSink.record(soakRecord);
+      const reviewStore = createRemediationReviewStore(getRemediationReviewFile());
+      reviewStore.record({
+        soakRef: soakRefOf(soakRecord),
+        reviewedAt: '2026-06-08T01:00:00.000Z',
+        reviewed: true,
+        sound: true,
+        evaluator: 'alice',
+        owner: 'carol',
+      });
+      // Fresh singletons hydrate from the files the provider reads.
+      _resetRemediationSoakSinkForTests();
+      _resetRemediationReviewStoreForTests();
+
+      const deps = buildAutoRemediationDeps();
+      const ev = await deps.readinessEvidence();
+      expect(ev.shadowSelections).toBe(1);
+      expect(ev.judgedSelections).toBe(1);
+      expect(ev.judgedSound).toBe(1);
+      expect(ev.evaluator).toBe('alice');
+      expect(ev.owner).toBe('carol');
+    } finally {
+      if (prev === undefined) delete process.env['NEXUS_DATA_DIR'];
+      else process.env['NEXUS_DATA_DIR'] = prev;
+      _resetRemediationSoakSinkForTests();
+      _resetRemediationReviewStoreForTests();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('audit run does not consult readiness (audit path untouched by the readiness wiring)', async () => {
+    const deps = buildAutoRemediationDeps({
+      voteRunner: async () => Promise.resolve({ approved: true, approvalPercentage: 100 }),
+    });
+    const readinessSpy = vi.spyOn(deps, 'readinessEvidence');
+    await runAutoRemediation([signal()], deps, {
+      mode: 'audit',
+      now: 0,
+      guard: new RemediationGuard(),
+    });
+    expect(readinessSpy).not.toHaveBeenCalled();
   });
 
   it('drives a full AUDIT run end-to-end on built pieces (soak data, zero writes)', async () => {

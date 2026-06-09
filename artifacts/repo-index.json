@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-06-09T01:13:38.576Z",
+  "generated": "2026-06-09T01:25:23.810Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.126.0",
   "cli": {
@@ -172,6 +172,12 @@
         "name": "release-validate",
         "type": "async",
         "handler": "handleReleaseValidateCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
+      {
+        "name": "remediation-review",
+        "type": "async",
+        "handler": "handleRemediationReviewCommand",
         "file": "src/cli-commands-handlers.ts"
       },
       {
