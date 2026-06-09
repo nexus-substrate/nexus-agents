@@ -22,10 +22,10 @@
  */
 
 import { createLogger } from '../../core/index.js';
-import { readTaskState } from '../../context/structured-task-state.js';
+import { readTaskState, listTaskStateIds } from '../../context/structured-task-state.js';
 import type { StructuredTaskState } from '../../context/structured-task-state-types.js';
-import type { JobResult, JobStatus } from './job-result-store.js';
-import { readJobResult } from './job-result-store.js';
+import type { JobResult, JobStatus, JobSummary } from './job-result-store.js';
+import { readJobResult, listJobs, toJobSummary } from './job-result-store.js';
 
 const logger = createLogger({ component: 'task-state-source' });
 
@@ -164,4 +164,39 @@ export function resolveJobResult(jobId: string, customDir?: string): JobResult |
     }
   }
   return readJobResult(jobId);
+}
+
+/**
+ * Summarize every async job recorded in the task-state log (#3693). Maps each
+ * `state-<taskId>.jsonl` to a {@link JobSummary} via the same Stage-2→JobResult
+ * adapter the single-job reader uses; entries that don't map (no terminal
+ * cancellation/stage, unreadable) are skipped. `customDir` is for test isolation.
+ */
+export function listJobsFromTaskState(customDir?: string): JobSummary[] {
+  const summaries: JobSummary[] = [];
+  for (const taskId of listTaskStateIds(customDir)) {
+    const record = readJobResultFromTaskState(taskId, customDir);
+    if (record !== null) summaries.push(toJobSummary(record));
+  }
+  return summaries;
+}
+
+/**
+ * List async jobs with dual-read semantics (#3693), mirroring
+ * {@link resolveJobResult}:
+ * - source toggle OFF → the sidecar list only (current behavior, unchanged).
+ * - source toggle ON  → the UNION of sidecar + task-state jobs, deduped by
+ *   jobId with the task-state record preferred (it is the migration target).
+ *
+ * Unioning (rather than task-state-only) ensures no job is lost while the writer
+ * half (#3091+) is still partial — sidecar-only jobs remain visible. Newest-first
+ * ordering matches `listJobs()`. `customDir` steers ONLY the task-state read.
+ */
+export function resolveJobList(customDir?: string): JobSummary[] {
+  const sidecar = listJobs();
+  if (!isTaskStateJobSource()) return sidecar;
+  const byId = new Map<string, JobSummary>();
+  for (const summary of sidecar) byId.set(summary.jobId, summary);
+  for (const summary of listJobsFromTaskState(customDir)) byId.set(summary.jobId, summary);
+  return [...byId.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }

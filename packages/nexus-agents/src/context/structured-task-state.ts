@@ -52,6 +52,32 @@ function getLogPath(taskId: string, customDir?: string): string {
   return path.join(getTasksDir(customDir), `state-${taskId}.jsonl`);
 }
 
+/**
+ * Enumerate the task ids that have a state log on disk (#3693). Walks the tasks
+ * dir for `state-<taskId>.jsonl` files; returns `[]` when the dir is absent or
+ * unreadable (best-effort, never throws). `customDir` steers the lookup for tests.
+ */
+export function listTaskStateIds(customDir?: string): string[] {
+  const dir = getTasksDir(customDir);
+  if (!fs.existsSync(dir)) return [];
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(dir);
+  } catch (cause) {
+    logger.warn('tasks directory unreadable', {
+      dir,
+      error: cause instanceof Error ? cause.message : String(cause),
+    });
+    return [];
+  }
+  const ids: string[] = [];
+  for (const entry of entries) {
+    const match = /^state-(.+)\.jsonl$/.exec(entry);
+    if (match?.[1] !== undefined) ids.push(match[1]);
+  }
+  return ids;
+}
+
 function validateTaskId(taskId: string): Result<string, Error> {
   if (taskId.includes('..') || taskId.includes('/') || taskId.includes('\\')) {
     return err(new Error('Invalid task ID: contains path traversal characters'));

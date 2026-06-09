@@ -126,6 +126,10 @@ const NexusEnvSchema = z.object({
   NEXUS_CONTEXT_RANKED: z.enum(['0', '1']).optional(),
   // Feed live dispatch outcomes into the MetaOrchestrator shadow selector + persist them (#3593); off by default.
   NEXUS_META_SHADOW_TRAIN: z.enum(['0', '1']).optional(),
+  // Async job-result reader source (#3090/#3693): `task_state` prefers/unions the
+  // Stage-2 task-state log; default (unset) is sidecar-only. Reader half of the
+  // sidecar→Stage-2 migration (epic #2631).
+  NEXUS_JOB_RESULT_SOURCE: z.enum(['sidecar', 'task_state']).optional(),
 
   // --- Hooks & Sessions ---
   NEXUS_HOOK_VERBOSE: boolStr.optional(),

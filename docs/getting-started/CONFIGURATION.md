@@ -315,17 +315,18 @@ Resolution: `clamp(envClassOverride ?? base, 1000, 7200000) * multiplier`, re-cl
 
 ### Infrastructure Variables
 
-| Variable                          | Description                                                                                           | Default   |
-| --------------------------------- | ----------------------------------------------------------------------------------------------------- | --------- |
-| `NEXUS_EVENTBUS_ENABLED`          | EventBus A2A bridge                                                                                   | `true`    |
-| `NEXUS_RATE_LIMIT_ENABLED`        | Token-bucket rate limiter                                                                             | `true`    |
-| `NEXUS_CIRCUIT_BREAKER_THRESHOLD` | Circuit breaker failure threshold                                                                     | `5`       |
-| `NEXUS_V2_POLICY_MODE`            | Policy enforcement (`off`/`warn`/`block`)                                                             | `block`   |
-| `NEXUS_AUTO_REMEDIATE`            | Autonomous remediation cycle (`off`/`audit`/`enforce`, #3653; default `audit` zero-write soak, #3769) | `audit`   |
-| `NEXUS_POLICY_GATE_MODE`          | Stage-boundary policy gate (`off`/`warn`/`block`, #3177)                                              | `warn`    |
-| `NEXUS_MODELS_OVERLAY_PATH`       | Path to a model-registry overlay manifest (#3185 hot-reload)                                          | _(unset)_ |
-| `NEXUS_DISABLE_SESSIONS`          | Disable session tracking                                                                              | `false`   |
-| `NEXUS_DISABLE_METRICS`           | Disable metrics tracking                                                                              | `false`   |
+| Variable                          | Description                                                                                                                                                                             | Default   |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| `NEXUS_EVENTBUS_ENABLED`          | EventBus A2A bridge                                                                                                                                                                     | `true`    |
+| `NEXUS_RATE_LIMIT_ENABLED`        | Token-bucket rate limiter                                                                                                                                                               | `true`    |
+| `NEXUS_CIRCUIT_BREAKER_THRESHOLD` | Circuit breaker failure threshold                                                                                                                                                       | `5`       |
+| `NEXUS_V2_POLICY_MODE`            | Policy enforcement (`off`/`warn`/`block`)                                                                                                                                               | `block`   |
+| `NEXUS_AUTO_REMEDIATE`            | Autonomous remediation cycle (`off`/`audit`/`enforce`, #3653; default `audit` zero-write soak, #3769)                                                                                   | `audit`   |
+| `NEXUS_POLICY_GATE_MODE`          | Stage-boundary policy gate (`off`/`warn`/`block`, #3177)                                                                                                                                | `warn`    |
+| `NEXUS_JOB_RESULT_SOURCE`         | Async job-result reader source (`sidecar`/`task_state`, #3090/#3693): `task_state` prefers+unions the Stage-2 task-state log; reader half of the sidecar→Stage-2 migration (epic #2631) | `sidecar` |
+| `NEXUS_MODELS_OVERLAY_PATH`       | Path to a model-registry overlay manifest (#3185 hot-reload)                                                                                                                            | _(unset)_ |
+| `NEXUS_DISABLE_SESSIONS`          | Disable session tracking                                                                                                                                                                | `false`   |
+| `NEXUS_DISABLE_METRICS`           | Disable metrics tracking                                                                                                                                                                | `false`   |
 
 ### Removed in 2.82.0 (#2977)
 

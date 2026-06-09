@@ -219,6 +219,19 @@ export interface JobSummary {
   readonly hasError: boolean;
 }
 
+/** Project a full {@link JobResult} down to its {@link JobSummary} — shared by
+ * the sidecar walk here and the task-state list source (#3693). */
+export function toJobSummary(record: JobResult): JobSummary {
+  return {
+    jobId: record.jobId,
+    toolName: record.toolName,
+    status: record.status,
+    createdAt: record.createdAt,
+    hasError: record.error !== undefined,
+    ...(record.completedAt !== undefined ? { completedAt: record.completedAt } : {}),
+  };
+}
+
 export function listJobs(): JobSummary[] {
   const dir = nexusDataPath('jobs');
   if (!existsSync(dir)) return [];
@@ -240,15 +253,7 @@ export function listJobs(): JobSummary[] {
     if (jobId === undefined) continue;
     const record = readJobResult(jobId);
     if (record === null) continue;
-    const summary: JobSummary = {
-      jobId: record.jobId,
-      toolName: record.toolName,
-      status: record.status,
-      createdAt: record.createdAt,
-      hasError: record.error !== undefined,
-      ...(record.completedAt !== undefined ? { completedAt: record.completedAt } : {}),
-    };
-    summaries.push(summary);
+    summaries.push(toJobSummary(record));
   }
   // Newest first — matches typical "what just happened" discovery flow.
   return summaries.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
