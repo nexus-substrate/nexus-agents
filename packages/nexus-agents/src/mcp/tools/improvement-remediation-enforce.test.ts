@@ -81,13 +81,14 @@ function enf(): { mode: 'enforce'; now: number; guard: RemediationGuard } {
 }
 
 describe('resolveAutoRemediateMode', () => {
-  it('exact-matches enforce/audit, everything else is off', () => {
+  it('exact-matches off/enforce; default (unset/unrecognized) is audit (#3769)', () => {
     expect(resolveAutoRemediateMode('enforce')).toBe('enforce');
     expect(resolveAutoRemediateMode('audit')).toBe('audit');
-    expect(resolveAutoRemediateMode('ENFORCE')).toBe('off'); // case-sensitive
-    expect(resolveAutoRemediateMode('on')).toBe('off');
-    expect(resolveAutoRemediateMode('true')).toBe('off');
-    expect(resolveAutoRemediateMode(undefined)).toBe('off');
+    expect(resolveAutoRemediateMode('off')).toBe('off'); // explicit opt-out respected
+    expect(resolveAutoRemediateMode('ENFORCE')).toBe('audit'); // case-sensitive → default audit
+    expect(resolveAutoRemediateMode('on')).toBe('audit');
+    expect(resolveAutoRemediateMode('true')).toBe('audit');
+    expect(resolveAutoRemediateMode(undefined)).toBe('audit'); // the flip: default audit
   });
 });
 

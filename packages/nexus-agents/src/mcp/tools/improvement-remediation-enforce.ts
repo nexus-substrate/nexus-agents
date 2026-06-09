@@ -13,10 +13,11 @@
  * orchestrator with fakes, so the safety-critical control flow is fully covered
  * without any real writes.
  *
- * Three modes (exact-match `NEXUS_AUTO_REMEDIATE`, default off):
- *  - `off`     — no-op. The default; nothing runs.
+ * Three modes (`NEXUS_AUTO_REMEDIATE`, default `audit` since #3769):
+ *  - `off`     — no-op. Explicit opt-out; nothing runs.
  *  - `audit`   — admission + RESEARCH + plan production, then STOP before IMPLEMENT.
  *                Zero writes, no lease, no PR. Builds readiness evidence safely.
+ *                THE DEFAULT (unset → audit): periodic local runs accumulate the soak.
  *  - `enforce` — full path: lease → readiness → admission → phase machine →
  *                PR-only (never auto-merge) → outcome feedback.
  *
@@ -62,11 +63,16 @@ export const AUTO_REMEDIATE_ENV = 'NEXUS_AUTO_REMEDIATE';
 /** Stable lease key for the single-flight cross-process lock. */
 export const AUTO_REMEDIATE_LEASE_KEY = 'auto-remediation';
 
-/** Resolve the mode from a raw env value. Fail-safe: unknown/unset → off. */
+/**
+ * Resolve the mode from a raw env value. Default (unset / unrecognized) → `audit`
+ * (#3769 — zero-write soak that accumulates the readiness-gate evidence on
+ * periodic local runs). Explicit `off` disables entirely; `enforce` is opt-in
+ * and still gated by the readiness verdict + circuit breaker.
+ */
 export function resolveAutoRemediateMode(raw: string | undefined): AutoRemediateMode {
+  if (raw === 'off') return 'off';
   if (raw === 'enforce') return 'enforce';
-  if (raw === 'audit') return 'audit';
-  return 'off';
+  return 'audit';
 }
 
 /** A held lease; call {@link release} when the run finishes. */
