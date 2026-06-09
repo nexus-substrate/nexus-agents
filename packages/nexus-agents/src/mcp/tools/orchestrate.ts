@@ -1219,8 +1219,14 @@ async function injectMemoryContextForOrchestrate(
       mutable.context = { ...(mutable.context ?? {}), priorMemorySummary: summary };
     }
   } catch (error: unknown) {
-    // Never block orchestration on a memory read failure.
-    logger.debug('orchestrate: context retrieval failed', { error: getErrorMessage(error) });
+    // #3699: the #3180-adopted best-effort failure policy — never block
+    // orchestration on a memory read failure, but make it an observable WARN
+    // (not a swallowed debug line). No event-listener channel at this site, so
+    // the structured warn IS the observable.
+    logger.warn('orchestrate: context retrieval failed; continuing with empty context', {
+      category: inferTaskCategory(input.task),
+      error: getErrorMessage(error),
+    });
   }
 }
 

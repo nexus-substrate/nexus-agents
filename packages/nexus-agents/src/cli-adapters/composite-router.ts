@@ -489,7 +489,12 @@ export class CompositeRouter implements ICompositeRouter {
         outcomesTotal: ctx.outcomes?.totalTasks ?? 0,
       });
     } catch (error: unknown) {
-      this.logger.debug('CompositeRouter: context retrieval failed', {
+      // #3699: the #3180-adopted best-effort failure policy — routing continues
+      // (lastUnifiedContext stays unset), but the failure is an observable WARN
+      // rather than a swallowed debug line: a router consulting memory blind is
+      // a condition operators should see. No event-listener channel at this
+      // site, so the structured warn IS the observable.
+      this.logger.warn('CompositeRouter: context retrieval failed; routing without context', {
         error: error instanceof Error ? error.message : String(error),
       });
     }

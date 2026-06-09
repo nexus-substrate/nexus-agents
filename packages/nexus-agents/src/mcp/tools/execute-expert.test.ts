@@ -588,4 +588,27 @@ describe('maybeFetchContextPrefix gate (#3238)', () => {
     process.env['NEXUS_CONTEXT_RETRIEVER_INJECT'] = '0';
     expect(await maybeFetchContextPrefix('any task', undefined)).toBeUndefined();
   });
+
+  it('retrieval failure → observable WARN + continues without prefix (#3699)', async () => {
+    process.env['NEXUS_CONTEXT_RETRIEVER_INJECT'] = '1';
+    const retriever = await import('../../context/context-retriever.js');
+    const spy = vi
+      .spyOn(retriever, 'getContextForTask')
+      .mockRejectedValueOnce(new Error('memory backend down'));
+    const warn = vi.fn();
+    const logger = { debug: vi.fn(), info: vi.fn(), warn, error: vi.fn() } as unknown as ILogger;
+
+    try {
+      // Best-effort contract preserved: no throw, no prefix.
+      await expect(maybeFetchContextPrefix('some task', logger)).resolves.toBeUndefined();
+      // #3180-adopted policy: the failure is a WARN (not a swallowed debug line)
+      // with the sanitized error + the task category.
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('context retrieval failed'),
+        expect.objectContaining({ error: 'memory backend down', category: expect.any(String) })
+      );
+    } finally {
+      spy.mockRestore();
+    }
+  });
 });
