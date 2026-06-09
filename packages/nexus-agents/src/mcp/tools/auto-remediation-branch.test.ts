@@ -2,6 +2,9 @@
  * Tests for the auto-remediation branch convention (#3540 inc.2d / #3614).
  */
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { describe, it, expect } from 'vitest';
 import {
   AUTO_REMEDIATION_BRANCH_PREFIX,
@@ -46,4 +49,25 @@ describe('autoRemediationBranchName', () => {
     const name = autoRemediationBranchName('a'.repeat(500));
     expect(name.length).toBeLessThanOrEqual(AUTO_REMEDIATION_BRANCH_PREFIX.length + 100);
   });
+});
+
+describe('Rule-of-Two CI leg: secret-bearing PR-triggered workflows guard auto-remediation branches (#3778)', () => {
+  // Repo root: this file lives at packages/nexus-agents/src/mcp/tools/ (5 up).
+  const WORKFLOWS_DIR = join(import.meta.dirname, '../../../../..', '.github', 'workflows');
+
+  // Workflows that expose a secret AND can trigger on a PR from an arbitrary
+  // head ref. Each MUST skip auto-remediation/* branches so the bot path never
+  // gets secrets on untrusted-signal-derived content (the CI leg of Rule-of-Two).
+  const SECRET_PR_WORKFLOWS = ['ci.yml', 'pr-review.yml', 'self-dogfood.yml', 'link-check.yml'];
+
+  for (const wf of SECRET_PR_WORKFLOWS) {
+    it(`${wf} guards auto-remediation branches with the canonical prefix`, () => {
+      const src = readFileSync(join(WORKFLOWS_DIR, wf), 'utf-8');
+      // A negated startsWith on the canonical prefix must be present (github.head_ref
+      // or github.event.pull_request.head.ref forms both accepted).
+      expect(src).toMatch(
+        new RegExp(`!startsWith\\([^)]*head[._]ref[^)]*,\\s*'${AUTO_REMEDIATION_BRANCH_PREFIX}'\\)`)
+      );
+    });
+  }
 });
