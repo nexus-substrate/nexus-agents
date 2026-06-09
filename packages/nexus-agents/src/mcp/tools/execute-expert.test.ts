@@ -12,6 +12,8 @@ import {
   type ExecuteExpertDeps,
   buildTask,
   maybeFetchContextPrefix,
+  buildSuccessResponse,
+  extractExpertConfidence,
 } from './execute-expert.js';
 
 /**
@@ -220,6 +222,51 @@ describe('ExecuteExpertInputSchema', () => {
       expect(result.success).toBe(true);
       if (result.success) expect(result.data.timeoutMs).toBeUndefined();
     });
+  });
+});
+
+describe('extractExpertConfidence (#3766)', () => {
+  it('returns the confidence from an ExpertOutput-shaped object in [0,1]', () => {
+    expect(extractExpertConfidence({ content: 'x', confidence: 0.7 })).toBe(0.7);
+    expect(extractExpertConfidence({ content: 'x', confidence: 0 })).toBe(0);
+    expect(extractExpertConfidence({ content: 'x', confidence: 1 })).toBe(1);
+  });
+
+  it('returns undefined when confidence is absent, non-numeric, or out of range', () => {
+    expect(extractExpertConfidence({ content: 'no confidence' })).toBeUndefined();
+    expect(extractExpertConfidence({ confidence: 'high' })).toBeUndefined();
+    expect(extractExpertConfidence({ confidence: 1.5 })).toBeUndefined();
+    expect(extractExpertConfidence({ confidence: -0.1 })).toBeUndefined();
+    expect(extractExpertConfidence({ confidence: Number.NaN })).toBeUndefined();
+    expect(extractExpertConfidence('a plain string output')).toBeUndefined();
+    expect(extractExpertConfidence(undefined)).toBeUndefined();
+  });
+});
+
+describe('buildSuccessResponse confidence surfacing (#3766)', () => {
+  it('surfaces the expert confidence from the analysis output', () => {
+    const res = buildSuccessResponse({
+      expertId: 'e1',
+      role: 'architecture',
+      output: { content: 'analysis text', confidence: 0.42 },
+      durationMs: 10,
+      tokensUsed: 5,
+    });
+    expect(res.confidence).toBe(0.42);
+    // Output is still stringified for the human-readable field.
+    expect(res.output).toContain('analysis text');
+  });
+
+  it('omits confidence when the output carries none (plain string)', () => {
+    const res = buildSuccessResponse({
+      expertId: 'e1',
+      role: 'code',
+      output: 'just a string',
+      durationMs: 10,
+      tokensUsed: 5,
+    });
+    expect(res.confidence).toBeUndefined();
+    expect(res.output).toBe('just a string');
   });
 });
 
