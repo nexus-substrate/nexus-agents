@@ -1,0 +1,67 @@
+/**
+ * Tests for the generated-registry loader's data-dir precedence (#3707).
+ *
+ * `registry refresh` writes the regenerated catalog to the DATA dir, but the
+ * loader historically read only the bundled PACKAGE copy — so a refresh was
+ * never picked up. These tests pin the fixed precedence: a refreshed file in
+ * the data dir wins; otherwise fall back to the bundled package copy.
+ */
+
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { loadGeneratedRegistryEntries } from './models-generated-loader.js';
+import { resetNexusDataDirCache, nexusDataPath } from './nexus-data-dir.js';
+
+describe('models-generated-loader data-dir precedence (#3707)', () => {
+  let tmpDir: string;
+  const originalDataDir = process.env['NEXUS_DATA_DIR'];
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'nexus-genreg-test-'));
+    process.env['NEXUS_DATA_DIR'] = tmpDir;
+    resetNexusDataDirCache();
+  });
+
+  afterEach(() => {
+    if (originalDataDir === undefined) delete process.env['NEXUS_DATA_DIR'];
+    else process.env['NEXUS_DATA_DIR'] = originalDataDir;
+    resetNexusDataDirCache();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('reads a refreshed generated file from the data dir (precedence over package)', () => {
+    const dataPath = nexusDataPath('model-registry.generated.json');
+    writeFileSync(
+      dataPath,
+      JSON.stringify({
+        version: 1,
+        entries: [{ id: 'litellm/refresh-probe-model', contextWindow: 123456 }],
+      })
+    );
+
+    const result = loadGeneratedRegistryEntries();
+    expect(result.status).toBe('loaded');
+    expect(result.path).toBe(dataPath);
+    const probe = result.entries.find((e) => e.id === 'litellm/refresh-probe-model');
+    expect(probe).toBeDefined();
+    expect(probe?.contextWindow).toBe(123456);
+  });
+
+  it('falls back to the bundled package path when no data-dir file exists', () => {
+    const result = loadGeneratedRegistryEntries();
+    // Resolves to the bundled package copy, NOT the (absent) data-dir file.
+    expect(result.path).not.toBe(nexusDataPath('model-registry.generated.json'));
+    expect(result.path).toMatch(/model-registry\.generated\.json$/);
+  });
+
+  it('still honors an explicit path override (unchanged by the data-dir preference)', () => {
+    const explicit = join(tmpDir, 'explicit.json');
+    writeFileSync(explicit, JSON.stringify({ version: 1, entries: [] }));
+    const result = loadGeneratedRegistryEntries({ path: explicit });
+    expect(result.path).toBe(explicit);
+    expect(result.status).toBe('loaded');
+  });
+});
