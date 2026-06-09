@@ -27,7 +27,7 @@
  * @module mcp/jobs/job-result-store
  */
 
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, writeFileSync, chmodSync } from 'node:fs';
 
 import { z } from 'zod';
 
@@ -77,6 +77,17 @@ function jobResultPath(jobId: string): string {
 }
 
 /**
+ * Write a job sidecar record with 0600 perms (#3753 defense-in-depth — the
+ * payload may carry job result data; restrict to the owner if NEXUS_DATA_DIR is
+ * ever shared). `chmodSync` after write guarantees the mode even when overwriting
+ * a pre-existing (default-umask) file, which the `writeFileSync` mode option skips.
+ */
+function persistJobRecord(path: string, record: JobResult): void {
+  writeFileSync(path, JSON.stringify(record, null, 2), { mode: 0o600 });
+  chmodSync(path, 0o600);
+}
+
+/**
  * Write the initial `pending` record for a new job. Idempotent: if a
  * record for `jobId` already exists (e.g. operator restart re-runs the
  * same idempotencyKey — Stage 1 follow-up), this is a no-op.
@@ -97,7 +108,7 @@ export function writeJobPending(jobId: string, toolName: string): void {
     status: 'pending',
     createdAt: new Date().toISOString(),
   };
-  writeFileSync(path, JSON.stringify(record, null, 2));
+  persistJobRecord(path, record);
   logger.debug('Wrote pending job record', { jobId, toolName });
 }
 
@@ -116,7 +127,7 @@ export function writeJobComplete(jobId: string, toolName: string, result: unknow
     completedAt: new Date().toISOString(),
     result,
   };
-  writeFileSync(jobResultPath(jobId), JSON.stringify(record, null, 2));
+  persistJobRecord(jobResultPath(jobId), record);
   logger.debug('Wrote complete job record', { jobId, toolName });
 }
 
@@ -131,7 +142,7 @@ export function writeJobFailed(jobId: string, toolName: string, error: string): 
     completedAt: new Date().toISOString(),
     error,
   };
-  writeFileSync(jobResultPath(jobId), JSON.stringify(record, null, 2));
+  persistJobRecord(jobResultPath(jobId), record);
   logger.debug('Wrote failed job record', { jobId, toolName, error });
 }
 
@@ -159,7 +170,7 @@ export function writeJobCancelled(jobId: string, toolName: string, reason?: stri
     completedAt: new Date().toISOString(),
     ...(reason !== undefined ? { error: reason } : {}),
   };
-  writeFileSync(jobResultPath(jobId), JSON.stringify(record, null, 2));
+  persistJobRecord(jobResultPath(jobId), record);
   logger.debug('Wrote cancelled job record', { jobId, toolName, reason });
 }
 

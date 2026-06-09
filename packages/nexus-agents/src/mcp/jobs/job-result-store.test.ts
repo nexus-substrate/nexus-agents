@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -11,6 +11,7 @@ import {
   writeJobPending,
   writeJobComplete,
   writeJobFailed,
+  writeJobCancelled,
   readJobResult,
 } from './job-result-store.js';
 import { resetNexusDataDirCache, nexusDataPath } from '../../config/nexus-data-dir.js';
@@ -30,6 +31,31 @@ describe('job-result-store', () => {
     else process.env['NEXUS_DATA_DIR'] = originalDataDir;
     resetNexusDataDirCache();
     rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  describe('sidecar file permissions (#3753 defense-in-depth)', () => {
+    const mode600 = (jobId: string): number =>
+      statSync(nexusDataPath('jobs', `result-${jobId}.json`)).mode & 0o777;
+
+    it('writes each terminal record with 0600 mode', () => {
+      writeJobComplete('mode-complete', 'orchestrate', { ok: true });
+      writeJobFailed('mode-failed', 'orchestrate', 'boom');
+      writeJobCancelled('mode-cancelled', 'orchestrate', 'stop');
+      expect(mode600('mode-complete')).toBe(0o600);
+      expect(mode600('mode-failed')).toBe(0o600);
+      expect(mode600('mode-cancelled')).toBe(0o600);
+    });
+
+    it('writeJobPending creates the file 0600', () => {
+      writeJobPending('mode-pending', 'orchestrate');
+      expect(mode600('mode-pending')).toBe(0o600);
+    });
+
+    it('a complete that OVERWRITES a pending stays 0600', () => {
+      writeJobPending('mode-overwrite', 'orchestrate');
+      writeJobComplete('mode-overwrite', 'orchestrate', { ok: true });
+      expect(mode600('mode-overwrite')).toBe(0o600);
+    });
   });
 
   it('writeJobPending creates a pending record', () => {
