@@ -109,6 +109,29 @@ describe('summarizeRemediationReviews', () => {
     expect(summary.owner).toBeUndefined();
   });
 
+  it('attributes evaluator/owner by latest reviewedAt, not append order', () => {
+    // Out-of-order array: the newest review by reviewedAt is alice's. A later-
+    // APPENDED but chronologically OLDER bob record must NOT become the gate's
+    // named evaluator/owner (regression guard for the enforce readiness input).
+    const records: ReviewRecord[] = [
+      mkRecord({
+        soakRef: 'a',
+        evaluator: 'alice',
+        owner: 'owner-new',
+        reviewedAt: '2026-06-08T05:00:00.000Z',
+      }),
+      mkRecord({
+        soakRef: 'b',
+        evaluator: 'bob',
+        owner: 'owner-old',
+        reviewedAt: '2026-06-08T02:00:00.000Z',
+      }),
+    ];
+    const summary = summarizeRemediationReviews(records);
+    expect(summary.evaluator).toBe('alice');
+    expect(summary.owner).toBe('owner-new');
+  });
+
   it('dedupes by soakRef keeping the latest review per selection', () => {
     const records: ReviewRecord[] = [
       mkRecord({ soakRef: 'a', sound: false, reviewedAt: '2026-06-08T01:00:00.000Z' }),
