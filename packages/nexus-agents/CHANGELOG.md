@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 2.128.2
+
+### Patch Changes
+
+- [#3792](https://github.com/nexus-substrate/nexus-agents/pull/3792) [`0577943`](https://github.com/nexus-substrate/nexus-agents/commit/0577943c54775859f2720a6995f23ef6e004d7ed) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - refactor(governance): inject-governance.ts parses the MCP tool manifest via a TypeScript AST walk instead of a line-oriented regex ([#3596](https://github.com/nexus-substrate/nexus-agents/issues/3596)). The new `scripts/parse-tool-manifest.ts` finds the canonical `TOOL_MANIFEST` array (then `REGISTERED_TOOL_NAMES`, then a legacy `tools:` property) and returns its string-literal elements in source order — formatting-agnostic (comments between elements, single-line arrays, quote style) and the seam that lets the list become fully derived later, which a regex over a literal cannot read. Output is byte-identical (governance:check unchanged at 46 tools); the parser carries 9 fixture unit tests.
+
 ## 2.128.1
 
 ### Patch Changes
