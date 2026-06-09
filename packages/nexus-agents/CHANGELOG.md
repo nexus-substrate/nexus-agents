@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 2.129.1
+
+### Patch Changes
+
+- [#3809](https://github.com/nexus-substrate/nexus-agents/pull/3809) [`cda2da6`](https://github.com/nexus-substrate/nexus-agents/commit/cda2da60243d679d972644c3366e27e16e4404c3) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - security(jobs): write async job sidecar files (`<NEXUS_DATA_DIR>/jobs/result-<jobId>.json`) with `0600` permissions ([#3753](https://github.com/nexus-substrate/nexus-agents/issues/3753), defense-in-depth). The payload may carry job-result data; restricting to the owner matters if `NEXUS_DATA_DIR` is ever shared across users. Extracted a `persistJobRecord` helper (DRY over the four writers) that sets the mode on write and `chmod`s after, so the permission holds even when a terminal status overwrites a pre-existing pending file. Not exploitable today (per-user stdio MCP, randomUUID jobIds) — pure hardening.
+
 ## 2.129.0
 
 ### Minor Changes
