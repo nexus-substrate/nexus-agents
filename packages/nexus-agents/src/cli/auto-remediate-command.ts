@@ -5,8 +5,9 @@
  * `NEXUS_AUTO_REMEDIATE` (off | audit | enforce), default `audit` since #3769 —
  * so a bare run collects improvement_review signals and runs research → consensus
  * vote with ZERO writes (the soak), accumulating readiness evidence. `off`
- * disables; `enforce` is opt-in + gated by the readiness verdict (and structurally
- * unavailable until repo/repoRoot are wired, #3669/#3769 Step 2).
+ * disables; `enforce` is opt-in + gated by the readiness verdict (the Option B
+ * implement adapter #3669 has landed, but the cycle withholds repoRoot so enforce
+ * stays structurally unreachable until it is threaded — #3769 Step 2).
  *
  * Flags:
  *   --format <text|json>   Output mode (default text)

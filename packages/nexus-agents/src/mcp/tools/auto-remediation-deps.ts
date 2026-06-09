@@ -5,9 +5,13 @@
  * {@link runAutoRemediation}. AUDIT-READY NOW: in `audit` mode the orchestrator
  * runs research → consensus vote and stops before IMPLEMENT, so this assembly
  * produces the vote/plan SOAK data the readiness gate needs using only merged
- * pieces. ENFORCE is intentionally NOT yet runnable — `implement` is a
- * fail-closed stub until the Option B proposal-PR adapter lands (#3669).
- * Readiness now reads REAL evidence from the durable soak (#3762) + soundness-
+ * pieces. The Option B proposal-PR `implement` adapter HAS landed (#3669) and is
+ * wired below — but ONLY when both `repoRoot` (a live checkout) and `repo` are
+ * passed; absent those it stays a fail-closed rejecting stub. The cycle entry
+ * point (`runAutoRemediationCycle`) deliberately withholds `repoRoot`, so enforce
+ * is unreachable from there pending #3769 Step 2 (the readiness-gated wiring that
+ * the #3770 security review requires re-audit operator-supplied repoRoot provenance for).
+ * Readiness reads REAL evidence from the durable soak (#3762) + soundness-
  * review (#3765) stores (#3764), fail-closing to not-ready when no data exists.
  *
  * @module mcp/tools/auto-remediation-deps
@@ -75,9 +79,10 @@ function collectReadinessEvidence(logger: ILogger): Promise<EnforceReadinessEvid
 
 /**
  * Assemble {@link AutoRemediationDeps} from the merged adapters. Audit-ready;
- * enforce stays fail-closed (stub `implement`, not-ready readiness, null lease
- * when `repo`/`sha` are absent) until the Option B adapter (#3669) + real
- * readiness evidence are wired.
+ * the Option B `implement` adapter (#3669) is wired when `repoRoot` + `repo` are
+ * supplied, else it stays a fail-closed rejecting stub. Enforce additionally
+ * requires a passing readiness verdict (not-ready by default) and a non-null lease
+ * (null when `repo`/`sha` are absent), so it stays fail-closed until #3769 Step 2.
  */
 export function buildAutoRemediationDeps(
   opts: AutoRemediationDepsOptions = {}

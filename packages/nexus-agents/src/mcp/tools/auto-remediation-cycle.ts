@@ -7,8 +7,11 @@
  * `NEXUS_AUTO_REMEDIATE` unset it runs `audit` — producing the vote/plan SOAK
  * data with zero writes — so periodic local runs accumulate readiness evidence.
  * Explicit `off` short-circuits before collecting signals. `enforce` is opt-in
- * and structurally unavailable until repo/repoRoot + a passing readiness verdict
- * are wired (#3769 Step 2).
+ * and structurally unavailable: this entry point deliberately withholds `repoRoot`
+ * from {@link buildAutoRemediationDeps} (see {@link resolveCycleDeps}), so the
+ * Option B `implement` adapter — wired and landed (#3669) — stays a fail-closed
+ * rejecting stub here. Threading repoRoot (gated on a passing readiness verdict +
+ * the #3770 operator-provenance re-audit) is #3769 Step 2.
  *
  * @module mcp/tools/auto-remediation-cycle
  */
@@ -140,7 +143,16 @@ async function collectCycleSignals(
   return (await runImprovementReview(input, { logger })).signals;
 }
 
-/** Resolve deps via the injected set, or assemble the real ones. */
+/**
+ * Resolve deps via the injected set, or assemble the real ones.
+ *
+ * Deliberate fail-closed sequencing: we pass `repo`/`sha` (for the lease) but NOT
+ * `repoRoot`/`baseBranch`, so {@link buildAutoRemediationDeps} leaves `implement`
+ * as the rejecting stub and enforce cannot engage from the cycle — even though the
+ * Option B adapter (#3669) is wired. Threading repoRoot is #3769 Step 2, gated on a
+ * passing readiness verdict and the #3770 requirement that repoRoot reach the
+ * worktree/lease ONLY from operator-supplied config (never signal/telemetry-derived).
+ */
 function resolveCycleDeps(
   inject: AutoRemediationCycleInject,
   config: AutoRemediationCycleConfig,
