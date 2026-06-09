@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 2.128.4
+
+### Patch Changes
+
+- [#3798](https://github.com/nexus-substrate/nexus-agents/pull/3798) [`326f179`](https://github.com/nexus-substrate/nexus-agents/commit/326f179471a6fee73c39943d1fa3c2cbe45e2023) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(execute_expert): surface the expert's self-reported confidence in `ExecuteExpertResponse` ([#3766](https://github.com/nexus-substrate/nexus-agents/issues/3766)). Experts emit an `ExpertOutput`-shaped analysis carrying a numeric `confidence` (0-1), but it was dropped when the MCP boundary stringified the output. Added an optional `confidence?: number` field (plus a fail-safe `extractExpertConfidence` helper, validated to `[0,1]`) and re-stated it in the tool description. Additive and backward-compatible; consumers can now route/weight on the real per-expert confidence instead of the success=1/fail=0 placeholder.
+
 ## 2.128.3
 
 ### Patch Changes
