@@ -101,7 +101,7 @@ function countByKey<T>(items: T[], keyFn: (item: T) => string[]): Record<string,
 }
 
 /** Analyze gaps in research coverage. */
-async function analyzeGaps(topic?: string): Promise<ResearchAnalyzeResponse> {
+export async function analyzeGaps(topic?: string): Promise<ResearchAnalyzeResponse> {
   const techResult = await loadTechniquesRegistry();
   const paperResult = await loadPapersRegistry();
   if (!techResult.ok) return failureResponse('gaps');

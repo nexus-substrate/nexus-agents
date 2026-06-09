@@ -16,6 +16,9 @@ import { checkSecurityScan } from './security-gate.js';
 import { runQualityGate, checkTypeCheck, checkLint, checkTests } from '../security/quality-gate.js';
 import type { ITaskTracker } from './task-tracker.js';
 import { executeExpert, type ExpertBridgeResult } from './expert-bridge.js';
+import { executeDiscovery, ResearchDiscoverInputSchema } from '../mcp/tools/research-discover.js';
+import { analyzeGaps } from '../mcp/tools/research-analyze.js';
+import { buildResearchContext } from './research-context.js';
 import { createBudgetGuard, type BudgetGuard, type AgentBudgetConfig } from './budget-guard.js';
 import type { BuiltInExpertType } from '../agents/experts/expert-config.js';
 import { getOutcomeStore, getOutcomeSummaryText } from '../orchestration/outcomes/outcome-store.js';
@@ -436,46 +439,54 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
   const guard = createBudgetGuard(config.budget);
   return {
     research: async (task) => {
+      // #3372 Option A (7/7 vote): call the research tools DIRECTLY for structured
+      // data instead of routing through an LLM expert that discards it. The text
+      // returned here is DERIVED from that same structure (single source of truth);
+      // increment 2 threads the structured metadata through plan/vote.
       emitStageEvent('research', 'started');
-      await postProgress(config, 'Research', 'Querying memory + research tools...');
-      // Seed with prior learnings from memory (#1716)
-      const memoryCtx = await getMemoryContext(task);
-      const discover = await runExpert(
-        guard,
-        'research',
-        `Use research_discover to find papers and repos related to:\n\n${task}${memoryCtx}`,
-        'research'
-      );
-      const analyze = await runExpert(
-        guard,
-        'research',
-        `Use research_analyze focus=gaps to identify what is missing for:\n\n${task}`,
-        'research'
-      );
-      const combined = [discover.text, analyze.text].filter(Boolean).join('\n\n');
-      const totalMs = discover.durationMs + analyze.durationMs;
-      const success = discover.success || analyze.success;
-      // Pick whichever sub-call actually reached a CLI; both should agree
-      // when routing is healthy, but discover.cli wins on tie.
-      const researchCli = discover.cli ?? analyze.cli;
-      emitStageEvent('research', success ? 'completed' : 'failed', { durationMs: totalMs });
-      recordOutcome({
-        taskId: 'research',
-        category: 'research',
-        cli: researchCli,
-        success,
-        durationMs: totalMs,
-      });
-      // Write-back: persist research findings to memory (#1716)
-      if (success && combined.length > 50) {
-        recordLearning(
-          `Research for "${task.slice(0, 80)}": ${combined.slice(0, 200)}`,
-          0.7,
-          'pipeline-research'
+      await postProgress(config, 'Research', 'Querying research tools (structured)...');
+      const start = getTimeProvider().now();
+      const topic = task.slice(0, 200);
+      try {
+        // Seed with prior learnings from memory (#1716) — appended to the text.
+        const memoryCtx = await getMemoryContext(task);
+        const discoverInput = ResearchDiscoverInputSchema.parse({ topic });
+        const discover = await executeDiscovery(discoverInput, logger);
+        const analyze = await analyzeGaps(topic);
+        const ctx = buildResearchContext(discover, analyze, topic);
+        const durationMs = getTimeProvider().now() - start;
+        emitStageEvent('research', 'completed', { durationMs });
+        // Direct tool calls consume no routed CLI — recordOutcome (CLI-keyed)
+        // no-ops gracefully on undefined cli; research perf is no longer a CLI outcome.
+        recordOutcome({
+          taskId: 'research',
+          category: 'research',
+          cli: undefined,
+          success: true,
+          durationMs,
+        });
+        // Write-back: persist research findings to memory (#1716)
+        if (ctx.text.length > 50) {
+          recordLearning(
+            `Research for "${task.slice(0, 80)}": ${ctx.text.slice(0, 200)}`,
+            0.7,
+            'pipeline-research'
+          );
+        }
+        await postProgress(
+          config,
+          'Research',
+          `Done (${String(ctx.metadata.discoveredItems.length)} items, ${String(durationMs)}ms)`
         );
+        return memoryCtx ? `${ctx.text}${memoryCtx}` : ctx.text;
+      } catch (error: unknown) {
+        const durationMs = getTimeProvider().now() - start;
+        emitStageEvent('research', 'failed', { durationMs });
+        logger.debug('Research stage failed; continuing with minimal context', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return `[Research failed] ${task.slice(0, 500)}`;
       }
-      await postProgress(config, 'Research', `Done (${combined.length} chars, ${totalMs}ms)`);
-      return combined || `[Research failed] ${task.slice(0, 500)}`;
     },
 
     plan: async (task, research, feedback) => {
