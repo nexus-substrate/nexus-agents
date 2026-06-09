@@ -251,6 +251,12 @@ export function evaluatePipelinePolicy(
     logViolations(context, violations, mode);
   }
 
+  // #3727: ALWAYS append one durable per-evaluation summary record (the
+  // denominator), including clean evaluations, so the would-block rate is
+  // computable from the durable log over the soak window. Supplement to the
+  // violation-gated emits above — the in-memory bus emit stays violation-only.
+  emitDurablePolicyEvaluationSummary(options.auditTrail, context, violations.length, mode);
+
   const allowed = mode === 'warn' || violations.length === 0;
   return { allowed, violations, mode };
 }
@@ -308,8 +314,41 @@ function emitDurablePolicyEvents(
       mode,
       ruleIds: [v.ruleId],
       stageType: context.stageType,
+      // #3727: the existing per-violation records (the NUMERATOR detail). The
+      // #3710 count-parity assertion scopes to this kind.
+      recordKind: 'violation',
     });
   }
+}
+
+/**
+ * Appends ONE durable per-EVALUATION summary record per call — including CLEAN
+ * (no-violation) evaluations (#3727). This is the DENOMINATOR the would-block
+ * rate needs: a clean evaluation otherwise writes nothing (the dual-emit above is
+ * violation-gated), so the soak log could record only the numerator. Emitted in
+ * ADDITION to the per-violation records (supplement, not replace — preserves the
+ * #3710 parity invariant). No-op when no trail is wired. Denominator =
+ * count(recordKind==='summary'); numerator = summaries with violationCount > 0.
+ */
+function emitDurablePolicyEvaluationSummary(
+  auditTrail: AuditTrail | undefined,
+  context: PolicyContext,
+  violationCount: number,
+  mode: PolicyMode
+): void {
+  if (auditTrail === undefined) return;
+  emitPipelinePolicyEvent(auditTrail, {
+    // Run-level verdict: warn always continues; otherwise allowed iff no violations.
+    allowed: mode === 'warn' || violationCount === 0,
+    requiresApproval: false,
+    inputTrustTier: '4',
+    violationRules: [],
+    mode,
+    ruleIds: [],
+    stageType: context.stageType,
+    recordKind: 'summary',
+    violationCount,
+  });
 }
 
 /** Logs violations at appropriate level based on mode. */

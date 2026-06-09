@@ -81,6 +81,17 @@ export interface PolicyGateEvent extends AuditEventBase {
   readonly ruleIds?: readonly string[];
   /** Type of the stage the gate guarded (e.g. `execute`). */
   readonly stageType?: string;
+  /**
+   * #3727: discriminates a per-EVALUATION SUMMARY record (`'summary'` — emitted
+   * once per pipeline policy evaluation INCLUDING clean ones, the DENOMINATOR for
+   * the would-block rate) from a per-VIOLATION record (`'violation'` — the
+   * existing #3710 per-violation records). Absent for the security policy-gate
+   * path. Denominator = count(recordKind==='summary'); numerator = summaries with
+   * `violationCount > 0`. Scope the #3710 count-parity assertion to `'violation'`.
+   */
+  readonly recordKind?: 'summary' | 'violation';
+  /** #3727: number of violations in THIS evaluation (set on the summary record). */
+  readonly violationCount?: number;
 }
 
 /** Corroboration validation result. */
@@ -367,6 +378,36 @@ export function emitPipelinePolicyEvent(
     component: 'pipeline-policy-evaluator',
     ...data,
   });
+}
+
+/** The pipeline-policy would-block rate over a window (#3727). */
+export interface PolicyWouldBlockRate {
+  /** Total pipeline-policy evaluations (the denominator — summary records). */
+  readonly evaluations: number;
+  /** Evaluations that had ≥1 violation (what enforce mode WOULD block). */
+  readonly wouldBlock: number;
+  /** `wouldBlock / evaluations`; 0 when there are no evaluations. */
+  readonly rate: number;
+}
+
+/**
+ * Compute the pipeline-policy would-block RATE from durable audit events (#3727)
+ * — the read-side of the per-evaluation summary records, and the signal the
+ * #3769-enforce soak-readiness gate needs. Denominator = per-evaluation SUMMARY
+ * records (`recordKind === 'summary'`); numerator = summaries with
+ * `violationCount > 0` (the would-block fraction, independent of warn/block mode).
+ * Per-violation records (`recordKind === 'violation'`) are intentionally NOT
+ * counted — counting them would double-count and break the denominator.
+ */
+export function computePolicyWouldBlockRate(events: readonly AuditEvent[]): PolicyWouldBlockRate {
+  let evaluations = 0;
+  let wouldBlock = 0;
+  for (const e of events) {
+    if (e.type !== 'policy_gate' || e.recordKind !== 'summary') continue;
+    evaluations += 1;
+    if ((e.violationCount ?? 0) > 0) wouldBlock += 1;
+  }
+  return { evaluations, wouldBlock, rate: evaluations > 0 ? wouldBlock / evaluations : 0 };
 }
 
 /**
