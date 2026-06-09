@@ -26,6 +26,7 @@ import { join } from 'node:path';
 import * as prettier from 'prettier';
 import { parse as parseYaml } from 'yaml';
 import { ROOT } from './script-paths.js';
+import { parseRegisteredToolNames } from './parse-tool-manifest.js';
 import { TOOL_DESCRIPTIONS, README_TOOL_DESCRIPTIONS } from './tool-descriptions-data.js';
 import { loadBaseline, runDistinctnessCheck } from './check-tool-distinctness.js';
 import { scanToolFiles } from './check-tool-output-consistency.js';
@@ -196,23 +197,16 @@ function extractMcpTools(): ToolMetadata[] {
 
   const content = readFileSync(sourceFile, 'utf-8');
 
-  // Extract the tools array. Source of truth is the module-level `TOOL_MANIFEST`
-  // const (or, pre-#3566, `REGISTERED_TOOL_NAMES`); both are literal `[...] as
-  // const` arrays of `'name'` strings. Fall back to the inline `tools: [...]`
-  // shape for very old checkouts.
-  const toolsMatch =
-    content.match(/TOOL_MANIFEST\s*=\s*\[([\s\S]*?)\]\s*as const/) ??
-    content.match(/REGISTERED_TOOL_NAMES\s*=\s*\[([\s\S]*?)\]\s*as const/) ??
-    content.match(/tools:\s*\[([\s\S]*?)\]/);
-  if (toolsMatch?.[1] === undefined) {
+  // Extract the tool names by walking the AST (#3596). Source of truth is the
+  // module-level `TOOL_MANIFEST` array (or, pre-#3566, `REGISTERED_TOOL_NAMES`),
+  // with a legacy inline `tools: [...]` fallback for very old checkouts. AST
+  // parsing reads a literal regardless of formatting and is the seam that lets the
+  // list become fully derived later (a regex over a literal cannot).
+  const toolNames = parseRegisteredToolNames(content);
+  if (toolNames.length === 0) {
     console.error('Could not parse tools array from ' + sourceFile);
     return [];
   }
-
-  const toolNames = toolsMatch[1]
-    .split('\n')
-    .map((line) => line.match(/'([^']+)'/)?.[1])
-    .filter((name): name is string => name !== undefined);
 
   // Warn about tools in code but not in description map
   for (const name of toolNames) {
