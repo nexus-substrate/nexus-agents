@@ -151,7 +151,7 @@ const {
   mockGetSharedCliCache: vi.fn().mockReturnValue({ get: vi.fn(), set: vi.fn() }),
 }));
 
-vi.mock('./mcp/index.js', () => ({
+vi.mock('./mcp/index.js', async () => ({
   registerTools: mockRegisterTools,
   registerDelegateToModelTool: mockRegisterDelegateToModelTool,
   registerOrchestrateTool: mockRegisterOrchestrateTool,
@@ -198,55 +198,15 @@ vi.mock('./mcp/index.js', () => ({
   registerListAvailableModelsTool: vi.fn(),
   registerRunTool: vi.fn(),
   createDefaultDeps: mockCreateDefaultDeps,
-  // Canonical tool-name list (Issue #2935) — must match the real export so
-  // `cli-server-tools.ts:REGISTERED_TOOLS` alias resolves at module load.
-  REGISTERED_TOOL_NAMES: [
-    'orchestrate',
-    'create_expert',
-    'execute_expert',
-    'run_workflow',
-    'delegate_to_model',
-    'list_experts',
-    'list_workflows',
-    'consensus_vote',
-    'research_query',
-    'research_add',
-    'research_add_source',
-    'research_discover',
-    'research_analyze',
-    'research_catalog_review',
-    'research_synthesize',
-    'survey_oss_landscape',
-    'vendor_publishing_audit',
-    'compare_data_feeds',
-    'memory_query',
-    'memory_stats',
-    'memory_write',
-    'weather_report',
-    'issue_triage',
-    'run_graph_workflow',
-    'execute_spec',
-    'registry_import',
-    'query_trace',
-    'query_task_state',
-    'get_job_result',
-    'list_jobs',
-    'cancel_job',
-    'ci_health_check',
-    'verify_audit_chain',
-    'repo_analyze',
-    'repo_security_plan',
-    'extract_symbols',
-    'search_codebase',
-    'run_dev_pipeline',
-    'run_pipeline',
-    'pr_review',
-    'supply_chain_tradeoff_panel',
-    'improvement_review',
-    'run_quality_gate',
-    'suggest_research_tasks',
-    'list_available_models',
-  ] as const,
+  // Canonical tool-name list (Issue #2935) — DERIVED from the real TOOL_MANIFEST
+  // via importActual (#3597) so the mock can never drift from the source of truth
+  // (the prior hand-maintained copy had gone stale, missing `run`). The manifest
+  // is an object array, so map to names.
+  REGISTERED_TOOL_NAMES: (
+    await vi.importActual<typeof import('./mcp/tools/tool-manifest.js')>(
+      './mcp/tools/tool-manifest.js'
+    )
+  ).TOOL_MANIFEST.map((t) => t.name),
 }));
 
 vi.mock('./mcp/tools/orchestrate.js', () => ({
@@ -417,59 +377,15 @@ describe('REGISTERED_TOOLS', () => {
     expect(REGISTERED_TOOLS.every((name) => name.trim().length > 0)).toBe(true);
   });
 
-  it('should include all expected tool names', () => {
-    const expected = [
-      'delegate_to_model',
-      'orchestrate',
-      'create_expert',
-      'execute_expert',
-      'run_workflow',
-      'list_experts',
-      'list_workflows',
-      'consensus_vote',
-      'research_query',
-      'research_add',
-      'research_add_source',
-      'research_discover',
-      'research_analyze',
-      'research_catalog_review',
-      'research_synthesize',
-      'survey_oss_landscape',
-      'vendor_publishing_audit',
-      'compare_data_feeds',
-      'memory_query',
-      'memory_stats',
-      'memory_write',
-      'weather_report',
-      'issue_triage',
-      'run_graph_workflow',
-      'execute_spec',
-      'registry_import',
-      'query_trace',
-      'query_task_state',
-      'get_job_result',
-      'list_jobs',
-      'cancel_job',
-      'ci_health_check',
-      'verify_audit_chain',
-      'extract_symbols',
-      'search_codebase',
-      'run_dev_pipeline',
-      'run_pipeline',
-      'repo_analyze',
-      'repo_security_plan',
-      'improvement_review',
-      'pr_review',
-      'supply_chain_tradeoff_panel',
-      'run_quality_gate',
-      'suggest_research_tasks',
-      'list_available_models',
-    ];
-    // Order-insensitive comparison — REGISTERED_TOOLS is sourced from
-    // `REGISTERED_TOOL_NAMES` in mcp/tools/index.ts (#2935) which uses a
-    // different declaration order than the legacy hand-maintained array.
-    expect([...REGISTERED_TOOLS].sort()).toEqual([...expected].sort());
+  it('is the derived NAME list of the object-shaped TOOL_MANIFEST (#3597)', async () => {
+    const { TOOL_MANIFEST } = await import('./mcp/tools/tool-manifest.js');
+    // REGISTERED_TOOLS aliases REGISTERED_TOOL_NAMES = TOOL_MANIFEST.map(t => t.name).
+    expect([...REGISTERED_TOOLS]).toEqual(TOOL_MANIFEST.map((t) => t.name));
   });
+
+  // (Removed the legacy hand-maintained `expected` tool-name list, #3597 — it had
+  // gone stale (missing `run`) and is now strictly superseded by the exact,
+  // order-included equality against the real TOOL_MANIFEST in the test above.)
 
   it('should have no duplicate entries', () => {
     const asSet = new Set(REGISTERED_TOOLS);

@@ -522,11 +522,17 @@ jobs:
           SERVER_JSON=packages/nexus-agents/server.json
           README=README.md
 
-          # 1. Authoritative count: lines of the form `    'tool_name',` between
-          #    `TOOL_MANIFEST = [` (or pre-#3566 `REGISTERED_TOOL_NAMES = [`, or
-          #    legacy `tools: [`) and the next `]`. awk handles older checkouts.
+          # 1. Authoritative count: #3597 made TOOL_MANIFEST an object array, so
+          #    each entry is a `    name: 'tool_name',` line. Count those between
+          #    `TOOL_MANIFEST = [` and `] as const`. Fall back to the pre-#3597
+          #    bare-string shape, then pre-#3566 REGISTERED_TOOL_NAMES / legacy
+          #    `tools: [` for older checkouts.
           src_count=$(awk '/TOOL_MANIFEST\s*=\s*\[/,/\]\s*as const/' "$TOOLS_SRC" \
-            | grep -cE "^\s+'[a-z_]+'," || true)
+            | grep -cE "^\s+name: '[a-z_]+'," || true)
+          if [ "$src_count" -eq 0 ]; then
+            src_count=$(awk '/TOOL_MANIFEST\s*=\s*\[/,/\]\s*as const/' "$TOOLS_SRC" \
+              | grep -cE "^\s+'[a-z_]+'," || true)
+          fi
           if [ "$src_count" -eq 0 ]; then
             src_count=$(awk '/REGISTERED_TOOL_NAMES\s*=\s*\[/,/\]\s*as const/' "$TOOLS_SRC" \
               | grep -cE "^\s+'[a-z_]+'," || true)

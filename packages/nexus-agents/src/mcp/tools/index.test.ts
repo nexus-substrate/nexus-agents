@@ -148,6 +148,14 @@ describe('MCP tools index', () => {
       const result = registerTools(server);
       expect(result.rateLimiter).toBeDefined();
     });
+
+    it('REGISTERED_TOOL_NAMES is the derived name list of the object manifest (#3597)', async () => {
+      const { TOOL_MANIFEST } = await import('./tool-manifest.js');
+      // Post-#3597 the manifest holds `{ name, annotations, sideEffects }` objects;
+      // REGISTERED_TOOL_NAMES must be exactly their names, in registration order.
+      expect([...REGISTERED_TOOL_NAMES]).toEqual(TOOL_MANIFEST.map((t) => t.name));
+      expect(REGISTERED_TOOL_NAMES.every((n) => typeof n === 'string')).toBe(true);
+    });
   });
 
   describe('register functions are exported', () => {

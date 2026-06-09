@@ -20,6 +20,19 @@ import { REGISTERED_TOOLS } from '../../cli-server-tools.js';
 import { getToolAnnotations as getLiveToolAnnotations } from '../tool-annotations.js';
 
 describe('tool-annotations', () => {
+  describe('derivation from TOOL_MANIFEST (#3597)', () => {
+    it('derives one TOOL_ANNOTATIONS entry per manifest entry, with manifest data', async () => {
+      const { TOOL_MANIFEST } = await import('./tool-manifest.js');
+      expect(Object.keys(TOOL_ANNOTATIONS).sort()).toEqual(TOOL_MANIFEST.map((t) => t.name).sort());
+      for (const entry of TOOL_MANIFEST) {
+        const derived = TOOL_ANNOTATIONS[entry.name];
+        // Same object references as the manifest holds — no clone, no drift.
+        expect(derived?.annotations).toBe(entry.annotations);
+        expect(derived?.sideEffects).toBe(entry.sideEffects);
+      }
+    });
+  });
+
   describe('TOOL_ANNOTATIONS registry', () => {
     it('has an entry for every registered tool', () => {
       for (const toolName of REGISTERED_TOOLS) {
