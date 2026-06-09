@@ -144,6 +144,12 @@ export interface ExecuteExpertResponse {
   error?: string;
   /** Model used for execution (Issue #817) */
   modelUsed?: string;
+  /**
+   * The expert's self-reported confidence in `[0, 1]` (#3766). Present only when
+   * the expert emitted an {@link ExpertOutput}-shaped analysis carrying a numeric
+   * confidence; absent for plain-string outputs. Consumers can route/weight on it.
+   */
+  confidence?: number;
 }
 
 /**
@@ -272,7 +278,22 @@ interface SuccessResponseParams {
   modelUsed?: string | undefined;
 }
 
-function buildSuccessResponse(params: SuccessResponseParams): ExecuteExpertResponse {
+/**
+ * Extract an expert's self-reported confidence from its task output (#3766).
+ *
+ * Experts emit an {@link ExpertOutput}-shaped analysis object whose `confidence`
+ * is a number in `[0, 1]`; the MCP boundary stringifies the output, dropping that
+ * structured field. This recovers it (fail-safe: returns `undefined` for plain
+ * strings, missing/non-numeric/out-of-range values) so the response can surface it.
+ */
+export function extractExpertConfidence(output: unknown): number | undefined {
+  if (typeof output !== 'object' || output === null) return undefined;
+  const c = (output as { confidence?: unknown }).confidence;
+  if (typeof c !== 'number' || !Number.isFinite(c) || c < 0 || c > 1) return undefined;
+  return c;
+}
+
+export function buildSuccessResponse(params: SuccessResponseParams): ExecuteExpertResponse {
   const outputStr =
     typeof params.output === 'string' ? params.output : JSON.stringify(params.output, null, 2);
   const response: ExecuteExpertResponse = {
@@ -285,6 +306,11 @@ function buildSuccessResponse(params: SuccessResponseParams): ExecuteExpertRespo
   };
   if (params.modelUsed !== undefined) {
     response.modelUsed = params.modelUsed;
+  }
+  // #3766: surface the expert's real confidence before the output is flattened.
+  const confidence = extractExpertConfidence(params.output);
+  if (confidence !== undefined) {
+    response.confidence = confidence;
   }
   return response;
 }
@@ -827,7 +853,8 @@ export function registerExecuteExpertTool(server: McpServer, deps: ExecuteExpert
   const description =
     'Run a task through an expert YOU PREVIOUSLY CREATED via `create_expert`. ' +
     'Requires the expertId returned by create_expert; not for ad-hoc execution. ' +
-    'Returns the expert analysis including output, status, model used, and token usage.';
+    'Returns the expert analysis including output, status, model used, token usage, ' +
+    "and the expert's confidence (0-1) when it reports one.";
 
   server.experimental.tasks.registerToolTask(
     'execute_expert',
