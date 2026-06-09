@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 2.129.2
+
+### Patch Changes
+
+- [#3811](https://github.com/nexus-substrate/nexus-agents/pull/3811) [`12608ff`](https://github.com/nexus-substrate/nexus-agents/commit/12608ff26a4dcefd9d318af0b260b10b4ae93d35) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(mcp): break the `ci-health-check-tool` ↔ `ci-health-log` circular import ([#3756](https://github.com/nexus-substrate/nexus-agents/issues/3756)). Importing the MCP tools barrel (or either ci-health module) under tsx ESM evaluation threw `ReferenceError: Cannot access 'CiHealthStatusSchema' before initialization` — the tool defined the shared schema/types AND imported the log's appenders, while the log used the schema at module-eval time, so the cyclic init order left it in the TDZ. Extracted `CiHealthStatusSchema`/`CiHealthStatus`/`CiHealthSignal` into a leaf `ci-health-types.ts` (imports only zod) that both modules depend on; the tool re-exports them for API compatibility. A structural guard test keeps the cycle edge from returning.
+
 ## 2.129.1
 
 ### Patch Changes
