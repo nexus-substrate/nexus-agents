@@ -1,5 +1,13 @@
 # nexus-agents
 
+## 2.131.0
+
+### Minor Changes
+
+- [#3820](https://github.com/nexus-substrate/nexus-agents/pull/3820) [`2bdda5d`](https://github.com/nexus-substrate/nexus-agents/commit/2bdda5debafb5e1f51a326dc1b95571d54b6b0cd) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(observability): durable per-evaluation policy-audit summary + would-block rate ([#3727](https://github.com/nexus-substrate/nexus-agents/issues/3727))
+
+  The pipeline policy gate's durable audit log recorded only per-violation records (the numerator) — a clean/allowed evaluation wrote nothing, so the would-block RATE had no denominator and couldn't be computed from the durable log. `evaluatePipelinePolicy` now appends ONE per-evaluation summary record (`recordKind: 'summary'`, carrying `violationCount`) on EVERY evaluation including clean ones, in addition to the existing per-violation records (`recordKind: 'violation'`) — preserving the [#3710](https://github.com/nexus-substrate/nexus-agents/issues/3710) count-parity invariant. A new `computePolicyWouldBlockRate(events)` helper computes the rate from the summary records (denominator) and those with violations (numerator). The discriminator + count round-trip through the audit bridge into the persisted record. Decided by a 7/7 higher_order vote (capture-now, since warn-mode soak data is non-backfillable). Live-routing use of the rate stays gated on the [#3769](https://github.com/nexus-substrate/nexus-agents/issues/3769)-enforce readiness gate.
+
 ## 2.130.1
 
 ### Patch Changes
