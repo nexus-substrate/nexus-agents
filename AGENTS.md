@@ -54,6 +54,15 @@ For any **non-trivial** work — three or more steps, architecture, security-sen
 
 Skip the pipeline for trivial fixes (single-file bug fix, dep bump, typo, docs tweak), or when the user says "just do it" / "one-shot". Escape hatches: `no vote`, `no issues`, `dry-run`, `just implement`. When ambiguous, lean toward the pipeline and offer the one-shot.
 
+### Dogfood the substrate — fan out subagents, use nexus-agents features
+
+These are the **normal working posture**, not occasional extras. nexus-agents is a governance substrate for AI agents; using its own features _is_ both the work and the most honest validation of them.
+
+- **Fan out subagents by default for breadth and independence.** When answering or implementing means sweeping many files / locations / naming conventions, delegate it to a read-only **explore** subagent and keep the conclusion, not the file dumps. Launch **independent** work units (e.g. per-epic audits, per-dimension reviews, parallel candidates) concurrently in waves of 3–4. Spawn a subagent for anything more than ~5 tool calls of investigation. Reserve solo work for genuinely single-file/single-symbol changes — a fan-out for one known file is wasteful in the other direction. Coordination rules (handoff markers, scope bounding, output budgets, model selection) live in [`.rules/subagent-coordination.md`](./.rules/subagent-coordination.md).
+- **Route decisions through `consensus_vote`, not a solo judgment call or a user ask.** Genuine forks — which backlog item, which design, architecture/security/breaking changes — get a vote (`higher_order` for the weighty ones, `--quick`/`simple_majority` for routine); the vote result _is_ the decision. Use live voters only — never `simulateVotes` (#2319). When the vote paths are genuinely down, AskUserQuestion is the documented fallback.
+- **Ground non-trivial work with the research tools** (`research_discover` / `research_synthesize`) and reach for **`run`** (MetaOrchestrator entry point) or the specialized pipeline tools rather than re-deriving by hand. An adversarial **verify/review subagent** before merge catches what a solo pass misses.
+- **The point:** prefer the substrate's own loops over ad-hoc serial work whenever the task has breadth, a real decision, or a claim worth verifying. If you find yourself doing wide serial greps or making a judgment call alone on a real fork, stop and delegate or vote.
+
 ## Context budget
 
 Keep working context lean. Rough token targets per task type: Minimal ~800 / Standard ~2,500 / Research ~1,500 / Full ~6,000. Reference files by path instead of inlining them; summarize multi-step or multi-agent results down to 2–3 bullets before continuing; start a fresh conversation when switching to an unrelated task. If your harness supports delegating exploration to a sub-agent, prefer that over loading whole files into the main context.
