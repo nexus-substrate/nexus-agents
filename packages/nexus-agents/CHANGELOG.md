@@ -1,5 +1,13 @@
 # nexus-agents
 
+## 2.131.1
+
+### Patch Changes
+
+- [#3822](https://github.com/nexus-substrate/nexus-agents/pull/3822) [`6c90571`](https://github.com/nexus-substrate/nexus-agents/commit/6c905716073b852860a9b87da9bf4506a1dff368) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(observability): context-retrieval failures at execute_expert/orchestrate/CompositeRouter are observable WARNs ([#3699](https://github.com/nexus-substrate/nexus-agents/issues/3699))
+
+  Applies the [#3180](https://github.com/nexus-substrate/nexus-agents/issues/3180)-adopted best-effort failure policy to the 3 remaining `getContextForTask` callers: a retrieval failure now logs a structured WARN (sanitized error + task category) and continues with empty context, instead of a swallowed debug line. No behavioral change to the best-effort contract — execution never blocks on a memory read failure. (These sites have no event-listener channel, so the structured warn is the observable; the graph boundary's `context_unavailable` event remains graph-specific.)
+
 ## 2.131.0
 
 ### Minor Changes
