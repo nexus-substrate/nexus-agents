@@ -102,6 +102,38 @@ describe('makeProposalPrImplementAdapter', () => {
     expect(calls).toContain('remove'); // finally cleanup ran
   });
 
+  it('does NOT clean up a worktree that was never created when addWorktree fails', async () => {
+    const { ops, calls } = fakeOps();
+    (ops.addWorktree as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('add boom'));
+    const implement = makeProposalPrImplementAdapter({ ops, pr: okPr });
+    await expect(implement(plan(), implementLedger())).rejects.toThrow('add boom');
+    // The `finally` lives inside the `try` that opens AFTER addWorktree resolves,
+    // so removeWorktree must never run on a worktree that was never created.
+    expect(ops.removeWorktree).not.toHaveBeenCalled();
+    // Nothing downstream ran either — no write/commit/push, no cleanup.
+    expect(calls).toEqual([]);
+    expect(ops.writeFileIn).not.toHaveBeenCalled();
+  });
+
+  it('cleans up the worktree (once, by path) when commitAll fails after add succeeds', async () => {
+    const { ops, calls } = fakeOps();
+    (ops.commitAll as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('commit boom'));
+    const implement = makeProposalPrImplementAdapter({ ops, pr: okPr });
+    await expect(implement(plan(), implementLedger())).rejects.toThrow('commit boom');
+    // addWorktree resolved, so the `finally` MUST remove the worktree it created —
+    // exactly once, with the path addWorktree returned.
+    expect(ops.removeWorktree).toHaveBeenCalledTimes(1);
+    expect(ops.removeWorktree).toHaveBeenCalledWith(
+      '/wt/auto-remediation_routing-cli-floor-codex-docs'
+    );
+    expect(calls).toEqual([
+      'add:auto-remediation/routing-cli-floor-codex-docs',
+      'write:remediation-plans/routing-cli-floor-codex-docs.md',
+      'remove',
+    ]);
+    expect(ops.pushBranch).not.toHaveBeenCalled(); // never reached push
+  });
+
   it('fail-closes if invoked outside the IMPLEMENT phase (no repo-write capability)', async () => {
     const { ops } = fakeOps();
     const researchLedger = new CapabilityLedger();

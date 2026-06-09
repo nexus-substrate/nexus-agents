@@ -220,6 +220,56 @@ describe('runAutoRemediation — enforce', () => {
     expect(breaker.state().consecutiveFailures).toBe(1);
   });
 
+  it('trip → abort → re-vote reset() → resume: a reset breaker re-enables the run (#3779)', async () => {
+    // A broken reset would strand enforce permanently-off after one bad streak.
+    // The recovery path is reset() (wired to the consensus re-vote), NOT a bare
+    // success — recordSuccess clears the streak but never un-trips (see the breaker
+    // unit test). This drives the full round-trip through the real enforce path.
+    const breaker = new RemediationCircuitBreaker({ threshold: 1 });
+
+    // 1. A rejected vote trips the breaker (threshold 1).
+    const { deps: rejecting } = makeDeps({
+      vote: vi.fn(async () => Promise.resolve({ approved: false, approvalPercentage: 10 })),
+    });
+    await runAutoRemediation([signal()], rejecting, {
+      mode: 'enforce',
+      now: 0,
+      guard: new RemediationGuard(),
+      breaker,
+    });
+    expect(breaker.isTripped()).toBe(true);
+
+    // 2. While tripped, the next run auto-reverts to off — aborts before research.
+    const { deps: blocked } = makeDeps();
+    const abortedRun = await runAutoRemediation([signal()], blocked, {
+      mode: 'enforce',
+      now: 0,
+      guard: new RemediationGuard(),
+      breaker,
+    });
+    expect(abortedRun.aborted).toMatch(/circuit breaker tripped/);
+    expect(blocked.research).not.toHaveBeenCalled();
+
+    // 3. The consensus re-vote re-enables the path: reset() un-trips the breaker.
+    breaker.reset();
+    expect(breaker.isTripped()).toBe(false);
+
+    // 4. A subsequent SUCCESS path RESUMES — it remediates and stays healthy
+    //    (recordSuccess keeps the streak clear; no re-trip).
+    const { deps: approving } = makeDeps();
+    const resumed = await runAutoRemediation([signal()], approving, {
+      mode: 'enforce',
+      now: 0,
+      guard: new RemediationGuard(),
+      breaker,
+    });
+    expect(resumed.aborted).toBeUndefined();
+    expect(resumed.remediated).toHaveLength(1);
+    expect(approving.implement).toHaveBeenCalledTimes(1);
+    expect(breaker.isTripped()).toBe(false);
+    expect(breaker.state().consecutiveFailures).toBe(0);
+  });
+
   it('refuses to auto-remediate a plan that targets a protected path (self-mod guard)', async () => {
     const { deps } = makeDeps({
       research: vi.fn(async (s: ImprovementSignal) =>
