@@ -32,7 +32,8 @@ import {
   type BaseMcpToolDeps,
   type ToolResult,
 } from './tool-result.js';
-import { JobStatusSchema, listJobs, type JobSummary } from '../jobs/job-result-store.js';
+import { JobStatusSchema, type JobSummary } from '../jobs/job-result-store.js';
+import { resolveJobList } from '../jobs/task-state-source.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 
 /** Hard cap on returned summaries — prevents huge directory walks blocking the response. */
@@ -86,8 +87,10 @@ function listJobsHandler(args: unknown): Promise<ToolResult> {
   }
   const { toolName, status, limit } = parsed.data;
   // Directory walk first — the store doesn't push the filter logic down
-  // because tools change shape but the store doesn't.
-  const all = listJobs();
+  // because tools change shape but the store doesn't. #3693: dual-read — with
+  // NEXUS_JOB_RESULT_SOURCE=task_state this unions the Stage-2 task-state log;
+  // sidecar-only by default (unchanged).
+  const all = resolveJobList();
   const filtered = all.filter((j) => {
     if (toolName !== undefined && j.toolName !== toolName) return false;
     if (status !== undefined && j.status !== status) return false;

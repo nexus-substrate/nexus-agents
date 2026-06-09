@@ -15,6 +15,8 @@ import {
   readJobResultFromTaskState,
   isTaskStateJobSource,
   resolveJobResult,
+  listJobsFromTaskState,
+  resolveJobList,
 } from './task-state-source.js';
 import { writeJobComplete } from './job-result-store.js';
 import type { StructuredTaskState } from '../../context/structured-task-state-types.js';
@@ -237,5 +239,43 @@ describe('readJobResultFromTaskState + resolveJobResult (filesystem)', () => {
     writeJobComplete('orch-resolve-3', 'orchestrate', { fromSidecar: true });
     const r = resolveJobResult('orch-resolve-3');
     expect(r?.result).toEqual({ fromSidecar: true });
+  });
+
+  // #3693: list-side dual-read — mirrors resolveJobResult's reader semantics.
+  it('listJobsFromTaskState: summarizes every task-state job', () => {
+    writeCompletedTaskLog('orch-list-1', { ok: 1 });
+    writeCompletedTaskLog('orch-list-2', { ok: 2 });
+    const summaries = listJobsFromTaskState();
+    const ids = summaries.map((s) => s.jobId).sort();
+    expect(ids).toEqual(['orch-list-1', 'orch-list-2']);
+    const one = summaries.find((s) => s.jobId === 'orch-list-1');
+    expect(one?.toolName).toBe('orchestrate');
+    expect(one?.status).toBe('complete');
+    expect(one?.hasError).toBe(false);
+  });
+
+  it('resolveJobList: flag OFF returns the sidecar list only', () => {
+    writeJobComplete('orch-only-sidecar', 'orchestrate', { fromSidecar: true });
+    writeCompletedTaskLog('orch-only-taskstate', { fromTaskState: true });
+    const ids = resolveJobList().map((s) => s.jobId);
+    expect(ids).toContain('orch-only-sidecar');
+    expect(ids).not.toContain('orch-only-taskstate');
+  });
+
+  it('resolveJobList: flag ON unions both sources, preferring task-state on collision', () => {
+    process.env['NEXUS_JOB_RESULT_SOURCE'] = 'task_state';
+    writeJobComplete('orch-sidecar-only', 'orchestrate', { s: true });
+    writeCompletedTaskLog('orch-taskstate-only', { t: true });
+    // Same jobId in BOTH: task-state must win (it's the migration target).
+    writeJobComplete('orch-both', 'orchestrate', { fromSidecar: true });
+    writeCompletedTaskLog('orch-both', { fromTaskState: true });
+    const summaries = resolveJobList();
+    const ids = summaries.map((s) => s.jobId).sort();
+    expect(ids).toEqual(['orch-both', 'orch-sidecar-only', 'orch-taskstate-only']);
+    // No duplicate for the collision id.
+    expect(summaries.filter((s) => s.jobId === 'orch-both')).toHaveLength(1);
+    // Newest-first ordering preserved (like listJobs()).
+    const createdDesc = summaries.map((s) => s.createdAt);
+    expect([...createdDesc].sort((a, b) => b.localeCompare(a))).toEqual(createdDesc);
   });
 });
