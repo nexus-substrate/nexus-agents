@@ -16,6 +16,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
+import { researchContextFromText, type ResearchContext } from './research-context.js';
 import {
   createResearchStageWrapper,
   createPlanStageWrapper,
@@ -42,7 +43,9 @@ function ctx(state: Record<string, unknown> = {}): PipelineContext {
 
 function stagesWith(overrides: Partial<DevPipelineStages>): DevPipelineStages {
   return {
-    research: vi.fn<(t: string) => Promise<string>>().mockResolvedValue('r'),
+    research: vi
+      .fn<(t: string) => Promise<ResearchContext>>()
+      .mockResolvedValue(researchContextFromText('r')),
     plan: vi.fn<(t: string, r: string, f?: string) => Promise<string>>().mockResolvedValue('p'),
     vote: vi
       .fn<(p: string) => Promise<VoteResult>>()
@@ -64,7 +67,9 @@ function stagesWith(overrides: Partial<DevPipelineStages>): DevPipelineStages {
 describe('Pipeline Eval — Failure Contract', () => {
   it('research failure returns success=false', async () => {
     const stages = stagesWith({
-      research: vi.fn<(t: string) => Promise<string>>().mockRejectedValue(new Error('boom')),
+      research: vi
+        .fn<(t: string) => Promise<ResearchContext>>()
+        .mockRejectedValue(new Error('boom')),
     });
     const res = await createResearchStageWrapper(stages).execute(ctx());
     expect(res.success).toBe(false);
@@ -83,7 +88,7 @@ describe('Pipeline Eval — Failure Contract', () => {
   it('failed stage surfaces error message in error field', async () => {
     const stages = stagesWith({
       research: vi
-        .fn<(t: string) => Promise<string>>()
+        .fn<(t: string) => Promise<ResearchContext>>()
         .mockRejectedValue(new Error('specific message')),
     });
     const res = await createResearchStageWrapper(stages).execute(ctx());
@@ -129,7 +134,7 @@ describe('Pipeline Eval — State Key Contract', () => {
 
   it('failed stage still returns the same stateKey (no swapping on failure)', async () => {
     const stages = stagesWith({
-      research: vi.fn<(t: string) => Promise<string>>().mockRejectedValue(new Error('x')),
+      research: vi.fn<(t: string) => Promise<ResearchContext>>().mockRejectedValue(new Error('x')),
     });
     const res = await createResearchStageWrapper(stages).execute(ctx());
     expect(res.stateKey).toBe(K.RESEARCH);

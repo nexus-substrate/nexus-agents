@@ -12,6 +12,10 @@ import { describe, it, expect } from 'vitest';
 import {
   buildResearchContext,
   renderResearchText,
+  deriveResearchMaturity,
+  researchMaturityBucket,
+  computeResearchMaturityReport,
+  RESEARCH_MATURITY_SATURATION,
   MAX_RENDERED_ITEMS,
   type ResearchContextMetadata,
 } from './research-context.js';
@@ -166,5 +170,90 @@ describe('buildResearchContext (#3372)', () => {
       qualitySignals: { totalFound: 1, newItems: 1, alreadyInRegistry: 0 },
     };
     expect(renderResearchText(meta, 't')).toBe(renderResearchText(meta, 't'));
+  });
+});
+
+describe('deriveResearchMaturity (#3234)', () => {
+  const meta = (totalFound: number): ResearchContextMetadata => ({
+    discoveredItems: [],
+    recommendations: [],
+    qualitySignals: { totalFound, newItems: 0, alreadyInRegistry: 0 },
+  });
+
+  it('is 0 when no research ran (absent-research baseline)', () => {
+    expect(deriveResearchMaturity(meta(0))).toBe(0);
+    expect(deriveResearchMaturity(meta(-1))).toBe(0);
+  });
+
+  it('grows with totalFound and saturates at 1.0', () => {
+    expect(deriveResearchMaturity(meta(1))).toBeCloseTo(1 / RESEARCH_MATURITY_SATURATION);
+    expect(deriveResearchMaturity(meta(RESEARCH_MATURITY_SATURATION))).toBe(1);
+    expect(deriveResearchMaturity(meta(RESEARCH_MATURITY_SATURATION * 3))).toBe(1);
+  });
+
+  it('is deterministic + bounded to [0,1]', () => {
+    for (const n of [0, 1, 4, 8, 100]) {
+      const v = deriveResearchMaturity(meta(n));
+      expect(v).toBe(deriveResearchMaturity(meta(n)));
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('buckets the score none/low/high for the measurement surface', () => {
+    expect(researchMaturityBucket(0)).toBe('none');
+    expect(researchMaturityBucket(0.2)).toBe('low');
+    expect(researchMaturityBucket(0.49)).toBe('low');
+    expect(researchMaturityBucket(0.5)).toBe('high');
+    expect(researchMaturityBucket(1)).toBe('high');
+  });
+});
+
+describe('computeResearchMaturityReport (#3234 measurement consumer)', () => {
+  it('buckets records by maturity and computes attempt-weighted successRate + delta', () => {
+    const r = computeResearchMaturityReport([
+      // high-maturity (0.8): 9/10 succeed
+      { successCount: 9, attemptCount: 10, researchMaturity: 0.8 },
+      // low-maturity (0.2): 5/10
+      { successCount: 5, attemptCount: 10, researchMaturity: 0.2 },
+      // none (absent research): 4/10
+      { successCount: 4, attemptCount: 10 },
+    ]);
+    expect(r.byBucket.high).toEqual({ count: 1, attempts: 10, successRate: 0.9 });
+    expect(r.byBucket.low).toEqual({ count: 1, attempts: 10, successRate: 0.5 });
+    expect(r.byBucket.none).toEqual({ count: 1, attempts: 10, successRate: 0.4 });
+    expect(r.highVsNoneDelta).toBeCloseTo(0.5); // 0.9 - 0.4
+    expect(r.totalRecords).toBe(3);
+  });
+
+  it('attempt-weights successRate within a bucket', () => {
+    const r = computeResearchMaturityReport([
+      { successCount: 1, attemptCount: 1, researchMaturity: 0.9 }, // 100% over 1
+      { successCount: 0, attemptCount: 9, researchMaturity: 0.9 }, // 0% over 9
+    ]);
+    // weighted: 1 success / 10 attempts = 0.1 (NOT the unweighted (1.0+0)/2=0.5)
+    expect(r.byBucket.high.successRate).toBeCloseTo(0.1);
+    expect(r.byBucket.high.attempts).toBe(10);
+  });
+
+  it('treats absent researchMaturity as the none bucket', () => {
+    const r = computeResearchMaturityReport([{ successCount: 1, attemptCount: 2 }]);
+    expect(r.byBucket.none.count).toBe(1);
+    expect(r.byBucket.high.count).toBe(0);
+  });
+
+  it('delta is 0 when a bucket is empty (no spurious signal)', () => {
+    const r = computeResearchMaturityReport([
+      { successCount: 5, attemptCount: 10, researchMaturity: 0.9 },
+    ]);
+    expect(r.byBucket.none.count).toBe(0);
+    expect(r.highVsNoneDelta).toBe(0);
+  });
+
+  it('empty input yields a zeroed report', () => {
+    const r = computeResearchMaturityReport([]);
+    expect(r.totalRecords).toBe(0);
+    expect(r.highVsNoneDelta).toBe(0);
+    expect(r.byBucket.none.successRate).toBe(0);
   });
 });

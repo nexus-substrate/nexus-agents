@@ -261,6 +261,15 @@ function createMockMemory(patterns: ExperiencePattern[]): IRoutingMemory {
     getExperiencePatterns: vi
       .fn()
       .mockImplementation((workflow: string) => patterns.filter((p) => p.workflow === workflow)),
+    getResearchMaturityReport: vi.fn().mockReturnValue({
+      byBucket: {
+        none: { count: 0, attempts: 0, successRate: 0 },
+        low: { count: 0, attempts: 0, successRate: 0 },
+        high: { count: 0, attempts: 0, successRate: 0 },
+      },
+      highVsNoneDelta: 0,
+      totalRecords: 0,
+    }),
     cacheAction: vi.fn(),
     getCachedAction: vi.fn().mockReturnValue(undefined),
     getRecommendation: vi.fn().mockReturnValue(undefined),

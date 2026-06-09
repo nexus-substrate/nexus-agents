@@ -245,6 +245,11 @@ export class ExperienceMemoryImpl implements IExperienceMemory {
     );
   }
 
+  /** #3234: all recorded entries across task types — for the research-maturity measurement surface. */
+  getAllPatterns(): readonly ExperienceEntry[] {
+    return [...this.patterns.values()];
+  }
+
   getBestPattern(taskType: string, contextSignature: string): ExperienceEntry | null {
     let best: ExperienceEntry | null = null;
     let bestScore = -1;

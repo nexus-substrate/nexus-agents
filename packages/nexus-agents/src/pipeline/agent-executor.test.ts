@@ -163,11 +163,12 @@ describe('createAgentStages — central workflow hub', () => {
       expect(mockExecuteDiscovery).toHaveBeenCalledTimes(1);
       expect(mockAnalyzeGaps).toHaveBeenCalledTimes(1);
       expect(mockExecuteExpert).not.toHaveBeenCalled();
-      // Deterministic text surfaces the structured maturity signals.
-      expect(result).toContain('Paper A');
-      expect(result).toMatch(/0\.9/);
-      expect(result).toContain('missing X');
-      expect(result).toMatch(/2 new/i);
+      // #3234: research() returns a ResearchContext; .text carries the signals.
+      expect(result.text).toContain('Paper A');
+      expect(result.text).toMatch(/0\.9/);
+      expect(result.text).toContain('missing X');
+      expect(result.text).toMatch(/2 new/i);
+      expect(result.metadata.discoveredItems[0]?.title).toBe('Paper A');
     });
 
     it('fails gracefully when discovery throws (fail-safe text, never throws)', async () => {
@@ -182,7 +183,7 @@ describe('createAgentStages — central workflow hub', () => {
       const stages = createAgentStages();
       const result = await stages.research('some task');
 
-      expect(result).toContain('[Research failed]');
+      expect(result.text).toContain('[Research failed]');
       expect(mockExecuteExpert).not.toHaveBeenCalled();
     });
   });
@@ -295,8 +296,8 @@ describe('createAgentStages — central workflow hub', () => {
       // appended to the returned text rather than seeded into an LLM prompt.
       const result = await stages.research('improve routing');
 
-      expect(result).toContain('Prior Learnings');
-      expect(result).toContain('compositeRouter');
+      expect(result.text).toContain('Prior Learnings');
+      expect(result.text).toContain('compositeRouter');
     });
 
     it('includes trend warning in plan prompt when declining', async () => {

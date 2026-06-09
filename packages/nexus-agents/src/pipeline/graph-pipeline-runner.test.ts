@@ -3,6 +3,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
+import { researchContextFromText, type ResearchContext } from './research-context.js';
 import { runGraphPipeline } from './graph-pipeline-runner.js';
 import type { DevPipelineStages, VoteResult, QaReviewResult } from './dev-pipeline.js';
 import { DEV_PIPELINE_TEMPLATE } from './templates.js';
@@ -21,7 +22,9 @@ vi.mock('./pipeline-observability.js', () => ({
 
 function createMockStages(): DevPipelineStages {
   return {
-    research: vi.fn<(task: string) => Promise<string>>().mockResolvedValue('Research done'),
+    research: vi
+      .fn<(task: string) => Promise<ResearchContext>>()
+      .mockResolvedValue(researchContextFromText('Research done')),
     plan: vi
       .fn<(task: string, research: string, feedback?: string) => Promise<string>>()
       .mockResolvedValue('Plan done'),

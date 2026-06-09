@@ -12,6 +12,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { researchContextFromText } from './research-context.js';
 import { classifyTask } from './adaptive-orchestrator.js';
 import { PIPELINE_TEMPLATES, getTemplate, listTemplateIds } from './templates.js';
 import { createDevStageRegistry, createAuditStageRegistry } from './stage-wrappers.js';
@@ -21,7 +22,7 @@ import { vi } from 'vitest';
 
 function mockStages(): DevPipelineStages {
   return {
-    research: vi.fn().mockResolvedValue('r'),
+    research: vi.fn().mockResolvedValue(researchContextFromText('r')),
     plan: vi.fn().mockResolvedValue('p'),
     vote: vi.fn().mockResolvedValue({ kind: 'approved', approvalPercentage: 80 }),
     decompose: vi.fn().mockResolvedValue([]),

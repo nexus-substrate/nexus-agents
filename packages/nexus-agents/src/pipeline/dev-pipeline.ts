@@ -21,6 +21,11 @@
 import { nexusDataPath } from '../config/nexus-data-dir.js';
 
 import { runQaLoop } from '../orchestration/qa-loop.js';
+import {
+  type ResearchContext,
+  researchContextFromText,
+  deriveResearchMaturity,
+} from './research-context.js';
 
 import { createLogger, getTimeProvider, withStep } from '../core/index.js';
 import { getPipelineEventBus } from './event-bus.js';
@@ -70,6 +75,12 @@ export interface PipelineTask {
   readonly conditions?: readonly string[] | undefined;
   /** Caveats/warnings associated with the task (from conditional_go vote). */
   readonly caveats?: readonly string[] | undefined;
+  /**
+   * #3234: deterministic research-maturity `[0,1]` of the run that produced this
+   * task, attached after decompose. RECORDED on the routing outcome and measured
+   * (the gated live-routing use is #3815). Absent → treated as no-research (0).
+   */
+  readonly researchMaturity?: number | undefined;
 }
 
 /** Vote result from consensus — discriminated union with conditional approval support. */
@@ -133,8 +144,12 @@ export interface DevPipelineResult {
 
 /** Pluggable stage implementations — inject real or mock agents. */
 export interface DevPipelineStages {
-  /** Research expert gathers context for the task. */
-  research(task: string): Promise<string>;
+  /**
+   * Research expert gathers context for the task. Returns the full
+   * {@link ResearchContext} (#3234 seam 0): `.text` feeds plan/vote as before,
+   * `.metadata` is attached to decomposed tasks for routing-experience enrichment.
+   */
+  research(task: string): Promise<ResearchContext>;
   /** Architect creates a plan from research + task. */
   plan(task: string, research: string, priorFeedback?: string): Promise<string>;
   /**
@@ -285,7 +300,7 @@ async function runDevPipelineInner(
   const { beliefMemory: bm, auditLogger, trustTier } = options ?? {};
 
   // Phases 1-2: Research + Plan/Vote
-  const { planResult } = await runPlanningPhase(task, stages, prior, options);
+  const { planResult, researchMaturity } = await runPlanningPhase(task, stages, prior, options);
 
   // DRY RUN: stop after plan+vote, return partial result (#1717)
   if (options?.dryRun === true) {
@@ -305,6 +320,7 @@ async function runDevPipelineInner(
     conditional: planResult.conditional,
     conditions: planResult.conditions,
     caveats: planResult.caveats,
+    researchMaturity,
   });
   if (sid !== undefined) saveStageCheckpoint(sid, 'decompose', { type: 'decompose', tasks });
 
@@ -686,22 +702,25 @@ async function resolveResearch(
   task: string,
   stages: DevPipelineStages,
   options: DevPipelineOptions | undefined
-): Promise<string> {
-  return runOrResume(prior, 'research', () =>
-    withStep(
-      { name: 'research', kind: 'pipeline.stage', attrs: { task: task.slice(0, 100) } },
-      async (ctx) => {
-        const override = options?.researchOverride;
-        if (override !== undefined) {
-          ctx.setSummary(`override: ${String(override.length)} chars`);
-          return override;
-        }
-        options?.untrustedInputGuard?.();
-        const r = await stages.research(task);
-        ctx.setSummary(`${String(r.length)} chars`);
-        return r;
-      }
-    )
+): Promise<ResearchContext> {
+  // #3234: the checkpoint persists research as text only, so a RESUMED run has no
+  // structured metadata — wrap the text with empty metadata (degrades cleanly).
+  if (prior?.research !== undefined) {
+    logger.info('Resuming from checkpoint', { stage: 'research' });
+    return researchContextFromText(prior.research);
+  }
+  const override = options?.researchOverride;
+  if (override !== undefined) {
+    return researchContextFromText(override);
+  }
+  options?.untrustedInputGuard?.();
+  return withStep(
+    { name: 'research', kind: 'pipeline.stage', attrs: { task: task.slice(0, 100) } },
+    async (ctx) => {
+      const rc = await stages.research(task);
+      ctx.setSummary(`${String(rc.text.length)} chars`);
+      return rc;
+    }
   );
 }
 
@@ -718,13 +737,23 @@ async function runPlanningPhase(
     conditions: readonly string[];
     caveats: readonly string[];
   };
+  /** #3234: research-maturity of this run, attached to decomposed tasks. */
+  researchMaturity: number;
 }> {
   const sid = options?.sessionId;
   const bm = options?.beliefMemory;
   const research = await resolveResearch(prior, task, stages, options);
-  if (sid !== undefined) saveStageCheckpoint(sid, 'research', { type: 'research', text: research });
+  // #3234: a deterministic research-maturity score (RECORD + measure; see #3815
+  // for the gated live-routing use). Fresh-run scoped — a resumed run has empty
+  // metadata → 0, degrading cleanly.
+  const researchMaturity = deriveResearchMaturity(research.metadata);
+  // #3234: persist text only (unchanged checkpoint shape — metadata is fresh-run
+  // scoped and not resumable). plan/vote consume the text via research.text.
+  if (sid !== undefined) {
+    saveStageCheckpoint(sid, 'research', { type: 'research', text: research.text });
+  }
 
-  const planContext = await assemblePlanContext(research, task, sid, bm);
+  const planContext = await assemblePlanContext(research.text, task, sid, bm);
   const planResult = await runPlanOrResume(prior, task, planContext, stages, sid);
   if (sid !== undefined) {
     saveStageCheckpoint(sid, 'plan', {
@@ -741,7 +770,7 @@ async function runPlanningPhase(
       iterations: planResult.iterations,
     });
   }
-  return { planResult };
+  return { planResult, researchMaturity };
 }
 
 /** Build result for harness mode — tasks returned for external implementation. */
@@ -854,19 +883,6 @@ async function runQualityGateStage(
   );
 }
 
-/** Run stage or return cached result from checkpoint. */
-async function runOrResume(
-  prior: PipelineCheckpointState | null,
-  stage: string,
-  run: () => Promise<string>
-): Promise<string> {
-  if (prior?.research !== undefined && stage === 'research') {
-    logger.info('Resuming from checkpoint', { stage });
-    return prior.research;
-  }
-  return run();
-}
-
 /** Run plan/vote or return from checkpoint. */
 async function runPlanOrResume(
   prior: PipelineCheckpointState | null,
@@ -899,6 +915,8 @@ interface ConditionalMeta {
   readonly conditional: boolean;
   readonly conditions: readonly string[];
   readonly caveats: readonly string[];
+  /** #3234: research-maturity of the run, attached to each fresh task. */
+  readonly researchMaturity?: number | undefined;
 }
 
 /** Run decompose or return from checkpoint. */
@@ -917,14 +935,14 @@ async function runOrResumeDecompose(
     ctx.setSummary(`${String(r.length)} tasks`);
     return r;
   });
-  if (meta.conditional && tasks.length > 0) {
-    return tasks.map((t) => ({
-      ...t,
-      conditions: meta.conditions,
-      caveats: meta.caveats,
-    }));
-  }
-  return tasks;
+  // #3234: attach research-maturity to every FRESH task (the resume path above
+  // returns prior.tasks untouched, preserving the original maturity). Conditional
+  // fields are added only on a conditional_go vote, as before.
+  return tasks.map((t) => ({
+    ...t,
+    ...(meta.conditional ? { conditions: meta.conditions, caveats: meta.caveats } : {}),
+    ...(meta.researchMaturity !== undefined ? { researchMaturity: meta.researchMaturity } : {}),
+  }));
 }
 
 /** Extract conditional metadata from an approved vote. */
@@ -1017,6 +1035,8 @@ async function implementSingleTask(
           assignedTo: task.assignedTo,
           status: 'rejected',
           feedback,
+          // #3234: preserve research-maturity across the rejection reconstruction.
+          researchMaturity: task.researchMaturity,
         };
       }
       return stages.implement(currentTask);
@@ -1035,6 +1055,8 @@ async function implementSingleTask(
     status: qaResult.approved ? 'done' : 'rejected',
     implementation: qaResult.output,
     feedback: qaResult.feedback,
+    // #3234: preserve research-maturity through to the final task.
+    researchMaturity: task.researchMaturity,
   };
   return { iterations: qaResult.iterations, task: finalTask };
 }

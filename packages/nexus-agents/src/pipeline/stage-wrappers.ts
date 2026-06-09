@@ -79,7 +79,9 @@ export function createResearchStageWrapper(stages: DevPipelineStages): IPipeline
           enrichedTask = `${memoryPrefix}\n\n${enrichedTask}`;
         }
         const result = await stages.research(enrichedTask);
-        return output(K.RESEARCH, result, getTimeProvider().now() - start, true);
+        // #3234 seam 0: research now returns a ResearchContext; the graph path's
+        // state slot (K.RESEARCH) stays the text string the plan wrapper reads.
+        return output(K.RESEARCH, result.text, getTimeProvider().now() - start, true);
       } catch (e) {
         return failOutput(K.RESEARCH, getErrorMessage(e), getTimeProvider().now() - start);
       }

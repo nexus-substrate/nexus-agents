@@ -22,6 +22,10 @@ import {
   type ActionStep,
   type ExecutionOutcome,
 } from './mobimem.js';
+import {
+  computeResearchMaturityReport,
+  type ResearchMaturityReport,
+} from '../pipeline/research-context.js';
 
 /**
  * Performance metrics for a model on a task type.
@@ -126,11 +130,23 @@ export interface IRoutingMemory {
     workflow: string,
     models: readonly CliName[],
     success: boolean,
-    metrics: { durationMs: number; tokensUsed: number; qualityScore?: number }
+    metrics: {
+      durationMs: number;
+      tokensUsed: number;
+      qualityScore?: number;
+      /** #3234: research-maturity [0,1] of the run, recorded for measurement. */
+      researchMaturity?: number;
+    }
   ): void;
 
   /** Get experience patterns for a workflow type */
   getExperiencePatterns(workflow: string): readonly ExperiencePattern[];
+
+  /**
+   * #3234 measurement surface: success-rate by research-maturity bucket across all
+   * recorded experience. Read-only — does NOT influence routing (gated → #3815).
+   */
+  getResearchMaturityReport(): ResearchMaturityReport;
 
   /** Cache an action result */
   cacheAction(action: string, model: CliName, result: unknown, durationMs: number): void;
@@ -275,7 +291,13 @@ export class RoutingMemory implements IRoutingMemory {
     workflow: string,
     models: readonly CliName[],
     success: boolean,
-    metrics: { durationMs: number; tokensUsed: number; qualityScore?: number }
+    metrics: {
+      durationMs: number;
+      tokensUsed: number;
+      qualityScore?: number;
+      /** #3234: research-maturity [0,1] of the run, recorded for measurement. */
+      researchMaturity?: number;
+    }
   ): void {
     // Create context signature from model sequence
     const contextSignature = models.join('->');
@@ -290,19 +312,16 @@ export class RoutingMemory implements IRoutingMemory {
     }));
 
     // Build outcome matching ExecutionOutcome interface
-    const outcome: ExecutionOutcome =
-      metrics.qualityScore !== undefined
-        ? {
-            success,
-            qualityScore: metrics.qualityScore,
-            totalDurationMs: metrics.durationMs,
-            tokensUsed: metrics.tokensUsed,
-          }
-        : {
-            success,
-            totalDurationMs: metrics.durationMs,
-            tokensUsed: metrics.tokensUsed,
-          };
+    const outcome: ExecutionOutcome = {
+      success,
+      totalDurationMs: metrics.durationMs,
+      tokensUsed: metrics.tokensUsed,
+      ...(metrics.qualityScore !== undefined ? { qualityScore: metrics.qualityScore } : {}),
+      // #3234: record research-maturity for the measurement surface (#3815 gates use).
+      ...(metrics.researchMaturity !== undefined
+        ? { researchMaturity: metrics.researchMaturity }
+        : {}),
+    };
 
     // Store in MobiMem's experience memory using recordExecution()
     this.mobimem.experience.recordExecution(workflow, actionSequence, outcome, contextSignature);
@@ -321,6 +340,21 @@ export class RoutingMemory implements IRoutingMemory {
     return experiences
       .filter((exp) => exp.successRate >= this.config.successRateThreshold)
       .map((exp) => this.mapExperienceToPattern(exp));
+  }
+
+  /**
+   * #3234 measurement surface: bucket ALL recorded experience by the run's
+   * research-maturity and report the attempt-weighted success rate per bucket.
+   * This is the read-only consumer of {@link ExecutionOutcome.researchMaturity} —
+   * it does NOT influence routing (live weighting is gated on a measured lift, #3815).
+   */
+  getResearchMaturityReport(): ResearchMaturityReport {
+    const records = this.mobimem.experience.getAllPatterns().map((exp) => ({
+      successCount: exp.successCount,
+      attemptCount: exp.attemptCount,
+      researchMaturity: exp.outcome.researchMaturity,
+    }));
+    return computeResearchMaturityReport(records);
   }
 
   cacheAction(action: string, model: CliName, result: unknown, durationMs: number): void {

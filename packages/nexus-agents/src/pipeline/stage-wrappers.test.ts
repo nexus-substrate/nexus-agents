@@ -3,6 +3,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
+import { researchContextFromText, type ResearchContext } from './research-context.js';
 import {
   createResearchStageWrapper,
   createPlanStageWrapper,
@@ -46,7 +47,9 @@ function makeContext(stateOverrides?: Record<string, unknown>): PipelineContext 
 
 function createMockStages(): DevPipelineStages {
   return {
-    research: vi.fn<(task: string) => Promise<string>>().mockResolvedValue('Research output'),
+    research: vi
+      .fn<(task: string) => Promise<ResearchContext>>()
+      .mockResolvedValue(researchContextFromText('Research output')),
     plan: vi
       .fn<(task: string, research: string, feedback?: string) => Promise<string>>()
       .mockResolvedValue('Plan output'),

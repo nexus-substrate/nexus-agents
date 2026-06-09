@@ -3,6 +3,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
+import { researchContextFromText, type ResearchContext } from './research-context.js';
 import { classifyTask, runAdaptiveOrchestrator } from './adaptive-orchestrator.js';
 import type { DevPipelineStages, VoteResult, QaReviewResult } from './dev-pipeline.js';
 import { createDevStageRegistry } from './stage-wrappers.js';
@@ -25,7 +26,9 @@ vi.mock('../orchestration/outcomes/outcome-store.js', () => ({
 
 function createMockStages(): DevPipelineStages {
   return {
-    research: vi.fn<(task: string) => Promise<string>>().mockResolvedValue('Research'),
+    research: vi
+      .fn<(task: string) => Promise<ResearchContext>>()
+      .mockResolvedValue(researchContextFromText('Research')),
     plan: vi
       .fn<(task: string, research: string, feedback?: string) => Promise<string>>()
       .mockResolvedValue('Plan'),
