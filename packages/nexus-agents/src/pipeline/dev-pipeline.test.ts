@@ -791,11 +791,17 @@ describe('runDevPipeline — durable policy-audit persistence (#3710)', () => {
     expect(result.completed).toBe(true);
     const events = storage.getAll();
     const policyGate = events.filter((e) => e.action === 'security.policy_gate');
-    // Exactly one durable policy_gate record persisted, with mode/ruleIds/stageType.
-    expect(policyGate).toHaveLength(1);
-    expect(policyGate[0]!.metadata?.['mode']).toBe('warn');
-    expect(policyGate[0]!.metadata?.['ruleIds']).toEqual(['trust-tier']);
-    expect(policyGate[0]!.metadata?.['stageType']).toBe('execute');
+    // #3727: one per-violation record (#3710) + one per-evaluation summary record.
+    const violationRec = policyGate.filter((e) => e.metadata?.['recordKind'] === 'violation');
+    const summaryRec = policyGate.filter((e) => e.metadata?.['recordKind'] === 'summary');
+    expect(violationRec).toHaveLength(1);
+    expect(summaryRec).toHaveLength(1);
+    // The per-violation record carries mode/ruleIds/stageType.
+    expect(violationRec[0]!.metadata?.['mode']).toBe('warn');
+    expect(violationRec[0]!.metadata?.['ruleIds']).toEqual(['trust-tier']);
+    expect(violationRec[0]!.metadata?.['stageType']).toBe('execute');
+    // The summary record carries the per-evaluation denominator signal.
+    expect(summaryRec[0]!.metadata?.['violationCount']).toBe(1);
     // The persisted chain verifies.
     expect(verifyChain(events).ok).toBe(true);
 
@@ -818,7 +824,11 @@ describe('runDevPipeline — durable policy-audit persistence (#3710)', () => {
 
     const events = storage.getAll();
     const policyGate = events.filter((e) => e.action === 'security.policy_gate');
-    expect(policyGate).toHaveLength(6); // one per run, no drops or dupes
+    // #3727: each run now appends one violation record + one summary record.
+    const violationRec = policyGate.filter((e) => e.metadata?.['recordKind'] === 'violation');
+    const summaryRec = policyGate.filter((e) => e.metadata?.['recordKind'] === 'summary');
+    expect(violationRec).toHaveLength(6); // one per run, no drops or dupes
+    expect(summaryRec).toHaveLength(6); // one summary per run
     expect(verifyChain(events).ok).toBe(true);
 
     await auditLogger.close();
