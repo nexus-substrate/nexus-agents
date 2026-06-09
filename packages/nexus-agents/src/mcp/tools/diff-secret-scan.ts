@@ -28,12 +28,17 @@ const SECRET_PATTERNS: readonly SecretPattern[] = [
   { name: 'slack-token', re: /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/ },
   { name: 'google-api-key', re: /\bAIza[0-9A-Za-z_-]{35}\b/ },
   { name: 'openai-key', re: /\bsk-[A-Za-z0-9]{32,}\b/ },
+  // Newer OpenAI key families: project/service-account/admin keys carry a
+  // `sk-proj-`/`sk-svcacct-`/`sk-admin-` prefix and base64url bodies (with - and
+  // _), so the classic class above breaks at the first hyphen (#3752).
+  { name: 'openai-key', re: /\bsk-(?:proj|svcacct|admin)-[A-Za-z0-9_-]{20,}\b/ },
   { name: 'anthropic-key', re: /\bsk-ant-[A-Za-z0-9_-]{20,}\b/ },
   { name: 'jwt', re: /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/ },
-  // Generic `secret/token/password/api_key = "long-value"` assignments.
+  // Generic `secret/token/password/api_key = "long-value"` assignments. The value
+  // class includes `=` so base64 values with padding (…==) still match (#3752).
   {
     name: 'generic-credential-assignment',
-    re: /(?:api[_-]?key|secret|token|password|passwd|credential)\s*[:=]\s*["'][A-Za-z0-9/+_-]{16,}["']/i,
+    re: /(?:api[_-]?key|secret|token|password|passwd|credential)\s*[:=]\s*["'][A-Za-z0-9/+_=-]{16,}["']/i,
   },
 ];
 
