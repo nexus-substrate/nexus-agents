@@ -20,8 +20,28 @@ import * as ts from 'typescript';
 /** Variable-declaration names that hold the tool list, in priority order. */
 const MANIFEST_VAR_NAMES = ['TOOL_MANIFEST', 'REGISTERED_TOOL_NAMES'] as const;
 
-/** Unwrap `as const` / type assertions, then read an array literal's string elements. */
-function readStringArray(expr: ts.Expression | undefined): string[] | undefined {
+/** Read the string value of an object literal's `name: '…'` property, if present. */
+function nameFromObjectLiteral(obj: ts.ObjectLiteralExpression): string | undefined {
+  for (const prop of obj.properties) {
+    if (
+      ts.isPropertyAssignment(prop) &&
+      ts.isIdentifier(prop.name) &&
+      prop.name.text === 'name' &&
+      ts.isStringLiteralLike(prop.initializer)
+    ) {
+      return prop.initializer.text;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Unwrap `as const` / type assertions, then read an array literal's tool names.
+ * Handles two element shapes: a bare string literal (legacy `REGISTERED_TOOL_NAMES`
+ * / `tools:` arrays) and an object literal carrying a `name` property (the #3597
+ * `TOOL_MANIFEST` shape `{ name, annotations, sideEffects }`).
+ */
+function readToolNames(expr: ts.Expression | undefined): string[] | undefined {
   let node = expr;
   while (node !== undefined && ts.isAsExpression(node)) {
     node = node.expression;
@@ -30,7 +50,12 @@ function readStringArray(expr: ts.Expression | undefined): string[] | undefined 
   const names: string[] = [];
   for (const element of node.elements) {
     // isStringLiteralLike covers both '…'/"…" and `…` (no-substitution template).
-    if (ts.isStringLiteralLike(element)) names.push(element.text);
+    if (ts.isStringLiteralLike(element)) {
+      names.push(element.text);
+    } else if (ts.isObjectLiteralExpression(element)) {
+      const name = nameFromObjectLiteral(element);
+      if (name !== undefined) names.push(name);
+    }
   }
   return names;
 }
@@ -54,7 +79,7 @@ export function parseRegisteredToolNames(content: string): string[] {
   /** Record the first array literal seen for `key` (later duplicates ignored). */
   const capture = (key: string, init: ts.Expression | undefined): void => {
     if (byKey.has(key)) return;
-    const names = readStringArray(init);
+    const names = readToolNames(init);
     if (names !== undefined) byKey.set(key, names);
   };
 

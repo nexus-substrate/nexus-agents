@@ -285,7 +285,7 @@ interface ToolDoc {
 function collectToolDocs(): ToolDoc[] {
   const schemaSources = indexSchemaFiles();
   const docs: ToolDoc[] = [];
-  for (const tool of TOOL_MANIFEST) {
+  for (const { name: tool } of TOOL_MANIFEST) {
     const schemaName = TOOL_SCHEMA_NAMES[tool];
     if (schemaName === undefined) {
       throw new Error(`No TOOL_SCHEMA_NAMES mapping for manifest tool "${tool}"`);

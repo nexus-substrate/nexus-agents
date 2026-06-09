@@ -23,6 +23,7 @@
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { ROOT, SRC_ROOT, DOCS_ROOT } from './script-paths.js';
+import { parseRegisteredToolNames } from './parse-tool-manifest.js';
 
 const CHECK_MODE = process.argv.includes('--check');
 // #3566: canonical tool-name list is the leaf TOOL_MANIFEST array.
@@ -45,19 +46,12 @@ interface DriftReport {
 const drifts: DriftReport[] = [];
 
 /**
- * Count MCP tools from the STANDALONE_TOOLS array in mcp/tools/index.ts.
+ * Count MCP tools from the canonical `TOOL_MANIFEST` (AST-parsed, #3596/#3597 —
+ * the manifest is now an object array, so a literal-string regex would miscount).
  */
 function extractMcpToolCount(): number {
   const src = readFileSync(TOOLS_INDEX, 'utf-8');
-  // Source of truth is the leaf `TOOL_MANIFEST` const (#3566); fall back to the
-  // pre-#3566 `REGISTERED_TOOL_NAMES` and legacy `tools: [...]` shapes.
-  const arrayMatch =
-    src.match(/TOOL_MANIFEST\s*=\s*\[([\s\S]*?)\]\s*as const/) ??
-    src.match(/REGISTERED_TOOL_NAMES\s*=\s*\[([\s\S]*?)\]\s*as const/) ??
-    src.match(/tools:\s*\[([\s\S]*?)\]/);
-  if (!arrayMatch) return 0;
-  const names = arrayMatch[1].match(/'[a-z_]+'/g);
-  return names ? names.length : 0;
+  return parseRegisteredToolNames(src).length;
 }
 
 /**

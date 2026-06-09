@@ -1041,29 +1041,27 @@ function extractDocumentedCounts(content: string): RegistrySummary {
  * non-idempotent, open-world), which break Epic B's prerequisite gates
  * and degrade Claude / Codex / Gemini / OpenCode permission-prompt UX.
  *
- * Parses `packages/nexus-agents/src/mcp/tool-annotations.ts` as the
- * source of truth (regex match on top-level keys of TOOL_ANNOTATIONS),
+ * Parses the canonical `TOOL_MANIFEST` as the source of truth and
  * cross-references against `extractMcpTools()`. Reports missing entries
- * AND stale entries (in the map but not registered).
+ * AND stale entries (annotated but not registered).
  */
 function checkToolAnnotations(tools: ToolMetadata[]): boolean {
-  // Single source of truth after #3358: the side-effects superset registry.
-  // Top-level keys (2-space indent, `name: {`) are the per-tool entries;
-  // nested `annotations: {` / `sideEffects: [` are 4-space indented and so
-  // are skipped by the 2-space-anchored key pattern below.
-  const path = join(ROOT, 'packages/nexus-agents/src/mcp/tools/tool-annotations.ts');
-  if (!existsSync(path)) {
-    console.error('Missing src/mcp/tools/tool-annotations.ts (#2648/#3358)');
+  // #3597: the per-tool annotation/side-effect data is folded INTO TOOL_MANIFEST
+  // (each `{ name, annotations, sideEffects }` entry). The manifest is the
+  // annotation source of truth; this gate verifies every registered tool's entry
+  // actually carries an `annotations` block (a name without one — which TS also
+  // rejects via `ToolManifestEntry` — would slip MCP-default hints).
+  if (!existsSync(TOOL_MANIFEST_FILE)) {
+    console.error('Missing src/mcp/tools/tool-manifest.ts (#2648/#3358/#3597)');
     return false;
   }
-  const content = readFileSync(path, 'utf-8');
-  // Extract tool names from the TOOL_ANNOTATIONS object literal. The keys
-  // are bare identifiers (snake_case) followed by `: {`.
+  const content = readFileSync(TOOL_MANIFEST_FILE, 'utf-8');
+  // Names of manifest entries that pair a `name` with an `annotations: {` block.
   const annotatedNames = new Set<string>();
-  const keyPattern = /^\s{2}([a-z_]+):\s*\{/gm;
-  let match: RegExpExecArray | null;
-  while ((match = keyPattern.exec(content)) !== null) {
-    if (match[1] !== undefined) annotatedNames.add(match[1]);
+  const annotatedPattern = /name:\s*'([a-z_]+)',\s*annotations:\s*\{/g;
+  let annotated: RegExpExecArray | null;
+  while ((annotated = annotatedPattern.exec(content)) !== null) {
+    if (annotated[1] !== undefined) annotatedNames.add(annotated[1]);
   }
   const registeredNames = new Set(tools.map((t) => t.name));
 
@@ -1224,14 +1222,21 @@ function checkToolDistinctness(): boolean {
   return false;
 }
 
-/** Tool names whose annotation block lacks `readOnlyHint: true`. */
-function extractNonReadOnlyTools(annotationsSrc: string): Set<string> {
+/**
+ * Tool names whose manifest `annotations` block lacks `readOnlyHint: true`.
+ * #3597: reads the folded-in annotations from each `TOOL_MANIFEST` entry
+ * (`name: '<tool>', annotations: { … },`) — the annotations no longer live in a
+ * standalone file.
+ */
+function extractNonReadOnlyTools(manifestSrc: string): Set<string> {
   const names = new Set<string>();
-  const blockPattern = /^ {2}([a-z_]+):\s*\{([\s\S]*?)\n {2}\},/gm;
-  let block: RegExpExecArray | null;
-  while ((block = blockPattern.exec(annotationsSrc)) !== null) {
-    const name = block[1];
-    const body = block[2] ?? '';
+  // `annotations: {` has no nested braces, so the non-greedy body stops at its
+  // own closing `}` (before the `,` that precedes `sideEffects`).
+  const entryPattern = /name:\s*'([a-z_]+)',\s*annotations:\s*\{([\s\S]*?)\},/g;
+  let entry: RegExpExecArray | null;
+  while ((entry = entryPattern.exec(manifestSrc)) !== null) {
+    const name = entry[1];
+    const body = entry[2] ?? '';
     if (name !== undefined && !/readOnlyHint:\s*true/.test(body)) names.add(name);
   }
   return names;
@@ -1263,16 +1268,15 @@ function extractPrerequisiteCoveredTools(prereqSrc: string): Set<string> {
  * tool cannot ship ungated by omission. Read-only tools are exempt.
  */
 function checkToolPrerequisites(): boolean {
-  // #3444: the TOOL_ANNOTATIONS map moved to the tools/ subdirectory (#3358);
-  // the wrapper at src/mcp/tool-annotations.ts has no annotation blocks, so
-  // reading it left the non-read-only set EMPTY and silently no-op'd this gate.
-  const annotationsPath = join(ROOT, 'packages/nexus-agents/src/mcp/tools/tool-annotations.ts');
+  // #3597: readOnly hints are folded into TOOL_MANIFEST entries, so the
+  // non-read-only set is parsed from the manifest (was tool-annotations.ts,
+  // which #3444 had already had to chase across the #3358 move).
   const prereqPath = join(ROOT, 'packages/nexus-agents/src/mcp/middleware/tool-prerequisites.ts');
-  if (!existsSync(annotationsPath) || !existsSync(prereqPath)) {
-    console.error('Missing tool-annotations.ts or tool-prerequisites.ts (#2652)');
+  if (!existsSync(TOOL_MANIFEST_FILE) || !existsSync(prereqPath)) {
+    console.error('Missing tool-manifest.ts or tool-prerequisites.ts (#2652)');
     return false;
   }
-  const nonReadOnly = extractNonReadOnlyTools(readFileSync(annotationsPath, 'utf-8'));
+  const nonReadOnly = extractNonReadOnlyTools(readFileSync(TOOL_MANIFEST_FILE, 'utf-8'));
   const covered = extractPrerequisiteCoveredTools(readFileSync(prereqPath, 'utf-8'));
   const missing = [...nonReadOnly].filter((t) => !covered.has(t));
   if (missing.length > 0) {

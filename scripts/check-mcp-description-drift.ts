@@ -226,7 +226,10 @@ export function buildDriftReport(
 /** CLI gate: exits non-zero on any drift, unparseable, or missing entry. */
 function main(): void {
   const verbose = process.argv.includes('--verbose') || process.argv.includes('-v');
-  const report = buildDriftReport([...TOOL_MANIFEST], TOOL_DESCRIPTIONS);
+  const report = buildDriftReport(
+    TOOL_MANIFEST.map((t) => t.name),
+    TOOL_DESCRIPTIONS
+  );
   const problems = report.drifts.length + report.unparseable.length + report.missingDocEntry.length;
 
   if (report.missingDocEntry.length > 0) {

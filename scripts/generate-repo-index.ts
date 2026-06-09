@@ -20,6 +20,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { catalogForExtractors } from '../packages/nexus-agents/src/cli-command-catalog.js';
+import { parseRegisteredToolNames } from './parse-tool-manifest.js';
 
 // ============================================================================
 // Configuration
@@ -176,22 +177,15 @@ function extractCLICommands(): CLICommand[] {
 function extractMCPTools(): MCPTool[] {
   const content = fs.readFileSync(MCP_TOOLS_INDEX, 'utf-8');
 
-  // Source of truth is the module-level `REGISTERED_TOOL_NAMES` const
-  // (extracted out of `registerTools()` to fit the max-lines-per-function
-  // gate). Fall back to the inline `tools: [...]` shape for older checkouts.
-  const toolsMatch =
-    content.match(/TOOL_MANIFEST\s*=\s*\[([\s\S]*?)\]\s*as const/) ??
-    content.match(/REGISTERED_TOOL_NAMES\s*=\s*\[([\s\S]*?)\]\s*as const/) ??
-    content.match(/tools:\s*\[([\s\S]*?)\]/);
-  if (toolsMatch?.[1] === undefined) {
+  // AST-parse the canonical `TOOL_MANIFEST` (#3596/#3597). The manifest is now an
+  // object array (`{ name, annotations, sideEffects }`), so a per-line string
+  // regex would also pick up category/description literals — the AST parser reads
+  // each entry's `name` correctly.
+  const toolNames = parseRegisteredToolNames(content);
+  if (toolNames.length === 0) {
     console.error('Could not parse tools array from MCP tool manifest');
     return [];
   }
-
-  const toolNames = toolsMatch[1]
-    .split('\n')
-    .map((line) => line.match(/'([^']+)'/)?.[1])
-    .filter((name): name is string => name !== undefined);
 
   return toolNames
     .map((name) => ({

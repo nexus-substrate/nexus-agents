@@ -57,7 +57,8 @@ export interface CapabilityGap {
  * low-level analyzer module free of the MCP tool dependency graph — no cycle.
  * Drift is impossible by construction.
  */
-const AVAILABLE_TOOLS: ReadonlySet<string> = new Set(TOOL_MANIFEST);
+// #3597: manifest entries are now `{ name, ... }` objects — derive the name set.
+const AVAILABLE_TOOLS: ReadonlySet<string> = new Set(TOOL_MANIFEST.map((t) => t.name));
 
 /**
  * All built-in expert role names (`{type}_expert`).

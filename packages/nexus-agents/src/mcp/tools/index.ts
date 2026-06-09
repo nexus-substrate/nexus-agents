@@ -580,7 +580,11 @@ export interface ToolRegistrationResult {
  */
 export { TOOL_MANIFEST };
 export type { RegisteredToolName };
-export const REGISTERED_TOOL_NAMES = TOOL_MANIFEST;
+// #3597: TOOL_MANIFEST entries are now `{ name, annotations, sideEffects }`, so
+// the historical name list derives via `.name`. Order is preserved.
+export const REGISTERED_TOOL_NAMES: readonly RegisteredToolName[] = TOOL_MANIFEST.map(
+  (t) => t.name
+);
 
 export function registerTools(
   server: McpServer,
