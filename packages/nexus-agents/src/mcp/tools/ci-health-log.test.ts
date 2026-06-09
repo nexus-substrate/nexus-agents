@@ -15,6 +15,23 @@ import {
 } from './ci-health-log.js';
 import { resetNexusDataDirCache, nexusDataPath } from '../../config/nexus-data-dir.js';
 
+describe('ci-health-log circular-import guard (#3756)', () => {
+  it('does NOT import the shared schema from ci-health-check-tool (cycle stays broken)', () => {
+    const src = readFileSync(join(import.meta.dirname, 'ci-health-log.ts'), 'utf-8');
+    // The cycle was ci-health-log ← CiHealthStatusSchema ← ci-health-check-tool,
+    // closed by the tool's import of this module's appenders. The shared schema now
+    // lives in the leaf ci-health-types.js; importing it from the tool would
+    // re-introduce the TDZ ReferenceError under tsx ESM evaluation.
+    expect(src).not.toMatch(/from '\.\/ci-health-check-tool\.js'/);
+    expect(src).toMatch(/from '\.\/ci-health-types\.js'/);
+  });
+
+  it('loads ci-health-check-tool + the tools barrel without a circular-init error', async () => {
+    await expect(import('./ci-health-check-tool.js')).resolves.toBeDefined();
+    await expect(import('./index.js')).resolves.toBeDefined();
+  });
+});
+
 describe('ci-health-log', () => {
   let tmpDir: string;
   const originalDataDir = process.env['NEXUS_DATA_DIR'];

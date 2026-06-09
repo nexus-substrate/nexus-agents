@@ -43,10 +43,15 @@ import {
 } from './tool-result.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 import { appendCiHealthEvent, eventFromCheck } from './ci-health-log.js';
-
-/** Combined health verdict. `degraded` means partial — operator can still ship with caution. */
-export const CiHealthStatusSchema = z.enum(['healthy', 'degraded', 'outage', 'unknown']);
-export type CiHealthStatus = z.infer<typeof CiHealthStatusSchema>;
+// #3756: shared schema/types live in the leaf ci-health-types.js to break the
+// ci-health-check-tool ↔ ci-health-log cycle. Re-exported here for API compat.
+import {
+  CiHealthStatusSchema,
+  type CiHealthStatus,
+  type CiHealthSignal,
+} from './ci-health-types.js';
+export { CiHealthStatusSchema };
+export type { CiHealthStatus, CiHealthSignal };
 
 export const CiHealthCheckInputSchema = z.object({
   /**
@@ -71,13 +76,6 @@ export const CiHealthCheckInputSchema = z.object({
     .describe('Recent-runs lookback window in minutes (5-180; default 30).'),
 });
 export type CiHealthCheckInput = z.infer<typeof CiHealthCheckInputSchema>;
-
-/** Per-signal evidence the tool returns alongside the combined verdict. */
-export interface CiHealthSignal {
-  readonly source: 'github-status' | 'repo-activity-window';
-  readonly status: CiHealthStatus;
-  readonly evidence: string;
-}
 
 export interface CiHealthCheckResponse {
   readonly status: CiHealthStatus;
