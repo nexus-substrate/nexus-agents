@@ -57,7 +57,7 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     'Get multi-CLI performance weather report with per-CLI success rates and adaptive routing bonuses.',
   issue_triage: 'Triage GitHub issues with trust classification and typed action recommendations.',
   run_graph_workflow:
-    'Run a DAG-shaped workflow with per-node checkpoints, event streaming, and an audit trail. Use for multi-step pipelines where intermediate state must survive failures (checkpoints persist per node for inspection/restart). For straight linear templates, use `run_workflow` instead.',
+    'Run a DAG-shaped workflow with per-node checkpoints, event streaming, and an audit trail. Checkpoints drive the executor in-process recovery (crash-resume + selective node retry) and inspection — the MCP call is fire-and-forget with NO caller resume input, and the checkpoint store is in-memory (not durable across process restarts). For straight linear templates, use `run_workflow` instead.',
   execute_spec:
     'Execute an AI software factory spec through the full pipeline (parse, decompose, compile, execute, validate).',
   registry_import:
