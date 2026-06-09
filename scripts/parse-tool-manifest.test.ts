@@ -19,6 +19,14 @@ describe('parseRegisteredToolNames', () => {
     expect(parseRegisteredToolNames(src)).toEqual(['orchestrate', 'run', 'vote']);
   });
 
+  it('extracts names from the #3597 object-array shape ({ name, annotations, ... })', () => {
+    const src = `export const TOOL_MANIFEST = [
+      { name: 'orchestrate', annotations: { readOnlyHint: false }, sideEffects: [] },
+      { name: 'run', annotations: { readOnlyHint: true }, sideEffects: [{ category: 'implicit', description: 'x' }] },
+    ] as const;`;
+    expect(parseRegisteredToolNames(src)).toEqual(['orchestrate', 'run']);
+  });
+
   it('reflects add/remove of a tool (the acceptance signal)', () => {
     const before = `const TOOL_MANIFEST = ['a', 'b'] as const;`;
     const after = `const TOOL_MANIFEST = ['a', 'b', 'c'] as const;`;

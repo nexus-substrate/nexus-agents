@@ -155,10 +155,12 @@ export interface RegisterMcpToolsOptions {
  *
  * Aliased from `REGISTERED_TOOL_NAMES` in `mcp/tools/index.ts` — the single
  * source of truth that `inject-governance.ts` reads via `extractMcpTools` and
- * syncs to `server.json` (PR #2362). Aliased here to preserve the existing
- * `REGISTERED_TOOLS` export consumed by `tool-annotations.test.ts` and the
- * allowlist-status logging in `registerToolCategories` (Issue #2935 closes
- * the duplicate hand-maintained array).
+ * syncs to `server.json` (PR #2362). As of #3597 `REGISTERED_TOOL_NAMES` is the
+ * derived NAME list of the object-shaped `TOOL_MANIFEST` (`TOOL_MANIFEST.map(t =>
+ * t.name)`), so `REGISTERED_TOOLS` stays a `readonly string[]` of tool names.
+ * Aliased here to preserve the existing `REGISTERED_TOOLS` export consumed by
+ * `tool-annotations.test.ts` and the allowlist-status logging in
+ * `registerToolCategories` (Issue #2935 closes the duplicate hand-maintained array).
  */
 import { REGISTERED_TOOL_NAMES } from './mcp/index.js';
 export const REGISTERED_TOOLS = REGISTERED_TOOL_NAMES;

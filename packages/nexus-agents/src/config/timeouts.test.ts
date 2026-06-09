@@ -541,8 +541,8 @@ describe('Centralized Timeout Configuration', () => {
     // a warn — a new tool added to TOOL_MANIFEST without a TOOL_CLASS entry
     // turns this red.
     it('classifies every registered MCP tool', () => {
-      const unclassified = TOOL_MANIFEST.filter(
-        (t) => !(t in (TOOL_CLASS as Record<string, OperationClassName>))
+      const unclassified = TOOL_MANIFEST.map((t) => t.name).filter(
+        (name) => !(name in (TOOL_CLASS as Record<string, OperationClassName>))
       );
       expect(unclassified).toEqual([]);
     });

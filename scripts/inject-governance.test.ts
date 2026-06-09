@@ -11,6 +11,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { execSync } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { parseRegisteredToolNames } from './parse-tool-manifest.js';
 
 const ROOT = join(import.meta.dirname, '..');
 const SCRIPT = join(ROOT, 'scripts/inject-governance.ts');
@@ -663,10 +664,9 @@ describe('inject-governance claude-from-agents (#3446)', () => {
 // ============================================================================
 
 describe('inject-governance tool-annotations (#2648)', () => {
-  // #3444/#3358: the TOOL_ANNOTATIONS map lives in the tools/ subdirectory; the
-  // src/mcp/tool-annotations.ts wrapper has no annotation blocks, so mutating it
-  // was a no-op that left this gate-meta-test silently passing.
-  const ANNOTATIONS_PATH = join(ROOT, 'packages/nexus-agents/src/mcp/tools/tool-annotations.ts');
+  // #3597: annotation data is folded INTO TOOL_MANIFEST; the gate now verifies
+  // every manifest entry pairs a `name` with an `annotations: {` block.
+  const MANIFEST_PATH = join(ROOT, 'packages/nexus-agents/src/mcp/tools/tool-manifest.ts');
 
   it(
     'passes when every registered tool has an entry in TOOL_ANNOTATIONS',
@@ -679,16 +679,20 @@ describe('inject-governance tool-annotations (#2648)', () => {
   );
 
   it(
-    'fails when a registered tool is missing from TOOL_ANNOTATIONS',
+    'fails when a registered tool is missing its manifest annotations block',
     { timeout: SUBPROCESS_TIMEOUT },
     () => {
-      const original = readFileSync(ANNOTATIONS_PATH, 'utf-8');
+      const original = readFileSync(MANIFEST_PATH, 'utf-8');
       try {
-        // Strip the weather_report entry. The closing `},` is shared style
-        // across entries so a delete-line range works.
-        const broken = original.replace(/^ {2}weather_report: \{[\s\S]*?^ {2}\},\n/m, '');
+        // Strip ONLY the `annotations: { … },` block from the weather_report
+        // entry (leaving its name + sideEffects), so it stays registered but
+        // becomes unannotated — exactly the #2648 failure the gate must catch.
+        const broken = original.replace(
+          /(name: 'weather_report',\s*)annotations:\s*\{[\s\S]*?\},\s*/m,
+          '$1'
+        );
         expect(broken).not.toBe(original);
-        writeFileSync(ANNOTATIONS_PATH, broken);
+        writeFileSync(MANIFEST_PATH, broken);
         let stderr = '';
         let exitCode = 0;
         try {
@@ -706,7 +710,7 @@ describe('inject-governance tool-annotations (#2648)', () => {
         expect(stderr).toContain('missing annotations');
         expect(stderr).toContain('weather_report');
       } finally {
-        writeFileSync(ANNOTATIONS_PATH, original);
+        writeFileSync(MANIFEST_PATH, original);
       }
     }
   );
@@ -1168,16 +1172,15 @@ describe('inject-governance ENTRYPOINTS tool enumerations (#3334)', () => {
 
   /** Registered tool names from the canonical TOOL_MANIFEST (source of truth, #3566). */
   function registeredTools(): string[] {
+    // #3597: TOOL_MANIFEST is an object array, so extract names via the shared
+    // AST parser (a per-line string regex would also pick up titles/descriptions).
     const src = readFileSync(
       join(ROOT, 'packages/nexus-agents/src/mcp/tools/tool-manifest.ts'),
       'utf-8'
     );
-    const m = /TOOL_MANIFEST\s*=\s*\[([\s\S]*?)\]\s*as const/.exec(src);
-    expect(m).not.toBeNull();
-    return m![1]!
-      .split('\n')
-      .map((l) => /'([^']+)'/.exec(l)?.[1])
-      .filter((n): n is string => n !== undefined);
+    const names = parseRegisteredToolNames(src);
+    expect(names.length).toBeGreaterThan(0);
+    return names;
   }
 
   it(
