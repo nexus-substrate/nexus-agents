@@ -22,6 +22,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createLogger } from '../core/index.js';
+import { nexusDataPath } from './nexus-data-dir.js';
 import { resolveModelIdentitySync } from './model-identity.js';
 import { deriveEntry } from './model-derivation.js';
 import type { ModelEntry } from './model-registry.js';
@@ -47,6 +48,20 @@ export interface GeneratedLoadResult {
 }
 
 function defaultGeneratedPath(): string {
+  // #3707: `registry refresh` writes the regenerated catalog to the DATA dir
+  // (nexusDataPath), but this loader historically read only the bundled PACKAGE
+  // copy — so a refresh was silently never picked up (even after #3185's
+  // reloadDefaultRegistry, which re-reads via this path). Prefer a refreshed file
+  // in the data dir when present, falling back to the bundled copy — the same
+  // data-dir > package precedence the overlay path already uses. The package dir
+  // is also often read-only under a global npm install, so the data dir is the
+  // only writable target a refresh has.
+  try {
+    const dataPath = nexusDataPath('model-registry.generated.json');
+    if (existsSync(dataPath)) return dataPath;
+  } catch {
+    // Fall through to the bundled package copy on any data-dir resolution error.
+  }
   const here = dirname(fileURLToPath(import.meta.url));
   return join(here, 'model-registry.generated.json');
 }
