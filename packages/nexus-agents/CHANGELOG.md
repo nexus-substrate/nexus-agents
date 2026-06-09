@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 2.128.3
+
+### Patch Changes
+
+- [#3795](https://github.com/nexus-substrate/nexus-agents/pull/3795) [`b78b6af`](https://github.com/nexus-substrate/nexus-agents/commit/b78b6afc4a35d461858a6ce8d46d55a3aae44ecf) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - refactor(tools): fold per-tool annotation + side-effect data into the canonical `TOOL_MANIFEST` ([#3597](https://github.com/nexus-substrate/nexus-agents/issues/3597), increment 2 of [#3563](https://github.com/nexus-substrate/nexus-agents/issues/3563)). Manifest entries are now `{ name, annotations, sideEffects }` objects, and `TOOL_ANNOTATIONS` + `getToolAnnotations`/`getMcpAnnotations` derive from the manifest (single source of truth; annotation types defined on the import-free leaf). Every annotation value is preserved byte-for-byte (verified against a pre-refactor golden master — zero value mismatches across all 46 tools). The AST manifest parser ([#3596](https://github.com/nexus-substrate/nexus-agents/issues/3596)) and all pipeline scripts that read tool names now handle the object shape; governance:check stays at 46 tools, docs:tools:check at 47 files. No behavior change for any tool's MCP hints.
+
 ## 2.128.2
 
 ### Patch Changes
