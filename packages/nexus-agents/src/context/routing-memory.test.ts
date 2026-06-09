@@ -479,4 +479,44 @@ describe('RoutingMemory', () => {
       expect(rm2Stats.totalPreferences).toBeGreaterThan(0);
     });
   });
+
+  describe('getResearchMaturityReport (#3234 measurement consumer)', () => {
+    it('buckets recorded experience by research-maturity and reports the delta', () => {
+      // Distinct workflows → distinct patterns (not merged into one entry).
+      routingMemory.recordExperience('wf-high', ['claude'], true, {
+        durationMs: 10,
+        tokensUsed: 1,
+        researchMaturity: 0.9,
+      });
+      routingMemory.recordExperience('wf-low', ['claude'], false, {
+        durationMs: 10,
+        tokensUsed: 1,
+        researchMaturity: 0.2,
+      });
+      // No researchMaturity → the 'none' bucket.
+      routingMemory.recordExperience('wf-none', ['claude'], false, {
+        durationMs: 10,
+        tokensUsed: 1,
+      });
+
+      const report = routingMemory.getResearchMaturityReport();
+      expect(report.totalRecords).toBe(3);
+      expect(report.byBucket.high.successRate).toBe(1); // the one high-maturity run succeeded
+      expect(report.byBucket.none.successRate).toBe(0); // the no-research run failed
+      expect(report.highVsNoneDelta).toBe(1);
+    });
+
+    it('does not leak across instances — a fresh MobiMem reports zero records', () => {
+      const freshMobi = new MobiMem({
+        maxProfileEntries: 10,
+        maxExperiencePatterns: 10,
+        maxActionCacheEntries: 10,
+        actionCacheTtlMs: 3600000,
+        minProfileConfidence: 0.5,
+        minExperienceSuccessRate: 0.6,
+      });
+      const fresh = new RoutingMemory({ minObservations: 3 }, freshMobi);
+      expect(fresh.getResearchMaturityReport().totalRecords).toBe(0);
+    });
+  });
 });

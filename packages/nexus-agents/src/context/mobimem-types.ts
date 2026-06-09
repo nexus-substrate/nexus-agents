@@ -244,6 +244,9 @@ export interface IExperienceMemory {
   /** Find reliable patterns (above success rate threshold) */
   findReliablePatterns(taskType: string): readonly ExperienceEntry[];
 
+  /** #3234: all recorded entries across task types (for the research-maturity measurement). */
+  getAllPatterns(): readonly ExperienceEntry[];
+
   /** Get the best pattern for a context */
   getBestPattern(taskType: string, contextSignature: string): ExperienceEntry | null;
 
