@@ -18,7 +18,7 @@ import type { ITaskTracker } from './task-tracker.js';
 import { executeExpert, type ExpertBridgeResult } from './expert-bridge.js';
 import { executeDiscovery, ResearchDiscoverInputSchema } from '../mcp/tools/research-discover.js';
 import { analyzeGaps } from '../mcp/tools/research-analyze.js';
-import { buildResearchContext } from './research-context.js';
+import { buildResearchContext, researchContextFromText } from './research-context.js';
 import { createBudgetGuard, type BudgetGuard, type AgentBudgetConfig } from './budget-guard.js';
 import type { BuiltInExpertType } from '../agents/experts/expert-config.js';
 import { getOutcomeStore, getOutcomeSummaryText } from '../orchestration/outcomes/outcome-store.js';
@@ -478,14 +478,18 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
           'Research',
           `Done (${String(ctx.metadata.discoveredItems.length)} items, ${String(durationMs)}ms)`
         );
-        return memoryCtx ? `${ctx.text}${memoryCtx}` : ctx.text;
+        // #3234 seam 0: return the full ResearchContext (text + structured
+        // metadata) so the orchestration can attach the metadata to tasks.
+        const text = memoryCtx ? `${ctx.text}${memoryCtx}` : ctx.text;
+        return { text, metadata: ctx.metadata };
       } catch (error: unknown) {
         const durationMs = getTimeProvider().now() - start;
         emitStageEvent('research', 'failed', { durationMs });
         logger.debug('Research stage failed; continuing with minimal context', {
           error: error instanceof Error ? error.message : String(error),
         });
-        return `[Research failed] ${task.slice(0, 500)}`;
+        // Empty-metadata context — the no-research path degrades cleanly.
+        return researchContextFromText(`[Research failed] ${task.slice(0, 500)}`);
       }
     },
 

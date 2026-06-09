@@ -14,6 +14,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
+import { researchContextFromText, type ResearchContext } from './research-context.js';
 import { createDevStageRegistry, createAuditStageRegistry } from './stage-wrappers.js';
 import type {
   DevPipelineStages,
@@ -31,8 +32,8 @@ import { PIPELINE_TEMPLATES, getTemplate, listTemplateIds } from './templates.js
 function createMockStages(): DevPipelineStages {
   return {
     research: vi
-      .fn<(task: string) => Promise<string>>()
-      .mockResolvedValue('Research findings on auth patterns'),
+      .fn<(task: string) => Promise<ResearchContext>>()
+      .mockResolvedValue(researchContextFromText('Research findings on auth patterns')),
     plan: vi
       .fn<(task: string, research: string, feedback?: string) => Promise<string>>()
       .mockResolvedValue('Auth implementation plan'),

@@ -8,6 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { researchContextFromText } from './research-context.js';
 import { runDevPipeline } from './dev-pipeline.js';
 import type { DevPipelineStages, VoteResult } from './dev-pipeline.js';
 
@@ -24,7 +25,9 @@ function createVisionStages(): { stages: DevPipelineStages } {
   const stages: DevPipelineStages = {
     research: () =>
       Promise.resolve(
-        '## Research: existing tools (research_discover, weather_report, outcome store) are standalone islands'
+        researchContextFromText(
+          '## Research: existing tools (research_discover, weather_report, outcome store) are standalone islands'
+        )
       ),
 
     plan: (_task, _research, feedback) =>

@@ -21,6 +21,7 @@
 import { nexusDataPath } from '../config/nexus-data-dir.js';
 
 import { runQaLoop } from '../orchestration/qa-loop.js';
+import { type ResearchContext, researchContextFromText } from './research-context.js';
 
 import { createLogger, getTimeProvider, withStep } from '../core/index.js';
 import { getPipelineEventBus } from './event-bus.js';
@@ -133,8 +134,12 @@ export interface DevPipelineResult {
 
 /** Pluggable stage implementations — inject real or mock agents. */
 export interface DevPipelineStages {
-  /** Research expert gathers context for the task. */
-  research(task: string): Promise<string>;
+  /**
+   * Research expert gathers context for the task. Returns the full
+   * {@link ResearchContext} (#3234 seam 0): `.text` feeds plan/vote as before,
+   * `.metadata` is attached to decomposed tasks for routing-experience enrichment.
+   */
+  research(task: string): Promise<ResearchContext>;
   /** Architect creates a plan from research + task. */
   plan(task: string, research: string, priorFeedback?: string): Promise<string>;
   /**
@@ -686,22 +691,25 @@ async function resolveResearch(
   task: string,
   stages: DevPipelineStages,
   options: DevPipelineOptions | undefined
-): Promise<string> {
-  return runOrResume(prior, 'research', () =>
-    withStep(
-      { name: 'research', kind: 'pipeline.stage', attrs: { task: task.slice(0, 100) } },
-      async (ctx) => {
-        const override = options?.researchOverride;
-        if (override !== undefined) {
-          ctx.setSummary(`override: ${String(override.length)} chars`);
-          return override;
-        }
-        options?.untrustedInputGuard?.();
-        const r = await stages.research(task);
-        ctx.setSummary(`${String(r.length)} chars`);
-        return r;
-      }
-    )
+): Promise<ResearchContext> {
+  // #3234: the checkpoint persists research as text only, so a RESUMED run has no
+  // structured metadata — wrap the text with empty metadata (degrades cleanly).
+  if (prior?.research !== undefined) {
+    logger.info('Resuming from checkpoint', { stage: 'research' });
+    return researchContextFromText(prior.research);
+  }
+  const override = options?.researchOverride;
+  if (override !== undefined) {
+    return researchContextFromText(override);
+  }
+  options?.untrustedInputGuard?.();
+  return withStep(
+    { name: 'research', kind: 'pipeline.stage', attrs: { task: task.slice(0, 100) } },
+    async (ctx) => {
+      const rc = await stages.research(task);
+      ctx.setSummary(`${String(rc.text.length)} chars`);
+      return rc;
+    }
   );
 }
 
@@ -722,9 +730,13 @@ async function runPlanningPhase(
   const sid = options?.sessionId;
   const bm = options?.beliefMemory;
   const research = await resolveResearch(prior, task, stages, options);
-  if (sid !== undefined) saveStageCheckpoint(sid, 'research', { type: 'research', text: research });
+  // #3234: persist text only (unchanged checkpoint shape — metadata is fresh-run
+  // scoped and not resumable). plan/vote consume the text via research.text.
+  if (sid !== undefined) {
+    saveStageCheckpoint(sid, 'research', { type: 'research', text: research.text });
+  }
 
-  const planContext = await assemblePlanContext(research, task, sid, bm);
+  const planContext = await assemblePlanContext(research.text, task, sid, bm);
   const planResult = await runPlanOrResume(prior, task, planContext, stages, sid);
   if (sid !== undefined) {
     saveStageCheckpoint(sid, 'plan', {
@@ -852,19 +864,6 @@ async function runQualityGateStage(
       return r;
     }
   );
-}
-
-/** Run stage or return cached result from checkpoint. */
-async function runOrResume(
-  prior: PipelineCheckpointState | null,
-  stage: string,
-  run: () => Promise<string>
-): Promise<string> {
-  if (prior?.research !== undefined && stage === 'research') {
-    logger.info('Resuming from checkpoint', { stage });
-    return prior.research;
-  }
-  return run();
 }
 
 /** Run plan/vote or return from checkpoint. */

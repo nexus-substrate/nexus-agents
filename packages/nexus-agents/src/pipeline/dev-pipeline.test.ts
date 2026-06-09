@@ -3,6 +3,7 @@
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import { researchContextFromText } from './research-context.js';
 import { runDevPipeline } from './dev-pipeline.js';
 import { getPipelineEventBus } from './event-bus.js';
 import { PolicyBlockedError } from './policy-evaluator.js';
@@ -86,7 +87,9 @@ function makeHindsightRecord(over: Partial<HindsightRecord>): HindsightRecord {
 
 function createMockStages(overrides?: Partial<DevPipelineStages>): DevPipelineStages {
   return {
-    research: vi.fn().mockResolvedValue('Research findings: relevant context gathered'),
+    research: vi
+      .fn()
+      .mockResolvedValue(researchContextFromText('Research findings: relevant context gathered')),
     plan: vi.fn().mockResolvedValue('Implementation plan: step 1, step 2, step 3'),
     vote: vi.fn().mockResolvedValue({ kind: 'approved', approvalPercentage: 83 }),
     decompose: vi.fn().mockResolvedValue([
