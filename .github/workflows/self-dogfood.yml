@@ -37,10 +37,15 @@ jobs:
     name: Self-Review PR
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # #3778 (Rule-of-Two CI leg): never run the model-driven review on
+    # auto-remediation bot branches — keeps secrets off untrusted-signal-derived
+    # content. Explicit prefix guard (not just draft-status); kept in sync with
+    # AUTO_REMEDIATION_BRANCH_PREFIX in src/mcp/tools/auto-remediation-branch.ts.
     if: |
       (github.event_name == 'pull_request' &&
        github.event.pull_request.draft == false &&
-       github.actor != 'dependabot[bot]') ||
+       github.actor != 'dependabot[bot]' &&
+       !startsWith(github.event.pull_request.head.ref, 'auto-remediation/')) ||
       (github.event_name == 'workflow_dispatch' && inputs.pr_number != '')
     permissions:
       contents: read

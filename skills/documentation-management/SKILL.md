@@ -76,6 +76,8 @@ allowed-tools: Read, Edit, Write, Bash, Grep, Glob, Task
 
 <!-- PIPELINE NOTE: scripts/generate-tool-reference.ts (#3687, 2026-06-08) generates the per-tool MCP reference (one markdown page per tool + an index) into docs/reference/tools/, the Astro `docs` content collection base path established by the #3686 typedoc→Astro spike. Data sources are single-source-of-truth surfaces — TOOL_MANIFEST (canonical tool list, #3566), TOOL_DESCRIPTIONS/README_TOOL_DESCRIPTIONS, and each tool's exported `*InputSchema` Zod object (params parsed statically from source; runtime import is blocked by the ci-health circular import #3756). `pnpm docs:tools` writes; `pnpm docs:tools:check` is the drift gate (#3689 will wire it into CI). The generated dir is added to check-docs-indexed.ts's exclusion + .prettierignore (mirroring docs/api/). Cut-over of ENTRYPOINTS/README API sections to this output is #3688 (vote-gated). -->
 
+<!-- PIPELINE NOTE: link-check.yml gained a Rule-of-Two secret-gating guard (#3778, 2026-06-08) — its `link-check` job now skips pull_request runs from `auto-remediation/*` head refs (the auto-remediation plan doc is markdown and matches the job's path filter, and the job carries GITHUB_TOKEN). No change to push/schedule/dispatch link validation. Mirrors the existing ci.yml/pr-review.yml guards; kept in sync with AUTO_REMEDIATION_BRANCH_PREFIX. A regression test (auto-remediation-branch.test.ts) asserts all four secret-bearing PR-triggered workflows carry the guard. -->
+
 **Full specification:** [docops-spec.md](../../docs/ops/docops-spec.md)
 
 ---
