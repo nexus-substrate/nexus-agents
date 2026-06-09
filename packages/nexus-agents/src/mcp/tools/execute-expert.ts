@@ -192,17 +192,23 @@ export async function maybeFetchContextPrefix(
   logger: ILogger | undefined
 ): Promise<string | undefined> {
   if (process.env['NEXUS_CONTEXT_RETRIEVER_INJECT'] !== '1') return undefined;
+  const category = inferTaskCategory(task);
   try {
     const ctx = await getContextForTask({
       task,
-      category: inferTaskCategory(task),
+      category,
       ...(logger !== undefined ? { logger } : {}),
     });
     const summary = summarizeContextForPrompt(ctx);
     return summary === '' ? undefined : summary;
   } catch (error: unknown) {
-    logger?.debug('execute_expert: context retrieval failed — running without prefix', {
-      error: error instanceof Error ? error.message : String(error),
+    // #3699: the #3180-adopted best-effort failure policy — observable WARN
+    // (not a swallowed debug line) + continue without the prefix. This site has
+    // no event-listener channel (unlike the graph boundary), so the structured
+    // warn IS the observable; `getErrorMessage` yields a sanitized message only.
+    logger?.warn('execute_expert: context retrieval failed; continuing without prefix', {
+      category,
+      error: getErrorMessage(error),
     });
     return undefined;
   }
