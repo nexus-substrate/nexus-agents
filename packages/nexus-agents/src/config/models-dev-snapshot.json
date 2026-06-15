@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "fetchedAt": "2026-06-08",
+  "fetchedAt": "2026-06-15",
   "sourceUrl": "https://models.dev/api.json",
   "entries": [
     {
@@ -1189,7 +1189,7 @@
       "displayName": "Qwen3.7 Plus",
       "verifiedAt": "2026-06-04",
       "contextWindow": 1000000,
-      "maxOutputTokens": 16384,
+      "maxOutputTokens": 65536,
       "inputModalities": ["text", "image", "video"],
       "outputModalities": ["text"],
       "pricing": {
@@ -1411,6 +1411,30 @@
       "pricing": {
         "inputPer1M": 3,
         "outputPer1M": 15
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
+      "id": "claude-fable-5",
+      "vendor": "anthropic",
+      "family": "claude-fable",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-anthropic",
+      "source": "models-dev",
+      "displayName": "Claude Fable 5",
+      "verifiedAt": "2026-06-09",
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "inputModalities": ["text", "image", "pdf"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 10,
+        "outputPer1M": 50
       },
       "toolCapabilities": ["function-calling"]
     },
@@ -1899,6 +1923,30 @@
       "toolCapabilities": ["function-calling"]
     },
     {
+      "id": "command-a-plus-05-2026",
+      "vendor": "cohere",
+      "family": "command-a",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-cohere",
+      "source": "models-dev",
+      "displayName": "Command A Plus",
+      "verifiedAt": "2026-06-09",
+      "contextWindow": 128000,
+      "maxOutputTokens": 64000,
+      "inputModalities": ["text", "image"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 2.5,
+        "outputPer1M": 10
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
       "id": "command-a-reasoning-08-2025",
       "vendor": "cohere",
       "family": "command-a",
@@ -2030,7 +2078,7 @@
       "profileId": "models-dev-cohere",
       "source": "models-dev",
       "displayName": "Command R7B",
-      "verifiedAt": "2024-02-27",
+      "verifiedAt": "2024-12-02",
       "contextWindow": 128000,
       "maxOutputTokens": 4000,
       "inputModalities": ["text"],
@@ -2062,6 +2110,30 @@
       "pricing": {
         "inputPer1M": 0.0375,
         "outputPer1M": 0.15
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
+      "id": "north-mini-code-1-0",
+      "vendor": "cohere",
+      "family": "north",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-cohere",
+      "source": "models-dev",
+      "displayName": "North Mini Code",
+      "verifiedAt": "2026-06-09",
+      "contextWindow": 256000,
+      "maxOutputTokens": 64000,
+      "inputModalities": ["text"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 0,
+        "outputPer1M": 0
       },
       "toolCapabilities": ["function-calling"]
     },
@@ -2676,6 +2748,46 @@
       "toolCapabilities": ["function-calling"]
     },
     {
+      "id": "gemma-4-E2B-it",
+      "vendor": "google",
+      "family": "gemma",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-google",
+      "source": "models-dev",
+      "displayName": "Gemma 4 E2B IT",
+      "verifiedAt": "2026-04-02",
+      "contextWindow": 131072,
+      "maxOutputTokens": 8192,
+      "inputModalities": ["text", "image", "audio"],
+      "outputModalities": ["text"],
+      "toolCapabilities": ["function-calling"]
+    },
+    {
+      "id": "gemma-4-E4B-it",
+      "vendor": "google",
+      "family": "gemma",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-google",
+      "source": "models-dev",
+      "displayName": "Gemma 4 E4B IT",
+      "verifiedAt": "2026-04-02",
+      "contextWindow": 131072,
+      "maxOutputTokens": 8192,
+      "inputModalities": ["text", "image", "audio"],
+      "outputModalities": ["text"],
+      "toolCapabilities": ["function-calling"]
+    },
+    {
       "id": "claude-3-5-haiku@20241022",
       "vendor": "google",
       "family": "claude-haiku",
@@ -2696,54 +2808,6 @@
       "pricing": {
         "inputPer1M": 0.8,
         "outputPer1M": 4
-      },
-      "toolCapabilities": ["function-calling"]
-    },
-    {
-      "id": "claude-3-5-sonnet@20241022",
-      "vendor": "google",
-      "family": "claude-sonnet",
-      "parallelToolCalls": false,
-      "promptCaching": "none",
-      "toolDefinitionFormat": "openai",
-      "maxRecommendedTurnBudget": 10,
-      "strictJson": true,
-      "quirks": [],
-      "profileId": "models-dev-google",
-      "source": "models-dev",
-      "displayName": "Claude Sonnet 3.5 v2",
-      "verifiedAt": "2024-10-22",
-      "contextWindow": 200000,
-      "maxOutputTokens": 8192,
-      "inputModalities": ["text", "image", "pdf"],
-      "outputModalities": ["text"],
-      "pricing": {
-        "inputPer1M": 3,
-        "outputPer1M": 15
-      },
-      "toolCapabilities": ["function-calling"]
-    },
-    {
-      "id": "claude-3-7-sonnet@20250219",
-      "vendor": "google",
-      "family": "claude-sonnet",
-      "parallelToolCalls": false,
-      "promptCaching": "none",
-      "toolDefinitionFormat": "openai",
-      "maxRecommendedTurnBudget": 10,
-      "strictJson": true,
-      "quirks": [],
-      "profileId": "models-dev-google",
-      "source": "models-dev",
-      "displayName": "Claude Sonnet 3.7",
-      "verifiedAt": "2025-02-19",
-      "contextWindow": 200000,
-      "maxOutputTokens": 64000,
-      "inputModalities": ["text", "image", "pdf"],
-      "outputModalities": ["text"],
-      "pricing": {
-        "inputPer1M": 3,
-        "outputPer1M": 15
       },
       "toolCapabilities": ["function-calling"]
     },
@@ -3036,54 +3100,6 @@
       "toolCapabilities": ["function-calling"]
     },
     {
-      "id": "gemini-2.0-flash",
-      "vendor": "google",
-      "family": "gemini-flash",
-      "parallelToolCalls": false,
-      "promptCaching": "none",
-      "toolDefinitionFormat": "openai",
-      "maxRecommendedTurnBudget": 10,
-      "strictJson": true,
-      "quirks": [],
-      "profileId": "models-dev-google",
-      "source": "models-dev",
-      "displayName": "Gemini 2.0 Flash",
-      "verifiedAt": "2024-12-11",
-      "contextWindow": 1048576,
-      "maxOutputTokens": 8192,
-      "inputModalities": ["text", "image", "audio", "video", "pdf"],
-      "outputModalities": ["text"],
-      "pricing": {
-        "inputPer1M": 0.15,
-        "outputPer1M": 0.6
-      },
-      "toolCapabilities": ["function-calling"]
-    },
-    {
-      "id": "gemini-2.0-flash-lite",
-      "vendor": "google",
-      "family": "gemini-flash-lite",
-      "parallelToolCalls": false,
-      "promptCaching": "none",
-      "toolDefinitionFormat": "openai",
-      "maxRecommendedTurnBudget": 10,
-      "strictJson": true,
-      "quirks": [],
-      "profileId": "models-dev-google",
-      "source": "models-dev",
-      "displayName": "Gemini 2.0 Flash-Lite",
-      "verifiedAt": "2024-12-11",
-      "contextWindow": 1048576,
-      "maxOutputTokens": 8192,
-      "inputModalities": ["text", "image", "audio", "video", "pdf"],
-      "outputModalities": ["text"],
-      "pricing": {
-        "inputPer1M": 0.075,
-        "outputPer1M": 0.3
-      },
-      "toolCapabilities": ["function-calling"]
-    },
-    {
       "id": "gemini-2.5-flash",
       "vendor": "google",
       "family": "gemini-flash",
@@ -3132,54 +3148,6 @@
       "toolCapabilities": ["function-calling"]
     },
     {
-      "id": "gemini-2.5-flash-lite-preview-06-17",
-      "vendor": "google",
-      "family": "gemini-flash-lite",
-      "parallelToolCalls": false,
-      "promptCaching": "none",
-      "toolDefinitionFormat": "openai",
-      "maxRecommendedTurnBudget": 10,
-      "strictJson": true,
-      "quirks": [],
-      "profileId": "models-dev-google",
-      "source": "models-dev",
-      "displayName": "Gemini 2.5 Flash Lite Preview 06-17",
-      "verifiedAt": "2025-06-17",
-      "contextWindow": 65536,
-      "maxOutputTokens": 65536,
-      "inputModalities": ["text", "image", "audio", "video", "pdf"],
-      "outputModalities": ["text"],
-      "pricing": {
-        "inputPer1M": 0.1,
-        "outputPer1M": 0.4
-      },
-      "toolCapabilities": ["function-calling"]
-    },
-    {
-      "id": "gemini-2.5-flash-preview-09-2025",
-      "vendor": "google",
-      "family": "gemini-flash",
-      "parallelToolCalls": false,
-      "promptCaching": "none",
-      "toolDefinitionFormat": "openai",
-      "maxRecommendedTurnBudget": 10,
-      "strictJson": true,
-      "quirks": [],
-      "profileId": "models-dev-google",
-      "source": "models-dev",
-      "displayName": "Gemini 2.5 Flash Preview 09-25",
-      "verifiedAt": "2025-09-25",
-      "contextWindow": 1048576,
-      "maxOutputTokens": 65536,
-      "inputModalities": ["text", "image", "audio", "video", "pdf"],
-      "outputModalities": ["text"],
-      "pricing": {
-        "inputPer1M": 0.3,
-        "outputPer1M": 2.5
-      },
-      "toolCapabilities": ["function-calling"]
-    },
-    {
       "id": "gemini-2.5-flash-tts",
       "vendor": "google",
       "family": "gemini-flash",
@@ -3215,7 +3183,7 @@
       "profileId": "models-dev-google",
       "source": "models-dev",
       "displayName": "Gemini 2.5 Pro",
-      "verifiedAt": "2025-06-05",
+      "verifiedAt": "2025-06-17",
       "contextWindow": 1048576,
       "maxOutputTokens": 65536,
       "inputModalities": ["text", "image", "audio", "video", "pdf"],
@@ -3270,30 +3238,6 @@
       "pricing": {
         "inputPer1M": 0.5,
         "outputPer1M": 3
-      },
-      "toolCapabilities": ["function-calling"]
-    },
-    {
-      "id": "gemini-3-pro-preview",
-      "vendor": "google",
-      "family": "gemini-pro",
-      "parallelToolCalls": false,
-      "promptCaching": "none",
-      "toolDefinitionFormat": "openai",
-      "maxRecommendedTurnBudget": 10,
-      "strictJson": true,
-      "quirks": [],
-      "profileId": "models-dev-google",
-      "source": "models-dev",
-      "displayName": "Gemini 3 Pro Preview",
-      "verifiedAt": "2025-11-18",
-      "contextWindow": 1048576,
-      "maxOutputTokens": 65536,
-      "inputModalities": ["text", "image", "video", "audio", "pdf"],
-      "outputModalities": ["text"],
-      "pricing": {
-        "inputPer1M": 2,
-        "outputPer1M": 12
       },
       "toolCapabilities": ["function-calling"]
     },
@@ -4563,54 +4507,6 @@
       "toolCapabilities": ["function-calling"]
     },
     {
-      "id": "deepseek-ai/deepseek-v3.1-terminus",
-      "vendor": "nvidia",
-      "family": "deepseek",
-      "parallelToolCalls": false,
-      "promptCaching": "none",
-      "toolDefinitionFormat": "openai",
-      "maxRecommendedTurnBudget": 10,
-      "strictJson": true,
-      "quirks": [],
-      "profileId": "models-dev-nvidia",
-      "source": "models-dev",
-      "displayName": "DeepSeek V3.1 Terminus",
-      "verifiedAt": "2025-09-22",
-      "contextWindow": 128000,
-      "maxOutputTokens": 8192,
-      "inputModalities": ["text"],
-      "outputModalities": ["text"],
-      "pricing": {
-        "inputPer1M": 0,
-        "outputPer1M": 0
-      },
-      "toolCapabilities": ["function-calling"]
-    },
-    {
-      "id": "deepseek-ai/deepseek-v3.2",
-      "vendor": "nvidia",
-      "family": "deepseek",
-      "parallelToolCalls": false,
-      "promptCaching": "none",
-      "toolDefinitionFormat": "openai",
-      "maxRecommendedTurnBudget": 10,
-      "strictJson": true,
-      "quirks": [],
-      "profileId": "models-dev-nvidia",
-      "source": "models-dev",
-      "displayName": "DeepSeek V3.2",
-      "verifiedAt": "2025-12-01",
-      "contextWindow": 163840,
-      "maxOutputTokens": 65536,
-      "inputModalities": ["text"],
-      "outputModalities": ["text"],
-      "pricing": {
-        "inputPer1M": 0,
-        "outputPer1M": 0
-      },
-      "toolCapabilities": ["function-calling"]
-    },
-    {
       "id": "deepseek-ai/deepseek-v4-flash",
       "vendor": "nvidia",
       "family": "deepseek-flash",
@@ -4675,30 +4571,6 @@
       "contextWindow": 128000,
       "maxOutputTokens": 4096,
       "inputModalities": ["text"],
-      "outputModalities": ["text"],
-      "pricing": {
-        "inputPer1M": 0,
-        "outputPer1M": 0
-      },
-      "toolCapabilities": ["function-calling"]
-    },
-    {
-      "id": "google/gemma-3-27b-it",
-      "vendor": "nvidia",
-      "family": "gemma",
-      "parallelToolCalls": false,
-      "promptCaching": "none",
-      "toolDefinitionFormat": "openai",
-      "maxRecommendedTurnBudget": 10,
-      "strictJson": true,
-      "quirks": [],
-      "profileId": "models-dev-nvidia",
-      "source": "models-dev",
-      "displayName": "Gemma-3-27B-IT",
-      "verifiedAt": "2025-09-05",
-      "contextWindow": 131072,
-      "maxOutputTokens": 8192,
-      "inputModalities": ["text", "image"],
       "outputModalities": ["text"],
       "pricing": {
         "inputPer1M": 0,
@@ -5077,7 +4949,7 @@
       "verifiedAt": "2025-09-05",
       "contextWindow": 131072,
       "maxOutputTokens": 8192,
-      "inputModalities": ["text", "image", "audio"],
+      "inputModalities": ["text"],
       "outputModalities": ["text"],
       "pricing": {
         "inputPer1M": 0,
@@ -5109,30 +4981,6 @@
       }
     },
     {
-      "id": "minimaxai/minimax-m2.5",
-      "vendor": "nvidia",
-      "family": "minimax",
-      "parallelToolCalls": false,
-      "promptCaching": "none",
-      "toolDefinitionFormat": "openai",
-      "maxRecommendedTurnBudget": 10,
-      "strictJson": true,
-      "quirks": [],
-      "profileId": "models-dev-nvidia",
-      "source": "models-dev",
-      "displayName": "MiniMax-M2.5",
-      "verifiedAt": "2026-02-12",
-      "contextWindow": 204800,
-      "maxOutputTokens": 131072,
-      "inputModalities": ["text"],
-      "outputModalities": ["text"],
-      "pricing": {
-        "inputPer1M": 0,
-        "outputPer1M": 0
-      },
-      "toolCapabilities": ["function-calling"]
-    },
-    {
       "id": "minimaxai/minimax-m2.7",
       "vendor": "nvidia",
       "family": "minimax",
@@ -5148,30 +4996,6 @@
       "verifiedAt": "2026-04-11",
       "contextWindow": 204800,
       "maxOutputTokens": 131072,
-      "inputModalities": ["text"],
-      "outputModalities": ["text"],
-      "pricing": {
-        "inputPer1M": 0,
-        "outputPer1M": 0
-      },
-      "toolCapabilities": ["function-calling"]
-    },
-    {
-      "id": "mistralai/devstral-2-123b-instruct-2512",
-      "vendor": "nvidia",
-      "family": "devstral",
-      "parallelToolCalls": false,
-      "promptCaching": "none",
-      "toolDefinitionFormat": "openai",
-      "maxRecommendedTurnBudget": 10,
-      "strictJson": true,
-      "quirks": [],
-      "profileId": "models-dev-nvidia",
-      "source": "models-dev",
-      "displayName": "Devstral-2-123B-Instruct-2512",
-      "verifiedAt": "2025-12-09",
-      "contextWindow": 262144,
-      "maxOutputTokens": 262144,
       "inputModalities": ["text"],
       "outputModalities": ["text"],
       "pricing": {
@@ -5314,7 +5138,7 @@
       "verifiedAt": "2026-03-16",
       "contextWindow": 128000,
       "maxOutputTokens": 8192,
-      "inputModalities": ["text"],
+      "inputModalities": ["text", "image"],
       "outputModalities": ["text"],
       "pricing": {
         "inputPer1M": 0,
@@ -5371,33 +5195,9 @@
       "toolCapabilities": ["function-calling"]
     },
     {
-      "id": "moonshotai/kimi-k2-instruct",
-      "vendor": "nvidia",
-      "family": "kimi",
-      "parallelToolCalls": false,
-      "promptCaching": "none",
-      "toolDefinitionFormat": "openai",
-      "maxRecommendedTurnBudget": 10,
-      "strictJson": true,
-      "quirks": [],
-      "profileId": "models-dev-nvidia",
-      "source": "models-dev",
-      "displayName": "Kimi K2 Instruct",
-      "verifiedAt": "2025-09-05",
-      "contextWindow": 128000,
-      "maxOutputTokens": 8192,
-      "inputModalities": ["text"],
-      "outputModalities": ["text"],
-      "pricing": {
-        "inputPer1M": 0,
-        "outputPer1M": 0
-      },
-      "toolCapabilities": ["function-calling"]
-    },
-    {
       "id": "moonshotai/kimi-k2-instruct-0905",
       "vendor": "nvidia",
-      "family": "kimi",
+      "family": "kimi-k2",
       "parallelToolCalls": false,
       "promptCaching": "none",
       "toolDefinitionFormat": "openai",
@@ -5419,33 +5219,9 @@
       "toolCapabilities": ["function-calling"]
     },
     {
-      "id": "moonshotai/kimi-k2-thinking",
-      "vendor": "nvidia",
-      "family": "kimi-thinking",
-      "parallelToolCalls": false,
-      "promptCaching": "none",
-      "toolDefinitionFormat": "openai",
-      "maxRecommendedTurnBudget": 10,
-      "strictJson": true,
-      "quirks": [],
-      "profileId": "models-dev-nvidia",
-      "source": "models-dev",
-      "displayName": "Kimi K2 Thinking",
-      "verifiedAt": "2025-12",
-      "contextWindow": 262144,
-      "maxOutputTokens": 262144,
-      "inputModalities": ["text"],
-      "outputModalities": ["text"],
-      "pricing": {
-        "inputPer1M": 0,
-        "outputPer1M": 0
-      },
-      "toolCapabilities": ["function-calling"]
-    },
-    {
       "id": "moonshotai/kimi-k2.6",
       "vendor": "nvidia",
-      "family": "kimi-k2.6",
+      "family": "kimi-k2",
       "parallelToolCalls": false,
       "promptCaching": "none",
       "toolDefinitionFormat": "openai",
@@ -5648,54 +5424,6 @@
       }
     },
     {
-      "id": "nvidia/llama-3_3-nemotron-super-49b-v1",
-      "vendor": "nvidia",
-      "family": "nemotron",
-      "parallelToolCalls": false,
-      "promptCaching": "none",
-      "toolDefinitionFormat": "openai",
-      "maxRecommendedTurnBudget": 10,
-      "strictJson": true,
-      "quirks": [],
-      "profileId": "models-dev-nvidia",
-      "source": "models-dev",
-      "displayName": "Llama 3.3 Nemotron Super 49B v1",
-      "verifiedAt": "2025-04-07",
-      "contextWindow": 131072,
-      "maxOutputTokens": 131072,
-      "inputModalities": ["text"],
-      "outputModalities": ["text"],
-      "pricing": {
-        "inputPer1M": 0,
-        "outputPer1M": 0
-      },
-      "toolCapabilities": ["function-calling"]
-    },
-    {
-      "id": "nvidia/llama-3_3-nemotron-super-49b-v1_5",
-      "vendor": "nvidia",
-      "family": "nemotron",
-      "parallelToolCalls": false,
-      "promptCaching": "none",
-      "toolDefinitionFormat": "openai",
-      "maxRecommendedTurnBudget": 10,
-      "strictJson": true,
-      "quirks": [],
-      "profileId": "models-dev-nvidia",
-      "source": "models-dev",
-      "displayName": "Llama 3.3 Nemotron Super 49B v1.5",
-      "verifiedAt": "2025-07-25",
-      "contextWindow": 131072,
-      "maxOutputTokens": 131072,
-      "inputModalities": ["text"],
-      "outputModalities": ["text"],
-      "pricing": {
-        "inputPer1M": 0,
-        "outputPer1M": 0
-      },
-      "toolCapabilities": ["function-calling"]
-    },
-    {
       "id": "nvidia/llama-nemotron-embed-vl-1b-v2",
       "vendor": "nvidia",
       "family": "nemotron",
@@ -5856,6 +5584,30 @@
       "pricing": {
         "inputPer1M": 0.2,
         "outputPer1M": 0.8
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
+      "id": "nvidia/nemotron-3-ultra-550b-a55b",
+      "vendor": "nvidia",
+      "family": "nemotron",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-nvidia",
+      "source": "models-dev",
+      "displayName": "Nemotron 3 Ultra 550B A55B",
+      "verifiedAt": "2026-06-04",
+      "contextWindow": 1000000,
+      "maxOutputTokens": 65536,
+      "inputModalities": ["text"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 0.5,
+        "outputPer1M": 2.5
       },
       "toolCapabilities": ["function-calling"]
     },
@@ -6205,7 +5957,8 @@
       "pricing": {
         "inputPer1M": 0,
         "outputPer1M": 0
-      }
+      },
+      "toolCapabilities": ["function-calling"]
     },
     {
       "id": "openai/gpt-oss-20b",
@@ -6361,30 +6114,6 @@
       "profileId": "models-dev-nvidia",
       "source": "models-dev",
       "displayName": "Qwen3-Next-80B-A3B-Instruct",
-      "verifiedAt": "2025-09-05",
-      "contextWindow": 262144,
-      "maxOutputTokens": 16384,
-      "inputModalities": ["text"],
-      "outputModalities": ["text"],
-      "pricing": {
-        "inputPer1M": 0,
-        "outputPer1M": 0
-      },
-      "toolCapabilities": ["function-calling"]
-    },
-    {
-      "id": "qwen/qwen3-next-80b-a3b-thinking",
-      "vendor": "nvidia",
-      "family": "qwen",
-      "parallelToolCalls": false,
-      "promptCaching": "none",
-      "toolDefinitionFormat": "openai",
-      "maxRecommendedTurnBudget": 10,
-      "strictJson": true,
-      "quirks": [],
-      "profileId": "models-dev-nvidia",
-      "source": "models-dev",
-      "displayName": "Qwen3-Next-80B-A3B-Thinking",
       "verifiedAt": "2025-09-05",
       "contextWindow": 262144,
       "maxOutputTokens": 16384,
@@ -6555,30 +6284,6 @@
       "displayName": "GLM-5.1",
       "verifiedAt": "2026-03-27",
       "contextWindow": 131072,
-      "maxOutputTokens": 131072,
-      "inputModalities": ["text"],
-      "outputModalities": ["text"],
-      "pricing": {
-        "inputPer1M": 0,
-        "outputPer1M": 0
-      },
-      "toolCapabilities": ["function-calling"]
-    },
-    {
-      "id": "z-ai/glm4.7",
-      "vendor": "nvidia",
-      "family": "glm",
-      "parallelToolCalls": false,
-      "promptCaching": "none",
-      "toolDefinitionFormat": "openai",
-      "maxRecommendedTurnBudget": 10,
-      "strictJson": true,
-      "quirks": [],
-      "profileId": "models-dev-nvidia",
-      "source": "models-dev",
-      "displayName": "GLM-4.7",
-      "verifiedAt": "2025-12-22",
-      "contextWindow": 204800,
       "maxOutputTokens": 131072,
       "inputModalities": ["text"],
       "outputModalities": ["text"],
@@ -7520,50 +7225,6 @@
         "outputPer1M": 60
       },
       "toolCapabilities": ["function-calling"]
-    },
-    {
-      "id": "o1-mini",
-      "vendor": "openai",
-      "family": "o-mini",
-      "parallelToolCalls": false,
-      "promptCaching": "none",
-      "toolDefinitionFormat": "openai",
-      "maxRecommendedTurnBudget": 10,
-      "strictJson": true,
-      "quirks": [],
-      "profileId": "models-dev-openai",
-      "source": "models-dev",
-      "verifiedAt": "2024-09-12",
-      "contextWindow": 128000,
-      "maxOutputTokens": 65536,
-      "inputModalities": ["text"],
-      "outputModalities": ["text"],
-      "pricing": {
-        "inputPer1M": 1.1,
-        "outputPer1M": 4.4
-      }
-    },
-    {
-      "id": "o1-preview",
-      "vendor": "openai",
-      "family": "o",
-      "parallelToolCalls": false,
-      "promptCaching": "none",
-      "toolDefinitionFormat": "openai",
-      "maxRecommendedTurnBudget": 10,
-      "strictJson": true,
-      "quirks": [],
-      "profileId": "models-dev-openai",
-      "source": "models-dev",
-      "verifiedAt": "2024-09-12",
-      "contextWindow": 128000,
-      "maxOutputTokens": 32768,
-      "inputModalities": ["text"],
-      "outputModalities": ["text"],
-      "pricing": {
-        "inputPer1M": 15,
-        "outputPer1M": 60
-      }
     },
     {
       "id": "o1-pro",
