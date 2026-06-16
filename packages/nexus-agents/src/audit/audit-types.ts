@@ -105,6 +105,67 @@ export type TierTransitionPayload = z.infer<typeof TierTransitionPayloadSchema>;
 /** The `metadata` key under which a tier-transition event carries its payload. */
 export const TIER_TRANSITION_METADATA_KEY = 'tierTransition' as const;
 
+// ============================================================================
+// Ratification-vote ledger (Epic D / ADR-0017, #3894)
+// ============================================================================
+
+/**
+ * A recorded ratification vote in the committed ratification ledger
+ * (`governance/ratification-votes.yaml`). #3894: the promotion gate previously
+ * failed a `promotion` transition only when its `ratificationVoteRef` was *empty*
+ * — a bogus `ratificationVoteRef:'x'` passed, so the "ratification-LINKED"
+ * guarantee was only as strong as a non-empty string. This record is the
+ * resolution source: a promotion's `ratificationVoteRef` must RESOLVE to a record
+ * here whose `decision` is `approved` and whose `strategy` is `higher_order`.
+ *
+ * RESOLUTION SOURCE & RESIDUAL GAP. Live `consensus_vote` results are persisted
+ * only to per-developer home-dir stores (`~/.nexus-agents/voting/`,
+ * `~/.nexus-agents/learning/`) that a CI gate — no live server, no developer home
+ * dir — cannot read. There is no other committed, queryable source of truth for
+ * "did ratification vote X happen and pass". So this committed ledger IS the
+ * resolution source; the gate verifies STRUCTURAL PRESENCE of an approved,
+ * higher_order vote in a committed (hence reviewable) record. It does not — and
+ * cannot from CI — re-execute the vote.
+ *
+ * Declared here (the audit layer) so the gate's schema import keeps the same
+ * zod-via-package resolution as the other tier-transition schemas (the repo-root
+ * `scripts/` dir cannot itself resolve `zod`).
+ */
+export const RatificationVoteSchema = z
+  .object({
+    /** The ref a tier-transition's `ratificationVoteRef` must equal to resolve. */
+    id: z.string().min(1),
+    /** The loop/strategy the vote ratified (cross-checked against the transition subject). */
+    subject: z.string().min(1),
+    /**
+     * The recorded decision. Only `approved` ratifies a promotion; `rejected`
+     * fails the gate (`promotion-ratification-not-approved`).
+     */
+    decision: z.enum(['approved', 'rejected']),
+    /**
+     * The voting strategy. A promotion is governance-of-the-governor and must be
+     * ratified by a `higher_order` consensus_vote (ADR-0017).
+     */
+    strategy: z.enum(['higher_order', 'simple_majority', 'supermajority', 'unanimous']),
+    /** ISO-8601 timestamp the vote was recorded. */
+    votedAt: z.string().min(1),
+    /** Optional approval fraction / quorum detail, for the human record. */
+    approvalPercentage: z.number().min(0).max(100).optional(),
+    /** Optional link to the vote artifact / issue thread for the human record. */
+    voteUri: z.string().min(1).optional(),
+  })
+  .strict();
+export type RatificationVote = z.infer<typeof RatificationVoteSchema>;
+
+/** The versioned ratification-vote ledger document (#3894). */
+export const RatificationVoteLedgerSchema = z
+  .object({
+    version: z.number().int().positive(),
+    votes: z.array(RatificationVoteSchema),
+  })
+  .strict();
+export type RatificationVoteLedger = z.infer<typeof RatificationVoteLedgerSchema>;
+
 /**
  * Options for {@link IAuditLogger.logTierTransition}. The `actor` defaults to the
  * system actor at the emission site when omitted (a tier change recorded by the
