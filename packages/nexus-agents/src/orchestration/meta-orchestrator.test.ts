@@ -25,6 +25,7 @@ import {
   createRecordingShadowSink,
   SHADOW_STRATEGY_ARMS,
 } from './meta-shadow-selector.js';
+import { AuthorityRefusalError } from './authority-tier-guard.js';
 
 describe('strategyFromPattern', () => {
   const cases: ReadonlyArray<
@@ -359,5 +360,54 @@ describe('MetaOrchestrator.select — shadow-mode learned selection (#3551)', ()
     const meta = createMetaOrchestrator({ shadowSelector: throwingSelector, shadowSink });
     expect(() => meta.select({ goal: 'implement the feature' })).not.toThrow();
     expect(shadowSink.getRecords()).toHaveLength(0);
+  });
+});
+
+describe('MetaOrchestrator.select — authority-tier enforcement (#3841, ADR-0017)', () => {
+  it('PERMITS an at/below-tier action (consensus@advisory, requiredAuthority=advisory)', () => {
+    const meta = createMetaOrchestrator();
+    const d = meta.select({
+      goal: 'should we adopt approach A or approach B',
+      signals: { requiresConsensus: true },
+      requiredAuthority: 'advisory',
+    });
+    expect(d.strategy).toBe('consensus');
+  });
+
+  it('REFUSES an above-tier action fail-closed (consensus@advisory, requiredAuthority=enforce)', () => {
+    const meta = createMetaOrchestrator();
+    let thrown: unknown;
+    try {
+      meta.select({
+        goal: 'should we adopt approach A or approach B',
+        signals: { requiresConsensus: true },
+        requiredAuthority: 'enforce',
+      });
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(AuthorityRefusalError);
+    const refusal = thrown as AuthorityRefusalError;
+    expect(refusal.code).toBe('above_declared_tier');
+    expect(refusal.strategy).toBe('consensus');
+    expect(refusal.declaredTier).toBe('advisory');
+    expect(refusal.attemptedAction).toBe('enforce');
+  });
+
+  it('does NOT record a decision when the action is refused (fail-closed before record)', () => {
+    const sink = createRecordingSink();
+    const meta = createMetaOrchestrator({ sink });
+    expect(() =>
+      meta.select({
+        goal: 'implement the feature',
+        requiredAuthority: 'enforce',
+      })
+    ).toThrow(AuthorityRefusalError);
+    expect(sink.getRecords()).toHaveLength(0);
+  });
+
+  it('does not enforce when requiredAuthority is absent (no above-tier action requested)', () => {
+    const meta = createMetaOrchestrator();
+    expect(() => meta.select({ goal: 'implement the feature' })).not.toThrow();
   });
 });

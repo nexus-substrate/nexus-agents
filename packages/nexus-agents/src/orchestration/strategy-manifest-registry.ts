@@ -37,9 +37,12 @@ import type { TaskAnalysisResult } from '../core/task-analysis/shared-task-analy
 
 /**
  * The eight live strategy manifests. MIRRORS `governance/strategy-manifests.yaml`
- * byte-for-byte (enforced by the registry test). Forward-compat `authorityTier`
- * (Epic D) / `costProfile` (Epic G) are intentionally omitted until those epics
- * populate them.
+ * byte-for-byte (enforced by the registry test). `authorityTier` is now DECLARED
+ * and machine-enforced (Epic D, #3841 — semantics in ADR-0017): work-producing
+ * strategies are `suggest` (output inert until a human/governor acts), `consensus`
+ * is `advisory` (non-blocking votes). None are `enforce` — that requires an earned
+ * evidence record + ratification, never a default flip. `costProfile` (Epic G)
+ * stays omitted until that epic populates it.
  */
 const RAW_REGISTRY: StrategyManifestRegistry = {
   version: 1,
@@ -55,6 +58,7 @@ const RAW_REGISTRY: StrategyManifestRegistry = {
         'Force when the goal is a one-shot ask that needs no pipeline, gate, or multi-step plan.',
       maturityTier: 'stable',
       latencyClass: 'single-llm',
+      authorityTier: 'suggest',
       // Sequential + trivial complexity collapses to the lightest engine.
       selectionRules: [{ priority: 40, patterns: ['sequential'], complexities: ['simple'] }],
     },
@@ -69,6 +73,7 @@ const RAW_REGISTRY: StrategyManifestRegistry = {
         'Force when the goal is a code change that must pass the dev quality gate before it counts as done.',
       maturityTier: 'stable',
       latencyClass: 'pipeline',
+      authorityTier: 'suggest',
       // The default for any non-trivial sequential task (single-shot outranks it
       // only at `simple` complexity; the audit/template overrides outrank both).
       selectionRules: [{ priority: 30, patterns: ['sequential'] }],
@@ -84,6 +89,7 @@ const RAW_REGISTRY: StrategyManifestRegistry = {
         'Force when the work fits a templated multi-stage pipeline rather than a single model call.',
       maturityTier: 'stable',
       latencyClass: 'pipeline',
+      authorityTier: 'suggest',
       // The audit template is more specific than the plain sequential default:
       // it upgrades a sequential single-shot/dev-pipeline choice to the pipeline.
       selectionRules: [{ priority: 80, pipelineTypes: ['audit'], patterns: ['sequential'] }],
@@ -99,6 +105,7 @@ const RAW_REGISTRY: StrategyManifestRegistry = {
         'Force when the work is an explicit dependency graph with conditional edges (a predefined workflow template).',
       maturityTier: 'beta',
       latencyClass: 'pipeline',
+      authorityTier: 'suggest',
       selectionRules: [{ priority: 50, patterns: ['graph'] }],
     },
     {
@@ -112,6 +119,7 @@ const RAW_REGISTRY: StrategyManifestRegistry = {
         'Force when the work needs multi-agent orchestration patterns rather than a single linear pipeline.',
       maturityTier: 'beta',
       latencyClass: 'async-job-body',
+      authorityTier: 'suggest',
       selectionRules: [{ priority: 50, patterns: ['wave', 'aflow', 'puppeteer'] }],
     },
     {
@@ -124,6 +132,7 @@ const RAW_REGISTRY: StrategyManifestRegistry = {
       whenToForce: 'Force when a decision needs N independent voters rather than one model.',
       maturityTier: 'stable',
       latencyClass: 'multi-llm-panel',
+      authorityTier: 'advisory',
       // An explicit consensus requirement outranks every template/pattern choice.
       selectionRules: [{ priority: 100, patterns: ['consensus'] }],
     },
@@ -138,6 +147,7 @@ const RAW_REGISTRY: StrategyManifestRegistry = {
         'Force when building a greenfield project from a written spec, not a plain goal string.',
       maturityTier: 'beta',
       latencyClass: 'async-job-body',
+      authorityTier: 'suggest',
       // A greenfield template outranks the structural pattern fallback.
       selectionRules: [{ priority: 90, pipelineTypes: ['greenfield'] }],
     },
@@ -152,6 +162,7 @@ const RAW_REGISTRY: StrategyManifestRegistry = {
         'Force when the goal is research-led (gather, synthesize, compare) rather than a code change or decision.',
       maturityTier: 'stable',
       latencyClass: 'pipeline',
+      authorityTier: 'suggest',
       // A research template outranks the structural pattern fallback.
       selectionRules: [{ priority: 90, pipelineTypes: ['research'] }],
     },

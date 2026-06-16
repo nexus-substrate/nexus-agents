@@ -101,6 +101,67 @@ export const AuthorityTierSchema = z.enum(['observe', 'suggest', 'advisory', 'en
 export type AuthorityTier = z.infer<typeof AuthorityTierSchema>;
 
 /**
+ * The authority tiers in least→most order — the single ordered source the
+ * enforcement guard ({@link AuthorityTier} ranks) and the CI gate's per-tier
+ * floors both derive from. Mirrors the `AuthorityTierSchema` enum order.
+ */
+export const AUTHORITY_TIERS = ['observe', 'suggest', 'advisory', 'enforce'] as const;
+
+/**
+ * Promotion-evidence record schema (ADR-0017 §"Evidence-Threshold Schema",
+ * #3841). The concrete, machine-checkable tuple a promotion is earned against.
+ * Deliberately small + quantitative so a GATE — not a reviewer's judgment —
+ * decides whether a threshold is met. The #3841 CI gate
+ * (`check-authority-tier-drift.ts`) validates a manifest declared at a promoted
+ * tier (`advisory`/`enforce`) against a matching record meeting the per-tier
+ * floor; #3842 wires the linked tier-transition audit event.
+ *
+ * `.strict()` so a typo'd field fails validation rather than passing silently.
+ */
+export const PromotionEvidenceSchema = z
+  .object({
+    /** The loop/strategy being promoted (manifest `id`). */
+    loopId: z.string().min(1),
+    /** Current tier before promotion. */
+    fromTier: AuthorityTierSchema,
+    /** Target tier; must be exactly one step up (checked by the gate). */
+    toTier: AuthorityTierSchema,
+    /** Number of independent, judged evaluations behind the metric. */
+    evalN: z.number().int().nonnegative(),
+    /** Precision on judged output (0–1); required for advisory+ promotions. */
+    precision: z.number().min(0).max(1).optional(),
+    /** Recall (0–1); required for enforce promotions (missed-action cost). */
+    recall: z.number().min(0).max(1).optional(),
+    /** The loop-specific promotion metric: name, value, and CI bounds. */
+    primaryMetric: z
+      .object({
+        name: z.string().min(1),
+        value: z.number(),
+        ci: z.tuple([z.number(), z.number()]),
+      })
+      .strict(),
+    /** ISO-8601 duration of soak at the lower tier with no intervention. */
+    soakDuration: z.string().regex(/^P/, 'soakDuration must be an ISO-8601 duration (e.g. P30D)'),
+    /** Confounders the primaryMetric controls for. */
+    controlledFor: z.array(z.string()).optional(),
+    /** The recorded consensus_vote ref that ratifies the promotion. */
+    ratificationVote: z.string().min(1),
+    /** Link to the measurement surface / report that produced the numbers. */
+    evidenceUri: z.string().min(1),
+  })
+  .strict();
+export type PromotionEvidence = z.infer<typeof PromotionEvidenceSchema>;
+
+/** The versioned promotion-evidence ledger document (#3841). */
+export const PromotionEvidenceLedgerSchema = z
+  .object({
+    version: z.number().int().positive(),
+    evidence: z.array(PromotionEvidenceSchema),
+  })
+  .strict();
+export type PromotionEvidenceLedger = z.infer<typeof PromotionEvidenceLedgerSchema>;
+
+/**
  * Expected latency class — reuses the #3734 operation-class taxonomy
  * (`OperationClassName` in `config/timeouts.ts`) so a manifest's latency
  * expectation is the SAME vocabulary the runaway-guard layer already speaks.

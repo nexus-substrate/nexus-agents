@@ -36,6 +36,7 @@ import {
   scan as scanMemoryContract,
 } from './check-memory-contract.js';
 import { checkStrategyManifestRegistry } from './check-strategy-manifest-drift.js';
+import { checkAuthorityTierDeclarations } from './check-authority-tier-drift.js';
 const CLAUDE_MD_PATH = join(ROOT, 'CLAUDE.md');
 const README_PATH = join(ROOT, 'README.md');
 // #3334: docs/ENTRYPOINTS.md carries TWO MCP-tool enumerations (a prose
@@ -1486,17 +1487,25 @@ function checkGovernance(): boolean {
     checkToolOutputConsistency(),
     checkMemoryContract(),
     checkServerJson(actual.tools.length),
-    // #3837 (Epic C, M2): the strategy-manifest registry joins the drift-gated
-    // registries. Fails on YAML↔TS drift, a missing/extra/duplicate manifest vs
-    // the ExecutionStrategy union, or a YAML that no longer validates against the
-    // #3834 Zod schema. Logic lives in check-strategy-manifest-drift.ts (which the
-    // standalone `strategy-manifest:check` script also drives).
-    checkStrategyManifestRegistry(),
+    ...checkStrategyRegistryGates(),
   ];
 
   const passed = checks.every(Boolean);
   if (passed) printGovernanceSummary(actual, agents.length);
   return passed;
+}
+
+/**
+ * The strategy-manifest-registry governance gates (Epic C/D). Grouped into one
+ * helper so `checkGovernance` stays within the per-function line budget:
+ * - #3837: the registry drift-gate (YAML↔TS drift, manifest↔ExecutionStrategy
+ *   bijection, YAML schema validation). Also `strategy-manifest:check`.
+ * - #3841: the authority-tier declaration gate (every manifest declares a tier;
+ *   an `enforce` declaration needs a floor-meeting evidence record + ratification,
+ *   ADR-0017). Also `authority-tier:check`.
+ */
+function checkStrategyRegistryGates(): boolean[] {
+  return [checkStrategyManifestRegistry(), checkAuthorityTierDeclarations()];
 }
 
 /**

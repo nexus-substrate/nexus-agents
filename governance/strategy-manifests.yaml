@@ -25,14 +25,25 @@
 #                     over (#3836): each rule has a priority + pattern/pipelineType/
 #                     complexity predicates; highest-priority matching rule wins.
 #
-# Forward-compat governance/cost fields (authorityTier — Epic D #3552;
-# costProfile — Epic G) are intentionally OMITTED for the initial 8: they are
-# optional on the schema and are populated when those epics land, not here.
+# authorityTier (Epic D, #3841 — semantics in ADR-0017) is now DECLARED for every
+# strategy and MACHINE-ENFORCED: the router refuses an action above a strategy's
+# declared tier (authority-tier-guard.ts), and the CI gate
+# (check-authority-tier-drift.ts, under governance:check) fails on an undeclared
+# tier or an `enforce` declared without the ADR-0017 evidence record. The initial
+# eight are CONSERVATIVELY declared (ADR-0017 §"The Four Tiers"): the work-producing
+# strategies are `suggest` (output is inert until a human/governor acts on it —
+# routed through the dev gate / review, never auto-applied), and `consensus` is
+# `advisory` (casts non-blocking votes, exactly the ADR pr_review example). NONE are
+# `enforce` — reaching `enforce` requires an earned evidence record + ratification
+# (the absorbed promotion cases #3552/#3769/#2077), never a default flip.
+#
+# costProfile (Epic G) stays OMITTED for the initial 8 (optional; populated when
+# Epic G lands).
 #
 # Adding a strategy = register a manifest here (and mirror it in the TS module),
 # NOT editing the router (Epic C, #3833). The router routes PURELY over the
 # selectionRules below (#3836) — no strategy names are hardcoded in the router.
-# Source: Issue #3833, #3835 (M2). Schema landed via #3834.
+# Source: Issue #3833, #3835 (M2). Schema landed via #3834. Tiers declared #3841.
 
 version: 1
 
@@ -46,6 +57,7 @@ manifests:
     whenToForce: Force when the goal is a one-shot ask that needs no pipeline, gate, or multi-step plan.
     maturityTier: stable
     latencyClass: single-llm
+    authorityTier: suggest
     selectionRules:
       - priority: 40
         patterns: [sequential]
@@ -60,6 +72,7 @@ manifests:
     whenToForce: Force when the goal is a code change that must pass the dev quality gate before it counts as done.
     maturityTier: stable
     latencyClass: pipeline
+    authorityTier: suggest
     selectionRules:
       - priority: 30
         patterns: [sequential]
@@ -73,6 +86,7 @@ manifests:
     whenToForce: Force when the work fits a templated multi-stage pipeline rather than a single model call.
     maturityTier: stable
     latencyClass: pipeline
+    authorityTier: suggest
     selectionRules:
       - priority: 80
         pipelineTypes: [audit]
@@ -87,6 +101,7 @@ manifests:
     whenToForce: Force when the work is an explicit dependency graph with conditional edges (a predefined workflow template).
     maturityTier: beta
     latencyClass: pipeline
+    authorityTier: suggest
     selectionRules:
       - priority: 50
         patterns: [graph]
@@ -100,6 +115,7 @@ manifests:
     whenToForce: Force when the work needs multi-agent orchestration patterns rather than a single linear pipeline.
     maturityTier: beta
     latencyClass: async-job-body
+    authorityTier: suggest
     selectionRules:
       - priority: 50
         patterns: [wave, aflow, puppeteer]
@@ -113,6 +129,7 @@ manifests:
     whenToForce: Force when a decision needs N independent voters rather than one model.
     maturityTier: stable
     latencyClass: multi-llm-panel
+    authorityTier: advisory
     selectionRules:
       - priority: 100
         patterns: [consensus]
@@ -126,6 +143,7 @@ manifests:
     whenToForce: Force when building a greenfield project from a written spec, not a plain goal string.
     maturityTier: beta
     latencyClass: async-job-body
+    authorityTier: suggest
     selectionRules:
       - priority: 90
         pipelineTypes: [greenfield]
@@ -139,6 +157,7 @@ manifests:
     whenToForce: Force when the goal is research-led (gather, synthesize, compare) rather than a code change or decision.
     maturityTier: stable
     latencyClass: pipeline
+    authorityTier: suggest
     selectionRules:
       - priority: 90
         pipelineTypes: [research]
