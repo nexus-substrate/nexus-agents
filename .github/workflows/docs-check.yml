@@ -699,9 +699,12 @@ jobs:
   # claims still marked roadmap in their doc). Fails the build on any drift — an
   # unbacked or stale claim — keeping README/ARCHITECTURE honest. BLOCKING per #3826.
   #
-  # Deferred (documented in #3826 follow-up): the "new undeclared numeric/capability
-  # claim in a doc" heuristic detector. This job currently gates the curated registry,
-  # not arbitrary new prose.
+  # #3880: `claims:check` now ALSO runs a reverse coverage scan (claims-coverage.ts).
+  # It fails when README.md / ARCHITECTURE.md make a quantified capability claim
+  # ("N MCP tools", "N built-in expert types", "N strategies") with no covering
+  # registry entry — closing the author-controlled-allowlist gap (silent removal /
+  # mask-by-addition). This is the #3826 deferred undeclared-claim detector, kept
+  # high-precision via a closed set of sentinel regexes (low false positives).
   claims-check:
     name: Claims Registry Drift
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
