@@ -25,6 +25,16 @@
  * sibling to the #3837 manifest drift-gate, and exposed standalone as
  * `pnpm authority-tier:check`.
  *
+ * Loop-tier declaration gate (#3843): the ladder also governs loops that are NOT
+ * routable strategies (MCP tools / internal stages — `suggest_research_tasks`,
+ * `improvement_review`, `pr_review`, the tune loop). Those declare their tier in
+ * `governance/loop-tiers.yaml` (schema {@link LoopTierRegistrySchema}, mirrored as
+ * the embedded `LOOP_TIER_REGISTRY` constant). {@link analyzeLoopTierDeclarations}
+ * fails on an undeclared/mis-shaped loop (`loop-registry-invalid`), a YAML↔constant
+ * drift (`loop-registry-drift`), or an `enforce` loop with neither a bounded safety
+ * envelope nor a floor-meeting evidence record
+ * (`loop-enforce-without-envelope-or-evidence`).
+ *
  * Tier-transition ratification gate (#3842, hardened by #3894): in addition to the
  * declaration + evidence-floor checks, this gate also reads the hash-chained
  * tier-transition AUDIT EVENTS (Epic D / ADR-0017 §"Transition Rules") and FAILS a
@@ -54,6 +64,11 @@ import {
   type PromotionEvidence,
 } from '../packages/nexus-agents/src/orchestration/strategy-manifest.js';
 import { STRATEGY_MANIFEST_REGISTRY } from '../packages/nexus-agents/src/orchestration/strategy-manifest-registry.js';
+import {
+  LoopTierRegistrySchema,
+  type LoopTierManifest,
+} from '../packages/nexus-agents/src/orchestration/loop-tier-manifest.js';
+import { LOOP_TIER_REGISTRY } from '../packages/nexus-agents/src/orchestration/loop-tier-registry.js';
 import { extractTierTransition } from '../packages/nexus-agents/src/audit/audit-logger.js';
 import {
   AuditEventSchema,
@@ -65,6 +80,7 @@ import {
 const EVIDENCE_LEDGER = join(ROOT, 'governance/authority-tier-evidence.yaml');
 const TRANSITION_LOG = join(ROOT, 'governance/authority-tier-transitions.jsonl');
 const RATIFICATION_LEDGER = join(ROOT, 'governance/ratification-votes.yaml');
+const LOOP_TIER_REGISTRY_FILE = join(ROOT, 'governance/loop-tiers.yaml');
 
 /**
  * The ADR-0017 advisory→enforce promotion floor. The minimum a gate enforces; a
@@ -85,6 +101,9 @@ export interface TierDriftFinding {
     | 'tier-undeclared'
     | 'enforce-without-evidence'
     | 'enforce-evidence-below-floor'
+    | 'loop-enforce-without-envelope-or-evidence'
+    | 'loop-registry-invalid'
+    | 'loop-registry-drift'
     | 'evidence-ledger-invalid'
     | 'promotion-without-ratification'
     | 'promotion-ratification-unresolved'
@@ -239,6 +258,97 @@ export function analyzeTierDeclarations(inputs: DriftInputs): TierDriftFinding[]
   return findings;
 }
 
+interface LoopDriftInputs {
+  /** Raw text of the loop-tier YAML registry, or undefined when the file is absent. */
+  readonly loopYaml: string | undefined;
+  /** The embedded loop-tier constant (the runtime source of truth). */
+  readonly embeddedLoops: readonly LoopTierManifest[];
+  /** loopId → floor-meeting promotion-evidence (built once for the enforce check). */
+  readonly enforceEvidenceById: ReadonlyMap<string, PromotionEvidence>;
+}
+
+/**
+ * Pure loop-tier declaration analysis (#3843, ADR-0017). The loops governed by the
+ * ladder that are NOT routable strategies declare their tier in
+ * `governance/loop-tiers.yaml` (mirrored as the embedded constant); this validates
+ * that surface the same way the strategy-manifest checks validate the manifests.
+ *
+ * Fails when ANY of:
+ *   (1) `loop-registry-invalid` — the YAML registry does not validate against the
+ *       LoopTierRegistrySchema (a malformed/undeclared/mis-shaped loop). The schema
+ *       itself makes `authorityTier` REQUIRED and an `enforce` loop's
+ *       `boundedEnvelope` mandatory, so an undeclared loop or an unbounded `enforce`
+ *       loop is a parse failure here (the TOOL_CLASS-or-CI-fails pattern, #3841).
+ *   (2) `loop-registry-drift` — the YAML and the embedded constant disagree (the
+ *       #3837 lockstep discipline applied to loops: the human source of truth and
+ *       the runtime constant cannot diverge).
+ *   (3) `loop-enforce-without-envelope-or-evidence` — an `enforce` loop carries
+ *       neither a `boundedEnvelope` NOR a floor-meeting promotion-evidence record.
+ *       ADR-0017: `enforce` is never a default; a pre-existing bounded loop is
+ *       honest via its envelope, a promoted loop via its evidence — one is required.
+ *
+ * @param inputs - the YAML text, the embedded constant, and the enforce-evidence map
+ * @returns one finding per offending loop / registry problem
+ */
+export function analyzeLoopTierDeclarations(inputs: LoopDriftInputs): TierDriftFinding[] {
+  const findings: TierDriftFinding[] = [];
+
+  // (1) The YAML registry, if present, must validate. A parse failure is a single
+  // finding (we cannot trust any loop record) — and because the schema makes the
+  // tier required and the enforce envelope mandatory, an undeclared/unbounded loop
+  // surfaces HERE, fail-closed.
+  let yamlLoops: LoopTierManifest[] | undefined;
+  if (inputs.loopYaml !== undefined) {
+    const parsed = LoopTierRegistrySchema.safeParse(parseYaml(inputs.loopYaml));
+    if (!parsed.success) {
+      findings.push({
+        code: 'loop-registry-invalid',
+        message: `governance/loop-tiers.yaml failed schema validation: ${parsed.error.issues
+          .map((i) => `${i.path.join('.')}: ${i.message}`)
+          .join('; ')}`,
+      });
+    } else {
+      yamlLoops = parsed.data.loops;
+    }
+  }
+
+  // (2) Lockstep: the YAML and the embedded constant must be byte-equivalent (as
+  // structured data). The embedded constant is the runtime source of truth; the
+  // YAML is the human/docs/drift-gate surface — they cannot diverge.
+  if (yamlLoops !== undefined) {
+    const yamlJson = JSON.stringify(yamlLoops);
+    const embeddedJson = JSON.stringify(inputs.embeddedLoops);
+    if (yamlJson !== embeddedJson) {
+      findings.push({
+        code: 'loop-registry-drift',
+        message:
+          'governance/loop-tiers.yaml and the embedded loop-tier-registry.ts constant disagree. Re-sync them (the human source of truth and the runtime constant must be equal).',
+      });
+    }
+  }
+
+  // (3) `enforce` is never a default: an `enforce` loop must carry either a bounded
+  // safety envelope (the pre-existing-loop path) OR a floor-meeting evidence record
+  // (the ladder-promotion path). The schema already requires the envelope for
+  // enforce, but a loop could (in a future PR) drop the envelope and claim a
+  // promotion-evidence record instead — both are honest; NEITHER is not.
+  for (const loop of inputs.embeddedLoops) {
+    if (loop.authorityTier !== 'enforce') continue;
+    const hasEnvelope = loop.boundedEnvelope !== undefined;
+    const evidence = inputs.enforceEvidenceById.get(loop.id);
+    const hasFloorMeetingEvidence =
+      evidence !== undefined && enforceFloorShortfalls(evidence).length === 0;
+    if (!hasEnvelope && !hasFloorMeetingEvidence) {
+      findings.push({
+        code: 'loop-enforce-without-envelope-or-evidence',
+        message: `loop '${loop.id}' is declared authorityTier='enforce' but carries NEITHER a boundedEnvelope NOR a floor-meeting promotion-evidence record. 'enforce' is never a default (ADR-0017) — declare the safety envelope (pre-existing bounded loop) or record evidence + ratification (ladder promotion).`,
+      });
+    }
+  }
+
+  return findings;
+}
+
 /**
  * The ratification gate (#3842, hardened by #3894). Pure analysis (no disk/process
  * I/O) over the recovered tier-transition payloads so it is unit-testable with
@@ -353,6 +463,21 @@ export function recoverTransitions(jsonl: string): {
   return { transitions, findings };
 }
 
+/**
+ * Build a `loopId → PromotionEvidence` map from the evidence-ledger YAML (or an
+ * empty map when the ledger is absent/invalid — fail-closed: a loop then has NO
+ * evidence and must justify any `enforce` via its bounded envelope). Used by the
+ * loop-tier enforce check so a promoted loop can be enforce-via-evidence.
+ */
+export function buildEnforceEvidenceMap(
+  evidenceYaml: string | undefined
+): Map<string, PromotionEvidence> {
+  if (evidenceYaml === undefined) return new Map();
+  const parsed = PromotionEvidenceLedgerSchema.safeParse(parseYaml(evidenceYaml));
+  if (!parsed.success) return new Map();
+  return new Map(parsed.data.evidence.map((e) => [e.loopId, e]));
+}
+
 /** The ways an evidence record falls short of the advisory→enforce floor. */
 function enforceFloorShortfalls(e: PromotionEvidence): string[] {
   const out: string[] = [];
@@ -390,6 +515,20 @@ export function checkAuthorityTierDeclarations(): boolean {
 
   const findings = analyzeTierDeclarations({ declaredTiers, evidenceYaml });
 
+  // #3843 loop-tier gate: validate the non-strategy loops' tier declarations
+  // (governance/loop-tiers.yaml ↔ embedded constant) alongside the manifests. An
+  // undeclared loop, a YAML/constant drift, or an unbacked `enforce` loop fails.
+  const loopYaml = existsSync(LOOP_TIER_REGISTRY_FILE)
+    ? readFileSync(LOOP_TIER_REGISTRY_FILE, 'utf-8')
+    : undefined;
+  findings.push(
+    ...analyzeLoopTierDeclarations({
+      loopYaml,
+      embeddedLoops: LOOP_TIER_REGISTRY.loops,
+      enforceEvidenceById: buildEnforceEvidenceMap(evidenceYaml),
+    })
+  );
+
   // #3842/#3894 ratification gate: read the hash-chained tier-transition log (if
   // any) and fail any PROMOTION event whose ratificationVoteRef does not RESOLVE
   // to an approved higher_order vote in the committed ratification ledger.
@@ -410,9 +549,11 @@ export function checkAuthorityTierDeclarations(): boolean {
 
   if (findings.length === 0) return true;
 
-  console.error('Authority-tier drift (#3841/#3842, ADR-0017):');
+  console.error('Authority-tier drift (#3841/#3842/#3843, ADR-0017):');
   for (const f of findings) console.error(`  - [${f.code}] ${f.message}`);
-  console.error('  Declare a tier on every manifest in governance/strategy-manifests.yaml,');
+  console.error('  Declare a tier on every manifest in governance/strategy-manifests.yaml');
+  console.error('  and every loop in governance/loop-tiers.yaml (kept in lockstep with');
+  console.error('  loop-tier-registry.ts),');
   console.error('  back any `enforce` with a floor-meeting record in');
   console.error('  governance/authority-tier-evidence.yaml, and link every promotion transition');
   console.error(

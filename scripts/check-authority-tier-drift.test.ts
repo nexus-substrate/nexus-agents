@@ -14,8 +14,10 @@ import { describe, it, expect } from 'vitest';
 import { stringify as toYaml } from 'yaml';
 import {
   analyzeTierDeclarations,
+  analyzeLoopTierDeclarations,
   analyzeTierTransitionEvents,
   buildRatificationResolver,
+  buildEnforceEvidenceMap,
   recoverTransitions,
   checkAuthorityTierDeclarations,
   soakDays,
@@ -24,6 +26,8 @@ import {
   type RatificationVote,
 } from './check-authority-tier-drift.js';
 import type { AuthorityTier } from '../packages/nexus-agents/src/orchestration/strategy-manifest.js';
+import type { LoopTierManifest } from '../packages/nexus-agents/src/orchestration/loop-tier-manifest.js';
+import { LOOP_TIER_REGISTRY } from '../packages/nexus-agents/src/orchestration/loop-tier-registry.js';
 import type { TierTransitionPayload } from '../packages/nexus-agents/src/audit/audit-types.js';
 import { AuditLogger } from '../packages/nexus-agents/src/audit/audit-logger.js';
 import { InMemoryAuditStorage } from '../packages/nexus-agents/src/audit/audit-storage.js';
@@ -124,6 +128,131 @@ describe('analyzeTierDeclarations (#3841)', () => {
     const evidenceYaml = toYaml({ version: 1, evidence: [{ loopId: 'x' /* missing fields */ }] });
     const findings = analyzeTierDeclarations({ declaredTiers, evidenceYaml });
     expect(findings.some((f) => f.code === 'evidence-ledger-invalid')).toBe(true);
+  });
+});
+
+describe('analyzeLoopTierDeclarations — loop-tier gate (#3843)', () => {
+  const liveLoops = LOOP_TIER_REGISTRY.loops;
+
+  /** A minimal valid suggest loop. */
+  function suggestLoop(id: string): LoopTierManifest {
+    return {
+      id,
+      schemaVersion: 1,
+      description: 'a suggest loop',
+      authorityTier: 'suggest',
+      evidence: 'src/x.ts:1',
+    };
+  }
+
+  /** A bounded enforce loop (the tune-loop shape). */
+  function enforceLoop(id: string): LoopTierManifest {
+    return {
+      id,
+      schemaVersion: 1,
+      description: 'a bounded enforce loop',
+      authorityTier: 'enforce',
+      evidence: 'src/x.ts:1',
+      boundedEnvelope: {
+        summary: 'bounded demotion-only nudge',
+        bounds: { demotionFloor: 0.5, maxStepPerAdjustment: 0.2, decayWindowMinutes: 30 },
+        enforcedBy: 'src/x.ts:FLOOR',
+        demotionTrigger: 'automatic decay',
+      },
+    };
+  }
+
+  it('PASSES the live registry (YAML ↔ constant in lockstep, all loops declared)', () => {
+    const loopYaml = toYaml({ version: 1, loops: liveLoops });
+    const findings = analyzeLoopTierDeclarations({
+      loopYaml,
+      embeddedLoops: liveLoops,
+      enforceEvidenceById: new Map(),
+    });
+    expect(findings).toEqual([]);
+  });
+
+  it('FAILS loop-registry-invalid on an undeclared tier (TOOL_CLASS-or-CI-fails)', () => {
+    // authorityTier omitted → schema parse fails → single registry-invalid finding.
+    const loopYaml = toYaml({
+      version: 1,
+      loops: [{ id: 'undeclared', schemaVersion: 1, description: 'x', evidence: 'src/x.ts:1' }],
+    });
+    const findings = analyzeLoopTierDeclarations({
+      loopYaml,
+      embeddedLoops: liveLoops,
+      enforceEvidenceById: new Map(),
+    });
+    expect(findings.some((f) => f.code === 'loop-registry-invalid')).toBe(true);
+  });
+
+  it('FAILS loop-registry-invalid on an enforce loop with NO envelope (breakage fixture)', () => {
+    const loopYaml = toYaml({
+      version: 1,
+      loops: [
+        {
+          id: 'rogue',
+          schemaVersion: 1,
+          description: 'x',
+          authorityTier: 'enforce',
+          evidence: 'src/x.ts:1',
+        },
+      ],
+    });
+    const findings = analyzeLoopTierDeclarations({
+      loopYaml,
+      embeddedLoops: liveLoops,
+      enforceEvidenceById: new Map(),
+    });
+    expect(findings.some((f) => f.code === 'loop-registry-invalid')).toBe(true);
+  });
+
+  it('FAILS loop-registry-drift when YAML and the embedded constant disagree', () => {
+    // YAML declares pr-review as enforce-with-envelope, constant says advisory.
+    const drifted = liveLoops.map((l) =>
+      l.id === 'suggest-research-tasks' ? { ...l, authorityTier: 'observe' as const } : l
+    );
+    const loopYaml = toYaml({ version: 1, loops: drifted });
+    const findings = analyzeLoopTierDeclarations({
+      loopYaml,
+      embeddedLoops: liveLoops,
+      enforceEvidenceById: new Map(),
+    });
+    expect(findings.some((f) => f.code === 'loop-registry-drift')).toBe(true);
+  });
+
+  it('FAILS loop-enforce-without-envelope-or-evidence when an enforce loop has neither', () => {
+    // Bypass the schema by injecting an enforce loop with no envelope directly as
+    // the embedded constant (the (3) defence catches a future drop-the-envelope PR).
+    const noEnvelope = { ...enforceLoop('bare-enforce'), boundedEnvelope: undefined };
+    const findings = analyzeLoopTierDeclarations({
+      loopYaml: undefined, // skip the YAML schema gate so (3) is what fires
+      embeddedLoops: [suggestLoop('a'), noEnvelope],
+      enforceEvidenceById: new Map(),
+    });
+    expect(findings.some((f) => f.code === 'loop-enforce-without-envelope-or-evidence')).toBe(true);
+  });
+
+  it('PASSES an enforce loop with a floor-meeting evidence record (ladder-promotion path)', () => {
+    const noEnvelope = { ...enforceLoop('promoted'), boundedEnvelope: undefined };
+    const evidence = buildEnforceEvidenceMap(
+      toYaml({ version: 1, evidence: [meetingEvidence('promoted')] })
+    );
+    const findings = analyzeLoopTierDeclarations({
+      loopYaml: undefined,
+      embeddedLoops: [noEnvelope],
+      enforceEvidenceById: evidence,
+    });
+    expect(findings).toEqual([]);
+  });
+
+  it('PASSES a bounded enforce loop with no evidence (pre-existing-loop path)', () => {
+    const findings = analyzeLoopTierDeclarations({
+      loopYaml: undefined,
+      embeddedLoops: [enforceLoop('tune-like')],
+      enforceEvidenceById: new Map(),
+    });
+    expect(findings).toEqual([]);
   });
 });
 
