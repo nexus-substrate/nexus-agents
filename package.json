@@ -44,6 +44,8 @@
     "authority-tier:check": "npx tsx scripts/check-authority-tier-drift.ts",
     "docs:tools": "npx tsx scripts/generate-tool-reference.ts",
     "docs:tools:check": "npx tsx scripts/generate-tool-reference.ts --check",
+    "docs:strategies": "npx tsx scripts/generate-strategy-reference.ts",
+    "docs:strategies:check": "npx tsx scripts/generate-strategy-reference.ts --check",
     "typecheck": "turbo typecheck",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
