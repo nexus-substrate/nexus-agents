@@ -15,10 +15,13 @@ import { stringify as toYaml } from 'yaml';
 import {
   analyzeTierDeclarations,
   analyzeTierTransitionEvents,
+  buildRatificationResolver,
   recoverTransitions,
   checkAuthorityTierDeclarations,
   soakDays,
   ENFORCE_FLOOR,
+  type RatificationResolver,
+  type RatificationVote,
 } from './check-authority-tier-drift.js';
 import type { AuthorityTier } from '../packages/nexus-agents/src/orchestration/strategy-manifest.js';
 import type { TierTransitionPayload } from '../packages/nexus-agents/src/audit/audit-types.js';
@@ -139,38 +142,146 @@ function transition(
   };
 }
 
-describe('analyzeTierTransitionEvents — ratification gate (#3842)', () => {
+/** An approved higher_order ratification vote for `auto-remediation`. */
+function approvedVote(id: string): RatificationVote {
+  return {
+    id,
+    subject: 'auto-remediation',
+    decision: 'approved',
+    strategy: 'higher_order',
+    votedAt: '2026-06-15T00:00:00.000Z',
+  };
+}
+
+/** A resolver backed by the given recorded votes (keyed by id). */
+function resolverOf(...votes: RatificationVote[]): RatificationResolver {
+  const byId = new Map(votes.map((v) => [v.id, v]));
+  return (ref) => byId.get(ref);
+}
+
+/** A resolver that resolves nothing (empty/absent ledger). */
+const emptyResolver: RatificationResolver = () => undefined;
+
+describe('analyzeTierTransitionEvents — ratification gate (#3842, hardened #3894)', () => {
   it('FAILS a promotion event with NO ratificationVoteRef (breakage fixture)', () => {
-    const findings = analyzeTierTransitionEvents([transition('promotion')]);
+    const findings = analyzeTierTransitionEvents([transition('promotion')], emptyResolver);
     expect(findings).toHaveLength(1);
     expect(findings[0]?.code).toBe('promotion-without-ratification');
     expect(findings[0]?.message).toContain('auto-remediation');
   });
 
   it('FAILS a promotion event whose ratificationVoteRef is empty/whitespace', () => {
-    const findings = analyzeTierTransitionEvents([transition('promotion', '   ')]);
+    const findings = analyzeTierTransitionEvents([transition('promotion', '   ')], emptyResolver);
     expect(findings).toHaveLength(1);
     expect(findings[0]?.code).toBe('promotion-without-ratification');
   });
 
-  it('PASSES a promotion event WITH a ratificationVoteRef', () => {
-    const findings = analyzeTierTransitionEvents([transition('promotion', 'cv_3769')]);
+  // #3894: non-emptiness is no longer enough — the ref must RESOLVE.
+  it('FAILS a promotion whose non-empty ref does NOT resolve (bogus ref, #3894)', () => {
+    const findings = analyzeTierTransitionEvents([transition('promotion', 'x')], emptyResolver);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.code).toBe('promotion-ratification-unresolved');
+    expect(findings[0]?.message).toContain("ratificationVoteRef='x'");
+  });
+
+  it('FAILS a promotion whose ref resolves to a REJECTED vote (#3894)', () => {
+    const rejected: RatificationVote = { ...approvedVote('cv_no'), decision: 'rejected' };
+    const findings = analyzeTierTransitionEvents(
+      [transition('promotion', 'cv_no')],
+      resolverOf(rejected)
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.code).toBe('promotion-ratification-not-approved');
+    expect(findings[0]?.message).toContain("'rejected'");
+  });
+
+  it('FAILS a promotion whose ref resolves to a NON-higher_order vote (#3894)', () => {
+    const wrongStrategy: RatificationVote = {
+      ...approvedVote('cv_maj'),
+      strategy: 'simple_majority',
+    };
+    const findings = analyzeTierTransitionEvents(
+      [transition('promotion', 'cv_maj')],
+      resolverOf(wrongStrategy)
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.code).toBe('promotion-ratification-not-approved');
+    expect(findings[0]?.message).toContain('higher_order');
+  });
+
+  it('FAILS a promotion whose ref resolves to a vote for a DIFFERENT subject (#3894)', () => {
+    const otherSubject: RatificationVote = {
+      ...approvedVote('cv_other'),
+      subject: 'some-other-loop',
+    };
+    const findings = analyzeTierTransitionEvents(
+      [transition('promotion', 'cv_other')],
+      resolverOf(otherSubject)
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.code).toBe('promotion-ratification-not-approved');
+    expect(findings[0]?.message).toContain('does not match');
+  });
+
+  it('PASSES a promotion whose ref RESOLVES to an approved higher_order vote (#3894)', () => {
+    const findings = analyzeTierTransitionEvents(
+      [transition('promotion', 'cv_3769')],
+      resolverOf(approvedVote('cv_3769'))
+    );
+    expect(findings).toEqual([]);
+  });
+
+  it('resolves a ref with surrounding whitespace (trimmed) (#3894)', () => {
+    const findings = analyzeTierTransitionEvents(
+      [transition('promotion', '  cv_3769  ')],
+      resolverOf(approvedVote('cv_3769'))
+    );
     expect(findings).toEqual([]);
   });
 
   it('PASSES a demotion event with NO ratificationVoteRef (automatic, ADR-0017)', () => {
-    const findings = analyzeTierTransitionEvents([transition('demotion')]);
+    const findings = analyzeTierTransitionEvents([transition('demotion')], emptyResolver);
     expect(findings).toEqual([]);
   });
 
   it('flags only the offending promotion in a mixed batch', () => {
-    const findings = analyzeTierTransitionEvents([
-      transition('promotion', 'cv_ok'),
-      transition('demotion'),
-      transition('promotion'), // offender
-    ]);
+    const findings = analyzeTierTransitionEvents(
+      [
+        transition('promotion', 'cv_ok'),
+        transition('demotion'),
+        transition('promotion'), // offender — no ref
+      ],
+      resolverOf(approvedVote('cv_ok'))
+    );
     expect(findings).toHaveLength(1);
     expect(findings[0]?.code).toBe('promotion-without-ratification');
+  });
+});
+
+describe('buildRatificationResolver — the committed ledger (#3894)', () => {
+  it('resolves an id present in a valid ledger', () => {
+    const yaml = toYaml({
+      version: 1,
+      votes: [approvedVote('cv_resolved')],
+    });
+    const { resolver, findings } = buildRatificationResolver(yaml);
+    expect(findings).toEqual([]);
+    expect(resolver('cv_resolved')?.decision).toBe('approved');
+    expect(resolver('missing')).toBeUndefined();
+  });
+
+  it('resolves NOTHING (fail-closed) for an absent ledger', () => {
+    const { resolver, findings } = buildRatificationResolver(undefined);
+    expect(findings).toEqual([]);
+    expect(resolver('anything')).toBeUndefined();
+  });
+
+  it('FAILS ratification-ledger-invalid and resolves nothing on a schema-invalid ledger', () => {
+    const yaml = toYaml({ version: 1, votes: [{ id: 'x' /* missing fields */ }] });
+    const { resolver, findings } = buildRatificationResolver(yaml);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.code).toBe('ratification-ledger-invalid');
+    expect(resolver('x')).toBeUndefined();
   });
 });
 
@@ -209,12 +320,12 @@ describe('recoverTransitions — reads the chained transition log (#3842)', () =
     const { transitions, findings } = recoverTransitions(jsonl);
     expect(findings).toEqual([]); // the log itself is valid
     expect(transitions).toHaveLength(1);
-    const gate = analyzeTierTransitionEvents(transitions);
+    const gate = analyzeTierTransitionEvents(transitions, emptyResolver);
     expect(gate).toHaveLength(1);
     expect(gate[0]?.code).toBe('promotion-without-ratification');
   });
 
-  it('recovers a ratified promotion + a demotion and the gate PASSES', async () => {
+  it('recovers a ratified promotion + a demotion and the gate PASSES (#3894 resolved)', async () => {
     const { jsonl } = await jsonlOf((l) => {
       l.logTierTransition({
         kind: 'promotion',
@@ -235,7 +346,31 @@ describe('recoverTransitions — reads the chained transition log (#3842)', () =
     const { transitions, findings } = recoverTransitions(jsonl);
     expect(findings).toEqual([]);
     expect(transitions).toHaveLength(2);
-    expect(analyzeTierTransitionEvents(transitions)).toEqual([]);
+    const resolver = resolverOf({
+      id: 'cv_2077',
+      subject: 'clawguard',
+      decision: 'approved',
+      strategy: 'higher_order',
+      votedAt: '2026-06-15T00:00:00.000Z',
+    });
+    expect(analyzeTierTransitionEvents(transitions, resolver)).toEqual([]);
+  });
+
+  it('recovers a promotion whose ref does NOT resolve and the gate FAILS (#3894)', async () => {
+    const { jsonl } = await jsonlOf((l) => {
+      l.logTierTransition({
+        kind: 'promotion',
+        subject: 'clawguard',
+        fromTier: 'advisory',
+        toTier: 'enforce',
+        evidenceRef: 'evidence#2077',
+        ratificationVoteRef: 'bogus-ref', // non-empty, but resolves to nothing
+      });
+    });
+    const { transitions } = recoverTransitions(jsonl);
+    const gate = analyzeTierTransitionEvents(transitions, emptyResolver);
+    expect(gate).toHaveLength(1);
+    expect(gate[0]?.code).toBe('promotion-ratification-unresolved');
   });
 
   it('FAILS transition-log-invalid on a malformed JSONL line', () => {

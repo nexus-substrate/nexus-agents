@@ -1,0 +1,40 @@
+# Ratification-vote ledger (Epic D, #3894 — ADR-0017).
+#
+# The COMMITTED resolution source the promotion gate
+# (scripts/check-authority-tier-drift.ts, under governance:check) resolves a
+# tier-transition's `ratificationVoteRef` against. #3842 only checked the ref was
+# non-empty — a bogus `ratificationVoteRef:'x'` passed, so "ratification-LINKED"
+# was only as strong as a non-empty string. #3894 makes the link genuine: a
+# `promotion` transition's ref must RESOLVE to a record HERE whose `decision` is
+# `approved` and whose `strategy` is `higher_order` (a promotion is
+# governance-of-the-governor), with a `subject` matching the transition.
+#
+# Each record is a RatificationVote (schema: check-authority-tier-drift.ts
+# RatificationVoteSchema):
+#   id                 the ref a tier-transition's ratificationVoteRef must equal
+#   subject            the loop/strategy id the vote ratified (must match the transition)
+#   decision           'approved' | 'rejected' (only 'approved' ratifies a promotion)
+#   strategy           the voting strategy ('higher_order' required for promotions)
+#   votedAt            ISO-8601 timestamp the vote was recorded
+#   approvalPercentage optional approval fraction (human record)
+#   voteUri            optional link to the vote artifact / issue thread (human record)
+#
+# RESOLUTION SOURCE & RESIDUAL GAP (#3894). Live `consensus_vote` results are
+# persisted only to per-developer home-dir stores (~/.nexus-agents/voting/,
+# ~/.nexus-agents/learning/) that a CI gate — no live server, no developer home
+# dir — cannot read. There is no other committed, queryable source of truth for
+# "did ratification vote X happen and pass". So this committed ledger IS the
+# resolution source: the gate verifies STRUCTURAL PRESENCE of an approved,
+# higher_order vote in a committed (hence reviewable) record. It does not, and
+# cannot from CI, re-execute the vote — recording a vote here is itself a
+# reviewable governance change.
+#
+# EMPTY today: the initial 8 strategies are declared at suggest/advisory baselines
+# (no promotion) and the transition log is empty. The absorbed promotion cases
+# (#3552/#3769/#2077) each land their ratification record here in their own PR,
+# alongside the matching tier-transition audit event.
+#
+# Source: ADR-0017, Issue #3894 (hardens #3842).
+
+version: 1
+votes: []
