@@ -48,9 +48,9 @@ import {
   isShadowTrainEnabled,
   registerRunTool,
   RunInputSchema,
-  STRATEGY_ENTRYPOINT_TOOL,
   type RunResponse,
 } from './run-tool.js';
+import { entrypointToolFor } from '../../orchestration/strategy-manifest-registry.js';
 import { readJobResult } from '../jobs/job-result-store.js';
 import { _resetForTests as resetJobConcurrency } from '../jobs/job-concurrency.js';
 import { resetNexusDataDirCache } from '../../config/nexus-data-dir.js';
@@ -73,10 +73,14 @@ const ALL_STRATEGIES: ExecutionStrategy[] = [
   'research',
 ];
 
-describe('STRATEGY_ENTRYPOINT_TOOL', () => {
-  it('maps every execution strategy to a recommended tool', () => {
+// The entrypoint-tool map moved to the strategy-manifest registry (#3835); the
+// exhaustive coverage + behaviour-parity assertions now live in
+// strategy-manifest-registry.test.ts. routeGoal still resolves its
+// recommendedTool through the manifest-sourced entrypointToolFor() below.
+describe('strategy entrypoint resolution (manifest-sourced, #3835)', () => {
+  it('resolves a recommended tool for every execution strategy', () => {
     for (const s of ALL_STRATEGIES) {
-      expect(STRATEGY_ENTRYPOINT_TOOL[s]).toBeTruthy();
+      expect(entrypointToolFor(s)).toBeTruthy();
     }
   });
 });
@@ -104,7 +108,7 @@ describe('routeGoal', () => {
 
   it('always includes a recommendedTool consistent with the strategy', () => {
     const r = routeGoal({ goal: 'research and compare alternatives and evaluate the landscape' });
-    expect(r.recommendedTool).toBe(STRATEGY_ENTRYPOINT_TOOL[r.strategy]);
+    expect(r.recommendedTool).toBe(entrypointToolFor(r.strategy));
   });
 });
 
