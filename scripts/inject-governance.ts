@@ -35,6 +35,7 @@ import {
   readBaseline as readMemoryContractBaseline,
   scan as scanMemoryContract,
 } from './check-memory-contract.js';
+import { checkStrategyManifestRegistry } from './check-strategy-manifest-drift.js';
 const CLAUDE_MD_PATH = join(ROOT, 'CLAUDE.md');
 const README_PATH = join(ROOT, 'README.md');
 // #3334: docs/ENTRYPOINTS.md carries TWO MCP-tool enumerations (a prose
@@ -1485,6 +1486,12 @@ function checkGovernance(): boolean {
     checkToolOutputConsistency(),
     checkMemoryContract(),
     checkServerJson(actual.tools.length),
+    // #3837 (Epic C, M2): the strategy-manifest registry joins the drift-gated
+    // registries. Fails on YAML↔TS drift, a missing/extra/duplicate manifest vs
+    // the ExecutionStrategy union, or a YAML that no longer validates against the
+    // #3834 Zod schema. Logic lives in check-strategy-manifest-drift.ts (which the
+    // standalone `strategy-manifest:check` script also drives).
+    checkStrategyManifestRegistry(),
   ];
 
   const passed = checks.every(Boolean);
