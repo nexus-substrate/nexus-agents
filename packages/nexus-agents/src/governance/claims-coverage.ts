@@ -38,6 +38,12 @@
  * (Source: Issue #3880; maps to #3826 deferred undeclared-claim detector)
  */
 
+// @export-no-consumer-yet — see #3880
+// This module's consumer is the `claims:check` CI gate (scripts/claims-check.ts),
+// not another src/ module — and it cannot be wired into one without a cycle
+// (claims-coverage → claims-verify → claims-registry). The gate orchestration
+// legitimately lives in the script; this file is exercised by it + its tests.
+
 import type { ClaimsRegistry } from './claims-registry.js';
 
 /**
