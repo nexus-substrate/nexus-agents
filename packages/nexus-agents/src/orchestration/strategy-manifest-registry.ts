@@ -28,8 +28,12 @@ import {
   STRATEGY_MANIFEST_SCHEMA_VERSION,
   type StrategyManifest,
   type StrategyManifestRegistry,
+  type SelectionRule,
 } from './strategy-manifest.js';
 import type { ExecutionStrategy } from './meta-orchestrator.js';
+import type { WorkflowPattern } from './workflow-router-types.js';
+import type { PipelineType } from '../pipeline/adaptive-orchestrator.js';
+import type { TaskAnalysisResult } from '../core/task-analysis/shared-task-analyzer.js';
 
 /**
  * The eight live strategy manifests. MIRRORS `governance/strategy-manifests.yaml`
@@ -51,6 +55,8 @@ const RAW_REGISTRY: StrategyManifestRegistry = {
         'Force when the goal is a one-shot ask that needs no pipeline, gate, or multi-step plan.',
       maturityTier: 'stable',
       latencyClass: 'single-llm',
+      // Sequential + trivial complexity collapses to the lightest engine.
+      selectionRules: [{ priority: 40, patterns: ['sequential'], complexities: ['simple'] }],
     },
     {
       id: 'dev-pipeline',
@@ -63,6 +69,9 @@ const RAW_REGISTRY: StrategyManifestRegistry = {
         'Force when the goal is a code change that must pass the dev quality gate before it counts as done.',
       maturityTier: 'stable',
       latencyClass: 'pipeline',
+      // The default for any non-trivial sequential task (single-shot outranks it
+      // only at `simple` complexity; the audit/template overrides outrank both).
+      selectionRules: [{ priority: 30, patterns: ['sequential'] }],
     },
     {
       id: 'pipeline',
@@ -75,6 +84,9 @@ const RAW_REGISTRY: StrategyManifestRegistry = {
         'Force when the work fits a templated multi-stage pipeline rather than a single model call.',
       maturityTier: 'stable',
       latencyClass: 'pipeline',
+      // The audit template is more specific than the plain sequential default:
+      // it upgrades a sequential single-shot/dev-pipeline choice to the pipeline.
+      selectionRules: [{ priority: 80, pipelineTypes: ['audit'], patterns: ['sequential'] }],
     },
     {
       id: 'graph-workflow',
@@ -87,6 +99,7 @@ const RAW_REGISTRY: StrategyManifestRegistry = {
         'Force when the work is an explicit dependency graph with conditional edges (a predefined workflow template).',
       maturityTier: 'beta',
       latencyClass: 'pipeline',
+      selectionRules: [{ priority: 50, patterns: ['graph'] }],
     },
     {
       id: 'orchestrate',
@@ -99,6 +112,7 @@ const RAW_REGISTRY: StrategyManifestRegistry = {
         'Force when the work needs multi-agent orchestration patterns rather than a single linear pipeline.',
       maturityTier: 'beta',
       latencyClass: 'async-job-body',
+      selectionRules: [{ priority: 50, patterns: ['wave', 'aflow', 'puppeteer'] }],
     },
     {
       id: 'consensus',
@@ -110,6 +124,8 @@ const RAW_REGISTRY: StrategyManifestRegistry = {
       whenToForce: 'Force when a decision needs N independent voters rather than one model.',
       maturityTier: 'stable',
       latencyClass: 'multi-llm-panel',
+      // An explicit consensus requirement outranks every template/pattern choice.
+      selectionRules: [{ priority: 100, patterns: ['consensus'] }],
     },
     {
       id: 'spec',
@@ -122,6 +138,8 @@ const RAW_REGISTRY: StrategyManifestRegistry = {
         'Force when building a greenfield project from a written spec, not a plain goal string.',
       maturityTier: 'beta',
       latencyClass: 'async-job-body',
+      // A greenfield template outranks the structural pattern fallback.
+      selectionRules: [{ priority: 90, pipelineTypes: ['greenfield'] }],
     },
     {
       id: 'research',
@@ -134,6 +152,8 @@ const RAW_REGISTRY: StrategyManifestRegistry = {
         'Force when the goal is research-led (gather, synthesize, compare) rather than a code change or decision.',
       maturityTier: 'stable',
       latencyClass: 'pipeline',
+      // A research template outranks the structural pattern fallback.
+      selectionRules: [{ priority: 90, pipelineTypes: ['research'] }],
     },
   ],
 };
@@ -183,4 +203,63 @@ export function executorAvailableFor(strategy: ExecutionStrategy): boolean {
     throw new Error(`No strategy manifest registered for strategy '${strategy}'`);
   }
   return manifest.executorAvailable;
+}
+
+/** The routing signals a manifest selection rule is matched against (#3836). */
+export interface RoutingSignals {
+  readonly pattern: WorkflowPattern;
+  readonly pipelineType: PipelineType;
+  readonly complexity: TaskAnalysisResult['complexity'];
+}
+
+/** A manifest matched by the router, plus the rule that won. */
+export interface ManifestSelection {
+  readonly strategy: ExecutionStrategy;
+  readonly manifest: StrategyManifest;
+  readonly rule: SelectionRule;
+}
+
+/** Whether one selection rule matches the routing signals (all predicates AND). */
+function ruleMatches(rule: SelectionRule, signals: RoutingSignals): boolean {
+  if (rule.patterns !== undefined && !rule.patterns.includes(signals.pattern)) return false;
+  if (rule.pipelineTypes !== undefined && !rule.pipelineTypes.includes(signals.pipelineType)) {
+    return false;
+  }
+  if (rule.complexities !== undefined && !rule.complexities.includes(signals.complexity)) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * The manifest-driven router core (#3836). Evaluates every registered manifest's
+ * {@link SelectionRule}s against the routing signals and returns the strategy
+ * whose matching rule has the HIGHEST priority. Ties (equal priority) break
+ * deterministically by strategy name so selection is reproducible. Returns
+ * `undefined` only if NO rule across the whole registry matches — the caller
+ * decides the fallback.
+ *
+ * Crucially this function names ZERO strategies: adding a strategy is registering
+ * a manifest with rules, never editing this matcher (the #3836 invariant, proven
+ * by the synthetic-9th-manifest test).
+ */
+export function selectStrategyByManifest(
+  signals: RoutingSignals,
+  manifests: readonly StrategyManifest[] = STRATEGY_MANIFEST_REGISTRY.manifests
+): ManifestSelection | undefined {
+  let best: ManifestSelection | undefined;
+  for (const manifest of manifests) {
+    if (manifest.selectionRules === undefined) continue;
+    for (const rule of manifest.selectionRules) {
+      if (!ruleMatches(rule, signals)) continue;
+      const better =
+        best === undefined ||
+        rule.priority > best.rule.priority ||
+        (rule.priority === best.rule.priority && manifest.strategy < best.strategy);
+      if (better) {
+        best = { strategy: manifest.strategy, manifest, rule };
+      }
+    }
+  }
+  return best;
 }

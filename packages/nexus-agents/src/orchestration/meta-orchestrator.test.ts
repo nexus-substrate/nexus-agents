@@ -158,6 +158,47 @@ describe('MetaOrchestrator.select — integration via real router', () => {
   });
 });
 
+describe('MetaOrchestrator.select — manifest-driven routing audit (#3836)', () => {
+  it('records the matched manifest id + schema version on an auto-routed decision', () => {
+    const meta = createMetaOrchestrator();
+    const d = meta.select({
+      goal: 'should we adopt approach A or approach B',
+      signals: { requiresConsensus: true },
+    });
+    expect(d.strategy).toBe('consensus');
+    expect(d.manifestId).toBe('consensus');
+    expect(d.manifestSchemaVersion).toBe(1);
+  });
+
+  it('reasoning cites the backing manifest (router routes over manifest data)', () => {
+    const meta = createMetaOrchestrator();
+    const d = meta.select({ goal: 'scaffold a new cli project from scratch' });
+    expect(d.strategy).toBe('spec');
+    expect(d.reasoning).toContain('manifest spec');
+  });
+
+  it('emits the manifest id + version into the selection record', () => {
+    const sink = createRecordingSink();
+    const meta = createMetaOrchestrator({ sink });
+    meta.select({
+      goal: 'research and compare alternative approaches and evaluate the landscape',
+    });
+    const rec = sink.getRecords()[0] as MetaSelectionRecord;
+    expect(rec.strategy).toBe('research');
+    expect(rec.manifestId).toBe('research');
+    expect(rec.manifestSchemaVersion).toBe(1);
+  });
+
+  it('a forced strategy still resolves its manifest for the audit trail', () => {
+    const sink = createRecordingSink();
+    const meta = createMetaOrchestrator({ sink });
+    const d = meta.select({ goal: 'anything', forceStrategy: 'dev-pipeline' });
+    expect(d.manifestId).toBe('dev-pipeline');
+    expect(d.manifestSchemaVersion).toBe(1);
+    expect(sink.getRecords()[0]?.manifestId).toBe('dev-pipeline');
+  });
+});
+
 describe('MetaOrchestrator.select — force override', () => {
   it('honors forceStrategy with full confidence and no shaping', () => {
     const meta = createMetaOrchestrator();
