@@ -40,6 +40,7 @@ function makeMockAuditLogger() {
     logPolicyDecision: vi.fn(),
     logSecurityEvent: vi.fn(),
     logRateLimitViolation: vi.fn(),
+    logTierTransition: vi.fn(),
     flush: vi.fn(() => Promise.resolve()),
     close: vi.fn(() => Promise.resolve()),
   } satisfies IAuditLogger;

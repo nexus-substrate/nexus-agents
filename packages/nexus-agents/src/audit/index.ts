@@ -20,6 +20,10 @@ export {
   AuditEventInputSchema,
   AuditLogConfigSchema,
   AuditQueryCriteriaSchema,
+  TierTransitionKindSchema,
+  TierTransitionTierSchema,
+  TierTransitionPayloadSchema,
+  TIER_TRANSITION_METADATA_KEY,
 } from './audit-types.js';
 export type {
   AuditCategory,
@@ -37,10 +41,20 @@ export type {
   PolicyDecisionAuditOpts,
   SecurityEventAuditOpts,
   RateLimitAuditOpts,
+  TierTransitionKind,
+  TierTransitionTier,
+  TierTransitionPayload,
+  TierTransitionAuditOpts,
 } from './audit-types.js';
 
 // Logger
-export { AuditLogger, createAuditLogger } from './audit-logger.js';
+export {
+  AuditLogger,
+  createAuditLogger,
+  verifyChain,
+  extractTierTransition,
+} from './audit-logger.js';
+export type { ChainVerification } from './audit-logger.js';
 
 // Storage
 export { FileAuditStorage, InMemoryAuditStorage } from './audit-storage.js';

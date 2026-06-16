@@ -25,13 +25,18 @@
  * sibling to the #3837 manifest drift-gate, and exposed standalone as
  * `pnpm authority-tier:check`.
  *
- * Deferred to #3842: the tier-transition AUDIT EVENTS + the gate that fails a
- * promotion audit event lacking a linked ratification vote. This gate validates
- * the manifest DECLARATION + the evidence floor; the hash-chained transition log
- * is #3842's surface.
+ * Tier-transition ratification gate (#3842): in addition to the declaration +
+ * evidence-floor checks, this gate now also reads the hash-chained
+ * tier-transition AUDIT EVENTS (Epic D / ADR-0017 §"Transition Rules") and FAILS
+ * a PROMOTION transition event that lacks a linked `ratificationVoteRef`.
+ * Promotions must be ratification-linked (ADR-0017); demotions are automatic and
+ * need no vote. The transition log lives at
+ * `governance/authority-tier-transitions.jsonl` (optional — empty when no
+ * transition has occurred); each line is a persisted `AuditEvent`. The pure
+ * analysis ({@link analyzeTierTransitionEvents}) is unit-tested in isolation.
  *
  * @module scripts/check-authority-tier-drift
- * (Source: ADR-0017, Issue #3839, #3841)
+ * (Source: ADR-0017, Issue #3839, #3841, #3842)
  */
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -44,8 +49,14 @@ import {
   type PromotionEvidence,
 } from '../packages/nexus-agents/src/orchestration/strategy-manifest.js';
 import { STRATEGY_MANIFEST_REGISTRY } from '../packages/nexus-agents/src/orchestration/strategy-manifest-registry.js';
+import { extractTierTransition } from '../packages/nexus-agents/src/audit/audit-logger.js';
+import {
+  AuditEventSchema,
+  type TierTransitionPayload,
+} from '../packages/nexus-agents/src/audit/audit-types.js';
 
 const EVIDENCE_LEDGER = join(ROOT, 'governance/authority-tier-evidence.yaml');
+const TRANSITION_LOG = join(ROOT, 'governance/authority-tier-transitions.jsonl');
 
 /**
  * The ADR-0017 advisory→enforce promotion floor. The minimum a gate enforces; a
@@ -66,7 +77,9 @@ export interface TierDriftFinding {
     | 'tier-undeclared'
     | 'enforce-without-evidence'
     | 'enforce-evidence-below-floor'
-    | 'evidence-ledger-invalid';
+    | 'evidence-ledger-invalid'
+    | 'promotion-without-ratification'
+    | 'transition-log-invalid';
   readonly message: string;
 }
 
@@ -151,6 +164,75 @@ export function analyzeTierDeclarations(inputs: DriftInputs): TierDriftFinding[]
   return findings;
 }
 
+/**
+ * The ratification gate (#3842). Pure analysis (no disk/process I/O) over the
+ * recovered tier-transition payloads so it is unit-testable with fixtures both
+ * ways. ADR-0017 §"Promotions are ratification-linked": a `promotion` transition
+ * is valid only if it carries a linked `ratificationVoteRef`; a `demotion` is
+ * automatic and needs none. This is the machine-enforced invariant the
+ * ratification panel's Contrarian required: a tier-transition audit event of kind
+ * `promotion` lacking a linked ratification vote FAILS the gate.
+ *
+ * @param transitions - tier-transition payloads recovered from the chained audit log
+ * @returns one `promotion-without-ratification` finding per offending promotion
+ */
+export function analyzeTierTransitionEvents(
+  transitions: readonly TierTransitionPayload[]
+): TierDriftFinding[] {
+  const findings: TierDriftFinding[] = [];
+  for (const t of transitions) {
+    if (t.kind !== 'promotion') continue; // demotions are automatic — no vote required
+    const ref = t.ratificationVoteRef;
+    if (ref === undefined || ref.trim() === '') {
+      findings.push({
+        code: 'promotion-without-ratification',
+        message: `tier-transition promotion of '${t.subject}' (${t.fromTier} → ${t.toTier}, evidenceRef='${t.evidenceRef}') has NO linked ratificationVoteRef. Promotions MUST be ratification-linked (ADR-0017 §"Promotions are ratification-linked") — record the consensus_vote ref on the transition audit event.`,
+      });
+    }
+  }
+  return findings;
+}
+
+/**
+ * Read the optional tier-transition log (JSONL of persisted AuditEvents) and
+ * recover the tier-transition payloads. Returns the findings: a single
+ * `transition-log-invalid` if a line is not a valid AuditEvent (fail-closed — we
+ * cannot trust the log), plus the recovered payloads for the ratification check.
+ * A non-tier-transition event (any other audit event sharing the file) is simply
+ * skipped, not an error.
+ */
+export function recoverTransitions(jsonl: string): {
+  readonly transitions: TierTransitionPayload[];
+  readonly findings: TierDriftFinding[];
+} {
+  const transitions: TierTransitionPayload[] = [];
+  const findings: TierDriftFinding[] = [];
+  const lines = jsonl.split('\n').filter((l) => l.trim() !== '');
+  for (const [i, line] of lines.entries()) {
+    let raw: unknown;
+    try {
+      raw = JSON.parse(line);
+    } catch {
+      findings.push({
+        code: 'transition-log-invalid',
+        message: `governance/authority-tier-transitions.jsonl line ${String(i + 1)} is not valid JSON.`,
+      });
+      continue;
+    }
+    const parsed = AuditEventSchema.safeParse(raw);
+    if (!parsed.success) {
+      findings.push({
+        code: 'transition-log-invalid',
+        message: `governance/authority-tier-transitions.jsonl line ${String(i + 1)} is not a valid AuditEvent: ${parsed.error.issues.map((x) => x.message).join('; ')}.`,
+      });
+      continue;
+    }
+    const payload = extractTierTransition(parsed.data);
+    if (payload !== null) transitions.push(payload);
+  }
+  return { transitions, findings };
+}
+
 /** The ways an evidence record falls short of the advisory→enforce floor. */
 function enforceFloorShortfalls(e: PromotionEvidence): string[] {
   const out: string[] = [];
@@ -187,13 +269,24 @@ export function checkAuthorityTierDeclarations(): boolean {
     : undefined;
 
   const findings = analyzeTierDeclarations({ declaredTiers, evidenceYaml });
+
+  // #3842 ratification gate: read the hash-chained tier-transition log (if any)
+  // and fail any PROMOTION event lacking a linked ratificationVoteRef.
+  if (existsSync(TRANSITION_LOG)) {
+    const { transitions, findings: logFindings } = recoverTransitions(
+      readFileSync(TRANSITION_LOG, 'utf-8')
+    );
+    findings.push(...logFindings, ...analyzeTierTransitionEvents(transitions));
+  }
+
   if (findings.length === 0) return true;
 
-  console.error('Authority-tier declaration drift (#3841, ADR-0017):');
+  console.error('Authority-tier drift (#3841/#3842, ADR-0017):');
   for (const f of findings) console.error(`  - [${f.code}] ${f.message}`);
-  console.error('  Declare a tier on every manifest in governance/strategy-manifests.yaml, and');
+  console.error('  Declare a tier on every manifest in governance/strategy-manifests.yaml,');
   console.error('  back any `enforce` with a floor-meeting record in');
-  console.error('  governance/authority-tier-evidence.yaml. Re-run: pnpm authority-tier:check');
+  console.error('  governance/authority-tier-evidence.yaml, and link a ratification vote on');
+  console.error('  every promotion transition. Re-run: pnpm authority-tier:check');
   return false;
 }
 

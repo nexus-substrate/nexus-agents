@@ -41,8 +41,86 @@ export const AuditCategorySchema = z.enum([
   'configuration', // Settings changes
   'security', // Security events, violations
   'system', // System events, startup, shutdown
+  'governance', // Authority-tier transitions, ratification (Epic D, #3842)
 ]);
 export type AuditCategory = z.infer<typeof AuditCategorySchema>;
+
+// ============================================================================
+// Tier-Transition Audit Events (Epic D / ADR-0017, #3842)
+// ============================================================================
+
+/**
+ * The two directions a loop can move on the authority ladder (ADR-0017
+ * §"Transition Rules"). A `promotion` moves UP a tier and is invalid without a
+ * linked ratification vote; a `demotion` moves DOWN and is automatic (needs no
+ * vote). The ratification gate (`scripts/check-authority-tier-drift.ts`) keys
+ * off this kind: a `promotion` event lacking `ratificationVoteRef` FAILS the
+ * gate, a `demotion` does not.
+ */
+export const TierTransitionKindSchema = z.enum(['promotion', 'demotion']);
+export type TierTransitionKind = z.infer<typeof TierTransitionKindSchema>;
+
+/**
+ * The authority tier vocabulary, mirrored from
+ * `orchestration/strategy-manifest.ts` `AuthorityTierSchema`. Declared here so
+ * the audit module has no dependency on the orchestration layer (the audit log
+ * is the lower layer). A drift between the two enums is caught by the audit
+ * tier-transition tests, which round-trip every tier through the emitter.
+ */
+export const TierTransitionTierSchema = z.enum(['observe', 'suggest', 'advisory', 'enforce']);
+export type TierTransitionTier = z.infer<typeof TierTransitionTierSchema>;
+
+/**
+ * The structured payload of a tier-transition audit event (ADR-0017,
+ * §"All transitions are audit events"). Carried in the event's `metadata` under
+ * the `tierTransition` key so the existing hash-chain (which hashes the stable
+ * head fields) is unchanged, and recovered by the ratification gate.
+ *
+ * `ratificationVoteRef` is OPTIONAL on the schema (a demotion legitimately has
+ * none), but REQUIRED for a `promotion` by the gate, not the schema — this keeps
+ * the event-shape uniform and locates the invariant in one place (the gate).
+ */
+export const TierTransitionPayloadSchema = z
+  .object({
+    /** Whether the loop moved up (`promotion`) or down (`demotion`) the ladder. */
+    kind: TierTransitionKindSchema,
+    /** The loop/strategy whose tier changed (manifest `id` or loop identifier). */
+    subject: z.string().min(1),
+    /** Tier before the transition. */
+    fromTier: TierTransitionTierSchema,
+    /** Tier after the transition. */
+    toTier: TierTransitionTierSchema,
+    /** Ref to the promotion-evidence record this transition was earned against. */
+    evidenceRef: z.string().min(1),
+    /**
+     * Ref to the recorded `consensus_vote` that ratified a PROMOTION. Required
+     * by the ratification gate for `kind: 'promotion'`; legitimately absent for
+     * `kind: 'demotion'` (automatic, ADR-0017 §"Demotion is automatic").
+     */
+    ratificationVoteRef: z.string().min(1).optional(),
+  })
+  .strict();
+export type TierTransitionPayload = z.infer<typeof TierTransitionPayloadSchema>;
+
+/** The `metadata` key under which a tier-transition event carries its payload. */
+export const TIER_TRANSITION_METADATA_KEY = 'tierTransition' as const;
+
+/**
+ * Options for {@link IAuditLogger.logTierTransition}. The `actor` defaults to the
+ * system actor at the emission site when omitted (a tier change recorded by the
+ * evidence ledger is a system event).
+ */
+export interface TierTransitionAuditOpts {
+  kind: TierTransitionKind;
+  subject: string;
+  fromTier: TierTransitionTier;
+  toTier: TierTransitionTier;
+  evidenceRef: string;
+  ratificationVoteRef?: string | undefined;
+  actor?: AuditActor | undefined;
+  requestId?: string | undefined;
+  metadata?: Record<string, unknown> | undefined;
+}
 
 // ============================================================================
 // Audit Severity Levels
@@ -252,6 +330,9 @@ export interface IAuditLogger {
 
   /** Log a rate limit violation */
   logRateLimitViolation(opts: RateLimitAuditOpts): void;
+
+  /** Log an authority-tier transition (promotion/demotion) — Epic D, #3842. */
+  logTierTransition(opts: TierTransitionAuditOpts): void;
 
   /** Flush pending events */
   flush(): Promise<void>;
