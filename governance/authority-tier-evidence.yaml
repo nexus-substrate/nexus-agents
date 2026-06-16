@@ -1,0 +1,29 @@
+# Authority-tier promotion-evidence ledger (Epic D, #3841 — ADR-0017).
+#
+# The machine-checkable evidence record a promotion is earned against. The #3841
+# CI gate (scripts/check-authority-tier-drift.ts, under governance:check) requires
+# a floor-meeting record HERE for any strategy manifest declared `authorityTier:
+# enforce` — `enforce` is "never a default" (ADR-0017), so an enforce declaration
+# without evidence + ratification is a default flip and fails the gate.
+#
+# Each record is a PromotionEvidence (schema: strategy-manifest.ts
+# PromotionEvidenceSchema):
+#   loopId           the manifest id being promoted
+#   fromTier/toTier  the transition (toTier must be exactly one step up)
+#   evalN            number of independent, judged evaluations (floor: ≥100 for enforce)
+#   precision        precision on judged output (floor: ≥0.90 for enforce)
+#   recall           recall (floor: ≥0.80 for enforce; missed-action cost)
+#   primaryMetric    { name, value, ci } — the loop's promotion metric + CI
+#   soakDuration     ISO-8601 soak with no operator intervention (floor: ≥P30D)
+#   controlledFor    confounders the primaryMetric controls for (optional)
+#   ratificationVote the recorded consensus_vote ref ratifying the promotion (REQUIRED)
+#   evidenceUri      link to the measurement surface that produced the numbers
+#
+# EMPTY today: the initial 8 strategies are declared at suggest/advisory baselines
+# (no promotion), and NONE are `enforce`. The absorbed promotion cases
+# (#3552/#3769/#2077) each land their own record here in their own unbundled PR.
+#
+# Source: ADR-0017, Issue #3841. Audit-event linkage is #3842.
+
+version: 1
+evidence: []

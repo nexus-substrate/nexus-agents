@@ -35,6 +35,7 @@ import {
   buildSelectedDecision,
   toRecord,
 } from './meta-orchestrator-decision.js';
+import { guardAuthority, type ActionClass } from './authority-tier-guard.js';
 
 // Re-exported so existing importers keep their public surface (#3836 split): the
 // selection helpers + parity tests live in the routing module now.
@@ -71,6 +72,16 @@ export interface MetaOrchestratorInput {
   readonly signals?: Omit<TaskSignals, 'description'> | undefined;
   /** Power-user override — bypass selection and force a strategy. */
   readonly forceStrategy?: ExecutionStrategy | undefined;
+  /**
+   * The authority class the caller's intended action would EXERCISE (#3841,
+   * ADR-0017). When present, the router enforces the authority ladder: it REFUSES
+   * (throws {@link AuthorityRefusalError}, fail-closed) if the selected/forced
+   * strategy is declared at a tier BELOW this action class — e.g. requesting an
+   * `enforce`-class action from an `advisory`-tier strategy. Absent ⇒ the router
+   * authorizes only the strategy's own declared tier (no above-tier action is
+   * requested, so nothing to refuse).
+   */
+  readonly requiredAuthority?: ActionClass | undefined;
 }
 
 /**
@@ -299,6 +310,16 @@ export function createMetaOrchestrator(options?: {
           ? buildForcedDecision(input.forceStrategy, routing, classification)
           : buildSelectedDecision(routing, classification);
       const decision: MetaDecision = { ...base, decisionId: randomUUID() };
+
+      // Authority-ladder enforcement (#3841, ADR-0017). If the caller's action
+      // exercises an authority class above the chosen strategy's DECLARED tier,
+      // the router refuses fail-closed (throws AuthorityRefusalError) BEFORE the
+      // decision is recorded or returned — an above-tier action is stopped at the
+      // router, not caught after the fact. This is the machine consumer the
+      // authority-ladder ratification panel required.
+      if (input.requiredAuthority !== undefined) {
+        guardAuthority(decision.strategy, input.requiredAuthority);
+      }
 
       const timestamp = new Date(getTimeProvider().now()).toISOString();
       sink.record(toRecord(decision, input.goal, forced, timestamp));

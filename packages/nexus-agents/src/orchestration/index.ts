@@ -145,6 +145,21 @@ export type {
   CostProfile,
 } from './strategy-manifest.js';
 
+// Authority-tier enforcement guard (Epic D, #3841 — ADR-0017)
+export {
+  ACTION_CLASSES,
+  authorityRank,
+  permitsAction,
+  evaluateAuthority,
+  guardAuthority,
+  AuthorityRefusalError,
+} from './authority-tier-guard.js';
+export type {
+  ActionClass,
+  AuthorityDecision,
+  AuthorityRefusalCode,
+} from './authority-tier-guard.js';
+
 export {
   createMetaDispatcher,
   createAuditLogOutcomeSink,

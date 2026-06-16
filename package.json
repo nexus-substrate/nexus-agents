@@ -41,6 +41,7 @@
     "governance:check": "npx tsx scripts/inject-governance.ts check",
     "claims:check": "npx tsx scripts/claims-check.ts",
     "strategy-manifest:check": "npx tsx scripts/check-strategy-manifest-drift.ts",
+    "authority-tier:check": "npx tsx scripts/check-authority-tier-drift.ts",
     "docs:tools": "npx tsx scripts/generate-tool-reference.ts",
     "docs:tools:check": "npx tsx scripts/generate-tool-reference.ts --check",
     "typecheck": "turbo typecheck",
