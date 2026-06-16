@@ -284,6 +284,7 @@ _No active plan documents. Historical plans have been archived._
 | [archive/system-reviews-2026-01.md](./archive/system-reviews-2026-01.md)     | Historical system review transcripts        |
 | [SECRETS_SETUP.md](./SECRETS_SETUP.md)                                       | Secrets configuration                       |
 | [security/API_KEY_BOUNDARIES.md](./security/API_KEY_BOUNDARIES.md)           | API key boundary documentation              |
+| [audit-hash-chain-threat-model](./security/audit-hash-chain-threat-model.md) | Threat model for the audit hash chain       |
 | [system-map.md](./architecture/system-map.md)                                | System component map                        |
 | [deprecation-pipeline.md](./architecture/deprecation-pipeline.md)            | Deprecation tracking & v3.0 migration guide |
 | [redundancy-analysis.md](./architecture/redundancy-analysis.md)              | Code redundancy analysis                    |

@@ -13,6 +13,7 @@
   ],
   "ignoreRegExpList": ["/```[\\s\\S]*?```/g", "\\[.*?\\]\\(.*?\\)", "`[^`]+`"],
   "words": [
+    "chattr",
     "nexus",
     "orchestrator",
     "starlight",
