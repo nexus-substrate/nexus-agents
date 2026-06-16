@@ -1,0 +1,101 @@
+# Loop-tier registry (Epic D, #3843 — semantics in ADR-0017)
+#
+# Authority-tier declarations for the non-strategy "loops" the authority ladder
+# governs. The eight routable execution STRATEGIES carry `authorityTier` on the
+# strategy manifest (governance/strategy-manifests.yaml); the loops below are NOT
+# routable strategies — they are MCP tools / internal stages that act on their own
+# schedule — so they had no declaration surface. ADR-0017 requires EVERY automated
+# behaviour to declare its tier; this registry is that surface for the four
+# un-issued loops (#3843).
+#
+# Validated by the Zod schema in
+# packages/nexus-agents/src/orchestration/loop-tier-manifest.ts and embedded as a
+# typed constant in loop-tier-registry.ts (the two are asserted equal by
+# loop-tier-registry.test.ts so they cannot drift; the #3837 lockstep discipline).
+# Read alongside the strategy manifests by scripts/check-authority-tier-drift.ts
+# (under governance:check): an undeclared loop, or a dishonest `enforce`
+# declaration, fails the gate.
+#
+# #3843 IS DOCUMENTATION + DECLARATION — ZERO BEHAVIOUR CHANGE (Scope Steward
+# condition). Each loop is declared at its CURRENT implicit tier from the epic
+# Phase-0 recon table (#3839); ANY tier promotion/demotion is a separate ratified
+# event (out of scope here).
+#
+# Each loop:
+#   id                    stable kebab-case id (matches the loop's tool/stage id)
+#   schemaVersion         per-entry SHAPE version; must equal LOOP_TIER_SCHEMA_VERSION
+#   description           one-line human description of what the loop does
+#   authorityTier         the loop's CURRENT tier (observe | suggest | advisory | enforce)
+#   evidence              Phase-0 recon file:line proving the declaration matches behaviour
+#   boundedEnvelope       REQUIRED iff authorityTier == enforce — the ADR-0017 safety
+#                         envelope (summary + quantitative bounds + enforcedBy + demotionTrigger)
+#   promotionCriteriaDoc  the #3844 doc where this loop's promotion criteria live
+#
+# THE `enforce` GRANDFATHER RULE. An `enforce` loop is honest two ways: (1) it was
+# PROMOTED up the ladder (floor-meeting promotion-evidence record + ratification —
+# the strategy-manifest path), or (2) it is a PRE-EXISTING bounded `enforce` loop
+# declared at its current tier, its authority justified by a `boundedEnvelope`
+# (ADR-0017 §"enforce": an enforce loop MUST ship with explicit bounds). The tune
+# loop is case (2): default-ON bounded enforce since v2.96 (#3323), NOT a promotion.
+#
+# Source: ADR-0017, Issue #3839, #3843.
+
+version: 1
+
+loops:
+  - id: suggest-research-tasks
+    schemaVersion: 1
+    description: >-
+      Suggest-only MCP tool over checkForResearchTriggers: returns candidate
+      research tasks for a human/orchestrator to review; files nothing, mutates
+      nothing.
+    authorityTier: suggest
+    evidence: packages/nexus-agents/src/mcp/tools/suggest-research-tasks-tool.ts:1-18
+    promotionCriteriaDoc: docs/governance/loop-promotion-criteria.md
+
+  - id: improvement-review
+    schemaVersion: 1
+    description: >-
+      Threshold-gated observability loop: surfaces patterns crossing documented
+      thresholds as CANDIDATE issues; fileIssues defaults false (signals only),
+      capped at 5 per run when enabled. Never auto-merges.
+    authorityTier: suggest
+    evidence: packages/nexus-agents/src/mcp/tools/improvement-review.ts:62-68
+    promotionCriteriaDoc: docs/governance/loop-promotion-criteria.md
+
+  - id: pr-review
+    schemaVersion: 1
+    description: >-
+      Multi-voter consensus review of a PR diff: maps each voter decision into
+      PR-review semantics. Wraps the consensus voter infra and is non-blocking —
+      it annotates, never gates merge.
+    authorityTier: advisory
+    evidence: 'packages/nexus-agents/src/mcp/tools/pr-review-tool.ts:1-16 (wraps consensus_vote)'
+    promotionCriteriaDoc: docs/governance/loop-promotion-criteria.md
+
+  - id: tune-loop
+    schemaVersion: 1
+    description: >-
+      Self-tuning routing loop: on health/fitness signals it applies a bounded,
+      demotion-only routing multiplier and audits each adjustment. Default-ON
+      enforce since v2.96 (#3323); non-routing signals stay shadow-logged.
+    authorityTier: enforce
+    evidence: >-
+      packages/nexus-agents/src/pipeline/tune-stage.ts;
+      packages/nexus-agents/src/core/tune-adjustment-store.ts:31-35
+    boundedEnvelope:
+      summary: >-
+        Demotion-only routing nudge: multipliers are always ≤ 1.0 (slow a CLI,
+        never boost it past measured performance), floored so a CLI is never
+        zeroed out, capped per step, and decaying linearly back to 1.0 so a
+        transient blip self-reverses.
+      bounds:
+        demotionFloor: 0.5
+        maxStepPerAdjustment: 0.2
+        decayWindowMinutes: 30
+      enforcedBy: core/tune-adjustment-store.ts:TUNE_DEMOTION_FLOOR/TUNE_MAX_STEP/TUNE_DECAY_WINDOW_MS
+      demotionTrigger: >-
+        Automatic: each adjustment decays linearly back to 1.0 over 30 minutes (no
+        ratchet); setting NEXUS_TUNE_ENFORCE=false reverts the whole loop to
+        shadow. ADR-0017 demotion-on-regression applies if a bound is breached.
+    promotionCriteriaDoc: docs/governance/loop-promotion-criteria.md

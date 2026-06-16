@@ -22,6 +22,9 @@ on:
       # governance/claims-registry.yaml.
       - 'README.md'
       - 'ARCHITECTURE.md'
+      # #3844: the per-loop promotion-criteria doc is the `subject` of the
+      # loop-promotion-criterion claims, so the gate must fire when it changes.
+      - 'docs/governance/loop-promotion-criteria.md'
       - 'CLAUDE.md'
       - 'skills/**'
       - '.github/workflows/docs-check.yml'

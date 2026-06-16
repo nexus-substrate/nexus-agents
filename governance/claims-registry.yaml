@@ -138,3 +138,69 @@ claims:
       path: ARCHITECTURE.md
       expected: '| Phase 3 | v3.0.0  | REST API + Full Hybrid   | -      |'
     lastVerified: '2026-06-16'
+
+  # Epic D / #3844: per-loop promotion-criteria entries. Each records the
+  # ASPIRATIONAL→VERIFIED transition path for a loop: the PROMOTION itself is
+  # aspirational (not yet earned — no record in authority-tier-evidence.yaml), but
+  # the CRITERION (the evidence bar a promotion must meet, per ADR-0017's schema)
+  # is now VERIFIED-as-documented in docs/governance/loop-promotion-criteria.md.
+  # The transition becomes a real promotion only when the evidence + ratification
+  # land (see the doc's mechanical checklist). evidenceType: adr — the criterion
+  # is grounded in ADR-0017's evidence-threshold schema.
+  # method: file-exists with subjectContains — the doc IS the artifact, and
+  # subjectContains (#3877) asserts the criterion prose stays in the doc via a
+  # plain substring match (no comment-stripping, robust over Markdown).
+  - id: tune-loop-demotion-criterion
+    claim: 'The tune loop (bounded enforce) has a documented automatic-demotion criterion (envelope breach / regression).'
+    subject: docs/governance/loop-promotion-criteria.md
+    status: verified
+    evidenceType: adr
+    verification:
+      method: file-exists
+      path: docs/governance/loop-promotion-criteria.md
+      subjectContains: 'Demotion triggers (automatic, no ratification)'
+    lastVerified: '2026-06-16'
+
+  - id: auto-remediation-promotion-criterion
+    claim: 'Auto-remediation audit-to-enforce promotion criterion is documented per the ADR schema (would-block rate, evalN, precision, recall, soak).'
+    subject: docs/governance/loop-promotion-criteria.md
+    status: aspirational
+    evidenceType: adr
+    verification:
+      method: file-exists
+      path: docs/governance/loop-promotion-criteria.md
+      subjectContains: 'the **would-block rate**'
+    lastVerified: '2026-06-16'
+
+  - id: knn-weighting-promotion-criterion
+    claim: 'KNN research-maturity weighting promotion is gated on a similarity-controlled, stable, significant success-rate lift, else kill-option.'
+    subject: docs/governance/loop-promotion-criteria.md
+    status: aspirational
+    evidenceType: adr
+    verification:
+      method: file-exists
+      path: docs/governance/loop-promotion-criteria.md
+      subjectContains: 'similarity-controlled success-rate lift'
+    lastVerified: '2026-06-16'
+
+  - id: learned-selection-promotion-criterion
+    claim: 'Learned selection rules promotion is gated on a measured win over the hand-written rules.'
+    subject: docs/governance/loop-promotion-criteria.md
+    status: aspirational
+    evidenceType: adr
+    verification:
+      method: file-exists
+      path: docs/governance/loop-promotion-criteria.md
+      subjectContains: 'the **routing-decision win rate**'
+    lastVerified: '2026-06-16'
+
+  - id: clawguard-promotion-criterion
+    claim: 'ClawGuard audit-to-enforce promotion criterion makes recall the load-bearing threshold for missed-action cost.'
+    subject: docs/governance/loop-promotion-criteria.md
+    status: aspirational
+    evidenceType: adr
+    verification:
+      method: file-exists
+      path: docs/governance/loop-promotion-criteria.md
+      subjectContains: 'recall is load-bearing'
+    lastVerified: '2026-06-16'

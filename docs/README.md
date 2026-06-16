@@ -295,6 +295,12 @@ _No active plan documents. Historical plans have been archived._
 | [distribution/LISTING_SUBMISSIONS.md](./distribution/LISTING_SUBMISSIONS.md) | MCP registry & directory submission tracker |
 | [distribution/PUBLISHING_GUIDE.md](./distribution/PUBLISHING_GUIDE.md)       | Step-by-step publishing commands            |
 
+#### Governance
+
+| Document                                                                         | Description                                                             |
+| -------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| [governance/loop-promotion-criteria.md](./governance/loop-promotion-criteria.md) | Per-loop authority-ladder promotion/demotion criteria (ADR-0017, #3844) |
+
 ---
 
 ## Root-Level Documents
