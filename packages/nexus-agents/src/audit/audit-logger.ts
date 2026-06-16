@@ -24,8 +24,15 @@ import type {
   PolicyDecisionAuditOpts,
   SecurityEventAuditOpts,
   RateLimitAuditOpts,
+  TierTransitionAuditOpts,
+  TierTransitionPayload,
 } from './audit-types.js';
-import { AuditLogConfigSchema, AuditError } from './audit-types.js';
+import {
+  AuditLogConfigSchema,
+  AuditError,
+  TierTransitionPayloadSchema,
+  TIER_TRANSITION_METADATA_KEY,
+} from './audit-types.js';
 import { FileAuditStorage } from './audit-storage.js';
 
 // ============================================================================
@@ -139,6 +146,25 @@ export function verifyChain(events: readonly AuditEvent[]): ChainVerification {
     priorHash = event.hash;
   }
   return { ok: true, eventCount: events.length };
+}
+
+// ============================================================================
+// Tier-Transition Extraction (Epic D / ADR-0017, #3842)
+// ============================================================================
+
+/**
+ * Recover the structured {@link TierTransitionPayload} from an audit event, or
+ * `null` if the event is not a (valid) tier-transition event. A tier-transition
+ * event is a `governance`-category event whose `metadata.tierTransition` parses
+ * against {@link TierTransitionPayloadSchema}. Used by the ratification gate to
+ * read transition events back out of the chained log.
+ */
+export function extractTierTransition(event: AuditEvent): TierTransitionPayload | null {
+  if (event.category !== 'governance') return null;
+  const raw = event.metadata?.[TIER_TRANSITION_METADATA_KEY];
+  if (raw === undefined) return null;
+  const parsed = TierTransitionPayloadSchema.safeParse(raw);
+  return parsed.success ? parsed.data : null;
 }
 
 // ============================================================================
@@ -349,6 +375,45 @@ export class AuditLogger implements IAuditLogger {
       requestId: opts.requestId,
       toolName: opts.toolName,
       metadata: { currentRate: opts.currentRate, limitRate: opts.limitRate },
+    });
+  }
+
+  /**
+   * Log an authority-tier transition (Epic D / ADR-0017, #3842). A promotion or
+   * demotion of a loop's authority tier is recorded as a hash-chained
+   * `governance`-category event whose `metadata.tierTransition` carries the
+   * structured {@link TierTransitionPayload} ({subject, fromTier, toTier,
+   * evidenceRef, ratificationVoteRef?}).
+   *
+   * The emitter does NOT itself enforce the ratification invariant (a promotion
+   * with no `ratificationVoteRef` is still chained — tampering with the log to
+   * remove the field must not erase the event). The invariant is enforced by the
+   * ratification gate (`scripts/check-authority-tier-drift.ts`), which reads the
+   * chained events back and FAILS a `promotion` lacking a vote ref. A promotion
+   * is emitted at `warning` severity (it grants authority) so it surfaces above
+   * the default info floor; a demotion is `info` (it is the safe direction).
+   */
+  logTierTransition(opts: TierTransitionAuditOpts): void {
+    const payload: TierTransitionPayload = TierTransitionPayloadSchema.parse({
+      kind: opts.kind,
+      subject: opts.subject,
+      fromTier: opts.fromTier,
+      toTier: opts.toTier,
+      evidenceRef: opts.evidenceRef,
+      ...(opts.ratificationVoteRef !== undefined
+        ? { ratificationVoteRef: opts.ratificationVoteRef }
+        : {}),
+    });
+    this.log({
+      category: 'governance',
+      severity: opts.kind === 'promotion' ? 'warning' : 'info',
+      outcome: 'success',
+      action: `tier.${opts.kind}`,
+      description: `Authority-tier ${opts.kind}: '${opts.subject}' ${opts.fromTier} → ${opts.toTier}`,
+      actor: opts.actor ?? SYSTEM_ACTOR,
+      resource: { type: 'loop', id: opts.subject, name: opts.subject },
+      requestId: opts.requestId,
+      metadata: { ...opts.metadata, [TIER_TRANSITION_METADATA_KEY]: payload },
     });
   }
 

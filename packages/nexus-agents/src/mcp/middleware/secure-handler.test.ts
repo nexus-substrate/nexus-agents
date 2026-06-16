@@ -1270,6 +1270,7 @@ describe('SecureHandler', () => {
       logPolicyDecision: Mock;
       logRateLimitViolation: Mock;
       logSecurityEvent: Mock;
+      logTierTransition: Mock;
       log: Mock;
       flush: Mock;
       close: Mock;
@@ -1282,6 +1283,7 @@ describe('SecureHandler', () => {
         logPolicyDecision: vi.fn(),
         logRateLimitViolation: vi.fn(),
         logSecurityEvent: vi.fn(),
+        logTierTransition: vi.fn(),
         log: vi.fn(),
         flush: vi.fn().mockResolvedValue(undefined),
         close: vi.fn().mockResolvedValue(undefined),
