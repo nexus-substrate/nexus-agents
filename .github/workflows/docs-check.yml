@@ -14,6 +14,13 @@ on:
       - 'scripts/generate-tool-reference.ts'
       - 'scripts/claims-check.ts'
       - 'governance/claims-registry.yaml'
+      # #3878: the claims-check job polices the `subject` docs of the registry.
+      # README.md / ARCHITECTURE.md are the `subject` of every current claim, so
+      # the gate MUST fire when they change — otherwise doc drift skips the gate.
+      # Keep this list in sync with the distinct `subject` values in
+      # governance/claims-registry.yaml.
+      - 'README.md'
+      - 'ARCHITECTURE.md'
       - 'CLAUDE.md'
       - 'skills/**'
       - '.github/workflows/docs-check.yml'

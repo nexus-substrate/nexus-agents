@@ -31,6 +31,8 @@ claims:
       method: manifest-tool-count
       path: packages/nexus-agents/src/mcp/tools/tool-manifest.ts
       expected: 46
+      # #3877: also assert the README prose still says 46, not just the source.
+      subjectContains: '46 MCP tools'
     lastVerified: '2026-06-16'
 
   - id: consensus-strategy-count
@@ -43,6 +45,8 @@ claims:
       path: packages/nexus-agents/src/consensus/types-core.ts
       symbol: ConsensusAlgorithmSchema
       expected: 6
+      # #3877: README capabilities table prose must still advertise "6 strategies".
+      subjectContains: '6 strategies'
     lastVerified: '2026-06-16'
     caveat: >-
       Six names, five distinct strategies: opinion_wise and higher_order are
@@ -58,18 +62,30 @@ claims:
       path: packages/nexus-agents/src/agents/experts/expert-config.ts
       symbol: BuiltInExpertTypeSchema
       expected: 12
+      # #3877: README capabilities table must still state "12 built-in expert types".
+      subjectContains: '12 built-in expert types'
     lastVerified: '2026-06-16'
 
+  # #3882: reworded to match docs/security/audit-hash-chain-threat-model.md §7 —
+  # the chain is tamper-evident, NOT tamper-proof / immutable against a
+  # write-capable adversary. Downgraded to `partial` with a caveat; evidence is
+  # now the threat-model ADR, and the README prose checked is the honest
+  # "tamper-evident" phrasing, not the removed word "immutable".
   - id: hash-chained-audit
-    claim: 'Audit trail is immutable and hash-chained, verifiable via verifyChain.'
+    claim: 'Audit trail is hash-chained and tamper-evident (not tamper-proof), verifiable via verifyChain.'
     subject: README.md
-    status: verified
-    evidenceType: source
+    status: partial
+    evidenceType: adr
     verification:
       method: file-contains
       path: packages/nexus-agents/src/audit/audit-logger.ts
       expected: 'export function verifyChain'
+      subjectContains: 'Tamper-evident hash-chained'
     lastVerified: '2026-06-16'
+    caveat: >-
+      The chain is tamper-evident (detects post-hoc edits), not immutable: a
+      write-capable adversary can rewrite-and-rehash. See
+      docs/security/audit-hash-chain-threat-model.md §7 (and #3874).
 
   - id: verify-audit-chain-tool
     claim: 'A verify_audit_chain MCP tool exposes audit-chain integrity verification.'
@@ -79,17 +95,26 @@ claims:
     verification:
       method: file-contains
       path: packages/nexus-agents/src/mcp/tools/tool-manifest.ts
-      expected: 'verify_audit_chain'
+      expected: "name: 'verify_audit_chain'"
+      # #3877: README must still advertise the tool by name.
+      subjectContains: 'verify_audit_chain'
     lastVerified: '2026-06-16'
 
+  # #3879: was `file-exists` on a directory — passed even if LinUCB + TOPSIS
+  # were deleted. Now requires BOTH algorithms present in the real router code.
   - id: closed-loop-routing
     claim: 'Closed-loop routing scores candidates with LinUCB plus TOPSIS.'
     subject: README.md
     status: verified
     evidenceType: source
     verification:
-      method: file-exists
-      path: packages/nexus-agents/src/learning
+      # LinUCB (LinUCBBandit) and Topsis (TopsisRouter) are the real router
+      # symbols; the README prose says "LinUCB + TOPSIS". Both must be live code,
+      # not just a comment — #3879.
+      method: source-contains-all
+      path: packages/nexus-agents/src/cli-adapters/composite-router.ts
+      expected: 'LinUCB,Topsis'
+      subjectContains: 'LinUCB + TOPSIS'
     lastVerified: '2026-06-16'
 
   - id: standalone-cli-roadmap

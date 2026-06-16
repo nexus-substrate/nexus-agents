@@ -192,6 +192,170 @@ describe('verifyClaim', () => {
   });
 });
 
+describe('subject verification (#3877)', () => {
+  // The core regression: the gate must ALSO check the doc making the claim,
+  // not just the source-of-truth side. A README that drifts must FAIL.
+  it('FAILS when the subject doc drifts from the source (doc-drift regression)', () => {
+    const claim = baseClaim({
+      id: 'mcp-tool-count',
+      subject: 'README.md',
+      verification: {
+        method: 'manifest-tool-count',
+        path: 'src/mcp/tools/tool-manifest.ts',
+        expected: 46,
+        subjectContains: '46 MCP tools',
+      },
+    });
+    const fs = fakeFs({
+      // Source-of-truth genuinely has 46 tools...
+      '/repo/src/mcp/tools/tool-manifest.ts': Array.from(
+        { length: 46 },
+        (_v, i) => `  name: 'tool_${String(i)}',`
+      ).join('\n'),
+      // ...but the README drifted to claim 200. The gate must catch this.
+      '/repo/README.md': 'The system exposes 200 MCP tools across many surfaces.',
+    });
+    const r = verifyClaim(claim, '/repo', fs);
+    expect(r.ok).toBe(false);
+    expect(r.detail).toContain('subject README.md');
+    expect(r.detail).toContain('46 MCP tools');
+  });
+
+  it('passes when both source and subject agree', () => {
+    const claim = baseClaim({
+      id: 'mcp-tool-count',
+      subject: 'README.md',
+      verification: {
+        method: 'manifest-tool-count',
+        path: 'src/mcp/tools/tool-manifest.ts',
+        expected: 2,
+        subjectContains: '2 MCP tools',
+      },
+    });
+    const fs = fakeFs({
+      '/repo/src/mcp/tools/tool-manifest.ts': `  name: 'a',\n  name: 'b',`,
+      '/repo/README.md': 'We ship 2 MCP tools today.',
+    });
+    expect(verifyClaim(claim, '/repo', fs).ok).toBe(true);
+  });
+
+  it('fails when the subject doc itself is missing', () => {
+    const claim = baseClaim({
+      verification: {
+        method: 'file-contains',
+        path: 'src/audit.ts',
+        expected: 'export function verifyChain',
+        subjectContains: 'verifyChain',
+      },
+    });
+    const fs = fakeFs({ '/repo/src/audit.ts': 'export function verifyChain() {}' });
+    const r = verifyClaim(claim, '/repo', fs);
+    expect(r.ok).toBe(false);
+    expect(r.detail).toContain('subject doc missing');
+  });
+
+  it('does not run a subject check when subjectContains is absent (back-compat)', () => {
+    const claim = baseClaim({
+      verification: { method: 'file-exists', path: 'src/dir' },
+    });
+    const fs = fakeFs({ '/repo/src/dir': '' });
+    expect(verifyClaim(claim, '/repo', fs).ok).toBe(true);
+  });
+});
+
+describe('file-contains comment hardening (#3879)', () => {
+  it('does NOT match a needle that only appears in a line comment', () => {
+    const claim = baseClaim({
+      verification: {
+        method: 'file-contains',
+        path: 'src/manifest.ts',
+        expected: 'verify_audit_chain',
+      },
+    });
+    const fs = fakeFs({
+      '/repo/src/manifest.ts': `// removed verify_audit_chain tool\nname: 'orchestrate',`,
+      '/repo/README.md': 'mentions verify_audit_chain',
+    });
+    const r = verifyClaim(claim, '/repo', fs);
+    expect(r.ok).toBe(false);
+    expect(r.detail).toContain('only in comments');
+  });
+
+  it('does NOT match a needle that only appears in a block comment', () => {
+    const claim = baseClaim({
+      verification: {
+        method: 'file-contains',
+        path: 'src/manifest.ts',
+        expected: 'verify_audit_chain',
+      },
+    });
+    const fs = fakeFs({
+      '/repo/src/manifest.ts': `/* legacy: verify_audit_chain */\nname: 'orchestrate',`,
+      '/repo/README.md': 'mentions verify_audit_chain',
+    });
+    expect(verifyClaim(claim, '/repo', fs).ok).toBe(false);
+  });
+
+  it('matches a needle present in real code (comments stripped)', () => {
+    const claim = baseClaim({
+      verification: {
+        method: 'file-contains',
+        path: 'src/manifest.ts',
+        expected: 'verify_audit_chain',
+      },
+    });
+    const fs = fakeFs({
+      '/repo/src/manifest.ts': `// the verify_audit_chain tool\nname: 'verify_audit_chain',`,
+      '/repo/README.md': 'mentions verify_audit_chain',
+    });
+    expect(verifyClaim(claim, '/repo', fs).ok).toBe(true);
+  });
+});
+
+describe('source-contains-all (#3879 substantive checks)', () => {
+  it('passes only when ALL needles are present in real code', () => {
+    const claim = baseClaim({
+      verification: {
+        method: 'source-contains-all',
+        path: 'src/router.ts',
+        expected: 'LinUCB,TOPSIS',
+      },
+    });
+    const ok = fakeFs({
+      '/repo/src/router.ts': `import { LinUCBBandit } from './x';\n// TOPSIS\nrunTOPSIS();`,
+    });
+    expect(verifyClaim(claim, '/repo', ok).ok).toBe(true);
+  });
+
+  it('fails when one needle is missing (e.g. TOPSIS deleted)', () => {
+    const claim = baseClaim({
+      verification: {
+        method: 'source-contains-all',
+        path: 'src/router.ts',
+        expected: 'LinUCB,TOPSIS',
+      },
+    });
+    const bad = fakeFs({ '/repo/src/router.ts': `import { LinUCBBandit } from './x';` });
+    const r = verifyClaim(claim, '/repo', bad);
+    expect(r.ok).toBe(false);
+    expect(r.detail).toContain('TOPSIS');
+  });
+
+  it('fails when a needle appears only inside a comment', () => {
+    const claim = baseClaim({
+      verification: {
+        method: 'source-contains-all',
+        path: 'src/router.ts',
+        expected: 'LinUCB,TOPSIS',
+      },
+    });
+    const bad = fakeFs({
+      '/repo/src/router.ts': `const x = new LinUCBBandit();\n// TODO: TOPSIS removed`,
+    });
+    expect(verifyClaim(claim, '/repo', bad).ok).toBe(false);
+  });
+});
+
 describe('verifyClaims against the live repo', () => {
   it('every populated claim holds against current source', () => {
     const registry = parseClaimsRegistry(readFileSync(REGISTRY_PATH, 'utf-8'));
