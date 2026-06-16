@@ -172,6 +172,7 @@ Detailed technical documentation:
 | [0014](./adr/0014-orchestrator-interface-unification.md) | Orchestrator Interface Unification | Accepted   |
 | [0015](./adr/0015-multi-repo-orchestration.md)           | Multi-Repo Orchestration           | Proposed   |
 | [0016](./adr/0016-multi-round-consensus-voting.md)       | Multi-Round Consensus Voting       | Accepted   |
+| [0017](./adr/0017-authority-ladder.md)                   | Authority Ladder                   | Accepted   |
 
 #### Guides
 
