@@ -22,8 +22,9 @@ import {
   entrypointToolFor,
   executorAvailableFor,
   getStrategyManifest,
+  selectStrategyByManifest,
 } from './strategy-manifest-registry.js';
-import { parseStrategyManifestRegistry } from './strategy-manifest.js';
+import { parseStrategyManifestRegistry, type StrategyManifest } from './strategy-manifest.js';
 import type { ExecutionStrategy } from './meta-orchestrator.js';
 
 /**
@@ -107,6 +108,85 @@ describe('fail-closed behaviour', () => {
     expect(() => executorAvailableFor('does-not-exist' as ExecutionStrategy)).toThrow(
       /No strategy manifest registered/
     );
+  });
+});
+
+describe('manifest-driven router (#3836)', () => {
+  it('reproduces the 8-strategy routing decisions purely from manifest rules', () => {
+    // Parity matrix: { pattern, pipelineType, complexity } → strategy. Mirrors the
+    // pre-#3836 decideStrategy rules, now asserted to come out of the data matcher.
+    const cases: ReadonlyArray<
+      [Parameters<typeof selectStrategyByManifest>[0], ExecutionStrategy]
+    > = [
+      [{ pattern: 'consensus', pipelineType: 'general', complexity: 'moderate' }, 'consensus'],
+      // Consensus pattern outranks every pipeline template.
+      [{ pattern: 'consensus', pipelineType: 'greenfield', complexity: 'moderate' }, 'consensus'],
+      [{ pattern: 'sequential', pipelineType: 'greenfield', complexity: 'moderate' }, 'spec'],
+      [{ pattern: 'sequential', pipelineType: 'research', complexity: 'moderate' }, 'research'],
+      [{ pattern: 'sequential', pipelineType: 'audit', complexity: 'moderate' }, 'pipeline'],
+      [{ pattern: 'sequential', pipelineType: 'audit', complexity: 'simple' }, 'pipeline'],
+      // Audit only upgrades the SEQUENTIAL fallback; graph/wave keep their engine.
+      [{ pattern: 'graph', pipelineType: 'audit', complexity: 'moderate' }, 'graph-workflow'],
+      [{ pattern: 'wave', pipelineType: 'audit', complexity: 'moderate' }, 'orchestrate'],
+      [{ pattern: 'graph', pipelineType: 'dev', complexity: 'moderate' }, 'graph-workflow'],
+      [{ pattern: 'wave', pipelineType: 'dev', complexity: 'moderate' }, 'orchestrate'],
+      [{ pattern: 'aflow', pipelineType: 'dev', complexity: 'complex' }, 'orchestrate'],
+      [{ pattern: 'puppeteer', pipelineType: 'dev', complexity: 'moderate' }, 'orchestrate'],
+      [{ pattern: 'sequential', pipelineType: 'dev', complexity: 'simple' }, 'single-shot'],
+      [{ pattern: 'sequential', pipelineType: 'dev', complexity: 'moderate' }, 'dev-pipeline'],
+      [{ pattern: 'sequential', pipelineType: 'dev', complexity: 'expert' }, 'dev-pipeline'],
+      [{ pattern: 'sequential', pipelineType: 'general', complexity: 'moderate' }, 'dev-pipeline'],
+    ];
+    for (const [signals, expected] of cases) {
+      const selection = selectStrategyByManifest(signals);
+      expect(selection?.strategy, JSON.stringify(signals)).toBe(expected);
+    }
+  });
+
+  it('routes a SYNTHETIC 9th manifest with NO router edit (#3836 invariant)', () => {
+    // A novel strategy carrying its own high-priority rule for a previously
+    // unclaimed signal combination. The matcher selects it with zero code change,
+    // proving "adding a capability = registering a manifest, not editing router".
+    const ninth: StrategyManifest = {
+      id: 'simulation',
+      schemaVersion: 1,
+      strategy: 'spec', // reuse a valid enum member; the id is what's novel here
+      entrypointTool: 'run_simulation',
+      executorAvailable: false,
+      description: 'Synthetic 9th strategy for the no-router-edit invariant test.',
+      maturityTier: 'experimental',
+      latencyClass: 'async-job-body',
+      selectionRules: [{ priority: 200, patterns: ['graph'], pipelineTypes: ['research'] }],
+    };
+    const augmented = [...STRATEGY_MANIFEST_REGISTRY.manifests, ninth];
+    const selection = selectStrategyByManifest(
+      { pattern: 'graph', pipelineType: 'research', complexity: 'complex' },
+      augmented
+    );
+    expect(selection?.manifest.id).toBe('simulation');
+    expect(selection?.rule.priority).toBe(200);
+  });
+
+  it('returns undefined when no manifest rule matches the signals', () => {
+    // A manifest with no selection rules is never auto-routed.
+    const ruleless: StrategyManifest[] = [
+      {
+        id: 'orphan',
+        schemaVersion: 1,
+        strategy: 'spec',
+        entrypointTool: 'execute_spec',
+        executorAvailable: false,
+        description: 'Force-only manifest with no selection rules.',
+        maturityTier: 'beta',
+        latencyClass: 'async-job-body',
+      },
+    ];
+    expect(
+      selectStrategyByManifest(
+        { pattern: 'graph', pipelineType: 'dev', complexity: 'moderate' },
+        ruleless
+      )
+    ).toBeUndefined();
   });
 });
 

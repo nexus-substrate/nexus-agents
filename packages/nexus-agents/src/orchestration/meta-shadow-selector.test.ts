@@ -54,6 +54,8 @@ function decision(over: Partial<MetaDecision> = {}): MetaDecision {
     pattern: 'sequential',
     pipelineType: 'general',
     analysis: analysis(),
+    manifestId: 'pipeline',
+    manifestSchemaVersion: 1,
     ...over,
   };
 }

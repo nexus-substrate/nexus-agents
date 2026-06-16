@@ -23,13 +23,22 @@ import { createLogger, getTimeProvider, getErrorMessage } from '../core/index.js
 import type { ILogger } from '../core/index.js';
 import type { ILearnedStrategySelector, MetaShadowSink } from './meta-shadow-selector.js';
 import { classifyTask } from '../pipeline/adaptive-orchestrator.js';
-import type { TaskClassification, PipelineType } from '../pipeline/adaptive-orchestrator.js';
+import type { PipelineType } from '../pipeline/adaptive-orchestrator.js';
 import { createWorkflowRouter } from './workflow-router.js';
 import type { IWorkflowRouter } from './workflow-router.js';
-import type { TaskSignals, RoutingDecision, WorkflowPattern } from './workflow-router-types.js';
+import type { TaskSignals, WorkflowPattern } from './workflow-router-types.js';
 import type { TaskAnalysisResult } from '../core/task-analysis/shared-task-analyzer.js';
 import type { CapabilityGapReport } from '../core/task-analysis/capability-gap-detector.js';
 import type { ICapabilityGapLedger } from '../core/task-analysis/capability-gap-ledger.js';
+import {
+  buildForcedDecision,
+  buildSelectedDecision,
+  toRecord,
+} from './meta-orchestrator-decision.js';
+
+// Re-exported so existing importers keep their public surface (#3836 split): the
+// selection helpers + parity tests live in the routing module now.
+export { strategyFromPattern, strategyFromPipelineType } from './meta-orchestrator-routing.js';
 
 /**
  * Execution strategies the MetaOrchestrator can select. Each maps to an
@@ -100,6 +109,15 @@ export interface MetaDecision {
   readonly analysis: TaskAnalysisResult;
   /** Capability gap report — what's available vs needed. */
   readonly capabilityGaps?: CapabilityGapReport;
+  /**
+   * The id of the strategy manifest that backs this decision (#3836). For an
+   * auto-routed decision it is the manifest whose selection rule won; for a
+   * forced one it is the forced strategy's manifest. The router routes purely
+   * over manifest data, so this is the provenance of the choice.
+   */
+  readonly manifestId: string;
+  /** The schema version of {@link manifestId}'s manifest (#3836 audit trail). */
+  readonly manifestSchemaVersion: number;
 }
 
 /** Public interface for the MetaOrchestrator. */
@@ -141,6 +159,10 @@ export interface MetaSelectionRecord {
   readonly needsShaping: boolean;
   /** Whether the strategy was forced by the caller (vs selected). */
   readonly forced: boolean;
+  /** The strategy manifest id that backed the decision (#3836 audit trail). */
+  readonly manifestId: string;
+  /** The schema version of the backing manifest (#3836 audit trail). */
+  readonly manifestSchemaVersion: number;
 }
 
 /** A sink that receives every selection decision for observability. */
@@ -190,217 +212,6 @@ export function createRecordingSink(maxRecords = DEFAULT_MAX_RECORDS): IRecordin
 }
 
 /**
- * Maps a workflow pattern (+ complexity) to the execution strategy that engine
- * fronts. `sequential` collapses to the lightest engine that fits the
- * complexity.
- */
-export function strategyFromPattern(
-  pattern: WorkflowPattern,
-  complexity: TaskAnalysisResult['complexity']
-): ExecutionStrategy {
-  switch (pattern) {
-    case 'consensus':
-      return 'consensus';
-    case 'graph':
-      return 'graph-workflow';
-    case 'wave':
-    case 'aflow':
-    case 'puppeteer':
-      return 'orchestrate';
-    case 'sequential':
-      return complexity === 'simple' ? 'single-shot' : 'dev-pipeline';
-    default: {
-      // Exhaustiveness guard — a new pattern must be mapped explicitly.
-      const _exhaustive: never = pattern;
-      return _exhaustive;
-    }
-  }
-}
-
-/** Maps a pipeline template to the execution strategy that fronts it. */
-export function strategyFromPipelineType(pipelineType: PipelineType): ExecutionStrategy {
-  switch (pipelineType) {
-    case 'greenfield':
-      return 'spec';
-    case 'research':
-      return 'research';
-    case 'audit':
-      return 'pipeline';
-    case 'dev':
-      return 'dev-pipeline';
-    case 'general':
-      return 'pipeline';
-    default: {
-      const _exhaustive: never = pipelineType;
-      return _exhaustive;
-    }
-  }
-}
-
-interface SelectionCore {
-  readonly strategy: ExecutionStrategy;
-  readonly reasoning: string;
-  readonly confidence: number;
-}
-
-/**
- * The core selection rule. Distinctive pipeline templates (greenfield,
- * research) and an explicit consensus requirement take precedence over the
- * structural pattern; otherwise the structural pattern drives the choice, with
- * the audit template upgrading a plain sequential default to the templated
- * pipeline.
- */
-function decideStrategy(
-  routing: RoutingDecision,
-  classification: TaskClassification
-): SelectionCore {
-  const { pattern, analysis } = routing;
-  const { pipelineType } = classification;
-
-  if (pattern === 'consensus') {
-    return {
-      strategy: 'consensus',
-      reasoning: `Consensus pattern selected (${routing.reasoning}) — routing to a multi-perspective vote`,
-      confidence: routing.confidence,
-    };
-  }
-  if (pipelineType === 'greenfield') {
-    return {
-      strategy: 'spec',
-      reasoning: 'Greenfield work detected — routing to a spec-driven build',
-      confidence: classification.confidence,
-    };
-  }
-  if (pipelineType === 'research') {
-    return {
-      strategy: 'research',
-      reasoning: 'Research-heavy work detected — routing to the research pipeline',
-      confidence: classification.confidence,
-    };
-  }
-
-  const patternStrategy = strategyFromPattern(pattern, analysis.complexity);
-  // The audit template is more specific than a plain sequential default.
-  if (
-    pipelineType === 'audit' &&
-    (patternStrategy === 'dev-pipeline' || patternStrategy === 'single-shot')
-  ) {
-    return {
-      strategy: 'pipeline',
-      reasoning: 'Audit work detected — routing to the templated audit pipeline',
-      confidence: classification.confidence,
-    };
-  }
-  return {
-    strategy: patternStrategy,
-    reasoning: `Pattern "${pattern}" → ${patternStrategy} (${routing.reasoning})`,
-    confidence: routing.confidence,
-  };
-}
-
-/** Builds the best-first alternatives list, excluding the chosen strategy. */
-function buildAlternatives(
-  chosen: ExecutionStrategy,
-  routing: RoutingDecision,
-  classification: TaskClassification
-): ExecutionStrategy[] {
-  const candidates: ExecutionStrategy[] = [
-    strategyFromPattern(routing.pattern, routing.analysis.complexity),
-    strategyFromPipelineType(classification.pipelineType),
-    'orchestrate',
-  ];
-  const seen = new Set<ExecutionStrategy>([chosen]);
-  const alternatives: ExecutionStrategy[] = [];
-  for (const c of candidates) {
-    if (!seen.has(c)) {
-      seen.add(c);
-      alternatives.push(c);
-    }
-  }
-  return alternatives;
-}
-
-/** Common sub-signal fields shared by every decision. */
-function subSignals(
-  routing: RoutingDecision,
-  classification: TaskClassification
-): Pick<MetaDecision, 'pattern' | 'pipelineType' | 'analysis' | 'capabilityGaps'> {
-  return {
-    pattern: routing.pattern,
-    pipelineType: classification.pipelineType,
-    analysis: routing.analysis,
-    ...(routing.capabilityGaps !== undefined ? { capabilityGaps: routing.capabilityGaps } : {}),
-  };
-}
-
-function buildForcedDecision(
-  forced: ExecutionStrategy,
-  routing: RoutingDecision,
-  classification: TaskClassification
-): Omit<MetaDecision, 'decisionId'> {
-  return {
-    strategy: forced,
-    reasoning: `Strategy forced by caller: ${forced}`,
-    confidence: 1.0,
-    alternatives: buildAlternatives(forced, routing, classification),
-    needsShaping: false,
-    ...subSignals(routing, classification),
-  };
-}
-
-function buildSelectedDecision(
-  routing: RoutingDecision,
-  classification: TaskClassification
-): Omit<MetaDecision, 'decisionId'> {
-  const core = decideStrategy(routing, classification);
-  const needsShaping = routing.needsClarification === true;
-  return {
-    strategy: core.strategy,
-    reasoning: core.reasoning,
-    confidence: core.confidence,
-    alternatives: buildAlternatives(core.strategy, routing, classification),
-    needsShaping,
-    ...(needsShaping && routing.suggestedQuestions !== undefined
-      ? { shapingQuestions: routing.suggestedQuestions }
-      : {}),
-    ...subSignals(routing, classification),
-  };
-}
-
-/** Maps a finished decision to its observability record. */
-function toRecord(
-  decision: MetaDecision,
-  goal: string,
-  forced: boolean,
-  timestamp: string
-): MetaSelectionRecord {
-  return {
-    decisionId: decision.decisionId,
-    timestamp,
-    goal,
-    strategy: decision.strategy,
-    confidence: decision.confidence,
-    pattern: decision.pattern,
-    pipelineType: decision.pipelineType,
-    alternatives: decision.alternatives,
-    needsShaping: decision.needsShaping,
-    forced,
-  };
-}
-
-/**
- * Creates a MetaOrchestrator. Selection is deterministic and reuses the
- * existing routing/classification logic rather than duplicating it (DRY). Each
- * selection is emitted to the decision sink for observability (step 2, #3550).
- *
- * @param options.logger - optional logger.
- * @param options.router - optional workflow router (injectable for tests).
- * @param options.sink - optional decision sink (default: audit-log sink).
- * @param options.gapLedger - optional capability-gap ledger; when provided, each
- *   decision's capability gaps are recorded for the self-directed build backlog
- *   (#3555). Default absent — no gap recording, no behavior change.
- */
-/**
  * Computes the learned would-be strategy and logs it alongside the rule-based
  * decision (#3551). Shadow only — never alters the executed decision. Best-effort:
  * a selector/sink failure is logged and swallowed so selection never breaks.
@@ -428,6 +239,33 @@ function recordShadow(
   }
 }
 
+/** Emits the structured "strategy selected" audit log line for a decision. */
+function logSelection(logger: ILogger, decision: MetaDecision, forced: boolean): void {
+  logger.info('MetaOrchestrator strategy selected', {
+    decisionId: decision.decisionId,
+    strategy: decision.strategy,
+    confidence: decision.confidence,
+    pattern: decision.pattern,
+    pipelineType: decision.pipelineType,
+    needsShaping: decision.needsShaping,
+    forced,
+    manifestId: decision.manifestId,
+    manifestSchemaVersion: decision.manifestSchemaVersion,
+  });
+}
+
+/**
+ * Creates a MetaOrchestrator. Selection is deterministic and routes purely over
+ * the strategy-manifest registry (#3836) rather than hardcoded rules. Each
+ * selection is emitted to the decision sink for observability (step 2, #3550).
+ *
+ * @param options.logger - optional logger.
+ * @param options.router - optional workflow router (injectable for tests).
+ * @param options.sink - optional decision sink (default: audit-log sink).
+ * @param options.gapLedger - optional capability-gap ledger; when provided, each
+ *   decision's capability gaps are recorded for the self-directed build backlog
+ *   (#3555). Default absent — no gap recording, no behavior change.
+ */
 export function createMetaOrchestrator(options?: {
   readonly logger?: ILogger | undefined;
   readonly router?: IWorkflowRouter | undefined;
@@ -474,15 +312,7 @@ export function createMetaOrchestrator(options?: {
         });
       }
 
-      logger.info('MetaOrchestrator strategy selected', {
-        decisionId: decision.decisionId,
-        strategy: decision.strategy,
-        confidence: decision.confidence,
-        pattern: decision.pattern,
-        pipelineType: decision.pipelineType,
-        needsShaping: decision.needsShaping,
-        forced,
-      });
+      logSelection(logger, decision, forced);
       return decision;
     },
   };

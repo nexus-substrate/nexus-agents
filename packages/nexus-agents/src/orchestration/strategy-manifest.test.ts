@@ -91,6 +91,27 @@ describe('strategy manifest schema', () => {
     expect(StrategyManifestSchema.safeParse(m).success).toBe(true);
   });
 
+  it('accepts a manifest with declarative selectionRules (#3836)', () => {
+    const m = baseManifest({
+      selectionRules: [{ priority: 100, patterns: ['consensus'] }],
+    });
+    expect(StrategyManifestSchema.safeParse(m).success).toBe(true);
+  });
+
+  it('rejects a selection rule that constrains neither patterns nor pipelineTypes', () => {
+    const m = baseManifest({
+      selectionRules: [{ priority: 10, complexities: ['simple'] }] as never,
+    });
+    expect(StrategyManifestSchema.safeParse(m).success).toBe(false);
+  });
+
+  it('rejects an unknown workflow pattern in a selection rule', () => {
+    const m = baseManifest({
+      selectionRules: [{ priority: 10, patterns: ['mega-wave'] }] as never,
+    });
+    expect(StrategyManifestSchema.safeParse(m).success).toBe(false);
+  });
+
   it('keeps the strategy enum in lockstep with the router ExecutionStrategy', () => {
     // Compile-time + runtime guard: every router strategy must be a valid
     // manifest strategy name (a divergence would break #3835's migration).

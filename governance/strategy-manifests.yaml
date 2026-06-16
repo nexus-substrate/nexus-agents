@@ -21,14 +21,17 @@
 #   whenToForce       operator guidance for run({ forceStrategy }) (#3838)
 #   maturityTier      experimental | beta | stable
 #   latencyClass      expected latency class (#3734 operation-class taxonomy)
+#   selectionRules    declarative routing rules the manifest-driven router matches
+#                     over (#3836): each rule has a priority + pattern/pipelineType/
+#                     complexity predicates; highest-priority matching rule wins.
 #
 # Forward-compat governance/cost fields (authorityTier — Epic D #3552;
 # costProfile — Epic G) are intentionally OMITTED for the initial 8: they are
 # optional on the schema and are populated when those epics land, not here.
 #
 # Adding a strategy = register a manifest here (and mirror it in the TS module),
-# NOT editing the router (Epic C, #3833). The selection-logic refactor that
-# routes purely over this data is #3836.
+# NOT editing the router (Epic C, #3833). The router routes PURELY over the
+# selectionRules below (#3836) — no strategy names are hardcoded in the router.
 # Source: Issue #3833, #3835 (M2). Schema landed via #3834.
 
 version: 1
@@ -43,6 +46,10 @@ manifests:
     whenToForce: Force when the goal is a one-shot ask that needs no pipeline, gate, or multi-step plan.
     maturityTier: stable
     latencyClass: single-llm
+    selectionRules:
+      - priority: 40
+        patterns: [sequential]
+        complexities: [simple]
 
   - id: dev-pipeline
     schemaVersion: 1
@@ -53,6 +60,9 @@ manifests:
     whenToForce: Force when the goal is a code change that must pass the dev quality gate before it counts as done.
     maturityTier: stable
     latencyClass: pipeline
+    selectionRules:
+      - priority: 30
+        patterns: [sequential]
 
   - id: pipeline
     schemaVersion: 1
@@ -63,6 +73,10 @@ manifests:
     whenToForce: Force when the work fits a templated multi-stage pipeline rather than a single model call.
     maturityTier: stable
     latencyClass: pipeline
+    selectionRules:
+      - priority: 80
+        pipelineTypes: [audit]
+        patterns: [sequential]
 
   - id: graph-workflow
     schemaVersion: 1
@@ -73,6 +87,9 @@ manifests:
     whenToForce: Force when the work is an explicit dependency graph with conditional edges (a predefined workflow template).
     maturityTier: beta
     latencyClass: pipeline
+    selectionRules:
+      - priority: 50
+        patterns: [graph]
 
   - id: orchestrate
     schemaVersion: 1
@@ -83,6 +100,9 @@ manifests:
     whenToForce: Force when the work needs multi-agent orchestration patterns rather than a single linear pipeline.
     maturityTier: beta
     latencyClass: async-job-body
+    selectionRules:
+      - priority: 50
+        patterns: [wave, aflow, puppeteer]
 
   - id: consensus
     schemaVersion: 1
@@ -93,6 +113,9 @@ manifests:
     whenToForce: Force when a decision needs N independent voters rather than one model.
     maturityTier: stable
     latencyClass: multi-llm-panel
+    selectionRules:
+      - priority: 100
+        patterns: [consensus]
 
   - id: spec
     schemaVersion: 1
@@ -103,6 +126,9 @@ manifests:
     whenToForce: Force when building a greenfield project from a written spec, not a plain goal string.
     maturityTier: beta
     latencyClass: async-job-body
+    selectionRules:
+      - priority: 90
+        pipelineTypes: [greenfield]
 
   - id: research
     schemaVersion: 1
@@ -113,3 +139,6 @@ manifests:
     whenToForce: Force when the goal is research-led (gather, synthesize, compare) rather than a code change or decision.
     maturityTier: stable
     latencyClass: pipeline
+    selectionRules:
+      - priority: 90
+        pipelineTypes: [research]
