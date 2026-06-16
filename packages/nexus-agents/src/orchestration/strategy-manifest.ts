@@ -26,6 +26,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
+import type { ExecutionStrategy } from './meta-orchestrator.js';
 
 /**
  * Bump when a backward-incompatible change to the manifest shape lands. The
@@ -35,13 +36,18 @@ import { z } from 'zod';
 export const STRATEGY_MANIFEST_SCHEMA_VERSION = 1 as const;
 
 /**
- * The eight execution strategies the MetaOrchestrator can select today. Mirrors
- * (and must stay in lockstep with) `ExecutionStrategy` in `meta-orchestrator.ts`;
- * kept as an independent `z.enum` here so the manifest schema is self-contained
- * and validatable without importing the router. #3835 registers one manifest per
- * member; a divergence between the two is caught by the manifest registry test.
+ * The execution strategies the MetaOrchestrator can select today, as a runtime
+ * `as const` tuple. This is the SINGLE enumerable source the manifest schema and
+ * the lockstep test both derive from — it gives `ExecutionStrategy` (a pure TS
+ * union with no runtime value to enumerate) a runtime mirror.
+ *
+ * LOCKSTEP IS COMPILE-TIME ENFORCED: {@link assertExecutionStrategyLockstep}
+ * below asserts this tuple's element type is mutually assignable with the router
+ * `ExecutionStrategy` union. If someone ADDS a member to `ExecutionStrategy`
+ * without adding it here (or vice-versa), that assertion fails to typecheck —
+ * closing the #3881 hole where an added strategy could drift in undetected.
  */
-export const StrategyNameSchema = z.enum([
+export const EXECUTION_STRATEGY_NAMES = [
   'single-shot',
   'dev-pipeline',
   'pipeline',
@@ -50,7 +56,34 @@ export const StrategyNameSchema = z.enum([
   'consensus',
   'spec',
   'research',
-]);
+] as const;
+
+/**
+ * Compile-time exhaustiveness guard for the #3881 lockstep promise. `expect`
+ * yields `never` only when its two type args are MUTUALLY assignable, so:
+ * - adding a member to `ExecutionStrategy` (router) without adding it to
+ *   {@link EXECUTION_STRATEGY_NAMES} ⇒ `ExecutionStrategy` no longer extends the
+ *   tuple union ⇒ `never` resolves to `false` ⇒ TYPE ERROR.
+ * - adding a member here without it existing on the router ⇒ symmetric TYPE
+ *   ERROR.
+ * Purely a type-level assertion — erased at runtime, zero cost.
+ */
+type Expect<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+type _AssertExecutionStrategyLockstep = Expect<
+  (typeof EXECUTION_STRATEGY_NAMES)[number],
+  ExecutionStrategy
+>;
+// If this line errors, EXECUTION_STRATEGY_NAMES has drifted from the router
+// ExecutionStrategy union — reconcile the two (that is the #3881 guarantee).
+const _executionStrategyLockstepHolds: _AssertExecutionStrategyLockstep = true;
+void _executionStrategyLockstepHolds;
+
+/**
+ * The execution strategies as a Zod enum, derived from
+ * {@link EXECUTION_STRATEGY_NAMES} so the schema and the lockstep guard share one
+ * source. #3835 registers one manifest per member.
+ */
+export const StrategyNameSchema = z.enum(EXECUTION_STRATEGY_NAMES);
 export type StrategyName = z.infer<typeof StrategyNameSchema>;
 
 /**
@@ -195,6 +228,11 @@ export const StrategyManifestSchema = z
      * `false` so the router never selects an unexecutable strategy silently and
      * `execute:true` returns the structured `no_executor` envelope from manifest
      * data (#3835) instead of a hardcoded map.
+     *
+     * NOT trusted blindly: this self-declared boolean is CROSS-CHECKED against the
+     * live `buildDefaultExecutors` key set in `strategy-manifest-registry.test.ts`
+     * (#3881), so declaring `true` for a strategy with no wired executor (silent
+     * fail-OPEN) fails the build rather than mis-advertising routability.
      */
     executorAvailable: z.boolean(),
     /** One-line human description of what this strategy is for (#3838 docs). */

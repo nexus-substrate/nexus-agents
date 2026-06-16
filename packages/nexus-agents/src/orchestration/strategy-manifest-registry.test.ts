@@ -25,6 +25,7 @@ import {
   selectStrategyByManifest,
 } from './strategy-manifest-registry.js';
 import { parseStrategyManifestRegistry, type StrategyManifest } from './strategy-manifest.js';
+import { buildDefaultExecutors } from '../mcp/tools/run-tool.js';
 import type { ExecutionStrategy } from './meta-orchestrator.js';
 
 /**
@@ -94,6 +95,53 @@ describe('behaviour parity: manifest-sourced lookups === legacy STRATEGY_ENTRYPO
     }
     const wired = ALL_STRATEGIES.filter((s) => executorAvailableFor(s));
     expect(wired.sort()).toEqual(['consensus', 'dev-pipeline', 'pipeline', 'research'].sort());
+  });
+});
+
+describe('executorAvailable cross-check against the LIVE executor registry (#3881)', () => {
+  // The #3881 fix: executorAvailable was a self-declared boolean never checked
+  // against the real wired executors. The LEGACY_EXECUTOR_AVAILABLE snapshot above
+  // is a FROZEN copy and can rot; here we derive the wired set from the LIVE
+  // buildDefaultExecutors factory so a manifest claiming executorAvailable:true for
+  // a strategy with NO wired executor (fail-OPEN) — or :false for one that IS wired
+  // — fails the build. trustTier is irrelevant to which KEYS exist, so a fixed
+  // value is fine.
+  const LIVE_WIRED_EXECUTORS = new Set(
+    Object.keys(buildDefaultExecutors('3')) as ExecutionStrategy[]
+  );
+
+  it('every wired executor in buildDefaultExecutors maps to a registered strategy', () => {
+    for (const s of LIVE_WIRED_EXECUTORS) {
+      expect(
+        getStrategyManifest(s),
+        `executor wired for unregistered strategy '${s}'`
+      ).toBeDefined();
+    }
+  });
+
+  it("each manifest's executorAvailable matches whether the LIVE factory provides an executor", () => {
+    for (const s of ALL_STRATEGIES) {
+      const liveAvailable = LIVE_WIRED_EXECUTORS.has(s);
+      const declared = String(executorAvailableFor(s));
+      expect(
+        executorAvailableFor(s),
+        `executorAvailable for '${s}' is self-declared ${declared} but the live ` +
+          `buildDefaultExecutors ${liveAvailable ? 'DOES' : 'does NOT'} provide an executor — ` +
+          `fail-${liveAvailable ? 'closed-on-a-wired-strategy' : 'open'} drift (#3881)`
+      ).toBe(liveAvailable);
+    }
+  });
+
+  it('the legacy snapshot itself still matches the live factory (snapshot has not rotted)', () => {
+    // Keeps LEGACY_EXECUTOR_AVAILABLE honest: if someone wires/unwires an executor
+    // in run-tool.ts and updates the manifests but forgets this frozen snapshot,
+    // this catches the snapshot rot rather than letting the parity test pass on
+    // stale data.
+    for (const s of ALL_STRATEGIES) {
+      expect(LIVE_WIRED_EXECUTORS.has(s), `legacy snapshot stale for '${s}'`).toBe(
+        LEGACY_EXECUTOR_AVAILABLE[s]
+      );
+    }
   });
 });
 

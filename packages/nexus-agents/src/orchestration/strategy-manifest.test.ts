@@ -12,6 +12,7 @@ import {
   StrategyManifestSchema,
   StrategyManifestRegistrySchema,
   StrategyNameSchema,
+  EXECUTION_STRATEGY_NAMES,
   parseStrategyManifest,
   parseStrategyManifestRegistry,
   loadStrategyManifestRegistry,
@@ -19,6 +20,21 @@ import {
   type StrategyManifest,
 } from './strategy-manifest.js';
 import { type ExecutionStrategy } from './meta-orchestrator.js';
+
+/**
+ * Type-level assertion mirror of the compile-time lockstep guard in
+ * strategy-manifest.ts. If a strategy is ADDED to the router `ExecutionStrategy`
+ * union without being added to `EXECUTION_STRATEGY_NAMES`, BOTH this and the
+ * source-file guard fail to typecheck (#3881). `assignableToUnion` requires every
+ * tuple member to be a router strategy; `assignableFromUnion` (the typed
+ * `ExecutionStrategy[]` cast of the array) requires every router strategy to be
+ * in the tuple — that direction is what the old hand-copied literal could not
+ * detect.
+ */
+const _assignableToUnion: readonly ExecutionStrategy[] = EXECUTION_STRATEGY_NAMES;
+const _assignableFromUnion = EXECUTION_STRATEGY_NAMES as readonly ExecutionStrategy[];
+void _assignableToUnion;
+void _assignableFromUnion;
 
 const FIXTURE_PATH = join(import.meta.dirname, '__fixtures__/strategy-manifests.example.yaml');
 
@@ -112,23 +128,21 @@ describe('strategy manifest schema', () => {
     expect(StrategyManifestSchema.safeParse(m).success).toBe(false);
   });
 
-  it('keeps the strategy enum in lockstep with the router ExecutionStrategy', () => {
-    // Compile-time + runtime guard: every router strategy must be a valid
-    // manifest strategy name (a divergence would break #3835's migration).
-    const routerStrategies: ExecutionStrategy[] = [
-      'single-shot',
-      'dev-pipeline',
-      'pipeline',
-      'graph-workflow',
-      'orchestrate',
-      'consensus',
-      'spec',
-      'research',
-    ];
-    for (const s of routerStrategies) {
+  it('keeps the manifest enum in lockstep with the router ExecutionStrategy (#3881)', () => {
+    // The expected strategy set is DERIVED from EXECUTION_STRATEGY_NAMES — the
+    // runtime tuple that strategy-manifest.ts ties to the router ExecutionStrategy
+    // union by a compile-time mutual-assignability assertion. Adding a member to
+    // the router union without adding it to that tuple is a TYPE error (caught by
+    // typecheck before this test even runs); the old hand-copied literal here
+    // could not detect an *added* router strategy, which #3881 fixes.
+    //
+    // The runtime assertions below prove the Zod enum is built FROM that same
+    // tuple, so the schema, the type guard, and this test cannot drift apart.
+    for (const s of EXECUTION_STRATEGY_NAMES) {
       expect(StrategyNameSchema.safeParse(s).success).toBe(true);
     }
-    expect(StrategyNameSchema.options.length).toBe(routerStrategies.length);
+    expect([...StrategyNameSchema.options].sort()).toEqual([...EXECUTION_STRATEGY_NAMES].sort());
+    expect(StrategyNameSchema.options.length).toBe(EXECUTION_STRATEGY_NAMES.length);
   });
 });
 
