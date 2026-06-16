@@ -123,6 +123,29 @@ export type {
 } from './meta-orchestrator.js';
 
 export {
+  StrategyManifestSchema,
+  StrategyManifestRegistrySchema,
+  StrategyNameSchema,
+  AuthorityTierSchema,
+  LatencyClassSchema,
+  MaturityTierSchema,
+  CostProfileSchema,
+  STRATEGY_MANIFEST_SCHEMA_VERSION,
+  parseStrategyManifest,
+  parseStrategyManifestRegistry,
+  loadStrategyManifestRegistry,
+} from './strategy-manifest.js';
+export type {
+  StrategyManifest,
+  StrategyManifestRegistry,
+  StrategyName,
+  AuthorityTier,
+  LatencyClass,
+  MaturityTier,
+  CostProfile,
+} from './strategy-manifest.js';
+
+export {
   createMetaDispatcher,
   createAuditLogOutcomeSink,
   createRecordingOutcomeSink,

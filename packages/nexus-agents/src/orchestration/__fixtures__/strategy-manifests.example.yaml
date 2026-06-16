@@ -1,0 +1,29 @@
+# Strategy manifest registry — SCHEMA FIXTURE ONLY (#3834).
+#
+# Two example manifests exercising the schema: one strategy with a wired
+# executor (consensus) and one without (graph-workflow, fail-closed). The full
+# set of 8 live manifests is deferred to #3835; this file exists so the schema
+# has a realistic round-trip test and is NOT loaded by production code.
+version: 1
+manifests:
+  - id: consensus
+    schemaVersion: 1
+    strategy: consensus
+    entrypointTool: consensus_vote
+    executorAvailable: true
+    description: Multi-perspective decision routed to a consensus vote.
+    whenToForce: Force when a decision needs N independent voters rather than one model.
+    maturityTier: stable
+    latencyClass: multi-llm-panel
+    authorityTier: advisory
+    costProfile: medium
+  - id: graph-workflow
+    schemaVersion: 1
+    strategy: graph-workflow
+    entrypointTool: run_graph_workflow
+    # No wired executor today — must declare false so routing fails closed.
+    executorAvailable: false
+    description: DAG / conditional-edge workflow execution.
+    whenToForce: Force when the work is an explicit dependency graph with conditional edges.
+    maturityTier: beta
+    latencyClass: pipeline
