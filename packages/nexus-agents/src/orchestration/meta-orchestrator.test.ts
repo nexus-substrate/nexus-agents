@@ -9,12 +9,11 @@ import { describe, it, expect } from 'vitest';
 import {
   createMetaOrchestrator,
   createRecordingSink,
-  strategyFromPattern,
-  strategyFromPipelineType,
   type ExecutionStrategy,
   type IMetaOrchestrator,
   type MetaSelectionRecord,
 } from './meta-orchestrator.js';
+import { rankStrategiesByManifest } from './strategy-manifest-registry.js';
 import type { IWorkflowRouter } from './workflow-router.js';
 import type { RoutingDecision, WorkflowPattern } from './workflow-router-types.js';
 import { createSharedTaskAnalyzer } from '../core/task-analysis/shared-task-analyzer.js';
@@ -27,7 +26,12 @@ import {
 } from './meta-shadow-selector.js';
 import { AuthorityRefusalError } from './authority-tier-guard.js';
 
-describe('strategyFromPattern', () => {
+// The pre-#3888 `strategyFromPattern`/`strategyFromPipelineType` helpers (a
+// hardcoded decision table that seeded the alternatives list) were removed: the
+// alternatives list now derives from the SAME manifest `selectionRules` as the
+// selection path via `rankStrategiesByManifest`, closing the split-brain (#3888).
+// These parity tests are migrated to assert the manifest-derived expectation.
+describe('manifest-derived strategy selection (was strategyFromPattern, #3888)', () => {
   const cases: ReadonlyArray<
     [WorkflowPattern, 'simple' | 'moderate' | 'complex' | 'expert', ExecutionStrategy]
   > = [
@@ -40,18 +44,11 @@ describe('strategyFromPattern', () => {
     ['sequential', 'moderate', 'dev-pipeline'],
     ['sequential', 'expert', 'dev-pipeline'],
   ];
+  // `general` keeps every structural pattern on its own engine; the head of the
+  // manifest ranking equals the strategy the selection path would pick.
   it.each(cases)('pattern %s @ %s → %s', (pattern, complexity, expected) => {
-    expect(strategyFromPattern(pattern, complexity)).toBe(expected);
-  });
-});
-
-describe('strategyFromPipelineType', () => {
-  it('maps each pipeline template to its strategy', () => {
-    expect(strategyFromPipelineType('greenfield')).toBe('spec');
-    expect(strategyFromPipelineType('research')).toBe('research');
-    expect(strategyFromPipelineType('audit')).toBe('pipeline');
-    expect(strategyFromPipelineType('dev')).toBe('dev-pipeline');
-    expect(strategyFromPipelineType('general')).toBe('pipeline');
+    const ranked = rankStrategiesByManifest({ pattern, pipelineType: 'general', complexity });
+    expect(ranked[0]).toBe(expected);
   });
 });
 

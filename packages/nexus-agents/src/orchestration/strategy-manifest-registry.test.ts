@@ -23,6 +23,7 @@ import {
   executorAvailableFor,
   getStrategyManifest,
   selectStrategyByManifest,
+  rankStrategiesByManifest,
 } from './strategy-manifest-registry.js';
 import { parseStrategyManifestRegistry, type StrategyManifest } from './strategy-manifest.js';
 import { buildDefaultExecutors } from '../mcp/tools/run-tool.js';
@@ -235,6 +236,115 @@ describe('manifest-driven router (#3836)', () => {
         ruleless
       )
     ).toBeUndefined();
+  });
+});
+
+describe('every registered manifest is routable (#3888 — optional selectionRules guard)', () => {
+  // GUARD: `selectionRules` is `.optional()` on the schema so a force-only manifest
+  // is legal, but a manifest registered in the LIVE registry with no rules is
+  // silently un-routable (selectStrategyByManifest skips it). This test fails the
+  // suite the moment a future manifest is added to STRATEGY_MANIFEST_REGISTRY
+  // without at least one selection rule — surfacing the un-routability loudly.
+  it('every manifest in STRATEGY_MANIFEST_REGISTRY declares >=1 selectionRule', () => {
+    for (const m of STRATEGY_MANIFEST_REGISTRY.manifests) {
+      expect(
+        m.selectionRules,
+        `manifest '${m.id}' has no selectionRules — it would be silently un-routable`
+      ).toBeDefined();
+      expect(
+        m.selectionRules?.length ?? 0,
+        `manifest '${m.id}' has an empty selectionRules array — un-routable`
+      ).toBeGreaterThanOrEqual(1);
+    }
+  });
+});
+
+describe('fail-fast tie-break on equal-priority collision (#3888)', () => {
+  it('throws on a genuine equal-priority match between two strategies', () => {
+    // Inject a 9th manifest whose rule collides at the SAME priority on the SAME
+    // signal as an existing manifest. The old behaviour silently routed by
+    // alphabetical strategy name; the hardened matcher must surface the ambiguity.
+    const collider: StrategyManifest = {
+      id: 'collider',
+      schemaVersion: 1,
+      strategy: 'spec', // alphabetically 'spec' > 'graph-workflow'
+      entrypointTool: 'execute_spec',
+      executorAvailable: false,
+      description: 'Synthetic manifest colliding with graph-workflow at equal priority.',
+      maturityTier: 'experimental',
+      latencyClass: 'async-job-body',
+      // graph-workflow uses { priority: 50, patterns: ['graph'] } — collide exactly.
+      selectionRules: [{ priority: 50, patterns: ['graph'] }],
+    };
+    const augmented = [...STRATEGY_MANIFEST_REGISTRY.manifests, collider];
+    expect(() =>
+      selectStrategyByManifest(
+        { pattern: 'graph', pipelineType: 'dev', complexity: 'moderate' },
+        augmented
+      )
+    ).toThrow(/equal-priority|ambiguous/i);
+  });
+
+  it('does NOT throw for the live 8 manifests (no reachable collision today)', () => {
+    // Sanity: every live signal combination resolves without ambiguity.
+    const combos = [
+      { pattern: 'consensus', pipelineType: 'general', complexity: 'moderate' },
+      { pattern: 'graph', pipelineType: 'audit', complexity: 'moderate' },
+      { pattern: 'wave', pipelineType: 'dev', complexity: 'complex' },
+      { pattern: 'sequential', pipelineType: 'greenfield', complexity: 'moderate' },
+      { pattern: 'sequential', pipelineType: 'research', complexity: 'moderate' },
+      { pattern: 'sequential', pipelineType: 'audit', complexity: 'simple' },
+      { pattern: 'sequential', pipelineType: 'dev', complexity: 'simple' },
+      { pattern: 'sequential', pipelineType: 'general', complexity: 'expert' },
+    ] as const;
+    for (const c of combos) {
+      expect(() => selectStrategyByManifest(c)).not.toThrow();
+    }
+  });
+});
+
+describe('manifest-derived alternatives ranking (#3888 — split-brain fix)', () => {
+  it('ranks every OTHER matching strategy best-first by matching-rule priority', () => {
+    // Signals where multiple manifests have a matching rule at different priorities.
+    // sequential + audit: pipeline(80, audit+sequential) AND dev-pipeline(30, sequential)
+    // both match. Best-first ranking must put the higher-priority pipeline ahead.
+    const ranked = rankStrategiesByManifest({
+      pattern: 'sequential',
+      pipelineType: 'audit',
+      complexity: 'moderate',
+    });
+    expect(ranked).toEqual(['pipeline', 'dev-pipeline']);
+  });
+
+  it('returns only genuinely-matching strategies (no hardcoded table)', () => {
+    // graph pattern: only graph-workflow has a matching rule. Nothing else routes.
+    const ranked = rankStrategiesByManifest({
+      pattern: 'graph',
+      pipelineType: 'dev',
+      complexity: 'moderate',
+    });
+    expect(ranked).toEqual(['graph-workflow']);
+  });
+
+  it('throws on an equal-priority collision (same fail-fast contract as selection)', () => {
+    const collider: StrategyManifest = {
+      id: 'collider',
+      schemaVersion: 1,
+      strategy: 'spec',
+      entrypointTool: 'execute_spec',
+      executorAvailable: false,
+      description: 'Synthetic colliding manifest.',
+      maturityTier: 'experimental',
+      latencyClass: 'async-job-body',
+      selectionRules: [{ priority: 50, patterns: ['graph'] }],
+    };
+    const augmented = [...STRATEGY_MANIFEST_REGISTRY.manifests, collider];
+    expect(() =>
+      rankStrategiesByManifest(
+        { pattern: 'graph', pipelineType: 'dev', complexity: 'moderate' },
+        augmented
+      )
+    ).toThrow(/equal-priority|ambiguous/i);
   });
 });
 

@@ -109,8 +109,6 @@ export {
   createMetaOrchestrator,
   createAuditLogSink,
   createRecordingSink,
-  strategyFromPattern,
-  strategyFromPipelineType,
 } from './meta-orchestrator.js';
 export type {
   IMetaOrchestrator,

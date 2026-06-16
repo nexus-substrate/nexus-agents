@@ -3,25 +3,29 @@
  *
  * The selection logic the MetaOrchestrator routes over. Extracted from
  * `meta-orchestrator.ts` so the orchestrator file stays a thin wiring layer
- * (CODING_STANDARDS ≤400 lines) and so the router is a single cohesive unit.
+ * (CODING_STANDARDS <=400 lines) and so the router is a single cohesive unit.
  *
  * The router routes PURELY over strategy-manifest data: {@link decideStrategy}
  * matches the registry's {@link selectStrategyByManifest} rules and names ZERO
  * strategies itself. Adding a routable strategy is "register a manifest with
- * selection rules", not "edit this router" — the #3836 invariant, proven by the
- * synthetic-9th-manifest test. The two `strategyFrom*` helpers remain for the
- * best-first ALTERNATIVES list (a transparency aid, not the selection path) and
- * for the existing parity tests.
+ * selection rules", not "edit this router" -- the #3836 invariant, proven by the
+ * synthetic-9th-manifest test. The best-first ALTERNATIVES list is ALSO derived
+ * from the manifest `selectionRules` (via {@link rankStrategiesByManifest}), so
+ * the transparency path can no longer drift from the selection path (#3888 -- the
+ * former hardcoded `strategyFromPattern`/`strategyFromPipelineType` table is gone).
  *
  * @module orchestration/meta-orchestrator-routing
- * (Source: Issue #3836 — router refactor over the manifest registry)
+ * (Source: Issue #3836 -- router refactor over the manifest registry; #3888 hardening)
  */
 
 import type { ExecutionStrategy } from './meta-orchestrator.js';
-import { selectStrategyByManifest, type ManifestSelection } from './strategy-manifest-registry.js';
-import type { TaskClassification, PipelineType } from '../pipeline/adaptive-orchestrator.js';
-import type { RoutingDecision, WorkflowPattern } from './workflow-router-types.js';
-import type { TaskAnalysisResult } from '../core/task-analysis/shared-task-analyzer.js';
+import {
+  selectStrategyByManifest,
+  rankStrategiesByManifest,
+  type ManifestSelection,
+} from './strategy-manifest-registry.js';
+import type { TaskClassification } from '../pipeline/adaptive-orchestrator.js';
+import type { RoutingDecision } from './workflow-router-types.js';
 
 /** The chosen strategy plus the transparency fields a decision carries. */
 export interface SelectionCore {
@@ -32,55 +36,6 @@ export interface SelectionCore {
   readonly manifestId: string;
   /** The schema version of the winning manifest (audit trail, AC #3836). */
   readonly manifestSchemaVersion: number;
-}
-
-/**
- * Maps a workflow pattern (+ complexity) to the execution strategy that engine
- * fronts. `sequential` collapses to the lightest engine that fits the
- * complexity. Retained for the alternatives list + parity tests; the SELECTION
- * path is manifest-driven via {@link decideStrategy}.
- */
-export function strategyFromPattern(
-  pattern: WorkflowPattern,
-  complexity: TaskAnalysisResult['complexity']
-): ExecutionStrategy {
-  switch (pattern) {
-    case 'consensus':
-      return 'consensus';
-    case 'graph':
-      return 'graph-workflow';
-    case 'wave':
-    case 'aflow':
-    case 'puppeteer':
-      return 'orchestrate';
-    case 'sequential':
-      return complexity === 'simple' ? 'single-shot' : 'dev-pipeline';
-    default: {
-      // Exhaustiveness guard — a new pattern must be mapped explicitly.
-      const _exhaustive: never = pattern;
-      return _exhaustive;
-    }
-  }
-}
-
-/** Maps a pipeline template to the execution strategy that fronts it. */
-export function strategyFromPipelineType(pipelineType: PipelineType): ExecutionStrategy {
-  switch (pipelineType) {
-    case 'greenfield':
-      return 'spec';
-    case 'research':
-      return 'research';
-    case 'audit':
-      return 'pipeline';
-    case 'dev':
-      return 'dev-pipeline';
-    case 'general':
-      return 'pipeline';
-    default: {
-      const _exhaustive: never = pipelineType;
-      return _exhaustive;
-    }
-  }
 }
 
 /** Human-readable reasoning for a manifest-driven selection. */
@@ -96,12 +51,13 @@ function reasoningFor(selection: ManifestSelection, routing: RoutingDecision): s
 }
 
 /**
- * The core selection rule — now fully data-driven (#3836). It matches the
+ * The core selection rule -- now fully data-driven (#3836). It matches the
  * routing signals (pattern, pipeline template, complexity) against the strategy
  * manifests' declarative {@link SelectionRule}s and picks the highest-priority
- * match. No strategy names appear here. The fallback (no rule matched — not
+ * match. No strategy names appear here. The fallback (no rule matched -- not
  * reachable today since every workflow pattern is claimed by a manifest) routes
- * to the structural-pattern strategy so selection never throws.
+ * to the multi-agent `orchestrate` catch-all so selection never throws and the
+ * router still names zero strategies in a structural table.
  */
 export function decideStrategy(
   routing: RoutingDecision,
@@ -118,8 +74,11 @@ export function decideStrategy(
 
   if (selection === undefined) {
     // Defensive: every pattern is claimed by a manifest today, so this is
-    // unreachable, but selection must never throw on a novel signal combo.
-    const fallback = strategyFromPattern(pattern, analysis.complexity);
+    // unreachable, but selection must never throw on a novel signal combo. The
+    // `orchestrate` strategy is the multi-agent catch-all; we keep this a single
+    // literal (not a structural table) so the #3836 "zero strategies named" intent
+    // holds for the selection path.
+    const fallback: ExecutionStrategy = 'orchestrate';
     return {
       strategy: fallback,
       reasoning: `No manifest rule matched pattern "${pattern}" — structural fallback to ${fallback}`,
@@ -142,24 +101,22 @@ export function decideStrategy(
   };
 }
 
-/** Builds the best-first alternatives list, excluding the chosen strategy. */
+/**
+ * Builds the best-first alternatives list, excluding the chosen strategy. Derived
+ * from the SAME manifest `selectionRules` the selection path uses (#3888): it ranks
+ * every OTHER strategy whose rules match the current signals best-first by their
+ * matching-rule priority. This closes the former split-brain where the alternatives
+ * came from a hardcoded `strategyFrom*` table that could drift from the manifest.
+ */
 export function buildAlternatives(
   chosen: ExecutionStrategy,
   routing: RoutingDecision,
   classification: TaskClassification
 ): ExecutionStrategy[] {
-  const candidates: ExecutionStrategy[] = [
-    strategyFromPattern(routing.pattern, routing.analysis.complexity),
-    strategyFromPipelineType(classification.pipelineType),
-    'orchestrate',
-  ];
-  const seen = new Set<ExecutionStrategy>([chosen]);
-  const alternatives: ExecutionStrategy[] = [];
-  for (const c of candidates) {
-    if (!seen.has(c)) {
-      seen.add(c);
-      alternatives.push(c);
-    }
-  }
-  return alternatives;
+  const ranked = rankStrategiesByManifest({
+    pattern: routing.pattern,
+    pipelineType: classification.pipelineType,
+    complexity: routing.analysis.complexity,
+  });
+  return ranked.filter((s) => s !== chosen);
 }
