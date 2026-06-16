@@ -12,6 +12,8 @@ on:
       - 'scripts/inject-governance.ts'
       - 'scripts/generate-docs-content.ts'
       - 'scripts/generate-tool-reference.ts'
+      - 'scripts/claims-check.ts'
+      - 'governance/claims-registry.yaml'
       - 'CLAUDE.md'
       - 'skills/**'
       - '.github/workflows/docs-check.yml'
@@ -679,6 +681,37 @@ jobs:
             echo "::error::CLAUDE.md governance sections are stale"
             echo "Run 'npx tsx scripts/inject-governance.ts inject' and commit the changes"
             git diff CLAUDE.md
+            exit 1
+          fi
+
+  # Job 12: Claims Registry Drift (#3825, #3826) — blocking
+  #
+  # Sibling to governance-drift. `claims:check` loads governance/claims-registry.yaml,
+  # validates it against the Zod schema, and verifies every claim against live source
+  # (evidence path exists; counts match the source-of-truth enum/manifest; aspirational
+  # claims still marked roadmap in their doc). Fails the build on any drift — an
+  # unbacked or stale claim — keeping README/ARCHITECTURE honest. BLOCKING per #3826.
+  #
+  # Deferred (documented in #3826 follow-up): the "new undeclared numeric/capability
+  # claim in a doc" heuristic detector. This job currently gates the curated registry,
+  # not arbitrary new prose.
+  claims-check:
+    name: Claims Registry Drift
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: ./.github/actions/setup-node
+
+      - name: Check claims registry
+        run: |
+          pnpm claims:check
+          if [ $? -eq 0 ]; then
+            echo "✅ All documented claims are backed by live evidence"
+          else
+            echo "::error::A documented claim is unbacked or stale"
+            echo "Reconcile governance/claims-registry.yaml with current source (see #3824)"
             exit 1
           fi
 
