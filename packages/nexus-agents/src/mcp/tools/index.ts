@@ -442,7 +442,6 @@ export {
   registerRunTool,
   routeGoal,
   RunInputSchema,
-  STRATEGY_ENTRYPOINT_TOOL,
   type RunInput,
   type RunResponse,
 } from './run-tool.js';

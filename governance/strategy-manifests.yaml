@@ -1,0 +1,115 @@
+# Strategy Manifest Registry
+#
+# Single source of truth for the 8 routable execution strategies the
+# MetaOrchestrator can select. Validated by the Zod schema in
+# packages/nexus-agents/src/orchestration/strategy-manifest.ts and embedded as a
+# typed constant in strategy-manifest-registry.ts (the two are asserted equal by
+# strategy-manifest-registry.test.ts so they cannot drift; #3837 gates this under
+# governance:check).
+#
+# Each manifest:
+#   id                stable kebab-case id (never reused; == strategy for the initial 8)
+#   schemaVersion     per-entry SHAPE version; must equal STRATEGY_MANIFEST_SCHEMA_VERSION
+#   strategy          the router ExecutionStrategy this manifest describes
+#   entrypointTool    the concrete MCP tool / engine that fronts this strategy
+#                     (generalizes the former STRATEGY_ENTRYPOINT_TOOL map)
+#   executorAvailable whether a wired inline executor exists (run-tool buildDefaultExecutors).
+#                     FAIL-CLOSED routing key: only 4/8 are true today
+#                     (dev-pipeline, pipeline, research, consensus). The rest declare
+#                     false so execute:true returns the structured no_executor error.
+#   description       one-line human description of what the strategy is for
+#   whenToForce       operator guidance for run({ forceStrategy }) (#3838)
+#   maturityTier      experimental | beta | stable
+#   latencyClass      expected latency class (#3734 operation-class taxonomy)
+#
+# Forward-compat governance/cost fields (authorityTier — Epic D #3552;
+# costProfile — Epic G) are intentionally OMITTED for the initial 8: they are
+# optional on the schema and are populated when those epics land, not here.
+#
+# Adding a strategy = register a manifest here (and mirror it in the TS module),
+# NOT editing the router (Epic C, #3833). The selection-logic refactor that
+# routes purely over this data is #3836.
+# Source: Issue #3833, #3835 (M2). Schema landed via #3834.
+
+version: 1
+
+manifests:
+  - id: single-shot
+    schemaVersion: 1
+    strategy: single-shot
+    entrypointTool: delegate_to_model
+    executorAvailable: false
+    description: Trivial single-step task delegated to one model.
+    whenToForce: Force when the goal is a one-shot ask that needs no pipeline, gate, or multi-step plan.
+    maturityTier: stable
+    latencyClass: single-llm
+
+  - id: dev-pipeline
+    schemaVersion: 1
+    strategy: dev-pipeline
+    entrypointTool: run_dev_pipeline
+    executorAvailable: true
+    description: Code change run through the dev gate (test / lint / typecheck).
+    whenToForce: Force when the goal is a code change that must pass the dev quality gate before it counts as done.
+    maturityTier: stable
+    latencyClass: pipeline
+
+  - id: pipeline
+    schemaVersion: 1
+    strategy: pipeline
+    entrypointTool: run_pipeline
+    executorAvailable: true
+    description: Multi-stage templated work (audit / general) via the pipeline engine.
+    whenToForce: Force when the work fits a templated multi-stage pipeline rather than a single model call.
+    maturityTier: stable
+    latencyClass: pipeline
+
+  - id: graph-workflow
+    schemaVersion: 1
+    strategy: graph-workflow
+    entrypointTool: run_graph_workflow
+    executorAvailable: false
+    description: DAG / conditional-edge workflow execution.
+    whenToForce: Force when the work is an explicit dependency graph with conditional edges (a predefined workflow template).
+    maturityTier: beta
+    latencyClass: pipeline
+
+  - id: orchestrate
+    schemaVersion: 1
+    strategy: orchestrate
+    entrypointTool: orchestrate
+    executorAvailable: false
+    description: Pattern-based multi-agent orchestration (wave / aflow / puppeteer).
+    whenToForce: Force when the work needs multi-agent orchestration patterns rather than a single linear pipeline.
+    maturityTier: beta
+    latencyClass: async-job-body
+
+  - id: consensus
+    schemaVersion: 1
+    strategy: consensus
+    entrypointTool: consensus_vote
+    executorAvailable: true
+    description: Multi-perspective decision routed to a consensus vote.
+    whenToForce: Force when a decision needs N independent voters rather than one model.
+    maturityTier: stable
+    latencyClass: multi-llm-panel
+
+  - id: spec
+    schemaVersion: 1
+    strategy: spec
+    entrypointTool: execute_spec
+    executorAvailable: false
+    description: Greenfield project built from a markdown spec document.
+    whenToForce: Force when building a greenfield project from a written spec, not a plain goal string.
+    maturityTier: beta
+    latencyClass: async-job-body
+
+  - id: research
+    schemaVersion: 1
+    strategy: research
+    entrypointTool: run_pipeline
+    executorAvailable: true
+    description: Research-heavy work routed through the research pipeline.
+    whenToForce: Force when the goal is research-led (gather, synthesize, compare) rather than a code change or decision.
+    maturityTier: stable
+    latencyClass: pipeline

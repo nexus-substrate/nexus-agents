@@ -53,27 +53,12 @@ import {
   type MetaOutcomeSink,
   type MetaOutcomeObserver,
 } from '../../orchestration/meta-dispatcher.js';
+import { entrypointToolFor } from '../../orchestration/strategy-manifest-registry.js';
 import { runDevPipelineForGoal } from './dev-pipeline-tool.js';
 import { runPipelineForGoal } from './pipeline-tool.js';
 import { runConsensusForGoal } from './consensus-vote.js';
 // #3732 / epic #2631: async-mode dispatch via the shared `runAsJob` helper.
 import { runAsJob } from '../jobs/run-as-job.js';
-
-/**
- * The concrete MCP tool / engine each strategy routes to. Used to tell the
- * caller which "force-strategy" path executes a given selection until inline
- * execution lands (increment B).
- */
-export const STRATEGY_ENTRYPOINT_TOOL: Readonly<Record<ExecutionStrategy, string>> = {
-  'single-shot': 'delegate_to_model',
-  'dev-pipeline': 'run_dev_pipeline',
-  pipeline: 'run_pipeline',
-  'graph-workflow': 'run_graph_workflow',
-  orchestrate: 'orchestrate',
-  consensus: 'consensus_vote',
-  spec: 'execute_spec',
-  research: 'run_pipeline',
-};
 
 /** Input schema for the `run` tool. */
 export const RunInputSchema = z.object({
@@ -194,7 +179,7 @@ export function routeGoal(input: RunInput, logger?: ILogger): RunResponse {
     ...(decision.shapingQuestions !== undefined
       ? { shapingQuestions: decision.shapingQuestions }
       : {}),
-    recommendedTool: STRATEGY_ENTRYPOINT_TOOL[decision.strategy],
+    recommendedTool: entrypointToolFor(decision.strategy),
     decisionId: decision.decisionId,
     note: NOTE,
   };
