@@ -1,0 +1,115 @@
+# Claims Registry
+#
+# Machine-verifiable inventory of the substantive claims README.md / ARCHITECTURE.md
+# make about the system. Validated by the Zod schema in
+# packages/nexus-agents/src/governance/claims-registry.ts and checked against live
+# source by `pnpm claims:check` (see scripts/claims-check.ts).
+#
+# Each entry:
+#   id            stable kebab-case id (never reused)
+#   claim         human-readable claim, <=25 words
+#   subject       repo-root-relative doc that makes the claim
+#   status        verified | partial | aspirational | stale
+#   evidenceType  test | gate | eval-artifact | adr | source
+#   verification  { method, path, expected?, symbol? }  -- how a script proves it
+#   lastVerified  YYYY-MM-DD this entry was last manually confirmed
+#   caveat        optional note surfaced in reports (use for `partial`)
+#
+# Adding a claim: pick the narrowest verification method that proves it, point
+# `path` at the live source of truth, and run `pnpm claims:check`.
+# Source: Issue #3824, #3825, #3826 (2026-06-09 claims audit).
+
+version: 1
+
+claims:
+  - id: mcp-tool-count
+    claim: 'README states the system exposes 46 MCP tools.'
+    subject: README.md
+    status: verified
+    evidenceType: source
+    verification:
+      method: manifest-tool-count
+      path: packages/nexus-agents/src/mcp/tools/tool-manifest.ts
+      expected: 46
+    lastVerified: '2026-06-16'
+
+  - id: consensus-strategy-count
+    claim: 'README advertises six consensus strategy names backed by the algorithm enum.'
+    subject: README.md
+    status: verified
+    evidenceType: source
+    verification:
+      method: enum-member-count
+      path: packages/nexus-agents/src/consensus/types-core.ts
+      symbol: ConsensusAlgorithmSchema
+      expected: 6
+    lastVerified: '2026-06-16'
+    caveat: >-
+      Six names, five distinct strategies: opinion_wise and higher_order are
+      aliases (Issue #514). README prose must keep the alias explicit.
+
+  - id: expert-type-count
+    claim: 'README states there are 12 built-in expert types.'
+    subject: README.md
+    status: verified
+    evidenceType: source
+    verification:
+      method: enum-member-count
+      path: packages/nexus-agents/src/agents/experts/expert-config.ts
+      symbol: BuiltInExpertTypeSchema
+      expected: 12
+    lastVerified: '2026-06-16'
+
+  - id: hash-chained-audit
+    claim: 'Audit trail is immutable and hash-chained, verifiable via verifyChain.'
+    subject: README.md
+    status: verified
+    evidenceType: source
+    verification:
+      method: file-contains
+      path: packages/nexus-agents/src/audit/audit-logger.ts
+      expected: 'export function verifyChain'
+    lastVerified: '2026-06-16'
+
+  - id: verify-audit-chain-tool
+    claim: 'A verify_audit_chain MCP tool exposes audit-chain integrity verification.'
+    subject: README.md
+    status: verified
+    evidenceType: source
+    verification:
+      method: file-contains
+      path: packages/nexus-agents/src/mcp/tools/tool-manifest.ts
+      expected: 'verify_audit_chain'
+    lastVerified: '2026-06-16'
+
+  - id: closed-loop-routing
+    claim: 'Closed-loop routing scores candidates with LinUCB plus TOPSIS.'
+    subject: README.md
+    status: verified
+    evidenceType: source
+    verification:
+      method: file-exists
+      path: packages/nexus-agents/src/learning
+    lastVerified: '2026-06-16'
+
+  - id: standalone-cli-roadmap
+    claim: 'Standalone CLI mode (Phase 2) is roadmap, not yet shipped.'
+    subject: ARCHITECTURE.md
+    status: aspirational
+    evidenceType: source
+    verification:
+      method: roadmap-status
+      path: ARCHITECTURE.md
+      expected: '| Phase 2 | v2.3.0  | Standalone CLI Mode      | -      |'
+    lastVerified: '2026-06-16'
+
+  - id: rest-gateway-roadmap
+    claim: 'REST API gateway (Phase 3) is roadmap, not yet shipped.'
+    subject: ARCHITECTURE.md
+    status: aspirational
+    evidenceType: source
+    verification:
+      method: roadmap-status
+      path: ARCHITECTURE.md
+      expected: '| Phase 3 | v3.0.0  | REST API + Full Hybrid   | -      |'
+    lastVerified: '2026-06-16'
