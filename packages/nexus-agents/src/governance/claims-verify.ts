@@ -2,10 +2,14 @@
  * nexus-agents/governance - Claims verification runner.
  *
  * Consumes the validated registry from `claims-registry.ts` and verifies each
- * claim against live source: every claim's `verification` recipe is executed,
- * and (as a baseline) the `subject` doc is checked for the claim's `expected`
- * literal where applicable. Pure functions over an injectable filesystem so the
- * logic is unit-testable without touching the real repo.
+ * claim against live source: every claim's `verification` recipe is executed
+ * against the source-of-truth `path`, AND — when the verification declares a
+ * `subjectContains` literal — the `subject` doc that actually makes the claim
+ * is checked for that literal (#3877). The doc-side check is what catches
+ * documentation drift: a README that says "200 MCP tools" while source has 46
+ * fails the gate even though the source side passes. Pure functions over an
+ * injectable filesystem so the logic is unit-testable without touching the real
+ * repo.
  *
  * This is the seam #3826 wires into CI as a blocking gate.
  *
@@ -72,6 +76,20 @@ function resolvePath(repoRoot: string, p: string): string {
   return isAbsolute(p) ? p : join(repoRoot, p);
 }
 
+/**
+ * Strip `//` line comments and `/* … *\/` block comments from source so a
+ * `file-contains` / `source-contains-all` needle that survives only in a
+ * comment (e.g. `// removed verify_audit_chain`) no longer counts as evidence
+ * (#3879). Deliberately conservative: it does not parse strings, so a needle
+ * inside a string literal still matches — that is acceptable for the symbol /
+ * tool-name claims these methods back.
+ */
+export function stripComments(source: string): string {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, ' ') // block comments
+    .replace(/(^|[^:])\/\/[^\n]*/g, '$1'); // line comments (keep e.g. http://)
+}
+
 /** Outcome of a single verification method, before it is tagged with the id. */
 interface MethodOutcome {
   ok: boolean;
@@ -90,7 +108,24 @@ const METHOD_VERIFIERS: Record<
 
   'file-contains': (v, evidence) => {
     const needle = String(v.expected);
-    return evidence.includes(needle) ? pass() : miss(`evidence ${v.path} missing "${needle}"`);
+    if (stripComments(evidence).includes(needle)) return pass();
+    // Distinguish "absent entirely" from "present only in a comment" so a
+    // reviewer sees that the symbol was commented out, not merely typo'd.
+    return evidence.includes(needle)
+      ? miss(`evidence ${v.path} has "${needle}" only in comments, not real code`)
+      : miss(`evidence ${v.path} missing "${needle}"`);
+  },
+
+  'source-contains-all': (v, evidence) => {
+    const code = stripComments(evidence);
+    const needles = String(v.expected)
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    const missing = needles.filter((n) => !code.includes(n));
+    return missing.length === 0
+      ? pass(`all present: ${needles.join(', ')}`)
+      : miss(`evidence ${v.path} missing in real code: ${missing.join(', ')}`);
   },
 
   'enum-member-count': (v, evidence) => {
@@ -119,6 +154,24 @@ const METHOD_VERIFIERS: Record<
   },
 };
 
+/**
+ * Verify the `subject` doc actually makes the claim (#3877). Runs only when the
+ * verification declares a `subjectContains` literal. Returns `null` (i.e. "no
+ * objection") when there is nothing to check, otherwise a failed `MethodOutcome`
+ * if the literal is absent (or the subject doc is missing).
+ */
+function verifySubject(claim: ClaimEntry, repoRoot: string, fs: ClaimFs): MethodOutcome | null {
+  const { subjectContains } = claim.verification;
+  if (subjectContains === undefined) return null;
+  const subjectPath = resolvePath(repoRoot, claim.subject);
+  if (!fs.exists(subjectPath)) {
+    return miss(`subject doc missing: ${claim.subject}`);
+  }
+  return fs.read(subjectPath).includes(subjectContains)
+    ? null
+    : miss(`subject ${claim.subject} no longer states "${subjectContains}" (doc drift)`);
+}
+
 /** Verify a single claim. Pure over the injected fs. */
 export function verifyClaim(claim: ClaimEntry, repoRoot: string, fs: ClaimFs): ClaimResult {
   const evidencePath = resolvePath(repoRoot, claim.verification.path);
@@ -128,7 +181,15 @@ export function verifyClaim(claim: ClaimEntry, repoRoot: string, fs: ClaimFs): C
   // `file-exists` needs no read; every other method inspects the file body.
   const evidence = claim.verification.method === 'file-exists' ? '' : fs.read(evidencePath);
   const outcome = METHOD_VERIFIERS[claim.verification.method](claim.verification, evidence);
-  return { id: claim.id, ok: outcome.ok, detail: outcome.detail };
+  if (!outcome.ok) {
+    return { id: claim.id, ok: false, detail: outcome.detail };
+  }
+  // Source side passed — now confirm the DOC making the claim is consistent.
+  const subjectOutcome = verifySubject(claim, repoRoot, fs);
+  if (subjectOutcome !== null) {
+    return { id: claim.id, ok: false, detail: subjectOutcome.detail };
+  }
+  return { id: claim.id, ok: true, detail: outcome.detail };
 }
 
 /** Verify every claim in the registry. */

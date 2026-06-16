@@ -2,7 +2,7 @@
 
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/12365/badge)](https://www.bestpractices.dev/projects/12365) [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/nexus-substrate/nexus-agents/badge)](https://securityscorecards.dev/viewer/?uri=github.com/nexus-substrate/nexus-agents)
 
-> Governance substrate for your AI coding agents — adversarial review, drift-detected rules, immutable audit, closed-loop telemetry
+> Governance substrate for your AI coding agents — adversarial review, drift-detected rules, tamper-evident audit, closed-loop telemetry
 
 [![npm version](https://img.shields.io/npm/v/nexus-agents)](https://www.npmjs.com/package/nexus-agents)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -19,7 +19,7 @@
 
 - **Adversarial PR review** — `pr_review` runs 5 voter roles (architect, security, devex, catfish, scope_steward) with a 4-point verification gate. On the v5 evaluation set (10 PRs): 100% bug-catch and 50% raw false-positive rate; manual triage reclassified most "FPs" as legitimate findings the dataset had mislabeled. Full numbers: [docs/research/pr-review-experiment-results-v5.md](docs/research/pr-review-experiment-results-v5.md)
 - **Drift-detected charter** — `CLAUDE.md` + `governance:check` + blocking CI gates fail the build when documented rules drift from registered behavior (model registry, MCP tools, expert types, skills)
-- **Immutable audit trail** — every tool call, every voter decision, every routing choice flows through `AuditTrail` with structured logging and hash-chained append-only storage; integrity is verifiable via the `verify_audit_chain` MCP tool
+- **Tamper-evident audit trail** — every tool call, every voter decision, every routing choice flows through `AuditTrail` with structured logging and hash-chained append-only storage; integrity is verifiable via the `verify_audit_chain` MCP tool (tamper-evident, not tamper-proof — see the [audit hash-chain threat model](docs/security/audit-hash-chain-threat-model.md))
 - **Closed-loop routing** — `OutcomeStore` feeds production telemetry back into LinUCB + TOPSIS scoring so the system actually learns from what shipped vs what regressed. A second, **bounded** loop runs by default: a `signal.swarm_unhealthy` (adapter circuit-breaker / swarm-health) applies a small, capped, auto-decaying routing demotion via `TuneAdjustmentStore` — demotion-only, never zeroes a CLI, every adjustment audited, opt-out with `NEXUS_TUNE_ENFORCE=false`
 - **Multi-voter consensus** — `consensus_vote` runs a default 7-role panel (architect, security, devex, ai_ml, pm, catfish, scope_steward; `--quick` uses 3). Six strategies: simple/super-majority, unanimous, higher-order Bayesian, opinion-wise, proof-of-learning
 
@@ -53,7 +53,7 @@ Code:               actual edits, tests, PRs, issues
   │                                                       │
   │   Charter (drift-checked)   Adversarial PR review    │
   │   Role registry             Multi-voter consensus    │
-  │   Immutable audit trail     Closed-loop telemetry    │
+  │   Tamper-evident audit      Closed-loop telemetry    │
   │                                                       │
   │   46 MCP tools · multi-stage CompositeRouter         │
   └────────────────────────┬────────────────────────────┘
@@ -176,7 +176,7 @@ nexus-agents orchestrate "Explain the architecture of this codebase"
 | **Adversarial PR Review**      | `pr_review` MCP tool: 5 voter roles (architect, security, devex, catfish, scope_steward) with 4-point gate. v5 evaluation (n=10): 100% bug-catch, 50% raw FP rate; manual triage reclassified most FPs as legitimate findings ([details](docs/research/pr-review-experiment-results-v5.md)) |
 | **Consensus Voting**           | 6 strategies: simple_majority, supermajority, unanimous, higher_order (Bayesian correlation-aware), opinion_wise, proof_of_learning                                                                                                                                                         |
 | **Drift-Detected Charter**     | `CLAUDE.md` + `inject-governance.ts check` enforces single-source registries (model registry, MCP tools, expert types). Blocking CI gate fails build on drift                                                                                                                               |
-| **Audit Trail**                | Structured logging for every tool call, voter decision, and routing choice. Hash-chained immutable storage; integrity verifiable via `verify_audit_chain` MCP tool (#2281, #2289)                                                                                                           |
+| **Audit Trail**                | Structured logging for every tool call, voter decision, and routing choice. Tamper-evident hash-chained append-only storage (tamper-evident, not tamper-proof — see [threat model](docs/security/audit-hash-chain-threat-model.md)); integrity verifiable via `verify_audit_chain` MCP tool |
 | **Closed-Loop Telemetry**      | `OutcomeStore` feeds LinUCB + TOPSIS scoring; a second bounded, audited self-tuning loop demotes unhealthy CLIs (capped, auto-decaying, on by default, opt-out `NEXUS_TUNE_ENFORCE=false`)                                                                                                  |
 | **Security Pipeline**          | Sandboxing (Docker/policy), trust-tiered input handling, SARIF parsing, red-team patterns, ClawGuard access policies (audit/enforce)                                                                                                                                                        |
 | **Multi-Expert Orchestration** | 12 built-in expert types coordinated by Orchestrator. Roles bind prompt + tools + memory                                                                                                                                                                                                    |

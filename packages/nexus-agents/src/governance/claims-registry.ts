@@ -26,17 +26,30 @@ import { z } from 'zod';
  *
  * - `file-exists`: the evidence path resolves to an existing file.
  * - `file-contains`: the evidence path exists AND contains the `expected`
- *   substring (e.g. an exported symbol name, a test title).
+ *   substring in *real code* (line/block comments are stripped before matching,
+ *   so a `// removed verify_audit_chain` line no longer "verifies" the claim —
+ *   #3879). Use for an exported symbol name or a registered tool literal.
+ * - `source-contains-all`: like `file-contains` but `expected` is a
+ *   comma-separated list of needles, ALL of which must appear in real
+ *   (comment-stripped) code. Use for substantive multi-part claims where
+ *   directory-existence is too weak (e.g. LinUCB AND TOPSIS — #3879).
  * - `enum-member-count`: count the string members of the named `z.enum([...])`
  *   (or string-literal union) in the evidence file; must equal `expected`.
  * - `manifest-tool-count`: count registered MCP tools in the evidence file
  *   (`name:` entries in tool-manifest.ts); must equal `expected`.
  * - `roadmap-status`: aspirational claim — the subject doc must mark the
  *   feature with the roadmap status token in `expected` (e.g. `-`).
+ *
+ * In addition to the source-of-truth check above, when a verification carries
+ * `subjectContains` the runner ALSO confirms that literal appears in the
+ * `subject` doc (#3877). This is what catches *documentation* drift: a README
+ * that says "200 MCP tools" while source has 46 fails the gate even though the
+ * source side passes.
  */
 export const VerificationMethodSchema = z.enum([
   'file-exists',
   'file-contains',
+  'source-contains-all',
   'enum-member-count',
   'manifest-tool-count',
   'roadmap-status',
@@ -73,11 +86,21 @@ export const VerificationSchema = z
     expected: z.union([z.number().int().nonnegative(), z.string().min(1)]).optional(),
     /** Target symbol name (e.g. the exported `z.enum` const) for count methods. */
     symbol: z.string().min(1).optional(),
+    /**
+     * Literal the claim's `subject` doc must contain (#3877). When present, the
+     * runner verifies the doc making the claim — not just the source of truth —
+     * so README/ARCHITECTURE drift fails the gate. Omit only for claims whose
+     * `subject` IS the verification `path` (e.g. `roadmap-status`).
+     */
+    subjectContains: z.string().min(1).optional(),
   })
   .strict()
   .superRefine((v, ctx) => {
     const needsNumber = v.method === 'enum-member-count' || v.method === 'manifest-tool-count';
-    const needsString = v.method === 'file-contains' || v.method === 'roadmap-status';
+    const needsString =
+      v.method === 'file-contains' ||
+      v.method === 'source-contains-all' ||
+      v.method === 'roadmap-status';
     if (needsNumber && typeof v.expected !== 'number') {
       ctx.addIssue({
         code: 'custom',
