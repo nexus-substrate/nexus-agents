@@ -129,6 +129,7 @@ Detailed technical documentation:
 | [CONTRIBUTION_GUIDE.md](./development/CONTRIBUTION_GUIDE.md)                   | PR workflow, git conventions    | Canonical |
 | [SHELL_TESTING_ANTI_PATTERNS.md](./development/SHELL_TESTING_ANTI_PATTERNS.md) | Shell testing pitfalls to avoid | Canonical |
 | [CLI_UX_QUALITY_GATE.md](./development/CLI_UX_QUALITY_GATE.md)                 | CLI UX pre-release checklist    | Canonical |
+| [CLAIMS_REGISTRY.md](./development/CLAIMS_REGISTRY.md)                         | Add/verify claims, drift gate   | Canonical |
 
 #### Research
 
