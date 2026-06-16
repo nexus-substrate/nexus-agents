@@ -242,13 +242,82 @@ function ruleMatches(rule: SelectionRule, signals: RoutingSignals): boolean {
   return true;
 }
 
+/** Raised when two DIFFERENT strategies match the same signals at equal priority. */
+export class AmbiguousManifestSelectionError extends Error {
+  constructor(
+    readonly priority: number,
+    readonly strategies: readonly ExecutionStrategy[],
+    readonly signals: RoutingSignals
+  ) {
+    super(
+      `Ambiguous manifest selection: strategies [${strategies.join(', ')}] match ` +
+        `signals ${JSON.stringify(signals)} at equal priority ${String(priority)}. ` +
+        `Resolve by giving exactly one rule a higher priority or a disjoint predicate ` +
+        `(routing must never be decided by strategy name — #3888).`
+    );
+    this.name = 'AmbiguousManifestSelectionError';
+  }
+}
+
+/**
+ * Computes the best matching rule per strategy for the given signals. Returns the
+ * winners ordered best-first by matching-rule priority. The single source of truth
+ * shared by {@link selectStrategyByManifest} (takes the head) and
+ * {@link rankStrategiesByManifest} (takes the full ordered list), so the SELECTION
+ * path and the transparency ALTERNATIVES path can never drift (#3888).
+ *
+ * FAIL-FAST on ambiguity: if two DIFFERENT strategies tie at the top priority for
+ * these signals, this throws {@link AmbiguousManifestSelectionError} rather than
+ * silently breaking the tie by strategy name (the #3888 fix). No reachable tie
+ * exists on the live 8 manifests today, so this is dead-but-defensive now and
+ * surfaces a future overlapping same-priority rule loudly.
+ *
+ * Names ZERO strategies (the #3836 invariant): adding a strategy is registering a
+ * manifest with rules, never editing this matcher.
+ */
+function matchingSelections(
+  signals: RoutingSignals,
+  manifests: readonly StrategyManifest[]
+): ManifestSelection[] {
+  // Best (highest-priority) matching rule per strategy.
+  const bestPerStrategy = new Map<ExecutionStrategy, ManifestSelection>();
+  for (const manifest of manifests) {
+    if (manifest.selectionRules === undefined) continue;
+    for (const rule of manifest.selectionRules) {
+      if (!ruleMatches(rule, signals)) continue;
+      const prev = bestPerStrategy.get(manifest.strategy);
+      if (prev === undefined || rule.priority > prev.rule.priority) {
+        bestPerStrategy.set(manifest.strategy, { strategy: manifest.strategy, manifest, rule });
+      }
+    }
+  }
+
+  const selections = [...bestPerStrategy.values()].sort(
+    (a, b) => b.rule.priority - a.rule.priority
+  );
+
+  // Guard the TOP priority: two distinct strategies tied for first place means the
+  // winner would otherwise be decided by name. Surface it instead of hiding it.
+  const [first, second] = selections;
+  if (first !== undefined && first.rule.priority === second?.rule.priority) {
+    const topPriority = first.rule.priority;
+    const tied = selections.filter((s) => s.rule.priority === topPriority).map((s) => s.strategy);
+    throw new AmbiguousManifestSelectionError(topPriority, tied, signals);
+  }
+
+  return selections;
+}
+
 /**
  * The manifest-driven router core (#3836). Evaluates every registered manifest's
  * {@link SelectionRule}s against the routing signals and returns the strategy
- * whose matching rule has the HIGHEST priority. Ties (equal priority) break
- * deterministically by strategy name so selection is reproducible. Returns
- * `undefined` only if NO rule across the whole registry matches — the caller
- * decides the fallback.
+ * whose matching rule has the HIGHEST priority. Returns `undefined` only if NO
+ * rule across the whole registry matches — the caller decides the fallback.
+ *
+ * Equal-priority collisions between two strategies FAIL FAST
+ * ({@link AmbiguousManifestSelectionError}, #3888) instead of the former silent
+ * alphabetical-name tie-break, so a future overlapping same-priority rule surfaces
+ * loudly rather than letting a rename quietly change routing.
  *
  * Crucially this function names ZERO strategies: adding a strategy is registering
  * a manifest with rules, never editing this matcher (the #3836 invariant, proven
@@ -258,19 +327,21 @@ export function selectStrategyByManifest(
   signals: RoutingSignals,
   manifests: readonly StrategyManifest[] = STRATEGY_MANIFEST_REGISTRY.manifests
 ): ManifestSelection | undefined {
-  let best: ManifestSelection | undefined;
-  for (const manifest of manifests) {
-    if (manifest.selectionRules === undefined) continue;
-    for (const rule of manifest.selectionRules) {
-      if (!ruleMatches(rule, signals)) continue;
-      const better =
-        best === undefined ||
-        rule.priority > best.rule.priority ||
-        (rule.priority === best.rule.priority && manifest.strategy < best.strategy);
-      if (better) {
-        best = { strategy: manifest.strategy, manifest, rule };
-      }
-    }
-  }
-  return best;
+  return matchingSelections(signals, manifests)[0];
+}
+
+/**
+ * Ranks every strategy whose selection rules MATCH the signals, best-first by
+ * matching-rule priority (#3888). This is the manifest-derived source of truth for
+ * the transparency "alternatives" list: it replaces the former hardcoded
+ * `strategyFrom*` table so the alternatives can never drift from the selection
+ * path. Shares ambiguity-detection with {@link selectStrategyByManifest}, so an
+ * equal-priority collision throws here too. The head of this list is exactly what
+ * {@link selectStrategyByManifest} returns.
+ */
+export function rankStrategiesByManifest(
+  signals: RoutingSignals,
+  manifests: readonly StrategyManifest[] = STRATEGY_MANIFEST_REGISTRY.manifests
+): ExecutionStrategy[] {
+  return matchingSelections(signals, manifests).map((s) => s.strategy);
 }

@@ -37,10 +37,6 @@ import {
 } from './meta-orchestrator-decision.js';
 import { guardAuthority, type ActionClass } from './authority-tier-guard.js';
 
-// Re-exported so existing importers keep their public surface (#3836 split): the
-// selection helpers + parity tests live in the routing module now.
-export { strategyFromPattern, strategyFromPipelineType } from './meta-orchestrator-routing.js';
-
 /**
  * Execution strategies the MetaOrchestrator can select. Each maps to an
  * existing entry point / engine — the MetaOrchestrator does not introduce a
