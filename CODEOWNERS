@@ -22,6 +22,23 @@
 # Governance rules — Rule-of-Two, untrusted-input, etc. (#3653 self-mod guard)
 /.rules/ @williamzujkowski
 
+# Governor's own core — the governance-of-the-governor paths (#3830, Epic #3829).
+# These are NEVER auto-merged: human ratification is required. Admin-merge
+# discipline applies to them too — an agent-authored PR must not modify the
+# audit hash chain, governance source, or drift machinery without owner review.
+#
+# Audit hash chain
+/packages/nexus-agents/src/audit/ @williamzujkowski
+# Governance source
+/packages/nexus-agents/src/governance/ @williamzujkowski
+# Governance-drift injection machinery
+/scripts/inject-governance.ts @williamzujkowski
+# Claims registry — the durable claim inventory (#3825 lands it at
+# /governance/claims-registry.yaml). The directory pattern below covers the
+# registry once it exists; it is a no-op (no dangling match required) until then.
+/governance/ @williamzujkowski
+/governance/claims-registry.* @williamzujkowski
+
 # Project governance
 /CLAUDE.md @williamzujkowski
 /AGENTS.md @williamzujkowski
