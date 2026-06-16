@@ -100,12 +100,16 @@
   "pnpm": {
     "overrides": {
       "@modelcontextprotocol/sdk>ajv": ">=8.18.0",
-      "hono": ">=4.12.18",
+      "hono": ">=4.12.21",
       "@hono/node-server": ">=1.19.13",
+      "ws": ">=8.21.0",
+      "esbuild": ">=0.28.1",
+      "dompurify": ">=3.4.9",
+      "js-yaml@>=4.0.0 <4.2.0": ">=4.2.0",
       "fast-uri": ">=3.1.2",
       "ip-address": ">=10.2.0",
       "@isaacs/brace-expansion": ">=5.0.1",
-      "markdown-it": ">=14.1.1",
+      "markdown-it": ">=14.2.0",
       "qs": ">=6.15.2",
       "basic-ftp": ">=5.3.0",
       "defu": ">=6.1.5",
@@ -122,7 +126,7 @@
       "picomatch": ">=4.0.4",
       "vite": ">=8.0.13",
       "yaml@<2.8.3": ">=2.8.3",
-      "protobufjs@<7.5.5": "^7.5.5",
+      "protobufjs@<7.6.3": ">=7.6.3",
       "encoding-sniffer@<1.0.0": "^1.0.0",
       "postcss@<8.5.10": ">=8.5.10",
       "uuid@<14.0.0": ">=14.0.0"
