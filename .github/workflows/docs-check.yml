@@ -12,6 +12,7 @@ on:
       - 'scripts/inject-governance.ts'
       - 'scripts/generate-docs-content.ts'
       - 'scripts/generate-tool-reference.ts'
+      - 'scripts/generate-strategy-reference.ts'
       - 'scripts/claims-check.ts'
       - 'governance/claims-registry.yaml'
       # #3878: the claims-check job polices the `subject` docs of the registry.
@@ -312,6 +313,32 @@ jobs:
           else
             echo "::error::Generated tool reference is out of date"
             echo "Run 'pnpm docs:tools' and commit the changes"
+            exit 1
+          fi
+
+  # Job 6c: Strategy-Reference Drift (#3838) — the generated strategy-manifest
+  # reference (docs/reference/strategies/, from
+  # scripts/generate-strategy-reference.ts) must be current. The force-strategy
+  # docs are generated FROM the strategy-manifest registry (the single source of
+  # truth the router reads), so they cannot drift. Mirrors the tool-reference
+  # drift gate: regenerate in memory and fail if the committed output differs.
+  strategy-reference-drift:
+    name: Strategy Reference Drift
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: ./.github/actions/setup-node
+
+      - name: Check generated strategy reference
+        run: |
+          npx tsx scripts/generate-strategy-reference.ts --check
+          if [ $? -eq 0 ]; then
+            echo "✅ Generated strategy reference is up to date"
+          else
+            echo "::error::Generated strategy reference is out of date"
+            echo "Run 'pnpm docs:strategies' and commit the changes"
             exit 1
           fi
 
