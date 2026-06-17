@@ -275,8 +275,28 @@ export const AuditEventSchema = z.object({
   // Integrity (for tamper-evidence)
   previousHash: z.string().optional(), // Hash of previous event (chain)
   hash: z.string().optional(), // Hash of this event
+  /**
+   * Hash-projection version (#3921). ABSENT/`1` = the legacy projection
+   * ({id,timestamp,category,action,outcome,actor,previousHash}); `2` =
+   * the legacy projection PLUS the canonicalized `metadata.tierTransition`
+   * payload, so a tier-transition's integrity-critical payload is hash-covered.
+   * Versioned so pre-existing v1 chains keep verifying under their own
+   * projection (see {@link AUDIT_HASH_VERSION_TIER_TRANSITION}).
+   */
+  hashVersion: z.number().int().positive().optional(),
 });
 export type AuditEvent = z.infer<typeof AuditEventSchema>;
+
+/**
+ * Hash-projection version that covers the tier-transition payload (#3921). A
+ * tier-transition event is written with `hashVersion: 2`, which makes
+ * `computeEventHash` fold the canonicalized {@link TierTransitionPayload}
+ * ({subject, fromTier, toTier, evidenceRef, ratificationVoteRef}) into the
+ * hashed projection — so flipping `toTier`/`ratificationVoteRef` post-write
+ * breaks the chain. Legacy (`undefined`/`1`) events keep the original
+ * head-fields-only projection, so pre-existing chains verify unchanged.
+ */
+export const AUDIT_HASH_VERSION_TIER_TRANSITION = 2 as const;
 
 // ============================================================================
 // Audit Event Creation Input (minimal required fields)
