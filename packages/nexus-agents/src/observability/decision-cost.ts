@@ -203,19 +203,7 @@ export function rollupDecisionCost(
     modelAcc.set(line.model, acc);
   }
 
-  const perModel: ModelCostBreakdown[] = [...modelAcc.entries()]
-    .map(([model, a]) => ({
-      model,
-      voterCount: a.count,
-      inputTokens: a.input,
-      outputTokens: a.output,
-      totalTokens: a.input + a.output,
-      costUsd: roundUsd(a.cost),
-    }))
-    .sort(
-      (x, y) =>
-        y.costUsd - x.costUsd || y.totalTokens - x.totalTokens || x.model.localeCompare(y.model)
-    );
+  const perModel = buildPerModelBreakdowns(modelAcc);
 
   return {
     billingMode,
@@ -229,4 +217,21 @@ export function rollupDecisionCost(
     perVoter,
     perModel,
   };
+}
+
+/** Aggregate the per-model accumulator into sorted {@link ModelCostBreakdown} rows. */
+function buildPerModelBreakdowns(modelAcc: Map<string, ModelAcc>): ModelCostBreakdown[] {
+  return [...modelAcc.entries()]
+    .map(([model, a]) => ({
+      model,
+      voterCount: a.count,
+      inputTokens: a.input,
+      outputTokens: a.output,
+      totalTokens: a.input + a.output,
+      costUsd: roundUsd(a.cost),
+    }))
+    .sort(
+      (x, y) =>
+        y.costUsd - x.costUsd || y.totalTokens - x.totalTokens || x.model.localeCompare(y.model)
+    );
 }
