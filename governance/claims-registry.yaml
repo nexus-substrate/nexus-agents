@@ -81,11 +81,16 @@ claims:
       path: packages/nexus-agents/src/audit/audit-logger.ts
       expected: 'export function verifyChain'
       subjectContains: 'Tamper-evident hash-chained'
-    lastVerified: '2026-06-16'
+    lastVerified: '2026-06-17'
     caveat: >-
-      The chain is tamper-evident (detects post-hoc edits), not immutable: a
-      write-capable adversary can rewrite-and-rehash. See
-      docs/security/audit-hash-chain-threat-model.md §7 (and #3874).
+      Tamper-EVIDENT, not tamper-PROOF / immutable. computeEventHash
+      (audit-logger.ts:64) is a KEYLESS SHA-256 over only
+      {id,timestamp,category,action,outcome,actor,previousHash} (plus the
+      tier-transition payload for tier.* events, #3921) — partial-schema
+      coverage, so a write-capable adversary can truncate/fork/rewrite-and-rehash
+      undetectably. verifyChain (audit-logger.ts:153) only detects post-hoc
+      in-place edits. See docs/security/audit-hash-chain-threat-model.md §7
+      (and #3874).
 
   - id: verify-audit-chain-tool
     claim: 'A verify_audit_chain MCP tool exposes audit-chain integrity verification.'

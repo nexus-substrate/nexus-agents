@@ -2,7 +2,7 @@
 
 Standalone guidance for AI coding agents (OpenCode, Codex CLI, Cursor, Aider, Cline, Continue, Goose, Claude Code) working in this repo. Self-contained — no required redirect to other files.
 
-**About this project:** Nexus-agents is a _governance substrate_ for AI coding agents — adversarial PR review, drift-detected charter, immutable audit, closed-loop telemetry. The agents you (the reader) belong to are exactly the kind of agent nexus-agents governs. Rules in `.rules/` are enforced by CI gates and PR-review voters, not just suggestions.
+**About this project:** Nexus-agents is a _governance substrate_ for AI coding agents — adversarial PR review, drift-detected charter, tamper-evident append-only audit chain ([threat model](./docs/security/audit-hash-chain-threat-model.md): tamper-evident, not tamper-proof), closed-loop telemetry. The agents you (the reader) belong to are exactly the kind of agent nexus-agents governs. Rules in `.rules/` are enforced by CI gates and PR-review voters, not just suggestions.
 
 > **Canonical surface.** This file is the single source of truth for agent guidance in this repo (per [#2805](https://github.com/nexus-substrate/nexus-agents/issues/2805)'s option-B federation). Every other harness config (`.cursor/rules/`, `.windsurf/rules/`, `.aider.conf.yml`, `.continue/rules/`, `.clinerules/`) is a one-line redirect to this file — never duplicated content. PRs that duplicate content here into a harness-specific file get refactored to redirects before merge. See [docs/architecture/AGENT_COMPATIBILITY.md](./docs/architecture/AGENT_COMPATIBILITY.md) for the full federation rationale.
 >

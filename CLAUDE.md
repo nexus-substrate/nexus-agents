@@ -8,7 +8,7 @@ related_files: [CODING_STANDARDS.md, docs/ENTRYPOINTS.md]
 
 # Nexus Agents - Claude Code Instructions
 
-**Project:** Governance substrate for AI coding agents — adversarial review, drift-detected rules, immutable audit, closed-loop telemetry. The agents (Claude/Codex/Gemini/OpenCode) do the engineering; nexus-agents enforces the rules they have to follow, reviews their work adversarially, and audits everything they touch.
+**Project:** Governance substrate for AI coding agents — adversarial review, drift-detected rules, tamper-evident append-only audit chain ([threat model](./docs/security/audit-hash-chain-threat-model.md): tamper-evident, not tamper-proof), closed-loop telemetry. The agents (Claude/Codex/Gemini/OpenCode) do the engineering; nexus-agents enforces the rules they have to follow, reviews their work adversarially, and audits everything they touch.
 **Repository:** github.com/nexus-substrate/nexus-agents
 **Owner:** @williamzujkowski
 

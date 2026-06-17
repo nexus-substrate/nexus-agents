@@ -78,8 +78,9 @@ producers ──signal.swarm_unhealthy──▶ TuneStage ──demote──▶ 
   `TuneAdjustmentStore.demote`; the `CompositeRouter` reads `effectiveMultiplier`
   as an additive scoring penalty. The same flag gates both the write and the
   read, so the loop is **fully live or fully shadow, never half-wired**. Each
-  demotion is appended to the immutable audit log as `tune.demote`
-  (`verify_audit_chain`).
+  demotion is appended to the tamper-evident append-only audit chain as
+  `tune.demote` (`verify_audit_chain`; tamper-evident, not tamper-proof — see
+  the [audit hash-chain threat model](../security/audit-hash-chain-threat-model.md)).
 - **Shadow (opt-out, `NEXUS_TUNE_ENFORCE=false`):** the `TuneStage` logs the
   demotion it _would_ apply and records it to the `intended` counter
   (`TuneAdjustmentStore.recordIntended` — counter only, **routing untouched**).
