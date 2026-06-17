@@ -21,6 +21,7 @@ import {
   recordDecisionCost,
   resolveBillingMode,
   getDroppedCostRecordCount,
+  getDroppedCostWarnCount,
   resetDroppedCostRecordCount,
 } from './decision-cost-recording.js';
 
@@ -192,5 +193,46 @@ describe('non-silent cost drops (#3910)', () => {
     expect(getDroppedCostRecordCount()).toBe(1);
     expect(warnings).toHaveLength(1);
     expect(warnings[0]?.message).toContain('dropped');
+  });
+
+  it('rate-limits the warn under sustained drops while counting every drop (#3916)', () => {
+    // An unwritable store must not flood the log per-decision. Drive many
+    // consecutive drops and assert the warn count is BOUNDED (first-N burst,
+    // then suppressed) while the drop counter still reflects EVERY drop and the
+    // decision never fails.
+    let warnCount = 0;
+    const logger: ILogger = {
+      debug: () => {},
+      info: () => {},
+      warn: () => {
+        warnCount += 1;
+      },
+      error: () => {},
+      child: () => logger,
+      setLevel: () => {},
+    };
+    const store = failingStore();
+
+    const drops = 200;
+    for (let i = 0; i < drops; i++) {
+      const summary = recordDecisionCost({
+        decisionId: `d-${String(i)}`,
+        gate: 'consensus_vote',
+        votes: [vote({ role: 'architect', model: 'claude-sonnet' })],
+        store,
+        billingMode: 'api',
+        logger,
+      });
+      // Never-fail invariant holds on every iteration.
+      expect(summary.totalCostUsd).toBe(0.001);
+    }
+
+    // Counter is exact: every drop counted.
+    expect(getDroppedCostRecordCount()).toBe(drops);
+    // Warns are bounded, NOT one-per-drop (first-5 burst, then periodic).
+    expect(warnCount).toBe(getDroppedCostWarnCount());
+    expect(warnCount).toBeGreaterThanOrEqual(1);
+    expect(warnCount).toBeLessThanOrEqual(6);
+    expect(warnCount).toBeLessThan(drops);
   });
 });

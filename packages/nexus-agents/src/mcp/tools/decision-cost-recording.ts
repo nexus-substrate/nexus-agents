@@ -91,9 +91,37 @@ export function getDroppedCostRecordCount(): number {
   return droppedCostRecordCount;
 }
 
-/** Reset the dropped-cost-record counter (testing only, #3910). */
+/**
+ * Warn rate-limiter for dropped cost rollups (#3916).
+ *
+ * If the store goes unwritable (disk full / perms / I/O), a per-decision warn
+ * would flood the logs and could degrade the main decision path — ironically
+ * risking the never-fail invariant the warn exists to protect. So the warn is
+ * rate-limited: emit it for the first {@link WARN_BURST} consecutive drops, then
+ * at most once per {@link WARN_PERIOD} further drops. The COUNTER still
+ * increments on EVERY drop (it stays exact regardless of suppression), and the
+ * decision still never fails. The emitted warn carries `suppressedSinceLastWarn`
+ * so a reader can see how many drops a single line stands in for.
+ */
+const WARN_BURST = 5;
+const WARN_PERIOD = 1000;
+let warnCountSinceReset = 0;
+
+/** Whether this drop should emit a warn under the first-N-then-periodic limiter. */
+function shouldWarnForDrop(dropIndex: number): boolean {
+  if (dropIndex <= WARN_BURST) return true;
+  return (dropIndex - WARN_BURST) % WARN_PERIOD === 0;
+}
+
+/** Reset the dropped-cost-record counter and warn limiter (testing only, #3910/#3916). */
 export function resetDroppedCostRecordCount(): void {
   droppedCostRecordCount = 0;
+  warnCountSinceReset = 0;
+}
+
+/** Read how many dropped-cost warns have actually been emitted (testing, #3916). */
+export function getDroppedCostWarnCount(): number {
+  return warnCountSinceReset;
 }
 
 /**
@@ -123,14 +151,21 @@ export function recordDecisionCost(options: RecordDecisionCostOptions): Decision
     timestamp,
   });
   if (!persisted) {
+    // Count EVERY drop (stays exact); rate-limit only the warn so an unwritable
+    // store can't flood the log per-decision and degrade the main path (#3916).
     droppedCostRecordCount += 1;
-    logger.warn('Decision-cost rollup dropped (failed to persist) — billing telemetry lost', {
-      decisionId: options.decisionId,
-      gate: options.gate,
-      totalCostUsd: record.summary.totalCostUsd,
-      totalTokens: record.summary.totalTokens,
-      droppedCostRecordCount,
-    });
+    if (shouldWarnForDrop(droppedCostRecordCount)) {
+      const suppressedSinceLastWarn = droppedCostRecordCount - warnCountSinceReset - 1;
+      warnCountSinceReset += 1;
+      logger.warn('Decision-cost rollup dropped (failed to persist) — billing telemetry lost', {
+        decisionId: options.decisionId,
+        gate: options.gate,
+        totalCostUsd: record.summary.totalCostUsd,
+        totalTokens: record.summary.totalTokens,
+        droppedCostRecordCount,
+        suppressedSinceLastWarn,
+      });
+    }
   }
   return record.summary;
 }
