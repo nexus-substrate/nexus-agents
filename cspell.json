@@ -13,6 +13,8 @@
   ],
   "ignoreRegExpList": ["/```[\\s\\S]*?```/g", "\\[.*?\\]\\(.*?\\)", "`[^`]+`"],
   "words": [
+    "autonomic",
+    "MAPE",
     "dogfooded",
     "landable",
     "remediations",
