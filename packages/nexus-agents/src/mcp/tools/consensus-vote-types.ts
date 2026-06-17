@@ -9,6 +9,7 @@ import { z } from 'zod';
 import type { AgentVoteResult, VotingResult } from '../../cli/vote-types.js';
 import { VOTER_ROLES } from '../../cli/vote-types.js';
 import type { HigherOrderVotingResult } from '../../consensus/higher-order-types.js';
+import type { DecisionCostSummary } from '../../observability/decision-cost.js';
 
 /** Maximum proposal length (memory bounds per Issue #435). */
 export const MAX_PROPOSAL_LENGTH = 4000;
@@ -277,6 +278,13 @@ export interface ConsensusVoteResponse {
    * Absent when every requested voter returned a real vote.
    */
   panelWarning?: string;
+  /**
+   * Per-decision cost rollup (#3855): per-voter / per-model token + USD totals
+   * for this governed decision. Rides the existing response — no new MCP tool.
+   * Totals are a floor when `costSummary.unmeasuredVoters > 0` (voters whose
+   * adapter reported no usage are counted as unmeasured, not a measured $0).
+   */
+  costSummary?: DecisionCostSummary;
 }
 
 /** Extended voting result with optional Higher-Order metadata. */
@@ -338,7 +346,8 @@ function panelDegradationWarning(errorCount: number, total: number): string | un
 /** Builds the response from voting result. */
 export function buildResponse(
   input: ConsensusVoteInput,
-  result: ExtendedVotingResult
+  result: ExtendedVotingResult,
+  costSummary?: DecisionCostSummary
 ): ConsensusVoteResponse {
   const proposalTruncated =
     input.proposal.length > 200 ? input.proposal.slice(0, 200) + '...' : input.proposal;
@@ -367,24 +376,38 @@ export function buildResponse(
     simulateVotes: result.simulateVotes,
   };
 
+  applyOptionalResponseFields(response, input, result, errorCount, costSummary);
+  return response;
+}
+
+/**
+ * Attach the optional response fields (threshold, policy reason, panel warning,
+ * higher-order metadata, cost summary). Extracted from {@link buildResponse} to
+ * keep its cyclomatic complexity within the lint budget (#3855).
+ */
+function applyOptionalResponseFields(
+  response: ConsensusVoteResponse,
+  input: ConsensusVoteInput,
+  result: ExtendedVotingResult,
+  errorCount: number,
+  costSummary?: DecisionCostSummary
+): void {
   if (input.threshold !== undefined) {
     response.threshold = input.threshold;
   }
-
   if (result.policyReason !== undefined) {
     response.policyReason = result.policyReason;
   }
-
   const panelWarning = panelDegradationWarning(errorCount, result.votes.length);
   if (panelWarning !== undefined) {
     response.panelWarning = panelWarning;
   }
-
   if (isHigherOrderStrategy(result.strategy) && result.higherOrderResult) {
     response.higherOrderMetadata = toHigherOrderMetadata(result.higherOrderResult);
   }
-
-  return response;
+  if (costSummary !== undefined) {
+    response.costSummary = costSummary;
+  }
 }
 
 /** Maps a HigherOrderVotingResult to the response's metadata shape. */

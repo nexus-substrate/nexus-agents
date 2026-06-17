@@ -81,6 +81,12 @@ export interface AgentVoteResult {
   readonly source: 'llm' | 'simulation' | 'error';
   /** CLI that executed this vote (for adaptive routing feedback). */
   readonly cli?: string | undefined;
+  /**
+   * Model id that executed this vote, when known (e.g. 'claude-sonnet'). Carried
+   * so per-decision cost aggregation can attribute spend per model (#3855). Absent
+   * for error/simulation votes that never reached a model.
+   */
+  readonly model?: string | undefined;
   /** Error message if vote fell back to simulation or encountered an error */
   readonly error?: string;
 }

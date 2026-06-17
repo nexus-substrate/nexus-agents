@@ -30,6 +30,8 @@ import {
 import type { VoterRole, AgentVoteResult } from '../../cli/vote-types.js';
 import { collectRealVotes } from '../../cli/voter-agents.js';
 import { getToolAnnotations } from '../tool-annotations.js';
+import { recordDecisionCost } from './decision-cost-recording.js';
+import type { DecisionCostSummary } from '../../observability/decision-cost.js';
 // #3731 / epic #2631: async-mode dispatch via the shared `runAsJob` helper.
 import { runAsJob } from '../jobs/run-as-job.js';
 import {
@@ -161,6 +163,13 @@ export interface PrReviewResponse {
   readonly errorCount: number;
   readonly reviews: readonly PrReviewVote[];
   readonly totalDurationMs: number;
+  /**
+   * Per-decision cost rollup (#3855): per-voter / per-model token + USD totals
+   * for this governed review. Rides the existing response — no new MCP tool.
+   * Totals are a floor when `costSummary.unmeasuredVoters > 0` (voters whose
+   * adapter reported no usage are counted as unmeasured, not a measured $0).
+   */
+  readonly costSummary?: DecisionCostSummary;
 }
 
 export type PrReviewDeps = BaseMcpToolDeps;
@@ -349,12 +358,29 @@ async function executePrReviewBody(input: PrReviewInput, logger: ILogger): Promi
   const counts = summarizeReviews(reviews);
   const aggregate = aggregatePrDecisions(reviews);
 
+  // #3855: roll up + persist this review's per-voter cost and ride it on the
+  // existing response (no new MCP tool). Best-effort — a rollup failure must
+  // not fail the review.
+  let costSummary: DecisionCostSummary | undefined;
+  try {
+    costSummary = recordDecisionCost({
+      decisionId: `pr-${randomUUID().slice(0, 8)}`,
+      gate: 'pr_review',
+      votes: voteResults,
+    });
+  } catch (costError) {
+    logger.warn('Per-decision cost rollup failed (non-fatal)', {
+      error: getErrorMessage(costError),
+    });
+  }
+
   const response: PrReviewResponse = {
     summary: aggregate.decision,
     verified: aggregate.verified,
     ...counts,
     reviews,
     totalDurationMs: Date.now() - start,
+    ...(costSummary !== undefined ? { costSummary } : {}),
   };
   return toolSuccess(JSON.stringify(response, null, 2));
 }
