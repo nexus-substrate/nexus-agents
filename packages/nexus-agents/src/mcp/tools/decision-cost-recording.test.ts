@@ -23,6 +23,7 @@ import {
   getDroppedCostRecordCount,
   getDroppedCostWarnCount,
   resetDroppedCostRecordCount,
+  _setWarnClockForTests,
 } from './decision-cost-recording.js';
 
 function vote(over: Partial<AgentVoteResult>): AgentVoteResult {
@@ -234,5 +235,44 @@ describe('non-silent cost drops (#3910)', () => {
     expect(warnCount).toBeGreaterThanOrEqual(1);
     expect(warnCount).toBeLessThanOrEqual(6);
     expect(warnCount).toBeLessThan(drops);
+  });
+
+  it('still warns on a SLOW leak after the silence window despite count suppression (#3916)', () => {
+    // Pure count-based suppression would hide a 1/hr leak for ~999 drops. The
+    // time escape surfaces it once the silence window elapses.
+    let warnCount = 0;
+    const logger: ILogger = {
+      debug: () => {},
+      info: () => {},
+      warn: () => {
+        warnCount += 1;
+      },
+      error: () => {},
+      child: () => logger,
+      setLevel: () => {},
+    };
+    const store = failingStore();
+    const drop = (id: string): void => {
+      recordDecisionCost({
+        decisionId: id,
+        gate: 'consensus_vote',
+        votes: [vote({ role: 'architect', model: 'claude-sonnet' })],
+        store,
+        billingMode: 'api',
+        logger,
+      });
+    };
+
+    _setWarnClockForTests(1_000_000);
+    for (let i = 0; i < 5; i++) drop(`burst-${String(i)}`); // first-5 burst → 5 warns
+    expect(warnCount).toBe(5);
+    drop('same-time-1'); // post-burst, no time elapsed, not 1000th → suppressed
+    drop('same-time-2');
+    expect(warnCount).toBe(5);
+    _setWarnClockForTests(1_000_000 + 60_000); // advance past the silence window
+    drop('after-window'); // time escape → warns even though count would suppress
+    expect(warnCount).toBe(6);
+    expect(getDroppedCostRecordCount()).toBe(8); // every drop still counted
+    _setWarnClockForTests(null);
   });
 });

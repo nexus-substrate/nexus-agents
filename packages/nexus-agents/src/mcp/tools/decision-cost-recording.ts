@@ -105,18 +105,46 @@ export function getDroppedCostRecordCount(): number {
  */
 const WARN_BURST = 5;
 const WARN_PERIOD = 1000;
+// Never stay silent longer than this on a SLOW leak (#3916): pure count-based
+// suppression (every 1000th) would hide ~999 drops for ~41 days at 1/hr. A
+// time escape surfaces a persistent low-rate failure within the window.
+const WARN_MAX_SILENCE_MS = 60_000;
 let warnCountSinceReset = 0;
+let lastWarnAtMs = 0;
+let warnClockOverrideMs: number | null = null;
 
-/** Whether this drop should emit a warn under the first-N-then-periodic limiter. */
+/** Testing seam: pin the warn-limiter clock (#3916). Pass null to use real time. */
+export function _setWarnClockForTests(ms: number | null): void {
+  warnClockOverrideMs = ms;
+}
+
+function warnNowMs(): number {
+  return warnClockOverrideMs ?? Date.now();
+}
+
+/**
+ * Whether this drop should emit a warn: the first {@link WARN_BURST} consecutive
+ * drops, then every {@link WARN_PERIOD}-th, OR after {@link WARN_MAX_SILENCE_MS}
+ * of silence (so a slow leak still surfaces rather than being suppressed for
+ * thousands of drops). Side effect: anchors the silence timer on each emitted warn.
+ */
 function shouldWarnForDrop(dropIndex: number): boolean {
-  if (dropIndex <= WARN_BURST) return true;
-  return (dropIndex - WARN_BURST) % WARN_PERIOD === 0;
+  const now = warnNowMs();
+  const countTrigger = dropIndex <= WARN_BURST || (dropIndex - WARN_BURST) % WARN_PERIOD === 0;
+  const timeTrigger = dropIndex > WARN_BURST && now - lastWarnAtMs >= WARN_MAX_SILENCE_MS;
+  if (countTrigger || timeTrigger) {
+    lastWarnAtMs = now;
+    return true;
+  }
+  return false;
 }
 
 /** Reset the dropped-cost-record counter and warn limiter (testing only, #3910/#3916). */
 export function resetDroppedCostRecordCount(): void {
   droppedCostRecordCount = 0;
   warnCountSinceReset = 0;
+  lastWarnAtMs = 0;
+  warnClockOverrideMs = null;
 }
 
 /** Read how many dropped-cost warns have actually been emitted (testing, #3916). */

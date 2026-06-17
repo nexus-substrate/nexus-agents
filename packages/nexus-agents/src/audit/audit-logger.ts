@@ -264,7 +264,18 @@ export class AuditLogger implements IAuditLogger {
       hashChainEnabled: this.enableHashChain,
     });
     if (this.onPersistFailure !== undefined) {
-      this.onPersistFailure(error);
+      // An escalation hook must never break the failure-recording path or mask
+      // the original audit error (it would otherwise throw past the counter +
+      // the flush() record-then-rethrow, replacing the real I/O error and — on
+      // a timer tick — risking an unhandled rejection). Isolate it.
+      try {
+        this.onPersistFailure(error);
+      } catch (hookErr) {
+        this.logger.error(
+          'AUDIT PERSIST FAILURE — onPersistFailure hook threw (original audit error preserved)',
+          hookErr instanceof Error ? hookErr : new AuditError(String(hookErr))
+        );
+      }
     }
   }
 

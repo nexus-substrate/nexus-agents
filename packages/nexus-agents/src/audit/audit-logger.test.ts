@@ -428,6 +428,35 @@ describe('AuditLogger', () => {
       expect((onFail.mock.calls[0]![0] as Error).message).toBe('eio');
     });
 
+    it('isolates a throwing onPersistFailure hook — original audit error still rethrown + counted', async () => {
+      // A throwing escalation hook must NOT mask the real I/O error or break the
+      // record-then-rethrow path (and on a timer tick could risk an unhandled
+      // rejection). The hook's own failure is logged, not propagated.
+      const errLog = vi.fn();
+      const failLogger = {
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: errLog,
+        debug: vi.fn(),
+        child: vi.fn(),
+        setLevel: vi.fn(),
+      } as unknown as ILogger;
+      const onFail = vi.fn(() => {
+        throw new Error('hook boom');
+      });
+      s.flush.mockRejectedValueOnce(new Error('eio'));
+      const l = new AuditLogger(makeConfig(), s, failLogger, onFail);
+      l.log(ev('tier-transition'));
+      // The ORIGINAL audit error rethrows (not the hook's 'hook boom').
+      await expect(l.flush()).rejects.toThrow('eio');
+      expect(onFail).toHaveBeenCalledTimes(1);
+      // Counter intact; both the audit failure and the hook failure are logged.
+      expect(l.getPersistFailureCount()).toBe(1);
+      const msgs = errLog.mock.calls.map((c) => String(c[0]));
+      expect(msgs.some((m) => m.includes('AUDIT PERSIST FAILURE — audit event'))).toBe(true);
+      expect(msgs.some((m) => m.includes('onPersistFailure hook threw'))).toBe(true);
+    });
+
     it('counts a flush failure that arrives via the periodic timer (not silent)', async () => {
       s.write.mockRejectedValueOnce(new Error('disk full'));
       const l = new AuditLogger(makeConfig({ flushIntervalMs: 100 }), s);
