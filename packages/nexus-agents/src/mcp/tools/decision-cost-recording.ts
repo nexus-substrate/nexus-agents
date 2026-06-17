@@ -20,13 +20,9 @@
  */
 
 import type { AgentVoteResult } from '../../cli/vote-types.js';
-import { getTimeProvider } from '../../core/index.js';
+import { createLogger, getTimeProvider, type ILogger } from '../../core/index.js';
 import { computeCostUSD } from '../../learning/usage-log.js';
-import {
-  DecisionCostStore,
-  type DecisionCostRecord,
-  type DecisionGate,
-} from '../../observability/decision-cost-store.js';
+import { DecisionCostStore, type DecisionGate } from '../../observability/decision-cost-store.js';
 import type {
   DecisionBillingMode,
   DecisionCostSummary,
@@ -47,12 +43,7 @@ export function resolveBillingMode(): DecisionBillingMode {
  * per-decision rollup and the per-call usage log price identically. When no
  * usage was reported the voter is left with no tokens/cost ⇒ unmeasured.
  */
-export function votesToCostInputs(
-  votes: readonly (AgentVoteResult & {
-    readonly inputTokens?: number | undefined;
-    readonly outputTokens?: number | undefined;
-  })[]
-): VoterCostInput[] {
+export function votesToCostInputs(votes: readonly AgentVoteResult[]): VoterCostInput[] {
   return votes.map((v) => {
     const hasTokens = v.inputTokens !== undefined || v.outputTokens !== undefined;
     const input: VoterCostInput = {
@@ -79,6 +70,30 @@ export interface RecordDecisionCostOptions {
   readonly store?: DecisionCostStore;
   /** Override the billing mode (testing); defaults to the env-resolved mode. */
   readonly billingMode?: DecisionBillingMode;
+  /** Override the logger (testing); defaults to a module logger. */
+  readonly logger?: ILogger;
+}
+
+const defaultLogger = createLogger({ component: 'decision-cost-recording' });
+
+/**
+ * Process-lifetime count of decision-cost rollups that FAILED to persist (#3910).
+ *
+ * The store is best-effort and never throws, so a dropped rollup is otherwise
+ * invisible. Incrementing a counter (and logging — see {@link recordDecisionCost})
+ * makes missing cost telemetry observable rather than silently swallowed. Reset
+ * is test-only.
+ */
+let droppedCostRecordCount = 0;
+
+/** Read the count of decision-cost rollups dropped at persist time (#3910). */
+export function getDroppedCostRecordCount(): number {
+  return droppedCostRecordCount;
+}
+
+/** Reset the dropped-cost-record counter (testing only, #3910). */
+export function resetDroppedCostRecordCount(): void {
+  droppedCostRecordCount = 0;
 }
 
 /**
@@ -88,18 +103,34 @@ export interface RecordDecisionCostOptions {
  * observability sink must not break the decision it observes), so on any
  * failure the rollup is still returned for the response. Riding the existing
  * surface — the caller attaches the returned `summary` to its result object.
+ *
+ * Non-silent drops (#3910): when the rollup fails to persist (fs error / schema
+ * reject) the store reports `persisted: false`; we log a warning AND increment a
+ * counter so dropped billing telemetry is visible, instead of vanishing. The
+ * decision still proceeds — the summary is always returned.
  */
 export function recordDecisionCost(options: RecordDecisionCostOptions): DecisionCostSummary {
   const billingMode = options.billingMode ?? resolveBillingMode();
   const voters = votesToCostInputs(options.votes);
   const store = options.store ?? new DecisionCostStore();
+  const logger = options.logger ?? defaultLogger;
   const timestamp = new Date(getTimeProvider().now()).toISOString();
-  const record: DecisionCostRecord = store.record({
+  const { record, persisted } = store.record({
     decisionId: options.decisionId,
     gate: options.gate,
     voters,
     billingMode,
     timestamp,
   });
+  if (!persisted) {
+    droppedCostRecordCount += 1;
+    logger.warn('Decision-cost rollup dropped (failed to persist) — billing telemetry lost', {
+      decisionId: options.decisionId,
+      gate: options.gate,
+      totalCostUsd: record.summary.totalCostUsd,
+      totalTokens: record.summary.totalTokens,
+      droppedCostRecordCount,
+    });
+  }
   return record.summary;
 }

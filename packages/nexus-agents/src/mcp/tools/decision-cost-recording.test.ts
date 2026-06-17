@@ -13,12 +13,15 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import type { ILogger } from '../../core/index.js';
 import type { AgentVoteResult } from '../../cli/vote-types.js';
 import { DecisionCostStore } from '../../observability/decision-cost-store.js';
 import {
   votesToCostInputs,
   recordDecisionCost,
   resolveBillingMode,
+  getDroppedCostRecordCount,
+  resetDroppedCostRecordCount,
 } from './decision-cost-recording.js';
 
 function vote(over: Partial<AgentVoteResult>): AgentVoteResult {
@@ -43,13 +46,14 @@ describe('votesToCostInputs', () => {
     expect(inputs[0]?.costUsd).toBeUndefined();
   });
 
-  it('derives api-mode cost from reported tokens via the shared pricing table', () => {
-    // A vote result carrying token counts (forward-compat shape).
-    const withTokens = {
-      ...vote({ role: 'security', model: 'claude-sonnet' }),
+  it('derives api-mode cost from adapter-reported tokens via the shared pricing table', () => {
+    // #3910: AgentVoteResult now carries the adapter's per-call token counts.
+    const withTokens = vote({
+      role: 'security',
+      model: 'claude-sonnet',
       inputTokens: 1000,
       outputTokens: 200,
-    };
+    });
     const inputs = votesToCostInputs([withTokens]);
     expect(inputs[0]?.inputTokens).toBe(1000);
     expect(inputs[0]?.outputTokens).toBe(200);
@@ -101,5 +105,92 @@ describe('recordDecisionCost', () => {
     expect(summary.unmeasuredVoters).toBe(2);
     expect(summary.totalCostUsd).toBe(0);
     expect(store.size).toBe(1);
+  });
+
+  it('a voter with adapter-provided tokens yields a MEASURED rollup (#3910)', () => {
+    const store = new DecisionCostStore({ filePath: join(dir, 'dc.jsonl'), dataDir: dir });
+    const summary = recordDecisionCost({
+      decisionId: 'd-measured',
+      gate: 'consensus_vote',
+      // Tokens now ride on AgentVoteResult straight from the adapter usage layer.
+      votes: [
+        vote({ role: 'architect', model: 'claude-sonnet', inputTokens: 1200, outputTokens: 300 }),
+        vote({ role: 'security', model: 'claude-sonnet', inputTokens: 800, outputTokens: 150 }),
+      ],
+      store,
+      billingMode: 'api',
+    });
+
+    // Resolves from unmeasured → MEASURED: both voters reported usage.
+    expect(summary.measuredVoters).toBe(2);
+    expect(summary.unmeasuredVoters).toBe(0);
+    expect(summary.totalInputTokens).toBe(2000);
+    expect(summary.totalOutputTokens).toBe(450);
+    expect(summary.totalTokens).toBe(2450);
+  });
+});
+
+describe('non-silent cost drops (#3910)', () => {
+  beforeEach(() => {
+    resetDroppedCostRecordCount();
+  });
+
+  /** A store whose persistence always reports a drop (fs/schema failure). */
+  function failingStore(): DecisionCostStore {
+    const store = new DecisionCostStore({ filePath: join(tmpdir(), 'unused.jsonl') });
+    // Simulate the JsonlStore reporting a failed persist without throwing.
+    (store as unknown as { record: (i: unknown) => unknown }).record = (input) => ({
+      record: {
+        decisionId: (input as { decisionId: string }).decisionId,
+        gate: (input as { gate: string }).gate,
+        timestamp: '2026-06-17T00:00:00.000Z',
+        summary: {
+          billingMode: 'api',
+          voterCount: 1,
+          measuredVoters: 1,
+          unmeasuredVoters: 0,
+          totalInputTokens: 100,
+          totalOutputTokens: 50,
+          totalTokens: 150,
+          totalCostUsd: 0.001,
+          perVoter: [],
+          perModel: [],
+        },
+      },
+      persisted: false,
+    });
+    return store;
+  }
+
+  it('logs AND counts a dropped rollup instead of silently swallowing it', () => {
+    const warnings: { message: string; context?: unknown }[] = [];
+    const logger: ILogger = {
+      debug: () => {},
+      info: () => {},
+      warn: (message, context) => {
+        warnings.push({ message, context });
+      },
+      error: () => {},
+      child: () => logger,
+      setLevel: () => {},
+    };
+
+    expect(getDroppedCostRecordCount()).toBe(0);
+
+    // Never throws into the caller — the decision still gets its summary.
+    const summary = recordDecisionCost({
+      decisionId: 'd-dropped',
+      gate: 'consensus_vote',
+      votes: [vote({ role: 'architect', model: 'claude-sonnet' })],
+      store: failingStore(),
+      billingMode: 'api',
+      logger,
+    });
+
+    expect(summary.totalCostUsd).toBe(0.001);
+    // Visible, not silent: counter incremented + warning logged.
+    expect(getDroppedCostRecordCount()).toBe(1);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]?.message).toContain('dropped');
   });
 });

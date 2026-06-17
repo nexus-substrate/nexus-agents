@@ -282,14 +282,32 @@ function isStructuredOutputUnsupported(errorMessage: string): boolean {
   return /support tool use/i.test(errorMessage);
 }
 
-/** One completion attempt: build → complete (timeout-bounded) → extract text. */
+/**
+ * Per-call token usage reported by the adapter for one voter completion (#3910).
+ * Propagated up so per-decision cost aggregation can attribute spend per voter.
+ *
+ * Token fields are OPTIONAL: an adapter that does not report usage (CLI
+ * subscription, or a `usage` object missing the counts) leaves them `undefined`
+ * so the voter stays honestly UNMEASURED downstream — never a fabricated 0.
+ */
+export interface VoteUsage {
+  readonly inputTokens?: number | undefined;
+  readonly outputTokens?: number | undefined;
+}
+
+/** Read a usage token count when the adapter actually reported a number (#3910). */
+function readTokenCount(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+/** One completion attempt: build → complete (timeout-bounded) → extract text + usage. */
 async function runVoteCompletion(
   role: VoterRole,
   proposal: string,
   adapter: IModelAdapter,
   timeoutMs: number,
   withResponseFormat: boolean
-): Promise<{ ok: true; output: string } | { ok: false; error: string }> {
+): Promise<{ ok: true; output: string; usage: VoteUsage } | { ok: false; error: string }> {
   const request = buildVoteRequest(role, proposal, timeoutMs, withResponseFormat);
   const timeoutResult = await withTimeout(
     adapter.complete(request),
@@ -299,7 +317,22 @@ async function runVoteCompletion(
   if (!timeoutResult.ok) return { ok: false, error: timeoutResult.error };
   const response = timeoutResult.value;
   if (!response.ok) return { ok: false, error: response.error.message };
-  return { ok: true, output: extractTextFromResponse(response.value.content) };
+  // #3910: capture the adapter-reported per-call usage so it can ride up into
+  // the AgentVoteResult and feed the decision-cost rollup as MEASURED. Cast
+  // through a loose shape: the type guarantees `usage`, but a real adapter (or a
+  // partial response) may omit the counts — read each defensively so a
+  // non-reporting call stays unmeasured rather than throwing or fabricating 0.
+  const reported = response.value.usage as unknown as
+    | {
+        inputTokens?: unknown;
+        outputTokens?: unknown;
+      }
+    | undefined;
+  const usage: VoteUsage = {
+    inputTokens: readTokenCount(reported?.inputTokens),
+    outputTokens: readTokenCount(reported?.outputTokens),
+  };
+  return { ok: true, output: extractTextFromResponse(response.value.content), usage };
 }
 
 export async function executeSingleVoteAttempt(
@@ -307,7 +340,9 @@ export async function executeSingleVoteAttempt(
   proposal: string,
   adapter: IModelAdapter,
   timeoutMs: number
-): Promise<{ ok: true; vote: Vote; output: string } | { ok: false; error: string }> {
+): Promise<
+  { ok: true; vote: Vote; output: string; usage: VoteUsage } | { ok: false; error: string }
+> {
   let completion = await runVoteCompletion(role, proposal, adapter, timeoutMs, true);
   // #3497: retry once WITHOUT responseFormat when the backend rejects the
   // tool-use-backed structured-output ask, so the panel keeps full strength.
@@ -320,7 +355,7 @@ export async function executeSingleVoteAttempt(
     // parseVoteResponse throws SyntheticVoteError if parsing fails — we only
     // accept real LLM votes, not synthetic fallbacks.
     const vote = parseVoteResponse(completion.output, role);
-    return { ok: true, vote, output: completion.output };
+    return { ok: true, vote, output: completion.output, usage: completion.usage };
   } catch (error) {
     if (error instanceof SyntheticVoteError) {
       return { ok: false, error: `Vote parsing failed: ${error.message}` };
@@ -345,7 +380,7 @@ export interface RetryOptions {
  */
 export async function executeWithRetries(
   opts: RetryOptions
-): Promise<{ vote: Vote; ok: true } | { error: string; ok: false }> {
+): Promise<{ vote: Vote; usage: VoteUsage; ok: true } | { error: string; ok: false }> {
   const { role, proposal, adapter, logger, timeoutMs, maxRetries } = opts;
   let lastError = '';
 
@@ -371,7 +406,7 @@ export async function executeWithRetries(
         attemptMs,
         succeeded: true,
       });
-      return { vote: result.vote, ok: true };
+      return { vote: result.vote, usage: result.usage, ok: true };
     }
 
     lastError = result.error;
