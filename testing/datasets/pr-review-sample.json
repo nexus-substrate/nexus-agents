@@ -1,8 +1,8 @@
 {
   "rubricVersion": "1.0.0",
-  "curatedAt": "2026-04-27T00:50:00Z",
-  "reAdjudicatedAt": "2026-06-16",
-  "methodology": "Hybrid v3 dataset, re-adjudicated under the pr_review eval labeling rubric v1.0.0 (#3846 — docs/research/pr-review-eval-labeling-rubric.md). 10 entries: 5 synthetic test cases with hand-crafted diff-readable bugs (ReDoS, off-by-one, missing await, null deref, resource leak — each at a known file:line) + 3 historical PRs (one with a real bug discovered by the v5 pr_review run itself — see #2235 entry) + 2 synthetic clean counterparts. Synthetic entries use customDiff to skip the GitHub fetch. Every entry now carries the rubric stamp: class (buggy|clean|borderline), severity per bug, provenance, and an adjudication rationale. Re-adjudication changes vs v5: synthetic-clean-refactor reclassified clean -> borderline (its v5 'false-positive' findings are defensible context-dependent concerns, not confirmed bugs — Rule 4); #2228 bug marked locationTolerance:structural (missing Record entry has no single line); all buggy cases gained an explicit severity. No buggy/clean label flipped except the clean -> borderline reclassification. #2235 was already reclassified clean -> buggy before this rubric (during v5, per #3846 history); v1 confirms it buggy under Rule 5.3.",
+  "curatedAt": "2026-06-17",
+  "reAdjudicatedAt": "2026-06-17",
+  "methodology": "Hybrid v3 dataset, re-adjudicated under the pr_review eval labeling rubric v1.0.0 (#3846 — docs/research/pr-review-eval-labeling-rubric.md). 10 entries: 5 synthetic test cases with hand-crafted diff-readable bugs (ReDoS, off-by-one, missing await, null deref, resource leak — each at a known file:line) + 3 historical PRs (one with a real bug discovered by the v5 pr_review run itself — see #2235 entry) + 2 synthetic clean counterparts. Synthetic entries use customDiff to skip the GitHub fetch. Every entry now carries the rubric stamp: class (buggy|clean|borderline), severity per bug, provenance, and an adjudication rationale. Re-adjudication changes vs v5: synthetic-clean-refactor reclassified clean -> borderline (its v5 'false-positive' findings are defensible context-dependent concerns, not confirmed bugs — Rule 4); #2228 bug marked locationTolerance:structural (missing Record entry has no single line); all buggy cases gained an explicit severity. No buggy/clean label flipped except the clean -> borderline reclassification. #2235 was already reclassified clean -> buggy before this rubric (during v5, per #3846 history); v1 confirms it buggy under Rule 5.3. | #3847 strengthened promotion (2026-06-17): added 9 cases via OUTCOME-MINING of the org's own merged nexus-substrate/nexus-agents PRs. 3 BUGGY (3915, 3893, 3873) — each label derived from a confirmed corrective follow-up PR, customDiff carrying the real original code hunk the fix later changed (provenance.source 'outcome-mined' vs synthetic). 6 CLEAN sourced from OLDER long-tenure PRs (2286, 2288, 2289, 2298, 2306, 2251), all merged 2026-04-25..2026-04-30 — each labeled clean only because NO corrective/revert PR has touched its changed source file in the >6-week window since merge. This long-tenure window (genuine clean signal: a defect would have surfaced a corrective PR by now) deliberately REPLACES the rejected ~1-week no-corrective-PR window from the superseded #3936 attempt, whose short window carried too high a false-clean risk. Diverse subsystems: orchestration ledger, security access-policy, mcp audit-chain, mcp supply-chain panel, cli portable-init, pr_review aggregation. All 10 prior v5 cases preserved unchanged. n: 10 -> 19.",
   "rubricRef": "docs/research/pr-review-eval-labeling-rubric.md",
   "prs": [
     {
@@ -273,6 +273,219 @@
         "rationale": "Clean per Rule 3: docs-only JSDoc above an existing interface, zero code change, no behavioral risk, no defensible medium+ objection. Strict-FP denominator member."
       },
       "notes": "Clean docs-only change: adds JSDoc above an existing interface. No code change, no behavioral risk. Tests false-positive risk."
+    },
+    {
+      "number": 3915,
+      "rubricVersion": "1.0.0",
+      "class": "buggy",
+      "title": "feat(observability): propagate adapter per-voter tokens + non-silent cost drops (#3910)",
+      "customDescription": "Threads adapter per-call token usage through the voter execution path into the decision-cost rollup, and adds a persist signal so dropped cost rollups are countable. Confined to the cost-telemetry path.",
+      "customDiff": "diff --git a/packages/nexus-agents/src/audit/audit-logger.ts b/packages/nexus-agents/src/audit/audit-logger.ts\nindex 08e95a4983..0000000 100644\n--- a/packages/nexus-agents/src/audit/audit-logger.ts\n+++ b/packages/nexus-agents/src/audit/audit-logger.ts\n@@ -228,12 +228,12 @@ export class AuditLogger implements IAuditLogger {\n     // storage AND storage's own buffer must drain to disk on each tick.\n     // See #2979.\n     this.flushTimer = setInterval(() => {\n       this.flush().catch((err: unknown) => {\n         this.logger.error('Audit flush failed', err instanceof Error ? err : undefined);\n       });\n     }, this.flushIntervalMs);\n   }\n@@ -463,9 +463,9 @@ export class AuditLogger implements IAuditLogger {\n    */\n   async flush(): Promise<void> {\n     if (this.inFlightFlush !== null) return this.inFlightFlush;\n     const drain = this.drainAndFlushOnce().finally(() => {\n       this.inFlightFlush = null;\n     });\n     this.inFlightFlush = drain;\n     return drain;\n   }",
+      "provenance": {
+        "source": "outcome-mined",
+        "fixReference": "#3918",
+        "discoveredBy": null
+      },
+      "knownBugs": [
+        {
+          "summary": "Silently-swallowed audit/cost persist failures: the flush-timer's .catch logs once at error with no counter/escalation and flush() does not rethrow, so a failed audit-log write (a gap in the tamper-evident hash chain) and a dropped cost rollup vanish without a fail-loud signal.",
+          "severity": "medium",
+          "location": "packages/nexus-agents/src/audit/audit-logger.ts",
+          "locationTolerance": "structural",
+          "fixReference": "#3918"
+        }
+      ],
+      "borderlineConcerns": [],
+      "adjudication": {
+        "adjudicatedAt": "2026-06-17",
+        "adjudicatedUnder": "1.0.0",
+        "rationale": "Medium and confirmed buggy: corrective PR #3918 (fix(audit/observability): fail-loud audit persist failures + rate-limit dropped-cost warn) made AuditLogger.flush() record-then-rethrow with a persist-failure counter + escalation hook (fail-loud, because a dropped audit write breaks the hash chain per ADR-0017) and rate-limited the per-decision dropped-cost warn. The original swallow is observability loss on a security-relevant path, not a crash, hence medium."
+      },
+      "notes": "A good reviewer should flag that the flush-timer's .catch only logs once and flush() never rethrows, so an audit-persist failure is invisible to an awaiting governance caller and uncounted — a silent gap in the tamper-evident hash chain. Fixed by #3918 (fail-loud + counter + rate-limited cost warn)."
+    },
+    {
+      "number": 3893,
+      "rubricVersion": "1.0.0",
+      "class": "buggy",
+      "title": "feat(audit): tier-transition audit events + ratification-linked promotion gate (#3842)",
+      "customDescription": "Adds hash-chained tier-transition audit events and a promotion gate (analyzeTierTransitionEvents) under governance:check that is meant to enforce that authority-tier promotions are ratification-linked.",
+      "customDiff": "diff --git a/scripts/check-authority-tier-drift.ts b/scripts/check-authority-tier-drift.ts\nindex 0000001..0000002 100644\n--- a/scripts/check-authority-tier-drift.ts\n+++ b/scripts/check-authority-tier-drift.ts\n@@ -164,6 +164,18 @@ export function analyzeTierDeclarations(inputs: DriftInputs): TierDriftFinding[]\n+export function analyzeTierTransitionEvents(\n+  transitions: readonly TierTransitionPayload[]\n+): TierDriftFinding[] {\n+  const findings: TierDriftFinding[] = [];\n+  for (const t of transitions) {\n+    if (t.kind !== 'promotion') continue; // demotions are automatic — no vote required\n+    const ref = t.ratificationVoteRef;\n+    if (ref === undefined || ref.trim() === '') {\n+      findings.push({\n+        code: 'promotion-without-ratification',\n+        message: `tier-transition promotion of '${t.subject}' (${t.fromTier} \\u2192 ${t.toTier}) has NO linked ratificationVoteRef. Promotions MUST be ratification-linked (ADR-0017).`,\n+      });\n+    }\n+  }\n+  return findings;\n+}",
+      "provenance": {
+        "source": "outcome-mined",
+        "fixReference": "#3895",
+        "discoveredBy": null
+      },
+      "knownBugs": [
+        {
+          "summary": "Cosmetic promotion gate: analyzeTierTransitionEvents only fails a promotion when ratificationVoteRef is undefined/empty (ref.trim()===''), never that the ref RESOLVES to a real approved higher_order vote whose subject matches — so a bogus ratificationVoteRef:'x' passes and the 'ratification-linked' guarantee is only as strong as a non-empty string.",
+          "severity": "high",
+          "location": "scripts/check-authority-tier-drift.ts",
+          "locationTolerance": "structural",
+          "fixReference": "#3895"
+        }
+      ],
+      "borderlineConcerns": [],
+      "adjudication": {
+        "adjudicatedAt": "2026-06-17",
+        "adjudicatedUnder": "1.0.0",
+        "rationale": "High and confirmed buggy: corrective PR #3895 (fix(governance): verify ratification-vote resolvability in promotion gate) hardened the gate so a promotion's ref must resolve to a recorded, approved, higher_order vote with a matching subject (new codes promotion-ratification-unresolved / -not-approved / ratification-ledger-invalid; a bogus 'x' ref now fails). A governance enforcement gate that passes on any non-empty string is non-functional security control, hence high."
+      },
+      "notes": "A good reviewer should flag that the gate checks only presence/non-emptiness of ratificationVoteRef and never resolves it — a fabricated ref defeats the entire ratification-linkage invariant. Fixed by #3895 (resolve to approved higher_order vote with matching subject)."
+    },
+    {
+      "number": 3873,
+      "rubricVersion": "1.0.0",
+      "class": "buggy",
+      "title": "feat(governance): claims registry + blocking claims:check gate (#3825, #3826)",
+      "customDescription": "Adds a machine-verifiable claims registry plus a blocking claims:check CI gate so documentation drift fails the build; each claim has a subject doc and a verification recipe run against live source.",
+      "customDiff": "diff --git a/packages/nexus-agents/src/governance/claims-verify.ts b/packages/nexus-agents/src/governance/claims-verify.ts\nindex 0000001..0000002 100644\n--- a/packages/nexus-agents/src/governance/claims-verify.ts\n+++ b/packages/nexus-agents/src/governance/claims-verify.ts\n@@ -1,12 +1,15 @@\n+/**\n+ * Claims verification runner. Resolves each claim's verification.path against\n+ * live source and (as a baseline) the `subject` doc is checked for the claim.\n+ */\n@@ -129,9 +132,9 @@ const METHOD_VERIFIERS: ... = {\n+export function verifyClaim(claim: ClaimEntry, repoRoot: string, fs: ClaimFs): ClaimResult {\n+  const evidencePath = resolvePath(repoRoot, claim.verification.path);\n+  if (!fs.exists(evidencePath)) {\n+    return { id: claim.id, ok: false, detail: `evidence path missing: ${claim.verification.path}` };\n+  }\n+  // `file-exists` needs no read; every other method inspects the file body.\n+  const evidence = claim.verification.method === 'file-exists' ? '' : fs.read(evidencePath);\n+  const outcome = METHOD_VERIFIERS[claim.verification.method](claim.verification, evidence);\n+  return { id: claim.id, ok: outcome.ok, detail: outcome.detail };\n+}",
+      "provenance": {
+        "source": "outcome-mined",
+        "fixReference": "#3884",
+        "discoveredBy": null
+      },
+      "knownBugs": [
+        {
+          "summary": "claims:check gate never READ the subject docs it claimed to verify: verifyClaim resolves and checks only claim.verification.path (the source of truth) and returns, despite the module JSDoc promising the subject doc is checked — so README/ARCHITECTURE doc-drift (the exact thing the gate exists to catch) is never verified.",
+          "severity": "high",
+          "location": "packages/nexus-agents/src/governance/claims-verify.ts",
+          "locationTolerance": "structural",
+          "fixReference": "#3884"
+        }
+      ],
+      "borderlineConcerns": [],
+      "adjudication": {
+        "adjudicatedAt": "2026-06-17",
+        "adjudicatedUnder": "1.0.0",
+        "rationale": "High and confirmed buggy: corrective PR #3884 (fix(governance): claims:check verifies subject docs + hardens weak methods) added a subjectContains check so the runner confirms the claim literal is present in the subject doc (README.md/ARCHITECTURE.md), with a doc-drift regression test (source has 46 tools, README says 200 -> gate must fail). The just-merged gate did not do its advertised job (a no-op for doc drift), hence high."
+      },
+      "notes": "A good reviewer should flag the gap between the JSDoc ('the subject doc is checked') and verifyClaim, which never reads claim.subject — the gate verifies the source of truth but not that the doc making the claim still matches it, so documentation drift ships silently. Fixed by #3884 (subjectContains + comment-stripping + source-contains-all)."
+    },
+    {
+      "number": 2286,
+      "rubricVersion": "1.0.0",
+      "class": "clean",
+      "title": "feat(orchestration): port Magentic-One Task/Progress Ledger pattern (#2278)",
+      "customDescription": "Adds atomic Task-Ledger replacement, Progress-Ledger append, and a reflect() reader to the structured task-state log (Magentic-One pattern).",
+      "customDiff": "diff --git a/packages/nexus-agents/src/context/structured-task-state.ts b/packages/nexus-agents/src/context/structured-task-state.ts\nindex e6b9f3b168c..68c648b2994 100644\n--- a/packages/nexus-agents/src/context/structured-task-state.ts\n+++ b/packages/nexus-agents/src/context/structured-task-state.ts\n@@ -145,6 +148,47 @@ export function updatePosition(\n   return appendLogEntry(taskId, { event: 'position', ts, position }, customDir);\n }\n \n+/**\n+ * Replace the Magentic-One Task Ledger atomically (#2278). The outer loop calls\n+ * this when it replans — facts/guesses/openQuestions are revised together so\n+ * downstream reflections are reading a consistent set.\n+ */\n+export function updateTaskLedger(\n+  taskId: string,\n+  ledger: TaskLedger,\n+  customDir?: string\n+): Result<void, Error> {\n+  return appendLogEntry(taskId, { event: 'task_ledger', ts: ledger.updatedAt, ledger }, customDir);\n+}\n+\n+/**\n+ * Append a Magentic-One Progress Ledger entry (#2278). Inner-loop reflection\n+ * after a step: was the plan still valid, are we stuck, what to do next.\n+ */\n+export function appendProgressLedgerEntry(\n+  taskId: string,\n+  entry: ProgressLedgerEntry,\n+  customDir?: string\n+): Result<void, Error> {\n+  return appendLogEntry(taskId, { event: 'progress_ledger', ts: entry.ts, entry }, customDir);\n+}\n+\n+/**\n+ * Read the most recent ProgressLedger entry's suggested action — what\n+ * `Orchestrator.reflect()` returns. Returns `'continue'` when no progress-ledger\n+ * entries exist yet (default to \"no reflection has flagged a problem\"), and an\n+ * error if the task log itself can't be read.\n+ */\n+export function reflect(taskId: string, customDir?: string): Result<ReflectAction, Error> {\n+  const stateResult = readTaskState(taskId, customDir);\n+  if (!stateResult.ok) return err(stateResult.error);\n+  const ledger = stateResult.value.progressLedger;\n+  if (ledger === undefined || ledger.length === 0) return ok('continue');\n+  const last = ledger[ledger.length - 1];\n+  if (last === undefined) return ok('continue');\n+  return ok(last.suggestedAction);\n+}\n+\n /**\n  * Read the log file and reduce it to the current state snapshot.\n  */",
+      "provenance": {
+        "source": "outcome-mined",
+        "fixReference": null,
+        "discoveredBy": null
+      },
+      "knownBugs": [],
+      "borderlineConcerns": [],
+      "adjudication": {
+        "adjudicatedAt": "2026-06-17",
+        "adjudicatedUnder": "1.0.0",
+        "rationale": "no corrective/revert PR in the >6-week window since merge (2026-04-28) — long-tenure clean. Later commits touching structured-task-state.ts (#3061 Stage-2 fields, #3090/#3693 dual-read) are additive features that do not modify updateTaskLedger/appendProgressLedgerEntry/reflect; no revert or fix PR."
+      },
+      "notes": "Clean: append-only ledger writers + a defensive reflect() reader (handles empty/undefined ledger). No corrective PR in the >6-week tenure window."
+    },
+    {
+      "number": 2288,
+      "rubricVersion": "1.0.0",
+      "class": "clean",
+      "title": "feat(security): confirm_risky access-policy tier (#2279)",
+      "customDescription": "Adds a confirm_risky enforcement tier: read-only tool violations are log-and-allow, risky ones are denied with a would-have-required-approval reason. Extracts decideOnViolation to keep checkAccess under the complexity cap.",
+      "customDiff": "diff --git a/packages/nexus-agents/src/security/access-constraint-deriver/enforcer.ts b/packages/nexus-agents/src/security/access-constraint-deriver/enforcer.ts\nindex d74db4b216e..4e9e6524f44 100644\n--- a/packages/nexus-agents/src/security/access-constraint-deriver/enforcer.ts\n+++ b/packages/nexus-agents/src/security/access-constraint-deriver/enforcer.ts\n@@ -55,13 +58,38 @@ export function checkAccess(\n \n   if (policy.allowedTools.includes(toolName)) return { decision: 'allow' };\n \n-  if (policy.mode === 'audit') {\n+  return decideOnViolation(toolName, policy.mode);\n+}\n+\n+/**\n+ * Mode-specific behavior when a tool is not in the per-task allowlist.\n+ * Extracted so checkAccess stays under the complexity-10 cap.\n+ */\n+function decideOnViolation(toolName: string, mode: TaskAccessPolicy['mode']): AccessDecision {\n+  if (mode === 'audit') {\n     return {\n       decision: 'log-and-allow',\n       warning: `tool \"${toolName}\" not in derived policy (audit mode)`,\n     };\n   }\n-\n+  // confirm_risky: split by tool risk classification (#2279). Read-only\n+  // violations are log-and-allow (audit-like); risky violations are denied\n+  // with a structured reason that surfaces \"would-have-required-approval\"\n+  // semantics. Operators add the tool to the allowlist after review, or\n+  // graduate to `enforce` once the violation rate is acceptable.\n+  if (mode === 'confirm_risky') {\n+    if (!isRiskyTool(toolName)) {\n+      return {\n+        decision: 'log-and-allow',\n+        warning: `tool \"${toolName}\" not in derived policy (confirm_risky mode, read-only — would have required human approval, allowed because read-only)`,\n+      };\n+    }\n+    return {\n+      decision: 'deny',\n+      reason: `tool \"${toolName}\" not in derived policy (confirm_risky mode, risky — would have required human approval; denied for now, add to allowedTools or run in audit mode to allow)`,\n+      matchedRule: 'allowedTools:confirm_risky',\n+    };\n+  }\n   return {\n     decision: 'deny',\n     reason: `tool \"${toolName}\" not in derived policy`,",
+      "provenance": {
+        "source": "outcome-mined",
+        "fixReference": null,
+        "discoveredBy": null
+      },
+      "knownBugs": [],
+      "borderlineConcerns": [],
+      "adjudication": {
+        "adjudicatedAt": "2026-06-17",
+        "adjudicatedUnder": "1.0.0",
+        "rationale": "no corrective/revert PR in the >6-week window since merge (2026-04-28) — long-tenure clean. No later commit touches the confirm_risky logic in enforcer.ts; later directory commits (#3048/#3066 jobs feature) do not touch decideOnViolation/isRiskyTool; no revert or fix PR."
+      },
+      "notes": "Clean: well-structured policy split by tool-risk classification, fail-closed on risky violations. No corrective PR in the >6-week tenure window."
+    },
+    {
+      "number": 2289,
+      "rubricVersion": "1.0.0",
+      "class": "clean",
+      "title": "feat(mcp): verify_audit_chain tool (#2281 + #2269 plumbing)",
+      "customDescription": "New MCP tool that reads audit-prefixed JSONL logs in lexicographic order, validates each line against AuditEventSchema (skipping malformed lines with a warning), and verifies the hash chain.",
+      "customDiff": "diff --git a/packages/nexus-agents/src/mcp/tools/verify-audit-chain-tool.ts b/packages/nexus-agents/src/mcp/tools/verify-audit-chain-tool.ts\nnew file mode 100644\nindex 00000000000..0f09ae916d4\n--- /dev/null\n+++ b/packages/nexus-agents/src/mcp/tools/verify-audit-chain-tool.ts\n@@ -0,0 +1,166 @@\n+/**\n+ * Read all audit-prefixed JSONL log files from `dir` in lexicographic order\n+ * and parse each line into an AuditEvent. Malformed lines are skipped with a\n+ * warning (matches the read-resilience policy in structured-task-state.ts).\n+ */\n+async function loadAuditEvents(\n+  dir: string,\n+  logger: HandlerContext['logger']\n+): Promise<{ events: AuditEvent[]; fileCount: number }> {\n+  const entries = await fs.readdir(dir);\n+  const auditFiles = entries\n+    .filter((name) => name.startsWith('audit-') && name.endsWith('.jsonl'))\n+    .sort();\n+  const events: AuditEvent[] = [];\n+  for (const filename of auditFiles) {\n+    const fullPath = path.join(dir, filename);\n+    let content: string;\n+    try {\n+      content = await fs.readFile(fullPath, 'utf-8');\n+    } catch (cause) {\n+      const msg = cause instanceof Error ? cause.message : String(cause);\n+      logger.warn('Skipping unreadable audit log file', { filename, error: msg });\n+      continue;\n+    }\n+    for (const line of content.split('\\n')) {\n+      if (line.length === 0) continue;\n+      try {\n+        const parsed: unknown = JSON.parse(line);\n+        const validated = AuditEventSchema.safeParse(parsed);\n+        if (validated.success) {\n+          events.push(validated.data);\n+        } else {\n+          logger.warn('Skipping malformed audit event', {\n+            filename,\n+            error: validated.error.message,\n+          });\n+        }\n+      } catch (cause) {\n+        const msg = cause instanceof Error ? cause.message : String(cause);\n+        logger.warn('Skipping unparseable audit event', { filename, error: msg });\n+      }\n+    }\n+  }\n+  return { events, fileCount: auditFiles.length };\n+}",
+      "provenance": {
+        "source": "outcome-mined",
+        "fixReference": null,
+        "discoveredBy": null
+      },
+      "knownBugs": [],
+      "borderlineConcerns": [],
+      "adjudication": {
+        "adjudicatedAt": "2026-06-17",
+        "adjudicatedUnder": "1.0.0",
+        "rationale": "no corrective/revert PR in the >6-week window since merge (2026-04-28) — long-tenure clean. Later commits on this file are repo-wide feature migrations (#2670 tool annotations, #2675 final tool-domain migration); no revert or corrective fix PR."
+      },
+      "notes": "Clean: read-resilient loader (malformed lines skipped, not fatal) feeding chain verification. No corrective PR in the >6-week tenure window."
+    },
+    {
+      "number": 2298,
+      "rubricVersion": "1.0.0",
+      "class": "clean",
+      "title": "feat(mcp): supply_chain_tradeoff_panel — per-axis tradeoff voting (#2294)",
+      "customDescription": "New MCP tool aggregating per-axis supply-chain tradeoff votes from a voter panel into per-axis verdicts with confidence and supporting-voter rollups.",
+      "customDiff": "diff --git a/packages/nexus-agents/src/mcp/tools/supply-chain-tradeoff-panel.ts b/packages/nexus-agents/src/mcp/tools/supply-chain-tradeoff-panel.ts\nnew file mode 100644\nindex 00000000000..64429fcddb9\n--- /dev/null\n+++ b/packages/nexus-agents/src/mcp/tools/supply-chain-tradeoff-panel.ts\n@@ -0,0 +1,420 @@\n+/** Aggregates a single axis across all voters into one verdict. */\n+export function aggregateAxis(axis: string, votes: readonly PanelVote[]): AxisVerdict {\n+  const valid = votes.filter((v) => v.source !== 'error' && axis in v.axisVotes);\n+  let approveCount = 0;\n+  let rejectCount = 0;\n+  let abstainCount = 0;\n+  const supporters: string[] = [];\n+  const reasons: string[] = [];\n+  for (const v of valid) {\n+    const entry = v.axisVotes[axis];\n+    if (entry === undefined) continue;\n+    if (entry.decision === 'approve') {\n+      approveCount++;\n+      supporters.push(v.role);\n+    } else if (entry.decision === 'reject') {\n+      rejectCount++;\n+    } else {\n+      abstainCount++;\n+    }\n+    if (entry.reason !== '') reasons.push(`${v.role}: ${entry.reason}`);\n+  }\n+  const decision = decideAxis(approveCount, rejectCount, abstainCount);\n+  const total = approveCount + rejectCount + abstainCount;\n+  const confidence = total === 0 ? 0 : Math.max(approveCount, rejectCount) / total;\n+  return {\n+    axis,\n+    decision,\n+    confidence,\n+    approveCount,\n+    rejectCount,\n+    abstainCount,\n+    summary: reasons.slice(0, 3).join(' | '),\n+    supportingVoters: supporters,\n+  };\n+}",
+      "provenance": {
+        "source": "outcome-mined",
+        "fixReference": null,
+        "discoveredBy": null
+      },
+      "knownBugs": [],
+      "borderlineConcerns": [],
+      "adjudication": {
+        "adjudicatedAt": "2026-06-17",
+        "adjudicatedUnder": "1.0.0",
+        "rationale": "no corrective/revert PR in the >6-week window since merge (2026-04-30) — long-tenure clean. Later commits on this file are feature work (#2670 tool annotations, #2674 error-envelope migration, #3740 async job-mode); none revert or fix the per-axis aggregation logic."
+      },
+      "notes": "Clean: pure aggregation with explicit approve/reject/abstain tallies and a guarded zero-vote confidence. No corrective PR in the >6-week tenure window."
+    },
+    {
+      "number": 2306,
+      "rubricVersion": "1.0.0",
+      "class": "clean",
+      "title": "feat(cli): nexus-agents init --portable command (#2305)",
+      "customDescription": "Adds an init --portable command that scaffolds a portable .nexus-agents data dir with restrictive perms on sensitive subdirs, dry-run support, and optional .gitignore integration when a git repo is detected.",
+      "customDiff": "diff --git a/packages/nexus-agents/src/cli/init-portable.ts b/packages/nexus-agents/src/cli/init-portable.ts\nnew file mode 100644\nindex 00000000000..f0a81c39934\n--- /dev/null\n+++ b/packages/nexus-agents/src/cli/init-portable.ts\n@@ -0,0 +1,239 @@\n+/** Default folder name created when the user passes no path. */\n+export const DEFAULT_PORTABLE_DIRNAME = '.nexus-agents';\n+\n+/** Subdirs requiring restrictive 0o700 perms — same set as setup-data-dir. */\n+const RESTRICTED_SUBDIRS = new Set(['auth']);\n+\n+/** Options accepted by `nexus-agents init --portable`. */\n+export interface InitPortableOptions {\n+  /** Target directory. If relative, resolved against `process.cwd()`. Defaults to `./.nexus-agents`. */\n+  readonly path?: string;\n+  /** Force creation in a non-empty existing directory. Default false. */\n+  readonly force?: boolean;\n+  /** Report what would be created without writing. Default false. */\n+  readonly dryRun?: boolean;\n+  /** Append the data dir to a sibling `.gitignore` (only if `.git` exists). Default false. */\n+  readonly gitignore?: boolean;\n+}\n+\n+/** Result of an init-portable invocation. */\n+export interface InitPortableResult {\n+  readonly success: boolean;\n+  readonly absolutePath: string;\n+  readonly created: readonly string[];\n+  readonly alreadyExisted: readonly string[];\n+  readonly skipped: boolean;\n+  readonly gitignoreUpdated: boolean;\n+  readonly error: string | null;\n+}\n+\n+/** Resolves the target absolute path. */\n+function resolveTargetPath(rawPath: string | undefined): string {\n+  if (rawPath === undefined || rawPath === '') {\n+    return resolve(process.cwd(), DEFAULT_PORTABLE_DIRNAME);\n+  }\n+  return isAbsolute(rawPath) ? rawPath : resolve(process.cwd(), rawPath);\n+}\n+\n+/** Returns true if `dir` exists and contains any entries. */\n+function isNonEmpty(dir: string): boolean {\n+  if (!existsSync(dir)) return false;\n+  const stat = statSync(dir);\n+  if (!stat.isDirectory()) return true; // a file at the path is \"non-empty\" for our purposes\n+  return readdirSync(dir).length > 0;\n+}\n+\n+/** Creates one directory (or records it as already-existing). */\n+function ensureDir(\n+  path: string,\n+  dryRun: boolean,\n+  created: string[],\n+  alreadyExisted: string[],\n+  mode?: number\n+): void {\n+  if (existsSync(path)) {\n+    alreadyExisted.push(path);\n+    return;\n+  }\n+  if (!dryRun) {\n+    mkdirSync(path, { recursive: true, ...(mode !== undefined ? { mode } : {}) });\n+  }\n+  created.push(path);\n+}\n+\n+/** Appends the portable dir name to .gitignore when a git repo is detected. */\n+function maybeUpdateGitignore(\n+  workspaceDir: string,\n+  portableDirName: string,\n+  dryRun: boolean\n+): boolean {\n+  const gitDir = join(workspaceDir, '.git');\n+  if (!existsSync(gitDir)) return false;\n+  const gitignorePath = join(workspaceDir, '.gitignore');\n+  const entry = `${portableDirName}/`;\n+  let existing = '';\n+  if (existsSync(gitignorePath)) {\n+    existing = readFileSync(gitignorePath, 'utf-8');\n+    if (existing.split('\\n').some((l) => l.trim() === entry || l.trim() === portableDirName)) {\n+      return false;\n+    }\n+  }\n+  if (!dryRun) {\n+    const sep = existing.length > 0 && !existing.endsWith('\\n') ? '\\n' : '';\n+    appendFileSync(gitignorePath, `${sep}${entry}\\n`, 'utf-8');\n+  }\n+  return true;\n+}",
+      "provenance": {
+        "source": "outcome-mined",
+        "fixReference": null,
+        "discoveredBy": null
+      },
+      "knownBugs": [],
+      "borderlineConcerns": [],
+      "adjudication": {
+        "adjudicatedAt": "2026-06-17",
+        "adjudicatedUnder": "1.0.0",
+        "rationale": "no corrective/revert PR in the >6-week window since merge (2026-04-30) — long-tenure clean. Later commits on init-portable.ts (#2309 --mcp-config, #2312 --install/--uninstall) are additive feature flags under epic #2301, not corrective; no revert or fix PR."
+      },
+      "notes": "Clean: idempotent dir scaffolding (existsSync guards, dry-run honored, 0o700 on auth) with safe .gitignore append. No corrective PR in the >6-week tenure window."
+    },
+    {
+      "number": 2251,
+      "rubricVersion": "1.0.0",
+      "class": "clean",
+      "title": "feat(2250): soft-block aggregation tier on majority dissent",
+      "customDescription": "Adds a soft-block aggregation tier to pr_review: ≥3 of 5 non-error voters voting request_changes without verified findings yields a verified=false soft blocker, preserving the verified-blocker, approve, and abstain tiers.",
+      "customDiff": "diff --git a/packages/nexus-agents/src/mcp/tools/pr-review-tool.ts b/packages/nexus-agents/src/mcp/tools/pr-review-tool.ts\nindex c1fa879525a..c5424cadc19 100644\n--- a/packages/nexus-agents/src/mcp/tools/pr-review-tool.ts\n+++ b/packages/nexus-agents/src/mcp/tools/pr-review-tool.ts\n@@ -125,31 +140,57 @@ export function mapVoteDecisionToPrDecision(\n   return voteDecision;\n }\n \n-/** Aggregates per-voter decisions into a single summary outcome.\n+/** Threshold for soft-block aggregation: ≥3 of 5 non-error voters\n+ * voting request_changes triggers a soft blocker per #2250 Child 7. */\n+const SOFT_BLOCK_REQUEST_CHANGES_THRESHOLD = 3;\n+\n+/** Aggregates per-voter decisions into a single summary outcome with a\n+ * verified/unverified tag (#2250 Child 7).\n  *\n- * Per #2233 Child 3: `request_changes` only fires when at least one\n- * non-error voter declared `request_changes` AND has at least one\n- * VERIFIED finding (all 4 gate checks passed with substantive\n- * named_assertion). This is the #2225 verification gate enforcement —\n- * without it, the 2026-04-25 audit found a 100% false-positive rate.\n+ * Tiers, in order:\n  *\n- * Voters who declare `request_changes` but emit no verified findings\n- * are demoted to \"informational\" — their reasoning still surfaces to\n- * the human reviewer but doesn't trigger blocking on its own.\n+ * 1. **Verified blocker** (`request_changes`, verified=true) — at least\n+ *    one non-error voter declared `request_changes` AND has at least one\n+ *    VERIFIED finding (all 4 gate checks passed with substantive\n+ *    named_assertion). This is the #2225 verification gate.\n+ * 2. **Soft blocker** (`request_changes`, verified=false) — ≥3 of 5\n+ *    non-error voters voted `request_changes`, but none produced a\n+ *    verified finding. The retest in #2241 showed voters reliably\n+ *    flag diff-readable bugs at this rate even without producing the\n+ *    YAML structure (#2245 covers why). Tagged unverified so reviewers\n+ *    apply the verification gate themselves.\n+ * 3. **Approve** (verified=true) — all non-error voters approve.\n+ * 4. **Abstain** (verified=true) — anything else; conservative default.\n  *\n- * - ≥1 verified finding from a non-error request_changes voter → `request_changes`\n- * - All non-error votes `approve` (no verified findings) → `approve`\n- * - Otherwise → `abstain` (mixed/all-errors/all-unverified-findings)\n+ * Why no \"AND has any finding\" guard on the soft path: the empirical\n+ * data in `pr-review-experiment-results-v2.md` showed voters voting\n+ * request_changes but emitting 0 findings (verified or otherwise).\n+ * Adding the finding requirement would zero this path out and reproduce\n+ * the baseline behavior.\n  */\n-export function aggregatePrDecisions(reviews: readonly PrReviewVote[]): PrReviewDecision {\n+export function aggregatePrDecisions(reviews: readonly PrReviewVote[]): PrReviewAggregate {\n   const valid = reviews.filter((r) => r.source !== 'error');\n-  if (valid.length === 0) return 'abstain';\n+  if (valid.length === 0) return { decision: 'abstain', verified: true };\n+\n+  // Tier 1: verified blocker — ≥1 voter has a verified finding.\n   const hasVerifiedBlocker = valid.some(\n     (r) => r.decision === 'request_changes' && r.findings.some((f) => f.verified)\n   );\n-  if (hasVerifiedBlocker) return 'request_changes';\n-  if (valid.every((r) => r.decision === 'approve')) return 'approve';\n-  return 'abstain';\n+  if (hasVerifiedBlocker) return { decision: 'request_changes', verified: true };\n+\n+  // Tier 2: soft blocker — majority dissent without verified findings.\n+  const requestChangesVoters = valid.filter((r) => r.decision === 'request_changes').length;\n+  if (requestChangesVoters >= SOFT_BLOCK_REQUEST_CHANGES_THRESHOLD) {\n+    return { decision: 'request_changes', verified: false };\n+  }\n+\n+  // Tier 3: unanimous approve.\n+  if (valid.every((r) => r.decision === 'approve')) {\n+    return { decision: 'approve', verified: true };\n+  }\n+\n+  // Tier 4: ambiguous — abstain.\n+  return { decision: 'abstain', verified: true };\n }",
+      "provenance": {
+        "source": "outcome-mined",
+        "fixReference": null,
+        "discoveredBy": null
+      },
+      "knownBugs": [],
+      "borderlineConcerns": [],
+      "adjudication": {
+        "adjudicatedAt": "2026-06-17",
+        "adjudicatedUnder": "1.0.0",
+        "rationale": "no corrective/revert PR in the >6-week window since merge (2026-04-26) — long-tenure clean. PR #2254 touched the same file ~2.5h later but only the import block and buildPrReviewProposal/finding-resolution helper — it does not modify aggregatePrDecisions soft-block logic, which survives unchanged in HEAD; no revert or fix of this change."
+      },
+      "notes": "Clean: explicit four-tier aggregation with documented thresholds and a verified/unverified tag. No corrective PR in the >6-week tenure window."
     }
   ]
 }
