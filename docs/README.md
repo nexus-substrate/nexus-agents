@@ -1,15 +1,17 @@
 ---
 title: 'Nexus Agents Documentation Index'
-description: Canonical documentation index — single source of truth for all nexus-agents documentation
+description: Canonical documentation index — single source of truth for all nexus-agents documentation, organized around the control-plane model
 tier: 1
-keywords: [documentation, index, reference, navigation, docs]
+keywords: [documentation, index, reference, navigation, docs, control-plane, mape-k]
 ---
 
 # Nexus Agents Documentation
 
-**Canonical Documentation Index** | Last Updated: 2026-05-30 (32 skills, 46 MCP tools, 12 expert types, 11 workflow templates)
+**Canonical Documentation Index** | Last Updated: 2026-06-17 (32 skills, 46 MCP tools, 12 expert types, 11 workflow templates)
 
 This is the **single source of truth** for all nexus-agents documentation. All documentation must be indexed here to be considered valid.
+
+Nexus-agents is an **autonomic control plane for AI coding agents**. This index is organized around that model: docs are grouped by the **control-plane role** they describe — scheduler, admission control, event log, data plane — and by the **MAPE-K self-\* loop** they implement, rather than as a flat catalog. If you know which part of the control plane you care about, you can find its docs directly. See the [root README](../README.md) for the framing and [ADR-0017](./adr/0017-authority-ladder.md) for the authority model the loops are bounded by.
 
 ---
 
@@ -22,6 +24,24 @@ This is the **single source of truth** for all nexus-agents documentation. All d
 | **Operator**    | [ENTRYPOINTS.md](./ENTRYPOINTS.md)                 | [Configuration](./getting-started/CONFIGURATION.md) |
 
 > **AI agents working in this repo** (Claude Code, Cursor, etc.) — see [CLAUDE.md](../CLAUDE.md) for project instructions, governance protocols, and canonical paths. CLAUDE.md is the rule book the agents follow, not a user-facing surface.
+
+---
+
+## The Control-Plane Map
+
+The docs below are grouped by where they sit in the control plane. Each classic control-plane role maps to a shipped component (see the [root README's control-plane mapping](../README.md)); the docs that describe each role are gathered under it.
+
+| Control-plane role      | What it is                                                               | Jump to                                           |
+| ----------------------- | ------------------------------------------------------------------------ | ------------------------------------------------- |
+| **Entry point**         | One door in — install, verify, first task, the CLI/MCP/REST surfaces     | [§ Entry Point](#entry-point--getting-in)         |
+| **Scheduler**           | `run` / MetaOrchestrator picks and routes the right strategy             | [§ Scheduler](#scheduler--routing--orchestration) |
+| **Admission control**   | Gates — adversarial review, consensus, quality gates — decide what ships | [§ Admission Control](#admission-control--gates)  |
+| **Event log**           | Tamper-evident hash-chained audit of every decision                      | [§ Event Log](#event-log--audit--observability)   |
+| **Data plane**          | The engineering CLIs that do the file edits, tests, PRs                  | [§ Data Plane](#data-plane--agents--execution)    |
+| **Self-\* loops**       | MAPE-K self-configuring / healing / optimizing / protecting              | [§ Self-\* Loops](#self--loops-mape-k)            |
+| **Governance**          | Authority ladder, claims registry, the rules behind the loops            | [§ Governance](#governance--authority)            |
+| **Build & operate**     | Contributor guides, ops runbooks, distribution                           | [§ Build & Operate](#build--operate)              |
+| **Reference & history** | Interfaces, generated references, research, ADRs, archive                | [§ Reference & History](#reference--history)      |
 
 ---
 
@@ -45,45 +65,45 @@ The word "pipeline" gets used for several distinct things. This table disambigua
 
 ```
 docs/
-├── README.md              # THIS FILE - Canonical index
+├── README.md              # THIS FILE - Canonical index (control-plane organized)
 ├── INDEX.yaml             # Machine-parseable index
 │
-├── getting-started/       # Installation and configuration
-├── architecture/          # System design documentation
-├── development/           # Contributor guides
-├── research/              # Research tracking
+├── getting-started/       # Entry point: installation and configuration
+├── architecture/          # System design — scheduler, gates, event log, data plane
+├── development/           # Build & operate: contributor guides
+├── governance/            # Authority ladder, loop promotion criteria
+├── security/              # Self-protecting: trust tiers, audit threat model
+├── research/              # Research loop tracking
 ├── adr/                   # Architecture Decision Records
 ├── guides/                # How-to guides
 ├── interfaces/            # Interface specifications
-├── proposals/             # Design proposals
-├── plans/                 # Implementation plans
+├── ops/                   # Operational runbooks
+├── reference/             # Generated CLI/MCP/strategy references
 ├── metrics/               # System metrics
 └── workflows/             # Workflow documentation
 ```
 
 ---
 
-## Canonical Documentation
-
-### Tier 1: Essential (Always Current)
+## Tier 1: Essential (Always Current)
 
 These documents define the system and must be kept up-to-date:
 
-| Document                  | Location                                           | Description                           |
-| ------------------------- | -------------------------------------------------- | ------------------------------------- |
-| **Project Instructions**  | [CLAUDE.md](../CLAUDE.md)                          | Agent behavior, protocols, governance |
-| **Your First Task**       | [FIRST_TASK.md](./getting-started/FIRST_TASK.md)   | 5-minute first task (canonical entry) |
-| **README**                | [README.md](../README.md)                          | Project overview                      |
-| **Architecture Overview** | [architecture/README.md](./architecture/README.md) | System design hub                     |
-| **Development Guide**     | [development/README.md](./development/README.md)   | Contributor hub                       |
-| **API Reference**         | [ENTRYPOINTS.md](./ENTRYPOINTS.md)                 | CLI, MCP, REST, API docs              |
-| **Troubleshooting**       | [TROUBLESHOOTING.md](./TROUBLESHOOTING.md)         | Common issues, FAQ                    |
+| Document                  | Location                                           | Description                              |
+| ------------------------- | -------------------------------------------------- | ---------------------------------------- |
+| **Project Instructions**  | [CLAUDE.md](../CLAUDE.md)                          | Agent behavior, protocols, governance    |
+| **Your First Task**       | [FIRST_TASK.md](./getting-started/FIRST_TASK.md)   | 5-minute first task (canonical entry)    |
+| **README**                | [README.md](../README.md)                          | Project overview (control-plane framing) |
+| **Architecture Overview** | [architecture/README.md](./architecture/README.md) | System design hub                        |
+| **Development Guide**     | [development/README.md](./development/README.md)   | Contributor hub                          |
+| **API Reference**         | [ENTRYPOINTS.md](./ENTRYPOINTS.md)                 | CLI, MCP, REST, API docs                 |
+| **Troubleshooting**       | [TROUBLESHOOTING.md](./TROUBLESHOOTING.md)         | Common issues, FAQ                       |
 
-### Tier 2: Reference (Regularly Updated)
+---
 
-Detailed technical documentation:
+## Entry Point — Getting In
 
-#### Getting Started
+One door in: install, verify, run your first task, then learn the full surface (CLI / MCP / REST). This is the `run` scheduler's front door.
 
 | Document                                                                           | Description                                                                  | Status    |
 | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | --------- |
@@ -93,32 +113,150 @@ Detailed technical documentation:
 | [CONFIGURATION.md](./getting-started/CONFIGURATION.md)                             | YAML and env configuration                                                   | Canonical |
 | [PLUGIN_INSTALL.md](./getting-started/PLUGIN_INSTALL.md)                           | Install nexus-agents as a Claude Code plugin                                 | Canonical |
 | [SANDBOXED-USAGE.md](./guides/SANDBOXED-USAGE.md)                                  | Docker / restricted-FS / team-distribution flows                             | Canonical |
+| [ENTRYPOINTS.md](./ENTRYPOINTS.md)                                                 | The full CLI / MCP / REST entry-point reference                              | Canonical |
 
-#### Architecture
+---
+
+## Scheduler — Routing & Orchestration
+
+The scheduler is `run` / MetaOrchestrator: one entry point picks (and optionally runs) the right strategy for a goal. These docs describe how strategies are selected, routed across CLIs, and composed into pipelines.
 
 | Document                                                                          | Description                    | Status    |
 | --------------------------------------------------------------------------------- | ------------------------------ | --------- |
 | [AGENT_SYSTEM.md](./architecture/AGENT_SYSTEM.md)                                 | Agent framework design         | Canonical |
-| [MEMORY_SYSTEM.md](./architecture/MEMORY_SYSTEM.md)                               | 7-type memory architecture     | Canonical |
 | [ROUTING_SYSTEM.md](./architecture/ROUTING_SYSTEM.md)                             | Model routing pipeline         | Canonical |
-| [RESEARCH_PIPELINE.md](./architecture/RESEARCH_PIPELINE.md)                       | Research-to-project runner     | Canonical |
-| [CONSENSUS_PROTOCOLS.md](./architecture/CONSENSUS_PROTOCOLS.md)                   | 5 consensus algorithms         | Canonical |
 | [CONTEXT_LOAD_BALANCING.md](./architecture/CONTEXT_LOAD_BALANCING.md)             | Claude/Gemini/Codex routing    | Canonical |
-| [SECURITY.md](./architecture/SECURITY.md)                                         | Security model, sandboxing     | Canonical |
-| [MCP_PROTOCOL.md](./architecture/MCP_PROTOCOL.md)                                 | MCP integration details        | Canonical |
-| [EVENT_BUS_BOUNDARIES.md](./architecture/EVENT_BUS_BOUNDARIES.md)                 | Observability vs messaging bus | Canonical |
 | [ORCHESTRATOR_WORKFLOW_ENGINE.md](./architecture/ORCHESTRATOR_WORKFLOW_ENGINE.md) | Orchestrator vs WorkflowEngine | Canonical |
 | [ICTM_PATTERN.md](./architecture/ICTM_PATTERN.md)                                 | Dynamic sub-agent creation     | Canonical |
-| [UNTRUSTED_INPUT_HARDENING.md](./architecture/UNTRUSTED_INPUT_HARDENING.md)       | Input trust & sanitization     | Canonical |
-| [SOFTWARE_FACTORY_REPORT.md](./architecture/SOFTWARE_FACTORY_REPORT.md)           | Factory hardening review       | Canonical |
 | [MULTI_REPO_ORCHESTRATION.md](./architecture/MULTI_REPO_ORCHESTRATION.md)         | Cross-repo task coordination   | Canonical |
-| [dependency-graph.md](./architecture/dependency-graph.md)                         | Module dependency diagram      | Generated |
-| [REGISTRY_COVERAGE.md](./architecture/REGISTRY_COVERAGE.md)                       | Wiring-completeness CI gate    | Canonical |
-| [SCHEMA_FANOUT_COVERAGE.md](./architecture/SCHEMA_FANOUT_COVERAGE.md)             | Schema-fan-out CI check        | Canonical |
-| [IMPORT_GRAPH_ORPHANS.md](./architecture/IMPORT_GRAPH_ORPHANS.md)                 | Import-graph orphan detection  | Canonical |
-| [AGENT_COMPATIBILITY.md](./architecture/AGENT_COMPATIBILITY.md)                   | Per-harness federation matrix  | Canonical |
+| [RESEARCH_PIPELINE.md](./architecture/RESEARCH_PIPELINE.md)                       | Research-to-project runner     | Canonical |
+| [MEMORY_SYSTEM.md](./architecture/MEMORY_SYSTEM.md)                               | 7-type memory architecture     | Canonical |
 
-#### Development
+**How-to (composing & routing):**
+
+| Document                                                    | Description                                                            |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------- |
+| [COMPOSITION_PATTERNS.md](./guides/COMPOSITION_PATTERNS.md) | Compose spec pipeline + GraphBuilder + consensus into custom pipelines |
+| [WORKFLOW_TEMPLATES.md](./guides/WORKFLOW_TEMPLATES.md)     | Creating YAML workflows                                                |
+| [RULE_PRECEDENCE.md](./guides/RULE_PRECEDENCE.md)           | Per-adapter rule-loading precedence (Claude/Codex/Gemini/OpenCode)     |
+
+---
+
+## Admission Control — Gates
+
+Nothing ships without passing a gate. Adversarial PR review, multi-voter consensus, and quality gates decide what is allowed through. These are the loops that sit at `advisory`/`enforce` on the [authority ladder](./adr/0017-authority-ladder.md).
+
+| Document                                                        | Description            | Status    |
+| --------------------------------------------------------------- | ---------------------- | --------- |
+| [CONSENSUS_PROTOCOLS.md](./architecture/CONSENSUS_PROTOCOLS.md) | 5 consensus algorithms | Canonical |
+
+**How-to (running gates):**
+
+| Document                                          | Description                                               |
+| ------------------------------------------------- | --------------------------------------------------------- |
+| [PR_REVIEW_LOCAL.md](./guides/PR_REVIEW_LOCAL.md) | Run pr_review on your machine using subscription CLI auth |
+
+**Evidence (gate evaluations):**
+
+| Document                                                                            | Description                                                             | Status    |
+| ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | --------- |
+| [pr-review-experiment-results.md](./research/pr-review-experiment-results.md)       | pr_review #2233 baseline experiment results                             | Canonical |
+| [pr-review-experiment-results-v5.md](./research/pr-review-experiment-results-v5.md) | pr_review v5 — JSON-native findings; 100% bug-catch + caught a real bug | Canonical |
+| [pr-review-eval-labeling-rubric.md](./research/pr-review-eval-labeling-rubric.md)   | pr_review eval labeling rubric v1 + v5 re-adjudication (#3846)          | Canonical |
+| [pr-review-dataset-curation.md](./research/pr-review-dataset-curation.md)           | pr_review eval dataset curation pipeline + n≥50 assessment (#3847)      | Canonical |
+
+---
+
+## Event Log — Audit & Observability
+
+Append-only, tamper-evident record of every decision, plus the observability surfaces that monitor the running system (the **Monitor** arm of MAPE-K).
+
+| Document                                                                     | Description                           | Status    |
+| ---------------------------------------------------------------------------- | ------------------------------------- | --------- |
+| [EVENT_BUS_BOUNDARIES.md](./architecture/EVENT_BUS_BOUNDARIES.md)            | Observability vs messaging bus        | Canonical |
+| [audit-hash-chain-threat-model](./security/audit-hash-chain-threat-model.md) | Threat model for the audit hash chain | Canonical |
+
+**How-to (observability):**
+
+| Document                                                          | Description                                     |
+| ----------------------------------------------------------------- | ----------------------------------------------- |
+| [DEBUGGING_OBSERVABILITY.md](./guides/DEBUGGING_OBSERVABILITY.md) | Debug logging, tracing                          |
+| [Claude Code Observability](./guides/claude-code-observability/)  | Hooks, status line, MCP logging for Claude Code |
+
+**Observability design:**
+
+| Document                                                                      | Description                  | Status    |
+| ----------------------------------------------------------------------------- | ---------------------------- | --------- |
+| [EXECUTION_DASHBOARD_DESIGN.md](./architecture/EXECUTION_DASHBOARD_DESIGN.md) | Dashboard design             | Canonical |
+| [SWARM_OBSERVER_DESIGN.md](./architecture/SWARM_OBSERVER_DESIGN.md)           | OrchestrationObserver design | Canonical |
+
+---
+
+## Data Plane — Agents & Execution
+
+The data plane is the engineering CLIs (Claude Code, Codex, Gemini, OpenCode) that do the actual file edits, tests, and PRs — and the harness/federation machinery that wires nexus-agents to them.
+
+| Document                                                        | Description                   | Status    |
+| --------------------------------------------------------------- | ----------------------------- | --------- |
+| [MCP_PROTOCOL.md](./architecture/MCP_PROTOCOL.md)               | MCP integration details       | Canonical |
+| [AGENT_COMPATIBILITY.md](./architecture/AGENT_COMPATIBILITY.md) | Per-harness federation matrix | Canonical |
+| [SWE_BENCH_HARNESS.md](./architecture/SWE_BENCH_HARNESS.md)     | SWE-Bench integration         | Canonical |
+
+**How-to (wiring agents & providers):**
+
+| Document                                                            | Description                                                                                                  |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| [MCP_INTEGRATION.md](./guides/MCP_INTEGRATION.md)                   | MCP server configuration                                                                                     |
+| [HARNESS_COMPATIBILITY.md](./guides/HARNESS_COMPATIBILITY.md)       | Wire nexus-agents from OpenCode/Codex/Cursor/Aider/Cline                                                     |
+| [CUSTOM_ENDPOINT_SETUP.md](./guides/CUSTOM_ENDPOINT_SETUP.md)       | Custom OpenAI-compatible gateway (direct SDK + OpenCode paths)                                               |
+| [CLOUD_PROVIDERS.md](./guides/CLOUD_PROVIDERS.md)                   | Bedrock/Vertex/Azure via OpenRouter / LiteLLM / custom-gateway                                               |
+| [PARALLEL_AGENT_WORKTREES.md](./guides/PARALLEL_AGENT_WORKTREES.md) | Safe parallel agents via `isolation: "worktree"` + the empirical WorktreeCreate/WorktreeRemove hook contract |
+
+---
+
+## Self-\* Loops (MAPE-K)
+
+The autonomic loops. Each maps to a shipped mechanism and sits at a declared rung of the [authority ladder (ADR-0017)](./adr/0017-authority-ladder.md): self-configuring (setup/doctor), self-healing (circuit-breaker demotion), self-optimizing (LinUCB/TOPSIS), self-protecting (trust tiers / ClawGuard / sandbox).
+
+### Self-configuring & self-optimizing
+
+| Document                                                    | Description                                   | Status    |
+| ----------------------------------------------------------- | --------------------------------------------- | --------- |
+| [MEMORY_SYSTEM.md](./architecture/MEMORY_SYSTEM.md)         | 7-type memory architecture (shared Knowledge) | Canonical |
+| [RESEARCH_PIPELINE.md](./architecture/RESEARCH_PIPELINE.md) | Research-to-project runner                    | Canonical |
+
+### Self-protecting (security)
+
+| Document                                                                    | Description                    | Status    |
+| --------------------------------------------------------------------------- | ------------------------------ | --------- |
+| [SECURITY.md](./architecture/SECURITY.md)                                   | Security model, sandboxing     | Canonical |
+| [UNTRUSTED_INPUT_HARDENING.md](./architecture/UNTRUSTED_INPUT_HARDENING.md) | Input trust & sanitization     | Canonical |
+| [SOFTWARE_FACTORY_REPORT.md](./architecture/SOFTWARE_FACTORY_REPORT.md)     | Factory hardening review       | Canonical |
+| [security/API_KEY_BOUNDARIES.md](./security/API_KEY_BOUNDARIES.md)          | API key boundary documentation | Canonical |
+| [SECRETS_SETUP.md](./SECRETS_SETUP.md)                                      | Secrets configuration          | Canonical |
+
+> **Note:** rows in the self-\* loops are not equally autonomous. Where each loop sits on the ladder (`observe → suggest → advisory → enforce`) and how it earns promotion is governed by [ADR-0017](./adr/0017-authority-ladder.md) and the [loop promotion criteria](./governance/loop-promotion-criteria.md) under [§ Governance](#governance--authority).
+
+---
+
+## Governance & Authority
+
+The rules that bound the loops: the authority ladder, claims-drift detection, and the runbooks that keep capability changes ratified and audited rather than autonomous.
+
+| Document                                                                         | Description                                                              | Status    |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | --------- |
+| [adr/0017-authority-ladder.md](./adr/0017-authority-ladder.md)                   | Four-tier earned-autonomy model (observe → suggest → advisory → enforce) | Accepted  |
+| [governance/loop-promotion-criteria.md](./governance/loop-promotion-criteria.md) | Per-loop authority-ladder promotion/demotion criteria (ADR-0017, #3844)  | Canonical |
+| [governance/tool-removal-runbook.md](./governance/tool-removal-runbook.md)       | Tool removal/consolidation: ratified, audited, never autonomous (#3853)  | Canonical |
+| [CLAIMS_REGISTRY.md](./development/CLAIMS_REGISTRY.md)                           | Add/verify claims, drift gate                                            | Canonical |
+
+---
+
+## Build & Operate
+
+For contributors building on the control plane and operators running it.
+
+### Development (contributor guides)
 
 | Document                                                                       | Description                     | Status    |
 | ------------------------------------------------------------------------------ | ------------------------------- | --------- |
@@ -129,27 +267,97 @@ Detailed technical documentation:
 | [CONTRIBUTION_GUIDE.md](./development/CONTRIBUTION_GUIDE.md)                   | PR workflow, git conventions    | Canonical |
 | [SHELL_TESTING_ANTI_PATTERNS.md](./development/SHELL_TESTING_ANTI_PATTERNS.md) | Shell testing pitfalls to avoid | Canonical |
 | [CLI_UX_QUALITY_GATE.md](./development/CLI_UX_QUALITY_GATE.md)                 | CLI UX pre-release checklist    | Canonical |
-| [CLAIMS_REGISTRY.md](./development/CLAIMS_REGISTRY.md)                         | Add/verify claims, drift gate   | Canonical |
 
-#### Research
+### Operations & runbooks
 
-| Document                                                                            | Description                                                                | Status    |
-| ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | --------- |
-| [RESEARCH_INDEX.md](./research/RESEARCH_INDEX.md)                                   | Research tracking hub                                                      | Canonical |
-| [CONTRIBUTING.md](./research/CONTRIBUTING.md)                                       | Adding research                                                            | Canonical |
-| [registry/papers.yaml](./research/registry/papers.yaml)                             | Paper metadata                                                             | Canonical |
-| [registry/techniques.yaml](./research/registry/techniques.yaml)                     | Implementation status                                                      | Canonical |
-| [cli-first-adapter-strategy.md](./research/cli-first-adapter-strategy.md)           | CLI-first adapter research                                                 | Canonical |
-| [pr-review-experiment-results.md](./research/pr-review-experiment-results.md)       | pr_review #2233 baseline experiment results                                | Canonical |
-| [pr-review-experiment-results-v5.md](./research/pr-review-experiment-results-v5.md) | pr_review v5 — JSON-native findings; 100% bug-catch + caught a real bug    | Canonical |
-| [pr-review-eval-labeling-rubric.md](./research/pr-review-eval-labeling-rubric.md)   | pr_review eval labeling rubric v1 + v5 re-adjudication (#3846)             | Canonical |
-| [pr-review-dataset-curation.md](./research/pr-review-dataset-curation.md)           | pr_review eval dataset curation pipeline + n≥50 assessment (#3847)         | Canonical |
-| [mcp-tool-distinctness-v1.md](./research/mcp-tool-distinctness-v1.md)               | MCP tool-description pairwise similarity report (#2650)                    | Canonical |
-| [fitness-stratified-v1.md](./research/fitness-stratified-v1.md)                     | Stratified runtime-outcome report — per adapter / task-type / role (#2662) | Canonical |
-| [defending-code-harness-eval.md](./research/defending-code-harness-eval.md)         | Eval of Anthropic defending-code-reference-harness (#3574)                 | Canonical |
-| [fork-session-spike.md](./research/fork-session-spike.md)                           | Spike: fork_session / branch-comparison on the graph builder (#2665)       | Canonical |
+| Document                                                     | Description                    | Status    |
+| ------------------------------------------------------------ | ------------------------------ | --------- |
+| [docops-spec.md](./ops/docops-spec.md)                       | Canonical DocOps pipeline spec | Canonical |
+| [docops-manifest.json](./ops/docops-manifest.json)           | DocOps enforcement manifest    | Canonical |
+| [docs-inventory.md](./ops/docs-inventory.md)                 | Documentation inventory        | Canonical |
+| [release-changeset-race.md](./ops/release-changeset-race.md) | Publish-race runbook (#2382)   | Canonical |
+| [git-housekeeping.md](./ops/git-housekeeping.md)             | Git GC cleanup runbook (#3062) | Canonical |
+| [governed-decision-cost.md](./ops/governed-decision-cost.md) | Governed-decision cost (#3857) | Canonical |
 
-### Tier 3: Supporting (Reference as Needed)
+### CI gates & coverage
+
+| Document                                                              | Description                   | Status    |
+| --------------------------------------------------------------------- | ----------------------------- | --------- |
+| [REGISTRY_COVERAGE.md](./architecture/REGISTRY_COVERAGE.md)           | Wiring-completeness CI gate   | Canonical |
+| [SCHEMA_FANOUT_COVERAGE.md](./architecture/SCHEMA_FANOUT_COVERAGE.md) | Schema-fan-out CI check       | Canonical |
+| [IMPORT_GRAPH_ORPHANS.md](./architecture/IMPORT_GRAPH_ORPHANS.md)     | Import-graph orphan detection | Canonical |
+
+### Distribution
+
+| Document                                                                     | Description                                 |
+| ---------------------------------------------------------------------------- | ------------------------------------------- |
+| [distribution/LISTING_SUBMISSIONS.md](./distribution/LISTING_SUBMISSIONS.md) | MCP registry & directory submission tracker |
+| [distribution/PUBLISHING_GUIDE.md](./distribution/PUBLISHING_GUIDE.md)       | Step-by-step publishing commands            |
+
+---
+
+## Reference & History
+
+Interface specs, generated references, the research loop's catalog, ADRs, and historical/archived material.
+
+### Interfaces
+
+| Document                                              | Description                 |
+| ----------------------------------------------------- | --------------------------- |
+| [README.md](./interfaces/README.md)                   | Interface documentation hub |
+| [agent.md](./interfaces/agent.md)                     | Agent interface spec        |
+| [model-adapter.md](./interfaces/model-adapter.md)     | Model adapter spec          |
+| [orchestrator.md](./interfaces/orchestrator.md)       | Orchestrator interface spec |
+| [tool.md](./interfaces/tool.md)                       | Tool interface spec         |
+| [workflow-engine.md](./interfaces/workflow-engine.md) | Workflow engine spec        |
+
+### Generated references
+
+> Owned by the docs-site single-sourcing epics (#3532/#3688/#3763): these pages are emitted by their generators and live where the generators write them. This IA pass indexes them but does not own their bodies.
+
+| Document                                                  | Description                                                                    | Status    |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------ | --------- |
+| [capabilities.md](./reference/capabilities.md)            | CLI/MCP/Workflow capability index                                              | Generated |
+| [MCP tool reference](./reference/tools/index.md)          | Per-tool MCP reference (name, description, input schema)                       | Generated |
+| [Strategy reference](./reference/strategies/index.md)     | Force-strategy escape hatches: entrypoint tool, when-to-force, tiers, executor | Generated |
+| [skills-index.md](./skills-index.md)                      | LLM context loading index                                                      | Canonical |
+| [dependency-graph.md](./architecture/dependency-graph.md) | Module dependency diagram                                                      | Generated |
+| [ARCHITECTURE_MAP.json](./design/ARCHITECTURE_MAP.json)   | Machine-readable component map                                                 | Generated |
+
+### System maps & design
+
+| Document                                                                        | Description                                 | Status    |
+| ------------------------------------------------------------------------------- | ------------------------------------------- | --------- |
+| [system-map.md](./architecture/system-map.md)                                   | System component map                        | Canonical |
+| [invocation-matrix.md](./architecture/invocation-matrix.md)                     | Component invocation map                    | Canonical |
+| [redundancy-analysis.md](./architecture/redundancy-analysis.md)                 | Code redundancy analysis                    | Canonical |
+| [deprecation-pipeline.md](./architecture/deprecation-pipeline.md)               | Deprecation tracking & v3.0 migration guide | Canonical |
+| [components.md](./design/components.md)                                         | Component inventory                         | Canonical |
+| [interfaces.md](./design/interfaces.md)                                         | Key interfaces and contracts                | Canonical |
+| [flows.md](./design/flows.md)                                                   | Dataflow traces                             | Canonical |
+| [scaling-coordination-predictor.md](./design/scaling-coordination-predictor.md) | Scaling design                              | Canonical |
+
+### Research loop
+
+| Document                                                                    | Description                                                                | Status    |
+| --------------------------------------------------------------------------- | -------------------------------------------------------------------------- | --------- |
+| [RESEARCH_INDEX.md](./research/RESEARCH_INDEX.md)                           | Research tracking hub                                                      | Canonical |
+| [CONTRIBUTING.md](./research/CONTRIBUTING.md)                               | Adding research                                                            | Canonical |
+| [registry/papers.yaml](./research/registry/papers.yaml)                     | Paper metadata                                                             | Canonical |
+| [registry/techniques.yaml](./research/registry/techniques.yaml)             | Implementation status                                                      | Canonical |
+| [cli-first-adapter-strategy.md](./research/cli-first-adapter-strategy.md)   | CLI-first adapter research                                                 | Canonical |
+| [mcp-tool-distinctness-v1.md](./research/mcp-tool-distinctness-v1.md)       | MCP tool-description pairwise similarity report (#2650)                    | Canonical |
+| [fitness-stratified-v1.md](./research/fitness-stratified-v1.md)             | Stratified runtime-outcome report — per adapter / task-type / role (#2662) | Canonical |
+| [defending-code-harness-eval.md](./research/defending-code-harness-eval.md) | Eval of Anthropic defending-code-reference-harness (#3574)                 | Canonical |
+| [fork-session-spike.md](./research/fork-session-spike.md)                   | Spike: fork_session / branch-comparison on the graph builder (#2665)       | Canonical |
+
+### Strategy & alignment
+
+| Document                                       | Description                           | Status    |
+| ---------------------------------------------- | ------------------------------------- | --------- |
+| [ALIGNMENT_ROADMAP.md](./ALIGNMENT_ROADMAP.md) | Strategic alignment, north star, gaps | Canonical |
+
+### Maintainer reference (ADRs, V2 architecture, design proposals)
 
 <details>
 <summary><strong>For maintainers — ADRs, V2 architecture artifacts, design proposals</strong> (expand if you're editing the codebase)</summary>
@@ -177,72 +385,13 @@ Detailed technical documentation:
 | [0017](./adr/0017-authority-ladder.md)                   | Authority Ladder                   | Accepted   |
 | [0018](./adr/0018-org-scope-naming.md)                   | Org/Scope Naming                   | Accepted   |
 
-#### Guides
+#### Design Documents (archived V1)
 
-| Document                                                            | Description                                                                                                  |
-| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| [MCP_INTEGRATION.md](./guides/MCP_INTEGRATION.md)                   | MCP server configuration                                                                                     |
-| [COMPOSITION_PATTERNS.md](./guides/COMPOSITION_PATTERNS.md)         | Compose spec pipeline + GraphBuilder + consensus into custom pipelines                                       |
-| [WORKFLOW_TEMPLATES.md](./guides/WORKFLOW_TEMPLATES.md)             | Creating YAML workflows                                                                                      |
-| [CUSTOM_ENDPOINT_SETUP.md](./guides/CUSTOM_ENDPOINT_SETUP.md)       | Custom OpenAI-compatible gateway (direct SDK + OpenCode paths)                                               |
-| [CLOUD_PROVIDERS.md](./guides/CLOUD_PROVIDERS.md)                   | Bedrock/Vertex/Azure via OpenRouter / LiteLLM / custom-gateway                                               |
-| [PR_REVIEW_LOCAL.md](./guides/PR_REVIEW_LOCAL.md)                   | Run pr_review on your machine using subscription CLI auth                                                    |
-| [HARNESS_COMPATIBILITY.md](./guides/HARNESS_COMPATIBILITY.md)       | Wire nexus-agents from OpenCode/Codex/Cursor/Aider/Cline                                                     |
-| [RULE_PRECEDENCE.md](./guides/RULE_PRECEDENCE.md)                   | Per-adapter rule-loading precedence (Claude/Codex/Gemini/OpenCode)                                           |
-| [DEBUGGING_OBSERVABILITY.md](./guides/DEBUGGING_OBSERVABILITY.md)   | Debug logging, tracing                                                                                       |
-| [Claude Code Observability](./guides/claude-code-observability/)    | Hooks, status line, MCP logging for Claude Code                                                              |
-| [PARALLEL_AGENT_WORKTREES.md](./guides/PARALLEL_AGENT_WORKTREES.md) | Safe parallel agents via `isolation: "worktree"` + the empirical WorktreeCreate/WorktreeRemove hook contract |
-
-#### Reference
-
-| Document                                              | Description                                                                    | Status    |
-| ----------------------------------------------------- | ------------------------------------------------------------------------------ | --------- |
-| [capabilities.md](./reference/capabilities.md)        | CLI/MCP/Workflow capability index                                              | Generated |
-| [MCP tool reference](./reference/tools/index.md)      | Per-tool MCP reference (name, description, input schema)                       | Generated |
-| [Strategy reference](./reference/strategies/index.md) | Force-strategy escape hatches: entrypoint tool, when-to-force, tiers, executor | Generated |
-| [skills-index.md](./skills-index.md)                  | LLM context loading index                                                      | Canonical |
-
-#### Operational Docs
-
-| Document                                                     | Description                    | Status    |
-| ------------------------------------------------------------ | ------------------------------ | --------- |
-| [docops-spec.md](./ops/docops-spec.md)                       | Canonical DocOps pipeline spec | Canonical |
-| [docops-manifest.json](./ops/docops-manifest.json)           | DocOps enforcement manifest    | Canonical |
-| [docs-inventory.md](./ops/docs-inventory.md)                 | Documentation inventory        | Canonical |
-| [release-changeset-race.md](./ops/release-changeset-race.md) | Publish-race runbook (#2382)   | Canonical |
-| [git-housekeeping.md](./ops/git-housekeeping.md)             | Git GC cleanup runbook (#3062) | Canonical |
-| [governed-decision-cost.md](./ops/governed-decision-cost.md) | Governed-decision cost (#3857) | Canonical |
-
-#### Interfaces
-
-| Document                                              | Description                 |
-| ----------------------------------------------------- | --------------------------- |
-| [README.md](./interfaces/README.md)                   | Interface documentation hub |
-| [agent.md](./interfaces/agent.md)                     | Agent interface spec        |
-| [model-adapter.md](./interfaces/model-adapter.md)     | Model adapter spec          |
-| [orchestrator.md](./interfaces/orchestrator.md)       | Orchestrator interface spec |
-| [tool.md](./interfaces/tool.md)                       | Tool interface spec         |
-| [workflow-engine.md](./interfaces/workflow-engine.md) | Workflow engine spec        |
-
-#### Plans
-
-_No active plan documents. Historical plans have been archived._
-
-#### Design Documents
-
-| Document                                                                        | Description                     | Status    |
-| ------------------------------------------------------------------------------- | ------------------------------- | --------- |
-| [as-is.md](./archive/design-v2/as-is.md)                                        | Current system state assessment | Archived  |
-| [v2-proposal.md](./archive/design-v2/v2-proposal.md)                            | V2 pipeline OS architecture     | Archived  |
-| [components.md](./design/components.md)                                         | Component inventory             | Canonical |
-| [interfaces.md](./design/interfaces.md)                                         | Key interfaces and contracts    | Canonical |
-| [flows.md](./design/flows.md)                                                   | Dataflow traces                 | Canonical |
-| [gaps.md](./archive/design-v2/gaps.md)                                          | Intended vs actual gaps         | Archived  |
-| [ARCHITECTURE_MAP.json](./design/ARCHITECTURE_MAP.json)                         | Machine-readable component map  | Generated |
-| [scaling-coordination-predictor.md](./design/scaling-coordination-predictor.md) | Scaling design                  | Canonical |
-| [EXECUTION_DASHBOARD_DESIGN.md](./architecture/EXECUTION_DASHBOARD_DESIGN.md)   | Dashboard design                | Canonical |
-| [SWARM_OBSERVER_DESIGN.md](./architecture/SWARM_OBSERVER_DESIGN.md)             | OrchestrationObserver design    | Canonical |
-| [SWE_BENCH_HARNESS.md](./architecture/SWE_BENCH_HARNESS.md)                     | SWE-Bench integration           | Canonical |
+| Document                                             | Description                     | Status   |
+| ---------------------------------------------------- | ------------------------------- | -------- |
+| [as-is.md](./archive/design-v2/as-is.md)             | Current system state assessment | Archived |
+| [v2-proposal.md](./archive/design-v2/v2-proposal.md) | V2 pipeline OS architecture     | Archived |
+| [gaps.md](./archive/design-v2/gaps.md)               | Intended vs actual gaps         | Archived |
 
 #### V2 Rearchitecture (Pipeline OS)
 
@@ -269,7 +418,7 @@ _No active plan documents. Historical plans have been archived._
 | [ADR-0005](./v2/adrs/ADR-0005-unified-adapter-boundary.md)                      | Unified adapter boundary                | Proposed |
 | [ADR-0006](./v2/adrs/ADR-0006-observability-first-class.md)                     | Observability as first-class            | Proposed |
 
-#### Proposals
+#### Proposals (archived)
 
 | Document                                                                   | Description        | Status   |
 | -------------------------------------------------------------------------- | ------------------ | -------- |
@@ -277,34 +426,30 @@ _No active plan documents. Historical plans have been archived._
 
 </details>
 
-#### Workflows
+### Workflows
 
 | Document                                                                 | Description                                                  |
 | ------------------------------------------------------------------------ | ------------------------------------------------------------ |
 | [SELF_DEVELOPMENT_WORKFLOW.md](./workflows/SELF_DEVELOPMENT_WORKFLOW.md) | Historical pointer — engine deleted in #2402, see epic notes |
 
-#### Operational
+### Deprecated / Historical
 
-| Document                                                                     | Description                                 |
-| ---------------------------------------------------------------------------- | ------------------------------------------- |
-| [ALIGNMENT_ROADMAP.md](./ALIGNMENT_ROADMAP.md)                               | Strategic alignment, north star, gaps       |
-| [archive/system-reviews-2026-01.md](./archive/system-reviews-2026-01.md)     | Historical system review transcripts        |
-| [SECRETS_SETUP.md](./SECRETS_SETUP.md)                                       | Secrets configuration                       |
-| [security/API_KEY_BOUNDARIES.md](./security/API_KEY_BOUNDARIES.md)           | API key boundary documentation              |
-| [audit-hash-chain-threat-model](./security/audit-hash-chain-threat-model.md) | Threat model for the audit hash chain       |
-| [system-map.md](./architecture/system-map.md)                                | System component map                        |
-| [deprecation-pipeline.md](./architecture/deprecation-pipeline.md)            | Deprecation tracking & v3.0 migration guide |
-| [redundancy-analysis.md](./architecture/redundancy-analysis.md)              | Code redundancy analysis                    |
-| [invocation-matrix.md](./architecture/invocation-matrix.md)                  | Component invocation map                    |
-| [distribution/LISTING_SUBMISSIONS.md](./distribution/LISTING_SUBMISSIONS.md) | MCP registry & directory submission tracker |
-| [distribution/PUBLISHING_GUIDE.md](./distribution/PUBLISHING_GUIDE.md)       | Step-by-step publishing commands            |
+Documents kept for historical reference only:
 
-#### Governance
+| Document                                                                       | Reason                                    | Replacement                                    |
+| ------------------------------------------------------------------------------ | ----------------------------------------- | ---------------------------------------------- |
+| [archive/system-reviews-2026-01.md](./archive/system-reviews-2026-01.md)       | Historical system review transcripts      | Current system reviews                         |
+| [archive/REVIEW_2026-01-23.md](./archive/REVIEW_2026-01-23.md)                 | Archived system review                    | Current system reviews                         |
+| [archive/SECURITY_AUDIT_2026-01-23.md](./archive/SECURITY_AUDIT_2026-01-23.md) | Archived security audit                   | Current security docs                          |
+| [archive/consensus-vote-2026-01-17.md](./archive/consensus-vote-2026-01-17.md) | Archived consensus vote                   | Current consensus protocols                    |
+| [archive/system-review-2026-05-31.md](./archive/system-review-2026-05-31.md)   | Full 13-domain system review (epic #3143) | [ALIGNMENT_ROADMAP.md](./ALIGNMENT_ROADMAP.md) |
 
-| Document                                                                         | Description                                                             |
-| -------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| [governance/loop-promotion-criteria.md](./governance/loop-promotion-criteria.md) | Per-loop authority-ladder promotion/demotion criteria (ADR-0017, #3844) |
-| [governance/tool-removal-runbook.md](./governance/tool-removal-runbook.md)       | Tool removal/consolidation: ratified, audited, never autonomous (#3853) |
+**Previously Archived/Removed:**
+
+- `PROJECT_PLAN.md`, plan docs — archived/removed
+- `RESEARCH_SUMMARY.md` — content in [research/topics/agent-skills/](./research/topics/agent-skills/)
+- `SECURITY_AUDIT_2026-01-23.md` — moved to [archive/](./archive/)
+- Proposal docs (implemented) — removed after completion
 
 ---
 
@@ -325,26 +470,6 @@ Documents at repository root (for discoverability):
 
 ---
 
-## Deprecated / Historical
-
-Documents kept for historical reference only:
-
-| Document                                                                       | Reason                                    | Replacement                                    |
-| ------------------------------------------------------------------------------ | ----------------------------------------- | ---------------------------------------------- |
-| [archive/REVIEW_2026-01-23.md](./archive/REVIEW_2026-01-23.md)                 | Archived system review                    | Current system reviews                         |
-| [archive/SECURITY_AUDIT_2026-01-23.md](./archive/SECURITY_AUDIT_2026-01-23.md) | Archived security audit                   | Current security docs                          |
-| [archive/consensus-vote-2026-01-17.md](./archive/consensus-vote-2026-01-17.md) | Archived consensus vote                   | Current consensus protocols                    |
-| [archive/system-review-2026-05-31.md](./archive/system-review-2026-05-31.md)   | Full 13-domain system review (epic #3143) | [ALIGNMENT_ROADMAP.md](./ALIGNMENT_ROADMAP.md) |
-
-**Previously Archived/Removed:**
-
-- `PROJECT_PLAN.md`, plan docs — archived/removed
-- `RESEARCH_SUMMARY.md` — content in [research/topics/agent-skills/](./research/topics/agent-skills/)
-- `SECURITY_AUDIT_2026-01-23.md` — moved to [archive/](./archive/)
-- Proposal docs (implemented) — removed after completion
-
----
-
 ## Machine-Parseable Index
 
 For programmatic access, see [INDEX.yaml](./INDEX.yaml).
@@ -358,6 +483,10 @@ For programmatic access, see [INDEX.yaml](./INDEX.yaml).
 3. **No Parallel Indexes**: This is the only documentation index permitted
 4. **Update on Change**: Update this index when any documentation changes
 5. **Classification Required**: All docs must have a classification (Canonical/Supporting/Deprecated)
+
+### Non-conflict with the docs-site epic (#3532)
+
+This IA pass owns the **narrative-doc grouping** in this index — the control-plane sections above. It does **not** own the generated API/MCP/strategy reference pages (see [§ Generated references](#generated-references)), which are emitted by the docs-site single-sourcing generators (#3532/#3688/#3763) and live where those generators write them. The two are coordinated: this index links the generated pages by their canonical generator-emitted paths; the generators are free to regenerate those bodies without touching this index's structure.
 
 ---
 
@@ -374,3 +503,5 @@ The following are excluded from this index:
 ---
 
 _This index follows the documentation governance defined in [CLAUDE.md](../CLAUDE.md)._
+</content>
+</invoke>
