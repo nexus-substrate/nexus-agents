@@ -1,5 +1,824 @@
 # nexus-agents
 
+## 2.132.0
+
+### Minor Changes
+
+- [#3873](https://github.com/nexus-substrate/nexus-agents/pull/3873) [`f4e95e8`](https://github.com/nexus-substrate/nexus-agents/commit/f4e95e87e6a84e8bd688a685653ef8ddf17a1bc9) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(governance): claims-to-reality registry + blocking claims:check gate ([#3825](https://github.com/nexus-substrate/nexus-agents/issues/3825), [#3826](https://github.com/nexus-substrate/nexus-agents/issues/3826))
+
+  Add a machine-verifiable claims registry — the durable home for the substantive
+  claims README.md / ARCHITECTURE.md make about the system — plus a CI gate that
+  fails when a documented claim goes unbacked or stale.
+
+  - `governance/claims-registry.yaml` — versioned registry; each entry pairs a
+    human-readable claim with a `verification` recipe (method + evidence path +
+    expected) a script can run against live source. Populated from the 2026-06-09
+    claims audit: MCP tool count (46), consensus-strategy enum (6 names / 5
+    strategies, alias noted), built-in expert types (12), hash-chained audit +
+    `verify_audit_chain`, closed-loop LinUCB+TOPSIS routing, and the Phase 2/3
+    aspirational roadmap items (standalone CLI, REST gateway).
+  - `src/governance/claims-registry.ts` — Zod schema + loader/validator
+    (strict, zero-`any`); `src/governance/claims-verify.ts` — pure verification
+    runner over an injectable filesystem.
+  - `scripts/claims-check.ts` + `pnpm claims:check` — verify every claim, exit
+    non-zero on drift with a per-claim report.
+  - Wired into the Documentation Gate workflow as a blocking `claims-check` job
+    (sibling to governance-drift).
+
+  Deferred to a [#3826](https://github.com/nexus-substrate/nexus-agents/issues/3826) follow-up: the heuristic detector for NEW undeclared
+  numeric/capability claims appearing in docs; the contributor doc + README badge
+  ([#3827](https://github.com/nexus-substrate/nexus-agents/issues/3827)); and the four standalone doc-side mismatch fixes ([#3828](https://github.com/nexus-substrate/nexus-agents/issues/3828)).
+
+- [#3891](https://github.com/nexus-substrate/nexus-agents/pull/3891) [`9b00988`](https://github.com/nexus-substrate/nexus-agents/commit/9b00988f1b23b5be3da2ee5a942e7c6bc572383c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(orchestration): machine-enforce the manifest authority tier ([#3841](https://github.com/nexus-substrate/nexus-agents/issues/3841))
+
+  The authority-ladder's `authorityTier` field (ADR-0017, Epic D) had no machine
+  consumer — "documentation dressed as architecture" per the ratification panel's
+  Contrarian. This adds the enforcement layer: declarations, a router refusal, and
+  a CI declaration gate.
+
+  **Tier declarations.** All eight strategy manifests now declare `authorityTier`
+  in lockstep across `governance/strategy-manifests.yaml` and the embedded
+  `STRATEGY_MANIFEST_REGISTRY` (the [#3837](https://github.com/nexus-substrate/nexus-agents/issues/3837) drift-gate keeps them honest). The
+  work-producing strategies are `suggest` (output is inert until a human/governor
+  acts — routed through the dev gate / review, never auto-applied); `consensus` is
+  `advisory` (casts non-blocking votes, the ADR pr_review example). None are
+  `enforce` — that requires earned evidence + ratification, never a default flip.
+
+  **Router refusal (runtime).** `src/orchestration/authority-tier-guard.ts` makes
+  the tier→permitted-action mapping explicit and pure (`permitsAction`): a strategy
+  may take an action at or below its declared tier; an action above it is REFUSED
+  fail-closed with a typed `AuthorityRefusalError`. An undeclared tier fail-closes
+  to the `observe` floor. The MetaOrchestrator router consumes it via the new
+  optional `requiredAuthority` input and refuses BEFORE recording or returning the
+  decision.
+
+  **CI gate (declaration-time).** `scripts/check-authority-tier-drift.ts` (pure
+  `analyzeTierDeclarations` core) joins `governance:check` as a sibling to the
+  [#3837](https://github.com/nexus-substrate/nexus-agents/issues/3837) manifest drift-gate. It fails when a registered manifest has no declared
+  tier, or when a manifest is declared `enforce` without a floor-meeting
+  promotion-evidence record (ADR-0017 advisory→enforce floor: evalN ≥ 100,
+  soak ≥ P30D, precision ≥ 0.90, recall ≥ 0.80, ratification vote present) in the
+  new `governance/authority-tier-evidence.yaml` ledger. The evidence-threshold
+  schema is pinned in `strategy-manifest.ts` (`PromotionEvidenceSchema`).
+
+  Deferred to [#3842](https://github.com/nexus-substrate/nexus-agents/issues/3842): tier-transition audit events + the gate that fails a promotion
+  audit event lacking a linked ratification vote over the hash-chained log.
+
+- [#3886](https://github.com/nexus-substrate/nexus-agents/pull/3886) [`dea95f7`](https://github.com/nexus-substrate/nexus-agents/commit/dea95f70dd3608e2e167b9dad7fe731f7960ff65) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(orchestration): MetaOrchestrator routes over the strategy-manifest registry ([#3836](https://github.com/nexus-substrate/nexus-agents/issues/3836))
+
+  The MetaOrchestrator's `decideStrategy` selection logic now routes PURELY over
+  strategy-manifest data — no strategy names are hardcoded in the router. Adding a
+  capability becomes "register a manifest with selection rules", not "edit the
+  router" (Epic C [#3833](https://github.com/nexus-substrate/nexus-agents/issues/3833)), and that invariant is now TESTED.
+
+  - `strategy-manifest.ts` ([#3834](https://github.com/nexus-substrate/nexus-agents/issues/3834) schema) gains an optional `selectionRules` field:
+    a list of declarative `SelectionRule`s (priority + `patterns` / `pipelineTypes`
+    / `complexities` predicates). Self-contained `WorkflowPattern` / `PipelineType` /
+    complexity enums mirror the router types. Backed by `governance/strategy-manifests.yaml`
+    (mirrored byte-for-byte; the registry test asserts no drift).
+  - `strategy-manifest-registry.ts` gains `selectStrategyByManifest(signals, manifests?)`
+    — a generic matcher that evaluates every manifest's rules and picks the
+    highest-priority match (ties broken deterministically by strategy name). It
+    names ZERO strategies. The optional `manifests` arg lets a test register a
+    synthetic 9th manifest and route it with no router edit.
+  - All 8 live manifests carry `selectionRules` reproducing the pre-[#3836](https://github.com/nexus-substrate/nexus-agents/issues/3836) decision
+    table exactly (consensus 100 > greenfield/research 90 > audit-upgrade 80 >
+    graph/orchestrate 50 > single-shot 40 > dev-pipeline 30). The behaviour-parity
+    matrix is asserted green.
+  - `MetaDecision` / `MetaSelectionRecord` now record the matched `manifestId` +
+    `manifestSchemaVersion` (decision provenance / audit trail).
+  - File split for the ≤400-line CODING_STANDARDS constraint: `meta-orchestrator.ts`
+    drops from 489 → 317 lines. The routing core moved to
+    `meta-orchestrator-routing.ts` and the decision/record builders to
+    `meta-orchestrator-decision.ts`.
+
+  Still literal (by design, not router branches): the structural `strategyFrom*`
+  helpers remain for the best-first ALTERNATIVES list (a transparency aid, not the
+  selection path) and the existing parity tests; `run-tool.ts buildDefaultExecutors`
+  remains a tool-layer map (out of scope — that is run-tool's concern, not the
+  router's).
+
+- [#3883](https://github.com/nexus-substrate/nexus-agents/pull/3883) [`497f391`](https://github.com/nexus-substrate/nexus-agents/commit/497f39104e8ec45abe95486328722a816612806b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(orchestration): migrate all 8 run-tool strategies to the manifest registry ([#3835](https://github.com/nexus-substrate/nexus-agents/issues/3835))
+
+  Replace the hardcoded `STRATEGY_ENTRYPOINT_TOOL` map (run-tool.ts) and the
+  implicit "which strategies have a wired executor" knowledge with eight registered
+  strategy manifests, validated against the [#3834](https://github.com/nexus-substrate/nexus-agents/issues/3834) Zod schema. Adding a capability
+  becomes "register a manifest", not "edit a map in the tool layer" (Epic C [#3833](https://github.com/nexus-substrate/nexus-agents/issues/3833)).
+
+  - `governance/strategy-manifests.yaml` — the human-facing source of truth: one
+    manifest per strategy (single-shot, dev-pipeline, pipeline, graph-workflow,
+    orchestrate, consensus, spec, research) with entrypointTool, executorAvailable
+    (4/8 true: dev-pipeline, pipeline, research, consensus), description,
+    whenToForce, maturityTier, latencyClass. Forward-compat authorityTier (Epic D)
+    / costProfile (Epic G) intentionally omitted until those epics populate them.
+  - `src/orchestration/strategy-manifest-registry.ts` — the same 8 manifests
+    embedded as a typed constant (no disk I/O on the MCP hot path), validated
+    through the Zod schema at module load (fail-closed on a malformed embedded
+    manifest). Exposes `entrypointToolFor` / `executorAvailableFor` /
+    `getStrategyManifest`.
+  - run-tool.ts now resolves `recommendedTool` via `entrypointToolFor(strategy)`;
+    the `STRATEGY_ENTRYPOINT_TOOL` constant + its barrel export are DELETED (zero
+    remaining references to the symbol).
+  - Behaviour-parity golden test: the pre-migration entrypoint map and the
+    wired-executor set are snapshotted verbatim and asserted to match the
+    manifest-sourced lookups exactly for all 8 strategies — proving the migration
+    is a no-op on behaviour. Plus full-coverage, fail-closed, and a YAML↔TS
+    no-drift assertion.
+
+  Deferred: the `decideStrategy` selection-logic refactor that routes PURELY over
+  manifest capability predicates is [#3836](https://github.com/nexus-substrate/nexus-agents/issues/3836); drift-gating the YAML under
+  `governance:check` is [#3837](https://github.com/nexus-substrate/nexus-agents/issues/3837).
+
+- [#3905](https://github.com/nexus-substrate/nexus-agents/pull/3905) [`15f4662`](https://github.com/nexus-substrate/nexus-agents/commit/15f46620b7231578528fdd727ace39eddf905536) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(eval): per-voter pr_review precision/recall metrics + persisted report ([#3848](https://github.com/nexus-substrate/nexus-agents/issues/3848))
+
+  `pr_review` reported panel-level metrics only (v5), so a chronically-noisy voter
+  could not be identified or demoted on the Epic D / ADR-0017 authority ladder.
+  This adds the data plumbing to record, per labeled eval case, EACH voter role's
+  verdict against the rubric ground truth ([#3846](https://github.com/nexus-substrate/nexus-agents/issues/3846)) and compute per-voter
+  precision/recall over time.
+
+  - `src/mcp/tools/pr-review-eval-types.ts` — the persisted unit
+    `VoterEvalVerdict` (per-voter per-case true-positive / false-positive /
+    false-negative tallies + rubric class) and the report types.
+  - `src/mcp/tools/pr-review-eval-scoring.ts` — two pure, deterministic functions
+    (the `computeResearchMaturityReport` / [#3727](https://github.com/nexus-substrate/nexus-agents/issues/3727) pattern): `scoreVoterCase`
+    applies the rubric class rules (buggy → matched bugs are TP, missed bugs are
+    FN; clean → verified findings are strict FP; borderline → excluded from both
+    numerators), and `computePerVoterPrecisionRecall` folds a window of verdicts
+    into per-role + aggregate precision/recall (zero-positive and no-bugs cases
+    report 0, never NaN).
+  - `src/mcp/tools/pr-review-eval-store.ts` — JSONL-backed store mirroring the
+    `PersistentOutcomeStore` idiom (hydrate-on-construct, append-per-write, corrupt
+    lines skipped) under the shared learning dir. `reportPrecisionRecall(filter)`
+    is the report surface. Stores only scored tallies — never raw diffs, prompts,
+    or model outputs.
+
+  Record + measure ONLY: no live routing/weighting change. Populating the store
+  from an actual eval run, and acting on the metrics (voter demotion), are
+  separate gated activities ([#3849](https://github.com/nexus-substrate/nexus-agents/issues/3849) / Epic D). Fixture tests cover the
+  precision/recall math, the rubric application, and the persistence round-trip.
+
+- [#3890](https://github.com/nexus-substrate/nexus-agents/pull/3890) [`f3ea2f4`](https://github.com/nexus-substrate/nexus-agents/commit/f3ea2f40d350fd6d25700f45e125d63091f52a7e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(governance): drift-gate the strategy-manifest registry under governance:check ([#3837](https://github.com/nexus-substrate/nexus-agents/issues/3837))
+
+  Elevate the [#3835](https://github.com/nexus-substrate/nexus-agents/issues/3835) "YAML↔TS no-drift" Vitest assertion to an enforced CI governance
+  gate, so the strategy-manifest registry joins the other single-source registries
+  policed by `governance:check` — drift fails the build the same way as `claims:check`
+  and the tool/expert/skill registries.
+
+  - `scripts/check-strategy-manifest-drift.ts` — the gate. Fails on (a) YAML↔TS
+    drift between `governance/strategy-manifests.yaml` and the embedded
+    `STRATEGY_MANIFEST_REGISTRY`; (b) completeness/uniqueness — every
+    `ExecutionStrategy` union member must have exactly one manifest and vice-versa
+    (no missing, extra, or duplicate strategy); (c) the YAML validating against the
+    [#3834](https://github.com/nexus-substrate/nexus-agents/issues/3834) Zod schema (the parse throws otherwise). Pure `analyzeManifestDrift` core
+    (no I/O) for unit-testing with injected drift.
+  - Wired into `inject-governance.ts check` (`pnpm governance:check` / the
+    docs-check `governance-drift` job) alongside the existing registry drift gates,
+    and exposed standalone as `pnpm strategy-manifest:check`.
+  - `scripts/check-strategy-manifest-drift.test.ts` — RED/GREEN: green on the honest
+    registry; red when the YAML diverges from the constant, when the union gains a
+    member with no manifest, and when the YAML fails schema validation.
+
+  No router or schema changes. No `meta-orchestrator.ts` changes (the
+  `ExecutionStrategy` union is read from source, not edited).
+
+- [#3876](https://github.com/nexus-substrate/nexus-agents/pull/3876) [`2f28df7`](https://github.com/nexus-substrate/nexus-agents/commit/2f28df7d39f28f931a076061caf72c742b0816e8) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(orchestration): versioned strategy-manifest schema + loader ([#3834](https://github.com/nexus-substrate/nexus-agents/issues/3834))
+
+  Add the schema foundation for Epic C's manifest-driven MetaOrchestrator ([#3833](https://github.com/nexus-substrate/nexus-agents/issues/3833)):
+  a Zod-validated, versioned strategy manifest so a strategy self-describes and the
+  router can route over manifest data instead of hardcoded rules.
+
+  - `src/orchestration/strategy-manifest.ts` — versioned Zod schema + loader
+    (strict, zero-`any`), MIRRORING the claims-registry pattern (versioned YAML +
+    Zod + loader + Vitest). Per-entry `schemaVersion` (literal, fail-closed on a
+    future shape) plus a top-level registry `version`. Required fields model the
+    current 8 strategies: `id`, `strategy` (router enum), `entrypointTool`,
+    `executorAvailable` (the 4/8 wired-executor gap, declared so routing fails
+    closed), `description`, `maturityTier`, `latencyClass` (reuses the [#3734](https://github.com/nexus-substrate/nexus-agents/issues/3734)
+    operation-class taxonomy); optional `whenToForce` ([#3838](https://github.com/nexus-substrate/nexus-agents/issues/3838) docs). Forward-compat
+    optional fields declared now: `authorityTier` (Epic D [#3552](https://github.com/nexus-substrate/nexus-agents/issues/3552)) and `costProfile`
+    (Epic G). Registry enforces unique `id` AND unique `strategy`.
+  - `__fixtures__/strategy-manifests.example.yaml` — 2-manifest schema fixture
+    (one wired, one fail-closed); NOT loaded by production code.
+  - `src/orchestration/strategy-manifest.test.ts` — 18 tests: valid manifests,
+    bad authority/cost enum, missing required field, duplicate id/strategy,
+    schemaVersion literal enforced, router-enum lockstep, fail-closed loader.
+
+  Deferred to siblings (out of scope for [#3834](https://github.com/nexus-substrate/nexus-agents/issues/3834)): migrating the 8 live strategies
+  and deleting `STRATEGY_ENTRYPOINT_TOOL` ([#3835](https://github.com/nexus-substrate/nexus-agents/issues/3835)); the manifest-driven router
+  refactor ([#3836](https://github.com/nexus-substrate/nexus-agents/issues/3836)); drift-gating the registry under `governance:check` ([#3837](https://github.com/nexus-substrate/nexus-agents/issues/3837)).
+
+- [#3893](https://github.com/nexus-substrate/nexus-agents/pull/3893) [`1114130`](https://github.com/nexus-substrate/nexus-agents/commit/111413003aeca1bb639e0254ecb632a150c76d02) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(audit): tier-transition audit events + ratification-linked promotion gate ([#3842](https://github.com/nexus-substrate/nexus-agents/issues/3842))
+
+  Completes the authority-ladder enforcement (Epic D / ADR-0017) by giving
+  promotions and demotions an auditable, ratification-linked trail. The [#3841](https://github.com/nexus-substrate/nexus-agents/issues/3841) vote
+  flagged that refusals/promotions currently leave no audit record; this closes
+  that gap.
+
+  A new typed, hash-chained audit event records every authority-tier transition:
+  `{ kind: 'promotion' | 'demotion', subject, fromTier, toTier, evidenceRef,
+ratificationVoteRef? }`. It is emitted via `AuditLogger.logTierTransition(...)`
+  as a `governance`-category event whose `metadata.tierTransition` carries the
+  structured payload, so the existing hash chain (and `verifyChain`) is unchanged
+  and the transition is recovered by `extractTierTransition`.
+
+  The authority-tier CI gate (`scripts/check-authority-tier-drift.ts`, already
+  joined into `governance:check`) is extended with the ratification invariant
+  ADR-0017 requires: it reads the hash-chained tier-transition log
+  (`governance/authority-tier-transitions.jsonl`, optional) and FAILS any
+  `promotion` event lacking a linked `ratificationVoteRef`. Demotions are automatic
+  and need no vote. No parallel governance mechanism was introduced.
+
+  Tests prove (a) a tier-transition event hash-chains correctly and `verifyChain`
+  still validates over the new event type, (b) the gate FAILS on a promotion event
+  without a `ratificationVoteRef`, and (c) PASSES on a promotion WITH a vote ref and
+  on a demotion without one — both with hand-built payloads and with events emitted
+  through the real hash-chained logger.
+
+- [#3898](https://github.com/nexus-substrate/nexus-agents/pull/3898) [`3a517e9`](https://github.com/nexus-substrate/nexus-agents/commit/3a517e99feb11f3ae1edfe20010923167b413668) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(governance): tool-fitness ledger data layer ([#3851](https://github.com/nexus-substrate/nexus-agents/issues/3851))
+
+  Adds the per-tool fitness ledger data layer that epic [#3850](https://github.com/nexus-substrate/nexus-agents/issues/3850) (suggest-tier
+  pruning pipeline — never autonomous removal) builds on. New module
+  `src/governance/tool-fitness-ledger.ts` records and aggregates per-tool fitness
+  signals: `invocationCount`, `lastUsedAt`, success/failure correlation
+  (`successCount`/`failureCount`/`successRate`), and a `cost` placeholder (full
+  cost accounting lands with Epic G; `undefined` distinguishes unmeasured from
+  zero).
+
+  Persistence MIRRORS the established durable-telemetry idiom rather than forking
+  a parallel one: storage is the shared `JsonlStore` primitive
+  (`config/jsonl-store`, [#3762](https://github.com/nexus-substrate/nexus-agents/issues/3762)) — the same hydrate-on-construct /
+  append-on-write / Zod-validate-each-line mechanism behind `PersistentOutcomeStore`
+  and the `ci-health` event log — bounded by oldest-eviction rotation ([#3089](https://github.com/nexus-substrate/nexus-agents/issues/3089)
+  size-cap concern). The path resolves via `nexusDataPath('tool-fitness',
+'ledger.jsonl')`; `tool-fitness` is cross-repo (homedir-scoped) because tool
+  fitness accumulates across the operator's whole workflow.
+
+  API: `ToolFitnessLedger.record()` / `statFor()` / `report()` / `size()`, the
+  `ToolFitnessEventSchema` Zod schema + inferred type, and a lazy
+  `getToolFitnessLedger()` singleton.
+
+  DATA LAYER ONLY. The `tool-fitness` SignalCategory wiring into
+  `improvement_review` is deferred to [#3852](https://github.com/nexus-substrate/nexus-agents/issues/3852) (its first consumer), so this producer
+  carries the sanctioned `@export-no-consumer-yet — see [#3852](https://github.com/nexus-substrate/nexus-agents/issues/3852)` marker for the
+  producer/consumer gate ([#3024](https://github.com/nexus-substrate/nexus-agents/issues/3024)). No pruning/removal pipeline is included —
+  removal is never autonomous and requires the Epic D human-ratification path.
+
+- [#3900](https://github.com/nexus-substrate/nexus-agents/pull/3900) [`764b521`](https://github.com/nexus-substrate/nexus-agents/commit/764b521e3db72f85e78403d22652f67ba78c3335) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(observability): tool-fitness SignalCategory consumer in improvement_review ([#3852](https://github.com/nexus-substrate/nexus-agents/issues/3852))
+
+  Adds the named consumer of the [#3851](https://github.com/nexus-substrate/nexus-agents/issues/3851) tool-fitness ledger, closing the [#3692](https://github.com/nexus-substrate/nexus-agents/issues/3692)
+  SignalCategory sequencing. `improvement_review` now reads the per-tool fitness
+  ledger and surfaces two suggest-tier candidate kinds:
+
+  - **Deprecation candidates** — tools with very low recent invocations
+    (≤ `LOW_USAGE_MAX_INVOCATIONS`) or a poor success rate
+    (≤ `POOR_SUCCESS_RATE_MAX` over ≥ `FITNESS_MIN_SAMPLE` samples).
+  - **Consolidation candidates** — a rarely-used member of a shared tool-name
+    prefix family (e.g. `research_*`) whose usage is a tiny fraction of its
+    busiest sibling.
+
+  New `SignalCategory` member: **`'tool-fitness'`** (wired through
+  `improvement-remediation.ts`, `remediation-research.ts`, and the remediation
+  capability schema).
+
+  **EPIC F INVARIANT — NEVER autonomous removal.** Output is SUGGEST-TIER ONLY:
+  every signal is a candidate for human review, severity is capped at `warning`
+  (never `critical`), and `assertNeverAutonomousRemoval` enforces this at runtime
+  (tests assert it throws on a removal-grade signal). Removal still requires the
+  Epic D human-ratification path ([#3853](https://github.com/nexus-substrate/nexus-agents/issues/3853) runbook).
+
+  **Context-poisoning fix ([#3852](https://github.com/nexus-substrate/nexus-agents/issues/3852) / [#3898](https://github.com/nexus-substrate/nexus-agents/issues/3898) dissent).** `ToolFitnessEventSchema`
+  gains an OPTIONAL, backward-compatible `workspace` dimension, and the ledger
+  exposes `statForInWorkspace`. The consumer scopes the reliability dimension by
+  workspace: a tool that fails in one workspace but is healthy in another is NOT
+  globally flagged. Concurrency of the shared `JsonlStore` append/eviction is
+  documented (atomic `O_APPEND` line writes; the over-cap rewrite race is a
+  pre-existing, suggest-tier-acceptable residual) and covered by a test.
+
+  Resolves the [#3851](https://github.com/nexus-substrate/nexus-agents/issues/3851) `@export-no-consumer-yet` marker — the ledger now has a real
+  in-src consumer, so the marker is removed and the producer/consumer gate ([#3024](https://github.com/nexus-substrate/nexus-agents/issues/3024))
+  still passes.
+
+### Patch Changes
+
+- [#3915](https://github.com/nexus-substrate/nexus-agents/pull/3915) [`9b46fbf`](https://github.com/nexus-substrate/nexus-agents/commit/9b46fbfa32a0d7c5df35816f8adce3c88db459a3) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(observability): propagate adapter per-voter tokens + make decision-cost drops non-silent ([#3910](https://github.com/nexus-substrate/nexus-agents/issues/3910))
+
+  [#3855](https://github.com/nexus-substrate/nexus-agents/issues/3855) follow-up. Two items from the [#3908](https://github.com/nexus-substrate/nexus-agents/issues/3908) ratification.
+
+  **Adapter token propagation.** The adapter layer already exposes per-call usage
+  (`CompletionResponse.usage` — `inputTokens` / `outputTokens`), but the voter
+  execution path discarded it, so every voter folded into the decision-cost rollup
+  as `unmeasured`. `runVoteCompletion` now captures the reported usage and threads
+  it up through `executeSingleVoteAttempt` → `executeWithRetries` →
+  `executeAgentVote` into the new optional `AgentVoteResult.inputTokens` /
+  `outputTokens` fields. The recording bridge reads them natively, so a voter whose
+  adapter reports tokens now resolves to a MEASURED rollup. Reads are defensive: an
+  adapter that does not report usage (CLI subscription, partial response) leaves the
+  counts `undefined` and stays honestly `unmeasured` — never a fabricated 0.
+
+  **Non-silent cost drops.** `JsonlStore.append` now returns whether the record was
+  durably persisted (was `void`; backward-compatible for callers that ignore it).
+  `DecisionCostStore.record` surfaces that flag, and the recording bridge logs a
+  `warn` AND increments a process-lifetime counter (`getDroppedCostRecordCount`)
+  when a rollup fails to persist — so dropped billing telemetry is visible rather
+  than silently swallowed. The decision still never fails: the summary is always
+  returned.
+
+  Tests: a voter with adapter-provided tokens yields a MEASURED decision-cost
+  rollup; a persistence failure is logged + counted (not silent) while still
+  returning the summary; `JsonlStore.append` reports success/failure.
+
+- [#3918](https://github.com/nexus-substrate/nexus-agents/pull/3918) [`c8dd144`](https://github.com/nexus-substrate/nexus-agents/commit/c8dd1449da29f933c21a11877b77a239606f1b20) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(audit/observability): fail-loud audit persist failures + rate-limit the dropped-cost warn ([#3916](https://github.com/nexus-substrate/nexus-agents/issues/3916))
+
+  [#3915](https://github.com/nexus-substrate/nexus-agents/issues/3915) follow-up. Items 1 and 2 from the [#3915](https://github.com/nexus-substrate/nexus-agents/issues/3915) ratification (item 3 — counter
+  export to the observability surface — is deferred).
+
+  **Audit-log non-silent drop (fail-loud).** A silently-dropped audit/tier-transition
+  event undermines the tamper-evident hash chain (ADR-0017 /
+  `docs/security/audit-hash-chain-threat-model.md`). The audit log uses
+  `FileAuditStorage`'s own buffered append (not `JsonlStore`), and a failed flush was
+  previously swallowed by the flush-timer's `.catch` (a single error log, no counter,
+  no escalation). `AuditLogger` now treats a persist failure as governance-critical
+  and FAIL-LOUD: `flush()` records-then-rethrows so an awaiting governance caller
+  still gets the error, while a shared handler logs prominently at `error` level
+  (`AUDIT PERSIST FAILURE — audit event NOT durably written`), increments a
+  process-lifetime counter (`getPersistFailureCount()`), and invokes an optional
+  `onPersistFailure(error)` escalation hook (new optional ctor / `createAuditLogger`
+  param). The periodic flush timer routes through the same handler so a failure that
+  arrives via the timer is counted and surfaced rather than silent. This is stronger
+  than the best-effort warn used for cost, because audit is governance-of-the-governor.
+
+  **Rate-limit the dropped-cost warn.** `recordDecisionCost` previously warned on
+  every `persisted === false`; an unwritable store (disk full / perms / I/O) would
+  flood logs per-decision and could degrade the main path — ironically risking the
+  never-fail invariant. The warn is now rate-limited (first-5 burst, then at most once
+  per 1000 further drops) while the drop COUNTER still increments on EVERY drop (stays
+  exact) and the decision still never fails. The emitted warn carries
+  `suppressedSinceLastWarn` so one line accounts for the suppressed drops;
+  `getDroppedCostWarnCount()` exposes the emitted-warn count for tests.
+
+  Tests: a failed audit persist is surfaced (error-logged + counted + thrown, and the
+  `onPersistFailure` hook fires) — NOT silent; a successful flush neither counts nor
+  escalates; 200 consecutive cost drops produce a bounded number of warns (≤ 6, not
+  one-per-drop) while the drop counter reflects all 200 and the decision still returns.
+
+- [#3926](https://github.com/nexus-substrate/nexus-agents/pull/3926) [`16d81ed`](https://github.com/nexus-substrate/nexus-agents/commit/16d81edf565f0ed3034b56feb40ea9a25f6c1f09) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(governance): persist authentic vote records at vote time ([#3897](https://github.com/nexus-substrate/nexus-agents/issues/3897))
+
+  The authority-ladder promotion gate ([#3895](https://github.com/nexus-substrate/nexus-agents/issues/3895)) resolves a `ratificationVoteRef`
+  against the committed `governance/ratification-votes.yaml` ledger, but that
+  ledger is hand-committable — the gate verifies STRUCTURAL PRESENCE, not
+  AUTHENTICITY, so anyone who can land a commit can forge a conforming entry. Live
+  `consensus_vote` results previously persisted only to per-developer home-dir
+  stores (`~/.nexus-agents/voting`, `~/.nexus-agents/learning`) that CI cannot
+  read.
+
+  This change persists each completed `consensus_vote` to a committed,
+  append-only, tamper-EVIDENT artifact at vote time
+  (`governance/vote-records.jsonl`), so authenticity rests on a hash chain rather
+  than on manual YAML transcription.
+
+  **Design.** A dedicated payload-covering hash chain (`src/audit/vote-record.ts`)
+  rather than riding the existing audit-event head hash. The audit-event chain
+  (`computeEventHash`) folds only the stable HEAD fields and intentionally NOT
+  `metadata`, so a tier-transition-style metadata payload would leave the vote
+  `decision`/`approvalPercentage` OUTSIDE the chain — an attacker could flip
+  `rejected`→`approved` without breaking any hash. The vote record instead folds
+  EVERY authenticity-bearing field (proposal content hash, decision, approval
+  percentage, vote counts, per-voter summary) into the chained hash, so editing
+  any of them is detected as a `hash_mismatch`. The record is written as a
+  best-effort side effect of the existing vote path (`recordAuthenticVote` in
+  `consensus-vote-recording.ts`) — no new MCP tool, the tool ceiling is respected.
+
+  **Gate seam (next step).** `readVoteRecords` + `verifyVoteRecordChain` are the
+  tested seam a future `check-authority-tier-drift.ts` revision uses to resolve a
+  `ratificationVoteRef` against the committed records and reject a chain that
+  fails verification. This PR does not rewire the gate.
+
+  **Deferred.** Cryptographic signing / provenance-stamping (binding the record to
+  a key — the AI/ML voter's stretch goal) is deferred to a follow-up. Tamper-
+  EVIDENCE via the hash chain is the MVP; tamper-PROOF signing is later.
+
+- [#3885](https://github.com/nexus-substrate/nexus-agents/pull/3885) [`b17d97a`](https://github.com/nexus-substrate/nexus-agents/commit/b17d97a1f8c5d9eefa4a55adc5a23f2719b9adcc) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(governance): claims:check anti-gaming reverse coverage scan ([#3880](https://github.com/nexus-substrate/nexus-agents/issues/3880))
+
+  The `claims:check` gate verified the claims that ARE registered but never linked
+  the registered set to the claims the docs actually make, so the registry was an
+  allowlist the author fully controlled: silently deleting an entry (while the doc
+  claim remained) or masking a removed hard claim by adding an easy one kept CI
+  green.
+
+  This adds a reverse coverage check (`src/governance/claims-coverage.ts`, wired
+  into `scripts/claims-check.ts`). It scans README.md + ARCHITECTURE.md for a
+  closed, high-precision set of quantified-capability sentinels ("N MCP tools",
+  "N built-in expert types", "N strategies") and FAILS when a matched claim has no
+  covering registry entry — where "covered" means some entry whose `subject` is
+  that doc declares a `verification.subjectContains` literal the matched prose
+  contains (the inverse of the [#3877](https://github.com/nexus-substrate/nexus-agents/issues/3877) subject check).
+
+  This closes both gaming paths: silent registry shrink and mask-by-addition now
+  fail the gate. The sentinel set is deliberately narrow (anchored on
+  `<count> <capability-noun>`), so generic numeric prose is never flagged; a new
+  sentinel capability requires a registry entry (intended). Implements the [#3826](https://github.com/nexus-substrate/nexus-agents/issues/3826)
+  deferred "undeclared doc-claim" heuristic detector. Still 8 claims, 8/8 green.
+
+- [#3884](https://github.com/nexus-substrate/nexus-agents/pull/3884) [`ccea9e9`](https://github.com/nexus-substrate/nexus-agents/commit/ccea9e900e9ad3db2655f507f3f8a7ee2f7594ed) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(governance): make claims:check verify the subject doc, not just source ([#3877](https://github.com/nexus-substrate/nexus-agents/issues/3877), [#3878](https://github.com/nexus-substrate/nexus-agents/issues/3878), [#3879](https://github.com/nexus-substrate/nexus-agents/issues/3879), [#3882](https://github.com/nexus-substrate/nexus-agents/issues/3882))
+
+  The merged `claims:check` gate ([#3873](https://github.com/nexus-substrate/nexus-agents/issues/3873)) only verified each claim's source-of-truth
+  `verification.path` and never read the `subject` doc making the claim, so a README
+  that drifted (e.g. "200 MCP tools" while source has 46) stayed green.
+
+  - [#3877](https://github.com/nexus-substrate/nexus-agents/issues/3877): the runner now ALSO checks the claim's `subject` doc via a new
+    `verification.subjectContains` literal — README/ARCHITECTURE drift now fails the
+    gate. Regression test reproduces doc-drift → failure.
+  - [#3878](https://github.com/nexus-substrate/nexus-agents/issues/3878): the `claims-check` CI `paths:` filter now includes README.md and
+    ARCHITECTURE.md (the `subject` of every current claim) so the gate fires on the
+    exact edits it polices.
+  - [#3879](https://github.com/nexus-substrate/nexus-agents/issues/3879): `file-contains` strips comments before matching (a commented-out symbol
+    no longer "verifies"); new `source-contains-all` method requires all needles in
+    real code; `closed-loop-routing` re-pointed from `file-exists` on a directory to
+    `source-contains-all: LinUCB,Topsis` on the real router.
+  - [#3882](https://github.com/nexus-substrate/nexus-agents/issues/3882): `hash-chained-audit` downgraded verified→partial; "immutable" removed in
+    favor of "tamper-evident" with a caveat linking the audit hash-chain threat
+    model. README "immutable" prose softened to match.
+
+- [#3912](https://github.com/nexus-substrate/nexus-agents/pull/3912) [`12bfa2f`](https://github.com/nexus-substrate/nexus-agents/commit/12bfa2f144ccccf3426a82fc4ae89f669edcb2a1) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - refactor(eval): PrReviewEvalStore delegates persistence to the shared JsonlStore<T> ([#3906](https://github.com/nexus-substrate/nexus-agents/issues/3906))
+
+  DRY follow-up to [#3848](https://github.com/nexus-substrate/nexus-agents/issues/3848). `PrReviewEvalStore` no longer hand-rolls JSONL
+  persistence (`readFileSync` + `content.split('\n')` + per-line Zod validate +
+  corrupt-line skip + `appendFileSync`). It now delegates all file I/O to a
+  `JsonlStore<VoterEvalVerdict>` instance — the same shared [#3762](https://github.com/nexus-substrate/nexus-agents/issues/3762) primitive the
+  sibling tool-fitness ledger ([#3851](https://github.com/nexus-substrate/nexus-agents/issues/3851)) builds on — for hydrate-on-construct,
+  append-on-write, per-line Zod validation, corrupt-line skip, and bounded
+  oldest-eviction rotation.
+
+  Pure internal refactor: the public API (`size`, `append`, `query`,
+  `reportPrecisionRecall`, constructor signature), the persistence path
+  (`getPrReviewEvalFile()` under the learning dir), the report surface, and all
+  existing [#3848](https://github.com/nexus-substrate/nexus-agents/issues/3848) tests are unchanged. The store now owns ONLY the eval schema,
+  query filtering, and report folding; persistence is the primitive's. A generous
+  default retention cap (`maxRecords`) is added (overridable, mainly for tests) so
+  the file stays bounded — previously it could grow without limit.
+
+- [#3923](https://github.com/nexus-substrate/nexus-agents/pull/3923) [`4121e64`](https://github.com/nexus-substrate/nexus-agents/commit/4121e644e32f747210226e73654c3d5a67460cdc) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(audit): hash-cover the tier-transition payload + verify the chain in the drift gate ([#3921](https://github.com/nexus-substrate/nexus-agents/issues/3921))
+
+  HIGH-severity tamper-evidence gap. The tier-transition payload the promotion gate
+  trusts ({subject, fromTier, toTier, evidenceRef, ratificationVoteRef}) lived in
+  `metadata.tierTransition`, which `computeEventHash` did NOT cover — so flipping
+  `toTier` or borrowing another approval's `ratificationVoteRef` in a persisted
+  event left the hash valid. The gate also never called `verifyChain`, doing only a
+  per-line schema parse. Both halves of the "tamper-evident" guarantee failed.
+
+  **Hash coverage (versioned, migration-safe).** Added an optional `hashVersion`
+  field to `AuditEvent`. Tier-transition events are stamped `hashVersion: 2`
+  (`AUDIT_HASH_VERSION_TIER_TRANSITION`) for observability; `computeEventHash` then
+  folds a canonicalized, key-ordered projection of the tier-transition payload into
+  the SHA-256 (`src/audit/tier-transition-hash.ts`). The optional
+  `ratificationVoteRef` is folded in as `null` when absent, so adding/stripping it
+  changes the hash. **Pre-existing v1 (version-less) chains keep verifying** under
+  the original head-fields-only projection — no migration of existing logs, no
+  spurious `verifyChain` failures. Non-tier-transition events are never covered v2.
+
+  **Downgrade-resistant version selection.** `computeEventHash` DERIVES the v2
+  projection from the event's COVERED head fields — `isTierTransitionEvent`: a
+  `governance` event whose `action` is `tier.*` — and never from the mutable stored
+  `hashVersion`. Keying off the stored field would let an attacker editing the
+  plaintext log strip/alter `hashVersion`, recompute the v1 head-only hash, and
+  silently flip `toTier`. Because `category` and `action` are themselves in the
+  hashed projection, an attacker cannot escape the payload-covering v2 projection
+  without breaking the chain.
+
+  **Gate verifies the chain.** `recoverTransitions` in
+  `scripts/check-authority-tier-drift.ts` now runs `verifyChain` over the recovered
+  events and emits a fail-closed `transition-log-chain-broken` finding on any break,
+  so a tampered / reordered / forged transition event FAILS the gate, not just a
+  schema check.
+
+  **Tests.** RED-before/GREEN-after: a flipped `toTier`, a rewritten
+  `ratificationVoteRef`, and each of `subject`/`fromTier`/`evidenceRef` in a
+  persisted payload are now detected by `verifyChain` (`hash_mismatch`) and fail the
+  gate; a version-downgrade forgery (flip `toTier` + strip-or-force `hashVersion` +
+  recompute the v1 hash) is also caught; existing audit-chain / tier-transition /
+  verify_audit_chain suites stay green. The `hash-chained-audit` claim is now more
+  honest — the integrity-critical payload is genuinely chain-covered.
+
+- [#3899](https://github.com/nexus-substrate/nexus-agents/pull/3899) [`8ca02e8`](https://github.com/nexus-substrate/nexus-agents/commit/8ca02e88798cb7869eeb4ebfc25b0af552b94d33) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - chore(governance): declare the four un-issued loops' authority tiers + per-loop promotion-criteria docs ([#3843](https://github.com/nexus-substrate/nexus-agents/issues/3843), [#3844](https://github.com/nexus-substrate/nexus-agents/issues/3844))
+
+  The authority ladder (ADR-0017) requires EVERY automated behaviour to declare its
+  authority tier, but the four loops that are NOT routable strategies —
+  `suggest_research_tasks`, `improvement_review`, `pr_review`, and the self-tuning
+  loop — had no declaration surface (the [#3841](https://github.com/nexus-substrate/nexus-agents/issues/3841) gate only policed the eight strategy
+  manifests).
+
+  This adds that surface:
+
+  - `governance/loop-tiers.yaml` (Zod schema `src/orchestration/loop-tier-manifest.ts`,
+    embedded constant `loop-tier-registry.ts`, lockstep-tested) declares each of the
+    four loops at its CURRENT implicit tier from the epic Phase-0 recon — zero
+    behaviour change (Scope Steward): `suggest_research_tasks` → `suggest`,
+    `improvement_review` → `suggest`, `pr_review` → `advisory`, tune loop →
+    `enforce` (bounded). The tune loop's `enforce` is justified by its declared
+    safety envelope (demotion-only floor 0.5, 0.2-step cap, 30-min decay), NOT a
+    ladder promotion — it is a pre-existing default-ON bounded loop ([#3323](https://github.com/nexus-substrate/nexus-agents/issues/3323)).
+  - `scripts/check-authority-tier-drift.ts` (under `governance:check`) is extended to
+    validate this registry alongside the manifests: an undeclared/mis-shaped loop, a
+    YAML↔constant drift, or an `enforce` loop with neither a bounded envelope nor a
+    floor-meeting evidence record fails the gate (TDD: a mis-declared loop tier
+    proven to fail).
+  - `docs/governance/loop-promotion-criteria.md` ([#3844](https://github.com/nexus-substrate/nexus-agents/issues/3844)) writes the per-loop
+    promotion/demotion criteria — tune-loop demotion triggers, auto-remediation
+    ([#3769](https://github.com/nexus-substrate/nexus-agents/issues/3769)), KNN weighting ([#3815](https://github.com/nexus-substrate/nexus-agents/issues/3815)), learned selection ([#3552](https://github.com/nexus-substrate/nexus-agents/issues/3552)), ClawGuard ([#2077](https://github.com/nexus-substrate/nexus-agents/issues/2077)) —
+    grounded in ADR-0017's evidence-threshold schema; pr_review's criterion is
+    owned by Epic E (linked, not duplicated). Each criterion is entered in the
+    claims registry as an aspirational→verified transition path.
+
+  No tier promotion/demotion is performed; any promotion remains a separate ratified
+  event. `governance:check`, `claims:check`, `authority-tier:check`, and
+  `check-docs-indexed` stay green.
+
+- [#3887](https://github.com/nexus-substrate/nexus-agents/pull/3887) [`3bb731d`](https://github.com/nexus-substrate/nexus-agents/commit/3bb731df01ce4d0591c3464ba49c72ec0e6e8271) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(orchestration): make the strategy-manifest lockstep test real and cross-check executorAvailable ([#3881](https://github.com/nexus-substrate/nexus-agents/issues/3881))
+
+  The strategy-manifest schema billed two safety properties that were not actually
+  anchored to reality:
+
+  1. The "lockstep" test used a hand-copied literal list of the 8 router strategies
+     instead of deriving from the `ExecutionStrategy` union, so ADDING a strategy to
+     the router without registering a manifest stayed green. The expected strategy
+     set is now derived from a single runtime tuple (`EXECUTION_STRATEGY_NAMES`) that
+     the Zod enum is built from, tied to the router `ExecutionStrategy` union by a
+     compile-time mutual-assignability assertion — adding a member on either side is
+     now a typecheck failure.
+  2. `executorAvailable` was a self-declared boolean never cross-checked against the
+     real executor registry, so it could silently go fail-OPEN. A new test in
+     `strategy-manifest-registry.test.ts` derives the wired-executor set from the
+     LIVE `buildDefaultExecutors` factory keys and asserts each manifest's
+     `executorAvailable` matches, plus a guard that the frozen legacy snapshot has
+     not rotted versus the live factory.
+
+  Scope confined to `strategy-manifest.ts`, `strategy-manifest-registry.ts`, and
+  their test files; `meta-orchestrator.ts` was not modified.
+
+- [#3908](https://github.com/nexus-substrate/nexus-agents/pull/3908) [`9c0bcdf`](https://github.com/nexus-substrate/nexus-agents/commit/9c0bcdf2fd46e451992740165036a5f6f1ec5b33) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(observability): per-voter, per-decision cost aggregation on consensus + pr_review ([#3855](https://github.com/nexus-substrate/nexus-agents/issues/3855))
+
+  A governed decision — a `consensus_vote` or `pr_review` run — fans out to N voter
+  LLM calls. Per-CALL usage telemetry already existed (`learning/usage-log.ts`:
+  token + cost per model call); what was missing was the AGGREGATION rolling those
+  per-call numbers up into one per-decision answer.
+
+  This adds that rollup layer, riding the EXISTING decision surfaces — NO new MCP
+  tool (the 47-tool ceiling is respected; tool count stays at 46):
+
+  - `observability/decision-cost.ts` — the pure, fixture-tested rollup
+    (`rollupDecisionCost`): per-voter → per-decision totals, per-model breakdown,
+    micro-USD rounding. Missing cost is counted as UNMEASURED (a floor), never a
+    measured $0; `NEXUS_BILLING_MODE=plan` records 0-cost while KEEPING token
+    counts (mirrors how plan mode zeroes cost in routing without dropping the
+    token signal).
+  - `observability/decision-cost-store.ts` — durable JSONL persistence built on
+    the shared `JsonlStore<T>` primitive (no hand-rolled JSONL), written under the
+    shared learning dir like the OutcomeStore idiom. Stores only per-voter /
+    per-model token + USD totals — never proposals, diffs, prompts, or outputs.
+  - `mcp/tools/decision-cost-recording.ts` — the consumer bridge: maps a panel's
+    per-voter results into cost inputs (model captured on `AgentVoteResult`,
+    api-mode cost derived via the same registry-backed `computeCostUSD` the
+    per-call usage log uses), reads the live billing mode, rolls up + persists, and
+    returns the summary. `consensus_vote` and `pr_review` attach the returned
+    `costSummary` to their existing responses (best-effort — a rollup failure never
+    fails the decision).
+
+  Record + measure only — no routing or weighting change. Feeds Epic G's
+  weather_report + manifest cost profiles ([#3856](https://github.com/nexus-substrate/nexus-agents/issues/3856)) and the governed-decision cost
+  doc ([#3857](https://github.com/nexus-substrate/nexus-agents/issues/3857)).
+
+- [#3895](https://github.com/nexus-substrate/nexus-agents/pull/3895) [`f01eb20`](https://github.com/nexus-substrate/nexus-agents/commit/f01eb20e746e79b2c5efe27c6904cbf858d51cbb) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(governance): make the promotion gate verify ratification-vote RESOLVABILITY, not non-emptiness ([#3894](https://github.com/nexus-substrate/nexus-agents/issues/3894))
+
+  The authority-ladder promotion gate (`analyzeTierTransitionEvents` in
+  `scripts/check-authority-tier-drift.ts`, under `governance:check`) failed a
+  `kind:'promotion'` tier-transition only when its `ratificationVoteRef` was
+  _empty_ — a bogus `ratificationVoteRef:'x'` passed. The "ratification-LINKED"
+  guarantee ([#3842](https://github.com/nexus-substrate/nexus-agents/issues/3842)) was therefore only as strong as a non-empty string, the
+  cosmetic-linkage gap the [#3893](https://github.com/nexus-substrate/nexus-agents/issues/3893) ratification panel's Contrarian flagged.
+
+  The gate now RESOLVES the ref against a committed ratification-vote ledger and
+  fails three new ways:
+
+  - `promotion-ratification-unresolved` — the (non-empty) ref does not resolve to
+    any recorded vote.
+  - `promotion-ratification-not-approved` — it resolves but the vote was not
+    `approved`, was not a `higher_order` vote (a promotion is
+    governance-of-the-governor), or its `subject` does not match the transition.
+  - `ratification-ledger-invalid` — the ledger itself fails schema validation
+    (fail-closed: the resolver then resolves nothing, so every promotion fails).
+
+  **Resolution source.** Live `consensus_vote` results are persisted only to
+  per-developer home-dir stores (`~/.nexus-agents/voting/`,
+  `~/.nexus-agents/learning/`) that a CI gate — no live server, no developer home
+  dir — cannot read. There is no other committed, queryable source of truth. So
+  the honest mechanism is a new committed ledger `governance/ratification-votes.yaml`
+  (schema `RatificationVoteLedgerSchema` in `src/audit/audit-types.ts`), empty
+  today. **Residual gap:** the gate verifies STRUCTURAL PRESENCE of an approved,
+  higher_order vote in a committed (hence reviewable) record — it does not, and
+  cannot from CI, re-execute the vote.
+
+  The schema-level discriminated-union tightening of `TierTransitionPayload`
+  ([#3894](https://github.com/nexus-substrate/nexus-agents/issues/3894) item 2) was intentionally NOT done: the emitter deliberately still chains
+  a promotion that lacks a vote ref (so tampering cannot erase the event), with the
+  invariant located in the gate — a write-time required field would conflict with
+  that documented design, so it is not low-risk.
+
+- [#3892](https://github.com/nexus-substrate/nexus-agents/pull/3892) [`4f75ad9`](https://github.com/nexus-substrate/nexus-agents/commit/4f75ad92a9b823d38b37c1e352a45b9f72207f7b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(orchestration): harden manifest-driven router ([#3888](https://github.com/nexus-substrate/nexus-agents/issues/3888) — [#3886](https://github.com/nexus-substrate/nexus-agents/issues/3886) follow-ups)
+
+  Closes the three confirmed follow-ups from the [#3886](https://github.com/nexus-substrate/nexus-agents/issues/3886) ratification vote, all
+  confined to the manifest router. No live routing decision changes for the 8
+  registered manifests.
+
+  - **Alternatives split-brain (DRY):** `buildAlternatives` no longer seeds the
+    transparency "alternatives" list from the hardcoded `strategyFromPattern` /
+    `strategyFromPipelineType` decision table (which encoded the pre-[#3836](https://github.com/nexus-substrate/nexus-agents/issues/3836) rules and
+    could drift from the manifests). It now derives alternatives from the SAME
+    manifest `selectionRules` source of truth via the new
+    `rankStrategiesByManifest`, ranking every OTHER matching strategy best-first by
+    matching-rule priority. The two now-dead `strategyFrom*` helpers — and their
+    re-exports from `meta-orchestrator.ts` and `orchestration/index.ts` — are
+    removed. Observable change: the alternatives list now contains only genuinely
+    manifest-routable runner-ups (best-first), instead of the former
+    pattern+pipeline+`orchestrate` heuristic triple.
+  - **Optional `selectionRules` → silent un-routability:** a new Vitest asserts every
+    manifest in `STRATEGY_MANIFEST_REGISTRY` declares at least one `selectionRule`,
+    so a future manifest added without rules (silently un-routable) fails the test
+    suite. (`selectionRules` stays `.optional()` on the schema to keep force-only
+    manifests legal; the test guards the live registry — lower-risk than a schema
+    change.)
+  - **Name-based tie-break:** `selectStrategyByManifest` no longer breaks an
+    equal-priority collision silently by `strategy < best.strategy` (alphabetical
+    name). A genuine equal-priority tie between two strategies now throws
+    `AmbiguousManifestSelectionError`, surfacing a future overlapping same-priority
+    rule loudly instead of letting a rename quietly change routing. No reachable tie
+    exists on today's 8 manifests, so this is dead-but-defensive now.
+
+- [#3868](https://github.com/nexus-substrate/nexus-agents/pull/3868) [`d84f67a`](https://github.com/nexus-substrate/nexus-agents/commit/d84f67a5892791d32ed701d1af8640334dc32aaf) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - security: remediate Dependabot alerts ([#3867](https://github.com/nexus-substrate/nexus-agents/issues/3867))
+
+  Clear 16 of 17 open Dependabot alerts via pnpm `overrides` (all affected
+  packages are transitive). No direct dependencies needed bumping.
+
+  - `ws` → `>=8.21.0` (GHSA-96hv-2xvq-fx4p, high)
+  - `esbuild` → `>=0.28.1` (GHSA-gv7w-rqvm-qjhr high, GHSA-g7r4-m6w7-qqqr low)
+  - `hono` override bumped `>=4.12.18` → `>=4.12.21` (resolves 4.12.25;
+    GHSA-xrhx-7g5j-rcj5, -f577-qrjj-4474, -3hrh-pfw6-9m5x, -2gcr-mfcq-wcc3)
+  - `dompurify` → `>=3.4.9` (resolves 3.4.10; GHSA-rp9w-3fw7-7cwq,
+    -76mc-f452-cxcm, -r47g-fvhr-h676, -hpcv-96wg-7vj8, -gvmj-g25r-r7wr,
+    -vxr8-fq34-vvx9)
+  - `protobufjs` override re-targeted `<7.5.5` → `<7.6.3` (GHSA-f38q-mgvj-vph7;
+    `@google/genai` resolves its native 8.6.3, which is past the v8 patch line)
+  - `markdown-it` override bumped `>=14.1.1` → `>=14.2.0` (GHSA-6v5v-wf23-fmfq, dev)
+  - `js-yaml@>=4.0.0 <4.2.0` → `>=4.2.0` (GHSA-h67p-54hq-rp68, dev; v3.x
+    consumer left untouched — outside the advisory range)
+
+  Not fixed: dompurify GHSA-x4vx-rjvf-j5p4 — no patch released upstream yet;
+  tracked for a follow-up once a fix ships.
+
+- [#3928](https://github.com/nexus-substrate/nexus-agents/pull/3928) [`895ee1e`](https://github.com/nexus-substrate/nexus-agents/commit/895ee1eb1375ab381aec00a35a5e8b2c1def72af) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - docs(readme): tighten the closed-loop tagline to human-gated/demotion-only reality ([#3909](https://github.com/nexus-substrate/nexus-agents/issues/3909))
+
+  From the [#3907](https://github.com/nexus-substrate/nexus-agents/issues/3907) ratification honesty-of-framing note. The README headline read as fully autonomous ("closed-loop self-tuning"), but the loop does not close autonomously: tier promotion is earned via the ADR-0017 authority ladder (human-gated ratification), and the `TuneAdjustmentStore` is bounded and demotion-only — autonomous changes only ever reduce authority/aggressiveness. Reworded the root and package taglines to "human-gated closed-loop tuning (autonomous demotion, earned promotion)" so a reader seeing only the one-liner does not infer full autonomy. Prose only; no code changes.
+
+- [#3931](https://github.com/nexus-substrate/nexus-agents/pull/3931) [`6004048`](https://github.com/nexus-substrate/nexus-agents/commit/6004048bd3e50c20eaa00d0114bb3e86caac02ad) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - docs(security): correct "immutable audit" to tamper-evident append-only audit chain ([#3874](https://github.com/nexus-substrate/nexus-agents/issues/3874))
+
+  The audit hash-chain threat model (docs/security/audit-hash-chain-threat-model.md,
+  [#3872](https://github.com/nexus-substrate/nexus-agents/issues/3872)) established the chain is tamper-EVIDENT, not tamper-PROOF / immutable:
+  computeEventHash is a KEYLESS SHA-256 over only a partial event projection
+  ({id,timestamp,category,action,outcome,actor,previousHash} plus the tier.\*
+  tier-transition payload, [#3921](https://github.com/nexus-substrate/nexus-agents/issues/3921)), so a write-capable adversary can
+  truncate/fork/rewrite-and-rehash undetectably. Several docs still asserted an
+  unqualified "immutable audit".
+
+  - Replace unqualified "immutable audit" / "immutable" (audit-chain sense) with
+    "tamper-evident append-only audit chain" + a link to the threat model in:
+    `packages/nexus-agents/README.md` (tagline), root `AGENTS.md`, `CLAUDE.md`
+    (both plain prose, above their injected-region markers — no inject needed),
+    `docs/getting-started/CONFIGURATION.md`, `docs/architecture/EVENT_BUS_BOUNDARIES.md`,
+    and `docs/adr/0018-org-scope-naming.md`.
+  - Strengthen the existing `hash-chained-audit` claims-registry entry caveat to
+    state the keyless-SHA-256 / partial-schema-coverage reality explicitly
+    (status stays `partial`; evidence is the threat model + verifyChain /
+    computeEventHash in `src/audit/audit-logger.ts`). `claims:check` passes.
+
+  The threat model (correct source of truth) and `docs/archive/**` are left
+  unchanged.
+
+- [#3929](https://github.com/nexus-substrate/nexus-agents/pull/3929) [`72df17d`](https://github.com/nexus-substrate/nexus-agents/commit/72df17daf656a66522ec0f03b6a2363ffeb96ca5) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(governance): refine tool-fitness suggest-signal heuristics ([#3902](https://github.com/nexus-substrate/nexus-agents/issues/3902))
+
+  Refines three signal-quality heuristics in the `tool-fitness` improvement_review
+  consumer flagged in the [#3900](https://github.com/nexus-substrate/nexus-agents/issues/3900) ratification (Contrarian's signal-quality
+  concerns). The Epic F invariant is preserved throughout: every signal is
+  suggest-tier only (severity `info`/`warning`, never `critical`, routed through
+  `assertNeverAutonomousRemoval`) — a human always reviews; nothing here removes a
+  tool.
+
+  1. **Consolidation: shared name-prefix is now only a WEAK hint.** A shared
+     prefix is no longer treated as proof of substitutability. An orthogonal
+     action-verb check suppresses prefix-siblings whose verbs sit in clearly
+     opposed groups (`git_init` vs `git_commit`, `db_read` vs `db_drop_table`), so
+     a rare sibling is never flagged for folding into a busy one on prefix alone.
+     Surviving prefix-only matches are surfaced as LOW-CONFIDENCE candidates.
+     Scoped step: a true capability/schema-overlap model is deferred behind a
+     `TODO([#3902](https://github.com/nexus-substrate/nexus-agents/issues/3902))` — until that data seam lands, prefix-family is never strong
+     evidence.
+  2. **Break-glass exemption for low-usage-BY-DESIGN tools.** Rare-but-critical
+     tools (rollback / recovery / emergency admin) are exempt from the
+     `<= 2 invocations` deprecation flag via a never-deprecate predicate (default
+     break-glass name patterns + an injectable `NeverDeprecateConfig`
+     exempt-tools/extra-patterns override), removing false-positive deprecation
+     noise.
+  3. **Workspace-scoped localized signal instead of full suppression.** When a
+     tool's poor global rate is suppressed as context-poisoning (healthy in
+     another workspace), the genuine localized failure is no longer fully
+     silenced: a workspace-scoped "failing here" signal surfaces the local
+     misconfig (global deprecation still suppressed).
+
+  New pure heuristics live in a sibling module
+  (`improvement-review-tool-fitness-heuristics.ts`) so the consumer stays under
+  the 400-line cap. RED-then-GREEN tests added for all three items.
+
+- [#3913](https://github.com/nexus-substrate/nexus-agents/pull/3913) [`e7321a2`](https://github.com/nexus-substrate/nexus-agents/commit/e7321a24c0cd045a6f726b3033703332a5795e57) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(observability): surface decision costs in weather_report + populate manifest cost profiles ([#3856](https://github.com/nexus-substrate/nexus-agents/issues/3856))
+
+  Epic G child of [#3854](https://github.com/nexus-substrate/nexus-agents/issues/3854) (M4). Builds on the [#3855](https://github.com/nexus-substrate/nexus-agents/issues/3855) per-decision cost aggregation to
+  answer "what does a governed decision cost?" from recorded data, riding existing
+  surfaces — NO new MCP tool.
+
+  **weather_report cost section.** `weather_report` gains a `costSection` with two
+  parts:
+
+  - `decisionCosts` — windowed per-gate-type aggregates over the lookback window,
+    rolled up from the `DecisionCostStore` records ([#3855](https://github.com/nexus-substrate/nexus-agents/issues/3855)) via a new PURE,
+    fixture-tested `aggregateDecisionCosts` (`observability/decision-cost-aggregate.ts`):
+    per `consensus_vote` / `pr_review` gate it reports decision count, average +
+    total cost (USD), average + total tokens, average voters, and the
+    measured/unmeasured voter split with a `costIsFloor` flag (averages understate
+    spend when some voter calls reported no usage — the same honesty the
+    per-decision rollup keeps). The store is only constructed when persistence is
+    enabled, so a persistence-off context surfaces an empty `decisionCosts` rather
+    than throwing; tests inject deterministic records.
+  - `strategyCostProfiles` — each strategy's declared coarse `costProfile`, read
+    straight off the manifest registry (single source of truth) so the surfaced
+    hint can never drift from the authored manifest.
+
+  **Manifest costProfile populated.** The Epic C `costProfile` field ([#3834](https://github.com/nexus-substrate/nexus-agents/issues/3834),
+  optional until now) is DECLARED for all 8 live strategies, scaled by fan-out:
+  `low` (single-shot), `medium` (dev-pipeline, pipeline), `high` (consensus,
+  orchestrate, spec), `variable` (graph-workflow, research). Populated in
+  `governance/strategy-manifests.yaml` AND mirrored in lockstep into
+  `STRATEGY_MANIFEST_REGISTRY` (the [#3837](https://github.com/nexus-substrate/nexus-agents/issues/3837) drift gate + the YAML↔TS mirror test both
+  stay green). A refresh path — re-grade against measured per-decision aggregates,
+  reconcile both sources in lockstep — is documented in the YAML.
+
+  BudgetRouter is unchanged: it routes over per-model token budgets, not the
+  strategy `costProfile`, so there is no static-estimate site to replace ([#3856](https://github.com/nexus-substrate/nexus-agents/issues/3856)
+  acceptance criterion verified; changing routing policy/weights is out of scope).
+
+  Record + surface only — no routing or weighting change.
+
+- [#3924](https://github.com/nexus-substrate/nexus-agents/pull/3924) [`f512b24`](https://github.com/nexus-substrate/nexus-agents/commit/f512b2427a3f7b8f15ab222d592fc1d72cba64f8) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(orchestration): wire the authority-tier runtime guard into the live dispatch path ([#3920](https://github.com/nexus-substrate/nexus-agents/issues/3920))
+
+  ADR-0017's "router refusal" was dead code in production. `guardAuthority`'s only
+  non-test caller (meta-orchestrator `select`) is gated on
+  `input.requiredAuthority !== undefined`, but no production dispatch path ever set
+  it — `toMetaInput` omitted it on BOTH the route-only (`execute:false`) and inline
+  `execute:true` paths. So the `if` was always false and the runtime ceiling never
+  ran; only the CI declaration gate (`check-authority-tier-drift.ts`) was live.
+
+  **The wiring.** `requiredAuthority` is now derived from the DISPATCH MODE and
+  threaded through `toMetaInput`:
+
+  - A new pure, exported `dispatchActionClass(mode)` in `authority-tier-guard.ts`
+    maps the two `run` dispatch modes to the authority class each EXERCISES.
+  - `run-tool.ts` passes `'route'` (from `routeGoal`) / `'execute'` (from
+    `executeGoal`) so the guard fires at the router on every real dispatch.
+
+  **Refusal semantics (conservative, ADR-0017-grounded).** Both modes floor at
+  `suggest`: a routing recommendation is `suggest`-class by ADR definition ("inert
+  until a human acts"), and an inline `run` result is likewise inert (it does not
+  merge/deploy/gate a protected resource). Flooring at `suggest` — not `observe` —
+  is what gives the guard teeth without breaking parity: every live strategy is
+  declared `suggest`/`advisory`, so all pass. The guard refuses fail-closed
+  (`AuthorityRefusalError`, before any executor runs) only on a genuine above-tier
+  action — an `observe`-tier strategy reaching dispatch (`above_declared_tier`), or
+  a strategy with no declared tier (`tier_undeclared`, the runtime backstop behind
+  the CI gate). The `run` execute path maps the refusal to a `business`-class
+  structured error (a policy outcome, not an internal fault). A higher action floor
+  (an `advisory`/`enforce` dispatch surface) is a future, owner-approved widening
+  localized to `dispatchActionClass`.
+
+  **No behaviour change for correctly-declared loops.** Parity suite green; normal
+  suggest/advisory dispatch proceeds unchanged.
+
+  **Regression test.** `run-tool-authority-guard.test.ts` drives above-tier actions
+  through the REAL `routeGoal`/`executeGoal` paths (not a hand-built
+  `MetaOrchestratorInput`) via a deliberate-breakage manifest fixture, and asserts
+  refusal (route + execute) while normal dispatch proceeds — RED before the wiring,
+  GREEN after. This is the regression that would have caught the dead-code gap.
+
+  Left for the governance ratification vote (governance-of-the-governor): the
+  precise "dispatch action → requiredAuthority" mapping is the design judgment to
+  ratify.
+
 ## 2.131.1
 
 ### Patch Changes
