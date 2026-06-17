@@ -146,8 +146,8 @@ export const RemediationPlanSchema = z
   .object({
     /** Source signal key (mirrors ImprovementSignal.signalKey). */
     signalKey: z.string().min(1).max(200),
-    /** Signal category (mirrors SignalCategory). */
-    category: z.enum(['routing', 'tech-debt', 'bug', 'security', 'consensus']),
+    /** Signal category (mirrors SignalCategory; 'tool-fitness' added #3852). */
+    category: z.enum(['routing', 'tech-debt', 'bug', 'security', 'consensus', 'tool-fitness']),
     summary: z.string().min(1).max(1000),
     steps: z.array(RemediationStepSchema).min(1).max(20),
   })

@@ -30,6 +30,9 @@ const ACTION_BY_CATEGORY: Readonly<Record<SignalCategory, RemediationActionKind>
   'tech-debt': 'refactor',
   security: 'investigate', // conservative — security is p0/unanimous-gated regardless
   consensus: 'investigate',
+  // #3852: a deprecation/consolidation candidate is a human decision, never an
+  // autonomous code change — investigate only (Epic D ratification path).
+  'tool-fitness': 'investigate',
 };
 
 /** Bound a string to a schema-safe length. */
