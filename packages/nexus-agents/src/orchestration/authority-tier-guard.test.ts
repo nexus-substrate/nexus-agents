@@ -17,6 +17,7 @@ import {
   permitsAction,
   evaluateAuthority,
   guardAuthority,
+  dispatchActionClass,
   AuthorityRefusalError,
   type ActionClass,
 } from './authority-tier-guard.js';
@@ -123,6 +124,29 @@ describe('authority-tier guard — registry-backed enforcement (#3841)', () => {
     for (const [action, strategy] of Object.entries(byTier)) {
       const decision = evaluateAuthority(strategy as never, action as ActionClass);
       expect(decision.permitted, `${strategy}@${action} should be permitted`).toBe(true);
+    }
+  });
+});
+
+describe('dispatchActionClass — dispatch-mode → action-class map (#3920)', () => {
+  it("maps the route-only dispatch to a 'suggest'-class action (recommendation)", () => {
+    expect(dispatchActionClass('route')).toBe('suggest');
+  });
+
+  it("maps the inline-execute dispatch to a 'suggest'-class action (inert result)", () => {
+    expect(dispatchActionClass('execute')).toBe('suggest');
+  });
+
+  it('floors both modes at suggest so every live suggest+/advisory strategy passes', () => {
+    // The conservative #3920 interpretation: both dispatch modes floor at
+    // `suggest`. Every live strategy is declared `suggest`+, so a dispatch-class
+    // action is at/below tier for all of them — the guard fires only on a genuine
+    // above-tier (observe / undeclared) strategy.
+    for (const mode of ['route', 'execute'] as const) {
+      expect(permitsAction('suggest', dispatchActionClass(mode))).toBe(true);
+      expect(permitsAction('advisory', dispatchActionClass(mode))).toBe(true);
+      // An observe-tier strategy is BELOW the floor — refused.
+      expect(permitsAction('observe', dispatchActionClass(mode))).toBe(false);
     }
   });
 });

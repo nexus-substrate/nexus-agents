@@ -54,6 +54,11 @@ import {
   type MetaOutcomeObserver,
 } from '../../orchestration/meta-dispatcher.js';
 import { entrypointToolFor } from '../../orchestration/strategy-manifest-registry.js';
+import {
+  dispatchActionClass,
+  AuthorityRefusalError,
+  type DispatchMode,
+} from '../../orchestration/authority-tier-guard.js';
 import { runDevPipelineForGoal } from './dev-pipeline-tool.js';
 import { runPipelineForGoal } from './pipeline-tool.js';
 import { runConsensusForGoal } from './consensus-vote.js';
@@ -135,9 +140,20 @@ const NOTE =
   'wait for inline execution (run execute: true) in a later release. The other ' +
   'pipeline tools remain available as advanced force-strategy paths.';
 
-/** Maps validated input to the MetaOrchestrator input shape. */
+/**
+ * Maps validated input to the MetaOrchestrator input shape.
+ *
+ * Threads `requiredAuthority` derived from the DISPATCH MODE (#3920, ADR-0017) —
+ * this is the production writer that was missing, which left the authority-ladder
+ * router refusal as dead code. The router (meta-orchestrator `select`) refuses
+ * fail-closed when the selected/forced strategy would act ABOVE its declared
+ * tier; `dispatchActionClass` floors both modes at `suggest` so every live
+ * strategy passes and the guard fires only on a genuine above-tier action (an
+ * `observe`/undeclared strategy reaching dispatch). See {@link dispatchActionClass}.
+ */
 function toMetaInput(
-  input: RunInput
+  input: RunInput,
+  mode: DispatchMode
 ): Parameters<ReturnType<typeof createMetaOrchestrator>['select']>[0] {
   const signals: Record<string, unknown> = {};
   if (input.requiresConsensus !== undefined) signals.requiresConsensus = input.requiresConsensus;
@@ -146,13 +162,19 @@ function toMetaInput(
   if (input.isNovel !== undefined) signals.isNovel = input.isNovel;
   return {
     goal: input.goal,
+    requiredAuthority: dispatchActionClass(mode),
     ...(Object.keys(signals).length > 0 ? { signals } : {}),
     ...(input.forceStrategy !== undefined ? { forceStrategy: input.forceStrategy } : {}),
   };
 }
 
-/** Selects a strategy for a goal via the MetaOrchestrator. */
-function selectDecision(input: RunInput, logger?: ILogger): MetaDecision {
+/**
+ * Selects a strategy for a goal via the MetaOrchestrator. `mode` is the dispatch
+ * mode the selection feeds (#3920): it sets the `requiredAuthority` the
+ * authority-ladder router enforces, so `select` can refuse an above-tier action
+ * fail-closed at the router rather than after the fact.
+ */
+function selectDecision(input: RunInput, mode: DispatchMode, logger?: ILogger): MetaDecision {
   // Shadow-mode learned selection (#3551): the process-scoped selector + sink
   // log a would-be learned choice alongside the executed rule-based choice.
   // Never alters what runs; builds the comparison surface for offline eval.
@@ -161,7 +183,7 @@ function selectDecision(input: RunInput, logger?: ILogger): MetaDecision {
     shadowSelector: getShadowSelector(),
     shadowSink: getShadowSink(),
   });
-  return meta.select(toMetaInput(input));
+  return meta.select(toMetaInput(input, mode));
 }
 
 /**
@@ -169,7 +191,7 @@ function selectDecision(input: RunInput, logger?: ILogger): MetaDecision {
  * (read-only — no execution). Exported for testing.
  */
 export function routeGoal(input: RunInput, logger?: ILogger): RunResponse {
-  const decision = selectDecision(input, logger);
+  const decision = selectDecision(input, 'route', logger);
   return {
     strategy: decision.strategy,
     reasoning: decision.reasoning,
@@ -276,7 +298,10 @@ export async function executeGoal(
     readonly trustTier?: string | undefined;
   } = {}
 ): Promise<RunExecuteResponse> {
-  const decision = selectDecision(input, opts.logger);
+  // The authority-ladder guard fires inside `select` (#3920): an above-tier
+  // dispatch is refused fail-closed (AuthorityRefusalError) here, BEFORE any
+  // executor runs.
+  const decision = selectDecision(input, 'execute', opts.logger);
   const onOutcome = opts.onOutcome ?? buildShadowTrainObserver(opts.logger);
   const dispatcher = createMetaDispatcher({
     executors: opts.executors ?? buildDefaultExecutors(opts.trustTier),
@@ -284,7 +309,7 @@ export async function executeGoal(
     ...(opts.outcomeSink !== undefined ? { outcomeSink: opts.outcomeSink } : {}),
     ...(onOutcome !== undefined ? { onOutcome } : {}),
   });
-  const dispatch = await dispatcher.dispatch(decision, toMetaInput(input));
+  const dispatch = await dispatcher.dispatch(decision, toMetaInput(input, 'execute'));
   return {
     strategy: dispatch.strategy,
     decisionId: dispatch.decisionId,
@@ -323,8 +348,12 @@ async function executeRunBody(
     return toolSuccess(JSON.stringify(exec, null, 2));
   } catch (err) {
     const noExecutor = err instanceof MetaDispatchError && err.code === 'no_executor';
+    // #3920: an authority-ladder refusal is a fail-closed POLICY outcome (the
+    // caller asked an above-tier strategy to act), not an internal fault — it is
+    // a `business` error, same class as a missing executor.
+    const refused = err instanceof AuthorityRefusalError;
     return toolStructuredError({
-      errorCategory: noExecutor ? 'business' : 'internal',
+      errorCategory: noExecutor || refused ? 'business' : 'internal',
       message: err instanceof Error ? err.message : String(err),
     });
   }
