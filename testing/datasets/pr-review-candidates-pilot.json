@@ -1,0 +1,308 @@
+[
+  {
+    "number": 3915,
+    "title": "feat(observability): propagate adapter per-voter tokens + non-silent cost drops (#3910)",
+    "proposedClass": "borderline",
+    "proposedSeverity": null,
+    "needsAdjudication": true,
+    "confidence": 0.4,
+    "provenance": {
+      "source": "historical",
+      "sourcePrUrl": "https://github.com/nexus-substrate/nexus-agents/pull/3915",
+      "objectiveSignals": {
+        "number": 3915,
+        "title": "feat(observability): propagate adapter per-voter tokens + non-silent cost drops (#3910)",
+        "url": "https://github.com/nexus-substrate/nexus-agents/pull/3915",
+        "changedSourceFiles": [
+          "packages/nexus-agents/src/cli/vote-types.ts",
+          "packages/nexus-agents/src/cli/voter-agents.ts",
+          "packages/nexus-agents/src/cli/voter-execution.ts",
+          "packages/nexus-agents/src/config/jsonl-store.ts",
+          "packages/nexus-agents/src/mcp/tools/decision-cost-recording.ts",
+          "packages/nexus-agents/src/observability/decision-cost-store.ts"
+        ],
+        "followUpFixes": [
+          {
+            "fixPrNumber": 3918,
+            "fixType": "fix",
+            "overlappingSourceFiles": [
+              "packages/nexus-agents/src/mcp/tools/decision-cost-recording.ts"
+            ]
+          }
+        ],
+        "reviewDecision": "REVIEW_REQUIRED"
+      },
+      "justification": "Later PR #3918 (fix(audit/observability): fail-loud audit persist failures + rate-limit dropped-cost warn (#3916)) touched the same source file(s) [packages/nexus-agents/src/mcp/tools/decision-cost-recording.ts], but the follow-up reads as a change outside a correctness/integrity domain. Real signal, NOT a confirmed runtime bug — flagged for human adjudication (Rule 4 / 5.1). Not guessed."
+    }
+  },
+  {
+    "number": 3913,
+    "title": "feat(observability): weather_report cost section + populate manifest costProfile (#3856)",
+    "proposedClass": "clean",
+    "proposedSeverity": null,
+    "needsAdjudication": false,
+    "confidence": 0.7,
+    "provenance": {
+      "source": "historical-clean",
+      "sourcePrUrl": "https://github.com/nexus-substrate/nexus-agents/pull/3913",
+      "objectiveSignals": {
+        "number": 3913,
+        "title": "feat(observability): weather_report cost section + populate manifest costProfile (#3856)",
+        "url": "https://github.com/nexus-substrate/nexus-agents/pull/3913",
+        "changedSourceFiles": [
+          "packages/nexus-agents/src/mcp/tools/weather-report-types.ts",
+          "packages/nexus-agents/src/mcp/tools/weather-report.ts",
+          "packages/nexus-agents/src/observability/decision-cost-aggregate.ts",
+          "packages/nexus-agents/src/observability/index.ts",
+          "packages/nexus-agents/src/orchestration/strategy-manifest-registry.ts",
+          "packages/nexus-agents/src/orchestration/strategy-manifest.ts"
+        ],
+        "followUpFixes": [],
+        "reviewDecision": "REVIEW_REQUIRED"
+      },
+      "justification": "No later PR fixed or reverted any source file #3913 touched (within the harvested window). Rule 3 clean candidate; a reviewer confirms no defensible medium+ objection from the diff before trusting."
+    }
+  },
+  {
+    "number": 3912,
+    "title": "refactor(eval): delegate PrReviewEvalStore persistence to shared JsonlStore<T> (#3906)",
+    "proposedClass": "clean",
+    "proposedSeverity": null,
+    "needsAdjudication": false,
+    "confidence": 0.7,
+    "provenance": {
+      "source": "historical-clean",
+      "sourcePrUrl": "https://github.com/nexus-substrate/nexus-agents/pull/3912",
+      "objectiveSignals": {
+        "number": 3912,
+        "title": "refactor(eval): delegate PrReviewEvalStore persistence to shared JsonlStore<T> (#3906)",
+        "url": "https://github.com/nexus-substrate/nexus-agents/pull/3912",
+        "changedSourceFiles": ["packages/nexus-agents/src/mcp/tools/pr-review-eval-store.ts"],
+        "followUpFixes": [],
+        "reviewDecision": "REVIEW_REQUIRED"
+      },
+      "justification": "No later PR fixed or reverted any source file #3912 touched (within the harvested window). Rule 3 clean candidate; a reviewer confirms no defensible medium+ objection from the diff before trusting."
+    }
+  },
+  {
+    "number": 3908,
+    "title": "feat(observability): per-voter, per-decision cost aggregation on consensus + pr_review (#3855)",
+    "proposedClass": "clean",
+    "proposedSeverity": null,
+    "needsAdjudication": false,
+    "confidence": 0.7,
+    "provenance": {
+      "source": "historical-clean",
+      "sourcePrUrl": "https://github.com/nexus-substrate/nexus-agents/pull/3908",
+      "objectiveSignals": {
+        "number": 3908,
+        "title": "feat(observability): per-voter, per-decision cost aggregation on consensus + pr_review (#3855)",
+        "url": "https://github.com/nexus-substrate/nexus-agents/pull/3908",
+        "changedSourceFiles": [
+          "packages/nexus-agents/src/cli/vote-types.ts",
+          "packages/nexus-agents/src/cli/voter-agents.ts",
+          "packages/nexus-agents/src/config/learning-persistence.ts",
+          "packages/nexus-agents/src/mcp/tools/consensus-vote-types.ts",
+          "packages/nexus-agents/src/mcp/tools/consensus-vote.ts",
+          "packages/nexus-agents/src/mcp/tools/decision-cost-recording.ts",
+          "packages/nexus-agents/src/mcp/tools/pr-review-tool.ts",
+          "packages/nexus-agents/src/observability/decision-cost-store.ts",
+          "packages/nexus-agents/src/observability/decision-cost.ts",
+          "packages/nexus-agents/src/observability/index.ts"
+        ],
+        "followUpFixes": [],
+        "reviewDecision": "REVIEW_REQUIRED"
+      },
+      "justification": "No later PR fixed or reverted any source file #3908 touched (within the harvested window). Rule 3 clean candidate; a reviewer confirms no defensible medium+ objection from the diff before trusting."
+    }
+  },
+  {
+    "number": 3905,
+    "title": "feat(eval): per-voter pr_review precision/recall metrics + persisted report (#3848)",
+    "proposedClass": "clean",
+    "proposedSeverity": null,
+    "needsAdjudication": false,
+    "confidence": 0.7,
+    "provenance": {
+      "source": "historical-clean",
+      "sourcePrUrl": "https://github.com/nexus-substrate/nexus-agents/pull/3905",
+      "objectiveSignals": {
+        "number": 3905,
+        "title": "feat(eval): per-voter pr_review precision/recall metrics + persisted report (#3848)",
+        "url": "https://github.com/nexus-substrate/nexus-agents/pull/3905",
+        "changedSourceFiles": [
+          "packages/nexus-agents/src/config/learning-persistence.ts",
+          "packages/nexus-agents/src/mcp/tools/index.ts",
+          "packages/nexus-agents/src/mcp/tools/pr-review-eval-scoring.ts",
+          "packages/nexus-agents/src/mcp/tools/pr-review-eval-store.ts",
+          "packages/nexus-agents/src/mcp/tools/pr-review-eval-types.ts"
+        ],
+        "followUpFixes": [],
+        "reviewDecision": "REVIEW_REQUIRED"
+      },
+      "justification": "No later PR fixed or reverted any source file #3905 touched (within the harvested window). Rule 3 clean candidate; a reviewer confirms no defensible medium+ objection from the diff before trusting."
+    }
+  },
+  {
+    "number": 3900,
+    "title": "feat(observability): tool-fitness SignalCategory consumer in improvement_review (#3852)",
+    "proposedClass": "borderline",
+    "proposedSeverity": null,
+    "needsAdjudication": true,
+    "confidence": 0.4,
+    "provenance": {
+      "source": "historical",
+      "sourcePrUrl": "https://github.com/nexus-substrate/nexus-agents/pull/3900",
+      "objectiveSignals": {
+        "number": 3900,
+        "title": "feat(observability): tool-fitness SignalCategory consumer in improvement_review (#3852)",
+        "url": "https://github.com/nexus-substrate/nexus-agents/pull/3900",
+        "changedSourceFiles": [
+          "packages/nexus-agents/src/governance/tool-fitness-ledger.ts",
+          "packages/nexus-agents/src/mcp/tools/improvement-remediation-capability.ts",
+          "packages/nexus-agents/src/mcp/tools/improvement-remediation.ts",
+          "packages/nexus-agents/src/mcp/tools/improvement-review-tool-fitness.ts",
+          "packages/nexus-agents/src/mcp/tools/improvement-review.ts",
+          "packages/nexus-agents/src/mcp/tools/remediation-research.ts"
+        ],
+        "followUpFixes": [
+          {
+            "fixPrNumber": 3929,
+            "fixType": "fix",
+            "overlappingSourceFiles": [
+              "packages/nexus-agents/src/mcp/tools/improvement-review-tool-fitness.ts"
+            ]
+          }
+        ],
+        "reviewDecision": "REVIEW_REQUIRED"
+      },
+      "justification": "Later PR #3929 (fix(governance): refine tool-fitness suggest-signal heuristics (#3902)) touched the same source file(s) [packages/nexus-agents/src/mcp/tools/improvement-review-tool-fitness.ts], but the follow-up reads as a heuristic refinement / no-behavior-change hardening. Real signal, NOT a confirmed runtime bug — flagged for human adjudication (Rule 4 / 5.1). Not guessed."
+    }
+  },
+  {
+    "number": 3899,
+    "title": "chore(governance): declare four un-issued loops' authority tiers + per-loop promotion-criteria docs (#3843, #3844)",
+    "proposedClass": "clean",
+    "proposedSeverity": null,
+    "needsAdjudication": false,
+    "confidence": 0.7,
+    "provenance": {
+      "source": "historical-clean",
+      "sourcePrUrl": "https://github.com/nexus-substrate/nexus-agents/pull/3899",
+      "objectiveSignals": {
+        "number": 3899,
+        "title": "chore(governance): declare four un-issued loops' authority tiers + per-loop promotion-criteria docs (#3843, #3844)",
+        "url": "https://github.com/nexus-substrate/nexus-agents/pull/3899",
+        "changedSourceFiles": [
+          "packages/nexus-agents/src/orchestration/loop-tier-manifest.ts",
+          "packages/nexus-agents/src/orchestration/loop-tier-registry.ts"
+        ],
+        "followUpFixes": [],
+        "reviewDecision": "REVIEW_REQUIRED"
+      },
+      "justification": "No later PR fixed or reverted any source file #3899 touched (within the harvested window). Rule 3 clean candidate; a reviewer confirms no defensible medium+ objection from the diff before trusting."
+    }
+  },
+  {
+    "number": 3893,
+    "title": "feat(audit): tier-transition audit events + ratification-linked promotion gate (#3842)",
+    "proposedClass": "buggy",
+    "proposedSeverity": "medium",
+    "needsAdjudication": true,
+    "confidence": 0.75,
+    "provenance": {
+      "source": "historical",
+      "sourcePrUrl": "https://github.com/nexus-substrate/nexus-agents/pull/3893",
+      "objectiveSignals": {
+        "number": 3893,
+        "title": "feat(audit): tier-transition audit events + ratification-linked promotion gate (#3842)",
+        "url": "https://github.com/nexus-substrate/nexus-agents/pull/3893",
+        "changedSourceFiles": [
+          "packages/nexus-agents/src/audit/audit-logger.ts",
+          "packages/nexus-agents/src/audit/audit-types.ts",
+          "packages/nexus-agents/src/audit/index.ts"
+        ],
+        "followUpFixes": [
+          {
+            "fixPrNumber": 3895,
+            "fixType": "fix",
+            "overlappingSourceFiles": ["packages/nexus-agents/src/audit/audit-types.ts"]
+          }
+        ],
+        "reviewDecision": "REVIEW_REQUIRED"
+      },
+      "justification": "Later PR #3895 (fix(governance): verify ratification-vote resolvability in promotion gate (#3894)) fixed/reverted the same correctness/integrity source file(s) [packages/nexus-agents/src/audit/audit-types.ts] #3893 introduced — a confirmed post-merge correction (Rule 5.3 gold). Severity proposed conservatively; the exact line + final severity are set during adjudication."
+    }
+  },
+  {
+    "number": 3886,
+    "title": "feat(orchestration): manifest-driven MetaOrchestrator router (#3836)",
+    "proposedClass": "borderline",
+    "proposedSeverity": null,
+    "needsAdjudication": true,
+    "confidence": 0.4,
+    "provenance": {
+      "source": "historical",
+      "sourcePrUrl": "https://github.com/nexus-substrate/nexus-agents/pull/3886",
+      "objectiveSignals": {
+        "number": 3886,
+        "title": "feat(orchestration): manifest-driven MetaOrchestrator router (#3836)",
+        "url": "https://github.com/nexus-substrate/nexus-agents/pull/3886",
+        "changedSourceFiles": [
+          "packages/nexus-agents/src/orchestration/meta-orchestrator-decision.ts",
+          "packages/nexus-agents/src/orchestration/meta-orchestrator-routing.ts",
+          "packages/nexus-agents/src/orchestration/meta-orchestrator.ts",
+          "packages/nexus-agents/src/orchestration/strategy-manifest-registry.ts",
+          "packages/nexus-agents/src/orchestration/strategy-manifest.ts"
+        ],
+        "followUpFixes": [
+          {
+            "fixPrNumber": 3892,
+            "fixType": "fix",
+            "overlappingSourceFiles": [
+              "packages/nexus-agents/src/orchestration/meta-orchestrator-routing.ts",
+              "packages/nexus-agents/src/orchestration/meta-orchestrator.ts",
+              "packages/nexus-agents/src/orchestration/strategy-manifest-registry.ts"
+            ]
+          }
+        ],
+        "reviewDecision": "REVIEW_REQUIRED"
+      },
+      "justification": "Later PR #3892 (fix(orchestration): harden manifest-driven router (#3888)) touched the same source file(s) [packages/nexus-agents/src/orchestration/meta-orchestrator-routing.ts, packages/nexus-agents/src/orchestration/meta-orchestrator.ts, packages/nexus-agents/src/orchestration/strategy-manifest-registry.ts], but the follow-up reads as a heuristic refinement / no-behavior-change hardening. Real signal, NOT a confirmed runtime bug — flagged for human adjudication (Rule 4 / 5.1). Not guessed."
+    }
+  },
+  {
+    "number": 3873,
+    "title": "feat(governance): claims registry + blocking claims:check gate (#3825, #3826)",
+    "proposedClass": "borderline",
+    "proposedSeverity": null,
+    "needsAdjudication": true,
+    "confidence": 0.4,
+    "provenance": {
+      "source": "historical",
+      "sourcePrUrl": "https://github.com/nexus-substrate/nexus-agents/pull/3873",
+      "objectiveSignals": {
+        "number": 3873,
+        "title": "feat(governance): claims registry + blocking claims:check gate (#3825, #3826)",
+        "url": "https://github.com/nexus-substrate/nexus-agents/pull/3873",
+        "changedSourceFiles": [
+          "packages/nexus-agents/src/governance/claims-registry.ts",
+          "packages/nexus-agents/src/governance/claims-verify.ts",
+          "packages/nexus-agents/src/governance/index.ts"
+        ],
+        "followUpFixes": [
+          {
+            "fixPrNumber": 3884,
+            "fixType": "fix",
+            "overlappingSourceFiles": [
+              "packages/nexus-agents/src/governance/claims-registry.ts",
+              "packages/nexus-agents/src/governance/claims-verify.ts"
+            ]
+          }
+        ],
+        "reviewDecision": "REVIEW_REQUIRED"
+      },
+      "justification": "Later PR #3884 (fix(governance): claims:check verifies subject docs + hardens weak methods (#3877, #3878, #3879, #3882)) touched the same source file(s) [packages/nexus-agents/src/governance/claims-registry.ts, packages/nexus-agents/src/governance/claims-verify.ts], but the follow-up reads as a heuristic refinement / no-behavior-change hardening. Real signal, NOT a confirmed runtime bug — flagged for human adjudication (Rule 4 / 5.1). Not guessed."
+    }
+  }
+]
