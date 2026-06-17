@@ -35,7 +35,7 @@ import {
   AUDIT_HASH_VERSION_TIER_TRANSITION,
 } from './audit-types.js';
 import { FileAuditStorage } from './audit-storage.js';
-import { canonicalTierTransition } from './tier-transition-hash.js';
+import { canonicalTierTransition, isTierTransitionEvent } from './tier-transition-hash.js';
 
 // ============================================================================
 // ID Generation
@@ -53,11 +53,13 @@ function generateEventId(): string {
 
 /**
  * Compute the tamper-evidence hash of an event under a VERSIONED projection
- * (#3921). A v1/version-less event hashes only the stable head fields; a v2
- * event additionally folds in the canonicalized `metadata.tierTransition`
- * payload, so a tier-transition's integrity-critical fields are chain-covered.
- * Pre-existing v1 chains keep verifying — the projection is keyed off the event's
- * own `hashVersion`.
+ * (#3921). A non-transition event hashes only the stable head fields (the v1
+ * projection, byte-identical to pre-#3921 — so existing chains keep verifying);
+ * a tier-transition event additionally folds in `hashVersion: 2` and the
+ * canonicalized `metadata.tierTransition` payload, so its integrity-critical
+ * fields are chain-covered. The version is DERIVED from the covered head fields
+ * (see {@link isTierTransitionEvent}), never read from the mutable stored
+ * `hashVersion`, so a tampered/stripped version field cannot downgrade the hash.
  */
 function computeEventHash(event: AuditEvent): string {
   const projection: Record<string, unknown> = {
@@ -69,8 +71,8 @@ function computeEventHash(event: AuditEvent): string {
     actor: event.actor,
     previousHash: event.previousHash,
   };
-  if (event.hashVersion === AUDIT_HASH_VERSION_TIER_TRANSITION) {
-    projection['hashVersion'] = event.hashVersion;
+  if (isTierTransitionEvent(event)) {
+    projection['hashVersion'] = AUDIT_HASH_VERSION_TIER_TRANSITION;
     const raw = event.metadata?.[TIER_TRANSITION_METADATA_KEY];
     projection['tierTransition'] = canonicalTierTransition(raw);
   }
@@ -343,11 +345,11 @@ export class AuditLogger implements IAuditLogger {
       previousHash: this.enableHashChain ? (this.lastHash ?? undefined) : undefined,
     };
 
-    // #3921: a tier-transition event carries its integrity-critical payload in
-    // metadata; stamp the v2 hash version BEFORE hashing so computeEventHash
-    // folds the canonicalized payload into the chain.
-    if (input.metadata?.[TIER_TRANSITION_METADATA_KEY] !== undefined)
-      event.hashVersion = AUDIT_HASH_VERSION_TIER_TRANSITION;
+    // #3921: stamp the v2 hash version on a tier-transition event for
+    // observability/schema. NOTE: computeEventHash DERIVES the version from the
+    // covered head fields (see isTierTransitionEvent), so this stamp is not
+    // load-bearing for integrity — it cannot be trusted to downgrade the hash.
+    if (isTierTransitionEvent(event)) event.hashVersion = AUDIT_HASH_VERSION_TIER_TRANSITION;
 
     if (this.enableHashChain) {
       event.hash = computeEventHash(event);

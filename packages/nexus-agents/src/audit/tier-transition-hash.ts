@@ -10,7 +10,21 @@
  * @module audit/tier-transition-hash
  */
 
-import { TierTransitionPayloadSchema } from './audit-types.js';
+import { TierTransitionPayloadSchema, type AuditEvent } from './audit-types.js';
+
+/**
+ * Identify a tier-transition event by its COVERED head fields — a `governance`
+ * event whose `action` is `tier.*` (the only emitter is `logTierTransition`) —
+ * NOT by the mutable `hashVersion` metadata field. This is the integrity hinge
+ * (#3921 downgrade fix): keying the v2 projection off the stored `hashVersion`
+ * let an attacker editing the plaintext log strip/alter that field to force the
+ * v1 head-only projection and silently flip `toTier`. Because `category` and
+ * `action` are themselves folded into the hash, an attacker cannot escape the
+ * payload-covering v2 projection without breaking the chain.
+ */
+export function isTierTransitionEvent(event: AuditEvent): boolean {
+  return event.category === 'governance' && event.action.startsWith('tier.');
+}
 
 /**
  * Canonicalize the tier-transition payload into a stable, key-ordered string for
