@@ -1,5 +1,103 @@
 # nexus-agents
 
+## 2.132.1
+
+### Patch Changes
+
+- [#3933](https://github.com/nexus-substrate/nexus-agents/pull/3933) [`112c715`](https://github.com/nexus-substrate/nexus-agents/commit/112c715542f8df4c3df39a77c89659aef71596a9) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(eval): pr_review case-curation pipeline + pilot batch ([#3847](https://github.com/nexus-substrate/nexus-agents/issues/3847))
+
+  First increment of [#3847](https://github.com/nexus-substrate/nexus-agents/issues/3847): a curation pipeline that grows the `pr_review` eval set
+  from the org's OWN merged PRs + their real review outcomes as ground truth (not
+  public datasets, not synthetic injection), plus a validated pilot batch.
+
+  **Pipeline (two modules, the labeling logic unit-tested).**
+  `scripts/curate-pr-review-harvest.ts` is the thin gh-fetch I/O layer: it harvests
+  merged PRs via `gh`, and for each extracts OBJECTIVE signals — the changed source
+  files, the GitHub review decision, and (critically) whether a LATER `fix`/`revert`
+  PR referenced it AND touched the same source files (a confirmed post-merge
+  correction, the rubric Rule 5.3 "gold" signal). `scripts/curate-pr-review-labeling.ts`
+  is the PURE signal→label core (zero I/O, fully tested in
+  `scripts/curate-pr-review-labeling.test.ts`): it applies the labeling rubric
+  (`docs/research/pr-review-eval-labeling-rubric.md`, [#3846](https://github.com/nexus-substrate/nexus-agents/issues/3846)) to PROPOSE a class +
+  severity per case.
+
+  **No invented labels.** A PR with no post-merge-fix signal is proposed `clean`
+  (Rule 3). A confirmed `fix`/`revert` in a correctness/integrity domain is proposed
+  `buggy` at the `medium` floor (never auto-escalated; Rule 5.1). An ambiguous
+  follow-up (heuristic refinement, no-behaviour-change hardening, or outside a
+  correctness domain) is proposed `borderline` with `needsAdjudication: true` —
+  flagged for a human, NEVER guessed into buggy/clean (Rule 4). Every proposal is
+  emitted with full provenance: the real source PR URL, the objective signals used,
+  and a confidence + justification.
+
+  **Pilot output (separate file, the validated v5 set untouched).** Running the
+  pipeline against `nexus-substrate/nexus-agents` produced a 10-case pilot in
+  `testing/datasets/pr-review-candidates-pilot.json` — 1 buggy / 5 clean / 4
+  borderline, 5 flagged for adjudication, every case citing a real merged PR. This
+  needs label-quality review before the eval set trusts it; scaling to n>=50 is a
+  follow-up under [#3847](https://github.com/nexus-substrate/nexus-agents/issues/3847).
+
+- [#3935](https://github.com/nexus-substrate/nexus-agents/pull/3935) [`a63aa3a`](https://github.com/nexus-substrate/nexus-agents/commit/a63aa3a0daf0f0da7bc9077b7d8c832edc9d536e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(eval): generalize pr_review labeler bug-signal beyond path-prefix ([#3847](https://github.com/nexus-substrate/nexus-agents/issues/3847))
+
+  The pr_review case-curation labeler (`scripts/curate-pr-review-labeling.ts`) was
+  systematically too conservative: it gated `buggy` off a narrow correctness-domain
+  PATH-PREFIX allowlist, so real bug-corrections that touched files outside those
+  prefixes (a CI gate that did not read its doc, a router split-brain, a silently
+  dropped cost record) were mislabeled `borderline`.
+
+  The signal that distinguishes a real bug-correction from a mere refinement is the
+  NATURE of the corrective change, not its path. The labeler now classifies the
+  referenced follow-up's KIND from objective fields it already has — the corrective
+  PR's conventional-commit type prefix (`fix(` vs `refactor(`/`feat(`/`perf(`) plus
+  keyword signals in its title:
+
+  - defect-fix (adds a guard/fail-loud/error-handling for a silent failure, makes a
+    cosmetic gate actually resolve/validate, corrects a split-brain/tie-break, or is
+    a `revert`) → `buggy`;
+  - refinement (refines heuristics / tunes thresholds / no-behavior-change hardening
+    / quality) → `clean`;
+  - a bare `fix(` with neither marker → `borderline` (Rule 4), never guessed.
+
+  Severity stays at the `medium` floor (Rule 5.1) and escalates to `high` only on a
+  clear integrity-domain signal (governance/CI gate, router split-brain, auth/
+  security), never auto-`critical`. The path is now a severity escalator, not the
+  bug gate. No PR numbers are encoded in the logic; the 5 adjudicated pilot cases
+  are added as held-out regression tests.
+
+- [#3937](https://github.com/nexus-substrate/nexus-agents/pull/3937) [`a74e748`](https://github.com/nexus-substrate/nexus-agents/commit/a74e74801e0ad2c1f1d3f50c26f0d6b5f974eb70) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(eval): promote 3 buggy + 6 long-tenure clean cases into the trusted pr_review sample (n=10→19) ([#3847](https://github.com/nexus-substrate/nexus-agents/issues/3847))
+
+  Strengthened promotion into the TRUSTED `pr_review` eval set
+  (`testing/datasets/pr-review-sample.json`). Nine REAL merged PRs from
+  `nexus-substrate/nexus-agents` are added via OUTCOME-MINING. Supersedes the held
+  [#3936](https://github.com/nexus-substrate/nexus-agents/issues/3936) attempt: the 3 buggy cases are reused verbatim, but the 6 clean cases are
+  RE-SOURCED from older long-tenure PRs (the [#3936](https://github.com/nexus-substrate/nexus-agents/issues/3936) clean cases were rejected — their
+  ~1-week no-corrective-PR window carried too high a false-clean risk).
+
+  **Buggy (3, reused verbatim)** — each `customDiff` carries the real ORIGINAL code
+  hunk the corrective PR later changed:
+
+  - **[#3915](https://github.com/nexus-substrate/nexus-agents/issues/3915)** (medium) — silently-swallowed audit/cost persist failures.
+    Corrective: **[#3918](https://github.com/nexus-substrate/nexus-agents/issues/3918)**.
+  - **[#3893](https://github.com/nexus-substrate/nexus-agents/issues/3893)** (high) — promotion gate only checked `ratificationVoteRef` non-empty,
+    never that it RESOLVED to a real approved vote. Corrective: **[#3895](https://github.com/nexus-substrate/nexus-agents/issues/3895)**.
+  - **[#3873](https://github.com/nexus-substrate/nexus-agents/issues/3873)** (high) — `claims:check` gate never READ the subject docs it claimed
+    to verify. Corrective: **[#3884](https://github.com/nexus-substrate/nexus-agents/issues/3884)**.
+
+  **Clean (6, long-tenure)** — merged 2026-04-25..2026-04-30, each clean only because
+  NO corrective/revert PR has touched its changed source file in the >6-week window
+  since merge:
+
+  - **[#2286](https://github.com/nexus-substrate/nexus-agents/issues/2286)** — Magentic-One Task/Progress Ledger (orchestration).
+  - **[#2288](https://github.com/nexus-substrate/nexus-agents/issues/2288)** — confirm_risky access-policy tier (security).
+  - **[#2289](https://github.com/nexus-substrate/nexus-agents/issues/2289)** — verify_audit_chain tool (mcp / audit).
+  - **[#2298](https://github.com/nexus-substrate/nexus-agents/issues/2298)** — supply_chain_tradeoff_panel (mcp).
+  - **[#2306](https://github.com/nexus-substrate/nexus-agents/issues/2306)** — init --portable command (cli).
+  - **[#2251](https://github.com/nexus-substrate/nexus-agents/issues/2251)** — soft-block aggregation tier (pr_review).
+
+  All 10 prior v5 cases are preserved unchanged. The dataset schema gains the
+  `outcome-mined` provenance source; the validator/test stays green (n=19, class
+  balance buggy=10 / clean=8 / borderline=1).
+
 ## 2.132.0
 
 ### Minor Changes
