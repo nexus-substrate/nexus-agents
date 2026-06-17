@@ -476,6 +476,27 @@ export {
   type PrReviewDeps,
 } from './pr-review-tool.js';
 
+// Per-voter pr_review eval precision/recall (#3848 — Epic E, parent #3845)
+export {
+  PR_REVIEW_EVAL_ROLES,
+  PrReviewEvalRoleSchema,
+  PrReviewCaseClassSchema,
+  VoterEvalVerdictSchema,
+  VoterEvalVerdictQuerySchema,
+} from './pr-review-eval-types.js';
+export type {
+  PrReviewEvalRole,
+  PrReviewCaseClass,
+  VoterEvalVerdict,
+  VoterEvalVerdictQuery,
+  VoterPrecisionRecall,
+  PerVoterPrecisionRecallReport,
+} from './pr-review-eval-types.js';
+export { scoreVoterCase, computePerVoterPrecisionRecall } from './pr-review-eval-scoring.js';
+export type { ScoreVoterCaseInput } from './pr-review-eval-scoring.js';
+export { PrReviewEvalStore } from './pr-review-eval-store.js';
+export type { PrReviewEvalStoreConfig } from './pr-review-eval-store.js';
+
 // Supply-chain tradeoff panel (#2294 — child of #2293, structured per-axis voting)
 export {
   registerSupplyChainTradeoffPanelTool,

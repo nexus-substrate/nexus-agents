@@ -38,6 +38,18 @@ export function getRulesFile(): string {
 }
 
 /**
+ * JSONL file for per-voter pr_review eval verdicts (#3848).
+ *
+ * Stores ONLY rubric-scored per-voter TP/FP/FN tallies vs ground truth — never
+ * raw diffs, prompts, or model outputs. Lets per-voter precision/recall accrue
+ * across runs so a chronically-noisy-voter demotion (Epic D / ADR-0017) has
+ * citable evidence.
+ */
+export function getPrReviewEvalFile(): string {
+  return join(getLearningDir(), 'pr-review-eval.jsonl');
+}
+
+/**
  * JSONL file for the MetaOrchestrator shadow selector's training outcomes
  * (#3593). Stores ONLY numeric/categorical bandit-feature values + a boolean
  * success flag — never raw task text. Lets the shadow selector learn across
