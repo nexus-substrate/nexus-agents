@@ -82,6 +82,55 @@ export function permitsAction(
   return authorityRank(actionClass) <= ceiling;
 }
 
+/**
+ * The two ways the `run` entry point dispatches a selected strategy, and the
+ * authority class each EXERCISES (#3920, ADR-0017). This is the "dispatch action
+ * → requiredAuthority" mapping that wires the guard to a real action class — the
+ * piece that was missing (the guard had no production writer of
+ * `requiredAuthority`, so it never fired).
+ *
+ * The interpretation is grounded in ADR-0017 §"The Four Tiers" and kept
+ * deliberately CONSERVATIVE (so today's correctly-declared flows are never
+ * spuriously refused — every live strategy is `suggest` or `advisory`):
+ *
+ *  - `route`  — read-only routing (`execute:false`): emits a recommendation the
+ *    caller may invoke. Per ADR-0017 `suggest` is exactly "produce a
+ *    recommendation … inert until a human acts on it", so routing is a
+ *    `suggest`-class action.
+ *  - `execute` — inline execution (`execute:true`): runs the selected engine and
+ *    returns its result. The `run` tool's result is still inert (it does not
+ *    merge, deploy, or gate a protected resource on the caller's behalf), so it
+ *    too floors at `suggest` — the same authority a recommendation carries.
+ *
+ * Flooring BOTH modes at `suggest` (not `observe`) is what gives the guard teeth
+ * without breaking parity: every live strategy is declared `suggest`+, so all
+ * pass; the guard fires fail-closed exactly on a genuine above-tier action —
+ *  - a strategy declared `observe` (signal-only: "no proposal, no … action")
+ *    being dispatched through `run` (which produces a recommendation/result),
+ *    refused `above_declared_tier`; and
+ *  - a strategy with NO declared tier reaching dispatch, refused `tier_undeclared`
+ *    (the runtime backstop behind the CI declaration gate).
+ *
+ * Higher action floors (e.g. an `advisory`/`enforce` dispatch surface) are a
+ * future, owner-approved widening once a higher-authority `run` action exists;
+ * pinning the floor at `suggest` keeps #3920 a wiring fix, not a behaviour change.
+ */
+export type DispatchMode = 'route' | 'execute';
+
+/**
+ * The authority class a {@link DispatchMode} exercises — the pure
+ * dispatch-action → action-class map (ADR-0017). Both production dispatch modes
+ * floor at `suggest`; see {@link DispatchMode} for the ADR-grounded rationale.
+ * Pure and exported so the wiring (`run-tool.ts`) and its regression test share
+ * one source of truth, and so the mapping is unit-testable in isolation.
+ */
+export function dispatchActionClass(_mode: DispatchMode): ActionClass {
+  // Both `route` and `execute` floor at `suggest` today (see DispatchMode docs).
+  // Kept as a function (not a constant) so a future per-mode widening is a
+  // localized, reviewable change at this single seam.
+  return 'suggest';
+}
+
 /** Why an authority guard refused. */
 export type AuthorityRefusalCode = 'above_declared_tier' | 'tier_undeclared';
 
