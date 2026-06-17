@@ -104,6 +104,7 @@ export function computeStats(dataset: PrReviewDataset): DatasetStats {
     historical: 0,
     'historical-clean': 0,
     synthetic: 0,
+    'outcome-mined': 0,
   };
   for (const c of dataset.prs) {
     byClass[c.class] += 1;
@@ -189,7 +190,8 @@ function printStats(): void {
   console.log(
     `source: historical=${String(s.bySource.historical)} ` +
       `historical-clean=${String(s.bySource['historical-clean'])} ` +
-      `synthetic=${String(s.bySource.synthetic)}`
+      `synthetic=${String(s.bySource.synthetic)} ` +
+      `outcome-mined=${String(s.bySource['outcome-mined'])}`
   );
   const target = 50;
   console.log(

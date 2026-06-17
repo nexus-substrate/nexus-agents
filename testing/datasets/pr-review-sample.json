@@ -1,8 +1,8 @@
 {
   "rubricVersion": "1.0.0",
-  "curatedAt": "2026-04-27T00:50:00Z",
-  "reAdjudicatedAt": "2026-06-16",
-  "methodology": "Hybrid v3 dataset, re-adjudicated under the pr_review eval labeling rubric v1.0.0 (#3846 — docs/research/pr-review-eval-labeling-rubric.md). 10 entries: 5 synthetic test cases with hand-crafted diff-readable bugs (ReDoS, off-by-one, missing await, null deref, resource leak — each at a known file:line) + 3 historical PRs (one with a real bug discovered by the v5 pr_review run itself — see #2235 entry) + 2 synthetic clean counterparts. Synthetic entries use customDiff to skip the GitHub fetch. Every entry now carries the rubric stamp: class (buggy|clean|borderline), severity per bug, provenance, and an adjudication rationale. Re-adjudication changes vs v5: synthetic-clean-refactor reclassified clean -> borderline (its v5 'false-positive' findings are defensible context-dependent concerns, not confirmed bugs — Rule 4); #2228 bug marked locationTolerance:structural (missing Record entry has no single line); all buggy cases gained an explicit severity. No buggy/clean label flipped except the clean -> borderline reclassification. #2235 was already reclassified clean -> buggy before this rubric (during v5, per #3846 history); v1 confirms it buggy under Rule 5.3.",
+  "curatedAt": "2026-06-17",
+  "reAdjudicatedAt": "2026-06-17",
+  "methodology": "Hybrid v3 dataset, re-adjudicated under the pr_review eval labeling rubric v1.0.0 (#3846 \u2014 docs/research/pr-review-eval-labeling-rubric.md). 10 entries: 5 synthetic test cases with hand-crafted diff-readable bugs (ReDoS, off-by-one, missing await, null deref, resource leak \u2014 each at a known file:line) + 3 historical PRs (one with a real bug discovered by the v5 pr_review run itself \u2014 see #2235 entry) + 2 synthetic clean counterparts. Synthetic entries use customDiff to skip the GitHub fetch. Every entry now carries the rubric stamp: class (buggy|clean|borderline), severity per bug, provenance, and an adjudication rationale. Re-adjudication changes vs v5: synthetic-clean-refactor reclassified clean -> borderline (its v5 'false-positive' findings are defensible context-dependent concerns, not confirmed bugs \u2014 Rule 4); #2228 bug marked locationTolerance:structural (missing Record entry has no single line); all buggy cases gained an explicit severity. No buggy/clean label flipped except the clean -> borderline reclassification. #2235 was already reclassified clean -> buggy before this rubric (during v5, per #3846 history); v1 confirms it buggy under Rule 5.3. | #3847 promotion (2026-06-17): added 9 cases via OUTCOME-MINING of the org's own merged PRs (nexus-substrate/nexus-agents) \u2014 the label is derived from the presence (buggy) or absence (clean) of a confirmed corrective follow-up PR in the harvested window, not from a hand-crafted/planted defect. This is distinct from the synthetic v5 cases (provenance.source 'outcome-mined' vs 'synthetic'): 3 buggy (#3915->#3918, #3893->#3895, #3873->#3884, each customDiff carrying the real original code hunk the corrective PR later changed) and 6 clean (#3913,#3912,#3908,#3905,#3900,#3899 \u2014 Rule 3 clean, confidence ~0.7 'no known defect', no corrective PR found). Owner-approved, independently-adjudicated pilot. #3886 was held by the owner and #3892 ('no live routing change') was unsettled \u2014 both excluded. All 10 prior v5 cases are preserved unchanged. n: 10 -> 19.",
   "rubricRef": "docs/research/pr-review-eval-labeling-rubric.md",
   "prs": [
     {
@@ -19,7 +19,7 @@
       },
       "knownBugs": [
         {
-          "summary": "ReDoS via catastrophic backtracking — overlapping character classes in lookahead + quantifier (CWE-1333)",
+          "summary": "ReDoS via catastrophic backtracking \u2014 overlapping character classes in lookahead + quantifier (CWE-1333)",
           "severity": "critical",
           "fixReference": "synthetic (real fix: #2216 / commit f1742153b)",
           "location": "packages/nexus-agents/src/security/input-sanitizer.ts:99",
@@ -48,7 +48,7 @@
       },
       "knownBugs": [
         {
-          "summary": "Off-by-one in clampPageSize — returns requested-1 in the in-range path; should return requested unchanged",
+          "summary": "Off-by-one in clampPageSize \u2014 returns requested-1 in the in-range path; should return requested unchanged",
           "severity": "medium",
           "fixReference": "synthetic",
           "location": "packages/nexus-agents/src/api/pagination.ts:18",
@@ -59,7 +59,7 @@
       "adjudication": {
         "adjudicatedAt": "2026-06-16",
         "adjudicatedUnder": "1.0.0",
-        "rationale": "Medium: wrong result on the in-range path is statable as a failing test — clampPageSize(50, 100) should be 50, returns 49. Off-by-one in a widely-called helper, but not a crash or security issue."
+        "rationale": "Medium: wrong result on the in-range path is statable as a failing test \u2014 clampPageSize(50, 100) should be 50, returns 49. Off-by-one in a widely-called helper, but not a crash or security issue."
       },
       "notes": "Architect or devex voter should flag: function name says 'clamp to range' but returns one-less than the input when in range. Test would assert clampPageSize(50, 100) === 50, this returns 49."
     },
@@ -77,7 +77,7 @@
       },
       "knownBugs": [
         {
-          "summary": "Missing await on refreshToken — async fire-and-forget, the call() runs with stale token",
+          "summary": "Missing await on refreshToken \u2014 async fire-and-forget, the call() runs with stale token",
           "severity": "high",
           "fixReference": "synthetic",
           "location": "packages/nexus-agents/src/auth/session.ts:46",
@@ -106,7 +106,7 @@
       },
       "knownBugs": [
         {
-          "summary": "Null deref on optional `response.timing` — schema marks timing as optional but code accesses .latencyMs unconditionally",
+          "summary": "Null deref on optional `response.timing` \u2014 schema marks timing as optional but code accesses .latencyMs unconditionally",
           "severity": "high",
           "fixReference": "synthetic",
           "location": "packages/nexus-agents/src/metrics/latency.ts:13",
@@ -117,7 +117,7 @@
       "adjudication": {
         "adjudicatedAt": "2026-06-16",
         "adjudicatedUnder": "1.0.0",
-        "rationale": "High: TypeError on a reachable path — the type says timing is optional, so any response without timing throws. Statable as a failing test: recordLatency([], { status: 200 }) throws."
+        "rationale": "High: TypeError on a reachable path \u2014 the type says timing is optional, so any response without timing throws. Statable as a failing test: recordLatency([], { status: 200 }) throws."
       },
       "notes": "Architect or devex voter should flag: ApiResponse.timing is optional (`?:`), but recordLatency dereferences without a guard. TypeError when response.timing is undefined. Failing test: recordLatency([], { status: 200 }) throws."
     },
@@ -135,7 +135,7 @@
       },
       "knownBugs": [
         {
-          "summary": "Listener leak — worker.on('progress', ...) added but never removed; finally/cleanup missing",
+          "summary": "Listener leak \u2014 worker.on('progress', ...) added but never removed; finally/cleanup missing",
           "severity": "medium",
           "fixReference": "synthetic",
           "location": "packages/nexus-agents/src/workers/progress.ts:8",
@@ -146,7 +146,7 @@
       "adjudication": {
         "adjudicatedAt": "2026-06-16",
         "adjudicatedUnder": "1.0.0",
-        "rationale": "Medium: resource leak on a long-lived worker — listeners accumulate across calls (no worker.off in finally), eventually MaxListenersExceededWarning then memory pressure. Not an immediate crash; statable as a failing test (11 sequential calls warn)."
+        "rationale": "Medium: resource leak on a long-lived worker \u2014 listeners accumulate across calls (no worker.off in finally), eventually MaxListenersExceededWarning then memory pressure. Not an immediate crash; statable as a failing test (11 sequential calls warn)."
       },
       "notes": "Architect or security voter should flag: long-lived workers (e.g. shared singleton) accumulate listeners across calls; eventually MaxListenersExceededWarning, then memory pressure. Need worker.off('progress', onProgress) in finally. Failing test: 11 sequential runWithProgress calls trigger MaxListeners warning."
     },
@@ -162,7 +162,7 @@
       },
       "knownBugs": [
         {
-          "summary": "Missing scope_steward entry in ROLE_VOTE_DISTRIBUTIONS — Type Check failed on first CI push (near voter-execution.ts:134)",
+          "summary": "Missing scope_steward entry in ROLE_VOTE_DISTRIBUTIONS \u2014 Type Check failed on first CI push (near voter-execution.ts:134)",
           "severity": "high",
           "fixReference": "4278f2739",
           "location": "packages/nexus-agents/src/cli/voter-execution.ts",
@@ -173,9 +173,9 @@
       "adjudication": {
         "adjudicatedAt": "2026-06-16",
         "adjudicatedUnder": "1.0.0",
-        "rationale": "High: a CI-detectable type error (broken build). locationTolerance:structural because the defect is a missing key in a Record-over-union relationship, not a single line — a finding matches when it names the missing scope_steward entry / the union-Record mismatch, regardless of line. This corrects the v5 'location miss', which was an artifact of scoring a structural defect against a single line."
+        "rationale": "High: a CI-detectable type error (broken build). locationTolerance:structural because the defect is a missing key in a Record-over-union relationship, not a single line \u2014 a finding matches when it names the missing scope_steward entry / the union-Record mismatch, regardless of line. This corrects the v5 'location miss', which was an artifact of scoring a structural defect against a single line."
       },
-      "notes": "Historical PR with CI-detectable bug — kept for cross-comparison with synthetic cases. A diff-only reviewer would need to spot the missing entry by reading the union+record relationship; harder than the synthetic cases."
+      "notes": "Historical PR with CI-detectable bug \u2014 kept for cross-comparison with synthetic cases. A diff-only reviewer would need to spot the missing entry by reading the union+record relationship; harder than the synthetic cases."
     },
     {
       "number": 2235,
@@ -189,9 +189,9 @@
       },
       "knownBugs": [
         {
-          "summary": "Wrong env var name in 429 message — uses GITHUB_API_KEY but GitHub uses GITHUB_TOKEN",
+          "summary": "Wrong env var name in 429 message \u2014 uses GITHUB_API_KEY but GitHub uses GITHUB_TOKEN",
           "severity": "medium",
-          "fixReference": "PR #2255 (caught by pr_review v5 — devex voter)",
+          "fixReference": "PR #2255 (caught by pr_review v5 \u2014 devex voter)",
           "location": "packages/nexus-agents/src/cli/research-helpers-sources.ts:108",
           "locationTolerance": "line"
         }
@@ -200,9 +200,9 @@
       "adjudication": {
         "adjudicatedAt": "2026-06-16",
         "adjudicatedUnder": "1.0.0",
-        "rationale": "Medium and confirmed buggy under Rule 5.3: the v5 devex voter flagged a real bug (the 429 hint told GitHub users to set a non-existent GITHUB_API_KEY; the standard var is GITHUB_TOKEN), fixed in #2255 with a regression test — the follow-up fix is the ground-truth evidence. Was reclassified clean -> buggy during v5 (already done per #3846 history); v1 confirms and stamps it. Wrong-guidance bug, not a crash, hence medium."
+        "rationale": "Medium and confirmed buggy under Rule 5.3: the v5 devex voter flagged a real bug (the 429 hint told GitHub users to set a non-existent GITHUB_API_KEY; the standard var is GITHUB_TOKEN), fixed in #2255 with a regression test \u2014 the follow-up fix is the ground-truth evidence. Was reclassified clean -> buggy during v5 (already done per #3846 history); v1 confirms and stamps it. Wrong-guidance bug, not a crash, hence medium."
       },
-      "notes": "Originally labeled clean — re-classified after the v5 retest of pr_review (#2241) flagged a real bug in this PR's diff. The rate-limit message used `${source.toUpperCase()}_API_KEY` for all sources, but GitHub uses GITHUB_TOKEN, not GITHUB_API_KEY. Caught by devex voter, fixed in #2255 with a regression test. This entry now serves as a real-world (not synthetic) buggy case — the kind the tool is designed to catch."
+      "notes": "Originally labeled clean \u2014 re-classified after the v5 retest of pr_review (#2241) flagged a real bug in this PR's diff. The rate-limit message used `${source.toUpperCase()}_API_KEY` for all sources, but GitHub uses GITHUB_TOKEN, not GITHUB_API_KEY. Caught by devex voter, fixed in #2255 with a regression test. This entry now serves as a real-world (not synthetic) buggy case \u2014 the kind the tool is designed to catch."
     },
     {
       "number": 2238,
@@ -238,7 +238,7 @@
       "knownBugs": [],
       "borderlineConcerns": [
         {
-          "summary": "Unused helper — no callers visible in the diff (catfish, v5). YAGNI flag; depends on context not in the diff.",
+          "summary": "Unused helper \u2014 no callers visible in the diff (catfish, v5). YAGNI flag; depends on context not in the diff.",
           "raisedBy": "pr_review v5 catfish voter"
         },
         {
@@ -251,7 +251,7 @@
         "adjudicatedUnder": "1.0.0",
         "rationale": "RECLASSIFIED clean -> borderline under Rule 4. v5 counted the catfish/devex findings as false positives, which drove the inflated 50% FP headline. Neither finding is a hallucination and neither is a confirmed bug: both depend on context not present in the diff (no callers shown; locale behavior works in practice). As borderline it is excluded from both the bug-catch numerator and the strict-FP numerator."
       },
-      "notes": "Clean refactor: single-purpose helper, named correctly, ET timezone preserved per CLAUDE.md. Reclassified to borderline because the v5 panel raised defensible context-dependent concerns (no callers in diff; locale-dependent formatter) — recorded in borderlineConcerns, not as bugs."
+      "notes": "Clean refactor: single-purpose helper, named correctly, ET timezone preserved per CLAUDE.md. Reclassified to borderline because the v5 panel raised defensible context-dependent concerns (no callers in diff; locale-dependent formatter) \u2014 recorded in borderlineConcerns, not as bugs."
     },
     {
       "number": "synthetic-clean-docs",
@@ -259,7 +259,7 @@
       "class": "clean",
       "title": "docs(api): clarify error codes returned by retry helper (synthetic clean case)",
       "customDescription": "Adds JSDoc enumerating the error codes the retry helper can return.",
-      "customDiff": "diff --git a/packages/nexus-agents/src/adapters/retry.ts b/packages/nexus-agents/src/adapters/retry.ts\nindex 0000001..0000002 100644\n--- a/packages/nexus-agents/src/adapters/retry.ts\n+++ b/packages/nexus-agents/src/adapters/retry.ts\n@@ -25,6 +25,11 @@ export interface RetryConfig {\n   readonly maxDelayMs: number;\n   readonly jitterFactor: number;\n }\n+\n+/**\n+ * Error codes that withRetry may surface in the Result<T, E> error path:\n+ * - RETRY_EXHAUSTED — all attempts failed; original error wrapped\n+ * - INVALID_CONFIG — config validation failed before any attempt\n+ */",
+      "customDiff": "diff --git a/packages/nexus-agents/src/adapters/retry.ts b/packages/nexus-agents/src/adapters/retry.ts\nindex 0000001..0000002 100644\n--- a/packages/nexus-agents/src/adapters/retry.ts\n+++ b/packages/nexus-agents/src/adapters/retry.ts\n@@ -25,6 +25,11 @@ export interface RetryConfig {\n   readonly maxDelayMs: number;\n   readonly jitterFactor: number;\n }\n+\n+/**\n+ * Error codes that withRetry may surface in the Result<T, E> error path:\n+ * - RETRY_EXHAUSTED \u2014 all attempts failed; original error wrapped\n+ * - INVALID_CONFIG \u2014 config validation failed before any attempt\n+ */",
       "provenance": {
         "source": "synthetic",
         "fixReference": null,
@@ -273,6 +273,219 @@
         "rationale": "Clean per Rule 3: docs-only JSDoc above an existing interface, zero code change, no behavioral risk, no defensible medium+ objection. Strict-FP denominator member."
       },
       "notes": "Clean docs-only change: adds JSDoc above an existing interface. No code change, no behavioral risk. Tests false-positive risk."
+    },
+    {
+      "number": 3915,
+      "rubricVersion": "1.0.0",
+      "class": "buggy",
+      "title": "feat(observability): propagate adapter per-voter tokens + non-silent cost drops (#3910)",
+      "customDescription": "Threads adapter per-call token usage through the voter execution path into the decision-cost rollup, and adds a persist signal so dropped cost rollups are countable. Confined to the cost-telemetry path.",
+      "customDiff": "diff --git a/packages/nexus-agents/src/audit/audit-logger.ts b/packages/nexus-agents/src/audit/audit-logger.ts\nindex 08e95a4983..0000000 100644\n--- a/packages/nexus-agents/src/audit/audit-logger.ts\n+++ b/packages/nexus-agents/src/audit/audit-logger.ts\n@@ -228,12 +228,12 @@ export class AuditLogger implements IAuditLogger {\n     // storage AND storage's own buffer must drain to disk on each tick.\n     // See #2979.\n     this.flushTimer = setInterval(() => {\n       this.flush().catch((err: unknown) => {\n         this.logger.error('Audit flush failed', err instanceof Error ? err : undefined);\n       });\n     }, this.flushIntervalMs);\n   }\n@@ -463,9 +463,9 @@ export class AuditLogger implements IAuditLogger {\n    */\n   async flush(): Promise<void> {\n     if (this.inFlightFlush !== null) return this.inFlightFlush;\n     const drain = this.drainAndFlushOnce().finally(() => {\n       this.inFlightFlush = null;\n     });\n     this.inFlightFlush = drain;\n     return drain;\n   }",
+      "provenance": {
+        "source": "outcome-mined",
+        "fixReference": "#3918",
+        "discoveredBy": null
+      },
+      "knownBugs": [
+        {
+          "summary": "Silently-swallowed audit/cost persist failures: the flush-timer's .catch logs once at error with no counter/escalation and flush() does not rethrow, so a failed audit-log write (a gap in the tamper-evident hash chain) and a dropped cost rollup vanish without a fail-loud signal.",
+          "severity": "medium",
+          "location": "packages/nexus-agents/src/audit/audit-logger.ts",
+          "locationTolerance": "structural",
+          "fixReference": "#3918"
+        }
+      ],
+      "borderlineConcerns": [],
+      "adjudication": {
+        "adjudicatedAt": "2026-06-17",
+        "adjudicatedUnder": "1.0.0",
+        "rationale": "Medium and confirmed buggy: corrective PR #3918 (fix(audit/observability): fail-loud audit persist failures + rate-limit dropped-cost warn) made AuditLogger.flush() record-then-rethrow with a persist-failure counter + escalation hook (fail-loud, because a dropped audit write breaks the hash chain per ADR-0017) and rate-limited the per-decision dropped-cost warn. The original swallow is observability loss on a security-relevant path, not a crash, hence medium."
+      },
+      "notes": "A good reviewer should flag that the flush-timer's .catch only logs once and flush() never rethrows, so an audit-persist failure is invisible to an awaiting governance caller and uncounted \u2014 a silent gap in the tamper-evident hash chain. Fixed by #3918 (fail-loud + counter + rate-limited cost warn)."
+    },
+    {
+      "number": 3893,
+      "rubricVersion": "1.0.0",
+      "class": "buggy",
+      "title": "feat(audit): tier-transition audit events + ratification-linked promotion gate (#3842)",
+      "customDescription": "Adds hash-chained tier-transition audit events and a promotion gate (analyzeTierTransitionEvents) under governance:check that is meant to enforce that authority-tier promotions are ratification-linked.",
+      "customDiff": "diff --git a/scripts/check-authority-tier-drift.ts b/scripts/check-authority-tier-drift.ts\nindex 0000001..0000002 100644\n--- a/scripts/check-authority-tier-drift.ts\n+++ b/scripts/check-authority-tier-drift.ts\n@@ -164,6 +164,18 @@ export function analyzeTierDeclarations(inputs: DriftInputs): TierDriftFinding[]\n+export function analyzeTierTransitionEvents(\n+  transitions: readonly TierTransitionPayload[]\n+): TierDriftFinding[] {\n+  const findings: TierDriftFinding[] = [];\n+  for (const t of transitions) {\n+    if (t.kind !== 'promotion') continue; // demotions are automatic \u2014 no vote required\n+    const ref = t.ratificationVoteRef;\n+    if (ref === undefined || ref.trim() === '') {\n+      findings.push({\n+        code: 'promotion-without-ratification',\n+        message: `tier-transition promotion of '${t.subject}' (${t.fromTier} \\u2192 ${t.toTier}) has NO linked ratificationVoteRef. Promotions MUST be ratification-linked (ADR-0017).`,\n+      });\n+    }\n+  }\n+  return findings;\n+}",
+      "provenance": {
+        "source": "outcome-mined",
+        "fixReference": "#3895",
+        "discoveredBy": null
+      },
+      "knownBugs": [
+        {
+          "summary": "Cosmetic promotion gate: analyzeTierTransitionEvents only fails a promotion when ratificationVoteRef is undefined/empty (ref.trim()===''), never that the ref RESOLVES to a real approved higher_order vote whose subject matches \u2014 so a bogus ratificationVoteRef:'x' passes and the 'ratification-linked' guarantee is only as strong as a non-empty string.",
+          "severity": "high",
+          "location": "scripts/check-authority-tier-drift.ts",
+          "locationTolerance": "structural",
+          "fixReference": "#3895"
+        }
+      ],
+      "borderlineConcerns": [],
+      "adjudication": {
+        "adjudicatedAt": "2026-06-17",
+        "adjudicatedUnder": "1.0.0",
+        "rationale": "High and confirmed buggy: corrective PR #3895 (fix(governance): verify ratification-vote resolvability in promotion gate) hardened the gate so a promotion's ref must resolve to a recorded, approved, higher_order vote with a matching subject (new codes promotion-ratification-unresolved / -not-approved / ratification-ledger-invalid; a bogus 'x' ref now fails). A governance enforcement gate that passes on any non-empty string is non-functional security control, hence high."
+      },
+      "notes": "A good reviewer should flag that the gate checks only presence/non-emptiness of ratificationVoteRef and never resolves it \u2014 a fabricated ref defeats the entire ratification-linkage invariant. Fixed by #3895 (resolve to approved higher_order vote with matching subject)."
+    },
+    {
+      "number": 3873,
+      "rubricVersion": "1.0.0",
+      "class": "buggy",
+      "title": "feat(governance): claims registry + blocking claims:check gate (#3825, #3826)",
+      "customDescription": "Adds a machine-verifiable claims registry plus a blocking claims:check CI gate so documentation drift fails the build; each claim has a subject doc and a verification recipe run against live source.",
+      "customDiff": "diff --git a/packages/nexus-agents/src/governance/claims-verify.ts b/packages/nexus-agents/src/governance/claims-verify.ts\nindex 0000001..0000002 100644\n--- a/packages/nexus-agents/src/governance/claims-verify.ts\n+++ b/packages/nexus-agents/src/governance/claims-verify.ts\n@@ -1,12 +1,15 @@\n+/**\n+ * Claims verification runner. Resolves each claim's verification.path against\n+ * live source and (as a baseline) the `subject` doc is checked for the claim.\n+ */\n@@ -129,9 +132,9 @@ const METHOD_VERIFIERS: ... = {\n+export function verifyClaim(claim: ClaimEntry, repoRoot: string, fs: ClaimFs): ClaimResult {\n+  const evidencePath = resolvePath(repoRoot, claim.verification.path);\n+  if (!fs.exists(evidencePath)) {\n+    return { id: claim.id, ok: false, detail: `evidence path missing: ${claim.verification.path}` };\n+  }\n+  // `file-exists` needs no read; every other method inspects the file body.\n+  const evidence = claim.verification.method === 'file-exists' ? '' : fs.read(evidencePath);\n+  const outcome = METHOD_VERIFIERS[claim.verification.method](claim.verification, evidence);\n+  return { id: claim.id, ok: outcome.ok, detail: outcome.detail };\n+}",
+      "provenance": {
+        "source": "outcome-mined",
+        "fixReference": "#3884",
+        "discoveredBy": null
+      },
+      "knownBugs": [
+        {
+          "summary": "claims:check gate never READ the subject docs it claimed to verify: verifyClaim resolves and checks only claim.verification.path (the source of truth) and returns, despite the module JSDoc promising the subject doc is checked \u2014 so README/ARCHITECTURE doc-drift (the exact thing the gate exists to catch) is never verified.",
+          "severity": "high",
+          "location": "packages/nexus-agents/src/governance/claims-verify.ts",
+          "locationTolerance": "structural",
+          "fixReference": "#3884"
+        }
+      ],
+      "borderlineConcerns": [],
+      "adjudication": {
+        "adjudicatedAt": "2026-06-17",
+        "adjudicatedUnder": "1.0.0",
+        "rationale": "High and confirmed buggy: corrective PR #3884 (fix(governance): claims:check verifies subject docs + hardens weak methods) added a subjectContains check so the runner confirms the claim literal is present in the subject doc (README.md/ARCHITECTURE.md), with a doc-drift regression test (source has 46 tools, README says 200 -> gate must fail). The just-merged gate did not do its advertised job (a no-op for doc drift), hence high."
+      },
+      "notes": "A good reviewer should flag the gap between the JSDoc ('the subject doc is checked') and verifyClaim, which never reads claim.subject \u2014 the gate verifies the source of truth but not that the doc making the claim still matches it, so documentation drift ships silently. Fixed by #3884 (subjectContains + comment-stripping + source-contains-all)."
+    },
+    {
+      "number": 3913,
+      "rubricVersion": "1.0.0",
+      "class": "clean",
+      "title": "feat(observability): weather_report cost section + populate manifest costProfile (#3856)",
+      "customDescription": "Surfaces what governed decisions cost by adding a cost section to weather_report and a pure cross-decision cost aggregator, riding the existing per-decision cost surface with no new MCP tool.",
+      "customDiff": "diff --git a/packages/nexus-agents/src/observability/decision-cost-aggregate.ts b/packages/nexus-agents/src/observability/decision-cost-aggregate.ts\nnew file mode 100644\nindex 0000000..0000001\n--- /dev/null\n+++ b/packages/nexus-agents/src/observability/decision-cost-aggregate.ts\n@@ -0,0 +1,30 @@\n+import type { DecisionGate, DecisionCostRecord } from './decision-cost-store.js';\n+\n+/** Per-gate windowed cost aggregate surfaced in the weather report (#3856). */\n+export interface GateCostAggregate {\n+  readonly gate: DecisionGate;\n+  readonly decisionCount: number;\n+  readonly avgCostUsd: number;\n+  readonly avgTokens: number;\n+  readonly totalCostUsd: number;\n+}\n+\n+export function aggregateDecisionCosts(\n+  records: readonly DecisionCostRecord[],\n+  windowMs: number\n+): DecisionCostReport {\n+  const byGate = new Map<DecisionGate, GateAcc>();\n+  for (const record of records) {\n+    const acc = byGate.get(record.gate) ?? emptyAcc();\n+    foldRecord(acc, record);\n+    byGate.set(record.gate, acc);\n+  }\n+  const aggregates = [...byGate.entries()]\n+    .map(([gate, acc]) => toAggregate(gate, acc))\n+    .sort((a, b) => b.totalCostUsd - a.totalCostUsd || a.gate.localeCompare(b.gate));\n+  return {\n+    windowMs,\n+    byGate: aggregates,\n+    totalDecisions: aggregates.reduce((sum, g) => sum + g.decisionCount, 0),\n+    totalCostUsd: roundUsd(aggregates.reduce((sum, g) => sum + g.totalCostUsd, 0)),\n+  };\n+}",
+      "provenance": {
+        "source": "outcome-mined",
+        "fixReference": null,
+        "discoveredBy": null
+      },
+      "knownBugs": [],
+      "borderlineConcerns": [],
+      "adjudication": {
+        "adjudicatedAt": "2026-06-17",
+        "adjudicatedUnder": "1.0.0",
+        "rationale": "Clean per Rule 3 (confidence ~0.7, no known defect): a pure, deterministic cross-decision cost aggregator + a report section riding existing telemetry, no new MCP tool. No corrective PR in the harvested window targets this diff."
+      },
+      "notes": "Clean: pure rollup function over already-windowed records, honest unmeasured/floor handling consistent with the per-decision layer; no behavioral risk surfaced. No corrective PR found."
+    },
+    {
+      "number": 3912,
+      "rubricVersion": "1.0.0",
+      "class": "clean",
+      "title": "refactor(eval): delegate PrReviewEvalStore persistence to shared JsonlStore<T> (#3906)",
+      "customDescription": "DRY refactor: replaces PrReviewEvalStore's hand-rolled JSONL file I/O (readFileSync/split/per-line JSON.parse + Zod-validate + corrupt-line skip) with the shared JsonlStore<T> primitive, leaving the module to own only the eval schema, query filtering and report surface.",
+      "customDiff": "diff --git a/packages/nexus-agents/src/mcp/tools/pr-review-eval-store.ts b/packages/nexus-agents/src/mcp/tools/pr-review-eval-store.ts\nindex 0000001..0000002 100644\n--- a/packages/nexus-agents/src/mcp/tools/pr-review-eval-store.ts\n+++ b/packages/nexus-agents/src/mcp/tools/pr-review-eval-store.ts\n@@ -21,15 +27,18 @@\n-import { appendFileSync, readFileSync, existsSync } from 'node:fs';\n-\n-import type { ILogger } from '../../core/index.js';\n-import { createLogger, getErrorMessage } from '../../core/index.js';\n+import { JsonlStore } from '../../config/jsonl-store.js';\n import { ensureLearningDir, getPrReviewEvalFile } from '../../config/learning-persistence.js';\n+import type { ILogger } from '../../core/index.js';\n+import { computePerVoterPrecisionRecall } from './pr-review-eval-scoring.js';\n import { VoterEvalVerdictSchema, VoterEvalVerdictQuerySchema } from './pr-review-eval-types.js';\n import type { VoterEvalVerdict, VoterEvalVerdictQuery } from './pr-review-eval-types.js';\n-import { computePerVoterPrecisionRecall } from './pr-review-eval-scoring.js';\n import type { PerVoterPrecisionRecallReport } from './pr-review-eval-types.js';",
+      "provenance": {
+        "source": "outcome-mined",
+        "fixReference": null,
+        "discoveredBy": null
+      },
+      "knownBugs": [],
+      "borderlineConcerns": [],
+      "adjudication": {
+        "adjudicatedAt": "2026-06-17",
+        "adjudicatedUnder": "1.0.0",
+        "rationale": "Clean per Rule 3 (confidence ~0.7, no known defect): a behavior-preserving DRY refactor onto the shared JsonlStore<T> primitive (matching the sibling tool-fitness ledger). No corrective PR in the harvested window targets this diff."
+      },
+      "notes": "Clean refactor: deletes duplicated file-I/O in favor of the established shared primitive; persisted unit (TP/FP/FN tallies) and validation are preserved. No corrective PR found."
+    },
+    {
+      "number": 3908,
+      "rubricVersion": "1.0.0",
+      "class": "clean",
+      "title": "feat(observability): per-voter, per-decision cost aggregation on consensus + pr_review (#3855)",
+      "customDescription": "Adds the per-decision cost aggregation layer rolling per-voter LLM usage into one DecisionCostSummary (total tokens/USD + per-voter and per-model breakdown), riding existing usage telemetry with no new MCP tool. Pure math layer; persistence and env reads live in callers.",
+      "customDiff": "diff --git a/packages/nexus-agents/src/observability/decision-cost.ts b/packages/nexus-agents/src/observability/decision-cost.ts\nnew file mode 100644\nindex 0000000..0000001\n--- /dev/null\n+++ b/packages/nexus-agents/src/observability/decision-cost.ts\n@@ -0,0 +1,24 @@\n+/**\n+ * decision-cost \u2014 per-DECISION cost aggregation over a governed panel's voters.\n+ *\n+ * Pure rollup (no I/O, no clock, no env reads at the math layer):\n+ * rollupDecisionCost takes the per-voter cost inputs + the billing mode and\n+ * returns a DecisionCostSummary. Design decisions the fixture tests pin:\n+ *  - Missing cost is UNMEASURED, not zero (a voter with no token counts is\n+ *    counted in unmeasuredVoters and contributes 0, but the total is recorded\n+ *    as a floor \u2014 treating unmeasured as $0 would silently understate spend).\n+ *  - Plan mode records 0-cost but keeps tokens.\n+ */\n+export function rollupDecisionCost(\n+  voters: readonly VoterCostInput[],\n+  billingMode: DecisionBillingMode\n+): DecisionCostSummary {\n+  let totalTokens = 0;\n+  let measuredVoters = 0;\n+  for (const v of voters) {\n+    if (v.inputTokens !== undefined || v.outputTokens !== undefined) measuredVoters += 1;\n+    totalTokens += (v.inputTokens ?? 0) + (v.outputTokens ?? 0);\n+  }\n+  // ... per-model + per-voter breakdown, plan-mode $0, floor flag ...\n+}",
+      "provenance": {
+        "source": "outcome-mined",
+        "fixReference": null,
+        "discoveredBy": null
+      },
+      "knownBugs": [],
+      "borderlineConcerns": [],
+      "adjudication": {
+        "adjudicatedAt": "2026-06-17",
+        "adjudicatedUnder": "1.0.0",
+        "rationale": "Clean per Rule 3 (confidence ~0.7, no known defect): a pure deterministic aggregation layer over existing per-call telemetry, no new MCP tool, with honest unmeasured/floor accounting pinned by fixture tests. No corrective PR in the harvested window targets this diff."
+      },
+      "notes": "Clean: pure rollup with explicit unmeasured-not-zero and plan-mode-0-cost handling; acceptance criteria pinned by fixtures. No corrective PR found. (Note: a later follow-up #3915 ADDED token plumbing/persist signal on top \u2014 it did not correct a defect in this diff.)"
+    },
+    {
+      "number": 3905,
+      "rubricVersion": "1.0.0",
+      "class": "clean",
+      "title": "feat(eval): per-voter pr_review precision/recall metrics + persisted report (#3848)",
+      "customDescription": "Records, per labeled eval case, each pr_review voter role's verdict against the rubric-adjudicated ground truth so per-voter precision/recall accrues over time. Record + measure only: no live routing/weighting change and no live LLM run.",
+      "customDiff": "diff --git a/packages/nexus-agents/src/mcp/tools/pr-review-eval-scoring.ts b/packages/nexus-agents/src/mcp/tools/pr-review-eval-scoring.ts\nnew file mode 100644\nindex 0000000..0000001\n--- /dev/null\n+++ b/packages/nexus-agents/src/mcp/tools/pr-review-eval-scoring.ts\n@@ -0,0 +1,22 @@\n+/**\n+ * Per-voter pr_review eval scoring + precision/recall report (#3848).\n+ * Two pure, deterministic functions:\n+ * - scoreVoterCase: apply the rubric (#3846) to one voter's outcome on one\n+ *   case, yielding a persistable VoterEvalVerdict with TP/FP/FN tallies.\n+ * - computePerVoterPrecisionRecall: fold a window of verdicts into per-role +\n+ *   aggregate precision/recall.\n+ * No I/O, no live routing change \u2014 record + measure only.\n+ */\n+import { PR_REVIEW_EVAL_ROLES } from './pr-review-eval-types.js';\n+import type {\n+  PrReviewCaseClass,\n+  PrReviewEvalRole,\n+  VoterEvalVerdict,\n+  VoterPrecisionRecall,\n+  PerVoterPrecisionRecallReport,\n+} from './pr-review-eval-types.js';\n+\n+export function scoreVoterCase(/* ... */): VoterEvalVerdict {\n+  // apply class rules to already-resolved matched-bug / verified-finding counts\n+}",
+      "provenance": {
+        "source": "outcome-mined",
+        "fixReference": null,
+        "discoveredBy": null
+      },
+      "knownBugs": [],
+      "borderlineConcerns": [],
+      "adjudication": {
+        "adjudicatedAt": "2026-06-17",
+        "adjudicatedUnder": "1.0.0",
+        "rationale": "Clean per Rule 3 (confidence ~0.7, no known defect): pure deterministic scoring/rollup, explicitly record-and-measure-only with no live routing change, location-tolerance matching delegated to the caller. No corrective PR in the harvested window targets this diff."
+      },
+      "notes": "Clean: pure scoring functions, no behavioral/routing change, conservative scope. No corrective PR found."
+    },
+    {
+      "number": 3900,
+      "rubricVersion": "1.0.0",
+      "class": "clean",
+      "title": "feat(observability): tool-fitness SignalCategory consumer in improvement_review (#3852)",
+      "customDescription": "Adds improvement_review's consumer of the tool-fitness ledger, surfacing deprecation and consolidation candidates under a new 'tool-fitness' SignalCategory. Output is suggest-tier only \u2014 never autonomous removal, guarded at runtime.",
+      "customDiff": "diff --git a/packages/nexus-agents/src/mcp/tools/improvement-review-tool-fitness.ts b/packages/nexus-agents/src/mcp/tools/improvement-review-tool-fitness.ts\nnew file mode 100644\nindex 0000000..0000001\n--- /dev/null\n+++ b/packages/nexus-agents/src/mcp/tools/improvement-review-tool-fitness.ts\n@@ -0,0 +1,24 @@\n+/**\n+ * Tool-fitness SignalCategory consumer for `improvement_review` (#3852).\n+ * Reads the per-tool fitness ledger and surfaces two kinds of suggest-tier\n+ * candidate: deprecation candidates (low recent invocations / poor success\n+ * rate over a meaningful sample) and consolidation candidates (overlapping\n+ * name family where one member is far less used than its siblings).\n+ *\n+ * EPIC F INVARIANT \u2014 NEVER autonomous removal. Output is SUGGEST-TIER ONLY:\n+ * every signal is a candidate for human review, severity caps at `warning`,\n+ * and assertNeverAutonomousRemoval encodes this as a runtime guard.\n+ */\n+export function deriveToolFitnessSignals(\n+  report: ToolFitnessReport\n+): ImprovementSignal[] {\n+  const signals: ImprovementSignal[] = [];\n+  // deprecation + consolidation candidates, capped at warning severity\n+  assertNeverAutonomousRemoval(signals);\n+  return signals;\n+}",
+      "provenance": {
+        "source": "outcome-mined",
+        "fixReference": null,
+        "discoveredBy": null
+      },
+      "knownBugs": [],
+      "borderlineConcerns": [],
+      "adjudication": {
+        "adjudicatedAt": "2026-06-17",
+        "adjudicatedUnder": "1.0.0",
+        "rationale": "Clean per Rule 3 (confidence ~0.7, no known defect): a read-only suggest-tier consumer with an explicit runtime guard against autonomous removal and a severity cap. No corrective PR in the harvested window targets this diff."
+      },
+      "notes": "Clean: read-only ledger consumer, suggest-tier output with a runtime no-autonomous-removal guard, severity capped at warning. No corrective PR found."
+    },
+    {
+      "number": 3899,
+      "rubricVersion": "1.0.0",
+      "class": "clean",
+      "title": "chore(governance): declare four un-issued loops' authority tiers + per-loop promotion-criteria docs (#3843, #3844)",
+      "customDescription": "Adds a versioned, Zod-validated loop-tier registry (governance/loop-tiers.yaml + typed constant) declaring the current authority tier of non-strategy loops, read by the existing authority-tier CI gate, plus per-loop promotion-criteria docs. Declaration/documentation only \u2014 zero behavior change.",
+      "customDiff": "diff --git a/packages/nexus-agents/src/orchestration/loop-tier-manifest.ts b/packages/nexus-agents/src/orchestration/loop-tier-manifest.ts\nnew file mode 100644\nindex 0000000..0000001\n--- /dev/null\n+++ b/packages/nexus-agents/src/orchestration/loop-tier-manifest.ts\n@@ -0,0 +1,20 @@\n+/**\n+ * Loop-tier manifest schema + loader (#3843, ADR-0017).\n+ * The authority ladder requires EVERY automated behaviour ('loop') to declare\n+ * how much authority its output carries (its AuthorityTier). Routable\n+ * strategies carry this on the strategy manifest; non-strategy loops (MCP\n+ * tools / internal stages) had NO declaration surface. THIS module is that\n+ * surface: a versioned, Zod-validated registry (governance/loop-tiers.yaml),\n+ * read by the #3841 CI gate. #3843 is documentation + declaration \u2014\n+ * zero behaviour change. MIRRORS the claims-registry / strategy-manifest\n+ * pattern (versioned YAML + Zod schema + embedded constant + lockstep test).\n+ */\n+export const LoopTierManifestSchema = z.object({\n+  version: z.string(),\n+  loops: z.array(LoopTierEntrySchema),\n+});\n+export function loadLoopTiers(raw: unknown): LoopTierManifest {\n+  return LoopTierManifestSchema.parse(raw);\n+}",
+      "provenance": {
+        "source": "outcome-mined",
+        "fixReference": null,
+        "discoveredBy": null
+      },
+      "knownBugs": [],
+      "borderlineConcerns": [],
+      "adjudication": {
+        "adjudicatedAt": "2026-06-17",
+        "adjudicatedUnder": "1.0.0",
+        "rationale": "Clean per Rule 3 (confidence ~0.7, no known defect): declaration + documentation only, zero behavior change, mirroring the established claims-registry/strategy-manifest pattern with a lockstep test. No corrective PR in the harvested window targets this diff."
+      },
+      "notes": "Clean: a versioned governance registry + docs with zero behavioral change, guarded by the existing authority-tier gate and a lockstep test. No corrective PR found."
     }
   ]
 }
