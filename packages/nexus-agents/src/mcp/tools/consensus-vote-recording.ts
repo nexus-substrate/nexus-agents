@@ -15,6 +15,9 @@ import {
   getRandomProvider,
 } from '../../core/index.js';
 import type { AgentVoteResult } from '../../cli/vote-types.js';
+import type { ConsensusResult } from '../../consensus/types.js';
+import type { VoteRecord } from '../../audit/vote-record.js';
+import { persistVoteRecord } from '../../audit/vote-record-store.js';
 import { getToolMemory } from './tool-memory.js';
 import {
   getOutcomeStore,
@@ -75,6 +78,54 @@ export function recordVoteSuccess(
   if (votes !== undefined) {
     recordVoteOutcomes(votes);
   }
+}
+
+/** Strategy values that map cleanly onto a {@link VoteRecord} strategy. */
+const VOTE_RECORD_STRATEGIES: ReadonlySet<VoteRecord['strategy']> = new Set([
+  'simple_majority',
+  'supermajority',
+  'unanimous',
+  'higher_order',
+  'opinion_wise',
+  'proof_of_learning',
+]);
+
+/** Narrow an arbitrary strategy string to the record enum, defaulting safely. */
+function toRecordStrategy(strategy: string): VoteRecord['strategy'] {
+  return VOTE_RECORD_STRATEGIES.has(strategy as VoteRecord['strategy'])
+    ? (strategy as VoteRecord['strategy'])
+    : 'simple_majority';
+}
+
+/**
+ * Persist an authentic, hash-chained vote record to the committable governance
+ * artifact at vote time (#3897). Best-effort: a persist failure must never fail
+ * the vote, so the store swallows + logs. Skips all-simulated runs (random
+ * output must not seed a committed record). Returns the written record (or
+ * undefined when skipped / no committable location).
+ */
+export function recordAuthenticVote(args: {
+  proposal: string;
+  strategy: string;
+  result: ConsensusResult;
+  votes: readonly AgentVoteResult[];
+  correlationId?: string | undefined;
+}): VoteRecord | undefined {
+  const allSimulated = args.votes.length > 0 && args.votes.every((v) => v.source === 'simulation');
+  if (allSimulated) {
+    logger.debug('Skipping authentic vote record — all votes simulated');
+    return undefined;
+  }
+  const id = `vote-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 9)}`;
+  return persistVoteRecord({
+    id,
+    proposal: args.proposal,
+    strategy: toRecordStrategy(args.strategy),
+    result: args.result,
+    votes: args.votes,
+    ...(args.correlationId !== undefined ? { correlationId: args.correlationId } : {}),
+    logger,
+  });
 }
 
 /** Records a failed consensus vote to session memory. Best-effort. */
