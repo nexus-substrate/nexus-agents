@@ -118,10 +118,26 @@ const DEFECT_FIX_MARKERS: readonly string[] = [
   'drop',
   'dropped',
   'missing',
-  'cosmetic',
   'actually',
   'error-handling',
   'error handling',
+  // Unambiguous defect signals: a fix preventing one of these is a bug
+  // correction even if its title also mentions the mechanism it tuned (#3935
+  // review — the defect/refinement collision is resolved as ambiguous below).
+  'crash',
+  'crashes',
+  'oom',
+  'out of memory',
+  'memory leak',
+  'leak',
+  'corrupt',
+  'corruption',
+  'deadlock',
+  'overflow',
+  'regression',
+  'broken',
+  'data loss',
+  'race condition',
 ];
 
 /**
@@ -149,6 +165,12 @@ const REFINEMENT_MARKERS: readonly string[] = [
   'cleanup',
   'clean up',
 ];
+// NOTE (#3935 review): "cosmetic" is deliberately in NEITHER marker set. It is
+// genuinely ambiguous — "cosmetic padding adjustment" means trivial (not a bug)
+// while "make the cosmetic gate actually resolve" means the gate was
+// non-functional (a real defect). A title carrying only "cosmetic" therefore
+// falls through to `ambiguous` → borderline+needsAdjudication rather than being
+// confidently mislabeled either way.
 
 /**
  * Integrity-domain markers that, on a CONFIRMED defect-fix, justify escalating
@@ -198,15 +220,21 @@ type FixKind = 'defect' | 'refinement' | 'ambiguous';
  *  - `revert` is always a confirmed defect correction.
  *  - A non-`fix`/non-`revert` follow-up (`refactor`/`feat`/`perf`/…) is not a
  *    bug-correction → `refinement`.
- *  - A `fix(`-typed follow-up: REFINEMENT keywords win (it tuned, didn't
- *    correct); otherwise DEFECT keywords → `defect`. A bare `fix(` with neither
- *    marker is genuinely `ambiguous` → borderline (we do NOT guess it buggy).
+ *  - A `fix(`-typed follow-up: a defect+refinement COLLISION (both signals
+ *    present, e.g. "tune GC to prevent OOM crash") is genuinely `ambiguous` →
+ *    borderline — a refinement word must NOT mask a real defect-fix, nor do we
+ *    confidently call it buggy. Defect-only → `defect`; refinement-only →
+ *    `refinement`; a bare `fix(` with neither marker is `ambiguous` (we do NOT
+ *    guess it buggy). (#3935 review hardening.)
  */
 function classifyFix(fix: FollowUpFix, fixTitle: string): FixKind {
   if (fix.fixType === 'revert') return 'defect';
   if (fix.fixType !== 'fix') return 'refinement';
-  if (hasMarker(fixTitle, REFINEMENT_MARKERS)) return 'refinement';
-  if (hasMarker(fixTitle, DEFECT_FIX_MARKERS)) return 'defect';
+  const defect = hasMarker(fixTitle, DEFECT_FIX_MARKERS);
+  const refinement = hasMarker(fixTitle, REFINEMENT_MARKERS);
+  if (defect && refinement) return 'ambiguous';
+  if (defect) return 'defect';
+  if (refinement) return 'refinement';
   return 'ambiguous';
 }
 

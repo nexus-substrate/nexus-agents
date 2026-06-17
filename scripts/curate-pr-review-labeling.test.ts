@@ -144,6 +144,33 @@ describe('proposeLabel — rubric decision table', () => {
     expect(l.class).toBe('buggy');
   });
 
+  // #3935 review (Contrarian): the keyword sets must not produce confident-WRONG
+  // labels on title collisions. A refinement word must NOT mask a real defect-fix
+  // (→ borderline, not a false 'clean'), and 'cosmetic' means trivial (→ clean,
+  // not a false 'buggy'). These two are the adversarial counterexamples.
+  it('does NOT label a real defect-fix clean just because the title also says "tune" (collision → borderline)', () => {
+    const l = proposeLabel(
+      signals({ followUpFixes: [fix()] }),
+      new Map([[200, 'fix(memory): tune GC to prevent OOM crash']])
+    );
+    // defect markers (oom/crash) + refinement marker (tune) → ambiguous, NOT clean.
+    expect(l.class).toBe('borderline');
+    expect(l.needsAdjudication).toBe(true);
+  });
+
+  it('does NOT label a bare "cosmetic" fix buggy — the word is ambiguous → borderline, never a false buggy', () => {
+    // "cosmetic" is in NEITHER marker set (it means trivial in "cosmetic padding"
+    // but non-functional in "cosmetic gate made to resolve"). With no other
+    // marker it falls to borderline+adjudication, NOT a confident buggy label.
+    const l = proposeLabel(
+      signals({ followUpFixes: [fix()] }),
+      new Map([[200, 'fix(ui): cosmetic padding adjustment']])
+    );
+    expect(l.class).toBe('borderline');
+    expect(l.needsAdjudication).toBe(true);
+    expect(l.severity).toBeNull();
+  });
+
   // ==========================================================================
   // Held-out regression cases — the 5 pilot PRs from the independent
   // adjudication (#3847). The fixtures encode each corrective PR's OBJECTIVE
