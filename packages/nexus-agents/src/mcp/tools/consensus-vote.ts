@@ -54,7 +54,11 @@ import {
   shouldEscalateLowPosterior,
 } from './consensus-vote-types.js';
 import { applyErrorPolicy } from './consensus-vote-error-policy.js';
-import { recordVoteSuccess, recordVoteError } from './consensus-vote-recording.js';
+import {
+  recordVoteSuccess,
+  recordVoteError,
+  recordAuthenticVote,
+} from './consensus-vote-recording.js';
 import { recordDecisionCost } from './decision-cost-recording.js';
 import { emitVoteRejectedSignal } from './consensus-vote-signals.js';
 import { getPipelineEventBus } from '../../pipeline/event-bus.js';
@@ -675,6 +679,41 @@ function finalizeVotingResult(args: {
 }
 
 // --- Handler & Registration ---
+/**
+ * Best-effort post-vote side effects, extracted to keep `handleConsensusVote`
+ * under the per-function line cap. Persists the authentic hash-chained vote
+ * record (#3897) and rolls up per-decision cost (#3855), sharing one decision
+ * id as the correlation key. Neither must fail the vote — both are guarded.
+ */
+function recordVoteSideEffects(
+  proposal: string,
+  strategy: string,
+  result: ExtendedVotingResult,
+  logger: ILogger
+): ReturnType<typeof recordDecisionCost> | undefined {
+  const decisionId = `consensus-${String(getTimeProvider().now())}-${randomUUID().slice(0, 8)}`;
+  // #3897: persist an authentic, hash-chained vote record to the committable
+  // governance artifact at vote time so the promotion gate/CI can rest
+  // authenticity on the chain, not on hand-transcribed YAML.
+  recordAuthenticVote({
+    proposal,
+    strategy,
+    result: result.result,
+    votes: result.votes,
+    correlationId: decisionId,
+  });
+  // #3855: roll up + persist this decision's per-voter cost and ride it on the
+  // existing response (no new MCP tool). A rollup failure must not fail the vote.
+  try {
+    return recordDecisionCost({ decisionId, gate: 'consensus_vote', votes: result.votes });
+  } catch (costError) {
+    logger.warn('Per-decision cost rollup failed (non-fatal)', {
+      error: getErrorMessage(costError),
+    });
+    return undefined;
+  }
+}
+
 async function handleConsensusVote(
   deps: ConsensusVoteDeps,
   args: ConsensusVoteInput
@@ -704,22 +743,7 @@ async function handleConsensusVote(
       result.totalTimeMs,
       result.votes
     );
-    // #3855: roll up + persist this decision's per-voter cost and ride it on the
-    // existing response (no new MCP tool). Best-effort — the store never throws,
-    // and a rollup failure must not fail the vote, so guard the whole step.
-    let costSummary;
-    try {
-      const decisionId = `consensus-${String(getTimeProvider().now())}-${randomUUID().slice(0, 8)}`;
-      costSummary = recordDecisionCost({
-        decisionId,
-        gate: 'consensus_vote',
-        votes: result.votes,
-      });
-    } catch (costError) {
-      logger.warn('Per-decision cost rollup failed (non-fatal)', {
-        error: getErrorMessage(costError),
-      });
-    }
+    const costSummary = recordVoteSideEffects(args.proposal, strategy, result, logger);
     // Close the self-tuning loop: a rejected vote emits signal.vote_rejected
     // onto the typed pipeline bus for the shadow TuneStage (#3147; #3289 Option 2).
     emitVoteRejectedSignal(result.result, getPipelineEventBus(), logger);
