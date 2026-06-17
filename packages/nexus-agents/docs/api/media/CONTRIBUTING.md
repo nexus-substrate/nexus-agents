@@ -412,6 +412,15 @@ pnpm test --watch
 - Include examples in documentation
 - Update the CHANGELOG.md for user-facing changes
 
+### Claims in README / ARCHITECTURE
+
+When a PR adds or changes a substantive claim in `README.md` or
+`ARCHITECTURE.md` (a count, a capability, a roadmap status), add or update a
+matching entry in `governance/claims-registry.yaml` so the **Claims Registry
+Drift** gate can verify it against live source. Run `pnpm claims:check` locally
+before pushing. See [docs/development/CLAIMS_REGISTRY.md](docs/development/CLAIMS_REGISTRY.md)
+for the entry shape, verification methods, and a worked example.
+
 ### JSDoc Example
 
 ````typescript

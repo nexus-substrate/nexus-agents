@@ -2,41 +2,82 @@
 
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/12365/badge)](https://www.bestpractices.dev/projects/12365) [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/nexus-substrate/nexus-agents/badge)](https://securityscorecards.dev/viewer/?uri=github.com/nexus-substrate/nexus-agents)
 
-> Governance substrate for your AI coding agents — adversarial review, drift-detected rules, immutable audit, closed-loop telemetry
+> Autonomic control plane for AI coding agents — one entry point, adversarial review, tamper-evident hash-chained audit, human-gated closed-loop tuning (autonomous demotion, earned promotion)
 
 [![npm version](https://img.shields.io/npm/v/nexus-agents)](https://www.npmjs.com/package/nexus-agents)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D22.0.0-brightgreen)](https://nodejs.org)
+[![Claims Registry Drift](https://img.shields.io/github/actions/workflow/status/nexus-substrate/nexus-agents/docs-check.yml?branch=main&label=claims%20registry)](https://github.com/nexus-substrate/nexus-agents/actions/workflows/docs-check.yml)
 
 ---
 
 ## Why Nexus Agents?
 
-**Nexus-agents is a governance layer that sits above your AI coding agents** — Claude Code, Codex, Gemini, and OpenCode. The agents do the engineering; nexus-agents enforces the rules they have to follow, reviews their work adversarially before it ships, audits everything they touch, and routes the next task based on what actually worked.
+**Nexus-agents is an autonomic control plane for your AI coding agents** — Claude Code, Codex, Gemini, and OpenCode. The agents are the _data plane_: they do the engineering. Nexus-agents is the _control plane_: it admits work through one entry point, reviews it adversarially before it ships, records every action in a tamper-evident event log, and closes the loop by tuning where the next task goes based on what actually worked.
+
+Borrowing the vocabulary of [autonomic computing](https://en.wikipedia.org/wiki/Autonomic_computing): the system runs a **MAPE-K** loop — Monitor, Analyze, Plan, Execute over a shared Knowledge base — so that operating your agent fleet is, as much as the evidence allows, self-managing rather than hand-driven.
+
+### The control-plane mapping
+
+Each classic control-plane role maps to a shipped nexus-agents component — the metaphor is load-bearing, not decoration:
+
+| Control-plane role | nexus-agents component                                    | What it does                                                              |
+| ------------------ | --------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Scheduler          | `run` / MetaOrchestrator                                  | One entry point picks (and optionally runs) the right strategy for a goal |
+| Admission control  | gates (`pr_review`, `consensus_vote`, `run_quality_gate`) | Adversarial review and quality gates decide what is allowed to ship       |
+| Event log          | `AuditTrail` hash chain + `verify_audit_chain`            | Append-only, tamper-evident record of every decision                      |
+| Data plane         | engineering CLIs                                          | Claude Code, Codex, Gemini, OpenCode do the file edits, tests, PRs        |
+
+### The MAPE-K loop
+
+```
+   ┌────────── Monitor ──────────┐        OutcomeStore · AuditTrail · swarm-health
+   │                             ▼        adapter circuit-breaker signals
+Execute ◀── Plan ◀── Analyze ◀───┘        LinUCB + TOPSIS scoring, consensus
+   │         │                            MetaOrchestrator strategy choice
+   │         └── route the next task ──────────────────────────────────────┐
+   ▼                                                                        │
+ run the strategy ── adversarial review ── audit ── feed outcome back ──────┘
+                              shared Knowledge: OutcomeStore + memory backends + audit log
+```
+
+### Self-\* capabilities
+
+Autonomic systems are described by their **self-\*** properties. Each row below maps to a loop that **exists in the codebase today** — nothing here is aspirational, and the authority each loop carries is bounded by [ADR-0017's authority ladder](docs/adr/0017-authority-ladder.md) (`observe → suggest → advisory → enforce`):
+
+| Self-\* property | What it means here                               | Implementing loop (shipped)                                                                                                                                  |
+| ---------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Self-configuring | Detects environment and wires itself in          | `nexus-agents setup` / `doctor` (`cli-commands.ts`) — detects CLIs, writes MCP config, reports health                                                        |
+| Self-healing     | Routes around failing dependencies automatically | Adapter circuit-breaker + swarm-health demotion (`cli-adapters/circuit-breaker.ts`); a capped, auto-decaying, demotion-only `TuneAdjustmentStore` adjustment |
+| Self-optimizing  | Learns where the next task should go             | Closed-loop `OutcomeStore` → LinUCB + TOPSIS scoring in the `CompositeRouter`                                                                                |
+| Self-protecting  | Constrains what untrusted input and tools can do | Trust-tiered input handling, ClawGuard access policies (audit/enforce), Docker/policy sandboxing (`security/`)                                               |
+
+> **Honesty note:** these loops sit at different rungs of the authority ladder. The self-tuning demotion is `enforce` but bounded (capped, auto-decaying, demotion-only); learned selection and other promotions are still **earned** per-loop against an evidence threshold plus ratification, not flipped on by default. See [ADR-0017](docs/adr/0017-authority-ladder.md).
 
 **What it gives you:**
 
 - **Adversarial PR review** — `pr_review` runs 5 voter roles (architect, security, devex, catfish, scope_steward) with a 4-point verification gate. On the v5 evaluation set (10 PRs): 100% bug-catch and 50% raw false-positive rate; manual triage reclassified most "FPs" as legitimate findings the dataset had mislabeled. Full numbers: [docs/research/pr-review-experiment-results-v5.md](docs/research/pr-review-experiment-results-v5.md)
 - **Drift-detected charter** — `CLAUDE.md` + `governance:check` + blocking CI gates fail the build when documented rules drift from registered behavior (model registry, MCP tools, expert types, skills)
-- **Immutable audit trail** — every tool call, every voter decision, every routing choice flows through `AuditTrail` with structured logging and hash-chained append-only storage; integrity is verifiable via the `verify_audit_chain` MCP tool
+- **Tamper-evident audit trail** — every tool call, every voter decision, every routing choice flows through `AuditTrail` with structured logging and hash-chained append-only storage; integrity is verifiable via the `verify_audit_chain` MCP tool (tamper-evident, not tamper-proof — see the [audit hash-chain threat model](docs/security/audit-hash-chain-threat-model.md))
 - **Closed-loop routing** — `OutcomeStore` feeds production telemetry back into LinUCB + TOPSIS scoring so the system actually learns from what shipped vs what regressed. A second, **bounded** loop runs by default: a `signal.swarm_unhealthy` (adapter circuit-breaker / swarm-health) applies a small, capped, auto-decaying routing demotion via `TuneAdjustmentStore` — demotion-only, never zeroes a CLI, every adjustment audited, opt-out with `NEXUS_TUNE_ENFORCE=false`
 - **Multi-voter consensus** — `consensus_vote` runs a default 7-role panel (architect, security, devex, ai_ml, pm, catfish, scope_steward; `--quick` uses 3). Six strategies: simple/super-majority, unanimous, higher-order Bayesian, opinion-wise, proof-of-learning
 
 ```
 You:               "Review this PR / orchestrate this task / vote on this proposal"
                     ↓
-nexus-agents:       enforce rules → route → adversarial review → audit → learn from outcome
+Control plane:      admit → schedule/route → adversarial review → audit → learn from outcome
                     ↓
-Engineering agents: Claude Code · Codex · Gemini · OpenCode
+Data plane (agents): Claude Code · Codex · Gemini · OpenCode
                     ↓
 Code:               actual edits, tests, PRs, issues
 ```
 
 **What this is NOT:**
 
-- **Not another autonomous coding agent.** OpenHands, SWE-agent, AutoGen, Devin, Factory — those are agents. Nexus-agents is the layer above them. Use whichever agents fit; we govern them
+- **Not another autonomous coding agent.** OpenHands, SWE-agent, AutoGen, Devin, Factory — those are the data plane. Nexus-agents is the control plane above them. Use whichever agents fit; we admit, review, audit, and route their work
 - **Not a chat framework.** Nothing here orchestrates conversations. It orchestrates real CLI tool invocations with real file I/O and outcome tracking
-- **Not a model API proxy.** The value is the rules, the gates, the audit, and the learning. Routing is a side effect of the governance work, not the product
+- **Not a model API proxy.** The value is the admission gates, the audit, and the closed-loop tuning. Routing is a consequence of the control-plane work, not the product
+- **Not fully autonomous.** "Autonomic" means self-managing within bounds, not unsupervised. Every loop's authority is capped by the authority ladder (ADR-0017); promotions to higher authority are earned against evidence and human ratification, never flipped on by default
 
 ---
 
@@ -48,18 +89,19 @@ Code:               actual edits, tests, PRs, issues
             │ MCP Protocol
             ▼
   ┌─────────────────────────────────────────────────────┐
-  │  GOVERNANCE SUBSTRATE — what nexus-agents provides   │
+  │  CONTROL PLANE — what nexus-agents provides          │
   │                                                       │
-  │   Charter (drift-checked)   Adversarial PR review    │
-  │   Role registry             Multi-voter consensus    │
-  │   Immutable audit trail     Closed-loop telemetry    │
+  │   Scheduler: run / MetaOrchestrator                  │
+  │   Admission control: PR review · consensus · gates   │
+  │   Event log: tamper-evident hash-chained audit       │
+  │   Closed-loop self-tuning (MAPE-K)                   │
   │                                                       │
   │   46 MCP tools · multi-stage CompositeRouter         │
   └────────────────────────┬────────────────────────────┘
                            │
                            ▼ delegates execution to
   ┌─────────────────────────────────────────────────────┐
-  │  ENGINEERING AGENTS — what does the actual work      │
+  │  DATA PLANE — the agents that do the actual work     │
   │                                                       │
   │   Claude Code · Codex · Gemini · OpenCode            │
   └────────────────────────┬────────────────────────────┘
@@ -68,7 +110,7 @@ Code:               actual edits, tests, PRs, issues
                    Code, tests, PRs, issues
 ```
 
-The governance substrate is the layer that catches the mistakes engineering agents would otherwise make — bad code shipped, rules drifting from intent, audit gaps, telemetry-free routing — and routes the next task based on what actually worked the last time.
+The control plane is the layer that catches the mistakes data-plane agents would otherwise make — bad code shipped, rules drifting from intent, audit gaps, telemetry-free routing — and routes the next task based on what actually worked the last time.
 
 ---
 
@@ -175,7 +217,7 @@ nexus-agents orchestrate "Explain the architecture of this codebase"
 | **Adversarial PR Review**      | `pr_review` MCP tool: 5 voter roles (architect, security, devex, catfish, scope_steward) with 4-point gate. v5 evaluation (n=10): 100% bug-catch, 50% raw FP rate; manual triage reclassified most FPs as legitimate findings ([details](docs/research/pr-review-experiment-results-v5.md)) |
 | **Consensus Voting**           | 6 strategies: simple_majority, supermajority, unanimous, higher_order (Bayesian correlation-aware), opinion_wise, proof_of_learning                                                                                                                                                         |
 | **Drift-Detected Charter**     | `CLAUDE.md` + `inject-governance.ts check` enforces single-source registries (model registry, MCP tools, expert types). Blocking CI gate fails build on drift                                                                                                                               |
-| **Audit Trail**                | Structured logging for every tool call, voter decision, and routing choice. Hash-chained immutable storage; integrity verifiable via `verify_audit_chain` MCP tool (#2281, #2289)                                                                                                           |
+| **Audit Trail**                | Structured logging for every tool call, voter decision, and routing choice. Tamper-evident hash-chained append-only storage (tamper-evident, not tamper-proof — see [threat model](docs/security/audit-hash-chain-threat-model.md)); integrity verifiable via `verify_audit_chain` MCP tool |
 | **Closed-Loop Telemetry**      | `OutcomeStore` feeds LinUCB + TOPSIS scoring; a second bounded, audited self-tuning loop demotes unhealthy CLIs (capped, auto-decaying, on by default, opt-out `NEXUS_TUNE_ENFORCE=false`)                                                                                                  |
 | **Security Pipeline**          | Sandboxing (Docker/policy), trust-tiered input handling, SARIF parsing, red-team patterns, ClawGuard access policies (audit/enforce)                                                                                                                                                        |
 | **Multi-Expert Orchestration** | 12 built-in expert types coordinated by Orchestrator. Roles bind prompt + tools + memory                                                                                                                                                                                                    |
