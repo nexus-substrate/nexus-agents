@@ -156,7 +156,14 @@ export async function executeAgentVote(
 
   if (result.ok) {
     logger.info('Vote completed', { role, model: adapter.modelId, decision: result.vote.decision });
-    return { role, vote: result.vote, processingTimeMs, source: 'llm', cli: adapter.providerId };
+    return {
+      role,
+      vote: result.vote,
+      processingTimeMs,
+      source: 'llm',
+      cli: adapter.providerId,
+      model: adapter.modelId,
+    };
   }
 
   // All retries exhausted

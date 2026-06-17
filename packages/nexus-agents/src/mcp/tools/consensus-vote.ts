@@ -55,6 +55,7 @@ import {
 } from './consensus-vote-types.js';
 import { applyErrorPolicy } from './consensus-vote-error-policy.js';
 import { recordVoteSuccess, recordVoteError } from './consensus-vote-recording.js';
+import { recordDecisionCost } from './decision-cost-recording.js';
 import { emitVoteRejectedSignal } from './consensus-vote-signals.js';
 import { getPipelineEventBus } from '../../pipeline/event-bus.js';
 import { warnIfSimulatedOutsideTests } from './simulation-guard.js';
@@ -703,10 +704,26 @@ async function handleConsensusVote(
       result.totalTimeMs,
       result.votes
     );
+    // #3855: roll up + persist this decision's per-voter cost and ride it on the
+    // existing response (no new MCP tool). Best-effort — the store never throws,
+    // and a rollup failure must not fail the vote, so guard the whole step.
+    let costSummary;
+    try {
+      const decisionId = `consensus-${String(getTimeProvider().now())}-${randomUUID().slice(0, 8)}`;
+      costSummary = recordDecisionCost({
+        decisionId,
+        gate: 'consensus_vote',
+        votes: result.votes,
+      });
+    } catch (costError) {
+      logger.warn('Per-decision cost rollup failed (non-fatal)', {
+        error: getErrorMessage(costError),
+      });
+    }
     // Close the self-tuning loop: a rejected vote emits signal.vote_rejected
     // onto the typed pipeline bus for the shadow TuneStage (#3147; #3289 Option 2).
     emitVoteRejectedSignal(result.result, getPipelineEventBus(), logger);
-    return { ok: true, value: buildResponse(args, result) };
+    return { ok: true, value: buildResponse(args, result, costSummary) };
   } catch (error) {
     const message = getErrorMessage(error);
     const cause = error instanceof Error ? error : new Error(message);

@@ -50,6 +50,19 @@ export function getPrReviewEvalFile(): string {
 }
 
 /**
+ * JSONL file for per-decision cost rollups (#3855).
+ *
+ * Stores ONLY the per-decision cost summary (per-voter / per-model token + USD
+ * totals) for a governed `consensus_vote` / `pr_review` run — never raw
+ * proposals, diffs, prompts, or model outputs. Lets "what did this governed
+ * decision cost?" be answered from recorded data (epic #3854; feeds Epic G's
+ * weather_report + manifest cost profiles in #3856).
+ */
+export function getDecisionCostFile(): string {
+  return join(getLearningDir(), 'decision-costs.jsonl');
+}
+
+/**
  * JSONL file for the MetaOrchestrator shadow selector's training outcomes
  * (#3593). Stores ONLY numeric/categorical bandit-feature values + a boolean
  * success flag — never raw task text. Lets the shadow selector learn across

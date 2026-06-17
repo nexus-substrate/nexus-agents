@@ -61,6 +61,27 @@ export {
 } from './swarm-health-signals.js';
 export type { SwarmHealthSignalsOptions } from './swarm-health-signals.js';
 
+// Per-decision cost aggregation (#3855, epic #3854)
+export { rollupDecisionCost, UNKNOWN_MODEL } from './decision-cost.js';
+export type {
+  DecisionBillingMode,
+  VoterCostInput,
+  VoterCostBreakdown,
+  ModelCostBreakdown,
+  DecisionCostSummary,
+} from './decision-cost.js';
+export {
+  DecisionCostStore,
+  DecisionCostRecordSchema,
+  DecisionGateSchema,
+} from './decision-cost-store.js';
+export type {
+  DecisionCostRecord,
+  DecisionGate,
+  DecisionCostStoreConfig,
+  RecordDecisionCostInput,
+} from './decision-cost-store.js';
+
 // Adapter-failover → pipeline-bus signal producer (#3321)
 export {
   startFailoverSignals,
