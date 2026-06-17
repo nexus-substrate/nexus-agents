@@ -201,8 +201,15 @@ export class AuditLogger implements IAuditLogger {
   private closed = false;
   private inFlightFlush: Promise<void> | null = null;
   private droppedEventCount = 0;
+  private persistFailureCount = 0;
+  private readonly onPersistFailure: ((error: Error) => void) | undefined;
 
-  constructor(config: AuditLogConfig, storage?: IAuditStorage, logger?: ILogger) {
+  constructor(
+    config: AuditLogConfig,
+    storage?: IAuditStorage,
+    logger?: ILogger,
+    onPersistFailure?: (error: Error) => void
+  ) {
     const validated = AuditLogConfigSchema.safeParse(config);
     if (!validated.success) {
       const issues = validated.error.issues
@@ -218,6 +225,7 @@ export class AuditLogger implements IAuditLogger {
     this.flushIntervalMs = validated.data.flushIntervalMs;
     this.maxQueueDepth = validated.data.maxQueueDepth;
     this.storage = storage ?? new FileAuditStorage(validated.data, this.logger);
+    this.onPersistFailure = onPersistFailure;
 
     this.startFlushTimer();
     this.logger.info('AuditLogger initialized', { logDir: config.logDir });
@@ -228,10 +236,57 @@ export class AuditLogger implements IAuditLogger {
     // storage AND storage's own buffer must drain to disk on each tick.
     // See #2979.
     this.flushTimer = setInterval(() => {
-      this.flush().catch((err: unknown) => {
-        this.logger.error('Audit flush failed', err instanceof Error ? err : undefined);
+      // The timer fires into nobody, so it cannot rethrow to a caller. flush()
+      // itself runs the fail-loud handler (error-log + counter + callback) on
+      // failure — #3916 / ADR-0017 — so the timer just absorbs the rethrow here
+      // to avoid an unhandled rejection. The failure is already observable.
+      this.flush().catch(() => {
+        /* fail-loud handling already ran inside flush(); swallow the rethrow */
       });
     }, this.flushIntervalMs);
+  }
+
+  /**
+   * Fail-loud handler for an audit-persist failure (#3916). A dropped/failed
+   * audit write undermines the tamper-evident hash chain (ADR-0017 /
+   * docs/security/audit-hash-chain-threat-model.md), so unlike the best-effort
+   * cost path this is NOT swallowed: it logs prominently at error level,
+   * increments a process-lifetime counter (exposed via
+   * {@link getPersistFailureCount}), and invokes the optional `onPersistFailure`
+   * hook so a governance consumer can escalate (e.g. raise/alert). Callers on the
+   * awaited flush()/close() path additionally receive the thrown error directly.
+   */
+  private recordPersistFailure(err: unknown): void {
+    this.persistFailureCount += 1;
+    const error = err instanceof Error ? err : new AuditError(String(err));
+    this.logger.error('AUDIT PERSIST FAILURE — audit event NOT durably written', error, {
+      totalPersistFailures: this.persistFailureCount,
+      hashChainEnabled: this.enableHashChain,
+    });
+    if (this.onPersistFailure !== undefined) {
+      // An escalation hook must never break the failure-recording path or mask
+      // the original audit error (it would otherwise throw past the counter +
+      // the flush() record-then-rethrow, replacing the real I/O error and — on
+      // a timer tick — risking an unhandled rejection). Isolate it.
+      try {
+        this.onPersistFailure(error);
+      } catch (hookErr) {
+        this.logger.error(
+          'AUDIT PERSIST FAILURE — onPersistFailure hook threw (original audit error preserved)',
+          hookErr instanceof Error ? hookErr : new AuditError(String(hookErr))
+        );
+      }
+    }
+  }
+
+  /**
+   * Process-lifetime count of audit flushes that FAILED to persist (#3916). A
+   * non-zero value means at least one audit event was not durably written — the
+   * hash chain may have a gap. Surfaced so the failure is observable rather than
+   * silent.
+   */
+  getPersistFailureCount(): number {
+    return this.persistFailureCount;
   }
 
   private shouldLog(input: AuditEventInput): boolean {
@@ -463,9 +518,19 @@ export class AuditLogger implements IAuditLogger {
    */
   async flush(): Promise<void> {
     if (this.inFlightFlush !== null) return this.inFlightFlush;
-    const drain = this.drainAndFlushOnce().finally(() => {
-      this.inFlightFlush = null;
-    });
+    // Record-then-rethrow: a failed flush is fail-loud both ways — the counter +
+    // error-log + callback fire (observable even when the caller ignores the
+    // promise), AND the error still propagates to an awaiting governance caller
+    // (#3916). The single in-flight drain is shared, so the timer's catch and a
+    // concurrent awaited flush() both observe the same failure exactly once.
+    const drain = this.drainAndFlushOnce()
+      .catch((err: unknown) => {
+        this.recordPersistFailure(err);
+        throw err;
+      })
+      .finally(() => {
+        this.inFlightFlush = null;
+      });
     this.inFlightFlush = drain;
     return drain;
   }
@@ -492,7 +557,8 @@ export class AuditLogger implements IAuditLogger {
 export function createAuditLogger(
   config: AuditLogConfig,
   storage?: IAuditStorage,
-  logger?: ILogger
+  logger?: ILogger,
+  onPersistFailure?: (error: Error) => void
 ): AuditLogger {
-  return new AuditLogger(config, storage, logger);
+  return new AuditLogger(config, storage, logger, onPersistFailure);
 }

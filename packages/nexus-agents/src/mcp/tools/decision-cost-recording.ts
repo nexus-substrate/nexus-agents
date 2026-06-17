@@ -91,9 +91,65 @@ export function getDroppedCostRecordCount(): number {
   return droppedCostRecordCount;
 }
 
-/** Reset the dropped-cost-record counter (testing only, #3910). */
+/**
+ * Warn rate-limiter for dropped cost rollups (#3916).
+ *
+ * If the store goes unwritable (disk full / perms / I/O), a per-decision warn
+ * would flood the logs and could degrade the main decision path — ironically
+ * risking the never-fail invariant the warn exists to protect. So the warn is
+ * rate-limited: emit it for the first {@link WARN_BURST} consecutive drops, then
+ * at most once per {@link WARN_PERIOD} further drops. The COUNTER still
+ * increments on EVERY drop (it stays exact regardless of suppression), and the
+ * decision still never fails. The emitted warn carries `suppressedSinceLastWarn`
+ * so a reader can see how many drops a single line stands in for.
+ */
+const WARN_BURST = 5;
+const WARN_PERIOD = 1000;
+// Never stay silent longer than this on a SLOW leak (#3916): pure count-based
+// suppression (every 1000th) would hide ~999 drops for ~41 days at 1/hr. A
+// time escape surfaces a persistent low-rate failure within the window.
+const WARN_MAX_SILENCE_MS = 60_000;
+let warnCountSinceReset = 0;
+let lastWarnAtMs = 0;
+let warnClockOverrideMs: number | null = null;
+
+/** Testing seam: pin the warn-limiter clock (#3916). Pass null to use real time. */
+export function _setWarnClockForTests(ms: number | null): void {
+  warnClockOverrideMs = ms;
+}
+
+function warnNowMs(): number {
+  return warnClockOverrideMs ?? Date.now();
+}
+
+/**
+ * Whether this drop should emit a warn: the first {@link WARN_BURST} consecutive
+ * drops, then every {@link WARN_PERIOD}-th, OR after {@link WARN_MAX_SILENCE_MS}
+ * of silence (so a slow leak still surfaces rather than being suppressed for
+ * thousands of drops). Side effect: anchors the silence timer on each emitted warn.
+ */
+function shouldWarnForDrop(dropIndex: number): boolean {
+  const now = warnNowMs();
+  const countTrigger = dropIndex <= WARN_BURST || (dropIndex - WARN_BURST) % WARN_PERIOD === 0;
+  const timeTrigger = dropIndex > WARN_BURST && now - lastWarnAtMs >= WARN_MAX_SILENCE_MS;
+  if (countTrigger || timeTrigger) {
+    lastWarnAtMs = now;
+    return true;
+  }
+  return false;
+}
+
+/** Reset the dropped-cost-record counter and warn limiter (testing only, #3910/#3916). */
 export function resetDroppedCostRecordCount(): void {
   droppedCostRecordCount = 0;
+  warnCountSinceReset = 0;
+  lastWarnAtMs = 0;
+  warnClockOverrideMs = null;
+}
+
+/** Read how many dropped-cost warns have actually been emitted (testing, #3916). */
+export function getDroppedCostWarnCount(): number {
+  return warnCountSinceReset;
 }
 
 /**
@@ -123,14 +179,21 @@ export function recordDecisionCost(options: RecordDecisionCostOptions): Decision
     timestamp,
   });
   if (!persisted) {
+    // Count EVERY drop (stays exact); rate-limit only the warn so an unwritable
+    // store can't flood the log per-decision and degrade the main path (#3916).
     droppedCostRecordCount += 1;
-    logger.warn('Decision-cost rollup dropped (failed to persist) — billing telemetry lost', {
-      decisionId: options.decisionId,
-      gate: options.gate,
-      totalCostUsd: record.summary.totalCostUsd,
-      totalTokens: record.summary.totalTokens,
-      droppedCostRecordCount,
-    });
+    if (shouldWarnForDrop(droppedCostRecordCount)) {
+      const suppressedSinceLastWarn = droppedCostRecordCount - warnCountSinceReset - 1;
+      warnCountSinceReset += 1;
+      logger.warn('Decision-cost rollup dropped (failed to persist) — billing telemetry lost', {
+        decisionId: options.decisionId,
+        gate: options.gate,
+        totalCostUsd: record.summary.totalCostUsd,
+        totalTokens: record.summary.totalTokens,
+        droppedCostRecordCount,
+        suppressedSinceLastWarn,
+      });
+    }
   }
   return record.summary;
 }
