@@ -175,6 +175,7 @@ Detailed technical documentation:
 | [0015](./adr/0015-multi-repo-orchestration.md)           | Multi-Repo Orchestration           | Proposed   |
 | [0016](./adr/0016-multi-round-consensus-voting.md)       | Multi-Round Consensus Voting       | Accepted   |
 | [0017](./adr/0017-authority-ladder.md)                   | Authority Ladder                   | Accepted   |
+| [0018](./adr/0018-org-scope-naming.md)                   | Org/Scope Naming                   | Accepted   |
 
 #### Guides
 
@@ -210,6 +211,7 @@ Detailed technical documentation:
 | [docs-inventory.md](./ops/docs-inventory.md)                 | Documentation inventory        | Canonical |
 | [release-changeset-race.md](./ops/release-changeset-race.md) | Publish-race runbook (#2382)   | Canonical |
 | [git-housekeeping.md](./ops/git-housekeeping.md)             | Git GC cleanup runbook (#3062) | Canonical |
+| [governed-decision-cost.md](./ops/governed-decision-cost.md) | Governed-decision cost (#3857) | Canonical |
 
 #### Interfaces
 
