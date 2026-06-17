@@ -1,12 +1,18 @@
 /**
  * JSONL-backed store for per-voter pr_review eval verdicts (#3848).
  *
- * Mirrors the {@link PersistentOutcomeStore} idiom (Issue #1009): an in-memory
- * append-only list backed by an append-only JSONL file under the shared
- * learning dir. Hydrates (Zod-validating each line, skipping corruption) on
- * construction; appends one line per write. The persisted unit is the
- * rubric-scored {@link VoterEvalVerdict} — TP/FP/FN tallies only, never raw
- * diffs or model outputs.
+ * An append-only list of rubric-scored {@link VoterEvalVerdict} records backed
+ * by an append-only JSONL file under the shared learning dir. The persisted
+ * unit is TP/FP/FN tallies only — never raw diffs or model outputs.
+ *
+ * ## Persistence idiom (#3906)
+ *
+ * Persistence is delegated wholesale to the shared {@link JsonlStore} primitive
+ * (`config/jsonl-store`, #3762) rather than hand-rolling the
+ * hydrate-on-construct / append-on-write / Zod-validate-each-line / corrupt-
+ * line-skip / rotation machinery — the same alignment the sibling
+ * tool-fitness ledger (#3851) follows. This module owns ONLY the eval schema,
+ * the query filtering, and the report surface; all file I/O is JsonlStore's.
  *
  * This is the persistence target for #3848: per-voter precision/recall queryable
  * over time, the evidence an Epic D / ADR-0017 voter demotion would cite. Record
@@ -21,52 +27,61 @@
 // pr_review eval run — is a separate, gated activity (#3849 / Epic D ADR-0017);
 // acting on the metrics (voter demotion) is explicitly out of scope here.
 
-import { appendFileSync, readFileSync, existsSync } from 'node:fs';
-
-import type { ILogger } from '../../core/index.js';
-import { createLogger, getErrorMessage } from '../../core/index.js';
+import { JsonlStore } from '../../config/jsonl-store.js';
 import { ensureLearningDir, getPrReviewEvalFile } from '../../config/learning-persistence.js';
+import type { ILogger } from '../../core/index.js';
+import { computePerVoterPrecisionRecall } from './pr-review-eval-scoring.js';
 import { VoterEvalVerdictSchema, VoterEvalVerdictQuerySchema } from './pr-review-eval-types.js';
 import type { VoterEvalVerdict, VoterEvalVerdictQuery } from './pr-review-eval-types.js';
-import { computePerVoterPrecisionRecall } from './pr-review-eval-scoring.js';
 import type { PerVoterPrecisionRecallReport } from './pr-review-eval-types.js';
+
+/**
+ * Default retained-verdict cap. Bounds disk + hydrate cost of the underlying
+ * JSONL file via JsonlStore's oldest-eviction rotation (the #3762 size-cap
+ * concern). Tunable per-instance via {@link PrReviewEvalStoreConfig.maxRecords}.
+ */
+const DEFAULT_MAX_RECORDS = 100_000;
 
 export interface PrReviewEvalStoreConfig {
   /** Override the JSONL file path (defaults to the shared learning dir). */
   readonly filePath?: string;
   /** Override the data directory used for `ensureLearningDir` (testing). */
   readonly dataDir?: string;
+  /** Max retained verdicts before oldest-eviction. Defaults to {@link DEFAULT_MAX_RECORDS}. */
+  readonly maxRecords?: number;
 }
 
 /**
  * Append-only, JSONL-backed store of per-voter eval verdicts.
  *
- * Construction hydrates from disk (corrupt/invalid lines skipped with a debug
- * log). `append` writes through to disk. `query` filters the in-memory list;
+ * Construction hydrates from disk (corrupt/invalid lines skipped). `append`
+ * writes through to disk. `query` filters the in-memory list;
  * `reportPrecisionRecall` is the report surface — it folds the queried window
- * through the pure {@link computePerVoterPrecisionRecall}.
+ * through the pure {@link computePerVoterPrecisionRecall}. All persistence is
+ * delegated to {@link JsonlStore} (#3906).
  */
 export class PrReviewEvalStore {
-  private readonly verdicts: VoterEvalVerdict[] = [];
-  private readonly filePath: string;
-  private readonly logger: ILogger;
+  private readonly store: JsonlStore<VoterEvalVerdict>;
 
   constructor(config?: PrReviewEvalStoreConfig, logger?: ILogger) {
-    this.filePath = config?.filePath ?? getPrReviewEvalFile();
-    this.logger = logger ?? createLogger({ component: 'PrReviewEvalStore' });
     ensureLearningDir(config?.dataDir);
-    this.hydrate();
+    this.store = new JsonlStore<VoterEvalVerdict>({
+      filePath: config?.filePath ?? getPrReviewEvalFile(),
+      schema: VoterEvalVerdictSchema,
+      maxRecords: config?.maxRecords ?? DEFAULT_MAX_RECORDS,
+      component: 'PrReviewEvalStore',
+      ...(logger !== undefined ? { logger } : {}),
+    });
   }
 
   get size(): number {
-    return this.verdicts.length;
+    return this.store.count();
   }
 
   /** Record one scored verdict and persist it as a JSONL line. */
   append(verdict: VoterEvalVerdict): void {
     const parsed = VoterEvalVerdictSchema.parse(verdict);
-    this.verdicts.push(parsed);
-    this.persistLine(parsed);
+    this.store.append(parsed);
   }
 
   /** Filter the in-memory verdicts. Returns most-recent-first when `limit` set. */
@@ -82,7 +97,7 @@ export class PrReviewEvalStore {
       preds.push((v) => v.timestamp >= since);
     }
 
-    const matched = this.verdicts.filter((v) => preds.every((p) => p(v)));
+    const matched = this.store.all().filter((v) => preds.every((p) => p(v)));
     if (f.limit !== undefined && matched.length > f.limit) {
       return matched.slice(matched.length - f.limit);
     }
@@ -95,62 +110,5 @@ export class PrReviewEvalStore {
    */
   reportPrecisionRecall(filter?: VoterEvalVerdictQuery): PerVoterPrecisionRecallReport {
     return computePerVoterPrecisionRecall(this.query(filter));
-  }
-
-  // ==========================================================================
-  // Private
-  // ==========================================================================
-
-  private hydrate(): void {
-    if (!existsSync(this.filePath)) {
-      this.logger.debug('No pr_review eval file found, starting fresh', { path: this.filePath });
-      return;
-    }
-    try {
-      const content = readFileSync(this.filePath, 'utf-8');
-      const lines = content.split('\n').filter((line) => line.trim().length > 0);
-      let loaded = 0;
-      let skipped = 0;
-      for (const line of lines) {
-        try {
-          const parsed: unknown = JSON.parse(line);
-          const result = VoterEvalVerdictSchema.safeParse(parsed);
-          if (result.success) {
-            this.verdicts.push(result.data);
-            loaded++;
-          } else {
-            skipped++;
-          }
-        } catch (parseErr: unknown) {
-          this.logger.debug('Skipping malformed pr_review eval line during hydration', {
-            error: getErrorMessage(parseErr),
-            linePreview: line.slice(0, 80),
-          });
-          skipped++;
-        }
-      }
-      this.logger.info('Hydrated pr_review eval verdicts from disk', {
-        loaded,
-        skipped,
-        total: lines.length,
-        path: this.filePath,
-      });
-    } catch (error: unknown) {
-      this.logger.warn('Failed to hydrate pr_review eval verdicts from disk', {
-        error: getErrorMessage(error),
-        path: this.filePath,
-      });
-    }
-  }
-
-  private persistLine(verdict: VoterEvalVerdict): void {
-    try {
-      appendFileSync(this.filePath, JSON.stringify(verdict) + '\n', 'utf-8');
-    } catch (error: unknown) {
-      this.logger.warn('Failed to persist pr_review eval verdict to disk', {
-        error: getErrorMessage(error),
-        path: this.filePath,
-      });
-    }
   }
 }
