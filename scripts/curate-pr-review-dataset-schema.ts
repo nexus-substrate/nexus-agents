@@ -13,7 +13,12 @@
 
 export const SEVERITIES = ['critical', 'high', 'medium', 'low'] as const;
 export const CLASSES = ['buggy', 'clean', 'borderline'] as const;
-export const PROVENANCE_SOURCES = ['historical', 'historical-clean', 'synthetic'] as const;
+export const PROVENANCE_SOURCES = [
+  'historical',
+  'historical-clean',
+  'synthetic',
+  'outcome-mined',
+] as const;
 
 export type Severity = (typeof SEVERITIES)[number];
 export type CaseClass = (typeof CLASSES)[number];
