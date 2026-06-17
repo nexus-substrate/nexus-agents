@@ -218,10 +218,36 @@ Under v1 the v5 run re-scores as:
 - **Clean cases:** 2 (#2238, `synthetic-clean-docs`).
 - **Borderline cases:** 1 (`synthetic-clean-refactor`).
 - **Strict false-positive denominator:** the 2 clean cases. v5 emitted 0 verified
-  findings on both → **strict-FP rate 0/2 = 0%** (was reported as 50% raw).
+  findings on both → **strict FP = 0/2 (n=2 clean, 1 borderline excluded)**.
+  Do NOT round this to a "0% false-positive rate." See the metric-honesty
+  guardrail below: at n=2 this number is not a rate.
 - Bug-catch and location-match are re-derived by v6 against these labels; this
   rubric only fixes the labels, not the panel run (running v6 is #3849, out of
   scope here).
+
+### Metric-honesty guardrails (#3903, required by the #3901 6-1 ratification)
+
+The 50% → 0% swing on the strict-FP figure is small-n adjudication noise, not a
+measured improvement in the tool. Treat these as binding when citing the number:
+
+- **The strict-FP "0%" is at n=2 and is statistically meaningless** — a single
+  future FP would swing it to 50%. **Never cite a bare "0% false-positive
+  rate."** Always report it WITH the n, the clean-denominator count, and the
+  borderline count: "strict FP = 0/2 (n=2 clean cases, 1 borderline excluded),
+  v5 re-adjudicated under rubric 1.0.0."
+- The honest reading is: **"the 50% headline was an artifact of n and
+  adjudication noise"** — not "pr_review has a 0% FP rate." The v5 numbers are
+  directional only.
+- **The `synthetic-clean-refactor` clean → borderline reclassification is the
+  single lever that moved 50% → 0%, and it must be re-audited on its own merits
+  before the 0% is cited anywhere external.** Its rationale (Rule 4:
+  context-dependent concerns are not hard FPs; symmetrically excluded from BOTH
+  numerators, so not gaming) must stand independently of its effect on the
+  metric. The reclassification is defensible, but "defensible" is not the same
+  as "audited."
+- **Real, statistically meaningful FP/bug-catch numbers await #3847** (curate the
+  dataset to n ≥ 50 with real PR data). Until then no FP rate from this dataset
+  should be presented as a measured rate.
 
 ## Out of scope (tracked elsewhere)
 

@@ -16,13 +16,13 @@ keywords: [pr-review, experiment, results, json-findings, autonomous-sdlc]
 
 The fix landed: voters now reliably emit structured findings. **All five #2233 metrics shifted dramatically — three positively, two raising new questions.** Most importantly, the system caught a real bug in my own #2235 commit that no human reviewer flagged.
 
-| Metric                            | v3      | v4      | **v5**      | Target | Status                                          |
-| --------------------------------- | ------- | ------- | ----------- | ------ | ----------------------------------------------- |
-| Bug-catch rate                    | 50%     | 50%     | **100%**    | ≥10%   | ✓ PASS                                          |
-| **Verified findings emitted**     | 0       | 0       | **26**      | n/a    | breakthrough                                    |
-| **Known-bug location-match rate** | 0%      | 0%      | **83.3%**   | n/a    | new metric                                      |
-| False-positive rate               | 0%      | 0%      | **50%**     | <20%   | ✗ FAIL (see "Real findings vs false positives") |
-| Avg duration                      | 2.8 min | 2.1 min | **1.4 min** | <5 min | ✓ PASS                                          |
+| Metric                            | v3      | v4      | **v5**      | Target | Status                                      |
+| --------------------------------- | ------- | ------- | ----------- | ------ | ------------------------------------------- |
+| Bug-catch rate                    | 50%     | 50%     | **100%**    | ≥10%   | ✓ PASS                                      |
+| **Verified findings emitted**     | 0       | 0       | **26**      | n/a    | breakthrough                                |
+| **Known-bug location-match rate** | 0%      | 0%      | **83.3%**   | n/a    | new metric                                  |
+| False-positive rate               | 0%      | 0%      | **50% raw** | <20%   | directional — see metric-honesty note below |
+| Avg duration                      | 2.8 min | 2.1 min | **1.4 min** | <5 min | ✓ PASS                                      |
 
 ## Per-PR results (v5)
 
@@ -81,6 +81,25 @@ If we re-classify the data:
 - **Borderline** (legit concerns on debatable code): 1 / 4 (synthetic-clean-refactor)
 
 The 50% headline "FP rate" is mostly the dataset, not the tool. The tool is finding things.
+
+> **Metric-honesty guardrail (#3903, required by the #3901 6-1 ratification).**
+> These v5 FP figures are directional only — do **not** cite them as measured
+> rates. Specifically:
+>
+> - The honest reading is **"the 50% headline was an artifact of n and
+>   adjudication noise,"** NOT "pr_review has a 0% FP rate." The strict-FP figure
+>   the v1 rubric derives is **0/2 (n=2 clean cases, 1 borderline excluded)** —
+>   at n=2 a single future FP swings it to 50%, so it is not a rate. **Never cite
+>   a bare "0% false-positive rate";** always carry the n, the clean-denominator
+>   count, and the borderline count.
+> - The `synthetic-clean-refactor` clean → borderline reclassification is the
+>   single lever that moved 50% → 0%. It **must be re-audited on its own merits
+>   before the 0% is cited anywhere external** — its rationale has to stand
+>   independently of its metric effect.
+> - Statistically meaningful FP/bug-catch numbers **await #3847** (curate to
+>   n ≥ 50 with real PR data). See
+>   [pr-review-eval-labeling-rubric.md](./pr-review-eval-labeling-rubric.md) for
+>   the binding rubric and the full guardrail.
 
 ## Verified-finding distribution
 
