@@ -69,10 +69,14 @@ import {
   type LoopTierManifest,
 } from '../packages/nexus-agents/src/orchestration/loop-tier-manifest.js';
 import { LOOP_TIER_REGISTRY } from '../packages/nexus-agents/src/orchestration/loop-tier-registry.js';
-import { extractTierTransition } from '../packages/nexus-agents/src/audit/audit-logger.js';
+import {
+  extractTierTransition,
+  verifyChain,
+} from '../packages/nexus-agents/src/audit/audit-logger.js';
 import {
   AuditEventSchema,
   RatificationVoteLedgerSchema,
+  type AuditEvent,
   type RatificationVote,
   type TierTransitionPayload,
 } from '../packages/nexus-agents/src/audit/audit-types.js';
@@ -109,7 +113,8 @@ export interface TierDriftFinding {
     | 'promotion-ratification-unresolved'
     | 'promotion-ratification-not-approved'
     | 'ratification-ledger-invalid'
-    | 'transition-log-invalid';
+    | 'transition-log-invalid'
+    | 'transition-log-chain-broken';
   readonly message: string;
 }
 
@@ -424,12 +429,34 @@ export function analyzeTierTransitionEvents(
 }
 
 /**
+ * Verify the hash chain over the recovered audit events (#3921). The
+ * tier-transition payload the gate decides on is now hash-covered
+ * (`hashVersion: 2`, see {@link computeEventHash}), so a tampered/forged/reordered
+ * transition event breaks `verifyChain` and is caught HERE — not just by the
+ * per-line schema parse, which a re-serialized forgery passes. Returns a single
+ * `transition-log-chain-broken` finding on a break (fail-closed); an empty or
+ * un-chained legacy log verifies clean (the verifier's own backward-compat path).
+ */
+function verifyTransitionChain(events: readonly AuditEvent[]): TierDriftFinding[] {
+  const result = verifyChain(events);
+  if (result.ok) return [];
+  return [
+    {
+      code: 'transition-log-chain-broken',
+      message: `governance/authority-tier-transitions.jsonl FAILS hash-chain verification (${result.reason}) at event index ${String(result.eventIndex)} (id='${result.eventId}'): ${result.detail}. The transition log has been tampered, reordered, or forged — its payloads cannot be trusted.`,
+    },
+  ];
+}
+
+/**
  * Read the optional tier-transition log (JSONL of persisted AuditEvents) and
  * recover the tier-transition payloads. Returns the findings: a single
- * `transition-log-invalid` if a line is not a valid AuditEvent (fail-closed — we
- * cannot trust the log), plus the recovered payloads for the ratification check.
- * A non-tier-transition event (any other audit event sharing the file) is simply
- * skipped, not an error.
+ * `transition-log-invalid` if a line is not a valid AuditEvent, a
+ * `transition-log-chain-broken` if the recovered events fail hash-chain
+ * verification (#3921 — the integrity-critical payload is now hash-covered), plus
+ * the recovered payloads for the ratification check. All findings are fail-closed:
+ * we do not trust the payloads when the chain or schema does not hold. A
+ * non-tier-transition event (any other audit event sharing the file) is skipped.
  */
 export function recoverTransitions(jsonl: string): {
   readonly transitions: TierTransitionPayload[];
@@ -437,6 +464,7 @@ export function recoverTransitions(jsonl: string): {
 } {
   const transitions: TierTransitionPayload[] = [];
   const findings: TierDriftFinding[] = [];
+  const events: AuditEvent[] = [];
   const lines = jsonl.split('\n').filter((l) => l.trim() !== '');
   for (const [i, line] of lines.entries()) {
     let raw: unknown;
@@ -457,9 +485,13 @@ export function recoverTransitions(jsonl: string): {
       });
       continue;
     }
+    events.push(parsed.data);
     const payload = extractTierTransition(parsed.data);
     if (payload !== null) transitions.push(payload);
   }
+  // #3921: verify the chain over the events that DID parse. A chain break means
+  // the recovered payloads are untrustworthy — fail closed.
+  findings.push(...verifyTransitionChain(events));
   return { transitions, findings };
 }
 

@@ -508,6 +508,76 @@ describe('recoverTransitions — reads the chained transition log (#3842)', () =
     expect(findings[0]?.code).toBe('transition-log-invalid');
   });
 
+  // #3921: the transition payload is now hash-covered AND the gate verifies the
+  // chain. A forged promotion whose payload is tampered post-write — flipping
+  // toTier or borrowing another approval's ratificationVoteRef — breaks the
+  // chain and FAILS the gate, even though every line still parses as an
+  // AuditEvent and the (untrustworthy) payload would otherwise pass ratification.
+  it('FAILS transition-log-chain-broken when a persisted toTier is flipped (#3921)', async () => {
+    const { jsonl } = await jsonlOf((l) => {
+      l.logTierTransition({
+        kind: 'promotion',
+        subject: 'clawguard',
+        fromTier: 'observe',
+        toTier: 'suggest',
+        evidenceRef: 'evidence#2077',
+        ratificationVoteRef: 'cv_2077',
+      });
+    });
+    const event = JSON.parse(jsonl) as {
+      metadata: { tierTransition: Record<string, unknown> };
+    };
+    // Forge a privilege escalation in the persisted payload, leaving the hash.
+    event.metadata.tierTransition.toTier = 'enforce';
+    const tamperedJsonl = JSON.stringify(event);
+
+    const { findings } = recoverTransitions(tamperedJsonl);
+    expect(findings.some((f) => f.code === 'transition-log-chain-broken')).toBe(true);
+  });
+
+  it('FAILS transition-log-chain-broken when a persisted ratificationVoteRef is rewritten (#3921)', async () => {
+    const { jsonl } = await jsonlOf((l) => {
+      l.logTierTransition({
+        kind: 'promotion',
+        subject: 'clawguard',
+        fromTier: 'advisory',
+        toTier: 'enforce',
+        evidenceRef: 'evidence#2077',
+        ratificationVoteRef: 'cv_real',
+      });
+    });
+    const event = JSON.parse(jsonl) as {
+      metadata: { tierTransition: Record<string, unknown> };
+    };
+    event.metadata.tierTransition.ratificationVoteRef = 'cv_borrowed';
+    const tamperedJsonl = JSON.stringify(event);
+
+    const { findings } = recoverTransitions(tamperedJsonl);
+    expect(findings.some((f) => f.code === 'transition-log-chain-broken')).toBe(true);
+  });
+
+  it('an untampered emitted v2 transition log PASSES chain verification (#3921)', async () => {
+    const { jsonl } = await jsonlOf((l) => {
+      l.logTierTransition({
+        kind: 'promotion',
+        subject: 'clawguard',
+        fromTier: 'advisory',
+        toTier: 'enforce',
+        evidenceRef: 'evidence#2077',
+        ratificationVoteRef: 'cv_2077',
+      });
+      l.logTierTransition({
+        kind: 'demotion',
+        subject: 'clawguard',
+        fromTier: 'enforce',
+        toTier: 'advisory',
+        evidenceRef: 'regression#2077',
+      });
+    });
+    const { findings } = recoverTransitions(jsonl);
+    expect(findings).toEqual([]);
+  });
+
   it('skips non-tier-transition audit events without error', async () => {
     const { jsonl } = await jsonlOf((l) => {
       l.logSystemStartup({ note: 'boot' });

@@ -11,10 +11,11 @@
  * @module audit/tier-transition-audit.test
  */
 
+import { createHash } from 'node:crypto';
 import { describe, it, expect } from 'vitest';
 import { AuditLogger, verifyChain, extractTierTransition } from './audit-logger.js';
 import { InMemoryAuditStorage } from './audit-storage.js';
-import type { AuditLogConfig } from './audit-types.js';
+import type { AuditLogConfig, AuditEvent } from './audit-types.js';
 import {
   TIER_TRANSITION_METADATA_KEY,
   RatificationVoteSchema,
@@ -146,6 +147,227 @@ describe('logTierTransition — hash chain', () => {
     const result = verifyChain([tampered]);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toBe('hash_mismatch');
+  });
+});
+
+// #3921: the integrity-critical tier-transition payload (subject/fromTier/
+// toTier/evidenceRef/ratificationVoteRef) lives in metadata and was previously
+// OUTSIDE computeEventHash — flipping it left the stored hash valid. It is now
+// folded into the chain via hashVersion 2. These are the RED-before/GREEN-after
+// tamper tests.
+describe('logTierTransition — payload is hash-covered (#3921)', () => {
+  it('stamps hashVersion 2 on a tier-transition event', async () => {
+    const { logger, storage } = makeLogger();
+    logger.logTierTransition({
+      kind: 'promotion',
+      subject: 'clawguard',
+      fromTier: 'advisory',
+      toTier: 'enforce',
+      evidenceRef: 'evidence#2077',
+      ratificationVoteRef: 'cv_2077',
+    });
+    await logger.close();
+    expect(storage.getAll()[0]!.hashVersion).toBe(2);
+  });
+
+  it('verifyChain detects a flipped toTier in the persisted payload', async () => {
+    const { logger, storage } = makeLogger();
+    logger.logTierTransition({
+      kind: 'promotion',
+      subject: 'clawguard',
+      fromTier: 'observe',
+      toTier: 'suggest',
+      evidenceRef: 'evidence#2077',
+      ratificationVoteRef: 'cv_2077',
+    });
+    await logger.close();
+
+    const event = storage.getAll()[0]!;
+    // Forge a privilege escalation: rewrite toTier in metadata, leaving the
+    // stored hash untouched (the pre-#3921 undetectable attack).
+    const tampered: AuditEvent = {
+      ...event,
+      metadata: {
+        ...event.metadata,
+        [TIER_TRANSITION_METADATA_KEY]: {
+          ...(event.metadata?.[TIER_TRANSITION_METADATA_KEY] as Record<string, unknown>),
+          toTier: 'enforce',
+        },
+      },
+    };
+    const result = verifyChain([tampered]);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('hash_mismatch');
+  });
+
+  it('verifyChain detects a rewritten ratificationVoteRef in the persisted payload', async () => {
+    const { logger, storage } = makeLogger();
+    logger.logTierTransition({
+      kind: 'promotion',
+      subject: 'clawguard',
+      fromTier: 'advisory',
+      toTier: 'enforce',
+      evidenceRef: 'evidence#2077',
+      ratificationVoteRef: 'cv_real',
+    });
+    await logger.close();
+
+    const event = storage.getAll()[0]!;
+    const tampered: AuditEvent = {
+      ...event,
+      metadata: {
+        ...event.metadata,
+        [TIER_TRANSITION_METADATA_KEY]: {
+          ...(event.metadata?.[TIER_TRANSITION_METADATA_KEY] as Record<string, unknown>),
+          ratificationVoteRef: 'cv_borrowed_from_another_approval',
+        },
+      },
+    };
+    const result = verifyChain([tampered]);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('hash_mismatch');
+  });
+
+  // The realistic plaintext-log adversary doesn't just edit a field and leave a
+  // stale hash — they RECOMPUTE the stored hash too. The downgrade attack:
+  // flip toTier, strip hashVersion, and recompute the stored hash under the v1
+  // head-only projection (which excludes the payload). If the verifier trusted
+  // the stored hashVersion it would drop to v1, recompute the same head-only
+  // hash, and accept the forgery. The verifier instead DERIVES v2 from the
+  // covered `action` (tier.*), so the strip cannot downgrade it.
+  function v1HeadHash(event: AuditEvent): string {
+    // Mirror computeEventHash's v1 projection EXACTLY (field order included).
+    const projection = {
+      id: event.id,
+      timestamp: event.timestamp,
+      category: event.category,
+      action: event.action,
+      outcome: event.outcome,
+      actor: event.actor,
+      previousHash: event.previousHash,
+    };
+    return createHash('sha256').update(JSON.stringify(projection)).digest('hex');
+  }
+
+  it('defeats a version-DOWNGRADE forgery (flip toTier + strip hashVersion + recompute v1 hash)', async () => {
+    const { logger, storage } = makeLogger();
+    logger.logTierTransition({
+      kind: 'promotion',
+      subject: 'clawguard',
+      fromTier: 'observe',
+      toTier: 'suggest',
+      evidenceRef: 'evidence#2077',
+      ratificationVoteRef: 'cv_2077',
+    });
+    await logger.close();
+
+    const event = storage.getAll()[0]!;
+    const forged: AuditEvent = {
+      ...event,
+      hashVersion: undefined, // strip the v2 marker to attempt a downgrade
+      metadata: {
+        ...event.metadata,
+        [TIER_TRANSITION_METADATA_KEY]: {
+          ...(event.metadata?.[TIER_TRANSITION_METADATA_KEY] as Record<string, unknown>),
+          toTier: 'enforce', // privilege escalation
+        },
+      },
+    };
+    // Attacker recomputes the stored hash under v1 so a v1 verifier would accept.
+    forged.hash = v1HeadHash(forged);
+
+    const result = verifyChain([forged]);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('hash_mismatch');
+  });
+
+  it('also defeats the downgrade when hashVersion is forced to 1 (not just stripped)', async () => {
+    const { logger, storage } = makeLogger();
+    logger.logTierTransition({
+      kind: 'promotion',
+      subject: 'clawguard',
+      fromTier: 'advisory',
+      toTier: 'enforce',
+      evidenceRef: 'evidence#2077',
+    });
+    await logger.close();
+
+    const event = storage.getAll()[0]!;
+    const forged: AuditEvent = {
+      ...event,
+      hashVersion: 1,
+      metadata: {
+        ...event.metadata,
+        [TIER_TRANSITION_METADATA_KEY]: {
+          ...(event.metadata?.[TIER_TRANSITION_METADATA_KEY] as Record<string, unknown>),
+          subject: 'attacker-loop',
+        },
+      },
+    };
+    forged.hash = v1HeadHash(forged);
+    const result = verifyChain([forged]);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('hash_mismatch');
+  });
+
+  it.each(['subject', 'fromTier', 'evidenceRef'] as const)(
+    'verifyChain detects a flipped %s (every integrity-critical field is covered)',
+    async (field) => {
+      const { logger, storage } = makeLogger();
+      logger.logTierTransition({
+        kind: 'promotion',
+        subject: 'clawguard',
+        fromTier: 'advisory',
+        toTier: 'enforce',
+        evidenceRef: 'evidence#2077',
+        ratificationVoteRef: 'cv_2077',
+      });
+      await logger.close();
+
+      const event = storage.getAll()[0]!;
+      const tampered: AuditEvent = {
+        ...event,
+        metadata: {
+          ...event.metadata,
+          [TIER_TRANSITION_METADATA_KEY]: {
+            ...(event.metadata?.[TIER_TRANSITION_METADATA_KEY] as Record<string, unknown>),
+            [field]: `tampered-${field}`,
+          },
+        },
+      };
+      const result = verifyChain([tampered]);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.reason).toBe('hash_mismatch');
+    }
+  );
+
+  it('verifyChain still validates an UNtampered v2 chain', async () => {
+    const { logger, storage } = makeLogger();
+    logger.logSystemStartup({ note: 'boot' }); // v1 event
+    logger.logTierTransition({
+      kind: 'promotion',
+      subject: 'clawguard',
+      fromTier: 'advisory',
+      toTier: 'enforce',
+      evidenceRef: 'evidence#2077',
+      ratificationVoteRef: 'cv_2077',
+    }); // v2 event interleaved
+    await logger.close();
+    const result = verifyChain(storage.getAll());
+    expect(result.ok).toBe(true);
+  });
+
+  it('a pre-existing v1 chain (no hashVersion, no tierTransition) still verifies', async () => {
+    // Non-tier-transition events keep the v1 projection — pre-#3921 chains are
+    // unaffected (migration-safe: only events carrying a tierTransition payload
+    // are stamped v2).
+    const { logger, storage } = makeLogger();
+    logger.logSystemStartup({ note: 'boot' });
+    logger.logSystemShutdown({ note: 'halt' });
+    await logger.close();
+    const events = storage.getAll();
+    expect(events.every((e) => e.hashVersion === undefined)).toBe(true);
+    expect(verifyChain(events).ok).toBe(true);
   });
 });
 
