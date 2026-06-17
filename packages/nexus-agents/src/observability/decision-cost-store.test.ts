@@ -44,7 +44,7 @@ describe('DecisionCostStore', () => {
 
   it('records a rollup and returns the persisted summary', () => {
     const store = new DecisionCostStore({ filePath: file, dataDir: dir });
-    const record = store.record({
+    const { record, persisted } = store.record({
       decisionId: 'd1',
       gate: 'consensus_vote',
       voters: VOTERS,
@@ -52,6 +52,7 @@ describe('DecisionCostStore', () => {
       timestamp: TS,
     });
 
+    expect(persisted).toBe(true);
     expect(record.decisionId).toBe('d1');
     expect(record.gate).toBe('consensus_vote');
     expect(record.summary.voterCount).toBe(2);

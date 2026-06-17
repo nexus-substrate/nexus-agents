@@ -81,6 +81,14 @@ describe('JsonlStore', () => {
     expect(reopened.count()).toBe(0);
   });
 
+  it('reports persistence success/failure via the append return (#3910)', () => {
+    const store = makeStore();
+    // Durable write ⇒ true.
+    expect(store.append({ id: 1, name: 'ok' })).toBe(true);
+    // Schema-invalid record is dropped ⇒ false (so callers can log/count it).
+    expect(store.append({ id: 'bad', name: 1 } as unknown as Rec)).toBe(false);
+  });
+
   it('bounds retention to the last N records (oldest evicted)', () => {
     const max = 10;
     const store = makeStore(max);

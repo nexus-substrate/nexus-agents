@@ -18,6 +18,8 @@
 
 import type { VoterRole, AgentVoteResult } from './vote-types.js';
 import { VOTER_ROLES } from './vote-types.js';
+import type { Vote } from '../consensus/types.js';
+import type { VoteUsage } from './voter-execution.js';
 import type { IModelAdapter, ILogger } from '../core/index.js';
 import { createLogger, getTimeProvider, getErrorMessage } from '../core/index.js';
 import { getGlobalRegistry } from '../adapters/unified-registry.js';
@@ -125,6 +127,31 @@ export type { AgentVoteResult };
 const defaultLogger = createLogger({ component: 'voter-agents' });
 
 /**
+ * Builds the successful LLM `AgentVoteResult`, propagating the adapter-reported
+ * per-call tokens so the decision-cost rollup attributes this voter as MEASURED,
+ * not unmeasured (#3910). Only attaches a token field when the adapter actually
+ * reported it — an absent count stays absent (⇒ unmeasured), never a fabricated 0.
+ */
+function buildLlmVoteResult(
+  role: VoterRole,
+  vote: Vote,
+  usage: VoteUsage,
+  adapter: IModelAdapter,
+  processingTimeMs: number
+): AgentVoteResult {
+  return {
+    role,
+    vote,
+    processingTimeMs,
+    source: 'llm',
+    cli: adapter.providerId,
+    model: adapter.modelId,
+    ...(usage.inputTokens !== undefined ? { inputTokens: usage.inputTokens } : {}),
+    ...(usage.outputTokens !== undefined ? { outputTokens: usage.outputTokens } : {}),
+  };
+}
+
+/**
  * Executes a real LLM vote for a single role with timeout and retry support.
  *
  * Per Issue #280: No simulation fallback by default. Returns error result
@@ -156,14 +183,7 @@ export async function executeAgentVote(
 
   if (result.ok) {
     logger.info('Vote completed', { role, model: adapter.modelId, decision: result.vote.decision });
-    return {
-      role,
-      vote: result.vote,
-      processingTimeMs,
-      source: 'llm',
-      cli: adapter.providerId,
-      model: adapter.modelId,
-    };
+    return buildLlmVoteResult(role, result.vote, result.usage, adapter, processingTimeMs);
   }
 
   // All retries exhausted

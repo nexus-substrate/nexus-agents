@@ -87,6 +87,19 @@ export interface AgentVoteResult {
    * for error/simulation votes that never reached a model.
    */
   readonly model?: string | undefined;
+  /**
+   * Input tokens the adapter reported for this voter's LLM call, when known
+   * (#3910). Propagated from `CompletionResponse.usage` so per-decision cost
+   * aggregation resolves from `unmeasured` to MEASURED. Absent for
+   * error/simulation votes that never reached a model, or for adapters that do
+   * not report usage (CLI subscriptions) — those stay honestly `unmeasured`.
+   */
+  readonly inputTokens?: number | undefined;
+  /**
+   * Output tokens the adapter reported for this voter's LLM call, when known
+   * (#3910). See {@link AgentVoteResult.inputTokens}.
+   */
+  readonly outputTokens?: number | undefined;
   /** Error message if vote fell back to simulation or encountered an error */
   readonly error?: string;
 }

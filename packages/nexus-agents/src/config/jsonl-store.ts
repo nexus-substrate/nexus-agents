@@ -48,7 +48,9 @@ export interface JsonlStoreConfig<T> {
  *   exists, Zod-validating each line and skipping corrupt/invalid ones.
  * - {@link append}: validates the record, pushes it in-memory, and either
  *   appends one line (fast path) or — if the cap is exceeded — evicts the
- *   oldest in memory and rewrites the file so it stays bounded.
+ *   oldest in memory and rewrites the file so it stays bounded. Returns whether
+ *   the record was durably persisted so callers that must NOT silently drop
+ *   data (e.g. billing telemetry, #3910) can log/count a dropped record.
  * - All fs failures are caught and logged; persistence never throws into the
  *   caller (an observability sink must not break the operation it observes).
  */
@@ -68,25 +70,31 @@ export class JsonlStore<T> {
     this.hydrate();
   }
 
-  /** Append one record durably. Validates at the boundary; never throws. */
-  append(record: T): void {
+  /**
+   * Append one record durably. Validates at the boundary; never throws.
+   *
+   * Returns `true` when the record was durably written to disk, `false` when it
+   * was dropped (schema-invalid) or the fs write failed. Callers that ignore the
+   * return are unaffected (the prior `void` contract); callers that must surface
+   * dropped data (billing telemetry, #3910) can act on `false`.
+   */
+  append(record: T): boolean {
     const result = this.schema.safeParse(record);
     if (!result.success) {
       this.logger.warn('Refusing to persist invalid JSONL record', {
         path: this.filePath,
         issues: result.error.issues.map((i) => i.message).join('; '),
       });
-      return;
+      return false;
     }
     this.records.push(result.data);
     if (this.records.length > this.maxRecords) {
       // Over the cap: evict oldest in memory and rewrite the whole file so the
       // on-disk line count matches the bounded in-memory set.
       this.records.splice(0, this.records.length - this.maxRecords);
-      this.rewriteFile();
-      return;
+      return this.rewriteFile();
     }
-    this.persistLine(result.data);
+    return this.persistLine(result.data);
   }
 
   /** All retained records, oldest first. */
@@ -159,26 +167,30 @@ export class JsonlStore<T> {
     });
   }
 
-  private persistLine(record: T): void {
+  private persistLine(record: T): boolean {
     try {
       appendFileSync(this.filePath, JSON.stringify(record) + '\n', 'utf-8');
+      return true;
     } catch (error: unknown) {
       this.logger.warn('Failed to append JSONL record to disk', {
         error: getErrorMessage(error),
         path: this.filePath,
       });
+      return false;
     }
   }
 
-  private rewriteFile(): void {
+  private rewriteFile(): boolean {
     try {
       const content = this.records.map((r) => JSON.stringify(r)).join('\n') + '\n';
       writeFileSync(this.filePath, content, 'utf-8');
+      return true;
     } catch (error: unknown) {
       this.logger.warn('Failed to rewrite JSONL store file', {
         error: getErrorMessage(error),
         path: this.filePath,
       });
+      return false;
     }
   }
 }

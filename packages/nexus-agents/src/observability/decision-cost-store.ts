@@ -124,8 +124,14 @@ export class DecisionCostStore {
    * Roll up one decision's per-voter costs and persist the summary. Returns the
    * persisted record so the caller can attach `record.summary` to the existing
    * decision response (riding the existing surface — no new MCP tool, #3855).
+   *
+   * The boolean `persisted` flag (#3910) tells the caller whether the rollup was
+   * durably written: the underlying {@link JsonlStore} never throws on an fs/
+   * validation failure (an observability sink must not break the decision), so
+   * `false` is the ONLY signal that billing data was dropped — the recording
+   * bridge logs + counts it rather than letting it vanish silently.
    */
-  record(input: RecordDecisionCostInput): DecisionCostRecord {
+  record(input: RecordDecisionCostInput): { record: DecisionCostRecord; persisted: boolean } {
     const summary = rollupDecisionCost(input.voters, input.billingMode);
     const record: DecisionCostRecord = {
       decisionId: input.decisionId,
@@ -133,8 +139,8 @@ export class DecisionCostStore {
       timestamp: input.timestamp,
       summary,
     };
-    this.store.append(record);
-    return record;
+    const persisted = this.store.append(record);
+    return { record, persisted };
   }
 
   /** All retained records, oldest first. */
