@@ -63,7 +63,7 @@ change, or does nexus-substrate stay as legacy lineage that we simply document?
 
 The repositioning is a _descriptor_ change. Every plank of the new descriptor maps
 to existing, verified code (one entry point = `run`/MetaOrchestrator; adversarial
-review = the panel + catfish; immutable audit = the hash chain; closed-loop
+review = the panel + catfish; tamper-evident append-only audit chain = the hash chain ([threat model](../security/audit-hash-chain-threat-model.md): tamper-evident, not tamper-proof); closed-loop
 self-tuning = the bounded tune loop). None of those planks depends on the project's
 _name_. A category rename and a project rename are independent decisions, and
 conflating them imports a costly, breaking change for a marketing benefit that does
