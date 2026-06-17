@@ -15,12 +15,18 @@ import {
   detectDeprecationCandidates,
   detectConsolidationCandidates,
   isHealthyInAnyOtherWorkspace,
+  locallyFailingWorkspaces,
   assertNeverAutonomousRemoval,
   loadToolFitnessSignals,
   FITNESS_MIN_SAMPLE,
   LOW_USAGE_MAX_INVOCATIONS,
   POOR_SUCCESS_RATE_MAX,
 } from './improvement-review-tool-fitness.js';
+import {
+  consolidationConfidence,
+  isNeverDeprecate,
+  DEFAULT_NEVER_DEPRECATE_PATTERNS,
+} from './improvement-review-tool-fitness-heuristics.js';
 import { ToolFitnessLedger, type ToolFitnessStat } from '../../governance/tool-fitness-ledger.js';
 import type { ImprovementSignal } from './improvement-review.js';
 import { ImprovementReviewInputSchema } from './improvement-review.js';
@@ -156,7 +162,7 @@ describe('detectDeprecationCandidates — poor reliability + workspace scoping (
     expect(signals[0]!.body).toMatch(/NEVER autonomous/);
   });
 
-  it('does NOT flag a tool that fails in one workspace but is healthy in another', () => {
+  it('does NOT raise a GLOBAL deprecation when a tool fails in one workspace but is healthy in another', () => {
     const poisoned = stat({
       tool: 'workspace_local_fail',
       invocationCount: 2 * FITNESS_MIN_SAMPLE,
@@ -170,6 +176,7 @@ describe('detectDeprecationCandidates — poor reliability + workspace scoping (
           tool: 'workspace_local_fail',
           invocationCount: FITNESS_MIN_SAMPLE,
           successCount: FITNESS_MIN_SAMPLE,
+          workspaces: ['healthy-repo'],
         });
       }
       // broken-repo: all failures (local perms / missing deps).
@@ -177,10 +184,14 @@ describe('detectDeprecationCandidates — poor reliability + workspace scoping (
         tool: 'workspace_local_fail',
         invocationCount: FITNESS_MIN_SAMPLE,
         successCount: 0,
+        workspaces: ['broken-repo'],
       });
     };
     const signals = detectDeprecationCandidates([poisoned], statInWorkspace, WINDOW);
-    expect(signals).toEqual([]); // suppressed — the failure is workspace-local
+    // #3902 item 3: global deprecation is suppressed, but the localized failure is
+    // NOT fully silenced — a workspace-scoped signal still surfaces the misconfig.
+    expect(signals.every((s) => !s.signalKey.includes('deprecation-candidate'))).toBe(true);
+    expect(signals.some((s) => s.signalKey.includes('localized-failure'))).toBe(true);
   });
 
   it('isHealthyInAnyOtherWorkspace requires >=2 real workspaces', () => {
@@ -250,6 +261,152 @@ describe('detectConsolidationCandidates', () => {
       stat({ tool: 'run', invocationCount: 1 }),
     ];
     expect(detectConsolidationCandidates(report, WINDOW)).toEqual([]);
+  });
+});
+
+// ============================================================================
+// #3902 item 1 — prefix is only a WEAK hint; orthogonal siblings not flagged
+// ============================================================================
+
+describe('consolidationConfidence (#3902 item 1) — shared prefix ≠ substitutable', () => {
+  it('returns "none" for orthogonal action verbs (git_init vs git_commit)', () => {
+    const init = stat({ tool: 'git_init', invocationCount: 2 });
+    const commit = stat({ tool: 'git_commit', invocationCount: 100 });
+    expect(consolidationConfidence(init, commit)).toBe('none');
+  });
+
+  it('returns "none" for db_read vs db_drop_table (read vs destroy)', () => {
+    const read = stat({ tool: 'db_read', invocationCount: 2 });
+    const drop = stat({ tool: 'db_drop_table', invocationCount: 100 });
+    expect(consolidationConfidence(read, drop)).toBe('none');
+  });
+
+  it('returns "low" (never high) when verbs are not clearly opposed', () => {
+    const a = stat({ tool: 'research_discover', invocationCount: 2 });
+    const b = stat({ tool: 'research_synthesize', invocationCount: 100 });
+    expect(consolidationConfidence(a, b)).toBe('low');
+  });
+});
+
+describe('detectConsolidationCandidates (#3902 item 1)', () => {
+  it('does NOT flag a rare orthogonal sibling for folding into a busy one on prefix alone', () => {
+    const report = [
+      stat({ tool: 'git_commit', invocationCount: 100, successCount: 100 }),
+      stat({ tool: 'git_init', invocationCount: 1, successCount: 1 }),
+    ];
+    // git_init must NOT be surfaced — it shares a prefix but is orthogonal to git_commit.
+    expect(detectConsolidationCandidates(report, WINDOW)).toEqual([]);
+  });
+
+  it('surviving prefix-only matches are surfaced as LOW-CONFIDENCE candidates', () => {
+    const report = [
+      stat({ tool: 'research_discover', invocationCount: 100, successCount: 100 }),
+      stat({ tool: 'research_obscure', invocationCount: 2, successCount: 2 }),
+    ];
+    const signals = detectConsolidationCandidates(report, WINDOW);
+    expect(signals).toHaveLength(1);
+    expect(signals[0]!.title.toLowerCase()).toContain('low-confidence');
+    expect(signals[0]!.body).toMatch(/WEAK hint/);
+    expect(signals[0]!.severity).not.toBe('critical');
+  });
+});
+
+// ============================================================================
+// #3902 item 2 — break-glass / never-deprecate exemption for low-usage tools
+// ============================================================================
+
+describe('isNeverDeprecate (#3902 item 2)', () => {
+  it('matches default break-glass patterns (rollback, recovery, emergency)', () => {
+    expect(isNeverDeprecate('db_rollback')).toBe(true);
+    expect(isNeverDeprecate('disaster_recovery')).toBe(true);
+    expect(isNeverDeprecate('emergency_admin')).toBe(true);
+    expect(DEFAULT_NEVER_DEPRECATE_PATTERNS.length).toBeGreaterThan(0);
+  });
+
+  it('does not match an ordinary tool', () => {
+    expect(isNeverDeprecate('research_discover')).toBe(false);
+  });
+
+  it('honors an explicit exempt-tools override', () => {
+    expect(isNeverDeprecate('weird_tool', { exemptTools: ['weird_tool'] })).toBe(true);
+  });
+});
+
+describe('detectDeprecationCandidates — break-glass exemption (#3902 item 2)', () => {
+  it('does NOT flag a break-glass tool with <=2 invocations as a deprecation candidate', () => {
+    const signals = detectDeprecationCandidates(
+      [stat({ tool: 'db_rollback', invocationCount: 1, successCount: 1 })],
+      NO_WORKSPACE_SCOPE,
+      WINDOW
+    );
+    expect(signals).toEqual([]);
+  });
+
+  it('still flags an ordinary low-usage tool (exemption is targeted, not blanket)', () => {
+    const signals = detectDeprecationCandidates(
+      [stat({ tool: 'ordinary_thing', invocationCount: 1, successCount: 1 })],
+      NO_WORKSPACE_SCOPE,
+      WINDOW
+    );
+    expect(signals).toHaveLength(1);
+  });
+
+  it('exempts a tool named via the injected never-deprecate config', () => {
+    const signals = detectDeprecationCandidates(
+      [stat({ tool: 'custom_breakglass_op', invocationCount: 1 })],
+      NO_WORKSPACE_SCOPE,
+      WINDOW,
+      { exemptTools: ['custom_breakglass_op'] }
+    );
+    expect(signals).toEqual([]);
+  });
+});
+
+// ============================================================================
+// #3902 item 3 — workspace-scoped localized signal (not full suppression)
+// ============================================================================
+
+describe('detectDeprecationCandidates — localized signal not full suppression (#3902 item 3)', () => {
+  const poisoned = stat({
+    tool: 'workspace_local_fail',
+    invocationCount: 2 * FITNESS_MIN_SAMPLE,
+    successCount: FITNESS_MIN_SAMPLE, // 50% globally
+    workspaces: ['healthy-repo', 'broken-repo'],
+  });
+  const statInWorkspace = (_tool: string, ws: string): ToolFitnessStat | undefined => {
+    if (ws === 'healthy-repo') {
+      return stat({
+        tool: 'workspace_local_fail',
+        invocationCount: FITNESS_MIN_SAMPLE,
+        successCount: FITNESS_MIN_SAMPLE,
+        workspaces: ['healthy-repo'],
+      });
+    }
+    return stat({
+      tool: 'workspace_local_fail',
+      invocationCount: FITNESS_MIN_SAMPLE,
+      successCount: 0,
+      workspaces: ['broken-repo'],
+    });
+  };
+
+  it('emits a workspace-scoped localized signal instead of a global deprecation', () => {
+    const signals = detectDeprecationCandidates([poisoned], statInWorkspace, WINDOW);
+    expect(signals).toHaveLength(1);
+    const sig = signals[0]!;
+    // NOT a global deprecation candidate…
+    expect(sig.signalKey).not.toContain('deprecation-candidate');
+    // …but a localized "failing here" signal that names the broken workspace.
+    expect(sig.signalKey).toContain('localized-failure:workspace_local_fail:broken-repo');
+    expect(sig.title).toContain('broken-repo');
+    expect(sig.body).toMatch(/healthy in other workspaces/i);
+    expect(sig.severity).not.toBe('critical');
+  });
+
+  it('locallyFailingWorkspaces returns only the genuinely-failing workspace', () => {
+    const failing = locallyFailingWorkspaces(poisoned, statInWorkspace);
+    expect(failing).toHaveLength(1);
+    expect(failing[0]!.workspaces).toContain('broken-repo');
   });
 });
 
