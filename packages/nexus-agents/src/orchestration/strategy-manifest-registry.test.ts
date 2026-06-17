@@ -24,8 +24,13 @@ import {
   getStrategyManifest,
   selectStrategyByManifest,
   rankStrategiesByManifest,
+  strategyCostProfiles,
 } from './strategy-manifest-registry.js';
-import { parseStrategyManifestRegistry, type StrategyManifest } from './strategy-manifest.js';
+import {
+  parseStrategyManifestRegistry,
+  type StrategyManifest,
+  type CostProfile,
+} from './strategy-manifest.js';
 import { buildDefaultExecutors } from '../mcp/tools/run-tool.js';
 import type { ExecutionStrategy } from './meta-orchestrator.js';
 
@@ -345,6 +350,45 @@ describe('manifest-derived alternatives ranking (#3888 — split-brain fix)', ()
         augmented
       )
     ).toThrow(/equal-priority|ambiguous/i);
+  });
+});
+
+describe('cost profiles (Epic G, #3856)', () => {
+  /** The graded cost profile per strategy — the fan-out scaling #3856 authored. */
+  const EXPECTED_COST_PROFILES: Readonly<Record<ExecutionStrategy, CostProfile>> = {
+    'single-shot': 'low',
+    'dev-pipeline': 'medium',
+    pipeline: 'medium',
+    'graph-workflow': 'variable',
+    orchestrate: 'high',
+    consensus: 'high',
+    spec: 'high',
+    research: 'variable',
+  };
+
+  it('every live strategy declares a costProfile', () => {
+    for (const m of STRATEGY_MANIFEST_REGISTRY.manifests) {
+      expect(m.costProfile, `costProfile missing for '${m.strategy}'`).toBeDefined();
+    }
+  });
+
+  it('costProfile matches the graded fan-out scaling for all 8', () => {
+    for (const s of ALL_STRATEGIES) {
+      expect(getStrategyManifest(s)?.costProfile, `costProfile mismatch for '${s}'`).toBe(
+        EXPECTED_COST_PROFILES[s]
+      );
+    }
+  });
+
+  it('strategyCostProfiles() surfaces every strategy, sorted by name', () => {
+    const profiles = strategyCostProfiles();
+    expect(profiles).toHaveLength(ALL_STRATEGIES.length);
+    const names = profiles.map((p) => p.strategy);
+    expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b)));
+    for (const p of profiles) {
+      expect(p.costProfile).toBe(EXPECTED_COST_PROFILES[p.strategy]);
+      expect(p.entrypointTool).toBe(entrypointToolFor(p.strategy));
+    }
   });
 });
 

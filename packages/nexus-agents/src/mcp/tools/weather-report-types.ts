@@ -12,6 +12,8 @@ import { z } from 'zod';
 import type { TaskCategory } from '../../config/task-specialization-types.js';
 import type { GroupStats } from '../../orchestration/outcomes/outcome-types.js';
 import { CLI_NAMES, type CliNameLiteral } from '../../config/model-capabilities-types.js';
+import type { DecisionCostReport } from '../../observability/decision-cost-aggregate.js';
+import type { StrategyCostProfileEntry } from '../../orchestration/strategy-manifest-registry.js';
 
 // ============================================================================
 // Input Schema
@@ -207,6 +209,20 @@ export interface TriageStats {
   readonly actionBreakdown: readonly { readonly action: string; readonly count: number }[];
 }
 
+/**
+ * Cost section of the weather report (Epic G, #3856). Answers "what do governed
+ * decisions cost?" by surfacing the MEASURED per-decision cost aggregates
+ * (DecisionCostStore, #3855) windowed by gate type, alongside each strategy's
+ * coarse declared `costProfile` from the manifest registry. Both ride existing
+ * surfaces — no new MCP tool.
+ */
+export interface CostSection {
+  /** Measured per-gate-type cost aggregates over the lookback window (#3855/#3856). */
+  readonly decisionCosts: DecisionCostReport;
+  /** Each strategy's declared coarse cost profile from the manifest registry. */
+  readonly strategyCostProfiles: readonly StrategyCostProfileEntry[];
+}
+
 /** Full weather report response. */
 export interface WeatherReportResponse {
   readonly overall: AdapterAttemptStats & {
@@ -236,6 +252,8 @@ export interface WeatherReportResponse {
   readonly swarmHealth?: SwarmHealthMetrics;
   /** Worker failure triage statistics (#1506). */
   readonly triageStats?: TriageStats;
+  /** Cost section: per-gate decision-cost aggregates + strategy cost profiles (Epic G, #3856). */
+  readonly costSection?: CostSection;
   /** Recent performance within the lookback window (#1401). */
   readonly recentWindow?: {
     readonly windowMs: number;

@@ -31,6 +31,7 @@ import {
   type SelectionRule,
 } from './strategy-manifest.js';
 import type { ExecutionStrategy } from './meta-orchestrator.js';
+import type { CostProfile } from './strategy-manifest.js';
 import type { WorkflowPattern } from './workflow-router-types.js';
 import type { PipelineType } from '../pipeline/adaptive-orchestrator.js';
 import type { TaskAnalysisResult } from '../core/task-analysis/shared-task-analyzer.js';
@@ -41,8 +42,15 @@ import type { TaskAnalysisResult } from '../core/task-analysis/shared-task-analy
  * and machine-enforced (Epic D, #3841 — semantics in ADR-0017): work-producing
  * strategies are `suggest` (output inert until a human/governor acts), `consensus`
  * is `advisory` (non-blocking votes). None are `enforce` — that requires an earned
- * evidence record + ratification, never a default flip. `costProfile` (Epic G)
- * stays omitted until that epic populates it.
+ * evidence record + ratification, never a default flip. `costProfile` (Epic G,
+ * #3856) is now DECLARED for every strategy as a coarse cost hint, scaled by the
+ * strategy's fan-out: a single model call is `low`; a templated multi-stage gate is
+ * `medium`; an N-voter panel / multi-agent orchestration / greenfield build is
+ * `high`; a strategy whose spend scales with input size (graph topology, research
+ * breadth) is `variable`. These are authored hints surfaced in `weather_report`
+ * (the cost section) and refreshed against the measured per-decision aggregates the
+ * DecisionCostStore now records (#3855); the refresh path is documented in
+ * governance/strategy-manifests.yaml.
  */
 const RAW_REGISTRY: StrategyManifestRegistry = {
   version: 1,
@@ -59,6 +67,8 @@ const RAW_REGISTRY: StrategyManifestRegistry = {
       maturityTier: 'stable',
       latencyClass: 'single-llm',
       authorityTier: 'suggest',
+      // One model call — the cheapest engine.
+      costProfile: 'low',
       // Sequential + trivial complexity collapses to the lightest engine.
       selectionRules: [{ priority: 40, patterns: ['sequential'], complexities: ['simple'] }],
     },
@@ -74,6 +84,8 @@ const RAW_REGISTRY: StrategyManifestRegistry = {
       maturityTier: 'stable',
       latencyClass: 'pipeline',
       authorityTier: 'suggest',
+      // Multi-stage dev gate (test / lint / typecheck) — bounded fan-out.
+      costProfile: 'medium',
       // The default for any non-trivial sequential task (single-shot outranks it
       // only at `simple` complexity; the audit/template overrides outrank both).
       selectionRules: [{ priority: 30, patterns: ['sequential'] }],
@@ -90,6 +102,8 @@ const RAW_REGISTRY: StrategyManifestRegistry = {
       maturityTier: 'stable',
       latencyClass: 'pipeline',
       authorityTier: 'suggest',
+      // Templated multi-stage pipeline — bounded fan-out.
+      costProfile: 'medium',
       // The audit template is more specific than the plain sequential default:
       // it upgrades a sequential single-shot/dev-pipeline choice to the pipeline.
       selectionRules: [{ priority: 80, pipelineTypes: ['audit'], patterns: ['sequential'] }],
@@ -106,6 +120,8 @@ const RAW_REGISTRY: StrategyManifestRegistry = {
       maturityTier: 'beta',
       latencyClass: 'pipeline',
       authorityTier: 'suggest',
+      // Spend scales with the graph topology (node/edge count) — input-dependent.
+      costProfile: 'variable',
       selectionRules: [{ priority: 50, patterns: ['graph'] }],
     },
     {
@@ -120,6 +136,8 @@ const RAW_REGISTRY: StrategyManifestRegistry = {
       maturityTier: 'beta',
       latencyClass: 'async-job-body',
       authorityTier: 'suggest',
+      // Multi-agent fan-out (wave / aflow / puppeteer) — many model calls per run.
+      costProfile: 'high',
       selectionRules: [{ priority: 50, patterns: ['wave', 'aflow', 'puppeteer'] }],
     },
     {
@@ -133,6 +151,8 @@ const RAW_REGISTRY: StrategyManifestRegistry = {
       maturityTier: 'stable',
       latencyClass: 'multi-llm-panel',
       authorityTier: 'advisory',
+      // N independent voter calls per decision (up to the 7-voter panel) — high.
+      costProfile: 'high',
       // An explicit consensus requirement outranks every template/pattern choice.
       selectionRules: [{ priority: 100, patterns: ['consensus'] }],
     },
@@ -148,6 +168,8 @@ const RAW_REGISTRY: StrategyManifestRegistry = {
       maturityTier: 'beta',
       latencyClass: 'async-job-body',
       authorityTier: 'suggest',
+      // Greenfield multi-stage build from a spec — many model calls per run.
+      costProfile: 'high',
       // A greenfield template outranks the structural pattern fallback.
       selectionRules: [{ priority: 90, pipelineTypes: ['greenfield'] }],
     },
@@ -163,6 +185,8 @@ const RAW_REGISTRY: StrategyManifestRegistry = {
       maturityTier: 'stable',
       latencyClass: 'pipeline',
       authorityTier: 'suggest',
+      // Spend scales with research breadth (sources gathered, depth) — input-dependent.
+      costProfile: 'variable',
       // A research template outranks the structural pattern fallback.
       selectionRules: [{ priority: 90, pipelineTypes: ['research'] }],
     },
@@ -185,6 +209,31 @@ const BY_STRATEGY: ReadonlyMap<ExecutionStrategy, StrategyManifest> = new Map(
 /** Returns the manifest fronting a strategy, or undefined if none is registered. */
 export function getStrategyManifest(strategy: ExecutionStrategy): StrategyManifest | undefined {
   return BY_STRATEGY.get(strategy);
+}
+
+/** One strategy's declared cost profile, for the weather_report cost section (#3856). */
+export interface StrategyCostProfileEntry {
+  readonly strategy: ExecutionStrategy;
+  readonly entrypointTool: string;
+  /** The declared coarse cost hint; undefined for any manifest not yet populated. */
+  readonly costProfile: CostProfile | undefined;
+}
+
+/**
+ * The declared cost profile for every registered strategy (#3856). Surfaced in
+ * the weather report so a reader sees each strategy's coarse cost hint alongside
+ * the measured per-decision cost aggregates. Sorted by strategy name for a stable
+ * report. Reads straight off the manifest registry — the single source of truth —
+ * so the surfaced hint can never drift from the authored manifest.
+ */
+export function strategyCostProfiles(): readonly StrategyCostProfileEntry[] {
+  return STRATEGY_MANIFEST_REGISTRY.manifests
+    .map((m) => ({
+      strategy: m.strategy,
+      entrypointTool: m.entrypointTool,
+      costProfile: m.costProfile,
+    }))
+    .sort((a, b) => a.strategy.localeCompare(b.strategy));
 }
 
 /**

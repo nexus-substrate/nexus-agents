@@ -187,9 +187,13 @@ export const MaturityTierSchema = z.enum(['experimental', 'beta', 'stable']);
 export type MaturityTier = z.infer<typeof MaturityTierSchema>;
 
 /**
- * Cost profile (Epic G). Placeholder vocabulary so manifests can be authored
- * with a coarse hint now; Epic G POPULATES real cost data and may extend this.
- * Optional on the manifest until Epic G lands.
+ * Cost profile (Epic G, #3856). A coarse cost hint scaled by a strategy's
+ * fan-out: `low` (one model call), `medium` (templated multi-stage gate), `high`
+ * (N-voter panel / multi-agent orchestration / greenfield build), `variable`
+ * (spend scales with input size — graph topology, research breadth). Populated
+ * for the live 8 manifests by #3856 and surfaced in the weather_report cost
+ * section alongside the measured per-decision aggregates (#3855). Stays optional
+ * on the schema so a future manifest can register before grading its profile.
  */
 export const CostProfileSchema = z.enum(['low', 'medium', 'high', 'variable']);
 export type CostProfile = z.infer<typeof CostProfileSchema>;
@@ -314,8 +318,10 @@ export const StrategyManifestSchema = z
      */
     authorityTier: AuthorityTierSchema.optional(),
     /**
-     * Cost profile — FORWARD-COMPAT for Epic G. Optional until Epic G populates
-     * real cost data; when present it must be a valid {@link CostProfile}.
+     * Cost profile (Epic G, #3856) — a coarse cost hint surfaced in the
+     * weather_report cost section. Populated for the live 8 manifests; stays
+     * optional so a future manifest can register before grading its profile.
+     * When present it must be a valid {@link CostProfile}.
      */
     costProfile: CostProfileSchema.optional(),
     /**

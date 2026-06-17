@@ -37,8 +37,22 @@
 # `enforce` — reaching `enforce` requires an earned evidence record + ratification
 # (the absorbed promotion cases #3552/#3769/#2077), never a default flip.
 #
-# costProfile (Epic G) stays OMITTED for the initial 8 (optional; populated when
-# Epic G lands).
+# costProfile (Epic G, #3856) is now DECLARED for every strategy as a COARSE cost
+# hint, scaled by the strategy's fan-out:
+#   low       a single model call (single-shot)
+#   medium    a templated multi-stage gate with bounded fan-out (dev-pipeline, pipeline)
+#   high      an N-voter panel / multi-agent orchestration / greenfield build
+#             (consensus, orchestrate, spec)
+#   variable  spend scales with input size — graph topology or research breadth
+#             (graph-workflow, research)
+# These are authored hints, surfaced in the weather_report cost section alongside
+# the MEASURED per-decision cost aggregates the DecisionCostStore records (#3855).
+#
+# Refresh path: as real decision-cost data accumulates (DecisionCostStore →
+# weather_report `decisionCosts` section), re-grade a strategy's costProfile against
+# its measured per-decision average and reconcile the hint here + the embedded TS
+# registry IN LOCKSTEP (the #3837 drift gate fails otherwise), then re-run
+# `pnpm strategy-manifest:check`.
 #
 # Adding a strategy = register a manifest here (and mirror it in the TS module),
 # NOT editing the router (Epic C, #3833). The router routes PURELY over the
@@ -58,6 +72,7 @@ manifests:
     maturityTier: stable
     latencyClass: single-llm
     authorityTier: suggest
+    costProfile: low
     selectionRules:
       - priority: 40
         patterns: [sequential]
@@ -73,6 +88,7 @@ manifests:
     maturityTier: stable
     latencyClass: pipeline
     authorityTier: suggest
+    costProfile: medium
     selectionRules:
       - priority: 30
         patterns: [sequential]
@@ -87,6 +103,7 @@ manifests:
     maturityTier: stable
     latencyClass: pipeline
     authorityTier: suggest
+    costProfile: medium
     selectionRules:
       - priority: 80
         pipelineTypes: [audit]
@@ -102,6 +119,7 @@ manifests:
     maturityTier: beta
     latencyClass: pipeline
     authorityTier: suggest
+    costProfile: variable
     selectionRules:
       - priority: 50
         patterns: [graph]
@@ -116,6 +134,7 @@ manifests:
     maturityTier: beta
     latencyClass: async-job-body
     authorityTier: suggest
+    costProfile: high
     selectionRules:
       - priority: 50
         patterns: [wave, aflow, puppeteer]
@@ -130,6 +149,7 @@ manifests:
     maturityTier: stable
     latencyClass: multi-llm-panel
     authorityTier: advisory
+    costProfile: high
     selectionRules:
       - priority: 100
         patterns: [consensus]
@@ -144,6 +164,7 @@ manifests:
     maturityTier: beta
     latencyClass: async-job-body
     authorityTier: suggest
+    costProfile: high
     selectionRules:
       - priority: 90
         pipelineTypes: [greenfield]
@@ -158,6 +179,7 @@ manifests:
     maturityTier: stable
     latencyClass: pipeline
     authorityTier: suggest
+    costProfile: variable
     selectionRules:
       - priority: 90
         pipelineTypes: [research]

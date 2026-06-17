@@ -696,3 +696,85 @@ describe('swarmHealth in weather report', () => {
     expect(report.swarmHealth?.observedRoles).toBe(2);
   });
 });
+
+// ============================================================================
+// Cost section (Epic G, #3856)
+// ============================================================================
+
+function makeDecisionCostRecord(
+  gate: 'consensus_vote' | 'pr_review',
+  over: {
+    voterCount?: number;
+    measuredVoters?: number;
+    unmeasuredVoters?: number;
+    totalTokens?: number;
+    totalCostUsd?: number;
+  } = {}
+): import('../../observability/decision-cost-store.js').DecisionCostRecord {
+  const voterCount = over.voterCount ?? 0;
+  const measuredVoters = over.measuredVoters ?? voterCount;
+  return {
+    decisionId: `dc-${Math.random().toString(36).slice(2)}`,
+    gate,
+    timestamp: '2026-06-17T00:00:00.000Z',
+    summary: {
+      billingMode: 'api',
+      voterCount,
+      measuredVoters,
+      unmeasuredVoters: over.unmeasuredVoters ?? voterCount - measuredVoters,
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      totalTokens: over.totalTokens ?? 0,
+      totalCostUsd: over.totalCostUsd ?? 0,
+      perVoter: [],
+      perModel: [],
+    },
+  };
+}
+
+describe('weather report cost section (#3856)', () => {
+  it('always surfaces strategy cost profiles from the manifest registry', () => {
+    const report = generateWeatherReport({});
+    expect(report.costSection).toBeDefined();
+    const profiles = report.costSection?.strategyCostProfiles ?? [];
+    expect(profiles.length).toBe(8);
+    const consensus = profiles.find((p) => p.strategy === 'consensus');
+    expect(consensus?.costProfile).toBe('high');
+    const singleShot = profiles.find((p) => p.strategy === 'single-shot');
+    expect(singleShot?.costProfile).toBe('low');
+  });
+
+  it('has empty decisionCosts when no decision-cost records are available', () => {
+    const report = generateWeatherReport({});
+    expect(report.costSection?.decisionCosts.byGate).toEqual([]);
+    expect(report.costSection?.decisionCosts.totalDecisions).toBe(0);
+  });
+
+  it('aggregates injected decision-cost records per gate type', () => {
+    const records = [
+      makeDecisionCostRecord('consensus_vote', {
+        voterCount: 7,
+        totalTokens: 1000,
+        totalCostUsd: 0.06,
+      }),
+      makeDecisionCostRecord('consensus_vote', {
+        voterCount: 5,
+        totalTokens: 2000,
+        totalCostUsd: 0.12,
+      }),
+      makeDecisionCostRecord('pr_review', {
+        voterCount: 5,
+        totalTokens: 800,
+        totalCostUsd: 0.02,
+      }),
+    ];
+    const report = generateWeatherReport({}, undefined, { decisionCostRecords: records });
+    const byGate = report.costSection?.decisionCosts.byGate ?? [];
+    expect(byGate.map((g) => g.gate)).toEqual(['consensus_vote', 'pr_review']);
+    const consensus = byGate.find((g) => g.gate === 'consensus_vote');
+    expect(consensus?.decisionCount).toBe(2);
+    expect(consensus?.avgCostUsd).toBeCloseTo(0.09, 6);
+    expect(consensus?.avgVoters).toBe(6);
+    expect(report.costSection?.decisionCosts.totalDecisions).toBe(3);
+  });
+});
