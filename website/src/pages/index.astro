@@ -16,7 +16,7 @@ import {
 
 <BaseLayout
   title="Home"
-  description="Governance substrate for AI coding agents — multi-model consensus, learning-aware routing, content-addressed audit chain. Works across Claude, Codex, Gemini, and OpenCode via MCP."
+  description="Autonomic control plane for AI coding agents — one entry point, adversarial review, tamper-evident hash-chained audit, bounded self-tuning. Works across Claude, Codex, Gemini, and OpenCode via MCP."
 >
   <!-- ─── Hero ─── -->
   <header class="hero">
@@ -31,14 +31,15 @@ import {
     </p>
 
     <h1 class="display hero-headline">
-      Governance for <span class="register-em">AI coding agents</span>.
+      A control plane for <span class="register-em">AI coding agents</span>.
     </h1>
 
     <p class="lede hero-lede">
-      Your agents already write the code. Nexus Agents enforces the rules they
-      follow, reviews their work adversarially via multi-model consensus, and
-      writes everything they touch to a content-addressed audit chain.
-      One MCP server. Every CLI you already have.
+      Your agents already write the code — they're the data plane. Nexus Agents
+      is the control plane above them: it admits work through one entry point,
+      reviews it adversarially before it ships, records every action in a
+      tamper-evident hash-chained audit log, and routes the next task based on
+      what actually worked. One MCP server. Every CLI you already have.
     </p>
 
     <div class="hero-actions">
@@ -172,37 +173,41 @@ nexus-agents setup</code></pre>
 
       <div class="pillars">
         <article class="pillar">
-          <p class="pillar-tag">consensus</p>
-          <h3 class="pillar-title">Multi-model consensus voting.</h3>
+          <p class="pillar-tag">admission control</p>
+          <h3 class="pillar-title">Adversarial review before it ships.</h3>
           <p class="pillar-body">
-            {CONSENSUS_ALGORITHM_COUNT} aggregation strategies — simple majority,
-            supermajority, unanimous, proof-of-learning, higher-order Bayesian.
-            Seven specialised voter roles. Run <code>consensus_vote</code> as an
-            MCP tool, or <code>nexus-agents vote</code> from your shell.
-            Decisions are recorded with per-voter reasoning and confidence.
+            The gate that catches what a data-plane agent would otherwise ship.
+            <code>pr_review</code> runs voter roles against a verification gate;
+            <code>consensus_vote</code> offers {CONSENSUS_ALGORITHM_COUNT}
+            aggregation strategies — simple majority, supermajority, unanimous,
+            proof-of-learning, higher-order Bayesian — across seven specialised
+            roles. Every decision is recorded with per-voter reasoning.
           </p>
         </article>
 
         <article class="pillar">
-          <p class="pillar-tag">routing</p>
-          <h3 class="pillar-title">Learning-aware routing.</h3>
+          <p class="pillar-tag">event log</p>
+          <h3 class="pillar-title">Tamper-evident hash-chained audit.</h3>
+          <p class="pillar-body">
+            Every model call, every vote, every routing choice flows through an
+            append-only, hash-chained audit log on disk. Replay any decision;
+            integrity is verifiable via <code>verify_audit_chain</code>. It is
+            tamper-evident, not tamper-proof — alteration is detectable, not
+            impossible. Drift detection fires when conventions slip.
+          </p>
+        </article>
+
+        <article class="pillar">
+          <p class="pillar-tag">closed loop</p>
+          <h3 class="pillar-title">Route the next task on evidence.</h3>
           <p class="pillar-body">
             A {ROUTING_STAGE_COUNT}-stage pipeline (budget → capability →
             preference → TOPSIS → LinUCB → latency) picks the right CLI from the
             {CLI_ADAPTER_COUNT} adapters you have installed. Outcomes feed
-            {MEMORY_BACKEND_COUNT} memory backends so tomorrow's routing is
-            informed by today's failures — not by static rules.
-          </p>
-        </article>
-
-        <article class="pillar">
-          <p class="pillar-tag">audit</p>
-          <h3 class="pillar-title">Content-addressed audit chain.</h3>
-          <p class="pillar-body">
-            Every model call, every vote, every research citation lands in a
-            content-addressed log on disk. Replay any decision, identify which
-            agent recommended what, when, with what evidence. Drift detection
-            fires when conventions slip.
+            {MEMORY_BACKEND_COUNT} memory backends so tomorrow's routing learns
+            from today's failures. A second bounded loop demotes unhealthy CLIs
+            automatically — capped, auto-decaying, demotion-only. Higher
+            authority is earned against evidence, never flipped on by default.
           </p>
         </article>
       </div>
@@ -222,9 +227,10 @@ nexus-agents setup</code></pre>
     <div class="article-body">
       <h2 class="headline section-headline">Architecture, briefly.</h2>
       <p class="lede section-lede">
-        Tasks enter through MCP, route through the pipeline, execute on whichever
-        CLI scored best, and get validated by consensus before outcomes feed back
-        into the router.
+        Control plane and data plane. Work is admitted through MCP, scheduled to
+        whichever CLI scored best, reviewed by consensus, and recorded in the
+        audit log — then outcomes feed back so the control plane routes the next
+        task on what actually worked.
       </p>
 
       <div class="mermaid diagram" aria-label="Architecture diagram: MCP protocol feeds the Orchestrator, which routes through a multi-stage pipeline to one of several CLIs. Consensus, memory, and audit run alongside. Outcomes feed back into the router.">

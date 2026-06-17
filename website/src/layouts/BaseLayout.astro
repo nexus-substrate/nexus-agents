@@ -16,12 +16,12 @@ interface Props {
 
 const {
   title,
-  description = 'Governance substrate for AI coding agents — adversarial review, drift-detected rules, immutable audit, closed-loop telemetry.',
+  description = 'Autonomic control plane for AI coding agents — one entry point, adversarial review, tamper-evident hash-chained audit, bounded self-tuning.',
   noindex = false,
 } = Astro.props;
 const siteTitle =
   title === 'Home'
-    ? 'Nexus Agents — Governance substrate for AI coding agents'
+    ? 'Nexus Agents — Autonomic control plane for AI coding agents'
     : `${title} — Nexus Agents`;
 const canonicalURL = new URL(Astro.url.pathname, Astro.site);
 ---
@@ -59,7 +59,7 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
       "@context": "https://schema.org",
       "@type": "SoftwareApplication",
       "name": "Nexus Agents",
-      "description": "Governance substrate for AI coding agents — adversarial review across Claude/Codex/Gemini/OpenCode, drift-detected rules, immutable audit chain, closed-loop telemetry. The substrate AI agents need to be trusted in production.",
+      "description": "Autonomic control plane for AI coding agents — one entry point, adversarial review across Claude/Codex/Gemini/OpenCode, tamper-evident hash-chained audit, bounded self-tuning. The agents are the data plane; nexus-agents admits, reviews, audits, and routes their work.",
       "url": Astro.site?.toString(),
       "applicationCategory": "DeveloperApplication",
       "operatingSystem": "Cross-platform",
@@ -118,7 +118,7 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
       <hr class="colophon-rule" />
       <div class="colophon-inner">
         <div class="colophon-left">
-          <p class="colophon-mark">Nexus Agents — governance substrate for AI coding agents.</p>
+          <p class="colophon-mark">Nexus Agents — autonomic control plane for AI coding agents.</p>
           <p class="colophon-meta">
             MIT licensed. Source at <a href="https://github.com/nexus-substrate/nexus-agents">github.com/nexus-substrate/nexus-agents</a>.
             Maintained by <a href="https://github.com/williamzujkowski">William Zujkowski</a>.
