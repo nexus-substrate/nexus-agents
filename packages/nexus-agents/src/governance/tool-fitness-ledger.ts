@@ -25,19 +25,34 @@
  * - Append is best-effort: a telemetry sink must never throw into the operation
  *   it observes (inherited from the JsonlStore contract).
  *
+ * ## Concurrency (#3852 concern 2)
+ *
+ * {@link JsonlStore} (the shared #3762 primitive behind PersistentOutcomeStore)
+ * uses Node's synchronous `appendFileSync` for the fast path. On Linux a single
+ * `write(2)` of a sub-`PIPE_BUF` line to a file opened `O_APPEND` is atomic, so
+ * two processes appending to the homedir-shared ledger interleave at line
+ * granularity rather than corrupting a line — and the hydrate path already skips
+ * any partially-written/corrupt line (graceful degradation). The RESIDUAL is the
+ * over-cap **rewrite** path ({@link JsonlStore.rewriteFile}): a full-file
+ * `writeFileSync` is NOT coordinated across processes, so two concurrent
+ * rewrites can race and one can lose the other's just-appended lines. This is a
+ * PRE-EXISTING property of the shared primitive (inherited from #3762, same as
+ * PersistentOutcomeStore), not introduced here. It is acceptable for THIS
+ * consumer because the surfaced signal is suggest-tier only (a lossy line here
+ * or there cannot cause an autonomous action) and the loss is bounded to events
+ * near the rotation boundary. See the concurrency test in the test file.
+ *
  * ## Scope
  *
- * DATA LAYER ONLY. This module does NOT wire into `improvement_review` and does
- * NOT add a `tool-fitness` SignalCategory — that consumer is #3852. It does NOT
+ * DATA LAYER (+ consumed by #3852). This module owns the tool-fitness schema and
+ * aggregation. The `tool-fitness` SignalCategory consumer now lives in
+ * `improvement_review` (#3852) — so this producer HAS a real in-src consumer and
+ * no longer carries the `@export-no-consumer-yet` marker. It still does NOT
  * implement any pruning/removal pipeline — that is later in epic #3850 and is
- * NEVER autonomous (human ratification via the Epic D path). Because the
- * consumer (#3852) is not built yet this producer has no in-src consumer; the
- * sanctioned marker below opts it out of the producer/consumer gate (#3024).
+ * NEVER autonomous (human ratification via the Epic D path).
  *
  * @module governance/tool-fitness-ledger
  */
-
-// @export-no-consumer-yet — see #3852
 
 import { z } from 'zod';
 
@@ -68,6 +83,17 @@ export const ToolFitnessEventSchema = z.object({
    * "free" with "unmeasured".
    */
   cost: z.number().nonnegative().optional(),
+  /**
+   * OPTIONAL workspace/repo dimension (#3852 concern 1 — context-poisoning).
+   * The ledger is homedir-global, so a tool that fails only in ONE workspace
+   * (local perms, missing deps, repo-specific config) would otherwise aggregate
+   * into a single global fitness number and could wrongly flag a tool that is
+   * healthy everywhere else. Recording the originating workspace lets the
+   * consumer scope/weight fitness so a one-workspace failure doesn't get
+   * globally penalized. BACKWARD-COMPATIBLE: optional, absent on legacy events
+   * (treated as the unattributed/global bucket by the consumer).
+   */
+  workspace: z.string().min(1).max(256).optional(),
 });
 export type ToolFitnessEvent = z.infer<typeof ToolFitnessEventSchema>;
 
@@ -93,7 +119,18 @@ export interface ToolFitnessStat {
    * for this tool reported a cost — distinguishes "unmeasured" from "zero".
    */
   readonly totalCost: number | undefined;
+  /**
+   * Distinct workspaces that recorded an event for this tool (#3852 concern 1).
+   * Sorted, deduped. Events with no `workspace` contribute the sentinel
+   * {@link UNATTRIBUTED_WORKSPACE}. The consumer uses this to scope fitness:
+   * a tool failing in ONE workspace but healthy in others is NOT a global
+   * deprecation candidate.
+   */
+  readonly workspaces: readonly string[];
 }
+
+/** Sentinel bucket for events that carried no `workspace` (legacy/global). */
+export const UNATTRIBUTED_WORKSPACE = '(unattributed)';
 
 // ============================================================================
 // Configuration
@@ -151,6 +188,11 @@ export class ToolFitnessLedger {
     tool: string;
     success: boolean;
     cost?: number;
+    /**
+     * Originating workspace/repo (#3852 concern 1). Optional + backward-compat:
+     * absent events fall into the {@link UNATTRIBUTED_WORKSPACE} bucket.
+     */
+    workspace?: string;
     /** Override the timestamp (defaults to now). Mainly for tests/backfill. */
     ts?: string;
   }): void {
@@ -160,6 +202,7 @@ export class ToolFitnessLedger {
       tool: event.tool,
       success: event.success,
       ...(event.cost !== undefined ? { cost: event.cost } : {}),
+      ...(event.workspace !== undefined ? { workspace: event.workspace } : {}),
     };
     this.store.append(record);
   }
@@ -176,6 +219,24 @@ export class ToolFitnessLedger {
    */
   statFor(tool: string): ToolFitnessStat | undefined {
     const events = this.store.all().filter((e) => e.tool === tool);
+    if (events.length === 0) return undefined;
+    return aggregate(tool, events);
+  }
+
+  /**
+   * Aggregate stats for a single tool RESTRICTED to one workspace (#3852
+   * concern 1 — context-poisoning). Pass {@link UNATTRIBUTED_WORKSPACE} to
+   * select the legacy/global bucket of events that carried no `workspace`.
+   * Returns `undefined` when the tool has no events in that workspace.
+   *
+   * This is the primitive that lets the consumer answer "is this tool low-fitness
+   * EVERYWHERE, or only in one repo?" so a single-workspace failure can't
+   * globally mis-flag a healthy tool.
+   */
+  statForInWorkspace(tool: string, workspace: string): ToolFitnessStat | undefined {
+    const events = this.store
+      .all()
+      .filter((e) => e.tool === tool && (e.workspace ?? UNATTRIBUTED_WORKSPACE) === workspace);
     if (events.length === 0) return undefined;
     return aggregate(tool, events);
   }
@@ -213,10 +274,12 @@ function aggregate(tool: string, events: readonly ToolFitnessEvent[]): ToolFitne
   let successCount = 0;
   let lastUsedAt = '';
   let totalCost: number | undefined;
+  const workspaces = new Set<string>();
   for (const event of events) {
     if (event.success) successCount++;
     if (lastUsedAt === '' || Date.parse(event.ts) >= Date.parse(lastUsedAt)) lastUsedAt = event.ts;
     if (event.cost !== undefined) totalCost = (totalCost ?? 0) + event.cost;
+    workspaces.add(event.workspace ?? UNATTRIBUTED_WORKSPACE);
   }
   const invocationCount = events.length;
   return {
@@ -227,6 +290,7 @@ function aggregate(tool: string, events: readonly ToolFitnessEvent[]): ToolFitne
     successRate: successCount / invocationCount,
     lastUsedAt,
     totalCost,
+    workspaces: [...workspaces].sort((a, b) => a.localeCompare(b)),
   };
 }
 

@@ -29,6 +29,10 @@ const ROLE_BY_CATEGORY: Readonly<Record<SignalCategory, PipelineRole>> = {
   'tech-debt': 'coder',
   routing: 'researcher',
   consensus: 'researcher',
+  // #3852: tool-fitness candidates are deprecation/consolidation proposals —
+  // a researcher owns the investigation seed (suggest-tier; the dev-pipeline
+  // re-plans anyway). NEVER an autonomous removal.
+  'tool-fitness': 'researcher',
 };
 
 /** Stable, dedup-friendly task id for a signal (mirrors the signalKey). */

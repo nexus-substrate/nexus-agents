@@ -38,6 +38,7 @@ import { getPipelineEventBus } from '../../pipeline/event-bus.js';
 import type { VoteRejectedSignalEvent } from '../../pipeline/event-types.js';
 import { REJECTION_CATEGORIES } from '../../consensus/types-core.js';
 import { emitFitnessDeclinedSignal } from './improvement-review-signals.js';
+import { loadToolFitnessSignals } from './improvement-review-tool-fitness.js';
 import { improvementSignalsToTasks } from './improvement-remediation.js';
 import { recordRemediationShadow } from './improvement-remediation-shadow.js';
 import { classifySignalPriority, priorityLabel } from './remediation-priority.js';
@@ -95,7 +96,16 @@ export const ImprovementReviewInputSchema = z.object({
 
 export type ImprovementReviewInput = z.infer<typeof ImprovementReviewInputSchema>;
 
-export type SignalCategory = 'routing' | 'tech-debt' | 'bug' | 'security' | 'consensus';
+export type SignalCategory =
+  | 'routing'
+  | 'tech-debt'
+  | 'bug'
+  | 'security'
+  | 'consensus'
+  // #3852 (closes the #3692 sequencing): tool-fitness deprecation/consolidation
+  // candidates from the #3851 ledger. SUGGEST-TIER ONLY — never autonomous
+  // removal (Epic F invariant). See improvement-review-tool-fitness.ts.
+  | 'tool-fitness';
 
 export interface ImprovementSignal {
   readonly category: SignalCategory;
@@ -732,12 +742,19 @@ export async function runImprovementReview(
   // window-filter by event timestamp before aggregating.
   const rejectionEvents = readBufferedVoteRejections(now, lookbackDays);
 
+  // Tool-fitness deprecation + consolidation CANDIDATES from the #3851 ledger
+  // (#3852, closes #3692). SUGGEST-TIER ONLY — never autonomous removal (Epic F).
+  // Fail-soft: a ledger read error yields no signals (telemetry must not break
+  // the review). Workspace-scoped to defeat context-poisoning (#3852 concern 1).
+  const toolFitnessSignals = loadToolFitnessSignals(windowLabel);
+
   const signals: ImprovementSignal[] = [
     ...detectCliPerformanceFloor(windowed, minSampleSize, windowLabel),
     ...detectFailureCategoryConcentration(windowed, windowLabel),
     ...detectFitnessSignals(audit, fitnessFloor),
     ...detectConsensusRejectionSignals(rejectionEvents, windowLabel),
     ...selfEvalSignals,
+    ...toolFitnessSignals,
   ];
   signals.sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]);
 

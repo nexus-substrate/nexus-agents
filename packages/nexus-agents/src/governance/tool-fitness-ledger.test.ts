@@ -16,6 +16,7 @@ import {
   ToolFitnessEventSchema,
   getToolFitnessLedger,
   _resetToolFitnessLedgerForTests,
+  UNATTRIBUTED_WORKSPACE,
   type ToolFitnessEvent,
 } from './tool-fitness-ledger.js';
 
@@ -67,6 +68,28 @@ describe('ToolFitnessEventSchema', () => {
       cost: -1,
     });
     expect(parsed.success).toBe(false);
+  });
+
+  it('accepts an optional workspace dimension (#3852 concern 1)', () => {
+    const parsed = ToolFitnessEventSchema.safeParse({
+      v: 1,
+      ts: '2026-06-15T10:00:00.000Z',
+      tool: 'memory_query',
+      success: true,
+      workspace: '/home/op/repo-a',
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('remains backward-compatible: workspace is optional (legacy events parse)', () => {
+    // A pre-#3852 event has no `workspace` field — must still validate.
+    const parsed = ToolFitnessEventSchema.safeParse({
+      v: 1,
+      ts: '2026-06-15T10:00:00.000Z',
+      tool: 'memory_query',
+      success: true,
+    });
+    expect(parsed.success).toBe(true);
   });
 });
 
@@ -147,6 +170,75 @@ describe('ToolFitnessLedger — edge cases', () => {
     const ledger = new ToolFitnessLedger({ filePath });
     expect(ledger.report()).toEqual([]);
     expect(ledger.size()).toBe(0);
+  });
+});
+
+describe('ToolFitnessLedger — workspace dimension (#3852 concern 1)', () => {
+  it('records workspace and surfaces distinct workspaces in the stat', () => {
+    const ledger = new ToolFitnessLedger({ filePath });
+    ledger.record({ tool: 't', success: true, workspace: 'repo-a' });
+    ledger.record({ tool: 't', success: false, workspace: 'repo-b' });
+    ledger.record({ tool: 't', success: true, workspace: 'repo-a' });
+
+    expect(ledger.statFor('t')?.workspaces).toEqual(['repo-a', 'repo-b']);
+  });
+
+  it('buckets events with no workspace under the unattributed sentinel', () => {
+    const ledger = new ToolFitnessLedger({ filePath });
+    ledger.record({ tool: 't', success: true }); // legacy / global
+    expect(ledger.statFor('t')?.workspaces).toEqual([UNATTRIBUTED_WORKSPACE]);
+  });
+
+  it('statForInWorkspace scopes aggregation to one workspace', () => {
+    const ledger = new ToolFitnessLedger({ filePath });
+    // Healthy in repo-a, broken in repo-b — the global rate would be misleading.
+    for (let i = 0; i < 10; i++) ledger.record({ tool: 't', success: true, workspace: 'repo-a' });
+    for (let i = 0; i < 10; i++) ledger.record({ tool: 't', success: false, workspace: 'repo-b' });
+
+    expect(ledger.statFor('t')?.successRate).toBe(0.5); // global, poisoned
+    expect(ledger.statForInWorkspace('t', 'repo-a')?.successRate).toBe(1); // healthy here
+    expect(ledger.statForInWorkspace('t', 'repo-b')?.successRate).toBe(0); // broken here
+    expect(ledger.statForInWorkspace('t', 'repo-c')).toBeUndefined();
+  });
+
+  it('statForInWorkspace selects the unattributed bucket by sentinel', () => {
+    const ledger = new ToolFitnessLedger({ filePath });
+    ledger.record({ tool: 't', success: true }); // no workspace
+    ledger.record({ tool: 't', success: false, workspace: 'repo-a' });
+    expect(ledger.statForInWorkspace('t', UNATTRIBUTED_WORKSPACE)?.invocationCount).toBe(1);
+    expect(ledger.statForInWorkspace('t', UNATTRIBUTED_WORKSPACE)?.successRate).toBe(1);
+  });
+});
+
+describe('ToolFitnessLedger — concurrency (#3852 concern 2)', () => {
+  // The shared JsonlStore (#3762) appends via synchronous appendFileSync with
+  // O_APPEND; a sub-PIPE_BUF line write is atomic on Linux, so two ledgers
+  // backed by the SAME homedir file interleave at line granularity rather than
+  // corrupting a line. We can't spawn real processes in a unit test, but we CAN
+  // prove the on-disk format survives interleaved appends from two independent
+  // ledger instances and that hydrate recovers every well-formed line. The
+  // residual (an uncoordinated over-cap rewrite race) is documented in the
+  // module header and is acceptable because the surfaced signal is suggest-tier
+  // only — a lost line near rotation can never cause an autonomous action.
+  it('two independent ledgers appending to the same file interleave without corruption', () => {
+    const a = new ToolFitnessLedger({ filePath });
+    const b = new ToolFitnessLedger({ filePath });
+    // Interleave writes from two "concurrent" handles to the same file.
+    for (let i = 0; i < 5; i++) {
+      a.record({ tool: 'a-side', success: true });
+      b.record({ tool: 'b-side', success: false });
+    }
+    // Every line on disk is valid JSON parseable by the schema (no torn line).
+    const lines = readFileSync(filePath, 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim().length > 0);
+    expect(lines).toHaveLength(10);
+    for (const line of lines) {
+      expect(ToolFitnessEventSchema.safeParse(JSON.parse(line)).success).toBe(true);
+    }
+    // A fresh hydrate recovers all 10 interleaved events.
+    const reloaded = new ToolFitnessLedger({ filePath });
+    expect(reloaded.size()).toBe(10);
   });
 });
 
