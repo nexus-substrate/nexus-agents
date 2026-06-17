@@ -1,6 +1,6 @@
 # Nexus Agents
 
-> Governance substrate for your AI coding agents — adversarial review, drift-detected rules, immutable audit, closed-loop telemetry
+> Governance substrate for your AI coding agents — adversarial review, drift-detected rules, immutable audit, human-gated closed-loop tuning (autonomous demotion, earned promotion)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D22.0.0-brightgreen)](https://nodejs.org)
