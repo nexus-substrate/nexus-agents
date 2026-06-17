@@ -44,13 +44,35 @@ import { computeAdaptiveThresholds } from '../../orchestration/outcomes/adaptive
 import { getRateLimitStats } from '../../adapters/rate-limit-detector.js';
 import { getToolStats } from '../middleware/tool-metrics.js';
 import { getHeartbeatMonitor } from '../../agents/heartbeat-monitor.js';
-import type { AgentHealthSummary } from './weather-report-types.js';
+import type { AgentHealthSummary, CostSection } from './weather-report-types.js';
+import { isPersistenceEnabled } from '../../config/learning-persistence.js';
+import { aggregateDecisionCosts } from '../../observability/decision-cost-aggregate.js';
+import {
+  DecisionCostStore,
+  type DecisionCostRecord,
+} from '../../observability/decision-cost-store.js';
+import { strategyCostProfiles } from '../../orchestration/strategy-manifest-registry.js';
 
 // ============================================================================
 // Public API
 // ============================================================================
 
 const CLI_NAMES = ['claude', 'gemini', 'codex', 'opencode'] as const;
+
+/**
+ * Optional injectable dependencies for {@link generateWeatherReport} (#3856).
+ * The cost section reads persisted per-decision cost records; tests inject a
+ * deterministic set via {@link WeatherReportDeps.decisionCostRecords} rather than
+ * touching the durable {@link DecisionCostStore}.
+ */
+export interface WeatherReportDeps {
+  /**
+   * Pre-resolved decision-cost records to aggregate for the cost section. When
+   * omitted, the records are read from the durable {@link DecisionCostStore} iff
+   * persistence is enabled (no store is constructed when it is off).
+   */
+  readonly decisionCostRecords?: readonly DecisionCostRecord[];
+}
 
 /** Collect non-empty optional sections into a spread-friendly object. */
 function collectOptionalSections(sections: Record<string, unknown>): Record<string, unknown> {
@@ -89,7 +111,8 @@ function buildOptionalSections(
  */
 export function generateWeatherReport(
   input: WeatherReportOptions,
-  config?: Partial<WeatherReportConfig>
+  config?: Partial<WeatherReportConfig>,
+  deps?: WeatherReportDeps
 ): WeatherReportResponse {
   const cfg = { ...createDefaultWeatherConfig(), ...config };
   const store = getOutcomeStore();
@@ -108,6 +131,7 @@ export function generateWeatherReport(
     adaptiveBonuses: includeAdaptive ? computeAdaptiveBonuses(cfg) : [],
     tierRecommendations: buildTierRecommendations(summary),
     ...buildOptionalSections(input, cfg),
+    costSection: buildCostSection(cfg, deps),
     explorationRate: cfg.explorationRate,
     coldStartThreshold: cfg.coldStartThreshold,
     collectedAt: new Date().toISOString(),
@@ -159,6 +183,45 @@ function buildRecentWindow(cfg: WeatherReportConfig): WeatherReportResponse['rec
     successRate: round3(successes / recent.length),
     avgDurationMs: Math.round(totalDuration / recent.length),
   };
+}
+
+/**
+ * Builds the cost section (Epic G, #3856): MEASURED per-gate decision-cost
+ * aggregates over the lookback window + each strategy's declared cost profile.
+ *
+ * The strategy cost profiles always come from the manifest registry (pure). The
+ * decision-cost records come from `deps.decisionCostRecords` when injected
+ * (tests), else from the durable {@link DecisionCostStore} — but ONLY when
+ * persistence is enabled, so a persistence-off context (or a test that mocks it
+ * off) never constructs the store and the section degrades to an empty
+ * `decisionCosts` rather than throwing.
+ */
+function buildCostSection(cfg: WeatherReportConfig, deps?: WeatherReportDeps): CostSection {
+  const windowMs = cfg.outcomeLookbackMs;
+  const records = resolveDecisionCostRecords(windowMs, deps);
+  return {
+    decisionCosts: aggregateDecisionCosts(records, windowMs),
+    strategyCostProfiles: strategyCostProfiles(),
+  };
+}
+
+/**
+ * Resolves the decision-cost records to aggregate: the injected set when
+ * present, else the durable store windowed to the lookback (all history when
+ * `windowMs <= 0`). Returns `[]` when persistence is off so no store is built.
+ */
+function resolveDecisionCostRecords(
+  windowMs: number,
+  deps?: WeatherReportDeps
+): readonly DecisionCostRecord[] {
+  if (deps?.decisionCostRecords !== undefined) return deps.decisionCostRecords;
+  // Only construct the store when persistence is on — its constructor touches the
+  // learning dir, which a persistence-off (or test-mocked) context lacks.
+  if (!isPersistenceEnabled()) return [];
+  const store = new DecisionCostStore();
+  if (windowMs <= 0) return store.all();
+  const since = new Date(Date.now() - windowMs).toISOString();
+  return store.query({ since });
 }
 
 /** Builds rate limit report from tracked events (Issue #996). */

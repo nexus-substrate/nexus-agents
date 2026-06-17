@@ -82,6 +82,10 @@ export type {
   RecordDecisionCostInput,
 } from './decision-cost-store.js';
 
+// Cross-decision cost aggregation by gate type (#3856, epic #3854)
+export { aggregateDecisionCosts } from './decision-cost-aggregate.js';
+export type { GateCostAggregate, DecisionCostReport } from './decision-cost-aggregate.js';
+
 // Adapter-failover → pipeline-bus signal producer (#3321)
 export {
   startFailoverSignals,
