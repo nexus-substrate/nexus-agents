@@ -142,6 +142,8 @@ Detailed technical documentation:
 | [cli-first-adapter-strategy.md](./research/cli-first-adapter-strategy.md)           | CLI-first adapter research                                                 | Canonical |
 | [pr-review-experiment-results.md](./research/pr-review-experiment-results.md)       | pr_review #2233 baseline experiment results                                | Canonical |
 | [pr-review-experiment-results-v5.md](./research/pr-review-experiment-results-v5.md) | pr_review v5 — JSON-native findings; 100% bug-catch + caught a real bug    | Canonical |
+| [pr-review-eval-labeling-rubric.md](./research/pr-review-eval-labeling-rubric.md)   | pr_review eval labeling rubric v1 + v5 re-adjudication (#3846)             | Canonical |
+| [pr-review-dataset-curation.md](./research/pr-review-dataset-curation.md)           | pr_review eval dataset curation pipeline + n≥50 assessment (#3847)         | Canonical |
 | [mcp-tool-distinctness-v1.md](./research/mcp-tool-distinctness-v1.md)               | MCP tool-description pairwise similarity report (#2650)                    | Canonical |
 | [fitness-stratified-v1.md](./research/fitness-stratified-v1.md)                     | Stratified runtime-outcome report — per adapter / task-type / role (#2662) | Canonical |
 | [defending-code-harness-eval.md](./research/defending-code-harness-eval.md)         | Eval of Anthropic defending-code-reference-harness (#3574)                 | Canonical |

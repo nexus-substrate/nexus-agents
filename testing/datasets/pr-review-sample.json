@@ -1,121 +1,277 @@
 {
+  "rubricVersion": "1.0.0",
   "curatedAt": "2026-04-27T00:50:00Z",
-  "methodology": "Hybrid v3 dataset. 10 entries: 5 synthetic test cases with hand-crafted diff-readable bugs (ReDoS, off-by-one, missing await, null deref, resource leak — each at a known file:line) + 3 historical PRs (one with a real bug discovered by the v5 pr_review run itself — see #2235 entry) + 2 synthetic clean counterparts. Synthetic entries use customDiff to skip the GitHub fetch.\n\nThe #2235 entry was originally labeled clean but reclassified after the v5 retest's devex voter caught a real bug (wrong env var name in rate-limit message). Reclassified rather than left as 'false positive' because the finding was correct — the dataset was wrong. Entry now serves as a real-world buggy case alongside the synthetic ones.",
+  "reAdjudicatedAt": "2026-06-16",
+  "methodology": "Hybrid v3 dataset, re-adjudicated under the pr_review eval labeling rubric v1.0.0 (#3846 — docs/research/pr-review-eval-labeling-rubric.md). 10 entries: 5 synthetic test cases with hand-crafted diff-readable bugs (ReDoS, off-by-one, missing await, null deref, resource leak — each at a known file:line) + 3 historical PRs (one with a real bug discovered by the v5 pr_review run itself — see #2235 entry) + 2 synthetic clean counterparts. Synthetic entries use customDiff to skip the GitHub fetch. Every entry now carries the rubric stamp: class (buggy|clean|borderline), severity per bug, provenance, and an adjudication rationale. Re-adjudication changes vs v5: synthetic-clean-refactor reclassified clean -> borderline (its v5 'false-positive' findings are defensible context-dependent concerns, not confirmed bugs — Rule 4); #2228 bug marked locationTolerance:structural (missing Record entry has no single line); all buggy cases gained an explicit severity. No buggy/clean label flipped except the clean -> borderline reclassification. #2235 was already reclassified clean -> buggy before this rubric (during v5, per #3846 history); v1 confirms it buggy under Rule 5.3.",
+  "rubricRef": "docs/research/pr-review-eval-labeling-rubric.md",
   "prs": [
     {
       "number": "synthetic-redos",
+      "rubricVersion": "1.0.0",
+      "class": "buggy",
       "title": "feat(security): add base64 detection for input sanitizer (synthetic test case)",
       "customDescription": "Adds a regex pattern that flags base64-encoded payloads in untrusted input.",
       "customDiff": "diff --git a/packages/nexus-agents/src/security/input-sanitizer.ts b/packages/nexus-agents/src/security/input-sanitizer.ts\nindex 0000001..0000002 100644\n--- a/packages/nexus-agents/src/security/input-sanitizer.ts\n+++ b/packages/nexus-agents/src/security/input-sanitizer.ts\n@@ -94,6 +94,11 @@ const INJECTION_PATTERNS: readonly PatternMatch[] = [\n     flag: 'fake_conversation',\n     pattern: /<(?:assistant|human|user|system)>/i,\n   },\n+  {\n+    flag: 'base64_encoded',\n+    // Lookahead requires at least one base64-discriminating char to skip pure-hex.\n+    pattern: /(?=[A-Za-z0-9+/]*[g-zG-Z+/=])[A-Za-z0-9+/]{40,}={0,2}/,\n+  },\n ];",
+      "provenance": {
+        "source": "synthetic",
+        "fixReference": "synthetic (real fix: #2216 / commit f1742153b)",
+        "discoveredBy": null
+      },
       "knownBugs": [
         {
           "summary": "ReDoS via catastrophic backtracking — overlapping character classes in lookahead + quantifier (CWE-1333)",
+          "severity": "critical",
           "fixReference": "synthetic (real fix: #2216 / commit f1742153b)",
-          "location": "packages/nexus-agents/src/security/input-sanitizer.ts:99"
+          "location": "packages/nexus-agents/src/security/input-sanitizer.ts:99",
+          "locationTolerance": "line"
         }
       ],
+      "borderlineConcerns": [],
+      "adjudication": {
+        "adjudicatedAt": "2026-06-16",
+        "adjudicatedUnder": "1.0.0",
+        "rationale": "Critical: a (?=X*Y)X{n,} structure on overlapping classes is polynomial-backtracking on adversarial input, a DoS on a security-input path. Reachable from untrusted input. Pattern lifted from real #2191/#2216 history."
+      },
       "notes": "Real-world ReDoS pattern lifted from #2191/#2216 history. Security voter with OWASP context should flag the (?=X*Y)X{n,} structure as a polynomial-backtracking risk."
     },
     {
       "number": "synthetic-off-by-one",
+      "rubricVersion": "1.0.0",
+      "class": "buggy",
       "title": "feat(pagination): clamp page size to maxItems (synthetic test case)",
       "customDescription": "Limits result page size so callers can't request unbounded sets.",
       "customDiff": "diff --git a/packages/nexus-agents/src/api/pagination.ts b/packages/nexus-agents/src/api/pagination.ts\nindex 0000001..0000002 100644\n--- a/packages/nexus-agents/src/api/pagination.ts\n+++ b/packages/nexus-agents/src/api/pagination.ts\n@@ -10,6 +10,12 @@ export interface PaginatedResult<T> {\n   readonly items: readonly T[];\n   readonly nextCursor: string | undefined;\n }\n+\n+/** Clamp requested page size to [1, maxItems]. */\n+export function clampPageSize(requested: number, maxItems: number): number {\n+  if (requested < 1) return 1;\n+  if (requested > maxItems) return maxItems;\n+  return requested - 1;\n+}",
+      "provenance": {
+        "source": "synthetic",
+        "fixReference": "synthetic",
+        "discoveredBy": null
+      },
       "knownBugs": [
         {
           "summary": "Off-by-one in clampPageSize — returns requested-1 in the in-range path; should return requested unchanged",
+          "severity": "medium",
           "fixReference": "synthetic",
-          "location": "packages/nexus-agents/src/api/pagination.ts:18"
+          "location": "packages/nexus-agents/src/api/pagination.ts:18",
+          "locationTolerance": "line"
         }
       ],
+      "borderlineConcerns": [],
+      "adjudication": {
+        "adjudicatedAt": "2026-06-16",
+        "adjudicatedUnder": "1.0.0",
+        "rationale": "Medium: wrong result on the in-range path is statable as a failing test — clampPageSize(50, 100) should be 50, returns 49. Off-by-one in a widely-called helper, but not a crash or security issue."
+      },
       "notes": "Architect or devex voter should flag: function name says 'clamp to range' but returns one-less than the input when in range. Test would assert clampPageSize(50, 100) === 50, this returns 49."
     },
     {
       "number": "synthetic-missing-await",
+      "rubricVersion": "1.0.0",
+      "class": "buggy",
       "title": "feat(session): refresh token on each request (synthetic test case)",
       "customDescription": "Auto-refreshes session token before downstream calls.",
       "customDiff": "diff --git a/packages/nexus-agents/src/auth/session.ts b/packages/nexus-agents/src/auth/session.ts\nindex 0000001..0000002 100644\n--- a/packages/nexus-agents/src/auth/session.ts\n+++ b/packages/nexus-agents/src/auth/session.ts\n@@ -42,5 +42,11 @@ export class Session {\n     this.token = token;\n   }\n \n+  async refreshAndCall<T>(call: () => Promise<T>): Promise<T> {\n+    this.refreshToken();\n+    return call();\n+  }\n+\n+  private async refreshToken(): Promise<void> {\n+    this.token = await fetchFreshToken(this.userId);\n+  }\n }",
+      "provenance": {
+        "source": "synthetic",
+        "fixReference": "synthetic",
+        "discoveredBy": null
+      },
       "knownBugs": [
         {
           "summary": "Missing await on refreshToken — async fire-and-forget, the call() runs with stale token",
+          "severity": "high",
           "fixReference": "synthetic",
-          "location": "packages/nexus-agents/src/auth/session.ts:46"
+          "location": "packages/nexus-agents/src/auth/session.ts:46",
+          "locationTolerance": "line"
         }
       ],
+      "borderlineConcerns": [],
+      "adjudication": {
+        "adjudicatedAt": "2026-06-16",
+        "adjudicatedUnder": "1.0.0",
+        "rationale": "High: an auth-token race that runs downstream calls with a stale token on the happy path. Reachable every call; statable as a failing test asserting the token was refreshed before call() ran."
+      },
       "notes": "Architect or security voter should flag: refreshToken returns Promise<void> but is invoked without await. The call() proceeds before the new token is set; downstream uses the stale token. Failing test: assert that the token was updated when call() runs."
     },
     {
       "number": "synthetic-null-deref",
+      "rubricVersion": "1.0.0",
+      "class": "buggy",
       "title": "feat(metrics): track average latency from optional response field (synthetic test case)",
       "customDescription": "Updates a rolling average from response.timing.latencyMs.",
       "customDiff": "diff --git a/packages/nexus-agents/src/metrics/latency.ts b/packages/nexus-agents/src/metrics/latency.ts\nindex 0000001..0000002 100644\n--- a/packages/nexus-agents/src/metrics/latency.ts\n+++ b/packages/nexus-agents/src/metrics/latency.ts\n@@ -8,6 +8,11 @@ export interface ApiResponse {\n   readonly status: number;\n   readonly timing?: { readonly latencyMs: number };\n }\n+\n+export function recordLatency(rolling: number[], response: ApiResponse): void {\n+  rolling.push(response.timing.latencyMs);\n+  if (rolling.length > 100) rolling.shift();\n+}",
+      "provenance": {
+        "source": "synthetic",
+        "fixReference": "synthetic",
+        "discoveredBy": null
+      },
       "knownBugs": [
         {
           "summary": "Null deref on optional `response.timing` — schema marks timing as optional but code accesses .latencyMs unconditionally",
+          "severity": "high",
           "fixReference": "synthetic",
-          "location": "packages/nexus-agents/src/metrics/latency.ts:13"
+          "location": "packages/nexus-agents/src/metrics/latency.ts:13",
+          "locationTolerance": "line"
         }
       ],
+      "borderlineConcerns": [],
+      "adjudication": {
+        "adjudicatedAt": "2026-06-16",
+        "adjudicatedUnder": "1.0.0",
+        "rationale": "High: TypeError on a reachable path — the type says timing is optional, so any response without timing throws. Statable as a failing test: recordLatency([], { status: 200 }) throws."
+      },
       "notes": "Architect or devex voter should flag: ApiResponse.timing is optional (`?:`), but recordLatency dereferences without a guard. TypeError when response.timing is undefined. Failing test: recordLatency([], { status: 200 }) throws."
     },
     {
       "number": "synthetic-listener-leak",
+      "rubricVersion": "1.0.0",
+      "class": "buggy",
       "title": "feat(workers): attach progress listener for streaming jobs (synthetic test case)",
       "customDescription": "Workers emit 'progress' events; subscribe so callers can show a progress bar.",
       "customDiff": "diff --git a/packages/nexus-agents/src/workers/progress.ts b/packages/nexus-agents/src/workers/progress.ts\nindex 0000001..0000002 100644\n--- a/packages/nexus-agents/src/workers/progress.ts\n+++ b/packages/nexus-agents/src/workers/progress.ts\n@@ -3,6 +3,15 @@ import { EventEmitter } from 'node:events';\n export async function runWithProgress<T>(\n   worker: EventEmitter,\n   task: () => Promise<T>,\n   onProgress: (pct: number) => void\n ): Promise<T> {\n+  worker.on('progress', onProgress);\n+  try {\n+    return await task();\n+  } catch (err) {\n+    throw err;\n+  }\n+}",
+      "provenance": {
+        "source": "synthetic",
+        "fixReference": "synthetic",
+        "discoveredBy": null
+      },
       "knownBugs": [
         {
           "summary": "Listener leak — worker.on('progress', ...) added but never removed; finally/cleanup missing",
+          "severity": "medium",
           "fixReference": "synthetic",
-          "location": "packages/nexus-agents/src/workers/progress.ts:8"
+          "location": "packages/nexus-agents/src/workers/progress.ts:8",
+          "locationTolerance": "line"
         }
       ],
+      "borderlineConcerns": [],
+      "adjudication": {
+        "adjudicatedAt": "2026-06-16",
+        "adjudicatedUnder": "1.0.0",
+        "rationale": "Medium: resource leak on a long-lived worker — listeners accumulate across calls (no worker.off in finally), eventually MaxListenersExceededWarning then memory pressure. Not an immediate crash; statable as a failing test (11 sequential calls warn)."
+      },
       "notes": "Architect or security voter should flag: long-lived workers (e.g. shared singleton) accumulate listeners across calls; eventually MaxListenersExceededWarning, then memory pressure. Need worker.off('progress', onProgress) in finally. Failing test: 11 sequential runWithProgress calls trigger MaxListeners warning."
     },
     {
       "number": 2228,
+      "rubricVersion": "1.0.0",
+      "class": "buggy",
       "title": "feat(consensus): add scope_steward role for build-vs-buy gating (#2185)",
+      "provenance": {
+        "source": "historical",
+        "fixReference": "4278f2739",
+        "discoveredBy": "CI Type Check"
+      },
       "knownBugs": [
         {
-          "summary": "Missing scope_steward entry in ROLE_VOTE_DISTRIBUTIONS — Type Check failed on first CI push",
+          "summary": "Missing scope_steward entry in ROLE_VOTE_DISTRIBUTIONS — Type Check failed on first CI push (near voter-execution.ts:134)",
+          "severity": "high",
           "fixReference": "4278f2739",
-          "location": "packages/nexus-agents/src/cli/voter-execution.ts:134"
+          "location": "packages/nexus-agents/src/cli/voter-execution.ts",
+          "locationTolerance": "structural"
         }
       ],
+      "borderlineConcerns": [],
+      "adjudication": {
+        "adjudicatedAt": "2026-06-16",
+        "adjudicatedUnder": "1.0.0",
+        "rationale": "High: a CI-detectable type error (broken build). locationTolerance:structural because the defect is a missing key in a Record-over-union relationship, not a single line — a finding matches when it names the missing scope_steward entry / the union-Record mismatch, regardless of line. This corrects the v5 'location miss', which was an artifact of scoring a structural defect against a single line."
+      },
       "notes": "Historical PR with CI-detectable bug — kept for cross-comparison with synthetic cases. A diff-only reviewer would need to spot the missing entry by reading the union+record relationship; harder than the synthetic cases."
     },
     {
       "number": 2235,
+      "rubricVersion": "1.0.0",
+      "class": "buggy",
       "title": "fix(research): repair github + semantic_scholar discovery (#2234)",
+      "provenance": {
+        "source": "historical",
+        "fixReference": "PR #2255",
+        "discoveredBy": "pr_review v5 devex voter"
+      },
       "knownBugs": [
         {
           "summary": "Wrong env var name in 429 message — uses GITHUB_API_KEY but GitHub uses GITHUB_TOKEN",
+          "severity": "medium",
           "fixReference": "PR #2255 (caught by pr_review v5 — devex voter)",
-          "location": "packages/nexus-agents/src/cli/research-helpers-sources.ts:108"
+          "location": "packages/nexus-agents/src/cli/research-helpers-sources.ts:108",
+          "locationTolerance": "line"
         }
       ],
+      "borderlineConcerns": [],
+      "adjudication": {
+        "adjudicatedAt": "2026-06-16",
+        "adjudicatedUnder": "1.0.0",
+        "rationale": "Medium and confirmed buggy under Rule 5.3: the v5 devex voter flagged a real bug (the 429 hint told GitHub users to set a non-existent GITHUB_API_KEY; the standard var is GITHUB_TOKEN), fixed in #2255 with a regression test — the follow-up fix is the ground-truth evidence. Was reclassified clean -> buggy during v5 (already done per #3846 history); v1 confirms and stamps it. Wrong-guidance bug, not a crash, hence medium."
+      },
       "notes": "Originally labeled clean — re-classified after the v5 retest of pr_review (#2241) flagged a real bug in this PR's diff. The rate-limit message used `${source.toUpperCase()}_API_KEY` for all sources, but GitHub uses GITHUB_TOKEN, not GITHUB_API_KEY. Caught by devex voter, fixed in #2255 with a regression test. This entry now serves as a real-world (not synthetic) buggy case — the kind the tool is designed to catch."
     },
     {
       "number": 2238,
+      "rubricVersion": "1.0.0",
+      "class": "clean",
       "title": "feat(2233 child 3): enforce verification gate in pr_review findings",
+      "provenance": {
+        "source": "historical-clean",
+        "fixReference": null,
+        "discoveredBy": null
+      },
       "knownBugs": [],
+      "borderlineConcerns": [],
+      "adjudication": {
+        "adjudicatedAt": "2026-06-16",
+        "adjudicatedUnder": "1.0.0",
+        "rationale": "Clean per Rule 3: 49/49 tests passed on first push, no post-merge fix targets this diff, no defensible medium+ objection from the diff. Strict-FP denominator member."
+      },
       "notes": "Clean: 49/49 tests pass on first push."
     },
     {
       "number": "synthetic-clean-refactor",
+      "rubricVersion": "1.0.0",
+      "class": "borderline",
       "title": "refactor(util): extract date-formatter helper (synthetic clean case)",
       "customDescription": "Pulls inline date formatting into a named helper. No behavior change.",
       "customDiff": "diff --git a/packages/nexus-agents/src/util/date-format.ts b/packages/nexus-agents/src/util/date-format.ts\nindex 0000001..0000002 100644\n--- a/packages/nexus-agents/src/util/date-format.ts\n+++ b/packages/nexus-agents/src/util/date-format.ts\n@@ -0,0 +1,8 @@\n+/** Formats a Date as ISO date (YYYY-MM-DD) in ET timezone. */\n+export function formatIsoDate(d: Date): string {\n+  return d.toLocaleDateString('en-CA', {\n+    timeZone: 'America/New_York',\n+    year: 'numeric',\n+    month: '2-digit',\n+    day: '2-digit',\n+  });\n+}",
+      "provenance": {
+        "source": "synthetic",
+        "fixReference": null,
+        "discoveredBy": null
+      },
       "knownBugs": [],
-      "notes": "Clean refactor: single-purpose helper, named correctly, ET timezone preserved per CLAUDE.md. No bug to find. Tests false-positive risk — voter should NOT flag this."
+      "borderlineConcerns": [
+        {
+          "summary": "Unused helper — no callers visible in the diff (catfish, v5). YAGNI flag; depends on context not in the diff.",
+          "raisedBy": "pr_review v5 catfish voter"
+        },
+        {
+          "summary": "toLocaleDateString('en-CA', ...) is locale-dependent in principle even though it yields YYYY-MM-DD in practice (devex, v5). Defensible concern, not a confirmed bug.",
+          "raisedBy": "pr_review v5 devex voter"
+        }
+      ],
+      "adjudication": {
+        "adjudicatedAt": "2026-06-16",
+        "adjudicatedUnder": "1.0.0",
+        "rationale": "RECLASSIFIED clean -> borderline under Rule 4. v5 counted the catfish/devex findings as false positives, which drove the inflated 50% FP headline. Neither finding is a hallucination and neither is a confirmed bug: both depend on context not present in the diff (no callers shown; locale behavior works in practice). As borderline it is excluded from both the bug-catch numerator and the strict-FP numerator."
+      },
+      "notes": "Clean refactor: single-purpose helper, named correctly, ET timezone preserved per CLAUDE.md. Reclassified to borderline because the v5 panel raised defensible context-dependent concerns (no callers in diff; locale-dependent formatter) — recorded in borderlineConcerns, not as bugs."
     },
     {
       "number": "synthetic-clean-docs",
+      "rubricVersion": "1.0.0",
+      "class": "clean",
       "title": "docs(api): clarify error codes returned by retry helper (synthetic clean case)",
       "customDescription": "Adds JSDoc enumerating the error codes the retry helper can return.",
       "customDiff": "diff --git a/packages/nexus-agents/src/adapters/retry.ts b/packages/nexus-agents/src/adapters/retry.ts\nindex 0000001..0000002 100644\n--- a/packages/nexus-agents/src/adapters/retry.ts\n+++ b/packages/nexus-agents/src/adapters/retry.ts\n@@ -25,6 +25,11 @@ export interface RetryConfig {\n   readonly maxDelayMs: number;\n   readonly jitterFactor: number;\n }\n+\n+/**\n+ * Error codes that withRetry may surface in the Result<T, E> error path:\n+ * - RETRY_EXHAUSTED — all attempts failed; original error wrapped\n+ * - INVALID_CONFIG — config validation failed before any attempt\n+ */",
+      "provenance": {
+        "source": "synthetic",
+        "fixReference": null,
+        "discoveredBy": null
+      },
       "knownBugs": [],
+      "borderlineConcerns": [],
+      "adjudication": {
+        "adjudicatedAt": "2026-06-16",
+        "adjudicatedUnder": "1.0.0",
+        "rationale": "Clean per Rule 3: docs-only JSDoc above an existing interface, zero code change, no behavioral risk, no defensible medium+ objection. Strict-FP denominator member."
+      },
       "notes": "Clean docs-only change: adds JSDoc above an existing interface. No code change, no behavioral risk. Tests false-positive risk."
     }
   ]
