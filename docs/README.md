@@ -302,6 +302,7 @@ _No active plan documents. Historical plans have been archived._
 | Document                                                                         | Description                                                             |
 | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
 | [governance/loop-promotion-criteria.md](./governance/loop-promotion-criteria.md) | Per-loop authority-ladder promotion/demotion criteria (ADR-0017, #3844) |
+| [governance/tool-removal-runbook.md](./governance/tool-removal-runbook.md)       | Tool removal/consolidation: ratified, audited, never autonomous (#3853) |
 
 ---
 
