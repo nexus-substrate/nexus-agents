@@ -114,6 +114,24 @@ const DOCTOR_HELP: CommandHelpEntry = {
   ],
 };
 
+const MODE_HELP: CommandHelpEntry = {
+  command: 'mode',
+  description:
+    'Inspect the detected invocation mode (server vs orchestrator), the signals that fed the decision, and the one-line reasoning. Useful for debugging unexpected modes in CI/containers.',
+  examples: [
+    'nexus-agents mode',
+    'nexus-agents mode --format=json',
+    'nexus-agents mode --mode=mesh',
+  ],
+  flags: [
+    { flag: '--format=<fmt>', description: 'Output format: text, json', defaultValue: 'text' },
+    {
+      flag: '--mode=<m>',
+      description: 'Report what an explicit override would resolve to: server, orchestrator, mesh',
+    },
+  ],
+};
+
 const SETUP_HELP: CommandHelpEntry = {
   command: 'setup',
   description: 'Configure MCP integration for Claude, Gemini, Codex, and OpenCode CLIs.',
@@ -234,6 +252,7 @@ export const COMMAND_HELP: readonly CommandHelpEntry[] = [
   EXPERT_HELP,
   WORKFLOW_HELP,
   DOCTOR_HELP,
+  MODE_HELP,
   SETUP_HELP,
   CONFIG_HELP,
   RESEARCH_HELP,

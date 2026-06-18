@@ -14,8 +14,8 @@ import { COMMAND_HELP, formatCommandHelp, formatAllCommandsHelp } from './cli-co
 // ============================================================================
 
 describe('COMMAND_HELP', () => {
-  it('contains 10 command entries', () => {
-    expect(COMMAND_HELP).toHaveLength(10);
+  it('contains 11 command entries', () => {
+    expect(COMMAND_HELP).toHaveLength(11);
   });
 
   it('has unique command names', () => {

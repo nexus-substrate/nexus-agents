@@ -160,6 +160,11 @@ export const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
     audience: 'advanced',
   },
   {
+    command: 'mode',
+    description: 'Inspect detected mode (server/orchestrator) + signals + reasoning (#3214)',
+    audience: 'advanced',
+  },
+  {
     command: 'registry',
     description: 'Inspect + refresh the dynamic model registry (doctor / refresh)',
     audience: 'advanced',

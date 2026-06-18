@@ -8,9 +8,12 @@ import { describe, it, expect } from 'vitest';
 import {
   detectMode,
   formatModeDetection,
+  formatModeInspection,
+  describeSignals,
   isValidServerMode,
   type ServerMode,
   type DetectModeOptions,
+  type DetectionSignals,
 } from './mode-detector.js';
 
 describe('Mode Detector', () => {
@@ -339,6 +342,142 @@ describe('Mode Detector', () => {
       expect(formatted).toContain('mode=orchestrator');
       expect(formatted).toContain('source=auto');
       expect(formatted).toContain('CI environment');
+    });
+  });
+
+  describe('describeSignals()', () => {
+    function signals(overrides: Partial<DetectionSignals> = {}): DetectionSignals {
+      return {
+        stdinIsTty: true,
+        stdoutIsTty: true,
+        mcpClientName: undefined,
+        isCI: false,
+        ciPlatform: undefined,
+        isContainer: false,
+        ...overrides,
+      };
+    }
+
+    it('renders an MCP client name when present', () => {
+      const rows = describeSignals(signals({ mcpClientName: 'claude-code' }));
+      const mcpRow = rows.find((r) => r.label === 'MCP client');
+      expect(mcpRow?.value).toBe('claude-code');
+    });
+
+    it('renders "(none)" for an absent or empty MCP client', () => {
+      expect(describeSignals(signals()).find((r) => r.label === 'MCP client')?.value).toBe(
+        '(none)'
+      );
+      expect(
+        describeSignals(signals({ mcpClientName: '' })).find((r) => r.label === 'MCP client')?.value
+      ).toBe('(none)');
+    });
+
+    it('renders TTY booleans as yes/no', () => {
+      const rows = describeSignals(signals({ stdinIsTty: false, stdoutIsTty: true }));
+      expect(rows.find((r) => r.label === 'stdin is TTY')?.value).toBe('no');
+      expect(rows.find((r) => r.label === 'stdout is TTY')?.value).toBe('yes');
+    });
+
+    it('renders the CI platform when CI is detected', () => {
+      const rows = describeSignals(signals({ isCI: true, ciPlatform: 'GitHub Actions' }));
+      expect(rows.find((r) => r.label === 'CI environment')?.value).toBe('yes (GitHub Actions)');
+    });
+
+    it('renders CI as "no" when not in CI', () => {
+      expect(describeSignals(signals()).find((r) => r.label === 'CI environment')?.value).toBe(
+        'no'
+      );
+    });
+  });
+
+  describe('formatModeInspection()', () => {
+    // Build a result from fabricated signals — never touches process.env so the
+    // formatter's behavior is asserted in isolation from the host environment.
+    function fakeSignals(overrides: Partial<DetectionSignals> = {}): DetectionSignals {
+      return {
+        stdinIsTty: true,
+        stdoutIsTty: true,
+        mcpClientName: undefined,
+        isCI: false,
+        ciPlatform: undefined,
+        isContainer: false,
+        ...overrides,
+      };
+    }
+
+    it('reports server mode + reasoning when an MCP client is detected', () => {
+      const result = detectMode({
+        stdinIsTty: true,
+        stdoutIsTty: true,
+        env: { MCP_CLIENT_NAME: 'claude-code' },
+      });
+      const out = formatModeInspection(result);
+
+      expect(out).toContain('Detected mode: server (auto)');
+      expect(out).toContain('Reasoning:');
+      expect(out).toContain('MCP client detected: claude-code');
+      expect(out).toContain('Signals:');
+      expect(out).toContain('MCP client');
+    });
+
+    it('reports server mode for piped (non-TTY) stdin', () => {
+      const result = detectMode({ stdinIsTty: false, stdoutIsTty: true, env: {} });
+      const out = formatModeInspection(result);
+
+      expect(out).toContain('Detected mode: server (auto)');
+      expect(out).toContain('stdin is not a TTY');
+      expect(out).toContain('stdin is TTY    no');
+    });
+
+    it('reports orchestrator mode for an interactive terminal', () => {
+      const result = detectMode({ stdinIsTty: true, stdoutIsTty: true, env: {} });
+      const out = formatModeInspection(result);
+
+      expect(out).toContain('Detected mode: orchestrator (auto)');
+      expect(out).toContain('Interactive terminal');
+    });
+
+    it('reports orchestrator mode + CI platform in a CI environment', () => {
+      const result = detectMode({
+        stdinIsTty: true,
+        stdoutIsTty: true,
+        env: { GITHUB_ACTIONS: 'true' },
+      });
+      const out = formatModeInspection(result);
+
+      expect(out).toContain('Detected mode: orchestrator (auto)');
+      expect(out).toContain('CI environment detected (GitHub Actions)');
+      expect(out).toContain('yes (GitHub Actions)');
+    });
+
+    it('marks the source as explicit when --mode is overridden', () => {
+      const result = detectMode({
+        explicitMode: 'mesh',
+        stdinIsTty: true,
+        stdoutIsTty: true,
+        env: {},
+      });
+      const out = formatModeInspection(result);
+
+      expect(out).toContain('Detected mode: mesh (explicit)');
+      expect(out).toContain('--mode=mesh');
+    });
+
+    it('renders one signal line per signal and no secrets', () => {
+      const result = detectMode({
+        stdinIsTty: false,
+        stdoutIsTty: false,
+        env: { KUBERNETES_SERVICE_HOST: '10.0.0.1' },
+      });
+      const out = formatModeInspection(result);
+
+      // Each describeSignals row appears as a labeled line.
+      for (const row of describeSignals(fakeSignals())) {
+        expect(out).toContain(row.label);
+      }
+      // The container IP (a host detail) is a value we never surface.
+      expect(out).not.toContain('10.0.0.1');
     });
   });
 

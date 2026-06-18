@@ -298,3 +298,81 @@ export function formatModeDetection(result: ModeDetectionResult): string {
 
   return parts.join(' ');
 }
+
+/** A single human-readable signal row: name + observed value. */
+export interface SignalRow {
+  readonly label: string;
+  readonly value: string;
+}
+
+/**
+ * Projects the raw detection signals into ordered, human-readable rows.
+ *
+ * Pure: depends only on its `signals` argument, never on `process.env` or the
+ * real TTY state. The ordering mirrors the detection priority in
+ * `determineMode` so a reader can follow why the mode was chosen.
+ *
+ * @param signals - Detection signals to project
+ * @returns Ordered rows, one per signal, with the observed value rendered
+ */
+export function describeSignals(signals: DetectionSignals): readonly SignalRow[] {
+  return [
+    {
+      label: 'MCP client',
+      value:
+        signals.mcpClientName !== undefined && signals.mcpClientName !== ''
+          ? signals.mcpClientName
+          : '(none)',
+    },
+    { label: 'stdin is TTY', value: signals.stdinIsTty ? 'yes' : 'no' },
+    { label: 'stdout is TTY', value: signals.stdoutIsTty ? 'yes' : 'no' },
+    {
+      label: 'CI environment',
+      value: signals.isCI ? `yes (${signals.ciPlatform ?? 'unknown'})` : 'no',
+    },
+    { label: 'container', value: signals.isContainer ? 'yes' : 'no' },
+  ];
+}
+
+/**
+ * Formats a mode detection result as a readable inspection report for humans.
+ *
+ * Shows the detected mode, the source (explicit `--mode` vs auto-detected), the
+ * one-line reasoning, and a table of every signal that fed the decision with
+ * its observed value. No secrets are emitted — the signals are TTY/CI/container
+ * booleans and the MCP client name (a non-secret identifier).
+ *
+ * Pure: the report is derived entirely from `result`, so it can be unit-tested
+ * with fabricated signal inputs.
+ *
+ * @param result - Detection result to render
+ * @returns Multi-line report suitable for `stdout`
+ *
+ * @example
+ * ```typescript
+ * const result = detectMode({ stdinIsTty: false, env: {} });
+ * console.log(formatModeInspection(result));
+ * // Detected mode: server (auto)
+ * // Reasoning:     stdin is not a TTY (piped input detected)
+ * // Signals:
+ * //   MCP client      (none)
+ * //   stdin is TTY    no
+ * //   ...
+ * ```
+ */
+export function formatModeInspection(result: ModeDetectionResult): string {
+  const rows = describeSignals(result.signals);
+  const labelWidth = Math.max(...rows.map((r) => r.label.length));
+
+  const lines: string[] = [
+    `Detected mode: ${result.mode} (${result.source})`,
+    `Reasoning:     ${result.reason}`,
+    `Detected in:   ${result.detectionTimeMs.toFixed(2)}ms`,
+    'Signals:',
+  ];
+  for (const row of rows) {
+    lines.push(`  ${row.label.padEnd(labelWidth)}  ${row.value}`);
+  }
+
+  return lines.join('\n');
+}
