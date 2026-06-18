@@ -157,7 +157,7 @@ describe('cli-commands-handlers-complex', () => {
         positionals: ['config', 'bogus'],
       });
 
-      await handleConfigCommand(args);
+      const result = await handleConfigCommand(args);
 
       expect(writeSpy).toHaveBeenCalledWith(
         expect.stringContaining("Unknown config subcommand: 'bogus'")
@@ -165,7 +165,8 @@ describe('cli-commands-handlers-complex', () => {
       expect(writeSpy).toHaveBeenCalledWith(
         expect.stringContaining('Valid subcommands: init, get, set, list, reset, export, import')
       );
-      expect(mockExit).toHaveBeenCalledWith(3); // EXIT_CODES.INVALID_ARGS
+      // #3210: handler RETURNS the exit code; the dispatcher owns process.exit.
+      expect(result).toEqual({ success: false, exitCode: 3 }); // EXIT_CODES.INVALID_ARGS
       expect(configCommand).not.toHaveBeenCalled();
     });
 
@@ -174,15 +175,15 @@ describe('cli-commands-handlers-complex', () => {
         positionals: ['config'],
       });
 
-      await handleConfigCommand(args);
+      const result = await handleConfigCommand(args);
 
       expect(writeSpy).toHaveBeenCalledWith(
         expect.stringContaining("Unknown config subcommand: ''")
       );
-      expect(mockExit).toHaveBeenCalledWith(3);
+      expect(result).toEqual({ success: false, exitCode: 3 });
     });
 
-    it('exits SUCCESS on exit code 0', async () => {
+    it('returns SUCCESS on exit code 0', async () => {
       vi.mocked(configCommand).mockResolvedValueOnce(0);
 
       const args = createArgs({
@@ -190,12 +191,12 @@ describe('cli-commands-handlers-complex', () => {
         positionals: ['config', 'list'],
       });
 
-      await handleConfigCommand(args);
+      const result = await handleConfigCommand(args);
 
-      expect(mockExit).toHaveBeenCalledWith(0); // EXIT_CODES.SUCCESS
+      expect(result).toEqual({ success: true, exitCode: 0 }); // EXIT_CODES.SUCCESS
     });
 
-    it('exits SERVER_START_FAILED on non-zero exit code', async () => {
+    it('returns SERVER_START_FAILED on non-zero exit code', async () => {
       vi.mocked(configCommand).mockResolvedValueOnce(1);
 
       const args = createArgs({
@@ -203,9 +204,9 @@ describe('cli-commands-handlers-complex', () => {
         positionals: ['config', 'list'],
       });
 
-      await handleConfigCommand(args);
+      const result = await handleConfigCommand(args);
 
-      expect(mockExit).toHaveBeenCalledWith(1); // EXIT_CODES.SERVER_START_FAILED
+      expect(result).toEqual({ success: false, exitCode: 1 }); // EXIT_CODES.SERVER_START_FAILED
     });
 
     it('passes format as yaml when specified', async () => {
@@ -269,10 +270,10 @@ describe('cli-commands-handlers-complex', () => {
         positionals: ['orchestrate'],
       });
 
-      await handleOrchestrateCommand(args);
+      const result = await handleOrchestrateCommand(args);
 
       expect(printOrchestrateUsage).toHaveBeenCalled();
-      expect(mockExit).toHaveBeenCalledWith(3); // EXIT_CODES.INVALID_ARGS
+      expect(result).toEqual({ success: false, exitCode: 3 }); // EXIT_CODES.INVALID_ARGS
     });
 
     it('passes valid model through', async () => {
@@ -429,7 +430,7 @@ describe('cli-commands-handlers-complex', () => {
       );
     });
 
-    it('exits with correct code on success', async () => {
+    it('returns the correct code on success', async () => {
       vi.mocked(orchestrateCommand).mockResolvedValueOnce(0);
 
       const args = createArgs({
@@ -437,21 +438,21 @@ describe('cli-commands-handlers-complex', () => {
         positionals: ['orchestrate', 'some task'],
       });
 
-      await handleOrchestrateCommand(args);
+      const result = await handleOrchestrateCommand(args);
 
-      expect(mockExit).toHaveBeenCalledWith(0); // EXIT_CODES.SUCCESS
+      expect(result).toEqual({ success: true, exitCode: 0 }); // EXIT_CODES.SUCCESS
     });
   });
 
   describe('handleSweBenchCommand (deprecation shim, #2515)', () => {
-    it('exits with INVALID_ARGS and prints migration message', async () => {
+    it('returns INVALID_ARGS and prints migration message', async () => {
       const args = createArgs({
         command: 'swe-bench',
         positionals: ['swe-bench'],
       });
       const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-      await handleSweBenchCommand(args);
-      expect(mockExit).toHaveBeenCalledWith(3); // EXIT_CODES.INVALID_ARGS
+      const result = await handleSweBenchCommand(args);
+      expect(result).toEqual({ success: false, exitCode: 3 }); // EXIT_CODES.INVALID_ARGS
       const written = stderrSpy.mock.calls.map((c) => String(c[0])).join('');
       expect(written).toContain('nexus-eval-swebench');
       stderrSpy.mockRestore();

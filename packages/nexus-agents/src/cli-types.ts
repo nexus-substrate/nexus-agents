@@ -10,6 +10,7 @@
 import type { ServerMode } from './cli/index.js';
 import type { CliNameLiteral } from './config/model-capabilities-types.js';
 import type { ErrorPolicy, VoteThreshold } from './mcp/tools/consensus-vote-types.js';
+import type { CommandResult } from './core/command-result.js';
 
 // Re-export help text from extracted module for backward compatibility
 export { HELP_TEXT } from './cli-help-text.js';
@@ -25,6 +26,46 @@ export const EXIT_CODES = {
   /** Subcommand is stubbed / advertised but not implemented (#2727). */
   NOT_IMPLEMENTED: 4,
 } as const;
+
+/**
+ * A {@link CommandResult} that also carries the process exit code the
+ * dispatcher should terminate with (#3210).
+ *
+ * Handlers RETURN this instead of calling `process.exit` inline, and the
+ * single `process.exit` lives at the dispatcher boundary (see `exitWith`).
+ * This makes exit behavior unit-testable (assert the returned `exitCode`)
+ * without mocking `process.exit`, and centralizes the one process-killing
+ * call so its policy is consistent across commands.
+ */
+export interface CliExitResult extends CommandResult {
+  /** The exit code the CLI process should terminate with. */
+  readonly exitCode: number;
+}
+
+/**
+ * Builds a {@link CliExitResult} from a raw exit code, deriving `success`
+ * from the conventional `0 == success` mapping. Optional human-readable
+ * `message` is preserved for callers/tests.
+ */
+export function cliExit(exitCode: number, message?: string): CliExitResult {
+  return message === undefined
+    ? { success: exitCode === EXIT_CODES.SUCCESS, exitCode }
+    : { success: exitCode === EXIT_CODES.SUCCESS, exitCode, message };
+}
+
+/**
+ * Maps a handler's `0|non-0` status to the canonical success/failure exit
+ * codes (`SUCCESS` / `SERVER_START_FAILED`) used by the bulk of CLI
+ * commands, then wraps it in a {@link CliExitResult}. Centralizes the
+ * `exitCode === 0 ? SUCCESS : SERVER_START_FAILED` ternary that was
+ * duplicated across every handler.
+ */
+export function cliExitFromStatus(status: number, message?: string): CliExitResult {
+  return cliExit(
+    status === EXIT_CODES.SUCCESS ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED,
+    message
+  );
+}
 
 /**
  * CLI command types that can be executed.

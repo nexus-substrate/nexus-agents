@@ -26,11 +26,19 @@ vi.mock('./cli/index.js', async (importOriginal) => {
     ...original,
     configCommand: vi.fn().mockResolvedValue(0),
     configInitCommand: vi.fn().mockResolvedValue(0),
+    // #3210: stub status-returning commands so we can assert the handler's
+    // CliExitResult maps the underlying 0|non-0 status to SUCCESS|SERVER_START_FAILED.
+    expertListCommand: vi.fn().mockReturnValue(0),
+    helloCommand: vi.fn().mockReturnValue(0),
   };
 });
 
-import { handleConfigCommand } from './cli-commands-handlers.js';
-import { configCommand, configInitCommand } from './cli/index.js';
+import {
+  handleConfigCommand,
+  handleExpertCommand,
+  handleHelloCommand,
+} from './cli-commands-handlers.js';
+import { configCommand, configInitCommand, expertListCommand, helloCommand } from './cli/index.js';
 
 /**
  * Creates a ParsedCliArgs object with default values.
@@ -325,12 +333,13 @@ describe('handleConfigCommand routing', () => {
         positionals: ['config', 'unknown'],
       });
 
-      await handleConfigCommand(args);
+      const result = await handleConfigCommand(args);
 
       expect(process.stdout.write).toHaveBeenCalledWith(
         expect.stringContaining("Unknown config subcommand: 'unknown'")
       );
-      expect(mockExit).toHaveBeenCalledWith(3); // EXIT_CODES.INVALID_ARGS
+      // #3210: handler RETURNS the exit code; the dispatcher owns process.exit.
+      expect(result).toEqual({ success: false, exitCode: 3 }); // EXIT_CODES.INVALID_ARGS
       expect(configCommand).not.toHaveBeenCalled();
     });
 
@@ -355,12 +364,59 @@ describe('handleConfigCommand routing', () => {
         positionals: ['config'],
       });
 
-      await handleConfigCommand(args);
+      const result = await handleConfigCommand(args);
 
       expect(process.stdout.write).toHaveBeenCalledWith(
         expect.stringContaining("Unknown config subcommand: ''")
       );
-      expect(mockExit).toHaveBeenCalledWith(3);
+      expect(result).toEqual({ success: false, exitCode: 3 });
+    });
+  });
+});
+
+// #3210: migrated handlers RETURN a CliExitResult instead of calling
+// process.exit. These tests prove the returned exitCode is identical to the
+// pre-refactor exit code on both a success and a failure path, without
+// asserting on real process.exit.
+describe('CliExitResult return contract (#3210)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe('handleExpertCommand', () => {
+    it('returns SUCCESS (0) when expertListCommand reports 0', () => {
+      vi.mocked(expertListCommand).mockReturnValueOnce(0);
+      const args = createMockArgs({ command: 'expert', subcommand: 'list' });
+      expect(handleExpertCommand(args)).toEqual({ success: true, exitCode: 0 });
+    });
+
+    it('returns SERVER_START_FAILED (1) when expertListCommand reports non-zero', () => {
+      vi.mocked(expertListCommand).mockReturnValueOnce(1);
+      const args = createMockArgs({ command: 'expert', subcommand: 'list' });
+      expect(handleExpertCommand(args)).toEqual({ success: false, exitCode: 1 });
+    });
+
+    it('returns NOT_IMPLEMENTED (4) for an unimplemented subcommand', () => {
+      const args = createMockArgs({ command: 'expert', subcommand: 'create' });
+      expect(handleExpertCommand(args)).toEqual({ success: false, exitCode: 4 });
+    });
+  });
+
+  describe('handleHelloCommand', () => {
+    it('returns SUCCESS (0) when helloCommand reports 0', () => {
+      vi.mocked(helloCommand).mockReturnValueOnce(0);
+      expect(handleHelloCommand(createMockArgs({ command: 'hello' }))).toEqual({
+        success: true,
+        exitCode: 0,
+      });
+    });
+
+    it('returns SERVER_START_FAILED (1) when helloCommand reports non-zero', () => {
+      vi.mocked(helloCommand).mockReturnValueOnce(2);
+      expect(handleHelloCommand(createMockArgs({ command: 'hello' }))).toEqual({
+        success: false,
+        exitCode: 1,
+      });
     });
   });
 });

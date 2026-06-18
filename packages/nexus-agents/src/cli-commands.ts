@@ -12,7 +12,7 @@
  */
 
 import { VERSION } from './version.js';
-import { EXIT_CODES, type ParsedCliArgs } from './cli-types.js';
+import { EXIT_CODES, type CliExitResult, type ParsedCliArgs } from './cli-types.js';
 import { renderHelp } from './cli-help-text.js';
 
 // Re-export handlers for backward compatibility
@@ -183,8 +183,45 @@ export function printVersion(): void {
   process.stdout.write(`nexus-agents v${VERSION}\n`);
 }
 
+/**
+ * A CLI command handler. Migrated handlers (#3210) RETURN a
+ * {@link CliExitResult} (or `undefined` to signal "do not force an exit",
+ * e.g. the MCP stdio server) so the single `process.exit` lives here at the
+ * dispatcher boundary. Not-yet-migrated handlers (auth, login, usage,
+ * release, scaffold, …) still call `process.exit` internally and return
+ * `void`; `exitWith` no-ops on their `void`/`undefined` return, so both
+ * styles coexist during the incremental migration.
+ */
+// `void` is required in these unions to bridge migrated handlers (which
+// return CliExitResult) and not-yet-migrated handlers (which return void
+// after exiting internally). `undefined` alone is not assignable from a
+// `void`-returning function, so the union must include `void` until the
+// migration is complete. Safe here: exitWith() treats both void and
+// undefined as "no forced exit".
+// eslint-disable-next-line @typescript-eslint/no-invalid-void-type
+type SyncHandlerResult = CliExitResult | void;
+// eslint-disable-next-line @typescript-eslint/no-invalid-void-type
+type AsyncHandlerResult = Promise<CliExitResult | undefined | void>;
+
+/**
+ * The single `process.exit` boundary for migrated handlers (#3210). When a
+ * handler returns a {@link CliExitResult}, terminate with its `exitCode`.
+ * A `void`/`undefined` return means the handler either already exited
+ * internally (legacy, not-yet-migrated) or deliberately owns the process
+ * lifecycle (MCP stdio server) — so do nothing.
+ */
+// eslint-disable-next-line @typescript-eslint/no-invalid-void-type -- bridges migrated/legacy handler returns; see SyncHandlerResult
+function exitWith(result: CliExitResult | undefined | void): void {
+  if (result !== undefined) {
+    process.exit(result.exitCode);
+  }
+}
+
 /** Sync command dispatch table for reduced complexity. */
-const SYNC_COMMAND_HANDLERS: Record<string, ((args: ParsedCliArgs) => void) | undefined> = {
+const SYNC_COMMAND_HANDLERS: Record<
+  string,
+  ((args: ParsedCliArgs) => SyncHandlerResult) | undefined
+> = {
   hello: handleHelloCommand,
   expert: handleExpertCommand,
   'routing-audit': handleRoutingAuditCommand,
@@ -232,65 +269,68 @@ function handleSyncCommand(args: ParsedCliArgs): boolean {
   // Dispatch to sync handler table
   const handler = SYNC_COMMAND_HANDLERS[args.command];
   if (handler !== undefined) {
-    handler(args);
+    // #3210: handlers RETURN their exit code; the single process.exit lives here.
+    exitWith(handler(args));
     return true;
   }
   return false;
 }
 
 /** Async command dispatch table for reduced complexity. */
-const ASYNC_COMMAND_HANDLERS: Record<string, ((args: ParsedCliArgs) => Promise<void>) | undefined> =
-  {
-    server: handleServerCommand,
-    doctor: handleDoctorCommand,
-    verify: handleVerifyCommand,
-    config: handleConfigCommand,
-    workflow: handleWorkflowCommand,
-    review: handleReviewCommand,
-    orchestrate: handleOrchestrateCommand,
-    vote: handleVoteCommand,
-    index: handleIndexCommand,
-    research: handleResearchCommand,
-    registry: handleRegistryCommand,
-    'swe-bench': handleSweBenchCommand,
-    atbench: handleAtbenchCommand,
-    hooks: handleHooksCommand,
-    setup: handleSetupCommandAsync, // Uses async for interactive wizard support (Issue #425)
-    // Issue #2447: nexus-agents login — async because it spawns codex/opencode for status probes.
-    // Issue #2449 made `auth status` the canonical name; this remains as a soft alias.
-    login: handleLoginCommand,
-    // Issue #739/#2449: auth command (now async — `auth status` routes to login probe)
-    auth: handleAuthCommand,
-    // Issue #2469: usage command (cost / usage / quality dashboard)
-    usage: handleUsageCommand,
-    // Issue #2444: improvement-review command (observability-driven improvement loop)
-    'improvement-review': handleImprovementReviewCommand,
-    // #3540 phase 3 / #3671: run one auto-remediation cycle (mode from NEXUS_AUTO_REMEDIATE).
-    'auto-remediate': handleAutoRemediateCommand,
-    // #3765: human soundness-review surface — produces the enforce-gate readiness evidence.
-    'remediation-review': handleRemediationReviewCommand,
-    // Issue #2879 / epic #2872: migrate command (relocate homedir state per-repo)
-    migrate: handleMigrateCommand,
-    // #2305 / #2308 / #2311: Init Portable Command (async because --install spawns npm)
-    init: handleInitCommand,
-    demo: handleDemoCommand, // Made async for live CLI execution
-    // Issue #2851: nexus-agents tour — interactive zero-API walkthrough
-    tour: handleTourCommand,
-    // Issue #526: Newly wired async commands
-    sprint: handleSprintCommand,
-    session: handleSessionCommand,
-    evaluate: handleEvaluateCommand,
-    // Issue #637: Release Automation Suite
-    'release-notes': handleReleaseNotesCommand,
-    'release-validate': handleReleaseValidateCommand,
-    'release-announce': handleReleaseAnnounceCommand,
-    // Issue #748: Memory Benchmark Command
-    'memory-benchmark': handleMemoryBenchmarkCommand,
-    // Epic #952: Scenario Command
-    scenario: handleScenarioCommand,
-    // Issue #1598: Validate Command
-    validate: handleValidateCommand,
-  };
+const ASYNC_COMMAND_HANDLERS: Record<
+  string,
+  ((args: ParsedCliArgs) => AsyncHandlerResult) | undefined
+> = {
+  server: handleServerCommand,
+  doctor: handleDoctorCommand,
+  verify: handleVerifyCommand,
+  config: handleConfigCommand,
+  workflow: handleWorkflowCommand,
+  review: handleReviewCommand,
+  orchestrate: handleOrchestrateCommand,
+  vote: handleVoteCommand,
+  index: handleIndexCommand,
+  research: handleResearchCommand,
+  registry: handleRegistryCommand,
+  'swe-bench': handleSweBenchCommand,
+  atbench: handleAtbenchCommand,
+  hooks: handleHooksCommand,
+  setup: handleSetupCommandAsync, // Uses async for interactive wizard support (Issue #425)
+  // Issue #2447: nexus-agents login — async because it spawns codex/opencode for status probes.
+  // Issue #2449 made `auth status` the canonical name; this remains as a soft alias.
+  login: handleLoginCommand,
+  // Issue #739/#2449: auth command (now async — `auth status` routes to login probe)
+  auth: handleAuthCommand,
+  // Issue #2469: usage command (cost / usage / quality dashboard)
+  usage: handleUsageCommand,
+  // Issue #2444: improvement-review command (observability-driven improvement loop)
+  'improvement-review': handleImprovementReviewCommand,
+  // #3540 phase 3 / #3671: run one auto-remediation cycle (mode from NEXUS_AUTO_REMEDIATE).
+  'auto-remediate': handleAutoRemediateCommand,
+  // #3765: human soundness-review surface — produces the enforce-gate readiness evidence.
+  'remediation-review': handleRemediationReviewCommand,
+  // Issue #2879 / epic #2872: migrate command (relocate homedir state per-repo)
+  migrate: handleMigrateCommand,
+  // #2305 / #2308 / #2311: Init Portable Command (async because --install spawns npm)
+  init: handleInitCommand,
+  demo: handleDemoCommand, // Made async for live CLI execution
+  // Issue #2851: nexus-agents tour — interactive zero-API walkthrough
+  tour: handleTourCommand,
+  // Issue #526: Newly wired async commands
+  sprint: handleSprintCommand,
+  session: handleSessionCommand,
+  evaluate: handleEvaluateCommand,
+  // Issue #637: Release Automation Suite
+  'release-notes': handleReleaseNotesCommand,
+  'release-validate': handleReleaseValidateCommand,
+  'release-announce': handleReleaseAnnounceCommand,
+  // Issue #748: Memory Benchmark Command
+  'memory-benchmark': handleMemoryBenchmarkCommand,
+  // Epic #952: Scenario Command
+  scenario: handleScenarioCommand,
+  // Issue #1598: Validate Command
+  validate: handleValidateCommand,
+};
 
 /**
  * Handles async commands that require await.
@@ -298,7 +338,8 @@ const ASYNC_COMMAND_HANDLERS: Record<string, ((args: ParsedCliArgs) => Promise<v
 async function handleAsyncCommand(args: ParsedCliArgs): Promise<void> {
   const handler = ASYNC_COMMAND_HANDLERS[args.command];
   if (handler !== undefined) {
-    await handler(args);
+    // #3210: handlers RETURN their exit code; the single process.exit lives here.
+    exitWith(await handler(args));
   }
 }
 

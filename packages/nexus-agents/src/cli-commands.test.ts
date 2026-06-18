@@ -193,6 +193,31 @@ describe('cli-commands', () => {
       await expect(dispatchCommand(createArgs('nonexistent'))).resolves.toBeUndefined();
     });
 
+    // #3210: the dispatcher is the single process.exit boundary. A handler
+    // that RETURNS a CliExitResult must map to process.exit(result.exitCode);
+    // a handler that returns undefined/void must NOT force an exit.
+    it('maps a returned CliExitResult to process.exit (sync handler)', async () => {
+      const { handleExpertCommand } = await import('./cli-commands-handlers.js');
+      vi.mocked(handleExpertCommand).mockReturnValueOnce({ success: false, exitCode: 4 });
+      // Vitest turns process.exit into a throw; assert the code via the message.
+      await expect(dispatchCommand(createArgs('expert'))).rejects.toThrow(/process\.exit.*4|4/);
+    });
+
+    it('maps a returned CliExitResult to process.exit (async handler)', async () => {
+      const { handleVoteCommand } = await import('./cli-commands-handlers.js');
+      vi.mocked(handleVoteCommand).mockResolvedValueOnce({ success: true, exitCode: 0 });
+      await expect(dispatchCommand(createArgs('vote'))).rejects.toThrow(/process\.exit/);
+    });
+
+    it('does NOT call process.exit when a handler returns undefined', async () => {
+      const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never);
+      const { handleServerCommand } = await import('./cli-commands-handlers.js');
+      vi.mocked(handleServerCommand).mockResolvedValueOnce(undefined);
+      await dispatchCommand(createArgs('server'));
+      expect(exitSpy).not.toHaveBeenCalled();
+      exitSpy.mockRestore();
+    });
+
     it('should pass args to handler', async () => {
       const { handleDoctorCommand } = await import('./cli-commands-handlers.js');
       const args = createArgs('doctor', { options: { verbose: true } });

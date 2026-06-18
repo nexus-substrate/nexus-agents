@@ -14,20 +14,26 @@ import {
   isValidConfigAction,
   orchestrateCommand,
 } from './cli/index.js';
-import { EXIT_CODES, type ParsedCliArgs } from './cli-types.js';
+import {
+  EXIT_CODES,
+  cliExit,
+  cliExitFromStatus,
+  type CliExitResult,
+  type ParsedCliArgs,
+} from './cli-types.js';
 import { isValidOrchestrateModel } from './cli-commands-validators.js';
 import { printOrchestrateUsage } from './cli-commands-usage.js';
 
 /**
  * Handles the config init subcommand.
  */
-async function handleConfigInit(args: ParsedCliArgs): Promise<void> {
+async function handleConfigInit(args: ParsedCliArgs): Promise<CliExitResult> {
   const configOpts = {
     force: args.options.force,
     ...(args.options.output !== undefined && { output: args.options.output }),
   };
   const exitCode = await configInitCommand(configOpts);
-  process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
+  return cliExitFromStatus(exitCode);
 }
 
 /**
@@ -75,7 +81,7 @@ function buildConfigOptions(
  * Supports: init, get, set, list, reset, export, import
  * (Source: Issue #360, Issue #378)
  */
-export async function handleConfigCommand(args: ParsedCliArgs): Promise<void> {
+export async function handleConfigCommand(args: ParsedCliArgs): Promise<CliExitResult> {
   const subcommand = args.subcommand ?? '';
 
   // Handle init separately (uses different implementation)
@@ -86,13 +92,12 @@ export async function handleConfigCommand(args: ParsedCliArgs): Promise<void> {
   // Validate subcommand is a valid config action
   if (!isValidConfigAction(subcommand)) {
     printUnknownConfigSubcommand(subcommand);
-    process.exit(EXIT_CODES.INVALID_ARGS);
-    return;
+    return cliExit(EXIT_CODES.INVALID_ARGS);
   }
 
   const configOpts = buildConfigOptions(args, subcommand);
   const exitCode = await configCommand(configOpts);
-  process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
+  return cliExitFromStatus(exitCode);
 }
 
 /**
@@ -108,12 +113,12 @@ function isValidOrchestrateEngine(value: string): value is 'router' | 'puppeteer
  * (Source: Issue #183, 5-0 consensus vote)
  * (Source: Issue #386 - PuppeteerOrchestrator integration)
  */
-export async function handleOrchestrateCommand(args: ParsedCliArgs): Promise<void> {
+export async function handleOrchestrateCommand(args: ParsedCliArgs): Promise<CliExitResult> {
   // Get task from positionals (orchestrate <task>)
   const task = args.positionals[1];
   if (task === undefined) {
     printOrchestrateUsage();
-    process.exit(EXIT_CODES.INVALID_ARGS);
+    return cliExit(EXIT_CODES.INVALID_ARGS);
   }
 
   // Parse optional model
@@ -147,7 +152,7 @@ export async function handleOrchestrateCommand(args: ParsedCliArgs): Promise<voi
     policyPath,
     maxSteps,
   });
-  process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
+  return cliExitFromStatus(exitCode);
 }
 
 /**
@@ -159,7 +164,7 @@ export async function handleOrchestrateCommand(args: ParsedCliArgs): Promise<voi
  * doesn't silently break — prints the migration command to stderr and
  * exits non-zero. Slated for removal after the next minor.
  */
-export async function handleSweBenchCommand(_args: ParsedCliArgs): Promise<void> {
+export async function handleSweBenchCommand(_args: ParsedCliArgs): Promise<CliExitResult> {
   process.stderr.write(
     "The 'nexus-agents swe-bench' subcommand was removed in this release.\n" +
       'The SWE-bench harness now lives in its own repo per the harness-extraction\n' +
@@ -173,7 +178,7 @@ export async function handleSweBenchCommand(_args: ParsedCliArgs): Promise<void>
       'for library-mode usage and the v0.2 clean-room implementation.\n'
   );
   await Promise.resolve();
-  process.exit(EXIT_CODES.INVALID_ARGS);
+  return cliExit(EXIT_CODES.INVALID_ARGS);
 }
 
 /**
@@ -185,7 +190,7 @@ export async function handleSweBenchCommand(_args: ParsedCliArgs): Promise<void>
  * doesn't silently break — prints the migration command to stderr and
  * exits non-zero. Slated for removal after the next minor.
  */
-export async function handleAtbenchCommand(_args: ParsedCliArgs): Promise<void> {
+export async function handleAtbenchCommand(_args: ParsedCliArgs): Promise<CliExitResult> {
   process.stderr.write(
     "The 'nexus-agents atbench' subcommand was removed in this release.\n" +
       'The Atbench harness now lives in its own repo per the harness-extraction\n' +
@@ -197,5 +202,5 @@ export async function handleAtbenchCommand(_args: ParsedCliArgs): Promise<void> 
       "Run 'npx nexus-eval-atbench --help' for the full flag set.\n"
   );
   await Promise.resolve();
-  process.exit(EXIT_CODES.INVALID_ARGS);
+  return cliExit(EXIT_CODES.INVALID_ARGS);
 }
