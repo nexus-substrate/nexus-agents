@@ -62,13 +62,21 @@ export { evaluateCommand, parseOptions } from './self-eval.js';
 export type { EvaluateOptions, EvaluateCommandResult, EvaluationSummary } from './self-eval.js';
 
 // Mode detection
-export { detectMode, formatModeDetection, isValidServerMode } from './mode-detector.js';
+export {
+  detectMode,
+  formatModeDetection,
+  formatModeInspection,
+  describeSignals,
+  isValidServerMode,
+} from './mode-detector.js';
 export type {
   ServerMode,
   ModeDetectionResult,
   DetectionSignals,
   DetectModeOptions,
+  SignalRow,
 } from './mode-detector.js';
+export { handleModeCommand } from './mode-command.js';
 
 // PR Review (dogfooding)
 export { reviewCommand } from './review-command.js';

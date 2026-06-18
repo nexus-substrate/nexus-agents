@@ -82,7 +82,8 @@ export type CliCommand =
   | 'tour'
   | 'improvement-review'
   | 'auto-remediate'
-  | 'remediation-review';
+  | 'remediation-review'
+  | 'mode';
 
 /**
  * Parsed CLI arguments and command.
@@ -570,6 +571,7 @@ const VALID_COMMANDS: readonly CliCommand[] = [
   'tour',
   'auto-remediate',
   'remediation-review',
+  'mode',
 ];
 
 /**

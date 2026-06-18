@@ -80,6 +80,8 @@ export { handleScenarioCommand } from './cli/scenario-command.js';
 export { handleHealthCommand } from './cli/health-command.js';
 // Issue #1598: Validate Command
 export { handleValidateCommand } from './cli/validate-command.js';
+// Issue #3214: Mode Command — expose mode detection for inspection/debugging
+export { handleModeCommand } from './cli/mode-command.js';
 
 // Import handlers for dispatch
 import {
@@ -155,6 +157,8 @@ import { handleScenarioCommand } from './cli/scenario-command.js';
 import { handleHealthCommand } from './cli/health-command.js';
 // Issue #1598: Validate Command
 import { handleValidateCommand } from './cli/validate-command.js';
+// Issue #3214: Mode Command — expose mode detection for inspection/debugging
+import { handleModeCommand } from './cli/mode-command.js';
 // Issue #1398: Lazy data directory initialization
 import { initDataDirectories } from './cli/setup-data-dir.js';
 // #1930: Step notifications (human-readable progress trail)
@@ -206,6 +210,8 @@ const SYNC_COMMAND_HANDLERS: Record<string, ((args: ParsedCliArgs) => void) | un
   'memory-eval': handleMemoryEvalCommand,
   // Issue #1403: Health Command
   health: handleHealthCommand,
+  // Issue #3214: Mode Command — print detected mode + signals + reasoning
+  mode: handleModeCommand,
 };
 
 /**
