@@ -1,8 +1,12 @@
 /**
- * Tests for the authentic vote-record hash chain (#3897). The core property:
- * tampering with a persisted record (flipping `decision`, altering
- * `approvalPercentage`, editing a voter) is DETECTED as a `hash_mismatch`,
- * because the chain hash covers the full payload — not just head fields.
+ * Tests for the authentic vote-record TAMPER-EVIDENT RECORD SET (#3897, model
+ * revised #3927). Core properties:
+ *  - tampering with a persisted record (flipping `decision`, altering
+ *    `approvalPercentage`, editing a voter) is DETECTED as a `hash_mismatch`,
+ *    because the self-hash covers the full payload (+ `sequence`), not just head
+ *    fields;
+ *  - the ledger is a SET, not a chain: order does not matter, concurrent forks
+ *    (duplicate sequences) are benign, and omission shows up as a `sequence_gap`.
  *
  * @module audit/vote-record.test
  */
@@ -10,16 +14,21 @@
 import { describe, it, expect } from 'vitest';
 
 import type { VoteRecord } from './vote-record.js';
-import { computeVoteRecordHash, verifyVoteRecordChain } from './vote-record.js';
+import { computeVoteRecordHash, verifyVoteRecordSet } from './vote-record.js';
 
+/**
+ * Build a self-hashed record at `sequence`. `previousHash` is advisory (NOT
+ * covered by the hash) — set it to prove verification ignores it.
+ */
 function makeRecord(
   id: string,
-  previousHash: string | undefined,
+  sequence: number,
   overrides: Partial<Omit<VoteRecord, 'hash'>> = {}
 ): VoteRecord {
   const payload: Omit<VoteRecord, 'hash'> = {
-    version: '1.0',
+    version: '1.1',
     id,
+    sequence,
     recordedAt: '2026-06-15T00:00:00.000Z',
     proposalHash: 'a'.repeat(64),
     proposal: 'Promote loop X from advisory to enforce',
@@ -31,62 +40,51 @@ function makeRecord(
       { role: 'architect', decision: 'approve', confidence: 0.9 },
       { role: 'security', decision: 'reject', confidence: 0.6 },
     ],
-    ...(previousHash !== undefined ? { previousHash } : {}),
     ...overrides,
   };
   return { ...payload, hash: computeVoteRecordHash(payload) };
 }
 
-function chain(...records: VoteRecord[]): VoteRecord[] {
-  // Re-link each record onto the prior one's hash, then rehash.
-  const out: VoteRecord[] = [];
-  let prev: string | undefined;
-  for (const r of records) {
-    const payload: Omit<VoteRecord, 'hash'> = {
-      version: r.version,
-      id: r.id,
-      recordedAt: r.recordedAt,
-      proposalHash: r.proposalHash,
-      proposal: r.proposal,
-      strategy: r.strategy,
-      decision: r.decision,
-      approvalPercentage: r.approvalPercentage,
-      voteCounts: r.voteCounts,
-      voters: r.voters,
-      ...(r.correlationId !== undefined ? { correlationId: r.correlationId } : {}),
-      ...(prev !== undefined ? { previousHash: prev } : {}),
-    };
-    const linked: VoteRecord = { ...payload, hash: computeVoteRecordHash(payload) };
-    out.push(linked);
-    prev = linked.hash;
-  }
-  return out;
-}
-
-describe('verifyVoteRecordChain', () => {
-  it('verifies an empty chain trivially', () => {
-    expect(verifyVoteRecordChain([])).toEqual({ ok: true, recordCount: 0 });
+describe('verifyVoteRecordSet', () => {
+  it('verifies an empty set trivially', () => {
+    expect(verifyVoteRecordSet([])).toEqual({ ok: true, recordCount: 0 });
   });
 
-  it('verifies a well-formed single-record chain', () => {
-    const records = chain(makeRecord('vote-1', undefined));
-    expect(verifyVoteRecordChain(records)).toEqual({ ok: true, recordCount: 1 });
+  it('verifies a well-formed single record', () => {
+    expect(verifyVoteRecordSet([makeRecord('vote-1', 0)])).toEqual({ ok: true, recordCount: 1 });
   });
 
-  it('verifies a multi-record chain that round-trips', () => {
-    const records = chain(
-      makeRecord('vote-1', undefined),
-      makeRecord('vote-2', undefined, { decision: 'rejected', approvalPercentage: 28.5 }),
-      makeRecord('vote-3', undefined)
-    );
-    expect(verifyVoteRecordChain(records)).toEqual({ ok: true, recordCount: 3 });
+  it('verifies a multi-record set that round-trips', () => {
+    const records = [
+      makeRecord('vote-1', 0),
+      makeRecord('vote-2', 1, { decision: 'rejected', approvalPercentage: 28.5 }),
+      makeRecord('vote-3', 2),
+    ];
+    expect(verifyVoteRecordSet(records)).toEqual({ ok: true, recordCount: 3 });
+  });
+
+  it('ignores an advisory previousHash entirely (position-independent self-hash)', () => {
+    // A bogus previousHash must NOT affect verification — it is not hashed.
+    const records = [
+      makeRecord('vote-1', 0, { previousHash: 'f'.repeat(64) }),
+      makeRecord('vote-2', 1, { previousHash: '9'.repeat(64) }),
+    ];
+    expect(verifyVoteRecordSet(records)).toEqual({ ok: true, recordCount: 2 });
+  });
+
+  it('tolerates file lines reordered relative to sequence (it is a set)', () => {
+    const r0 = makeRecord('vote-1', 0);
+    const r1 = makeRecord('vote-2', 1);
+    const r2 = makeRecord('vote-3', 2);
+    // Lines out of sequence order — still ok:true.
+    expect(verifyVoteRecordSet([r2, r0, r1])).toEqual({ ok: true, recordCount: 3 });
   });
 
   it('DETECTS a flipped decision (rejected → approved) as hash_mismatch', () => {
-    const records = chain(makeRecord('vote-1', undefined, { decision: 'rejected' }));
-    // Forge: flip the decision on the persisted record WITHOUT rehashing.
-    const tampered: VoteRecord[] = [{ ...records[0]!, decision: 'approved' }];
-    const result = verifyVoteRecordChain(tampered);
+    const record = makeRecord('vote-1', 0, { decision: 'rejected' });
+    // Forge: flip the decision WITHOUT rehashing.
+    const tampered: VoteRecord[] = [{ ...record, decision: 'approved' }];
+    const result = verifyVoteRecordSet(tampered);
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.reason).toBe('hash_mismatch');
@@ -95,39 +93,54 @@ describe('verifyVoteRecordChain', () => {
   });
 
   it('DETECTS an altered approvalPercentage as hash_mismatch', () => {
-    const records = chain(makeRecord('vote-1', undefined, { approvalPercentage: 51 }));
-    const tampered: VoteRecord[] = [{ ...records[0]!, approvalPercentage: 99 }];
-    const result = verifyVoteRecordChain(tampered);
+    const record = makeRecord('vote-1', 0, { approvalPercentage: 51 });
+    const tampered: VoteRecord[] = [{ ...record, approvalPercentage: 99 }];
+    const result = verifyVoteRecordSet(tampered);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toBe('hash_mismatch');
   });
 
   it('DETECTS an edited voter summary as hash_mismatch', () => {
-    const records = chain(makeRecord('vote-1', undefined));
+    const record = makeRecord('vote-1', 0);
     const tampered: VoteRecord[] = [
-      {
-        ...records[0]!,
-        voters: [{ role: 'security', decision: 'approve', confidence: 0.99 }],
-      },
+      { ...record, voters: [{ role: 'security', decision: 'approve', confidence: 0.99 }] },
     ];
-    const result = verifyVoteRecordChain(tampered);
+    const result = verifyVoteRecordSet(tampered);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toBe('hash_mismatch');
   });
 
-  it('DETECTS a broken back-link (re-ordered / spliced record) as previous_hash_mismatch', () => {
-    const records = chain(
-      makeRecord('vote-1', undefined),
-      makeRecord('vote-2', undefined),
-      makeRecord('vote-3', undefined)
-    );
-    // Drop the middle record: vote-3's previousHash no longer matches vote-1's hash.
-    const spliced = [records[0]!, records[2]!];
-    const result = verifyVoteRecordChain(spliced);
+  it('DETECTS a tampered sequence as hash_mismatch (sequence is covered by the hash)', () => {
+    const record = makeRecord('vote-1', 1);
+    const tampered: VoteRecord[] = [{ ...record, sequence: 0 }];
+    const result = verifyVoteRecordSet(tampered);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('hash_mismatch');
+  });
+
+  it('DETECTS an omitted middle record as sequence_gap', () => {
+    // Build 0,1,2 then drop sequence 1 — a gap in the 0..2 run.
+    const spliced = [makeRecord('vote-1', 0), makeRecord('vote-3', 2)];
+    const result = verifyVoteRecordSet(spliced);
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.reason).toBe('previous_hash_mismatch');
-      expect(result.recordIndex).toBe(1);
+      expect(result.reason).toBe('sequence_gap');
+      expect(result.detail).toContain('missing sequence 1');
+    }
+  });
+
+  it('treats DUPLICATE sequences (concurrent fork) as benign and surfaces them in forks', () => {
+    // Two branches each appended sequence 1 from the same tip, then merged.
+    const records = [
+      makeRecord('vote-1', 0),
+      makeRecord('vote-2a', 1, { proposal: 'branch A proposal' }),
+      makeRecord('vote-2b', 1, { proposal: 'branch B proposal' }),
+    ];
+    const result = verifyVoteRecordSet(records);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.recordCount).toBe(3);
+      expect(result.forks).toEqual([1]);
     }
   });
 });

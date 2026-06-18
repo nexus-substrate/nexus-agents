@@ -1,13 +1,15 @@
 /**
- * Tests for the authentic vote-record store (#3897): a completed vote persists
- * an authentic record carrying the proposal hash + decision + per-voter summary,
- * the record is append-only and round-trips, and tampering with a persisted
- * line is detected by chain verification.
+ * Tests for the authentic vote-record store (#3897, model revised #3927): a
+ * completed vote persists a self-hashed record carrying the proposal hash +
+ * decision + per-voter summary + monotonic `sequence`. The record is append-only
+ * and round-trips, persisted sequences increment, tampering is detected as a
+ * `hash_mismatch`, and the ledger survives a simulated concurrent-branch merge
+ * (duplicate sequence → benign fork, not a failure).
  *
  * @module audit/vote-record-store.test
  */
 
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -16,7 +18,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ConsensusResult, Vote } from '../consensus/types.js';
 import type { AgentVoteResult, VoterRole } from '../cli/vote-types.js';
 
-import { verifyVoteRecordChain } from './vote-record.js';
+import { verifyVoteRecordSet } from './vote-record.js';
 import { buildVoteRecord, persistVoteRecord, readVoteRecords } from './vote-record-store.js';
 
 function vote(decision: Vote['decision'], confidence: number): Vote {
@@ -55,7 +57,7 @@ const votes: readonly AgentVoteResult[] = [
 ];
 
 describe('buildVoteRecord', () => {
-  it('carries the proposal hash, decision, counts, and per-voter summary', () => {
+  it('carries the proposal hash, decision, counts, per-voter summary, and a sequence', () => {
     const record = buildVoteRecord({
       id: 'vote-1',
       proposal: 'Promote loop X to enforce',
@@ -63,6 +65,8 @@ describe('buildVoteRecord', () => {
       result: consensusResult(),
       votes,
     });
+    expect(record.version).toBe('1.1');
+    expect(record.sequence).toBe(0); // default first sequence
     expect(record.decision).toBe('approved');
     expect(record.proposalHash).toHaveLength(64);
     expect(record.approvalPercentage).toBeCloseTo(66.7);
@@ -72,7 +76,7 @@ describe('buildVoteRecord', () => {
       { role: 'security', decision: 'approve', confidence: 0.8 },
       { role: 'catfish', decision: 'reject', confidence: 0.8 },
     ]);
-    expect(verifyVoteRecordChain([record])).toEqual({ ok: true, recordCount: 1 });
+    expect(verifyVoteRecordSet([record])).toEqual({ ok: true, recordCount: 1 });
   });
 
   it('excludes error-source voters from the per-voter summary', () => {
@@ -99,7 +103,7 @@ describe('persistVoteRecord', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('persists an authentic record that round-trips through read', () => {
+  it('persists a self-hashed record that round-trips through read', () => {
     const written = persistVoteRecord({
       id: 'vote-1',
       proposal: 'Promote loop X to enforce',
@@ -116,8 +120,8 @@ describe('persistVoteRecord', () => {
     expect(records[0]).toEqual(written);
   });
 
-  it('is append-only and chains each record onto the prior one', () => {
-    persistVoteRecord({
+  it('assigns an incrementing sequence and an advisory previousHash on append', () => {
+    const first = persistVoteRecord({
       id: 'vote-1',
       proposal: 'first',
       strategy: 'higher_order',
@@ -125,7 +129,7 @@ describe('persistVoteRecord', () => {
       votes,
       filePath,
     });
-    persistVoteRecord({
+    const second = persistVoteRecord({
       id: 'vote-2',
       proposal: 'second',
       strategy: 'higher_order',
@@ -136,12 +140,16 @@ describe('persistVoteRecord', () => {
 
     const { records } = readVoteRecords(filePath);
     expect(records).toHaveLength(2);
+    expect(records[0]!.sequence).toBe(0);
+    expect(records[1]!.sequence).toBe(1);
     expect(records[0]!.previousHash).toBeUndefined();
-    expect(records[1]!.previousHash).toBe(records[0]!.hash);
-    expect(verifyVoteRecordChain(records)).toEqual({ ok: true, recordCount: 2 });
+    // previousHash is advisory (set to the prior tip) but NOT verified.
+    expect(records[1]!.previousHash).toBe(first!.hash);
+    expect(second!.sequence).toBe(1);
+    expect(verifyVoteRecordSet(records)).toEqual({ ok: true, recordCount: 2 });
   });
 
-  it('detects tampering with a persisted line (decision flip) via chain verification', () => {
+  it('detects tampering with a persisted line (decision flip) via set verification', () => {
     persistVoteRecord({
       id: 'vote-1',
       proposal: 'p',
@@ -158,9 +166,57 @@ describe('persistVoteRecord', () => {
     const { records } = readVoteRecords(filePath);
     expect(records).toHaveLength(1);
     expect(records[0]!.decision).toBe('approved'); // the forged value is present...
-    const result = verifyVoteRecordChain(records);
-    expect(result.ok).toBe(false); // ...but the chain rejects it
+    const result = verifyVoteRecordSet(records);
+    expect(result.ok).toBe(false); // ...but verification rejects it
     if (!result.ok) expect(result.reason).toBe('hash_mismatch');
+  });
+
+  it('survives a simulated two-branch concurrent merge (merge=union) as a benign fork', () => {
+    // Branch base: one record at sequence 0.
+    persistVoteRecord({
+      id: 'vote-base',
+      proposal: 'base proposal',
+      strategy: 'higher_order',
+      result: consensusResult(),
+      votes,
+      filePath,
+    });
+    const baseRaw = readFileSync(filePath, 'utf-8');
+
+    // Two branches each fork from the same tip and append THEIR OWN sequence-1
+    // record (each computed the same max sequence = 0 → next = 1).
+    const branchA = buildVoteRecord({
+      id: 'vote-A',
+      proposal: 'branch A proposal',
+      strategy: 'higher_order',
+      result: consensusResult({ approvalPercentage: 71 }),
+      votes,
+      sequence: 1,
+    });
+    const branchB = buildVoteRecord({
+      id: 'vote-B',
+      proposal: 'branch B proposal',
+      strategy: 'higher_order',
+      result: consensusResult({ outcome: 'rejected', approvalPercentage: 33 }),
+      votes,
+      sequence: 1,
+    });
+
+    // Simulate what `merge=union` produces: base line + both branch lines.
+    writeFileSync(filePath, baseRaw, 'utf-8');
+    appendFileSync(filePath, JSON.stringify(branchA) + '\n', 'utf-8');
+    appendFileSync(filePath, JSON.stringify(branchB) + '\n', 'utf-8');
+
+    const { records, invalidLines } = readVoteRecords(filePath);
+    expect(invalidLines).toEqual([]);
+    expect(records).toHaveLength(3);
+
+    const result = verifyVoteRecordSet(records);
+    expect(result.ok).toBe(true); // a concurrent fork is NOT a failure
+    if (result.ok) {
+      expect(result.recordCount).toBe(3);
+      expect(result.forks).toEqual([1]); // the duplicated sequence is surfaced
+    }
   });
 
   it("skips persistence when every vote is simulated is the caller's job; store itself writes given real votes", () => {
