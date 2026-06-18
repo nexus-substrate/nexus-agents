@@ -613,7 +613,13 @@ export const PARSE_ARGS_CONFIG = {
   strict: true,
 } as const;
 
-const VALID_COMMANDS: readonly CliCommand[] = [
+/**
+ * Every command name {@link isValidCommand} accepts. Exported so the parity
+ * gate (`command-parity.test.ts`, #3212) can assert it stays consistent with
+ * the real dispatch tables and `COMMAND_CATALOG`, rather than trusting the
+ * `isValidCommand` predicate alone.
+ */
+export const VALID_COMMANDS: readonly CliCommand[] = [
   'server',
   'help',
   'version',
