@@ -22,7 +22,7 @@ type Result<T, E> =
     };
 ```
 
-Defined in: [result.ts:13](https://github.com/nexus-substrate/nexus-agents/blob/1d670e00cd7a23db56cea7f42a471808703c9794/packages/nexus-agents/src/core/result.ts#L13)
+Defined in: [result.ts:13](https://github.com/nexus-substrate/nexus-agents/blob/943e21f1feb99f8861d7a077ebb50745280f9fd6/packages/nexus-agents/src/core/result.ts#L13)
 
 A discriminated union representing either success (Ok) or failure (Err).
 
@@ -48,7 +48,7 @@ The error value type
 function err<E>(error): Result<never, E>;
 ```
 
-Defined in: [result.ts:49](https://github.com/nexus-substrate/nexus-agents/blob/1d670e00cd7a23db56cea7f42a471808703c9794/packages/nexus-agents/src/core/result.ts#L49)
+Defined in: [result.ts:49](https://github.com/nexus-substrate/nexus-agents/blob/943e21f1feb99f8861d7a077ebb50745280f9fd6/packages/nexus-agents/src/core/result.ts#L49)
 
 Creates a failed Result containing the given error.
 
@@ -91,7 +91,7 @@ if (!result.ok) {
 function isErr<T, E>(result): result is { error: E; ok: false };
 ```
 
-Defined in: [result.ts:73](https://github.com/nexus-substrate/nexus-agents/blob/1d670e00cd7a23db56cea7f42a471808703c9794/packages/nexus-agents/src/core/result.ts#L73)
+Defined in: [result.ts:73](https://github.com/nexus-substrate/nexus-agents/blob/943e21f1feb99f8861d7a077ebb50745280f9fd6/packages/nexus-agents/src/core/result.ts#L73)
 
 Type guard to check if a Result is in the Err state.
 
@@ -131,7 +131,7 @@ True if the Result is Err
 function isOk<T, E>(result): result is { ok: true; value: T };
 ```
 
-Defined in: [result.ts:60](https://github.com/nexus-substrate/nexus-agents/blob/1d670e00cd7a23db56cea7f42a471808703c9794/packages/nexus-agents/src/core/result.ts#L60)
+Defined in: [result.ts:60](https://github.com/nexus-substrate/nexus-agents/blob/943e21f1feb99f8861d7a077ebb50745280f9fd6/packages/nexus-agents/src/core/result.ts#L60)
 
 Type guard to check if a Result is in the Ok state.
 
@@ -171,7 +171,7 @@ True if the Result is Ok
 function map<T, U, E>(result, fn): Result<U, E>;
 ```
 
-Defined in: [result.ts:88](https://github.com/nexus-substrate/nexus-agents/blob/1d670e00cd7a23db56cea7f42a471808703c9794/packages/nexus-agents/src/core/result.ts#L88)
+Defined in: [result.ts:88](https://github.com/nexus-substrate/nexus-agents/blob/943e21f1feb99f8861d7a077ebb50745280f9fd6/packages/nexus-agents/src/core/result.ts#L88)
 
 Transforms the success value of a Result using the provided function.
 
@@ -223,7 +223,7 @@ A new Result with the transformed value
 function mapErr<T, E, F>(result, fn): Result<T, F>;
 ```
 
-Defined in: [result.ts:104](https://github.com/nexus-substrate/nexus-agents/blob/1d670e00cd7a23db56cea7f42a471808703c9794/packages/nexus-agents/src/core/result.ts#L104)
+Defined in: [result.ts:104](https://github.com/nexus-substrate/nexus-agents/blob/943e21f1feb99f8861d7a077ebb50745280f9fd6/packages/nexus-agents/src/core/result.ts#L104)
 
 Transforms the error value of a Result using the provided function.
 
@@ -275,7 +275,7 @@ A new Result with the transformed error
 function ok<T>(value): Result<T, never>;
 ```
 
-Defined in: [result.ts:31](https://github.com/nexus-substrate/nexus-agents/blob/1d670e00cd7a23db56cea7f42a471808703c9794/packages/nexus-agents/src/core/result.ts#L31)
+Defined in: [result.ts:31](https://github.com/nexus-substrate/nexus-agents/blob/943e21f1feb99f8861d7a077ebb50745280f9fd6/packages/nexus-agents/src/core/result.ts#L31)
 
 Creates a successful Result containing the given value.
 
@@ -318,7 +318,7 @@ if (result.ok) {
 function unwrap<T, E>(result): T;
 ```
 
-Defined in: [result.ts:119](https://github.com/nexus-substrate/nexus-agents/blob/1d670e00cd7a23db56cea7f42a471808703c9794/packages/nexus-agents/src/core/result.ts#L119)
+Defined in: [result.ts:119](https://github.com/nexus-substrate/nexus-agents/blob/943e21f1feb99f8861d7a077ebb50745280f9fd6/packages/nexus-agents/src/core/result.ts#L119)
 
 Extracts the success value from a Result.
 
@@ -362,7 +362,7 @@ Throws an Error wrapping the error value if the Result is Err
 function unwrapOr<T, E>(result, defaultValue): T;
 ```
 
-Defined in: [result.ts:144](https://github.com/nexus-substrate/nexus-agents/blob/1d670e00cd7a23db56cea7f42a471808703c9794/packages/nexus-agents/src/core/result.ts#L144)
+Defined in: [result.ts:144](https://github.com/nexus-substrate/nexus-agents/blob/943e21f1feb99f8861d7a077ebb50745280f9fd6/packages/nexus-agents/src/core/result.ts#L144)
 
 Extracts the success value from a Result, or returns a default value.
 
