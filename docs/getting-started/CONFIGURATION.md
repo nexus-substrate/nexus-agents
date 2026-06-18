@@ -11,12 +11,13 @@ Configure nexus-agents with YAML files, environment variables, and programmatic 
 
 ## Configuration Precedence
 
-Configuration is loaded in order of precedence (highest to lowest):
+The loader selects **one** config file — the **first match wins**, it does NOT merge multiple files:
 
-1. **Environment variables** (`NEXUS_*` prefix)
-2. **Project config** (`./nexus-agents.yaml` in current directory)
-3. **User config** (`~/.config/nexus-agents/config.yaml`)
-4. **Default values**
+1. `NEXUS_CONFIG_PATH` (explicit path), else
+2. **Project config** — `./.nexus-agents/nexus-agents.yaml` or `./nexus-agents.yaml` (current directory), else
+3. **User config** — `~/.nexus-agents/nexus-agents.yaml`
+
+Whatever single file is selected is layered over the built-in **defaults**. Then **environment variables** (`NEXUS_*`) overlay the result **per-setting at consumption time** — so an env var overrides just that one key, and env vars (not a second config file) are the right tool for machine-local overrides. See [Configuration for Reusable Pipelines](#configuration-for-reusable-pipelines) for the project-vs-local split.
 
 ## Quick Setup
 
