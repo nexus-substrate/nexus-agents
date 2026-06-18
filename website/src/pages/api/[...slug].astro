@@ -1,0 +1,25 @@
+---
+import { getCollection, render } from 'astro:content';
+import DocsLayout from '../../layouts/DocsLayout.astro';
+
+export async function getStaticPaths() {
+  const allApi = await getCollection('api');
+  // Only include entries with a frontmatter title (the typedoc title plugin
+  // injects one into every generated page).
+  const entries = allApi.filter((entry) => entry.data.title);
+  return entries.map((entry) => ({
+    // Map the generated `index` page to the section root (/api/).
+    params: { slug: entry.id === 'index' ? undefined : entry.id },
+    props: { entry },
+  }));
+}
+
+const { entry } = Astro.props;
+const { Content } = await render(entry);
+---
+
+<DocsLayout title={entry.data.title ?? entry.id} description={entry.data.description}>
+  <article class="prose">
+    <Content />
+  </article>
+</DocsLayout>
