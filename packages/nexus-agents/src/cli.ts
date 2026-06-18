@@ -25,6 +25,7 @@ import {
 } from './cli-types.js';
 import { dispatchCommand } from './cli-commands.js';
 import { formatCommandHelp } from './cli-command-help.js';
+import { catalogCommandNames, formatUnknownCommandMessage } from './cli-command-suggester.js';
 import { CLI_NAMES, type CliNameLiteral } from './config/model-capabilities-types.js';
 import {
   VoteThresholdSchema,
@@ -431,6 +432,28 @@ export function parseCliArgs(args: string[] = process.argv.slice(2)): ParsedCliA
 }
 
 /**
+ * If the user typed a first positional that isn't a recognized command, prints
+ * an `Unknown command '<x>'.` message (with a typo-tolerant "Did you mean: …?"
+ * line when a close match exists) and exits INVALID_ARGS — instead of silently
+ * falling through to the MCP server (#3211).
+ *
+ * Only fires when the resolved command is the `server` fall-through AND the
+ * first positional is present but not a valid command. A bare `nexus-agents`
+ * (no positionals) and an explicit `nexus-agents server` are untouched. No
+ * sub-handler consumes `positionals[0]` as a server goal, so an unrecognized
+ * one is unambiguously a typo.
+ */
+function maybeReportUnknownCommand(parsedArgs: ParsedCliArgs): void {
+  if (parsedArgs.command !== 'server') return;
+  if (parsedArgs.options.help || parsedArgs.options.version) return;
+  const firstArg = parsedArgs.positionals[0];
+  if (firstArg === undefined || isValidCommand(firstArg)) return;
+
+  console.error(formatUnknownCommandMessage(firstArg, catalogCommandNames()));
+  process.exit(EXIT_CODES.INVALID_ARGS);
+}
+
+/**
  * Main entry point for the Nexus Agents CLI.
  * Parses arguments and dispatches to appropriate command handler.
  */
@@ -445,6 +468,10 @@ async function main(): Promise<void> {
     console.error('Run "nexus-agents --help" for usage information.');
     process.exit(EXIT_CODES.INVALID_ARGS);
   }
+
+  // #3211: an unrecognized top-level subcommand otherwise silently starts the
+  // MCP server. Catch it here, suggest the closest command, and exit.
+  maybeReportUnknownCommand(parsedArgs);
 
   // Per-command help: show targeted help when --help is used with a command
   if (parsedArgs.options.help && parsedArgs.command !== 'help') {
