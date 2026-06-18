@@ -767,6 +767,37 @@ logging:
   format: json
 ```
 
+## Configuration for Reusable Pipelines
+
+A composed pipeline (research → vote → plan → run → review) inherits the same resolved config at every stage, so a single knob changes behavior fleet-wide. Three high-impact knobs and what they do across stages:
+
+- **`NEXUS_BILLING_MODE`** — `plan` (default) zeroes model cost in scoring, so routing's `ZeroRouter`/TOPSIS stages pick the strongest model regardless of price; every voter, planner, and worker in the pipeline trends toward `claude-opus`-tier. `api` keeps cost-aware routing, so the same pipeline shifts toward cheaper tiers under the session budget. Verified in `decision-cost-recording.ts` (default `'plan'`) and `defaults.ts:298`.
+- **`NEXUS_DATA_DIR` / `NEXUS_REPO_PREFERRED`** — per-repo state (`sessions`, `checkpoints`, `traces`, `runs`, `audit`, `pipeline`, `tasks`, `jobs`, `ci-health`) lands in `<repo>/.nexus-agents/` when `NEXUS_REPO_PREFERRED=1` (default), so two checkouts keep independent run/audit history. `NEXUS_DATA_DIR` overrides the split entirely. Cross-repo state — `learning/`, `memory`, `voting`, `research`, `auth` — always resolves to `~/.nexus-agents/`, so the routing-feedback loop is shared across projects regardless (`nexus-data-dir.ts`).
+- **Model tiers + sandbox** — `models.tiers` (`fast`/`balanced`/`powerful`) and `models.default` feed the router at every stage; `security.sandbox.mode` (`none`/`policy`/`container`) bounds every `execute_command` the pipeline issues.
+
+### Project-level vs user-level
+
+The loader selects **one** config file (first match wins): `NEXUS_CONFIG_PATH`, then `./.nexus-agents/nexus-agents.yaml` or `./nexus-agents.yaml`, then `~/.nexus-agents/nexus-agents.yaml`. It does not merge a project file with a user file. Per-setting **environment variables** overlay the loaded file at consumption time, so use them — not a second file — for local overrides.
+
+Commit the **project file** for shared, reproducible choices: `models.tiers`/`default`, `routing` weights, gate modes (`NEXUS_ACCESS_POLICY_MODE`, `NEXUS_POLICY_GATE_MODE`), and `security.sandbox.mode`. Keep **machine-specific** settings out of the repo and set them per-user via env: API keys (`ANTHROPIC_API_KEY`, …), `NEXUS_DATA_DIR`, `NEXUS_SANDBOX_ROOT`, and `NEXUS_BILLING_MODE`. Committed config defines the team's pipeline; each env var wins over it locally.
+
+```yaml
+# nexus-agents.yaml (committed)
+models:
+  default: claude-sonnet
+  tiers:
+    powerful: [claude-opus, codex-5.3]
+security:
+  sandbox: { mode: policy }
+```
+
+```bash
+# each teammate, locally (not committed)
+export ANTHROPIC_API_KEY=...
+export NEXUS_BILLING_MODE=api   # cost-aware on a personal key
+export NEXUS_DATA_DIR=/scratch/nexus
+```
+
 ## Related Documentation
 
 - [CLI Usage](../ENTRYPOINTS.md) - Use configuration in CLI commands
