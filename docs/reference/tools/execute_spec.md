@@ -14,8 +14,8 @@ Execute an AI software factory spec through the full pipeline (parse, decompose,
 
 ## Parameters
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `spec` | string | yes | Markdown specification to execute |
-| `dryRun` | boolean | no | Parse and decompose only |
-| `dispatch` | enum: sync \| async | no | Dispatch mode (#3732). 'sync' (default): run inline. 'async': return a jobId immediately + run in background (poll get_job_result). Ignored for dryRun. |
+| Parameter | Type | Required | Constraints | Description |
+| --------- | ---- | -------- | ----------- | ----------- |
+| `spec` | string | yes | minLength 1; maxLength 50000 | Markdown specification to execute |
+| `dryRun` | boolean | no | default false | Parse and decompose only |
+| `dispatch` | enum | no | one of: sync \| async; default sync | Dispatch mode (#3732). 'sync' (default): run inline. 'async': return a jobId immediately + run in background (poll get_job_result). Ignored for dryRun. |

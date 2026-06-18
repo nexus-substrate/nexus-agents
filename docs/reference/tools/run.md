@@ -14,12 +14,12 @@ DEFAULT ENTRY POINT (epic #3548): give a goal and nexus-agents selects the right
 
 ## Parameters
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `goal` | string | yes | Natural-language goal. nexus-agents selects how to execute it. |
-| `forceStrategy` | enum: single-shot \| dev-pipeline \| pipeline \| graph-workflow \| orchestrate \| consensus \| spec \| research | no | Power-user override: force a specific strategy instead of letting the router choose. |
-| `requiresConsensus` | boolean | no | Hint: the task needs a multi-perspective consensus decision. |
-| `dependencyStructure` | enum: linear \| dag \| independent \| unknown | no | Hint: the dependency structure of the work. |
-| `isNovel` | boolean | no | Hint: this kind of task has not been seen before. |
-| `execute` | boolean | no | When true, actually run the selected strategy (if an executor is wired) and return its result; otherwise return the routing decision only (default false, read-only). |
-| `dispatch` | enum: sync \| async | no | Dispatch mode (#3732). 'sync' (default): run inline. 'async' (only with execute:true): return a jobId immediately + run in background (poll get_job_result). |
+| Parameter | Type | Required | Constraints | Description |
+| --------- | ---- | -------- | ----------- | ----------- |
+| `goal` | string | yes | minLength 1 | Natural-language goal. nexus-agents selects how to execute it. |
+| `forceStrategy` | enum | no | one of: single-shot \| dev-pipeline \| pipeline \| graph-workflow \| orchestrate \| consensus \| spec \| research | Power-user override: force a specific strategy instead of letting the router choose. |
+| `requiresConsensus` | boolean | no | — | Hint: the task needs a multi-perspective consensus decision. |
+| `dependencyStructure` | enum | no | one of: linear \| dag \| independent \| unknown | Hint: the dependency structure of the work. |
+| `isNovel` | boolean | no | — | Hint: this kind of task has not been seen before. |
+| `execute` | boolean | no | — | When true, actually run the selected strategy (if an executor is wired) and return its result; otherwise return the routing decision only (default false, read-only). |
+| `dispatch` | enum | no | one of: sync \| async | Dispatch mode (#3732). 'sync' (default): run inline. 'async' (only with execute:true): return a jobId immediately + run in background (poll get_job_result). |

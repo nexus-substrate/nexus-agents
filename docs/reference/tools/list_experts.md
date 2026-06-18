@@ -14,6 +14,6 @@ Inventory of expert ROLES available to `create_expert` (architect, security, dev
 
 ## Parameters
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `format` | enum: full \| names | no | Output format: full (with details) or names (just role names) |
+| Parameter | Type | Required | Constraints | Description |
+| --------- | ---- | -------- | ----------- | ----------- |
+| `format` | enum | no | one of: full \| names; default full | Output format: full (with details) or names (just role names) |

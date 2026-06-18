@@ -14,8 +14,8 @@ List async-mode jobs across all tools (#3046 / epic #2631 Stage 5). Cross-sessio
 
 ## Parameters
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `toolName` | string | no | Filter to one tool (exact match). |
-| `status` | JobStatusSchema | no | Filter to pending \| complete \| failed \| cancelled. Omit for all. |
-| `limit` | number | no | Max summaries to return (1- , newest first). |
+| Parameter | Type | Required | Constraints | Description |
+| --------- | ---- | -------- | ----------- | ----------- |
+| `toolName` | string | no | minLength 1; maxLength 128 | Filter to one tool (exact match). |
+| `status` | enum | no | one of: pending \| complete \| failed \| cancelled | Filter to pending \| complete \| failed \| cancelled. Omit for all. |
+| `limit` | integer | no | min 1; max 200 | Max summaries to return (1-200, newest first). |

@@ -14,6 +14,6 @@ Read the result of an async-mode tool invocation by jobId (#3042 / epic #2631). 
 
 ## Parameters
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `jobId` | string | yes | Job ID returned by orchestrate({ mode: "async" }) |
+| Parameter | Type | Required | Constraints | Description |
+| --------- | ---- | -------- | ----------- | ----------- |
+| `jobId` | string | yes | minLength 1; maxLength 128 | Job ID returned by orchestrate({ mode: "async" }) |

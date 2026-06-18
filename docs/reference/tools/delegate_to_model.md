@@ -14,9 +14,9 @@ Pick which existing model should HANDLE a task. Inspects task complexity and ret
 
 ## Parameters
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `task` | string | yes | Task to execute or analyze |
-| `preferred_capability` | enum: reasoning \| context \| speed \| code | no | Preferred capability for routing: reasoning, context, speed, or code |
-| `model_hint` | string | no | Explicit model preference (e.g., claude-opus, gemini-pro) |
-| `billing_mode` | enum: plan \| api | no | Billing mode: plan (monthly subscription, ignore cost) or api (pay-per-token) |
+| Parameter | Type | Required | Constraints | Description |
+| --------- | ---- | -------- | ----------- | ----------- |
+| `task` | string | yes | minLength 1; maxLength 50000 | Task to execute or analyze |
+| `preferred_capability` | enum | no | one of: reasoning \| context \| speed \| code | Preferred capability for routing: reasoning, context, speed, or code |
+| `model_hint` | string | no | maxLength 100 | Explicit model preference (e.g., claude-opus, gemini-pro) |
+| `billing_mode` | enum | no | one of: plan \| api | Billing mode: plan (monthly subscription, ignore cost) or api (pay-per-token) |

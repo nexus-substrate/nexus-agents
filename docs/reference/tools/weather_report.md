@@ -14,8 +14,8 @@ Get multi-CLI performance weather report with per-CLI success rates and adaptive
 
 ## Parameters
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `cli` | enum | no | Filter by CLI |
-| `category` | enum: architecture \| code_generation \| code_review \| research \| security_review \| planning \| documentation \| testing \| devops \| exploration | no | Filter by task category |
-| `includeAdaptive` | boolean | no | Include adaptive routing bonuses (default: true) |
+| Parameter | Type | Required | Constraints | Description |
+| --------- | ---- | -------- | ----------- | ----------- |
+| `cli` | enum | no | one of: claude \| gemini \| codex \| opencode | Filter by CLI |
+| `category` | enum | no | one of: architecture \| code_generation \| code_review \| research \| security_review \| planning \| documentation \| testing \| devops \| exploration | Filter by task category |
+| `includeAdaptive` | boolean | no | default true | Include adaptive routing bonuses (default: true) |

@@ -12,14 +12,15 @@
  *   - description→ `TOOL_DESCRIPTIONS` (scripts/tool-descriptions-data.ts, the
  *                  same map the description-drift gate validates against)
  *   - parameters → the exported `*InputSchema` Zod object in each tool's source,
- *                  parsed statically (no module import — same hazard-free
- *                  approach as scripts/check-mcp-description-drift.ts; importing
- *                  the tool modules at build time trips a pre-existing
- *                  ci-health circular-init bug under tsx ESM evaluation).
+ *                  converted to JSON Schema via Zod v4's native
+ *                  `z.toJSONSchema(... , { io: 'input' })` so the page reflects
+ *                  the FULL input contract: enum members, min/max, pattern,
+ *                  defaults, and per-field descriptions (#3688). The schema is
+ *                  read live by dynamically importing each tool's defining
+ *                  module; the previously-feared ci-health circular-init under
+ *                  tsx does not reproduce for these schema-only imports.
  *
  * Composes with, rather than forks, the existing doc tooling:
- *   - reuses `parseConcatenatedString` from check-mcp-description-drift.ts to
- *     resolve `.describe('a' + 'b')` literals;
  *   - follows the generate-docs-content.ts pattern (generate + `--check` mode);
  *   - lands in the spike's (#3686) Astro `docs` collection, which reads the
  *     repo-top-level `docs/` dir and requires a `title` in frontmatter.
@@ -35,11 +36,43 @@
 /* eslint-disable no-console */
 
 import { readFileSync, readdirSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import type { z as zType } from 'zod';
 import { SRC_ROOT, DOCS_ROOT } from './script-paths.js';
 import { TOOL_MANIFEST } from '../packages/nexus-agents/src/mcp/tools/tool-manifest.js';
 import { TOOL_DESCRIPTIONS, README_TOOL_DESCRIPTIONS } from './tool-descriptions-data.js';
-import { parseConcatenatedString } from './check-mcp-description-drift.js';
+
+/** The single `zod` surface this generator needs: the schema→JSON-Schema converter. */
+type ToJsonSchema = (schema: zType.ZodType, options: { target: string; io: string }) => unknown;
+
+/**
+ * `zod` is a dependency of `packages/nexus-agents`, not of the repo root where
+ * this script lives, so a bare `import 'zod'` does not resolve under pnpm's
+ * isolated store. Resolve it through the package's own module graph instead:
+ * `createRequire` anchored at a package source file finds the exact `zod` the
+ * tool schemas were built against, independent of hoisting. Loaded lazily so
+ * the failure (if any) surfaces inside generation, not at import time.
+ */
+let toJsonSchemaPromise: Promise<ToJsonSchema> | undefined;
+function loadToJsonSchema(): Promise<ToJsonSchema> {
+  if (toJsonSchemaPromise === undefined) {
+    const anchor = join(SRC_ROOT, 'mcp/tools/tool-manifest.ts');
+    const require = createRequire(anchor);
+    const zodEntry = require.resolve('zod');
+    toJsonSchemaPromise = import(pathToFileURL(zodEntry).href).then(
+      (mod: Record<string, unknown>) => {
+        const fn = mod.toJSONSchema;
+        if (typeof fn !== 'function') {
+          throw new Error('zod module did not export a toJSONSchema function');
+        }
+        return fn as ToJsonSchema;
+      }
+    );
+  }
+  return toJsonSchemaPromise;
+}
 
 const CHECK_MODE = process.argv.includes('--check');
 const TOOLS_DIR = join(SRC_ROOT, 'mcp/tools');
@@ -102,172 +135,176 @@ const TOOL_SCHEMA_NAMES: Record<string, string> = {
   run: 'RunInputSchema',
 };
 
-// ─── Schema parsing ────────────────────────────────────────────────────────
+// ─── Schema introspection (Zod v4 native → JSON Schema, #3688) ───────────────
 
-/** One parsed input parameter of a tool. */
-interface ParamInfo {
+/** One parameter of a tool, derived from the live Zod schema's JSON Schema. */
+export interface ParamInfo {
   readonly name: string;
   readonly type: string;
   readonly required: boolean;
   readonly description: string;
+  /** Rendered constraint summary (enum members, min/max, pattern, default). */
+  readonly constraints: string;
 }
 
 /**
- * Map a tool's source filename by the `*InputSchema` const it defines. We scan
- * for `(export )?const <Name> = z.object(` so re-export-only files are skipped
- * and the *defining* file wins.
+ * Map each `*InputSchema` const name to the source file that *defines* it
+ * (scans for `export const <Name> = z.object(`, skipping re-export-only files).
+ * Returns relative-to-TOOLS_DIR filenames so we can dynamically import the
+ * defining module and read the live Zod schema object. Note: not every schema
+ * is re-exported from the `tools/index.ts` barrel (e.g. `DevPipelineInputSchema`
+ * is exported from its own module but not the barrel), so we import the
+ * defining module directly rather than relying on the barrel.
  */
 function indexSchemaFiles(): Map<string, string> {
   const byName = new Map<string, string>();
   for (const file of readdirSync(TOOLS_DIR)) {
     if (!file.endsWith('.ts') || file.endsWith('.test.ts')) continue;
     const source = readFileSync(join(TOOLS_DIR, file), 'utf-8');
-    const re = /(?:export\s+)?const\s+([A-Za-z0-9_]+InputSchema)\s*=\s*z\.object\(/g;
+    const re = /export\s+const\s+([A-Za-z0-9_]+InputSchema)\s*=\s*z\.object\(/g;
     let m: RegExpExecArray | null;
     while ((m = re.exec(source)) !== null) {
-      if (m[1] !== undefined && !byName.has(m[1])) byName.set(m[1], source);
+      if (m[1] !== undefined && !byName.has(m[1])) byName.set(m[1], file);
     }
   }
   return byName;
 }
 
 /**
- * Strip `//` and block comments from a TS snippet so brace/paren balancing and
- * field detection are not thrown off by punctuation inside comments (JSDoc on
- * schema fields routinely contains `{`, `(`, `owner/repo`, etc.).
+ * A JSON Schema node for a single property, as emitted by `z.toJSONSchema`.
+ * Only the fields we render are typed; the converter is a trusted in-repo
+ * source, so a structural shape suffices (no schema-validating it).
  */
-function stripComments(src: string): string {
-  return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+interface JsonSchemaNode {
+  readonly type?: string | readonly string[];
+  readonly description?: string;
+  readonly enum?: readonly unknown[];
+  readonly const?: unknown;
+  readonly default?: unknown;
+  readonly minLength?: number;
+  readonly maxLength?: number;
+  readonly minimum?: number;
+  readonly maximum?: number;
+  readonly exclusiveMinimum?: number;
+  readonly exclusiveMaximum?: number;
+  readonly pattern?: string;
+  readonly format?: string;
+  readonly items?: unknown;
+}
+
+/** The object-shaped JSON Schema `z.toJSONSchema` emits for a `z.object`. */
+interface ObjectJsonSchema {
+  readonly properties?: Readonly<Record<string, JsonSchemaNode>>;
+  readonly required?: readonly string[];
+}
+
+/** Narrow an unknown JSON value to a JSON Schema node (non-null object). */
+function asNode(v: unknown): JsonSchemaNode | undefined {
+  return typeof v === 'object' && v !== null ? v : undefined;
+}
+
+/** Render a JSON Schema scalar value compactly for a doc table cell. */
+function renderScalar(v: unknown): string {
+  if (typeof v === 'string') return v;
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  return JSON.stringify(v);
+}
+
+/** Human-readable base type label for a property node. */
+function nodeType(node: JsonSchemaNode): string {
+  if (node.enum !== undefined && node.enum.length > 0) return 'enum';
+  if (node.const !== undefined) return 'literal';
+  const t = node.type;
+  if (typeof t === 'string') {
+    if (t === 'array' && node.items !== undefined) {
+      const item = asNode(node.items);
+      const itemType = item !== undefined ? nodeType(item) : 'object';
+      // Avoid `array<T>` (angle brackets trip markdownlint MD033 / inline-HTML).
+      return `array of ${itemType}`;
+    }
+    return t;
+  }
+  if (Array.isArray(t)) return t.join(' | ');
+  return 'object';
+}
+
+/** Numeric/length range constraints, each rendered only when present. */
+function rangeConstraints(node: JsonSchemaNode): string[] {
+  const ranges: ReadonlyArray<readonly [number | undefined, string]> = [
+    [node.minLength, 'minLength'],
+    [node.maxLength, 'maxLength'],
+    [node.minimum, 'min'],
+    [node.maximum, 'max'],
+    [node.exclusiveMinimum, '>'],
+    [node.exclusiveMaximum, '<'],
+  ];
+  return ranges.filter(([v]) => v !== undefined).map(([v, label]) => `${label} ${String(v)}`);
+}
+
+/** The leading enum-members / const-value clause, if any. */
+function valueConstraint(node: JsonSchemaNode): string | undefined {
+  if (node.enum !== undefined && node.enum.length > 0) {
+    // Use a plain `|` separator; escapeCell() escapes it for the table cell.
+    return `one of: ${node.enum.map(renderScalar).join(' | ')}`;
+  }
+  if (node.const !== undefined) return `= ${renderScalar(node.const)}`;
+  return undefined;
 }
 
 /**
- * Slice the `z.object({ ... })` body for `schemaName` from its source, balancing
- * braces so nested objects are contained. Returns null if not found.
+ * Collapse the JSON Schema constraint keywords for a property into a compact,
+ * deterministic summary string (enum members, min/max, pattern, default).
  */
-function extractObjectBody(source: string, schemaName: string): string | null {
-  const start = source.search(
-    new RegExp(
-      `const\\s+${schemaName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*=\\s*z\\.object\\(\\s*\\{`
-    )
-  );
-  if (start === -1) return null;
-  const braceStart = source.indexOf('{', start);
-  if (braceStart === -1) return null;
-  let depth = 0;
-  for (let i = braceStart; i < source.length; i++) {
-    const ch = source[i];
-    if (ch === '{') depth++;
-    else if (ch === '}') {
-      depth--;
-      if (depth === 0) return source.slice(braceStart + 1, i);
-    }
-  }
-  return null;
+function nodeConstraints(node: JsonSchemaNode): string {
+  const parts: string[] = [];
+  const value = valueConstraint(node);
+  if (value !== undefined) parts.push(value);
+  parts.push(...rangeConstraints(node));
+  if (node.pattern !== undefined) parts.push(`pattern \`${node.pattern}\``);
+  if (node.format !== undefined) parts.push(`format ${node.format}`);
+  if (node.default !== undefined) parts.push(`default ${renderScalar(node.default)}`);
+  return parts.join('; ');
 }
 
 /**
- * Split the object body into top-level field chunks (one per `name: z....`),
- * ignoring commas nested inside braces/parens/brackets.
+ * Resolve a tool's live `*InputSchema` by dynamically importing its defining
+ * module, convert it to JSON Schema via Zod v4's native `z.toJSONSchema`
+ * (`io: 'input'` so `.default()`/`.optional()` are reflected as the caller sees
+ * them), and project the top-level properties into {@link ParamInfo} rows.
+ *
+ * Throws (fail-loud, mirroring the manifest validation) if the module does not
+ * export the named schema or the conversion yields no object shape.
  */
-function splitTopLevelFields(body: string): string[] {
-  const chunks: string[] = [];
-  let depth = 0;
-  let start = 0;
-  for (let i = 0; i < body.length; i++) {
-    const ch = body[i];
-    if (ch === '{' || ch === '(' || ch === '[') depth++;
-    else if (ch === '}' || ch === ')' || ch === ']') depth--;
-    else if (ch === ',' && depth === 0) {
-      chunks.push(body.slice(start, i));
-      start = i + 1;
-    }
+async function paramsForSchema(
+  schemaFile: string,
+  schemaName: string,
+  tool: string
+): Promise<ParamInfo[]> {
+  const toJsonSchema = await loadToJsonSchema();
+  const moduleUrl = pathToFileURL(join(TOOLS_DIR, schemaFile)).href;
+  const mod = (await import(moduleUrl)) as Record<string, unknown>;
+  const schema = mod[schemaName];
+  if (schema === undefined) {
+    throw new Error(`Module ${schemaFile} does not export ${schemaName} (tool "${tool}")`);
   }
-  chunks.push(body.slice(start));
-  return chunks.map((c) => c.trim()).filter((c) => c.length > 0);
-}
-
-/** Base `z.<kind>` → label map for simple scalar/container types. */
-const SIMPLE_TYPES: ReadonlyArray<readonly [RegExp, string]> = [
-  [/^z\.string\b/, 'string'],
-  [/^z\.number\b/, 'number'],
-  [/^z\.boolean\b/, 'boolean'],
-  [/^z\.array\b/, 'array'],
-  [/^z\.record\b/, 'record'],
-  [/^z\.object\b/, 'object'],
-  [/^z\.literal\b/, 'literal'],
-  [/^z\.union\b/, 'union'],
-];
-
-/** Render an inline `z.enum([...])` as `enum: a | b | c`, or `enum` if opaque. */
-function inferEnum(expr: string): string {
-  const en = expr.match(/z\.(?:native)?[Ee]num\(\s*\[([\s\S]*?)\]/);
-  const vals = en?.[1]?.match(/'[^']*'|"[^"]*"/g);
-  if (vals && vals.length > 0) {
-    return `enum: ${vals.map((v) => v.replace(/['"]/g, '')).join(' | ')}`;
+  // The cast is the single boundary where the dynamically-imported value meets
+  // the typed converter; `io: 'input'` reflects `.default()`/`.optional()` as
+  // the caller supplies them.
+  const json = toJsonSchema(schema as zType.ZodType, { target: 'draft-7', io: 'input' });
+  const obj = asNode(json) as ObjectJsonSchema | undefined;
+  if (obj?.properties === undefined) {
+    throw new Error(`${schemaName} did not convert to an object schema (tool "${tool}")`);
   }
-  return 'enum';
-}
-
-/** Human-readable base type for a field chunk's `z.<...>` expression. */
-function inferType(chunk: string): string {
-  const expr = chunk
-    .slice(chunk.indexOf(':') + 1)
-    .replace(/\s+/g, ' ')
-    .replace(/z\s*\.\s*/g, 'z.')
-    .trim();
-  for (const [re, label] of SIMPLE_TYPES) {
-    if (re.test(expr)) return label;
-  }
-  if (/^z\.enum\b/.test(expr) || /^z\.nativeEnum\b/.test(expr)) return inferEnum(expr);
-  // Field defined via a referenced schema const (e.g. `VotingStrategySchema`).
-  // Resolving its enum members would require chasing the const across files;
-  // surface the schema name so the reader knows the concrete type to consult.
-  const ref = expr.match(/^([A-Z][A-Za-z0-9_]*(?:Schema|Enum))\b/);
-  return ref?.[1] ?? 'object';
-}
-
-/** Pull the `.describe(...)` text from a field chunk (handles concatenation). */
-function extractDescribe(chunk: string): string {
-  const idx = chunk.indexOf('.describe(');
-  if (idx === -1) return '';
-  // Slice from inside `.describe(` to the matching close paren, then reuse the
-  // drift gate's concatenated-string-literal parser.
-  const open = idx + '.describe('.length;
-  let depth = 1;
-  let end = open;
-  for (let i = open; i < chunk.length; i++) {
-    const ch = chunk[i];
-    if (ch === '(') depth++;
-    else if (ch === ')') {
-      depth--;
-      if (depth === 0) {
-        end = i;
-        break;
-      }
-    }
-  }
-  const inner = chunk.slice(open, end);
-  return parseConcatenatedString(inner) ?? '';
-}
-
-/** Parse a schema's parameters from its source. Throws if the schema is absent. */
-function parseParams(rawSource: string, schemaName: string, tool: string): ParamInfo[] {
-  const source = stripComments(rawSource);
-  const body = extractObjectBody(source, schemaName);
-  if (body === null) {
-    throw new Error(`Could not locate z.object body for ${schemaName} (tool "${tool}")`);
-  }
+  const required = new Set(obj.required ?? []);
   const params: ParamInfo[] = [];
-  for (const chunk of splitTopLevelFields(body)) {
-    const nameMatch = chunk.match(/^([A-Za-z0-9_]+)\s*:/);
-    const name = nameMatch?.[1];
-    if (name === undefined) continue;
-    const required = !/\.optional\(\)|\.default\(/.test(chunk);
+  // Preserve the schema's declaration order (Object key order from Zod).
+  for (const [name, node] of Object.entries(obj.properties)) {
     params.push({
       name,
-      type: inferType(chunk),
-      required,
-      description: extractDescribe(chunk).replace(/\s+/g, ' ').trim(),
+      type: nodeType(node),
+      required: required.has(name),
+      description: (node.description ?? '').replace(/\s+/g, ' ').trim(),
+      constraints: nodeConstraints(node),
     });
   }
   return params;
@@ -275,15 +312,15 @@ function parseParams(rawSource: string, schemaName: string, tool: string): Param
 
 // ─── Markdown emission ───────────────────────────────────────────────────────
 
-interface ToolDoc {
+export interface ToolDoc {
   readonly name: string;
   readonly description: string;
   readonly short: string;
   readonly params: ParamInfo[];
 }
 
-function collectToolDocs(): ToolDoc[] {
-  const schemaSources = indexSchemaFiles();
+export async function collectToolDocs(): Promise<ToolDoc[]> {
+  const schemaFiles = indexSchemaFiles();
   const docs: ToolDoc[] = [];
   for (const { name: tool } of TOOL_MANIFEST) {
     const schemaName = TOOL_SCHEMA_NAMES[tool];
@@ -294,15 +331,15 @@ function collectToolDocs(): ToolDoc[] {
     if (description === undefined) {
       throw new Error(`No TOOL_DESCRIPTIONS entry for manifest tool "${tool}"`);
     }
-    const source = schemaSources.get(schemaName);
-    if (source === undefined) {
+    const schemaFile = schemaFiles.get(schemaName);
+    if (schemaFile === undefined) {
       throw new Error(`No source defines ${schemaName} (tool "${tool}")`);
     }
     docs.push({
       name: tool,
       description,
       short: README_TOOL_DESCRIPTIONS[tool] ?? description,
-      params: parseParams(source, schemaName, tool),
+      params: await paramsForSchema(schemaFile, schemaName, tool),
     });
   }
   return docs;
@@ -322,7 +359,7 @@ function escapeCell(s: string): string {
   return s.replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
 }
 
-function renderToolPage(doc: ToolDoc): string {
+export function renderToolPage(doc: ToolDoc): string {
   const lines: string[] = [];
   lines.push('---');
   lines.push(`title: ${yamlQuote(`MCP Tool: ${doc.name}`)}`);
@@ -343,12 +380,13 @@ function renderToolPage(doc: ToolDoc): string {
   if (doc.params.length === 0) {
     lines.push('_This tool takes no input parameters._');
   } else {
-    lines.push('| Parameter | Type | Required | Description |');
-    lines.push('| --------- | ---- | -------- | ----------- |');
+    lines.push('| Parameter | Type | Required | Constraints | Description |');
+    lines.push('| --------- | ---- | -------- | ----------- | ----------- |');
     for (const p of doc.params) {
       const desc = escapeCell(p.description) || '—';
+      const constraints = escapeCell(p.constraints) || '—';
       lines.push(
-        `| \`${p.name}\` | ${escapeCell(p.type)} | ${p.required ? 'yes' : 'no'} | ${desc} |`
+        `| \`${p.name}\` | ${escapeCell(p.type)} | ${p.required ? 'yes' : 'no'} | ${constraints} | ${desc} |`
       );
     }
   }
@@ -396,8 +434,8 @@ interface OutFile {
 /** Tool names are identifiers; reject anything that could escape OUT_DIR (path-injection guard). */
 const SAFE_TOOL_NAME = /^[a-z0-9_]+$/;
 
-function buildOutputs(): OutFile[] {
-  const docs = collectToolDocs();
+async function buildOutputs(): Promise<OutFile[]> {
+  const docs = await collectToolDocs();
   const out: OutFile[] = [{ path: join(OUT_DIR, 'index.md'), content: renderIndexPage(docs) }];
   for (const doc of docs) {
     // Sanitize the data-derived filename: doc.name comes from parsed source, so
@@ -442,8 +480,8 @@ function runCheck(outputs: OutFile[]): void {
   process.exit(1);
 }
 
-function main(): void {
-  const outputs = buildOutputs();
+async function main(): Promise<void> {
+  const outputs = await buildOutputs();
   if (CHECK_MODE) {
     runCheck(outputs);
     return;
@@ -455,4 +493,8 @@ function main(): void {
   console.log(`✓ Generated ${String(outputs.length)} tool-reference files into ${OUT_DIR}`);
 }
 
-main();
+// Only run when invoked directly (not when imported by the test for its pure
+// render/collect helpers).
+if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  void main();
+}

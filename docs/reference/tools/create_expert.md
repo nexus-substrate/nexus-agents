@@ -14,7 +14,7 @@ Create a specialized expert agent for code, architecture, security, documentatio
 
 ## Parameters
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `role` | enum: code_expert \| architecture_expert \| security_expert \| documentation_expert \| testing_expert \| devops_expert \| research_expert \| pm_expert \| ux_expert \| infrastructure_expert \| data_visualization_expert | yes | Expert role to create |
-| `modelPreference` | string | no | Preferred model (e.g., claude-sonnet-4) |
+| Parameter | Type | Required | Constraints | Description |
+| --------- | ---- | -------- | ----------- | ----------- |
+| `role` | enum | yes | one of: code_expert \| architecture_expert \| security_expert \| documentation_expert \| testing_expert \| devops_expert \| research_expert \| pm_expert \| ux_expert \| infrastructure_expert \| data_visualization_expert | Expert role to create |
+| `modelPreference` | string | no | maxLength 100 | Preferred model (e.g., claude-sonnet-4) |

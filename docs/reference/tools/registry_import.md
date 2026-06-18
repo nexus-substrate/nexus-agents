@@ -14,8 +14,8 @@ Draft a registry ENTRY YAML for a NEW model so routing can consider it later. Re
 
 ## Parameters
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `provider` | enum: anthropic \| google \| openai | yes | Model provider (anthropic, google, openai) |
-| `modelId` | string | yes | Provider model identifier |
-| `dryRun` | boolean | no | Preview without persisting |
+| Parameter | Type | Required | Constraints | Description |
+| --------- | ---- | -------- | ----------- | ----------- |
+| `provider` | enum | yes | one of: anthropic \| google \| openai | Model provider (anthropic, google, openai) |
+| `modelId` | string | yes | minLength 1 | Provider model identifier |
+| `dryRun` | boolean | no | default true | Preview without persisting |

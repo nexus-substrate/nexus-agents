@@ -14,9 +14,9 @@ PAPER-only: add an arXiv preprint to the research registry by arXiv ID. Fetches 
 
 ## Parameters
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `arxivId` | string | yes | arXiv paper ID (e.g., "2401.12345") |
-| `topic` | string | no | Research topic to categorize the paper under |
-| `priority` | enum: P1 \| P2 \| P3 \| P4 | no | Priority level for the paper |
-| `dryRun` | boolean | no | Preview what would be added without persisting |
+| Parameter | Type | Required | Constraints | Description |
+| --------- | ---- | -------- | ----------- | ----------- |
+| `arxivId` | string | yes | pattern `^\\d{4}\\.\\d{4,5}$` | arXiv paper ID (e.g., "2401.12345") |
+| `topic` | string | no | — | Research topic to categorize the paper under |
+| `priority` | enum | no | one of: P1 \| P2 \| P3 \| P4 | Priority level for the paper |
+| `dryRun` | boolean | no | default false | Preview what would be added without persisting |

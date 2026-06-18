@@ -14,10 +14,10 @@ Run a DAG-shaped workflow with per-node checkpoints, event streaming, and an aud
 
 ## Parameters
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `workflow` | string | yes | Name of the predefined graph workflow to execute |
-| `inputs` | record | no | Input values for the workflow |
-| `enableCheckpointing` | boolean | no | Enable checkpoint saving between steps |
-| `enableAuditTrail` | boolean | no | Enable audit trail event logging |
-| `dispatch` | enum: sync \| async | no | Dispatch mode (#3732). 'sync' (default): run inline. 'async': return a jobId immediately + run in background (poll get_job_result). |
+| Parameter | Type | Required | Constraints | Description |
+| --------- | ---- | -------- | ----------- | ----------- |
+| `workflow` | string | yes | minLength 1; maxLength 100 | Name of the predefined graph workflow to execute |
+| `inputs` | object | no | default {} | Input values for the workflow |
+| `enableCheckpointing` | boolean | no | default true | Enable checkpoint saving between steps |
+| `enableAuditTrail` | boolean | no | default false | Enable audit trail event logging |
+| `dispatch` | enum | no | one of: sync \| async; default sync | Dispatch mode (#3732). 'sync' (default): run inline. 'async': return a jobId immediately + run in background (poll get_job_result). |

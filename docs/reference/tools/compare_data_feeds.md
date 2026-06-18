@@ -14,9 +14,9 @@ Diff two upstream data feeds (YAML or JSON files) along coverage and per-field a
 
 ## Parameters
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `feedAPath` | string | yes | Filesystem path to feed A (YAML or JSON, auto-detected by extension) |
-| `feedBPath` | string | yes | Filesystem path to feed B |
-| `keyPath` | string | yes | Dotted path to the entry key, e.g. "id" or "name". Each entry must have this field. |
-| `compareFields` | array | no | Optional dotted field paths to compare across matched entries (e.g. ["license", "sha256"]) |
+| Parameter | Type | Required | Constraints | Description |
+| --------- | ---- | -------- | ----------- | ----------- |
+| `feedAPath` | string | yes | minLength 1; maxLength 1000 | Filesystem path to feed A (YAML or JSON, auto-detected by extension) |
+| `feedBPath` | string | yes | minLength 1; maxLength 1000 | Filesystem path to feed B |
+| `keyPath` | string | yes | minLength 1; maxLength 200 | Dotted path to the entry key, e.g. "id" or "name". Each entry must have this field. |
+| `compareFields` | array of string | no | — | Optional dotted field paths to compare across matched entries (e.g. ["license", "sha256"]) |

@@ -14,6 +14,6 @@ Read the structured task-state log for a task ID and return the current snapshot
 
 ## Parameters
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `taskId` | string | yes | Task ID whose structured state log should be read |
+| Parameter | Type | Required | Constraints | Description |
+| --------- | ---- | -------- | ----------- | ----------- |
+| `taskId` | string | yes | minLength 1; maxLength 128 | Task ID whose structured state log should be read |

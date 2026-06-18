@@ -14,11 +14,11 @@ Run a LINEAR (single-path) workflow template by name with typed inputs. For DAG-
 
 ## Parameters
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `template` | string | yes | Workflow template name (e.g., code-review) or file path |
-| `inputs` | record | yes | Workflow inputs as key-value pairs |
-| `dryRun` | boolean | no | Validate workflow without executing |
-| `timeoutMs` | number | no | Per-phase execution timeout in ms (overrides workflow.timeout) |
-| `mode` | enum: sync \| async | no | Dispatch mode (default: sync). Use "async" for long-running workflows. |
-| `idempotencyKey` | string | no | Replay-safe key for async-mode dispatch (#3042 Stage 1c). Same (key, inputs) returns existing jobId. |
+| Parameter | Type | Required | Constraints | Description |
+| --------- | ---- | -------- | ----------- | ----------- |
+| `template` | string | yes | minLength 1 | Workflow template name (e.g., code-review) or file path |
+| `inputs` | object | yes | — | Workflow inputs as key-value pairs |
+| `dryRun` | boolean | no | default false | Validate workflow without executing |
+| `timeoutMs` | integer | no | min 1000; max 1800000 | Per-phase execution timeout in ms (overrides workflow.timeout) |
+| `mode` | enum | no | one of: sync \| async | Dispatch mode (default: sync). Use "async" for long-running workflows. |
+| `idempotencyKey` | string | no | minLength 1; maxLength 256 | Replay-safe key for async-mode dispatch (#3042 Stage 1c). Same (key, inputs) returns existing jobId. |

@@ -14,6 +14,6 @@ Synthesize the research registry by grouping papers into topic clusters with the
 
 ## Parameters
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `topic` | string | no | Optional topic to filter synthesis to a single cluster |
+| Parameter | Type | Required | Constraints | Description |
+| --------- | ---- | -------- | ----------- | ----------- |
+| `topic` | string | no | — | Optional topic to filter synthesis to a single cluster |
