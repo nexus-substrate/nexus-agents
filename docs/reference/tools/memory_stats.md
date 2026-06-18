@@ -14,6 +14,6 @@ Get memory system statistics dashboard showing backend availability and metrics.
 
 ## Parameters
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `includeDecay` | boolean | no | Include decay statistics (default: true) |
+| Parameter | Type | Required | Constraints | Description |
+| --------- | ---- | -------- | ----------- | ----------- |
+| `includeDecay` | boolean | no | default true | Include decay statistics (default: true) |

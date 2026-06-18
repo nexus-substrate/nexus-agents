@@ -14,6 +14,7 @@ Triage GitHub issues with trust classification and typed action recommendations.
 
 ## Parameters
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `issueUrl` | string | no | GitHub issue URL (e.g., https://github.com/owner/repo/issues/123) |
+| Parameter | Type | Required | Constraints | Description |
+| --------- | ---- | -------- | ----------- | ----------- |
+| `issueUrl` | string | yes | minLength 1 | GitHub issue URL (e.g., https://github.com/owner/repo/issues/123) |
+| `dryRun` | boolean | no | default true | Read-only mode (default: true). When false, may apply labels. |

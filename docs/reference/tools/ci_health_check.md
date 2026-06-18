@@ -14,7 +14,7 @@ Diagnostic for CI infrastructure health (#3076). Composes GitHub status-page sta
 
 ## Parameters
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `repo` | string | no | GitHub repo (owner/repo) to check for recent CI activity. Optional. |
-| `activityWindowMinutes` | number | no | Recent-runs lookback window in minutes (5-180; default 30). |
+| Parameter | Type | Required | Constraints | Description |
+| --------- | ---- | -------- | ----------- | ----------- |
+| `repo` | string | no | pattern `^[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+$` | GitHub repo (owner/repo) to check for recent CI activity. Optional. |
+| `activityWindowMinutes` | integer | no | min 5; max 180; default 30 | Recent-runs lookback window in minutes (5-180; default 30). |

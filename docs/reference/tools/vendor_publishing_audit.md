@@ -14,6 +14,6 @@ Look up a vendor's published-artifact signing infrastructure: GPG key fingerprin
 
 ## Parameters
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `vendor` | string | yes | Vendor identifier, lowercase. e.g. "ubuntu", "debian", "fedora" |
+| Parameter | Type | Required | Constraints | Description |
+| --------- | ---- | -------- | ----------- | ----------- |
+| `vendor` | string | yes | minLength 1; maxLength 50 | Vendor identifier, lowercase. e.g. "ubuntu", "debian", "fedora" |

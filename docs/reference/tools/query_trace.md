@@ -14,8 +14,8 @@ Query execution traces by run ID (reads the trace JSONL files from disk). Return
 
 ## Parameters
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `runId` | string | yes | Run ID to query traces for |
-| `eventType` | string | no | Filter by event type |
-| `limit` | number | no | Max events to return (default: 100) |
+| Parameter | Type | Required | Constraints | Description |
+| --------- | ---- | -------- | ----------- | ----------- |
+| `runId` | string | yes | minLength 1; maxLength 128; pattern `^[a-zA-Z0-9_-]+$` | Run ID to query traces for |
+| `eventType` | string | no | maxLength 100; pattern `^[a-zA-Z0-9._-]+$` | Filter by event type |
+| `limit` | number | no | min 1; max 500 | Max events to return (default: 100) |

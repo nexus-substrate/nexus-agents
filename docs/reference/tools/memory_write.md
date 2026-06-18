@@ -14,10 +14,10 @@ Write a memory entry to a specific backend. Supports session, belief, agentic, a
 
 ## Parameters
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `key` | string | yes | Memory identifier or subject |
-| `content` | string | yes | Memory content to store |
-| `backend` | enum: session \| belief \| agentic \| adaptive \| typed | yes | Target memory backend: session (learnings), belief (triples), agentic (knowledge), adaptive (priority-scored), typed (MIRIX-style semantic) |
-| `confidence` | enum: high \| medium \| low | no | Confidence level (default: medium) |
-| `metadata` | record | no | Optional key-value metadata tags |
+| Parameter | Type | Required | Constraints | Description |
+| --------- | ---- | -------- | ----------- | ----------- |
+| `key` | string | yes | minLength 1; maxLength 200 | Memory identifier or subject |
+| `content` | string | yes | minLength 1; maxLength 5000 | Memory content to store |
+| `backend` | enum | yes | one of: session \| belief \| agentic \| adaptive \| typed | Target memory backend: session (learnings), belief (triples), agentic (knowledge), adaptive (priority-scored), typed (MIRIX-style semantic) |
+| `confidence` | enum | no | one of: high \| medium \| low; default medium | Confidence level (default: medium) |
+| `metadata` | object | no | — | Optional key-value metadata tags |

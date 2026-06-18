@@ -14,8 +14,8 @@ Generate a security scanning pipeline recommendation for a GitHub repository bas
 
 ## Parameters
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `repo` | string | yes | GitHub repository in "owner/name" format or full URL |
-| `categories` | array | no | Filter to specific categories (e.g., ["sast", "sca", "secrets"]) |
-| `maxScanners` | number | no | Maximum scanners to recommend (default: 10) |
+| Parameter | Type | Required | Constraints | Description |
+| --------- | ---- | -------- | ----------- | ----------- |
+| `repo` | string | yes | minLength 1 | GitHub repository in "owner/name" format or full URL |
+| `categories` | array of string | no | — | Filter to specific categories (e.g., ["sast", "sca", "secrets"]) |
+| `maxScanners` | number | no | min 1; max 20; default 10 | Maximum scanners to recommend (default: 10) |

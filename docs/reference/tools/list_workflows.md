@@ -14,7 +14,7 @@ Inventory of multi-step TEMPLATES available to `run_workflow` (code-review, secu
 
 ## Parameters
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `category` | string | no | Filter by category (e.g., development, security) |
-| `format` | enum: full \| names | no | Output format: full (with details) or names (just template names) |
+| Parameter | Type | Required | Constraints | Description |
+| --------- | ---- | -------- | ----------- | ----------- |
+| `category` | string | no | — | Filter by category (e.g., development, security) |
+| `format` | enum | no | one of: full \| names; default full | Output format: full (with details) or names (just template names) |

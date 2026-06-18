@@ -14,9 +14,9 @@ Transient OSS project search via the GitHub search API. Returns a ranked list of
 
 ## Parameters
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `query` | string | yes | Free-text search query, e.g. "cargo nextest replacement" or "OSS SBOM tools" |
-| `maxResults` | number | no | Maximum candidates to return (1-50; default 10) |
-| `minStars` | number | no | Minimum star count to include (default 0; useful for filtering noise) |
-| `language` | string | no | GitHub language filter, e.g. "rust" or "typescript" |
+| Parameter | Type | Required | Constraints | Description |
+| --------- | ---- | -------- | ----------- | ----------- |
+| `query` | string | yes | minLength 1; maxLength 200 | Free-text search query, e.g. "cargo nextest replacement" or "OSS SBOM tools" |
+| `maxResults` | integer | no | min 1; max 50; default 10 | Maximum candidates to return (1-50; default 10) |
+| `minStars` | integer | no | min 0; max 9007199254740991; default 0 | Minimum star count to include (default 0; useful for filtering noise) |
+| `language` | string | no | maxLength 50 | GitHub language filter, e.g. "rust" or "typescript" |

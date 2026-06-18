@@ -14,10 +14,10 @@ Periodic threshold-gated observability-driven improvement loop (#2402). Reads Ou
 
 ## Parameters
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `lookbackDays` | number | no | Lookback window for outcome data, in days. Default 7. |
-| `fileIssues` | boolean | no | When true, file candidate issues via `gh issue create` for crossed thresholds (rate-limited to 5 per run, deduped against open issues). When false (default), return signals only. |
-| `minSampleSize` | number | no | Minimum sample size before a CLI/category signal can fire. |
-| `fitnessFloor` | number | no | Fitness score below this threshold triggers a tech-debt signal. |
-| `selfEvalReportPath` | string | no | Optional path to a self-eval JSON report (from `self-eval --json`). When set, high-confidence unanimous deprecate/refactor findings are surfaced as tech-debt signals through the same deduped/rate-limited issue path (#3224). Unreadable/malformed reports are skipped (no signal). Absent → no self-eval signals. |
+| Parameter | Type | Required | Constraints | Description |
+| --------- | ---- | -------- | ----------- | ----------- |
+| `lookbackDays` | integer | no | min 1; max 90; default 7 | Lookback window for outcome data, in days. Default 7. |
+| `fileIssues` | boolean | no | default false | When true, file candidate issues via `gh issue create` for crossed thresholds (rate-limited to 5 per run, deduped against open issues). When false (default), return signals only. |
+| `minSampleSize` | integer | no | min 1; max 1000; default 5 | Minimum sample size before a CLI/category signal can fire. |
+| `fitnessFloor` | integer | no | min 0; max 100; default 90 | Fitness score below this threshold triggers a tech-debt signal. |
+| `selfEvalReportPath` | string | no | — | Optional path to a self-eval JSON report (from `self-eval --json`). When set, high-confidence unanimous deprecate/refactor findings are surfaced as tech-debt signals through the same deduped/rate-limited issue path (#3224). Unreadable/malformed reports are skipped (no signal). Absent → no self-eval signals. |

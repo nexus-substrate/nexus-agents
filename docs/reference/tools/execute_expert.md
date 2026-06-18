@@ -14,10 +14,10 @@ Run a task through an expert YOU PREVIOUSLY CREATED via `create_expert`. Require
 
 ## Parameters
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `expertId` | string | yes | Expert ID from create_expert tool |
-| `task` | string | yes | Task description for the expert to execute |
-| `context` | record | no | Additional context metadata for the task |
-| `timeoutMs` | number | no | Optional timeout in ms (120s-900s). Overrides auto-detected timeout. |
-| `previousExpertSummary` | string | no | Summary from a previous expert in the chain. Injected into prompt for context continuity. |
+| Parameter | Type | Required | Constraints | Description |
+| --------- | ---- | -------- | ----------- | ----------- |
+| `expertId` | string | yes | minLength 1 | Expert ID from create_expert tool |
+| `task` | string | yes | minLength 1; maxLength 50000 | Task description for the expert to execute |
+| `context` | object | no | — | Additional context metadata for the task |
+| `timeoutMs` | integer | no | min 120000; max 900000 | Optional timeout in ms (120s-900s). Overrides auto-detected timeout. |
+| `previousExpertSummary` | string | no | maxLength 2000 | Summary from a previous expert in the chain. Injected into prompt for context continuity. |

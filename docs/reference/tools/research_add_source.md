@@ -14,16 +14,16 @@ NON-PAPER source: add a GitHub repo / tool / blog URL to the research registry w
 
 ## Parameters
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `url` | string | yes | Source URL (GitHub repo, docs page, blog post) |
-| `name` | string | yes | Display name for the source |
-| `type` | SourceTypeEnum | yes | Source type classification |
-| `vendor` | string | no | Vendor or organization |
-| `topics` | array | no | Research topics (max 5) |
-| `tags` | array | no | Searchable tags (max 10) |
-| `quality_signals` | object | no | Quality signals (auto-fetched for GitHub repos if omitted) |
-| `techniques_extracted` | array | no | Techniques identified in this source (max 5) |
-| `verdict` | VerdictEnum | no | Adoption verdict |
-| `verdict_notes` | string | no | Notes explaining the verdict |
-| `dryRun` | boolean | no | Preview without persisting |
+| Parameter | Type | Required | Constraints | Description |
+| --------- | ---- | -------- | ----------- | ----------- |
+| `url` | string | yes | minLength 1; maxLength 500 | Source URL (GitHub repo, docs page, blog post) |
+| `name` | string | yes | minLength 1; maxLength 200 | Display name for the source |
+| `type` | enum | yes | one of: product_docs \| specification \| research_blog \| code_analysis \| open_source_repo | Source type classification |
+| `vendor` | string | no | maxLength 100 | Vendor or organization |
+| `topics` | array of string | no | — | Research topics (max 5) |
+| `tags` | array of string | no | — | Searchable tags (max 10) |
+| `quality_signals` | object | no | — | Quality signals (auto-fetched for GitHub repos if omitted) |
+| `techniques_extracted` | array of string | no | — | Techniques identified in this source (max 5) |
+| `verdict` | enum | no | one of: adopted \| partially_adopted \| rejected \| monitoring \| planned | Adoption verdict |
+| `verdict_notes` | string | no | maxLength 500 | Notes explaining the verdict |
+| `dryRun` | boolean | no | default false | Preview without persisting |

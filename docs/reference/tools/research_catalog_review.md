@@ -14,9 +14,9 @@ Review auto-cataloged research references found during tool execution.
 
 ## Parameters
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `action` | enum: list \| approve \| dismiss \| flush | yes | Action: list (show pending), approve (add to registry), dismiss (remove), flush (clear all) |
-| `identifier` | string | no | Reference identifier for approve/dismiss actions (arXiv ID or GitHub URL) |
-| `topic` | string | no | Topic to assign when approving an arXiv paper |
-| `createIssue` | boolean | no | When approving, also create a GitHub issue for the paper |
+| Parameter | Type | Required | Constraints | Description |
+| --------- | ---- | -------- | ----------- | ----------- |
+| `action` | enum | yes | one of: list \| approve \| dismiss \| flush | Action: list (show pending), approve (add to registry), dismiss (remove), flush (clear all) |
+| `identifier` | string | no | — | Reference identifier for approve/dismiss actions (arXiv ID or GitHub URL) |
+| `topic` | string | no | — | Topic to assign when approving an arXiv paper |
+| `createIssue` | boolean | no | default false | When approving, also create a GitHub issue for the paper |

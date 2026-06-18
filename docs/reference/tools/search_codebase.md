@@ -14,9 +14,9 @@ Cross-file ripgrep-style search over the working directory for code patterns, sy
 
 ## Parameters
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `query` | string | yes | Search query (symbol name, keyword, or pattern) |
-| `directory` | string | no | Directory to search (default: current working directory) |
-| `limit` | number | no | Max results (default: 20) |
-| `mode` | enum: search \| summary \| list | no | search: find symbols. summary: file overview. list: list indexed files. |
+| Parameter | Type | Required | Constraints | Description |
+| --------- | ---- | -------- | ----------- | ----------- |
+| `query` | string | yes | minLength 1; maxLength 200 | Search query (symbol name, keyword, or pattern) |
+| `directory` | string | no | minLength 1; maxLength 500 | Directory to search (default: current working directory) |
+| `limit` | number | no | min 1; max 50 | Max results (default: 20) |
+| `mode` | enum | no | one of: search \| summary \| list | search: find symbols. summary: file overview. list: list indexed files. |

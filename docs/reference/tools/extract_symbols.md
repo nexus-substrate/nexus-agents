@@ -14,7 +14,7 @@ Parse a SINGLE source file with tree-sitter and return its structural symbols (f
 
 ## Parameters
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `filePath` | string | yes | Path to TypeScript/JavaScript file to extract symbols from |
-| `mode` | enum: index \| full | no | index: names+lines only (minimal tokens). full: includes source text. |
+| Parameter | Type | Required | Constraints | Description |
+| --------- | ---- | -------- | ----------- | ----------- |
+| `filePath` | string | yes | minLength 1; maxLength 500 | Path to TypeScript/JavaScript file to extract symbols from |
+| `mode` | enum | no | one of: index \| full | index: names+lines only (minimal tokens). full: includes source text. |

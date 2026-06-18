@@ -14,8 +14,8 @@ Query across all memory backends with unified results and relevance scoring.
 
 ## Parameters
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `query` | string | yes | Search query to match against memory contents |
-| `limit` | number | no | Maximum results to return (default: 10, max: 50) |
-| `source` | enum: session \| belief \| agentic \| typed \| adaptive \| all | no | Filter by memory source (default: all) |
+| Parameter | Type | Required | Constraints | Description |
+| --------- | ---- | -------- | ----------- | ----------- |
+| `query` | string | yes | minLength 1; maxLength 500 | Search query to match against memory contents |
+| `limit` | integer | no | min 1; max 50; default 10 | Maximum results to return (default: 10, max: 50) |
+| `source` | enum | no | one of: session \| belief \| agentic \| typed \| adaptive \| all; default all | Filter by memory source (default: all) |

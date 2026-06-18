@@ -14,13 +14,13 @@ Run multi-voter consensus review on a PR diff (#2233). 5 voters (architect, secu
 
 ## Parameters
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `prTitle` | string | yes | PR title |
-| `prDescription` | string | no | PR body / description |
-| `prDiff` | string | yes | Unified diff text (max chars; truncate before calling) |
-| `repoContext` | string | no | Optional one-paragraph repo context (architecture, conventions) |
-| `baseRef` | string | no | Base branch ref (e.g. main) |
-| `headRef` | string | no | Head branch ref |
-| `simulate` | boolean | no | Use simulated voters (testing only; never ship live with this true) |
-| `dispatch` | enum: sync \| async | no | Dispatch mode (#3731). 'sync' (default): run inline. 'async': return a jobId immediately + run the panel in background (poll get_job_result). |
+| Parameter | Type | Required | Constraints | Description |
+| --------- | ---- | -------- | ----------- | ----------- |
+| `prTitle` | string | yes | minLength 1; maxLength 500 | PR title |
+| `prDescription` | string | no | maxLength 10000 | PR body / description |
+| `prDiff` | string | yes | minLength 1; maxLength 50000 | Unified diff text (max 50000 chars; truncate before calling) |
+| `repoContext` | string | no | maxLength 2000 | Optional one-paragraph repo context (architecture, conventions) |
+| `baseRef` | string | no | maxLength 200 | Base branch ref (e.g. main) |
+| `headRef` | string | no | maxLength 200 | Head branch ref |
+| `simulate` | boolean | no | default false | Use simulated voters (testing only; never ship live with this true) |
+| `dispatch` | enum | no | one of: sync \| async; default sync | Dispatch mode (#3731). 'sync' (default): run inline. 'async': return a jobId immediately + run the panel in background (poll get_job_result). |

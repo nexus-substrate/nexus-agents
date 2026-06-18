@@ -14,7 +14,7 @@ Probe every model-discovery transport (#3406, epic #3403) — the OpenRouter liv
 
 ## Parameters
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `includeModelIds` | boolean | no | Include the full model-id list per transport (default false → sample of 5 only). |
-| `includeOpenRouter` | boolean | no | Probe the OpenRouter live catalog (default true). |
+| Parameter | Type | Required | Constraints | Description |
+| --------- | ---- | -------- | ----------- | ----------- |
+| `includeModelIds` | boolean | no | — | Include the full model-id list per transport (default false → sample of 5 only). |
+| `includeOpenRouter` | boolean | no | — | Probe the OpenRouter live catalog (default true). |

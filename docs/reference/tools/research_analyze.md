@@ -14,7 +14,7 @@ Analyze the research registry for gaps, trends, priorities, stale entries, or co
 
 ## Parameters
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `focus` | enum: gaps \| trends \| priorities \| stale \| coverage | yes | Analysis focus: gaps (missing coverage), trends (topic distribution), priorities (P1/P2 backlog), stale (outdated entries), coverage (implementation status) |
-| `topic` | string | no | Optional topic filter to narrow analysis |
+| Parameter | Type | Required | Constraints | Description |
+| --------- | ---- | -------- | ----------- | ----------- |
+| `focus` | enum | yes | one of: gaps \| trends \| priorities \| stale \| coverage | Analysis focus: gaps (missing coverage), trends (topic distribution), priorities (P1/P2 backlog), stale (outdated entries), coverage (implementation status) |
+| `topic` | string | no | — | Optional topic filter to narrow analysis |
