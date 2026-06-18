@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-06-17T14:47:20.553Z",
+  "generated": "2026-06-18T02:24:45.881Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.132.1",
   "cli": {
@@ -142,6 +142,12 @@
         "name": "migrate",
         "type": "async",
         "handler": "handleMigrateCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
+      {
+        "name": "mode",
+        "type": "sync",
+        "handler": "handleModeCommand",
         "file": "src/cli-commands-handlers.ts"
       },
       {
