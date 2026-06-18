@@ -74,7 +74,14 @@ describe('similarity (overlap coefficient)', () => {
 });
 
 describe('live gate: runtime vs doc-table descriptions agree (#3528)', () => {
-  const report = buildDriftReport([...TOOL_MANIFEST], TOOL_DESCRIPTIONS);
+  // TOOL_MANIFEST entries are `{ name, annotations, sideEffects }` objects;
+  // buildDriftReport (and the CLI gate, check-mcp-description-drift.ts main())
+  // take the tool *names*. Passing the raw objects made every lookup miss —
+  // a bug masked while these tests were uncollected by CI (#3952).
+  const report = buildDriftReport(
+    TOOL_MANIFEST.map((t) => t.name),
+    TOOL_DESCRIPTIONS
+  );
 
   it('every manifest tool has a TOOL_DESCRIPTIONS entry', () => {
     expect(report.missingDocEntry).toEqual([]);

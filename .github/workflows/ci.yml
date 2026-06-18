@@ -162,6 +162,26 @@ jobs:
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
+  # The repo-root scripts/ tests (generators + drift gates) are NOT collected
+  # by the package suite above (its vitest config only globs packages/.../src),
+  # so they ran only locally and gave zero CI protection (#3952). This job runs
+  # them via the root vitest.config.ts.
+  script-tests:
+    name: Script Tests
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: ./.github/actions/setup-node
+
+      # generate-tool-reference.test.ts transitively imports tool schemas that
+      # reach `nexus-memory`; build it first (mirrors docs-check.yml).
+      - name: Build nexus-memory (workspace dep)
+        run: pnpm --filter nexus-memory build
+
+      - name: Run script tests
+        run: pnpm test:scripts
+
   fitness-audit:
     name: Fitness Audit (${{ matrix.os }})
     runs-on: ${{ vars.CI_RUNNER || matrix.os }}

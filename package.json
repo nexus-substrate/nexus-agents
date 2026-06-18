@@ -30,6 +30,7 @@
     "build": "turbo build",
     "test": "turbo test",
     "test:coverage": "turbo test:coverage",
+    "test:scripts": "vitest run",
     "lint": "turbo lint",
     "lint:fix": "turbo lint:fix",
     "lint:arch": "npx tsx scripts/arch-lint.ts",
@@ -91,7 +92,8 @@
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.61.0",
     "vitest": "^4.1.9",
-    "yaml": "^2.9.0"
+    "yaml": "^2.9.0",
+    "zod": "^4.4.3"
   },
   "lint-staged": {
     "*.{ts,tsx}": [
