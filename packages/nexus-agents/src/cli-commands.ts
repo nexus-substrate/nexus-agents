@@ -333,6 +333,36 @@ const ASYNC_COMMAND_HANDLERS: Record<
 };
 
 /**
+ * Commands dispatched outside the {@link SYNC_COMMAND_HANDLERS} /
+ * {@link ASYNC_COMMAND_HANDLERS} tables because they have special exit
+ * behavior: `help` and `version` are intercepted at the top of
+ * {@link handleSyncCommand} and `process.exit` immediately. They are real,
+ * routable commands (present in `VALID_COMMANDS`) and so count as
+ * "dispatchable" for the parity gate (#3212), but they intentionally carry
+ * no `COMMAND_CATALOG` metadata (they are rendered by the `--help` header,
+ * not the commands list).
+ */
+const SPECIAL_DISPATCH_COMMANDS: readonly string[] = ['help', 'version'];
+
+/**
+ * Lists every command name the dispatcher can route (#3212): the union of the
+ * sync and async dispatch-table keys plus the special-cased `help`/`version`
+ * commands. This is the authoritative "dispatchable" set — the parity gate
+ * (`command-parity.test.ts`) asserts it against `COMMAND_CATALOG` and
+ * `VALID_COMMANDS` to catch drift between the parallel command structures.
+ *
+ * Exported solely so the test can derive the set from the real dispatch tables
+ * rather than re-listing command names (which would itself drift).
+ */
+export function listDispatchableCommands(): readonly string[] {
+  return [
+    ...Object.keys(SYNC_COMMAND_HANDLERS),
+    ...Object.keys(ASYNC_COMMAND_HANDLERS),
+    ...SPECIAL_DISPATCH_COMMANDS,
+  ];
+}
+
+/**
  * Handles async commands that require await.
  */
 async function handleAsyncCommand(args: ParsedCliArgs): Promise<void> {
