@@ -53,7 +53,9 @@ import {
   EXIT_CODES,
   cliExit,
   cliExitFromStatus,
+  LIFECYCLE_DELEGATED,
   type CliExitResult,
+  type LifecycleDelegated,
   type ParsedCliArgs,
 } from './cli-types.js';
 import { startServer, type OrchestratorModeOptions } from './cli-server.js';
@@ -193,23 +195,28 @@ function printFirstRunHint(): void {
  * In orchestrator mode, executes tasks directly without MCP server.
  * (Source: Issue #446 - Implement orchestrator mode)
  */
-export async function handleServerCommand(args: ParsedCliArgs): Promise<CliExitResult | undefined> {
+export async function handleServerCommand(
+  args: ParsedCliArgs
+): Promise<CliExitResult | LifecycleDelegated> {
   printFirstRunHint();
   if (args.options.interactive) {
     const exitCode = await replCommand({ verbose: args.options.verbose });
     return cliExitFromStatus(exitCode);
   } else if (args.options.mode === 'orchestrator') {
-    // Orchestrator mode: execute tasks directly (Issue #446)
+    // Orchestrator mode: execute tasks directly (Issue #446). startServer
+    // delegates to startOrchestratorMode, which owns the process lifecycle
+    // (it calls process.exit itself once the task/REPL completes).
     const orchestratorOptions = buildOrchestratorOptions(args);
     await startServer(args.options.verbose, args.options.mode, true, orchestratorOptions);
   } else {
     // MCP stdio server: startServer owns the process lifecycle (it runs
-    // until the transport closes, then exits itself). No CliExitResult is
-    // returned so the dispatcher does not call process.exit — preserving
-    // pre-#3210 behavior where this path never hit the exit ternary.
+    // until the transport closes, then exits itself).
     await startServer(args.options.verbose, args.options.mode);
   }
-  return undefined;
+  // #3942: explicit lifecycle-delegation sentinel — the dispatcher must NOT
+  // force an exit here (the server/orchestrator path owns the process). This
+  // is a deliberate, type-checked choice, not an accidentally-dropped return.
+  return LIFECYCLE_DELEGATED;
 }
 
 /**
@@ -733,7 +740,7 @@ export async function handleSprintCommand(args: ParsedCliArgs): Promise<CliExitR
  */
 export async function handleSessionCommand(
   args: ParsedCliArgs
-): Promise<CliExitResult | undefined> {
+): Promise<CliExitResult | LifecycleDelegated> {
   const subcommand = args.subcommand;
   if (
     subcommand !== 'list' &&
@@ -758,13 +765,15 @@ export async function handleSessionCommand(
 
   // Pass remaining args after subcommand to sessionCommand.
   // Errors thrown by sessionCommand propagate to the top-level CLI error handler.
-  // The valid-subcommand path intentionally returns `undefined` (no forced
+  // The valid-subcommand path intentionally delegates the lifecycle (no forced
   // process.exit) — pre-#3210 this path never called process.exit, letting
   // the event loop drain naturally (e.g. pending SQLite writes) before the
   // process ends with code 0. Forcing an exit here could truncate that I/O.
+  // #3942: signal that delegation explicitly with the sentinel rather than a
+  // bare `undefined`, so a dropped return on the error path above is caught.
   const remainingArgs = args.positionals.slice(2);
   await sessionCommand(subcommand, remainingArgs);
-  return undefined;
+  return LIFECYCLE_DELEGATED;
 }
 
 /**

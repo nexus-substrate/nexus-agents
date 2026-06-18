@@ -338,8 +338,14 @@ export function printAuthResult(result: AuthCommandResult, format: 'text' | 'jso
 /**
  * Main auth command entry point.
  * Called by CLI dispatcher.
+ *
+ * #3942: returns the command's `success` boolean so the caller
+ * (`handleAuthCommand`) can map it to a `CliExitResult` and let the dispatcher
+ * own `process.exit`. Previously this set `process.exitCode = 1` on failure and
+ * relied on a natural exit; the returned boolean preserves that exact mapping
+ * (success → exit 0, failure → exit 1).
  */
-export function authCommand(subcommand?: string, options?: Partial<AuthCommandOptions>): void {
+export function authCommand(subcommand?: string, options?: Partial<AuthCommandOptions>): boolean {
   const parsedSubcommand = isValidAuthSubcommand(subcommand) ? subcommand : 'help';
   const result = runAuthCommand({
     ...options,
@@ -348,7 +354,5 @@ export function authCommand(subcommand?: string, options?: Partial<AuthCommandOp
   const format = options?.format ?? 'text';
   printAuthResult(result, format);
 
-  if (!result.success) {
-    process.exitCode = 1;
-  }
+  return result.success;
 }

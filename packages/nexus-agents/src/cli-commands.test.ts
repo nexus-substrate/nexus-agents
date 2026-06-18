@@ -1,74 +1,90 @@
 import { describe, it, expect, vi, afterEach, beforeEach, type MockInstance } from 'vitest';
 import { dispatchCommand, printHelp, printVersion } from './cli-commands.js';
-import type { ParsedCliArgs } from './cli-types.js';
+import { LIFECYCLE_DELEGATED, type ParsedCliArgs } from './cli-types.js';
+
+// #3942: every handler now returns a CliHandlerResult (CliExitResult |
+// LifecycleDelegated) — never void/undefined. The dispatcher's `exitWith`
+// calls `process.exit` for a CliExitResult and no-ops for LIFECYCLE_DELEGATED.
+// These dispatch-routing tests only assert the handler was invoked, so the
+// mocks return the LIFECYCLE_DELEGATED sentinel to keep `dispatchCommand`
+// resolving (no forced exit) — the old no-op-on-undefined behavior, now typed.
+// `vi.hoisted` is required because `vi.mock` factories are hoisted above the
+// module body, so the helpers must be hoisted alongside them.
+const { DELEGATED, DELEGATED_ASYNC } = vi.hoisted(() => {
+  const sentinel = { __lifecycleDelegated: true } as const;
+  return {
+    DELEGATED: (): typeof sentinel => sentinel,
+    DELEGATED_ASYNC: (): Promise<typeof sentinel> => Promise.resolve(sentinel),
+  };
+});
 
 // Mock all handler modules
 vi.mock('./cli-commands-handlers.js', () => ({
-  handleUnimplementedCommand: vi.fn(),
-  handleConfigCommand: vi.fn(() => Promise.resolve()),
-  handleExpertCommand: vi.fn(),
-  handleWorkflowCommand: vi.fn(() => Promise.resolve()),
-  handleServerCommand: vi.fn(() => Promise.resolve()),
-  handleReviewCommand: vi.fn(() => Promise.resolve()),
-  handleRoutingAuditCommand: vi.fn(),
-  handleOrchestrateCommand: vi.fn(() => Promise.resolve()),
-  handleSystemReviewCommand: vi.fn(),
-  handleVoteCommand: vi.fn(() => Promise.resolve()),
-  handleIndexCommand: vi.fn(() => Promise.resolve()),
-  handleResearchCommand: vi.fn(() => Promise.resolve()),
-  handleRegistryCommand: vi.fn(() => Promise.resolve()),
-  handleValidationCommand: vi.fn(),
-  handleLearningMetricsCommand: vi.fn(),
-  handleSweBenchCommand: vi.fn(() => Promise.resolve()),
-  handleAtbenchCommand: vi.fn(() => Promise.resolve()),
-  handleVerifyCommand: vi.fn(() => Promise.resolve()),
-  handleDoctorCommand: vi.fn(() => Promise.resolve()),
-  handleSetupCommand: vi.fn(),
-  handleSetupCommandAsync: vi.fn(() => Promise.resolve()),
-  handleHelloCommand: vi.fn(),
-  handleHooksCommand: vi.fn(() => Promise.resolve()),
-  handleDemoCommand: vi.fn(() => Promise.resolve()),
-  handleTourCommand: vi.fn(() => Promise.resolve()),
-  handleSprintCommand: vi.fn(() => Promise.resolve()),
-  handleSessionCommand: vi.fn(() => Promise.resolve()),
-  handleEvaluateCommand: vi.fn(() => Promise.resolve()),
-  handleIssueCommand: vi.fn(),
-  handleFitnessAuditCommand: vi.fn(),
-  handleWarmUpCommand: vi.fn(),
-  handleE2EEvalCommand: vi.fn(),
-  handleRoutingABCommand: vi.fn(),
-  handleMemoryEvalCommand: vi.fn(),
-  handleInitCommand: vi.fn(() => Promise.resolve()),
+  handleUnimplementedCommand: vi.fn(DELEGATED),
+  handleConfigCommand: vi.fn(DELEGATED_ASYNC),
+  handleExpertCommand: vi.fn(DELEGATED),
+  handleWorkflowCommand: vi.fn(DELEGATED_ASYNC),
+  handleServerCommand: vi.fn(DELEGATED_ASYNC),
+  handleReviewCommand: vi.fn(DELEGATED_ASYNC),
+  handleRoutingAuditCommand: vi.fn(DELEGATED),
+  handleOrchestrateCommand: vi.fn(DELEGATED_ASYNC),
+  handleSystemReviewCommand: vi.fn(DELEGATED),
+  handleVoteCommand: vi.fn(DELEGATED_ASYNC),
+  handleIndexCommand: vi.fn(DELEGATED_ASYNC),
+  handleResearchCommand: vi.fn(DELEGATED_ASYNC),
+  handleRegistryCommand: vi.fn(DELEGATED_ASYNC),
+  handleValidationCommand: vi.fn(DELEGATED),
+  handleLearningMetricsCommand: vi.fn(DELEGATED),
+  handleSweBenchCommand: vi.fn(DELEGATED_ASYNC),
+  handleAtbenchCommand: vi.fn(DELEGATED_ASYNC),
+  handleVerifyCommand: vi.fn(DELEGATED_ASYNC),
+  handleDoctorCommand: vi.fn(DELEGATED_ASYNC),
+  handleSetupCommand: vi.fn(DELEGATED),
+  handleSetupCommandAsync: vi.fn(DELEGATED_ASYNC),
+  handleHelloCommand: vi.fn(DELEGATED),
+  handleHooksCommand: vi.fn(DELEGATED_ASYNC),
+  handleDemoCommand: vi.fn(DELEGATED_ASYNC),
+  handleTourCommand: vi.fn(DELEGATED_ASYNC),
+  handleSprintCommand: vi.fn(DELEGATED_ASYNC),
+  handleSessionCommand: vi.fn(DELEGATED_ASYNC),
+  handleEvaluateCommand: vi.fn(DELEGATED_ASYNC),
+  handleIssueCommand: vi.fn(DELEGATED),
+  handleFitnessAuditCommand: vi.fn(DELEGATED),
+  handleWarmUpCommand: vi.fn(DELEGATED),
+  handleE2EEvalCommand: vi.fn(DELEGATED),
+  handleRoutingABCommand: vi.fn(DELEGATED),
+  handleMemoryEvalCommand: vi.fn(DELEGATED),
+  handleInitCommand: vi.fn(DELEGATED_ASYNC),
 }));
 
 vi.mock('./cli-auth-handler.js', () => ({
-  handleAuthCommand: vi.fn(),
+  handleAuthCommand: vi.fn(DELEGATED_ASYNC),
 }));
 
 vi.mock('./cli-release-handlers.js', () => ({
-  handleReleaseNotesCommand: vi.fn(() => Promise.resolve()),
-  handleReleaseValidateCommand: vi.fn(() => Promise.resolve()),
-  handleReleaseAnnounceCommand: vi.fn(() => Promise.resolve()),
+  handleReleaseNotesCommand: vi.fn(DELEGATED_ASYNC),
+  handleReleaseValidateCommand: vi.fn(DELEGATED_ASYNC),
+  handleReleaseAnnounceCommand: vi.fn(DELEGATED_ASYNC),
 }));
 
 vi.mock('./cli-scaffold-handler.js', () => ({
-  handleScaffoldCommand: vi.fn(),
+  handleScaffoldCommand: vi.fn(DELEGATED),
 }));
 
 vi.mock('./cli/visualize-command.js', () => ({
-  handleVisualizeCommand: vi.fn(),
+  handleVisualizeCommand: vi.fn(DELEGATED_ASYNC),
 }));
 
 vi.mock('./cli/capabilities-command.js', () => ({
-  handleCapabilitiesCommand: vi.fn(),
+  handleCapabilitiesCommand: vi.fn(DELEGATED),
 }));
 
 vi.mock('./cli/status-command.js', () => ({
-  handleStatusCommand: vi.fn(),
+  handleStatusCommand: vi.fn(DELEGATED),
 }));
 
 vi.mock('./cli/memory-benchmark-command.js', () => ({
-  handleMemoryBenchmarkCommand: vi.fn(() => Promise.resolve()),
+  handleMemoryBenchmarkCommand: vi.fn(DELEGATED_ASYNC),
 }));
 
 function createArgs(command: string, overrides: Record<string, unknown> = {}): ParsedCliArgs {
@@ -195,7 +211,8 @@ describe('cli-commands', () => {
 
     // #3210: the dispatcher is the single process.exit boundary. A handler
     // that RETURNS a CliExitResult must map to process.exit(result.exitCode);
-    // a handler that returns undefined/void must NOT force an exit.
+    // a handler that returns the LIFECYCLE_DELEGATED sentinel must NOT force
+    // an exit (#3942 — the sentinel replaces the old bare-undefined signal).
     it('maps a returned CliExitResult to process.exit (sync handler)', async () => {
       const { handleExpertCommand } = await import('./cli-commands-handlers.js');
       vi.mocked(handleExpertCommand).mockReturnValueOnce({ success: false, exitCode: 4 });
@@ -209,10 +226,13 @@ describe('cli-commands', () => {
       await expect(dispatchCommand(createArgs('vote'))).rejects.toThrow(/process\.exit/);
     });
 
-    it('does NOT call process.exit when a handler returns undefined', async () => {
+    // #3942: lifecycle-owning handlers RETURN the explicit LIFECYCLE_DELEGATED
+    // sentinel instead of a bare undefined. exitWith must no-op on it so the
+    // handler keeps ownership of the process (e.g. the MCP stdio server).
+    it('does NOT call process.exit when a handler returns LIFECYCLE_DELEGATED', async () => {
       const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never);
       const { handleServerCommand } = await import('./cli-commands-handlers.js');
-      vi.mocked(handleServerCommand).mockResolvedValueOnce(undefined);
+      vi.mocked(handleServerCommand).mockResolvedValueOnce(LIFECYCLE_DELEGATED);
       await dispatchCommand(createArgs('server'));
       expect(exitSpy).not.toHaveBeenCalled();
       exitSpy.mockRestore();

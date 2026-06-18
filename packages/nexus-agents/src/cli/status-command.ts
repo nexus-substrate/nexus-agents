@@ -13,7 +13,8 @@ import { VERSION } from '../version.js';
 import { colors, symbols } from './ansi-output.js';
 import { createFitnessScoreCalculator } from '../governance/fitness-score.js';
 import { createLogger } from '../core/index.js';
-import type { ParsedCliArgs } from '../cli-types.js';
+import type { CliExitResult, ParsedCliArgs } from '../cli-types.js';
+import { cliExit, EXIT_CODES } from '../cli-types.js';
 import { execFileSync } from 'node:child_process';
 import { CLI_SUBPROCESS_TIMEOUTS } from '../config/timeouts.js';
 
@@ -185,7 +186,7 @@ function renderJson(status: StatusResult): void {
 /**
  * Handle the `nexus-agents status` CLI command.
  */
-export function handleStatusCommand(args: ParsedCliArgs): void {
+export function handleStatusCommand(args: ParsedCliArgs): CliExitResult {
   const status = collectStatus();
 
   if (args.options.format === 'json') {
@@ -193,4 +194,9 @@ export function handleStatusCommand(args: ParsedCliArgs): void {
   } else {
     renderTable(status);
   }
+
+  // #3942: RETURN the exit code; dispatcher owns process.exit. Pre-migration
+  // this returned void and the dispatcher no-op'd, so the process exited 0
+  // naturally — SUCCESS (0) is byte-identical.
+  return cliExit(EXIT_CODES.SUCCESS);
 }

@@ -17,20 +17,16 @@ function createArgs(positionals: string[], options: Record<string, unknown> = {}
 }
 
 describe('handleScaffoldCommand', () => {
-  // Vitest 3.x intercepts process.exit before spies fire, so we verify
-  // exit codes via the thrown error message format:
-  // "process.exit unexpectedly called with \"N\""
-  vi.spyOn(process, 'exit');
-
+  // #3942: the handler now RETURNS a CliExitResult instead of calling
+  // process.exit; the dispatcher owns the exit. Assert the returned exitCode.
   afterEach(() => {
     vi.clearAllMocks();
   });
 
   it('should call scaffoldCommand with valid type and name', async () => {
     const { scaffoldCommand } = await import('./cli/index.js');
-    expect(() => {
-      handleScaffoldCommand(createArgs(['scaffold', 'expert', 'my-expert']));
-    }).toThrow('process.exit');
+    const result = handleScaffoldCommand(createArgs(['scaffold', 'expert', 'my-expert']));
+    expect(result).toEqual({ success: true, exitCode: 0 });
     expect(scaffoldCommand).toHaveBeenCalledWith({
       type: 'expert',
       name: 'my-expert',
@@ -38,49 +34,58 @@ describe('handleScaffoldCommand', () => {
     });
   });
 
-  it('should exit SUCCESS when scaffoldCommand returns 0', () => {
-    expect(() => {
-      handleScaffoldCommand(createArgs(['scaffold', 'expert', 'test']));
-    }).toThrow(/process\.exit.*"0"/);
+  it('should return SUCCESS when scaffoldCommand returns 0', () => {
+    expect(handleScaffoldCommand(createArgs(['scaffold', 'expert', 'test']))).toEqual({
+      success: true,
+      exitCode: 0,
+    });
   });
 
-  it('should exit SERVER_START_FAILED when scaffoldCommand returns non-zero', async () => {
+  it('should return SERVER_START_FAILED when scaffoldCommand returns non-zero', async () => {
     const { scaffoldCommand } = await import('./cli/index.js');
     vi.mocked(scaffoldCommand).mockReturnValue(1);
-    expect(() => {
-      handleScaffoldCommand(createArgs(['scaffold', 'expert', 'test']));
-    }).toThrow(/process\.exit.*"1"/);
+    expect(handleScaffoldCommand(createArgs(['scaffold', 'expert', 'test']))).toEqual({
+      success: false,
+      exitCode: 1,
+    });
   });
 
-  it('should print usage and exit when type is missing', async () => {
+  it('should print usage and return INVALID_ARGS when type is missing', async () => {
     const { printScaffoldUsage } = await import('./cli/index.js');
-    expect(() => {
-      handleScaffoldCommand(createArgs(['scaffold']));
-    }).toThrow(/process\.exit.*"3"/);
+    expect(handleScaffoldCommand(createArgs(['scaffold']))).toEqual({
+      success: false,
+      exitCode: 3,
+    });
     expect(printScaffoldUsage).toHaveBeenCalled();
   });
 
-  it('should print usage and exit when name is missing', async () => {
+  it('should print usage and return INVALID_ARGS when name is missing', async () => {
     const { printScaffoldUsage } = await import('./cli/index.js');
-    expect(() => {
-      handleScaffoldCommand(createArgs(['scaffold', 'expert']));
-    }).toThrow(/process\.exit.*"3"/);
+    expect(handleScaffoldCommand(createArgs(['scaffold', 'expert']))).toEqual({
+      success: false,
+      exitCode: 3,
+    });
     expect(printScaffoldUsage).toHaveBeenCalled();
   });
 
-  it('should print usage and exit for invalid scaffold type', async () => {
+  it('should print usage and return INVALID_ARGS for invalid scaffold type', async () => {
     const { printScaffoldUsage } = await import('./cli/index.js');
-    expect(() => {
-      handleScaffoldCommand(createArgs(['scaffold', 'invalid-type', 'name']));
-    }).toThrow(/process\.exit.*"3"/);
+    expect(handleScaffoldCommand(createArgs(['scaffold', 'invalid-type', 'name']))).toEqual({
+      success: false,
+      exitCode: 3,
+    });
     expect(printScaffoldUsage).toHaveBeenCalled();
   });
 
   it('should pass dryRun option', async () => {
     const { scaffoldCommand } = await import('./cli/index.js');
-    expect(() => {
-      handleScaffoldCommand(createArgs(['scaffold', 'workflow', 'my-wf'], { dryRun: true }));
-    }).toThrow('process.exit');
+    // clearAllMocks resets call history but not the implementation, so a prior
+    // test's mockReturnValue(1) would leak; pin success for this assertion.
+    vi.mocked(scaffoldCommand).mockReturnValue(0);
+    const result = handleScaffoldCommand(
+      createArgs(['scaffold', 'workflow', 'my-wf'], { dryRun: true })
+    );
+    expect(result).toEqual({ success: true, exitCode: 0 });
     expect(scaffoldCommand).toHaveBeenCalledWith({
       type: 'workflow',
       name: 'my-wf',

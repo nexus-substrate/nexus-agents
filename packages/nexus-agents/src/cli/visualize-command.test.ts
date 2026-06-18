@@ -82,21 +82,16 @@ function makeArgs(positionals: string[], options: Record<string, string | undefi
 describe('handleVisualizeCommand', () => {
   let stdoutSpy: MockInstance;
   let stderrSpy: MockInstance;
-  let exitSpy: MockInstance;
 
   beforeEach(() => {
     vi.clearAllMocks();
     stdoutSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
     stderrSpy = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
-    exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
-      throw new Error('process.exit called');
-    });
   });
 
   afterEach(() => {
     stdoutSpy.mockRestore();
     stderrSpy.mockRestore();
-    exitSpy.mockRestore();
   });
 
   // ==========================================================================
@@ -104,35 +99,30 @@ describe('handleVisualizeCommand', () => {
   // ==========================================================================
 
   describe('subcommand validation', () => {
-    it('should show usage and exit 0 when no subcommand is provided', async () => {
+    it('should show usage and return exit 0 when no subcommand is provided', async () => {
       const { handleVisualizeCommand } = await import('./visualize-command.js');
 
-      expect(() => {
-        handleVisualizeCommand(makeArgs(['visualize']));
-      }).toThrow('process.exit called');
+      const result = await handleVisualizeCommand(makeArgs(['visualize']));
 
-      expect(exitSpy).toHaveBeenCalledWith(0);
+      expect(result).toEqual({ success: true, exitCode: 0 });
       const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
       expect(output).toContain('SUBCOMMANDS');
     });
 
-    it('should show usage and exit 3 for invalid subcommand', async () => {
+    it('should show usage and return exit 3 for invalid subcommand', async () => {
       const { handleVisualizeCommand } = await import('./visualize-command.js');
 
-      expect(() => {
-        handleVisualizeCommand(makeArgs(['visualize', 'invalid']));
-      }).toThrow('process.exit called');
+      const result = await handleVisualizeCommand(makeArgs(['visualize', 'invalid']));
 
-      expect(exitSpy).toHaveBeenCalledWith(3);
+      expect(result).toEqual({ success: false, exitCode: 3 });
     });
 
     it('should show usage text containing all valid subcommands', async () => {
       const { handleVisualizeCommand } = await import('./visualize-command.js');
 
-      expect(() => {
-        handleVisualizeCommand(makeArgs(['visualize']));
-      }).toThrow('process.exit called');
+      const result = await handleVisualizeCommand(makeArgs(['visualize']));
 
+      expect(result).toEqual({ success: true, exitCode: 0 });
       const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
       expect(output).toContain('architecture');
       expect(output).toContain('swarm');
@@ -144,10 +134,9 @@ describe('handleVisualizeCommand', () => {
     it('should show usage containing format and output options', async () => {
       const { handleVisualizeCommand } = await import('./visualize-command.js');
 
-      expect(() => {
-        handleVisualizeCommand(makeArgs(['visualize']));
-      }).toThrow('process.exit called');
+      const result = await handleVisualizeCommand(makeArgs(['visualize']));
 
+      expect(result).toEqual({ success: true, exitCode: 0 });
       const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
       expect(output).toContain('--format');
       expect(output).toContain('--output');
@@ -163,8 +152,9 @@ describe('handleVisualizeCommand', () => {
       const { handleVisualizeCommand } = await import('./visualize-command.js');
       const { generateArchitectureDiagram } = await import('../utils/visual-output.js');
 
-      handleVisualizeCommand(makeArgs(['visualize', 'architecture']));
+      const result = await handleVisualizeCommand(makeArgs(['visualize', 'architecture']));
 
+      expect(result.exitCode).toBe(0);
       expect(generateArchitectureDiagram).toHaveBeenCalled();
       const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
       expect(output).toContain('graph TB');
@@ -174,8 +164,11 @@ describe('handleVisualizeCommand', () => {
       const { handleVisualizeCommand } = await import('./visualize-command.js');
       const { wrapInMarkdownFence } = await import('../utils/visual-output.js');
 
-      handleVisualizeCommand(makeArgs(['visualize', 'architecture'], { format: 'markdown' }));
+      const result = await handleVisualizeCommand(
+        makeArgs(['visualize', 'architecture'], { format: 'markdown' })
+      );
 
+      expect(result.exitCode).toBe(0);
       expect(wrapInMarkdownFence).toHaveBeenCalledWith(
         'graph TB\n  A-->B',
         'Nexus Agents Architecture'
@@ -192,8 +185,9 @@ describe('handleVisualizeCommand', () => {
       const { handleVisualizeCommand } = await import('./visualize-command.js');
       const { generateSwarmVisualization } = await import('../utils/visual-output.js');
 
-      handleVisualizeCommand(makeArgs(['visualize', 'swarm']));
+      const result = await handleVisualizeCommand(makeArgs(['visualize', 'swarm']));
 
+      expect(result.exitCode).toBe(0);
       expect(generateSwarmVisualization).toHaveBeenCalled();
       const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
       expect(output).toContain('graph LR');
@@ -203,7 +197,7 @@ describe('handleVisualizeCommand', () => {
       const { handleVisualizeCommand } = await import('./visualize-command.js');
       const { generateSwarmVisualization } = await import('../utils/visual-output.js');
 
-      handleVisualizeCommand(makeArgs(['visualize', 'swarm']));
+      await handleVisualizeCommand(makeArgs(['visualize', 'swarm']));
 
       const call = vi.mocked(generateSwarmVisualization).mock.calls[0]!;
       expect(call).toBeDefined();
@@ -220,8 +214,9 @@ describe('handleVisualizeCommand', () => {
       const { handleVisualizeCommand } = await import('./visualize-command.js');
       const { generateOrchestrationSequence } = await import('../utils/visual-output.js');
 
-      handleVisualizeCommand(makeArgs(['visualize', 'orchestration']));
+      const result = await handleVisualizeCommand(makeArgs(['visualize', 'orchestration']));
 
+      expect(result.exitCode).toBe(0);
       expect(generateOrchestrationSequence).toHaveBeenCalled();
       const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
       expect(output).toContain('sequenceDiagram');
@@ -231,8 +226,11 @@ describe('handleVisualizeCommand', () => {
       const { handleVisualizeCommand } = await import('./visualize-command.js');
       const { generateAsciiDashboard } = await import('../utils/visual-output.js');
 
-      handleVisualizeCommand(makeArgs(['visualize', 'orchestration'], { format: 'ascii' }));
+      const result = await handleVisualizeCommand(
+        makeArgs(['visualize', 'orchestration'], { format: 'ascii' })
+      );
 
+      expect(result.exitCode).toBe(0);
       expect(generateAsciiDashboard).toHaveBeenCalled();
       const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
       expect(output).toContain('DASH');
@@ -242,8 +240,11 @@ describe('handleVisualizeCommand', () => {
       const { handleVisualizeCommand } = await import('./visualize-command.js');
       const { wrapInMarkdownFence } = await import('../utils/visual-output.js');
 
-      handleVisualizeCommand(makeArgs(['visualize', 'orchestration'], { format: 'markdown' }));
+      const result = await handleVisualizeCommand(
+        makeArgs(['visualize', 'orchestration'], { format: 'markdown' })
+      );
 
+      expect(result.exitCode).toBe(0);
       expect(wrapInMarkdownFence).toHaveBeenCalledWith(
         'sequenceDiagram\n  O->>A: Do',
         'Orchestration Execution'
@@ -260,8 +261,9 @@ describe('handleVisualizeCommand', () => {
       const { handleVisualizeCommand } = await import('./visualize-command.js');
       const { generateFlowDiagram } = await import('../utils/visual-output.js');
 
-      handleVisualizeCommand(makeArgs(['visualize', 'flow']));
+      const result = await handleVisualizeCommand(makeArgs(['visualize', 'flow']));
 
+      expect(result.exitCode).toBe(0);
       expect(generateFlowDiagram).toHaveBeenCalled();
       const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
       expect(output).toContain('graph TD');
@@ -271,7 +273,7 @@ describe('handleVisualizeCommand', () => {
       const { handleVisualizeCommand } = await import('./visualize-command.js');
       const { generateFlowDiagram } = await import('../utils/visual-output.js');
 
-      handleVisualizeCommand(makeArgs(['visualize', 'flow']));
+      await handleVisualizeCommand(makeArgs(['visualize', 'flow']));
 
       const call = vi.mocked(generateFlowDiagram).mock.calls[0]!;
       expect(call).toBeDefined();
@@ -289,8 +291,9 @@ describe('handleVisualizeCommand', () => {
       const { generateSystemSummary } = await import('../utils/visual-output.js');
       const { gatherSystemSummary } = await import('./visualize-summary.js');
 
-      handleVisualizeCommand(makeArgs(['visualize', 'summary']));
+      const result = await handleVisualizeCommand(makeArgs(['visualize', 'summary']));
 
+      expect(result.exitCode).toBe(0);
       expect(gatherSystemSummary).toHaveBeenCalled();
       expect(generateSystemSummary).toHaveBeenCalled();
     });
@@ -298,8 +301,9 @@ describe('handleVisualizeCommand', () => {
     it('should output summary content to stdout', async () => {
       const { handleVisualizeCommand } = await import('./visualize-command.js');
 
-      handleVisualizeCommand(makeArgs(['visualize', 'summary']));
+      const result = await handleVisualizeCommand(makeArgs(['visualize', 'summary']));
 
+      expect(result.exitCode).toBe(0);
       const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
       expect(output).toContain('SUMMARY');
     });
@@ -318,16 +322,34 @@ describe('handleVisualizeCommand', () => {
 
       const { handleVisualizeCommand } = await import('./visualize-command.js');
 
-      handleVisualizeCommand(
+      const result = await handleVisualizeCommand(
         makeArgs(['visualize', 'architecture'], { output: '/tmp/test-out.md' })
       );
 
-      // writeOutput uses dynamic import('node:fs'), which is async.
-      // Wait for the microtask to resolve.
-      await vi.waitFor(() => {
-        const calls = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
-        expect(calls).toContain('/tmp/test-out.md');
-      });
+      expect(result).toEqual({ success: true, exitCode: 0 });
+      expect(mockWriteFileSync).toHaveBeenCalled();
+      const calls = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
+      expect(calls).toContain('/tmp/test-out.md');
+
+      vi.doUnmock('node:fs');
+    });
+
+    it('should return exit 1 when the file write throws', async () => {
+      vi.doMock('node:fs', () => ({
+        writeFileSync: vi.fn(() => {
+          throw new Error('EACCES: permission denied');
+        }),
+      }));
+
+      const { handleVisualizeCommand } = await import('./visualize-command.js');
+
+      const result = await handleVisualizeCommand(
+        makeArgs(['visualize', 'architecture'], { output: '/tmp/test-out.md' })
+      );
+
+      expect(result).toEqual({ success: false, exitCode: 1 });
+      const errOutput = stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
+      expect(errOutput).toContain('Failed to write file');
 
       vi.doUnmock('node:fs');
     });
@@ -335,8 +357,9 @@ describe('handleVisualizeCommand', () => {
     it('should write to stdout when no --output is specified', async () => {
       const { handleVisualizeCommand } = await import('./visualize-command.js');
 
-      handleVisualizeCommand(makeArgs(['visualize', 'flow']));
+      const result = await handleVisualizeCommand(makeArgs(['visualize', 'flow']));
 
+      expect(result.exitCode).toBe(0);
       expect(stdoutSpy).toHaveBeenCalled();
       const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
       expect(output).toContain('graph TD');
@@ -352,8 +375,9 @@ describe('handleVisualizeCommand', () => {
       const { handleVisualizeCommand } = await import('./visualize-command.js');
       const { wrapInMarkdownFence } = await import('../utils/visual-output.js');
 
-      handleVisualizeCommand(makeArgs(['visualize', 'architecture']));
+      const result = await handleVisualizeCommand(makeArgs(['visualize', 'architecture']));
 
+      expect(result.exitCode).toBe(0);
       // Should NOT wrap in markdown when format defaults to mermaid
       expect(wrapInMarkdownFence).not.toHaveBeenCalled();
     });
@@ -367,21 +391,17 @@ describe('handleVisualizeCommand', () => {
     it('should handle empty positionals array gracefully', async () => {
       const { handleVisualizeCommand } = await import('./visualize-command.js');
 
-      expect(() => {
-        handleVisualizeCommand(makeArgs([]));
-      }).toThrow('process.exit called');
+      const result = await handleVisualizeCommand(makeArgs([]));
 
-      expect(exitSpy).toHaveBeenCalledWith(0);
+      expect(result).toEqual({ success: true, exitCode: 0 });
     });
 
-    it('should exit with INVALID_ARGS for unknown subcommand string', async () => {
+    it('should return INVALID_ARGS for unknown subcommand string', async () => {
       const { handleVisualizeCommand } = await import('./visualize-command.js');
 
-      expect(() => {
-        handleVisualizeCommand(makeArgs(['visualize', '']));
-      }).toThrow('process.exit called');
+      const result = await handleVisualizeCommand(makeArgs(['visualize', '']));
 
-      expect(exitSpy).toHaveBeenCalledWith(3);
+      expect(result).toEqual({ success: false, exitCode: 3 });
     });
   });
 });

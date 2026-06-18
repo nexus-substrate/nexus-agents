@@ -8,8 +8,8 @@
  * @module cli/visualize-command
  */
 
-import type { ParsedCliArgs } from '../cli-types.js';
-import { EXIT_CODES } from '../cli-types.js';
+import type { CliExitResult, ParsedCliArgs } from '../cli-types.js';
+import { EXIT_CODES, cliExit } from '../cli-types.js';
 import {
   generateArchitectureDiagram,
   generateSwarmVisualization,
@@ -295,36 +295,49 @@ function generateDiagramOutput(subcommand: VisualizeSubcommand, format: OutputFo
   }
 }
 
-/** Write output to file or stdout. */
-function writeOutput(output: string, outputPath: string | undefined): void {
+/**
+ * Write output to file or stdout. The file path is async; #3942 makes this
+ * return a promise so the (now-async) handler awaits it and RETURNS the exit
+ * code instead of `writeOutput` calling `process.exit` from a floating
+ * `.catch`. Exit mapping is preserved: a write failure yields
+ * SERVER_START_FAILED (1), success yields SUCCESS (0).
+ */
+async function writeOutput(output: string, outputPath: string | undefined): Promise<CliExitResult> {
   if (outputPath !== undefined) {
-    import('node:fs')
-      .then((fs) => {
-        fs.writeFileSync(outputPath, output + '\n', 'utf-8');
-        process.stdout.write(`Diagram written to ${outputPath}\n`);
-      })
-      .catch((e: unknown) => {
-        const msg = e instanceof Error ? e.message : String(e);
-        process.stderr.write(`Failed to write file: ${msg}\n`);
-        process.exit(EXIT_CODES.SERVER_START_FAILED);
-      });
+    try {
+      const fs = await import('node:fs');
+      fs.writeFileSync(outputPath, output + '\n', 'utf-8');
+      process.stdout.write(`Diagram written to ${outputPath}\n`);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      process.stderr.write(`Failed to write file: ${msg}\n`);
+      return cliExit(EXIT_CODES.SERVER_START_FAILED);
+    }
   } else {
     process.stdout.write(output + '\n');
   }
+  return cliExit(EXIT_CODES.SUCCESS);
 }
 
 /**
  * Handles the `nexus-agents visualize` command.
+ *
+ * #3942: RETURNS a {@link CliExitResult}; the dispatcher owns `process.exit`.
+ * Exit codes match the pre-migration behavior: bare invocation prints usage
+ * and returns SUCCESS (0); an unknown subcommand returns INVALID_ARGS (3); a
+ * file-write failure returns SERVER_START_FAILED (1); success returns 0. The
+ * handler is now async so it can await the file write rather than exiting from
+ * a floating promise.
  */
-export function handleVisualizeCommand(args: ParsedCliArgs): void {
+export async function handleVisualizeCommand(args: ParsedCliArgs): Promise<CliExitResult> {
   const subcommand = args.positionals[1];
 
   if (subcommand === undefined || !VALID_SUBCOMMANDS.includes(subcommand as VisualizeSubcommand)) {
     process.stdout.write(USAGE + '\n');
-    process.exit(subcommand === undefined ? EXIT_CODES.SUCCESS : EXIT_CODES.INVALID_ARGS);
+    return cliExit(subcommand === undefined ? EXIT_CODES.SUCCESS : EXIT_CODES.INVALID_ARGS);
   }
 
   const format = (args.options.format as OutputFormat | undefined) ?? 'mermaid';
   const output = generateDiagramOutput(subcommand as VisualizeSubcommand, format);
-  writeOutput(output, args.options.output);
+  return writeOutput(output, args.options.output);
 }

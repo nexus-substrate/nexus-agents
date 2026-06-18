@@ -126,38 +126,23 @@ describe('summarize', () => {
 // ============================================================================
 
 describe('handleLoginCommand exit codes (#2953 truth table)', () => {
-  let exitSpy: MockInstance;
   let consoleLogSpy: MockInstance;
   let consoleErrorSpy: MockInstance;
 
   beforeEach(() => {
     probeAllClis.mockReset();
-    // process.exit throws to abort the function under test without
-    // actually exiting the test runner. The test asserts via the mock
-    // call record.
-    exitSpy = vi.spyOn(process, 'exit').mockImplementation((code?: number | string | null) => {
-      throw new Error(`__test_exit:${String(code ?? 'undefined')}`);
-    });
     consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
   });
 
   afterEach(() => {
-    exitSpy.mockRestore();
     consoleLogSpy.mockRestore();
     consoleErrorSpy.mockRestore();
   });
 
   async function runAndCaptureExit(): Promise<number> {
-    try {
-      await handleLoginCommand(makeArgs('auth'));
-      // process.exit was supposed to fire — if we get here, it didn't.
-      throw new Error('handleLoginCommand returned without exiting');
-    } catch (err) {
-      const m = /^__test_exit:(\d+)$/.exec((err as Error).message);
-      if (m === null) throw err;
-      return Number(m[1]);
-    }
+    const result = await handleLoginCommand(makeArgs('auth'));
+    return result.exitCode;
   }
 
   // Cell 1: anyAuthenticated=true, actionable.length=0 → EXIT_OK
@@ -187,22 +172,14 @@ describe('handleLoginCommand exit codes (#2953 truth table)', () => {
 
   it('prints deprecation hint when invoked as the `login` alias (#2449)', async () => {
     probeAllClis.mockResolvedValue([authed('claude')]);
-    try {
-      await handleLoginCommand(makeArgs('login'));
-    } catch {
-      // expected — exit fires
-    }
+    await handleLoginCommand(makeArgs('login'));
     const printed = consoleErrorSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
     expect(printed).toContain("'nexus-agents login' is now 'nexus-agents auth status'");
   });
 
   it('does NOT print the deprecation hint for the canonical `auth` command', async () => {
     probeAllClis.mockResolvedValue([authed('claude')]);
-    try {
-      await handleLoginCommand(makeArgs('auth'));
-    } catch {
-      // expected
-    }
+    await handleLoginCommand(makeArgs('auth'));
     const printed = consoleErrorSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
     expect(printed).not.toContain('login is now');
   });

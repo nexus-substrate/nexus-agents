@@ -12,12 +12,13 @@
 
 /* eslint-disable no-console */
 
-import type { ParsedCliArgs } from '../cli-types.js';
+import type { CliExitResult, ParsedCliArgs } from '../cli-types.js';
+import { cliExit, EXIT_CODES } from '../cli-types.js';
 import { probeAllClis } from './cli-auth-probe.js';
 import type { AuthProbeResult } from './cli-auth-probe.js';
 
-const EXIT_OK = 0;
-const EXIT_ERR = 1;
+const EXIT_OK = EXIT_CODES.SUCCESS;
+const EXIT_ERR = EXIT_CODES.SERVER_START_FAILED;
 
 const STATE_GLYPH: Record<AuthProbeResult['state'], string> = {
   authenticated: '✓', // ✓
@@ -63,7 +64,7 @@ function printNextStepFor(r: AuthProbeResult & { state: 'needs-login' }): void {
   }
 }
 
-export async function handleLoginCommand(args: ParsedCliArgs): Promise<void> {
+export async function handleLoginCommand(args: ParsedCliArgs): Promise<CliExitResult> {
   // Deprecation hint when invoked via the standalone `login` command.
   // Routing through `auth status` is silent. Issue #2449.
   if (args.command === 'login') {
@@ -83,11 +84,13 @@ export async function handleLoginCommand(args: ParsedCliArgs): Promise<void> {
   console.log(summary.line);
   printNextSteps(ordered, summary.actionable);
 
+  // #3942: RETURN the exit code; dispatcher owns process.exit. Mapping is
+  // byte-identical: EXIT_OK (0) when authenticated or no action needed,
+  // EXIT_ERR (1) when no CLI is authenticated AND there's a clear next action.
   if (summary.anyAuthenticated || summary.actionable.length === 0) {
-    process.exit(EXIT_OK);
+    return cliExit(EXIT_OK);
   }
-  // Exit 1 when no CLI is authenticated AND there's a clear next action.
-  process.exit(EXIT_ERR);
+  return cliExit(EXIT_ERR);
 }
 
 /**

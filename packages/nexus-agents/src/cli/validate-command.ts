@@ -8,7 +8,8 @@
  * (Source: Issue #1598)
  */
 
-import type { ParsedCliArgs } from '../cli-types.js';
+import type { CliExitResult, ParsedCliArgs } from '../cli-types.js';
+import { cliExit, EXIT_CODES } from '../cli-types.js';
 import { runDoctor } from './doctor.js';
 import type { DoctorResult } from './doctor.js';
 import { calculateFitnessScore } from '../governance/index.js';
@@ -114,7 +115,7 @@ export async function runValidate(): Promise<ValidateResult> {
 /**
  * CLI handler for the validate command.
  */
-export async function handleValidateCommand(args: ParsedCliArgs): Promise<void> {
+export async function handleValidateCommand(args: ParsedCliArgs): Promise<CliExitResult> {
   const result = await runValidate();
   const isJson = args.options.format === 'json';
 
@@ -124,5 +125,7 @@ export async function handleValidateCommand(args: ParsedCliArgs): Promise<void> 
     printReport(result);
   }
 
-  process.exit(result.allPassed ? 0 : 1);
+  // #3942: RETURN the exit code; dispatcher owns process.exit. Byte-identical
+  // to the prior `process.exit(result.allPassed ? 0 : 1)` mapping.
+  return cliExit(result.allPassed ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
 }

@@ -12,7 +12,12 @@
  */
 
 import { VERSION } from './version.js';
-import { EXIT_CODES, type CliExitResult, type ParsedCliArgs } from './cli-types.js';
+import {
+  EXIT_CODES,
+  isLifecycleDelegated,
+  type CliHandlerResult,
+  type ParsedCliArgs,
+} from './cli-types.js';
 import { renderHelp } from './cli-help-text.js';
 
 // Re-export handlers for backward compatibility
@@ -184,37 +189,31 @@ export function printVersion(): void {
 }
 
 /**
- * A CLI command handler. Migrated handlers (#3210) RETURN a
- * {@link CliExitResult} (or `undefined` to signal "do not force an exit",
- * e.g. the MCP stdio server) so the single `process.exit` lives here at the
- * dispatcher boundary. Not-yet-migrated handlers (auth, login, usage,
- * release, scaffold, …) still call `process.exit` internally and return
- * `void`; `exitWith` no-ops on their `void`/`undefined` return, so both
- * styles coexist during the incremental migration.
+ * A CLI command handler (#3210, completed in #3942). Every handler RETURNS
+ * a {@link CliHandlerResult}: either a `CliExitResult` (the dispatcher exits
+ * with its `exitCode`) or the `LIFECYCLE_DELEGATED` sentinel (the handler
+ * owns its own process lifecycle — e.g. the MCP stdio server — so the
+ * dispatcher does nothing). The union has NO `undefined`/`void` member, so
+ * a handler that drops a return on some path is a compile error rather than
+ * a silently-swallowed exit code. The single `process.exit` lives here at
+ * the dispatcher boundary (see `exitWith`).
  */
-// `void` is required in these unions to bridge migrated handlers (which
-// return CliExitResult) and not-yet-migrated handlers (which return void
-// after exiting internally). `undefined` alone is not assignable from a
-// `void`-returning function, so the union must include `void` until the
-// migration is complete. Safe here: exitWith() treats both void and
-// undefined as "no forced exit".
-// eslint-disable-next-line @typescript-eslint/no-invalid-void-type
-type SyncHandlerResult = CliExitResult | void;
-// eslint-disable-next-line @typescript-eslint/no-invalid-void-type
-type AsyncHandlerResult = Promise<CliExitResult | undefined | void>;
+type SyncHandlerResult = CliHandlerResult;
+type AsyncHandlerResult = Promise<CliHandlerResult>;
 
 /**
- * The single `process.exit` boundary for migrated handlers (#3210). When a
- * handler returns a {@link CliExitResult}, terminate with its `exitCode`.
- * A `void`/`undefined` return means the handler either already exited
- * internally (legacy, not-yet-migrated) or deliberately owns the process
- * lifecycle (MCP stdio server) — so do nothing.
+ * The single `process.exit` boundary for command handlers (#3210/#3942).
+ * Handles the {@link CliHandlerResult} union exhaustively: a
+ * {@link CliExitResult} terminates the process with its `exitCode`; the
+ * {@link LIFECYCLE_DELEGATED} sentinel is an explicit no-op (the handler
+ * owns the process lifecycle). There is no `void`/`undefined` fallthrough —
+ * an unhandled return shape would not type-check.
  */
-// eslint-disable-next-line @typescript-eslint/no-invalid-void-type -- bridges migrated/legacy handler returns; see SyncHandlerResult
-function exitWith(result: CliExitResult | undefined | void): void {
-  if (result !== undefined) {
-    process.exit(result.exitCode);
+function exitWith(result: CliHandlerResult): void {
+  if (isLifecycleDelegated(result)) {
+    return;
   }
+  process.exit(result.exitCode);
 }
 
 /** Sync command dispatch table for reduced complexity. */
@@ -234,8 +233,6 @@ const SYNC_COMMAND_HANDLERS: Record<
   'fitness-audit': handleFitnessAuditCommand,
   // Issue #653: Scaffold Command
   scaffold: handleScaffoldCommand,
-  // Creative: Visualize Command
-  visualize: handleVisualizeCommand,
   // Issue #684: Capabilities Command
   capabilities: handleCapabilitiesCommand,
   // Issue #688: Status Command
@@ -330,6 +327,9 @@ const ASYNC_COMMAND_HANDLERS: Record<
   scenario: handleScenarioCommand,
   // Issue #1598: Validate Command
   validate: handleValidateCommand,
+  // Creative: Visualize Command — async since #3942 (awaits the file write
+  // instead of exiting from a floating promise).
+  visualize: handleVisualizeCommand,
 };
 
 /**

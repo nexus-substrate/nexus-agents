@@ -8,7 +8,8 @@
  * (Source: Issue #748 - Memory evaluation framework)
  */
 
-import type { ParsedCliArgs } from '../cli-types.js';
+import type { CliExitResult, ParsedCliArgs } from '../cli-types.js';
+import { cliExit, EXIT_CODES } from '../cli-types.js';
 import { colors, symbols } from './ansi-output.js';
 import {
   runMemoryBenchmark,
@@ -190,7 +191,7 @@ function parseOptions(args: ParsedCliArgs): MemoryBenchmarkOptions {
  *   nexus-agents memory-benchmark validate  # Validate against thresholds
  *   nexus-agents memory-benchmark --format json # Output as JSON
  */
-export async function handleMemoryBenchmarkCommand(args: ParsedCliArgs): Promise<void> {
+export async function handleMemoryBenchmarkCommand(args: ParsedCliArgs): Promise<CliExitResult> {
   const options = parseOptions(args);
   const startTime = getTimeProvider().now();
 
@@ -199,12 +200,16 @@ export async function handleMemoryBenchmarkCommand(args: ParsedCliArgs): Promise
     printRunning();
   }
 
+  // #3942: RETURN the exit code; dispatcher owns process.exit. Byte-identical
+  // to the prior `process.exitCode = 1` behavior: a failed validation or a
+  // thrown benchmark error yields SERVER_START_FAILED (1); otherwise SUCCESS (0).
+  let exitCode: number = EXIT_CODES.SUCCESS;
   try {
     const result = await runBenchmark(options);
     printResults(result, options.format);
 
     if (options.validate && !validateAndPrint(result)) {
-      process.exitCode = 1;
+      exitCode = EXIT_CODES.SERVER_START_FAILED;
     }
 
     if (options.format === 'text') {
@@ -215,6 +220,7 @@ export async function handleMemoryBenchmarkCommand(args: ParsedCliArgs): Promise
     process.stderr.write(
       `${colors.red}${symbols.cross} Benchmark failed: ${message}${colors.reset}\n`
     );
-    process.exitCode = 1;
+    exitCode = EXIT_CODES.SERVER_START_FAILED;
   }
+  return cliExit(exitCode);
 }
