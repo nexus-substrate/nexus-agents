@@ -308,6 +308,13 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
       - uses: ./.github/actions/setup-node
 
+      - name: Build nexus-memory (workspace dep)
+        working-directory: packages/nexus-agents
+        # The generator now imports the real tool modules to introspect their Zod
+        # input schemas (#3688); tool-memory.ts transitively imports `nexus-memory`,
+        # so its dist must be built before the generator runs (mirrors the TypeDoc job).
+        run: pnpm --filter nexus-memory build
+
       - name: Check generated tool reference
         run: |
           npx tsx scripts/generate-tool-reference.ts --check
