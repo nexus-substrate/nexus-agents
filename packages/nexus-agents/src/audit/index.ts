@@ -59,7 +59,8 @@ export type { ChainVerification } from './audit-logger.js';
 // Storage
 export { FileAuditStorage, InMemoryAuditStorage } from './audit-storage.js';
 
-// Authentic vote record (#3897) — committable, hash-chained, tamper-evident.
+// Authentic vote record (#3897, model revised #3927) — committable,
+// tamper-evident record SET + monotonic sequence (merge-safe; not a chain).
 export {
   VoteRecordSchema,
   VoterSummarySchema,
@@ -67,7 +68,7 @@ export {
   VoteRecordDecisionSchema,
   computeVoteRecordHash,
   hashProposal,
-  verifyVoteRecordChain,
+  verifyVoteRecordSet,
 } from './vote-record.js';
 export type {
   VoteRecord,

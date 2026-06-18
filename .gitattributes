@@ -14,3 +14,10 @@
 *.jpg binary
 *.ico binary
 *.woff2 binary
+
+# Authentic vote-record ledger (#3927). A tamper-evident record SET + monotonic
+# sequence (not a linear hash chain): each line is a self-hashed, position-
+# independent record. Concurrent branches that each append a vote produce
+# independent lines, so a union merge concatenates them conflict-free —
+# duplicate sequences are a benign fork signal, not corruption.
+governance/vote-records.jsonl merge=union

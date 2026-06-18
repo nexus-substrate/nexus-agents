@@ -98,7 +98,8 @@ function toRecordStrategy(strategy: string): VoteRecord['strategy'] {
 }
 
 /**
- * Persist an authentic, hash-chained vote record to the committable governance
+ * Persist an authentic, self-hashed vote record (tamper-evident record set +
+ * monotonic sequence, #3927) to the committable governance
  * artifact at vote time (#3897). Best-effort: a persist failure must never fail
  * the vote, so the store swallows + logs. Skips all-simulated runs (random
  * output must not seed a committed record). Returns the written record (or
