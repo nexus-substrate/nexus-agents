@@ -8,7 +8,8 @@
  * (Source: Issue #1403)
  */
 
-import type { ParsedCliArgs } from '../cli-types.js';
+import type { CliExitResult, ParsedCliArgs } from '../cli-types.js';
+import { cliExit, EXIT_CODES } from '../cli-types.js';
 import { getTuneAdjustmentStore, type TuneDemotionStat } from '../core/index.js';
 import { colors, symbols } from './ansi-output.js';
 import { generateWeatherReport } from '../mcp/tools/weather-report.js';
@@ -222,7 +223,7 @@ function renderJson(health: HealthResult): void {
 /**
  * Handle the `nexus-agents health` CLI command.
  */
-export function handleHealthCommand(args: ParsedCliArgs): void {
+export function handleHealthCommand(args: ParsedCliArgs): CliExitResult {
   const health = collectHealth();
 
   if (args.options.format === 'json') {
@@ -230,4 +231,9 @@ export function handleHealthCommand(args: ParsedCliArgs): void {
   } else {
     renderTable(health);
   }
+
+  // #3942: RETURN the exit code; dispatcher owns process.exit. Pre-migration
+  // this returned void and the dispatcher no-op'd (natural exit 0) — SUCCESS (0)
+  // is byte-identical.
+  return cliExit(EXIT_CODES.SUCCESS);
 }

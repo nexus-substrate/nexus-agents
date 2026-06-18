@@ -9,8 +9,8 @@
  * (Source: Issue #684, Epic #682)
  */
 
-import type { ParsedCliArgs } from '../cli-types.js';
-import { EXIT_CODES } from '../cli-types.js';
+import type { CliExitResult, ParsedCliArgs } from '../cli-types.js';
+import { EXIT_CODES, cliExit } from '../cli-types.js';
 import {
   OUTPUT_MODALITIES,
   INPUT_MODALITIES,
@@ -250,12 +250,12 @@ function renderFind(query: string): void {
 // Subcommand dispatchers
 // ============================================================================
 
-function handleCompare(args: ParsedCliArgs): void {
+function handleCompare(args: ParsedCliArgs): CliExitResult {
   const id1 = args.positionals[2];
   const id2 = args.positionals[3];
   if (id1 === undefined || id2 === undefined) {
     write(`${C.red}Usage: nexus-agents capabilities compare <model1> <model2>${C.reset}`);
-    process.exit(EXIT_CODES.INVALID_ARGS);
+    return cliExit(EXIT_CODES.INVALID_ARGS);
   }
   const m1 = lookupInTreeCapability(id1);
   const m2 = lookupInTreeCapability(id2);
@@ -266,18 +266,20 @@ function handleCompare(args: ParsedCliArgs): void {
       .join(', ');
     write(`${C.red}Unknown model: ${missing}${C.reset}`);
     write(`Valid models: ${ids}`);
-    process.exit(EXIT_CODES.INVALID_ARGS);
+    return cliExit(EXIT_CODES.INVALID_ARGS);
   }
   renderCompare(m1, m2);
+  return cliExit(EXIT_CODES.SUCCESS);
 }
 
-function handleFindSubcmd(args: ParsedCliArgs): void {
+function handleFindSubcmd(args: ParsedCliArgs): CliExitResult {
   const query = args.positionals[2];
   if (query === undefined) {
     write(`${C.red}Usage: nexus-agents capabilities find <capability>${C.reset}`);
-    process.exit(EXIT_CODES.INVALID_ARGS);
+    return cliExit(EXIT_CODES.INVALID_ARGS);
   }
   renderFind(query);
+  return cliExit(EXIT_CODES.SUCCESS);
 }
 
 // ============================================================================
@@ -285,9 +287,10 @@ function handleFindSubcmd(args: ParsedCliArgs): void {
 // ============================================================================
 
 /** Dispatch table for subcommands. */
-const SUBCOMMAND_HANDLERS: Record<string, (args: ParsedCliArgs) => void> = {
+const SUBCOMMAND_HANDLERS: Record<string, (args: ParsedCliArgs) => CliExitResult> = {
   list: (args) => {
     handleList((args.options.format as OutputFormat | undefined) ?? 'table');
+    return cliExit(EXIT_CODES.SUCCESS);
   },
   compare: handleCompare,
   find: handleFindSubcmd,
@@ -295,8 +298,14 @@ const SUBCOMMAND_HANDLERS: Record<string, (args: ParsedCliArgs) => void> = {
 
 /**
  * Handles the `nexus-agents capabilities` command.
+ *
+ * #3942: RETURNS a {@link CliExitResult}; the dispatcher owns `process.exit`.
+ * Exit codes are byte-identical to the pre-migration inline exits: a bare/
+ * unknown subcommand prints usage and returns SUCCESS (0) when no subcommand
+ * was given, INVALID_ARGS (3) when an unrecognized one was; the `compare`/
+ * `find` argument-validation errors return INVALID_ARGS (3); success returns 0.
  */
-export function handleCapabilitiesCommand(args: ParsedCliArgs): void {
+export function handleCapabilitiesCommand(args: ParsedCliArgs): CliExitResult {
   const subcommand = args.positionals[1];
 
   if (
@@ -304,9 +313,12 @@ export function handleCapabilitiesCommand(args: ParsedCliArgs): void {
     !VALID_SUBCOMMANDS.includes(subcommand as CapabilitiesSubcommand)
   ) {
     process.stdout.write(USAGE + '\n');
-    process.exit(subcommand === undefined ? EXIT_CODES.SUCCESS : EXIT_CODES.INVALID_ARGS);
+    return cliExit(subcommand === undefined ? EXIT_CODES.SUCCESS : EXIT_CODES.INVALID_ARGS);
   }
 
   const handler = SUBCOMMAND_HANDLERS[subcommand];
-  if (handler !== undefined) handler(args);
+  // The guard above guarantees `subcommand` is one of VALID_SUBCOMMANDS, so the
+  // table lookup is defined; the fallback preserves the pre-#3942 behavior
+  // (silently do nothing → natural exit 0) for the unreachable miss.
+  return handler !== undefined ? handler(args) : cliExit(EXIT_CODES.SUCCESS);
 }

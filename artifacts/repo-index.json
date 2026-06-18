@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-06-18T02:24:45.881Z",
+  "generated": "2026-06-18T03:54:30.717Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.132.1",
   "cli": {
@@ -296,7 +296,7 @@
       },
       {
         "name": "visualize",
-        "type": "sync",
+        "type": "async",
         "handler": "handleVisualizeCommand",
         "file": "src/cli-commands-handlers.ts"
       },

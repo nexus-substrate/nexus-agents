@@ -18,7 +18,8 @@
 
 /* eslint-disable no-console */
 
-import type { ParsedCliArgs } from '../cli-types.js';
+import type { CliExitResult, ParsedCliArgs } from '../cli-types.js';
+import { cliExit, EXIT_CODES } from '../cli-types.js';
 import { loadUsageEvents, rollupByModel, type ModelRollup } from '../learning/usage-log.js';
 
 interface UsageOptions {
@@ -46,7 +47,7 @@ function parseOptions(args: ParsedCliArgs): UsageOptions {
   return { format, sinceIso, untilIso: until, modelId: model };
 }
 
-export async function handleUsageCommand(args: ParsedCliArgs): Promise<void> {
+export async function handleUsageCommand(args: ParsedCliArgs): Promise<CliExitResult> {
   const opts = parseOptions(args);
 
   const loadOpts: Parameters<typeof loadUsageEvents>[0] = { sinceIso: opts.sinceIso };
@@ -62,11 +63,14 @@ export async function handleUsageCommand(args: ParsedCliArgs): Promise<void> {
   if (opts.format === 'json') {
     process.stdout.write(`${JSON.stringify({ since: opts.sinceIso, rollups }, null, 2)}\n`);
     await Promise.resolve();
-    return;
+    return cliExit(EXIT_CODES.SUCCESS);
   }
 
   printTextReport(opts, rollups, events.length);
   await Promise.resolve();
+  // #3942: RETURN the exit code; dispatcher owns process.exit. This command
+  // never forced an exit (natural exit 0) — SUCCESS (0) is byte-identical.
+  return cliExit(EXIT_CODES.SUCCESS);
 }
 
 function printTextReport(

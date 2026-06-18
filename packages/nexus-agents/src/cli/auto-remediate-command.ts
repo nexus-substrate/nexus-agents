@@ -18,7 +18,8 @@
  * @module cli/auto-remediate-command
  */
 
-import type { ParsedCliArgs } from '../cli-types.js';
+import type { CliExitResult, ParsedCliArgs } from '../cli-types.js';
+import { cliExit, EXIT_CODES } from '../cli-types.js';
 import { runAutoRemediationCycle } from '../mcp/tools/auto-remediation-cycle.js';
 import type { AutoRemediationResult } from '../mcp/tools/improvement-remediation-enforce.js';
 
@@ -32,12 +33,19 @@ function summarize(r: AutoRemediationResult): string {
   );
 }
 
-/** Handle `nexus-agents auto-remediate`. */
-export async function handleAutoRemediateCommand(args: ParsedCliArgs): Promise<void> {
+/**
+ * Handle `nexus-agents auto-remediate`.
+ *
+ * #3942: RETURNS a {@link CliExitResult}; the dispatcher owns `process.exit`.
+ * This command never forced an exit (natural exit 0) — SUCCESS (0) is
+ * byte-identical.
+ */
+export async function handleAutoRemediateCommand(args: ParsedCliArgs): Promise<CliExitResult> {
   const result = await runAutoRemediationCycle();
   if (args.options.format === 'json') {
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-    return;
+    return cliExit(EXIT_CODES.SUCCESS);
   }
   process.stdout.write(summarize(result));
+  return cliExit(EXIT_CODES.SUCCESS);
 }

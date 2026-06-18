@@ -10,8 +10,8 @@
  * (Source: Issue #3214 — expose mode detection for inspection/debugging)
  */
 
-import type { ParsedCliArgs } from '../cli-types.js';
-import { EXIT_CODES } from '../cli-types.js';
+import type { CliExitResult, ParsedCliArgs } from '../cli-types.js';
+import { EXIT_CODES, cliExit } from '../cli-types.js';
 import {
   detectMode,
   describeSignals,
@@ -53,7 +53,7 @@ function resolveExplicitMode(raw: ServerMode | undefined): ServerMode | undefine
  *
  * @param args - Parsed CLI arguments
  */
-export function handleModeCommand(args: ParsedCliArgs): void {
+export function handleModeCommand(args: ParsedCliArgs): CliExitResult {
   const explicitMode = resolveExplicitMode(args.options.mode);
   const result = detectMode(explicitMode !== undefined ? { explicitMode } : {});
 
@@ -75,5 +75,6 @@ export function handleModeCommand(args: ParsedCliArgs): void {
     write(formatModeInspection(result));
   }
 
-  process.exit(EXIT_CODES.SUCCESS);
+  // #3942: RETURN the exit code (always SUCCESS, as before); dispatcher exits.
+  return cliExit(EXIT_CODES.SUCCESS);
 }

@@ -205,16 +205,17 @@ describe('memory-benchmark-command', () => {
       expect(vi.mocked(validateBenchmarkResults)).toHaveBeenCalled();
     });
 
-    it('should set exitCode 1 when validation fails', async () => {
+    it('should return exit code 1 when validation fails', async () => {
       const args = createMockArgs({ subcommand: 'validate' });
       vi.mocked(validateBenchmarkResults).mockReturnValue({
         pass: false,
         failures: ['recall too low'],
       });
 
-      await handleMemoryBenchmarkCommand(args);
+      // #3942: handler RETURNS the exit code; dispatcher owns process.exit.
+      const result = await handleMemoryBenchmarkCommand(args);
 
-      expect(process.exitCode).toBe(1);
+      expect(result).toEqual({ success: false, exitCode: 1 });
       expect(stdoutSpy).toHaveBeenCalledWith(
         expect.stringContaining('Threshold validation failed')
       );
@@ -282,12 +283,13 @@ describe('memory-benchmark-command', () => {
         Promise.reject(new Error('Benchmark failed'))
       );
 
-      await handleMemoryBenchmarkCommand(args);
+      // #3942: handler RETURNS the exit code; dispatcher owns process.exit.
+      const result = await handleMemoryBenchmarkCommand(args);
 
       expect(stderrSpy).toHaveBeenCalledWith(
         expect.stringContaining('Benchmark failed: Benchmark failed')
       );
-      expect(process.exitCode).toBe(1);
+      expect(result).toEqual({ success: false, exitCode: 1 });
     });
 
     it('should handle non-Error exceptions', async () => {

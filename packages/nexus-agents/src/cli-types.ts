@@ -68,6 +68,61 @@ export function cliExitFromStatus(status: number, message?: string): CliExitResu
 }
 
 /**
+ * Explicit sentinel a handler RETURNS to signal "I own my own process
+ * lifecycle — do NOT force an exit at the dispatcher" (#3942).
+ *
+ * Before #3942 this was conveyed by returning `undefined`/`void`, which
+ * conflated *intentional* delegation (the MCP stdio server runs until its
+ * transport closes, then exits itself) with an *accidentally dropped*
+ * return on an error path. A missing return was not a compile error, so
+ * `exitWith` would silently no-op and a non-zero exit code would be lost.
+ *
+ * By typing every handler as {@link CliHandlerResult} (a union that
+ * excludes `undefined`/`void`), a handler that falls off the end without
+ * returning is a TS2366 compile error ("Function lacks ending return
+ * statement…"). Lifecycle-owning handlers RETURN this sentinel explicitly,
+ * making delegation a deliberate, checked choice.
+ *
+ * Implemented as a branded const so it is a single unique value (not just
+ * any object), and `exitWith` can match it by identity.
+ */
+export const LIFECYCLE_DELEGATED = {
+  __lifecycleDelegated: true,
+} as const;
+
+/**
+ * The type of {@link LIFECYCLE_DELEGATED}. A handler whose return type
+ * includes this signals lifecycle delegation; see the sentinel docs.
+ */
+export type LifecycleDelegated = typeof LIFECYCLE_DELEGATED;
+
+/**
+ * The exhaustive return contract for every CLI command handler dispatched
+ * from `cli-commands.ts` (#3942). A handler EITHER returns a
+ * {@link CliExitResult} (the dispatcher exits with its `exitCode`) OR the
+ * {@link LIFECYCLE_DELEGATED} sentinel (the dispatcher does nothing because
+ * the handler owns the process lifecycle). There is deliberately NO
+ * `undefined`/`void` member: that is what makes a dropped return a compile
+ * error rather than a silently-swallowed exit code.
+ */
+export type CliHandlerResult = CliExitResult | LifecycleDelegated;
+
+/**
+ * Type guard distinguishing the {@link LIFECYCLE_DELEGATED} sentinel from a
+ * {@link CliExitResult}. Used by `exitWith` to handle the handler-result
+ * union exhaustively without a `void` fallthrough.
+ *
+ * Discriminates on the brand property rather than reference identity so the
+ * guard is robust across module-boundary/test-mock copies of the sentinel
+ * while remaining unambiguous (a `CliExitResult` never carries this brand).
+ */
+export function isLifecycleDelegated(result: CliHandlerResult): result is LifecycleDelegated {
+  return (
+    (result as Partial<LifecycleDelegated>).__lifecycleDelegated === true && !('exitCode' in result)
+  );
+}
+
+/**
  * CLI command types that can be executed.
  */
 export type CliCommand =

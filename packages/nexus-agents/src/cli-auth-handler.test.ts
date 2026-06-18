@@ -3,11 +3,13 @@ import { handleAuthCommand } from './cli-auth-handler.js';
 import type { ParsedCliArgs } from './cli-types.js';
 
 vi.mock('./cli/index.js', () => ({
-  authCommand: vi.fn(),
+  // #3942: authCommand now returns success boolean; default to success.
+  authCommand: vi.fn(() => true),
 }));
 
 vi.mock('./cli/login-command.js', () => ({
-  handleLoginCommand: vi.fn(() => Promise.resolve()),
+  // #3942: handleLoginCommand now resolves a CliExitResult.
+  handleLoginCommand: vi.fn(() => Promise.resolve({ success: true, exitCode: 0 })),
 }));
 
 function createArgs(

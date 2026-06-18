@@ -21,7 +21,8 @@
 
 /* eslint-disable no-console */
 
-import type { ParsedCliArgs } from '../cli-types.js';
+import type { CliExitResult, ParsedCliArgs } from '../cli-types.js';
+import { cliExit, EXIT_CODES } from '../cli-types.js';
 import {
   runImprovementReview,
   ImprovementReviewInputSchema,
@@ -78,7 +79,7 @@ function parseOptions(args: ParsedCliArgs): CliOptions {
   };
 }
 
-export async function handleImprovementReviewCommand(args: ParsedCliArgs): Promise<void> {
+export async function handleImprovementReviewCommand(args: ParsedCliArgs): Promise<CliExitResult> {
   const cli = parseOptions(args);
   const response = await runImprovementReview({
     lookbackDays: cli.lookbackDays,
@@ -89,10 +90,13 @@ export async function handleImprovementReviewCommand(args: ParsedCliArgs): Promi
 
   if (cli.format === 'json') {
     process.stdout.write(`${JSON.stringify(response, null, 2)}\n`);
-    return;
+    return cliExit(EXIT_CODES.SUCCESS);
   }
 
   printTextReport(response, cli);
+  // #3942: RETURN the exit code; dispatcher owns process.exit. This command
+  // never forced an exit (natural exit 0) — SUCCESS (0) is byte-identical.
+  return cliExit(EXIT_CODES.SUCCESS);
 }
 
 function printTextReport(response: ImprovementReviewResponse, opts: CliOptions): void {

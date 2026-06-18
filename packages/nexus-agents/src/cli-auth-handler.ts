@@ -10,7 +10,12 @@
 
 import { authCommand } from './cli/index.js';
 import { handleLoginCommand } from './cli/login-command.js';
-import type { ParsedCliArgs } from './cli-types.js';
+import {
+  cliExitFromStatus,
+  EXIT_CODES,
+  type CliExitResult,
+  type ParsedCliArgs,
+} from './cli-types.js';
 
 /**
  * Handles auth command for token management.
@@ -22,11 +27,15 @@ import type { ParsedCliArgs } from './cli-types.js';
  *
  * (Source: Issue #739 - enable MCP authentication by default)
  */
-export async function handleAuthCommand(args: ParsedCliArgs): Promise<void> {
+export async function handleAuthCommand(args: ParsedCliArgs): Promise<CliExitResult> {
   if (args.subcommand === 'status') {
-    await handleLoginCommand(args);
-    return;
+    // #3942: forward the login probe's exit result unchanged.
+    return handleLoginCommand(args);
   }
   const format: 'text' | 'json' = args.options.format === 'json' ? 'json' : 'text';
-  authCommand(args.subcommand, { force: args.options.force, format });
+  const success = authCommand(args.subcommand, { force: args.options.force, format });
+  // #3942: byte-identical to the prior behavior, which set `process.exitCode = 1`
+  // on failure and otherwise exited 0 naturally. `cliExitFromStatus(0|1)` maps
+  // to SUCCESS (0) / SERVER_START_FAILED (1).
+  return cliExitFromStatus(success ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
 }

@@ -20,6 +20,7 @@ import { join } from 'node:path';
 import { createLogger } from '../core/index.js';
 import { getPerRepoSubdirs } from '../config/nexus-data-dir.js';
 import { findRepoRoot } from '../config/repo-root-detection.js';
+import { cliExit, EXIT_CODES, type CliExitResult } from '../cli-types.js';
 
 const logger = createLogger({ component: 'migrate-command' });
 
@@ -242,7 +243,7 @@ export async function handleMigrateCommand(args: {
     readonly input?: string;
     readonly output?: string;
   };
-}): Promise<void> {
+}): Promise<CliExitResult> {
   const opts: MigrateOptions = {
     ...(args.options.input !== undefined ? { from: args.options.input } : {}),
     ...(args.options.output !== undefined ? { to: args.options.output } : {}),
@@ -251,9 +252,10 @@ export async function handleMigrateCommand(args: {
   const result = runMigrate(opts);
   process.stderr.write(formatMigrationResult(result));
   await Promise.resolve();
-  if (!result.success) {
-    process.exit(1);
-  }
+  // #3942: RETURN the exit code; dispatcher owns process.exit. Byte-identical:
+  // failure → SERVER_START_FAILED (1), success → SUCCESS (0) (was a natural
+  // exit-0 after the function returned).
+  return cliExit(result.success ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
 }
 
 /** Re-export for the migrate command's CLI surface area. */

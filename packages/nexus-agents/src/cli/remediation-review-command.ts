@@ -21,7 +21,8 @@
  * @module cli/remediation-review-command
  */
 
-import type { ParsedCliArgs } from '../cli-types.js';
+import type { CliExitResult, ParsedCliArgs } from '../cli-types.js';
+import { cliExit, EXIT_CODES } from '../cli-types.js';
 import { getTimeProvider } from '../core/index.js';
 import {
   getRemediationSoakSink,
@@ -144,8 +145,16 @@ function runSignOff(args: ParsedCliArgs): void {
   );
 }
 
-/** Handle `nexus-agents remediation-review <subcommand>`. */
-export async function handleRemediationReviewCommand(args: ParsedCliArgs): Promise<void> {
+/**
+ * Handle `nexus-agents remediation-review <subcommand>`.
+ *
+ * #3942: RETURNS a {@link CliExitResult}; the dispatcher owns `process.exit`.
+ * On the happy path this command never forced an exit (natural exit 0) —
+ * SUCCESS (0) is byte-identical. Bad input still throws (an unknown subcommand,
+ * or the argument validation in `runMark`/`runSignOff`), propagating to the
+ * top-level CLI error handler exactly as before.
+ */
+export async function handleRemediationReviewCommand(args: ParsedCliArgs): Promise<CliExitResult> {
   const sub = args.subcommand ?? 'list';
   switch (sub) {
     case 'list':
@@ -162,5 +171,6 @@ export async function handleRemediationReviewCommand(args: ParsedCliArgs): Promi
         `remediation-review: unknown subcommand '${sub}' (expected list | mark | sign-off)`
       );
   }
-  return Promise.resolve();
+  await Promise.resolve();
+  return cliExit(EXIT_CODES.SUCCESS);
 }
