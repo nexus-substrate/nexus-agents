@@ -1,8 +1,13 @@
-/* eslint-disable max-lines -- Cohesive tool registration module (governance: 400-600 OK if cohesive) */
+/* eslint-disable max-lines -- Cohesive tool registration module (governance: cohesive single-registration-surface). Holds the manifest-seeded HANDLER_TABLE (#3266): one declarative row per MCP tool, so the line count tracks the tool count by design. */
 /**
  * nexus-agents CLI Server Tool Registration
  *
- * MCP tool registration and configuration.
+ * MCP tool registration and configuration. The registration surface is
+ * table-driven (#3266): {@link HANDLER_TABLE} maps each canonical
+ * `TOOL_MANIFEST` entry to its handler, and {@link registerToolCategories}
+ * drives registration by walking the manifest in order. The manifest stays the
+ * single source of truth; {@link assertHandlerManifestParity} fails loudly if
+ * the table and the manifest ever disagree.
  *
  * @module cli-server-tools
  * (Source: Extracted from cli-server.ts for file size limits)
@@ -163,6 +168,7 @@ export interface RegisterMcpToolsOptions {
  * `registerToolCategories` (Issue #2935 closes the duplicate hand-maintained array).
  */
 import { REGISTERED_TOOL_NAMES } from './mcp/index.js';
+import type { RegisteredToolName } from './mcp/tools/tool-manifest.js';
 export const REGISTERED_TOOLS = REGISTERED_TOOL_NAMES;
 
 /**
@@ -258,14 +264,46 @@ function isToolAllowed(toolName: string, allowlist?: Set<string>): boolean {
   return allowlist === undefined || allowlist.has(toolName);
 }
 
-/** Register expert tools with shared registry (Issue #661: wire security config, #808: wire adapter). */
-function registerExpertTools(ctx: ToolRegistrationContext): void {
-  const sharedExpertRegistry = new Map<string, Expert>();
+/**
+ * Per-pass resources shared by tools whose registration must wire the SAME
+ * object (the expert registry shared by create/execute_expert; the workflow
+ * engine shared by run/list_workflows). Lazily constructed once per
+ * registration pass and memoized so each member of a group sees the identical
+ * instance — behaviour-identical to the former grouped helper functions.
+ */
+interface SharedResources {
+  expertRegistry(): Map<string, Expert>;
+  workflowEngine(): ReturnType<typeof createRealWorkflowEngine>;
+}
+
+/** Builds the lazily-memoized {@link SharedResources} for one registration pass. */
+function createSharedResources(ctx: ToolRegistrationContext): SharedResources {
+  let experts: Map<string, Expert> | undefined;
+  let engine: ReturnType<typeof createRealWorkflowEngine> | undefined;
+  return {
+    expertRegistry(): Map<string, Expert> {
+      experts ??= new Map<string, Expert>();
+      return experts;
+    },
+    workflowEngine(): ReturnType<typeof createRealWorkflowEngine> {
+      engine ??= buildWorkflowEngine(ctx);
+      return engine;
+    },
+  };
+}
+
+/** A tool handler resolves all deps from the pass context + shared resources. */
+type ToolHandler = (ctx: ToolRegistrationContext, shared: SharedResources) => void;
+
+// --- Grouped-tool registration (shared deps) -------------------------------
+
+/** create_expert (Issue #661: wire security config, #808: wire adapter). */
+function registerCreateExpert(ctx: ToolRegistrationContext, shared: SharedResources): void {
   const createExpertDeps = createDefaultDeps(
     ctx.rateLimiterFactory.getForTool('create_expert'),
     ctx.logger
   );
-  createExpertDeps.expertRegistry = sharedExpertRegistry;
+  createExpertDeps.expertRegistry = shared.expertRegistry();
   if (ctx.securityConfig !== undefined) {
     createExpertDeps.security = ctx.securityConfig;
   }
@@ -274,9 +312,12 @@ function registerExpertTools(ctx: ToolRegistrationContext): void {
     createExpertDeps.modelAdapter = ctx.modelAdapter;
   }
   registerCreateExpertTool(ctx.server, createExpertDeps);
+}
 
+/** execute_expert — shares the create_expert registry (Issue #808). */
+function registerExecuteExpert(ctx: ToolRegistrationContext, shared: SharedResources): void {
   registerExecuteExpertTool(ctx.server, {
-    expertRegistry: sharedExpertRegistry,
+    expertRegistry: shared.expertRegistry(),
     logger: ctx.logger,
     rateLimiter: ctx.rateLimiterFactory.getForTool('execute_expert'),
     cliCache: getSharedCliCache(),
@@ -284,8 +325,10 @@ function registerExpertTools(ctx: ToolRegistrationContext): void {
   });
 }
 
-/** Register workflow tools. */
-function registerWorkflowTools(ctx: ToolRegistrationContext): void {
+/** Builds the workflow engine shared by run_workflow + list_workflows. */
+function buildWorkflowEngine(
+  ctx: ToolRegistrationContext
+): ReturnType<typeof createRealWorkflowEngine> {
   const wfConfig = ctx.workflowConfig;
   const engineConfig = {
     builtInTemplates: ctx.builtInTemplates,
@@ -295,103 +338,39 @@ function registerWorkflowTools(ctx: ToolRegistrationContext): void {
     ...(wfConfig?.maxParallel !== undefined && { maxConcurrency: wfConfig.maxParallel }),
     ...(wfConfig?.templatesDir !== undefined && { templatePaths: [wfConfig.templatesDir] }),
   };
-  const workflowEngine = createRealWorkflowEngine(
+  return createRealWorkflowEngine(
     ctx.modelAdapter !== undefined
       ? { ...engineConfig, modelAdapter: ctx.modelAdapter }
       : { ...engineConfig, useMockExecutor: true }
   );
+}
+
+/** run_workflow — shares the workflow engine with list_workflows. */
+function registerRunWorkflow(ctx: ToolRegistrationContext, shared: SharedResources): void {
   registerRunWorkflowTool(ctx.server, {
-    workflowEngine,
+    workflowEngine: shared.workflowEngine(),
     logger: ctx.logger,
     rateLimiter: ctx.rateLimiterFactory.getForTool('run_workflow'),
   });
+}
+
+/** list_workflows — shares the workflow engine with run_workflow. */
+function registerListWorkflows(ctx: ToolRegistrationContext, shared: SharedResources): void {
   registerListWorkflowsTool(ctx.server, {
     logger: ctx.logger,
-    workflowEngine,
+    workflowEngine: shared.workflowEngine(),
     rateLimiter: ctx.rateLimiterFactory.getForTool('list_workflows'),
   });
 }
 
-/** Register research tools (research system enhancement). */
-function registerResearchTools(ctx: ToolRegistrationContext): void {
-  const researchDeps = {
-    logger: ctx.logger,
-    ...(ctx.securityConfig !== undefined && { security: ctx.securityConfig }),
-  };
-  registerResearchQueryTool(ctx.server, {
-    ...researchDeps,
-    rateLimiter: ctx.rateLimiterFactory.getForTool('research_query'),
-  });
-  registerResearchAddTool(ctx.server, {
-    ...researchDeps,
-    rateLimiter: ctx.rateLimiterFactory.getForTool('research_add'),
-  });
-  registerResearchAddSourceTool(ctx.server, {
-    ...researchDeps,
-    rateLimiter: ctx.rateLimiterFactory.getForTool('research_add_source'),
-  });
-  registerResearchDiscoverTool(ctx.server, {
-    ...researchDeps,
-    rateLimiter: ctx.rateLimiterFactory.getForTool('research_discover'),
-  });
-  registerResearchAnalyzeTool(ctx.server, {
-    ...researchDeps,
-    rateLimiter: ctx.rateLimiterFactory.getForTool('research_analyze'),
-  });
-  registerResearchCatalogReviewTool(ctx.server, {
-    ...researchDeps,
-    rateLimiter: ctx.rateLimiterFactory.getForTool('research_catalog_review'),
-  });
-  registerResearchSynthesizeTool(ctx.server, {
-    ...researchDeps,
-    rateLimiter: ctx.rateLimiterFactory.getForTool('research_synthesize'),
-  });
-  registerSurveyOssLandscapeTool(ctx.server, {
-    ...researchDeps,
-    rateLimiter: ctx.rateLimiterFactory.getForTool('survey_oss_landscape'),
-  });
-  registerVendorPublishingAuditTool(ctx.server, {
-    ...researchDeps,
-    rateLimiter: ctx.rateLimiterFactory.getForTool('vendor_publishing_audit'),
-  });
-  registerCompareDataFeedsTool(ctx.server, {
-    ...researchDeps,
-    rateLimiter: ctx.rateLimiterFactory.getForTool('compare_data_feeds'),
-  });
-}
-
-/** Register memory observability tools (Issue #751, #753). */
-function registerMemoryTools(ctx: ToolRegistrationContext): void {
-  const memoryDeps = {
-    logger: ctx.logger,
-    ...(ctx.securityConfig !== undefined && { security: ctx.securityConfig }),
-  };
-  registerMemoryQueryTool(ctx.server, {
-    ...memoryDeps,
-    rateLimiter: ctx.rateLimiterFactory.getForTool('memory_query'),
-  });
-  registerMemoryStatsTool(ctx.server, {
-    ...memoryDeps,
-    rateLimiter: ctx.rateLimiterFactory.getForTool('memory_stats'),
-  });
-  registerMemoryWriteTool(ctx.server, {
-    ...memoryDeps,
-    rateLimiter: ctx.rateLimiterFactory.getForTool('memory_write'),
-  });
-}
-
-/** Register core routing and orchestration tools. */
-function registerCoreTools(ctx: ToolRegistrationContext): void {
-  // Register delegate_to_model independently — it doesn't need a model adapter
+/** delegate_to_model — independent; does not require a model adapter. */
+function registerDelegate(ctx: ToolRegistrationContext): void {
   registerDelegateToModelTool(ctx.server, {
     logger: ctx.logger,
     rateLimiter: ctx.rateLimiterFactory.getForTool('delegate_to_model'),
     // Wire FeedbackIntegration for closed-loop learning (Issue #490)
     ...(ctx.feedbackIntegration !== undefined && { feedbackIntegration: ctx.feedbackIntegration }),
   });
-
-  // Register orchestrate — gracefully degrade if no adapter available
-  registerOrchestrateToolSafe(ctx);
 }
 
 /** Registers orchestrate tool, logging a warning if no adapter is available. */
@@ -554,17 +533,7 @@ function logToolRegistration(
   });
 }
 
-/** Checks if any tools in a category are allowed. */
-function isCategoryAllowed(prefix: string, allowed: (name: string) => boolean): boolean {
-  return REGISTERED_TOOLS.some((t) => t.startsWith(prefix) && allowed(t));
-}
-
-/** Checks if any of the given tool names are allowed. */
-function anyToolAllowed(names: readonly string[], allowed: (name: string) => boolean): boolean {
-  return names.some(allowed);
-}
-
-/** Builds standard deps for standalone tool registration. */
+/** Builds standard deps for a tool that needs only logger + rate limiter (+ optional security). */
 function buildStandardDeps(
   ctx: ToolRegistrationContext,
   toolName: string
@@ -586,52 +555,149 @@ function buildStandardDeps(
   };
 }
 
-/** Standalone tools: single tool name → single register function. */
-const STANDALONE_TOOLS: ReadonlyArray<{
-  readonly name: string;
-  readonly register: (server: McpServer, deps: never) => void;
-}> = [
-  { name: 'consensus_vote', register: registerConsensusVoteTool },
-  { name: 'weather_report', register: registerWeatherReportTool },
-  { name: 'improvement_review', register: registerImprovementReviewTool },
-  { name: 'registry_import', register: registerRegistryImportTool },
-  { name: 'repo_analyze', register: registerRepoAnalyzeTool },
-  { name: 'repo_security_plan', register: registerRepoSecurityPlanTool },
-  { name: 'issue_triage', register: registerIssueTriageTool },
-  { name: 'run_graph_workflow', register: registerRunGraphWorkflowTool },
-  { name: 'execute_spec', register: registerExecuteSpecTool },
-  { name: 'list_experts', register: registerListExpertsTool },
-  { name: 'query_trace', register: registerQueryTraceTool },
-  { name: 'query_task_state', register: registerQueryTaskStateTool },
-  { name: 'get_job_result', register: registerGetJobResultTool },
-  { name: 'list_jobs', register: registerListJobsTool },
-  { name: 'cancel_job', register: registerCancelJobTool },
-  { name: 'ci_health_check', register: registerCiHealthCheckTool },
-  { name: 'run_quality_gate', register: registerRunQualityGateTool },
-  { name: 'suggest_research_tasks', register: registerSuggestResearchTasksTool },
-  { name: 'list_available_models', register: registerListAvailableModelsTool },
-  { name: 'run', register: registerRunTool },
-  { name: 'verify_audit_chain', register: registerVerifyAuditChainTool },
-  { name: 'extract_symbols', register: registerExtractSymbolsTool },
-  { name: 'search_codebase', register: registerSearchCodebaseTool },
-  { name: 'run_dev_pipeline', register: registerDevPipelineTool },
-  { name: 'run_pipeline', register: registerPipelineTool },
-  { name: 'pr_review', register: registerPrReviewTool },
-  { name: 'supply_chain_tradeoff_panel', register: registerSupplyChainTradeoffPanelTool },
-];
+/**
+ * Builds a {@link ToolHandler} for a tool whose only dependency is the standard
+ * logger + rate-limiter + optional security envelope built by
+ * {@link buildStandardDeps}. The `as never` is the same dep-erasure the former
+ * `STANDALONE_TOOLS` loop used: each `register*Tool` validates its own deps
+ * shape, and these all accept the standard envelope.
+ */
+function standardHandler(
+  name: RegisteredToolName,
+  register: (server: McpServer, deps: never) => void
+): ToolHandler {
+  return (ctx) => {
+    register(ctx.server, buildStandardDeps(ctx, name) as never);
+  };
+}
 
-/** Registers tool categories, skipping those blocked by allowlist. (Issue #740) */
+/**
+ * Table-driven MCP tool registry, SEEDED FROM the canonical {@link TOOL_MANIFEST}
+ * (#3266). One handler per manifest entry — adding a tool is now: add the
+ * manifest entry (already required) + add ONE handler row here. The
+ * `Record<RegisteredToolName, ToolHandler>` type makes the compiler reject any
+ * row whose key is not a manifest tool, and {@link assertHandlerManifestParity}
+ * fails loudly at registration if a manifest entry has no handler (or vice
+ * versa). The manifest stays the single source of truth; this derives from it.
+ *
+ * Tools that must share a wired instance (create/execute_expert; run/
+ * list_workflows) resolve it from {@link SharedResources} so the shared object
+ * is identical across the group — behaviour-identical to the former grouped
+ * helper functions. `orchestrate` keeps its graceful-degrade wrapper.
+ */
+const HANDLER_TABLE: Record<RegisteredToolName, ToolHandler> = {
+  // Core routing/orchestration
+  orchestrate: (ctx) => {
+    registerOrchestrateToolSafe(ctx);
+  },
+  delegate_to_model: (ctx) => {
+    registerDelegate(ctx);
+  },
+  // Expert lifecycle (shared registry)
+  create_expert: registerCreateExpert,
+  execute_expert: registerExecuteExpert,
+  list_experts: standardHandler('list_experts', registerListExpertsTool),
+  // Workflow (shared engine)
+  run_workflow: registerRunWorkflow,
+  list_workflows: registerListWorkflows,
+  // Research
+  research_query: standardHandler('research_query', registerResearchQueryTool),
+  research_add: standardHandler('research_add', registerResearchAddTool),
+  research_add_source: standardHandler('research_add_source', registerResearchAddSourceTool),
+  research_discover: standardHandler('research_discover', registerResearchDiscoverTool),
+  research_analyze: standardHandler('research_analyze', registerResearchAnalyzeTool),
+  research_catalog_review: standardHandler(
+    'research_catalog_review',
+    registerResearchCatalogReviewTool
+  ),
+  research_synthesize: standardHandler('research_synthesize', registerResearchSynthesizeTool),
+  survey_oss_landscape: standardHandler('survey_oss_landscape', registerSurveyOssLandscapeTool),
+  vendor_publishing_audit: standardHandler(
+    'vendor_publishing_audit',
+    registerVendorPublishingAuditTool
+  ),
+  compare_data_feeds: standardHandler('compare_data_feeds', registerCompareDataFeedsTool),
+  // Memory observability
+  memory_query: standardHandler('memory_query', registerMemoryQueryTool),
+  memory_stats: standardHandler('memory_stats', registerMemoryStatsTool),
+  memory_write: standardHandler('memory_write', registerMemoryWriteTool),
+  // Standalone tools
+  consensus_vote: standardHandler('consensus_vote', registerConsensusVoteTool),
+  weather_report: standardHandler('weather_report', registerWeatherReportTool),
+  improvement_review: standardHandler('improvement_review', registerImprovementReviewTool),
+  registry_import: standardHandler('registry_import', registerRegistryImportTool),
+  repo_analyze: standardHandler('repo_analyze', registerRepoAnalyzeTool),
+  repo_security_plan: standardHandler('repo_security_plan', registerRepoSecurityPlanTool),
+  issue_triage: standardHandler('issue_triage', registerIssueTriageTool),
+  run_graph_workflow: standardHandler('run_graph_workflow', registerRunGraphWorkflowTool),
+  execute_spec: standardHandler('execute_spec', registerExecuteSpecTool),
+  query_trace: standardHandler('query_trace', registerQueryTraceTool),
+  query_task_state: standardHandler('query_task_state', registerQueryTaskStateTool),
+  get_job_result: standardHandler('get_job_result', registerGetJobResultTool),
+  list_jobs: standardHandler('list_jobs', registerListJobsTool),
+  cancel_job: standardHandler('cancel_job', registerCancelJobTool),
+  ci_health_check: standardHandler('ci_health_check', registerCiHealthCheckTool),
+  run_quality_gate: standardHandler('run_quality_gate', registerRunQualityGateTool),
+  suggest_research_tasks: standardHandler(
+    'suggest_research_tasks',
+    registerSuggestResearchTasksTool
+  ),
+  list_available_models: standardHandler('list_available_models', registerListAvailableModelsTool),
+  run: standardHandler('run', registerRunTool),
+  verify_audit_chain: standardHandler('verify_audit_chain', registerVerifyAuditChainTool),
+  extract_symbols: standardHandler('extract_symbols', registerExtractSymbolsTool),
+  search_codebase: standardHandler('search_codebase', registerSearchCodebaseTool),
+  run_dev_pipeline: standardHandler('run_dev_pipeline', registerDevPipelineTool),
+  run_pipeline: standardHandler('run_pipeline', registerPipelineTool),
+  pr_review: standardHandler('pr_review', registerPrReviewTool),
+  supply_chain_tradeoff_panel: standardHandler(
+    'supply_chain_tradeoff_panel',
+    registerSupplyChainTradeoffPanelTool
+  ),
+};
+
+/**
+ * Fails LOUDLY if the handler table and the manifest disagree (#3266 negative
+ * guard). The `Record<RegisteredToolName, …>` type already rejects an orphan
+ * handler at compile time, and a missing handler makes the literal
+ * non-assignable — so this runtime check is the belt to the compiler's
+ * suspenders, and the thing the parity test exercises directly. Exported for
+ * the parity/negative tests.
+ */
+export function assertHandlerManifestParity(): void {
+  const manifestNames = new Set<string>(REGISTERED_TOOL_NAMES);
+  const handlerNames = new Set<string>(Object.keys(HANDLER_TABLE));
+  const missing = [...manifestNames].filter((n) => !handlerNames.has(n)).sort();
+  const orphan = [...handlerNames].filter((n) => !manifestNames.has(n)).sort();
+  if (missing.length > 0 || orphan.length > 0) {
+    const missingLabel = missing.length === 1 ? 'entry' : 'entries';
+    const orphanLabel = orphan.length === 1 ? 'handler' : 'handlers';
+    throw new NexusError(
+      `MCP tool handler table out of sync with TOOL_MANIFEST (#3266): ` +
+        `${String(missing.length)} manifest ${missingLabel} with no handler ` +
+        `[${missing.join(', ')}]; ` +
+        `${String(orphan.length)} ${orphanLabel} with no manifest entry ` +
+        `[${orphan.join(', ')}]`,
+      { code: ErrorCode.INVALID_INPUT }
+    );
+  }
+}
+
+/** The tool names this registry resolves — exported for the parity test (#3266). */
+export const HANDLER_TABLE_TOOL_NAMES: readonly string[] = Object.keys(HANDLER_TABLE);
+
+/**
+ * Drives registration off the manifest (#3266): for each tool in
+ * `TOOL_MANIFEST` order, resolve its handler and run it unless blocked by the
+ * allowlist. Order matches the manifest, which matches `server.json`.
+ */
 function registerToolCategories(ctx: ToolRegistrationContext): void {
+  assertHandlerManifestParity();
   const allowlist = ctx.toolAllowlist;
-  const allowed = (name: string): boolean => isToolAllowed(name, allowlist);
-
-  if (anyToolAllowed(['delegate_to_model', 'orchestrate'], allowed)) registerCoreTools(ctx);
-  if (anyToolAllowed(['create_expert', 'execute_expert'], allowed)) registerExpertTools(ctx);
-  if (anyToolAllowed(['run_workflow', 'list_workflows'], allowed)) registerWorkflowTools(ctx);
-  if (isCategoryAllowed('research_', allowed)) registerResearchTools(ctx);
-  if (isCategoryAllowed('memory_', allowed)) registerMemoryTools(ctx);
-  for (const tool of STANDALONE_TOOLS) {
-    if (allowed(tool.name)) tool.register(ctx.server, buildStandardDeps(ctx, tool.name) as never);
+  const shared = createSharedResources(ctx);
+  for (const name of REGISTERED_TOOL_NAMES) {
+    if (!isToolAllowed(name, allowlist)) continue;
+    HANDLER_TABLE[name](ctx, shared);
   }
 }
 
