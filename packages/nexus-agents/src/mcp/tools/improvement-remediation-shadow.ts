@@ -372,11 +372,45 @@ export function summarizeRemediationSoak(
   };
 }
 
-/** Read + summarize the durable soak evidence from disk (convenience for #3764). */
+/**
+ * Conservative sanity check on a soak record's `signalKey` (#3932). Real keys
+ * are emitted by `improvement_review` and always carry the `category:detail`
+ * shape (e.g. `routing:cli-floor:codex:docs`, `bug:failure-concentration:auth`,
+ * `tech-debt:fitness-below-floor`): at least one `:` with a non-empty segment on
+ * each side. Synthetic test fixtures that leaked into the durable file used bare
+ * single tokens (`a`, `b`, `x`) with no colon. Rejecting those keeps obviously-
+ * junk records from inflating the readiness `volume` criterion.
+ *
+ * Intentionally permissive: it requires only the colon-delimited shape, NOT a
+ * known category enum — a legitimate future category must never be dropped. Any
+ * real key passes; only structureless tokens fail.
+ */
+export function isPlausibleSoakSignalKey(signalKey: string): boolean {
+  const colon = signalKey.indexOf(':');
+  if (colon <= 0) return false; // no colon, or empty category before it
+  return colon < signalKey.length - 1; // a non-empty detail follows the colon
+}
+
+/**
+ * Drop obviously-synthetic soak records before they reach the readiness gate
+ * (#3932 defense-in-depth). Conservative: only records whose `signalKey` lacks
+ * the real `category:detail` shape are discarded — see {@link isPlausibleSoakSignalKey}.
+ */
+export function filterPlausibleSoakRecords(
+  records: readonly RemediationSoakRecord[]
+): readonly RemediationSoakRecord[] {
+  return records.filter((r) => isPlausibleSoakSignalKey(r.signalKey));
+}
+
+/**
+ * Read + summarize the durable soak evidence from disk (convenience for #3764).
+ * Filters out structurally-implausible records first (#3932) so junk fixtures
+ * that may have leaked into the file can't inflate the readiness volume count.
+ */
 export function readRemediationSoakSummary(
   sink: IRecordingRemediationSoakSink = getRemediationSoakSink()
 ): RemediationSoakSummary {
-  return summarizeRemediationSoak(sink.getRecords());
+  return summarizeRemediationSoak(filterPlausibleSoakRecords(sink.getRecords()));
 }
 
 // ============================================================================

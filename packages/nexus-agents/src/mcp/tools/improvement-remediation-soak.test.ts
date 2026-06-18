@@ -13,6 +13,8 @@ import {
   scrubSoakRecord,
   summarizeRemediationSoak,
   readRemediationSoakSummary,
+  isPlausibleSoakSignalKey,
+  filterPlausibleSoakRecords,
   SOAK_MAX_RECORDS,
   type RemediationSoakRecord,
 } from './improvement-remediation-shadow.js';
@@ -164,5 +166,49 @@ describe('summarizeRemediationSoak', () => {
     const s = readRemediationSoakSummary(sink);
     expect(s.total).toBe(2);
     expect(s.approvalRate).toBeCloseTo(0.5, 5);
+  });
+});
+
+// #3932 defense-in-depth: the readiness gate's volume criterion reads soak.total,
+// so structureless test fixtures that leak into the durable file must not count.
+describe('synthetic-record sanity filter (#3932)', () => {
+  it('accepts real category:detail signalKeys', () => {
+    for (const key of [
+      'routing:cli-floor:codex:docs',
+      'bug:failure-concentration:auth',
+      'tech-debt:fitness-below-floor',
+      'consensus:rejection-pattern:scope',
+    ]) {
+      expect(isPlausibleSoakSignalKey(key)).toBe(true);
+    }
+  });
+
+  it('rejects structureless synthetic keys (no category:detail shape)', () => {
+    for (const key of ['a', 'b', 'x', '', ':', ':trailing', 'leading:']) {
+      expect(isPlausibleSoakSignalKey(key)).toBe(false);
+    }
+  });
+
+  it('filterPlausibleSoakRecords drops only the junk records', () => {
+    const records = [
+      rec({ signalKey: 'routing:cli-floor:codex:docs' }),
+      rec({ signalKey: 'a' }),
+      rec({ signalKey: 'b' }),
+      rec({ signalKey: 'tech-debt:fitness-below-floor' }),
+    ];
+    const kept = filterPlausibleSoakRecords(records);
+    expect(kept.map((r) => r.signalKey)).toEqual([
+      'routing:cli-floor:codex:docs',
+      'tech-debt:fitness-below-floor',
+    ]);
+  });
+
+  it('readRemediationSoakSummary excludes synthetic records from the volume count', () => {
+    const sink = createRemediationSoakSink(filePath);
+    sink.record(rec({ signalKey: 'routing:cli-floor:codex:docs' }));
+    sink.record(rec({ signalKey: 'a' })); // synthetic — must not inflate volume
+    sink.record(rec({ signalKey: 'b' })); // synthetic — must not inflate volume
+    const s = readRemediationSoakSummary(sink);
+    expect(s.total).toBe(1);
   });
 });

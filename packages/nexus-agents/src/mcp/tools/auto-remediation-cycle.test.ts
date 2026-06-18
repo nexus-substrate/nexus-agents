@@ -3,15 +3,41 @@
  * Off-by-default short-circuit; audit drives the full path on injected signals/deps.
  */
 
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdtempSync, rmSync, existsSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { runAutoRemediationCycle } from './auto-remediation-cycle.js';
 import { buildAutoRemediationDeps } from './auto-remediation-deps.js';
-import { createRemediationSoakSink } from './improvement-remediation-shadow.js';
+import {
+  createRemediationSoakSink,
+  getRemediationSoakFile,
+  _resetRemediationSoakSinkForTests,
+} from './improvement-remediation-shadow.js';
 import type { ImprovementSignal } from './improvement-review.js';
+
+// The cycle's DEFAULT durable soak sink resolves under NEXUS_DATA_DIR (#3932).
+// Pin it to a throwaway temp dir for the whole suite so audit-mode cycles that
+// do NOT inject a soakSink (the cases below that omit it) accumulate synthetic
+// signal evidence in isolation — never in the operator's real
+// ~/.nexus-agents/learning/remediation-soak.jsonl, which the readiness gate reads.
+let dataDir: string;
+let prevDataDir: string | undefined;
+
+beforeEach(() => {
+  dataDir = mkdtempSync(join(tmpdir(), 'cycle-datadir-'));
+  prevDataDir = process.env['NEXUS_DATA_DIR'];
+  process.env['NEXUS_DATA_DIR'] = dataDir;
+  _resetRemediationSoakSinkForTests(); // drop any cached singleton so the temp dir wins
+});
+
+afterEach(() => {
+  if (prevDataDir === undefined) delete process.env['NEXUS_DATA_DIR'];
+  else process.env['NEXUS_DATA_DIR'] = prevDataDir;
+  _resetRemediationSoakSinkForTests();
+  rmSync(dataDir, { recursive: true, force: true });
+});
 
 function signal(over: Partial<ImprovementSignal> = {}): ImprovementSignal {
   return {
@@ -31,6 +57,36 @@ describe('runAutoRemediationCycle', () => {
     const r = await runAutoRemediationCycle({ mode: 'off' }, { collectSignals });
     expect(r.mode).toBe('off');
     expect(collectSignals).not.toHaveBeenCalled();
+  });
+
+  // #3932 regression guard: the durable soak file MUST honor NEXUS_DATA_DIR so a
+  // test can never silently write synthetic records into the operator's real
+  // ~/.nexus-agents/learning/remediation-soak.jsonl (the readiness gate's input).
+  describe('soak path isolation (#3932 regression guard)', () => {
+    it('getRemediationSoakFile resolves under NEXUS_DATA_DIR, not the home dir', () => {
+      const file = getRemediationSoakFile();
+      expect(file.startsWith(dataDir)).toBe(true);
+      expect(file).toContain(join('learning', 'remediation-soak.jsonl'));
+      expect(file.startsWith(join(homedir(), '.nexus-agents'))).toBe(false);
+    });
+
+    it('an audit cycle with NO injected soakSink writes only under the temp data dir', async () => {
+      const homeSoak = join(homedir(), '.nexus-agents', 'learning', 'remediation-soak.jsonl');
+      const homeExistedBefore = existsSync(homeSoak);
+      const deps = buildAutoRemediationDeps({
+        voteRunner: async () => Promise.resolve({ approved: true, approvalPercentage: 100 }),
+      });
+
+      await runAutoRemediationCycle(
+        { mode: 'audit' },
+        { collectSignals: async () => Promise.resolve([signal({ signalKey: 'a' })]), deps }
+      );
+
+      // The default sink resolved under the temp data dir and wrote there.
+      expect(existsSync(getRemediationSoakFile())).toBe(true);
+      // The real home-dir file's existence is unchanged by this test.
+      expect(existsSync(homeSoak)).toBe(homeExistedBefore);
+    });
   });
 
   it('audit mode collects signals and runs the path (zero writes)', async () => {
