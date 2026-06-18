@@ -12,6 +12,7 @@
 
 import { z } from 'zod';
 import type { ILogger } from '../core/index.js';
+import { levenshtein } from '../string-distance.js';
 
 // ============================================================================
 // Helper Zod types for string-encoded values
@@ -147,31 +148,6 @@ const KNOWN_NAMES: readonly string[] = Object.keys(NexusEnvSchema.shape);
 // ============================================================================
 // Levenshtein distance
 // ============================================================================
-
-/** Safe array accessor — indices are always in-bounds by construction. */
-function at(arr: number[], i: number): number {
-  return arr[i] ?? 0;
-}
-
-/** Standard Levenshtein edit distance between two strings. */
-function levenshtein(a: string, b: string): number {
-  const m = a.length;
-  const n = b.length;
-
-  let prev = Array.from({ length: n + 1 }, (_, j) => j);
-  let curr = new Array<number>(n + 1).fill(0);
-
-  for (let i = 1; i <= m; i++) {
-    curr[0] = i;
-    for (let j = 1; j <= n; j++) {
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      curr[j] = Math.min(at(prev, j) + 1, at(curr, j - 1) + 1, at(prev, j - 1) + cost);
-    }
-    [prev, curr] = [curr, prev];
-  }
-
-  return at(prev, n);
-}
 
 /** Returns the closest known var name if edit distance <= 3, or null. */
 function suggestSimilar(name: string, known: readonly string[]): string | null {
