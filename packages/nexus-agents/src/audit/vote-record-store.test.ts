@@ -13,13 +13,25 @@ import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { findRepoRoot } from '../config/repo-root-detection.js';
 
 import type { ConsensusResult, Vote } from '../consensus/types.js';
 import type { AgentVoteResult, VoterRole } from '../cli/vote-types.js';
 
+vi.mock('../config/repo-root-detection.js', () => ({
+  findRepoRoot: vi.fn(() => null),
+}));
+
 import { verifyVoteRecordSet } from './vote-record.js';
-import { buildVoteRecord, persistVoteRecord, readVoteRecords } from './vote-record-store.js';
+import {
+  VOTE_RECORDS_PATH_ENV,
+  buildVoteRecord,
+  persistVoteRecord,
+  readVoteRecords,
+  resolveVoteRecordsPath,
+} from './vote-record-store.js';
 
 function vote(decision: Vote['decision'], confidence: number): Vote {
   return { decision, confidence, reasoning: 'because' };
@@ -229,5 +241,82 @@ describe('persistVoteRecord', () => {
       filePath,
     });
     expect(written).toBeDefined();
+  });
+});
+
+describe('vote-record path resolution / persistence escape hatch (#3927)', () => {
+  let dir: string;
+  let envFilePath: string;
+  let optsFilePath: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'vote-records-env-'));
+    envFilePath = join(dir, 'env', 'vote-records.jsonl');
+    optsFilePath = join(dir, 'opts', 'vote-records.jsonl');
+    // findRepoRoot is mocked to null by default → no cwd-based resolution.
+    vi.mocked(findRepoRoot).mockReturnValue(null);
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs(); // restore any process.env mutations made via vi.stubEnv
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('honors the env-var override path when no opts.filePath is given', () => {
+    vi.stubEnv(VOTE_RECORDS_PATH_ENV, envFilePath);
+    expect(resolveVoteRecordsPath()).toBe(envFilePath);
+
+    const written = persistVoteRecord({
+      id: 'vote-env',
+      proposal: 'p',
+      strategy: 'higher_order',
+      result: consensusResult(),
+      votes,
+    });
+    expect(written).toBeDefined();
+
+    const { records, invalidLines } = readVoteRecords(envFilePath);
+    expect(invalidLines).toEqual([]);
+    expect(records).toHaveLength(1);
+    expect(records[0]).toEqual(written);
+  });
+
+  it('treats an empty/whitespace env var as unset (falls back to root detection)', () => {
+    vi.stubEnv(VOTE_RECORDS_PATH_ENV, '   ');
+    expect(resolveVoteRecordsPath()).toBeUndefined();
+  });
+
+  it('lets opts.filePath take precedence over the env var', () => {
+    vi.stubEnv(VOTE_RECORDS_PATH_ENV, envFilePath);
+
+    const written = persistVoteRecord({
+      id: 'vote-opts',
+      proposal: 'p',
+      strategy: 'higher_order',
+      result: consensusResult(),
+      votes,
+      filePath: optsFilePath,
+    });
+    expect(written).toBeDefined();
+
+    // Written to opts path, not the env path.
+    expect(readVoteRecords(optsFilePath).records).toHaveLength(1);
+    expect(readVoteRecords(envFilePath).records).toHaveLength(0);
+  });
+
+  it('returns undefined and does not throw when no root resolves and no override is set', () => {
+    vi.stubEnv(VOTE_RECORDS_PATH_ENV, undefined); // ensure no override
+    expect(resolveVoteRecordsPath()).toBeUndefined();
+
+    let written: ReturnType<typeof persistVoteRecord>;
+    expect(() => {
+      written = persistVoteRecord({
+        id: 'vote-none',
+        proposal: 'p',
+        strategy: 'higher_order',
+        result: consensusResult(),
+        votes,
+      });
+    }).not.toThrow();
+    expect(written!).toBeUndefined();
   });
 });

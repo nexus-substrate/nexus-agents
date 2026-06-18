@@ -39,6 +39,14 @@ import { VoteRecordSchema, computeVoteRecordHash, hashProposal } from './vote-re
 /** Repo-relative committable artifact path (read by the gate/CI). */
 export const VOTE_RECORDS_REL_PATH = 'governance/vote-records.jsonl';
 
+/**
+ * Env var to force the artifact path (#3927). When set non-empty it is used
+ * directly (treated as an absolute path) and the cwd/{@link findRepoRoot}
+ * detection is skipped — the escape hatch for running the MCP server outside the
+ * repo (e.g. co-located/CI contexts) so server-side persistence is reliable.
+ */
+export const VOTE_RECORDS_PATH_ENV = 'NEXUS_VOTE_RECORDS_PATH';
+
 /** Max proposal chars retained in the human record (full text is hashed). */
 const MAX_PROPOSAL_RECORD_CHARS = 500;
 
@@ -143,8 +151,18 @@ function readLedgerTip(
   }
 }
 
-/** Resolve the committable artifact path under the current repo root, if any. */
+/**
+ * Resolve the committable artifact path (#3927). Precedence:
+ *  1. {@link VOTE_RECORDS_PATH_ENV} (`NEXUS_VOTE_RECORDS_PATH`) when set
+ *     non-empty — used directly as an absolute path, skipping cwd detection.
+ *  2. otherwise `<repo-root>/governance/vote-records.jsonl` resolved from
+ *     {@link findRepoRoot}(`process.cwd()`).
+ * Returns `undefined` when neither yields a path (server running outside the
+ * repo with no override) — the caller surfaces this as an observable WARN.
+ */
 export function resolveVoteRecordsPath(): string | undefined {
+  const envPath = process.env[VOTE_RECORDS_PATH_ENV];
+  if (envPath !== undefined && envPath.trim() !== '') return envPath;
   const root = findRepoRoot(process.cwd());
   if (root === null) return undefined;
   return join(root, VOTE_RECORDS_REL_PATH);
@@ -153,7 +171,10 @@ export function resolveVoteRecordsPath(): string | undefined {
 /** Options for {@link persistVoteRecord}. `sequence`/`previousHash` are assigned by the store. */
 export interface PersistVoteRecordOptions
   extends Omit<BuildVoteRecordInput, 'previousHash' | 'sequence'> {
-  /** Override the artifact path (tests); defaults to the repo-root resolution. */
+  /**
+   * Override the artifact path; takes precedence over {@link VOTE_RECORDS_PATH_ENV}
+   * and the repo-root resolution (see {@link resolveVoteRecordsPath}).
+   */
   readonly filePath?: string | undefined;
   readonly logger?: ILogger | undefined;
 }
@@ -166,12 +187,29 @@ export interface PersistVoteRecordOptions
  * when no committable location exists / the write failed) — persistence never
  * throws into the vote path (an audit sink must not break the operation it
  * observes).
+ *
+ * AUTHORITATIVE POPULATION PATH (#3927, design vote 7-0): caller-commits. The
+ * proposer commits the RETURNED record bytes into
+ * `governance/vote-records.jsonl` in the promotion PR; that is what the gate
+ * reads. This server-side auto-write is only a best-effort convenience and
+ * no-ops when the server runs outside the repo and no override is set — hence
+ * the WARN below and the {@link VOTE_RECORDS_PATH_ENV} escape hatch.
+ *
+ * Path precedence: `opts.filePath` > {@link VOTE_RECORDS_PATH_ENV} >
+ * {@link findRepoRoot}(`process.cwd()`).
  */
 export function persistVoteRecord(opts: PersistVoteRecordOptions): VoteRecord | undefined {
   const logger = opts.logger ?? createLogger({ component: 'vote-record-store' });
   const filePath = opts.filePath ?? resolveVoteRecordsPath();
   if (filePath === undefined) {
-    logger.debug('No committable repo root; skipping authentic vote record persist');
+    logger.warn(
+      'Authentic vote record NOT persisted: no repo root found from process.cwd() ' +
+        'and no override set. Per #3927 the authoritative population path is ' +
+        'caller-commits — commit the returned record bytes into ' +
+        `${VOTE_RECORDS_REL_PATH} in the promotion PR. To force a server-side ` +
+        `write, set ${VOTE_RECORDS_PATH_ENV} to an absolute file path.`,
+      { id: opts.id }
+    );
     return undefined;
   }
   try {
