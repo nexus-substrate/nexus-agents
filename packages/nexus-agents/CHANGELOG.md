@@ -1,5 +1,180 @@
 # nexus-agents
 
+## 2.134.0
+
+### Minor Changes
+
+- [#3970](https://github.com/nexus-substrate/nexus-agents/pull/3970) [`64420bc`](https://github.com/nexus-substrate/nexus-agents/commit/64420bc4f3a14c4772e31ccaf2ed43c2017645b6) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(capability-loop): code-PR scoped-token push + PR-open ([#3670](https://github.com/nexus-substrate/nexus-agents/issues/3670) Stage 3, OFF)
+
+  Add `codepr-push.ts` — the ONLY module in the code-PR capability loop that can
+  take an external action (a `git push` to a NEW `nexus-codepr/<runId>` feature
+  branch + a PR open). It ships OFF-by-default and is DOUBLE-GATED: a push is
+  impossible unless BOTH (a) `evaluateCodePrEnableReadiness` returns `ready` against
+  the explicit flag/enable-vote/owner evidence AND the durable guards-green soak
+  read from `readCodePrGuardsGreenSoak`, AND (b) an explicit scoped token is present
+  in `NEXUS_CODEPR_TOKEN`. Either block alone refuses the push.
+
+  `executeCodePrPush` runs a strict fail-closed sequence: readiness gate FIRST
+  (not-ready → `not_enabled`, no worktree/push), credentials required
+  (`no_credentials` when the token is absent/empty), build + validate the plan via
+  the dry-run `planCodePrRun`, then re-realize the diff in a fresh worktree and
+  RE-RUN `evaluateWriteGuards` immediately before push (defense-in-depth), push via
+  injectable seams to a `nexus-codepr/<runId>` branch (NEVER main, NEVER merge,
+  NEVER alter protections), and audit (hash-chained) BOTH before (intent: branch,
+  diff hash, token identity) and after (PR url/number). Any throw is wrapped into a
+  fail-closed denial; the push worktree is always discarded.
+
+  There is NO merge / auto-merge surface anywhere in the module (asserted
+  structurally in tests). NOT wired to any live runtime trigger / auto-remediation
+  enforce path — activation still requires the enable-vote + a real soak ≥ min +
+  owner-ack via the readiness gate (none triggered here). No MCP tool / CLI command
+  added.
+
+- [#3968](https://github.com/nexus-substrate/nexus-agents/pull/3968) [`25112b7`](https://github.com/nexus-substrate/nexus-agents/commit/25112b763b4ea291afdb6e70a76292005abe9b8e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(capability-loop): dry-run code-PR soak consumer in audit mode ([#3670](https://github.com/nexus-substrate/nexus-agents/issues/3670) Stage 2.5)
+
+  Wire the dry-run code-PR orchestrator (`planCodePrRun`) as a SOAK consumer of the
+  Stage-1 guards, driven from auto-remediation's AUDIT mode. When a code-touching
+  remediation plan is produced in audit mode, the cycle now runs `planCodePrRun` in
+  dry-run over a derived change set and records one durable guards-green-soak data
+  point (green on a clean plan, denied on a guard denial/error). The recorded count
+  is read back as the `consecutiveGreenDryRuns` evidence
+  `evaluateCodePrEnableReadiness` consumes — so audit mode accumulates the
+  guards-green-soak the enable double-gate requires.
+
+  Dry-run only: NO push, NO PR-open, NO live write (the orchestrator already
+  discards its throwaway worktree atomically). Best-effort: a soak-step failure is
+  swallowed (WARN) and never breaks the remediation cycle. Runs ONLY in audit mode;
+  off/enforce behavior is unchanged.
+
+- [#3975](https://github.com/nexus-substrate/nexus-agents/pull/3975) [`c5d4a7c`](https://github.com/nexus-substrate/nexus-agents/commit/c5d4a7c9399ba1ec97c2a7d4780b17f3f8cc2fd6) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - refactor(tool-fitness): declarative break-glass + orthogonality metadata, replacing name-string heuristics ([#3930](https://github.com/nexus-substrate/nexus-agents/issues/3930))
+
+  Replace the two NAME-STRING heuristics in the tool-fitness consumer with
+  DECLARATIVE TOOL METADATA, ratified per [#3929](https://github.com/nexus-substrate/nexus-agents/issues/3929).
+
+  - **Break-glass exemption** no longer relies on substring-matching
+    `DEFAULT_NEVER_DEPRECATE_PATTERNS` (rollback/recover/emergency/…) against a
+    tool NAME. Tools now DECLARE `neverDeprecate: true` in `TOOL_MANIFEST` based on
+    PURPOSE; the consumer consults the declaration first and keeps the name
+    patterns only as a documented fallback for undeclared tools.
+  - **Consolidation orthogonality** no longer infers substitutability from a
+    tool-name verb-suffix proxy. Tools now DECLARE an `orthogonalityGroup`; two
+    prefix-siblings with different declared groups are authoritatively orthogonal.
+    The verb-group proxy remains as the fallback for undeclared tools (the old
+    `TODO([#3902](https://github.com/nexus-substrate/nexus-agents/issues/3902))` is superseded). Conservative fail-safe preserved: undeclared
+    still surfaces-as-LOW, never a false-high.
+
+  Metadata lives on the canonical `TOOL_MANIFEST` entries (new optional
+  `ToolFitnessMetadata` fields) with derived accessors; all fields are
+  optional/additive so the MCP tool-count + parity guards are unaffected
+  (46 tools, unchanged).
+
+- [#3976](https://github.com/nexus-substrate/nexus-agents/pull/3976) [`24e4eac`](https://github.com/nexus-substrate/nexus-agents/commit/24e4eac76e336a2df3a083fa104d4fb98a7bbdda) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(observability): deterministic perf-regression improvement signal ([#3692](https://github.com/nexus-substrate/nexus-agents/issues/3692), [#3246](https://github.com/nexus-substrate/nexus-agents/issues/3246))
+
+  Extend the existing `improvement_review` `SignalCategory` enum with a new
+  `perf-regression` value (no new parallel feedback pathway). A new deterministic
+  detector maps a benchmark measurement (p95 latency / throughput) against a
+  STATIC, pinned baseline + a fixed tolerance (default 0.2 = 20% worse than
+  baseline) to an optional `perf-regression` `ImprovementSignal`. The baseline is
+  configured/injected, never auto-derived from a rolling window — keeping this out
+  of the deferred [#3230](https://github.com/nexus-substrate/nexus-agents/issues/3230) adaptive-control scope. A missing baseline emits nothing
+  (conservative). The signal is SURFACED-ONLY: it is appended to the review's
+  signal list exactly like the existing tech-debt / tool-fitness signals and never
+  auto-applies a fitness/governance penalty or mutates any score/state.
+
+### Patch Changes
+
+- [#3971](https://github.com/nexus-substrate/nexus-agents/pull/3971) [`1f3f264`](https://github.com/nexus-substrate/nexus-agents/commit/1f3f264e194b5c934044ee15d9ff276298ccb1c6) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - test(capability-loop): codify the "armed ≠ active" safety invariant as a permanent
+  regression fence ([#3670](https://github.com/nexus-substrate/nexus-agents/issues/3670), [#3769](https://github.com/nexus-substrate/nexus-agents/issues/3769)). Adds focused tests asserting that owner approval
+  satisfies only the human-authorization gate and can NOT bypass the conjunctive,
+  evidence-based gates: code-PR enable-readiness still blocks on the un-earned
+  guards-green soak / OFF→on flag, `executeCodePrPush` refuses (no external action)
+  while armed-but-not-ready (`not_enabled` / `no_credentials`), and enforce-readiness
+  ([#3769](https://github.com/nexus-substrate/nexus-agents/issues/3769)) depends only on evidence — owner approval is not even an input. Also
+  documents the code-PR adapter activation requirements in the configuration guide.
+  Tests + docs only; no gate logic, threshold, guard, or default changed.
+
+- [#3974](https://github.com/nexus-substrate/nexus-agents/pull/3974) [`bebab6d`](https://github.com/nexus-substrate/nexus-agents/commit/bebab6dc6feff6b92d590926a5c6fea02d0c534d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - docs(task-analysis): cross-reference the 5 intentionally-separate task classifiers ([#3299](https://github.com/nexus-substrate/nexus-agents/issues/3299))
+
+  Add standardized module doc-comment cross-references to the 5 task
+  classifiers (shared-task-analyzer, task-type-classifier,
+  cli-adapters/task-classifier, coordination/task-features, and
+  pipeline/adaptive-orchestrator's `classifyTask`). [#3299](https://github.com/nexus-substrate/nexus-agents/issues/3299) resolved to "by
+  design, not duplication": the classifiers have incompatible output enums and
+  drive distinct routing decisions, so their superficial keyword overlap does
+  not warrant consolidation. The cross-references durably document this so
+  future consolidation audits don't re-flag it. Doc-comments only — no logic,
+  type, or behavior change.
+
+- [#3973](https://github.com/nexus-substrate/nexus-agents/pull/3973) [`099b198`](https://github.com/nexus-substrate/nexus-agents/commit/099b1987083e83ed421b754af7f7c973fc5117c2) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - refactor(cli): single-source command descriptions from COMMAND_CATALOG ([#3209](https://github.com/nexus-substrate/nexus-agents/issues/3209))
+
+  The one-line description of each top-level command was copied across three
+  files and had DRIFTED: `vote` read "Run consensus vote on a proposal (5-6
+  agents)" in `cli-command-catalog.ts`, "Run consensus vote on a proposal (6
+  agents)" in the hardcoded `HELP_TEXT` command list, and "Run multi-agent
+  consensus vote on a proposal (6 agents by default)." in `COMMAND_HELP` — all
+  three wrong (the panel is 7 roles by default, 3 with `--quick`, per
+  `getVoterRoles` in `mcp/tools/consensus-vote.ts`).
+
+  `COMMAND_CATALOG` is now the single source of each command's one-line
+  description:
+
+  - The hardcoded COMMANDS list was removed from `HELP_TEXT`; `renderHelp` now
+    fills a single placeholder in the static frame with
+    `renderCommandsSection(showAll)` for BOTH the default (`--help`) and full
+    (`--help --all`) views — previously only the default view derived from the
+    catalog while `--all` returned the drifted hardcoded list.
+  - `CommandHelpEntry.description` was dropped; `formatCommandHelp` /
+    `formatAllCommandsHelp` look the one-liner up from the catalog via the new
+    `getCommandDescription`. The richer per-command help (flags, examples,
+    API-key requirements) stays in `COMMAND_HELP`.
+  - A drift gate in `cli-command-catalog.test.ts` asserts the rendered `--help`
+    command list and every `COMMAND_HELP` command agree with the catalog, and
+    that `vote` reflects the real 7-agent default.
+
+  The catalog `vote` description was corrected to "Run consensus vote on a
+  proposal (7 agents; --quick uses 3)". Per the 7-0 vote in [#3212](https://github.com/nexus-substrate/nexus-agents/issues/3212), no unified
+  registry / dispatch refactor was done — this only consolidates the
+  description into the existing catalog. `--help` output is unchanged except the
+  corrected vote count and `--all` now using the same catalog-grouped layout as
+  the default view.
+
+- [#3972](https://github.com/nexus-substrate/nexus-agents/pull/3972) [`5542113`](https://github.com/nexus-substrate/nexus-agents/commit/5542113c579a0892329f2eee3272fb2df79c9f45) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - test(scripts): make `inject-governance.test.ts` parallel-safe + CI-collected ([#3954](https://github.com/nexus-substrate/nexus-agents/issues/3954))
+
+  The governance-injection test was excluded from the root `vitest.config.ts`: it
+  spawned ~30 `npx tsx scripts/inject-governance.ts` subprocesses (~400s) and
+  mutated shared real repo files (`server.json`, `AGENTS.md`, `CLAUDE.md`, …) in
+  place, making it unsafe under the forks pool alongside the other script tests.
+
+  It now runs entirely in-process against an isolated per-worker temp sandbox:
+
+  - `script-paths.ts` `ROOT` honors a backward-compatible `NEXUS_SCRIPT_ROOT`
+    override (unset = identical production behavior). This redirects the script's
+    whole path graph — including every helper drift-gate that derives from the same
+    `ROOT` — at a sandbox seeded with a copy of the files the check/inject logic
+    touches. No tracked file is ever mutated.
+  - `inject-governance.ts` now exports `checkGovernance` / `injectGovernance` and
+    guards its CLI entrypoint behind an `import.meta.url === argv[1]` check, so the
+    test imports and calls the core directly instead of shelling out.
+
+  Runtime dropped from ~400s to ~17s; the file now passes under the real config
+  alongside the rest of the `scripts/**` suite, so the exclusion is removed.
+
+- [#3977](https://github.com/nexus-substrate/nexus-agents/pull/3977) [`be4975e`](https://github.com/nexus-substrate/nexus-agents/commit/be4975e37048a0b92c8add073fbd47e742b5e838) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(cli): proactive first-run setup hint across all commands ([#3208](https://github.com/nexus-substrate/nexus-agents/issues/3208))
+
+  The first-run setup hint previously fired only during `server` mode, so CLI
+  tooling users who run verification/inspection commands never saw it. It now
+  fires from the CLI dispatch seam on the first invocation of ANY command except
+  `version`/`help` (and their `-v`/`-h`/`--version`/`--help` flag forms, which
+  resolve to those commands) and `setup` itself.
+
+  The hint is marker-gated (`~/.nexus-agents/.first-run-done`, resolved via the
+  existing `nexusSharedPath` per-user data-dir helper), best-effort on write
+  (read-only FS / perms failures still show the hint once and never crash or
+  block), stderr-only (never pollutes piped/scripted stdout or JSON), and
+  TTY-gated so a first run in CI/pipes emits nothing and does not consume the
+  marker — the operator's first interactive run still gets the hint. Exit codes,
+  ordering, and stdout are unchanged; the hint is purely additive.
+
 ## 2.133.0
 
 ### Minor Changes
