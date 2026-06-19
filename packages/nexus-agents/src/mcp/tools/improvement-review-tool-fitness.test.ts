@@ -27,6 +27,12 @@ import {
   isNeverDeprecate,
   DEFAULT_NEVER_DEPRECATE_PATTERNS,
 } from './improvement-review-tool-fitness-heuristics.js';
+import {
+  NEVER_DEPRECATE_TOOLS,
+  TOOL_ORTHOGONALITY_GROUPS,
+  isDeclaredNeverDeprecate,
+  declaredOrthogonalityGroup,
+} from './tool-manifest.js';
 import { ToolFitnessLedger, type ToolFitnessStat } from '../../governance/tool-fitness-ledger.js';
 import type { ImprovementSignal } from './improvement-review.js';
 import { ImprovementReviewInputSchema } from './improvement-review.js';
@@ -467,5 +473,115 @@ describe("SignalCategory wiring — 'tool-fitness' is part of the union", () => 
       evidence: {},
     };
     expect(s.category).toBe('tool-fitness');
+  });
+});
+
+// ============================================================================
+// #3930 — declarative break-glass + orthogonality metadata supersedes the
+// two name-string heuristics (declarative-first, name-fallback-for-undeclared).
+// ============================================================================
+
+describe('declarative neverDeprecate metadata (#3930)', () => {
+  it('the manifest declares the audited break-glass/safety tools', () => {
+    // Purpose-based selection (NOT name-based): incident/integrity tools that are
+    // rare BY DESIGN. None of these names match DEFAULT_NEVER_DEPRECATE_PATTERNS.
+    expect(NEVER_DEPRECATE_TOOLS.has('verify_audit_chain')).toBe(true);
+    expect(NEVER_DEPRECATE_TOOLS.has('cancel_job')).toBe(true);
+    expect(NEVER_DEPRECATE_TOOLS.has('ci_health_check')).toBe(true);
+  });
+
+  it('a declared tool is protected REGARDLESS of name (no name pattern matches it)', () => {
+    // 'verify_audit_chain' matches none of DEFAULT_NEVER_DEPRECATE_PATTERNS, yet it
+    // is protected purely via the declaration — proving the heuristic is no longer
+    // name-driven for declared tools.
+    expect(DEFAULT_NEVER_DEPRECATE_PATTERNS.some((p) => 'verify_audit_chain'.includes(p))).toBe(
+      false
+    );
+    expect(isDeclaredNeverDeprecate('verify_audit_chain')).toBe(true);
+    expect(isNeverDeprecate('verify_audit_chain')).toBe(true);
+  });
+
+  it('declaration-protected tool is NOT flagged at <=2 invocations', () => {
+    const signals = detectDeprecationCandidates(
+      [stat({ tool: 'cancel_job', invocationCount: 1, successCount: 1 })],
+      NO_WORKSPACE_SCOPE,
+      WINDOW
+    );
+    expect(signals).toEqual([]);
+  });
+
+  it('a tool whose NAME matches a pattern but is UNDECLARED is still protected via the fallback', () => {
+    // 'db_rollback' is not in the manifest (undeclared) — the documented name
+    // fallback still protects it. Declarative-first, fallback-for-undeclared.
+    expect(isDeclaredNeverDeprecate('db_rollback')).toBe(false);
+    expect(isNeverDeprecate('db_rollback')).toBe(true);
+    const signals = detectDeprecationCandidates(
+      [stat({ tool: 'db_rollback', invocationCount: 1, successCount: 1 })],
+      NO_WORKSPACE_SCOPE,
+      WINDOW
+    );
+    expect(signals).toEqual([]);
+  });
+
+  it('an undeclared, ordinary-named low-usage tool is still flagged (exemption is targeted)', () => {
+    expect(isDeclaredNeverDeprecate('ordinary_thing')).toBe(false);
+    const signals = detectDeprecationCandidates(
+      [stat({ tool: 'ordinary_thing', invocationCount: 1, successCount: 1 })],
+      NO_WORKSPACE_SCOPE,
+      WINDOW
+    );
+    expect(signals).toHaveLength(1);
+  });
+});
+
+describe('declarative orthogonalityGroup metadata (#3930)', () => {
+  it('the manifest declares orthogonality groups for the deliberately-distinct pairs', () => {
+    expect(declaredOrthogonalityGroup('memory_query')).toBe('memory-read');
+    expect(declaredOrthogonalityGroup('memory_write')).toBe('memory-write');
+    expect(TOOL_ORTHOGONALITY_GROUPS.get('query_trace')).toBe('query-trace');
+    expect(TOOL_ORTHOGONALITY_GROUPS.get('query_task_state')).toBe('query-task-state');
+  });
+
+  it('two DIFFERENT declared groups are orthogonal → "none" (read vs write)', () => {
+    const read = stat({ tool: 'memory_query', invocationCount: 1 });
+    const write = stat({ tool: 'memory_write', invocationCount: 100 });
+    expect(consolidationConfidence(read, write)).toBe('none');
+  });
+
+  it('orthogonal declared siblings are NOT surfaced as consolidation candidates', () => {
+    const report = [
+      stat({ tool: 'memory_write', invocationCount: 100, successCount: 100 }),
+      stat({ tool: 'memory_query', invocationCount: 1, successCount: 1 }),
+    ];
+    expect(detectConsolidationCandidates(report, WINDOW)).toEqual([]);
+  });
+
+  it('SAME declared group falls through to "low" (not orthogonal)', () => {
+    const a = stat({ tool: 'memory_query', invocationCount: 1 });
+    const b = stat({ tool: 'memory_stats', invocationCount: 100 });
+    // Both declare 'memory-read' → same domain → not orthogonal → low hint.
+    expect(consolidationConfidence(a, b)).toBe('low');
+  });
+
+  it('UNDECLARED siblings fall back to the verb proxy and still surface-as-LOW (conservative)', () => {
+    // research_* tools declare no orthogonalityGroup → verb-suffix fallback path.
+    const a = stat({ tool: 'research_discover', invocationCount: 2 });
+    const b = stat({ tool: 'research_synthesize', invocationCount: 100 });
+    expect(declaredOrthogonalityGroup('research_discover')).toBeUndefined();
+    expect(consolidationConfidence(a, b)).toBe('low');
+  });
+
+  it('never emits a "high" tier from this signal (no false-high hiding)', () => {
+    // Spot-check several pairings: the only outcomes are 'none' | 'low'.
+    const pairs: Array<[string, string]> = [
+      ['memory_query', 'memory_write'],
+      ['memory_query', 'memory_stats'],
+      ['research_discover', 'research_synthesize'],
+      ['git_init', 'git_commit'],
+    ];
+    for (const [x, y] of pairs) {
+      const c = consolidationConfidence(stat({ tool: x }), stat({ tool: y }));
+      expect(['none', 'low']).toContain(c);
+    }
   });
 });
