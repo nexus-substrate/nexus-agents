@@ -35,7 +35,7 @@ import {
   AUDIT_HASH_VERSION_TIER_TRANSITION,
 } from './audit-types.js';
 import { FileAuditStorage } from './audit-storage.js';
-import { canonicalTierTransition, isTierTransitionEvent } from './tier-transition-hash.js';
+import { canonicalTierTransition, hasTierTransitionPayload } from './tier-transition-hash.js';
 
 // ============================================================================
 // ID Generation
@@ -58,7 +58,7 @@ function generateEventId(): string {
  * a tier-transition event additionally folds in `hashVersion: 2` and the
  * canonicalized `metadata.tierTransition` payload, so its integrity-critical
  * fields are chain-covered. The version is DERIVED from the covered head fields
- * (see {@link isTierTransitionEvent}), never read from the mutable stored
+ * (see {@link hasTierTransitionPayload}), never read from the mutable stored
  * `hashVersion`, so a tampered/stripped version field cannot downgrade the hash.
  */
 function computeEventHash(event: AuditEvent): string {
@@ -71,7 +71,7 @@ function computeEventHash(event: AuditEvent): string {
     actor: event.actor,
     previousHash: event.previousHash,
   };
-  if (isTierTransitionEvent(event)) {
+  if (hasTierTransitionPayload(event)) {
     projection['hashVersion'] = AUDIT_HASH_VERSION_TIER_TRANSITION;
     const raw = event.metadata?.[TIER_TRANSITION_METADATA_KEY];
     projection['tierTransition'] = canonicalTierTransition(raw);
@@ -174,12 +174,13 @@ export function verifyChain(events: readonly AuditEvent[]): ChainVerification {
  * `null` if the event is not a (valid) tier-transition event. A tier-transition
  * event is a `governance`-category event whose `metadata.tierTransition` parses
  * against {@link TierTransitionPayloadSchema}. Used by the ratification gate to
- * read transition events back out of the chained log.
+ * read transition events back out of the chained log. Gated on the SAME
+ * predicate the hash projection uses ({@link hasTierTransitionPayload}), so
+ * gate-consumption and hash-coverage cannot diverge (#3961).
  */
 export function extractTierTransition(event: AuditEvent): TierTransitionPayload | null {
-  if (event.category !== 'governance') return null;
+  if (!hasTierTransitionPayload(event)) return null;
   const raw = event.metadata?.[TIER_TRANSITION_METADATA_KEY];
-  if (raw === undefined) return null;
   const parsed = TierTransitionPayloadSchema.safeParse(raw);
   return parsed.success ? parsed.data : null;
 }
@@ -347,9 +348,9 @@ export class AuditLogger implements IAuditLogger {
 
     // #3921: stamp the v2 hash version on a tier-transition event for
     // observability/schema. NOTE: computeEventHash DERIVES the version from the
-    // covered head fields (see isTierTransitionEvent), so this stamp is not
+    // covered head fields (see hasTierTransitionPayload), so this stamp is not
     // load-bearing for integrity — it cannot be trusted to downgrade the hash.
-    if (isTierTransitionEvent(event)) event.hashVersion = AUDIT_HASH_VERSION_TIER_TRANSITION;
+    if (hasTierTransitionPayload(event)) event.hashVersion = AUDIT_HASH_VERSION_TIER_TRANSITION;
 
     if (this.enableHashChain) {
       event.hash = computeEventHash(event);

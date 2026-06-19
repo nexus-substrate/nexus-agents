@@ -234,7 +234,8 @@ describe('logTierTransition — payload is hash-covered (#3921)', () => {
   // head-only projection (which excludes the payload). If the verifier trusted
   // the stored hashVersion it would drop to v1, recompute the same head-only
   // hash, and accept the forgery. The verifier instead DERIVES v2 from the
-  // covered `action` (tier.*), so the strip cannot downgrade it.
+  // covered `category` plus the (still-present, still-valid) payload — see
+  // hasTierTransitionPayload (#3961) — so the strip cannot downgrade it.
   function v1HeadHash(event: AuditEvent): string {
     // Mirror computeEventHash's v1 projection EXACTLY (field order included).
     const projection = {
@@ -378,6 +379,79 @@ describe('extractTierTransition', () => {
     await logger.close();
     expect(extractTierTransition(storage.getAll()[0]!)).toBeNull();
   });
+});
+
+// #3961 (HIGH): the hash-coverage predicate was `action.startsWith('tier.')`,
+// NARROWER than what the ratification gate consumes (extractTierTransition
+// recovers a transition from ANY governance event with a valid tierTransition
+// payload, any action). So a `governance.audit` (non-`tier.`) event carrying a
+// valid payload was hashed WITHOUT covering the payload, yet the drift gate
+// treated it as a promotion — a single-event undetectable forge. Both sides now
+// share hasTierTransitionPayload, so hash-coverage ⊇ gate-consumption.
+describe('non-`tier.` governance event payload is hash-covered (#3961)', () => {
+  const validPayload = {
+    kind: 'promotion' as const,
+    subject: 'sneaky-loop',
+    fromTier: 'advisory' as const,
+    toTier: 'enforce' as const,
+    evidenceRef: 'evidence#3961',
+    ratificationVoteRef: 'cv_3961',
+  };
+
+  // Emit a governance event with a NON-`tier.` action carrying a valid payload
+  // via the public log() path (logTierTransition always uses `tier.*`, so we go
+  // through the generic logger to reproduce the escapable shape).
+  function sealNonTierGovernance(): { logger: AuditLogger; storage: InMemoryAuditStorage } {
+    const { logger, storage } = makeLogger();
+    logger.log({
+      category: 'governance',
+      severity: 'info',
+      outcome: 'success',
+      action: 'governance.audit', // NOT tier.* — the escapable action
+      description: 'governance audit carrying a tier-transition payload',
+      actor: { type: 'system', id: 'nexus-agents', name: 'Nexus Agents System' },
+      metadata: { [TIER_TRANSITION_METADATA_KEY]: validPayload },
+    });
+    return { logger, storage };
+  }
+
+  it('the drift gate consumes it as a transition (extractTierTransition is non-null)', async () => {
+    const { logger, storage } = sealNonTierGovernance();
+    await logger.close();
+    const event = storage.getAll()[0]!;
+    expect(event.action).toBe('governance.audit');
+    expect(extractTierTransition(event)).toEqual(validPayload);
+    // ...and it is now stamped v2 (hash-covered), matching gate-consumption.
+    expect(event.hashVersion).toBe(2);
+  });
+
+  it('an unmutated such event still verifies ok', async () => {
+    const { logger, storage } = sealNonTierGovernance();
+    await logger.close();
+    expect(verifyChain(storage.getAll()).ok).toBe(true);
+  });
+
+  it.each(['toTier', 'subject'] as const)(
+    'verifyChain detects a flipped %s in the payload (was undetectable pre-#3961)',
+    async (field) => {
+      const { logger, storage } = sealNonTierGovernance();
+      await logger.close();
+      const event = storage.getAll()[0]!;
+      const tampered: AuditEvent = {
+        ...event,
+        metadata: {
+          ...event.metadata,
+          [TIER_TRANSITION_METADATA_KEY]: {
+            ...(event.metadata?.[TIER_TRANSITION_METADATA_KEY] as Record<string, unknown>),
+            [field]: `forged-${field}`,
+          },
+        },
+      };
+      const result = verifyChain([tampered]);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.reason).toBe('hash_mismatch');
+    }
+  );
 });
 
 describe('RatificationVoteSchema — the #3894 resolution-source schema', () => {
