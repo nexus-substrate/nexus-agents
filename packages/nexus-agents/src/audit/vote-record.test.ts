@@ -129,6 +129,49 @@ describe('verifyVoteRecordSet', () => {
     }
   });
 
+  it('verifies a record whose nested voteCounts keys were reordered (#3962, hash is order-independent)', () => {
+    // A writer-produced record (canonical voteCounts key order).
+    const canonical = makeRecord('vote-1', 0);
+    // Simulate a formatter / `jq -S` / merge tool reordering the nested
+    // voteCounts keys (total, abstain, reject, approve) WITHOUT touching `hash`.
+    // Pre-fix this flipped the record to hash_mismatch; now it must still verify.
+    const reordered: VoteRecord = {
+      ...canonical,
+      voteCounts: { total: 7, abstain: 0, reject: 1, approve: 6 },
+    };
+    // Sanity: the values are identical, only key insertion order differs.
+    expect(JSON.stringify(reordered.voteCounts)).not.toBe(JSON.stringify(canonical.voteCounts));
+    expect(verifyVoteRecordSet([reordered])).toEqual({ ok: true, recordCount: 1 });
+  });
+
+  it('produces the SAME hash for canonical-order voteCounts before/after reorder (#3962, no rehash needed)', () => {
+    // Lock the order-independence: a payload with canonical key order and the
+    // same payload with reordered voteCounts keys must hash identically. This
+    // guarantees existing writer-produced (canonical-order) records still verify
+    // unchanged — the fix does NOT alter the hash of a canonical record.
+    const base: Omit<VoteRecord, 'hash'> = {
+      version: '1.1',
+      id: 'vote-hash-lock',
+      sequence: 0,
+      recordedAt: '2026-06-15T00:00:00.000Z',
+      proposalHash: 'b'.repeat(64),
+      proposal: 'lock the canonical hash',
+      strategy: 'higher_order',
+      decision: 'approved',
+      approvalPercentage: 85.7,
+      voteCounts: { approve: 6, reject: 1, abstain: 0, total: 7 },
+      voters: [{ role: 'architect', decision: 'approve', confidence: 0.9 }],
+    };
+    const reordered: Omit<VoteRecord, 'hash'> = {
+      ...base,
+      voteCounts: { total: 7, abstain: 0, reject: 1, approve: 6 },
+    };
+    expect(computeVoteRecordHash(reordered)).toBe(computeVoteRecordHash(base));
+    // And a record built from the canonical payload self-verifies.
+    const record: VoteRecord = { ...base, hash: computeVoteRecordHash(base) };
+    expect(verifyVoteRecordSet([record])).toEqual({ ok: true, recordCount: 1 });
+  });
+
   it('treats DUPLICATE sequences (concurrent fork) as benign and surfaces them in forks', () => {
     // Two branches each appended sequence 1 from the same tip, then merged.
     const records = [

@@ -25,7 +25,7 @@
  */
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 
 import type { ILogger } from '../core/index.js';
 import { createLogger, getErrorMessage } from '../core/index.js';
@@ -41,9 +41,10 @@ export const VOTE_RECORDS_REL_PATH = 'governance/vote-records.jsonl';
 
 /**
  * Env var to force the artifact path (#3927). When set non-empty it is used
- * directly (treated as an absolute path) and the cwd/{@link findRepoRoot}
- * detection is skipped — the escape hatch for running the MCP server outside the
- * repo (e.g. co-located/CI contexts) so server-side persistence is reliable.
+ * directly (resolved to an absolute path — see {@link resolveVoteRecordsPath})
+ * and the cwd/{@link findRepoRoot} detection is skipped — the escape hatch for
+ * running the MCP server outside the repo (e.g. co-located/CI contexts) so
+ * server-side persistence is reliable.
  */
 export const VOTE_RECORDS_PATH_ENV = 'NEXUS_VOTE_RECORDS_PATH';
 
@@ -154,15 +155,24 @@ function readLedgerTip(
 /**
  * Resolve the committable artifact path (#3927). Precedence:
  *  1. {@link VOTE_RECORDS_PATH_ENV} (`NEXUS_VOTE_RECORDS_PATH`) when set
- *     non-empty — used directly as an absolute path, skipping cwd detection.
+ *     non-empty — `resolve`d to an absolute path, skipping cwd detection. A
+ *     RELATIVE value is resolved against `process.cwd()` to an absolute path
+ *     (#3963) so the write target is unambiguous and not silently
+ *     cwd-dependent; an already-absolute value is returned unchanged.
  *  2. otherwise `<repo-root>/governance/vote-records.jsonl` resolved from
  *     {@link findRepoRoot}(`process.cwd()`).
  * Returns `undefined` when neither yields a path (server running outside the
- * repo with no override) — the caller surfaces this as an observable WARN.
+ * repo with no override) — the caller surfaces this as an observable WARN. A
+ * whitespace-only override is treated as unset (falls through to root detection).
  */
 export function resolveVoteRecordsPath(): string | undefined {
   const envPath = process.env[VOTE_RECORDS_PATH_ENV];
-  if (envPath !== undefined && envPath.trim() !== '') return envPath;
+  if (envPath !== undefined && envPath.trim() !== '') {
+    // Honor the absolute-path contract: a relative override is resolved against
+    // process.cwd() rather than written verbatim (#3963). isAbsolute short-
+    // circuits the common already-absolute case to a no-op for clarity.
+    return isAbsolute(envPath) ? envPath : resolve(envPath);
+  }
   const root = findRepoRoot(process.cwd());
   if (root === null) return undefined;
   return join(root, VOTE_RECORDS_REL_PATH);
