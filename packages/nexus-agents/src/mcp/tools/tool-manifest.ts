@@ -64,9 +64,45 @@ export interface ToolSideEffectsEntry {
 }
 
 /**
- * A single manifest entry: the tool name plus its annotation/side-effect data.
+ * Declarative tool-fitness metadata (#3930). OPTIONAL/additive fields that let a
+ * tool DECLARE fitness-relevant properties instead of having them inferred from
+ * its NAME. They replace two name-string heuristics in the tool-fitness consumer
+ * ({@link module:mcp/tools/improvement-review-tool-fitness-heuristics}):
+ *
+ * - `neverDeprecate` supersedes the `DEFAULT_NEVER_DEPRECATE_PATTERNS` substring
+ *   match (rollback/recover/emergency/…) against the tool name.
+ * - `orthogonalityGroup` supersedes the action-verb-suffix proxy that inferred
+ *   whether two prefix-siblings are substitutable.
+ *
+ * Both are OPTIONAL so the manifest count + parity guards are unaffected; a tool
+ * that declares neither falls back to the documented name heuristics. Set the
+ * flag based on a tool's PURPOSE, never its name.
  */
-export interface ToolManifestEntry extends ToolSideEffectsEntry {
+export interface ToolFitnessMetadata {
+  /**
+   * `true` declares this tool a break-glass / safety / integrity tool that is
+   * low-usage BY DESIGN and must NEVER be surfaced as an auto-deprecation
+   * candidate, regardless of its name. Authoritative over the name-substring
+   * fallback. (#3930, replacing the `DEFAULT_NEVER_DEPRECATE_PATTERNS` heuristic.)
+   */
+  readonly neverDeprecate?: boolean;
+  /**
+   * Capability/domain tag declaring this tool's consolidation-orthogonality.
+   * Two prefix-siblings with DIFFERENT declared groups are deliberately
+   * orthogonal (distinct capability domains, e.g. read vs mutate) and must NOT
+   * be flagged as consolidation candidates for folding into one another. Two
+   * tools in the SAME group, or any tool that has NOT declared a group, fall
+   * back to the action-verb proxy. (#3930, superseding the verb-suffix proxy of
+   * #3902 / the old `TODO(#3902)`.)
+   */
+  readonly orthogonalityGroup?: string;
+}
+
+/**
+ * A single manifest entry: the tool name plus its annotation/side-effect data
+ * and OPTIONAL declarative tool-fitness metadata (#3930).
+ */
+export interface ToolManifestEntry extends ToolSideEffectsEntry, ToolFitnessMetadata {
   readonly name: string;
 }
 
@@ -319,6 +355,9 @@ export const TOOL_MANIFEST = [
       { category: 'implicit', description: 'Consumes rate limit quota' },
       { category: 'implicit', description: 'May trigger reflective retrieval (MemR3)' },
     ],
+    // #3930: memory READ surface. Deliberately orthogonal to memory_write (mutate);
+    // a rarely-used read must never be flagged for folding into the writer.
+    orthogonalityGroup: 'memory-read',
   },
   {
     name: 'memory_stats',
@@ -330,6 +369,9 @@ export const TOOL_MANIFEST = [
       openWorldHint: false,
     },
     sideEffects: [{ category: 'implicit', description: 'Consumes rate limit quota' }],
+    // #3930: memory READ/introspection surface — same orthogonality domain as
+    // memory_query, distinct from the memory_write mutate surface.
+    orthogonalityGroup: 'memory-read',
   },
   {
     name: 'memory_write',
@@ -344,6 +386,9 @@ export const TOOL_MANIFEST = [
       { category: 'explicit', description: 'Writes data to memory backend' },
       { category: 'implicit', description: 'Consumes rate limit quota' },
     ],
+    // #3930: memory MUTATE surface. Orthogonal to the memory-read tools — a
+    // distinct capability domain, never a consolidation target for the readers.
+    orthogonalityGroup: 'memory-write',
   },
   {
     name: 'weather_report',
@@ -423,6 +468,10 @@ export const TOOL_MANIFEST = [
     sideEffects: [
       { category: 'implicit', description: 'Reads execution trace JSONL files from disk' },
     ],
+    // #3930: reads execution-trace JSONL. Deliberately distinct data domain from
+    // query_task_state (structured task-state log) despite the shared `query_`
+    // prefix — not interchangeable, so not a consolidation pair.
+    orthogonalityGroup: 'query-trace',
   },
   {
     name: 'query_task_state',
@@ -436,6 +485,9 @@ export const TOOL_MANIFEST = [
     sideEffects: [
       { category: 'implicit', description: 'Reads the structured task-state log (#2278)' },
     ],
+    // #3930: reads the structured task-state log — a distinct data domain from
+    // query_trace's execution traces. Shared prefix, orthogonal capability.
+    orthogonalityGroup: 'query-task-state',
   },
   {
     name: 'get_job_result',
@@ -490,6 +542,9 @@ export const TOOL_MANIFEST = [
           'Triggers AbortSignal unwind in same-process dispatcher (cross-process workers must poll)',
       },
     ],
+    // #3930: break-glass kill-switch — you only call it to abort a runaway async
+    // job, so it is low-usage BY DESIGN, not dead weight. Never auto-deprecate.
+    neverDeprecate: true,
   },
   {
     name: 'ci_health_check',
@@ -511,6 +566,10 @@ export const TOOL_MANIFEST = [
         description: 'Appends a local CI-health telemetry event per call for observability (#3530)',
       },
     ],
+    // #3930: incident diagnostic — used BEFORE long auto-merge waits to detect an
+    // org-wide CI wedge. Rare by design (only when CI is suspected broken), so a
+    // low invocation count is expected, not a deprecation signal.
+    neverDeprecate: true,
   },
   {
     name: 'verify_audit_chain',
@@ -527,6 +586,10 @@ export const TOOL_MANIFEST = [
         description: 'Reads the immutable audit log and verifies the hash chain',
       },
     ],
+    // #3930: tamper-evidence integrity tool — invoked rarely (on-demand chain
+    // verification), but it is the substrate's audit-integrity guarantee. Low
+    // usage is by design; deprecating it would silently drop tamper detection.
+    neverDeprecate: true,
   },
   {
     name: 'repo_analyze',
@@ -544,6 +607,10 @@ export const TOOL_MANIFEST = [
       },
       { category: 'implicit', description: 'Consumes rate limit quota' },
     ],
+    // #3930: general repo-structure analysis. Distinct capability domain from
+    // repo_security_plan (security-scanning recommendation) — shared `repo_`
+    // prefix but not substitutable.
+    orthogonalityGroup: 'repo-analyze',
   },
   {
     name: 'repo_security_plan',
@@ -561,6 +628,10 @@ export const TOOL_MANIFEST = [
       },
       { category: 'implicit', description: 'Consumes rate limit quota' },
     ],
+    // #3930: security-scanning pipeline recommendation. Orthogonal domain to
+    // repo_analyze (general structure) — a security-specific capability that
+    // must not be folded into the general analyzer.
+    orthogonalityGroup: 'repo-security',
   },
   {
     name: 'extract_symbols',
@@ -753,3 +824,52 @@ export const TOOL_MANIFEST = [
 
 /** A registered MCP tool name, derived from {@link TOOL_MANIFEST}. */
 export type RegisteredToolName = (typeof TOOL_MANIFEST)[number]['name'];
+
+// ============================================================================
+// Declarative tool-fitness metadata accessors (#3930)
+// ============================================================================
+
+/**
+ * Set of tool names that DECLARE `neverDeprecate: true` — break-glass / safety /
+ * integrity tools that are low-usage BY DESIGN. Derived from {@link TOOL_MANIFEST}
+ * so the manifest stays the single source of truth (#3930). Consumed by the
+ * tool-fitness heuristics, which treat a declared name as authoritative over the
+ * name-substring fallback.
+ */
+export const NEVER_DEPRECATE_TOOLS: ReadonlySet<string> = new Set(
+  (TOOL_MANIFEST as readonly ToolManifestEntry[])
+    .filter((t) => t.neverDeprecate === true)
+    .map((t) => t.name)
+);
+
+/**
+ * Map of tool name → declared `orthogonalityGroup` for tools that DECLARE one.
+ * Derived from {@link TOOL_MANIFEST} (#3930). Consumed by the consolidation
+ * heuristic: two prefix-siblings with DIFFERENT declared groups are orthogonal
+ * (not a consolidation pair); a tool absent from this map falls back to the
+ * action-verb proxy.
+ */
+export const TOOL_ORTHOGONALITY_GROUPS: ReadonlyMap<string, string> = new Map(
+  (TOOL_MANIFEST as readonly ToolManifestEntry[])
+    .filter(
+      (t): t is ToolManifestEntry & { orthogonalityGroup: string } =>
+        t.orthogonalityGroup !== undefined
+    )
+    .map((t) => [t.name, t.orthogonalityGroup])
+);
+
+/**
+ * True when `tool` DECLARES `neverDeprecate: true` in {@link TOOL_MANIFEST}.
+ * Authoritative break-glass signal (#3930); name-independent.
+ */
+export function isDeclaredNeverDeprecate(tool: string): boolean {
+  return NEVER_DEPRECATE_TOOLS.has(tool);
+}
+
+/**
+ * The declared {@link ToolFitnessMetadata.orthogonalityGroup} for `tool`, or
+ * `undefined` when the tool has not declared one (#3930).
+ */
+export function declaredOrthogonalityGroup(tool: string): string | undefined {
+  return TOOL_ORTHOGONALITY_GROUPS.get(tool);
+}

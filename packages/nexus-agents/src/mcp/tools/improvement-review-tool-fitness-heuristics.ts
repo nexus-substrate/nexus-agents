@@ -9,12 +9,16 @@
  *    proof of substitutability (`git_commit` vs `git_init`, `db_read` vs
  *    `db_drop_table` share a prefix but are orthogonal). {@link consolidationConfidence}
  *    downgrades prefix-only matches to a WEAK/low-confidence hint and withholds
- *    the candidate entirely when the action-verb suffixes are clearly orthogonal,
- *    so a rare sibling is not flagged for folding into a busy one on prefix alone.
- *    (Full capability-overlap modelling is a later seam — see TODO below.)
+ *    the candidate entirely when the tools are orthogonal. As of #3930, a tool's
+ *    DECLARED {@link ToolManifestEntry.orthogonalityGroup} is authoritative (two
+ *    different declared groups → orthogonal); the action-verb suffix proxy is the
+ *    fallback for tools that have not declared a group.
  * 2. **Break-glass exemption** — {@link isNeverDeprecate} exempts low-usage-BY-DESIGN
- *    tools (rollback / recovery / emergency admin) from the `<= 2 invocations`
+ *    tools (break-glass / safety / integrity) from the `<= 2 invocations`
  *    deprecation flag so a rare-but-critical tool isn't surfaced as dead weight.
+ *    As of #3930, a tool's DECLARED {@link ToolManifestEntry.neverDeprecate} flag
+ *    is authoritative; the name-substring patterns are the fallback for undeclared
+ *    tools.
  * 3. **Workspace-scoped localized signal** — instead of FULLY suppressing a
  *    cross-workspace-healthy tool's failure, {@link buildLocalizedSignals} emits a
  *    workspace-scoped "failing here" signal (global deprecation suppressed; the
@@ -30,6 +34,10 @@
 
 import type { ImprovementSignal } from './improvement-review.js';
 import type { ToolFitnessStat } from '../../governance/tool-fitness-ledger.js';
+import {
+  declaredOrthogonalityGroup,
+  isDeclaredNeverDeprecate,
+} from './tool-manifest.js';
 
 // ============================================================================
 // Honest thresholds (documented per acceptance criteria)
@@ -105,12 +113,19 @@ export function assertNeverAutonomousRemoval(signal: ImprovementSignal): Improve
 // ============================================================================
 
 /**
- * Default action-verb fragments that mark a tool as low-usage-BY-DESIGN
- * (break-glass / recovery / emergency admin). A tool whose name contains one of
- * these is rare ON PURPOSE — flagging it for deprecation on a `<= 2 invocations`
- * count is a false positive. Matched case-insensitively as a substring of the
- * tool name. Override via {@link NeverDeprecateConfig.extraPatterns} /
+ * FALLBACK action-verb fragments for tools that have NOT declared
+ * `neverDeprecate` in the manifest (#3930). The authoritative signal is the
+ * declarative {@link ToolManifestEntry.neverDeprecate} flag, consulted first by
+ * {@link isNeverDeprecate}; these substrings remain ONLY as a conservative
+ * fail-safe so an UNDECLARED tool whose name screams break-glass
+ * (rollback / recovery / emergency admin) is still protected from a
+ * `<= 2 invocations` false positive. Matched case-insensitively as a substring
+ * of the tool name. Override via {@link NeverDeprecateConfig.extraPatterns} /
  * {@link NeverDeprecateConfig.exemptTools} for repo-specific break-glass tools.
+ *
+ * Precedence (#3930): declared manifest flag > injected config > these name
+ * patterns. Prefer DECLARING `neverDeprecate: true` on the manifest entry over
+ * relying on a name match.
  */
 export const DEFAULT_NEVER_DEPRECATE_PATTERNS: readonly string[] = [
   'rollback',
@@ -137,9 +152,22 @@ export interface NeverDeprecateConfig {
 /**
  * True when `tool` is tagged never-deprecate / break-glass and must therefore be
  * EXEMPT from the low-usage deprecation flag (item 2). Pure.
+ *
+ * Precedence (#3930, declarative-first):
+ *  1. **Declared manifest flag** — a tool that DECLARES `neverDeprecate: true`
+ *     in `TOOL_MANIFEST` is authoritatively protected, regardless of its name.
+ *  2. **Injected config** — an explicit `exemptTools` entry protects the tool.
+ *  3. **Name-substring fallback** — for UNDECLARED tools only, the documented
+ *     {@link DEFAULT_NEVER_DEPRECATE_PATTERNS} (+ any `extraPatterns`) still
+ *     guard a name that screams break-glass. This is the conservative fail-safe:
+ *     when uncertain, protect (never auto-deprecate).
  */
 export function isNeverDeprecate(tool: string, config?: NeverDeprecateConfig): boolean {
+  // 1. Declarative metadata is authoritative (#3930).
+  if (isDeclaredNeverDeprecate(tool)) return true;
+  // 2. Caller-injected exemptions.
   if (config?.exemptTools?.includes(tool) === true) return true;
+  // 3. Name-substring fallback for tools that have NOT declared.
   const lower = tool.toLowerCase();
   const patterns = [...DEFAULT_NEVER_DEPRECATE_PATTERNS, ...(config?.extraPatterns ?? [])];
   return patterns.some((p) => lower.includes(p));
@@ -152,13 +180,16 @@ export function isNeverDeprecate(tool: string, config?: NeverDeprecateConfig): b
 /**
  * Action verbs that mutate/destroy vs. read/create — when two prefix-siblings
  * carry verbs from clearly opposed groups they are ORTHOGONAL (not
- * substitutable), so the prefix match is suppressed entirely. This is the
- * honest, ledger-name-only overlap proxy; a real capability/schema-overlap model
- * is the later seam.
+ * substitutable), so the prefix match is suppressed entirely.
  *
- * TODO(#3902): replace this name-suffix heuristic with a true capability-overlap
- * signal (tool input/output schema similarity) once the tool-distinctness data
- * seam lands. Until then prefix-family is a WEAK hint only.
+ * FALLBACK ONLY (#3930): this name-suffix proxy now applies only when at least
+ * one of the two tools has NOT declared an
+ * {@link ToolManifestEntry.orthogonalityGroup}. A tool's declared group is the
+ * authoritative orthogonality signal (consulted first by
+ * {@link consolidationConfidence}); this verb-group table is the documented
+ * fallback for undeclared tools. Supersedes the former `TODO(#3902)` (declarative
+ * capability tags now stand in for the "true capability-overlap" seam, while
+ * staying conservative — undeclared still surfaces-as-LOW, never high).
  */
 const ORTHOGONAL_VERB_GROUPS: readonly (readonly string[])[] = [
   ['init', 'create', 'add', 'new', 'open', 'start', 'enable', 'register'],
@@ -185,20 +216,35 @@ function verbGroup(verb: string | undefined): number {
 
 /**
  * Confidence that a prefix-sharing pair (`candidate`, `busiest`) is genuinely a
- * consolidation candidate, using a name-suffix overlap proxy (item 1):
+ * consolidation candidate.
  *
- * - `'none'` — the two verbs sit in clearly OPPOSED action groups
- *   (e.g. `init` vs `drop`, `commit` vs `init`) → orthogonal, do NOT surface.
- * - `'low'` — prefix matches but overlap is unproven → surface as a
- *   LOW-CONFIDENCE hint (the prefix family alone is weak evidence).
+ * Precedence (#3930, declarative-first):
+ *  1. **Declared orthogonality groups** — when BOTH tools declare an
+ *     {@link ToolManifestEntry.orthogonalityGroup} and the groups DIFFER, they
+ *     are authoritatively orthogonal (distinct capability domains, e.g. memory
+ *     read vs write) → `'none'`, do NOT surface. Same declared group → they are
+ *     genuinely in the same domain, so fall through to the usage-ratio caller as
+ *     a `'low'` hint.
+ *  2. **Action-verb fallback** — when at least one tool has NOT declared a group,
+ *     use the {@link ORTHOGONAL_VERB_GROUPS} name-suffix proxy: clearly OPPOSED
+ *     verbs (e.g. `init` vs `drop`) → `'none'`; otherwise `'low'`.
  *
- * Pure. There is no `'high'` tier yet: until a real capability-overlap model
- * exists, prefix-family is never strong evidence. (See module TODO.)
+ * Conservative by construction: there is NO `'high'` tier from this signal — an
+ * undeclared / unproven pair surfaces as a LOW-CONFIDENCE hint, never hidden via
+ * a false-high. Pure.
  */
 export function consolidationConfidence(
   candidate: ToolFitnessStat,
   busiest: ToolFitnessStat
 ): ConsolidationConfidence {
+  // 1. Declarative metadata is authoritative (#3930): two DIFFERENT declared
+  //    groups → orthogonal. (Same group → not orthogonal; fall through to 'low'.)
+  const declaredA = declaredOrthogonalityGroup(candidate.tool);
+  const declaredB = declaredOrthogonalityGroup(busiest.tool);
+  if (declaredA !== undefined && declaredB !== undefined) {
+    return declaredA !== declaredB ? 'none' : 'low';
+  }
+  // 2. Fallback for UNDECLARED tools: action-verb proxy.
   const a = verbGroup(actionVerb(candidate.tool));
   const b = verbGroup(actionVerb(busiest.tool));
   // Both verbs classified and in different opposed groups → orthogonal siblings.
