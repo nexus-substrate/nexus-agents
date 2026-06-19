@@ -39,7 +39,7 @@
 // @export-no-consumer-yet — see #3670 (Stage 1 guard library; consumer lands in Stage 2/3)
 
 import { realpathSync } from 'node:fs';
-import { isAbsolute, resolve, relative, sep } from 'node:path';
+import { isAbsolute, resolve, relative, sep, dirname, basename } from 'node:path';
 import { z } from 'zod';
 import { scanForSecrets, type SecretScanResult } from './diff-secret-scan.js';
 import type { IAuditLogger, AuditActor } from '../../audit/audit-types.js';
@@ -58,7 +58,8 @@ export type GuardDenialReason =
   | 'blast_radius_exceeded'
   | 'secret_detected'
   | 'budget_exceeded'
-  | 'audit_append_failed';
+  | 'audit_append_failed'
+  | 'guard_error';
 
 /** A fail-closed denial result: an enumerated reason + a value-free detail. */
 export interface GuardDenial {
@@ -91,14 +92,42 @@ function deny(reason: GuardDenialReason, detail: string): GuardDenial {
 export type RealpathFn = (p: string) => string;
 
 /**
- * Confine `candidatePath` to within `worktreeRoot`. Resolves both paths through
- * realpath semantics (so `..` traversal, an absolute path outside the root, and
- * a symlink whose TARGET escapes the root are all caught), then checks that the
- * resolved candidate is `worktreeRoot` itself or a descendant of it.
+ * The Node error shape we narrow to when distinguishing a benign "does not
+ * exist yet" (`ENOENT`) from any OTHER realpath failure (which is fail-closed).
+ */
+function errnoCode(err: unknown): string | undefined {
+  if (err !== null && typeof err === 'object' && 'code' in err) {
+    const code = (err as { code?: unknown }).code;
+    return typeof code === 'string' ? code : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * Confine `candidatePath` to within `worktreeRoot`, supporting NEW (not-yet-
+ * existing) files — the adapter's whole purpose is writing files that do not
+ * exist yet, so a path that does not yet exist must NOT be denied for that
+ * reason alone.
  *
- * Fail-closed: if either path cannot be realpath-resolved (e.g. the path does
- * not exist, or realpath throws), the guard DENIES with `path_escape` rather
- * than guessing. The caller is expected to pass paths for realized files.
+ * Algorithm (symlink-safe for the real part, FS-free for the new tail):
+ *  1. Realpath the worktree root (canonicalizes symlinks in the root itself).
+ *  2. Resolve the candidate against that root (handles relative inputs + `..`).
+ *  3. Walk UP from the candidate to the first EXISTING ancestor and realpath
+ *     THAT — this defeats symlink games on every component that actually exists
+ *     (a symlinked ancestor whose target escapes is caught here).
+ *  4. Re-append the remaining (non-existent) trailing segments to the realpathed
+ *     ancestor and normalize, resolving any `..`/`.` in the tail WITHOUT touching
+ *     the filesystem.
+ *  5. Assert the combined path is the canonicalized root itself or a descendant.
+ *
+ * Fail-closed (`path_escape`) if: the worktree root cannot be resolved, the
+ * combined path is outside the root, OR a realpath on an EXISTING component
+ * errors for any reason OTHER than `ENOENT`. A path that simply does not exist
+ * yet (`ENOENT` all the way up to an existing ancestor) is allowed if contained.
+ *
+ * The returned `resolvedPath` is the CANONICAL absolute path the caller MUST
+ * write to — writing to the original `candidatePath` instead would reintroduce
+ * the symlink TOCTOU this guard closes.
  *
  * @param worktreeRoot - Absolute path to the worktree root the change is confined to.
  * @param candidatePath - The path (absolute or relative-to-root) being written.
@@ -121,19 +150,46 @@ export function confinePath(
   }
 
   // Resolve the candidate against the root first (handles relative inputs and
-  // `..`), then realpath the result so a symlink target that escapes is caught.
+  // `..`), collapsing the path to an absolute lexical form.
   const joined = isAbsolute(candidatePath) ? candidatePath : resolve(resolvedRoot, candidatePath);
-  let resolvedCandidate: string;
-  try {
-    resolvedCandidate = realpath(joined);
-  } catch {
+
+  // Canonicalize the EXISTING part (symlink-safe) and re-append the new tail.
+  const reassembled = resolveNewFilePath(joined, realpath);
+  if (reassembled === undefined) {
     return deny('path_escape', 'candidate path could not be resolved (fail-closed)');
   }
 
-  if (!isWithin(resolvedRoot, resolvedCandidate)) {
+  if (!isWithin(resolvedRoot, reassembled)) {
     return deny('path_escape', 'resolved path is outside the worktree root');
   }
-  return { ok: true, resolvedPath: resolvedCandidate };
+  return { ok: true, resolvedPath: reassembled };
+}
+
+/**
+ * Canonicalize a candidate path that may name a NEW (not-yet-existing) file:
+ * walk UP to the nearest EXISTING ancestor, realpath THAT (so symlinks on the
+ * real part are resolved), then re-append the non-existent trailing segments and
+ * collapse any `..`/`.` in them lexically (no FS access). Returns the combined
+ * absolute path, or `undefined` to signal a fail-closed condition: a realpath
+ * error OTHER than `ENOENT` on an existing component, or reaching the filesystem
+ * root without any existing ancestor.
+ */
+function resolveNewFilePath(joined: string, realpath: RealpathFn): string | undefined {
+  let existing = joined;
+  const trailing: string[] = [];
+  for (;;) {
+    try {
+      existing = realpath(existing);
+      break; // `existing` now canonical; `trailing` holds the new tail (leaf-first).
+    } catch (err) {
+      if (errnoCode(err) !== 'ENOENT') return undefined; // not "absent" → fail-closed
+      const parent = dirname(existing);
+      if (parent === existing) return undefined; // hit FS root, no existing ancestor
+      trailing.push(basename(existing));
+      existing = parent;
+    }
+  }
+  return trailing.length === 0 ? existing : resolve(existing, ...trailing.reverse());
 }
 
 /**
@@ -172,9 +228,12 @@ export type PathClassification =
 
 /**
  * One sensitive-path rule: a predicate over a NORMALIZED, POSIX-separator,
- * leading-`./`-stripped relative path, plus the category it maps to. Kept as an
- * explicit, exported, reviewable array (precondition B requires the self-guard
- * denylist be reviewable + staleness-testable).
+ * leading-`./`-stripped, ADS-/trailing-dot-/trailing-space-stripped,
+ * LOWER-CASED relative path (see {@link normalizeRelPath} + {@link classifyPath}),
+ * plus the category it maps to. Because the input is already lower-cased, rule
+ * literals MUST be written lower-case. Kept as an explicit, exported, reviewable
+ * array (precondition B requires the self-guard denylist be reviewable +
+ * staleness-testable).
  */
 export interface SensitivePathRule {
   readonly category: SensitiveCategory;
@@ -245,8 +304,9 @@ export const SENSITIVE_PATH_RULES: readonly SensitivePathRule[] = [
   },
   {
     category: 'codeowners',
+    // `p` is already lower-cased by classifyPath (case-insensitive matching).
     description: 'any CODEOWNERS file',
-    match: (p) => basenamePosix(p) === 'CODEOWNERS',
+    match: (p) => basenamePosix(p) === 'codeowners',
   },
   {
     category: 'audit',
@@ -274,13 +334,40 @@ export const SENSITIVE_PATH_RULES: readonly SensitivePathRule[] = [
 ];
 
 /**
- * Normalize a relative path to POSIX separators and strip a leading `./` so the
- * rules can be written against a single canonical form. Does NOT resolve the
- * filesystem (this is a pure classifier over the supplied string).
+ * Normalize a relative path for SENSITIVE-RULE MATCHING into a single canonical
+ * form, defeating the host-filesystem normalization tricks that would otherwise
+ * let a canonically-sensitive path slip past a naive string compare. Does NOT
+ * resolve the filesystem (this is a pure classifier over the supplied string).
+ *
+ * Canonicalization steps (applied in order), all hardening toward the SENSITIVE
+ * side — none loosens a currently-sensitive classification:
+ *  - strip a Windows NTFS Alternate-Data-Stream suffix (`name::$DATA`, `name::x`)
+ *    — Windows resolves `package.json::$DATA` to `package.json`;
+ *  - convert backslashes to POSIX `/`;
+ *  - collapse runs of repeated slashes (`a//b` → `a/b`);
+ *  - strip leading `./` segments;
+ *  - per segment, strip trailing dots and spaces — Windows drops these when
+ *    opening a file, so `CODEOWNERS ` / `package.json.` map to the bare name.
+ *
+ * The result is matched CASE-INSENSITIVELY by {@link classifyPath} (both sides
+ * are lower-cased), so `Package.json` / `.GitHub/workflows/x` / `Governance/x`
+ * classify the same as their canonical forms.
  */
 function normalizeRelPath(relPath: string): string {
-  let p = relPath.replace(/\\/g, '/');
+  // 1. Strip an NTFS ADS suffix: everything from the first `::` onward.
+  const adsIdx = relPath.indexOf('::');
+  let p = adsIdx === -1 ? relPath : relPath.slice(0, adsIdx);
+  // 2. Backslashes → POSIX separators.
+  p = p.replace(/\\/g, '/');
+  // 3. Collapse repeated slashes.
+  p = p.replace(/\/{2,}/g, '/');
+  // 4. Strip leading `./` segments.
   while (p.startsWith('./')) p = p.slice(2);
+  // 5. Per-segment: strip trailing dots and spaces (Windows file-open semantics).
+  p = p
+    .split('/')
+    .map((seg) => seg.replace(/[. ]+$/, ''))
+    .join('/');
   return p;
 }
 
@@ -288,9 +375,14 @@ function normalizeRelPath(relPath: string): string {
  * Classify a relative path as sensitive (human-authorship-required) or not.
  * Pure over the supplied string — no filesystem access, no model input. Returns
  * the FIRST matching rule's category (rule order in {@link SENSITIVE_PATH_RULES}).
+ *
+ * Matching is CASE-INSENSITIVE: the normalized path is lower-cased before it is
+ * handed to the rules, which themselves test lower-cased literals. This is the
+ * safe (over-matching) direction — it can only classify MORE paths as sensitive,
+ * never fewer — closing case-fold bypasses like `Package.json` / `.GitHub/...`.
  */
 export function classifyPath(relPath: string): PathClassification {
-  const p = normalizeRelPath(relPath);
+  const p = normalizeRelPath(relPath).toLowerCase();
   for (const rule of SENSITIVE_PATH_RULES) {
     if (rule.match(p)) return { sensitive: true, category: rule.category };
   }
@@ -598,25 +690,52 @@ export interface WriteGuardsInput {
  * The audit-append guard (5) is intentionally NOT composed here — auditing is
  * the caller's responsibility on BOTH the pass and abort paths (precondition C),
  * using the verdict this function returns.
+ *
+ * THROW-FREE (fail-closed on throw): every guard call is wrapped so a thrown
+ * exception (e.g. {@link scanForSecrets} blowing up inside {@link scanDiffOrDeny})
+ * is caught and converted to a `guard_error` denial naming the guard + message —
+ * never a leaked secret value — rather than propagating. This upholds the
+ * module contract that a guard never throws for a control decision: a failure to
+ * evaluate is itself a denial.
  */
 export function evaluateWriteGuards(input: WriteGuardsInput): GuardResult {
   // 1. Path confinement — every changed file must resolve within the root.
   for (const f of input.changedFiles) {
-    const confined = confinePath(input.worktreeRoot, f.path, input.realpath);
+    const confined = runGuard('confinePath', () =>
+      confinePath(input.worktreeRoot, f.path, input.realpath)
+    );
     if (!confined.ok) return confined;
   }
 
   // 2. Blast radius (also denies any sensitive path).
-  const blast = checkBlastRadius(input.changedFiles, input.blastRadiusLimits);
+  const blast = runGuard('checkBlastRadius', () =>
+    checkBlastRadius(input.changedFiles, input.blastRadiusLimits)
+  );
   if (!blast.ok) return blast;
 
   // 3. Secret scan.
-  const secrets = scanDiffOrDeny(input.diff);
+  const secrets = runGuard('scanDiffOrDeny', () => scanDiffOrDeny(input.diff));
   if (!secrets.ok) return secrets;
 
   // 4. Resource budget.
-  const budget = checkResourceBudget(input.usage, input.resourceLimits);
+  const budget = runGuard('checkResourceBudget', () =>
+    checkResourceBudget(input.usage, input.resourceLimits)
+  );
   if (!budget.ok) return budget;
 
   return { ok: true };
+}
+
+/**
+ * Run a single composed guard, converting any THROWN exception into a
+ * fail-closed `guard_error` denial (naming the guard + the error message, never
+ * a secret value). The guard's own returned denial passes through unchanged.
+ */
+function runGuard<T>(name: string, fn: () => GuardResult<T>): GuardResult<T> {
+  try {
+    return fn();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return deny('guard_error', `guard ${name} threw (fail-closed): ${message}`);
+  }
 }

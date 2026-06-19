@@ -24,8 +24,17 @@ import {
   type ChangedFile,
   type WriteGuardsInput,
   type AutonomousEventRecord,
+  type SensitiveCategory,
 } from './codepr-guards.js';
 import type { IAuditLogger, AuditEventInput } from '../../audit/audit-types.js';
+import * as secretScan from './diff-secret-scan.js';
+
+// Mock the secret-scan module so a single test can force `scanForSecrets` to
+// THROW (Fix 3), while every other test delegates to the REAL implementation.
+vi.mock('./diff-secret-scan.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./diff-secret-scan.js')>();
+  return { ...actual, scanForSecrets: vi.fn(actual.scanForSecrets) };
+});
 
 // ----------------------------------------------------------------------------
 // Helpers
@@ -125,10 +134,71 @@ describe('confinePath', () => {
     }
   });
 
-  it('fail-closed: DENIES when the candidate cannot be realpath-resolved', () => {
+  it('Fix1: ALLOWS a NEW (not-yet-existing) in-root file', () => {
     const { root, cleanup } = makeTmpRoot();
     try {
+      // The adapter writes NEW files: a path that does not exist yet but is
+      // contained must be allowed, resolving to the canonical absolute path.
       const r = confinePath(root, 'does-not-exist.ts');
+      expect(r.ok).toBe(true);
+      if (r.ok) expect(r.resolvedPath).toBe(join(root, 'does-not-exist.ts'));
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('Fix1: ALLOWS a NEW file under a NEW nested directory (no existing leaf)', () => {
+    const { root, cleanup } = makeTmpRoot();
+    try {
+      const r = confinePath(root, 'new-dir/sub/file.ts');
+      expect(r.ok).toBe(true);
+      if (r.ok) expect(r.resolvedPath).toBe(join(root, 'new-dir', 'sub', 'file.ts'));
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('Fix1: DENIES a NEW file whose path escapes via `..`', () => {
+    const { root, cleanup } = makeTmpRoot();
+    try {
+      // Non-existent tail with a `..` that climbs out of the root.
+      const r = confinePath(root, 'sub/../../escaped-new.ts');
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.reason).toBe('path_escape');
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('Fix1: DENIES a NEW file under a symlinked EXISTING ancestor that escapes', () => {
+    const { root, cleanup } = makeTmpRoot();
+    const { root: outside, cleanup: cleanupOutside } = makeTmpRoot();
+    try {
+      // `linkdir` exists (a symlink) and points OUTSIDE the root; the leaf under
+      // it does NOT exist yet. The nearest existing ancestor is the symlink, so
+      // realpathing it lands outside → the new file under it is denied.
+      symlinkSync(outside, join(root, 'linkdir'));
+      const r = confinePath(root, 'linkdir/new-file.ts');
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.reason).toBe('path_escape');
+    } finally {
+      cleanup();
+      cleanupOutside();
+    }
+  });
+
+  it('Fix1: fail-closed when realpath errors for a reason OTHER than ENOENT', () => {
+    const { root, cleanup } = makeTmpRoot();
+    try {
+      // Seam that resolves the root but throws a non-ENOENT error for the
+      // candidate's existing ancestor → must NOT be treated as "new file".
+      const seam = (p: string): string => {
+        if (p === root) return root;
+        const err = new Error('permission denied') as Error & { code?: string };
+        err.code = 'EACCES';
+        throw err;
+      };
+      const r = confinePath(root, 'src/a.ts', seam);
       expect(r.ok).toBe(false);
       if (!r.ok) expect(r.reason).toBe('path_escape');
     } finally {
@@ -222,6 +292,33 @@ describe('classifyPath', () => {
     expect(classifyPath('.\\package.json').sensitive).toBe(true);
     expect(classifyPath('./governance/x').sensitive).toBe(true);
     expect(classifyPath('packages\\nexus-agents\\src\\audit\\x.ts').sensitive).toBe(true);
+  });
+
+  // Fix2 — normalization bypasses: each canonically-sensitive form below
+  // classified NON-sensitive before hardening. Each must now classify sensitive.
+  const bypassCases: Array<[string, string, SensitiveCategory]> = [
+    ['case-fold governance', 'Governance/x', 'governance'],
+    ['case-fold package.json', 'Package.json', 'dependency_manifest'],
+    ['case-fold .GitHub workflow', '.GitHub/workflows/ci.yml', 'workflow'],
+    ['case-fold CODEOWNERS', 'codeowners', 'codeowners'],
+    ['trailing space on CODEOWNERS', 'CODEOWNERS ', 'codeowners'],
+    ['trailing dot on package.json', 'package.json.', 'dependency_manifest'],
+    ['NTFS ADS on package.json', 'package.json::$DATA', 'dependency_manifest'],
+    ['NTFS ADS short form', 'package.json::x', 'dependency_manifest'],
+    ['repeated slashes into governance', 'governance//ratify.yaml', 'governance'],
+    ['mixed case + backslash audit', 'SRC\\Audit\\x.ts', 'audit'],
+    ['trailing dot on CODEOWNERS dir entry', '.github/CODEOWNERS.', 'codeowners'],
+  ];
+  it.each(bypassCases)('Fix2: now classifies %s as sensitive', (_label, path, category) => {
+    const c = classifyPath(path);
+    expect(c.sensitive, `should be sensitive: ${path}`).toBe(true);
+    if (c.sensitive) expect(c.category).toBe(category);
+  });
+
+  it('Fix2: a plain source file stays NON-sensitive after hardening', () => {
+    expect(classifyPath('src/foo.ts')).toEqual({ sensitive: false });
+    expect(classifyPath('src/Foo.ts')).toEqual({ sensitive: false });
+    expect(classifyPath('packages/app/src/components/Button.tsx')).toEqual({ sensitive: false });
   });
 });
 
@@ -465,6 +562,30 @@ describe('evaluateWriteGuards', () => {
     );
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toBe('secret_detected');
+  });
+
+  it('Fix3: a guard that THROWS yields a guard_error denial, not an exception', () => {
+    // Force the secret scan (inside scanDiffOrDeny) to throw for this call only.
+    const spy = vi.mocked(secretScan.scanForSecrets);
+    spy.mockImplementationOnce(() => {
+      throw new Error('scanner blew up');
+    });
+    let result: ReturnType<typeof evaluateWriteGuards> | undefined;
+    expect(() => {
+      result = evaluateWriteGuards(input());
+    }).not.toThrow();
+    expect(result?.ok).toBe(false);
+    if (result && !result.ok) {
+      expect(result.reason).toBe('guard_error');
+      expect(result.detail).toContain('scanDiffOrDeny');
+      // Value-free: the error message is named, but no secret content leaks.
+      expect(result.detail).not.toMatch(/AKIA|sk-ant-|ghp_/);
+    }
+  });
+
+  it('Fix3: the normal (non-throwing) path is unchanged', () => {
+    // No mockImplementationOnce → delegates to the real scanner → ok.
+    expect(evaluateWriteGuards(input()).ok).toBe(true);
   });
 
   it('a violating set never returns ok (fail-closed)', () => {
