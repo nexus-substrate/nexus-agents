@@ -39,6 +39,11 @@ import type { VoteRejectedSignalEvent } from '../../pipeline/event-types.js';
 import { REJECTION_CATEGORIES } from '../../consensus/types-core.js';
 import { emitFitnessDeclinedSignal } from './improvement-review-signals.js';
 import { loadToolFitnessSignals } from './improvement-review-tool-fitness.js';
+import {
+  detectPerfRegressionSignals,
+  type PerfBaselineMap,
+} from './improvement-review-perf-regression.js';
+import type { BenchmarkSuiteResult } from '../../benchmarks/benchmark-types.js';
 import { improvementSignalsToTasks } from './improvement-remediation.js';
 import { recordRemediationShadow } from './improvement-remediation-shadow.js';
 import { classifySignalPriority, priorityLabel } from './remediation-priority.js';
@@ -105,7 +110,12 @@ export type SignalCategory =
   // #3852 (closes the #3692 sequencing): tool-fitness deprecation/consolidation
   // candidates from the #3851 ledger. SUGGEST-TIER ONLY — never autonomous
   // removal (Epic F invariant). See improvement-review-tool-fitness.ts.
-  | 'tool-fitness';
+  | 'tool-fitness'
+  // #3692 + #3246 (Option A): deterministic benchmark perf regression vs a
+  // STATIC, pinned baseline + fixed tolerance. SURFACED-ONLY — never auto-applies
+  // a fitness/governance penalty. The static baseline keeps this out of the
+  // deferred #3230 adaptive-control scope. See improvement-review-perf-regression.ts.
+  | 'perf-regression';
 
 export interface ImprovementSignal {
   readonly category: SignalCategory;
@@ -716,9 +726,43 @@ function readBufferedVoteRejections(
  * — pass a logger and an OutcomeStore-query result if you want to inject test
  * data; defaults read the global store and a no-op logger.
  */
+/**
+ * A measured benchmark suite paired with its STATIC, configured baseline map
+ * (#3692/#3246). Injected — there is no global benchmark store and the baseline
+ * is never auto-derived from recent runs (that would be the deferred #3230
+ * adaptive control). When absent, the perf-regression detector does not run.
+ */
+export interface PerfRegressionInput {
+  readonly result: BenchmarkSuiteResult;
+  /** Static, configured baselines keyed by `"<component>::<operation>"`. */
+  readonly baselines: PerfBaselineMap;
+  /** Optional override of the default 20% tolerance. */
+  readonly toleranceFraction?: number;
+}
+
+/**
+ * Gather deterministic perf-regression signals when a benchmark+baseline is
+ * injected; otherwise none. Thin wrapper around {@link detectPerfRegressionSignals}
+ * so the review runner stays under the per-function line cap.
+ */
+function gatherPerfRegressionSignals(
+  perf: PerfRegressionInput | undefined
+): readonly ImprovementSignal[] {
+  if (perf === undefined) return [];
+  return detectPerfRegressionSignals(perf.result, perf.baselines, perf.toleranceFraction);
+}
+
 export async function runImprovementReview(
   input: ImprovementReviewInput,
-  deps: { readonly logger?: ReturnType<typeof createLogger> } = {}
+  deps: {
+    readonly logger?: ReturnType<typeof createLogger>;
+    /**
+     * Optional benchmark measurement + STATIC baseline for the deterministic
+     * perf-regression detector (#3692/#3246). Surfaced-only — emitting a signal
+     * never mutates a fitness/governance score. Absent → detector is a no-op.
+     */
+    readonly perfRegression?: PerfRegressionInput;
+  } = {}
 ): Promise<ImprovementReviewResponse> {
   const logger = deps.logger ?? createLogger({ component: 'improvement_review' });
   const { lookbackDays, fileIssues, minSampleSize, fitnessFloor, selfEvalReportPath } = input;
@@ -748,6 +792,14 @@ export async function runImprovementReview(
   // the review). Workspace-scoped to defeat context-poisoning (#3852 concern 1).
   const toolFitnessSignals = loadToolFitnessSignals(windowLabel);
 
+  // Deterministic perf-regression candidates (#3692/#3246): a measured benchmark
+  // vs a STATIC, configured baseline + fixed tolerance. SURFACED-ONLY — appended
+  // to the signals list exactly like every other detector; nothing mutates a
+  // fitness/governance score or auto-applies a remediation. Runs only when a
+  // benchmark+baseline is injected (no global store; no rolling baseline → out of
+  // the deferred #3230 adaptive-control scope).
+  const perfRegressionSignals = gatherPerfRegressionSignals(deps.perfRegression);
+
   const signals: ImprovementSignal[] = [
     ...detectCliPerformanceFloor(windowed, minSampleSize, windowLabel),
     ...detectFailureCategoryConcentration(windowed, windowLabel),
@@ -755,6 +807,7 @@ export async function runImprovementReview(
     ...detectConsensusRejectionSignals(rejectionEvents, windowLabel),
     ...selfEvalSignals,
     ...toolFitnessSignals,
+    ...perfRegressionSignals,
   ];
   signals.sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]);
 
