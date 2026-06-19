@@ -46,8 +46,6 @@ import { runWarmUp } from './cli/warm-up.js';
 import { runE2EEval, formatE2EEvalResult } from './cli/e2e-eval.js';
 import { runRoutingAB, formatABReport } from './cli/routing-ab.js';
 import { runMemoryEval, formatMemoryEvalReport } from './cli/memory-eval.js';
-import { existsSync } from 'node:fs';
-import { getNexusDataDir } from './config/nexus-data-dir.js';
 import { initPortable, formatInitPortableMessage } from './cli/init-portable.js';
 import {
   EXIT_CODES,
@@ -174,31 +172,18 @@ function buildOrchestratorOptions(args: ParsedCliArgs): OrchestratorModeOptions 
   };
 }
 
-/** Prints a first-run hint to stderr when no setup has been done (#1261). */
-function printFirstRunHint(): void {
-  const isTTY = process.stderr.isTTY;
-  if (!isTTY) return;
-  const dataDir = getNexusDataDir();
-  const hasConfig =
-    existsSync('./.nexus-agents/nexus-agents.yaml') ||
-    existsSync('./.nexus-agents/nexus-agents.yml') ||
-    existsSync('./nexus-agents.yaml') ||
-    existsSync('./nexus-agents.yml');
-  if (existsSync(dataDir) || hasConfig) return;
-  process.stderr.write(
-    '\n\x1b[36mnexus-agents\x1b[0m: First time? Run \x1b[1mnexus-agents setup\x1b[0m to configure.\n\n'
-  );
-}
-
 /**
  * Handles the server command (default mode or interactive REPL).
  * In orchestrator mode, executes tasks directly without MCP server.
  * (Source: Issue #446 - Implement orchestrator mode)
+ *
+ * The first-run setup hint moved out of here in #3208 — it now fires from the
+ * CLI dispatch seam (`dispatchCommand` → `maybeShowFirstRunHint`) for ALL
+ * commands except version/help/setup, not just `server`.
  */
 export async function handleServerCommand(
   args: ParsedCliArgs
 ): Promise<CliExitResult | LifecycleDelegated> {
-  printFirstRunHint();
   if (args.options.interactive) {
     const exitCode = await replCommand({ verbose: args.options.verbose });
     return cliExitFromStatus(exitCode);
