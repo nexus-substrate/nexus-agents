@@ -282,7 +282,7 @@ function buildStructuredOutput(result: DevPipelineResult): Record<string, unknow
 }
 
 const RUN_DEV_PIPELINE_DESCRIPTION =
-  'Run the multi-agent development pipeline. Accepts direct task instructions, a plan file, or a spec file. Supports dry-run (plan+vote only).';
+  "Run the multi-agent development pipeline. Accepts direct task instructions, a plan file, or a spec file. Supports dry-run (plan+vote only). Supports dispatch: 'async' (non-dryRun runs) — returns a jobId immediately; poll get_job_result.";
 
 /**
  * Validates input, runs the dev pipeline, and shapes the result.

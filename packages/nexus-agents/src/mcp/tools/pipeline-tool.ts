@@ -246,7 +246,7 @@ function selectStageRegistry(
 // Templates listed dynamically so a new entry in PIPELINE_TEMPLATES can't
 // drift this description (#2728 — previously hardcoded the pre-`general`
 // 4-template list).
-const RUN_PIPELINE_DESCRIPTION = `Single unified entry point for all pipeline templates (${listTemplateIds().join('/')}). Auto-detects template from task content or accepts an explicit override.`;
+const RUN_PIPELINE_DESCRIPTION = `Single unified entry point for all pipeline templates (${listTemplateIds().join('/')}). Auto-detects template from task content or accepts an explicit override. Supports dispatch: 'async' (non-dryRun runs) — returns a jobId immediately; poll get_job_result.`;
 
 /**
  * Run the adaptive pipeline for a plain goal string with default settings

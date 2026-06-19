@@ -4,7 +4,7 @@
  *
  * Stage order (executed by `composite-router-stages.ts:runPipeline`):
  *   1. Budget — eliminate CLIs that exceed session token/cost budget
- *   2. Scoring (parallel) — ConfidenceCascade / CapabilityMatch / KnnRouting /
+ *   2. Scoring (sequential, dependency-ordered) — ConfidenceCascade / CapabilityMatch / KnnRouting /
  *      DistilledRule / ResourceStrategy / ZeroRouter / Preference
  *   3. QualityConstraint — constraint-first filter; can short-circuit (#1686)
  *   4. CategoryOverride — `CATEGORY_CHAIN_OVERRIDES` per task category; can

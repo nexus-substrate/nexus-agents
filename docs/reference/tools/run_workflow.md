@@ -10,7 +10,7 @@ keywords: [mcp, tool, reference, run_workflow]
 > Auto-generated from the registered MCP tool descriptions and input
 > schemas. Do not edit by hand — run `pnpm docs:tools` to regenerate.
 
-Run a LINEAR (single-path) workflow template by name with typed inputs. For DAG-shaped workflows with branching or per-node checkpoints, use `run_graph_workflow` instead.
+Run a LINEAR (single-path) workflow template by name with typed inputs. For DAG-shaped workflows with branching or per-node checkpoints, use `run_graph_workflow` instead. Supports mode: 'async' (non-dryRun runs) — returns a jobId immediately; poll get_job_result.
 
 ## Parameters
 

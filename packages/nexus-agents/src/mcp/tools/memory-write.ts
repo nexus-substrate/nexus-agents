@@ -302,7 +302,7 @@ export function registerMemoryWriteTool(server: McpServer, deps: MemoryWriteDeps
 
   const description =
     'Write a memory entry to a specific backend. ' +
-    'Supports session (learnings), belief (subject-predicate-object triples), ' +
+    'Supports session (learnings), belief assertions (subject + object; predicate fixed as `has_knowledge`), ' +
     'agentic (knowledge with attributes), adaptive (priority-scored), ' +
     'and typed (MIRIX-style semantic) backends.';
 

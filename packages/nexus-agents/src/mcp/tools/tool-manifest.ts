@@ -176,12 +176,17 @@ export const TOOL_MANIFEST = [
     name: 'delegate_to_model',
     annotations: {
       title: 'Delegate to Model',
-      readOnlyHint: true,
+      // Not read-only: every call records the routing decision to tool-memory
+      // (recordLearning + runPromotionPipeline) for learning feedback.
+      readOnlyHint: false,
       destructiveHint: false,
       idempotentHint: true,
       openWorldHint: false,
     },
-    sideEffects: [{ category: 'implicit', description: 'Consumes rate limit quota' }],
+    sideEffects: [
+      { category: 'implicit', description: 'Consumes rate limit quota' },
+      { category: 'explicit', description: 'Records routing decision to tool-memory (learning feedback)' },
+    ],
   },
   {
     name: 'list_experts',

@@ -25,11 +25,11 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   execute_expert:
     'Run a task through an expert YOU PREVIOUSLY CREATED via `create_expert`. Requires the expertId returned by create_expert; not for ad-hoc execution.',
   run_workflow:
-    'Run a LINEAR (single-path) workflow template by name with typed inputs. For DAG-shaped workflows with branching or per-node checkpoints, use `run_graph_workflow` instead.',
+    "Run a LINEAR (single-path) workflow template by name with typed inputs. For DAG-shaped workflows with branching or per-node checkpoints, use `run_graph_workflow` instead. Supports mode: 'async' (non-dryRun runs) — returns a jobId immediately; poll get_job_result.",
   consensus_vote:
-    'Execute multi-model consensus voting on a proposal. Uses specialized agent roles to vote with configurable strategies.',
+    'Execute multi-model consensus voting on a proposal. Uses 7 roles by default (or 3 with quickMode), voting with configurable strategies. Supports async mode (returns a jobId to poll via get_job_result).',
   delegate_to_model:
-    'Pick which existing model should HANDLE a task. Inspects task complexity and returns the best-fit model from the routing registry — does NOT add a new model. Read-only.',
+    'Pick which existing model should HANDLE a task. Inspects task complexity and returns the best-fit model from the routing registry — does NOT add a new model. Records the routing decision to tool-memory for learning feedback (not a pure read).',
   list_experts:
     'Inventory of expert ROLES available to `create_expert` (architect, security, devex, etc.). Use this BEFORE create_expert to pick a role; returns role name and capability summary.',
   list_workflows:
@@ -57,7 +57,7 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     'Get multi-CLI performance weather report with per-CLI success rates and adaptive routing bonuses.',
   issue_triage: 'Triage GitHub issues with trust classification and typed action recommendations.',
   run_graph_workflow:
-    'Run a DAG-shaped workflow with per-node checkpoints, event streaming, and an audit trail. Checkpoints drive the executor in-process recovery (crash-resume + selective node retry) and inspection — the MCP call is fire-and-forget with NO caller resume input, and the checkpoint store is in-memory (not durable across process restarts). For straight linear templates, use `run_workflow` instead.',
+    "Run a DAG-shaped workflow with per-node checkpoints, event streaming, and an audit trail. Checkpoints drive the executor in-process recovery (crash-resume + selective node retry) and inspection — the MCP call is fire-and-forget with NO caller resume input, and the checkpoint store is in-memory (not durable across process restarts). For straight linear templates, use `run_workflow` instead. Supports dispatch: 'async' — returns a jobId immediately; poll get_job_result.",
   execute_spec:
     'Execute an AI software factory spec through the full pipeline (parse, decompose, compile, execute, validate).',
   registry_import:
@@ -87,9 +87,9 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   ci_health_check:
     "Diagnostic for CI infrastructure health (#3076). Composes GitHub status-page state (githubstatus.com/api/v2/components.json) + the configured repo's recent workflow-runs activity into one verdict { status: healthy|degraded|outage|unknown, signals }. Pessimistic combination — repo-level wedge downgrades a healthy status page. Use BEFORE long auto-merge waits to skip the wedge cycle when CI is broken org-wide. Reads GitHub state only; appends a local CI-health telemetry event per call (no remote state mutated, not strictly idempotent).",
   run_dev_pipeline:
-    'Run the multi-agent development pipeline. Accepts direct task instructions, a plan file, or a spec file. Supports dry-run (plan+vote only).',
+    "Run the multi-agent development pipeline. Accepts direct task instructions, a plan file, or a spec file. Supports dry-run (plan+vote only). Supports dispatch: 'async' (non-dryRun runs) — returns a jobId immediately; poll get_job_result.",
   run_pipeline:
-    'Single unified entry point for all pipeline templates (dev/research/audit/greenfield/general). Auto-detects template from task content or accepts an explicit override.',
+    "Single unified entry point for all pipeline templates (dev/research/audit/greenfield/general). Auto-detects template from task content or accepts an explicit override. Supports dispatch: 'async' (non-dryRun runs) — returns a jobId immediately; poll get_job_result.",
   pr_review:
     'Run multi-voter consensus review on a PR diff (#2233). 5 voters (architect, security, devex, catfish, scope_steward) each emit approve/request_changes/abstain with reasoning and citations. Reuses consensus_vote infra; experimental.',
   supply_chain_tradeoff_panel:

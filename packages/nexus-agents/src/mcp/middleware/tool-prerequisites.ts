@@ -130,6 +130,8 @@ export const TOOL_PREREQUISITES: Record<string, ToolPrerequisite> = {
  * added sensitive tool can't ship ungated by omission.
  */
 export const NO_PREREQUISITE: Record<string, string> = {
+  delegate_to_model:
+    'inspects a task and recommends a model + records the decision to tool-memory; no world-state precondition to gate',
   orchestrate: 'orchestration is self-contained; sub-tool calls carry their own gates',
   create_expert: 'in-memory expert creation; no external precondition',
   execute_expert:
@@ -147,7 +149,7 @@ export const NO_PREREQUISITE: Record<string, string> = {
   research_add:
     'arXiv fetch failures surface as a transient envelope from the handler; no useful pre-gate',
   research_add_source:
-    'GitHub metadata fetch is best-effort with graceful fallback; no useful pre-gate',
+    'quality_score is computed from caller-provided quality_signals only (no GitHub fetch); no useful pre-gate',
   research_catalog_review: 'operates on local catalog state already loaded by the handler',
   issue_triage:
     'untrusted-input safety (trust-tier classification, Rule of Two) is internal-handler logic per .rules/untrusted-input.md — not a call-time world-state predicate',

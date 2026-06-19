@@ -22,7 +22,7 @@ NON-PAPER source: add a GitHub repo / tool / blog URL to the research registry w
 | `vendor` | string | no | maxLength 100 | Vendor or organization |
 | `topics` | array of string | no | — | Research topics (max 5) |
 | `tags` | array of string | no | — | Searchable tags (max 10) |
-| `quality_signals` | object | no | — | Quality signals (auto-fetched for GitHub repos if omitted) |
+| `quality_signals` | object | no | — | Quality signals used to compute quality_score; provide explicitly — no GitHub metadata is fetched |
 | `techniques_extracted` | array of string | no | — | Techniques identified in this source (max 5) |
 | `verdict` | enum | no | one of: adopted \| partially_adopted \| rejected \| monitoring \| planned | Adoption verdict |
 | `verdict_notes` | string | no | maxLength 500 | Notes explaining the verdict |

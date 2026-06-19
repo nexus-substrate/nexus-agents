@@ -81,7 +81,6 @@ describe('tool-annotations', () => {
 
   describe('read-only tools', () => {
     const readOnlyTools = [
-      'delegate_to_model',
       'list_experts',
       'list_workflows',
       'research_query',
@@ -105,6 +104,7 @@ describe('tool-annotations', () => {
 
   describe('state-mutating tools', () => {
     const mutatingTools = [
+      'delegate_to_model',
       'orchestrate',
       'create_expert',
       'execute_expert',
@@ -204,8 +204,8 @@ describe('tool-annotations', () => {
     });
 
     it('returns empty array when no effects match category', () => {
-      // delegate_to_model has no explicit side effects
-      const effects = getSideEffectsByCategory('delegate_to_model', 'explicit');
+      // list_experts has only an implicit side effect (rate-limit quota), no explicit.
+      const effects = getSideEffectsByCategory('list_experts', 'explicit');
       expect(effects).toEqual([]);
     });
   });

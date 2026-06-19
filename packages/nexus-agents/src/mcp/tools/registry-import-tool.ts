@@ -67,14 +67,17 @@ export function registerRegistryImportTool(server: McpServer, deps: RegistryImpo
       .enum(['anthropic', 'google', 'openai'])
       .describe('Model provider (anthropic, google, openai)'),
     modelId: z.string().min(1).describe('Provider model identifier'),
-    dryRun: z.boolean().optional().describe('Preview without persisting (default: true)'),
+    dryRun: z
+      .boolean()
+      .optional()
+      .describe('No-op flag echoed back in the response; the tool never persists regardless'),
   };
 
   const description =
     'Draft a registry ENTRY for a NEW model so routing can consider it later. ' +
     'Generates a ModelCapability YAML with conservative quality scores (5/10) for human review. ' +
-    'For picking among ALREADY-registered models, use `delegate_to_model`. ' +
-    'Use dryRun=true (default) to preview the entry without saving.';
+    'Always returns a draft entry for human review (never persists). ' +
+    'For picking among ALREADY-registered models, use `delegate_to_model`.';
 
   const secureHandler = createSecureHandler(registryImportHandler, {
     toolName: 'registry_import',
