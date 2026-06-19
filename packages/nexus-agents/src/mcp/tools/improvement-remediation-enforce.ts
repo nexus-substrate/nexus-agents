@@ -142,6 +142,15 @@ export interface AutoRemediationDeps {
   recordOutcome?(plan: RemediationPlan, pr: RemediationPrResult): void;
   /** Per-step audit emission. */
   audit(event: AutoRemediationAuditEvent): void;
+  /**
+   * Optional observer fired in EVERY mode right after a signal's typed
+   * {@link RemediationPlan} is produced (post-RESEARCH, pre-consensus). Best-effort
+   * and side-effect-only — the orchestrator ignores its return and never lets it
+   * throw into the control flow. The AUDIT-mode cycle uses this to drive the
+   * dry-run code-PR guards-green soak (#3670 Stage 2.5) over the proposed change
+   * set; it MUST NOT push, open a PR, or write the live tree.
+   */
+  onPlanProduced?(signal: ImprovementSignal, plan: RemediationPlan): void;
   readonly logger?: ILogger;
 }
 
@@ -370,6 +379,27 @@ async function consensusGate(
 }
 
 /**
+ * Fire the optional best-effort {@link AutoRemediationDeps.onPlanProduced} observer
+ * (#3670 Stage 2.5). Side-effect-only and fully isolated — a throw is swallowed
+ * (logged WARN) so the observer can never break the remediation control flow.
+ */
+function firePlanObserver(
+  deps: AutoRemediationDeps,
+  signal: ImprovementSignal,
+  plan: RemediationPlan
+): void {
+  if (deps.onPlanProduced === undefined) return;
+  try {
+    deps.onPlanProduced(signal, plan);
+  } catch (err: unknown) {
+    deps.logger?.warn('onPlanProduced observer threw (swallowed)', {
+      signalKey: signal.signalKey,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+/**
  * Execute the phase machine for one admitted signal. RESEARCH always runs, then
  * the consensus gate (#3653). In audit the vote is observed but IMPLEMENT is
  * skipped (zero writes); enforce proceeds to the write phase only on approval.
@@ -396,6 +426,11 @@ async function executeOne(
     signalKey: signal.signalKey,
     detail: `${String(plan.steps.length)} steps`,
   });
+
+  // Best-effort plan observer (#3670 Stage 2.5): drives the AUDIT-mode dry-run
+  // code-PR soak. Side-effect-only and isolated — a throw here must NEVER break
+  // the remediation control flow.
+  firePlanObserver(deps, signal, plan);
 
   // Self-modification guard (#3653): never autonomously touch the loop's own
   // rails / auth / secrets / CI — leave for a human (neutral for the breaker).
