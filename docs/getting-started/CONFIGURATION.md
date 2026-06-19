@@ -329,6 +329,45 @@ Resolution: `clamp(envClassOverride ?? base, 1000, 7200000) * multiplier`, re-cl
 | `NEXUS_DISABLE_SESSIONS`          | Disable session tracking                                                                                                                                                                | `false`   |
 | `NEXUS_DISABLE_METRICS`           | Disable metrics tracking                                                                                                                                                                | `false`   |
 
+### Code-PR adapter activation (#3670) — ARMED but DORMANT
+
+The autonomous code-PR adapter (#3670) is **built and owner-approved (2026-06-19)
+but DORMANT**. It is "armed", not "active": the owner approval satisfies the
+human-authorization gate, but it does **not** activate the push path. Activation
+is **earned** through conjunctive, falsifiable, evidence-based gates — every one
+must hold, and each is an independently checkable operational fact (never model
+output, never "the owner said so").
+
+A push is **impossible** unless ALL of the following conjunctive gates hold:
+
+- **Enable flag** — the explicit OFF→on flag. There is **no enable env var** yet:
+  the flag is passed in as the `flagEnabled` boolean on the readiness evidence
+  (`CodePrEnableReadinessEvidence` / `CodePrPushReadiness.flagEnabled`), supplied by
+  the operator wiring point that constructs the push input. The gate stays pure and
+  reads no env for the flag.
+- **Enable-vote ref** — a recorded enable-vote ref (`enableVoteRef`, non-empty),
+  supplied on the readiness evidence alongside the named `owner` acknowledgement.
+- **`NEXUS_CODEPR_TOKEN`** — a **least-privilege** scoped credential that may open a
+  feature-branch PR ONLY. It **cannot** merge, push to `main`/`master`, force-push,
+  or alter branch protections. It is an operator-provisioned env var read directly by
+  the push seam (`CODEPR_TOKEN_ENV`), not part of the validated `validateNexusEnv`
+  set; absent or empty ⇒ a hard `no_credentials` refusal.
+- **`guardsGreenSoak ≥ 50`** — at least 50 **consecutive** clean (zero guard-denial)
+  dry-run plans, accrued automatically by the `NEXUS_AUTO_REMEDIATE=audit` soak
+  consumer. The streak is read from the durable soak store at push time, **not** from
+  caller input — it cannot be forged.
+
+> **Warning — setting the flag alone does NOT activate the adapter.** Flipping
+> `flagEnabled` true (or recording the enable-vote, or provisioning the token) is
+> necessary but **never sufficient**: every evidence gate above still applies, and
+> any unmet gate fails closed. This is deliberate (per the DevX vote condition) so
+> there is no "enabled but does nothing" confusion — the adapter is dormant until
+> the soak is earned AND the scoped token is present AND the flag/vote/owner-ack are
+> all recorded. Owner approval authorizes activation; it does not perform it.
+
+See #3670 for the staged rollout (the push path is the gated capability; nothing
+here wires it to a live runtime trigger).
+
 ### Removed in 2.82.0 (#2977)
 
 These 8 env vars were declared but never read by any production code (silent
