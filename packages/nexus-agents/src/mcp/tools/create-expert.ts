@@ -38,24 +38,41 @@ import {
 import { recordExpertCreated, recordExpertError } from './create-expert-recording.js';
 
 /**
+ * Canonical, single-source list of roles `create_expert` can create.
+ *
+ * This is the ONE place a creatable role is added or removed. Both the exported
+ * {@link CreateExpertInputSchema} and the runtime `toolSchema` registered with
+ * the MCP server derive their `role` enum from this list, so the schema MCP
+ * clients see can never drift from the exported one (was #3978: the registered
+ * enum had silently dropped `data_visualization_expert`). A parity test in
+ * `create-expert.test.ts` enforces set-equality across all three.
+ *
+ * This is a deliberate, curated SUBSET of the full configured expert roster
+ * (see `BUILT_IN_EXPERTS` / `EXPERT_TYPE_TO_ROLE` in expert-config.ts). Every
+ * entry here MUST be a real configured built-in expert; not every configured
+ * expert is exposed for ad-hoc creation (e.g. `qa_expert` is configured but not
+ * listed here). Each role below maps to a `BuiltInExpertType` via
+ * {@link ROLE_TO_EXPERT_TYPE}.
+ */
+export const CREATE_EXPERT_ROLES = [
+  'code_expert',
+  'architecture_expert',
+  'security_expert',
+  'documentation_expert',
+  'testing_expert',
+  'devops_expert',
+  'research_expert',
+  'pm_expert',
+  'ux_expert',
+  'infrastructure_expert',
+  'data_visualization_expert',
+] as const;
+
+/**
  * Input schema for create_expert tool.
  */
 export const CreateExpertInputSchema = z.object({
-  role: z
-    .enum([
-      'code_expert',
-      'architecture_expert',
-      'security_expert',
-      'documentation_expert',
-      'testing_expert',
-      'devops_expert',
-      'research_expert',
-      'pm_expert',
-      'ux_expert',
-      'infrastructure_expert',
-      'data_visualization_expert',
-    ])
-    .describe('Expert role to create'),
+  role: z.enum(CREATE_EXPERT_ROLES).describe('Expert role to create'),
   modelPreference: z
     .string()
     .max(100)
@@ -297,20 +314,9 @@ function createCreateExpertHandler(deps: CreateExpertDeps) {
 export function registerCreateExpertTool(server: McpServer, deps: CreateExpertDeps): void {
   const logger = deps.logger ?? createLogger({ tool: 'create_expert' });
   const toolSchema = {
-    role: z
-      .enum([
-        'code_expert',
-        'architecture_expert',
-        'security_expert',
-        'documentation_expert',
-        'testing_expert',
-        'devops_expert',
-        'research_expert',
-        'pm_expert',
-        'ux_expert',
-        'infrastructure_expert',
-      ])
-      .describe('Expert role to create'),
+    // Derived from the single-source CREATE_EXPERT_ROLES so the registered enum
+    // can never drift from the exported CreateExpertInputSchema (#3978).
+    role: z.enum(CREATE_EXPERT_ROLES).describe('Expert role to create'),
     modelPreference: z
       .string()
       .max(100)
@@ -319,7 +325,7 @@ export function registerCreateExpertTool(server: McpServer, deps: CreateExpertDe
   };
 
   const description =
-    'Create a specialized expert agent for code, architecture, security, documentation, testing, devops, research, product management, UX, or infrastructure tasks';
+    'Create a specialized expert agent for code, architecture, security, documentation, testing, devops, research, product management, UX, infrastructure, or data visualization tasks';
 
   // Wrap handler with secure handler for rate limiting and request context (Issue #531)
   const secureHandler = createSecureHandler(createCreateExpertHandler(deps), {

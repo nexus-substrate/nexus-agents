@@ -3,11 +3,15 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
 import { Expert, BuiltInExpertTypeSchema, type BuiltInExpertType } from '../../agents/index.js';
 import { RateLimiter } from '../middleware/index.js';
 import {
   CreateExpertInputSchema,
+  CREATE_EXPERT_ROLES,
+  registerCreateExpertTool,
+  createDefaultDeps,
   type CreateExpertDeps,
   type IExpertFactory,
   getAvailableRoles,
@@ -187,6 +191,61 @@ describe('CreateExpertInputSchema', () => {
         expect(result.data.modelPreference).toBeUndefined();
       }
     });
+  });
+});
+
+/**
+ * Captures the `role` enum option values from the schema registered with the
+ * MCP server (the inputSchema arg to `server.registerTool`). This is what MCP
+ * clients actually see — distinct from the exported CreateExpertInputSchema.
+ */
+function getRegisteredRoleOptions(): readonly string[] {
+  let captured: readonly string[] | undefined;
+  const mockServer = {
+    registerTool: (
+      _name: string,
+      config: { inputSchema: { role: { options: readonly string[] } } }
+    ): void => {
+      captured = config.inputSchema.role.options;
+    },
+  } as unknown as McpServer;
+
+  const rateLimiter = new RateLimiter({ capacity: 1000, refillRate: 1000, refillIntervalMs: 1000 });
+  registerCreateExpertTool(mockServer, createDefaultDeps(rateLimiter));
+
+  if (captured === undefined) {
+    throw new Error('registerCreateExpertTool did not register an inputSchema with a role enum');
+  }
+  return captured;
+}
+
+describe('role enum single-sourcing (#3978)', () => {
+  it('registered toolSchema.role enum === exported CreateExpertInputSchema.role enum', () => {
+    const registered = getRegisteredRoleOptions();
+    const exported = CreateExpertInputSchema.shape.role.options;
+
+    expect(new Set(registered)).toEqual(new Set(exported));
+  });
+
+  it('registered and exported enums both === the single-source CREATE_EXPERT_ROLES', () => {
+    const registered = getRegisteredRoleOptions();
+    const exported = CreateExpertInputSchema.shape.role.options;
+    const source = new Set(CREATE_EXPERT_ROLES);
+
+    expect(new Set(registered)).toEqual(source);
+    expect(new Set(exported)).toEqual(source);
+  });
+
+  it('data_visualization_expert is creatable via the registered MCP schema', () => {
+    expect(getRegisteredRoleOptions()).toContain('data_visualization_expert');
+  });
+
+  it('every creatable role maps to a real configured built-in expert', () => {
+    // getCapabilitiesForRole resolves via ROLE_TO_EXPERT_TYPE → BUILT_IN_EXPERTS,
+    // so a defined result proves the role is a real configured expert (no phantoms).
+    for (const role of CREATE_EXPERT_ROLES) {
+      expect(getCapabilitiesForRole(role)).toBeDefined();
+    }
   });
 });
 

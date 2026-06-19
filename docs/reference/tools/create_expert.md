@@ -10,7 +10,7 @@ keywords: [mcp, tool, reference, create_expert]
 > Auto-generated from the registered MCP tool descriptions and input
 > schemas. Do not edit by hand — run `pnpm docs:tools` to regenerate.
 
-Create a specialized expert agent for code, architecture, security, documentation, testing, devops, research, product management, or UX tasks
+Create a specialized expert agent for code, architecture, security, documentation, testing, devops, research, product management, UX, infrastructure, or data visualization tasks
 
 ## Parameters
 
