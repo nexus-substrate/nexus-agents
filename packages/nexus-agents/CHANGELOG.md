@@ -1,5 +1,328 @@
 # nexus-agents
 
+## 2.133.0
+
+### Minor Changes
+
+- [#3960](https://github.com/nexus-substrate/nexus-agents/pull/3960) [`5a126c4`](https://github.com/nexus-substrate/nexus-agents/commit/5a126c42fa609026f06e025d2acff3046a1d29d4) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(capability-loop): autonomous code-PR write-time guard library (Stage 1, OFF — no runtime activation) ([#3670](https://github.com/nexus-substrate/nexus-agents/issues/3670))
+
+  Adds `src/mcp/tools/codepr-guards.ts`, a pure, deterministic guard library for
+  the future autonomous code-PR adapter. Stage 1 is library + tests ONLY — it
+  performs NO code-generation, NO git push, NO PR-open, and wires NO flag to live
+  behavior. It registers no MCP tool, CLI command, or workflow.
+
+  Guards (each returns a discriminated fail-closed result, never throws for an
+  expected denial): `confinePath` (path-escape confinement via realpath, with a
+  test seam), `classifyPath` (sensitive-path classifier with an exported,
+  staleness-tested self-guard denylist), `checkBlastRadius`, `scanDiffOrDeny`
+  (wraps the [#3669](https://github.com/nexus-substrate/nexus-agents/issues/3669) secret scan), `auditAutonomousEvent` (hash-chained audit append
+  for both a would-be PR and a fail-closed abort), `checkResourceBudget`, and the
+  composite `evaluateWriteGuards` entry point. Satisfies binding preconditions
+  A (deterministic-only decisions), B (self-modification lockout), C (audit), and
+  E (dependency-manifest authorship restriction).
+
+- [#3967](https://github.com/nexus-substrate/nexus-agents/pull/3967) [`0376dba`](https://github.com/nexus-substrate/nexus-agents/commit/0376dba71ab353e0cfa09890564fa08079b0b46e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(capability-loop): code-PR enable-readiness gate + dry-run worktree orchestrator (Stage 2, OFF — no push) ([#3670](https://github.com/nexus-substrate/nexus-agents/issues/3670))
+
+  Stage 2 of closing the capability loop, OFF-by-default with no runtime consumer.
+  Composes the hardened Stage-1 guards (`codepr-guards.ts`); reimplements no guard
+  logic.
+
+  - `codepr-enable-readiness.ts` — `evaluateCodePrEnableReadiness`, a pure,
+    deterministic DOUBLE-GATE mirroring `evaluateEnforceReadiness`. Returns
+    `ready: true` only when ALL hold: the OFF→on flag is set, a recorded
+    enable-vote ref is present, a guards-green soak threshold is met (N consecutive
+    dry-run plans with zero guard denials), and a named owner has acknowledged. The
+    raw flag ALONE can never activate the push path. Stage 3 (the push) must call
+    this and refuse unless `ready`.
+  - `codepr-orchestrator.ts` — `planCodePrRun`, a dry-run orchestrator that applies
+    a proposed change set in an ISOLATED throwaway git worktree, composes
+    `confinePath`/`classifyPath`/`evaluateWriteGuards`, records the audit on both
+    the pass and abort paths, and returns a planned PR descriptor (what it WOULD
+    push). It performs NO push, NO PR-open, and NO live-tree write, and atomically
+    discards the worktree in a `finally` even on failure/throw. Fail-closed: a
+    sensitive path, path escape, secret, over-budget change set, or any throw
+    returns a denied plan (never thrown), with no partial application.
+
+  No MCP tool / CLI command / workflow added (repo-index unaffected). Stage 3 (the
+  scoped-token push behind the enable-vote) is still pending.
+
+- [#3958](https://github.com/nexus-substrate/nexus-agents/pull/3958) [`6139fe7`](https://github.com/nexus-substrate/nexus-agents/commit/6139fe74183c5a25cd13d53113d641ab874b3176) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(governance): convert the authentic vote-record ledger from a linear hash
+  chain to a tamper-evident record SET + monotonic sequence ([#3927](https://github.com/nexus-substrate/nexus-agents/issues/3927) PR-1).
+
+  The `governance/vote-records.jsonl` ledger is a multi-branch committable
+  artifact, so the chain model (each record's hash folding in the prior record's
+  hash) could not survive a concurrent-branch git merge. The revised model
+  (design vote 7-0, Option B) treats the ledger as an unordered SET of self-hashed
+  records plus a monotonic `sequence`:
+
+  - New required `sequence` field (integer ≥ 0); record `version` bumped `1.0` →
+    `1.1`. `previousHash` is now advisory/optional and NOT verified.
+  - The self-hash covers `sequence` but EXCLUDES `previousHash`, so hashes are
+    position-independent and stable across merges and file reorders.
+  - `verifyVoteRecordChain` → `verifyVoteRecordSet`. New verification reasons:
+    `sequence_gap` (omission) added; `previous_hash_mismatch` removed. Duplicate
+    sequences are a benign concurrent-fork signal (surfaced as `forks`), not a
+    failure.
+  - `.gitattributes`: `governance/vote-records.jsonl merge=union` for conflict-free
+    append merges.
+
+  The separate audit-event/tier-transition chain is unchanged (single-writer
+  runtime — still a real chain). Fail-closed enforcement is deferred to PR-2; this
+  seam remains warn-only/unenforced.
+
+### Patch Changes
+
+- [#3955](https://github.com/nexus-substrate/nexus-agents/pull/3955) [`2301caf`](https://github.com/nexus-substrate/nexus-agents/commit/2301caf3dfd448745a878ba22ad2a9f185eca885) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - test(ci): collect repo-root script tests in the CI run ([#3952](https://github.com/nexus-substrate/nexus-agents/issues/3952))
+
+  The package vitest config only globs `packages/nexus-agents/src/**`, so the
+  `scripts/**/*.test.ts` files (the doc generators and drift gates shipped in
+  [#3688](https://github.com/nexus-substrate/nexus-agents/issues/3688)/[#3949](https://github.com/nexus-substrate/nexus-agents/issues/3949) and others) were never collected by CI — they passed locally but
+  gave zero CI protection. This adds a root `vitest.config.ts` that collects them
+  (excluding stale `.claude/` worktree copies), a `test:scripts` npm script, and a
+  `Script Tests` CI job that builds `nexus-memory` first then runs the suite.
+
+  Collecting these tests immediately surfaced a real bug masked by the missing
+  coverage: `scripts/check-mcp-description-drift.test.ts` passed the raw
+  `TOOL_MANIFEST` objects to `buildDriftReport` (which expects tool _names_, as
+  the CLI gate does), so every lookup missed; fixed to `.map((t) => t.name)`.
+
+  `scripts/inject-governance.test.ts` is scoped out for now: it spawns ~30 `npx
+tsx` subprocesses that mutate shared repo files in place, takes ~400s solo, and
+  is flaky under the forks pool. The governance `check` it exercises is already
+  gated in CI via `docs-check.yml`, so its protection is not lost. Tracked for a
+  parallel-safe/fast rework in [#3954](https://github.com/nexus-substrate/nexus-agents/issues/3954).
+
+- [#3966](https://github.com/nexus-substrate/nexus-agents/pull/3966) [`4f42525`](https://github.com/nexus-substrate/nexus-agents/commit/4f42525e123408b35cde997d8c0e0854266aceec) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(capability-loop): harden code-PR write-time guards ([#3670](https://github.com/nexus-substrate/nexus-agents/issues/3670))
+
+  Adversarial review of the Stage-1 guard library (`codepr-guards.ts`, OFF, no
+  runtime consumer) flagged three gaps; all are now closed, additively, with no
+  currently-sensitive classification loosened:
+
+  - **New-file confinement.** `confinePath` realpathed the full candidate, so a
+    not-yet-existing file (the adapter's whole purpose) hit `ENOENT` and was
+    denied as a `path_escape`. It now canonicalizes the nearest EXISTING ancestor
+    (symlink-safe for the real part) and re-appends the new tail lexically,
+    resolving `..`/`.` without touching the filesystem, then asserts containment.
+    A symlinked ancestor that escapes, a `..` that climbs out, and any non-ENOENT
+    realpath error all still fail closed. The returned `resolvedPath` is the
+    canonical path the caller MUST write to (closes the symlink TOCTOU).
+  - **Path-normalization bypasses.** `classifyPath` now strips NTFS ADS suffixes
+    (`::$DATA`), trailing dots/spaces per segment, and collapses repeated slashes,
+    and matches the sensitive rules + self-guard basenames case-insensitively.
+    Forms like `Package.json`, `.GitHub/workflows/x`, `CODEOWNERS ` (trailing
+    space), `package.json.` (trailing dot), and `package.json::$DATA` now classify
+    sensitive. Over-matches toward sensitive; plain source stays non-sensitive.
+  - **Throw-free composition.** `evaluateWriteGuards` wraps each guard so a thrown
+    exception (e.g. the secret scanner) becomes a fail-closed `guard_error` denial
+    (new reason; names the guard + message, never secret content) instead of
+    propagating.
+
+- [#3957](https://github.com/nexus-substrate/nexus-agents/pull/3957) [`2f17822`](https://github.com/nexus-substrate/nexus-agents/commit/2f17822f5964f61b35df145d89d613727445c35b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - test(cli): command-metadata parity gate to prevent dispatch/catalog drift ([#3212](https://github.com/nexus-substrate/nexus-agents/issues/3212))
+
+  Add `command-parity.test.ts` asserting the real invariant between the three
+  parallel command-name structures — the dispatch tables (`cli-commands.ts`),
+  `COMMAND_CATALOG` (`cli-command-catalog.ts`), and `VALID_COMMANDS`
+  (`cli-types.ts`) — so drift (e.g. [#3713](https://github.com/nexus-substrate/nexus-agents/issues/3713)'s `auto-remediate` silent
+  MCP-server fallthrough) fails CI with the offending command named.
+
+  The gate asserts: dispatch ⊆ catalog, catalog ⊆ dispatch, and
+  `VALID_COMMANDS` == dispatchable, with a small documented `ALLOWED_ASYMMETRY`
+  allowlist (`(default)` catalog pseudo-entry; special-cased `help`/`version`).
+  Adds a minimal `listDispatchableCommands()` export to `cli-commands.ts` and
+  exports the existing `VALID_COMMANDS` const so the test derives sets from the
+  real dispatch tables rather than re-listing names. No dispatch refactor, no
+  unified registry, no new CLI command or MCP tool.
+
+- [#3941](https://github.com/nexus-substrate/nexus-agents/pull/3941) [`89b048e`](https://github.com/nexus-substrate/nexus-agents/commit/89b048e209fd92639a0a8e4686122482105b6019) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - refactor(cli): unify exit handling under CommandResult ([#3210](https://github.com/nexus-substrate/nexus-agents/issues/3210))
+
+  CLI command handlers in `cli-commands-handlers.ts` and
+  `cli-commands-handlers-complex.ts` now RETURN a `CliExitResult` (a
+  `CommandResult` carrying an `exitCode`) instead of calling `process.exit`
+  inline. The single `process.exit` boundary lives in the dispatcher
+  (`dispatchCommand` → `exitWith`). Exit codes are identical to before for
+  every path — this is a behavior-preserving structural refactor, not a
+  behavior change. Handlers that own the process lifecycle (the MCP stdio
+  server, the `session` valid-subcommand path) intentionally return
+  `undefined` so the dispatcher does not force an exit, preserving prior
+  event-loop-drain behavior.
+
+- [#3944](https://github.com/nexus-substrate/nexus-agents/pull/3944) [`95b9bfd`](https://github.com/nexus-substrate/nexus-agents/commit/95b9bfdc3fe5524670ba3955b27455d8f512c008) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - docs: add "Configuration for Reusable Pipelines" section to CONFIGURATION.md ([#3253](https://github.com/nexus-substrate/nexus-agents/issues/3253))
+
+  Documents configuration composition and the project-level vs user-level split:
+  how billing mode, data dir / repo-preferred, and model tiers / sandbox affect a
+  composed pipeline; which settings belong in a committed project config vs
+  per-user environment overrides; and how the loader resolves them (single-file
+  selection, first match wins, with env vars overlaying per-setting). Claims
+  verified against `config-loader.ts`, `nexus-data-dir.ts`, and
+  `decision-cost-recording.ts`.
+
+- [#3938](https://github.com/nexus-substrate/nexus-agents/pull/3938) [`b627cb3`](https://github.com/nexus-substrate/nexus-agents/commit/b627cb37ca1fd29888e3c319cbf05c0c0f22356f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(cli): suggest closest command on unknown subcommand ([#3211](https://github.com/nexus-substrate/nexus-agents/issues/3211))
+
+  An unrecognized top-level subcommand (e.g. `nexus-agents reviw`) previously
+  fell through silently to the MCP stdio server. It now prints
+  `Unknown command 'reviw'. Did you mean: review?` plus the usage hint and exits
+  INVALID_ARGS. Suggestions are typo-tolerant via Levenshtein distance (capped at
+  distance 2 and ~40% of the input length), ranked nearest-first, up to 3. When
+  nothing is close, only the usage hint is shown — behavior is otherwise
+  unchanged. The shared Levenshtein helper is extracted to `string-distance.ts`
+  and reused by the env-var typo detector.
+
+- [#3943](https://github.com/nexus-substrate/nexus-agents/pull/3943) [`190e671`](https://github.com/nexus-substrate/nexus-agents/commit/190e6713eaa070b3f208eb6f25ac56c5fd149e24) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - refactor(cli): finish CommandResult migration + explicit lifecycle sentinel ([#3942](https://github.com/nexus-substrate/nexus-agents/issues/3942), completes [#3210](https://github.com/nexus-substrate/nexus-agents/issues/3210))
+
+  Completes the [#3210](https://github.com/nexus-substrate/nexus-agents/issues/3210) migration started in [#3941](https://github.com/nexus-substrate/nexus-agents/issues/3941). Every CLI command handler
+  dispatched from `cli-commands.ts` now RETURNS its exit code instead of calling
+  `process.exit` inline; the single `process.exit` lives at the dispatcher
+  boundary in `exitWith()`. Migrated behavior-preservingly (exit codes
+  byte-identical): auth, login, usage, release-notes/validate/announce, scaffold,
+  visualize, capabilities, mode, scenario, validate, migrate, memory-benchmark,
+  status, health, improvement-review, auto-remediate, remediation-review.
+
+  Adds an explicit `LIFECYCLE_DELEGATED` sentinel (+ `LifecycleDelegated` type and
+  `isLifecycleDelegated` guard) to `cli-types.ts`. Lifecycle-owning handlers (the
+  MCP stdio server, the session valid-subcommand path) now RETURN the sentinel
+  instead of a bare `undefined`/`void`. Every handler is typed
+  `CliExitResult | LifecycleDelegated` (`CliHandlerResult`) with no `undefined`/
+  `void` member, so a dropped return is a compile error (TS2366) rather than a
+  silently-swallowed exit code. `exitWith` handles the union exhaustively. The two
+  `eslint-disable @typescript-eslint/no-invalid-void-type` suppressions are
+  removed.
+
+- [#3940](https://github.com/nexus-substrate/nexus-agents/pull/3940) [`c0d3c3f`](https://github.com/nexus-substrate/nexus-agents/commit/c0d3c3f7befef3a2996e532b272ac23cb67690bb) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(cli): expose mode detection for inspection ([#3214](https://github.com/nexus-substrate/nexus-agents/issues/3214))
+
+  Add a `nexus-agents mode` subcommand that prints the detected invocation mode
+  (server vs orchestrator), the signals that fed the decision (MCP client, stdin/
+  stdout TTY, CI platform, container) with their observed values, and the one-line
+  reasoning. Previously the detection in `mode-detector.ts` was only reachable
+  internally, so users had no way to see _why_ a given mode was chosen when
+  debugging CI/container issues. Supports `--format=json` for scripting and
+  `--mode=<m>` to report what an explicit override would resolve to.
+
+- [#3946](https://github.com/nexus-substrate/nexus-agents/pull/3946) [`7f1fa54`](https://github.com/nexus-substrate/nexus-agents/commit/7f1fa548dd8f5da3e070de5322d50e6416ba924d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - docs: correct the Configuration Precedence section to match the loader ([#3945](https://github.com/nexus-substrate/nexus-agents/issues/3945))
+
+  The section claimed a 4-level merge (env → project → user → default) with a user
+  config at `~/.config/nexus-agents/config.yaml`. The loader (`config-loader.ts`)
+  actually selects ONE file (first match wins: `NEXUS_CONFIG_PATH` → project
+  `./.nexus-agents/nexus-agents.yaml`/`./nexus-agents.yaml` → user
+  `~/.nexus-agents/nexus-agents.yaml`), layered over defaults, with env vars
+  overlaying per-setting at consumption time — not a multi-file merge, and not the
+  `~/.config/...` path. Corrected to the real behavior; consistent with the
+  "Configuration for Reusable Pipelines" section ([#3253](https://github.com/nexus-substrate/nexus-agents/issues/3253)).
+
+- [#3947](https://github.com/nexus-substrate/nexus-agents/pull/3947) [`943e21f`](https://github.com/nexus-substrate/nexus-agents/commit/943e21f1feb99f8861d7a077ebb50745280f9fd6) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(remediation): isolate soak/shadow tests from the production data dir ([#3932](https://github.com/nexus-substrate/nexus-agents/issues/3932))
+
+  The auto-remediation cycle's default durable soak sink resolves under
+  `NEXUS_DATA_DIR` (falling back to `~/.nexus-agents/learning/remediation-soak.jsonl`).
+  Audit-mode cases in `auto-remediation-cycle.test.ts` ran `runAutoRemediationCycle`
+  without injecting a `soakSink`, so synthetic fixture records (signalKeys `a`/`b`)
+  were written into the operator's real home-dir soak file — inflating the
+  enforce-readiness `volume` criterion with non-real data.
+
+  The cycle test now pins `NEXUS_DATA_DIR` to a throwaway temp dir for the whole
+  suite (with singleton reset + cleanup), a regression guard asserts the soak file
+  resolves under the temp data dir and never the home dir, and the readiness read
+  path now drops structurally-implausible soak records (signalKeys lacking the real
+  `category:detail` shape) as defense-in-depth so junk can't inflate the volume count.
+
+- [#3964](https://github.com/nexus-substrate/nexus-agents/pull/3964) [`a15cac7`](https://github.com/nexus-substrate/nexus-agents/commit/a15cac7b0a666e44fbbf29538d9c25d1cfdeaa29) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(audit): close tier-transition hash-coverage escape — unify transition predicate ([#3961](https://github.com/nexus-substrate/nexus-agents/issues/3961))
+
+  The tier-transition hash projection folded the integrity-critical
+  `metadata.tierTransition` payload into the chain hash only when
+  `isTierTransitionEvent` returned true, which required `action.startsWith('tier.')`.
+  But `extractTierTransition` (consumed by the ratification/drift gate) recovers a
+  transition from ANY `governance` event carrying a valid payload, regardless of
+  action. A `governance.audit` (non-`tier.`) event with a valid `tierTransition`
+  payload was therefore hashed WITHOUT covering the payload, yet consumed by the
+  gate as a promotion — a single-event undetectable forge.
+
+  Both decisions now derive from one shared predicate, `hasTierTransitionPayload`
+  (governance category + payload parses against `TierTransitionPayloadSchema`), so
+  hash-coverage ⊇ gate-consumption by construction and the two can never diverge
+  again. The chain remains tamper-EVIDENT (unkeyed SHA-256), not tamper-proof.
+
+- [#3956](https://github.com/nexus-substrate/nexus-agents/pull/3956) [`18a4185`](https://github.com/nexus-substrate/nexus-agents/commit/18a41858339c9a852482b831db3a498a01211cb9) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - refactor(mcp): table-driven MCP tool registration seeded from `TOOL_MANIFEST` ([#3266](https://github.com/nexus-substrate/nexus-agents/issues/3266))
+
+  Collapse the per-tool registration wiring in `cli-server-tools.ts` (the partial
+  `STANDALONE_TOOLS` table + five grouped helper functions + the category-dispatch
+  `registerToolCategories`) into a single declarative `HANDLER_TABLE` keyed by
+  `RegisteredToolName` and driven off the canonical `TOOL_MANIFEST`. Adding a tool
+  now needs one manifest entry plus one handler row. `TOOL_MANIFEST` stays the
+  single source of truth; the registry derives from it, and
+  `assertHandlerManifestParity` fails loudly at registration if the table and the
+  manifest disagree (a manifest entry with no handler, or a handler with no
+  manifest entry). No module-load self-registration, no dynamic-extension export —
+  tools remain statically declared. Behaviour-preserving: same 46 tools, same
+  order, same shared-instance wiring (expert registry, workflow engine), same
+  annotations/side-effects/tiers. MCP_TOOL_COUNT guard unchanged at 46.
+
+- [#3951](https://github.com/nexus-substrate/nexus-agents/pull/3951) [`fd4aa06`](https://github.com/nexus-substrate/nexus-agents/commit/fd4aa0614a604af44bfb2bc1f5e5ab845bae38fb) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - docs(reference): single-source per-tool MCP schemas from Zod; slim ENTRYPOINTS ([#3688](https://github.com/nexus-substrate/nexus-agents/issues/3688))
+
+  The hand-maintained ~590-line "Tool Schemas" JSON block in `docs/ENTRYPOINTS.md`
+  duplicated the runtime Zod input schemas and silently drifted. Per the
+  vote-decided Option C, that detail is now single-sourced.
+
+  - `scripts/generate-tool-reference.ts` (the existing [#3687](https://github.com/nexus-substrate/nexus-agents/issues/3687) generator) is
+    re-sourced from static regex parsing to Zod v4's native
+    `z.toJSONSchema(InputSchema, { io: 'input' })`. The generated per-tool pages
+    in `docs/reference/tools/` gain a **Constraints** column carrying the full
+    input contract — enum members (previously only an opaque `*Schema` ref name),
+    minLength/maxLength, min/max (incl. exclusive), pattern, format, and
+    `.default()` values. No new generator: the existing CI drift gate
+    (`pnpm docs:tools:check`, the "Tool Reference Drift" job) covers it unchanged.
+  - `docs/ENTRYPOINTS.md`: the `### Tool Schemas` block is removed (~590 lines)
+    and replaced with a link to the generated MCP Tool Reference. The curated
+    index (Overview, Quick Reference, CLI Commands, the auto-injected MCP tool
+    list, Usage Examples, Workflow Templates) is unchanged.
+  - Adds `scripts/generate-tool-reference.test.ts` asserting the constraint
+    extraction and the committed-vs-fresh drift contract.
+
+  Docs-only; no CLI command or MCP tool added or changed.
+
+- [#3950](https://github.com/nexus-substrate/nexus-agents/pull/3950) [`c5a73de`](https://github.com/nexus-substrate/nexus-agents/commit/c5a73dedefbb48552c48a92b855ba90995e212b6) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - docs: expand the generated TypeDoc API reference (`/api/`) from the single `src/core/result.ts` entry point to the full curated public surface — the 19 non-test barrels under `src/exports/` (core, config, adapters, agents, agents-skills, agents-ictm, workflows, mcp, cli-adapters, context, learning, audit, security, consensus, observability, orchestration, benchmarks, pipeline, scm). The website renders the committed `docs/api/` markdown via the existing `/api/[...slug]` route (no prebuild re-added). Generation stays decoupled via `pnpm -C packages/nexus-agents docs:api:md`.
+
+- [#3948](https://github.com/nexus-substrate/nexus-agents/pull/3948) [`5c12a37`](https://github.com/nexus-substrate/nexus-agents/commit/5c12a37f0775ec3c299142f22bd39afd955bbbaf) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - docs(site): render generated TypeDoc markdown as the website API reference ([#3763](https://github.com/nexus-substrate/nexus-agents/issues/3763))
+
+  Wires the generated TypeDoc markdown (JSDoc -> typedoc + typedoc-plugin-markdown,
+  spike [#3686](https://github.com/nexus-substrate/nexus-agents/issues/3686)) into the website as a dedicated, rendered API-reference section.
+
+  - Add an `api` Astro content collection (website/src/content.config.ts) loading the
+    committed generated markdown from `docs/api`, sharing the docs frontmatter schema.
+  - Add `website/src/pages/api/[...slug].astro` rendering the collection (with the
+    generated `index` page mapped to the `/api/` section root).
+  - Exclude `api/**` from the `docs` collection so the API reference renders only under
+    `/api/` instead of being lumped into `/docs/api/`.
+  - Run `docs:api:md` as the website `prebuild` so the markdown is regenerated before
+    `astro build`.
+
+  Frontmatter compatibility was already solved at generation time: the existing
+  typedoc-plugin-frontmatter + scripts/typedoc-astro-title.mjs inject the `title`/
+  `description`/`tier` frontmatter the Astro collection schema expects.
+
+  Scope: the API surface stays scoped to the spike's single canonical entry point
+  (`src/core/result.ts`); expanding entry points across the 8740-export surface is a
+  follow-up.
+
+- [#3965](https://github.com/nexus-substrate/nexus-agents/pull/3965) [`4f138f7`](https://github.com/nexus-substrate/nexus-agents/commit/4f138f71a9d355aff63d28509a7cd81d27896ed8) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(governance): canonicalize vote-record hash + resolve NEXUS_VOTE_RECORDS_PATH to absolute ([#3962](https://github.com/nexus-substrate/nexus-agents/issues/3962), [#3963](https://github.com/nexus-substrate/nexus-agents/issues/3963))
+
+  - [#3962](https://github.com/nexus-substrate/nexus-agents/issues/3962) (MEDIUM): `computeVoteRecordHash` now rebuilds the nested `voteCounts`
+    object field-by-field in schema order (`approve, reject, abstain, total`)
+    before hashing, matching how `voters[]` elements are already rebuilt. Previously
+    `voteCounts` was passed straight to `JSON.stringify`, so the self-hash depended
+    on key insertion order — a formatter / `jq -S` / merge tool that reordered
+    `voteCounts` keys flipped a legitimate committed record to `hash_mismatch`,
+    defeating the merge-safety premise of the record-set model. The hash of a
+    record whose keys are already in canonical order is unchanged, so existing
+    writer-produced records still verify without a rewrite.
+  - [#3963](https://github.com/nexus-substrate/nexus-agents/issues/3963) (LOW): `resolveVoteRecordsPath` now resolves a relative
+    `NEXUS_VOTE_RECORDS_PATH` override to an absolute path against `process.cwd()`
+    instead of returning it verbatim, honoring the documented absolute-path
+    contract and removing a silent cwd-dependent write. Absolute values are
+    returned unchanged; whitespace-only values still fall through to repo-root
+    detection. JSDoc updated to match.
+
+- [#3959](https://github.com/nexus-substrate/nexus-agents/pull/3959) [`3a9c133`](https://github.com/nexus-substrate/nexus-agents/commit/3a9c133327cf0b4d66f175d3ebbd957f1421fa9d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(governance): surface + override vote-record persistence skip so authentic votes aren't silently lost ([#3927](https://github.com/nexus-substrate/nexus-agents/issues/3927))
+
+  When the MCP server runs with a `process.cwd()` outside the repo, `resolveVoteRecordsPath()` returned `undefined` and `persistVoteRecord()` skipped the write at DEBUG level — real consensus votes were lost with no visible signal. The skip is now an actionable WARN, and a `NEXUS_VOTE_RECORDS_PATH` env var lets you force the write to an explicit absolute path. Precedence: `opts.filePath` > `NEXUS_VOTE_RECORDS_PATH` > `findRepoRoot(process.cwd())`. Caller-commits (the proposer commits the returned record bytes into `governance/vote-records.jsonl` in the promotion PR) remains the authoritative population path per the 7-0 design vote; this is observability + an escape hatch, not enforcement.
+
 ## 2.132.1
 
 ### Patch Changes
