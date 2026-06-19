@@ -35,8 +35,6 @@
  * @module mcp/tools/codepr-orchestrator
  */
 
-// @export-no-consumer-yet — see #3670 (Stage 2; consumer/push lands in Stage 3 behind enable-vote)
-
 import { createHash } from 'node:crypto';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';

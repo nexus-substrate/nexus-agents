@@ -27,6 +27,8 @@ import {
   type SoakSignalMeta,
   type IRecordingRemediationSoakSink,
 } from './improvement-remediation-shadow.js';
+import { runCodePrSoak, type CodePrSoakInject } from './codepr-soak-consumer.js';
+import type { RemediationPlan } from './improvement-remediation-capability.js';
 import {
   runAutoRemediation,
   resolveAutoRemediateMode,
@@ -55,6 +57,14 @@ export interface AutoRemediationCycleInject {
   readonly deps?: AutoRemediationDeps;
   /** Inject an isolated durable soak sink (tests honor a temp NEXUS_DATA_DIR). */
   readonly soakSink?: IRecordingRemediationSoakSink;
+  /**
+   * AUDIT-mode dry-run code-PR soak seams (#3670 Stage 2.5). When provided,
+   * forwarded to {@link runCodePrSoak}; tests inject an isolated sink / a fake
+   * planRun. Ignored outside audit mode (the soak only runs in audit).
+   */
+  readonly codePrSoak?: CodePrSoakInject;
+  /** Test seam: override the per-plan soak runner. Defaults to {@link runCodePrSoak}. */
+  readonly runCodePrSoak?: (plan: RemediationPlan, inject?: CodePrSoakInject) => void;
 }
 
 function offResult(): AutoRemediationResult {
@@ -86,7 +96,7 @@ export async function runAutoRemediationCycle(
   // the per-signal verdicts to the durable JSONL sink at the end of the run.
   if (mode === 'audit') {
     const collector = buildSoakCollector(signals, inject);
-    const soakDeps = withSoakAudit(deps, collector);
+    const soakDeps = withCodePrSoak(withSoakAudit(deps, collector), inject);
     try {
       return await runAutoRemediation(signals, soakDeps, { mode });
     } finally {
@@ -95,6 +105,27 @@ export async function runAutoRemediationCycle(
   }
 
   return runAutoRemediation(signals, deps, { mode });
+}
+
+/**
+ * Return a deps clone whose `onPlanProduced` runs the AUDIT-mode dry-run code-PR
+ * guards-green soak (#3670 Stage 2.5) over each produced plan. The soak runner is
+ * THROW-FREE (best-effort), and `onPlanProduced` is itself wrapped by the
+ * orchestrator — a soak failure can never break the remediation cycle. Only wired
+ * on the AUDIT branch (this function is not called for off/enforce), and DRY-RUN
+ * only: no push, no PR-open, no live write.
+ */
+function withCodePrSoak(
+  deps: AutoRemediationDeps,
+  inject: AutoRemediationCycleInject
+): AutoRemediationDeps {
+  const runSoak = inject.runCodePrSoak ?? runCodePrSoak;
+  return {
+    ...deps,
+    onPlanProduced: (_signal, plan): void => {
+      runSoak(plan, inject.codePrSoak);
+    },
+  };
 }
 
 /** Build a soak collector with per-signal metadata derived from the cycle's signals. */

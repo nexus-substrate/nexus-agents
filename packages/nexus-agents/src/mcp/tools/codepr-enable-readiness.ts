@@ -20,7 +20,10 @@
  * @module mcp/tools/codepr-enable-readiness
  */
 
-// @export-no-consumer-yet — see #3670 (Stage 2; consumer/push lands in Stage 3 behind enable-vote)
+// @export-no-consumer-yet — see #3670 (the enable double-gate is consumed by the
+// Stage-3 push, which is NOT wired yet. Stage 2.5 (#3670) now PRODUCES this gate's
+// `guards-green-soak` evidence via codepr-soak-store; `evaluateCodePrEnableReadiness`
+// itself stays without a runtime caller until Stage 3 wires the push behind it.)
 
 import { z } from 'zod';
 
