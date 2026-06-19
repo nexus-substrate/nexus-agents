@@ -1,8 +1,17 @@
 /**
  * Unified task analysis — classification views for routing.
  * Consolidates 5 independent analyzers per ADR-0004.
+ *
+ * Task classifier — one of 5 INTENTIONALLY SEPARATE classifiers (see #3299, by-design).
+ * This one: `TaskTypeCategory` (9-category) → capability-based routing / expert selection.
+ * Distinct from: task-type-classifier (reasoning|knowledge protocol selection),
+ * cli-adapters/task-classifier (CLI fallback-chain ordering), coordination/task-features
+ * (scaling topology), pipeline/adaptive-orchestrator (pipeline-stage selection). Keyword
+ * overlap is superficial — the same token routes differently per layer and the output enums
+ * are incompatible, so these are NOT consolidated. See #3299.
+ *
  * @module core/task-analysis/shared-task-analyzer
- * (Source: Issue #574, ADR-0004)
+ * (Source: Issue #574, ADR-0004; Issue #3299)
  */
 
 import { createLogger, type ILogger } from '../logger.js';
