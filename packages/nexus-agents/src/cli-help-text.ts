@@ -4,12 +4,19 @@
  * Help documentation for the CLI commands and options.
  * Extracted from cli-types.ts to maintain file size limits.
  *
- * HELP_TEXT below is the full (`--all`) view and also doubles as the raw
- * template that `entrypoint-cli-extractor.ts` parses via AST to build the
- * entrypoint index. Do not reshape its top-level sections without updating
- * that extractor. Tiered rendering (default vs `--all`) lives in
- * `renderHelp({ all })`, which swaps the COMMANDS block based on the
- * audience catalog in `cli-command-catalog.ts`.
+ * The COMMANDS list is NO LONGER hardcoded here (#3209). It is generated from
+ * `COMMAND_CATALOG` in `cli-command-catalog.ts` — the single source of truth
+ * for each command's one-line description — via `renderCommandsSection`. The
+ * non-command sections (USAGE, OPTIONS, EXAMPLES) stay static in
+ * `HELP_TEXT_FRAME`. `HELP_TEXT` is that frame with the full (`--all`)
+ * catalog-derived COMMANDS block stitched in; `renderHelp({ all: false })`
+ * stitches in the audience-filtered block instead.
+ *
+ * Do not reshape the top-level sections (USAGE / COMMANDS / OPTIONS /
+ * EXAMPLES): `indexer/entrypoint-extractor.ts` loads this module by AST and
+ * the catalog/help snapshot tests assert their presence. (Command names +
+ * descriptions for the entrypoint index come from the catalog via
+ * `catalogForExtractors()`, not from parsing this text — #2156.)
  *
  * @module cli-help-text
  */
@@ -17,9 +24,17 @@
 import { renderCommandsSection } from './cli-command-catalog.js';
 
 /**
- * Help text for the CLI.
+ * Placeholder token inside {@link HELP_TEXT_FRAME} that the renderers replace
+ * with the catalog-derived COMMANDS block. Distinct from any real help content
+ * so the single substitution is unambiguous.
  */
-export const HELP_TEXT = `
+const COMMANDS_PLACEHOLDER = '__COMMANDS__';
+
+/**
+ * Static help frame: everything except the COMMANDS list, which is a single
+ * {@link COMMANDS_PLACEHOLDER} token filled at render time from the catalog.
+ */
+const HELP_TEXT_FRAME = `
 nexus-agents - Intelligent orchestration platform for AI coding tools
 
 USAGE:
@@ -27,44 +42,7 @@ USAGE:
   nexus-agents [COMMAND] [SUBCOMMAND] [OPTIONS]
 
 COMMANDS:
-  (default)       Start MCP server with stdio transport
-  hello           Show welcome message and quick start (no API keys needed)
-  demo            API-free exploration mode (no API keys needed)
-  setup           Configure Claude CLI integration (MCP + CLAUDE.md rules)
-  login           Show per-CLI auth status + login fix instructions
-  verify          Quick installation verification (no API keys needed)
-  doctor          Check CLI installations and health status
-  config          Manage configuration (init, get, set, list, reset, export, import)
-  expert list     List available experts (built-in and custom)
-  workflow list   List available workflow templates
-  workflow run    Execute a workflow template
-  review <url>    Review a GitHub pull request (dogfooding)
-  routing-audit   Debug model routing decisions
-  orchestrate     Execute task using CLI tools (standalone mode)
-  vote            Run consensus vote on a proposal (6 agents)
-  system-review   Run automated system review (5-phase checklist)
-  sprint          Automated sprint planning from open issues
-  session         Manage session persistence (list, show, export, delete, prune)
-  evaluate        Self-evaluation of codebase components
-  issue           Issue template validation and management
-  index           Generate and manage codebase index
-  research        Manage research registry and index
-  validation      Show learning validation dashboard
-  learning-metrics Show aggregated learning metrics dashboard
-  swe-bench       Run SWE-bench evaluation benchmark
-  atbench         Run ATBench trajectory-safety evaluation (#1981)
-  hooks           Claude CLI hook integration commands
-  fitness-audit   Run CLI orchestration fitness score audit
-  release-notes   Generate release notes from git commits
-  release-validate Run expert swarm validation for releases
-  release-announce Generate release announcements (blog, Bluesky)
-  scaffold        Generate project files from templates (tool, expert, workflow, command)
-  visualize       Generate Mermaid diagrams and ASCII dashboards (architecture, swarm, flow)
-  capabilities    Show model capabilities matrix (modalities, tools, features)
-  status          At-a-glance project health dashboard (fitness, adapters, version)
-  health          Swarm health metrics dashboard (utilization, routing accuracy, failures)
-  validate        Run unified validation (doctor + fitness + config)
-  auth            Manage MCP authentication tokens (init, show, rotate)
+${COMMANDS_PLACEHOLDER}
 
 OPTIONS:
   -h, --help           Show this help message
@@ -91,26 +69,29 @@ EXAMPLES:
 For more information, visit: https://github.com/nexus-substrate/nexus-agents
 `.trim();
 
+/** Fills the COMMANDS placeholder in the frame with a catalog-derived block. */
+function composeHelp(commandsSection: string): string {
+  return HELP_TEXT_FRAME.replace(COMMANDS_PLACEHOLDER, commandsSection);
+}
+
 /**
- * Regex matching the COMMANDS: block in HELP_TEXT, from the heading line
- * through (but not including) the blank line before OPTIONS:.
- *
- * The template literal in HELP_TEXT has the COMMANDS list indented 2 spaces,
- * followed by a blank line, followed by `OPTIONS:`. We swap out everything
- * between `COMMANDS:\n` and the blank line before `OPTIONS:`.
+ * Full (`--all`) help text, with the COMMANDS list generated from
+ * `COMMAND_CATALOG` (single source of truth — #3209). Equivalent to
+ * `renderHelp({ all: true })`; exported for callers/tests that want the
+ * canonical full view as a value.
  */
-const COMMANDS_BLOCK_RE = /COMMANDS:\n([\s\S]*?)\n\nOPTIONS:/;
+export const HELP_TEXT = composeHelp(renderCommandsSection(true));
 
 /**
  * Renders the top-level help output.
  *
- * @param opts.all - If true, returns the full HELP_TEXT (includes maintainer
+ * @param opts.all - If true, returns the full view (includes maintainer
  *   commands like benchmarks and release tooling). If false, returns a tiered
  *   view that hides maintainer commands — surfaced via `--all` hint at the
- *   bottom of the COMMANDS block.
+ *   bottom of the COMMANDS block. Both views derive the command list (and its
+ *   one-line descriptions) from `COMMAND_CATALOG`.
  */
 export function renderHelp(opts: { all: boolean }): string {
   if (opts.all) return HELP_TEXT;
-  const replacement = renderCommandsSection(false);
-  return HELP_TEXT.replace(COMMANDS_BLOCK_RE, `COMMANDS:\n${replacement}\n\nOPTIONS:`);
+  return composeHelp(renderCommandsSection(false));
 }

@@ -4,8 +4,16 @@
  * Structured help metadata for individual CLI commands.
  * Used by `nexus-agents <command> --help` to show targeted help.
  *
+ * The one-line command description is NOT stored here (#3209). It is
+ * single-sourced from `COMMAND_CATALOG` in `cli-command-catalog.ts` and looked
+ * up via `getCommandDescription` when formatting. This module owns the RICHER
+ * per-command help — flags, examples, API-key requirements — that the catalog
+ * does not carry.
+ *
  * @module cli-command-help
  */
+
+import { getCommandDescription } from './cli-command-catalog.js';
 
 /**
  * Flag metadata for a CLI command.
@@ -18,10 +26,13 @@ export interface CommandFlagEntry {
 
 /**
  * Structured help entry for a single CLI command.
+ *
+ * No `description` field: the one-line summary comes from `COMMAND_CATALOG`
+ * (single source — #3209) via {@link getCommandDescription}. This entry holds
+ * only the richer help the catalog lacks (flags, examples, API-key needs).
  */
 export interface CommandHelpEntry {
   readonly command: string;
-  readonly description: string;
   readonly examples: readonly string[];
   readonly flags?: readonly CommandFlagEntry[];
   readonly requiresApiKey?: readonly string[];
@@ -29,7 +40,6 @@ export interface CommandHelpEntry {
 
 const ORCHESTRATE_HELP: CommandHelpEntry = {
   command: 'orchestrate',
-  description: 'Execute a task using CLI tools (standalone mode). Routes to optimal model.',
   examples: [
     'nexus-agents orchestrate "Explain this function"',
     'nexus-agents orchestrate "Generate unit tests" --model=claude',
@@ -53,7 +63,6 @@ const ORCHESTRATE_HELP: CommandHelpEntry = {
 
 const VOTE_HELP: CommandHelpEntry = {
   command: 'vote',
-  description: 'Run multi-agent consensus vote on a proposal (6 agents by default).',
   examples: [
     'nexus-agents vote --proposal "Add caching layer"',
     'nexus-agents vote -p "Migrate to PostgreSQL" -t supermajority',
@@ -63,7 +72,7 @@ const VOTE_HELP: CommandHelpEntry = {
   flags: [
     { flag: '-p, --proposal <text>', description: 'Proposal text to vote on (required)' },
     { flag: '-t, --threshold <t>', description: 'Threshold: majority, supermajority, unanimous' },
-    { flag: '--quick', description: 'Use 3 agents instead of 6 for faster votes' },
+    { flag: '--quick', description: 'Use 3 agents instead of the full 7 for faster votes' },
     { flag: '--dry-run', description: 'Simulate votes without agent execution' },
     { flag: '--timeout=<seconds>', description: 'Timeout per vote in seconds', defaultValue: '90' },
     {
@@ -78,7 +87,6 @@ const VOTE_HELP: CommandHelpEntry = {
 
 const EXPERT_HELP: CommandHelpEntry = {
   command: 'expert',
-  description: 'Manage expert agents. Subcommands: list, create, execute.',
   examples: ['nexus-agents expert list', 'nexus-agents expert list --format=json'],
   flags: [
     {
@@ -91,7 +99,6 @@ const EXPERT_HELP: CommandHelpEntry = {
 
 const WORKFLOW_HELP: CommandHelpEntry = {
   command: 'workflow',
-  description: 'Manage and run workflow templates. Subcommands: list, run.',
   examples: [
     'nexus-agents workflow list',
     'nexus-agents workflow run code-review --input=\'{"url":"https://github.com/o/r/pull/1"}\'',
@@ -105,7 +112,6 @@ const WORKFLOW_HELP: CommandHelpEntry = {
 
 const DOCTOR_HELP: CommandHelpEntry = {
   command: 'doctor',
-  description: 'Check CLI installations, adapters, and system health.',
   examples: ['nexus-agents doctor', 'nexus-agents doctor --deep', 'nexus-agents doctor --fix'],
   flags: [
     { flag: '--deep', description: 'Run deep health checks (adapter connectivity)' },
@@ -116,8 +122,6 @@ const DOCTOR_HELP: CommandHelpEntry = {
 
 const MODE_HELP: CommandHelpEntry = {
   command: 'mode',
-  description:
-    'Inspect the detected invocation mode (server vs orchestrator), the signals that fed the decision, and the one-line reasoning. Useful for debugging unexpected modes in CI/containers.',
   examples: [
     'nexus-agents mode',
     'nexus-agents mode --format=json',
@@ -134,7 +138,6 @@ const MODE_HELP: CommandHelpEntry = {
 
 const SETUP_HELP: CommandHelpEntry = {
   command: 'setup',
-  description: 'Configure MCP integration for Claude, Gemini, Codex, and OpenCode CLIs.',
   examples: [
     'nexus-agents setup',
     'nexus-agents setup --interactive',
@@ -173,8 +176,6 @@ const SETUP_HELP: CommandHelpEntry = {
 
 const CONFIG_HELP: CommandHelpEntry = {
   command: 'config',
-  description:
-    'Manage nexus-agents configuration. Subcommands: init, get, set, list, reset, export, import.',
   examples: [
     'nexus-agents config init',
     'nexus-agents config get TIMEOUT_DEFAULTS.cliMs',
@@ -195,8 +196,6 @@ const CONFIG_HELP: CommandHelpEntry = {
 
 const RESEARCH_HELP: CommandHelpEntry = {
   command: 'research',
-  description:
-    'Manage research registry and paper tracking. Subcommands: status, overlap, add, stats, refresh, check, index.',
   examples: [
     'nexus-agents research status',
     'nexus-agents research stats --format=json',
@@ -212,7 +211,6 @@ const RESEARCH_HELP: CommandHelpEntry = {
 
 const FITNESS_AUDIT_HELP: CommandHelpEntry = {
   command: 'fitness-audit',
-  description: 'Run CLI orchestration fitness score audit. Target: 90+/100.',
   examples: [
     'nexus-agents fitness-audit',
     'nexus-agents fitness-audit --format=json',
@@ -230,7 +228,6 @@ const FITNESS_AUDIT_HELP: CommandHelpEntry = {
 
 const REVIEW_HELP: CommandHelpEntry = {
   command: 'review',
-  description: 'Review a GitHub pull request (dogfooding mode).',
   examples: [
     'nexus-agents review https://github.com/owner/repo/pull/123',
     'nexus-agents review owner/repo#123 --dry-run',
@@ -267,6 +264,16 @@ function formatFlag(entry: CommandFlagEntry): string {
 }
 
 /**
+ * Resolves a command's one-line description from the catalog (single source —
+ * #3209). Every `COMMAND_HELP` command is also in `COMMAND_CATALOG` (asserted
+ * by the drift gate in `cli-command-help.test.ts`); the empty-string fallback
+ * is a defensive default that never fires in practice.
+ */
+function describe(command: string): string {
+  return getCommandDescription(command) ?? '';
+}
+
+/**
  * Formats help output for a specific command.
  *
  * @param command - The command name to look up
@@ -277,7 +284,7 @@ export function formatCommandHelp(command: string): string | undefined {
   if (entry === undefined) return undefined;
 
   const lines: string[] = [];
-  lines.push(`nexus-agents ${entry.command} -- ${entry.description}`);
+  lines.push(`nexus-agents ${entry.command} -- ${describe(entry.command)}`);
   lines.push('');
 
   if (entry.flags !== undefined && entry.flags.length > 0) {
@@ -312,7 +319,7 @@ export function formatAllCommandsHelp(): string {
   lines.push('');
 
   for (const entry of COMMAND_HELP) {
-    lines.push(`  ${entry.command.padEnd(20)} ${entry.description}`);
+    lines.push(`  ${entry.command.padEnd(20)} ${describe(entry.command)}`);
   }
 
   lines.push('');
