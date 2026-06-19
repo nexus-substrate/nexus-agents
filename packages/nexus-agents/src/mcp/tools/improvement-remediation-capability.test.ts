@@ -17,6 +17,7 @@ import {
   renderPlanAsResearch,
   type RemediationPlan,
 } from './improvement-remediation-capability.js';
+import type { SignalCategory } from './improvement-review.js';
 
 describe('PHASE_CAPABILITIES invariant', () => {
   it('no phase declares all three Rule-of-Two legs', () => {
@@ -114,6 +115,23 @@ describe('RemediationPlanSchema (strict boundary artifact)', () => {
   it('rejects unknown keys inside a step', () => {
     const bad = { ...valid, steps: [{ kind: 'fix-bug', description: 'x', patch: 'diff…' }] };
     expect(() => parseRemediationPlan(bad)).toThrow(RuleOfTwoViolation);
+  });
+
+  it('accepts every SignalCategory value, including perf-regression (#3692)', () => {
+    // The schema enum mirrors the SignalCategory union; a new category must be
+    // accepted here or a perf-regression remediation plan could never cross.
+    const categories: SignalCategory[] = [
+      'routing',
+      'tech-debt',
+      'bug',
+      'security',
+      'consensus',
+      'tool-fitness',
+      'perf-regression',
+    ];
+    for (const category of categories) {
+      expect(RemediationPlanSchema.safeParse({ ...valid, category }).success).toBe(true);
+    }
   });
 });
 

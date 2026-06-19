@@ -33,6 +33,10 @@ const ROLE_BY_CATEGORY: Readonly<Record<SignalCategory, PipelineRole>> = {
   // a researcher owns the investigation seed (suggest-tier; the dev-pipeline
   // re-plans anyway). NEVER an autonomous removal.
   'tool-fitness': 'researcher',
+  // #3692/#3246: a perf regression vs a static baseline is a performance
+  // investigation seed — a coder owns the diagnosis. Surfaced-only; the
+  // dev-pipeline re-plans, nothing is auto-applied.
+  'perf-regression': 'coder',
 };
 
 /** Stable, dedup-friendly task id for a signal (mirrors the signalKey). */

@@ -33,6 +33,9 @@ const ACTION_BY_CATEGORY: Readonly<Record<SignalCategory, RemediationActionKind>
   // #3852: a deprecation/consolidation candidate is a human decision, never an
   // autonomous code change — investigate only (Epic D ratification path).
   'tool-fitness': 'investigate',
+  // #3692/#3246: a perf regression needs root-cause diagnosis before any change —
+  // investigate only; the surfaced signal never auto-applies a fix.
+  'perf-regression': 'investigate',
 };
 
 /** Bound a string to a schema-safe length. */

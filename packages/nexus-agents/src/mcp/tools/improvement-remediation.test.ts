@@ -39,6 +39,8 @@ describe('improvementSignalToTask', () => {
       ['tech-debt', 'coder'],
       ['routing', 'researcher'],
       ['consensus', 'researcher'],
+      ['tool-fitness', 'researcher'],
+      ['perf-regression', 'coder'],
     ];
     for (const [category, role] of cases) {
       expect(improvementSignalToTask(signal({ category })).assignedTo).toBe(role);
