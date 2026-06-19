@@ -29,15 +29,6 @@ export default defineConfig({
       '.claude/**',
       '**/.claude/**',
       'packages/**',
-      // scripts/inject-governance.test.ts spawns ~30 `npx tsx` subprocesses
-      // that mutate shared repo files (server.json, AGENTS.md) in place. It
-      // takes ~400s solo and is flaky under the forks pool (subprocess
-      // contention trips the per-call timeout), so it is scoped out here and
-      // tracked for a rework. The governance `check` it exercises is already
-      // gated in CI via .github/workflows/docs-check.yml, so collection of
-      // this test is not what provides that protection. Re-include once it is
-      // made parallel-safe and fast. Tracked in #3954.
-      'scripts/inject-governance.test.ts',
     ],
 
     // Forks pool for process isolation (mirrors the package config); each test
