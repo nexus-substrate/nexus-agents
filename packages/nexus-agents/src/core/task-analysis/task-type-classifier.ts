@@ -10,8 +10,16 @@
  *
  * Moved to core/ to allow use by adapters layer without layer violation.
  *
+ * Task classifier — one of 5 INTENTIONALLY SEPARATE classifiers (see #3299, by-design).
+ * This one: `reasoning|knowledge|unknown` (binary) → protocol selection (voting vs
+ * consensus, arXiv:2502.19130). Distinct from: shared-task-analyzer (capability routing),
+ * cli-adapters/task-classifier (CLI fallback-chain ordering), coordination/task-features
+ * (scaling topology), pipeline/adaptive-orchestrator (pipeline-stage selection). Keyword
+ * overlap is superficial — the same token routes differently per layer and the output enums
+ * are incompatible, so these are NOT consolidated. See #3299.
+ *
  * @module core/task-analysis/task-type-classifier
- * (Source: Issue #125, arXiv:2502.19130)
+ * (Source: Issue #125, arXiv:2502.19130; Issue #3299)
  */
 
 import type { Task } from '../types/agent.js';

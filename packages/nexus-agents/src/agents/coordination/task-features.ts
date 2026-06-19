@@ -5,15 +5,16 @@
  * (how many agents to dispatch). Uses keyword matching, pattern detection,
  * and structural analysis against the `ScalingTaskType` taxonomy.
  *
- * This module is distinct from `SharedTaskAnalyzer`:
- * - `task-features` (here): features for scaling-predictor model input
- *   (sequential_reasoning / parallelizable / tool_heavy, etc.)
- * - `SharedTaskAnalyzer` (core): features for capability-based CLI routing
- *
- * Both coexist by design.
+ * Task classifier — one of 5 INTENTIONALLY SEPARATE classifiers (see #3299, by-design).
+ * This one: `ScalingTaskType` (8-value) → scaling-predictor / coordination-topology input
+ * (arXiv:2512.08296). Distinct from: shared-task-analyzer (9-category capability routing),
+ * task-type-classifier (reasoning|knowledge protocol selection), cli-adapters/task-classifier
+ * (CLI fallback-chain ordering), pipeline/adaptive-orchestrator (pipeline-stage selection).
+ * Keyword overlap is superficial — the same token routes differently per layer and the
+ * output enums are incompatible, so these are NOT consolidated. See #3299.
  *
  * @module agents/coordination/task-features
- * (Source: Issue #337, arXiv:2512.08296; Issue #1985 audit)
+ * (Source: Issue #337, arXiv:2512.08296; Issue #1985 audit; Issue #3299)
  */
 
 import type { Task } from '../../core/index.js';

@@ -8,7 +8,16 @@
  * Design pattern: deterministic state machine backbone + selective
  * LLM invocation at decision nodes only (per CrewAI Flows / Temporal).
  *
+ * `classifyTask` is a task classifier — one of 5 INTENTIONALLY SEPARATE classifiers
+ * (see #3299, by-design). This one: `PipelineType` (5-value: dev/research/audit/greenfield/
+ * general) → pipeline-stage selection. Distinct from: shared-task-analyzer (9-category
+ * capability routing), task-type-classifier (reasoning|knowledge protocol selection),
+ * cli-adapters/task-classifier (CLI fallback-chain ordering), coordination/task-features
+ * (scaling topology). Keyword overlap is superficial — the same token routes differently per
+ * layer and the output enums are incompatible, so these are NOT consolidated. See #3299.
+ *
  * @module pipeline/adaptive-orchestrator
+ * (Source: Issue #1736; Issue #3299)
  */
 
 import { createLogger } from '../core/index.js';

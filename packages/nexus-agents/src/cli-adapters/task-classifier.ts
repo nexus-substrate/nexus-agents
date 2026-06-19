@@ -2,18 +2,19 @@
  * nexus-agents/cli-adapters - Task Classifier for Fallback Chains
  *
  * Classifies tasks into types for selecting appropriate CLI fallback chains.
- * Uses keyword-based classification with configurable patterns. The 5-value
- * `FallbackTaskType` taxonomy (code/research/documentation/analysis/general)
- * is tuned for CLI-selection decisions and is distinct from
- * `SharedTaskAnalyzer`'s 9-value `TaskTypeCategory`, which is tuned for
- * capability-based routing.
+ * Uses keyword-based classification with configurable patterns.
  *
- * Both modules coexist by design — they solve different problems:
- * - `task-classifier` (here): which CLI to try in what order, by task shape
- * - `SharedTaskAnalyzer` (core): which model capability to route to
+ * Task classifier — one of 5 INTENTIONALLY SEPARATE classifiers (see #3299, by-design).
+ * This one: `FallbackTaskType` (5-value: code/research/documentation/analysis/general) →
+ * CLI fallback-chain ordering (deliberately coarse and independent of the heavy analyzer).
+ * Distinct from: shared-task-analyzer (9-category capability routing), task-type-classifier
+ * (reasoning|knowledge protocol selection), coordination/task-features (scaling topology),
+ * pipeline/adaptive-orchestrator (pipeline-stage selection). Keyword overlap is superficial
+ * — the same token routes differently per layer and the output enums are incompatible, so
+ * these are NOT consolidated. See #3299.
  *
  * @module cli-adapters/task-classifier
- * (Source: Issue #362 - Task-type-aware fallback chains; Issue #1985 audit)
+ * (Source: Issue #362 - Task-type-aware fallback chains; Issue #1985 audit; Issue #3299)
  */
 
 import { z } from 'zod';
