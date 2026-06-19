@@ -36,6 +36,8 @@
  * @module mcp/tools/codepr-guards
  */
 
+// @export-no-consumer-yet — see #3670 (Stage 1 guard library; consumer lands in Stage 2/3)
+
 import { realpathSync } from 'node:fs';
 import { isAbsolute, resolve, relative, sep } from 'node:path';
 import { z } from 'zod';
