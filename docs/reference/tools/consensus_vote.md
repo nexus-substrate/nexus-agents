@@ -10,7 +10,7 @@ keywords: [mcp, tool, reference, consensus_vote]
 > Auto-generated from the registered MCP tool descriptions and input
 > schemas. Do not edit by hand — run `pnpm docs:tools` to regenerate.
 
-Execute multi-model consensus voting on a proposal. Uses specialized agent roles to vote with configurable strategies.
+Execute multi-model consensus voting on a proposal. Uses 7 roles by default (or 3 with quickMode), voting with configurable strategies. Supports async mode (returns a jobId to poll via get_job_result).
 
 ## Parameters
 

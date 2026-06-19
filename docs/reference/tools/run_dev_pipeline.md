@@ -10,7 +10,7 @@ keywords: [mcp, tool, reference, run_dev_pipeline]
 > Auto-generated from the registered MCP tool descriptions and input
 > schemas. Do not edit by hand — run `pnpm docs:tools` to regenerate.
 
-Run the multi-agent development pipeline. Accepts direct task instructions, a plan file, or a spec file. Supports dry-run (plan+vote only).
+Run the multi-agent development pipeline. Accepts direct task instructions, a plan file, or a spec file. Supports dry-run (plan+vote only). Supports dispatch: 'async' (non-dryRun runs) — returns a jobId immediately; poll get_job_result.
 
 ## Parameters
 

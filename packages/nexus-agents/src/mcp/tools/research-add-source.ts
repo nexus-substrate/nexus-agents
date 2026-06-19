@@ -2,8 +2,9 @@
  * nexus-agents/mcp - Research Add Source Tool
  *
  * MCP tool for adding non-paper sources (repos, tools, blogs) to the
- * research registry. Accepts pre-populated metadata or fetches from
- * GitHub via `gh` CLI (optional, graceful fallback).
+ * research registry. The quality_score is computed from the quality_signals
+ * the caller provides — no GitHub metadata is fetched (provide signals
+ * explicitly).
  *
  * @module mcp/tools/research-add-source
  * @see Issue #1580
@@ -64,7 +65,7 @@ export const ResearchAddSourceInputSchema = z.object({
       has_paper: z.boolean().optional(),
     })
     .optional()
-    .describe('Quality signals (auto-fetched for GitHub repos if omitted)'),
+    .describe('Quality signals used to compute quality_score; provide explicitly — no GitHub metadata is fetched'),
   techniques_extracted: z
     .array(z.string().max(100))
     .max(5)

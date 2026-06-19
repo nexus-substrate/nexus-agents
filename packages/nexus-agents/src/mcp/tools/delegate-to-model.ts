@@ -309,7 +309,7 @@ export function registerDelegateToModelTool(server: McpServer, deps: DelegateDep
     'delegate_to_model',
     {
       description:
-        'Pick which EXISTING model should handle a task. Inspects task complexity and returns the best-fit model from the routing registry — does NOT add a new model. Read-only. (For drafting a registry entry for a new model, use `registry_import`.)',
+        'Pick which EXISTING model should handle a task. Inspects task complexity and returns the best-fit model from the routing registry — does NOT add a new model. Records the routing decision to tool-memory for learning feedback (not a pure read). (For drafting a registry entry for a new model, use `registry_import`.)',
       inputSchema: TOOL_SCHEMA,
       outputSchema: DelegateOutputSchema.shape,
 

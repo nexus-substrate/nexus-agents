@@ -17,4 +17,4 @@ Analyze a GitHub repository structure. Returns language, framework, package mana
 | Parameter | Type | Required | Constraints | Description |
 | --------- | ---- | -------- | ----------- | ----------- |
 | `repo` | string | yes | minLength 1 | GitHub repository in "owner/name" format (e.g., "cloudfoundry/korifi") or full URL |
-| `depth` | enum | no | one of: shallow \| deep; default shallow | Analysis depth: shallow (tree + README) or deep (full analysis) |
+| `depth` | enum | no | one of: shallow \| deep; default shallow | Currently a no-op — the handler always runs the full analysis (both values identical) |

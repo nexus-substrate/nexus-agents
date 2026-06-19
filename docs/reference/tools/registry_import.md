@@ -18,4 +18,4 @@ Draft a registry ENTRY YAML for a NEW model so routing can consider it later. Re
 | --------- | ---- | -------- | ----------- | ----------- |
 | `provider` | enum | yes | one of: anthropic \| google \| openai | Model provider (anthropic, google, openai) |
 | `modelId` | string | yes | minLength 1 | Provider model identifier |
-| `dryRun` | boolean | no | default true | Preview without persisting |
+| `dryRun` | boolean | no | default true | No-op flag echoed back in the response; the tool never persists regardless |

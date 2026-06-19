@@ -14,22 +14,27 @@
  * the modelId is known, derived entry if vendor + family can be
  * inferred, universal default otherwise.
  *
- * Resolution chain (most specific first):
+ * Resolution chain (highest priority first; the constructor loads
+ * lowest-priority first so higher tiers overwrite lower ones field-by-field —
+ * see {@link EntrySource} and `ModelRegistry` constructor):
  *
- *   1. modelHints / explicit alias        ← operator override
- *   2. models.dev snapshot                ← seeded externally (PR 4)
+ *   1. modelHints / explicit alias        ← operator override (resolver hints)
+ *   2. manifest entries                   ← operator manifest overlay (#2547)
  *   3. in-tree authoritative entries      ← measured/validated by us
- *   4. derived from vendor + family       ← pattern-matched fallback
- *   5. universal default                  ← never fails
+ *   4. models.dev snapshot                ← seeded externally
+ *   5. generated catalog (LiteLLM)        ← LOWEST tier; long-tail breadth (#3293)
+ *   6. derived from vendor + family       ← pattern-matched fallback
+ *   7. universal default                  ← never fails
  *
  * This module ships the type + class + derived-fallback logic. The
- * authoritative entries (PR 1's payload) are populated alongside; the
- * models.dev snapshot loader lands in PR 4.
+ * authoritative in-tree entries are populated by `buildInTreeEntries()`; the
+ * models.dev snapshot is loaded by `loadModelsDevSnapshot()` in
+ * `buildDefaultRegistry()`.
  *
- * Availability is a SEPARATE concern — see `AvailableModelsCache` in
- * a later PR. The registry tells you "what does this model id mean";
- * `AvailableModelsCache` tells you "is the harness currently able to
- * serve it." Routing decisions consume both.
+ * Availability is a SEPARATE concern — see `AvailableModelsCache`
+ * (`config/available-models-cache.ts`). The registry tells you "what does
+ * this model id mean"; `AvailableModelsCache` tells you "is the harness
+ * currently able to serve it." Routing decisions consume both.
  *
  * @module config/model-registry
  */

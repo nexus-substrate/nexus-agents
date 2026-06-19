@@ -23,12 +23,16 @@ export const RepoAnalyzeInputSchema = z.object({
       'Only HTTP/HTTPS URLs are allowed'
     )
     .describe('GitHub repository in "owner/name" format (e.g., "cloudfoundry/korifi") or full URL'),
-  /** Analysis depth: shallow (tree + README) or deep (full analysis). */
+  /**
+   * Currently a no-op: the handler ignores this flag and always runs the full
+   * analysis. Both values resolve to identical behavior; retained for input-shape
+   * stability until a distinct shallow path is implemented.
+   */
   depth: z
     .enum(['shallow', 'deep'])
     .optional()
     .default('shallow')
-    .describe('Analysis depth: shallow (tree + README) or deep (full analysis)'),
+    .describe('Currently a no-op — the handler always runs the full analysis (both values identical)'),
 });
 
 export type RepoAnalyzeInput = z.infer<typeof RepoAnalyzeInputSchema>;

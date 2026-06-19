@@ -10,7 +10,7 @@ keywords: [mcp, tool, reference, run_pipeline]
 > Auto-generated from the registered MCP tool descriptions and input
 > schemas. Do not edit by hand — run `pnpm docs:tools` to regenerate.
 
-Single unified entry point for all pipeline templates (dev/research/audit/greenfield/general). Auto-detects template from task content or accepts an explicit override.
+Single unified entry point for all pipeline templates (dev/research/audit/greenfield/general). Auto-detects template from task content or accepts an explicit override. Supports dispatch: 'async' (non-dryRun runs) — returns a jobId immediately; poll get_job_result.
 
 ## Parameters
 

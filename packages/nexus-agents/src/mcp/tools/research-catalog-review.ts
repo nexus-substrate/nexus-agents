@@ -282,7 +282,7 @@ export function registerResearchCatalogReviewTool(
 
   const description =
     'Review auto-cataloged research references found during tool execution. ' +
-    'List pending references, approve them for registry addition, dismiss, or clear all.';
+    'List pending references, approve them for registry addition (optionally filing a GitHub issue), dismiss, or clear all.';
 
   const secureHandler = createSecureHandler(createCatalogReviewHandler(deps), {
     toolName: 'research_catalog_review',

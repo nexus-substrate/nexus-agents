@@ -21,8 +21,12 @@ export const RegistryImportInputSchema = z.object({
     .describe('Model provider (anthropic, google, openai)'),
   /** Model identifier from the provider (e.g., "claude-4-opus-20260201"). */
   modelId: z.string().min(1).describe('Provider model identifier'),
-  /** Preview without persisting (default: true). */
-  dryRun: z.boolean().optional().default(true).describe('Preview without persisting'),
+  /** No-op flag echoed back in the response; the tool never persists regardless. */
+  dryRun: z
+    .boolean()
+    .optional()
+    .default(true)
+    .describe('No-op flag echoed back in the response; the tool never persists regardless'),
 });
 
 export type RegistryImportInput = z.infer<typeof RegistryImportInputSchema>;

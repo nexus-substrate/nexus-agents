@@ -950,9 +950,10 @@ export function registerConsensusVoteTool(server: McpServer, deps: ConsensusVote
 
   const description =
     'Execute multi-model consensus voting on a proposal. ' +
-    'Uses 7 specialized agent roles (architect, security, devex, ai_ml, pm, catfish, scope_steward) ' +
-    'to vote on proposals with configurable strategies. ' +
-    'Supports higher_order strategy for Bayesian-optimal aggregation with correlation awareness (Issue #514).';
+    'Uses 7 roles by default (architect, security, devex, ai_ml, pm, catfish, scope_steward) ' +
+    'or 3 with quickMode (architect, security, scope_steward), voting with configurable strategies. ' +
+    'Supports higher_order strategy for Bayesian-optimal aggregation with correlation awareness (Issue #514). ' +
+    "Supports async mode (mode: 'async') — returns a jobId to poll via get_job_result.";
 
   const secureHandler = createSecureHandler(createConsensusVoteHandler(depsWithNotifier), {
     toolName: 'consensus_vote',

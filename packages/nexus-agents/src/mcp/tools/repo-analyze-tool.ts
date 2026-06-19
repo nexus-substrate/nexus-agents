@@ -64,7 +64,7 @@ export function registerRepoAnalyzeTool(server: McpServer, deps: RepoAnalyzeDeps
     depth: z
       .enum(['shallow', 'deep'])
       .optional()
-      .describe('Analysis depth: shallow (tree + README) or deep'),
+      .describe('Currently a no-op — the handler always runs the full analysis (both values identical)'),
   };
 
   const description =
