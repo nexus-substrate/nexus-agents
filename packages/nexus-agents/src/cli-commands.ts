@@ -168,6 +168,8 @@ import { handleModeCommand } from './cli/mode-command.js';
 import { initDataDirectories } from './cli/setup-data-dir.js';
 // #1930: Step notifications (human-readable progress trail)
 import { bootstrapStepNotifications } from './core/step-notifications.js';
+// #3208: proactive first-run setup hint, broadened from server-only (#1261)
+import { maybeShowFirstRunHint } from './cli/first-run-hint.js';
 
 /**
  * Prints help text to stdout.
@@ -381,6 +383,11 @@ async function handleAsyncCommand(args: ParsedCliArgs): Promise<void> {
 export async function dispatchCommand(args: ParsedCliArgs): Promise<void> {
   // Ensure data directories exist before any command runs (#1398)
   initDataDirectories();
+
+  // #3208: proactive first-run hint. Fires for any command except
+  // version/help/setup, marker-gated, stderr-only, TTY-only. Purely additive —
+  // it never touches stdout, exit codes, or ordering (no-op on every guard).
+  maybeShowFirstRunHint(args.command);
 
   // #1930: Wire step notifications. `server` command is the MCP stdio server —
   // renderer must default off there to protect JSON-RPC frames. All other
