@@ -23,6 +23,7 @@
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import * as prettier from 'prettier';
 import { parse as parseYaml } from 'yaml';
 import { ROOT } from './script-paths.js';
@@ -1439,8 +1440,12 @@ function printGovernanceSummary(
 
 /**
  * Check if governance is current (CI validation mode).
+ *
+ * Exported so the test suite (#3954) can drive the full check in-process
+ * against an isolated sandbox root (via `NEXUS_SCRIPT_ROOT`) instead of
+ * spawning `npx tsx` and mutating the real working tree.
  */
-function checkGovernance(): boolean {
+export function checkGovernance(): boolean {
   if (!existsSync(CLAUDE_MD_PATH)) {
     console.error('CLAUDE.md not found');
     return false;
@@ -1730,7 +1735,13 @@ function applyAllSectionInjections(content: string, r: GovernanceRegistries): st
   return injectSection(next, MARKERS.versionStart, MARKERS.versionEnd, generateVersionSection());
 }
 
-async function injectGovernance(): Promise<void> {
+/**
+ * Inject all governance sections (CLI default mode).
+ *
+ * Exported so the test suite (#3954) can drive injection in-process against an
+ * isolated sandbox root (via `NEXUS_SCRIPT_ROOT`).
+ */
+export async function injectGovernance(): Promise<void> {
   if (!existsSync(CLAUDE_MD_PATH)) {
     console.error('CLAUDE.md not found');
     process.exit(1);
@@ -2135,16 +2146,23 @@ function checkServerJson(toolCount: number): boolean {
   return ok;
 }
 
-// CLI interface
-const args = process.argv.slice(2);
-const command = args[0];
+// CLI interface. Guarded so importing this module (the #3954 in-process tests
+// import `checkGovernance` / `injectGovernance` directly) does NOT run a command
+// or call `process.exit`. Only fires when the file is the process entrypoint.
+const invokedPath = process.argv[1];
+const isMain = invokedPath !== undefined && import.meta.url === pathToFileURL(invokedPath).href;
 
-switch (command) {
-  case 'check':
-    process.exit(checkGovernance() ? 0 : 1);
-    break;
-  case 'inject':
-  default:
-    await injectGovernance();
-    break;
+if (isMain) {
+  const args = process.argv.slice(2);
+  const command = args[0];
+
+  switch (command) {
+    case 'check':
+      process.exit(checkGovernance() ? 0 : 1);
+      break;
+    case 'inject':
+    default:
+      await injectGovernance();
+      break;
+  }
 }

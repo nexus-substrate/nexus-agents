@@ -1,43 +1,185 @@
 /**
- * Integration tests for Governance Injection Script
+ * Integration tests for the Governance Injection Script.
  *
- * Tests the inject-governance.ts script by running it as a subprocess
- * and verifying its behavior against real and fixture files.
+ * #3954: these tests previously spawned ~30 `npx tsx scripts/inject-governance.ts`
+ * subprocesses (≈8-12s cold start each, ≈400s total) and mutated SHARED real repo
+ * files (`server.json`, `AGENTS.md`, `CLAUDE.md`, …) in place. That made the file
+ * unsafe under the forks pool (cross-test interference + subprocess contention),
+ * so it was excluded from the root `vitest.config.ts`.
+ *
+ * It is now parallel-safe and fast:
+ *
+ *   - ISOLATION: a per-worker temp sandbox is seeded with a copy of every file
+ *     the check/inject logic reads or writes. `NEXUS_SCRIPT_ROOT` (the seam in
+ *     `script-paths.ts`) redirects the script's ENTIRE path graph — including the
+ *     helper drift-gate modules that derive their paths from the same `ROOT` —
+ *     at that sandbox. No real tracked file is ever mutated.
+ *   - SPEED: the exported `checkGovernance` / `injectGovernance` functions run
+ *     IN-PROCESS (no `npx tsx` cold starts). Console output is captured to assert
+ *     on the same summaries / error strings the subprocess tests inspected.
+ *
+ * Coverage is preserved: injection idempotence, every governed section, and the
+ * drift gates (counts, README/ENTRYPOINTS tables, canonical paths, rules index,
+ * generated-from-AGENTS block, tool annotations, error envelope, distinctness,
+ * prerequisites, output consistency, rule frontmatter, server.json) are all still
+ * asserted — just against the sandbox instead of the real tree.
  *
  * @module scripts/inject-governance.test
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, rmSync, cpSync } from 'node:fs';
 import { execSync } from 'node:child_process';
-import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { join, dirname } from 'node:path';
 import { parseRegisteredToolNames } from './parse-tool-manifest.js';
 
-const ROOT = join(import.meta.dirname, '..');
-const SCRIPT = join(ROOT, 'scripts/inject-governance.ts');
-const CLAUDE_MD = join(ROOT, 'CLAUDE.md');
+/** Real repo root (parent of `scripts/`). Source of the pristine fixtures. */
+const REAL_ROOT = join(import.meta.dirname, '..');
 
-/** Timeout for tests that run the governance script as a subprocess (~4-8s per invocation). */
-const SUBPROCESS_TIMEOUT = 30_000;
+/**
+ * Files + directories the governance check/inject logic reads or writes. Copied
+ * into the sandbox so the redirected `ROOT` resolves a complete tree. The whole
+ * `packages/nexus-agents/src` subtree is copied because `checkCanonicalPaths`
+ * existence-checks every `src/...` path in AGENTS.md's "Canonical paths" table
+ * against the (redirected) root.
+ */
+const SANDBOX_PATHS: readonly string[] = [
+  'CLAUDE.md',
+  'README.md',
+  'AGENTS.md',
+  '.prettierrc',
+  '.prettierignore',
+  'docs',
+  'skills',
+  'agents',
+  'governance',
+  '.rules',
+  '.claude-plugin',
+  'website/src/data/site-data.ts',
+  'packages/nexus-agents/package.json',
+  'packages/nexus-agents/server.json',
+  'packages/nexus-agents/src',
+  'packages/nexus-memory/src/registry.ts',
+];
 
-/** Timeout for the idempotency test that runs the script twice (~8-16s total). */
-const IDEMPOTENCY_TIMEOUT = 45_000;
+let SANDBOX = '';
+let core: {
+  checkGovernance: () => boolean;
+  injectGovernance: () => Promise<void>;
+};
 
-beforeEach(() => {
-  vi.restoreAllMocks();
-});
+/** Absolute path inside the sandbox for a repo-relative path. */
+function box(rel: string): string {
+  return join(SANDBOX, rel);
+}
 
-afterEach(() => {
-  vi.restoreAllMocks();
-});
+/** Files that `inject` rewrites — snapshotted/restored around inject tests. */
+const INJECT_WRITES: readonly string[] = [
+  'CLAUDE.md',
+  'README.md',
+  'AGENTS.md',
+  'docs/ENTRYPOINTS.md',
+  'docs/getting-started/PLUGIN_INSTALL.md',
+  'docs/design/components.md',
+  'website/src/data/site-data.ts',
+  'packages/nexus-agents/server.json',
+  '.claude-plugin/plugin.json',
+  '.claude-plugin/marketplace.json',
+];
 
-/** Run the governance script with given args, return stdout. */
-function runScript(args: string): string {
-  return execSync(`npx tsx ${SCRIPT} ${args}`, {
-    cwd: ROOT,
-    encoding: 'utf-8',
-    timeout: 30000,
+beforeAll(async () => {
+  SANDBOX = mkdtempSync(join(tmpdir(), 'inject-governance-'));
+  for (const rel of SANDBOX_PATHS) {
+    const dest = box(rel);
+    mkdirSync(dirname(dest), { recursive: true });
+    cpSync(join(REAL_ROOT, rel), dest, { recursive: true });
+  }
+  // Seed a git repo so `getGovernanceSourceDate()` (which runs `git log` with
+  // cwd=ROOT to derive a deterministic version stamp) resolves a real commit
+  // date instead of shelling out against a non-git dir — that path works via a
+  // today's-date fallback but floods stderr with "fatal: not a git repository".
+  execSync('git init -q && git add -A && git -c user.email=t@t -c user.name=t commit -qm seed', {
+    cwd: SANDBOX,
+    stdio: 'ignore',
   });
+  // Redirect the whole script path graph at the sandbox BEFORE importing the
+  // module, so `script-paths.ts` (and every helper that derives from its ROOT)
+  // binds to the sandbox on first evaluation.
+  process.env['NEXUS_SCRIPT_ROOT'] = SANDBOX;
+  core = await import('./inject-governance.js');
+});
+
+afterAll(() => {
+  delete process.env['NEXUS_SCRIPT_ROOT'];
+  if (SANDBOX !== '') rmSync(SANDBOX, { recursive: true, force: true });
+});
+
+/** Run `checkGovernance()` in-process, capturing console output. */
+function runCheck(): { ok: boolean; output: string } {
+  const lines: string[] = [];
+  const push = (...a: unknown[]): void => void lines.push(a.map(String).join(' '));
+  const log = vi.spyOn(console, 'log').mockImplementation(push);
+  const err = vi.spyOn(console, 'error').mockImplementation(push);
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  let ok = false;
+  try {
+    ok = core.checkGovernance();
+  } catch (e) {
+    // A gate that THROWS (e.g. the rule-frontmatter parser on a malformed file)
+    // is a check failure: the CLI surfaces it as a non-zero exit + stderr. Mirror
+    // that here so callers see `ok === false` with the message in the output,
+    // exactly as the subprocess tests observed via the thrown stack on stderr.
+    ok = false;
+    lines.push(e instanceof Error ? e.message : String(e));
+  } finally {
+    log.mockRestore();
+    err.mockRestore();
+    warn.mockRestore();
+  }
+  return { ok, output: lines.join('\n') };
+}
+
+/** Run `injectGovernance()` in-process, capturing console output. */
+async function runInject(): Promise<string> {
+  const lines: string[] = [];
+  const push = (...a: unknown[]): void => void lines.push(a.map(String).join(' '));
+  const log = vi.spyOn(console, 'log').mockImplementation(push);
+  const err = vi.spyOn(console, 'error').mockImplementation(push);
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  try {
+    await core.injectGovernance();
+  } finally {
+    log.mockRestore();
+    err.mockRestore();
+    warn.mockRestore();
+  }
+  return lines.join('\n');
+}
+
+/**
+ * Snapshot one sandbox file, run `body` (which may corrupt it), then restore it.
+ * Keeps the sandbox pristine across the sequentially-run tests in this file.
+ */
+function withSandboxFile(rel: string, body: (original: string) => void): void {
+  const path = box(rel);
+  const original = readFileSync(path, 'utf-8');
+  try {
+    body(original);
+  } finally {
+    writeFileSync(path, original);
+  }
+}
+
+/** Snapshot the full set of inject-written files, run `body`, restore them all. */
+async function withInjectSnapshot(body: () => Promise<void>): Promise<void> {
+  const snapshot = new Map<string, string>();
+  for (const rel of INJECT_WRITES) snapshot.set(rel, readFileSync(box(rel), 'utf-8'));
+  try {
+    await body();
+  } finally {
+    for (const [rel, content] of snapshot) writeFileSync(box(rel), content);
+  }
 }
 
 // ============================================================================
@@ -45,8 +187,9 @@ function runScript(args: string): string {
 // ============================================================================
 
 describe('inject-governance check', () => {
-  it('passes on current CLAUDE.md', { timeout: SUBPROCESS_TIMEOUT }, () => {
-    const output = runScript('check');
+  it('passes on the sandbox CLAUDE.md', () => {
+    const { ok, output } = runCheck();
+    expect(ok).toBe(true);
     expect(output).toContain('Governance check passed');
     expect(output).toContain('MCP Tools:');
     expect(output).toContain('Expert Types:');
@@ -54,109 +197,114 @@ describe('inject-governance check', () => {
     expect(output).toContain('Skills:');
   });
 
-  it('reports correct tool count', { timeout: SUBPROCESS_TIMEOUT }, () => {
-    const output = runScript('check');
-    // Extract the tool count from output like "MCP Tools: 15"
+  it('reports correct tool count', () => {
+    const { output } = runCheck();
     const match = /MCP Tools:\s*(\d+)/.exec(output);
     expect(match).not.toBeNull();
-    const toolCount = parseInt(match![1]!, 10);
-    expect(toolCount).toBeGreaterThanOrEqual(15);
+    expect(parseInt(match![1]!, 10)).toBeGreaterThanOrEqual(15);
   });
 
-  it('reports correct expert count', { timeout: SUBPROCESS_TIMEOUT }, () => {
-    const output = runScript('check');
+  it('reports correct expert count', () => {
+    const { output } = runCheck();
     const match = /Expert Types:\s*(\d+)/.exec(output);
     expect(match).not.toBeNull();
-    const count = parseInt(match![1]!, 10);
-    expect(count).toBeGreaterThanOrEqual(7);
+    expect(parseInt(match![1]!, 10)).toBeGreaterThanOrEqual(7);
   });
 
-  it('reports correct workflow count', { timeout: SUBPROCESS_TIMEOUT }, () => {
-    const output = runScript('check');
+  it('reports correct workflow count', () => {
+    const { output } = runCheck();
     const match = /Workflow Templates:\s*(\d+)/.exec(output);
     expect(match).not.toBeNull();
-    const count = parseInt(match![1]!, 10);
-    expect(count).toBeGreaterThanOrEqual(9);
+    expect(parseInt(match![1]!, 10)).toBeGreaterThanOrEqual(9);
   });
 
-  it('reports correct skill count', { timeout: SUBPROCESS_TIMEOUT }, () => {
-    const output = runScript('check');
+  it('reports correct skill count', () => {
+    const { output } = runCheck();
     const match = /Skills:\s*(\d+)/.exec(output);
     expect(match).not.toBeNull();
-    const count = parseInt(match![1]!, 10);
-    expect(count).toBeGreaterThanOrEqual(12);
+    expect(parseInt(match![1]!, 10)).toBeGreaterThanOrEqual(12);
+  });
+
+  it('reports agent count from agents/*.md', () => {
+    const { output } = runCheck();
+    const match = /Agents:\s*(\d+)/.exec(output);
+    expect(match).not.toBeNull();
+    expect(parseInt(match![1]!, 10)).toBeGreaterThanOrEqual(5);
+  });
+
+  it('ancillary count probes pass for plugin manifests + install doc', () => {
+    const { ok, output } = runCheck();
+    expect(ok).toBe(true);
+    expect(output).not.toContain('pattern not found');
+    expect(output).toContain('Governance check passed');
   });
 });
 
 // ============================================================================
-// Inject command (idempotency)
+// Inject command (idempotency + generated sections)
 // ============================================================================
 
 describe('inject-governance inject', () => {
-  let originalContent: string;
-
-  beforeEach(() => {
-    originalContent = readFileSync(CLAUDE_MD, 'utf-8');
+  it('is idempotent (running twice produces same result)', async () => {
+    await withInjectSnapshot(async () => {
+      await runInject();
+      const firstRun = readFileSync(box('CLAUDE.md'), 'utf-8');
+      await runInject();
+      const secondRun = readFileSync(box('CLAUDE.md'), 'utf-8');
+      expect(firstRun).toBe(secondRun);
+    });
   });
 
-  afterEach(() => {
-    // Restore original CLAUDE.md
-    writeFileSync(CLAUDE_MD, originalContent);
+  it('preserves governance markers', async () => {
+    await withInjectSnapshot(async () => {
+      await runInject();
+      const content = readFileSync(box('CLAUDE.md'), 'utf-8');
+      expect(content).toContain('<!-- GOVERNANCE:TOOL_INDEX:START -->');
+      expect(content).toContain('<!-- GOVERNANCE:TOOL_INDEX:END -->');
+      expect(content).toContain('<!-- GOVERNANCE:VERSION:START -->');
+      expect(content).toContain('<!-- GOVERNANCE:VERSION:END -->');
+    });
   });
 
-  it('is idempotent (running twice produces same result)', { timeout: IDEMPOTENCY_TIMEOUT }, () => {
-    runScript('inject');
-    const firstRun = readFileSync(CLAUDE_MD, 'utf-8');
-
-    runScript('inject');
-    const secondRun = readFileSync(CLAUDE_MD, 'utf-8');
-
-    expect(firstRun).toBe(secondRun);
+  it('generates tool index section', async () => {
+    await withInjectSnapshot(async () => {
+      await runInject();
+      const content = readFileSync(box('CLAUDE.md'), 'utf-8');
+      expect(content).toContain('## MCP Tools Reference');
+      expect(content).toContain('MCP tools registered');
+      expect(content).toContain('docs/ENTRYPOINTS.md');
+      expect(content).toContain('`orchestrate`');
+      expect(content).toContain('`create_expert`');
+      expect(content).toContain('`memory_query`');
+      expect(content).toContain('`memory_stats`');
+    });
   });
 
-  it('preserves governance markers', { timeout: SUBPROCESS_TIMEOUT }, () => {
-    runScript('inject');
-    const content = readFileSync(CLAUDE_MD, 'utf-8');
-    expect(content).toContain('<!-- GOVERNANCE:TOOL_INDEX:START -->');
-    expect(content).toContain('<!-- GOVERNANCE:TOOL_INDEX:END -->');
-    expect(content).toContain('<!-- GOVERNANCE:VERSION:START -->');
-    expect(content).toContain('<!-- GOVERNANCE:VERSION:END -->');
+  it('updates tool count in auto-generated footer', async () => {
+    await withInjectSnapshot(async () => {
+      await runInject();
+      const content = readFileSync(box('CLAUDE.md'), 'utf-8');
+      const match = /Auto-generated from source\.\s*(\d+)\s*tools registered/.exec(content);
+      expect(match).not.toBeNull();
+      expect(parseInt(match![1]!, 10)).toBeGreaterThanOrEqual(15);
+    });
   });
 
-  it('generates tool index section', { timeout: SUBPROCESS_TIMEOUT }, () => {
-    runScript('inject');
-    const content = readFileSync(CLAUDE_MD, 'utf-8');
-    expect(content).toContain('## MCP Tools Reference');
-    expect(content).toContain('MCP tools registered');
-    expect(content).toContain('docs/ENTRYPOINTS.md');
-    expect(content).toContain('`orchestrate`');
-    expect(content).toContain('`create_expert`');
-    expect(content).toContain('`memory_query`');
-    expect(content).toContain('`memory_stats`');
+  it('updates governance version timestamp', async () => {
+    await withInjectSnapshot(async () => {
+      await runInject();
+      const content = readFileSync(box('CLAUDE.md'), 'utf-8');
+      expect(/Governance Version:\s*(\d{4}-\d{2}-\d{2})/.exec(content)).not.toBeNull();
+    });
   });
 
-  it('updates tool count in auto-generated footer', { timeout: SUBPROCESS_TIMEOUT }, () => {
-    runScript('inject');
-    const content = readFileSync(CLAUDE_MD, 'utf-8');
-    const match = /Auto-generated from source\.\s*(\d+)\s*tools registered/.exec(content);
-    expect(match).not.toBeNull();
-    const count = parseInt(match![1]!, 10);
-    expect(count).toBeGreaterThanOrEqual(15);
-  });
-
-  it('updates governance version timestamp', { timeout: SUBPROCESS_TIMEOUT }, () => {
-    runScript('inject');
-    const content = readFileSync(CLAUDE_MD, 'utf-8');
-    // Should contain a date in YYYY-MM-DD format
-    const match = /Governance Version:\s*(\d{4}-\d{2}-\d{2})/.exec(content);
-    expect(match).not.toBeNull();
-  });
-
-  it('outputs summary with counts', { timeout: SUBPROCESS_TIMEOUT }, () => {
-    const output = runScript('inject');
-    expect(output).toContain('Governance injected');
-    expect(output).toContain('MCP Tools:');
-    expect(output).toContain('Expert Types:');
+  it('outputs summary with counts', async () => {
+    await withInjectSnapshot(async () => {
+      const output = await runInject();
+      expect(output).toContain('Governance injected');
+      expect(output).toContain('MCP Tools:');
+      expect(output).toContain('Expert Types:');
+    });
   });
 });
 
@@ -165,221 +313,116 @@ describe('inject-governance inject', () => {
 // ============================================================================
 
 describe('section injection behavior', () => {
-  let originalContent: string;
+  it('replaces content between markers without affecting surrounding text', async () => {
+    await withInjectSnapshot(async () => {
+      const original = readFileSync(box('CLAUDE.md'), 'utf-8');
+      const beforeToolIndex = original.split('<!-- GOVERNANCE:TOOL_INDEX:START -->')[0];
+      const afterAllGoverned = original.split('<!-- GOVERNANCE:VERSION:END -->')[1];
 
-  beforeEach(() => {
-    originalContent = readFileSync(CLAUDE_MD, 'utf-8');
-  });
+      await runInject();
+      const updated = readFileSync(box('CLAUDE.md'), 'utf-8');
 
-  afterEach(() => {
-    writeFileSync(CLAUDE_MD, originalContent);
-  });
-
-  it(
-    'replaces content between markers without affecting surrounding text',
-    { timeout: SUBPROCESS_TIMEOUT },
-    () => {
-      const beforeToolIndex = originalContent.split('<!-- GOVERNANCE:TOOL_INDEX:START -->')[0];
-      // Compare content after ALL governed sections (VERSION:END is the last marker)
-      const afterAllGoverned = originalContent.split('<!-- GOVERNANCE:VERSION:END -->')[1];
-
-      runScript('inject');
-      const updated = readFileSync(CLAUDE_MD, 'utf-8');
-
-      // Content before first governed section and after last governed section should be unchanged
       expect(updated.split('<!-- GOVERNANCE:TOOL_INDEX:START -->')[0]).toBe(beforeToolIndex);
       expect(updated.split('<!-- GOVERNANCE:VERSION:END -->')[1]).toBe(afterAllGoverned);
-    }
-  );
+    });
+  });
 
-  it('handles tool index with all registered tools', { timeout: SUBPROCESS_TIMEOUT }, () => {
-    runScript('inject');
-    const content = readFileSync(CLAUDE_MD, 'utf-8');
-
-    // Extract the tool index section
-    const startMarker = '<!-- GOVERNANCE:TOOL_INDEX:START -->';
-    const endMarker = '<!-- GOVERNANCE:TOOL_INDEX:END -->';
-    const startIdx = content.indexOf(startMarker);
-    const endIdx = content.indexOf(endMarker);
-    const section = content.slice(startIdx, endIdx + endMarker.length);
-
-    // Each tool should be in the table
-    const expectedTools = [
-      'orchestrate',
-      'create_expert',
-      'execute_expert',
-      'run_workflow',
-      'consensus_vote',
-      'delegate_to_model',
-      'list_experts',
-      'list_workflows',
-      'research_query',
-      'research_add',
-      'research_discover',
-      'research_analyze',
-      'research_catalog_review',
-      'memory_query',
-      'memory_stats',
-    ];
-
-    for (const tool of expectedTools) {
-      expect(section).toContain(`\`${tool}\``);
-    }
+  it('handles tool index with all registered tools', async () => {
+    await withInjectSnapshot(async () => {
+      await runInject();
+      const content = readFileSync(box('CLAUDE.md'), 'utf-8');
+      const startMarker = '<!-- GOVERNANCE:TOOL_INDEX:START -->';
+      const endMarker = '<!-- GOVERNANCE:TOOL_INDEX:END -->';
+      const section = content.slice(
+        content.indexOf(startMarker),
+        content.indexOf(endMarker) + endMarker.length
+      );
+      const expectedTools = [
+        'orchestrate',
+        'create_expert',
+        'execute_expert',
+        'run_workflow',
+        'consensus_vote',
+        'delegate_to_model',
+        'list_experts',
+        'list_workflows',
+        'research_query',
+        'research_add',
+        'research_discover',
+        'research_analyze',
+        'research_catalog_review',
+        'memory_query',
+        'memory_stats',
+      ];
+      for (const tool of expectedTools) {
+        expect(section).toContain(`\`${tool}\``);
+      }
+    });
   });
 });
 
 // ============================================================================
-// Fixture-based tests (isolated from real CLAUDE.md)
+// README MCP tools table drift gate (#2269) — isolated drift test
 // ============================================================================
 
-describe('inject-governance with fixture', () => {
-  const FIXTURE_DIR = join(ROOT, 'scripts', '__test_fixtures__');
-  const FIXTURE_CLAUDE_MD = join(FIXTURE_DIR, 'CLAUDE.md');
-
-  beforeEach(() => {
-    mkdirSync(FIXTURE_DIR, { recursive: true });
-  });
-
-  afterEach(() => {
-    if (existsSync(FIXTURE_DIR)) {
-      rmSync(FIXTURE_DIR, { recursive: true });
-    }
-  });
-
-  it('check command fails when tool count is wrong', { timeout: SUBPROCESS_TIMEOUT }, () => {
-    // Create a CLAUDE.md with wrong tool count in the tool index
-    const wrongContent = [
-      '# Test',
-      '<!-- GOVERNANCE:TOOL_INDEX:START -->',
-      '| Tool | Description |',
-      '| --- | --- |',
-      '| `orchestrate` | Test |',
-      '| `fake_tool` | Not real |',
-      '',
-      '_Auto-generated from source. 2 tools registered._',
-      '<!-- GOVERNANCE:TOOL_INDEX:END -->',
-    ].join('\n');
-    writeFileSync(FIXTURE_CLAUDE_MD, wrongContent);
-
-    // The check command uses the real CLAUDE.md path, so this test
-    // verifies the real check still passes (since we can't easily redirect)
-    const output = runScript('check');
-    expect(output).toContain('Governance check passed');
+describe('inject-governance README tool table (#2269)', () => {
+  it('check fails when the README tool table drifts', () => {
+    withSandboxFile('README.md', (original) => {
+      // Drop a generated table row so the README table no longer matches the
+      // registry — the gate must catch it.
+      const broken = original.replace(/\| `orchestrate`[^\n]*\n/, '');
+      expect(broken).not.toBe(original);
+      writeFileSync(box('README.md'), broken);
+      const { ok, output } = runCheck();
+      expect(ok).toBe(false);
+      expect(output).toContain('README MCP tools table is stale');
+    });
   });
 });
 
 // ============================================================================
-// Ancillary count injection (#1837)
-// ============================================================================
-
-describe('inject-governance ancillary counts (#1837)', () => {
-  it('reports agent count from agents/*.md', { timeout: SUBPROCESS_TIMEOUT }, () => {
-    const output = runScript('check');
-    const match = /Agents:\s*(\d+)/.exec(output);
-    expect(match).not.toBeNull();
-    const count = parseInt(match![1]!, 10);
-    expect(count).toBeGreaterThanOrEqual(5);
-  });
-
-  it('reports correct skill count', { timeout: SUBPROCESS_TIMEOUT }, () => {
-    const output = runScript('check');
-    const match = /Skills:\s*(\d+)/.exec(output);
-    expect(match).not.toBeNull();
-    const count = parseInt(match![1]!, 10);
-    expect(count).toBeGreaterThanOrEqual(10);
-  });
-
-  it(
-    'ancillary count probes pass for plugin manifests + install doc',
-    { timeout: SUBPROCESS_TIMEOUT },
-    () => {
-      // Full `check` output includes ancillary probe failures if any drift exists.
-      // A green run means all probes matched canonical counts.
-      const output = runScript('check');
-      expect(output).not.toContain('pattern not found');
-      expect(output).not.toContain('expected');
-      expect(output).toContain('Governance check passed');
-    }
-  );
-});
-
-// ============================================================================
-// Workflows table generation + Canonical Paths validator (#2317, #2321)
+// Workflows table generation + Canonical Paths validator (#2317, #2321, #3446)
 // ============================================================================
 
 describe('inject-governance workflows + canonical paths (#2317)', () => {
-  it(
-    'generates Workflows table with every skill from skills/index.yaml',
-    () => {
-      runScript('inject');
-      try {
-        const content = readFileSync(CLAUDE_MD, 'utf-8');
-        expect(content).toContain('<!-- GOVERNANCE:WORKFLOW_INDEX:START -->');
-        expect(content).toContain('<!-- GOVERNANCE:WORKFLOW_INDEX:END -->');
-        // dev-pipeline + security-advisory-response were the drifted entries
-        // that motivated this generator (#2317). They MUST appear.
-        expect(content).toContain('`dev-pipeline`');
-        expect(content).toContain('`security-advisory-response`');
-        // Auto-gen footer reflects current skill count.
-        const match = /Auto-generated from `skills\/index\.yaml`\.\s*(\d+)\s*skills\./.exec(
-          content
-        );
-        expect(match).not.toBeNull();
-        const count = parseInt(match![1]!, 10);
-        expect(count).toBeGreaterThanOrEqual(15);
-      } finally {
-        // Restore. inject-governance is idempotent against current source so
-        // re-running inject is fine, but tests should not leave drift.
-        runScript('inject');
-      }
-    },
-    IDEMPOTENCY_TIMEOUT
-  );
+  it('generates Workflows table with every skill from skills/index.yaml', async () => {
+    await withInjectSnapshot(async () => {
+      await runInject();
+      const content = readFileSync(box('CLAUDE.md'), 'utf-8');
+      expect(content).toContain('<!-- GOVERNANCE:WORKFLOW_INDEX:START -->');
+      expect(content).toContain('<!-- GOVERNANCE:WORKFLOW_INDEX:END -->');
+      // dev-pipeline + security-advisory-response were the drifted entries that
+      // motivated this generator (#2317). They MUST appear.
+      expect(content).toContain('`dev-pipeline`');
+      expect(content).toContain('`security-advisory-response`');
+      const match = /Auto-generated from `skills\/index\.yaml`\.\s*(\d+)\s*skills\./.exec(content);
+      expect(match).not.toBeNull();
+      expect(parseInt(match![1]!, 10)).toBeGreaterThanOrEqual(15);
+    });
+  });
 
-  it(
-    'canonical paths validator passes on the current CLAUDE.md',
-    { timeout: SUBPROCESS_TIMEOUT },
-    () => {
-      const output = runScript('check');
-      expect(output).toContain('Governance check passed');
-      expect(output).not.toContain('Canonical Paths drift');
-    }
-  );
+  it('canonical paths validator passes on the current CLAUDE.md', () => {
+    const { ok, output } = runCheck();
+    expect(ok).toBe(true);
+    expect(output).not.toContain('Canonical Paths drift');
+  });
 
-  it(
-    'canonical paths validator fails when a row points at a missing file',
-    { timeout: SUBPROCESS_TIMEOUT },
-    () => {
-      // #3446: the canonical-paths table is now authored in AGENTS.md (CLAUDE.md
-      // generates its copy from the AGNOSTIC:BODY slice), so the validator reads
-      // AGENTS.md. AGENTS uses the `src/...` shorthand for the nexus-agents pkg.
-      const AGENTS_MD = join(ROOT, 'AGENTS.md');
-      const original = readFileSync(AGENTS_MD, 'utf-8');
-      try {
-        const broken = original.replace(
-          '`src/consensus/engine.ts`',
-          '`src/consensus/THIS_FILE_DOES_NOT_EXIST.ts`'
-        );
-        // Sanity: ensure the replace actually found the row.
-        expect(broken).not.toBe(original);
-        writeFileSync(AGENTS_MD, broken);
-        let stderr = '';
-        let exitCode = 0;
-        try {
-          execSync(`npx tsx ${SCRIPT} check`, { cwd: ROOT, encoding: 'utf-8', timeout: 30000 });
-        } catch (err) {
-          const e = err as { status?: number; stderr?: string; stdout?: string };
-          exitCode = e.status ?? 1;
-          stderr = (e.stderr ?? '') + (e.stdout ?? '');
-        }
-        expect(exitCode).not.toBe(0);
-        expect(stderr).toContain('Canonical Paths drift');
-        expect(stderr).toContain('THIS_FILE_DOES_NOT_EXIST.ts');
-      } finally {
-        writeFileSync(AGENTS_MD, original);
-      }
-    }
-  );
+  it('canonical paths validator fails when a row points at a missing file', () => {
+    withSandboxFile('AGENTS.md', (original) => {
+      // #3446: the canonical-paths table is authored in AGENTS.md; AGENTS uses
+      // the `src/...` shorthand for the nexus-agents package.
+      const broken = original.replace(
+        '`src/consensus/engine.ts`',
+        '`src/consensus/THIS_FILE_DOES_NOT_EXIST.ts`'
+      );
+      expect(broken).not.toBe(original);
+      writeFileSync(box('AGENTS.md'), broken);
+      const { ok, output } = runCheck();
+      expect(ok).toBe(false);
+      expect(output).toContain('Canonical Paths drift');
+      expect(output).toContain('THIS_FILE_DOES_NOT_EXIST.ts');
+    });
+  });
 });
 
 // ============================================================================
@@ -387,61 +430,34 @@ describe('inject-governance workflows + canonical paths (#2317)', () => {
 // ============================================================================
 
 describe('inject-governance adapter-precedence-docs (#2655)', () => {
-  const PRECEDENCE_DOC = join(ROOT, 'docs/guides/RULE_PRECEDENCE.md');
+  const PRECEDENCE_DOC = 'docs/guides/RULE_PRECEDENCE.md';
 
-  it(
-    'passes when RULE_PRECEDENCE.md has all four adapter sections',
-    { timeout: SUBPROCESS_TIMEOUT },
-    () => {
-      const output = runScript('check');
-      expect(output).toContain('Governance check passed');
-      expect(output).not.toContain('RULE_PRECEDENCE.md missing');
-    }
-  );
+  it('passes when RULE_PRECEDENCE.md has all four adapter sections', () => {
+    const { ok, output } = runCheck();
+    expect(ok).toBe(true);
+    expect(output).not.toContain('RULE_PRECEDENCE.md missing');
+  });
 
-  it('fails when an adapter section header is missing', { timeout: SUBPROCESS_TIMEOUT }, () => {
-    const original = readFileSync(PRECEDENCE_DOC, 'utf-8');
-    try {
-      // Replace the `## OpenCode` section header. Exact-line matching in
-      // the validator means corruption like `## OpenCodeXXX` still trips
+  it('fails when an adapter section header is missing', () => {
+    withSandboxFile(PRECEDENCE_DOC, (original) => {
+      // Exact-line matching in the validator means `## OpenCodeXXX` still trips
       // the gate even though `includes('## OpenCode')` would have passed.
       const broken = original.replace(/^## OpenCode$/m, '## OpenCodeXXX');
       expect(broken).not.toBe(original);
-      writeFileSync(PRECEDENCE_DOC, broken);
-      let stderr = '';
-      let exitCode = 0;
-      try {
-        execSync(`npx tsx ${SCRIPT} check`, { cwd: ROOT, encoding: 'utf-8', timeout: 30000 });
-      } catch (err) {
-        const e = err as { status?: number; stderr?: string; stdout?: string };
-        exitCode = e.status ?? 1;
-        stderr = (e.stderr ?? '') + (e.stdout ?? '');
-      }
-      expect(exitCode).not.toBe(0);
-      expect(stderr).toContain('## OpenCode');
-    } finally {
-      writeFileSync(PRECEDENCE_DOC, original);
-    }
+      writeFileSync(box(PRECEDENCE_DOC), broken);
+      const { ok, output } = runCheck();
+      expect(ok).toBe(false);
+      expect(output).toContain('## OpenCode');
+    });
   });
 
-  it('fails when RULE_PRECEDENCE.md is missing entirely', { timeout: SUBPROCESS_TIMEOUT }, () => {
-    const original = readFileSync(PRECEDENCE_DOC, 'utf-8');
-    try {
-      rmSync(PRECEDENCE_DOC);
-      let stderr = '';
-      let exitCode = 0;
-      try {
-        execSync(`npx tsx ${SCRIPT} check`, { cwd: ROOT, encoding: 'utf-8', timeout: 30000 });
-      } catch (err) {
-        const e = err as { status?: number; stderr?: string; stdout?: string };
-        exitCode = e.status ?? 1;
-        stderr = (e.stderr ?? '') + (e.stdout ?? '');
-      }
-      expect(exitCode).not.toBe(0);
-      expect(stderr).toContain('Missing docs/guides/RULE_PRECEDENCE.md');
-    } finally {
-      writeFileSync(PRECEDENCE_DOC, original);
-    }
+  it('fails when RULE_PRECEDENCE.md is missing entirely', () => {
+    withSandboxFile(PRECEDENCE_DOC, () => {
+      rmSync(box(PRECEDENCE_DOC));
+      const { ok, output } = runCheck();
+      expect(ok).toBe(false);
+      expect(output).toContain('Missing docs/guides/RULE_PRECEDENCE.md');
+    });
   });
 });
 
@@ -450,61 +466,34 @@ describe('inject-governance adapter-precedence-docs (#2655)', () => {
 // ============================================================================
 
 describe('inject-governance rules-index (#2657)', () => {
-  const AGENTS_MD = join(ROOT, 'AGENTS.md');
+  it('passes when the AGENTS.md Rules index matches .rules/*.md frontmatter', () => {
+    const { ok, output } = runCheck();
+    expect(ok).toBe(true);
+    expect(output).not.toContain('AGENTS.md Rules index is stale');
+  });
 
-  it(
-    'passes when the AGENTS.md Rules index matches .rules/*.md frontmatter',
-    { timeout: SUBPROCESS_TIMEOUT },
-    () => {
-      const output = runScript('check');
-      expect(output).toContain('Governance check passed');
-      expect(output).not.toContain('AGENTS.md Rules index is stale');
-    }
-  );
+  it('generates a Rules index row for every .rules/*.md file', () => {
+    const content = readFileSync(box('AGENTS.md'), 'utf-8');
+    const start = content.indexOf('<!-- GOVERNANCE:RULES_INDEX:START -->');
+    const end = content.indexOf('<!-- GOVERNANCE:RULES_INDEX:END -->');
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const section = content.slice(start, end);
+    expect(section).toContain('[`.rules/typescript.md`](./.rules/typescript.md)');
+    expect(section).toContain('`**/*.ts`, `**/*.tsx`');
+    expect(section).toMatch(/_Auto-generated from `\.rules\/\*\.md` frontmatter.*\d+ rules\._/);
+  });
 
-  it(
-    'generates a Rules index row for every .rules/*.md file',
-    { timeout: SUBPROCESS_TIMEOUT },
-    () => {
-      const content = readFileSync(AGENTS_MD, 'utf-8');
-      const start = content.indexOf('<!-- GOVERNANCE:RULES_INDEX:START -->');
-      const end = content.indexOf('<!-- GOVERNANCE:RULES_INDEX:END -->');
-      expect(start).toBeGreaterThan(-1);
-      expect(end).toBeGreaterThan(start);
-      const section = content.slice(start, end);
-      // Every rule file is linked, and the `paths:` globs surface in the table.
-      expect(section).toContain('[`.rules/typescript.md`](./.rules/typescript.md)');
-      expect(section).toContain('`**/*.ts`, `**/*.tsx`');
-      expect(section).toMatch(/_Auto-generated from `\.rules\/\*\.md` frontmatter.*\d+ rules\._/);
-    }
-  );
-
-  it(
-    'fails when the AGENTS.md Rules index drifts from frontmatter',
-    { timeout: SUBPROCESS_TIMEOUT },
-    () => {
-      const original = readFileSync(AGENTS_MD, 'utf-8');
-      try {
-        // Drop a generated table row — simulates a hand-edit that drops a rule.
-        const broken = original.replace(/\| \[`\.rules\/typescript\.md`\][^\n]*\n/, '');
-        expect(broken).not.toBe(original);
-        writeFileSync(AGENTS_MD, broken);
-        let stderr = '';
-        let exitCode = 0;
-        try {
-          execSync(`npx tsx ${SCRIPT} check`, { cwd: ROOT, encoding: 'utf-8', timeout: 30000 });
-        } catch (err) {
-          const e = err as { status?: number; stderr?: string; stdout?: string };
-          exitCode = e.status ?? 1;
-          stderr = (e.stderr ?? '') + (e.stdout ?? '');
-        }
-        expect(exitCode).not.toBe(0);
-        expect(stderr).toContain('AGENTS.md Rules index is stale');
-      } finally {
-        writeFileSync(AGENTS_MD, original);
-      }
-    }
-  );
+  it('fails when the AGENTS.md Rules index drifts from frontmatter', () => {
+    withSandboxFile('AGENTS.md', (original) => {
+      const broken = original.replace(/\| \[`\.rules\/typescript\.md`\][^\n]*\n/, '');
+      expect(broken).not.toBe(original);
+      writeFileSync(box('AGENTS.md'), broken);
+      const { ok, output } = runCheck();
+      expect(ok).toBe(false);
+      expect(output).toContain('AGENTS.md Rules index is stale');
+    });
+  });
 });
 
 // ============================================================================
@@ -512,151 +501,80 @@ describe('inject-governance rules-index (#2657)', () => {
 // ============================================================================
 
 describe('inject-governance claude-from-agents (#3446)', () => {
-  const AGENTS_MD = join(ROOT, 'AGENTS.md');
+  it('passes when the CLAUDE.md generated block matches AGENTS.md AGNOSTIC:BODY', () => {
+    const { ok, output } = runCheck();
+    expect(ok).toBe(true);
+    expect(output).not.toContain('GENERATED:FROM_AGENTS block is stale');
+  });
 
-  it(
-    'passes when the CLAUDE.md generated block matches AGENTS.md AGNOSTIC:BODY',
-    { timeout: SUBPROCESS_TIMEOUT },
-    () => {
-      const output = runScript('check');
-      expect(output).toContain('Governance check passed');
-      expect(output).not.toContain('GENERATED:FROM_AGENTS block is stale');
-    }
-  );
+  it('CLAUDE.md generated block carries the agnostic body sliced from AGENTS.md', () => {
+    const content = readFileSync(box('CLAUDE.md'), 'utf-8');
+    const start = content.indexOf('<!-- GENERATED:FROM_AGENTS:START -->');
+    const end = content.indexOf('<!-- GENERATED:FROM_AGENTS:END -->');
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const block = content.slice(start, end);
+    expect(block).toContain('DO NOT EDIT THIS BLOCK BY HAND');
+    expect(block).toContain('#3446');
+    expect(block).toContain('## Prime directive');
+    expect(block).toContain('## Default working mode');
+    expect(block).toContain('## Untrusted-input safety invariants');
+    expect(block).toContain('## Consensus voting thresholds');
+    expect(block).not.toContain('AGNOSTIC:BODY:START');
+    expect(block).not.toContain('AGNOSTIC:BODY:END');
+  });
 
-  it(
-    'CLAUDE.md generated block carries the agnostic body sliced from AGENTS.md',
-    { timeout: SUBPROCESS_TIMEOUT },
-    () => {
-      const content = readFileSync(CLAUDE_MD, 'utf-8');
-      const start = content.indexOf('<!-- GENERATED:FROM_AGENTS:START -->');
-      const end = content.indexOf('<!-- GENERATED:FROM_AGENTS:END -->');
-      expect(start).toBeGreaterThan(-1);
-      expect(end).toBeGreaterThan(start);
-      const block = content.slice(start, end);
-      // The "do not edit" provenance note must be present.
-      expect(block).toContain('DO NOT EDIT THIS BLOCK BY HAND');
-      expect(block).toContain('#3446');
-      // Agnostic prose that lives ONLY in AGENTS.md AGNOSTIC:BODY must arrive
-      // here verbatim (lowercase AGENTS headings, not the old CLAUDE casing).
-      expect(block).toContain('## Prime directive');
-      expect(block).toContain('## Default working mode');
-      expect(block).toContain('## Untrusted-input safety invariants');
-      expect(block).toContain('## Consensus voting thresholds');
-      // The block must NOT swallow the AGNOSTIC marker lines themselves.
-      expect(block).not.toContain('AGNOSTIC:BODY:START');
-      expect(block).not.toContain('AGNOSTIC:BODY:END');
-    }
-  );
+  it('fails when the CLAUDE.md generated block is hand-edited (drifts from AGENTS.md)', () => {
+    withSandboxFile('CLAUDE.md', (original) => {
+      const broken = original.replace('## Prime directive', '## Prime directive (hand-edited)');
+      expect(broken).not.toBe(original);
+      writeFileSync(box('CLAUDE.md'), broken);
+      const { ok, output } = runCheck();
+      expect(ok).toBe(false);
+      expect(output).toContain('GENERATED:FROM_AGENTS block is stale');
+    });
+  });
 
-  it(
-    'fails when the CLAUDE.md generated block is hand-edited (drifts from AGENTS.md)',
-    { timeout: SUBPROCESS_TIMEOUT },
-    () => {
-      const original = readFileSync(CLAUDE_MD, 'utf-8');
-      try {
-        // Simulate an editor changing the generated prose in CLAUDE.md instead
-        // of AGENTS.md — the gate must catch it.
-        const broken = original.replace('## Prime directive', '## Prime directive (hand-edited)');
-        expect(broken).not.toBe(original);
-        writeFileSync(CLAUDE_MD, broken);
-        let stderr = '';
-        let exitCode = 0;
-        try {
-          execSync(`npx tsx ${SCRIPT} check`, { cwd: ROOT, encoding: 'utf-8', timeout: 30000 });
-        } catch (err) {
-          const e = err as { status?: number; stderr?: string; stdout?: string };
-          exitCode = e.status ?? 1;
-          stderr = (e.stderr ?? '') + (e.stdout ?? '');
-        }
-        expect(exitCode).not.toBe(0);
-        expect(stderr).toContain('GENERATED:FROM_AGENTS block is stale');
-      } finally {
-        writeFileSync(CLAUDE_MD, original);
-      }
-    }
-  );
+  it('fails when AGENTS.md AGNOSTIC:BODY is edited without re-running inject', () => {
+    withSandboxFile('AGENTS.md', (original) => {
+      const broken = original.replace(
+        'Clever code is maintenance debt.',
+        'Clever code is maintenance debt. (edited but not injected)'
+      );
+      expect(broken).not.toBe(original);
+      writeFileSync(box('AGENTS.md'), broken);
+      const { ok, output } = runCheck();
+      expect(ok).toBe(false);
+      expect(output).toContain('GENERATED:FROM_AGENTS block is stale');
+    });
+  });
 
-  it(
-    'fails when AGENTS.md AGNOSTIC:BODY is edited without re-running inject',
-    { timeout: SUBPROCESS_TIMEOUT },
-    () => {
-      const original = readFileSync(AGENTS_MD, 'utf-8');
-      try {
-        // Edit the agnostic body but do NOT re-inject — CLAUDE.md is now stale.
-        const broken = original.replace(
-          'Clever code is maintenance debt.',
-          'Clever code is maintenance debt. (edited but not injected)'
-        );
-        expect(broken).not.toBe(original);
-        writeFileSync(AGENTS_MD, broken);
-        let stderr = '';
-        let exitCode = 0;
-        try {
-          execSync(`npx tsx ${SCRIPT} check`, { cwd: ROOT, encoding: 'utf-8', timeout: 30000 });
-        } catch (err) {
-          const e = err as { status?: number; stderr?: string; stdout?: string };
-          exitCode = e.status ?? 1;
-          stderr = (e.stderr ?? '') + (e.stdout ?? '');
-        }
-        expect(exitCode).not.toBe(0);
-        expect(stderr).toContain('GENERATED:FROM_AGENTS block is stale');
-      } finally {
-        writeFileSync(AGENTS_MD, original);
-      }
-    }
-  );
+  it('fails LOUD on reordered AGNOSTIC:BODY markers instead of silently erasing the body', () => {
+    withSandboxFile('AGENTS.md', (original) => {
+      const broken = original
+        .replace('<!-- AGNOSTIC:BODY:START -->', '<!-- AGNOSTIC:BODY:TMP -->')
+        .replace('<!-- AGNOSTIC:BODY:END -->', '<!-- AGNOSTIC:BODY:START -->')
+        .replace('<!-- AGNOSTIC:BODY:TMP -->', '<!-- AGNOSTIC:BODY:END -->');
+      expect(broken).not.toBe(original);
+      writeFileSync(box('AGENTS.md'), broken);
+      // The generator THROWS on malformed markers rather than silently erasing
+      // the body; runCheck() surfaces that throw as a failed check.
+      const { ok, output } = runCheck();
+      expect(ok).toBe(false);
+      expect(output).toMatch(/reordered|malformed/i);
+    });
+  });
 
-  it(
-    'fails LOUD on reordered AGNOSTIC:BODY markers instead of silently erasing the body (#3446 QA)',
-    { timeout: SUBPROCESS_TIMEOUT },
-    () => {
-      const original = readFileSync(AGENTS_MD, 'utf-8');
-      try {
-        // Swap the START/END marker order. A `=== -1`-only guard would slice an
-        // EMPTY body and the drift gate would "pass" against it — silently
-        // wiping CLAUDE.md's agnostic content. The generator must throw instead.
-        const broken = original
-          .replace('<!-- AGNOSTIC:BODY:START -->', '<!-- AGNOSTIC:BODY:TMP -->')
-          .replace('<!-- AGNOSTIC:BODY:END -->', '<!-- AGNOSTIC:BODY:START -->')
-          .replace('<!-- AGNOSTIC:BODY:TMP -->', '<!-- AGNOSTIC:BODY:END -->');
-        expect(broken).not.toBe(original);
-        writeFileSync(AGENTS_MD, broken);
-        let stderr = '';
-        let exitCode = 0;
-        try {
-          execSync(`npx tsx ${SCRIPT} check`, { cwd: ROOT, encoding: 'utf-8', timeout: 30000 });
-        } catch (err) {
-          const e = err as { status?: number; stderr?: string; stdout?: string };
-          exitCode = e.status ?? 1;
-          stderr = (e.stderr ?? '') + (e.stdout ?? '');
-        }
-        expect(exitCode).not.toBe(0);
-        expect(stderr).toMatch(/reordered|malformed/i);
-      } finally {
-        writeFileSync(AGENTS_MD, original);
-      }
-    }
-  );
-
-  it(
-    'inject regenerates the CLAUDE.md block from AGENTS.md (idempotent)',
-    { timeout: IDEMPOTENCY_TIMEOUT },
-    () => {
-      const original = readFileSync(CLAUDE_MD, 'utf-8');
-      try {
-        runScript('inject');
-        const firstRun = readFileSync(CLAUDE_MD, 'utf-8');
-        runScript('inject');
-        const secondRun = readFileSync(CLAUDE_MD, 'utf-8');
-        expect(firstRun).toBe(secondRun);
-        // The block was populated (not left as the bare empty marker pair).
-        expect(firstRun).toContain('## Prime directive');
-      } finally {
-        writeFileSync(CLAUDE_MD, original);
-      }
-    }
-  );
+  it('inject regenerates the CLAUDE.md block from AGENTS.md (idempotent)', async () => {
+    await withInjectSnapshot(async () => {
+      await runInject();
+      const firstRun = readFileSync(box('CLAUDE.md'), 'utf-8');
+      await runInject();
+      const secondRun = readFileSync(box('CLAUDE.md'), 'utf-8');
+      expect(firstRun).toBe(secondRun);
+      expect(firstRun).toContain('## Prime directive');
+    });
+  });
 });
 
 // ============================================================================
@@ -664,56 +582,28 @@ describe('inject-governance claude-from-agents (#3446)', () => {
 // ============================================================================
 
 describe('inject-governance tool-annotations (#2648)', () => {
-  // #3597: annotation data is folded INTO TOOL_MANIFEST; the gate now verifies
-  // every manifest entry pairs a `name` with an `annotations: {` block.
-  const MANIFEST_PATH = join(ROOT, 'packages/nexus-agents/src/mcp/tools/tool-manifest.ts');
+  const MANIFEST = 'packages/nexus-agents/src/mcp/tools/tool-manifest.ts';
 
-  it(
-    'passes when every registered tool has an entry in TOOL_ANNOTATIONS',
-    { timeout: SUBPROCESS_TIMEOUT },
-    () => {
-      const output = runScript('check');
-      expect(output).toContain('Governance check passed');
-      expect(output).not.toContain('Registered tools missing annotations');
-    }
-  );
+  it('passes when every registered tool has an entry in TOOL_ANNOTATIONS', () => {
+    const { ok, output } = runCheck();
+    expect(ok).toBe(true);
+    expect(output).not.toContain('Registered tools missing annotations');
+  });
 
-  it(
-    'fails when a registered tool is missing its manifest annotations block',
-    { timeout: SUBPROCESS_TIMEOUT },
-    () => {
-      const original = readFileSync(MANIFEST_PATH, 'utf-8');
-      try {
-        // Strip ONLY the `annotations: { … },` block from the weather_report
-        // entry (leaving its name + sideEffects), so it stays registered but
-        // becomes unannotated — exactly the #2648 failure the gate must catch.
-        const broken = original.replace(
-          /(name: 'weather_report',\s*)annotations:\s*\{[\s\S]*?\},\s*/m,
-          '$1'
-        );
-        expect(broken).not.toBe(original);
-        writeFileSync(MANIFEST_PATH, broken);
-        let stderr = '';
-        let exitCode = 0;
-        try {
-          execSync(`npx tsx ${SCRIPT} check`, {
-            cwd: ROOT,
-            encoding: 'utf-8',
-            timeout: 30000,
-          });
-        } catch (err) {
-          const e = err as { status?: number; stderr?: string; stdout?: string };
-          exitCode = e.status ?? 1;
-          stderr = (e.stderr ?? '') + (e.stdout ?? '');
-        }
-        expect(exitCode).not.toBe(0);
-        expect(stderr).toContain('missing annotations');
-        expect(stderr).toContain('weather_report');
-      } finally {
-        writeFileSync(MANIFEST_PATH, original);
-      }
-    }
-  );
+  it('fails when a registered tool is missing its manifest annotations block', () => {
+    withSandboxFile(MANIFEST, (original) => {
+      const broken = original.replace(
+        /(name: 'weather_report',\s*)annotations:\s*\{[\s\S]*?\},\s*/m,
+        '$1'
+      );
+      expect(broken).not.toBe(original);
+      writeFileSync(box(MANIFEST), broken);
+      const { ok, output } = runCheck();
+      expect(ok).toBe(false);
+      expect(output).toContain('missing annotations');
+      expect(output).toContain('weather_report');
+    });
+  });
 });
 
 // ============================================================================
@@ -721,49 +611,29 @@ describe('inject-governance tool-annotations (#2648)', () => {
 // ============================================================================
 
 describe('inject-governance mcp-error-envelope (#2649)', () => {
-  const TOOL_PATH = join(ROOT, 'packages/nexus-agents/src/mcp/tools/memory-stats.ts');
+  const TOOL = 'packages/nexus-agents/src/mcp/tools/memory-stats.ts';
 
-  it(
-    'passes when no tool file has a raw `isError: true` literal',
-    { timeout: SUBPROCESS_TIMEOUT },
-    () => {
-      const output = runScript('check');
-      expect(output).toContain('Governance check passed');
-      expect(output).not.toContain('raw `isError: true` literal');
-    }
-  );
+  it('passes when no tool file has a raw `isError: true` literal', () => {
+    const { ok, output } = runCheck();
+    expect(ok).toBe(true);
+    expect(output).not.toContain('raw `isError: true` literal');
+  });
 
-  it(
-    'fails when a tool file builds a raw `isError: true` literal',
-    { timeout: SUBPROCESS_TIMEOUT },
-    () => {
-      const original = readFileSync(TOOL_PATH, 'utf-8');
-      try {
-        // Inject a raw error literal the way a pre-#2649 tool would.
-        const broken = original.replace(
-          'export ',
-          'const _raw = { isError: true, content: [] };\nexport ',
-          1
-        );
-        expect(broken).not.toBe(original);
-        writeFileSync(TOOL_PATH, broken);
-        let stderr = '';
-        let exitCode = 0;
-        try {
-          execSync(`npx tsx ${SCRIPT} check`, { cwd: ROOT, encoding: 'utf-8', timeout: 30000 });
-        } catch (err) {
-          const e = err as { status?: number; stderr?: string; stdout?: string };
-          exitCode = e.status ?? 1;
-          stderr = (e.stderr ?? '') + (e.stdout ?? '');
-        }
-        expect(exitCode).not.toBe(0);
-        expect(stderr).toContain('raw `isError: true` literal');
-        expect(stderr).toContain('memory-stats.ts');
-      } finally {
-        writeFileSync(TOOL_PATH, original);
-      }
-    }
-  );
+  it('fails when a tool file builds a raw `isError: true` literal', () => {
+    withSandboxFile(TOOL, (original) => {
+      // String-pattern replace already targets only the first occurrence.
+      const broken = original.replace(
+        'export ',
+        'const _raw = { isError: true, content: [] };\nexport '
+      );
+      expect(broken).not.toBe(original);
+      writeFileSync(box(TOOL), broken);
+      const { ok, output } = runCheck();
+      expect(ok).toBe(false);
+      expect(output).toContain('raw `isError: true` literal');
+      expect(output).toContain('memory-stats.ts');
+    });
+  });
 });
 
 // ============================================================================
@@ -771,45 +641,24 @@ describe('inject-governance mcp-error-envelope (#2649)', () => {
 // ============================================================================
 
 describe('inject-governance tool-distinctness (#2650)', () => {
-  const BASELINE_PATH = join(ROOT, 'docs/ops/tool-distinctness-baseline.json');
+  const BASELINE = 'docs/ops/tool-distinctness-baseline.json';
 
-  it(
-    'passes when every flagged tool pair is in the baseline',
-    { timeout: SUBPROCESS_TIMEOUT },
-    () => {
-      const output = runScript('check');
-      expect(output).toContain('Governance check passed');
-      expect(output).not.toContain('distinctness');
-    }
-  );
+  it('passes when every flagged tool pair is in the baseline', () => {
+    const { ok, output } = runCheck();
+    expect(ok).toBe(true);
+    expect(output).not.toContain('distinctness');
+  });
 
-  it(
-    'fails when a flagged pair is dropped from the baseline',
-    { timeout: SUBPROCESS_TIMEOUT },
-    () => {
-      const original = readFileSync(BASELINE_PATH, 'utf-8');
-      try {
-        // Drop the first baseline pair — it then re-surfaces as a NEW
-        // overlapping pair the gate has no record of.
-        const parsed = JSON.parse(original) as { pairs: unknown[] };
-        const dropped = { ...parsed, pairs: parsed.pairs.slice(1) };
-        writeFileSync(BASELINE_PATH, JSON.stringify(dropped, null, 2) + '\n');
-        let stderr = '';
-        let exitCode = 0;
-        try {
-          execSync(`npx tsx ${SCRIPT} check`, { cwd: ROOT, encoding: 'utf-8', timeout: 30000 });
-        } catch (err) {
-          const e = err as { status?: number; stderr?: string; stdout?: string };
-          exitCode = e.status ?? 1;
-          stderr = (e.stderr ?? '') + (e.stdout ?? '');
-        }
-        expect(exitCode).not.toBe(0);
-        expect(stderr).toContain('NEW overlapping pair');
-      } finally {
-        writeFileSync(BASELINE_PATH, original);
-      }
-    }
-  );
+  it('fails when a flagged pair is dropped from the baseline', () => {
+    withSandboxFile(BASELINE, (original) => {
+      const parsed = JSON.parse(original) as { pairs: unknown[] };
+      const dropped = { ...parsed, pairs: parsed.pairs.slice(1) };
+      writeFileSync(box(BASELINE), JSON.stringify(dropped, null, 2) + '\n');
+      const { ok, output } = runCheck();
+      expect(ok).toBe(false);
+      expect(output).toContain('NEW overlapping pair');
+    });
+  });
 });
 
 // ============================================================================
@@ -817,51 +666,27 @@ describe('inject-governance tool-distinctness (#2650)', () => {
 // ============================================================================
 
 describe('inject-governance tool-prerequisites (#2652)', () => {
-  const PREREQ_PATH = join(ROOT, 'packages/nexus-agents/src/mcp/middleware/tool-prerequisites.ts');
+  const PREREQ = 'packages/nexus-agents/src/mcp/middleware/tool-prerequisites.ts';
 
-  it(
-    'passes when every non-read-only tool has a prerequisite decision',
-    { timeout: SUBPROCESS_TIMEOUT },
-    () => {
-      const output = runScript('check');
-      expect(output).toContain('Governance check passed');
-      expect(output).not.toContain('no prerequisite decision');
-    }
-  );
+  it('passes when every non-read-only tool has a prerequisite decision', () => {
+    const { ok, output } = runCheck();
+    expect(ok).toBe(true);
+    expect(output).not.toContain('no prerequisite decision');
+  });
 
-  it(
-    'fails when a non-read-only tool is dropped from both prerequisite maps',
-    { timeout: SUBPROCESS_TIMEOUT },
-    () => {
-      const original = readFileSync(PREREQ_PATH, 'utf-8');
-      try {
-        // Drop the `orchestrate` entry from NO_PREREQUISITE — it then has no
-        // prerequisite decision and must trip the gate. The victim MUST be a
-        // genuinely non-read-only tool with a single-line string entry: the gate
-        // only requires non-read-only tools to declare a prerequisite decision
-        // (#3444 — the prior victim `issue_triage` became readOnlyHint:true, so
-        // dropping it correctly no longer tripped the gate). `orchestrate`
-        // executes tasks (never read-only), so it's a stable choice.
-        const broken = original.replace(/^ {2}orchestrate:[\s\S]*?',\n/m, '');
-        expect(broken).not.toBe(original);
-        writeFileSync(PREREQ_PATH, broken);
-        let stderr = '';
-        let exitCode = 0;
-        try {
-          execSync(`npx tsx ${SCRIPT} check`, { cwd: ROOT, encoding: 'utf-8', timeout: 30000 });
-        } catch (err) {
-          const e = err as { status?: number; stderr?: string; stdout?: string };
-          exitCode = e.status ?? 1;
-          stderr = (e.stderr ?? '') + (e.stdout ?? '');
-        }
-        expect(exitCode).not.toBe(0);
-        expect(stderr).toContain('no prerequisite decision');
-        expect(stderr).toContain('orchestrate');
-      } finally {
-        writeFileSync(PREREQ_PATH, original);
-      }
-    }
-  );
+  it('fails when a non-read-only tool is dropped from both prerequisite maps', () => {
+    withSandboxFile(PREREQ, (original) => {
+      // `orchestrate` executes tasks (never read-only), so dropping its
+      // NO_PREREQUISITE entry must trip the gate (#3444).
+      const broken = original.replace(/^ {2}orchestrate:[\s\S]*?',\n/m, '');
+      expect(broken).not.toBe(original);
+      writeFileSync(box(PREREQ), broken);
+      const { ok, output } = runCheck();
+      expect(ok).toBe(false);
+      expect(output).toContain('no prerequisite decision');
+      expect(output).toContain('orchestrate');
+    });
+  });
 });
 
 // ============================================================================
@@ -869,48 +694,28 @@ describe('inject-governance tool-prerequisites (#2652)', () => {
 // ============================================================================
 
 describe('inject-governance tool-output-consistency (#2653)', () => {
-  const TOOL_PATH = join(ROOT, 'packages/nexus-agents/src/mcp/tools/memory-write.ts');
+  const TOOL = 'packages/nexus-agents/src/mcp/tools/memory-write.ts';
 
-  it(
-    'passes when no tool output types a timestamp as a bare number',
-    { timeout: SUBPROCESS_TIMEOUT },
-    () => {
-      const output = runScript('check');
-      expect(output).toContain('Governance check passed');
-      expect(output).not.toContain('timestamp-named field');
-    }
-  );
+  it('passes when no tool output types a timestamp as a bare number', () => {
+    const { ok, output } = runCheck();
+    expect(ok).toBe(true);
+    expect(output).not.toContain('timestamp-named field');
+  });
 
-  it(
-    'fails when a tool output schema types a timestamp field as a number',
-    { timeout: SUBPROCESS_TIMEOUT },
-    () => {
-      const original = readFileSync(TOOL_PATH, 'utf-8');
-      try {
-        // Inject a timestamp-as-number field into memory_write's outputSchema.
-        const broken = original.replace(
-          'const outputSchema = {',
-          'const outputSchema = {\n    createdAt: z.number(),'
-        );
-        expect(broken).not.toBe(original);
-        writeFileSync(TOOL_PATH, broken);
-        let stderr = '';
-        let exitCode = 0;
-        try {
-          execSync(`npx tsx ${SCRIPT} check`, { cwd: ROOT, encoding: 'utf-8', timeout: 30000 });
-        } catch (err) {
-          const e = err as { status?: number; stderr?: string; stdout?: string };
-          exitCode = e.status ?? 1;
-          stderr = (e.stderr ?? '') + (e.stdout ?? '');
-        }
-        expect(exitCode).not.toBe(0);
-        expect(stderr).toContain('timestamp-named field');
-        expect(stderr).toContain('memory-write.ts');
-      } finally {
-        writeFileSync(TOOL_PATH, original);
-      }
-    }
-  );
+  it('fails when a tool output schema types a timestamp field as a number', () => {
+    withSandboxFile(TOOL, (original) => {
+      const broken = original.replace(
+        'const outputSchema = {',
+        'const outputSchema = {\n    createdAt: z.number(),'
+      );
+      expect(broken).not.toBe(original);
+      writeFileSync(box(TOOL), broken);
+      const { ok, output } = runCheck();
+      expect(ok).toBe(false);
+      expect(output).toContain('timestamp-named field');
+      expect(output).toContain('memory-write.ts');
+    });
+  });
 });
 
 // ============================================================================
@@ -918,72 +723,34 @@ describe('inject-governance tool-output-consistency (#2653)', () => {
 // ============================================================================
 
 describe('inject-governance rule-frontmatter (#2656)', () => {
-  const RULES_DIR = join(ROOT, '.rules');
+  it('passes when every .rules/*.md has paths + description frontmatter', () => {
+    const { ok, output } = runCheck();
+    expect(ok).toBe(true);
+    expect(output).not.toContain('frontmatter drift');
+  });
 
-  it(
-    'passes when every .rules/*.md has paths + description frontmatter',
-    { timeout: SUBPROCESS_TIMEOUT },
-    () => {
-      const output = runScript('check');
-      expect(output).toContain('Governance check passed');
-      expect(output).not.toContain('frontmatter drift');
-    }
-  );
+  it('fails when a rule file loses its frontmatter delimiter', () => {
+    withSandboxFile('.rules/typescript.md', (original) => {
+      const stripped = original.replace(/^---\n[\s\S]*?\n---\n/, '');
+      expect(stripped).not.toBe(original);
+      writeFileSync(box('.rules/typescript.md'), stripped);
+      const { ok, output } = runCheck();
+      expect(ok).toBe(false);
+      expect(output).toContain('frontmatter drift');
+      expect(output).toContain('typescript.md');
+    });
+  });
 
-  it(
-    'fails when a rule file loses its frontmatter delimiter',
-    { timeout: SUBPROCESS_TIMEOUT },
-    () => {
-      const target = join(RULES_DIR, 'typescript.md');
-      const original = readFileSync(target, 'utf-8');
-      try {
-        const stripped = original.replace(/^---\n[\s\S]*?\n---\n/, '');
-        expect(stripped).not.toBe(original);
-        writeFileSync(target, stripped);
-        let stderr = '';
-        let exitCode = 0;
-        try {
-          execSync(`npx tsx ${SCRIPT} check`, { cwd: ROOT, encoding: 'utf-8', timeout: 30000 });
-        } catch (err) {
-          const e = err as { status?: number; stderr?: string; stdout?: string };
-          exitCode = e.status ?? 1;
-          stderr = (e.stderr ?? '') + (e.stdout ?? '');
-        }
-        expect(exitCode).not.toBe(0);
-        expect(stderr).toContain('frontmatter drift');
-        expect(stderr).toContain('typescript.md');
-      } finally {
-        writeFileSync(target, original);
-      }
-    }
-  );
-
-  it(
-    'fails when a rule file is missing its description field',
-    { timeout: SUBPROCESS_TIMEOUT },
-    () => {
-      const target = join(RULES_DIR, 'security.md');
-      const original = readFileSync(target, 'utf-8');
-      try {
-        const stripped = original.replace(/^description:.*\n/m, '');
-        expect(stripped).not.toBe(original);
-        writeFileSync(target, stripped);
-        let stderr = '';
-        let exitCode = 0;
-        try {
-          execSync(`npx tsx ${SCRIPT} check`, { cwd: ROOT, encoding: 'utf-8', timeout: 30000 });
-        } catch (err) {
-          const e = err as { status?: number; stderr?: string; stdout?: string };
-          exitCode = e.status ?? 1;
-          stderr = (e.stderr ?? '') + (e.stdout ?? '');
-        }
-        expect(exitCode).not.toBe(0);
-        expect(stderr).toContain('missing `description:`');
-      } finally {
-        writeFileSync(target, original);
-      }
-    }
-  );
+  it('fails when a rule file is missing its description field', () => {
+    withSandboxFile('.rules/security.md', (original) => {
+      const stripped = original.replace(/^description:.*\n/m, '');
+      expect(stripped).not.toBe(original);
+      writeFileSync(box('.rules/security.md'), stripped);
+      const { ok, output } = runCheck();
+      expect(ok).toBe(false);
+      expect(output).toContain('missing `description:`');
+    });
+  });
 });
 
 // ============================================================================
@@ -991,16 +758,14 @@ describe('inject-governance rule-frontmatter (#2656)', () => {
 // ============================================================================
 
 describe('inject-governance server.json sync (#2327)', () => {
-  const SERVER_JSON = join(ROOT, 'packages/nexus-agents/server.json');
-  const PKG_JSON = join(ROOT, 'packages/nexus-agents/package.json');
+  const SERVER_JSON = 'packages/nexus-agents/server.json';
+  const PKG_JSON = 'packages/nexus-agents/package.json';
 
-  it(
-    'inject syncs server.json version to packages/nexus-agents/package.json',
-    { timeout: IDEMPOTENCY_TIMEOUT },
-    () => {
-      runScript('inject');
-      const pkg = JSON.parse(readFileSync(PKG_JSON, 'utf-8')) as { version: string };
-      const server = JSON.parse(readFileSync(SERVER_JSON, 'utf-8')) as {
+  it('inject syncs server.json version to packages/nexus-agents/package.json', async () => {
+    await withInjectSnapshot(async () => {
+      await runInject();
+      const pkg = JSON.parse(readFileSync(box(PKG_JSON), 'utf-8')) as { version: string };
+      const server = JSON.parse(readFileSync(box(SERVER_JSON), 'utf-8')) as {
         version: string;
         packages: { version: string }[];
       };
@@ -1008,74 +773,42 @@ describe('inject-governance server.json sync (#2327)', () => {
       for (const entry of server.packages) {
         expect(entry.version).toBe(pkg.version);
       }
-    }
-  );
-
-  it('check command fails when server.json version drifts', { timeout: SUBPROCESS_TIMEOUT }, () => {
-    const original = readFileSync(SERVER_JSON, 'utf-8');
-    try {
-      const broken = original.replace(/"version": "[^"]+"/, '"version": "0.0.0-broken"');
-      // Sanity: ensure the replace landed.
-      expect(broken).not.toBe(original);
-      writeFileSync(SERVER_JSON, broken);
-      let combined = '';
-      let exitCode = 0;
-      try {
-        execSync(`npx tsx ${SCRIPT} check`, { cwd: ROOT, encoding: 'utf-8', timeout: 30000 });
-      } catch (err) {
-        const e = err as { status?: number; stderr?: string; stdout?: string };
-        exitCode = e.status ?? 1;
-        combined = (e.stderr ?? '') + (e.stdout ?? '');
-      }
-      expect(exitCode).not.toBe(0);
-      expect(combined).toContain('server.json version');
-      expect(combined).toContain('0.0.0-broken');
-    } finally {
-      writeFileSync(SERVER_JSON, original);
-    }
+    });
   });
 
-  it(
-    'check command fails when server.json description tool count drifts',
-    { timeout: SUBPROCESS_TIMEOUT },
-    () => {
-      const original = readFileSync(SERVER_JSON, 'utf-8');
-      try {
-        const broken = original.replace(/(\d+) MCP tools/, '999 MCP tools');
-        expect(broken).not.toBe(original);
-        writeFileSync(SERVER_JSON, broken);
-        let combined = '';
-        let exitCode = 0;
-        try {
-          execSync(`npx tsx ${SCRIPT} check`, { cwd: ROOT, encoding: 'utf-8', timeout: 30000 });
-        } catch (err) {
-          const e = err as { status?: number; stderr?: string; stdout?: string };
-          exitCode = e.status ?? 1;
-          combined = (e.stderr ?? '') + (e.stdout ?? '');
-        }
-        expect(exitCode).not.toBe(0);
-        expect(combined).toContain('server.json description');
-        expect(combined).toContain('999');
-      } finally {
-        writeFileSync(SERVER_JSON, original);
-      }
-    }
-  );
+  it('check command fails when server.json version drifts', () => {
+    withSandboxFile(SERVER_JSON, (original) => {
+      const broken = original.replace(/"version": "[^"]+"/, '"version": "0.0.0-broken"');
+      expect(broken).not.toBe(original);
+      writeFileSync(box(SERVER_JSON), broken);
+      const { ok, output } = runCheck();
+      expect(ok).toBe(false);
+      expect(output).toContain('server.json version');
+      expect(output).toContain('0.0.0-broken');
+    });
+  });
 
-  it(
-    'inject writes the canonical tools[] array into server.json',
-    { timeout: IDEMPOTENCY_TIMEOUT },
-    () => {
-      runScript('inject');
-      const server = JSON.parse(readFileSync(SERVER_JSON, 'utf-8')) as { tools: string[] };
-      // Sanity floor: at least 30 tools (snapshot-resilient — the actual count
-      // changes per release and shouldn't be hardcoded here).
+  it('check command fails when server.json description tool count drifts', () => {
+    withSandboxFile(SERVER_JSON, (original) => {
+      const broken = original.replace(/(\d+) MCP tools/, '999 MCP tools');
+      expect(broken).not.toBe(original);
+      writeFileSync(box(SERVER_JSON), broken);
+      const { ok, output } = runCheck();
+      expect(ok).toBe(false);
+      expect(output).toContain('server.json description');
+      expect(output).toContain('999');
+    });
+  });
+
+  it('inject writes the canonical tools[] array into server.json', async () => {
+    await withInjectSnapshot(async () => {
+      await runInject();
+      const server = JSON.parse(readFileSync(box(SERVER_JSON), 'utf-8')) as { tools: string[] };
       expect(server.tools.length).toBeGreaterThanOrEqual(30);
-      // The most recent additions must appear (caught the #2295 drift on PR #2358).
       expect(server.tools).toContain('survey_oss_landscape');
       expect(server.tools).toContain('supply_chain_tradeoff_panel');
-    }
-  );
+    });
+  });
 });
 
 // ============================================================================
@@ -1083,71 +816,62 @@ describe('inject-governance server.json sync (#2327)', () => {
 // ============================================================================
 
 describe('inject-governance ancillary count surfaces (#2295 follow-up)', () => {
-  const SITE_DATA = join(ROOT, 'website/src/data/site-data.ts');
-  const COMPONENTS_DOC = join(ROOT, 'docs/design/components.md');
-  const README_FILE = join(ROOT, 'README.md');
+  const SITE_DATA = 'website/src/data/site-data.ts';
+  const COMPONENTS_DOC = 'docs/design/components.md';
+  const README_FILE = 'README.md';
 
-  it(
-    'syncs MCP_TOOL_COUNT in website/src/data/site-data.ts',
-    { timeout: IDEMPOTENCY_TIMEOUT },
-    () => {
-      runScript('inject');
-      const content = readFileSync(SITE_DATA, 'utf-8');
+  it('syncs MCP_TOOL_COUNT in website/src/data/site-data.ts', async () => {
+    await withInjectSnapshot(async () => {
+      await runInject();
+      const content = readFileSync(box(SITE_DATA), 'utf-8');
       const match = /MCP_TOOL_COUNT\s*=\s*(\d+)/.exec(content);
       expect(match).not.toBeNull();
-      const count = parseInt(match![1]!, 10);
-      expect(count).toBeGreaterThanOrEqual(30);
-    }
-  );
-
-  it(
-    'syncs the three "N tool" mentions in docs/design/components.md',
-    { timeout: IDEMPOTENCY_TIMEOUT },
-    () => {
-      runScript('inject');
-      const content = readFileSync(COMPONENTS_DOC, 'utf-8');
-      // Pattern 1: row of mcp module description
-      expect(content).toMatch(/MCP server, \d+ tool handlers, gateway/);
-      // Pattern 2: capability-gap-detector cross-ref
-      expect(content).toMatch(/against \d+ registered tools and \d+ expert roles/);
-      // Pattern 3: tool-registration line
-      expect(content).toMatch(/`registerTools\(\)` — \d+ tools total/);
-    }
-  );
-
-  it('syncs README.md count mentions', { timeout: IDEMPOTENCY_TIMEOUT }, () => {
-    runScript('inject');
-    const content = readFileSync(README_FILE, 'utf-8');
-    // Architecture diagram bottom line: "│   N MCP tools · multi-stage..."
-    expect(content).toMatch(/│\s+\d+ MCP tools · multi-stage CompositeRouter/);
-    // Capabilities table cell: "**N MCP Tools**"
-    expect(content).toMatch(/\*\*\d+ MCP Tools\*\*/);
+      expect(parseInt(match![1]!, 10)).toBeGreaterThanOrEqual(30);
+    });
   });
 
-  it(
-    'all ancillary surfaces report the SAME tool count after inject',
-    { timeout: IDEMPOTENCY_TIMEOUT },
-    () => {
-      runScript('inject');
+  it('syncs the three "N tool" mentions in docs/design/components.md', async () => {
+    await withInjectSnapshot(async () => {
+      await runInject();
+      const content = readFileSync(box(COMPONENTS_DOC), 'utf-8');
+      expect(content).toMatch(/MCP server, \d+ tool handlers, gateway/);
+      expect(content).toMatch(/against \d+ registered tools and \d+ expert roles/);
+      expect(content).toMatch(/`registerTools\(\)` — \d+ tools total/);
+    });
+  });
+
+  it('syncs README.md count mentions', async () => {
+    await withInjectSnapshot(async () => {
+      await runInject();
+      const content = readFileSync(box(README_FILE), 'utf-8');
+      expect(content).toMatch(/│\s+\d+ MCP tools · multi-stage CompositeRouter/);
+      expect(content).toMatch(/\*\*\d+ MCP Tools\*\*/);
+    });
+  });
+
+  it('all ancillary surfaces report the SAME tool count after inject', async () => {
+    await withInjectSnapshot(async () => {
+      await runInject();
       const siteCount = parseInt(
-        /MCP_TOOL_COUNT\s*=\s*(\d+)/.exec(readFileSync(SITE_DATA, 'utf-8'))?.[1] ?? '0',
+        /MCP_TOOL_COUNT\s*=\s*(\d+)/.exec(readFileSync(box(SITE_DATA), 'utf-8'))?.[1] ?? '0',
         10
       );
       const componentsCount = parseInt(
-        /MCP server, (\d+) tool handlers/.exec(readFileSync(COMPONENTS_DOC, 'utf-8'))?.[1] ?? '0',
+        /MCP server, (\d+) tool handlers/.exec(readFileSync(box(COMPONENTS_DOC), 'utf-8'))?.[1] ??
+          '0',
         10
       );
       const readmeArchCount = parseInt(
         /│\s+(\d+) MCP tools · multi-stage CompositeRouter/.exec(
-          readFileSync(README_FILE, 'utf-8')
+          readFileSync(box(README_FILE), 'utf-8')
         )?.[1] ?? '0',
         10
       );
       expect(siteCount).toBeGreaterThan(0);
       expect(siteCount).toBe(componentsCount);
       expect(siteCount).toBe(readmeArchCount);
-    }
-  );
+    });
+  });
 });
 
 // ============================================================================
@@ -1155,11 +879,11 @@ describe('inject-governance ancillary count surfaces (#2295 follow-up)', () => {
 // ============================================================================
 
 describe('inject-governance ENTRYPOINTS tool enumerations (#3334)', () => {
-  const ENTRYPOINTS = join(ROOT, 'docs/ENTRYPOINTS.md');
+  const ENTRYPOINTS = 'docs/ENTRYPOINTS.md';
 
-  /** Extract the two enumeration surfaces from ENTRYPOINTS.md. */
+  /** Extract the two enumeration surfaces from the sandbox ENTRYPOINTS.md. */
   function readSurfaces(): { prose: string; yaml: string } {
-    const content = readFileSync(ENTRYPOINTS, 'utf-8');
+    const content = readFileSync(box(ENTRYPOINTS), 'utf-8');
     const proseStart = content.indexOf('<!-- GOVERNANCE:ENTRYPOINTS_TOOLS:START -->');
     const proseEnd = content.indexOf('<!-- GOVERNANCE:ENTRYPOINTS_TOOLS:END -->');
     const yamlStart = content.indexOf('<!-- BEGIN:MCP_TOOLS -->');
@@ -1170,83 +894,50 @@ describe('inject-governance ENTRYPOINTS tool enumerations (#3334)', () => {
     };
   }
 
-  /** Registered tool names from the canonical TOOL_MANIFEST (source of truth, #3566). */
+  /** Registered tool names from the sandbox TOOL_MANIFEST (source of truth, #3566). */
   function registeredTools(): string[] {
-    // #3597: TOOL_MANIFEST is an object array, so extract names via the shared
-    // AST parser (a per-line string regex would also pick up titles/descriptions).
-    const src = readFileSync(
-      join(ROOT, 'packages/nexus-agents/src/mcp/tools/tool-manifest.ts'),
-      'utf-8'
-    );
+    const src = readFileSync(box('packages/nexus-agents/src/mcp/tools/tool-manifest.ts'), 'utf-8');
     const names = parseRegisteredToolNames(src);
     expect(names.length).toBeGreaterThan(0);
     return names;
   }
 
-  it(
-    'passes check on the current ENTRYPOINTS.md (no drift)',
-    { timeout: SUBPROCESS_TIMEOUT },
-    () => {
-      const output = runScript('check');
-      expect(output).toContain('Governance check passed');
-      expect(output).not.toContain('ENTRYPOINTS.md MCP tool enumerations are stale');
-    }
-  );
+  it('passes check on the current ENTRYPOINTS.md (no drift)', () => {
+    const { ok, output } = runCheck();
+    expect(ok).toBe(true);
+    expect(output).not.toContain('ENTRYPOINTS.md MCP tool enumerations are stale');
+  });
 
-  it(
-    'renders every registered tool exactly once in BOTH surfaces',
-    { timeout: IDEMPOTENCY_TIMEOUT },
-    () => {
-      runScript('inject');
-      try {
-        const { prose, yaml } = readSurfaces();
-        const tools = registeredTools();
-        expect(tools.length).toBeGreaterThanOrEqual(30);
-        // Tool column cells are the leading `| \`<name>\` ` on each row;
-        // a bare backtick match would also catch description cross-references
-        // (e.g. execute_expert's blurb mentions `create_expert`).
-        const proseRows = prose
-          .split('\n')
-          .map((line) => /^\| `([^`]+)` /.exec(line)?.[1])
-          .filter((n): n is string => n !== undefined);
-        for (const name of tools) {
-          const proseHits = proseRows.filter((n) => n === name).length;
-          expect(proseHits, `prose cell for ${name}`).toBe(1);
-          // YAML block: `- name: <tool>` appears exactly once.
-          const yamlHits = yaml.split(`- name: ${name}\n`).length - 1;
-          expect(yamlHits, `yaml entry for ${name}`).toBe(1);
-        }
-        // Footer count equals the registered count.
-        const footer = /(\d+) tools\._/.exec(prose);
-        expect(footer).not.toBeNull();
-        expect(parseInt(footer![1]!, 10)).toBe(tools.length);
-      } finally {
-        runScript('inject');
+  it('renders every registered tool exactly once in BOTH surfaces', async () => {
+    await withInjectSnapshot(async () => {
+      await runInject();
+      const { prose, yaml } = readSurfaces();
+      const tools = registeredTools();
+      expect(tools.length).toBeGreaterThanOrEqual(30);
+      const proseRows = prose
+        .split('\n')
+        .map((line) => /^\| `([^`]+)` /.exec(line)?.[1])
+        .filter((n): n is string => n !== undefined);
+      for (const name of tools) {
+        const proseHits = proseRows.filter((n) => n === name).length;
+        expect(proseHits, `prose cell for ${name}`).toBe(1);
+        const yamlHits = yaml.split(`- name: ${name}\n`).length - 1;
+        expect(yamlHits, `yaml entry for ${name}`).toBe(1);
       }
-    }
-  );
+      const footer = /(\d+) tools\._/.exec(prose);
+      expect(footer).not.toBeNull();
+      expect(parseInt(footer![1]!, 10)).toBe(tools.length);
+    });
+  });
 
-  it('check fails when an ENTRYPOINTS enumeration drifts', { timeout: SUBPROCESS_TIMEOUT }, () => {
-    const original = readFileSync(ENTRYPOINTS, 'utf-8');
-    try {
-      // Drop a YAML tool entry — simulates a registered tool missing from
-      // the enumeration, which the gate must catch.
+  it('check fails when an ENTRYPOINTS enumeration drifts', () => {
+    withSandboxFile(ENTRYPOINTS, (original) => {
       const broken = original.replace(/ {4}- name: orchestrate\n {6}auth: none\n/, '');
       expect(broken).not.toBe(original);
-      writeFileSync(ENTRYPOINTS, broken);
-      let combined = '';
-      let exitCode = 0;
-      try {
-        execSync(`npx tsx ${SCRIPT} check`, { cwd: ROOT, encoding: 'utf-8', timeout: 30000 });
-      } catch (err) {
-        const e = err as { status?: number; stderr?: string; stdout?: string };
-        exitCode = e.status ?? 1;
-        combined = (e.stderr ?? '') + (e.stdout ?? '');
-      }
-      expect(exitCode).not.toBe(0);
-      expect(combined).toContain('ENTRYPOINTS.md MCP tool enumerations are stale');
-    } finally {
-      writeFileSync(ENTRYPOINTS, original);
-    }
+      writeFileSync(box(ENTRYPOINTS), broken);
+      const { ok, output } = runCheck();
+      expect(ok).toBe(false);
+      expect(output).toContain('ENTRYPOINTS.md MCP tool enumerations are stale');
+    });
   });
 });
