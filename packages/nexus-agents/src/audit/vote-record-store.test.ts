@@ -11,7 +11,7 @@
 
 import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -283,6 +283,27 @@ describe('vote-record path resolution / persistence escape hatch (#3927)', () =>
   it('treats an empty/whitespace env var as unset (falls back to root detection)', () => {
     vi.stubEnv(VOTE_RECORDS_PATH_ENV, '   ');
     expect(resolveVoteRecordsPath()).toBeUndefined();
+  });
+
+  it('returns an absolute override unchanged (#3963)', () => {
+    // envFilePath is already absolute → returned verbatim (resolve is a no-op).
+    vi.stubEnv(VOTE_RECORDS_PATH_ENV, envFilePath);
+    const resolved = resolveVoteRecordsPath();
+    expect(resolved).toBe(envFilePath);
+    expect(isAbsolute(resolved as string)).toBe(true);
+  });
+
+  it('resolves a RELATIVE override to an absolute path against cwd (#3963)', () => {
+    // The JSDoc contract says the override is treated as an absolute path; a
+    // relative value used verbatim would silently write under process.cwd().
+    // Honor the contract: resolve it to an absolute path against cwd.
+    const relative = 'governance/custom-vote-records.jsonl';
+    vi.stubEnv(VOTE_RECORDS_PATH_ENV, relative);
+    const resolved = resolveVoteRecordsPath();
+    expect(resolved).toBe(resolve(relative));
+    expect(isAbsolute(resolved as string)).toBe(true);
+    // It must NOT be returned verbatim (the pre-fix bug).
+    expect(resolved).not.toBe(relative);
   });
 
   it('lets opts.filePath take precedence over the env var', () => {

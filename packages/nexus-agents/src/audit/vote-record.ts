@@ -143,7 +143,11 @@ type VoteRecordPayload = Omit<VoteRecord, 'hash'>;
  * `previousHash`, so the hash is position-independent and stable across
  * concurrent-branch merges and file reorders. The projection is built
  * field-by-field (not `JSON.stringify(record)`) so key-order is deterministic
- * regardless of how the object was constructed.
+ * regardless of how the object was constructed — and the NESTED objects
+ * (`voteCounts` and each `voters[]` element) are likewise rebuilt field-by-field
+ * in schema order (#3962). A formatter / `jq -S` / merge tool that reorders the
+ * keys of a persisted record must NOT flip a legitimate record to
+ * `hash_mismatch`: the hash is independent of key insertion order at every level.
  */
 export function computeVoteRecordHash(payload: VoteRecordPayload): string {
   const canonical = JSON.stringify({
@@ -156,7 +160,14 @@ export function computeVoteRecordHash(payload: VoteRecordPayload): string {
     strategy: payload.strategy,
     decision: payload.decision,
     approvalPercentage: payload.approvalPercentage,
-    voteCounts: payload.voteCounts,
+    // Rebuild voteCounts in schema order (approve, reject, abstain, total) so the
+    // hash does not depend on how the nested object's keys were ordered (#3962).
+    voteCounts: {
+      approve: payload.voteCounts.approve,
+      reject: payload.voteCounts.reject,
+      abstain: payload.voteCounts.abstain,
+      total: payload.voteCounts.total,
+    },
     voters: payload.voters.map((v) => ({
       role: v.role,
       decision: v.decision,
