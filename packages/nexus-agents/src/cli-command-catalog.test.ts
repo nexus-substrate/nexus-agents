@@ -14,8 +14,10 @@ import {
   groupByAudience,
   renderCommandsSection,
   catalogForExtractors,
+  getCommandDescription,
 } from './cli-command-catalog.js';
 import { renderHelp, HELP_TEXT } from './cli-help-text.js';
+import { COMMAND_HELP, formatCommandHelp, formatAllCommandsHelp } from './cli-command-help.js';
 import { isValidCommand } from './cli-types.js';
 
 describe('cli-command-catalog (#2135)', () => {
@@ -187,6 +189,80 @@ describe('cli-command-catalog (#2135)', () => {
       const tiered = renderHelp({ all: false });
       const full = renderHelp({ all: true });
       expect(tiered.length).toBeLessThan(full.length);
+    });
+  });
+
+  // ── Single-source drift gate (#3209) ──────────────────────────────────────
+  // The same one-line description used to be copied (and DRIFTED) across three
+  // files: the catalog, the HELP_TEXT command list, and COMMAND_HELP. The exact
+  // bug: `vote` read "5-6 agents" (catalog) vs "6 agents" (HELP_TEXT) vs
+  // "6 agents by default" (COMMAND_HELP) — all wrong; the panel is 7. These
+  // tests assert COMMAND_CATALOG is the ONE source and every other help surface
+  // derives from it, so the drift cannot regress.
+  describe('single-source command descriptions (#3209)', () => {
+    /**
+     * Asserts the rendered COMMANDS block contains one row per visible catalog
+     * command whose text is exactly `<command padEnd(16)> <catalog description>`
+     * — i.e. the rendered list IS the catalog, with no drifted copy. Matches the
+     * exact row shape `renderCommandsSection` produces (padEnd(16), 1 space).
+     */
+    function expectCommandsMatchCatalog(helpText: string, showAll: boolean): void {
+      const commandsMatch = /COMMANDS:\n([\s\S]*?)\n\nOPTIONS:/.exec(helpText);
+      expect(commandsMatch).not.toBeNull();
+      const block = commandsMatch?.[1] ?? '';
+      for (const entry of filterCatalog(showAll)) {
+        const expectedRow = `    ${entry.command.padEnd(16)} ${entry.description}`;
+        expect(
+          block.includes(expectedRow),
+          `COMMANDS list is missing the catalog row for "${entry.command}" ` +
+            `(expected exactly: "${expectedRow.trim()}") — descriptions have drifted ` +
+            `from COMMAND_CATALOG`
+        ).toBe(true);
+      }
+    }
+
+    it('the rendered COMMANDS list (--all) matches catalog descriptions verbatim', () => {
+      expectCommandsMatchCatalog(renderHelp({ all: true }), true);
+    });
+
+    it('the default COMMANDS list matches catalog descriptions verbatim', () => {
+      expectCommandsMatchCatalog(renderHelp({ all: false }), false);
+    });
+
+    it('every COMMAND_HELP command has a catalog description (no third copy)', () => {
+      for (const entry of COMMAND_HELP) {
+        expect(
+          getCommandDescription(entry.command),
+          `COMMAND_HELP command "${entry.command}" is not in COMMAND_CATALOG — ` +
+            `its one-line description cannot be single-sourced`
+        ).toBeDefined();
+      }
+    });
+
+    it('per-command help renders the catalog description (formatCommandHelp)', () => {
+      for (const entry of COMMAND_HELP) {
+        const help = formatCommandHelp(entry.command);
+        expect(help).toBeDefined();
+        const description = getCommandDescription(entry.command) ?? '';
+        expect(help).toContain(description);
+      }
+    });
+
+    it('the all-commands summary renders catalog descriptions (formatAllCommandsHelp)', () => {
+      const summary = formatAllCommandsHelp();
+      for (const entry of COMMAND_HELP) {
+        const description = getCommandDescription(entry.command) ?? '';
+        expect(summary).toContain(description);
+      }
+    });
+
+    it('reconciles the vote drift to the real 7-agent default panel', () => {
+      // Regression for the exact #3209 example. getVoterRoles() in
+      // mcp/tools/consensus-vote.ts returns 7 roles by default, 3 for --quick.
+      const vote = getCommandDescription('vote');
+      expect(vote).toContain('7 agents');
+      expect(vote).not.toContain('6 agents');
+      expect(vote).not.toContain('5-6');
     });
   });
 });

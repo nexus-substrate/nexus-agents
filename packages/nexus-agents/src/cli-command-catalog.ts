@@ -101,7 +101,10 @@ export const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
   },
   {
     command: 'vote',
-    description: 'Run consensus vote on a proposal (5-6 agents)',
+    // Default panel is 7 roles; `--quick` runs 3 (getVoterRoles in
+    // mcp/tools/consensus-vote.ts). Prior drift: "5-6 agents" here, "6 agents"
+    // in HELP_TEXT, "6 agents by default" in COMMAND_HELP — all wrong (#3209).
+    description: 'Run consensus vote on a proposal (7 agents; --quick uses 3)',
     audience: 'essential',
   },
   {
@@ -371,6 +374,20 @@ export function filterCatalog(showAll: boolean): readonly CommandCatalogEntry[] 
  */
 export function catalogForExtractors(): readonly CommandCatalogEntry[] {
   return COMMAND_CATALOG.filter((e) => e.command !== '(default)');
+}
+
+/**
+ * Looks up the canonical one-line description for a command from the catalog
+ * (the single source of truth — #3209). Returns `undefined` if the command is
+ * not cataloged.
+ *
+ * Used by `cli-command-help.ts` so per-command help (`formatCommandHelp`,
+ * `formatAllCommandsHelp`) does not keep a third independent copy of the
+ * one-line summary. The richer per-command help (flags, examples) still lives
+ * in `COMMAND_HELP`; only the one-liner is single-sourced here.
+ */
+export function getCommandDescription(command: string): string | undefined {
+  return COMMAND_CATALOG.find((e) => e.command === command)?.description;
 }
 
 /** Groups entries by audience, preserving catalog order within each group. */

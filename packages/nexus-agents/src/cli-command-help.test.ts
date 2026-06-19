@@ -8,6 +8,7 @@
 import { describe, it, expect } from 'vitest';
 
 import { COMMAND_HELP, formatCommandHelp, formatAllCommandsHelp } from './cli-command-help.js';
+import { getCommandDescription } from './cli-command-catalog.js';
 
 // ============================================================================
 // Help metadata registry
@@ -23,9 +24,14 @@ describe('COMMAND_HELP', () => {
     expect(new Set(names).size).toBe(names.length);
   });
 
-  it('every entry has non-empty description', () => {
+  // #3209: the one-line description is no longer stored on the entry — it is
+  // single-sourced from COMMAND_CATALOG. Assert every command resolves to a
+  // non-empty catalog description (so per-command help is never blank).
+  it('every command resolves a non-empty catalog description (single-sourced #3209)', () => {
     for (const entry of COMMAND_HELP) {
-      expect(entry.description.length).toBeGreaterThan(0);
+      const description = getCommandDescription(entry.command);
+      expect(description, `no COMMAND_CATALOG description for "${entry.command}"`).toBeDefined();
+      expect((description ?? '').length).toBeGreaterThan(0);
     }
   });
 
