@@ -22,7 +22,7 @@ jobs:
   release:
     name: Release
     if: github.event_name == 'push'
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       contents: write
@@ -249,7 +249,7 @@ jobs:
   manual-publish:
     name: Manual Publish
     if: github.event_name == 'workflow_dispatch'
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       contents: read

@@ -38,7 +38,7 @@ jobs:
   verify-from-source:
     name: Verify pre-publish tarball
     if: github.event_name == 'pull_request' || github.event_name == 'push'
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 15
 
     steps:
@@ -69,7 +69,7 @@ jobs:
   verify-published-latest:
     name: Verify published @latest
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 10
 
     steps:

@@ -13,7 +13,7 @@ concurrency:
 jobs:
   opencode-e2e:
     name: OpenCode E2E (Linux)
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 15
 
     steps:
