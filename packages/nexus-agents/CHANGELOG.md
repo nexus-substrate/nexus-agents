@@ -1,5 +1,128 @@
 # nexus-agents
 
+## 2.136.0
+
+### Minor Changes
+
+- [#3992](https://github.com/nexus-substrate/nexus-agents/pull/3992) [`82704fe`](https://github.com/nexus-substrate/nexus-agents/commit/82704fe65ff924230d08f6a3d9e4a65f4a3c56e0) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(governance): surface authentic-vote-record persistence outcome in consensus_vote result ([#3991](https://github.com/nexus-substrate/nexus-agents/issues/3991))
+
+  The `consensus_vote` tool persists an authentic, committable vote record
+  (`governance/vote-records.jsonl`, [#3897](https://github.com/nexus-substrate/nexus-agents/issues/3897)) at vote time, but a skipped or failed
+  persist was only a server-side WARN — invisible to MCP clients. A live 2.135.0
+  vote produced a real decision with NO persisted record and no signal the MCP
+  caller could see.
+
+  Observability only — the persistence path and cwd-resolution logic are
+  UNCHANGED, the vote outcome is unchanged, and persistence stays best-effort
+  (a persist skip never fails or blocks the vote).
+
+  - `recordAuthenticVote` now returns a structured `VoteRecordPersistOutcome`
+    (`{ persisted: true, record }` or `{ persisted: false, reason, detail }`,
+    where `reason` is `'all-simulated' | 'no-repo-root' | 'write-failed'`). The
+    `no-repo-root` detail reuses the existing server WARN text, so it carries the
+    actionable fix (set `NEXUS_VOTE_RECORDS_PATH` or commit the returned bytes).
+  - The `consensus_vote` result gains additive fields `voteRecordPersisted:
+boolean` and, when not persisted, `voteRecordNote: string`. The output schema
+    is updated to match. No existing result fields are renamed or removed; the
+    tool description is unchanged.
+  - The server-side WARN is retained (defense-in-depth).
+
+- [#3994](https://github.com/nexus-substrate/nexus-agents/pull/3994) [`9a484d4`](https://github.com/nexus-substrate/nexus-agents/commit/9a484d4facfca16d5561dceb6cd444696aa7c65e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(governance): route runtime vote-records store through `nexusDataPath` ([#3991](https://github.com/nexus-substrate/nexus-agents/issues/3991))
+
+  The runtime authentic-vote-record store now resolves its ledger path through the
+  canonical `nexusDataPath` resolver under a per-repo `governance/` category,
+  consistent with the other 10+ runtime stores. Precedence is now:
+  `NEXUS_VOTE_RECORDS_PATH` override (absolute as-is; relative resolved against cwd,
+  with fail-closed path-traversal validation) → `nexusDataPath('governance',
+'vote-records.jsonl')`, which yields `<sandbox-root>/.nexus-agents/governance/`
+  (sandbox), `<repo>/.nexus-agents/governance/` (repo-preferred, gitignored), or
+  `~/.nexus-agents/governance/vote-records.jsonl` (default / global install).
+
+  This removes the old `findRepoRoot(cwd)/governance/...` default that caused a
+  silent persist-skip on global installs (cwd not a repo) and tracked-file churn.
+  The runtime store now essentially always persists into `.nexus-agents`. The
+  committed `<repo>/governance/vote-records.jsonl` ledger the promotion gate reads
+  remains a separate caller-commits artifact, reachable only via the explicit
+  override. The persistence outcome `'no-repo-root'` reason is removed (obsolete);
+  a non-persist is now `'all-simulated'` or `'write-failed'` (unwritable data dir).
+
+### Patch Changes
+
+- [#3999](https://github.com/nexus-substrate/nexus-agents/pull/3999) [`f9f002c`](https://github.com/nexus-substrate/nexus-agents/commit/f9f002c28f43755321318cd7ae685eb3c55ca4da) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - docs: full-system review corrections — accuracy, small-n honesty, and user-journey improvements
+
+  A documentation-only pass correcting verified accuracy drift, removing
+  exaggeration around small-n experiment results, and improving the new-user
+  journey. No code changed.
+
+  Accuracy: drop the wrong "12-stage" router count; fix plugin-install skill/agent
+  counts (33/12); mark REST API + Standalone CLI as roadmap; disclose the
+  `higher_order`/`opinion_wise` consensus alias ([#514](https://github.com/nexus-substrate/nexus-agents/issues/514)); refresh the audit
+  hash-chain threat model for the versioned (`hashVersion:2`) projection and the
+  landed "immutable" → "tamper-evident" correction; move authority-ladder [#3841](https://github.com/nexus-substrate/nexus-agents/issues/3841)/[#3842](https://github.com/nexus-substrate/nexus-agents/issues/3842)
+  into Implemented; bump ADR-0005 to Phase 2 Complete; caveat the dated software
+  factory report.
+
+  Honesty: qualify the v5 PR-review "100% bug-catch / conclusively validated"
+  claims as directional small-n (n=10, synthetic); reconcile the dataset size
+  (v5 run n=10, committed dataset now n=19, growing toward n≥50 per [#3847](https://github.com/nexus-substrate/nexus-agents/issues/3847)).
+
+  Journey: add CLI-vs-MCP orientation and the `run` entry point to the
+  getting-started docs; document per-repo/shared `.nexus-agents` state paths;
+  clarify `NEXUS_AUTH_ENABLED` scope; relabel `NEXUS_ENFORCE_KEY_BOUNDARIES` as
+  planned/not-implemented ([#3997](https://github.com/nexus-substrate/nexus-agents/issues/3997)).
+
+- [#3996](https://github.com/nexus-substrate/nexus-agents/pull/3996) [`a25efac`](https://github.com/nexus-substrate/nexus-agents/commit/a25efac233802c657cf539291cbf9056a84f1eba) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(memory): route mobimem + nexus-memory default DB through the `.nexus-agents` resolver + auto-create the data dir ([#3995](https://github.com/nexus-substrate/nexus-agents/issues/3995))
+
+  Two memory-subsystem stores bypassed the canonical `nexusDataPath` resolver by
+  re-implementing `~/.nexus-agents` inline (same class of defect as [#3994](https://github.com/nexus-substrate/nexus-agents/issues/3994)):
+
+  - **MobiMem** (`context/mobimem.ts`): `defaultSharedDbPath()` now resolves via
+    `nexusDataPath('memory', 'mobimem.db')`, gaining sandbox detection, the
+    per-repo/cross-repo split, the homedir-unwritable fallback, and `.gitignore`
+    auto-wiring instead of a hardcoded `NEXUS_DATA_DIR ?? $HOME/.nexus-agents`.
+  - **nexus-memory default DB**: nexus-agents now injects the canonical
+    `nexusDataPath('memory', 'memory.db')` into the shared `MemoryRegistry`
+    before first use (`ensureSharedMemoryRegistry()`), so the resolver — not
+    nexus-memory's inline fallback — supplies the production path. nexus-memory
+    stays dep-free: the path is resolved on the nexus-agents side and passed as a
+    plain string; `resolveDefaultDbPath()` remains the dep-free fallback for
+    `nexus-eval-*` reuse.
+
+  Also fixes a fresh-install regression: opening a SQLite store whose parent
+  directory does not exist threw `SQLITE_CANTOPEN`. A shared dep-free
+  `openSqliteDatabase()` helper now `mkdirSync(dirname, { recursive: true })`
+  before `new Database()` at every on-disk open site in nexus-memory (the
+  registry connection and the `SqliteBackend`); `:memory:` is unaffected.
+
+  `core/trace-exporter.ts` gains a code comment noting that if trace persistence
+  is ever wired into production, the path should come from
+  `nexusDataPath('traces', ...)` (currently test-only / param-driven — no
+  behavior change).
+
+- [#4000](https://github.com/nexus-substrate/nexus-agents/pull/4000) [`36e6a63`](https://github.com/nexus-substrate/nexus-agents/commit/36e6a63f3f6404219a0823fb10e40172ae693cd4) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - docs: align org slug to canonical nexus-substrate + remove unsound NEXUS_ENFORCE_KEY_BOUNDARIES framing
+
+  Two owner-decided documentation/config fixes. No source code changed.
+
+  Org slug ([#3998](https://github.com/nexus-substrate/nexus-agents/issues/3998)): the canonical repo is `nexus-substrate/nexus-agents` (confirmed
+  via the npm package `repository.url`, git origin, ADR-0018, and the live GitHub
+  repo; the old `williamzujkowski/nexus-agents` path now redirects). Updated the
+  stale slug so the plugin-install story is internally consistent:
+  `.claude-plugin/marketplace.json` (`name` → `nexus-substrate`, plugin
+  `source.repo` → `nexus-substrate/nexus-agents`), `.claude-plugin/plugin.json`
+  (`repository` URL), and the root `CHANGELOG.md` releases link. The author-identity
+  `owner` block (William Zujkowski / personal GitHub URL) is left as legitimate
+  attribution. The `/plugin marketplace add nexus-substrate/nexus-agents` +
+  `install nexus-agents@nexus-substrate` commands in PLUGIN_INSTALL.md now match the
+  manifest.
+
+  Key boundaries ([#3997](https://github.com/nexus-substrate/nexus-agents/issues/3997), closed won't-do): removed the `NEXUS_ENFORCE_KEY_BOUNDARIES`
+  "planned enforcement" framing from `docs/security/API_KEY_BOUNDARIES.md`. The
+  premise is unsound — CLIs like OpenCode legitimately route multi-vendor models
+  (including Anthropic via a separate paid API key), so a hard "refuse Anthropic →
+  non-Claude CLI" rule would wrongly block valid routing. The doc now keeps the
+  accurate, shipped guardrail (the advisory cross-CLI warning, [#1429](https://github.com/nexus-substrate/nexus-agents/issues/1429)) and adds an
+  honest note on why hard enforcement is intentionally not built.
+
 ## 2.135.0
 
 ### Minor Changes
