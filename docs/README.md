@@ -384,6 +384,7 @@ Interface specs, generated references, the research loop's catalog, ADRs, and hi
 | [0016](./adr/0016-multi-round-consensus-voting.md)       | Multi-Round Consensus Voting       | Accepted   |
 | [0017](./adr/0017-authority-ladder.md)                   | Authority Ladder                   | Accepted   |
 | [0018](./adr/0018-org-scope-naming.md)                   | Org/Scope Naming                   | Accepted   |
+| [0019](./adr/0019-governance-record-signing.md)          | Governance-Record Signing          | Accepted   |
 
 #### Design Documents (archived V1)
 
