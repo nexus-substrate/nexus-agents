@@ -1,5 +1,185 @@
 # nexus-agents
 
+## 2.135.0
+
+### Minor Changes
+
+- [#3985](https://github.com/nexus-substrate/nexus-agents/pull/3985) [`94452f1`](https://github.com/nexus-substrate/nexus-agents/commit/94452f18e8b760185d4bc7d6ac02d9031757ea91) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(eval): pr_review candidate-mining curation pipeline — mines merged PRs for owner adjudication toward n>=50 ([#3847](https://github.com/nexus-substrate/nexus-agents/issues/3847))
+
+  A curation pipeline that mines THIS repo's merged-PR history into CANDIDATE
+  pr_review eval cases for the owner to adjudicate, to grow the dataset
+  (`testing/datasets/pr-review-sample.json`) from n=19 toward n>=50. The pipeline
+  produces candidates + weak labels ONLY; it never fabricates an adjudicated
+  verdict (the owner adjudicates each candidate per the rubric).
+
+  - New miner `scripts/mine-pr-review-candidates.ts` (npm: `eval:mine-candidates`)
+    shells out to `gh` LOCALLY (owner auth; CI never runs it). It pulls a window of
+    recently-merged PRs, excludes bot PRs (changeset-release/dependabot/
+    github-actions/renovate/`[bot]`) and PRs already in the dataset/candidates file,
+    extracts each PR's real (bounded) diff + objective signals, and emits NEW
+    candidates to `testing/datasets/pr-review-candidates.json`.
+  - **Weak-label heuristic (triage hint, NOT a verdict):** reuses the tested rubric
+    labeler so the mining heuristic matches adjudication. A confirmed defect-fix/
+    revert on the same source file → `likely-buggy`; a refinement-only follow-up or
+    no corrective PR within the 42-day long-tenure window → `likely-clean`; an
+    ambiguous `fix(` or a too-young no-fix PR → `unknown`. Conservative by design;
+    `weakLabelEvidence` records the objective basis.
+  - **No-fabrication guarantee:** every emitted case is `adjudicated: false` with a
+    neutral placeholder `class: "borderline"`, empty `knownBugs`, an UNADJUDICATED
+    rationale, and a `customDiff` that is a real bounded slice of `gh pr diff`
+    (never synthesized). The signal lives only in `weakLabel`.
+  - **Idempotent + safe:** re-running dedups against both the dataset and the
+    candidates file, and never overwrites an `adjudicated: true` candidate.
+  - Pure logic factored into `mine-pr-review-candidates-core.ts` (bot exclusion,
+    tenure math, weak label, diff bounding) + `mine-pr-review-candidates-assemble.ts`
+    (candidate assembly, dedup, adjudication-preserving merge), unit-tested against
+    fixtures with NO live gh (`mine-pr-review-candidates.test.ts`, 18 tests).
+  - Doc `docs/research/pr-review-eval-curation.md` explains the
+    mine -> adjudicate -> promote flow, the weak-label heuristic, and the
+    no-fabrication guarantee.
+
+- [#3983](https://github.com/nexus-substrate/nexus-agents/pull/3983) [`5d98899`](https://github.com/nexus-substrate/nexus-agents/commit/5d98899bcf4d498dc14bb4367ca1de772a10ee64) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(governance): warn-first governor-path pr_review audit gate — sha-bound, chain-fail-closed ([#3831](https://github.com/nexus-substrate/nexus-agents/issues/3831), Epic B)
+
+  Stage 1 of governance-of-the-governor ([#3829](https://github.com/nexus-substrate/nexus-agents/issues/3829)): a WARN-FIRST CI gate asserting
+  that a PR touching the GOVERNOR PATHS (the governance-of-the-governor entries in
+  `/CODEOWNERS`) carries a recorded, SHA-BOUND, tamper-evident `pr_review` audit
+  record before merge.
+
+  - New `PrReviewRecord` Zod schema + tamper-evident record SET model
+    (`src/audit/pr-review-record.ts`), mirroring the [#3927](https://github.com/nexus-substrate/nexus-agents/issues/3927) vote-record model: each
+    record is self-hashed and position-independent (merge-safe), and the self-hash
+    covers `prNumber` + `headSha` + `verdict` (the sha-binding) plus the monotonic
+    `sequence`. `verifyPrReviewRecordSet` detects edits (`hash_mismatch`), missing
+    hashes, and omissions (`sequence_gap`); duplicate sequences are benign forks.
+  - New gate `scripts/check-governor-review.ts`. The governor path set is DERIVED
+    from `/CODEOWNERS` (single source, no divergent copy). SPLIT fail-mode: chain/
+    set INTEGRITY is fail-CLOSED (a tampered ledger exits 1 — tamper evidence),
+    record ABSENCE is WARN-FIRST (exits 0 with an actionable annotation). A record
+    satisfies the gate only when it matches the PR's number AND head sha — a stale
+    sha does not count. Genesis exemption via `governance/governor-review-genesis.txt`.
+  - New `.github/workflows/governor-review.yml` (paths-filtered on the governor set;
+    non-required, warn-first; integrity break still fails the job).
+  - Committed empty ledger `governance/pr-review-records.jsonl` (+ `merge=union`).
+
+  The PRODUCER (pr_review committing records, the caller-commits flow shared with
+  [#3927](https://github.com/nexus-substrate/nexus-agents/issues/3927)) and the fail-closed FLIP (absence → block) are tracked follow-ons.
+
+- [#3984](https://github.com/nexus-substrate/nexus-agents/pull/3984) [`a0a5a72`](https://github.com/nexus-substrate/nexus-agents/commit/a0a5a720d411a27821159811239a6030cd6fff72) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(observability): per-dimension fitness-remediation signal ([#3227](https://github.com/nexus-substrate/nexus-agents/issues/3227))
+
+  Surface a per-dimension fitness-remediation signal so a below-target dimension
+  (not just the aggregate score or a single critical finding) reaches the EXISTING
+  off-by-default research→implement loop. SIGNAL-GENERATION ONLY — no new loop, no
+  TuneStage change, no routing mutation, no new autonomous behavior; the consumer
+  and its off-by-default gate are unchanged.
+
+  - A dimension is below-target when `dimensionScore < FITNESS_DIMENSION_TARGET_FRACTION (0.6) × dimensionMax`,
+    computed against each dimension's OWN published max from the new
+    `FITNESS_DIMENSION_MAX` source-of-truth table (the boundary is exclusive).
+  - One aggregated `tech-debt:fitness-dimension:<dimension>:<hash>` signal per
+    below-target dimension (never one-signal-per-finding), capped to the top-3
+    worst by points-below-target (`MAX_DIMENSION_SIGNALS_PER_RUN`), with a stable
+    dedup hash of `(dimension + sorted finding identifiers)` so an unchanged
+    dimension does not re-emit.
+  - The critical-finding and per-dimension paths share one finding renderer (no
+    forked near-duplicate builder). Findings are validated against the closed
+    dimension set and free-text is length-capped (findings-as-data; a finding's
+    suggestion is payload data, never an instruction).
+
+### Patch Changes
+
+- [#3986](https://github.com/nexus-substrate/nexus-agents/pull/3986) [`107210d`](https://github.com/nexus-substrate/nexus-agents/commit/107210d382bfa5692663cba10de0b73aa66badf7) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - docs(adr): ADR-0019 governance-record signing — CI-commit-time Sigstore, design-of-record, build deferred ([#3897](https://github.com/nexus-substrate/nexus-agents/issues/3897))
+
+  Authors ADR-0019 capturing the 7/0 design decision on governance-record signing
+  ([#3897](https://github.com/nexus-substrate/nexus-agents/issues/3897) residual from the [#3895](https://github.com/nexus-substrate/nexus-agents/issues/3895) ratification): governance records are tamper-evident
+  (keyless SHA-256 content hash) but hand-committable, so the gate verifies presence,
+  not authenticity.
+
+  - **Decision — Architecture A:** CI-commit-time Sigstore/cosign keyless signing.
+    Local production stays a content-hash; a GitHub Actions workflow with the repo's
+    OIDC identity signs the committed record bytes via Sigstore/cosign (keyless,
+    short-lived cert). The governor gate verifies the bundle against the expected
+    workflow OIDC identity, signed-payload-bytes == committed-record-bytes (preserving
+    the Option-C content binding), and Rekor transparency-log inclusion. Rejected B
+    (interactive per-produce login — un-CI-testable) and C (hybrid — premature).
+  - **Attests provenance-through-CI, not human review** — stated plainly that it does
+    not prove a human reviewed.
+  - **Honest single-operator caveat:** for a single local owner-operator, CI-identity
+    signing is largely marginal over the existing content-hash + CODEOWNERS + branch
+    protection; the real delta needs Rekor inclusion verification (external witness) and
+    multi-party review.
+  - **Build deferred:** design now / build with the producer. Trigger = the deferred
+    record producer ([#3831](https://github.com/nexus-substrate/nexus-agents/issues/3831)/[#3927](https://github.com/nexus-substrate/nexus-agents/issues/3927)) lands AND a multi-party-review threat model
+    materializes; building before then signs fixtures with no end-to-end test path.
+  - Indexed in `docs/README.md`. Docs-only; no implementation.
+
+- [#3981](https://github.com/nexus-substrate/nexus-agents/pull/3981) [`25c3f4d`](https://github.com/nexus-substrate/nexus-agents/commit/25c3f4dca38c128db35a2d4189219e8a8cd61d5e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(mcp): single-source create_expert role enum + expose data_visualization_expert
+
+  The `create_expert` MCP tool's registered `role` enum had drifted from the
+  exported `CreateExpertInputSchema`: the runtime `toolSchema.role` (what MCP
+  clients see) listed only 10 roles, omitting `data_visualization_expert`, while
+  the exported schema admitted 11. The omitted role is a real, fully-configured
+  built-in expert ([#2715](https://github.com/nexus-substrate/nexus-agents/issues/2715)), so clients could not create it despite the exported
+  contract allowing it.
+
+  - Extract one canonical `CREATE_EXPERT_ROLES` const and derive BOTH the exported
+    `CreateExpertInputSchema.role` and the registered `toolSchema.role` from it, so
+    the two enums can no longer diverge. `data_visualization_expert` is now in the
+    single source.
+  - Update the runtime description and the `tool-descriptions-data.ts` doc-table
+    entry to mention infrastructure and data visualization (keeps the
+    MCP-description-drift gate green).
+  - Add a parity test asserting registered enum === exported enum ===
+    `CREATE_EXPERT_ROLES` (set-equality), that `data_visualization_expert` is
+    creatable, and that every creatable role maps to a real configured expert.
+
+- [#3987](https://github.com/nexus-substrate/nexus-agents/pull/3987) [`7cb978b`](https://github.com/nexus-substrate/nexus-agents/commit/7cb978b312cbf67388d0428a0b249224e0a23c97) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(deps): bump dompurify override to >=3.4.11 (Dependabot [#120](https://github.com/nexus-substrate/nexus-agents/issues/120), runtime)
+
+  Dependabot alert [#120](https://github.com/nexus-substrate/nexus-agents/issues/120) flags a medium-severity runtime vulnerability in
+  `dompurify`, fixed in 3.4.11. The root `pnpm.overrides` block already pinned
+  `dompurify` to `>=3.4.9`, which still resolved to the vulnerable 3.4.10.
+
+  Bump the override to `>=3.4.11` and regenerate the lockfile so the transitive
+  `dompurify` dependency now resolves to 3.4.11. No other overrides changed; no
+  source change (dompurify is a transitive dependency, only referenced by name in
+  security-knowledge content). `tsc --noEmit` remains clean.
+
+- [#3979](https://github.com/nexus-substrate/nexus-agents/pull/3979) [`98a30b6`](https://github.com/nexus-substrate/nexus-agents/commit/98a30b650e7a05be36ef5b50774ca3545e3e06a6) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(docs): correct 11 verified JSDoc/MCP-description accuracy findings from the [#3519](https://github.com/nexus-substrate/nexus-agents/issues/3519) Phase-2 semantic-accuracy audit
+
+  Make each doc/description/annotation match what the code actually does:
+
+  - delegate_to_model: drop the false "Read-only." claim (the handler records a routing decision to tool-memory on every call) and set `readOnlyHint: false` in the manifest with an explicit side-effect entry.
+  - model-registry module doc: rewrite the resolution chain to include the `manifest` and `generated` tiers in correct priority order; replace stale "lands in PR 4 / later PR" forward-refs (both shipped).
+  - consensus_vote: 7 roles by default / 3 with quickMode; document async mode (returns a jobId to poll via get_job_result).
+  - registry_import: document `dryRun` as a no-op echo — the tool never persists.
+  - repo_analyze: document `depth` as a no-op — the handler always runs the full analysis.
+  - research_add_source: remove the false GitHub `gh`-CLI auto-fetch claim; quality_score is computed from caller-provided quality_signals only.
+  - composite-router: scoring stages run sequentially (dependency-ordered), not in parallel.
+  - memory_write: belief predicate is fixed as `has_knowledge` (caller controls key + content only).
+  - research_catalog_review: note the optional GitHub-issue side-effect on approve.
+  - 4 pipeline tools (run_dev_pipeline, run_pipeline, run_workflow, run_graph_workflow): document the async dispatch capability.
+
+- [#3982](https://github.com/nexus-substrate/nexus-agents/pull/3982) [`2ea50f6`](https://github.com/nexus-substrate/nexus-agents/commit/2ea50f6a45132d2470f41dfd875e701a02b77c6c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(mcp): expose qa_expert via create_expert (owner-approved follow-up to [#3978](https://github.com/nexus-substrate/nexus-agents/issues/3978))
+
+  `qa_expert` is a real, fully-configured built-in expert (`BUILT_IN_EXPERTS['qa']`
+  → "Quality Assurance Expert", `role: 'qa_expert'`, `EXPERT_TYPE_TO_ROLE['qa'] =
+'qa_expert'`) but was deliberately omitted from the `create_expert` MCP tool's
+  creatable-role list. This adds it so MCP clients can create a QA expert ad hoc,
+  mirroring the data_visualization_expert exposure ([#3978](https://github.com/nexus-substrate/nexus-agents/issues/3978)).
+
+  - Add `'qa_expert'` to the single-source `CREATE_EXPERT_ROLES` const, so both the
+    exported `CreateExpertInputSchema.role` and the registered `toolSchema.role`
+    pick it up via the single source ([#3981](https://github.com/nexus-substrate/nexus-agents/issues/3981) parity invariant preserved).
+  - Update the runtime tool description and the `tool-descriptions-data.ts`
+    doc-table entry to mention quality assurance (QA), keeping the
+    MCP-description-drift gate green.
+  - Re-inject governed docs: `docs/ENTRYPOINTS.md` create_expert enumeration and
+    the generated `docs/reference/tools/create_expert.md` role enum now include
+    `qa_expert`.
+
+  The [#3981](https://github.com/nexus-substrate/nexus-agents/issues/3981) parity test asserts registered enum === exported enum ===
+  `CREATE_EXPERT_ROLES` and that every creatable role maps to a real configured
+  `BuiltInExpertType`; both hold with `qa_expert` added.
+
 ## 2.134.0
 
 ### Minor Changes
