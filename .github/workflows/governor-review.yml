@@ -1,0 +1,79 @@
+# Governor-path pr_review audit gate (#3831, Epic B — governance of the governor)
+#
+# WARN-FIRST. Asserts that a PR touching the GOVERNOR PATHS (the
+# governance-of-the-governor entries in /CODEOWNERS) carries a recorded,
+# SHA-BOUND, tamper-evident pr_review audit record (governance/pr-review-records.jsonl).
+#
+# SPLIT FAIL-MODE — encoded in the script's exit code, NOT continue-on-error, so
+# the two paths stay distinct:
+#   - chain/set INTEGRITY broken (tampered ledger) => script exits 1 => job FAILS
+#     (fail-closed, condition 2). This is the path that must be able to block.
+#   - matching sha-bound record ABSENT => script prints a ::warning:: and exits 0
+#     => job SUCCEEDS but surfaces the annotation (warn-first, condition 2).
+#
+# This job is intentionally NOT added to branch protection as a required check in
+# this stage, so even the (rare) integrity failure does not hard-block a human
+# merge until the fail-closed FLIP follow-on. Flipping absence to a block and
+# making this required are tracked follow-ons.
+#
+# The `paths:` filter restricts the trigger to the governor path set. It is kept
+# in lockstep with the governance-of-the-governor section of /CODEOWNERS (the
+# single source the gate script itself parses); if those CODEOWNERS entries
+# change, update this filter to match.
+
+name: Governor Review Gate
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'packages/nexus-agents/src/audit/**'
+      - 'packages/nexus-agents/src/governance/**'
+      - 'scripts/inject-governance.ts'
+      - 'governance/**'
+      - 'CLAUDE.md'
+      - 'AGENTS.md'
+      - 'CODEOWNERS'
+
+permissions:
+  contents: read
+
+jobs:
+  governor-review:
+    name: Governor-path pr_review audit gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - uses: ./.github/actions/setup-node
+
+      - name: Compute changed files (base..head)
+        id: changed
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          FILES=$(git diff --name-only "${BASE_SHA}" "${HEAD_SHA}")
+          {
+            echo 'files<<FILES_EOF'
+            echo "${FILES}"
+            echo 'FILES_EOF'
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Run governor-review gate (warn-first; integrity fail-closed)
+        env:
+          # The gate gets the PR number + head sha from CI here — sha-binding
+          # (condition 1) rests on github.event.pull_request.head.sha.
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          CHANGED_FILES: ${{ steps.changed.outputs.files }}
+        # No continue-on-error: the script encodes warn (exit 0) vs fail-closed
+        # integrity break (exit 1) in its exit code. A non-zero exit here is a
+        # tampered ledger and SHOULD surface as a job failure.
+        run: npx tsx scripts/check-governor-review.ts

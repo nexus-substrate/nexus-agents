@@ -86,6 +86,31 @@ export {
 } from './vote-record-store.js';
 export type { BuildVoteRecordInput, PersistVoteRecordOptions } from './vote-record-store.js';
 
+// PR-review audit record (#3831, Epic B) — committable, tamper-evident,
+// SHA-BOUND record SET + monotonic sequence (mirrors the #3927 vote-record
+// model). Read by the warn-first governor-review gate.
+export {
+  PrReviewRecordSchema,
+  PrReviewVerdictSchema,
+  PrReviewVoteCountsSchema,
+  computePrReviewRecordHash,
+  verifyPrReviewRecordSet,
+} from './pr-review-record.js';
+export type {
+  PrReviewRecord,
+  PrReviewVerdict,
+  PrReviewVoteCounts,
+  PrReviewRecordVerification,
+} from './pr-review-record.js';
+export {
+  PR_REVIEW_RECORDS_REL_PATH,
+  PR_REVIEW_RECORDS_PATH_ENV,
+  buildPrReviewRecord,
+  resolvePrReviewRecordsPath,
+  readPrReviewRecords,
+} from './pr-review-record-store.js';
+export type { BuildPrReviewRecordInput } from './pr-review-record-store.js';
+
 // SecureHandler Integration
 export {
   actorFromContext,

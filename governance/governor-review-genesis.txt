@@ -1,0 +1,14 @@
+# Governor-review genesis allowlist (#3831, Epic B) — condition 5.
+#
+# PR numbers here are EXEMPT from the warn-first governor-review gate
+# (scripts/check-governor-review.ts): they pre-date the pr_review record
+# convention and so legitimately carry no sha-bound record.
+#
+# ONE-TIME BOOTSTRAP, NOT A PERMANENT ESCAPE HATCH. The introducing PR
+# (#3831 itself) is listed so it does not false-warn against its own gate.
+# Once the PRODUCER lands (pr_review committing records — the tracked
+# follow-on), no further entries should be added; a new exemption after that
+# point is a governance smell, not a bootstrap.
+#
+# Format: one PR number per line; `#` starts a comment.
+3831
