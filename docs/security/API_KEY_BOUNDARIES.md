@@ -79,10 +79,10 @@ adapters:
 
 The shipped behavior is **advisory, not enforcing**. When OpenCode is detected with an Anthropic/Claude provider configured, nexus-agents logs a warning (`#1429`, `opencode-adapter.ts`) so you notice that an Anthropic model could be routed through a non-Claude CLI. It does **not** refuse the route — the router does not block the request. Avoid the situation by following the safe-config example above.
 
-## Planned (not yet implemented) — see #3997
+## Why there is no hard enforcement (see #3997)
 
-> **Not implemented.** The `NEXUS_ENFORCE_KEY_BOUNDARIES` environment variable below describes *planned* enforcement that does **not** exist in the codebase today (no such variable is read by the router). It is tracked in #3997. Do not rely on it; the current behavior is the advisory warning described above.
+The guardrail is intentionally advisory. nexus-agents does **not** refuse to route Anthropic models through non-Claude CLIs, and there is no `NEXUS_ENFORCE_KEY_BOUNDARIES`-style switch that would do so.
 
-The planned design: set `NEXUS_ENFORCE_KEY_BOUNDARIES=true` to prevent routing Anthropic models through non-Claude CLIs, so the router would refuse to send tasks to OpenCode when the requested model is an Anthropic/Claude model.
+A blanket "refuse Anthropic → non-Claude CLI" rule would be wrong: CLIs like OpenCode legitimately route multi-vendor models, **including Anthropic** models backed by a separate paid API key from [console.anthropic.com](https://console.anthropic.com). Hard-blocking every cross-vendor route would break those valid configurations while doing nothing the warning above doesn't already surface. The real concern — reusing a Claude Code *subscription* key outside Claude Code — is a key-provenance question the router can't reliably distinguish from a legitimate paid-API key, so it warns and leaves the choice (and the terms-of-service responsibility) to you.
 
-**Planned default:** `false` (warning only, no enforcement)
+Hard enforcement was proposed in [#3997](https://github.com/nexus-substrate/nexus-agents/issues/3997) and closed as won't-do for the reasons above. The advisory cross-CLI warning (#1429) is the actual shipped guardrail.
