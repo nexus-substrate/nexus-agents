@@ -1,0 +1,7 @@
+{
+  "rubricVersion": "1.0.0",
+  "generatedAt": "2026-06-20",
+  "generatedBy": "scripts/mine-pr-review-candidates.ts",
+  "note": "CANDIDATE pr_review eval cases mined from merged-PR history for OWNER ADJUDICATION (#3847). These are PROPOSALS, not dataset entries: every case is adjudicated:false and carries a weakLabel triage hint (likely-buggy|likely-clean|unknown), never a verdict. The pipeline does NOT fabricate adjudicated eval data. Flow: mine -> owner adjudicates each per the rubric -> promote adjudicated cases into pr-review-sample.json. This seed file is intentionally empty; the owner runs `npm run eval:mine-candidates` locally (with gh auth) to populate it. Re-running dedups against pr-review-sample.json and this file, and never overwrites an adjudicated:true candidate.",
+  "candidates": []
+}
