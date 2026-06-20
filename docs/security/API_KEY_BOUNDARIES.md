@@ -75,8 +75,14 @@ adapters:
     enabled: false
 ```
 
-## Environment Variable Guard
+## Current behavior: cross-CLI warning (#1429)
 
-Set `NEXUS_ENFORCE_KEY_BOUNDARIES=true` to prevent routing Anthropic models through non-Claude CLIs. When enabled, the router refuses to send tasks to OpenCode when the requested model is an Anthropic/Claude model.
+The shipped behavior is **advisory, not enforcing**. When OpenCode is detected with an Anthropic/Claude provider configured, nexus-agents logs a warning (`#1429`, `opencode-adapter.ts`) so you notice that an Anthropic model could be routed through a non-Claude CLI. It does **not** refuse the route — the router does not block the request. Avoid the situation by following the safe-config example above.
 
-**Default:** `false` (warning only, no enforcement)
+## Planned (not yet implemented) — see #3997
+
+> **Not implemented.** The `NEXUS_ENFORCE_KEY_BOUNDARIES` environment variable below describes *planned* enforcement that does **not** exist in the codebase today (no such variable is read by the router). It is tracked in #3997. Do not rely on it; the current behavior is the advisory warning described above.
+
+The planned design: set `NEXUS_ENFORCE_KEY_BOUNDARIES=true` to prevent routing Anthropic models through non-Claude CLIs, so the router would refuse to send tasks to OpenCode when the requested model is an Anthropic/Claude model.
+
+**Planned default:** `false` (warning only, no enforcement)

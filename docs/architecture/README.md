@@ -44,7 +44,7 @@ related_files:
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    External Interfaces                       │
-│   MCP Server │ REST API │ Standalone CLI                    │
+│   MCP Server │ REST API (roadmap) │ Standalone CLI (roadmap) │
 └──────────────────────────┬──────────────────────────────────┘
                            │
 ┌──────────────────────────▼──────────────────────────────────┐
@@ -192,8 +192,8 @@ Each arrow is a data-flow contract from the table above; each box is one tier do
 
 ### Hybrid Architecture (ADR-001)
 
-**Decision:** Combine MCP Gateway + Internal Event Bus + Standalone CLI
-**Rationale:** Enables Claude CLI integration, peer-to-peer agent coordination, and CI/CD pipelines
+**Decision:** Combine MCP Gateway + Internal Event Bus + Standalone CLI (roadmap) + REST API (roadmap)
+**Rationale:** Enables Claude CLI integration, peer-to-peer agent coordination, and CI/CD pipelines. The MCP Gateway ships today; the standalone CLI and REST API are roadmap surfaces (claims-registry Phase 2 / Phase 3, not yet shipped).
 
 ### Zero-Credential Pattern (ADR-002)
 

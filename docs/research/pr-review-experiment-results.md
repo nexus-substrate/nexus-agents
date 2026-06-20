@@ -9,7 +9,7 @@ keywords: [pr-review, experiment, results, verification-gate, autonomous-sdlc]
 
 **Date:** 2026-04-26 (ET)
 **Run:** `testing/results/pr-review-batch-2026-04-26T18-01-32-916.summary.json`
-**Dataset:** `testing/datasets/pr-review-sample.json` (10 PRs: 5 buggy + 5 clean)
+**Dataset:** `testing/datasets/pr-review-sample.json` — this run used **n=10** (5 buggy + 5 clean). The committed dataset has since grown to **n=19** (#3847, growing toward n≥50); these results describe the n=10 run only.
 
 ## Executive summary
 

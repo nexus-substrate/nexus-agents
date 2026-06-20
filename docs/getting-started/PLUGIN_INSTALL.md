@@ -49,8 +49,8 @@ You should see `nexus-agents` listed with tools like `orchestrate`, `consensus_v
 | ------------------ | ------------------------------------------- | --------------------------------------------------------------------------------------- |
 | Plugin manifest    | `.claude-plugin/plugin.json`                | Claude Code                                                                             |
 | MCP config         | `.mcp.json` (copy from `.mcp.json.example`) | Claude Code (stdio server)                                                              |
-| Skills (canonical) | `skills/<name>/SKILL.md` (17)               | Claude Code autoloads; non-Claude agents discover via `AGENTS.md` → `skills/index.yaml` |
-| Agents             | `agents/*.md` (5)                           | `/agents` UI                                                                            |
+| Skills (canonical) | `skills/<name>/SKILL.md` (33)               | Claude Code autoloads; non-Claude agents discover via `AGENTS.md` → `skills/index.yaml` |
+| Agents             | `agents/*.md` (12)                          | `/agents` UI                                                                            |
 | Hooks              | `hooks/hooks.json` + `*.sh`                 | `PreToolUse` matchers                                                                   |
 
 ## Uninstall

@@ -13,6 +13,12 @@ keywords: [getting-started, tutorial, mcp, pipeline, compose, research, consensu
 >
 > New to the words "pipeline", "consensus loop", "dev pipeline"? Read the [Pipeline Terminology table](../README.md#pipeline-terminology) first — this guide uses them precisely.
 
+## The easy way: just call `run`
+
+Before you hand-chain anything: the default entry point is the `run` MCP tool. Give it a goal — `run "Should we add rate limiting to the public API, and if so build it?"` — and the **MetaOrchestrator picks the strategy** for you (research, consensus, dev-pipeline, single-shot, …) and runs the right tools in the right order. It's read-only by default; pass `execute: true` to actually run. For most goals, `run` is all you need.
+
+This guide walks the **manual** chain below so you can see what `run` does under the hood, and so you know how to **pin a strategy by hand** when you deliberately want one specific path. (CLAUDE.md calls hand-chaining the advanced force-strategy path.) If you just want the outcome, use `run` and skip to [Where to go next](#where-to-go-next).
+
 ## The goal
 
 We'll take one concrete, decision-shaped goal end to end:

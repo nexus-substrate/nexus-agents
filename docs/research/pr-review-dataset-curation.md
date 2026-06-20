@@ -14,8 +14,9 @@ keywords: [pr-review, eval, dataset, curation, provenance, autonomous-sdlc]
 
 ## Goal
 
-Grow the eval set from n=10 toward n≥50 (target 100) **without fabricating
-cases**. A fabricated PR/bug corrupts the eval — it teaches us nothing about
+Grow the eval set toward n≥50 (target 100) **without fabricating
+cases**. (The set started at n=10 and is now n=19 after the #3847 outcome-mining
+pass; the remaining growth to n≥50 is the work this doc describes.) A fabricated PR/bug corrupts the eval — it teaches us nothing about
 whether the panel catches _real_ bugs. So the pipeline is built to make adding a
 _genuinely-sourced_ case a one-step, provenance-stamped operation, and the doc is
 explicit about what cannot be automated.
@@ -84,9 +85,10 @@ is a sourcing input, not an automated import — see the blocker below.
 
 ## Honest assessment: reaching n≥50 autonomously
 
-**Current n = 10** (7 buggy, 2 clean, 1 borderline after the #3846
+**Current committed n = 19** (after the #3847 outcome-mining pass; the prior
+state was n=10 — 7 buggy, 2 clean, 1 borderline — after the #3846
 re-adjudication). The pipeline, schema, and stamping are in place. The remaining
-40 cases to n≥50 **cannot be generated autonomously without corrupting the
+~31 cases to n≥50 **cannot be generated autonomously without corrupting the
 eval**, for concrete reasons:
 
 - **Real historical/clean cases require live GitHub history mining + human

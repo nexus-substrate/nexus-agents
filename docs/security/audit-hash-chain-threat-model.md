@@ -44,25 +44,36 @@ Hash chaining is controlled by `enableHashChain`, which **defaults to `true`**
 When an event is created (`audit-logger.ts:224` `createEvent`):
 
 1. `event.previousHash` is set to the logger's running `this.lastHash`
-   (`audit-logger.ts:247`). The very first event in a logger's lifetime has
+   (`audit-logger.ts:~346`). The very first event in a logger's lifetime has
    `previousHash === undefined`.
 2. `event.hash = computeEventHash(event)` is computed and `this.lastHash` is
-   advanced to it (`audit-logger.ts:250-253`).
+   advanced to it (`audit-logger.ts:~356-357`).
 
-`computeEventHash` (`audit-logger.ts:45`) is `SHA-256` over a JSON projection of
-**only these fields**:
+`computeEventHash` (`audit-logger.ts:~64`) is `SHA-256` over a JSON projection.
+Since **#3921 the projection is versioned** (`hashVersion`). For a normal event
+the projection covers **only these fields**:
 
 ```text
 id, timestamp, category, action, outcome, actor, previousHash
 ```
 
-This is the load-bearing detail of the entire model. **The hash does not cover
-all of the event's content.** Fields excluded from the hash include:
-`severity`, `description`, `resource`, `requestId`, `traceId`, `sessionId`,
-`toolName`, `durationMs`, `metadata`, `policyName`, `policyDecision`,
-`violationType`, `timestampMs`, and `version`. An attacker can mutate any of
-those fields in place and the recomputed hash will still match — see
-[T7](#t7-content-tampering-in-unhashed-fields).
+This is the load-bearing detail of the entire model. **For a normal event the
+hash does not cover all of the event's content.** Fields excluded from the
+default projection include: `severity`, `description`, `resource`, `requestId`,
+`traceId`, `sessionId`, `toolName`, `durationMs`, `metadata`, `policyName`,
+`policyDecision`, `violationType`, `timestampMs`, and `version`. An attacker can
+mutate any of those fields in place and the recomputed hash will still match —
+see [T7](#t7-content-tampering-in-unhashed-fields).
+
+**Exception (#3921 — versioned projection).** A tier-transition event (a
+`governance`-category event carrying `metadata.tierTransition`) is hashed under
+`hashVersion: 2`: the projection additionally folds in `hashVersion` and the
+canonicalized `metadata.tierTransition` payload (`audit-logger.ts:~58-77`). For
+those events the tier-transition payload **is** hash-covered, and because the
+`hashVersion` is itself part of the projection, a tampered or stripped version
+field cannot silently downgrade the hash. The blanket "metadata is fully
+excluded / an attacker can mutate it in place" claim therefore does **not** hold
+for tier-transition events.
 
 ### 1.3 Append-only semantics
 
@@ -253,18 +264,23 @@ hash). Each log directory's chain floats free.
 `policyDecision`, `violationType`, `severity`, `timestampMs`, `traceId`, etc.
 (see [§1.2](#12-how-entries-link-prevhash--hash)).
 
-**Detected?** **No.** `computeEventHash` hashes only
+**Detected?** **Partially — qualified since #3921.** For a *normal* event,
+`computeEventHash` hashes only
 `{id, timestamp, category, action, outcome, actor, previousHash}`
-(`audit-logger.ts:46-54`). Mutating an unhashed field leaves the stored `hash`
+(`audit-logger.ts:~64`). Mutating an unhashed field leaves the stored `hash`
 valid. For example, an attacker can rewrite `metadata.currentRate` on a
 rate-limit event, or rewrite a `description`/`policyName`, with **zero** chain
-impact.
+impact. **The exception** (#3921): a tier-transition event hashed under
+`hashVersion: 2` folds `metadata.tierTransition` into the projection, so that
+specific payload **is** covered and this vector does not apply to it.
 
-**Residual risk: HIGH and under-appreciated.** The chain gives a false sense
-that "the audit record is tamper-evident" when in fact roughly half the event
-schema — including security-relevant `metadata`, `policyDecision`, and
-`violationType` — is unprotected. This is independent of T3 and does not even
-require rehashing.
+**Residual risk: HIGH for normal events, narrowed for tier transitions.** For
+ordinary events the chain still gives a false sense that "the audit record is
+tamper-evident" when in fact much of the event schema — including
+security-relevant `metadata`, `policyDecision`, and `violationType` — is
+unprotected; this is independent of T3 and does not even require rehashing. The
+versioned-projection work (#3921) closed this for the tier-transition payload
+specifically; the general case remains open.
 
 ### T8: Chain-disable / downgrade
 
@@ -398,14 +414,15 @@ Ranked by risk-reduction-per-effort. All are **out of scope for this doc**
 
 ## 7. Evidence linkage
 
-This document is the adversarial-analysis evidence backing the **"immutable
-audit"** governance claim asserted in `CLAUDE.md` and `AGENTS.md`. Its honest
-conclusion — the chain is **tamper-evident, not tamper-proof**, and **does not
-currently support the unqualified word "immutable"** against a write-capable
-adversary — should be reflected wherever that claim is registered. The repo has
-no machine-readable claims-registry file at the time of writing; the claim lives
-as prose in those two governance files, and this doc is linked from the canonical
-index (`docs/README.md`).
+This document is the adversarial-analysis evidence backing the audit-integrity
+governance claim asserted in `CLAUDE.md` and `AGENTS.md`. Its honest conclusion —
+the chain is **tamper-evident, not tamper-proof** against a write-capable
+adversary — **has since been reflected in those governance files**: they no
+longer use the unqualified word "immutable" (a grep of `CLAUDE.md` and
+`AGENTS.md` returns zero occurrences) and now describe the audit chain as
+"tamper-evident, not tamper-proof," linking back to this threat model. The claim
+lives as prose in those two governance files, and this doc is linked from the
+canonical index (`docs/README.md`).
 
 ## References
 

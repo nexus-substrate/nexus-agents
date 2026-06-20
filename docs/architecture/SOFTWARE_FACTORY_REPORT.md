@@ -4,6 +4,11 @@
 **Date:** 2026-02-10 (ET)
 **Status:** Phase 1-2 delivered, Phase 3-7 tracked
 
+> **Point-in-time report.** This is a dated snapshot; the counts and inventories
+> below (e.g. workflow templates, expert types) are as-of the 2026-02-10 report
+> date and have since grown. For current numbers, see the live reference
+> ([ENTRYPOINTS.md](../ENTRYPOINTS.md) and the architecture [README](./README.md)).
+
 ---
 
 ## 1. Executive Summary
