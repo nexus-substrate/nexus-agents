@@ -2,7 +2,7 @@
  * nexus-agents/mcp - Create Expert Tool
  *
  * MCP tool for creating expert agents dynamically.
- * Supports built-in expert types: code, architecture, security, documentation, testing, devops, research, pm, ux.
+ * Supports built-in expert types: code, architecture, security, documentation, testing, devops, research, pm, ux, infrastructure, qa, data-visualization.
  *
  * @module mcp/tools/create-expert
  * (Refactored: Issue #531 - Use createSecureHandlerFactory)
@@ -50,9 +50,8 @@ import { recordExpertCreated, recordExpertError } from './create-expert-recordin
  * This is a deliberate, curated SUBSET of the full configured expert roster
  * (see `BUILT_IN_EXPERTS` / `EXPERT_TYPE_TO_ROLE` in expert-config.ts). Every
  * entry here MUST be a real configured built-in expert; not every configured
- * expert is exposed for ad-hoc creation (e.g. `qa_expert` is configured but not
- * listed here). Each role below maps to a `BuiltInExpertType` via
- * {@link ROLE_TO_EXPERT_TYPE}.
+ * expert is necessarily exposed for ad-hoc creation. Each role below maps to a
+ * `BuiltInExpertType` via {@link ROLE_TO_EXPERT_TYPE}.
  */
 export const CREATE_EXPERT_ROLES = [
   'code_expert',
@@ -65,6 +64,7 @@ export const CREATE_EXPERT_ROLES = [
   'pm_expert',
   'ux_expert',
   'infrastructure_expert',
+  'qa_expert',
   'data_visualization_expert',
 ] as const;
 
@@ -325,7 +325,7 @@ export function registerCreateExpertTool(server: McpServer, deps: CreateExpertDe
   };
 
   const description =
-    'Create a specialized expert agent for code, architecture, security, documentation, testing, devops, research, product management, UX, infrastructure, or data visualization tasks';
+    'Create a specialized expert agent for code, architecture, security, documentation, testing, devops, research, product management, UX, infrastructure, quality assurance (QA), or data visualization tasks';
 
   // Wrap handler with secure handler for rate limiting and request context (Issue #531)
   const secureHandler = createSecureHandler(createCreateExpertHandler(deps), {

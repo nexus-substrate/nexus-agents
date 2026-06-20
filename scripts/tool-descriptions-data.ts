@@ -21,7 +21,7 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   orchestrate:
     'Orchestrate a task by analyzing it, breaking it into subtasks if needed, and coordinating expert agents',
   create_expert:
-    'Create a specialized expert agent for code, architecture, security, documentation, testing, devops, research, product management, UX, infrastructure, or data visualization tasks',
+    'Create a specialized expert agent for code, architecture, security, documentation, testing, devops, research, product management, UX, infrastructure, quality assurance (QA), or data visualization tasks',
   execute_expert:
     'Run a task through an expert YOU PREVIOUSLY CREATED via `create_expert`. Requires the expertId returned by create_expert; not for ad-hoc execution.',
   run_workflow:
