@@ -6,8 +6,20 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { closeMemoryRegistry, createInMemoryMemoryRegistry, setMemoryRegistry } from 'nexus-memory';
-import { StatsOnlyAdapter } from './tool-memory-registry-adapters.js';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import {
+  closeMemoryRegistry,
+  createInMemoryMemoryRegistry,
+  getMemoryRegistry,
+  hasMemoryRegistry,
+  setMemoryRegistry,
+} from 'nexus-memory';
+import {
+  StatsOnlyAdapter,
+  ensureSharedMemoryRegistry,
+} from './tool-memory-registry-adapters.js';
 
 describe('StatsOnlyAdapter', () => {
   beforeEach(() => {
@@ -187,5 +199,53 @@ describe('registry-level fan-out (#2792 Phase 1)', () => {
     const byDomain = new Map(results.map((r) => [r.domain, r.rows]));
     expect(byDomain.get('domain-a')).toEqual(['a:task:1', 'a:task:2']);
     expect(byDomain.get('domain-b')).toEqual([{ from: 'b', q: 'task', limit: 3 }]);
+  });
+});
+
+describe('ensureSharedMemoryRegistry (#3995)', () => {
+  let root: string;
+  let savedDataDir: string | undefined;
+  let savedRepoPreferred: string | undefined;
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'nexus-reg-inject-'));
+    savedDataDir = process.env['NEXUS_DATA_DIR'];
+    savedRepoPreferred = process.env['NEXUS_REPO_PREFERRED'];
+    // Pin resolution to the temp dir so the injected path is deterministic.
+    process.env['NEXUS_DATA_DIR'] = root;
+    // Start with no registry so the injection path runs.
+    setMemoryRegistry(null);
+  });
+
+  afterEach(async () => {
+    await closeMemoryRegistry();
+    if (savedDataDir === undefined) delete process.env['NEXUS_DATA_DIR'];
+    else process.env['NEXUS_DATA_DIR'] = savedDataDir;
+    if (savedRepoPreferred === undefined) delete process.env['NEXUS_REPO_PREFERRED'];
+    else process.env['NEXUS_REPO_PREFERRED'] = savedRepoPreferred;
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('injects a registry resolved via nexusDataPath when none exists', async () => {
+    expect(hasMemoryRegistry()).toBe(false);
+    ensureSharedMemoryRegistry();
+    expect(hasMemoryRegistry()).toBe(true);
+
+    // Writing through the registry persists under <NEXUS_DATA_DIR>/memory/memory.db,
+    // proving the canonical resolver supplied the path (and the parent dir was
+    // auto-created on open — fresh-install case).
+    const registry = getMemoryRegistry();
+    const backend = registry.register<string, { v: number }>({ domain: 'inject_check' });
+    await backend.write('k', { v: 5 });
+    expect(await backend.read('k')).toEqual({ v: 5 });
+    expect(existsSync(join(root, 'memory', 'memory.db'))).toBe(true);
+  });
+
+  it('is a no-op when a registry is already set (respects test injection)', () => {
+    const injected = createInMemoryMemoryRegistry();
+    setMemoryRegistry(injected);
+    ensureSharedMemoryRegistry();
+    // The in-memory test registry must NOT have been clobbered.
+    expect(getMemoryRegistry()).toBe(injected);
   });
 });

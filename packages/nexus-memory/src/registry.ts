@@ -11,9 +11,10 @@
  * @module nexus-memory/registry
  */
 
-import Database, { type Database as DatabaseType } from 'better-sqlite3';
+import { type Database as DatabaseType } from 'better-sqlite3';
 import type { z } from 'zod';
 import { InMemoryBackend } from './backends/memory.js';
+import { openSqliteDatabase } from './backends/open-database.js';
 import { SqliteBackend } from './backends/sqlite.js';
 import type { IMemoryBackend } from './types.js';
 
@@ -44,9 +45,9 @@ export class MemoryRegistry {
 
   constructor(options: MemoryRegistryOptions = {}) {
     if (options.dbPath !== undefined) {
-      const db = new Database(options.dbPath);
-      (db as unknown as { pragma(s: string): void }).pragma('journal_mode = WAL');
-      this.db = db;
+      // #3995: open via the shared helper, which creates the parent dir
+      // first (fresh-install robustness) and enables WAL mode.
+      this.db = openSqliteDatabase(options.dbPath);
     }
   }
 
@@ -174,6 +175,17 @@ export function getMemoryRegistry(): MemoryRegistry {
  */
 export function setMemoryRegistry(registry: MemoryRegistry | null): void {
   sharedRegistry = registry;
+}
+
+/**
+ * True when the shared registry has already been constructed or injected.
+ * Lets nexus-agents inject the canonical {@link nexusDataPath}-resolved DB
+ * path (#3995) WITHOUT clobbering a registry a test already set, and without
+ * triggering the lazy default-path resolution that `getMemoryRegistry()`
+ * would. Read-only — keeps nexus-memory dep-free.
+ */
+export function hasMemoryRegistry(): boolean {
+  return sharedRegistry !== null;
 }
 
 /** Close + null out the shared registry. Idempotent. */

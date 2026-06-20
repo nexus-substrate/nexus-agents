@@ -48,7 +48,10 @@ import {
   getSharedMobiMem,
   setSharedMobiMemDbPathResolver,
 } from '../../context/mobimem.js';
-import { StatsOnlyAdapter } from './tool-memory-registry-adapters.js';
+import {
+  StatsOnlyAdapter,
+  ensureSharedMemoryRegistry,
+} from './tool-memory-registry-adapters.js';
 import type { MobiMemStats } from '../../context/mobimem-types.js';
 import {
   MemoryPromoter,
@@ -132,6 +135,10 @@ function attachToRegistry(
   }
 ): void {
   try {
+    // #3995: inject the canonical nexusDataPath-resolved DB path before the
+    // first registry touch, so production uses the resolver instead of
+    // nexus-memory's dep-free fallback. No-op once a registry exists.
+    ensureSharedMemoryRegistry();
     getMemoryRegistry().attach(domain, new StatsOnlyAdapter(domain, backend));
   } catch {
     // Domain already registered — re-init of tool-memory should be a no-op.

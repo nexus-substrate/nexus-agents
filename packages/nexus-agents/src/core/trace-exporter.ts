@@ -71,6 +71,14 @@ const DEFAULT_VIS_OPTIONS: ResolvedVisualizationOptions = {
 /**
  * Exports trace data to JSON file.
  *
+ * NOTE (#3995): `filepath` is fully caller-supplied — today this is test-only /
+ * param-driven and creates the parent dir on demand, so it does not touch the
+ * canonical data-dir resolver. If this is ever wired to persist traces in
+ * production, the destination should be derived from
+ * `nexusDataPath('traces', generateTraceFilename(traceId))` (`traces` is a
+ * per-repo subdir) rather than an inline path, so it inherits the
+ * sandbox/per-repo-fallback/gitignore handling like the other stores.
+ *
  * @param tracer - Tracer instance to export from
  * @param filepath - Destination file path
  * @param format - Export format (default: 'json-pretty')
@@ -205,6 +213,11 @@ export function printTrace(tracer: Tracer, options?: VisualizationOptions): void
 
 /**
  * Generates a default filename for trace export.
+ *
+ * NOTE (#3995): returns a bare filename, not a path. Production callers that
+ * persist traces should join it under `nexusDataPath('traces', ...)` (a
+ * per-repo subdir) rather than the cwd, so traces land in the canonical
+ * data dir with the rest of the runtime state.
  *
  * @param traceId - Trace ID to include in filename
  * @returns Filename with timestamp

@@ -293,6 +293,12 @@ async function attachOutcomeStoreToRegistry(store: OutcomeStore): Promise<void> 
   try {
     const { getMemoryRegistry } = await import('nexus-memory');
     const { OutcomeStoreAdapter } = await import('./outcome-store-adapter.js');
+    const { ensureSharedMemoryRegistry } = await import(
+      '../../mcp/tools/tool-memory-registry-adapters.js'
+    );
+    // #3995: inject the canonical nexusDataPath-resolved DB path before the
+    // first registry touch. No-op once a registry exists.
+    ensureSharedMemoryRegistry();
     getMemoryRegistry().attach('outcomes', new OutcomeStoreAdapter(store));
   } catch {
     // Already attached or nexus-memory unavailable — silent.
